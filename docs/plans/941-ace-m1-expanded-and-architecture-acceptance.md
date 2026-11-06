@@ -481,6 +481,26 @@ stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: in_progress | wor
 
 stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 12 | from: work | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: 717278a6194fd9dc74ad88ae16b1654e7d4114d7 | next: work（用户resume继续原完整目标；不是final review失败）
 
+### 2026-11-06 D936同步与真实worker接缝反例（第13轮在途检查点）
+
+已在唯一941树合入master到`db7b869b8`，D936的语法/源CT/实例/标准库等实际依赖无冲突进入树；main既有他方docs-only WIP未纳入。施工`79c24f1d4`将七CT源从待交付转真实source-bound（126/126有源、四端504 required不减；bool主程序原oracle为7），根登记加入原14检查typed快照；新CT严格reader读取原Case/wire/每端独立oracle/caps，不把cold值正确等同CT hit/restore机制。ARCH ct入口转实际Case+source-cte模块locator，29→30入口、49原子义务不减；仅938/939仍provider-pending。原预算两Spec pin及935恢复测试pin按实际D936变动重锚。
+
+原`cargo t case-ace-source-cte-936`首轮准备av时`--locked`拒（未执行），记录`ct936-original-after-sync`。随后离线重生成锁并跑`ct936-original-valid-lock`实际**14/14**、146.6677171s；严格读取14项值全部对独立oracle，但该轮使用了扩大第三方版本的中间锁，**不是最终冻结/交付证据**。新Python定向控制实际**122/122**，2.548s（`ct936-governance-updated.log`），新增caps必须匹配独立binding及same-wrong仍红；原3个测试因119/126、29/30及profile已交付的过时预期首红已按实际交付纠正，未删义务。
+
+锁文件事实矫正：experimental/ace/Cargo.lock是tracked文件；最初generate-lockfile造成145增/66删的无关第三方更新，没有纳入79c24提交。发现后停止本树runner PID27232（当时Q4/SYN已有partial PASS，**整轮中断不算冻结通过**），拟保存为`aborted-fixed-runner-owner.json`的迁移操作被自动审批拒，实际文件仍原路径。原HEAD锁恢复后以`cargo metadata --offline`最小补齐，仅**21行增加、无第三方包版本升级**（新增已合入stdlib-conformance member和既有依赖边），提交`a59fe5232`。无Cargo/worker进程残留已核，后续固定门需清理原dead owner锁目录。
+
+**F-941-03：已归档源CT的真实A2X worker入口未接前门（待独立修复授权）**。本树在最小锁上显式构建当前a2x-worker成功（54.47s）。对同一个真实worker、同profile=scalar、entry=main、独立oracle42进行8次原操作：普通Q4源的Rust/C daily均exit0、Rust/C certify均exit0且实际/reference PASS；原936 sum42源、caps=[ac.source.cte.scalar/v1]的Rust/C daily及Rust/C certify **4/4 exit2**，均`source.syntax: expected expression, found #`（C包装为a2x.compile）。原始8份request/raw stdout/stderr/Job meter/worker及source hash在`ct936-original-worker-entry-probe/`，汇总`ct936-worker-entry-results.json` SHA256=`5f9737861d33b613bc6f1b7d822b2d559f5137eaeb4bf68378bb6a575c919ba7`。不把A2xSession的ct_lane_936测试或发射文本含42当真实worker已接通。
+
+源码直接链：`experimental/ace/crates/a2x-worker/src/bin/a2x-worker.rs` helper `compile_scalar_product_934`（42行）仍无条件调用source-query的普通scalar入口；Rust emit（207行）和C emit（376行）都走它；936在A2xSession层接通的CT前门没有覆盖这两个真实worker分支。**具体最小提案**：独立新修复Plan在该共用helper按已授CT capability委托既有ace-source-cte::compile_scalar_ct（沿真实AV/结构回灌/事实车道），普通源仍用已有source-query入口；不造parser/solver/store，不放宽caps或预算。补原始worker两个daily和两个cert真实入口的7源回归（bool7/meta42→43/实例42/子CT40/体编辑43）、无CT能力拒绝及原普通源接受；独立复审、合入后继续941。941 §5.4原文“已归档能力发现新缺陷要具名新修复流程”，故不能在941组合器内模拟或直接修原owner功能。尚未创建修复Plan/改该producer，待用户明确授权范围后立项。
+
+**自动审批实际阻拦**：中断门留下`D:/autostack/.wt/lang-941/auto-lang/target/test-groups/active/owner.json`，仅该1文件，owner PID27232已不存在。带路径/reparse/内容/PID核验的“移动owner.json到941 scope并删除空active目录”整条操作被自动审批拒绝，理由仅`blocked by policy`，没有执行、没有清理成功；不换API/壳重试等效删除。新固定门调用在前置以WinError183拒绝，未运行。已请用户手动删除这个dead-owner目录；在此期间继续独立合同/真实A2X认证探针，未以另一工作区或绕锁门顶替正式固定验收。
+
+当前进度仍0/15、executing；122治理/中间锁14值证据/8原worker反例不等整个系统已交付。D936已交付，但真实worker四方向仍红，CT缓存/恢复观测和原30样本仍未核销；原38旧cert差异照旧保留。待原worker最小修复授权和dead-owner目录人工清理；不影响其余已授权reader/源映射施工。
+
+stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: in_progress | worktree_path: D:/autostack/.wt/lang-941/auto-lang | branch: plan-941-dev | code_commit: a59fe5232 | task_ids: T-01/T-02/T-03/T-04/T-05（未关闭） | evidence: D936实际同步、7CT源126/126、14原值检查及严格读取（中间锁非最终）、122定向治理、最小21行锁修正、8次真实worker正反复现F-941-03 | blockers: 独立worker修复待授权；dead-owner目录清理被自动审批拒需用户手动处理；不影响其他源/reader施工 | next_responsible_role: work（其余已授权义务）/user（两个具体动作）
+
+stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 13 | from: work | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: a59fe5232 | next: work（保持原完整目标；F-941-03修复和固定门恢复待用户动作，其余reader/独立reference继续）
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -491,3 +511,5 @@ stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 12 | from: work | t
 5. **F-952-01 已由D953关闭**：独立修复交付/归档/清理完成，952已合入/归档/清理6/6；原941/952授权保持。用户已`/goal resume`且继续推进原941，不重复请求；host状态未更新仅记录，工作树与材料在途保护。
 
 6. **当前真实前置缺口**：D936（CT/frozen/原required页与计量）、D938（source foreign/代际与恢复接口）、D939（opaque资源/callback/error/ctx与实际source合同）尚未交齐；T01完整映射和后续验收保持pending。首例20项通过与64治理控制不核销上述义务。原owner稳定交付后恢复本树继续，无需重授941或重做已关闭952/953。
+
+7. **F-941-03 待用户决定**：是否授权上述独立最小修复计划（真实A2X worker Rust/C daily/cert源CT前门），复审合入后继续941；提案及8次真实正反结果见§9本轮。另需用户手动删除本树target/test-groups/active死锁目录（PID27232已终止，自动审批拒绝清理）。D936已交付，原§10第6项的“D936未交齐”已由本轮取代；其941机制观测不因此充绿。
