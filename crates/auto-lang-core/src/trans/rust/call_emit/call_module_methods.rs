@@ -21,7 +21,8 @@ impl RustTrans {
             Some(Type::Array(array)) => Some(array.elem.as_ref()),
             _ => None,
         };
-        let typed = element.is_some_and(|elem| !matches!(elem, Type::Unknown));
+        let typed = element.is_some_and(|elem| !matches!(elem, Type::Unknown))
+            || matches!(&ty, Some(Type::Array(array)) if matches!(array.elem.as_ref(), Type::Unknown));
         let helper = if json {
             "write_bytes_json"
         } else if typed {

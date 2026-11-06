@@ -121,6 +121,13 @@ impl RustTrans {
         params: &[(AutoStr, Type)],
     ) -> AutoResult<Vec<String>> {
         self.local_var_types.clear();
+        self.byte_list_slots = Self::collect_byte_list_slots(
+            body,
+            &params
+                .iter()
+                .map(|(name, _)| name.clone())
+                .collect::<Vec<_>>(),
+        );
         self.http_stream_vars.clear();
         self.http_stream_async_vars.clear();
         self.http_builder_vars.clear();
@@ -744,6 +751,9 @@ impl RustTrans {
                 }
                 let try_body = body;
                 let previous_json_slots = self.json_null_slots.clone();
+                let previous_byte_slots = self.byte_list_slots.clone();
+                self.byte_list_slots
+                    .extend(Self::collect_byte_list_slots(&try_body, &[]));
                 self.json_null_slots
                     .extend(Self::collect_json_null_slots_in(
                         &try_body,
@@ -850,6 +860,7 @@ impl RustTrans {
                     sink.body.write(b"}")?;
                 }
                 self.json_null_slots = previous_json_slots;
+                self.byte_list_slots = previous_byte_slots;
                 Ok(true)
             }
 
@@ -1611,6 +1622,20 @@ impl RustTrans {
         } else {
             store.ty.clone()
         };
+        // A byte list populated by push retains Rust's native element
+        // inference, shared by the mutation and generic borrowed consumer.
+        let effective_ty = if self
+            .byte_list_slots
+            .contains(&(store as *const Store as usize))
+        {
+            Type::Array(crate::ast::ArrayType {
+                elem: Box::new(Type::Unknown),
+                len: 0,
+            })
+        } else {
+            effective_ty
+        };
+
         // PLAN-596 T-07 (DIV-DEP-8): an un-annotated let bound from a dep
         let effective_ty = if self
             .json_null_slots

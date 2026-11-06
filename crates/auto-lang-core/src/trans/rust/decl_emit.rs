@@ -29,6 +29,14 @@ impl RustTrans {
         self.json_value_vars.clear();
         self.json_value_bindings.clear();
         self.json_null_slots = Self::collect_json_null_slots(fn_decl);
+        self.byte_list_slots = Self::collect_byte_list_slots(
+            &fn_decl.body,
+            &fn_decl
+                .params
+                .iter()
+                .map(|p| p.name.clone())
+                .collect::<Vec<_>>(),
+        );
         // Plan 427: is-arm &str bindings are function-scoped (mirrors
         // local_var_types above).
         self.str_slice_pattern_bindings.clear();

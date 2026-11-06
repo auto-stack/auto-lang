@@ -29,16 +29,66 @@ fn rustc_flags() -> Vec<String> {
         .parent()
         .unwrap()
         .to_path_buf();
+    let core = newest_rlib(&deps, "libauto_lang_core-");
+    // Match serde_json's Cargo fingerprint to the core being linked. Workspace
+    // feature combinations may leave several incompatible crate identities.
+    let core_hash = core
+        .file_stem()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .rsplit('-')
+        .next()
+        .unwrap();
+    let fingerprints = deps.parent().unwrap().join(".fingerprint");
+    let core_fp: serde_json::Value = serde_json::from_slice(
+        &fs::read(fingerprints.join(format!(
+            "auto-lang-core-{core_hash}/lib-auto_lang_core.json"
+        )))
+        .unwrap(),
+    )
+    .unwrap();
+    let serde_fp = core_fp["deps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|dep| dep[1] == "serde_json")
+        .unwrap()[3]
+        .as_u64()
+        .unwrap();
+    let serde_fp = serde_fp
+        .to_le_bytes()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let serde_hash = fs::read_dir(&fingerprints)
+        .unwrap()
+        .flatten()
+        .find_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let hash = name.strip_prefix("serde_json-")?;
+            (fs::read_to_string(entry.path().join("lib-serde_json"))
+                .ok()?
+                .trim()
+                == serde_fp)
+                .then(|| hash.to_owned())
+        })
+        .expect("core serde_json dependency fingerprint");
     let mut flags = vec![
         "--edition=2021".into(),
         "-L".into(),
         format!("dependency={}", deps.display()),
         "--extern".into(),
-        format!(
-            "auto_lang_core={}",
-            newest_rlib(&deps, "libauto_lang_core-").display()
-        ),
+        format!("auto_lang_core={}", core.display()),
     ];
+    flags.extend([
+        "--extern".into(),
+        format!(
+            "serde_json={}",
+            deps.join(format!("libserde_json-{serde_hash}.rlib"))
+                .display()
+        ),
+    ]);
     for entry in fs::read_dir(deps.parent().unwrap().join("build"))
         .unwrap()
         .flatten()
@@ -104,6 +154,27 @@ fn plan988_source_bytes_compile_run_and_preserve_rejected_targets() {
     ];
     cases.push(("empty_reused", "let p = PATH\nlet bs = []\nlet first = File.write_bytes(p, bs)\nlet rc = File.write_bytes(p, bs)\nprint(rc)".into(), vec![], false));
     cases.push(("json_reused", "let p = PATH\nlet bs = json.parse(\"[0,127,128,255]\")\nlet first = File.write_bytes(p, bs)\nlet rc = File.write_bytes(p, bs)\nprint(rc)".into(), bytes.to_vec(), false));
+    // Mutation is observed in both orders; FIRST preserves the initial write
+    // as a separate file so the final result cannot hide a bad first phase.
+    for (name, source, expected, reject) in [
+        ("push_after_write", "var bs = []\nlet first = File.write_bytes(FIRST, bs)\nbs.push(255)\nlet rc = File.write_bytes(PATH, bs)\nprint(rc)", vec![255], false),
+        ("push_before_write", "var bs = []\nbs.push(255)\nlet rc = File.write_bytes(PATH, bs)\nprint(rc)", vec![255], false),
+        ("push_branch_loop", "var bs = []\nlet first = File.write_bytes(FIRST, bs)\nif true { for byte in [0,128,255] { bs.push(byte) } }\nlet rc = File.write_bytes(PATH, bs)\nprint(rc)", vec![0,128,255], false),
+        ("push_alias", "var bs = []\nvar copied = bs\ncopied.push(255)\nlet rc = File.write_bytes(PATH, copied)\nprint(rc)", vec![255], false),
+        ("push_bad_value", "var bs = []\nlet first = File.write_bytes(FIRST, bs)\nlet value = json.parse(\"true\")\nbs.push(value)\nlet rc = File.write_bytes(PATH, bs)\nprint(rc)", sentinel.to_vec(), true),
+        ("push_typed_empty", "var bs []int = []\nlet first = File.write_bytes(FIRST, bs)\nbs.push(255)\nlet rc = File.write_bytes(PATH, bs)\nprint(rc)", vec![255], false),
+        ("push_nonempty", "var bs = [0]\nbs.push(255)\nlet rc = File.write_bytes(PATH, bs)\nprint(rc)", vec![0,255], false),
+        ("push_nested_local", "fn typed_count(items []int) int { return items.len() }\nfn main() { var bs = []\nlet first = File.write_bytes(FIRST, bs)\nif true { let other = []\nother.push(2)\nlet n = typed_count(other) }\nbs.push(255)\nlet rc = File.write_bytes(PATH, bs)\nprint(rc) }", vec![255], false),
+    ] { cases.push((name,source.into(),expected,reject)); }
+    cases.push(("push_parameter", "fn save(p str, bs []int) int { return File.write_bytes(p, bs) }\nfn main() { var bs = []\nlet first = File.write_bytes(FIRST, bs)\nbs.push(255)\nlet rc = save(PATH, bs)\nprint(rc) }".into(), vec![255], false));
+    cases.push((
+        "push_condition",
+        "var bs = []\nbs.push(255)\nif File.write_bytes(PATH, bs) == 0 { print(0) }".into(),
+        vec![255],
+        false,
+    ));
+    cases.push(("replace_array", "var bs = []\nlet first = File.write_bytes(FIRST, bs)\nbs = [0,128,255]\nlet rc = File.write_bytes(PATH, bs)\nprint(rc)".into(), vec![0,128,255], false));
+    cases.push(("replace_return", "fn make() []int { return [0,128,255] }\nfn main() { var bs = []\nlet first = File.write_bytes(FIRST, bs)\nbs = make()\nlet rc = File.write_bytes(PATH, bs)\nprint(rc) }".into(), vec![0,128,255], false));
     for (name, json, expected, reject) in [
         ("json_list", "[0,127,128,255]", bytes.to_vec(), false),
         ("json_empty", "[]", vec![], false),
@@ -125,13 +196,27 @@ fn plan988_source_bytes_compile_run_and_preserve_rejected_targets() {
             reject,
         ));
     }
-    for (name, source, expected, reject) in cases {
+    let filter = std::env::var("PLAN988_BYTE_CASE").unwrap_or_default();
+    assert!(
+        cases.iter().any(|(name, _, _, _)| name.contains(&filter)),
+        "zero selected byte cases"
+    );
+    for (name, source, expected, reject) in cases
+        .into_iter()
+        .filter(|(name, _, _, _)| name.contains(&filter))
+    {
         let dir = temp.path().join(name);
         fs::create_dir(&dir).unwrap();
         let target = dir.join("bytes.bin");
         let input = dir.join("seed.bin");
+        let first = dir.join("first.bin");
+        let check_first = source.contains("FIRST");
         fs::write(&input, bytes).unwrap();
         let source = source
+            .replace(
+                "FIRST",
+                &serde_json::to_string(&first.to_string_lossy().replace('\\', "/")).unwrap(),
+            )
             .replace(
                 "PATH",
                 &serde_json::to_string(&target.to_string_lossy().replace('\\', "/")).unwrap(),
@@ -153,6 +238,15 @@ fn plan988_source_bytes_compile_run_and_preserve_rejected_targets() {
             assert_eq!(output.1.trim(), "0", "{name}: VM status");
         }
         assert_eq!(fs::read(&target).unwrap(), expected, "{name}: VM bytes");
+
+        if check_first {
+            assert_eq!(
+                fs::read(&first).unwrap(),
+                Vec::<u8>::new(),
+                "{name}: first VM write"
+            );
+            fs::remove_file(&first).unwrap();
+        }
 
         let mut sink = auto_lang_core::trans::rust::transpile_rust(name, &source).unwrap();
         let generated = String::from_utf8(sink.done().unwrap().clone()).unwrap();
@@ -190,6 +284,13 @@ fn plan988_source_bytes_compile_run_and_preserve_rejected_targets() {
             "{name}: Rust status"
         );
         assert_eq!(fs::read(&target).unwrap(), expected, "{name}: Rust bytes");
+        if check_first {
+            assert_eq!(
+                fs::read(&first).unwrap(),
+                Vec::<u8>::new(),
+                "{name}: first Rust write"
+            );
+        }
         eprintln!("PASS {name}: VM + generated Rust, status and bytes");
     }
 }

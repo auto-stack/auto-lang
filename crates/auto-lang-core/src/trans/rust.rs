@@ -56,6 +56,7 @@ use std::io::Write;
 use std::sync::Arc;
 use std::sync::RwLock;
 
+mod byte_lists;
 mod dynamic_json;
 mod semantics;
 
@@ -367,6 +368,7 @@ pub struct RustTrans {
     // Track variables assigned from json.get() — need value_to_int/value_len helpers
     json_value_vars: HashSet<AutoStr>,
     json_null_slots: HashSet<usize>,
+    byte_list_slots: HashSet<usize>,
     try_returns_option: bool,
     /// P738-R5-02：json 值生产调用（json.parse/get/get_at/get_str/get_u64）
     /// 绑定的变量 def-use 集——receiver 方法闭包判据（不改变发射行为）。
@@ -574,6 +576,7 @@ impl RustTrans {
             int_match_scrutinee: false,
             json_value_vars: HashSet::new(),
             json_null_slots: HashSet::new(),
+            byte_list_slots: HashSet::new(),
             try_returns_option: false,
             json_value_bindings: HashSet::new(),
             json_parse_as_opt: false,
@@ -687,6 +690,7 @@ impl RustTrans {
             int_match_scrutinee: false,
             json_value_vars: HashSet::new(),
             json_null_slots: HashSet::new(),
+            byte_list_slots: HashSet::new(),
             try_returns_option: false,
             json_value_bindings: HashSet::new(),
             json_parse_as_opt: false,
