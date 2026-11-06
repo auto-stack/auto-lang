@@ -814,7 +814,7 @@ mod source_foreign {
     fn native_lower_emission_reserves_instruction_and_span_capacity_before_allocation() {
         use ace_av_core::{
             contract::SpanInfo,
-            mir::{MirBlock, MirInstr, MirSlot},
+            mir::{MirBlock, MirConst, MirInstr, MirSlot},
         };
         use ace_lowering::hir_adapter::{
             lower_function_unit, lower_function_unit_with_emission_reservation,
@@ -836,6 +836,7 @@ mod source_foreign {
         // one x64 traversal task (48B). These are simultaneous owners.
         let scaffold =
             33 * std::mem::size_of::<MirSlot>() + 1 + 8 + 4 * std::mem::size_of::<MirBlock>() + 48;
+        let scaffold = scaffold + 4 * std::mem::size_of::<MirConst>();
         let allowed = scaffold + 96 * instruction + 32 * span - 1;
         eprintln!("emission layout: instruction={instruction} span={span} next_array={} allowance={allowed}", 64 * instruction);
         eprintln!(
@@ -906,24 +907,25 @@ mod source_foreign {
             admitted,
             "old/new instruction arrays or live spans were not reserved together"
         );
-        let retained: usize = mir
-            .funcs
-            .iter()
-            .map(|f| {
-                f.blocks
-                    .iter()
-                    .map(|b| b.instrs.capacity() * instruction)
-                    .sum::<usize>()
-                    + f.spans.capacity() * span
-                    + f.blocks.capacity() * std::mem::size_of::<MirBlock>()
-                    + f.slots.capacity() * std::mem::size_of::<MirSlot>()
-                    + f.slots
+        let retained: usize = mir.consts.capacity() * std::mem::size_of::<MirConst>()
+            + mir
+                .funcs
+                .iter()
+                .map(|f| {
+                    f.blocks
                         .iter()
-                        .filter_map(|s| s.name.as_ref())
-                        .map(|s| s.capacity())
+                        .map(|b| b.instrs.capacity() * instruction)
                         .sum::<usize>()
-            })
-            .sum();
+                        + f.spans.capacity() * span
+                        + f.blocks.capacity() * std::mem::size_of::<MirBlock>()
+                        + f.slots.capacity() * std::mem::size_of::<MirSlot>()
+                        + f.slots
+                            .iter()
+                            .filter_map(|s| s.name.as_ref())
+                            .map(|s| s.capacity())
+                            .sum::<usize>()
+                })
+                .sum::<usize>();
         assert_eq!(resources.stats().current.mir, retained);
         assert_eq!(
             ace_av_core::abc::encode_abc(&mir).unwrap().to_flat(),
@@ -943,6 +945,7 @@ mod source_foreign {
         .unwrap();
         let scaffold =
             4 * std::mem::size_of::<MirBlock>() + 48 + 4 * std::mem::size_of::<MirSlot>();
+        let scaffold = scaffold + 4 * std::mem::size_of::<MirConst>();
         let allowed = scaffold + 4 * instruction + 4 * span - 1;
         let pressure = resources
             .reserve(Charge::mir((16 << 20) - allowed))
@@ -978,7 +981,7 @@ mod source_foreign {
 
     #[test]
     fn native_lower_container_admission_covers_blocks_stack_slots_and_final_copy() {
-        use ace_av_core::mir::{MirBlock, MirInstr, MirSlot};
+        use ace_av_core::mir::{MirBlock, MirConst, MirInstr, MirSlot};
         use ace_lowering::hir_adapter::{
             lower_function_unit, lower_function_unit_with_emission_reservation,
         };
@@ -1058,7 +1061,8 @@ mod source_foreign {
             + 4 * std::mem::size_of::<MirSlot>()
             + 4 * std::mem::size_of::<MirInstr>()
             + 4 * std::mem::size_of::<(u32, ace_av_core::contract::SpanInfo)>()
-            + 4 * std::mem::size_of::<Option<u32>>();
+            + 4 * std::mem::size_of::<Option<u32>>()
+            + 4 * std::mem::size_of::<MirConst>();
         reject_before_array(
             branched.checked.bundle(),
             before_stack_growth + 4 * task - 1,
@@ -1134,7 +1138,8 @@ mod source_foreign {
             .map(|b| b.instrs.capacity() * std::mem::size_of::<MirInstr>())
             .sum::<usize>()
             + f.spans.capacity() * std::mem::size_of::<(u32, ace_av_core::contract::SpanInfo)>()
-            + block_array;
+            + block_array
+            + original.consts.capacity() * std::mem::size_of::<MirConst>();
         let final_array = f.slots.len() * std::mem::size_of::<MirSlot>();
         // Original base, the 128-capacity temporary slot array, both base
         // indices and the stack still coexist with the new final array.
@@ -1186,6 +1191,240 @@ mod source_foreign {
         drop(allocation);
         assert_eq!(resources.stats().current.mir, 0);
         eprintln!("container admission: block={block_array}, task={task}, base={base_array}, final={final_array}, final temporary={}", before_final + final_array);
+    }
+
+    #[test]
+    fn native_scalar_constant_pool_admits_initial_and_coexisting_growth_before_allocation() {
+        use ace_av_core::mir::{MirBlock, MirConst, MirInstr, MirSlot};
+        use ace_lowering::hir_adapter::lower_function_unit_with_emission_reservation;
+        use ace_source_query::resources::Resources;
+        let constant = std::mem::size_of::<MirConst>();
+        let initial = ace_core::source::compile_scalar_source(
+            "fn main() int { return 1 }",
+            "initial-constant.at",
+            &[],
+        )
+        .unwrap();
+        let source = format!(
+            "fn main() int {{ return {} }}",
+            (1..=64)
+                .map(|n| n.to_string())
+                .collect::<Vec<_>>()
+                .join(" + ")
+        );
+        let growing =
+            ace_core::source::compile_scalar_source(&source, "constant-growth.at", &[]).unwrap();
+        let initial_live =
+            4 * std::mem::size_of::<MirBlock>() + 48 + 4 * std::mem::size_of::<MirSlot>();
+        let growth_live = 4 * std::mem::size_of::<MirBlock>()
+            + 48
+            + 64 * std::mem::size_of::<MirSlot>()
+            + 64 * std::mem::size_of::<MirInstr>()
+            + 64 * std::mem::size_of::<(u32, ace_av_core::contract::SpanInfo)>()
+            + 32 * constant;
+        for (compiled, array, live) in [
+            (&initial, 4 * constant, initial_live),
+            (&growing, 64 * constant, growth_live),
+        ] {
+            let resources = Resources::default();
+            let available = live + array - 1;
+            let pressure = resources
+                .reserve(Charge::mir((16 << 20) - available))
+                .unwrap();
+            let mut allocation = resources.reserve(Charge::mir(0)).unwrap();
+            let (rejected, copies, _) =
+                with_charge_probe(array, &resources, Charge::default(), || {
+                    lower_function_unit_with_emission_reservation(
+                        compiled.checked.bundle(),
+                        "d_main",
+                        &[],
+                        17,
+                        &mut |bytes| {
+                            allocation
+                                .resize(Charge::mir(bytes))
+                                .map_err(|e| e.to_string())
+                        },
+                    )
+                });
+            assert!(matches!(
+                rejected,
+                Err(ace_lowering::AdapterError::Resource { .. })
+            ));
+            assert_eq!(
+                copies, 0,
+                "constant array {array} allocated before reservation"
+            );
+            assert_eq!(resources.stats().current.mir, (16 << 20) - available + live);
+            drop(allocation);
+            drop(pressure);
+            let mut allocation = resources.reserve(Charge::mir(0)).unwrap();
+            let (accepted, hits, admitted) =
+                with_charge_probe(array, &resources, Charge::mir(live + array), || {
+                    lower_function_unit_with_emission_reservation(
+                        compiled.checked.bundle(),
+                        "d_main",
+                        &[],
+                        17,
+                        &mut |bytes| {
+                            allocation
+                                .resize(Charge::mir(bytes))
+                                .map_err(|e| e.to_string())
+                        },
+                    )
+                });
+            let accepted = accepted.unwrap();
+            assert_eq!(hits, 1);
+            assert!(
+                admitted,
+                "constant array {array}: old/new pool or live emission buffers omitted"
+            );
+            let original = ace_lowering::hir_adapter::lower_function_unit(
+                compiled.checked.bundle(),
+                "d_main",
+                &[],
+                17,
+            )
+            .unwrap();
+            assert_eq!(
+                ace_av_core::abc::encode_abc(&accepted).unwrap().to_flat(),
+                ace_av_core::abc::encode_abc(&original).unwrap().to_flat()
+            );
+            drop(accepted);
+            drop(allocation);
+            assert_eq!(resources.stats().current.mir, 0);
+        }
+        eprintln!(
+            "constant pool: element={constant}, initial temporary={}, growing temporary={}",
+            initial_live + 4 * constant,
+            growth_live + 64 * constant
+        );
+    }
+
+    #[test]
+    fn native_foreign_call_reserves_declaration_and_arguments_and_releases_evaluation_scratch() {
+        use ace_av_core::mir::{MirBlock, MirConst, MirInstr, MirSlot};
+        use ace_lowering::hir_adapter::lower_function_unit_with_emission_reservation;
+        use ace_source_query::{frontend::Frontend, resources::Resources};
+        // Semantic input only: no claim of a physical provider run in this
+        // allocation control. The actual PE/provider matrix is a separate case.
+        let caps = vec![SOURCE_CAP.to_string()];
+        let environment =
+            provider::admit(provider::reviewed_add_manifest(), &"a".repeat(64), 1, &caps).unwrap();
+        let (_, checked) = Frontend::cold(
+            "fn main() int { return foreign_add(20,22) }",
+            "call-allocation",
+            "p938",
+            &caps,
+            environment,
+        )
+        .unwrap();
+        let bundle = checked.bundle();
+        let declaration = bundle.modules[0]
+            .defs
+            .iter()
+            .find_map(|d| match &d.kind {
+                ace_core::hir::DefKind::Foreign { declaration, .. } => Some(declaration),
+                _ => None,
+            })
+            .unwrap();
+        let boxed = std::mem::size_of_val(declaration);
+        // heap_bytes is a conservative clone bound when a source Vec has
+        // spare capacity. This retained fee covers the Box and every nested
+        // string/table, independently of the instruction's inline enum cell.
+        let owned_declaration = boxed + declaration.heap_bytes();
+        let before_declaration = 4 * std::mem::size_of::<MirBlock>()
+            + 48
+            + 2 * std::mem::size_of::<u32>()
+            + 4 * std::mem::size_of::<MirSlot>()
+            + 4 * std::mem::size_of::<MirConst>()
+            + 4 * std::mem::size_of::<MirInstr>()
+            + 4 * std::mem::size_of::<(u32, ace_av_core::contract::SpanInfo)>();
+        let resources = Resources::default();
+        let available = before_declaration + owned_declaration - 1;
+        let pressure = resources
+            .reserve(Charge::mir((16 << 20) - available))
+            .unwrap();
+        let mut allocation = resources.reserve(Charge::mir(0)).unwrap();
+        let (rejected, boxes, _) = with_charge_probe(boxed, &resources, Charge::default(), || {
+            lower_function_unit_with_emission_reservation(
+                bundle,
+                "d_main",
+                &caps,
+                17,
+                &mut |bytes| {
+                    allocation
+                        .resize(Charge::mir(bytes))
+                        .map_err(|e| e.to_string())
+                },
+            )
+        });
+        assert!(matches!(
+            rejected,
+            Err(ace_lowering::AdapterError::Resource { .. })
+        ));
+        assert_eq!(
+            boxes, 0,
+            "declaration Box allocated before its whole owned graph was admitted"
+        );
+        assert_eq!(
+            resources.stats().current.mir,
+            (16 << 20) - available + before_declaration - 2 * std::mem::size_of::<u32>(),
+            "the rejected call must drop its evaluation arguments before returning"
+        );
+        drop(allocation);
+        drop(pressure);
+        let mut allocation = resources.reserve(Charge::mir(0)).unwrap();
+        let (mir, hits, admitted) = with_charge_probe(
+            boxed,
+            &resources,
+            Charge::mir(before_declaration + owned_declaration),
+            || {
+                lower_function_unit_with_emission_reservation(
+                    bundle,
+                    "d_main",
+                    &caps,
+                    17,
+                    &mut |bytes| {
+                        allocation
+                            .resize(Charge::mir(bytes))
+                            .map_err(|e| e.to_string())
+                    },
+                )
+            },
+        );
+        let mir = mir.unwrap();
+        assert_eq!(hits, 1);
+        assert!(
+            admitted,
+            "declaration or live evaluation argument storage unreserved"
+        );
+        let f = &mir.funcs[0];
+        let retained = f.blocks.capacity() * std::mem::size_of::<MirBlock>()
+            + f.blocks
+                .iter()
+                .map(|b| b.instrs.capacity() * std::mem::size_of::<MirInstr>())
+                .sum::<usize>()
+            + f.slots.capacity() * std::mem::size_of::<MirSlot>()
+            + f.spans.capacity() * std::mem::size_of::<(u32, ace_av_core::contract::SpanInfo)>()
+            + mir.consts.capacity() * std::mem::size_of::<MirConst>()
+            + 2 * std::mem::size_of::<u32>()
+            + owned_declaration;
+        assert_eq!(resources.stats().current.mir, retained,
+            "instruction arguments must survive, evaluation arguments and traversal buffers must be released");
+        let original =
+            ace_lowering::hir_adapter::lower_function_unit(bundle, "d_main", &caps, 17).unwrap();
+        assert_eq!(
+            ace_av_core::abc::encode_abc(&mir).unwrap().to_flat(),
+            ace_av_core::abc::encode_abc(&original).unwrap().to_flat()
+        );
+        drop(mir);
+        drop(allocation);
+        assert_eq!(resources.stats().current.mir, 0);
+        eprintln!(
+            "foreign call: Box={boxed}, nested clone bound={}, admission={}, retained={retained}",
+            declaration.heap_bytes(),
+            before_declaration + owned_declaration
+        );
     }
 
     #[test]

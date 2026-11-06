@@ -1466,12 +1466,13 @@ pub fn lower_function_unit(
 }
 
 /// The same unit lowering with pre-allocation admission for the emitted
-/// instruction/span/block/slot arrays and traversal indices. The callback
+/// instruction/span/block/slot/constant arrays, call arguments, foreign
+/// declaration ownership and traversal indices. The callback
 /// receives their combined live capacity, including old/new buffers while
 /// growing and all three slot arrays during the final merge. Traversal fees
 /// are released after their owners drop; the caller retains the remaining
-/// ticket through the returned MIR's last use. Module tables, call metadata
-/// and other profile-specific workspace retain their admission obligations.
+/// ticket through the returned MIR's last use. Other module tables and
+/// profile-specific workspace retain their admission obligations.
 pub fn lower_function_unit_with_emission_reservation(
     bundle: &hir::Bundle,
     def_id_text: &str,
@@ -2590,6 +2591,26 @@ struct FnLower<'a, 'budget> {
 }
 
 impl<'a, 'budget> FnLower<'a, 'budget> {
+    fn reserve_owned(&mut self, bytes: usize) -> Result<(), AdapterError> {
+        if let Some(reserve) = self.emission_reserve.as_mut() {
+            let next = self
+                .emission_bytes
+                .checked_add(bytes)
+                .ok_or_else(|| AdapterError::resource("owned emission capacity overflow".into()))?;
+            reserve(next).map_err(AdapterError::resource)?;
+            self.emission_bytes = next;
+        }
+        Ok(())
+    }
+
+    fn release_owned(&mut self, bytes: usize) -> Result<(), AdapterError> {
+        if let Some(reserve) = self.emission_reserve.as_mut() {
+            self.emission_bytes -= bytes;
+            reserve(self.emission_bytes).map_err(AdapterError::resource)?;
+        }
+        Ok(())
+    }
+
     fn push_task(&mut self, stack: &mut Vec<Task>, task: Task) -> Result<(), AdapterError> {
         if let Some(reserve) = self.emission_reserve.as_mut() {
             grow_emission(stack, &mut self.emission_bytes, *reserve)?;
@@ -2892,15 +2913,25 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         Ok(())
     }
 
-    fn const_i32(&mut self, v: i32) -> u32 {
-        self.out.intern_const(MirConst::I32(v))
+    fn scalar_const(&mut self, value: MirConst) -> Result<u32, AdapterError> {
+        if let Some(index) = self.out.consts.iter().position(|c| *c == value) {
+            return Ok(index as u32);
+        }
+        if let Some(reserve) = self.emission_reserve.as_mut() {
+            grow_emission(&mut self.out.consts, &mut self.emission_bytes, *reserve)?;
+        }
+        Ok(self.out.intern_const(value))
+    }
+
+    fn const_i32(&mut self, v: i32) -> Result<u32, AdapterError> {
+        self.scalar_const(MirConst::I32(v))
     }
 
     /// PLAN-909: a fresh i32 constant slot holding the cell element index
     /// (single-element cells read/write index 0).
     fn cell_index_slot(&mut self, t_i32: TypeIdx) -> Result<SlotId, AdapterError> {
         let idx = self.temp_ty(t_i32)?;
-        let c = self.const_i32(0);
+        let c = self.const_i32(0)?;
         self.emit(MirInstr::Const { dst: idx, value: c }, None)?;
         Ok(idx)
     }
@@ -2914,8 +2945,8 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         }
     }
 
-    fn const_bool(&mut self, v: bool) -> u32 {
-        self.out.intern_const(MirConst::Bool(v))
+    fn const_bool(&mut self, v: bool) -> Result<u32, AdapterError> {
+        self.scalar_const(MirConst::Bool(v))
     }
 
     /// The MIR type index of an expression's HIR type (data path maps
@@ -3027,7 +3058,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             hir::ExprKind::Unit => Ok(self.temp_ty(ty)?),
             hir::ExprKind::Constant { value } => {
                 let dst = self.temp_ty(ty)?;
-                let c = self.const_i32(*value);
+                let c = self.const_i32(*value)?;
                 self.emit(MirInstr::Const { dst, value: c }, sp)?;
                 Ok(dst)
             }
@@ -3101,7 +3132,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 // Skipped arm: result = the short-circuit value.
                 self.cur = skip_b;
                 self.terminated = false;
-                let c = self.const_bool(matches!(op, hir::LogicOp::Or));
+                let c = self.const_bool(matches!(op, hir::LogicOp::Or))?;
                 self.emit(
                     MirInstr::Const {
                         dst: result,
@@ -3133,327 +3164,357 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 bindings,
             } => {
                 // Source-order evaluation, then binding-map reorder.
-                let mut arg_slots = Vec::with_capacity(eval_args.len());
+                let mut arg_slots = emission_vec(
+                    eval_args.len(),
+                    &mut self.emission_bytes,
+                    &mut self.emission_reserve,
+                )?;
                 for a in eval_args {
                     arg_slots.push(self.eval_expr(*a, depth + 1)?);
                 }
-                if let hir::DefKind::Foreign { declaration, .. } =
-                    &self.hir_module.defs[callee.0 as usize].kind
-                {
-                    let declaration = declaration.clone();
-                    let mut actuals = vec![0; declaration.params().len()];
-                    for binding in bindings {
-                        actuals[binding.param as usize] = arg_slots[binding.arg as usize];
-                    }
-                    let dst = self.temp_ty(ty)?;
-                    self.emit(
-                        MirInstr::ForeignCall {
-                            declaration: Box::new(declaration),
-                            dst,
-                            args: actuals,
-                        },
-                        sp,
-                    )?;
-                    return Ok(dst);
-                }
-                if self.out.is_host_console_profile() {
-                    if let hir::DefKind::Intrinsic { symbol, .. } =
+                let argument_bytes = arg_slots.capacity() * std::mem::size_of::<SlotId>();
+                let result = (|| {
+                    if let hir::DefKind::Foreign { declaration, .. } =
                         &self.hir_module.defs[callee.0 as usize].kind
                     {
-                        let host = self
-                            .out
-                            .host_imports
-                            .iter()
-                            .position(|h| &h.symbol == symbol)
+                        let declaration_bytes = std::mem::size_of_val(declaration)
+                            .checked_add(declaration.heap_bytes())
                             .ok_or_else(|| {
-                                AdapterError::inv(
-                                    "host.reference",
-                                    "host declaration missing".into(),
+                                AdapterError::resource(
+                                    "foreign declaration capacity overflow".into(),
                                 )
-                            })? as u32;
-                        if arg_slots.len() != 1 {
-                            return Err(AdapterError::inv(
-                                "host.signature",
-                                "console call needs one argument".into(),
-                            ));
+                            })?;
+                        self.reserve_owned(declaration_bytes)?;
+                        let declaration = Box::new(declaration.clone());
+                        let mut actuals = emission_vec(
+                            declaration.params().len(),
+                            &mut self.emission_bytes,
+                            &mut self.emission_reserve,
+                        )?;
+                        actuals.resize(declaration.params().len(), 0);
+
+                        for binding in bindings {
+                            actuals[binding.param as usize] = arg_slots[binding.arg as usize];
                         }
+                        let dst = self.temp_ty(ty)?;
                         self.emit(
-                            MirInstr::HostCall {
-                                host,
-                                arg: arg_slots[0],
+                            MirInstr::ForeignCall {
+                                declaration,
+                                dst,
+                                args: actuals,
                             },
                             sp,
                         )?;
-                        // No runtime Unit local/dst: HIR has already forbidden value consumers.
-                        return Ok(u32::MAX);
-                    }
-                }
-                let callee_ref = self.def_map.get(&callee.0).cloned().ok_or_else(|| {
-                    AdapterError::inv(
-                        "lower.callee",
-                        format!("callee def {} out of range", callee.0),
-                    )
-                })?;
-                if let CalleeRef::Import(imp) = callee_ref {
-                    let symbol = self.out.imports[imp as usize].symbol.clone();
-                    if !symbol.starts_with("fn:") {
-                        // Test marks: trace event + frozen i32 result.
-                        let dst = self.temp_ty(self.t_i32)?;
-                        let (event, value) = match symbol.as_str() {
-                            "hir.test.mark_a" => (TraceEvent::MarkA, 1i32),
-                            "hir.test.mark_b" => (TraceEvent::MarkB, 2),
-                            other => {
-                                return Err(AdapterError::uns(
-                                    "lower.intrinsic",
-                                    format!("intrinsic `{}` is not in the av profile", other),
-                                ));
-                            }
-                        };
-                        self.emit(MirInstr::Trace { event }, sp)?;
-                        let c = self.const_i32(value);
-                        self.emit(MirInstr::Const { dst, value: c }, sp)?;
                         return Ok(dst);
                     }
-                    // Unit lowering (PLAN-828 T-04): a cross-function
-                    // callee is a `fn:<name>` unit import call — the same
-                    // shape split_units produces post-hoc; the checked
-                    // linking environment resolves it at snapshot link
-                    // with a signature check. PLAN-881 V-09: fn: imports
-                    // now FALL THROUGH to the shared call lowering so a
-                    // callee with mut-record params gets the SAME
-                    // t_MutRet unwrap + write-back treatment as the
-                    // Func-path call (the wrapper detection reads this
-                    // import's wrapped signature).
-                }
-                // The callee signature comes from the HIR def table —
-                // forward and self references resolve before any body of
-                // that function has been lowered.
-                let callee_def = *callee;
-                let hir_ty = self
-                    .hir_module
-                    .defs
-                    .get(callee_def.0 as usize)
-                    .and_then(|d| d.kind.fn_type())
-                    .ok_or_else(|| {
+                    if self.out.is_host_console_profile() {
+                        if let hir::DefKind::Intrinsic { symbol, .. } =
+                            &self.hir_module.defs[callee.0 as usize].kind
+                        {
+                            let host = self
+                                .out
+                                .host_imports
+                                .iter()
+                                .position(|h| &h.symbol == symbol)
+                                .ok_or_else(|| {
+                                    AdapterError::inv(
+                                        "host.reference",
+                                        "host declaration missing".into(),
+                                    )
+                                })? as u32;
+                            if arg_slots.len() != 1 {
+                                return Err(AdapterError::inv(
+                                    "host.signature",
+                                    "console call needs one argument".into(),
+                                ));
+                            }
+                            self.emit(
+                                MirInstr::HostCall {
+                                    host,
+                                    arg: arg_slots[0],
+                                },
+                                sp,
+                            )?;
+                            // No runtime Unit local/dst: HIR has already forbidden value consumers.
+                            return Ok(u32::MAX);
+                        }
+                    }
+                    let callee_ref = self.def_map.get(&callee.0).cloned().ok_or_else(|| {
                         AdapterError::inv(
-                            "lower.callee-sig",
-                            "callee lacks a function type".to_string(),
+                            "lower.callee",
+                            format!("callee def {} out of range", callee.0),
                         )
                     })?;
-                let sig_idx = fn_type_index_ext(
-                    hir_ty,
-                    self.hir_module,
-                    self.out,
-                    self.data,
-                    self.owned,
-                    &mut self.ty_memo,
-                    &mut self.ty_visiting,
-                )?;
-                let n_params = self
-                    .out
-                    .sig_of(sig_idx)
-                    .map(|s| s.params.len())
-                    .unwrap_or(0);
-                let mut actuals: Vec<SlotId> = vec![0; n_params];
-                for b in bindings {
-                    let pos = b.param as usize;
-                    if pos >= n_params {
-                        return Err(AdapterError::inv(
-                            "lower.binding",
-                            format!("call binding param {} out of range", b.param),
-                        ));
-                    }
-                    actuals[pos] = arg_slots[b.arg as usize];
-                }
-                // R2-F08': does the callee carry mut record params? Its
-                // MIR sig result is then the t_MutRet wrapper.
-                //
-                // PLAN-871 T-05 gap (771 HIR fixture): a call can be lowered
-                // BEFORE the callee body (HIR declaration order is not a
-                // topological order), so the already-lowered function table
-                // may not carry the callee yet — reading only that table made
-                // the wrapper ABI order-dependent (the call took the plain
-                // HIR result type and the callee returned the wrapper).
-                // The wrapper ABI is a property of the DEF (param modes +
-                // types), so a forward reference derives the def-level
-                // signature through the same builder the callee will use.
-                let callee_sig_ty: Option<MirType> = match callee_ref {
-                    CalleeRef::Import(ii) => self
-                        .out
-                        .imports
-                        .get(ii as usize)
-                        .and_then(|imp| self.out.types.get(imp.sig as usize).cloned()),
-                    CalleeRef::Func(fi) => {
-                        let table = self
-                            .out
-                            .funcs
-                            .get(fi as usize)
-                            .and_then(|f| self.out.types.get(f.sig as usize).cloned());
-                        let already_wrapped = matches!(
-                            &table,
-                            Some(MirType::Fn(f))
-                                if matches!(
-                                    self.out.types.get(f.result as usize),
-                                    Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_")
-                                )
-                        );
-                        // The def-level derivation belongs to the data/owned
-                        // profiles (their t_MutRet ABI). The COLLECTIONS
-                        // profile has its own type walker (Variants/lists are
-                        // outside av.owned/1), so it keeps the table answer.
-                        if already_wrapped || self.collections() || !(self.owned || self.data) {
-                            table
-                        } else {
-                            let overrides = self.sig_mode_overrides.clone();
-                            let derived = if self.owned {
-                                owned_fn_sig_for_def(
-                                    self.hir_module,
-                                    callee_def.0,
-                                    hir_ty,
-                                    self.out,
-                                    &overrides,
-                                )?
-                            } else {
-                                data_fn_sig_for_def(
-                                    self.hir_module,
-                                    callee_def.0,
-                                    hir_ty,
-                                    self.out,
-                                    &overrides,
-                                )?
+                    if let CalleeRef::Import(imp) = callee_ref {
+                        let symbol = self.out.imports[imp as usize].symbol.clone();
+                        if !symbol.starts_with("fn:") {
+                            // Test marks: trace event + frozen i32 result.
+                            let dst = self.temp_ty(self.t_i32)?;
+                            let (event, value) = match symbol.as_str() {
+                                "hir.test.mark_a" => (TraceEvent::MarkA, 1i32),
+                                "hir.test.mark_b" => (TraceEvent::MarkB, 2),
+                                other => {
+                                    return Err(AdapterError::uns(
+                                        "lower.intrinsic",
+                                        format!("intrinsic `{}` is not in the av profile", other),
+                                    ));
+                                }
                             };
-                            self.out.types.get(derived as usize).cloned()
+                            self.emit(MirInstr::Trace { event }, sp)?;
+                            let c = self.const_i32(value)?;
+                            self.emit(MirInstr::Const { dst, value: c }, sp)?;
+                            return Ok(dst);
                         }
+                        // Unit lowering (PLAN-828 T-04): a cross-function
+                        // callee is a `fn:<name>` unit import call — the same
+                        // shape split_units produces post-hoc; the checked
+                        // linking environment resolves it at snapshot link
+                        // with a signature check. PLAN-881 V-09: fn: imports
+                        // now FALL THROUGH to the shared call lowering so a
+                        // callee with mut-record params gets the SAME
+                        // t_MutRet unwrap + write-back treatment as the
+                        // Func-path call (the wrapper detection reads this
+                        // import's wrapped signature).
                     }
-                };
-                let wrapper_fields = match callee_sig_ty.as_ref() {
-                    Some(MirType::Fn(f)) => match self.out.types.get(f.result as usize) {
-                        Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_") => {
-                            Some((f.result, r.fields.clone()))
-                        }
-                        _ => None,
-                    },
-                    _ => None,
-                };
-                if let Some((wrap_ty, fields)) = wrapper_fields {
-                    // The call result IS the wrapper: dst gets the WRAPPER
-                    // type; then f0 = the source result, wb* write back.
-                    let wrap_dst = self.temp_ty_from_cache(wrap_ty)?;
-                    self.emit(
-                        MirInstr::Call {
-                            callee: callee_ref,
-                            dst: wrap_dst,
-                            args: actuals.clone(),
-                        },
-                        sp,
+                    // The callee signature comes from the HIR def table —
+                    // forward and self references resolve before any body of
+                    // that function has been lowered.
+                    let callee_def = *callee;
+                    let hir_ty = self
+                        .hir_module
+                        .defs
+                        .get(callee_def.0 as usize)
+                        .and_then(|d| d.kind.fn_type())
+                        .ok_or_else(|| {
+                            AdapterError::inv(
+                                "lower.callee-sig",
+                                "callee lacks a function type".to_string(),
+                            )
+                        })?;
+                    let sig_idx = fn_type_index_ext(
+                        hir_ty,
+                        self.hir_module,
+                        self.out,
+                        self.data,
+                        self.owned,
+                        &mut self.ty_memo,
+                        &mut self.ty_visiting,
                     )?;
-                    // f0: the SOURCE result. A copyable result copies out
-                    // (FIELD_GET); an OWNED result (Str / resource record)
-                    // is not Copy — FIELD_MOVE field 0 is the only
-                    // ownership exit (R3-F08: FieldGet of a Str field only
-                    // ever mints a view).
-                    let f0_owned = ace_av_core::ownership::type_is_owned(&self.out, fields[0].ty);
-                    let v = self.temp_ty(ty)?;
-                    if f0_owned {
-                        self.emit(
-                            MirInstr::FieldMove {
-                                dst: v,
-                                root: wrap_dst,
-                                path: vec![0],
-                            },
-                            sp,
-                        )?;
-                    } else {
-                        self.emit(
-                            MirInstr::FieldGet {
-                                dst: v,
-                                base: wrap_dst,
-                                path: vec![0],
-                            },
-                            sp,
-                        )?;
+                    let n_params = self
+                        .out
+                        .sig_of(sig_idx)
+                        .map(|s| s.params.len())
+                        .unwrap_or(0);
+                    let mut actuals = emission_vec(
+                        n_params,
+                        &mut self.emission_bytes,
+                        &mut self.emission_reserve,
+                    )?;
+                    actuals.resize(n_params, 0);
+                    for b in bindings {
+                        let pos = b.param as usize;
+                        if pos >= n_params {
+                            return Err(AdapterError::inv(
+                                "lower.binding",
+                                format!("call binding param {} out of range", b.param),
+                            ));
+                        }
+                        actuals[pos] = arg_slots[b.arg as usize];
                     }
-                    // wb*: one write-back field per MUT-RECORD param of the
-                    // callee, in signature order (fields[1..] mirror that
-                    // order exactly). Only the callee's OWN mut params
-                    // consume wrapper fields — plain (read-only) record
-                    // args and non-record args contribute NOTHING (R3-F08:
-                    // the old loop keyed on "any record actual", mis-
-                    // indexing mixed signatures and panicking past the
-                    // wrapper's field count).
-                    let mut wb_idx = 1usize;
-                    for pos in self.callee_mut_record_params(callee_def, &callee_sig_ty) {
-                        let back = self.temp_ty_from_cache(fields[wb_idx].ty)?;
-                        // PLAN-881 V-09: a COPYABLE wb field copies out and
-                        // copies back (data profile / copyable records on
-                        // owned); an owned one keeps the transfer pair.
-                        let wb_owned =
-                            ace_av_core::ownership::type_is_owned(self.out, fields[wb_idx].ty);
-                        if wb_owned {
+                    // R2-F08': does the callee carry mut record params? Its
+                    // MIR sig result is then the t_MutRet wrapper.
+                    //
+                    // PLAN-871 T-05 gap (771 HIR fixture): a call can be lowered
+                    // BEFORE the callee body (HIR declaration order is not a
+                    // topological order), so the already-lowered function table
+                    // may not carry the callee yet — reading only that table made
+                    // the wrapper ABI order-dependent (the call took the plain
+                    // HIR result type and the callee returned the wrapper).
+                    // The wrapper ABI is a property of the DEF (param modes +
+                    // types), so a forward reference derives the def-level
+                    // signature through the same builder the callee will use.
+                    let callee_sig_ty: Option<MirType> = match callee_ref {
+                        CalleeRef::Import(ii) => self
+                            .out
+                            .imports
+                            .get(ii as usize)
+                            .and_then(|imp| self.out.types.get(imp.sig as usize).cloned()),
+                        CalleeRef::Func(fi) => {
+                            let table = self
+                                .out
+                                .funcs
+                                .get(fi as usize)
+                                .and_then(|f| self.out.types.get(f.sig as usize).cloned());
+                            let already_wrapped = matches!(
+                                &table,
+                                Some(MirType::Fn(f))
+                                    if matches!(
+                                        self.out.types.get(f.result as usize),
+                                        Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_")
+                                    )
+                            );
+                            // The def-level derivation belongs to the data/owned
+                            // profiles (their t_MutRet ABI). The COLLECTIONS
+                            // profile has its own type walker (Variants/lists are
+                            // outside av.owned/1), so it keeps the table answer.
+                            if already_wrapped || self.collections() || !(self.owned || self.data) {
+                                table
+                            } else {
+                                let overrides = self.sig_mode_overrides.clone();
+                                let derived = if self.owned {
+                                    owned_fn_sig_for_def(
+                                        self.hir_module,
+                                        callee_def.0,
+                                        hir_ty,
+                                        self.out,
+                                        &overrides,
+                                    )?
+                                } else {
+                                    data_fn_sig_for_def(
+                                        self.hir_module,
+                                        callee_def.0,
+                                        hir_ty,
+                                        self.out,
+                                        &overrides,
+                                    )?
+                                };
+                                self.out.types.get(derived as usize).cloned()
+                            }
+                        }
+                    };
+                    let wrapper_fields = match callee_sig_ty.as_ref() {
+                        Some(MirType::Fn(f)) => match self.out.types.get(f.result as usize) {
+                            Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_") => {
+                                Some((f.result, r.fields.clone()))
+                            }
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    if let Some((wrap_ty, fields)) = wrapper_fields {
+                        // The call result IS the wrapper: dst gets the WRAPPER
+                        // type; then f0 = the source result, wb* write back.
+                        let wrap_dst = self.temp_ty_from_cache(wrap_ty)?;
+                        self.emit(
+                            MirInstr::Call {
+                                callee: callee_ref,
+                                dst: wrap_dst,
+                                args: actuals.clone(),
+                            },
+                            sp,
+                        )?;
+                        // f0: the SOURCE result. A copyable result copies out
+                        // (FIELD_GET); an OWNED result (Str / resource record)
+                        // is not Copy — FIELD_MOVE field 0 is the only
+                        // ownership exit (R3-F08: FieldGet of a Str field only
+                        // ever mints a view).
+                        let f0_owned =
+                            ace_av_core::ownership::type_is_owned(&self.out, fields[0].ty);
+                        let v = self.temp_ty(ty)?;
+                        if f0_owned {
                             self.emit(
                                 MirInstr::FieldMove {
-                                    dst: back,
+                                    dst: v,
                                     root: wrap_dst,
-                                    path: vec![wb_idx as u16],
+                                    path: vec![0],
                                 },
                                 sp,
                             )?;
                         } else {
                             self.emit(
                                 MirInstr::FieldGet {
-                                    dst: back,
+                                    dst: v,
                                     base: wrap_dst,
-                                    path: vec![wb_idx as u16],
+                                    path: vec![0],
                                 },
                                 sp,
                             )?;
                         }
-                        // The write-back target: the ORIGINAL BorrowMut'd
-                        // local — recover it from the HIR binding (the
-                        // arg slot is the borrow temp).
-                        if let Some(target) = self.mut_borrow_target(actuals[pos]) {
+                        // wb*: one write-back field per MUT-RECORD param of the
+                        // callee, in signature order (fields[1..] mirror that
+                        // order exactly). Only the callee's OWN mut params
+                        // consume wrapper fields — plain (read-only) record
+                        // args and non-record args contribute NOTHING (R3-F08:
+                        // the old loop keyed on "any record actual", mis-
+                        // indexing mixed signatures and panicking past the
+                        // wrapper's field count).
+                        let mut wb_idx = 1usize;
+                        for pos in self.callee_mut_record_params(callee_def, &callee_sig_ty) {
+                            let back = self.temp_ty_from_cache(fields[wb_idx].ty)?;
+                            // PLAN-881 V-09: a COPYABLE wb field copies out and
+                            // copies back (data profile / copyable records on
+                            // owned); an owned one keeps the transfer pair.
+                            let wb_owned =
+                                ace_av_core::ownership::type_is_owned(self.out, fields[wb_idx].ty);
                             if wb_owned {
                                 self.emit(
-                                    MirInstr::Move {
-                                        dst: target,
-                                        src: back,
+                                    MirInstr::FieldMove {
+                                        dst: back,
+                                        root: wrap_dst,
+                                        path: vec![wb_idx as u16],
                                     },
                                     sp,
                                 )?;
                             } else {
                                 self.emit(
-                                    MirInstr::Copy {
-                                        dst: target,
-                                        src: back,
+                                    MirInstr::FieldGet {
+                                        dst: back,
+                                        base: wrap_dst,
+                                        path: vec![wb_idx as u16],
                                     },
                                     sp,
                                 )?;
                             }
-                        } else if wb_owned {
-                            // Untracked target: drop the extracted record
-                            // (the borrow discipline was violated
-                            // upstream).
-                            self.emit(MirInstr::Drop { slot: back }, sp)?;
+                            // The write-back target: the ORIGINAL BorrowMut'd
+                            // local — recover it from the HIR binding (the
+                            // arg slot is the borrow temp).
+                            if let Some(target) = self.mut_borrow_target(actuals[pos]) {
+                                if wb_owned {
+                                    self.emit(
+                                        MirInstr::Move {
+                                            dst: target,
+                                            src: back,
+                                        },
+                                        sp,
+                                    )?;
+                                } else {
+                                    self.emit(
+                                        MirInstr::Copy {
+                                            dst: target,
+                                            src: back,
+                                        },
+                                        sp,
+                                    )?;
+                                }
+                            } else if wb_owned {
+                                // Untracked target: drop the extracted record
+                                // (the borrow discipline was violated
+                                // upstream).
+                                self.emit(MirInstr::Drop { slot: back }, sp)?;
+                            }
+                            wb_idx += 1;
                         }
-                        wb_idx += 1;
+                        debug_assert_eq!(
+                            wb_idx,
+                            fields.len(),
+                            "the wrapper is fully consumed: f0 + every wb field"
+                        );
+                        return Ok(v);
                     }
-                    debug_assert_eq!(
-                        wb_idx,
-                        fields.len(),
-                        "the wrapper is fully consumed: f0 + every wb field"
-                    );
-                    return Ok(v);
-                }
-                let dst = self.temp_ty(ty)?;
-                self.emit(
-                    MirInstr::Call {
-                        callee: callee_ref,
-                        dst,
-                        args: actuals,
-                    },
-                    sp,
-                )?;
-                Ok(dst)
+                    let dst = self.temp_ty(ty)?;
+                    self.emit(
+                        MirInstr::Call {
+                            callee: callee_ref,
+                            dst,
+                            args: actuals,
+                        },
+                        sp,
+                    )?;
+                    Ok(dst)
+                })();
+                drop(arg_slots);
+                self.release_owned(argument_bytes)?;
+                result
             }
             hir::ExprKind::CallClosure { callee, eval_args } => {
                 // Evaluate the function value first, then actuals in source
