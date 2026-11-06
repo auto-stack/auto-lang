@@ -1,5 +1,6 @@
 //! Allocation controls for the actual source publication composition.
 #![cfg(windows)]
+use ace_abi::semref;
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     cell::{Cell, RefCell},
@@ -652,6 +653,23 @@ mod source_foreign {
         assert_eq!(resources.stats().current.index, input_fee);
         drop(toolchain);
         assert_eq!(resources.stats().current.index, baseline);
+    }
+
+    #[test]
+    fn cold_toolchain_discovery_does_not_copy_the_compiler_image_to_hash_it() {
+        // Nextest gives this case a fresh process, so the real OnceLock
+        // resolver (including the compiler's independent banner query) runs.
+        let (tool, copies) = measured_at(64 << 10, ace_abi::ctool::find_cl);
+        let tool = tool.unwrap();
+        let size = std::fs::metadata(&tool.cl_exe).unwrap().len();
+        assert!(
+            size > 64 << 10,
+            "compiler fixture no longer distinguishes whole-file reads"
+        );
+        assert_eq!(copies, 0, "cold discovery copied the compiler image");
+        let original = std::fs::read(&tool.cl_exe).unwrap();
+        assert_eq!(tool.cl_hash, blake3::hash(&original).to_hex().to_string());
+        eprintln!("cold compiler identity: file_bytes={size} large_copies={copies}");
     }
 
     #[test]

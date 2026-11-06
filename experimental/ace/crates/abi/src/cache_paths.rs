@@ -225,26 +225,12 @@ pub(crate) fn hash_file(
     path: &std::path::Path,
     resources: Option<&ace_source_query::resources::Resources>,
 ) -> Result<String, StoreError> {
-    use std::io::Read;
     let io_error = |e: std::io::Error| StoreError::Internal(e.to_string());
-    let mut file = {
+    let file = {
         let _native = reserve_native_path(path, resources)?;
         std::fs::File::open(path).map_err(io_error)?
     };
-    let mut hash = blake3::Hasher::new();
-    let mut buffer = [0u8; 8192];
-    loop {
-        let count = match file.read(&mut buffer) {
-            Ok(count) => count,
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(io_error(e)),
-        };
-        if count == 0 {
-            break;
-        }
-        hash.update(&buffer[..count]);
-    }
-    Ok(hash.finalize().to_hex().to_string())
+    crate::semref::blake3_reader(file).map_err(io_error)
 }
 
 pub(crate) fn source_identity(

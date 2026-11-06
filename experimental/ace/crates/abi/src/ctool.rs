@@ -108,8 +108,9 @@ fn resolve_cl() -> Result<CToolchain, CToolError> {
         return Err(CToolError("cl banner version line not found".into()));
     }
 
-    let bytes = std::fs::read(&cl).map_err(|e| CToolError(format!("read cl.exe: {e}")))?;
-    let cl_hash = crate::semref::blake3_hex(&bytes);
+    let image = std::fs::File::open(&cl).map_err(|e| CToolError(format!("read cl.exe: {e}")))?;
+    let cl_hash =
+        crate::semref::blake3_reader(image).map_err(|e| CToolError(format!("read cl.exe: {e}")))?;
 
     Ok(CToolchain {
         cl_exe: cl,
@@ -263,18 +264,18 @@ fn parse_show_includes(stdout: &str, src: &Path) -> Vec<PathBuf> {
         let Some(path) = extract_drive_path(line) else {
             continue;
         };
-        let p = PathBuf::from(&path);
+        let p = Path::new(path);
         if !p.is_file() || p == src {
             continue;
         }
-        if !deps.contains(&p) {
-            deps.push(p);
+        if !deps.iter().any(|seen| seen == p) {
+            deps.push(p.to_path_buf());
         }
     }
     deps
 }
 
-fn extract_drive_path(line: &str) -> Option<String> {
+fn extract_drive_path(line: &str) -> Option<&str> {
     let bytes = line.as_bytes();
     for i in 0..bytes.len().saturating_sub(2) {
         if bytes[i].is_ascii_alphabetic()
@@ -283,7 +284,7 @@ fn extract_drive_path(line: &str) -> Option<String> {
         {
             let candidate = line[i..].trim().trim_matches('"');
             if candidate.contains('\\') || candidate.contains('/') {
-                return Some(candidate.to_string());
+                return Some(candidate);
             }
         }
     }
@@ -307,6 +308,37 @@ pub fn toolchain_fingerprint() -> Result<String, CToolError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn include_path_extraction_borrows_locale_independent_original_slice() {
+        for (line, expected) in [
+            (
+                "Note: including file: D:\\foo\\header.h  ",
+                Some("D:\\foo\\header.h"),
+            ),
+            (
+                "注意: 包含文件: \"D:/目录/header.h\"",
+                Some("D:/目录/header.h"),
+            ),
+            (
+                "Ω prefix E:/with spaces/settings",
+                Some("E:/with spaces/settings"),
+            ),
+            ("no drive-qualified path", None),
+            ("D:", None),
+            ("\\\\server\\share\\header.h", None),
+        ] {
+            let actual = extract_drive_path(line);
+            assert_eq!(actual, expected);
+            if let Some(path) = actual {
+                assert!(path.as_ptr() >= line.as_ptr());
+                assert!(
+                    path.as_ptr() as usize + path.len() <= line.as_ptr() as usize + line.len(),
+                    "include extraction allocated or returned unrelated storage"
+                );
+            }
+        }
+    }
 
     /// Tool presence is a hard infra precondition on this machine; the
     /// test asserts the pinned identity shape (path exists, banner
