@@ -758,6 +758,31 @@ stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:24 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，默认认证不冒release） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:aa125c8a1667fed8692934ee6ab8d8045c5fa547 | next:work 原8Rust release真实观察及其余四端/机制/ARCH
 
+### 2026-11-06 原8 Rust release配置实证与严格联立完成（goal第25轮）
+
+前轮122默认cert+独立reference完成为progress。本轮补原T05遗漏配置，唯一941树提交 **7de59cacec4f375db461f8e4756c81c3ce810b8f**，6文件，树clean；仍executing2/17，不以本切片冒整包。
+
+- 新正式producer `ace-a2x-worker::conformance::scalar_release_941::original_eight_release_variants`直接接**原cases().release_too的完整8源**，不硬造小子集、改ignore或把debug当release。原精确flags **--edition 2021 -O -C debug-assertions=off**；actual与独立Rust reference各8次真实编译/运行，合**16 compile+16 run**。测试始终可从永久fixture自行重建，不依赖将来会清理的941材料；本轮AUTO_PLAN_ARTIFACTS显式指统一scope，normal cargo target仍专属worktree。
+- 实际仍由既有a2x-worker现场daily生成完整main/runtime/generated/manifest，再使用既有core::link受管Job executor真实rustc和PE执行；未改worker协议/业务实现、未新增编译器/runner/meter。原默认认证worker和此处正式debug worker身份分别记录；**8份完整发射文件集全部逐字节等于当前默认cert/daily被冻结文件集**，不剪main/依赖/分支，不拿不同代码的-O结果顶配置。8源原值/具名Overflow与DivByZero分别对原冻结oracle；两侧共同错仍失败。
+- producer按每phase先保存raw argv/cwd/deadline/wall/exit/stdout_hex/stderr_hex再断言，失败/空产物/部分执行不写完整8集。原compile120s/run30s/whole360s、1MiB双流原帽不变；每case整体截止向各phase传剩余时间。tool -vV原字节单独记录并与原默认cert当前toolchain匹配；源/profile/caps、独立reference、actual完整文件与manifest身份均单列。
+
+开发失败与身份漂移保真：最初构建有u128→JSON Value编译错误，改为已受360s约束的u64；格式化命令连带改6邻文件，已逐件恢复HEAD原字节，未混进提交（原patch保scope/release-formatter-collateral.patch），后续仅skip_children定向格式化。首次8实际执行PASS，但固定组准备重建debug worker，手工build前快照278c009b...与正式准备后3aaadc09...不同，原scalar-release-current只保历史/STALE，不回填before。后续稳定运行补核source/worker；再明确加入原测试exe、executor源与nextest配置，**全8 pin执行前/后**快照的最终正式8重放才供本轮准入；中间开发样本不冒最终配置覆盖，不为此重跑192整包或1779原压力。
+
+最终入口：`cargo t ace-a2x --test-name scalar_release_941::original_eight_release_variants --out <scope>/scalar-release-frozen/gate`，父实际**1/1正式测试**，内部完整8，exit0、整命令7.0859622s，results SHA=`7c559bc167ce26f7eb5648a83f0c07d93236c4878e459b4b9596fc4bdbde3b01`。两个旧只读inventory exporter的原ignore未动；原完整ace-a2x职责并集仍待T12/最终冻结门，不把此命名验证充整个组通过。
+
+新`ace_m1_scalar_release_evidence.py`只读显式binding：原父nextest终态/实际选择/当前discovery可执行文件、producer/table/reference合同SHA、8个执行前后dependency（含实际测试exe与debug worker）、原source/ref路径与字节、所有4完整文件、原发射请求/nonce/返回每field与source FNV、精确编译argv/原flags/工作目录/预算、四个真实终态/独立value或具名trap全部严核。支持命名入口及后续完整同组的原producer选择，不以父PASS或echoed verdict作oracle。consumer不启动任何工具；默认cert失败或release失败均不能被另一腿绿掩盖，缺release仍维持UNOBSERVED。
+
+- **48原帧反控**：每8源原合法PASS、两侧同错值/错trap→FAIL、两侧都删-O/都改debug-assertions=on/加未知field/换sourceSHA→REFUSED，**8PASS正控+8FAIL+32REFUSED**。明确counterfactual_not_execution且限per-case原帧；完整parent/index/deps另经真实binding准入，不把反控算语言执行。scope/scalar-release-frozen/raw-reader-controls.json SHA=`95503e2764a50ec46be7335264da647fa18fcafa19c42b320c39724f39acf7b7`。
+- 新2永久回归与原148组合**150/150**：完整原release argv/flags/双流hex/截止/计数类型/未知field拒绝，default/release两侧失败保红。`cargo t infra-ace-m1-arch --out <scope>/scalar-release-final-controls` exit0、5.7645774s，results SHA=`b804f93c61e87d5389b12e34e56029c4402b73bc4ab39261ffa130581e2c20bd`。此门在最终相同代码字节执行，提交后6文件=Git blob逐件核对（scope/scalar-release-frozen-preview/committed-input-audit.json），不为单纯commit重复150。定向rustfmt --check(skip_children)、py_compile、diff-check通过。仅旧first_lex_fact dead_code warning基线1保持，无新增未处理warning。
+- 联立后本域**61源×Rust/C默认122 + 原额外Rust release8**配置证据齐，scalar certification_complete=true；原158默认cert+daily仍有效，不把8附加模式错误计成8份新默认证书。全组合登记从322→**330PASS/8FAIL/548UNOBSERVED**，886分母/原required/legacy38不改；原AV深度预算/while六拒绝和native8通用70缺具名trap仍未关闭，source_case_reports/system_delivered/expanded claim/full_registry_closed仍false。
+- 冻结7de59c整组合原受管Job/Popen禁用重读：350061B SHA=`74ac4e8320c40b16f1303a7864d2c570294a313fb785b971ddc7c4d54aa4660a`，scope/scalar-release-frozen-preview，7731.5649ms、peak process28594176/Job29847552B，统一LiveBudget reservation28906071/峰值**47258571<50331648B**。原单件4MiB、private128MiB、解码先预留与64KiB流hash仍保，不重置peak/不另开域预算；所有当前producer与原始材料hash被真实读回。
+
+原T01..15保持，未修改F04之外语言语义；剩余复合RT/collections与SQ/实例四端/机制、旧313/38、938939与完整ARCH/最终独立review/merge继续。下一入口继续剩余复合域同源与独立oracle/真实配置，不能以已补标量配置代替它们；当前无活进程/权限/用户决定等待。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:7de59cacec4f375db461f8e4756c81c3ce810b8f | task_ids:T04/05/10/11（未关闭） | evidence:8原release实际双腿16compile16run/8deps双快照；48反控；150验证；全组合330PASS8FAIL548UNOBSERVED | blockers:原完整任务仍未完；无新增用户决定 | next_responsible_role:work 原剩余复合域Q4/配置/机制/ARCH
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:25 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，标量release缺口已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:7de59cacec4f375db461f8e4756c81c3ce810b8f | next:work 剩余复合RT/collections/SQ/实例四端与机制/ARCH
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
