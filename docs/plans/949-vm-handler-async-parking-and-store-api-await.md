@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-949
-status: executing
+status: execution_done
 feature_name: VM handler 异步返回闭合与 JSON 值编码
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-06
 plan_revision: 2
-current_step: 2
+current_step: 4
 total_steps: 4
 base_branch: master
 depends_on: []
@@ -90,8 +90,8 @@ Rust、现有 AutoVM native bindings/codegen/back_prefix；现有 serde/HTTP 中
 
 - [x] T-00（work）：定位 store/内联 API await 降级点及真实 JSON 根因；round1..15与r2探针完成。
 - [x] T-01（work，依赖T00）：收口既有 per-app语言上下文、实现值编码与片段消费修复、永久最小反例/对照。
-- [ ] T-02（work，依赖T01）：最终 SDK Todo VM 用户任务、真实返回与磁盘独立核对。
-- [ ] T-03（work，依赖T01/02）：既有 boot/reentry/cpu-slice 与完整受影响职责组回归、Spec候选、提交execution_done回执。
+- [x] T-02（work，依赖T01）：最终 SDK Todo VM 用户任务、真实返回与磁盘独立核对。
+- [x] T-03（work，依赖T01/02）：既有 boot/reentry/cpu-slice 与完整受影响职责组回归、Spec候选、提交execution_done回执。
 
 ## 9. 复审记录
 
@@ -200,6 +200,13 @@ Rust、现有 AutoVM native bindings/codegen/back_prefix；现有 serde/HTTP 中
   Actual `cargo t vm http --out D:/autostack/plan-artifacts/plan-949/fixed-vm-http-r2`, writer-owned target, jobs2/inc0/devdebug0: exit0; selected970/executed970/pass970, excluded434 under original conditions, not_run0/errors0. Bound child validation valid/51 required invocations; original samples/ignore/parallel-resource rules unchanged. Preparation179.399s, execution329.511s, total566.009s. Discovery's orphan compiler auxiliary vctip was recognized and reaped by existing infrastructure, not a workload leak waiver. results.json SHAb411ecc9b73c2012596d948cddff70e5eaddc31527af69fa8a325cd5b919ad78. Initial shared-target invocation rejected by runner with exit2 and executed0; not counted; rerun used this writer's own target. Existing compiler warnings retained, no broad unrelated warning cleanup.
   Consumer Lang trees os-054 and ui-060 were tracked-clean, detached from23f3a031/4fdf1686 to code408ca8b5 for current SDK/bridge verification. Original source binding of the passing group was unchanged throughout; implementation committed after terminal0. Proposed SD01/02 prepared in writer and scratch spec-delta-r2.md, not published. Main's unrelated docs/plans/design WIP untouched. T02 and remaining T03 controls remain open; no execution_done/review/landing claim.
 
+
+- stage: work | plan_id: PLAN-949 | plan_revision: r2 | round: 18 | outcome: pass | status: execution_done4/4 | worktree: D:/autostack/.wt/lang-949/auto-lang | branch: codex/plan-949-dev | code_commit: 408ca8b5096df96d2a91831ea36ef25336781889 | spec_candidate_commit: 40ab612ea | next: independent final review on this same tree
+  T02/E01/AC01/02 actual public iced desktop: candidate root916a1426, UI d2a9ba65, Man03bb65ef, Lang408ca8b5; immutable SDK r167 built three programs exit0 (CLI60.01s/tool59.56s/host50.47s). SHA CLI1cf419bc546a789f09dfc95f3e5e7b1e742014694375908a14e44ecfe21a68d6, toolbcc481f588528d10efc58c515a583d482872df85e43907aa85ff40e1792caf19, host7be01796f593ff2d0c487e9e3174f555fb0afbc062eee48c37c32261e8cd5bcb. This is not old23f3 heuristic output. Replayed the actual pre-fix CLI probe: string-true="true", bool-true=true, get-bool=true, string-false="false", string-null="null", getter-string="true"; exit0.
+  Named949 VM probe only: temporarily selected Todo launch=vm in owned candidate manifest, no pac/app-source change and no global AUTO_VM_MERGE/AUTO_BACKEND override. Default dashboard hatched Todo as VM app7 and launch promoted it to wid1. Per-app VM API back-proxy executed original api.at; no Rust Todo server or API/DB prewrite. Empty before-state/DB; actual stable-id013-todo StoreInput("U949-真正VM新增-中文54.25-r2")+AddTodo -> real AddTodo Parked HttpRequest4, POST; followup HttpRequest5 GET; resumed to completion132.1604ms. Actual screenshot inspected: new text visible in list, input placeholder restored, 1itemsleft and dashboard1. Snapshot state input="", active_count1/action_err=""; independent read-onlySQLite exactly[(1,marker,0)]. PNG SHA86f9c7081f0c2d315e107edda34e03dea91080ac2066cc19bb17d64b78059993; oracle e34e529022852d15908e80e3668dcf1257c69c8184a8c73f9e1cb3df0ea4dfdf in plan949. Initial snapshot-name auto-todo used as input target queued but executed no handler; excluded, corrected to actual stable dispatch ID. Snapshot selector remains auto-todo, source-template child nodes are not treated as rendered-list proof; actual PNG provides that leg.
+  Normal app bus shutdown: wrapper finally restored manifest byte SHA2036c3983b98c783f845baabdb15bda210305db79942bca97341eb1c2d1cb137 and returned0; product logs host exit0, Chat service graceful0, owned private helper34936 controlled-cancel1/reaped. All captured owned processes gone and9247/17823 absent; independent Blog47236 original10:15:07 identity preserved. OS Get-Process receipt exit fields are null (handles were not retained early), so no individual CLI/Cargo exit0 claim; product/wrapper terminal0 and actual resource disappearance are the bounded evidence. Raw normal-stop-r2.json/owned-before-stop-r2.json retain this limitation. This VM profile does not replace parent054's separate accepted Rust Todo profile.
+  T03/R01/AC03: UI writer286e0397 with its clean detached Lang408ca8b5 dependency, `cargo nextest run --locked -p auto-ui-runtime --lib --features mpv-widget -E 'test(/^ui::vm_bridge::/) or test(/ui_tests::plan711_cpu_slice_tests::/) or test(/ui_tests::plan437_child_init_tests::/)' --no-tests fail --no-fail-fast`: exit0, selected/executed79/pass79, unselected2344 not pass; compile92s, run5.825s. Covers actual plan702_handler_park_reentry_resume_roundtrip, init snapshot/child completion, cpu-slice parity/guard/error cases. Log SHAd3d134ef5207709690ebf748a41d9cc29441c4881d55dc8ffd43a8d1f9027e28. Full fixed VM/HTTP970 already passed r17 unchanged implementation, not repeated for documentation. SD01/02 prepared40ab612ea, no legacy ledger/index writes. plan949 scratch registered in-flight in retention registry; parent054 common SDK/review/merge remain separate and incomplete.
+
 ## 10. 待澄清事项
 
-无新增用户决定。T01..03 尚未执行完，不把旧 round15 的“全链闭合”当作已复审交付；原 Init-only 假设已由实际非 Init Parked 反证，不再作为待用户决策。
+实施四任务已按r2完成；独立 final review、冻结 merge-owned gate、默认分支交付/push/归档及清理仍未执行。依原§6独立上下文要求，不自动新建agent/chat，也不以本实施会话内部核对冒充独立pass。父054可继续尚未依赖最终落地的汇总门准备，最终工具链交付门保持未完成。
