@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 11
+current_step: 14
 total_steps: 29
 ---
 
@@ -467,10 +467,10 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-23 | work | T-22冻结；正确Cargo feature/config与真实当前工具先prepare | 完整ace-comptime/治理与具名真实consumer联合；原14CT/四CLI与受实际身份变化影响的raw/cert/daily/优化严格重验，child/原CT机制同窗采；守恒其余red/U、保F07真实终态；SD11候选与最终T14交接；AC-02/03/07/09/17、V32 | [✅ 已完成] 第64轮续录81c10fcc9；原并集731P1旧F07红，当前292 cert/daily+14优化+466 Case+3 CT机制严格联读710P8F288U；完整941仍未齐，最终T14待 |
 | T-24 | work | 第67轮用户F09内phase授权；§5.12/5adfe480d基面/已存三轴误收；原Specs | 先新restore_identity_941永久反例baseline红/合法绿，再修restore_verify当前逻辑归属typed拒，restore_bind/seed口径一致；补合法/codec/位置漂移/失败保旧与实际AV f94109_消费反控；AC-18、V33..35、SD12 | [x] 第69轮73cdf4871：SDK4/AV3永久例通过、修前三轴SDK/AV各3红，合法/codec/位置漂移与失败保旧闭合；完整职责与当前身份联读仍T25 |
 | T-25 | work | T-24冻结，正确Cargo配置/工具先prepare与逐项影响对账 | 一次完整ace-semantics/infra-ace-m1-arch及AV具名消费；五native源合同/当前观察重采、变化身份source/cert/daily/优化真实刷新、其余严格复用，当前组合逐键守恒；F09工作关闭/SD12候选交T14；AC-02/05/07/09/18、V36 | [x] 第70轮50fc3f770：完整206/222与实际AV、五native、466Case/292cert+daily/14原优化严格联读713P8F285U；F09工作阶段闭合，最终T14待 |
-| T-26 | work | 第75轮用户F10内phase授权；§5.13/3bf48bd03基面与原两次坐标失败 | 新source_positions_941先重放红/合法绿，再修UnitCatalog lambda诊断坐标；补冷/恢复/UTF-8前缀/词法结构/失败原子性/修复再恢复/tiny与相邻API；AC-19、V37..39、SD13 | [ ] 第76轮6eaf693af已提交最小坐标修复/新9例与原42联合PASS；第80轮F11修复已闭原结构差异（frontdoor_first_diag_941三面全等），V40/SD13身份闭包随T29统一重验后勾选 |
-| T-27 | work | T-26冻结，实际触面及工具/源身份对账 | 完整ace-source/ace-syntax/infra-ace-m1-arch及必要具名consumer；五native当前合同与真实观察重采、13工具/变化身份source/cert/daily/优化刷新，其他证据strict复用，当前组合逐键守恒；F10工作关闭/SD13候选交T14；AC-04/05/07/09/19、V40 | [ ] 第78轮完整source392/syntax132与治理238PASS、13工具8变/五新native9机制strict PASS；第79轮八工具Case466/cert292+daily292/优化14+拒绝6当前采集并经原strict reader组合716P8F282U逐键守恒闭合（64b4cf788）；F11由T28/29承接，T26/T27待F11修后身份重验再勾 |
+| T-26 | work | 第75轮用户F10内phase授权；§5.13/3bf48bd03基面与原两次坐标失败 | 新source_positions_941先重放红/合法绿，再修UnitCatalog lambda诊断坐标；补冷/恢复/UTF-8前缀/词法结构/失败原子性/修复再恢复/tiny与相邻API；AC-19、V37..39、SD13 | [x] 第76轮6eaf693af最小坐标修复/新9例与原42联合PASS；第80轮F11修复闭原结构差异；第81轮T29身份闭包（8工具重核/五native/Case466/cert292+daily/优化14在a65fc56c7→7127d115c重采，组合716P8F282U逐键守恒）后V40/AC-19闭合 |
+| T-27 | work | T-26冻结，实际触面及工具/源身份对账 | 完整ace-source/ace-syntax/infra-ace-m1-arch及必要具名consumer；五native当前合同与真实观察重采、13工具/变化身份source/cert/daily/优化刷新，其他证据strict复用，当前组合逐键守恒；F10工作关闭/SD13候选交T14；AC-04/05/07/09/19、V40 | [x] 第78轮source392/syntax132/治理238、13工具8变/五新native9机制strict PASS；第79轮64b4cf788组合716P8F282U逐键守恒闭合；F11后身份于第81轮T29重闭（7127d115c同守恒），F10工作阶段关闭、SD13候选交T14 |
 | T-28 | work | 第79轮用户F11内phase授权；§5.14/64b4cf788基面与第76轮三面反证 | 新frontdoor_first_diag_941先固定三面首诊断差异baseline红/合法绿，再在walk_expr_context的`(`/`move`位接入closure_header_ahead_tokens lambda头期望游走（参数/注解/`=>`/body）；补合法/嵌套/坏头形状/async/普通括号反控与F10九例不回退；AC-20、V41..43、SD14 | [x] 第80轮a65fc56c7：baseline 1P5F→三面差分/合法形状/坏头形状/邻接反控全绿，原42+F10九例联合48/48、完整source398/syntax132/治理238（768/768）PASS；F-941-12恢复/投影差异具名另立（§10.16），不属本phase写面 |
-| T-29 | work | T-28冻结，实际触面及工具/源身份对账 | 完整ace-source/ace-syntax/infra-ace-m1-arch及必要具名consumer；13工具实际变化身份、受影响Case/cert/daily/优化真实刷新，其他证据strict复用，当前组合逐键对账；F11工作关闭/SD14候选交T14；AC-04/05/07/09/20、V44 | [ ] 第80轮三组已在a65fc56c7真实768PASS（source含+6新例）；13工具/五native/Case/cert/daily/优化当前身份闭包与组合对账仍待 |
+| T-29 | work | T-28冻结，实际触面及工具/源身份对账 | 完整ace-source/ace-syntax/infra-ace-m1-arch及必要具名consumer；13工具实际变化身份、受影响Case/cert/daily/优化真实刷新，其他证据strict复用，当前组合逐键对账；F11工作关闭/SD14候选交T14；AC-04/05/07/09/20、V44 | [x] 第81轮：漂移审计5合约{project.rs,conformance.rs}+新模块→13工具8变（同F10集）→合约刷新提交7127d115c（data-only，门复用）→治理238/五native9观察/Case466(8红保持)/cert292+daily292/优化14+拒绝6全部在Y重采，组合716P8F282U逐键零漂移；F11核销、SD14候选交T14 |
 
 T-18/19已完成（§9第43轮）；T20/T21已完成（第52轮），当前回到原完整T-01..13。 T22/23的F08已完成工作验证；r6的T24/25已完成F09工作阶段；下一入口回到原T01..13全部未闭任务；F07仍独立待批，不预占/勾选任务。T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；继续原T-01/T-02等完整任务，尚未关闭的验收保持未完成。
 
@@ -1982,6 +1982,17 @@ stage: work | plan_id:PLAN-941 | plan_revision:r8 | outcome:progress（F11最小
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r8 | round:80 | from:work | to:work | status:executing11/29 | outcome:progress（F11修复真实闭合三面差分；T28完成，T29身份闭包与F-941-12/F07待） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a65fc56c7214eaf7b6a689089c6e4272829e7a1c | next:work T29（13工具/五native/Case/cert/daily/优化身份重采+组合对账）；D938/939未交齐，无待poll
 
+### 第81轮：work T29 F11身份闭包——8工具重核、五native/Case/cert/daily/优化重采与组合逐键零漂移；T26/T27/T29勾选
+
+- 从a65fc56c7 clean源顺序执行：①漂移审计`f94111-native-source-drift.json`=`b8df69dc15761f4ab011d6fbbcf8224ccb5cc2556dcf8b1201f2aa28676271a3`：五合约changed恒为{`cst/project.rs`,`tests/conformance.rs`}、新引用模块`frontdoor_first_diag_941.rs`，与F11写面一致；②13工具重prepare（4.817s），**8变**：av-worker、ace-case-worker(SYN)、mn-worker、mn-collections-worker、ace-comptime-worker、abi-worker、sema-worker、a2x-worker——与F10集相同（project.rs同属core crate）；两parent及3 runtime未变，`tools-current.json`=`843e41ed…39b6a`；③五native合约刷新（pin新project/conformance+新模块、plan identity r8、reader CONTRACT_SHA、registry摘要，11文件data-only，无二进制变化故768门合法复用）提交**`7127d115ced7e4fe7eaf49a10e5cb021445df225`**，输入数580/583/586/585/582，`f94111-native-contract-refresh.json`=`70b543f4…2717`；④Y点治理`cargo t infra-ace-m1-arch`**238/238PASS**。
+- 五native当前窗口在Y真实重采（每窗保binary/源码before+after、原listing/argv/rawterminal/Job与observation），原strict reader禁Popen下9观察全PASS；`admissions.json`=`04455888…1ee4`。随后八工具受影响证据在Y全量重采：Case **466**（17组、原8scalar红逐格保持，`gate/results.json`=`bb840482…34a0`）、cert **292**+daily **292**（逐行actual cert PASS，terminal commit=7127d115c）、原优化**14**+untyped拒绝**6**（拒绝仍exit2/stderr空/job2）。
+- `close-f94111-current-composed.py`在禁Popen下把上述当前证据与768门绑定交原strict reader（12.35s、admission峰48721998B≤48MiB）：**716P8F282U、1006键/31合同、changed_verdicts={}**——F10与F11两次修复在当前身份下**逐键零漂移**，F11效应确只落在frontdoor_first_diag_941永久回归（无组合行依赖closures面错误源首诊断），8F/38旧cert/F07/282U原样。报告`f94111-current-composed/preview.stdout` SHA256=`7989cfbd385f2450356847fdd24d692721a8206474b1cc6fe2d51c56afa70cdf`，`closure-audit.json`=`ab1e92404e5d032b3cad642bea6da2b3c796d7c80478c4a397a6a389bd213e69`（F11_fixed_at/F941_12_open/F10_F11_identity_closed如实记录，`can_claim_expanded_m1=false`、required宇宙未闭不变）。本轮全量索引`f94111-t29-identity-closure-audit.json` SHA256=`3354644e9f97f7c074992058e230a98e0a97cb24258e2d142e120c14a70959e5`。
+- **T26/T27/T29勾选，executing14/29**：AC-19/AC-20工作条件全闭（V37..44）；SD13/SD14候选在冻结树交最终T14。pre-F11基线（64b4cf788组合）与全部旧原件保留未回填。F-941-12（恢复/投影entry-*，§10.16）与F07（test-only，§10.11）两项具名待用户裁定；D938仍executing、D939 drafting均非可消费D；本轮无live handle，`<h>`新增f94111-*目录已入scope索引。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r8 | outcome:progress→F10/F11工作阶段全闭（identity closure零漂移；T26/27/28/29勾选） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:7127d115ced7e4fe7eaf49a10e5cb021445df225 | task_ids:T26/T27/T29勾选；T28已勾 | evidence:f94111-t29-identity-closure-audit.json | next_responsible_role:work原T01..15未闭义务；F-941-12/F07具名待批，无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r8 | round:81 | from:work | to:work | status:executing14/29 | outcome:progress（F11身份闭包完成、组合逐键零漂移；F10/F11工作阶段关闭） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:7127d115ced7e4fe7eaf49a10e5cb021445df225 | next:work原T01..15未闭义务/独立required；F-941-12与F07待用户裁定；D938/939未交齐，无待poll
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -2007,8 +2018,8 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r8 | round:80 | from:work | to:wo
 
 13. **F-941-09工作阶段已关闭（r6 T24/25，第70轮）**：用户具名授权、三组原失败与合法/位置漂移/codec/AV旧42控制、73cdf4871生产修复、50fc3f770当前声明及206完整语义/222治理/实际AV/五native/466当前Case/292cert+daily/原14优化和6untyped拒绝已由原strict reader联读闭合，F09关闭基面713P8F285U；第71轮519dd0d15/714P8F284U；第72轮当前a2b27fc66同完整判定，独立首例20P非全门，executing10/25。最终独立T14仍待，SD12候选未发布；不再等待F09授权或重跑已有效证据，不扩F07/其他缺陷授权。原完整任务继续。
 
-14. **F-941-10已获r7内phase授权（第75轮）**：用户对call_b5e7efa002154a8fbecf471a80b07029明确授权；已落实§5.13/T26/27/AC19/V37..40/SD13、executing10/27。第76轮6eaf693af已提交最小坐标修复，新9例/原42目标联合PASS，但F11诊断保真差异及T27当前身份闭包未闭，T26仍未勾选；不再等待或重复申请F10授权；F07仍独立待批。
+14. **F-941-10工作阶段已关闭（第81轮）**：r7具名授权的坐标修复（6eaf693af）经第80轮F11修复闭合成三面全等、第81轮T29身份闭包（8工具/五native/Case466/cert292+daily/优化14在7127d115c重采、组合716P8F282U逐键守恒）后，T26/T27/V37..40/AC-19全部闭合；SD13候选交最终T14。F07仍独立待批。
 
-15. **F-941-11工作阶段已关闭（r8 T28，第80轮）**：用户具名授权的期望游走lambda头识别已实现（a65fc56c7），三面差分/合法形状/坏头形状/邻接反控永久例与原42+F10九例联合48/48、完整ace-source 398/ace-syntax 132/infra 238（768/768）PASS；V44当前身份闭包（13工具/五native/Case/cert/daily/优化与组合逐键对账）仍归T29。修复过程发现独立F-941-12（§10.16）具名另立，不在F11写面内处理；最终独立T14按r8冻结SHA复审。
+15. **F-941-11已核销（r8 T28/29，第80..81轮）**：用户具名授权的期望游走lambda头识别已实现（a65fc56c7），三面差分/合法形状/坏头形状/邻接反控永久例与原42+F10九例联合48/48、完整ace-source 398/ace-syntax 132/infra 238（768/768）PASS；第81轮V44身份闭包完成——13工具8变重核、五native合约刷新（7127d115c，data-only）+9观察strict PASS、Case466/cert292+daily292/优化14+拒绝6全部重采、组合716P8F282U**逐键零漂移**（F11效应仅限frontdoor_first_diag_941永久回归，无组合行依赖closures面错误源首诊断）。SD14候选交最终T14；F-941-12（§10.16）具名另立待裁定。
 
 16. **F-941-12待裁定（第80轮具名发现）**：完整块lambda（`let g = (m int) => { … }`）之后main体未闭合的坏源，CST错误恢复把其后语句落为顶层script_item，投影的`source.entry-top-return`/`source.entry-order`能力拒绝按更早位置胜出，而手写oracle为"expected statement, found `fn`"（同位`fn`）。同源反证：无lambda的未闭合if/未闭合main、单未闭合块lambda、表达式lambda均两parser一致——差异仅在“完整块lambda作为恢复sync点”时出现，属恢复/投影写面（shift/grammar/投影saw_script），不是期望游走器。原被F11误诊掩盖，现暴露。证据`f94111-scope-probe/result-2.json`（SHA256=`3393fa9ced3abaab98931edce2081a0b3e448f9c2c4fda666944910d892ceae3`，全量索引见`f94111-implementation-audit.json`）；依§5.4待用户具名授权才在941新增phase，未改恢复/投影字节。
