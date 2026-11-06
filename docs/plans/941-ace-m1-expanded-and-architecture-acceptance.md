@@ -341,7 +341,7 @@ r4 F06补充验证（T20定向12项见§9第50轮，T21完整职责1493/当前�
 | V-31 | AC-03/07/17；work T22 | 两个普通同名用户函数无meta cap各实际42；授cap保护冲突早拒；合法FieldCount2→3/HasField缺→有、普通CT/choose/pick | 保42→43/42→40和真实AV/key/negative字段事实；名字一刀切、只拦main、先AV后报保护冲突均红。原源码/profile不为修复改写 |
 | V-32 | AC-02/03/09/17；work T23 | 冻结完整CT职责/治理、原14CT source与真实AV/native/Rust/C worker四向消费、Rust/C四CLI操作、当前changed身份raw/cert/daily/原优化及child观测 | SDK与实际consumer都拒缺cap，合法原oracle守恒；命令/真实终态/旧F07红与8 scalar红/其余U守恒。无typed code的A2X拒绝不靠message充PASS；不以group绿或新worker hash顶严格读取 |
 
-### r6 F09补充验证（均待T24/T25执行，原第67轮仅为修前反证）
+### r6 F09补充验证（V33..35/T24第69轮工作验证已齐；V36/T25变化工具证据与全组合仍待）
 
 | ID | AC / owner_stage | 输入/实际入口与观测oracle | 可区分错误实现、覆盖边界 |
 |---|---|---|---|
