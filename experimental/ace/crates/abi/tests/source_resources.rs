@@ -244,11 +244,16 @@ mod source_foreign {
         (root, bytes, environment, caps)
     }
 
-    #[test]
-    fn c_cache_entry_read_reserves_shared_io_before_loading_the_original_store_frame() {
-        use ace_artifacts::store::{ManagedStore, StoreError};
-        use ace_source_query::resources::Resources;
-        let (root, _old, _environment, _caps) = fixture("c-cache-entry-io");
+    fn large_cache_fixture(
+        tag: &str,
+    ) -> (
+        PathBuf,
+        ace_artifacts::store::ManagedStore,
+        Vec<u8>,
+        [PathBuf; 1],
+    ) {
+        use ace_artifacts::store::ManagedStore;
+        let (root, _old, _environment, _caps) = fixture(tag);
         let source = root.join("provider.c");
         let header = root.join("source_foreign938.h");
         let object = root.join("provider.obj");
@@ -271,6 +276,15 @@ mod source_foreign {
         })
         .unwrap();
         assert!(!hit);
+        (root, store, bytes, artifacts)
+    }
+
+    #[test]
+    fn c_cache_entry_read_reserves_shared_io_before_loading_the_original_store_frame() {
+        use ace_artifacts::store::StoreError;
+        use ace_source_query::resources::Resources;
+        let (root, store, bytes, artifacts) = large_cache_fixture("c-cache-entry-io");
+        let source = root.join("provider.c");
         let resources = Resources::default();
         let before = resources.stats();
         let pressure = resources.reserve(Charge::io((8 << 20) - 1024)).unwrap();
@@ -311,6 +325,130 @@ mod source_foreign {
         assert_eq!(after.current.resident, before.current.resident);
         assert_eq!(after.current.io, before.current.io);
         assert_eq!(after.live_objects, 0);
+    }
+
+    #[test]
+    fn c_cache_malformed_entry_remains_a_miss_in_the_shared_resource_path() {
+        use ace_artifacts::{
+            codec::ChunkKind,
+            store::{ManagedStore, PutRequest},
+        };
+        use ace_source_query::resources::Resources;
+        let (root, bytes, _environment, _caps) = fixture("c-cache-malformed-entry");
+        let source = root.join("provider.c");
+        let header = root.join("source_foreign938.h");
+        let artifacts = [root.join("provider.obj")];
+        let store = ManagedStore::open(&root.with_extension("cache-store")).unwrap();
+        let identity = ace_abi::cache::c_source_identity(&source).unwrap();
+        store
+            .put_artifact(PutRequest {
+                layer: ace_abi::cache::LAYER_OBJECT_V01.id,
+                key: ace_abi::cache::c_object_key(&identity, "malformed-fixture-v4"),
+                kind: ChunkKind::Object,
+                payload: b"{".to_vec(),
+                edges: vec![],
+                project: None,
+            })
+            .unwrap();
+        let resources = Resources::default();
+        let mut produced = 0;
+        let (actual, hit) = ace_abi::cache::produce_c_object_with_resources(
+            &store,
+            &source,
+            &root,
+            &artifacts,
+            &resources,
+            || {
+                produced += 1;
+                Ok((bytes.as_ref().clone(), vec![header]))
+            },
+        )
+        .unwrap();
+        assert!(!hit);
+        assert_eq!(
+            produced, 1,
+            "malformed metadata was neither served nor a real miss"
+        );
+        assert_eq!(actual, *bytes);
+        let (repeated, hit) = ace_abi::cache::produce_c_object_with_resources(
+            &store,
+            &source,
+            &root,
+            &artifacts,
+            &resources,
+            || panic!("valid replacement was not reused"),
+        )
+        .unwrap();
+        assert!(hit);
+        assert_eq!(repeated, *bytes);
+        assert_eq!(resources.stats().current.resident, 0);
+        assert_eq!(resources.stats().current.io, 0);
+    }
+
+    #[test]
+    fn c_cache_entry_decode_reserves_shared_index_before_owning_typed_metadata() {
+        use ace_artifacts::{codec::ChunkKind, store::StoreError};
+        use ace_source_query::resources::Resources;
+        let (root, store, bytes, artifacts) = large_cache_fixture("c-cache-entry-decode");
+        let source = root.join("provider.c");
+        let id: String = store
+            .db()
+            .query_row(
+                "SELECT artifact_id FROM artifacts WHERE layer=?1",
+                [ace_abi::cache::LAYER_OBJECT_V01.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let resources = Resources::default();
+        // Observe the actual required raw-frame copies separately. A refused
+        // typed decode may do these same reads, but no large owned metadata.
+        let (raw, raw_copies) = measured_at(1 << 20, || {
+            resources.load_payload(64 << 20, ChunkKind::Object, |bound| {
+                store.get_artifact_by_id_bounded(&id, bound)
+            })
+        });
+        drop(raw.unwrap().unwrap());
+        assert!(raw_copies > 0);
+        let before = resources.stats().current;
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - before.index - 4096))
+            .unwrap();
+        let pressured = resources.stats().current;
+        let (rejected, copies) = measured_at(1 << 20, || {
+            ace_abi::cache::produce_c_object_with_resources(
+                &store,
+                &source,
+                &root,
+                &artifacts,
+                &resources,
+                || panic!("typed entry budget refusal invoked the producer"),
+            )
+        });
+        let error = rejected
+            .err()
+            .expect("C cache typed metadata bypassed shared index admission");
+        assert!(
+            matches!(error, StoreError::ResourceExhausted(ref message) if message.starts_with("C cache entry decode:")),
+            "{error}"
+        );
+        assert_eq!(
+            copies, raw_copies,
+            "typed cache metadata allocated before shared admission"
+        );
+        assert_eq!(resources.stats().current, pressured);
+        drop(pressure);
+        let (repaired, hit) = ace_abi::cache::produce_c_object_with_resources(
+            &store,
+            &source,
+            &root,
+            &artifacts,
+            &resources,
+            || panic!("typed entry repair lost the original cached object"),
+        )
+        .unwrap();
+        assert!(hit);
+        assert_eq!(repaired, bytes);
+        assert_eq!(resources.stats().current, before);
     }
 
     #[test]

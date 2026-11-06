@@ -210,6 +210,37 @@ fn load_c_object_entry(
     }
 }
 
+struct DecodedCObjectEntry {
+    value: CObjectEntry,
+    // Fields drop in this order: no owning metadata outlives its fee.
+    _allocation: Option<ace_source_query::resources::Reservation>,
+}
+fn decode_c_object_entry(
+    bytes: &[u8],
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<Option<DecodedCObjectEntry>, StoreError> {
+    match resources {
+        Some(resources) => match resources.decode_metadata_json::<CObjectEntry>(bytes) {
+            Ok((value, allocation)) => Ok(Some(DecodedCObjectEntry {
+                value,
+                _allocation: Some(allocation),
+            })),
+            Err(ace_source_query::resources::ResourceError::Budget(message)) => Err(
+                StoreError::ResourceExhausted(format!("C cache entry decode: {message}")),
+            ),
+            // Malformed cache envelopes remain a miss under the original
+            // cache contract. A budget refusal must never trigger a producer.
+            Err(ace_source_query::resources::ResourceError::Decode(_)) => Ok(None),
+        },
+        None => Ok(serde_json::from_slice(bytes)
+            .ok()
+            .map(|value| DecodedCObjectEntry {
+                value,
+                _allocation: None,
+            })),
+    }
+}
+
 /// Snapshot EVERY file the search tree currently offers (negative
 /// dependencies): a RECURSIVE walk of the directory — C includes may
 /// carry sub-paths (`#include "sub/dep.h"`) and need no extension
@@ -593,8 +624,10 @@ where
         };
         for id in &ids.0 {
             if let Some(payload) = load_c_object_entry(store, id, resources)? {
-                let verified = serde_json::from_slice::<CObjectEntry>(payload.as_ref())
-                    .ok()
+                let Some(decoded) = decode_c_object_entry(payload.as_ref(), resources)? else {
+                    continue;
+                };
+                let verified = Some(&decoded.value)
                     .filter(|e| {
                         // F-797-R4-07 (R14): v4 only — legacy envelopes
                         // computed under a NARROWER applicability rule
@@ -620,7 +653,7 @@ where
                         base64::engine::general_purpose::STANDARD
                             .decode(&e.obj_b64)
                             .ok()
-                            .map(|obj| (e.deps, obj))
+                            .map(|obj| (&e.deps, obj))
                     })
                     .filter(|(deps, _)| {
                         deps.iter()
