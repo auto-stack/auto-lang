@@ -1205,6 +1205,28 @@ stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:44 | from:work | to:work | status:executing4/19 | outcome:needs_fix（独立诊断位置缺口已闭，原完整任务继续） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:5f3fff189c5781ee828deea9bd4b30e71532e217 | next:work 原完整required/legacy/ARCH证据；F06获批后new
 
+### 2026-11-06 原BASE正式重放与20 required值格位接入（goal第45轮）
+
+第44轮T06位置闭环为progress。本轮继续原T01/03/04/10/11，按旧313 required map定位待适配入口：BASE有131引用（含多个scenario共用入口，不等于131独立执行）。冻结原97 typed inventory、四相关AV/native/case-parent二进制前快照（从更早原5-bin快照投影，原记录不改）后，`AUTO_CASE_WIRE_EVIDENCE=1 cargo t case-ace-m1-base --out <scope>/legacy-base-current/gate` **97/97 PASS**、exit0、22.903805s；原完整BASE未按最容易的20项过滤。原first_slice其他target/source能力未改，真实CaseCopy和每原始交换在统一scope。AV e4c2006f…/native5016566c…/auto-case a09ab303…/pilot de12cb96…前后完全稳定；B A2X亦保持，既有292 cert/daily+14优化未失效。
+
+新原值严格适配与永久合同冻结 **387be853edbe54d7c870c519135559aad70fcd6e**，9文件；production Rust/AV/native/C/旧Case源码/冻结binding.tsv/批准required/预算不改。新增portable typed **legacy-base-contract.json 207665B SHA=d11266d9b5a67d774af7632ddff5799768cc885cd73e8b2c08b866f26b29c1dd**是交付读取器的正式声明合同（97当前Case/check/source/oracle身份、无执行结果/进程日志），按T02入跟踪，并明确.gitignore白名单；不是把临时plan证据入库。新增ace_m1_legacy_base.py：完整97当前typed合同/CaseCopy闭包、正式组97执行/四准备工具/前后依赖均核，再只对**原B01..07/B09/B10/B12×AV/native=20普通value格**由原binding与source-manifest独立定值/源字节、原entry/caps/单run/target recipe判定，真实worker值各对原oracle；父FAIL保FAIL。负值B12=-2保符号；native70不是本slice的value/trap授权。没有将97父PASS扩为全部313/所有BASE scenario通过。
+
+旧map仅这20格reader_status pending→supported-slice、移除对应raw-adapter gap；**execution仍全UNOBSERVED**（discovery executed0），old required hash仍35ad43aae27ffb2d2c9a162c3dd5b99f971e4cd7b2ed36f4fe747a5634bd770e。其余字段/原30修订、512 churn、10样本P90门、历史P95、38旧A2R cert-gap、62未绑定格/251 linked/304 entries全保，mapping_complete仍false。map-change-audit.json SHA=6db3b7a015c46c39ba1c17fa99b77a0e09e9c1be40d4e74ab5ef9599bbada3d2。新map SHA=036fd5eed9a78ec32040ffde088e39599f3e01f2dff1307e4f965090d64f55f3；registry第24合同指针+旧map新指针更新，1006原登记key集合不变，无app派生索引/legacy specs.json写入。
+
+新3个永久unit控制（含B01=14/B12=-2的两个target同错、父PASS非权威、错source/path/recipe/entry/caps/空steps/SKIP/emit/改Case expected、旧未适配trap/scenario/cert-gap保持）。相关10 methods通过；正式`cargo t infra-ace-m1-arch --out <scope>/legacy-base-current/final-controls` **174/174 PASS**、exit0、5.281217s，results SHA=ad96ac5732b69a2117bda34b001b1ecc4fc3e242d53bbbe57ae93a8e9c1bebd4。原20真实交换**200 counterfactual_not_execution反控**全按预期：原20 PASS、共同错值/父FAIL为FAIL；改oracle/source/cap/nonce/recipe/空steps/子echo等REFUSED，raw-reader-controls.json SHA=22135c565fcc03c2ca7a74d2165be1b9617716f1fd64bb5803ef165e2e348b8a。原actual BASE 97执行与反事实200分开记账，不充新执行样本。
+
+单独旧BASE CaseCopy解析保守预留峰24323797B，组合按同一原LiveBudget**先读完整BASE并丢弃瞬态，再保留有界摘要**，不是另开预算域/清峰值或先全读后检查；合并旧4格时亦先预留。预载32MiB后真实相同CaseCopy读取被原ResourceError提前拒，peak49201569<50331648B；最初scratch探针误断言错误消息包含budget字样而自身失败，改为精确ResourceError类型后成立，生产预算/reader未放宽。原4+10 typed观察与新20互斥合并，**旧required observed14→34、passed34、unknown299→279**，仍不完整。
+
+冻结387be853e只读/Popen禁用全组合 exit0：**635PASS/12FAIL/359UNOBSERVED**，1006登记/24合同；相较第44轮仅这20 legacy/corpus value格U→PASS，其他**986格verdict不变**。prior-verdict-preservation.json SHA=f040446f3efc9573154953eb4c4dda586cc60d765580f1ae3ef35f2d70839cd6；9提交文件过滤后Git blob等HEAD，committed-input-audit.json SHA=958b26a6425678545dff82d56c76c8b29f3733d85ed22618727d96284cd731fd。旧12FAIL/其余359UNOBS/38 cert-gap/49ARCH与完整恢复资源/所有原审批范围继续，required_universe_closed/acceptance_system_delivered/can_claim_expanded_m1仍false。
+
+scope/legacy-base-composed-preview/preview.stdout **573067B SHA=adc8a1dd2701f6ea4a156a83aae24cd6eb2cfb183c591aaed500cf847db38b5f**，8223.3701ms，peak process30081024/Job31318016B；共享LiveBudget reserved27357912/全程peak**47326853<50331648B(48MiB)**，原单件4MiB/privateΔ128MiB/64KiB流hash/先预留/不清peak保持。验证顺序由新大CaseCopy的真实瞬态量决定，未偷减原cases/规模，也未重复无触面的生产完整405组。
+
+原T01..13继续，current_step仍4/19；不把新20格当原全部legacy/场景/ARCH已闭。下一步可继续本次原BASE陷阱/typed诊断/legacy VM原始输出或其余原正式组的严格适配，原样本场景须按原全序列与规模独立实测。F06仍待用户归属答复，不阻这些已授权验收工作；新phase未擅自实施。当前唯一树387be853e clean，无活本包采集、无新磁盘阻塞，最终review/merge仍未到。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:387be853edbe54d7c870c519135559aad70fcd6e | task_ids:T01/03/04/10/11推进（未闭） | evidence:原BASE97全门/新20原required strict；200反控/174治理；635P12F359U、48MiB内 | blockers:原完整任务/具名red继续；F06待用户但独立work可继续 | next_responsible_role:work 原BASE其余kind/旧VM与其他required/ARCH/原规模机制；F06获批后new
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:45 | from:work | to:work | status:executing4/19 | outcome:needs_fix（新20原required已入账，原完整目标继续） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:387be853edbe54d7c870c519135559aad70fcd6e | next:work 原required/legacy/ARCH完整实证，F06获批后new
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
