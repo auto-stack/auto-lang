@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-06
 plan_revision: 2
-current_step: 1
+current_step: 2
 total_steps: 4
 base_branch: master
 depends_on: []
@@ -89,7 +89,7 @@ Rust、现有 AutoVM native bindings/codegen/back_prefix；现有 serde/HTTP 中
 ## 8. 执行步骤
 
 - [x] T-00（work）：定位 store/内联 API await 降级点及真实 JSON 根因；round1..15与r2探针完成。
-- [ ] T-01（work，依赖T00）：收口既有 per-app语言上下文、实现值编码与片段消费修复、永久最小反例/对照。
+- [x] T-01（work，依赖T00）：收口既有 per-app语言上下文、实现值编码与片段消费修复、永久最小反例/对照。
 - [ ] T-02（work，依赖T01）：最终 SDK Todo VM 用户任务、真实返回与磁盘独立核对。
 - [ ] T-03（work，依赖T01/02）：既有 boot/reentry/cpu-slice 与完整受影响职责组回归、Spec候选、提交execution_done回执。
 
@@ -192,6 +192,13 @@ Rust、现有 AutoVM native bindings/codegen/back_prefix；现有 serde/HTTP 中
 
 - stage: new | plan_id: PLAN-949 | plan_revision: r2 | round: 16 | outcome: pass | next: work/T01
   Inherited original054 completion authorization; AC01..03/task IDs/total4/repository scope unchanged. Reconciled legacy tree receipts into shared main Plan, status executing1/4. Actual baseline probe proves literal-content heuristic breaks strings and misses real booleans; no user-approved compatibility tradeoff exists. Bounded current contract replaces obsolete new-scheduler hypothesis with existing split/segment and value-aware JSON boundary. Raw script/log in plan949, no implementation edits in this stage. Pending final independent review/landing remains explicit.
+
+
+- stage: work | plan_id: PLAN-949 | plan_revision: r2 | round: 17 | outcome: in_progress | task_ids: T01 complete; T03 fixed VM/HTTP portion verified | code_commit: 408ca8b5096df96d2a91831ea36ef25336781889 | next: work/T02 actual Todo VM task and remaining bridge controls
+  Unique writer codex/plan-949-dev; typed encoding precedes String marshalling, no literal-content heuristics. Direct actual builtin getter consumption uses existing to_value once; shadowed receiver/plain function/string reuse controls stay strings. Parsed nested integers preserve i64/u64 (the first final run exposed 5000000001 truncation to705032705, repaired before final group). No app source or scheduler rewrite.
+  Permanent real parse/codegen/VM cases J01..03: original4 red1pass/3fail; first fix3pass/1fail (nested i64); numeric fix4pass/1invalid fixture (extension syntax, no production assertion); corrected shadow fixture then1/1pass. Complete final group includes all5 new cases, allpass; no zero-selected intermediate fixture counted as success.
+  Actual `cargo t vm http --out D:/autostack/plan-artifacts/plan-949/fixed-vm-http-r2`, writer-owned target, jobs2/inc0/devdebug0: exit0; selected970/executed970/pass970, excluded434 under original conditions, not_run0/errors0. Bound child validation valid/51 required invocations; original samples/ignore/parallel-resource rules unchanged. Preparation179.399s, execution329.511s, total566.009s. Discovery's orphan compiler auxiliary vctip was recognized and reaped by existing infrastructure, not a workload leak waiver. results.json SHAb411ecc9b73c2012596d948cddff70e5eaddc31527af69fa8a325cd5b919ad78. Initial shared-target invocation rejected by runner with exit2 and executed0; not counted; rerun used this writer's own target. Existing compiler warnings retained, no broad unrelated warning cleanup.
+  Consumer Lang trees os-054 and ui-060 were tracked-clean, detached from23f3a031/4fdf1686 to code408ca8b5 for current SDK/bridge verification. Original source binding of the passing group was unchanged throughout; implementation committed after terminal0. Proposed SD01/02 prepared in writer and scratch spec-delta-r2.md, not published. Main's unrelated docs/plans/design WIP untouched. T02 and remaining T03 controls remain open; no execution_done/review/landing claim.
 
 ## 10. 待澄清事项
 
