@@ -1109,6 +1109,28 @@ stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:40 | from:work | to:work | status:executing3/19 | outcome:needs_fix（T18完成，T19及原完整任务仍待） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:c4cb9dab71a45c72c3daab50672cec0ae1035298 | next:work T19
 
+### 2026-11-06 T19缓存迁移与当前工具门禁（goal第41轮，在途）
+
+第40轮T18完成为progress。本轮继续T19，同一941树新增永久缓存回归提交 **62f57b4e2**；文档候选提交 **8c074c17c404b15a1d042a8bf3a77420b958997a**，当前树clean。实现代码仍c4cb9dab7的生产修复，测试新增三代真实store：受控旧provider沿原print/2键保存R01缺mut片段，旧完整产物真实rustc E0594；当前provider打开同一store实际lower=1、编译运行value:19；第三次打开lower=0、全部装配文件hash恒等、再次实际value:19。新回归受原120/30/360s、1MiB capture上限，scope/field-cache-941-*保完整receipt；单例正式门1/1 PASS，5.994877s，SHA=06c76a91bb7cb4c99d9bd89c39333e60fe9c36885a49245a053a1c5cbc15e235。
+
+冻结62f57b4e2运行完整`cargo t ace-a2x infra-ace-m1-arch --out <scope>/f94105-frozen-union`，210+169 PASS，265.912002s，exit0；发现部分原conformance显式使用旧release预构建worker，该轮作为准备/历史证据保留，未冒当前worker完整门。随后实际`cargo build --release -p ace-a2x-worker --bin a2x-worker` exit0、55.91s，scope/f94105-release-build.log；新worker SHA **521d08210c6a03e0f1967285ce88b7ad0d67216447ba9241827b1f711344a0ea**。在新release身份下补正式完整并集 **210+169 PASS**、exit0、260.967499s，scope/f94105-current-worker-union/results.json SHA=ca3b4f7492bdc28bff830fefe093302897f11e589e37b77f9abbaff253d08f37。保原ignored/条件，不增过滤；baseline first_lex_fact dead_code未由本次引入，健康义务继续保。
+
+独立提前冻结新debugworker/conformance/test source及原输入，`cargo t ace-a2x --test-name release_941::original_ --out <scope>/f94105-release-execution/gate` **3/3 test PASS**，原8 scalar+4 RT+2 query共14配置实际default-independent-reference/优化actual编译运行，flags原样（不拿新回归-O冲抵）；总8.800435s，SHA=e43602e97c117b90f281416d95e9a4b377c9809a4de29b121d5717e98bed32e3。三域before/after逐pin稳定，现新index与正式parent/discovery均已绑定在f94105-release-execution/{scalar,record-text,query}/bindings.json，最终严格reader与当前默认cert联读仍待。
+
+SD08/09候选在同一树：明确值根/借用模式与旧print轴失效；同一record/text文档仍写F04已解除的条件尾部限制，按既有F04合同改为共享前门链接，未扩大源语法。文档改动不改本轮冻结生产/测试字节，尚未main沉淀/最终review。
+
+按原当前绑定固定**292唯一默认目标=289已完成+原M01/R01/R02缺Rust3**，scope/f94105-default-refresh-targets.json。原旧R01 C证书在新工具下被原严格reader明确STALE（未解析message冒通过），scope/f94105-old-worker-certificate-rejection.json。首次额外探针脚本错误把STALE文案断言为hash/sha字样而自身失败，随后仅修探针断言为原AdmissionError的精确STALE，不改reader/旧证书。
+
+刷新脚本首批使用了自行安排的编号目录，原text严格reader按既有原case路径拒绝；这是本包采集布局错误，非producer新缺陷。已精确停止本包Python PID25736，工具session67890 terminal exit1，旧scope/f94105-current-certifications所有原始命令保留，不迁移/改写原证书路径，不用改reader绕过。重采集脚本refresh-f94105-layout-correct-certifications.py复用原case/family/attempt相对层级，新scope/f94105-layout-correct-certifications；原新stdout/command/身份/daily/证书逐项保存。其已完成text **20/20**并原strict读取certification_complete=true，early-strict-observations.json，peak2239137B。当前292批次**仍在运行**，明确handle **exec session17398 / Python PID46428**；下轮先核实并poll同handle，禁止因观察过期重启或覆写该批。现producer固定62f57b4e2；随后8c074c17c只改2文档，生产/测试身份未变。T19未勾选，不能将尚在采集项算PASS。
+
+独立身份对账scope/f94105-unaffected-source-identity-audit.json：text/RT/collections/original-data positive及diagnostic的before/after全部原pin当前匹配，四AV/native/syntax/bridge worker字节保持；**query_instances_execution的13 pins中仅a2x-worker两快照失配**。这是预期身份失效，下一步必须新快照+真实原source-query/source-instances固定组重放及6原typed负入口刷新，再读全组合，不修改旧before或将其复用为新执行。原6typed诊断缺code、其他原red/unknown/全分母/预算保持；T19全组合闭环/F-941-05关闭尚未完成。
+
+用户明确回复已清理指定incremental缓存；当前该目录存在但仅251文件/37,682,894B（构建可重建），D盘可用128,779,685,888B；不再有磁盘阻塞。上轮材料全盘调查确认plan-941约1.38GiB、主要大户plan-942约156.6GiB，未删除其他计划材料。原清理自动拒绝不再是当前待用户事项。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:8c074c17c404b15a1d042a8bf3a77420b958997a | task_ids:T19进行中 | evidence:三代旧缓存/当前新worker210+169门/原14优化通过；292当前认证执行中 | blockers:无新增用户决定；旧完整任务与具名red未闭 | next_responsible_role:work 先poll session17398/PID46428，再当前查询证据/严格组合
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:41 | from:work | to:work | status:executing3/19 | outcome:needs_fix（当前认证执行中，T19未闭） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:8c074c17c404b15a1d042a8bf3a77420b958997a | next:work T19续现存session17398，禁止重启
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
