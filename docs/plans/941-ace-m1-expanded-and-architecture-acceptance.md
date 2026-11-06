@@ -460,6 +460,27 @@ stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: in_progress | wor
 
 stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 11 | from: work | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: 656f48cb4d21d10a985af01ee9eabb58e20c6c87 | next: work（完整目标继续，不是final review失败）
 
+### 2026-11-06 ARCH原子义务和分域登记索引（goal第12轮）
+
+本轮沿原授权继续work，唯一941树、main零代码WIP。冻结施工提交 **`717278a6194fd9dc74ad88ae16b1654e7d4114d7`**；仍executing **0/15**，不把schema/locator/控制数当实际机制交付，不缩减原941范围。
+
+- 新长期源合同`architecture-obligations.json`（47280 bytes，SHA256=`6332fa16b812fd81405c45b42e6c7f4d7eff3faec98919b5b4d5f447eda630c2`）把ARCH-01..08展开为**49原子义务**，含29个入口（12 Case套件、14 native模块locator、3 provider-pending），逐项列真实owner/941证据owner、原预算域、V-01..18、独立closing oracle、错误实现反控和所需原始观察类别。契约定位是待核验执行入口，不声称每个原测试已经证明该完整机制；尤其公共恢复首操作、所有required页、真实AV CT、历史owner/迟到发布/最后lease等仍须实际观测。
+- 新严格reader`ace_m1_arch_obligations.py`核固定合同hash、49不可削ID集合/8族、29入口闭包、实际固定组/套件、native package归属、当前文件hash、预算域/观察种类/完整V集合和provider owner。所有locator都executed=0/UNOBSERVED；不接受child PASS注入。纯AND只在内部已准入结果/隔离控制使用；逐一删除/置FAIL/置UNOBSERVED任一49义务均红，外来ID/bool/PASS对象拒。原始合同中的oracle被改即固定hash拒，声明不能晋升执行。
+- 根`registry.json`显式绑定旧313map/Q4逐源表/ARCH合同/原预算4个当前文件hash；新`ace_m1_registry.py`接入真实只读组合链，索引**886已登记记录=旧313 + Q4已登记504 + ARCH49 + 首链20**，四个namespace分开，**这不是最终M1分母，也不把重叠验收层相加成覆盖率**。剩余原source变体与全域reader闭包未齐，`required_universe_closed=false`；即隔离全部886 PASS也不能关闭完整门。严格旧执行结果和首链实际reader输出才提供已支持部分verdict，Q4全表和ARCH不得据source存在/原组绿补绿。
+- 冻结职责门：`cargo t infra-ace-m1-arch --out <scope>/architecture-registry-frozen-controls` exit0、**121/121治理控制**，3.3587846s，results SHA256=`22973bd90c392feff00632a2c10fd5a59ccb872b7bf386acbd3b6e6d78b4f291`。新增7个有实际断言的控制；49删除等为其subtests，不冒额外语言执行量。复用上一轮192原A2X测试（本轮Rust/原输入未改），不重复编译原职责组或跑全仓；最终T12并集和独立review仍未执行。32件新合同/入口/组/reader的工作字节逐件等于冻结提交blob，`architecture-registry-committed-input-audit.json`。
+- 冻结真实CLI经原process_capture/native_meter：`python scripts/test-governance/ace_m1_arch_acceptance.py --first-slice-preview --repo <941-tree> --evidence <scope> --bindings full-map-canonical-bindings.json`实际exit1（preview拒认领），首链20完整、旧**14 PASS/299 UNOBSERVED**、49 ARCH全未观测；登记记录34 PASS/852 UNOBSERVED（34=首链20+旧14，不能混作语言覆盖率），旧38认证差异和完整范围门仍红。报告`architecture-registry-frozen-preview.json`124148 bytes，SHA256=`03ee44311fcab67a3d9125eb3a78bd08188e88765da6134ec2d62678ed9f35be`。632.9666ms，whole process peak20,619,264 bytes<128MiB，共享当前reservation34,279,897、生命周期peak46,742,224 bytes<48MiB；单轮非正式P90。17个reader hash入报告。
+- 原same-wrong反控在新组合链重放，且Popen禁止验证无隐式工具：native帧+摘要一致改错误f64/同bits并重hash，W01:ac FAIL（登记33PASS/1FAIL/852未知）；再AV同错，W01:ac/av同时FAIL（32PASS/2FAIL/852未知）。49 ARCH仍UNOBSERVED。`architecture-registry-counterfactuals.json`明确为隔离副本，不是真实执行；未被索引/对象释放掩盖。
+
+保留首次失败：首次真实CLI exit2 `discovery summary exceeds retained reservation`，49行完整oracle对象超过原512KiB摘要预留，未放宽48MiB总帽。reader返回后只保id/owner/entry/budget/V有界摘要（原oracle仍在固定hash合同）；886索引按实际对象成本显式预留3MiB，不清峰值/不释放存活对象，最终上述保守总峰值通过。首次121控制通过在最后压缩前，最终冻结门另跑121/121；未用前者冒最终revision证明。
+
+**新的依赖事实**：本轮后段只读发现936已实际交付 **D936=`a41dbd1bd4dd214198565f54abc76a423735c6a0`**，main中归档/merge pass/5 canonical路径核验及guard清树、scope删除有收据；不能继续称D936未交。936 frontmatter仍13/14但T14已勾/交付收据存在，以实际交付/源码后续核对，不凭归档字段推全部941验收完成。其最终收据明确新lane正式30样本、worker级V14及暖会话CT复用留后继：**这些若为941原required，仍在941实际观测义务内，不能随provider的非blocker分类消失**。当前941冻结树尚未同步D936，故其本地合同中ct/pending七源暂时准确表达“本树尚未消费”，下一施工单元需同步稳定D936、更新真实source/profile/oracle及源hash/observer接口再认证。938仍executing6/13，939 drafting0/14；没有操作其树或请求其发送消息。
+
+下一步先同步实际D936及必要主线依赖、按原计划核对7CT源和required页/计量，再补真实Q4和机制reader；剩余原源变体、全registry封闭、严格执行实验、SD/完整冻结门/独立review/merge继续，不以本轮886登记替代完成目标。无新增用户决定，不重授已授权修复。
+
+stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: in_progress | worktree_path: D:/autostack/.wt/lang-941/auto-lang | branch: plan-941-dev | code_commit: 717278a6194fd9dc74ad88ae16b1654e7d4114d7 | task_ids: T-01/T-02/T-03/T-04（未关闭） | evidence: ARCH49原子/29入口、886分域登记、121冻结控制、32blob一致、真实CLI与same-wrong反控、D936交付只读确认 | blockers: 无新用户决定；D936待同步消费，938/939在途及其余全域实现仍欠 | next_responsible_role: work
+
+stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 12 | from: work | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: 717278a6194fd9dc74ad88ae16b1654e7d4114d7 | next: work（用户resume继续原完整目标；不是final review失败）
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
