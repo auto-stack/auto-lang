@@ -1828,6 +1828,21 @@ stage: work | plan_id:PLAN-941 | plan_revision:r6 | outcome:progress（恢复首
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r6 | round:73 | from:work | to:work | status:executing10/25 | outcome:progress（F10两原失败及两相邻正控；非全门准入） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a2b27fc660affe147db39dcc31512c1ad18cb522 | next:work其他独立机制；F07/F10具名提案待批，D938/939未交齐，无待poll
 
+### 第74轮：work接入原旧义务守恒与38旧认证守卫（两个ARCH原子义务）
+
+- 上轮为有效progress（F10两个lambda位置反证、两个相邻owner正控），本轮核main无代码WIP、941唯一树clean/原授权不变，F07/F10仍未授权。先读公共恢复入口、原sq-restore/syn-replay原测试及原ARCH closing oracle，确认旧测试含同PID/显式预parse，单A2X方法测试不能充跨入口无预热公共首编辑；未勾T06/ARCH-01 public-first-edit。转做已具备完整输入的原T04/T10守恒与身份分离，未改恢复生产代码。
+- 当前代码`3bf48bd03ee14981bfdf91870b746710621f14ff`，6文件501增5删（296行是正式输入闭包声明）。新增纯`ace_m1_legacy_arch`与正式legacy-architecture-contract、31合同registry身份和组合binding。源声明冻结**286个原记账实际输入**：原4批准输入、全部source-manifest列出的src/golden/cert/reference/suite/scenario、wrapper/Spec及原script/capture/meter；不把声明自己当执行。正式合同受全局*.json忽略，已具名强制纳入tracked source，原证据仍全在计划scope。
+- 实际重跑原`pwsh -NoProfile -File scripts/verify-ace-m1-852.ps1 -Scope acceptance -RepoRoot <941tree> -OutDir <h>/legacy-architecture-current`，原Job终态exit0/error=null，原输出明示CERT gap38、can_claim_m1 False。原命令1124.087ms，process79351808B/Job80588800B，进程2，CPU原归因保留。新strict reader独立调用原冻结ledger/严格全字段accounting准入，再核完整before/after源窗、原argv/stdout/stderr/真实terminal、同一父账本raw hash；只证明**旧集合守恒和认证守卫**，显式legacy_execution仍UNOBSERVED，不从exit0推执行313绿。
+- 原记账JSON对象与此前完全同值，但原PowerShell字典键输出顺序使新raw SHA不同；初版capture辅助器误要求字节全等而停在该断言，定位后保留新旧raw不改写，父binding显式指向新实际原件，严格按完整原ledger独立复核并绑定新raw hash。不是生产缺陷/不是回填raw。before/after对象相等而排列不同的原文件hash也各自保留，不冒同bytes。
+- 新6永久反控：真实原命令合法/reader禁Popen；exit0但原输出缺失/假claim/假gap数拒；cancelled/error/零进程/布尔exit/未知meter字段/错CPU分账拒；源窗伪造拒；重hash的原claim伪造和替代父ledger拒；即使父摘要附292个新HIR证书PASS也不核销旧38。治理完整组`cargo t infra-ace-m1-arch --out <h>/legacy-architecture-governance-final` **238/238PASS**（首轮238亦绿，随后为解码前补Unicode拷贝预算，相关完整组在最终字节重跑）；diff check通过。未跑无关Rust/292/14或全门。
+- 冻结当前commit、13工具实际hash与原producer输入未变，**只读禁Popen**联读完整原466 source/292 cert+daily/14 optimized等全部旧证据后，只有`ARCH-08/approved-old-conservation`与`ARCH-08/old38-cert-separation`从UNOBSERVED→PASS。当前**716PASS/8FAIL/282UNOBSERVED**，1006 registered键不变、正式合同31；ARCH9P40U，原313仍102P211U，旧38gap全保。完整required宇宙/acceptance_system_delivered/can_claim均false；首例/旧守卫绿不替系统交付。
+- 完整原reader父窗15288.168ms，reserve30874091B/peak48724365B（48MiB内），process30531584B/Job31789056B、进程2；报告626760B。`<h>=D:/autostack/plan-artifacts/plan-941/`；终件`legacy-architecture-current/preview.stdout` SHA256=`c35b9660fadf815e75c7cc025d83876741d75636217446da32d3981fff352283`，`closure-audit.json`=`0a0dd55f079f264318aefda4397a634970be2975d180b9955ba49753ad5e9422`；原accounting=`1ff182ddfe2efcd55abb11e71e56b7ca4e7f77c0964f6a3bf83bf602650d7206`、原command=`b461e3222ff1863bbd096f128319095369b054c8910b65dc8d48f7f5bb5da039`；治理`legacy-architecture-governance-final/results.json`=`ef67a919a81188cd5b56e21166d73b32bcf66540a99ee4d935fef74ae407a123`。SD01/SD04候选`legacy-architecture-spec-delta-candidate.md`=`355e4c9735953eeed09343f28b86565ac1e873d85868e73c4277908f713076b4`，尚未发布canonical。
+- 本轮所有进程终态，无live handle。仍r6 executing10/25，原T01..15完整任务不勾；最终T14独立复审/完整职责并集尚待，D938/939未交齐，F07/F10具名授权待答；其余实际恢复/实例/资源等独立证据继续。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r6 | outcome:progress（两个原ARCH08义务真实记账/原终态严格接入） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:3bf48bd03ee14981bfdf91870b746710621f14ff | task_ids:T04/T10及SD01/SD04候选，完整任务未闭 | evidence:legacy-architecture-current/closure-audit.json | next_responsible_role:work其他原required/ARCH，F07/F10仍待，无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r6 | round:74 | from:work | to:work | status:executing10/25 | outcome:progress（真实716P8F282U；不是系统/M1完成） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:3bf48bd03ee14981bfdf91870b746710621f14ff | next:work其他原required/ARCH；D938/939未齐，F07/F10待裁定，无待poll
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
