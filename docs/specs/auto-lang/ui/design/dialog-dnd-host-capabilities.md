@@ -82,3 +82,23 @@ handler 落盘 `finish=copy`；启动停滞/交付失败由 `ChildGuard`（spawn
 归属，Drop 全出口 kill+wait）回收宿主子进程，退出键态零残留。
 examples/plan804_real_host 与 STALL_MS/NO_DRAG 反控钩子是**验收设施**，
 不新增生产 API 或异步拖出语义。
+
+## 多文件选择扩展（PLAN-988）
+
+新增 `dialog_open_files(filter) -> str`，native ID 9942，canonical 名
+`auto.dialog.open_files`。返回 JSON 字符串数组，路径顺序与宿主返回一致，
+正确保留中文、反斜杠和引号；取消返回 `[]`。不能将多次单选冒充多选。
+
+`DialogHostProvider::open_files(&str) -> Result<Vec<String>, String>` 为
+新增可选方法：旧provider默认返回明确不支持错误，保留open/save兼容。
+完全缺席provider时沿单选规则，在消费实参前报 feature-disabled 错误。
+在位方法错误向VM传播，不能映射为取消。实例覆盖/默认快照/锁外调用
+规则继续成立。
+
+UI宿主复用filter与父窗策略，经rfd.pick_files一次取回全部路径；VM
+默认parented，生成Rust门面沿已有unparented策略，差异保持公开，不声称
+本扩展修复既有a2r父窗接线。生成入口为
+`auto_ui_runtime::ui::dialog::open_files`，同样返回JSON数组。
+
+core provider回归只证明边界语义；真实选择器/焦点恢复与Reader产品
+验收仍要求独立实证，不能用fake provider替代。

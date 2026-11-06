@@ -35,3 +35,18 @@ VM 臂 `fs.*` 原生 shim（`crates/auto-lang/src/vm/native.rs`）的**失败返
 
 `vm_tests.rs::test_plan659_fs_canonical_failure_returns_empty_sentinel`
 （非法字符路径确定性失败，golden `[]`）。
+
+## 动态整数列表字节写入（PLAN-988）
+
+`File.write_bytes` 的 VM FFI 参数转换同时接受原生产生的
+`ListData<i32>` 与语言数组、`List.new/push`、JSON 数组产生的
+`ListData<Value>`。后者仅接受整数标签（Int/Uint/I64/USize/Byte/I8/U8），
+并在进入写文件函数前检查 i32 范围；浮点、布尔、字符串等非整数或越界
+整数报错，不跳过、不归零，不覆盖已有目标文件。非法句柄仍具名拒绝。
+
+合法 0..255 字节逐字保持；写入函数既有 i32→u8 转换行为不因本修复改变，
+这不是对任意范围整数新增字节合法性保证。该参数转换也用于 TCP/UDP 的
+字节写入，消费者验收须分别覆盖，不以文件单测推断网络行为全部通过。
+
+永久回归：`vm::ffi::convert::plan988_integer_bridge_tests`，含源码数组/
+动态列表/JSON→真实文件、全256值、非法元素拒写与原文件保持。
