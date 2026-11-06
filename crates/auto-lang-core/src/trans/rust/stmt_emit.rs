@@ -127,6 +127,7 @@ impl RustTrans {
                 .iter()
                 .map(|(name, _)| name.clone())
                 .collect::<Vec<_>>(),
+            &self.fn_param_types,
         );
         self.http_stream_vars.clear();
         self.http_stream_async_vars.clear();
@@ -752,8 +753,11 @@ impl RustTrans {
                 let try_body = body;
                 let previous_json_slots = self.json_null_slots.clone();
                 let previous_byte_slots = self.byte_list_slots.clone();
-                self.byte_list_slots
-                    .extend(Self::collect_byte_list_slots(&try_body, &[]));
+                self.byte_list_slots.extend(Self::collect_byte_list_slots(
+                    &try_body,
+                    &[],
+                    &self.fn_param_types,
+                ));
                 self.json_null_slots
                     .extend(Self::collect_json_null_slots_in(
                         &try_body,

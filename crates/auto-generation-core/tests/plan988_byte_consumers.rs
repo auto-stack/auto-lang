@@ -185,6 +185,19 @@ fn plan988_source_bytes_compile_run_and_preserve_rejected_targets() {
         ("assignment_then_push", "var bs = []\nlet blank = []\nbs = blank\nlet first = File.write_bytes(FIRST, bs)\nbs.push(255)\nlet rc = File.write_bytes(PATH, bs)\nprint(rc)", vec![255]),
         ("assignment_propagated_fill", "var bs = []\nvar middle = []\nlet filled = [255]\nbs = middle\nmiddle = filled\nlet first = File.write_bytes(FIRST, bs)\nlet rc = File.write_bytes(PATH, middle)\nprint(rc)", vec![255]),
     ] { cases.push((name,source.into(),expected,false)); }
+    let save = "fn save(p str, bs []int) int { return File.write_bytes(p, bs) }";
+    for (name, body, later) in [
+        ("typed_context_after", "var bs = []\nlet first = File.write_bytes(FIRST, bs)\nlet rc = save(PATH, bs)\nprint(rc)", false),
+        ("typed_context_before", "var bs = []\nlet first = save(FIRST, bs)\nlet rc = File.write_bytes(PATH, bs)\nprint(rc)", false),
+        ("typed_context_after_later", "var bs = []\nlet first = File.write_bytes(FIRST, bs)\nlet rc = save(PATH, bs)\nprint(rc)", true),
+        ("typed_context_before_later", "var bs = []\nlet first = save(FIRST, bs)\nlet rc = File.write_bytes(PATH, bs)\nprint(rc)", true),
+        ("typed_context_assignment", "var bs = []\nlet blank = []\nbs = blank\nlet first = File.write_bytes(FIRST, bs)\nlet rc = save(PATH, bs)\nprint(rc)", false),
+        ("typed_context_alias", "var bs = []\nlet first = File.write_bytes(FIRST, bs)\nlet forwarded = bs\nlet rc = save(PATH, forwarded)\nprint(rc)", false),
+    ] {
+        let main = format!("fn main() {{\n{body}\n}}");
+        let source = if later { format!("{main}\n{save}") } else { format!("{save}\n{main}") };
+        cases.push((name, source, vec![], false));
+    }
     for (name, json, expected, reject) in [
         ("json_list", "[0,127,128,255]", bytes.to_vec(), false),
         ("json_empty", "[]", vec![], false),

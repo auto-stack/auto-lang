@@ -29,6 +29,12 @@ impl RustTrans {
         self.json_value_vars.clear();
         self.json_value_bindings.clear();
         self.json_null_slots = Self::collect_json_null_slots(fn_decl);
+        // Whole-file trans() already pre-registers these signatures. Also
+        // register the current declaration for direct transpile_fn callers.
+        self.fn_param_types.insert(
+            fn_decl.name.clone(),
+            fn_decl.params.iter().map(|p| p.ty.clone()).collect(),
+        );
         self.byte_list_slots = Self::collect_byte_list_slots(
             &fn_decl.body,
             &fn_decl
@@ -36,6 +42,7 @@ impl RustTrans {
                 .iter()
                 .map(|p| p.name.clone())
                 .collect::<Vec<_>>(),
+            &self.fn_param_types,
         );
         // Plan 427: is-arm &str bindings are function-scoped (mirrors
         // local_var_types above).
