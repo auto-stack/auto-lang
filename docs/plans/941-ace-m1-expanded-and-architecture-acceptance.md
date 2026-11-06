@@ -1463,6 +1463,22 @@ stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress（两个
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:57 | from:work | to:work | status:executing6/21 | outcome:in_progress（CT两个ARCH闭合，完整原目标保持） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:1548132986430e7298bcaaccf7f0d1554d79cb31 | next:work CT-DEADLINE-01阶段诊断与其余required/ARCH；无待poll句柄
 
+### 第58轮：CT-DEADLINE-01定位为计数测试的时序前提错误；F-941-07最小提案（2026-11-06）
+
+- 第57轮两项ARCH实测闭合与当前709P8F289U为progress；本轮入口重读r4 executing6/21、同树154813298 clean与worktree归属、main代码无WIP。没有live测试待续；只诊断既有快速截止控制的两次真实失败，不改生产driver/计数/预算/源码oracle，不据重放偶绿关闭问题。
+- **同库真实阶段探针**：只在scope调用当前既有public CteDriver与原`baseline_source_bench(115,0)`，原wall_deck生成函数逐字复用（4distinct calls、267218B、300ms、native off），显式新空store，无复制编译器或AV；使用当前唯一预建libace_comptime-dd3d00d39c760d33.rlib，run前后哈希恒等。普通调度实测project173.2839ms→AV span1205.8118ms，deadline资源态/非language、ct_execute1、不发布；原默认限额单call合法正控1080697、真实AV1、发布成功。第一次手工rustc链接缺windows.0.52.0.lib，原失败capture保留；仅补现有x64 native链接路径与项目rust-lld/32MiB栈后诊断build通过，非语言/CT缺陷或认证通过。
+- **排除“分配跟踪器单独导致”假设**：原conformance确实有全局TrackingAlloc；把完全相同allocator复制入诊断调用方（只是诊断代码），其他库/输入/300ms全不变，project222.2337ms、AV span1390.2312ms，仍ct_execute1/资源态/不发布。它增加开销，但仅凭此不能归因为唯一原因。
+- **原测试精确现场**：在唯一树临时只插入outcome输出（先eprintln、后独立具名trace文件）且原115helper/4call/300ms/全部assert不变；两次实际具名测试均通过，trace显示project**279.1709ms**、AV span1332.2566ms、wall1623.2449ms、ct_execute1。计时/执行判断发生在打印前，不把这次绿涂成原2红已修；其接近300ms表明该测试依赖现场调度。临时文件每次finally逐字节恢复原SHA、树clean；完整源与断言从未提交改动。恢复后又正式`--discover-only`重建原conformance二进制（整2389.6582ms，执行0，不充PASS），避免留下诊断产物冒当前原测试。
+- **决定性阶段反证**：只对诊断进程自身设置单核affinity并加一条自有竞争线程，其他进程不改；其余仍原同库/115helper/4call/267218B/300ms，竞争在query返回立即停止并join。实际project**383.5717ms**、wall**386.5982ms**、cache None、**没有av_execute span/ct_execute=0**，resource.deadline/非language、**published=None**；AV前已用尽累计预算，0是真实而非丢计数。恢复无竞争后同原默认单call合法正控仍1080697、AV1/发布成功。原快deck在普通与竞争两目录字节完全相同，SHA **e5fcb26e665afc3bb590dd4ee1d006ec735382c739773a55ae86f03806c0325c**；原driver loop进入首AV call前`if dl.exceeded(){return dl.diag(...)}`与现场精确一致。
+- 根因是原fast控制把“300ms累计资源超时”误推成“必已进入AV且ct_execute>=1”；前端耗时/调度稍变即可在进入AV前正确拒绝，原2红不宜归为生产计数缺陷。也不能把AV前过期伪记成1，或放宽时间、缩源码/查询来保这个前提。诊断audit`ct-deadline-restored-discovery/diagnosis-audit.json` SHA **43b4d5108191baaf81e292bfb84c2b3ab76e8cc7f483f008a4804da6cadcce22**；决定性raw`ct-deadline-contention-diagnosis/run.stdout` SHA **3f497322fdf6058721acba8cb6c85bcad4e6ecf569a9d4591153ecd2379f8960**。所有578当前CT输入与13生产工具/库恢复后SHA仍恒等，无存活探针/负载线程。
+- **具名F-941-07最小修复提案（待用户授权，不在本轮实施）**：在941新增test-only phase，主要触`experimental/ace/crates/comptime/tests/cases/cte_resources_tests.rs`，必要的私有确定性计数回归仍用原driver/AV边界；不改生产driver/公共协议/计数规则。让原300ms/115helper/4call资源控制按真实阶段核计数（AV前耗尽=0，实际进入执行的合法路径必须有真实执行事实），补明确AV前拒绝与实际AV超时/失败计数的区分、漏记/伪造计数反控、无发布与合法恢复。原`cte_resources_request_wall_real_ten_seconds`的32查询10s累计负例及同规模4调用正控原样保留，用其实际AV与发布断言保原执行义务，不能靠修改fast断言删除AV侧保障。验证走具名新/受影响deadline控制与原10s用例，未触的GC/32MiB512修订/原性能证据保持来源和历史状态，不为test-only更改立刻重跑整135压力；最终T12完整冻结并集仍待，当前134P1F原记录不重标绿。
+- §5.4明确“已归档能力发现新缺陷默认走具名独立修复流程”，不能把F04/F05/F06具名phase扩成任意修复授权；将询问用户是否再加F07 phase（或独立修复）。这里只提交可审提案，没有改变旧验收或任务数量。若授权，按new技能修订r5再执行T22/23；未答复时继续其他原required/ARCH证据，仅F07修复不动。
+- 当前有效组合仍**709P8F289U、原102P211U313/ARCH2P47U、6/21、claim全false**。本轮无交付代码commit；临时诊断源已还原、原binary恢复prepare、所有原真实红/guard/D938939/健康门仍保持。下一步F07授权若到则r5→work；否则继续其余合法证据适配，不因为部分待裁定停掉整目标。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress（CTdeadline时序前提原因已实证；F07最小修复待裁定） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:1548132986430e7298bcaaccf7f0d1554d79cb31 | task_ids:T13诊断/T08真实分态 | evidence:原源/同库有AV1与前端383.57ms导致AV0对照、原test临时trace并恢复、578/13身份恒等 | blockers:F07新phase授权只阻该修复；原其余证据仍可推进 | next_responsible_role:work 其余证据；授权到达则new修r5
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:58 | from:work | to:work | status:executing6/21 | outcome:in_progress（原因实证与最小提案，完整目标保持） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:1548132986430e7298bcaaccf7f0d1554d79cb31 | next:work 其他原required/ARCH；F07授权到达则new→work，无待poll
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1481,3 +1497,5 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:57 | from:work | to:wo
 9. **F-941-05已关闭（r3 T18/19，第43轮）**：同树Rust字段写值根修复、参数边界/三代缓存、稳定B工具完整405门、292当前默认证书/daily及原14优化严格联读已闭，原3缺Rust格位转PASS。最终独立复审仍T14；不扩为F06/其他后端修复，原完整任务与全部具名red/unknown保持。
 
 10. **F-941-06工作阶段已关闭（r4 T20/21，第52轮）**：用户授权的typed data诊断修复、原4反例/合法与失败边界、1493完整职责/消费者门、408当前Case重采/原16诊断严格PASS及当前全组合679P8F319U已闭。SD10候选已在冻结树；最终独立review仍T14，不再等待授权，不扩为其他后端修复。
+
+11. **F-941-07待裁定**：原CT 300ms fast控制在AV前已过期时正确ct_execute0，但旧断言固定>=1而误红；同库/原267218B输入的单核竞争反证已定位（第58轮）。提请在941新增test-only修复phase：保原115helper/4call/300ms与32query/10s原门及合法4call正控，按真实AV到达分态修正测试并补确定性回归/反控，不改生产计数/预算/driver。依据§5.4需具名授权；未授权仅不动该修复，继续原其他证据。
