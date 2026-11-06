@@ -96,7 +96,7 @@ Type ~45 变体 / Op 39 / 辅助枚举 20+），legacy 双证 = `auto-lang-core/
 | L-15 | tuple（:422；codegen expr_containers.rs:57）+ TupleDestruct（:379） | 规范已定 | 真实支持 | 无 | 962 §0（元组/解构） |
 | L-16 | array/List literal（:344）/map=object literal（:347）/set literal | 规范已定（array/object）；set **无此形**（无 AST 变体/parser） | array/object 真实支持 | 部分（Generic List/Result :72，无字面量语法） | 962 §0；object 动态字典面→964 §0 |
 | L-17 | Option/Result 构造与模式（:358-361/384-387；binding V 行） | 规范已定 | 真实支持；**已知差异**：V03 `diff-legacy-runtime` | 部分（Optional/Generic Result + IsMatch） | 962 §0（组合域已交付部分 IV） |
-| L-18 | is 语句/表达式 + Cover/StructPattern（:355/424；stmt_emit.rs:2856-3078） | 规范已定 | 真实支持；SEM-02：legacy 负索引保留（L06 差异登记，不得冒绿） | 部分（IsMatch :441 语句位） | 模式/解构→962 §0；is-表达式→965 §0 |
+| L-18 | is 语句/表达式 + Cover/StructPattern（:355/424；stmt_emit.rs:2856-3078） | 规范已定 | 真实支持；**已知差异**：SEM-02 legacy 负索引保留（binding L06 差异登记，legacy 不得冒绿） | 部分（IsMatch :441 语句位） | 模式/解构→962 §0；is-表达式→965 §0 |
 | L-19 | range `..`/`..=`（Range :343） | 规范已定 | 真实支持 | 无 | 962 §0（范围循环） |
 
 ### L-D 动态/闭包族（oracle：binding D/K 行）
@@ -155,9 +155,12 @@ Type ~45 变体 / Op 39 / 辅助枚举 20+），legacy 双证 = `auto-lang-core/
 | L-49 | cast `as` / 转换 `to`（:371-377；expr_control.rs:123/155） | 规范已定 | 真实支持 | 部分（TypeWordArg :287，text 域） | 961 §0（cast/to 完整数值转换） |
 
 **L 表合计 49 行**，覆盖旧 AST 全部具名语法族与全部"parser-only/AST-only/无此形"项；
-已知旧 bug/差异共 14 处行内登记（L-01/02/03/06/17/18/20/22/23/25/26/33/47/48），
-未决 1 行（L-36）。legacy 侧 parser-only/AST-only 合计 11 行（L-03 byte/L-08/L-12/L-13/
-L-14/L-23/L-24/L-38/L-44 部分/L-45 + L-04 无此形），**不得把 AST 枚举在场当运行支持**。
+分账：parser-only/AST-only **10 行**（L-03/08/12/13/14/23/24/38/44/45，其中 L-44 仅
+OnEvents/SceneDecl 臂、L-03 仅 byte 字面量臂）、无此形 **3 行**（L-04 i128/f32 后缀、
+L-16 set 字面量、L-46 spread/when-match/global）、未决 **1 行**（L-36），其余 **35 行**
+legacy 真实支持——其中 **13 行**携带已知旧bug/差异标记（L-01/02/06/10/17/18/20/22/25/
+26/33/47/48），另 L-23 为 AST-only 桩兼已知旧bug（合计 14 处）。
+**不得把 AST 枚举在场当运行支持**。
 
 ## 4. A/B 表刷新：公共入口与 A2X 目标
 
