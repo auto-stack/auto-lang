@@ -1389,6 +1389,21 @@ stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress（T21/F0
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:52 | from:work | to:work | status:executing6/21 | outcome:in_progress（F06关闭，完整目标保持） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:be7593e00a03edf8fd1985de8bfe49a5a3475429 | next:work 原完整required/ARCH/证据；无待poll句柄
 
+### 第53轮：原记录/文本28格严格同源接线，required102/313（2026-11-06）
+
+- 入口复核main r4 executing6/21、be7593e00同树clean/分支归属正确、main无代码WIP，无待poll或待授权；本轮继续T01/04/11的原义务适配，不新增producer修复。冻结提交 **880c1a94d5251e7c721c564927297459bb5fa588**，7文件；新增只读ace_m1_legacy_data.py、组合接线、旧map/registry一致更新、治理反控和architecture候选。原T01..15仍未完整闭合，完成计数保持6/21。
+- **独立对应关系**：旧冻结binding必须以namespace/ID/target取行，不能把同名scenario:R01当corpus:R01；manifest源字节、现行独立source合同与原required目标同时一致。有限14例：R01..06、T01/T02/T04数值原19/9/23/51/42/21/38/27/128512；T08原slice-oob映射TextIndex；R09 nominal-type→source.type-mismatch、R10 use-after-move→verify.use-after-move、T06 borrow-escape→verify.borrow-escape、T07 invalid-scalar→text.invalid-scalar。仅AC/AV共28格，M01..12不在旧131行中，不拿同返回值方法变体替R07/R08/T03/T05，不碰legacy-AVM/A2R。
+- **事实重新判定**：接线只消费原严格data/diagnostic reader已核验当前工具、原Case/source/request/response/owner/profile/caps的事实，重新按旧独立oracle比较实际值/具名trap/结构化code与目标stage，保留来源slot及请求/响应SHA。原readerFAIL或父Case非PASS不能转绿；诊断无权威仍U、pending不塞execution_summary。T08 native仅实际RT-FAIL code=-10且exit70支持具名越界；通用70不命名trap，实际成功返回70也不替代T08。现data profile是AV显式目标内同源执行，不冒称旧owned recipe内部已验证，原资源/生命周期/场景义务另算。
+- **发现表不冒执行**：新增28个精确formal locators，旧304 entries逐项原样，现332；原313cells/251已绑定/62未绑定、旧38 cert-gap、批准source/expected/NA/accepted/future/样本/预算与全部其他字段原样，只有这28格reader_status和adapter gap转supported。表仍execution UNOBSERVED/executed0/mapping_complete=false。map SHA **2e37ca8851e440e69344f750909acf28bf5615df7c8ee799e185db2be78fe159**；registry只同步该合同指针。
+- **定向反例与正式门**：新增7永久测试（6 join +1 locator），覆盖同名命名空间/方法变体排除、错数值/bool数值/同值异源/错schema或hash/声明oracle更改、父FAIL/源FAIL/U、诊断无权威/错code或目标stage、伪message、generic70/错runtime trap、缺原slot、exact新locator不可由旧同源locator冒替。冻结后正式`cargo t infra-ace-m1-arch --out <scope>/legacy-data-frozen-governance/gate`，**192/192 PASS，0skip/0error**；内部整7.181279s，原capture整7750.4141ms，exit0。results SHA **d8867fe020189654ba1b6471928408f636db77ad946bad3752c600d0187ac4bb**。Python观察层改动不影响生产工具/语义，不重复上轮1493编译/性能门或408实际源执行。
+- **当前冻结全组合**：沿第52轮真实before/after与composed-bindings-rt-views.json，原reader/Popen禁用、同一LiveBudget48MiB/原4MiB输出等帽不变，exit0。`legacy-data-frozen-preview/preview.stdout` **610285B / SHA c8a0b7553e6a0fdf5ba249c68c9532b8bf09aa65d101568d5c82a22ed13e49e0**；14774.5970ms，进程29822976B/Job31076352B，全时峰**48478012B<50331648B**/保留30351848B。开发预览也通过，但不与冻结结果重复计为义务执行。
+- **守恒审计**：现**707P8F291U /1006登记/24合同**，仅原28格U→P，其他978项判定原样，原74条已观测对象逐项一致；原required **102P/211U/313**。data/diagnostic/certification和ARCH源报告逐对象不变；13工具/库当前SHA全部与第52轮真身份相同；7提交文件Git过滤后blob逐一等冻结HEAD、树clean。`legacy-data-frozen-preview/closure-audit.json` SHA **53e8adf1e02162c4ecb8ff794a714baf9791dc5b24870f3741655c83d550ce4a**。0新producer/guest执行；资源/场景/旧认证不由数值或定位器推断。required_universe_closed、acceptance_system_delivered、can_claim_expanded_m1仍全部false。
+- 继续原T01..13：旧211U、ARCH49U、源域其余31U与8实际scalar红；D938/939尚未交齐、旧38cert-gap及T13健康门继续保持；最终独立T14与合入T15未开始，无新用户决定/未删除在途scope。下一步盘点旧场景/ARCH真实producer观察边与剩余同源义务，按原预算接线，不用注册名或当前PASS摘要核销。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress（原record/text28格证据闭合，完整任务未齐） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | base_commit:be7593e00a03edf8fd1985de8bfe49a5a3475429 | code_commit:880c1a94d5251e7c721c564927297459bb5fa588 | task_ids:T01/04/11原required部分适配 | evidence:192正式治理PASS/707P8F291U/102原格位/28守恒变化/13工具稳定 | blockers:其余required/ARCH/具名源域和健康门未齐；无新增用户决定 | next_responsible_role:work 剩余同源义务、场景与ARCH真实观察边
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:53 | from:work | to:work | status:executing6/21 | outcome:in_progress（原required74→102；原尺度保持） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:880c1a94d5251e7c721c564927297459bb5fa588 | next:work 原完整required/ARCH/证据，无待poll句柄
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
