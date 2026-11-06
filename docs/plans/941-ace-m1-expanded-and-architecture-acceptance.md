@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 7
+current_step: 8
 total_steps: 23
 ---
 
@@ -66,7 +66,7 @@ total_steps: 23
 
 2026-11-06 r4追加授权：用户在第48轮对F-941-06归属问题明确“授权941新增修复phase（推荐）”（call_ad921d1cbddb484085b350b7ee0bc3f5）。本次认领原AV data链结构化诊断丢失的最小提案，新增§5.10/T20/21/AC-16/V25..28/SD-10；继续原941唯一树与完整goal，不新立计划、不增加仓库或提高预算。允许work、原授权独立review及merge；不重复确认。
 
-2026-11-06 F-941-08追加授权已收到：用户对call_f0d62e537ab843b6a2d98593aaf23bcd明确“授权941新增修复phase（推荐）”。本项允许把第59轮具名source-CT meta能力冷/暖/撤销检查提案纳入941修复、复审与合入原链；继续同一树/仓库/原预算，不重复确认。第61轮已将该授权落实为r5 §5.11/T22/23/AC-17/V29..32/SD-11；第62轮T22实现提交be77185d5，当前7/23；下一work T23冻结职责/真实consumer/身份闭包复验后才能核销F08。F-941-07独立test-only提案仍待答复，不能从此授权推定。
+2026-11-06 F-941-08追加授权已收到：用户对call_f0d62e537ab843b6a2d98593aaf23bcd明确“授权941新增修复phase（推荐）”。本项允许把第59轮具名source-CT meta能力冷/暖/撤销检查提案纳入941修复、复审与合入原链；继续同一树/仓库/原预算，不重复确认。第61轮已将该授权落实为r5 §5.11/T22/23/AC-17/V29..32/SD-11；第62轮T22实现、第64轮T23当前职责/四端/身份闭包严格验证已完成，F08工作阶段关闭，当前8/23；原完整T01..15及最终独立T14继续。F-941-07独立test-only提案仍待答复，不能从此授权推定。
 
 ## 5. 详细设计
 
@@ -252,7 +252,7 @@ F08仅在V29..32/AC17/T22/23当前源、实际四端接口、冷暖状态与永�
 
 ## 6. 测试设计
 
-V-01..18为原完整合同，实际分项证据见§9，未闭项不以登记或控制替代执行；r2/r3补例按下表状态。r4的V25..28已按第52轮完成工作验证；r5的V29..31已按第62轮T22完成工作层验证，V32/T23尚待；不把第59轮诊断原型当修复通过。实际既有entry见§3；新增拟治理测试`scripts/tests/test_ace_m1_arch_acceptance.py`、套件`crates/auto-lang/test/cases/ace-m1-expanded/`、必要新语言`test_cases/ace_m1_arch.rs`首例由T-02沿既有正式父入口使能，全域由T-04/05/11使能。独立oracle包括现scenario规范、902/904/reference、C三域手写reference与布局/原797 caller/provider；新增跨机制正例的手算oracle与实际source先固定，不运行emitter生成expected。实现自查→同一树独立上下文review，用户未指定其他人员/模型，不自动spawn或创建chat。
+V-01..18为原完整合同，实际分项证据见§9，未闭项不以登记或控制替代执行；r2/r3补例按下表状态。r4的V25..28已按第52轮完成工作验证；r5的V29..31已按第62轮T22、V32/T23按第64轮续录完成工作层验证，最终独立T14仍待；不把第59轮诊断原型当修复通过。实际既有entry见§3；新增拟治理测试`scripts/tests/test_ace_m1_arch_acceptance.py`、套件`crates/auto-lang/test/cases/ace-m1-expanded/`、必要新语言`test_cases/ace_m1_arch.rs`首例由T-02沿既有正式父入口使能，全域由T-04/05/11使能。独立oracle包括现scenario规范、902/904/reference、C三域手写reference与布局/原797 caller/provider；新增跨机制正例的手算oracle与实际source先固定，不运行emitter生成expected。实现自查→同一树独立上下文review，用户未指定其他人员/模型，不自动spawn或创建chat。
 
 | Case ID | AC / invariant | setup / actual entry / work owner | observable oracle / distinguishing assertion | boundary |
 |---|---|---|---|---|
@@ -305,7 +305,7 @@ r4 F06补充验证（T20定向12项见§9第50轮，T21完整职责1493/当前�
 | V-28 | AC-02/03/09/16 当前生产者严格联读 | 冻结完整ace-av/ace-native/infra组、原data36+诊断16、工具准备后pin闭包和受影响原始wire重采，再原reader全组合 | 原4真实FAIL转PASS；其余8 scalar red和缺义务保持，旧code空/错code/错source/旧worker/错nonce依旧拒或非PASS；不只跑合成packet测试；work T21 |
 
 
-### r5 F08补充验证（第62轮T22完成；T23消费者/冻结验证待执行）
+### r5 F08补充验证（第62轮T22、第64轮T23工作阶段完成；最终T14仍待）
 
 | ID | AC / owner_stage | 入口与独立观察 | 可区分反例/覆盖边界 |
 |---|---|---|---|
@@ -369,7 +369,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-21 | work | T-20冻结提交；正式准备后的真实工具/依赖身份 | 完整ace-av/ace-native/infra及原data36+诊断16门；受AV/其他实际hash变化影响的source/wire/证书闭包真实重采，原strict联读与675P12F319U逐格对账；F06具名关闭、SD-10候选交接；AC-02/03/09/16，V-28 | [x] |
 
 | T-22 | work | 用户第60轮F08内修授权；§5.11、3b364267b基面/第59轮反证与Spec | 先永久反例红与准入接缝有界可行性，再修source-CT产品每请求meta/保护名准入；新meta_capability_941冷/暖/撤销/再授cap、普通名、实例/嵌套兄弟及失败/资源分态；只用原producer/权威规则；AC-17/V29..31/SD11 | [✅ 已完成] 第62轮be77185d5；原实现9例1P8F，当前9例及原受影响产品共17P、core CT10P；完整职责/预算与真实消费者仍归T23 |
-| T-23 | work | T-22冻结；正确Cargo feature/config与真实当前工具先prepare | 完整ace-comptime/治理与具名真实consumer联合；原14CT/四CLI与受实际身份变化影响的raw/cert/daily/优化严格重验，child/原CT机制同窗采；守恒其余red/U、保F07真实终态；SD11候选与最终T14交接；AC-02/03/07/09/17、V32 | [ ] |
+| T-23 | work | T-22冻结；正确Cargo feature/config与真实当前工具先prepare | 完整ace-comptime/治理与具名真实consumer联合；原14CT/四CLI与受实际身份变化影响的raw/cert/daily/优化严格重验，child/原CT机制同窗采；守恒其余red/U、保F07真实终态；SD11候选与最终T14交接；AC-02/03/07/09/17、V32 | [✅ 已完成] 第64轮续录81c10fcc9；原并集731P1旧F07红，当前292 cert/daily+14优化+466 Case+3 CT机制严格联读710P8F288U；完整941仍未齐，最终T14待 |
 
 T-18/19已完成（§9第43轮）；T20/T21已完成（第52轮），当前回到原完整T-01..13。 r5接续T22/23修F08；F07仍独立待批，不预占/勾选任务。T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；继续原T-01/T-02等完整任务，尚未关闭的验收保持未完成。
 
@@ -1620,6 +1620,21 @@ stage: work | plan_id:PLAN-941 | plan_revision:r5 | outcome:progress（T23原完
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r5 | round:64 | from:work | to:work | status:executing7/23 | outcome:progress（原冻结并集731P1旧F07红、Case466/优化14/CT观察3已真实闭，完整目标未齐） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:4ece6bd6a08a4cdb7658de9c96a8d1574dfefc26 | next:poll exec97241，原292 cert/daily终态后run close-f94108-current-composed.py，完成当前严格读取再核T23/F08
 
+### 第64轮续录：292认证终态及严格当前组合通过，T23/F08工作阶段关闭（8/23）
+
+- 原exec97241/root29760已实际exit0，**292当前默认certify/certify-c及292独立daily操作**均完成；终态SHA **62a392c0d08f82bd1795db6630f5f143162ec6937f6648b81c33fdda55a05655**。所有原源码、独立ref、默认模式、40 collections显式debug、实际默认与原优化配置保持；不拿CLI返回PASS代严格判断。现无待poll或活动构建/采集句柄。
+- 首次当前严格读取按预期fail-closed：原窗口14 CT功能检查未开`AUTO_CASE_WIRE_EVIDENCE`，缺原始exchange；在`f94108-current-composed/`保留失败raw（command SHA **883a461c3b928cfa46eca403e55ca20319e3c293b880d51a69ab0501e0ab0969**）。只对原14 CT开原wire留存参数后实际重采，14/14P，前后13工具相同，原窗口功能结果保留；不重跑原压力/其余452/292/优化。新收据`f94108-ct-source-wire-refresh/gate/results.json` SHA **7eac5c03f84e1c01e591230fb55711175b7b59f92e8a83d2943577d745e1df22**。466是当前唯一Case义务数，另如实保留本次14功能→带wire重放的实际执行，不把重放重复计入覆盖。
+- 第二次严格读取已走到最终登记对账，正确拒绝CT新合同在registry.json仍引用旧SHA（v2 command SHA **875668562cdcc3ce31245e50852ab2fdf261edaed565b2cb76113ed31a47fa57**）。定位为本轮合同更新漏同步941自己的声明引用，按T23既定授权补两处SHA，**81c10fcc9a2ba2178f5405f34f597930afbf0ac6**（仅registry.json 2增2删），没有改变required/expected/阈值或producer代码。当前实际registry26合同逐hash相符；204治理控制再次全PASS（5.286s，raw SHA **74c709e5fb604771d755412b00c8e8a5b0baec29a5428334908eabd79666572d**）。registry不在578/581 CT producer依赖中，13工具/实际源字节不变，原4ece6bd6a冻结native/Cargo/原始before证据有效复用，不因声明修正重编重测压力。
+- **当前严格全组合实际exit0**：`f94108-current-composed-v3/preview.stdout` **616220B**，SHA **abfedd92ff11dc1e82df53af0e8999b3fa32c0fbd475dc71223c9497f85f5f27**；原readers禁止隐式Popen，逐文件/原request/response/源码/编译配置/独立oracle/原生终态与身份严格联读**292认证+292 daily、14原优化、466 Case、6 untyped前门、3 CT机制**。计量 **10027.7817ms**，保留30545530B/峰预留**48633039B < 50331648B**，进程30121984B/Job31371264B，stdout在4MiB帽内。未放宽预算/截小required，也未隐式编译、启动producer或回填任何旧before。
+- 原**1006个registered键/26合同**守恒，当前 **710PASS/8FAIL/288UNOBSERVED**；与原709P8F289U相比仅`architecture/ARCH-04/instance-child-ct-version`由U→PASS，原另两CT机制继续当前PASS。原313 required仍**102P/211U**、同一8 scalar红/38旧cert-gap、NA/accepted/future/required哈希均不变；旧F07真实红继续保留。`required_universe_closed`、`acceptance_system_delivered`、`can_claim_expanded_m1`仍全false，不以本phase关闭声称整个M1/941交付。
+- v3的严格reader已成功，之后辅助闭合断言把包含新wire哈希的整个legacy对象与旧对象强等而失败；只修辅助对账为逐1006 verdict和原313语义摘要/ledger/hash/NA/accepted/future/cert-gap守恒，明确允许当前原始请求/响应provenance变化。复用同一已成功v3 raw，不改reader、不重跑gate/全组合。最终审计`f94108-current-composed-v3/closure-audit.json` SHA **8e240f8a00a9f4dd5274a026b2ff079371a1df5d8a424e59d820038d3aa8cc22**，包括前述所有当前条目/计量、额外14 wire重放和旧semantic保持证明。
+- **T23、V32、AC17工作层与F-941-08已闭合**，累计**8/23**；T22的普通同名/保护模板/缺cap冷拒/暖撤权/再授真实hit/旧product有效/typed投影9永久例与本轮完整职责/当前四端证据闭合，SD11仍原candidate交最终r5独立T14。生产实现be77185d5、消费者/原native冻结4ece6bd6a、最后声明修正81c10fcc9均具名，current tree clean。未合并/归档、未提前发布主Spec，所有材料仍941在途scope。
+- 下一步恢复原T01..13完整映射/未观测机制与可独立证据；F07独立修复仍待裁定，不由F08授权推定，其他8 scalar红/D938939/原required及健康/T14保持未完成。此处为具名修复phase工作完成，不是整个Plan execution_done，也不将完整目标缩成该修复。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r5 | outcome:progress（T23/F08工作闭合，原完整work未齐） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | native_frozen_commit:4ece6bd6a08a4cdb7658de9c96a8d1574dfefc26 | code_commit:81c10fcc9a2ba2178f5405f34f597930afbf0ac6 | task_ids:T23/V32/AC17-work/SD11候选 | evidence:f94108-current-composed-v3/closure-audit.json | next_responsible_role:work，原T01..13；最终独立T14仍待，无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r5 | round:64-addendum | from:work | to:work | status:executing8/23 | outcome:progress（F08 phase当前严格闭合；完整目标未齐） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:81c10fcc9a2ba2178f5405f34f597930afbf0ac6 | next:work原T01..13，710P8F288U当前报告基面，无待poll；F07仍独立待批
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1641,4 +1656,4 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r5 | round:64 | from:work | to:wo
 
 11. **F-941-07待裁定**：原CT 300ms fast控制在AV前已过期时正确ct_execute0，但旧断言固定>=1而误红；同库/原267218B输入的单核竞争反证已定位（第58轮）。提请在941新增test-only修复phase：保原115helper/4call/300ms与32query/10s原门及合法4call正控，按真实AV到达分态修正测试并补确定性回归/反控，不改生产计数/预算/driver。依据§5.4需具名授权；未授权仅不动该修复，继续原其他证据。
 
-12. **F-941-08已授权并纳入r5，T22完成、下一work T23**：第60轮用户授权已落实§5.11/T22/23/AC17/V29..32/SD11（第61轮），无需新确认；source-CT meta能力/普通名兼容与真实四端/身份回归按当前合同实施。当前生产提交be77185d5、9永久例与17产品/10 core CT定向通过（第62轮）；child正式采集及真实四端/职责/身份闭包归T23冻结。F08尚未关闭；F07仍独立待裁定，不能互相套用。
+12. **F-941-08工作阶段已关闭（r5 T22/T23，第64轮续录）**：用户原授权已完成实施与当前原职责/真实四端/292认证daily/原优化及CT机制严格联读，当前代码81c10fcc9、710P8F288U、8/23。无待poll，不再等待F08授权或重跑已有效冻结证据；原完整任务及最终独立T14仍待。F07独立test-only修复仍待裁定，不能由F08授权推定。
