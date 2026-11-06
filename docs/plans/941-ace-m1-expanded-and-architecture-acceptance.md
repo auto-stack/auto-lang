@@ -441,7 +441,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-24 | work | 第67轮用户F09内phase授权；§5.12/5adfe480d基面/已存三轴误收；原Specs | 先新restore_identity_941永久反例baseline红/合法绿，再修restore_verify当前逻辑归属typed拒，restore_bind/seed口径一致；补合法/codec/位置漂移/失败保旧与实际AV f94109_消费反控；AC-18、V33..35、SD12 | [x] 第69轮73cdf4871：SDK4/AV3永久例通过、修前三轴SDK/AV各3红，合法/codec/位置漂移与失败保旧闭合；完整职责与当前身份联读仍T25 |
 | T-25 | work | T-24冻结，正确Cargo配置/工具先prepare与逐项影响对账 | 一次完整ace-semantics/infra-ace-m1-arch及AV具名消费；五native源合同/当前观察重采、变化身份source/cert/daily/优化真实刷新、其余严格复用，当前组合逐键守恒；F09工作关闭/SD12候选交T14；AC-02/05/07/09/18、V36 | [x] 第70轮50fc3f770：完整206/222与实际AV、五native、466Case/292cert+daily/14原优化严格联读713P8F285U；F09工作阶段闭合，最终T14待 |
 | T-26 | work | 第75轮用户F10内phase授权；§5.13/3bf48bd03基面与原两次坐标失败 | 新source_positions_941先重放红/合法绿，再修UnitCatalog lambda诊断坐标；补冷/恢复/UTF-8前缀/词法结构/失败原子性/修复再恢复/tiny与相邻API；AC-19、V37..39、SD13 | [ ] 第76轮6eaf693af已提交最小坐标修复/新9例与原42联合PASS；保留F11整源/片段/手写首诊断差异，不以相邻绿关闭T26 |
-| T-27 | work | T-26冻结，实际触面及工具/源身份对账 | 完整ace-source/ace-syntax/infra-ace-m1-arch及必要具名consumer；五native当前合同与真实观察重采、13工具/变化身份source/cert/daily/优化刷新，其他证据strict复用，当前组合逐键守恒；F10工作关闭/SD13候选交T14；AC-04/05/07/09/19、V40 | [ ] 未执行；不能由规划或原716P顶当前验证 |
+| T-27 | work | T-26冻结，实际触面及工具/源身份对账 | 完整ace-source/ace-syntax/infra-ace-m1-arch及必要具名consumer；五native当前合同与真实观察重采、13工具/变化身份source/cert/daily/优化刷新，其他证据strict复用，当前组合逐键守恒；F10工作关闭/SD13候选交T14；AC-04/05/07/09/19、V40 | [ ] 第78轮完整source392/syntax132与治理238PASS、13工具8变/五新native9机制strict PASS；八工具Case/cert/daily/优化当前闭包及F11仍待，不以局部绿关闭 |
 
 T-18/19已完成（§9第43轮）；T20/T21已完成（第52轮），当前回到原完整T-01..13。 T22/23的F08已完成工作验证；r6的T24/25已完成F09工作阶段；下一入口回到原T01..13全部未闭任务；F07仍独立待批，不预占/勾选任务。T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；继续原T-01/T-02等完整任务，尚未关闭的验收保持未完成。
 
@@ -1914,6 +1914,22 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r7 | round:76 | from:work | to:wo
 stage: work | plan_id:PLAN-941 | plan_revision:r7 | outcome:progress（完整source392P、两pin+新模块真实对账；syntax原64MiB持续运行） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:6eaf693af169daa3108dd83921a66469edfcc48c | task_ids:T27部分；T26/F11仍待 | evidence:f94110-current-progress/audit.json | live_handle:unified_exec71915 | next_responsible_role:work先poll71915、不重启
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r7 | round:77 | from:work | to:work | status:executing10/27 | outcome:progress/verified_wait（source392真实完成；syntax原PID12248及session71915确认live） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:6eaf693af169daa3108dd83921a66469edfcc48c | next:work poll现71915→真实终态→顺序工具/证据闭包；F07/F11待答
+
+### 第78轮：work原语法窗口真实终态、当前8工具变化与五native重新认证（T27仍部分）
+
+- 上轮source392实际完成及71915原语法进程live为progress/verified_wait；本轮**先续poll71915**，确认相同PID12248仍在原64MiB用例，未重启/缩样/终止。原运行随后真实exit0，`ace-source`392/392PASS（原条件排除1），`ace-syntax`132/132PASS（排除0），not_run/errors均空，合计**524/524PASS**。source运行136.282s，syntax运行524.354s，原64MiB/200查询用例自身**508.7232245s**；原4096/4096/2048/8192深坏输入仍135.008s。所有原规模/预算/平台条件保持，71915现已终态不得再poll或重复启动。
+- 原source parent Job实际wall137242.844ms、CPU workload151781.25ms/meter1078.125ms、process峰1690521600B/Job1717268480B、439进程；syntax实际Job度量原样入审计。这是原nextest职责工作负载的原口径，不能套composer128MiB帽，也不从父峰倒算64MiB用例的generator/runtime分相峰。原64MiB成功终态只证明它执行并断言通过，未由nextest成功事件额外保存的内部每阶段数值不编0、不冒全ARCH预算已闭。
+- 同一clean代码6eaf693af，顺序显式prepare原12工具配置/13实际二进制，得到**8个变化**：AV、SYN、native、collections-native、CT、ABI、sema、A2X；两个parent及3个runtime未变。原路径的实际新hash在`f94110-consumer-tools/tools-current.json`/identity-audit，未回填旧rawworkerhash。准备5.850s，原fixed group此前已预备了构建，不能把这个缓存准备时间冒冷编译。
+- 只读完整source drift审计之后才更新五个原native正式声明：units.rs/conformance.rs两旧pin与新引用的source_positions_941.rs，plan identity r7；当前输入数分别579/582/585/584/581。提交**`64b4cf788409acb700d068155f1402611e8ae29a`**，11文件30增25删，仅正式声明/reader literal身份/registry摘要，未改producer/协议/预算/required。原524门的Rust/config/input字节未变，故复用该冻结门，不因metadata提交再跑两组。完整`cargo t infra-ace-m1-arch --out <h>/f94110-current-governance` **238/238PASS**，diff clean。
+- 从当前64b4cf788 clean源，沿原Cargo feature/config和固定组命名生产者顺序实际采集**五个新native窗口**，每个保当前binary/源码before+after、原listing/argv/rawterminal/Job与observation。原strict reader在禁Popen控制下均接受，9项为PASS：CT cold/hit及callee失效2、实例/子CT版本1、meta/负依赖1、CT恢复首好编辑/首坏修复再编辑/缺页冷3、SQ solver权威/事实消费前归属2。CT恢复3项仍只覆盖936，**不关闭全owner ARCH05**；新raw不是旧raw改标hash。
+- 显式实际8工具变化意味着原466 Case/292cert+daily/14优化等绑定仍须当前证据刷新，故**本轮没有生成当前完整组合报告**，716P8F282U继续仅作pre-F10历史基线。新五native的独立admissions不能替其余这些不同来源。F11诊断选择/message保真仍具名未授权，project/grammar未改；F10原授权保持，T26/T27不勾，仍r7 executing10/27，最终T14独立review尚待。下一步继续独立未闭reader/原required与受影响证据工作；不借本轮524/238/9P核销F07/F11或原313/旧38gap。
+- 外部依赖本轮主检出实读：938仍executing r1，已8/13（不是交付D）；939仍drafting r2 0/14，均未归档/无可消费D，不取在途分支冒交付。main仍无代码WIP，保其他会话设计/计划修改。
+- `<h>=D:/autostack/plan-artifacts/plan-941/`；完整门`f94110-full-source-syntax/results.json` SHA256=`fa9cc7f40bae6cb5e1d0e15491a3caa56e75972998d6c5038e30b5eac502b32b`；治理`f94110-current-governance/results.json`=`8701175368e3ca818bf7ff6568f9796361b42e9a3e9eb89d399a7faa8d18b757`；当前五native汇总`f94110-native-admitted/admissions.json`=`875ce948e8cb72267a900b4a40501d2bb97f7a444b35c00ed1fe5c685ea9ae17`；13工具差异`f94110-consumer-tools/identity-audit.json`=`c5c6b78d56e0f0fa7a5223a556ccfd152f8f0c7a9018235079ca7b1a8ff9dd85`；声明刷新`f94110-native-contract-refresh.json`=`8453878fc3c9fec207ae7b1655a67508234dced2afbbe9187e5c4c206d03590b`。本轮最终审计`f94110-t27-current-progress-audit.json`=`28dcda93d3a001dedc5fbb9d5ddfca21cd747970543d39cb090b0f5f5fa8796b`。旧原件均保留；工具辅助适配初次shell quoting失败未运行capture，改为h内适配脚本后才实际采集，非生产失败/未重写已有窗口。
+- 本轮71915、36999治理和47798五capture均真实终态，**无live handle**；prepare工具已执行完毕，下一轮不要重复准备或再poll这些已结束session。只有实际字节/配置/输入变化或新反例需要才重跑相关范围。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r7 | outcome:progress（完整524/238门与五新native9机制PASS；当前Case/cert等八工具闭包尚待） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:64b4cf788409acb700d068155f1402611e8ae29a | task_ids:T27部分，T26/F11仍未闭 | evidence:f94110-t27-current-progress-audit.json | next_responsible_role:work独立reader/原required及当前8工具证据闭包，无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r7 | round:78 | from:work续原71915 | to:work | status:executing10/27 | outcome:progress（原语法真实完成、8实际工具身份与五新native受严格准入） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:64b4cf788409acb700d068155f1402611e8ae29a | next:work独立原义务/当前证据，F07/F11待裁定，D938/939未交齐，无待poll
 
 ## 10. 待澄清事项
 
