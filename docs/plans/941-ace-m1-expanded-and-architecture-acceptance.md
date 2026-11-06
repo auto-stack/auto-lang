@@ -78,7 +78,7 @@ total_steps: 19
 
 总谓词固定为：`legacy-current-gate AND legacy-required-execution-evidence AND C-core/resource AND Q4-oracle/certification AND SYN/ARCH-01..08 AND precise-incremental/restore AND budgets/time AND expanded-registry/evidence-valid`。其中`legacy-current-gate`沿当前/2实际更严守卫，不能因旧脚本exit0、core token全绿或新HIR A2R证书通过而视为true。
 
-差异`CE-BASE-01`：G-DEC-3/旧适用性与scenario规范将旧a2r金样和认证分轴；924之后脚本及gap Spec明确新增cert-gap=0条件。**本r1保更严现行守卫且将两份规则/来源同时呈现，不改旧批准文件/hash，不把38 cert-gap改PASS或自动由新A2R证书顶替。** 38项逐格进入独立阻塞表（见报告完整清单），功能责任owner=旧A2R复合lowering/认证线，证据接线owner=本计划T-01/T-04。存在本域真认证仅漏接线时可由证据owner按原规则回填映射；缺编译/语义/trap能力需原线后继正式包，不预占号，不塞本包修后端。若要依原批准恢复独立记账签章，须用户另作明确裁定及语义修订后执行，不能借报告/3更名暗撤守卫。
+差异`CE-BASE-01`：G-DEC-3/旧适用性与scenario规范将旧a2r金样和认证分轴；924之后脚本及gap Spec明确新增cert-gap=0条件。**本r3继续继承r1/r2的更严现行守卫且将两份规则/来源同时呈现，不改旧批准文件/hash，不把38 cert-gap改PASS或自动由新A2R证书顶替。** 38项逐格进入独立阻塞表（见报告完整清单），功能责任owner=旧A2R复合lowering/认证线，证据接线owner=本计划T-01/T-04。存在本域真认证仅漏接线时可由证据owner按原规则回填映射；缺编译/语义/trap能力需原线后继正式包，不预占号，不塞本包修后端。若要依原批准恢复独立记账签章，须用户另作明确裁定及语义修订后执行，不能借报告/3更名暗撤守卫。
 
 完整报告分出`accounting_valid`、`evidence_complete`、各域verdict、`acceptance_system_delivered`与`can_claim_expanded_m1`。前四类不得推导最后者；真实缺项/red、not-executed、STALE、infra、resource、cancelled都不能claim。preview允许局部查看但恒为ineligible，不能生成正式签章身份。报告中旧32 accepted-diff永不变绿、45 future照实展示、38旧cert账保其域身份。组合器逻辑正控用隔离测试收据，不得进真实里程碑证据集合。
 
@@ -188,7 +188,6 @@ T-01/T-02把表拆到每个required原子义务/具体entry与closing oracle；�
 | SD-05 | modify | docs/specs/auto-test-case/ace-ca-d-bridge-certification.md | D1/D2/D3证据方向、source/typed/生命周期与总门映射 | 937不冒完整FFI | AC-08,AC-09 |
 | SD-06 | modify | docs/specs/auto-test-case/architecture.md | 新只读父组合器/正式TestCase/报告schema/证据闭包与完整固定组 | 不造runner/meter | AC-02,AC-07,AC-11 |
 | SD-07 | modify | docs/specs/auto-syntax/source-frontdoor.md | 条件尾部ident/body与记录构造区分；实际whole/fragment/旧oracle及语法身份按修复一致 | F-941-04既有text-record联合面应接受合法text条件 | AC-03,AC-04,AC-14 |
-
 | SD-08 | modify | docs/specs/auto-a2r/record-text-hir-backend.md | 字段写值根与借用参数正确区分，原浅/嵌套写与Copy/参数模式保持；不扩大语义 | F-941-05真实Rust产物可编译 | AC-03,AC-09,AC-15 |
 | SD-09 | modify | docs/specs/auto-a2x/incremental-and-cache.md | 沿既有Rust打印轴版本失效旧错误片段；语义键/独立C键与恢复失败分态保持 | 不让旧缓存掩盖producer修复 | AC-02,AC-04,AC-09,AC-15 |
 
@@ -255,7 +254,7 @@ r3修复补充验证（T18/T19使能，当前未实施/未执行）：
 | AC-09 | work | V-12/13完整独立实际编译运行认证与daily spawn0、strict reuse/STALE，旧新证据不互替 |
 | AC-10 | work | V-14/15全部门AND与38旧认证差异显式处理、旧守卫不绕、空选择/缺门/失败不能claim |
 | AC-11 | work | V-15..17跟踪输入自足、真实联合报告/完整收据/原父预算与实际verdict：不全绿则明确red/owner，绝不写M1交付pass |
-| AC-12 | review | V-18独立逐AC/SD/遗漏/差异/债/全部reader/warnings/fmt审查，系统交付与里程碑claim分别绑定r1/冻结SHA |
+| AC-12 | review | V-18独立逐AC/SD/遗漏/差异/债/全部reader/warnings/fmt审查，系统交付与里程碑claim分别绑定当前r3/冻结SHA |
 | AC-13 | merge | 冻结职责并集/触码漂移重验、SD沉淀读回/交付归档、全部输出对账及scope/guard清理；真实M1未绿仍标未绿 |
 
 AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader正控关闭。AC-10/11允许真实报告诚实red来证明验收系统正确，不能据此豁免前述应执行证据或声称M1已过。若底层新缺陷导致某项实际验证无法关闭，留具名阻塞/owner/永久反例，不伪造work完成。
@@ -268,7 +267,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 
 | ID | owner_stage | 依赖/写面 | 具体路径/可验证结果；AC/验证 | 状态 |
 |---|---|---|---|---|
-| T-01 | work | 用户后续执行指令；只读当前Specs/收据 | 冻结main/929/937/934..939实际D与reader、旧313/38清单、完整语料/原预算/具体固定组/全部owner，scope登记；AC-01/10，V-01/14 | [ ] |
+| T-01 | work | §4原goal全链授权；只读当前Specs/收据 | 冻结main/929/937/934..939实际D与reader、旧313/38清单、完整语料/原预算/具体固定组/全部owner，scope登记；AC-01/10，V-01/14 | [ ] |
 | T-02 | work | T-01，私有P | 首例同源文件/独立oracle/四目标AutoDown-TestCase从本步入跟踪并走既有正式父入口，不等收尾才补；有界全链：真实一个scalar四端+原旧核算/SYN/937收据→strict reader→registry→报告；四端同错/缺C/旧claimfalse控制红，冻结schema/required闭包/预算无自指/不spawn；不成立needs_replan；AC-02/03/10 | [ ] |
 | T-03 | work | T-02，新registry私有面 | 新ace-m1-expanded registry逐source/target/机制/原格位与义务/组/owner/条件映射，完整覆盖而不改旧批准；AC-01，V-01 | [ ] |
 | T-04 | work | T-03，必要H短窗 | 新只读ace_m1_arch_acceptance.py与域reader适配/严格身份/路径/版本/原始终态/旧认证差异；AC-02/09/10，V-02/13/14 | [ ] |
@@ -282,7 +281,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-12 | work | T-11及T-18/19；最终D934/935/936/938/939与已交929/937；正式采样窗 | 冻结真实完整证据并集/原样本规模、fresh/hit/restart/first-edit/资源/真实独立认证→组合报告，缺项保持真实red；AC-01..11，V-01..17 | [ ] |
 | T-13 | work | T-12 | SD/coverage守恒/全部owner接口/健康冻结/遗留cert与新缺陷交接；明确系统交付与M1是否可签，不能藏in-contract未执行；AC-11 | [ ] |
 | T-14 | review | T-01..13及T-16..19完成，停止实现写入 | 同树独立上下文重建source→producer→consumer→oracle→gate全链/反控/所有SD与债，不采信摘要；AC-12，V-18 | [ ] |
-| T-15 | merge | T-14 pass与后续合入指令 | 冻结职责并集/漂移复验、SD沉淀/主线读回/归档、所有输出scope与树guard清理；AC-13；M1未绿不改成绿 | [ ] |
+| T-15 | merge | T-14 pass与§4已有全链合入授权 | 冻结职责并集/漂移复验、SD沉淀/主线读回/归档、所有输出scope与树guard清理；AC-13；M1未绿不改成绿 | [ ] |
 | T-16 | work | 用户r2直接加phase授权；§5.8；当前941唯一树 | 确认生产CST/条件诊断与旧oracle共享歧义，修复既有条件/body-vs-Ctor边界并补whole/fragment与合法/非法Ctor永久回归；AC-14，V-19/20 | [x] |
 | T-17 | work | T-16，实际provider/grammar/工具身份冻结 | 原十源20Case/同源Rust-C认证逐oracle重验与原失败闭环；完整ace-source及实际AV/native消费者职责并集、必要ace-syntax及身份变化刷新，SD-07；AC-03/04/09/14，V-21 | [x] |
 | T-18 | work | 用户r3新增phase授权；§5.9；a236a44基面、原失败与Spec | Rust lower.rs值根/参数模式修复；沿provider既有print版本轴失效旧片段；新record_field_writes_941.rs并conformance注册，原3源+独立reference/default与-O、分支/循环/readonly/mut/view/move兄弟；AC-15，V-22/23，SD-08/09 | [ ] |
