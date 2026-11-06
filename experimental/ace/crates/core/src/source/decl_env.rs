@@ -611,7 +611,7 @@ pub fn decl_env_restore_with_foreign(
     environment: Option<&ace_foreign_contract::manual::AdmittedForeign>,
 ) -> Result<CheckedEnv, DeclEnvError> {
     if (environment.is_some() || !d.foreign.is_empty())
-        && environment.map(|e| e.source_declarations()) != Some(d.foreign.clone())
+        && environment.map(|e| e.source_declarations_ref()) != Some(d.foreign.as_slice())
     {
         return Err(DeclEnvError::Malformed(
             "foreign declarations require matching current host authority".into(),

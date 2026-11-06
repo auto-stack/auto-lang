@@ -41,9 +41,9 @@ impl SignatureCatalog {
         next: &ace_foreign_contract::manual::AdmittedForeign,
     ) -> Result<Self, ProduceError> {
         let names: std::collections::BTreeSet<_> = previous
-            .source_declarations()
-            .into_iter()
-            .map(|d| d.name)
+            .source_declarations_ref()
+            .iter()
+            .map(|d| d.name.as_str())
             .collect();
         let foreign = Self::build_with_foreign(
             &Program { items: Vec::new() },
@@ -53,7 +53,7 @@ impl SignatureCatalog {
         )?;
         let entries = self
             .entries()
-            .filter(|f| !names.contains(&f.name))
+            .filter(|f| !names.contains(f.name.as_str()))
             .cloned()
             .chain(foreign.entries().cloned())
             .collect();
@@ -154,7 +154,7 @@ impl SignatureCatalog {
             }
         }
         if let Some(environment) = foreign {
-            for declaration in environment.source_declarations() {
+            for declaration in environment.source_declarations_ref() {
                 if by_name.contains_key(&declaration.name) {
                     return Err(ProduceError::Profile {
                         what: "foreign/source declaration conflict",

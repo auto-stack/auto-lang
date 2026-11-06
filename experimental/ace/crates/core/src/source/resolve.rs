@@ -1282,7 +1282,7 @@ pub fn validate_foreign_declarations(
             span,
         )]);
     }
-    let declarations = foreign.source_declarations();
+    let declarations = foreign.source_declarations_ref();
     let mut ds = Vec::new();
     for (name, span, function) in names {
         if *function && declarations.iter().any(|d| d.name == *name) {
@@ -1589,7 +1589,7 @@ fn resolve_detailed(
     }
 
     if let Some(foreign) = supply.and_then(|s| s.foreign()) {
-        for (index, declaration) in foreign.source_declarations().iter().enumerate() {
+        for (index, declaration) in foreign.source_declarations_ref().iter().enumerate() {
             if sigs.contains_key(&declaration.name) {
                 diags.push(Diagnostic::new(
                     Stage::Bind,

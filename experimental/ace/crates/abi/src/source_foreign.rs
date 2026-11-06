@@ -1431,7 +1431,7 @@ fn admit_provider(env: &AdmittedForeign, bytes: &[u8]) -> Result<(), String> {
     {
         return Err("foreign.provider-profile: expected AMD64 relocatable COFF".into());
     }
-    let declarations = env.source_declarations();
+    let declarations = env.source_declarations_ref();
     let needed = declarations
         .iter()
         .flat_map(|d| {
@@ -1449,7 +1449,7 @@ fn admit_provider(env: &AdmittedForeign, bytes: &[u8]) -> Result<(), String> {
                 .map(|name| (name, s.kind()))
         })
         .collect::<std::collections::BTreeMap<_, _>>();
-    for declaration in &declarations {
+    for declaration in declarations {
         for (symbol, kind) in std::iter::once((
             declaration.function.symbol.as_str(),
             object::SymbolKind::Text,

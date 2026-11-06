@@ -202,8 +202,8 @@ impl TargetProvider for ForeignTargetProvider {
         let mut imports =
             "#ifndef ACE_FOREIGN_IMPORTS_H\n#define ACE_FOREIGN_IMPORTS_H\n#include <stdint.h>\n"
                 .to_string();
-        for d in environment.source_declarations() {
-            imports.push_str(&prototype(&d));
+        for d in environment.source_declarations_ref() {
+            imports.push_str(&prototype(d));
             imports.push('\n');
             if let Some(symbol) = &d.context_symbol {
                 imports.push_str(&format!("extern unsigned char {symbol};\n"));

@@ -283,7 +283,7 @@ pub(crate) fn produce_infer_body_with_catalog_observed(
                 ace_semantics::input::Ann::I32
             }
         };
-        for d in environment.source_declarations() {
+        for d in environment.source_declarations_ref() {
             input
                 .external_signatures
                 .push(ace_semantics::input::ExternalSignature {

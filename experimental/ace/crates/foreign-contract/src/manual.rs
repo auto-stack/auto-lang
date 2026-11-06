@@ -576,6 +576,9 @@ impl ManualManifest {
 }
 
 impl AdmittedForeign {
+    pub fn source_declarations_ref(&self) -> &[SourceDecl] {
+        &self.declarations
+    }
     pub fn source_declarations(&self) -> Vec<SourceDecl> {
         self.declarations.as_ref().clone()
     }

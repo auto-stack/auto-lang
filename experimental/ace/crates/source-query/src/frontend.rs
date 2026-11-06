@@ -452,7 +452,7 @@ impl Frontend {
     /// A separately re-admitted provider implementation can change the link
     /// binding without changing any declaration/query/body artifact.
     pub fn rebind_provider(&mut self, foreign: AdmittedForeign) -> Result<(), Error> {
-        if foreign.source_declarations() != self.foreign.source_declarations() {
+        if foreign.source_declarations_ref() != self.foreign.source_declarations_ref() {
             return Err(reject("provider rebind changed declarations"));
         }
         self.queries.set_foreign(Some(foreign.clone()));

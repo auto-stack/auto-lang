@@ -6,12 +6,12 @@ use std::{
 };
 struct Allocator;
 thread_local! {
-    static MEASURING: Cell<bool> = const { Cell::new(false) };
+    static THRESHOLD: Cell<usize> = const { Cell::new(usize::MAX) };
     static LARGE: Cell<usize> = const { Cell::new(0) };
 }
 fn observe(size: usize) {
-    let _ = MEASURING.try_with(|enabled| {
-        if enabled.get() && size >= 1 << 20 {
+    let _ = THRESHOLD.try_with(|threshold| {
+        if size >= threshold.get() {
             LARGE.with(|n| n.set(n.get() + 1));
         }
     });
@@ -36,14 +36,17 @@ unsafe impl GlobalAlloc for Allocator {
 #[global_allocator]
 static ALLOCATOR: Allocator = Allocator;
 fn measured<T>(f: impl FnOnce() -> T) -> (T, usize) {
+    measured_at(1 << 20, f)
+}
+fn measured_at<T>(threshold: usize, f: impl FnOnce() -> T) -> (T, usize) {
     struct Guard;
     impl Drop for Guard {
         fn drop(&mut self) {
-            MEASURING.with(|v| v.set(false));
+            THRESHOLD.with(|v| v.set(usize::MAX));
         }
     }
     LARGE.with(|v| v.set(0));
-    MEASURING.with(|v| v.set(true));
+    THRESHOLD.with(|v| v.set(threshold));
     let guard = Guard;
     let result = f();
     drop(guard);
@@ -64,6 +67,47 @@ mod source_foreign {
     struct Pointer<'a> {
         stored: &'a Stored,
         payload: &'a str,
+    }
+
+    #[test]
+    fn provider_rebind_keeps_current_facts_without_allocating_whole_declaration_copies() {
+        let caps = vec![SOURCE_CAP.into()];
+        // This is the neutral frontend port: it consumes reviewed declaration
+        // authority, not COFF or a tool. The actual provider machine calls and
+        // old/new provider bytes are checked by the existing conformance cases.
+        let digest = "ab".repeat(32);
+        let environment =
+            provider::admit(provider::reviewed_add_manifest(), &digest, 1, &caps).unwrap();
+        let threshold = std::mem::size_of_val(&environment.source_declarations_ref()[0]);
+        assert!(
+            threshold > 64,
+            "fixture cannot distinguish retained binding digests from declaration copies"
+        );
+        let (mut front, _checked) = ace_source_query::frontend::Frontend::cold(
+            "fn main() int { return foreign_add(20,22) }",
+            "rebind938",
+            "p938",
+            &caps,
+            environment.clone(),
+        )
+        .unwrap();
+        let old_page = front.page("main").unwrap().bytes.clone();
+        let before = front.meter();
+        let solver = front.query_counters().solver_runs;
+        let next = environment
+            .rebind(&provider::authority(&digest, 2, &caps).unwrap())
+            .unwrap();
+        let (result, copies) = measured_at(threshold, || front.rebind_provider(next));
+        result.unwrap();
+        assert_eq!(
+            copies, 0,
+            "provider-only frontend rebind copied whole declarations"
+        );
+        assert_eq!(front.foreign().generation(), 2);
+        assert_eq!(front.meter(), before);
+        assert_eq!(front.query_counters().solver_runs, solver);
+        assert!(Arc::ptr_eq(&old_page, &front.page("main").unwrap().bytes));
+        eprintln!("declaration rebind: threshold={threshold} whole_copies={copies}");
     }
 
     #[test]
