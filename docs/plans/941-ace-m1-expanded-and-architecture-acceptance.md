@@ -1444,6 +1444,8 @@ stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress（verifi
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:56 | from:work | to:work | status:executing6/21 | outcome:in_progress（verified_wait及原始native准入准备） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:5b3501b2aeae0b8ba7845f7afd8fca3726220166 | next:work 同session84298/capture1912/driver35420，当前驻留退化控制子24544
 
+第56轮交接补充：只读draft静态预检发现原220-input before比真实557-input依赖闭包多13个syntax-core兼容层文件（该层不在实际本测试依赖闭包）。当前native草稿的before⊆closure条件将拒绝这份合法保守快照，因此草稿尚未ready；后续须显式认领snapshot-only pins或声明570-pin保守并集，不能删/改旧before或冒13件为实际语义依赖，也不为metadata差额重跑有效执行。具名预检`ct-native-draft-preflight-gap.json` SHA **71986c93913c3990c4cee2fef89592b13cdc4b60704291a7a5691da31e5cf659**；无新增用户决定，原gate仍同session84298。本补充不改上述历史草稿hash与未准入状态。
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
