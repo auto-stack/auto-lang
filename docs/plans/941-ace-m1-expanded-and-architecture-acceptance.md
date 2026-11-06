@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 3
+current_step: 4
 total_steps: 19
 ---
 
@@ -227,7 +227,7 @@ r2修复补充验证（T16/T17已完成，见§9第22轮；最终独立review仍
 | V-20 | AC-14 合法/非法记录构造守恒 | 原合法具名/嵌套/条件内带括号Ctor继续通过；错字段/缺body按独立诊断与span拒，无consumer补括号 | 原支持域，不扩future语法；work T16 |
 | V-21 | AC-03/09/14 真实两consumer与身份 | 原十源正式20Case及原Rust/C认证/daily；原eq的两FAIL转真实值1，其余值/三具名trap不退化；原source不改，producer/grammar/runtime变更按身份重验 | 最终冻结ace-source+实际消费者并集；work T17，独立review T14 |
 
-r3修复补充验证（T18/T19使能，当前未实施/未执行）：
+r3修复补充验证（T18/T19已按§9第40..43轮执行通过，最终独立复审仍T14待）：
 
 | ID | 不变量/AC | 实际入口与区分oracle | 边界/owner |
 |---|---|---|---|
@@ -285,9 +285,9 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-16 | work | 用户r2直接加phase授权；§5.8；当前941唯一树 | 确认生产CST/条件诊断与旧oracle共享歧义，修复既有条件/body-vs-Ctor边界并补whole/fragment与合法/非法Ctor永久回归；AC-14，V-19/20 | [x] |
 | T-17 | work | T-16，实际provider/grammar/工具身份冻结 | 原十源20Case/同源Rust-C认证逐oracle重验与原失败闭环；完整ace-source及实际AV/native消费者职责并集、必要ace-syntax及身份变化刷新，SD-07；AC-03/04/09/14，V-21 | [x] |
 | T-18 | work | 用户r3新增phase授权；§5.9；a236a44基面、原失败与Spec | Rust lower.rs值根/参数模式修复；沿provider既有print版本轴失效旧片段；新record_field_writes_941.rs并conformance注册，原3源+独立reference/default与-O、分支/循环/readonly/mut/view/move兄弟；AC-15，V-22/23，SD-08/09 | [x] |
-| T-19 | work | T-18冻结提交；实际worker/conformance新身份 | 完整ace-a2x与相关治理组、原3证书闭环/全部受身份影响认证及14原优化配置刷新、旧print缓存miss见证与当前组合读回；F-941-05关闭、SD-08/09交接；AC-02/03/04/09/15，V-24 | [ ] |
+| T-19 | work | T-18冻结提交；实际worker/conformance新身份 | 完整ace-a2x与相关治理组、原3证书闭环/全部受身份影响认证及14原优化配置刷新、旧print缓存miss见证与当前组合读回；F-941-05关闭、SD-08/09交接；AC-02/03/04/09/15，V-24 | [x] |
 
-当前优先入口为已授权T-18→T-19；之后回到原完整T-01..13。T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；按T-01/T-02继续，尚未关闭的验收保持未完成。
+T-18/19已完成（§9第43轮）；当前回到原完整T-01..13。T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；按T-01/T-02继续，尚未关闭的验收保持未完成。
 
 ## 9. 复审记录
 
@@ -1167,6 +1167,26 @@ stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktr
 
 最小待授权范围：保留并透传data链既有共享前端诊断stage/code，沿既有driver/worker错误载体补有限结构化失败通道（保旧调用兼容/其他失败分态），禁止从message提取code或修改源/oracle；四原负例作永久真实worker反例，加合法record、旧owned/core及非前端失败边界；按真实改动执行完整所属固定组/必要消费者，AV生产身份变更后刷新其真正受影响的source证据，再严格核原16诊断与当前组合。不得将本项扩为native generic trap、A2X typed缺口或新源语义。按§5.4“已归档能力发现新缺陷要具名新修复流程”，请求用户选择941新增phase或独立修复；当前只提案，不改r3/T19/任务总数，不实施producer。B292采集及其他已授权工作继续。
 
+### 2026-11-06 T19/F-941-05当前身份闭环（goal第43轮）
+
+第42轮B稳定并集/真实查询是progress；本轮首先核session80190/PID31556存活且canonical B=7b0be842feabdd55a7217ae783ae4af8d9a445b60e7807e5cf1bda67d5b4bb7e保持，续原批至真实terminal **exit0**，292 cert+daily全部采集完成，原3缺Rust M01/R01/R02完整actual+独立reference均PASS。不重启/不再准备worker，8c074c17c404b15a1d042a8bf3a77420b958997a唯一树clean，生产/测试字节零改。
+
+原strict逐域联读：text20、CT14、scalar122+原8优化、RT32+原4优化通过；首次collections严格拒daily缺mode——本包通用采集器漏写显式mode，不能因默认值相同绕精确请求合同。只重采该40项到**f94105-stable-collections-correct/collections_certifications**，每次原cert req的mode原样进入daily；session41291 exit0，40实际actual/ref重新认证+daily完成。保旧40原始命令/失败读取，不改旧证书，不重采其余252。新strict确认为default_certification_complete=true；初汇总脚本误取通用certification_complete键而KeyError，仅改本包scratch汇总到该域原有default键，未改生产reader/返回schema。
+
+最终read-f94105-final-certifications.py原reader只读/Popen禁用：**292默认cert全部PASS、292 daily全部PASS且编译器spawn0，原14优化全部PASS**。明细252来自f94105-stable-certifications、40来自上述显式mode新scope，统一composed-bindings逐项指向真实来源；所有scope仍在唯一plan-941目录。逐292观察显式核judgement/daily_judgement=PASS、daily_compiler_spawn_zero is True，scope/f94105-stable-composed-preview/strict-default-and-daily-audit.json SHA=27a5d7d1f3e31919fe451a1ba38dde9e85ee1597c4e95101f2148384aa2560d7。原14优化的8/9/9各域source/debugworker/conformance/配置pin当前全匹配，f94105-stable-release-identity-audit.json；没有用新字段写回归的-O替代原14，也没有把集合优化/资源/生命周期UNOBSERVED充PASS。
+
+最终B组合 read-f94105-stable-composed-preview.py经原受管capture且Popen禁用，exit0：**614PASS /12FAIL /380UNOBSERVED，1006登记/原完整分母保持**。同旧第38轮611/12/383逐格对账，**仅M01/R01/R02的ACE-A2R-HIR从UNOBSERVED→PASS，其余1003格verdict完全不变**，prior-verdict-preservation.json SHA=bc79bcf0cd1b5d594f82442be13443721e53944a85afbbb9cb15c6cc06ca7961。required_universe_closed、acceptance_system_delivered、can_claim_expanded_m1全false，旧8 scalar FAIL、4 AV data FAIL/已提F06、9 native generic trap、6 A2X typed缺口、T06未核span、299 legacy/49 ARCH及健康/完整机制仍保，不签扩大M1。
+
+preview.stdout **565002B SHA=30a0918d94f207ae9489b8861984366f79a34bb162dbd85d01478176aef55b61**，9423.0275ms，peak process29769728/Job31010816B。共享原LiveBudget reserved**26407831**、全程peak**46869307<50331648B(48MiB)**；原单件4MiB/privateΔ128MiB/64KiB流hash/先预留及不清peak均未变。无临时放宽、截日志或新预算域。组合6个已提交文件审计SHA=3c0ddd60f5aa0abf9e63914600f5fdeecc5bc7a3a53b100f26fd457aaf096e04，代码逐字节等Git；首次raw全部比较被两文档正常CRLF/LF差异挡住，随后用Git过滤后blob identity+显式仅文档EOL规范化核查，代码仍要求原字节恒等，未把不同代码归为格式差。
+
+**T19完成，current_step4/19；F-941-05 phase闭环关闭**。T18生产修复c4cb9dab7、永久三代缓存62f57b4e2、SD08/09候选8c074c17c以及原B完整405项门证据有效，最终独立review仍T14，不能以phase自验冒最终review。原T01..15未闭，继续原全范围/机制/独立证据；不因提交/收据重复跑完整组。
+
+本轮另将已具名4 AV record缺code的最小修复提案F-941-06写入§9/§10并提交归属问题：此前F05授权不覆盖AV producer。当前等待用户选择新增941 phase/独立修复，**不阻已授权原证据工作**；尚无答复，不把预选项当批准。T06独立span责任链调查沿第42轮证据，尚未改变reader和该格UNOBSERVED。无存活本包采集进程、无新增磁盘阻塞；原goal授权持续。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress（T19通过，原完整任务未完） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:8c074c17c404b15a1d042a8bf3a77420b958997a | task_ids:T19已完成 | evidence:292cert/daily+原14优化严格通过；三原Rust关闭；全组合614P12F380U仅3格变化/48MiB内 | blockers:原全范围/具名red未闭；F06归属待用户，独立工作可继续 | next_responsible_role:work 原T01..13；T04独立T06 span oracle/完整机制与legacy证据，F06获批后new修订phase合同
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:43 | from:work | to:work | status:executing4/19 | outcome:needs_fix（F05关闭，原完整任务继续） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:8c074c17c404b15a1d042a8bf3a77420b958997a | next:work 原完整验收证据；F06若获批则new合同
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1182,6 +1202,6 @@ stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktr
 
 8. **F-941-04已获r2内修授权**：按用户“直接在941计划添加新的phase修复”执行§5.8/T16/17，不再等待独立修复授权；T16/T17实现与原例/完整并集/当前严格认证验证已完成（第22轮）；最终独立review仍待T14，不以phase自测顶review。
 
-9. **F-941-05已获941内新phase授权**：用户明确选择“授权941新增修复phase（推荐）”。r3执行合同已落实于§5.9/T18/19，在同一941树修复Rust字段写值根的mut判定；不再等待修复归属确认，不将此授权扩为AV诊断缺码或其他后端修复。三Rust证书在真实重认证前仍未齐。
+9. **F-941-05已关闭（r3 T18/19，第43轮）**：同树Rust字段写值根修复、参数边界/三代缓存、稳定B工具完整405门、292当前默认证书/daily及原14优化严格联读已闭，原3缺Rust格位转PASS。最终独立复审仍T14；不扩为F06/其他后端修复，原完整任务与全部具名red/unknown保持。
 
 10. **F-941-06待修复归属授权**：原4 AV record结构化诊断丢失，最小修复提案见§9；只读验收/当前B292与T19继续，不将F05授权外推到本项。
