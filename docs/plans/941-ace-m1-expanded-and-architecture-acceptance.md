@@ -1815,6 +1815,19 @@ stage: work | plan_id:PLAN-941 | plan_revision:r6 | outcome:progress（原T01缺
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r6 | round:72 | from:work | to:work | status:executing10/25 | outcome:progress（补齐真实首例关闭证明，原完整输入仍缺） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a2b27fc660affe147db39dcc31512c1ad18cb522 | next:work真实恢复/实例/资源机制；D938/939未交齐、F07待裁定，无待poll
 
+### 第73轮：work恢复首编辑诊断位置反证（F-941-10，未修改生产代码）
+
+- main无代码WIP、941树clean且仍`a2b27fc660affe147db39dcc31512c1ad18cb522`。读取D929真实`UnitCatalog`、原T02/T07、公开A2X恢复首编辑测试与canonical source-frontdoor片段绝对UTF-8位置合同，核ARCH-01 source-position-freshness原义务；没有用旧测试“Err即可”替代fresh诊断四元组oracle。
+- 实际探针由当前core生产依赖编译，执行冷建→encode/decode→丢弃冷目录→`from_restored`→立即第一次坏编辑，独立`parse_front(WholeModule)`解析完全相同的当前坏源码。两组lambda诊断stage/code/message相同而绝对span错：无前缀实际39..42，fresh53..56；25字节中文注释前缀后仍39..42，fresh78..81。邻接owner片段坏编辑在两组均逐字段等于fresh。4组恢复whole生产轴均0；各自首次拒绝后旧源码未变，修复生产1，所有当前单元身份/content/current_span与fresh相符。
+- **F-941-10根因**：`units.rs::edit_lambda`调用`parse_lambda_unit`；后者使用固定36字节`fn __lambda_unit() int {\n    return `合成包装，`parse_whole(...)?`直接返回包装诊断。成功表达式有去包装坐标操作，但失败诊断既未扣包装偏移，也未加当前lambda起点。`edit_owner`已用统一`FreeFnFragment`绝对range而正确。此为已归档929能力缺陷，未在当前生产代码修复，F09/F08等具名授权不自动推广。
+- **最小修复提案**：在941新增具名phase，使lambda重解析失败诊断按当前片段绝对UTF-8位置返回（优先复用统一片段前门，保持profile/预算/错误分态）；覆盖冷与恢复首坏编辑、前缀漂移/中文、词法与结构错误、合法修复及相邻owner，保旧目录原子性/真实生产计数/无预热。检查真实lambda编辑消费者并复验受影响完整职责/消费者组；若触及生产闭包，按原strict源身份规则重新采受影响native观察器，未变证据实名复用。不改grammar、oracle、资源帽或required集合；最终仍归T14独立复审。依据§5.4等待具名授权；其余独立验收继续。
+- 边界：本探针真实codec恢复仍为同PID，不冒跨进程公共重启或全ARCH义务；未接正式reader，不把原UNOBSERVED改成PASS/FAIL或擅造新分母。完整报告仍714P8F284U、1006键/30合同，executing10/25。初版合法修复曾直接比较完整manifest而不等；定位是未改单元保留历史mint_span这一既定语义，终件明确比较全部current身份/位置，不误报新缺陷。
+- `<h>=D:/autostack/plan-artifacts/plan-941/`，全部源码/依赖锁/输出/可删target在`source-position-probe/`；真实argv及10文件hash在audit.json，SHA256=`da72366ffd645bcc2bb5a6da2add47c0cb37b7cd7dc5780549058806b4ff672b`；result.json=`d54442a62e562e195a07d9c864703685b04a8cf990b43bae02e20077c2daf013`。最终cargo命令exit0；原core first_lex_fact dead_code告警仍在，不掩盖为健康全绿。无生产修改、未跑无关全门、全部进程终态。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r6 | outcome:progress（恢复首lambda诊断位置实测反证，具名最小提案） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:a2b27fc660affe147db39dcc31512c1ad18cb522 | task_ids:T06原source-position义务，未整项关闭 | evidence:source-position-probe/audit.json | next_responsible_role:work其他独立机制；F10提案待批，无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r6 | round:73 | from:work | to:work | status:executing10/25 | outcome:progress（F10两原失败及两相邻正控；非全门准入） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a2b27fc660affe147db39dcc31512c1ad18cb522 | next:work其他独立机制；F07/F10具名提案待批，D938/939未交齐，无待poll
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1839,3 +1852,5 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r6 | round:72 | from:work | to:wo
 12. **F-941-08工作阶段已关闭（r5 T22/T23，第64轮续录）**：用户原授权已完成实施与当前原职责/真实四端/292认证daily/原优化及CT机制严格联读，F08关闭基面81c10fcc9；第65轮b876cb42b/711P8F287U；第66轮4466520e6同计数、新增S936恢复分腿；第67轮当前5adfe480d/712P9F285U，新增SQ权威PASS与F09实际FAIL，仍8/23。无待poll，不再等待F08授权或重跑已有效冻结证据；原完整任务及最终独立T14仍待。F07独立test-only修复仍待裁定，不能由F08授权推定。
 
 13. **F-941-09工作阶段已关闭（r6 T24/25，第70轮）**：用户具名授权、三组原失败与合法/位置漂移/codec/AV旧42控制、73cdf4871生产修复、50fc3f770当前声明及206完整语义/222治理/实际AV/五native/466当前Case/292cert+daily/原14优化和6untyped拒绝已由原strict reader联读闭合，F09关闭基面713P8F285U；第71轮519dd0d15/714P8F284U；第72轮当前a2b27fc66同完整判定，独立首例20P非全门，executing10/25。最终独立T14仍待，SD12候选未发布；不再等待F09授权或重跑已有效证据，不扩F07/其他缺陷授权。原完整任务继续。
+
+14. **F-941-10待裁定**：恢复后首次lambda坏编辑返回合成包装诊断位置，中文前缀漂移也固定39..42；同源fresh与owner控制分别正确53..56/78..81。第73轮已写最小phase提案及4组真实实测；依据§5.4等待具名授权，生产未动，原其他证据工作继续。
