@@ -13,7 +13,7 @@ thread_local! {
     static PEAK: Cell<usize> = const { Cell::new(0) };
     static TRACKED: RefCell<[(usize, usize); 128]> = const { RefCell::new([(0, 0); 128]) };
     static OVERFLOW: Cell<bool> = const { Cell::new(false) };
-    static RESIDENT_PROBE: RefCell<Option<(usize, ace_source_query::resources::Resources, usize)>> = const { RefCell::new(None) };
+    static RESIDENT_PROBE: RefCell<Option<(usize, ace_source_query::resources::Resources, ace_source_query::resources::Charge)>> = const { RefCell::new(None) };
     static RESIDENT_HITS: Cell<usize> = const { Cell::new(0) };
     static RESIDENT_ADMITTED: Cell<bool> = const { Cell::new(true) };
 }
@@ -31,7 +31,13 @@ fn allocated(ptr: *mut u8, size: usize, replaced: Option<*mut u8>) {
             if let Some((expected_size, resources, minimum)) = &*probe {
                 if size == *expected_size {
                     RESIDENT_HITS.with(|hits| hits.set(hits.get() + 1));
-                    if resources.stats().current.resident < *minimum {
+                    let current = resources.stats().current;
+                    if current.resident < minimum.resident
+                        || current.io < minimum.io
+                        || current.index < minimum.index
+                        || current.staging < minimum.staging
+                        || current.mir < minimum.mir
+                    {
                         RESIDENT_ADMITTED.with(|admitted| admitted.set(false));
                     }
                 }
@@ -67,6 +73,19 @@ fn with_resident_probe<T>(
     size: usize,
     resources: &ace_source_query::resources::Resources,
     minimum: usize,
+    f: impl FnOnce() -> T,
+) -> (T, usize, bool) {
+    with_charge_probe(
+        size,
+        resources,
+        ace_source_query::resources::Charge::resident(minimum),
+        f,
+    )
+}
+fn with_charge_probe<T>(
+    size: usize,
+    resources: &ace_source_query::resources::Resources,
+    minimum: ace_source_query::resources::Charge,
     f: impl FnOnce() -> T,
 ) -> (T, usize, bool) {
     struct Reset;
@@ -378,6 +397,74 @@ mod source_foreign {
         assert_eq!(after.current.resident, before.current.resident);
         assert_eq!(after.current.io, before.current.io);
         assert_eq!(after.live_objects, 0);
+    }
+
+    #[test]
+    fn compiler_object_file_read_reserves_before_allocation_and_retains_only_the_shared_output() {
+        use ace_artifacts::store::StoreError;
+        use ace_source_query::resources::Resources;
+        use std::os::windows::fs::OpenOptionsExt;
+        let (root, _store, bytes, _artifacts) = large_cache_fixture("c-object-file-read");
+        let path = root.join("provider.obj");
+        let resources = Resources::default();
+        let pressure = resources.reserve(Charge::io((8 << 20) - 1024)).unwrap();
+        let pressured = resources.stats().current;
+        let (rejected, peak) =
+            measured_peak(|| ace_abi::cache::read_c_object_file(&path, &resources));
+        assert!(
+            matches!(rejected, Err(StoreError::ResourceExhausted(ref message)) if message.starts_with("C object read:"))
+        );
+        assert!(
+            peak < 64 << 10,
+            "object file buffer was created before I/O admission: {peak}"
+        );
+        assert_eq!(resources.stats().current, pressured);
+        drop(pressure);
+        let (result, hits, admitted) = with_charge_probe(
+            bytes.len(),
+            &resources,
+            Charge::io(bytes.len() + 256),
+            || ace_abi::cache::read_c_object_file(&path, &resources),
+        );
+        let object = result.unwrap();
+        assert_eq!(hits, 1);
+        assert!(
+            admitted,
+            "object file allocation preceded its I/O reservation"
+        );
+        assert_eq!(object.as_slice(), bytes.as_slice());
+        assert_eq!(resources.stats().current.resident, object.capacity() + 40);
+        assert_eq!(resources.stats().current.io, 0);
+        let alias = object.clone();
+        drop(object);
+        assert!(resources.stats().current.resident > 0);
+        drop(alias);
+        let baseline = resources.stats().current;
+        assert_eq!(baseline.resident, 0);
+        let writer = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(3)
+            .open(&path)
+            .unwrap();
+        assert!(ace_abi::cache::read_c_object_file(&path, &resources).is_err());
+        drop(writer);
+        assert_eq!(resources.stats().current, baseline);
+        assert!(ace_abi::cache::read_c_object_file(&root, &resources).is_err());
+        assert!(ace_abi::cache::read_c_object_file(&root.join("missing.obj"), &resources).is_err());
+        let oversized = root.join("oversized.obj");
+        std::fs::File::create(&oversized)
+            .unwrap()
+            .set_len((64 << 20) + 1)
+            .unwrap();
+        let (rejected, peak) =
+            measured_peak(|| ace_abi::cache::read_c_object_file(&oversized, &resources));
+        assert!(matches!(rejected, Err(StoreError::ResourceExhausted(_))));
+        assert!(
+            peak < 64 << 10,
+            "oversized object was allocated before its artifact limit: {peak}"
+        );
+        assert_eq!(resources.stats().current, baseline);
     }
 
     #[test]

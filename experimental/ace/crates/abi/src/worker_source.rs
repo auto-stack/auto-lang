@@ -642,14 +642,7 @@ fn prepare_provider(
                     crate::ctool::compile_c_with_deps(&src, inputs, &object).map_err(|e| {
                         ace_artifacts::store::StoreError::Internal(format!("producer: {e}"))
                     })?;
-                let bytes = std::fs::read(&object).map_err(|e| {
-                    ace_artifacts::store::StoreError::Internal(format!("producer: {e}"))
-                })?;
-                let bytes = resources.own_payload(bytes).map_err(|e| {
-                    ace_artifacts::store::StoreError::ResourceExhausted(format!(
-                        "C cache producer output: {e}"
-                    ))
-                })?;
+                let bytes = crate::cache::read_c_object_file(&object, resources)?;
                 Ok((bytes, deps))
             },
         )

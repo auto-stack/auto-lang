@@ -250,6 +250,78 @@ fn decode_c_object_bytes(
     Ok(Some(CacheBytes::Managed(bytes)))
 }
 
+/// Read a completed compiler object into its shared owner without an
+/// uncharged first Vec. The original object and I/O limits both apply.
+pub fn read_c_object_file(
+    path: &std::path::Path,
+    resources: &ace_source_query::resources::Resources,
+) -> Result<std::sync::Arc<Vec<u8>>, StoreError> {
+    use ace_source_query::resources::Charge;
+    use std::io::Read;
+    let budget = |e| StoreError::ResourceExhausted(format!("C object read: {e}"));
+    let io_error = |e| StoreError::Internal(format!("C object read: {e}"));
+    let path_bytes = path
+        .as_os_str()
+        .len()
+        .checked_mul(4)
+        .and_then(|n| n.checked_add(512))
+        .ok_or_else(|| StoreError::ResourceExhausted("C object read path size".into()))?;
+    let _path = resources
+        .reserve(Charge::index(path_bytes))
+        .map_err(budget)?;
+    let _metadata = resources.reserve(Charge::io(256)).map_err(budget)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options
+            .share_mode(1)
+            .custom_flags(windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let mut file = options.open(path).map_err(io_error)?;
+    let metadata = file.metadata().map_err(io_error)?;
+    let invalid = !metadata.is_file();
+    #[cfg(windows)]
+    let invalid = {
+        use std::os::windows::fs::MetadataExt;
+        invalid
+            || metadata.file_attributes()
+                & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT
+                != 0
+    };
+    if invalid {
+        return Err(StoreError::Internal(
+            "C object read requires a regular file without reparse points".into(),
+        ));
+    }
+    let size = usize::try_from(metadata.len())
+        .ok()
+        .filter(|n| *n <= 64 << 20)
+        .ok_or_else(|| {
+            StoreError::ResourceExhausted("C object read exceeds the 64MiB artifact limit".into())
+        })?;
+    let mut allocation = resources.reserve(Charge::io(size)).map_err(budget)?;
+    let mut bytes = vec![0u8; size];
+    file.read_exact(&mut bytes).map_err(io_error)?;
+    let mut extra = [0u8; 1];
+    loop {
+        match file.read(&mut extra) {
+            Ok(0) => break,
+            Ok(_) => return Err(StoreError::Internal("C object changed during read".into())),
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(io_error(e)),
+        }
+    }
+    drop(file);
+    allocation
+        .resize(Charge::resident(bytes.capacity() + 40))
+        .map_err(budget)?;
+    let bytes = std::sync::Arc::new(bytes);
+    allocation.retain(&bytes).map_err(budget)?;
+    Ok(bytes)
+}
+
 struct DecodedCObjectEntry {
     value: CObjectEntry,
     // Fields drop in this order: no owning metadata outlives its fee.
