@@ -1003,6 +1003,25 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:36 | from:work | to:wo
 
 **最小修复提案**：由原Rust后端负责，将字段写根是否需要可变绑定按真实值根/引用参数模式区分；覆盖浅/嵌套字段写、分支/循环中的写、copy/source快照、mut/view/move参数与receiver，不改source/Checked HIR/C/资源计划，不全局加mut/改golden绕失败。永久补三原源完整actual+手写reference默认与原要求优化模式的真实编译运行回归及现有方法/参数负控，按实际触面跑ace-a2x正式职责组，独立review后合入/同步941，重建相关worker并按身份刷新认证。§5.4默认已归档能力新缺陷独立修复；先前F-941-04内phase例外不自动授权本项。用户可明确选择941新增phase或独立计划；当前不修改后端。941其余reader/33成功认证及剩余诊断/机制可继续，非全局停工。
 
+### 2026-11-06 原18个data源独立认证与F-941-05真实失败（goal第37轮）
+
+前轮36 AV/native严格正证据为progress。本轮继续T04/05/08/10/11，唯一941树提交 **000107a603f084897c38db2818c72288afc4ffa4**，42文件，树clean；仍r2 executing2/17，生产编译器/worker未改。F-941-05最小修复提案已单独写入上条§9并向用户请求941新phase或独立修复裁定，当前无授权答复，不擅用F-941-04例外；其他验收可继续，不是全局waiting。
+
+- 为全部**18正源**永久提供36份独立手写Rust/C参考与冻结合同，原profile/caps/source/oracle保持。参考按原语义实现record copy/嵌套字段、方法与mut/view参数写回、命名参数、文本标量与字节长、clone/move值、递归和TextIndex检查；不读actual产物/结果，不打印预置正确值代运算。Rust用标准String/struct/char操作，C固定数组独立建模有限文本值，不冒资源生命周期证明（后者另门）。新original-data-reference-contracts.tsv SHA=`92cbb23d49bc7ed9cb108055dc696c88b6b8f2a7b53e2536888d9972fdde17aa`；原默认Rust edition2021/C11 /O2等参数与全文件集保，未擅增0优化替代原14优化配置。
+- 原显式受管capture对36个目标逐identity/daily/cert实际调用：**33个完整actual+reference认证及其daily PASS**（Rust15+C18），**66compile+66run**获完整终态；另外M01/R01/R02三个Rust实际cert命令exit2、无有效证书，collector总断言33/36而exit1，保留首次红，不能说36认证全过。三失败完整actual四文件与预冻结daily逐hash相等，无人手改generated.rs；完整stdout错误/detail仅作故障定位，不解析为typed语义证据。scope/original-data-certifications/failure-audit.json SHA=`5a106fc7f03524c3cd4a05998ed4ec7efa97184757b76884c95cee6e527e4648`。三独立Rust参考另隔离3compile+3run通过0/19/9（非actual证书），证据与原因见F-941-05提案。
+- 33成功项逐原完整actual/独立reference、两腿各对冻结oracle、原toolchain/version/flags、nonce/FNV/证书与manifest/完整依赖、四phase终态、daily spawn0及现场四文件相等严格重读PASS。原360s whole/120s compile/30s run/每流1MiB及Job保；成功cert父墙609.3993..3846.3254ms，不冒正式P90。frozen-bindings.json SHA=`93db215713a9dccb288e8df1fb461450a4f0b24da14230521737e0705b7ac935`，strict-observations.json SHA=`032f5a64151d681b263306bc8ab300145936f175e7cd73fe621ea4bc6168d701`。reader从18源合同独立构成全部**36必需证书槽**；33提交项准入，缺M01/R01/R02 Rust有效证书三格保UNOBSERVED/具名F-941-05，missing_certification_slots显式列出、certification_complete=false、整体daily=UNOBSERVED。没有拿未完成命令的untyped错误冒语言诊断或伪造证书，也没丢三格换较小分母。
+- **99原认证帧反控**：33合法PASS、33双方同错值/错具名trap FAIL、33重hash未知field REFUSED；scope/original-data-cert-raw-controls/results.json SHA=`3a867c1fdcc4b79dcec72a7a8c61d0712004a66267aadc1e33659aa3d43be98b`，counterfactual_not_execution。新永久缺证书控制保当前三缺格、空提交仍全部36 UNOBSERVED、外来target/未知verdict拒，合成覆盖控制不入实际证据。`cargo t infra-ace-m1-arch --out <scope>/original-data-certifications/final-controls` **167/167 PASS**、5.5889070s、exit0，results SHA=`23fee9661d694939bbd751b3969bb7b53c20728f0bf66ffa9708c6795d00f245`；py_compile/diff-check通过。冻结42文件等Git blob留scope/original-data-cert-frozen-preview/committed-input-audit.json。
+
+**HEALTH-941-DATA-WARN**：66成功compile流中，全部33reference与全部C流空；8个Rust actual流共**18条warning**（17条既有大小写hygiene命名non_snake_case，M08源含uncalled_shape产生1条dead_code）。当前生产打印器未改，原源保真，不加allow/剪函数静默消声；此健康项归Rust发射owner/T13，与旧collections/RT健康边界合并审查，尚未豁免/关闭。scope/original-data-certifications/compile-health-audit.json SHA=`a99d068cda4a8d420568c82ea0f2546af8f7abbd43e2d20c63ba35363692efe9`。三失败actual的编译错误与此warning汇总分开，失败不能充成功流。
+
+冻结000107a全组合原Job/Popen禁用只读重验：**600PASS/8FAIL/398UNOBSERVED**，1006登记/22合同指针；原126/四补源/26data源、旧313/NA/38cert-gap与预算合同保持，完整范围/系统交付/expanded claim仍false。preview.stdout 549925B SHA=`65861415349741e486d0ad23dab7675758412e4750e94b40b70e6b69c8415a67`，12729.3871ms、peak process30453760/Job31682560B；同一LiveBudget reservation37666989/全程peak**49926272<50331648B**，原48MiB/单件4MiB/privateΔ128MiB/先预留/64KiB流hash/不清峰值不变，新认证域512KiB摘要。已完成默认cert/daily从256→**289**，额外14 Rust模式不变；生产身份未变旧证据逐项严格重读复用。原8FAIL、9generic native trap、6A2X typed负例、299legacy/49ARCH保；新增data域仍**3缺Rust证书+32四端诊断**共35格UNKNOWN，F-941-05真实失败具名，未被33绿掩盖。
+
+原T01..15未闭；下一步可继续8诊断源与其余机制/事实/恢复/资源/原规模、ARCH/legacy的独立证据。F-941-05修复等待用户归属裁定，938/939尚未D；最终review/merge仍待，无存活采集进程，941授权持续。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:000107a603f084897c38db2818c72288afc4ffa4 | task_ids:T04/05/08/10/11（未关闭） | evidence:33完整cert+daily/66compile66run；3Rust失败F-941-05+独立参考隔离；99反控；167回归；整体600PASS8FAIL398UNOBSERVED | blockers:F-941-05修复归属待裁定，原完整范围/机制/健康未闭；独立工作仍可继续 | next_responsible_role:work 8源诊断与其余机制；F-941-05等待裁定后另行修复
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:37 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，33原data认证已补、3Rust真失败具名） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:000107a603f084897c38db2818c72288afc4ffa4 | next:work 原data诊断/独立机制证据；F-941-05归属待用户裁定
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
