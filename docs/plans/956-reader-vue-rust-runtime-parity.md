@@ -110,3 +110,26 @@ r4补证：UI最终22a925c7（只删除重复清端口）；启动器60项串行
 Web53PASS/1ignored；UI schema7PASS，compiler1144PASS/3基线同红/2ignored，launcher串行58PASS/1基线同红/1ignored。UI启动器最后删除重复清端口不改变其受测构建/发布/运行机制；cold04实测最终UI22a925c7，关闭F04/F05。编译保留既有warning不隐藏，无新增未处理warning类。源码diff --check四仓全绿。
 关键证据hash：cold04 live e193bccff4ad85b66dc37aaf889884f762372fd3c5ba9f1d2e1d1a2359a483dc，69输入manifest27ab3323efd4d8e0e0ba342ef604b59d1a7755ae3222c2c9a4eab5fa758dbb13；browser03 e4802e54073ef898dbc2ab1614da0b63a7b3c1a9a48b92d781061be69367f853，截图d131908d8366d6ac1f36eea58612df12471cfd51662f78f53cf8cfa456c08553；Rust最终build01810ebaaf7ed9ac663b904e8cbe1af02775022edcf750df71408da56aa0e949；productionVue日志d0737712a66b39006aa8fbefa4b53303b0ba3555b554f2e14c5d4d9bed7c810d。
 next=merge：允许按身份等价复用上述merge-owned职责并集，仍须实际ff-only、canonical读回、刷新默认工具、归档与guard清理；本段不冒报已合入/已清理。
+
+
+### PLAN-956:r4 consolidation（2026-11-06）
+prepared=最终复审pass，职责并集1655+core1的有效证据按未变输入复用，无额外全仓测试冒充职责门。
+landed=四仓均实际ff-only成功（无merge commit）：
+- auto-lang: `7c6950a3102aad53a4986737596dd2a2059e6587`，36份变更文件commit blob逐项一致。
+- auto-web: `bf72baabf28fa865b5a7c680b8a5fa4018a0a63d`，3份变更文件commit blob逐项一致。
+- auto-ui: `22a925c72d7620b929c947ff2bbddead13fda783`，9份变更文件commit blob逐项一致。
+- auto-reader: `64ff06503d359de0b730f4cfbddaf5affe3d0bf8`，13份变更文件commit blob逐项一致。
+Lang重基：92320ae4c486173f19ae31a63437e76e225a82e9 → 764f454d1eb4c4079233a738bda6a0cc71cf0588；58a1dcb9206a9b747cd18225002557a5b8e60fd8 → 7c6950a3102aad53a4986737596dd2a2059e6587。range-diff两提交均“=”（SHA 5fc7dd5983ad6e95a8c945772fdba43f0f5a6dd7f23eb168ec3bb92f73092267）。期间936另案已交付；差额仅ACE实现/夹具及其组配置、docs。七个本计划选择组TOML逐项完全相等，crates/stdlib/Cargo/配置/semantics-contract编译依赖无本次受测输入差异，只有未选ACE source-cte-936夹具新增；equivalence摘要38aaf6142dff3fa1a93067ef528705bb713df44bb4a3c4c3043abd2f06db6c20。故无凭新HEAD重跑已验证并集。
+canonical_verified=source读回通过；Git blob全部与审定文件相同，部分Windows检出仅CRLF差（Web1/UI5/Reader5文件），按规范化换行比对无内容变化。完整读回收据SHA 2dbbfac87ffc43363fcce644b6105541f9fc74f7ee6c9e34492bf20d66da4518。canonical落地SHA：
+- auto-lang/docs/specs/auto-lang/trans/rust-semantic-admission.md: `f99974a4bffd5575251fbf7b715f53aa22015a2828f75148bceec62499be2998`
+- auto-lang/docs/specs/auto-vm/zip-natives.md: `0f3b2f14afff55c375d3446b786f9257b44d18fed56be62621f3fc957b28f384`
+- auto-lang/docs/specs/stdlib/design/primitive-str-byte-len.md: `f6de275cf96080c13ef49e940a64015a108c7c18c59e16d7de52da588288919c`
+- auto-lang/docs/specs/stdlib/design/primitive-type-of.md: `6359b2317b391c67b1cac06c7c0073559728040910811523d593d37178042f0e`
+- auto-web/docs/specs/http-contracts.md: `6287ff08e08dacaa9137941f9110d6f6c8d85601a1546f6ee52680ceba6289f7`
+- auto-ui/docs/specs/build/desktop-api-surfaces.md: `3518b1fbda7eebceed806ad581528ac432a397f2aeadf2fb6104d9c2f3feef68`
+- auto-ui/docs/specs/runtime/document-surface-boundary.md: `4967924f2516395de8fb60a832c0d172ae0ff8bef9e6bee284adb916da00f3d5`
+- auto-reader/docs/specs/reader/real-library.md: `319e0c33fd5524e434e4275199fa517279f32530ea8023c347733952af99906a`
+
+默认工具已在主UI仓用cargo build --offline --locked -p auto-ui-tools --bin auto-ui-tool真实重建，exit0，159秒。默认发现序由auto-man开发owner target/debug优先（无环境覆盖）；D:/autostack/auto-ui/target/debug/auto-ui-tool.exe SHA `580294fa64a1bd83c05e7b19990714b01c87822ec53598c68d9734cfc2261048`。真实I-TOOL describe返回auto-ui-tool/version1，EOF exit0；该常规已安装工具保留供用户auto run使用，不是计划专用副本。未写main源码WIP；其他人的docs/未跟踪文件全部保留。
+archived=代码/规范已交付；本Plan将移docs/plans/archive/并提交，cleaned尚待实际删除后读回。所有五仓移除前guard clean；scope还有734个pnpm/vendor内部junction，已验证链接路径与target均在唯一scope中、用无递归无Force操作摘除链接本身，随后scope guard clean（清单SHA e7c10fc0f7524fb4a06d248dff0b1222ed82480980adef747d3da8bf1eefbf57）。scope删除前统计100025文件/74033368206字节，非精确删除量（默认build日志可能增长）。本计划无未解决材料hold；D-956-1/2以本Plan与债务记录永久摘要足够。955旧持有与其他计划目录完全未操作。
+收尾目录对账：所有生成workspace/target、consumer副本、冷运行、浏览器依赖/二进制、baseline归档/target、probe/HTTP fixtures/日志均在D:/autostack/plan-artifacts/plan-956；常规编译中间件另在唯一五仓worktree内，随tree删除。此前跨仓构建传入的同scope target也在内；无另建盘符/外部发布目录。正常主仓默认工具见上，保留其既有owner输出。周期gate因955在last_covered953后交付而到期；本次清理完成后交auto-plan-regress，尚未计已跑。
