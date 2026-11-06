@@ -1,8 +1,9 @@
 ---
 plan_id: PLAN-988
-status: reviewed
+status: archived
 feature_name: Reader原生多选与动态字节桥接
 plan_revision: 1
+completion_kind: delivered
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-06
@@ -434,6 +435,53 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 - 本pass只绑定上述语言6f51/UIb0d冻结提交，**不自动覆盖后续rebase/merge的语义变化**。根已只读发现UI主线另有Plan056；merge需rebase/range-diff并核UI受影响门。retention registry精确登记补齐、原8个外部目录的owner/路径/实际删除量对账、规范主线读回、工具刷新或明确消费指令、归档/guard清理和009交接仍pending；本轮未执行这些closeout动作。
 - 本轮raw SHA256：typed.log=`163bcbf3189fd04e6ce26980250cbf70ac7bb54f3bd9398189c236d2508a0b66`；holdouts.py=`281cef7049297a07988685d33efb18bad856c7aaae778db55688790d6062dad7`；holdouts.log=`d10e07dd8c72490505bfeeb53ac839fbccbc3d7192d0e639e992984b2c31d184`；holdouts.json=`c96a792d83acc18f0920767eef665ec52c76b776e2aa41dc9cb55da1e711b8a9`。明细与source-state核对记review-r5/manifest.json；merge先把必要摘要折入Plan再按政策清理整个988 scope。
 - 任务对账：T-00～T-04完成，T-05待实际closeout；**status=reviewed，current_step=5 / total_steps=6**。没有剩余work-owned实现/oracle缺口，所有历史finding保留且关闭。实现/共享Plan写权交merge owner；未添加goal路由收据，也未声称008→009完整目标已经完成。
+
+### 2026-11-06 merge prepared：独立R5通过，整合基线冻结
+
+- stage: merge | key: PLAN-988:r1 | checkpoint: prepared | review_receipt_commit: 75c72c142d9b5cccdf351526c2ff0c860ff637e8 | reviewed language6f51ef893b4d427f73718f17f8dbbf82d3360000 / UIb0d59400a1c302c040e07c9e4938a1c13b34d937 | R5 pass、无work/review缺口，T05 closeout pending。用户新增一轮repair/review及通过后merge/009授权已验证，host goal记账blocked不冒充active，本次按其显式指令手动串行交付。
+- 权威树原branch不变，已顺序rebase默认master，无冲突。语言新tip50d8beeb32ad031f15506cc4fc3180c757ab9a86，UI新tip02316271da9b9cd90750ca5a38ed91143f6c4be4。git range-diff语言8/8、UI3/3全部“=”；old→new映射如下（机械改hash，reviewed patch等价）：82d4b5d50→eedb7800c、739fd451a→fa91a3600、61d83ee4c→cf5ba5c8c、65dcdb025→69f1a1ac2、e693ad506→e3d997383、7a80083fc→fcf797e92、0b087ab1e→efdc8f74e、6f51ef893→50d8beeb3；UI518efb0c→c1f77a4c、96083340→25f3172c、b0d59400→02316271。
+- 语言master除计划簿记，仅Plan958改experimental/ace worker及两个无关Specs，不触SDK byte/dialog实现、Root Cargo/config；UI master已落Plan056 reload/runtime，故整合后补UI生成器/provider/真实picker编译和运行，不把旧UI基线通过自动覆盖新整合。两树当前交付内容clean；主检出既有他方文档WIP和UI4张生成PNG保留，不纳入或擅自stash/提交。
+- 冻结语言并集vm+shim-metadata+a2r+http由merge核选并执行一次：最后完整VM/HTTP合并运行后Rust声明/调用推断历经多个repair，而HTTP门含实际Rust生成消费者；本次用最终整合基线关闭统一integration门。不是因单纯记账HEAD变化重跑全仓，不运行cargo t all。此前a2r和原子结果保留，新的并集结果待终态。UI gates顺序运行，不竞争同树build。
+- 原988 scope曾缺全局retention精确登记（旧substring检查误命中内容hash），本次按Plan各阶段/raw名录及R5manifest核明确owner后补全局scopes[auto-lang/PLAN-988]，状态in-flight-reviewed；未知内容不盲删。当前仅登记，未归档/删除。merge/prepared.json和两份range-diff原文在988唯一scope；最终需折摘要进本Plan并删除整个scope、刷新登记。原8个外部Temp材料对账仍pending。
+
+### 2026-11-06 merge gate环境诊断（原红保留，不改代码/断言）
+
+- 冻结交付语言50d8beeb3的并集执行终态：vm+a2r+http selected/executed1374，PASS1373/FAIL1，excluded459/not_run0；shim-metadata16/16 PASS。原并集gate_passed=false，269.42秒，results SHA256=7d1ab306176b7be73e9acd365a811d9ce3b66f319bde184a0cdea4b616a5d9a3，child_validation.valid=true，原红不改写为绿。
+- 唯一失败tests::plan727_http_transfer_tests::vm::plan727_vm_transfer_download_wait_success，HTTP200但staging create os123；测试把temp_dir原Windows路径未转义插入Auto源码。GetTempPathW实测将TEMP的forward slash规范化为反斜杠，小写tmp构成\t，改变源码路径。其下载/byte实现与988未存在新语义失败证据，不通过修改测试断言/产品实现规避。
+- 仅将TEMP/TMP改为同一物理scope目录的全大写D:/AUTOSTACK/PLAN-ARTIFACTS/PLAN-988/MERGE/TMP，GetTempPathW不再带\n/\r/\t；同一冻结test exe原case exit0，1 PASS0ignored，0.12秒，状态success/200，16字节真实目标替换断言通过。control log SHA256=45011061cb9f2bbf551a98ec99a81e665f158cb451c7f515e8ad9946b9c9f776。
+- 正在同一冻结代码以该环境复跑完整cargo t http，关闭受影响完整组；VM/a2r与metadata原子通过项的源码/依赖/输入/配置未改变，显式保留。此为测试环境定位与验证，不追加第五轮代码repair或降门。输出仅988/merge/http-path-control，待终态，不预报PASS。后继009工具构建/探针同样使用scope全大写TEMP，避免夹具内路径转义问题；这不宣称产品可接受未转义的语言字符串路径。
+
+### 2026-11-06 merge冻结门闭合：通过后进入精确ff-only落地
+
+- HTTP环境修正后的完整`cargo t http --out .../merge/http-path-control` exit0，50/50 PASS，excluded0/not_run0，83.88秒，results SHA256=2a5bc2f886ff528ca5ed072b8c1a0f16d1abd58a6a0a89402e15fa2a27252c68。与原并集source_state/config逐字一致；完整50个test ID均为原1374子集，原唯一失败在此集合内，非HTTP1324项实际PASS及metadata16实际PASS保持有效。合并有效原子结果为1390个唯一实际PASS，条件excluded459保留，not_run0。原并集FAIL文件不覆写，最终gate-reconciliation明确给出替换组、身份、原因及原红hash。
+- 整合UI02316271/source language50d8beeb3：`cargo check --offline --locked -p auto-ui-runtime -p auto-ui-compiler` exit0；`cargo test --offline --locked -p auto-ui-compiler --lib plan988 -- --nocapture` exit0、1 PASS0ignored；runtime同名真实picker test --no-run exit0后，用实际test exe运行`plan988_real_multiselect --ignored --nocapture --test-threads=1` exit0、1实际PASS0ignored/2.56秒；`plan804_dialog_dnd_provider --nocapture --test-threads=1` exit0、6 PASS0ignored/0.02秒。真实OS picker涵盖VM parented/Rust unparented的多选/取消、owner恢复，仍不计Reader产品IME/UI验收。当前runtime test369 warning标题含主线Plan056合并变化，不宣称跨主线warning数不变。
+- 文件SHA256：gate-reconciliation.json=e8830d9588e22378fdc2b8b33f058fd2a67381c98738ea87b70dd485b2e759ee；ui-check.log=ff79cf037a798cb787d037dd18cf4dedd0066e2d7439cba3cc5aaac53ed5660a；ui-generator.log=b17b7e2658a1aa3675b7f4c30cc5746903d707cd7d82452eec5ca8097b33eb54；ui-picker-build.log=4863c727cf7031ea5d90455957f5511aca7ce3fab5d1491af905d539d42e865c；ui-picker.log=68ae4aaa63c55cea9219effc76f7064b9c97a76ea18af958f2191ec693d29319；ui-provider.log=fe9a8e33f2abbe5d13342ace70c8c14c9bc725d864b00e2b6e50d97a57ab10e6。所有build/test已终态，两实施树及只读down/web无Git改动。Git Bash实际路径C:/Program Files/Git/bin/bash.exe运行wt-guard，语言/UI均clean；系统bash为WSL不能识别D:/脚本的入口失败只作工具路径纠正，未跳过guard。
+- batch due核对：主线.last-batch-regression为956、2026-11-06T01:12:46Z，距今不足48h，此后已合入958非5倍数，988也非5倍数；当前不触发周期cargo t all。已有batch known reds/原guard诊断保留，不宣称全仓全绿。
+- 工具消费收据：当前已安装auto.exe仍SHA256=54124fd43afc76f3cf41268a57c6cb3defd6b008433390a5f0992166a12871bd（11-05 22:35），同目录auto-ui-tool.exe= ecc962005ef088794d3e0a181873dfff3a45dacfcc9a6fa3cad23723e58edfa4（11-05 03:04）；**均为stale，未冒充988新工具**。009须在其唯一组添加只读auto-man+auto-lang@50d8beeb3+auto-ui@02316271+down/web兄弟，依赖解析实证后分别cargo build --offline --locked -p auto及UI实际bin auto-ui-tool，输出在该组target或009 scope；将新auto路径传给--auto-bin，AUTO_UI_TOOL_BIN显式指向新工具，AUTO_LANG_ROOT/AUTO_UI_ROOT绑定该组，并记新exe SHA/编译源/真实消费者。不得覆盖主检出他方工具或以旧binary执行新能力判失败。
+- T05其余checkpoint（实际landed/canonical/archive/cleanup/009交接）仍待完成。主线非本Plan docs和既有UI生成PNG已抓取未跟踪hash/跟踪diff，landing后再核，不擅自清理。
+
+### 2026-11-06 R5 reviewer canonical Spec identity勘误/落地对账（无语义变更）
+
+- owner/reviewer=`/root/review_plan988`；仅独立核R5已审Spec与已落地canonical身份，不修改实现/Spec，不替代merge-owned测试门。原R1～R5记录保留；补正SD-01/03旧哈希的身份含义：它们是工作文件raw字节哈希，**不是Git LF blob哈希**。差异已精确重构，不是内容丢失或未经复审改写。
+- 精确重构规则：从原已审commit读取Git blob bytes，确认末字节LF；仅将最后一个LF换成CRLF，其余字节完全不变。SD-01共104个换行，仅最后1个为CRLF、其余103个LF，6454→6455 bytes，SHA256精确得到旧值`176af48019b8d7460401988a7199e8f8b4e1bf8c3c9993adce2c7e6de7f5ae70`。SD-03共80个换行，仅最后1个为CRLF、其余79个LF，4294→4295 bytes，SHA256精确得到旧值`82c61f71000ab8fe0b4fcdf09f511fe38aeceaa5d05bffd1c3c10634c3e35d50`。这是现在从不可变Git对象重建、与旧记录哈希精确相符的raw表示证明；没有声称重新读取未保留的历史工作文件，也未将重建文件伪称历史原件。整文件CRLF或前缀CRLF不匹配，因为差异只在最终换行。
+
+| delta / canonical目标 | R5 reviewed → landed（Git blob逐字节相同，当前主检出文件也相同） | canonical Git blob SHA256 |
+|---|---|---|
+| SD-01 / auto-lang `docs/specs/auto-lang/ui/design/dialog-dnd-host-capabilities.md` | `6f51ef893b4d427f73718f17f8dbbf82d3360000` → `3735065684968aad958140250e763ecea9838aa7` | `008fda93a78e8fde48a5195b588586c17803bd7c9d90848a915ac8ef6fa1873b` |
+| SD-02 / auto-lang `docs/specs/auto-lang/vm/native-fs.md` | 同上；5101 bytes，旧记录已是LF blob | `d124d33e89babfe60e49815f882d7a8c9436e3ea1f5f6e25be273fe95d9edf8d` |
+| SD-03 / auto-ui `docs/specs/runtime/native-vm-app-validation.md` | `b0d59400a1c302c040e07c9e4938a1c13b34d937` → `02316271da9b9cd90750ca5a38ed91143f6c4be4` | `7dcb8dbb1bb220d60a672433ae2f8555b2a45d053a1875cf64518d7c62314f05` |
+
+- 冻结增量复核：独立重算语言`git diff a137e8be6..6f51ef893b4d427f73718f17f8dbbf82d3360000 -- docs/specs`加UI的`git diff 22a925c7..b0d59400a1c302c040e07c9e4938a1c13b34d937 -- docs/specs`原始输出，与R5保存的`review-r5/spec-delta.patch` **7232 bytes逐字节完全相同**，SHA256仍`17fe261a5a00a03ae0d54edd0da19d651789c6f1661eda9548933a79333751db`。已审规范增量身份无漂移，R5 Spec pass保持有效；本勘误只修正canonical身份表示。
+- 重放脚本`D:/autostack/plan-artifacts/plan-988/merge/reconcile-review-specs.py`实际exit0；结果`merge/review-identity/reconciliation.json` SHA256=`4d7a05a1755928ba07a76c6c72f87fa1c3799755fb58d9674b5d809a880ab31e`。脚本断言三个reviewed/landed/main-file字节相同、两个末尾CRLF重构哈希匹配、R5 patch完全匹配。没有新实现、Spec编辑或活动测试进程；主Plan原24行merge WIP原样保留，本勘误未单独提交，避免顺带提交merge尚未完成的记录。共享Plan及scope写权交还merge owner，后续归档/清理按其实际closeout完成。
+
+### 2026-11-06 merge landed / canonical_verified / archive准备
+
+- stage: merge | key: PLAN-988:r1 | checkpoint: landed,canonical_verified | outcome: pass（上述checkpoint） | actual_delivery: auto-lang **3735065684968aad958140250e763ecea9838aa7**, auto-ui **02316271da9b9cd90750ca5a38ed91143f6c4be4**。两个实际默认master均ff-only到对应delivery，未产生merge commit。UI先落地后，语言首次ff-only被并发Plan941文档提交d672acd7d拒绝，未改用普通merge；在原权威树再次rebase master，无冲突，8/8 range-diff全“=”。
+- 第二次映射：eedb7800c→3920dd95a、fa91a3600→3cfe1caee、cf5ba5c8c→85cd692c2、69f1a1ac2→e89b2c7d5、e3d997383→d03d33b60、fcf797e92→45e664024、efdc8f74e→fa25264d4、50d8beeb3→373506568。d672只增加Plan941的23行账记，`git diff --exit-code 50d8beeb3 373506568 -- crates test experimental scripts .cargo .config Cargo.toml Cargo.lock docs/specs`为0；故同一protected内容、配置、输入的1390项有效冻结门/UI门显式复用，不因文档hash变化重跑。
+- canonical main逐字节读回与原reviewed Git blob相等，SD01 Git blob450b2974c39fe89a2679edee37b56c56e376e8a5 / SHA256 **008fda93a78e8fde48a5195b588586c17803bd7c9d90848a915ac8ef6fa1873b**；SD02 blob637a07fa3e61cb710d755cbbe1139a0d8dfb8e23 / **d124d33e89babfe60e49815f882d7a8c9436e3ea1f5f6e25be273fe95d9edf8d**；SD03 blob5a1fe9402cb686f5f85f5efd492a628d8011cf1f / **7dcb8dbb1bb220d60a672433ae2f8555b2a45d053a1875cf64518d7c62314f05**。上文独立勘误精确证明SD01/03原raw hash仅末尾CRLF差异，freeze patch7232 bytes不变；不是猜测整文件换行，也未修改规范求吻合。三份路径沿R5表，未写ledger/index或新增复制知识。
+- 默认主线其他跟踪WIP二进制diff SHA与落地前相同；语言42、UI23个untracked逐文件hash全相同，无缺失/修改。988实施/依赖树均clean、owned运行exe为0。语言主检出的其他文档WIP及UI旧4张PNG保持，不代他人清零。
+- 009消费精确语言delivery373506568及UI02316271（50d8beeb3为内容等价的受测前hash，不能作最终落地hash）；只读auto-man03bb65ef7fb6181caa6a08d9752ac7d57c75516c/down58ea33f699efa5cb1194473a2d45dcec51006842/webbf72baabf28fa865b5a7c680b8a5fa4018a0a63d同组解析。UI正确构建包名为`cargo build --offline --locked -p auto-ui-tools --bin auto-ui-tool`，CLI为`cargo build --offline --locked -p auto`；先确认依赖无漂移，再显式传新binary/env。已安装工具stale边界沿上文，不当988新交付。
+- 归档目的地docs/plans/archive/988-reader-file-picker-and-byte-bridge.md，completion_kind=delivered；T00～04=5/6，T05剩余自有scope/外部8根/4worktree及两个分支删除、registry/009交接为pending closeout。先实际归档/提交核验，再清理；目前不标cleaned或6/6。Plan无本地Markdown相对链接需迁移，canonical文件含988来源，未创建手工生成导航/JSON。原008→009全目标尚未完成。
 
 ## 10. 待澄清事项
 
