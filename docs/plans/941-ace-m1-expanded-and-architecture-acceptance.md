@@ -801,6 +801,25 @@ stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:26 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，RT默认认证不冒release） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:74dc77d8e989a35b7953c072ffe0d2492c9ac7c3 | next:work 原RT四release及其余原范围
 
+### 2026-11-06 原record/text四项Rust优化配置补齐（goal第27轮）
+
+前轮32默认cert+四端实证为progress。本轮继续原T04/05/10/11，唯一941树提交 **351dae1049e6bf554006a971e73b8b3d30ba71ce**，7文件，树clean；仍executing2/17，生产worker/编译器/语言语义未变。
+
+- 新正式`ace-a2x-worker::conformance::record_text_release_941::original_four_release_variants`逐原902 **R07/R08/T03/T05**，逐字节核对925现源与902原源；四条保record/record/text-record/text、值42/42/23/42及原caps。原902精确优化参数 **--edition 2021 -O**，不混标量`-C debug-assertions=off`。actual与原独立Rust参考各四次真实编译/运行，新增**8compile+8run**；完整发射main/runtime/generated/manifest均与既有默认证书文件集逐字节相同。不是新默认cert、不剪产物或改源。
+- 直接复用标量observer现有contained capture（仅六helper改pub(super)，原标量逻辑不改），无新runner/meter。两observer均可从永久fixture自行重建；有AUTO_PLAN_ARTIFACTS则所有材料留scope，否则用系统临时目录并自行关闭清理。各phase先保raw argv/cwd/deadline/wall/exit/双流hex再断言；原compile120s/run30s/whole360s、1MiB双流帽保持。
+- 共用helper及conformance测试exe身份已变，因此旧8标量release材料保历史，不回填快照。最终同一次`cargo t ace-a2x --test-name release_941::original_ --out <scope>/record-text-release-frozen/gate`实际选择**2/2正式测试，内部4RT+8scalar**，exit0、11.8845302s，results SHA=`2ea6939b916304b88e7af24199ac91918d3f258d3c316b544c212f0f94268f62`。RT9与scalar8依赖（含实际exe、worker、producer/原表/参考合同、executor和nextest配置）执行前后SHA稳定；scope/record-text-release-frozen与scalar-release-rt-refresh。此次共**24compile+24run**（其中16+16为必要原标量刷新），不把命名2测试冒整个ace-a2x通过。
+- 只读release reader有限区分scalar与record-text两域，原schema/producer/table/source/flags/recipe/profile/caps、原父终态与discovery测试exe、前后全依赖、当前-vV、完整文件集/manifest、原nonce/FNV/emit与四phase实际终态、独立oracle均校验；原标量逻辑及flags守恒。RT默认与release联立，任何一腿FAIL均FAIL；缺release仍UNOBSERVED，C不误算Rust额外模式。当前RT **32/32目标配置证据通过**，certification_complete=true；RT资源/生命周期整体仍另待，不能冒本域所有义务完成。
+- **32 RT原帧反控**：4原合法PASS、4双方同错FAIL、24缺-O/混标量flags/未知field/错source/profile/caps REFUSED，scope/record-text-release-frozen/raw-reader-controls.json SHA=`fc1ddc11d276721044c6996699a3e87e5677bdfd2edb95a4f7370dd297f9c243`。原48标量反控在刷新帧重放仍8PASS8FAIL32REFUSED，SHA保持`95503e2764a50ec46be7335264da647fa18fcafa19c42b320c39724f39acf7b7`。均counterfactual_not_execution，不充语言执行。
+- 新永久参数守恒正/反控联原153，`cargo t infra-ace-m1-arch --out <scope>/record-text-release-final-controls` **154/154 PASS**、4.7336548s、exit0，results SHA=`376a4a81e8a2baaffec5db2113364da788303e3f14fa36bf92eaa82f3d61952a`。定向rustfmt(skip_children)、py_compile、diff-check通过。提交后7变更文件均等Git blob（scope/record-text-release-frozen-preview/committed-input-audit.json），复用同代码154证据，不为commit重测原1779或190默认认证。
+
+健康记录保真：初次准备发现新observer unused Value import，已在执行与前后快照之前删除，正式准备/执行无此warning。尝试要求actual所有stderr为空的额外审计失败，随后逐项证明**24个compile stderr均与原默认证书同腿字节完全一致**：独立参考12条全空；既有scalar两产物4条unused_parens/unused_variables、R08两条non_snake_case原发射warning保留，scope/record-text-release-frozen/compile-warning-baseline-audit.json。未抑制lint/改flags/修生成源码；旧first_lex_fact基线dead_code亦未改，最终T13需如实保健康边界，不谎报全部编译零warning。
+
+冻结351dae1整组合原受管Job/Popen禁用重读：**394PASS/8FAIL/484UNOBSERVED**，原登记886/required/legacy38不变，full_registry_closed/system_delivered/expanded claim仍false。scope/record-text-release-frozen-preview/preview.stdout 397060B SHA=`b5e59e6d9c9e426d266d4bb2f8fef632bdab2e1d61a70644d4e7f75f46ada004`，10453.5749ms、peak process28590080/Job29822976B；单共享LiveBudget reservation31051093/全程peak**47280323<50331648B**。48MiB聚合/4MiB单件/private128MiB/解码先预留/64KiB流hash原帽未改、不清峰值。累计190默认cert/daily+12原额外Rust模式有实证，不能替剩余collections/SQ/实例、旧313/38、机制/ARCH/938939及独立最终review/merge。无活进程或新增用户决定；下一入口继续原collections等剩余四端与机制，原8FAIL/8native trap缺观测保留。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:351dae1049e6bf554006a971e73b8b3d30ba71ce | task_ids:T04/05/10/11（未关闭） | evidence:4原RT优化+8scalar身份刷新/24compile24run；80反控；154回归；整体394PASS8FAIL484UNOBSERVED | blockers:原完整任务未完，无新增用户决定 | next_responsible_role:work 原collections/SQ/实例四端与机制/ARCH
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:27 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，RT四优化配置缺口已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:351dae1049e6bf554006a971e73b8b3d30ba71ce | next:work 原剩余完整四端与机制/ARCH
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
