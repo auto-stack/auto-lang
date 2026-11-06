@@ -255,6 +255,8 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 - 健康：repair diff --check通过，131 core lib既有warnings；本轮未改实现或测试断言。原work vm/a2r/http1374 PASS、459原条件排除、not_run0和shim-metadata16证据保留，未为已知失败重跑；其结果不能覆盖A/B。最终冻结并集 **vm+shim-metadata+a2r+http** 仍pending merge owner，待修复与通过后核提交/输入/config身份及必要补跑。修复代码会使对应生成证据失效，其余R1/R2未改路径证据可明确复用。
 - 任务状态：T-00/T-01完成，T-02/T-03重开，T-04/T-05未完成，**executing 2/6**。写权交还work，诊断checkpoint后继续同树有界修复；不改既有授权或合同，不生成goal路由收据。先前登记8个外部临时材料仍归merge清理，review未移动或删除。
 
+- stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 8 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-988/auto-lang + auto-ui | commit: language e693ad506cb94b34e334323e8d0676f52fb29e4c / UI b0d59400a1c302c040e07c9e4938a1c13b34d937 | review_receipt_commit: a9ee9f72528464db5165a72e2042ac16b68e6678 | next: work diagnosis checkpoint then repair F988-R2-01。R1原例与JSON/参数/Spec缺陷实证闭合，独立新反例揭示空列表修改与写入共享表示尚不完整；本轮属于产生改变下一行动证据的进展。第二次连续final review失败，进入第二次修复前先完成上表诊断与oracle调整，不启动第四次自动修复、不削减验收、不合入。两实现树提交未漂移且干净，review所有进程终态，根已接回写权。009原产品验收和完整目标仍未完成。
+
 ## 10. 待澄清事项
 
 无待用户范围决定。API具体返回形态/native ID/依赖版本由T-00有界核查；若出现超授权架构改造才另提决定。真实交互证据需要可用桌面，不能以模拟provider替代。
