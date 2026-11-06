@@ -159,12 +159,16 @@ impl Artifact {
         };
         let size = ace_foreign_contract::codec::json_size(&decoded, MAX_ARTIFACT)
             .map_err(|e| e.to_string())?;
+        let production = resources.reserve_output(size).map_err(|e| e.to_string())?;
         let mut bytes_charge = resources
             .reserve(Charge::resident(
                 size + std::mem::size_of::<Vec<u8>>() + 2 * std::mem::size_of::<usize>(),
             ))
             .map_err(|e| e.to_string())?;
         let bytes = ace_foreign_contract::codec::encode_json_bounded(&decoded, MAX_ARTIFACT)
+            .map_err(|e| e.to_string())?;
+        production
+            .complete(bytes.len())
             .map_err(|e| e.to_string())?;
         if bytes.len() > MAX_ARTIFACT {
             return Err("foreign.resource.artifact".into());
@@ -375,6 +379,10 @@ impl Snapshot {
         };
         let size =
             ace_foreign_contract::codec::json_size(&wire, MAX_ROOT).map_err(|e| e.to_string())?;
+        let production = self
+            .resources
+            .reserve_output(size)
+            .map_err(|e| e.to_string())?;
         let _root_copy_charge = self
             .resources
             .reserve(Charge::io(
@@ -383,6 +391,9 @@ impl Snapshot {
             ))
             .map_err(|e| e.to_string())?;
         let payload = ace_foreign_contract::codec::encode_json_bounded(&wire, MAX_ROOT)
+            .map_err(|e| e.to_string())?;
+        production
+            .complete(payload.len())
             .map_err(|e| e.to_string())?;
         if payload.len() > MAX_ROOT {
             return Err("foreign.resource.store-root".into());
@@ -998,11 +1009,13 @@ impl Session {
         };
         let size =
             ace_foreign_contract::codec::json_size(&root, MAX_ROOT).map_err(|e| e.to_string())?;
+        let production = resources.reserve_output(size).map_err(|e| e.to_string())?;
         let root_charge = resources
             .reserve(Charge::io(size + std::mem::size_of::<Vec<u8>>()))
             .map_err(|e| e.to_string())?;
         let root = ace_foreign_contract::codec::encode_json_bounded(&root, MAX_ROOT)
             .map_err(|e| e.to_string())?;
+        production.complete(root.len()).map_err(|e| e.to_string())?;
         if root.len() > MAX_ROOT {
             return Err("foreign.resource.root".into());
         }

@@ -7,6 +7,9 @@ use std::{
     any::Any,
     sync::{Arc, Mutex, Weak},
 };
+#[path = "resource_production.rs"]
+mod production;
+pub use production::{OutputLimits, OutputPermit, OutputStats};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Charge {
@@ -132,6 +135,7 @@ struct State {
     limits: Limits,
     stats: Stats,
     retained: Vec<Retained>,
+    production: Option<production::Budget>,
 }
 impl State {
     fn collect(&mut self) {
@@ -230,6 +234,7 @@ impl Resources {
             limits,
             stats: Stats::default(),
             retained: Vec::new(),
+            production: None,
         };
         state.add(Charge::index(
             std::mem::size_of::<State>() + 2 * std::mem::size_of::<usize>(),

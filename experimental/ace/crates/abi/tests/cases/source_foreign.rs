@@ -2851,6 +2851,15 @@ fn source_worker_raw(
     leg: &str,
     tag: &str,
 ) -> serde_json::Value {
+    source_worker_with_output_budget(deck, store, leg, tag, None)
+}
+fn source_worker_with_output_budget(
+    deck: &serde_json::Value,
+    store: &Path,
+    leg: &str,
+    tag: &str,
+    budget: Option<&str>,
+) -> serde_json::Value {
     use base64::Engine as _;
     let request = serde_json::json!({"recipe":ace_abi::worker_source::RECIPE,"nonce":tag,"request_hash":tag,
         "deck_b64":base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(deck).unwrap()),
@@ -2861,8 +2870,12 @@ fn source_worker_raw(
         serde_json::json!({"op":"request","request":request}),
         serde_json::json!({"op":"end"})
     );
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_abi-worker"));
+    if let Some(budget) = budget {
+        command.env("ABI_TEST_PRODUCED_BUDGET_BYTES", budget);
+    }
     let run = ace_core::link::run_deadlined_typed(
-        &mut std::process::Command::new(env!("CARGO_BIN_EXE_abi-worker")),
+        &mut command,
         std::time::Duration::from_secs(30),
         ace_core::link::CaptureCaps {
             stdout_max: 1 << 20,
@@ -2872,6 +2885,38 @@ fn source_worker_raw(
     )
     .unwrap();
     serde_json::from_slice(&run.stdout).unwrap()
+}
+
+#[test]
+fn source_foreign_request_output_quota_refuses_real_first_edit_and_next_request_repairs() {
+    let root = scope("request-output-budget");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../crates/auto-lang/test/cases/ace-ca-d-source-938/src/add.atomdata");
+    let deck: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    for leg in ["native", "c"] {
+        let store = root.join(leg);
+        let first = source_worker_query(&deck, &store, leg, "output-cold");
+        assert_eq!(first["ok"]["source_import"]["actual_exit"], 42);
+        let pointer = store.join(format!("source938-current-{leg}.json"));
+        let accepted = std::fs::read(&pointer).unwrap();
+        let mut edit = deck.clone();
+        edit["source"] = "fn main() int { let a=19\nreturn foreign_add(a,23) }".into();
+        let denied =
+            source_worker_with_output_budget(&edit, &store, leg, "output-refused", Some("0"));
+        assert_eq!(denied["error"]["code"], "foreign.resource", "{denied}");
+        assert!(denied["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("output reservation"));
+        assert!(denied.get("ok").is_none());
+        assert_eq!(std::fs::read(&pointer).unwrap(), accepted);
+        // Each is a real new worker request, so the spent/refused budget may
+        // not leak through persisted pages into the repaired request.
+        let repaired = source_worker_query(&edit, &store, leg, "output-repaired");
+        assert_eq!(repaired["ok"]["source_import"]["actual_exit"], 42);
+        assert_eq!(repaired["ok"]["source_import"]["reference_exit"], 42);
+        assert_ne!(std::fs::read(&pointer).unwrap(), accepted);
+    }
 }
 
 #[test]

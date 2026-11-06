@@ -108,15 +108,16 @@ pub struct Page {
 impl Page {
     fn encode(value: &impl Serialize, resources: &Resources) -> Result<Self, Error> {
         let size = ace_foreign_contract::codec::json_size(value, MAX_PAGE_BYTES).map_err(reject)?;
+        let production = resources.reserve_output(size).map_err(resource_error)?;
         let mut reservation = resources
             .reserve(Charge::resident(
                 size + std::mem::size_of::<Vec<u8>>() + 2 * std::mem::size_of::<usize>(),
             ))
             .map_err(resource_error)?;
-        let bytes = Arc::new(
-            ace_foreign_contract::codec::encode_json_bounded(value, MAX_PAGE_BYTES)
-                .map_err(reject)?,
-        );
+        let bytes = ace_foreign_contract::codec::encode_json_bounded(value, MAX_PAGE_BYTES)
+            .map_err(reject)?;
+        production.complete(bytes.len()).map_err(resource_error)?;
+        let bytes = Arc::new(bytes);
         reservation.try_retain(&bytes).map_err(resource_error)?;
         Ok(Self {
             digest: sha(&bytes),
@@ -1037,12 +1038,17 @@ impl Frontend {
             edges,
         };
         let size = ace_foreign_contract::codec::json_size(&wire, MAX_ROOT_BYTES).map_err(reject)?;
+        let production = self
+            .resources
+            .reserve_output(size)
+            .map_err(resource_error)?;
         let root_charge = self
             .resources
             .reserve(Charge::io(size + std::mem::size_of::<Vec<u8>>()))
             .map_err(resource_error)?;
         let root = ace_foreign_contract::codec::encode_json_bounded(&wire, MAX_ROOT_BYTES)
             .map_err(reject)?;
+        production.complete(root.len()).map_err(resource_error)?;
         if root.len() > MAX_ROOT_BYTES {
             return Err(reject("root budget"));
         }

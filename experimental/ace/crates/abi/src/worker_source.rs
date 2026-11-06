@@ -9,7 +9,7 @@ use crate::{
 use ace_artifacts::store::ManagedStore;
 use ace_foreign_contract::manual::ManualManifest;
 use ace_source_query::frontend::Frontend;
-use ace_source_query::resources::{Charge, Reservation, Resources};
+use ace_source_query::resources::{Charge, OutputLimits, Reservation, Resources};
 use ace_source_query::work::{Ledger, Phase};
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
@@ -100,6 +100,16 @@ fn err(code: &str, message: impl ToString) -> DiagOut {
         code: code.into(),
         message: message.to_string(),
     }
+}
+fn budget_error(code: &str, resources: &Resources, message: impl ToString) -> DiagOut {
+    err(
+        if resources.output_stats().is_some_and(|s| s.refused) {
+            "foreign.resource"
+        } else {
+            code
+        },
+        message,
+    )
 }
 fn step(
     outcome: &'static str,
@@ -253,6 +263,25 @@ fn decode(req: &WorkerRequest, resources: &Resources) -> Result<(Deck, Reservati
     }
     Ok((deck, model))
 }
+fn output_limits(resources: &Resources) -> Result<OutputLimits, DiagOut> {
+    const NAME: &[u8] = b"ABI_TEST_PRODUCED_BUDGET_BYTES";
+    let mut name = [0u16; NAME.len() + 1];
+    for (wide, byte) in name.iter_mut().zip(NAME) {
+        *wide = *byte as u16;
+    }
+    // Reuse the original host-only tightening seam, sizing its native value
+    // before owning it. Request/deck data never selects these allowances.
+    let value =
+        crate::ctool_environment::read(&name, resources).map_err(|e| err("foreign.resource", e))?;
+    let maximum = OutputLimits::default();
+    let request = value
+        .as_ref()
+        .and_then(|v| v.value.to_str())
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(maximum.request)
+        .min(maximum.request);
+    Ok(OutputLimits { request, ..maximum })
+}
 pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     if req.recipe != RECIPE || !matches!(req.leg.as_str(), "native" | "c") || req.steps.len() != 1 {
         return Err(err("recipe","source certification requires its recipe, explicit native/c consumer and one operation"));
@@ -283,6 +312,9 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         Target::C
     };
     let resources = Resources::default();
+    resources
+        .enable_output_budget(output_limits(&resources)?)
+        .map_err(|e| err("foreign.resource", e))?;
     let request_work =
         host_work::RequestWork::new(&resources).map_err(|e| err("foreign.resource", e))?;
     let _work_scope = request_work.enter();
@@ -497,7 +529,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                     started,
                 );
             }
-            Err(e) => return Err(err("source", e)),
+            Err(e) => return Err(budget_error("source", &resources, e)),
         };
         (restored, edit)
     } else {
@@ -532,10 +564,10 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                     started,
                 );
             }
-            Err(e) => return Err(err("source", e)),
+            Err(e) => return Err(budget_error("source", &resources, e)),
         };
         let session = Session::from_frontend_stored(front, checked, bytes.clone(), target, &store)
-            .map_err(|e| err("source", e))?;
+            .map_err(|e| budget_error("source", &resources, e))?;
         for work in interface_work {
             work.accept();
         }
@@ -585,7 +617,9 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             .prepare_publication_with_crt(edit, run_dir, &mut current_authority, None, Some(crt))
             .map_err(|e| {
                 err(
-                    if e.starts_with("bridge: foreign.resource:") {
+                    if resources.output_stats().is_some_and(|s| s.refused)
+                        || e.starts_with("bridge: foreign.resource:")
+                    {
                         "foreign.resource"
                     } else {
                         "publication"
@@ -645,7 +679,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 &mut current_authority,
                 None,
             )
-            .map_err(|e| err("store", e))?;
+            .map_err(|e| budget_error("store", &resources, e))?;
         publication_committed = true;
         if let Some(error) = &session.publication_maintenance().cleanup_error {
             return Err(err("store.cleanup-pending", error));
@@ -852,6 +886,39 @@ fn source_diagnostics(
 mod request_budget_tests {
     use super::*;
     use ace_source_query::resources::Limits;
+
+    #[test]
+    fn host_output_allowance_only_tightens_and_never_comes_from_the_deck() {
+        const NAME: &str = "ABI_TEST_PRODUCED_BUDGET_BYTES";
+        let resources = Resources::default();
+        let baseline = resources.stats().current;
+        let wide: Vec<_> = NAME.encode_utf16().chain(Some(0)).collect();
+        let saved = crate::ctool_environment::read(&wide, &resources).unwrap();
+        struct Restore(Option<crate::ctool_environment::Value>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                if let Some(value) = &self.0 {
+                    std::env::set_var(NAME, &value.value);
+                } else {
+                    std::env::remove_var(NAME);
+                }
+            }
+        }
+        let restore = Restore(saved);
+        for (text, expected) in [
+            ("0", 0),
+            ("123", 123),
+            ("18446744073709551615", 128 << 20),
+            ("invalid", 128 << 20),
+        ] {
+            std::env::set_var(NAME, text);
+            let limits = output_limits(&resources).unwrap();
+            assert_eq!(limits.request, expected);
+            assert_eq!(limits.artifact, 64 << 20);
+        }
+        drop(restore);
+        assert_eq!(resources.stats().current, baseline);
+    }
 
     #[test]
     fn source_step_runs_original_hot_collector_and_reports_its_actual_receipt() {

@@ -6,6 +6,16 @@ use std::{
     cell::{Cell, RefCell},
 };
 struct Allocator;
+use ace_native::MnError;
+mod config {
+    pub use ace_native::config::MAX_COFF_BYTES;
+}
+#[path = "../../native/src/coff_buffer.rs"]
+mod coff_buffer;
+#[path = "../src/source_request_work.rs"]
+mod source_request_work;
+#[path = "../src/source_tool_scratch.rs"]
+mod source_tool_scratch;
 const TRACKED_ALLOCATIONS: usize = 4096;
 struct LayoutPressure {
     size: usize,
@@ -358,6 +368,68 @@ fn measured_at<T>(threshold: usize, f: impl FnOnce() -> T) -> (T, usize) {
     let result = f();
     drop(guard);
     (result, LARGE.with(Cell::get))
+}
+
+#[test]
+fn real_coff_request_quota_counts_discarded_outputs_and_refuses_before_buffer_allocation() {
+    use ace_source_query::resources::{OutputLimits, Resources};
+    use cranelift_object::object::{
+        write::Object, Architecture, BinaryFormat, Endianness, SectionKind,
+    };
+    let mut object = Object::new(BinaryFormat::Coff, Architecture::X86_64, Endianness::Little);
+    let section = object.add_section(Vec::new(), b".text".to_vec(), SectionKind::Text);
+    object.section_mut(section).set_data(vec![0xcc; 4096], 16);
+    let expected = object.write().unwrap();
+    let size = expected.len();
+    let resources = Resources::default();
+    resources
+        .enable_output_budget(OutputLimits {
+            artifact: size as u64,
+            request: (2 * size) as u64,
+        })
+        .unwrap();
+    for turn in 1..=2 {
+        let ((bytes, memory), allocations) = measured_at(size, || {
+            coff_buffer::emit(&object, Some(&resources)).unwrap()
+        });
+        assert_eq!(bytes, expected);
+        assert_eq!(allocations, 1, "did not observe the real output allocation");
+        assert_eq!(
+            resources.output_stats().unwrap().produced,
+            (turn * size) as u64
+        );
+        assert_eq!(resources.output_stats().unwrap().pending, 0);
+        drop(bytes);
+        drop(memory);
+        assert_eq!(resources.stats().current.staging, 0);
+    }
+    let (denied, allocations) = measured_at(size, || coff_buffer::emit(&object, Some(&resources)));
+    assert!(matches!(
+        denied,
+        Err(MnError::Resource("request-output", _))
+    ));
+    assert_eq!(
+        allocations, 0,
+        "COFF buffer allocated before cumulative request refusal"
+    );
+    assert_eq!(
+        resources.output_stats().unwrap().produced,
+        (2 * size) as u64
+    );
+    assert!(resources.output_stats().unwrap().refused);
+    let next = Resources::default();
+    next.enable_output_budget(OutputLimits {
+        artifact: (size - 1) as u64,
+        request: (2 * size) as u64,
+    })
+    .unwrap();
+    let (denied, allocations) = measured_at(size, || coff_buffer::emit(&object, Some(&next)));
+    assert!(matches!(
+        denied,
+        Err(MnError::Resource("request-output", _))
+    ));
+    assert_eq!(allocations, 0, "single-artifact refusal allocated output");
+    assert_eq!(next.output_stats().unwrap().produced, 0);
 }
 mod source_foreign {
     use super::*;

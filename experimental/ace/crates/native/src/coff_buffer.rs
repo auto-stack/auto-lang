@@ -1,6 +1,6 @@
 //! Exact COFF output reservation at object::write's real allocation boundary.
 use crate::{config::MAX_COFF_BYTES, MnError};
-use ace_source_query::resources::{Charge, Reservation, Resources};
+use ace_source_query::resources::{Charge, OutputPermit, Reservation, Resources};
 use cranelift_object::object::write::{Object, WritableBuffer};
 
 struct Output<'a> {
@@ -11,6 +11,7 @@ struct Output<'a> {
     expected: Option<usize>,
     position: usize,
     failure: Option<MnError>,
+    production: Option<OutputPermit>,
 }
 impl WritableBuffer for Output<'_> {
     fn len(&self) -> usize {
@@ -30,6 +31,13 @@ impl WritableBuffer for Output<'_> {
             return Err(());
         }
         if let Some(resources) = self.resources {
+            match resources.reserve_output(size) {
+                Ok(ticket) => self.production = Some(ticket),
+                Err(e) => {
+                    self.failure = Some(MnError::Resource("request-output", e.to_string()));
+                    return Err(());
+                }
+            }
             match resources.reserve(Charge::staging(size)) {
                 Ok(ticket) => self.reservation = Some(ticket),
                 Err(e) => {
@@ -82,6 +90,7 @@ pub(super) fn emit(
         expected: None,
         position: 0,
         failure: None,
+        production: None,
     };
     let result = object.emit(&mut output);
     if let Some(failure) = output.failure.take() {
@@ -92,6 +101,11 @@ pub(super) fn emit(
         return Err(MnError::Backend(
             "COFF writer did not fill its declared output".into(),
         ));
+    }
+    if let Some(production) = output.production.take() {
+        production
+            .complete(output.bytes.len())
+            .map_err(|e| MnError::Resource("request-output", e.to_string()))?;
     }
     Ok((output.bytes, output.reservation))
 }

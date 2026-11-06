@@ -235,12 +235,22 @@ mod tests {
             (2, 2, 1, 1, 0)
         );
         assert_eq!(totals.read_bytes, captured.value.stdout.len() as u64);
+        // A recorded cache reuse must not manufacture a tool invocation or
+        // an accepted output. Real provider cache hits are covered by the
+        // source worker restart integration cases.
+        reuse("provider-cache");
+        let hit = work.0.ledger.totals("*", "provider-cache");
+        assert_eq!((hit.reused, hit.attempted, hit.produced), (1, 0, 0));
         drop(captured);
         let bytes = serde_json::to_vec(&work).unwrap();
-        assert_eq!(
-            serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()[0]["totals"]["attempted"],
-            2
-        );
+        let rows: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let tool = rows
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["stage"] == "tool-process")
+            .unwrap();
+        assert_eq!(tool["totals"]["attempted"], 2);
         drop(work);
         assert_eq!(
             resources.stats().current.index,
