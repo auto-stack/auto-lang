@@ -138,6 +138,8 @@ SD01/02均通过：`docs/specs/auto-cte/source-query-integration.md` SHA256=`eaf
 
 2026-11-06 archived | completion_kind:delivered | delivery:06251b0ccb4916d2e70abd7f98197987b778ca9e | canonical_verified:两Spec如上 | archive:docs/plans/archive/958-a2x-worker-source-ct-frontdoor.md | cleanup:pending T06，保原在途保护，尚未关闭6/6。
 
+2026-11-06 T06 closed | cleaned | 清理收尾实际执行：移除前两树 wt-guard 均 clean；`git worktree remove` 删除 D:/autostack/.wt/lang-958/{auto-lang,auto-down}（auto-down 兄弟 detached 58ea33f 钉 auto-down master，无独立提交），`git branch -d plan-958-dev`（已并入 master，06251b0cc），空组目录 .wt/lang-958 删除；worktree list/branch/目录三项复查均无 958 残留。整个958材料scope `D:/autostack/plan-artifacts/plan-958/` 删除（2034文件、约44MB，全部为本计划测试结果/日志/审计材料，关键数字与SHA256已折叠本文件§9；删除后 `ls` 确认不存在）。.retention/policy.json 登记刷新为 deleted_scopes，无具名持有（holds为空）。main 上 stale 的 experimental/ace/target/release/a2x-worker.exe（2026-11-05构建）按合并记录仍归 941 消费者新鲜性责任，不属958 scope，未动。最终 **6/6，cleaned**。
+
 ## 10. 待澄清事项
 
 无同范围待授权项。若发现需新语言/新CT引擎/放宽预算，停止对应扩张并记录具体问题；继续独立工作。941的暖CT复用/required页/正式样本及其他reader不由本修复冒通过。
