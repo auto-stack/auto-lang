@@ -483,6 +483,25 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 - 009消费精确语言delivery373506568及UI02316271（50d8beeb3为内容等价的受测前hash，不能作最终落地hash）；只读auto-man03bb65ef7fb6181caa6a08d9752ac7d57c75516c/down58ea33f699efa5cb1194473a2d45dcec51006842/webbf72baabf28fa865b5a7c680b8a5fa4018a0a63d同组解析。UI正确构建包名为`cargo build --offline --locked -p auto-ui-tools --bin auto-ui-tool`，CLI为`cargo build --offline --locked -p auto`；先确认依赖无漂移，再显式传新binary/env。已安装工具stale边界沿上文，不当988新交付。
 - 归档目的地docs/plans/archive/988-reader-file-picker-and-byte-bridge.md，completion_kind=delivered；T00～04=5/6，T05剩余自有scope/外部8根/4worktree及两个分支删除、registry/009交接为pending closeout。先实际归档/提交核验，再清理；目前不标cleaned或6/6。Plan无本地Markdown相对链接需迁移，canonical文件含988来源，未创建手工生成导航/JSON。原008→009全目标尚未完成。
 
+### 2026-11-06 checkpoint archived：版本控制确认、清理前耐久对账
+
+- archived实际提交055afdf8271e943577a4aecb52094ab49dbc8df5；主线Git已跟踪archive目标、原路径不存在，status archived/completion_kind delivered与5个完成任务及T05 cleanup pending一致。只提交本Plan，其他WIP未暂存。主线delivery为其祖先、无merge commit；文档收尾不改冻结代码/规范。以下为清理前核对，不抢写cleaned。
+- 原外部8根均为本计划旧gate输出：两atc根由早期trace存储路径认领，六plan727根Cargo.toml指向精确lang-988/auto-lang，manifest hash沿inventory；均无junction/symlink，不与其他计划/用户数据混用。inventory原件SHA256=309eb61e732f2d5652e7f1ec310c7eba362fb22f9ba52cec4d8ff1b4a7e13a14；predelete清单只记路径/相对名/长度的确定性JSON hash，非伪称全文件内容hash。无需保留原始build缓存，删除前再核绝对路径和活跃进程。
+
+| 原外部根 | 文件数 | bytes | 路径+长度清单SHA256 |
+|---|---:|---:|---|
+| C:/Users/zhaop/AppData/Local/Temp/atc-pilot-agg-a2r-45840 | 66 | 29077 | f765bc0dfac91fb509ef56cc9f86c1ef1a01e4041d71e77e6d045cecd2dfccd8 |
+| C:/Users/zhaop/AppData/Local/Temp/atc-pilot-agg-vm-33924 | 66 | 29077 | 787f6ae528e66a279740f3561f967abb0a43290c4bd457e566b44b2b462f610e |
+| C:/Users/zhaop/AppData/Local/Temp/plan727-e2e-async-c79202bf99a93129 | 4387 | 3077344662 | dec07cac584184373f5bd014604ab7cc6a2fc5d5584c64ccaf79469480562bce |
+| C:/Users/zhaop/AppData/Local/Temp/plan727-e2e-missing-546e8ee21fdb79af | 2345 | 1480424107 | 3659e424299eba43d27c05483f32b7ef5f594f16a71a36e813ad7486f6fbafd4 |
+| C:/Users/zhaop/AppData/Local/Temp/plan727-e2e-missing-f6944c4456799b08 | 2345 | 1480407717 | 7fe1f8c6dc558094c996afab1d8d471d027a14d45fed090fa725c3a6857d6355 |
+| C:/Users/zhaop/AppData/Local/Temp/plan727-e2e-mp-7df7c48787022bb3 | 2345 | 1473402841 | d254e645cb046a64f2da8141aa7d9b1509f7d78cc96a0c3118612e8d223922ad |
+| C:/Users/zhaop/AppData/Local/Temp/plan727-e2e-mp-e7654a7ea550884 | 2345 | 1473392835 | 27133eacafbfacac2915b17c9ea547d05476b085be85d02cb3722adf8eea7949 |
+| C:/Users/zhaop/AppData/Local/Temp/plan727-e2e-sync-f8fe651ced1681 | 4172 | 2948826279 | 5275506df2c7251b4f0d23ddebfc8318280a4e599ee58b8b81fe15296c03c56c |
+
+- 上表总数18071 files/11933856595 bytes；保留材料均已折本Plan，计划8根删除，不迁移到第二scope、不声称已删除。
+- 4树清理前统计：auto-down: 1256 files/26409169 bytes; auto-lang: 31418 files/12307828097 bytes; auto-ui: 24293 files/22851866710 bytes; auto-web: 67 files/1306050 bytes。各树无reparse、Gitclean，构建中间产物随树销毁，不回收。988 scope先核29158 files/14802474662 bytes、无reparse，含本轮scope内TEMP及HTTP消费者缓存；清理前精确统计会有少量收据增量，不将预照冒充精确删除量。独立review无live进程且共享写权已交回。全局registry当前有本Plan精确在途记录，已核无未解决finding/具名文件hold；未知scope及其他deleted历史项不接管。
+
 ## 10. 待澄清事项
 
 无待用户范围决定。API具体返回形态/native ID/依赖版本由T-00有界核查；若出现超授权架构改造才另提决定。真实交互证据需要可用桌面，不能以模拟provider替代。
