@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-956
-status: executing
+status: execution_done
 feature_name: Reader Vue Rust backend parity
 created_at: 2026-11-06
 updated_at: 2026-11-06
 plan_revision: 4
-current_step: 3
+current_step: 4
 total_steps: 6
 supersedes_spec_components: [docs/specs/auto-lang/trans/rust-semantic-admission.md, docs/specs/stdlib/design/primitive-type-of.md, docs/specs/stdlib/design/primitive-str-byte-len.md, docs/specs/auto-vm/zip-natives.md]
 new_spec_components: []
@@ -53,7 +53,7 @@ AC01~05均须真实通过；只生成Rust或只过compile不满足行为一致�
 - [x] T01(work) 真实缺口清单与机制决策。
 - [x] T02(work) 语言/标准库能力修复与永久原语反例。
 - [x] T03(work) RustAPI实际生成/构建/启动。
-- [ ] T04(work) Reader双轨对拍/重启/前端构建。
+- [x] T04(work) Reader双轨对拍/重启/前端构建。
 - [ ] T05(review) 冻结最终验收与规范复核。
 - [ ] T06(merge) 完整职责门、合入与安全收尾。
 ## 9. 复审记录
@@ -84,3 +84,10 @@ r3 运行实证：generate-rust-06 + rust-build-04 已真实构建完整 Rust AP
 
 r4补证：UI最终22a925c7（只删除重复清端口）；启动器60项串行58PASS/1FAIL/1ignored，余一delivery闭包在eff9ece3原样源码+主线44份manifest副本具名重放同断言，五个并发红串行转绿，D-956-1登记。旧基线归档缺兄弟布局的8环境红不作语义证明。
 冷门02首次失败是driver未创建显式target根，已修脚本3e69594；03在业务源码变更后主动终止自身进程，不计PASS。expanded-01对拍正向检查发现新书created_at仍由历史业务代码写0；TXT/MD与EPUB导入已改time.now_sec（旧记录时间保持），最终Reader d10225b，所有新鲜夹具created_at>0强断言保留。全新04目标根正在跑，未签最终通过。
+
+
+### T04最终完成（2026-11-06）
+- Cold04实际默认auto run（无server覆盖、全新目标根）：126秒完整Rust冷构建后发布/启动原生app-2348c2db-back.exe，服务ready通过；总564.70秒到Vue代理、引擎资源原字节、中文导入/章节与原生监听身份。完整driver因浏览器测试依赖缺失exit1，不冒报整驱动PASS；cold HTTP/native阶段live.json有效。补齐scope内Playwright/Chromium后，原发布镜像与原生成Vue、原导入数据的browser-replay-03通过真实书架和阅读页，pageerror=[]，截图实查中文正文可见。早期browser-replay-02因脚本未按createWebHashHistory访问路由而超时，已修永久脚本；未改产品路由/正文。永久driver现启动前预检浏览器依赖，可用--browser-module-root指定工作树外安装。
+- Cold04 Reader业务快照d10225b；其后仅时间native实参改先绑定局部，避免VM多参错位（D-956-2）。Rust启动机制/前端/SDK输入未变，冷启动及生产Vue证据按触面复用；最终业务代码已从新源码重新正式生成并Rust构建（135秒），不改生成物。最终Reader64ff06503d359de0b730f4cfbddaf5affe3d0bf8。
+- parity-final：同一最终Reader src/back，Rust实际新exe与VM解释器各46项HTTP操作，42条路由清单、冷重启、28份持久化字节一致；新鲜created_at>0、UUID形状与时钟类型检查成立。仅规范化具名ID/时钟/数据根/导出basename。保留旧ph1黄金值、独立oracle、状态码/错误和原文件内容，未用VM桥/替代后端。VM-expanded-preflight首红定位嵌套native实参错位；02原46操作及严格时钟通过。
+- 工作树链接清理：最初计算路径+Force移除被自动审批策略阻止；未穿透/未递归。改为逐一字面量路径、校验Junction与精确target、无Force无递归的Remove-Item，两个956 deps链接安全移除；vendor两目标均存在，最终Reader guard clean。955旧持有未触碰。五仓guard均clean，清理收尾尚未执行。
