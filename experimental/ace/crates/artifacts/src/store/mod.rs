@@ -338,6 +338,12 @@ pub struct ManagedStore {
     db: Mutex<Connection>,
     /// Isolated adapter over auto-cache's BlobStore (SD-04 audit point).
     blobs: auto_cache::storage::BlobStore,
+    /// Whole-namespace ceiling for COMMITS (PLAN-938): every put's projected
+    /// permanent growth (new block + metadata allowance) is admitted under an
+    /// exclusive namespace lock held through the metadata commit, so
+    /// concurrent publishers cannot overshoot between check and commit.
+    /// Only tightnable below [`Self::NAMESPACE_BUDGET`].
+    namespace_budget: u64,
 }
 
 /// An original-store staging maintenance/write turn. The caller may clean
@@ -475,7 +481,23 @@ impl ManagedStore {
             store_id: marker.store_id,
             db: Mutex::new(db),
             blobs: auto_cache::storage::BlobStore::new(root.join("blocks")),
+            namespace_budget: Self::NAMESPACE_BUDGET,
         })
+    }
+
+    /// Open with a TIGHTER whole-namespace ceiling (PLAN-938 host seam:
+    /// pressure controls and constrained hosts; never above the frozen
+    /// [`Self::NAMESPACE_BUDGET`]).
+    pub fn open_with_namespace_budget(root: &Path, budget: u64) -> Result<Self, StoreError> {
+        if budget > Self::NAMESPACE_BUDGET {
+            return Err(StoreError::ResourceExhausted(format!(
+                "namespace budget {budget} exceeds the frozen ceiling {}",
+                Self::NAMESPACE_BUDGET
+            )));
+        }
+        let mut store = Self::open(root)?;
+        store.namespace_budget = budget;
+        Ok(store)
     }
 
     /// Open refusing to create: operations that delete require the marker.
@@ -587,6 +609,9 @@ impl ManagedStore {
     /// Staging/temp budget (§5.4): in-flight staging above the cap is a
     /// controlled resource rejection (bounded backoff / stop-write).
     pub const STAGING_BUDGET: u64 = 8 * 1024 * 1024;
+    /// The frozen whole-namespace ceiling (the ABI windows-x64-v01
+    /// namespace share). Host seams may only tighten it.
+    pub const NAMESPACE_BUDGET: u64 = 128 * 1024 * 1024;
 
     pub fn put_artifact(&self, req: PutRequest) -> Result<String, StoreError> {
         // Staging identity is unique even across same-millisecond threads
@@ -666,6 +691,34 @@ impl ManagedStore {
             )));
         }
         PEAK_TRANSIENT.fetch_max(reserved_total, std::sync::atomic::Ordering::Relaxed);
+
+        // WHOLE-NAMESPACE ADMISSION (PLAN-938): the staging budget above only
+        // caps transient copies. The permanent growth of this commit — the
+        // new block plus a metadata (rows/WAL) allowance — is admitted
+        // against the namespace ceiling under an EXCLUSIVE namespace lock
+        // held from this reading THROUGH the metadata commit, so two
+        // publishers cannot both pass a stale total and overshoot. The lock
+        // is taken before any staging write (no allocation before refusal).
+        // Lock order: liveness(shared) → budget(excl) → namespace(excl) →
+        // chunk → sqlite; GC/recovery hold liveness(exclusive) and take
+        // neither budget nor namespace — no cycle. An idempotent re-put of a
+        // live block projects conservatively (its transient copies are real).
+        let _namespace =
+            FileGuard::lock_timeout(&self.lock_path("namespace-budget"), true, CHUNK_LOCK_WAIT)?
+                .ok_or_else(|| StoreError::Busy("namespace budget lock".into()))?;
+        let namespace_now = self.space().total;
+        let projected = namespace_now
+            .checked_add(framed_len)
+            .and_then(|n| n.checked_add(framed_len))
+            .and_then(|n| n.checked_add(4096))
+            .ok_or_else(|| StoreError::ResourceExhausted("namespace size overflow".into()))?;
+        if projected > self.namespace_budget {
+            return Err(StoreError::ResourceExhausted(format!(
+                "namespace (current {namespace_now} + block {framed_len} + metadata allowance {}) exceeds budget {}",
+                framed_len + 4096,
+                self.namespace_budget
+            )));
+        }
 
         // Admission above uses only the incoming length and actual in-flight
         // bytes. Do not allocate a complete frame (or hash/copy it) before a
