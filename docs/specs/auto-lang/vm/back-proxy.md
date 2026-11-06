@@ -68,10 +68,10 @@
 - **决策树四臂**（`plan_backend`）：① pac `daemon:` → 既有
   `ensure_daemon_if_declared`（真进程带 `GET /api/health` 契约，
   **不进 proxy**）；② pac `media_root:` → `add_native_media`；
-  ③ back api.at 特形谓词（`~Stream`/`~Promise`/行首 `use auto.`，
+  ③ back api.at 谓词（`#[api`/`~Stream`/`~Promise`/行首 `use auto.`，
   `back_needs_session`——658 画廊谓词迁入双消费）→ `add_session`；
-  ④ 其余 = 纯前端零供给。②③可叠加；普通 `#[api]` CRUD back 不建
-  session（inproc 合并编译 CALL 面已通）。
+  ④ 其余 = 纯前端零供给。②③可叠加；普通 `#[api]` CRUD back 同样建
+  session（当前 auto-ui-runtime `back_needs_session` 的既有行为）。
 - **引用计数**：`app_key`（= launch 名/注册表 id）单例 + 计数——双窗
   同 app 共享一份后端，最后一个窗关闭（`release_backend`，挂四站点：
   inproc CloseApp 命令臂 / WmCommand::Close / broker 断连 /
@@ -84,6 +84,20 @@
   读点，`front_dir` 谓词 + 行级 `Http.` 规则双保险（back `#[api]`
   属性行零污染）。async HTTP 的 base 解析在独立线程（进程 env 架构）
   ——请求期 per-app base 架构性不可行，源级变换为唯一终选。
+
+### VM 前端的 per-app split（PLAN-949 / auto-ui PLAN-060）
+
+语言侧 `auto-lang-core/src/back_prefix.rs::current_spec()` 暴露当前 launch
+的 `(origin, app_key)`；RAII guard 在 build 结束或失败时清理上下文。
+auto-ui PLAN-060 的 `dynamic_build` 在此上下文存在时自动选择 split，
+语言 codegen 使用该 app 的完整 API 基址；无需按请求串改全局
+`AUTO_BACKEND`。既有显式 split 环境入口保持。
+
+HTTP 调用沿原 segment driver 产生 Parked、响应就绪后 resume，再把返回值
+写回前端状态。它替代已证 Todo 场景中 merged 本地复合返回丢失的路径，
+不增加调度器或 native 协议。前端 VM 与后端 profile 分开选择；本条不把
+需要 Rust 后端的产品静默改为 VM 后端。JSON 值/legacy 片段消费边界见
+[API 传输契约](../../stdlib/design/api-transport-contract.md#vm-json-值编码plan-949)。
 
 ## 崩溃隔离（AC-05 契约）
 
@@ -129,8 +143,8 @@ spawning**：spec 入只读目录表（catalog）。首个命中某 app 的请�
 
 ## 已知边界与债
 
-- `json.encode` 对 VM 对象字面量降格池索引串（占位 shim，PLAN-053 家族）
-  ——POST body 组装镜像 emit_api_http_call 用 `json.from_value`，未修根因。
+- JSON encode 的 primitive/文档与直接 legacy getter 路径按 PLAN-949 的
+  值感知边界处理；不据此承诺任意资源/泛型对象 ABI 已全部支持。
 - gallery 内嵌 `timer {}` 块（自定义事件计时器）不触发（017 clock_secs
   实证；`.Tick`+interval 形态正常）——timer 块 demo 内嵌首例。
 - 031 缩略图名列表（view for-loop over json-object vmref list）渲染空。
@@ -139,8 +153,8 @@ spawning**：spec 入只读目录表（catalog）。首个命中某 app 的请�
 
 ## 落地
 
-- 实现：`crates/auto-lang/src/back_proxy.rs`（crate 根，un-gated）；
-  编排 `crates/auto-man/src/vue.rs::start_gallery_back_proxy`；
+- 实现：auto-ui 仓 `crates/auto-ui-runtime/src/back_proxy.rs`；
+  编排由 auto-man 消费；
   发射 `emit_gallery_vm_demos` stream/native-ns proxy 路径。
   运行期增删（PLAN-037）：`ui::back_provision`（决策树/懒启/计数/
   释放，cfg ui-iced）+ `back_prefix.rs`（un-gated 模块源前缀化

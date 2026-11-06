@@ -75,8 +75,24 @@ is_upload_param(ty) / is_meta_alias(name)（META_PARAM_NAMES 单源）
 | `nv_to_json`（HTTP 回复） | i64/u64/bigint（48 位内联+堆装箱）按数值序列化 |
 | `nv_to_vm_value`/`String` 编组 | i64/u64/bigint 臂（json.encode 编组层）；`vm_value_to_json` 有 `Value::I64` 臂（i32→I64 统一后必须存在，丢失即 664 值域红——R2 实证） |
 
-已知边界（债 P734-D4）：泛型 stdlib 的 json.encode 返回通路与 str+int 拼接
-仍有 i32-lane 损坏——应用层泛型转换，API 契约面外。
+### VM JSON 值编码（PLAN-949）
+
+`Json.encode`/`json.encode` 的 native wrapper 在 String 编组抹去类型之前，
+使用现有 VM JSON 转换器序列化真实值。Bool/Null/Number 保持 JSON 值；
+普通字符串 `"true"`、`"false"`、`"null"`、`"123"` 始终编码为 JSON 字符串，
+不得按内容猜类型。既有文档和 string-list ABI 保持；解析文档中的嵌套
+整数保留 i64/u64 数值，不截断到 i32。转换器既有深度和不支持值边界保持，
+此处不承诺任意资源对象都能编码。
+
+legacy 静态 `Json.get/get_at` 直接返回序列化的 JSON **文本片段**，直接
+文本工具链保持兼容。当实际内建 getter 表达式直接作为内建 encode 的参数，
+codegen 在参数单次求值后，通过既有 `json.to_value` 恢复 JSON 值再编码。
+同名变量 receiver、普通函数返回字符串及字符串池复用不触发这种转换。
+片段保存到变量后若要作为 JSON 值使用，调用方显式 `to_value`；普通字符串
+不自动重解析。无全局文本 provenance 表或 String 编组规则变更。
+
+P734-D4 的上述 encode 路径由 PLAN-949 的真实 parse/codegen/VM 用例覆盖；
+独立的 str+int 泛型转换边界仍保留，不据此宣布整个泛型 ABI 债关闭。
 
 ## 5. P734-D7 关闭（PLAN-776 替代 R2 冻结裁定）
 
