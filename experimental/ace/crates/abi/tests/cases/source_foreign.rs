@@ -17,6 +17,166 @@ fn fixture() -> PathBuf {
 }
 
 #[test]
+fn source_foreign_daily_emit_and_metadata_spawn_no_tools_with_an_existing_provider_input() {
+    use ace_abi::source_foreign::{Session, Target};
+    use std::sync::Arc;
+    const CHILD: &str = "SOURCE938_DAILY_EMIT_MODE";
+    const CASE: &str = "source_foreign::source_foreign_daily_emit_and_metadata_spawn_no_tools_with_an_existing_provider_input";
+    if let Ok(mode) = std::env::var(CHILD) {
+        if mode == "baseline" {
+            return;
+        }
+        assert_eq!(mode, "emit");
+        // The daily entry accepts an EXISTING, independently compiled and
+        // host-authorized provider object. No compiler is hidden in this path.
+        let bytes =
+            Arc::new(std::fs::read(std::env::var_os("SOURCE938_DAILY_PROVIDER").unwrap()).unwrap());
+        let digest = ace_abi::source_provider::hash(&bytes);
+        assert_eq!(
+            digest,
+            std::env::var("SOURCE938_DAILY_PROVIDER_DIGEST").unwrap()
+        );
+        let deck: ace_abi::worker_source::Deck = serde_json::from_slice(
+            &std::fs::read(std::env::var_os("SOURCE938_DAILY_DECK").unwrap()).unwrap(),
+        )
+        .unwrap();
+        let review = ace_abi::source_provider::Review::Scalar;
+        review.qualify(&deck.manifest, &deck.capabilities).unwrap();
+        let environment = deck
+            .manifest
+            .admit(&review.authority(&digest, 1, &deck.capabilities))
+            .unwrap();
+        let mut results = Vec::new();
+        for target in [Target::Native, Target::C] {
+            let mut session = Session::cold(
+                &deck.source,
+                &deck.module,
+                "daily938",
+                &deck.capabilities,
+                environment.clone(),
+                bytes.clone(),
+                target,
+            )
+            .unwrap();
+            let old = session.artifact_bytes("main").unwrap().clone();
+            let before = session.snapshot().unwrap();
+            assert!(!old.is_empty());
+            let same = session.snapshot().unwrap();
+            assert_eq!(same.digest, before.digest);
+            assert!(Arc::ptr_eq(&old, session.artifact_bytes("main").unwrap()));
+            let candidate = session
+                .prepare(
+                    "main",
+                    "fn main() int { return foreign_mix(1,true,2,false,4) }",
+                )
+                .unwrap();
+            session.commit(candidate).unwrap();
+            let after = session.snapshot().unwrap();
+            assert_ne!(before.digest, after.digest);
+            assert_ne!(
+                old.as_slice(),
+                session.artifact_bytes("main").unwrap().as_slice()
+            );
+            // This is metadata + target emission, never link/run or certify.
+            assert_eq!(session.meter().links, 0);
+            for stage in ["shared-assembly", "compile-link-tool", "entry-wrapper"] {
+                assert_eq!(session.frontend().work().totals("*", stage).attempted, 0);
+            }
+            results.push(serde_json::json!({"target":target.identity(),"before":before.digest,"after":after.digest,"artifact_bytes":session.artifact_bytes("main").unwrap().len(),"links":session.meter().links}));
+        }
+        println!(
+            "source938.daily={}",
+            serde_json::to_string(&results).unwrap()
+        );
+        return;
+    }
+    let root = scope("daily-emit-existing-input");
+    // Explicit certification fixture preparation is OUTSIDE the measured
+    // daily process. This whole outer test does spawn C tools; only the API
+    // entry supplied with that existing object promises zero tool processes.
+    let (object, _) = provider_with(&root, 0, true, false);
+    let digest = ace_abi::source_provider::hash(&std::fs::read(&object).unwrap());
+    let deck = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../crates/auto-lang/test/cases/ace-ca-d-source-938/src/mixed.atomdata");
+    let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(4)
+        .unwrap()
+        .to_path_buf();
+    // Reuse the repository's native, suspended-start process-tree meter.
+    // Compare identical harness startup, preserving any OS console helpers.
+    // A hidden compiler/linker/runner (even one that exits instantly) adds to
+    // total Job process accounting; a snapshot after return cannot miss it.
+    let script = r#"import json,os,pathlib,sys
+sys.path.insert(0,str(pathlib.Path(sys.argv[1])/'scripts'/'test-governance'))
+from native_meter import measure
+base=dict(os.environ)
+base.update(SOURCE938_DAILY_PROVIDER=sys.argv[4],SOURCE938_DAILY_PROVIDER_DIGEST=sys.argv[5],SOURCE938_DAILY_DECK=sys.argv[6])
+rows=[]
+for mode in ('baseline','emit'):
+ env=dict(base,SOURCE938_DAILY_EMIT_MODE=mode)
+ row=measure([sys.argv[2],'--exact',sys.argv[3],'--nocapture'],env=env,cwd=sys.argv[1],timeout=20)
+ for field in ('stdout','stderr'):
+  row[field]=row[field].decode('utf-8')
+ rows.append(row)
+pathlib.Path(sys.argv[7]).write_text(json.dumps(rows,indent=2))
+print(json.dumps(rows))
+"#;
+    let mut command = std::process::Command::new("python");
+    command
+        .args(["-B", "-c", script])
+        .arg(&repository)
+        .arg(std::env::current_exe().unwrap())
+        .arg(CASE)
+        .arg(&object)
+        .arg(digest)
+        .arg(&deck)
+        .arg(root.join("daily-process-meter.json"));
+    let run = ace_core::link::run_deadlined_typed(
+        &mut command,
+        std::time::Duration::from_secs(45),
+        ace_core::link::CaptureCaps {
+            stdout_max: 1 << 20,
+            stderr_max: 1 << 20,
+        },
+        vec![],
+    )
+    .unwrap();
+    assert_eq!(
+        run.exit_code,
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let rows: Vec<serde_json::Value> = serde_json::from_slice(&run.stdout).unwrap();
+    assert_eq!(rows.len(), 2);
+    for row in &rows {
+        assert!(row["error"].is_null(), "{row}");
+        assert_eq!(row["exit"], 0, "{row}");
+        assert!(row["job_processes"].as_u64().unwrap() > 0);
+    }
+    assert_eq!(
+        rows[1]["job_processes"], rows[0]["job_processes"],
+        "daily emitter spawned tools beyond identical harness startup: {rows:?}"
+    );
+    let output = rows[1]["stdout"].as_str().unwrap();
+    let metadata: Vec<serde_json::Value> = serde_json::from_str(
+        output
+            .lines()
+            .find_map(|line| line.strip_prefix("source938.daily="))
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(metadata.len(), 2);
+    assert_ne!(metadata[0]["target"], metadata[1]["target"]);
+    for row in metadata {
+        assert!(row["artifact_bytes"].as_u64().unwrap() > 0);
+        assert_ne!(row["before"], row["after"]);
+        assert_eq!(row["links"], 0);
+    }
+}
+
+#[test]
 fn source_foreign_provider_symbol_index_uses_shared_budget_before_rebind_and_repairs() {
     use ace_abi::source_foreign::{Session, Target};
     use ace_source_query::resources::Charge;
