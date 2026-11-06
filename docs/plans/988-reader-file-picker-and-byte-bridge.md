@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-988
-status: execution_done
+status: executing
 feature_name: Reader原生多选与动态字节桥接
 plan_revision: 1
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-06
-current_step: 4
+current_step: 2
 total_steps: 6
 supersedes_spec_components: [docs/specs/auto-lang/ui/design/dialog-dnd-host-capabilities.md, docs/specs/auto-lang/vm/native-fs.md, docs/specs/runtime/native-vm-app-validation.md]
 new_spec_components: []
@@ -82,8 +82,8 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 |---|---|---|---|---|
 | T-00 [x] | work | 授权 | 树/依赖确认，新构建复现、ABI与表示根因定位、冻结最小设计 | 源码调用链及P-02红/读回绿；实际命令/版本 |
 | T-01 [x] | work | T-00 | 公共多选声明/VM provider/UI OS/生成映射与用例 | P-01、P-04 |
-| T-02 [x] | work | T-00 | 动态字节桥与永久正反回归 | P-02及受影响同桥消费者 |
-| T-03 [x] | work | T-01/02 | 两端消费者验证、准备SD、工具交接记录 | P-03及冻结受影响检查 |
+| T-02 [ ] | work | T-00 | 动态字节桥与永久正反回归 | P-02及受影响同桥消费者 |
+| T-03 [ ] | work | T-01/02 | 两端消费者验证、准备SD、工具交接记录 | P-03及冻结受影响检查 |
 | T-04 [ ] | review | T-03 | 独立复审绑定各仓提交与Specs | AC-01～03 pass |
 | T-05 [ ] | merge | T-04 | 顺序落地/工具消费/规范/归档清理/009交接 | AC-05 |
 
@@ -214,6 +214,46 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 - 材料对账：24场景临时目录均在指定scope，永久用例自行清理其临时子目录，耐久结果在Plan及最终日志。既有固定组内部另输出到系统Temp；本轮已按trace stored路径和Cargo.toml的精确lang-988依赖核owner并登记repair-r1/external-output-inventory.json（SHA256=309eb61e732f2d5652e7f1ec310c7eba362fb22f9ba52cec4d8ff1b4a7e13a14），8个现存目录。merge必须完成迁移/清理并记录实际文件数/字节/hash，当前不声称已清理：C:/Users/zhaop/AppData/Local/Temp下atc-pilot-agg-a2r-45840、atc-pilot-agg-vm-33924、plan727-e2e-async-c79202bf99a93129、plan727-e2e-missing-546e8ee21fdb79af、plan727-e2e-missing-f6944c4456799b08、plan727-e2e-mp-7df7c48787022bb3、plan727-e2e-mp-e7654a7ea550884、plan727-e2e-sync-f8fe651ced1681。未知归属目录不动。
 - Readiness：T-00～03 / AC-01～03的work范围完成，F01～03和发现的bytes字段路径无剩余实现/oracle缺口，无待定合同决定；同一语义revision1，未减验收。实现已提交，工作树干净，写权暂停待独立受影响复审。T-04独立通过及T-05合入/工具消费/规范读回/材料清理仍pending，当前4/6。READER-009仍需随后完成全部原产品验收，目标未完成。
 - stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 7 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-988/auto-lang | commit: e693ad506cb94b34e334323e8d0676f52fb29e4c | next: independent affected re-review（final R2）。
+
+
+### 2026-11-06 independent final review R2：needs_fix（空列表继续填充的修复回归）
+
+- stage: review | review_scope: final | reviewer_identity: `/root/review_plan988`（独立上下文，未实施或改动代码） | plan_id: PLAN-988 | plan_revision: 1 | outcome: **needs_fix** | final_review_count: 2 | next: work先完成下述诊断checkpoint，再修复F988-R2-01；禁止合入。
+- 权威路径/分支与R1一致：`D:/autostack/.wt/lang-988/auto-lang` / `plan-988-dev`，reviewed_commit=`e693ad506cb94b34e334323e8d0676f52fb29e4c`，repair diff base=`65dcdb025c79060a9a80dc9ec99be408eee57970`，Plan原base=`a137e8be6728f382fa90f5fde5e24b73fea6b4b5`。UI同组`codex/reader-009-prerequisites` / `b0d59400a1c302c040e07c9e4938a1c13b34d937`，base22a925c72d7620b929c947ff2bbddead13fda783；只读detached依赖auto-down58ea33f699efa5cb1194473a2d45dcec51006842、auto-webbf72baabf28fa865b5a7c680b8a5fa4018a0a63d均未变。git worktree清单与入口/结论前状态核对通过，两个实现树clean，无实现漂移。
+- 重新读取当前review技能，内容SHA256仍为R1的3d926333…d6d2a1f7，verification-contract沿R1已读版本；主Plan输入SHA256=`ba1b0407eb31ce619779eba49327e3c2c022c798df4dd2f074ef7aea4aea5864`。Cargo.lock、.cargo/config.toml、固定组配置及nextest配置哈希均与R1一致。原始材料唯一根`D:/autostack/plan-artifacts/plan-988/review-r2/`；测试TEMP/TMP设其tmp子目录、PLAN988_TEST_OUT设其permanent子目录。未覆盖R1证据，未写实现/Spec/ledger或其他WIP。
+
+| 检查 / 原finding | 实际复演与闭合范围 | 当前结论 |
+|---|---|---|
+| F988-R1-01 原局部/分支空列表 | 永久真实生产测试独立复演，直接空/局部空/分支空/typed返回/参数空/重复写空均compile/run0、长度0 | 原例closed；完整空列表继续使用边界有F988-R2-01，不以原例绿代替完整不变量。 |
+| F988-R1-02 JSON/typed参数 | 原JSON正反、slice参数/转传、返回/read控制真实两端状态与字节通过；额外holdout覆盖JSON别名→bytes、嵌套bytes、重赋值、空字段、坏字段、畸形JSON及slice内部/调用后重复写 | **closed**；类型producer到新入口一致。非法JSON保哨兵，未归零。新增VM类型修复在上述代表路径有效。 |
+| F988-R1-03 Spec消费者 | SD-02已准确列File/TCP stream/HTTP Response，删除UDP承诺；三个Rust入口与实际代码匹配 | **closed**，没有新增UDP要求。 |
+| AC-01 / T-01、SD-01/03 | UI源码/两份Spec及dialog native/provider语义未变；复用R1真实picker、provider覆盖/缺席和源码生成证据 | **pass**，不重跑无变化的真实桌面操作。 |
+| AC-02/03 / T-02/03 | core值桥未改；当前永久24场景通过，但独立新反例未闭，SD-02空列表源可继续使用的事实仍有边界缺口 | **partial/fail**；T-02/03重开。 |
+| AC-04/05 / T-04/05 | 独立审查已执行，但先决AC未全过；合入/工具消费/清理尚未进行 | T-04/05仍pending，不能授予reviewed。 |
+
+#### F988-R2-01 — P1：无显式元素类型的空列表push与写入入口推断不一致
+
+- 影响AC-02/03、T-02/03；违反§5字面/动态列表实际表示、F01完整空列表边界及本次SD-02“源值可继续使用”。这是基础数组局部变量的`push`，不是已明确排除的Rust `List<int>.new`构造语法，不扩大为全List API改造。
+- 最小生产输入A（真实换行文件为review-r2/empty_push_after/input.at）：`fn main() { var bs = []; let first = File.write_bytes(PATH, bs); bs.push(255); let rc = File.write_bytes(PATH, bs) }`（实际源各语句换行，无分号要求）；输入B：`fn main() { var bs = []; bs.push(255); let rc = File.write_bytes(PATH, bs) }`，位于empty_push_before/input.at。PATH为各例隔离bytes.bin；开始哨兵[42,128,255]。
+- 预期：合法整数动态列表两端执行成功，最终文件[255]；实际两例VM均成功[255]，原样生成Rust均rustc exit1/E0308、exe未运行。A生成`let mut bs=vec![]; write_bytes_list(&path, bs.to_vec()); bs.push(255); ...`，首次写入将Rust bs约束为Vec<Value>，后续push仍发原生整数，诊断`expected Value, found integer`。B反向由push约束整数Vec，写入具体Vec<Value>入口不匹配。生成器metadata仍视元素Unknown，未与Rust侧后续实际约束统一。
+- 已确认原因是具体Vec<Value>入口约束与同一个空列表的push发射不一致，非文件权限、JSON解析或OS故障。`old_generic_control`仅恢复R1帮助函数的泛型签名/等价有效输入写入行为，使用同一B生成body，compile/run0且[255]；这是隔离签名控制，不伪称完整旧仓二进制复跑。该对照与repair diff表明至少B为本次修复引入的兼容回归。A在修复前未知，未冒称原先通过。
+- 合法控例：`var bs []int=[]; write; bs.push(255); write`两端[255]；`var bs=[0]; write; bs.push(255); write`两端[0,255]；不push的空列表重复写及typed参数源复用均通过。不能要求调用者加类型注解来替代修复已承诺路径。
+- 可重放命令（cwd语言权威树，先当前源码构建auto-generation-core）：`python D:/autostack/plan-artifacts/plan-988/review-r2/holdouts.py`（A及JSON/slice合法拒绝对照），`python .../review-r2/controls.py`（B及显式typed/非空合法对照），`python .../review-r2/old_control.py`（旧泛型隔离控制）。脚本使用run_autovm_capture和生产transpile→qualify→原样rustc→exe；每例结果见holdouts.json/controls.json，脚本exit0仅表示采集，不是产品PASS。
+- 关闭oracle：A/B都必须在原样生成Rust中compile/run0且最终[255]，保留前后写阶段和列表值的正确性断言；上述typed/空复用/JSON拒绝控例继续成立。增加永久源级场景及状态/文件断言，定向复验空列表约束、push和writer共享表示，不附加全仓campaign。实现方案由work依据诊断确定。
+
+#### 第二次连续final review失败：下一次readiness前必须先完成诊断checkpoint
+
+| 剩余不变量 | 此轮为何漏检 | work需记录的诊断/调整及关闭证据 |
+|---|---|---|
+| 同一空列表在写前/写后填充整数，编译器metadata与Rust约束一致 | 24场景覆盖重复写同一空值，但没有在两次写之间改变成员；具体入口修好无元素场景，却没有同步push发射的元素表示 | 比较声明/推断metadata、writer选择与push参数发射的实际路径；记录为何R1/R2检查只闭原例。以A/B+typed/不变空控例证明调整覆盖完整不变量，再交回独立R3，不以更多总数替代此诊断。 |
+
+#### 证据、Spec冻结与交接
+
+- 独立永久命令：`cargo test --offline --locked -p auto-generation-core --test plan988_byte_consumers -- --nocapture` exit0；1个test内24场景全执行、0 ignored，51.61秒。已逐项审查VM Err/成功status0、Rust compile/run状态、负例-1及写前后真实字节断言，非helper-only。使用本树当前构建`libauto_lang_core-c86e14dd97cb583f.rlib` SHA256 `f1afdf933308b7fede8c8e7c0618a02667e892cde6d6dd56f33e934d2a8a00a6`；新增holdout共11场景，9通过、A/B两例失败；另旧签名控制通过。所有进程均终态，无live build/test。
+- 原始哈希：permanent.log=`ab416035dc177cd9e97e7e1daeb47756b79ffa3f8072447600b4b73f29d85be1`；holdouts.py=`9102247efec473a185d3d38573b3b409ede53a712cf5f9d6b4c15101f10b1e1a`；controls.py=`15d78ae691d2fb9e412aa3013fe443252e5b8ea3fbff5635d8b925a2d1519ecf`；holdouts.log=`2ced77693866f84302226b1a5c9c565c5b4506e7eef1fa9503f271715c4d158a`；controls.log=`0a6e169017ba6935b683428acf0532689a05935a559c2551d50c110c2078c7a6`。A输入SHA256=`9aaf96705296b32295b1a83b325cc37807f92587e2a68e2a1cb0e1cc93f67528`，B=`66de0192026c55dd819f56ad706cd1fdc59cc33314c46ecb797e9c05b3368d62`，A错误log=`520db6f02b9e4d9b41d14299f44690cc5af956c6fb2a6f3b34fd870ba1e37de9`；完整收据review-r2/manifest.json。
+- 当前Spec输入：SD-01/SD-03路径与哈希沿R1未变；SD-02 `auto-lang/docs/specs/auto-lang/vm/native-fs.md` SHA256=`32871facf2b4978aa08bf809dfda3fb5b97879322cdb2395c8ce21252fb7caf8`。三份增量冻结review-r2/spec-delta.patch SHA256=`f377a8ac45cd2623523f1cfb4817281edc5a5725b18566d8ed48fd1579319efe`；F03事实修正通过，F02实际接线说明已实证，源值继续使用仍受新finding影响，不能发布成无限制通过。影响metadata的精确路径、new=[]、goals=[]及理由沿R1，不改变语义revision。
+- 健康：repair diff --check通过，131 core lib既有warnings；本轮未改实现或测试断言。原work vm/a2r/http1374 PASS、459原条件排除、not_run0和shim-metadata16证据保留，未为已知失败重跑；其结果不能覆盖A/B。最终冻结并集 **vm+shim-metadata+a2r+http** 仍pending merge owner，待修复与通过后核提交/输入/config身份及必要补跑。修复代码会使对应生成证据失效，其余R1/R2未改路径证据可明确复用。
+- 任务状态：T-00/T-01完成，T-02/T-03重开，T-04/T-05未完成，**executing 2/6**。写权交还work，诊断checkpoint后继续同树有界修复；不改既有授权或合同，不生成goal路由收据。先前登记8个外部临时材料仍归merge清理，review未移动或删除。
 
 ## 10. 待澄清事项
 
