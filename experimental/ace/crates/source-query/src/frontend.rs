@@ -319,7 +319,8 @@ impl Frontend {
         }
         let mut queries = SourceQuerySession::new(package, module)
             .with_work(work.clone())
-            .with_capabilities(capabilities.iter().cloned());
+            .with_capabilities(capabilities.iter().cloned())
+            .with_resources(resources.clone());
         queries.set_foreign(Some(foreign.clone()));
         observation.whole_parse_attempts += 1;
         let module_work = work.begin("*", "whole-frontend", crate::work::Phase::Production);
@@ -1212,7 +1213,8 @@ impl Frontend {
         }
         let mut queries = SourceQuerySession::new(&root.package, &root.module)
             .with_work(work.clone())
-            .with_capabilities(capabilities.iter().cloned());
+            .with_capabilities(capabilities.iter().cloned())
+            .with_resources(resources.clone());
         queries.set_foreign(Some(foreign.clone()));
         let metadata_names: Vec<String> = root.edges.keys().cloned().collect();
         let metadata_refs: Vec<&str> = metadata_names.iter().map(String::as_str).collect();

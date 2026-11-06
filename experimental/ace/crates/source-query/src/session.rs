@@ -142,9 +142,16 @@ pub struct SourceQuerySession {
     bodies: BTreeMap<LogicalId, Arc<BodyPage>>,
     counters: Counters,
     work: crate::work::Ledger,
+    /// PLAN-938: the shared account every body query admits its solver
+    /// working set on; `None` keeps the legacy unaccounted query.
+    resources: Option<crate::resources::Resources>,
 }
 
 impl SourceQuerySession {
+    pub fn with_resources(mut self, resources: crate::resources::Resources) -> Self {
+        self.resources = Some(resources);
+        self
+    }
     pub fn set_foreign(&mut self, foreign: Option<ace_foreign_contract::manual::AdmittedForeign>) {
         self.foreign = foreign;
     }
@@ -180,6 +187,7 @@ impl SourceQuerySession {
             bodies: BTreeMap::new(),
             counters: Counters::default(),
             work: crate::work::Ledger::default(),
+            resources: None,
         }
     }
 
@@ -613,6 +621,7 @@ impl SourceQuerySession {
                 None
             },
             Some(&self.work),
+            self.resources.as_ref(),
         );
         self.counters.solver_runs += self.work.totals(name, "solver").attempted - before_solver;
         let mut facts = result.map_err(QueryError::Produce)?;

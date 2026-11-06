@@ -215,9 +215,54 @@ pub fn produce_infer_body_with_catalog(
         foreign,
         catalog,
         None,
+        None,
     )
 }
 
+/// Conservative bound of one body query's solver working set (PLAN-938):
+/// the solver's per-node families (scopes/vars/eq pairs/bindings/expr
+/// types/diagnostics) and this layer's span cursor/typed maps, plus the
+/// external signature inputs. Reserved on the shared staging account
+/// BEFORE the solver session exists and released when the facts return.
+pub fn solver_workspace_bound(nodes: usize, externals: usize) -> Option<usize> {
+    let bound = 8usize << 10;
+    let bound = bound.checked_add(nodes.checked_mul(512)?)?;
+    bound.checked_add(externals.checked_mul(256)?)
+}
+
+/// The host-admitted body query: same answer as
+/// [`produce_infer_body_with_catalog`], with the solver working set admitted
+/// on `resources` before the solver session is created.
+#[allow(clippy::too_many_arguments)]
+pub fn produce_infer_body_with_catalog_admitted(
+    program: &Program,
+    package: &str,
+    module: &str,
+    name: &str,
+    capabilities: &[String],
+    limits: ProduceLimits,
+    cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+    catalog: Option<&crate::catalog::SignatureCatalog>,
+    work: Option<&crate::work::Ledger>,
+    resources: &crate::resources::Resources,
+) -> Result<InferBodyFacts, ProduceError> {
+    produce_infer_body_with_catalog_observed(
+        program,
+        package,
+        module,
+        name,
+        capabilities,
+        limits,
+        cancel,
+        foreign,
+        catalog,
+        work,
+        Some(resources),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn produce_infer_body_with_catalog_observed(
     program: &Program,
     package: &str,
@@ -229,6 +274,7 @@ pub(crate) fn produce_infer_body_with_catalog_observed(
     foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
     catalog: Option<&crate::catalog::SignatureCatalog>,
     work: Option<&crate::work::Ledger>,
+    resources: Option<&crate::resources::Resources>,
 ) -> Result<InferBodyFacts, ProduceError> {
     if limits.max_body_nodes == 0 {
         return Err(ProduceError::Profile {
@@ -301,6 +347,21 @@ pub(crate) fn produce_infer_body_with_catalog_observed(
         }
     }
 
+    // PLAN-938: the solver working set is admitted BEFORE the session
+    // exists and stays admitted through the fact mapping below.
+    let _solver_workspace = match resources {
+        Some(resources) => Some(
+            resources
+                .reserve(crate::resources::Charge::staging(
+                    solver_workspace_bound(walk.expr_nodes, input.external_signatures.len())
+                        .ok_or_else(|| {
+                            ProduceError::Resource("solver workspace bound overflow".into())
+                        })?,
+                ))
+                .map_err(|e| ProduceError::Resource(e.to_string()))?,
+        ),
+        None => None,
+    };
     let mut session = InferSession::new(&input).with_budget(limits.max_steps, limits.wall);
     if let Some(flag) = cancel {
         session = session.with_cancel(flag);

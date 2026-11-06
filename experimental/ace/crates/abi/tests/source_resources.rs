@@ -761,6 +761,140 @@ fn native_wrapper_workspace_is_admitted_across_the_emit_window() {
     drop(pressure);
     ace_native::emit::emit_wrapper_coff_reserved("p938_w", &denied).unwrap();
 }
+
+/// PLAN-938 solver working set: one body query's solver session and this
+/// layer's fact-mapping maps are admitted on the shared staging account
+/// BEFORE the solver session exists, the admitted bound covers the real
+/// allocation peak of the whole query, the ticket releases with the facts,
+/// and a refusal precedes any solver attempt.
+#[test]
+fn solver_workspace_is_admitted_before_the_session_and_covers_the_real_peak() {
+    use ace_source_query::produce::{
+        produce_infer_body_with_catalog_admitted, solver_workspace_bound,
+    };
+    use ace_source_query::resources::{Charge, Resources};
+    use ace_source_query::work::Ledger;
+    use ace_source_query::{
+        compile_scalar_product, walk_body, ProduceError, ProduceLimits, SourceQuerySession,
+    };
+    let (_root, _provider, environment, caps) = source_foreign::fixture("solver-workspace");
+    let source = "fn main() int { return foreign_add(20,22) }";
+    let mut session = SourceQuerySession::new("p938", "source938");
+    session.set_foreign(Some(environment.clone()));
+    let product = compile_scalar_product(
+        source,
+        "source938",
+        &caps,
+        "p938",
+        "source938",
+        &mut session,
+    )
+    .unwrap();
+    let item = product
+        .program
+        .items
+        .iter()
+        .find_map(|i| match i {
+            ace_core::source::ast::Item::Fn(f) if f.name.name == "main" => Some(f),
+            _ => None,
+        })
+        .unwrap();
+    let nodes = walk_body(&item.body).unwrap().expr_nodes;
+    let externals = environment.source_declarations_ref().len();
+    let bound = solver_workspace_bound(nodes, externals).unwrap();
+    let query = |resources: &Resources, ledger: &Ledger| {
+        produce_infer_body_with_catalog_admitted(
+            &product.program,
+            "p938",
+            "source938",
+            "main",
+            &caps,
+            ProduceLimits::default(),
+            None,
+            Some(&environment),
+            None,
+            Some(ledger),
+            resources,
+        )
+    };
+    let resources = Resources::default();
+    let ledger = Ledger::default();
+    let (result, peak) = measured_peak(|| query(&resources, &ledger));
+    result.expect("admitted body query failed");
+    assert!(
+        peak <= bound,
+        "solver query allocation peak {peak} exceeded the admitted bound {bound}"
+    );
+    assert_eq!(ledger.totals("main", "solver").attempted, 1);
+    assert_eq!(
+        resources.stats().current.staging,
+        0,
+        "the solver workspace ticket outlived its query"
+    );
+    // Refusal: 4 KiB of staging room (below the 8 KiB base) — the solver
+    // session is never created, so no solver attempt is recorded.
+    let denied = Resources::default();
+    let d_used = denied.stats().current.staging;
+    let pressure = denied
+        .reserve(Charge::staging((24 << 20) - d_used - 4096))
+        .unwrap();
+    let ledger = Ledger::default();
+    let error = query(&denied, &ledger)
+        .err()
+        .expect("solver workspace admission missing");
+    assert!(matches!(error, ProduceError::Resource(_)), "{error:?}");
+    assert_eq!(
+        ledger.totals("main", "solver").attempted,
+        0,
+        "the solver ran before its workspace admission"
+    );
+    drop(pressure);
+    query(&denied, &ledger).unwrap();
+    assert_eq!(ledger.totals("main", "solver").attempted, 1);
+    // The real frontend wires the same account into its query session: a
+    // cold C session (whose only staging consumer is the solver workspace)
+    // refuses under 4 KiB of staging room and repairs after release.
+    use ace_abi::source_foreign::{Session, Target};
+    use ace_source_query::resources::OutputLimits;
+    let (_root, provider, environment, caps) = source_foreign::fixture("solver-frontend");
+    let shared = Resources::default();
+    shared
+        .enable_output_budget(OutputLimits::default())
+        .unwrap();
+    let used = shared.stats().current.staging;
+    let pressure = shared
+        .reserve(Charge::staging((24 << 20) - used - 4096))
+        .unwrap();
+    let error = Session::cold_with_resources(
+        source,
+        "source938",
+        "p938",
+        &caps,
+        environment.clone(),
+        provider.clone(),
+        Target::C,
+        shared.clone(),
+        None,
+    )
+    .err()
+    .expect("the frontend query session skipped the solver workspace admission");
+    assert!(error.contains("foreign.resource"), "{error}");
+    drop(pressure);
+    let session = Session::cold_with_resources(
+        source,
+        "source938",
+        "p938",
+        &caps,
+        environment,
+        provider,
+        Target::C,
+        shared.clone(),
+        None,
+    )
+    .unwrap();
+    assert!(session.frontend().work().totals("main", "solver").attempted >= 1);
+    assert_eq!(shared.stats().current.staging, 0);
+}
 #[test]
 fn real_coff_request_quota_counts_discarded_outputs_and_refuses_before_buffer_allocation() {
     use ace_source_query::resources::{OutputLimits, Resources};
@@ -3162,7 +3296,7 @@ mod source_foreign {
         eprintln!("declaration rebind: threshold={threshold} whole_copies={copies}");
     }
 
-    fn fixture(
+    pub(super) fn fixture(
         tag: &str,
     ) -> (
         PathBuf,
