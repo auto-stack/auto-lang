@@ -104,6 +104,17 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 - 证据scope D:/autostack/plan-artifacts/plan-988/：byte-baseline.log SHA256=2bcb8a092d9826171b65ac57b42c5abb58c9e5d628defbbf6a3fd4e52f01edd9；bridge-dialog-v2.log=20af796d0783c07f64644f9fdaedbde82377d847942f2d0e0214c9da5b65e8e8；native-catalog.log=1ac3f70ab89290ad33b9cd7695905cf9e2aee75345d7e7c600d81d40a86ec91e。原009探针材料未动。
 - stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 3 | from: work | to: work | status: executing | outcome: needs_fix (work incomplete, not a final-review finding) | worktree: D:/autostack/.wt/lang-988/auto-lang | commit: 82d4b5d50 | next: work T-01/02/03。
 
+### 2026-11-06 work：真实选择器与共享字节消费者
+
+- 新增永久真实系统用例 `auto-ui-runtime::ui_tests::plan804_os_e2e::dialog_e2e::plan988_real_multiselect_vm_and_rust_host`，显式ignored防普通门抢桌面。当前UI树含未提交测试与SD-03；语言树含未提交扩展测试，均归988，不是他方WIP。
+- UI测试构建 `cargo test --offline --locked -p auto-ui-runtime --lib plan988_real_multiselect --no-run` exit0，177秒。实际测试exe `auto-ui/target/debug/deps/auto_ui_runtime-0e9d1275a5d4351c.exe plan988_real_multiselect --ignored --nocapture --test-threads=1` exit0，1 PASS/0 FAIL/0 ignored，2.22秒。Python外层100秒超时保护未触发，TEMP/TMP在988/tmp。VM shim→真实parented provider与生成Rust使用的真实unparented host各一次多选/取消，选两份隔离文件；返回两路径/空数组、live owner与关闭后owner enabled全部通过。测试直接向自有进程IFileDialog控件输入与按按钮；是实际OS picker，非Reader产品按钮或用户物理IME证明。
+- 语言 `cargo test --offline --locked -p auto-lang-core --lib plan988 -- --nocapture` 扩展到12 PASS/0 FAIL/0 ignored，exit0：新增源码函数[]int返回→参数→真实File.write_bytes；真实本地TCP loopback全部256字节逐字一致；HTTP Response凭据body写入0/128/255后非法成员拒绝且旧body不变。只证明对应桥边界，不将其视为完整HTTP产品验收。
+- UI生成器追加widget handler多选映射永久用例，尚未运行。SD-03已准备，未发布。
+- `cargo t --list`确认固定组后，已启动 `cargo t vm shim-metadata a2r http`；exec session=15562当前仍live，先poll该handle，不能因无新输出重启。外层日志988/affected-groups.log；driver默认输出实际为 `D:/autostack/.wt/lang-988/auto-lang/target/test-groups/run-xgf0njbe`（本轮疏漏未显式--out；终态后核归属/无链接并迁入988唯一scope，记录迁移hash；下一次必须--out）。已经发现目标并进入运行，不能记PASS。验证冻结期间不改/提交语言树以免source-state变更；UI生成器用例等该轮结束后顺序运行。
+- 原始材料SHA256：real-picker.log=f26724e0654fa2a8088107e9c9a0aa7456b1249e6e9fddf33e40bf7c3098f235；consumers.log=c9d179492639b9bb69867ebac49db4a9f9fe60279003a94e0e02f1a5f53e7bb1。
+- 未闭：生成Rust真实byte消费者、公开源码多选/缺席覆盖、UI generator新例与旧provider相关门、完整组结果及新增warning审计；因此保持executing，不交独立终审。
+- stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 4 | from: work | to: work | status: executing | outcome: needs_fix (work incomplete) | worktree: D:/autostack/.wt/lang-988 | commit: language739fd451a/UI518efb0c + owned test WIP | next: poll session15562 then finish T-01/02/03。
+
 ## 10. 待澄清事项
 
 无待用户范围决定。API具体返回形态/native ID/依赖版本由T-00有界核查；若出现超授权架构改造才另提决定。真实交互证据需要可用桌面，不能以模拟provider替代。
