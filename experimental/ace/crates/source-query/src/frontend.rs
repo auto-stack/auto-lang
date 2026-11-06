@@ -163,6 +163,11 @@ pub struct Frontend {
     meter: Meter,
     per_function: BTreeMap<String, Meter>,
     work: crate::work::Ledger,
+    /// PLAN-938: one bounded admission of the session's dynamic metadata
+    /// (ledger rows incl. warm-edit stages, per-function meters, residents,
+    /// query cache entries), reserved at construction and held for the
+    /// session's lifetime. Edits grow within it; no per-edit recharge.
+    _metadata: Reservation,
 }
 
 /// Prepared HIR + an opaque core transaction. No source/environment/current
@@ -227,6 +232,32 @@ impl Candidate {
     pub fn page(&self) -> &Page {
         &self.resident.page
     }
+}
+
+/// One bounded admission of the frontend session's dynamic metadata: the
+/// work ledger's owner/stage rows (including the warm-edit stages), the
+/// per-function meter and resident maps, and the query session's sig/body
+/// cache entries. Reserved once at construction (cold and restore); a
+/// warm edit's new rows stay inside the same charge.
+fn admit_session_metadata(resources: &Resources, names: &[&str]) -> Result<Reservation, Error> {
+    let row = std::mem::size_of::<crate::work::Totals>() + 64;
+    // Bootstrap: whole-module rows ("*" owner, module stages), map headers,
+    // work-ticket vectors and the restore-time negative-candidate edges.
+    let mut bound = 8usize << 10;
+    for name in names {
+        // Four map keys (per_function, residents, query sigs/bodies) with
+        // their BTreeMap nodes, the meter/resident values, up to fourteen
+        // ledger stages per owner across edits, and a small per-function
+        // query-page allowance.
+        bound = bound
+            .saturating_add(name.len() * 4 + 24 * 4 + 64 * 4)
+            .saturating_add(std::mem::size_of::<Meter>() + 192)
+            .saturating_add(14 * row)
+            .saturating_add(1024);
+    }
+    resources
+        .reserve(Charge::index(bound))
+        .map_err(|e| Error::Resource(e.to_string()))
 }
 
 impl Frontend {
@@ -309,6 +340,11 @@ impl Frontend {
         // borrow it rather than clone every catalog body into another AST.
         let mut items: Vec<_> = catalog.fns.values().collect();
         items.sort_by_key(|s| s.span.start);
+        let metadata_names: Vec<&str> = items
+            .iter()
+            .map(|s| s.item.as_ref().expect("cold catalog").name.name.as_str())
+            .collect();
+        let _metadata = admit_session_metadata(&resources, &metadata_names)?;
         let env = resolve::resolve_env_with_supply(
             &product.program,
             capabilities,
@@ -376,6 +412,7 @@ impl Frontend {
                 meter,
                 per_function,
                 work,
+                _metadata,
             },
             product.compiled.checked,
         ))
@@ -1177,6 +1214,9 @@ impl Frontend {
             .with_work(work.clone())
             .with_capabilities(capabilities.iter().cloned());
         queries.set_foreign(Some(foreign.clone()));
+        let metadata_names: Vec<String> = root.edges.keys().cloned().collect();
+        let metadata_refs: Vec<&str> = metadata_names.iter().map(String::as_str).collect();
+        let _metadata = admit_session_metadata(&resources, &metadata_refs)?;
         let mut residents = BTreeMap::new();
         let mut meter = Meter::default();
         for (name, edge) in root.edges {
@@ -1277,6 +1317,7 @@ impl Frontend {
             meter,
             per_function: BTreeMap::new(),
             work,
+            _metadata,
         })
     }
 }

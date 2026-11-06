@@ -5230,4 +5230,120 @@ mod source_foreign {
         denied.admit_foreign(manifest, &host).unwrap();
         drop(root);
     }
+
+    /// PLAN-938 session metadata: the frontend's dynamic metadata (ledger
+    /// owner/stage rows incl. warm-edit stages, per-function meters,
+    /// residents, query cache entries) is admitted ONCE at construction at
+    /// the documented session scale (8 KiB bootstrap + per-owner), covers
+    /// the real ledger rows, releases with the frontend, and a warm edit
+    /// never recharges it.
+    #[test]
+    fn frontend_session_metadata_is_admitted_once_and_covers_real_row_growth() {
+        use ace_source_query::frontend::{ColdObservation, Frontend};
+        use ace_source_query::resources::{OutputLimits, Resources};
+        use ace_source_query::work::Totals;
+        let (root, provider, environment, caps) = fixture("frontend-metadata");
+        let source = "fn main() int { return foreign_add(20,22) }";
+        let rows_bytes = |rows: Vec<ace_source_query::work::Row>| {
+            rows.into_iter().fold(0usize, |bytes, row| {
+                bytes + row.owner.len() + 24 + 64 + std::mem::size_of::<Totals>() + 64
+            })
+        };
+        // A Frontend-only cold construction measures the whole frontend index
+        // charge (the session metadata admission plus the construction's
+        // pre-existing index consumers); `_checked` keeps its own long-lived
+        // share alive past the drop, so the RELEASE is what is attributed.
+        let probe = Resources::default();
+        probe.enable_output_budget(OutputLimits::default()).unwrap();
+        let p_baseline = probe.stats().current.index;
+        let (front, _checked) = Frontend::cold_observed_with_resources(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            &mut ColdObservation::default(),
+            probe.clone(),
+        )
+        .unwrap();
+        let alive = probe.stats().current.index - p_baseline;
+        let cold_rows = rows_bytes(front.work().rows());
+        assert!(
+            alive as usize >= (8 << 10) + cold_rows,
+            "the session metadata admission is below the documented 8 KiB bootstrap + real rows"
+        );
+        drop(front);
+        let released = alive - (probe.stats().current.index - p_baseline);
+        assert!(
+            released as usize >= 8 << 10,
+            "the metadata admission did not release with its frontend"
+        );
+        // The real session charges once; a warm edit adds rows WITHOUT any
+        // new charge and stays covered.
+        let resources = Resources::default();
+        resources
+            .enable_output_budget(OutputLimits::default())
+            .unwrap();
+        let baseline = resources.stats().current.index;
+        let mut session = Session::cold_with_resources(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            provider.clone(),
+            Target::C,
+            resources.clone(),
+            None,
+        )
+        .unwrap();
+        let charged = resources.stats().current.index - baseline;
+        let candidate = session
+            .prepare("main", "fn main() int { return foreign_add(21,22) }")
+            .unwrap();
+        assert_eq!(
+            resources.stats().current.index - baseline,
+            charged,
+            "a warm edit recharged the session metadata"
+        );
+        assert!(
+            (charged as usize) >= rows_bytes(session.frontend().work().rows()),
+            "real ledger growth exceeded the admitted metadata bound"
+        );
+        drop(candidate);
+        // One byte short of the frontend's whole index charge: construction
+        // refuses as a resource error BEFORE any facts page is produced.
+        let denied = Resources::default();
+        denied
+            .enable_output_budget(OutputLimits::default())
+            .unwrap();
+        let d_baseline = denied.stats().current.index;
+        let pressure = denied
+            .reserve(Charge::index((8 << 20) - d_baseline - (alive - 1)))
+            .unwrap();
+        let error = Frontend::cold_observed_with_resources(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            &mut ColdObservation::default(),
+            denied.clone(),
+        )
+        .err()
+        .expect("frontend construction skipped the shared index account");
+        assert!(error.to_string().contains("foreign.resource"), "{error}");
+        drop(pressure);
+        Frontend::cold_observed_with_resources(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment,
+            &mut ColdObservation::default(),
+            denied.clone(),
+        )
+        .unwrap();
+        drop(root);
+    }
 }
