@@ -1,14 +1,14 @@
 ---
 plan_id: PLAN-988
-status: executing
+status: execution_done
 feature_name: Reader原生多选与动态字节桥接
 plan_revision: 1
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-06
-current_step: 1
+current_step: 4
 total_steps: 6
-supersedes_spec_components: [docs/specs/auto-lang/ui/design/dialog-dnd-host-capabilities.md, docs/specs/auto-lang/vm/native-fs.md]
+supersedes_spec_components: [docs/specs/auto-lang/ui/design/dialog-dnd-host-capabilities.md, docs/specs/auto-lang/vm/native-fs.md, docs/specs/runtime/native-vm-app-validation.md]
 new_spec_components: []
 touched_goals: []
 ---
@@ -80,12 +80,12 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 
 | ID | owner_stage | 依赖 | 动作 | 关闭证据 |
 |---|---|---|---|---|
-| T-00 | work | 授权 | 树/依赖确认，新构建复现、ABI与表示根因定位、冻结最小设计 | 源码调用链及P-02红/读回绿；实际命令/版本 |
-| T-01 | work | T-00 | 公共多选声明/VM provider/UI OS/生成映射与用例 | P-01、P-04 |
-| T-02 | work | T-00 | 动态字节桥与永久正反回归 | P-02及受影响同桥消费者 |
-| T-03 | work | T-01/02 | 两端消费者验证、准备SD、工具交接记录 | P-03及冻结受影响检查 |
-| T-04 | review | T-03 | 独立复审绑定各仓提交与Specs | AC-01～03 pass |
-| T-05 | merge | T-04 | 顺序落地/工具消费/规范/归档清理/009交接 | AC-05 |
+| T-00 [x] | work | 授权 | 树/依赖确认，新构建复现、ABI与表示根因定位、冻结最小设计 | 源码调用链及P-02红/读回绿；实际命令/版本 |
+| T-01 [x] | work | T-00 | 公共多选声明/VM provider/UI OS/生成映射与用例 | P-01、P-04 |
+| T-02 [x] | work | T-00 | 动态字节桥与永久正反回归 | P-02及受影响同桥消费者 |
+| T-03 [x] | work | T-01/02 | 两端消费者验证、准备SD、工具交接记录 | P-03及冻结受影响检查 |
+| T-04 [ ] | review | T-03 | 独立复审绑定各仓提交与Specs | AC-01～03 pass |
+| T-05 [ ] | merge | T-04 | 顺序落地/工具消费/规范/归档清理/009交接 | AC-05 |
 
 ## 9. 复审记录
 
@@ -114,6 +114,27 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 - 原始材料SHA256：real-picker.log=f26724e0654fa2a8088107e9c9a0aa7456b1249e6e9fddf33e40bf7c3098f235；consumers.log=c9d179492639b9bb69867ebac49db4a9f9fe60279003a94e0e02f1a5f53e7bb1。
 - 未闭：生成Rust真实byte消费者、公开源码多选/缺席覆盖、UI generator新例与旧provider相关门、完整组结果及新增warning审计；因此保持executing，不交独立终审。
 - stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 4 | from: work | to: work | status: executing | outcome: needs_fix (work incomplete) | worktree: D:/autostack/.wt/lang-988 | commit: language739fd451a/UI518efb0c + owned test WIP | next: poll session15562 then finish T-01/02/03。
+
+### 2026-11-06 work：T-01～03完成，冻结独立复审基线
+
+- stage: work | plan_id: PLAN-988 | plan_revision: r1 | outcome: pass | task_ids: T-00～03 complete; T-04/05 pending | worktree_path: D:/autostack/.wt/lang-988/auto-lang + auto-ui | branch: plan-988-dev + codex/reader-009-prerequisites | base_commit: language a137e8be6 / UI 22a925c7 | code_commit: language 65dcdb025c79060a9a80dc9ec99be408eee57970 / UI b0d59400a1c302c040e07c9e4938a1c13b34d937 | dependency_revisions: auto-down 58ea33f / auto-web bf72baa (read-only detached) | blockers: none | next_responsible_role: independent final reviewer。
+- 实质实现末提交 language 61d83ee4c、UI 96083340；之后两提交仅格式。通过 rustfmt canonical output 比对，格式前后逐文件等价，因此复用对应运行证据，不伪称格式后重新执行全部测试。两树已提交且无交付WIP，暂停实现写入直至review结论。主检出他方文档及UI测试目录WIP不纳入本计划，merge仍需按规则核归属。
+
+| work AC / task | 当前关闭证据 | 结论与边界 |
+|---|---|---|
+| AC-01 / T-01 | 语言16个定向例中的多选JSON/取消/缺provider保留参数/旧provider明确拒绝且单选保持/真实源码解析；UI生成器新例1 PASS；旧provider6 PASS；真实系统多选例1 PASS、0 ignored（含VM parented和Rust unparented两端各选择/取消） | pass。真实picker结果与两份隔离文件身份匹配、owner enabled恢复；未冒充Reader按钮、物理IME或焦点键盘事件证明。父窗沿既有端差异。 |
+| AC-02 / T-02 | 16例中typed/dynamic/JSON/函数返回参数/全256字节/无效句柄和非整数/HTTP Response body/TCP loopback，目标文件与原始字节独立比较，坏成员不覆盖哨兵 | pass。Vec<i32>仅接受范围内整数标签；合法0..255保持；Rust原有完整i64转低8位行为保持，未增加范围外跨后端等价承诺。 |
+| AC-03 / T-03 | 真实生成Rust源→rustc→exe落盘[0,127,128,255]，空列表另编译执行得到零字节；VM真实源码写同四字节；固定受影响组、UI编译与消费者通过；SD-01/02/03已提交 | pass（work范围）。审后冻结并集回归由merge核证据有效性/执行，当前不声称最终合入门完成。 |
+
+- 消费发现并修复：生成Rust原helper仅收Vec<Value>导致实际函数返回Vec<i64>调用E0308；现泛型接受typed/JSON整数列表且先验证全部元素，非法值返回-1并保原文件。原先非法成员归零属于数据损坏，不沿用。直接空数组随后出现推断歧义；两处File.write_bytes生成臂对直接[]发出Vec::<i64>::new()。永久fixture emitter位于auto-generation-core/examples/plan988_byte_emit.rs，使用生产qualify_a2r_std，无手改生成Rust。
+- 真实生成消费重放命令：`cargo run --offline --locked -p auto-generation-core --example plan988_byte_emit -- D:/autostack/plan-artifacts/plan-988/rust-final`；empty模式额外参数`empty`、独立rust-empty目录。`rustc --edition=2021 <scope>/main.rs -L dependency=target/debug/deps --extern auto_lang_core=<本树最新rlib> -L native=<本树target/debug/build各out及Cargo registry windows_x86_64_msvc各lib> -o <scope>/consumer.exe` exit0；运行exe exit0；独立读回typed=[0,127,128,255]、empty=[]。首次E0308保留在rust-consumer/compile-red.log；原始rustc调用缺windows import lib的链接失败已通过本树依赖原生lib参数修复，不当产品缺陷或隐藏失败。
+- `cargo test --offline --locked -p auto-lang-core --lib plan988 -- --nocapture`最终16 PASS/0 FAIL/0 ignored，exit0，0.10秒测试、13.99秒编译阶段。final-compatibility.log SHA256=c92b9dac14482e12fd73908e6b85911a198046ad017f9850b930580757f9d02c。保留已有145编译warnings；相对byte-baseline warning标题多重集新增0。命中改动文件的Json重复分支、as_int重复分支、unused i、NATIVE_PRINT_F64/U64均为基线原文，无新功能warning。
+- `cargo test --offline --locked -p auto-ui-compiler --lib plan988 -- --nocapture` 1 PASS/0 FAIL，exit0；generator.log SHA256=803100d9b858475ec781ccee74ac3eab30926d838d46de323d08f36158dabef7。UI已有201条compiler-test warnings，新增行未命中warning定位。旧provider测试6 PASS/0 FAIL，provider-regression.log SHA256=7334d744962df818380731aff811a4ab9645dba5f6176386e7f0dfe00148f462。真实OS结果与UI编译同前轮，相关路径无后续语义变更，复用其证据。
+- `cargo t vm shim-metadata a2r http` session15562已终态exit0，总266.84秒；合并vm/a2r/http selected1372、executed1372、原条件excluded459、not_run0；shim-metadata selected/executed16、excluded0、not_run0。未执行与排除不算PASS。原target/test-groups/run-xgf0njbe终态后核归属/无链接，已Move-Item迁入唯一scope/affected-groups，results.json迁移前后SHA256=54115462beef7011be4e0332fe48f3757a99a1311330276e42df8752e66578ea。没有保留第二份输出根。
+- 泛型/empty生成修复后只补`cargo t a2r --out D:/autostack/plan-artifacts/plan-988/a2r-final`：exit0，71.20秒；selected/executed394、excluded25、not_run0，results.json SHA256=71ba338d78c10bb37f0cdf9a8623afdb93bd22b1119518cb163ba633e76fbefd。其后仅恢复原Rust i64低8位兼容，受影响helper已有最终16例覆盖；VM/HTTP/metadata未受该修复影响，不无依据重跑。最终合入时由merge按实际冻结代码/输入核复用与必需补跑。
+- 健康检查：两仓diff --check通过。语言所有改动Rust文件rustfmt通过；UI新增区域已格式化，compiler老文件剩余85处格式区域逐段核为基线原文，未扩面重排全文件。生成消费自身仅unused通用导入和未读rc两项提示，输出为编译器原样生成，无调试print；返回值之外另以真实文件字节断言证明成功。编译、门日志均在988唯一scope，不进git。
+- Readiness：work-owned AC-01/02/03通过；开放的范围内实现缺陷、必需work oracle缺口、待定合同决定均为空。SD-01～03已准备并列入影响metadata。AC-04独立复审、AC-05审后合入/规范读回/工具消费/清理仍pending，不计完成。009仍为1/8，必须在本前置交付后继续其产品导入、1000 metadata、双端完整工作区/IME/视觉等全部原验收；988不替代这些腿。
+- stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 5 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-988 | commit: language65dcdb025 / UIb0d59400 | next: independent final review。
 
 ## 10. 待澄清事项
 
