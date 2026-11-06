@@ -502,6 +502,12 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 - 上表总数18071 files/11933856595 bytes；保留材料均已折本Plan，计划8根删除，不迁移到第二scope、不声称已删除。
 - 4树清理前统计：auto-down: 1256 files/26409169 bytes; auto-lang: 31418 files/12307828097 bytes; auto-ui: 24293 files/22851866710 bytes; auto-web: 67 files/1306050 bytes。各树无reparse、Gitclean，构建中间产物随树销毁，不回收。988 scope先核29158 files/14802474662 bytes、无reparse，含本轮scope内TEMP及HTTP消费者缓存；清理前精确统计会有少量收据增量，不将预照冒充精确删除量。独立review无live进程且共享写权已交回。全局registry当前有本Plan精确在途记录，已核无未解决finding/具名文件hold；未知scope及其他deleted历史项不接管。
 
+### 2026-11-06 closeout清理实测：仅scope最后删除待执行
+
+- 4个worktree每个移除前再次Git Bash wt-guard clean、绝对路径严格在lang-988组、git status clean；顺序git worktree remove全部exit0，无force。两个已合分支用git branch -d删除，空group已移除；四树35187410026 bytes构建/源码随树销毁，没有复制target到其他目录。实际去向均为删除，非迁移。
+- 原8个外部Temp目录已逐个以精确绝对路径、fresh无reparse与文件数/bytes一致、无本目录活跃exe核验后原生PowerShell无force递归删除；8/8不存在，共11933856595 bytes。首次计算路径+force批量删除被自动审批审查拒绝，未产生副作用，后改为逐个具名、核固定inventory、不带force的更窄删除获准并全部完成；没有改用其他shell或Python绕过。原逐项目录/hash表沿上文。
+- 唯一988 scope最后一照为29162 files/14802476615 bytes，路径+长度清单SHA256=2a363b98f8cc003c7514a1f0a75c9a4837125890faa2b482e9c9c9b82bde880f；无symlink/junction，所有有效证据已折入本Plan，R5及后补勘误无未解决finding/原材料hold。将该scope整体删除后刷新全局registry并记录最终cleaned，此处不预标删除完成。其他项目/计划scope不处理。
+
 ## 10. 待澄清事项
 
 无待用户范围决定。API具体返回形态/native ID/依赖版本由T-00有界核查；若出现超授权架构改造才另提决定。真实交互证据需要可用桌面，不能以模拟provider替代。
