@@ -783,6 +783,24 @@ stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:25 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，标量release缺口已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:7de59cacec4f375db461f8e4756c81c3ce810b8f | next:work 剩余复合RT/collections/SQ/实例四端与机制/ARCH
 
+### 2026-11-06 原record/text 16源四端与独立参考默认认证（goal第26轮）
+
+唯一941树提交 **74dc77d8e989a35b7953c072ffe0d2492c9ac7c3**，代码树clean。继续原T03/04/05/10/11，未改生产编译器/worker/语言语义，原总任务仍executing2/17。
+
+- 原record-text-cert-925十一源与record-text-base五源共16：7record/6text/3text-record，13值/3具名trap；源码、oracle、原caps不改。正式record-text-q4 Case/suite执行AV/native **32/32 PASS**，25.005807s，scope/record-text-q4-source/gate/results.json SHA=`f8d4a434ea2caac251c5cceb8bc56fbc2a0da89cee0b253a0e7b9fa3b5634d50`。record明确用data-run，text/text-record用owned-run；native三个trap要求原具名事件及清理字节，不凭exit70。11依赖执行前后SHA稳定。原R07等在expanded外，suite fixture_root指共同cases根，保持实际原路径，不复制或改源。
+- 永久portable合同75150B SHA=`52bc1915dfed1a030cf6be30fa7bec430fd1bb6edf57d5e50bc1a75f544477e3`；新16行reference合同SHA=`7869cb3729409f4dce41bb5018e51bd0fab694d4a90d18ac74866dd923b78f8e`。16独立Rust参考+5新C参考保结构、复制/移动/借用/多次修改、命名空间、完整UTF8/NUL和边界操作，另11C严格复用原composite参考，不读actual发射源码。新T05参考在执行前把两字面NUL改为转义，不改Auto原源。新参考实际编译stderr审计零warning。
+- 原worker真实 **32默认cert+32 daily+32身份请求**，actual/reference各编译运行，共**64 compile/64 run**，全部通过，scope/record-text-certifications。daily完整四文件在cert前冻结；原profile、HIR域、caps、工具链/原flags、完整文件hash与具名trap逐项校验。当前累计**190默认cert/daily**（原158+32）；另8标量release是额外模式，不充默认认证。原902要求R07/R08/T03/T05 Rust额外`-O`仍**4 UNOBSERVED**，本组Rust/C目标28PASS4UNOBSERVED，certification_complete=false，不以默认绿消除原模式。
+- 新record_text reader核正式inventory/Case-copy/START+TERMINAL、nonce/FNV/requesthash/source、版本/域/能力、原工具和owner、实际link/run与独立oracle。data域独立校验canonical i32，未伪造owned ledger；老owned/text/CT/core/scalar读法保持。cert/daily有限增加record/text-record及原runtime text能力，拒未知profile。原budget合同唯一变化是cert reader源pin；确认16条政策和全部数值不变，其余25pin未动，新合同SHA=`1f0bfe4c1dee01c58c07cad5d6a1b0ea799e8b76ec543848d549dc956b5bd77b`。
+- **60源原帧反控**：10合法PASS、10双方同错FAIL、40nonce/未知field/caps/源码连重hash REFUSED；scope/record-text-q4-source/raw-reader-controls.json SHA=`5e53750a09bac4abe5853b422d99203d7908170484f1a96b1b1f2fc55ffc96d7`。**30认证原帧反控**：10合法PASS、10同错FAIL、10重hash未知field REFUSED；scope/record-text-cert-raw-controls/results.json SHA=`637a36fbfd1df9e56049ac297c49a6269a9b22ca6fb43ee3198d56dfeb1b0aa7`。全部counterfactual_not_execution，不充新增语言执行。
+- 新3永久回归联原150，`cargo t infra-ace-m1-arch --out <scope>/record-text-final-controls` **153/153 PASS**、exit0、3.7981875s，results SHA=`aaa039cd1411e3d94606835db59b408a0998422e5f73e7f53b4089b6d4a9a7d1`。py_compile/diff-check通过。提交后逐件验证变更文件等于Git blob，scope/record-text-frozen-preview/committed-input-audit.json；不因commit重复原153或1779压力，未改生产工具的有效原证据由新reader逐项重读。
+- 冻结74dc77d整体在原受管Job且Popen禁用下重读：**390PASS/8FAIL/488UNOBSERVED**，886原分母不变；新增两个RT合同指针共11，full_registry_closed/system_delivered/expanded claim均false。scope/record-text-frozen-preview/preview.stdout 394752B SHA=`c9db3b59f3b20aec772ff7c921f6a94b9a8242a5392f8da29451f3b8eafb8b78`，5478.3814ms，peak process28835840/Job30072832B。单共享LiveBudget reservation31035016/全程peak**47267155<50331648B**，保原48MiB/单件4MiB/private128MiB/先预留解码/64KiB流hash；逐exchange32KiB、域摘要1MiB仅在原对象实际失去引用后释放，不重置peak。
+
+原标量8FAIL/8native trap缺证据保留；RT额外Rust-O四项、collections/SQ/实例、旧313/38、机制/ARCH/938939及最终独立review/merge仍待，不提前勾T01..15。当前无活运行或新增用户决定。下一入口先补四项原RT优化编译，再继续原范围。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:74dc77d8e989a35b7953c072ffe0d2492c9ac7c3 | task_ids:T03/04/05/10/11（未关闭） | evidence:32原AV/native、32默认cert/daily、90反控、153回归、整体390PASS8FAIL488UNOBSERVED | blockers:原完整任务未完，无新增用户决定 | next_responsible_role:work 原RT四release/剩余Q4/机制/ARCH
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:26 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，RT默认认证不冒release） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:74dc77d8e989a35b7953c072ffe0d2492c9ac7c3 | next:work 原RT四release及其余原范围
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
