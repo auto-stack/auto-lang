@@ -68,6 +68,8 @@ total_steps: 23
 
 2026-11-06 F-941-08追加授权已收到：用户对call_f0d62e537ab843b6a2d98593aaf23bcd明确“授权941新增修复phase（推荐）”。本项允许把第59轮具名source-CT meta能力冷/暖/撤销检查提案纳入941修复、复审与合入原链；继续同一树/仓库/原预算，不重复确认。第61轮已将该授权落实为r5 §5.11/T22/23/AC-17/V29..32/SD-11；第62轮T22实现、第64轮T23当前职责/四端/身份闭包严格验证已完成，F08工作阶段关闭，当前8/23；原完整T01..15及最终独立T14继续。F-941-07独立test-only提案仍待答复，不能从此授权推定。
 
+2026-11-07 F-941-09追加授权已收到：用户对call_f903aca408d94194aedb419af5aef7ab明确“授权941新增修复phase（推荐）”。覆盖§9第67轮具名restore_verify当前逻辑归属检查、跨package/module/同形owner反例及合法/位置漂移控制，允许同树941内修复、复验、独立复审和合入；后续按new技能落实具名修订（拟r6），当前未改生产实现。F07仍未授权，原全部目标/预算/分母/消费者要求不变。
+
 ## 5. 详细设计
 
 ### 5.1 登记与不可变义务集合
@@ -1688,6 +1690,10 @@ stage: work | plan_id:PLAN-941 | plan_revision:r5 | outcome:progress（SQ solver
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r5 | round:67 | from:work | to:work | status:executing8/23 | outcome:progress（真实两项ARCH从未观测转PASS/FAIL） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:5adfe480dc423baf12ba6e7124dd5d0df323b25e | next:work，712P9F285U当前基面；F09授权后具名phase，否则继续独立原验收义务；F07仍待，无待poll
 
+第67轮收尾续录：用户已明确批准F09在941新增修复phase，原“待授权”记录为当时历史状态，现已解除。当前代码/正式712P9F285U/raw保持不变；下一轮先new把已批准提案落为具名修订，再work，不把F09授权推广为F07。当前无live handle。
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r5 | round:67-addendum | from:work | to:new | status:executing8/23 | outcome:progress（F09用户具名phase授权已收到并登记） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:5adfe480dc423baf12ba6e7124dd5d0df323b25e | next:new落实F09批准范围，继承全部原合同；F07仍待裁定
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1711,4 +1717,4 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r5 | round:67 | from:work | to:wo
 
 12. **F-941-08工作阶段已关闭（r5 T22/T23，第64轮续录）**：用户原授权已完成实施与当前原职责/真实四端/292认证daily/原优化及CT机制严格联读，F08关闭基面81c10fcc9；第65轮b876cb42b/711P8F287U；第66轮4466520e6同计数、新增S936恢复分腿；第67轮当前5adfe480d/712P9F285U，新增SQ权威PASS与F09实际FAIL，仍8/23。无待poll，不再等待F08授权或重跑已有效冻结证据；原完整任务及最终独立T14仍待。F07独立test-only修复仍待裁定，不能由F08授权推定。
 
-13. **F-941-09待授权**：第67轮已实测SQ restore_verify/restore_bind误收异package/module或同形异owner事实页并产出真实已验证HIR；seed入口正确拒绝。具名最小修复与三组反证见§9 F09；拟在941新增恢复逻辑归属检查phase，未获授权前仅做原验收观察/报告，不改生产实现。
+13. **F-941-09已获941内phase授权（2026-11-07，第67轮收尾）**：用户已明确授权§9具名最小修复；三组实际FAIL仍为修复前基线。下一阶段new落实具名修订/任务与边界，再在同一941树修复并复验，不再等待F09授权。当前代码5adfe480d尚未修生产，F07仍独立待批。
