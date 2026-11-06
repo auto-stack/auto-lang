@@ -137,3 +137,6 @@ archived=代码/规范已交付；本Plan将移docs/plans/archive/并提交，cl
 
 cleaned=2026-11-06实际完成：五仓git worktree remove成功，四个已合入临时branch -d成功，空group目录消失；scope guard clean后不带Force的Remove-Item -Recurse完整删除，D:/autostack/plan-artifacts/plan-956不存在。最初将branch清理与强制递归删除合为一命令被自动审批策略拒，整条零执行；随后拆开已合入branch安全删除及无Force的已检查scope删除成功。无重试旧955持有、无穿透链接、无材料hold。所有关键收据已在本Plan，永久代码/测试/规范留主线。收尾核查global registry未见956条目，按真实磁盘状态补deleted-at-merge收据，不凭旧登记声称留存；未改其他scope条目。
 archived=本文件实际git mv到docs/plans/archive/并提交的终态交付；周期到期门作为独立batch收据继续，不把未跑部分计PASS。
+
+
+周期门收尾（独立于956验收）：主检出37组实际完成，849.43秒，2836实际执行/1014原排除，27组PASS/7组FAIL/3组NOT_APPLICABLE，不称全绿。known reds见docs/plans/.last-batch-regression.json；新增auto-api-gen发现阶段rustc0xc0000005已起草PLAN-957（0/5，未实施/未归因），四原始文件逐字节留其唯一scope具名持有。原956材料与worktree已经删除，无重新开启或hold956。队列期间c30dbc6b4仅941文档22行更新触发HEAD身份守卫；原代码/配置/输入tree一致，重算起点state吻合，保留raw guard false，未据此重跑全队列。批量结果SHA `6dae5d0ee8bfe41b6e2d37b6a66da9081861ec880bdb96418e05bba46c1d4185`；完整当前收据含逐组准备/执行与新红/旧红。954四HTTP原例与43项执行组本轮PASS，不宣称954旧观察已关闭。

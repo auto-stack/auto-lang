@@ -1,25 +1,81 @@
 {
-  "last_covered_plan_id": 953,
-  "timestamp": "2026-11-05T20:24:10.655392+00:00",
-  "covered_commit": "6b6b191c39866ae637bacfe0c4f7b964a498a94b",
-  "command": "cargo t all --out D:/autostack/plan-artifacts/batch-regression-20261106/queue",
+  "last_covered_plan_id": 956,
+  "timestamp": "2026-11-06T01:12:46.239965+00:00",
+  "covered_commit": "b9d24ff4b82c07e2eec0e0f06611eb9d0aeefde8",
+  "command": "cargo t all --out D:/autostack/plan-artifacts/batch-regression-20261106-956/queue",
   "legs": [
-    "language fixed-group union: 37 original groups; UI/Man remain owner legs; ACE domain all=false excluded by original configuration"
+    "language: all 37 original fixed groups; UI/Man keep their owner legs, not inferred PASS"
   ],
   "single_instance": true,
   "completed_queue": true,
   "gate_passed": false,
-  "verdict": "known_reds_and_fixture_observations",
-  "previous_receipt_sha256": "cac3aae422ec4b1308f7fb61f7dc3a7ac822d2f795db636583306d35ee708d89",
-  "config_sha256": "6e5a2cf66f4be87974d5d0c29bff969b9d90e973d9947fc8ef817476a65d3aed",
-  "protected_input_sha256": "8f4a5f000cfd9ce75adf001ebee794a7c144131f58d903cb0537f0df0a702b6d",
-  "source_identity": "source_state exactly SHA256(covered HEAD + empty code/config diff + [] untracked); no source/config/input drift; subsequent drafting/debt commits are docs only",
-  "results_path": "D:\\autostack\\plan-artifacts\\batch-regression-20261106\\queue\\results.json",
-  "results_sha256": "8daca044b4fac3e8e2ac935ea138da86810788067a708bd78418c8d50a1d5709",
-  "elapsed_seconds": 702.0677687999996,
-  "executed": 2828,
+  "raw_guard_error": "code/config/inputs changed during execution",
+  "verdict": "new compiler-process crash plus established known reds; no all-green claim",
+  "previous_receipt_sha256": "2f9a94aa9bd13f469c0d3dbe4308b2c3e1736a5f56fd82e489231eab04722dfd",
+  "config_sha256": "33ee32cc65b074a55cceba5b4a181ffbd502b398aa4dca7da95b89fa0524343d",
+  "protected_input_sha256": "abd0d3e2118a06d936973fd828312c8f9b47556543b1f6ac0fe0070f42e29843",
+  "protected_input_recipe": "SHA256(git ls-tree -r -z covered_commit -- crates test experimental scripts .cargo .config Cargo.toml Cargo.lock)",
+  "source_identity": {
+    "start": "b9d24ff4b82c07e2eec0e0f06611eb9d0aeefde8",
+    "end": "c30dbc6b4574d4569704d5acc091bb2e47e7dcee",
+    "raw_guard_error": "code/config/inputs changed during execution",
+    "start_state_recomputed": "7477ebfef706d40cad2108e2007d9e80035af15cd837ee0e5c344206dc4ec12b",
+    "code_config_input_diff_empty": true,
+    "untracked_scoped_inputs": [],
+    "during_run_change": "docs/plans/941-ace-m1-expanded-and-architecture-acceptance.md +22 lines only",
+    "protected_tree_sha256": "abd0d3e2118a06d936973fd828312c8f9b47556543b1f6ac0fe0070f42e29843",
+    "recipe": "SHA256(git ls-tree -r -z covered_commit -- crates test experimental scripts .cargo .config Cargo.toml Cargo.lock)"
+  },
+  "results_path": "D:\\autostack\\plan-artifacts\\batch-regression-20261106-956\\queue\\results.json",
+  "results_sha256": "6dae5d0ee8bfe41b6e2d37b6a66da9081861ec880bdb96418e05bba46c1d4185",
+  "elapsed_seconds": 849.432845000003,
+  "executed": 2836,
   "excluded": 1014,
+  "group_outcomes": {
+    "PASS": 27,
+    "FAIL": 7,
+    "NOT_APPLICABLE": 3
+  },
   "groups": [
+    "aavm",
+    "a2r-std",
+    "shim-metadata",
+    "a2r-actor-tests",
+    "auto-atom",
+    "auto-test-case",
+    "auto-gen",
+    "auto-gen-core",
+    "auto-media-core",
+    "auto-lang",
+    "auto-lang-core",
+    "auto-text-core",
+    "auto-parser-api",
+    "auto-ast",
+    "auto-lex",
+    "auto-diagnostics",
+    "auto-project-model",
+    "auto-macros",
+    "auto-tool-execution",
+    "auto-terminal-core",
+    "auto-lsp",
+    "auto-val",
+    "auto-vm",
+    "auto-cache",
+    "auto-playground",
+    "auto-bindgen",
+    "auto-tool-protocol",
+    "auto-api-gen",
+    "infra-meter",
+    "infra-pilot-cli",
+    "case-pilot",
+    "infra-ace-policy",
+    "infra-ace-cost-report",
+    "infra-fixed",
+    "auto-generation-core",
+    "web-delivery-controls",
+    "generated-delivery-controls"
+  ],
+  "timings": [
     {
       "groups": [
         "aavm"
@@ -27,22 +83,18 @@
       "outcome": "NOT_APPLICABLE",
       "executed": 0,
       "excluded": 130,
-      "prepare_discover_seconds": 14.549980799994955,
-      "run_seconds": null,
-      "error": null,
-      "child_validation": null
+      "preparation_seconds": 74.71396270001424,
+      "execution_seconds": 0.0
     },
     {
       "groups": [
         "a2r-std"
       ],
       "outcome": "PASS",
-      "executed": 108,
+      "executed": 115,
       "excluded": 0,
-      "prepare_discover_seconds": 1.2169570000041858,
-      "run_seconds": 7.842021899996325,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 18.001554799993755,
+      "execution_seconds": 7.886317099997541
     },
     {
       "groups": [
@@ -51,10 +103,8 @@
       "outcome": "PASS",
       "executed": 16,
       "excluded": 0,
-      "prepare_discover_seconds": 1.5632412999984808,
-      "run_seconds": 1.1101042999944184,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 4.845631799995317,
+      "execution_seconds": 0.932221800001571
     },
     {
       "groups": [
@@ -63,10 +113,8 @@
       "outcome": "NOT_APPLICABLE",
       "executed": 0,
       "excluded": 17,
-      "prepare_discover_seconds": 13.586365800001658,
-      "run_seconds": null,
-      "error": null,
-      "child_validation": null
+      "preparation_seconds": 76.37474149999616,
+      "execution_seconds": 0.0
     },
     {
       "groups": [
@@ -75,10 +123,8 @@
       "outcome": "PASS",
       "executed": 53,
       "excluded": 0,
-      "prepare_discover_seconds": 2.852339500001108,
-      "run_seconds": 1.2661596999969333,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 4.1482405999995535,
+      "execution_seconds": 0.9045225999871036
     },
     {
       "groups": [
@@ -87,10 +133,8 @@
       "outcome": "PASS",
       "executed": 111,
       "excluded": 0,
-      "prepare_discover_seconds": 4.082154700001411,
-      "run_seconds": 1.1770713000005344,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 3.9456810999981826,
+      "execution_seconds": 1.1498914999974659
     },
     {
       "groups": [
@@ -99,10 +143,8 @@
       "outcome": "PASS",
       "executed": 33,
       "excluded": 0,
-      "prepare_discover_seconds": 6.055033800003002,
-      "run_seconds": 2.679698100000678,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 4.648826399992686,
+      "execution_seconds": 1.3768325999990338
     },
     {
       "groups": [
@@ -111,10 +153,8 @@
       "outcome": "PASS",
       "executed": 12,
       "excluded": 0,
-      "prepare_discover_seconds": 1.1527023000016925,
-      "run_seconds": 1.0740902999968966,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 1.4095775000023423,
+      "execution_seconds": 0.8509911000001011
     },
     {
       "groups": [
@@ -123,10 +163,8 @@
       "outcome": "FAIL",
       "executed": 54,
       "excluded": 0,
-      "prepare_discover_seconds": 1.6743235000030836,
-      "run_seconds": 27.98892899999919,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 13.613150600009249,
+      "execution_seconds": 42.96476129999792
     },
     {
       "groups": [
@@ -135,22 +173,18 @@
       "outcome": "FAIL",
       "executed": 1712,
       "excluded": 864,
-      "prepare_discover_seconds": 12.412227300002996,
-      "run_seconds": 437.302554599999,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 8.730515399991418,
+      "execution_seconds": 165.14353880001
     },
     {
       "groups": [
         "auto-lang-core"
       ],
       "outcome": "FAIL",
-      "executed": null,
+      "executed": 0,
       "excluded": 0,
-      "prepare_discover_seconds": null,
-      "run_seconds": null,
-      "error": "ACE host tests leaked into a legacy group; fix feature/target ownership before execution",
-      "child_validation": null
+      "preparation_seconds": 0.0,
+      "execution_seconds": 0.0
     },
     {
       "groups": [
@@ -159,10 +193,8 @@
       "outcome": "PASS",
       "executed": 65,
       "excluded": 3,
-      "prepare_discover_seconds": 0.85636599999998,
-      "run_seconds": 1.1594514999960666,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 2.3467649000085657,
+      "execution_seconds": 2.754509299993515
     },
     {
       "groups": [
@@ -171,10 +203,8 @@
       "outcome": "PASS",
       "executed": 4,
       "excluded": 0,
-      "prepare_discover_seconds": 0.9043216999998549,
-      "run_seconds": 0.843874300000607,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 7.408264700003201,
+      "execution_seconds": 0.766444800014142
     },
     {
       "groups": [
@@ -183,10 +213,8 @@
       "outcome": "PASS",
       "executed": 66,
       "excluded": 0,
-      "prepare_discover_seconds": 0.9179146000024048,
-      "run_seconds": 1.1658929999975953,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 3.2571126999973785,
+      "execution_seconds": 0.8331230999901891
     },
     {
       "groups": [
@@ -195,10 +223,8 @@
       "outcome": "PASS",
       "executed": 74,
       "excluded": 0,
-      "prepare_discover_seconds": 0.98112580000452,
-      "run_seconds": 1.0447451,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 3.53970510000363,
+      "execution_seconds": 0.9333568000001833
     },
     {
       "groups": [
@@ -207,10 +233,8 @@
       "outcome": "PASS",
       "executed": 1,
       "excluded": 0,
-      "prepare_discover_seconds": 1.06484260000434,
-      "run_seconds": 0.84958639999968,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 1.387758800003212,
+      "execution_seconds": 0.7776962999923853
     },
     {
       "groups": [
@@ -219,34 +243,28 @@
       "outcome": "PASS",
       "executed": 42,
       "excluded": 0,
-      "prepare_discover_seconds": 0.8061720000041532,
-      "run_seconds": 0.8543868000051589,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 1.6038306999980705,
+      "execution_seconds": 0.7604032999952324
     },
     {
       "groups": [
         "auto-macros"
       ],
       "outcome": "FAIL",
-      "executed": null,
+      "executed": 0,
       "excluded": 0,
-      "prepare_discover_seconds": null,
-      "run_seconds": null,
-      "error": "selected Cargo target discovery/build failed",
-      "child_validation": null
+      "preparation_seconds": 0.0,
+      "execution_seconds": 0.0
     },
     {
       "groups": [
         "auto-tool-execution"
       ],
-      "outcome": "FAIL",
+      "outcome": "PASS",
       "executed": 43,
       "excluded": 0,
-      "prepare_discover_seconds": 3.2304606000034255,
-      "run_seconds": 5.153569299996889,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 1.3735888000082923,
+      "execution_seconds": 5.858782499999506
     },
     {
       "groups": [
@@ -255,22 +273,18 @@
       "outcome": "PASS",
       "executed": 7,
       "excluded": 0,
-      "prepare_discover_seconds": 0.9603629999983241,
-      "run_seconds": 0.9391396999999415,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 1.2493437000084668,
+      "execution_seconds": 0.8192988999944646
     },
     {
       "groups": [
         "auto-lsp"
       ],
       "outcome": "FAIL",
-      "executed": null,
+      "executed": 0,
       "excluded": 0,
-      "prepare_discover_seconds": null,
-      "run_seconds": null,
-      "error": "selected Cargo target discovery/build failed",
-      "child_validation": null
+      "preparation_seconds": 0.0,
+      "execution_seconds": 0.0
     },
     {
       "groups": [
@@ -279,10 +293,8 @@
       "outcome": "PASS",
       "executed": 150,
       "excluded": 0,
-      "prepare_discover_seconds": 0.8526254000025801,
-      "run_seconds": 1.107058000001416,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 1.8221302000019932,
+      "execution_seconds": 1.04225420000148
     },
     {
       "groups": [
@@ -291,10 +303,8 @@
       "outcome": "NOT_APPLICABLE",
       "executed": 0,
       "excluded": 0,
-      "prepare_discover_seconds": 2.7722412000002805,
-      "run_seconds": null,
-      "error": null,
-      "child_validation": null
+      "preparation_seconds": 2.6260378000006313,
+      "execution_seconds": 0.0
     },
     {
       "groups": [
@@ -303,10 +313,8 @@
       "outcome": "PASS",
       "executed": 70,
       "excluded": 0,
-      "prepare_discover_seconds": 2.133981400002085,
-      "run_seconds": 1.1284507000018493,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 4.11866629999713,
+      "execution_seconds": 1.0095357000100194
     },
     {
       "groups": [
@@ -315,10 +323,8 @@
       "outcome": "PASS",
       "executed": 14,
       "excluded": 0,
-      "prepare_discover_seconds": 16.040136900002835,
-      "run_seconds": 3.0564641000019037,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 76.33087780000642,
+      "execution_seconds": 2.0991610000055516
     },
     {
       "groups": [
@@ -327,10 +333,8 @@
       "outcome": "PASS",
       "executed": 6,
       "excluded": 0,
-      "prepare_discover_seconds": 0.9710417000023881,
-      "run_seconds": 1.0079669000042486,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 3.7646798999921884,
+      "execution_seconds": 0.7790963000006741
     },
     {
       "groups": [
@@ -339,22 +343,18 @@
       "outcome": "PASS",
       "executed": 20,
       "excluded": 0,
-      "prepare_discover_seconds": 0.9349289999954635,
-      "run_seconds": 0.8309579999986454,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 3.083561400009785,
+      "execution_seconds": 0.7956856000091648
     },
     {
       "groups": [
         "auto-api-gen"
       ],
-      "outcome": "PASS",
-      "executed": 3,
+      "outcome": "FAIL",
+      "executed": 0,
       "excluded": 0,
-      "prepare_discover_seconds": 14.645531699999992,
-      "run_seconds": 1.2232800999991014,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 0.0,
+      "execution_seconds": 0.0
     },
     {
       "groups": [
@@ -363,10 +363,8 @@
       "outcome": "PASS",
       "executed": 10,
       "excluded": 0,
-      "prepare_discover_seconds": null,
-      "run_seconds": 14.552436800004216,
-      "error": null,
-      "child_validation": null
+      "preparation_seconds": 0.0,
+      "execution_seconds": 13.991992099996423
     },
     {
       "groups": [
@@ -375,10 +373,8 @@
       "outcome": "FAIL",
       "executed": 10,
       "excluded": 0,
-      "prepare_discover_seconds": null,
-      "run_seconds": 1.9914959000016097,
-      "error": null,
-      "child_validation": null
+      "preparation_seconds": 0.0,
+      "execution_seconds": 1.9580916999984765
     },
     {
       "groups": [
@@ -387,10 +383,8 @@
       "outcome": "PASS",
       "executed": 24,
       "excluded": 0,
-      "prepare_discover_seconds": null,
-      "run_seconds": 1.9785320999944815,
-      "error": null,
-      "child_validation": null
+      "preparation_seconds": 0.0,
+      "execution_seconds": 1.9574850000062725
     },
     {
       "groups": [
@@ -399,10 +393,8 @@
       "outcome": "PASS",
       "executed": 11,
       "excluded": 0,
-      "prepare_discover_seconds": null,
-      "run_seconds": 0.3629603000008501,
-      "error": null,
-      "child_validation": null
+      "preparation_seconds": 0.0,
+      "execution_seconds": 0.37821350000740495
     },
     {
       "groups": [
@@ -411,10 +403,8 @@
       "outcome": "PASS",
       "executed": 16,
       "excluded": 0,
-      "prepare_discover_seconds": null,
-      "run_seconds": 0.4072117999967304,
-      "error": null,
-      "child_validation": null
+      "preparation_seconds": 0.0,
+      "execution_seconds": 0.355311300008907
     },
     {
       "groups": [
@@ -423,22 +413,18 @@
       "outcome": "PASS",
       "executed": 37,
       "excluded": 0,
-      "prepare_discover_seconds": null,
-      "run_seconds": 1.28739250000217,
-      "error": null,
-      "child_validation": null
+      "preparation_seconds": 0.0,
+      "execution_seconds": 1.1474875999992946
     },
     {
       "groups": [
         "auto-generation-core"
       ],
       "outcome": "PASS",
-      "executed": 28,
+      "executed": 32,
       "excluded": 0,
-      "prepare_discover_seconds": 3.6483226000054856,
-      "run_seconds": 1.394101400001091,
-      "error": null,
-      "child_validation": true
+      "preparation_seconds": 4.071808699998655,
+      "execution_seconds": 1.8950058000045829
     },
     {
       "groups": [
@@ -447,10 +433,8 @@
       "outcome": "PASS",
       "executed": 13,
       "excluded": 0,
-      "prepare_discover_seconds": null,
-      "run_seconds": 1.0946938999986742,
-      "error": null,
-      "child_validation": null
+      "preparation_seconds": 0.0,
+      "execution_seconds": 0.9821113000070909
     },
     {
       "groups": [
@@ -459,157 +443,78 @@
       "outcome": "PASS",
       "executed": 15,
       "excluded": 0,
-      "prepare_discover_seconds": null,
-      "run_seconds": 0.6248402999990503,
-      "error": null,
-      "child_validation": null
+      "preparation_seconds": 0.0,
+      "execution_seconds": 0.5616330000048038
     }
   ],
+  "resources": {
+    "measured_descendant_cpu_ms": 3376187.5,
+    "runner_cpu_ms": 18640.625,
+    "total_cpu_ms": 3394828.125,
+    "meter_cpu_ms": 14281.25,
+    "peak_job_bytes": 14491779072,
+    "scope": "distinct sequential native workloads plus runner CPU (meter CPU already inside runner, not added twice); peak is max Job peak and excludes Python runner memory"
+  },
   "new_reds": [
     {
-      "case": "auto-tool-execution::exec_lifecycle::deadline_covers_blocked_stdin_with_unowned_holder",
-      "observation": "full-queue heartbeat fixture did not start within original2s; isolated exact case passed1/1, without deadline/limit changes",
-      "classification": "new fixture/startup observation, no confirmed product cause; cannot claim unowned descendant state from a timeout alone",
-      "fix_forward": "PLAN-954 T-01/T-03"
+      "group": "auto-api-gen",
+      "stage": "Cargo discovery/build, before test execution",
+      "process": "rustc compiling auto-lang-core default lib",
+      "exit": "0xc0000005 STATUS_ACCESS_VIOLATION",
+      "toolchain": "rustc1.98.0 88d9e12ae178fab0fb5cc050a94da85685d449ea / x86_64-pc-windows-msvc / LLVM22.1.8",
+      "classification": "new compiler process fault; root cause unknown, neither source regression nor environment cause established",
+      "fix_forward": "PLAN-957 drafted 0/5, no implementation",
+      "original_evidence": "D:/autostack/plan-artifacts/plan-957/ (4 files, hash-verified copies)",
+      "stderr_sha256": "cfcdb61c2f62286a1165f372f2641455381e9327c08547001b9dfa202cc76e9a",
+      "same_queue_control": "later case-parent cargo build --locked --offline succeeded in93.77s on same source, different build graph; does not close original failure"
+    }
+  ],
+  "product_regressions_confirmed": [],
+  "known_reds_seen": [
+    "auto-media-core image_pipeline::tests::fixture_manifest: Os NotFound at image_pipeline.rs:3985, exact previous family; source unchanged since prior covered commit",
+    "auto-lang sys_natives_vm_tests::test_sys_natives_vm: RuntimeError Assertion failed line49, exact previous family; source unchanged",
+    "auto-lang plan707_spike_cancel_gap_active_job_future_not_stopped: same RED705 message at line66; exact case already documented D858 historical timing family in KNOWN-DEBT-AND-RISKS, source/async_http unchanged; not in previous batch observed-red list",
+    "auto-lang-core: ACE host tests leaked into legacy group, blocked before execution; original PLAN-901 ownership red",
+    "auto-macros: value_macro_tests four E0308 discovery errors, same baseline source/family",
+    "auto-lsp: package not in workspace, same PLAN-900 owner red",
+    "infra-pilot-cli: same legacy ACE worker/domain rejection family;10 executed,5 failures,1error; not PASS"
+  ],
+  "previous_observations_this_run": [
+    {
+      "owner": "PLAN-954",
+      "cases": "deadline_covers_blocked_stdin_with_unowned_holder",
+      "result": "original auto-tool-execution group43PASS, no altered budgets; no separate replay, one batch result does not close original fixture issue"
     },
     {
+      "owner": "PLAN-954",
       "cases": [
         "plan349 test_http_download",
         "plan349 test_http_download_resume",
         "plan349 test_multipart_file_functional",
         "plan727_vm_transfer_download_wait_success"
       ],
-      "observation": "TEMP runtime-temp path normalized by Win32 GetTempPathW/2W to backslashes; original fixture inserts unescaped path into Auto source, so backslash-r becomes carriage-return; same-scope scratch controls12+3 passed",
-      "classification": "pre-existing test input generation gap exposed by this batch environment; tests/lexer/transfer source unchanged since3b09e32b0",
-      "fix_forward": "PLAN-954 T-02"
+      "result": "all four original cases event ok in auto-lang group; original scope/budgets, no separate replay; no inferred cause/closure"
     }
   ],
-  "product_regressions_confirmed": [],
-  "known_reds_seen": [
-    "auto-media-core image_pipeline::tests::fixture_manifest: identical Os NotFound baseline",
-    "auto-lang sys_natives_vm_tests::test_sys_natives_vm: identical assertion line49 baseline",
-    "auto-lang-core blocked before execution: ACE host tests leaked into legacy group, original PLAN-901 ownership red",
-    "auto-macros discovery/build value_macro_tests E0308 x4 family, identical baseline",
-    "auto-lsp discovery: package not in workspace, original PLAN-900 red",
-    "infra-pilot-cli: original legacy-domain ACE worker rejection family; 10 executed,5 failures/1error, not PASS"
-  ],
-  "exclusions": [
-    "aavm NOT_APPLICABLE,130 original conditional/ignored",
-    "a2r-actor-tests NOT_APPLICABLE,17 original conditional/ignored",
-    "auto-vm NOT_APPLICABLE",
-    "auto-lang864 and auto-text-core3 original ignored/conditional exclusions; no ignore/oracle/sample changes",
-    "auto-lang-core/auto-macros/auto-lsp were not executed because original admission/discovery failed; failed, not green",
-    "UI/Man owner legs not executed by this language queue"
-  ],
-  "diagnostic_replays": [
-    {
-      "name": "isolated-stdin",
-      "command": [
-        "cargo",
-        "nextest",
-        "run",
-        "-p",
-        "auto-tool-execution",
-        "--tests",
-        "--lib",
-        "--ignore-default-filter",
-        "-E",
-        "(((all())) and not test(=tests::aavm2_t3::test_aavm2_t3_tower_milestone)) and test(deadline_covers_blocked_stdin_with_unowned_holder)",
-        "--no-fail-fast",
-        "--no-tests",
-        "fail",
-        "--message-format",
-        "libtest-json-plus",
-        "--message-format-version",
-        "0.1"
-      ],
-      "executed": 1,
-      "excluded": 0,
-      "outcome": "PASS",
-      "wall_seconds": 9.135879200002819,
-      "sha256": "42efd17eb408b9526743dd4104779efa45c99da8f572635015f43369a8ef01a0",
-      "environment": "original runtime-temp for isolated-stdin; same-scope scratch for HTTP literal-control"
-    },
-    {
-      "name": "replay-http349",
-      "command": [
-        "cargo",
-        "nextest",
-        "run",
-        "-p",
-        "auto-lang",
-        "--tests",
-        "--lib",
-        "--config-file",
-        ".config/nextest-full.toml",
-        "--ignore-default-filter",
-        "-E",
-        "(((all())) and not test(=tests::aavm2_t3::test_aavm2_t3_tower_milestone)) and test(plan349_tests)",
-        "--no-fail-fast",
-        "--no-tests",
-        "fail",
-        "--message-format",
-        "libtest-json-plus",
-        "--message-format-version",
-        "0.1"
-      ],
-      "executed": 12,
-      "excluded": 0,
-      "outcome": "PASS",
-      "wall_seconds": 4.0285989999974845,
-      "sha256": "3efa3005155e0b5b5654b745c568b7edacda999abe136bd46790b2345d0c8023",
-      "environment": "original runtime-temp for isolated-stdin; same-scope scratch for HTTP literal-control"
-    },
-    {
-      "name": "replay-http727",
-      "command": [
-        "cargo",
-        "nextest",
-        "run",
-        "-p",
-        "auto-lang",
-        "--tests",
-        "--lib",
-        "--config-file",
-        ".config/nextest-full.toml",
-        "--ignore-default-filter",
-        "-E",
-        "(((all())) and not test(=tests::aavm2_t3::test_aavm2_t3_tower_milestone)) and test(plan727_http_transfer_tests::vm)",
-        "--no-fail-fast",
-        "--no-tests",
-        "fail",
-        "--message-format",
-        "libtest-json-plus",
-        "--message-format-version",
-        "0.1"
-      ],
-      "executed": 3,
-      "excluded": 0,
-      "outcome": "PASS",
-      "wall_seconds": 3.6164422999936505,
-      "sha256": "fee26a5a0ce999f0e372935af2c8fa6fe35e987701c0ab604511669a20750311",
-      "environment": "original runtime-temp for isolated-stdin; same-scope scratch for HTTP literal-control"
-    }
-  ],
+  "exclusions": "Original1014 ignored/manual/platform/milestone exclusions retained; ACE all=false remains unselected. Discovery/build failures and blocked groups do not count PASS. UI compiler/native delivery known reds retained in PLAN-956/D-956-1, no fresh owner-full legs inferred.",
   "admission_output_migration": {
-    "original": "D:\\autostack\\auto-lang\\target\\test-groups\\admission-0fm3rxcv",
-    "destination": "D:/autostack/plan-artifacts/batch-regression-20261106/admission-diagnostics",
+    "original": "D:/autostack/auto-lang/target/test-groups/admission-nrzozyw4",
+    "destination": "D:/autostack/plan-artifacts/batch-regression-20261106-956/admission-diagnostics",
     "files": 5,
-    "bytes": 56628,
-    "tree_sha256": "4f39e2b506310e9a269401ae6436b78e06d747b49919600be9118c5763d4dc52"
+    "bytes": 70654,
+    "tree_sha256": "eb0e60f6071c4d1134729eac7274630e5267ecb065e97eb720550de4b35a757e"
   },
-  "cleanup": "batch raw scope deleted after durable receipt/PLAN-954 reproduction records;13365files/7943127877bytes, no links or holds; original admission directory moved/verified then deleted with scope; normal main build caches remain ordinary batch-owner outputs",
-  "holds": [],
-  "fix_forward": "PLAN-954 records both fixture gaps with original250ms/1500ms/2s and Windows path controls; only drafted, no unrelated production fix or unmerge",
-  "timing_note": "prepare/discovery and execution separate per group; fixture teardown within original measured execution; scratch closure separately recorded, no full-queue repetition",
-  "cleanup_inventory": {
-    "scope": "D:\\autostack\\plan-artifacts\\batch-regression-20261106",
-    "files": 13365,
-    "bytes": 7943127877,
-    "reparse_points": 0,
-    "admission_migration_verified": true
+  "cleanup_inventory_before_fold": {
+    "scope": "D:\\autostack\\plan-artifacts\\batch-regression-20261106-956",
+    "files": 1912,
+    "bytes": 12175999,
+    "reparse_points": 0
   },
-  "raw_scope_deleted": true,
-  "cleanup_completed_at": "2026-11-05T20:28:59.187141+00:00",
-  "cleanup_seconds": 1.8483262
+  "cleanup": "Durable summary committed; batch scope pending actual deletion. Only original compiler-fault evidence copied to new PLAN-957 scope under named hold. Ordinary main build caches retained under their normal owner.",
+  "raw_scope_deleted": false,
+  "holds": [
+    "PLAN-957 original rustc crash evidence only, owner957, release after cause/control review and evidence fold"
+  ],
+  "fix_forward": "PLAN-957 compiler fault is drafted only; prior PLAN-954 remains unclosed. No source fix, unmerge, test disabling, deadline change or second full-queue run.",
+  "timing_note": "Preparation/discovery and execution separated per invocation, original phase meter values retained; case-parent admission build93.77s separate. HEAD-only docs change c30dbc6b4 reconciled by code/config/input tree identity; raw guard false preserved."
 }

@@ -4030,3 +4030,10 @@ D-944-R1关闭补证：e269f417895ffa09493fd42390d24ef336f503f4的Arc缓存根�
 
 - owner=VM call/codegen 与 native wrapper；当前只确定可复现边界，尚未归因到具体层。Reader新增时间时，将time.now_sec()直接作为record_json第11实参，VM导入虽返回ok但持久化book_id错写为source_hash，其余字段左移；Rust正确。改为先let imported_at=time.now_sec()再传入helper，46项VM同源API操作含重启/时钟/ID均通过。
 - Reader按已有“实参先绑定局部”约定处理，已记录canonical real-library；不以此宣称修复VM通用嵌套native语义。关闭条件：语言侧最小化零参native嵌套/多参位置/前后表达式组合，独立修复并原始反例与普通函数/直接native正控通过；原始观察在PLAN-956 §9。该债不放宽本次Rust/VM实际业务值对拍。
+
+
+### D-957-1 — 周期门 auto-api-gen 发现阶段 rustc 崩溃（2026-11-06，未关闭）
+
+owner=Rust构建/工具链分诊；[PLAN-957](957-batch-api-gen-rustc-crash-triage.md) r1仅drafting0/5。after956完整37组batch原auto-api-gen发现命令编译auto-lang-core default lib时rustc1.98.0以0xc0000005 STATUS_ACCESS_VIOLATION退出，无常规类型error；该组未执行测试，不能计PASS。原因未定，不冒称资源/缓存/源码回归。同轮后续case-parent build成功只作不同编译图正控，不证明原profile恢复。四原始文件逐字节复制到plan-artifacts/plan-957，hash/命令/版本在Plan，具名hold关闭条件=原因/对照与必要修复复审完成、摘要折叠后删除。batch及956不做相关源码修复/不改门。
+
+同轮另复现plan707_spike_cancel_gap_active_job_future_not_stopped旧RED705原信息；源码及async_http未改，精确用例已在上方D858解决记录中保有“偶发时序族”历史，不凭旧全绿销掉本轮红。原有媒体夹具、sys_natives、core ACE误选、macros E0308、LSP缺包、pilot legacy域红保持；主线周期收据完整列出，未确认新增产品回归。
