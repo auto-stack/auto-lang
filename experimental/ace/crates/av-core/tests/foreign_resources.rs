@@ -171,6 +171,98 @@ fn foreign_mir_heap_measurement_does_not_encode_or_allocate() {
 }
 
 #[test]
+fn scalar_graph_workspace_elision_keeps_record_cycles_and_valid_nesting_distinct() {
+    use ace_av_core::{
+        contract,
+        mir_verify::{validate_mir, MirVerifyError},
+    };
+    let mut m = module();
+    m.profile = contract::AV_DATA_PROFILE.into();
+    m.owner.schema = contract::MIR_DATA_SCHEMA.into();
+    m.funcs[0].owner = m.owner.clone();
+    m.funcs[0].blocks[0].instrs = vec![MirInstr::Const { dst: 0, value: 0 }];
+    m.funcs[0].blocks[0].term = Terminator::Return { value: 0 };
+    for (name, ty) in [("A", 0), ("B", 2), ("Disconnected", 0)] {
+        m.types.push(MirType::Record(RecordTypeRef {
+            owner_module: m.owner.module.clone(),
+            name: name.into(),
+            fields: vec![MirFieldDef {
+                name: "value".into(),
+                ty,
+            }],
+        }));
+    }
+    validate_mir(&m).expect("valid nested and disconnected records remain admitted");
+    for cyclic_edge in [2, 3] {
+        let MirType::Record(a) = &mut m.types[2] else {
+            unreachable!()
+        };
+        a.fields[0].ty = cyclic_edge;
+        assert!(
+            matches!(validate_mir(&m), Err(MirVerifyError::Invalid { code, .. }) if code == "mir.type-cycle"),
+            "by-value cycle through type {cyclic_edge} escaped the original checker"
+        );
+    }
+    let MirType::Record(a) = &mut m.types[2] else {
+        unreachable!()
+    };
+    a.fields[0].ty = 0;
+    validate_mir(&m).expect("repair returns to the same valid type graph");
+}
+
+#[test]
+fn scalar_type_tables_cannot_allocate_graph_workspace_before_shared_admission() {
+    use ace_av_core::{
+        contract::ResourceKind,
+        mir_verify::{validate_mir_with_analysis_reservation, MirVerifyError},
+    };
+    let mut m = module();
+    // A valid scalar table may contain many unused scalar types. They have
+    // no by-value graph edges and must not allocate a separate DFS workspace
+    // before the composition can refuse its function-analysis reservation.
+    m.types.extend(std::iter::repeat_n(MirType::I32, 4096));
+    let mut refused = 0;
+    let (result, _, peak) = memory(|| {
+        validate_mir_with_analysis_reservation(&m, |_| {
+            refused += 1;
+            Err(MirVerifyError::Resource {
+                kind: ResourceKind::VerifyMemory,
+                message: "shared staging denied".into(),
+            })
+        })
+    });
+    assert!(matches!(
+        result,
+        Err(MirVerifyError::Resource {
+            kind: ResourceKind::VerifyMemory,
+            ..
+        })
+    ));
+    assert_eq!(refused, 1);
+    assert!(
+        peak < 256,
+        "unreserved type-graph workspace allocated before rejection: {peak}"
+    );
+    // The same full-sized table remains legal when the shared account admits
+    // its real CFG/dataflow workspace. Removing table support is no repair.
+    let mut reserved = 0;
+    let (accepted, _, peak) = memory(|| {
+        validate_mir_with_analysis_reservation(&m, |bytes| {
+            reserved = reserved.max(bytes);
+            Ok(())
+        })
+    });
+    accepted.unwrap();
+    assert!(
+        peak > 0 && peak <= reserved,
+        "accepted scalar verification heap {peak} exceeded shared admission {reserved}"
+    );
+    eprintln!(
+        "scalar type-table admission: rejection_peak<256 accepted_heap={peak} reserved={reserved}"
+    );
+}
+
+#[test]
 fn scalar_analysis_reserves_before_bases_and_covers_real_cfg_workspace() {
     use ace_av_core::{
         contract::ResourceKind,

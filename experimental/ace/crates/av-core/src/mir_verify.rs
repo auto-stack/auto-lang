@@ -1376,6 +1376,21 @@ impl<'a, 'r> Verifier<'a, 'r> {
         const GRAY: u8 = 1;
         const BLACK: u8 = 2;
         let n = self.module.types.len();
+        // Scalar/Fn tables have no by-value edges. Retain the original one
+        // work step per root, but do not allocate colors or a per-root DFS
+        // stack before shared function-analysis admission. Record/Variant
+        // graphs continue through the same cycle checker below.
+        if self
+            .module
+            .types
+            .iter()
+            .all(|t| !matches!(t, MirType::Record(_) | MirType::Variant(_)))
+        {
+            for _ in 0..n {
+                self.tick(1)?;
+            }
+            return Ok(());
+        }
         let mut color = vec![WHITE; n];
         // Explicit (node, next-field-cursor) stack — no host recursion.
         // PLAN-822: Variant payload edges are BY-VALUE like record fields,
