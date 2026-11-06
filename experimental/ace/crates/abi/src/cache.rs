@@ -694,13 +694,16 @@ fn hash_dep(
 fn current_toolchain(
     resources: Option<&ace_source_query::resources::Resources>,
 ) -> Result<cache_paths::CPathText, StoreError> {
-    match crate::ctool::find_cl() {
+    match crate::ctool::find_cl_admitted(resources) {
         Ok(tool) => cache_paths::toolchain_text(
             &tool.cl_exe,
             &tool.version,
             &tool.cl_hash,
             crate::ctool::CL_FLAGS,
             resources,
+        ),
+        Err(crate::ctool::CToolFailure::Resource(message)) if resources.is_some() => Err(
+            StoreError::ResourceExhausted(format!("C tool discovery: {message}")),
         ),
         Err(_) => {
             let allocation = reserve_c_metadata(resources, "ctool-unresolved".len())?;

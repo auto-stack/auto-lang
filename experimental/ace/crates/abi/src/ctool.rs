@@ -15,7 +15,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 const VSWHERE: &str = r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe";
@@ -49,14 +49,42 @@ pub struct CToolchain {
 /// Locate cl.exe per the frozen discovery order. Result cached for the
 /// process; a missing tool is an error, never a skip.
 pub fn find_cl() -> Result<&'static CToolchain, CToolError> {
-    static CACHE: OnceLock<Result<CToolchain, String>> = OnceLock::new();
-    CACHE
-        .get_or_init(|| resolve_cl().map_err(|e| e.0))
-        .as_ref()
-        .map_err(|e| CToolError(e.clone()))
+    find_cl_admitted(None).map_err(|e| match e {
+        CToolFailure::Tool(error) => error,
+        CToolFailure::Resource(message) => CToolError(message),
+    })
 }
 
-fn resolve_cl() -> Result<CToolchain, CToolError> {
+static CL_CACHE: OnceLock<Result<CToolchain, String>> = OnceLock::new();
+static CL_INIT: Mutex<()> = Mutex::new(());
+
+/// Resource denial belongs to this request, so it must not poison discovery
+/// for a later repaired request. Ordinary missing-tool errors retain the
+/// original process cache behavior. Initialization has a single writer.
+pub(crate) fn find_cl_admitted(
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<&'static CToolchain, CToolFailure> {
+    if CL_CACHE.get().is_none() {
+        let _writer = CL_INIT.lock().expect("C tool discovery initializer");
+        if CL_CACHE.get().is_none() {
+            let result = match resolve_cl(resources) {
+                Ok(tool) => Ok(tool),
+                Err(CToolFailure::Tool(error)) => Err(error.0),
+                Err(resource @ CToolFailure::Resource(_)) => return Err(resource),
+            };
+            let _ = CL_CACHE.set(result);
+        }
+    }
+    CL_CACHE
+        .get()
+        .expect("discovery result installed")
+        .as_ref()
+        .map_err(|e| CToolFailure::Tool(CToolError(e.clone())))
+}
+
+fn resolve_cl(
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<CToolchain, CToolFailure> {
     let cl = if let Ok(env_path) = std::env::var("AUTOABI_MSVC_CL") {
         let p = PathBuf::from(env_path);
         if p.is_file() {
@@ -65,24 +93,30 @@ fn resolve_cl() -> Result<CToolchain, CToolError> {
             return Err(CToolError(format!(
                 "AUTOABI_MSVC_CL points at a missing file: {}",
                 p.display()
-            )));
+            ))
+            .into());
         }
     } else {
-        locate_via_vswhere()?
+        locate_via_vswhere(resources)?
     };
 
     // Banner version: `cl -?` prints the version line and exits 0. Runs
     // under the contained executor like every other subprocess.
     let mut cmd = Command::new(&cl);
     cmd.arg("-?");
-    let (code, out, err) =
-        run_deadlined(&mut cmd).map_err(|e| CToolError(format!("cl -? spawn: {e:?}")))?;
+    let captured = run_deadlined(&mut cmd, resources, "cl -?")?;
+    let code = captured.value.exit_code;
+    let out = crate::ctool_text::display(&captured.value.stdout, resources)
+        .map_err(CToolFailure::Resource)?;
+    let err = crate::ctool_text::display(&captured.value.stderr, resources)
+        .map_err(CToolFailure::Resource)?;
     if code != Some(0) {
         return Err(CToolError(format!(
             "cl -? exited {code:?}: {}{}",
-            out.trim(),
-            err.trim()
-        )));
+            out.value.trim(),
+            err.value.trim()
+        ))
+        .into());
     }
     // Banner version: `cl -?` prints the version banner on STDERR and
     // the option help on stdout. The banner is e.g.
@@ -91,8 +125,9 @@ fn resolve_cl() -> Result<CToolchain, CToolError> {
     // compiler word plus a dotted version-number token; a help line can
     // never satisfy both.
     let banner = err
+        .value
         .lines()
-        .chain(out.lines())
+        .chain(out.value.lines())
         .find(|l| {
             let compiler_word =
                 l.contains("编译器") || l.contains("Compiler") || l.contains("Version");
@@ -106,7 +141,7 @@ fn resolve_cl() -> Result<CToolchain, CToolError> {
         .trim()
         .to_string();
     if banner.is_empty() {
-        return Err(CToolError("cl banner version line not found".into()));
+        return Err(CToolError("cl banner version line not found".into()).into());
     }
 
     let image = std::fs::File::open(&cl).map_err(|e| CToolError(format!("read cl.exe: {e}")))?;
@@ -120,12 +155,15 @@ fn resolve_cl() -> Result<CToolchain, CToolError> {
     })
 }
 
-fn locate_via_vswhere() -> Result<PathBuf, CToolError> {
+fn locate_via_vswhere(
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<PathBuf, CToolFailure> {
     if !Path::new(VSWHERE).is_file() {
         return Err(CToolError(format!(
             "vswhere missing at {VSWHERE} and AUTOABI_MSVC_CL unset — \
              C toolchain unavailable (infra blocker, plan §3)"
-        )));
+        ))
+        .into());
     }
     let mut cmd = Command::new(VSWHERE);
     cmd.args([
@@ -137,20 +175,26 @@ fn locate_via_vswhere() -> Result<PathBuf, CToolError> {
         "-property",
         "installationPath",
     ]);
-    let (code, out, err) =
-        run_deadlined(&mut cmd).map_err(|e| CToolError(format!("vswhere spawn: {e:?}")))?;
+    let captured = run_deadlined(&mut cmd, resources, "vswhere")?;
+    let code = captured.value.exit_code;
+    let out = crate::ctool_text::display(&captured.value.stdout, resources)
+        .map_err(CToolFailure::Resource)?;
+    let err = crate::ctool_text::display(&captured.value.stderr, resources)
+        .map_err(CToolFailure::Resource)?;
     if code != Some(0) {
         return Err(CToolError(format!(
             "vswhere exited {code:?}: {}{}",
-            out.trim(),
-            err.trim()
-        )));
+            out.value.trim(),
+            err.value.trim()
+        ))
+        .into());
     }
-    let inst = PathBuf::from(out.trim());
+    let inst = PathBuf::from(out.value.trim());
     if inst.as_os_str().is_empty() {
         return Err(CToolError(
             "vswhere returned no VC.Tools installation (infra blocker, plan §3)".into(),
-        ));
+        )
+        .into());
     }
     let tools = inst.join("VC/Tools/MSVC");
     let mut versions: Vec<PathBuf> = std::fs::read_dir(&tools)
@@ -168,27 +212,35 @@ fn locate_via_vswhere() -> Result<PathBuf, CToolError> {
                 "no VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe under {} (infra blocker)",
                 inst.display()
             ))
+            .into()
         })
 }
 
 fn run_deadlined(
     cmd: &mut Command,
-) -> Result<(Option<i32>, String, String), ace_core::link::SubprocError> {
+    resources: Option<&ace_source_query::resources::Resources>,
+    tool: &str,
+) -> Result<crate::ctool_capture::Captured, CToolFailure> {
     // Discovery output is part of the same tool surface as compilation.
     // A valid banner cannot authorize an over-cap help/diagnostic stream.
-    let run = ace_core::link::run_deadlined_captured(
+    crate::ctool_capture::run(
         cmd,
         DISCOVERY_DEADLINE,
         ace_core::link::CaptureCaps {
             stdout_max: TOOL_STREAM_MAX,
             stderr_max: TOOL_STREAM_MAX,
         },
-    )?;
-    Ok((
-        run.exit_code,
-        String::from_utf8_lossy(&run.stdout).into_owned(),
-        String::from_utf8_lossy(&run.stderr).into_owned(),
-    ))
+        resources,
+    )
+    .map_err(|error| match error {
+        crate::ctool_capture::CaptureError::Resource(message) => CToolFailure::Resource(message),
+        crate::ctool_capture::CaptureError::Subprocess(
+            error @ ace_core::link::SubprocError::OutputCapExceeded { .. },
+        ) => CToolFailure::Resource(format!("{tool} spawn: {error:?}")),
+        crate::ctool_capture::CaptureError::Subprocess(error) => {
+            CToolFailure::Tool(CToolError(format!("{tool} spawn: {error:?}")))
+        }
+    })
 }
 
 /// Compile one C source into `obj_out` with the frozen flags. `include_dir`
@@ -253,7 +305,7 @@ fn compile_c_output(
     obj_out: &Path,
     resources: Option<&ace_source_query::resources::Resources>,
 ) -> Result<crate::ctool_capture::Captured, CToolFailure> {
-    let tool = find_cl()?;
+    let tool = find_cl_admitted(resources)?;
     // cl.exe = <msvc>/bin/Hostx64/x64/cl.exe -> <msvc>/include
     let msvc_root = tool
         .cl_exe
@@ -339,6 +391,110 @@ pub fn toolchain_fingerprint() -> Result<String, CToolError> {
 mod tests {
     use super::*;
     use crate::ctool_dependencies::extract_drive_path;
+
+    #[test]
+    fn admitted_discovery_resource_failure_is_not_cached_or_hidden_as_a_cache_miss() {
+        const CHILD: &str = "SOURCE938_DISCOVERY_BUDGET_CHILD";
+        const CASE: &str = "ctool::tests::admitted_discovery_resource_failure_is_not_cached_or_hidden_as_a_cache_miss";
+        if std::env::var_os(CHILD).is_some() {
+            use ace_source_query::resources::{Charge, Resources};
+            assert!(CL_CACHE.get().is_none(), "discovery was already warm");
+            let resources = Resources::default();
+            let pressure = resources.reserve(Charge::io((6 << 20) + 1)).unwrap();
+            let baseline = resources.stats().current;
+            assert!(matches!(
+                find_cl_admitted(Some(&resources)),
+                Err(CToolFailure::Resource(_))
+            ));
+            assert!(
+                CL_CACHE.get().is_none(),
+                "resource failure poisoned the cache"
+            );
+            assert_eq!(resources.stats().current, baseline);
+            let stamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+                .join(format!("discovery-budget-{}-{stamp}", std::process::id()));
+            std::fs::create_dir_all(&root).unwrap();
+            let source = root.join("provider.c");
+            let object = root.join("provider.obj");
+            std::fs::write(&source, "int provider(void) { return 42; }\n").unwrap();
+            let store =
+                ace_artifacts::store::ManagedStore::open(&root.with_extension("store")).unwrap();
+            let denied = crate::cache::produce_c_object_with_resources(
+                &store,
+                &source,
+                &root,
+                &[object],
+                &resources,
+                || panic!("discovery resource error became a cache miss and invoked the producer"),
+            );
+            assert!(matches!(
+                denied,
+                Err(ace_artifacts::store::StoreError::ResourceExhausted(_))
+            ));
+            assert!(CL_CACHE.get().is_none());
+            assert_eq!(resources.stats().current, baseline);
+            drop(pressure);
+            assert_eq!(resources.stats().current.io, 0);
+            let repaired_resources = Resources::default();
+            let previous_override = std::env::var_os("AUTOABI_MSVC_CL");
+            let fake = root.join("over-cap-cl.cmd");
+            for stream in ["stdout", "stderr"] {
+                let writer = if stream == "stdout" { "Out" } else { "Error" };
+                std::fs::write(&fake, format!(
+                    "@echo off\r\npowershell.exe -NoLogo -NoProfile -NonInteractive -Command \"$w=[Console]::{writer}; $w.WriteLine('Microsoft C Compiler Version 19.44.35222'); $w.Write(('x'*2097152))\"\r\n"
+                )).unwrap();
+                // Only this fresh, single-test child changes its environment.
+                std::env::set_var("AUTOABI_MSVC_CL", &fake);
+                let rejected = find_cl_admitted(Some(&repaired_resources));
+                assert!(
+                    matches!(rejected, Err(CToolFailure::Resource(ref message)) if message.contains("OutputCapExceeded") && message.contains(stream)),
+                    "wrong discovery cap classification: {rejected:?}"
+                );
+                assert!(CL_CACHE.get().is_none(), "over-cap identity was cached");
+                assert_eq!(repaired_resources.stats().current.io, 0);
+            }
+            if let Some(previous) = previous_override {
+                std::env::set_var("AUTOABI_MSVC_CL", previous);
+            } else {
+                std::env::remove_var("AUTOABI_MSVC_CL");
+            }
+            let tool = find_cl_admitted(Some(&repaired_resources)).unwrap();
+            assert!(tool.cl_exe.is_file());
+            assert!(!tool.version.is_empty());
+            assert_eq!(tool.cl_hash.len(), 64);
+            assert_eq!(repaired_resources.stats().current.io, 0);
+            assert_eq!(repaired_resources.stats().peak.io, 2 << 20);
+            assert!(std::ptr::eq(
+                tool,
+                find_cl_admitted(Some(&resources)).unwrap()
+            ));
+            return;
+        }
+        // A fresh exact-test process makes the OnceLock observation valid
+        // even under the ordinary parallel libtest runner.
+        let mut child = Command::new(std::env::current_exe().unwrap());
+        child.args(["--exact", CASE, "--nocapture"]).env(CHILD, "1");
+        let result = ace_core::link::run_deadlined_captured(
+            &mut child,
+            Duration::from_secs(30),
+            ace_core::link::CaptureCaps {
+                stdout_max: 1 << 20,
+                stderr_max: 1 << 20,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            result.exit_code,
+            Some(0),
+            "fresh discovery child failed:\n{}\n{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
 
     #[test]
     fn real_compile_dependency_admission_keeps_resource_kind_and_allows_repair() {
