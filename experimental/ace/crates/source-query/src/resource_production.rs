@@ -27,6 +27,38 @@ pub(super) struct Budget {
     limits: OutputLimits,
     stats: OutputStats,
 }
+pub(super) struct ForeignProduction<'a> {
+    resources: &'a Resources,
+    pending: Option<OutputPermit>,
+}
+impl<'a> ForeignProduction<'a> {
+    pub(super) fn new(resources: &'a Resources) -> Self {
+        Self {
+            resources,
+            pending: None,
+        }
+    }
+}
+impl ace_foreign_contract::manual::PageProduction for ForeignProduction<'_> {
+    fn reserve(&mut self, bytes: usize) -> Result<(), String> {
+        if self.pending.is_some() {
+            return Err("foreign page producer overlaps an unfinished output".into());
+        }
+        self.pending = Some(
+            self.resources
+                .reserve_output(bytes)
+                .map_err(|e| format!("foreign.required-page.output: {e}"))?,
+        );
+        Ok(())
+    }
+    fn complete(&mut self, bytes: usize) -> Result<(), String> {
+        self.pending
+            .take()
+            .ok_or("foreign page output was not admitted")?
+            .complete(bytes)
+            .map_err(|e| e.to_string())
+    }
+}
 impl Resources {
     /// The host installs this once, before request production. Long-lived
     /// library sessions retain their existing live-memory account; their host

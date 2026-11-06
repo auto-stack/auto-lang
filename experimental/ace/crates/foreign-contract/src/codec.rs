@@ -63,7 +63,18 @@ pub fn encode_json_bounded<T: serde::Serialize + ?Sized>(
     value: &T,
     limit: usize,
 ) -> Result<Vec<u8>, CodecError> {
+    encode_json_admitted(value, limit, |_| Ok(()))
+}
+
+/// The same codec, with host admission after exact counting and BEFORE the
+/// output allocation. The neutral contract owns no resource/store policy.
+pub fn encode_json_admitted<T: serde::Serialize + ?Sized>(
+    value: &T,
+    limit: usize,
+    admit: impl FnOnce(usize) -> Result<(), CodecError>,
+) -> Result<Vec<u8>, CodecError> {
     let size = json_size(value, limit)?;
+    admit(size)?;
     let mut bytes = Vec::new();
     bytes
         .try_reserve_exact(size)

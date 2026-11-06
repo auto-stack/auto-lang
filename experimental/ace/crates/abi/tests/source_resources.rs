@@ -413,6 +413,164 @@ fn measured_at<T>(threshold: usize, f: impl FnOnce() -> T) -> (T, usize) {
 }
 
 #[test]
+fn foreign_page_json_output_is_admitted_before_allocation_and_preserves_wire_bytes() {
+    use ace_foreign_contract::codec::{encode_json_admitted, CodecError};
+    use ace_source_query::resources::{OutputLimits, Resources};
+    let value = "x".repeat(16384);
+    let expected = serde_json::to_vec(&value).unwrap();
+    let resources = Resources::default();
+    resources
+        .enable_output_budget(OutputLimits {
+            artifact: expected.len() as u64,
+            request: expected.len() as u64 - 1,
+        })
+        .unwrap();
+    let (result, allocations) = measured_at(4096, || {
+        encode_json_admitted(&value, 1 << 20, |bytes| {
+            resources
+                .reserve_output(bytes)
+                .map(|_| ())
+                .map_err(|e| CodecError(e.to_string()))
+        })
+    });
+    assert!(result.is_err());
+    assert_eq!(
+        allocations, 0,
+        "foreign page allocated before its exact admission"
+    );
+    assert_eq!(resources.output_stats().unwrap().produced, 0);
+    assert_eq!(resources.output_stats().unwrap().pending, 0);
+    let resources = Resources::default();
+    resources
+        .enable_output_budget(OutputLimits {
+            artifact: expected.len() as u64,
+            request: expected.len() as u64,
+        })
+        .unwrap();
+    let mut permit = None;
+    let bytes = encode_json_admitted(&value, 1 << 20, |size| {
+        permit = Some(
+            resources
+                .reserve_output(size)
+                .map_err(|e| CodecError(e.to_string()))?,
+        );
+        Ok(())
+    })
+    .unwrap();
+    permit.take().unwrap().complete(bytes.len()).unwrap();
+    assert_eq!(bytes, expected);
+    assert_eq!(
+        resources.output_stats().unwrap().produced,
+        expected.len() as u64
+    );
+}
+
+#[test]
+fn foreign_required_pages_and_binding_share_the_request_output_account_on_partial_failure() {
+    use ace_abi::source_provider as provider;
+    use ace_source_query::resources::{OutputLimits, Resources};
+    use std::sync::Arc;
+    let caps = vec![ace_foreign_contract::manual::SOURCE_CAP.to_string()];
+    let digest = "ab".repeat(32);
+    let manifest = provider::reviewed_add_manifest();
+    let authority = provider::authority(&digest, 1, &caps).unwrap();
+    let expected = manifest.clone().admit(&authority).unwrap();
+    let sizes = expected
+        .pages()
+        .iter()
+        .map(|(_, page)| page.len() as u64)
+        .collect::<Vec<_>>();
+    let total = sizes.iter().sum::<u64>();
+    let artifact = *sizes.iter().max().unwrap();
+    let resources = Resources::default();
+    resources
+        .enable_output_budget(OutputLimits {
+            artifact,
+            request: total,
+        })
+        .unwrap();
+    let actual = resources
+        .admit_foreign(manifest.clone(), &authority)
+        .unwrap();
+    for ((name, actual), (_, expected)) in actual.pages().iter().zip(expected.pages().iter()) {
+        assert_eq!(actual.as_slice(), expected.as_slice(), "{name}");
+    }
+    assert_eq!(
+        actual.pages().physical.as_slice(),
+        ace_foreign_contract::codec::plan_codec::encode(actual.plan()).unwrap()
+    );
+    assert_eq!(actual.contract_digest(), provider::legacy_add_contract());
+    assert_eq!(resources.output_stats().unwrap().produced, total);
+    assert_eq!(resources.output_stats().unwrap().pending, 0);
+    drop(actual);
+    assert_eq!(resources.output_stats().unwrap().produced, total);
+    let mut completed = 0;
+    for size in &sizes {
+        let resources = Resources::default();
+        resources
+            .enable_output_budget(OutputLimits {
+                artifact,
+                request: completed + size - 1,
+            })
+            .unwrap();
+        assert!(resources
+            .admit_foreign(manifest.clone(), &authority)
+            .is_err());
+        assert_eq!(
+            resources.output_stats().unwrap().produced,
+            completed,
+            "a later page failure refunded completed pages"
+        );
+        assert_eq!(resources.output_stats().unwrap().pending, 0);
+        assert!(resources.output_stats().unwrap().refused);
+        completed += size;
+    }
+    let resources = Resources::default();
+    let binding = expected.pages().binding.len() as u64;
+    resources
+        .enable_output_budget(OutputLimits {
+            artifact: binding,
+            request: binding * 2,
+        })
+        .unwrap();
+    let authority = provider::authority(&digest, 2, &caps).unwrap();
+    for count in 1..=2 {
+        let next = resources.rebind_foreign(&expected, &authority).unwrap();
+        assert!(Arc::ptr_eq(
+            &expected.pages().logical,
+            &next.pages().logical
+        ));
+        assert_eq!(next.generation(), 2);
+        drop(next);
+        assert_eq!(resources.output_stats().unwrap().produced, count * binding);
+    }
+    assert!(resources.rebind_foreign(&expected, &authority).is_err());
+    assert_eq!(expected.generation(), 1);
+    assert_eq!(resources.output_stats().unwrap().pending, 0);
+    let resources = Resources::default();
+    resources
+        .enable_output_budget(OutputLimits {
+            artifact,
+            request: total,
+        })
+        .unwrap();
+    let mut invalid = authority;
+    invalid.contract_digest = "00".repeat(32);
+    assert!(resources
+        .admit_foreign(manifest, &invalid)
+        .unwrap_err()
+        .contains("foreign.authority"));
+    assert_eq!(
+        resources.output_stats().unwrap().produced,
+        sizes[0],
+        "completed logical page was refunded on authority rejection"
+    );
+    assert!(!resources.output_stats().unwrap().refused);
+    assert!(resources.rebind_foreign(&expected, &invalid).is_err());
+    assert_eq!(resources.output_stats().unwrap().produced, sizes[0]);
+}
+
+#[test]
 fn mir_wire_output_quota_reserves_exact_bytes_before_page_allocation_and_counts_flat_copy_once() {
     use ace_source_query::resources::{Charge, OutputLimits, Resources};
     let source = ace_core::source::compile_scalar_source(

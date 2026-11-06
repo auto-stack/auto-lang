@@ -250,6 +250,15 @@ impl Resources {
             charge: Some(charge),
         })
     }
+    /// Charge newly encoded required pages at their exact output sizes. Input
+    /// decoding and derived metadata retain their separate live-memory owners.
+    pub fn admit_foreign(
+        &self,
+        manifest: ace_foreign_contract::manual::ManualManifest,
+        host: &ace_foreign_contract::manual::HostAuthority,
+    ) -> Result<ace_foreign_contract::manual::AdmittedForeign, String> {
+        manifest.admit_produced(host, &mut production::ForeignProduction::new(self))
+    }
     /// Provider-only interface production uses the existing shared account,
     /// before the neutral contract allocates its new binding page or digest.
     pub fn rebind_foreign(
@@ -258,16 +267,20 @@ impl Resources {
         host: &ace_foreign_contract::manual::HostAuthority,
     ) -> Result<ace_foreign_contract::manual::AdmittedForeign, String> {
         let mut allocation = None;
-        let next = foreign.rebind_reserved(host, |bytes, metadata| {
-            let page = self
-                .reserve(Charge::resident(bytes))
-                .map_err(|e| format!("foreign.resource.binding: {e}"))?;
-            let metadata = self
-                .reserve(Charge::index(metadata))
-                .map_err(|e| format!("foreign.resource.binding: {e}"))?;
-            allocation = Some((page, metadata));
-            Ok(())
-        })?;
+        let next = foreign.rebind_produced(
+            host,
+            |bytes, metadata| {
+                let page = self
+                    .reserve(Charge::resident(bytes))
+                    .map_err(|e| format!("foreign.resource.binding: {e}"))?;
+                let metadata = self
+                    .reserve(Charge::index(metadata))
+                    .map_err(|e| format!("foreign.resource.binding: {e}"))?;
+                allocation = Some((page, metadata));
+                Ok(())
+            },
+            &mut production::ForeignProduction::new(self),
+        )?;
         let (page, metadata) = allocation
             .as_mut()
             .expect("successful binding encoder reserved its output");

@@ -495,12 +495,13 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             );
             let (environment, interface_work) = restored.frontend().work().observe_foreign(|| {
                 if changed_contract {
-                    deck.manifest.admit(&authority)
+                    resources.admit_foreign(deck.manifest, &authority)
                 } else {
                     resources.rebind_foreign(restored.frontend().foreign(), &authority)
                 }
             });
-            let environment = environment.map_err(|e| err("foreign.authority", e))?;
+            let environment =
+                environment.map_err(|e| budget_error("foreign.authority", &resources, e))?;
             restored
                 .prepare_foreign_source_checked(
                     environment,
@@ -536,13 +537,17 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         let mut observation = ace_source_query::frontend::ColdObservation::default();
         report.source_work = observation.work.clone();
         let (environment, interface_work) = observation.work.observe_foreign(|| {
-            deck.manifest.admit(&review.authority(
-                &report.provider_digest,
-                binding_generation,
-                &deck.capabilities,
-            ))
+            resources.admit_foreign(
+                deck.manifest,
+                &review.authority(
+                    &report.provider_digest,
+                    binding_generation,
+                    &deck.capabilities,
+                ),
+            )
         });
-        let environment = environment.map_err(|e| err("foreign.authority", e))?;
+        let environment =
+            environment.map_err(|e| budget_error("foreign.authority", &resources, e))?;
         let (front, checked) = match Frontend::cold_observed_with_resources(
             &deck.source,
             &deck.module,

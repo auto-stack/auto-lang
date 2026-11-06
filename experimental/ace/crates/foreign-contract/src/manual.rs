@@ -11,6 +11,33 @@ use std::sync::Arc;
 pub const MANUAL_SCHEMA: &str = "ace.foreign.manual/1";
 pub const SOURCE_CAP: &str = "foreign.scalar";
 
+/// Process-local host policy at the actual required-page producer. Restoring
+/// existing pages does not enter this port. No backend or budget dependency
+/// is introduced into the neutral contract.
+pub trait PageProduction {
+    fn reserve(&mut self, bytes: usize) -> Result<(), String>;
+    fn complete(&mut self, bytes: usize) -> Result<(), String>;
+}
+impl PageProduction for () {
+    fn reserve(&mut self, _: usize) -> Result<(), String> {
+        Ok(())
+    }
+    fn complete(&mut self, _: usize) -> Result<(), String> {
+        Ok(())
+    }
+}
+fn produce_page(
+    value: &(impl Serialize + ?Sized),
+    output: &mut dyn PageProduction,
+) -> Result<Vec<u8>, String> {
+    let bytes = crate::codec::encode_json_admitted(value, crate::codec::MAX_CODEC_BYTES, |size| {
+        output.reserve(size).map_err(crate::codec::CodecError)
+    })
+    .map_err(|e| e.to_string())?;
+    output.complete(bytes.len())?;
+    Ok(bytes)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManualDecl {
@@ -359,13 +386,15 @@ impl ForeignPages {
         ]
         .into_iter()
     }
+    #[cfg(test)]
     fn binding(&self, host: &HostAuthority) -> Result<Arc<Vec<u8>>, String> {
-        self.binding_reserved(host, |_| Ok(()))
+        self.binding_produced(host, |_| Ok(()), &mut ())
     }
-    fn binding_reserved(
+    fn binding_produced(
         &self,
         host: &HostAuthority,
         reserve: impl FnOnce(usize) -> Result<(), String>,
+        output: &mut dyn PageProduction,
     ) -> Result<Arc<Vec<u8>>, String> {
         crate::work::produce("foreign-binding-encode", || {
             // Digest formatting stays on the stack; borrowed fields preserve
@@ -383,10 +412,7 @@ impl ForeignPages {
             let size = crate::codec::json_size(&record, crate::codec::MAX_CODEC_BYTES)
                 .map_err(|e| e.to_string())?;
             reserve(size + std::mem::size_of::<Vec<u8>>() + 2 * std::mem::size_of::<usize>())?;
-            Ok(Arc::new(
-                crate::codec::encode_json_bounded(&record, crate::codec::MAX_CODEC_BYTES)
-                    .map_err(|e| e.to_string())?,
-            ))
+            Ok(Arc::new(produce_page(&record, output)?))
         })
     }
 }
@@ -522,6 +548,9 @@ impl ManualManifest {
         Ok(crate::blake3_hex(&self.canonical_bytes()?))
     }
     fn canonical_bytes(&self) -> Result<Vec<u8>, String> {
+        self.canonical_bytes_produced(&mut ())
+    }
+    fn canonical_bytes_produced(&self, output: &mut dyn PageProduction) -> Result<Vec<u8>, String> {
         crate::work::observe("foreign-logical-encode", false);
         // Canonicalization only reorders fields, so this checks the exact
         // output size before cloning/sorting the owned input.
@@ -534,8 +563,7 @@ impl ManualManifest {
             .sort_by(|a, b| a.source_name.cmp(&b.source_name));
         canonical.facts =
             serde_json::from_str(&self.facts.canonical()?).map_err(|e| e.to_string())?;
-        let bytes = crate::codec::encode_json_bounded(&canonical, crate::codec::MAX_CODEC_BYTES)
-            .map_err(|e| e.to_string())?;
+        let bytes = produce_page(&canonical, output)?;
         crate::work::observe("foreign-logical-encode", true);
         Ok(bytes)
     }
@@ -551,7 +579,14 @@ impl ManualManifest {
     }
 
     pub fn admit(self, host: &HostAuthority) -> Result<AdmittedForeign, String> {
-        let logical = Arc::new(self.canonical_bytes()?);
+        self.admit_produced(host, &mut ())
+    }
+    pub fn admit_produced(
+        self,
+        host: &HostAuthority,
+        output: &mut dyn PageProduction,
+    ) -> Result<AdmittedForeign, String> {
+        let logical = Arc::new(self.canonical_bytes_produced(output)?);
         let contract_digest = crate::blake3_hex(&logical);
         qualify_host(&self, &contract_digest, host)?;
         projected_page_size(&self)?;
@@ -566,22 +601,22 @@ impl ManualManifest {
         let mut pages = ForeignPages {
             logical,
             physical: Arc::new(crate::work::produce("foreign-plan-encode", || {
-                crate::codec::plan_codec::encode(&plan).map_err(|e| e.to_string())
+                plan.validate()?;
+                produce_page(&plan, output)
             })?),
             declarations: Arc::new(crate::work::produce("foreign-declarations-encode", || {
-                crate::codec::encode_json_bounded(
+                produce_page(
                     &DeclarationPageRef {
                         schema: "ace.foreign.source-declarations/1",
                         declarations: &declarations,
                         digests: &declaration_digests,
                     },
-                    crate::codec::MAX_CODEC_BYTES,
+                    output,
                 )
-                .map_err(|e| e.to_string())
             })?),
             binding: Arc::default(),
         };
-        pages.binding = pages.binding(host)?;
+        pages.binding = pages.binding_produced(host, |_| Ok(()), output)?;
         Ok(AdmittedForeign {
             declarations: Arc::new(declarations),
             declaration_digests: Arc::new(declaration_digests),
@@ -680,15 +715,27 @@ impl AdmittedForeign {
         host: &HostAuthority,
         reserve: impl FnOnce(usize, usize) -> Result<(), String>,
     ) -> Result<Self, String> {
+        self.rebind_produced(host, reserve, &mut ())
+    }
+    pub fn rebind_produced(
+        &self,
+        host: &HostAuthority,
+        reserve: impl FnOnce(usize, usize) -> Result<(), String>,
+        output: &mut dyn PageProduction,
+    ) -> Result<Self, String> {
         qualify_host(&self.manifest, &self.contract_digest, host)?;
-        let binding = self.pages.binding_reserved(host, |bytes| {
-            reserve(
-                bytes,
-                host.provider_digest.len()
-                    + std::mem::size_of::<String>()
-                    + 2 * std::mem::size_of::<usize>(),
-            )
-        })?;
+        let binding = self.pages.binding_produced(
+            host,
+            |bytes| {
+                reserve(
+                    bytes,
+                    host.provider_digest.len()
+                        + std::mem::size_of::<String>()
+                        + 2 * std::mem::size_of::<usize>(),
+                )
+            },
+            output,
+        )?;
         let mut result = self.clone();
         result.provider_digest = Arc::new(host.provider_digest.clone());
         result.generation = host.binding_generation;
