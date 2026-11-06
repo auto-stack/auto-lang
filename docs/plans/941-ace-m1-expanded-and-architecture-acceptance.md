@@ -1902,6 +1902,19 @@ stage: work | plan_id:PLAN-941 | plan_revision:r7 | outcome:progress（F10最小
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r7 | round:76 | from:work | to:work | status:executing10/27 | outcome:progress（生产坐标修复/永久9例/原42目标与F11实际反证，未降目标） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:6eaf693af169daa3108dd83921a66469edfcc48c | next:work独立未闭任务，F07/F11具名提案待批；F10授权有效不重问，无待poll
 
+### 第77轮：work T27当前完整源码职责392PASS；原语法64MiB用例仍在运行
+
+- 上轮6eaf693af最小修复/42目标PASS及F11真实三面反证为progress；本轮复核main无代码WIP、941树clean/同一冻结提交、r7 executing10/27、F10授权有效，F07/F11未获新授权。按T27已批准职责入口**一次**执行`cargo t ace-source ace-syntax --out <h>/f94110-full-source-syntax`，不改F11逻辑、不缩小原样本或过滤慢用例。
+- 原`ace-source`已实际终态**392/392PASS，原条件排除1，not_run/errors均空**；其中原`scalar_source::deep_unclosed_structures_are_controlled_rejections`保4096括号/4096嵌套调用/2048一元/8192连接完整输入，实际135.008s，原source子运行136.282s。原raw native terminal与实际argv/Job计量保留，不拿父exit0代每个用例结果。
+- `ace-syntax`在同一固定运行中仍活跃：最后实际观察PID12248、CPU381.98s，正在原`syntax_budget::performance::syntax_budget_64mib_streaming_small_queries`（真实64MiB流式源、独立generator、200随机查询、受管/OS内存原门），尚无该组终态，**不计PASS/不重启/不终止**。当前宿主exec session **71915**仍live；下一轮先poll同一handle，若已完则读原results/terminal，不因观察等待时间届满重跑。整体gate_passed仍false，原results.json仍可追加，当前不把其hash当最终终件。
+- 原source生产与新tests冻结不变。只读对账确认五native声明各有**两处**既有源pin过期：units.rs及conformance.rs；各声明还需补入现已被该conformance引用的新source_positions_941.rs。初版audit仅预期units一处而拒，扩为实际两处+新引用模块的完整对账后成功，没有改声明/旧raw冒当前。`<h>/f94110-native-source-drift.json` SHA256=`928a0892e4c00a654246059e212fdc9cec41bd1233e1a17e60092b9674517052`，依原before/after/真正新native窗口处理的要求不变。
+- 已准备后续工具身份核对辅助源码`prepare-f94110-consumer-tools.py`，**尚未执行**，等现固定原测试全部终态再顺序prepare/核13真实工具，不能并发构建或凭旧hash说当前不变。未重采466/292/14，pre-F10的716P8F282U仍仅历史基线；当前完整组合待身份闭包/T27，F11结构反例也仍未闭。
+- `<h>=D:/autostack/plan-artifacts/plan-941/`；已完成source的原selection/discovery/raw/command及固定子结果快照摘要`f94110-current-progress/audit.json` SHA256=`9d7c613dc8f5c800cd9a52a7d540a62af65bb8e934370ed5a72854bc855712c4`。只快照已经终态的source部分，不制作“语法已过”的摘要。原资料/测试规模及预算保持，本轮没有代码改动；T26/T27与最终T14均不勾选，下一责任明确为观察71915至终态后继续当前证据身份工作。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r7 | outcome:progress（完整source392P、两pin+新模块真实对账；syntax原64MiB持续运行） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:6eaf693af169daa3108dd83921a66469edfcc48c | task_ids:T27部分；T26/F11仍待 | evidence:f94110-current-progress/audit.json | live_handle:unified_exec71915 | next_responsible_role:work先poll71915、不重启
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r7 | round:77 | from:work | to:work | status:executing10/27 | outcome:progress/verified_wait（source392真实完成；syntax原PID12248及session71915确认live） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:6eaf693af169daa3108dd83921a66469edfcc48c | next:work poll现71915→真实终态→顺序工具/证据闭包；F07/F11待答
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
