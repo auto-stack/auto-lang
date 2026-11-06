@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-988
-status: execution_done
+status: executing
 feature_name: Reader原生多选与动态字节桥接
 plan_revision: 1
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-06
-current_step: 4
+current_step: 2
 total_steps: 6
 supersedes_spec_components: [docs/specs/auto-lang/ui/design/dialog-dnd-host-capabilities.md, docs/specs/auto-lang/vm/native-fs.md, docs/specs/runtime/native-vm-app-validation.md]
 new_spec_components: []
@@ -82,8 +82,8 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 |---|---|---|---|---|
 | T-00 [x] | work | 授权 | 树/依赖确认，新构建复现、ABI与表示根因定位、冻结最小设计 | 源码调用链及P-02红/读回绿；实际命令/版本 |
 | T-01 [x] | work | T-00 | 公共多选声明/VM provider/UI OS/生成映射与用例 | P-01、P-04 |
-| T-02 [x] | work | T-00 | 动态字节桥与永久正反回归 | P-02及受影响同桥消费者 |
-| T-03 [x] | work | T-01/02 | 两端消费者验证、准备SD、工具交接记录 | P-03及冻结受影响检查 |
+| T-02 [ ] | work | T-00 | 动态字节桥与永久正反回归 | P-02及受影响同桥消费者 |
+| T-03 [ ] | work | T-01/02 | 两端消费者验证、准备SD、工具交接记录 | P-03及冻结受影响检查 |
 | T-04 [ ] | review | T-03 | 独立复审绑定各仓提交与Specs | AC-01～03 pass |
 | T-05 [ ] | merge | T-04 | 顺序落地/工具消费/规范/归档清理/009交接 | AC-05 |
 
@@ -283,6 +283,39 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 - Spec SD02已记载纯空/有填充约束的区别与真实消费者；不改变0..255、非法值写前拒绝、原文件保护或范围外兼容合同。全部改动Rust文件rustfmt --check通过，diff --check通过，同配置core lib131既有warnings、无新增warning标题；实现已提交且工作树干净，无live构建/探针。原8个外部临时材料仍登记给merge清理，本轮所有新增材料均在988唯一scope，不创建第二输出根。
 - Readiness：诊断checkpoint及调整已由A/B、赋值兄弟和合法/拒绝控例验证，F988-R2-01无剩余已知work-owned缺口；AC01～03 work范围完成，T00～03完成，4/6。T04独立R3、T05合入/工具/规范读回/清理pending；未经R3不合入。009仍需完整原产品验收，原goal保持未完成。
 - stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 9 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-988/auto-lang | commit: 7a80083fc1382fd72a8049c996e1eec66d74d158 | next: independent affected final R3。
+
+
+### 2026-11-06 independent final review R3：needs_fix（无元素约束的空值赋值被误判）
+
+- stage: review | review_scope: final | reviewer_identity: `/root/review_plan988`（独立上下文、未实施代码） | plan_id: PLAN-988 | plan_revision: 1 | outcome: **needs_fix** | final_review_count: 3 | completed_repair_cycles: 2（下一次为第三次有界repair，不是第四次） | next: work补充声明槽/赋值约束诊断并修复F988-R3-01；不合入，不因第三审放宽标准。
+- 权威树经worktree清单和入口/出口状态确认：`D:/autostack/.wt/lang-988/auto-lang`，branch=`plan-988-dev`，reviewed_commit=`7a80083fc1382fd72a8049c996e1eec66d74d158`，repair base=`e693ad506cb94b34e334323e8d0676f52fb29e4c`，原Plan base=`a137e8be6728f382fa90f5fde5e24b73fea6b4b5`。UI同组`codex/reader-009-prerequisites`/`b0d59400a1c302c040e07c9e4938a1c13b34d937`（base22a925c72d7620b929c947ff2bbddead13fda783）未变；down58ea33f699efa5cb1194473a2d45dcec51006842/webbf72baabf28fa865b5a7c680b8a5fa4018a0a63d只读依赖未变；实现树clean，所有复演终态，无live进程。未创建新树、修改实现/Spec/ledger或他方WIP。
+- 当前review技能已重读，仍为R1记录的同一SHA256；共享Plan输入SHA256=`afe819d75f4623c5a2cd3ee9c1f7c9b17c5d24d8ce8ac93f265062a2bd9628eb`。已核先行checkpoint提交`031f230f21e75d611675998586c8f027a6a575dd`，诊断说明“原24例只重复写不修改”的缺口属实；最终放弃强制Value桶、转为声明槽消费/填充交集的调整有真实代码及反例证据，但赋值的填充判定仍过宽，见新finding。
+- 本轮所有材料唯一根`D:/autostack/plan-artifacts/plan-988/review-r3/`；TEMP/TMP=其tmp，PLAN988_TEST_OUT=其permanent。原R1/R2材料未覆盖。定向命令为`cargo test --offline --locked -p auto-generation-core --test plan988_byte_consumers -- --nocapture`，分别设置PLAN988_BYTE_CASE=push与replace；**10+2个源码场景**实际运行，均PASS，26.20秒/4.69秒；没有声称独立重跑36例或完整固定组。
+
+| 受影响检查 / AC | 独立结果与可复用边界 | 结论 |
+|---|---|---|
+| F988-R2-01 / AC-02/03 | 写前/写后push、循环分支、变量转交、typed/非空、参数、条件内消费、坏Value拒写共10例，以及非空字面量/typed函数返回赋值2例全部真实VM/生产Rust通过；FIRST文件分别清除再读，初始空写与后续值不会互相掩盖 | 原finding输入及这些同类**closed**；有新赋值边界F988-R3-01。 |
+| 声明槽/try复制 | 独立holdout：try内声明后写/push/写、外部声明进入try修改均两端[255]；未执行push分支两端空；非空别名赋值两端[0,255] | 4个合法控制pass，body-only接入经源代码确认；未夸大通用作用域/所有AST覆盖。 |
+| R1 JSON/参数/SD-02消费者问题 | runtime/VM转换、JSON分流与slice参数规则未改；沿R2独立24例及JSON字段组合证据，新增push_bad_value拒写也通过 | 保留closed；无需重复无变化的整个矩阵。 |
+| AC-01、SD-01/03 | UI树、dialog代码及Spec未变，沿R1真实picker/provider及UI生成器证据 | pass。 |
+| AC-02/03、T-02/03 | 新空值赋值反例导致两端消费不一致，不能用12例绿覆盖 | partial/fail，T-02/03重开。AC-04/T-04仍未完成；AC-05/T-05归merge pending。 |
+
+#### F988-R3-01 — P1：空变量赋值没有提供元素类型，却触发generic slice writer
+
+- 影响AC-02/03、T-02/03；违反已批准空列表经局部变量/分支正常写入及两端byte一致；属于这次Asn扩展的新回归，不是新增无限List/作用域要求。生产路径：`collect_byte_list_slots`将Asn右侧只要不是直接字面`[]`都加入填充集合 → 原空声明标Array<Unknown> → `emit_file_write_bytes`选择泛型slice → 实际所有值仍为空，Rust元素类型无约束。
+- 最小源A（各语句真实换行，输入文件empty_alias_assignment/input.at）：`fn main() { var bs = [] ; let blank = [] ; bs = blank ; let rc = File.write_bytes(PATH, bs) }`。兄弟B把`bs = blank`置于`if true { ... }`（empty_branch_assignment/input.at）。上述分号只作行分隔展示，持久输入为真实换行。PATH为各例独立bytes.bin，开始哨兵[42,128,255]。
+- 预期：VM和生成Rust均成功写0字节；实际：两例VM均成功空文件，原样生成Rust均rustc exit1/E0282 `type annotations needed for Vec<_>`，exe未运行。A生成`let mut bs=vec![]; let blank=vec![]; bs=blank; write_bytes_slice(&path, &(bs));`。错误并非路径/权限/缺库；两个变量都未提供元素类型。
+- 代表合法控制：仅将blank改为`[0,255]`即两端成功[0,255]；直接空赋值、不修改重复写的原例仍由既有永久证据覆盖。`previous_selection_control`隔离恢复此前选择具体write_bytes_list及to_vec的生成调用（其helper本轮未变），同一A body compile/run0、文件[]；明确这是调用选择控制，不冒称旧仓完整构建，支持回归归因。
+- 重放：语言树当前构建auto-generation-core后，`python D:/autostack/plan-artifacts/plan-988/review-r3/holdouts.py`。脚本强制VM，生产transpile/qualify、原样rustc/exe；6场景中4控制PASS、A/B两例FAIL。`previous_control.py`为旧入口隔离控制。Python自身exit0表示采集完毕，不表示产品PASS；观察holdouts.json及各目录input.at/main.rs/compile.log。serde_json依赖按当前core Cargo fingerprint匹配，无mtime误配问题。
+- 关闭oracle：A/B原样生成Rustcompile/run0、文件长度0；保留非空别名、函数返回赋值和R2写前/写后push、FIRST/坏Value控制。需要区分“赋值语句存在”与“实际带来元素约束”，由work核声明/别名及writer选择，不能强制用户加类型或一律关闭赋值识别使非空兄弟退化。仅定向这些约束与共享路径，非全仓门。
+
+#### 诊断与阶段交接
+
+- 下一次readiness前更新checkpoint：已证明原R2诊断与12例调整有效，但赋值新增臂将非字面表达式等同非空/有类型，测试只覆盖非空字面量和[]int返回，漏掉空别名的合法控制。记录“声明槽关联”与“元素约束是否真实存在”两个不同事实，补永久正反控制后再交审，不把第3审失败重置为首轮或只重跑总数。
+- SD-01/03精确目标与哈希沿R1未变；SD-02目标`auto-lang/docs/specs/auto-lang/vm/native-fs.md`当前SHA256=`10c5134bb92a85fbb6d2d3d37e8313629650457b67df6bd6cb5c543ac049c2a9`。Spec所说“非空赋值填充”不能替代码把空别名也当填充的行为背书；待finding闭合再核读回。三份Spec增量冻结review-r3/spec-delta.patch SHA256=`4d911b935a8d882518c30be4c782af83edfcb8ea9f98751293890dd133dda3e4`；影响metadata/空new及goals理由仍沿R1，无语义revision变更。
+- 证据SHA256：push.log=`e3c1f34ca852832c50c79758d6ffa87976717e4ae701fddd9b1272488e283618`；replace.log=`8067fd72f92431101532c02f0341aa82147f13e63449eabf23fa9cb39be9b960`；holdouts.py=`c1ffac28d0cfea9d8860dd1e137825743640b2e95f2e081b97adee3b0d84b84d`；holdouts.log=`83bee089eb42c6dc6e791af0d81d15037d3298ca760755c10bed4aa16db1c7ad`；A输入=`2f5eab43ad15625cb46056da8059a58ca26191413221bc3709b423515c163985`、A编译错误=`43281e6e94f226229ef80a27d6baef7cd8c0b01feb135a5401c78f80f1441214`，B输入=`5731ef0d01f782ddb4ea9eeda9d080f4d5dc36d4aa81fe7a2ba72b78cf83fa80`；完整清单manifest.json。无额外构建或测试仍在运行。
+- repair diff --check通过；core既有131 warnings，无新warning证据。原a2r394运行早于最后赋值扩展，review未将其冒记当前全门通过。最终冻结完整组并集仍**vm+shim-metadata+a2r+http**，必须由merge在最终复审通过后核身份/复用与必要补跑；现在已知fail不叠整套门。未改UI/VM/HTTP/metadata的有效证据继续保留，8个原外部材料仍由merge负责清理。
+- 状态回到**executing 2/6**：T-00/T-01保留，T-02/T-03重开，T-04/T-05未完成。实现/共享Plan写权交回根work；此记录不添加goal路由，也不替上层决定后续有界修复编排。
 
 ## 10. 待澄清事项
 
