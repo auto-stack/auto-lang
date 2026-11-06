@@ -346,6 +346,10 @@ pub(crate) fn reserve_native_path(
     path: &std::path::Path,
     resources: Option<&ace_source_query::resources::Resources>,
 ) -> Result<Option<ace_source_query::resources::Reservation>, StoreError> {
+    reserve_c_metadata(resources, native_path_size(path)?)
+}
+
+pub(crate) fn native_path_size(path: &std::path::Path) -> Result<usize, StoreError> {
     let bytes = path.as_os_str().as_encoded_bytes();
     let short_absolute = bytes.len() < 247
         && (path.is_absolute()
@@ -362,7 +366,7 @@ pub(crate) fn reserve_native_path(
             .ok_or_else(|| StoreError::ResourceExhausted("C cache native path overflow".into()))?;
         metadata_size(&[input, if path.is_absolute() { 4096 } else { 16 * 32768 }])?
     };
-    reserve_c_metadata(resources, size)
+    Ok(size)
 }
 
 pub(crate) fn display_path(

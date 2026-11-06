@@ -21,8 +21,7 @@
 //! * store internals (registry, GC) are the 783/787 code paths — this
 //!   adapter only reads and writes through the public store API.
 
-#[path = "cache_paths.rs"]
-mod cache_paths;
+use crate::cache_paths;
 use crate::decl::FnDecl;
 use ace_artifacts::codec::ChunkKind;
 use ace_artifacts::identity::QueryKey;

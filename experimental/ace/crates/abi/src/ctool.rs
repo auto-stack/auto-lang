@@ -215,6 +215,40 @@ pub fn compile_c_with_deps(
     include_dir: &Path,
     obj_out: &Path,
 ) -> Result<Vec<PathBuf>, CToolError> {
+    compile_c_with_deps_admitted(src, include_dir, obj_out, |_| Ok(())).map_err(|e| match e {
+        CToolFailure::Tool(error) => error,
+        CToolFailure::Resource(message) => CToolError(message),
+    })
+}
+
+#[derive(Debug)]
+pub(crate) enum CToolFailure {
+    Tool(CToolError),
+    Resource(String),
+}
+impl From<CToolError> for CToolFailure {
+    fn from(error: CToolError) -> Self {
+        Self::Tool(error)
+    }
+}
+
+/// Source callers retain their admission ticket until the cache has consumed
+/// every returned path. The original public entry uses the same walk.
+pub(crate) fn compile_c_with_deps_admitted(
+    src: &Path,
+    include_dir: &Path,
+    obj_out: &Path,
+    admit: impl FnMut(usize) -> Result<(), String>,
+) -> Result<Vec<PathBuf>, CToolFailure> {
+    let out = compile_c_output(src, include_dir, obj_out)?;
+    crate::ctool_dependencies::parse(&out, src, admit).map_err(CToolFailure::Resource)
+}
+
+fn compile_c_output(
+    src: &Path,
+    include_dir: &Path,
+    obj_out: &Path,
+) -> Result<String, CToolFailure> {
     let tool = find_cl()?;
     // cl.exe = <msvc>/bin/Hostx64/x64/cl.exe -> <msvc>/include
     let msvc_root = tool
@@ -227,7 +261,8 @@ pub fn compile_c_with_deps(
         return Err(CToolError(format!(
             "MSVC include dir missing stdint.h: {}",
             msvc_include.display()
-        )));
+        ))
+        .into());
     }
     let mut cmd = Command::new(&tool.cl_exe);
     cmd.args(CL_FLAGS);
@@ -247,7 +282,12 @@ pub fn compile_c_with_deps(
             stderr_max: TOOL_STREAM_MAX,
         },
     )
-    .map_err(|e| CToolError(format!("cl spawn: {e:?}")))?;
+    .map_err(|e| match e {
+        ace_core::link::SubprocError::OutputCapExceeded { .. } => {
+            CToolFailure::Resource(format!("cl spawn: {e:?}"))
+        }
+        other => CToolFailure::Tool(CToolError(format!("cl spawn: {other:?}"))),
+    })?;
     let code = run.exit_code;
     let out = String::from_utf8_lossy(&run.stdout).into_owned();
     let err = String::from_utf8_lossy(&run.stderr).into_owned();
@@ -257,53 +297,17 @@ pub fn compile_c_with_deps(
             src.display(),
             out.trim(),
             err.trim()
-        )));
+        ))
+        .into());
     }
     if !obj_out.is_file() {
         return Err(CToolError(format!(
             "cl reported success but object missing: {}",
             obj_out.display()
-        )));
+        ))
+        .into());
     }
-    Ok(parse_show_includes(&out, src))
-}
-
-/// Extract the dependency paths from `/showIncludes` output. Each note
-/// line carries an absolute path after a locale-dependent prefix ("Note:
-/// including file:" / "注意: 包含文件:") — scanning for the Windows
-/// drive-letter pattern is prefix-agnostic. Only files that exist are
-/// accepted; the compiled source itself is excluded.
-fn parse_show_includes(stdout: &str, src: &Path) -> Vec<PathBuf> {
-    let mut deps: Vec<PathBuf> = Vec::new();
-    for line in stdout.lines() {
-        let Some(path) = extract_drive_path(line) else {
-            continue;
-        };
-        let p = Path::new(path);
-        if !p.is_file() || p == src {
-            continue;
-        }
-        if !deps.iter().any(|seen| seen == p) {
-            deps.push(p.to_path_buf());
-        }
-    }
-    deps
-}
-
-fn extract_drive_path(line: &str) -> Option<&str> {
-    let bytes = line.as_bytes();
-    for i in 0..bytes.len().saturating_sub(2) {
-        if bytes[i].is_ascii_alphabetic()
-            && bytes[i + 1] == b':'
-            && (bytes[i + 2] == b'\\' || bytes[i + 2] == b'/')
-        {
-            let candidate = line[i..].trim().trim_matches('"');
-            if candidate.contains('\\') || candidate.contains('/') {
-                return Some(candidate);
-            }
-        }
-    }
-    None
+    Ok(out)
 }
 
 /// Stable toolchain fingerprint for cache keys and receipts (cl identity
@@ -323,6 +327,45 @@ pub fn toolchain_fingerprint() -> Result<String, CToolError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ctool_dependencies::extract_drive_path;
+
+    #[test]
+    fn real_compile_dependency_admission_keeps_resource_kind_and_allows_repair() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests").join(format!(
+            "real-dependency-admission-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let source = root.join("dependency.c");
+        let object = root.join("dependency.obj");
+        std::fs::write(
+            &source,
+            "#include <stdint.h>\nint dependency_probe(void) { return 42; }\n",
+        )
+        .unwrap();
+        let mut attempts = 0;
+        let denied = compile_c_with_deps_admitted(&source, &root, &object, |_| {
+            attempts += 1;
+            Err("fixture dependency quota".into())
+        });
+        assert!(
+            matches!(denied, Err(CToolFailure::Resource(ref message)) if message == "fixture dependency quota")
+        );
+        assert_eq!(attempts, 1);
+        assert!(
+            object.is_file(),
+            "compiler did not really produce before dependency admission"
+        );
+        let repaired = compile_c_with_deps_admitted(&source, &root, &object, |_| Ok(())).unwrap();
+        assert!(repaired
+            .iter()
+            .any(|p| p.file_name().is_some_and(|n| n == "stdint.h")));
+        assert!(!repaired.contains(&source));
+    }
 
     #[test]
     fn include_path_extraction_borrows_locale_independent_original_slice() {

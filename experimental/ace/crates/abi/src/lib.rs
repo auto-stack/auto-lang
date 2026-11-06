@@ -22,7 +22,9 @@
 pub mod bridge;
 pub mod build;
 pub mod cache;
+pub(crate) mod cache_paths;
 pub mod ctool;
+mod ctool_dependencies;
 pub mod decl;
 pub mod descriptor;
 pub mod emit;

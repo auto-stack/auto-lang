@@ -631,6 +631,11 @@ fn prepare_provider(
             ),
         )
         .map_err(|e| err("store", e))?;
+        // This ticket lives outside the producer closure: the dependency
+        // vector remains owned by the cache through hashing/generation.
+        let mut dependencies_allocation = resources
+            .reserve(ace_source_query::resources::Charge::index(0))
+            .map_err(|e| err("foreign.resource", e))?;
         let result = crate::cache::produce_c_object_with_resources(
             store,
             &src,
@@ -639,8 +644,20 @@ fn prepare_provider(
             resources,
             || {
                 let deps =
-                    crate::ctool::compile_c_with_deps(&src, inputs, &object).map_err(|e| {
-                        ace_artifacts::store::StoreError::Internal(format!("producer: {e}"))
+                    crate::ctool::compile_c_with_deps_admitted(&src, inputs, &object, |bytes| {
+                        dependencies_allocation
+                            .resize(ace_source_query::resources::Charge::index(bytes))
+                            .map_err(|e| e.to_string())
+                    })
+                    .map_err(|e| match e {
+                        crate::ctool::CToolFailure::Tool(error) => {
+                            ace_artifacts::store::StoreError::Internal(format!("producer: {error}"))
+                        }
+                        crate::ctool::CToolFailure::Resource(message) => {
+                            ace_artifacts::store::StoreError::ResourceExhausted(format!(
+                                "C dependency producer: {message}"
+                            ))
+                        }
                     })?;
                 let bytes = crate::cache::read_c_object_file(&object, resources)?;
                 Ok((bytes, deps))

@@ -10,6 +10,8 @@ struct Allocator;
 // no public testing hook or alternate path algorithm is introduced.
 #[path = "../src/cache_paths.rs"]
 mod cache_paths;
+#[path = "../src/ctool_dependencies.rs"]
+mod ctool_dependencies;
 thread_local! {
     static THRESHOLD: Cell<usize> = const { Cell::new(usize::MAX) };
     static LARGE: Cell<usize> = const { Cell::new(0) };
@@ -723,6 +725,91 @@ mod source_foreign {
                 String::from_utf8_lossy(&run.stdout),
                 String::from_utf8_lossy(&run.stderr)
             );
+        }
+    }
+
+    #[test]
+    fn compiler_dependency_paths_reserve_native_probes_array_growth_and_unique_owned_text() {
+        use ace_source_query::resources::Resources;
+        let (root, _, _, _) = fixture("dependency-parser-budget");
+        let source = root.join("provider.c");
+        let paths: Vec<PathBuf> = (0..257)
+            .map(|i| {
+                let name = if i == 256 {
+                    format!("unique-final-{}.h", "q".repeat(64))
+                } else {
+                    format!("header-{i:04}.h")
+                };
+                let path = root.join(name);
+                std::fs::write(&path, b"header").unwrap();
+                path
+            })
+            .collect();
+        let mut output = format!(
+            "Note: including file: {}\nNote: including file: {}\n",
+            source.display(),
+            root.join("missing.h").display()
+        );
+        for path in &paths {
+            output.push_str(&format!("Note: including file: {}\n", path.display()));
+        }
+        output.push_str(&format!("注意: 包含文件: \"{}\"\n", paths[0].display()));
+        let resources = Resources::default();
+        let baseline = resources.stats().current;
+        let old_array = 128 * std::mem::size_of::<PathBuf>();
+        let rejected_array = 256 * std::mem::size_of::<PathBuf>();
+        let text_before: usize = paths[..128].iter().map(|p| p.as_os_str().len()).sum();
+        let allowance =
+            old_array + text_before + cache_paths::native_path_size(&paths[128]).unwrap() + 16;
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - baseline.index - allowance))
+            .unwrap();
+        let pressured = resources.stats().current;
+        let mut admission = resources.reserve(Charge::index(0)).unwrap();
+        let (rejected, copies) = measured_at(rejected_array, || {
+            ctool_dependencies::parse(&output, &source, |bytes| {
+                admission
+                    .resize(Charge::index(bytes))
+                    .map_err(|e| e.to_string())
+            })
+        });
+        assert!(rejected.is_err());
+        assert_eq!(copies, 0, "dependency array grew before refusal");
+        drop(admission);
+        assert_eq!(resources.stats().current, pressured);
+        drop(pressure);
+        let array = 512 * std::mem::size_of::<PathBuf>();
+        let text: usize = paths.iter().map(|p| p.as_os_str().len()).sum();
+        let final_text = paths.last().unwrap().as_os_str().len();
+        for (layout, minimum) in [
+            (
+                array,
+                baseline.index + text + array + 256 * std::mem::size_of::<PathBuf>(),
+            ),
+            (final_text, baseline.index + text + array),
+        ] {
+            let mut admission = resources.reserve(Charge::index(0)).unwrap();
+            let (parsed, hits, admitted) =
+                with_charge_probe(layout, &resources, Charge::index(minimum), || {
+                    ctool_dependencies::parse(&output, &source, |bytes| {
+                        admission
+                            .resize(Charge::index(bytes))
+                            .map_err(|e| e.to_string())
+                    })
+                });
+            let parsed = parsed.unwrap();
+            assert_eq!(
+                parsed, paths,
+                "source/missing/duplicate handling or encounter order changed"
+            );
+            assert_eq!(hits, 1, "did not observe dependency allocation {layout}");
+            assert!(admitted, "dependency storage allocated before admission");
+            let retained = parsed.capacity() * std::mem::size_of::<PathBuf>()
+                + parsed.iter().map(PathBuf::capacity).sum::<usize>();
+            assert_eq!(resources.stats().current.index, baseline.index + retained);
+            drop(parsed);
+            drop(admission);
+            assert_eq!(resources.stats().current, baseline);
         }
     }
 
