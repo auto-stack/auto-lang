@@ -196,6 +196,100 @@ struct CObjectEntryRef<'a> {
     dir_listings: &'a [(String, Vec<String>)],
 }
 
+struct CGenerationHash {
+    value: String,
+    _allocation: Option<ace_source_query::resources::Reservation>,
+}
+fn c_object_generation(
+    entry: &CObjectEntryRef<'_>,
+    artifact_paths: &[String],
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<CGenerationHash, StoreError> {
+    // These borrowed pieces spell precisely the old formatted lines. Compare
+    // their concatenated bytes, including ambiguous separators, so sorting /
+    // deduplication and the digest remain identical to String::sort + join.
+    struct Line<'a>([&'a str; 4]);
+    impl Line<'_> {
+        fn bytes(&self) -> impl Iterator<Item = u8> + '_ {
+            self.0.iter().flat_map(|s| s.bytes())
+        }
+    }
+    let overflow = || StoreError::ResourceExhausted("C cache generation size overflow".into());
+    let count = entry.dir_listings.iter().try_fold(
+        entry
+            .deps
+            .len()
+            .checked_add(5)
+            .and_then(|n| n.checked_add(artifact_paths.len()))
+            .ok_or_else(overflow)?,
+        |n, (_, files)| {
+            n.checked_add(1)
+                .and_then(|n| n.checked_add(files.len()))
+                .ok_or_else(overflow)
+        },
+    )?;
+    let bytes = count
+        .checked_mul(std::mem::size_of::<Line<'_>>())
+        .and_then(|n| n.checked_add(64))
+        .ok_or_else(overflow)?;
+    let mut allocation = resources
+        .map(|r| r.reserve(ace_source_query::resources::Charge::index(bytes)))
+        .transpose()
+        .map_err(|e| StoreError::ResourceExhausted(format!("C cache generation: {e}")))?;
+    let mut lines = Vec::new();
+    lines.try_reserve_exact(count).map_err(|e| {
+        StoreError::ResourceExhausted(format!("C cache generation allocation: {e}"))
+    })?;
+    for (p, h) in entry.deps {
+        lines.push(Line(["dep|", p, "|", h]));
+    }
+    for (label, value) in [
+        ("src_dir|", entry.src_dir),
+        ("inc_dir|", entry.include_dir),
+        ("target|", entry.target),
+        ("toolchain|", entry.toolchain),
+    ] {
+        lines.push(Line([label, value, "", ""]));
+    }
+    // The envelope version participates in generation identity (F-797-R15-02).
+    lines.push(Line(["env|4", "", "", ""]));
+    for a in artifact_paths {
+        lines.push(Line(["art|", a, "", ""]));
+    }
+    for (d, files) in entry.dir_listings {
+        lines.push(Line(["dir|", d, "", ""]));
+        for name in files {
+            lines.push(Line(["file|", d, "|", name]));
+        }
+    }
+    // Equal lines are byte-identical, so unstable ordering has the same
+    // canonical result and needs no sorting scratch allocation.
+    lines.sort_unstable_by(|a, b| a.bytes().cmp(b.bytes()));
+    lines.dedup_by(|a, b| a.bytes().eq(b.bytes()));
+    let mut hash = blake3::Hasher::new();
+    for (i, line) in lines.iter().enumerate() {
+        if i != 0 {
+            hash.update(b"\n");
+        }
+        for part in line.0 {
+            hash.update(part.as_bytes());
+        }
+    }
+    let value = hash.finalize().to_hex().to_string();
+    drop(lines);
+    if let Some(allocation) = &mut allocation {
+        allocation
+            .resize(ace_source_query::resources::Charge::index(64))
+            .map_err(|e| {
+                StoreError::ResourceExhausted(format!("C cache generation ownership: {e}"))
+            })?;
+    }
+    Ok(CGenerationHash {
+        value,
+        _allocation: allocation,
+    })
+}
+
 enum CacheBytes {
     Legacy(Vec<u8>),
     Managed(std::sync::Arc<Vec<u8>>),
@@ -1073,40 +1167,19 @@ where
         }
         dir_listings.push((d.clone(), listing.names));
     }
-    let mut gen_lines: Vec<String> = hashed.iter().map(|(p, h)| format!("dep|{p}|{h}")).collect();
-    gen_lines.push(format!("src_dir|{src_dir}"));
-    gen_lines.push(format!("inc_dir|{inc_dir_s}"));
-    gen_lines.push(format!("target|{target}"));
-    gen_lines.push(format!("toolchain|{toolchain}"));
-    // F-797-R15-02: the ENVELOPE ALGORITHM VERSION is part of the
-    // generation identity — a legacy v3 entry (even one whose domain
-    // equals the current one) can never occupy a v4 key, so an upgrade
-    // recompile always publishes instead of dead-ending in Conflict
-    gen_lines.push("env|4".to_string());
-    for a in &artifact_paths {
-        gen_lines.push(format!("art|{a}"));
-    }
-    for (d, l) in &dir_listings {
-        gen_lines.push(format!("dir|{d}"));
-        for n in l {
-            gen_lines.push(format!("file|{d}|{n}"));
-        }
-    }
-    gen_lines.sort();
-    gen_lines.dedup();
-    let generation_hash = crate::semref::blake3_hex(gen_lines.join("\n").as_bytes());
+    let entry = CObjectEntryRef {
+        v: 4,
+        source: &source_identity,
+        src_dir: &src_dir,
+        include_dir: &inc_dir_s,
+        target: &target,
+        toolchain: &toolchain,
+        obj_b64: Base64Ref(obj.as_ref()),
+        deps: &hashed,
+        dir_listings: &dir_listings,
+    };
+    let generation_hash = c_object_generation(&entry, &artifact_paths, resources)?;
     let (payload, encoded_allocation) = if let Some(resources) = resources {
-        let entry = CObjectEntryRef {
-            v: 4,
-            source: &source_identity,
-            src_dir: &src_dir,
-            include_dir: &inc_dir_s,
-            target: &target,
-            toolchain: &toolchain,
-            obj_b64: Base64Ref(obj.as_ref()),
-            deps: &hashed,
-            dir_listings: &dir_listings,
-        };
         let size = ace_foreign_contract::codec::json_size(&entry, 64 << 20).map_err(|e| {
             StoreError::ResourceExhausted(format!("C cache entry encode size: {e}"))
         })?;
@@ -1144,7 +1217,7 @@ where
     };
     let stored = store.put_artifact(PutRequest {
         layer: LAYER_OBJECT_V01.id,
-        key: c_object_key(&source_identity, &generation_hash),
+        key: c_object_key(&source_identity, &generation_hash.value),
         kind: ChunkKind::Object,
         payload,
         edges: vec![],

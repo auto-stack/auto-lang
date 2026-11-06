@@ -517,6 +517,144 @@ mod source_foreign {
     }
 
     #[test]
+    fn c_cache_generation_precharges_borrowed_lines_and_preserves_the_original_digest() {
+        use ace_artifacts::store::{ManagedStore, StoreError};
+        use ace_source_query::resources::Resources;
+        let (root, bytes, _, _) = fixture("c-cache-generation");
+        let source = root.join("provider.c");
+        let header = root.join("source_foreign938.h");
+        let extra_header = root.join("source_foreign938.h.extra");
+        std::fs::write(&extra_header, b"a conservatively retained dependency").unwrap();
+        std::fs::write(root.join("candidate-π-😀"), b"unicode candidate").unwrap();
+        let artifacts = vec![root.join("provider.obj"); 4096];
+        let legacy = ManagedStore::open(&root.with_extension("legacy-store")).unwrap();
+        ace_abi::cache::produce_c_object(&legacy, &source, &root, &artifacts, || {
+            Ok((
+                bytes.as_ref().clone(),
+                vec![header.clone(), extra_header.clone()],
+            ))
+        })
+        .unwrap();
+        let (id, expected_key): (String, String) = legacy
+            .db()
+            .query_row("SELECT artifact_id,key_canonical FROM artifacts", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        let wire = legacy.get_artifact_by_id(&id).unwrap().unwrap().payload;
+        let entry: serde_json::Value = serde_json::from_slice(&wire).unwrap();
+        // Independent copy of the original owning-format/sort/dedup/join
+        // oracle, including the repeated artifact rows. Production uses none
+        // of these owned lines or the joined buffer.
+        let deps = entry["deps"].as_array().unwrap();
+        let listings = entry["dir_listings"].as_array().unwrap();
+        let mut lines: Vec<String> = deps
+            .iter()
+            .map(|d| format!("dep|{}|{}", d[0].as_str().unwrap(), d[1].as_str().unwrap()))
+            .collect();
+        for (label, field) in [
+            ("src_dir", "src_dir"),
+            ("inc_dir", "include_dir"),
+            ("target", "target"),
+            ("toolchain", "toolchain"),
+        ] {
+            lines.push(format!("{label}|{}", entry[field].as_str().unwrap()));
+        }
+        lines.push("env|4".into());
+        let normalized = std::fs::canonicalize(&root).unwrap().display().to_string();
+        let artifact = format!(
+            "{}\\provider.obj",
+            normalized
+                .strip_prefix("\\\\?\\")
+                .unwrap_or(&normalized)
+                .replace('/', "\\")
+        );
+        for _ in &artifacts {
+            lines.push(format!("art|{artifact}"));
+        }
+        for listing in listings {
+            let dir = listing[0].as_str().unwrap();
+            lines.push(format!("dir|{dir}"));
+            for file in listing[1].as_array().unwrap() {
+                lines.push(format!("file|{dir}|{}", file.as_str().unwrap()));
+            }
+        }
+        let count = lines.len();
+        lines.sort();
+        lines.dedup();
+        let digest = ace_abi::semref::blake3_hex(lines.join("\n").as_bytes());
+        let source_id = ace_abi::cache::c_source_identity(&source).unwrap();
+        assert_eq!(
+            expected_key,
+            ace_abi::cache::c_object_key(&source_id, &digest).canonical()
+        );
+        let resources = Resources::default();
+        resources
+            .adopt(&bytes, Charge::resident(bytes.capacity() + 40))
+            .unwrap();
+        let baseline = resources.stats().current;
+        let store = ManagedStore::open(&root.with_extension("resource-store")).unwrap();
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - baseline.index - (64 << 10)))
+            .unwrap();
+        let (rejected, large) = measured_at(128 << 10, || {
+            ace_abi::cache::produce_c_object_with_resources(
+                &store,
+                &source,
+                &root,
+                &artifacts,
+                &resources,
+                || Ok((bytes.clone(), vec![header.clone(), extra_header.clone()])),
+            )
+        });
+        assert!(
+            matches!(rejected, Err(StoreError::ResourceExhausted(ref message)) if message.starts_with("C cache generation:")),
+            "{rejected:?}"
+        );
+        assert_eq!(large, 0, "allocated generation storage before admission");
+        assert_eq!(resources.stats().current.index, (8 << 20) - (64 << 10));
+        assert_eq!(
+            store
+                .db()
+                .query_row("SELECT count(*) FROM artifacts", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        drop(pressure);
+        let layout = count * (4 * std::mem::size_of::<&str>());
+        let (result, hits, admitted) =
+            with_charge_probe(layout, &resources, Charge::index(layout + 64), || {
+                ace_abi::cache::produce_c_object_with_resources(
+                    &store,
+                    &source,
+                    &root,
+                    &artifacts,
+                    &resources,
+                    || Ok((bytes.clone(), vec![header, extra_header])),
+                )
+            });
+        let (output, hit) = result.unwrap();
+        assert!(!hit);
+        assert_eq!(hits, 1, "did not observe borrowed-line vector allocation");
+        assert!(admitted, "generation allocated before its reservation");
+        assert_eq!(output.as_slice(), bytes.as_slice());
+        let (id, key): (String, String) = store
+            .db()
+            .query_row("SELECT artifact_id,key_canonical FROM artifacts", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(key, expected_key);
+        assert_eq!(
+            store.get_artifact_by_id(&id).unwrap().unwrap().payload,
+            wire
+        );
+        drop((output, bytes));
+        assert_eq!(resources.stats().current.resident, 0);
+        assert_eq!(resources.stats().current.io, 0);
+    }
+
+    #[test]
     fn c_cache_entry_read_reserves_shared_io_before_loading_the_original_store_frame() {
         use ace_artifacts::store::StoreError;
         use ace_source_query::resources::Resources;
