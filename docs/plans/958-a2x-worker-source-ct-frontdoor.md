@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-958
-status: execution_done
+status: reviewed
 feature_name: A2X真实worker源CT前门接线修复
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-06
 plan_revision: 1
-current_step: 4
+current_step: 5
 total_steps: 6
 supersedes_spec_components: [docs/specs/auto-cte/source-query-integration.md, docs/specs/auto-test-case/a2r-hir-certification.md]
 new_spec_components: []
@@ -88,7 +88,7 @@ Rust/现有ACE工作区；原a2x-worker CLI、serde_json严格解析、原受控
 | T-02 | work | T01 | 共用helper最小委托/直接依赖/离线锁；原服务/cold生命周期保持，AC01/02 | [x] 2026-11-06，见§9 |
 | T-03 | work | T02 | 永久真实worker七源四操作与拒绝/错oracle回归，标准JSON与raw编译/运行证据，AC01..04 | [x] 2026-11-06，见§9 |
 | T-04 | work | T03 | scoped验证/健康与SD草案/闭包记录，冻结提交交独立review，AC05 | [x] 2026-11-06，见§9 |
-| T-05 | review | T01..04交窗 | 同树独立AC/反控/遗漏/SD核查绑定pass或具名needs_fix，AC06 | [ ] |
+| T-05 | review | T01..04交窗 | 同树独立AC/反控/遗漏/SD核查绑定pass或具名needs_fix，AC06 | [x] 2026-11-06 final review，见§9 |
 | T-06 | merge | T05最终pass | 冻结cargo t ace-a2x职责门、主线合入/Spec/归档/全路径scope清理guard退树，继续941，AC07 | [ ] |
 
 ## 9. 复审记录
@@ -106,6 +106,24 @@ Rust/现有ACE工作区；原a2x-worker CLI、serde_json严格解析、原受控
 Ready for review: AC01..05工作闭包已具名验证；无未解决的本修复内功能/语义缺口，无预算放宽、无重复CT引擎、无新runner/meter。仅冷worker接线，不核销941的暖缓存/恢复/原30样本与其余M1义务。冻结树停止实现写入，下一责任角色review；仍需AC06独立逐条验证与T06完整组/合入清理。
 
 stage: work | plan_id: PLAN-958 | plan_revision:r1 | outcome:pass | worktree_path:D:/autostack/.wt/lang-958/auto-lang | branch:plan-958-dev | base_commit:a63a20b4e | code_commit:688207b67 | task_ids:T01..04 | evidence:7/7 actual CLI tests,40 operations and32 raw executable replays; check/fmt/SD; original 8-operation failure | blockers:none within repair | next_responsible_role:review
+
+2026-11-06 stage: review | review_scope:final | reviewer_identity/limitations:本会话新复审阶段，同一主agent，非另一个模型/会话；未获自动新建agent授权，不冒称不同reviewer。按r1/真实diff/原日志重新重建判定，并自选10项未在原回归中的holdout，不以工作总结作权威 | plan_id:PLAN-958 | plan_revision:r1 | outcome:**pass** | worktree_path:D:/autostack/.wt/lang-958/auto-lang | branch:plan-958-dev | reviewed_commit:**688207b6773e942df08f62a1776fcc8e256e64ea** | base_commit:a63a20b4e | dependency:auto-down只读58ea33f | next:merge（原用户独立修复并继续授权）
+
+| AC | final review evidence / result |
+|---|---|
+| AC-01 | PASS：独立读CLI dispatch→Rust emit/C emit共用helper→CT服务→Checked HIR→原emitter/cert实际compile/run路径；复核7个真实native test的原nextest事件逐项ok、selected=executed=7、filter余189不充PASS。原七源手算42/43/7/42/43/42/40、14daily/14cert的源文件和cap表对应；每次认证后独立运行新独享目录中actual/reference两腿核raw行。日常原调用链无外部编译器；新holdout两个daily的Job process count=2（原meter wrapper+worker），不是只信spawn计数。 |
+| AC-02 | PASS：精确相等CT_CAPABILITY分流，普通source-query旧分支未动；新增直接边指现有service，库/solver/AV/store/runner代码零改。独立holdout普通源授CT cap：两端daily+cert四项均接受；仅instances cap和CT/v10错误版本各两端daily受控syntax拒，零产物/Job2。证明不是“任意source cap即授权CT”或“有CT cap必须含#”的实现。 |
+| AC-03 | PASS：原七源/body/meta/instance/child值证据对应实际原文件；独立核证书schema、source hash、scalar HIR域/caps/文件hash断言及standard JSON解析真实入口注册。SD只声明cold worker，不把Session文本含42冒原CLI或暖缓存/恢复证明。 |
+| AC-04 | PASS：Rust错oracle实际42/ref42 vsoracle43仍REJECTED；错reference43 vsactual/oracle42仍REJECTED；C两相应受控oracle失败有真实断言。新增复审真实CT divide-by-zero两端daily均exit2 source.cte.plan/cte.trap/av.trap.div-by-zero，零产物/Job2，不在发射器忽略CT错态或mint证书。资源/编译/执行预算常量及原受控设施零改，编译120s/run30s/原根CT10s单AV2s未扩大。 |
+| AC-05 | PASS：源码/锁/Spec干净且已提交；定向rustfmt和diff --check，唯一ace-core first_lex_fact warning为未改基线。TOML独立对账无第三方包版本/checksum漂移，仅新增既有stdlib-conformance本地成员及所需依赖边；其余21行是已交付manifest匹配而非新stdlib实现。7门发现/运行分别2612.2574ms/26906.1047ms，整命令29.553495s；只复用源/输入未变的原有效证据，不因role交接重复原7组。 |
+| AC-06 | PASS：本次全AC/源码/原始日志及自选反控/规范差异审查，无须修项，无遗漏、未批延后或workaround债候选；确实无新语言/第二CT引擎。复审限制已明列，不冒不同模型会话。 |
+| AC-07 | PENDING merge：完整cargo t ace-a2x、当前主线并发对账、合入/Spec读回/归档/guard清树与全路径scope删除尚未执行，不由review填绿。 |
+
+复审只读实测10项在`review-holdouts/`，汇总SHA256=`f93dcd2d007e1ec91109a53737d0ae69d2f38af67b0107e8f7553fce5fa80475`。输入/输出/原Job meter真实保留：ordinary+CT cap四项exit0（cert PASS）；错误版本cap两项/仅instances cap两项exit2 source.syntax；真实CT trap两项exit2具名cte.trap；所有daily Job2、stderr空，反例均未建产物目录。没有改生产源码或测试输入迎合反控。当前HEAD/dirty再次核验仍688207b67/clean。
+
+SD01/02均通过：`docs/specs/auto-cte/source-query-integration.md` SHA256=`eafa1082c933454dac0adeec25d70937c13c5a1a71a65e710304935c8526c208`；`docs/specs/auto-test-case/a2r-hir-certification.md` SHA256=`a32d3555b5657cb72c2ae909ce2ac000110662ef5aa46e218f96c7895561581a`。正好描述现有有限cap前门/同次HIR/日常spawn0与两腿独立oracle/冷会话边界；frontmatter两个supersedes路径、无new组件、GOAL002核对有效；零legacy specs.json/索引写。冻结Spec delta可由688207b67的二路径diff重建，不能仅信附件。
+
+合入职责并集明确为**ace-a2x完整固定组**（a2x-core/rust/store/worker全部原条件与本次实际CLI）。触面是worker共用scalar consumer，source-cte/service与source-query/语法/AV/native生产者均未改；包依赖不推出所有依赖方测试，不堆ace-comptime或全仓/正式性能。先复审再由merge在冻结最终身份跑一次完整并集。当前无实现写入授权交还事项，进入merge。
 
 ## 10. 待澄清事项
 
