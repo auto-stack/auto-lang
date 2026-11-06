@@ -5153,4 +5153,81 @@ mod source_foreign {
         assert!(!allocated, "manifest bytes were allocated before admission");
         assert_eq!(refusing.reserved.len(), 2);
     }
+
+    /// PLAN-938 cold-interface memory: the whole working/resident set of a
+    /// cold `admit_foreign` (canonical clone, plan model, declarations model
+    /// + digest map, four pages, binding) is admitted BEFORE any of it
+    /// allocates, the retained charge covers the produced artifacts while
+    /// the environment lives, and both the charge and the artifacts release
+    /// with its last owner.
+    #[test]
+    fn cold_interface_admission_reserves_before_production_and_retains_until_release() {
+        use ace_source_query::resources::{OutputLimits, Resources};
+        let (root, provider_bytes, _environment, caps) = fixture("cold-interface-memory");
+        let manifest = provider::reviewed_add_manifest();
+        let host = provider::authority(&provider::hash(&provider_bytes), 1, &caps).unwrap();
+        // Successful production: the real working peak stays UNDER the
+        // reserved bound (the bound cannot under-estimate the stages), and
+        // the charge covers the produced pages and declaration models.
+        let resources = Resources::default();
+        resources
+            .enable_output_budget(OutputLimits::default())
+            .unwrap();
+        let baseline = resources.stats().current.resident;
+        let (admitted, peak) =
+            measured_peak(|| resources.admit_foreign(manifest.clone(), &host).unwrap());
+        let charged = (resources.stats().current.resident - baseline) as usize;
+        let pages: usize = admitted.pages().iter().map(|(_, p)| p.len()).sum();
+        let decls_heap: usize = admitted
+            .source_declarations_ref()
+            .iter()
+            .map(|d| d.heap_bytes())
+            .sum();
+        assert!(
+            peak <= charged,
+            "cold interface working peak {peak} exceeded the reserved bound {charged}"
+        );
+        assert!(
+            charged >= pages + 160 + decls_heap,
+            "the retained charge {charged} does not cover pages {pages} + declarations {decls_heap}"
+        );
+        drop(admitted);
+        assert_eq!(
+            resources.stats().current.resident,
+            baseline,
+            "the interface charge outlived its environment"
+        );
+        // Refusal BEFORE any production allocation: one byte short of the
+        // deterministic bound, the admit refuses without allocating at all.
+        let denied = Resources::default();
+        denied
+            .enable_output_budget(OutputLimits::default())
+            .unwrap();
+        let d_baseline = denied.stats().current.resident;
+        let room = charged - 1;
+        let pressure = denied
+            .reserve(Charge::resident((48 << 20) - d_baseline - room))
+            .unwrap();
+        // The manifest clone stays OUTSIDE the measured window: only the
+        // admission path's own allocations count.
+        let refused_manifest = manifest.clone();
+        let (result, peak) = measured_peak(|| denied.admit_foreign(refused_manifest, &host));
+        let error = result
+            .err()
+            .expect("cold interface memory admission missing");
+        assert!(error.contains("foreign.resource"), "{error}");
+        // The counting preflight's own Display-adapter strings are bounded
+        // working metadata (well under the wire scale); NO interface payload
+        // or page may exist yet, and the output account must show nothing
+        // produced or pending before the memory refusal.
+        assert!(
+            peak <= 1024,
+            "interface payload allocated before its memory admission ({peak} bytes)"
+        );
+        assert_eq!(denied.output_stats().unwrap().produced, 0);
+        assert_eq!(denied.output_stats().unwrap().pending, 0);
+        drop(pressure);
+        denied.admit_foreign(manifest, &host).unwrap();
+        drop(root);
+    }
 }

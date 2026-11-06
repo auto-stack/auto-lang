@@ -252,12 +252,34 @@ impl Resources {
     }
     /// Charge newly encoded required pages at their exact output sizes. Input
     /// decoding and derived metadata retain their separate live-memory owners.
+    /// The interface's whole working/resident set (canonical clone, plan
+    /// model, declarations model + digest map, four pages, binding) is
+    /// admitted BEFORE any of it allocates and retained on the admitted
+    /// environment's allocation identity until its last owner drops
+    /// (PLAN-938).
     pub fn admit_foreign(
         &self,
         manifest: ace_foreign_contract::manual::ManualManifest,
         host: &ace_foreign_contract::manual::HostAuthority,
     ) -> Result<ace_foreign_contract::manual::AdmittedForeign, String> {
-        manifest.admit_produced(host, &mut production::ForeignProduction::new(self))
+        let mut allocation = None;
+        let admitted = manifest.admit_produced_with_memory(
+            host,
+            &mut production::ForeignProduction::new(self),
+            &mut |bytes| {
+                allocation = Some(
+                    self.reserve(Charge::resident(bytes))
+                        .map_err(|e| format!("foreign.resource.interface: {e}"))?,
+                );
+                Ok(())
+            },
+        )?;
+        let allocation =
+            allocation.expect("successful cold admission reserved its interface memory");
+        allocation
+            .retain_foreign_metadata(admitted.allocation_identity())
+            .map_err(|e| e.to_string())?;
+        Ok(admitted)
     }
     /// Provider-only interface production uses the existing shared account,
     /// before the neutral contract allocates its new binding page or digest.

@@ -586,6 +586,93 @@ impl ManualManifest {
         host: &HostAuthority,
         output: &mut dyn PageProduction,
     ) -> Result<AdmittedForeign, String> {
+        self.admit_produced_with_memory(host, output, &mut |_| Ok(()))
+    }
+    /// Cold interface production with the WHOLE working/resident set
+    /// admitted BEFORE any of it allocates (PLAN-938): one conservative
+    /// bound covers the canonical manifest clone + facts re-parse, the
+    /// physical plan model, the expanded declarations model and digest map,
+    /// the four required pages with their Arc headers, and the binding
+    /// page/digest. The host holds the ticket across production and retains
+    /// it on the admitted environment's allocation identity.
+    pub fn admit_produced_with_memory(
+        self,
+        host: &HostAuthority,
+        output: &mut dyn PageProduction,
+        memory: &mut dyn FnMut(usize) -> Result<(), String>,
+    ) -> Result<AdmittedForeign, String> {
+        memory(self.cold_interface_memory_bound()?)?;
+        self.admit_produced_inner(host, output)
+    }
+    fn cold_interface_memory_bound(&self) -> Result<usize, String> {
+        // Zero-allocation derivation: every component is either an exact
+        // pre-computed wire size (counting serializer, declaration page
+        // preflight) or a conservative per-element bound of the models the
+        // stages below materialize.
+        let wire = crate::codec::json_size(self, crate::codec::MAX_CODEC_BYTES)
+            .map_err(|e| format!("foreign.budget: manual manifest: {e}"))?;
+        let declaration_page = projected_page_size(self)?;
+        // The canonical stage clones the manifest, renders its canonical
+        // wire once, and re-parses the facts model: each pass stays within
+        // the wire's scale, plus Vec/String-header slack.
+        let canonical = wire
+            .saturating_mul(3)
+            .saturating_add(std::mem::size_of::<ManualManifest>())
+            .saturating_add(64 << 10);
+        // The physical plan model (per-function symbol + physical param
+        // vecs) and its page encode.
+        let functions = self.facts.functions.len();
+        let plan = functions
+            .saturating_mul(std::mem::size_of::<crate::plan::PhysFn>() + 512)
+            .saturating_add(16 << 10);
+        // The expanded declarations model and digest map: every declaration
+        // clones the manifest-level strings and the WHOLE capability list,
+        // keeps its filtered effects, embeds its symbol in the logical name,
+        // and adds one BTreeMap node with a cloned name and 64-hex digest.
+        let caps: usize = self.facts.capabilities.iter().map(|c| c.len() + 24).sum();
+        let per_decl_base = std::mem::size_of::<SourceDecl>()
+            .saturating_add(self.provider.len() + 24)
+            .saturating_add(self.facts.logical.len() + 24)
+            .saturating_add(self.facts.content_version.len() + 24)
+            .saturating_add(self.review_id.len() + 24)
+            .saturating_add(self.header_digest.len() + 24)
+            .saturating_add(self.physical_table_digest.len() + 24)
+            .saturating_add(caps)
+            .saturating_add(216);
+        let mut declarations =
+            24usize.saturating_add(per_decl_base.saturating_mul(self.declarations.len()));
+        for d in &self.declarations {
+            declarations = declarations
+                .saturating_add(d.source_name.len() + 24)
+                .saturating_add(d.symbol.len().saturating_mul(2) + 24)
+                .saturating_add(d.context_symbol.as_ref().map_or(0, |s| s.len() + 24));
+            for e in &self.facts.effects {
+                if !e.starts_with("pure:") || e.strip_prefix("pure:") == Some(d.symbol.as_str()) {
+                    declarations = declarations.saturating_add(e.len() + 24);
+                }
+            }
+        }
+        // The four produced pages stay resident with their Arc/Vec headers,
+        // and the admitted wrapper owns its own Arc set.
+        let pages = wire
+            .saturating_add(plan)
+            .saturating_add(declaration_page)
+            .saturating_add(8 << 10)
+            .saturating_add(4 * 40)
+            .saturating_add(2 << 10);
+        [canonical, plan, declarations, pages]
+            .into_iter()
+            .try_fold(0usize, |total, n| {
+                total.checked_add(n).ok_or_else(|| {
+                    "foreign.resource.interface-size: cold interface bound overflow".to_string()
+                })
+            })
+    }
+    fn admit_produced_inner(
+        self,
+        host: &HostAuthority,
+        output: &mut dyn PageProduction,
+    ) -> Result<AdmittedForeign, String> {
         let logical = Arc::new(self.canonical_bytes_produced(output)?);
         let contract_digest = crate::blake3_hex(&logical);
         qualify_host(&self, &contract_digest, host)?;
