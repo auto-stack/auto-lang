@@ -539,6 +539,26 @@ stage: goal | plan_id: PLAN-941 | plan_revision:r1 | round:14 | from:work | to:w
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r1 | round:15 | from:work | to:work | status:executing | outcome:needs_fix | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:d88359466a855153ca2d464913cedf6a6e7db4e4 | next:work941（D958全部关闭；完整目标和原阈值保持）
 
+### 2026-11-06 CT独立参考/双端认证接入与全组合当前工具刷新（goal第16轮）
+
+941施工提交 **f0ef7b36fd88113091af53f3563cec4619b99688**，代码树clean。958清理已完成，不再待用户；本轮实际推进T01..05，941仍executing **0/15**，原AC/预算/实验规模与完整目标不缩。
+
+- 新增CT七源**14份独立Rust/C参考**和12字段TSV，固定SHA=`4fa162f7fe6722f540fb9c90a45fd89ed13b7a938d2ebc852c303ed8733dda69`。原sum42/callee-body43/bool/meta-fields2/meta-fields3/choose-instance42/child-ct-chain40独立oracle为42/43/**7**/42/43/42/40；meta与instances能力分别绑定，不把Bool原程序出口误成1。参考只用本语言的简单算术/条件/静态数组，不依赖目标emitter、runtime或源解析器。登记execution仍UNOBSERVED；root第六具名合同cte_reference不冒执行。24个提交文件工作字节=Git blob核对，记录在scope/d958-current-certifications/committed-input-audit.json。
+- 新有限CT认证reader先核固定reference合同，再核每源两target恰好14集合、case/source/ref/current worker/profile/caps/toolchain与原4进程终态，接到原504 Q4 target slot。Rust manifest严格绑定`auto.source.scalar-i32.draft`及scalar-i32-draft；原scalar无cap和text/具名trap分支保持。能力必须实际请求/证书/独立合同一致；child PASS或两腿相等不能替代手算oracle。CT值认证不认领CT缓存/hit/restore/ARCH；daily的完整准入也未由cert自动填绿。
+- 首次在D958手工构建worker上完成CT14+text20+首例2认证，均真实actual/reference编译运行。随后全组合如实拒绝旧AV worker SHA，未仅更新旧证据hash。冻结 **cargo t infra-ace-m1-arch case-ace-m1-q4-941 case-ace-unified-source-929 case-ace-ca-d-scalar-937 case-ace-m1-legacy-941 case-ac-av case-ace-m1-typed-native-891 case-ace-source-cte-936 --out <scope>/d958-current-certifications/frozen-consumer-gate**：8组**200/200**（治理131+Case69），gate=true，115.0840698s；results SHA=`1d66f7f6f174d98d3e3e19113dd9dee1cc5363031f010b05167f4559317f2b94`。治理131执行3096.8865ms；7 Case依次4/11/6/4/18/12/14，原选择不缩；生产Rust源码本轮零改，不额外跑全ACE/全仓。
+- 固定入口按既有参数重建worker，a2x最终SHA=`a83a46c946f80ceb681f6bbdfad934b71b59db813500aae58977922c0a7e78f2`，与先前手工构建不同。**构建全部结束后**再次实际捕获CT14+text20+首例2，共36认证、72编译+72运行原终态，并每target先现场daily冻结actual fileset、identity冻结编译器；108个原worker调用。最终材料唯一在scope/**d958-final-worker-certifications/**，旧工具证据保为历史，未混用。后续Case重放工具hash实际仍相同。7份原identity-inventory /2与parent-inventory亦由当前auto-case重新导出，严格读取无Debug解析/推测。
+- 首次200门未开启AUTO_CASE_WIRE_EVIDENCE，Case报告绿但无原通信帧，全组合按`required original exchange missing`拒；未据父PASS填证据。仅为补缺开启既有开关重放7个受影响Case组，**69/69**、94.6862898s（包括准备），原始wire/terminal/artifact-copy完整；scope/d958-current-certifications/frozen-consumer-raw-gate/results.json SHA=`c8acc9a1598030e0410f6631ff33093abac967634e5523f48d895b445d8ea261`。未重跑已有效131控制。最终所有父Case非PASS行扫描为空，原required旧格仍14/313，299未观测/38旧认证差异不填绿。
+- **当前完整只读preview实际成功**：新CT原AV/native14值+CT14 cert+text20 cert+首链20、原旧typed/native/ABI/query/syntax及登记/预算/ARCH一起读取；Popen禁用，无隐式工具启动。registered886中**82 PASS/0 FAIL/804 UNOBSERVED**，required universe仍unclosed、can_claim_expanded_m1=false。共享预留当前36,698,919/峰值**49,139,156 bytes <48MiB=50,331,648**，没有抬帽/重置峰值；实际单独Job计量1121.6977ms、peak process27,492,352 bytes、peak Job28,733,440 bytes（private<128MiB），报告147,993 bytes，SHA=`385237585a403ee9e1a54cd12e124fa1362d57200615b6d393f1bb8048cebd23`，路径scope/d958-final-worker-certifications/metered-preview.stdout；计量和stderr原件同目录。这是当前全组合读取证据，不是完整M1通过。
+- **当前CT原raw反控56项**：14合法完整reader PASS，去CT cap/独立值改错28 REFUSED；actual/reference原run帧同时改相同错值，14对原独立oracle均FAIL。后14明确仅4phase oracle层反控，不冒整证书重hash反控；全部标counterfactual_not_execution。结果SHA=`1703c75270a94b591a1657d353d184c1831430a114b6d8365c64705631fb60b3`，路径scope/d958-final-worker-certifications/cte-reader-controls.json。新增永久4控制验证七源oracle/cap、源及两ref字节漂移、缺cap/错版本/重复/异类能力、重复/缺失target集合；总131通过。此前text20 raw对照控制仍是历史工具上的有效控制，不重标当前执行。
+
+保留首次采集脚本错误：首例刷新脚本误读identity字段toolchain（实际certification_toolchain），随后误用emit操作（实际daily-emit，exit2）及C generated.h（实际generated.c）各在本地采集前置拒；修正按原pin真实文件名后仅续缺失C，Rust已完成记录保留，失败unknown-op三原件另存failed-unknown-op-*。新CT reader首次profile字面误写auto.source.scalar.draft，严格读取报stale；按原实际manifest/既有scalar合同改正后14通过。预算source pin只因本轮certreader真实变化刷新1项及预算合同hash，不改16域原帽。上述中间失败不充最终绿，也未作为新producer缺陷/另立功能计划。
+
+剩余：完整Q4所有源/变体的四target daily/cert与旧313required全读；完整registry封闭；SYN/ARCH真实P/M/R/IO、恢复首编辑/坏首编辑/required页、原样本/预算/性能/HMR/lease；938/939的真实交付与ABI机制；全AND反控/最终冻结并集/独立review/Spec/merge/归档/清理。仍无新增用户决定，不将已认领机制交给未立项后继。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r1 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:f0ef7b36fd88113091af53f3563cec4619b99688 | task_ids:T01..05（未关闭） | evidence:14独立CT refs/当前36原认证/56反控/131治理+69Case冻结/实际完整preview预算49,139,156<48MiB | blockers:无新增用户决定；完整原验收继续 | next_responsible_role:work941
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r1 | round:16 | from:work | to:work | status:executing | outcome:needs_fix | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:f0ef7b36fd88113091af53f3563cec4619b99688 | next:work941（当前工具证据已统一；完整原目标保持）
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
