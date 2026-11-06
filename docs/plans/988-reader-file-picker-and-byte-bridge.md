@@ -190,6 +190,8 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 - UI自有门为当前provider相关测试、生成器和真实picker/consumer编译；本次UI HEAD、依赖及相应实现不变时可复用上述证据，修复语言公共ABI后由owner判定必要重构/定向重放。周期`cargo t all`仍由主线到期门独占管理，不转嫁每个finding。
 - 任务对账：T-00/T-01保留完成；T-02/T-03及其受影响关闭证据重开，T-04/T-05未完成，**current_step=2 / total_steps=6**。未改变plan_revision或削减验收范围。实现和原始材料写权现交还work；同树修复提交后只复审受影响finding与必要同类。原始证据删除权仍归最终merge，当前不得清理。
 
+- stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 6 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-988/auto-lang + auto-ui | commit: language65dcdb025c79060a9a80dc9ec99be408eee57970 / UIb0d59400a1c302c040e07c9e4938a1c13b34d937 | review_receipt_commit: 98e52a371bd28814696791c7ebc4ff0d1069b61d | next: work F988-R1-01～03。独立复审反例改变下一行动，属于实质进展；第一次final review失败，进入第一次有界修复，不合入、不标目标完成。检查两树仍干净、基线未漂移，复审进程与构建均已终态；根接回写权。无新增用户决定，原跨仓授权足以修复这些合同内缺口。009完整产品验收保持原范围，未提前完成。
+
 ## 10. 待澄清事项
 
 无待用户范围决定。API具体返回形态/native ID/依赖版本由T-00有界核查；若出现超授权架构改造才另提决定。真实交互证据需要可用桌面，不能以模拟provider替代。
