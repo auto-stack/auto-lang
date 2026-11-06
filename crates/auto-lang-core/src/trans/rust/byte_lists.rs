@@ -6,6 +6,21 @@ impl RustTrans {
     /// Pointer slots distinguish declarations, as in dynamic-JSON tracking.
     pub(super) fn collect_byte_list_slots(block: &Body, params: &[AutoStr]) -> HashSet<usize> {
         type Scopes = Vec<HashMap<AutoStr, Option<usize>>>;
+        #[derive(Default)]
+        struct Constraints {
+            consumed: HashSet<usize>,
+            elements: HashSet<usize>,
+            assignments: Vec<(usize, usize)>,
+        }
+        fn empty_literal(e: &Expr) -> bool {
+            match e {
+                Expr::Array(items) => items.is_empty(),
+                Expr::Call(c) if c.args.args.is_empty() => matches!(c.name.as_ref(),
+                    Expr::Dot(base, method) if method == "clone" && empty_literal(base)),
+                _ => false,
+            }
+        }
+
         fn origin(e: &Expr, scopes: &Scopes) -> Option<usize> {
             match e {
                 Expr::Ident(n) => scopes
@@ -21,7 +36,7 @@ impl RustTrans {
                 _ => None,
             }
         }
-        fn expression(e: &Expr, scopes: &Scopes, out: &mut (HashSet<usize>, HashSet<usize>)) {
+        fn expression(e: &Expr, scopes: &Scopes, out: &mut Constraints) {
             match e {
                 Expr::Call(c) => {
                     let file_write = match c.name.as_ref() {
@@ -38,14 +53,14 @@ impl RustTrans {
                     if file_write && !scopes.iter().any(|s| s.contains_key("File")) {
                         if let Some(Arg::Pos(data)) = c.args.args.get(1) {
                             if let Some(slot) = origin(data, scopes) {
-                                out.0.insert(slot);
+                                out.consumed.insert(slot);
                             }
                         }
                     }
                     if let Expr::Dot(base, method) = c.name.as_ref() {
                         if method == "push" {
                             if let Some(slot) = origin(base, scopes) {
-                                out.1.insert(slot);
+                                out.elements.insert(slot);
                             }
                         }
                     }
@@ -57,11 +72,14 @@ impl RustTrans {
                     }
                 }
                 Expr::Bina(a, op, b) => {
-                    if *op == Op::Asn
-                        && !matches!(b.as_ref(), Expr::Array(items) if items.is_empty())
-                    {
+                    if *op == Op::Asn {
                         if let Some(slot) = origin(a, scopes) {
-                            out.1.insert(slot);
+                            if let Some(rhs) = origin(b, scopes) {
+                                // Equal element types, not evidence of a type.
+                                out.assignments.push((slot, rhs));
+                            } else if !empty_literal(b) {
+                                out.elements.insert(slot);
+                            }
                         }
                     }
                     expression(a, scopes, out);
@@ -80,7 +98,7 @@ impl RustTrans {
                 _ => {}
             }
         }
-        fn body(block: &Body, scopes: &mut Scopes, out: &mut (HashSet<usize>, HashSet<usize>)) {
+        fn body(block: &Body, scopes: &mut Scopes, out: &mut Constraints) {
             scopes.push(HashMap::new());
             for stmt in &block.stmts {
                 match stmt {
@@ -140,8 +158,21 @@ impl RustTrans {
             scopes.pop();
         }
         let mut scopes = vec![params.iter().cloned().map(|n| (n, None)).collect()];
-        let mut out = (HashSet::new(), HashSet::new());
+        let mut out = Constraints::default();
         body(block, &mut scopes, &mut out);
-        out.0.intersection(&out.1).copied().collect()
+        // Assignment equates element types in either direction. Only real
+        // constraints seed propagation; an empty alias chain/cycle stays empty.
+        loop {
+            let before = out.elements.len();
+            for &(lhs, rhs) in &out.assignments {
+                if out.elements.contains(&lhs) || out.elements.contains(&rhs) {
+                    out.elements.extend([lhs, rhs]);
+                }
+            }
+            if out.elements.len() == before {
+                break;
+            }
+        }
+        out.consumed.intersection(&out.elements).copied().collect()
     }
 }

@@ -175,6 +175,16 @@ fn plan988_source_bytes_compile_run_and_preserve_rejected_targets() {
     ));
     cases.push(("replace_array", "var bs = []\nlet first = File.write_bytes(FIRST, bs)\nbs = [0,128,255]\nlet rc = File.write_bytes(PATH, bs)\nprint(rc)".into(), vec![0,128,255], false));
     cases.push(("replace_return", "fn make() []int { return [0,128,255] }\nfn main() { var bs = []\nlet first = File.write_bytes(FIRST, bs)\nbs = make()\nlet rc = File.write_bytes(PATH, bs)\nprint(rc) }".into(), vec![0,128,255], false));
+    for (name, source, expected) in [
+        ("assignment_empty", "var bs = []\nlet blank = []\nbs = blank\nlet rc = File.write_bytes(PATH, bs)\nprint(rc)", vec![]),
+        ("assignment_empty_branch", "var bs = []\nlet blank = []\nif true { bs = blank }\nlet rc = File.write_bytes(PATH, bs)\nprint(rc)", vec![]),
+        ("assignment_empty_chain", "var bs = []\nvar middle = []\nlet blank = []\nbs = middle\nmiddle = blank\nlet first = File.write_bytes(FIRST, bs)\nlet rc = File.write_bytes(PATH, middle)\nprint(rc)", vec![]),
+        ("assignment_empty_cycle", "var bs = []\nvar blank = []\nbs = blank\nblank = bs\nbs = []\nlet first = File.write_bytes(FIRST, bs)\nlet rc = File.write_bytes(PATH, blank)\nprint(rc)", vec![]),
+        ("assignment_filled_alias", "var bs = []\nlet filled = [0,255]\nbs = filled\nlet rc = File.write_bytes(PATH, bs)\nprint(rc)", vec![0,255]),
+        ("assignment_typed_empty", "var bs = []\nvar blank []int = []\nbs = blank\nlet rc = File.write_bytes(PATH, bs)\nprint(rc)", vec![]),
+        ("assignment_then_push", "var bs = []\nlet blank = []\nbs = blank\nlet first = File.write_bytes(FIRST, bs)\nbs.push(255)\nlet rc = File.write_bytes(PATH, bs)\nprint(rc)", vec![255]),
+        ("assignment_propagated_fill", "var bs = []\nvar middle = []\nlet filled = [255]\nbs = middle\nmiddle = filled\nlet first = File.write_bytes(FIRST, bs)\nlet rc = File.write_bytes(PATH, middle)\nprint(rc)", vec![255]),
+    ] { cases.push((name,source.into(),expected,false)); }
     for (name, json, expected, reject) in [
         ("json_list", "[0,127,128,255]", bytes.to_vec(), false),
         ("json_empty", "[]", vec![], false),
