@@ -820,6 +820,26 @@ stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:27 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，RT四优化配置缺口已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:351dae1049e6bf554006a971e73b8b3d30ba71ce | next:work 原剩余完整四端与机制/ARCH
 
+### 2026-11-06 原collections二十源AV/native严格准入（goal第28轮）
+
+前轮RT四release完成为progress。本轮继续原T03/04/05/10/11，唯一941树提交 **ff9ce906227b750ac865e6ed1b84da1e60d9f187**，10文件，树clean；仍executing2/17，未改任何生产编译器/worker/资源语义。
+
+- 从已冻结Q4与composite两合同逐行核对**collections-926原20源**，原19值/1具名ListIndex、profile=collections、caps=[]及源码SHA不改。永久collections-q4.case.ad/.suite.ad保原AV **ac-av/collections-source-run-v1** 与native **ac/mir-native-collections-v1**，不用fixture或通用scalar入口替代。原L06分别预期av.trap.list-index/mn.trap.list-index；原19值含0、3、51、53等不统一改42。
+- 首轮正式40/40功能PASS，但该工具会话未设置AUTO_CASE_WIRE_EVIDENCE，只有父receipt而无原始报文，**不供严格准入**；保scope/collections-q4-source/gate，未事后伪造START/TERMINAL或回填原帧。发现缺采集后显式开原留存开关，源码/oracle/预算不变，第二轮同正式完整40 **40/40 PASS**，48.4272582s，scope/collections-q4-wire-source/gate/results.json SHA=`bda26a90f4edf38ecf10d6e5a2329c846f875341d7de9b54fbeab19497597e7f`。两轮是80实际检查但仅40唯一目标观察，不重复计覆盖。实际worker各由原prepare_tools准备；AV/new native collections worker/实际5.6MB runtime lib与stamp/相应来源共**12依赖**执行前后SHA稳定，原库只64KiB流hash，不整件解码。
+- 正式/2 inventory实际导出，永久portable合同92514B SHA=`6e6095e16b9df77c4918218221eddf47ddfbdbda433dc4599ea5ab048f785086`。第二轮Case-copy对原实际inventory契约逐项核对，inventory/原合同/40选项与各原source/caps/oracle一致；首轮inventory可复用因Case/suite/源/producer字节未变，不把无wire首轮的父PASS用作raw语义证据。
+- 新ace_m1_collections_evidence只读校验独立原表、实际wire START/TERMINAL及当前**mn-collections-worker**独立身份（不套mn-worker SHA）、sourceSHA/FNV/base64、原nonce与重算requesthash、protocol/recipe/version/域、owner/store/work、真实父终态。AV source输出collections=null，明确不伪造fixture ledger；value或具名trap分别对原oracle。native完整manifest/artifact/runtime ABI+build stamp/link identity、实际link/run/原cold counters与spans/worker及allocation计量结构校验；L06必须原**MN-COLL-TRAP code=21 + exit70**，正常值不能凭70冒trap。runtime INDEX=-21原定义已核，不从期望倒造输出。
+- native运行后collection live/bytes/guest/arena/registered/text_metadata为0、allocs=frees、invalid=0；嵌套text前缀按既有严格native_events逐owner配对并与SUMMARY实际allocs/frees及FREESTAT核对。初版reader只认纯MN摘要，按严格边界拒合法嵌入text事件；随后复用既有LIT/FREE等事件语法，仍拒未知/重复/缺释放，不删日志或放宽oracle。**40/40严格语义PASS**；原完整fault、恢复、HMR、资源上限及P90仍UNOBSERVED，不能以一次冷值和清理摘要顶T06..09。
+- **60原始帧反控**：L01/L06/LSTR864/N889-nested-variant/V06五源×两端；10原合法PASS、10双方同错值/错具名trap FAIL、40nonce/未知field/caps/源码且连重hash+FNV REFUSED，scope/collections-q4-wire-source/raw-reader-controls.json SHA=`b2ae61bcb2d095d6b7779633baa5eb3eabecffb8915debedce34902e1d3c1d7c`。反控脚本首有未显式导入私有FNV helper的NameError，仅修临时脚本并重跑，无语言失败/新语言执行覆盖；全部counterfactual_not_execution。
+- 新3永久回归涵盖独立值/具名trap、source与fixture混淆、nonce/caps/源码连重hash、完整native text/collections清理及缺释放/漏字段/坏trap；联原154，`cargo t infra-ace-m1-arch --out <scope>/collections-source-final-controls` **157/157 PASS**、5.4871164s、exit0，results SHA=`3f51efce4f7d142380997dff13a13332eb791d9c601968ff212a694b6d1e5730`。py_compile/diff-check通过。10变更文件提交后等Git blob，scope/collections-source-frozen-preview/committed-input-audit.json；原生产工具/190默认cert+12额外模式未变，严格重读后复用，不为新增Python/Case重复1779压力。
+
+冻结ff9ce90整组合原受管Job/Popen禁用重读：**434PASS/8FAIL/444UNOBSERVED**，登记886/required集合不变，新增collections_q4为第12合同指针；full_registry_closed/system_delivered/expanded claim仍false，原8scalar失败和8native trap缺证据保留。scope/collections-source-frozen-preview/preview.stdout 416357B SHA=`b6968a4225a72f93f7231ede3fc042b6610afae8af661e120214f9ffba303eb1`，8879.3650ms、peak process30310400/Job31551488B；同一LiveBudget reservation32132924/全程peak**47287851<50331648B**。原48MiB聚合/单件4MiB/private128MiB/先预留解码/流hash原帽与不清峰值保持；collections外层保1MiB摘要、每exchange32KiB，原对象真正失去引用后释放。
+
+本轮没有新增Rust/C认证：collections原20源×Rust/C的40目标及其原模式/配置、SQ/实例与完整机制、旧313/38、938939、最终独立review/merge仍待，不提前勾T01..15。无活进程或新增用户决定；下一入口补原collections独立Rust参考及双端真实认证，再继续其余原范围。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:ff9ce906227b750ac865e6ed1b84da1e60d9f187 | task_ids:T03/04/05/10/11（未关闭） | evidence:40原源两端严格PASS/12deps双快照；60反控；157回归；整体434PASS8FAIL444UNOBSERVED | blockers:原完整任务未完，无新增用户决定 | next_responsible_role:work 原collections Rust/C认证/其余四端与机制/ARCH
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:28 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，collections AV/native证据已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:ff9ce906227b750ac865e6ed1b84da1e60d9f187 | next:work 原collections独立reference/认证及剩余完整范围
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
