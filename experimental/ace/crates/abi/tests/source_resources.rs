@@ -245,6 +245,75 @@ mod source_foreign {
     }
 
     #[test]
+    fn c_cache_entry_read_reserves_shared_io_before_loading_the_original_store_frame() {
+        use ace_artifacts::store::{ManagedStore, StoreError};
+        use ace_source_query::resources::Resources;
+        let (root, _old, _environment, _caps) = fixture("c-cache-entry-io");
+        let source = root.join("provider.c");
+        let header = root.join("source_foreign938.h");
+        let object = root.join("provider.obj");
+        let original = std::fs::read_to_string(&source).unwrap();
+        std::fs::write(
+            &source,
+            format!("unsigned char cache_padding[2097152] = {{1}};\n{original}"),
+        )
+        .unwrap();
+        ace_abi::ctool::compile_c(&source, &root, &object).unwrap();
+        let bytes = std::fs::read(&object).unwrap();
+        assert!(
+            bytes.len() > 2 << 20,
+            "compiler did not retain the large data fixture"
+        );
+        let artifacts = [object];
+        let store = ManagedStore::open(&root.with_extension("cache-store")).unwrap();
+        let (_, hit) = ace_abi::cache::produce_c_object(&store, &source, &root, &artifacts, || {
+            Ok((bytes.clone(), vec![header]))
+        })
+        .unwrap();
+        assert!(!hit);
+        let resources = Resources::default();
+        let before = resources.stats();
+        let pressure = resources.reserve(Charge::io((8 << 20) - 1024)).unwrap();
+        let pressured = resources.stats().current;
+        let (rejected, peak) = measured_peak(|| {
+            ace_abi::cache::produce_c_object_with_resources(
+                &store,
+                &source,
+                &root,
+                &artifacts,
+                &resources,
+                || panic!("bounded cache read invoked the producer"),
+            )
+        });
+        assert!(
+            matches!(rejected, Err(StoreError::ResourceExhausted(ref message)) if message.starts_with("C cache entry read:")),
+            "wrong budget classification"
+        );
+        assert!(
+            peak < 64 << 10,
+            "cache entry frame was copied before shared I/O admission: {peak}"
+        );
+        assert_eq!(resources.stats().current, pressured);
+        assert_eq!(resources.stats().rejections, before.rejections + 1);
+        drop(pressure);
+        let (repaired, hit) = ace_abi::cache::produce_c_object_with_resources(
+            &store,
+            &source,
+            &root,
+            &artifacts,
+            &resources,
+            || panic!("I/O repair lost the original cached object"),
+        )
+        .unwrap();
+        assert!(hit);
+        assert_eq!(repaired, bytes);
+        let after = resources.stats();
+        assert_eq!(after.current.resident, before.current.resident);
+        assert_eq!(after.current.io, before.current.io);
+        assert_eq!(after.live_objects, 0);
+    }
+
+    #[test]
     fn c_cache_discovery_ids_refuse_before_copy_and_repair_without_calling_the_producer() {
         use ace_artifacts::store::{ManagedStore, StoreError};
         use ace_source_query::resources::Resources;
@@ -263,6 +332,9 @@ mod source_foreign {
         assert!(!hit);
         assert_eq!(seed, *bytes);
         let resources = Resources::default();
+        // The separate entry-read port now retains its raw page. Populate
+        // that account's ownership-record capacity before isolating ID fees.
+        drop(resources.own_payload(Vec::new()).unwrap());
         let baseline = resources.stats().current;
         let pressure = resources
             .reserve(Charge::index((8 << 20) - baseline.index - 64))

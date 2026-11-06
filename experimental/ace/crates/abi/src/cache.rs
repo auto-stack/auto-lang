@@ -174,6 +174,42 @@ struct CObjectEntry {
     dir_listings: Vec<(String, Vec<String>)>,
 }
 
+enum CObjectEntryBytes {
+    Legacy(Vec<u8>),
+    Managed(std::sync::Arc<Vec<u8>>),
+}
+impl AsRef<[u8]> for CObjectEntryBytes {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            Self::Legacy(bytes) => bytes,
+            Self::Managed(bytes) => bytes,
+        }
+    }
+}
+fn load_c_object_entry(
+    store: &ManagedStore,
+    id: &str,
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<Option<CObjectEntryBytes>, StoreError> {
+    match resources {
+        Some(resources) => resources
+            .load_payload(64 << 20, ChunkKind::Object, |bound| {
+                store.get_artifact_by_id_bounded(id, bound)
+            })
+            .map(|payload| payload.map(CObjectEntryBytes::Managed))
+            .map_err(|e| {
+                if matches!(&e, ace_source_query::resources::ResourceError::Budget(_)) {
+                    StoreError::ResourceExhausted(format!("C cache entry read: {e}"))
+                } else {
+                    StoreError::Internal(format!("C cache entry read: {e}"))
+                }
+            }),
+        None => store.get_artifact_by_id(id).map(|loaded| {
+            loaded.map(|LoadedArtifact { payload, .. }| CObjectEntryBytes::Legacy(payload))
+        }),
+    }
+}
+
 /// Snapshot EVERY file the search tree currently offers (negative
 /// dependencies): a RECURSIVE walk of the directory — C includes may
 /// carry sub-paths (`#include "sub/dep.h"`) and need no extension
@@ -556,8 +592,8 @@ where
             (ids, allocation)
         };
         for id in &ids.0 {
-            if let Some(LoadedArtifact { payload, .. }) = store.get_artifact_by_id(&id)? {
-                let verified = serde_json::from_slice::<CObjectEntry>(&payload)
+            if let Some(payload) = load_c_object_entry(store, id, resources)? {
+                let verified = serde_json::from_slice::<CObjectEntry>(payload.as_ref())
                     .ok()
                     .filter(|e| {
                         // F-797-R4-07 (R14): v4 only — legacy envelopes

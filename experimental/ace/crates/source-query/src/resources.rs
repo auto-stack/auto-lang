@@ -359,7 +359,13 @@ impl Resources {
         }
         let metadata = self.reserve(Charge::io(256))?;
         let mut payload_charge = self.reserve(Charge::io(bound * 2))?;
-        let Some(loaded) = read(bound as u64).map_err(|e| ResourceError::Decode(e.to_string()))?
+        let Some(loaded) = read(bound as u64).map_err(|e| match e {
+            ace_artifacts::store::StoreError::ResourceExhausted(message) => {
+                self.0.lock().expect("resource account").stats.rejections += 1;
+                ResourceError::Budget(message)
+            }
+            other => ResourceError::Decode(other.to_string()),
+        })?
         else {
             return Ok(None);
         };
