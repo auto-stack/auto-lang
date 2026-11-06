@@ -674,6 +674,20 @@ T16保持完成，T17仍在执行，941 r2 **1/17**，无新增用户决定或�
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:20 | from:work | to:work | status:executing1/17 | outcome:needs_fix（T17真实活运行，非新失败） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a8cc58bd368dfcdccecae000a2877086e64718d0 | next:work T17（轮询原session50141/Python35700，当前AV；全部终态后当前身份刷新）
 
+### 2026-11-06 T17原冻结并集AV完成及原日志落点审计（goal第21轮）
+
+继续原session50141，未重启/减载/改忽略。`conditional-941-frozen-union/2/result.json` ace-av **1019PASS、0原排除、not_run=[]**，Job执行428485.4901ms，SHA=`756b99992787c1178e1448b6fb87e1f4f616e48e9c2b09d0b100db78e58206db`。加source383+syntax132，三组实际1534项绿；native仍在原完整运行，不能提前填绿。
+
+native原924闭包负载、collections故障/producer与resources cold-set churn已实际结束；末次活子PID35924为`source_diagnostics_911::performance::mn_sd911_source_v1_four_state_p90_30`，保原30样本四状态/P90，无并发认证/源码修改。同一父Python35700和session50141仍活，最后文字20组尚待执行。原11依赖before快照保持，终态后再逐件核对。
+
+发现原AV `av_source_incremental.rs::report_file`硬编码回写本树docs/reports/plan827，导致tracked `incremental-raw.json`被本次实际30修订覆盖并新增`incremental-raw-1793935380-pid49312.json`；负控日志与HEAD字节相同。已确认原writer49312不在、三文件单链接/无reparse，逐项bytes/SHA/HEAD归属清单在scope/av-827-report-migration/before-migration.json。实际immutable日志15419B SHA=`f7c9a7b6df7026d3cb34b11c6e8c13e4cb6ad78699ae8b3c14ae5879af513ed7`；pointer15447B SHA=`88a25228e6ff4aa4a16b0bb641065388246dcfe8e9ae0d07edf0726d5b2a00bc`，来源明确为本次门禁，不触其他会话WIP。
+
+按统一材料政策，**等原冻结并集终态后**，精确迁移本次新日志/当前pointer副本到同一941scope、核验数量/字节/hash，再恢复tracked pointer原HEAD字节；原已归档827历史报告不改。随后仅将测试输出路由接既有AUTO_PLAN_ARTIFACTS→系统临时目录约定，保持原raw格式/样本/计时窗/P90/语言功能不变，使用既有具名写失败raw负控核实际路径；该项为941 T11/H材料治理，不扩语言修复边界。当前不在冻结门活跑时修改任何源码。raw摘要缺完整114未改身份/全计数等，不能凭此summary代T06完整ARCH证明。
+
+T16完成/T17未关闭，r2 executing1/17；原36cert/组合仅历史身份，后续刷新已准备但未启动。原全部941目标、门槛与T01..15继续，无待用户决定。
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:21 | from:work | to:work | status:executing1/17 | outcome:needs_fix（T17原并集尚活，无新语义失败） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a8cc58bd368dfcdccecae000a2877086e64718d0 | next:work T17（原session50141 native→文字20；终态后精确迁移原日志/输出路由及当前身份认证刷新）
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
