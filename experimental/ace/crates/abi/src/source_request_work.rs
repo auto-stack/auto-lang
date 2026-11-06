@@ -5,13 +5,26 @@ use ace_source_query::{
     work::{Ledger, Phase, Work},
 };
 use serde::{Serialize, Serializer};
-use std::{cell::RefCell, fmt, sync::Arc};
+use std::{
+    cell::RefCell,
+    fmt,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 thread_local! {
-    static CURRENT: RefCell<Option<Ledger>> = const { RefCell::new(None) };
+    static CURRENT: RefCell<Option<RequestWork>> = const { RefCell::new(None) };
+}
+#[derive(Default)]
+struct Disk {
+    // The explicit request has sequential provider/run scopes. Also support
+    // two simultaneously owned scopes without copying either path's bytes.
+    roots: [Option<Arc<PathBuf>>; 2],
+    peak: u64,
 }
 struct Owner {
     ledger: Ledger,
+    disk: Mutex<Disk>,
     _allocation: Reservation,
 }
 #[derive(Clone)]
@@ -36,11 +49,12 @@ impl RequestWork {
             .map_err(|e| e.to_string())?;
         Ok(Self(Arc::new(Owner {
             ledger: Ledger::default(),
+            disk: Mutex::new(Disk::default()),
             _allocation: allocation,
         })))
     }
     pub(crate) fn enter(&self) -> Scope {
-        let previous = CURRENT.with(|slot| slot.replace(Some(self.0.ledger.clone())));
+        let previous = CURRENT.with(|slot| slot.replace(Some(self.clone())));
         Scope {
             previous,
             _owner: self.clone(),
@@ -48,7 +62,7 @@ impl RequestWork {
     }
 }
 pub(crate) struct Scope {
-    previous: Option<Ledger>,
+    previous: Option<RequestWork>,
     _owner: RequestWork,
 }
 impl Drop for Scope {
@@ -71,19 +85,23 @@ pub(crate) fn begin(stage: &'static str, phase: Phase) -> Option<Work> {
             | "reference-run"
             | "tool-input"
     ));
-    CURRENT.with(|slot| slot.borrow().as_ref().map(|l| l.begin("*", stage, phase)))
+    CURRENT.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .map(|l| l.0.ledger.begin("*", stage, phase))
+    })
 }
 pub(crate) fn io(stage: &'static str, read: u64, written: u64) {
     CURRENT.with(|slot| {
         if let Some(l) = slot.borrow().as_ref() {
-            l.io("*", stage, read, written);
+            l.0.ledger.io("*", stage, read, written);
         }
     });
 }
 pub(crate) fn reuse(stage: &'static str) {
     CURRENT.with(|slot| {
         if let Some(l) = slot.borrow().as_ref() {
-            l.reuse("*", stage, 1);
+            l.0.ledger.reuse("*", stage, 1);
         }
     });
 }
@@ -91,6 +109,74 @@ pub(crate) fn complete(work: Option<Work>) {
     if let Some(work) = work {
         work.complete(1);
     }
+}
+
+pub(crate) struct ScratchRegistration {
+    owner: RequestWork,
+    slot: usize,
+}
+impl Drop for ScratchRegistration {
+    fn drop(&mut self) {
+        self.owner
+            .0
+            .disk
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .roots[self.slot] = None;
+    }
+}
+pub(crate) fn register_scratch(path: Arc<PathBuf>) -> Result<Option<ScratchRegistration>, String> {
+    CURRENT.with(|current| {
+        let current = current.borrow();
+        let Some(owner) = current.as_ref() else {
+            return Ok(None);
+        };
+        let mut disk = owner
+            .0
+            .disk
+            .lock()
+            .map_err(|_| "scratch observation lock")?;
+        let slot = disk
+            .roots
+            .iter()
+            .position(Option::is_none)
+            .ok_or("scratch observation slots exhausted")?;
+        disk.roots[slot] = Some(path);
+        Ok(Some(ScratchRegistration {
+            owner: owner.clone(),
+            slot,
+        }))
+    })
+}
+pub(crate) fn observe_scratch() -> Result<(), &'static str> {
+    CURRENT.with(|current| {
+        let current = current.borrow();
+        let Some(owner) = current.as_ref() else {
+            return Ok(());
+        };
+        let mut disk = owner
+            .0
+            .disk
+            .lock()
+            .map_err(|_| "scratch observation lock")?;
+        let mut bytes = 0u64;
+        for root in disk.roots.iter().flatten() {
+            bytes = bytes
+                .checked_add(crate::source_tool_scratch::disk_bytes(root)?)
+                .ok_or("scratch size overflow")?;
+        }
+        disk.peak = disk.peak.max(bytes);
+        Ok(())
+    })
+}
+pub(crate) fn scratch_peak() -> u64 {
+    CURRENT.with(|current| {
+        current
+            .borrow()
+            .as_ref()
+            .map(|o| o.0.disk.lock().unwrap_or_else(|e| e.into_inner()).peak)
+            .unwrap_or(0)
+    })
 }
 
 #[cfg(test)]

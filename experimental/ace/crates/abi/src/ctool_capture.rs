@@ -22,12 +22,19 @@ pub(crate) fn run(
     caps: CaptureCaps,
     resources: Option<&Resources>,
 ) -> Result<Captured, CaptureError> {
+    let observation_error = std::cell::Cell::new(None);
+    let observe = || {
+        crate::source_request_work::observe_scratch().map_err(|message| {
+            observation_error.set(Some(message));
+            std::io::Error::other(message)
+        })
+    };
     let work = crate::source_request_work::begin(
         "tool-process",
         ace_source_query::work::Phase::Production,
     );
     let Some(resources) = resources else {
-        return ace_core::link::run_deadlined_captured(cmd, deadline, caps)
+        return ace_core::link::run_deadlined_captured_observed(cmd, deadline, caps, observe)
             .map(|value| Captured {
                 value,
                 _allocation: None,
@@ -41,7 +48,10 @@ pub(crate) fn run(
                 crate::source_request_work::complete(work);
                 captured
             })
-            .map_err(CaptureError::Subprocess);
+            .map_err(|error| match observation_error.get() {
+                Some(message) => CaptureError::Resource(message.into()),
+                None => CaptureError::Subprocess(error),
+            });
     };
     let bytes = caps
         .stdout_max
@@ -59,8 +69,13 @@ pub(crate) fn run(
     stderr
         .try_reserve_exact(caps.stderr_max)
         .map_err(|e| CaptureError::Resource(format!("C stderr allocation: {e}")))?;
-    let value = ace_core::link::run_deadlined_captured_into(cmd, deadline, caps, stdout, stderr)
-        .map_err(CaptureError::Subprocess)?;
+    let value = ace_core::link::run_deadlined_captured_into_observed(
+        cmd, deadline, caps, stdout, stderr, observe,
+    )
+    .map_err(|error| match observation_error.get() {
+        Some(message) => CaptureError::Resource(message.into()),
+        None => CaptureError::Subprocess(error),
+    })?;
     crate::source_request_work::io(
         "tool-process",
         (value.stdout.len() + value.stderr.len()) as u64,

@@ -2804,6 +2804,15 @@ fn source_worker_query(
     assert!(response.get("error").is_none(), "{response}");
     let report = &response["ok"]["source_import"];
     assert_eq!(report["schema"], "abi.source-import-report/2");
+    if report["actual_exit"].is_number() {
+        assert!(
+            response["ok"]["steps"][0]["meter"]["scratch_peak_disk_bytes"]
+                .as_u64()
+                .unwrap()
+                > 0,
+            "executed certification lost its actual owned tool disk samples"
+        );
+    }
     for field in ["source_work", "host_work"] {
         let rows = report[field].as_array().expect("required actual work rows");
         let mut previous = None;

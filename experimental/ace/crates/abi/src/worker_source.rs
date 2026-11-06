@@ -145,7 +145,7 @@ fn step(
             wall_ns: started.elapsed().as_nanos(),
         }],
         meter: MeterOut {
-            scratch_peak_disk_bytes: 0,
+            scratch_peak_disk_bytes: host_work::scratch_peak(),
             hot_bytes: store.space().total,
             rejections: if matches!(outcome, "diags" | "resource") {
                 1

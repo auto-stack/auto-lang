@@ -394,6 +394,23 @@ pub fn run_deadlined_captured(
     run_captured_inner(cmd, deadline, caps, job::JobGuard::for_child, None)
 }
 
+pub fn run_deadlined_captured_observed(
+    cmd: &mut Command,
+    deadline: Duration,
+    caps: CaptureCaps,
+    mut observe: impl FnMut() -> std::io::Result<()>,
+) -> Result<CapturedRun, SubprocError> {
+    run_captured_inner_buffers(
+        cmd,
+        deadline,
+        caps,
+        job::JobGuard::for_child,
+        None,
+        None,
+        &mut observe,
+    )
+}
+
 /// The same executor with caller-owned, empty capture buffers. Finite caps
 /// must fit their capacities before the process starts, so readers never
 /// allocate stream storage. The caller can reserve this memory before creating
@@ -404,6 +421,21 @@ pub fn run_deadlined_captured_into(
     caps: CaptureCaps,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
+) -> Result<CapturedRun, SubprocError> {
+    run_deadlined_captured_into_observed(cmd, deadline, caps, stdout, stderr, || Ok(()))
+}
+
+/// The same caller-owned capture and containment contract, with synchronous
+/// observations before start, at each existing wait-loop poll and at exit.
+/// This measures sampled state; it cannot establish peaks between polls.
+/// An observation error terminates and reaps the contained tree and readers.
+pub fn run_deadlined_captured_into_observed(
+    cmd: &mut Command,
+    deadline: Duration,
+    caps: CaptureCaps,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    mut observe: impl FnMut() -> std::io::Result<()>,
 ) -> Result<CapturedRun, SubprocError> {
     if !stdout.is_empty()
         || !stderr.is_empty()
@@ -424,6 +456,7 @@ pub fn run_deadlined_captured_into(
         job::JobGuard::for_child,
         None,
         Some((stdout, stderr)),
+        &mut observe,
     )
 }
 
@@ -473,7 +506,15 @@ fn run_captured_inner(
     job_factory: fn(&std::process::Child) -> Option<job::JobGuard>,
     stdin_bytes: Option<Vec<u8>>,
 ) -> Result<CapturedRun, SubprocError> {
-    run_captured_inner_buffers(cmd, deadline, caps, job_factory, stdin_bytes, None)
+    run_captured_inner_buffers(
+        cmd,
+        deadline,
+        caps,
+        job_factory,
+        stdin_bytes,
+        None,
+        &mut || Ok(()),
+    )
 }
 
 fn run_captured_inner_buffers(
@@ -483,7 +524,13 @@ fn run_captured_inner_buffers(
     job_factory: fn(&std::process::Child) -> Option<job::JobGuard>,
     stdin_bytes: Option<Vec<u8>>,
     buffers: Option<(Vec<u8>, Vec<u8>)>,
+    observe: &mut dyn FnMut() -> std::io::Result<()>,
 ) -> Result<CapturedRun, SubprocError> {
+    fn observation(observe: &mut dyn FnMut() -> std::io::Result<()>) -> std::io::Result<()> {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(observe))
+            .unwrap_or_else(|_| Err(std::io::Error::other("subprocess observer panicked")))
+    }
+    observation(observe).map_err(SubprocError::Wait)?;
     // Controlled start (R3-QA-01): the suspended child cannot run, and
     // therefore cannot spawn descendants, until it is inside the job.
     #[cfg(windows)]
@@ -664,6 +711,12 @@ fn run_captured_inner_buffers(
     };
 
     loop {
+        if let Err(error) = observation(observe) {
+            let _ = child.kill();
+            let _ = child.wait();
+            reap(subtree, out_reader, err_reader, stdin_writer);
+            return Err(SubprocError::Wait(error));
+        }
         match child.try_wait() {
             Ok(Some(status)) => {
                 let (out, err) = (
@@ -677,6 +730,7 @@ fn run_captured_inner_buffers(
                         let _ = out_reader.join();
                         let _ = err_reader.join();
                         drop(subtree);
+                        observation(observe).map_err(SubprocError::Wait)?;
                         if out.len() > caps.stdout_max {
                             return Err(SubprocError::OutputCapExceeded {
                                 stream: "stdout",
@@ -1200,6 +1254,60 @@ pub fn run_exe(exe_path: &Path) -> Result<i32, Diagnostic> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(windows)]
+    fn captured_observer_failure_or_panic_reaps_real_child_and_open_file() {
+        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests").join(format!(
+            "capture-observer-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        for panic in [false, true] {
+            let held = root.join(format!("held-{panic}.bin"));
+            let mut cmd = Command::new("python");
+            cmd.args(["-c", "import sys,time; f=open(sys.argv[1],'wb'); f.write(b'live'); f.flush(); time.sleep(30)"]).arg(&held);
+            let mut observed_live_child = false;
+            let result = run_deadlined_captured_into_observed(
+                &mut cmd,
+                Duration::from_secs(5),
+                CaptureCaps {
+                    stdout_max: 64,
+                    stderr_max: 64,
+                },
+                Vec::with_capacity(64),
+                Vec::with_capacity(64),
+                || {
+                    if held.is_file() {
+                        observed_live_child = true;
+                        assert!(!panic, "injected observer unwind with live child");
+                        return Err(std::io::Error::other("injected observer refusal"));
+                    }
+                    Ok(())
+                },
+            );
+            assert!(
+                observed_live_child,
+                "never reached the live observation seam"
+            );
+            let Err(SubprocError::Wait(error)) = result else {
+                panic!("wrong observer outcome: {result:?}")
+            };
+            assert!(error.to_string().contains(if panic {
+                "observer panicked"
+            } else {
+                "observer refusal"
+            }));
+            // Python's retained file does not permit deletion while alive.
+            // Reclaimed readers also prove inherited pipes were closed.
+            std::fs::remove_file(&held).unwrap();
+        }
+        std::fs::remove_dir(root).unwrap();
+    }
 
     #[test]
     #[cfg(windows)]

@@ -8,7 +8,10 @@ use std::{
     io::{Read, Write},
     os::windows::fs::{MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use windows_sys::Win32::Storage::FileSystem::{
@@ -217,12 +220,63 @@ fn remove_owned(path: &Path, expected: &[u8], held: Option<Pin>) -> Result<(), S
     std::fs::remove_dir(path).map_err(|e| e.to_string())
 }
 
+/// Actual logical file lengths in the finite owned shape. This observes no
+/// other request and never follows a reparse point. Directory metadata itself
+/// and filesystem allocation granularity are not payload bytes.
+pub(crate) fn disk_bytes(path: &Path) -> Result<u64, &'static str> {
+    let _root = Pin::open(path).map_err(|_| "scratch observation root boundary")?;
+    fn files(path: &Path) -> Result<u64, &'static str> {
+        let mut bytes = 0u64;
+        for entry in std::fs::read_dir(path).map_err(|_| "scratch observation directory")? {
+            let entry = entry.map_err(|_| "scratch observation entry")?;
+            let metadata = match std::fs::symlink_metadata(entry.path()) {
+                Ok(metadata) => metadata,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(_) => return Err("scratch observation metadata"),
+            };
+            if !metadata.is_file() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+            {
+                return Err("scratch observation file boundary");
+            }
+            bytes = bytes
+                .checked_add(metadata.len())
+                .ok_or("scratch size overflow")?;
+        }
+        Ok(bytes)
+    }
+    let mut bytes = 0u64;
+    for entry in std::fs::read_dir(path).map_err(|_| "scratch observation directory")? {
+        let entry = entry.map_err(|_| "scratch observation entry")?;
+        let metadata = match std::fs::symlink_metadata(entry.path()) {
+            Ok(metadata) => metadata,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => return Err("scratch observation metadata"),
+        };
+        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return Err("scratch observation reparse boundary");
+        }
+        let length = if metadata.is_file() {
+            metadata.len()
+        } else if metadata.is_dir() && entry.file_name() == "reference" {
+            let child = entry.path();
+            let _pin = Pin::open(&child).map_err(|_| "scratch observation reference boundary")?;
+            files(&child)?
+        } else {
+            return Err("scratch observation directory boundary");
+        };
+        bytes = bytes.checked_add(length).ok_or("scratch size overflow")?;
+    }
+    Ok(bytes)
+}
+
 pub(crate) struct ToolScratch {
-    path: PathBuf,
+    path: Arc<PathBuf>,
     owner: Vec<u8>,
     _guard: FileGuard,
     _pins: [Pin; 3],
     child_pin: Option<Pin>,
+    // Unregister shared path bytes before returning their index reservation.
+    _observation: Option<crate::source_request_work::ScratchRegistration>,
     _index: Reservation,
     _io: Reservation,
     finished: bool,
@@ -338,12 +392,21 @@ impl ToolScratch {
         let owner = format!("{namespace_owner}child={name}\n").into_bytes();
         initialize(&path, &owner)?;
         drop(turn);
+        let path = Arc::new(path);
+        let observation = match crate::source_request_work::register_scratch(path.clone()) {
+            Ok(observation) => observation,
+            Err(error) => {
+                remove_owned(&path, &owner, Some(child_pin))?;
+                return Err(error);
+            }
+        };
         Ok(Some(Self {
             path,
             owner,
             _guard: guard,
             _pins: [root_pin, logs_pin, namespace_pin],
             child_pin: Some(child_pin),
+            _observation: observation,
             _index: index,
             _io: io,
             finished: false,
@@ -353,8 +416,10 @@ impl ToolScratch {
         &self.path
     }
     pub fn finish(mut self) -> Result<(), String> {
+        let observed = crate::source_request_work::observe_scratch().map_err(String::from);
         self.finished = true;
-        remove_owned(&self.path, &self.owner, self.child_pin.take())
+        remove_owned(&self.path, &self.owner, self.child_pin.take())?;
+        observed
     }
 }
 impl Drop for ToolScratch {
@@ -368,6 +433,92 @@ impl Drop for ToolScratch {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn request_disk_samples_capture_live_then_deleted_files_sum_owned_scopes_and_reap_timeout() {
+        use crate::source_request_work as observed;
+        use ace_core::link::CaptureCaps;
+        use std::process::Command;
+        let store = store("sampled-peak");
+        let resources = Resources::default();
+        let baseline = resources.stats().current;
+        let request = observed::RequestWork::new(&resources).unwrap();
+        let scope = request.enter();
+        let first = ToolScratch::create(&store, &resources).unwrap();
+        let second = ToolScratch::create(&store, &resources).unwrap();
+        let reference = second.path().join("reference");
+        std::fs::create_dir(&reference).unwrap();
+        std::fs::write(reference.join("still-owned.obj"), [1; 1024]).unwrap();
+        observed::observe_scratch().unwrap();
+        let initial = disk_bytes(first.path()).unwrap() + disk_bytes(second.path()).unwrap();
+        assert_eq!(observed::scratch_peak(), initial);
+        let transient = first.path().join("transient.obj");
+        let caps = CaptureCaps {
+            stdout_max: 64,
+            stderr_max: 64,
+        };
+        let mut command = Command::new("python");
+        command.args(["-c", "import pathlib,sys,time; p=pathlib.Path(sys.argv[1]); p.write_bytes(b'x'*65536); time.sleep(.25); p.unlink()"])
+            .arg(&transient);
+        let run =
+            crate::ctool_capture::run(&mut command, Duration::from_secs(5), caps, Some(&resources))
+                .unwrap();
+        assert_eq!(run.value.exit_code, Some(0));
+        assert!(!transient.exists());
+        assert_eq!(
+            disk_bytes(first.path()).unwrap() + disk_bytes(second.path()).unwrap(),
+            initial
+        );
+        assert!(
+            observed::scratch_peak() >= initial + 65536,
+            "a terminal-only scan lost the live tool output"
+        );
+        drop(run);
+        first.finish().unwrap();
+        observed::observe_scratch().unwrap();
+        assert!(observed::scratch_peak() >= initial + 65536);
+        // A directory outside the finite shape is a refusal before spawning,
+        // then ordinary ownership cleanup remains usable after repair.
+        let unknown = second.path().join("unknown");
+        std::fs::create_dir(&unknown).unwrap();
+        let marker = second.path().join("should-not-start");
+        let mut forbidden = Command::new("python");
+        forbidden
+            .args([
+                "-c",
+                "import pathlib,sys; pathlib.Path(sys.argv[1]).write_text('started')",
+            ])
+            .arg(&marker);
+        assert!(matches!(
+            crate::ctool_capture::run(
+                &mut forbidden,
+                Duration::from_secs(5),
+                caps,
+                Some(&resources)
+            ),
+            Err(crate::ctool_capture::CaptureError::Resource(_))
+        ));
+        assert!(!marker.exists());
+        std::fs::remove_dir(unknown).unwrap();
+        // The child retains an open file across its sleep. A successful delete
+        // after the deadline proves containment closed that real handle.
+        let held = second.path().join("held.obj");
+        let mut timeout = Command::new("python");
+        timeout.args(["-c", "import sys,time; f=open(sys.argv[1],'wb'); f.write(b'z'*131072); f.flush(); time.sleep(30)"]).arg(&held);
+        assert!(matches!(
+            crate::ctool_capture::run(&mut timeout, Duration::from_secs(1), caps, Some(&resources)),
+            Err(crate::ctool_capture::CaptureError::Subprocess(
+                ace_core::link::SubprocError::Deadline
+            ))
+        ));
+        assert_eq!(std::fs::metadata(&held).unwrap().len(), 131072);
+        assert!(observed::scratch_peak() >= 131072);
+        std::fs::remove_file(held).unwrap();
+        second.finish().unwrap();
+        drop(scope);
+        drop(request);
+        assert_eq!(resources.stats().current, baseline);
+    }
 
     fn store(tag: &str) -> ManagedStore {
         let stamp = SystemTime::now()
