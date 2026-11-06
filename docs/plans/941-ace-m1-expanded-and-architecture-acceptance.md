@@ -1131,6 +1131,26 @@ stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:41 | from:work | to:work | status:executing3/19 | outcome:needs_fix（当前认证执行中，T19未闭） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:8c074c17c404b15a1d042a8bf3a77420b958997a | next:work T19续现存session17398，禁止重启
 
+### 2026-11-06 当前认证全执行与正式准备身份切换（goal第42轮，在途）
+
+前轮新增缓存/门禁/14优化是progress；本轮先核实session17398/PID46428确实存活，继续原批不重启。该批随后真实terminal **exit0**：scope/f94105-layout-correct-certifications完成**292默认cert+292 daily**（text20、CT14、scalar122、RT32、collections40、query18、supplement8、original-data36、first2）。原缺失M01/R01/R02 Rust三个完整actual+独立reference均PASS。早期原strict在worker身份A=`521d0821…`仍当前时验证text20、CT14、scalar122与原8优化、RT32与原4优化均complete，raw保留；**这些只是当时有效证据，当前已STALE，不能据此勾T19**。完整采集历史scope/f94105-round42-refresh-history.json SHA=ac50030401f443949ba6b9fe9c370247d92ef53be6efda0a34d1f2fc9ec03bff。
+
+按A身份另实跑6原source-query/instances Rust/C负入口，均真实拒绝且原strict保持6 UNOBSERVED（仍缺typed诊断/source/operation，不能解析rendered文本冒PASS），scope/f94105-query-negative-frontdoors/strict-observations.json；其worker身份现同样过期。
+
+随后实际原正式`cargo t case-ace-source-query-934 case-ace-source-instances-935 --out <scope>/f94105-query-instances-source/gate` **14+12 PASS**、exit0、15.603245s，results SHA=68982c13df5268cdf3e20ac9133da054b820805cbb61d8f2f81e1eb28f226587。但该正式入口prepare_tools又真实编译/链接a2x-rust/worker（工具记录原`cargo build --locked --offline -p ace-a2x-worker --target-dir <own ACEtarget> --release --bin a2x-worker`，3.9436556s），canonical worker变为 **B=`7b0be842feabdd55a7217ae783ae4af8d9a445b60e7807e5cf1bda67d5b4bb7e`**；AV/native等工具hash仍原值。未证明这次重链接的更深原因，不能推测为字节等价后冒用A身份。完整reader首项text明确`STALE artifact content: .../a2x-worker.exe`，因此A批292、A负入口及以A为before的query快照都保持历史，**不改旧producer SHA/原command/前快照、不绕reader**。这是本包准备顺序失当；已告知用户，未以292父PASS掩盖当前身份不合。
+
+纠正顺序：先以正式工具准备后的B冻结13依赖及原26 inventory，scope/f94105-query-stable-source/dependencies-before.json；再在完全同一冻结生产/测试8c074c17c树运行**完整并集** `cargo t ace-a2x infra-ace-m1-arch case-ace-source-query-934 case-ace-source-instances-935 --out <scope>/f94105-stable-final-union`。目前明确live **exec session52277 / nextest PID18668**，未终止/未重启；下轮先poll本handle，终态后执行bind-f94105-query-stable-source.py核所有before/after（含B）一致并真实strict26格。若B变化需先查明稳定准备面，不能盲目再采集。原14优化debugworker/conformance绑定保留，按实际hash再核，生产/测试代码本轮零改。
+
+已准备而**尚未执行**的后续：refresh-f94105-stable-certifications.py明确要求B身份，独立新scope/f94105-stable-certifications，保持292原目标/原布局/原flags/原360/120/30s与1MiB帽；正式所有工具准备与B稳定确认之后才启动，采集之后不再运行会改worker的准备入口。read-f94105-stable-certifications.py、capture-f94105-query-stable-negative-frontdoors.py、prepare-f94105-stable-composed-preview.py均已做语法核查，当前没有第二批cert后台进程。全严格联读/组合/T19/F05关闭继续pending，original whole611P12F383U仍仅旧基线，不冒当前完成。
+
+独立T04证据推进：查明T06 block span end62而非63的来源，**旧legacy parser与现CST投影都把.to(str)表达式止于type-word末尾，排除右括号**；adapter按首终结语句之前的live statement join，text verifier borrow-escape取此HIR block span。独立源字节let起19、typeword末尾62，四责任文件SHA及行节选在scope/t06-independent-span-contract-investigation.json SHA=cc2a1dd7818408ea290635663262512cf066b78701aee0efe37c54755c87f667。此轮只调查，reader的T06 UNOBSERVED/具名gap未改；后续须永久独立anchor和错span反控完成后才能关闭，不能凭本次raw值调expected。原其他red/unknown、全部分母和预算不动。
+
+当前8c074c17c404b15a1d042a8bf3a77420b958997a clean；主检出没有code WIP，本轮只写941计划簿记与统一scope临时材料。current_step仍3/19，无新用户决定/磁盘阻塞；继续现存正式并集，不进入review/merge。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:8c074c17c404b15a1d042a8bf3a77420b958997a | task_ids:T19进行中,T04 span合同调查 | evidence:292真实采集完成但A→B后STALE；26正式门通过；B冻结完整并集运行中 | blockers:无新增用户决定；需稳定B身份后重认证 | next_responsible_role:work poll session52277，不启动重复并集；确认B稳定再新292批
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:42 | from:work | to:work | status:executing3/19 | outcome:needs_fix（认证身份刷新顺序已纠正，当前并集仍运行） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:8c074c17c404b15a1d042a8bf3a77420b958997a | next:work T19续session52277，后B严格认证
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
