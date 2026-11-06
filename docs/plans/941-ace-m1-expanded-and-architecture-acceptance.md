@@ -883,6 +883,30 @@ stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:30 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，SQ/实例AV/native证据已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:8f5e748fa6fe804cc6e98c48d8c1c17fed85a363 | next:work 原SQ/实例Rust/C与完整范围
 
+### 2026-11-06 SQ/实例Rust-C默认认证与负例前门实测（goal第31轮）
+
+前轮24 AV/native观察为progress。本轮继续T04/05/08/10/11，唯一941树提交 **2841619ff261ec660d3cc5530915af0f2cfde708**，27文件（含18独立reference），树clean；仍executing2/17，未改生产编译器/worker/语义。
+
+- 新**9正源×Rust/C 18手平移reference**，不读actual生成源码，保leaf调用/参数、命名实参求值次序、mark_a后mark_b、choose真假两个具体类型、模板交换、expected-type具体i32、跨模板wrap→choose与同实例递归。Rust用独立泛型/具体函数，C用手写typed int/bool函数和显式求值局部量；两流binary保证trace字节。新query-reference-contracts.tsv SHA=`469274867db24637eaa1b6b8a1eb086ec0514b59fdb06d0335ed9b5e9c90ba6b`，逐源/原caps/值/marks及参考SHA固定；原3非法源无伪造reference。
+- 原worker真实**18默认cert+18对应daily+18编译器身份**完成，actual/reference各真实编译运行，共**36compile+36run**，18全部PASS；完整四文件在cert前冻结。scope/query-certifications/frozen-bindings.json SHA=`b78fef950f6357c94d82a28b112e6cfe1212d7c335f58947640f5767089791e0`。初次临时脚本继承了RT的C头名a2x_c_rt_runtime.h，9条C daily虽成功却在收集文件时因实际scalar头为a2x_c_runtime.h而停，均未认证/未编译目标，不冒语言缺陷。保9失败attempt/日志，修的仅是临时采集脚本头名；复用已通过且source/ref/worker不变的9 Rust，只在新attempt补9 C，全部通过，未覆盖旧失败材料。
+- 新query_certification只在原scalar证书域明确允许原query/instances caps及独立marks，原scalar/text/CT/record/collections守卫不变。所有实际工具/完整文件/manifest与profile/HIR域/原nonce、toolchain flags、默认cert与独立daily/源与参考SHA、四phase原终态/独立oracle均严格核对；trace-ab7为stderr mark_a\nmark_b\n，双方同反序也FAIL。36条编译流actual/reference Rust/C均零warning，scope/query-certifications/compiler-warning-audit.json。原230→**248默认cert/daily**，12额外Rust模式仍另计。
+- 原935 choose_instances_935.rs直接Rust消费者使用`-O`，choose42/choose0两源码的原额外优化义务不能被默认cert消除；合同明确这两条rust_release_runs=1/flags=[-O]并核原producer源SHA。因此18默认证书全过，登记目标仍**16PASS+2UNOBSERVED**，required_extra_rust_release_runs=2、certification_complete=false。其余7正源Rust及9 C按原默认配置闭合；没有把编译默认mode谎报优化或漏原模式。
+- 3负源×Rust/C **6个真实发射前门**另执行原daily-emit/daily-emit-c。均exit2/空stderr、原Job2（launcher+worker）且输出目录未产生，无rustc/cl/target编译执行。source/profile/caps/entry/完整argv/nonce/owner、原worker当前SHA、独立sourceSHA、原meter终态与raw字节严格读回，scope/query-negative-frontdoors/bindings.json SHA=`f5a366327106ff44849b2193f091068a7ede43051d93231cd5726cdfed4bc93d`。实际Rust detail是frontend diagnostics:...、C是a2x.compile:...，能看到原source.type-mismatch/type-mismatch文字。
+
+**GAP-941-A2X-DIAG-01**：原A2X失败API仅{status:error,detail:string}，不提供typed诊断stage/code/source/operation身份；本reader不从rendered detail解析语义权威，6负例仍**UNOBSERVED**，不因exit2或消息“看起来正确”升级PASS。原admit_command默认仍只准exit0；只读负例入口显式expected_exit=2且有限终态0/2、同样核Job/全raw/源与producer，不给cert成功路径开非零绕路。负例outdir必须不存在（通过已验证command正规文件的父目录与固定rust/c名检查，lexists也拒悬挂链接）；初版用file-only EvidenceScope.path查不存在目录而被拒，已按该API真实边界修正，未创建假目录/弱化路径检查。此项是具名观测缺口，未擅自修原worker或冒充已归档能力缺陷修复。
+
+- **30原认证帧反控**：trace-ab7/choose42/choose0/expected-type/recursion×两端；10合法PASS、10双方同错值或反marks FAIL、10重hash未知response REFUSED，scope/query-cert-raw-controls/results.json SHA=`6359e3882fd475ae22b912df97194ec3c7b3583ecf6bfae5b023e69bb113c33e`。另**24负例响应反控**：6原untyped均UNOBSERVED、18加field/冒ok/空detail REFUSED，scope/query-negative-frontdoors/raw-reader-controls.json SHA=`f95e887f646ec49f9e406906ac4b86c4b6be2c4b4389d2d099d246d49d25cbd4`。全部counterfactual_not_execution，不充语言覆盖。
+- 新2永久回归保exit2永不能冒成功command、受控refusal读取也不供cert verdict、未知终态/布尔拒绝及rendered错误绝不充typed PASS；联原162，`cargo t infra-ace-m1-arch --out <scope>/query-cert-final-controls` **164/164 PASS**、6.5553390s、exit0，results SHA=`f061c52eda40a3df18e4ef0e7b93f9db5e89635f572e3c677b7418abf4850696`。py_compile/diff-check通过。冻结后27变更文件等Git blob，scope/query-cert-frozen-preview/committed-input-audit.json；生产源/配置/工具未变的旧230cert/12模式/各source实际逐项重读复用，不为Python提交重复原1779压力。
+- 原预算16政策/全部数字逐项等HEAD；26源只刷新cert_evidence一pin，其余25不动。新预算合同SHA=`5f51c01257dfa28e2aa82a0b28645229f52bfed029f2ea75f94c4bb90d69ec7d`。新增query_reference为第16合同指针，不改886登记/required集合或原NA。
+
+冻结2841619全组合原受管Job/Popen禁用重读：**514PASS/8FAIL/364UNOBSERVED**，full_registry_closed/system_delivered/expanded claim仍false；原8FAIL/native8无具名trap/legacy313与38/ARCH与938939/健康边界继续保。scope/query-cert-frozen-preview/preview.stdout 483219B SHA=`30f9cbd993972c2acd57c9d1859c18382ff350045c4d4a7a65fa2b8f013f2587`，9089.0422ms、peak process29921280/Job31166464B；同一LiveBudget reservation35478245/全程peak**47773019<50331648B**，原48MiB/4MiB单件/private128MiB/先预留解码/64KiB流hash/不清峰值保持。新正证据域1MiB、负观察128KiB及逐项有界摘要，不靠另开预算拼总门。
+
+原T01..15未闭；下一入口补choose原两Rust优化配置，并继续原SQ/实例/CT/collections资源、事实权威/恢复/原规模与ARCH/legacy机制，最终独立review/merge仍待。六负例typed观测缺口具名保留，不从错消息/跨target复制证书解决。无活进程或新增用户决定，授权持续。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:2841619ff261ec660d3cc5530915af0f2cfde708 | task_ids:T04/05/08/10/11（未关闭） | evidence:18默认cert+daily/36compile36run，原2优化待；6真实负入口typed缺口；54反控；164回归；整体514PASS8FAIL364UNOBSERVED | blockers:原完整范围与具名观测/健康基线未闭，无新增用户决定 | next_responsible_role:work 原choose两优化及完整机制/ARCH
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:31 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，SQ/实例默认认证已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:2841619ff261ec660d3cc5530915af0f2cfde708 | next:work 原choose两优化及其余完整范围
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
