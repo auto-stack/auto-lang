@@ -655,6 +655,149 @@ mod source_foreign {
     }
 
     #[test]
+    fn c_cache_dependency_metadata_precharges_its_array_and_retains_paths_through_encoding() {
+        use ace_artifacts::store::{ManagedStore, StoreError};
+        use ace_source_query::resources::Resources;
+        let (root, bytes, _, _) = fixture("c-cache-dependency-metadata");
+        let source = root.join("provider.c");
+        let header = root.join("source_foreign938.h");
+        let deps = vec![header; 4096];
+        let artifacts = [root.join("provider.obj")];
+        let legacy = ManagedStore::open(&root.with_extension("legacy-store")).unwrap();
+        ace_abi::cache::produce_c_object(&legacy, &source, &root, &artifacts, || {
+            Ok((bytes.as_ref().clone(), deps.clone()))
+        })
+        .unwrap();
+        let (id, key): (String, String) = legacy
+            .db()
+            .query_row("SELECT artifact_id,key_canonical FROM artifacts", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        let wire = legacy.get_artifact_by_id(&id).unwrap().unwrap().payload;
+        let resources = Resources::default();
+        resources
+            .adopt(&bytes, Charge::resident(bytes.capacity() + 40))
+            .unwrap();
+        let baseline = resources.stats().current;
+        let store = ManagedStore::open(&root.with_extension("resource-store")).unwrap();
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - baseline.index - (64 << 10)))
+            .unwrap();
+        let cold_deps = deps.clone();
+        let (rejected, large) = measured_at(128 << 10, || {
+            ace_abi::cache::produce_c_object_with_resources(
+                &store,
+                &source,
+                &root,
+                &artifacts,
+                &resources,
+                || Ok((bytes.clone(), cold_deps)),
+            )
+        });
+        assert!(
+            matches!(rejected, Err(StoreError::ResourceExhausted(ref message)) if message.starts_with("C cache metadata:")),
+            "{rejected:?}"
+        );
+        assert_eq!(large, 0, "allocated dependency index before admission");
+        assert_eq!(resources.stats().current.index, (8 << 20) - (64 << 10));
+        assert_eq!(
+            store
+                .db()
+                .query_row("SELECT count(*) FROM artifacts", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        drop(pressure);
+        let layout = deps.len() * std::mem::size_of::<(String, String)>();
+        let (result, hits, admitted) =
+            with_charge_probe(layout, &resources, Charge::index(layout), || {
+                ace_abi::cache::produce_c_object_with_resources(
+                    &store,
+                    &source,
+                    &root,
+                    &artifacts,
+                    &resources,
+                    || Ok((bytes.clone(), deps.clone())),
+                )
+            });
+        let (output, hit) = result.unwrap();
+        assert!(!hit);
+        assert_eq!(hits, 1, "did not observe dependency array allocation");
+        assert!(
+            admitted,
+            "dependency array allocated before its reservation"
+        );
+        assert_eq!(output.as_slice(), bytes.as_slice());
+        drop(output);
+        let (id, actual_key): (String, String) = store
+            .db()
+            .query_row("SELECT artifact_id,key_canonical FROM artifacts", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(actual_key, key);
+        assert_eq!(
+            store.get_artifact_by_id(&id).unwrap().unwrap().payload,
+            wire
+        );
+        let other = ManagedStore::open(&root.with_extension("ownership-store")).unwrap();
+        let full_fee = layout + deps.iter().map(|p| p.as_os_str().len() + 64).sum::<usize>();
+        let (result, hits, admitted) =
+            with_charge_probe(wire.len(), &resources, Charge::index(full_fee), || {
+                ace_abi::cache::produce_c_object_with_resources(
+                    &other,
+                    &source,
+                    &root,
+                    &artifacts,
+                    &resources,
+                    || Ok((bytes.clone(), deps.clone())),
+                )
+            });
+        drop(result.unwrap());
+        assert_eq!(hits, 1, "did not observe final metadata consumer");
+        assert!(admitted, "dependency paths lost their fee before encoding");
+        let failed = ManagedStore::open(&root.with_extension("failed-store")).unwrap();
+        let missing = root.join("missing-dependency");
+        let rejected = ace_abi::cache::produce_c_object_with_resources(
+            &failed,
+            &source,
+            &root,
+            &artifacts,
+            &resources,
+            || Ok((bytes.clone(), vec![missing.clone()])),
+        );
+        assert!(
+            matches!(rejected, Err(StoreError::Internal(ref message)) if message.starts_with("dep "))
+        );
+        assert_eq!(
+            failed
+                .db()
+                .query_row("SELECT count(*) FROM artifacts", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(resources.stats().current.index, baseline.index);
+        std::fs::write(&missing, b"repaired conservative dependency").unwrap();
+        let (repaired, hit) = ace_abi::cache::produce_c_object_with_resources(
+            &failed,
+            &source,
+            &root,
+            &artifacts,
+            &resources,
+            || Ok((bytes.clone(), vec![missing])),
+        )
+        .unwrap();
+        assert!(!hit);
+        assert_eq!(repaired.as_slice(), bytes.as_slice());
+        drop(repaired);
+        assert_eq!(resources.stats().current.index, baseline.index);
+        drop(bytes);
+        assert_eq!(resources.stats().current.resident, 0);
+        assert_eq!(resources.stats().current.io, 0);
+    }
+
+    #[test]
     fn c_cache_entry_read_reserves_shared_io_before_loading_the_original_store_frame() {
         use ace_artifacts::store::StoreError;
         use ace_source_query::resources::Resources;

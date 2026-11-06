@@ -469,6 +469,45 @@ fn decode_c_object_entry(
     }
 }
 
+fn reserve_c_metadata(
+    resources: Option<&ace_source_query::resources::Resources>,
+    bytes: usize,
+) -> Result<Option<ace_source_query::resources::Reservation>, StoreError> {
+    resources
+        .map(|r| r.reserve(ace_source_query::resources::Charge::index(bytes)))
+        .transpose()
+        .map_err(|e| StoreError::ResourceExhausted(format!("C cache metadata: {e}")))
+}
+fn resize_c_metadata(
+    allocation: &mut Option<ace_source_query::resources::Reservation>,
+    bytes: usize,
+) -> Result<(), StoreError> {
+    if let Some(allocation) = allocation {
+        allocation
+            .resize(ace_source_query::resources::Charge::index(bytes))
+            .map_err(|e| StoreError::ResourceExhausted(format!("C cache metadata: {e}")))?;
+    }
+    Ok(())
+}
+fn metadata_size(parts: &[usize]) -> Result<usize, StoreError> {
+    parts
+        .iter()
+        .try_fold(0usize, |n, p| n.checked_add(*p))
+        .ok_or_else(|| StoreError::ResourceExhausted("C cache metadata size overflow".into()))
+}
+fn metadata_array<T>(count: usize) -> Result<usize, StoreError> {
+    count
+        .checked_mul(std::mem::size_of::<T>())
+        .ok_or_else(|| StoreError::ResourceExhausted("C cache metadata array overflow".into()))
+}
+fn metadata_vec<T>(count: usize) -> Result<Vec<T>, StoreError> {
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(count)
+        .map_err(|e| StoreError::ResourceExhausted(format!("C cache metadata allocation: {e}")))?;
+    Ok(values)
+}
+
 /// Snapshot EVERY file the search tree currently offers (negative
 /// dependencies): a RECURSIVE walk of the directory — C includes may
 /// carry sub-paths (`#include "sub/dep.h"`) and need no extension
@@ -1088,10 +1127,26 @@ where
             obj.len()
         )));
     }
-    let mut hashed: Vec<(String, String)> = Vec::with_capacity(deps.len());
+    let hashed_array = metadata_array::<(String, String)>(deps.len())?;
+    let mut hashed_allocation = reserve_c_metadata(resources, hashed_array)?;
+    let mut hashed: Vec<(String, String)> = metadata_vec(deps.len())?;
+    let mut hashed_text = 0usize;
     for p in &deps {
-        let ps = p.display().to_string();
-        hashed.push((ps.clone(), hash_dep(&ps).map_err(StoreError::Internal)?));
+        // Windows OsStr uses WTF-8; replacing an unpaired surrogate for
+        // display uses the same three bytes. Pre-size the String to that
+        // encoded length so formatting never grows an unreserved buffer.
+        let capacity = p.as_os_str().len();
+        resize_c_metadata(
+            &mut hashed_allocation,
+            metadata_size(&[hashed_array, hashed_text, capacity, 64])?,
+        )?;
+        let mut ps = String::with_capacity(capacity);
+        use std::fmt::Write as _;
+        write!(&mut ps, "{}", p.display())
+            .map_err(|e| StoreError::Internal(format!("dep path formatting: {e}")))?;
+        let digest = hash_dep(&ps).map_err(StoreError::Internal)?;
+        hashed_text = metadata_size(&[hashed_text, ps.capacity(), digest.capacity()])?;
+        hashed.push((ps, digest));
     }
     // F-797-R10-01: the GENERATION identity — everything that decides
     // whether a stored envelope APPLIES (observed closure + source dir +
@@ -1154,7 +1209,12 @@ where
     // Each listing's output fee moves into one ticket without a release /
     // re-acquire gap, and outlives the complete borrowed encoding operation.
     let mut listing_allocation: Option<ace_source_query::resources::Reservation> = None;
-    let mut dir_listings = Vec::new();
+    let listing_metadata = dirs.iter().try_fold(
+        metadata_array::<(String, Vec<String>)>(dirs.len())?,
+        |n, dir| metadata_size(&[n, dir.len()]),
+    )?;
+    let _listing_metadata_allocation = reserve_c_metadata(resources, listing_metadata)?;
+    let mut dir_listings = metadata_vec(dirs.len())?;
     for d in &dirs {
         let listing = search_listing(std::path::Path::new(d), &artifact_paths, resources)?;
         if let Some(next) = listing.allocation {
