@@ -733,6 +733,116 @@ mod source_foreign {
     }
 
     #[test]
+    fn c_generation_key_reserves_its_array_and_all_owned_fields_until_consumed() {
+        use ace_source_query::resources::Resources;
+        let resources = Resources::default();
+        let baseline = resources.stats().current;
+        let source = "provider.c|938";
+        let generation = "b7".repeat(32);
+        let target = ace_abi::layout::TARGET;
+        let toolchain = format!("cl:{}", "x".repeat(2 << 20));
+        let inputs = resources
+            .reserve(Charge::index(
+                source.len() + generation.len() + target.len() + toolchain.len(),
+            ))
+            .unwrap();
+        let input_baseline = resources.stats().current;
+        let original = ace_artifacts::identity::QueryKey::new(
+            &ace_abi::cache::LAYER_OBJECT_V01,
+            vec![
+                ("kind".into(), "cl-compile".into()),
+                ("source".into(), source.into()),
+                ("target".into(), target.into()),
+                ("toolchain".into(), toolchain.clone()),
+                ("generation".into(), generation.clone()),
+            ],
+        );
+        let array = 5 * std::mem::size_of::<(String, String)>();
+        let owned = array
+            + original
+                .components
+                .iter()
+                .map(|(k, v)| k.len() + v.len())
+                .sum::<usize>();
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - input_baseline.index - owned + 1))
+            .unwrap();
+        let pressured = resources.stats().current;
+        let (denied, copies) = measured_at(toolchain.len(), || {
+            cache_paths::c_object_key(
+                &ace_abi::cache::LAYER_OBJECT_V01,
+                source,
+                &generation,
+                target,
+                &toolchain,
+                Some(&resources),
+            )
+        });
+        assert!(matches!(
+            denied,
+            Err(ace_artifacts::store::StoreError::ResourceExhausted(_))
+        ));
+        assert_eq!(copies, 0, "key copied a value before budget refusal");
+        assert_eq!(resources.stats().current, pressured);
+        drop(pressure);
+        for layout in [array, toolchain.len()] {
+            let (key, hits, admitted) = with_charge_probe(
+                layout,
+                &resources,
+                Charge::index(input_baseline.index + owned),
+                || {
+                    cache_paths::c_object_key(
+                        &ace_abi::cache::LAYER_OBJECT_V01,
+                        source,
+                        &generation,
+                        target,
+                        &toolchain,
+                        Some(&resources),
+                    )
+                },
+            );
+            let key = key.unwrap();
+            assert_eq!(hits, 1);
+            assert!(admitted, "key storage allocated before reservation");
+            assert!(
+                key.value == original,
+                "key fields or canonical order changed"
+            );
+            assert_eq!(key.value.hash(), original.hash());
+            assert!(
+                key.value.canonical() == original.canonical(),
+                "canonical key text changed"
+            );
+            let retained = key.value.components.capacity()
+                * std::mem::size_of::<(String, String)>()
+                + key
+                    .value
+                    .components
+                    .iter()
+                    .map(|(k, v)| k.capacity() + v.capacity())
+                    .sum::<usize>();
+            assert_eq!(retained, owned);
+            assert_eq!(
+                resources.stats().current.index,
+                input_baseline.index + retained
+            );
+            // The shared hash consumer must see the retained key's full fee.
+            let (_, hashes, retained) = with_charge_probe(
+                64,
+                &resources,
+                Charge::index(input_baseline.index + owned),
+                || key.value.hash(),
+            );
+            assert_eq!(hashes, 1);
+            assert!(retained);
+            drop(key);
+            assert_eq!(resources.stats().current, input_baseline);
+        }
+        drop(inputs);
+        assert_eq!(resources.stats().current, baseline);
+    }
+
+    #[test]
     fn compiler_output_text_borrows_valid_bytes_and_precharges_exact_lossy_storage() {
         use ace_source_query::resources::Resources;
         use std::borrow::Cow;

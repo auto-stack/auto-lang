@@ -1123,6 +1123,14 @@ where
         dir_listings: &dir_listings,
     };
     let generation_hash = c_object_generation(&entry, &artifact_paths, resources)?;
+    let query = cache_paths::c_object_key(
+        &LAYER_OBJECT_V01,
+        &source_identity.value,
+        &generation_hash.value,
+        &target,
+        &toolchain.value,
+        resources,
+    )?;
     let (payload, encoded_allocation) = if let Some(resources) = resources {
         let size = ace_foreign_contract::codec::json_size(&entry, 64 << 20).map_err(|e| {
             StoreError::ResourceExhausted(format!("C cache entry encode size: {e}"))
@@ -1159,9 +1167,13 @@ where
             None,
         )
     };
+    let cache_paths::CQueryKey {
+        value: key,
+        _allocation: key_allocation,
+    } = query;
     let stored = store.put_artifact(PutRequest {
         layer: LAYER_OBJECT_V01.id,
-        key: c_object_key(&source_identity.value, &generation_hash.value),
+        key,
         kind: ChunkKind::Object,
         payload,
         edges: vec![],
@@ -1170,6 +1182,7 @@ where
     // PutRequest and the store's framed buffer are gone on every outcome.
     // Release their fee before a conflict re-discovers the canonical object.
     drop(encoded_allocation);
+    drop(key_allocation);
     match stored {
         Ok(_) => Ok((obj, false)),
         Err(StoreError::Conflict { .. }) => {
@@ -1201,19 +1214,18 @@ where
 /// change hashes to a different key and never conflicts with the old
 /// generation.
 pub fn c_object_key(source_identity: &str, generation_hash: &str) -> QueryKey {
-    QueryKey::new(
+    let toolchain =
+        crate::ctool::toolchain_fingerprint().unwrap_or_else(|_| "ctool-unresolved".into());
+    cache_paths::c_object_key(
         &LAYER_OBJECT_V01,
-        vec![
-            ("kind".into(), "cl-compile".into()),
-            ("source".into(), source_identity.into()),
-            ("target".into(), crate::layout::TARGET.into()),
-            (
-                "toolchain".into(),
-                crate::ctool::toolchain_fingerprint().unwrap_or_else(|_| "ctool-unresolved".into()),
-            ),
-            ("generation".into(), generation_hash.into()),
-        ],
+        source_identity,
+        generation_hash,
+        crate::layout::TARGET,
+        &toolchain,
+        None,
     )
+    .expect("C object key allocation")
+    .value
 }
 
 /// Produce-through-cache: on miss, run `produce`, persist, return

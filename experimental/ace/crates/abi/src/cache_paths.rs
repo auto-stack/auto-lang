@@ -45,6 +45,48 @@ pub(crate) struct CPathText {
     pub(crate) _allocation: Option<ace_source_query::resources::Reservation>,
 }
 
+pub(crate) struct CQueryKey {
+    pub(crate) value: ace_artifacts::identity::QueryKey,
+    pub(crate) _allocation: Option<ace_source_query::resources::Reservation>,
+}
+
+/// The C generation's fixed key fields, in their original canonical order.
+/// Borrow the already-qualified toolchain instead of formatting it again.
+pub(crate) fn c_object_key(
+    layer: &ace_artifacts::schema::LayerSpec,
+    source: &str,
+    generation: &str,
+    target: &str,
+    toolchain: &str,
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<CQueryKey, StoreError> {
+    let fields = [
+        ("generation", generation),
+        ("kind", "cl-compile"),
+        ("source", source),
+        ("target", target),
+        ("toolchain", toolchain),
+    ];
+    let bytes = fields.iter().try_fold(
+        metadata_array::<(String, String)>(fields.len())?,
+        |n, (key, value)| metadata_size(&[n, key.len(), value.len()]),
+    )?;
+    let allocation = reserve_c_metadata(resources, bytes)?;
+    let mut components = metadata_vec(fields.len())?;
+    for (key, value) in fields {
+        components.push((key.to_owned(), value.to_owned()));
+    }
+    Ok(CQueryKey {
+        // The five names above are already sorted, so no sort workspace is
+        // needed after admission. QueryKey's hash/text algorithms stay shared.
+        value: ace_artifacts::identity::QueryKey {
+            layer: layer.id,
+            components,
+        },
+        _allocation: allocation,
+    })
+}
+
 /// Lexical relative path FROM a directory TO a file (leading `..`
 /// segments allowed; same-drive only). The common-prefix walk borrows both
 /// inputs, and only its final relative spelling requires owned storage.
