@@ -14,3 +14,6 @@ ace-semantics-contract = { path = "../semantics-contract" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# PLAN-936（T-13 F-1 修复）：CT 需求的 Rust/C 产品车道接线（a2x-store →
+# source-cte 单向；服务永不反依赖 a2x）。
+ace-source-cte = { path = "../source-cte" }

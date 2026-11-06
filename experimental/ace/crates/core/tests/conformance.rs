@@ -53,6 +53,8 @@ mod decl_events_929_t07;
 mod retirement_gate_929;
 #[path = "cases/source_cst_927.rs"]
 mod source_cst_927;
+#[path = "cases/source_ct_936.rs"]
+mod source_ct_936;
 #[path = "cases/source_instances_935.rs"]
 mod source_instances_935;
 #[path = "cases/source_restore_929_t02.rs"]

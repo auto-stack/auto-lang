@@ -54,3 +54,20 @@
   （准备/序列化→IPC→新鲜性/执行或命中→冻结/consumer/HIR verify→父侧准入）单墙钟
   P90≤2000ms（正式 release、规定负载 115 函数 ≥256KiB）；raw 逐样本绑定当轮 hash/
   值/PID；阈值 0/坏样本/注入 spike/退化反控必红。
+
+
+## 源 CT 冻结层（PLAN-936，SD-03）
+
+- 新执行身份 `ac936/ct-exec/v1`/producer `plan936/source-cte`/层 `S936`：无
+  source 级指纹——执行键=callee logical+签名/体版本+**传递闭包版本**+canonical
+  实参（或替换后表达式 canonical 哈希）+engine/lane；整模块 hash、调用点
+  span、provenance revision 不入键。UseBinding（owner/site/期望）随请求走，
+  不入缓存页。
+- **checked-child 传递版本**：内层 CT 值翻转（或模板体编辑）改变替换后实例体
+  的结构版本→外层键变（源码 hash-only 缓存必误 hit）；迟到/预算耗尽=资源态
+  零发布；sink 写路径准入拒绝自家 codec 会拒的页（外来 schema/producer）。
+- 恢复：跨上下文同键 hit 零 AV（R 窗计量 probes/bytes/decode 真实读计数）；
+  缺页=真 miss 真执行（不假装恢复）；首坏 CT 受控拒后修复编辑真执行真发布。
+- 共享预算：单根累计 10s、单 AV min(2s,remaining) 不重置、查询环按 (owner,span)
+  节点身份具名拒、普通递归非环（AV fuel）；envelope 页界 512KiB、单串界 64KiB
+  （完整闭包 canonical）。原 817 层/预算/生命周期规则不变。

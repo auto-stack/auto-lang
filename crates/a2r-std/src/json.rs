@@ -1,6 +1,7 @@
 /// JSON module - JSON encoding, decoding, and querying
 /// Transpiled from auto-lang/stdlib/auto/json.at + json.rs.at
 use serde_json::Value;
+pub type JsonValue = Value;
 
 // ═══════════════════════════════════════════════════════════
 // Encoding

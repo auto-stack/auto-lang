@@ -1,0 +1,8 @@
+# PLAN-936 T-11 — SQ-C ordinary-source real-AV CT query family (closed-form
+# values on AV/native through the CT product lane; frozen constants).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-source-cte-936", include: [
+  "source-cte-936.case.ad",
+] }
+```

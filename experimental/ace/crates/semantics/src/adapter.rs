@@ -538,6 +538,14 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
             operand: Box::new(project_expr(&operand)),
         },
         // -- outside the limited inference surface: explicit unsupported --
+        // PLAN-936（T-08）：`#{ e }` 对推理透明——其类型就是 inner 的类型
+        //（服务/回灌是 CT 车道的事；事实面只管类型）。
+        core_ast::ExprKind::HashExpr { expr } => {
+            // 对推理透明：投影 inner 的结构（hash 的类型=inner 的类型）；
+            // InputExpr 携 Drop，逐段克隆而非移动。
+            let inner = project_expr(expr);
+            inner.kind.clone()
+        }
         core_ast::ExprKind::StrLit(_) => InputExprKind::Unsupported {
             what: "str-literal",
         },

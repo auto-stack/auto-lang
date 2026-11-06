@@ -64,6 +64,11 @@ pub(crate) fn analyze_capture_uses(
         by_name: &mut BTreeMap<String, usize>,
     ) {
         match &expr.kind {
+            // PLAN-936（T-04）：CT 需求原子——inner 递归（scalar-ct 面无
+            // 闭包，本臂仅为穷尽性与未来面安全）。
+            ExprKind::HashExpr { expr: inner } => {
+                visit_expr(inner, outer_locals, scopes, uses, by_name)
+            }
             ExprKind::Var(id) => record(id, false, outer_locals, scopes, uses, by_name),
             ExprKind::Call { callee, args } => {
                 record(callee, false, outer_locals, scopes, uses, by_name);
@@ -275,6 +280,7 @@ pub(crate) fn scan_shared_capture_cells(
         shared: &mut BTreeSet<usize>,
     ) {
         match &expr.kind {
+            ExprKind::HashExpr { expr: inner } => visit_expr(inner, scopes, shared),
             ExprKind::Call { args, .. } => {
                 for arg in args {
                     visit_arg(arg, scopes, shared);

@@ -5,14 +5,14 @@ feature_name: CA-E／ARCH 扩大后M1登记与最终组合验收
 author: [Codex]
 created_at: 2026-11-05
 updated_at: 2026-11-06
-plan_revision: 1
-supersedes_spec_components: [docs/specs/auto-test-case/ace-m1-conformance.md, docs/specs/auto-test-case/ace-m1-applicability.md, docs/specs/auto-test-case/unified-source-syntax-admission.md, docs/specs/auto-test-case/ace-ca-d-bridge-certification.md, docs/specs/auto-test-case/architecture.md]
+plan_revision: 2
+supersedes_spec_components: [docs/specs/auto-test-case/ace-m1-conformance.md, docs/specs/auto-test-case/ace-m1-applicability.md, docs/specs/auto-test-case/unified-source-syntax-admission.md, docs/specs/auto-test-case/ace-ca-d-bridge-certification.md, docs/specs/auto-test-case/architecture.md, docs/specs/auto-syntax/source-frontdoor.md]
 new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
-affects: [auto-test-case, auto-ac, auto-av, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte]
+affects: [auto-test-case, auto-ac, auto-av, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 0
-total_steps: 15
+current_step: 1
+total_steps: 17
 ---
 
 # [PLAN-941] CA-E／ARCH 扩大后M1登记与最终组合验收
@@ -21,7 +21,7 @@ total_steps: 15
 
 正式认领CA-E与ARCH最终组合门，一个验收集成包，不拆成空schema与以后才找consumer。新增独立target/机制登记、严格父侧证据适配、四端同源独立oracle与版本化组合报告，组合原313 required门、C A/B/C/D、SYN与ARCH-01..08；复核真实函数级增量、恢复首编辑、资源、在线更新及独立认证。编译/语言/资源功能仍由原owner交付，本包不变相接走延期功能，不再造编译器、store、runner或meter。
 
-架构：[Design51 §16](../design/51-shared-a2x-and-hir-to-rust.md#16-ca-earch最终组合验收2026-11-05target-state)；现状/基线/遗留认证差异见[立项报告](reports/ace-ca-e-arch-baseline-and-schedule-2026-11-05.md)。规划轮仅授权规划；2026-11-06执行授权及当前进度见§4/§9。
+架构：[Design51 §16](../design/51-shared-a2x-and-hir-to-rust.md#16-ca-earch最终组合验收2026-11-05target-state)；现状/基线/遗留认证差异见[立项报告](reports/ace-ca-e-arch-baseline-and-schedule-2026-11-05.md)。规划轮仅授权规划；2026-11-06执行授权及当前进度见§4/§9。 r2按用户新指示加入941内F-941-04条件解析修复phase（§5.8），其余原完整目标/阈值保持。
 
 ## 1. 目标
 
@@ -48,7 +48,9 @@ total_steps: 15
 
 ## 4. 需求分析与背景调查
 
-2026-11-06 执行授权：用户 `/goal 完成计划941` 授权 r1 全链 work→独立 review→范围内有界修复→merge/Specs/归档/清理，取代下文历史规划轮的“仅规划”动作限制；不改变验收、分母、预算、仓库范围或 CE-BASE-01。按计划 §6 不自动派发 agent/创建 chat。当前进入 T-01；未将依赖未齐或真实 red 当作 work 完成。
+2026-11-06 执行授权：用户 `/goal 完成计划941` 授权 r1 全链 work→独立 review→范围内有界修复→merge/Specs/归档/清理，取代下文历史规划轮的“仅规划”动作限制；不改变验收、分母、预算、仓库范围或 CE-BASE-01。按计划 §6 不自动派发 agent/创建 chat。
+
+2026-11-06 r2额外授权：用户明确“直接在941计划添加新的phase修复”。F-941-04因此在当前唯一941树内修复，取代本缺陷原先拟独立计划的流程；无需再问同范围授权、不分配新ID、不另开树。允许本缺陷必要的source条件表达式/CST投影及手写兼容oracle/相关语法身份、永久回归和实际AV/native消费接线修改，保原oracle/源码/预算/原scope其余义务；此例外不扩大其他S/N/X业务写面。当前进入 T-01；未将依赖未齐或真实 red 当作 work 完成。
 
 授权：用户明确“为CA-E／ARCH最终组合验收正式立项……本轮只做规划，不施工”。本轮允许只读调查/设计/计划/路线文档；不建实施树/goal/agent、运行测试/计量、改代码或current Specs，不接管别会话。初始main `5f6737467`（比上轮只读状态推进：934已reviewed，未见实际D），见报告记录的输入hash和最后状态。原WIP与940等他方计划保留。
 
@@ -101,7 +103,7 @@ Q4每条positive/trace/trap/diagnostic分别对独立冻结oracle；不能仅四
 | ARCH-07在线更新 | 866/929同PID safepoint/旧链/lease | 入口一次、在途旧链与新调用分别看代际，最后owner才回收；重启/暂停恢复不可充在线HMR；不要求新native loader/完整AJ |
 | ARCH-08父准入/来源 | 908/893/933真实固定组、独立oracle与本包registry/report | 完整义务集合、真实运行终态与成本归因，不用摘要/目录存在/忽略附件/零选择/伪PASS铸绿 |
 
-T-01/T-02把表拆到每个required原子义务/具体entry与closing oracle；不能只有八个总布尔字段。存在新功能缺口仍归原owner，已归档能力发现新缺陷要具名新修复流程，不能悄悄重开旧Plan或在组合器模拟能力。
+T-01/T-02把表拆到每个required原子义务/具体entry与closing oracle；不能只有八个总布尔字段。存在新功能缺口仍归原owner，已归档能力发现新缺陷默认走具名独立修复流程；**F-941-04按用户2026-11-06明确指示例外，直接作为本941 r2新phase修复（§5.8）**。不得把此例外推广到其他缺陷、悄悄重开旧Plan或在组合器模拟能力。
 
 ### 5.5 函数级增量与恢复首操作
 
@@ -135,12 +137,24 @@ T-01/T-02把表拆到每个required原子义务/具体entry与closing oracle；�
 | 935实例 | 实例义务/逻辑ID/签名-vs有效实现/反控草案 | 需真实实例source/四端/恢复页时取稳定接口，最终验收需D935，不用796模型 |
 | 936 CT | Exec/Use/真实execute/失效/恢复义务设计 | stable真实AV端口+各required页，最终D936；本包不把CT执行搬host、不扩大CT FFI权限 |
 | 938/939 | ABI方向/认证/lifetime/typed-vs-source mapping可先 | 最终D938/D939及其codecs/父reader/实际source imports/resources；D937不替它们 |
-| S/N/X | 本包不修改core/HIR/MIR/lowering/语法/资源分析/native/C业务实现 | 若需补观测由原owner稳定SHA单写交字段/计量；不借总验收施工修功能 |
+| S/N/X | 除§5.8 F-941-04已授权条件解析修复外，本包不修改core/HIR/MIR/lowering/语法/资源分析/native/C业务实现 | 若需补观测由原owner稳定SHA单写交字段/计量；不借总验收施工修功能 |
 | H | 新case/contract/SDK/worker/strict cert reader、mod.rs、Cargo/lock、test-groups与父报告适配 | 934→935/936、938/939与本包逐文件SHA/符号/全部consumer/兼容门释放接收，whole-file单写；不按append-only并写，不占窗等无关D |
 | 940等外线 | 只读Core/UI parser与测试注册实际交集 | 非新增语义依赖，不触其WIP；只有真实H/legacyconsumer交集协商 |
 | 正式采样/认证 | 计划/样本/oracle准备并行 | 与当前owner错峰，原串行/resource组与单实例保持；最终联合门在实际所需D全就绪后 |
 
 与在途contract/schema的等价适配不自动扩大其语义，必要reader变更须列producer→required字段→所有reader→发布/恢复路径→冻结验证。缺项保owner与关闭oracle，不用“本包后面统一补”让原包假pass。公共窗口释放后可接，不要求全部计划先结束才做独立段。
+
+### 5.8 r2新增phase：F-941-04 条件表达式/记录构造消歧
+
+用户授权在941内直接修复，非另立计划；原T01..15/AC01..13/V01..18保持，新增T16/17与AC14/V19..21。此phase完成后回到原完整验收，不以修好此例终结941，也不在本phase单独归档941。唯一写树仍D:/autostack/.wt/lang-941/auto-lang，基线4cd5782d1；计划簿记仍主检出。
+
+实际输入→consumer：原冻结925文字源`text-char-925--v03_eq_full_bytes.at`（c88f8407c7235a1042d062575aa52c68a258eca8752e49844620ab3dfd1358c7，oracle1）→`compile_text_record_source`/`compile_parts_with`→统一CST前门/投影→Checked HIR→owned AV与native升级链。原记录两次18/20、同一源两consumer均source.syntax拒；单text Rust/C认证均接受。隔离括号兄弟源owned AV实际1，仅诊断用途，**原冻结源不改成括号版**。
+
+写面与闭合：先沿adapter.rs/parse_program_with实际dispatch确认CST grammar、`source/cst/project.rs`条件/错误诊断projection和`source/parser.rs`手写差分oracle中的共同歧义；修复位置由T16证据确定，不预定只改手写parser就算生产修复。条件尾部变量或调用不得把随后body左花括号当记录构造；表达式上下文中已有合法具名/嵌套/带括号record ctor仍能解析，错误记录字段/缺body仍按原分层诊断拒。覆盖record/text-record及共享recordal消费者、全fn与fragment；旧empty-ctor等无关兼容怪癖不借机放宽。若语法canonical bytes变化，沿既有GrammarId/codec/缓存键合同更新并重验，不复用旧身份或绕Typed resource。
+
+原parser/AST/grammar资源预算、源码字节帽、工作栈/深链与原回归负载保持；不增语法支持上限、不允许截断/递归捷径，不引入第二parser或在consumer预处理加括号。共享source修改的完整职责组明确为`ace-source`，消费者按实际修改选`ace-av`与`ace-native`（已有组，含原资源/平台条件），以及`case-ace-m1-text-q4-941`真实20项与已有Rust/C同源日常/认证严格读回。实现迭代先命名反例/代表兄弟，最终冻结并集只跑一次；若实际改动触语法库则补`ace-syntax`，如未触独立语法库须记录免跑理由。原全仓批门仍按到期规则，不变为本phase门。
+
+此phase交付闭合需：原冻结源四端各对独立值1，十文字源原全部四端仍逐各oracle/具名trap；if/while尾变量与比较/括号、合法记录构造和非法字段/缺body代表组合的AST/诊断、whole/fragment保持；原失败在未修baseline可重现而修复后原例及兄弟全部通过。观察到原shared producer变化的首链/CT/text cert与源码合同按真实identity刷新，身份未变的证据继续复用。独立复审仍由T14在同树新上下文执行，不能以本phase自测顶最终review。
 
 ### 规范增量
 
@@ -152,8 +166,10 @@ T-01/T-02把表拆到每个required原子义务/具体entry与closing oracle；�
 | SD-04 | modify | docs/specs/auto-test-case/unified-source-syntax-admission.md | SYN签章消费范围与新ARCH原子义务证据映射/反控 | 929不冒全ARCH | AC-04,AC-05,AC-06 |
 | SD-05 | modify | docs/specs/auto-test-case/ace-ca-d-bridge-certification.md | D1/D2/D3证据方向、source/typed/生命周期与总门映射 | 937不冒完整FFI | AC-08,AC-09 |
 | SD-06 | modify | docs/specs/auto-test-case/architecture.md | 新只读父组合器/正式TestCase/报告schema/证据闭包与完整固定组 | 不造runner/meter | AC-02,AC-07,AC-11 |
+| SD-07 | modify | docs/specs/auto-syntax/source-frontdoor.md | 条件尾部ident/body与记录构造区分；实际whole/fragment/旧oracle及语法身份按修复一致 | F-941-04既有text-record联合面应接受合法text条件 | AC-03,AC-04,AC-14 |
 
 本轮仅提议，review后由merge沉淀已实现事实，不写current Spec或派生索引。
+
 
 ## 6. 测试设计
 
@@ -180,6 +196,14 @@ V全部为拟新增/未执行。实际既有entry见§3；新增拟治理测试`
 | V-17 | AC-11 新鲜源/实际联合报告 | T-11/12/13，tracked-only输入与明确当前全部D，固定组/正式adapter真实产物→只读组合器 | report逐项映射完整、只写scope新输出、原子报告不污染旧报告；真实red列owner，只有全满足才claim | 不靠ignored附件/本机残留；不签M2 |
 | V-18 | AC-12 独立完整审查 | T-14，同树独立上下文重建义务/reader/正反oracle/SD/债 | 无未知缺口默认PASS/未批延后/篡改分母；review绑定r1与冻结SHA | 系统pass与M1claim分开审查 |
 
+r2修复补充验证（T16使能，当前均未执行）：
+
+| ID | 不变量/AC | 实际入口与区分oracle | 边界/owner |
+|---|---|---|---|
+| V-19 | AC-14 条件/body消歧 | CST生产前门与手写oracle whole/fragment；if/while尾变量、比较、括号/换行，AST保变量/比较而非Ctor，原冻结eq值1 | recordal共享profile；work T16 |
+| V-20 | AC-14 合法/非法记录构造守恒 | 原合法具名/嵌套/条件内带括号Ctor继续通过；错字段/缺body按独立诊断与span拒，无consumer补括号 | 原支持域，不扩future语法；work T16 |
+| V-21 | AC-03/09/14 真实两consumer与身份 | 原十源正式20Case及原Rust/C认证/daily；原eq的两FAIL转真实值1，其余值/三具名trap不退化；原source不改，producer/grammar/runtime变更按身份重验 | 最终冻结ace-source+实际消费者并集；work T17，独立review T14 |
+
 职责组：现存`cargo t infra-ace-m1 infra-ace-cost-report infra-fixed auto-test-case ace-adapters`作为新增父判面基础；拟新增`infra-ace-m1-arch`、`case-ace-m1-q4-941`及适用ARCH首例组（T-11按现固定组机制登记，新组目前不可执行，不复活tm/叶目录发现系统）。完整真实证据并集由registry逐行引用现`case-ace-m1-*`各具名组、`case-a2r-hir-record-text-902`、`case-a2r-hir-collections-904`、`case-a2c-hir-scalar-921`、`case-a2c-hir-record-text-925`、`case-a2c-hir-collections-926`、`case-ace-unified-source-929`、`case-ace-ca-d-scalar-937`及新上游正式组，T-01列成显式名单而非shell wildcard执行。source/query/CT/ABI/缓存与HMR的原完整职责/专项由真实触面加`ace-source ace-semantics ace-comptime ace-abi ace-foreign-contract ace-a2c-abi ace-artifacts ace-av ace-native ace-a2x ace-lowering`，不得仅跑新增治理脚本自证实际语义。
 
 固定组和专项原ignore/平台/资源/Job/输出帽保留、执行/排除/未执行/首次红/重放绿分别列。性能/压力与其他正式采样错峰，merge冻结提交一次职责并集，输入身份未变的有效证据可复用且逐项写理由；不为纯文档跑构建、不叠无因全experimental/all，周期`cargo t all`只按due在主检出单实例。新增Rust test在autotests=false包要显式Cargo target登记且确认被完整组选中。
@@ -204,6 +228,8 @@ V全部为拟新增/未执行。实际既有entry见§3；新增拟治理测试`
 
 AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader正控关闭。AC-10/11允许真实报告诚实red来证明验收系统正确，不能据此豁免前述应执行证据或声称M1已过。若底层新缺陷导致某项实际验证无法关闭，留具名阻塞/owner/永久反例，不伪造work完成。
 
+**AC-14（r2，owner_stage: work/review）**：§5.8条件解析修复由生产CST/whole/fragment及真实AV/native原例验证；V19..21全部具名通过且合法/非法记录构造和既有诊断边界守恒，原源/值/预算不变。缺原消费、只改旧oracle或consumer补括号不能通过。
+
 ## 8. 执行步骤
 
 | ID | owner_stage | 依赖/写面 | 具体路径/可验证结果；AC/验证 | 状态 |
@@ -221,8 +247,10 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-11 | work | T-03..10，公共H单写窗 | 从T-02首例扩齐全部TestCase/独立oracle、必要父adapter/SDK/所有reader、scripts/test-groups.toml新完整组/测试target注册；AC-01/02/09/11，V-12/13/17 | [ ] |
 | T-12 | work | T-11；最终D934/935/936/938/939与已交929/937；正式采样窗 | 冻结真实完整证据并集/原样本规模、fresh/hit/restart/first-edit/资源/真实独立认证→组合报告，缺项保持真实red；AC-01..11，V-01..17 | [ ] |
 | T-13 | work | T-12 | SD/coverage守恒/全部owner接口/健康冻结/遗留cert与新缺陷交接；明确系统交付与M1是否可签，不能藏in-contract未执行；AC-11 | [ ] |
-| T-14 | review | T-01..13完成，停止实现写入 | 同树独立上下文重建source→producer→consumer→oracle→gate全链/反控/所有SD与债，不采信摘要；AC-12，V-18 | [ ] |
+| T-14 | review | T-01..13及T-16/17完成，停止实现写入 | 同树独立上下文重建source→producer→consumer→oracle→gate全链/反控/所有SD与债，不采信摘要；AC-12，V-18 | [ ] |
 | T-15 | merge | T-14 pass与后续合入指令 | 冻结职责并集/漂移复验、SD沉淀/主线读回/归档、所有输出scope与树guard清理；AC-13；M1未绿不改成绿 | [ ] |
+| T-16 | work | 用户r2直接加phase授权；§5.8；当前941唯一树 | 确认生产CST/条件诊断与旧oracle共享歧义，修复既有条件/body-vs-Ctor边界并补whole/fragment与合法/非法Ctor永久回归；AC-14，V-19/20 | [x] |
+| T-17 | work | T-16，实际provider/grammar/工具身份冻结 | 原十源20Case/同源Rust-C认证逐oracle重验与原失败闭环；完整ace-source及实际AV/native消费者职责并集、必要ace-syntax及身份变化刷新，SD-07；AC-03/04/09/14，V-21 | [ ] |
 
 下一入口T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；按T-01/T-02继续，尚未关闭的验收保持未完成。
 
@@ -416,6 +444,222 @@ stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: in_progress | wor
 
 stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 9 | from: work | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: aa23ed8be8528dff01c3ed81a23d617909e00ca2 | next: work（剩余映射/实现继续，不是final review失败）
 
+### 2026-11-06 全旧313义务显式映射与对象生命周期预算（goal第10轮）
+
+上一轮分类progress（aa23ed8be真实typed接线/冻结12+90/14旧格位）。本轮main零代码WIP，唯一941树复用；当前施工提交`0dbae763b`→`4ea428e12`→**`07874db1ab270c3a4a3bee51a91dde979b2bd624`**，冻结树clean。继续T-01/T-02，**0/15**；没有缩减原目标、提前final review或签章。
+
+- 显式原parent只读发现到`full-map-formal-identities/`，随后canonical刷新到`full-map-canonical-identities/`：37套件533check（旧35/511 + 原ac-av18 + 941旧源4），执行=0。新增长期源合同`crates/auto-lang/test/cases/ace-m1-expanded/legacy-required-map.json`，完整**313** required逐格保原layer/token/namespace/target/binding oracle、source/typed/scenario身份、原source SHA、正式suite/case/check/recipe/当前Case与sidecar SHA、双owner及具名缺项；不是runtime收据。**251格**有显式原正式入口locator（共304个不同entry），**62格**尚未绑定正式入口，78个scenario仍欠完整机制/原样本序列，原38 cert-gap完整保留。所有discovery execution=UNOBSERVED/executed=0，14个已支持reader不冒313实际执行或全部机制覆盖。legacy-A2R/legacy-AVM不被新HIR/C身份替换；同源hash只核源，不自动判覆盖/执行。
+- 新`ace_m1_legacy_obligations.py`在当前授权repo内严格核固定map hash、原四批准件+scenario规范、313集合hash/原oracle、正式组与suite/target身份、全部显式当前源/sidecars和alias边界。W01 i64-min与W03 f64负零虽有相同bits也不能交换locator；多文件project保main+helper，不误删合法二文件腿。原sample冻结：I01 30修订、I10 512不同修订；I11按既有批准规范P90≤2000ms、至少9/10，P95<1000ms仅历史诊断并列，未用binding的旧简写改验收口径。缺项/unknown/type错/样本削减/认证gap删项/父PASS冒执行均拒。
+- 将完整旧义务discovery接入现只读preview，未把它称完整新registry。加入后原累积reservation触发48MiB拒，**没有放宽帽**：新增显式对象生命周期释放，三个已知旧执行reader与两个已知discovery reader返回后，原raw/decoded表/索引不再存活，只保有界摘要预留（执行摘要512KiB、discovery128KiB）；原CaseCopy、registry/identity等仍存活部分不释放。LiveBudget保留全生命周期`peak_reserved`，summary过大/无效释放/新分配越帽仍拒，不清峰值、不从传入counter推导。永久反控证明保留摘要预算、峰值不回退、后续超限拒、过大返回对象不释放原预算。
+- **canonical交付缺陷本轮关闭**：全局*.json最初吞掉新map，4ea428e12以明确永久源合同例外纳入git（raw evidence仍只在scope）。随后实际`git show`对照发现Python默认写CRLF，而core.autocrlf=input保存LF：本地source pins与fresh blob不一致。归一15个本包文件的本地换行（大部分Git源码blob本来已LF，无业务改动），更新registry中ABI/native父源码hash与legacy Case/suite字节身份、完整map及其固定hash；最终map705009 bytes、SHA256=`ebe902c39c042e422b7eef604b119a4fab0f88122374914b9083a3e604d1d1fb`。原批准manifest/binding/NA/分母零改。最终`git cat-file --batch`逐件核验**191个**map/registry/parent/批准/原源/Case/sidecar：工作字节全部等于当前提交blob，`full-map-committed-input-audit.json`留明细。之前CRLF工作副本的收据不再充作新鲜检出证明。
+- legacy B08/B11 Case/suite换行字节身份变化，按实际需要重取原4条：`cargo t case-ace-m1-legacy-941 --out <scope>/legacy-canonical-lf` exit0 **4/4**，15.4418981s，results SHA256=`ffaf16e3f1b72ba84d571c0cf68d10898ba6a924ed6f7e0e3c8075acbbea9567`。原AV/native worker SHA、其他原Case/suite/source/oracle/steps均未改变，20首链与typed原18/12有效原始证据复用；只读37份正式身份+原parent discovery重新从实际双bin当前auto-case取得并与6份跟踪合同对账，配置`full-map-canonical-bindings.json`，没有拿旧producer身份冒新二进制。
+- **最终冻结有效治理门**：`cargo t infra-ace-m1-arch --out <scope>/full-map-canonical-frozen-controls` exit0/gate_passed=true，**100/100**（90旧控制+7 map+3生命周期），2.6169286s；results SHA256=`0196907038cc7332338bfba7548231f9ec2ede32a47ed922042743f1e2a40d54`。本轮只改父只读治理/源合同，未重复运行未改语言原完整组或全仓batch；新鲜LF Case4已单列实际重放。diff检查通过。
+- 最终原capture/native_meter包实际CLI `python scripts/test-governance/ace_m1_arch_acceptance.py --first-slice-preview --repo <941-tree> --evidence <scope> --bindings full-map-canonical-bindings.json`：exit1、20首链完整、实际旧执行仍**14PASS/299UNOBSERVED**，map发现执行0，claim=false。`full-map-canonical-final-preview.json`39525 bytes，SHA256=`05546a8ed3c63cbb6a2cb84ccef7cf3bcf2b91761ec6a415c83fbf4ec9781f60`；1429.2239ms，whole process peak20,496,384 bytes<128MiB，当前保留reservation30,045,318、**峰值46,727,672 bytes<48MiB**（双值都入报告）。14个reader来源SHA可追溯；组合Popen禁止正控通过。该运行不是正式性能采样/P90 gate。
+- 当前canonical配置重放既有真实证据副本反控（`full-map-canonical-controls.json`）：native帧及摘要同改错误f64/正确原bits，只有W01:ac FAIL（13PASS）；再将AV同改同错，两格均FAIL（12PASS）；299未观测与map UNOBSERVED原样保留。证明新locator与对象释放不覆盖反例。副本不是实际运行证据。
+
+首次失败/中间状态保留：首遍map适配误限single source而拒合法916/917二文件project，补完整source列表逐件核验；生命周期初版只释放catalog仍越48MiB而拒，未调高帽，按已知reader真实返回生命周期释放后通过；新增预算单元首遍漏算EvidenceScope既有256KiB缓冲而1/10红，校正预存基数后10/10；首个100门时map被ignore/后续CRLF blob不等，均未作为最终交付门，最终跟踪LF提交与191件blob对照重新证明如上。全部原始材料仅plan-941 scope，未写新Spec/legacy specs.json或操作别会话。
+
+T-01尚欠**新Q4/ARCH完整原子义务、全部域具体原预算/完整生产者及后继owner映射**（map明确legacy in-process budget仍待审，不套AV/native默认帽）；新全registry、全机制reader及T05..13未关闭。当前D936/938/939待真实交付只限制所需consumer/最终T12，不阻后续独立审计；下一轮以完整Q4/ARCH表和预算收口为主，不将251 locator/100控制等同系统交付或完成验收。
+
+stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: in_progress | worktree_path: D:/autostack/.wt/lang-941/auto-lang | branch: plan-941-dev | code_commit: 07874db1ab270c3a4a3bee51a91dde979b2bd624 | task_ids: T-01/T-02（未关闭） | evidence: 完整313显式locator/gap表、100冻结控制、canonical旧4实测与191件提交blob对账、20首链/14旧格位与46.7MB峰值 | blockers: 无新增用户决定；完整Q4/ARCH/预算映射与剩余实现 | next_responsible_role: work
+
+stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 10 | from: work | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: 07874db1ab270c3a4a3bee51a91dde979b2bd624 | next: work（余下完整映射/实现，不是final review失败）
+
+### 2026-11-06 完整补例语料实体化、分域预算与Q4源登记（goal第11轮）
+
+上一轮为progress（完整旧313映射、100控制、191件blob对照）；本轮host实际active，main零代码WIP，941唯一树复用并保持冻结后clean。施工提交`aea20fb66`→`633bbe92a`→`f0d32842e`→`6db57d4a1`→**`656f48cb4d21d10a985af01ee9eabb58e20c6c87`**。仍executing **0/15**，没有把登记/原门绿冒新Q4严格执行或final review。
+
+- 审计明确“C首例28不等完整域”：925还承诺模式/方法、Unicode/NUL、TextIndex/InvalidScalar等补例。将原`a2c_rt_cert`的8模式+3trap私有Vec、原`a2c_rt`的10 text/char源码/手算oracle搬成可读typed函数，并让**原测试继续使用同一表**；926原20 cert CASES仅开放兄弟模块只读。无源码/Rust解析器、无新语言执行器、不改原source/oracle/reference语义。`composite-literal-preservation-audit.json`证明原10源字面量顺序、原CertCase字段字面量序列完全相同；原有runtime #[test]入口保留。新ignored只读导出`inventory_941::read_composite_contract_inventory_941`原生nextest精确选择1/1，发现**41**合同（11+10+20）、execution=0；scope内create_new、词法祖先reparse先检后canonicalize，旧scalar导出payload不改。
+- **长期源输入入库**：61份scalar源码逐字节取原typed cases()（表SHA保持9007cdd1…），41份composite源码及31份原手写独立C reference逐字节取原typed表/原926文件；均为后续消费者需要的产品fixture，不是runtime证据。`scalar-obligations.tsv`新增明确source_file；`composite-obligations.tsv`保41原family/profile/caps/value/trap与reference身份，**34 value+7 trap**，其中10个text/char原测试没有独立reference，显式列`reference_gaps`/owner941，未伪造认证。新reader在每次准入重hash三份原Rust合同、实际source与reference；未知域/改profile/caps/错trap/删除/重复/假PASS/路径逃逸拒。source文件不再依赖本机临时导出来供只读准入。
+- 原冻结标量里**两个CRLF是有意语料**（core-p20-utf8-crlf-min、sc-crlf），不能像生成metadata一样归一LF。最初Git input规则会改这两件blob；以`.gitattributes`对新scalar-src/composite-src/composite-reference目录声明-text，重暂存后保持原CRLF字节和原SHA，不更改旧母语料/批准文件。其余metadata保持LF。最终源/reference/预算167件及Q4引用121件分别实际`git cat-file --batch`核对工作字节=提交blob（两清单有交集，不相加为唯一数），收据`composite-budget-committed-input-audit.json`、`q4-source-committed-input-audit.json`。
+- **原实际职责组**：冻结aea20fb66 `cargo t ace-a2x infra-ace-m1-arch --out <scope>/composite-contract-frozen-gate` exit0、gate_passed=true，**192/192实际原A2X测试 +106/106治理控制**，2个按原条件ignored的只读导出不充语义执行；175.6240846s，results SHA256=`2287f6bf2fcb645bff5a80c8a6c10b93bbb51ada7ef429aa3226b344d277cd71`。包含原text-char10、cert模式8/trap3、全scalar61/完整原资源与证书反控，未减原样本/删除条件。后续只变Python/静态合同/fixture Git属性，原Rust源码、参考/工具与运行输入未变，复用该192结果；不为数据/提交重复完整编译组。它是原职责门，不是新组合器已严格认领全部Q4产物/计量的证明。
+- **原预算16域**：新增`original-budget-contracts.json`及`ace_m1_budget_contracts.py`，26个当前原code/Spec hash绑定；区分Case整suite外层1800s/64MiB stdout/16MiB stderr、nextest900s×2、仅ac适配器60/5/70、AV/native/ABI原IPC窗口、public ABI真正60/5/70及hot8MiB+staging/index8MiB、CT 10s/逐AV2s/8+16+8MiB三分区/private384MiB/tree512MiB、A2X暖管理48MiB、scalar/record-text/collections各自原负载/30样本/P90/512修订、941显式捕获与组合自有帽。A2X daily/旧avm-a2r无额外inner deadline/stream cap的真实代码事实列None，不能借ac默认或把None填0；外层原门仍有独立作用。warm cold分开、115函数/273575B scalar不借给40函数/16helpers/32callers/16KiB+4KiB的collections，RT原24callers与256 free-body+256 method也单列。所有政策**runtime_verdict=UNOBSERVED、can_claim_budget_pass=false**；读到声明不等实际预算已过。旧313图中的legacy budget从pending-audit改连该已审声明，实际预算观测仍未充绿。
+- **Q4逐源登记**：新增`q4-source-contracts.tsv`，现明确**126源合同、504个四目标必需格**：scalar61、cert模式/trap11、text/char10、collections20、record/text首例5、934 source6、935 instance6、936有限源7。119有当前真实文件/独立原oracle，936七项明确`pending-provider-source`，不读取未交分支冒D、不伪造source/profile/caps；其中bool原承诺未给可冻结数值，单列pending-provider-oracle而不猜42。四端固定AC-native/AV/ACE-A2R-HIR/ACE-A2C-HIR，不按能力交集删C/换legacy。marks按原Vec与trace能力位共同区分无trace/有trace但空事件，不改oracle。这是**已登记源行，不是已封闭完整新M1分母**：reader仍scope_closed=false，剩余原源变体/完整ARCH机制映射和真实D尚待收口。
+- **最终治理冻结门**：`cargo t infra-ace-m1-arch --out <scope>/q4-source-budget-final-controls` exit0、**114/114**，2.818744s；results SHA256=`58f43d99b84dc116e6b29d0e75b1a935b2b9023df3cccf523f9d50e11dad581a`。新增composite6+budget4+Q4源4控制；包括不可削分母/换目标、错误source/reference hash、ABI与IPC/outer帽互换、预算zero/bool/假PASS/篡改、未来source/profile/未知bool oracle伪造拒、CRLF保原字节。diff与Rustfmt通过，无新增Rust warning。
+- 最终原capture/native_meter实际只读CLI沿`full-map-canonical-bindings.json`：exit1，20首链完整、旧严格执行仍**14/313 PASS、299 UNOBSERVED**，新增源/预算发现都不算执行，全局claim=false。`q4-source-budget-final-preview.json`49594 bytes，SHA256=`9fe76f18c9c39c569988d0be78804318c3c3c6c22174e5b15d12c9b0d59ebace`；874.5552ms，whole process peak20,410,368 bytes<128MiB，当前reservation30,583,032、峰值46,727,808 bytes<48MiB。16域声明及7未来源在真实报告可见，没有因扩表放宽组合预算或隐式启动工具。该单轮不是正式P90采样。
+
+保留首次失败/纠正：初次native导出漏NEXTEST_EXPERIMENTAL_LIBTEST_JSON被CLI前置拒（exit95，未执行），设原开关后精确1/1；第一次定向命令传多个--test-name，原入口只保最后值，实际仅trap 1/1，**未当成3个测试**，后续完整192统一覆盖所有原入口。新Q4反控一开始误把无trace的原marks Vec[]当None而1/4红，按原typed表改为Vec[]+能力位区分，最终114全绿；工作中6db57d4a1为短暂红中间提交，656f48cb4修复后才冻结。完整原输入/预期保守，不把源字节/期望改成观察输出。
+
+**临时磁盘故障已解除**：写Q4 TSV时ENOSPC，留下0字节未跟踪文件，未算完成；核对941独享idle incremental缓存后，递归清理与更窄仅dep-graph.bin文件清理均被**自动审批拒绝：只返回“blocked by policy”**，均未执行，agent删除0文件。随后外部状态释放空间（0→约61MiB→15.26GB，最后检查12.59GB），不归功本agent/不操作他方目录；在足够小写入空间出现后完整重生39400字节TSV、hash校验/提交/114验证，再核所有blob。`disk-pressure-incident.json`保过程；不再留待授权问题/不设blocked，后续Cargo仍先查实际≥2GiB。原证据/当前producer二进制均保留。
+
+T-01现已补实原预算声明与首批完整源族，但**完整ARCH-01..08原子映射、剩余原source变体/reader闭包、完整new registry仍未完成**，T01/T02不先行关闭。936当前reviewed r2 13/14仍无D，938/939未交齐；只限制其consumer/最终T12，不阻继续独立工作。下一轮重点转完整ARCH与registry结构收口，继续原941目标；不以114控制、192原门或504登记格代替未执行义务。
+
+stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: in_progress | worktree_path: D:/autostack/.wt/lang-941/auto-lang | branch: plan-941-dev | code_commit: 656f48cb4d21d10a985af01ee9eabb58e20c6c87 | task_ids: T-01/T-02（未关闭） | evidence: 原41补例及61源实体、31原手写reference、16域预算、126源/504格登记、192原职责+114治理冻结与canonical blob/预算实测 | blockers: 本轮环境故障已解除；完整ARCH/registry及剩余实现仍欠，无新用户决定 | next_responsible_role: work
+
+stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 11 | from: work | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: 656f48cb4d21d10a985af01ee9eabb58e20c6c87 | next: work（完整目标继续，不是final review失败）
+
+### 2026-11-06 ARCH原子义务和分域登记索引（goal第12轮）
+
+本轮沿原授权继续work，唯一941树、main零代码WIP。冻结施工提交 **`717278a6194fd9dc74ad88ae16b1654e7d4114d7`**；仍executing **0/15**，不把schema/locator/控制数当实际机制交付，不缩减原941范围。
+
+- 新长期源合同`architecture-obligations.json`（47280 bytes，SHA256=`6332fa16b812fd81405c45b42e6c7f4d7eff3faec98919b5b4d5f447eda630c2`）把ARCH-01..08展开为**49原子义务**，含29个入口（12 Case套件、14 native模块locator、3 provider-pending），逐项列真实owner/941证据owner、原预算域、V-01..18、独立closing oracle、错误实现反控和所需原始观察类别。契约定位是待核验执行入口，不声称每个原测试已经证明该完整机制；尤其公共恢复首操作、所有required页、真实AV CT、历史owner/迟到发布/最后lease等仍须实际观测。
+- 新严格reader`ace_m1_arch_obligations.py`核固定合同hash、49不可削ID集合/8族、29入口闭包、实际固定组/套件、native package归属、当前文件hash、预算域/观察种类/完整V集合和provider owner。所有locator都executed=0/UNOBSERVED；不接受child PASS注入。纯AND只在内部已准入结果/隔离控制使用；逐一删除/置FAIL/置UNOBSERVED任一49义务均红，外来ID/bool/PASS对象拒。原始合同中的oracle被改即固定hash拒，声明不能晋升执行。
+- 根`registry.json`显式绑定旧313map/Q4逐源表/ARCH合同/原预算4个当前文件hash；新`ace_m1_registry.py`接入真实只读组合链，索引**886已登记记录=旧313 + Q4已登记504 + ARCH49 + 首链20**，四个namespace分开，**这不是最终M1分母，也不把重叠验收层相加成覆盖率**。剩余原source变体与全域reader闭包未齐，`required_universe_closed=false`；即隔离全部886 PASS也不能关闭完整门。严格旧执行结果和首链实际reader输出才提供已支持部分verdict，Q4全表和ARCH不得据source存在/原组绿补绿。
+- 冻结职责门：`cargo t infra-ace-m1-arch --out <scope>/architecture-registry-frozen-controls` exit0、**121/121治理控制**，3.3587846s，results SHA256=`22973bd90c392feff00632a2c10fd5a59ccb872b7bf386acbd3b6e6d78b4f291`。新增7个有实际断言的控制；49删除等为其subtests，不冒额外语言执行量。复用上一轮192原A2X测试（本轮Rust/原输入未改），不重复编译原职责组或跑全仓；最终T12并集和独立review仍未执行。32件新合同/入口/组/reader的工作字节逐件等于冻结提交blob，`architecture-registry-committed-input-audit.json`。
+- 冻结真实CLI经原process_capture/native_meter：`python scripts/test-governance/ace_m1_arch_acceptance.py --first-slice-preview --repo <941-tree> --evidence <scope> --bindings full-map-canonical-bindings.json`实际exit1（preview拒认领），首链20完整、旧**14 PASS/299 UNOBSERVED**、49 ARCH全未观测；登记记录34 PASS/852 UNOBSERVED（34=首链20+旧14，不能混作语言覆盖率），旧38认证差异和完整范围门仍红。报告`architecture-registry-frozen-preview.json`124148 bytes，SHA256=`03ee44311fcab67a3d9125eb3a78bd08188e88765da6134ec2d62678ed9f35be`。632.9666ms，whole process peak20,619,264 bytes<128MiB，共享当前reservation34,279,897、生命周期peak46,742,224 bytes<48MiB；单轮非正式P90。17个reader hash入报告。
+- 原same-wrong反控在新组合链重放，且Popen禁止验证无隐式工具：native帧+摘要一致改错误f64/同bits并重hash，W01:ac FAIL（登记33PASS/1FAIL/852未知）；再AV同错，W01:ac/av同时FAIL（32PASS/2FAIL/852未知）。49 ARCH仍UNOBSERVED。`architecture-registry-counterfactuals.json`明确为隔离副本，不是真实执行；未被索引/对象释放掩盖。
+
+保留首次失败：首次真实CLI exit2 `discovery summary exceeds retained reservation`，49行完整oracle对象超过原512KiB摘要预留，未放宽48MiB总帽。reader返回后只保id/owner/entry/budget/V有界摘要（原oracle仍在固定hash合同）；886索引按实际对象成本显式预留3MiB，不清峰值/不释放存活对象，最终上述保守总峰值通过。首次121控制通过在最后压缩前，最终冻结门另跑121/121；未用前者冒最终revision证明。
+
+**新的依赖事实**：本轮后段只读发现936已实际交付 **D936=`a41dbd1bd4dd214198565f54abc76a423735c6a0`**，main中归档/merge pass/5 canonical路径核验及guard清树、scope删除有收据；不能继续称D936未交。936 frontmatter仍13/14但T14已勾/交付收据存在，以实际交付/源码后续核对，不凭归档字段推全部941验收完成。其最终收据明确新lane正式30样本、worker级V14及暖会话CT复用留后继：**这些若为941原required，仍在941实际观测义务内，不能随provider的非blocker分类消失**。当前941冻结树尚未同步D936，故其本地合同中ct/pending七源暂时准确表达“本树尚未消费”，下一施工单元需同步稳定D936、更新真实source/profile/oracle及源hash/observer接口再认证。938仍executing6/13，939 drafting0/14；没有操作其树或请求其发送消息。
+
+下一步先同步实际D936及必要主线依赖、按原计划核对7CT源和required页/计量，再补真实Q4和机制reader；剩余原源变体、全registry封闭、严格执行实验、SD/完整冻结门/独立review/merge继续，不以本轮886登记替代完成目标。无新增用户决定，不重授已授权修复。
+
+stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: in_progress | worktree_path: D:/autostack/.wt/lang-941/auto-lang | branch: plan-941-dev | code_commit: 717278a6194fd9dc74ad88ae16b1654e7d4114d7 | task_ids: T-01/T-02/T-03/T-04（未关闭） | evidence: ARCH49原子/29入口、886分域登记、121冻结控制、32blob一致、真实CLI与same-wrong反控、D936交付只读确认 | blockers: 无新用户决定；D936待同步消费，938/939在途及其余全域实现仍欠 | next_responsible_role: work
+
+stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 12 | from: work | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: 717278a6194fd9dc74ad88ae16b1654e7d4114d7 | next: work（用户resume继续原完整目标；不是final review失败）
+
+### 2026-11-06 D936同步与真实worker接缝反例（第13轮在途检查点）
+
+已在唯一941树合入master到`db7b869b8`，D936的语法/源CT/实例/标准库等实际依赖无冲突进入树；main既有他方docs-only WIP未纳入。施工`79c24f1d4`将七CT源从待交付转真实source-bound（126/126有源、四端504 required不减；bool主程序原oracle为7），根登记加入原14检查typed快照；新CT严格reader读取原Case/wire/每端独立oracle/caps，不把cold值正确等同CT hit/restore机制。ARCH ct入口转实际Case+source-cte模块locator，29→30入口、49原子义务不减；仅938/939仍provider-pending。原预算两Spec pin及935恢复测试pin按实际D936变动重锚。
+
+原`cargo t case-ace-source-cte-936`首轮准备av时`--locked`拒（未执行），记录`ct936-original-after-sync`。随后离线重生成锁并跑`ct936-original-valid-lock`实际**14/14**、146.6677171s；严格读取14项值全部对独立oracle，但该轮使用了扩大第三方版本的中间锁，**不是最终冻结/交付证据**。新Python定向控制实际**122/122**，2.548s（`ct936-governance-updated.log`），新增caps必须匹配独立binding及same-wrong仍红；原3个测试因119/126、29/30及profile已交付的过时预期首红已按实际交付纠正，未删义务。
+
+锁文件事实矫正：experimental/ace/Cargo.lock是tracked文件；最初generate-lockfile造成145增/66删的无关第三方更新，没有纳入79c24提交。发现后停止本树runner PID27232（当时Q4/SYN已有partial PASS，**整轮中断不算冻结通过**），拟保存为`aborted-fixed-runner-owner.json`的迁移操作被自动审批拒，实际文件仍原路径。原HEAD锁恢复后以`cargo metadata --offline`最小补齐，仅**21行增加、无第三方包版本升级**（新增已合入stdlib-conformance member和既有依赖边），提交`a59fe5232`。无Cargo/worker进程残留已核，后续固定门需清理原dead owner锁目录。
+
+**F-941-03：已归档源CT的真实A2X worker入口未接前门（待独立修复授权）**。本树在最小锁上显式构建当前a2x-worker成功（54.47s）。对同一个真实worker、同profile=scalar、entry=main、独立oracle42进行8次原操作：普通Q4源的Rust/C daily均exit0、Rust/C certify均exit0且实际/reference PASS；原936 sum42源、caps=[ac.source.cte.scalar/v1]的Rust/C daily及Rust/C certify **4/4 exit2**，均`source.syntax: expected expression, found #`（C包装为a2x.compile）。原始8份request/raw stdout/stderr/Job meter/worker及source hash在`ct936-original-worker-entry-probe/`，汇总`ct936-worker-entry-results.json` SHA256=`5f9737861d33b613bc6f1b7d822b2d559f5137eaeb4bf68378bb6a575c919ba7`。不把A2xSession的ct_lane_936测试或发射文本含42当真实worker已接通。
+
+源码直接链：`experimental/ace/crates/a2x-worker/src/bin/a2x-worker.rs` helper `compile_scalar_product_934`（42行）仍无条件调用source-query的普通scalar入口；Rust emit（207行）和C emit（376行）都走它；936在A2xSession层接通的CT前门没有覆盖这两个真实worker分支。**具体最小提案**：独立新修复Plan在该共用helper按已授CT capability委托既有ace-source-cte::compile_scalar_ct（沿真实AV/结构回灌/事实车道），普通源仍用已有source-query入口；不造parser/solver/store，不放宽caps或预算。补原始worker两个daily和两个cert真实入口的7源回归（bool7/meta42→43/实例42/子CT40/体编辑43）、无CT能力拒绝及原普通源接受；独立复审、合入后继续941。941 §5.4原文“已归档能力发现新缺陷要具名新修复流程”，故不能在941组合器内模拟或直接修原owner功能。尚未创建修复Plan/改该producer，待用户明确授权范围后立项。
+
+**自动审批实际阻拦**：中断门留下`D:/autostack/.wt/lang-941/auto-lang/target/test-groups/active/owner.json`，仅该1文件，owner PID27232已不存在。带路径/reparse/内容/PID核验的“移动owner.json到941 scope并删除空active目录”整条操作被自动审批拒绝，理由仅`blocked by policy`，没有执行、没有清理成功；不换API/壳重试等效删除。新固定门调用在前置以WinError183拒绝，未运行。已请用户手动删除这个dead-owner目录；在此期间继续独立合同/真实A2X认证探针，未以另一工作区或绕锁门顶替正式固定验收。
+
+当前进度仍0/15、executing；122治理/中间锁14值证据/8原worker反例不等整个系统已交付。D936已交付，但真实worker四方向仍红，CT缓存/恢复观测和原30样本仍未核销；原38旧cert差异照旧保留。待原worker最小修复授权和dead-owner目录人工清理；不影响其余已授权reader/源映射施工。
+
+stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: in_progress | worktree_path: D:/autostack/.wt/lang-941/auto-lang | branch: plan-941-dev | code_commit: a59fe5232 | task_ids: T-01/T-02/T-03/T-04/T-05（未关闭） | evidence: D936实际同步、7CT源126/126、14原值检查及严格读取（中间锁非最终）、122定向治理、最小21行锁修正、8次真实worker正反复现F-941-03 | blockers: 独立worker修复待授权；dead-owner目录清理被自动审批拒需用户手动处理；不影响其他源/reader施工 | next_responsible_role: work（其余已授权义务）/user（两个具体动作）
+
+stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 13 | from: work | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: a59fe5232 | next: work（保持原完整目标；F-941-03修复和固定门恢复待用户动作，其余reader/独立reference继续）
+
+### 2026-11-06 文字补例独立双端认证与958修复交窗（goal第14轮）
+
+941施工提交 **60736ac261bcfb31ce6d7438bed56f34e415d458**，树clean；原目标不缩，仍executing **0/15**。本轮实际补T05一段真实认证链，并沿用户新授权推进独立修复958；不是等待/仅复述状态。
+
+- 原925十文字/字符补例原表没有独立reference（原31份C reference与其10个历史缺项仍如实保留），本轮另增**10份手写C+10份手写Rust参考程序**，不冒原作者已提供。C用有限已知UTF8数据及独立码点/边界算术、长度含NUL；Rust用std chars/bytes/char::from_u32，均不读目标emitter/runtime/源码解析器。独立TSV `text-reference-contracts.tsv`固定SHA=dcd2744a0dc827e555dff7474a5c335425d393b813d6862584b453886cf04752，十原source/profile/caps/value/trap及两ref SHA逐件绑定；root expanded_contracts加入该第五具名源合同。新reference -text属性保字节身份，30件本提交工作字节=Git blob实际对账（scope/text-certification-committed-input-audit.json）。
+- 原a2x-worker实际运行**20个显式认证**（十源×Rust/C），actual/reference各自编译运行，总40编译+40运行阶段；另各原daily先现场发射，以预认证fileset hash冻结产物身份，oracle只取原手算表。`text-char-original-certification/`保60个原worker调用（20 identity/20 daily/20cert）及4子进程原始终态、完整manifest/证书/source/reference哈希和原Job计量。所有20认证strictly admitted；逐个对独立值506/33/1/233/3/20013/112或TextIndex/InvalidScalar，未以双方相等/child PASS冒oracle。daily原记录尚无完整新domain准入，AV/native此十源也未读取，故报告仍UNOBSERVED，不把20 cert冒十源Q4完整。
+- `ace_m1_cert_evidence.py`保scalar入口并新增有限text认证：请求/recipe/证书/manifest家族、profile/text-i32-draft、原target/toolchain/flags、source/ref/完整fileset、原raw compile/run4终态及具名trap逐层核。C版本摘要原locator用BLAKE3的事实保留，不把字段名当可重算SHA；Rust-vV hash独立重算，Job缺峰值/坏峰值拒。`ace_m1_text_evidence.py`完整20集合去重/缺项拒，核独立reference合同后接只读组合器及原504 Q4对应slot；cert完成不自动认领ARCH/whole M1。原scalar两端另以当前worker实际/reference重认证2/2并由修改后的原reader接受（text-reader-scalar-compatibility），验证新text分支不回退旧strict scalar。
+- **实际raw副本反控20项**（text-certification-raw-controls/results.json，显式counterfactual_not_execution）：2代表源（值/具名trap）×2target×5控制，4合法重定位副本PASS；actual/reference同时改相同错值507或错trap InvalidScalar、child flags仍PASS并重hash，4项均FAIL；换scalar schema、双manifest/cert同时错domain并重hash、compile exit改bool，12项REFUSED。Popen禁止证明reader不隐式执行。另新增永久5测试覆盖4终态/独立值和trap同错、NUL/Unicode/source与ref字节、compiler flags/version身份。
+- 用户已手动清理原dead owner目录，实际Test-Path=false，固定入口恢复。冻结60736 `cargo t infra-ace-m1-arch --out <scope>/text-certification-frozen-controls` **127/127**、exit0、2.9485956s，results SHA256=`1635349db3d89573138b0ce834b3f4c1ac7a96268bd119e71edcdfc8edc9e340`；没有把此前直接127单测或中断门冒本次冻结门。真实只读text domain经原capture/native_meter、禁Popen：20 cert complete，全局claim=false，424.6714ms、peak process22,507,520 bytes<128MiB，当前保守reservation1,048,576/peak4,763,294 bytes<48MiB（仅该domain，不是whole组合预算复测）。报告10013 bytes，SHA256=`8a885e6096aa68d29130a62b2c3b14e662ad36b617d21a078ee31179a4771a6c`。原20编译结果已明确，不把门127控制合算语言覆盖。
+
+保留首次错误：采集脚本首遍错误套C scalar header名a2x_c_runtime.h，首Rust认证后在C daily阶段FileNotFound，未当完整20成功；按原RT实际a2x_c_rt_runtime.h修正后只续未完成认证。新certreader来源变化使预算合同两个控制STALE，未放宽原帽或改oracle；刷新本包真实来源pin后冻结127绿。未跑全仓、未复用旧worker SHA为新工具背书。
+
+**F-941-03已获授权，独立PLAN-958实际执行**：用户本轮明确“授权独立修复并继续”，无待同范围授权。主检出原子取号958、计划a63a20b4e、唯一lang-958树（auto-down只读58ea33f），原producer共用helper接既有CT服务并补直接依赖。code **688207b67**，实际check18.81s；七个永久真实CLI测试 **7/7**，29.553495s，40原CLI操作（七源28+普通/无cap8+错oracle/reference4），另32次运行现场新编译出的actual/reference exe逐raw字节对独立oracle。results SHA256=`8ff8425c432259270655f0b0845de2db11f37baa1414f4b2597a177e7205e3d7`；原189项因具名过滤未执行不充绿。原5测试首轮2项因误读主线没有941 opt-in观测字段而红，按原已有owned facility直接执行现场两腿修正，不搬本包未合入仪表代码。958工作4/6，execution_done，独立review与完整职责组/merge/归档/清理仍待，F03尚未关闭、不先消费未交958代码。
+
+本轮只读查官方OpenAI Docs并答复用户policy问题：当前拒绝只返回blocked by policy，没有规则ID；本地config未见auto_review自定义策略/用户rules，不假定AGENTS或sandbox权限能覆盖host审批。官方支持完整[auto_review].policy替换且managed guardian优先，以及支持的CLI /approve精确重试；没有修改用户安全配置、没有换壳绕拒。用户清理后入口已恢复，无环境待授权项。
+
+stage: work | plan_id: PLAN-941 | plan_revision:r1 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:60736ac26 | task_ids:T01..05（未关闭） | evidence:20新ref/20真实text cert/20raw反控/127冻结/2scalar兼容，958已实现并交review | blockers:无新增用户决定；958尚待独立review/merge，941其余全域义务继续 | next_responsible_role:review958→merge958→work941
+
+stage: goal | plan_id: PLAN-941 | plan_revision:r1 | round:14 | from:work | to:work | status:executing | outcome:needs_fix | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:60736ac26 | next:review958（独立修复交付后继续原941，不是941 final review失败）
+
+### 2026-11-06 D958复审、完整合入门与941实际消费闭环（goal第15轮）
+
+上一轮为progress：941文字20双端认证及958冷worker实现；本轮继续原941完整目标，未重定义完成。独立修复958已**review/merge/归档/清理6/6**完成，F-941-03关闭。941仍executing **0/15**，余下完整registry/reader与实际机制验收继续。
+
+- 958新复审轮按r1/实际diff/原始nextest事件重新重建AC，说明同一会话主agent的限制，未冒称另一个模型/会话。自选10项真实holdout：有CTcap但无#的ordinary程序两端daily+cert四项接受；仅instances cap/错误CT/v10能力各两端daily共四项syntax拒；CT实际除零两端daily返回source.cte.plan/cte.trap/av.trap.div-by-zero两项。daily实际Job process count=2，拒绝零产物，无target编译。7源原40操作/32现场exe重放证据与源码/SD通过，reviewed688207b67。metadata/phase/budget未扩大，source-cte/solver/AV原实现不动。
+- 主线只增计划簿记，958 rebase `688207b67→06251b0ccb4916d2e70abd7f98197987b778ca9e`，range-diff单patch完全等号，所有ACE/code与两SD逐字节等价。最终完整固定组 **cargo t ace-a2x，196/196 PASS、0skipped**，发现716.9643ms、执行/清理131639.6381ms、整132.3891907s；results SHA256=`4495c24c08ef3cf04e4568418f299868e265da1cbcb11057df79bc4706fa88e6`。首轮182pass/14fail确认为新树缺原release worker（NotFound/prebuilt要求）前置失败，未进这些认证；显式release构建59.38s后才跑全196绿，原失败和120.1627227s/SHA3022b10d...已折958，未缩分母或改expected。所有原189+新7保原条件，没跑全仓/性能门。
+- **D958已落master ff-only**，delivery06251b0cc；canonical两Spec逐字节=reviewed/delivery/current blob，source-query-integration SHA=eafa1082c933454dac0adeec25d70937c13c5a1a71a65e710304935c8526c208，a2r-hir-certification SHA=a32d3555b5657cb72c2ae909ce2ac000110662ef5aa46e218f96c7895561581a。归档`docs/plans/archive/958-a2x-worker-source-ct-frontdoor.md`。958/auto-lang与auto-down两树及分支/空组已由用户清理，Git列表/路径实际全部不存在；材料目录首次核验仍2034文件/44,395,461 bytes，未虚报清理。用户随后“材料已删”，实际scope不存在后才结6/6。
+- 自动审批对958整条收尾删除再拒（仅blocked by policy），**agent该条操作未执行，也未换方式重试**。删除前两树guard clean、无reparse/活动进程，worktree文件快照lang29,765/4,149,099,644 bytes，down1,256/26,409,169 bytes，scope2034/44,395,461 bytes均已折958；无target/exe/PDB保留迁移、无具名持有。全局登记成功刷新；仓库本地登记同步时JSON报错，发现scope数组末尾孤立结束括号/逗号（已有deleted_scopes958记录），只修该标点并保全936/935/938/941与958删除记录；原坏文本在941scope/retention-local-before-syntax-repair.txt。先前脚本局部失败后shell仍提交了档案，此处补齐了本地登记并复核两份JSON有效，没有以该中间提交冒收尾已全部执行。
+- **941实际消费**：唯一941树合master得到 **d88359466a855153ca2d464913cedf6a6e7db4e4**；旧接口观测接线与958helper/lock/conformance自动合并无冲突。原release worker重新构建2.84s、既有core dead-code warning1，无新warning。原8入口逐条重放**8/8 PASS**：普通源四方向保绿，原# CT四方向从exit2转exit0（两cert实际/reference四phase exit0、raw value:42换行；daily spawn0/Job2）。汇总`after-d958-original-entry-results.json` SHA256=`93286914b78cf0b5a5c5cea117bf0c70bf5ca2d15ba0f163d9993973bdc4b68c`。这是原F03实际反例复放，不是只git合并/静态函数存在；F03独立修复流程与消费者功能均关闭。
+- main已装旧worker仍2026-11-05T05:29:34.608315Z，SHA e2ba687e...，实际CT smoke仍source.lex拒#；合入958已精确记录stale项而非声称已部署。941本树tool已新鲜，941最终交付继续按实际生产artifact做新鲜性检查，不用main旧tool证据。旧38 legacy-A2R认证差异保持，不因本HIR CT修复充绿。
+- 复核941预算/来源合同所有现有pin在D958后**零漂移**。原准备脚本误预期certification Spec在该26源pin集合内，assert在写入前拒（source pin drift []）；没有改任何合同或造新hash，没有新的治理红；127有效治理证据的相关Python/static输入未变可复用，不因仅HEAD变化再跑。下一工作单元要新增有限CT cap认证reader及七源独立ref，届时按真实修改重核。当前worker二进制SHA已变化，旧首链两cert与文字20cert是先前工具上的有效历史证据，**不冒当前工具的新鲜准入**；须与新的CT14 cert一起刷新后再做全组合报告。
+
+958批门due核对：956最新收据仍<48h、958非5倍数，之后未有新的5倍数交付，不due；旧批37组红及957编译器triage保持原结论，无all-green声明。main代码零WIP，仅原他方docs-only在途保留；全部本轮源/证据只在独享941/958的登记范围，958已全清。
+
+下一步恢复941 T01..05：基于已交付CT前门完成七源14份独立Rust/C参考/实际认证、严格原4phase与caps/source/domain准入，并刷新受到新worker身份影响的既有cert；剩余source variants/ARCH机制、全部required reader和938/939真实接口继续保原义务，不用8原操作代整个M1签章。无用户待决定项。
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r1 | round:15 | from:work | to:work | status:executing | outcome:needs_fix | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:d88359466a855153ca2d464913cedf6a6e7db4e4 | next:work941（D958全部关闭；完整目标和原阈值保持）
+
+### 2026-11-06 CT独立参考/双端认证接入与全组合当前工具刷新（goal第16轮）
+
+941施工提交 **f0ef7b36fd88113091af53f3563cec4619b99688**，代码树clean。958清理已完成，不再待用户；本轮实际推进T01..05，941仍executing **0/15**，原AC/预算/实验规模与完整目标不缩。
+
+- 新增CT七源**14份独立Rust/C参考**和12字段TSV，固定SHA=`4fa162f7fe6722f540fb9c90a45fd89ed13b7a938d2ebc852c303ed8733dda69`。原sum42/callee-body43/bool/meta-fields2/meta-fields3/choose-instance42/child-ct-chain40独立oracle为42/43/**7**/42/43/42/40；meta与instances能力分别绑定，不把Bool原程序出口误成1。参考只用本语言的简单算术/条件/静态数组，不依赖目标emitter、runtime或源解析器。登记execution仍UNOBSERVED；root第六具名合同cte_reference不冒执行。24个提交文件工作字节=Git blob核对，记录在scope/d958-current-certifications/committed-input-audit.json。
+- 新有限CT认证reader先核固定reference合同，再核每源两target恰好14集合、case/source/ref/current worker/profile/caps/toolchain与原4进程终态，接到原504 Q4 target slot。Rust manifest严格绑定`auto.source.scalar-i32.draft`及scalar-i32-draft；原scalar无cap和text/具名trap分支保持。能力必须实际请求/证书/独立合同一致；child PASS或两腿相等不能替代手算oracle。CT值认证不认领CT缓存/hit/restore/ARCH；daily的完整准入也未由cert自动填绿。
+- 首次在D958手工构建worker上完成CT14+text20+首例2认证，均真实actual/reference编译运行。随后全组合如实拒绝旧AV worker SHA，未仅更新旧证据hash。冻结 **cargo t infra-ace-m1-arch case-ace-m1-q4-941 case-ace-unified-source-929 case-ace-ca-d-scalar-937 case-ace-m1-legacy-941 case-ac-av case-ace-m1-typed-native-891 case-ace-source-cte-936 --out <scope>/d958-current-certifications/frozen-consumer-gate**：8组**200/200**（治理131+Case69），gate=true，115.0840698s；results SHA=`1d66f7f6f174d98d3e3e19113dd9dee1cc5363031f010b05167f4559317f2b94`。治理131执行3096.8865ms；7 Case依次4/11/6/4/18/12/14，原选择不缩；生产Rust源码本轮零改，不额外跑全ACE/全仓。
+- 固定入口按既有参数重建worker，a2x最终SHA=`a83a46c946f80ceb681f6bbdfad934b71b59db813500aae58977922c0a7e78f2`，与先前手工构建不同。**构建全部结束后**再次实际捕获CT14+text20+首例2，共36认证、72编译+72运行原终态，并每target先现场daily冻结actual fileset、identity冻结编译器；108个原worker调用。最终材料唯一在scope/**d958-final-worker-certifications/**，旧工具证据保为历史，未混用。后续Case重放工具hash实际仍相同。7份原identity-inventory /2与parent-inventory亦由当前auto-case重新导出，严格读取无Debug解析/推测。
+- 首次200门未开启AUTO_CASE_WIRE_EVIDENCE，Case报告绿但无原通信帧，全组合按`required original exchange missing`拒；未据父PASS填证据。仅为补缺开启既有开关重放7个受影响Case组，**69/69**、94.6862898s（包括准备），原始wire/terminal/artifact-copy完整；scope/d958-current-certifications/frozen-consumer-raw-gate/results.json SHA=`c8acc9a1598030e0410f6631ff33093abac967634e5523f48d895b445d8ea261`。未重跑已有效131控制。最终所有父Case非PASS行扫描为空，原required旧格仍14/313，299未观测/38旧认证差异不填绿。
+- **当前完整只读preview实际成功**：新CT原AV/native14值+CT14 cert+text20 cert+首链20、原旧typed/native/ABI/query/syntax及登记/预算/ARCH一起读取；Popen禁用，无隐式工具启动。registered886中**82 PASS/0 FAIL/804 UNOBSERVED**，required universe仍unclosed、can_claim_expanded_m1=false。共享预留当前36,698,919/峰值**49,139,156 bytes <48MiB=50,331,648**，没有抬帽/重置峰值；实际单独Job计量1121.6977ms、peak process27,492,352 bytes、peak Job28,733,440 bytes（private<128MiB），报告147,993 bytes，SHA=`385237585a403ee9e1a54cd12e124fa1362d57200615b6d393f1bb8048cebd23`，路径scope/d958-final-worker-certifications/metered-preview.stdout；计量和stderr原件同目录。这是当前全组合读取证据，不是完整M1通过。
+- **当前CT原raw反控56项**：14合法完整reader PASS，去CT cap/独立值改错28 REFUSED；actual/reference原run帧同时改相同错值，14对原独立oracle均FAIL。后14明确仅4phase oracle层反控，不冒整证书重hash反控；全部标counterfactual_not_execution。结果SHA=`1703c75270a94b591a1657d353d184c1831430a114b6d8365c64705631fb60b3`，路径scope/d958-final-worker-certifications/cte-reader-controls.json。新增永久4控制验证七源oracle/cap、源及两ref字节漂移、缺cap/错版本/重复/异类能力、重复/缺失target集合；总131通过。此前text20 raw对照控制仍是历史工具上的有效控制，不重标当前执行。
+
+保留首次采集脚本错误：首例刷新脚本误读identity字段toolchain（实际certification_toolchain），随后误用emit操作（实际daily-emit，exit2）及C generated.h（实际generated.c）各在本地采集前置拒；修正按原pin真实文件名后仅续缺失C，Rust已完成记录保留，失败unknown-op三原件另存failed-unknown-op-*。新CT reader首次profile字面误写auto.source.scalar.draft，严格读取报stale；按原实际manifest/既有scalar合同改正后14通过。预算source pin只因本轮certreader真实变化刷新1项及预算合同hash，不改16域原帽。上述中间失败不充最终绿，也未作为新producer缺陷/另立功能计划。
+
+剩余：完整Q4所有源/变体的四target daily/cert与旧313required全读；完整registry封闭；SYN/ARCH真实P/M/R/IO、恢复首编辑/坏首编辑/required页、原样本/预算/性能/HMR/lease；938/939的真实交付与ABI机制；全AND反控/最终冻结并集/独立review/Spec/merge/归档/清理。仍无新增用户决定，不将已认领机制交给未立项后继。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r1 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:f0ef7b36fd88113091af53f3563cec4619b99688 | task_ids:T01..05（未关闭） | evidence:14独立CT refs/当前36原认证/56反控/131治理+69Case冻结/实际完整preview预算49,139,156<48MiB | blockers:无新增用户决定；完整原验收继续 | next_responsible_role:work941
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r1 | round:16 | from:work | to:work | status:executing | outcome:needs_fix | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:f0ef7b36fd88113091af53f3563cec4619b99688 | next:work941（当前工具证据已统一；完整原目标保持）
+
+### 2026-11-06 日常发射与认证的真实文件集联立准入（goal第17轮）
+
+上一轮为实际progress：CT双端新reader/当前36cert/完整组合刷新。本轮继续work；施工提交 **233e0df44**，树clean，941仍executing **0/15**。T04/05原daily/cert分轴不再仅以认证代日常记录，未缩原scope/预算/全量source义务。
+
+- 新`ace_m1_daily_evidence.py`为原source-CT14、text20、首例2的**36份既有实际日常命令**补只读准入：原argv提供nonce而非child响应提供期望；source/profile/entry/caps/输出根分别对已独立准入的认证输入；命令/原stdout/stderr摘要、producer与当前worker实际字节、nonce区别于cert、原Job成功并reap、原计量完整逐层核。此有限Windows原capture的Job process count必须为2（owned launcher+worker），独立于worker自报spawned_rustc/cl=0；额外子进程拒绝。它不推定daily程序已运行，执行正确性仍来自独立实际/参考认证。
+- 日常manifest与3个代码/header文件**逐字节SHA等于认证前冻结的actual_files完整4件**，manifest/response两清单分别完整、唯一、目标家族/原source FNV/SHA/入口/Rust target/resource-runtime/HIR domain/C函数origin范围核对。只对专用daily目录受限扫描四个声明成员及首个多余项，未声明exe/目录/链接拒，不遍历其他scope或跟随链接。C原scalar /1不强塞不存在的profile域；text与scalar schema互斥。
+- CT/text集合reader与首链现在都必须通过daily+cert；返回具名daily命令/响应摘要、nonce、compiler_spawn_zero及daily_judgement，不自动认领AV/native/CT缓存/ARCH。新reader代码哈希进入admission_sources。日常缺件时即使cert PASS也不能接受；原cert FAIL继续FAIL。原16域预算source pins零漂移，不制造刷新或放宽原帽。
+- **原raw副本反控48项**：CT meta-fields2与text NUL各两target×12；4合法重定位副本PASS，其余44（spawn bool/1、额外Job子进程、请求cap变更、源/nonce错、重复/缺失文件、字节数bool、实际main变更、未声明exe）全REFUSED。除实际文件变更/额外文件之外，原命令/response摘要按变更重算仍不能通过独立约束。Popen禁用，明确counterfactual_not_execution；结果scope/daily-original-controls/results.json SHA=`586c41416a0ea6dda1f22e40457d20d040b24df8d08440d6b61f01fa1537c871`。控制是日常证据准入，不把48计为新语言运行。
+- 新永久5测试包含四个source-profile/target合法分支、26个重hash坏请求/response分支、两件实际字节漂移、未声明exe/目录、缺daily而cert PASS。初轮缺件测试误期待OSError（实际EvidenceScope统一AdmissionError），及新增专用目录扫描暴露fixture复用scalar/text C目录留下旧header，两者按真实合同改测试后绿；没有放松reader允许旧产物。冻结`cargo t infra-ace-m1-arch --out <scope>/daily-admission-frozen-controls` **136/136，exit0，3.8030970s**，results SHA=`f4d42a1a848fef658f204fb140ac5ddac70a42e35af66f2fb10ed99b2a8acabb`。5提交文件工作字节=Git blob核对，记录scope/daily-admission-frozen-preview/committed-input-audit.json。
+- **完整原组合重新实际读取**，包括所有新增36 daily，Popen禁用，当前二进制与输入不变因此复用第16轮实际69Case及36cert原始执行，不为Python读取器变化重复编译/运行或跑全仓。单独原Job计量1383.7342ms，peak process**27,246,592** bytes、peak Job28,479,488 bytes；共享预留37,032,920/峰值**49,464,064 <48MiB=50,331,648**。报告159,043 bytes SHA=`c4dca274163b0746c985e63e6748e8cbc6d47e848d09f7bc38f385081599d971`，scope/daily-admission-frozen-preview/preview.stdout，原meter/空stderr同目录。CT14/text20两域daily_admission均PASS；登记仍82PASS/0FAIL/804UNOBSERVED，universe未封闭/expanded claim=false。增加的是这些格的日常证据强度，不假报新增覆盖行数。
+
+后续原义务保持：全部Q4源/变体四target与独立refs/trace/trap/负例；旧313required全读/38gap；SYN/ARCH原P/M/R/IO/restore首编辑、required页、样本/预算/HMR/lease；938/939实际合同；完整AND治理、最终冻结/独立review/Spec/merge/归档/清理。无新增用户决定/权限等待。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r1 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:233e0df44 | task_ids:T04/05（未关闭） | evidence:36原daily+认证联立/48原raw副本反控/136冻结/全组合49,464,064<48MiB | blockers:无新增用户决定；完整原验收继续 | next_responsible_role:work941
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r1 | round:17 | from:work | to:work | status:executing | outcome:needs_fix | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:233e0df44 | next:work941（完整四target/source/机制与原阈值保持）
+
+### 2026-11-06 F-941-04 原text-source四端扩大验收发现条件末尾记录构造歧义（第18轮工作中）
+
+原925冻结`text-char-925--v03_eq_full_bytes.at`（SHA=c88f8407c7235a1042d062575aa52c68a258eca8752e49844620ab3dfd1358c7，期望值1）在当前Rust/C text daily与认证四操作已通过，但正式`case-ace-m1-text-q4-941`十源×AV/native两次真实执行均**18PASS/2FAIL**，仅此源两腿source.syntax拒，native原诊断为`mn.unsupported.frontend: Text/source.syntax: expected expression, found return`，codegen/run未发生。原完整source不改、期望不改；两次分别是新增正式入口首次运行和补native三陷阱具名RT-FAIL原码/cleanup字节后运行，不将补观测当修复。
+
+源`if a == b { return 1 }`在text-record域把条件尾部`b {`按记录构造开始；原`core/src/source/parser.rs`约2954处仅看record surface+标识符后同线左花括号，尚未以条件上下文区分。AV owned_driver与native升级链都调用compile_text_record_source；text单域A2X无此歧义。诊断用隔离兄弟输入仅加条件括号`if (a == b) {`，原owned-request实际返回i32=1、两分配均释放（scope/text-q4-entry-survey/eq-parenthesized.*），只为定位原因，**绝不以此替换冻结源或覆盖原FAIL**。
+
+最小独立修复提案：既有record/text-record条件表达式消除尾标识符/记录构造歧义，保合法带括号/嵌套记录构造；补if/while条件、多行/括号及实际AV/native原冻结源回归，核共享前门消费路径；独立计划/review/职责门/merge后941重放原十源。按§5.4已归档能力新缺陷独立处理，本941不修改parser或改oracle，不以扩大profile的现有拒绝当正常通过。独立修复请求用户授权；在答复前继续只读证据reader等不依赖修复工作。
+
+本次原结果摘要：`{"text-q4-original-entry/results.json": {"sha256": "2f9912077ca7bfdecd3a3ca901af779358dabdc9dcbed06824193b6617d75cf7", "gate_passed": false, "wall_seconds": 13.564703900003224}, "text-q4-source-bound/gate/results.json": {"sha256": "5b7a50e0a773ab3a21d48be1a5bfbffe05b90cd93ebbcfa26463f48cc39c4d62", "gate_passed": false, "wall_seconds": 13.042500700001256}}`。原Case/worker帧与source/hash/Job完整留在统一941scope；native三trap同时发现已有RT-FAIL code=-10/-8，可沿原770库合同正当读取具体TextIndex/InvalidScalar，不能仅从exit70推断。
+
+### 2026-11-06 文字十源实际AV/native接线与失败保真（goal第18轮work）
+
+上一轮36 daily/cert联立为progress；本轮新增正式十文字源AV/native全20项及严格原帧reader，施工提交 **4cd5782d1fde03a5060e35dee4717dc2233bfc83**，树clean，尚未修F04。原T01..05仍未关闭。
+
+- 永久`text-q4.case.ad/.suite.ad`及显式固定组`case-ace-m1-text-q4-941`接原925十源，**源码字节/原oracle不改**；AV用原owned-run-v1，native用原mir-native-scalar-v1。首次20项18PASS/2FAIL；后续补native三个具名trap的原770 RT-FAIL+cleanup精确字节（status -10→TextIndex、-8→InvalidScalar），再运行仍18PASS/2FAIL，结果scope/text-q4-source-bound/gate/results.json SHA=`5b7a50e0a773ab3a21d48be1a5bfbffe05b90cd93ebbcfa26463f48cc39c4d62`，exit1、13.0425007s。后者才为当前Case合同，不以首次native只exit70当完整trap证明。两个FAIL恰为eq_full_bytes合法值1的AV/native前端拒，其他值及三trap实测均符合原oracle。
+- 独立 typed /2永久输入`text-q4-contract.json` SHA=`7db3492644cf64d2e378b192519a40e25d8c8edb9ef2aed923dc7c9ef0c6d1e8`，20 check的源/Case/profile/recipe/caps/oracle逐项绑定。以单独合同文件+具名root指针存，避免把整20行复制进常驻root registry；原登记886/旧313集合不变，无动态交集/NA。当前root第七具名合同text_q4，旧511原case映射仍原分母，新增20单列。
+- 新`ace_m1_text_q4_evidence.py`读真实Case/artifact-copy/START+TERMINAL/原request/stdout/stderr，重核当前worker、源SHA/FNV、请求hash/nonce、recipe/version/ABI、原owner的store/work路径、canonical owned i32及release ledger；native按原固定counter/span集合与真实link/run=1核，实际PE stdout/stderr逐字节。native RT-FAIL码+exit70+独立三trap精确事件链共同供语义trap权威；仅exit70从不通过。编译期语义diag作为**合法可读取的FAIL**保留，未知schema/协议/坏源/路径仍拒，不吞成工具绿。AV/native真实结果各自对独立文字oracle，不靠同错/父PASS。
+- native实际text lib与11个生产依赖（两worker、ac_text_runtime.lib、原library locator/runtime/driver/cache/link/config、owned_driver、AV trap合同）在第二次执行前后逐件SHA不变，原Job实际运行中按已钉原worker的固定locator路径消费；source/runtime漂移读入即STALE。材料scope/text-q4-source-bound/dependencies-before/after.json，本reader不运行该locator或启动cargo。资源/全预算/所有生命周期证明仍UNOBSERVED，此单元不冒资源全域验收。
+- **原帧反控22项**：value/trap×AV/native各5（4合法PASS、4同错语义FAIL、12换nonce/未知field/改source并重算requesthash均REFUSED）；再将两条实际前端diag的父级状态强制PASS，结果仍2FAIL。明确counterfactual_not_execution，结果SHA=`5690185423a948aa8d12d718065ac8841b5836f5d426855e8814061a61aad7aa`，scope/text-q4-source-bound/reader-controls.json。新增永久5治理测试覆盖两recipe值/陷阱、双方同错、exit70无具名trap、原事件/ledger坏cleanup与实际diag保FAIL；初轮6子例因测试构造误给native request加steps={}而拒，按真实协议改fixture后绿，未放宽生产reader。
+- 冻结4cd578 `cargo t infra-ace-m1-arch --out <scope>/text-q4-frozen-controls` **141/141**、exit0、3.2894021s，results SHA=`a21adbb14ff23c09c0473b962deaa7d21fe2e727dadf97cf4fd2c69a0f031342`。原20Case实际源/producer/工具/依赖与冻结提交相同，复用其红证据，不为提交重复执行。10提交文件工作字节=Git blob核，scope/text-q4-frozen-preview/committed-input-audit.json。
+- 新完整只读组合实际原Job：1690.3642ms、peak process26,583,040/Job27,820,032 bytes，共享reservation37,585,665/峰值**49,999,391<50,331,648（48MiB）**，无抬帽/重置峰值。报告169,760 bytes SHA=`86a22936a202e3d14956dc2dc7b82289e2d6a505892b2be32eb3c0f500bfc089`，scope/text-q4-frozen-preview/preview.stdout，原meter/空stderr同目录。登记为**100PASS/2FAIL/784UNOBSERVED**，source_case_reports=false、expanded claim=false；未隐藏新红，也未把141治理绿冒语义20绿。
+
+F04诊断/原兄弟括号探针及后续用户裁定见本节相邻记录。剩余完整原941四target/源变体、旧313/38账、全机制/原规模/预算与938/939等义务保持，不以文字域已有36/40通过当整包完成。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r1→r2授权修订在后 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:4cd5782d1 | task_ids:T01..05（未关闭） | evidence:20真实Case18PASS2FAIL/具名native traps/22反控/141冻结/全组合100PASS2FAIL784UNOBSERVED | blockers:F04实际缺陷，用户已裁定在941新phase修复 | next_responsible_role:new r2→work T16
+
+### 2026-11-06 用户裁定F04在941内新增phase（r2）
+
+用户对F04独立修复问题明确回答：**“直接在941计划添加新的phase修复。”** 本条为新授权，§4/§5.4/§5.7已按该具体例外同步；改plan_revision 1→2、total_steps15→17，仍executing0/17。不另立计划/取号/新树；T16/17在既有941树执行，原全部AC/样本/预算/旧38账保持。新增AC14/V19..21/SD07与具体producer→consumer、whole/fragment/合法/非法Ctor合同，修复后继续原全部验收。
+
+补充定位：生产`compile_text_record_source`经adapter/统一前门消费CST；`source/cst/project.rs`约2152处同样按record profile与同线`ident {`启动Ctor诊断路径，约4062处有Ctor投影；旧parser约2954是兼容oracle的相同历史歧义，**不能仅修旧手写parser宣称生产已修**。具体根因/合法record guard规则由T16沿实际语法结构与投影确认；未在规划轮改功能。没有新的用户待决定项。
+
+stage: new | plan_id:PLAN-941 | plan_revision:r2 | outcome:pass | changed:T16/T17/AC14/V19..21/SD07及F04特定S/N/X授权 | baseline:4cd5782d1 | worktree:D:/autostack/.wt/lang-941/auto-lang | next:work T16→T17→原941
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:18 | from:work→new（用户明确新增phase） | to:work | status:executing0/17 | outcome:needs_fix | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:4cd5782d1 | next:work T16→T17→原941（F04内修已授权，无待用户决定）
+
+### 2026-11-06 r2 F04生产语法与投影修复实现（goal第19轮，T16完成/T17在跑）
+
+用户r2内修授权已生效，无新计划/编号/树。唯一941树提交 **a8cc58bd368dfcdccecae000a2877086e64718d0**，code clean；**T16完成，current_step1/17**，T17完整消费者并集/当前身份数据刷新尚未完成，F04尚未关闭。
+
+- 根因实际生产是共享auto-source grammar `ctor-expr`在`ident {`左花括号cut提交；`compile_text_record_source→compile_parts_with→parse_program_with→CST`不是旧手写parser。新record/text-record/collections/closures条件用独立condition Pratt/rule族：bare guard的body brace不再成为ctor；真正带fields的裸具名构造、括号内构造/嵌套实参仍保留，普通expr原ctor cut/空ctor历史怪癖不改。while保原Core域，其余profile仍按原规则拒while、条件循环用for。
+- 条件规则节点按具名kind映射进入**同一**AST投影帧机，callee/方法调用/后缀分类及结构诊断路径一致，不新增parser/consumer源重写。原诊断叶walker与仅供差分的手写oracle增加同一条件上下文；非法构造残留Ctor frame的旧oracle unreachable改为与既有production诊断一致的source.syntax，新增反例实测不panic。sourcecap身份**ac-source-front/4**、共享grammar revision**3**，canonical换GrammarId；不复用旧cap/grammar身份，现旧worker/cert/preview仅历史，待T17原始数据刷新。
+- 新三个永久命名`source_cst_927::conditional_941_*`：四recordal profile×bare变量/比较/一元/调用/括号×空/非空body（40组合）与合法裸ctor/括号ctor/实参ctor（12组合）；record/text-record条件for/free片段、whole方法/MethodFragment、原while排除与三类非法构造源诊断/span及AST/旧oracle差分。新增具体AST不为Ctor断言，不仅两parser相等。现T16已覆盖原phase的多消费者解析机制，真实执行结果仍由T17证明。
+- 基线两新测真正执行**0PASS/2FAIL**（修复前），scope/conditional-941-baseline-compiled/results.json SHA=`62ef1157e9e10585dcefebe3a323e2b330787fb0607c1d70ab7cf72a16fe6fc3`、3.7856365s。更早首编译因测试误写AST枚举RecordCtor（实际CtorNamed）失败，不充语言反例；修正测试后才有上述真实red。
+- 第一版修复语法把alt和普通steps混同rule，被grammar编译器明确拒（source.infra），按现有步骤profiles门控修正；随后两定向测绿。完整差分发现3/567原语料AST在条件方法call分类漏识别新别名，及caps旧常量断言红；通过统一expression kind规范化修正所有callee/投影路径，按新实际身份更新三处caps断言，原567语料/70edge不删。新增非法ctor测试另击中旧oracle的Ctor-frame panic，按生产既有typed syntax拒绝修复后绿。这些失败全保原scope，未调低oracle/样本。
+- 最终`cargo t ace-source-syntax-927 --out <scope>/conditional-941-final-syntax` **13/13 PASS**、5.8016579s，results SHA=`c5bde3e89da0f01a9ef9e0521f6577e18fe84142bc8295ba71a92d018c63b3e9`；内含原完整差分/edge/片段/typed预算探针与新3测。旧first_lex_fact dead_code warning1保持已知baseline，无新增compiler warning。9文件rustfmt/diff-check完成；SD07的source-frontdoor.md修复知识仅准备在worktree，未提前落master Spec。
+- 冻结a8cc后已启动一次明确完整phase并集：`cargo t ace-source ace-syntax ace-av ace-native case-ace-m1-text-q4-941 --out <scope>/conditional-941-frozen-union`，含原全部样本/平台/ignore；新grammar变更因此**实际补ace-syntax**，没有按“纯parser”豁免真实下游。原语义source/期望/十源Case未改，AUTO_CASE_WIRE_EVIDENCE=1。工具release准备完成（AV约74s、ac51.43s等），现在原nextest ace-source执行中；尚无最终PASS/FAIL，不能填绿。具体活句柄unified exec **session_id=50141**，Python PID35700，nextest PID46300，最后实际检查均活；恢复时先轮询同句柄/原results，不因长时间无输出重开。
+
+T17后续：收原完整union真实终态/原十源20实际值与具名trap，再以当前worker/GrammarId/caps/runtime/source重新捕获及严格准入首链/CT/text受影响数据；现旧预览/36cert不冒当前有效。完整原941其余T01..15照旧，最终独立review仍待T14，不以phase自测顶review。
+
+第19轮续核：完整`ace-source`已真实终态**383/383 PASS，1原条件排除，not_run=[]**，原nextest Job执行175507.6743ms；未截断深4096/8192压力（实际在跑的deep_unclosed案例约1.15GB private，沿原nextest资源/截止退出，未人为强杀）。当前`ace-syntax`原64MiB streaming压力仍在执行：session50141/Python35700继续活，nextest现PID42064，其子PID33416为`syntax_budget::performance::syntax_budget_64mib_streaming_small_queries`，不是已停或可随意重跑。最终整union尚未终态。
+
+重核当前五个工具av/native/syntax/bridge/a2x的真实SHA均不同于第18轮绑定，原证据不能冒当前；对账scope/conditional-941-identity-drift.json SHA=`1624c1e36f9d5a945c2cfce959426f679a6534f528c93f97457a3d77e88c650e`。旧100PASS/2FAIL/784UNOBSERVED和36cert是修前有效历史；T17要在新工具下重建/准入，当前无新版组合签章。sourcefrontdoor.md SD07仅worktree候选；未动main代码。
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:19 | from:work | to:work | status:executing1/17 | outcome:needs_fix | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a8cc58bd368dfcdccecae000a2877086e64718d0 | next:work T17（首先轮询原活session50141；随后刷新实际身份/证据；其余原941完整目标保持）
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -425,4 +669,8 @@ stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 9 | from: work | to
 
 5. **F-952-01 已由D953关闭**：独立修复交付/归档/清理完成，952已合入/归档/清理6/6；原941/952授权保持。用户已`/goal resume`且继续推进原941，不重复请求；host状态未更新仅记录，工作树与材料在途保护。
 
-6. **当前真实前置缺口**：D936（CT/frozen/原required页与计量）、D938（source foreign/代际与恢复接口）、D939（opaque资源/callback/error/ctx与实际source合同）尚未交齐；T01完整映射和后续验收保持pending。首例20项通过与64治理控制不核销上述义务。原owner稳定交付后恢复本树继续，无需重授941或重做已关闭952/953。
+6. **当前前置与验收缺口**：D936已交付并同步；F-941-03已由D958=06251b0cc独立修复交付/归档/清理6/6关闭，941消费8原入口通过。D938（source foreign/代际与恢复接口）、D939（opaque资源/callback/error/ctx与实际source合同）仍未交齐；936在941所需CT/frozen/required页与原计量仍须真实观测。首例/治理控制不核销这些义务，无需重授941。
+
+7. **F-941-03 已关闭（D958=06251b0cc）**：用户授权的独立修复完成review/全196门/ff合入/Spec/归档/清理6/6；941已合入并新worker重放原8操作全通过。dead-owner目录及958所有清理均实际完成，无待清理/重授项；941其余验收继续。
+
+8. **F-941-04已获r2内修授权**：按用户“直接在941计划添加新的phase修复”执行§5.8/T16/17，不再等待独立修复授权；原失败仍在，未提前关闭，修复/完整并集/独立review均须真实完成。

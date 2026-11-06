@@ -58,3 +58,20 @@
 
 全语言 comptime/类型生成/泛型/runtime 反射；consumer 面不因 callee 支持更多 scalar
 操作而扩 796 求解器。
+
+
+## 普通源码 CT 面（PLAN-936，SD-02）
+
+- 源能力 `ac.source.cte.scalar/v1`（scalar-ct 语法面，前门键 `ac-source-front/3`）
+  启用单表达式 `#{ expr }`；无能力 `#` 不入词法面（原拒绝面不变）。非支持 CT
+  构造（多语句/声明生成/类型生成）具名拒；未服务 HashExpr 在 typecheck 走检
+  受控拒（`source.cte.unserved`），绝不作为运行时表达式下跑。
+- 服务端口：`ace-source-cte`（无环提取——core/lowering/av-core/artifacts/
+  source-query 白名单，禁 AV 前端/native/probe 包；817 closure 道执行尾委托
+  共享服务，snapshot 前端留 probe 侧）。
+- meta selector 源级化：`ct_field_count(Record)`/`ct_has_field(Record,"lit")`
+  受保护注册表（无能力=普通名；能力下同名声明具名冲突）；selector 是数据非
+  值，本地求值（meta_query 计数、零 AV），结果经结构替换成**真实 AV 实参**。
+- typed 失败：期望类≠表达式类=typed 拒；i32 仅收 I32、bool 收 Bool 或已审 0/1
+  投影 wrapper 输出（其余拒）；trap/资源/取消计真实 ct_execute attempt、零
+  冻结发布。详见 [source-query-integration](source-query-integration.md)。

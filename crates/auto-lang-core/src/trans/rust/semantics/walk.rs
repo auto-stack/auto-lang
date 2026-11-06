@@ -553,6 +553,7 @@ impl<'a> Analysis<'a> {
             let builtin = matches!(
                 name.as_str(),
                 "assert"
+                    | "type_of"
                     | "assert_eq"
                     | "assert_ne"
                     | "print"

@@ -1095,6 +1095,15 @@ impl RustTrans {
     /// in trait impl blocks. Single-file transpile doesn't know about the
     /// assembled crate's module layout.
     pub(super) fn fix_missing_trait_impl_uses(content: &mut String) {
+        fn binds(tree: &syn::UseTree, name: &str) -> bool {
+            match tree {
+                syn::UseTree::Name(n) => n.ident == name,
+                syn::UseTree::Rename(n) => n.rename == name,
+                syn::UseTree::Path(p) => binds(&p.tree, name),
+                syn::UseTree::Group(g) => g.items.iter().any(|t| binds(t, name)),
+                syn::UseTree::Glob(_) => false,
+            }
+        }
         for (type_name, use_stmt) in [
             ("JsonValue", "use crate::wire::JsonValue;"),
             ("ToolError", "use crate::error::ToolError;"),
@@ -1117,7 +1126,12 @@ impl RustTrans {
                     }
                 })
                 .unwrap_or_else(|| use_stmt.to_string());
-            let already_via_rust = content.contains(use_stmt) || content.contains(&brace_form);
+            let already_via_rust = content.contains(use_stmt)
+                || content.contains(&brace_form)
+                || content
+                    .lines()
+                    .filter_map(|line| syn::parse_str::<syn::ItemUse>(line).ok())
+                    .any(|item| binds(&item.tree, type_name));
             let already_via_auto = content.contains(&format!(": {}", type_name))
                 || content.contains(&format!(", {}", type_name))
                 || content.contains(&format!("{} ,", type_name));

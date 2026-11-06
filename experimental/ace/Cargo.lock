@@ -13,8 +13,10 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "sysinfo",
  "tokio",
+ "zip",
 ]
 
 [[package]]
@@ -51,6 +53,7 @@ dependencies = [
  "ace-artifacts",
  "ace-core",
  "ace-semantics-contract",
+ "ace-source-cte",
  "ace-source-query",
  "serde",
  "serde_json",
@@ -67,6 +70,7 @@ dependencies = [
  "ace-abi",
  "ace-artifacts",
  "ace-core",
+ "ace-source-cte",
  "ace-source-query",
  "auto-tool-execution",
  "serde_json",
@@ -127,6 +131,7 @@ dependencies = [
  "ace-core",
  "ace-lowering",
  "ace-semantics-contract",
+ "ace-source-cte",
  "ace-source-query",
  "ace-syntax-core",
  "ace-syntax-grammar",
@@ -186,6 +191,7 @@ dependencies = [
  "ace-native",
  "ace-semantics",
  "ace-semantics-contract",
+ "ace-source-cte",
  "base64 0.22.1",
  "rusqlite",
  "serde",
@@ -329,6 +335,19 @@ dependencies = [
  "base64 0.22.1",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "ace-source-cte"
+version = "0.1.0"
+dependencies = [
+ "ace-artifacts",
+ "ace-av-core",
+ "ace-core",
+ "ace-lowering",
+ "ace-semantics-contract",
+ "ace-source-query",
+ "blake3",
 ]
 
 [[package]]

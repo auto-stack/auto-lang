@@ -1,0 +1,10 @@
+fn flag() bool {
+    return true
+}
+fn pick<T>(a T, b T) T {
+    if #{ flag() } { return a }
+    return b
+}
+fn main() int {
+    return #{ pick(40, 42) }
+}

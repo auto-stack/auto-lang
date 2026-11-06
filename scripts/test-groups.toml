@@ -580,7 +580,10 @@ name = "ace-comptime"
 title = "ACE包 experimental/ace"
 runner = "nextest"
 workspace = "experimental/ace"
-args = ["-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-comptime", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+# PLAN-936（T-11）：source-cte 服务包（真实 AV CT 执行/冻结/调度/回灌）
+# 单元与集成职责显式纳入本固定清单——被 comptime 依赖编译不等于其测试
+# 已执行。
+args = ["-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-comptime", "-p", "ace-source-cte", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "all()"
 tools = []
 domain = "ace"
@@ -856,6 +859,22 @@ args = []
 expression = "all()"
 tools = []
 suite = "crates/auto-lang/test/cases/ace-m1/source-instances-935/source-instances-935.suite.ad"
+domain = "ace"
+all = false
+
+# PLAN-936 T-11：SQ-C 普通源码真实 AV CT 查询族（CT 产品车道：真实 AV
+# 执行→结构回灌→事实车道→各端同 HIR）。负例（未服务/环/deadline/禁调/
+# 篡改 envelope/恢复 R 窗）由 ace-comptime 固定组的 ace-source-cte 包
+# 测试承载。
+[[group]]
+name = "case-ace-source-cte-936"
+title = "ACE M1 SQ-C source CTE 936 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.suite.ad"
 domain = "ace"
 all = false
 

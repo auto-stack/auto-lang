@@ -13,7 +13,7 @@
 //! types here ([`VT`]); mismatch *checking* is [`super::typecheck`].
 
 use super::ast::{self, Arg, BinOp, Expr, ExprKind, FnItem, Stmt, TypeWord, UnaryOp};
-use super::{trace_intrinsic, SourceProfile, TRACE_CAPABILITY};
+use super::{meta_intrinsic, trace_intrinsic, SourceProfile, META_CAPABILITY, TRACE_CAPABILITY};
 use crate::atom_text::{Diagnostic, Span, Stage};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -243,6 +243,21 @@ pub enum RExprKind {
         symbol: &'static str,
         args: Vec<ResolvedExpr>,
     },
+    /// PLAN-936（T-04）：`#{ expr }` CT 需求的已绑定形式。inner 是完整
+    /// 绑定后的表达式（含 MetaQuery 节点）；HashExpr 的类型 = inner 的
+    /// 类型。合法消费：CT 车道以冻结常量结构性替换本节点（T-06/T-07）；
+    /// typecheck 走到未服务 HashExpr = 受控拒（`source.cte.unserved`）。
+    HashExpr {
+        inner: Box<ResolvedExpr>,
+    },
+    /// PLAN-936（T-04）：meta 查询内在（ct_field_count/ct_has_field）。
+    /// type_name/field 是 query selector（数据，不是运行时值）；vt 为
+    /// I32（field_count）/Bool（has_field）。只在 HashExpr 子树内可绑定。
+    MetaQuery {
+        op: &'static str,
+        type_name: String,
+        field: Option<String>,
+    },
     Binary {
         op: BinOp,
         lhs: Box<ResolvedExpr>,
@@ -403,6 +418,9 @@ impl Drop for ResolvedExpr {
         let detach = |node: &mut ResolvedExpr, stack: &mut Vec<ResolvedExpr>| match &mut node.kind {
             // PLAN-862: leaf, nothing to detach.
             RExprKind::Unit => {}
+            // PLAN-936（T-04）：CT 需求/meta 查询在 closures 面不可达（语法
+            // 面门控）；叶处理。
+            RExprKind::HashExpr { .. } | RExprKind::MetaQuery { .. } => {}
             RExprKind::Binary { lhs, rhs, .. } => {
                 let l = std::mem::replace(lhs.as_mut(), dummy());
                 let r = std::mem::replace(rhs.as_mut(), dummy());
@@ -1320,6 +1338,9 @@ fn resolve_detailed(
         validate_foreign_context(program, foreign, capabilities)?;
     }
     let trace_enabled = capabilities.iter().any(|c| c == TRACE_CAPABILITY);
+    // PLAN-936（T-04）：meta 查询与 CT 表达式能力（各自独立门；meta 默认关）。
+    let meta_enabled = capabilities.iter().any(|c| c == META_CAPABILITY);
+    let ct_enabled = capabilities.iter().any(|c| c == super::cst::CT_CAPABILITY);
     let mut diags = Vec::new();
     let mut coll = CollTables::default();
     let is_coll = surface.is_collections();
@@ -1527,6 +1548,20 @@ fn resolve_detailed(
         } else {
             format!("{}::{}", owner_ty, f.name.name)
         };
+        // PLAN-936（T-04）：meta 能力在时，两个 meta 查询名是受保护 def——
+        // 用户同名声明具名冲突（不静默遮蔽查询，§5.2）。
+        if meta_enabled && meta_intrinsic(&f.name.name).is_some() {
+            diags.push(Diagnostic::new(
+                Stage::Bind,
+                "source.cte.meta-name-conflict",
+                format!(
+                    "`{}` is a protected CT meta query name (cte.meta.fields/v1) and cannot be declared as a function here",
+                    f.name.name
+                ),
+                f.span,
+            ));
+            continue;
+        }
         if sigs.contains_key(&sig_key) {
             // PLAN-862 (entry-contract §2.2): in the entry-unit profile the
             // ENTRY MATRIX owns the duplicate-`main` verdict — it reports
@@ -1676,6 +1711,8 @@ fn resolve_detailed(
             f,
             &sigs,
             trace_enabled,
+            meta_enabled,
+            ct_enabled,
             surface,
             &mut diags,
             fn_receiver[i],
@@ -2710,6 +2747,10 @@ pub(crate) fn recheck_swap_with_supply(
         item,
         &env.sigs,
         env.trace_enabled,
+        // PLAN-936（T-04）：closures/暖环境再检面无 CT 语法（语法面门控），
+        // meta/CT 能力旗标恒 false。
+        false,
+        false,
         env.profile,
         &mut diags,
         recv,
@@ -2823,6 +2864,9 @@ pub(crate) fn resolve_lambda_in_context(
         let mut r = FnResolver {
             sigs: &env.sigs,
             trace_enabled: env.trace_enabled,
+            meta_enabled: false,
+            ct_enabled: false,
+            ct_depth: 0,
             profile: SourceProfile::Closures,
             diags: &mut diags,
             locals: Vec::new(),
@@ -3023,6 +3067,8 @@ pub(crate) fn resolve_owner_in_env(
         item,
         &env.sigs,
         env.trace_enabled,
+        false,
+        false,
         SourceProfile::Closures,
         &mut diags,
         ast::Receiver::Free,
@@ -3735,6 +3781,12 @@ enum RecvClass {
 struct FnResolver<'a, 's> {
     sigs: &'a BTreeMap<String, FnSig>,
     trace_enabled: bool,
+    /// PLAN-936（T-04）：meta 查询能力（cte.meta.fields/v1）已授予。
+    meta_enabled: bool,
+    /// PLAN-936（T-04）：CT 表达式能力（ac.source.cte.scalar/v1）已授予。
+    ct_enabled: bool,
+    /// PLAN-936（T-04）：当前绑定位置是否在 `#{ ... }` 子树内（嵌套深度）。
+    ct_depth: u32,
     /// PLAN-782: the combination profile keeps `.move` wrappers as
     /// first-class argument values (text profile unwraps them into
     /// CallBinding.moved markers instead).
@@ -3789,6 +3841,8 @@ fn resolve_fn(
     f: &FnItem,
     sigs: &BTreeMap<String, FnSig>,
     trace_enabled: bool,
+    meta_enabled: bool,
+    ct_enabled: bool,
     surface: SourceProfile,
     diags: &mut Vec<Diagnostic>,
     receiver: ast::Receiver,
@@ -3805,6 +3859,8 @@ fn resolve_fn(
         f,
         sigs,
         trace_enabled,
+        meta_enabled,
+        ct_enabled,
         surface,
         diags,
         receiver,
@@ -3828,6 +3884,8 @@ fn resolve_fn_reuse<'a, 's>(
     f: &FnItem,
     sigs: &'a BTreeMap<String, FnSig>,
     trace_enabled: bool,
+    meta_enabled: bool,
+    ct_enabled: bool,
     surface: SourceProfile,
     diags: &'a mut Vec<Diagnostic>,
     receiver: ast::Receiver,
@@ -3850,6 +3908,9 @@ fn resolve_fn_reuse<'a, 's>(
     let mut r = FnResolver {
         sigs,
         trace_enabled,
+        meta_enabled,
+        ct_enabled,
+        ct_depth: 0,
         profile: surface,
         diags,
         locals: Vec::new(),
@@ -4102,6 +4163,9 @@ impl<'a, 's> FnResolver<'a, 's> {
 
     fn infer_closure_expr(&self, expr: &Expr, locals: &BTreeMap<String, VT>) -> VT {
         match &expr.kind {
+            // PLAN-936（T-04）：HashExpr 的类型 = inner 的类型（closures 面
+            // 不产 HashExpr；本臂仅为穷尽性——inner 递归即可）。
+            ExprKind::HashExpr { expr: inner } => self.infer_closure_expr(inner, locals),
             ExprKind::IntLit(_) => VT::I32,
             ExprKind::BoolLit(_) => VT::Bool,
             ExprKind::StrLit(_) => VT::Str,
@@ -5972,6 +6036,35 @@ impl<'a, 's> FnResolver<'a, 's> {
 
     fn expr(&mut self, e: &Expr) -> ResolvedExpr {
         match &e.kind {
+            // PLAN-936（T-04）：`#{ expr }` 是编译期需求，不是运行时表达式。
+            // 绑定：CT 能力门（前门已按能力面解析；resolve 复核使携带
+            // HashExpr 的 AST 不能在无能力车道绑定）→ inner 在 CT 上下文
+            // 内完整绑定（含 MetaQuery 节点）→ HashExpr 类型 = inner 类型。
+            // 未服务 HashExpr 由 typecheck 走处受控拒（source.cte.unserved）；
+            // 合法消费：CT 车道以冻结常量结构性替换本节点（T-06/T-07）。
+            ExprKind::HashExpr { expr: inner } => {
+                if !self.ct_enabled {
+                    self.bind_err(
+                        "source.cte.capability",
+                        "a `#{ ... }` compile-time demand requires the ac.source.cte.scalar/v1 capability (this bind lane was not granted it)",
+                        e.span,
+                    );
+                    return ResolvedExpr {
+                        span: e.span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(0),
+                    };
+                }
+                self.ct_depth += 1;
+                let r = self.expr(inner);
+                self.ct_depth -= 1;
+                let vt = r.vt;
+                ResolvedExpr {
+                    span: e.span,
+                    vt,
+                    kind: RExprKind::HashExpr { inner: Box::new(r) },
+                }
+            }
             // PLAN-864: generic receivers ride the iterative machine only.
             ExprKind::GenericType { name, .. } => {
                 self.bind_err(
@@ -6082,13 +6175,30 @@ impl<'a, 's> FnResolver<'a, 's> {
                     }
                 }
             },
-            ExprKind::StrLit(v) => ResolvedExpr {
-                span: e.span,
-                // default context: a literal is a borrowing view (D-03);
-                // owning contexts retag it via `retag_literal`
-                vt: VT::Str,
-                kind: RExprKind::StrLit(v.clone()),
-            },
+            ExprKind::StrLit(v) => {
+                // PLAN-936（T-04）：非 text 面上字符串字面量的唯一合法位置是
+                // ct_has_field 的字段选择子（meta 拦截在值解析前）——
+                // 走到这里的都是散落使用，受控拒。
+                if !self.profile.admits_text_literals() {
+                    self.bind_err(
+                        "source.unsupported",
+                        "a string literal on this face is only legal as the field selector of `ct_has_field` inside `#{ ... }`",
+                        e.span,
+                    );
+                    return ResolvedExpr {
+                        span: e.span,
+                        vt: VT::Str,
+                        kind: RExprKind::StrLit(String::new()),
+                    };
+                }
+                ResolvedExpr {
+                    span: e.span,
+                    // default context: a literal is a borrowing view (D-03);
+                    // owning contexts retag it via `retag_literal`
+                    vt: VT::Str,
+                    kind: RExprKind::StrLit(v.clone()),
+                }
+            }
             ExprKind::CharLit(v) => ResolvedExpr {
                 span: e.span,
                 vt: VT::Char,
@@ -6904,6 +7014,15 @@ impl<'a, 's> FnResolver<'a, 's> {
                         continue;
                     }
                     if let ExprKind::Call { callee, args } = &node.kind {
+                        // PLAN-936（T-04）：meta 查询内在——selector 实参在
+                        // 调度前拦截（不作为子表达式任务解析）。
+                        // 拦截条件同 call()：能力已授或 CT 子树内。
+                        if self.meta_enabled || self.ct_depth > 0 {
+                            if let Some(op) = meta_intrinsic(&callee.name) {
+                                out[slot] = self.meta_query(op, callee, args, node.span);
+                                continue;
+                            }
+                        }
                         if args.is_empty() {
                             out[slot] = self.call(callee, &[], node.span);
                             continue;
@@ -7920,7 +8039,138 @@ impl<'a, 's> FnResolver<'a, 's> {
         }
     }
 
+    /// PLAN-936（T-04）：meta 查询内在的绑定（ct_field_count/ct_has_field）。
+    /// 类型/字段串是 query selector（数据），绝不作为运行时值解析；全部
+    /// 拒绝精确且具名（§5.2 “缺cap/缺record/字段串非字面量/错误位置的
+    /// 拒绝明确且配合法近邻”）。
+    fn meta_query(
+        &mut self,
+        op: &'static str,
+        callee: &ast::Ident,
+        args: &[Arg],
+        call_span: Span,
+    ) -> ResolvedExpr {
+        let bad = |r: &mut Self, code: &str, msg: String, span: Span| -> ResolvedExpr {
+            r.bind_err(code, msg, span);
+            ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            }
+        };
+        if !self.meta_enabled {
+            return bad(
+                self,
+                "source.cte.meta-capability",
+                format!(
+                    "`{}` requires the cte.meta.fields/v1 capability (meta queries default to closed)",
+                    callee.name
+                ),
+                call_span,
+            );
+        }
+        if self.ct_depth == 0 {
+            return bad(
+                self,
+                "source.cte.meta-outside-ct",
+                format!(
+                    "`{}` is a CT meta query — it is only legal inside a `#{{ ... }}` compile-time expression",
+                    callee.name
+                ),
+                call_span,
+            );
+        }
+        // arity: field_count 1 / has_field 2；参数必须位置式（selector 位）。
+        let want = if op == "cte.meta.field_count" { 1 } else { 2 };
+        let positional: Vec<&Expr> = args
+            .iter()
+            .filter_map(|a| match a {
+                Arg::Pos(e) | Arg::MovePos(e) => Some(e),
+                Arg::Named { .. } => None,
+            })
+            .collect();
+        if positional.len() != want || positional.len() != args.len() {
+            return bad(
+                self,
+                "source.argument",
+                format!(
+                    "`{}` expects {want} positional selector argument(s)",
+                    callee.name
+                ),
+                call_span,
+            );
+        }
+        // selector 0：裸 record 名（Var 且在 rec_index）。
+        let type_name = match &positional[0].kind {
+            ExprKind::Var(id) => id.name.clone(),
+            _ => {
+                return bad(
+                    self,
+                    "source.cte.meta-type-selector",
+                    format!(
+                        "the type operand of `{}` must be a bare declared record name (a query selector, never a value)",
+                        callee.name
+                    ),
+                    positional[0].span,
+                )
+            }
+        };
+        if !self.rec_index.contains_key(&type_name) {
+            return bad(
+                self,
+                "source.cte.meta-unknown-type",
+                format!("`{type_name}` is not a declared record type in this module"),
+                positional[0].span,
+            );
+        }
+        // selector 1（has_field）：字段名必须是字符串字面量。
+        let field = if want == 2 {
+            match &positional[1].kind {
+                ExprKind::StrLit(f) => Some(f.clone()),
+                _ => {
+                    return bad(
+                        self,
+                        "source.cte.meta-field-selector",
+                        format!(
+                            "the field operand of `{}` must be a string literal (a query selector, never a value)",
+                            callee.name
+                        ),
+                        positional[1].span,
+                    )
+                }
+            }
+        } else {
+            None
+        };
+        // 字段存在性不在 bind 判定：缺字段是 has_field 的语义结果（false）
+        // 与负依赖轴（§5.2“HasField 缺→有真实负依赖”），非 bind 错误。
+        let vt = if op == "cte.meta.field_count" {
+            VT::I32
+        } else {
+            VT::Bool
+        };
+        ResolvedExpr {
+            span: call_span,
+            vt: self.node_ty(call_span, vt),
+            kind: RExprKind::MetaQuery {
+                op,
+                type_name,
+                field,
+            },
+        }
+    }
+
     fn call(&mut self, callee: &ast::Ident, args: &[Arg], call_span: Span) -> ResolvedExpr {
+        // PLAN-936（T-04）：meta 查询内在在此拦截——selector 实参绝不进入
+        // 值解析（裸 record 名/字符串字面量不是值位置合法形状）。
+        // 拦截条件：能力已授（名字受保护）或当前在 CT 子树内
+        // （CT 内的查询名受保护，缺能力的拒绝精确具名）；两者皆无时
+        // 是普通名字（trace 模式：无能力不劫持）。
+        if self.meta_enabled || self.ct_depth > 0 {
+            if let Some(op) = meta_intrinsic(&callee.name) {
+                return self.meta_query(op, callee, args, call_span);
+            }
+        }
         let mut rargs: Vec<ResolvedArg> = Vec::new();
         for a in args {
             match a {

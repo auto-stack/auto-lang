@@ -531,7 +531,7 @@ mod plan781_byte_len_tests {
         assert_eq!(a2r_std::str::str_byte_len("中文"), 6);
         assert_eq!(
             a2r_std::str::str_byte_len("第一行\n第二行\n"),
-            shim_str_byte_len("第一行\n第二行\n".into())
+            i64::from(shim_str_byte_len("第一行\n第二行\n".into()))
         );
     }
 

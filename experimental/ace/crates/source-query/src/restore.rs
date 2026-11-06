@@ -120,11 +120,8 @@ pub fn restore_bind(
     for item in &program.items {
         match item {
             Item::Fn(f) => names.push(f.name.name.clone()),
-            Item::Type(_) => {
-                return Err(RestoreError::Profile {
-                    what: "record declaration",
-                })
-            }
+            // PLAN-936（T-11）：fields-only record 声明跳过（meta 源形状）。
+            Item::Type(_) => {}
             Item::Enum(_) => {
                 return Err(RestoreError::Profile {
                     what: "enum declaration",

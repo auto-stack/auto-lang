@@ -1,0 +1,28 @@
+[package]
+name = "ace-source-cte"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-936 SQ-C: the ordinary-source compile-time execution service — minimal checked call entry, real AV execution, executed-envelope freeze/restore (acyclic extraction, no AV-frontend/native dependency)"
+publish = false
+
+[dependencies]
+ace-core = { path = "../core" }
+ace-lowering = { path = "../lowering" }
+ace-av-core = { path = "../av-core" }
+ace-artifacts = { path = "../artifacts" }
+ace-semantics-contract = { path = "../semantics-contract" }
+# The SQ-A identity/keys port (PLAN-934) supplies the callee logical id
+# and the signature/body content versions that key the executed envelope.
+# This is the \"consumer above the query port\" direction the 934 crate
+# declares; it never points back at this crate.
+ace-source-query = { path = "../source-query" }
+blake3 = "1.5"
+
+# PLAN-936 §2/§5.1 acyclicity contract (T-02 criterion 1): this crate is
+# the extracted REAL-AV/freeze service. Its dependency whitelist is
+# ace-core / ace-lowering / ace-av-core / ace-artifacts /
+# ace-semantics-contract / ace-source-query — it must NEVER depend on
+# ace-av (the 828 incremental-session frontend), ace-native, or the
+# ace-comptime* probe packages, or the consumer crates below it would
+# close a cycle (av → source-cte → av). The old probe keeps its snapshot
+# lane by DELEGATING through this service (T-03), never the reverse.

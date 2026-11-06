@@ -24,6 +24,7 @@ members = [
   "crates/semantics-contract",
   "crates/semantics-store",
   "crates/source-query",
+  "crates/source-cte",
   "crates/syntax-artifacts",
   "crates/syntax-core",
   "crates/syntax-grammar",

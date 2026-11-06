@@ -141,11 +141,9 @@ impl SignatureCatalog {
                     by_logical.insert(facts.logical.clone(), facts.name.clone());
                     by_name.insert(facts.name.clone(), facts);
                 }
-                Item::Type(_) => {
-                    return Err(ProduceError::Profile {
-                        what: "record declaration",
-                    })
-                }
+                // PLAN-936（T-11）：fields-only record 声明是 meta 源形状
+                // （§5.2）——目录跳过（按 fn 定型；rec_index 归 core）。
+                Item::Type(_) => {}
                 Item::Enum(_) => {
                     return Err(ProduceError::Profile {
                         what: "enum declaration",

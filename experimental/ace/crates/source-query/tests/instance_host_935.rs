@@ -61,7 +61,9 @@ fn parse(src: &str) -> ace_core::source::ast::Program {
 #[test]
 fn page_codec_roundtrip_and_envelope_refusals() {
     let mut host = InstanceHost::new(MemoryInstanceSink::default());
-    let cand = host.prepare_set(&parse(CHOOSE), PKG, MOD, &caps()).expect("prepare");
+    let cand = host
+        .prepare_set(&parse(CHOOSE), PKG, MOD, &caps())
+        .expect("prepare");
     assert_eq!(cand.instances.len(), 2);
     let page = InstancePage::from(&cand.instances[0]);
     let bytes = ace_source_query::encode_instance_page(&page).expect("encode");
@@ -130,7 +132,9 @@ fn single_flight_dedup_and_atomic_install() {
     assert_eq!(host.productions(), 2);
     assert_eq!(host.attempts(), a2 + 1);
     // 集合指纹对实例集合区分（V-03：不同 T/集合不混淆）。
-    let other = host.prepare_set(&parse(CHOOSE_SWAPPED), PKG, MOD, &caps()).expect("p2");
+    let other = host
+        .prepare_set(&parse(CHOOSE_SWAPPED), PKG, MOD, &caps())
+        .expect("p2");
     assert_ne!(set_fingerprint(&other.instances), cur_fp);
 }
 
@@ -155,13 +159,17 @@ fn commit_revalidation_keeps_old_set() {
         let mut host = InstanceHost::new(MemoryInstanceSink::default());
         let stale = host.prepare_set(&prog, PKG, MOD, &caps()).expect("p1");
         let fresh = host.prepare_set(&prog, PKG, MOD, &caps()).expect("p2");
-        host.commit(fresh, &prog, PKG, MOD, &caps(), None).expect("c1");
+        host.commit(fresh, &prog, PKG, MOD, &caps(), None)
+            .expect("c1");
         let err = host
             .commit(stale, &prog, PKG, MOD, &caps(), None)
             .unwrap_err();
         assert!(matches!(
             err,
-            ace_source_query::InstanceCommitError::LateResult { current: 1, candidate: 0 }
+            ace_source_query::InstanceCommitError::LateResult {
+                current: 1,
+                candidate: 0
+            }
         ));
         assert_eq!(host.current().unwrap().revision, 1, "old set intact");
     }
@@ -190,11 +198,13 @@ fn aba_history_reuse_requires_equal_content() {
     let cand_a = host.prepare_set(&prog_a, PKG, MOD, &caps()).expect("A");
     let key_a = cand_a.instances[0].key.clone();
     let page_a = InstancePage::from(&cand_a.instances[0]);
-    host.commit(cand_a, &prog_a, PKG, MOD, &caps(), None).expect("install A");
+    host.commit(cand_a, &prog_a, PKG, MOD, &caps(), None)
+        .expect("install A");
     // B 时代：换版生产+安装（A 的页仍在 sink——历史保留）。
     let prog_b = parse(CHOOSE_SWAPPED);
     let cand_b = host.prepare_set(&prog_b, PKG, MOD, &caps()).expect("B");
-    host.commit(cand_b, &prog_b, PKG, MOD, &caps(), None).expect("install B");
+    host.commit(cand_b, &prog_b, PKG, MOD, &caps(), None)
+        .expect("install B");
     // 回 A：同源推导 → 同键同内容 → 复用（productions 不增）。
     let prod_before = host.productions();
     let (p, fresh) = host.produce(&page_a).expect("A again");
@@ -205,7 +215,10 @@ fn aba_history_reuse_requires_equal_content() {
     let mut forged = page_a.clone();
     forged.demands += 99;
     let (_p2, fresh2) = host.produce(&forged).expect("produce forged");
-    assert!(fresh2, "a different payload under the same key must not replay");
+    assert!(
+        fresh2,
+        "a different payload under the same key must not replay"
+    );
 }
 
 /// 持久化：ManagedStore 层 S935 真落盘 + 键查询 + 跨 sink 恢复。
@@ -214,11 +227,13 @@ fn managed_store_s935_persistence() {
     let dir = std::env::temp_dir().join(format!("s935-store-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     {
-        let mut sink = ace_source_query::ManagedInstanceSink::open(&dir, Some("p935"))
-            .expect("open store");
+        let mut sink =
+            ace_source_query::ManagedInstanceSink::open(&dir, Some("p935")).expect("open store");
         let cand = {
             let mut tmp = InstanceHost::new(ace_source_query::MemoryInstanceSink::default());
-            let c = tmp.prepare_set(&parse(CHOOSE), PKG, MOD, &caps()).expect("p");
+            let c = tmp
+                .prepare_set(&parse(CHOOSE), PKG, MOD, &caps())
+                .expect("p");
             c
         };
         for inst in &cand.instances {
@@ -228,11 +243,12 @@ fn managed_store_s935_persistence() {
         }
     }
     {
-        let sink = ace_source_query::ManagedInstanceSink::open(&dir, Some("p935"))
-            .expect("reopen");
+        let sink = ace_source_query::ManagedInstanceSink::open(&dir, Some("p935")).expect("reopen");
         // 键查询：页在（重开后的同键 get_by_key）。
         let mut tmp = InstanceHost::new(ace_source_query::MemoryInstanceSink::default());
-        let cand = tmp.prepare_set(&parse(CHOOSE), PKG, MOD, &caps()).expect("p");
+        let cand = tmp
+            .prepare_set(&parse(CHOOSE), PKG, MOD, &caps())
+            .expect("p");
         for inst in &cand.instances {
             let got = ace_source_query::InstanceSink::get_by_key(&sink, &inst.key)
                 .expect("page persisted");

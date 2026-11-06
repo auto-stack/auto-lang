@@ -17,12 +17,9 @@ use ace_core::source::compile_scalar_source;
 /// per-call cap is never raised).
 pub const MAX_CALL_WALL: std::time::Duration = MAX_AV_WALL;
 use ace_av::session::FunctionIncrementalSession;
-use ace_av_core::{
-    abc_verify, decode_abc, encode_abc, execute, verify_mir, CancelFlag, ExecLimits,
-};
+use ace_av_core::{CancelFlag, ExecLimits};
 use ace_comptime_contract::CteEngineId;
 use ace_comptime_contract::{CteAdmissionError, CteCode, CteValue};
-use ace_lowering::lower_checked;
 
 /// The wrapper entry name (driver-internal; never a user address). The
 /// Atom emitter prefixes def id_texts with `d_`, so the HIR id is
@@ -428,86 +425,57 @@ pub fn execute_call(
             ),
         ));
     }
-    let owner = checked.bundle().modules[0].id_text.clone();
-
-    let mir = lower_checked(checked, CTE_CALL_ENTRY_ID, snapshot).map_err(|e| {
-        CteAdmissionError::new(
-            CteCode::Infra("mir-lower".into()),
-            format!("lowering failed: {e:?}"),
-        )
-    })?;
-    let _checked_mir = verify_mir(&mir).map_err(|e| {
-        CteAdmissionError::new(
-            CteCode::Infra("mir-verify".into()),
-            format!("MIR verification failed: {e:?}"),
-        )
-    })?;
-
-    let abc = encode_abc(&mir).map_err(|e| {
-        CteAdmissionError::new(
-            CteCode::Infra("abc-emit".into()),
-            format!("ABC encode failed: {e:?}"),
-        )
-    })?;
-    let decoded = decode_abc(&abc.to_flat()).map_err(|e| {
-        CteAdmissionError::new(
-            CteCode::Infra("abc-decode".into()),
-            format!("ABC decode failed: {e:?}"),
-        )
-    })?;
-    let owner_scope = ace_av_core::mir::OwnerScope {
-        schema: ABC_SCHEMA.to_string(),
-        module: owner,
-    };
-    let loaded = abc_verify::verify_abc(decoded, &owner_scope).map_err(|e| {
-        CteAdmissionError::new(
-            CteCode::Infra("abc-verify".into()),
-            format!("ABC admission failed: {e:?}"),
-        )
-    })?;
-
-    let started = std::time::Instant::now();
-    let (outcome, trace) = execute(
-        &loaded,
+    // PLAN-936 T-03: the real-AV tail is the SHARED service's — lower →
+    // MIR/ABC admission → av-core execute live in `ace-source-cte`
+    // (`CtExecutor`'s cold implementation); this probe keeps only its
+    // frozen wrapper synthesis, frontend admission and its own value
+    // fold. There is no second executor and no copied tail here.
+    let (value, facts) = ace_source_cte::executor::run_entry_on_av(
+        checked,
+        CTE_CALL_ENTRY_ID,
+        snapshot,
         &ExecLimits {
             wall: wall_budget,
             ..Default::default()
         },
-        &cancel,
-    );
-    let wall_ms = started.elapsed().as_millis() as u64;
-    match outcome {
-        ExecOutcome::Success { value, steps } => {
-            let cv = cte_value_of(&value, is_bool)?;
-            Ok(AvExecResult {
-                value: cv,
-                steps,
-                wall_ms,
-                trace_events: trace.events.len(),
-                peak_slot_bytes: trace.peak_slot_bytes,
-            })
-        }
-        ExecOutcome::Trap { kind, .. } => Err(CteAdmissionError::new(
-            CteCode::Trap(kind.code().to_string()),
-            // The CT call chain's call SOURCE rides the diagnostic (V-02).
+        cancel,
+    )
+    .map_err(|e| shared_tail_error(e, callee, args))?;
+    let cv = cte_value_of(&value, is_bool)?;
+    Ok(AvExecResult {
+        value: cv,
+        steps: facts.steps,
+        wall_ms: facts.wall_ms,
+        trace_events: facts.trace_events,
+        peak_slot_bytes: facts.peak_slot_bytes,
+    })
+}
+
+/// Translate a shared-tail rejection into THIS probe's frozen admission
+/// taxonomy (V-10: the 817 codes and message shapes ride unchanged —
+/// including the CT call chain's call source on trap diagnostics, V-02).
+fn shared_tail_error(
+    e: ace_source_cte::executor::CtExecError,
+    callee: &str,
+    args: &[CteValue],
+) -> CteAdmissionError {
+    let code = e.code.as_str();
+    if let Some(t) = code.strip_prefix("cte.trap/") {
+        CteAdmissionError::new(
+            CteCode::Trap(t.to_string()),
             format!(
-                "compiletime-executed callee `{callee}`({}) trapped: {}",
-                args.iter().map(lit).collect::<Vec<_>>().join(", "),
-                kind.code()
+                "compiletime-executed callee `{callee}`({}) trapped: {t}",
+                args.iter().map(lit).collect::<Vec<_>>().join(", ")
             ),
-        )),
-        ExecOutcome::Resource { kind, message } => Err(CteAdmissionError::new(
-            CteCode::Resource(format!("{kind:?}")),
-            format!("AV resource limit: {message}"),
-        )),
-        ExecOutcome::Cancelled => Err(CteAdmissionError::new(
-            CteCode::Cancelled,
-            "AV execution cancelled",
-        )),
-        ExecOutcome::Infra(m) => Err(CteAdmissionError::new(
-            CteCode::Infra("exec".into()),
-            format!("AV infra failure: {m}"),
-        )),
+        )
+    } else if let Some(r) = code.strip_prefix("cte.resource/") {
+        CteAdmissionError::new(CteCode::Resource(r.to_string()), e.message)
+    } else if code == "cte.cancelled" {
+        CteAdmissionError::new(CteCode::Cancelled, e.message)
+    } else if let Some(i) = code.strip_prefix("cte.infra/") {
+        CteAdmissionError::new(CteCode::Infra(i.to_string()), e.message)
+    } else {
+        CteAdmissionError::new(CteCode::Infra("shared-tail".into()), e.message)
     }
 }
 

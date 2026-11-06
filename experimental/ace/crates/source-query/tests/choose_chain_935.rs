@@ -147,7 +147,8 @@ fn main() int {
     match compile(src) {
         Err(ds) => assert!(
             ds.iter().any(|d| d.code == "type-mismatch"
-                && d.message.contains("bool") && d.message.contains("i32")),
+                && d.message.contains("bool")
+                && d.message.contains("i32")),
             "expected the real solver heterogeneous rejection, got {ds:?}"
         ),
         Ok(p) => panic!(
@@ -407,14 +408,24 @@ fn main() int {
         assert!(
             p.instances.iter().any(|i| i.concrete_name == name),
             "missing {name}: {:?}",
-            p.instances.iter().map(|i| i.concrete_name.clone()).collect::<Vec<_>>()
+            p.instances
+                .iter()
+                .map(|i| i.concrete_name.clone())
+                .collect::<Vec<_>>()
         );
     }
     // 实例体内的跨模板调用已重绑到同型实例（脱糖程序形状）。
-    use ace_core::source::cst::{parse_front_with_caps, FrontBudget, FrontKind, FrontOutcome, FrontRequest};
+    use ace_core::source::cst::{
+        parse_front_with_caps, FrontBudget, FrontKind, FrontOutcome, FrontRequest,
+    };
     use ace_core::source::SourceProfile;
     let parse = |s: &str| match parse_front_with_caps(
-        FrontRequest { src: s, profile: SourceProfile::Scalar, kind: FrontKind::WholeModule, budget: FrontBudget::WORK_OWNED_64MIB },
+        FrontRequest {
+            src: s,
+            profile: SourceProfile::Scalar,
+            kind: FrontKind::WholeModule,
+            budget: FrontBudget::WORK_OWNED_64MIB,
+        },
         &caps(),
     ) {
         FrontOutcome::Ok(ok) => ok.program,
@@ -422,10 +433,15 @@ fn main() int {
     };
     let desugared = instantiate_program(&parse(src), "plan935", "choose.at", &caps()).expect("ok");
     let body_of = |p: &ace_core::source::ast::Program, name: &str| {
-        p.items.iter().find_map(|i| match i {
-            ace_core::source::ast::Item::Fn(f) if f.name.name == name => Some(format!("{:?}", f.body)),
-            _ => None,
-        }).unwrap_or_else(|| panic!("no {name}"))
+        p.items
+            .iter()
+            .find_map(|i| match i {
+                ace_core::source::ast::Item::Fn(f) if f.name.name == name => {
+                    Some(format!("{:?}", f.body))
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no {name}"))
     };
     assert!(body_of(&desugared.program, "wrap_i32").contains("choose_i32"));
     assert!(body_of(&desugared.program, "wrap_bool").contains("choose_bool"));
@@ -467,8 +483,15 @@ fn t06_template_body_edit_caller_solve_zero() {
     assert_eq!(p1.instances.len(), 2);
     let runs1 = session.counters().solver_runs;
     // 模板 body 换版（交换分支）；调用点与模板签名不动。
-    let p2 = compile_scalar_product(CHOOSE_SWAPPED, "t06.at", &caps, "plan935", "t06.at", &mut session)
-        .expect("recompile");
+    let p2 = compile_scalar_product(
+        CHOOSE_SWAPPED,
+        "t06.at",
+        &caps,
+        "plan935",
+        "t06.at",
+        &mut session,
+    )
+    .expect("recompile");
     assert_eq!(p2.instances.len(), 2);
     // 实例实现版本换新：choose_i32/choose_bool 的键变化。
     for (a, b) in p1.instances.iter().zip(p2.instances.iter()) {
@@ -483,8 +506,15 @@ fn t06_template_body_edit_caller_solve_zero() {
         "only the two instance bodies re-solve; the caller never does"
     );
     // 暖 session 再编同源：0（全 hit）。
-    let _p3 = compile_scalar_product(CHOOSE_SWAPPED, "t06.at", &caps, "plan935", "t06.at", &mut session)
-        .expect("third");
+    let _p3 = compile_scalar_product(
+        CHOOSE_SWAPPED,
+        "t06.at",
+        &caps,
+        "plan935",
+        "t06.at",
+        &mut session,
+    )
+    .expect("third");
     assert_eq!(session.counters().solver_runs, runs1 + 2);
 }
 
@@ -512,13 +542,27 @@ fn main() int {
     );
     let mut session = SourceQuerySession::new("plan935", "t06b.at");
     let caps = caps();
-    let p1 = compile_scalar_product(int_call, "t06b.at", &caps, "plan935", "t06b.at", &mut session)
-        .expect("int call");
+    let p1 = compile_scalar_product(
+        int_call,
+        "t06b.at",
+        &caps,
+        "plan935",
+        "t06b.at",
+        &mut session,
+    )
+    .expect("int call");
     assert_eq!(p1.instances.len(), 1);
     assert_eq!(p1.instances[0].demands, 1);
     assert!(p1.instances[0].concrete_name.contains("i32"));
-    let p2 = compile_scalar_product(&bool_call, "t06b.at", &caps, "plan935", "t06b.at", &mut session)
-        .expect("bool call");
+    let p2 = compile_scalar_product(
+        &bool_call,
+        "t06b.at",
+        &caps,
+        "plan935",
+        "t06b.at",
+        &mut session,
+    )
+    .expect("bool call");
     assert_eq!(p2.instances.len(), 1);
     assert!(p2.instances[0].concrete_name.contains("bool"));
     assert_eq!(p2.instances[0].demands, 1);

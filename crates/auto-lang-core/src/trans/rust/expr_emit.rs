@@ -164,6 +164,9 @@ impl RustTrans {
     /// Option<&str>).
     pub(super) fn json_arg_is_value(&self, arg: &Arg) -> bool {
         if let Arg::Pos(expr) = arg {
+            if self.expr_is_dynamic_json(expr) {
+                return true;
+            }
             match expr {
                 Expr::Call(call) => {
                     if let Expr::Dot(obj, m) = call.name.as_ref() {
@@ -533,41 +536,31 @@ impl RustTrans {
     /// `a <= b <= char_count` (panic on violation — the Auto trap
     /// certification for this channel is a separate gap, per plan §5.2),
     /// then take the char range.
-    pub(super) fn emit_str_slice_chars(
+    pub(super) fn emit_str_slice_bytes(
         &mut self,
         recv: &Expr,
         args: &[Arg],
         out: &mut impl Write,
     ) -> AutoResult<()> {
-        if args.len() >= 2 {
-            if let (Some(Arg::Pos(a)), Some(Arg::Pos(b))) = (args.first(), args.get(1)) {
-                write!(out, "{{ let __a2r_s = &(")?;
-                self.expr(recv, out)?;
-                write!(out, "); let __a2r_a = (")?;
-                self.expr(a, out)?;
-                write!(out, ") as usize; let __a2r_b = (")?;
-                self.expr(b, out)?;
-                write!(
-                    out,
-                    ") as usize; let __a2r_n = __a2r_s.chars().count(); \
-                     assert!(__a2r_a <= __a2r_b && __a2r_b <= __a2r_n, \
-                             \"auto str slice out of range\"); \
-                     __a2r_s.chars().skip(__a2r_a).take(__a2r_b - __a2r_a).collect::<String>() }}"
-                )?;
-                return Ok(());
-            }
-        }
+        self.a2r_std_used.set(true);
+        // Bind the receiver once. Arguments retain their source evaluation order.
+        write!(out, "{{ let __a2r_s = &(")?;
         self.expr(recv, out)?;
-        write!(out, ".chars()")?;
-        if let Some(Arg::Pos(a)) = args.first() {
-            write!(out, ".skip((")?;
-            self.expr(a, out)?;
-            write!(out, ") as usize)")?;
+        write!(out, "); a2r_std::str::str_slice(__a2r_s, ")?;
+        if let Some(Arg::Pos(start)) = args.first() {
+            self.expr(start, out)?;
+        } else {
+            write!(out, "0")?;
         }
-        write!(out, ".collect::<String>()")?;
+        write!(out, ", ")?;
+        if let Some(Arg::Pos(end)) = args.get(1) {
+            self.expr(end, out)?;
+        } else {
+            write!(out, "__a2r_s.len()")?;
+        }
+        write!(out, ") }}")?;
         Ok(())
     }
-
     /// PLAN-018: List 元素非 Copy(str 系)时索引改写后置 .clone()
     /// (`return G[i]` / `let x = G[i]` 的 String 移出即 E0507;int/bool
     /// 元素 Copy 不加,维持既有金样)。
@@ -1255,6 +1248,26 @@ impl RustTrans {
 
             // Operators
             Expr::Bina(lhs, op, rhs) => {
+                if matches!(op, Op::Dot) && self.expr_is_dynamic_json(lhs) {
+                    if let Expr::Ident(field) = rhs.as_ref() {
+                        write!(out, "(")?;
+                        self.expr(lhs, out)?;
+                        write!(out, ")[\"{}\"]", field)?;
+                        return Ok(());
+                    }
+                }
+                if matches!(op, Op::Eq | Op::Neq)
+                    && self.expr_is_dynamic_json(lhs)
+                    && matches!(rhs.as_ref(), Expr::Null | Expr::Nil)
+                {
+                    self.expr(lhs, out)?;
+                    write!(
+                        out,
+                        " {} serde_json::Value::Null",
+                        if matches!(op, Op::Eq) { "==" } else { "!=" }
+                    )?;
+                    return Ok(());
+                }
                 match op {
                     Op::Dot => {
                         // **Phase 1.1 & 2: Special field names (@, *, view, mut, take)**
@@ -1499,9 +1512,21 @@ impl RustTrans {
                         if self.expr_contains_string(&lhs) || self.expr_contains_string(&rhs) {
                             // String involved — use format!
                             write!(out, "format!(\"{{}}{{}}\", ")?;
-                            self.expr(&lhs, out)?;
+                            if self.expr_is_dynamic_json(lhs) {
+                                write!(out, "a2r_std::json_display(&(")?;
+                                self.expr(lhs, out)?;
+                                write!(out, "))")?;
+                            } else {
+                                self.expr(&lhs, out)?;
+                            }
                             write!(out, ", ")?;
-                            self.expr(&rhs, out)?;
+                            if self.expr_is_dynamic_json(rhs) {
+                                write!(out, "a2r_std::json_display(&(")?;
+                                self.expr(rhs, out)?;
+                                write!(out, "))")?;
+                            } else {
+                                self.expr(&rhs, out)?;
+                            }
                             write!(out, ")")?;
                         } else {
                             // Default to numeric +
@@ -1676,7 +1701,7 @@ impl RustTrans {
                         }
                         self.expr(rhs, out)?;
                         if narrow_asn {
-                            write!(out, ") as i32")?;
+                            write!(out, ") as i64")?;
                         }
                         self.len_i32_cast_suppressed = saved_suppress;
                         // When assigning &str literal to a variable, add .to_string()
@@ -1766,6 +1791,13 @@ impl RustTrans {
                         }
                     }
                     Op::Eq | Op::Neq => {
+                        let borrowed_string = |expr: &Expr| {
+                            matches!(expr, Expr::Ident(n)
+                            if self.borrowed_iter_vars.contains(n)
+                                && matches!(self.local_var_types.get(n), Some(Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)))
+                        };
+                        let str_l = borrowed_string(lhs);
+                        let str_r = borrowed_string(rhs);
                         // Auto char literals ('a') are emitted as i32, string literals stay as strings
                         let op_str = op.op();
                         // Plan 396/B11(a): cast .len() to the partner's type
@@ -1799,10 +1831,13 @@ impl RustTrans {
                             write!(out, "(")?;
                         }
                         self.expr(lhs, out)?;
+                        if str_l {
+                            write!(out, ".as_str()")?;
+                        }
                         if char_l {
                             write!(out, ") as i64")?;
                         } else if narrow_l {
-                            write!(out, ") as i32")?;
+                            write!(out, ") as i64")?;
                         }
                         if let Some(c) = lhs_cast {
                             write!(out, "{}", c)?;
@@ -1812,10 +1847,13 @@ impl RustTrans {
                             write!(out, "(")?;
                         }
                         self.expr(rhs, out)?;
+                        if str_r {
+                            write!(out, ".as_str()")?;
+                        }
                         if char_r {
                             write!(out, ") as i64")?;
                         } else if narrow_r {
-                            write!(out, ") as i32")?;
+                            write!(out, ") as i64")?;
                         }
                         if let Some(c) = rhs_cast {
                             write!(out, "{}", c)?;
@@ -2379,7 +2417,7 @@ impl RustTrans {
                                                 } else {
                                                     write!(out, " else if ")?;
                                                 }
-                                                self.expr(&branch.cond, out)?;
+                                                self.expr_condition(&branch.cond, out)?;
                                                 write!(out, " {{ ")?;
                                                 // Multi-statement body
                                                 for stmt in branch.body.stmts.iter() {
@@ -2645,7 +2683,7 @@ impl RustTrans {
                     }
 
                     // Condition
-                    self.expr(&branch.cond, out)?;
+                    self.expr_condition(&branch.cond, out)?;
                     write!(out, " {{")?;
 
                     // Body
@@ -2997,11 +3035,11 @@ impl RustTrans {
                 // 直发 `name["field"]` 索引形。裸 Value 读不加访问器：后续 ==
                 // 与 json! 经 serde_json PartialEq/to_value 直通;typed 收口
                 // （P4）与形参收口（P5）在消费点按判定叠加降链。
-                if let Expr::Ident(base) = object.as_ref() {
-                    if self.local_is_json_value(base) {
-                        write!(out, "{}[\"{}\"]", Self::rust_ident(base.as_str()), field)?;
-                        return Ok(());
-                    }
+                if self.expr_is_dynamic_json(object) {
+                    write!(out, "(")?;
+                    self.expr(object, out)?;
+                    write!(out, ")[\"{}\"]", field)?;
+                    return Ok(());
                 }
 
                 // Check if this is an enum access or static method: Enum.Value -> Enum::Value
@@ -3957,7 +3995,7 @@ impl RustTrans {
     /// 或既有 Value 语境登记）。字段读（P2）与收口判定（P4/P5）按此触发。
     fn local_is_json_value(&self, name: &AutoStr) -> bool {
         match self.local_var_types.get(name.as_str()) {
-            Some(Type::User(td)) => td.name.as_str() == "Value",
+            Some(Type::User(td)) => matches!(td.name.as_str(), "Value" | "JsonValue"),
             Some(Type::GenericInstance(g)) => g.base_name.as_str() == "Value",
             _ => false,
         }
@@ -3968,6 +4006,13 @@ impl RustTrans {
     /// 读（stack[i]），含 .clone() 链。typed let 收口（P4）与调用实参收口
     /// （P5）按此判定叠加访问器。
     pub(super) fn expr_is_json_value_read(&self, e: &Expr) -> bool {
+        if matches!(
+            e,
+            Expr::Dot(_, _) | Expr::Index(_, _) | Expr::Bina(_, Op::Dot, _)
+        ) && self.expr_is_dynamic_json(e)
+        {
+            return true;
+        }
         match e {
             Expr::Dot(obj, _) => {
                 matches!(obj.as_ref(), Expr::Ident(n) if self.local_is_json_value(n))

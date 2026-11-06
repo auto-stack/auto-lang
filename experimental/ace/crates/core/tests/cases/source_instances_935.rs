@@ -55,7 +55,9 @@ fn parse_choose_template_with_capability() {
     let FrontOutcome::Ok(ok) = with_caps(CHOOSE) else {
         panic!("choose must parse under the instances capability");
     };
-    assert_eq!(ok.caps_version, "ac-source-front/2");
+    // PLAN-936（T-04）：前门能力面加 scalar-ct → caps 键升 /3（语法/
+    // 能力/映射面变更必须换键；本面行为不变）。
+    assert_eq!(ok.caps_version, "ac-source-front/3");
     let choose = fn_of(&ok.program, "choose");
     assert_eq!(
         choose
@@ -127,7 +129,6 @@ fn finite_surface_named_rejections() {
         }
     }
 }
-
 
 /// PLAN-935（T-03）：约束/const 形状（`<T has Bound>` / `<const N>`——词法
 /// ident+ident）语法可识别、投影具名拒——不能当普通 token 跳过；无能力
