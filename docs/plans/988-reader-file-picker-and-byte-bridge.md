@@ -380,6 +380,8 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 
 - stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 13 (waiting only) | from: user | to: user | status: executing | outcome: waiting | waiting_round: 2 | worktree: D:/autostack/.wt/lang-988 | commit: language0b087ab1e / UIb0d59400 | next: pending user choice。重读§10，未收到异步问题的具体答案；自动goal续行提示不当作选择或额外额度批准。本轮无实现、构建或测试，仅记录同一待决条件；当前goal仍active，未满足三轮blocked阈值。
 
+- stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 14 (waiting only) | from: user | to: user | status: executing | goal_status: blocked | outcome: blocked | waiting_round: 3 | worktree: D:/autostack/.wt/lang-988 | commit: language0b087ab1e / UIb0d59400 | next: user choice and goal resume。连续第三个goal turn重读§10仍未得到具体续行选择，未进行实现/构建/测试；同一阻塞为auto-plan-work默认3轮repair已用尽，需明确是否增加一轮。当前无法在遵守上限和保留原AC的同时继续实现或合入，故按host三轮阈值将goal标blocked，Plan仍executing2/6；代码、分支、全部证据保留。解锁动作：回答“增加1轮定向修复并复审”或选择重新规划，再恢复目标；不需重新授权既有仓范围。
+
 ## 10. 待澄清事项
 
 无待用户范围决定。API具体返回形态/native ID/依赖版本由T-00有界核查；若出现超授权架构改造才另提决定。真实交互证据需要可用桌面，不能以模拟provider替代。
