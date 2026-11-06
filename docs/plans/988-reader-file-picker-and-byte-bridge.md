@@ -376,6 +376,16 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 - 已独立核work当前44条PASS日志及a2r394原子结果真实存在；它们不覆盖A/B，不转为本次pass。repair diff --check通过，131 core lib既有warnings。最终完整并集仍**vm+shim-metadata+a2r+http**，pending merge owner在最终获审基线上核身份/复用与必要补跑；本轮不重跑全组，不清理原8个外部材料。旧有效证据和全部反例保持，工具/规范读回/清理仍pending。
 - Plan状态**executing 2/6**：保留T-00/T-01，重开T-02/T-03，T-04/T-05未完成。实现、主共享Plan写权交回根代理；无live进程，不添加goal路由收据。
 
+- stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 12 | from: review | to: user | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-988/auto-lang + auto-ui | commit: language0b087ab1e63b6d6e3e916aa79d019c1b40e8f6cc / UIb0d59400a1c302c040e07c9e4938a1c13b34d937 | review_receipt_commit: 8bdea7dd4245b03a3cf2f61bcfd7404098f02ca8 | next: user decision on bounded continuation。R3已闭但F988-R4-01为原合同组合缺口，第三次repair额度已用完，本轮独立证据构成进展；不自动进行第四次实现。技能auto-plan-work的“cap automatic work/review repair cycles at three”适用，已向用户说明并请求增加一轮定向repair+独立review，通过后merge并继续009。等待条件首轮，未标goal blocked；原授权和验收不撤回。
+
 ## 10. 待澄清事项
 
 无待用户范围决定。API具体返回形态/native ID/依赖版本由T-00有界核查；若出现超授权架构改造才另提决定。真实交互证据需要可用桌面，不能以模拟provider替代。
+
+### 当前续行决定（2026-11-06，待用户回答）
+
+已有跨仓/完整交付授权保持有效；本次只决定自动循环额度。auto-plan-work §Repair规定无用户次数限制时自动repair最多3轮；当前三轮已完成，R4仍有F988-R4-01，不能继续第四轮或合入。
+
+具体续行提案：再增加1轮同范围定向修复与独立复审，复用已核普通函数签名表，把[]int参数使用产生的元素类型约束加入collector；确保签名在扫描前可得，覆盖两个调用次序和函数定义顺序、空/typed/无首写正控及原44场景、受影响a2r检查。不得靠用户补注解、删除原空入口或减验收。通过后按既有授权merge并回009；若仍失败，带诊断交回，不无上限修补。替代选择为先按现有goal/AC重新规划字节生成机制，不实施未经批准的架构扩面。
+
+已调用异步问题工具呈现“增加1轮定向修复并复审 / 先重新规划字节生成机制”；截至本次记账未收到答案。等待期间实现树保持0b087ab1e及UIb0d59400，均干净，无live进程，所有raw证据保留。原008→009全目标尚未完成，不能据前置局部成绩关闭goal。
