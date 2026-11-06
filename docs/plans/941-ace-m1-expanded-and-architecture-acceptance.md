@@ -521,6 +521,24 @@ stage: work | plan_id: PLAN-941 | plan_revision:r1 | outcome:in_progress | workt
 
 stage: goal | plan_id: PLAN-941 | plan_revision:r1 | round:14 | from:work | to:work | status:executing | outcome:needs_fix | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:60736ac26 | next:review958（独立修复交付后继续原941，不是941 final review失败）
 
+### 2026-11-06 D958复审、完整合入门与941实际消费闭环（goal第15轮）
+
+上一轮为progress：941文字20双端认证及958冷worker实现；本轮继续原941完整目标，未重定义完成。独立修复958已**review/merge/归档/清理6/6**完成，F-941-03关闭。941仍executing **0/15**，余下完整registry/reader与实际机制验收继续。
+
+- 958新复审轮按r1/实际diff/原始nextest事件重新重建AC，说明同一会话主agent的限制，未冒称另一个模型/会话。自选10项真实holdout：有CTcap但无#的ordinary程序两端daily+cert四项接受；仅instances cap/错误CT/v10能力各两端daily共四项syntax拒；CT实际除零两端daily返回source.cte.plan/cte.trap/av.trap.div-by-zero两项。daily实际Job process count=2，拒绝零产物，无target编译。7源原40操作/32现场exe重放证据与源码/SD通过，reviewed688207b67。metadata/phase/budget未扩大，source-cte/solver/AV原实现不动。
+- 主线只增计划簿记，958 rebase `688207b67→06251b0ccb4916d2e70abd7f98197987b778ca9e`，range-diff单patch完全等号，所有ACE/code与两SD逐字节等价。最终完整固定组 **cargo t ace-a2x，196/196 PASS、0skipped**，发现716.9643ms、执行/清理131639.6381ms、整132.3891907s；results SHA256=`4495c24c08ef3cf04e4568418f299868e265da1cbcb11057df79bc4706fa88e6`。首轮182pass/14fail确认为新树缺原release worker（NotFound/prebuilt要求）前置失败，未进这些认证；显式release构建59.38s后才跑全196绿，原失败和120.1627227s/SHA3022b10d...已折958，未缩分母或改expected。所有原189+新7保原条件，没跑全仓/性能门。
+- **D958已落master ff-only**，delivery06251b0cc；canonical两Spec逐字节=reviewed/delivery/current blob，source-query-integration SHA=eafa1082c933454dac0adeec25d70937c13c5a1a71a65e710304935c8526c208，a2r-hir-certification SHA=a32d3555b5657cb72c2ae909ce2ac000110662ef5aa46e218f96c7895561581a。归档`docs/plans/archive/958-a2x-worker-source-ct-frontdoor.md`。958/auto-lang与auto-down两树及分支/空组已由用户清理，Git列表/路径实际全部不存在；材料目录首次核验仍2034文件/44,395,461 bytes，未虚报清理。用户随后“材料已删”，实际scope不存在后才结6/6。
+- 自动审批对958整条收尾删除再拒（仅blocked by policy），**agent该条操作未执行，也未换方式重试**。删除前两树guard clean、无reparse/活动进程，worktree文件快照lang29,765/4,149,099,644 bytes，down1,256/26,409,169 bytes，scope2034/44,395,461 bytes均已折958；无target/exe/PDB保留迁移、无具名持有。全局登记成功刷新；仓库本地登记同步时JSON报错，发现scope数组末尾孤立结束括号/逗号（已有deleted_scopes958记录），只修该标点并保全936/935/938/941与958删除记录；原坏文本在941scope/retention-local-before-syntax-repair.txt。先前脚本局部失败后shell仍提交了档案，此处补齐了本地登记并复核两份JSON有效，没有以该中间提交冒收尾已全部执行。
+- **941实际消费**：唯一941树合master得到 **d88359466a855153ca2d464913cedf6a6e7db4e4**；旧接口观测接线与958helper/lock/conformance自动合并无冲突。原release worker重新构建2.84s、既有core dead-code warning1，无新warning。原8入口逐条重放**8/8 PASS**：普通源四方向保绿，原# CT四方向从exit2转exit0（两cert实际/reference四phase exit0、raw value:42换行；daily spawn0/Job2）。汇总`after-d958-original-entry-results.json` SHA256=`93286914b78cf0b5a5c5cea117bf0c70bf5ca2d15ba0f163d9993973bdc4b68c`。这是原F03实际反例复放，不是只git合并/静态函数存在；F03独立修复流程与消费者功能均关闭。
+- main已装旧worker仍2026-11-05T05:29:34.608315Z，SHA e2ba687e...，实际CT smoke仍source.lex拒#；合入958已精确记录stale项而非声称已部署。941本树tool已新鲜，941最终交付继续按实际生产artifact做新鲜性检查，不用main旧tool证据。旧38 legacy-A2R认证差异保持，不因本HIR CT修复充绿。
+- 复核941预算/来源合同所有现有pin在D958后**零漂移**。原准备脚本误预期certification Spec在该26源pin集合内，assert在写入前拒（source pin drift []）；没有改任何合同或造新hash，没有新的治理红；127有效治理证据的相关Python/static输入未变可复用，不因仅HEAD变化再跑。下一工作单元要新增有限CT cap认证reader及七源独立ref，届时按真实修改重核。当前worker二进制SHA已变化，旧首链两cert与文字20cert是先前工具上的有效历史证据，**不冒当前工具的新鲜准入**；须与新的CT14 cert一起刷新后再做全组合报告。
+
+958批门due核对：956最新收据仍<48h、958非5倍数，之后未有新的5倍数交付，不due；旧批37组红及957编译器triage保持原结论，无all-green声明。main代码零WIP，仅原他方docs-only在途保留；全部本轮源/证据只在独享941/958的登记范围，958已全清。
+
+下一步恢复941 T01..05：基于已交付CT前门完成七源14份独立Rust/C参考/实际认证、严格原4phase与caps/source/domain准入，并刷新受到新worker身份影响的既有cert；剩余source variants/ARCH机制、全部required reader和938/939真实接口继续保原义务，不用8原操作代整个M1签章。无用户待决定项。
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r1 | round:15 | from:work | to:work | status:executing | outcome:needs_fix | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:d88359466a855153ca2d464913cedf6a6e7db4e4 | next:work941（D958全部关闭；完整目标和原阈值保持）
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -530,6 +548,6 @@ stage: goal | plan_id: PLAN-941 | plan_revision:r1 | round:14 | from:work | to:w
 
 5. **F-952-01 已由D953关闭**：独立修复交付/归档/清理完成，952已合入/归档/清理6/6；原941/952授权保持。用户已`/goal resume`且继续推进原941，不重复请求；host状态未更新仅记录，工作树与材料在途保护。
 
-6. **当前前置与验收缺口**：D936已交付并同步；F-941-03转独立958（工作完成待review/merge）。D938（source foreign/代际与恢复接口）、D939（opaque资源/callback/error/ctx与实际source合同）仍未交齐；936在941所需CT/frozen/required页与原计量仍须真实观测。首例/治理控制不核销这些义务，无需重授941。
+6. **当前前置与验收缺口**：D936已交付并同步；F-941-03已由D958=06251b0cc独立修复交付/归档/清理6/6关闭，941消费8原入口通过。D938（source foreign/代际与恢复接口）、D939（opaque资源/callback/error/ctx与实际source合同）仍未交齐；936在941所需CT/frozen/required页与原计量仍须真实观测。首例/治理控制不核销这些义务，无需重授941。
 
-7. **F-941-03 已授权独立PLAN-958修复并继续**：原最小范围不变；958当前工作4/6，execution_done、独立review/merge pending，尚未关闭本缺陷。用户已手动清理原dead-owner目录，固定治理入口127/127复验恢复，无需再请求清理或重授修复。
+7. **F-941-03 已关闭（D958=06251b0cc）**：用户授权的独立修复完成review/全196门/ff合入/Spec/归档/清理6/6；941已合入并新worker重放原8操作全通过。dead-owner目录及958所有清理均实际完成，无待清理/重授项；941其余验收继续。
