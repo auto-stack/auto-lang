@@ -109,12 +109,33 @@ pub fn autoabi_object_key(defs: &[FnDecl], import_inner: bool) -> QueryKey {
 /// alone proves nothing about whether a generation applies to the
 /// CURRENT request).
 pub fn c_source_identity(src: &std::path::Path) -> Result<String, String> {
-    let bytes = std::fs::read(src).map_err(|e| format!("{}: {e}", src.display()))?;
+    let digest = hash_file(src).map_err(|e| format!("{}: {e}", src.display()))?;
     Ok(format!(
         "{}|{}",
         src.file_name().and_then(|n| n.to_str()).unwrap_or("?"),
-        crate::semref::blake3_hex(&bytes)
+        digest
     ))
+}
+
+/// Source and observed header identities need only the content digest. Keep
+/// the original BLAKE3 identity without allocating a copy of each whole file.
+fn hash_file(path: &std::path::Path) -> std::io::Result<String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hash = blake3::Hasher::new();
+    let mut buffer = [0u8; 8192];
+    loop {
+        let count = match file.read(&mut buffer) {
+            Ok(count) => count,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        if count == 0 {
+            break;
+        }
+        hash.update(&buffer[..count]);
+    }
+    Ok(hash.finalize().to_hex().to_string())
 }
 
 /// The stored form of a cached C object (v2). Besides the object bytes
@@ -227,8 +248,7 @@ fn search_listing(dir: &std::path::Path, artifact_paths: &[String]) -> Vec<Strin
 }
 
 fn hash_dep(path: &str) -> Result<String, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("dep {path}: {e}"))?;
-    Ok(crate::semref::blake3_hex(&bytes))
+    hash_file(std::path::Path::new(path)).map_err(|e| format!("dep {path}: {e}"))
 }
 
 /// Lexical relative path FROM a directory TO a file (leading `..`

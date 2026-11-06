@@ -245,6 +245,39 @@ mod source_foreign {
     }
 
     #[test]
+    fn c_cache_source_identity_does_not_copy_the_whole_input_to_hash_it() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+            .join(format!("c-cache-hash-{}-{stamp}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let file = root.join("large-source.c");
+        let bytes = vec![b' '; 2 << 20];
+        std::fs::write(&file, &bytes).unwrap();
+        let expected = format!("large-source.c|{}", provider::hash(&bytes));
+        let (identity, peak) = measured_peak(|| ace_abi::cache::c_source_identity(&file));
+        assert_eq!(identity.unwrap(), expected);
+        assert!(
+            peak < 64 << 10,
+            "C source hash copied its complete input: {peak}"
+        );
+        // Empty and final partial blocks preserve the exact existing digest,
+        // and an absent source must still fail rather than hash as empty.
+        for len in [0, 1, 8191, 8192, 8193] {
+            std::fs::write(&file, &bytes[..len]).unwrap();
+            assert_eq!(
+                ace_abi::cache::c_source_identity(&file).unwrap(),
+                format!("large-source.c|{}", provider::hash(&bytes[..len]))
+            );
+        }
+        std::fs::remove_file(&file).unwrap();
+        assert!(ace_abi::cache::c_source_identity(&file).is_err());
+        eprintln!("C source identity heap peak={peak} for a 2MiB input");
+    }
+
+    #[test]
     fn provider_binding_reserves_shared_budget_and_keeps_page_and_metadata_aliases_charged() {
         let resources = ace_source_query::resources::Resources::default();
         let caps = vec![SOURCE_CAP.into()];
