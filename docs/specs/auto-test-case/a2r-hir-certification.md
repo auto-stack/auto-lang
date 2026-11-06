@@ -27,6 +27,22 @@ worker 自报 `spawned_rustc=0` 父侧断言＋manifest 父侧重哈希＋golden
 
 ## 认证腿（显式 certify）
 
+### 普通源 CT 的真实 worker 入口（PLAN-958）
+
+scalar profile 授予 `ac.source.cte.scalar/v1` 时，Rust/C 的 daily 与
+certify 四操作均经同一个 source-cte 前门，消费真实 AV 执行、结构回灌及
+事实车道形成的 Checked HIR。meta 样例另需 `cte.meta.fields/v1`，实例/
+子 CT 样例另需 `ac.source.instances.scalar/v1`；没有 CT capability 的
+`#` 源受控拒绝。原通道身份仍是 scalar，证书绑定同次实际 HIR 域、原始
+source hash 和已授 capabilities；不能用 Session 层发射文本检查代替
+真实 worker 认证。
+
+永久入口为 `cargo t ace-a2x --test-name worker_ct_958`：七个原936源两端
+daily 共14操作、两端显式认证共14操作，并含普通源/无cap与错oracle/
+错reference控制。认证后用原 owned executor 再运行现场实际/参考可执行
+文件，逐字节核手算值42/43/7/42/43/42/40及空stderr；普通源的原独立
+值与日常spawn0检查同时保留。C编译认证遵循原Windows/MSVC条件。
+
 同一现场 actual 集＋逐例手写独立 reference（新 i32/trap 形态）分别真实
 rustc 编译运行，stdout 值/trap 线与 stderr 标记序双方一致等于闭式 oracle；
 严格证书 `ace.a2r-hir.cert/1`（绑定全文件集＋reference 字节＋实测 rustc -vV）；

@@ -43,6 +43,40 @@ fn compile_scalar_product_934(
     src: &str,
     caps: &[String],
 ) -> Result<ace_core::source::CompiledSource, Vec<ace_core::atom_text::Diagnostic>> {
+    // The actual Rust/C CLI shares the same CT door as the product session.
+    // Each cold operation owns its existing CT service; no source is reparsed
+    // into a legacy deck or evaluated by a second engine.
+    if caps
+        .iter()
+        .any(|cap| cap == ace_core::source::cst::CT_CAPABILITY)
+    {
+        let mut service = ace_source_cte::CtService::new(ace_source_cte::MemoryEnvelopeSink::new());
+        return ace_source_cte::compile_scalar_ct(
+            &mut service,
+            src,
+            "a2x-worker",
+            caps,
+            "a2x",
+            "a2x-worker",
+        )
+        .map(|product| ace_core::source::CompiledSource {
+            profile: "scalar",
+            input_hash: product.input_hash,
+            atom_text: product.atom_text,
+            checked: product.checked,
+        })
+        .map_err(|error| match error {
+            ace_source_cte::CtProductError::Diagnostics(diagnostics) => diagnostics,
+            ace_source_cte::CtProductError::Plan(error) => {
+                vec![ace_core::atom_text::Diagnostic::new(
+                    ace_core::atom_text::Stage::Text,
+                    "source.cte.plan",
+                    error.to_string(),
+                    ace_core::atom_text::Span { start: 0, end: 0 },
+                )]
+            }
+        });
+    }
     let mut session = ace_source_query::SourceQuerySession::new("a2x", "a2x-worker");
     ace_source_query::compile_scalar_product(
         src,

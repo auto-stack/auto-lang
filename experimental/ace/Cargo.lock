@@ -13,8 +13,10 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "sysinfo",
  "tokio",
+ "zip",
 ]
 
 [[package]]
@@ -48,6 +50,7 @@ dependencies = [
  "ace-a2x-core",
  "ace-artifacts",
  "ace-core",
+ "ace-semantics-contract",
  "ace-source-cte",
  "ace-source-query",
  "serde",
@@ -65,6 +68,7 @@ dependencies = [
  "ace-abi",
  "ace-artifacts",
  "ace-core",
+ "ace-source-cte",
  "ace-source-query",
  "auto-tool-execution",
  "serde_json",
@@ -299,6 +303,8 @@ name = "ace-semantics-contract"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -339,6 +345,21 @@ dependencies = [
  "ace-syntax-runtime",
  "blake3",
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ace-stdlib-conformance"
+version = "0.1.0"
+dependencies = [
+ "ace-a2x-rust",
+ "ace-a2x-store",
+ "ace-av",
+ "ace-core",
+ "ace-semantics-contract",
+ "ace-source-query",
+ "auto-lang-core",
+ "auto-tool-execution",
  "serde_json",
 ]
 
@@ -698,6 +719,7 @@ name = "auto-lang-core"
 version = "0.1.0"
 dependencies = [
  "a2r-std",
+ "ace-semantics-contract",
  "ansi_term",
  "auto-ast",
  "auto-atom",

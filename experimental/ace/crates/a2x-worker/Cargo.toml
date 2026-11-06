@@ -16,6 +16,7 @@ ace-a2x-rust = { path = "../a2x-rust" }
 ace-a2x-store = { path = "../a2x-store" }
 ace-core = { path = "../core" }
 ace-source-query = { path = "../source-query" }
+ace-source-cte = { path = "../source-cte" }
 serde_json = "1"
 
 [target.'cfg(windows)'.dependencies]

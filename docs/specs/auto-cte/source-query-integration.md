@@ -75,3 +75,21 @@ identity and are rejected with the named chain; plain recursion is not
 a cycle. Explicit hashes are demands wherever they appear (nested in a
 hash expression or in any CT-closure callee body) — an un-taken runtime
 trap inside a single hash stays latent (the AV's control flow decides).
+
+## 6. Actual A2X worker entry (PLAN-958)
+
+The `a2x-worker` scalar `daily-emit`, `daily-emit-c`, `certify`, and
+`certify-c` operations dispatch to `compile_scalar_ct` when the request
+grants `ac.source.cte.scalar/v1`. Their common scalar helper owns one
+cold `CtService<MemoryEnvelopeSink>` per operation, then passes that
+product's Checked HIR, input hash and atom text to the original emitter.
+Ordinary scalar requests use the source-query fact entry. An ungranted
+`#` remains a front-door diagnostic; it cannot reach target compilation.
+
+The actual CLI regression covers sum42/body-edited sum43, boollit's
+program result 7, field-count 2/3 producing 42/43, choose42 and pick40.
+Rust/C daily emission is compiler-spawn-free. Explicit certification
+compiles actual and independent references separately; the regression
+also executes both newly materialized executables through the owned
+process facility and compares raw bytes with each hand oracle. This cold
+worker contract does not establish warm CT reuse or public restore pages.
