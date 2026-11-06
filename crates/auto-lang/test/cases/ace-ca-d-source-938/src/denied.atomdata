@@ -7,7 +7,7 @@
     "review_id": "plan938-independent-provider-v1",
     "provider": "independent-c938",
     "header_digest": "4051cd6af2acd0c07eeed8495f50ad51fdfac94c3b91928f86422e486b408b98",
-    "physical_table_digest": "9701cf5204f6d6b1309942853f5a3dcc7c2d2e995f98569b840d2571bfef18f0",
+    "physical_table_digest": "0ea8be97d1026bd57dcaff7b35673e45a6a9f17e2f5c991bdd1b1fb04a94daa3",
     "target": "x86_64-pc-windows-msvc",
     "profile": "autoabi.win-x64.v0.1-candidate",
     "callconv": "windows-x64",
