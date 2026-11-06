@@ -56,9 +56,11 @@ total_steps: 25
 
 929归档14/14，D=`29a7d7007`为当前祖先、树已清；canonical source-frontdoor/SYN准入确已交付，但只签SYN，不能冒SQ/CT/ABI总绿。937归档12/12，D=`fa35943ac`为当前祖先，canonical shared-interface/bridge-cert已交；它的native是797声明IR消费者，source是C exporter，typed三腿与source import边界不能混同。原recipe`abi/ca-d1-bridge-v1`与旧`abi/interop-v1`共worker信封，但deck/leg互拒。旧空steps可空过是记录在案的族属性，本包必须在组合侧以executed>0/完整义务强制拒，不据其exit0签新门。
 
-934当前reviewed r2 11/13（有复审pass收据，步骤数字不代替复审记录）；935 executing1/12、936 executing1/14，主体等D934/实际实例接口；938 drafting0/13、939 drafting0/14。最新交付/树与主线漂移在T-01再核，不把reviewed或在途branch当D。940是另一会话新立的legacy Core/UI parser推进性计划，不是ACE统一前门替代，不作为整包前置，仅真实H/consumer交集协商。
+立项时历史状态（当前以第72轮审计为准）：934当时reviewed r2 11/13（有复审pass收据，步骤数字不代替复审记录）；935 executing1/12、936 executing1/14，主体等D934/实际实例接口；938 drafting0/13、939 drafting0/14。最新交付/树与主线漂移在T-01再核，不把reviewed或在途branch当D。940是另一会话新立的legacy Core/UI parser推进性计划，不是ACE统一前门替代，不作为整包前置，仅真实H/consumer交集协商。
 
 只读重算（非运行验收）：原binding131行/12列，批准hash匹配；required313、非绿能力token0、required旧A2R cert-gap38，required-set hash `35ad43aae27ffb2d2c9a162c3dd5b99f971e4cd7b2ed36f4fe747a5634bd770e`。现acceptance scope只核算且exit0不等里程碑pass；其ParentReport检查非空/PASS不能独自证明source/producer/义务完整，/3须独立核闭包。/2已有`certGapCells.Count -eq 0`守卫，不能被本包暗绕。
+
+第72轮当前输入审计（2026-11-07）：已对照归档收据与Git祖先核对D908=`dc8eca3ae`、D929=`29a7d7007`、D934=`9c616565b`、D935=`e9f7d47e8`、D936=`a41dbd1bd`、D937=`fa35943ac`，均archived且实际交付commit在当前代码祖先中（不拿归档簿记commit代交付D）。D938仍executing r1 6/13、D939为drafting r2 0/14，未归档/无可消费交付D，不能消费在途branch冒D。原524格/313 required/38旧cert-gap、30已跟踪输入合同与12个canonical/拟交付Spec路径均已核hash；完整D938/939有限source/required页/consumer/计量输入及T03全required宇宙闭包仍不齐，故T01不勾选。首例T02独立有界CLI链20/20已实证，但不替T01/03或完整941。
 
 唯一实施树`D:/autostack/.wt/lang-941/auto-lang`、`plan-941-dev`（已建，当前基线以§9检查点为准），实现/内部自查/独立上下文复审顺序使用同一树。未来材料仅`D:/autostack/plan-artifacts/plan-941/`，开工登记owner/用途/在途；consumer/外置target/日志/cert scratch显式归scope，正常构建在树内。merge摘要折计划、全输出路径对账、删除scope与guard清树；不操作他方产物/SDK/工作目录，不写legacy specs.json。
 
@@ -136,7 +138,7 @@ T-01/T-02把表拆到每个required原子义务/具体entry与closing oracle；�
 
 ### 5.7 执行入口与写面交接
 
-拟只读入口（T-02/04使能，当前不存在）：`python scripts/test-governance/ace_m1_arch_acceptance.py --repo-root <tree> --registry <tracked-registry> --evidence-index <scope-index> --mode milestone --out <scope-report>`。existing legacy核算可由显式命令`powershell -NoProfile -File scripts/verify-ace-m1-852.ps1 -Scope acceptance -RepoRoot <tree> -OutDir <scope-legacy>`产生，仍不当成执行或新增绿。旧批准/报告文件本轮不改。
+当前已跟踪首例只读入口（第72轮实测）：`python scripts/test-governance/ace_m1_arch_acceptance.py --first-slice-preview --repo <tree> --evidence <scope> --bindings <scope-relative-bindings.json>`，JSON写stdout，由显式父capture存入计划scope；合法首例仍退出1保持preview不可签，坏输入拒绝2。原拟全量入口`--repo-root/--registry/--evidence-index/--mode milestone/--out`尚未使能，仍归T04/T10/T11，不把已有preview说成正式milestone API。existing legacy核算可由显式命令`powershell -NoProfile -File scripts/verify-ace-m1-852.ps1 -Scope acceptance -RepoRoot <tree> -OutDir <scope-legacy>`产生，仍不当成执行或新增绿。旧批准/报告文件本轮不改。
 
 | 写面/交付 | 本包允许先做 | 必须等待的具体窗口/证据 |
 |---|---|---|
@@ -384,8 +386,8 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 
 | ID | owner_stage | 依赖/写面 | 具体路径/可验证结果；AC/验证 | 状态 |
 |---|---|---|---|---|
-| T-01 | work | §4原goal全链授权；只读当前Specs/收据 | 冻结main/929/937/934..939实际D与reader、旧313/38清单、完整语料/原预算/具体固定组/全部owner，scope登记；AC-01/10，V-01/14 | [ ] |
-| T-02 | work | T-01，私有P | 首例同源文件/独立oracle/四目标AutoDown-TestCase从本步入跟踪并走既有正式父入口，不等收尾才补；有界全链：真实一个scalar四端+原旧核算/SYN/937收据→strict reader→registry→报告；四端同错/缺C/旧claimfalse控制红，冻结schema/required闭包/预算无自指/不spawn；不成立needs_replan；AC-02/03/10 | [ ] |
+| T-01 | work | §4原goal全链授权；只读当前Specs/收据 | 冻结main/929/937/934..939实际D与reader、旧313/38清单、完整语料/原预算/具体固定组/全部owner，scope登记；AC-01/10，V-01/14 | [ ] 第72轮实际D/30合同/旧524格与313/38已审计；D938/939实际输入未交、T03全宇宙未闭，完整冻结仍待 |
+| T-02 | work | T-01，私有P | 首例同源文件/独立oracle/四目标AutoDown-TestCase从本步入跟踪并走既有正式父入口，不等收尾才补；有界全链：真实一个scalar四端+原旧核算/SYN/937收据→strict reader→registry→报告；四端同错/缺C/旧claimfalse控制红，冻结schema/required闭包/预算无自指/不spawn；不成立needs_replan；AC-02/03/10 | [ ] 第72轮独立有界20/20实际tracked CLI、四端同错/缺C/旧claim反控已证；不以首例替T01完整输入冻结及后续全量工作 |
 | T-03 | work | T-02，新registry私有面 | 新ace-m1-expanded registry逐source/target/机制/原格位与义务/组/owner/条件映射，完整覆盖而不改旧批准；AC-01，V-01 | [ ] |
 | T-04 | work | T-03，必要H短窗 | 新只读ace_m1_arch_acceptance.py与域reader适配/严格身份/路径/版本/原始终态/旧认证差异；AC-02/09/10，V-02/13/14 | [ ] |
 | T-05 | work | T-03/04，Q4已有域稳定API | 正/负同源四端与独立oracle/reference/完整文件集认证、跨目标身份/daily分轴；AC-03/09，V-03/12/13 | [ ] |
@@ -412,6 +414,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-25 | work | T-24冻结，正确Cargo配置/工具先prepare与逐项影响对账 | 一次完整ace-semantics/infra-ace-m1-arch及AV具名消费；五native源合同/当前观察重采、变化身份source/cert/daily/优化真实刷新、其余严格复用，当前组合逐键守恒；F09工作关闭/SD12候选交T14；AC-02/05/07/09/18、V36 | [x] 第70轮50fc3f770：完整206/222与实际AV、五native、466Case/292cert+daily/14原优化严格联读713P8F285U；F09工作阶段闭合，最终T14待 |
 
 T-18/19已完成（§9第43轮）；T20/T21已完成（第52轮），当前回到原完整T-01..13。 T22/23的F08已完成工作验证；r6的T24/25已完成F09工作阶段；下一入口回到原T01..13全部未闭任务；F07仍独立待批，不预占/勾选任务。T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；继续原T-01/T-02等完整任务，尚未关闭的验收保持未完成。
+
 
 
 
@@ -1796,6 +1799,22 @@ stage: work | plan_id:PLAN-941 | plan_revision:r6 | outcome:progress（原SYN十
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r6 | round:71 | from:work | to:work | status:executing10/25 | outcome:progress（正式714P8F284U，原目标未齐） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:519dd0d154c2ba2343a9cc5c521e57318820d913 | next:work原T01/T02等完整入口核对及剩余机制；F07仍待、D938/939未齐，无待poll
 
+### 第72轮：work原T01/T02输入审计与实际独立首例证明（不改完整任务边界）
+
+- 上轮为progress（十个原SYN检查接入ARCH后714P8F284U）。本轮先复核main无代码WIP、941树clean，核原T01/T02每个要求而不沿绿色子集重定义目标。当前代码`a2b27fc660affe147db39dcc31512c1ad18cb522`，相对519dd0d只新39行/1文件永久反控，无生产/reader/协议/预算/源oracle变化；原完整报告与13工具/输入身份保持，未为了测试提交再跑Rust/466/292/14或全组合。
+- 新2方法把**四端同时同错**放进同一控制：原AV/native观察原语各返回43，Rust/C各自actual+independent reference也同时43；全部按独立42 oracle判FAIL，20义务AND保持红。合法42四端PASS仍仅首例完成、系统/里程碑false。测试是隔离synthetic故障控制，不是新实际编译证明；真实四端链使用下项原实际输入/进程证据。既有缺C/逐20缺任一项、伪旧claim与父失败不能被子值盖住的控制继续在完整治理组中；`cargo t infra-ace-m1-arch` **232/232PASS**，diff clean。
+- 发现现有完整报告会继承后续scalar8原红而把first_slice_evidence_complete拉低，不能拿它充T02自身成功证据。因此显式构造**原约定首例输入集**（原tracked Q4-001.at/手写reference-Q4-001.rs与.c/Case/suite，当前AV/native实际值与原Rust/C真实actual+reference认证/daily、原十SYN、原937六legs和完整旧核算），从`syntax-architecture-current`已验证原件引用，仅保明确五个mandatory binding bucket，不改full报告或删其required。
+- 直接运行已跟踪`scripts/test-governance/ace_m1_arch_acceptance.py --first-slice-preview --repo <tree> --evidence <h> --bindings t02-first-slice-current/bindings.json`，不是只运行会在merge清除的临时入口。实际20/20首例义务PASS、first_slice_evidence_complete=true、原313核算/38cert-gap保持；JSON125344B，原程序明确**exit1**/stderr空且mode preview/evidence_complete/acceptance_system_delivered/can_claim均false。该最小报告只有20P/986U，**不替换714P8F284U完整报告**。tracked CLI的stdout保存接口及与未来milestone API区别已据实更正§5.7，不借首例宣称后续正式入口已交。
+- 首例实际父窗1309.013ms，reserve9152210B/peak23461002B，process19288064B/Job20529152B、原Job进程2；输出/48MiB/父128MiB帽内。原raw/输入/worker身份/独立oracle由同一原strict函数核验；当前完整原strict runner已在禁Popen控制下证明相同reader函数不启动producer，本CLI实际Job窗口也未出现producer树。记录有界全链成立，不推导深恢复/P90/整域资源已过。
+- 输入审计重新对照真实交付D，归档/代码祖先均证：D908 dc8eca3ae、D929 29a7d7007、D934 9c616565b、D935 e9f7d47e8、D936 a41dbd1bd、D937 fa35943ac；D934/935旧归档簿记32bf9c57e/edda879ec不当作代码交付D。D938 executing r1 6/13、D939 drafting r2 0/14，无归档/可消费D；不读其实现分支冒交付。30源合同逐hash匹配，旧131行/524格/313 required、134NA/32accepted/45future/38旧cert-gap与required hash保持；12 canonical/拟交付Spec路径及所有reader source hashes/预算段落hash已冻结，拟交付Spec未存在不冒canonical已发布。
+- **T01仍未完成**：938/939实际有限source/required页/consumer/计量接口的交付输入未齐，T03 required全宇宙尚未闭（registry.full_registry_closed仍false）。T02有界执行部分已证，但其T01前置和完整原任务关系不偷换，维持原任务未勾选，不凭20P改完整分母或把未知字段编0。后续继续可用稳定接口的恢复/实例/资源等证据；不能因外部D缺口就停掉其他独立工作。此处是work内原清单核对，不是T14最终独立review。
+- `<h>=D:/autostack/plan-artifacts/plan-941/`：输入审计初件`t01-current-input-audit.json` SHA256=`d80921f679d304f0aef357bc6f9c18127eec9753b7f6ce14437a1ad0bcfe7115`；补canonical/拟交付路径及具名open项的终件`t01-current-input-audit-final.json`=`d148f0806e67b67ab12d9c76cec3b73325331f243329b2d88baac6969f73401c`。初次辅助读取曾因原CRLF保留在status值而断言失败，修为元数据strip后真实重核，不改Plan原件或交付状态。治理`t01-t02-governance-current/results.json`=`36b99c9dcf33ccf7edebf1f1558d3976ea9f825764ae91e6bfe2c7a6a66113ec`；实际首例`t02-first-slice-current/report.json`=`22006f3d0331ee1763724d8b885279a0adb4b3245829733b39296d3eca4d9a46`、同scope`audit.json`=`e2bac29339c34209d00267f326dceafded6deb02eb91bdcaf2b3c93dbf5d36c4`，真实argv/退出码/原生Job度量在同scope command.json。
+- 全部本轮进程终态，无live handle。r6 executing10/25，最终完整报告继续714P8F284U，原8scalar/F07/38cert-gap与其余U保留；F07未获授权不修。下一轮work续真实稳定接口恢复/机制缺口及T01未交付输入跟踪，按关闭条件核销，不追加未授权业务修复或重复本轮有效证据。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r6 | outcome:progress（原T01缺口已具名定位、T02独立实际20义务CLI与四端同错反控已证） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:a2b27fc660affe147db39dcc31512c1ad18cb522 | task_ids:T01/T02原工作部分，不宣称整项完成 | evidence:t01-current-input-audit-final.json,t02-first-slice-current/audit.json | next_responsible_role:work稳定接口剩余机制，无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r6 | round:72 | from:work | to:work | status:executing10/25 | outcome:progress（补齐真实首例关闭证明，原完整输入仍缺） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a2b27fc660affe147db39dcc31512c1ad18cb522 | next:work真实恢复/实例/资源机制；D938/939未交齐、F07待裁定，无待poll
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1819,4 +1838,4 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r6 | round:71 | from:work | to:wo
 
 12. **F-941-08工作阶段已关闭（r5 T22/T23，第64轮续录）**：用户原授权已完成实施与当前原职责/真实四端/292认证daily/原优化及CT机制严格联读，F08关闭基面81c10fcc9；第65轮b876cb42b/711P8F287U；第66轮4466520e6同计数、新增S936恢复分腿；第67轮当前5adfe480d/712P9F285U，新增SQ权威PASS与F09实际FAIL，仍8/23。无待poll，不再等待F08授权或重跑已有效冻结证据；原完整任务及最终独立T14仍待。F07独立test-only修复仍待裁定，不能由F08授权推定。
 
-13. **F-941-09工作阶段已关闭（r6 T24/25，第70轮）**：用户具名授权、三组原失败与合法/位置漂移/codec/AV旧42控制、73cdf4871生产修复、50fc3f770当前声明及206完整语义/222治理/实际AV/五native/466当前Case/292cert+daily/原14优化和6untyped拒绝已由原strict reader联读闭合，F09关闭基面713P8F285U；第71轮当前519dd0d15/714P8F284U、executing10/25。最终独立T14仍待，SD12候选未发布；不再等待F09授权或重跑已有效证据，不扩F07/其他缺陷授权。原完整任务继续。
+13. **F-941-09工作阶段已关闭（r6 T24/25，第70轮）**：用户具名授权、三组原失败与合法/位置漂移/codec/AV旧42控制、73cdf4871生产修复、50fc3f770当前声明及206完整语义/222治理/实际AV/五native/466当前Case/292cert+daily/原14优化和6untyped拒绝已由原strict reader联读闭合，F09关闭基面713P8F285U；第71轮519dd0d15/714P8F284U；第72轮当前a2b27fc66同完整判定，独立首例20P非全门，executing10/25。最终独立T14仍待，SD12候选未发布；不再等待F09授权或重跑已有效证据，不扩F07/其他缺陷授权。原完整任务继续。
