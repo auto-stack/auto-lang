@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 4
+current_step: 5
 total_steps: 21
 ---
 
@@ -181,7 +181,7 @@ T-01/T-02把表拆到每个required原子义务/具体entry与closing oracle；�
 
 ### 5.10 r4新增phase：F-941-06 AV data结构化诊断透传
 
-**授权与执行入口**：承接§4用户明确授权和§9第43轮最小提案、第48轮收口。基线`330c2534497e90ea6b06c5156382ffda4597aa76`，同树`D:/autostack/.wt/lang-941/auto-lang`、`plan-941-dev`，4/21仅T16..19完成；T20依赖已具备，不等待其他原任务齐。材料仍唯一`D:/autostack/plan-artifacts/plan-941/`。实施/内部自查/最终独立review顺序同树，不派发新agent/chat；最终独立审查仍T14，不以phase回归冒整包review。
+**授权与执行入口**：承接§4用户明确授权和§9第43轮最小提案、第48轮收口。基线`330c2534497e90ea6b06c5156382ffda4597aa76`，同树`D:/autostack/.wt/lang-941/auto-lang`、`plan-941-dev`，5/21为T16..20完成；T21完整冻结并集与当前证据刷新进行中，不等待其他原任务齐。材料仍唯一`D:/autostack/plan-artifacts/plan-941/`。实施/内部自查/最终独立review顺序同树，不派发新agent/chat；最终独立审查仍T14，不以phase回归冒整包review。
 
 **规范与已观察事实**：auto-av/data-layout.md规定独立data profile与既有MIR/AVAD验证/资源；auto-test-case/profile-v2-native.md与architecture.md要求父侧以真实stage/code判断，不让I/O/infra满足语言负例。实际`compile_record_source`返回`Vec<ace_core::atom_text::Diagnostic>`，包含stage/code/message/span；`data_driver::request_data`当前将其首项转为String，`av-worker`的data-run Err分支按前缀推断阶段并固定`diag.code=""`。原M09/M10/M11/R09 Case均FAIL，严格reader拒绝从message补code。core已有结构化StageDiag边界；owned仅作原协议兼容参照，其worker仍有字符串前缀/首词提取路径，不作为typed透传的证明，也不是本phase改造面。
 
@@ -264,11 +264,11 @@ r3修复补充验证（T18/T19已按§9第40..43轮执行通过，最终独立�
 
 固定组和专项原ignore/平台/资源/Job/输出帽保留、执行/排除/未执行/首次红/重放绿分别列。性能/压力与其他正式采样错峰，merge冻结提交一次职责并集，输入身份未变的有效证据可复用且逐项写理由；不为纯文档跑构建、不叠无因全experimental/all，周期`cargo t all`只按due在主检出单实例。新增Rust test在autotests=false包要显式Cargo target登记且确认被完整组选中。
 
-r4 F06补充验证（全部待T20/T21实施执行，不据本轮只读调查充PASS）：
+r4 F06补充验证（T20定向12项已通过，见§9第50轮；V27完整消费者与V28冻结并集/身份联读仍T21进行中，不据定向绿核销整个phase）：
 
 | ID | 不变量/AC | 实际入口与区分oracle | 边界/owner |
 |---|---|---|---|
-| V-25 | AC-16 原4 typed诊断 | 新拟conformance::data_diagnostics_941经typed driver及真实av-worker case-serve→原M09/M10/M11/R09，code依次source.not-callable、verify.immutable-write、verify.mut-conflict、source.type-mismatch；与原共享前端primary核对，worker pipeline stage为frontend，消息改变不影响code | 不改原源码/expected；T20使能，未修空code必须实际红；work |
+| V-25 | AC-16 原4 typed诊断 | 已注册conformance::data_diagnostics_941经typed driver及真实av-worker case-serve→原M09/M10/M11/R09，code依次source.not-callable、verify.immutable-write、verify.mut-conflict、source.type-mismatch；与原共享前端primary核对，worker pipeline stage为frontend，消息改变不影响code | 不改原源码/expected；T20使能，未修空code必须实际红；work |
 | V-26 | AC-16 分类失败边界 | 实际front-door拒绝/缺entry的lower拒绝、typed verify/encode/ABC错误代表态，以及实际不可写/文件占用store的I/O；按错误种类而非rendered前缀分类 | 真实code/stage与原主诊断一致；infra不冒4源码负例；若某内部失败不可从合法源到达，用同模块具名类型边界控制，不声称真实worker执行该态；work T20 |
 | V-27 | AC-16 合法与旧调用兼容 | 原M01/R01/R02合法record各0/19/9、data精确trap/trace、owned/core代表原入口，typed API与String兼容入口分别经过同实际pipeline；现直接native消费者调用旧API | 成功/guest trap/typed值/trace与store恢复不变，旧签名仍可编译；不更改源profile/caps/缓存轴，不为负例绕旧String→prefix路径；work T20/21 |
 | V-28 | AC-02/03/09/16 当前生产者严格联读 | 冻结完整ace-av/ace-native/infra组、原data36+诊断16、工具准备后pin闭包和受影响原始wire重采，再原reader全组合 | 原4真实FAIL转PASS；其余8 scalar red和缺义务保持，旧code空/错code/错source/旧worker/错nonce依旧拒或非PASS；不只跑合成packet测试；work T21 |
@@ -322,10 +322,11 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-17 | work | T-16，实际provider/grammar/工具身份冻结 | 原十源20Case/同源Rust-C认证逐oracle重验与原失败闭环；完整ace-source及实际AV/native消费者职责并集、必要ace-syntax及身份变化刷新，SD-07；AC-03/04/09/14，V-21 | [x] |
 | T-18 | work | 用户r3新增phase授权；§5.9；a236a44基面、原失败与Spec | Rust lower.rs值根/参数模式修复；沿provider既有print版本轴失效旧片段；新record_field_writes_941.rs并conformance注册，原3源+独立reference/default与-O、分支/循环/readonly/mut/view/move兄弟；AC-15，V-22/23，SD-08/09 | [x] |
 | T-19 | work | T-18冻结提交；实际worker/conformance新身份 | 完整ace-a2x与相关治理组、原3证书闭环/全部受身份影响认证及14原优化配置刷新、旧print缓存miss见证与当前组合读回；F-941-05关闭、SD-08/09交接；AC-02/03/04/09/15，V-24 | [x] |
-| T-20 | work | 用户r4 F06内修授权；§5.10；330c25344同树基线/原4失败 | data_driver具名typed错误边与旧String API兼容；真实worker按类型投影而非文本；新data_diagnostics_941永久注册，原4/合法/失败与分类边界；AC-16，V25..27，SD-10 | [ ] |
+| T-20 | work | 用户r4 F06内修授权；§5.10；330c25344同树基线/原4失败 | data_driver具名typed错误边与旧String API兼容；真实worker按类型投影而非文本；新data_diagnostics_941永久注册，原4/合法/失败与分类边界；AC-16，V25..27，SD-10 | [x] |
 | T-21 | work | T-20冻结提交；正式准备后的真实工具/依赖身份 | 完整ace-av/ace-native/infra及原data36+诊断16门；受AV/其他实际hash变化影响的source/wire/证书闭包真实重采，原strict联读与675P12F319U逐格对账；F06具名关闭、SD-10候选交接；AC-02/03/09/16，V-28 | [ ] |
 
 T-18/19已完成（§9第43轮）；当前依赖就绪入口为T20→T21，之后继续原完整T-01..13。T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；先T20/T21再继续原T-01/T-02等完整任务，尚未关闭的验收保持未完成。
+
 
 ## 9. 复审记录
 
@@ -1340,6 +1341,22 @@ stage: new | plan_id:PLAN-941 | plan_revision:r4 | outcome:pass（用户授权�
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:49 | from:new | to:work | status:executing4/21 | outcome:pass（仅合同阶段完成） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:330c2534497e90ea6b06c5156382ffda4597aa76 | next:work T20/21；原完整目标保持
 
+### 第50轮：T20 typed data诊断修复与原4红→绿；T21完整并集在跑（2026-11-06）
+
+- 第49轮r4合同实际写入并静态核查为progress。复核main r4 executing4/21、同树330c25344 clean/main代码零WIP后执行work。T20提交冻结 **be7593e00a03edf8fd1985de8bfe49a5a3475429**，5文件：data_driver.rs、av-worker.rs、conformance注册、新永久data_diagnostics_941.rs、SD10 data-layout候选；当前树clean。T20可勾选，current_step5/21；T21仍未闭，F06/GAP不提前关闭。
+- **原实现反证**：只加永久worker回归，在原生产330c25344上用原M09/M10/M11/R09及真实debug av-worker `case-serve`逐项执行，原4个预期code均实际得到空串；nextest真实exit100、0P4F，904为未选（非执行/非PASS）。baseline capture `f94106-t20-baseline/command.json` SHA `6e99f5eced9404bc7698be3f392568133efdde44c8e6c806f80503900f2f6819`，build/test整8.2821417s，test0.231s；四份请求/真实stdout/stderr仅scope内具名data-diag-941-*，不改源/oracle。外层采集脚本成功不冒内部nextest成功。
+- **实际修复**：新增`request_data_staged`与`DataRequestError`保留FrontDoor、完整有序Frontend(Vec<Diagnostic>)、Lower、MirVerify、Encode、AbcAdmit与Infrastructure。source primary stage/code/message/span到worker投影前仍完整；`diagnostic()`只按typed原因与既有pipeline映射投影frontend/verify，code来自原因。worker data-run不再按Display前缀分类、不固定空code。旧`request_data -> Result<_,String>`只调用同一staged管线再展示，原prefix/公共签名兼容；mem入口、restore、cache/AVAD/语义轴、源/HIR/MIR/执行器及owned/core生产逻辑无语义变动。rustfmt另规范一个既有resource event iterator换行，非逻辑修改。
+- **失败边界决定与证据**：source.infra、空frontend诊断/空code、没有稳定code的AbcAdmit Identity不制造语言面，worker按既有request error退出2；Infrastructure的任意“frontend:”文本也无诊断权威。String包装保原文本。真实front-door输入4MiB+1保原ResourceKind/InputTooLarge与原admission原因，wire沿既有data frontend投影，资源code不被伪装成四源码code；缺entry真实Lower/lower.entry。MIR/codec/ABC的非前端typed边界用具名类型控制断言verify，未声称合法源码可实际触达这些内部坏态。
+- **永久定向集12/12**：4原worker负例，完整frontend顺序/primary内容与String兼容、修改message不改stage/code及伪prefix infra、实际输入帽/缺entry、typed非前端准入；合法M01/R01/R02两API与worker分别0/19/9，owned/core各42，真实trace b,a/值3，B14精确av.trap.div-by-zero，真实store路径被文件占用时SDK Infrastructure/worker非零空stdout/原文件字节不变。worker回归复用auto-tool-execution::run的30s owned ProcessTree与单个有限原请求，原始请求/输出保scope，响应逐份≤64KiB（这是有限实际响应校验，不声称设施新增预分配输出限额）；外层原process_capture输出2MiB/错误1MiB保原具名退出。
+- 迭代首修12P/0F，整10.4700508s/test0.388s，`f94106-t20-local/command.json` SHA `5c22fad34044c517335a644822d1485139f8c22e8d14ddd0f00831c9e66e5a20`。补source.infra frontend原因为None的控制并加SD10候选后，最终定向命令`cargo nextest run -p ace-av --features test-case-batch --test conformance --config-file ../../.config/nextest-full.toml -E test(/^data_diagnostics_941::/) --no-fail-fast`退出0，12P/0F，904未选不充完整组；整2.9781147s/test0.409s，`f94106-t20-final-local/command.json` SHA `def2f8fcec5d8927e26a01bd76897c6b7665e8b3e338977cfafd46947203724e`。rustfmt/diff --check通过；旧core1/AV3/test4 warnings原样单列，无新本修复warning/allow，不将其算T13健康关闭。
+- **T21先正式准备再取证**：按原prepare_tools准备12个具名工具，合build48.4534535s；`f94106-frozen-preparation/preparation.json` SHA `929d4d5fc2857b2afc2c9a6693ca1ccfccdb5d132e1883137b3ba9bc01b5d91b`。实际新AV=`65017bf95a39da60f911c1dec5b1b3a3d0949305c054b1a0ffac893bc498c364`，native=`d6f6a1ba20aac88a6115eb8bbe837c7eca63a5c429a34b1592473ae612d04b1e`，SYN=`ebd67069b280e809d3c134bc061db2faa87f6852dc6cb1bdb931927a3f8fdf4c`，ABI=`765ce8cf0257b9ae5dad9eabccd22fdc68aa5f77a0d2687230b1ffb26d201e69`；mn-collections/CT/sema也实际变，不能仅按源未改而复用旧wire。A2X仍B=`7b0be842feabdd55a7217ae783ae4af8d9a445b60e7807e5cf1bda67d5b4bb7e`，case-parent/运行库当前hash未变；292 cert/原14优化仍须各域全部pin核对后才复用，不先声称全组合当前。
+- 真before记录`tool-pins-before.json` SHA `5c6ad1c2b2a24bd6fa17f0b0b483560889e51ce3be5a4c402d49905abbfc970f`，原data/text共同11依赖before `source-dependencies-before.json` SHA `06eda51fde9700a9ed2fcceefab014de3210425197d29dc3c359bb91af0bf93d`。旧raw/旧before/旧证书不改写。§9第48轮675P12F319U和required74/313现在仅上一稳定身份历史，当前总组合需刷新所有实际失效闭包，尚未重新通过。
+- 以冻结be7593e00、AUTO_CASE_WIRE_EVIDENCE=1、AUTO_PLAN_ARTIFACTS=<scope>、TEMP/TMP=<scope>/t启动原完整并集：`cargo t ace-av ace-native infra-ace-m1-arch case-ace-m1-original-data-q4-941 case-ace-m1-original-data-diagnostics-941 --out <scope>/f94106-frozen-union`。当前仍在首ace-av组，无终态，**live exec session27138 / fixed Python PID39216 / driver PID13584**已实际核存活并poll同session仍running；当前不要启动另一轮门或改交付代码。后续先核同handle，接原并集至终态，再比before/after、原16诊断strict/源证据刷新及全组合闭环。原所有样本/ignore/平台/性能条件不减；没有把进程存在或group启动当PASS。F06与T21仍pending，原8 scalar red/38 cert-gap/完整任务及所有ARCH保持。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:be7593e00a03edf8fd1985de8bfe49a5a3475429 | task_ids:T20完成/T21原完整并集运行中 | evidence:4实际baseline红→12定向绿；正式准备身份已冻结 | blockers:无新增用户决定；完整并集及当前失效证据刷新待 | next_responsible_role:work 先poll session27138/PID39216，禁止重启；终态后T21身份审计/strict刷新
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:50 | from:work | to:work | status:executing5/21 | outcome:in_progress（原完整并集live） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:be7593e00a03edf8fd1985de8bfe49a5a3475429 | next:work 接原session27138至终态，继T21
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1357,4 +1374,4 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:49 | from:new | to:wor
 
 9. **F-941-05已关闭（r3 T18/19，第43轮）**：同树Rust字段写值根修复、参数边界/三代缓存、稳定B工具完整405门、292当前默认证书/daily及原14优化严格联读已闭，原3缺Rust格位转PASS。最终独立复审仍T14；不扩为F06/其他后端修复，原完整任务与全部具名red/unknown保持。
 
-10. **F-941-06已获941内修phase授权（第48轮）**：用户明确回答“授权941新增修复phase（推荐）”；范围为原提案的data链结构化诊断透传及原4例/合法与失败边界/受影响消费者验证。第49轮已修订r4/§5.10/T20/21，下一入口work T20，不再等待或重复请求；此项不扩大到其他后端缺陷。
+10. **F-941-06已获941内修phase授权（第48轮）**：用户明确回答“授权941新增修复phase（推荐）”；范围为原提案的data链结构化诊断透传及原4例/合法与失败边界/受影响消费者验证。第49轮已修订r4/§5.10/T20/21，T20已完成、T21完整并集/当前身份刷新在途，不再等待或重复请求；此项不扩大到其他后端缺陷。
