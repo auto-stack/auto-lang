@@ -206,6 +206,9 @@ T-11使能拟`crates/auto-lang/test/cases/ace-m1/source-cte-936/`、独立refere
 
 ## 9. 复审记录
 
+2026-11-06 stage:goal | plan_id: PLAN-936 | plan_revision: r2 | round: final | from: merge | to: done | status: archived | outcome: pass（端到端交付闭环：work（T-01..T-12，13+提交）→ review（needs_fix F-936-R1-01→同树修复→final pass）→ merge（rebase 并集和解 950、ff-only 落地 a41dbd1bd、canonical 5 路径验证、6 组冻结门全绿、归档、wt-guard 清树、scope 删除、登记表刷新）） | delivery: a41dbd1bd@master | Spec: 5 路径（哈希见上收据） | archive: docs/plans/archive/936-source-av-cte-query-and-frozen-recovery.md | cleanup: 完成（无具名持有） | pending: 显式余账已记录于 T-12 行（新 lane 正式 30 样本错峰窗/worker 级 V-14 腿/暖会话 CT 复用——均非 blocker，归后续计划/排程）；批回归不 due（936%5≠0，回执 <48h）
+
+
 2026-11-06 PLAN-936:r2 consolidation receipt | prepared: reviewed a21f3511b→rebase 映射（0d47ad3e2→a41dbd1bd，range-diff 等价+950 并集和解） | landed: master tip=a41dbd1bd ff-only（无 merge commit） | canonical_verified: 5 SD 路径（auto-cte/source-query-integration 5dc496a1…、scalar-query-profile d0057906…、frozen-cache ed4144c8…、auto-semantics/source-query-session d05be82c…、auto-test-case/architecture 72f17b43…）@a41dbd1bd | merge-gate: ace-av 1014/ace-a2x 189/ace-comptime 134/case-936 14/case-934 14/case-935 12 全 PASS（run-4gzywo3d@和解基面）+ace-syntax/ace-source PASS（run-6zqqh_6b） | archived: docs/plans/archive/936-source-av-cte-query-and-frozen-recovery.md status: archived | cleaned: 见下 | completion_kind: delivered | cleaned: worktree lang-936 移除（wt-guard clean 前置）、branch plan-936-dev 删除（was a41dbd1bd）、组目录 lang-936 移除；plan-artifacts/plan-936 整 scope 删除（冻结文档/重锚记录/补丁脚本/语法临时件——耐久证据已折入本文件各行与 §9 收据；登记表已刷新，无具名持有）
 
 
