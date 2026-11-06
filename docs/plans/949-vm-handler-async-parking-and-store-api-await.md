@@ -4,7 +4,7 @@ status: reviewed
 feature_name: VM handler 异步返回闭合与 JSON 值编码
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-06
+updated_at: 2026-11-07
 plan_revision: 2
 current_step: 4
 total_steps: 4
@@ -91,9 +91,9 @@ Rust、现有 AutoVM native bindings/codegen/back_prefix；现有 serde/HTTP 中
 ## 8. 执行步骤
 
 - [x] T-00（work）：定位 store/内联 API await 降级点及真实 JSON 根因；round1..15与r2探针完成。
-- [ ] T-01（work，依赖T00）：收口既有 per-app语言上下文、实现值编码与片段消费修复、永久最小反例/对照。
+- [x] T-01（work，依赖T00）：收口既有 per-app语言上下文、实现值编码与片段消费修复、永久最小反例/对照。
 - [x] T-02（work，依赖T01）：最终 SDK Todo VM 用户任务、真实返回与磁盘独立核对。
-- [ ] T-03（work，依赖T01/02）：既有 boot/reentry/cpu-slice 与完整受影响职责组回归、Spec候选、提交execution_done回执。
+- [x] T-03（work，依赖T01/02）：既有 boot/reentry/cpu-slice 与完整受影响职责组回归、Spec候选、提交execution_done回执。
 
 ## 9. 复审记录
 
