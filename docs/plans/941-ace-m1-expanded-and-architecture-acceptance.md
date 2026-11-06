@@ -1161,6 +1161,12 @@ session52277真实terminal exit0：scope/f94105-stable-final-union完整 **210 A
 
 stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:8c074c17c404b15a1d042a8bf3a77420b958997a | task_ids:T19未关闭 | evidence:B完整405项门/原query24 strict；B292当前live | next_responsible_role:work poll session80190/PID31556（取代上一条next的已结束52277），禁止重复采集/再准备worker
 
+### 2026-11-06 F-941-06修复归属提案（原GAP-941-AV-DATA-DIAG-01，未实施）
+
+原第38轮4真实AV record负源M09/M10/M11/R09的formal FAIL与空code原交换、156反控均已保留，AV worker当前字节未变。再次核实生产链为av-worker.rs data-run→data_driver::request_data→共享前端；worker Err分支按字符串前缀分类并固定输出diag.code=""，丢失原本可用于判定的结构化诊断。本包reader正确拒绝从rendered message反解，故仍4 FAIL；F04/F05授权不自动覆盖本项。
+
+最小待授权范围：保留并透传data链既有共享前端诊断stage/code，沿既有driver/worker错误载体补有限结构化失败通道（保旧调用兼容/其他失败分态），禁止从message提取code或修改源/oracle；四原负例作永久真实worker反例，加合法record、旧owned/core及非前端失败边界；按真实改动执行完整所属固定组/必要消费者，AV生产身份变更后刷新其真正受影响的source证据，再严格核原16诊断与当前组合。不得将本项扩为native generic trap、A2X typed缺口或新源语义。按§5.4“已归档能力发现新缺陷要具名新修复流程”，请求用户选择941新增phase或独立修复；当前只提案，不改r3/T19/任务总数，不实施producer。B292采集及其他已授权工作继续。
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1177,3 +1183,5 @@ stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktr
 8. **F-941-04已获r2内修授权**：按用户“直接在941计划添加新的phase修复”执行§5.8/T16/17，不再等待独立修复授权；T16/T17实现与原例/完整并集/当前严格认证验证已完成（第22轮）；最终独立review仍待T14，不以phase自测顶review。
 
 9. **F-941-05已获941内新phase授权**：用户明确选择“授权941新增修复phase（推荐）”。r3执行合同已落实于§5.9/T18/19，在同一941树修复Rust字段写值根的mut判定；不再等待修复归属确认，不将此授权扩为AV诊断缺码或其他后端修复。三Rust证书在真实重认证前仍未齐。
+
+10. **F-941-06待修复归属授权**：原4 AV record结构化诊断丢失，最小修复提案见§9；只读验收/当前B292与T19继续，不将F05授权外推到本项。
