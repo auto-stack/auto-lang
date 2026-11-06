@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-958
-status: reviewed
+status: archived
 feature_name: A2X真实worker源CT前门接线修复
 author: [Codex]
 created_at: 2026-11-06
@@ -124,6 +124,19 @@ stage: work | plan_id: PLAN-958 | plan_revision:r1 | outcome:pass | worktree_pat
 SD01/02均通过：`docs/specs/auto-cte/source-query-integration.md` SHA256=`eafa1082c933454dac0adeec25d70937c13c5a1a71a65e710304935c8526c208`；`docs/specs/auto-test-case/a2r-hir-certification.md` SHA256=`a32d3555b5657cb72c2ae909ce2ac000110662ef5aa46e218f96c7895561581a`。正好描述现有有限cap前门/同次HIR/日常spawn0与两腿独立oracle/冷会话边界；frontmatter两个supersedes路径、无new组件、GOAL002核对有效；零legacy specs.json/索引写。冻结Spec delta可由688207b67的二路径diff重建，不能仅信附件。
 
 合入职责并集明确为**ace-a2x完整固定组**（a2x-core/rust/store/worker全部原条件与本次实际CLI）。触面是worker共用scalar consumer，source-cte/service与source-query/语法/AV/native生产者均未改；包依赖不推出所有依赖方测试，不堆ace-comptime或全仓/正式性能。先复审再由merge在冻结最终身份跑一次完整并集。当前无实现写入授权交还事项，进入merge。
+
+2026-11-06 merge consolidation | PLAN-958:r1 | prepared:reviewed688207b6773e942df08f62a1776fcc8e256e64ea | rebase:**688207b67→06251b0ccb4916d2e70abd7f98197987b778ca9e** on master2ba46a6f4，`git range-diff`单patch完全等号，所有experimental/ace、两个Spec及固定组选项逐字节相等；主线新增仅计划簿记，无实现/依赖漂移，原review可映射。
+
+- 最终完整职责门 `cargo t ace-a2x --out <scope>/frozen-merge-prebuilt-gate` exit0、**196/196 PASS、0 skipped**、gate_passed=true，整命令132.3891907s；发现716.9643ms，执行/清理131639.6381ms，原Job/CPU完整保留。SHA256=`4495c24c08ef3cf04e4568418f299868e265da1cbcb11057df79bc4706fa88e6`，source/dependency/config/原样本/原oracle未改变。这个全组包含189原项+7本修复；未把定向7门当全组。
+- 首次完整门**182PASS/14FAIL**，scope/frozen-merge-gate results SHA256=`3022b10dd50094295cdda3b2ece2f117eb5e252d02711d0153f14718d37f2bf0`，整120.1627227s；14均在worker spawn NotFound/prebuilt release worker required前置失败，尚未进入相关语言认证。未掩盖该首红/未判原代码失败；958新树只有debug worker，原测试硬要求release。显式 `cargo build --locked --offline --release -p ace-a2x-worker --bin a2x-worker --manifest-path experimental/ace/Cargo.toml --target-dir experimental/ace/target` 59.38s补齐原工具后，才执行上述完整196绿。生产源码/测试零修补，不换debug冒release，不缩分母或屏蔽14项。
+- landed:**06251b0ccb4916d2e70abd7f98197987b778ca9e** master ff-only，合入后tip实际相等，未创建merge commit。合入前lang/down两树wt-guard clean，main代码路径零WIP（保留他方docs-only WIP）。canonical_verified：两个已审Spec在main工作字节=delivery blob=688审查blob，source-query-integration SHA=`eafa1082c933454dac0adeec25d70937c13c5a1a71a65e710304935c8526c208`；a2r-hir-certification SHA=`a32d3555b5657cb72c2ae909ce2ac000110662ef5aa46e218f96c7895561581a`。无ledger/索引写入，应用派生。
+- 941已消费稳定D958：唯一941树合入master得到**d88359466a855153ca2d464913cedf6a6e7db4e4**，同树重建release worker2.84s；原8个worker操作在parent941 scope/after-d958-original-entry重放**8/8 PASS**（普通Rust/C daily/cert四项保绿，原CT四项从exit2转exit0/cert PASS）；两cert均actual/reference各编译/运行exit0、raw stdout value:42换行，daily Job2与spawn0。汇总SHA256=`93286914b78cf0b5a5c5cea117bf0c70bf5ca2d15ba0f163d9993973bdc4b68c`，所有输出属在途941，原owner941保护，不是958漏删输出。该消费证明F-941-03功能闭包，不核销941其余reader/CT warm/required页/正式样本。
+- 生产artifact观察：main experimental/ace/target/release/a2x-worker.exe仍为**2026-11-05T05:29:34.608315Z**、SHA=`e2ba687e9a2f33da55f4d79085b914a7d7ee34af368ae7a12f7719a75dd63243`；实际CT smoke仍exit2 source.lex unknown #，明确**主线安装产物未重建**，不冒主线tool部署已更新。main target/release/a2x-worker.exe不存在；941专属release已按当前源码更新并有8项真实消费。按合入技能记录精确stale项，不复制941在途仪表代码进main，也不把旧全局exe当本次工具凭证；941最终交付继续负责其消费者新鲜性。
+- 全路径预对账：新增/原测试source扫描selected closure无额外盘符绝对输出根；CARGO_MANIFEST_DIR../../target各a2x-out*均归958树experimental/ace/target；固定组target/test-groups在958树；TEMP/TMP明确958scope/compiler-temp，所有std::env::temp_dir输出归scope；原process_capture回归/holdout/selection/日志均在958scope；原941发现/新消费记录是owner941的既有父scope输入/输出，main旧exe是共享已装工具，均不迁移/删除。构建中间产物不保留副本，后续随958树删除。无具名未解决持有。
+
+当前只剩归档与清理收尾，T06仍pending；先将本有据交付档案归archive并提交，再fresh guard移除lang/down两树/branch/空组及整个958材料scope，更新登记与最终6/6。尚未报告cleaned/pass。
+
+2026-11-06 archived | completion_kind:delivered | delivery:06251b0ccb4916d2e70abd7f98197987b778ca9e | canonical_verified:两Spec如上 | archive:docs/plans/archive/958-a2x-worker-source-ct-frontdoor.md | cleanup:pending T06，保原在途保护，尚未关闭6/6。
 
 ## 10. 待澄清事项
 
