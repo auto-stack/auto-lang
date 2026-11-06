@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-991
-status: execution_done
+status: reviewed
 feature_name: M1旧A2R 38格认证缺口分诊与关闭交接
 plan_revision: 1
 author: [Codex]
@@ -11,7 +11,7 @@ new_spec_components: []
 touched_goals: [GOAL-002]
 affects: [auto-test-case, legacy-a2r]
 depends_on: []
-current_step: 5
+current_step: 6
 total_steps: 7
 ---
 
@@ -225,7 +225,7 @@ T-04按**共同根因**合并最小修复提案，而非38个Plan或一个无边
 | T-03 | work | T-02；只用既有受支持本域入口复核/显式重验，保存原source/oracle，daily无spawn独立验证；无入口明确转T-04 | V-02/03，AC-02/03；不改代码/schema/golden，未跑保缺口 | [x] 日常 a2r 轴 26/26 PASS；receipts scope 10 证书 strict valid；ace-certify 正控 b01 reused exit 0／反控 b08、r02、全 38 id exit 2；certs sha 前后不变（§7.1 V-02/V-03）；38 格无可用认证入口→全部转 T-04 |
 | T-04 | work | T-02/03；每未闭格形成§5.4具名H关闭合同/根因分组/owner/下一动作，规则争议给裁定提案；交接941的待接纳与已验证分开 | V-04/05，AC-03/04；原38全有关闭路径但可仍不绿，不自动取新号/实施修复 | [x] §5.4.1 H-01..H-07（12/5/4/6/1/4/6=38）；裁定题 H-04/H-06/H-07 入 §10；未取号、未实施 |
 | T-05 | work | T-01..04；冻结逐格结果/闭合与未闭计数、身份变更/复用理由、健康与交接材料；原门仍保红 | V-01..05、AC-01..04；准备独立review，不写941计划 | [x] 计数 17 已验证候选（未认证）+ 21 具名未闭 = 38，实际关闭 0；acceptance scope cert-gap=38/can_claim_m1=false 保红（§7.1 V-05）；零代码/零生产文件改动，健康=无新 warning/格式面；交接材料=本 Plan §5.1/§5.4.1/§7.1 |
-| T-06 | review | T-05完成/冻结；同树独立上下文逐格/raw/H合同/边界/空过扫描与最终判定 | V-06、AC-05；未检面pending，不采摘要PASS | [ ] |
+| T-06 | review | T-05完成/冻结；同树独立上下文逐格/raw/H合同/边界/空过扫描与最终判定 | V-06、AC-05；未检面pending，不采摘要PASS | [x] 独立 subagent 上下文 final pass，findings none；62 行独立重放与 B08/L01 溯源 SHA 一致（§9 review 收据） |
 | T-07 | merge | T-06 pass及后续合入指令；冻结适用验证、归档/路径对账/scope/guard收尾，诚实记录triage交付与38实际关闭状态 | AC-06；不部署/签M1，不自动发消息或改938/941 | [ ] |
 
 ## 9. 复审记录
@@ -237,6 +237,10 @@ T-04按**共同根因**合并最小修复提案，而非38个Plan或一个无边
 stage: work | plan_id: PLAN-991 | plan_revision: r1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-991/auto-lang | branch: plan-991-dev | base_commit: b4b16dd9a359ae4194c5a93495fec92f89e7dce8 | code_commit: b4b16dd9a（本包零代码提交；交付物=本 Plan 文件，主检出簿记） | dependency_revisions: 无（纯 auto-lang 只读分诊；941 树 519dd0d 与本包 reader 零交集） | task_ids: T-01..T-05 | evidence: §7.1（contract/receipts/acceptance scope exit 0；日常 a2r 26/26；ace-certify 正控 reused/反控 exit 2×3；P1 12/13 金样编译运行==oracle、P2 19 emit 观察；certs sha 前后不变；scope `D:/autostack/plan-artifacts/plan-991/` results.json `bf88d593…`、report.json `e8b694a0…`、acceptance `da92e310…`） | 计数: 38 = 17 已验证候选（未认证）+ 21 具名未闭（H-03/04/05/06/07）；实际关闭 0；守卫 cert-gap=38、can_claim_m1=false 不变 | blockers: 无（H-04/H-06/H-07 裁定题入 §10 为后继合同前提，不阻本包分诊交付） | 未执行: 全 base 组/snapshot/certify scope、infra-ace-m1 等固定组（零触面，静态对账）；统一回归 pending owner=merge | next_responsible_role: review（T-06，同树独立上下文，reviewed_commit=b4b16dd9a + 本 Plan 文件内容）
 
 stage: goal | plan_id: PLAN-991 | plan_revision: r1 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-991/auto-lang | commit: b4b16dd9a359ae4194c5a93495fec92f89e7dce8 | next: review | grant: 用户 2026-11-07 `/goal 完成计划991`（auto-plan-goal 一次授权：work/review/bounded repair/merge；不授权改目标/AC/范围/守卫/token）
+
+stage: review | review_scope: final | reviewer_identity/limitations: 独立 subagent 上下文（两段：重放上下文 + 静态/判定上下文），同一冻结树只读，未参与 work；无模型/会话 ID 暴露 | plan_id: PLAN-991 | plan_revision: r1 | outcome: **pass** | worktree_path: D:/autostack/.wt/lang-991/auto-lang | branch: plan-991-dev | reviewed_commit: b4b16dd9a359ae4194c5a93495fec92f89e7dce8（树，零自有提交）+ 计划提交 38e3d20df（仅本 Plan 文件 +249 行） | base_commit: b4b16dd9a | dependency_revisions: 无（941 树 519dd0d 与本包 reader 零交集，复核） | spec_inputs: §4 五输入 SHA 冻结树逐位一致；规范增量=空（理由见 F-991-R1-O2） | acceptance_results: AC-01 pass（awk 38=18/16/4 逐格对 §5.1；acceptance JSON required 313、cert_axis cert-gap×38、can_claim_m1 false）；AC-02 pass（独立重放 replay.tsv 60 数据行：H-01 12 格 golden+ref MATCH、H-02 5 格 actual+ref MATCH、K06 `move move` COMPILE_FAIL、T01/T02/T04 E0599/E0432、T03 `i32:25`≠23、L01–L07 六格 COMPILE_FAIL、B14/B20 deny-lint、B13 `-2147483648`/B15 `0` 无 trap；`ace_certify.rs:111` 谓词 corpus∧value∧ok-emit 构造性排除 38；日常 a2r 26 PASS/0 FAIL；B08/L01 经生产 adapter 重生成 SHA256 `5e63982b…`/`e63112e8…` 与 work 实际逐位相同）；AC-03 pass（G01..G38 各恰一 H；H 覆盖 12+5+4+6+1+4+6=38 无重复；17 候选=H-01∪H-02；实际认证 0；§10.4–10.6 裁定在册；scn:R05/K02/`m1_k02.rs` 不存在/certs 恰 10 份均核实）；AC-04 pass（树对 master 无代码/语料/规范改动；acceptance 仍 cert-gap 38、can_claim_m1 false）；AC-05 = 本复审 | pending_closeout_gates: ①status→reviewed+归档 `docs/plans/archive/`；②证据摘要折本文件后整删 `D:/autostack/plan-artifacts/plan-991/`（含 review/），路径对账仅此一 scope；③零代码触面——统一回归 no-impact，不强制 cargo 门；④`wt-guard.sh` clean→移除树与 `plan-991-dev`（零自有提交，合并为 no-op）；⑤不改任何 token/金样/cert/守卫，H-01..H-07 须 §10 裁定与另行授权 | findings: none；信息项 F-991-R1-O1（`--adapter a2r` 运行 exit 1 仅因 71 NOT_RUN，26 PASS/0 FAIL 与 §7.1 一致）、F-991-R1-O2（空规范增量可辩护：树零改动，E-STALE 勘误与 scn:R05 不一致已冻结于 H-01/H-07 与 §10；`a2r-golden-certification.md` 范围理由在 H-01 落地前为已知陈旧，merge 须保归档计划可发现） | evidence: §7.1 + review/replay.tsv、review/prov-out、review/a2r、review/acc（merge 整删前已折本节） | next: merge（T-07）
+
+stage: goal | plan_id: PLAN-991 | plan_revision: r1 | round: 2 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-991/auto-lang | commit: b4b16dd9a359ae4194c5a93495fec92f89e7dce8 | next: merge
 
 ## 10. 待澄清事项
 
