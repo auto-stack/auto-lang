@@ -132,8 +132,31 @@ fn validate_mir_with_deadline(
     module: &MirModule,
     deadline: Instant,
 ) -> Result<VerifyStats, MirVerifyError> {
+    validate_mir_with_analysis_reservation_and_deadline(module, deadline, &mut |_| Ok(()))
+}
+
+/// The same verifier with pre-allocation admission of its initialization
+/// analysis. This reserves the bases/CFG/dataflow workspace; input ownership,
+/// diagnostics, owning credentials and ownership-profile analyses are separate.
+pub fn validate_mir_with_analysis_reservation(
+    module: &MirModule,
+    mut reserve: impl FnMut(usize) -> Result<(), MirVerifyError>,
+) -> Result<VerifyStats, MirVerifyError> {
+    validate_mir_with_analysis_reservation_and_deadline(
+        module,
+        Instant::now() + MAX_VERIFY_WALL,
+        &mut reserve,
+    )
+}
+
+fn validate_mir_with_analysis_reservation_and_deadline(
+    module: &MirModule,
+    deadline: Instant,
+    reserve: &mut dyn FnMut(usize) -> Result<(), MirVerifyError>,
+) -> Result<VerifyStats, MirVerifyError> {
     let mut v = Verifier {
         module,
+        reserve,
         steps: 0,
         deadline,
         analysis_bytes: 0,
@@ -149,8 +172,9 @@ fn validate_mir_with_deadline(
     Ok(v.stats_snapshot())
 }
 
-struct Verifier<'a> {
+struct Verifier<'a, 'r> {
     module: &'a MirModule,
+    reserve: &'r mut dyn FnMut(usize) -> Result<(), MirVerifyError>,
     steps: u64,
     deadline: Instant,
     analysis_bytes: u64,
@@ -184,7 +208,7 @@ struct Verifier<'a> {
     is_entry_unit: bool,
 }
 
-impl<'a> Verifier<'a> {
+impl<'a, 'r> Verifier<'a, 'r> {
     /// The collections feature surface (List/Variant/Place and their
     /// instructions): admitted by `av.collections/1` and its dynamic
     /// successor (PLAN-824 subsumption).
@@ -1923,6 +1947,17 @@ impl<'a> Verifier<'a> {
     }
 
     fn check_function(&mut self, _fi: u32, f: &MirFunction) -> Result<(), MirVerifyError> {
+        if !(self.is_owned || self.collections_surface()) {
+            let bytes = init_analysis_bound(f);
+            if bytes > MAX_VERIFY_ANALYSIS_BYTES {
+                return Err(MirVerifyError::Resource {
+                    kind: ResourceKind::VerifyMemory,
+                    message: format!("init analysis for `{}` needs {bytes} bytes, above the frozen {MAX_VERIFY_ANALYSIS_BYTES} budget", f.name),
+                });
+            }
+            self.analysis_bytes = self.analysis_bytes.max(bytes as u64);
+            (self.reserve)(bytes)?;
+        }
         // Precomputed block bases (flat instruction offsets): the naive
         // per-call prefix sum made chain-shaped functions quadratic.
         let bases: Vec<u32> = {
@@ -1943,7 +1978,8 @@ impl<'a> Verifier<'a> {
             self.check_env_capture_discipline(f)?;
         }
         // shape: sig
-        let Some(sig) = self.module.sig_of(f.sig).cloned() else {
+        let module = self.module;
+        let Some(sig) = module.sig_of(f.sig) else {
             return Err(MirVerifyError::inv(
                 "mir.fn-sig",
                 format!("function `{}` does not reference a function type", f.name),
@@ -2328,7 +2364,7 @@ impl<'a> Verifier<'a> {
                     }
                     MirInstr::Call { callee, dst, args } => {
                         let dt = slot_ty_of(f, *dst, sp, "call dst")?;
-                        let callee_sig: FnSig = match callee {
+                        let callee_sig: &FnSig = match callee {
                             CalleeRef::Func(idx) => {
                                 if self.module.is_unit {
                                     return Err(err(
@@ -2349,9 +2385,9 @@ impl<'a> Verifier<'a> {
                                         ),
                                     ));
                                 }
-                                match self.module.funcs.get(*idx as usize) {
-                                    Some(target) => match self.module.sig_of(target.sig) {
-                                        Some(s) => s.clone(),
+                                match module.funcs.get(*idx as usize) {
+                                    Some(target) => match module.sig_of(target.sig) {
+                                        Some(s) => s,
                                         None => {
                                             return Err(err(
                                                 "mir.callee-sig",
@@ -2370,25 +2406,23 @@ impl<'a> Verifier<'a> {
                                     }
                                 }
                             }
-                            CalleeRef::Import(idx) => {
-                                match self.module.imports.get(*idx as usize) {
-                                    Some(imp) => match self.module.sig_of(imp.sig) {
-                                        Some(s) => s.clone(),
-                                        None => {
-                                            return Err(err(
-                                                "mir.import-sig",
-                                                format!("import #{} has no function type", idx),
-                                            ))
-                                        }
-                                    },
+                            CalleeRef::Import(idx) => match module.imports.get(*idx as usize) {
+                                Some(imp) => match module.sig_of(imp.sig) {
+                                    Some(s) => s,
                                     None => {
                                         return Err(err(
-                                            "mir.import-ref",
-                                            format!("call references out-of-range import {}", idx),
+                                            "mir.import-sig",
+                                            format!("import #{} has no function type", idx),
                                         ))
                                     }
+                                },
+                                None => {
+                                    return Err(err(
+                                        "mir.import-ref",
+                                        format!("call references out-of-range import {}", idx),
+                                    ))
                                 }
-                            }
+                            },
                         };
                         if callee_sig.params.len() != args.len() {
                             return Err(err(
@@ -3929,32 +3963,8 @@ impl<'a> Verifier<'a> {
         let n = f.slots.len();
         let words = words_for(n);
         let blocks = f.blocks.len();
-        // Composite analysis budget BEFORE allocation (F798-R3-08): the
-        // init dataflow holds defs/in/out bitsets of blocks × words each
-        // (plus per-block successor/predecessor vectors). A dense unit
-        // (16384 slots × 8192 blocks ≈ 3 × 16 MiB) previously allocated
-        // ~51.7 MiB BEFORE the work-step budget rejected it — the guard
-        // must fire first, as a resource classification.
-        let per_matrix = blocks * words * std::mem::size_of::<u64>();
-        let analysis_bound = per_matrix.saturating_mul(3)
-            + blocks
-                * (std::mem::size_of::<Vec<u64>>()
-                    + 2 * std::mem::size_of::<Vec<u32>>()
-                    + 2 * std::mem::size_of::<u32>());
-        self.analysis_bytes = self.analysis_bytes.max(analysis_bound as u64);
-        if analysis_bound > MAX_VERIFY_ANALYSIS_BYTES {
-            return Err(MirVerifyError::Resource {
-                kind: ResourceKind::VerifyMemory,
-                message: format!(
-                    "init analysis for `{}` needs ~{} bytes ({} blocks × {} words × 3 matrices), above the frozen {} budget",
-                    f.name,
-                    analysis_bound,
-                    blocks,
-                    words,
-                    MAX_VERIFY_ANALYSIS_BYTES
-                ),
-            });
-        }
+        // check_function admitted this workspace before allocating bases.
+        // The same reservation spans all matrices and CFG/queue scratch.
         // Def sets per block (fixed after the typing pass).
         let defs: Vec<Vec<u64>> = f
             .blocks
@@ -4345,6 +4355,39 @@ fn span_of_fn(f: &crate::mir::MirFunction, flat: u32) -> Option<SpanInfo> {
         .get(lo)
         .filter(|(i, _)| *i == flat)
         .map(|(_, sp)| *sp)
+}
+
+fn init_analysis_bound(f: &MirFunction) -> usize {
+    let blocks = f.blocks.len();
+    let words = words_for(f.slots.len());
+    let args = f
+        .blocks
+        .iter()
+        .flat_map(|b| &b.instrs)
+        .map(|i| match i {
+            MirInstr::Call { args, .. } | MirInstr::ForeignCall { args, .. } => args.len(),
+            MirInstr::Aggregate { operands, .. } => operands.len(),
+            _ => 2,
+        })
+        .max()
+        .unwrap_or(2);
+    // Three blocks×words matrices and up to three simultaneous worklist
+    // bitsets. The 256B/block allowance covers all three matrix Vec headers,
+    // successor/predecessor headers and storage (including predecessor growth
+    // overlap), reachable/queued flags, retained DFS and RPO stacks (including
+    // their growth overlap), term reads, RPO and deque. Bases and the largest
+    // transient use_slots copy are separate. Input/signature tables are borrowed.
+    blocks
+        .saturating_mul(words)
+        .saturating_mul(8)
+        .saturating_mul(3)
+        .saturating_add(words.saturating_mul(8).saturating_mul(3))
+        .saturating_add(blocks.saturating_mul(256))
+        .saturating_add(blocks.saturating_add(1).saturating_mul(4))
+        .saturating_add(args.saturating_mul(4))
+        // Small Vec bootstrap capacities are independent of block count.
+        // Diagnostic strings are not initialization-analysis workspace.
+        .saturating_add(128)
 }
 
 fn words_for(bits: usize) -> usize {

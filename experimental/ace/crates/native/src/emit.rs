@@ -284,8 +284,12 @@ fn emit_unit_coff_impl(
 ) -> Result<(UnitObject, Option<ace_source_query::resources::Reservation>), MnError> {
     if let Some(environment) = environment {
         admit_unit_shape(unit)?;
-        crate::foreign_lower::admit(unit, environment)
-            .map_err(|e| MnError::Unsupported("foreign.authority", e))?;
+        if let Some(resources) = resources {
+            crate::foreign_lower::admit_reserved(unit, environment, resources)?;
+        } else {
+            crate::foreign_lower::admit(unit, environment)
+                .map_err(|e| MnError::Unsupported("foreign.authority", e))?;
+        }
     } else {
         admit_unit(unit)?;
     }

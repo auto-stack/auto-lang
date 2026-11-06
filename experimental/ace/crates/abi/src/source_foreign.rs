@@ -1363,7 +1363,7 @@ fn native_artifact(
     lower.produced(1);
     work.push(lower);
     let mut verify = ledger.begin(name, "mir-verify", Phase::Production);
-    ace_native::foreign_lower::admit(&mir, env)?;
+    ace_native::foreign_lower::admit_reserved(&mir, env, resources).map_err(|e| e.to_string())?;
     verify.produced(1);
     work.push(verify);
     let mut emit = ledger.begin(name, "native-emit", Phase::Production);
@@ -1721,11 +1721,20 @@ fn validate_target_artifact(
             // ABC deliberately omits the project/unit owner. Rebind
             // it from the authenticated required envelope BEFORE MIR
             // admission, as the existing unit-store protocol does.
-            let (maximum, _mir_allocation) = resources
+            let (maximum, mut mir_allocation) = resources
                 .reserve_remaining_mir()
                 .map_err(|e| e.to_string())?;
             let mut decoded = ace_av_core::abc::decode_abc_limited(mir, maximum)
                 .map_err(|e| format!("foreign.restore.mir: {e:?}"))?;
+            let reanchor = owner_schema
+                .len()
+                .checked_add(owner_module.len())
+                .and_then(|n| n.checked_mul(decoded.module.funcs.len().saturating_add(1)))
+                .and_then(|n| n.checked_add(decoded.module.heap_estimate()))
+                .ok_or("foreign.resource.native-owner-size")?;
+            mir_allocation
+                .resize(Charge::mir(reanchor))
+                .map_err(|e| e.to_string())?;
             decoded.module.owner = ace_av_core::mir::OwnerScope {
                 schema: owner_schema.clone(),
                 module: owner_module.clone(),
@@ -1733,7 +1742,11 @@ fn validate_target_artifact(
             for f in &mut decoded.module.funcs {
                 f.owner = decoded.module.owner.clone();
             }
-            ace_native::foreign_lower::admit(&decoded.module, environment)?;
+            mir_allocation
+                .resize(Charge::mir(decoded.module.heap_estimate()))
+                .map_err(|e| e.to_string())?;
+            ace_native::foreign_lower::admit_reserved(&decoded.module, environment, resources)
+                .map_err(|e| e.to_string())?;
             if decoded.module.funcs.len() != 1
                 || decoded.module.funcs[0].name != format!("d_{name}")
                 || *symbol

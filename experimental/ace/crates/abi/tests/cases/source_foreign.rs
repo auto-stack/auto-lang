@@ -17,6 +17,51 @@ fn fixture() -> PathBuf {
 }
 
 #[test]
+fn source_foreign_native_analysis_uses_shared_staging_and_repairs_without_codegen_on_refusal() {
+    use ace_source_query::resources::{Charge, Resources};
+    let root = scope("native-analysis-budget");
+    let (_, environment) = provider(&root, 0);
+    let caps = vec![SOURCE_CAP.into()];
+    let mut query = ace_source_query::SourceQuerySession::new("p938", "source938");
+    let (_, units) = ace_native::foreign_lower::compile_source_units(
+        "fn main() int { return foreign_add(20,22) }",
+        "source938",
+        &caps,
+        &environment,
+        &mut query,
+    )
+    .unwrap();
+    let unit = std::sync::Arc::new(units.into_iter().next().unwrap());
+    let resources = Resources::default();
+    resources
+        .adopt(&unit, Charge::mir(unit.heap_estimate()))
+        .unwrap();
+    let pressure = resources.reserve(Charge::staging((24 << 20) - 64)).unwrap();
+    ace_native::foreign_lower::admit(&unit, &environment).unwrap();
+    let error =
+        ace_native::foreign_lower::admit_reserved(&unit, &environment, &resources).unwrap_err();
+    assert_eq!(error.code(), "mn.resource.verify-memory");
+    assert_eq!(resources.stats().current.staging, (24 << 20) - 64);
+    let error =
+        match ace_native::emit::emit_foreign_unit_coff_reserved(&unit, &environment, &resources) {
+            Ok(_) => panic!("emitter bypassed shared analysis admission"),
+            Err(error) => error,
+        };
+    assert_eq!(error.code(), "mn.resource.verify-memory");
+    assert_eq!(resources.stats().current.staging, (24 << 20) - 64);
+    drop(pressure);
+    ace_native::foreign_lower::admit_reserved(&unit, &environment, &resources).unwrap();
+    assert_eq!(resources.stats().current.staging, 0);
+    let (object, ticket) =
+        ace_native::emit::emit_foreign_unit_coff_reserved(&unit, &environment, &resources).unwrap();
+    assert!(!object.bytes.is_empty());
+    assert!(resources.stats().current.staging >= object.bytes.len());
+    drop(object);
+    drop(ticket);
+    assert_eq!(resources.stats().current.staging, 0);
+}
+
+#[test]
 fn source_foreign_hot_collection_reclaims_revisions_and_preserves_current_and_reader_closures() {
     use ace_abi::{
         source_foreign::{Session, Target},
@@ -660,7 +705,9 @@ fn source_foreign_native_output_reservation_is_live_until_cache_handoff() {
     let pressure = resources.reserve(Charge::staging(24 << 20)).unwrap();
     assert!(matches!(
         ace_native::emit::emit_foreign_unit_coff_reserved(&decoded, &environment, &resources),
-        Err(ace_native::MnError::Resource("managed-memory", _))
+        // The earlier real analysis gate now refuses before COFF production.
+        // Native coff_buffer tests independently retain the exact-output gate.
+        Err(ace_native::MnError::Resource("verify-memory", _))
     ));
     assert_eq!(resources.stats().current.staging, 24 << 20);
     assert_eq!(session.snapshot().unwrap().digest, saved.digest);

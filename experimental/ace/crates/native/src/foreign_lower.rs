@@ -94,6 +94,49 @@ pub fn admit(
     environment: &AdmittedForeign,
 ) -> Result<(), String> {
     ace_av_core::mir_verify::validate_mir(unit).map_err(|e| format!("foreign.mir: {e:?}"))?;
+    admit_declarations(unit, environment)
+}
+
+/// Source scalar composition charges the real verifier's initialization
+/// workspace to its shared staging pool, before bases/CFG/matrix allocation.
+pub fn admit_reserved(
+    unit: &ace_av_core::mir::MirModule,
+    environment: &AdmittedForeign,
+    resources: &ace_source_query::resources::Resources,
+) -> Result<(), crate::MnError> {
+    use ace_av_core::{contract::ResourceKind, mir_verify::MirVerifyError};
+    use ace_source_query::resources::Charge;
+    if unit.profile != ace_av_core::contract::AV_PROFILE {
+        return Err(crate::MnError::Unsupported(
+            "foreign.profile",
+            "source foreign analysis admission requires the scalar MIR profile".into(),
+        ));
+    }
+    let mut analysis = resources
+        .reserve(Charge::staging(0))
+        .map_err(|e| crate::MnError::Resource("verify-memory", e.to_string()))?;
+    ace_av_core::mir_verify::validate_mir_with_analysis_reservation(unit, |bytes| {
+        analysis
+            .resize(Charge::staging(bytes))
+            .map_err(|e| MirVerifyError::Resource {
+                kind: ResourceKind::VerifyMemory,
+                message: e.to_string(),
+            })
+    })
+    .map_err(|e| match e {
+        MirVerifyError::Resource { .. } => {
+            crate::MnError::Resource("verify-memory", format!("foreign.mir: {e:?}"))
+        }
+        _ => crate::MnError::Unsupported("foreign.authority", format!("foreign.mir: {e:?}")),
+    })?;
+    admit_declarations(unit, environment)
+        .map_err(|e| crate::MnError::Unsupported("foreign.authority", e))
+}
+
+fn admit_declarations(
+    unit: &ace_av_core::mir::MirModule,
+    environment: &AdmittedForeign,
+) -> Result<(), String> {
     for f in &unit.funcs {
         for block in &f.blocks {
             for instruction in &block.instrs {

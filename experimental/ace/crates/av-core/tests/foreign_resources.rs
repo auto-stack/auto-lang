@@ -169,6 +169,84 @@ fn foreign_mir_heap_measurement_does_not_encode_or_allocate() {
         "measuring retained MIR regenerated declaration JSON"
     );
 }
+
+#[test]
+fn scalar_analysis_reserves_before_bases_and_covers_real_cfg_workspace() {
+    use ace_av_core::{
+        contract::ResourceKind,
+        mir_verify::{validate_mir_with_analysis_reservation, MirVerifyError},
+    };
+    let mut m = module();
+    m.types.push(MirType::Bool);
+    m.consts.push(MirConst::Bool(false));
+    let f = &mut m.funcs[0];
+    f.slots.extend((3..64).map(|_| MirSlot {
+        kind: SlotKind::Local,
+        ty: 0,
+        name: None,
+    }));
+    f.slots.push(MirSlot {
+        kind: SlotKind::Local,
+        ty: 2,
+        name: None,
+    });
+    f.blocks[0]
+        .instrs
+        .push(MirInstr::Const { dst: 64, value: 2 });
+    f.blocks[0].term = Terminator::Jump { target: 1 };
+    for block in 1..1024u32 {
+        f.blocks.push(MirBlock {
+            instrs: vec![],
+            term: if block == 1023 {
+                Terminator::Return { value: 2 }
+            } else if block == 512 {
+                Terminator::Branch {
+                    cond: 64,
+                    then: 513,
+                    else_: 512,
+                }
+            } else {
+                Terminator::Jump { target: block + 1 }
+            },
+        });
+    }
+    let mut reserved = 0;
+    let (checked, _, peak) = memory(|| {
+        validate_mir_with_analysis_reservation(&m, |bytes| {
+            reserved = reserved.max(bytes);
+            Ok(())
+        })
+    });
+    let stats = checked.unwrap();
+    assert_eq!(stats.analysis_bytes as usize, reserved);
+    assert!(
+        peak > 0 && peak <= reserved,
+        "workspace peak {peak} exceeds reservation {reserved}"
+    );
+    let mut refused = 0;
+    let (rejected, _, rejection_peak) = memory(|| {
+        validate_mir_with_analysis_reservation(&m, |_| {
+            refused += 1;
+            Err(MirVerifyError::Resource {
+                kind: ResourceKind::VerifyMemory,
+                message: "shared staging denied".into(),
+            })
+        })
+    });
+    assert!(matches!(
+        rejected,
+        Err(MirVerifyError::Resource {
+            kind: ResourceKind::VerifyMemory,
+            ..
+        })
+    ));
+    assert_eq!(refused, 1);
+    assert!(
+        rejection_peak < 1024 * std::mem::size_of::<u32>(),
+        "bases allocated before reservation: {rejection_peak}"
+    );
+    eprintln!("scalar-analysis: blocks=1024 slots=65 reserved={reserved} peak={peak} refused_peak={rejection_peak}");
+}
 #[test]
 fn foreign_declarations_do_not_inflate_every_scalar_instruction() {
     eprintln!(
