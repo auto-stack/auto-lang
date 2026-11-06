@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 2
+current_step: 3
 total_steps: 19
 ---
 
@@ -284,7 +284,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-15 | merge | T-14 pass与§4已有全链合入授权 | 冻结职责并集/漂移复验、SD沉淀/主线读回/归档、所有输出scope与树guard清理；AC-13；M1未绿不改成绿 | [ ] |
 | T-16 | work | 用户r2直接加phase授权；§5.8；当前941唯一树 | 确认生产CST/条件诊断与旧oracle共享歧义，修复既有条件/body-vs-Ctor边界并补whole/fragment与合法/非法Ctor永久回归；AC-14，V-19/20 | [x] |
 | T-17 | work | T-16，实际provider/grammar/工具身份冻结 | 原十源20Case/同源Rust-C认证逐oracle重验与原失败闭环；完整ace-source及实际AV/native消费者职责并集、必要ace-syntax及身份变化刷新，SD-07；AC-03/04/09/14，V-21 | [x] |
-| T-18 | work | 用户r3新增phase授权；§5.9；a236a44基面、原失败与Spec | Rust lower.rs值根/参数模式修复；沿provider既有print版本轴失效旧片段；新record_field_writes_941.rs并conformance注册，原3源+独立reference/default与-O、分支/循环/readonly/mut/view/move兄弟；AC-15，V-22/23，SD-08/09 | [ ] |
+| T-18 | work | 用户r3新增phase授权；§5.9；a236a44基面、原失败与Spec | Rust lower.rs值根/参数模式修复；沿provider既有print版本轴失效旧片段；新record_field_writes_941.rs并conformance注册，原3源+独立reference/default与-O、分支/循环/readonly/mut/view/move兄弟；AC-15，V-22/23，SD-08/09 | [x] |
 | T-19 | work | T-18冻结提交；实际worker/conformance新身份 | 完整ace-a2x与相关治理组、原3证书闭环/全部受身份影响认证及14原优化配置刷新、旧print缓存miss见证与当前组合读回；F-941-05关闭、SD-08/09交接；AC-02/03/04/09/15，V-24 | [ ] |
 
 当前优先入口为已授权T-18→T-19；之后回到原完整T-01..13。T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；按T-01/T-02继续，尚未关闭的验收保持未完成。
@@ -1090,6 +1090,24 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:38 | from:work | to:ne
 stage: new | plan_id:PLAN-941 | plan_revision:r3 | outcome:pass（合同与现授权就绪，非实现/验收通过） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:a236a44d4ad6ee7595d601bcef6f01af56d9570b | changed:T18/19,AC15,V22..24,SD08/09及依赖/metadata | blockers:无新增决策阻T18；原全范围与具名red仍开放 | next:work T18 Rust值根字段写/旧打印缓存身份修复
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:39 | from:new | to:work | status:executing2/19 | outcome:pass（已授权phase合同落实） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a236a44d4ad6ee7595d601bcef6f01af56d9570b | next:work T18，后T19再回原完整验收
+
+### 2026-11-06 F-941-05值根修复与真实编译回归（goal第40轮）
+
+按r3授权在唯一941树完成T18，冻结提交 **c4cb9dab71a45c72c3daab50672cec0ae1035298**，4文件156新增/6删除，树clean。collect_assignees对FieldPath区分普通值根/MoveOwn值参数与已有借用引用参数：前者加入Rust mut，后者不多加绑定mut。原whole-local/BorrowMut/资源释放判定保留；前端/HIR/verifier/C/AV/native生产模块未改。Rust原print版本轴从a2x-print/2升/3，旧缓存迁移真实见证属于T19，尚未宣称完成。
+
+永久conformance::record_field_writes_941注册7项。先在旧生产实现实跑原M01/R01/R02：**0/3 PASS，3个真实E0594**，scope/f94105-red保留。修复首轮6/7 PASS，新增循环fixture误用profile不支持的while而失败，保留scope/f94105-field-write-green；只把该新fixture改为文档既有条件for，原3源与独立reference不改。随后f94105-field-write-frozen被可用磁盘不足2GiB提前拒，未执行测试，不能充FAIL/PASS。
+
+磁盘不足期间已核941闲置incremental缓存5,976,290,503B、28969文件、无链接/活动进程；精确删除被自动审批整条拒绝（仅blocked by policy），没有执行/换工具重试，向用户发出手动清理请求。恢复读到D盘可用31,509,565,440B，原incremental目录仍存在；释放来源未核，不声称agent删除或用户已清理。门禁已解除，该缓存无需再删。
+
+当前修正后的正式命令 `AUTO_PLAN_ARTIFACTS=<scope> cargo t ace-a2x --test-name record_field_writes_941:: --out <scope>/f94105-field-write-verified` **7/7 PASS、exit0**，总6.4772133s，准备3.6495422s、执行2.7911345s。6个正例各默认与-O、完整4文件actual与独立Rust reference分别编译/运行，合计**24 compile+24 run**，每个rustc额外-D unused_mut；期望原3例0/19/9、分支循环4、mut借用124、MoveOwn42，实际均匹配、guest stderr空。第7项真实共享verifier拒view字段写及同根alias，保immutable-write/mut-conflict。新mut冗余警告不允许；原first_lex_fact dead_code属于既存健康边界，未静默豁免。命名选择7项，其余组未作为本轮全量执行；scope原始完整receipts保留。results SHA256=`8a8962a015c5ffa72dfcb6211382480ba702f04f0e921d063cd78e1baaef7e1f`。rustfmt及git diff --check通过；本轮未跑完整ace-a2x/治理并集，留T19冻结验证。
+
+**T18完成，current_step3/19**；T19、原T01..15继续开放，F-941-05真实worker证书闭环前仍未关闭。289默认成功目标与3缺Rust证书需当前worker新身份刷新至292，原14优化配置单列不由新增-O回归抵账；旧原始证据/已知red/完整分母/预算不改。不进入review/merge。
+
+用户随后询问941材料占100G能否清理：当前只读全遍历实测scope **1,480,204,329B/62599文件**（约1.38GiB）、0链接，无941活动进程；compiler-temp248,966,245B。尚未执行材料删除，继续调查其所见占用来源；在途证据受保护。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:c4cb9dab71a45c72c3daab50672cec0ae1035298 | task_ids:T18已完成,T19待执行 | evidence:旧3例E0594红/当前7回归24compile24run通过；print/3身份 | blockers:无磁盘阻塞；原验收/具名red继续开放 | next_responsible_role:work T19旧缓存见证与实际worker新认证
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:40 | from:work | to:work | status:executing3/19 | outcome:needs_fix（T18完成，T19及原完整任务仍待） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:c4cb9dab71a45c72c3daab50672cec0ae1035298 | next:work T19
 
 ## 10. 待澄清事项
 
