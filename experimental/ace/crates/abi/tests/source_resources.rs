@@ -5,6 +5,10 @@ use std::{
     cell::{Cell, RefCell},
 };
 struct Allocator;
+// Compile the private production implementation under this target's allocator;
+// no public testing hook or alternate path algorithm is introduced.
+#[path = "../src/cache_paths.rs"]
+mod cache_paths;
 thread_local! {
     static THRESHOLD: Cell<usize> = const { Cell::new(usize::MAX) };
     static LARGE: Cell<usize> = const { Cell::new(0) };
@@ -233,6 +237,114 @@ mod source_foreign {
             (older, other)
         });
         assert!(peak >= grown.capacity() + other.capacity());
+    }
+
+    #[test]
+    fn lexical_path_output_is_admitted_at_its_real_allocation_before_copying() {
+        use ace_source_query::resources::Resources;
+        let resources = Resources::default();
+        let baseline = resources.stats().current.index;
+        let suffix = "path".repeat(65536);
+        let target = format!("D:/a/{suffix}");
+        let expected_relative = format!("../{suffix}");
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - baseline - 64))
+            .unwrap();
+        let (rejected, copies) = measured_at(128 << 10, || {
+            cache_paths::rel_spec("D:/a/b", &target, Some(&resources))
+        });
+        assert!(rejected.is_err());
+        assert_eq!(copies, 0, "relative path copied before refusal");
+        drop(pressure);
+        let (relative, hits, admitted) = with_charge_probe(
+            expected_relative.len(),
+            &resources,
+            Charge::index(baseline + expected_relative.len()),
+            || cache_paths::rel_spec("D:/a/b", &target, Some(&resources)),
+        );
+        let relative = relative.unwrap().unwrap();
+        assert_eq!(relative.value, expected_relative);
+        assert_eq!(hits, 1);
+        assert!(admitted, "relative path copied before reservation");
+        let expected_joined = format!("D:\\a\\{suffix}");
+        let segments = 3 + 2; // D:/a/b and ../<suffix>
+        let (joined, hits, admitted) = with_charge_probe(
+            expected_joined.len(),
+            &resources,
+            Charge::index(
+                baseline
+                    + relative.value.capacity()
+                    + segments * std::mem::size_of::<&str>()
+                    + expected_joined.len(),
+            ),
+            || cache_paths::join_lex("D:/a/b", &relative.value, Some(&resources)),
+        );
+        let joined = joined.unwrap();
+        assert_eq!(joined.value, expected_joined);
+        assert_eq!(hits, 1);
+        assert!(
+            admitted,
+            "joined path copied before array/output coexistence reservation"
+        );
+        assert_eq!(
+            resources.stats().current.index,
+            baseline + relative.value.capacity() + joined.value.capacity()
+        );
+        drop((relative, joined));
+        assert_eq!(resources.stats().current.index, baseline);
+    }
+
+    #[test]
+    fn candidate_directory_growth_and_path_copies_are_precharged_and_released_after_dedup() {
+        use ace_source_query::resources::Resources;
+        let resources = Resources::default();
+        let baseline = resources.stats().current.index;
+        let mut paths = cache_paths::CPathList::new(Some(&resources)).unwrap();
+        for value in ["a", "b", "c", "d"] {
+            paths.push(value).unwrap();
+        }
+        let text = "directory".repeat(32768);
+        let before = resources.stats().current.index;
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - before - 64))
+            .unwrap();
+        let (rejected, copies) = measured_at(128 << 10, || paths.push(&text));
+        assert!(rejected.is_err());
+        assert_eq!(copies, 0);
+        assert_eq!(paths.values, ["a", "b", "c", "d"]);
+        drop(pressure);
+        let array = 8 * std::mem::size_of::<String>();
+        let old_array = 4 * std::mem::size_of::<String>();
+        let (result, hits, admitted) = with_charge_probe(
+            array,
+            &resources,
+            Charge::index(baseline + 4 + text.len() + array + old_array),
+            || paths.push(&text),
+        );
+        result.unwrap();
+        assert_eq!(hits, 1);
+        assert!(admitted, "directory array grew before old/new reservation");
+        assert!(paths.contains(&text));
+        let (result, hits, admitted) = with_charge_probe(
+            text.len(),
+            &resources,
+            Charge::index(baseline + array + 4 + text.len() * 2),
+            || paths.push(&text),
+        );
+        result.unwrap();
+        assert_eq!(hits, 1);
+        assert!(admitted, "directory String copied before reservation");
+        paths.sort_dedup().unwrap();
+        assert_eq!(paths.values.len(), 5);
+        assert_eq!(
+            resources.stats().current.index,
+            baseline + array + 4 + text.len()
+        );
+        drop(paths);
+        assert_eq!(resources.stats().current.index, baseline);
+        // Exercise the shared module's borrowed parent and split utilities too.
+        assert_eq!(cache_paths::parent_of("D:\\a\\file"), "D:\\a");
+        assert_eq!(cache_paths::split_norm("D:/a").count(), 2);
     }
 
     #[test]

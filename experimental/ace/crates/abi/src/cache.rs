@@ -21,11 +21,17 @@
 //! * store internals (registry, GC) are the 783/787 code paths — this
 //!   adapter only reads and writes through the public store API.
 
+#[path = "cache_paths.rs"]
+mod cache_paths;
 use crate::decl::FnDecl;
 use ace_artifacts::codec::ChunkKind;
 use ace_artifacts::identity::QueryKey;
 use ace_artifacts::schema::{LayerCoverage, LayerSpec, Regeneration};
 use ace_artifacts::store::{LoadedArtifact, ManagedStore, PutRequest, StoreError};
+use cache_paths::{
+    join_lex, metadata_array, metadata_size, metadata_vec, parent_of, rel_spec, reserve_c_metadata,
+    resize_c_metadata, CPathList,
+};
 
 /// Probe-owned layer: producer objects (AutoABI-emitted or C-compiled).
 pub const LAYER_OBJECT_V01: LayerSpec = LayerSpec {
@@ -469,45 +475,6 @@ fn decode_c_object_entry(
     }
 }
 
-fn reserve_c_metadata(
-    resources: Option<&ace_source_query::resources::Resources>,
-    bytes: usize,
-) -> Result<Option<ace_source_query::resources::Reservation>, StoreError> {
-    resources
-        .map(|r| r.reserve(ace_source_query::resources::Charge::index(bytes)))
-        .transpose()
-        .map_err(|e| StoreError::ResourceExhausted(format!("C cache metadata: {e}")))
-}
-fn resize_c_metadata(
-    allocation: &mut Option<ace_source_query::resources::Reservation>,
-    bytes: usize,
-) -> Result<(), StoreError> {
-    if let Some(allocation) = allocation {
-        allocation
-            .resize(ace_source_query::resources::Charge::index(bytes))
-            .map_err(|e| StoreError::ResourceExhausted(format!("C cache metadata: {e}")))?;
-    }
-    Ok(())
-}
-fn metadata_size(parts: &[usize]) -> Result<usize, StoreError> {
-    parts
-        .iter()
-        .try_fold(0usize, |n, p| n.checked_add(*p))
-        .ok_or_else(|| StoreError::ResourceExhausted("C cache metadata size overflow".into()))
-}
-fn metadata_array<T>(count: usize) -> Result<usize, StoreError> {
-    count
-        .checked_mul(std::mem::size_of::<T>())
-        .ok_or_else(|| StoreError::ResourceExhausted("C cache metadata array overflow".into()))
-}
-fn metadata_vec<T>(count: usize) -> Result<Vec<T>, StoreError> {
-    let mut values = Vec::new();
-    values
-        .try_reserve_exact(count)
-        .map_err(|e| StoreError::ResourceExhausted(format!("C cache metadata allocation: {e}")))?;
-    Ok(values)
-}
-
 /// Snapshot EVERY file the search tree currently offers (negative
 /// dependencies): a RECURSIVE walk of the directory — C includes may
 /// carry sub-paths (`#include "sub/dep.h"`) and need no extension
@@ -733,86 +700,6 @@ fn search_listing(
 
 fn hash_dep(path: &str) -> Result<String, String> {
     hash_file(std::path::Path::new(path)).map_err(|e| format!("dep {path}: {e}"))
-}
-
-/// Lexical relative path FROM a directory TO a file (leading `..`
-/// segments allowed; same-drive only). `None` when not derivable.
-fn rel_spec(from_dir: &str, to_file: &str) -> Option<String> {
-    let norm_from = split_norm(from_dir);
-    let norm_to = split_norm(to_file);
-    if norm_from.is_empty() || norm_to.is_empty() {
-        return None;
-    }
-    if norm_from[0].len() < 2 || norm_to[0].len() < 2 {
-        return None; // not absolute (or no drive letter)
-    }
-    if norm_from[0].to_ascii_uppercase() != norm_to[0].to_ascii_uppercase() {
-        return None; // cross-drive
-    }
-    let mut i = 1;
-    while i < norm_from.len() && i < norm_to.len() && eq_ci(&norm_from[i], &norm_to[i]) {
-        i += 1;
-    }
-    let mut parts: Vec<String> = Vec::new();
-    for _ in i..norm_from.len() {
-        parts.push("..".into());
-    }
-    for seg in &norm_to[i..] {
-        parts.push(seg.clone());
-    }
-    if parts.is_empty() {
-        None // the file IS the dir anchor itself
-    } else {
-        Some(parts.join("/"))
-    }
-}
-
-/// Lexically join a relative spec onto a directory and normalize `.`
-/// and `..` segments WITHOUT touching the filesystem.
-fn join_lex(dir: &str, spec: &str) -> String {
-    let mut out: Vec<String> = split_norm(dir);
-    for seg in spec
-        .split(['/', '\\'])
-        .filter(|s| !s.is_empty() && *s != ".")
-    {
-        if seg == ".." {
-            // never pop the drive root
-            if out.len() > 1 {
-                out.pop();
-            }
-        } else {
-            out.push(seg.to_string());
-        }
-    }
-    out.join("\\")
-}
-
-fn parent_of(path: &str) -> String {
-    match std::path::Path::new(path).parent() {
-        Some(p) => p.display().to_string(),
-        None => path.to_string(),
-    }
-}
-
-fn split_norm(p: &str) -> Vec<String> {
-    // strip the canonical-form prefix so `\\?\D:\...` and `D:\...`
-    // compare and join uniformly (canonicalized anchors must mix with
-    // plain showIncludes paths in the derivation)
-    let stripped;
-    let p = if let Some(rest) = p.strip_prefix("\\\\?\\") {
-        stripped = rest;
-        &stripped
-    } else {
-        p
-    };
-    p.split(['/', '\\'])
-        .filter(|s| !s.is_empty() && *s != ".")
-        .map(|s| s.to_string())
-        .collect()
-}
-
-fn eq_ci(a: &str, b: &str) -> bool {
-    a.eq_ignore_ascii_case(b)
 }
 
 fn like_escape(s: &str) -> String {
@@ -1173,7 +1060,9 @@ where
     // uniform prefix (showIncludes paths are plain absolute; canonical
     // forms are \?-prefixed — mixing them breaks the lexical
     // common-prefix derivation)
-    let mut chain_dirs: Vec<String> = vec![src_dir.clone(), inc_dir_s.clone()];
+    let mut chain_dirs = CPathList::new(resources)?;
+    chain_dirs.push(&src_dir)?;
+    chain_dirs.push(&inc_dir_s)?;
     for (p, _) in &hashed {
         if let Some(parent) = std::path::Path::new(p).parent() {
             let Ok(pc) = std::fs::canonicalize(parent) else {
@@ -1181,21 +1070,24 @@ where
             };
             let ps = pc.display().to_string();
             if !chain_dirs.contains(&ps) {
-                chain_dirs.push(ps);
+                chain_dirs.push(&ps)?;
             }
         }
     }
-    let mut dirs: Vec<String> = chain_dirs.clone();
+    let mut dirs = CPathList::new(resources)?;
+    for d in &chain_dirs.values {
+        dirs.push(d)?;
+    }
     for (p, _) in &hashed {
-        for d1 in &chain_dirs {
-            if let Some(spec) = rel_spec(d1, p) {
-                for d2 in &chain_dirs {
-                    let cand = join_lex(d2, &spec);
-                    let parent = parent_of(&cand);
-                    if !dirs.contains(&parent) {
-                        dirs.push(parent);
+        for d1 in &chain_dirs.values {
+            if let Some(spec) = rel_spec(d1, p, resources)? {
+                for d2 in &chain_dirs.values {
+                    let cand = join_lex(d2, &spec.value, resources)?;
+                    let parent = parent_of(&cand.value);
+                    if !dirs.contains(parent) {
+                        dirs.push(parent)?;
                     }
-                    if dirs.len() > 1024 {
+                    if dirs.values.len() > 1024 {
                         // unprovable applicability at sane cost: do not
                         // cache this compile (conservative miss)
                         return Ok((obj, false));
@@ -1204,18 +1096,17 @@ where
             }
         }
     }
-    dirs.sort();
-    dirs.dedup();
+    dirs.sort_dedup()?;
     // Each listing's output fee moves into one ticket without a release /
     // re-acquire gap, and outlives the complete borrowed encoding operation.
     let mut listing_allocation: Option<ace_source_query::resources::Reservation> = None;
-    let listing_metadata = dirs.iter().try_fold(
-        metadata_array::<(String, Vec<String>)>(dirs.len())?,
+    let listing_metadata = dirs.values.iter().try_fold(
+        metadata_array::<(String, Vec<String>)>(dirs.values.len())?,
         |n, dir| metadata_size(&[n, dir.len()]),
     )?;
     let _listing_metadata_allocation = reserve_c_metadata(resources, listing_metadata)?;
-    let mut dir_listings = metadata_vec(dirs.len())?;
-    for d in &dirs {
+    let mut dir_listings = metadata_vec(dirs.values.len())?;
+    for d in &dirs.values {
         let listing = search_listing(std::path::Path::new(d), &artifact_paths, resources)?;
         if let Some(next) = listing.allocation {
             listing_allocation = Some(match listing_allocation {
@@ -1365,4 +1256,186 @@ where
         project: None,
     })?;
     Ok((obj, false))
+}
+
+#[cfg(test)]
+mod path_metadata_tests {
+    use super::*;
+    use ace_source_query::resources::{Charge, Resources};
+
+    // The pre-port owning algorithm is an independent compatibility oracle
+    // for the new borrowed segment walks; it never calls their helpers.
+    fn old_norm(p: &str) -> Vec<String> {
+        p.strip_prefix("\\\\?\\")
+            .unwrap_or(p)
+            .split(['/', '\\'])
+            .filter(|s| !s.is_empty() && *s != ".")
+            .map(str::to_owned)
+            .collect()
+    }
+    fn old_rel(from: &str, to: &str) -> Option<String> {
+        let (from, to) = (old_norm(from), old_norm(to));
+        if from.is_empty()
+            || to.is_empty()
+            || from[0].len() < 2
+            || to[0].len() < 2
+            || from[0].to_ascii_uppercase() != to[0].to_ascii_uppercase()
+        {
+            return None;
+        }
+        let mut i = 1;
+        while i < from.len() && i < to.len() && from[i].eq_ignore_ascii_case(&to[i]) {
+            i += 1;
+        }
+        let mut parts = vec!["..".to_owned(); from.len() - i];
+        parts.extend(to[i..].iter().cloned());
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join("/"))
+        }
+    }
+    fn old_join(dir: &str, spec: &str) -> String {
+        let mut parts = old_norm(dir);
+        for s in spec
+            .split(['/', '\\'])
+            .filter(|s| !s.is_empty() && *s != ".")
+        {
+            if s == ".." {
+                if parts.len() > 1 {
+                    parts.pop();
+                }
+            } else {
+                parts.push(s.to_owned());
+            }
+        }
+        parts.join("\\")
+    }
+    #[test]
+    fn borrowed_lexical_paths_match_the_original_owning_algorithms() {
+        let paths = [
+            "",
+            ".",
+            "a",
+            "ab",
+            "D:",
+            "D:\\",
+            "d:/a/./b",
+            "D:/A/B",
+            "D:/a/b/c",
+            "D:/a/../b",
+            "E:/a/b",
+            "\\\\?\\D:\\a\\b",
+            "\\\\server\\share\\dir",
+            "D:/π/😀/header",
+            "D:/a/file.h",
+            "D:/a/file.h.more",
+        ];
+        let specs = [
+            "",
+            ".",
+            "..",
+            "../header",
+            "../../../../escape",
+            "sub/settings",
+            "sub/./../config",
+            "π/😀",
+            "../C:/x",
+            "sub\\deeper\\..\\header",
+        ];
+        let resources = Resources::default();
+        let baseline = resources.stats().current.index;
+        for from in paths {
+            for to in paths {
+                for managed in [None, Some(&resources)] {
+                    let actual = rel_spec(from, to, managed).unwrap();
+                    assert_eq!(
+                        actual.as_ref().map(|p| p.value.as_str()),
+                        old_rel(from, to).as_deref(),
+                        "from={from:?}, to={to:?}"
+                    );
+                }
+                assert_eq!(resources.stats().current.index, baseline);
+            }
+            for spec in specs {
+                for managed in [None, Some(&resources)] {
+                    let actual = join_lex(from, spec, managed).unwrap();
+                    let expected = old_join(from, spec);
+                    assert_eq!(actual.value, expected, "dir={from:?}, spec={spec:?}");
+                    assert_eq!(
+                        parent_of(&actual.value),
+                        std::path::Path::new(&expected)
+                            .parent()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or(expected.clone())
+                    );
+                }
+                assert_eq!(resources.stats().current.index, baseline);
+            }
+        }
+    }
+    #[test]
+    fn lexical_output_and_path_vectors_keep_exact_fees_and_refusal_is_repairable() {
+        let resources = Resources::default();
+        let baseline = resources.stats().current.index;
+        let text = format!("D:/a/{}", "long-path".repeat(1024));
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - baseline - 64))
+            .unwrap();
+        let before = resources.stats().current;
+        assert!(matches!(
+            rel_spec("D:/a/b", &text, Some(&resources)),
+            Err(StoreError::ResourceExhausted(_))
+        ));
+        assert!(matches!(
+            join_lex("D:/a/b", &text, Some(&resources)),
+            Err(StoreError::ResourceExhausted(_))
+        ));
+        assert_eq!(resources.stats().current, before);
+        drop(pressure);
+        let relative = rel_spec("D:/a/b", &text, Some(&resources))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            resources.stats().current.index,
+            baseline + relative.value.capacity()
+        );
+        let joined = join_lex("D:/a/b", &relative.value, Some(&resources)).unwrap();
+        assert_eq!(
+            resources.stats().current.index,
+            baseline + relative.value.capacity() + joined.value.capacity()
+        );
+        assert_eq!(
+            joined.value,
+            old_join("D:/a/b", &old_rel("D:/a/b", &text).unwrap())
+        );
+        drop((relative, joined));
+        assert_eq!(resources.stats().current.index, baseline);
+        let mut paths = CPathList::new(Some(&resources)).unwrap();
+        paths.push("z").unwrap();
+        paths.push("z").unwrap();
+        paths.push("a").unwrap();
+        paths.sort_dedup().unwrap();
+        assert_eq!(paths.values, ["a", "z"]);
+        let expected = paths.values.capacity() * std::mem::size_of::<String>() + 2;
+        assert_eq!(resources.stats().current.index, baseline + expected);
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - baseline - expected - 64))
+            .unwrap();
+        let before = resources.stats().current;
+        assert!(matches!(
+            paths.push(&text),
+            Err(StoreError::ResourceExhausted(_))
+        ));
+        assert_eq!(paths.values, ["a", "z"]);
+        assert_eq!(resources.stats().current, before);
+        drop(pressure);
+        paths.push(&text).unwrap();
+        assert_eq!(
+            resources.stats().current.index,
+            baseline + expected + text.len()
+        );
+        drop(paths);
+        assert_eq!(resources.stats().current.index, baseline);
+    }
 }
