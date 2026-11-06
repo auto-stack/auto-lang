@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-990
-status: reviewed
+status: archived
 feature_name: Web独立Rust后端的db相邻导入上下文
 author: [Codex]
 created_at: 2026-11-06
@@ -59,7 +59,7 @@ affects: [auto-web/api-generation, auto-os/PLAN-054]
 - [x] T00 owner_stage=work：冻结根因/选择面，永久反例真实红。
 - [x] T01 owner_stage=work：入口修复、生成运行与必要邻面，提交工作完成。
 - [x] T02 owner_stage=review：独立源码/Spec/证据复审，不委派实现。
-- [ ] T03 owner_stage=merge：父最终SDK消费、受影响冻结门、Spec/线性本地落地/archive与统一清理。
+- [x] T03 owner_stage=merge：父最终SDK消费、受影响冻结门、Spec/线性本地落地/archive与统一清理。
 
 ## 7. 记录
 
@@ -123,3 +123,9 @@ For standard src/back projects, standalone Rust generation supplies db.at and co
   - Independent actual Blog integration checks: native workw-1793988759935-1 current8/meta.revision8, titleU054-最终SDK重开继续保存-r195, exact Chinese multiline body includes54.25 and reopened edit8.125; root body equals rev8.body and packet expected, bodySHA31dca6112957f47d9d173d85614613d90328191975b170bd969f159f3d608ce0, metaSHA22138bc53bc657990f44e853253fedb48a9a04e988b686fcdc2d61f33a0f70c8. Independently viewed full native next-save image0441bd85c52f54d34cb3231d34d88df0bc6d96f26f107a91215d8e9f3f7180c6: complete title/multiline visible and saved/rev8. Close receipt records37008normal0/reaped; fresh reopen and subsequent save are separate bound observations.
   - Vue fresh workw-1793986996951-1 current4/meta.revision4, expected Chinese multiline54.25/8.125 and next-save16.25; root body equals rev4.body and packet expected, bodySHA97a6bee7305edd01b94a073161744fa3f221359b912727f8dd58d68c93216423, metaSHAbbe606500d714442fc00112c42389f6f5f65db54c82525d8cbdffe988f1b7c93. Independently inspected next-save PNG (boundd8af1645…), original reopen/preview observations and all Blog packet source/PNG hashes rechecked. Both profiles' overall8/8 are identified parent evidence; this bounded review accepts the Blog/990 integration leg, not every unrelated parent AC.
   - AC04/V04→T02/T03 **current final review/canonical/local landing pass; archive/cleanup pending**. User-directed remote push is not applicable, not a failed/unmet gate. Existing Webworktree and plan-artifacts remain held by active parent054 final review/cleanup ownership; no deletion or “alreadycleaned” claim. T03 stays unchecked/current3/4 until owner actually archives and reconciles guarded parent cleanup. Current executable/deployment still requires explicit standard entry; local source landing does not claim a freshly published global WebCLI. No implementation/Cargo/merge/push/archive/filesystem cleanup by reviewer; only this main Plan receipt changed, foreign WIP preserved.
+
+- stage: merge | plan_id: PLAN-990 | plan_revision: r2 | outcome: pass | checkpoints: prepared/landed/canonical_verified/archived | delivery_commit: 2d698413b368896f913eba375ff788c795f395cd
+  - prepared/landed/canonical_verified：r2 终审 pass 已核——Web master `--ff-only` bf72baab→2d698413（仅 docs/specs/http-contracts.md SD01，源码/永久测试与 c36 完全一致）；canonical SD01 冻结文本 SHA256 9178b753…312cb 与落地 blob c2c1ac37…d7d3 逐字节核对通过；merge-owned 冻结门 db_import_context 1/1 + web-neighbors 4/4（日志 SHA256 42b1f813…/2ecde3d6…）已折叠 §9。
+  - archived：git mv 至 docs/plans/archive/990-web-db-import-source-context.md（auto-lang 规范归档目录）并 status: archived。
+  - 清理边界：plan-artifacts/plan-990 证据已折叠本文件，按 delete-at-merge 删除；`.wt/os-054/auto-web`（codex/plan-990-web @2d698413，与 master 同值）为父 auto-os/PLAN-054 T-09 统一 guard 清理的具名持有（owner=054，关闭条件=父 T-09 执行 wt-guard 后移除），不在本 Plan 清理。
+  - push 不适用（用户 2026-11-07 裁定：沿用现有本地交付，不新建远端；本仓无 remote）。
