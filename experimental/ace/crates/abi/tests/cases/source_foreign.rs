@@ -2693,6 +2693,61 @@ fn source_foreign_formal_tool_io_failure_keeps_pointer_and_recovers_owned_scratc
     }
 }
 
+#[test]
+fn source_foreign_formal_early_diagnostics_recover_owned_provider_residue_without_publishing() {
+    let root = scope("formal-early-tool-recovery");
+    let deck_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../crates/auto-lang/test/cases/ace-ca-d-source-938/src/add.atomdata");
+    let deck: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(deck_path).unwrap()).unwrap();
+    for leg in ["native", "c"] {
+        let store = root.join(leg);
+        let first = source_worker_query(&deck, &store, leg, "early-baseline");
+        assert_eq!(first["ok"]["source_import"]["actual_exit"], 42);
+        let pointer = store.join(format!("source938-current-{leg}.json"));
+        let accepted = std::fs::read(&pointer).unwrap();
+        let identity = ace_artifacts::store::ManagedStore::open_existing(&store)
+            .unwrap()
+            .store_id()
+            .to_string();
+        let sentinel = store.join("caller-owned-delivered.exe");
+        std::fs::write(&sentinel, b"USER DELIVERY").unwrap();
+        for mode in ["deck", "source"] {
+            let mut changed = deck.clone();
+            if mode == "deck" {
+                changed["reference"] = "unknown-reference".into();
+            } else {
+                changed["source"] = "fn main() int { return foreign_add(20, }".into();
+            }
+            // An exact owned, quiescent residue fixture. Real process-exit
+            // recovery for both names is independently exercised by the OS-
+            // process helper control; this check targets the worker's EARLY
+            // diagnostic return before a new run scope can be created.
+            let namespace = store.join("logs/source938-tools");
+            for name in ["provider-1", "run-0-1-1"] {
+                let path = namespace.join(name);
+                std::fs::create_dir(&path).unwrap();
+                std::fs::write(
+                    path.join("source938-tools.owner"),
+                    format!("abi.source-tool-scratch/1\nstore={identity}\nchild={name}\n"),
+                )
+                .unwrap();
+                std::fs::write(path.join("partial.obj"), b"OWNED RESIDUE").unwrap();
+            }
+            let rejected = source_worker_query(&changed, &store, leg, mode);
+            assert_eq!(rejected["ok"]["steps"][0]["outcome"], "diags");
+            assert!(rejected["ok"]["source_import"]["actual_exit"].is_null());
+            assert_eq!(std::fs::read(&pointer).unwrap(), accepted);
+            assert_eq!(std::fs::read(&sentinel).unwrap(), b"USER DELIVERY");
+        }
+        let repaired = source_worker_query(&deck, &store, leg, "early-repair");
+        assert_eq!(repaired["ok"]["source_import"]["actual_exit"], 42);
+        assert_eq!(repaired["ok"]["steps"][0]["compute_calls"], 0);
+        assert_eq!(repaired["ok"]["source_import"]["source_parse"], 0);
+        assert_eq!(repaired["ok"]["source_import"]["solver"], 0);
+    }
+}
+
 fn assert_tool_scratch_clean(store: &Path, expected: bool) {
     let namespace = store.join("logs/source938-tools");
     if expected {
@@ -2715,12 +2770,12 @@ fn assert_tool_scratch_clean(store: &Path, expected: bool) {
     }
     if store.exists() {
         assert!(
-            !std::fs::read_dir(store).unwrap().any(|e| e
-                .unwrap()
-                .file_name()
-                .to_string_lossy()
-                .starts_with("source938-run-")),
-            "legacy unowned run directory accumulated"
+            !std::fs::read_dir(store).unwrap().any(|e| {
+                let name = e.unwrap().file_name();
+                let name = name.to_string_lossy();
+                name.starts_with("source938-run-") || name.starts_with("source938-provider-")
+            }),
+            "legacy unowned tool directory accumulated"
         );
     }
 }

@@ -259,6 +259,14 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         diagnostic_stage: String::new(),
     };
     let resources = Resources::default();
+    // Reap dead tool/provider scopes even when this request ends with an early
+    // source/declaration diagnostic. Active scopes are protected by OS locks.
+    crate::source_tool_scratch::ToolScratch::sweep(&store, &resources).map_err(|e| {
+        err(
+            "store.cleanup-pending",
+            format!("before source operation: {e}"),
+        )
+    })?;
     let (deck, _request_model) = match decode(req, &resources) {
         Ok(d) => d,
         Err(d) => {
@@ -297,7 +305,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             report,
         ));
     }
-    let (bytes, hit) = prepare_provider(&store, Path::new(&req.store_root), deck.provider_bias)?;
+    let (bytes, hit) = prepare_provider(&store, &resources, deck.provider_bias)?;
     let mut provider_productions = (!hit) as u64;
     report.c_toolchain = crate::ctool::toolchain_fingerprint().map_err(|e| err("infra", e))?;
     report.provider_digest = provider::hash(&bytes);
@@ -331,7 +339,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         // then uses the explicit provider transaction, never a cold fallback.
         let restore_digest = if previous.provider_bias != deck.provider_bias {
             let (old_bytes, old_hit) =
-                prepare_provider(&store, Path::new(&req.store_root), previous.provider_bias)?;
+                prepare_provider(&store, &resources, previous.provider_bias)?;
             provider_productions += (!old_hit) as u64;
             provider::hash(&old_bytes)
         } else {
@@ -586,30 +594,49 @@ fn output(step: StepOut, mut report: SourceReport) -> OkOut {
 
 fn prepare_provider(
     store: &ManagedStore,
-    root: &Path,
+    resources: &Resources,
     bias: u8,
 ) -> Result<(Vec<u8>, bool), DiagOut> {
-    let inputs = root.join(format!("source938-provider-{bias}"));
-    std::fs::create_dir_all(&inputs).map_err(|e| err("store", e))?;
-    let src = inputs.join("provider.c");
-    let object = inputs.join("provider.obj");
-    write(&inputs.join("source_foreign938.h"), provider::HEADER).map_err(|e| err("store", e))?;
-    write(
-        &src,
-        format!(
-            "#define SOURCE938_EVENTS\n#define BODY_BIAS {}\n{}",
-            bias,
-            include_str!("../cside/source_foreign938.c")
-        ),
-    )
-    .map_err(|e| err("store", e))?;
-    let result = crate::cache::produce_c_object(store, &src, &inputs, &[object.clone()], || {
-        let deps =
-            crate::ctool::compile_c_with_deps(&src, &inputs, &object).map_err(|e| e.to_string())?;
-        Ok((std::fs::read(&object).map_err(|e| e.to_string())?, deps))
-    })
-    .map_err(|e| err("infra", e))?;
-    Ok(result)
+    let scratch = crate::source_tool_scratch::ToolScratch::provider(store, resources, bias)
+        .map_err(|e| err("store.cleanup-pending", e))?;
+    let operation = (|| {
+        let inputs = scratch.path();
+        let src = inputs.join("provider.c");
+        let object = inputs.join("provider.obj");
+        write(&inputs.join("source_foreign938.h"), provider::HEADER)
+            .map_err(|e| err("store", e))?;
+        write(
+            &src,
+            format!(
+                "#define SOURCE938_EVENTS\n#define BODY_BIAS {}\n{}",
+                bias,
+                include_str!("../cside/source_foreign938.c")
+            ),
+        )
+        .map_err(|e| err("store", e))?;
+        let result =
+            crate::cache::produce_c_object(store, &src, &inputs, &[object.clone()], || {
+                let deps = crate::ctool::compile_c_with_deps(&src, inputs, &object)
+                    .map_err(|e| e.to_string())?;
+                Ok((std::fs::read(&object).map_err(|e| e.to_string())?, deps))
+            })
+            .map_err(|e| err("infra", e))?;
+        Ok(result)
+    })();
+    if let Err(cleanup) = scratch.finish() {
+        let original = operation
+            .as_ref()
+            .err()
+            .map(|d: &DiagOut| d.message.as_str())
+            .unwrap_or("none");
+        return Err(err(
+            "store.cleanup-pending",
+            format!(
+                "provider preparation; publication committed=false; original={original}; {cleanup}"
+            ),
+        ));
+    }
+    operation
 }
 
 fn source_diagnostics(

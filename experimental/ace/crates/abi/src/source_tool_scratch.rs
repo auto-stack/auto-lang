@@ -17,6 +17,30 @@ use windows_sys::Win32::Storage::FileSystem::{
 const MARKER: &str = "source938-tools.owner";
 static NEXT: AtomicU64 = AtomicU64::new(1);
 
+enum Kind {
+    Sweep,
+    Run,
+    Provider(u8),
+}
+fn owned_name(name: &str) -> bool {
+    if matches!(name, "provider-0" | "provider-1") {
+        return true;
+    }
+    let Some(numbers) = name.strip_prefix("run-") else {
+        return false;
+    };
+    let mut parts = numbers.split('-');
+    for _ in 0..3 {
+        if !parts
+            .next()
+            .is_some_and(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+        {
+            return false;
+        }
+    }
+    parts.next().is_none()
+}
+
 fn tool_path(path: &Path) -> Result<PathBuf, String> {
     let text = path.to_str().ok_or("non-UTF8 tool scratch path")?;
     if let Some(unc) = text.strip_prefix(r"\\?\UNC\") {
@@ -205,6 +229,23 @@ pub(crate) struct ToolScratch {
 }
 impl ToolScratch {
     pub fn create(store: &ManagedStore, resources: &Resources) -> Result<Self, String> {
+        Self::open(store, resources, Kind::Run)?.ok_or_else(|| "missing run scratch".into())
+    }
+    pub fn provider(store: &ManagedStore, resources: &Resources, bias: u8) -> Result<Self, String> {
+        if bias > 1 {
+            return Err("unsupported reviewed provider variant".into());
+        }
+        Self::open(store, resources, Kind::Provider(bias))?
+            .ok_or_else(|| "missing provider scratch".into())
+    }
+    pub fn sweep(store: &ManagedStore, resources: &Resources) -> Result<(), String> {
+        Self::open(store, resources, Kind::Sweep).map(|_| ())
+    }
+    fn open(
+        store: &ManagedStore,
+        resources: &Resources,
+        kind: Kind,
+    ) -> Result<Option<Self>, String> {
         if store.store_id().len() > 256 {
             return Err("tool store identity exceeds ownership marker budget".into());
         }
@@ -252,10 +293,7 @@ impl ToolScratch {
                 .file_name()
                 .into_string()
                 .map_err(|_| "non-UTF8 tool scratch name")?;
-            if name.len() > 96
-                || !name.starts_with("run-")
-                || !name[4..].bytes().all(|b| b.is_ascii_digit() || b == b'-')
-            {
+            if name.len() > 96 || !owned_name(&name) {
                 return Err(format!("unrecognized tool scratch entry: {name}"));
             }
             let lock = store.root.join("locks").join(format!(
@@ -267,15 +305,24 @@ impl ToolScratch {
                 remove_owned(&entry.path(), owner.as_bytes(), None)?;
             }
         }
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|e| e.to_string())?
-            .as_nanos();
-        let name = format!(
-            "run-{}-{stamp}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        );
+        let name = match kind {
+            Kind::Sweep => return Ok(None),
+            // Recreate the same source/include paths before every cache probe.
+            // All input bytes/listings are still independently checked by the
+            // original C cache; cleanup never changes a compile's identity.
+            Kind::Provider(bias) => format!("provider-{bias}"),
+            Kind::Run => {
+                let stamp = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map_err(|e| e.to_string())?
+                    .as_nanos();
+                format!(
+                    "run-{}-{stamp}-{}",
+                    std::process::id(),
+                    NEXT.fetch_add(1, Ordering::Relaxed)
+                )
+            }
+        };
         let lock = store.root.join("locks").join(format!(
             "source938-tool-{}.lock",
             blake3::hash(name.as_bytes()).to_hex()
@@ -291,7 +338,7 @@ impl ToolScratch {
         let owner = format!("{namespace_owner}child={name}\n").into_bytes();
         initialize(&path, &owner)?;
         drop(turn);
-        Ok(Self {
+        Ok(Some(Self {
             path,
             owner,
             _guard: guard,
@@ -300,7 +347,7 @@ impl ToolScratch {
             _index: index,
             _io: io,
             finished: false,
-        })
+        }))
     }
     pub fn path(&self) -> &Path {
         &self.path
@@ -331,6 +378,39 @@ mod tests {
             .join(format!("tool-scratch-{tag}-{}-{stamp}", std::process::id()));
         ManagedStore::open(&root).unwrap()
     }
+    #[test]
+    fn provider_paths_are_stable_exclusive_and_cleaned_after_output_lock_failure() {
+        let store = store("provider");
+        let resources = Resources::default();
+        let baseline = resources.stats().current;
+        let first = ToolScratch::provider(&store, &resources, 0).unwrap();
+        let path = first.path().to_path_buf();
+        let source = path.join("provider.c");
+        let object = path.join("provider.obj");
+        std::fs::write(&source, b"provider source").unwrap();
+        std::fs::write(&object, b"provider object").unwrap();
+        ToolScratch::sweep(&store, &resources).unwrap();
+        assert!(ToolScratch::provider(&store, &resources, 0).is_err());
+        let run = ToolScratch::create(&store, &resources).unwrap();
+        assert_eq!(std::fs::read(&source).unwrap(), b"provider source");
+        run.finish().unwrap();
+        let held = OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(&object)
+            .unwrap();
+        assert!(first.finish().unwrap_err().contains("provider.obj"));
+        assert!(path.join(MARKER).is_file());
+        assert!(ToolScratch::sweep(&store, &resources).is_err());
+        drop(held);
+        ToolScratch::sweep(&store, &resources).unwrap();
+        assert!(!path.exists());
+        let second = ToolScratch::provider(&store, &resources, 0).unwrap();
+        assert_eq!(second.path(), path);
+        second.finish().unwrap();
+        assert_eq!(resources.stats().current, baseline);
+    }
+
     #[test]
     fn owned_tools_preserve_active_scopes_and_cleanup_even_when_shared_pools_are_full() {
         let store = store("lifetime");
@@ -473,7 +553,11 @@ mod tests {
         const KEY: &str = "SOURCE938_TOOL_SCRATCH_CRASH_ROOT";
         if let Some(root) = std::env::var_os(KEY) {
             let store = ManagedStore::open_existing(Path::new(&root)).unwrap();
-            let scratch = ToolScratch::create(&store, &Resources::default()).unwrap();
+            let scratch = if std::env::var("SOURCE938_CRASH_PROVIDER").as_deref() == Ok("1") {
+                ToolScratch::provider(&store, &Resources::default(), 0).unwrap()
+            } else {
+                ToolScratch::create(&store, &Resources::default()).unwrap()
+            };
             std::fs::write(scratch.path().join("partial.exe"), b"child output").unwrap();
             std::fs::write(
                 store.root.join("crashed-path.txt"),
@@ -482,36 +566,39 @@ mod tests {
             .unwrap();
             std::process::exit(73);
         }
-        let store = store("crashed");
-        std::fs::write(store.root.join("delivered.exe"), b"USER").unwrap();
-        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
-        command.args(["--exact", "source_tool_scratch::tests::tool_scratch_recovers_a_real_process_exit_before_any_successful_request", "--nocapture"])
-            .env(KEY, &store.root);
-        let output = ace_core::link::run_deadlined_typed(
-            &mut command,
-            Duration::from_secs(30),
-            ace_core::link::CaptureCaps {
-                stdout_max: 4096,
-                stderr_max: 4096,
-            },
-            Vec::new(),
-        )
-        .unwrap();
-        assert_eq!(
-            output.exit_code,
-            Some(73),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let old =
-            PathBuf::from(std::fs::read_to_string(store.root.join("crashed-path.txt")).unwrap());
-        assert!(old.join("partial.exe").exists());
-        let scratch = ToolScratch::create(&store, &Resources::default()).unwrap();
-        assert!(!old.exists());
-        scratch.finish().unwrap();
-        assert_eq!(
-            std::fs::read(store.root.join("delivered.exe")).unwrap(),
-            b"USER"
-        );
+        for provider in [false, true] {
+            let store = store("crashed");
+            std::fs::write(store.root.join("delivered.exe"), b"USER").unwrap();
+            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            command.args(["--exact", "source_tool_scratch::tests::tool_scratch_recovers_a_real_process_exit_before_any_successful_request", "--nocapture"])
+            .env(KEY, &store.root)
+            .env("SOURCE938_CRASH_PROVIDER", if provider { "1" } else { "0" });
+            let output = ace_core::link::run_deadlined_typed(
+                &mut command,
+                Duration::from_secs(30),
+                ace_core::link::CaptureCaps {
+                    stdout_max: 4096,
+                    stderr_max: 4096,
+                },
+                Vec::new(),
+            )
+            .unwrap();
+            assert_eq!(
+                output.exit_code,
+                Some(73),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let old = PathBuf::from(
+                std::fs::read_to_string(store.root.join("crashed-path.txt")).unwrap(),
+            );
+            assert!(old.join("partial.exe").exists());
+            ToolScratch::sweep(&store, &Resources::default()).unwrap();
+            assert!(!old.exists());
+            assert_eq!(
+                std::fs::read(store.root.join("delivered.exe")).unwrap(),
+                b"USER"
+            );
+        }
     }
 }
