@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-988
-status: executing
+status: execution_done
 feature_name: Reader原生多选与动态字节桥接
 plan_revision: 1
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-06
-current_step: 2
+current_step: 4
 total_steps: 6
 supersedes_spec_components: [docs/specs/auto-lang/ui/design/dialog-dnd-host-capabilities.md, docs/specs/auto-lang/vm/native-fs.md, docs/specs/runtime/native-vm-app-validation.md]
 new_spec_components: []
@@ -82,8 +82,8 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 |---|---|---|---|---|
 | T-00 [x] | work | 授权 | 树/依赖确认，新构建复现、ABI与表示根因定位、冻结最小设计 | 源码调用链及P-02红/读回绿；实际命令/版本 |
 | T-01 [x] | work | T-00 | 公共多选声明/VM provider/UI OS/生成映射与用例 | P-01、P-04 |
-| T-02 [ ] | work | T-00 | 动态字节桥与永久正反回归 | P-02及受影响同桥消费者 |
-| T-03 [ ] | work | T-01/02 | 两端消费者验证、准备SD、工具交接记录 | P-03及冻结受影响检查 |
+| T-02 [x] | work | T-00 | 动态字节桥与永久正反回归 | P-02及受影响同桥消费者 |
+| T-03 [x] | work | T-01/02 | 两端消费者验证、准备SD、工具交接记录 | P-03及冻结受影响检查 |
 | T-04 [ ] | review | T-03 | 独立复审绑定各仓提交与Specs | AC-01～03 pass |
 | T-05 [ ] | merge | T-04 | 顺序落地/工具消费/规范/归档清理/009交接 | AC-05 |
 
@@ -324,6 +324,25 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 - F988-R3-01原因已核：7a80083fc的Asn分支把“不是字面[]”等同于“产生元素约束”，没有追踪RHS仍来自无注解空声明的事实。前轮只测非空数组/typed函数返回，遗漏了无约束别名传递及循环关系；声明槽归属本身不能证明元素约束存在。
 - 调整：分离字节消费集合、真实元素约束种子、声明间赋值关联。空声明之间赋值只建立关联，沿关联传播已有push/typed或非空RHS的约束到固定点；无种子的空值链/环保持具体空列表入口。直接空字面及其clone不凭语法形态制造种子；typed空列表/非空值/函数返回继续作为Rust可确定的类型来源，不一律禁用赋值识别。
 - 验证：先重放R3 A/B红，再保留它们及非空别名、typed空来源、链/环、先空赋值后push等源级控制；同时回放原36例中的受影响路径。观察原样Rust compile/run、真实字节及首次写阶段，不以脚本exit0或总数替代。此为第三次有界repair；若该修复后复审仍失败，按技能上限诊断交回，不启动第四次自动修复。目标、验收、仓范围不变。
+
+### 2026-11-06 work repair R3：实际元素约束与赋值关联分离，交回final R4
+
+- stage: work | plan_id: PLAN-988 | plan_revision: r1 | outcome: pass | repair_cycle: 3 | worktree_path: D:/autostack/.wt/lang-988/auto-lang | branch: plan-988-dev | reviewed_base: 7a80083fc1382fd72a8049c996e1eec66d74d158 | code_commit: 0b087ab1e63b6d6e3e916aa79d019c1b40e8f6cc | UI b0d59400a1c302c040e07c9e4938a1c13b34d937 / down58ea33f / webbf72baa unchanged | next: independent affected final R4。
+- 先行诊断checkpoint已提交c21c82a0a。修前从R3 A/B不可变input复制隔离输出到988/repair-r3/red-empty_alias_assignment和red-empty_branch_assignment，旧driver均VM写[]、原样Rust编译exit1，原review-r3材料未覆盖。再次核树与基线后才改实现，主线他方WIP未接管。
+
+| finding / invariant | fix / permanent oracle | result / gap |
+|---|---|---|
+| F988-R3-01：赋值关系不冒充元素约束 | collector显式分离consumed、elements种子、assignments关联。已知空声明之间的赋值只连声明槽；元素约束沿关联双向传播到固定点，无种子的空链/环保持具体空列表入口。直接空字面/其clone不凭形态制造种子，typed局部/非空值/push约束继续支持泛型slice | 原A/B在未改生成源中VM+Rust均compile/run0、真实文件0字节。closed |
+| 同因链/环及合法正控 | 永久assignment_empty/empty_branch/empty_chain/empty_cycle、filled_alias、typed_empty、then_push、propagated_fill共8场景；最后一例先空值传递，再给关联变量赋非空值，验证约束传播而非只修两原例 | 8/8真实双端状态和文件通过；首次写阶段独立FIRST断言并移除VM FIRST后验证Rust，阻止串证。 |
+| 前轮控制 | 原36场景完整保留：写前/写后push、分支循环、typed参数/返回、非空替换、坏Value、JSON合法拒绝、纯空、read控制等 | 最终44场景全执行通过，无降低阈值/省略反例。 |
+
+- 定向新8例命令：`PLAN988_BYTE_CASE=assignment_ cargo test --offline --locked -p auto-generation-core --test plan988_byte_consumers -- --nocapture` exit0，16.76秒；assignment-v2.log SHA256=1e012fedab9706e666853a3b0b7b7e74efd825a50f2facf7d9ec8b38a7e3a1ea。初版typed空控制用了`let blank []int=[]`，产生既有slice声明/Vec赋值ABI错误，原记录assignment.log保留；改用R2已实证的`var blank []int=[]`作为typed正控，不将其视作用户修复要求，也不宣称全部typed let ABI已扩展。本finding原无注解let blank输入不改。
+- 最终完整永久命令：取消PLAN988_BYTE_CASE，`cargo test --offline --locked -p auto-generation-core --test plan988_byte_consumers -- --nocapture` exit0；**1 test内44个命名源码场景全部真实执行，0 ignored，113.20秒**。TEMP/TMP=988/repair-r3/tmp，PLAN988_TEST_OUT=988/repair-r3/permanent；VM强制入口，Rust生产transpile/qualify后原样rustc→exe，检查返回状态及真实字节，未以采集脚本exit0当产品绿。permanent-final.log SHA256=2c429afddd15c4fe793d8e18d0ae07f6c6bffe8f8ce6ca693584b042d597c188。
+- 同一最终实现的受影响完整组：`cargo t a2r --out D:/autostack/plan-artifacts/plan-988/repair-r3/a2r-final` exit0，90.01秒，selected/executed394、PASS394、excluded25、not_run0。results SHA256=3ecffbd17b9c1ea3448b3f26a3c381e298fdba0bdc0c984aa13d1677360fdae4。此次没有在组完成后增补实现；提交仅冻结已验证内容。
+- 健康与复用：本轮3个改面（collector、永久源例、SD02文字），runtime/helper/VM/HTTP/native/metadata和UI均未改；R1/R2/R3已成立的多选、provider、JSON字段、VM桥与HTTP、metadata证据保留，未叠全仓。core lib131既有warnings，相对同配置无新warning标题；rustfmt --check、diff --check通过；两实现树干净，所有本轮构建/测试session终态，无live进程。新材料全部在988唯一scope，原8个外部目录仍登记给merge清理。
+- Spec SD02明确空声明赋值只有元素类型关联，真实约束来源及固定点传播决定入口；其余SD01/03、目标/阈值/仓范围/0..255与非法成员保护合同不变，语义revision仍1。最终冻结完整并集vm+shim-metadata+a2r+http仍为merge owner，R4通过后核有效复用/必要补跑；不在work冒记merge完成。
+- Readiness：F988-R3-01及同因代表路径无剩余已知work-owned缺口；R3诊断与调整由A/B、无种子链/环和有种子传播正控验证，原36例亦全绿。T00～03及AC01～03 work范围完成，4/6；T04独立R4、T05合入/工具消费/规范读回/清理仍pending。已完成第三次有界repair，若R4仍有合同内缺陷，按上限诊断交回，不静默启动第四次repair。009完整产品验收和原goal尚未完成。
+- stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 11 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-988/auto-lang | commit: 0b087ab1e63b6d6e3e916aa79d019c1b40e8f6cc | next: independent affected final R4。
 
 ## 10. 待澄清事项
 
