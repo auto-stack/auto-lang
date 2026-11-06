@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-990
-status: executing
+status: execution_done
 feature_name: Web独立Rust后端的db相邻导入上下文
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-06
 plan_revision: 1
-current_step: 0
+current_step: 2
 total_steps: 4
 base_branch: master
 base_commit: bf72baabf28fa865b5a7c680b8a5fa4018a0a63d
@@ -56,8 +56,8 @@ affects: [auto-web/api-generation, auto-os/PLAN-054]
 
 ## 6. 步骤
 
-- [ ] T00 owner_stage=work：冻结根因/选择面，永久反例真实红。
-- [ ] T01 owner_stage=work：入口修复、生成运行与必要邻面，提交工作完成。
+- [x] T00 owner_stage=work：冻结根因/选择面，永久反例真实红。
+- [x] T01 owner_stage=work：入口修复、生成运行与必要邻面，提交工作完成。
 - [ ] T02 owner_stage=review：独立源码/Spec/证据复审，不委派实现。
 - [ ] T03 owner_stage=merge：父最终SDK消费、受影响冻结门、Spec/线性落地/push/archive与统一清理。
 
@@ -68,3 +68,11 @@ affects: [auto-web/api-generation, auto-os/PLAN-054]
 ## 8. 待澄清
 
 无新增用户语义决定。尚未实施/复审；父本次失败不计pass，旧SDK任务只在原身份有效。
+
+
+- stage:work | revision:r1 | outcome:execution_done2/4 | code_commit:c36e5d09b15ee9c8dce0d34fb4b6f9f1b37e26e1 | next:independent source/Spec review
+  Actual public generate_api regression uses src/back/api.at imported Entry/Number, db borrowed seed assigned to differently named String field, immutable owned token reused in a loop, numeric value parameter, exact business text resembling code. Full generated backend cargo build and real TCP GET/query/JSON assert four records and numeric7; authenticated loopback shutdown actualsuccess/portrebind. Final immutable test1/1pass/8.35s (compilepreparation2.77s). Working fix only replaces db no-source transpiler with existing with_proofs+Some(backdir); returnedproofs discard mirrors prior finalgeneration behavior, assemblyproof collection unchanged and uses samecontext. No Core/stringguessing/app/API/schema change. README backlink and permanent integration test onlyotherchanges.
+  Valid pre-fix immutable regression: actual generated db E0308 seed &str→String, testexit101/4.78s; no unrelated compile errors in this valid red. Original actual Blog full-backend baseline additionally has moved token E0382 at37/54/70 plus renamed borrowed field E0308 at271; final real Blog work remains parent-owned rather than claimed closed by minimalfixture. Loop/numeric/literal controls in permanenttest remain independent expected values even where oldversion already passed.
+  Earlier harness attempts are retained honestly: first used obsolete back_member_name (could not locate generated manifest); next used unsupported API List return and parameterless route-B declarations, then invalid [Entry] spelling. These are fixture failures, not productpasses/findings. Corrected public contract uses []Entry and declared seed/value query parameters plus actual member_dir_name(MemberRole::Back). Original valid red/green commands use unchanged correctedfixture. db-import-green.log was an intermediate fixture-failure despite filename; only db-import-immutable-green.log is final green.
+  V02 actual affected Web neighbors selected/executed4/4pass, 177 outside selection excluded notpass: original956 route-capture exactness/order, body db function resolution, Chat/Notes dbhandler controls. No skipped test counted as executed. The live generated numeric7 and exact code-looking string also protect the956 per-function/code-region boundary without modifying/repeating unchanged CoreVM duties. Worksourcefrozenbeforeindependentreview; no source publication/Spec canonical/archive/parent acceptance claimed.
+  Raw root D:/autostack/plan-artifacts/plan-990 registeredinretention as active. Valid red SHAa37001618e1fb6cf3bc4c878d18db7b3c9ee10fca1d63e5b5812d0c048043a90; final green SHAace77555ec974f29148904d123172f245896cca4028371031c54b5498239d95c; Webneighbors SHA4a0d48c773bc5040ff191b7a99dd39814b69ccccf7459bb18f75eeaf3b86f478. Scope Webbf72→c36e only; former SDK176 Web37d→bf72 is existing956 path-capture+lock integration and separately validated neighbor boundary. Parent final SDK must bind all eight sibling Git roots, not onlyLang/UI/Man/OS, then real generated/frontend/runtime identity/task gates.
