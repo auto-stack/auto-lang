@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-949
-status: reviewed
+status: archived
 feature_name: VM handler 异步返回闭合与 JSON 值编码
 author: [Codex]
 created_at: 2026-11-06
@@ -258,6 +258,12 @@ Rust、现有 AutoVM native bindings/codegen/back_prefix；现有 serde/HTTP 中
   - Wrapper temporarily changes only candidate Todo launch native→vm with explicit r3 isolated data root and SDK176; clears global AUTO_BACKEND/AUTO_VM_MERGE overrides, restores exact manifest in finally. Both run receipt and current read-only file hash match2036c3983b98c783f845baabdb15bda210305db79942bca97341eb1c2d1cb137, wrapper exit0. Stop script binds root30808 path+creation time, captures process handles before graceful app-bus shutdown and waits/reaps owned descendants; original terminal records root/wrapper/CLI/Cargo/service0, private helper41708 actual controlled-cancel1, all reaped. Script checks ports9247/17823 absent and foreign Blog47236 original2026-11-06T10:15:07 identity unchanged. Reviewer inspected original terminal records and product shutdown log, did not touch live GUI/global pipe/processes or relabel helper1 as0.
   - Evidence local hashes (plan949 scratch): todo-task-oracle-r3.json10068da1db66ec2398c15d4fe8a1242a4312344b20ffc13094398d0cb1d00070; raw todo-vm-r3.err.log6b5219b5edd2a0d4946eecfe237df6448381672eb4dcdafa7eac2da9478f24ec; normal-stop-r3.jsonbab4c0b2feda9dc259242d1cbeac547d39ac67063dd6d5149711d7d6efae0a18. Before/after image hashes checked against original oracle. Raw evidence stays scratch; this concise receipt is durable. No new implementation/Cargo/test execution, consumer update, Spec publication or unrelated WIP edits by reviewer.
   - Acceptance/gate scope: AC01→T00/T02 actual non-Init park/resume pass on SDK176; AC02→T01/T02 actual input→visible list→cleared input→same persistence plus actual CLI type controls pass; AC03→T01/T03 retains independently accepted7permanent cases and real Lang vm/http987/987. Existing merge-fixed-vm-http-r2/results.json independently rehashed unchanged be2b5d89f5b2c64df76f48c0019b802696888396eba713cb091a9f865795b51a (51valid bound invocations/config33ee32cc…); unchanged frozen Lang/dependency/config/input means reuse, no repeated Cargo gate. Canonical Specs/949source unchanged; reviewed4/4 remains. **Remaining pending** is cross-repository final UI affected union on selected UIa1db/common baseline and parent054's other Vue/native task/overall gate plus actual delivery/archive/cleanup. This closes the named949 SDK/Todo integration gap only; does not make pending cross-repository gates green or publish source.
+
+- stage: merge | plan_id: PLAN-949 | plan_revision: r2 | outcome: pass | checkpoints: prepared/landed/canonical_verified/archived（cleaned 见收尾回执） | delivery_commit: 1e62787285da5a76c52419e430f89bde3810e6c6
+  - prepared：reviewed 基线 f03226e1（r2 终审 pass，round 244/253 重绑定）；rebase 等价证明 `git range-diff 8b9c3813..f03226e1 141a57ccd..a3d222531` 12 补丁全 `=`；`git diff f03226e1 a3d222531 -- . ':(exclude)docs/plans'` 为空（crates/Cargo 完全一致）；交付提交 1e6278728 = a3d222531 + 仅任务勾选与 updated_at 对账（docs-only）。
+  - landed：主检出 master `--ff-only` 141a57ccd→1e6278728（无 merge commit）；11 files changed 402/23。
+  - canonical_verified：docs/specs/stdlib/design/api-transport-contract.md blob 362af3647da543b00b339cbbc69cb7c86d51a986、docs/specs/auto-lang/vm/back-proxy.md blob de3da362f253c801eceba15fad99fa06ad629304 已在落地 tip。merge-owned 冻结并集复用 round 172 独立集成 pass（c96593f5b5，formal vm/http 987 executed/pass，绑定 f03226e1）——依据 crates/ 逐字节一致且依赖/配置输入未变，未重复执行。
+  - 后续（本 receipt 后执行）：git mv 至 docs/plans/archived/ 并 status: archived；wt-guard 后清理 .wt/lang-949 工作树与分支；折叠后删除 plan-artifacts/plan-949 并刷新 registry；master push gitcode。
 
 ## 10. 待澄清事项
 
