@@ -673,6 +673,60 @@ mod source_foreign {
     }
 
     #[test]
+    fn tool_discovery_caps_both_streams_before_accepting_a_compiler_identity() {
+        const CHILD: &str = "S938_TOOL_DISCOVERY_CAP_CHILD";
+        const STREAM: &str = "S938_TOOL_DISCOVERY_CAP_STREAM";
+        if std::env::var_os(CHILD).is_some() {
+            let stream = std::env::var(STREAM).unwrap();
+            let error = ace_abi::ctool::find_cl()
+                .expect_err("tool discovery accepted a banner plus oversized raw output");
+            assert!(
+                error.0.contains("OutputCapExceeded") && error.0.contains(&stream),
+                "{error}"
+            );
+            return;
+        }
+        // A fresh child isolates the real OnceLock and its test-only tool
+        // override from every other case, including bare libtest runs.
+        let stamp = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+            .join(format!("tool-discovery-cap-{}-{stamp}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let fake = root.join("fake-cl.cmd");
+        std::fs::write(&fake, concat!(
+            "@echo off\r\n",
+            "powershell.exe -NoLogo -NoProfile -NonInteractive -Command \"",
+            "$w=if($env:S938_TOOL_DISCOVERY_CAP_STREAM -eq 'stderr'){[Console]::Error}else{[Console]::Out}; ",
+            "$w.WriteLine('Microsoft C Compiler Version 19.44.35222'); ",
+            "$w.Write(('x'*2097152))\"\r\n"
+        )).unwrap();
+        for stream in ["stdout", "stderr"] {
+            let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+            child.args(["--exact", "source_foreign::tool_discovery_caps_both_streams_before_accepting_a_compiler_identity", "--nocapture"])
+                .env(CHILD, "1").env(STREAM, stream).env("AUTOABI_MSVC_CL", &fake);
+            let run = ace_core::link::run_deadlined_captured(
+                &mut child,
+                std::time::Duration::from_secs(30),
+                ace_core::link::CaptureCaps {
+                    stdout_max: 1 << 20,
+                    stderr_max: 1 << 20,
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                run.exit_code,
+                Some(0),
+                "{stream} discovery cap child failed:\n{}\n{}",
+                String::from_utf8_lossy(&run.stdout),
+                String::from_utf8_lossy(&run.stderr)
+            );
+        }
+    }
+
+    #[test]
     fn provider_rebind_keeps_current_facts_without_allocating_whole_declaration_copies() {
         let caps = vec![SOURCE_CAP.into()];
         // This is the neutral frontend port: it consumes reviewed declaration

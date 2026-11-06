@@ -21,6 +21,7 @@ use std::time::Duration;
 const VSWHERE: &str = r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe";
 const DISCOVERY_DEADLINE: Duration = Duration::from_secs(10);
 pub const COMPILE_DEADLINE: Duration = Duration::from_secs(60);
+pub(crate) const TOOL_STREAM_MAX: usize = 1 << 20;
 
 /// Frozen flags for every C compile (freestanding objects: no CRT init,
 /// no stack cookies, no default-lib directives, warnings as errors).
@@ -173,7 +174,21 @@ fn locate_via_vswhere() -> Result<PathBuf, CToolError> {
 fn run_deadlined(
     cmd: &mut Command,
 ) -> Result<(Option<i32>, String, String), ace_core::link::SubprocError> {
-    ace_core::link::run_deadlined_split(cmd, DISCOVERY_DEADLINE)
+    // Discovery output is part of the same tool surface as compilation.
+    // A valid banner cannot authorize an over-cap help/diagnostic stream.
+    let run = ace_core::link::run_deadlined_captured(
+        cmd,
+        DISCOVERY_DEADLINE,
+        ace_core::link::CaptureCaps {
+            stdout_max: TOOL_STREAM_MAX,
+            stderr_max: TOOL_STREAM_MAX,
+        },
+    )?;
+    Ok((
+        run.exit_code,
+        String::from_utf8_lossy(&run.stdout).into_owned(),
+        String::from_utf8_lossy(&run.stderr).into_owned(),
+    ))
 }
 
 /// Compile one C source into `obj_out` with the frozen flags. `include_dir`
@@ -228,8 +243,8 @@ pub fn compile_c_with_deps(
         &mut cmd,
         COMPILE_DEADLINE,
         ace_core::link::CaptureCaps {
-            stdout_max: 1 << 20,
-            stderr_max: 1 << 20,
+            stdout_max: TOOL_STREAM_MAX,
+            stderr_max: TOOL_STREAM_MAX,
         },
     )
     .map_err(|e| CToolError(format!("cl spawn: {e:?}")))?;
