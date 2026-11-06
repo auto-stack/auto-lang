@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-07
 plan_revision: 2
-current_step: 6
+current_step: 7
 total_steps: 7
 depends_on: []
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -160,7 +160,16 @@ check-results.md,v0-real.md,m1..m5 突变副本}；merge 整删）。
   bf86494ab/sha256 c3dd5491ec1395aa…（=reviewed 内容）、replacement-scope… blob
   85cbded0a（SD-03 +15 行，SD-01/02 零删改）；纯文档零 cargo 固定组门=内容/链接检查
   （6/6 链接解析、validator 结构 PASS）；无 legacy ledger 写入、无能力状态提升）
-- [ ] **T-07｜owner_stage: merge｜AC-05**：摘要折入本Plan、所有输出路径对账与scope清理，guard clean后清树/分支。
+- [x] **T-07｜owner_stage: merge｜AC-05**：摘要折入本Plan、所有输出路径对账与scope清理，guard clean后清树/分支。
+  已完成（输出对账：本计划全部输出=①两份 Spec 落地 master 6dc23772c（唯一代码/文档交付，
+  随树消亡前已 landed）②归档本文件 0c993c786③plan-artifacts/plan-959/{SCOPE.md,t01-baseline.md,
+  audit/×9}——已整删（rm 后 ls 验证零残留），无外置 target/构建产物/第二证据目录/外盘散落/链接；
+  本计划命令未在 worktree 外产生其他输出目录；清理=wt-guard clean → worktree .wt/lang-959/auto-lang
+  + 分支 plan-959-dev（was 6dc23772c=已落地）+ 组目录删除；.retention/policy.json 刷新
+  （scopes.plan-959=deleted-at-merge，holds=[]，无具名未解决持有）；landing check=纯 docs 变更，
+  无运行进程/发布件/web bundle 需重建重启——明示观察记录，主检出 target/debug 构建产物早于本合并；
+  批量回归 due 核对=PLAN-990（990%5=0）在 last_covered=956 之后落地→**due**，按 regress 技能
+  主检出单实例执行（另见收据）；最终 7/7）。
 
 T-01→02→03→04→05→06→07；调查不等待下游实现，所有阶段真实完成才记账。
 
@@ -189,3 +198,7 @@ T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定
 stage: goal | plan_id: PLAN-959 | plan_revision: r2 | round: 3 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-959/auto-lang | commit: 05a61f900 | next: merge
 
 2026-11-07 | stage: merge | PLAN-959:r2 | prepared: reviewed 05a61f900 + 冻结 delta（m2-denominator.md 新建 353 行 + replacement-scope SD-03）→ rebase master 8a6b0af46（docs-only 前移），range-diff 全等（3b13bf42e→14b7d674b、05a61f900→6dc23772c） | landed: master `--ff-only`，tip=6dc23772c 线性无 merge 提交 | canonical_verified: docs/specs/ace-migration/m2-denominator.md blob bf86494ab/sha256 c3dd5491ec1395aa847f…（=复审 v1-repaired 内容）、docs/specs/ace-migration/replacement-scope-and-evidence.md blob 85cbded0a（SD-01/SD-02 零删改，+SD-03） | gates: 纯文档计划——固定组门=内容/结构/链接检查（6/6 解析、validator 六项 PASS）零 cargo（§6 口径）；无统一回归门需要 | archived: docs/plans/archive/959-ace-m2-denominator.md（status: archived，随本簿记提交） | batch-regression: **due**——PLAN-990（990%5=0）在 last_covered_plan_id=956 之后落地（receipt@2026-11-06T01:12Z gate_passed=false 含已知红+957 编译器崩溃在途）；本 merge 收尾后按 regress 技能主检出单实例执行 | cleaned: pending（本提交后执行：guard→树/分支/组/scope 清理→.retention 刷新→cleaned 收据） | next: cleanup
+
+2026-11-07 | stage: merge | PLAN-959:r2 | outcome: pass | cleaned: guard clean→树/分支（was 6dc23772c 已落地）/组目录删除；plan-artifacts/plan-959 整删（9 文件）；.retention 刷新 holds=[]；landing=纯 docs 明示观察无重建重启项；batch-regression due（PLAN-990 %5 落地于 last_covered=956 后）→ regress 技能执行 | 最终：7/7 任务、AC-01..05 全闭、completion_kind: delivered | delivery=6dc23772c、archive=0c993c786（本提交前） | evidence: 本记录内嵌命令/结果即持久证据 | next: done
+
+stage: goal | plan_id: PLAN-959 | plan_revision: r2 | round: 4 | from: merge | to: done | status: archived | outcome: pass | worktree: （已移除） | commit: 6dc23772c | next: done
