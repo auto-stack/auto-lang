@@ -944,6 +944,23 @@ stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:33 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，四漏源已补登记/双源端） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:7ec6e56700df92ebb8577bab46d366f3bdc7a6d3 | next:work 四漏源Rust/C独立认证与完整范围
 
+### 2026-11-06 四个漏列原源的Rust/C独立认证（goal第34轮）
+
+前轮35套件/511合同零漂移及四漏源登记/AV-native为progress。本轮继续T04/05/08/10/11，唯一941树提交 **fab1690e6c1870438c98ff1c10fadd108726c474**，12文件，树clean；仍executing2/17，生产源/worker/配置未改。
+
+- C01/C02/C03/NAMED-01四个原始源各跑真实Rust/C完整actual+独立reference认证与独立daily，**8/8严格认证PASS、8/8 daily PASS**，新增**16compile+16run**；原source/profile/cap/oracle/marks保持，C02须具名DivOverflow，NAMED-01须23且mark_b→mark_a。重用原921 C01.c与892 NAMED-01.rs独立参考，另六份手写参考永久入树；C02 Rust使用标准checked_div，C参考以int64计算并独立判断i32范围，避免C signed overflow UB。新四源参考合同SHA=`e0aa3c236ea541624fbc31661fc739d0d99989ae4de5ca41a8a51dac0ea559ec`，登记仍UNOBSERVED不冒运行。原892/921对应默认认证配置，没有擅增或用旧14优化结果充这四源配置。
+- 原显式worker受管capture逐命令保完整argv/exit/计量/raw，8认证单次父墙590.9980..3897.9931ms，不冒正式P90；原360s whole/120s compile/30s run/每流1MiB及各内门不变。scope/source-supplement-certifications/frozen-bindings.json SHA=`63c8786334101c950279a4285acc337a371cebd87cc5ac1605017ff1ae0b3fa8`；execution-summary.json SHA=`ad15df40473c19b57015056b1ee673f6596be85236a573f74c46d6dd488fafd7`。只读reader逐原源/参考合同、当前worker/显式工具链和flags、nonce/FNV、完整fileset/证书schema与四phase终态、独立值/trap/marks、actual/reference分别校验；相邻daily与cert完整四文件相等并由原Job进程数核daily未启动编译器。原native C02通用70观测缺口仍保，不拿Rust/C具名trap替它PASS。
+- 原C三套+Rust命名参数一套共**16个原golden文件全等**，scope/source-supplement-certifications/original-golden-audit.json SHA=`d364f46942cdaf34bc31422d18605bf2bdec1125923cbfa4e7009c448ec43467`；全部**16 compile stderr为空**，compile-health-audit.json SHA=`d407ca6567d23de226edd4cde548a7ce2006ae76a7be1274d4c318dc116ed5c8`，无新增warning，原collections等健康基线仍保。
+- **24原认证反控**：8原合法PASS、8 actual/reference双方同错值/错trap/反marks FAIL、8 rehash未知response field REFUSED，scope/source-supplement-cert-raw-controls/results.json SHA=`42bfaad8e986fa969d9a520e47d59d24ce3aaad488d69bffe76f669d99273231`；明确counterfactual_not_execution。新增永久原源/独立参考内容漂移拒绝回归，三类实际文件改字节均STALE，不靠当前双方相等覆盖原身份。`cargo t infra-ace-m1-arch --out <scope>/source-supplement-cert-final-controls` **165/165 PASS**、4.1058275s、exit0，results SHA=`2dbc34ab6b55d5dd5cd5386b51234a0e1c868c66ecac5bcbf70a0221ad6f6261`；py_compile/diff-check通过。冻结12文件等Git blob留scope/source-supplement-cert-frozen-preview/committed-input-audit.json。
+
+冻结fab1690全组合原Job/Popen禁用只读重验：**531PASS/8FAIL/363UNOBSERVED**，902登记/19合同指针；原126主目录、旧313/NA/38cert-gap、预算合同保持，完整范围/验收系统交付/expanded claim仍false。scope/source-supplement-cert-frozen-preview/preview.stdout 497919B SHA=`595a4809893a4f219a91748a38aa9b21da66f16c0c8b555fcefa1d29a77f3fd1`，13586.6583ms、peak process29634560/Job30949376B；同一LiveBudget reservation36577854/全程peak**48854890<50331648B**，原48MiB/单件4MiB/privateΔ128MiB/先预留/64KiB流hash/不清峰值不变，新认证域512KiB摘要。当前默认认证/daily从248→**256**，额外原14 Rust优化不变；生产身份未变旧证据逐项重读复用，不重跑原1779压力冒职责全过。原8FAIL、9native trap具名缺口、6A2X typed负例、299legacy与49ARCH未闭，不能被新8绿掩盖。
+
+原T01..15未闭；下一入口继续183源字节集合的批准范围逐项分类，补原方法/记录等漏列变体与机制/事实权威/无预热恢复/资源/原规模、ARCH/legacy，最终独立review/merge仍待。938/939尚未D，无新增用户决定或存活验证进程，授权持续。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:fab1690e6c1870438c98ff1c10fadd108726c474 | task_ids:T04/05/08/10/11（未关闭） | evidence:8默认cert+daily/16compile16run；16原golden等；24反控；165回归；整体531PASS8FAIL363UNOBSERVED | blockers:原完整范围/机制与具名观测/健康边界未闭，无新增用户决定 | next_responsible_role:work 完整源/模式分类及机制/ARCH/legacy
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:34 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，四漏源Rust/C认证已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:fab1690e6c1870438c98ff1c10fadd108726c474 | next:work 完整源/模式分类及其余完整范围
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
