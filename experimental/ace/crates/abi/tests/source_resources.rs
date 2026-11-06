@@ -24,6 +24,8 @@ mod cache_paths;
 mod ctool_capture;
 #[path = "../src/ctool_dependencies.rs"]
 mod ctool_dependencies;
+#[path = "../src/ctool_environment.rs"]
+mod ctool_environment;
 #[path = "../src/ctool_text.rs"]
 mod ctool_text;
 thread_local! {
@@ -2205,6 +2207,156 @@ mod source_foreign {
     }
 
     #[test]
+    fn source_crt_compile_uses_the_shared_capture_budget_and_releases_it_after_real_execution() {
+        use ace_abi::bridge::{compile_bridge_crt_with_objects_admitted, BRIDGE_STREAM_CAP};
+        use ace_source_query::resources::Resources;
+        // Tool discovery is explicit preparation. This control observes the
+        // actual CRT compile port, whose discovery is already qualified in
+        // the source worker by prepare_provider.
+        ace_abi::ctool::find_cl().unwrap();
+        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+            .join(format!("crt-shared-capture-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let exe = root.join("value.exe");
+        let resources = Resources::default();
+        let baseline = resources.stats().current;
+        let bytes = 2 * BRIDGE_STREAM_CAP;
+        let pressure = resources
+            .reserve(Charge::io((8 << 20) - bytes + 1))
+            .unwrap();
+        let pressured = resources.stats().current;
+        let rejections = resources.stats().rejections;
+        let (denied, allocations) = measured_at(BRIDGE_STREAM_CAP, || {
+            compile_bridge_crt_with_objects_admitted(
+                &root,
+                &["not-created.c"],
+                &[],
+                &exe,
+                Some(&resources),
+            )
+        });
+        let error = denied
+            .err()
+            .expect("CRT compiler bypassed source capture quota");
+        assert!(error.0.starts_with("foreign.resource:"), "{error}");
+        assert_eq!(allocations, 0, "CRT capture allocated before quota refusal");
+        assert_eq!(resources.stats().rejections, rejections + 1);
+        assert_eq!(resources.stats().current, pressured);
+        assert!(!exe.exists());
+        drop(pressure);
+        std::fs::write(root.join("value.c"), "int main(void) { return 42; }\n").unwrap();
+        let (compiled, allocations) = measured_at(BRIDGE_STREAM_CAP, || {
+            compile_bridge_crt_with_objects_admitted(
+                &root,
+                &["value.c"],
+                &[],
+                &exe,
+                Some(&resources),
+            )
+        });
+        compiled.unwrap();
+        let default_sdk_query = std::env::var_os("A2C_VCVARS64").is_none_or(|s| s.is_empty())
+            && std::env::var("AC741_SDK_UM_LIB").is_err();
+        assert_eq!(
+            allocations,
+            2 + 2 * usize::from(default_sdk_query),
+            "both 1MiB streams for each actual SDK-query/CRT command must be accounted"
+        );
+        assert!(resources.stats().peak.io >= bytes);
+        assert_eq!(resources.stats().current, baseline);
+        let run = ace_native::link_driver::run_pe(
+            &exe,
+            std::time::Duration::from_secs(5),
+            ace_core::link::CaptureCaps {
+                stdout_max: 1 << 20,
+                stderr_max: 1 << 20,
+            },
+        )
+        .unwrap();
+        assert_eq!(run.exit_code, Some(42));
+        assert_eq!(resources.stats().current, baseline);
+    }
+
+    #[test]
+    fn tool_environment_snapshots_reserve_before_ownership_and_keep_utf16_values_lossless() {
+        use ace_source_query::resources::Resources;
+        use std::{ffi::OsString, os::windows::ffi::OsStringExt};
+        const NAME: &str = "SOURCE938_ENVIRONMENT_SNAPSHOT_SAMPLE";
+        struct Restore(Option<OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(value) => std::env::set_var(NAME, value),
+                    None => std::env::remove_var(NAME),
+                }
+            }
+        }
+        let saved = Restore(std::env::var_os(NAME));
+        let name: Vec<u16> = NAME.encode_utf16().chain(Some(0)).collect();
+        let value = "π𝄞".repeat(4096);
+        std::env::set_var(NAME, &value);
+        let units = value.encode_utf16().count() + 1;
+        let bound = units * 10 + 128;
+        let resources = Resources::default();
+        let baseline = resources.stats().current;
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - baseline.index - bound + 1))
+            .unwrap();
+        let pressured = resources.stats().current;
+        let (denied, allocations) =
+            measured_at(units * 2, || ctool_environment::read(&name, &resources));
+        let error = denied
+            .err()
+            .expect("environment snapshot bypassed the source index cap");
+        assert!(error.starts_with("foreign.resource:"), "{error}");
+        assert_eq!(
+            allocations, 0,
+            "environment owned its value before quota refusal"
+        );
+        assert_eq!(resources.stats().current, pressured);
+        drop(pressure);
+        let (held, raw, admitted) = with_charge_probe(
+            units * 2,
+            &resources,
+            Charge::index(baseline.index + bound),
+            || ctool_environment::read(&name, &resources),
+        );
+        let held = held.unwrap().unwrap();
+        assert_eq!(held.value, OsString::from(&value));
+        assert_eq!(raw, 1);
+        assert!(
+            admitted,
+            "UTF-16 scratch was allocated before full conversion admission"
+        );
+        assert_eq!(
+            resources.stats().current.index,
+            baseline.index + held.value.capacity()
+        );
+        let ctool_environment::Value { value, allocation } = held;
+        drop(value);
+        assert!(resources.stats().current.index > baseline.index);
+        drop(allocation);
+        assert_eq!(resources.stats().current, baseline);
+        // Empty and absent stay distinct exactly as the native environment
+        // does; unpaired UTF-16 is preserved rather than replaced with U+FFFD.
+        for value in [OsString::new(), OsString::from_wide(&[0xd800, b'x' as u16])] {
+            std::env::set_var(NAME, &value);
+            let actual = ctool_environment::read(&name, &resources).unwrap();
+            assert_eq!(
+                actual.as_ref().map(|v| &v.value),
+                std::env::var_os(NAME).as_ref()
+            );
+            assert_eq!(actual.unwrap().value, value);
+        }
+        std::env::remove_var(NAME);
+        assert!(ctool_environment::read(&name, &resources)
+            .unwrap()
+            .is_none());
+        assert_eq!(resources.stats().current, baseline);
+        drop(saved);
+    }
+
+    #[test]
     fn compiler_raw_capture_reserves_both_buffers_before_allocating_or_spawning() {
         use ace_core::link::CaptureCaps;
         use ace_source_query::resources::Resources;
@@ -3937,11 +4089,13 @@ mod source_foreign {
         let old_snapshot = session.snapshot().unwrap().digest;
         let baseline_staging = store.space().staging;
         let payload = "x".repeat(2 << 20);
-        let pressure = resources
-            .reserve(Charge::io(resources.available_io() - (128 << 10)))
-            .unwrap();
         let ready = session
             .prepare_publication(Edit::Current, &root.join("refused"), &mut current, None)
+            .unwrap();
+        // Pressure this pointer encoder, after the preceding CRT build has
+        // used and released its own independently admitted stream buffers.
+        let pressure = resources
+            .reserve(Charge::io(resources.available_io() - (128 << 10)))
             .unwrap();
         let mut called = false;
         let (rejected, allocations) = measured(|| {

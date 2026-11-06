@@ -791,8 +791,22 @@ pub fn find_rust_lld() -> Result<PathBuf, Diagnostic> {
 /// The registry query runs under the deadline executor (QA-06); a missing or
 /// hung `reg` falls through to the known roots as before.
 pub fn find_sdk_um_dir() -> Result<PathBuf, Diagnostic> {
-    if let Ok(env_dir) = std::env::var("AC741_SDK_UM_LIB") {
-        let p = PathBuf::from(env_dir);
+    let explicit = std::env::var("AC741_SDK_UM_LIB").ok().map(PathBuf::from);
+    find_sdk_um_dir_with_query(explicit, |command| {
+        Ok(run_with_deadline(command, SUBPROC_DEADLINE)
+            .ok()
+            .map(|(_, out)| out))
+    })
+}
+
+/// The same SDK selection policy with a caller-owned registry capture port.
+/// A resource refusal propagates; an ordinary missing registry tool may still
+/// use the original known-root fallback. No second SDK resolver is needed.
+pub fn find_sdk_um_dir_with_query(
+    explicit: Option<PathBuf>,
+    query: impl FnOnce(&mut Command) -> Result<Option<String>, Diagnostic>,
+) -> Result<PathBuf, Diagnostic> {
+    if let Some(p) = explicit {
         if p.join("kernel32.lib").is_file() {
             return Ok(p);
         }
@@ -802,15 +816,12 @@ pub fn find_sdk_um_dir() -> Result<PathBuf, Diagnostic> {
         ));
     }
     let mut roots: Vec<PathBuf> = Vec::new();
-    if let Ok((_, out)) = run_with_deadline(
-        Command::new("reg").args([
-            "query",
-            r"HKLM\SOFTWARE\Microsoft\Windows Kits\Installed Roots",
-            "/v",
-            "KitsRoot10",
-        ]),
-        SUBPROC_DEADLINE,
-    ) {
+    if let Some(out) = query(Command::new("reg").args([
+        "query",
+        r"HKLM\SOFTWARE\Microsoft\Windows Kits\Installed Roots",
+        "/v",
+        "KitsRoot10",
+    ]))? {
         for line in out.lines() {
             if line.contains("KitsRoot10") && line.contains("REG_SZ") {
                 if let Some(pos) = line.rfind("REG_SZ") {

@@ -10,6 +10,48 @@ const REVIEWED_SCALAR_CONTRACT: &str =
 const REVIEWED_HEADER: &str = "4051cd6af2acd0c07eeed8495f50ad51fdfac94c3b91928f86422e486b408b98";
 const REVIEWED_PHYSICAL_TABLE: &str =
     "0ea8be97d1026bd57dcaff7b35673e45a6a9f17e2f5c991bdd1b1fb04a94daa3";
+fn reviewed_c_toolchain(value: &str) -> bool {
+    if value.len() > 8192 || value.chars().any(char::is_control) {
+        return false;
+    }
+    let mut fields = std::collections::BTreeMap::new();
+    for atom in value.split('|') {
+        let Some((key, value)) = atom.split_once(':') else {
+            return false;
+        };
+        if value.is_empty() || fields.insert(key, value).is_some() {
+            return false;
+        }
+    }
+    let digest = |key| {
+        fields.get(key).is_some_and(|value| {
+            value.len() == 64
+                && value
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        })
+    };
+    if !fields.contains_key("cl")
+        || !fields.contains_key("ver")
+        || !digest("hash")
+        || fields.get("flags") != Some(&"-c -nologo -GS- -Zl -W4 -WX -O2")
+        || fields.get("crt-flags") != Some(&"-nologo -std:c11 -TC -W4 -WX -O2 -MT")
+    {
+        return false;
+    }
+    match fields.get("crt").copied() {
+        Some("explicit-sdk/1") => {
+            fields.len() == 9
+                && fields.contains_key("crt-sdk")
+                && fields.contains_key("crt-msvc")
+                && digest("crt-link-hash")
+        }
+        Some("vcvars/1") => {
+            fields.len() == 8 && fields.contains_key("crt-vcvars") && digest("crt-vcvars-hash")
+        }
+        _ => false,
+    }
+}
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct SourceDiagnostic {
@@ -203,9 +245,7 @@ impl SourceReport {
             if self.actual_exit != exit
                 || self.reference_exit.is_none()
                 || !digest(&self.provider_digest)
-                || !self.c_toolchain.starts_with("cl:")
-                || !self.c_toolchain.contains("|hash:")
-                || self.c_toolchain.len() > 8192
+                || !reviewed_c_toolchain(&self.c_toolchain)
                 || self.actual_events != self.reference_events
                 || self.reference_events != expected_events
                 || !self.diagnostic_stage.is_empty()
@@ -279,6 +319,52 @@ impl SourceReport {
 mod tests {
     use super::*;
     #[test]
+    fn certification_requires_complete_current_crt_inputs_and_frozen_flags() {
+        let source = "fn main() int { return foreign_add(20,22) }";
+        let report = valid();
+        report
+            .admit("native", true, Some(42), Some(source))
+            .unwrap();
+        for axis in 0..6 {
+            let mut changed = report.clone();
+            changed.c_toolchain = match axis {
+                0 => changed.c_toolchain.split("|crt:").next().unwrap().into(),
+                1 => changed
+                    .c_toolchain
+                    .replace("explicit-sdk/1", "unreviewed-sdk/1"),
+                2 => changed
+                    .c_toolchain
+                    .replace(&format!("|crt-link-hash:{}", "d".repeat(64)), ""),
+                3 => changed.c_toolchain.replace(
+                    "-std:c11 -TC -W4 -WX -O2 -MT",
+                    "-std:c11 -TC -W4 -WX -O0 -MT",
+                ),
+                4 => format!(
+                    "{}|crt-flags:-nologo -std:c11 -TC -W4 -WX -O2 -MT",
+                    changed.c_toolchain
+                ),
+                _ => format!("{}|invented:claim", changed.c_toolchain),
+            };
+            assert!(
+                changed
+                    .admit("native", true, Some(42), Some(source))
+                    .is_err(),
+                "axis {axis}"
+            );
+        }
+        let mut explicit = report.clone();
+        explicit.c_toolchain = format!("cl:C:/tools/cl.exe|ver:19.44.1|hash:{}|flags:-c -nologo -GS- -Zl -W4 -WX -O2|crt:vcvars/1|crt-vcvars:C:/tools/setup.bat|crt-vcvars-hash:{}|crt-flags:-nologo -std:c11 -TC -W4 -WX -O2 -MT", "c".repeat(64), "e".repeat(64));
+        explicit
+            .admit("native", true, Some(42), Some(source))
+            .unwrap();
+        explicit.c_toolchain = explicit
+            .c_toolchain
+            .replace(&format!("|crt-vcvars-hash:{}", "e".repeat(64)), "");
+        assert!(explicit
+            .admit("native", true, Some(42), Some(source))
+            .is_err());
+    }
+    #[test]
     fn scalar_certificate_requires_the_submitted_review_calls_and_original_failure_cause() {
         let source = "fn main() int { return foreign_div(84,0) }";
         let mut report = valid();
@@ -351,7 +437,7 @@ mod tests {
             "schema":"abi.source-import-report/1","direction":"source-import","input_profile":"auto.source.scalar-i32.draft",
             "abi_domain":"autoabi","abi_version":"0.1","abi_profile":"autoabi.win-x64.v0.1-candidate","callconv":"windows-x64",
             "target":"x86_64-pc-windows-msvc","consumer":"native","source_sha256":auto_test_case::sha256::hex(&auto_test_case::sha256::sha256(source.as_bytes())),
-            "compiler":"ace-native-foreign/1+ace-native/0.1.0+cranelift/0.126.2","c_toolchain":"cl:reviewed-tool|ver:1|hash:live|flags:frozen",
+            "compiler":"ace-native-foreign/1+ace-native/0.1.0+cranelift/0.126.2","c_toolchain":format!("cl:C:/tools/cl.exe|ver:19.44.1|hash:{}|flags:-c -nologo -GS- -Zl -W4 -WX -O2|crt:explicit-sdk/1|crt-sdk:C:/sdk/um/x64|crt-msvc:C:/vc/include|crt-link-hash:{}|crt-flags:-nologo -std:c11 -TC -W4 -WX -O2 -MT", "c".repeat(64), "d".repeat(64)),
             "contract_digest":REVIEWED_CONTRACT,"provider_digest":"b".repeat(64),"header_digest":REVIEWED_HEADER,"physical_table_digest":REVIEWED_PHYSICAL_TABLE,
             "review_id":"plan938-independent-provider-v1","actual_exit":42,"reference_exit":42,
             "actual_events":["provider_add"],"reference_events":["provider_add"],"actual_stderr":"source938.call=provider_add\n","reference_stderr":"source938.call=provider_add\n",

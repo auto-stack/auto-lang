@@ -152,6 +152,16 @@ impl Session {
         current: &mut impl FnMut() -> Result<CurrentAuthority, String>,
         cancel: Option<&AtomicBool>,
     ) -> Result<PreparedPublication, String> {
+        self.prepare_publication_with_crt(edit, directory, current, cancel, None)
+    }
+    pub(crate) fn prepare_publication_with_crt(
+        &mut self,
+        edit: Edit,
+        directory: &Path,
+        current: &mut impl FnMut() -> Result<CurrentAuthority, String>,
+        cancel: Option<&AtomicBool>,
+        crt: Option<&crate::source_crt::Toolchain>,
+    ) -> Result<PreparedPublication, String> {
         cancelled(cancel)?;
         self.validate_edit(&edit)?;
         let (front, environment, provider, provider_id, overrides) = match &edit {
@@ -215,6 +225,8 @@ impl Session {
             &mut self.meter,
             &self.front.work(),
             &mut work,
+            &self.front.resources(),
+            crt,
         )?;
         cancelled(cancel)?;
         qualify(environment, &self.runtime_identity, self.target, current)?;

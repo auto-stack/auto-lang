@@ -621,6 +621,22 @@ pub fn compile_bridge_crt_with_objects(
     objects: &[PathBuf],
     exe: &Path,
 ) -> Result<(), BridgeError> {
+    compile_bridge_crt_with_objects_admitted(dir, sources, objects, exe, None)
+}
+
+/// Same CRT compiler and closure. Source composition supplies its shared
+/// account. Legacy callers retain their original vcvars build path.
+pub fn compile_bridge_crt_with_objects_admitted(
+    dir: &Path,
+    sources: &[&str],
+    objects: &[PathBuf],
+    exe: &Path,
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<(), BridgeError> {
+    if let Some(resources) = resources {
+        return crate::source_crt::Toolchain::resolve(resources)?
+            .compile(dir, sources, objects, exe);
+    }
     let tool = ctool::find_cl().map_err(|e| BridgeError(format!("cl locator: {e:?}")))?;
     let vcvars = match std::env::var("A2C_VCVARS64") {
         Ok(p) if !p.is_empty() => PathBuf::from(p),
@@ -671,15 +687,24 @@ pub fn compile_bridge_crt_with_objects(
         cmd.arg(&line);
     }
     cmd.current_dir(dir);
-    let run = run_deadlined_captured(
+    let captured = crate::ctool_capture::run(
         &mut cmd,
         BRIDGE_BUILD_DEADLINE,
         CaptureCaps {
             stdout_max: BRIDGE_STREAM_CAP,
             stderr_max: BRIDGE_STREAM_CAP,
         },
+        resources,
     )
-    .map_err(|e| BridgeError(format!("contained cl spawn: {e:?}")))?;
+    .map_err(|e| match e {
+        crate::ctool_capture::CaptureError::Resource(message) => {
+            BridgeError(format!("foreign.resource: CRT compile capture: {message}"))
+        }
+        crate::ctool_capture::CaptureError::Subprocess(error) => {
+            BridgeError(format!("contained cl spawn: {error:?}"))
+        }
+    })?;
+    let run = &captured.value;
     if run.exit_code != Some(0) {
         return Err(BridgeError(format!(
             "cl exited {:?}:\n{}\n{}",

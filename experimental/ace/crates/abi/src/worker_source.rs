@@ -164,6 +164,47 @@ fn events(bytes: &[u8]) -> Vec<String> {
 fn write(path: &Path, bytes: impl AsRef<[u8]>) -> Result<(), String> {
     std::fs::write(path, bytes).map_err(|e| e.to_string())
 }
+fn prepare_reference(
+    run_dir: &Path,
+    reference: &str,
+    provider_bytes: &[u8],
+    crt: &crate::source_crt::Toolchain,
+) -> Result<std::path::PathBuf, DiagOut> {
+    let reference_dir = run_dir.join("reference");
+    std::fs::create_dir_all(&reference_dir).map_err(|e| err("infra", e))?;
+    write(&reference_dir.join("source_foreign938.h"), provider::HEADER)
+        .map_err(|e| err("infra", e))?;
+    write(
+        &reference_dir.join("reference.c"),
+        format!(
+            "#define SOURCE938_SCENARIO {}\n{}",
+            provider::reference_case(reference)
+                .ok_or_else(|| err("deck", "unreviewed reference"))?,
+            include_str!("../cside/source_foreign938_reference.c"),
+        ),
+    )
+    .map_err(|e| err("infra", e))?;
+    write(&reference_dir.join("events.c"), provider::EVENT_RUNTIME).map_err(|e| err("infra", e))?;
+    write(&reference_dir.join("provider.obj"), provider_bytes).map_err(|e| err("infra", e))?;
+    let exe = reference_dir.join("reference.exe");
+    crt.compile(
+        &reference_dir,
+        &["reference.c", "events.c"],
+        &[reference_dir.join("provider.obj")],
+        &exe,
+    )
+    .map_err(|e| {
+        err(
+            if e.0.starts_with("foreign.resource:") {
+                "foreign.resource"
+            } else {
+                "infra"
+            },
+            e,
+        )
+    })?;
+    Ok(exe)
+}
 fn decode(req: &WorkerRequest, resources: &Resources) -> Result<(Deck, Reservation), DiagOut> {
     if req.deck_b64.len() > crate::worker::MAX_LINE {
         return Err(err("deck", "source deck transport budget"));
@@ -495,6 +536,9 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     let scratch = crate::source_tool_scratch::ToolScratch::create(&store, &resources)
         .map_err(|e| err("store.cleanup-pending", e))?;
     let mut publication_committed = false;
+    // Keep compiler-context metadata charged until the request hands its
+    // typed result to the bounded worker transport, including cleanup/GC.
+    let mut crt_owner = None;
     let operation: Result<(), DiagOut> = (|| {
         let run_dir = scratch.path();
         let digest = report.provider_digest.clone();
@@ -506,38 +550,35 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 emitter: target.identity(),
             })
         };
+        let crt = crt_owner.insert(crate::source_crt::Toolchain::resolve(&resources).map_err(
+            |e| {
+                err(
+                    if e.0.starts_with("foreign.resource:") {
+                        "foreign.resource"
+                    } else {
+                        "infra"
+                    },
+                    e,
+                )
+            },
+        )?);
+        report.c_toolchain = crt.fingerprint();
         let prepared = session
-            .prepare_publication(edit, &run_dir, &mut current_authority, None)
-            .map_err(|e| err("publication", e))?;
+            .prepare_publication_with_crt(edit, run_dir, &mut current_authority, None, Some(crt))
+            .map_err(|e| {
+                err(
+                    if e.starts_with("bridge: foreign.resource:") {
+                        "foreign.resource"
+                    } else {
+                        "publication"
+                    },
+                    e,
+                )
+            })?;
+        let exe = prepare_reference(run_dir, &deck.reference, bytes.as_slice(), crt)?;
         let actual = prepared
             .run(&mut current_authority, None)
             .map_err(|e| err("infra", e))?;
-        let reference_dir = run_dir.join("reference");
-        std::fs::create_dir_all(&reference_dir).map_err(|e| err("infra", e))?;
-        write(&reference_dir.join("source_foreign938.h"), provider::HEADER)
-            .map_err(|e| err("infra", e))?;
-        write(
-            &reference_dir.join("reference.c"),
-            format!(
-                "#define SOURCE938_SCENARIO {}\n{}",
-                provider::reference_case(&deck.reference)
-                    .ok_or_else(|| err("deck", "unreviewed reference"))?,
-                include_str!("../cside/source_foreign938_reference.c")
-            ),
-        )
-        .map_err(|e| err("infra", e))?;
-        write(&reference_dir.join("events.c"), provider::EVENT_RUNTIME)
-            .map_err(|e| err("infra", e))?;
-        write(&reference_dir.join("provider.obj"), bytes.as_slice())
-            .map_err(|e| err("infra", e))?;
-        let exe = reference_dir.join("reference.exe");
-        crate::bridge::compile_bridge_crt_with_objects(
-            &reference_dir,
-            &["reference.c", "events.c"],
-            &[reference_dir.join("provider.obj")],
-            &exe,
-        )
-        .map_err(|e| err("infra", e))?;
         let reference = ace_native::link_driver::run_pe(
             &exe,
             crate::bridge::BRIDGE_RUN_DEADLINE,

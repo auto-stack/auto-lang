@@ -2966,7 +2966,7 @@ fn source_foreign_formal_tool_io_failure_keeps_pointer_and_recovers_owned_scratc
                     {
                         let path = entry.path().join("reference");
                         // Real I/O refusal in the reference-prepare arm, after
-                        // the actual candidate has linked and run. No worker
+                        // the actual candidate links, before either PE runs. No worker
                         // outcome or producer counter is forged by this seam.
                         let mut options = std::fs::OpenOptions::new();
                         use std::io::Write;

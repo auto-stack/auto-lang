@@ -1264,6 +1264,8 @@ fn link_artifacts(
     meter: &mut Meter,
     ledger: &Ledger,
     work: &mut Vec<Work>,
+    resources: &Resources,
+    crt: Option<&crate::source_crt::Toolchain>,
 ) -> Result<std::path::PathBuf, String> {
     let mut assembly = ledger.begin("*", "shared-assembly", Phase::Production);
     let write = |path: &Path, bytes: &[u8]| -> Result<(), String> {
@@ -1357,8 +1359,17 @@ fn link_artifacts(
     meter.links += 1;
     let mut tool = ledger.begin("*", "compile-link-tool", Phase::Production);
     let exe = directory.join("source.exe");
-    crate::bridge::compile_bridge_crt_with_objects(directory, &sources, &objects, &exe)
-        .map_err(|e| e.to_string())?;
+    match crt {
+        Some(crt) => crt.compile(directory, &sources, &objects, &exe),
+        None => crate::bridge::compile_bridge_crt_with_objects_admitted(
+            directory,
+            &sources,
+            &objects,
+            &exe,
+            Some(resources),
+        ),
+    }
+    .map_err(|e| e.to_string())?;
     tool.produced(1);
     work.push(tool);
     Ok(exe)
