@@ -7,7 +7,7 @@ completion_kind: delivered
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-06
-current_step: 5
+current_step: 6
 total_steps: 6
 supersedes_spec_components: [docs/specs/auto-lang/ui/design/dialog-dnd-host-capabilities.md, docs/specs/auto-lang/vm/native-fs.md, docs/specs/runtime/native-vm-app-validation.md]
 new_spec_components: []
@@ -86,7 +86,7 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 | T-02 [x] | work | T-00 | 动态字节桥与永久正反回归 | P-02及受影响同桥消费者 |
 | T-03 [x] | work | T-01/02 | 两端消费者验证、准备SD、工具交接记录 | P-03及冻结受影响检查 |
 | T-04 [x] | review | T-03 | 独立复审绑定各仓提交与Specs | AC-01～03 pass |
-| T-05 [ ] | merge | T-04 | 顺序落地/工具消费/规范/归档清理/009交接 | AC-05 |
+| T-05 [x] | merge | T-04 | 顺序落地/工具消费/规范/归档清理/009交接 | AC-05 |
 
 ## 9. 复审记录
 
@@ -507,6 +507,13 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 - 4个worktree每个移除前再次Git Bash wt-guard clean、绝对路径严格在lang-988组、git status clean；顺序git worktree remove全部exit0，无force。两个已合分支用git branch -d删除，空group已移除；四树35187410026 bytes构建/源码随树销毁，没有复制target到其他目录。实际去向均为删除，非迁移。
 - 原8个外部Temp目录已逐个以精确绝对路径、fresh无reparse与文件数/bytes一致、无本目录活跃exe核验后原生PowerShell无force递归删除；8/8不存在，共11933856595 bytes。首次计算路径+force批量删除被自动审批审查拒绝，未产生副作用，后改为逐个具名、核固定inventory、不带force的更窄删除获准并全部完成；没有改用其他shell或Python绕过。原逐项目录/hash表沿上文。
 - 唯一988 scope最后一照为29162 files/14802476615 bytes，路径+长度清单SHA256=2a363b98f8cc003c7514a1f0a75c9a4837125890faa2b482e9c9c9b82bde880f；无symlink/junction，所有有效证据已折入本Plan，R5及后补勘误无未解决finding/原材料hold。将该scope整体删除后刷新全局registry并记录最终cleaned，此处不预标删除完成。其他项目/计划scope不处理。
+
+### 2026-11-06 checkpoint cleaned：PLAN-988完整交付
+
+- stage: merge | key: PLAN-988:r1 | checkpoint: cleaned | outcome: pass | completion_kind: delivered | delivery language3735065684968aad958140250e763ecea9838aa7/UI02316271da9b9cd90750ca5a38ed91143f6c4be4 | archived_docs_commit: 055afdf8271e943577a4aecb52094ab49dbc8df5；清理前耐久对账提交05fd92215与2f718f397。T00～05全部完成，current_step=6/total_steps=6，与实际归档/任务相符。
+- 已验证4worktree/2branch/空group删除、8外部旧输出根不存在；最后按全局registry确切owner、fresh无reparse、文件数29162/bytes14802476615精确一致、无scope活跃exe核验后，原生PowerShell不带force删除整个D:/autostack/plan-artifacts/plan-988，exit0且不存在。连同树35187410026 bytes和外部11933856595 bytes，共**61923743236 bytes**自有材料删除。全部必要命令/退出码/数值/哈希/历史红与勘误已在本Plan，没有原材料hold，不把其他范围未测能力当文件持有理由。
+- 全局D:/autostack/plan-artifacts/.retention/policy.json按精确auto-lang/PLAN-988更新deleted/归档路径/hash/无hold，仅更新本owner及009新在途交接，不改别人的保留决定。主线其他WIP保持，Plan自身版本控制干净、实现与canonical通过；已安装工具stale与009精确消费构建指令沿上文，不声称已刷新安装。
+- 009共享Plan已追加前置交付/API边界、最终版本及新构建要求，返回T01冻结；988的所有实施/独立review/merge任务完成，但008→009原整体目标仍未完成。后继由原用户授权串行执行，不调用goal complete冒充整体交付。
 
 ## 10. 待澄清事项
 
