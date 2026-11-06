@@ -16,7 +16,7 @@ use ace_foreign_contract::manual::{AdmittedForeign, ForeignPages, HostAuthority}
 use ace_source_query::frontend::{
     Candidate as SourceCandidate, ForeignCandidate as SourceForeignCandidate, Frontend,
 };
-use ace_source_query::resources::{Charge, Reservation, Resources};
+use ace_source_query::resources::{Charge, OutputPermit, Reservation, Resources};
 use ace_source_query::work::{Ledger, Phase, Work};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -141,9 +141,6 @@ impl Artifact {
                     ..
                 } => name.capacity() + semantic.capacity() + text.capacity(),
             }
-    }
-    fn new(decoded: TargetWire, resources: &Resources) -> Result<Arc<Self>, String> {
-        Self::new_reserved(decoded, resources, None)
     }
     fn new_reserved(
         decoded: TargetWire,
@@ -596,6 +593,39 @@ impl Session {
         .map_err(|e| e.to_string())?;
         Self::from_frontend_stored(front, checked, provider, target, store)
     }
+    /// Cold composition on a caller-owned account (PLAN-938). An explicit
+    /// request host installs its cumulative output budget BEFORE any cold
+    /// production — the runtime page, fragment texts and target encodings of
+    /// this session then enter that request account. `store` selects the
+    /// stored fragment-cache path like [`Self::cold_stored`].
+    pub fn cold_with_resources(
+        source: &str,
+        module: &str,
+        package: &str,
+        capabilities: &[String],
+        environment: AdmittedForeign,
+        provider: Arc<Vec<u8>>,
+        target: Target,
+        resources: Resources,
+        store: Option<&ManagedStore>,
+    ) -> Result<Self, String> {
+        target.admit_source_bytes(source.len())?;
+        admit_provider(&environment, &provider, &resources)?;
+        let (front, checked) = Frontend::cold_observed_with_resources(
+            source,
+            module,
+            package,
+            capabilities,
+            environment,
+            &mut ace_source_query::frontend::ColdObservation::default(),
+            resources,
+        )
+        .map_err(|e| e.to_string())?;
+        match store {
+            Some(store) => Self::from_frontend_stored(front, checked, provider, target, store),
+            None => Self::from_frontend(front, checked, provider, target),
+        }
+    }
     pub(crate) fn from_frontend_stored(
         front: Frontend,
         checked: ace_core::verify::CheckedModule,
@@ -639,22 +669,54 @@ impl Session {
         let mut artifacts = BTreeMap::new();
         let mut meter = Meter::default();
         let mut per_function = BTreeMap::new();
-        let runtime = if target == Target::C {
-            let provider = ForeignTargetProvider::new(front.foreign().clone());
-            Arc::new(
-                provider
-                    .runtime_source(&view, Family::Scalar)
-                    .map_err(|e| format!("{e:?}"))?
-                    .into_bytes(),
-            )
-        } else {
-            Arc::new(ace_a2x_c::foreign::FAILURE_RUNTIME.as_bytes().to_vec())
+        // PLAN-938: the runtime page of THIS request is a newly materialized
+        // owned artifact. Its exact output bytes and live memory are admitted
+        // BEFORE the payload allocation and the memory ticket rides the
+        // immutable Arc; restore (R) loads the persisted page instead and
+        // never enters this port. The native blob is authored constant bytes:
+        // this is its initial owned page, later byte-identical assembly
+        // copies are transport, not re-produced output.
+        let resources = cache.resources.clone();
+        let mut admitted: Option<(OutputPermit, Reservation)> = None;
+        let mut runtime_admission = |size: usize| -> Result<(), String> {
+            let output = resources.reserve_output(size).map_err(|e| e.to_string())?;
+            let memory = match resources.reserve(Charge::resident(size + 40)) {
+                Ok(memory) => memory,
+                Err(e) => {
+                    drop(output);
+                    return Err(e.to_string());
+                }
+            };
+            admitted = Some((output, memory));
+            Ok(())
         };
+        let runtime = if target == Target::C {
+            let bound = view.trace_symbol_upper_bound();
+            // The collected marks (BTreeSet + Vec) are working metadata of
+            // the render; their bounded size is admitted before they exist.
+            let marks_charge = resources
+                .reserve(Charge::index(bound.saturating_mul(80) + 64))
+                .map_err(|e| e.to_string())?;
+            let text = ForeignTargetProvider::new(front.foreign().clone())
+                .runtime_source_admitted(&view, Family::Scalar, &mut runtime_admission)
+                .map_err(|e| format!("{e:?}"))?;
+            drop(marks_charge);
+            Arc::new(text.into_bytes())
+        } else {
+            let len = ace_a2x_c::foreign::FAILURE_RUNTIME.len();
+            runtime_admission(len)?;
+            let mut bytes = Vec::new();
+            bytes
+                .try_reserve_exact(len)
+                .map_err(|e| format!("foreign.resource.runtime-allocation: {e}"))?;
+            bytes.extend_from_slice(ace_a2x_c::foreign::FAILURE_RUNTIME.as_bytes());
+            Arc::new(bytes)
+        };
+        let (output, mut memory) =
+            admitted.expect("admitted runtime production reserved its output");
+        memory.try_retain(&runtime).map_err(|e| e.to_string())?;
+        output.complete(runtime.len()).map_err(|e| e.to_string())?;
         let runtime_sha = hash(&runtime);
-        cache
-            .resources
-            .adopt(&runtime, Charge::resident(runtime.capacity() + 40))
-            .map_err(|e| e.to_string())?;
         cache
             .resources
             .adopt(&provider, Charge::resident(provider.capacity() + 40))
@@ -1350,22 +1412,70 @@ fn link_artifacts(
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             let runtime = std::str::from_utf8(runtime.as_slice()).map_err(|e| e.to_string())?;
+            // PLAN-938: the fileset's true new products (generated.c,
+            // foreign_imports.h, the manifest) reserve their exact sizes on
+            // the request output account before allocation; the byte-identical
+            // runtime/status-runtime copies are live memory only. The staging
+            // ticket covers the live texts until they are written to disk.
+            struct RequestProduction {
+                resources: Resources,
+                pending: Option<OutputPermit>,
+            }
+            impl ace_foreign_contract::manual::PageProduction for RequestProduction {
+                fn reserve(&mut self, bytes: usize) -> Result<(), String> {
+                    if self.pending.is_some() {
+                        return Err("fileset producer overlaps an unfinished output".into());
+                    }
+                    self.pending = Some(
+                        self.resources
+                            .reserve_output(bytes)
+                            .map_err(|e| e.to_string())?,
+                    );
+                    Ok(())
+                }
+                fn complete(&mut self, bytes: usize) -> Result<(), String> {
+                    self.pending
+                        .take()
+                        .ok_or("fileset output was not admitted")?
+                        .complete(bytes)
+                        .map_err(|e| e.to_string())
+                }
+            }
+            let mut output = RequestProduction {
+                resources: resources.clone(),
+                pending: None,
+            };
+            let mut fileset_memory: Option<Reservation> = None;
+            let mut admit_memory = |total: usize| -> Result<(), String> {
+                fileset_memory = Some(
+                    resources
+                        .reserve(Charge::staging(total))
+                        .map_err(|e| e.to_string())?,
+                );
+                Ok(())
+            };
             let files = ForeignTargetProvider::new(environment.clone())
-                .assemble_fileset(FilesetRequest {
-                    entry: "main",
-                    input_hash: &hash(source.as_bytes()),
-                    family: Family::Scalar,
-                    fragments: &fragments,
-                    view: None,
-                    runtime,
-                    prelude_seed: None,
-                    origins: None,
-                    source_sha256: None,
-                })
+                .assemble_fileset_admitted(
+                    FilesetRequest {
+                        entry: "main",
+                        input_hash: &hash(source.as_bytes()),
+                        family: Family::Scalar,
+                        fragments: &fragments,
+                        view: None,
+                        runtime,
+                        prelude_seed: None,
+                        origins: None,
+                        source_sha256: None,
+                    },
+                    &mut output,
+                    &mut admit_memory,
+                )
                 .map_err(|e| format!("{e:?}"))?;
-            for (name, text) in files.files {
+            for (name, text) in &files.files {
                 write(&directory.join(name), text.as_bytes())?;
             }
+            drop(files);
+            drop(fileset_memory);
             write(&directory.join("entry.c"), b"#include \"a2x_c_runtime.h\"\nextern a2x_result fn_main(void);\nint main(void){a2x_result v=fn_main();return v.trap?70:v.value;}\n")?;
             sources = vec![
                 "entry.c",
@@ -1760,11 +1870,13 @@ fn cached_artifact(
             &cache.resources,
         )?,
         Target::C => {
-            let text =
+            let (text, live) =
                 cache.c_fragment(view, f, capabilities, runtime, environment, counts, work)?;
             let mut page = cache.work.begin(name, "target-encode", Phase::Production);
             counts.page_encodes += 1;
-            let artifact = Artifact::new(
+            // The fragment text's live-memory ticket rides the same ticket
+            // into the owning artifact's resident charge (no second fee).
+            let artifact = Artifact::new_reserved(
                 TargetWire::C {
                     name: name.into(),
                     def_index: f.def_index,
@@ -1772,6 +1884,7 @@ fn cached_artifact(
                     text,
                 },
                 &cache.resources,
+                live,
             )?;
             page.produced(1);
             work.push(page);

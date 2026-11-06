@@ -32,6 +32,65 @@ pub(super) struct FunctionCache {
     _index_charge: Reservation,
 }
 
+/// PLAN-938 fragment-text admission on the request's shared account: the
+/// exact output size is reserved BEFORE the payload allocation, and the live
+/// memory ticket is handed to the produced text's eventual owner (the target
+/// artifact) instead of leaking with the provider.
+pub(super) struct TextProduction {
+    resources: Resources,
+    pending: Option<(OutputPermit, Reservation)>,
+    live: Option<Reservation>,
+}
+impl TextProduction {
+    pub(super) fn new(resources: Resources) -> Self {
+        Self {
+            resources,
+            pending: None,
+            live: None,
+        }
+    }
+    /// The live-memory ticket of the LAST produced text, taken out of the
+    /// policy once the provider hands the text back. Resize it into the
+    /// owning artifact's resident charge — no double fee, no orphan.
+    pub(super) fn take_live(&mut self) -> Option<Reservation> {
+        self.live.take()
+    }
+}
+impl ace_foreign_contract::manual::PageProduction for TextProduction {
+    fn reserve(&mut self, bytes: usize) -> Result<(), String> {
+        if self.pending.is_some() {
+            return Err("foreign text producer overlaps an unfinished output".into());
+        }
+        let output = self
+            .resources
+            .reserve_output(bytes)
+            .map_err(|e| e.to_string())?;
+        let memory = match self
+            .resources
+            .reserve(Charge::resident(bytes + std::mem::size_of::<String>()))
+        {
+            Ok(memory) => memory,
+            Err(e) => {
+                drop(output);
+                return Err(e.to_string());
+            }
+        };
+        self.pending = Some((output, memory));
+        Ok(())
+    }
+    fn complete(&mut self, bytes: usize) -> Result<(), String> {
+        let (output, memory) = self
+            .pending
+            .take()
+            .ok_or("foreign text output was not admitted")?;
+        output.complete(bytes).map_err(|e| e.to_string())?;
+        self.live = Some(memory);
+        Ok(())
+    }
+}
+/// A store-hit fragment is LOADED, never produced: no output account entry.
+/// Its live text is admitted by the owning artifact's resident charge.
+
 #[cfg(test)]
 mod resource_tests {
     use super::*;
@@ -57,7 +116,7 @@ mod resource_tests {
         .unwrap();
         cache.attach(&dir, &environment).unwrap();
         let semantic = "b".repeat(64);
-        let artifact = Artifact::new(
+        let artifact = Artifact::new_reserved(
             TargetWire::C {
                 name: "main".into(),
                 def_index: 0,
@@ -65,6 +124,7 @@ mod resource_tests {
                 text: "/* opaque cached target bytes */".repeat(128),
             },
             &resources,
+            None,
         )
         .unwrap();
         let (key, _key_memory) = cache
@@ -348,7 +408,14 @@ impl FunctionCache {
         environment: &AdmittedForeign,
         counts: &mut Meter,
         work: &mut Vec<Work>,
-    ) -> Result<String, String> {
+    ) -> Result<(String, Option<Reservation>), String> {
+        // A fresh policy per call: produced fragment texts reserve their
+        // exact output size and live memory BEFORE allocation; store hits
+        // produce nothing. The policy dies with this call — a live ticket
+        // never survives just because the provider is still installed.
+        let policy = Arc::new(std::sync::Mutex::new(TextProduction::new(
+            self.resources.clone(),
+        )));
         // Opening the original C fragment session is deferred until actual
         // function work, so R does not render/encode even an owner key.
         if self.c.is_none() {
@@ -358,7 +425,10 @@ impl FunctionCache {
                     "source938-function-fragments",
                     &self.owner()?,
                     128 << 20,
-                    ForeignTargetProvider::new(environment.clone()),
+                    ForeignTargetProvider::with_production(
+                        environment.clone(),
+                        policy.clone() as ace_a2x_c::foreign::SharedTextProduction,
+                    ),
                 )?);
             }
         }
@@ -367,16 +437,26 @@ impl FunctionCache {
                 .work
                 .begin(f.source_name, "c-fragment", Phase::Production);
             counts.c_attempts += 1;
-            let text = ForeignTargetProvider::new(environment.clone())
-                .produce_fragments(view, &[f], Family::Scalar)
-                .map_err(|e| format!("{e:?}"))?
-                .remove(0);
+            let text = ForeignTargetProvider::with_production(
+                environment.clone(),
+                policy.clone() as ace_a2x_c::foreign::SharedTextProduction,
+            )
+            .produce_fragments(view, &[f], Family::Scalar)
+            .map_err(|e| format!("{e:?}"))?
+            .remove(0);
             counts.c_produced += 1;
             print.produced(1);
             work.push(print);
-            return Ok(text);
+            let live = policy
+                .lock()
+                .expect("fragment production policy")
+                .take_live();
+            return Ok((text, live));
         };
-        session.set_target(ForeignTargetProvider::new(environment.clone()));
+        session.set_target(ForeignTargetProvider::with_production(
+            environment.clone(),
+            policy.clone() as ace_a2x_c::foreign::SharedTextProduction,
+        ));
         let before = session.stats().clone();
         let result = session
             .checked_scalar_fragment_observed(view, f, caps, runtime, false, &self.work, work);
@@ -387,6 +467,10 @@ impl FunctionCache {
         counts.cache_bytes_written += after.bytes_persisted - before.bytes_persisted;
         counts.cache_hits += after.store_hit_fragment - before.store_hit_fragment;
         let fragment = result.map_err(|e| format!("{e:?}"))?;
-        Ok(fragment.text)
+        let live = policy
+            .lock()
+            .expect("fragment production policy")
+            .take_live();
+        Ok((fragment.text, live))
     }
 }

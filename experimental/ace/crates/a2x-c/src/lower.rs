@@ -107,30 +107,63 @@ pub fn lower_functions_c<'a>(
 
 /// Render one fragment: origin comment + prototype + definition. The
 /// prototype line is the assembler's forward-declaration input.
+///
+/// PLAN-938: `write_fragment` is the ONE formatter; the legacy entry keeps
+/// its exact historical bytes, and the admitted entry reserves the exact
+/// output size with the host before allocating the payload.
 pub fn print_fragment(f: &CFn) -> String {
-    let params = if f.params.is_empty() {
-        "void".to_string()
-    } else {
-        f.params
-            .iter()
-            .map(|(t, n)| format!("{} {}", t, n))
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-    let ret = "a2x_result";
-    let mut out = format!(
+    let mut out = String::new();
+    write_fragment(f, &mut out).expect("formatting into a String cannot fail");
+    out
+}
+
+/// Same bytes as [`print_fragment`], with the exact size admitted by `admit`
+/// BEFORE the single exactly-sized allocation.
+pub fn print_fragment_admitted(
+    f: &CFn,
+    admit: impl FnOnce(usize) -> Result<(), String>,
+) -> Result<String, A2xReject> {
+    crate::admitted_text::render_admitted(|out| write_fragment(f, out), admit)
+        .map_err(|e| A2xReject::new("a2c.foreign-resource", e))
+}
+
+fn write_params(f: &CFn, out: &mut dyn std::fmt::Write) -> std::fmt::Result {
+    if f.params.is_empty() {
+        return out.write_str("void");
+    }
+    for (index, (ty, name)) in f.params.iter().enumerate() {
+        if index > 0 {
+            out.write_str(", ")?;
+        }
+        write!(out, "{ty} {name}")?;
+    }
+    Ok(())
+}
+
+/// The single formatter behind both entries (counting pass allocates
+/// nothing; the writer is bounded by the admitted size).
+pub fn write_fragment(f: &CFn, out: &mut dyn std::fmt::Write) -> std::fmt::Result {
+    write!(
+        out,
         "// origin: {}..{} (def `{}`, byte span in the compiled source)\n",
         f.origin.0, f.origin.1, f.name
-    );
-    out.push_str(&format!("{} {}({});\n", ret, f.name, params));
-    out.push_str(&format!("{} {}({}) {{\n", ret, f.name, params));
+    )?;
+    out.write_str("a2x_result ")?;
+    out.write_str(&f.name)?;
+    out.write_str("(")?;
+    write_params(f, out)?;
+    out.write_str(");\n")?;
+    out.write_str("a2x_result ")?;
+    out.write_str(&f.name)?;
+    out.write_str("(")?;
+    write_params(f, out)?;
+    out.write_str(") {\n")?;
     for line in &f.body {
-        out.push_str("    ");
-        out.push_str(line);
-        out.push('\n');
+        out.write_str("    ")?;
+        out.write_str(line)?;
+        out.write_str("\n")?;
     }
-    out.push_str("}\n");
-    out
+    out.write_str("}\n")
 }
 
 struct FnLowering<'v, 'a> {

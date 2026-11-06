@@ -4737,4 +4737,420 @@ mod source_foreign {
         drop(read);
         assert_eq!(resources.stats().current.io, 0);
     }
+
+    /// PLAN-938 Port 1: the C leg's runtime page is a newly materialized
+    /// product of the request — admitted BEFORE its allocation, paid exactly
+    /// once, and its live memory rides the immutable runtime Arc.
+    #[test]
+    fn c_runtime_output_is_admitted_before_its_allocation_and_paid_exactly_once() {
+        use ace_source_query::resources::{OutputLimits, Resources};
+        let (root, provider, environment, caps) = fixture("c-runtime-output");
+        let source = "fn main() int { return foreign_add(20,22) }";
+        let runtime_len = ace_a2x_c::runtime::runtime_source(&[]).len();
+        // A fully admitted cold session measures this source's own frontend
+        // output (facts + root pages) ahead of the C leg's runtime, fragment
+        // and target-wire products.
+        let base = Resources::default();
+        base.enable_output_budget(OutputLimits::default()).unwrap();
+        let session = Session::cold_with_resources(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            provider.clone(),
+            Target::C,
+            base.clone(),
+            None,
+        )
+        .unwrap();
+        let artifact = session.artifact_bytes("main").unwrap().clone();
+        let wire: serde_json::Value = serde_json::from_slice(&artifact).unwrap();
+        let fragment_len = wire["text"].as_str().unwrap().len();
+        let total = base.output_stats().unwrap().produced as usize;
+        let frontend = total - runtime_len - fragment_len - artifact.len();
+        drop(session);
+        // One byte short of the runtime: everything before it (the
+        // frontend's own pages) is produced, the runtime admission refuses
+        // BEFORE its allocation (layout pressure stays unarmed).
+        let denied = Resources::default();
+        denied
+            .enable_output_budget(OutputLimits {
+                request: (frontend + runtime_len - 1) as u64,
+                ..Default::default()
+            })
+            .unwrap();
+        let (result, allocated) = with_layout_pressure(runtime_len, 64, &denied, || {
+            Session::cold_with_resources(
+                source,
+                "source938",
+                "p938",
+                &caps,
+                environment.clone(),
+                provider.clone(),
+                Target::C,
+                denied.clone(),
+                None,
+            )
+        });
+        let error = result.err().expect("runtime output admission missing");
+        assert!(error.contains("foreign.resource"), "{error}");
+        assert!(
+            !allocated,
+            "the runtime text was allocated before its admission"
+        );
+        assert_eq!(
+            denied.output_stats().unwrap().produced as usize,
+            frontend,
+            "bytes before the runtime page were not exactly the frontend's own"
+        );
+        assert_eq!(denied.output_stats().unwrap().pending, 0);
+        assert!(denied.output_stats().unwrap().refused);
+        // Exactly through the runtime: the page is paid exactly once and the
+        // first fragment text refuses on the same account.
+        let partial = Resources::default();
+        partial
+            .enable_output_budget(OutputLimits {
+                request: (frontend + runtime_len) as u64,
+                ..Default::default()
+            })
+            .unwrap();
+        let error = Session::cold_with_resources(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            provider.clone(),
+            Target::C,
+            partial.clone(),
+            None,
+        )
+        .err()
+        .expect("fragment production skipped the shared account");
+        assert!(error.contains("foreign.resource"), "{error}");
+        assert_eq!(
+            partial.output_stats().unwrap().produced as usize,
+            frontend + runtime_len,
+            "the runtime page was not paid exactly once"
+        );
+        assert_eq!(partial.output_stats().unwrap().pending, 0);
+        drop(root);
+    }
+
+    /// The native leg's authored runtime blob is the request's initial owned
+    /// page: same admission, even though its bytes are constant.
+    #[test]
+    fn native_runtime_copy_is_admitted_as_the_requests_first_owned_page() {
+        use ace_source_query::resources::{OutputLimits, Resources};
+        let (_root, provider, environment, caps) = fixture("native-runtime-output");
+        let source = "fn main() int { return foreign_add(20,22) }";
+        let len = ace_a2x_c::foreign::FAILURE_RUNTIME.len();
+        let base = Resources::default();
+        base.enable_output_budget(OutputLimits::default()).unwrap();
+        let session = Session::cold_with_resources(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            provider.clone(),
+            Target::Native,
+            base.clone(),
+            None,
+        )
+        .unwrap();
+        let total = base.output_stats().unwrap().produced as usize;
+        drop(session);
+        assert!(total > len);
+        // The full budget admits the whole leg exactly.
+        let exact = Resources::default();
+        exact
+            .enable_output_budget(OutputLimits {
+                request: total as u64,
+                ..Default::default()
+            })
+            .unwrap();
+        Session::cold_with_resources(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            provider.clone(),
+            Target::Native,
+            exact.clone(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(exact.output_stats().unwrap().produced as usize, total);
+        assert_eq!(exact.output_stats().unwrap().pending, 0);
+        // The authored runtime's bytes are load-bearing on the account: one
+        // byte below the total refuses, and so does the total minus exactly
+        // the runtime length (an unaccounted runtime copy would succeed).
+        for budget in [total - 1, total - len] {
+            let denied = Resources::default();
+            denied
+                .enable_output_budget(OutputLimits {
+                    request: budget as u64,
+                    ..Default::default()
+                })
+                .unwrap();
+            let error = Session::cold_with_resources(
+                source,
+                "source938",
+                "p938",
+                &caps,
+                environment.clone(),
+                provider.clone(),
+                Target::Native,
+                denied.clone(),
+                None,
+            )
+            .err()
+            .expect("the native runtime copy skipped the request account");
+            assert!(error.contains("foreign.resource"), "{error}");
+            assert!(denied.output_stats().unwrap().refused);
+            assert_eq!(denied.output_stats().unwrap().pending, 0);
+        }
+    }
+
+    /// PLAN-938 Port 2 through the real stored fragment path: the fragment
+    /// text is admitted before allocation on the store-miss path, a store
+    /// hit is never charged as fresh production, and the cold C leg's full
+    /// account is exactly frontend + runtime + fragment + target wire.
+    #[test]
+    fn c_fragment_outputs_share_the_request_account_and_store_hits_produce_nothing() {
+        use ace_source_query::resources::{OutputLimits, Resources};
+        let (root, provider, environment, caps) = fixture("c-fragment-output");
+        let source = "fn main() int { return foreign_add(20,22) }";
+        let runtime_len = ace_a2x_c::runtime::runtime_source(&[]).len();
+        let store = ManagedStore::open(&root.join("store")).unwrap();
+        let first = Resources::default();
+        first.enable_output_budget(OutputLimits::default()).unwrap();
+        let session = Session::cold_with_resources(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            provider.clone(),
+            Target::C,
+            first.clone(),
+            Some(&store),
+        )
+        .unwrap();
+        let artifact = session.artifact_bytes("main").unwrap().clone();
+        let wire: serde_json::Value = serde_json::from_slice(&artifact).unwrap();
+        let fragment_len = wire["text"].as_str().unwrap().len();
+        let total = first.output_stats().unwrap().produced as usize;
+        let frontend = total - runtime_len - fragment_len - artifact.len();
+        drop(session);
+        // One byte short of the fragment, on a FRESH store (the first run's
+        // store holds fragment/wire hits): the policy refuses INSIDE
+        // produce, before the fragment text allocation.
+        let denied_store = ManagedStore::open(&root.join("store-denied")).unwrap();
+        let denied = Resources::default();
+        denied
+            .enable_output_budget(OutputLimits {
+                request: (frontend + runtime_len + fragment_len - 1) as u64,
+                ..Default::default()
+            })
+            .unwrap();
+        let (result, allocated) = with_layout_pressure(fragment_len, 64, &denied, || {
+            Session::cold_with_resources(
+                source,
+                "source938",
+                "p938",
+                &caps,
+                environment.clone(),
+                provider.clone(),
+                Target::C,
+                denied.clone(),
+                Some(&denied_store),
+            )
+        });
+        let error = result.err().expect("fragment output admission missing");
+        assert!(error.contains("foreign.resource"), "{error}");
+        assert!(
+            !allocated,
+            "the fragment text was allocated before its admission"
+        );
+        assert_eq!(
+            denied.output_stats().unwrap().produced as usize,
+            frontend + runtime_len,
+            "the runtime page lost its exact account position"
+        );
+        assert_eq!(denied.output_stats().unwrap().pending, 0);
+        // A second session over the same store: fragment AND target wire are
+        // hits; only the fresh frontend pages and runtime page are products.
+        let second = Resources::default();
+        second
+            .enable_output_budget(OutputLimits::default())
+            .unwrap();
+        let session = Session::cold_with_resources(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            provider.clone(),
+            Target::C,
+            second.clone(),
+            Some(&store),
+        )
+        .unwrap();
+        assert_eq!(
+            second.output_stats().unwrap().produced as usize,
+            frontend + runtime_len,
+            "store hits were charged as fresh production"
+        );
+        assert_eq!(
+            session.artifact_bytes("main").unwrap().as_slice(),
+            artifact.as_slice()
+        );
+    }
+
+    /// PLAN-938 Port 3: the fileset assembler charges exactly its true new
+    /// products (generated.c, foreign_imports.h, manifest) on the output
+    /// account; the byte-identical runtime/status copies stay memory-only,
+    /// and every produced byte keeps its historical legacy shape.
+    #[test]
+    fn fileset_assembly_charges_true_products_only_and_keeps_legacy_bytes() {
+        use ace_a2x_c::foreign::{ForeignTargetProvider, FAILURE_RUNTIME};
+        use ace_a2x_core::target::{Family, FilesetRequest, FragmentText, TargetProvider};
+        use ace_foreign_contract::manual::PageProduction;
+        use ace_source_query::resources::Resources;
+        let (_root, provider, environment, caps) = fixture("fileset-output");
+        // A real cold C session supplies a real fragment text/semantic.
+        let session = Session::cold(
+            "fn main() int { return foreign_add(20,22) }",
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            provider.clone(),
+            Target::C,
+        )
+        .unwrap();
+        let artifact = session.artifact_bytes("main").unwrap().clone();
+        let wire: serde_json::Value = serde_json::from_slice(&artifact).unwrap();
+        let text = wire["text"].as_str().unwrap().to_string();
+        let semantic = wire["semantic"].as_str().unwrap().to_string();
+        drop(session);
+        let runtime_text = ace_a2x_c::runtime::runtime_source(&[]);
+        let fragments = vec![FragmentText {
+            def_index: 0,
+            source_name: "main",
+            sem_fp: &semantic,
+            text: &text,
+        }];
+        let request = || FilesetRequest {
+            entry: "main",
+            input_hash: "deadbeef",
+            family: Family::Scalar,
+            fragments: &fragments,
+            view: None,
+            runtime: &runtime_text,
+            prelude_seed: None,
+            origins: None,
+            source_sha256: None,
+        };
+        struct Recorder {
+            reserved: Vec<usize>,
+            completed: Vec<usize>,
+            refuse_at: Option<usize>,
+        }
+        impl PageProduction for Recorder {
+            fn reserve(&mut self, bytes: usize) -> Result<(), String> {
+                if self.refuse_at == Some(self.reserved.len()) {
+                    return Err("refused".into());
+                }
+                self.reserved.push(bytes);
+                Ok(())
+            }
+            fn complete(&mut self, bytes: usize) -> Result<(), String> {
+                self.completed.push(bytes);
+                Ok(())
+            }
+        }
+        let legacy = ForeignTargetProvider::new(environment.clone())
+            .assemble_fileset(request())
+            .unwrap();
+        let mut recorder = Recorder {
+            reserved: vec![],
+            completed: vec![],
+            refuse_at: None,
+        };
+        let mut memory: Vec<usize> = Vec::new();
+        let admitted = ForeignTargetProvider::new(environment.clone())
+            .assemble_fileset_admitted(request(), &mut recorder, &mut |total| {
+                memory.push(total);
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(admitted.files, legacy.files);
+        assert_eq!(admitted.manifest, legacy.manifest);
+        // The manifest also keeps the ORIGINAL json! object's bytes (sorted
+        // keys), pinned here against the historical expression verbatim.
+        let functions: Vec<serde_json::Value> = vec![serde_json::json!({
+            "name": fragments[0].source_name,
+            "semantic": fragments[0].sem_fp,
+        })];
+        let expected_manifest = serde_json::json!({
+            "schema": ace_a2x_c::foreign::SCHEMA,
+            "recipe": ace_a2x_c::foreign::RECIPE,
+            "direction": "source-import",
+            "input_profile": ace_core::source::SCALAR_SOURCE_PROFILE,
+            "input_hash": "deadbeef",
+            "contract": environment.contract_digest(),
+            "target": environment.manifest().target,
+            "functions": functions,
+            "files": admitted
+                .files
+                .iter()
+                .map(|(path, text): &(String, String)| serde_json::json!({
+                    "path": path,
+                    "sha256": ace_a2x_core::sha256::sha256_hex(text.as_bytes()),
+                }))
+                .collect::<Vec<_>>(),
+        })
+        .to_string();
+        assert_eq!(admitted.manifest, expected_manifest);
+        // Exactly the three true products, in production order; the runtime
+        // header copy and the fixed status runtime are NOT output charges.
+        let generated = &admitted.files[0].1;
+        let imports = &admitted.files[2].1;
+        assert_eq!(
+            recorder.reserved,
+            vec![generated.len(), imports.len(), admitted.manifest.len()],
+            "output charges must be exactly the true new products"
+        );
+        assert_eq!(recorder.completed, recorder.reserved);
+        assert_eq!(memory.len(), 2);
+        assert!(
+            memory[0]
+                >= generated.len() + imports.len() + runtime_text.len() + FAILURE_RUNTIME.len(),
+            "the live texts were not admitted before they existed"
+        );
+        assert!(memory[1] >= admitted.manifest.len());
+        // Refusing the manifest's admission stops before its allocation.
+        let manifest_len = admitted.manifest.len();
+        let mut refusing = Recorder {
+            reserved: vec![],
+            completed: vec![],
+            refuse_at: Some(2),
+        };
+        let (denied, allocated) =
+            with_layout_pressure(manifest_len, 64, &Resources::default(), || {
+                ForeignTargetProvider::new(environment.clone()).assemble_fileset_admitted(
+                    request(),
+                    &mut refusing,
+                    &mut |_| Ok(()),
+                )
+            });
+        assert!(denied.is_err());
+        assert!(!allocated, "manifest bytes were allocated before admission");
+        assert_eq!(refusing.reserved.len(), 2);
+    }
 }

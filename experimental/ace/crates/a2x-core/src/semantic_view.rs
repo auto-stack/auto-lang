@@ -497,6 +497,13 @@ impl<'a> SemanticView<'a> {
         self.trace_defs.iter().map(|(_, s)| *s).collect()
     }
 
+    /// Upper bound of the entries `trace_symbols()` collects (set nodes and a
+    /// caller's `Vec`), so a host can admit that working metadata BEFORE it
+    /// exists (PLAN-938). Not a count of distinct symbols.
+    pub fn trace_symbol_upper_bound(&self) -> usize {
+        self.trace_defs.len()
+    }
+
     /// Select the entry function by explicit source name: it must exist, be
     /// a zero-parameter free function with an i32 result (plan §5.1).
     pub fn entry(&self, name: &str) -> Result<&FnFacts<'a>, A2xReject> {

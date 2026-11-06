@@ -26,6 +26,7 @@ dependencies = [
  "ace-a2x-core",
  "ace-core",
  "ace-foreign-contract",
+ "serde",
  "serde_json",
 ]
 
