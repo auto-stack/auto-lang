@@ -1227,6 +1227,34 @@ stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:45 | from:work | to:work | status:executing4/19 | outcome:needs_fix（新20原required已入账，原完整目标继续） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:387be853edbe54d7c870c519135559aad70fcd6e | next:work 原required/legacy/ARCH完整实证，F06获批后new
 
+### 2026-11-06 原BASE非值完成与旧VM值产物严格入账（goal第46轮）
+
+第45轮原BASE97执行/20值入账为progress。本轮继续原T03/04/10/11，重核唯一树387be853e clean、AV/native/parent二进制和全部原source/Case未变，**复用同一已核真实BASE97 CaseCopy，不为读取器扩大而重复执行语言/全405组**。冻结 **bef5ddc180f251e7e623c79a7295777c5f53da93**，8文件302新增/169删除（含map35边界变更）；只改Python域读取器/测试与私有registry/map，生产Rust/SDK/Case/proto均未改。
+
+现BASE严格读60个相关source checks：旧20 probe值；4 trap×AV/native；4 diagnostic×AV/native；24旧VM值。实际**55 PASS、5 UNOBSERVED**，单独保守读峰26984562B。新增可授权入账35格=**4 AV具名trap+4 AV诊断+3 native source-v1诊断+24 legacy-AVM原值**；5 native只保待观测事实（B13/B14/B15/B20通用70、B16默认拒绝缺typed source facts），不进入仅PASS/FAIL的semantic execution_summary。由legacy.base_pending_observations保留实际请求/响应hash、观测与原因，不能从旧父PASS/渲染消息构造具名语言结果。
+
+旧trap taxonomy直接原binding overflow/div-by-zero/rem-overflow→既有AV trap代码，不扩原规则；旧B16..19 resolve/type/assign-immutable/missing-return分别钉shared source.undefined/source.type-mismatch/verify.immutable-write/verify.no-return-path。复用scalar_q4_observation/native_source_diagnostic，新增**有限且互斥bool legacy_base分支**，默认/既有SQ/data分支原样。Native原911 profile=scalar/attempted=[scalar]/冷operation/primary整数0/原64KiB与64 causes/4096B message/旧投影/sourceSHA/UTF8边界全核，B17 bool operand、B18 assignment place、B19 body.name_span由现typecheck/verify/adapter责任及独立源锚定23..27/38..43/3..7；永久测试亦手算这些位置并禁止expected_span=None蒙混通过。B16仅文本的同义/异义渲染均不授权，父FAIL仍保FAIL；通用70不冒具名trap，正常值70不被全局误判。
+
+旧VM值证据来自原SDK avm.rs在oracle比较**之前**保存的真实result.txt/stdout.txt，CaseCopy逐产物闭包/hash/byte-count及exact case/check/source/adapter=avm/action=run/RUN与父状态均核。仅绑定原24个普通value corpus格，实际canonical整数返回文本各对原binding，不用Case PASS或Case expected当actual；原记录明确**kind=numeric-result-text、type_or_bits_authority=false、stdout_oracle=false**，stdout原hash保留但不凭未声明的stdout猜语义。没有拿这些文本证明W位模式、VM具名trap、生命周期/资源或场景。源码源谱与new AV/native/HIR域互斥，旧A2R/其他target不能冒名。
+
+新5 methods覆盖AV错trap/code、native typed wrong span/operation/profile/primary、generic70/渲染消息不升PASS、旧VM规范数值文本/非规范与超界拒绝、域开关非bool/双开拒绝；连原相关类15 methods通过。首合成AV负例fixture漏requests=1而被原精确counter guard拒，只补fixture到真实原shape，生产reader未放宽。正式**179/179 PASS**，cargo t infra-ace-m1-arch --out <scope>/legacy-base-domains/frozen-controls，5.210840s、exit0，results SHA=38215b4b91ab978195f48a817a0998852633c93f61a99a25cf0a7b23592fb759。初179门通过后又补“独立span oracle丢失None须拒”控制/guard，故在最终输入重跑该相关组；不是无因重复全仓门。
+
+原帧/产物**380 counterfactual_not_execution控制**全满足：AV trap/diagnostic错族、native typed错code/stage/span FAIL；nonce/source/cap/空steps/改Case oracle/echo/primary bool/foreign profile/operation REFUSED；native generic保持U；VM共同错数值/父FAIL为FAIL，错owner/hash/缺或增产物/错source/非规范文本拒。post-integrity VM错值明确是已验证产物之后的替代值控制，不充物理被改文件的真执行。scope/legacy-base-domains/raw-reader-controls.json SHA=64b9c496aa23dd9a7e0e1b68e96fc73667c17b0524f491dbb3430c0ae4222120。初counter harness重复创建EvidenceScope/在被拒后跨独立反事实累计预留而正确触48MiB guard；改harness为有界原帧预读、复用Scope及各反事实自身预算域，实际生产全组合始终是同一LiveBudget，未改/放宽资源规则，错误harness结果未计绿。
+
+BASE输出保守摘要实际34033B、既有统一公式bound**940951B**，原512KiB摘要ceiling不足以承载新增55条/5 pending；本域与其合并摘要在reader**之前**各固定预留1MiB，真实读后仅留实际保守bound。原全局48MiB/单件4MiB/privateΔ128MiB不变，旧BASE仍先读完大CaseCopy并释放瞬态；不另开生产预算域、不截事实/清peak。9种旧原场景/全部原样本门未缩。
+
+map仅新增35格reader_status/gap边界，execution仍discovery U；old313 required hash/原30修订/512churn/10样本P90/历史P95/38 A2R cert-gap/62 unbound/251 linked/304 entries不变。新map SHA=00d3af740318d4478e6f634ec68c2c3c28c5e4ee6380cd4b770a363a3bef3e7d，registry只刷新其指针，仍24合同/1006登记；map-change-audit SHA=830af22d62901c3f896c5468e1b3a1b8ac54d2c1e0101ee4ba053bb9ed0bf54f。实际required观察**34→69，全69 PASS，未观测279→244**。场景/VM错误/A2R旧缺证书不因BASE父97 PASS消失。
+
+冻结bef5ddc18受管只读/Popen禁用全组合 exit0：**670PASS/12FAIL/324UNOBSERVED**；仅上述35 legacy格U→PASS，其他**971格verdict不变**，prior-verdict-preservation SHA=105b39380295b433d561f0fa004b0d2e453d1e0c5ab8c708dc74a3ef36a2b62d。8提交文件Git过滤后blob等HEAD，audit SHA=18293167dc749b57d1865e0d5dff183bdf1acb2114771382953c2d8a5fdad275。原required_universe_closed/acceptance_system_delivered/can_claim_expanded_m1仍false。scope/legacy-domains-composed-preview/preview.stdout **593452B SHA=a80bfa955bdb84baac739cdf911f4a1bd4f050943a8b760e82f6421550595ffe**，12662.6587ms、peak process30658560/Job31895552B；同一LiveBudget reserved28273728/全程peak**47819143<50331648B**。
+
+新增具名**GAP-941-LEGACY-VM-COMPLETION-01**（evidence owner=941 T11）：BASE的旧VM B14/B16/B20/K04/T07负例已真实运行，但error.txt仅message且原失败分支没有结构化产物；row父PASS不是stage/code权威。已核SDK avm.rs::classify_staged返回实际Language Failure.stage/code并在parent oracle前可取，当前只是未持久化。下一步属于原T11“必要父adapter/SDK”有界证据适配：只把已有实际失败事实（非expected）作为结构化产物导出并保持原分类/行为，再测SDK/原Case消费者并刷新受parent身份影响证据；不改VM语言能力/错误类别、不解析message出code。未在本轮实施，旧VM五负格继续U。该SDK证据缺口与需另授权的AV data producer F06不同。
+
+当前树bef5ddc18 clean，current_step仍4/19、T01..13完整任务未闭；无活本包采集/新增环境阻塞。继续原required完整适配/机制/ARCH，F06等待用户归属答复但不阻独立work，未擅修AV producer；最终独立review/merge仍待。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:bef5ddc180f251e7e623c79a7295777c5f53da93 | task_ids:T03/04/10/11推进（未闭） | evidence:复用BASE97、55严格pass+5显式U；新增35原required/380反控/179治理；670P12F324U、48MiB内 | blockers:原完整证据/具名red未闭；SDK旧VM失败缺产物归T11，F06待用户 | next_responsible_role:work T11旧VM结构化实际失败证据/必要SDK消费者与当前身份刷新；其余原required/ARCH，F06获批后new
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:46 | from:work | to:work | status:executing4/19 | outcome:needs_fix（原required69/313入账，完整目标继续） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:bef5ddc180f251e7e623c79a7295777c5f53da93 | next:work 原T11证据适配/required/ARCH；F06获批后new
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
