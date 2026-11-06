@@ -1432,6 +1432,18 @@ stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress（verifi
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:55 | from:work | to:work | status:executing6/21 | outcome:in_progress（verified_wait及读取规则反控准备） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:5b3501b2aeae0b8ba7845f7afd8fca3726220166 | next:work 先poll同session84298/capture1912/driver35420，当前原32MiB512修订压力子35764
 
+### 第56轮：同CT门继续转场；完整原始native准入草稿备妥（2026-11-06）
+
+- 第55轮为verified_wait并有28条纯规则反控准备。本轮复核main r4 executing6/21/第55轮末记录、main代码无WIP、同树5b3501b2a clean与worktree归属正确，继续**同session84298**，capture1912/fixed driver35420实际仍live。没有重启/新编译/并行测试，没有改动冻结代码/config/输入。
+- 原32MiB/512修订压力子35764已缺失，随后20:40:22新PID3580进入原`cte_turnaround_tests::performance::cte_turnaround_injected_spike_control_is_red`，其实际worker子20980也被观察到；之后这两个PID均结束，20:45末实际新子**24544**进入`cte_turnaround_tests::performance::cte_turnaround_resident_degrade_gate_and_control`。每次均用实际进程/commandline加同handle轮询核实，不把转场解释为前项PASS，也不把暂无输出解释为结束。原完整135用例/0ignored仍在执行；新CT observer的raw导出尚未生成，结果未计绿。
+- 在唯一scope内继续准备**draft-ct-native-admission.py**（**8063B / SHA 420fd705d400e529427793a282d4eaf64c385e53f4a81d4b8b38dbe0c9c1f76d**），仅草稿/py_compile通过，未写入实施树、未对真实本次结果宣称准入。规则列明：独立557 producer输入当前SHA；真实before/after子集相等而不冒完整before；冻结clean source_state窗口；当前测试binary与真实prepare/list及after关联；实际唯一测试选择/非ignore；复用现父侧纯selection/terminal parser前先严格UTF-8/重复键JSON核验；完整原group命令/argv/cwd、原始run.stdout逐项终态/执行数与command/meter，而不是group PASS或executed摘要；16KiB CT payload在解码前核帽。旧组其他失败与本测试事实分开保留，不删除失败或变造全组绿。
+- 同scope生成**ct-source-mechanisms-contract-draft.json**（**77739B / SHA e360662ae12ed50d7955bfb8ec5e06418f53cfc79890005842f7663e9a056506**），含两个现有ARCH原子义务ID、实际producer测试/557输入pins/原sum42与sum43字节身份、固定独立42/42/43及冷/hit/编辑计数规则、禁止AV码与明确scope。合同自身仍execution UNOBSERVED，不登记新义务/不认managed恢复、meta/实例、resource或四端HIR。待原门terminal、binary-after与actual payload/原始反控齐备后，才考虑正式落树并联读；本轮不对仍运行测试改代码。
+- 当前唯一有效组合保持**707P8F291U /原102P211U313/ARCH49U**，全部claim false，任务6/21与原8red/38cert-gap/D938/939及T13健康缺口保持。下一轮先续session84298至真实terminal（capture1912/driver35420，当前驻留退化控制子24544），再核本次source/binary/13工具after与原始终态；不能因长运行重采同门或提前填写PASS。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress（verified_wait同CT正式门；native准入与合同草稿准备） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:5b3501b2aeae0b8ba7845f7afd8fca3726220166 | task_ids:T08/T06原机制观察 | evidence:session84298/1912/35420/24544实核live；完整native准入和77739B合同草稿 | blockers:原门未terminal、raw/after/正式reader未齐；无新增用户决定 | next_responsible_role:work 同session84298，不并行build/不改冻结源
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:56 | from:work | to:work | status:executing6/21 | outcome:in_progress（verified_wait及原始native准入准备） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:5b3501b2aeae0b8ba7845f7afd8fca3726220166 | next:work 同session84298/capture1912/driver35420，当前驻留退化控制子24544
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
