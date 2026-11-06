@@ -631,13 +631,26 @@ fn prepare_provider(
             ),
         )
         .map_err(|e| err("store", e))?;
-        let result =
-            crate::cache::produce_c_object(store, &src, &inputs, &[object.clone()], || {
+        let result = crate::cache::produce_c_object_with_resources(
+            store,
+            &src,
+            &inputs,
+            &[object.clone()],
+            resources,
+            || {
                 let deps = crate::ctool::compile_c_with_deps(&src, inputs, &object)
                     .map_err(|e| e.to_string())?;
                 Ok((std::fs::read(&object).map_err(|e| e.to_string())?, deps))
-            })
-            .map_err(|e| err("infra", e))?;
+            },
+        )
+        .map_err(|e| {
+            let code = if matches!(&e, ace_artifacts::store::StoreError::ResourceExhausted(_)) {
+                "foreign.resource"
+            } else {
+                "infra"
+            };
+            err(code, e)
+        })?;
         let bytes = resources
             .own_payload(result.0)
             .map_err(|e| err("foreign.resource", e))?;

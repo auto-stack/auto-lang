@@ -245,6 +245,111 @@ mod source_foreign {
     }
 
     #[test]
+    fn c_cache_discovery_ids_refuse_before_copy_and_repair_without_calling_the_producer() {
+        use ace_artifacts::store::{ManagedStore, StoreError};
+        use ace_source_query::resources::Resources;
+        let (root, bytes, _environment, _caps) = fixture("c-cache-discovery-index");
+        let source = root.join("provider.c");
+        let header = root.join("source_foreign938.h");
+        let artifacts = [root.join("provider.obj")];
+        // The cache is a sibling of the include search domain: its own writes
+        // must not change that domain's negative dependency listing.
+        let store = ManagedStore::open(&root.with_extension("cache-store")).unwrap();
+        let (seed, hit) =
+            ace_abi::cache::produce_c_object(&store, &source, &root, &artifacts, || {
+                Ok((bytes.as_ref().clone(), vec![header]))
+            })
+            .unwrap();
+        assert!(!hit);
+        assert_eq!(seed, *bytes);
+        let resources = Resources::default();
+        let baseline = resources.stats().current;
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - baseline.index - 64))
+            .unwrap();
+        let error = ace_abi::cache::produce_c_object_with_resources(
+            &store,
+            &source,
+            &root,
+            &artifacts,
+            &resources,
+            || panic!("discovery refusal invoked the producer"),
+        )
+        .err()
+        .expect("C cache copied discovery IDs without shared index admission");
+        assert!(
+            matches!(error, StoreError::ResourceExhausted(ref message) if message.starts_with("C cache discovery index:")),
+            "{error}"
+        );
+        assert_eq!(resources.stats().current.index, (8 << 20) - 64);
+        // A corrupt metadata row must not turn the borrowed SQLite value
+        // into a giant Rust String before discovering that only 64B remain.
+        let good_id: String = store
+            .db()
+            .query_row(
+                "SELECT artifact_id FROM artifacts WHERE layer=?1",
+                [ace_abi::cache::LAYER_OBJECT_V01.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let oversized_id = "z".repeat(2 << 20);
+        assert_eq!(
+            store
+                .db()
+                .execute(
+                    "UPDATE artifacts SET artifact_id=?1 WHERE artifact_id=?2",
+                    [&oversized_id, &good_id]
+                )
+                .unwrap(),
+            1
+        );
+        let (rejected, heap_peak) = measured_peak(|| {
+            ace_abi::cache::produce_c_object_with_resources(
+                &store,
+                &source,
+                &root,
+                &artifacts,
+                &resources,
+                || panic!("oversized discovery metadata invoked the producer"),
+            )
+        });
+        assert_eq!(
+            store
+                .db()
+                .execute(
+                    "UPDATE artifacts SET artifact_id=?1 WHERE artifact_id=?2",
+                    [&good_id, &oversized_id]
+                )
+                .unwrap(),
+            1
+        );
+        assert!(
+            matches!(rejected, Err(StoreError::ResourceExhausted(ref message)) if message.starts_with("C cache discovery index:"))
+        );
+        assert!(
+            heap_peak < 64 << 10,
+            "discovery copied the 2MiB row before shared admission: {heap_peak}"
+        );
+        drop(pressure);
+        let (repaired, hit) = ace_abi::cache::produce_c_object_with_resources(
+            &store,
+            &source,
+            &root,
+            &artifacts,
+            &resources,
+            || panic!("repair lost the original cached provider object"),
+        )
+        .unwrap();
+        assert!(hit);
+        assert_eq!(repaired, *bytes);
+        assert_eq!(
+            resources.stats().current,
+            baseline,
+            "discovery index outlived its rows"
+        );
+    }
+
+    #[test]
     fn owned_payload_handoff_moves_bytes_and_keeps_aliases_charged_once() {
         use ace_source_query::resources::{Limits, Resources};
         let resources = Resources::default();

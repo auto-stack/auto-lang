@@ -373,6 +373,44 @@ pub fn produce_c_object<F>(
 where
     F: FnOnce() -> Result<(Vec<u8>, Vec<std::path::PathBuf>), String>,
 {
+    produce_c_object_impl(store, src, include_dir, artifact_paths, None, produce)
+}
+
+/// The source composition shares its discovery-ID index with the original
+/// resource account. Entry decoding and producer output are separate ports;
+/// this remains the same cache and applicability algorithm.
+pub fn produce_c_object_with_resources<F>(
+    store: &ManagedStore,
+    src: &std::path::Path,
+    include_dir: &std::path::Path,
+    artifact_paths: &[std::path::PathBuf],
+    resources: &ace_source_query::resources::Resources,
+    produce: F,
+) -> Result<(Vec<u8>, bool), StoreError>
+where
+    F: FnOnce() -> Result<(Vec<u8>, Vec<std::path::PathBuf>), String>,
+{
+    produce_c_object_impl(
+        store,
+        src,
+        include_dir,
+        artifact_paths,
+        Some(resources),
+        produce,
+    )
+}
+
+fn produce_c_object_impl<F>(
+    store: &ManagedStore,
+    src: &std::path::Path,
+    include_dir: &std::path::Path,
+    artifact_paths: &[std::path::PathBuf],
+    resources: Option<&ace_source_query::resources::Resources>,
+    produce: F,
+) -> Result<(Vec<u8>, bool), StoreError>
+where
+    F: FnOnce() -> Result<(Vec<u8>, Vec<std::path::PathBuf>), String>,
+{
     use base64::Engine as _;
     let source_identity =
         c_source_identity(src).map_err(|e| StoreError::Internal(format!("{e}")))?;
@@ -432,6 +470,13 @@ where
     // payload is even loaded; the envelope re-check is authoritative.
     let discover = || -> Result<Option<Vec<u8>>, StoreError> {
         let ids = {
+            use ace_source_query::resources::Charge;
+            let mut allocation = resources
+                .map(|r| r.reserve(Charge::index(0)))
+                .transpose()
+                .map_err(|e| {
+                    StoreError::ResourceExhausted(format!("C cache discovery index: {e}"))
+                })?;
             let db = store.db();
             let needle = format!(
                 "%source={},target={},toolchain={}%",
@@ -444,18 +489,73 @@ where
             let mut stmt = db
                 .prepare(sql)
                 .map_err(|e| StoreError::Internal(format!("closure lookup: {e}")))?;
-            let rows = stmt
-                .query_map([LAYER_OBJECT_V01.id, needle.as_str()], |row| {
-                    row.get::<_, String>(0)
-                })
+            let mut rows = stmt
+                .query([LAYER_OBJECT_V01.id, needle.as_str()])
                 .map_err(|e| StoreError::Internal(format!("closure lookup: {e}")))?;
             let mut ids = Vec::new();
-            for r in rows {
-                ids.push(r.map_err(|e| StoreError::Internal(format!("closure lookup: {e}")))?);
+            let mut text_bytes = 0usize;
+            while let Some(row) = rows
+                .next()
+                .map_err(|e| StoreError::Internal(format!("closure lookup: {e}")))?
+            {
+                // Borrow SQLite's current row until its String allocation and
+                // vector growth have been admitted. No row.get::<String>()
+                // allocates the candidate before this check.
+                let id = row
+                    .get_ref(0)
+                    .map_err(|e| StoreError::Internal(format!("closure lookup: {e}")))?
+                    .as_str()
+                    .map_err(|e| StoreError::Internal(format!("closure lookup: {e}")))?;
+                let old = ids.capacity();
+                let capacity = if ids.len() == old {
+                    old.checked_mul(2).map(|n| n.max(4))
+                } else {
+                    Some(old)
+                }
+                .ok_or_else(|| {
+                    StoreError::ResourceExhausted("C cache discovery index overflow".into())
+                })?;
+                text_bytes = text_bytes.checked_add(id.len()).ok_or_else(|| {
+                    StoreError::ResourceExhausted("C cache discovery index overflow".into())
+                })?;
+                let steady = capacity
+                    .checked_mul(std::mem::size_of::<String>())
+                    .and_then(|n| n.checked_add(text_bytes))
+                    .ok_or_else(|| {
+                        StoreError::ResourceExhausted("C cache discovery index overflow".into())
+                    })?;
+                let peak = steady
+                    .checked_add(if capacity != old {
+                        old * std::mem::size_of::<String>()
+                    } else {
+                        0
+                    })
+                    .ok_or_else(|| {
+                        StoreError::ResourceExhausted("C cache discovery index overflow".into())
+                    })?;
+                if let Some(allocation) = &mut allocation {
+                    allocation.resize(Charge::index(peak)).map_err(|e| {
+                        StoreError::ResourceExhausted(format!("C cache discovery index: {e}"))
+                    })?;
+                }
+                if capacity != old {
+                    ids.try_reserve_exact(capacity - ids.len()).map_err(|e| {
+                        StoreError::ResourceExhausted(format!(
+                            "C cache discovery index allocation: {e}"
+                        ))
+                    })?;
+                }
+                ids.push(id.to_owned());
+                if let Some(allocation) = &mut allocation {
+                    allocation.resize(Charge::index(steady)).map_err(|e| {
+                        StoreError::ResourceExhausted(format!("C cache discovery index: {e}"))
+                    })?;
+                }
             }
-            ids
+            // Tuple field order drops the owned IDs before their reservation.
+            (ids, allocation)
         };
-        for id in ids {
+        for id in &ids.0 {
             if let Some(LoadedArtifact { payload, .. }) = store.get_artifact_by_id(&id)? {
                 let verified = serde_json::from_slice::<CObjectEntry>(&payload)
                     .ok()

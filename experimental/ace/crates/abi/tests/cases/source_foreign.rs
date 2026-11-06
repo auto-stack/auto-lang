@@ -2859,6 +2859,92 @@ fn assert_tool_scratch_clean(store: &Path, expected: bool) {
 }
 
 #[test]
+fn source_foreign_formal_cache_discovery_budget_keeps_pointer_and_repairs_without_production() {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = scope(&format!("formal-cache-index-{stamp}"));
+    let deck_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../crates/auto-lang/test/cases/ace-ca-d-source-938/src/add.atomdata");
+    let deck: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(deck_path).unwrap()).unwrap();
+    for leg in ["native", "c"] {
+        let store = root.join(leg);
+        let baseline = source_worker_query(&deck, &store, leg, "cache-index-baseline");
+        assert_eq!(baseline["ok"]["source_import"]["actual_exit"], 42);
+        let pointer = store.join(format!("source938-current-{leg}.json"));
+        let accepted = std::fs::read(&pointer).unwrap();
+        let managed = ace_artifacts::store::ManagedStore::open_existing(&store).unwrap();
+        let good_id: String = managed
+            .db()
+            .query_row(
+                "SELECT artifact_id FROM artifacts WHERE layer=?1",
+                [ace_abi::cache::LAYER_OBJECT_V01.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let oversized = "z".repeat(9 << 20);
+        assert_eq!(
+            managed
+                .db()
+                .execute(
+                    "UPDATE artifacts SET artifact_id=?1 WHERE artifact_id=?2",
+                    [&oversized, &good_id]
+                )
+                .unwrap(),
+            1
+        );
+        let rejected = source_worker_raw(&deck, &store, leg, "cache-index-reject");
+        // Repair only the deliberately corrupt row and compact the test's
+        // deleted 9MiB cell before replaying under the original disk caps.
+        assert_eq!(
+            managed
+                .db()
+                .execute(
+                    "UPDATE artifacts SET artifact_id=?1 WHERE artifact_id=?2",
+                    [&good_id, &oversized]
+                )
+                .unwrap(),
+            1
+        );
+        managed
+            .db()
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); VACUUM;")
+            .unwrap();
+        drop(managed);
+        assert_eq!(rejected["error"]["code"], "foreign.resource", "{rejected}");
+        assert!(
+            rejected["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("C cache discovery index:"),
+            "{rejected}"
+        );
+        assert_eq!(std::fs::read(&pointer).unwrap(), accepted);
+        assert_tool_scratch_clean(&store, true);
+        let repaired = source_worker_query(&deck, &store, leg, "cache-index-repair");
+        let report = &repaired["ok"]["source_import"];
+        assert_eq!(report["actual_exit"], 42);
+        assert_eq!(report["reference_exit"], 42);
+        assert_eq!(repaired["ok"]["steps"][0]["compute_calls"], 0);
+        for field in [
+            "source_parse",
+            "solver",
+            "hir",
+            "mir",
+            "native",
+            "c_fragment",
+        ] {
+            assert_eq!(
+                report[field], 0,
+                "{leg} metadata repair regenerated {field}"
+            );
+        }
+    }
+}
+
+#[test]
 fn source_foreign_formal_request_metadata_budget_preserves_pointer_and_repairs() {
     let root = scope("formal-request-budget");
     let deck_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
