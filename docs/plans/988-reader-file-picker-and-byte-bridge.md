@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-988
-status: drafting
+status: executing
 feature_name: Reader原生多选与动态字节桥接
 plan_revision: 1
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-06
-current_step: 0
+current_step: 1
 total_steps: 6
 supersedes_spec_components: [docs/specs/auto-lang/ui/design/dialog-dnd-host-capabilities.md, docs/specs/auto-lang/vm/native-fs.md]
 new_spec_components: []
@@ -90,6 +90,19 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 ## 9. 复审记录
 
 2026-11-06 stage:new | PLAN-988 r1 | outcome:pass | next:work T-00。用户跨仓授权已记录；已独占核号脚本分配988，未实施、未新工具构建。证据首轮以009最小红/绿为入口，不等同新代码回归结果。无需再次请求同范围许可。
+
+
+### 2026-11-06 work：T-00闭合，字节桥与多选接线进行中
+
+- 权威树：D:/autostack/.wt/lang-988/auto-lang，plan-988-dev，base=a137e8be6；UI同组auto-ui，codex/reader-009-prerequisites，base=22a925c7。auto-down只读58ea33f，auto-web只读bf72baa（UI真实path依赖需要），均git detached，无链接。
+- T-00 [x]：新源码编译最小桥回归，原生i32 list控制及坏句柄控制通过，Value整数数组与错误元素分类失败：2 PASS/2 FAIL，cargo exit101（PowerShell包装记录exit1）。故障位置为ffi/convert.rs::VMConvertible for Vec<i32>，仅downcast ListData<i32>，不是磁盘权限。T-01 API冻结为dialog_open_files(filter)->JSON数组字符串，native9942，provider返回Result<Vec<String>,String>；旧provider默认明确unsupported，取消[]，VM parented/生成Rust沿已有unparented边界。
+- 语言实现提交82d4b5d50：支持Value整数标签与i32范围检查，非整数写前拒绝；新增provider方法/VM shim、intrinsic、ID/返回类型/保留ID注册。相关核心回归命令 `cargo test --offline --locked -p auto-lang-core --lib plan988 -- --nocapture`：9 PASS/0 FAIL，exit0。包括真实源码字面数组、List.new/push、JSON数组写真实文件[0,127,128,255]；全256字节；无效成员保持既有文件；多路径Unicode/引号/反斜杠JSON往返、取消、旧provider拒绝但单选不变。
+- 初次新增多选测试编译因漏import和私有trait路径失败（bridge-dialog.log），修复测试trait公开引用与codegen常量import后9项全绿；首次失败保留，不当功能验收红。
+- `cargo test --offline --locked -p auto-lang-core --lib native_catalog -- --nocapture`：5 PASS/0 FAIL，exit0，native编号/名字/返回注册一致。两仓diff --check通过。编译有既有warnings，尚未做最终新增warning差异审计。
+- UI接线：os_open_files调用真实rfd.pick_files，复用filter/父窗；provider/生成门面与编译映射接线。`cargo check --offline --locked -p auto-ui-runtime -p auto-ui-compiler` 已完成，exit0、95秒，session=69605已终态，日志scope/ui-check.log；UI编译239 warnings为待最终基线差异审计，非零错误。
+- SD-01/02已在语言树准备，未发布。T-01/T-02/T-03仍未完成：真picker/焦点、缺席/覆盖/源码多选、函数参数返回/HTTP消费者、生成Rust真实字节写入、完整受影响组及UI门仍需执行。T-04独立review与T-05 merge均未启动。
+- 证据scope D:/autostack/plan-artifacts/plan-988/：byte-baseline.log SHA256=2bcb8a092d9826171b65ac57b42c5abb58c9e5d628defbbf6a3fd4e52f01edd9；bridge-dialog-v2.log=20af796d0783c07f64644f9fdaedbde82377d847942f2d0e0214c9da5b65e8e8；native-catalog.log=1ac3f70ab89290ad33b9cd7695905cf9e2aee75345d7e7c600d81d40a86ec91e。原009探针材料未动。
+- stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 3 | from: work | to: work | status: executing | outcome: needs_fix (work incomplete, not a final-review finding) | worktree: D:/autostack/.wt/lang-988/auto-lang | commit: 82d4b5d50 | next: work T-01/02/03。
 
 ## 10. 待澄清事项
 
