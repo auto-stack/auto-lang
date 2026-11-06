@@ -310,16 +310,34 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     report.c_toolchain = crate::ctool::toolchain_fingerprint().map_err(|e| err("infra", e))?;
     report.provider_digest = provider::hash(&bytes);
     let current = Path::new(&req.store_root).join(format!("source938-current-{}.json", req.leg));
-    let (previous, expected_pointer) =
-        match crate::source_foreign::read_pointer_bytes(&current).map_err(|e| err("store", e))? {
+    let (previous_record, expected_pointer) =
+        match crate::source_foreign::read_pointer_bytes_reserved(&current, &resources).map_err(
+            |e| {
+                let code = if e.starts_with("foreign.resource:") {
+                    "foreign.resource"
+                } else {
+                    "store"
+                };
+                err(code, e)
+            },
+        )? {
             Some(bytes) => {
-                let digest = ace_a2x_core::sha256::sha256_hex(&bytes);
-                let previous =
-                    serde_json::from_slice::<Publication>(&bytes).map_err(|e| err("restore", e))?;
-                (Some(previous), Some(digest))
+                let digest = ace_a2x_core::sha256::sha256_hex(bytes.bytes());
+                let (previous, model) = resources
+                    .decode_metadata_json::<Publication>(bytes.bytes())
+                    .map_err(|e| match e {
+                        ace_source_query::resources::ResourceError::Budget(_) => {
+                            err("foreign.resource", e)
+                        }
+                        ace_source_query::resources::ResourceError::Decode(_) => err("restore", e),
+                    })?;
+                // Tuple field order releases the typed model before its
+                // reservation, including every early-return/error path.
+                (Some((previous, model)), Some(digest))
             }
             None => (None, None),
         };
+    let previous = previous_record.as_ref().map(|(record, _ticket)| record);
     let binding_generation = match &previous {
         Some(p) if p.provider_bias != deck.provider_bias => p
             .binding_generation

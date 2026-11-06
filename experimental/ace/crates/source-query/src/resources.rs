@@ -351,32 +351,41 @@ impl Resources {
         &self,
         bytes: &[u8],
     ) -> Result<(T, Reservation), ResourceError> {
-        self.decode_json_profile(bytes, false)
+        self.decode_json_profile(bytes, ace_foreign_contract::codec::source_json_allocation)
     }
     pub fn decode_foreign_request<T: serde::de::DeserializeOwned>(
         &self,
         bytes: &[u8],
     ) -> Result<(T, Reservation), ResourceError> {
-        self.decode_json_profile(bytes, true)
+        self.decode_json_profile(
+            bytes,
+            ace_foreign_contract::codec::foreign_request_json_allocation,
+        )
+    }
+    /// Finite publication/identity records contain metadata, not source text
+    /// or byte-array payloads. Retain the returned index ticket with the model.
+    pub fn decode_metadata_json<T: serde::de::DeserializeOwned>(
+        &self,
+        bytes: &[u8],
+    ) -> Result<(T, Reservation), ResourceError> {
+        self.decode_json_profile(bytes, ace_foreign_contract::codec::metadata_json_allocation)
     }
     fn decode_json_profile<T: serde::de::DeserializeOwned>(
         &self,
         bytes: &[u8],
-        request: bool,
+        allocation: fn(
+            &[u8],
+            usize,
+        ) -> Result<
+            ace_foreign_contract::codec::JsonAllocation,
+            ace_foreign_contract::codec::AllocationError,
+        >,
     ) -> Result<(T, Reservation), ResourceError> {
         let _scratch =
             self.reserve(Charge::io(bytes.len().checked_mul(2).ok_or_else(|| {
                 ResourceError::Budget("JSON scratch size overflow".into())
             })?))?;
-        let bound = if request {
-            ace_foreign_contract::codec::foreign_request_json_allocation(
-                bytes,
-                Limits::default().total,
-            )
-        } else {
-            ace_foreign_contract::codec::source_json_allocation(bytes, Limits::default().total)
-        }
-        .map_err(|e| match e {
+        let bound = allocation(bytes, Limits::default().total).map_err(|e| match e {
             ace_foreign_contract::codec::AllocationError::Budget(s) => {
                 self.0.lock().expect("resource account").stats.rejections += 1;
                 ResourceError::Budget(s)
@@ -616,11 +625,16 @@ mod tests {
         assert_eq!(ENTERED.load(Ordering::Relaxed), 0);
         assert!(r.decode_foreign_request::<Decoded>(&payload).is_err());
         assert_eq!(ENTERED.load(Ordering::Relaxed), 0);
+        assert!(r.decode_metadata_json::<Decoded>(&payload).is_err());
+        assert_eq!(ENTERED.load(Ordering::Relaxed), 0);
         let (_value, guard) = r.decode_json::<Decoded>(b"{}").unwrap();
         assert_eq!(ENTERED.load(Ordering::Relaxed), 1);
         drop(guard);
         let (_value, guard) = r.decode_foreign_request::<Decoded>(b"{}").unwrap();
         assert_eq!(ENTERED.load(Ordering::Relaxed), 2);
+        drop(guard);
+        let (_value, guard) = r.decode_metadata_json::<Decoded>(b"{}").unwrap();
+        assert_eq!(ENTERED.load(Ordering::Relaxed), 3);
         drop(guard);
         assert!(matches!(
             r.decode_json::<Decoded>(b"{"),

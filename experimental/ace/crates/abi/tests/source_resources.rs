@@ -209,5 +209,24 @@ mod source_foreign {
         );
         assert_eq!(resources.stats().current.io, 0);
         assert_eq!(store.space().staging, baseline_staging);
+        let pressure = resources
+            .reserve(Charge::io(resources.available_io() - 64))
+            .unwrap();
+        let (refused, allocations) =
+            measured(|| ace_abi::source_foreign::read_pointer_bytes_reserved(&pointer, &resources));
+        assert!(refused
+            .err()
+            .expect("unreserved pointer read was accepted")
+            .contains("foreign.resource"));
+        assert_eq!(allocations, 0, "refused read allocated the pointer payload");
+        drop(pressure);
+        let (read, allocations) =
+            measured(|| ace_abi::source_foreign::read_pointer_bytes_reserved(&pointer, &resources));
+        let read = read.unwrap().unwrap();
+        assert_eq!(allocations, 1);
+        assert_eq!(read.bytes(), current_bytes);
+        assert_eq!(resources.stats().current.io, current_bytes.len());
+        drop(read);
+        assert_eq!(resources.stats().current.io, 0);
     }
 }

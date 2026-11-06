@@ -1663,8 +1663,8 @@ mod publication;
 #[path = "source_publication_scratch.rs"]
 mod publication_scratch;
 pub use publication::{
-    publication_root_project, read_pointer_bytes, read_pointer_identity, CurrentAuthority, Edit,
-    PreparedPublication,
+    publication_root_project, read_pointer_bytes, read_pointer_bytes_reserved,
+    read_pointer_identity, CurrentAuthority, Edit, PointerRead, PreparedPublication,
 };
 pub use publication_scratch::PointerEncoder;
 

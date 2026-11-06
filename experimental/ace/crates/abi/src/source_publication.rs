@@ -518,27 +518,48 @@ pub fn read_pointer_bytes(pointer: &Path) -> Result<Option<Vec<u8>>, String> {
         return Ok(None);
     };
     let metadata = file.metadata().map_err(|e| e.to_string())?;
+    read_pointer_contents(&mut file, metadata.len() as usize).map(Some)
+}
+/// The payload and its shared I/O ticket stay together through typed decode.
+pub struct PointerRead {
+    bytes: Vec<u8>,
+    _io: Reservation,
+}
+impl PointerRead {
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+pub fn read_pointer_bytes_reserved(
+    pointer: &Path,
+    resources: &Resources,
+) -> Result<Option<PointerRead>, String> {
+    let Some(mut file) = open_pointer(pointer)? else {
+        return Ok(None);
+    };
+    let length = file.metadata().map_err(|e| e.to_string())?.len() as usize;
+    let io = resources
+        .reserve(Charge::io(length))
+        .map_err(|e| e.to_string())?;
+    let bytes = read_pointer_contents(&mut file, length)?;
+    Ok(Some(PointerRead { bytes, _io: io }))
+}
+fn read_pointer_contents(file: &mut File, length: usize) -> Result<Vec<u8>, String> {
+    if length > MAX_ROOT {
+        return Err("foreign.resource.pointer".into());
+    }
     let mut bytes = Vec::new();
     bytes
-        .try_reserve_exact(metadata.len() as usize)
+        .try_reserve_exact(length)
         .map_err(|_| "foreign.resource.pointer")?;
-    let mut buffer = [0u8; 8192];
-    loop {
-        let count = file.read(&mut buffer).map_err(|e| e.to_string())?;
-        if count == 0 {
-            break;
-        }
-        if bytes.len().checked_add(count).is_none_or(|n| n > MAX_ROOT) {
-            return Err("foreign.resource.pointer".into());
-        }
-        if bytes.len() + count > bytes.capacity() {
-            bytes
-                .try_reserve_exact(count)
-                .map_err(|_| "foreign.resource.pointer")?;
-        }
-        bytes.extend_from_slice(&buffer[..count]);
+    bytes.resize(length, 0);
+    file.read_exact(&mut bytes).map_err(|e| e.to_string())?;
+    if file.read(&mut [0u8; 1]).map_err(|e| e.to_string())? != 0 {
+        // Windows sharing pins the content. A changing file on another host
+        // cannot force an unreserved extension or return a truncated record.
+        return Err("foreign.publication.pointer-changed-during-read".into());
     }
-    Ok(Some(bytes))
+    Ok(bytes)
 }
 fn open_pointer(pointer: &Path) -> Result<Option<File>, String> {
     let mut options = std::fs::OpenOptions::new();
