@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-990
-status: reviewed
+status: execution_done
 feature_name: Web独立Rust后端的db相邻导入上下文
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-06
-plan_revision: 1
+updated_at: 2026-11-07
+plan_revision: 2
 current_step: 3
 total_steps: 4
 base_branch: master
@@ -52,14 +52,14 @@ affects: [auto-web/api-generation, auto-os/PLAN-054]
 | AC01/V01 | work | 公开Web生成最小跨模块db/记录→实际Rust编译运行 | 原错失败，新行为正确；borrowed/owned循环复用/异名字段及数值邻面齐全，业务串注释不改 |
 | AC02/V02 | work | 既有956代码区域/作用域、真实路由捕获控制与Web生成受影响选择 | 实际执行，原条件不改；不重跑无关Core/VM全组 |
 | AC03/V03 | merge | 父054共同SDK真实Blog独立后端及作者任务 | 真实编译/保存/重开/下一次操作、源/生成/发布/运行身份一致 |
-| AC04/V04 | review/merge | 独立复审，准确Spec、线性交付、push/归档与父组清理 | 所有pending明确，不把源码阶段当最终交付 |
+| AC04/V04 | review/merge | 独立复审，准确Spec、线性本地交付、归档与父组清理 | 所有pending明确，不把源码阶段当最终交付 |
 
 ## 6. 步骤
 
 - [x] T00 owner_stage=work：冻结根因/选择面，永久反例真实红。
 - [x] T01 owner_stage=work：入口修复、生成运行与必要邻面，提交工作完成。
 - [x] T02 owner_stage=review：独立源码/Spec/证据复审，不委派实现。
-- [ ] T03 owner_stage=merge：父最终SDK消费、受影响冻结门、Spec/线性落地/push/archive与统一清理。
+- [ ] T03 owner_stage=merge：父最终SDK消费、受影响冻结门、Spec/线性本地落地/archive与统一清理。
 
 ## 7. 记录
 
@@ -98,3 +98,17 @@ Reviewed SD01 publication text (Web docs/specs/http-contracts.md):
 
 For standard src/back projects, standalone Rust generation supplies db.at and companion modules with the project src/back source directory used by assembly proof collection. Sibling import declarations provide record field types to the existing language String storage and borrow rules. The db module keeps its existing post-processing and handler wiring; source-region and per-function ownership controls, legacy standalone transpiler entry points, import fallback rules and HTTP protocols remain unchanged.
 ```
+
+
+- stage:merge | checkpoint:prepared | revision:r1 | reviewed_source:c36e5d09b15ee9c8dce0d34fb4b6f9f1b37e26e1 | next:frozen affected Web gate then linear landing
+  AC03 nowclosed by actual commonSDK195 publicVueentry: all8siblingroots bound, production4185modules/14.53s/exit0; BlogfullRustbackend compiled/current source33df, actualnative6 v15/18artifactbindings/67inputs; nativeBlogfullUnicode create/preview/return/Save/normalclose0/freshprocessreopen/nextSave exactbody/current/revision8. FreshVue195Blogwholeauthor task andtrueheaderDOMdetach/reopen/nextSave exact. Parent bothprofile8required8pass0fail; packets iced t06/iced-run-r195.json and Vue t06/vue-run-r195.json (description-only metadata corrected; no cases/frames/data changes), parentround181. Minimal generatedDB test no longer substitutes for realBlog integration.
+  Canonical http-contracts.md appends exactly the independent frozen SD01 publication text above, no additionalrequirement. Current actualcode/dependencies/config unchanged from c36; noCore/runtime/HTTPprotocol modification. Source review pass retained; merge-owned scopedWebconsumer+4neighbor gate follows, nounrelatedVM987orcatalogrepeat. Cleanup remains deferred to parent054 group lifetime because its rawacceptance/finalreview binds paths; no claim T03 fullycomplete/push/archive/clean yet.
+
+
+### r2 用户裁定交付方式（2026-11-07）
+
+用户明确选择“沿用现有本地交付，不新建远端”。本仓无remote，现有Web delivery.md/README明确local independent delivery且未授权remote/registry；只读git ls-remote对候选auto-stack/auto-web返回Repository not found，不创建/推送不存在的远端。r1通用“push”文字与既有仓交付形态不一致，r2仅按本次明确裁定改为线性本地主干交付/归档，维持原修复目标、四AC行为阈值、仓集合、源码、永久测试与SD01不变；独立当前revision文档/Spec复核后继续收尾。历史r1源码/Spec审核与所有真实结果保留，不伪称曾远端发布。
+
+- stage:merge | revision:r2 | checkpoints:landed/canonical_verified | local_delivery_commit:2d69841 | next:independent r2 doc/identity reconciliation then archive/parent group cleanup
+  Webmaster实际bf72→2d69841 --ff-only成功，mainclean；sourcec36→delivery2d69841仅http-contracts.md批准SD01，代码/永久tests/Cargo完全相同。canonical SHA256 c2c1ac37306611f4127f690e6d8720c091a879ab2b92e8aced6800e76d8177d3. 正式merge-owned frozenWeb gate在当前2d69841执行：db_import_context1selected1pass/10.96s/exit0（构建1.31s），真实generatedRust/TCP/json/shutdown202/portrebind；4neighbors4selected4pass/.131s/exit0，177outside excluded notpass。两日志位于plan-990/merge-db-import.log与merge-web-neighbors.log，源码/依赖与review一致。Parent实际SDK195Vue/native8/8及Blog完整作者任务见preparedreceipt；不用最小fixture代替完整应用。
+  本地交付不是默认部署：本Plan代码在parentimmutableSDK195已正式构建/运行；主检出release/WebCLI产物未为文档归档另外重建，后续生产使用须按currentSDK标准入口重生，不能把旧artifact当新版本。原Webworktree暂留为activeparent054唯一consumer/原始证据路径，父finalreview后统一guard清理；T03仍pending，仅已完成本地land/canonical和冻结门，不提前标cleaned。
