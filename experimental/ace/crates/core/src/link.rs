@@ -394,6 +394,39 @@ pub fn run_deadlined_captured(
     run_captured_inner(cmd, deadline, caps, job::JobGuard::for_child, None)
 }
 
+/// The same executor with caller-owned, empty capture buffers. Finite caps
+/// must fit their capacities before the process starts, so readers never
+/// allocate stream storage. The caller can reserve this memory before creating
+/// the buffers and retain that reservation through the returned bytes' use.
+pub fn run_deadlined_captured_into(
+    cmd: &mut Command,
+    deadline: Duration,
+    caps: CaptureCaps,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+) -> Result<CapturedRun, SubprocError> {
+    if !stdout.is_empty()
+        || !stderr.is_empty()
+        || caps.stdout_max == usize::MAX
+        || caps.stderr_max == usize::MAX
+        || stdout.capacity() < caps.stdout_max
+        || stderr.capacity() < caps.stderr_max
+    {
+        return Err(SubprocError::Spawn(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "capture buffers must be empty and cover both finite caps",
+        )));
+    }
+    run_captured_inner_buffers(
+        cmd,
+        deadline,
+        caps,
+        job::JobGuard::for_child,
+        None,
+        Some((stdout, stderr)),
+    )
+}
+
 /// [`run_deadlined_captured`] with an injectable containment factory so
 /// tests can deterministically drive the containment-failure branch (same
 /// seam the legacy executor exposes).
@@ -439,6 +472,17 @@ fn run_captured_inner(
     caps: CaptureCaps,
     job_factory: fn(&std::process::Child) -> Option<job::JobGuard>,
     stdin_bytes: Option<Vec<u8>>,
+) -> Result<CapturedRun, SubprocError> {
+    run_captured_inner_buffers(cmd, deadline, caps, job_factory, stdin_bytes, None)
+}
+
+fn run_captured_inner_buffers(
+    cmd: &mut Command,
+    deadline: Duration,
+    caps: CaptureCaps,
+    job_factory: fn(&std::process::Child) -> Option<job::JobGuard>,
+    stdin_bytes: Option<Vec<u8>>,
+    buffers: Option<(Vec<u8>, Vec<u8>)>,
 ) -> Result<CapturedRun, SubprocError> {
     // Controlled start (R3-QA-01): the suspended child cannot run, and
     // therefore cannot spawn descendants, until it is inside the job.
@@ -490,54 +534,66 @@ fn run_captured_inner(
             drop(pipe);
         })
     });
-    // Readers stream raw bytes in chunks and stop ONE byte past the cap:
+    // Readers stream raw bytes in chunks and reject the first chunk passing
+    // the cap before appending it (observed includes that whole read):
     // Err(observed) means "cap exceeded mid-stream" and the main loop kills
     // the tree immediately; Ok(buf) is the exact EOF-terminated byte stream
     // (invalid UTF-8 and all — read_to_string's all-or-nothing validation
     // is exactly the truncated-success shape the contract forbids).
     let (out_tx, mut out_rx) = std::sync::mpsc::channel::<Result<Vec<u8>, usize>>();
     let (err_tx, mut err_rx) = std::sync::mpsc::channel::<Result<Vec<u8>, usize>>();
+    let (out_buffer, err_buffer) = buffers.unwrap_or_default();
     let out_reader = std::thread::spawn(move || {
-        let mut buf = Vec::new();
+        let mut buf = out_buffer;
         let mut chunk = [0u8; 65536];
-        let mut exceeded = false;
+        let mut exceeded = None;
         if let Some(p) = stdout_pipe.as_mut() {
             loop {
                 match p.read(&mut chunk) {
                     Ok(0) => break,
                     Ok(n) => {
-                        buf.extend_from_slice(&chunk[..n]);
-                        if buf.len() > caps.stdout_max {
-                            exceeded = true;
+                        let observed = buf.len().saturating_add(n);
+                        if observed > caps.stdout_max {
+                            exceeded = Some(observed);
                             break;
                         }
+                        buf.extend_from_slice(&chunk[..n]);
                     }
                     Err(_) => break,
                 }
             }
         }
-        let _ = out_tx.send(if exceeded { Err(buf.len()) } else { Ok(buf) });
+        let _ = out_tx.send(if let Some(observed) = exceeded {
+            Err(observed)
+        } else {
+            Ok(buf)
+        });
     });
     let err_reader = std::thread::spawn(move || {
-        let mut buf = Vec::new();
+        let mut buf = err_buffer;
         let mut chunk = [0u8; 65536];
-        let mut exceeded = false;
+        let mut exceeded = None;
         if let Some(p) = stderr_pipe.as_mut() {
             loop {
                 match p.read(&mut chunk) {
                     Ok(0) => break,
                     Ok(n) => {
-                        buf.extend_from_slice(&chunk[..n]);
-                        if buf.len() > caps.stderr_max {
-                            exceeded = true;
+                        let observed = buf.len().saturating_add(n);
+                        if observed > caps.stderr_max {
+                            exceeded = Some(observed);
                             break;
                         }
+                        buf.extend_from_slice(&chunk[..n]);
                     }
                     Err(_) => break,
                 }
             }
         }
-        let _ = err_tx.send(if exceeded { Err(buf.len()) } else { Ok(buf) });
+        let _ = err_tx.send(if let Some(observed) = exceeded {
+            Err(observed)
+        } else {
+            Ok(buf)
+        });
     });
 
     // Stashed early reader results (EOF can arrive while the child still

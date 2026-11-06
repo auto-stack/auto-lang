@@ -643,22 +643,27 @@ fn prepare_provider(
             &[object.clone()],
             resources,
             || {
-                let deps =
-                    crate::ctool::compile_c_with_deps_admitted(&src, inputs, &object, |bytes| {
+                let deps = crate::ctool::compile_c_with_deps_admitted(
+                    &src,
+                    inputs,
+                    &object,
+                    Some(resources),
+                    |bytes| {
                         dependencies_allocation
                             .resize(ace_source_query::resources::Charge::index(bytes))
                             .map_err(|e| e.to_string())
-                    })
-                    .map_err(|e| match e {
-                        crate::ctool::CToolFailure::Tool(error) => {
-                            ace_artifacts::store::StoreError::Internal(format!("producer: {error}"))
-                        }
-                        crate::ctool::CToolFailure::Resource(message) => {
-                            ace_artifacts::store::StoreError::ResourceExhausted(format!(
-                                "C dependency producer: {message}"
-                            ))
-                        }
-                    })?;
+                    },
+                )
+                .map_err(|e| match e {
+                    crate::ctool::CToolFailure::Tool(error) => {
+                        ace_artifacts::store::StoreError::Internal(format!("producer: {error}"))
+                    }
+                    crate::ctool::CToolFailure::Resource(message) => {
+                        ace_artifacts::store::StoreError::ResourceExhausted(format!(
+                            "C dependency producer: {message}"
+                        ))
+                    }
+                })?;
                 let bytes = crate::cache::read_c_object_file(&object, resources)?;
                 Ok((bytes, deps))
             },

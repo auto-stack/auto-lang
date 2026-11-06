@@ -215,7 +215,7 @@ pub fn compile_c_with_deps(
     include_dir: &Path,
     obj_out: &Path,
 ) -> Result<Vec<PathBuf>, CToolError> {
-    compile_c_with_deps_admitted(src, include_dir, obj_out, |_| Ok(())).map_err(|e| match e {
+    compile_c_with_deps_admitted(src, include_dir, obj_out, None, |_| Ok(())).map_err(|e| match e {
         CToolFailure::Tool(error) => error,
         CToolFailure::Resource(message) => CToolError(message),
     })
@@ -238,9 +238,10 @@ pub(crate) fn compile_c_with_deps_admitted(
     src: &Path,
     include_dir: &Path,
     obj_out: &Path,
+    resources: Option<&ace_source_query::resources::Resources>,
     admit: impl FnMut(usize) -> Result<(), String>,
 ) -> Result<Vec<PathBuf>, CToolFailure> {
-    let out = compile_c_output(src, include_dir, obj_out)?;
+    let out = compile_c_output(src, include_dir, obj_out, resources)?;
     crate::ctool_dependencies::parse(&out, src, admit).map_err(CToolFailure::Resource)
 }
 
@@ -248,6 +249,7 @@ fn compile_c_output(
     src: &Path,
     include_dir: &Path,
     obj_out: &Path,
+    resources: Option<&ace_source_query::resources::Resources>,
 ) -> Result<String, CToolFailure> {
     let tool = find_cl()?;
     // cl.exe = <msvc>/bin/Hostx64/x64/cl.exe -> <msvc>/include
@@ -274,20 +276,25 @@ fn compile_c_output(
     // F-797-R4-10 (R5): compile through the merged RAW CAPPED executor
     // — a cap violation terminates the tree (no truncated-green), raw
     // bytes for display.
-    let run = ace_core::link::run_deadlined_captured(
+    let captured = crate::ctool_capture::run(
         &mut cmd,
         COMPILE_DEADLINE,
         ace_core::link::CaptureCaps {
             stdout_max: TOOL_STREAM_MAX,
             stderr_max: TOOL_STREAM_MAX,
         },
+        resources,
     )
     .map_err(|e| match e {
-        ace_core::link::SubprocError::OutputCapExceeded { .. } => {
-            CToolFailure::Resource(format!("cl spawn: {e:?}"))
+        crate::ctool_capture::CaptureError::Resource(message) => CToolFailure::Resource(message),
+        crate::ctool_capture::CaptureError::Subprocess(
+            e @ ace_core::link::SubprocError::OutputCapExceeded { .. },
+        ) => CToolFailure::Resource(format!("cl spawn: {e:?}")),
+        crate::ctool_capture::CaptureError::Subprocess(other) => {
+            CToolFailure::Tool(CToolError(format!("cl spawn: {other:?}")))
         }
-        other => CToolFailure::Tool(CToolError(format!("cl spawn: {other:?}"))),
     })?;
+    let run = &captured.value;
     let code = run.exit_code;
     let out = String::from_utf8_lossy(&run.stdout).into_owned();
     let err = String::from_utf8_lossy(&run.stderr).into_owned();
@@ -348,19 +355,25 @@ mod tests {
         )
         .unwrap();
         let mut attempts = 0;
-        let denied = compile_c_with_deps_admitted(&source, &root, &object, |_| {
-            attempts += 1;
-            Err("fixture dependency quota".into())
-        });
+        let resources = ace_source_query::resources::Resources::default();
+        let denied =
+            compile_c_with_deps_admitted(&source, &root, &object, Some(&resources), |_| {
+                attempts += 1;
+                Err("fixture dependency quota".into())
+            });
         assert!(
             matches!(denied, Err(CToolFailure::Resource(ref message)) if message == "fixture dependency quota")
         );
         assert_eq!(attempts, 1);
+        assert_eq!(resources.stats().current.io, 0);
         assert!(
             object.is_file(),
             "compiler did not really produce before dependency admission"
         );
-        let repaired = compile_c_with_deps_admitted(&source, &root, &object, |_| Ok(())).unwrap();
+        let repaired =
+            compile_c_with_deps_admitted(&source, &root, &object, Some(&resources), |_| Ok(()))
+                .unwrap();
+        assert_eq!(resources.stats().current.io, 0);
         assert!(repaired
             .iter()
             .any(|p| p.file_name().is_some_and(|n| n == "stdint.h")));

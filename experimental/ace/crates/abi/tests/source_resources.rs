@@ -10,6 +10,8 @@ struct Allocator;
 // no public testing hook or alternate path algorithm is introduced.
 #[path = "../src/cache_paths.rs"]
 mod cache_paths;
+#[path = "../src/ctool_capture.rs"]
+mod ctool_capture;
 #[path = "../src/ctool_dependencies.rs"]
 mod ctool_dependencies;
 thread_local! {
@@ -726,6 +728,83 @@ mod source_foreign {
                 String::from_utf8_lossy(&run.stderr)
             );
         }
+    }
+
+    #[test]
+    fn compiler_raw_capture_reserves_both_buffers_before_allocating_or_spawning() {
+        use ace_core::link::CaptureCaps;
+        use ace_source_query::resources::Resources;
+        use std::{process::Command, time::Duration};
+        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests").join(format!(
+            "raw-capture-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let marker = root.join("child-started.txt");
+        let caps = CaptureCaps {
+            stdout_max: 8191,
+            stderr_max: 4093,
+        };
+        let bytes = caps.stdout_max + caps.stderr_max;
+        let resources = Resources::default();
+        let baseline = resources.stats().current;
+        let pressure = resources
+            .reserve(Charge::io((8 << 20) - bytes + 1))
+            .unwrap();
+        let pressured = resources.stats().current;
+        let mut cmd = Command::new("cmd");
+        cmd.args([
+            "/d",
+            "/c",
+            &format!("echo child > \"{}\"", marker.display()),
+        ]);
+        let (denied, allocations) = measured_at(caps.stderr_max, || {
+            ctool_capture::run(&mut cmd, Duration::from_secs(10), caps, Some(&resources))
+        });
+        assert!(
+            matches!(denied, Err(ctool_capture::CaptureError::Resource(ref message)) if message.contains("foreign.resource"))
+        );
+        assert_eq!(allocations, 0, "raw buffers allocated before quota refusal");
+        assert!(!marker.exists(), "budget denial started the child");
+        assert_eq!(resources.stats().current, pressured);
+        drop(pressure);
+        for layout in [caps.stdout_max, caps.stderr_max] {
+            let mut cmd = Command::new("cmd");
+            cmd.args(["/d", "/c", "(echo raw-output)&(echo raw-error 1>&2)"]);
+            let (captured, hits, admitted) =
+                with_charge_probe(layout, &resources, Charge::io(bytes), || {
+                    ctool_capture::run(&mut cmd, Duration::from_secs(10), caps, Some(&resources))
+                });
+            let captured = captured.unwrap();
+            assert_eq!(hits, 1);
+            assert!(admitted, "raw capture allocation precedes reservation");
+            assert_eq!(captured.value.exit_code, Some(0));
+            assert_eq!(captured.value.stdout, b"raw-output\r\n");
+            assert_eq!(captured.value.stderr, b"raw-error \r\n");
+            assert_eq!(captured.value.stdout.capacity(), caps.stdout_max);
+            assert_eq!(captured.value.stderr.capacity(), caps.stderr_max);
+            assert_eq!(resources.stats().current.io, bytes);
+            drop(captured);
+            assert_eq!(resources.stats().current, baseline);
+        }
+        let mut missing = Command::new(root.join("missing-tool.exe"));
+        let failure = ctool_capture::run(
+            &mut missing,
+            Duration::from_secs(10),
+            caps,
+            Some(&resources),
+        );
+        assert!(matches!(
+            failure,
+            Err(ctool_capture::CaptureError::Subprocess(
+                ace_core::link::SubprocError::Spawn(_)
+            ))
+        ));
+        assert_eq!(resources.stats().current, baseline);
     }
 
     #[test]
