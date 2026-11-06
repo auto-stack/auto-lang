@@ -333,6 +333,7 @@ struct Marker {
 pub struct ManagedStore {
     pub root: PathBuf,
     canonical_root: PathBuf,
+    store_id: String,
     db: Mutex<Connection>,
     /// Isolated adapter over auto-cache's BlobStore (SD-04 audit point).
     blobs: auto_cache::storage::BlobStore,
@@ -407,6 +408,15 @@ pub struct LoadedArtifact {
 }
 
 impl ManagedStore {
+    /// Borrow the identity captured at open without allocating a second path.
+    /// Mutating users still validate the live namespace through staging_turn.
+    pub fn canonical_root(&self) -> &Path {
+        &self.canonical_root
+    }
+    pub fn store_id(&self) -> &str {
+        &self.store_id
+    }
+
     pub fn staging_turn(&self) -> Result<StagingTurn<'_>, StoreError> {
         check_namespace_roots(self)?;
         let live = self.liveness_shared()?;
@@ -461,6 +471,7 @@ impl ManagedStore {
         Ok(ManagedStore {
             root: root.to_path_buf(),
             canonical_root,
+            store_id: marker.store_id,
             db: Mutex::new(db),
             blobs: auto_cache::storage::BlobStore::new(root.join("blocks")),
         })

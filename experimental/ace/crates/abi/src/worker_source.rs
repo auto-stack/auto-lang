@@ -446,83 +446,98 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     report.mir = tm.mir_produced;
     report.native = tm.native_produced;
     report.c_fragment = tm.c_produced;
-    let run_dir = Path::new(&req.store_root).join(format!(
-        "source938-run-{}-{}",
-        req.leg,
-        std::process::id()
-    ));
-    let digest = report.provider_digest.clone();
-    let runtime_policy = crate::source_foreign::certification_runtime_policy(target);
-    let mut current_authority = || {
-        Ok(CurrentAuthority {
-            foreign: provider::authority(&digest, binding_generation, &deck.capabilities)?,
-            runtime_digest: runtime_policy.clone(),
-            emitter: target.identity(),
-        })
-    };
-    let prepared = session
-        .prepare_publication(edit, &run_dir, &mut current_authority, None)
-        .map_err(|e| err("publication", e))?;
-    let actual = prepared
-        .run(&mut current_authority, None)
-        .map_err(|e| err("infra", e))?;
-    let reference_dir = run_dir.join("reference");
-    std::fs::create_dir_all(&reference_dir).map_err(|e| err("infra", e))?;
-    write(&reference_dir.join("source_foreign938.h"), provider::HEADER)
-        .map_err(|e| err("infra", e))?;
-    write(
-        &reference_dir.join("reference.c"),
-        include_str!("../cside/source_foreign938_reference.c"),
-    )
-    .map_err(|e| err("infra", e))?;
-    write(&reference_dir.join("events.c"), provider::EVENT_RUNTIME).map_err(|e| err("infra", e))?;
-    write(&reference_dir.join("provider.obj"), &bytes).map_err(|e| err("infra", e))?;
-    let exe = reference_dir.join("reference.exe");
-    crate::bridge::compile_bridge_crt_with_objects(
-        &reference_dir,
-        &["reference.c", "events.c"],
-        &[reference_dir.join("provider.obj")],
-        &exe,
-    )
-    .map_err(|e| err("infra", e))?;
-    let reference = ace_native::link_driver::run_pe(
-        &exe,
-        crate::bridge::BRIDGE_RUN_DEADLINE,
-        ace_core::link::CaptureCaps {
-            stdout_max: 1 << 20,
-            stderr_max: 1 << 20,
-        },
-    )
-    .map_err(|e| err("infra", e))?;
-    report.actual_exit = actual.exit_code;
-    report.reference_exit = reference.exit_code;
-    report.actual_events = events(&actual.stderr);
-    report.reference_events = events(&reference.stderr);
-    report.actual_stderr = String::from_utf8_lossy(&actual.stderr).into();
-    report.reference_stderr = String::from_utf8_lossy(&reference.stderr).into();
-    session
-        .publish_prepared(
-            prepared,
-            &store,
-            &current,
-            expected_pointer.as_deref(),
-            previous.as_ref().map(|p| &p.stored),
-            |stored| {
-                serde_json::to_vec(&Publication {
-                    module: deck.module.clone(),
-                    provider_bias: deck.provider_bias,
-                    binding_generation,
-                    stored: stored.clone(),
-                })
-                .map_err(|e| e.to_string())
-            },
-            &mut current_authority,
-            None,
+    let scratch = crate::source_tool_scratch::ToolScratch::create(&store, &resources)
+        .map_err(|e| err("store.cleanup-pending", e))?;
+    let mut publication_committed = false;
+    let operation: Result<(), DiagOut> = (|| {
+        let run_dir = scratch.path();
+        let digest = report.provider_digest.clone();
+        let runtime_policy = crate::source_foreign::certification_runtime_policy(target);
+        let mut current_authority = || {
+            Ok(CurrentAuthority {
+                foreign: provider::authority(&digest, binding_generation, &deck.capabilities)?,
+                runtime_digest: runtime_policy.clone(),
+                emitter: target.identity(),
+            })
+        };
+        let prepared = session
+            .prepare_publication(edit, &run_dir, &mut current_authority, None)
+            .map_err(|e| err("publication", e))?;
+        let actual = prepared
+            .run(&mut current_authority, None)
+            .map_err(|e| err("infra", e))?;
+        let reference_dir = run_dir.join("reference");
+        std::fs::create_dir_all(&reference_dir).map_err(|e| err("infra", e))?;
+        write(&reference_dir.join("source_foreign938.h"), provider::HEADER)
+            .map_err(|e| err("infra", e))?;
+        write(
+            &reference_dir.join("reference.c"),
+            include_str!("../cside/source_foreign938_reference.c"),
         )
-        .map_err(|e| err("store", e))?;
-    if let Some(error) = &session.publication_maintenance().cleanup_error {
-        return Err(err("store.cleanup-pending", error));
+        .map_err(|e| err("infra", e))?;
+        write(&reference_dir.join("events.c"), provider::EVENT_RUNTIME)
+            .map_err(|e| err("infra", e))?;
+        write(&reference_dir.join("provider.obj"), &bytes).map_err(|e| err("infra", e))?;
+        let exe = reference_dir.join("reference.exe");
+        crate::bridge::compile_bridge_crt_with_objects(
+            &reference_dir,
+            &["reference.c", "events.c"],
+            &[reference_dir.join("provider.obj")],
+            &exe,
+        )
+        .map_err(|e| err("infra", e))?;
+        let reference = ace_native::link_driver::run_pe(
+            &exe,
+            crate::bridge::BRIDGE_RUN_DEADLINE,
+            ace_core::link::CaptureCaps {
+                stdout_max: 1 << 20,
+                stderr_max: 1 << 20,
+            },
+        )
+        .map_err(|e| err("infra", e))?;
+        report.actual_exit = actual.exit_code;
+        report.reference_exit = reference.exit_code;
+        report.actual_events = events(&actual.stderr);
+        report.reference_events = events(&reference.stderr);
+        report.actual_stderr = String::from_utf8_lossy(&actual.stderr).into();
+        report.reference_stderr = String::from_utf8_lossy(&reference.stderr).into();
+        session
+            .publish_prepared(
+                prepared,
+                &store,
+                &current,
+                expected_pointer.as_deref(),
+                previous.as_ref().map(|p| &p.stored),
+                |stored| {
+                    serde_json::to_vec(&Publication {
+                        module: deck.module.clone(),
+                        provider_bias: deck.provider_bias,
+                        binding_generation,
+                        stored: stored.clone(),
+                    })
+                    .map_err(|e| e.to_string())
+                },
+                &mut current_authority,
+                None,
+            )
+            .map_err(|e| err("store", e))?;
+        publication_committed = true;
+        if let Some(error) = &session.publication_maintenance().cleanup_error {
+            return Err(err("store.cleanup-pending", error));
+        }
+        Ok(())
+    })();
+    if let Err(cleanup) = scratch.finish() {
+        let original = operation
+            .as_ref()
+            .err()
+            .map(|d| format!("{}: {}", d.code, d.message))
+            .unwrap_or_else(|| "none".into());
+        return Err(err("store.cleanup-pending", format!(
+            "tool cleanup; publication committed={publication_committed}; original={original}; {cleanup}"
+        )));
     }
+    operation?;
     let compute = report.solver
         + report.hir
         + report.mir
@@ -536,7 +551,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             compute as u32,
             &store,
             started,
-            actual.exit_code,
+            report.actual_exit,
         )?,
         report,
     ))

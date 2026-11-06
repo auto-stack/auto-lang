@@ -33,6 +33,7 @@ pub mod semref;
 pub mod source_foreign;
 pub mod source_provider;
 pub mod source_store;
+mod source_tool_scratch;
 pub mod trace;
 pub mod typed_decl;
 pub mod typed_emit;

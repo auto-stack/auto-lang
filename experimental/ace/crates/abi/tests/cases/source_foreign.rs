@@ -1751,6 +1751,7 @@ fn source_foreign_formal_worker_rebinds_provider_without_any_caller_production()
             .unwrap();
             let response: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
             assert!(response.get("error").is_none(), "{response}");
+            assert_tool_scratch_clean(&store, true);
             let report = &response["ok"]["source_import"];
             assert_eq!(report["actual_exit"], 42 + bias);
             assert_eq!(report["reference_exit"], 42 + bias);
@@ -2559,6 +2560,21 @@ fn source_worker_query(
     leg: &str,
     tag: &str,
 ) -> serde_json::Value {
+    let response = source_worker_raw(deck, store, leg, tag);
+    assert!(response.get("error").is_none(), "{response}");
+    assert_tool_scratch_clean(
+        store,
+        response["ok"]["source_import"]["actual_exit"].is_number(),
+    );
+    response
+}
+
+fn source_worker_raw(
+    deck: &serde_json::Value,
+    store: &Path,
+    leg: &str,
+    tag: &str,
+) -> serde_json::Value {
     use base64::Engine as _;
     let request = serde_json::json!({"recipe":ace_abi::worker_source::RECIPE,"nonce":tag,"request_hash":tag,
         "deck_b64":base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(deck).unwrap()),
@@ -2579,9 +2595,132 @@ fn source_worker_query(
         input.into_bytes(),
     )
     .unwrap();
-    let response: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
-    assert!(response.get("error").is_none(), "{response}");
-    response
+    serde_json::from_slice(&run.stdout).unwrap()
+}
+
+#[test]
+fn source_foreign_formal_tool_io_failure_keeps_pointer_and_recovers_owned_scratch() {
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+    let root = scope("formal-tool-io-failure");
+    let deck_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../crates/auto-lang/test/cases/ace-ca-d-source-938/src/add.atomdata");
+    let deck: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(deck_path).unwrap()).unwrap();
+    for leg in ["native", "c"] {
+        let store = root.join(leg);
+        let first = source_worker_query(&deck, &store, leg, "tool-baseline");
+        assert_eq!(first["ok"]["source_import"]["actual_exit"], 42);
+        let pointer = store.join(format!("source938-current-{leg}.json"));
+        let original = std::fs::read(&pointer).unwrap();
+        let managed = ace_artifacts::store::ManagedStore::open_existing(&store).unwrap();
+        let identity = managed.store_id().to_string();
+        let namespace = store.join("logs/source938-tools");
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopped = stop.clone();
+        let injector = std::thread::spawn(move || {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(25);
+            while !stopped.load(Ordering::Acquire) && std::time::Instant::now() < deadline {
+                for entry in std::fs::read_dir(&namespace).map_err(|e| e.to_string())? {
+                    let entry = entry.map_err(|e| e.to_string())?;
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if !name.starts_with("run-") {
+                        continue;
+                    }
+                    let expected =
+                        format!("abi.source-tool-scratch/1\nstore={identity}\nchild={name}\n");
+                    if std::fs::read(entry.path().join("source938-tools.owner"))
+                        .ok()
+                        .as_deref()
+                        == Some(expected.as_bytes())
+                    {
+                        let path = entry.path().join("reference");
+                        // Real I/O refusal in the reference-prepare arm, after
+                        // the actual candidate has linked and run. No worker
+                        // outcome or producer counter is forged by this seam.
+                        let mut options = std::fs::OpenOptions::new();
+                        use std::io::Write;
+                        let mut file = options
+                            .write(true)
+                            .create_new(true)
+                            .open(&path)
+                            .map_err(|e| e.to_string())?;
+                        file.write_all(b"FIXTURE-OWNED-REFERENCE-PLACEHOLDER")
+                            .map_err(|e| e.to_string())?;
+                        return Ok::<PathBuf, String>(path);
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            Err("reference I/O counterexample was not installed".into())
+        });
+        let mut changed = deck.clone();
+        changed["provider_bias"] = 1.into();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            source_worker_raw(&changed, &store, leg, "tool-refusal")
+        }));
+        stop.store(true, Ordering::Release);
+        let placeholder = injector.join().unwrap().unwrap();
+        let rejected = result.unwrap();
+        assert_eq!(
+            rejected["error"]["code"], "store.cleanup-pending",
+            "{rejected}"
+        );
+        let message = rejected["error"]["message"].as_str().unwrap();
+        assert!(
+            message.contains("publication committed=false") && message.contains("original=infra"),
+            "{message}"
+        );
+        assert_eq!(std::fs::read(&pointer).unwrap(), original);
+        assert_eq!(
+            std::fs::read(&placeholder).unwrap(),
+            b"FIXTURE-OWNED-REFERENCE-PLACEHOLDER"
+        );
+        let old_scratch = placeholder.parent().unwrap().to_path_buf();
+        assert!(old_scratch.join("source938-tools.owner").exists());
+        // The fixture owns this one placeholder. Let the next real request
+        // recover every other owned output using the production collector.
+        std::fs::remove_file(placeholder).unwrap();
+        let repaired = source_worker_query(&changed, &store, leg, "tool-repair");
+        assert_eq!(repaired["ok"]["source_import"]["actual_exit"], 43);
+        assert_eq!(repaired["ok"]["source_import"]["reference_exit"], 43);
+        assert!(!old_scratch.exists());
+        assert_ne!(std::fs::read(&pointer).unwrap(), original);
+    }
+}
+
+fn assert_tool_scratch_clean(store: &Path, expected: bool) {
+    let namespace = store.join("logs/source938-tools");
+    if expected {
+        assert!(
+            namespace.is_dir(),
+            "actual worker bypassed owned tool scratch"
+        );
+    }
+    if namespace.exists() {
+        let names: Vec<_> = std::fs::read_dir(&namespace)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(
+            names,
+            vec![std::ffi::OsString::from("source938-tools.owner")],
+            "worker left scratch outputs: {}",
+            namespace.display()
+        );
+    }
+    if store.exists() {
+        assert!(
+            !std::fs::read_dir(store).unwrap().any(|e| e
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with("source938-run-")),
+            "legacy unowned run directory accumulated"
+        );
+    }
 }
 
 #[test]
