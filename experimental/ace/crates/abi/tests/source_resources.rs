@@ -13,6 +13,9 @@ thread_local! {
     static PEAK: Cell<usize> = const { Cell::new(0) };
     static TRACKED: RefCell<[(usize, usize); 128]> = const { RefCell::new([(0, 0); 128]) };
     static OVERFLOW: Cell<bool> = const { Cell::new(false) };
+    static RESIDENT_PROBE: RefCell<Option<(usize, ace_source_query::resources::Resources, usize)>> = const { RefCell::new(None) };
+    static RESIDENT_HITS: Cell<usize> = const { Cell::new(0) };
+    static RESIDENT_ADMITTED: Cell<bool> = const { Cell::new(true) };
 }
 fn observe(size: usize) {
     let _ = THRESHOLD.try_with(|threshold| {
@@ -22,6 +25,19 @@ fn observe(size: usize) {
     });
 }
 fn allocated(ptr: *mut u8, size: usize, replaced: Option<*mut u8>) {
+    if !ptr.is_null() {
+        let _ = RESIDENT_PROBE.try_with(|probe| {
+            let probe = probe.borrow();
+            if let Some((expected_size, resources, minimum)) = &*probe {
+                if size == *expected_size {
+                    RESIDENT_HITS.with(|hits| hits.set(hits.get() + 1));
+                    if resources.stats().current.resident < *minimum {
+                        RESIDENT_ADMITTED.with(|admitted| admitted.set(false));
+                    }
+                }
+            }
+        });
+    }
     let _ = TRACK_HEAP.try_with(|enabled| {
         if enabled.get() && !ptr.is_null() {
             TRACKED.with(|tracked| {
@@ -46,6 +62,35 @@ fn allocated(ptr: *mut u8, size: usize, replaced: Option<*mut u8>) {
             });
         }
     });
+}
+fn with_resident_probe<T>(
+    size: usize,
+    resources: &ace_source_query::resources::Resources,
+    minimum: usize,
+    f: impl FnOnce() -> T,
+) -> (T, usize, bool) {
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            RESIDENT_PROBE.with(|probe| {
+                probe.borrow_mut().take();
+            });
+        }
+    }
+    RESIDENT_HITS.with(|hits| hits.set(0));
+    RESIDENT_ADMITTED.with(|admitted| admitted.set(true));
+    RESIDENT_PROBE.with(|probe| {
+        assert!(probe.borrow().is_none());
+        *probe.borrow_mut() = Some((size, resources.clone(), minimum));
+    });
+    let reset = Reset;
+    let result = f();
+    drop(reset);
+    (
+        result,
+        RESIDENT_HITS.with(Cell::get),
+        RESIDENT_ADMITTED.with(Cell::get),
+    )
 }
 fn freed(ptr: *mut u8) {
     let _ = TRACK_HEAP.try_with(|enabled| {
@@ -320,11 +365,155 @@ mod source_foreign {
         )
         .unwrap();
         assert!(hit);
-        assert_eq!(repaired, bytes);
+        assert_eq!(repaired.as_slice(), bytes.as_slice());
+        assert_eq!(
+            resources.stats().current.resident - before.current.resident,
+            repaired.capacity() + 40
+        );
+        let alias = repaired.clone();
+        drop(repaired);
+        assert!(resources.stats().current.resident > before.current.resident);
+        drop(alias);
         let after = resources.stats();
         assert_eq!(after.current.resident, before.current.resident);
         assert_eq!(after.current.io, before.current.io);
         assert_eq!(after.live_objects, 0);
+    }
+
+    #[test]
+    fn c_cache_decoded_object_is_charged_at_its_real_allocation_and_pinned_by_aliases() {
+        use ace_artifacts::codec::ChunkKind;
+        use ace_source_query::resources::Resources;
+        let (root, store, bytes, artifacts) = large_cache_fixture("c-cache-output-owner");
+        let source = root.join("provider.c");
+        let id: String = store
+            .db()
+            .query_row(
+                "SELECT artifact_id FROM artifacts WHERE layer=?1",
+                [ace_abi::cache::LAYER_OBJECT_V01.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let resources = Resources::default();
+        let raw = resources
+            .load_payload(64 << 20, ChunkKind::Object, |bound| {
+                store.get_artifact_by_id_bounded(&id, bound)
+            })
+            .unwrap()
+            .unwrap();
+        let raw_charge = raw.capacity() + 40;
+        drop(raw);
+        let before = resources.stats().current;
+        // This is the pinned base64 engine's output-allocation upper bound;
+        // the observation is made by the actual allocator before it returns
+        // control to a caller that could otherwise reserve too late.
+        let capacity = (bytes.len() + 2) / 3 * 3;
+        let (result, hits, admitted) =
+            with_resident_probe(capacity, &resources, raw_charge + capacity + 40, || {
+                ace_abi::cache::produce_c_object_with_resources(
+                    &store,
+                    &source,
+                    &root,
+                    &artifacts,
+                    &resources,
+                    || panic!("decoded output test lost the cached object"),
+                )
+            });
+        let (object, hit) = result.unwrap();
+        assert!(hit);
+        assert_eq!(object.as_slice(), bytes.as_slice());
+        assert_eq!(hits, 1, "allocator did not observe the real decoded output");
+        assert!(
+            admitted,
+            "decoded output was allocated before its shared resident reservation"
+        );
+        assert_eq!(
+            resources.stats().current.resident - before.resident,
+            object.capacity() + 40
+        );
+        resources
+            .adopt(&object, Charge::resident(object.capacity() + 40))
+            .unwrap();
+        let alias = object.clone();
+        drop(object);
+        assert!(resources.stats().current.resident > before.resident);
+        drop(alias);
+        assert_eq!(resources.stats().current, before);
+    }
+
+    #[test]
+    fn c_cache_invalid_base64_releases_its_output_reservation_and_remains_a_miss() {
+        use ace_artifacts::{
+            codec::ChunkKind,
+            store::{ManagedStore, PutRequest, StoreError},
+        };
+        use ace_source_query::resources::Resources;
+        let (root, bytes, _environment, _caps) = fixture("c-cache-invalid-base64");
+        let source = root.join("provider.c");
+        let header = root.join("source_foreign938.h");
+        let artifacts = [root.join("provider.obj")];
+        let store = ManagedStore::open(&root.with_extension("cache-store")).unwrap();
+        ace_abi::cache::produce_c_object(&store, &source, &root, &artifacts, || {
+            Ok((bytes.as_ref().clone(), vec![header.clone()]))
+        })
+        .unwrap();
+        let id: String = store
+            .db()
+            .query_row(
+                "SELECT artifact_id FROM artifacts WHERE layer=?1",
+                [ace_abi::cache::LAYER_OBJECT_V01.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let loaded = store.get_artifact_by_id(&id).unwrap().unwrap();
+        let mut entry: serde_json::Value = serde_json::from_slice(&loaded.payload).unwrap();
+        entry["obj_b64"] = "!!!".into();
+        assert_eq!(
+            store
+                .db()
+                .execute("DELETE FROM artifacts WHERE artifact_id=?1", [&id])
+                .unwrap(),
+            1
+        );
+        let identity = ace_abi::cache::c_source_identity(&source).unwrap();
+        store
+            .put_artifact(PutRequest {
+                layer: ace_abi::cache::LAYER_OBJECT_V01.id,
+                key: ace_abi::cache::c_object_key(&identity, "invalid-base64-fixture-v4"),
+                kind: ChunkKind::Object,
+                payload: serde_json::to_vec(&entry).unwrap(),
+                edges: vec![],
+                project: None,
+            })
+            .unwrap();
+        let resources = Resources::default();
+        let mut produced = 0;
+        let (object, hit) = ace_abi::cache::produce_c_object_with_resources(
+            &store,
+            &source,
+            &root,
+            &artifacts,
+            &resources,
+            || {
+                produced += 1;
+                let object = resources
+                    .own_payload(bytes.as_ref().clone())
+                    .map_err(|e| StoreError::ResourceExhausted(e.to_string()))?;
+                Ok((object, vec![header]))
+            },
+        )
+        .unwrap();
+        assert!(!hit);
+        assert_eq!(produced, 1);
+        assert_eq!(object.as_slice(), bytes.as_slice());
+        assert_eq!(
+            resources.stats().current.resident,
+            object.capacity() + 40,
+            "failed base64 decode leaked a live output fee"
+        );
+        drop(object);
+        assert_eq!(resources.stats().current.resident, 0);
+        assert_eq!(resources.stats().current.io, 0);
     }
 
     #[test]
@@ -360,7 +549,10 @@ mod source_foreign {
             &resources,
             || {
                 produced += 1;
-                Ok((bytes.as_ref().clone(), vec![header]))
+                let shared = resources.own_payload(bytes.as_ref().clone()).map_err(|e| {
+                    ace_artifacts::store::StoreError::ResourceExhausted(e.to_string())
+                })?;
+                Ok((shared, vec![header]))
             },
         )
         .unwrap();
@@ -369,7 +561,7 @@ mod source_foreign {
             produced, 1,
             "malformed metadata was neither served nor a real miss"
         );
-        assert_eq!(actual, *bytes);
+        assert_eq!(actual.as_slice(), bytes.as_slice());
         let (repeated, hit) = ace_abi::cache::produce_c_object_with_resources(
             &store,
             &source,
@@ -380,7 +572,12 @@ mod source_foreign {
         )
         .unwrap();
         assert!(hit);
-        assert_eq!(repeated, *bytes);
+        assert_eq!(repeated.as_slice(), bytes.as_slice());
+        assert_eq!(
+            resources.stats().current.resident,
+            actual.capacity() + repeated.capacity() + 80
+        );
+        drop((actual, repeated));
         assert_eq!(resources.stats().current.resident, 0);
         assert_eq!(resources.stats().current.io, 0);
     }
@@ -447,7 +644,12 @@ mod source_foreign {
         )
         .unwrap();
         assert!(hit);
-        assert_eq!(repaired, bytes);
+        assert_eq!(repaired.as_slice(), bytes.as_slice());
+        assert_eq!(
+            resources.stats().current.resident - before.resident,
+            repaired.capacity() + 40
+        );
+        drop(repaired);
         assert_eq!(resources.stats().current, before);
     }
 
@@ -551,7 +753,12 @@ mod source_foreign {
         )
         .unwrap();
         assert!(hit);
-        assert_eq!(repaired, *bytes);
+        assert_eq!(repaired.as_slice(), bytes.as_slice());
+        assert_eq!(
+            resources.stats().current.resident - baseline.resident,
+            repaired.capacity() + 40
+        );
+        drop(repaired);
         assert_eq!(
             resources.stats().current,
             baseline,

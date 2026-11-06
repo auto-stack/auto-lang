@@ -174,11 +174,11 @@ struct CObjectEntry {
     dir_listings: Vec<(String, Vec<String>)>,
 }
 
-enum CObjectEntryBytes {
+enum CacheBytes {
     Legacy(Vec<u8>),
     Managed(std::sync::Arc<Vec<u8>>),
 }
-impl AsRef<[u8]> for CObjectEntryBytes {
+impl AsRef<[u8]> for CacheBytes {
     fn as_ref(&self) -> &[u8] {
         match self {
             Self::Legacy(bytes) => bytes,
@@ -186,17 +186,23 @@ impl AsRef<[u8]> for CObjectEntryBytes {
         }
     }
 }
+impl std::ops::Deref for CacheBytes {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
 fn load_c_object_entry(
     store: &ManagedStore,
     id: &str,
     resources: Option<&ace_source_query::resources::Resources>,
-) -> Result<Option<CObjectEntryBytes>, StoreError> {
+) -> Result<Option<CacheBytes>, StoreError> {
     match resources {
         Some(resources) => resources
             .load_payload(64 << 20, ChunkKind::Object, |bound| {
                 store.get_artifact_by_id_bounded(id, bound)
             })
-            .map(|payload| payload.map(CObjectEntryBytes::Managed))
+            .map(|payload| payload.map(CacheBytes::Managed))
             .map_err(|e| {
                 if matches!(&e, ace_source_query::resources::ResourceError::Budget(_)) {
                     StoreError::ResourceExhausted(format!("C cache entry read: {e}"))
@@ -204,10 +210,44 @@ fn load_c_object_entry(
                     StoreError::Internal(format!("C cache entry read: {e}"))
                 }
             }),
-        None => store.get_artifact_by_id(id).map(|loaded| {
-            loaded.map(|LoadedArtifact { payload, .. }| CObjectEntryBytes::Legacy(payload))
-        }),
+        None => store
+            .get_artifact_by_id(id)
+            .map(|loaded| loaded.map(|LoadedArtifact { payload, .. }| CacheBytes::Legacy(payload))),
     }
+}
+
+fn decode_c_object_bytes(
+    encoded: &str,
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<Option<CacheBytes>, StoreError> {
+    use base64::Engine as _;
+    let Some(resources) = resources else {
+        return Ok(base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .ok()
+            .map(CacheBytes::Legacy));
+    };
+    let capacity = encoded
+        .len()
+        .checked_add(3)
+        .and_then(|n| n.checked_div(4))
+        .and_then(|n| n.checked_mul(3))
+        .filter(|n| *n <= 64 << 20)
+        .ok_or_else(|| StoreError::ResourceExhausted("C cache object decode size".into()))?;
+    let allocation = resources
+        .reserve(ace_source_query::resources::Charge::resident(capacity + 40))
+        .map_err(|e| StoreError::ResourceExhausted(format!("C cache object decode: {e}")))?;
+    let mut bytes = vec![0u8; capacity];
+    let Ok(length) = base64::engine::general_purpose::STANDARD.decode_slice(encoded, &mut bytes)
+    else {
+        return Ok(None);
+    };
+    bytes.truncate(length);
+    let bytes = std::sync::Arc::new(bytes);
+    allocation
+        .retain(&bytes)
+        .map_err(|e| StoreError::ResourceExhausted(format!("C cache object decode: {e}")))?;
+    Ok(Some(CacheBytes::Managed(bytes)))
 }
 
 struct DecodedCObjectEntry {
@@ -440,12 +480,21 @@ pub fn produce_c_object<F>(
 where
     F: FnOnce() -> Result<(Vec<u8>, Vec<std::path::PathBuf>), String>,
 {
-    produce_c_object_impl(store, src, include_dir, artifact_paths, None, produce)
+    let (bytes, hit) =
+        produce_c_object_impl(store, src, include_dir, artifact_paths, None, || {
+            produce()
+                .map(|(bytes, deps)| (CacheBytes::Legacy(bytes), deps))
+                .map_err(|e| StoreError::Internal(format!("producer: {e}")))
+        })?;
+    let CacheBytes::Legacy(bytes) = bytes else {
+        unreachable!("legacy cache used managed output")
+    };
+    Ok((bytes, hit))
 }
 
-/// The source composition shares its discovery-ID index with the original
-/// resource account. Entry decoding and producer output are separate ports;
-/// this remains the same cache and applicability algorithm.
+/// Source discovery IDs, raw/typed entry reads and decoded output ownership
+/// share one account. The producer supplies owned immutable bytes; cache keys
+/// and the original applicability algorithm remain unchanged.
 pub fn produce_c_object_with_resources<F>(
     store: &ManagedStore,
     src: &std::path::Path,
@@ -453,18 +502,33 @@ pub fn produce_c_object_with_resources<F>(
     artifact_paths: &[std::path::PathBuf],
     resources: &ace_source_query::resources::Resources,
     produce: F,
-) -> Result<(Vec<u8>, bool), StoreError>
+) -> Result<(std::sync::Arc<Vec<u8>>, bool), StoreError>
 where
-    F: FnOnce() -> Result<(Vec<u8>, Vec<std::path::PathBuf>), String>,
+    F: FnOnce() -> Result<(std::sync::Arc<Vec<u8>>, Vec<std::path::PathBuf>), StoreError>,
 {
-    produce_c_object_impl(
+    let (bytes, hit) = produce_c_object_impl(
         store,
         src,
         include_dir,
         artifact_paths,
         Some(resources),
-        produce,
-    )
+        || {
+            let (bytes, deps) = produce()?;
+            resources
+                .adopt(
+                    &bytes,
+                    ace_source_query::resources::Charge::resident(bytes.capacity() + 40),
+                )
+                .map_err(|e| {
+                    StoreError::ResourceExhausted(format!("C cache producer output: {e}"))
+                })?;
+            Ok((CacheBytes::Managed(bytes), deps))
+        },
+    )?;
+    let CacheBytes::Managed(bytes) = bytes else {
+        unreachable!("source cache used unmanaged output")
+    };
+    Ok((bytes, hit))
 }
 
 fn produce_c_object_impl<F>(
@@ -474,9 +538,9 @@ fn produce_c_object_impl<F>(
     artifact_paths: &[std::path::PathBuf],
     resources: Option<&ace_source_query::resources::Resources>,
     produce: F,
-) -> Result<(Vec<u8>, bool), StoreError>
+) -> Result<(CacheBytes, bool), StoreError>
 where
-    F: FnOnce() -> Result<(Vec<u8>, Vec<std::path::PathBuf>), String>,
+    F: FnOnce() -> Result<(CacheBytes, Vec<std::path::PathBuf>), StoreError>,
 {
     use base64::Engine as _;
     let source_identity =
@@ -535,7 +599,7 @@ where
     // `source=…,target=…,toolchain=…` is one contiguous substring that
     // pre-filters to the CURRENT target + toolchain/flags before any
     // payload is even loaded; the envelope re-check is authoritative.
-    let discover = || -> Result<Option<Vec<u8>>, StoreError> {
+    let discover = || -> Result<Option<CacheBytes>, StoreError> {
         let ids = {
             use ace_source_query::resources::Charge;
             let mut allocation = resources
@@ -627,14 +691,14 @@ where
                 let Some(decoded) = decode_c_object_entry(payload.as_ref(), resources)? else {
                     continue;
                 };
-                let verified = Some(&decoded.value)
-                    .filter(|e| {
-                        // F-797-R4-07 (R14): v4 only — legacy envelopes
-                        // computed under a NARROWER applicability rule
-                        // (fewer derived candidate dirs, suffix-filtered
-                        // listings) are never served; they miss and are
-                        // re-proven under the current rule
-                        e.v == 4
+                let e = &decoded.value;
+                if !(
+                    // F-797-R4-07 (R14): v4 only — legacy envelopes
+                    // computed under a NARROWER applicability rule
+                    // (fewer derived candidate dirs, suffix-filtered
+                    // listings) are never served; they miss and are
+                    // re-proven under the current rule
+                    e.v == 4
                             && e.source == source_identity
                             && e.src_dir == src_dir
                             && e.include_dir == inc_dir_s
@@ -648,18 +712,16 @@ where
                             && e.dir_listings.iter().all(|(d, l)| {
                                 search_listing(std::path::Path::new(d), &artifact_paths) == *l
                             })
-                    })
-                    .and_then(|e| {
-                        base64::engine::general_purpose::STANDARD
-                            .decode(&e.obj_b64)
-                            .ok()
-                            .map(|obj| (&e.deps, obj))
-                    })
-                    .filter(|(deps, _)| {
-                        deps.iter()
-                            .all(|(p, h)| hash_dep(p).is_ok_and(|now| now == *h))
-                    });
-                if let Some((_, obj)) = verified {
+                ) {
+                    continue;
+                }
+                let Some(obj) = decode_c_object_bytes(&e.obj_b64, resources)? else {
+                    continue;
+                };
+                if e.deps
+                    .iter()
+                    .all(|(p, h)| hash_dep(p).is_ok_and(|now| now == *h))
+                {
                     return Ok(Some(obj));
                 }
             }
@@ -669,7 +731,7 @@ where
     if let Some(obj) = discover()? {
         return Ok((obj, true));
     }
-    let (obj, deps) = produce().map_err(|e| StoreError::Internal(format!("producer: {e}")))?;
+    let (obj, deps) = produce()?;
     // F-797-R4-10: single-artifact budget (contract-decision §6) — a
     // producer emitting >64MiB is a RESOURCE rejection, not a stored
     // object and not a truncated success.

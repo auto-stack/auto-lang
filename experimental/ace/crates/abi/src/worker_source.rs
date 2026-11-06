@@ -638,9 +638,19 @@ fn prepare_provider(
             &[object.clone()],
             resources,
             || {
-                let deps = crate::ctool::compile_c_with_deps(&src, inputs, &object)
-                    .map_err(|e| e.to_string())?;
-                Ok((std::fs::read(&object).map_err(|e| e.to_string())?, deps))
+                let deps =
+                    crate::ctool::compile_c_with_deps(&src, inputs, &object).map_err(|e| {
+                        ace_artifacts::store::StoreError::Internal(format!("producer: {e}"))
+                    })?;
+                let bytes = std::fs::read(&object).map_err(|e| {
+                    ace_artifacts::store::StoreError::Internal(format!("producer: {e}"))
+                })?;
+                let bytes = resources.own_payload(bytes).map_err(|e| {
+                    ace_artifacts::store::StoreError::ResourceExhausted(format!(
+                        "C cache producer output: {e}"
+                    ))
+                })?;
+                Ok((bytes, deps))
             },
         )
         .map_err(|e| {
@@ -651,10 +661,7 @@ fn prepare_provider(
             };
             err(code, e)
         })?;
-        let bytes = resources
-            .own_payload(result.0)
-            .map_err(|e| err("foreign.resource", e))?;
-        Ok((bytes, result.1))
+        Ok(result)
     })();
     if let Err(cleanup) = scratch.finish() {
         let original = operation
