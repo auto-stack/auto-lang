@@ -1418,6 +1418,20 @@ stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress（CT真�
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:54 | from:work | to:work | status:executing6/21 | outcome:in_progress（真实CT观察接线，原门live） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:5b3501b2aeae0b8ba7845f7afd8fca3726220166 | next:work 同session84298/PID1912与35420，终态后strict准入
 
+### 第55轮：续同CT完整门；真实压力转场与读取规则反控准备（2026-11-06）
+
+- 第54轮新增永久真实观察测试与557冻结输入核验为progress。本轮入口重读main r4 executing6/21/末receipt，同树5b3501b2a clean、main代码无WIP、worktree归属正确；继续同session84298，未重启或启动其他编译/测试。原capture Python1912/fixed driver35420均仍live，不以旧锁或历史意图推运行状态。
+- **已验证运行转场**：原PID11612在原物理GC水位/删除/收敛压力用例中CPU持续增长（20:34末436.109375s、工作集30400512B）；其后该PID缺失，20:35:46实际新PID**35764**进入原`cte_resources_tests::performance::resources_thirty_two_mib_pages_and_512_distinct_revisions`，session84298仍live。只证明前项进程已终结/后项运行，不推前项PASS或整个门terminal；原parent stdout/results尚未最终落盘。完整discovery实际135用例/0ignored，含新`ace-source-cte::architecture_941`唯一测试且filter matches；列出不算执行。
+- 原nextest配置对`::performance::`占满当前测试池，故后继包括新观察测试须等原压力原子项，不减少64MiB水位、32MiB页或512修订，不改线程/ignore/样本/截止。原观察export尚未生成，不能提前填strict证据。正式门含编译准备/原完整测量；同树source/config持续冻结。
+- **只在统一scope准备读取草稿，未写实施树**：`draft-ct-mechanism-reader.py` SHA **3c1f024ae291bfbe0b956e76266d5355c9a44ce816fbd06eb8981ca89ce8be8b**；逐独立原source字节/不变main后缀、五态真实计数/原key关联/正steps/发布与forbid负控/checked-owner42、42、43判定。实际服务hit log的attempt=0/from_cache=true，steps/wall保原executed页面值；不能错当本次新AV工作或伪造0步。该事实来自现service.rs实际实现，终态后仍须对原始payload验证。
+- 草稿**28合成反例控制全部符合预期**，均明确0真实执行/不入组合：合法保留hit旧steps；错冷计数、伪hit标记/attempt/key/outcome/steps/wall、编辑冒hit/旧key/零steps、fake counters无log、陈旧43/两者同错值、forbid码不符；bool计数/owner、额外PASS字段、旧源码/旧deck sink/缺态必须拒。`ct-draft-countercontrols.json` SHA **9e935ff312df566c4dbd1c0e74db97227086a0e24906dfc64e0bb61b79899150**。只有纯规则及py_compile/合成控制，不冒已使能正式reader或ARCH执行通过；producer source闭包与原native terminal关联仍须完整接线。
+- 顺带只读核依赖现态：938推进到executing6/13、分支af26e0d47，尚未D；939仍drafting0/14，不能消费开发分支冒已交付或由941接走其功能。无新用户决定。
+- 当前有效全组合继续**707P8F291U /原102P211U313/ARCH49U**，完成6/21、全部claim false、原8red/38cert-gap/T13健康与其余未闭任务保持。下一步先续同session84298（capture1912/driver35420，当前压力子35764）至真实terminal；再核after/原始观察/13生产工具/完整native结果。没有重复运行门，没有写入冻结生产或交付文件。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress（verified_wait同CT原压力门；28纯草稿反控准备） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:5b3501b2aeae0b8ba7845f7afd8fca3726220166 | task_ids:T08/T06原机制观察 | evidence:session84298/1912/35420/35764实核live，135发现/0ignored不冒执行；28合成控制 | blockers:同门仍运行、原raw/strict准入未齐；无新用户决定 | next_responsible_role:work 同session84298，不并行build/不改冻结源
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:55 | from:work | to:work | status:executing6/21 | outcome:in_progress（verified_wait及读取规则反控准备） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:5b3501b2aeae0b8ba7845f7afd8fca3726220166 | next:work 先poll同session84298/capture1912/driver35420，当前原32MiB512修订压力子35764
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
