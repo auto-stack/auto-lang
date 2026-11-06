@@ -61,5 +61,5 @@ test-group = "fixed-http"
 # and retain the original short discovery/IPC deadlines. Reserve this invocation
 # while each control runs; do not overlap its nested processes with this pool.
 [[profile.default.overrides]]
-filter = "test(/^source_foreign::/)"
+filter = "test(/^source_foreign::/) or test(/^test_cases::abi::source_protocol_tests::/)"
 threads-required = "num-test-threads"

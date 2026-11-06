@@ -1428,8 +1428,128 @@ pub fn run_check(
 #[cfg(test)]
 mod source_protocol_tests {
     use super::*;
+    static SOURCE_PROTOCOL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    struct FaultReset;
+    impl Drop for FaultReset {
+        fn drop(&mut self) {
+            *TEST_FAULTS.write().unwrap() = None;
+        }
+    }
+    #[test]
+    #[cfg(windows)]
+    fn source_parent_oracle_failure_rejudges_the_same_compiler_root_without_caching_pass() {
+        let _exclusive = SOURCE_PROTOCOL.lock().unwrap();
+        use auto_test_case::{
+            admission::Limits,
+            atom::parse_contract,
+            contract::decode_case,
+            document::CaseDocument,
+            ir::{resolve_case, resolve_oracle},
+        };
+        let limits = Limits::defaults();
+        let document = CaseDocument::parse(b"").unwrap();
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("auto-lang/test/cases/ace-ca-d-source-938");
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let scope = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+            .join(format!("parent-oracle-{}-{stamp}", std::process::id()));
+        for leg in ["native", "c"] {
+            let artifact = scope.join(leg);
+            let mut accepted_pointer = None;
+            let mut first_oracle = None;
+            for (turn, expected) in [43, 42, 43].into_iter().enumerate() {
+                let text = format!(
+                    r#"case {{ schema:"autolang.case/2", id:"source938.oracle-repair",
+                    source:{{file:"src/add.atomdata",syntax:"atom-data",path:"add.atomdata"}},
+                    entry:{{mode:"program"}}, checks:[{{id:"certify",adapter:"probe",action:"run",
+                    options:{{recipe:"abi/source-foreign-certify-v1",abi:{{leg:"{leg}"}},steps:[{{op:"query"}}]}},
+                    expect:{{completion:"success",exit:{expected},probe:[{{}}]}}}}] }}"#
+                );
+                let spec = decode_case(&parse_contract(&text).unwrap(), &limits).unwrap();
+                let case = resolve_case(spec, &document, &fixture, &limits).unwrap();
+                let check = &case.spec.checks[0];
+                let oracle = resolve_oracle(&case.spec.id, check, &fixture, &limits).unwrap();
+                if turn == 0 {
+                    first_oracle = Some(oracle.oracle_sha256.clone());
+                } else if turn == 1 {
+                    assert_ne!(first_oracle.as_ref(), Some(&oracle.oracle_sha256));
+                } else {
+                    assert_eq!(first_oracle.as_ref(), Some(&oracle.oracle_sha256));
+                }
+                let verdict =
+                    run_check(&case, check, &oracle, &fixture, &artifact, &scope).unwrap();
+                assert_eq!(
+                    verdict.status,
+                    if expected == 42 {
+                        Status::Pass
+                    } else {
+                        Status::Fail
+                    },
+                    "{leg}/{turn}: {:?}",
+                    verdict.detail
+                );
+                assert_eq!(verdict.native.as_ref().unwrap().exit_code, Some(42));
+                if expected == 43 {
+                    assert!(verdict
+                        .mismatches
+                        .iter()
+                        .any(|m| m.observation.contains("reference_exit")));
+                } else {
+                    assert!(verdict.mismatches.is_empty());
+                }
+                if turn > 0 {
+                    assert!(verdict
+                        .native
+                        .as_ref()
+                        .unwrap()
+                        .counters
+                        .iter()
+                        .any(|(name, value)| name == "req_q0_compute" && *value == 0));
+                }
+                let bytes = std::fs::read(
+                    artifact
+                        .join("store")
+                        .join(format!("source938-current-{leg}.json")),
+                )
+                .unwrap();
+                if let Some(prior) = &accepted_pointer {
+                    assert_eq!(
+                        &bytes, prior,
+                        "the parent oracle mutated compiler publication"
+                    );
+                } else {
+                    accepted_pointer = Some(bytes);
+                }
+                let report: serde_json::Value = serde_json::from_slice(
+                    &std::fs::read(artifact.join("source-import-report-0.json")).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(report["report"]["actual_exit"], 42);
+                assert_eq!(report["report"]["reference_exit"], 42);
+            }
+            let raw = std::fs::read_to_string(artifact.join("abi-request-samples.jsonl")).unwrap();
+            let rows: Vec<serde_json::Value> = raw
+                .lines()
+                .map(|line| serde_json::from_str(line).unwrap())
+                .collect();
+            assert_eq!(rows.len(), 3);
+            assert_eq!(
+                rows.iter()
+                    .map(|r| r["ok"].as_bool().unwrap())
+                    .collect::<Vec<_>>(),
+                vec![false, true, false]
+            );
+        }
+    }
+
     #[test]
     fn source_transport_refuses_late_duplicate_output_and_late_process_failure() {
+        let _exclusive = SOURCE_PROTOCOL.lock().unwrap();
         let request=serde_json::json!({"recipe":super::super::abi_source::RECIPE,"nonce":"source938-nonce","request_hash":"source938-request",
             "deck_b64":"","leg":"native","store_root":"unused-on-restart","steps":[{"op":"restart"}]}).to_string();
         assert!(call_worker(&request, Duration::from_secs(5)).is_ok());
@@ -1437,12 +1557,12 @@ mod source_protocol_tests {
             ("ABI_TEST_LATE_STDOUT_MS", "30"),
             ("ABI_TEST_HANG_AFTER_RESPONSE_SECS", "2"),
         ] {
+            let _reset = FaultReset;
             *TEST_FAULTS.write().unwrap() = Some(TestFaults {
                 child_envs: vec![(key.into(), value.into())],
                 session_wall_ms: Some(300),
             });
             let result = call_worker(&request, Duration::from_secs(5));
-            *TEST_FAULTS.write().unwrap() = None;
             assert!(result.is_err(), "late fault {key} was accepted");
         }
     }
