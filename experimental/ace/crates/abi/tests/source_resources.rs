@@ -348,6 +348,130 @@ mod source_foreign {
     }
 
     #[test]
+    fn source_identity_reserves_digest_and_final_text_before_their_actual_allocations() {
+        use ace_artifacts::store::StoreError;
+        use ace_source_query::resources::Resources;
+        let (root, _, _, _) = fixture("source-identity-budget");
+        let source = root.join("provider.c");
+        let expected = ace_abi::cache::c_source_identity(&source).unwrap();
+        let resources = Resources::default();
+        let baseline = resources.stats().current.index;
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - baseline - 64))
+            .unwrap();
+        let (rejected, large) = measured_at(1 << 20, || {
+            cache_paths::source_identity(&source, Some(&resources))
+        });
+        assert!(matches!(rejected, Err(StoreError::ResourceExhausted(_))));
+        assert_eq!(large, 0);
+        drop(pressure);
+        for layout in [64, expected.len()] {
+            let (identity, hits, admitted) = with_charge_probe(
+                layout,
+                &resources,
+                Charge::index(baseline + expected.len() + 64),
+                || cache_paths::source_identity(&source, Some(&resources)),
+            );
+            let identity = identity.unwrap();
+            assert_eq!(identity.value, expected);
+            assert_eq!(hits, 1, "did not observe identity buffer {layout}");
+            assert!(
+                admitted,
+                "identity allocation preceded digest/output reservation"
+            );
+            assert_eq!(
+                resources.stats().current.index,
+                baseline + identity.value.capacity()
+            );
+            drop(identity);
+            assert_eq!(resources.stats().current.index, baseline);
+        }
+        let missing = root.join("missing.c");
+        assert!(
+            matches!(cache_paths::source_identity(&missing, Some(&resources)), Err(StoreError::Internal(ref message)) if message.starts_with(&missing.display().to_string()))
+        );
+        assert_eq!(resources.stats().current.index, baseline);
+    }
+
+    #[test]
+    fn toolchain_identity_and_sql_needle_precharge_streamed_text_and_preserve_original_escaping() {
+        use ace_source_query::resources::Resources;
+        use std::os::windows::ffi::OsStringExt;
+        let path = PathBuf::from(std::ffi::OsString::from_wide(&[
+            b'D' as u16,
+            b':' as u16,
+            b'\\' as u16,
+            0xd800,
+        ]));
+        let version = "π\\_%".repeat(32768);
+        let digest = "a".repeat(64);
+        let flags = ["-c", "flag_%\\", "π"];
+        let expected = format!(
+            "cl:{}|ver:{version}|hash:{digest}|flags:{}",
+            path.display(),
+            flags.join(" ")
+        );
+        let resources = Resources::default();
+        let baseline = resources.stats().current.index;
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - baseline - 64))
+            .unwrap();
+        let (rejected, large) = measured_at(128 << 10, || {
+            cache_paths::toolchain_text(&path, &version, &digest, &flags, Some(&resources))
+        });
+        assert!(rejected.is_err());
+        assert_eq!(large, 0, "toolchain copied before admission");
+        drop(pressure);
+        let (toolchain, hits, admitted) = with_charge_probe(
+            expected.len(),
+            &resources,
+            Charge::index(baseline + expected.len()),
+            || cache_paths::toolchain_text(&path, &version, &digest, &flags, Some(&resources)),
+        );
+        let toolchain = toolchain.unwrap();
+        assert_eq!(toolchain.value, expected);
+        assert_eq!(hits, 1);
+        assert!(admitted, "toolchain text allocated before reservation");
+        let source = "source\\_%π";
+        let target = "target_%";
+        let escape = |s: &str| {
+            s.replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_")
+        };
+        let expected = format!(
+            "%source={},target={},toolchain={}%",
+            escape(source),
+            escape(target),
+            escape(&toolchain.value)
+        );
+        let input_fee = resources.stats().current.index;
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - input_fee - 64))
+            .unwrap();
+        let (rejected, large) = measured_at(128 << 10, || {
+            cache_paths::discovery_needle(source, target, &toolchain.value, Some(&resources))
+        });
+        assert!(rejected.is_err());
+        assert_eq!(large, 0, "query copied before admission");
+        drop(pressure);
+        let (needle, hits, admitted) = with_charge_probe(
+            expected.len(),
+            &resources,
+            Charge::index(input_fee + expected.len()),
+            || cache_paths::discovery_needle(source, target, &toolchain.value, Some(&resources)),
+        );
+        let needle = needle.unwrap();
+        assert_eq!(needle.value, expected);
+        assert_eq!(hits, 1);
+        assert!(admitted, "query text allocated before reservation");
+        drop(needle);
+        assert_eq!(resources.stats().current.index, input_fee);
+        drop(toolchain);
+        assert_eq!(resources.stats().current.index, baseline);
+    }
+
+    #[test]
     fn provider_rebind_keeps_current_facts_without_allocating_whole_declaration_copies() {
         let caps = vec![SOURCE_CAP.into()];
         // This is the neutral frontend port: it consumes reviewed declaration
@@ -1554,12 +1678,19 @@ mod source_foreign {
         .err()
         .expect("C cache copied discovery IDs without shared index admission");
         assert!(
-            matches!(error, StoreError::ResourceExhausted(ref message) if message.starts_with("C cache discovery index:")),
+            matches!(error, StoreError::ResourceExhausted(ref message) if message.starts_with("C cache metadata:")),
             "{error}"
         );
         assert_eq!(resources.stats().current.index, (8 << 20) - 64);
+        // Earlier identity/query owners now also reserve their bytes. Admit
+        // those owners here so the separate oversized-row control still
+        // reaches the borrowed SQLite cell and its own pre-copy admission.
+        drop(pressure);
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - baseline.index - (1 << 20)))
+            .unwrap();
         // A corrupt metadata row must not turn the borrowed SQLite value
-        // into a giant Rust String before discovering that only 64B remain.
+        // into a giant Rust String when less than its 2MiB size remains.
         let good_id: String = store
             .db()
             .query_row(

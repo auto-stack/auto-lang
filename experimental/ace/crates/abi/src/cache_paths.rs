@@ -42,7 +42,7 @@ pub(crate) fn metadata_vec<T>(count: usize) -> Result<Vec<T>, StoreError> {
 
 pub(crate) struct CPathText {
     pub(crate) value: String,
-    _allocation: Option<ace_source_query::resources::Reservation>,
+    pub(crate) _allocation: Option<ace_source_query::resources::Reservation>,
 }
 
 /// Lexical relative path FROM a directory TO a file (leading `..`
@@ -217,4 +217,125 @@ impl CPathList {
 
 fn eq_ci(a: &str, b: &str) -> bool {
     a.eq_ignore_ascii_case(b)
+}
+
+/// Streamed source/header hashing has one owned 64-byte result, never a
+/// whole input copy. The caller admits that result in its actual live owner.
+pub(crate) fn hash_file(path: &std::path::Path) -> std::io::Result<String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hash = blake3::Hasher::new();
+    let mut buffer = [0u8; 8192];
+    loop {
+        let count = match file.read(&mut buffer) {
+            Ok(count) => count,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        if count == 0 {
+            break;
+        }
+        hash.update(&buffer[..count]);
+    }
+    Ok(hash.finalize().to_hex().to_string())
+}
+
+pub(crate) fn source_identity(
+    path: &std::path::Path,
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<CPathText, StoreError> {
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
+    let size = metadata_size(&[name.len(), 1, 64])?;
+    let mut allocation = reserve_c_metadata(resources, metadata_size(&[size, 64])?)?;
+    let digest =
+        hash_file(path).map_err(|e| StoreError::Internal(format!("{}: {e}", path.display())))?;
+    let mut value = String::with_capacity(size);
+    value.push_str(name);
+    value.push('|');
+    value.push_str(&digest);
+    drop(digest);
+    resize_c_metadata(&mut allocation, size)?;
+    Ok(CPathText {
+        value,
+        _allocation: allocation,
+    })
+}
+
+pub(crate) fn toolchain_text(
+    executable: &std::path::Path,
+    version: &str,
+    digest: &str,
+    flags: &[&str],
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<CPathText, StoreError> {
+    let flags_size = flags
+        .iter()
+        .try_fold(flags.len().saturating_sub(1), |n, f| {
+            metadata_size(&[n, f.len()])
+        })?;
+    let size = metadata_size(&[
+        "cl:".len(),
+        executable.as_os_str().len(),
+        "|ver:".len(),
+        version.len(),
+        "|hash:".len(),
+        digest.len(),
+        "|flags:".len(),
+        flags_size,
+    ])?;
+    let allocation = reserve_c_metadata(resources, size)?;
+    let mut value = String::with_capacity(size);
+    use std::fmt::Write as _;
+    write!(
+        &mut value,
+        "cl:{}|ver:{version}|hash:{digest}|flags:",
+        executable.display()
+    )
+    .map_err(|e| StoreError::Internal(format!("C tool identity formatting: {e}")))?;
+    for (i, flag) in flags.iter().enumerate() {
+        if i != 0 {
+            value.push(' ');
+        }
+        value.push_str(flag);
+    }
+    Ok(CPathText {
+        value,
+        _allocation: allocation,
+    })
+}
+
+pub(crate) fn discovery_needle(
+    source: &str,
+    target: &str,
+    toolchain: &str,
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<CPathText, StoreError> {
+    let inputs = [
+        ("%source=", source),
+        (",target=", target),
+        (",toolchain=", toolchain),
+    ];
+    let size = inputs.iter().try_fold(1usize, |n, (label, value)| {
+        let escapes = value
+            .bytes()
+            .filter(|b| matches!(b, b'\\' | b'%' | b'_'))
+            .count();
+        metadata_size(&[n, label.len(), value.len(), escapes])
+    })?;
+    let allocation = reserve_c_metadata(resources, size)?;
+    let mut value = String::with_capacity(size);
+    for (label, input) in inputs {
+        value.push_str(label);
+        for ch in input.chars() {
+            if matches!(ch, '\\' | '%' | '_') {
+                value.push('\\');
+            }
+            value.push(ch);
+        }
+    }
+    value.push('%');
+    Ok(CPathText {
+        value,
+        _allocation: allocation,
+    })
 }

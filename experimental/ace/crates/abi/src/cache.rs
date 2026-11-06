@@ -115,35 +115,13 @@ pub fn autoabi_object_key(defs: &[FnDecl], import_inner: bool) -> QueryKey {
 /// alone proves nothing about whether a generation applies to the
 /// CURRENT request).
 pub fn c_source_identity(src: &std::path::Path) -> Result<String, String> {
-    let digest = hash_file(src).map_err(|e| format!("{}: {e}", src.display()))?;
-    Ok(format!(
-        "{}|{}",
-        src.file_name().and_then(|n| n.to_str()).unwrap_or("?"),
-        digest
-    ))
+    cache_paths::source_identity(src, None)
+        .map(|identity| identity.value)
+        .map_err(|e| match e {
+            StoreError::Internal(message) => message,
+            other => other.to_string(),
+        })
 }
-
-/// Source and observed header identities need only the content digest. Keep
-/// the original BLAKE3 identity without allocating a copy of each whole file.
-fn hash_file(path: &std::path::Path) -> std::io::Result<String> {
-    use std::io::Read;
-    let mut file = std::fs::File::open(path)?;
-    let mut hash = blake3::Hasher::new();
-    let mut buffer = [0u8; 8192];
-    loop {
-        let count = match file.read(&mut buffer) {
-            Ok(count) => count,
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(e),
-        };
-        if count == 0 {
-            break;
-        }
-        hash.update(&buffer[..count]);
-    }
-    Ok(hash.finalize().to_hex().to_string())
-}
-
 /// The stored form of a cached C object (v2). Besides the object bytes
 /// and the OBSERVED dependency closure, an entry records the FULL
 /// search-domain facts of the compile that produced it — every one of
@@ -699,19 +677,29 @@ fn search_listing(
 }
 
 fn hash_dep(path: &str) -> Result<String, String> {
-    hash_file(std::path::Path::new(path)).map_err(|e| format!("dep {path}: {e}"))
+    cache_paths::hash_file(std::path::Path::new(path)).map_err(|e| format!("dep {path}: {e}"))
 }
 
-fn like_escape(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_")
+fn current_toolchain(
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<cache_paths::CPathText, StoreError> {
+    match crate::ctool::find_cl() {
+        Ok(tool) => cache_paths::toolchain_text(
+            &tool.cl_exe,
+            &tool.version,
+            &tool.cl_hash,
+            crate::ctool::CL_FLAGS,
+            resources,
+        ),
+        Err(_) => {
+            let allocation = reserve_c_metadata(resources, "ctool-unresolved".len())?;
+            Ok(cache_paths::CPathText {
+                value: "ctool-unresolved".into(),
+                _allocation: allocation,
+            })
+        }
+    }
 }
-
-fn current_toolchain() -> String {
-    crate::ctool::toolchain_fingerprint().unwrap_or_else(|_| "ctool-unresolved".into())
-}
-
 /// F-797-R4-07 (R8/R9) + F-797-R9-01: produce-through-cache for
 /// cl-compiled objects with REAL dependency invalidation and FULL
 /// generation applicability.
@@ -807,8 +795,7 @@ where
     F: FnOnce() -> Result<(CacheBytes, Vec<std::path::PathBuf>), StoreError>,
 {
     use base64::Engine as _;
-    let source_identity =
-        c_source_identity(src).map_err(|e| StoreError::Internal(format!("{e}")))?;
+    let source_identity = cache_paths::source_identity(src, resources)?;
     // F-797-R9-01 (R14): bind the applicability domain to the RESOLVED
     // directories, not the path LITERALS — canonicalize both anchors so
     // relative spellings resolve against the CURRENT working directory
@@ -856,8 +843,9 @@ where
             format!("{}\\{}", dir_s.replace('/', "\\"), name)
         })
         .collect();
+    let _target_allocation = reserve_c_metadata(resources, crate::layout::TARGET.len())?;
     let target = crate::layout::TARGET.to_string();
-    let toolchain = current_toolchain();
+    let toolchain = current_toolchain(resources)?;
     // DISCOVERY (+ verification). Canonical keys sort fields
     // alphabetically (closure, kind, source, target, toolchain), so
     // `source=…,target=…,toolchain=…` is one contiguous substring that
@@ -873,19 +861,19 @@ where
                     StoreError::ResourceExhausted(format!("C cache discovery index: {e}"))
                 })?;
             let db = store.db();
-            let needle = format!(
-                "%source={},target={},toolchain={}%",
-                like_escape(&source_identity),
-                like_escape(&target),
-                like_escape(&toolchain)
-            );
+            let needle = cache_paths::discovery_needle(
+                &source_identity.value,
+                &target,
+                &toolchain.value,
+                resources,
+            )?;
             let sql = "SELECT artifact_id FROM artifacts WHERE layer = ?1 \
                        AND key_canonical LIKE ?2 ESCAPE '\\'";
             let mut stmt = db
                 .prepare(sql)
                 .map_err(|e| StoreError::Internal(format!("closure lookup: {e}")))?;
             let mut rows = stmt
-                .query([LAYER_OBJECT_V01.id, needle.as_str()])
+                .query([LAYER_OBJECT_V01.id, needle.value.as_str()])
                 .map_err(|e| StoreError::Internal(format!("closure lookup: {e}")))?;
             let mut ids = Vec::new();
             let mut text_bytes = 0usize;
@@ -963,11 +951,11 @@ where
                     // listings) are never served; they miss and are
                     // re-proven under the current rule
                     e.v == 4
-                        && e.source == source_identity
+                        && e.source == source_identity.value
                         && e.src_dir == src_dir
                         && e.include_dir == inc_dir_s
                         && e.target == target
-                        && e.toolchain == toolchain
+                        && e.toolchain == toolchain.value
                     // every RECORDED search dir (source dir,
                     // include dir, and each recorded dep's
                     // parent — the transitive include-chain
@@ -991,10 +979,15 @@ where
                 let Some(obj) = decode_c_object_bytes(&e.obj_b64, resources)? else {
                     continue;
                 };
-                if e.deps
-                    .iter()
-                    .all(|(p, h)| hash_dep(p).is_ok_and(|now| now == *h))
-                {
+                let mut dependencies_match = true;
+                for (p, h) in &e.deps {
+                    let _digest_allocation = reserve_c_metadata(resources, 64)?;
+                    if !hash_dep(p).is_ok_and(|now| now == *h) {
+                        dependencies_match = false;
+                        break;
+                    }
+                }
+                if dependencies_match {
                     return Ok(Some(obj));
                 }
             }
@@ -1120,11 +1113,11 @@ where
     }
     let entry = CObjectEntryRef {
         v: 4,
-        source: &source_identity,
+        source: &source_identity.value,
         src_dir: &src_dir,
         include_dir: &inc_dir_s,
         target: &target,
-        toolchain: &toolchain,
+        toolchain: &toolchain.value,
         obj_b64: Base64Ref(obj.as_ref()),
         deps: &hashed,
         dir_listings: &dir_listings,
@@ -1152,11 +1145,11 @@ where
     } else {
         let entry = CObjectEntry {
             v: 4,
-            source: source_identity.clone(),
+            source: source_identity.value.clone(),
             src_dir: src_dir.clone(),
             include_dir: inc_dir_s.clone(),
             target: target.clone(),
-            toolchain: toolchain.clone(),
+            toolchain: toolchain.value.clone(),
             obj_b64: base64::engine::general_purpose::STANDARD.encode(&obj),
             deps: hashed,
             dir_listings,
@@ -1168,7 +1161,7 @@ where
     };
     let stored = store.put_artifact(PutRequest {
         layer: LAYER_OBJECT_V01.id,
-        key: c_object_key(&source_identity, &generation_hash.value),
+        key: c_object_key(&source_identity.value, &generation_hash.value),
         kind: ChunkKind::Object,
         payload,
         edges: vec![],
@@ -1191,7 +1184,8 @@ where
             match discover()? {
                 Some(stored) => Ok((stored, false)),
                 None => Err(StoreError::Internal(format!(
-                    "generation key occupied by an unverifiable entry for source {source_identity}"
+                    "generation key occupied by an unverifiable entry for source {}",
+                    source_identity.value
                 ))),
             }
         }
