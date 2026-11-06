@@ -378,6 +378,8 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 
 - stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 12 | from: review | to: user | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-988/auto-lang + auto-ui | commit: language0b087ab1e63b6d6e3e916aa79d019c1b40e8f6cc / UIb0d59400a1c302c040e07c9e4938a1c13b34d937 | review_receipt_commit: 8bdea7dd4245b03a3cf2f61bcfd7404098f02ca8 | next: user decision on bounded continuation。R3已闭但F988-R4-01为原合同组合缺口，第三次repair额度已用完，本轮独立证据构成进展；不自动进行第四次实现。技能auto-plan-work的“cap automatic work/review repair cycles at three”适用，已向用户说明并请求增加一轮定向repair+独立review，通过后merge并继续009。等待条件首轮，未标goal blocked；原授权和验收不撤回。
 
+- stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 13 (waiting only) | from: user | to: user | status: executing | outcome: waiting | waiting_round: 2 | worktree: D:/autostack/.wt/lang-988 | commit: language0b087ab1e / UIb0d59400 | next: pending user choice。重读§10，未收到异步问题的具体答案；自动goal续行提示不当作选择或额外额度批准。本轮无实现、构建或测试，仅记录同一待决条件；当前goal仍active，未满足三轮blocked阈值。
+
 ## 10. 待澄清事项
 
 无待用户范围决定。API具体返回形态/native ID/依赖版本由T-00有界核查；若出现超授权架构改造才另提决定。真实交互证据需要可用桌面，不能以模拟provider替代。
