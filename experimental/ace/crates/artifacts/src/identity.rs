@@ -13,10 +13,18 @@ use std::fmt;
 /// Domain-separated content hash: `hex(blake3(tag ‖ payload…))`.
 /// The tag is `ac783/<family>/v<n>` — never a bare byte hash.
 pub fn domain_hash(family: &str, parts: &[&[u8]]) -> String {
+    domain_hash_iter(&[family], parts.iter().copied())
+}
+
+/// Borrowed parts preserve the original domain/length framing without a
+/// second owned representation of all fingerprint bytes or a refs array.
+fn domain_hash_iter<'a>(family: &[&str], parts: impl IntoIterator<Item = &'a [u8]>) -> String {
     let mut h = Hasher::new();
     h.update(crate::HASH_ALGO.as_bytes());
     h.update(&[0]);
-    h.update(family.as_bytes());
+    for piece in family {
+        h.update(piece.as_bytes());
+    }
     h.update(&[0]);
     for p in parts {
         h.update(&(p.len() as u64).to_le_bytes());
@@ -98,15 +106,14 @@ impl QueryKey {
 
     /// Hash form for index lookups (domain: query-key of the layer).
     pub fn hash(&self) -> String {
-        let parts: Vec<Vec<u8>> = std::iter::once(self.layer.as_bytes().to_vec())
-            .chain(
+        domain_hash_iter(
+            &["qk/", self.layer],
+            std::iter::once(self.layer.as_bytes()).chain(
                 self.components
                     .iter()
-                    .flat_map(|(k, v)| vec![k.clone().into_bytes(), v.clone().into_bytes()]),
-            )
-            .collect();
-        let refs: Vec<&[u8]> = parts.iter().map(|v| v.as_slice()).collect();
-        domain_hash(&format!("qk/{}", self.layer), &refs)
+                    .flat_map(|(k, v)| [k.as_bytes(), v.as_bytes()]),
+            ),
+        )
     }
 
     pub fn component(&self, name: &str) -> Option<&str> {

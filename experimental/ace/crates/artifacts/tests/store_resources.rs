@@ -71,6 +71,105 @@ fn request(name: &str, len: usize) -> PutRequest {
 }
 
 #[test]
+fn query_key_hash_streams_borrowed_components_with_original_framing() {
+    fn original(key: &QueryKey) -> String {
+        // Independent pre-change wire algorithm, evaluated outside allocation
+        // windows: algorithm NUL family NUL, then LE-u64 length + raw part.
+        let family = format!("qk/{}", key.layer);
+        let mut hash = blake3::Hasher::new();
+        hash.update(ace_artifacts::HASH_ALGO.as_bytes());
+        hash.update(&[0]);
+        hash.update(family.as_bytes());
+        hash.update(&[0]);
+        for part in std::iter::once(key.layer.as_bytes()).chain(
+            key.components
+                .iter()
+                .flat_map(|(k, v)| [k.as_bytes(), v.as_bytes()]),
+        ) {
+            hash.update(&(part.len() as u64).to_le_bytes());
+            hash.update(part);
+        }
+        hash.finalize().to_hex().to_string()
+    }
+    let key = QueryKey::new(
+        schema::layer("A07").unwrap(),
+        vec![
+            ("z=,[]\0".into(), "π".repeat(1 << 20)),
+            ("same".into(), "first".into()),
+            ("same".into(), "second".into()),
+            ("".into(), "".into()),
+            ("a\0b".into(), "😀,=[]".into()),
+        ],
+    );
+    let expected = original(&key);
+    let (actual, large_copies) = measured(64 << 10, || key.hash());
+    assert_eq!(actual, expected, "query identity bytes changed");
+    assert_eq!(
+        large_copies, 0,
+        "query hash copied whole fingerprint components"
+    );
+    let (actual, allocations) = measured(64, || key.hash());
+    assert_eq!(actual, expected);
+    assert_eq!(
+        allocations, 1,
+        "hash owns more than its final 64-byte hex result"
+    );
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::path::PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+        .join(format!("key-hash-stream-{}-{stamp}", std::process::id()));
+    let store = ManagedStore::open(&root).unwrap();
+    let payload = vec![42; 67];
+    let artifact = store
+        .put_artifact(PutRequest {
+            layer: key.layer,
+            key: key.clone(),
+            kind: ChunkKind::DeclSummary,
+            payload: payload.clone(),
+            edges: vec![],
+            project: None,
+        })
+        .unwrap();
+    let persisted: String = store
+        .db()
+        .query_row(
+            "SELECT key_hash FROM artifacts WHERE artifact_id=?1",
+            [&artifact],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        persisted, expected,
+        "published key no longer has its original address"
+    );
+    let loaded = store.get_artifact(key.layer, &key).unwrap().unwrap();
+    assert_eq!(loaded.payload, payload);
+    assert_eq!(loaded.artifact_id, artifact);
+    drop(store);
+    let reopened = ManagedStore::open(&root).unwrap();
+    let restored = reopened.get_artifact(key.layer, &key).unwrap().unwrap();
+    assert_eq!(restored.payload, payload);
+    assert_eq!(restored.artifact_id, artifact);
+    for layer in ["A04", "A07"] {
+        let a = QueryKey::new(
+            schema::layer(layer).unwrap(),
+            vec![("a".into(), "bc".into())],
+        );
+        let b = QueryKey::new(
+            schema::layer(layer).unwrap(),
+            vec![("ab".into(), "c".into())],
+        );
+        let empty = QueryKey::new(schema::layer(layer).unwrap(), vec![]);
+        for candidate in [&a, &b, &empty] {
+            assert_eq!(candidate.hash(), original(candidate));
+        }
+        assert_ne!(a.hash(), b.hash(), "part-length framing was lost");
+    }
+}
+
+#[test]
 fn rejected_staging_never_allocates_the_framed_payload_and_can_retry_after_drain() {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
