@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-988
-status: executing
+status: execution_done
 feature_name: Reader原生多选与动态字节桥接
 plan_revision: 1
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-06
-current_step: 2
+current_step: 4
 total_steps: 6
 supersedes_spec_components: [docs/specs/auto-lang/ui/design/dialog-dnd-host-capabilities.md, docs/specs/auto-lang/vm/native-fs.md, docs/specs/runtime/native-vm-app-validation.md]
 new_spec_components: []
@@ -82,8 +82,8 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 |---|---|---|---|---|
 | T-00 [x] | work | 授权 | 树/依赖确认，新构建复现、ABI与表示根因定位、冻结最小设计 | 源码调用链及P-02红/读回绿；实际命令/版本 |
 | T-01 [x] | work | T-00 | 公共多选声明/VM provider/UI OS/生成映射与用例 | P-01、P-04 |
-| T-02 [ ] | work | T-00 | 动态字节桥与永久正反回归 | P-02及受影响同桥消费者 |
-| T-03 [ ] | work | T-01/02 | 两端消费者验证、准备SD、工具交接记录 | P-03及冻结受影响检查 |
+| T-02 [x] | work | T-00 | 动态字节桥与永久正反回归 | P-02及受影响同桥消费者 |
+| T-03 [x] | work | T-01/02 | 两端消费者验证、准备SD、工具交接记录 | P-03及冻结受影响检查 |
 | T-04 [ ] | review | T-03 | 独立复审绑定各仓提交与Specs | AC-01～03 pass |
 | T-05 [ ] | merge | T-04 | 顺序落地/工具消费/规范/归档清理/009交接 | AC-05 |
 
@@ -388,6 +388,17 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 - 原等待条件已解除，自动goal当前host仍报告blocked，工具只支持complete/blocked/paused、不能自行设active；本次按用户新答复明确授权继续执行定向work及后继已授权阶段，不虚构host已active，也不为相同scope再次索取确认。此前三轮waiting保留为历史。
 - R4诊断：声明扫描只收集运行时填充和赋值关联，遗漏了普通函数[]int形参在编译期给出的真实元素约束；因而无push/无赋值的同一空列表在直接writer与typed调用之间分叉。修复仅复用已有全文件fn_param_types预扫描及当前函数声明，把有明确元素类型的序列参数调用加入相同elements种子，沿现有赋值图传播；不改变非法元素拒写、纯空入口或0..255承诺。
 - 关闭oracle：R4 A/B两个调用次序、函数定义在调用前/后、无首写/显式typed控制、空值关联传播后typed调用、已有44例均核实际VM与原样生成Rust状态/字节。复审独立，最终affected a2r门；UI/VM/runtime桥未改则复用证据。未先实现再把新授权补写。
+
+### 2026-11-06 work repair R4（用户明确追加的一轮）：typed调用约束闭合
+
+- stage: work | plan_id: PLAN-988 | plan_revision: r1 | outcome: pass | repair_cycle: 4 (user approved) | worktree_path: D:/autostack/.wt/lang-988/auto-lang | branch: plan-988-dev | base: 0b087ab1e63b6d6e3e916aa79d019c1b40e8f6cc | code_commit: 6f51ef893b4d427f73718f17f8dbbf82d3360000 | UIb0d59400a1c302c040e07c9e4938a1c13b34d937 / down58ea33f / webbf72baa unchanged | next: independent final R5。追加授权及诊断已先提交322a8258e，未擅自重置既有修复计数。
+- 修前复用R4 A/B原始源到repair-r4/red-typed_parameter_after_empty_write与red-parameter_before_writer，旧driver的VM均写空文件、Rust均exit1；原review-r4材料不覆盖。实现前树干净，全部写入限原权威树。
+- F988-R4-01关闭：collector复用已有全文件fn_param_types预扫描，普通函数具有明确元素类型的Slice/Array/List形参使用也成为元素约束种子，沿原赋值关联传播；变量遮蔽函数名时不冒用全局签名。当前函数在扫描前登记自身声明，body-only及try克隆body传入相同签名表。改变的是约束来源完整性，未修改运行时byte转换/JSON拒绝/范围外兼容、空值无种子路径或用户源注解。
+- 永久typed_context_after/before及after_later/before_later验证两个调用次序×两个定义顺序；typed_context_assignment/alias验证空赋值关联和变量转交组合。6个定向例真实VM与生产transpile/qualify→原样rustc→exe均0，首次FIRST及最终PATH都为0字节，分别删除VM首次产物后再观察Rust，防串证。定向命令PLAN988_BYTE_CASE=typed_context的集成test exit0、15.38秒，typed.log SHA256=da14225be50de49ab3621348a98f1b0691501ed1a7743743a59c39d4a3207634。
+- 最终完整命令（语言树）：清除PLAN988_BYTE_CASE后`cargo test --offline --locked -p auto-generation-core --test plan988_byte_consumers -- --nocapture` exit0，1 test内**50个命名源全部实际执行，0 ignored，125.96秒**；包含原44及新增6例，状态/真实字节/非法成员原哨兵均断言。TEMP/TMP=988/repair-r4/tmp，PLAN988_TEST_OUT=988/repair-r4/permanent。permanent-final.log SHA256=d18d86041773cc10ffc8a01a17f5e793c7638fbd3d2484658a7ded8a3b214253。
+- 同一最终源`cargo t a2r --out D:/autostack/plan-artifacts/plan-988/repair-r4/a2r-final` exit0，93.72秒，selected/executed394、PASS394、excluded25、not_run0；results SHA256=69a43c70ea4a36a7e425ba6aaa14fcdccdac1f39e6ef6ed6c2c9a19f7401ca11。没有在完成后增补实现。rustfmt --check、diff --check通过，core lib131既有warning标题无新增；树已提交干净，所有本轮进程终态。
+- SD02补充普通函数签名也是实际元素约束，不依赖调用/定义顺序；SD01/03及UI、runtime/helper、VM/HTTP/metadata未改，旧相关有效证据保留。最终merge-owned并集vm+shim-metadata+a2r+http仍需独立通过后核身份/复用/补跑，原8外部材料仍给merge对账清理，所有本轮材料均在988 scope。
+- Readiness：F988-R4-01 A/B、定义顺序和共享关联控制均实证闭合；AC01～03 work范围完成，无已知必需oracle/实现缺口，T00～03完成4/6。T04独立R5、T05合入/工具/规范/清理pending；若R5仍有合同内失败，本次追加额度也已用完，按用户提案带诊断交回，不追加第五次repair。用户答复已授权通过后合入并继续009，当前按该显式请求串行推进；host goal仍blocked的记账状态不伪称active，也不当作重复索取同范围许可的理由。
 
 ## 10. 待澄清事项
 
