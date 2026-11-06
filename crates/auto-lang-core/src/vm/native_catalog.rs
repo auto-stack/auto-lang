@@ -89,6 +89,7 @@ macro_rules! for_each_native {
             (2937, NATIVE_CLIPBOARD_IMAGE_SET, shim_clipboard_image_set, "auto.clipboard.image_set"),
             // === Plan 488: OLE 拖出（DoDragDrop 受理即返；效果经 on_dnd_finished 回注） ===
             (2938, NATIVE_DND_START, shim_dnd_start, "auto.dnd.start"),
+            (9942, NATIVE_DIALOG_OPEN_FILES, shim_dialog_open_files, "auto.dialog.open_files"),
             (2927, NATIVE_DIALOG_OPEN, shim_dialog_open, "auto.dialog.open"),
             (2928, NATIVE_DIALOG_SAVE, shim_dialog_save, "auto.dialog.save"),
             (2929, NATIVE_FILE_BASENAME, shim_file_basename, "auto.file.basename"),
@@ -907,6 +908,7 @@ macro_rules! for_each_bigvm_native {
             ("auto.clipboard.image_set", 2937, Bool),
             // === Plan 488: OLE 拖出（受理即返 Bool；效果经事件回注） ===
             ("auto.dnd.start", 2938, Bool),
+            ("auto.dialog.open_files", 9942, String),
             ("auto.dialog.open", 2927, String),
             ("auto.dialog.save", 2928, String),
             ("auto.file.basename", 2929, String),
@@ -2618,6 +2620,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("http.upload_reject", 9940),
     ("auto.http.upload_error", 9941),
     ("http.upload_error", 9941),
+    ("auto.dialog.open_files", 9942),
     ("auto.ws.connect", 2280),
     ("ws.connect", 2280),
     ("auto.ws.send", 2281),

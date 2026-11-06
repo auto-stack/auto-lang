@@ -297,7 +297,7 @@ impl VMConvertible for Vec<i32> {
 
         let guard = obj.read().unwrap();
 
-        // Try to downcast to ListData<i32>
+        // Native-produced lists retain their compact i32 representation.
         if let Some(list_data) = guard
             .as_any()
             .downcast_ref::<crate::vm::types::ListData<i32>>()
@@ -308,6 +308,39 @@ impl VMConvertible for Vec<i32> {
                 result.push(elem);
             }
             return Ok(result);
+        }
+
+        // Language arrays/List.new and JSON arrays hold tagged Values. Decode
+        // integer tags explicitly: neither bools nor floats are integer bytes,
+        // and a bad member must fail before the native callee can write data.
+        if let Some(list) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+        {
+            use auto_val::Value;
+            return list
+                .elems
+                .iter()
+                .map(|value| {
+                    let narrowed = match value {
+                        Value::Int(v) => return Ok(*v),
+                        Value::Byte(v) | Value::U8(v) => return Ok(i32::from(*v)),
+                        Value::I8(v) => return Ok(i32::from(*v)),
+                        Value::Uint(v) => i32::try_from(*v),
+                        Value::I64(v) => i32::try_from(*v),
+                        Value::USize(v) => i32::try_from(*v),
+                        _ => {
+                            return Err(FFIError::TypeMismatch {
+                                expected: "i32 list element",
+                                found: "non-integer value",
+                            })
+                        }
+                    };
+                    narrowed.map_err(|_| {
+                        FFIError::RuntimeError("integer list element out of i32 range".into())
+                    })
+                })
+                .collect();
         }
 
         Err(FFIError::InvalidListId(list_id))
@@ -553,4 +586,133 @@ pub fn decode_u64_full(vm: &AutoVM, nv: NanoValue) -> u64 {
 #[allow(dead_code)]
 pub fn nv_is_bigint(nv: NanoValue) -> bool {
     is_bigint(nv)
+}
+
+#[cfg(test)]
+mod plan988_integer_bridge_tests {
+    use super::*;
+    use crate::vm::{types::ListData, virt_memory::VirtualFlash};
+    use auto_val::Value;
+
+    fn decode(values: Vec<Value>) -> Result<Vec<i32>, FFIError> {
+        let vm = AutoVM::new(VirtualFlash::new_with_code(Vec::new()), 1024);
+        let mut task = AutoTask::new(1, 1024, 0);
+        let id = vm.insert_heap_object(ListData {
+            elems: values,
+            storage: None,
+        });
+        vm.rc_push_id(&mut task, id);
+        Vec::<i32>::pop_from_stack(&mut task, &vm)
+    }
+
+    #[test]
+    fn dynamic_integer_list_preserves_all_byte_values() {
+        let expected: Vec<i32> = (0..=255).collect();
+        assert_eq!(
+            decode(expected.iter().copied().map(Value::Int).collect()).unwrap(),
+            expected
+        );
+        assert_eq!(decode(vec![]).unwrap(), Vec::<i32>::new());
+    }
+
+    #[test]
+    fn typed_native_list_still_roundtrips() {
+        let vm = AutoVM::new(VirtualFlash::new_with_code(Vec::new()), 1024);
+        let mut task = AutoTask::new(1, 1024, 0);
+        let expected = vec![i32::MIN, -1, 0, 127, 128, 255, i32::MAX];
+        expected.push_to_stack(&mut task, &vm).unwrap();
+        assert_eq!(
+            Vec::<i32>::pop_from_stack(&mut task, &vm).unwrap(),
+            expected
+        );
+    }
+
+    #[test]
+    fn invalid_element_is_not_silently_zeroed_or_skipped() {
+        let err = decode(vec![Value::Int(42), Value::Bool(true)]).unwrap_err();
+        assert!(matches!(err, FFIError::TypeMismatch { .. }), "{err}");
+    }
+
+    #[test]
+    fn source_lists_and_json_reach_real_file_writer() {
+        let dir = tempfile::tempdir().unwrap();
+        for (index, make) in [
+            "let bs = [0, 127, 128, 255]",
+            "var bs = List<int>.new([])\nbs.push(0)\nbs.push(127)\nbs.push(128)\nbs.push(255)",
+            "let bs = json.parse(\"[0,127,128,255]\")",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let path = dir.path().join(format!("source-{index}.bin"));
+            let quoted = serde_json::to_string(&path.to_string_lossy().replace('\\', "/")).unwrap();
+            let source =
+                format!("fn main() {{\n{make}\nlet rc = file.write_bytes({quoted}, bs)\n}}\n");
+            crate::run_with_capture(&source).unwrap_or_else(|e| panic!("{source}: {e:?}"));
+            assert_eq!(std::fs::read(path).unwrap(), [0, 127, 128, 255]);
+        }
+    }
+
+    #[test]
+    fn missing_list_is_rejected() {
+        let vm = AutoVM::new(VirtualFlash::new_with_code(Vec::new()), 1024);
+        let mut task = AutoTask::new(1, 1024, 0);
+        task.ram.push_i32(123456);
+        assert!(matches!(
+            Vec::<i32>::pop_from_stack(&mut task, &vm),
+            Err(FFIError::InvalidListId(123456))
+        ));
+    }
+
+    #[test]
+    fn integer_tags_are_checked_without_truncation() {
+        assert_eq!(
+            decode(vec![
+                Value::Byte(255),
+                Value::U8(128),
+                Value::I8(-1),
+                Value::Uint(127),
+                Value::I64(0),
+                Value::USize(42)
+            ])
+            .unwrap(),
+            vec![255, 128, -1, 127, 0, 42]
+        );
+        for value in [
+            Value::I64(i64::MAX),
+            Value::Uint(u32::MAX),
+            Value::USize(usize::MAX),
+        ] {
+            assert!(decode(vec![value])
+                .unwrap_err()
+                .to_string()
+                .contains("out of i32 range"));
+        }
+        assert!(decode(vec![Value::Float(1.0)]).is_err());
+    }
+
+    #[test]
+    fn real_file_shim_preserves_bytes_and_rejects_before_overwrite() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bytes.bin");
+        let vm = AutoVM::new(VirtualFlash::new_with_code(Vec::new()), 1024);
+        let write = |values: Vec<Value>| {
+            let mut task = AutoTask::new(1, 1024, 0);
+            path.to_string_lossy()
+                .into_owned()
+                .push_to_stack(&mut task, &vm)
+                .unwrap();
+            let id = vm.insert_heap_object(ListData {
+                elems: values,
+                storage: None,
+            });
+            vm.rc_push_id(&mut task, id);
+            crate::vm::ffi::stdlib::__shim_File_write_bytes(&mut task, &vm)
+        };
+        let expected: Vec<u8> = (0..=255).collect();
+        write(expected.iter().map(|v| Value::Int(i32::from(*v))).collect()).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), expected);
+        assert!(write(vec![Value::Int(99), Value::Bool(true)]).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), expected);
+    }
 }

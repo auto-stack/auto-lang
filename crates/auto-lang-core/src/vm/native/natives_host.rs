@@ -841,6 +841,22 @@ pub fn shim_dialog_open(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     Ok(())
 }
 
+/// Pick multiple files; JSON array of paths preserves escaping and ordering.
+/// Cancellation is "[]"; absent/legacy hosts fail explicitly.
+pub fn shim_dialog_open_files(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = vm.native_interface.dialog_host_provider().ok_or_else(|| {
+        VMError::RuntimeError("dialog_open_files: the `ui-dialog` feature is disabled".into())
+    })?;
+    let filter = pop_string_arg(task, vm);
+    let paths = provider
+        .open_files(&filter)
+        .map_err(VMError::RuntimeError)?;
+    let json = serde_json::to_string(&paths).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let idx = vm.add_string(json.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
 /// `dialog_save(default_name) -> String` — "" on cancel.
 pub fn shim_dialog_save(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let Some(provider) = vm.native_interface.dialog_host_provider() else {
@@ -882,4 +898,69 @@ pub fn shim_ui_focus(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod plan988_dialog_tests {
+    use super::*;
+    use crate::vm::{
+        ffi::VMConvertible, host_capabilities::DialogHostProvider,
+        virt_memory::VirtualFlash,
+    };
+    use std::sync::Arc;
+
+    struct Picker(Vec<String>);
+    impl DialogHostProvider for Picker {
+        fn open(&self, _: &str) -> String {
+            "single".into()
+        }
+        fn save(&self, _: &str) -> String {
+            "save".into()
+        }
+        fn open_files(&self, filter: &str) -> Result<Vec<String>, String> {
+            assert_eq!(filter, ".txt,.epub");
+            Ok(self.0.clone())
+        }
+    }
+    struct Legacy;
+    impl DialogHostProvider for Legacy {
+        fn open(&self, _: &str) -> String {
+            "single".into()
+        }
+        fn save(&self, _: &str) -> String {
+            "save".into()
+        }
+    }
+    #[test]
+    fn multi_paths_and_cancellation_are_json_arrays() {
+        for paths in [
+            vec!["D:\\书\\a\"b.epub".into(), "D:\\第二本.txt".into()],
+            vec![],
+        ] {
+            let vm = AutoVM::new(VirtualFlash::new_with_code(vec![]), 1024);
+            vm.set_dialog_host_provider(Arc::new(Picker(paths.clone())));
+            let mut task = AutoTask::new(1, 1024, 0);
+            ".txt,.epub"
+                .to_owned()
+                .push_to_stack(&mut task, &vm)
+                .unwrap();
+            shim_dialog_open_files(&mut task, &vm).unwrap();
+            let json = String::pop_from_stack(&mut task, &vm).unwrap();
+            assert_eq!(serde_json::from_str::<Vec<String>>(&json).unwrap(), paths);
+        }
+    }
+    #[test]
+    fn legacy_provider_rejects_multi_but_keeps_single() {
+        let vm = AutoVM::new(VirtualFlash::new_with_code(vec![]), 1024);
+        vm.set_dialog_host_provider(Arc::new(Legacy));
+        let mut task = AutoTask::new(1, 1024, 0);
+        ".txt".to_owned().push_to_stack(&mut task, &vm).unwrap();
+        assert!(
+            format!("{:?}", shim_dialog_open_files(&mut task, &vm).unwrap_err())
+                .contains("does not support")
+        );
+        ".txt".to_owned().push_to_stack(&mut task, &vm).unwrap();
+        shim_dialog_open(&mut task, &vm).unwrap();
+        assert_eq!(String::pop_from_stack(&mut task, &vm).unwrap(), "single");
+    }
 }

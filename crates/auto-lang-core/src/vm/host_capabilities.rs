@@ -513,6 +513,11 @@ pub trait DialogHostProvider: Send + Sync {
     /// 打开文件选择对话框；返回所选路径（`to_string_lossy` 形），
     /// `""` = 取消/宿主不可用（实现方保证）。
     fn open(&self, filter: &str) -> String;
+    /// Pick multiple files in one dialog. Empty means cancellation; old hosts
+    /// explicitly reject the new capability rather than pretending to support it.
+    fn open_files(&self, _filter: &str) -> Result<Vec<String>, String> {
+        Err("dialog_open_files: host does not support multiple file selection".into())
+    }
     /// 保存目标选择对话框；返回目标路径，`""` = 取消/不可用。
     fn save(&self, default_name: &str) -> String;
 }
