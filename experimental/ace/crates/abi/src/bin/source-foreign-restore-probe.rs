@@ -204,7 +204,7 @@ fn run() -> Result<serde_json::Value, String> {
                 &pointer,
                 expected.as_deref(),
                 Some(&prior),
-                |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+                |s, encoder| encoder.json(s),
                 &mut current,
                 None,
             )?;

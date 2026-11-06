@@ -77,6 +77,13 @@ struct Publication {
     binding_generation: u64,
     stored: Stored,
 }
+#[derive(Serialize)]
+struct PublicationRef<'a> {
+    module: &'a str,
+    provider_bias: u8,
+    binding_generation: u64,
+    stored: &'a Stored,
+}
 fn err(code: &str, message: impl ToString) -> DiagOut {
     DiagOut {
         code: code.into(),
@@ -508,14 +515,13 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 &current,
                 expected_pointer.as_deref(),
                 previous.as_ref().map(|p| &p.stored),
-                |stored| {
-                    serde_json::to_vec(&Publication {
-                        module: deck.module.clone(),
+                |stored, encoder| {
+                    encoder.json(&PublicationRef {
+                        module: &deck.module,
                         provider_bias: deck.provider_bias,
                         binding_generation,
-                        stored: stored.clone(),
+                        stored,
                     })
-                    .map_err(|e| e.to_string())
                 },
                 &mut current_authority,
                 None,

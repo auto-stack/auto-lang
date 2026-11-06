@@ -67,3 +67,7 @@ path = "src/bin/source-foreign-restore-probe.rs"
 [[test]]
 name = "conformance"
 path = "tests/conformance.rs"
+
+[[test]]
+name = "source_resources"
+path = "tests/source_resources.rs"

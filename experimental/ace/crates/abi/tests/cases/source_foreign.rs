@@ -1881,7 +1881,7 @@ fn source_foreign_publication_faults_and_revocation_preserve_the_accepted_root()
                 &pointer,
                 None,
                 None,
-                |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+                |s, encoder| encoder.json(s),
                 &mut current,
                 None,
             )
@@ -1982,7 +1982,9 @@ fn source_foreign_publication_faults_and_revocation_preserve_the_accepted_root()
                 std::fs::write(ready.executable(), b"changed executable").unwrap();
             }
             let blocker = RefCell::new(None);
-            let encode = |stored: &Stored| -> Result<Vec<u8>, String> {
+            let encode = |stored: &Stored,
+                          encoder: &mut ace_abi::source_foreign::PointerEncoder|
+             -> Result<(), String> {
                 if fault == "metadata-failure" {
                     return Err("injected pointer encoding failure".into());
                 }
@@ -2006,7 +2008,7 @@ fn source_foreign_publication_faults_and_revocation_preserve_the_accepted_root()
                     record["other-publisher"] = true.into();
                     std::fs::write(&pointer, serde_json::to_vec(&record).unwrap()).unwrap();
                 }
-                serde_json::to_vec(stored).map_err(|e| e.to_string())
+                encoder.json(stored)
             };
             let expected = if fault == "late-base" {
                 "0".repeat(64)
@@ -2093,7 +2095,7 @@ fn source_foreign_publication_faults_and_revocation_preserve_the_accepted_root()
                 &pointer,
                 Some(&pointer_id),
                 Some(&stored),
-                |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+                |s, encoder| encoder.json(s),
                 &mut current,
                 None,
             )
@@ -2145,7 +2147,7 @@ fn source_foreign_publication_faults_and_revocation_preserve_the_accepted_root()
                 &dir.join("current.json"),
                 Some(&pointer_id),
                 Some(&original_stored),
-                |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+                |s, encoder| encoder.json(s),
                 &mut current,
                 None,
             )
@@ -2337,7 +2339,7 @@ fn source_foreign_real_signature_and_source_repair_publish_together_after_restor
                 &dir.join("current.json"),
                 None,
                 None,
-                |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+                |s, encoder| encoder.json(s),
                 &mut current,
                 None,
             )
@@ -3123,7 +3125,7 @@ fn source_foreign_publication_recovers_a_crashed_registration_and_gc_preserves_l
             &request.pointer,
             expected.as_deref(),
             Some(&request.stored),
-            |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+            |s, encoder| encoder.json(s),
             &mut crash_after_registration,
             None,
         );
@@ -3174,7 +3176,7 @@ fn source_foreign_publication_recovers_a_crashed_registration_and_gc_preserves_l
                 &pointer,
                 None,
                 None,
-                |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+                |s, encoder| encoder.json(s),
                 &mut current,
                 None,
             )
@@ -3320,7 +3322,7 @@ fn source_foreign_publication_recovers_a_crashed_registration_and_gc_preserves_l
                 &pointer,
                 Some(&old_hash),
                 Some(&old),
-                |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+                |s, encoder| encoder.json(s),
                 &mut current,
                 None,
             )
@@ -3405,7 +3407,7 @@ fn source_foreign_publication_recovers_a_crashed_registration_and_gc_preserves_l
                 &pointer,
                 expected.as_deref(),
                 Some(&new),
-                |s| serde_json::to_vec(s).map_err(|e| e.to_string()),
+                |s, encoder| encoder.json(s),
                 &mut readonly_after_switch,
                 None,
             )

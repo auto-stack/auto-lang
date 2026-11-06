@@ -5,9 +5,57 @@ use super::*;
 use ace_artifacts::store::{is_reparse, StagingTurn};
 use std::io::{Read, Write};
 
+/// A host supplies one borrowed JSON record. The composition measures it,
+/// reserves its shared I/O allowance, then allocates the bounded wire buffer.
+/// Returning an already allocated Vec would bypass that allocation gate.
+pub struct PointerEncoder {
+    resources: Resources,
+    output: Option<PointerBytes>,
+    attempted: bool,
+    failed: bool,
+}
+pub(super) struct PointerBytes {
+    pub bytes: Vec<u8>,
+    io: Reservation,
+}
+impl PointerEncoder {
+    pub(super) fn new(resources: Resources) -> Self {
+        Self {
+            resources,
+            output: None,
+            attempted: false,
+            failed: false,
+        }
+    }
+    pub fn json<T: serde::Serialize + ?Sized>(&mut self, value: &T) -> Result<(), String> {
+        self.failed = true;
+        if self.attempted {
+            return Err("foreign.publication.pointer-encoded-twice".into());
+        }
+        self.attempted = true;
+        let size = ace_foreign_contract::codec::json_size(value, MAX_ROOT)
+            .map_err(|e| format!("foreign.resource.pointer: {e}"))?;
+        let io = self
+            .resources
+            .reserve(Charge::io(size))
+            .map_err(|e| e.to_string())?;
+        let bytes = ace_foreign_contract::codec::encode_json_bounded(value, size)
+            .map_err(|e| format!("foreign.publication.pointer-encode: {e}"))?;
+        self.output = Some(PointerBytes { bytes, io });
+        self.failed = false;
+        Ok(())
+    }
+    pub(super) fn finish(self) -> Result<PointerBytes, String> {
+        if self.failed {
+            return Err("foreign.publication.pointer-encoding-failed".into());
+        }
+        self.output
+            .ok_or_else(|| "foreign.publication.pointer-not-encoded".into())
+    }
+}
+
 pub(super) struct Scratch {
     root: std::path::PathBuf,
-    resources: Resources,
     _index: Reservation,
 }
 #[derive(Clone, Copy, Debug, Default)]
@@ -142,7 +190,6 @@ impl Scratch {
         }
         Ok(Self {
             root,
-            resources,
             _index: index,
         })
     }
@@ -188,12 +235,9 @@ impl Scratch {
         }
         Ok(result)
     }
-    pub fn write(&self, bytes: Vec<u8>, turn: &StagingTurn<'_>) -> Result<Temp, String> {
+    pub fn write(&self, output: PointerBytes, turn: &StagingTurn<'_>) -> Result<Temp, String> {
+        let PointerBytes { bytes, io } = output;
         turn.admit_bytes(bytes.len() as u64)
-            .map_err(|e| e.to_string())?;
-        let io = self
-            .resources
-            .reserve(Charge::io(bytes.capacity()))
             .map_err(|e| e.to_string())?;
         static SERIAL: AtomicU64 = AtomicU64::new(1);
         let path = self.root.join(format!(
@@ -228,5 +272,56 @@ impl Scratch {
             return Err(error.to_string());
         }
         Ok(temp)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn pointer_encoder_keeps_its_ticket_and_refuses_missing_repeated_or_failed_records() {
+        let resources = Resources::default();
+        assert!(PointerEncoder::new(resources.clone()).finish().is_err());
+        let mut encoder = PointerEncoder::new(resources.clone());
+        encoder.json(&"record").unwrap();
+        assert_eq!(resources.stats().current.io, 8);
+        let output = encoder.finish().unwrap();
+        assert_eq!(output.bytes, b"\"record\"");
+        assert_eq!(resources.stats().current.io, 8);
+        drop(output);
+        assert_eq!(resources.stats().current.io, 0);
+
+        let mut encoder = PointerEncoder::new(resources.clone());
+        encoder.json(&true).unwrap();
+        assert!(encoder.json(&false).is_err());
+        // Ignoring the second call's error cannot install the first record.
+        assert!(encoder.finish().is_err());
+        assert_eq!(resources.stats().current.io, 0);
+
+        let oversized = "x".repeat(MAX_ROOT);
+        let mut encoder = PointerEncoder::new(resources.clone());
+        assert!(encoder
+            .json(&oversized)
+            .unwrap_err()
+            .contains("foreign.resource.pointer"));
+        assert!(encoder.json(&false).is_err());
+        assert!(encoder.finish().is_err());
+        assert_eq!(resources.stats().current.io, 0);
+
+        struct Changing(std::cell::Cell<usize>);
+        impl serde::Serialize for Changing {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                self.0.set(self.0.get() + 1);
+                if self.0.get() >= 2 {
+                    serializer.serialize_str("this no longer fits the measured record")
+                } else {
+                    serializer.serialize_str("a")
+                }
+            }
+        }
+        let mut encoder = PointerEncoder::new(resources.clone());
+        assert!(encoder.json(&Changing(std::cell::Cell::new(0))).is_err());
+        assert!(encoder.finish().is_err());
+        assert_eq!(resources.stats().current.io, 0);
     }
 }

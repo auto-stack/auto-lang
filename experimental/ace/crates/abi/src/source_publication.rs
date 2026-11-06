@@ -1,7 +1,7 @@
 //! Selected-target readiness and the only durable current-pointer switch.
 //! No current source, declarations or body artifacts change during linking,
 //! execution, persistence, cancellation or failed pointer replacement.
-use super::publication_scratch::Scratch;
+use super::publication_scratch::{PointerEncoder, Scratch};
 use super::*;
 use ace_foreign_contract::manual::HostAuthority;
 use std::{fs::File, io::Read, path::PathBuf, sync::atomic::AtomicBool};
@@ -358,7 +358,7 @@ impl Session {
         pointer: &Path,
         expected_pointer: Option<&str>,
         previous: Option<&Stored>,
-        encode_pointer: impl FnOnce(&Stored) -> Result<Vec<u8>, String>,
+        encode_pointer: impl FnOnce(&Stored, &mut PointerEncoder) -> Result<(), String>,
         current: &mut impl FnMut() -> Result<CurrentAuthority, String>,
         cancel: Option<&AtomicBool>,
     ) -> Result<Stored, String> {
@@ -399,14 +399,13 @@ impl Session {
             (retired, swept)
         };
         let (stored, lease) = prepared.snapshot.persist_leased(store, previous)?;
-        let bytes = encode_pointer(&stored)?;
-        if bytes.len() > MAX_ROOT {
-            return Err("foreign.resource.pointer".into());
-        }
+        let mut encoder = PointerEncoder::new(self.front.resources());
+        encode_pointer(&stored, &mut encoder)?;
+        let output = encoder.finish()?;
         let turn = store.staging_turn().map_err(|e| e.to_string())?;
         let scratch = Scratch::open(store, &project, self.front.resources(), &turn)?;
-        let kind = hash(&bytes);
-        let temp = scratch.write(bytes, &turn)?;
+        let kind = hash(&output.bytes);
+        let temp = scratch.write(output, &turn)?;
         let mut introduced = false;
         // Last gates are after every fallible producer and before the sole
         // current-pointer switch. No source/HIR/target is installed on failure.
@@ -515,22 +514,10 @@ pub fn publication_root_project(pointer: &Path) -> Result<String, String> {
 /// Reading a record and then separately hashing a newer pointer admits a lost
 /// update; callers retain this read's digest as their publication base.
 pub fn read_pointer_bytes(pointer: &Path) -> Result<Option<Vec<u8>>, String> {
-    let mut options = std::fs::OpenOptions::new();
-    options.read(true);
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::OpenOptionsExt;
-        options.share_mode(0x1 | 0x4);
-    }
-    let mut file = match options.open(pointer) {
-        Ok(file) => file,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(e.to_string()),
+    let Some(mut file) = open_pointer(pointer)? else {
+        return Ok(None);
     };
     let metadata = file.metadata().map_err(|e| e.to_string())?;
-    if !metadata.is_file() || metadata.len() > MAX_ROOT as u64 {
-        return Err("foreign.publication.pointer-budget-or-kind".into());
-    }
     let mut bytes = Vec::new();
     bytes
         .try_reserve_exact(metadata.len() as usize)
@@ -553,8 +540,44 @@ pub fn read_pointer_bytes(pointer: &Path) -> Result<Option<Vec<u8>>, String> {
     }
     Ok(Some(bytes))
 }
+fn open_pointer(pointer: &Path) -> Result<Option<File>, String> {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.share_mode(0x1 | 0x4);
+    }
+    let file = match options.open(pointer) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e.to_string()),
+    };
+    let metadata = file.metadata().map_err(|e| e.to_string())?;
+    if !metadata.is_file() || metadata.len() > MAX_ROOT as u64 {
+        return Err("foreign.publication.pointer-budget-or-kind".into());
+    }
+    Ok(Some(file))
+}
 pub fn read_pointer_identity(pointer: &Path) -> Result<Option<String>, String> {
-    read_pointer_bytes(pointer).map(|bytes| bytes.map(|b| hash(&b)))
+    let Some(mut file) = open_pointer(pointer)? else {
+        return Ok(None);
+    };
+    let mut digest = ace_a2x_core::sha256::Sha256::new();
+    let mut buffer = [0u8; 8192];
+    let mut length = 0usize;
+    loop {
+        let count = file.read(&mut buffer).map_err(|e| e.to_string())?;
+        if count == 0 {
+            break;
+        }
+        length = length
+            .checked_add(count)
+            .filter(|n| *n <= MAX_ROOT)
+            .ok_or("foreign.resource.pointer")?;
+        digest.update(&buffer[..count]);
+    }
+    Ok(Some(digest.finish_hex()))
 }
 #[cfg(windows)]
 fn pointer_lock(pointer: &Path) -> Result<File, String> {

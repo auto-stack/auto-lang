@@ -1666,6 +1666,7 @@ pub use publication::{
     publication_root_project, read_pointer_bytes, read_pointer_identity, CurrentAuthority, Edit,
     PreparedPublication,
 };
+pub use publication_scratch::PointerEncoder;
 
 /// SDK composition identity includes the common failure/event runtime assets,
 /// not merely the persisted selected-target runtime page.
