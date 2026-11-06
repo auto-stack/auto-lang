@@ -559,6 +559,23 @@ stage: work | plan_id:PLAN-941 | plan_revision:r1 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r1 | round:16 | from:work | to:work | status:executing | outcome:needs_fix | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:f0ef7b36fd88113091af53f3563cec4619b99688 | next:work941（当前工具证据已统一；完整原目标保持）
 
+### 2026-11-06 日常发射与认证的真实文件集联立准入（goal第17轮）
+
+上一轮为实际progress：CT双端新reader/当前36cert/完整组合刷新。本轮继续work；施工提交 **233e0df44**，树clean，941仍executing **0/15**。T04/05原daily/cert分轴不再仅以认证代日常记录，未缩原scope/预算/全量source义务。
+
+- 新`ace_m1_daily_evidence.py`为原source-CT14、text20、首例2的**36份既有实际日常命令**补只读准入：原argv提供nonce而非child响应提供期望；source/profile/entry/caps/输出根分别对已独立准入的认证输入；命令/原stdout/stderr摘要、producer与当前worker实际字节、nonce区别于cert、原Job成功并reap、原计量完整逐层核。此有限Windows原capture的Job process count必须为2（owned launcher+worker），独立于worker自报spawned_rustc/cl=0；额外子进程拒绝。它不推定daily程序已运行，执行正确性仍来自独立实际/参考认证。
+- 日常manifest与3个代码/header文件**逐字节SHA等于认证前冻结的actual_files完整4件**，manifest/response两清单分别完整、唯一、目标家族/原source FNV/SHA/入口/Rust target/resource-runtime/HIR domain/C函数origin范围核对。只对专用daily目录受限扫描四个声明成员及首个多余项，未声明exe/目录/链接拒，不遍历其他scope或跟随链接。C原scalar /1不强塞不存在的profile域；text与scalar schema互斥。
+- CT/text集合reader与首链现在都必须通过daily+cert；返回具名daily命令/响应摘要、nonce、compiler_spawn_zero及daily_judgement，不自动认领AV/native/CT缓存/ARCH。新reader代码哈希进入admission_sources。日常缺件时即使cert PASS也不能接受；原cert FAIL继续FAIL。原16域预算source pins零漂移，不制造刷新或放宽原帽。
+- **原raw副本反控48项**：CT meta-fields2与text NUL各两target×12；4合法重定位副本PASS，其余44（spawn bool/1、额外Job子进程、请求cap变更、源/nonce错、重复/缺失文件、字节数bool、实际main变更、未声明exe）全REFUSED。除实际文件变更/额外文件之外，原命令/response摘要按变更重算仍不能通过独立约束。Popen禁用，明确counterfactual_not_execution；结果scope/daily-original-controls/results.json SHA=`586c41416a0ea6dda1f22e40457d20d040b24df8d08440d6b61f01fa1537c871`。控制是日常证据准入，不把48计为新语言运行。
+- 新永久5测试包含四个source-profile/target合法分支、26个重hash坏请求/response分支、两件实际字节漂移、未声明exe/目录、缺daily而cert PASS。初轮缺件测试误期待OSError（实际EvidenceScope统一AdmissionError），及新增专用目录扫描暴露fixture复用scalar/text C目录留下旧header，两者按真实合同改测试后绿；没有放松reader允许旧产物。冻结`cargo t infra-ace-m1-arch --out <scope>/daily-admission-frozen-controls` **136/136，exit0，3.8030970s**，results SHA=`f4d42a1a848fef658f204fb140ac5ddac70a42e35af66f2fb10ed99b2a8acabb`。5提交文件工作字节=Git blob核对，记录scope/daily-admission-frozen-preview/committed-input-audit.json。
+- **完整原组合重新实际读取**，包括所有新增36 daily，Popen禁用，当前二进制与输入不变因此复用第16轮实际69Case及36cert原始执行，不为Python读取器变化重复编译/运行或跑全仓。单独原Job计量1383.7342ms，peak process**27,246,592** bytes、peak Job28,479,488 bytes；共享预留37,032,920/峰值**49,464,064 <48MiB=50,331,648**。报告159,043 bytes SHA=`c4dca274163b0746c985e63e6748e8cbc6d47e848d09f7bc38f385081599d971`，scope/daily-admission-frozen-preview/preview.stdout，原meter/空stderr同目录。CT14/text20两域daily_admission均PASS；登记仍82PASS/0FAIL/804UNOBSERVED，universe未封闭/expanded claim=false。增加的是这些格的日常证据强度，不假报新增覆盖行数。
+
+后续原义务保持：全部Q4源/变体四target与独立refs/trace/trap/负例；旧313required全读/38gap；SYN/ARCH原P/M/R/IO/restore首编辑、required页、样本/预算/HMR/lease；938/939实际合同；完整AND治理、最终冻结/独立review/Spec/merge/归档/清理。无新增用户决定/权限等待。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r1 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:233e0df44 | task_ids:T04/05（未关闭） | evidence:36原daily+认证联立/48原raw副本反控/136冻结/全组合49,464,064<48MiB | blockers:无新增用户决定；完整原验收继续 | next_responsible_role:work941
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r1 | round:17 | from:work | to:work | status:executing | outcome:needs_fix | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:233e0df44 | next:work941（完整四target/source/机制与原阈值保持）
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
