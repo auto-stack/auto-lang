@@ -1357,6 +1357,20 @@ stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:50 | from:work | to:work | status:executing5/21 | outcome:in_progress（原完整并集live） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:be7593e00a03edf8fd1985de8bfe49a5a3475429 | next:work 接原session27138至终态，继T21
 
+### 第51轮：完整AV1031通过；当前身份闭包与后续408原Case精确划界（2026-11-06）
+
+- 上轮T20实际提交/原4红→12绿/冻结正式准备为progress；本轮先重读main r4 executing5/21、树be7593e00 clean/main代码零WIP并核现存session27138、Python39216/driver13584。原AV命令cargo PID50108确实存活，接同handle，未重启。随后原组真实终态 **PASS ace-av，1031/1031、0原条件排除**，run437145.9391ms；`<scope>/f94106-frozen-union/0/result.json` SHA **ae74eb1c6ce9a53689bbae7b3e0c3f9e60cb1dbcf920fb2a6a712d5f0b38ac11**。比此前AV1019新增本次12永久回归；父完整selected/terminal/child核验通过，不仅总数或脚本exit。
+- 同一完整并集已顺序进入**ace-native**，当前live仍 **session27138 / fixed Python39216 / driver13584 / native cargo PID42476**，实际poll仍running。Native discovery已有真实文件但运行未终态；不把其编译完成/进程存在算PASS，infra185与原data36+诊断16亦仍待此同并集后续。没有第二测试/认证进程，没有改冻结交付代码；当前T21/F06未核销。
+- 只读核对上一稳定全组合的每份具体绑定，而非按包名推断：4角色中AV/native/SYN的raw worker身份失配，**bridge/ABI实际原本就是765ce8cf…，当前相同**。第50轮对ABI也失效的泛化描述/retention状态更正为本项精确对账；旧记录保历史，未把旧binding改写成新hash。10个带显式before/after域中text/RT/collections/query_instances/original_data/diagnostics/legacy_base仅各自AV与native或mn-collections二进制失配；3个原Rust release域before/after全部pin当前相符。无预算源pin涉及此次data_driver/av-worker源文件，预算声明不用改hash迁就修复。
+- 8类+首例合计292条证书producer pin均仍为当前A2X B=7b0be842…；这只是producer/原14配置依赖身份复用候选审计，不替代完整cert/source/toolchain/产物/配置严格读取，未并行重跑认证。`<scope>/f94106-bound-identity-audit/audit.json` SHA **b7cb7cb2cb6320cdbd478caf4405f7b9ea231df63a90eb2e96ad742a7534b457**，明确标during-live-union而非伪after快照，无隐式执行。
+- 准确定位仍需刷新原始交换的**14个既有Case组/408 checks**：q4 4、SYN原11（组合义务10不代原11check）、旧B08/B11 4、typedAV18、typed-native12、sourceCTE14、text20、scalar122、RT32、collections40、source-supplement8、原BASE97、source-query14、instances12；原data36+诊断16在当前冻结并集另52项，不能提前称已执行。原bridge6是hash相符的复用候选，仍需最终完整reader复核；独立declaration/typed inventory旧输入如果逐hash当前相符可复用，不以它充执行。`source-refresh-plan.json` SHA **cf05ac6888a630f8d9e8ca526f518bc5817ea991a46a9acc5d430affb589f3e7**；该表execution0、仅下一执行定位，不加分母或删原义务。
+- 已准备而**尚未执行**scope/refresh-f94106-source-cases.py：先强制原完整5组实际terminal PASS、当前be7593e00/clean及全部正式prepared工具hash未变，才创建新scope并沿**原cargo t**批调14组；使用原capture/runner/meter和原wire留存，只建本次新的before/after，不回填旧raw。原scalar8真实FAIL仍使原formal gate失败并原样留红，脚本只核差异是否恰为已知原8，绝不把overall gate改PASS或隐式豁免。原data52结合当前并集的真before11pin与新after，其他域按真实依赖集新快照，最终只产待strict的新bindings。AST语法预检通过（未运行）；执行入口收据`next-execution-entry.json` SHA **387664a1cb6f5e46aff7144772166966b8b4679c5b30ec07d1cf9aa32cfd490f**，列明原handle terminal/工具身份前置；不与当前native组并行启动。若工具末态变更，先诊断稳定身份，不能让脚本覆盖或重标旧证据。
+- 下一步先续现session27138到所有组终态，核工具after；若完整绿且身份稳定，再运行已准备的408批次及最终原reader，校原4code/其余verdict守恒，F06关闭仍未到。上一版675P12F319U仅旧身份历史，不冒当前已验证报告；原required74/313历史覆盖、8 scalar red、38旧cert-gap、全部ARCH/其余原任务和T13健康门继续保持。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:be7593e00a03edf8fd1985de8bfe49a5a3475429 | task_ids:T21完整AV1031通过/native仍运行 | evidence:AV1031真实terminal；现绑定身份审计和408刷新定位 | blockers:无新增用户决定；T21完整并集/身份闭包未齐 | next_responsible_role:work 先poll同session27138/PID39216，终态后工具审计与408原Case刷新/strict
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:51 | from:work | to:work | status:executing5/21 | outcome:in_progress（AV完整绿/native live） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:be7593e00a03edf8fd1985de8bfe49a5a3475429 | next:work 同handle27138，禁止重启/并行新门
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
