@@ -303,24 +303,19 @@ impl Frontend {
         observation.queries = queries.counters();
         let product = product?;
         module_work.complete(1);
-        // Cold catalog already owns these syntax nodes. Preserve declaration
-        // order rather than parsing the module a third time for retained env.
+        // Keep catalog iteration in source order for page production. The
+        // product already owns the canonical program used by its type supply;
+        // borrow it rather than clone every catalog body into another AST.
         let mut items: Vec<_> = catalog.fns.values().collect();
         items.sort_by_key(|s| s.span.start);
-        let program = Program {
-            items: items
-                .iter()
-                .map(|s| Item::Fn(s.item.as_ref().expect("cold catalog").as_ref().clone()))
-                .collect(),
-        };
         let env = resolve::resolve_env_with_supply(
-            &program,
+            &product.program,
             capabilities,
             SourceProfile::Scalar,
             Some(&product.supply),
         )
         .map_err(Error::Diagnostics)?;
-        let signatures = queries.catalog(&program).map_err(reject)?;
+        let signatures = queries.catalog(&product.program).map_err(reject)?;
         let mut residents = BTreeMap::new();
         let mut meter = Meter {
             whole_parse_attempts: observation.whole_parse_attempts,
