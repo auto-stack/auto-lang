@@ -257,6 +257,13 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 
 - stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 8 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-988/auto-lang + auto-ui | commit: language e693ad506cb94b34e334323e8d0676f52fb29e4c / UI b0d59400a1c302c040e07c9e4938a1c13b34d937 | review_receipt_commit: a9ee9f72528464db5165a72e2042ac16b68e6678 | next: work diagnosis checkpoint then repair F988-R2-01。R1原例与JSON/参数/Spec缺陷实证闭合，独立新反例揭示空列表修改与写入共享表示尚不完整；本轮属于产生改变下一行动证据的进展。第二次连续final review失败，进入第二次修复前先完成上表诊断与oracle调整，不启动第四次自动修复、不削减验收、不合入。两实现树提交未漂移且干净，review所有进程终态，根已接回写权。009原产品验收和完整目标仍未完成。
 
+### 2026-11-06 R2修复前诊断checkpoint
+
+- 剩余不变量：同一无注解空列表的声明、push及File.write_bytes消费者必须使用一致元素表示，含写前/写后变更。已核当前e693ad506：空数组infer_type_from_expr返回Unknown，store登记Unknown；push只对已登记List<Value>/List<Unknown>包json!，故Unknown receiver直发整数；writer则用具体Vec<Value>约束Rust推断。A/B两种次序因此相反方向E0308，不能用调用点泛型/具体型局部切换解决。
+- 前两轮漏检原因：第一轮只编非空/直接空，R1修复后24场景增加空值复用，但复用前后内容不变；没有观察消费者约束建立后对producer的后续变更，也没有写前push反向约束。
+- 有界设计调整：在函数体既有声明槽跟踪方式上，提前识别实际被File.write_bytes消费的无注解空数组声明（按词法绑定槽，非全函数同名字符串）。这些声明登记List<Unknown>动态Value桶，与既有bare List/push发射一致；显式typed及不被byte writer消费的空列表保持原上下文推断。别名/分支的同一绑定沿源槽传播，遮蔽绑定独立。writer和push共享此声明信息，避免只能修某个语句次序。
+- Oracle调整：保留R2的A/B不可变源及typed/非空控例，新永久源场景核首次写后空文件和追加后的真实字节；增加循环/分支/别名及坏JSON值push拒写代表，保持原24场景。预先复演红，再验证调整，受影响生成a2r组定向检查；VM/HTTP桥、UI多选、metadata不改，复用既有有效结果。此checkpoint先记录，不能当修复已通过；无新增合同/用户决定。
+
 ## 10. 待澄清事项
 
 无待用户范围决定。API具体返回形态/native ID/依赖版本由T-00有界核查；若出现超授权架构改造才另提决定。真实交互证据需要可用桌面，不能以模拟provider替代。
