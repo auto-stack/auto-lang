@@ -624,9 +624,12 @@ impl ManagedStore {
     }
 
     fn put_inner(&self, req: &PutRequest, staging_dir: &Path) -> Result<String, StoreError> {
-        let framed = frame_chunk(req.kind, &req.payload);
-        let chunk_id = ChunkId::from_parts(&[framed.as_slice()]).0;
-        let art_id = Self::artifact_id(req, &chunk_id);
+        let framed_len = req
+            .payload
+            .len()
+            .checked_add(crate::codec::CHUNK_HEADER_LEN)
+            .and_then(|n| u64::try_from(n).ok())
+            .ok_or_else(|| StoreError::ResourceExhausted("framed size overflow".into()))?;
 
         // ONE critical section (R2-01/03): staging allocation, budget
         // reservation, CAS placement and the metadata commit all run under
@@ -651,18 +654,29 @@ impl ManagedStore {
                 .ok_or_else(|| StoreError::Busy("staging budget lock".into()))?;
         let staging_now = Self::dir_size(&self.root.join("staging"));
         let tmp_residue = self.cas_tmp_bytes();
-        let reserved_total = staging_now + tmp_residue + 2 * framed.len() as u64;
+        let reserved_total = framed_len
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(staging_now))
+            .and_then(|n| n.checked_add(tmp_residue))
+            .ok_or_else(|| StoreError::ResourceExhausted("staging size overflow".into()))?;
         if reserved_total > Self::STAGING_BUDGET {
             return Err(StoreError::ResourceExhausted(format!(
                 "transient (staging {} + leftover CAS tmp {} + staged {} + CAS tmp {}) exceeds budget {}",
                 staging_now,
                 tmp_residue,
-                framed.len(),
-                framed.len(),
+                framed_len,
+                framed_len,
                 Self::STAGING_BUDGET
             )));
         }
         PEAK_TRANSIENT.fetch_max(reserved_total, std::sync::atomic::Ordering::Relaxed);
+
+        // Admission above uses only the incoming length and actual in-flight
+        // bytes. Do not allocate a complete frame (or hash/copy it) before a
+        // refusal whose purpose is to prevent precisely that extra allocation.
+        let framed = frame_chunk(req.kind, &req.payload);
+        let chunk_id = ChunkId::from_parts(&[framed.as_slice()]).0;
+        let art_id = Self::artifact_id(req, &chunk_id);
 
         // 1. Stage (transient sharing violations retried — AV scanners can
         //    hold a freshly created file; R2 repair-round observation). The

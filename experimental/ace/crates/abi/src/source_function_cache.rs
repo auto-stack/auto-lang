@@ -31,6 +31,72 @@ pub(super) struct FunctionCache {
     c: Option<ace_a2x_store::A2xSession>,
     _index_charge: Reservation,
 }
+
+#[cfg(test)]
+mod resource_tests {
+    use super::*;
+
+    #[test]
+    fn target_cache_put_reserves_payload_copies_before_writing_and_repairs_after_release() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::path::PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+            .join(format!("target-cache-copy-{}-{stamp}", std::process::id()));
+        let resources = Resources::default();
+        let mut cache =
+            FunctionCache::new("p938", "source938", Ledger::default(), resources.clone()).unwrap();
+        let caps = vec![ace_foreign_contract::manual::SOURCE_CAP.into()];
+        let environment = crate::source_provider::admit(
+            crate::source_provider::reviewed_add_manifest(),
+            &"a".repeat(64),
+            1,
+            &caps,
+        )
+        .unwrap();
+        cache.attach(&dir, &environment).unwrap();
+        let semantic = "b".repeat(64);
+        let artifact = Artifact::new(
+            TargetWire::C {
+                name: "main".into(),
+                def_index: 0,
+                semantic: semantic.clone(),
+                text: "/* opaque cached target bytes */".repeat(128),
+            },
+            &resources,
+        )
+        .unwrap();
+        let (key, _key_memory) = cache
+            .key("main", &semantic, Target::C, "runtime-control", &caps)
+            .unwrap();
+        let pressure = resources.reserve(Charge::io((8 << 20) - 64)).unwrap();
+        let mut counts = Meter::default();
+        let error = cache.put(&key, artifact.clone(), &mut counts).unwrap_err();
+        assert!(error.contains("foreign.resource"), "{error}");
+        assert_eq!(counts.cache_writes, 0);
+        assert_eq!(counts.cache_bytes_written, 0);
+        let refused = cache.work.totals("main", "target-cache-put");
+        assert_eq!(refused.attempted, 1);
+        assert_eq!((refused.read_bytes, refused.written_bytes), (0, 0));
+        assert!(cache.memory.is_empty());
+        assert_eq!(cache.store.as_ref().unwrap().space().blocks, 0);
+        assert_eq!(resources.stats().current.io, (8 << 20) - 64);
+        drop(pressure);
+        cache.put(&key, artifact.clone(), &mut counts).unwrap();
+        assert_eq!(counts.cache_writes, 1);
+        assert_eq!(counts.cache_bytes_written, artifact.bytes.len() as u64);
+        assert_eq!(resources.stats().current.io, 0);
+        let loaded = cache
+            .store
+            .as_ref()
+            .unwrap()
+            .get_artifact(FUNCTION_LAYER.id, &key)
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.payload.as_slice(), artifact.bytes.as_slice());
+    }
+}
 impl FunctionCache {
     pub fn new(
         package: &str,
@@ -214,6 +280,7 @@ impl FunctionCache {
             let name = match &artifact.decoded {
                 TargetWire::Native { name, .. } | TargetWire::C { name, .. } => name,
             };
+            let put = self.work.begin(name, "target-cache-put", Phase::Metadata);
             if store.space().total
                 + 2 * (artifact.bytes.len() + ace_artifacts::codec::CHUNK_HEADER_LEN) as u64
                 + 4096
@@ -221,7 +288,19 @@ impl FunctionCache {
             {
                 return Err("foreign.resource.store-quota".into());
             }
-            let put = self.work.begin(name, "target-cache-put", Phase::Metadata);
+            // The immutable resident page coexists with the owned put payload
+            // and the original store's framed copy. Match snapshot leaves'
+            // conservative copy allowance before cloning any payload bytes.
+            let copy_bytes = artifact
+                .bytes
+                .len()
+                .checked_add(ace_artifacts::codec::CHUNK_HEADER_LEN)
+                .and_then(|n| n.checked_mul(3))
+                .ok_or("foreign.resource.target-cache-copy-size")?;
+            let _copies = self
+                .resources
+                .reserve(Charge::io(copy_bytes))
+                .map_err(|e| e.to_string())?;
             self.work
                 .io(name, "target-cache", 0, artifact.bytes.len() as u64);
             store
