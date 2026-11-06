@@ -263,11 +263,13 @@ impl Resources {
             allocation = Some((page, metadata));
             Ok(())
         })?;
-        let (page, metadata) = allocation.expect("successful binding encoder reserved its output");
-        page.retain(&next.pages().binding)
+        let (page, metadata) = allocation
+            .as_mut()
+            .expect("successful binding encoder reserved its output");
+        page.try_retain(&next.pages().binding)
             .map_err(|e| e.to_string())?;
         metadata
-            .retain(next.binding_metadata_identity())
+            .try_retain(next.binding_metadata_identity())
             .map_err(|e| e.to_string())?;
         Ok(next)
     }
@@ -280,11 +282,11 @@ impl Resources {
     /// Its capacity and Arc/Vec header are admitted before allocating the
     /// shared owner. This does not reserve the caller's earlier Vec producer.
     pub fn own_payload(&self, bytes: Vec<u8>) -> Result<Arc<Vec<u8>>, ResourceError> {
-        let allocation = self.reserve(Charge::resident(
+        let mut allocation = self.reserve(Charge::resident(
             bytes.capacity() + std::mem::size_of::<Vec<u8>>() + 2 * std::mem::size_of::<usize>(),
         ))?;
         let bytes = Arc::new(bytes);
-        allocation.retain(&bytes)?;
+        allocation.try_retain(&bytes)?;
         Ok(bytes)
     }
     pub fn available_io(&self) -> usize {
@@ -387,7 +389,7 @@ impl Resources {
             payload.capacity() + std::mem::size_of::<Vec<u8>>() + 2 * std::mem::size_of::<usize>(),
         ))?;
         let bytes = Arc::new(payload);
-        payload_charge.retain(&bytes)?;
+        payload_charge.try_retain(&bytes)?;
         Ok(Some(bytes))
     }
     pub fn decode_json<T: serde::de::DeserializeOwned>(
@@ -547,6 +549,15 @@ impl Reservation {
     /// Transfer a PRE-allocation reservation to the immutable object. No
     /// hidden strong reference is kept; the account notices its last owner.
     pub fn retain<T: Any + Send + Sync>(mut self, object: &Arc<T>) -> Result<(), ResourceError> {
+        self.try_retain(object)
+    }
+    /// Attach without consuming the ticket on failure. An owning producer
+    /// declares this ticket before its value, so a failed index admission
+    /// drops the value first and releases its live charge afterward.
+    pub fn try_retain<T: Any + Send + Sync>(
+        &mut self,
+        object: &Arc<T>,
+    ) -> Result<(), ResourceError> {
         let erased: Arc<dyn Any + Send + Sync> = object.clone();
         let charge = self.charge.expect("live reservation");
         let retained = {

@@ -151,7 +151,7 @@ impl Artifact {
         previous: Option<Reservation>,
     ) -> Result<Arc<Self>, String> {
         let charge = Charge::resident(Self::decoded_bytes(&decoded));
-        let decoded_charge = if let Some(mut previous) = previous {
+        let mut decoded_charge = if let Some(mut previous) = previous {
             previous.resize(charge).map_err(|e| e.to_string())?;
             previous
         } else {
@@ -159,7 +159,7 @@ impl Artifact {
         };
         let size = ace_foreign_contract::codec::json_size(&decoded, MAX_ARTIFACT)
             .map_err(|e| e.to_string())?;
-        let bytes_charge = resources
+        let mut bytes_charge = resources
             .reserve(Charge::resident(
                 size + std::mem::size_of::<Vec<u8>>() + 2 * std::mem::size_of::<usize>(),
             ))
@@ -170,14 +170,14 @@ impl Artifact {
             return Err("foreign.resource.artifact".into());
         }
         let bytes = Arc::new(bytes);
-        bytes_charge.retain(&bytes).map_err(|e| e.to_string())?;
+        bytes_charge.try_retain(&bytes).map_err(|e| e.to_string())?;
         let artifact = Arc::new(Self {
             digest: hash(&bytes),
             bytes,
             decoded,
         });
         decoded_charge
-            .retain(&artifact)
+            .try_retain(&artifact)
             .map_err(|e| e.to_string())?;
         Ok(artifact)
     }
@@ -1202,7 +1202,7 @@ impl Session {
                 resources.decode_json(&bytes).map_err(|e| e.to_string())?;
             validate_target_artifact(target, &name, &decoded, front.foreign(), &resources)?;
             page_work.accept();
-            let allocation = resources
+            let mut allocation = resources
                 .reserve(Charge::resident(Artifact::decoded_bytes(&decoded)))
                 .map_err(|e| e.to_string())?;
             let artifact = Arc::new(Artifact {
@@ -1210,7 +1210,9 @@ impl Session {
                 bytes,
                 decoded,
             });
-            allocation.retain(&artifact).map_err(|e| e.to_string())?;
+            allocation
+                .try_retain(&artifact)
+                .map_err(|e| e.to_string())?;
             artifacts.insert(name, artifact);
         }
         if artifacts.len() != front.function_count() {

@@ -108,7 +108,7 @@ pub struct Page {
 impl Page {
     fn encode(value: &impl Serialize, resources: &Resources) -> Result<Self, Error> {
         let size = ace_foreign_contract::codec::json_size(value, MAX_PAGE_BYTES).map_err(reject)?;
-        let reservation = resources
+        let mut reservation = resources
             .reserve(Charge::resident(
                 size + std::mem::size_of::<Vec<u8>>() + 2 * std::mem::size_of::<usize>(),
             ))
@@ -117,7 +117,7 @@ impl Page {
             ace_foreign_contract::codec::encode_json_bounded(value, MAX_PAGE_BYTES)
                 .map_err(reject)?,
         );
-        reservation.retain(&bytes).map_err(resource_error)?;
+        reservation.try_retain(&bytes).map_err(resource_error)?;
         Ok(Self {
             digest: sha(&bytes),
             bytes,

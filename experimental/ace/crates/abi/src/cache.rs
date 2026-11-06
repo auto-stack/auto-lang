@@ -333,7 +333,7 @@ fn decode_c_object_bytes(
         .and_then(|n| n.checked_mul(3))
         .filter(|n| *n <= 64 << 20)
         .ok_or_else(|| StoreError::ResourceExhausted("C cache object decode size".into()))?;
-    let allocation = resources
+    let mut allocation = resources
         .reserve(ace_source_query::resources::Charge::resident(capacity + 40))
         .map_err(|e| StoreError::ResourceExhausted(format!("C cache object decode: {e}")))?;
     let mut bytes = vec![0u8; capacity];
@@ -344,7 +344,7 @@ fn decode_c_object_bytes(
     bytes.truncate(length);
     let bytes = std::sync::Arc::new(bytes);
     allocation
-        .retain(&bytes)
+        .try_retain(&bytes)
         .map_err(|e| StoreError::ResourceExhausted(format!("C cache object decode: {e}")))?;
     Ok(Some(CacheBytes::Managed(bytes)))
 }
@@ -412,7 +412,7 @@ pub fn read_c_object_file(
         .resize(Charge::resident(bytes.capacity() + 40))
         .map_err(budget)?;
     let bytes = std::sync::Arc::new(bytes);
-    allocation.retain(&bytes).map_err(budget)?;
+    allocation.try_retain(&bytes).map_err(budget)?;
     Ok(bytes)
 }
 

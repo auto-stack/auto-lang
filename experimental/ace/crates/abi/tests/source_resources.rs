@@ -37,6 +37,9 @@ thread_local! {
     static OVERFLOW: Cell<bool> = const { Cell::new(false) };
     static HEAP_MIR_ACCOUNT: RefCell<Option<ace_source_query::resources::Resources>> = const { RefCell::new(None) };
     static HEAP_MIR_COVERED: Cell<bool> = const { Cell::new(true) };
+    static FREE_PROBE: RefCell<Option<(usize, ace_source_query::resources::Resources, usize)>> = const { RefCell::new(None) };
+    static FREE_HITS: Cell<usize> = const { Cell::new(0) };
+    static FREE_COVERED: Cell<bool> = const { Cell::new(true) };
     static RESIDENT_PROBE: RefCell<Option<(usize, ace_source_query::resources::Resources, ace_source_query::resources::Charge)>> = const { RefCell::new(None) };
     static RESIDENT_HITS: Cell<usize> = const { Cell::new(0) };
     static RESIDENT_ADMITTED: Cell<bool> = const { Cell::new(true) };
@@ -211,6 +214,16 @@ fn with_charge_probe<T>(
     )
 }
 fn freed(ptr: *mut u8) {
+    let _ = FREE_PROBE.try_with(|probe| {
+        if let Some((expected, resources, minimum)) = probe.borrow().as_ref() {
+            if ptr as usize == *expected {
+                FREE_HITS.with(|hits| hits.set(hits.get() + 1));
+                if resources.stats().current.resident < *minimum {
+                    FREE_COVERED.with(|covered| covered.set(false));
+                }
+            }
+        }
+    });
     let _ = TRACK_HEAP.try_with(|enabled| {
         if enabled.get() {
             TRACKED.with(|tracked| {
@@ -224,6 +237,33 @@ fn freed(ptr: *mut u8) {
             });
         }
     });
+}
+fn with_free_charge_probe<T>(
+    ptr: usize,
+    resources: &ace_source_query::resources::Resources,
+    minimum: usize,
+    f: impl FnOnce() -> T,
+) -> (T, usize, bool) {
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            FREE_PROBE.with(|probe| {
+                probe.borrow_mut().take();
+            });
+        }
+    }
+    FREE_PROBE.with(|probe| {
+        assert!(probe.borrow().is_none());
+        *probe.borrow_mut() = Some((ptr, resources.clone(), minimum));
+    });
+    FREE_HITS.with(|hits| hits.set(0));
+    FREE_COVERED.with(|covered| covered.set(true));
+    let reset = Reset;
+    let result = f();
+    let hits = FREE_HITS.with(Cell::get);
+    let covered = FREE_COVERED.with(Cell::get);
+    drop(reset);
+    (result, hits, covered)
 }
 unsafe impl GlobalAlloc for Allocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -332,6 +372,58 @@ mod source_foreign {
     struct Pointer<'a> {
         stored: &'a Stored,
         payload: &'a str,
+    }
+
+    #[test]
+    fn rejected_shared_owner_keeps_its_fee_until_the_real_payload_drops_and_can_retry_attachment() {
+        use ace_source_query::resources::{ResourceError, Resources};
+        let resources = Resources::default();
+        let baseline = resources.stats().current;
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - baseline.index))
+            .unwrap();
+        let pressured = resources.stats().current;
+        let bytes = vec![73u8; (128 << 10) + 31];
+        let capacity = bytes.capacity();
+        let ptr = bytes.as_ptr() as usize;
+        let (rejected, deallocations, covered) =
+            with_free_charge_probe(ptr, &resources, capacity + 40, || {
+                resources.own_payload(bytes)
+            });
+        assert!(matches!(rejected, Err(ResourceError::Budget(_))));
+        assert_eq!(
+            deallocations, 1,
+            "did not observe the actual rejected payload's deallocation"
+        );
+        assert!(
+            covered,
+            "ownership-index refusal released the payload fee before destroying its live owner"
+        );
+        assert_eq!(resources.stats().current, pressured);
+
+        let mut allocation = resources.reserve(Charge::resident(4136)).unwrap();
+        let value = Arc::new(vec![19u8; 4096]);
+        let before = resources.stats().current;
+        assert!(matches!(
+            allocation.try_retain(&value),
+            Err(ResourceError::Budget(_))
+        ));
+        assert_eq!(
+            resources.stats().current,
+            before,
+            "a failed attachment must leave the caller's ticket live and retryable"
+        );
+        assert_eq!(Arc::strong_count(&value), 1);
+        drop(pressure);
+        allocation.try_retain(&value).unwrap();
+        drop(allocation);
+        let alias = value.clone();
+        drop(value);
+        assert_eq!(resources.stats().current.resident, 4136);
+        assert_eq!(alias.len(), 4096);
+        drop(alias);
+        assert_eq!(resources.stats().current.resident, 0);
+        assert_eq!(resources.stats().live_objects, 0);
     }
 
     #[test]
