@@ -1151,6 +1151,16 @@ stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:42 | from:work | to:work | status:executing3/19 | outcome:needs_fix（认证身份刷新顺序已纠正，当前并集仍运行） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:8c074c17c404b15a1d042a8bf3a77420b958997a | next:work T19续session52277，后B严格认证
 
+### 2026-11-06 第42轮续：B身份已稳定，重认证已启动
+
+session52277真实terminal exit0：scope/f94105-stable-final-union完整 **210 A2X+169治理+14 query+12 instances全部PASS**，164.346036s，results SHA=53869e030815ea1a8205f16bbf7fb9e4b8c8dda497dee8886db305a593b1c8f5。正式prepare前后B worker SHA保持7b0be842feabdd55a7217ae783ae4af8d9a445b60e7807e5cf1bda67d5b4bb7e，13依赖全部稳定；原A→B重链接更深原因未断言，后续不再运行构建准备改变B。
+
+首查询严格bind因本包漏设AUTO_CASE_WIRE_EVIDENCE而按原要求拒“required original exchange missing”；该次26父PASS不冒strict。仅补原既有采集env，正式原26完整重放至新scope/f94105-query-stable-wire-gate，**14+12 PASS**，22.201285s，results SHA=97aa86fe2ac6debbb05980af7aaf639dbe6a92599253cfdac2136ee7a57f6678。未改reader/源/预算/原raw；B仍稳定，before早于两次执行且全部当前pin一致。bind-f94105-query-stable-source-with-wire.py读新原交换，**24源义务严格入账**（原26 TestCase checks并不等于24源slot的分母），peak8560142B，bindings-wire.json/strict-observations-wire.json；旧无wire结果保留。6负入口亦以B重采至f94105-query-stable-negative-frontdoors，旧缺typed权威事实继续保未闭。
+
+**当前唯一认证采集批**：refresh-f94105-stable-certifications.py，scope/f94105-stable-certifications，明确核B身份后已启动；live **exec session80190 / Python PID31556**。新20 text批已开始、未全完成，不启动重复进程。下轮首先poll80190及核PID；终态exit0后运行read-f94105-stable-certifications.py逐域严格联读（含原14优化），再prepare-f94105-stable-composed-preview.py与capture-f94105-stable-composed-preview.py，全组合核旧red/unknown保持、新3Rust slot关闭，才能勾T19/F05。必要negative reader采用新B bindings。旧A292只历史，不与B混用。8c074c17c树clean、生产/测试字节未再改，完整B并集证据已有效，不为文档收据/认证重复跑完整门。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:8c074c17c404b15a1d042a8bf3a77420b958997a | task_ids:T19未关闭 | evidence:B完整405项门/原query24 strict；B292当前live | next_responsible_role:work poll session80190/PID31556（取代上一条next的已结束52277），禁止重复采集/再准备worker
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
