@@ -14,6 +14,8 @@ mod cache_paths;
 mod ctool_capture;
 #[path = "../src/ctool_dependencies.rs"]
 mod ctool_dependencies;
+#[path = "../src/ctool_text.rs"]
+mod ctool_text;
 thread_local! {
     static THRESHOLD: Cell<usize> = const { Cell::new(usize::MAX) };
     static LARGE: Cell<usize> = const { Cell::new(0) };
@@ -728,6 +730,90 @@ mod source_foreign {
                 String::from_utf8_lossy(&run.stderr)
             );
         }
+    }
+
+    #[test]
+    fn compiler_output_text_borrows_valid_bytes_and_precharges_exact_lossy_storage() {
+        use ace_source_query::resources::Resources;
+        use std::borrow::Cow;
+        let resources = Resources::default();
+        let empty = resources.stats().current;
+        let raw = resources.reserve(Charge::io(2 << 20)).unwrap();
+        let raw_baseline = resources.stats().current;
+        // Independent oracle is the original standard-library display. These
+        // include incomplete, overlong, surrogate and disjoint invalid spans.
+        let cases: &[&[u8]] = &[
+            b"",
+            b"a\0\r\nb",
+            b"\xff\xfea\xc3(b",
+            b"\xf0\x90",
+            b"\xed\xa0\x80\xc0\xaf",
+            b"ok\xe2\x82\xac\xf4\x90\x80\x80\0end",
+            "π😀\r\n".as_bytes(),
+        ];
+        for input in cases {
+            let expected = String::from_utf8_lossy(input);
+            let shown = ctool_text::display(input, Some(&resources)).unwrap();
+            assert_eq!(shown.value, expected);
+            match &shown.value {
+                Cow::Borrowed(s) => {
+                    assert_eq!(s.as_ptr(), input.as_ptr());
+                    assert_eq!(resources.stats().current, raw_baseline);
+                }
+                Cow::Owned(s) => {
+                    assert_eq!(s.capacity(), expected.len());
+                    assert_eq!(resources.stats().current.io, raw_baseline.io + s.capacity());
+                }
+            }
+            drop(shown);
+            assert_eq!(resources.stats().current, raw_baseline);
+        }
+        let invalid = vec![0xff; 1 << 20];
+        let expected = String::from_utf8_lossy(&invalid).into_owned();
+        let text_bytes = expected.len();
+        assert_eq!(text_bytes, 3 << 20);
+        let pressure = resources
+            .reserve(Charge::io((8 << 20) - raw_baseline.io - text_bytes + 1))
+            .unwrap();
+        let pressured = resources.stats().current;
+        let (denied, copies) = measured_at(text_bytes, || {
+            ctool_text::display(&invalid, Some(&resources))
+        });
+        assert!(matches!(denied, Err(ref message) if message.starts_with("foreign.resource:")));
+        assert_eq!(copies, 0, "lossy output allocated before quota refusal");
+        assert_eq!(resources.stats().current, pressured);
+        drop(pressure);
+        let (shown, hits, admitted) = with_charge_probe(
+            text_bytes,
+            &resources,
+            Charge::io(raw_baseline.io + text_bytes),
+            || ctool_text::display(&invalid, Some(&resources)),
+        );
+        let shown = shown.unwrap();
+        assert_eq!(hits, 1, "lossy output grew or was copied");
+        assert!(admitted, "lossy buffer allocation precedes reservation");
+        assert_eq!(shown.value, expected);
+        assert_eq!(shown.value.len(), text_bytes);
+        assert_eq!(resources.stats().current.io, raw_baseline.io + text_bytes);
+        drop(shown);
+        assert_eq!(resources.stats().current, raw_baseline);
+        let valid = "π".repeat(1 << 19);
+        let pressure = resources
+            .reserve(Charge::io((8 << 20) - raw_baseline.io))
+            .unwrap();
+        let full = resources.stats().current;
+        let (borrowed, copies) = measured_at(valid.len(), || {
+            ctool_text::display(valid.as_bytes(), Some(&resources))
+        });
+        let borrowed = borrowed.unwrap();
+        assert!(matches!(borrowed.value, Cow::Borrowed(_)));
+        assert_eq!(borrowed.value.as_ptr(), valid.as_ptr());
+        assert_eq!(copies, 0, "valid output made a whole-text copy");
+        assert_eq!(resources.stats().current, full);
+        drop(borrowed);
+        drop(pressure);
+        drop(raw);
+        assert_eq!(resources.stats().current, empty);
     }
 
     #[test]

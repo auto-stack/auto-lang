@@ -241,8 +241,10 @@ pub(crate) fn compile_c_with_deps_admitted(
     resources: Option<&ace_source_query::resources::Resources>,
     admit: impl FnMut(usize) -> Result<(), String>,
 ) -> Result<Vec<PathBuf>, CToolFailure> {
-    let out = compile_c_output(src, include_dir, obj_out, resources)?;
-    crate::ctool_dependencies::parse(&out, src, admit).map_err(CToolFailure::Resource)
+    let captured = compile_c_output(src, include_dir, obj_out, resources)?;
+    let out = crate::ctool_text::display(&captured.value.stdout, resources)
+        .map_err(CToolFailure::Resource)?;
+    crate::ctool_dependencies::parse(&out.value, src, admit).map_err(CToolFailure::Resource)
 }
 
 fn compile_c_output(
@@ -250,7 +252,7 @@ fn compile_c_output(
     include_dir: &Path,
     obj_out: &Path,
     resources: Option<&ace_source_query::resources::Resources>,
-) -> Result<String, CToolFailure> {
+) -> Result<crate::ctool_capture::Captured, CToolFailure> {
     let tool = find_cl()?;
     // cl.exe = <msvc>/bin/Hostx64/x64/cl.exe -> <msvc>/include
     let msvc_root = tool
@@ -296,14 +298,16 @@ fn compile_c_output(
     })?;
     let run = &captured.value;
     let code = run.exit_code;
-    let out = String::from_utf8_lossy(&run.stdout).into_owned();
-    let err = String::from_utf8_lossy(&run.stderr).into_owned();
     if code != Some(0) {
+        let out =
+            crate::ctool_text::display(&run.stdout, resources).map_err(CToolFailure::Resource)?;
+        let err =
+            crate::ctool_text::display(&run.stderr, resources).map_err(CToolFailure::Resource)?;
         return Err(CToolError(format!(
             "cl exited {code:?} for {}:\n{}\n{}",
             src.display(),
-            out.trim(),
-            err.trim()
+            out.value.trim(),
+            err.value.trim()
         ))
         .into());
     }
@@ -314,7 +318,7 @@ fn compile_c_output(
         ))
         .into());
     }
-    Ok(out)
+    Ok(captured)
 }
 
 /// Stable toolchain fingerprint for cache keys and receipts (cl identity
@@ -378,6 +382,22 @@ mod tests {
             .iter()
             .any(|p| p.file_name().is_some_and(|n| n == "stdint.h")));
         assert!(!repaired.contains(&source));
+        std::fs::write(
+            &source,
+            "int dependency_probe(void) { return missing_output_text_control; }\n",
+        )
+        .unwrap();
+        let original_error = compile_c_with_deps(&source, &root, &object).unwrap_err();
+        let accounted_error =
+            compile_c_with_deps_admitted(&source, &root, &object, Some(&resources), |_| {
+                panic!("a rejected compilation must not publish dependencies")
+            });
+        let Err(CToolFailure::Tool(error)) = accounted_error else {
+            panic!("compiler rejection lost its tool diagnostic: {accounted_error:?}");
+        };
+        assert_eq!(error.0, original_error.0, "lossy diagnostic text changed");
+        assert!(error.0.contains("missing_output_text_control"));
+        assert_eq!(resources.stats().current.io, 0);
     }
 
     #[test]

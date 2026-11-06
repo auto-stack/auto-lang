@@ -26,6 +26,7 @@ pub(crate) mod cache_paths;
 pub mod ctool;
 mod ctool_capture;
 mod ctool_dependencies;
+mod ctool_text;
 pub mod decl;
 pub mod descriptor;
 pub mod emit;
