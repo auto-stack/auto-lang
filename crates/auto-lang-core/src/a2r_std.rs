@@ -814,11 +814,24 @@ pub mod fs {
         std::fs::remove_dir(path.as_ref()).is_ok()
     }
 
-    /// PLAN-714 r3 R3-T1: File.write_bytes 的 list 形（read_bytes_list
-    /// 对偶——Value 元素按 as_i64 取低字节；缺失补 0 保长度）。
-    pub fn write_bytes_list(path: impl AsRef<str>, data: Vec<serde_json::Value>) -> i64 {
-        let bytes: Vec<u8> = data.iter().map(|v| v.as_i64().unwrap_or(0) as u8).collect();
-        ::a2r_std::fs::write_bytes(path.as_ref(), &bytes) as i64
+    /// Accept generated typed integer lists and dynamic JSON lists alike.
+    /// Validate every element before opening the target; bad
+    /// members must not be silently zeroed or truncate an existing file.
+    pub fn write_bytes_list<T: Into<serde_json::Value>>(
+        path: impl AsRef<str>,
+        data: Vec<T>,
+    ) -> i64 {
+        let bytes: Option<Vec<u8>> = data
+            .into_iter()
+            .map(|value| {
+                let value: serde_json::Value = value.into();
+                value.as_i64().map(|n| n as u8)
+            })
+            .collect();
+        match bytes {
+            Some(bytes) => ::a2r_std::fs::write_bytes(path.as_ref(), &bytes) as i64,
+            None => -1,
+        }
     }
 
     pub fn walk(dir: impl AsRef<str>) -> String {
@@ -1378,5 +1391,61 @@ mod tests {
 
         assert_eq!(some.unwrap_or(0), 42);
         assert_eq!(none.unwrap_or(0), 0);
+    }
+}
+
+#[cfg(test)]
+mod plan988_byte_tests {
+    #[test]
+    fn generated_typed_and_json_byte_lists_match() {
+        let dir = tempfile::tempdir().unwrap();
+        let typed = dir.path().join("typed.bin");
+        let dynamic = dir.path().join("dynamic.bin");
+        assert_eq!(
+            super::fs::write_bytes_list(typed.to_str().unwrap(), (0i64..=255).collect()),
+            0
+        );
+        assert_eq!(
+            super::fs::write_bytes_list(
+                dynamic.to_str().unwrap(),
+                (0..=255).map(serde_json::Value::from).collect()
+            ),
+            0
+        );
+        assert_eq!(
+            std::fs::read(typed).unwrap(),
+            (0..=255).collect::<Vec<u8>>()
+        );
+        assert_eq!(
+            std::fs::read(dynamic).unwrap(),
+            (0..=255).collect::<Vec<u8>>()
+        );
+    }
+    #[test]
+    fn generated_bad_bytes_leave_target_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("preserved.bin");
+        std::fs::write(&path, [42, 128, 255]).unwrap();
+        for value in [
+            serde_json::json!(true),
+            serde_json::json!(1.5),
+            serde_json::json!("3"),
+            serde_json::json!(null),
+        ] {
+            assert_eq!(
+                super::fs::write_bytes_list(
+                    path.to_str().unwrap(),
+                    vec![serde_json::json!(0), value]
+                ),
+                -1
+            );
+            assert_eq!(std::fs::read(&path).unwrap(), [42, 128, 255]);
+        }
+        // Preserve the existing Rust i64-to-u8 truncation for integer inputs.
+        assert_eq!(
+            super::fs::write_bytes_list(path.to_str().unwrap(), vec![i64::MIN, i64::MAX, 256]),
+            0
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), [0, 255, 0]);
     }
 }

@@ -659,7 +659,13 @@ impl RustTrans {
                                             write!(out, ", ")?;
                                         }
                                         if let Arg::Pos(expr) = arg {
-                                            self.expr(expr, out)?;
+                                            if i == 1
+                                                && matches!(expr, Expr::Array(items) if items.is_empty())
+                                            {
+                                                write!(out, "Vec::<i64>::new()")?;
+                                            } else {
+                                                self.expr(expr, out)?;
+                                            }
                                         } else {
                                             self.arg(arg, out)?;
                                         }
@@ -1918,7 +1924,13 @@ impl RustTrans {
                                         write!(out, ", ")?;
                                     }
                                     if let Arg::Pos(expr) = arg {
-                                        self.expr(expr, out)?;
+                                        if i == 1
+                                            && matches!(expr, Expr::Array(items) if items.is_empty())
+                                        {
+                                            write!(out, "Vec::<i64>::new()")?;
+                                        } else {
+                                            self.expr(expr, out)?;
+                                        }
                                     } else {
                                         self.arg(arg, out)?;
                                     }

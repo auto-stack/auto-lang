@@ -50,3 +50,10 @@ VM 臂 `fs.*` 原生 shim（`crates/auto-lang/src/vm/native.rs`）的**失败返
 
 永久回归：`vm::ffi::convert::plan988_integer_bridge_tests`，含源码数组/
 动态列表/JSON→真实文件、全256值、非法元素拒写与原文件保持。
+
+Rust生成消费：嵌入式 `a2r_std::fs::write_bytes_list` 同时接受生成的整数
+`Vec<i64>` 与JSON值列表；所有元素先验证为可读整数，再打开目标。非法
+非整数返回既有失败码-1，目标不变；保留该Rust帮助函数原有i64取低8位
+行为，不借本修复改变范围外整数兼容性。VM FFI仍按其Vec<i32>签名检查
+范围。直接空数组在File.write_bytes调用点生成明确整数Vec类型，避免泛型
+推断失败。0..255的承诺在两端一致；其他范围不宣称跨端新增等价。

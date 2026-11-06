@@ -654,6 +654,81 @@ mod plan988_integer_bridge_tests {
     }
 
     #[test]
+    fn source_function_parameter_and_return_preserve_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("function.bin");
+        let quoted = serde_json::to_string(&path.to_string_lossy().replace('\\', "/")).unwrap();
+        let source = format!("fn bytes() []int {{ return [0,127,128,255] }}\nfn save(p str, bs []int) int {{ return file.write_bytes(p, bs) }}\nfn main() {{ let rc = save({quoted}, bytes()) }}");
+        crate::run_with_capture(&source).unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), [0, 127, 128, 255]);
+    }
+
+    fn push_values(vm: &AutoVM, task: &mut AutoTask, values: Vec<Value>) {
+        let id = vm.insert_heap_object(ListData {
+            elems: values,
+            storage: None,
+        });
+        vm.rc_push_id(task, id);
+    }
+
+    #[test]
+    fn http_response_bytes_preserve_binary_and_reject_bad_member() {
+        use crate::vm::ffi::{http_return_resource::*, stdlib::shim_http_response_bytes};
+        let vm = AutoVM::new(VirtualFlash::new_with_code(vec![]), 1024);
+        let mut task = AutoTask::new(1, 1024, 0);
+        push_response_resource(&mut task, &vm, 200, vec![], vec![99]).unwrap();
+        push_values(
+            &vm,
+            &mut task,
+            vec![Value::Int(0), Value::Int(128), Value::Int(255)],
+        );
+        shim_http_response_bytes(&mut task, &vm).unwrap();
+        let response = task.ram.pop_nv();
+        assert_eq!(
+            read_response_snapshot(&vm, response).unwrap().body,
+            [0, 128, 255]
+        );
+        task.ram.push_nv(response);
+        push_values(&vm, &mut task, vec![Value::Int(5), Value::Bool(true)]);
+        assert!(shim_http_response_bytes(&mut task, &vm).is_err());
+        assert_eq!(
+            read_response_snapshot(&vm, response).unwrap().body,
+            [0, 128, 255]
+        );
+    }
+
+    #[test]
+    fn tcp_stream_dynamic_bytes_arrive_unchanged() {
+        use crate::vm::ffi::stdlib::*;
+        use std::io::Read;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let vm = AutoVM::new(VirtualFlash::new_with_code(vec![]), 1024);
+        let mut task = AutoTask::new(1, 1024, 0);
+        listener
+            .local_addr()
+            .unwrap()
+            .to_string()
+            .push_to_stack(&mut task, &vm)
+            .unwrap();
+        shim_net_tcp_connect(&mut task, &vm).unwrap();
+        let handle = task.ram.pop_i32();
+        assert!(handle > 0);
+        let (mut peer, _) = listener.accept().unwrap();
+        peer.set_read_timeout(Some(std::time::Duration::from_secs(2)))
+            .unwrap();
+        task.ram.push_i32(handle);
+        push_values(&vm, &mut task, (0..=255).map(Value::Int).collect());
+        shim_net_tcp_stream_write(&mut task, &vm).unwrap();
+        let written = task.ram.pop_i32();
+        task.ram.push_i32(handle);
+        shim_net_tcp_stream_close(&mut task, &vm).unwrap();
+        assert_eq!(written, 256);
+        let mut bytes = vec![];
+        peer.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, (0..=255).collect::<Vec<u8>>());
+    }
+
+    #[test]
     fn missing_list_is_rejected() {
         let vm = AutoVM::new(VirtualFlash::new_with_code(Vec::new()), 1024);
         let mut task = AutoTask::new(1, 1024, 0);

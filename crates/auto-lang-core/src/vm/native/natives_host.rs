@@ -904,8 +904,7 @@ pub fn shim_ui_focus(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 mod plan988_dialog_tests {
     use super::*;
     use crate::vm::{
-        ffi::VMConvertible, host_capabilities::DialogHostProvider,
-        virt_memory::VirtualFlash,
+        ffi::VMConvertible, host_capabilities::DialogHostProvider, virt_memory::VirtualFlash,
     };
     use std::sync::Arc;
 
@@ -949,6 +948,34 @@ mod plan988_dialog_tests {
             assert_eq!(serde_json::from_str::<Vec<String>>(&json).unwrap(), paths);
         }
     }
+    #[test]
+    fn missing_multi_provider_preserves_argument_and_reports_capability() {
+        let vm = AutoVM::new_without_host_snapshot(VirtualFlash::new_with_code(vec![]), 1024);
+        let mut task = AutoTask::new(1, 1024, 0);
+        "raw-filter"
+            .to_owned()
+            .push_to_stack(&mut task, &vm)
+            .unwrap();
+        let error = shim_dialog_open_files(&mut task, &vm).unwrap_err();
+        assert!(
+            format!("{error:?}").contains("dialog_open_files: the `ui-dialog` feature is disabled")
+        );
+        assert_eq!(
+            String::pop_from_stack(&mut task, &vm).unwrap(),
+            "raw-filter"
+        );
+    }
+
+    #[test]
+    fn public_source_multiselect_resolves_to_native_capability() {
+        let error = crate::run_with_capture("fn main() { let paths = dialog_open_files(\"txt\") }")
+            .unwrap_err();
+        assert!(
+            format!("{error:?}").contains("dialog_open_files: the `ui-dialog` feature is disabled"),
+            "{error:?}"
+        );
+    }
+
     #[test]
     fn legacy_provider_rejects_multi_but_keeps_single() {
         let vm = AutoVM::new(VirtualFlash::new_with_code(vec![]), 1024);
