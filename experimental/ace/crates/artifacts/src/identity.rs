@@ -93,15 +93,35 @@ impl QueryKey {
 
     /// Canonical textual form (stable, diagnostic-friendly).
     pub fn canonical(&self) -> String {
-        let mut s = format!("{}[", self.layer);
+        let mut s = String::with_capacity(
+            self.canonical_len()
+                .expect("canonical query key size overflow"),
+        );
+        s.push_str(self.layer);
+        s.push('[');
         for (i, (k, v)) in self.components.iter().enumerate() {
             if i > 0 {
                 s.push(',');
             }
-            s.push_str(&format!("{}={}", k, v));
+            s.push_str(k);
+            s.push('=');
+            s.push_str(v);
         }
         s.push(']');
         s
+    }
+
+    /// Exact UTF-8 bytes of canonical(), before allocating its output. Hosts
+    /// can admit this owned buffer without formatting temporary field copies.
+    pub fn canonical_len(&self) -> Option<usize> {
+        self.components.iter().enumerate().try_fold(
+            self.layer.len().checked_add(2)?,
+            |n, (i, (key, value))| {
+                n.checked_add(key.len())?
+                    .checked_add(value.len())?
+                    .checked_add(1 + usize::from(i > 0))
+            },
+        )
     }
 
     /// Hash form for index lookups (domain: query-key of the layer).

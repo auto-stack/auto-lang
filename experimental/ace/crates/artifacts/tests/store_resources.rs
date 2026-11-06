@@ -71,6 +71,43 @@ fn request(name: &str, len: usize) -> PutRequest {
 }
 
 #[test]
+fn query_key_canonical_text_allocates_only_its_exact_final_buffer() {
+    let key = QueryKey {
+        layer: "A04",
+        // canonical() has always preserved the stored component order; only
+        // QueryKey::new sorts it. Include a direct unsorted value as well.
+        components: vec![
+            ("z=,[]\0".into(), "π".repeat(1 << 20)),
+            ("a".into(), "first".into()),
+            ("a".into(), "second".into()),
+            ("".into(), "😀\0=[]".into()),
+        ],
+    };
+    let mut expected = format!("{}[", key.layer);
+    for (i, (name, value)) in key.components.iter().enumerate() {
+        if i > 0 {
+            expected.push(',');
+        }
+        expected.push_str(&format!("{name}={value}"));
+    }
+    expected.push(']');
+    let (actual, allocations) = measured(64 << 10, || key.canonical());
+    assert!(
+        actual == expected,
+        "canonical key bytes or component order changed"
+    );
+    assert_eq!(
+        allocations, 1,
+        "canonical text grew or formatted whole field copies"
+    );
+    assert_eq!(actual.capacity(), actual.len());
+    assert_eq!(key.canonical_len(), Some(expected.len()));
+    let empty = QueryKey::new(schema::layer("A04").unwrap(), vec![]);
+    assert_eq!(empty.canonical(), "A04[]");
+    assert_eq!(empty.canonical_len(), Some(5));
+}
+
+#[test]
 fn query_key_hash_streams_borrowed_components_with_original_framing() {
     fn original(key: &QueryKey) -> String {
         // Independent pre-change wire algorithm, evaluated outside allocation
