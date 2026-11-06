@@ -2,6 +2,12 @@
 //! dependency enters the language SDK; the existing ABI transport is reused.
 use serde::{Deserialize, Serialize};
 pub(super) const RECIPE: &str = "abi/source-foreign-certify-v1";
+// Parent-owned acceptance pins for this finite reviewed recipe. A producer's
+// well-formed hash is evidence only when it names these independent materials.
+const REVIEWED_CONTRACT: &str = "cef4c3885f1686a00c0bb8c44ca6b95559a634fff297f8193becca2d1d35d71c";
+const REVIEWED_HEADER: &str = "4051cd6af2acd0c07eeed8495f50ad51fdfac94c3b91928f86422e486b408b98";
+const REVIEWED_PHYSICAL_TABLE: &str =
+    "0ea8be97d1026bd57dcaff7b35673e45a6a9f17e2f5c991bdd1b1fb04a94daa3";
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct SourceDiagnostic {
@@ -112,9 +118,9 @@ impl SourceReport {
             || self.consumer != consumer
             || !matches!(consumer, "native" | "c")
             || self.review_id != "plan938-independent-provider-v1"
-            || !digest(&self.contract_digest)
-            || !digest(&self.header_digest)
-            || !digest(&self.physical_table_digest)
+            || self.contract_digest != REVIEWED_CONTRACT
+            || self.header_digest != REVIEWED_HEADER
+            || self.physical_table_digest != REVIEWED_PHYSICAL_TABLE
         {
             return Err("source-import report identity mismatch".into());
         }
@@ -216,12 +222,41 @@ mod tests {
             "abi_domain":"autoabi","abi_version":"0.1","abi_profile":"autoabi.win-x64.v0.1-candidate","callconv":"windows-x64",
             "target":"x86_64-pc-windows-msvc","consumer":"native","source_sha256":auto_test_case::sha256::hex(&auto_test_case::sha256::sha256(source.as_bytes())),
             "compiler":"ace-native-foreign/1+ace-native/0.1.0+cranelift/0.126.2","c_toolchain":"cl:reviewed-tool|ver:1|hash:live|flags:frozen",
-            "contract_digest":"a".repeat(64),"provider_digest":"b".repeat(64),"header_digest":"c".repeat(64),"physical_table_digest":"d".repeat(64),
+            "contract_digest":REVIEWED_CONTRACT,"provider_digest":"b".repeat(64),"header_digest":REVIEWED_HEADER,"physical_table_digest":REVIEWED_PHYSICAL_TABLE,
             "review_id":"plan938-independent-provider-v1","actual_exit":42,"reference_exit":42,
             "actual_events":["provider_add"],"reference_events":["provider_add"],"actual_stderr":"source938.call=provider_add\n","reference_stderr":"source938.call=provider_add\n",
             "source_parse":2,"solver":1,"hir":1,"mir":1,"native":1,"c_fragment":0,"diagnostic_stage":"","diagnostics":[]
         })).unwrap()
     }
+    #[test]
+    fn source_report_requires_the_current_independent_review_content() {
+        let source = "fn main() int { return foreign_add(20,22) }";
+        let mut reviewed = valid();
+        reviewed.contract_digest =
+            "cef4c3885f1686a00c0bb8c44ca6b95559a634fff297f8193becca2d1d35d71c".into();
+        reviewed.header_digest =
+            "4051cd6af2acd0c07eeed8495f50ad51fdfac94c3b91928f86422e486b408b98".into();
+        reviewed.physical_table_digest =
+            "0ea8be97d1026bd57dcaff7b35673e45a6a9f17e2f5c991bdd1b1fb04a94daa3".into();
+        reviewed
+            .admit("native", true, Some(42), Some(source))
+            .unwrap();
+        for axis in 0..3 {
+            let mut forged = reviewed.clone();
+            match axis {
+                0 => forged.contract_digest = "a".repeat(64),
+                1 => forged.header_digest = "a".repeat(64),
+                _ => forged.physical_table_digest = "a".repeat(64),
+            }
+            assert!(
+                forged
+                    .admit("native", true, Some(42), Some(source))
+                    .is_err(),
+                "review content axis {axis}: a well-formed but unrelated digest was accepted"
+            );
+        }
+    }
+
     #[test]
     fn predecode_resource_refusal_never_substitutes_for_source_or_execution_evidence() {
         let source = "fn main() int { return foreign_add(20,22) }";
