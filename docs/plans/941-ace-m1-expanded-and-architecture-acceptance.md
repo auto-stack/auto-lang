@@ -907,6 +907,26 @@ stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:31 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，SQ/实例默认认证已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:2841619ff261ec660d3cc5530915af0f2cfde708 | next:work 原choose两优化及其余完整范围
 
+### 2026-11-06 原choose两项Rust优化配置与共享测试身份刷新（goal第32轮）
+
+前轮18默认认证/6负入口为progress。本轮继续T04/05/08/10/11，唯一941树提交 **93f692916f03516b98f797747f9986c6a9ca3e31**，5文件，树clean；仍executing2/17，生产worker/编译器/语义未改。
+
+- 新正式producer `ace-a2x-worker::conformance::query_release_941::original_two_release_variants`逐原935 **choose42/choose0**，源码直接取原source-instances-935文件，运行字节与编译时include_bytes逐件等；profile=scalar、原instances cap、独立值42/0不改。原精确优化参数 **--edition 2021 -O**，不混scalar的-C debug-assertions=off。actual与上一轮独立reference各两次真实编译/运行，新增**4compile+4run**；完整main/runtime/generated/manifest全等默认cert/daily冻结文件，不能拿不同代码-O结果代配置。observer始终能从永久fixture自行重建，不依赖合并时会删的材料；复用原contained capture、原120s compile/30s run/360s whole/1MiB双流帽，未造runner/meter。
+- 新模块注册改变conformance可执行文件身份；原scalar8/RT4的旧前后快照保历史，不把新SHA回填旧before。本轮统一命名入口 `cargo t ace-a2x --test-name release_941::original_ --out <scope>/query-release-frozen/gate` **3/3正式测试，内部8scalar+4RT+2query共14原配置**，exit0、7.1833073s，results SHA=`28eaf4e88999aa13b34071fa8d506edb923bb74c468f4d866ac9670b76a55e8a`。当前三组分别8/9/9个dependency pin（含实际测试exe、debug worker、producer/原表/参考合同、executor/nextest配置）执行前后稳定；scope/scalar-release-query-refresh、record-text-release-query-refresh、query-release-frozen。共**28compile+28run**，其中24+24为必要旧身份刷新，不冒整个ace-a2x职责组全过。
+- 共享只读release reader有限加入query第三域，禁止混域；按原query producer/935表/独立合同、2源全集/原profile/cap/flags/完整文件集、原父终态与discovery实际exe、前后依赖/当前-vV、nonce/FNV/完整emit原字节和四phase逐项校验。默认与优化双腿联立，任一FAIL仍FAIL、缺优化仍UNOBSERVED；当前原query正源**18/18目标配置证据完成**，certification_complete=true。原6负例typed缺口及SQ/实例事实权威/恢复并未完成，不能由本字段冒所有义务完成。原248默认cert/daily不变，额外原Rust模式从12→**14**，不虚增默认认证数。
+- **16 query原帧反控**：2原合法PASS、2双方同错值FAIL、12缺-O/混scalar flags/错profile/caps/source/未知field REFUSED，scope/query-release-frozen/raw-reader-controls.json SHA=`0edddbeeea93f3187c921ff0805b7224bf832181e6add79ee54a9dbaee75bc7c`。初次临时反控沿RT脚本把profile改scalar，而原query本来就是scalar，未真的改变条件，因此合法PASS触发反控断言；修的是临时变异令其实际改为core，未改checker/源码/oracle，重放才作为当前反控证据。原48scalar与32RT反控在新实际帧重放仍全符合预期，SHA分别保持`95503e2764a50ec46be7335264da647fa18fcafa19c42b320c39724f39acf7b7`与`fc1ddc11d276721044c6996699a3e87e5677bdfd2edb95a4f7370dd297f9c243`；总96counterfactual，不充新语言执行。
+- 现有原通用flags/默认与优化不互相掩盖等治理回归在最终代码 `cargo t infra-ace-m1-arch --out <scope>/query-release-final-controls` **164/164 PASS**、4.3455418s、exit0，results SHA=`5bf9c4fd17ca28026bbb58c06a4e11d0b935185f48c010622a9a1c57244c035d`。新增实际双源producer本身是永久注册回归，不为同一通用规则再加镜像计数测试。定向rustfmt(skip_children)、py_compile、diff-check通过；冻结5文件等Git blob留scope/query-release-frozen-preview/committed-input-audit.json。原248cert/所有source生产身份不变，组合逐项重读后复用；原1779压力及最终完整ace-a2x职责并集不在此命名门冒PASS。
+
+健康/准备记录保真：28个compile stderr逐件等原默认证书同腿，新增query四流全空；旧scalar4/RT2条发射warning和first_lex_fact dead_code基线保持，无新增未处理warning。scope/query-release-frozen/compile-warning-baseline-audit.json SHA=`20e44fd64b897e562f381c1062658e5a04ec8fc2b9eccde04aa97a41584290d2`。本轮准备曾复用旧prepare-record-text-release脚本，更新了其目录内三个临时准备缓存formal-discovery/formal-build.stderr/formal-build-command，已把本次副本置query-release-preparation并另存新脚本；**旧实际gate、原START/TERMINAL、index与before/after均未改**，当前准入只使用本轮新gate/快照，不把更新缓存冒旧执行证据。
+
+冻结93f6929全组合原受管Job/Popen禁用重读：**516PASS/8FAIL/362UNOBSERVED**，886登记/required/16合同指针与原预算合同不变，full_registry_closed/system_delivered/expanded claim仍false。scope/query-release-frozen-preview/preview.stdout 484506B SHA=`15e6e12929aae3a15a6c778f37258f018b8ac5a73e4a5b05c361e17298de8c1b`，7942.7770ms、peak process29696000/Job30928896B；同一LiveBudget reservation35493698/全程peak**47785683<50331648B**，原48MiB聚合/4MiB单件/private128MiB/先预留解码/64KiB流hash/不清峰值保持。原8FAIL/native8trap缺具名观察、6 A2X负例typed缺口、legacy313/38、ARCH/938939及健康基线均未被优化绿掩盖。
+
+原T01..15未闭；下一入口转原完整源/模式分母审计与事实权威、增量恢复首编辑、required页/资源/正式规模、ARCH及legacy证据，最终独立review/merge仍待。无活进程或新增用户决定，授权持续。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:93f692916f03516b98f797747f9986c6a9ca3e31 | task_ids:T04/05/08/10/11（未关闭） | evidence:2原query优化+12旧模式身份刷新/28compile28run；96反控；164回归；整体516PASS8FAIL362UNOBSERVED | blockers:原完整范围/机制与具名观测/健康边界未闭，无新增用户决定 | next_responsible_role:work 原完整分母及事实/恢复/资源/ARCH/legacy
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:32 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，choose两优化配置已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:93f692916f03516b98f797747f9986c6a9ca3e31 | next:work 原完整源/模式审计与机制/ARCH/legacy
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
