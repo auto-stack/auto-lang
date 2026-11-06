@@ -1479,6 +1479,24 @@ stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress（CTdead
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:58 | from:work | to:work | status:executing6/21 | outcome:in_progress（原因实证与最小提案，完整目标保持） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:1548132986430e7298bcaaccf7f0d1554d79cb31 | next:work 其他原required/ARCH；F07授权到达则new→work，无待poll
 
+### 第59轮：CT meta/实例真实观察；新发现F-941-08能力判定在执行/命中后缺失（2026-11-06）
+
+- 第58轮实证CTdeadline时序前提并提交F07提案为progress。本轮复核main r4 executing6/21、同树154813298 clean/worktree归属、main无代码WIP；F07无答复，仅继续独立T08机制证据，不修改其测试。当前938分支推进37e1e584d但尚未D，939仍未交齐。没有其他live测试。
+- **真实SDK路径而非值回推**：scope内薄Rust调用方直接使用当前预建`libace_source_cte-a6f9ae4b88c33d2c.rlib`的compile_scalar_ct/CtService。RecordingSink只委托原MemoryEnvelopeSink的probe/publish，在成功publish后记录原ExecKey；不复制store/解释器/solver，不造计数。原meta2/meta3/pick40从跟踪源读取相同字节，新探针与输出仅在统一scope。原库/三源run前后hash恒等、578当前合同输入/13工具最终再核全部相同。此为诊断/接线原型，尚非正式native contract准入，不改全组合verdict。
+- **正例与失效事实**：同service/storage下meta2 field-set x,y：当前meta_queries1、真实AV1/publish1、值42；forbid AV重取原源hit，AV仍1/hits1；同站点改三字段在forbid下精确av-forbidden，未新执行/发布；解除forbid实际43、AV2/publish2，callee逻辑/签名/体版本不变而实参canonical从i32:2,i32:40变i32:3,i32:40，执行key变化。HasField独立变体原无z→加入z使实际AV参数false→true、结果42→40，原站点不改；每代各一次真实AV，非meta-only冒执行。
+- **实例/子CT组合实证**：原pick40只改flag return true→false，模板及main站点字节不变；同service累计真实AV2→4、freeze2→4、结果40→42，随后forbid下两级均hit而AV保持4/hits2。实际InstanceRecord的logical/key/模板signature/body轴仍相同，这是未改模板声明的正确事实；有效外层pick_i32 ExecKey的callee_body_version从a5d59665…变9129ba48…，inner flag体版本也改变。不能错误地要求raw template InstanceRecord键变化，或只凭返回42认定checked-child有效实现已换；正式reader应分别核实例声明与回灌后执行实现轴。
+- **F-941-08反证A（冷态缺meta cap仍执行/发布）**：原meta2仅授`ac.source.cte.scalar/v1`、未授`cte.meta.fields/v1`，compile_scalar_ct仍返回OK/42、meta_queries1、ct_execute1/publish1；新空service独立重放相同。HasField变体缺meta cap也OK/42并真实AV1/publish1。未授CT cap的兄弟负控则在前门Diagnostics/source.unsupported拒绝、AV0/publish0，证明不是request配置始终被忽略或探针把错误当成功。
+- **反证B（暖态撤销能力仍命中）**：在有cap成功生成原页后，同service设置forbid AV、去掉meta cap再请求原meta2，仍OK/42，meta_queries1，AV维持2但hits从1→2；权限未在命中前重新判定。不能用给cache key加一轴代替缺cap冷态/暖态的请求准入。
+- **普通名称兼容与受保护冲突边界**：仅CT cap、用户声明普通`fn ct_field_count(x int) int { return x+7 }`，调用35实际42/meta_queries0/AV1，这是应保的普通函数语义；不允许按裸名字全禁。加入meta cap时相同用户声明最终Diagnostics/source.cte.bind、内含原meta-name-conflict，但已先真实AV1/publish1；说明现有产品顺序确实先调度执行/替换，再发生能力/保护名绑定，不宜把最后的错误当执行前拒绝证明。
+- **权威约束与原因定位**：当前规范`docs/specs/auto-cte/source-query-integration.md` §1明确meta capability default CLOSED，未授时名字普通；源码SHA **eafa1082c933454dac0adeec25d70937c13c5a1a71a65e710304935c8526c208**。产品product.rs SHA **a92d96c429931fafc5414987ace0707d02f727e4da365a607dd18b4015eff0a1**，先serve_program→substitute_all，再bind_with_facts(capabilities)；未授权meta需求已被换成literal，原core meta_enabled检查看不到它。不是组合reader可修的缺字段或批准域变化，不能把未授cap变成自动支持。
+- 三次真实原型raw分别`ct-meta-instance-diagnosis/run.stdout` **12887B/SHA48fff635513acd7f145a3e7462e2b1f1682d284495fd0275eece3025f9c1cb3b**、v2 **15333B/SHAb2b55af3b858cb3e3f71b34952bfd125ba65716f0e7eb1d3826c2437f97f6462**、v3 **16363B/SHA c3ee9c20b12f2e708ae9edd8b413c8effed468f3a13989c783962b3ad58d4dd0**；最后inputs-audit SHA **b945340109f507e49e4f0deb22270083519e8e5f516819f2d1f3a6dfee15ab0a**。v1 build545.6101ms/run159.4188ms，v2 build531.7574ms/run149.6324ms；退出0是探针完成，不冒全部语义PASS/未授cap负例通过。所有raw/源码副本/受管链接产物留单scope，无树代码写入/无新编译器runner或meter。
+- **F-941-08最小提案（待授权，不在本轮实施）**：在941新增具名source-CT meta能力修复phase，主要product.rs及既有调度/绑定需求边，复用既有前门/语义规则在执行及缓存命中前核验meta能力/保护名称。保无meta cap下普通同名用户函数、合法FieldCount/HasField、普通CT/实例/子CT、原code/stage与预算/缓存分态，不在组合器屏蔽或改expected。补冷态缺cap、暖态撤销cap/forbid、普通同名函数/启用cap冲突、合法meta与真实AV实参/失效的永久回归；原真实四端consumer与source/cert/Daily等按实际身份改变范围重验，未变输入身份严格复用。该项是936已归档产品能力的新缺陷，按§5.4不能自动套F07 test-only提案或F04/05/06授权。准备询问用户新增941 phase或独立修复；未授权时仅不动F08生产代码，继续其他证据。
+- 本轮无交付代码commit，当前有效组合仍**709P8F289U、102原格位、ARCH2P47U、6/21、全claim false**。meta/child新事实尚未正式合同/原始准入，不擅自将另外2格计PASS；F08证据单列具名缺口，原两CT格位/全部原red不改。F07/F08只分别阻其具名修复，非整941待答即停；下一步获授权时按new修订，未到答复继续其他原required/ARCH合法接线，无待poll句柄。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r4 | outcome:in_progress（meta/child真实观察及F08能力缺口定位） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:1548132986430e7298bcaaccf7f0d1554d79cb31 | task_ids:T08 meta/instance真实机制/T13缺口 | evidence:同store真实key/参数/有效版本；冷缺cap/暖撤cap/HasField与普通名正控；578/13恒等 | blockers:F07、F08分别待具名修复授权；其他证据仍可推进 | next_responsible_role:work 其他原required/ARCH；授权到达按new→work
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:59 | from:work | to:work | status:executing6/21 | outcome:in_progress（真实机制与独立缺口，完整目标保持） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:1548132986430e7298bcaaccf7f0d1554d79cb31 | next:work 其余证据；F07/F08授权到达则new，无待poll
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1499,3 +1517,5 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r4 | round:58 | from:work | to:wo
 10. **F-941-06工作阶段已关闭（r4 T20/21，第52轮）**：用户授权的typed data诊断修复、原4反例/合法与失败边界、1493完整职责/消费者门、408当前Case重采/原16诊断严格PASS及当前全组合679P8F319U已闭。SD10候选已在冻结树；最终独立review仍T14，不再等待授权，不扩为其他后端修复。
 
 11. **F-941-07待裁定**：原CT 300ms fast控制在AV前已过期时正确ct_execute0，但旧断言固定>=1而误红；同库/原267218B输入的单核竞争反证已定位（第58轮）。提请在941新增test-only修复phase：保原115helper/4call/300ms与32query/10s原门及合法4call正控，按真实AV到达分态修正测试并补确定性回归/反控，不改生产计数/预算/driver。依据§5.4需具名授权；未授权仅不动该修复，继续原其他证据。
+
+12. **F-941-08待裁定**：source-CT产品在缺meta能力时仍执行/发布，暖态撤销能力仍命中；HasField也复现。product先serve/substitute后bind使原权限检查失去原需求，原因及同名普通函数兼容正控见第59轮。提请941新增具名修复phase：在执行/命中前按既有语义校验meta/保护名，保普通同名用户函数与合法meta/CT/实例；补冷/暖/撤销cap/四端及身份回归，不在组合器遮蔽。§5.4需独立具名授权；F07仍是独立test-only项，不互相套用。
