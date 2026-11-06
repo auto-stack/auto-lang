@@ -22,11 +22,24 @@ pub(crate) fn run(
     caps: CaptureCaps,
     resources: Option<&Resources>,
 ) -> Result<Captured, CaptureError> {
+    let work = crate::source_request_work::begin(
+        "tool-process",
+        ace_source_query::work::Phase::Production,
+    );
     let Some(resources) = resources else {
         return ace_core::link::run_deadlined_captured(cmd, deadline, caps)
             .map(|value| Captured {
                 value,
                 _allocation: None,
+            })
+            .map(|captured| {
+                crate::source_request_work::io(
+                    "tool-process",
+                    (captured.value.stdout.len() + captured.value.stderr.len()) as u64,
+                    0,
+                );
+                crate::source_request_work::complete(work);
+                captured
             })
             .map_err(CaptureError::Subprocess);
     };
@@ -48,6 +61,12 @@ pub(crate) fn run(
         .map_err(|e| CaptureError::Resource(format!("C stderr allocation: {e}")))?;
     let value = ace_core::link::run_deadlined_captured_into(cmd, deadline, caps, stdout, stderr)
         .map_err(CaptureError::Subprocess)?;
+    crate::source_request_work::io(
+        "tool-process",
+        (value.stdout.len() + value.stderr.len()) as u64,
+        0,
+    );
+    crate::source_request_work::complete(work);
     Ok(Captured {
         value,
         _allocation: Some(allocation),

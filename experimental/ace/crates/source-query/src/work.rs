@@ -1,7 +1,7 @@
 //! Actual port observations. Production, metadata and recovery are distinct;
 //! an attempted call is recorded before entering it, including failed calls.
 //! A candidate's produced output remains pending until its owner accepts it.
-use serde::Serialize;
+use serde::{ser::SerializeSeq, Serialize, Serializer};
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},
@@ -36,6 +36,30 @@ pub struct Row {
     pub owner: String,
     pub stage: &'static str,
     pub totals: Totals,
+}
+// Certification streams the existing rows. Materializing rows() would clone
+// every owner and allocate a second, uncharged report-sized index.
+impl Serialize for Ledger {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        struct BorrowedRow<'a> {
+            owner: &'a str,
+            stage: &'static str,
+            totals: &'a Totals,
+        }
+        let rows = self.0.lock().expect("work ledger");
+        let mut seq = serializer.serialize_seq(Some(rows.values().map(BTreeMap::len).sum()))?;
+        for (owner, stages) in rows.iter() {
+            for (&stage, totals) in stages {
+                seq.serialize_element(&BorrowedRow {
+                    owner,
+                    stage,
+                    totals,
+                })?;
+            }
+        }
+        seq.end()
+    }
 }
 impl Ledger {
     pub fn observe_foreign<T>(&self, f: impl FnOnce() -> T) -> (T, Vec<Work>) {

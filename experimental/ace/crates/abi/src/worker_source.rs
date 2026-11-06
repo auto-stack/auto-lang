@@ -1,5 +1,6 @@
 //! Explicit source-import CERTIFICATION recipe on the existing bounded ABI
 //! worker transport. Observed data is returned; only the parent owns oracles.
+use crate::source_request_work as host_work;
 use crate::{
     source_foreign::{CurrentAuthority, Edit, PrepareError, Session, Stored, Target},
     source_provider as provider,
@@ -9,12 +10,13 @@ use ace_artifacts::store::ManagedStore;
 use ace_foreign_contract::manual::ManualManifest;
 use ace_source_query::frontend::Frontend;
 use ace_source_query::resources::{Charge, Reservation, Resources};
+use ace_source_query::work::{Ledger, Phase};
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use std::{path::Path, sync::Arc, time::Instant};
 pub const RECIPE: &str = "abi/source-foreign-certify-v1";
 pub const DECK_SCHEMA: &str = "abi.source-import-deck/1";
-pub const REPORT_SCHEMA: &str = "abi.source-import-report/1";
+pub const REPORT_SCHEMA: &str = "abi.source-import-report/2";
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourceDiagnostic {
@@ -34,9 +36,11 @@ pub struct Deck {
     pub provider_bias: u8,
     pub reference: String,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourceReport {
+    pub source_work: Ledger,
+    pub host_work: host_work::RequestWork,
     pub diagnostics: Vec<SourceDiagnostic>,
     pub schema: String,
     pub direction: String,
@@ -162,7 +166,10 @@ fn events(bytes: &[u8]) -> Vec<String> {
         .collect()
 }
 fn write(path: &Path, bytes: impl AsRef<[u8]>) -> Result<(), String> {
-    std::fs::write(path, bytes).map_err(|e| e.to_string())
+    let bytes = bytes.as_ref();
+    std::fs::write(path, bytes).map_err(|e| e.to_string())?;
+    host_work::io("tool-input", 0, bytes.len() as u64);
+    Ok(())
 }
 fn prepare_reference(
     run_dir: &Path,
@@ -170,6 +177,7 @@ fn prepare_reference(
     provider_bytes: &[u8],
     crt: &crate::source_crt::Toolchain,
 ) -> Result<std::path::PathBuf, DiagOut> {
+    let work = host_work::begin("reference-compile", Phase::Production);
     let reference_dir = run_dir.join("reference");
     std::fs::create_dir_all(&reference_dir).map_err(|e| err("infra", e))?;
     write(&reference_dir.join("source_foreign938.h"), provider::HEADER)
@@ -203,6 +211,7 @@ fn prepare_reference(
             e,
         )
     })?;
+    host_work::complete(work);
     Ok(exe)
 }
 fn decode(req: &WorkerRequest, resources: &Resources) -> Result<(Deck, Reservation), DiagOut> {
@@ -273,7 +282,13 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     } else {
         Target::C
     };
+    let resources = Resources::default();
+    let request_work =
+        host_work::RequestWork::new(&resources).map_err(|e| err("foreign.resource", e))?;
+    let _work_scope = request_work.enter();
     let mut report = SourceReport {
+        source_work: Ledger::default(),
+        host_work: request_work,
         diagnostics: vec![],
         schema: REPORT_SCHEMA.into(),
         direction: "source-import".into(),
@@ -306,7 +321,6 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         c_fragment: 0,
         diagnostic_stage: String::new(),
     };
-    let resources = Resources::default();
     // Reap dead tool/provider scopes even when this request ends with an early
     // source/declaration diagnostic. Active scopes are protected by OS locks.
     crate::source_tool_scratch::ToolScratch::sweep(&store, &resources).map_err(|e| {
@@ -438,6 +452,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             resources.clone(),
         )
         .map_err(|e| err("restore", e))?;
+        report.source_work = restored.frontend().work();
         let changed_source = restored.frontend().source() != deck.source;
         let changed_provider = previous.provider_bias != deck.provider_bias;
         let result = if changed_provider || changed_contract {
@@ -487,6 +502,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         (restored, edit)
     } else {
         let mut observation = ace_source_query::frontend::ColdObservation::default();
+        report.source_work = observation.work.clone();
         let (environment, interface_work) = observation.work.observe_foreign(|| {
             deck.manifest.admit(&review.authority(
                 &report.provider_digest,
@@ -550,6 +566,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 emitter: target.identity(),
             })
         };
+        let crt_work = host_work::begin("crt-context", Phase::Metadata);
         let crt = crt_owner.insert(crate::source_crt::Toolchain::resolve(&resources).map_err(
             |e| {
                 err(
@@ -562,6 +579,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 )
             },
         )?);
+        host_work::complete(crt_work);
         report.c_toolchain = crt.fingerprint();
         let prepared = session
             .prepare_publication_with_crt(edit, run_dir, &mut current_authority, None, Some(crt))
@@ -576,9 +594,17 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 )
             })?;
         let exe = prepare_reference(run_dir, &deck.reference, bytes.as_slice(), crt)?;
+        let actual_work = host_work::begin("actual-run", Phase::Production);
         let actual = prepared
             .run(&mut current_authority, None)
             .map_err(|e| err("infra", e))?;
+        host_work::io(
+            "actual-run",
+            (actual.stdout.len() + actual.stderr.len()) as u64,
+            0,
+        );
+        host_work::complete(actual_work);
+        let reference_work = host_work::begin("reference-run", Phase::Production);
         let reference = ace_native::link_driver::run_pe(
             &exe,
             crate::bridge::BRIDGE_RUN_DEADLINE,
@@ -588,6 +614,12 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             },
         )
         .map_err(|e| err("infra", e))?;
+        host_work::io(
+            "reference-run",
+            (reference.stdout.len() + reference.stderr.len()) as u64,
+            0,
+        );
+        host_work::complete(reference_work);
         report.actual_exit = actual.exit_code;
         report.reference_exit = reference.exit_code;
         report.actual_events = events(&actual.stderr);
@@ -631,6 +663,17 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         )));
     }
     operation?;
+    // Linking/publication may produce target outputs after the initial source
+    // edit. Read the same live meters after that work, rather than reporting
+    // a pre-link snapshot beside the complete ledger.
+    let fm = session.frontend().meter();
+    let tm = session.meter();
+    report.source_parse = fm.whole_parse_attempts + fm.body_parse_attempts;
+    report.solver = session.frontend().query_counters().solver_runs;
+    report.hir = fm.hir_produced;
+    report.mir = tm.mir_produced;
+    report.native = tm.native_produced;
+    report.c_fragment = tm.c_produced;
     let compute = report.solver
         + report.hir
         + report.mir
@@ -676,6 +719,7 @@ fn prepare_provider(
     resources: &Resources,
     bias: u8,
 ) -> Result<(Arc<Vec<u8>>, bool), DiagOut> {
+    let cache_work = host_work::begin("provider-cache", Phase::Metadata);
     let scratch = crate::source_tool_scratch::ToolScratch::provider(store, resources, bias)
         .map_err(|e| err("store.cleanup-pending", e))?;
     let operation = (|| {
@@ -705,6 +749,7 @@ fn prepare_provider(
             &[object.clone()],
             resources,
             || {
+                let compile_work = host_work::begin("provider-compile", Phase::Production);
                 let deps = crate::ctool::compile_c_with_deps_admitted(
                     &src,
                     inputs,
@@ -727,6 +772,7 @@ fn prepare_provider(
                     }
                 })?;
                 let bytes = crate::cache::read_c_object_file(&object, resources)?;
+                host_work::complete(compile_work);
                 Ok((bytes, deps))
             },
         )
@@ -752,6 +798,13 @@ fn prepare_provider(
                 "provider preparation; publication committed=false; original={original}; {cleanup}"
             ),
         ));
+    }
+    if let Ok((bytes, hit)) = &operation {
+        host_work::io("provider-cache", bytes.len() as u64, 0);
+        if *hit {
+            host_work::reuse("provider-cache");
+        }
+        host_work::complete(cache_work);
     }
     operation
 }

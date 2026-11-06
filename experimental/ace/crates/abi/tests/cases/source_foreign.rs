@@ -2802,6 +2802,33 @@ fn source_worker_query(
 ) -> serde_json::Value {
     let response = source_worker_raw(deck, store, leg, tag);
     assert!(response.get("error").is_none(), "{response}");
+    let report = &response["ok"]["source_import"];
+    assert_eq!(report["schema"], "abi.source-import-report/2");
+    for field in ["source_work", "host_work"] {
+        let rows = report[field].as_array().expect("required actual work rows");
+        let mut previous = None;
+        for row in rows {
+            let key = (
+                row["owner"].as_str().unwrap(),
+                row["stage"].as_str().unwrap(),
+            );
+            assert!(previous.is_none_or(|p| p < key), "{field}: {row}");
+            previous = Some(key);
+            let t = &row["totals"];
+            let n = |name: &str| t[name].as_u64().unwrap();
+            assert_eq!(n("attempted"), n("p") + n("m") + n("r"), "{row}");
+            assert_eq!(
+                n("produced"),
+                n("accepted") + n("discarded") + n("pending"),
+                "{row}"
+            );
+            assert_eq!(
+                n("pending"),
+                0,
+                "terminal request retains uncommitted output: {row}"
+            );
+        }
+    }
     assert_tool_scratch_clean(
         store,
         response["ok"]["source_import"]["actual_exit"].is_number(),
@@ -3249,6 +3276,11 @@ fn source_foreign_formal_restart_first_error_repair_preserves_structured_diagnos
         let store = root.join(leg);
         let first = source_worker_query(&deck, &store, leg, "cold-938");
         assert_eq!(first["ok"]["source_import"]["actual_exit"], 42);
+        assert!(first["ok"]["source_import"]["host_work"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["stage"] == "provider-compile" && row["totals"]["p"] == 1));
         let pointer = store.join(format!("source938-current-{leg}.json"));
         let original = std::fs::read(&pointer).unwrap();
         // Each query is a new process: these are actual first edits after R,
@@ -3304,6 +3336,32 @@ fn source_foreign_formal_restart_first_error_repair_preserves_structured_diagnos
         assert_ne!(std::fs::read(&pointer).unwrap(), original);
         let warm = source_worker_query(&repaired, &store, leg, "restored-after-repair-938");
         let report = &warm["ok"]["source_import"];
+        let source_rows = report["source_work"].as_array().unwrap();
+        assert!(source_rows
+            .iter()
+            .any(|row| row["totals"]["r"].as_u64().unwrap() > 0));
+        assert!(
+            source_rows
+                .iter()
+                .filter(|row| row["owner"] != "*")
+                .all(|row| row["totals"]["p"] == 0),
+            "warm source producer ran: {source_rows:?}"
+        );
+        let host_rows = report["host_work"].as_array().unwrap();
+        for stage in ["reference-compile", "actual-run", "reference-run"] {
+            assert!(
+                host_rows
+                    .iter()
+                    .any(|row| row["stage"] == stage && row["totals"]["p"] == 1),
+                "{stage}: {host_rows:?}"
+            );
+        }
+        assert!(host_rows
+            .iter()
+            .any(|row| row["stage"] == "provider-cache" && row["totals"]["reused"] == 1));
+        assert!(!host_rows
+            .iter()
+            .any(|row| row["stage"] == "provider-compile"));
         for field in [
             "source_parse",
             "solver",

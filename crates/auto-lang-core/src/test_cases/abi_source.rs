@@ -62,7 +62,52 @@ pub(super) struct SourceDiagnostic {
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+pub(super) struct WorkTotals {
+    pub attempted: u64,
+    pub produced: u64,
+    pub reused: u64,
+    pub accepted: u64,
+    pub discarded: u64,
+    pub pending: u64,
+    pub p: u64,
+    pub m: u64,
+    pub r: u64,
+    pub read_bytes: u64,
+    pub written_bytes: u64,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct WorkRow {
+    pub owner: String,
+    pub stage: String,
+    pub totals: WorkTotals,
+}
+fn admit_work(rows: &[WorkRow]) -> Result<(), String> {
+    let mut previous: Option<(&str, &str)> = None;
+    for row in rows {
+        let t = &row.totals;
+        let key = (row.owner.as_str(), row.stage.as_str());
+        if row.owner.is_empty()
+            || row.stage.is_empty()
+            || previous.is_some_and(|p| p >= key)
+            || t.p.checked_add(t.m).and_then(|n| n.checked_add(t.r)) != Some(t.attempted)
+            || t.accepted
+                .checked_add(t.discarded)
+                .and_then(|n| n.checked_add(t.pending))
+                != Some(t.produced)
+            || t.pending != 0
+        {
+            return Err("source-import work rows are incomplete or unbalanced".into());
+        }
+        previous = Some(key);
+    }
+    Ok(())
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct SourceReport {
+    pub source_work: Vec<WorkRow>,
+    pub host_work: Vec<WorkRow>,
     pub diagnostics: Vec<SourceDiagnostic>,
     pub schema: String,
     pub direction: String,
@@ -115,7 +160,9 @@ impl SourceReport {
         }
         let unprocessed = outcome == "resource" && self.source_sha256.is_empty();
         if unprocessed
-            && (self.source_parse != 0
+            && (!self.source_work.is_empty()
+                || !self.host_work.is_empty()
+                || self.source_parse != 0
                 || self.solver != 0
                 || self.hir != 0
                 || self.mir != 0
@@ -205,7 +252,25 @@ impl SourceReport {
                 && s.bytes()
                     .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
         };
-        if self.schema != "abi.source-import-report/1"
+        admit_work(&self.source_work)?;
+        admit_work(&self.host_work)?;
+        if self.host_work.iter().any(|row| {
+            row.owner != "*"
+                || !matches!(
+                    row.stage.as_str(),
+                    "provider-cache"
+                        | "provider-compile"
+                        | "tool-process"
+                        | "crt-context"
+                        | "reference-compile"
+                        | "actual-run"
+                        | "reference-run"
+                        | "tool-input"
+                )
+        }) {
+            return Err("source-import host work has an unknown port or owner".into());
+        }
+        if self.schema != "abi.source-import-report/2"
             || self.direction != "source-import"
             || self.input_profile != "auto.source.scalar-i32.draft"
             || self.abi_profile != "autoabi.win-x64.v0.1-candidate"
@@ -242,6 +307,44 @@ impl SourceReport {
             return Err("source-import compiler identity mismatch".into());
         }
         if success {
+            if self.source_work.is_empty() {
+                return Err("source-import success without source work observations".into());
+            }
+            for stage in [
+                "actual-run",
+                "reference-run",
+                "reference-compile",
+                "crt-context",
+                "provider-cache",
+                "tool-process",
+            ] {
+                let row = self
+                    .host_work
+                    .iter()
+                    .find(|row| row.owner == "*" && row.stage == stage)
+                    .ok_or("source-import success without shared host work observations")?;
+                let t = &row.totals;
+                if t.attempted == 0
+                    || (stage != "tool-process" && t.accepted != t.attempted)
+                    || t.produced != t.accepted
+                    || t.discarded != 0
+                    || t.r != 0
+                    || (if matches!(stage, "crt-context" | "provider-cache") {
+                        t.m != t.attempted
+                    } else {
+                        t.p != t.attempted
+                    })
+                    || (matches!(
+                        stage,
+                        "actual-run" | "reference-run" | "reference-compile" | "crt-context"
+                    ) && t.attempted != 1)
+                    || (stage == "tool-process" && t.accepted < 2)
+                {
+                    return Err(
+                        "source-import shared host work does not match its executed ports".into(),
+                    );
+                }
+            }
             if self.actual_exit != exit
                 || self.reference_exit.is_none()
                 || !digest(&self.provider_digest)
@@ -433,8 +536,19 @@ mod tests {
     }
     fn valid() -> SourceReport {
         let source = "fn main() int { return foreign_add(20,22) }";
+        let row = |stage: &str, metadata: bool, count: u64| {
+            serde_json::json!({
+                "owner":"*", "stage":stage, "totals": {
+                    "attempted":count,"produced":count,"reused":0,"accepted":count,
+                    "discarded":0,"pending":0,"p":if metadata {0} else {count},
+                    "m":if metadata {count} else {0},"r":0,"read_bytes":0,"written_bytes":0
+                }
+            })
+        };
         serde_json::from_value(serde_json::json!({
-            "schema":"abi.source-import-report/1","direction":"source-import","input_profile":"auto.source.scalar-i32.draft",
+            "schema":"abi.source-import-report/2","direction":"source-import","input_profile":"auto.source.scalar-i32.draft",
+            "source_work":[row("resolve",false,1)],
+            "host_work":[row("actual-run",false,1),row("crt-context",true,1),row("provider-cache",true,1),row("reference-compile",false,1),row("reference-run",false,1),row("tool-process",false,2)],
             "abi_domain":"autoabi","abi_version":"0.1","abi_profile":"autoabi.win-x64.v0.1-candidate","callconv":"windows-x64",
             "target":"x86_64-pc-windows-msvc","consumer":"native","source_sha256":auto_test_case::sha256::hex(&auto_test_case::sha256::sha256(source.as_bytes())),
             "compiler":"ace-native-foreign/1+ace-native/0.1.0+cranelift/0.126.2","c_toolchain":format!("cl:C:/tools/cl.exe|ver:19.44.1|hash:{}|flags:-c -nologo -GS- -Zl -W4 -WX -O2|crt:explicit-sdk/1|crt-sdk:C:/sdk/um/x64|crt-msvc:C:/vc/include|crt-link-hash:{}|crt-flags:-nologo -std:c11 -TC -W4 -WX -O2 -MT", "c".repeat(64), "d".repeat(64)),
@@ -443,6 +557,52 @@ mod tests {
             "actual_events":["provider_add"],"reference_events":["provider_add"],"actual_stderr":"source938.call=provider_add\n","reference_stderr":"source938.call=provider_add\n",
             "source_parse":2,"solver":1,"hir":1,"mir":1,"native":1,"c_fragment":0,"diagnostic_stage":"","diagnostics":[]
         })).unwrap()
+    }
+    #[test]
+    fn source_report_requires_real_balanced_source_and_shared_host_work() {
+        let source = "fn main() int { return foreign_add(20,22) }";
+        for axis in 0..11 {
+            let mut changed = valid();
+            match axis {
+                0 => changed.source_work.clear(),
+                1 => changed
+                    .host_work
+                    .retain(|row| row.stage != "reference-compile"),
+                2 => changed.host_work[0].totals.pending = 1,
+                3 => changed.host_work[0].totals.accepted = 0,
+                4 => changed.host_work[0].totals.r = 1,
+                5 => changed.host_work.push(changed.host_work[0].clone()),
+                6 => changed.host_work[0].totals.p = u64::MAX,
+                7 => changed.schema = "abi.source-import-report/1".into(),
+                8 => changed.host_work[0].stage = "invented".into(),
+                9 => changed.host_work[0].owner = "main".into(),
+                _ => {
+                    let t = &mut changed.host_work.last_mut().unwrap().totals;
+                    t.attempted = 1;
+                    t.produced = 1;
+                    t.accepted = 1;
+                    t.p = 1;
+                }
+            }
+            assert!(
+                changed
+                    .admit("native", true, Some(42), Some(source))
+                    .is_err(),
+                "axis {axis}"
+            );
+        }
+        let mut fallback = valid();
+        let t = &mut fallback.host_work.last_mut().unwrap().totals;
+        t.attempted += 1;
+        t.p += 1;
+        // A failed tool-discovery probe can legitimately precede successful
+        // real compiler invocations. It remains an attempt, never an output.
+        fallback
+            .admit("native", true, Some(42), Some(source))
+            .unwrap();
+        let mut missing = serde_json::to_value(valid()).unwrap();
+        missing.as_object_mut().unwrap().remove("source_work");
+        assert!(serde_json::from_value::<SourceReport>(missing).is_err());
     }
     #[test]
     fn source_report_requires_the_current_independent_review_content() {
@@ -477,6 +637,8 @@ mod tests {
     fn predecode_resource_refusal_never_substitutes_for_source_or_execution_evidence() {
         let source = "fn main() int { return foreign_add(20,22) }";
         let mut report = valid();
+        report.source_work.clear();
+        report.host_work.clear();
         report.source_sha256.clear();
         report.provider_digest.clear();
         report.c_toolchain.clear();
