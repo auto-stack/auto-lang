@@ -2354,7 +2354,9 @@ impl Codegen {
                         .unwrap()
                         .resolve_qualified("auto.json.encode") == Some(id);
                     if is_json_encode && call.args.args.len() == 1 {
-                        if let crate::ast::Arg::Pos(Expr::Call(getter)) = &call.args.args[0] {
+                        if let crate::ast::Arg::Pos(Expr::Call(getter))
+                        | crate::ast::Arg::Pair(_, Expr::Call(getter)) = &call.args.args[0]
+                        {
                             if let Expr::Dot(receiver, method) = getter.name.as_ref() {
                                 if let Expr::Ident(module) = receiver.as_ref() {
                                     if matches!(module.as_str(), "Json" | "json")

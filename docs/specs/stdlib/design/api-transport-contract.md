@@ -84,9 +84,15 @@ is_upload_param(ty) / is_meta_alias(name)（META_PARAM_NAMES 单源）
 整数保留 i64/u64 数值，不截断到 i32。转换器既有深度和不支持值边界保持，
 此处不承诺任意资源对象都能编码。
 
+旧 native list 的裸 i32 句柄以既有栈槽 stake 表示拥有的引用；无该份额的
+i32 是普通数值，即使其位值恰与活文档/list id 相同。encode 在查堆前区分
+这两者，消费时转移/清除原槽份额，不能借序列化普通数字释放同号对象。
+不改 string-list 的负字符串池索引布局，也不新建 JSON 身份表。
+
 legacy 静态 `Json.get/get_at` 直接返回序列化的 JSON **文本片段**，直接
 文本工具链保持兼容。当实际内建 getter 表达式直接作为内建 encode 的参数，
-codegen 在参数单次求值后，通过既有 `json.to_value` 恢复 JSON 值再编码。
+codegen 对位置参数和既有命名参数 `value:` 均在单次求值后，通过既有
+`json.to_value` 恢复 JSON 值再编码。
 同名变量 receiver、普通函数返回字符串及字符串池复用不触发这种转换。
 片段保存到变量后若要作为 JSON 值使用，调用方显式 `to_value`；普通字符串
 不自动重解析。无全局文本 provenance 表或 String 编组规则变更。

@@ -891,9 +891,29 @@ pub fn override_json_doc_natives(native_interface: &mut crate::vm::native::Nativ
         if let Some(original) = native_interface.get(id) {
             JSON_DOC_ORIGINALS.lock().unwrap().insert(id, original.clone());
             let wrapper = move |task: &mut AutoTask, vm: &AutoVM| -> Result<(), VMError> {
-                let nv = task.ram.pop_nv();
+                let slot = task.ram.sp.checked_sub(1).ok_or_else(|| {
+                    VMError::RuntimeError("json.encode: missing value".into())
+                })?;
+                // Legacy native lists use a bare i32 handle plus an owned
+                // stack-slot stake. An unowned i32 is a number, even when its
+                // bits coincide with a live document/list id (PLAN-062 ABI).
+                let owned_id = task.ram.take_stake_at(slot);
+                let nv = crate::vm::native::pop_arg_nv(task);
+                let consumed_stake = || {
+                    if auto_val::is_i32(nv) {
+                        crate::vm::native::StakeGuard::new(vm, owned_id)
+                    } else {
+                        crate::vm::native::StakeGuard::nv(vm, nv)
+                    }
+                };
+                if auto_val::is_i32(nv) && owned_id == 0 {
+                    let text = auto_val::decode_i32(nv).to_string();
+                    let idx = vm.add_string(text.into_bytes());
+                    vm.rc_push_str_idx(task, idx);
+                    return Ok(());
+                }
                 if let Some(doc_id) = json_doc_heap_id(vm, nv) {
-                    let _stake = crate::vm::native::StakeGuard::nv(vm, nv);
+                    let _stake = consumed_stake();
                     let direct = json_serialize_i32_list(vm, doc_id);
                     let text = direct.or_else(|| {
                         let jv = vm_value_to_json(
@@ -916,12 +936,13 @@ pub fn override_json_doc_natives(native_interface: &mut crate::vm::native::Nativ
                     ));
                 }
                 if let Some(text) = crate::vm::ffi::http_server::nv_to_json(vm, nv, 0) {
-                    let _stake = crate::vm::native::StakeGuard::nv(vm, nv);
+                    let _stake = consumed_stake();
                     let idx = vm.add_string(text.into_bytes());
                     vm.rc_push_str_idx(task, idx);
                     return Ok(());
                 }
                 task.ram.push_nv(nv);
+                task.ram.mark_top_stake(owned_id);
                 let original = JSON_DOC_ORIGINALS
                     .lock()
                     .unwrap()
@@ -1396,10 +1417,12 @@ mod p949_tests {
                 format!("Json.get(Json.parse({object_literal}), \"value\")"),
                 format!("json.get_at(json.parse({array_literal}), {index})"),
             ] {
-                let out = output(&format!("print(Json.encode({getter}))"));
-                let actual: serde_json::Value = serde_json::from_str(out.trim())
-                    .unwrap_or_else(|e| panic!("getter={getter}, output={out:?}: {e}"));
-                assert_eq!(&actual, expected, "getter={getter}, output={out:?}");
+                for argument in [getter.clone(), format!("value: {getter}")] {
+                    let out = output(&format!("print(Json.encode({argument}))"));
+                    let actual: serde_json::Value = serde_json::from_str(out.trim())
+                        .unwrap_or_else(|e| panic!("getter={argument}, output={out:?}: {e}"));
+                    assert_eq!(&actual, expected, "getter={argument}, output={out:?}");
+                }
             }
         }
     }
@@ -1460,6 +1483,71 @@ local_case()
 "#,
         );
         assert_eq!(out.trim(), "user-get\n\"true\"\nuser-get\n\"true\"");
+    }
+
+    #[test]
+    fn p949_number_identity_survives_live_documents_and_legacy_string_lists() {
+        let out = output(
+            r#"
+fn number() int { return 4000001 }
+let ordinary = 4000000
+print(Json.encode(ordinary))
+let doc = Json.parse("{\"ok\":true}")
+let array = Json.parse("[1,2]")
+print(Json.encode(4000000))
+print(Json.encode(ordinary))
+print(Json.encode(number()))
+print(Json.encode(4000001))
+print(Json.encode(doc))
+print(Json.encode(array))
+let keys = Json.keys(doc)
+print(Json.encode(keys))
+print(Json.encode(4000002))
+print(Json.encode(keys))
+print(Json.encode(doc))
+let holder = { value: 4000000 }
+print(Json.encode(holder.value))
+let numbers = [4000001]
+print(Json.encode(numbers[0]))
+print(Json.encode("4000000"))
+print(Json.encode("a,b".split(",")))
+"#,
+        );
+        let actual: Vec<serde_json::Value> = out.lines()
+            .map(|line| serde_json::from_str(line).expect("encoded JSON line"))
+            .collect();
+        assert_eq!(actual, serde_json::json!([
+            4000000, 4000000, 4000000, 4000001, 4000001,
+            {"ok": true}, [1,2], ["ok"], 4000002, ["ok"], {"ok": true},
+            4000000, 4000001, "4000000", ["a", "b"]
+        ]).as_array().unwrap().to_vec());
+    }
+
+    #[test]
+    fn p949_named_encode_preserves_single_evaluation_and_user_strings() {
+        let out = output(
+            r#"
+fn source() str {
+    print("once")
+    return "{\"ok\":true}"
+}
+fn text() str { return "true" }
+print(Json.encode(value: Json.get(Json.parse(source()), "ok")))
+print(Json.encode(value: "true"))
+print(Json.encode(value: true))
+print(Json.encode(value: text()))
+type FakeJson { value str }
+ext FakeJson {
+    fn get(self, key str) str {
+        print("user-get")
+        return self.value
+    }
+}
+let json = FakeJson { value: "true" }
+print(Json.encode(value: json.get("key")))
+"#,
+        );
+        assert_eq!(out.trim(), "once\ntrue\n\"true\"\ntrue\n\"true\"\nuser-get\n\"true\"");
     }
 }
 
