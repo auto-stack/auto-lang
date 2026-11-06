@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-06
 plan_revision: 1
-current_step: 5
+current_step: 6
 total_steps: 6
 supersedes_spec_components: [docs/specs/auto-cte/source-query-integration.md, docs/specs/auto-test-case/a2r-hir-certification.md]
 new_spec_components: []
@@ -89,7 +89,7 @@ Rust/现有ACE工作区；原a2x-worker CLI、serde_json严格解析、原受控
 | T-03 | work | T02 | 永久真实worker七源四操作与拒绝/错oracle回归，标准JSON与raw编译/运行证据，AC01..04 | [x] 2026-11-06，见§9 |
 | T-04 | work | T03 | scoped验证/健康与SD草案/闭包记录，冻结提交交独立review，AC05 | [x] 2026-11-06，见§9 |
 | T-05 | review | T01..04交窗 | 同树独立AC/反控/遗漏/SD核查绑定pass或具名needs_fix，AC06 | [x] 2026-11-06 final review，见§9 |
-| T-06 | merge | T05最终pass | 冻结cargo t ace-a2x职责门、主线合入/Spec/归档/全路径scope清理guard退树，继续941，AC07 | [ ] |
+| T-06 | merge | T05最终pass | 冻结cargo t ace-a2x职责门、主线合入/Spec/归档/全路径scope清理guard退树，继续941，AC07 | [x] 2026-11-06，交付/归档/用户清理逐项确认，见§9 |
 
 ## 9. 复审记录
 
@@ -139,6 +139,14 @@ SD01/02均通过：`docs/specs/auto-cte/source-query-integration.md` SHA256=`eaf
 2026-11-06 archived | completion_kind:delivered | delivery:06251b0ccb4916d2e70abd7f98197987b778ca9e | canonical_verified:两Spec如上 | archive:docs/plans/archive/958-a2x-worker-source-ct-frontdoor.md | cleanup:pending T06，保原在途保护，尚未关闭6/6。
 
 2026-11-06 T06 closed | cleaned | 清理收尾实际执行：移除前两树 wt-guard 均 clean；`git worktree remove` 删除 D:/autostack/.wt/lang-958/{auto-lang,auto-down}（auto-down 兄弟 detached 58ea33f 钉 auto-down master，无独立提交），`git branch -d plan-958-dev`（已并入 master，06251b0cc），空组目录 .wt/lang-958 删除；worktree list/branch/目录三项复查均无 958 残留。整个958材料scope `D:/autostack/plan-artifacts/plan-958/` 删除（2034文件、约44MB，全部为本计划测试结果/日志/审计材料，关键数字与SHA256已折叠本文件§9；删除后 `ls` 确认不存在）。.retention/policy.json 登记刷新为 deleted_scopes，无具名持有（holds为空）。main 上 stale 的 experimental/ace/target/release/a2x-worker.exe（2026-11-05构建）按合并记录仍归 941 消费者新鲜性责任，不属958 scope，未动。最终 **6/6，cleaned**。
+
+2026-11-06 cleaned / final merge pass | PLAN-958:r1 | completion_kind:delivered | delivery:06251b0ccb4916d2e70abd7f98197987b778ca9e | review:688207b67→06251b0cc等价映射 | canonical:两路径hash如上 | archive:docs/plans/archive/958-a2x-worker-source-ct-frontdoor.md | **6/6**。
+
+自动审批拒绝整条收尾删除（只返回blocked by policy），该条命令没有执行，agent未换壳/绕策略重试。用户明确先回复“958已清理”：实际核验lang-958组路径、两Git worktree登记及plan-958-dev分支均不存在；但材料scope仍2034文件/44,395,461 bytes，未虚报已清。再次只请求剩余scope，用户回复“材料已删”后实际Test-Path=false。此时两树/分支/组/scope再次对账全部不存在。删除前两树wt-guard均clean、所有目录零reparse、无958活动编译/worker进程；树清理前快照lang 29,765文件/4,149,099,644 bytes，down 1,256文件/26,409,169 bytes，均由用户移除；没有迁移target/exe/PDB，也没有操作941父scope或main旧已装exe。scope所有需耐久证据已在本文件折叠，登记刷新删除事实，无具名材料持有。
+
+周期批门due-check：主检出收据last_covered_plan_id956、2026-11-06T01:12:46.239965Z；958非5倍数，之后截至本次核查没有新的5倍数计划交付，收据未逾48h，因此不due。旧批37组的已归因红/957编译器triage保持真实，不冒all-green，不重复语言全仓。主检出仅保原他方docs-only WIP，958所有代码/Spec/档案均已入Git，零master代码WIP；main旧release artifact精确stale观察保留见上，941本树当前release消费8/8已验证。
+
+stage: merge | plan_id:PLAN-958 | plan_revision:r1 | outcome:pass | delivery_commit:06251b0ccb4916d2e70abd7f98197987b778ca9e | canonical_verified:source-query-integration eafa1082...;a2r-hir-certification a32d3555... | archive:docs/plans/archive/958-a2x-worker-source-ct-frontdoor.md | cleaned:两worktree/branch/group/scope均实际不存在（用户清理，agent核查） | next:work941（F-941-03功能/独立流程均闭）
 
 ## 10. 待澄清事项
 
