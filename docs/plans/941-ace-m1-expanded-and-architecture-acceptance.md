@@ -501,6 +501,26 @@ stage: work | plan_id: PLAN-941 | plan_revision: r1 | outcome: in_progress | wor
 
 stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 13 | from: work | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-941/auto-lang | commit: a59fe5232 | next: work（保持原完整目标；F-941-03修复和固定门恢复待用户动作，其余reader/独立reference继续）
 
+### 2026-11-06 文字补例独立双端认证与958修复交窗（goal第14轮）
+
+941施工提交 **60736ac261bcfb31ce6d7438bed56f34e415d458**，树clean；原目标不缩，仍executing **0/15**。本轮实际补T05一段真实认证链，并沿用户新授权推进独立修复958；不是等待/仅复述状态。
+
+- 原925十文字/字符补例原表没有独立reference（原31份C reference与其10个历史缺项仍如实保留），本轮另增**10份手写C+10份手写Rust参考程序**，不冒原作者已提供。C用有限已知UTF8数据及独立码点/边界算术、长度含NUL；Rust用std chars/bytes/char::from_u32，均不读目标emitter/runtime/源码解析器。独立TSV `text-reference-contracts.tsv`固定SHA=dcd2744a0dc827e555dff7474a5c335425d393b813d6862584b453886cf04752，十原source/profile/caps/value/trap及两ref SHA逐件绑定；root expanded_contracts加入该第五具名源合同。新reference -text属性保字节身份，30件本提交工作字节=Git blob实际对账（scope/text-certification-committed-input-audit.json）。
+- 原a2x-worker实际运行**20个显式认证**（十源×Rust/C），actual/reference各自编译运行，总40编译+40运行阶段；另各原daily先现场发射，以预认证fileset hash冻结产物身份，oracle只取原手算表。`text-char-original-certification/`保60个原worker调用（20 identity/20 daily/20cert）及4子进程原始终态、完整manifest/证书/source/reference哈希和原Job计量。所有20认证strictly admitted；逐个对独立值506/33/1/233/3/20013/112或TextIndex/InvalidScalar，未以双方相等/child PASS冒oracle。daily原记录尚无完整新domain准入，AV/native此十源也未读取，故报告仍UNOBSERVED，不把20 cert冒十源Q4完整。
+- `ace_m1_cert_evidence.py`保scalar入口并新增有限text认证：请求/recipe/证书/manifest家族、profile/text-i32-draft、原target/toolchain/flags、source/ref/完整fileset、原raw compile/run4终态及具名trap逐层核。C版本摘要原locator用BLAKE3的事实保留，不把字段名当可重算SHA；Rust-vV hash独立重算，Job缺峰值/坏峰值拒。`ace_m1_text_evidence.py`完整20集合去重/缺项拒，核独立reference合同后接只读组合器及原504 Q4对应slot；cert完成不自动认领ARCH/whole M1。原scalar两端另以当前worker实际/reference重认证2/2并由修改后的原reader接受（text-reader-scalar-compatibility），验证新text分支不回退旧strict scalar。
+- **实际raw副本反控20项**（text-certification-raw-controls/results.json，显式counterfactual_not_execution）：2代表源（值/具名trap）×2target×5控制，4合法重定位副本PASS；actual/reference同时改相同错值507或错trap InvalidScalar、child flags仍PASS并重hash，4项均FAIL；换scalar schema、双manifest/cert同时错domain并重hash、compile exit改bool，12项REFUSED。Popen禁止证明reader不隐式执行。另新增永久5测试覆盖4终态/独立值和trap同错、NUL/Unicode/source与ref字节、compiler flags/version身份。
+- 用户已手动清理原dead owner目录，实际Test-Path=false，固定入口恢复。冻结60736 `cargo t infra-ace-m1-arch --out <scope>/text-certification-frozen-controls` **127/127**、exit0、2.9485956s，results SHA256=`1635349db3d89573138b0ce834b3f4c1ac7a96268bd119e71edcdfc8edc9e340`；没有把此前直接127单测或中断门冒本次冻结门。真实只读text domain经原capture/native_meter、禁Popen：20 cert complete，全局claim=false，424.6714ms、peak process22,507,520 bytes<128MiB，当前保守reservation1,048,576/peak4,763,294 bytes<48MiB（仅该domain，不是whole组合预算复测）。报告10013 bytes，SHA256=`8a885e6096aa68d29130a62b2c3b14e662ad36b617d21a078ee31179a4771a6c`。原20编译结果已明确，不把门127控制合算语言覆盖。
+
+保留首次错误：采集脚本首遍错误套C scalar header名a2x_c_runtime.h，首Rust认证后在C daily阶段FileNotFound，未当完整20成功；按原RT实际a2x_c_rt_runtime.h修正后只续未完成认证。新certreader来源变化使预算合同两个控制STALE，未放宽原帽或改oracle；刷新本包真实来源pin后冻结127绿。未跑全仓、未复用旧worker SHA为新工具背书。
+
+**F-941-03已获授权，独立PLAN-958实际执行**：用户本轮明确“授权独立修复并继续”，无待同范围授权。主检出原子取号958、计划a63a20b4e、唯一lang-958树（auto-down只读58ea33f），原producer共用helper接既有CT服务并补直接依赖。code **688207b67**，实际check18.81s；七个永久真实CLI测试 **7/7**，29.553495s，40原CLI操作（七源28+普通/无cap8+错oracle/reference4），另32次运行现场新编译出的actual/reference exe逐raw字节对独立oracle。results SHA256=`8ff8425c432259270655f0b0845de2db11f37baa1414f4b2597a177e7205e3d7`；原189项因具名过滤未执行不充绿。原5测试首轮2项因误读主线没有941 opt-in观测字段而红，按原已有owned facility直接执行现场两腿修正，不搬本包未合入仪表代码。958工作4/6，execution_done，独立review与完整职责组/merge/归档/清理仍待，F03尚未关闭、不先消费未交958代码。
+
+本轮只读查官方OpenAI Docs并答复用户policy问题：当前拒绝只返回blocked by policy，没有规则ID；本地config未见auto_review自定义策略/用户rules，不假定AGENTS或sandbox权限能覆盖host审批。官方支持完整[auto_review].policy替换且managed guardian优先，以及支持的CLI /approve精确重试；没有修改用户安全配置、没有换壳绕拒。用户清理后入口已恢复，无环境待授权项。
+
+stage: work | plan_id: PLAN-941 | plan_revision:r1 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:60736ac26 | task_ids:T01..05（未关闭） | evidence:20新ref/20真实text cert/20raw反控/127冻结/2scalar兼容，958已实现并交review | blockers:无新增用户决定；958尚待独立review/merge，941其余全域义务继续 | next_responsible_role:review958→merge958→work941
+
+stage: goal | plan_id: PLAN-941 | plan_revision:r1 | round:14 | from:work | to:work | status:executing | outcome:needs_fix | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:60736ac26 | next:review958（独立修复交付后继续原941，不是941 final review失败）
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -510,6 +530,6 @@ stage: goal | plan_id: PLAN-941 | plan_revision: r1 | round: 13 | from: work | t
 
 5. **F-952-01 已由D953关闭**：独立修复交付/归档/清理完成，952已合入/归档/清理6/6；原941/952授权保持。用户已`/goal resume`且继续推进原941，不重复请求；host状态未更新仅记录，工作树与材料在途保护。
 
-6. **当前真实前置缺口**：D936（CT/frozen/原required页与计量）、D938（source foreign/代际与恢复接口）、D939（opaque资源/callback/error/ctx与实际source合同）尚未交齐；T01完整映射和后续验收保持pending。首例20项通过与64治理控制不核销上述义务。原owner稳定交付后恢复本树继续，无需重授941或重做已关闭952/953。
+6. **当前前置与验收缺口**：D936已交付并同步；F-941-03转独立958（工作完成待review/merge）。D938（source foreign/代际与恢复接口）、D939（opaque资源/callback/error/ctx与实际source合同）仍未交齐；936在941所需CT/frozen/required页与原计量仍须真实观测。首例/治理控制不核销这些义务，无需重授941。
 
-7. **F-941-03 待用户决定**：是否授权上述独立最小修复计划（真实A2X worker Rust/C daily/cert源CT前门），复审合入后继续941；提案及8次真实正反结果见§9本轮。另需用户手动删除本树target/test-groups/active死锁目录（PID27232已终止，自动审批拒绝清理）。D936已交付，原§10第6项的“D936未交齐”已由本轮取代；其941机制观测不因此充绿。
+7. **F-941-03 已授权独立PLAN-958修复并继续**：原最小范围不变；958当前工作4/6，execution_done、独立review/merge pending，尚未关闭本缺陷。用户已手动清理原dead-owner目录，固定治理入口127/127复验恢复，无需再请求清理或重授修复。
