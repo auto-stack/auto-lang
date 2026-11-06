@@ -995,6 +995,14 @@ stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:36 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，18原data正源36双端观察已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:b32de0ff6e48346237d15516ed21770c6ae08951 | next:work 原data源Rust/C独立认证及诊断/其余完整范围
 
+### F-941-05（2026-11-06，待用户裁定修复归属）：Rust record值根字段写缺mut
+
+本轮原18正源×Rust/C真实认证已采完：**33/36 PASS，M01/R01/R02的Rust三项实际命令exit2，未生成有效证书**；不能据C/AV/native通过填Rust PASS。原source/hash/profile/caps/oracle不改，三个失败完整产物与raw命令在scope/original-data-certifications/{original-method-881--M01,original-record-text--R01,original-record-text--R02}/attempt-1/rust*。三个C同源认证均PASS；前轮三个AV/native六项严格PASS。另三份独立Rust手写参考各实际编译/运行正确（0/19/9，独立isolation非source认证），scope/original-data-certifications/reference-isolation/results.json SHA=`242674a28954e14ec9c52daac787556003798e53f9af2f113f16a27364380613`。原actual的generated.rs分别把var q/p发射成let无mut，随后写`.f_left`/`.f_inner.f_value`，rustc E0594拒；完整daily/cert文件及producer均保留，不手改产物。
+
+已定位 `experimental/ace/crates/a2x-rust/src/lower.rs` 的 `collect_assignees`（当前1720附近）：只收whole-local Assign，显式排除FieldPath，误认为字段写总是经引用；普通record值局部本身仍需mut。已有mut参数是&mut引用，不能简单给所有字段根/参数无差别加mut而引unused_mut或错误receiver/mode变化。
+
+**最小修复提案**：由原Rust后端负责，将字段写根是否需要可变绑定按真实值根/引用参数模式区分；覆盖浅/嵌套字段写、分支/循环中的写、copy/source快照、mut/view/move参数与receiver，不改source/Checked HIR/C/资源计划，不全局加mut/改golden绕失败。永久补三原源完整actual+手写reference默认与原要求优化模式的真实编译运行回归及现有方法/参数负控，按实际触面跑ace-a2x正式职责组，独立review后合入/同步941，重建相关worker并按身份刷新认证。§5.4默认已归档能力新缺陷独立修复；先前F-941-04内phase例外不自动授权本项。用户可明确选择941新增phase或独立计划；当前不修改后端。941其余reader/33成功认证及剩余诊断/机制可继续，非全局停工。
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1009,3 +1017,5 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:36 | from:work | to:wo
 7. **F-941-03 已关闭（D958=06251b0cc）**：用户授权的独立修复完成review/全196门/ff合入/Spec/归档/清理6/6；941已合入并新worker重放原8操作全通过。dead-owner目录及958所有清理均实际完成，无待清理/重授项；941其余验收继续。
 
 8. **F-941-04已获r2内修授权**：按用户“直接在941计划添加新的phase修复”执行§5.8/T16/17，不再等待独立修复授权；T16/T17实现与原例/完整并集/当前严格认证验证已完成（第22轮）；最终独立review仍待T14，不以phase自测顶review。
+
+9. **F-941-05待修复归属裁定**：见§9最小提案。三Rust完整认证实际失败，保持未认证；等待用户选择941新增phase或独立修复，独立证据工作继续。
