@@ -1,3 +1,29 @@
+### D-942-DESIGN-R1 — 共享生成workspace研究合同复审缺口【已关闭 2026-11-06，PLAN-942 交付】
+
+- **候选/owner**：PLAN-942设计修订/复审者。
+- **关闭记录**：r2 定向复审通过（2026-11-06 §9）；研究全链 T-01..05 执行完毕，T-06 独立最终审查
+  （独立子代理上下文）pass；结论 conditional（增量空间收益未获证明）。四项 finding 均有合同/控制/实测
+  对应，见归档 [942 §9](archive/942-generated-workspace-incremental-sharing.md)。
+
+### D-942-P1 — 交付 bundle 未收 experimental/ace/crates/semantics-contract，消费侧 locked 构建红（2026-11-06 立项；开放）
+
+- **候选/owner**：auto-lang 交付 vendor 链（PLAN-792 语义）。
+- **现象**：producer 921bfa518 下，交付入口生成/主题腿 PASS，但 bundle 缺
+  `experimental/ace/crates/semantics-contract`（auto-lang-core 的 path 依赖，产者仓内存在），
+  原根与移根 `cargo build --locked` 均 101 红。930 原 oracle fixture 与真实样本（002-counter）同红
+  ——预存生产回归，非研究 scope 环境问题。
+- **关闭条件**：vendor 该 crate 或重组依赖；重跑 930 driver V01/V02 与候选导出链复绿。
+- **证据**：归档 PLAN-942 §9 T-04/T-06（原红日志 hash 摘要在案）。
+
+### D-942-P2 — Web 服务无生产交付导出入口，成员移根被 workspace 继承路径依赖阻断（2026-11-06 立项；开放）
+
+- **候选/owner**：auto-web / auto-generation-core。
+- **现象**：Web back 成员 `workspace=true` 继承的开发根 path 依赖使成员级移根无法独立 locked 构建；
+  UI 有 PLAN-792 交付入口、Web 无对应物。
+- **关闭条件**：为 Web 定义交付入口（对齐 PLAN-792 UI 交付语义）并实证移根 locked 构建+运行。
+- **证据**：归档 PLAN-942 §9 T-04（export-B-web_auto-chat 原红摘要）。
+
+
 > **2026-11-04规划复核纠偏（仍未关闭）**：931–933升r2。[复核证据与窗口](reports/ace-931-933-plan-review-and-m1-distance-2026-11-04.md)发现D-927-2历史归因与914批准存在判面冲突：有效typed策略拒绝是diagnostic verdict（按预期PASS/FAIL），不能一律ERROR；缺失/未知/矛盾typed才ERROR。932先重建合法body与故意签名两原输入，补有效性并最小纠正过时host/911旧句，不放宽签名或改case原success/exit预期。下列原始观察/59-of-60历史保留，不能据其断言914策略错误或合法body一定坏；最终按932 r2及真实重测关闭。931另核片段原modes/短路待清理责任，933逐字段独立来源；均未实施。
 
 > **2026-11-04规划认领（尚未关闭）**：D-925-2由[PLAN-931](931-a2r-owned-temporary-consumer-lifetime.md)补Rust临时消费者生命周期；D-927-2由[PLAN-932](932-native-warm-edit-admission-and-refusal-closure.md)补native暖准入/真实父分类；D-925-1及904缺manifest oracle由[PLAN-933](archive/933-ace-tracked-oracle-and-fresh-checkout-closure.md)补跟踪来源与干净检出验收（**已关闭 2026-11-04，PLAN-933 交付 44d64c4ed**：sema 两测试改读跟踪 spec 冻结权威+突变负控，904 oracle 独立重建核验；904 manifest 文件缺件本身已由 931 于 1d3a21b49 补齐，见 D-931-3）。下列历史发现/归因保留，计划成立不算修复或PASS，均待work/review/交付真实关闭。
@@ -3996,10 +4022,20 @@ UI036 archived10/10最终收据保留792-driver V04×2与V05a三项原红。静�
 
 - **PLAN-943 delivery**：两项finding均经独立复审关闭，最终149/149固定stdlib门通过；源码/Spec已落72ac9e7b，归档及清理状态以[归档Plan](archive/943-stdlib-semantic-contract-and-compatibility-inventory.md) §9实际收据为准。
 
+### D-941-1 — HIR Rust certificate JSON序列化无效【已关闭 2026-11-06，PLAN-951交付 fec8a9602】
+
+- **基线/复现**：`91968fd40`，现有`a2x-worker certify`完整actual与独立reference均为`value:42`且进程exit0，自报PASS；但生成的`case.cert.json`经标准JSON parser与941严格reader均拒（line36 column3）。文件SHA256 `63a49eab9a4d8f9a0cf9b1bc3ee7947dcf481a1beaf8f28ac91b51484f52c8ad`。C同行认证证书可解析，排除通用reader问题。
+- **根因/触面**：`experimental/ace/crates/a2x-rust/src/cert.rs::CertDraft::to_json`的capabilities数组后缺逗号，末尾execution_config字段带尾逗号；共享scalar/record-text/collections。旧测试只核typed draft与字节稳定，未解析序列化输出。
+- **owner/关闭条件**：HIR Rust cert producer独立修复流程（待授权，不预占号）；修正JSON标点，永久解析反例覆盖空/非空execution_config和capabilities，所属完整职责组及必要消费者通过；原worker重新实际完整认证，941 strict reader准入且C正控不退。941不得通过修补child文本/跳过证书关闭此债；旧38格legacy A2R认证仍独立保红。
+- **证据/决策**：[PLAN-941 §9/§10](941-ace-m1-expanded-and-architecture-acceptance.md)；在途scope `D:/autostack/plan-artifacts/plan-941/`，finding包hash `4c61f09c3b78edcdf454a04129000e0f3abebb31ea0e21c8d02492885a65c8ca`；已记录最小修复范围，未实施producer修复。
+
+D-941-1关闭补证：PLAN-951独立修复serializer，三schema/8组合真实JSON解析回归修前2红、修后2绿；实际Q4完整Rust/C认证及独立reference各42、严格reader与actual文件hash一致；冻结ace-a2x183/183通过，Spec已主线读回，归档清理6/6。951不改旧38格认证。详[归档951](archive/951-a2r-certificate-json-serialization.md) §9。
+
 
 ### D-950-1 — 旧bare S934地址的重复发布revision冲突（未关闭，旧query-store owner）
 
 PLAN-950工作实证：同一源body第二次请求仅临时facts.revision改变，旧ManagedStoreSink::put在同不可变S934 key下写不同payload会key conflict；这是旧地址recipe的生命周期字段问题。950模块producer明确使用新版本sq-module-page/1地址（读签名/negative版本摘要，revision规范0），沿原事实codec，不重解释旧键，不代表旧路径已修。owner=source-query旧ManagedStoreSink::put；关闭条件=旧recipe独立重复发布反例+合法读取/恢复对照，保持旧缓存读取合同的版本化修复并review。证据摘要在PLAN-950 §9，原材料按merge全删，无需要持有的原始输出。
+
 
 ### D-952-1 / F-952-01：共享子进程采集器owned-close竞态（2026-11-06，closed by PLAN-953）
 
