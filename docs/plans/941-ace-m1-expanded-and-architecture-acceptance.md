@@ -1780,6 +1780,22 @@ stage: work | plan_id:PLAN-941 | plan_revision:r6 | outcome:progress（T25及F09
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r6 | round:70 | from:work | to:work | status:executing10/25 | outcome:progress（F09全当前证据闭合，正式713P8F285U） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:50fc3f770df21415f032e8cfd4cb26af0bcafaba | next:work原完整required/ARCH义务；F07仍待裁定、D938/939仍未齐，无待poll
 
+### 第71轮：work T04原十项SYN语法证据接入ARCH-01（原任务继续）
+
+- 上轮为progress（F09工作关闭且正式713P8F285U）。本轮复核main无代码WIP、941唯一树clean，从`50fc3f770`至`519dd0d154c2ba2343a9cc5c521e57318820d913`，7文件296增6删，仅纯reader/派生观察保真字段/正式源合同/registry与治理控制，无Rust/grammar/语法/worker/预算/源expected改变。当前10/25，原T01..15仍未整体齐，不靠补一个原子义务勾整个T04。
+- 原`case-ace-unified-source-929`实际11项中九parse正例+同record在scalar语法拒绝组成原**十个syntax检查**；第11项AV14值控制保原独立责任。十个原始request/response、实际worker/native终态、原源/九无损重建oracle与typed拒绝均已由原SYN strict reader核验。本轮只消费其已准入观察，不重新跑Case/编译器/证书，不以目录/声明或一条绿色group冒实际语法覆盖。
+- 新`syntax-architecture-contract.json`钉原suite/case与9源共11输入，SHA256=`72a5b690432cd9b8da5eb3c5666924c363798b08c656ab53873585170a33409d`；冻结九grammar和原10check/case/source/请求profile/拒绝oracle，声明execution恒UNOBSERVED。新`ace_m1_syntax_arch.py`经可选`syntax_mechanisms={source:syntax}`只接已准入原SYN域，逐项同名来源、grammar、source、profile/entry/caps、worker、原父终态/无损SHA与负例首stage/code核对后，原ARCH-01/all-grammars才可PASS。Case报告与各原response哈希进入独立source_evidence，合同本身不冒执行。
+- 现内部派生`ace.m1.syntax-parse-observation/2`保留原case/check、wire profile、entry/capabilities、实际worker、无损digest与首条typed diagnostic身份；原114条负例诊断仍在原始wire中，原reader逐条shape/span核验后仅保首条紧凑身份，不截原始记录或捏造0。**原请求profile全部为core的carrier字段保持，所选九grammar另逐项核对；不能改写为九个已类型验证的semantic profile**。原acworker/1/schema/原源/语法/阈值均不变，其他共享前门/增量/恢复/IO/性能义务继续U。
+- 新8治理方法加原6语法方法定向14/14PASS；覆盖缺一/额外check、旧/1无身份摘要、core代record语法/源码/同名冒充、错profile/entry/caps/worker、把成功/后期或generic错码冒原拒绝、重建错/缺oracle、父失败被子PASS盖住、未知字段/坏hash/bool计数/越界span与切换到其他域。完整`cargo t infra-ace-m1-arch --out <h>/syntax-arch-governance-current` **230/230PASS**，当前最终字节结果已验证，diff检查clean；无新永久语言回归需求或全Rust组重跑理由。
+- 冻结519dd0d后，继承`f94109-current-composed/composed-bindings.json`当前全部证据，只新增SYN机制绑定；完整strict子进程禁止启动producer，实际联读仍逐source/worker/合同/原终态验证，现 **714P/8F/284U**、1006键/30合同，逐键相对第70轮只`architecture/ARCH-01/all-grammars` U→PASS。ARCH7P42U；原legacy完整对象与S936分腿完整对象均等于第70轮，313仍102P211U。13工具哈希未变，原466source/292cert+daily/14opt/五native及其原配置/源码身份继续严格有效复用；未重复长门/认证，未更新旧raw/before。
+- 组合本域实测14638.872ms、reserve30785995B/peak48720341B<48MiB；process31027200B/Job32260096B；preview625722B。required_universe_closed/acceptance_system_delivered/can_claim_expanded_m1仍全部false，8scalar实际红、F07未修全门红、38旧cert-gap、其余284U不自动核销。
+- `<h>=D:/autostack/plan-artifacts/plan-941/`：治理`syntax-arch-governance-current/results.json` SHA256=`9ff1a9032e4cf0741c16d68ff271c327c4370caf9f285c7c5a5067fe4beea844`；新绑定与命令/父度量在`syntax-architecture-current/`，同scope`preview.stdout`=`f40a6be91392d95422f72024cfd4ecf8b1cd0a48c1644bd348fa5434483c6056`、`closure-audit.json`=`cda646b391d539db0b823f7ca02549312ef49fd2788a12565ac0525020e666fe`。SD01/SD04候选`<h>/syntax-architecture-spec-delta-candidate.md`=`f3b5af3703faefcfecd871d31eae37bec28104ecf2111b0328866a0d9536b12e`，未发布canonical，最终r6独立T14仍待。
+- 当前原执行任务仍10/25，无live handle（strict40421已终态）。下一轮work核对T01/T02等原完整入口与coverage/未观测机制，按实际证据核销已齐部分并补缺口；D938/939未齐、F07待批不阻独立工作，不能缩为已绿小集或改批准/分母。无需重新授权本次原验收reader工作。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r6 | outcome:progress（原SYN十检查严格接入一个ARCH原子义务） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:519dd0d154c2ba2343a9cc5c521e57318820d913 | task_ids:T04/V01..02/SD01及SD04候选 | evidence:syntax-architecture-current/closure-audit.json | next_responsible_role:work原完整任务与其他required/ARCH，无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r6 | round:71 | from:work | to:work | status:executing10/25 | outcome:progress（正式714P8F284U，原目标未齐） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:519dd0d154c2ba2343a9cc5c521e57318820d913 | next:work原T01/T02等完整入口核对及剩余机制；F07仍待、D938/939未齐，无待poll
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1803,4 +1819,4 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r6 | round:70 | from:work | to:wo
 
 12. **F-941-08工作阶段已关闭（r5 T22/T23，第64轮续录）**：用户原授权已完成实施与当前原职责/真实四端/292认证daily/原优化及CT机制严格联读，F08关闭基面81c10fcc9；第65轮b876cb42b/711P8F287U；第66轮4466520e6同计数、新增S936恢复分腿；第67轮当前5adfe480d/712P9F285U，新增SQ权威PASS与F09实际FAIL，仍8/23。无待poll，不再等待F08授权或重跑已有效冻结证据；原完整任务及最终独立T14仍待。F07独立test-only修复仍待裁定，不能由F08授权推定。
 
-13. **F-941-09工作阶段已关闭（r6 T24/25，第70轮）**：用户具名授权、三组原失败与合法/位置漂移/codec/AV旧42控制、73cdf4871生产修复、50fc3f770当前声明及206完整语义/222治理/实际AV/五native/466当前Case/292cert+daily/原14优化和6untyped拒绝已由原strict reader联读闭合，当前713P8F285U、executing10/25。最终独立T14仍待，SD12候选未发布；不再等待F09授权或重跑已有效证据，不扩F07/其他缺陷授权。原完整任务继续。
+13. **F-941-09工作阶段已关闭（r6 T24/25，第70轮）**：用户具名授权、三组原失败与合法/位置漂移/codec/AV旧42控制、73cdf4871生产修复、50fc3f770当前声明及206完整语义/222治理/实际AV/五native/466当前Case/292cert+daily/原14优化和6untyped拒绝已由原strict reader联读闭合，F09关闭基面713P8F285U；第71轮当前519dd0d15/714P8F284U、executing10/25。最终独立T14仍待，SD12候选未发布；不再等待F09授权或重跑已有效证据，不扩F07/其他缺陷授权。原完整任务继续。
