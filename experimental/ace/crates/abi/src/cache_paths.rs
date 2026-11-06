@@ -221,16 +221,23 @@ fn eq_ci(a: &str, b: &str) -> bool {
 
 /// Streamed source/header hashing has one owned 64-byte result, never a
 /// whole input copy. The caller admits that result in its actual live owner.
-pub(crate) fn hash_file(path: &std::path::Path) -> std::io::Result<String> {
+pub(crate) fn hash_file(
+    path: &std::path::Path,
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<String, StoreError> {
     use std::io::Read;
-    let mut file = std::fs::File::open(path)?;
+    let io_error = |e: std::io::Error| StoreError::Internal(e.to_string());
+    let mut file = {
+        let _native = reserve_native_path(path, resources)?;
+        std::fs::File::open(path).map_err(io_error)?
+    };
     let mut hash = blake3::Hasher::new();
     let mut buffer = [0u8; 8192];
     loop {
         let count = match file.read(&mut buffer) {
             Ok(count) => count,
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(e),
+            Err(e) => return Err(io_error(e)),
         };
         if count == 0 {
             break;
@@ -247,8 +254,12 @@ pub(crate) fn source_identity(
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
     let size = metadata_size(&[name.len(), 1, 64])?;
     let mut allocation = reserve_c_metadata(resources, metadata_size(&[size, 64])?)?;
-    let digest =
-        hash_file(path).map_err(|e| StoreError::Internal(format!("{}: {e}", path.display())))?;
+    let digest = hash_file(path, resources).map_err(|e| match e {
+        StoreError::Internal(message) => {
+            StoreError::Internal(format!("{}: {message}", path.display()))
+        }
+        other => other,
+    })?;
     let mut value = String::with_capacity(size);
     value.push_str(name);
     value.push('|');
@@ -334,6 +345,171 @@ pub(crate) fn discovery_needle(
         }
     }
     value.push('%');
+    Ok(CPathText {
+        value,
+        _allocation: allocation,
+    })
+}
+
+/// Bound std's Windows native-path conversion before calling it. Verbatim
+/// paths and short absolute paths use only to_u16s' exact input buffer;
+/// longer absolute paths also normalize with bounded old/new UTF-16 copies.
+/// Relative spellings can expand against a long CWD, so reserve its Windows
+/// namespace bound as temporary scratch, not as a cap on the returned path.
+pub(crate) fn reserve_native_path(
+    path: &std::path::Path,
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<Option<ace_source_query::resources::Reservation>, StoreError> {
+    let bytes = path.as_os_str().as_encoded_bytes();
+    let short_absolute = bytes.len() < 247
+        && (path.is_absolute()
+            || (bytes.len() == 2
+                && bytes[1] == b':'
+                && bytes[0] != std::path::MAIN_SEPARATOR as u8
+                && bytes[0] != b'/'));
+    let size = if bytes.starts_with(br"\\?\") || bytes.starts_with(br"\??\") || short_absolute {
+        metadata_array::<u16>(metadata_size(&[bytes.len(), 1])?)?
+    } else {
+        let input = bytes
+            .len()
+            .checked_mul(8)
+            .ok_or_else(|| StoreError::ResourceExhausted("C cache native path overflow".into()))?;
+        metadata_size(&[input, if path.is_absolute() { 4096 } else { 16 * 32768 }])?
+    };
+    reserve_c_metadata(resources, size)
+}
+
+pub(crate) fn display_path(
+    path: &std::path::Path,
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<CPathText, StoreError> {
+    let size = path.as_os_str().len();
+    let allocation = reserve_c_metadata(resources, size)?;
+    let mut value = String::with_capacity(size);
+    use std::fmt::Write as _;
+    write!(&mut value, "{}", path.display())
+        .map_err(|e| StoreError::Internal(format!("C path display: {e}")))?;
+    Ok(CPathText {
+        value,
+        _allocation: allocation,
+    })
+}
+
+/// Same access/share/normalization semantics as Windows std::canonicalize.
+/// Query the handle's required final-path length first so a short junction
+/// spelling never authorizes an uncharged, much longer target allocation.
+pub(crate) fn canonical_text(
+    path: &std::path::Path,
+    resources: Option<&ace_source_query::resources::Resources>,
+    context: &str,
+) -> Result<CPathText, StoreError> {
+    use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
+    use windows_sys::Win32::Storage::FileSystem::{
+        GetFinalPathNameByHandleW, FILE_FLAG_BACKUP_SEMANTICS, VOLUME_NAME_DOS,
+    };
+    let io_error = |e| StoreError::Internal(format!("{context}: {e}"));
+    let file = {
+        let _native = reserve_native_path(path, resources)?;
+        std::fs::OpenOptions::new()
+            .access_mode(0)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+            .open(path)
+            .map_err(io_error)?
+    };
+    let mut required = unsafe {
+        GetFinalPathNameByHandleW(
+            file.as_raw_handle(),
+            std::ptr::null_mut(),
+            0,
+            VOLUME_NAME_DOS,
+        )
+    };
+    if required == 0 {
+        return Err(io_error(std::io::Error::last_os_error()));
+    }
+    let mut allocation = reserve_c_metadata(resources, 0)?;
+    let mut wide: Vec<u16> = Vec::new();
+    loop {
+        let count = required as usize;
+        let old = metadata_array::<u16>(wide.capacity())?;
+        let next = metadata_array::<u16>(count)?;
+        resize_c_metadata(&mut allocation, metadata_size(&[old, next])?)?;
+        if count > wide.capacity() {
+            wide.try_reserve_exact(count - wide.len()).map_err(|e| {
+                StoreError::ResourceExhausted(format!("C final path allocation: {e}"))
+            })?;
+        }
+        wide.resize(count, 0);
+        resize_c_metadata(&mut allocation, metadata_array::<u16>(wide.capacity())?)?;
+        let length = unsafe {
+            GetFinalPathNameByHandleW(
+                file.as_raw_handle(),
+                wide.as_mut_ptr(),
+                required,
+                VOLUME_NAME_DOS,
+            )
+        };
+        if length == 0 {
+            return Err(io_error(std::io::Error::last_os_error()));
+        }
+        if length < required {
+            wide.truncate(length as usize);
+            break;
+        }
+        required = length
+            .checked_add(1)
+            .ok_or_else(|| StoreError::ResourceExhausted("C final path length overflow".into()))?;
+    }
+    let size = char::decode_utf16(wide.iter().copied()).try_fold(0usize, |n, c| {
+        metadata_size(&[n, c.unwrap_or(char::REPLACEMENT_CHARACTER).len_utf8()])
+    })?;
+    resize_c_metadata(
+        &mut allocation,
+        metadata_size(&[metadata_array::<u16>(wide.capacity())?, size])?,
+    )?;
+    let mut value = String::with_capacity(size);
+    for c in char::decode_utf16(wide.iter().copied()) {
+        value.push(c.unwrap_or(char::REPLACEMENT_CHARACTER));
+    }
+    drop(wide);
+    drop(file);
+    resize_c_metadata(&mut allocation, size)?;
+    Ok(CPathText {
+        value,
+        _allocation: allocation,
+    })
+}
+
+pub(crate) fn artifact_path(
+    path: &std::path::Path,
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<CPathText, StoreError> {
+    let parent = path
+        .parent()
+        .filter(|d| !d.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."));
+    let directory = match canonical_text(parent, resources, "canonicalize artifact dir") {
+        Ok(value) => value,
+        Err(StoreError::ResourceExhausted(message)) => {
+            return Err(StoreError::ResourceExhausted(message))
+        }
+        Err(_) => display_path(parent, resources)?,
+    };
+    let dir = directory
+        .value
+        .strip_prefix("\\\\?\\")
+        .unwrap_or(&directory.value);
+    let name = path.file_name().unwrap_or_default();
+    let size = metadata_size(&[dir.len(), 1, name.len()])?;
+    let allocation = reserve_c_metadata(resources, size)?;
+    let mut value = String::with_capacity(size);
+    for ch in dir.chars() {
+        value.push(if ch == '/' { '\\' } else { ch });
+    }
+    value.push('\\');
+    use std::fmt::Write as _;
+    write!(&mut value, "{}", name.display())
+        .map_err(|e| StoreError::Internal(format!("C artifact path: {e}")))?;
     Ok(CPathText {
         value,
         _allocation: allocation,

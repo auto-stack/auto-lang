@@ -360,15 +360,6 @@ pub fn read_c_object_file(
     use std::io::Read;
     let budget = |e| StoreError::ResourceExhausted(format!("C object read: {e}"));
     let io_error = |e| StoreError::Internal(format!("C object read: {e}"));
-    let path_bytes = path
-        .as_os_str()
-        .len()
-        .checked_mul(4)
-        .and_then(|n| n.checked_add(512))
-        .ok_or_else(|| StoreError::ResourceExhausted("C object read path size".into()))?;
-    let _path = resources
-        .reserve(Charge::index(path_bytes))
-        .map_err(budget)?;
     let _metadata = resources.reserve(Charge::io(256)).map_err(budget)?;
     let mut options = std::fs::OpenOptions::new();
     options.read(true);
@@ -379,7 +370,11 @@ pub fn read_c_object_file(
             .share_mode(1)
             .custom_flags(windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT);
     }
-    let mut file = options.open(path).map_err(io_error)?;
+    let mut file = {
+        let _path = cache_paths::reserve_native_path(path, Some(resources))
+            .map_err(|e| StoreError::ResourceExhausted(format!("C object read: {e}")))?;
+        options.open(path).map_err(io_error)?
+    };
     let metadata = file.metadata().map_err(io_error)?;
     let invalid = !metadata.is_file();
     #[cfg(windows)]
@@ -569,7 +564,18 @@ fn search_listing(
         ])?;
         let mut allocation = ListingBudget::new(resources, base)?;
         let mut entries = Vec::new();
-        if let Ok(rd) = std::fs::read_dir(dir) {
+        let read = {
+            // Absolute paths' native conversion/root/star buffers fit the
+            // frame's input-size bound above. A relative cache spelling may
+            // expand against a much longer CWD; admit that conversion too.
+            let _relative = if dir.is_absolute() {
+                None
+            } else {
+                cache_paths::reserve_native_path(dir, resources)?
+            };
+            std::fs::read_dir(dir)
+        };
+        if let Ok(rd) = read {
             for e in rd.flatten() {
                 let capacity = listing_capacity(&entries)?;
                 // Two full capacities cover growth old+new coexistence and
@@ -676,8 +682,14 @@ fn search_listing(
     })
 }
 
-fn hash_dep(path: &str) -> Result<String, String> {
-    cache_paths::hash_file(std::path::Path::new(path)).map_err(|e| format!("dep {path}: {e}"))
+fn hash_dep(
+    path: &str,
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<String, StoreError> {
+    cache_paths::hash_file(std::path::Path::new(path), resources).map_err(|e| match e {
+        StoreError::Internal(message) => StoreError::Internal(format!("dep {path}: {message}")),
+        other => other,
+    })
 }
 
 fn current_toolchain(
@@ -806,43 +818,18 @@ where
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(std::path::Path::new("."));
-    let src_dir = std::fs::canonicalize(src_parent)
-        .map_err(|e| StoreError::Internal(format!("canonicalize src dir: {e}")))?
-        .display()
-        .to_string();
-    let inc_dir_s = std::fs::canonicalize(include_dir)
-        .map_err(|e| StoreError::Internal(format!("canonicalize include dir: {e}")))?
-        .display()
-        .to_string();
-    // F-797-R4-07 (R15): artifact exclusion by FULL PATH — resolved
-    // against the (always existing) parent directory so the spelling
-    // is stable whether or not the output file exists yet; separators
-    // unified; compared case-insensitively against full listing paths
-    let artifact_paths: Vec<String> = artifact_paths
-        .iter()
-        .map(|p| {
-            let name = p
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let parent = p
-                .parent()
-                .filter(|d| !d.as_os_str().is_empty())
-                .unwrap_or(std::path::Path::new("."));
-            let dir_s = std::fs::canonicalize(parent)
-                .map(|c| c.display().to_string())
-                .unwrap_or_else(|_| parent.display().to_string());
-            let dir_s = {
-                let b = dir_s.as_bytes();
-                if b.len() > 4 && b.starts_with(b"\\\\?\\") {
-                    dir_s[4..].to_string()
-                } else {
-                    dir_s
-                }
-            };
-            format!("{}\\{}", dir_s.replace('/', "\\"), name)
-        })
-        .collect();
+    let src_dir = cache_paths::canonical_text(src_parent, resources, "canonicalize src dir")?;
+    let inc_dir_s =
+        cache_paths::canonical_text(include_dir, resources, "canonicalize include dir")?;
+    // Preserve full-path exclusions and their original ordering/duplicates.
+    // Each normalized spelling and its destination vector own separate fees
+    // during transfer; no parent/file-name/replace copies are made first.
+    let mut artifact_paths_owned = CPathList::new(resources)?;
+    for path in artifact_paths {
+        let normalized = cache_paths::artifact_path(path, resources)?;
+        artifact_paths_owned.push(&normalized.value)?;
+    }
+    let artifact_paths = &artifact_paths_owned.values;
     let _target_allocation = reserve_c_metadata(resources, crate::layout::TARGET.len())?;
     let target = crate::layout::TARGET.to_string();
     let toolchain = current_toolchain(resources)?;
@@ -952,8 +939,8 @@ where
                     // re-proven under the current rule
                     e.v == 4
                         && e.source == source_identity.value
-                        && e.src_dir == src_dir
-                        && e.include_dir == inc_dir_s
+                        && e.src_dir == src_dir.value
+                        && e.include_dir == inc_dir_s.value
                         && e.target == target
                         && e.toolchain == toolchain.value
                     // every RECORDED search dir (source dir,
@@ -982,7 +969,14 @@ where
                 let mut dependencies_match = true;
                 for (p, h) in &e.deps {
                     let _digest_allocation = reserve_c_metadata(resources, 64)?;
-                    if !hash_dep(p).is_ok_and(|now| now == *h) {
+                    let matches = match hash_dep(p, resources) {
+                        Ok(now) => now == *h,
+                        Err(StoreError::ResourceExhausted(message)) => {
+                            return Err(StoreError::ResourceExhausted(message))
+                        }
+                        Err(_) => false,
+                    };
+                    if !matches {
                         dependencies_match = false;
                         break;
                     }
@@ -1024,7 +1018,7 @@ where
         use std::fmt::Write as _;
         write!(&mut ps, "{}", p.display())
             .map_err(|e| StoreError::Internal(format!("dep path formatting: {e}")))?;
-        let digest = hash_dep(&ps).map_err(StoreError::Internal)?;
+        let digest = hash_dep(&ps, resources)?;
         hashed_text = metadata_size(&[hashed_text, ps.capacity(), digest.capacity()])?;
         hashed.push((ps, digest));
     }
@@ -1054,16 +1048,20 @@ where
     // forms are \?-prefixed — mixing them breaks the lexical
     // common-prefix derivation)
     let mut chain_dirs = CPathList::new(resources)?;
-    chain_dirs.push(&src_dir)?;
-    chain_dirs.push(&inc_dir_s)?;
+    chain_dirs.push(&src_dir.value)?;
+    chain_dirs.push(&inc_dir_s.value)?;
     for (p, _) in &hashed {
         if let Some(parent) = std::path::Path::new(p).parent() {
-            let Ok(pc) = std::fs::canonicalize(parent) else {
-                continue;
-            };
-            let ps = pc.display().to_string();
-            if !chain_dirs.contains(&ps) {
-                chain_dirs.push(&ps)?;
+            match cache_paths::canonical_text(parent, resources, "canonicalize dependency dir") {
+                Ok(path) => {
+                    if !chain_dirs.contains(&path.value) {
+                        chain_dirs.push(&path.value)?;
+                    }
+                }
+                Err(StoreError::ResourceExhausted(message)) => {
+                    return Err(StoreError::ResourceExhausted(message))
+                }
+                Err(_) => continue,
             }
         }
     }
@@ -1114,8 +1112,8 @@ where
     let entry = CObjectEntryRef {
         v: 4,
         source: &source_identity.value,
-        src_dir: &src_dir,
-        include_dir: &inc_dir_s,
+        src_dir: &src_dir.value,
+        include_dir: &inc_dir_s.value,
         target: &target,
         toolchain: &toolchain.value,
         obj_b64: Base64Ref(obj.as_ref()),
@@ -1146,8 +1144,8 @@ where
         let entry = CObjectEntry {
             v: 4,
             source: source_identity.value.clone(),
-            src_dir: src_dir.clone(),
-            include_dir: inc_dir_s.clone(),
+            src_dir: src_dir.value.clone(),
+            include_dir: inc_dir_s.value.clone(),
             target: target.clone(),
             toolchain: toolchain.value.clone(),
             obj_b64: base64::engine::general_purpose::STANDARD.encode(&obj),

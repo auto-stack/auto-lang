@@ -365,13 +365,17 @@ mod source_foreign {
         assert!(matches!(rejected, Err(StoreError::ResourceExhausted(_))));
         assert_eq!(large, 0);
         drop(pressure);
-        for layout in [64, expected.len()] {
-            let (identity, hits, admitted) = with_charge_probe(
-                layout,
-                &resources,
-                Charge::index(baseline + expected.len() + 64),
-                || cache_paths::source_identity(&source, Some(&resources)),
-            );
+        assert!(source.as_os_str().len() < 247);
+        let native = (source.as_os_str().len() + 1) * std::mem::size_of::<u16>();
+        for (layout, minimum) in [
+            (64, baseline + expected.len() + 64),
+            (expected.len(), baseline + expected.len() + 64),
+            (native, baseline + expected.len() + 64 + native),
+        ] {
+            let (identity, hits, admitted) =
+                with_charge_probe(layout, &resources, Charge::index(minimum), || {
+                    cache_paths::source_identity(&source, Some(&resources))
+                });
             let identity = identity.unwrap();
             assert_eq!(identity.value, expected);
             assert_eq!(hits, 1, "did not observe identity buffer {layout}");
@@ -389,6 +393,185 @@ mod source_foreign {
         let missing = root.join("missing.c");
         assert!(
             matches!(cache_paths::source_identity(&missing, Some(&resources)), Err(StoreError::Internal(ref message)) if message.starts_with(&missing.display().to_string()))
+        );
+        assert_eq!(resources.stats().current.index, baseline);
+    }
+
+    #[test]
+    fn canonical_and_artifact_paths_precharge_real_long_junction_targets_and_release_temporaries() {
+        use ace_artifacts::store::StoreError;
+        use ace_source_query::resources::Resources;
+        use std::os::windows::{ffi::OsStrExt, process::CommandExt};
+        let (root, _, _, _) = fixture("canonical-budget");
+        let mut target = root.join("long-target");
+        for i in 0..8 {
+            target.push(format!("segment-{i}-{}", "x".repeat(96)));
+        }
+        target.push("unicode-π-😀");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("keep"), b"target must survive link cleanup").unwrap();
+        let link = root.join("short-link");
+        let created = std::process::Command::new("cmd.exe")
+            .args(["/d", "/c", "mklink", "/J"])
+            .arg(link.display().to_string().replace('/', "\\"))
+            .arg(target.display().to_string().replace('/', "\\"))
+            .creation_flags(0x08000000)
+            .output()
+            .unwrap();
+        assert!(
+            created.status.success(),
+            "junction fixture failed: {}",
+            String::from_utf8_lossy(&created.stderr)
+        );
+        struct Unlink(PathBuf);
+        impl Drop for Unlink {
+            fn drop(&mut self) {
+                std::fs::remove_dir(&self.0).expect("remove only fixture junction");
+            }
+        }
+        let unlink = Unlink(link.clone());
+        let reference = std::fs::canonicalize(&link).unwrap();
+        let expected = reference.display().to_string();
+        let wide = (reference.as_os_str().encode_wide().count() + 1) * std::mem::size_of::<u16>();
+        assert!(wide > 1024);
+        assert!(link.as_os_str().len() < 247);
+        let native = (link.as_os_str().len() + 1) * std::mem::size_of::<u16>();
+        let resources = Resources::default();
+        let baseline = resources.stats().current.index;
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - baseline - 1024))
+            .unwrap();
+        let before = resources.stats().current;
+        let (rejected, copies) = measured_at(wide, || {
+            cache_paths::canonical_text(&link, Some(&resources), "fixture canonical")
+        });
+        assert!(matches!(rejected, Err(StoreError::ResourceExhausted(_))));
+        assert_eq!(copies, 0, "long resolved path allocated before admission");
+        assert_eq!(resources.stats().current, before);
+        let rejected_artifact =
+            cache_paths::artifact_path(&link.join("output.obj"), Some(&resources));
+        assert!(
+            matches!(rejected_artifact, Err(StoreError::ResourceExhausted(_))),
+            "artifact normalization treated budget refusal as an I/O fallback"
+        );
+        assert_eq!(resources.stats().current, before);
+        drop(pressure);
+        for (layout, minimum) in [
+            (native, baseline + native),
+            (wide, baseline + wide),
+            (expected.len(), baseline + wide + expected.len()),
+        ] {
+            let (result, hits, admitted) =
+                with_charge_probe(layout, &resources, Charge::index(minimum), || {
+                    cache_paths::canonical_text(&link, Some(&resources), "fixture canonical")
+                });
+            let result = result.unwrap();
+            assert_eq!(result.value, expected);
+            assert_eq!(hits, 1, "did not observe canonical buffer {layout}");
+            assert!(admitted, "canonical buffer preceded its reservation");
+            assert_eq!(
+                resources.stats().current.index,
+                baseline + result.value.capacity()
+            );
+            drop(result);
+            assert_eq!(resources.stats().current.index, baseline);
+        }
+        // Fresh accounts keep historical pressure peaks from hiding an
+        // under-reservation inside std's long/relative native conversion.
+        let long_resources = Resources::default();
+        let long_baseline = long_resources.stats().current.index;
+        let (long_result, long_peak) = measured_peak(|| {
+            cache_paths::canonical_text(&target, Some(&long_resources), "long canonical")
+        });
+        let long_result = long_result.unwrap();
+        assert_eq!(long_result.value, expected);
+        assert!(long_peak > 0 && long_peak <= long_resources.stats().peak.index - long_baseline);
+        drop(long_result);
+        assert_eq!(long_resources.stats().current.index, long_baseline);
+        struct RestoreCwd(PathBuf);
+        impl Drop for RestoreCwd {
+            fn drop(&mut self) {
+                std::env::set_current_dir(&self.0).expect("restore fixture CWD");
+            }
+        }
+        let cwd = RestoreCwd(std::env::current_dir().unwrap());
+        std::env::set_current_dir(&link).unwrap();
+        let cwd_spelling = std::env::current_dir().unwrap();
+        let relative_native =
+            (cwd_spelling.as_os_str().encode_wide().count() + 4 + 1) * std::mem::size_of::<u16>();
+        let relative_resources = Resources::default();
+        let relative_baseline = relative_resources.stats().current.index;
+        let ((relative_result, relative_peak), hits, admitted) = with_charge_probe(
+            relative_native,
+            &relative_resources,
+            Charge::index(relative_baseline + relative_native),
+            || {
+                measured_peak(|| {
+                    cache_paths::canonical_text(
+                        std::path::Path::new("."),
+                        Some(&relative_resources),
+                        "relative canonical",
+                    )
+                })
+            },
+        );
+        let relative_result = relative_result.unwrap();
+        assert_eq!(relative_result.value, expected);
+        assert_eq!(hits, 1, "did not observe relative native path expansion");
+        assert!(
+            admitted,
+            "relative path expanded before native scratch admission"
+        );
+        assert!(
+            relative_peak > 0
+                && relative_peak <= relative_resources.stats().peak.index - relative_baseline
+        );
+        drop(relative_result);
+        assert_eq!(relative_resources.stats().current.index, relative_baseline);
+        drop(cwd);
+        eprintln!(
+            "canonical buffers: utf16={wide} utf8={} long_heap={long_peak} long_reserved={} relative_heap={relative_peak} relative_reserved={}",
+            expected.len(),
+            long_resources.stats().peak.index - long_baseline,
+            relative_resources.stats().peak.index - relative_baseline,
+        );
+        for path in [
+            &link,
+            &target,
+            &target.join("keep"),
+            &root.join("../canonical-missing-parent/output.obj"),
+        ] {
+            let parent = path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(std::path::Path::new("."));
+            let dir = std::fs::canonicalize(parent)
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| parent.display().to_string());
+            let original = format!(
+                "{}\\{}",
+                dir.strip_prefix("\\\\?\\")
+                    .unwrap_or(&dir)
+                    .replace('/', "\\"),
+                path.file_name().unwrap_or_default().to_string_lossy()
+            );
+            let actual = cache_paths::artifact_path(path, Some(&resources)).unwrap();
+            assert_eq!(actual.value, original);
+        }
+        assert_eq!(resources.stats().current.index, baseline);
+        let missing = root.join("not-present");
+        assert!(
+            matches!(cache_paths::canonical_text(&missing, Some(&resources), "fixture canonical"), Err(StoreError::Internal(ref message)) if message.starts_with("fixture canonical: "))
+        );
+        assert_eq!(resources.stats().current.index, baseline);
+        let raw = cache_paths::display_path(&missing, Some(&resources)).unwrap();
+        assert_eq!(raw.value, missing.display().to_string());
+        drop(raw);
+        drop(unlink);
+        assert!(!link.exists());
+        assert_eq!(
+            std::fs::read(target.join("keep")).unwrap(),
+            b"target must survive link cleanup"
         );
         assert_eq!(resources.stats().current.index, baseline);
     }
@@ -830,9 +1013,9 @@ mod source_foreign {
             .unwrap();
         let baseline = resources.stats().current;
         let store = ManagedStore::open(&root.with_extension("resource-store")).unwrap();
-        let pressure = resources
-            .reserve(Charge::index((8 << 20) - baseline.index - (64 << 10)))
-            .unwrap();
+        let mut pressure = None;
+        let mut pressure_bytes = 0;
+
         let (rejected, large) = measured_at(128 << 10, || {
             ace_abi::cache::produce_c_object_with_resources(
                 &store,
@@ -840,7 +1023,17 @@ mod source_foreign {
                 &root,
                 &artifacts,
                 &resources,
-                || Ok((bytes.clone(), vec![header.clone(), extra_header.clone()])),
+                || {
+                    // The now-budgeted artifact-path collection must finish
+                    // before isolating the later generation-vector refusal.
+                    pressure_bytes = (8 << 20) - resources.stats().current.index - (64 << 10);
+                    pressure = Some(
+                        resources
+                            .reserve(Charge::index(pressure_bytes))
+                            .map_err(|e| StoreError::ResourceExhausted(e.to_string()))?,
+                    );
+                    Ok((bytes.clone(), vec![header.clone(), extra_header.clone()]))
+                },
             )
         });
         assert!(
@@ -848,7 +1041,10 @@ mod source_foreign {
             "{rejected:?}"
         );
         assert_eq!(large, 0, "allocated generation storage before admission");
-        assert_eq!(resources.stats().current.index, (8 << 20) - (64 << 10));
+        assert_eq!(
+            resources.stats().current.index,
+            baseline.index + pressure_bytes
+        );
         assert_eq!(
             store
                 .db()
@@ -858,8 +1054,14 @@ mod source_foreign {
         );
         drop(pressure);
         let layout = count * (4 * std::mem::size_of::<&str>());
-        let (result, hits, admitted) =
-            with_charge_probe(layout, &resources, Charge::index(layout + 64), || {
+        let artifact_fee = artifacts.len().next_power_of_two().max(4)
+            * std::mem::size_of::<String>()
+            + artifacts.len() * artifact.len();
+        let (result, hits, admitted) = with_charge_probe(
+            layout,
+            &resources,
+            Charge::index(baseline.index + artifact_fee + layout + 64),
+            || {
                 ace_abi::cache::produce_c_object_with_resources(
                     &store,
                     &source,
@@ -868,7 +1070,8 @@ mod source_foreign {
                     &resources,
                     || Ok((bytes.clone(), vec![header, extra_header])),
                 )
-            });
+            },
+        );
         let (output, hit) = result.unwrap();
         assert!(!hit);
         assert_eq!(hits, 1, "did not observe borrowed-line vector allocation");
