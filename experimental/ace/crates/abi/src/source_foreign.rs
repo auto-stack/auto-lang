@@ -151,39 +151,44 @@ impl Artifact {
         previous: Option<Reservation>,
     ) -> Result<Arc<Self>, String> {
         let charge = Charge::resident(Self::decoded_bytes(&decoded));
-        let mut decoded_charge = if let Some(mut previous) = previous {
-            previous.resize(charge).map_err(|e| e.to_string())?;
+        let mut decoded_charge = if let Some(previous) = previous {
             previous
         } else {
             resources.reserve(charge).map_err(|e| e.to_string())?
         };
-        let size = ace_foreign_contract::codec::json_size(&decoded, MAX_ARTIFACT)
-            .map_err(|e| e.to_string())?;
-        let production = resources.reserve_output(size).map_err(|e| e.to_string())?;
-        let mut bytes_charge = resources
-            .reserve(Charge::resident(
-                size + std::mem::size_of::<Vec<u8>>() + 2 * std::mem::size_of::<usize>(),
-            ))
-            .map_err(|e| e.to_string())?;
-        let bytes = ace_foreign_contract::codec::encode_json_bounded(&decoded, MAX_ARTIFACT)
-            .map_err(|e| e.to_string())?;
-        production
-            .complete(bytes.len())
-            .map_err(|e| e.to_string())?;
-        if bytes.len() > MAX_ARTIFACT {
-            return Err("foreign.resource.artifact".into());
-        }
-        let bytes = Arc::new(bytes);
-        bytes_charge.try_retain(&bytes).map_err(|e| e.to_string())?;
-        let artifact = Arc::new(Self {
-            digest: hash(&bytes),
-            bytes,
-            decoded,
-        });
-        decoded_charge
-            .try_retain(&artifact)
-            .map_err(|e| e.to_string())?;
-        Ok(artifact)
+        // The closure owns decoded bytes while the outer ticket stays live.
+        // Any resize/serialization/output-quota/index failure drops its data
+        // before returning the original memory reservation.
+        (|| {
+            decoded_charge.resize(charge).map_err(|e| e.to_string())?;
+            let size = ace_foreign_contract::codec::json_size(&decoded, MAX_ARTIFACT)
+                .map_err(|e| e.to_string())?;
+            let production = resources.reserve_output(size).map_err(|e| e.to_string())?;
+            let mut bytes_charge = resources
+                .reserve(Charge::resident(
+                    size + std::mem::size_of::<Vec<u8>>() + 2 * std::mem::size_of::<usize>(),
+                ))
+                .map_err(|e| e.to_string())?;
+            let bytes = ace_foreign_contract::codec::encode_json_bounded(&decoded, MAX_ARTIFACT)
+                .map_err(|e| e.to_string())?;
+            production
+                .complete(bytes.len())
+                .map_err(|e| e.to_string())?;
+            if bytes.len() > MAX_ARTIFACT {
+                return Err("foreign.resource.artifact".into());
+            }
+            let bytes = Arc::new(bytes);
+            bytes_charge.try_retain(&bytes).map_err(|e| e.to_string())?;
+            let artifact = Arc::new(Self {
+                digest: hash(&bytes),
+                bytes,
+                decoded,
+            });
+            decoded_charge
+                .try_retain(&artifact)
+                .map_err(|e| e.to_string())?;
+            Ok(artifact)
+        })()
     }
 }
 
@@ -1309,12 +1314,15 @@ fn link_artifacts(
                 }
             }
             let mut wrapper_work = ledger.begin("*", "entry-wrapper", Phase::Production);
-            let wrapper = ace_native::emit::emit_wrapper_coff(entry.ok_or("foreign.missing-main")?)
-                .map_err(|e| e.to_string())?;
+            let wrapper = ace_native::emit::emit_wrapper_coff_reserved(
+                entry.ok_or("foreign.missing-main")?,
+                resources,
+            )
+            .map_err(|e| e.to_string())?;
             wrapper_work.produced(1);
             work.push(wrapper_work);
             let path = directory.join("entry-wrapper.obj");
-            write(&path, &wrapper)?;
+            write(&path, wrapper.bytes())?;
             objects.push(path);
             write(
                 &directory.join("entry.c"),
@@ -1429,9 +1437,12 @@ fn native_artifact(
     work.push(verify);
     let mut emit = ledger.begin(name, "native-emit", Phase::Production);
     meter.native_attempts += 1;
-    let (object, output_charge) =
-        ace_native::emit::emit_foreign_unit_coff_reserved(&mir, env, resources)
-            .map_err(|e| e.to_string())?;
+    // Declare the memory owner before the payload. A later MIR quota failure
+    // must destroy the real COFF bytes before refunding their staging charge.
+    let output_charge;
+    let (object, charge) = ace_native::emit::emit_foreign_unit_coff_reserved(&mir, env, resources)
+        .map_err(|e| e.to_string())?;
+    output_charge = charge;
     meter.native_produced += 1;
     emit.produced(1);
     work.push(emit);
@@ -1441,15 +1452,33 @@ fn native_artifact(
     let mut encoded_charge = resources
         .reserve(Charge::staging(0))
         .map_err(|e| e.to_string())?;
-    let paged = ace_av_core::abc::encode_abc_reserved(&mir, |bytes| {
-        encoded_charge.resize(Charge::staging(bytes)).map_err(|e| {
-            ace_av_core::abc::AbcDecodeError::Resource {
-                kind: ace_av_core::contract::ResourceKind::CodecPage,
-                message: e.to_string(),
-            }
-        })
-    })
+    let mut output = None;
+    let paged = ace_av_core::abc::encode_abc_reserved_with_output(
+        &mir,
+        |bytes| {
+            encoded_charge.resize(Charge::staging(bytes)).map_err(|e| {
+                ace_av_core::abc::AbcDecodeError::Resource {
+                    kind: ace_av_core::contract::ResourceKind::CodecPage,
+                    message: e.to_string(),
+                }
+            })
+        },
+        |bytes| {
+            output = Some(resources.reserve_output(bytes).map_err(|e| {
+                ace_av_core::abc::AbcDecodeError::Resource {
+                    kind: ace_av_core::contract::ResourceKind::CodecPage,
+                    message: e.to_string(),
+                }
+            })?);
+            Ok(())
+        },
+    )
     .map_err(|e| format!("foreign.mir-encode: {e:?}"))?;
+    output
+        .take()
+        .expect("MIR wire product admitted")
+        .complete(paged.total_len)
+        .map_err(|e| e.to_string())?;
     // The emitted arrays are now represented by the separately reserved
     // encoded pages. Drop the MIR owner before releasing its capacity fee.
     drop(mir);

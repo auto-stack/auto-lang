@@ -424,6 +424,34 @@ pub(crate) fn event_symbol(e: ace_av_core::mir::TraceEvent) -> &'static str {
 /// the full 32-bit exit code). Emitted per request — it is not a cached
 /// unit artifact (contract-decision §8 note).
 pub fn emit_wrapper_coff(entry_symbol: &str) -> Result<Vec<u8>, MnError> {
+    emit_wrapper_coff_impl(entry_symbol, None).map(|(bytes, _)| bytes)
+}
+
+/// Source request wrapper bytes retain their real memory reservation through
+/// their last use, including file-write failures. The payload drops first.
+pub struct ReservedWrapper {
+    bytes: Vec<u8>,
+    _allocation: ace_source_query::resources::Reservation,
+}
+impl ReservedWrapper {
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+pub fn emit_wrapper_coff_reserved(
+    entry_symbol: &str,
+    resources: &ace_source_query::resources::Resources,
+) -> Result<ReservedWrapper, MnError> {
+    let (bytes, allocation) = emit_wrapper_coff_impl(entry_symbol, Some(resources))?;
+    Ok(ReservedWrapper {
+        bytes,
+        _allocation: allocation.expect("reserved wrapper output"),
+    })
+}
+fn emit_wrapper_coff_impl(
+    entry_symbol: &str,
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<(Vec<u8>, Option<ace_source_query::resources::Reservation>), MnError> {
     let isa = make_isa()?;
     let builder = ObjectBuilder::new(isa, "mn8-ac-start", default_libcall_names())
         .map_err(|e| MnError::Backend(format!("object builder: {e}")))?;
@@ -461,7 +489,14 @@ pub fn emit_wrapper_coff(entry_symbol: &str) -> Result<Vec<u8>, MnError> {
     }
     om.define_function(start_id, &mut ctx)
         .map_err(|e| MnError::Backend(format!("define {}: {e}", START_SYMBOL)))?;
-    om.finish()
-        .emit()
-        .map_err(|e| MnError::Backend(format!("emit wrapper: {e}")))
+    let product = om.finish();
+    if resources.is_some() {
+        coff_buffer::emit(&product.object, resources)
+    } else {
+        // Preserve the original legacy wrapper path and its acceptance.
+        product
+            .emit()
+            .map(|bytes| (bytes, None))
+            .map_err(|e| MnError::Backend(format!("emit wrapper: {e}")))
+    }
 }

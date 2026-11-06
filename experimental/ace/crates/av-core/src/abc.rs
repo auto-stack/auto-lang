@@ -602,11 +602,23 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
 /// keep that reservation alive through the caller's to_flat/ownership handoff.
 pub fn encode_abc_reserved(
     m: &MirModule,
+    reserve: impl FnMut(usize) -> Result<(), AbcDecodeError>,
+) -> Result<AbcBytes, AbcDecodeError> {
+    encode_abc_reserved_with_output(m, reserve, |_| Ok(()))
+}
+
+/// Reserve the actual wire product separately from the live-memory peak.
+/// Counting preflight discovers its exact byte length before any page payload
+/// allocation. Flat copies of these same bytes are not a second product.
+pub fn encode_abc_reserved_with_output(
+    m: &MirModule,
     mut reserve: impl FnMut(usize) -> Result<(), AbcDecodeError>,
+    mut reserve_output: impl FnMut(usize) -> Result<(), AbcDecodeError>,
 ) -> Result<AbcBytes, AbcDecodeError> {
     reserve(encode_preflight_scratch(m))?;
     let measured = encode_abc_mode(m, None)?;
     let size = measured.total_len;
+    reserve_output(size)?;
     let page_count = (size - 8).div_ceil(crate::contract::MAX_CODEC_PAGE_BYTES) + 1;
     let peak = size
         .saturating_mul(2)

@@ -49,7 +49,8 @@ thread_local! {
     static OVERFLOW: Cell<bool> = const { Cell::new(false) };
     static HEAP_MIR_ACCOUNT: RefCell<Option<ace_source_query::resources::Resources>> = const { RefCell::new(None) };
     static HEAP_MIR_COVERED: Cell<bool> = const { Cell::new(true) };
-    static FREE_PROBE: RefCell<Option<(usize, ace_source_query::resources::Resources, usize)>> = const { RefCell::new(None) };
+    static FREE_PROBE: RefCell<Option<(usize, ace_source_query::resources::Resources, ace_source_query::resources::Charge)>> = const { RefCell::new(None) };
+    static ARM_OUTPUT_FREE: Cell<usize> = const { Cell::new(0) };
     static FREE_HITS: Cell<usize> = const { Cell::new(0) };
     static FREE_COVERED: Cell<bool> = const { Cell::new(true) };
     static RESIDENT_PROBE: RefCell<Option<(usize, ace_source_query::resources::Resources, ace_source_query::resources::Charge)>> = const { RefCell::new(None) };
@@ -133,6 +134,25 @@ fn observe(size: usize) {
 fn allocated(ptr: *mut u8, size: usize, replaced: Option<*mut u8>) {
     if !ptr.is_null() {
         apply_layout_pressure(size);
+        if ARM_OUTPUT_FREE
+            .try_with(|armed| armed.get() == size && size != 0)
+            .unwrap_or(false)
+        {
+            let _ = FREE_PROBE.try_with(|probe| {
+                if let Ok(mut probe) = probe.try_borrow_mut() {
+                    if let Some((expected, resources, _)) = probe.as_mut() {
+                        if *expected == 0
+                            && resources
+                                .output_stats()
+                                .is_some_and(|s| s.pending == size as u64)
+                        {
+                            *expected = ptr as usize;
+                            ARM_OUTPUT_FREE.with(|armed| armed.set(0));
+                        }
+                    }
+                }
+            });
+        }
         let _ = RESIDENT_PROBE.try_with(|probe| {
             let probe = probe.borrow();
             if let Some((expected_size, resources, minimum)) = &*probe {
@@ -230,7 +250,13 @@ fn freed(ptr: *mut u8) {
         if let Some((expected, resources, minimum)) = probe.borrow().as_ref() {
             if ptr as usize == *expected {
                 FREE_HITS.with(|hits| hits.set(hits.get() + 1));
-                if resources.stats().current.resident < *minimum {
+                let current = resources.stats().current;
+                if current.resident < minimum.resident
+                    || current.staging < minimum.staging
+                    || current.io < minimum.io
+                    || current.index < minimum.index
+                    || current.mir < minimum.mir
+                {
                     FREE_COVERED.with(|covered| covered.set(false));
                 }
             }
@@ -256,12 +282,26 @@ fn with_free_charge_probe<T>(
     minimum: usize,
     f: impl FnOnce() -> T,
 ) -> (T, usize, bool) {
+    with_free_category_probe(
+        ptr,
+        resources,
+        ace_source_query::resources::Charge::resident(minimum),
+        f,
+    )
+}
+fn with_free_category_probe<T>(
+    ptr: usize,
+    resources: &ace_source_query::resources::Resources,
+    minimum: ace_source_query::resources::Charge,
+    f: impl FnOnce() -> T,
+) -> (T, usize, bool) {
     struct Reset;
     impl Drop for Reset {
         fn drop(&mut self) {
             FREE_PROBE.with(|probe| {
                 probe.borrow_mut().take();
             });
+            ARM_OUTPUT_FREE.with(|armed| armed.set(0));
         }
     }
     FREE_PROBE.with(|probe| {
@@ -371,6 +411,140 @@ fn measured_at<T>(threshold: usize, f: impl FnOnce() -> T) -> (T, usize) {
 }
 
 #[test]
+fn mir_wire_output_quota_reserves_exact_bytes_before_page_allocation_and_counts_flat_copy_once() {
+    use ace_source_query::resources::{Charge, OutputLimits, Resources};
+    let source = ace_core::source::compile_scalar_source(
+        "fn main() int { return 42 }",
+        "wire-quota.at",
+        &[],
+    )
+    .unwrap();
+    let mut mir =
+        ace_lowering::hir_adapter::lower_function_unit(source.checked.bundle(), "d_main", &[], 0)
+            .unwrap();
+    mir.consts
+        .extend((0..16384).map(ace_av_core::mir::MirConst::I32));
+    let expected = ace_av_core::abc::encode_abc(&mir).unwrap().to_flat();
+    let resources = Resources::default();
+    resources
+        .enable_output_budget(OutputLimits {
+            artifact: expected.len() as u64,
+            request: (expected.len() - 1) as u64,
+        })
+        .unwrap();
+    let mut memory = resources.reserve(Charge::staging(0)).unwrap();
+    let mut output = None;
+    let (denied, allocations) = measured_at(4096, || {
+        ace_av_core::abc::encode_abc_reserved_with_output(
+            &mir,
+            |size| {
+                memory.resize(Charge::staging(size)).map_err(|e| {
+                    ace_av_core::abc::AbcDecodeError::Resource {
+                        kind: ace_av_core::contract::ResourceKind::CodecPage,
+                        message: e.to_string(),
+                    }
+                })
+            },
+            |size| {
+                output = Some(resources.reserve_output(size).map_err(|e| {
+                    ace_av_core::abc::AbcDecodeError::Resource {
+                        kind: ace_av_core::contract::ResourceKind::CodecPage,
+                        message: e.to_string(),
+                    }
+                })?);
+                Ok(())
+            },
+        )
+    });
+    assert!(matches!(
+        denied,
+        Err(ace_av_core::abc::AbcDecodeError::Resource { .. })
+    ));
+    assert_eq!(
+        allocations, 0,
+        "MIR pages allocated before output budget admission"
+    );
+    assert!(output.is_none());
+    assert_eq!(resources.output_stats().unwrap().produced, 0);
+    drop(memory);
+    let next = Resources::default();
+    next.enable_output_budget(OutputLimits {
+        artifact: expected.len() as u64,
+        request: expected.len() as u64,
+    })
+    .unwrap();
+    let mut memory = next.reserve(Charge::staging(0)).unwrap();
+    let mut output = None;
+    let paged = ace_av_core::abc::encode_abc_reserved_with_output(
+        &mir,
+        |size| {
+            memory.resize(Charge::staging(size)).map_err(|e| {
+                ace_av_core::abc::AbcDecodeError::Resource {
+                    kind: ace_av_core::contract::ResourceKind::CodecPage,
+                    message: e.to_string(),
+                }
+            })
+        },
+        |size| {
+            output = Some(next.reserve_output(size).map_err(|e| {
+                ace_av_core::abc::AbcDecodeError::Resource {
+                    kind: ace_av_core::contract::ResourceKind::CodecPage,
+                    message: e.to_string(),
+                }
+            })?);
+            Ok(())
+        },
+    )
+    .unwrap();
+    output.take().unwrap().complete(paged.total_len).unwrap();
+    let flat = paged.to_flat();
+    assert_eq!(flat, expected);
+    assert_eq!(next.output_stats().unwrap().produced, flat.len() as u64);
+    assert_eq!(next.output_stats().unwrap().pending, 0);
+    drop(flat);
+    drop(paged);
+    drop(memory);
+    assert_eq!(next.stats().current.staging, 0);
+}
+
+#[test]
+fn entry_wrapper_output_has_the_original_bytes_and_keeps_its_fee_until_real_deallocation() {
+    use ace_source_query::resources::{Charge, OutputLimits, Resources};
+    let resources = Resources::default();
+    resources
+        .enable_output_budget(OutputLimits::default())
+        .unwrap();
+    let wrapper = ace_native::emit::emit_wrapper_coff_reserved("p938_entry", &resources).unwrap();
+    let size = wrapper.bytes().len();
+    assert_eq!(
+        wrapper.bytes(),
+        ace_native::emit::emit_wrapper_coff("p938_entry").unwrap()
+    );
+    assert_eq!(resources.output_stats().unwrap().produced, size as u64);
+    assert_eq!(resources.stats().current.staging, size);
+    let ptr = wrapper.bytes().as_ptr() as usize;
+    let (_, frees, covered) =
+        with_free_category_probe(ptr, &resources, Charge::staging(size), || drop(wrapper));
+    assert_eq!(frees, 1);
+    assert!(covered, "wrapper data outlived its actual staging fee");
+    assert_eq!(resources.stats().current.staging, 0);
+    assert_eq!(resources.output_stats().unwrap().produced, size as u64);
+    let refused = Resources::default();
+    refused
+        .enable_output_budget(OutputLimits {
+            artifact: size as u64 - 1,
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(matches!(
+        ace_native::emit::emit_wrapper_coff_reserved("p938_entry", &refused),
+        Err(MnError::Resource("request-output", _))
+    ));
+    assert_eq!(refused.output_stats().unwrap().produced, 0);
+    assert_eq!(refused.stats().current.staging, 0);
+}
+
+#[test]
 fn real_coff_request_quota_counts_discarded_outputs_and_refuses_before_buffer_allocation() {
     use ace_source_query::resources::{OutputLimits, Resources};
     use cranelift_object::object::{
@@ -446,6 +620,146 @@ mod source_foreign {
     struct Pointer<'a> {
         stored: &'a Stored,
         payload: &'a str,
+    }
+
+    #[test]
+    fn late_mir_and_target_output_refusals_keep_native_bytes_charged_until_their_real_drop() {
+        use ace_source_query::resources::{OutputLimits, Resources};
+        let (_root, provider, environment, caps) = fixture("late-output-free");
+        let source = "fn main() int { return foreign_add(20,22) }";
+        let declaration = "fn main() int { return foreign_add(21,22) }";
+        let mut reference = Session::cold(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            provider.clone(),
+            Target::Native,
+        )
+        .unwrap();
+        let candidate = reference.prepare("main", declaration).unwrap();
+        reference.commit(candidate).unwrap();
+        let wire: serde_json::Value =
+            serde_json::from_slice(reference.artifact_bytes("main").unwrap()).unwrap();
+        let coff = wire["coff"].as_array().unwrap().len();
+        let mir = wire["mir"].as_array().unwrap().len();
+        let facts = reference.frontend().page("main").unwrap().bytes.len();
+        drop(reference);
+        for target_phase in [false, true] {
+            let mut current = Session::cold(
+                source,
+                "source938",
+                "p938",
+                &caps,
+                environment.clone(),
+                provider.clone(),
+                Target::Native,
+            )
+            .unwrap();
+            let original = current.artifact_bytes("main").unwrap().clone();
+            let original_facts = current.frontend().page("main").unwrap().bytes.clone();
+            let resources: Resources = current.frontend().resources().clone();
+            let baseline = resources.stats().current;
+            let budget = facts + coff + if target_phase { mir } else { 0 };
+            resources
+                .enable_output_budget(OutputLimits {
+                    request: budget as u64,
+                    ..Default::default()
+                })
+                .unwrap();
+            ARM_OUTPUT_FREE.with(|armed| armed.set(coff));
+            let minimum = if target_phase {
+                Charge::resident(baseline.resident + facts + coff + mir)
+            } else {
+                Charge::staging(coff)
+            };
+            let (denied, frees, covered) = with_free_category_probe(0, &resources, minimum, || {
+                current.prepare("main", declaration)
+            });
+            let error = denied.err().expect("late request quota was not applied");
+            assert!(error.contains("output reservation"), "{error}");
+            assert_eq!(resources.output_stats().unwrap().produced, budget as u64);
+            assert_eq!(resources.output_stats().unwrap().pending, 0);
+            assert_eq!(frees, 1, "missed the actual native COFF deallocation");
+            assert!(covered, "native COFF lost its real memory fee before deallocation, target_phase={target_phase}");
+            assert_eq!(resources.stats().current.staging, 0);
+            assert_eq!(current.frontend().source(), source);
+            assert!(Arc::ptr_eq(
+                &original,
+                current.artifact_bytes("main").unwrap()
+            ));
+            assert!(Arc::ptr_eq(
+                &original_facts,
+                &current.frontend().page("main").unwrap().bytes
+            ));
+            assert_eq!(current.frontend().query_counters().solver_runs, 2); // cold + failed real edit
+                                                                            // Snapshot production is also terminated in this request. Its
+                                                                            // accepted source/target identities remain the ones held before.
+            assert!(current.snapshot().is_err());
+        }
+    }
+
+    #[test]
+    fn source_startup_wrapper_quota_stops_before_link_tools_and_preserves_accepted_payloads() {
+        use ace_source_query::resources::{OutputLimits, Resources};
+        let (root, provider_bytes, environment, caps) = fixture("source-startup-quota");
+        let mut session = Session::cold(
+            "fn main() int { return foreign_add(20,22) }",
+            "source938",
+            "p938",
+            &caps,
+            environment.clone(),
+            provider_bytes.clone(),
+            Target::Native,
+        )
+        .unwrap();
+        let saved = session.snapshot().unwrap();
+        let source_root: serde_json::Value = serde_json::from_slice(&saved.root).unwrap();
+        let front_root = saved.pages[source_root["frontend"].as_str().unwrap()].len();
+        let artifact = session.artifact_bytes("main").unwrap().clone();
+        let target: serde_json::Value = serde_json::from_slice(&artifact).unwrap();
+        let wrapper =
+            ace_native::emit::emit_wrapper_coff(target["symbol"].as_str().unwrap()).unwrap();
+        let resources: Resources = session.frontend().resources().clone();
+        let prefix = front_root + saved.root.len();
+        resources
+            .enable_output_budget(OutputLimits {
+                request: (prefix + wrapper.len() - 1) as u64,
+                ..Default::default()
+            })
+            .unwrap();
+        let before_tools = session.frontend().work().totals("*", "compile-link-tool");
+        let digest = provider::hash(&provider_bytes);
+        let mut current = || {
+            Ok(CurrentAuthority {
+                foreign: provider::Review::Add.authority(&digest, 1, &caps),
+                runtime_digest: ace_abi::source_foreign::certification_runtime_policy(
+                    Target::Native,
+                ),
+                emitter: Target::Native.identity(),
+            })
+        };
+        let error = session
+            .prepare_publication(Edit::Current, &root.join("refused"), &mut current, None)
+            .err()
+            .expect("source path skipped wrapper output admission");
+        assert!(error.contains("output reservation"), "{error}");
+        assert_eq!(resources.output_stats().unwrap().produced, prefix as u64);
+        assert_eq!(resources.output_stats().unwrap().pending, 0);
+        assert_eq!(
+            session.frontend().work().totals("*", "compile-link-tool"),
+            before_tools
+        );
+        assert!(Arc::ptr_eq(
+            &artifact,
+            session.artifact_bytes("main").unwrap()
+        ));
+        assert_eq!(
+            session.frontend().source(),
+            "fn main() int { return foreign_add(20,22) }"
+        );
+        assert_eq!(resources.stats().current.staging, 0);
     }
 
     #[test]
