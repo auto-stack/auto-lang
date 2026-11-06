@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-956
-status: execution_done
+status: reviewed
 feature_name: Reader Vue Rust backend parity
 created_at: 2026-11-06
 updated_at: 2026-11-06
 plan_revision: 4
-current_step: 4
+current_step: 5
 total_steps: 6
 supersedes_spec_components: [docs/specs/auto-lang/trans/rust-semantic-admission.md, docs/specs/stdlib/design/primitive-type-of.md, docs/specs/stdlib/design/primitive-str-byte-len.md, docs/specs/auto-vm/zip-natives.md]
 new_spec_components: []
@@ -54,7 +54,7 @@ AC01~05均须真实通过；只生成Rust或只过compile不满足行为一致�
 - [x] T02(work) 语言/标准库能力修复与永久原语反例。
 - [x] T03(work) RustAPI实际生成/构建/启动。
 - [x] T04(work) Reader双轨对拍/重启/前端构建。
-- [ ] T05(review) 冻结最终验收与规范复核。
+- [x] T05(review) 冻结最终验收与规范复核。
 - [ ] T06(merge) 完整职责门、合入与安全收尾。
 ## 9. 复审记录
 stage:new | r1 | pass | 用户已明确授权当前范围；next:work，不再请求同范围审批。
@@ -91,3 +91,22 @@ r4补证：UI最终22a925c7（只删除重复清端口）；启动器60项串行
 - Cold04 Reader业务快照d10225b；其后仅时间native实参改先绑定局部，避免VM多参错位（D-956-2）。Rust启动机制/前端/SDK输入未变，冷启动及生产Vue证据按触面复用；最终业务代码已从新源码重新正式生成并Rust构建（135秒），不改生成物。最终Reader64ff06503d359de0b730f4cfbddaf5affe3d0bf8。
 - parity-final：同一最终Reader src/back，Rust实际新exe与VM解释器各46项HTTP操作，42条路由清单、冷重启、28份持久化字节一致；新鲜created_at>0、UUID形状与时钟类型检查成立。仅规范化具名ID/时钟/数据根/导出basename。保留旧ph1黄金值、独立oracle、状态码/错误和原文件内容，未用VM桥/替代后端。VM-expanded-preflight首红定位嵌套native实参错位；02原46操作及严格时钟通过。
 - 工作树链接清理：最初计算路径+Force移除被自动审批策略阻止；未穿透/未递归。改为逐一字面量路径、校验Junction与精确target、无Force无递归的Remove-Item，两个956 deps链接安全移除；vendor两目标均存在，最终Reader guard clean。955旧持有未触碰。五仓guard均clean，清理收尾尚未执行。
+
+
+### 最终复审 r4（2026-11-06，final / pass）
+复审上下文=同一实施会话，未获授权创建独立agent，明确不称独立会话复审；从实际diff、原始结果、行为断言与source manifest重新核对。所有实现已提交，四仓工作树无WIP（Web最后提交bf72baa只收录测试实际已使用的lock内容：sha2/zip与944语义依赖，不改变运行输入）。
+基线：Lang58a1dcb9206a9b747cd18225002557a5b8e60fd8/base a7863181fe213a548da4be9a43185d9c0f2f9ad0；Web bf72baa（父0550aadd8be9362c89487ffcc0864842c13b85d5）/base37d32c22d1a4e7744710bf8f02f6c74d5a96c897；UI22a925c72d7620b929c947ff2bbddead13fda783/baseeff9ece3883adb4bd958135ca485a31caf7efdf1；Reader64ff06503d359de0b730f4cfbddaf5affe3d0bf8/base4a2c748e51d754ecd700c97beffcc56522a7f5e9。完整变更文件SHA清单40323029a8808f625c38c38b97dda9cc716ca5f3723da7040d96b7194e191740（scope/frozen-source-manifest.json）。
+
+| AC | 结论与证据 |
+|---|---|
+| AC01 | PASS：完整API原生build，42route静态核验；默认CLI冷build126s、原生发布镜像监听/应用cwd资产；Vue书架/阅读页正文实际可见。generated Rust业务直接调用，无VM执行桥或scaffold。 |
+| AC02 | PASS：静态未知symbol仍拒并打印符号/模块；type_of shadow/arity保持，JSON null/值域/i64-u64/数组object按VM；ZIP共享纯Rust，预算/UTF8/无覆盖失败保持；字节索引迁移已文档化。最终原语与职责门均有永久断言。 |
+| AC03 | PASS：最终源实际46case/重启/28文件字节对拍；原错误/状态/UTF16锚/旧ph1独立黄金值不归一；UUID形状、整数正创建时钟先检查。Rust与VM normalized文件各SHA d8418ca331bf16b5364a2169e0cb21499043f4a0dde56e6d51099ef10d98f16d，parity-final.log SHA c127ef5ac76c14b0f6762d707f75b8d73b0323a3dcc90a7d4ffabf49e0d9241d。 |
+| AC04 | PASS：永久HTTP/cold/browser入口，实际strict auto build -r vue成功；首次红及补依赖/路由脚本修正完整保留。启动器Cargo失败不复用旧exe负控PASS，浏览器pageerror空。 |
+| AC05 | PASS：SD01..05与四仓canonical diff逐项一致，无legacy ledger写入，无生成Rust补丁/lenient/VM替代。复审限度及既有红D-956-1/VM边界D-956-2已具名，不将外围红算绿。 |
+
+复审查验：T01完整11模块缺口不漏/不删inflatex；JSON词法null槽与try嵌套返回、同名参数跨函数、两路径捕获顺序、编译失败旧镜像、cold>120s、相对资产cwd、时钟正整数/双轨原文件均有对照。finally/外层break-continue、不透明Future/native UI引擎非本次新增承诺，Spec明确边界，无未批准功能延期。
+门禁复用：frozen-groups-02实际a2r/a2r-std/stdlib/vm/api/http/auto-generation-core完整组并集1655PASS、462原排除，not_run=0/无identity漂移。选择对应实际转译、运行库、VM ABI、API/HTTP和跨模块组装触面；未改AST/ACE内部实现，不额外将实验组混入。本次UI启动/Reader时间绑定修复未改该并集输入，可复用。发现/准备18.35+1.10+17.08s，执行215.56+7.82+2.11s，整命令279.82s；额外core null helper1PASS。结果SHA a946742deb1782f0c73d3ca2b68d5ca28d13593f1be44af322665862e03bf258；core收据4c2cb1fc092c166f0a9da685c30cd3e2c210243602a792542105fb3410f9a417。
+Web53PASS/1ignored；UI schema7PASS，compiler1144PASS/3基线同红/2ignored，launcher串行58PASS/1基线同红/1ignored。UI启动器最后删除重复清端口不改变其受测构建/发布/运行机制；cold04实测最终UI22a925c7，关闭F04/F05。编译保留既有warning不隐藏，无新增未处理warning类。源码diff --check四仓全绿。
+关键证据hash：cold04 live e193bccff4ad85b66dc37aaf889884f762372fd3c5ba9f1d2e1d1a2359a483dc，69输入manifest27ab3323efd4d8e0e0ba342ef604b59d1a7755ae3222c2c9a4eab5fa758dbb13；browser03 e4802e54073ef898dbc2ab1614da0b63a7b3c1a9a48b92d781061be69367f853，截图d131908d8366d6ac1f36eea58612df12471cfd51662f78f53cf8cfa456c08553；Rust最终build01810ebaaf7ed9ac663b904e8cbe1af02775022edcf750df71408da56aa0e949；productionVue日志d0737712a66b39006aa8fbefa4b53303b0ba3555b554f2e14c5d4d9bed7c810d。
+next=merge：允许按身份等价复用上述merge-owned职责并集，仍须实际ff-only、canonical读回、刷新默认工具、归档与guard清理；本段不冒报已合入/已清理。
