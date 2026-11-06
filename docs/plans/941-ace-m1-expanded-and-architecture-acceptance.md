@@ -660,6 +660,20 @@ T17后续：收原完整union真实终态/原十源20实际值与具名trap，�
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:19 | from:work | to:work | status:executing1/17 | outcome:needs_fix | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a8cc58bd368dfcdccecae000a2877086e64718d0 | next:work T17（首先轮询原活session50141；随后刷新实际身份/证据；其余原941完整目标保持）
 
+### 2026-11-06 T17同一冻结并集继续：source+syntax已实际515绿（goal第20轮）
+
+上一轮T16修复/13语法回归/source383终态为progress。本轮接续**原session50141**，没有重开或覆盖结果。原64MiB流式bench活进程PID33416持续CPU/约10..13MiB private，最终按原负载/200查询/原预算正常退出；不是超时或被取消。
+
+- `conditional-941-frozen-union/0/result.json`：ace-source **383PASS、1原条件排除、not_run=[]**，Job执行175507.6743ms，SHA=`229047f85f25b80b5fb1e85111041642d5d9367ce713f62aa217ddbb43223379`。
+- `conditional-941-frozen-union/1/result.json`：ace-syntax **132PASS、0排除、not_run=[]**，Job执行**624447.4833ms**，SHA=`7233b4e03f2788b80f135b60d415bd9498ca66c471cf4989090f946c09063149`；原64MiB外存构建/恢复小查询压力保完整，不据运行长而忽略/减载。当前已真实515项执行通过，不能加排除项充PASS。
+- 现在同一固定并集处于ace-av阶段，nextest PID36136，已观察原512修订与512编辑/GC/restart sentinel相继实际运行，末次活子PID9008（v07_full_storage_axis_512_edits_gc_restart_sentinel，CPU>121s、private约76MiB），Python35700/session50141仍活。AV尚无终态，不声称其测试绿；native与文字20随后，原union不能重启。无实现写入，code仍a8cc58bd368dfcdccecae000a2877086e64718d0、树clean。
+- 为随后实际文字20捕获**执行前**11依赖快照：当时union还在syntax、尚无group4 run记录，scope/conditional-941-text-source-current/dependencies-before.json SHA=`eef3ee9198e7e2a2dfea5cab263598c918a2e9867c8fdd6babf01014a30e38fe`。执行后仍须逐件比较/当前重hash；若中途helper/tool漂移必须具名刷新，不能仅改SHA冒原执行。
+- 只读重核预算source pins与ARCH native-module source pins零漂移；938仍executing6/13、939仍drafting0/14，不冒正式D。已在统一scope准备当前36cert与7正式Case组69项、/2 identity-exporter和parent-inventory的刷新脚本/显式命令；**未在现正式压力采样期间并发启动**，等原union真实终态再依次执行。新工具五SHA均漂移的事实保持，修前36cert/旧100PASS2FAIL预览不冒当前。
+
+T16保持完成，T17仍在执行，941 r2 **1/17**，无新增用户决定或权限等待。新phase原冻结eq/值1与十源字节/独立oracle不变；整包其余required/原规模/legacy38/938939/机制证明与最终review/merge/清理原义务保持。
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:20 | from:work | to:work | status:executing1/17 | outcome:needs_fix（T17真实活运行，非新失败） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a8cc58bd368dfcdccecae000a2877086e64718d0 | next:work T17（轮询原session50141/Python35700，当前AV；全部终态后当前身份刷新）
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
