@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 0
+current_step: 1
 total_steps: 17
 ---
 
@@ -249,7 +249,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-13 | work | T-12 | SD/coverage守恒/全部owner接口/健康冻结/遗留cert与新缺陷交接；明确系统交付与M1是否可签，不能藏in-contract未执行；AC-11 | [ ] |
 | T-14 | review | T-01..13及T-16/17完成，停止实现写入 | 同树独立上下文重建source→producer→consumer→oracle→gate全链/反控/所有SD与债，不采信摘要；AC-12，V-18 | [ ] |
 | T-15 | merge | T-14 pass与后续合入指令 | 冻结职责并集/漂移复验、SD沉淀/主线读回/归档、所有输出scope与树guard清理；AC-13；M1未绿不改成绿 | [ ] |
-| T-16 | work | 用户r2直接加phase授权；§5.8；当前941唯一树 | 确认生产CST/条件诊断与旧oracle共享歧义，修复既有条件/body-vs-Ctor边界并补whole/fragment与合法/非法Ctor永久回归；AC-14，V-19/20 | [ ] |
+| T-16 | work | 用户r2直接加phase授权；§5.8；当前941唯一树 | 确认生产CST/条件诊断与旧oracle共享歧义，修复既有条件/body-vs-Ctor边界并补whole/fragment与合法/非法Ctor永久回归；AC-14，V-19/20 | [x] |
 | T-17 | work | T-16，实际provider/grammar/工具身份冻结 | 原十源20Case/同源Rust-C认证逐oracle重验与原失败闭环；完整ace-source及实际AV/native消费者职责并集、必要ace-syntax及身份变化刷新，SD-07；AC-03/04/09/14，V-21 | [ ] |
 
 下一入口T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；按T-01/T-02继续，尚未关闭的验收保持未完成。
@@ -639,6 +639,26 @@ stage: work | plan_id:PLAN-941 | plan_revision:r1→r2授权修订在后 | outco
 stage: new | plan_id:PLAN-941 | plan_revision:r2 | outcome:pass | changed:T16/T17/AC14/V19..21/SD07及F04特定S/N/X授权 | baseline:4cd5782d1 | worktree:D:/autostack/.wt/lang-941/auto-lang | next:work T16→T17→原941
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:18 | from:work→new（用户明确新增phase） | to:work | status:executing0/17 | outcome:needs_fix | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:4cd5782d1 | next:work T16→T17→原941（F04内修已授权，无待用户决定）
+
+### 2026-11-06 r2 F04生产语法与投影修复实现（goal第19轮，T16完成/T17在跑）
+
+用户r2内修授权已生效，无新计划/编号/树。唯一941树提交 **a8cc58bd368dfcdccecae000a2877086e64718d0**，code clean；**T16完成，current_step1/17**，T17完整消费者并集/当前身份数据刷新尚未完成，F04尚未关闭。
+
+- 根因实际生产是共享auto-source grammar `ctor-expr`在`ident {`左花括号cut提交；`compile_text_record_source→compile_parts_with→parse_program_with→CST`不是旧手写parser。新record/text-record/collections/closures条件用独立condition Pratt/rule族：bare guard的body brace不再成为ctor；真正带fields的裸具名构造、括号内构造/嵌套实参仍保留，普通expr原ctor cut/空ctor历史怪癖不改。while保原Core域，其余profile仍按原规则拒while、条件循环用for。
+- 条件规则节点按具名kind映射进入**同一**AST投影帧机，callee/方法调用/后缀分类及结构诊断路径一致，不新增parser/consumer源重写。原诊断叶walker与仅供差分的手写oracle增加同一条件上下文；非法构造残留Ctor frame的旧oracle unreachable改为与既有production诊断一致的source.syntax，新增反例实测不panic。sourcecap身份**ac-source-front/4**、共享grammar revision**3**，canonical换GrammarId；不复用旧cap/grammar身份，现旧worker/cert/preview仅历史，待T17原始数据刷新。
+- 新三个永久命名`source_cst_927::conditional_941_*`：四recordal profile×bare变量/比较/一元/调用/括号×空/非空body（40组合）与合法裸ctor/括号ctor/实参ctor（12组合）；record/text-record条件for/free片段、whole方法/MethodFragment、原while排除与三类非法构造源诊断/span及AST/旧oracle差分。新增具体AST不为Ctor断言，不仅两parser相等。现T16已覆盖原phase的多消费者解析机制，真实执行结果仍由T17证明。
+- 基线两新测真正执行**0PASS/2FAIL**（修复前），scope/conditional-941-baseline-compiled/results.json SHA=`62ef1157e9e10585dcefebe3a323e2b330787fb0607c1d70ab7cf72a16fe6fc3`、3.7856365s。更早首编译因测试误写AST枚举RecordCtor（实际CtorNamed）失败，不充语言反例；修正测试后才有上述真实red。
+- 第一版修复语法把alt和普通steps混同rule，被grammar编译器明确拒（source.infra），按现有步骤profiles门控修正；随后两定向测绿。完整差分发现3/567原语料AST在条件方法call分类漏识别新别名，及caps旧常量断言红；通过统一expression kind规范化修正所有callee/投影路径，按新实际身份更新三处caps断言，原567语料/70edge不删。新增非法ctor测试另击中旧oracle的Ctor-frame panic，按生产既有typed syntax拒绝修复后绿。这些失败全保原scope，未调低oracle/样本。
+- 最终`cargo t ace-source-syntax-927 --out <scope>/conditional-941-final-syntax` **13/13 PASS**、5.8016579s，results SHA=`c5bde3e89da0f01a9ef9e0521f6577e18fe84142bc8295ba71a92d018c63b3e9`；内含原完整差分/edge/片段/typed预算探针与新3测。旧first_lex_fact dead_code warning1保持已知baseline，无新增compiler warning。9文件rustfmt/diff-check完成；SD07的source-frontdoor.md修复知识仅准备在worktree，未提前落master Spec。
+- 冻结a8cc后已启动一次明确完整phase并集：`cargo t ace-source ace-syntax ace-av ace-native case-ace-m1-text-q4-941 --out <scope>/conditional-941-frozen-union`，含原全部样本/平台/ignore；新grammar变更因此**实际补ace-syntax**，没有按“纯parser”豁免真实下游。原语义source/期望/十源Case未改，AUTO_CASE_WIRE_EVIDENCE=1。工具release准备完成（AV约74s、ac51.43s等），现在原nextest ace-source执行中；尚无最终PASS/FAIL，不能填绿。具体活句柄unified exec **session_id=50141**，Python PID35700，nextest PID46300，最后实际检查均活；恢复时先轮询同句柄/原results，不因长时间无输出重开。
+
+T17后续：收原完整union真实终态/原十源20实际值与具名trap，再以当前worker/GrammarId/caps/runtime/source重新捕获及严格准入首链/CT/text受影响数据；现旧预览/36cert不冒当前有效。完整原941其余T01..15照旧，最终独立review仍待T14，不以phase自测顶review。
+
+第19轮续核：完整`ace-source`已真实终态**383/383 PASS，1原条件排除，not_run=[]**，原nextest Job执行175507.6743ms；未截断深4096/8192压力（实际在跑的deep_unclosed案例约1.15GB private，沿原nextest资源/截止退出，未人为强杀）。当前`ace-syntax`原64MiB streaming压力仍在执行：session50141/Python35700继续活，nextest现PID42064，其子PID33416为`syntax_budget::performance::syntax_budget_64mib_streaming_small_queries`，不是已停或可随意重跑。最终整union尚未终态。
+
+重核当前五个工具av/native/syntax/bridge/a2x的真实SHA均不同于第18轮绑定，原证据不能冒当前；对账scope/conditional-941-identity-drift.json SHA=`1624c1e36f9d5a945c2cfce959426f679a6534f528c93f97457a3d77e88c650e`。旧100PASS/2FAIL/784UNOBSERVED和36cert是修前有效历史；T17要在新工具下重建/准入，当前无新版组合签章。sourcefrontdoor.md SD07仅worktree候选；未动main代码。
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:19 | from:work | to:work | status:executing1/17 | outcome:needs_fix | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a8cc58bd368dfcdccecae000a2877086e64718d0 | next:work T17（首先轮询原活session50141；随后刷新实际身份/证据；其余原941完整目标保持）
 
 ## 10. 待澄清事项
 
