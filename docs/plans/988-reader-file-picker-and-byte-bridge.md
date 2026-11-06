@@ -319,6 +319,12 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 
 - stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 10 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-988/auto-lang + auto-ui | commit: language7a80083fc1382fd72a8049c996e1eec66d74d158 / UIb0d59400a1c302c040e07c9e4938a1c13b34d937 | review_receipt_commit: 8dd0da164ef2b2ed52f7148636ad9a0fd575f810 | next: diagnosis checkpoint then third bounded repair F988-R3-01。R2原缺陷已独立闭合，R3新反例改变下一行动，本轮有实证进展；两次repair已完成，下一次为第三次（非第四次）。不因review次数放行空推断回归，不改原合同。树干净且SHA未漂移，review进程全部终态，根接回写权。上层008→009完整目标仍未完成。
 
+### 2026-11-06 R3修复前诊断checkpoint
+
+- F988-R3-01原因已核：7a80083fc的Asn分支把“不是字面[]”等同于“产生元素约束”，没有追踪RHS仍来自无注解空声明的事实。前轮只测非空数组/typed函数返回，遗漏了无约束别名传递及循环关系；声明槽归属本身不能证明元素约束存在。
+- 调整：分离字节消费集合、真实元素约束种子、声明间赋值关联。空声明之间赋值只建立关联，沿关联传播已有push/typed或非空RHS的约束到固定点；无种子的空值链/环保持具体空列表入口。直接空字面及其clone不凭语法形态制造种子；typed空列表/非空值/函数返回继续作为Rust可确定的类型来源，不一律禁用赋值识别。
+- 验证：先重放R3 A/B红，再保留它们及非空别名、typed空来源、链/环、先空赋值后push等源级控制；同时回放原36例中的受影响路径。观察原样Rust compile/run、真实字节及首次写阶段，不以脚本exit0或总数替代。此为第三次有界repair；若该修复后复审仍失败，按技能上限诊断交回，不启动第四次自动修复。目标、验收、仓范围不变。
+
 ## 10. 待澄清事项
 
 无待用户范围决定。API具体返回形态/native ID/依赖版本由T-00有界核查；若出现超授权架构改造才另提决定。真实交互证据需要可用桌面，不能以模拟provider替代。
