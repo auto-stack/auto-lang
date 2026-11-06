@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-956
-status: reviewed
+status: archived
 feature_name: Reader Vue Rust backend parity
 created_at: 2026-11-06
 updated_at: 2026-11-06
 plan_revision: 4
-current_step: 5
+current_step: 6
 total_steps: 6
 supersedes_spec_components: [docs/specs/auto-lang/trans/rust-semantic-admission.md, docs/specs/stdlib/design/primitive-type-of.md, docs/specs/stdlib/design/primitive-str-byte-len.md, docs/specs/auto-vm/zip-natives.md]
 new_spec_components: []
@@ -55,7 +55,7 @@ AC01~05均须真实通过；只生成Rust或只过compile不满足行为一致�
 - [x] T03(work) RustAPI实际生成/构建/启动。
 - [x] T04(work) Reader双轨对拍/重启/前端构建。
 - [x] T05(review) 冻结最终验收与规范复核。
-- [ ] T06(merge) 完整职责门、合入与安全收尾。
+- [x] T06(merge) 完整职责门、合入与安全收尾。
 ## 9. 复审记录
 stage:new | r1 | pass | 用户已明确授权当前范围；next:work，不再请求同范围审批。
 ## 10. 待澄清事项
@@ -133,3 +133,7 @@ canonical_verified=source读回通过；Git blob全部与审定文件相同，�
 默认工具已在主UI仓用cargo build --offline --locked -p auto-ui-tools --bin auto-ui-tool真实重建，exit0，159秒。默认发现序由auto-man开发owner target/debug优先（无环境覆盖）；D:/autostack/auto-ui/target/debug/auto-ui-tool.exe SHA `580294fa64a1bd83c05e7b19990714b01c87822ec53598c68d9734cfc2261048`。真实I-TOOL describe返回auto-ui-tool/version1，EOF exit0；该常规已安装工具保留供用户auto run使用，不是计划专用副本。未写main源码WIP；其他人的docs/未跟踪文件全部保留。
 archived=代码/规范已交付；本Plan将移docs/plans/archive/并提交，cleaned尚待实际删除后读回。所有五仓移除前guard clean；scope还有734个pnpm/vendor内部junction，已验证链接路径与target均在唯一scope中、用无递归无Force操作摘除链接本身，随后scope guard clean（清单SHA e7c10fc0f7524fb4a06d248dff0b1222ed82480980adef747d3da8bf1eefbf57）。scope删除前统计100025文件/74033368206字节，非精确删除量（默认build日志可能增长）。本计划无未解决材料hold；D-956-1/2以本Plan与债务记录永久摘要足够。955旧持有与其他计划目录完全未操作。
 收尾目录对账：所有生成workspace/target、consumer副本、冷运行、浏览器依赖/二进制、baseline归档/target、probe/HTTP fixtures/日志均在D:/autostack/plan-artifacts/plan-956；常规编译中间件另在唯一五仓worktree内，随tree删除。此前跨仓构建传入的同scope target也在内；无另建盘符/外部发布目录。正常主仓默认工具见上，保留其既有owner输出。周期gate因955在last_covered953后交付而到期；本次清理完成后交auto-plan-regress，尚未计已跑。
+
+
+cleaned=2026-11-06实际完成：五仓git worktree remove成功，四个已合入临时branch -d成功，空group目录消失；scope guard clean后不带Force的Remove-Item -Recurse完整删除，D:/autostack/plan-artifacts/plan-956不存在。最初将branch清理与强制递归删除合为一命令被自动审批策略拒，整条零执行；随后拆开已合入branch安全删除及无Force的已检查scope删除成功。无重试旧955持有、无穿透链接、无材料hold。所有关键收据已在本Plan，永久代码/测试/规范留主线。收尾核查global registry未见956条目，按真实磁盘状态补deleted-at-merge收据，不凭旧登记声称留存；未改其他scope条目。
+archived=本文件实际git mv到docs/plans/archive/并提交的终态交付；周期到期门作为独立batch收据继续，不把未跑部分计PASS。
