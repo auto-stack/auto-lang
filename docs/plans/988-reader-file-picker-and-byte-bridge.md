@@ -317,6 +317,8 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 - repair diff --check通过；core既有131 warnings，无新warning证据。原a2r394运行早于最后赋值扩展，review未将其冒记当前全门通过。最终冻结完整组并集仍**vm+shim-metadata+a2r+http**，必须由merge在最终复审通过后核身份/复用与必要补跑；现在已知fail不叠整套门。未改UI/VM/HTTP/metadata的有效证据继续保留，8个原外部材料仍由merge负责清理。
 - 状态回到**executing 2/6**：T-00/T-01保留，T-02/T-03重开，T-04/T-05未完成。实现/共享Plan写权交回根work；此记录不添加goal路由，也不替上层决定后续有界修复编排。
 
+- stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 10 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-988/auto-lang + auto-ui | commit: language7a80083fc1382fd72a8049c996e1eec66d74d158 / UIb0d59400a1c302c040e07c9e4938a1c13b34d937 | review_receipt_commit: 8dd0da164ef2b2ed52f7148636ad9a0fd575f810 | next: diagnosis checkpoint then third bounded repair F988-R3-01。R2原缺陷已独立闭合，R3新反例改变下一行动，本轮有实证进展；两次repair已完成，下一次为第三次（非第四次）。不因review次数放行空推断回归，不改原合同。树干净且SHA未漂移，review进程全部终态，根接回写权。上层008→009完整目标仍未完成。
+
 ## 10. 待澄清事项
 
 无待用户范围决定。API具体返回形态/native ID/依赖版本由T-00有界核查；若出现超授权架构改造才另提决定。真实交互证据需要可用桌面，不能以模拟provider替代。
