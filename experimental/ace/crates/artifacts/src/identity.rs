@@ -19,18 +19,49 @@ pub fn domain_hash(family: &str, parts: &[&[u8]]) -> String {
 /// Borrowed parts preserve the original domain/length framing without a
 /// second owned representation of all fingerprint bytes or a refs array.
 fn domain_hash_iter<'a>(family: &[&str], parts: impl IntoIterator<Item = &'a [u8]>) -> String {
-    let mut h = Hasher::new();
-    h.update(crate::HASH_ALGO.as_bytes());
-    h.update(&[0]);
-    for piece in family {
-        h.update(piece.as_bytes());
-    }
-    h.update(&[0]);
+    let mut h = DomainHasher::new(family);
     for p in parts {
-        h.update(&(p.len() as u64).to_le_bytes());
-        h.update(p);
+        h.part(&[p]);
     }
-    h.finalize().to_hex().to_string()
+    h.finish_prefixed("")
+}
+
+/// One domain-framed logical part may consist of borrowed segments. The
+/// length prefix covers their concatenation, exactly as an owned part did.
+pub(crate) struct DomainHasher(Hasher);
+impl DomainHasher {
+    pub(crate) fn new(family: &[&str]) -> Self {
+        let mut h = Hasher::new();
+        h.update(crate::HASH_ALGO.as_bytes());
+        h.update(&[0]);
+        for piece in family {
+            h.update(piece.as_bytes());
+        }
+        h.update(&[0]);
+        Self(h)
+    }
+    pub(crate) fn part(&mut self, pieces: &[&[u8]]) {
+        let size = pieces
+            .iter()
+            .try_fold(0usize, |n, p| n.checked_add(p.len()))
+            .expect("domain hash part size overflow");
+        self.0.update(&(size as u64).to_le_bytes());
+        for piece in pieces {
+            self.0.update(piece);
+        }
+    }
+    pub(crate) fn finish_prefixed(self, prefix: &str) -> String {
+        let hex = self.0.finalize().to_hex();
+        let mut result = String::with_capacity(
+            prefix
+                .len()
+                .checked_add(hex.len())
+                .expect("identity size overflow"),
+        );
+        result.push_str(prefix);
+        result.push_str(hex.as_str());
+        result
+    }
 }
 
 macro_rules! id_type {

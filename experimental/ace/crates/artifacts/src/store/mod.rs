@@ -33,13 +33,14 @@
 //! and refuses a mismatched address (review R1 F-04).
 
 use crate::codec::{frame_chunk, unframe_chunk, ChunkKind, CodecError};
-use crate::identity::{ArtifactId, ChunkId, QueryKey, RefKind};
+use crate::identity::{ChunkId, QueryKey, RefKind};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, UNIX_EPOCH};
 
+mod artifact_identity;
 pub mod gc;
 
 pub use gc::{gc_config_default, run_gc, GcConfig, GcReceipt, GC_HIGH, GC_LOW};
@@ -580,23 +581,7 @@ impl ManagedStore {
 
     /// Deterministic artifact content identity.
     fn artifact_id(req: &PutRequest, chunk_id: &str) -> String {
-        let mut parts: Vec<Vec<u8>> = vec![
-            req.layer.as_bytes().to_vec(),
-            req.key.hash().into_bytes(),
-            chunk_id.as_bytes().to_vec(),
-            format!("{:?}", req.kind).into_bytes(),
-        ];
-        let mut edges: Vec<String> = req
-            .edges
-            .iter()
-            .map(|(a, k)| format!("{}:{}", a, k.as_str()))
-            .collect();
-        edges.sort();
-        for e in edges {
-            parts.push(e.into_bytes());
-        }
-        let refs: Vec<&[u8]> = parts.iter().map(|p| p.as_slice()).collect();
-        ArtifactId::from_parts(&refs).0
+        artifact_identity::artifact_id(req, chunk_id)
     }
 
     /// Staging/temp budget (§5.4): in-flight staging above the cap is a
