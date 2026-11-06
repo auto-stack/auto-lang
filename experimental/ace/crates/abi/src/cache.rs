@@ -174,6 +174,28 @@ struct CObjectEntry {
     dir_listings: Vec<(String, Vec<String>)>,
 }
 
+struct Base64Ref<'a>(&'a [u8]);
+impl serde::Serialize for Base64Ref<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(&base64::display::Base64Display::new(
+            self.0,
+            &base64::engine::general_purpose::STANDARD,
+        ))
+    }
+}
+#[derive(serde::Serialize)]
+struct CObjectEntryRef<'a> {
+    v: u32,
+    source: &'a str,
+    src_dir: &'a str,
+    include_dir: &'a str,
+    target: &'a str,
+    toolchain: &'a str,
+    obj_b64: Base64Ref<'a>,
+    deps: &'a [(String, String)],
+    dir_listings: &'a [(String, Vec<String>)],
+}
+
 enum CacheBytes {
     Legacy(Vec<u8>),
     Managed(std::sync::Arc<Vec<u8>>),
@@ -907,26 +929,65 @@ where
     gen_lines.sort();
     gen_lines.dedup();
     let generation_hash = crate::semref::blake3_hex(gen_lines.join("\n").as_bytes());
-    let entry = CObjectEntry {
-        v: 4,
-        source: source_identity.clone(),
-        src_dir: src_dir.clone(),
-        include_dir: inc_dir_s.clone(),
-        target: target.clone(),
-        toolchain: toolchain.clone(),
-        obj_b64: base64::engine::general_purpose::STANDARD.encode(&obj),
-        deps: hashed,
-        dir_listings,
+    let (payload, encoded_allocation) = if let Some(resources) = resources {
+        let entry = CObjectEntryRef {
+            v: 4,
+            source: &source_identity,
+            src_dir: &src_dir,
+            include_dir: &inc_dir_s,
+            target: &target,
+            toolchain: &toolchain,
+            obj_b64: Base64Ref(obj.as_ref()),
+            deps: &hashed,
+            dir_listings: &dir_listings,
+        };
+        let size = ace_foreign_contract::codec::json_size(&entry, 64 << 20).map_err(|e| {
+            StoreError::ResourceExhausted(format!("C cache entry encode size: {e}"))
+        })?;
+        // The owned JSON payload and the original store's one framed Vec
+        // coexist. CAS staging copies are files (the existing store owns its
+        // separate atomic disk gate), not another in-memory payload clone.
+        let copies = size
+            .checked_add(ace_artifacts::codec::CHUNK_HEADER_LEN)
+            .and_then(|n| n.checked_mul(2))
+            .ok_or_else(|| {
+                StoreError::ResourceExhausted("C cache entry encode size overflow".into())
+            })?;
+        let allocation = resources
+            .reserve(ace_source_query::resources::Charge::io(copies))
+            .map_err(|e| StoreError::ResourceExhausted(format!("C cache entry encode: {e}")))?;
+        let payload = ace_foreign_contract::codec::encode_json_bounded(&entry, 64 << 20)
+            .map_err(|e| StoreError::Internal(format!("C cache entry encode: {e}")))?;
+        (payload, Some(allocation))
+    } else {
+        let entry = CObjectEntry {
+            v: 4,
+            source: source_identity.clone(),
+            src_dir: src_dir.clone(),
+            include_dir: inc_dir_s.clone(),
+            target: target.clone(),
+            toolchain: toolchain.clone(),
+            obj_b64: base64::engine::general_purpose::STANDARD.encode(&obj),
+            deps: hashed,
+            dir_listings,
+        };
+        (
+            serde_json::to_vec(&entry).map_err(|e| StoreError::Internal(e.to_string()))?,
+            None,
+        )
     };
-    let payload = serde_json::to_vec(&entry).map_err(|e| StoreError::Internal(e.to_string()))?;
-    match store.put_artifact(PutRequest {
+    let stored = store.put_artifact(PutRequest {
         layer: LAYER_OBJECT_V01.id,
         key: c_object_key(&source_identity, &generation_hash),
         kind: ChunkKind::Object,
         payload,
         edges: vec![],
         project: None,
-    }) {
+    });
+    // PutRequest and the store's framed buffer are gone on every outcome.
+    // Release their fee before a conflict re-discovers the canonical object.
+    drop(encoded_allocation);
+    match stored {
         Ok(_) => Ok((obj, false)),
         Err(StoreError::Conflict { .. }) => {
             // Same generation identity, different bytes: cl objects

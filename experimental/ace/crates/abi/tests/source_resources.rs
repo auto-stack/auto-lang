@@ -400,6 +400,217 @@ mod source_foreign {
     }
 
     #[test]
+    fn c_cache_encoded_payload_precharges_coexistence_and_preserves_legacy_wire_bytes() {
+        use ace_artifacts::{
+            codec::CHUNK_HEADER_LEN,
+            store::{ManagedStore, StoreError},
+        };
+        use ace_source_query::resources::Resources;
+        let (root, legacy, bytes, artifacts) = large_cache_fixture("c-cache-encoded-write");
+        let source = root.join("provider.c");
+        let header = root.join("source_foreign938.h");
+        let object = root.join("provider.obj");
+        let legacy_id: String = legacy
+            .db()
+            .query_row(
+                "SELECT artifact_id FROM artifacts WHERE layer=?1",
+                [ace_abi::cache::LAYER_OBJECT_V01.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let expected = legacy
+            .get_artifact_by_id(&legacy_id)
+            .unwrap()
+            .unwrap()
+            .payload;
+        let store = ManagedStore::open(&root.with_extension("resource-store")).unwrap();
+        let resources = Resources::default();
+        let pressure = resources
+            .reserve(Charge::io((8 << 20) - (3 << 20)))
+            .unwrap();
+        let (rejected, copies) = measured_at(1 << 20, || {
+            ace_abi::cache::produce_c_object_with_resources(
+                &store,
+                &source,
+                &root,
+                &artifacts,
+                &resources,
+                || {
+                    Ok((
+                        ace_abi::cache::read_c_object_file(&object, &resources)?,
+                        vec![header.clone()],
+                    ))
+                },
+            )
+        });
+        assert!(
+            matches!(rejected, Err(StoreError::ResourceExhausted(ref message)) if message.starts_with("C cache entry encode:"))
+        );
+        assert_eq!(
+            copies, 1,
+            "rejected write allocated more than the admitted object-file input"
+        );
+        assert_eq!(
+            store
+                .db()
+                .query_row("SELECT count(*) FROM artifacts", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(resources.stats().current.resident, 0);
+        assert_eq!(resources.stats().current.io, (8 << 20) - (3 << 20));
+        drop(pressure);
+        let bound = (expected.len() + CHUNK_HEADER_LEN) * 2;
+        let (result, hits, admitted) =
+            with_charge_probe(expected.len(), &resources, Charge::io(bound), || {
+                ace_abi::cache::produce_c_object_with_resources(
+                    &store,
+                    &source,
+                    &root,
+                    &artifacts,
+                    &resources,
+                    || {
+                        Ok((
+                            ace_abi::cache::read_c_object_file(&object, &resources)?,
+                            vec![header.clone()],
+                        ))
+                    },
+                )
+            });
+        let (output, hit) = result.unwrap();
+        assert!(!hit);
+        assert_eq!(
+            hits, 1,
+            "did not observe the exact-sized payload allocation"
+        );
+        assert!(
+            admitted,
+            "encoded payload was allocated before coexistence admission"
+        );
+        assert_eq!(output.as_slice(), bytes.as_slice());
+        assert_eq!(resources.stats().current.io, 0);
+        assert_eq!(resources.stats().current.resident, output.capacity() + 40);
+        let id: String = store
+            .db()
+            .query_row(
+                "SELECT artifact_id FROM artifacts WHERE layer=?1",
+                [ace_abi::cache::LAYER_OBJECT_V01.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            store.get_artifact_by_id(&id).unwrap().unwrap().payload,
+            expected,
+            "streamed base64/borrowed fields changed the original v4 wire"
+        );
+        drop(output);
+        let frame_store = ManagedStore::open(&root.with_extension("frame-store")).unwrap();
+        let (framed, hits, admitted) = with_charge_probe(
+            expected.len() + CHUNK_HEADER_LEN,
+            &resources,
+            Charge::io(bound),
+            || {
+                ace_abi::cache::produce_c_object_with_resources(
+                    &frame_store,
+                    &source,
+                    &root,
+                    &artifacts,
+                    &resources,
+                    || {
+                        Ok((
+                            ace_abi::cache::read_c_object_file(&object, &resources)?,
+                            vec![header.clone()],
+                        ))
+                    },
+                )
+            },
+        );
+        let (framed, hit) = framed.unwrap();
+        assert!(!hit);
+        assert_eq!(
+            hits, 1,
+            "did not observe the original store's framed allocation"
+        );
+        assert!(
+            admitted,
+            "encoded payload fee was released before the store framed it"
+        );
+        assert_eq!(framed.as_slice(), bytes.as_slice());
+        drop(framed);
+        let (cached, hit) = ace_abi::cache::produce_c_object_with_resources(
+            &store,
+            &source,
+            &root,
+            &artifacts,
+            &resources,
+            || panic!("encoded object did not hit the original cache"),
+        )
+        .unwrap();
+        assert!(hit);
+        assert_eq!(cached.as_slice(), bytes.as_slice());
+        drop(cached);
+        assert_eq!(resources.stats().current.resident, 0);
+        assert_eq!(resources.stats().current.io, 0);
+    }
+
+    #[test]
+    fn c_cache_conflict_releases_finished_encoding_before_rediscovering_the_canonical_object() {
+        use ace_artifacts::store::ManagedStore;
+        use ace_source_query::resources::Resources;
+        let (root, _legacy, bytes, artifacts) = large_cache_fixture("c-cache-encode-conflict");
+        let source = root.join("provider.c");
+        let header = root.join("source_foreign938.h");
+        let store = ManagedStore::open(&root.with_extension("conflict-store")).unwrap();
+        let resources = Resources::default();
+        let mut produced = 0;
+        let (canonical, hit) = ace_abi::cache::produce_c_object_with_resources(
+            &store,
+            &source,
+            &root,
+            &artifacts,
+            &resources,
+            || {
+                produced += 1;
+                // Controlled interleaving: another caller has published the
+                // valid generation after our discovery but before our put.
+                let (_, already) =
+                    ace_abi::cache::produce_c_object(&store, &source, &root, &artifacts, || {
+                        Ok((bytes.clone(), vec![header.clone()]))
+                    })?;
+                assert!(!already);
+                // A COFF timestamp difference reproduces the original legal
+                // same-generation race without changing source or closure.
+                let mut contender = bytes.clone();
+                contender[4] ^= 1;
+                let contender = resources.own_payload(contender).map_err(|e| {
+                    ace_artifacts::store::StoreError::ResourceExhausted(e.to_string())
+                })?;
+                Ok((contender, vec![header.clone()]))
+            },
+        )
+        .unwrap();
+        assert!(
+            !hit,
+            "the contender actually ran; this is not a producer-free hit"
+        );
+        assert_eq!(produced, 1);
+        assert_eq!(
+            canonical.as_slice(),
+            bytes.as_slice(),
+            "did not use the verified canonical winner"
+        );
+        assert_eq!(resources.stats().current.io, 0);
+        assert_eq!(
+            resources.stats().current.resident,
+            canonical.capacity() + 40,
+            "discarded contender retained its output or encoded fee"
+        );
+        drop(canonical);
+        assert_eq!(resources.stats().current.resident, 0);
+    }
+
+    #[test]
     fn compiler_object_file_read_reserves_before_allocation_and_retains_only_the_shared_output() {
         use ace_artifacts::store::StoreError;
         use ace_source_query::resources::Resources;
