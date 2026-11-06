@@ -4024,3 +4024,9 @@ D-944-R1关闭补证：e269f417895ffa09493fd42390d24ef336f503f4的Arc缓存根�
 - 原生UI三个既有红：outlet_multi_route_loud_reject、test_bare_popover_point_anchor_codegen、test_display_family_codegen_arm_fixture。UI eff9ece3 基线与956候选逐项同红，生成码SHA分别0a34bee712c4a4d081ce2249c5b3b4044fb65686c2caa74848c5aa2204f9f9af、9bc95722c392358fcaabab9f0a1ed5daa67bce43b9dedbcea305ae049d964acf、9b13aa98c16899a3f3962e63711b8bab64742d8ff2c850fb894cea360eff596b。候选全compiler库1144PASS/3FAIL/2ignored；基线Rust子集77PASS/同3FAIL/2ignored。
 - 独立delivery_crates_path_closure_is_complete：auto-lang-core path依赖experimental未入DELIVERY_CRATES/未投影剥除。956启动器串行58PASS/1FAIL/1ignored；未改UI eff9ece3归档+主线原样manifest副本的单项基线复现同一断言，排除本轮启动器修复引入。首次基线全跑缺组内兄弟路径而报环境红，不用作同因证明；具名manifest对照才有效。
 - 另有5项启动器并发首红，串行原断言均PASS（共享进程环境变量干扰），测试隔离待owner处理。关闭条件：对应机制独立修复、原反例/完整owner职责门通过；详PLAN-956最终收据。无本任务功能延期/VM fallback。
+
+
+### D-956-2 — VM native 嵌入多参数 helper 的参数错位（2026-11-06，未关闭）
+
+- owner=VM call/codegen 与 native wrapper；当前只确定可复现边界，尚未归因到具体层。Reader新增时间时，将time.now_sec()直接作为record_json第11实参，VM导入虽返回ok但持久化book_id错写为source_hash，其余字段左移；Rust正确。改为先let imported_at=time.now_sec()再传入helper，46项VM同源API操作含重启/时钟/ID均通过。
+- Reader按已有“实参先绑定局部”约定处理，已记录canonical real-library；不以此宣称修复VM通用嵌套native语义。关闭条件：语言侧最小化零参native嵌套/多参位置/前后表达式组合，独立修复并原始反例与普通函数/直接native正控通过；原始观察在PLAN-956 §9。该债不放宽本次Rust/VM实际业务值对拍。
