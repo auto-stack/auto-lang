@@ -1044,6 +1044,7 @@ pub fn run_check(
                     &ok.steps[0].outcome,
                     ok.steps[0].pe_exit,
                     input.get("source").and_then(|s| s.as_str()),
+                    input.get("reference").and_then(|s| s.as_str()),
                 )?;
                 if report.diagnostics.len() != ok.steps[0].diagnostics.len()
                     || report

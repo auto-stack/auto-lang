@@ -5,6 +5,8 @@ pub(super) const RECIPE: &str = "abi/source-foreign-certify-v1";
 // Parent-owned acceptance pins for this finite reviewed recipe. A producer's
 // well-formed hash is evidence only when it names these independent materials.
 const REVIEWED_CONTRACT: &str = "cef4c3885f1686a00c0bb8c44ca6b95559a634fff297f8193becca2d1d35d71c";
+const REVIEWED_SCALAR_CONTRACT: &str =
+    "aaa3a8b32d0723d77c2c12202d86445ca8626a9368374fd787517801601ebd7e";
 const REVIEWED_HEADER: &str = "4051cd6af2acd0c07eeed8495f50ad51fdfac94c3b91928f86422e486b408b98";
 const REVIEWED_PHYSICAL_TABLE: &str =
     "0ea8be97d1026bd57dcaff7b35673e45a6a9f17e2f5c991bdd1b1fb04a94daa3";
@@ -62,6 +64,7 @@ impl SourceReport {
         outcome: &str,
         exit: Option<i32>,
         source: Option<&str>,
+        reference: Option<&str>,
     ) -> Result<(), String> {
         if !matches!(outcome, "ok" | "diags" | "resource" | "infra")
             || (outcome != "ok" && exit.is_some())
@@ -88,13 +91,21 @@ impl SourceReport {
                 "unprocessed source resource refusal carried production/provenance claims".into(),
             );
         }
-        self.admit(
+        self.admit_reference(
             consumer,
             outcome == "ok",
             exit,
             if unprocessed { None } else { source },
+            // An undecoded refusal has no reference or production evidence;
+            // only the original trusted placeholder identity is permitted.
+            if unprocessed && self.contract_digest == REVIEWED_CONTRACT {
+                "add"
+            } else {
+                reference.ok_or("source-import request without a reviewed reference")?
+            },
         )
     }
+    #[cfg(test)]
     pub fn admit(
         &self,
         consumer: &str,
@@ -102,6 +113,51 @@ impl SourceReport {
         exit: Option<i32>,
         source: Option<&str>,
     ) -> Result<(), String> {
+        self.admit_reference(consumer, success, exit, source, "add")
+    }
+    fn admit_reference(
+        &self,
+        consumer: &str,
+        success: bool,
+        exit: Option<i32>,
+        source: Option<&str>,
+        reference: &str,
+    ) -> Result<(), String> {
+        // These policies belong to the parent. They are deliberately not
+        // generated from the worker's manifest, call log or returned result.
+        let expected_events: &[&str] = match reference {
+            "add" => &["provider_add"],
+            "bool-false" | "bool-true" => &["provider_not"],
+            "fallible" | "zero" | "overflow" => &["provider_div"],
+            "order" => &[
+                "provider_tick",
+                "provider_tick",
+                "provider_add",
+                "provider_trace",
+                "provider_calls",
+            ],
+            "and" | "or" => &["provider_calls"],
+            "mixed" => &["provider_mix"],
+            "named-order" => &[
+                "provider_tick",
+                "provider_tick",
+                "provider_add",
+                "provider_trace",
+            ],
+            _ => {
+                return Err("source-import request reference is outside independent review".into())
+            }
+        };
+        let expected_status: &[&str] = match reference {
+            "zero" => &["-1"],
+            "overflow" => &["-2"],
+            _ => &[],
+        };
+        let expected_contract = if reference == "add" {
+            REVIEWED_CONTRACT
+        } else {
+            REVIEWED_SCALAR_CONTRACT
+        };
         let digest = |s: &str| {
             s.len() == 64
                 && s.bytes()
@@ -118,7 +174,7 @@ impl SourceReport {
             || self.consumer != consumer
             || !matches!(consumer, "native" | "c")
             || self.review_id != "plan938-independent-provider-v1"
-            || self.contract_digest != REVIEWED_CONTRACT
+            || self.contract_digest != expected_contract
             || self.header_digest != REVIEWED_HEADER
             || self.physical_table_digest != REVIEWED_PHYSICAL_TABLE
         {
@@ -151,7 +207,7 @@ impl SourceReport {
                 || !self.c_toolchain.contains("|hash:")
                 || self.c_toolchain.len() > 8192
                 || self.actual_events != self.reference_events
-                || self.reference_events != ["provider_add".to_string()]
+                || self.reference_events != expected_events
                 || !self.diagnostic_stage.is_empty()
                 || !self.diagnostics.is_empty()
             {
@@ -167,6 +223,13 @@ impl SourceReport {
                     .collect::<Vec<_>>();
                 if observed != *events || stderr.len() > 1 << 20 {
                     return Err("source-import raw call events disagree".into());
+                }
+                let statuses = stderr
+                    .lines()
+                    .filter_map(|line| line.strip_prefix("foreign.status="))
+                    .collect::<Vec<_>>();
+                if statuses != expected_status {
+                    return Err("source-import controlled failure cause is missing or differs from independent review".into());
                 }
             }
         } else if self.actual_exit.is_some()
@@ -215,6 +278,73 @@ impl SourceReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn scalar_certificate_requires_the_submitted_review_calls_and_original_failure_cause() {
+        let source = "fn main() int { return foreign_div(84,0) }";
+        let mut report = valid();
+        report.source_sha256 =
+            auto_test_case::sha256::hex(&auto_test_case::sha256::sha256(source.as_bytes()));
+        report.contract_digest = REVIEWED_SCALAR_CONTRACT.into();
+        report.actual_exit = Some(70);
+        report.reference_exit = Some(70);
+        report.actual_events = vec!["provider_div".into()];
+        report.reference_events = report.actual_events.clone();
+        report.actual_stderr = "source938.call=provider_div\nforeign.status=-1\n".into();
+        report.reference_stderr = report.actual_stderr.clone();
+        report
+            .admit_query("native", "ok", Some(70), Some(source), Some("zero"))
+            .unwrap();
+        for axis in 0..6 {
+            let mut bad = report.clone();
+            let reference = match axis {
+                0 => "fallible",
+                1 => "unreviewed",
+                _ => "zero",
+            };
+            match axis {
+                2 => bad.actual_stderr = "source938.call=provider_div\n".into(),
+                3 => {
+                    bad.reference_stderr = "source938.call=provider_div\nforeign.status=-2\n".into()
+                }
+                4 => {
+                    bad.actual_events.clear();
+                    bad.reference_events.clear();
+                    bad.actual_stderr = "foreign.status=-1\n".into();
+                    bad.reference_stderr = bad.actual_stderr.clone();
+                }
+                5 => bad.contract_digest = REVIEWED_CONTRACT.into(),
+                _ => {}
+            }
+            assert!(
+                bad.admit_query("native", "ok", Some(70), Some(source), Some(reference))
+                    .is_err(),
+                "axis {axis}"
+            );
+        }
+        let source = "fn main() int { return foreign_calls() }";
+        report.source_sha256 =
+            auto_test_case::sha256::hex(&auto_test_case::sha256::sha256(source.as_bytes()));
+        report.actual_exit = Some(1);
+        report.reference_exit = Some(1);
+        report.actual_events = vec!["provider_calls".into()];
+        report.reference_events = report.actual_events.clone();
+        report.actual_stderr = "source938.call=provider_calls\n".into();
+        report.reference_stderr = report.actual_stderr.clone();
+        report
+            .admit_query("native", "ok", Some(1), Some(source), Some("and"))
+            .unwrap();
+        // A legal short circuit has no provider_not call. An eager actual+ref
+        // agreement must still fail the independent call oracle.
+        report.actual_events.insert(0, "provider_not".into());
+        report.reference_events = report.actual_events.clone();
+        report
+            .actual_stderr
+            .insert_str(0, "source938.call=provider_not\n");
+        report.reference_stderr = report.actual_stderr.clone();
+        assert!(report
+            .admit_query("native", "ok", Some(1), Some(source), Some("and"))
+            .is_err());
+    }
     fn valid() -> SourceReport {
         let source = "fn main() int { return foreign_add(20,22) }";
         serde_json::from_value(serde_json::json!({
@@ -283,16 +413,16 @@ mod tests {
             span: None,
         }];
         report
-            .admit_query("native", "resource", None, Some(source))
+            .admit_query("native", "resource", None, Some(source), Some("add"))
             .unwrap();
         assert!(report
-            .admit_query("native", "ok", None, Some(source))
+            .admit_query("native", "ok", None, Some(source), Some("add"))
             .is_err());
         assert!(report
-            .admit_query("native", "diags", None, Some(source))
+            .admit_query("native", "diags", None, Some(source), Some("add"))
             .is_err());
         assert!(report
-            .admit_query("native", "resource", Some(42), Some(source))
+            .admit_query("native", "resource", Some(42), Some(source), Some("add"))
             .is_err());
         for axis in 0..8 {
             let mut bad = report.clone();
@@ -307,7 +437,7 @@ mod tests {
                 _ => bad.diagnostics.clear(),
             }
             assert!(
-                bad.admit_query("native", "resource", None, Some(source))
+                bad.admit_query("native", "resource", None, Some(source), Some("add"))
                     .is_err(),
                 "axis {axis}"
             );

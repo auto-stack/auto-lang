@@ -23,10 +23,12 @@ int32_t provider_add(int32_t a, int32_t b) {
     return bits_to_i32((uint32_t)a + (uint32_t)b + (uint32_t)BODY_BIAS);
 }
 uint8_t provider_not(uint8_t value) {
+    SOURCE938_EVENT("provider_not");
     ++call_count;
     return value ? 0 : 1;
 }
 int32_t provider_div(void *ctx, int32_t a, int32_t b, int32_t *out) {
+    SOURCE938_EVENT("provider_div");
     ++call_count;
     if (ctx != &provider_ctx) return -3;
     if (b == 0) return -1;
@@ -35,13 +37,15 @@ int32_t provider_div(void *ctx, int32_t a, int32_t b, int32_t *out) {
     return 0;
 }
 int32_t provider_tick(int32_t value) {
+    SOURCE938_EVENT("provider_tick");
     ++call_count;
     trace_value = trace_value * 10u + (uint32_t)value;
     return value;
 }
-int32_t provider_trace(void) { ++call_count; return bits_to_i32(trace_value); }
-int32_t provider_calls(void) { ++call_count; return call_count; }
+int32_t provider_trace(void) { SOURCE938_EVENT("provider_trace"); ++call_count; return bits_to_i32(trace_value); }
+int32_t provider_calls(void) { SOURCE938_EVENT("provider_calls"); ++call_count; return call_count; }
 int32_t provider_mix(int32_t a, uint8_t b, int32_t c, uint8_t d, int32_t e) {
+    SOURCE938_EVENT("provider_mix");
     ++call_count;
     return bits_to_i32((uint32_t)a + 10u * b + 100u * (uint32_t)c + 1000u * d + 10000u * (uint32_t)e);
 }

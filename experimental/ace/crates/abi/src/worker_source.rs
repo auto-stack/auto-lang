@@ -73,6 +73,8 @@ pub struct SourceReport {
 #[serde(deny_unknown_fields)]
 struct Publication {
     module: String,
+    #[serde(default = "provider::legacy_add_contract")]
+    contract_digest: String,
     provider_bias: u8,
     binding_generation: u64,
     stored: Stored,
@@ -80,9 +82,14 @@ struct Publication {
 #[derive(Serialize)]
 struct PublicationRef<'a> {
     module: &'a str,
+    #[serde(skip_serializing_if = "is_add_contract")]
+    contract_digest: &'a str,
     provider_bias: u8,
     binding_generation: u64,
     stored: &'a Stored,
+}
+fn is_add_contract(digest: &&str) -> bool {
+    *digest == provider::ADD_CONTRACT_DIGEST
 }
 fn err(code: &str, message: impl ToString) -> DiagOut {
     DiagOut {
@@ -187,7 +194,7 @@ fn decode(req: &WorkerRequest, resources: &Resources) -> Result<(Deck, Reservati
         || deck.source.is_empty()
         || deck.module.is_empty()
         || deck.provider_bias > 1
-        || deck.reference != "add"
+        || provider::Review::for_reference(&deck.reference).is_none()
     {
         return Err(err(
             "deck",
@@ -280,6 +287,9 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             return Ok(output(s, report));
         }
     };
+    let review = provider::Review::for_reference(&deck.reference)
+        .ok_or_else(|| err("deck", "unreviewed reference"))?;
+    report.contract_digest = review.digest().into();
     if let Err(e) = target.admit_source_bytes(deck.source.len()) {
         report.diagnostic_stage = "parse".into();
         return Ok(output(
@@ -297,7 +307,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     report.source_sha256 = ace_a2x_core::sha256::sha256_hex(deck.source.as_bytes());
     // Reject unauthorized ABI/declaration candidates before compiling/linking
     // or calling any C provider. No candidate supplies this policy digest.
-    if let Err(e) = provider::qualify_candidate(&deck.manifest, &deck.capabilities) {
+    if let Err(e) = review.qualify(&deck.manifest, &deck.capabilities) {
         report.diagnostic_stage = "resolve".into();
         let code = e.split(':').next().unwrap_or("foreign.authority");
         return Ok(output(
@@ -338,8 +348,9 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             None => (None, None),
         };
     let previous = previous_record.as_ref().map(|(record, _ticket)| record);
+    let changed_contract = previous.is_some_and(|p| p.contract_digest != review.digest());
     let binding_generation = match &previous {
-        Some(p) if p.provider_bias != deck.provider_bias => p
+        Some(p) if p.provider_bias != deck.provider_bias || changed_contract => p
             .binding_generation
             .checked_add(1)
             .ok_or_else(|| err("foreign.binding", "generation overflow"))?,
@@ -364,13 +375,15 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             report.provider_digest.clone()
         };
         let restore_generation = previous.binding_generation;
+        let previous_review = provider::Review::for_digest(&previous.contract_digest)
+            .ok_or_else(|| err("restore", "unreviewed accepted contract"))?;
         let mut restore_current = || {
             Ok(CurrentAuthority {
-                foreign: provider::authority(
+                foreign: previous_review.authority(
                     &restore_digest,
                     restore_generation,
                     &deck.capabilities,
-                )?,
+                ),
                 runtime_digest: crate::source_foreign::certification_runtime_policy(target),
                 emitter: target.identity(),
             })
@@ -386,15 +399,18 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         .map_err(|e| err("restore", e))?;
         let changed_source = restored.frontend().source() != deck.source;
         let changed_provider = previous.provider_bias != deck.provider_bias;
-        let result = if changed_provider {
-            let authority = provider::authority(
+        let result = if changed_provider || changed_contract {
+            let authority = review.authority(
                 &report.provider_digest,
                 binding_generation,
                 &deck.capabilities,
-            )
-            .map_err(|e| err("foreign.authority", e))?;
+            );
             let (environment, interface_work) = restored.frontend().work().observe_foreign(|| {
-                resources.rebind_foreign(restored.frontend().foreign(), &authority)
+                if changed_contract {
+                    deck.manifest.admit(&authority)
+                } else {
+                    resources.rebind_foreign(restored.frontend().foreign(), &authority)
+                }
             });
             let environment = environment.map_err(|e| err("foreign.authority", e))?;
             restored
@@ -431,12 +447,11 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     } else {
         let mut observation = ace_source_query::frontend::ColdObservation::default();
         let (environment, interface_work) = observation.work.observe_foreign(|| {
-            provider::admit(
-                deck.manifest,
+            deck.manifest.admit(&review.authority(
                 &report.provider_digest,
                 binding_generation,
                 &deck.capabilities,
-            )
+            ))
         });
         let environment = environment.map_err(|e| err("foreign.authority", e))?;
         let (front, checked) = match Frontend::cold_observed_with_resources(
@@ -486,7 +501,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         let runtime_policy = crate::source_foreign::certification_runtime_policy(target);
         let mut current_authority = || {
             Ok(CurrentAuthority {
-                foreign: provider::authority(&digest, binding_generation, &deck.capabilities)?,
+                foreign: review.authority(&digest, binding_generation, &deck.capabilities),
                 runtime_digest: runtime_policy.clone(),
                 emitter: target.identity(),
             })
@@ -503,7 +518,12 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             .map_err(|e| err("infra", e))?;
         write(
             &reference_dir.join("reference.c"),
-            include_str!("../cside/source_foreign938_reference.c"),
+            format!(
+                "#define SOURCE938_SCENARIO {}\n{}",
+                provider::reference_case(&deck.reference)
+                    .ok_or_else(|| err("deck", "unreviewed reference"))?,
+                include_str!("../cside/source_foreign938_reference.c")
+            ),
         )
         .map_err(|e| err("infra", e))?;
         write(&reference_dir.join("events.c"), provider::EVENT_RUNTIME)
@@ -543,6 +563,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 |stored, encoder| {
                     encoder.json(&PublicationRef {
                         module: &deck.module,
+                        contract_digest: review.digest(),
                         provider_bias: deck.provider_bias,
                         binding_generation,
                         stored,

@@ -11,7 +11,7 @@ use ace_core::{
     atom_text::{Diagnostic, Span},
     source::{
         adapter::{prepare_candidate_document_with_supply, FnCandidate},
-        ast::{Item, Program},
+        ast::Program,
         cst::{
             units::{self, StagedCandidate, UnitCatalog},
             FrontBudget, FRONT_CAPS_VERSION,
@@ -1621,6 +1621,7 @@ fn encode_resident(
 #[cfg(test)]
 mod wire_tests {
     use super::*;
+    use ace_core::source::ast::Item;
     #[test]
     fn borrowed_walk_encoding_preserves_original_wire_bytes() {
         let program = ace_core::source::parse_program_with(

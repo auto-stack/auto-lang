@@ -2679,6 +2679,94 @@ fn source_worker_raw(
 }
 
 #[test]
+fn source_foreign_formal_scalar_review_transition_restores_without_hidden_interface_production() {
+    use base64::Engine as _;
+    use std::sync::{Arc, Mutex};
+    let root = scope("formal-scalar-review-transition");
+    let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../crates/auto-lang/test/cases/ace-ca-d-source-938/src");
+    let add: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(fixtures.join("add.atomdata")).unwrap()).unwrap();
+    let scalar: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(fixtures.join("mixed.atomdata")).unwrap()).unwrap();
+    for leg in ["native", "c"] {
+        let store = root.join(leg);
+        let pointer = store.join(format!("source938-current-{leg}.json"));
+        let first = source_worker_query(&add, &store, leg, "add-before-scalar-review");
+        assert_eq!(first["ok"]["source_import"]["actual_exit"], 42);
+        let legacy: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&pointer).unwrap()).unwrap();
+        assert!(
+            legacy.get("contract_digest").is_none(),
+            "add keeps the original accepted pointer format"
+        );
+        let previous_format = source_worker_query(&add, &store, leg, "legacy-add-review-pointer");
+        assert_eq!(previous_format["ok"]["source_import"]["actual_exit"], 42);
+        assert_eq!(previous_format["ok"]["steps"][0]["compute_calls"], 0);
+        let accepted = std::fs::read(&pointer).unwrap();
+        let mut invalid = scalar.clone();
+        invalid["source"] = "fn main() int { return foreign_mix(true,true,2,false,3) }".into();
+        let rejected = source_worker_query(&invalid, &store, leg, "scalar-review-first-error");
+        assert_eq!(rejected["ok"]["steps"][0]["outcome"], "diags");
+        assert!(rejected["ok"]["source_import"]["actual_exit"].is_null());
+        assert_eq!(std::fs::read(&pointer).unwrap(), accepted);
+        let repaired = source_worker_query(&scalar, &store, leg, "scalar-review-repair");
+        assert_eq!(repaired["ok"]["source_import"]["actual_exit"], 30211);
+        assert_eq!(repaired["ok"]["source_import"]["reference_exit"], 30211);
+        let accepted = std::fs::read(&pointer).unwrap();
+        // Observe the entire real worker entry, including qualification and
+        // required restore, rather than resetting counters after a warm-up.
+        let ports = Arc::new(Mutex::new(Vec::new()));
+        let captured = ports.clone();
+        let request = ace_abi::worker::WorkerRequest {
+            recipe: ace_abi::worker_source::RECIPE.into(),
+            nonce: "scalar-r".into(),
+            request_hash: "scalar-r".into(),
+            deck_b64: base64::engine::general_purpose::STANDARD
+                .encode(serde_json::to_vec(&scalar).unwrap()),
+            leg: leg.into(),
+            store_root: store.to_str().unwrap().into(),
+            steps: vec![ace_abi::worker::StepIn {
+                op: "query".into(),
+                from: None,
+                to: None,
+            }],
+        };
+        let restored = ace_foreign_contract::work::with_observer(
+            Arc::new(move |stage, produced| captured.lock().unwrap().push((stage, produced))),
+            || ace_abi::worker_source::execute(&request),
+        )
+        .unwrap();
+        let report = restored.source_import.unwrap();
+        assert_eq!(report.actual_exit, Some(30211));
+        assert_eq!(report.reference_exit, Some(30211));
+        assert_eq!(restored.steps[0].compute_calls, 0);
+        let observed = ports.lock().unwrap().clone();
+        assert!(
+            observed.is_empty(),
+            "{leg}: hidden interface production {observed:?}"
+        );
+        assert_eq!(std::fs::read(&pointer).unwrap(), accepted);
+        // The compatibility default is only the old add identity. Removing
+        // this field cannot relabel a scalar required root as reviewed add.
+        let mut forged: serde_json::Value = serde_json::from_slice(&accepted).unwrap();
+        forged.as_object_mut().unwrap().remove("contract_digest");
+        let forged = serde_json::to_vec(&forged).unwrap();
+        std::fs::write(&pointer, &forged).unwrap();
+        let refused = source_worker_raw(&scalar, &store, leg, "scalar-not-a-legacy-add-pointer");
+        assert!(refused.get("error").is_some(), "{refused}");
+        assert_eq!(std::fs::read(&pointer).unwrap(), forged);
+        std::fs::write(&pointer, &accepted).unwrap();
+        let next = source_worker_query(&scalar, &store, leg, "scalar-after-pointer-repair");
+        assert_eq!(next["ok"]["source_import"]["actual_exit"], 30211);
+        assert_eq!(next["ok"]["steps"][0]["compute_calls"], 0);
+        let back = source_worker_query(&add, &store, leg, "scalar-review-to-add");
+        assert_eq!(back["ok"]["source_import"]["actual_exit"], 42);
+        assert_eq!(back["ok"]["source_import"]["reference_exit"], 42);
+    }
+}
+
+#[test]
 fn source_foreign_formal_tool_io_failure_keeps_pointer_and_recovers_owned_scratch() {
     use std::sync::{
         atomic::{AtomicBool, Ordering},
