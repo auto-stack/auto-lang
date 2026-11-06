@@ -22,12 +22,25 @@ pub(crate) fn run(
     caps: CaptureCaps,
     resources: Option<&Resources>,
 ) -> Result<Captured, CaptureError> {
+    run_observed(cmd, deadline, caps, resources, || Ok(()))
+}
+
+pub(crate) fn run_observed(
+    cmd: &mut Command,
+    deadline: Duration,
+    caps: CaptureCaps,
+    resources: Option<&Resources>,
+    mut observe_output: impl FnMut() -> Result<(), String>,
+) -> Result<Captured, CaptureError> {
     let observation_error = std::cell::Cell::new(None);
     let observe = || {
-        crate::source_request_work::observe_scratch().map_err(|message| {
-            observation_error.set(Some(message));
-            std::io::Error::other(message)
-        })
+        crate::source_request_work::observe_scratch()
+            .map_err(str::to_string)
+            .and_then(|()| observe_output())
+            .map_err(|message| {
+                observation_error.set(Some(message));
+                std::io::Error::other("source tool resource observation")
+            })
     };
     let work = crate::source_request_work::begin(
         "tool-process",
@@ -48,8 +61,8 @@ pub(crate) fn run(
                 crate::source_request_work::complete(work);
                 captured
             })
-            .map_err(|error| match observation_error.get() {
-                Some(message) => CaptureError::Resource(message.into()),
+            .map_err(|error| match observation_error.take() {
+                Some(message) => CaptureError::Resource(message),
                 None => CaptureError::Subprocess(error),
             });
     };
@@ -72,8 +85,8 @@ pub(crate) fn run(
     let value = ace_core::link::run_deadlined_captured_into_observed(
         cmd, deadline, caps, stdout, stderr, observe,
     )
-    .map_err(|error| match observation_error.get() {
-        Some(message) => CaptureError::Resource(message.into()),
+    .map_err(|error| match observation_error.take() {
+        Some(message) => CaptureError::Resource(message),
         None => CaptureError::Subprocess(error),
     })?;
     crate::source_request_work::io(

@@ -30,6 +30,94 @@ mod tests {
     use super::*;
     use std::ffi::OsString;
     #[test]
+    fn crt_output_batch_counts_objects_and_pe_but_not_input_objects() {
+        use ace_source_query::resources::OutputLimits;
+        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+            .join(format!("crt-output-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("provider.c"),
+            "int provider(void) { return 42; }\n",
+        )
+        .unwrap();
+        let provider = root.join("provider.obj");
+        ctool::compile_c(&root.join("provider.c"), &root, &provider).unwrap();
+        std::fs::write(
+            root.join("value.c"),
+            "int provider(void); int main(void) { return provider(); }\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("unused.c"), "int unused(void) { return 7; }\n").unwrap();
+        let exe = root.join("value.exe");
+        let resources = Resources::default();
+        let initial = resources.stats().current;
+        let crt = Toolchain::resolve(&resources).unwrap();
+        let baseline = resources.stats().current;
+        let sources = ["value.c", "unused.c"];
+        crt.compile(&root, &sources, std::slice::from_ref(&provider), &exe)
+            .unwrap();
+        let sizes = [root.join("value.obj"), root.join("unused.obj"), exe.clone()]
+            .map(|path| std::fs::metadata(path).unwrap().len());
+        let size: u64 = sizes.iter().sum();
+        resources
+            .enable_output_budget(OutputLimits {
+                artifact: 4 << 20,
+                request: 8 << 20,
+            })
+            .unwrap();
+        let provider_bytes = std::fs::read(&provider).unwrap();
+        let mut previous_spend = 0;
+        for count in 1..=2 {
+            crt.compile(&root, &sources, std::slice::from_ref(&provider), &exe)
+                .unwrap();
+            let spent = resources.output_stats().unwrap().produced;
+            // The linker can grow then truncate its PE. Its observed peak is
+            // still produced bytes, rather than a refund on final truncation.
+            assert!(
+                spent - previous_spend >= size,
+                "a new compiler output was omitted"
+            );
+            eprintln!(
+                "batch {count}: terminal={size} observed={}",
+                spent - previous_spend
+            );
+            previous_spend = spent;
+            assert_eq!(std::fs::read(&provider).unwrap(), provider_bytes);
+            assert_eq!(resources.output_stats().unwrap().pending, 0);
+            assert_eq!(resources.stats().current, baseline);
+            assert_eq!(
+                ace_native::link_driver::run_pe(
+                    &exe,
+                    std::time::Duration::from_secs(5),
+                    CaptureCaps {
+                        stdout_max: 1024,
+                        stderr_max: 1024
+                    }
+                )
+                .unwrap()
+                .exit_code,
+                Some(42)
+            );
+        }
+        let remaining = (8 << 20) - previous_spend;
+        // Spend the rest through the same account, without another tool run.
+        for bytes in [remaining.min(4 << 20), remaining.saturating_sub(4 << 20)] {
+            resources
+                .reserve_output(bytes as usize)
+                .unwrap()
+                .complete(bytes as usize)
+                .unwrap();
+        }
+        let previous = std::fs::read(&exe).unwrap();
+        assert!(crt
+            .compile(&root, &sources, std::slice::from_ref(&provider), &exe)
+            .is_err());
+        assert_eq!(std::fs::read(&exe).unwrap(), previous);
+        assert_eq!(resources.output_stats().unwrap().produced, 8 << 20);
+        drop(crt);
+        assert_eq!(resources.stats().current, initial);
+    }
+    #[test]
     fn direct_sdk_freezes_flags_and_an_explicit_batch_override_really_runs() {
         struct Environment(Vec<(&'static str, Option<OsString>)>);
         impl Drop for Environment {
@@ -440,7 +528,41 @@ impl Toolchain {
             }
         };
         command.current_dir(dir);
-        let captured = ctool_capture::run(
+        // CL emits one .obj per C source plus the PE. Objects supplied to the
+        // linker already exist and must not be counted as new production.
+        let path_units = sources
+            .iter()
+            .try_fold(exe.as_os_str().len(), |sum, source| {
+                sum.checked_add(dir.as_os_str().len())?
+                    .checked_add(source.len() + 8)
+            })
+            .ok_or_else(|| BridgeError("compiler output paths overflow".into()))?;
+        let _paths = self
+            .resources
+            .reserve(Charge::index(
+                path_units
+                    .checked_mul(8)
+                    .and_then(|n| {
+                        n.checked_add((sources.len() + 1) * std::mem::size_of::<PathBuf>())
+                    })
+                    .ok_or_else(|| BridgeError("compiler output index overflow".into()))?,
+            ))
+            .map_err(|e| BridgeError(e.to_string()))?;
+        let mut paths = Vec::new();
+        paths
+            .try_reserve_exact(sources.len() + 1)
+            .map_err(|e| BridgeError(e.to_string()))?;
+        for source in sources {
+            let name = Path::new(source)
+                .file_name()
+                .ok_or_else(|| BridgeError("missing C source name".into()))?;
+            paths.push(dir.join(name).with_extension("obj"));
+        }
+        paths.push(exe.to_path_buf());
+        let mut outputs =
+            crate::ctool_output::Outputs::new(&self.resources, paths.iter().map(|p| p.as_path()))
+                .map_err(BridgeError)?;
+        let captured = ctool_capture::run_observed(
             &mut command,
             BRIDGE_BUILD_DEADLINE,
             CaptureCaps {
@@ -448,8 +570,10 @@ impl Toolchain {
                 stderr_max: BRIDGE_STREAM_CAP,
             },
             Some(&self.resources),
-        )
-        .map_err(failure)?;
+            || outputs.observe(),
+        );
+        outputs.finish().map_err(BridgeError)?;
+        let captured = captured.map_err(failure)?;
         if captured.value.exit_code != Some(0) {
             return Err(BridgeError(format!(
                 "cl exited {:?}:\n{}\n{}",

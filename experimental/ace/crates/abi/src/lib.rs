@@ -27,6 +27,7 @@ pub mod ctool;
 mod ctool_capture;
 mod ctool_dependencies;
 mod ctool_environment;
+mod ctool_output;
 mod ctool_text;
 pub mod decl;
 pub mod descriptor;

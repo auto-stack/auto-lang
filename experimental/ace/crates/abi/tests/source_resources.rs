@@ -36,6 +36,8 @@ mod ctool_capture;
 mod ctool_dependencies;
 #[path = "../src/ctool_environment.rs"]
 mod ctool_environment;
+#[path = "../src/ctool_output.rs"]
+mod ctool_output;
 #[path = "../src/ctool_text.rs"]
 mod ctool_text;
 thread_local! {

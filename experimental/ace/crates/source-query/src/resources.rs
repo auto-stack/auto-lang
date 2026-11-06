@@ -9,7 +9,7 @@ use std::{
 };
 #[path = "resource_production.rs"]
 mod production;
-pub use production::{OutputLimits, OutputPermit, OutputStats};
+pub use production::{ExternalOutputPermit, OutputLimits, OutputPermit, OutputStats};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Charge {

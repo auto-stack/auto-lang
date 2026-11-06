@@ -330,7 +330,11 @@ fn compile_c_output(
     // F-797-R4-10 (R5): compile through the merged RAW CAPPED executor
     // — a cap violation terminates the tree (no truncated-green), raw
     // bytes for display.
-    let captured = crate::ctool_capture::run(
+    let mut outputs = resources
+        .map(|resources| crate::ctool_output::Outputs::new(resources, std::iter::once(obj_out)))
+        .transpose()
+        .map_err(CToolFailure::Resource)?;
+    let captured = crate::ctool_capture::run_observed(
         &mut cmd,
         COMPILE_DEADLINE,
         ace_core::link::CaptureCaps {
@@ -338,8 +342,12 @@ fn compile_c_output(
             stderr_max: TOOL_STREAM_MAX,
         },
         resources,
-    )
-    .map_err(|e| match e {
+        || outputs.as_mut().map_or(Ok(()), |outputs| outputs.observe()),
+    );
+    if let Some(outputs) = outputs {
+        outputs.finish().map_err(CToolFailure::Resource)?;
+    }
+    let captured = captured.map_err(|e| match e {
         crate::ctool_capture::CaptureError::Resource(message) => CToolFailure::Resource(message),
         crate::ctool_capture::CaptureError::Subprocess(
             e @ ace_core::link::SubprocError::OutputCapExceeded { .. },
@@ -391,6 +399,67 @@ pub fn toolchain_fingerprint() -> Result<String, CToolError> {
 mod tests {
     use super::*;
     use crate::ctool_dependencies::extract_drive_path;
+
+    #[test]
+    fn real_c_object_output_spends_each_production_and_rejects_the_next_before_launch() {
+        use ace_source_query::resources::{OutputLimits, Resources};
+        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+            .join(format!("object-output-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let source = root.join("value.c");
+        let object = root.join("value.obj");
+        std::fs::write(&source, "int value(void) { return 42; }\n").unwrap();
+        compile_c(&source, &root, &object).unwrap();
+        let size = std::fs::metadata(&object).unwrap().len();
+        assert!(size > 0);
+        let resources = Resources::default();
+        let baseline = resources.stats().current;
+        resources
+            .enable_output_budget(OutputLimits {
+                artifact: size,
+                request: size * 2,
+            })
+            .unwrap();
+        for count in 1..=2 {
+            compile_c_with_deps_admitted(&source, &root, &object, Some(&resources), |_| Ok(()))
+                .unwrap();
+            assert_eq!(std::fs::metadata(&object).unwrap().len(), size);
+            assert_eq!(resources.output_stats().unwrap().produced, count * size);
+            assert_eq!(resources.output_stats().unwrap().pending, 0);
+            assert_eq!(resources.stats().current, baseline);
+        }
+        let previous = std::fs::read(&object).unwrap();
+        assert!(matches!(
+            compile_c_with_deps_admitted(&source, &root, &object, Some(&resources), |_| Ok(())),
+            Err(CToolFailure::Resource(_))
+        ));
+        assert_eq!(
+            std::fs::read(&object).unwrap(),
+            previous,
+            "zero admission started/cleared compiler output"
+        );
+        assert_eq!(resources.output_stats().unwrap().produced, 2 * size);
+
+        let refused = Resources::default();
+        refused
+            .enable_output_budget(OutputLimits {
+                artifact: size - 1,
+                request: size * 2,
+            })
+            .unwrap();
+        assert!(matches!(
+            compile_c_with_deps_admitted(&source, &root, &object, Some(&refused), |_| Ok(())),
+            Err(CToolFailure::Resource(_))
+        ));
+        assert!(refused.output_stats().unwrap().refused);
+        assert_eq!(refused.output_stats().unwrap().produced, size);
+        assert_eq!(refused.output_stats().unwrap().pending, 0);
+        assert_eq!(refused.stats().current, baseline);
+        compile_c_with_deps_admitted(&source, &root, &object, Some(&Resources::default()), |_| {
+            Ok(())
+        })
+        .unwrap();
+    }
 
     #[test]
     fn admitted_discovery_resource_failure_is_not_cached_or_hidden_as_a_cache_miss() {

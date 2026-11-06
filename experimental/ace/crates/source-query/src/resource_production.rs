@@ -92,13 +92,97 @@ impl Resources {
             bytes,
         })
     }
+    /// External compilers have no exact size preflight. Reserve the remaining
+    /// request allowance for their whole output batch before starting them;
+    /// the host must observe each named artifact and finish after tree reap.
+    /// This is admission plus sampled enforcement, not a filesystem quota.
+    pub fn reserve_external_output(&self) -> Result<ExternalOutputPermit, ResourceError> {
+        let mut state = self.0.lock().expect("resource account");
+        let (resources, bytes, artifact) = if let Some(budget) = state.production.as_mut() {
+            let remaining = budget
+                .limits
+                .request
+                .saturating_sub(budget.stats.produced.saturating_add(budget.stats.pending));
+            if budget.stats.refused || remaining == 0 || budget.limits.artifact == 0 {
+                budget.stats.refused = true;
+                state.stats.rejections += 1;
+                return Err(ResourceError::Budget("no external output allowance".into()));
+            }
+            budget.stats.pending += remaining;
+            budget.stats.peak_reserved = budget.limits.request;
+            (Some(self.clone()), remaining, budget.limits.artifact)
+        } else {
+            let limits = OutputLimits::default();
+            (None, limits.request, limits.artifact)
+        };
+        Ok(ExternalOutputPermit {
+            permit: Some(OutputPermit { resources, bytes }),
+            artifact,
+            observed: 0,
+        })
+    }
+}
+/// One sequential external producer batch. Completed and failed producers
+/// both spend their observed output; only unused pending capacity is refunded.
+pub struct ExternalOutputPermit {
+    permit: Option<OutputPermit>,
+    artifact: u64,
+    observed: u64,
+}
+impl ExternalOutputPermit {
+    /// The host retains each artifact's high-water length across observations.
+    pub fn observe(&mut self, total: u64, largest: u64) -> Result<(), ResourceError> {
+        self.observed = self.observed.max(total);
+        let permit = self.permit.as_ref().expect("unfinished external output");
+        if largest > self.artifact || self.observed > permit.bytes {
+            if let Some(resources) = &permit.resources {
+                let mut state = resources.0.lock().expect("resource account");
+                state
+                    .production
+                    .as_mut()
+                    .expect("installed output budget")
+                    .stats
+                    .refused = true;
+                state.stats.rejections += 1;
+            }
+            return Err(ResourceError::Budget(
+                "external artifact/request output allowance exceeded".into(),
+            ));
+        }
+        if permit
+            .resources
+            .as_ref()
+            .is_some_and(|r| r.output_stats().unwrap().refused)
+        {
+            return Err(ResourceError::Budget(
+                "request output already refused".into(),
+            ));
+        }
+        Ok(())
+    }
+    pub fn finish(mut self) -> Result<(), ResourceError> {
+        self.permit
+            .take()
+            .unwrap()
+            .complete_inner(self.observed as usize, false)
+    }
+}
+impl Drop for ExternalOutputPermit {
+    fn drop(&mut self) {
+        if let Some(permit) = self.permit.take() {
+            let _ = permit.complete_inner(self.observed as usize, false);
+        }
+    }
 }
 pub struct OutputPermit {
     resources: Option<Resources>,
     bytes: u64,
 }
 impl OutputPermit {
-    pub fn complete(mut self, actual: usize) -> Result<(), ResourceError> {
+    pub fn complete(self, actual: usize) -> Result<(), ResourceError> {
+        self.complete_inner(actual, true)
+    }
+    fn complete_inner(mut self, actual: usize, per_artifact: bool) -> Result<(), ResourceError> {
         let actual = actual as u64;
         if let Some(resources) = self.resources.take() {
             let mut state = resources.0.lock().expect("resource account");
@@ -107,7 +191,7 @@ impl OutputPermit {
             budget.stats.produced = budget.stats.produced.saturating_add(actual);
             if budget.stats.refused
                 || actual > self.bytes
-                || actual > budget.limits.artifact
+                || (per_artifact && actual > budget.limits.artifact)
                 || budget.stats.produced > budget.limits.request
             {
                 budget.stats.refused = true;
@@ -141,6 +225,48 @@ impl Drop for OutputPermit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn external_batch_shares_remaining_allowance_and_spends_failed_or_deleted_outputs() {
+        let resources = Resources::default();
+        resources
+            .enable_output_budget(OutputLimits {
+                artifact: 8,
+                request: 20,
+            })
+            .unwrap();
+        resources.reserve_output(4).unwrap().complete(4).unwrap();
+        let mut batch = resources.reserve_external_output().unwrap();
+        assert_eq!(resources.output_stats().unwrap().pending, 16);
+        batch.observe(12, 7).unwrap(); // Two artifacts; their sum may exceed 8.
+        batch.observe(0, 0).unwrap(); // Removal never refunds produced bytes.
+        batch.finish().unwrap();
+        assert_eq!(resources.output_stats().unwrap().produced, 16);
+        assert_eq!(resources.output_stats().unwrap().pending, 0);
+        let mut failed = resources.reserve_external_output().unwrap();
+        assert!(failed.observe(5, 5).is_err());
+        drop(failed); // The failure path spends too, without an explicit finish.
+        let stats = resources.output_stats().unwrap();
+        assert_eq!(stats.produced, 21);
+        assert_eq!(stats.pending, 0);
+        assert!(stats.refused);
+        assert!(resources.reserve_external_output().is_err());
+
+        let resources = Resources::default();
+        resources
+            .enable_output_budget(OutputLimits {
+                artifact: 8,
+                request: 20,
+            })
+            .unwrap();
+        let mut batch = resources.reserve_external_output().unwrap();
+        assert!(
+            batch.observe(9, 9).is_err(),
+            "artifact cap bypassed by the batch reservation"
+        );
+        assert!(batch.finish().is_err());
+        assert_eq!(resources.output_stats().unwrap().produced, 9);
+        assert_eq!(resources.output_stats().unwrap().pending, 0);
+    }
     #[test]
     fn request_output_reserves_pending_keeps_discarded_spend_and_never_resets_a_refusal() {
         let resources = Resources::default();

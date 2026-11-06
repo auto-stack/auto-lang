@@ -3063,6 +3063,42 @@ fn source_foreign_request_output_quota_refuses_real_first_edit_and_next_request_
 }
 
 #[test]
+fn source_foreign_external_compiler_output_refusal_preserves_current_and_next_request_repairs() {
+    let root = scope("external-output-budget");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../crates/auto-lang/test/cases/ace-ca-d-source-938/src/add.atomdata");
+    let deck: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    for leg in ["native", "c"] {
+        let store = root.join(leg);
+        let first = source_worker_query(&deck, &store, leg, "external-cold");
+        assert_eq!(first["ok"]["source_import"]["actual_exit"], 42);
+        let pointer = store.join(format!("source938-current-{leg}.json"));
+        let accepted = std::fs::read(&pointer).unwrap();
+        let mut edit = deck.clone();
+        edit["source"] = "fn main() int { let a=19\nreturn foreign_add(a,23) }".into();
+        // Enough for the real changed source/target pages, smaller than the
+        // actual compiler's PE. This must reach the external producer port.
+        let denied =
+            source_worker_with_output_budget(&edit, &store, leg, "external-refused", Some("65536"));
+        assert_eq!(denied["error"]["code"], "foreign.resource", "{denied}");
+        assert!(
+            denied["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("external artifact/request output allowance"),
+            "{denied}"
+        );
+        assert!(denied.get("ok").is_none());
+        assert_eq!(std::fs::read(&pointer).unwrap(), accepted);
+        assert_tool_scratch_clean(&store, true);
+        let repaired = source_worker_query(&edit, &store, leg, "external-repaired");
+        assert_eq!(repaired["ok"]["source_import"]["actual_exit"], 42);
+        assert_eq!(repaired["ok"]["source_import"]["reference_exit"], 42);
+        assert_ne!(std::fs::read(&pointer).unwrap(), accepted);
+    }
+}
+
+#[test]
 fn source_foreign_formal_scalar_review_transition_restores_without_hidden_interface_production() {
     use base64::Engine as _;
     use std::sync::{Arc, Mutex};
