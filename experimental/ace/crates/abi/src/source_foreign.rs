@@ -1376,8 +1376,24 @@ fn native_artifact(
 ) -> Result<Arc<Artifact>, String> {
     let mut lower = ledger.begin(name, "mir-lower", Phase::Production);
     meter.mir_attempts += 1;
-    let mir = ace_lowering::hir_adapter::lower_function_unit(bundle, id, caps, 0)
-        .map_err(|e| format!("foreign.lower: {e:?}"))?;
+    let mut emission_allocation = resources
+        .reserve(Charge::mir(0))
+        .map_err(|e| e.to_string())?;
+    let mir = ace_lowering::hir_adapter::lower_function_unit_with_emission_reservation(
+        bundle,
+        id,
+        caps,
+        0,
+        &mut |bytes| {
+            emission_allocation
+                .resize(Charge::mir(bytes))
+                .map_err(|e| e.to_string())
+        },
+    )
+    .map_err(|e| match e {
+        ace_lowering::AdapterError::Resource { .. } => format!("foreign.resource: {e:?}"),
+        _ => format!("foreign.lower: {e:?}"),
+    })?;
     meter.mir_produced += 1;
     lower.produced(1);
     work.push(lower);
@@ -1408,6 +1424,10 @@ fn native_artifact(
         })
     })
     .map_err(|e| format!("foreign.mir-encode: {e:?}"))?;
+    // The emitted arrays are now represented by the separately reserved
+    // encoded pages. Drop the MIR owner before releasing its capacity fee.
+    drop(mir);
+    drop(emission_allocation);
     let mir = paged.to_flat();
     drop(paged);
     encoded_charge

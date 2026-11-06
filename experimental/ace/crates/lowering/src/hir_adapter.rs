@@ -36,6 +36,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub enum AdapterError {
     Unsupported { code: String, message: String },
     Invalid { code: String, message: String },
+    Resource { code: String, message: String },
 }
 
 impl AdapterError {
@@ -51,11 +52,17 @@ impl AdapterError {
             message,
         }
     }
+    fn resource(message: String) -> Self {
+        Self::Resource {
+            code: "lower.resource".into(),
+            message,
+        }
+    }
     pub fn code(&self) -> String {
         match self {
-            AdapterError::Unsupported { code, .. } | AdapterError::Invalid { code, .. } => {
-                code.clone()
-            }
+            AdapterError::Unsupported { code, .. }
+            | AdapterError::Invalid { code, .. }
+            | AdapterError::Resource { code, .. } => code.clone(),
         }
     }
 }
@@ -1454,6 +1461,30 @@ pub fn lower_function_unit(
         source_snapshot,
         false,
         &BTreeMap::new(),
+        None,
+    )
+}
+
+/// The same unit lowering with pre-allocation admission for the emitted
+/// instruction and source-span arrays. The callback receives their combined
+/// live capacity (including old/new buffer coexistence while growing). The
+/// caller retains its ticket through the returned MIR's last use. Other MIR
+/// tables and lowering workspace keep their own admission responsibilities.
+pub fn lower_function_unit_with_emission_reservation(
+    bundle: &hir::Bundle,
+    def_id_text: &str,
+    capabilities: &[String],
+    source_snapshot: u64,
+    reserve: &mut dyn FnMut(usize) -> Result<(), String>,
+) -> Result<MirModule, AdapterError> {
+    lower_function_unit_impl(
+        bundle,
+        def_id_text,
+        capabilities,
+        source_snapshot,
+        false,
+        &BTreeMap::new(),
+        Some(reserve),
     )
 }
 
@@ -1474,6 +1505,7 @@ pub fn lower_function_data_unit(
         source_snapshot,
         true,
         &BTreeMap::new(),
+        None,
     )
 }
 
@@ -1495,6 +1527,7 @@ pub fn lower_function_data_unit_with_modes(
         source_snapshot,
         true,
         mode_overrides,
+        None,
     )
 }
 
@@ -1505,6 +1538,7 @@ fn lower_function_unit_impl(
     source_snapshot: u64,
     data: bool,
     mode_overrides: &BTreeMap<String, Vec<hir::ParamMode>>,
+    emission_reserve: Option<&mut dyn FnMut(usize) -> Result<(), String>>,
 ) -> Result<MirModule, AdapterError> {
     match bundle.domain {
         hir::HirDomain::Scalar | hir::HirDomain::Core if !data => {}
@@ -1679,7 +1713,7 @@ fn lower_function_unit_impl(
             &mut std::collections::BTreeSet::new(),
         )?
     };
-    let mir_fn = lower_function(
+    let mir_fn = lower_function_with_emission(
         module,
         &mut out,
         di,
@@ -1691,6 +1725,8 @@ fn lower_function_unit_impl(
         data,
         false,
         mode_overrides,
+        &ModuleScanFacts,
+        emission_reserve,
     )?;
     out.funcs.push(mir_fn);
     out.entry = 0;
@@ -2423,7 +2459,39 @@ struct Task {
     exit: Option<Exit>,
 }
 
-struct FnLower<'a> {
+fn grow_emission<T>(
+    values: &mut Vec<T>,
+    live: &mut usize,
+    reserve: &mut dyn FnMut(usize) -> Result<(), String>,
+) -> Result<(), AdapterError> {
+    if values.len() < values.capacity() {
+        return Ok(());
+    }
+    let overflow = || AdapterError::resource("emission capacity overflow".into());
+    let old = values
+        .capacity()
+        .checked_mul(std::mem::size_of::<T>())
+        .ok_or_else(overflow)?;
+    let capacity = values
+        .capacity()
+        .checked_mul(2)
+        .map(|n| n.max(4))
+        .ok_or_else(overflow)?;
+    let bytes = capacity
+        .checked_mul(std::mem::size_of::<T>())
+        .ok_or_else(overflow)?;
+    let temporary = live.checked_add(bytes).ok_or_else(overflow)?;
+    reserve(temporary).map_err(AdapterError::resource)?;
+    values
+        .try_reserve_exact(capacity - values.len())
+        .map_err(|e| AdapterError::resource(format!("emission allocation: {e}")))?;
+    debug_assert_eq!(values.capacity(), capacity);
+    *live = temporary - old;
+    reserve(*live).map_err(AdapterError::resource)?;
+    Ok(())
+}
+
+struct FnLower<'a, 'budget> {
     hir_module: &'a hir::Module,
     body: &'a hir::Body,
     def_map: &'a BTreeMap<u32, CalleeRef>,
@@ -2489,9 +2557,11 @@ struct FnLower<'a> {
     /// credential) — the ONE source of callee environment facts at
     /// creation sites.
     closure_facts: &'a dyn ClosureFacts,
+    emission_reserve: Option<&'budget mut dyn FnMut(usize) -> Result<(), String>>,
+    emission_bytes: usize,
 }
 
-impl<'a> FnLower<'a> {
+impl<'a, 'budget> FnLower<'a, 'budget> {
     /// The HIR TypeUse of an expression (declared type).
     fn expr_ty_hir(&self, eid: hir::ExprId) -> Result<hir::TypeUse, AdapterError> {
         self.body
@@ -2591,12 +2661,23 @@ impl<'a> FnLower<'a> {
         (self.blocks.len() - 1) as BlockId
     }
 
-    fn emit(&mut self, instr: MirInstr, span: Option<SpanInfo>) {
+    fn emit(&mut self, instr: MirInstr, span: Option<SpanInfo>) -> Result<(), AdapterError> {
+        if let Some(reserve) = self.emission_reserve.as_mut() {
+            grow_emission(
+                &mut self.blocks[self.cur as usize].instrs,
+                &mut self.emission_bytes,
+                *reserve,
+            )?;
+        }
         self.blocks[self.cur as usize].instrs.push(instr);
         if let Some(sp) = span {
+            if let Some(reserve) = self.emission_reserve.as_mut() {
+                grow_emission(&mut self.spans, &mut self.emission_bytes, *reserve)?;
+            }
             self.spans.push((self.flat, sp));
         }
         self.flat += 1;
+        Ok(())
     }
 
     /// Allocate (once) the join block of an on-demand join cell.
@@ -2653,7 +2734,7 @@ impl<'a> FnLower<'a> {
             let view_ty = self.out.intern_type(MirType::StrView);
             let view = self.temp_ty_from_cache(view_ty);
             let sp = None;
-            self.emit(MirInstr::View { dst: view, src: v }, sp);
+            self.emit(MirInstr::View { dst: view, src: v }, sp)?;
             Ok(view)
         } else {
             Ok(v)
@@ -2755,7 +2836,7 @@ impl<'a> FnLower<'a> {
     /// statement-tail lifetime): a method-receiver view dies with its
     /// statement, so a later field replace of the root is legal. Named
     /// view LOCALS live to scope end (782's root-hold semantics).
-    fn end_stmt_temp_views(&mut self) {
+    fn end_stmt_temp_views(&mut self) -> Result<(), AdapterError> {
         let base = self.base_slots;
         let wm = self.stmt_slot_watermark;
         let mut ends: Vec<SlotId> = Vec::new();
@@ -2769,9 +2850,10 @@ impl<'a> FnLower<'a> {
             }
         }
         for t in ends {
-            self.emit(MirInstr::BorrowEnd { token: t }, None);
+            self.emit(MirInstr::BorrowEnd { token: t }, None)?;
         }
         self.stmt_slot_watermark = base + self.extra_slots.len() as u32;
+        Ok(())
     }
 
     fn const_i32(&mut self, v: i32) -> u32 {
@@ -2780,11 +2862,11 @@ impl<'a> FnLower<'a> {
 
     /// PLAN-909: a fresh i32 constant slot holding the cell element index
     /// (single-element cells read/write index 0).
-    fn cell_index_slot(&mut self, t_i32: TypeIdx) -> SlotId {
+    fn cell_index_slot(&mut self, t_i32: TypeIdx) -> Result<SlotId, AdapterError> {
         let idx = self.temp_ty(t_i32);
         let c = self.const_i32(0);
-        self.emit(MirInstr::Const { dst: idx, value: c }, None);
-        idx
+        self.emit(MirInstr::Const { dst: idx, value: c }, None)?;
+        Ok(idx)
     }
 
     /// PLAN-909: the scalar element type of a cell slot (`List<T>`), if the
@@ -2887,7 +2969,7 @@ impl<'a> FnLower<'a> {
                     // value (never a snapshot): LIST_GET element 0 of the
                     // creator/callee-shared buffer.
                     let dst = self.temp_ty(ty);
-                    let index = self.cell_index_slot(self.t_i32);
+                    let index = self.cell_index_slot(self.t_i32)?;
                     self.emit(
                         MirInstr::ListGet {
                             dst,
@@ -2895,7 +2977,7 @@ impl<'a> FnLower<'a> {
                             index,
                         },
                         sp,
-                    );
+                    )?;
                     Ok(dst)
                 } else {
                     Ok(slot)
@@ -2910,7 +2992,7 @@ impl<'a> FnLower<'a> {
             hir::ExprKind::Constant { value } => {
                 let dst = self.temp_ty(ty);
                 let c = self.const_i32(*value);
-                self.emit(MirInstr::Const { dst, value: c }, sp);
+                self.emit(MirInstr::Const { dst, value: c }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::Binary { op, lhs, rhs, .. } if bin_eq_ne_text => {
@@ -2928,7 +3010,7 @@ impl<'a> FnLower<'a> {
                         rhs: r,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::Binary { op, lhs, rhs, .. } => {
@@ -2944,7 +3026,7 @@ impl<'a> FnLower<'a> {
                         rhs: r,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::Unary { op, operand } => {
@@ -2961,7 +3043,7 @@ impl<'a> FnLower<'a> {
                         operand: v,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::Logical { op, lhs, rhs } => {
@@ -2990,7 +3072,7 @@ impl<'a> FnLower<'a> {
                         value: c,
                     },
                     sp,
-                );
+                )?;
                 self.set_term(Terminator::Jump { target: join });
                 // Taken arm: result = rhs.
                 self.cur = rhs_b;
@@ -3003,7 +3085,7 @@ impl<'a> FnLower<'a> {
                         src: r,
                     },
                     rsp,
-                );
+                )?;
                 self.set_term(Terminator::Jump { target: join });
                 self.cur = join;
                 self.terminated = false;
@@ -3035,7 +3117,7 @@ impl<'a> FnLower<'a> {
                             args: actuals,
                         },
                         sp,
-                    );
+                    )?;
                     return Ok(dst);
                 }
                 if self.out.is_host_console_profile() {
@@ -3065,7 +3147,7 @@ impl<'a> FnLower<'a> {
                                 arg: arg_slots[0],
                             },
                             sp,
-                        );
+                        )?;
                         // No runtime Unit local/dst: HIR has already forbidden value consumers.
                         return Ok(u32::MAX);
                     }
@@ -3091,9 +3173,9 @@ impl<'a> FnLower<'a> {
                                 ));
                             }
                         };
-                        self.emit(MirInstr::Trace { event }, sp);
+                        self.emit(MirInstr::Trace { event }, sp)?;
                         let c = self.const_i32(value);
-                        self.emit(MirInstr::Const { dst, value: c }, sp);
+                        self.emit(MirInstr::Const { dst, value: c }, sp)?;
                         return Ok(dst);
                     }
                     // Unit lowering (PLAN-828 T-04): a cross-function
@@ -3228,7 +3310,7 @@ impl<'a> FnLower<'a> {
                             args: actuals.clone(),
                         },
                         sp,
-                    );
+                    )?;
                     // f0: the SOURCE result. A copyable result copies out
                     // (FIELD_GET); an OWNED result (Str / resource record)
                     // is not Copy — FIELD_MOVE field 0 is the only
@@ -3244,7 +3326,7 @@ impl<'a> FnLower<'a> {
                                 path: vec![0],
                             },
                             sp,
-                        );
+                        )?;
                     } else {
                         self.emit(
                             MirInstr::FieldGet {
@@ -3253,7 +3335,7 @@ impl<'a> FnLower<'a> {
                                 path: vec![0],
                             },
                             sp,
-                        );
+                        )?;
                     }
                     // wb*: one write-back field per MUT-RECORD param of the
                     // callee, in signature order (fields[1..] mirror that
@@ -3279,7 +3361,7 @@ impl<'a> FnLower<'a> {
                                     path: vec![wb_idx as u16],
                                 },
                                 sp,
-                            );
+                            )?;
                         } else {
                             self.emit(
                                 MirInstr::FieldGet {
@@ -3288,7 +3370,7 @@ impl<'a> FnLower<'a> {
                                     path: vec![wb_idx as u16],
                                 },
                                 sp,
-                            );
+                            )?;
                         }
                         // The write-back target: the ORIGINAL BorrowMut'd
                         // local — recover it from the HIR binding (the
@@ -3301,7 +3383,7 @@ impl<'a> FnLower<'a> {
                                         src: back,
                                     },
                                     sp,
-                                );
+                                )?;
                             } else {
                                 self.emit(
                                     MirInstr::Copy {
@@ -3309,13 +3391,13 @@ impl<'a> FnLower<'a> {
                                         src: back,
                                     },
                                     sp,
-                                );
+                                )?;
                             }
                         } else if wb_owned {
                             // Untracked target: drop the extracted record
                             // (the borrow discipline was violated
                             // upstream).
-                            self.emit(MirInstr::Drop { slot: back }, sp);
+                            self.emit(MirInstr::Drop { slot: back }, sp)?;
                         }
                         wb_idx += 1;
                     }
@@ -3334,7 +3416,7 @@ impl<'a> FnLower<'a> {
                         args: actuals,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::CallClosure { callee, eval_args } => {
@@ -3346,7 +3428,7 @@ impl<'a> FnLower<'a> {
                     args.push(self.eval_expr(*arg, depth + 1)?);
                 }
                 let dst = self.temp_ty(ty);
-                self.emit(MirInstr::CallClosure { dst, closure, args }, sp);
+                self.emit(MirInstr::CallClosure { dst, closure, args }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::CreateClosure { callee, captures } => {
@@ -3408,7 +3490,7 @@ impl<'a> FnLower<'a> {
                                 // PRIVATE cell the env alone owns.
                                 let elem = self.cell_elem_of(source_ty).unwrap_or(source_ty);
                                 let value = self.temp_ty_from_cache(elem);
-                                let index = self.cell_index_slot(self.t_i32);
+                                let index = self.cell_index_slot(self.t_i32)?;
                                 self.emit(
                                     MirInstr::ListGet {
                                         dst: value,
@@ -3416,7 +3498,7 @@ impl<'a> FnLower<'a> {
                                         index,
                                     },
                                     sp,
-                                );
+                                )?;
                                 if child_writes {
                                     let cell = self.temp_ty(source_ty);
                                     self.emit(
@@ -3426,8 +3508,8 @@ impl<'a> FnLower<'a> {
                                             cap: 1,
                                         },
                                         sp,
-                                    );
-                                    self.emit(MirInstr::ListPush { root: cell, value }, sp);
+                                    )?;
+                                    self.emit(MirInstr::ListPush { root: cell, value }, sp)?;
                                     operands.push(CaptureOperand {
                                         kind: CaptureKind::Move,
                                         src: cell,
@@ -3452,7 +3534,7 @@ impl<'a> FnLower<'a> {
                                         src: source,
                                     },
                                     sp,
-                                );
+                                )?;
                                 let cell_ty = self.out.intern_type(MirType::List(
                                     ace_av_core::mir::ListTypeRef { elem: source_ty },
                                 ));
@@ -3464,14 +3546,14 @@ impl<'a> FnLower<'a> {
                                         cap: 1,
                                     },
                                     sp,
-                                );
+                                )?;
                                 self.emit(
                                     MirInstr::ListPush {
                                         root: cell,
                                         value: copied,
                                     },
                                     sp,
-                                );
+                                )?;
                                 operands.push(CaptureOperand {
                                     kind: CaptureKind::Move,
                                     src: cell,
@@ -3490,7 +3572,7 @@ impl<'a> FnLower<'a> {
                                         src: source,
                                     },
                                     sp,
-                                );
+                                )?;
                                 operands.push(CaptureOperand {
                                     kind: CaptureKind::Move,
                                     src: copied,
@@ -3510,7 +3592,7 @@ impl<'a> FnLower<'a> {
                         captures: operands,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             // -- PLAN-821 owned text surface (av.owned/1) ------------------
@@ -3522,7 +3604,7 @@ impl<'a> FnLower<'a> {
                 let c = self
                     .out
                     .intern_const(MirConst::Str(value.as_bytes().to_vec().into_boxed_slice()));
-                self.emit(MirInstr::Const { dst, value: c }, sp);
+                self.emit(MirInstr::Const { dst, value: c }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::CharLit { scalar } if self.owned => {
@@ -3534,19 +3616,19 @@ impl<'a> FnLower<'a> {
                     )
                 })?;
                 let c = self.out.intern_const(MirConst::Char(ch));
-                self.emit(MirInstr::Const { dst, value: c }, sp);
+                self.emit(MirInstr::Const { dst, value: c }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::TextLen { operand } if self.owned && !self.collections() => {
                 let v = self.text_view_operand(operand, depth)?;
                 let dst = self.temp_ty(ty);
-                self.emit(MirInstr::StrLen { dst, view: v }, sp);
+                self.emit(MirInstr::StrLen { dst, view: v }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::TextLenBytes { operand } if self.owned && !self.collections() => {
                 let v = self.text_view_operand(operand, depth)?;
                 let dst = self.temp_ty(ty);
-                self.emit(MirInstr::StrLenBytes { dst, view: v }, sp);
+                self.emit(MirInstr::StrLenBytes { dst, view: v }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::TextCharAt { operand, index } if self.owned && !self.collections() => {
@@ -3560,7 +3642,7 @@ impl<'a> FnLower<'a> {
                         index: i,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::TextSlice {
@@ -3580,7 +3662,7 @@ impl<'a> FnLower<'a> {
                         end: b,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::TextConcat { lhs, rhs } if self.owned && !self.collections() => {
@@ -3597,7 +3679,7 @@ impl<'a> FnLower<'a> {
                         rhs: r,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             // PLAN-889: the collections source descriptor also exposes the
@@ -3612,10 +3694,10 @@ impl<'a> FnLower<'a> {
                 let dst = self.temp_ty(ty);
                 match self.out.types.get(src_ty as usize) {
                     Some(MirType::StrView) => {
-                        self.emit(MirInstr::StrToOwned { dst, view: v }, sp);
+                        self.emit(MirInstr::StrToOwned { dst, view: v }, sp)?;
                     }
                     _ => {
-                        self.emit(MirInstr::Clone { dst, src: v }, sp);
+                        self.emit(MirInstr::Clone { dst, src: v }, sp)?;
                     }
                 }
                 Ok(dst)
@@ -3623,13 +3705,13 @@ impl<'a> FnLower<'a> {
             hir::ExprKind::ClosureClone { operand } if self.out.is_closures_profile() => {
                 let src = self.eval_expr(*operand, depth + 1)?;
                 let dst = self.temp_ty(ty);
-                self.emit(MirInstr::Clone { dst, src }, sp);
+                self.emit(MirInstr::Clone { dst, src }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::TextToOwned { operand } if self.owned => {
                 let v = self.eval_expr(*operand, depth + 1)?;
                 let dst = self.temp_ty(ty);
-                self.emit(MirInstr::StrToOwned { dst, view: v }, sp);
+                self.emit(MirInstr::StrToOwned { dst, view: v }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::TextToBorrowed { operand } if self.owned => {
@@ -3640,10 +3722,10 @@ impl<'a> FnLower<'a> {
                 let dst = self.temp_ty(ty);
                 match self.out.types.get(src_ty as usize) {
                     Some(MirType::Str) => {
-                        self.emit(MirInstr::View { dst, src: v }, sp);
+                        self.emit(MirInstr::View { dst, src: v }, sp)?;
                     }
                     _ => {
-                        self.emit(MirInstr::Copy { dst, src: v }, sp);
+                        self.emit(MirInstr::Copy { dst, src: v }, sp)?;
                     }
                 }
                 Ok(dst)
@@ -3651,13 +3733,13 @@ impl<'a> FnLower<'a> {
             hir::ExprKind::CharToCodepoint { operand } if self.owned => {
                 let v = self.eval_expr(*operand, depth + 1)?;
                 let dst = self.temp_ty(ty);
-                self.emit(MirInstr::CharToCodepoint { dst, ch: v }, sp);
+                self.emit(MirInstr::CharToCodepoint { dst, ch: v }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::CharFromCodepoint { operand } if self.owned => {
                 let v = self.eval_expr(*operand, depth + 1)?;
                 let dst = self.temp_ty(ty);
-                self.emit(MirInstr::CharFromCodepoint { dst, code: v }, sp);
+                self.emit(MirInstr::CharFromCodepoint { dst, code: v }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::RecordClone { base, .. } if self.owned => {
@@ -3695,9 +3777,9 @@ impl<'a> FnLower<'a> {
                                         path: vec![i as u16],
                                     },
                                     sp,
-                                );
+                                )?;
                                 let owned = self.temp_ty(f.ty);
-                                self.emit(MirInstr::StrToOwned { dst: owned, view }, sp);
+                                self.emit(MirInstr::StrToOwned { dst: owned, view }, sp)?;
                                 operands.push(owned);
                                 continue;
                             }
@@ -3725,7 +3807,7 @@ impl<'a> FnLower<'a> {
                                     path: vec![i as u16],
                                 },
                                 sp,
-                            );
+                            )?;
                             operands.push(got);
                         }
                         self.emit(
@@ -3735,11 +3817,11 @@ impl<'a> FnLower<'a> {
                                 operands,
                             },
                             sp,
-                        );
+                        )?;
                         Ok(dst)
                     }
                     _ => {
-                        self.emit(MirInstr::Clone { dst, src: v }, sp);
+                        self.emit(MirInstr::Clone { dst, src: v }, sp)?;
                         Ok(dst)
                     }
                 }
@@ -3752,7 +3834,7 @@ impl<'a> FnLower<'a> {
                     hir::ExprKind::ReadLocal { local } => {
                         let src = self.slot_of_local[local.0 as usize];
                         let dst = self.temp_ty(ty);
-                        self.emit(MirInstr::Move { dst, src }, sp);
+                        self.emit(MirInstr::Move { dst, src }, sp)?;
                         Ok(dst)
                     }
                     _ => Err(AdapterError::uns(
@@ -3801,7 +3883,7 @@ impl<'a> FnLower<'a> {
                             src: slot,
                         },
                         sp,
-                    );
+                    )?;
                 } else {
                     self.emit(
                         MirInstr::Copy {
@@ -3809,7 +3891,7 @@ impl<'a> FnLower<'a> {
                             src: slot,
                         },
                         sp,
-                    );
+                    )?;
                 }
                 Ok(tmp)
             }
@@ -3847,7 +3929,7 @@ impl<'a> FnLower<'a> {
                             && !ace_av_core::ownership::type_is_owned(self.out, t);
                     if copyable_record {
                         let snap = self.temp_ty(t);
-                        self.emit(MirInstr::Copy { dst: snap, src: s }, sp);
+                        self.emit(MirInstr::Copy { dst: snap, src: s }, sp)?;
                         arg_slots.push(snap);
                     } else {
                         arg_slots.push(s);
@@ -3926,7 +4008,7 @@ impl<'a> FnLower<'a> {
                         operands,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             // -- PLAN-864 collections surface ------------------------------
@@ -3940,19 +4022,19 @@ impl<'a> FnLower<'a> {
                         cap: 4,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::ListLen { list } if self.collections() => {
                 let l = self.eval_expr(*list, depth + 1)?;
                 let dst = self.temp_ty(ty);
-                self.emit(MirInstr::ListLen { dst, src: l }, sp);
+                self.emit(MirInstr::ListLen { dst, src: l }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::ListPush { list, value } if self.collections() => {
                 let l = self.eval_expr(*list, depth + 1)?;
                 let v = self.eval_expr(*value, depth + 1)?;
-                self.emit(MirInstr::ListPush { root: l, value: v }, sp);
+                self.emit(MirInstr::ListPush { root: l, value: v }, sp)?;
                 Ok(NO_SLOT)
             }
             hir::ExprKind::ListInsert { list, index, value }
@@ -3974,7 +4056,7 @@ impl<'a> FnLower<'a> {
                             value: v,
                         },
                         sp,
-                    );
+                    )?;
                 } else {
                     self.emit(
                         MirInstr::ListSet {
@@ -3983,7 +4065,7 @@ impl<'a> FnLower<'a> {
                             value: v,
                         },
                         sp,
-                    );
+                    )?;
                 }
                 Ok(NO_SLOT)
             }
@@ -4006,7 +4088,7 @@ impl<'a> FnLower<'a> {
                         index: i,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::ListRemove { list, index } if self.collections() => {
@@ -4020,7 +4102,7 @@ impl<'a> FnLower<'a> {
                         index: i,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::ListClear { list } if self.collections() => {
@@ -4055,7 +4137,7 @@ impl<'a> FnLower<'a> {
                 self.cur = header;
                 self.terminated = false;
                 let n = self.temp_ty(t_i32);
-                self.emit(MirInstr::ListLen { dst: n, src: l }, sp);
+                self.emit(MirInstr::ListLen { dst: n, src: l }, sp)?;
                 let zero = self.temp_ty(t_i32);
                 let c0 = self.out.intern_const(MirConst::I32(0));
                 self.emit(
@@ -4064,7 +4146,7 @@ impl<'a> FnLower<'a> {
                         value: c0,
                     },
                     sp,
-                );
+                )?;
                 let c = self.temp_ty(t_bool);
                 self.emit(
                     MirInstr::Bin {
@@ -4074,7 +4156,7 @@ impl<'a> FnLower<'a> {
                         rhs: zero,
                     },
                     sp,
-                );
+                )?;
                 self.set_term(Terminator::Branch {
                     cond: c,
                     then: body_b,
@@ -4090,7 +4172,7 @@ impl<'a> FnLower<'a> {
                         value: c1,
                     },
                     sp,
-                );
+                )?;
                 let idx = self.temp_ty(t_i32);
                 self.emit(
                     MirInstr::Bin {
@@ -4100,7 +4182,7 @@ impl<'a> FnLower<'a> {
                         rhs: one,
                     },
                     sp,
-                );
+                )?;
                 let e = self.temp_ty(elem_ty.unwrap_or(t_i32));
                 self.emit(
                     MirInstr::ListRemove {
@@ -4109,9 +4191,9 @@ impl<'a> FnLower<'a> {
                         index: idx,
                     },
                     sp,
-                );
+                )?;
                 if owned_elem {
-                    self.emit(MirInstr::Drop { slot: e }, sp);
+                    self.emit(MirInstr::Drop { slot: e }, sp)?;
                 }
                 self.set_term(Terminator::Jump { target: header });
                 self.cur = exit_b;
@@ -4137,7 +4219,7 @@ impl<'a> FnLower<'a> {
                         payload: pl,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::VariantGuardTest { root, disc } if self.collections() => {
@@ -4150,7 +4232,7 @@ impl<'a> FnLower<'a> {
                         disc: *disc,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::VariantProject { root, disc } if self.collections() => {
@@ -4163,7 +4245,7 @@ impl<'a> FnLower<'a> {
                         disc: *disc,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             // TextLen over an owned-element projection: the fused view
@@ -4175,7 +4257,7 @@ impl<'a> FnLower<'a> {
                     // plain receiver (a local Str / literal): owned path
                     let v = self.text_view_operand(operand, depth)?;
                     let dst = self.temp_ty(ty);
-                    self.emit(MirInstr::StrLen { dst, view: v }, sp);
+                    self.emit(MirInstr::StrLen { dst, view: v }, sp)?;
                     return Ok(dst);
                 };
                 let (l, i) = (
@@ -4193,7 +4275,7 @@ impl<'a> FnLower<'a> {
                         index: i,
                     },
                     sp,
-                );
+                )?;
                 // 2. reach the terminal Str: a whole Str element is already
                 // a Str slot; a field rides the profile-4 FieldGet contract
                 // (exact-type dst — the runtime handle-SHARES the field, no
@@ -4212,7 +4294,7 @@ impl<'a> FnLower<'a> {
                             path: segs,
                         },
                         sp,
-                    );
+                    )?;
                     tmp
                 };
                 // 3. view + read
@@ -4223,12 +4305,12 @@ impl<'a> FnLower<'a> {
                         src: str_slot,
                     },
                     sp,
-                );
+                )?;
                 let dst = self.temp_ty(ty);
-                self.emit(MirInstr::StrLen { dst, view: v }, sp);
+                self.emit(MirInstr::StrLen { dst, view: v }, sp)?;
                 // end the view BEFORE the restore — an insert of a value
                 // under an active borrow is a mut-conflict in the lattice.
-                self.emit(MirInstr::BorrowEnd { token: v }, sp);
+                self.emit(MirInstr::BorrowEnd { token: v }, sp)?;
                 // 4. restore the element exactly (same buffers; len back)
                 self.emit(
                     MirInstr::ListInsert {
@@ -4237,7 +4319,7 @@ impl<'a> FnLower<'a> {
                         value: e,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             // FieldGet rooted at a ListGet over an OWNED list: the fused
@@ -4260,7 +4342,7 @@ impl<'a> FnLower<'a> {
                                 path: segs,
                             },
                             sp,
-                        );
+                        )?;
                         let _ = root;
                         return Ok(dst);
                     }
@@ -4275,7 +4357,7 @@ impl<'a> FnLower<'a> {
                         path: segs,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::FieldGet { base, path } => {
@@ -4339,8 +4421,8 @@ impl<'a> FnLower<'a> {
                                         path: segs,
                                     },
                                     sp,
-                                );
-                                self.emit(MirInstr::StrToOwned { dst, view }, sp);
+                                )?;
+                                self.emit(MirInstr::StrToOwned { dst, view }, sp)?;
                                 return Ok(dst);
                             }
                             return Err(AdapterError::uns(
@@ -4357,7 +4439,7 @@ impl<'a> FnLower<'a> {
                                     path: segs,
                                 },
                                 sp,
-                            );
+                            )?;
                             return Ok(dst);
                         }
                     }
@@ -4369,7 +4451,7 @@ impl<'a> FnLower<'a> {
                         path: segs,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             // By-value record parameters/returns ride a BorrowView WRAPPER
@@ -4509,6 +4591,38 @@ fn lower_function_with(
     owned: bool,
     mode_overrides: &BTreeMap<String, Vec<hir::ParamMode>>,
     closure_facts: &dyn ClosureFacts,
+) -> Result<MirFunction, AdapterError> {
+    lower_function_with_emission(
+        hir_module,
+        out,
+        def_index,
+        body_id,
+        sig,
+        source_snapshot,
+        def_map,
+        name,
+        data,
+        owned,
+        mode_overrides,
+        closure_facts,
+        None,
+    )
+}
+
+fn lower_function_with_emission(
+    hir_module: &hir::Module,
+    out: &mut MirModule,
+    def_index: u32,
+    body_id: hir::BodyId,
+    sig: TypeIdx,
+    source_snapshot: u64,
+    def_map: &BTreeMap<u32, CalleeRef>,
+    name: String,
+    data: bool,
+    owned: bool,
+    mode_overrides: &BTreeMap<String, Vec<hir::ParamMode>>,
+    closure_facts: &dyn ClosureFacts,
+    emission_reserve: Option<&mut dyn FnMut(usize) -> Result<(), String>>,
 ) -> Result<MirFunction, AdapterError> {
     let body = hir_module.bodies.get(body_id.0 as usize).ok_or_else(|| {
         AdapterError::inv("lower.body-ref", format!("body {} out of range", body_id.0))
@@ -4661,6 +4775,8 @@ fn lower_function_with(
         pending_joins: vec![],
         cell_locals,
         closure_facts,
+        emission_reserve,
+        emission_bytes: 0,
     };
     let entry_b = lower.new_block();
     debug_assert_eq!(entry_b, 0);
@@ -4689,7 +4805,7 @@ fn lower_function_with(
                 )
             })?;
             let dst = lower.slot_of_local[*local_index];
-            lower.emit(MirInstr::EnvGet { dst, field }, None);
+            lower.emit(MirInstr::EnvGet { dst, field }, None)?;
             layout.push(ty);
         }
         env = Some(layout);
@@ -4750,7 +4866,7 @@ fn lower_function_with(
                                 None => None,
                             };
                             let disc = *disc;
-                            lower.end_stmt_temp_views();
+                            lower.end_stmt_temp_views()?;
                             lower.emit(
                                 MirInstr::VariantSwitch {
                                     root: dst,
@@ -4758,12 +4874,12 @@ fn lower_function_with(
                                     payload: pl,
                                 },
                                 lower.span(*value),
-                            );
+                            )?;
                             continue;
                         }
                     }
                     let v = lower.eval_expr(*value, 0)?;
-                    lower.end_stmt_temp_views();
+                    lower.end_stmt_temp_views()?;
                     let dst = lower.slot_of_local[local.0 as usize];
                     let sp = lower.span(*value);
                     if lower.cell_locals.contains(&(local.0 as usize)) {
@@ -4781,14 +4897,14 @@ fn lower_function_with(
                                 cap: 1,
                             },
                             sp,
-                        );
+                        )?;
                         lower.emit(
                             MirInstr::ListPush {
                                 root: dst,
                                 value: v,
                             },
                             sp,
-                        );
+                        )?;
                         continue;
                     }
                     let slot_ty = lower
@@ -4798,7 +4914,7 @@ fn lower_function_with(
                         .cloned();
                     let is_closure = matches!(slot_ty, Some(MirType::Closure(_)));
                     if is_closure {
-                        lower.emit(MirInstr::Move { dst, src: v }, sp);
+                        lower.emit(MirInstr::Move { dst, src: v }, sp)?;
                     } else if lower.owned {
                         // The binding's slot type decides: owned kinds
                         // transfer (MOVE — the temp dies), copyables copy.
@@ -4810,12 +4926,12 @@ fn lower_function_with(
                             })
                             .unwrap_or(false);
                         if is_owned {
-                            lower.emit(MirInstr::Move { dst, src: v }, sp);
+                            lower.emit(MirInstr::Move { dst, src: v }, sp)?;
                         } else {
-                            lower.emit(MirInstr::Copy { dst, src: v }, sp);
+                            lower.emit(MirInstr::Copy { dst, src: v }, sp)?;
                         }
                     } else {
-                        lower.emit(MirInstr::Copy { dst, src: v }, sp);
+                        lower.emit(MirInstr::Copy { dst, src: v }, sp)?;
                     }
                 }
                 hir::Stmt::Assign { place, value } => {
@@ -4835,9 +4951,9 @@ fn lower_function_with(
                                 // closures observe it through their own
                                 // handle of the same cell.
                                 let v = lower.eval_expr(*value, 0)?;
-                                lower.end_stmt_temp_views();
+                                lower.end_stmt_temp_views()?;
                                 let sp = lower.span(*value);
-                                let index = lower.cell_index_slot(lower.t_i32);
+                                let index = lower.cell_index_slot(lower.t_i32)?;
                                 lower.emit(
                                     MirInstr::ListSet {
                                         root: dst,
@@ -4845,7 +4961,7 @@ fn lower_function_with(
                                         value: v,
                                     },
                                     sp,
-                                );
+                                )?;
                                 continue;
                             }
                             // PLAN-864: `r = Ok(42)` — variant slot writes
@@ -4860,7 +4976,7 @@ fn lower_function_with(
                                         None => None,
                                     };
                                     let disc = *disc;
-                                    lower.end_stmt_temp_views();
+                                    lower.end_stmt_temp_views()?;
                                     lower.emit(
                                         MirInstr::VariantSwitch {
                                             root: dst,
@@ -4868,12 +4984,12 @@ fn lower_function_with(
                                             payload: pl,
                                         },
                                         lower.span(*value),
-                                    );
+                                    )?;
                                     continue;
                                 }
                             }
                             let v = lower.eval_expr(*value, 0)?;
-                            lower.end_stmt_temp_views();
+                            lower.end_stmt_temp_views()?;
                             let sp = lower.span(*value);
                             if lower.owned {
                                 let slot_ty = lower
@@ -4888,12 +5004,12 @@ fn lower_function_with(
                                     })
                                     .unwrap_or(false);
                                 if is_owned {
-                                    lower.emit(MirInstr::Move { dst, src: v }, sp);
+                                    lower.emit(MirInstr::Move { dst, src: v }, sp)?;
                                 } else {
-                                    lower.emit(MirInstr::Copy { dst, src: v }, sp);
+                                    lower.emit(MirInstr::Copy { dst, src: v }, sp)?;
                                 }
                             } else {
-                                lower.emit(MirInstr::Copy { dst, src: v }, sp);
+                                lower.emit(MirInstr::Copy { dst, src: v }, sp)?;
                             }
                         }
                         hir::PlaceKind::FieldPath(path) => {
@@ -4908,7 +5024,7 @@ fn lower_function_with(
                             // overlap invariant), then the structural write
                             // through the root local (contract-decision §4).
                             let v = lower.eval_expr(*value, 0)?;
-                            lower.end_stmt_temp_views();
+                            lower.end_stmt_temp_views()?;
                             let root = lower.slot_of_local[p.local.0 as usize];
                             let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
                             let sp = lower.span(*value);
@@ -4919,13 +5035,13 @@ fn lower_function_with(
                                     value: v,
                                 },
                                 sp,
-                            );
+                            )?;
                         }
                     }
                 }
                 hir::Stmt::Return { value } => {
                     let v = lower.eval_expr(*value, 0)?;
-                    lower.end_stmt_temp_views();
+                    lower.end_stmt_temp_views()?;
                     // R2-F08': a mut-record-param function returns the
                     // (source result, final mut params) wrapper — the
                     // caller unwraps and writes the params back.
@@ -4942,7 +5058,7 @@ fn lower_function_with(
                                 operands,
                             },
                             None,
-                        );
+                        )?;
                         w
                     } else {
                         v
@@ -4952,7 +5068,7 @@ fn lower_function_with(
                 }
                 hir::Stmt::If { cond, then, els } => {
                     let c = lower.eval_expr(*cond, 0)?;
-                    lower.end_stmt_temp_views();
+                    lower.end_stmt_temp_views()?;
                     let then_b = lower.new_block();
                     let then_exit;
                     match els {
@@ -5067,7 +5183,7 @@ fn lower_function_with(
                                 slot: lower.slot_of_local[local.0 as usize],
                             },
                             None,
-                        );
+                        )?;
                     }
                 }
                 hir::Stmt::Eval { value } => {
@@ -5078,7 +5194,7 @@ fn lower_function_with(
                     // unit sentinel) releases with the frame; owned
                     // transfers are verify-rejected at the source.
                     let _ = lower.eval_expr(*value, 0)?;
-                    lower.end_stmt_temp_views();
+                    lower.end_stmt_temp_views()?;
                 }
             }
         }

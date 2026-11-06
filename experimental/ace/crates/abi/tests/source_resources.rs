@@ -811,6 +811,230 @@ mod source_foreign {
     }
 
     #[test]
+    fn native_lower_emission_reserves_instruction_and_span_capacity_before_allocation() {
+        use ace_av_core::{contract::SpanInfo, mir::MirInstr};
+        use ace_lowering::hir_adapter::{
+            lower_function_unit, lower_function_unit_with_emission_reservation,
+        };
+        use ace_source_query::resources::Resources;
+        let source = format!(
+            "fn main() int {{ var x = 0; {} return x }}",
+            "x = x + 1; ".repeat(40)
+        );
+        let compiled =
+            ace_core::source::compile_scalar_source(&source, "emission.at", &[]).unwrap();
+        let bundle = compiled.checked.bundle();
+        let original = lower_function_unit(bundle, "d_main", &[], 17).unwrap();
+        let original_wire = ace_av_core::abc::encode_abc(&original).unwrap().to_flat();
+        let instruction = std::mem::size_of::<MirInstr>();
+        let span = std::mem::size_of::<(u32, SpanInfo)>();
+        let allowed = 96 * instruction + 32 * span - 1;
+        eprintln!("emission layout: instruction={instruction} span={span} next_array={} allowance={allowed}", 64 * instruction);
+        eprintln!(
+            "other initial layouts: block={} type={}",
+            std::mem::size_of::<ace_av_core::mir::MirBlock>(),
+            std::mem::size_of::<ace_av_core::mir::MirType>()
+        );
+        let resources = Resources::default();
+        let baseline = resources.stats().current;
+        let mut allocation = resources.reserve(Charge::mir(0)).unwrap();
+        let pressure = resources
+            .reserve(Charge::mir((16 << 20) - allowed))
+            .unwrap();
+        let pressured = resources.stats().current;
+        let (denied, forbidden, _) =
+            with_charge_probe(64 * instruction, &resources, Charge::default(), || {
+                lower_function_unit_with_emission_reservation(
+                    bundle,
+                    "d_main",
+                    &[],
+                    17,
+                    &mut |bytes| {
+                        allocation
+                            .resize(Charge::mir(bytes))
+                            .map_err(|e| e.to_string())
+                    },
+                )
+            });
+        assert!(matches!(
+            denied,
+            Err(ace_lowering::AdapterError::Resource { .. })
+        ));
+        assert_eq!(
+            forbidden, 0,
+            "instruction array allocated before its reservation"
+        );
+        assert_eq!(
+            resources.stats().current.mir,
+            pressured.mir + 32 * instruction + 32 * span
+        );
+        // The caller owns the ticket on an error path as well: partial arrays
+        // have dropped inside lowering, then its ticket may be released.
+        drop(allocation);
+        assert_eq!(resources.stats().current, pressured);
+        drop(pressure);
+        let mut allocation = resources.reserve(Charge::mir(0)).unwrap();
+        let (mir, hits, admitted) = with_charge_probe(
+            64 * instruction,
+            &resources,
+            Charge::mir(96 * instruction + 32 * span),
+            || {
+                lower_function_unit_with_emission_reservation(
+                    bundle,
+                    "d_main",
+                    &[],
+                    17,
+                    &mut |bytes| {
+                        allocation
+                            .resize(Charge::mir(bytes))
+                            .map_err(|e| e.to_string())
+                    },
+                )
+            },
+        );
+        let mir = mir.unwrap();
+        assert_eq!(hits, 1, "did not observe the real instruction array growth");
+        assert!(
+            admitted,
+            "old/new instruction arrays or live spans were not reserved together"
+        );
+        let retained: usize = mir
+            .funcs
+            .iter()
+            .map(|f| {
+                f.blocks
+                    .iter()
+                    .map(|b| b.instrs.capacity() * instruction)
+                    .sum::<usize>()
+                    + f.spans.capacity() * span
+            })
+            .sum();
+        assert_eq!(resources.stats().current.mir, retained);
+        assert_eq!(
+            ace_av_core::abc::encode_abc(&mir).unwrap().to_flat(),
+            original_wire
+        );
+        ace_av_core::mir_verify::validate_mir(&mir).unwrap();
+        drop(mir);
+        drop(allocation);
+        assert_eq!(resources.stats().current, baseline);
+        eprintln!("native emission: instruction={instruction} span={span} retained={retained}");
+
+        let compiled = ace_core::source::compile_scalar_source(
+            "fn main() int { return 1 + 2 }",
+            "span-emission.at",
+            &[],
+        )
+        .unwrap();
+        let allowed = 4 * instruction + 4 * span - 1;
+        let pressure = resources
+            .reserve(Charge::mir((16 << 20) - allowed))
+            .unwrap();
+        let mut allocation = resources.reserve(Charge::mir(0)).unwrap();
+        let (denied, span_arrays, _) =
+            with_charge_probe(4 * span, &resources, Charge::default(), || {
+                lower_function_unit_with_emission_reservation(
+                    compiled.checked.bundle(),
+                    "d_main",
+                    &[],
+                    17,
+                    &mut |bytes| {
+                        allocation
+                            .resize(Charge::mir(bytes))
+                            .map_err(|e| e.to_string())
+                    },
+                )
+            });
+        assert!(matches!(
+            denied,
+            Err(ace_lowering::AdapterError::Resource { .. })
+        ));
+        assert_eq!(span_arrays, 0, "span array allocated before reservation");
+        assert_eq!(
+            resources.stats().current.mir,
+            (16 << 20) - allowed + 4 * instruction
+        );
+        drop(allocation);
+        drop(pressure);
+        assert_eq!(resources.stats().current, baseline);
+    }
+
+    #[test]
+    fn native_source_emission_quota_rejects_before_codegen_and_repairs_current_target() {
+        let (root, provider_bytes, environment, caps) = fixture("native-emission-quota");
+        let source = "fn main() int { return foreign_add(20,22) }";
+        let mut session = Session::cold(
+            source,
+            "emission938",
+            "p938",
+            &caps,
+            environment,
+            provider_bytes.clone(),
+            Target::Native,
+        )
+        .unwrap();
+        let resources = session.frontend().resources();
+        let old = session.artifact_bytes("main").unwrap().clone();
+        let ledger = session.frontend().work();
+        let lower_before = ledger.totals("main", "mir-lower");
+        let native_before = ledger.totals("main", "native-emit");
+        let baseline = resources.stats().current;
+        let pressure = resources
+            .reserve(Charge::mir((16 << 20) - baseline.mir - 1))
+            .unwrap();
+        let changed = "fn main() int { return foreign_add(21,22) }";
+        let denied = session.prepare("main", changed);
+        assert!(
+            matches!(denied, Err(ref message) if message.starts_with("foreign.resource:")),
+            "emission quota was not a source resource rejection"
+        );
+        let lower = ledger.totals("main", "mir-lower");
+        assert_eq!(lower.attempted, lower_before.attempted + 1);
+        assert_eq!(lower.produced, lower_before.produced);
+        assert_eq!(
+            ledger.totals("main", "native-emit").attempted,
+            native_before.attempted,
+            "quota failed only after native codegen ran"
+        );
+        assert_eq!(session.frontend().source(), source);
+        assert!(Arc::ptr_eq(&old, session.artifact_bytes("main").unwrap()));
+        drop(pressure);
+        assert_eq!(resources.stats().current.mir, baseline.mir);
+        let candidate = session.prepare("main", changed).unwrap();
+        assert_eq!(resources.stats().current.mir, baseline.mir);
+        let authority = CurrentAuthority {
+            foreign: provider::authority(&provider::hash(&provider_bytes), 1, &caps).unwrap(),
+            runtime_digest: ace_abi::source_foreign::certification_runtime_policy(Target::Native),
+            emitter: Target::Native.identity(),
+        };
+        let mut current = || Ok(authority.clone());
+        let ready = session
+            .prepare_publication(
+                Edit::Body(candidate),
+                &root.join("repaired"),
+                &mut current,
+                None,
+            )
+            .unwrap();
+        assert_eq!(ready.run(&mut current, None).unwrap().exit_code, Some(43));
+        let store = ManagedStore::open(&root.join("store")).unwrap();
+        session
+            .publish_prepared(
+                ready,
+                &store,
+                &root.join("current.json"),
+                None,
+                None,
+                |stored, encoder| encoder.json(stored),
+                &mut current,
+                None,
+            )
+            .unwrap();
+        assert_eq!(session.frontend().source(), changed);
+        assert!(!Arc::ptr_eq(&old, session.artifact_bytes("main").unwrap()));
+    }
+
+    #[test]
     fn c_cache_canonical_text_admission_precedes_store_publication_and_repairs() {
         use ace_artifacts::store::{ManagedStore, StoreError};
         use ace_source_query::resources::Resources;
