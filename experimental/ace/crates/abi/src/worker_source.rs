@@ -400,7 +400,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             restored
                 .prepare_foreign_source_checked(
                     environment,
-                    Arc::new(bytes.clone()),
+                    bytes.clone(),
                     changed_source.then_some(deck.source.as_str()),
                 )
                 .map(|candidate| Edit::Foreign(candidate.include_interface_work(interface_work)))
@@ -462,9 +462,8 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             }
             Err(e) => return Err(err("source", e)),
         };
-        let session =
-            Session::from_frontend_stored(front, checked, Arc::new(bytes.clone()), target, &store)
-                .map_err(|e| err("source", e))?;
+        let session = Session::from_frontend_stored(front, checked, bytes.clone(), target, &store)
+            .map_err(|e| err("source", e))?;
         for work in interface_work {
             work.accept();
         }
@@ -509,7 +508,8 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         .map_err(|e| err("infra", e))?;
         write(&reference_dir.join("events.c"), provider::EVENT_RUNTIME)
             .map_err(|e| err("infra", e))?;
-        write(&reference_dir.join("provider.obj"), &bytes).map_err(|e| err("infra", e))?;
+        write(&reference_dir.join("provider.obj"), bytes.as_slice())
+            .map_err(|e| err("infra", e))?;
         let exe = reference_dir.join("reference.exe");
         crate::bridge::compile_bridge_crt_with_objects(
             &reference_dir,
@@ -613,7 +613,7 @@ fn prepare_provider(
     store: &ManagedStore,
     resources: &Resources,
     bias: u8,
-) -> Result<(Vec<u8>, bool), DiagOut> {
+) -> Result<(Arc<Vec<u8>>, bool), DiagOut> {
     let scratch = crate::source_tool_scratch::ToolScratch::provider(store, resources, bias)
         .map_err(|e| err("store.cleanup-pending", e))?;
     let operation = (|| {
@@ -638,7 +638,10 @@ fn prepare_provider(
                 Ok((std::fs::read(&object).map_err(|e| e.to_string())?, deps))
             })
             .map_err(|e| err("infra", e))?;
-        Ok(result)
+        let bytes = resources
+            .own_payload(result.0)
+            .map_err(|e| err("foreign.resource", e))?;
+        Ok((bytes, result.1))
     })();
     if let Err(cleanup) = scratch.finish() {
         let original = operation

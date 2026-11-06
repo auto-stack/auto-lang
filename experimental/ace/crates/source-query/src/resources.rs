@@ -276,6 +276,17 @@ impl Resources {
         state.collect();
         state.stats
     }
+    /// Consume an existing caller-owned payload without cloning its bytes.
+    /// Its capacity and Arc/Vec header are admitted before allocating the
+    /// shared owner. This does not reserve the caller's earlier Vec producer.
+    pub fn own_payload(&self, bytes: Vec<u8>) -> Result<Arc<Vec<u8>>, ResourceError> {
+        let allocation = self.reserve(Charge::resident(
+            bytes.capacity() + std::mem::size_of::<Vec<u8>>() + 2 * std::mem::size_of::<usize>(),
+        ))?;
+        let bytes = Arc::new(bytes);
+        allocation.retain(&bytes)?;
+        Ok(bytes)
+    }
     pub fn available_io(&self) -> usize {
         let mut state = self.0.lock().expect("resource account");
         state.collect();

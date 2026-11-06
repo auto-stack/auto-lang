@@ -245,6 +245,62 @@ mod source_foreign {
     }
 
     #[test]
+    fn owned_payload_handoff_moves_bytes_and_keeps_aliases_charged_once() {
+        use ace_source_query::resources::{Limits, Resources};
+        let resources = Resources::default();
+        let mut original = Vec::with_capacity(2 << 20);
+        original.extend_from_slice(b"provider bytes");
+        let address = original.as_ptr();
+        let capacity = original.capacity();
+        let before = resources.stats().current;
+        let (result, peak) = measured_peak(|| resources.own_payload(original));
+        let bytes = result.unwrap();
+        assert_eq!(bytes.as_ptr(), address, "shared handoff copied the payload");
+        assert_eq!(bytes.capacity(), capacity);
+        let charged = resources.stats().current;
+        assert_eq!(
+            resources.stats().current.resident - before.resident,
+            capacity + 40
+        );
+        assert!(
+            peak > 0 && peak <= 40 + charged.index - before.index,
+            "payload handoff allocated {peak} bytes beyond its Arc header and precharged ownership index"
+        );
+        resources
+            .adopt(&bytes, Charge::resident(capacity + 40))
+            .unwrap();
+        let alias = bytes.clone();
+        drop(bytes);
+        assert_eq!(
+            resources.stats().current.resident - before.resident,
+            capacity + 40
+        );
+        drop(alias);
+        assert_eq!(resources.stats().current.resident, before.resident);
+        assert_eq!(resources.stats().current.index, charged.index);
+        assert_eq!(resources.stats().live_objects, 0);
+
+        // Rejection consumes and drops the candidate; no live owner or fee
+        // escapes. Releasing the pressure permits the same size again.
+        let limited = Resources::limited(Limits {
+            total: 16 << 10,
+            ..Limits::default()
+        })
+        .unwrap();
+        let pressure = limited
+            .reserve(Charge::resident(
+                (16 << 10) - limited.stats().current.total().unwrap() - 32,
+            ))
+            .unwrap();
+        let pressured = limited.stats().current;
+        assert!(limited.own_payload(vec![1; 1024]).is_err());
+        assert_eq!(limited.stats().current, pressured);
+        drop(pressure);
+        let repaired = limited.own_payload(vec![1; 1024]).unwrap();
+        assert_eq!(repaired.len(), 1024);
+    }
+
+    #[test]
     fn c_cache_source_identity_does_not_copy_the_whole_input_to_hash_it() {
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
