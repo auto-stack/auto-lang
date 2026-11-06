@@ -961,6 +961,23 @@ stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:34 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，四漏源Rust/C认证已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:fab1690e6c1870438c98ff1c10fadd108726c474 | next:work 完整源/模式分类及其余完整范围
 
+### 2026-11-06 原method/record/text范围补登记与55原入口重放（goal第35轮）
+
+前轮四漏源8独立cert/daily为progress。本轮继续T01/03/04/08/10/11，唯一941树提交 **6003a4817b6bfc10d58d2f7f09817cb6e050f6af**，6文件，树clean；仍executing2/17，生产语言/worker/测试配置未改。
+
+- 沿§5.1/原881与text-record合同逐源审查，确认另**26个实际源码字节变体**未列入新Q4：M01..M12共12，R01..R06/R09/R10共8，T01/T02/T04/T06/T07/T08共6。逐原文件推导冻结**17值/1 TextIndex trap/8诊断族**，保原源字节、record/text/text-record/profile、独立共同caps、原Case身份/hash/原checks；M负例分别static误用/immutable写/receiver别名mut/owned保留方法，R负例类型错配/移动后使用，T负例借用逃逸/非法scalar。新original-data-source-contracts.tsv SHA=`a51d7b345013b063e5c04a146896bf509f2213bcab4fdcfe480e2c4bb4f4edf4`。不是从本次结果求能力交集或修expected；诊断行要求实际诊断证据，不能为非法源造exe/以任意非零充拒绝。
+- 严格来源reader核26有限集合、各profile/caps/语义、原始source+Casehash、原511合同指针及与原126/四scalar补源无字节重复；不凭basename别名吞并。原131/313/NA与已登记源全保。四端每源独立必需键，**新增104 required**；当前**1006=313legacy+624源码+49ARCH+20preview**，20合同指针，仍是未闭完整范围的部分登记。永久控制明确12方法+14记录文本全部四端，缺证据全部UNOBSERVED；原自测全PASS合成门也不使完整范围关闭。
+- 原正式 `cargo t case-ace-m1-method-881 case-ace-m1-tr-native` 真执行22+33=**55检查**（含7个已登记源/重复来源原checks），没有以新源表替代原样本。首轮scope/original-data-source/gate中55子项虽PASS，但我在运行期间新增catalog触发整体`code/config/inputs changed during execution`，exit1、gate=false、38.4686298s；原记录SHA=`6b4b6728182de83b77b239a17f6e382c13c6ca04168a1c086feec1ff75a8f6a9`保留、不作通过证据。完成全部改动后联合正式门 `cargo t infra-ace-m1-arch case-ace-m1-method-881 case-ace-m1-tr-native --out <scope>/original-data-source/final-gate` **165治理+55原Case=220/220 PASS**、exit0、30.2459567s，results SHA=`1f2bc2e3c4271814bad1e9c2d8dc568aed4166e51f57b46bcbc251b0ce6b3d34`。
+- 上述第二轮新shell漏带wire记录环境，父执行有效但严格_raw准入探针因缺原exchange而拒；未删门/宽松读取补PASS。冻结6003a48后显式设置AUTO_CASE_WIRE_EVIDENCE=1及唯一scope，再跑两原Case组 **55/55 PASS**、exit0、25.9007745s，scope/original-data-source/final-wire-gate/results.json SHA=`4d340fd2e7f4727c89bc1c1d3bab101f46822e5fb788814d70c0728d08775702`。当前55逐项对原511冻结contract/check/source/oracle/Casehash、完整CaseCopy清理/产物及当前worker真实START/TERMINAL身份准入通过；scope/original-data-source/case-bindings-audit.json SHA=`942e5bee46f9f009ab35a14727ed77d2aa5fac11d5ecf73919ee524fbd521ba6`，单独LiveBudget peak11385448B。该摘要**只证明原父绑定/通信闭包，不含新Q4语义verdict**；原AV/native caps=[]与新共同源运行cap须逐target显式核，不把这55父PASS或summary冒新增104绿。
+
+py_compile/diff-check通过；冻结6文件等Git blob，scope/original-data-registry-frozen-preview/committed-input-audit.json。冻结6003a48全组合原Job/Popen禁用只读重验：**531PASS/8FAIL/467UNOBSERVED**，当前新增104全UNOBSERVED，full_registry_closed/system_delivered/expanded claim仍false。preview.stdout 506117B SHA=`3531c98f2045097eef26d3f5ca26a58e69eddcbdd373989fbc72fad51e873270`，9984.1139ms、peak process29417472/Job30658560B；同一LiveBudget reservation36585044/全程peak**48858418<50331648B**，原48MiB/单件4MiB/privateΔ128MiB/先预留/64KiB流hash/不清峰值保持。原256默认cert/daily、14优化与source工具身份不变，逐项重读复用；原8FAIL、9native具名trap/6A2X typed负例/299legacy/49ARCH及健康基线不变，不因父Case绿而核销。
+
+原T01..15未闭；下一入口为这26源四端逐独立oracle的严格语义/诊断读取与实际Rust/C正源认证，并继续其余原源/资源/事实/恢复/原规模、ARCH/legacy。当前55原始帧已可供原义务严格适配，4个方法负例的AV新义务不能以原native单腿替代。938/939尚未D，最终review/merge仍待，无新增用户决定或存活验证进程，授权持续。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:6003a4817b6bfc10d58d2f7f09817cb6e050f6af | task_ids:T01/03/04/08/10/11（未关闭） | evidence:26漏源104目标登记；165治理+55原Case正式绿；原55通信绑定核验；整体531PASS8FAIL467UNOBSERVED | blockers:原完整范围/机制与具名观测/健康边界未闭，无新增用户决定 | next_responsible_role:work 26源四端严格语义/认证与机制/ARCH/legacy
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:35 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，26原data源已补登记/55原入口重放） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:6003a4817b6bfc10d58d2f7f09817cb6e050f6af | next:work 原data源严格四端语义/认证及其余完整范围
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
