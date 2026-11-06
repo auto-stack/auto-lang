@@ -140,3 +140,5 @@ archived=本文件实际git mv到docs/plans/archive/并提交的终态交付；�
 
 
 周期门收尾（独立于956验收）：主检出37组实际完成，849.43秒，2836实际执行/1014原排除，27组PASS/7组FAIL/3组NOT_APPLICABLE，不称全绿。known reds见docs/plans/.last-batch-regression.json；新增auto-api-gen发现阶段rustc0xc0000005已起草PLAN-957（0/5，未实施/未归因），四原始文件逐字节留其唯一scope具名持有。原956材料与worktree已经删除，无重新开启或hold956。队列期间c30dbc6b4仅941文档22行更新触发HEAD身份守卫；原代码/配置/输入tree一致，重算起点state吻合，保留raw guard false，未据此重跑全队列。批量结果SHA `6dae5d0ee8bfe41b6e2d37b6a66da9081861ec880bdb96418e05bba46c1d4185`；完整当前收据含逐组准备/执行与新红/旧红。954四HTTP原例与43项执行组本轮PASS，不宣称954旧观察已关闭。
+
+周期材料已实际收尾：batch-regression-20261106-956目录不存在；原target/test-groups/admission-nrzozyw4五文件70654bytes已逐SHA迁移核验（tree hash eb0e60f6071c4d1134729eac7274630e5267ecb065e97eb720550de4b35a757e）并随batch删除。唯一剩余新材料为PLAN-957具名原编译器崩溃证据；956无未完成验收、未合入改动或材料持有。周期门原false与未定因新红保持，不冒报全环境通过。

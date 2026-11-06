@@ -84,7 +84,7 @@
       "executed": 0,
       "excluded": 130,
       "preparation_seconds": 74.71396270001424,
-      "execution_seconds": 0.0
+      "execution_seconds": null
     },
     {
       "groups": [
@@ -114,7 +114,7 @@
       "executed": 0,
       "excluded": 17,
       "preparation_seconds": 76.37474149999616,
-      "execution_seconds": 0.0
+      "execution_seconds": null
     },
     {
       "groups": [
@@ -183,8 +183,8 @@
       "outcome": "FAIL",
       "executed": 0,
       "excluded": 0,
-      "preparation_seconds": 0.0,
-      "execution_seconds": 0.0
+      "preparation_seconds": null,
+      "execution_seconds": null
     },
     {
       "groups": [
@@ -253,8 +253,8 @@
       "outcome": "FAIL",
       "executed": 0,
       "excluded": 0,
-      "preparation_seconds": 0.0,
-      "execution_seconds": 0.0
+      "preparation_seconds": null,
+      "execution_seconds": null
     },
     {
       "groups": [
@@ -283,8 +283,8 @@
       "outcome": "FAIL",
       "executed": 0,
       "excluded": 0,
-      "preparation_seconds": 0.0,
-      "execution_seconds": 0.0
+      "preparation_seconds": null,
+      "execution_seconds": null
     },
     {
       "groups": [
@@ -304,7 +304,7 @@
       "executed": 0,
       "excluded": 0,
       "preparation_seconds": 2.6260378000006313,
-      "execution_seconds": 0.0
+      "execution_seconds": null
     },
     {
       "groups": [
@@ -353,8 +353,8 @@
       "outcome": "FAIL",
       "executed": 0,
       "excluded": 0,
-      "preparation_seconds": 0.0,
-      "execution_seconds": 0.0
+      "preparation_seconds": 49.24989579999237,
+      "execution_seconds": null
     },
     {
       "groups": [
@@ -363,7 +363,7 @@
       "outcome": "PASS",
       "executed": 10,
       "excluded": 0,
-      "preparation_seconds": 0.0,
+      "preparation_seconds": null,
       "execution_seconds": 13.991992099996423
     },
     {
@@ -373,7 +373,7 @@
       "outcome": "FAIL",
       "executed": 10,
       "excluded": 0,
-      "preparation_seconds": 0.0,
+      "preparation_seconds": null,
       "execution_seconds": 1.9580916999984765
     },
     {
@@ -383,7 +383,7 @@
       "outcome": "PASS",
       "executed": 24,
       "excluded": 0,
-      "preparation_seconds": 0.0,
+      "preparation_seconds": null,
       "execution_seconds": 1.9574850000062725
     },
     {
@@ -393,7 +393,7 @@
       "outcome": "PASS",
       "executed": 11,
       "excluded": 0,
-      "preparation_seconds": 0.0,
+      "preparation_seconds": null,
       "execution_seconds": 0.37821350000740495
     },
     {
@@ -403,7 +403,7 @@
       "outcome": "PASS",
       "executed": 16,
       "excluded": 0,
-      "preparation_seconds": 0.0,
+      "preparation_seconds": null,
       "execution_seconds": 0.355311300008907
     },
     {
@@ -413,7 +413,7 @@
       "outcome": "PASS",
       "executed": 37,
       "excluded": 0,
-      "preparation_seconds": 0.0,
+      "preparation_seconds": null,
       "execution_seconds": 1.1474875999992946
     },
     {
@@ -433,7 +433,7 @@
       "outcome": "PASS",
       "executed": 13,
       "excluded": 0,
-      "preparation_seconds": 0.0,
+      "preparation_seconds": null,
       "execution_seconds": 0.9821113000070909
     },
     {
@@ -443,7 +443,7 @@
       "outcome": "PASS",
       "executed": 15,
       "excluded": 0,
-      "preparation_seconds": 0.0,
+      "preparation_seconds": null,
       "execution_seconds": 0.5616330000048038
     }
   ],
@@ -510,11 +510,12 @@
     "bytes": 12175999,
     "reparse_points": 0
   },
-  "cleanup": "Durable summary committed; batch scope pending actual deletion. Only original compiler-fault evidence copied to new PLAN-957 scope under named hold. Ordinary main build caches retained under their normal owner.",
-  "raw_scope_deleted": false,
+  "cleanup": "Batch scope deleted after committed receipt and PLAN-957 evidence migration; guard clean, no links, no batch hold. Five admission diagnostic files/70654bytes copied, hash-verified then original removed; copies died with batch scope. Only four original compiler-crash files plus manifest remain in PLAN-957 named hold. Normal main Cargo caches and installed default UI tool retain their owner.",
+  "raw_scope_deleted": true,
   "holds": [
     "PLAN-957 original rustc crash evidence only, owner957, release after cause/control review and evidence fold"
   ],
   "fix_forward": "PLAN-957 compiler fault is drafted only; prior PLAN-954 remains unclosed. No source fix, unmerge, test disabling, deadline change or second full-queue run.",
-  "timing_note": "Preparation/discovery and execution separated per invocation, original phase meter values retained; case-parent admission build93.77s separate. HEAD-only docs change c30dbc6b4 reconciled by code/config/input tree identity; raw guard false preserved."
+  "timing_note": "Preparation/discovery and execution separated per invocation, original phase meter values retained; case-parent admission build93.77s separate. HEAD-only docs change c30dbc6b4 reconciled by code/config/input tree identity; raw guard false preserved. Missing/not-applicable phase timings are null; the failed auto-api-gen discovery timing is recovered from its preserved original command. No zero placeholder is a measured phase claim.",
+  "cleanup_completed_at": "2026-11-06T01:13:59.616914+00:00"
 }
