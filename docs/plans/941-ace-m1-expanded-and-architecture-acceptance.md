@@ -863,6 +863,26 @@ stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:29 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，collections默认认证已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:ff18aaaab202c1b2bd8aa61d00d2d9f4dad3f586 | next:work SQ/实例四端与原配置/完整机制/ARCH
 
+### 2026-11-06 原SQ/实例十二源AV/native与typed诊断准入（goal第30轮）
+
+前轮collections40默认认证为progress。本轮继续T03/04/05/08/10/11，唯一941树提交 **8f5e748fa6fe804cc6e98c48d8c1c17fed85a363**，9文件，树clean；仍executing2/17，未改生产query/instance/编译器语义。
+
+- 直接复用原934/935两套Case及固定入口，不另造改写源/期望的替代集。**SQ六源**leaf42/leaf43/named7/trace-ab7/两type-mismatch负例，**instances六源**choose42/choose0/expected-type/cross-wrap/recursion/neg-hetero；保原profile=scalar、instances capability与trace-ab7原trace cap、各原源码/SHA/独立值/诊断/marks。choose真假双实例、模板交换、期望类型、跨模板与递归只按本源值实证，完整实例物化/required页/恢复仍另待，不能从值倒推机制。
+- 执行`cargo t case-ace-source-query-934 case-ace-source-instances-935 --out <scope>/query-instances-source/gate`，原wire开关显式1，**14+12=26/26 PASS**、15.7907889s，results SHA=`ce989b1011757ddd4200bfd2347775ffeb09744453b147c407f6158486e6b0b0`。0/result14 SHA=`99ddcd1287055e55b5ac57b21954ea163e943cce03f1da55e25b67e9a72c3d91`、1/result12 SHA=`185ab0c8add4e599a0a789c35f3aaabd039cd4f7753377cd0b6404ffa5ec36a1`。其中**24才是AV/native语义检查（18值+6预期诊断）**，额外2仅leaf42 Rust/C完整金样发射，不冒运行/认证，不充24分母。AV/mn/a2x现worker、真实trace-runtime及query/实例来源共13依赖前后SHA稳定。
+- 两份原正式/2 inventory实际导出并固化portable合同：source-query-q4-contract.json SHA=`56ba33d6ad07c3f77378d681f5adeb2f15e66e0ff728cfd5d1fe328a438e159b`（原14检查）、source-instances-q4-contract.json SHA=`dc966586605122ded12ff2d2747026df4a3b2a7b1b029fcec541b9459507f447`（原12）；新reader核原Case/suite/source/options/oracle、当前producer以及Case-copy/真实START+TERMINAL原字节、nonce/重算requesthash/FNV/base64、recipe/版本、owner/store/work和独立marks。旧scalar reader仅在显式query_family有限增加原实例cap/诊断支持，旧core/scalar值/trap/8真实拒绝及8native通用70缺口逻辑保持。
+- 负例不是泛化失败：AV必须原frontend阶段+具名source.type-mismatch/type-mismatch、frontend_reject=1/requests=1且无值/trap/trace；原Case归一parse不被当新parser业务。native必须**原911 source-v1 typed source_error**，校schema/producer/scalar尝试域/本次真实mn.at路径、独立sourceSHA/字节长度、UTF8 span、64 cause/4096 message/64KiB payload原帽、primary=0及cold操作candidate身份（无旧base/session/edit），同时校legacy projection与primary一致。raw verify→原typecheck、bind→原resolve；三负例primary span独立指向原true/!1操作数，范围内却指错字节仍FAIL。缺typed fact/错owner/操作/源码或普通工具失败不能当预期诊断PASS。payload以iterencode计量不另保全件串。
+- 严格准入**24/24 PASS**；SQ-A事实权威/solver-off/caller P0/恢复与SQ-B实例物化/坏页/首编辑等仍UNOBSERVED，本轮不从cold结果假推。原2发射检查在golden_emission_only显式semantic_authority=false，Rust/C目标仍待真正独立认证/诊断入口实证，无新增默认cert，原累计230默认cert+12附加模式不变。
+- **156原始帧反控**覆盖全部24原exchange：24原合法PASS、24双方同错值/诊断code FAIL、96nonce/caps/未知field/源码且连重hash+FNV/typed-source身份 REFUSED；另三个native负例各wrong-span/old-operation/primary-bool/missing-fact，3FAIL+9REFUSED。总24PASS/27FAIL/105REFUSED均符合预期，scope/query-instances-source/raw-reader-controls.json SHA=`f1985bc1592f20bd4e0281c319cb94710db175e9d780bff94d285b0b9d7b0e4e`；counterfactual_not_execution，完整parent/index/deps另行准入，不充新语言执行。
+- 新3永久回归保原实例cap/trace、两消费者具名诊断独立oracle、native操作/primary类型/源码范围；联原159，`cargo t infra-ace-m1-arch --out <scope>/query-source-final-controls` **162/162 PASS**、3.7167689s、exit0，results SHA=`e4bcc4bc774201273e661cdbb42fa7061544a573574426c6c429b92dd1b07bdc`。py_compile/diff-check通过；9变更文件冻结后等Git blob，scope/query-source-frozen-preview/committed-input-audit.json。没有为纯reader/合同重复原1779压力、230cert或12模式；它们现生产工具/配置/源/完整文件不变，已由当前组合真实重读复用。
+
+冻结8f5e748整组合原受管Job/Popen禁用重读：**498PASS/8FAIL/380UNOBSERVED**，886原登记/required集合不变，新query/instances两个合同指针共15；full_registry_closed/system_delivered/expanded claim仍false。scope/query-source-frozen-preview/preview.stdout 462703B SHA=`80b61b401c6397760ec6f80135ce8e873955420abe2cb3757190c7561fc44433`，12500.3819ms、peak process28979200/Job30257152B；同一LiveBudget reservation34281418/全程peak**47304155<50331648B**，原48MiB聚合/单件4MiB/private128MiB/先预留解码/64KiB流hash/不清峰值保持，新增域外1MiB/逐exchange32KiB。原scalar8FAIL/native8trap缺证据及legacy313/38、ARCH/938939/健康基线不被这些预期拒绝绿掩盖。
+
+原T01..15未闭；下一入口补SQ/instances的原Rust/C同源独立认证与三个负例的真实发射前门诊断证据，再继续原模式/完整机制/ARCH/旧义务、最终独立review/merge。无活进程或新增用户决定，既有授权持续。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:8f5e748fa6fe804cc6e98c48d8c1c17fed85a363 | task_ids:T03/04/05/08/10/11（未关闭） | evidence:原26父检查→24语义严格PASS/13deps双快照；156反控；162回归；整体498PASS8FAIL380UNOBSERVED | blockers:原完整范围/机制与健康基线未闭，无新增用户决定 | next_responsible_role:work 原SQ/instances Rust/C认证与诊断/完整机制
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:30 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，SQ/实例AV/native证据已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:8f5e748fa6fe804cc6e98c48d8c1c17fed85a363 | next:work 原SQ/实例Rust/C与完整范围
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
