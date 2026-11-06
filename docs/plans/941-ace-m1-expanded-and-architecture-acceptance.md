@@ -1271,6 +1271,21 @@ stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:47 | from:work | to:work | status:executing4/19 | outcome:in_progress（SDK事实边已补，原required仍69/313） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:d745efad8ddf6345df390a50849259c9dffbc005 | next:work 原T11严格适配/required/ARCH；F06获批后new
 
+### 第48轮：T11五格VM失败严格读取完成；接收F06内修授权（2026-11-06）
+
+- 上轮属progress：实际SDK事实边/当前BASE与父身份已补。本轮从main r3 executing4/19及`d745efad8`同树clean核对后继续原T11；未在main修改代码，未新建树/agent。实现并冻结`330c2534497e90ea6b06c5156382ffda4597aa76`，仅6个交付文件（Python读者/测试、旧map/registry及Spec候选）。
+- `ace_m1_legacy_base.vm_failure_contracts`从原已批准required/binding/source-manifest独立认领有限B14/B20、B16、T07、K04；actual数据不供oracle。Case完整97身份/生产工具before-after/源和冻结typed contract先校验，再读注册`failure.json`的精确owner/hash/size≤16KiB及source复合hash/entry字节hash、固定schema/adapter/action/outcome和实际stage/code。code空或非法形状拒绝；可空None在阶段正确时U，阶段已错误则FAIL；父FAIL/ERROR/SKIP保FAIL。error.txt或基础设施结果不供语言事实。K04原`ok-parse-reject`仅证明解析拒绝，显式`semantic_borrow_rule_authority=false`，未升格成借用语义证明。
+- 原BASE来源仍上轮wire97与`legacy-vm-failure-current/composed-bindings-current.json`，没有改原源码/expected/生产者/编译能力，也未重跑无关语言组。BASE选读从60增65（60P+5显式U），与旧4+wide10合并得到原required74/313，239U；原5U native generic trap/无typed源诊断仍保留。`GAP-941-LEGACY-VM-COMPLETION-01`由实际产物+当前严格reader+控制关闭；不能据此关闭T11整任务或ARCH。
+- map只改这5格reader_status/gaps，map.execution仍UNOBSERVED、发现执行数0，required313/原批准输入/所有原scenario 30/512/10样本及预算和38旧A2R cert-gap不变。新map SHA `0bf849f577868553f8c4535a3c8dea55a4bcd5eba77f5e6fcc659da4bd1b4964`，对应两处hash指针同步；变更审计`<h>/legacy-vm-failure-reader/map-change-audit.json` SHA `49cdd30d344ed5b6eafae02bccc6e299468c026ad2951fbb0ab4b2ac65521e84`。
+- 新增永久6方法涵盖五原代码/父拒绝、actual错stage/错code/None、源与current check、基础设施/伪passed/消息文本、产品owner/hash/size/缺失/重复、非法/重复/超限JSON及分配前16KiB拒绝。开发185/185；冻结`cargo t infra-ace-m1-arch --out <h>/legacy-vm-failure-reader/frozen-controls`退出0、185/185，整5.0346166s，结果SHA `a16b1af75362550043e725a8fccf43f56b40821a344aad6249075c62645a2d14`。所有6文件Git过滤后blob与HEAD逐项一致（working EOL不冒陈旧），审计`legacy-vm-failure-reader-frozen-preview/committed-input-audit.json` SHA `225e3c16de5849b733f66f628bc6fb4c091c40ad4e4001195af75e8932d68f43`；git diff --check通过。
+- 真实5产品经原完整Case绑定后另做43×5=215隔离counterfactual（全匹配），包括真实错码/错阶段、None+错阶段仍FAIL、来源/owner/hash/size、缺失/重复/超限、infra及父拒绝等。每个副本都标counterfactual，不冒运行收据；`legacy-vm-failure-reader/raw-controls-final.json` SHA `9f2785c908904abd34b91a297dfff1989d726cf0e48b1c3bfd19cf7ea01a25f0`，additional executions=0。此前210反控原记录保留SHA `efbbc9172decec82c3a2265637080a2cd633fe2259523de18035fa64eff42b31`。各反控独立预算只证明控制；全组合仍单一LiveBudget，不拆生产预算。
+- 冻结纯组合器禁隐式工具启动，退出0，`<h>/legacy-vm-failure-reader-frozen-preview/preview.stdout`595584B、SHA `2fe94189f6552b4ce28a4bdb1a5956f9f2a950cdfb6012cbc2a01a325b49460a`，8.4208468s、进程峰29896704B/Job31125504B；保留28385727B/全时峰47872973B<48MiB。整体675P12F319U，逐行仅5个legacy/corpus:*:avm的U→P，其余1001项verdict完全不变；审计SHA `b2ba0a011cc2a9d83887f87808bd87581e20f1b3262e38db8c6ae0236af04bdd`。24合同指针/1006登记，required_universe_closed、acceptance_system_delivered、can_claim_expanded_m1仍false。292当前默认证书及14原优化证据在未变的A2X/AV/native身份下继续通过完整联读。
+- **F-941-06授权已到**：用户本轮回答原问题`call_ad921d1cbddb484085b350b7ee0bc3f5`：“授权941新增修复phase（推荐）”。授权最小范围仍是data链保留并透传共享前端结构化诊断、原4 AV record负例与合法/失败边界及受影响消费者复验。§10改为已授权；无需再请求。依goal单轮单阶段，本轮先完成已在执行的T11读取，下一轮`auto-plan-new`修订r4加入具名phase/任务/验证合同，然后work；当前r3/4-of-19暂不伪写已交付新phase。未据本授权修改其他缺陷、预算或原目标。无活动测试句柄；T13 warnings与原全部未闭义务保持。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r3 | outcome:needs_replan（用户已批准F06内修，下一阶段修订合同） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:330c2534497e90ea6b06c5156382ffda4597aa76 | task_ids:T11五格子缺口关闭/原任务未闭 | evidence:185治理+215反控；74/313旧required；675P12F319U单预算 | blockers:原完整required/ARCH/具名red；F06授权已收到不再等待 | next_responsible_role:new r4 F06结构化诊断phase合同，继而work
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:48 | from:work | to:new | status:executing4/19 | outcome:needs_replan（内修授权已到；完整目标不变） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:330c2534497e90ea6b06c5156382ffda4597aa76 | next:new F06新phase合同→work
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1288,4 +1303,4 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r3 | round:47 | from:work | to:wo
 
 9. **F-941-05已关闭（r3 T18/19，第43轮）**：同树Rust字段写值根修复、参数边界/三代缓存、稳定B工具完整405门、292当前默认证书/daily及原14优化严格联读已闭，原3缺Rust格位转PASS。最终独立复审仍T14；不扩为F06/其他后端修复，原完整任务与全部具名red/unknown保持。
 
-10. **F-941-06待修复归属授权**：原4 AV record结构化诊断丢失，最小修复提案见§9；只读验收/当前B292与T19继续，不将F05授权外推到本项。
+10. **F-941-06已获941内修phase授权（第48轮）**：用户明确回答“授权941新增修复phase（推荐）”；范围为原提案的data链结构化诊断透传及原4例/合法与失败边界/受影响消费者验证。下一轮new修订r4合同后work，不再等待或重复请求；此项不扩大到其他后端缺陷。
