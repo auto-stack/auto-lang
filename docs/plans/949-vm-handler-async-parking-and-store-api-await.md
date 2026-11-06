@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-949
-status: executing
+status: execution_done
 feature_name: VM handler 异步返回闭合与 JSON 值编码
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-06
 plan_revision: 2
-current_step: 2
+current_step: 4
 total_steps: 4
 base_branch: master
 depends_on: []
@@ -221,6 +221,12 @@ Rust、现有 AutoVM native bindings/codegen/back_prefix；现有 serde/HTTP 中
   - Knowledge delta: SD01/02 candidate text reviewed, canonical source not published. Candidate API contract SHA256 `0e36f65651af20099fb7fecb67688022e3ff32dddcb3305bb612be2420b1c046`, back-proxy `7f552b302e3bc121126f79c4f1db23bd20234de21903cf0307eec6c27767535a`; frozen scratch spec-delta-r2.md SHA256 `30c251d048111eacc4621c5cddc998c4c59db733898c0bea30b9b2dd4c917e95`. Targets/owner split/RAII behavior align with actual code; SD01 type guarantee currently fails both findings. No legacy JSON/index writes. `new_spec_components: []` because both operations modify existing Specs; touched goals G1/G2/G3 are existing §1 IDs. Fixing current omissions need not weaken/increment r2 semantic contract.
   - Boundary/route: inspected native tags/BigInt nested conversion, existing string-list path, original getter ABI, wrapper ownership guards and shadow checks; independent production counterexamples cover sibling/failure paths beyond executor's five examples. No claim of exhaustive resource-object/generic ABI coverage. T00 and actual T02 evidence retained; T01/T03 reopened, current_step2/4. Their downstream final SDK/runtime evidence must be assessed for validity after repair, rather than rerunning every family automatically. Frozen affected union for future **merge-owned pending** gate is Lang `vm http` plus separately UI-owned vm_bridge/Init/cpu-slice controls and necessary public Todo integration; unify with UI060/parent054 consumer groups at merge. Current failing implementation cannot enter that gate or land. No merge/push/cleanup/new tree, other Plans untouched.
 
+- stage: work | plan_id: PLAN-949 | plan_revision: r2 | round: 20 | outcome: execution_done | findings: F949-01/F949-02 repaired | code_commit: 68dfbc864 | next: independent affected re-review
+  F949-01: encode consumes the existing stack ownership shadow before decoding. Plain i32 with no owned stake is encoded as a number without heap lookup or releasing an unrelated live object; legacy owned i32 string-list handles retain their existing ABI. Tagged document/primitive ownership and fallback marshalling remain guarded. No new provenance table or global String/list ABI change. Permanent single-VM controls cover 4000000/4000001 before and after live document/array allocation, numeric local/function/record/array paths, continued live document and keys/string-split list use, and numeric strings.
+  F949-02: the already resolved builtin encode/getter normalization accepts both positional and named Pair argument forms; receiver shadow protection and single evaluation remain. Getter/get_at matrix now covers both forms across 17 values (68 real compile/VM executions), with side-effect, plain function-return and shadowed receiver controls.
+  Actual permanent seven-case red: 4pass/3fail (review-repair-red-r2.log). Final seven cases: 7pass/0fail/0ignored, execution2.91s (review-repair-final-r2.log). Changed VM responsibility fixed group `cargo t vm --out D:/autostack/plan-artifacts/plan-949/review-repair-vm-r2`: actual exit0, gate_passed=true, executed922, results SHA256 d7f6c7e4efb5ac36ed6a0b22bbc110b10751dc854bfbe0497f0703c1008a113d. Source frozen at68dfbc864 during this run; original configuration/resource/ignore rules unchanged. SD01 now states ownership identity and named-argument boundary.
+  T00/T02 and unchanged scheduler/UI controls from round18 remain identified evidence, not a claim that SDK167 includes this repair. Final consumer SDK, necessary Todo integration and frozen merge-owned vm/http/UI affected union remain pending at delivery; do not rerun unrelated product families solely for a documentation descendant. T01/T03 implementation and work gate now closed, 4/4 execution_done; independent review still required. No merge/push/archive/cleanup performed.
+
 ## 10. 待澄清事项
 
-独立 final review 返回 needs_fix：F949-01/02 阻断 T01/T03；保留 T00/T02 已验证事实，当前 executing2/4。冻结 merge-owned gate、默认分支交付/push/归档及清理仍未执行。依原§6独立上下文要求，不自动新建agent/chat，也不以本实施会话内部核对冒充独立pass。父054可继续尚未依赖最终落地的汇总门准备，最终工具链交付门保持未完成。
+F949-01/02 已按原 r2 契约修复并完成永久红绿对照与 VM 固定职责组。等待原独立复审上下文验证；最终共同 SDK/合并职责门、默认分支交付、归档与清理仍未执行。不得以 work 收口替代独立 pass。
