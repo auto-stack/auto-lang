@@ -478,10 +478,8 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         unary-expr {
             alt { int-literal() {} }
             // 一元 -/! 操作数锚定同行（旧 anchored(Unary)；负号换行的 e19 拒绝）。
-            alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, collections, closures]) { minus() {} unary-expr(field: "operand", same-line: true) }
-            alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, collections, closures]) { bang() {} unary-expr(field: "operand", same-line: true) }
-            alt(profiles: [scalar, scalar-instances, scalar-modules, text, record, text-record, entry-unit, host-console, collections, closures]) { minus() {} unary-expr(field: "operand", same-line: true) }
-            alt(profiles: [scalar, scalar-instances, scalar-modules, text, record, text-record, entry-unit, host-console, collections, closures]) { bang() {} unary-expr(field: "operand", same-line: true) }
+            alt(profiles: [scalar, scalar-instances, scalar-ct, scalar-modules, text, record, text-record, entry-unit, host-console, collections, closures]) { minus() {} unary-expr(field: "operand", same-line: true) }
+            alt(profiles: [scalar, scalar-instances, scalar-ct, scalar-modules, text, record, text-record, entry-unit, host-console, collections, closures]) { bang() {} unary-expr(field: "operand", same-line: true) }
             alt { postfix-expr() {} }
         }
         postfix-expr {

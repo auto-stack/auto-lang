@@ -637,6 +637,53 @@ fn source_foreign_names_obey_local_shadowing_instead_of_substituting_a_call() {
 }
 
 #[test]
+fn source_foreign_capability_does_not_make_an_unserved_ct_call_executable() {
+    use crate::frontend::{ColdObservation, Frontend};
+    let source = "fn main() int { return #{ foreign_add(20,22) } }";
+    for caps in [
+        vec![SOURCE_CAP.into()],
+        vec![
+            SOURCE_CAP.into(),
+            ace_core::source::cst::CT_CAPABILITY.into(),
+        ],
+    ] {
+        let mut observation = ColdObservation::default();
+        let error = Frontend::cold_observed(
+            source,
+            "m938",
+            "p938",
+            &caps,
+            environment(),
+            &mut observation,
+        )
+        .err()
+        .expect("unserved CT foreign call became executable source HIR");
+        let crate::frontend::Error::Diagnostics(ds) = &error else {
+            panic!("unsupported source became an infrastructure error: {error}");
+        };
+        assert_eq!(ds.len(), 1);
+        assert_eq!(ds[0].stage, ace_core::atom_text::Stage::Text);
+        assert_eq!(ds[0].code, "source.syntax");
+        assert_eq!((ds[0].span.start, ds[0].span.end), (23, 24));
+        assert_eq!(observation.queries.solver_runs, 0);
+        assert!(observation
+            .work
+            .rows()
+            .iter()
+            .all(|r| r.stage != "hir-document" || r.totals.produced == 0));
+        eprintln!("CT/foreign boundary: caps={caps:?} rejection={error}");
+        Frontend::cold(
+            "fn main() int { return foreign_add(20,22) }",
+            "m938",
+            "p938",
+            &caps,
+            environment(),
+        )
+        .expect("ordinary reviewed foreign call remains legal with the same capabilities");
+    }
+}
+
+#[test]
 fn malformed_source_preserves_parser_diagnostics_and_counts_the_failed_parse_attempt() {
     let source = "fn main() int { return ";
     let mut observation = crate::frontend::ColdObservation::default();

@@ -362,16 +362,6 @@ fn unknown_char_diag(snap: &Snapshot, start: u64) -> Diagnostic {
     )
 }
 
-/// 全文件词法事实（首个按 token 起点序）。无事实 = 旧 tokenize 成功。
-pub(crate) fn first_lex_fact(
-    tree: &CstTree,
-    snap: &Snapshot,
-    k: &super::kinds::SourceKinds,
-    profile: SourceProfile,
-) -> Option<Diagnostic> {
-    first_lex_fact_ct(tree, snap, k, profile, false)
-}
-
 /// PLAN-936（T-04）：ct 面感知的首词法事实——字符串 token 在 ct 面上进入
 /// AST（唯一合法位置 = ct_has_field 字段选择子；值位置由 resolve 拒）。
 pub(crate) fn first_lex_fact_ct(
