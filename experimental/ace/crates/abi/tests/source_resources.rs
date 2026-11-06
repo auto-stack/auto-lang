@@ -6,6 +6,7 @@ use std::{
     cell::{Cell, RefCell},
 };
 struct Allocator;
+const TRACKED_ALLOCATIONS: usize = 4096;
 struct LayoutPressure {
     size: usize,
     remaining: usize,
@@ -32,8 +33,10 @@ thread_local! {
     static TRACK_HEAP: Cell<bool> = const { Cell::new(false) };
     static LIVE: Cell<usize> = const { Cell::new(0) };
     static PEAK: Cell<usize> = const { Cell::new(0) };
-    static TRACKED: RefCell<[(usize, usize); 128]> = const { RefCell::new([(0, 0); 128]) };
+    static TRACKED: RefCell<[(usize, usize); TRACKED_ALLOCATIONS]> = const { RefCell::new([(0, 0); TRACKED_ALLOCATIONS]) };
     static OVERFLOW: Cell<bool> = const { Cell::new(false) };
+    static HEAP_MIR_ACCOUNT: RefCell<Option<ace_source_query::resources::Resources>> = const { RefCell::new(None) };
+    static HEAP_MIR_COVERED: Cell<bool> = const { Cell::new(true) };
     static RESIDENT_PROBE: RefCell<Option<(usize, ace_source_query::resources::Resources, ace_source_query::resources::Charge)>> = const { RefCell::new(None) };
     static RESIDENT_HITS: Cell<usize> = const { Cell::new(0) };
     static RESIDENT_ADMITTED: Cell<bool> = const { Cell::new(true) };
@@ -150,6 +153,13 @@ fn allocated(ptr: *mut u8, size: usize, replaced: Option<*mut u8>) {
                         // buffer even when the allocator kept the same address.
                         live.set(next - old_size);
                         PEAK.with(|peak| peak.set(peak.get().max(next)));
+                        HEAP_MIR_ACCOUNT.with(|account| {
+                            if let Some(account) = account.borrow().as_ref() {
+                                if account.stats().current.mir < next {
+                                    HEAP_MIR_COVERED.with(|covered| covered.set(false));
+                                }
+                            }
+                        });
                     });
                 } else {
                     OVERFLOW.with(|overflow| overflow.set(true));
@@ -250,7 +260,7 @@ fn measured_peak<T>(f: impl FnOnce() -> T) -> (T, usize) {
     }
     LIVE.with(|live| live.set(0));
     PEAK.with(|peak| peak.set(0));
-    TRACKED.with(|tracked| *tracked.borrow_mut() = [(0, 0); 128]);
+    TRACKED.with(|tracked| *tracked.borrow_mut() = [(0, 0); TRACKED_ALLOCATIONS]);
     OVERFLOW.with(|overflow| overflow.set(false));
     TRACK_HEAP.with(|enabled| enabled.set(true));
     let guard = Guard;
@@ -264,6 +274,29 @@ fn measured_peak<T>(f: impl FnOnce() -> T) -> (T, usize) {
             PEAK.with(Cell::get)
         },
     )
+}
+fn with_mir_heap_admission<T>(
+    resources: &ace_source_query::resources::Resources,
+    f: impl FnOnce() -> T,
+) -> (T, usize, bool) {
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            HEAP_MIR_ACCOUNT.with(|account| {
+                account.borrow_mut().take();
+            });
+        }
+    }
+    HEAP_MIR_ACCOUNT.with(|account| {
+        assert!(account.borrow().is_none());
+        *account.borrow_mut() = Some(resources.clone());
+    });
+    HEAP_MIR_COVERED.with(|covered| covered.set(true));
+    let reset = Reset;
+    let (result, peak) = measured_peak(f);
+    let covered = HEAP_MIR_COVERED.with(Cell::get);
+    drop(reset);
+    (result, peak, covered)
 }
 #[global_allocator]
 static ALLOCATOR: Allocator = Allocator;
@@ -1399,6 +1432,17 @@ mod source_foreign {
             "declaration or live evaluation argument storage unreserved"
         );
         let f = &mir.funcs[0];
+        let cloned_declaration = f
+            .blocks
+            .iter()
+            .flat_map(|b| b.instrs.iter())
+            .find_map(|i| match i {
+                ace_av_core::mir::MirInstr::ForeignCall { declaration, .. } => {
+                    Some(std::mem::size_of_val(&**declaration) + declaration.heap_bytes())
+                }
+                _ => None,
+            })
+            .unwrap();
         let retained = f.blocks.capacity() * std::mem::size_of::<MirBlock>()
             + f.blocks
                 .iter()
@@ -1408,7 +1452,7 @@ mod source_foreign {
             + f.spans.capacity() * std::mem::size_of::<(u32, ace_av_core::contract::SpanInfo)>()
             + mir.consts.capacity() * std::mem::size_of::<MirConst>()
             + 2 * std::mem::size_of::<u32>()
-            + owned_declaration;
+            + cloned_declaration;
         assert_eq!(resources.stats().current.mir, retained,
             "instruction arguments must survive, evaluation arguments and traversal buffers must be released");
         let original =
@@ -1425,6 +1469,271 @@ mod source_foreign {
             declaration.heap_bytes(),
             before_declaration + owned_declaration
         );
+    }
+
+    #[test]
+    fn native_unit_metadata_admits_capability_and_signature_before_ownership_and_releases_indices()
+    {
+        use ace_av_core::mir::*;
+        use ace_lowering::hir_adapter::{lower_function_unit, lower_function_unit_reserved};
+        use ace_source_query::resources::Resources;
+
+        // Independent ownership walk of the returned scalar unit. Traversal
+        // buffers, the definition map and rejected duplicate type candidates
+        // have no owner here and must have no remaining fee either.
+        fn owned_bytes(m: &MirModule) -> usize {
+            let mut bytes = m.profile.capacity()
+                + m.owner.schema.capacity()
+                + m.owner.module.capacity()
+                + m.capabilities.capacity() * std::mem::size_of::<String>()
+                + m.capabilities.iter().map(String::capacity).sum::<usize>()
+                + m.types.capacity() * std::mem::size_of::<MirType>()
+                + m.consts.capacity() * std::mem::size_of::<MirConst>()
+                + m.imports.capacity() * std::mem::size_of::<MirImport>()
+                + m.funcs.capacity() * std::mem::size_of::<MirFunction>();
+            assert!(m.host_imports.is_empty());
+            for ty in &m.types {
+                match ty {
+                    MirType::Fn(sig) => {
+                        bytes += sig.params.capacity() * std::mem::size_of::<TypeIdx>()
+                    }
+                    MirType::I32 | MirType::Bool => {}
+                    _ => panic!("allocation fixture left the scalar type surface"),
+                }
+            }
+            for import in &m.imports {
+                bytes += import.symbol.capacity();
+                assert!(import.env.is_none());
+            }
+            for f in &m.funcs {
+                bytes += f.owner.schema.capacity()
+                    + f.owner.module.capacity()
+                    + f.name.capacity()
+                    + f.slots.capacity() * std::mem::size_of::<MirSlot>()
+                    + f.slots
+                        .iter()
+                        .filter_map(|s| s.name.as_ref())
+                        .map(String::capacity)
+                        .sum::<usize>()
+                    + f.blocks.capacity() * std::mem::size_of::<MirBlock>()
+                    + f.spans.capacity()
+                        * std::mem::size_of::<(u32, ace_av_core::contract::SpanInfo)>();
+                assert!(f.env.is_none());
+                for block in &f.blocks {
+                    bytes += block.instrs.capacity() * std::mem::size_of::<MirInstr>();
+                    for instr in &block.instrs {
+                        match instr {
+                            MirInstr::Call { args, .. } => {
+                                bytes += args.capacity() * std::mem::size_of::<SlotId>()
+                            }
+                            MirInstr::ForeignCall {
+                                declaration, args, ..
+                            } => {
+                                bytes += std::mem::size_of_val(&**declaration)
+                                    + declaration.heap_bytes()
+                                    + args.capacity() * std::mem::size_of::<SlotId>();
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            bytes
+        }
+        fn identity_bytes(m: &ace_core::hir::Module, caps: &[String]) -> usize {
+            2 * (ace_av_core::contract::MIR_SCHEMA.len() + m.id_text.len())
+                + ace_av_core::contract::AV_PROFILE.len()
+                + caps.len() * std::mem::size_of::<String>()
+                + caps.iter().map(String::len).sum::<usize>()
+        }
+        fn reject(bundle: &ace_core::hir::Bundle, caps: &[String], available: usize, array: usize) {
+            let resources = Resources::default();
+            let pressure = resources
+                .reserve(Charge::mir((16 << 20) - available))
+                .unwrap();
+            let mut allocation = resources.reserve(Charge::mir(0)).unwrap();
+            let (rejected, arrays, _) =
+                with_charge_probe(array, &resources, Charge::default(), || {
+                    lower_function_unit_reserved(bundle, "d_main", caps, 17, &mut |bytes| {
+                        allocation
+                            .resize(Charge::mir(bytes))
+                            .map_err(|e| e.to_string())
+                    })
+                });
+            assert!(matches!(
+                rejected,
+                Err(ace_lowering::AdapterError::Resource { .. })
+            ));
+            assert_eq!(
+                arrays, 0,
+                "unit metadata array/string {array} allocated before admission"
+            );
+            drop(allocation);
+            drop(pressure);
+            assert_eq!(resources.stats().current.mir, 0);
+        }
+        fn accept(
+            bundle: &ace_core::hir::Bundle,
+            caps: &[String],
+            array: usize,
+            minimum: usize,
+            validate: bool,
+        ) {
+            let resources = Resources::default();
+            let mut allocation = resources.reserve(Charge::mir(0)).unwrap();
+            let ((mir, hits, admitted), peak, covered) =
+                with_mir_heap_admission(&resources, || {
+                    with_charge_probe(array, &resources, Charge::mir(minimum), || {
+                        lower_function_unit_reserved(bundle, "d_main", caps, 17, &mut |bytes| {
+                            allocation
+                                .resize(Charge::mir(bytes))
+                                .map_err(|e| e.to_string())
+                        })
+                    })
+                });
+            let mir = mir.unwrap();
+            assert_eq!(hits, 1);
+            assert!(admitted);
+            assert_ne!(
+                peak,
+                usize::MAX,
+                "allocator observation inventory overflowed"
+            );
+            assert!(
+                covered,
+                "a real allocation exceeded the already admitted MIR bytes"
+            );
+            assert_eq!(
+                resources.stats().current.mir,
+                owned_bytes(&mir),
+                "unit metadata retained a scratch/index/candidate fee or lost a returned owner"
+            );
+            let original = lower_function_unit(bundle, "d_main", caps, 17).unwrap();
+            if validate {
+                assert_eq!(
+                    ace_av_core::abc::encode_abc(&mir).unwrap().to_flat(),
+                    ace_av_core::abc::encode_abc(&original).unwrap().to_flat()
+                );
+                ace_av_core::mir_verify::validate_mir(&mir).unwrap();
+            } else {
+                for candidate in [&mir, &original] {
+                    assert!(matches!(ace_av_core::abc::encode_abc(candidate),
+                        Err(ace_av_core::abc::AbcDecodeError::Format { code, .. })
+                            if code == "abc.encode.capabilities"));
+                }
+            }
+            eprintln!(
+                "unit metadata: probe={array} peak={peak} retained={}",
+                resources.stats().current.mir
+            );
+            drop(mir);
+            drop(allocation);
+            assert_eq!(resources.stats().current.mir, 0);
+        }
+
+        let basic = ace_core::source::compile_scalar_source(
+            "fn main() int { return 1 }",
+            "unit-metadata.at",
+            &[],
+        )
+        .unwrap();
+        // A caller-owned, oversized capability remains a candidate here;
+        // this proves safe ownership before any later semantic rejection.
+        let caps = vec!["c".repeat((1 << 20) + 31)];
+        let identity = identity_bytes(&basic.checked.bundle().modules[0], &caps);
+        reject(basic.checked.bundle(), &caps, identity - 1, caps[0].len());
+        accept(
+            basic.checked.bundle(),
+            &caps,
+            caps[0].len(),
+            identity,
+            false,
+        );
+
+        // The original scalar MIR arity boundary is u8::MAX. Keep all 255
+        // parameters in this unrelated import; the selected unit is main.
+        let params = (0..255)
+            .map(|n| format!("p{n:03} int"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let source =
+            format!("fn spare({params}) int {{ return p000 }}\nfn main() int {{ return 1 }}");
+        let signature =
+            ace_core::source::compile_scalar_source(&source, "unit-signature.at", &[]).unwrap();
+        assert_eq!(
+            signature.checked.bundle().modules[0].defs[0].id_text,
+            "d_spare"
+        );
+        let array = 255 * std::mem::size_of::<TypeIdx>();
+        let minimum = identity_bytes(&signature.checked.bundle().modules[0], &[]) + array;
+        reject(signature.checked.bundle(), &[], minimum - 1, array);
+        accept(signature.checked.bundle(), &[], array, minimum, true);
+
+        let source = format!(
+            "{}\nfn main() int {{ return helper0001(1,2,3) + helper0511(4,5,6) }}",
+            (0..512)
+                .map(|n| format!("fn helper{n:04}(a int,b int,c int) int {{ return a+b+c }}\n"))
+                .collect::<String>()
+        );
+        let many =
+            ace_core::source::compile_scalar_source(&source, "unit-definitions.at", &[]).unwrap();
+        let resources = Resources::default();
+        let mut allocation = resources.reserve(Charge::mir(0)).unwrap();
+        let (mir, peak, covered) = with_mir_heap_admission(&resources, || {
+            lower_function_unit_reserved(many.checked.bundle(), "d_main", &[], 17, &mut |bytes| {
+                allocation
+                    .resize(Charge::mir(bytes))
+                    .map_err(|e| e.to_string())
+            })
+        });
+        let mir = mir.unwrap();
+        assert_ne!(peak, usize::MAX);
+        assert!(covered, "definition splits, duplicate signatures or calls allocated outside the live reservation");
+        assert_eq!(mir.imports.len(), 513);
+        assert_eq!(resources.stats().current.mir, owned_bytes(&mir));
+        assert_eq!(
+            ace_av_core::abc::encode_abc(&mir).unwrap().to_flat(),
+            ace_av_core::abc::encode_abc(
+                &lower_function_unit(many.checked.bundle(), "d_main", &[], 17).unwrap()
+            )
+            .unwrap()
+            .to_flat()
+        );
+        ace_av_core::mir_verify::validate_mir(&mir).unwrap();
+        eprintln!(
+            "unit definitions: imports={} real heap peak={peak} retained={}",
+            mir.imports.len(),
+            resources.stats().current.mir
+        );
+        drop(mir);
+        drop(allocation);
+        assert_eq!(resources.stats().current.mir, 0);
+
+        // The same complete ownership check includes a real checked foreign
+        // declaration graph and both argument owners. Physical C/PE execution
+        // is exercised by the separate existing two-target consumer matrix.
+        let caps = vec![SOURCE_CAP.to_string()];
+        let foreign =
+            provider::admit(provider::reviewed_add_manifest(), &"a".repeat(64), 1, &caps).unwrap();
+        let (_, checked) = ace_source_query::frontend::Frontend::cold(
+            "fn main() int { return foreign_add(20,22) }",
+            "unit-foreign.at",
+            "p938",
+            &caps,
+            foreign,
+        )
+        .unwrap();
+        let boxed = checked.bundle().modules[0]
+            .defs
+            .iter()
+            .find_map(|d| match &d.kind {
+                ace_core::hir::DefKind::Foreign { declaration, .. } => {
+                    Some(std::mem::size_of_val(declaration))
+                }
+                _ => None,
+            })
+            .unwrap();
+        accept(checked.bundle(), &caps, boxed, 0, true);
     }
 
     #[test]

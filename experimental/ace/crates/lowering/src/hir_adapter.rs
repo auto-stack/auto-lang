@@ -79,32 +79,28 @@ const MAX_EXPR_DEPTH: u32 = 512;
 /// against free functions' `d_<name>` and against every other method —
 /// two same-named methods on different records, or a method sharing a
 /// name with a free function, can never collide.
-fn method_mir_name(
+fn method_mir_name_reserved(
     module: &hir::Module,
     record: hir::TypeId,
     method_name: &str,
+    metadata: &mut Option<UnitMetadata<'_>>,
 ) -> Result<String, AdapterError> {
     let rec_name = module
         .types
         .get(record.0 as usize)
-        .map(|t| {
-            t.id_text
-                .strip_prefix("t_rec_")
-                .unwrap_or(&t.id_text)
-                .to_string()
-        })
+        .map(|t| t.id_text.strip_prefix("t_rec_").unwrap_or(&t.id_text))
         .ok_or_else(|| {
             AdapterError::inv(
                 "lower.method-owner",
                 format!("method `{method_name}` references a missing owner type"),
             )
         })?;
-    Ok(format!("m.{rec_name}.{method_name}"))
+    metadata_text(&["m.", rec_name, ".", method_name], metadata)
 }
 
 /// PLAN-881: the MIR-level name of any function-or-method def — free
 /// functions keep their def id (`d_<name>`); methods take the
-/// owner-based [`method_mir_name`]. This is the unit/import identity the
+/// owner-based [`method_mir_name_reserved`]. This is the unit/import identity the
 /// whole split/link/cache chain keys on.
 ///
 /// A method's BARE name is recovered from its fi-indexed def id
@@ -113,6 +109,14 @@ fn method_mir_name(
 /// emitter's internal symbol (`sm_<Rec>_<name>`), which cannot be split
 /// unambiguously.
 pub fn mir_name_of_def(module: &hir::Module, di: usize) -> Result<String, AdapterError> {
+    mir_name_of_def_reserved(module, di, &mut None)
+}
+
+fn mir_name_of_def_reserved(
+    module: &hir::Module,
+    di: usize,
+    metadata: &mut Option<UnitMetadata<'_>>,
+) -> Result<String, AdapterError> {
     match &module.defs[di].kind {
         hir::DefKind::Method { record, .. } => {
             let id = &module.defs[di].id_text;
@@ -138,9 +142,9 @@ pub fn mir_name_of_def(module: &hir::Module, di: usize) -> Result<String, Adapte
                         format!("method def id `{id}` is neither `d_f<fi>_<name>` nor `d_<name>`"),
                     )
                 })?;
-            method_mir_name(module, *record, bare)
+            method_mir_name_reserved(module, *record, bare, metadata)
         }
-        _ => Ok(module.defs[di].id_text.clone()),
+        _ => metadata_text(&[&module.defs[di].id_text], metadata),
     }
 }
 
@@ -1462,6 +1466,7 @@ pub fn lower_function_unit(
         false,
         &BTreeMap::new(),
         None,
+        false,
     )
 }
 
@@ -1488,6 +1493,29 @@ pub fn lower_function_unit_with_emission_reservation(
         false,
         &BTreeMap::new(),
         Some(reserve),
+        false,
+    )
+}
+
+/// The scalar unit composition with both module metadata and function
+/// emission admitted before ownership/allocation. It uses the same type,
+/// import and function algorithms as the unreserved unit entry.
+pub fn lower_function_unit_reserved(
+    bundle: &hir::Bundle,
+    def_id_text: &str,
+    capabilities: &[String],
+    source_snapshot: u64,
+    reserve: &mut dyn FnMut(usize) -> Result<(), String>,
+) -> Result<MirModule, AdapterError> {
+    lower_function_unit_impl(
+        bundle,
+        def_id_text,
+        capabilities,
+        source_snapshot,
+        false,
+        &BTreeMap::new(),
+        Some(reserve),
+        true,
     )
 }
 
@@ -1509,6 +1537,7 @@ pub fn lower_function_data_unit(
         true,
         &BTreeMap::new(),
         None,
+        false,
     )
 }
 
@@ -1531,6 +1560,7 @@ pub fn lower_function_data_unit_with_modes(
         true,
         mode_overrides,
         None,
+        false,
     )
 }
 
@@ -1541,7 +1571,8 @@ fn lower_function_unit_impl(
     source_snapshot: u64,
     data: bool,
     mode_overrides: &BTreeMap<String, Vec<hir::ParamMode>>,
-    emission_reserve: Option<&mut dyn FnMut(usize) -> Result<(), String>>,
+    mut emission_reserve: Option<&mut dyn FnMut(usize) -> Result<(), String>>,
+    reserve_unit_metadata: bool,
 ) -> Result<MirModule, AdapterError> {
     match bundle.domain {
         hir::HirDomain::Scalar | hir::HirDomain::Core if !data => {}
@@ -1567,6 +1598,47 @@ fn lower_function_unit_impl(
         ));
     }
     let module = &bundle.modules[0];
+    let mut metadata = if reserve_unit_metadata {
+        emission_reserve.take().map(|reserve| UnitMetadata {
+            bytes: 0,
+            map_bytes: 0,
+            function_bytes: 0,
+            reserve,
+        })
+    } else {
+        None
+    };
+    if let Some(metadata) = metadata.as_mut() {
+        // Both module and final function own a schema/module pair. Reserve
+        // those two owners before the first clone, plus the profile/caps.
+        let schema = if data {
+            ace_av_core::contract::MIR_DATA_SCHEMA
+        } else {
+            ace_av_core::contract::MIR_SCHEMA
+        };
+        let profile = if data {
+            ace_av_core::contract::AV_DATA_PROFILE
+        } else {
+            ace_av_core::contract::AV_PROFILE
+        };
+        let overflow = || AdapterError::resource("unit identity capacity overflow".into());
+        let identity = schema
+            .len()
+            .checked_add(module.id_text.len())
+            .and_then(|n| n.checked_mul(2))
+            .and_then(|n| n.checked_add(profile.len()))
+            .ok_or_else(overflow)?;
+        let caps = capabilities
+            .len()
+            .checked_mul(std::mem::size_of::<String>())
+            .ok_or_else(overflow)?;
+        let bytes = capabilities.iter().try_fold(
+            identity.checked_add(caps).ok_or_else(overflow)?,
+            |n, cap| n.checked_add(cap.len()).ok_or_else(overflow),
+        )?;
+        metadata.add(bytes)?;
+    }
+
     let owner = if data {
         OwnerScope {
             schema: ace_av_core::contract::MIR_DATA_SCHEMA.to_string(),
@@ -1603,42 +1675,60 @@ fn lower_function_unit_impl(
                     let self_sig = if data {
                         data_fn_sig_for_def(module, di as u32, *ty, &mut out, mode_overrides)?
                     } else {
-                        fn_type_index(
+                        fn_type_index_ext_reserved(
                             *ty,
                             module,
                             &mut out,
                             data,
+                            false,
                             &mut std::collections::BTreeMap::new(),
                             &mut std::collections::BTreeSet::new(),
+                            &mut metadata,
                         )?
                     };
-                    let imp = out.intern_import(MirImport {
-                        symbol: format!("fn:{}", d.id_text),
-                        effect: Effect::Pure,
-                        sig: self_sig,
-                        env: None,
-                    });
+                    let imp = intern_import_reserved(
+                        &mut out,
+                        MirImport {
+                            symbol: metadata_text(&["fn:", &d.id_text], &mut metadata)?,
+                            effect: Effect::Pure,
+                            sig: self_sig,
+                            env: None,
+                        },
+                        &mut metadata,
+                    )?;
+                    if let Some(metadata) = metadata.as_mut() {
+                        metadata.map_entry()?;
+                    }
                     def_map.insert(di as u32, CalleeRef::Import(imp));
                     target = Some((di as u32, *ty, *body));
                 } else {
                     let sig = if data {
                         data_fn_sig_for_def(module, di as u32, *ty, &mut out, mode_overrides)?
                     } else {
-                        fn_type_index(
+                        fn_type_index_ext_reserved(
                             *ty,
                             module,
                             &mut out,
                             data,
+                            false,
                             &mut std::collections::BTreeMap::new(),
                             &mut std::collections::BTreeSet::new(),
+                            &mut metadata,
                         )?
                     };
-                    let idx = out.intern_import(MirImport {
-                        symbol: format!("fn:{}", d.id_text),
-                        effect: Effect::Pure,
-                        sig,
-                        env: None,
-                    });
+                    let idx = intern_import_reserved(
+                        &mut out,
+                        MirImport {
+                            symbol: metadata_text(&["fn:", &d.id_text], &mut metadata)?,
+                            effect: Effect::Pure,
+                            sig,
+                            env: None,
+                        },
+                        &mut metadata,
+                    )?;
+                    if let Some(metadata) = metadata.as_mut() {
+                        metadata.map_entry()?;
+                    }
                     def_map.insert(di as u32, CalleeRef::Import(idx));
                 }
             }
@@ -1646,25 +1736,40 @@ fn lower_function_unit_impl(
             // `fn:m.<Rec>.<name>` import identity; the target is still
             // selected by HIR def id (a transient handle).
             hir::DefKind::Method { ty, body, .. } => {
-                let symbol = format!("fn:{}", mir_name_of_def(module, di)?);
+                let method_name = mir_name_of_def_reserved(module, di, &mut metadata)?;
+                let symbol = metadata_text(&["fn:", &method_name], &mut metadata)?;
+                let temporary = method_name.capacity();
+                drop(method_name);
+                if let Some(metadata) = metadata.as_mut() {
+                    metadata.release(temporary)?;
+                }
                 let sig = if data {
                     data_fn_sig_for_def(module, di as u32, *ty, &mut out, mode_overrides)?
                 } else {
-                    fn_type_index(
+                    fn_type_index_ext_reserved(
                         *ty,
                         module,
                         &mut out,
                         data,
+                        false,
                         &mut std::collections::BTreeMap::new(),
                         &mut std::collections::BTreeSet::new(),
+                        &mut metadata,
                     )?
                 };
-                let idx = out.intern_import(MirImport {
-                    symbol,
-                    effect: Effect::Pure,
-                    sig,
-                    env: None,
-                });
+                let idx = intern_import_reserved(
+                    &mut out,
+                    MirImport {
+                        symbol,
+                        effect: Effect::Pure,
+                        sig,
+                        env: None,
+                    },
+                    &mut metadata,
+                )?;
+                if let Some(metadata) = metadata.as_mut() {
+                    metadata.map_entry()?;
+                }
                 def_map.insert(di as u32, CalleeRef::Import(idx));
                 if d.id_text == def_id_text {
                     target = Some((di as u32, *ty, *body));
@@ -1677,23 +1782,32 @@ fn lower_function_unit_impl(
                         format!("intrinsic `{symbol}` is not in the av profile"),
                     ));
                 }
-                let sig = fn_type_index(
+                let sig = fn_type_index_ext_reserved(
                     *ty,
                     module,
                     &mut out,
                     data,
+                    false,
                     &mut std::collections::BTreeMap::new(),
                     &mut std::collections::BTreeSet::new(),
+                    &mut metadata,
                 )?;
-                let idx = out.intern_import(MirImport {
-                    symbol: symbol.clone(),
-                    effect: match effect {
-                        hir::Effect::Observable => Effect::Observable,
-                        hir::Effect::Pure => Effect::Pure,
+                let idx = intern_import_reserved(
+                    &mut out,
+                    MirImport {
+                        symbol: metadata_text(&[symbol], &mut metadata)?,
+                        effect: match effect {
+                            hir::Effect::Observable => Effect::Observable,
+                            hir::Effect::Pure => Effect::Pure,
+                        },
+                        sig,
+                        env: None,
                     },
-                    sig,
-                    env: None,
-                });
+                    &mut metadata,
+                )?;
+                if let Some(metadata) = metadata.as_mut() {
+                    metadata.map_entry()?;
+                }
                 def_map.insert(di as u32, CalleeRef::Import(idx));
             }
         }
@@ -1707,14 +1821,42 @@ fn lower_function_unit_impl(
     let sig = if data {
         data_fn_sig_for_def(module, di, ty, &mut out, mode_overrides)?
     } else {
-        fn_type_index(
+        fn_type_index_ext_reserved(
             ty,
             module,
             &mut out,
             data,
+            false,
             &mut BTreeMap::new(),
             &mut std::collections::BTreeSet::new(),
+            &mut metadata,
         )?
+    };
+    if metadata.is_some() {
+        intern_type_reserved(&mut out, MirType::I32, 0, &mut metadata)?;
+        intern_type_reserved(&mut out, MirType::Bool, 0, &mut metadata)?;
+    }
+    let name = mir_name_of_def_reserved(module, di as usize, &mut metadata)?;
+    let admitted = metadata.is_some() || emission_reserve.is_some();
+    let mut function_bytes = 0;
+    let mut reserve_function = |bytes| {
+        function_bytes = bytes;
+        if let Some(metadata) = metadata.as_mut() {
+            let total = metadata
+                .bytes
+                .checked_add(bytes)
+                .ok_or("unit/function capacity overflow")?;
+            (metadata.reserve)(total)
+        } else if let Some(reserve) = emission_reserve.as_mut() {
+            reserve(bytes)
+        } else {
+            Ok(())
+        }
+    };
+    let function_port: Option<&mut dyn FnMut(usize) -> Result<(), String>> = if admitted {
+        Some(&mut reserve_function)
+    } else {
+        None
     };
     let mir_fn = lower_function_with_emission(
         module,
@@ -1724,13 +1866,21 @@ fn lower_function_unit_impl(
         sig,
         source_snapshot,
         &def_map,
-        mir_name_of_def(module, di as usize)?,
+        name,
         data,
         false,
         mode_overrides,
         &ModuleScanFacts,
-        emission_reserve,
+        function_port,
     )?;
+    drop(reserve_function);
+    drop(def_map);
+    if let Some(metadata) = metadata.as_mut() {
+        metadata.function_bytes = function_bytes;
+        metadata.release(metadata.map_bytes)?;
+        metadata.map_bytes = 0;
+        metadata.grow(&mut out.funcs)?;
+    }
     out.funcs.push(mir_fn);
     out.entry = 0;
     Ok(out)
@@ -1762,15 +1912,24 @@ fn scalar_type_idx_of(
     m: &hir::Module,
     out: &mut MirModule,
 ) -> Result<TypeIdx, AdapterError> {
+    scalar_type_idx_of_reserved(u, m, out, &mut None)
+}
+
+fn scalar_type_idx_of_reserved(
+    u: &hir::TypeUse,
+    m: &hir::Module,
+    out: &mut MirModule,
+    metadata: &mut Option<UnitMetadata<'_>>,
+) -> Result<TypeIdx, AdapterError> {
     // PLAN-862: Unit is the entry-unit profile's zero-width RESULT type. It
     // is NOT a scalar shape (it has no runtime width), so it maps before the
     // scalar-shape lookup; the verifier owns its placement.
     if matches!(u, hir::TypeUse::Builtin(hir::BuiltinType::Unit)) {
-        return Ok(out.intern_type(MirType::Unit));
+        return intern_type_reserved(out, MirType::Unit, 0, metadata);
     }
     match scalar_shape_of_use(u, m)? {
-        ScalarShape::I32 => Ok(out.intern_type(MirType::I32)),
-        ScalarShape::Bool => Ok(out.intern_type(MirType::Bool)),
+        ScalarShape::I32 => intern_type_reserved(out, MirType::I32, 0, metadata),
+        ScalarShape::Bool => intern_type_reserved(out, MirType::Bool, 0, metadata),
         // Unreachable via HIR: the source front doors expose no
         // wide-scalar syntax (defense for hand-made bundles).
         _ => Err(AdapterError::uns(
@@ -2100,31 +2259,49 @@ fn fn_type_index_ext(
     memo: &mut std::collections::BTreeMap<hir::TypeId, TypeIdx>,
     visiting: &mut std::collections::BTreeSet<hir::TypeId>,
 ) -> Result<TypeIdx, AdapterError> {
+    fn_type_index_ext_reserved(ty, m, out, data, owned, memo, visiting, &mut None)
+}
+
+fn fn_type_index_ext_reserved(
+    ty: hir::TypeId,
+    m: &hir::Module,
+    out: &mut MirModule,
+    data: bool,
+    owned: bool,
+    memo: &mut std::collections::BTreeMap<hir::TypeId, TypeIdx>,
+    visiting: &mut std::collections::BTreeSet<hir::TypeId>,
+    metadata: &mut Option<UnitMetadata<'_>>,
+) -> Result<TypeIdx, AdapterError> {
     let td = m.types.get(ty.0 as usize).ok_or_else(|| {
         AdapterError::inv("lower.type-ref", format!("type id {} out of range", ty.0))
     })?;
     match &td.kind {
         hir::TypeKind::Function(sig) | hir::TypeKind::Closure(sig) => {
-            let mut params = Vec::with_capacity(sig.params.len());
+            let mut params = metadata_vec(sig.params.len(), metadata)?;
             for p in &sig.params {
                 params.push(if owned {
                     owned_type_idx_of(p, m, out, memo, visiting)?
-                } else {
+                } else if data {
                     type_idx_of_use(p, m, out, data, memo, visiting)?
+                } else {
+                    scalar_type_idx_of_reserved(p, m, out, metadata)?
                 });
             }
             let result = if owned {
                 owned_type_idx_of(&sig.result, m, out, memo, visiting)?
-            } else {
+            } else if data {
                 type_idx_of_use(&sig.result, m, out, data, memo, visiting)?
+            } else {
+                scalar_type_idx_of_reserved(&sig.result, m, out, metadata)?
             };
+            let payload = params.capacity() * std::mem::size_of::<TypeIdx>();
             let mir_sig = FnSig { params, result };
             let mir_ty = if matches!(td.kind, hir::TypeKind::Closure(_)) {
                 MirType::Closure(mir_sig)
             } else {
                 MirType::Fn(mir_sig)
             };
-            Ok(out.intern_type(mir_ty))
+            intern_type_reserved(out, mir_ty, payload, metadata)
         }
         _ => Err(AdapterError::inv(
             "lower.fn-type",
@@ -2518,6 +2695,144 @@ fn emission_vec<T>(
     } else {
         Ok(Vec::with_capacity(capacity))
     }
+}
+
+/// Unit metadata is owned alongside the function emitter, rather than
+/// absorbed into its mutable array subtotal. `function_bytes` protects the
+/// returned function while the outer unit finishes its tables and drops its
+/// temporary definition index.
+struct UnitMetadata<'budget> {
+    bytes: usize,
+    map_bytes: usize,
+    function_bytes: usize,
+    reserve: &'budget mut dyn FnMut(usize) -> Result<(), String>,
+}
+
+impl UnitMetadata<'_> {
+    fn resize(&mut self, bytes: usize) -> Result<(), AdapterError> {
+        let total = bytes
+            .checked_add(self.function_bytes)
+            .ok_or_else(|| AdapterError::resource("unit metadata capacity overflow".into()))?;
+        (self.reserve)(total).map_err(AdapterError::resource)?;
+        self.bytes = bytes;
+        Ok(())
+    }
+
+    fn add(&mut self, bytes: usize) -> Result<(), AdapterError> {
+        let next = self
+            .bytes
+            .checked_add(bytes)
+            .ok_or_else(|| AdapterError::resource("unit metadata capacity overflow".into()))?;
+        self.resize(next)
+    }
+
+    fn release(&mut self, bytes: usize) -> Result<(), AdapterError> {
+        self.resize(self.bytes - bytes)
+    }
+
+    fn array<T>(&mut self, values: &mut Vec<T>, capacity: usize) -> Result<(), AdapterError> {
+        let offset = self.function_bytes;
+        reserve_emission_capacity(values, capacity, &mut self.bytes, &mut |bytes| {
+            let total = bytes
+                .checked_add(offset)
+                .ok_or("unit metadata capacity overflow")?;
+            (self.reserve)(total)
+        })
+    }
+
+    fn grow<T>(&mut self, values: &mut Vec<T>) -> Result<(), AdapterError> {
+        if values.len() < values.capacity() {
+            return Ok(());
+        }
+        let capacity = values
+            .capacity()
+            .checked_mul(2)
+            .map(|n| n.max(4))
+            .ok_or_else(|| AdapterError::resource("unit metadata capacity overflow".into()))?;
+        self.array(values, capacity)
+    }
+
+    fn map_entry(&mut self) -> Result<(), AdapterError> {
+        // libstd B=6: a leaf holds 11 key/value pairs, and an internal node
+        // has 12 child pointers. One full internal allocation per insertion
+        // is a conservative bound for this single live BTreeMap, including
+        // a split; its entire fee is released after the map actually drops.
+        let node = 64
+            + 11 * (std::mem::size_of::<u32>() + std::mem::size_of::<CalleeRef>())
+            + 12 * std::mem::size_of::<usize>();
+        self.add(node)?;
+        self.map_bytes += node;
+        Ok(())
+    }
+}
+
+fn metadata_vec<T>(
+    capacity: usize,
+    metadata: &mut Option<UnitMetadata<'_>>,
+) -> Result<Vec<T>, AdapterError> {
+    if let Some(metadata) = metadata {
+        let mut values = Vec::new();
+        metadata.array(&mut values, capacity)?;
+        Ok(values)
+    } else {
+        Ok(Vec::with_capacity(capacity))
+    }
+}
+
+fn metadata_text(
+    parts: &[&str],
+    metadata: &mut Option<UnitMetadata<'_>>,
+) -> Result<String, AdapterError> {
+    let bytes = parts
+        .iter()
+        .try_fold(0usize, |bytes, part| bytes.checked_add(part.len()))
+        .ok_or_else(|| AdapterError::resource("unit text capacity overflow".into()))?;
+    if let Some(metadata) = metadata {
+        metadata.add(bytes)?;
+    }
+    let mut text = String::with_capacity(bytes);
+    for part in parts {
+        text.push_str(part);
+    }
+    Ok(text)
+}
+
+fn intern_type_reserved(
+    out: &mut MirModule,
+    ty: MirType,
+    payload: usize,
+    metadata: &mut Option<UnitMetadata<'_>>,
+) -> Result<TypeIdx, AdapterError> {
+    let Some(metadata) = metadata else {
+        return Ok(out.intern_type(ty));
+    };
+    if let Some(index) = out.types.iter().position(|existing| *existing == ty) {
+        drop(ty);
+        metadata.release(payload)?;
+        return Ok(index as TypeIdx);
+    }
+    metadata.grow(&mut out.types)?;
+    out.types.push(ty);
+    Ok(out.types.len() as TypeIdx - 1)
+}
+
+fn intern_import_reserved(
+    out: &mut MirModule,
+    import: MirImport,
+    metadata: &mut Option<UnitMetadata<'_>>,
+) -> Result<ImportIdx, AdapterError> {
+    let Some(metadata) = metadata else {
+        return Ok(out.intern_import(import));
+    };
+    if let Some(index) = out.imports.iter().position(|existing| *existing == import) {
+        let bytes = import.symbol.capacity();
+        drop(import);
+        metadata.release(bytes)?;
+        return Ok(index as ImportIdx);
+    }
+    metadata.grow(&mut out.imports)?;
+    out.imports.push(import);
+    Ok(out.imports.len() as ImportIdx - 1)
 }
 
 struct FnLower<'a, 'budget> {
@@ -2920,7 +3235,10 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         if let Some(reserve) = self.emission_reserve.as_mut() {
             grow_emission(&mut self.out.consts, &mut self.emission_bytes, *reserve)?;
         }
-        Ok(self.out.intern_const(value))
+        // The lookup above already established absence. Insert directly
+        // rather than repeat the entire pool scan for every new constant.
+        self.out.consts.push(value);
+        Ok(self.out.consts.len() as u32 - 1)
     }
 
     fn const_i32(&mut self, v: i32) -> Result<u32, AdapterError> {
@@ -3186,6 +3504,17 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                             })?;
                         self.reserve_owned(declaration_bytes)?;
                         let declaration = Box::new(declaration.clone());
+                        // Clone retains lengths rather than unused source
+                        // capacities. The whole bound protected allocation;
+                        // now keep only the actual newly owned graph's fee.
+                        let cloned_bytes = std::mem::size_of_val(&*declaration)
+                            .checked_add(declaration.heap_bytes())
+                            .ok_or_else(|| {
+                                AdapterError::resource(
+                                    "cloned foreign declaration capacity overflow".into(),
+                                )
+                            })?;
+                        self.release_owned(declaration_bytes - cloned_bytes)?;
                         let mut actuals = emission_vec(
                             declaration.params().len(),
                             &mut self.emission_bytes,
@@ -3246,10 +3575,9 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                         )
                     })?;
                     if let CalleeRef::Import(imp) = callee_ref {
-                        let symbol = self.out.imports[imp as usize].symbol.clone();
+                        let symbol = &self.out.imports[imp as usize].symbol;
                         if !symbol.starts_with("fn:") {
                             // Test marks: trace event + frozen i32 result.
-                            let dst = self.temp_ty(self.t_i32)?;
                             let (event, value) = match symbol.as_str() {
                                 "hir.test.mark_a" => (TraceEvent::MarkA, 1i32),
                                 "hir.test.mark_b" => (TraceEvent::MarkB, 2),
@@ -3260,6 +3588,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                     ));
                                 }
                             };
+                            let dst = self.temp_ty(self.t_i32)?;
                             self.emit(MirInstr::Trace { event }, sp)?;
                             let c = self.const_i32(value)?;
                             self.emit(MirInstr::Const { dst, value: c }, sp)?;
@@ -3291,15 +3620,37 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                 "callee lacks a function type".to_string(),
                             )
                         })?;
-                    let sig_idx = fn_type_index_ext(
-                        hir_ty,
-                        self.hir_module,
-                        self.out,
-                        self.data,
-                        self.owned,
-                        &mut self.ty_memo,
-                        &mut self.ty_visiting,
-                    )?;
+                    // In the admitted scalar unit, every local callee's
+                    // signature was already validated/interned in the unit
+                    // import pass. Borrow it; rebuilding and cloning it here
+                    // would own unneeded parameter tables at each call.
+                    let scalar_unit = self.emission_reserve.is_some()
+                        && !self.data
+                        && !self.owned
+                        && !self.collections();
+                    let imported_sig = if scalar_unit {
+                        match callee_ref {
+                            CalleeRef::Import(index) => {
+                                self.out.imports.get(index as usize).map(|i| i.sig)
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                    let sig_idx = if let Some(sig) = imported_sig {
+                        sig
+                    } else {
+                        fn_type_index_ext(
+                            hir_ty,
+                            self.hir_module,
+                            self.out,
+                            self.data,
+                            self.owned,
+                            &mut self.ty_memo,
+                            &mut self.ty_visiting,
+                        )?
+                    };
                     let n_params = self
                         .out
                         .sig_of(sig_idx)
@@ -3333,52 +3684,60 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     // The wrapper ABI is a property of the DEF (param modes +
                     // types), so a forward reference derives the def-level
                     // signature through the same builder the callee will use.
-                    let callee_sig_ty: Option<MirType> = match callee_ref {
-                        CalleeRef::Import(ii) => self
-                            .out
-                            .imports
-                            .get(ii as usize)
-                            .and_then(|imp| self.out.types.get(imp.sig as usize).cloned()),
-                        CalleeRef::Func(fi) => {
-                            let table = self
+                    let callee_sig_ty: Option<MirType> = if scalar_unit {
+                        // Scalar signatures have no mut-record return wrapper.
+                        None
+                    } else {
+                        match callee_ref {
+                            CalleeRef::Import(ii) => self
                                 .out
-                                .funcs
-                                .get(fi as usize)
-                                .and_then(|f| self.out.types.get(f.sig as usize).cloned());
-                            let already_wrapped = matches!(
-                                &table,
-                                Some(MirType::Fn(f))
-                                    if matches!(
-                                        self.out.types.get(f.result as usize),
-                                        Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_")
-                                    )
-                            );
-                            // The def-level derivation belongs to the data/owned
-                            // profiles (their t_MutRet ABI). The COLLECTIONS
-                            // profile has its own type walker (Variants/lists are
-                            // outside av.owned/1), so it keeps the table answer.
-                            if already_wrapped || self.collections() || !(self.owned || self.data) {
-                                table
-                            } else {
-                                let overrides = self.sig_mode_overrides.clone();
-                                let derived = if self.owned {
-                                    owned_fn_sig_for_def(
-                                        self.hir_module,
-                                        callee_def.0,
-                                        hir_ty,
-                                        self.out,
-                                        &overrides,
-                                    )?
+                                .imports
+                                .get(ii as usize)
+                                .and_then(|imp| self.out.types.get(imp.sig as usize).cloned()),
+                            CalleeRef::Func(fi) => {
+                                let table = self
+                                    .out
+                                    .funcs
+                                    .get(fi as usize)
+                                    .and_then(|f| self.out.types.get(f.sig as usize).cloned());
+                                let already_wrapped = matches!(
+                                    &table,
+                                    Some(MirType::Fn(f))
+                                        if matches!(
+                                            self.out.types.get(f.result as usize),
+                                            Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_")
+                                        )
+                                );
+                                // The def-level derivation belongs to the data/owned
+                                // profiles (their t_MutRet ABI). The COLLECTIONS
+                                // profile has its own type walker (Variants/lists are
+                                // outside av.owned/1), so it keeps the table answer.
+                                if already_wrapped
+                                    || self.collections()
+                                    || !(self.owned || self.data)
+                                {
+                                    table
                                 } else {
-                                    data_fn_sig_for_def(
-                                        self.hir_module,
-                                        callee_def.0,
-                                        hir_ty,
-                                        self.out,
-                                        &overrides,
-                                    )?
-                                };
-                                self.out.types.get(derived as usize).cloned()
+                                    let overrides = self.sig_mode_overrides.clone();
+                                    let derived = if self.owned {
+                                        owned_fn_sig_for_def(
+                                            self.hir_module,
+                                            callee_def.0,
+                                            hir_ty,
+                                            self.out,
+                                            &overrides,
+                                        )?
+                                    } else {
+                                        data_fn_sig_for_def(
+                                            self.hir_module,
+                                            callee_def.0,
+                                            hir_ty,
+                                            self.out,
+                                            &overrides,
+                                        )?
+                                    };
+                                    self.out.types.get(derived as usize).cloned()
+                                }
                             }
                         }
                     };
