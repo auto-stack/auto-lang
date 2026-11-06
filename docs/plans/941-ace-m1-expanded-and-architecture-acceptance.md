@@ -840,6 +840,29 @@ stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktr
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:28 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，collections AV/native证据已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:ff9ce906227b750ac865e6ed1b84da1e60d9f187 | next:work 原collections独立reference/认证及剩余完整范围
 
+### 2026-11-06 原collections二十源独立Rust/C默认认证（goal第29轮）
+
+前轮40源观察为progress。本轮继续T03/04/05/10/11，唯一941树提交 **ff18aaaab202c1b2bd8aa61d00d2d9f4dad3f586**，10文件，树clean；仍executing2/17，生产编译器/worker/语义未改。
+
+- 实际检查发现904原已提供**20份手写std-only Rust reference**，逐份读回并与原源语义/独立oracle核对后直接复用，不复制/生成另一套Rust参考；C保原composite已冻结20参考，逐字节等于926原reference文件。两套均不读actual发射代码，L06用checked get输出具名ListIndex，Unicode长度用chars计数。参考中部分不走的分支按原选定输入规范化，不能据此声称额外分支覆盖。所有40参考均逐件等当前Git blob，未顺手修参考或压warning。
+- 新20行collections-reference-contracts.tsv SHA=`f0b4adb0985304e6706215ff349f6f38a02af487d7318159ec8ca4772a7fdde1`，把原source/profile/caps/oracle、原Rust/C参考路径/SHA、debug配置及20×2默认义务固定。当前真实原worker顺序执行**40默认cert+40对应daily+40编译器身份请求**，actual/reference独立编译与运行，合**80compile+80run**，全部PASS、无失败尝试；daily完整四文件在cert前冻结。scope/collections-certifications/frozen-bindings.json SHA=`9931058191716dd8ff84499343d63876dbe14f9711f10e6139610c6deb5c360b`；120原命令sum wall92055.9576ms、max Job209178624B，command-summary SHA=`756049ddd206c68be385c3ec4b1febfcf4f196c262c5d225310d7bc06d819a29`（非正式P90或父整包墙时）。
+- **全部40目标的每份完整main/runtime/generated/manifest字节仍等于原904/926金样**，不是剪支/改源重新造golden；scope/collections-certifications/original-golden-byte-audit.json SHA=`d88666914acdf74fc4c30e939d17fd553d450472c3f4ea2a788670444fe5a7f7`。原AV/native40有效源观察继续保留，无重复执行；本轮默认cert累计**230（190+40）**及对应daily，另外12原Rust额外模式仍另计。
+- 原共享cert/daily reader有限增加collections独立域：原profile=collections/HIR=collections-draft、原collections schema/recipe、C专属a2x_c_coll_runtime.h/926 case域、Rust a2x-coll/1 runtime、完整sourceSHA/manifest/实际文件与原toolchain逐件校验。配置身份**Rust证书为canonical JSON字符串，C证书为typed object**，同16,777,216工作预算、cancel/events=false、fault_alloc=null、mode=debug；拒不同表示、错mode/预算/布尔类型/fault/未知field。daily请求同配置、独立nonce/完整专属目录、spawn0/Job2及先冻结文件集不改；四phase真实终态各对独立oracle，父PASS和双方同错不供正权威。
+- 边界实证：当前Rust认证器compile_and_run固定`--edition 2021`，即使请求mode=release也只改变collections配置身份，并不传-O；本轮仅显式debug默认认证，**不把配置标签冒优化编译**。原904/926 mode-key对照、独立正式模式/配置及完整资源/fault/恢复/正式样本仍单列待核。本组default_certification_complete=true而configuration_key_controls/optimized_rust_execution/full_resources_and_lifecycle仍UNOBSERVED，未声称collections所有义务完成。
+- **50原认证帧反控**：L01/L06/LSTR864/N889-nested-variant/V06×两target；10原合法PASS、10双方同错值/错trap FAIL、30重hash未知response/替配置mode并重算certSHA/冒record-text schema REFUSED。scope/collections-cert-raw-controls/results.json SHA=`a6dbdf409d709c1dc5fdf2a350687330b5603502cd4fec1317a6dc39d70da683`；均counterfactual_not_execution，完整parent/rawhash/实际文件另行严格准入，不充新语言执行。
+- 新2永久回归保配置跨target表示/类型/值/模式与daily full source/config连重hash，既有daily正控扩至**六profile×两target**；`cargo t infra-ace-m1-arch --out <scope>/collections-cert-reader-controls` **159/159 PASS**、5.2774971s、exit0，results SHA=`aaa1484cc06fa4ed528226cebf16d2e340c3c85311b58cd7006e674d92de30df`。py_compile/diff-check通过；冻结后10文件=Git blob审计留scope/collections-cert-frozen-preview。未因Python提交重复原1779压力；旧190默认cert、12模式与所有source当前身份/文件/配置由新reader实际重读后复用。
+- budget source pin按旧strict约束刷新：逐项确认16政策/全部数字与HEAD完全一致，26源中只更新cert_evidence这一SHA；新预算合同SHA=`1b020d6407084d5ec76b32572af681e1cddc4b73ca26923727cfa8924145b817`，其余25pin/原帽不改。临时更新脚本首次查错registry预算键而KeyError，已核正确expanded_contracts.budget并完成同源hash一致更新，不跳过STALE/预算检查。
+
+健康记录：C actual/reference均零warning；Rust实际20流共138 warning、原reference两流共5 warning（N889-nested-variant/V06）。原参考均不改、实际完整产物逐件等原金样，因此是原发射/参考基线，不是本轮新代码warning；scope/collections-certifications/compiler-warning-baseline-audit.json保每流SHA/计数，具名**HEALTH-941-COLL-WARN**交T13健康/owner与最终独立review处理，不能谎报全部零warning，不在941例外授权之外改生成源码/加lint屏蔽。原完整资源与机制仍未被健康审计替代。
+
+冻结ff18aaa整组合原受管Job/Popen禁用重读：**474PASS/8FAIL/404UNOBSERVED**，登记886/原required不变，第13合同指针collections_reference；full_registry_closed/system_delivered/expanded claim仍false。scope/collections-cert-frozen-preview/preview.stdout 447947B SHA=`aeb940a759aa3852d02c964607a2197b45deb87b298d227ae2b223a1ae9d7ea5`，9786.2158ms、peak process29782016/Job31023104B；同一LiveBudget reservation33195144/全程peak**47289027<50331648B**，保48MiB聚合/4MiB单件/private128MiB/先预留解码/64KiB流hash与不清峰值；外层1MiB/每cert128KiB有界摘要。原8FAIL/8native trap缺观测、旧313/38与938939/ARCH不被新40绿掩盖。
+
+原T01..15未闭；下一入口继续SQ/实例同源四端及原collections配置/资源与完整机制，最终独立review/merge/清理仍待。无活进程或新增用户决定，授权持续。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:ff18aaaab202c1b2bd8aa61d00d2d9f4dad3f586 | task_ids:T03/04/05/10/11（未关闭） | evidence:40原Rust/C默认cert+daily/80compile80run；50反控；159回归；整体474PASS8FAIL404UNOBSERVED | blockers:原完整范围/机制与健康基线未闭，无新增用户决定 | next_responsible_role:work SQ/实例四端及原模式/机制/ARCH
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:29 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完，collections默认认证已补） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:ff18aaaab202c1b2bd8aa61d00d2d9f4dad3f586 | next:work SQ/实例四端与原配置/完整机制/ARCH
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
