@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-991
-status: reviewed
+status: archived
 feature_name: M1旧A2R 38格认证缺口分诊与关闭交接
 plan_revision: 1
 author: [Codex]
@@ -11,7 +11,7 @@ new_spec_components: []
 touched_goals: [GOAL-002]
 affects: [auto-test-case, legacy-a2r]
 depends_on: []
-current_step: 6
+current_step: 7
 total_steps: 7
 ---
 
@@ -21,7 +21,7 @@ total_steps: 7
 
 认领38个required旧A2R cert-gap的逐格分诊与可执行关闭交接：现有本域证据漏接线、陈旧/缺证据、实际producer/认证通道缺能力分别处理；保留每格原source/oracle/producer/批准与当前零cert-gap守卫。本包交付可信的分诊和关闭材料，**不承诺交付即38格全部绿或M1可签**；缺实现/新认证平台由T-04形成具名待批准修复合同，不能伪造cert/PASS。
 
-与[939](939-foreign-resource-handle-and-callback-bridge.md)并行且无相互前置。正在执行的[941](941-ace-m1-expanded-and-architecture-acceptance.md)持有最终证据接线/组合权威，本包只交接逐格材料，不修改其计划/代码/在途文件；938亦不接管。M2认证985消费M1结论，不能反过来让M1等985解决本组缺口。
+与[939](../939-foreign-resource-handle-and-callback-bridge.md)并行且无相互前置。正在执行的[941](../941-ace-m1-expanded-and-architecture-acceptance.md)持有最终证据接线/组合权威，本包只交接逐格材料，不修改其计划/代码/在途文件；938亦不接管。M2认证985消费M1结论，不能反过来让M1等985解决本组缺口。
 
 ## 1. 目标
 
@@ -226,7 +226,7 @@ T-04按**共同根因**合并最小修复提案，而非38个Plan或一个无边
 | T-04 | work | T-02/03；每未闭格形成§5.4具名H关闭合同/根因分组/owner/下一动作，规则争议给裁定提案；交接941的待接纳与已验证分开 | V-04/05，AC-03/04；原38全有关闭路径但可仍不绿，不自动取新号/实施修复 | [x] §5.4.1 H-01..H-07（12/5/4/6/1/4/6=38）；裁定题 H-04/H-06/H-07 入 §10；未取号、未实施 |
 | T-05 | work | T-01..04；冻结逐格结果/闭合与未闭计数、身份变更/复用理由、健康与交接材料；原门仍保红 | V-01..05、AC-01..04；准备独立review，不写941计划 | [x] 计数 17 已验证候选（未认证）+ 21 具名未闭 = 38，实际关闭 0；acceptance scope cert-gap=38/can_claim_m1=false 保红（§7.1 V-05）；零代码/零生产文件改动，健康=无新 warning/格式面；交接材料=本 Plan §5.1/§5.4.1/§7.1 |
 | T-06 | review | T-05完成/冻结；同树独立上下文逐格/raw/H合同/边界/空过扫描与最终判定 | V-06、AC-05；未检面pending，不采摘要PASS | [x] 独立 subagent 上下文 final pass，findings none；62 行独立重放与 B08/L01 溯源 SHA 一致（§9 review 收据） |
-| T-07 | merge | T-06 pass及后续合入指令；冻结适用验证、归档/路径对账/scope/guard收尾，诚实记录triage交付与38实际关闭状态 | AC-06；不部署/签M1，不自动发消息或改938/941 | [ ] |
+| T-07 | merge | T-06 pass及后续合入指令；冻结适用验证、归档/路径对账/scope/guard收尾，诚实记录triage交付与38实际关闭状态 | AC-06；不部署/签M1，不自动发消息或改938/941 | [x] ff-only no-op（树零自有提交；交付=主检出计划提交 38e3d20df/47f81ff07/本归档提交）；规范无影响核实（四 Spec hash 不变）；归档 `docs/plans/archive/`；scope 整删与树移除见 §9 merge 收据 cleaned |
 
 ## 9. 复审记录
 
@@ -242,6 +242,8 @@ stage: review | review_scope: final | reviewer_identity/limitations: 独立 suba
 
 stage: goal | plan_id: PLAN-991 | plan_revision: r1 | round: 2 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-991/auto-lang | commit: b4b16dd9a359ae4194c5a93495fec92f89e7dce8 | next: merge
 
+stage: merge | PLAN-991:r1 | outcome: pass（delivered） | completion_kind: delivered（分诊交付；38 格实际认证关闭 0，M1 未签） | prepared: reviewed r1 / reviewed_commit b4b16dd9a（树）+ 计划提交 47f81ff07；规范增量=无（批准 no-impact，review F-991-R1-O2）；交付提交=主检出计划簿记 38e3d20df、47f81ff07 + 本归档提交 | landed: `bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-991/auto-lang` clean；树 `status --short` 0 行、`master..plan-991-dev` 0 提交；`git merge --ff-only plan-991-dev` → "Already up to date"（无 merge 提交，线性）；master tip 47f81ff07 | canonical_verified: no-impact——master tip 上 `a2r-golden-certification.md` `32c2c4dc…46e72`、`ace-m1-gap-audit.md` `e858780c…0d53d`、`ace-m1-scenario-oracles.md` `6179f473…ea24d`、`ace-m1-applicability.md` `787e74b4…fa1bfa`；`git diff --quiet b4b16dd9a HEAD -- docs/specs crates scripts` 为空；无 index/ledger/specs.json 写 | fixed_group_gate: 零代码/零治理触面——不选任何 `cargo t` 组（有效证据：§7.1 contract/receipts/acceptance scope、日常 a2r 26/26、review 独立重放），统一回归 no-impact；`cargo t all` 批量档按到期规则另算 | archived: `git mv docs/plans/991-… docs/plans/archive/`，`status: archived`，T-01..T-07 7/7，本收据随归档提交入 master | cleaned: 见下一条收据（树/分支/组目录移除 + scope 整删 + 登记刷新） | landing_is_not_deployment: 纯文档交付，无需重建/重启任何产物；无陈旧产物观察项 | next: cleanup → done
+
 ## 10. 待澄清事项
 
 1. 每格实际缺实现还是缺证据由T-02调查，不凭token定根因；新cert域/legacy修复由T-04起草最小合同后再正式授权/实施。本包不承诺强行认证不可编译程序。
@@ -251,3 +253,4 @@ stage: goal | plan_id: PLAN-991 | plan_revision: r1 | round: 2 | from: review | 
 5. **H-06 裁定**：旧 a2r `int`=i64（B13/B15 无 trap；B14/B20 字面 `10 / 0` 被 rustc deny-lint 拒编译）是否如 avm `diff-old-int-i64` 作 accepted diff？若要求 i32 checked arithmetic 与 Auto trap 认证，需新 trap cert schema（新平台，单独批准）。裁定前四格保 `cert-diff`。
 6. **H-07 裁定**：场景行 R01–R06 的 a2r 面（a2r 无事件/故障/stale-place/budget 观测通道，cert/1 仅 i32）走 (a) 新 NA 规则 `na:m1(NA-x)`（required 313 变，需批准规则导出）还是 (b) 保持 required 并立项带观测的 a2r 认证通道？另 scn:R05/R02/R06 的 binding 注须勘误（R05 声称的 `m1_k02.rs` 不存在、K02 a2r=`diff-legacy-grammar(parse)`）。裁定前六格 token 不变。
 7. **H-01/H-02/H-05 立项（无裁定争议，待授权取号）**：17 格已验证候选（12 冻结金样 + 5 新 emit 实际均编译运行 == oracle 且 reference 一致）仅被 certifier 选择谓词阻挡；关闭需 G04 显式金样复审 + binding token→`ok-emit` + 显式 `ace-certify` + 守卫常量（26/10/38）同步，且由 941 owner 按真实身份接纳。本包未改任何 token/金样/cert。
+8. **债务候选（merge 登记，`KNOWN-DEBT-AND-RISKS.md` 因他会话未提交 WIP 未在本次改动）**：`docs/specs/auto-test-case/a2r-golden-certification.md` §范围边界与 `ace-m1-gap-audit.md` F-A2R-3 的“复合产物为伪 Rust（List<int>/int 不可编译）”为概括性陈述，本包证实仅对集合 L 族成立，12/13 冻结复合金样可编译且运行==oracle；勘误随 H-01 落地（认证集 10→22）一并写入规范，裁定前规范文本保持不改。
