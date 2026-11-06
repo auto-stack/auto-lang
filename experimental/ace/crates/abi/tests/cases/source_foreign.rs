@@ -1834,6 +1834,149 @@ fn source_foreign_declaration_readers_atomic_after_restore() {
 }
 
 #[test]
+fn source_foreign_authorized_capability_edit_after_restore_only_rechecks_actual_readers() {
+    use ace_abi::source_foreign::{Session, Snapshot, Target};
+    use std::sync::Arc;
+    let root = scope("authorized-capability-edit");
+    let (object, original) = provider_with(&root, 0, true, false);
+    let bytes = Arc::new(std::fs::read(object).unwrap());
+    let caps = vec![SOURCE_CAP.into(), "hir.test.trace.v1".into()];
+    let source = "fn independent() int { return 7 }\nfn helper() int { return foreign_add(20,22) }\nfn flag() bool { return foreign_not(false) }\nfn main() int { return helper() }";
+    let mut manifest = original.manifest().clone();
+    manifest.facts.capabilities.push("hir.test.trace.v1".into());
+    // Isolate the capability dependency: source, logical version, physical
+    // prototype/table, provider object and current profile are unchanged.
+    let changed = fixture_readmit(manifest, &bytes, 2);
+    assert_eq!(
+        original.manifest().facts.content_version,
+        changed.manifest().facts.content_version
+    );
+    assert_ne!(original.contract_digest(), changed.contract_digest());
+    for target in [Target::Native, Target::C] {
+        let cold = Session::cold(
+            source,
+            "source938",
+            "p938",
+            &caps,
+            original.clone(),
+            bytes.clone(),
+            target,
+        )
+        .unwrap();
+        let snapshot = cold.snapshot().unwrap();
+        drop(cold);
+        let restart = |snapshot: &Snapshot, environment: &AdmittedForeign| {
+            let authority = fixture_current(environment, target);
+            Session::restore_current(
+                &snapshot.root,
+                &snapshot.digest,
+                target,
+                &caps,
+                |id| snapshot.pages.get(id).cloned(),
+                &mut || Ok(authority.clone()),
+            )
+            .unwrap()
+        };
+        let mut session = restart(&snapshot, &original);
+        assert_eq!(session.frontend().query_counters().solver_runs, 0);
+        assert_eq!(session.frontend().meter().whole_parse_attempts, 0);
+        let nonreaders: Vec<_> = ["independent", "main"]
+            .into_iter()
+            .map(|name| {
+                (
+                    name,
+                    session.artifact_bytes(name).unwrap().clone(),
+                    session.frontend().page(name).unwrap().bytes.clone(),
+                    session.frontend().body_identity(name),
+                    session.function_meter(name),
+                    session.frontend().function_meter(name),
+                )
+            })
+            .collect();
+        let candidate = session
+            .prepare_foreign(changed.clone(), bytes.clone())
+            .unwrap();
+        assert_eq!(session.snapshot().unwrap().digest, snapshot.digest);
+        session.commit_foreign(candidate).unwrap();
+        assert_eq!(session.frontend().query_counters().solver_runs, 2);
+        for reader in ["helper", "flag"] {
+            assert_eq!(
+                session
+                    .frontend()
+                    .function_meter(reader)
+                    .body_parse_attempts,
+                1
+            );
+            assert_eq!(session.frontend().function_meter(reader).hir_produced, 1);
+            let meter = session.function_meter(reader);
+            match target {
+                Target::Native => assert_eq!(meter.native_produced, 1),
+                Target::C => assert_eq!(meter.c_produced, 1),
+            }
+        }
+        for (name, artifact, facts, body, target_meter, front_meter) in nonreaders {
+            assert!(
+                Arc::ptr_eq(&artifact, session.artifact_bytes(name).unwrap()),
+                "{name}"
+            );
+            assert!(
+                Arc::ptr_eq(&facts, &session.frontend().page(name).unwrap().bytes),
+                "{name}"
+            );
+            assert_eq!(session.frontend().body_identity(name), body, "{name}");
+            assert_eq!(session.function_meter(name), target_meter, "{name}");
+            assert_eq!(
+                session.frontend().function_meter(name),
+                front_meter,
+                "{name}"
+            );
+        }
+        let accepted = session.snapshot().unwrap().digest;
+        let mut denied = fixture_current(&changed, target);
+        denied.foreign.capabilities.remove("hir.test.trace.v1");
+        let rejected_dir = root.join(format!("{target:?}-denied-current-host"));
+        assert!(session
+            .run_authorized(&rejected_dir, &mut || Ok(denied.clone()), None)
+            .is_err());
+        assert!(
+            !rejected_dir.exists(),
+            "revoked capability reached tool/link execution"
+        );
+        assert_eq!(session.snapshot().unwrap().digest, accepted);
+        assert_eq!(
+            session
+                .run(&root.join(format!("{target:?}-authorized")))
+                .unwrap()
+                .exit_code,
+            Some(42)
+        );
+        let snapshot = session.snapshot().unwrap();
+        drop(session);
+        let mut restored = restart(&snapshot, &changed);
+        assert_eq!(restored.frontend().query_counters().solver_runs, 0);
+        let reverted = fixture_readmit(original.manifest().clone(), &bytes, 3);
+        let candidate = restored.prepare_foreign(reverted, bytes.clone()).unwrap();
+        restored.commit_foreign(candidate).unwrap();
+        assert_eq!(restored.frontend().query_counters().solver_runs, 2);
+        assert_eq!(
+            restored.frontend().function_meter("independent"),
+            Default::default()
+        );
+        assert_eq!(
+            restored.frontend().function_meter("main"),
+            Default::default()
+        );
+        assert_eq!(
+            restored
+                .run(&root.join(format!("{target:?}-reverted")))
+                .unwrap()
+                .exit_code,
+            Some(42)
+        );
+    }
+}
+
+#[test]
 fn source_foreign_name_changes_keep_nonreader_slots() {
     use ace_abi::source_foreign::{Session, Target};
     use std::sync::Arc;
