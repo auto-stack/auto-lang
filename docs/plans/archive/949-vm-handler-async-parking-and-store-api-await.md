@@ -263,7 +263,9 @@ Rust、现有 AutoVM native bindings/codegen/back_prefix；现有 serde/HTTP 中
   - prepared：reviewed 基线 f03226e1（r2 终审 pass，round 244/253 重绑定）；rebase 等价证明 `git range-diff 8b9c3813..f03226e1 141a57ccd..a3d222531` 12 补丁全 `=`；`git diff f03226e1 a3d222531 -- . ':(exclude)docs/plans'` 为空（crates/Cargo 完全一致）；交付提交 1e6278728 = a3d222531 + 仅任务勾选与 updated_at 对账（docs-only）。
   - landed：主检出 master `--ff-only` 141a57ccd→1e6278728（无 merge commit）；11 files changed 402/23。
   - canonical_verified：docs/specs/stdlib/design/api-transport-contract.md blob 362af3647da543b00b339cbbc69cb7c86d51a986、docs/specs/auto-lang/vm/back-proxy.md blob de3da362f253c801eceba15fad99fa06ad629304 已在落地 tip。merge-owned 冻结并集复用 round 172 独立集成 pass（c96593f5b5，formal vm/http 987 executed/pass，绑定 f03226e1）——依据 crates/ 逐字节一致且依赖/配置输入未变，未重复执行。
-  - 后续（本 receipt 后执行）：git mv 至 docs/plans/archived/ 并 status: archived；wt-guard 后清理 .wt/lang-949 工作树与分支；折叠后删除 plan-artifacts/plan-949 并刷新 registry；master push gitcode。
+  - archived：git mv 至 docs/plans/archive/949-vm-handler-async-parking-and-store-api-await.md（auto-lang 规范归档目录）并 status: archived，提交 0b3fc9063；归档实态核验=4任务勾选一致、交付/复审/归档效果已验。
+  - cleaned：wt-guard clean 后 `git worktree remove .wt/lang-949/auto-lang` + 删除分支 codex/plan-949-dev（was 1e6278728），组目录已除；plan-artifacts/plan-949 全删（证据已折叠本文件），registry 已刷新。
+  - push 不适用：gitcode 远端为镜像仓（"This operation is not allowed because the repository is an image repository"，CH.00905401），本地 master 即交付（1e6278728 + 0b3fc9063）。
 
 ## 10. 待澄清事项
 
