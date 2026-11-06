@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-988
-status: executing
+status: execution_done
 feature_name: Reader原生多选与动态字节桥接
 plan_revision: 1
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-06
-current_step: 2
+current_step: 4
 total_steps: 6
 supersedes_spec_components: [docs/specs/auto-lang/ui/design/dialog-dnd-host-capabilities.md, docs/specs/auto-lang/vm/native-fs.md, docs/specs/runtime/native-vm-app-validation.md]
 new_spec_components: []
@@ -82,8 +82,8 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 |---|---|---|---|---|
 | T-00 [x] | work | 授权 | 树/依赖确认，新构建复现、ABI与表示根因定位、冻结最小设计 | 源码调用链及P-02红/读回绿；实际命令/版本 |
 | T-01 [x] | work | T-00 | 公共多选声明/VM provider/UI OS/生成映射与用例 | P-01、P-04 |
-| T-02 [ ] | work | T-00 | 动态字节桥与永久正反回归 | P-02及受影响同桥消费者 |
-| T-03 [ ] | work | T-01/02 | 两端消费者验证、准备SD、工具交接记录 | P-03及冻结受影响检查 |
+| T-02 [x] | work | T-00 | 动态字节桥与永久正反回归 | P-02及受影响同桥消费者 |
+| T-03 [x] | work | T-01/02 | 两端消费者验证、准备SD、工具交接记录 | P-03及冻结受影响检查 |
 | T-04 [ ] | review | T-03 | 独立复审绑定各仓提交与Specs | AC-01～03 pass |
 | T-05 [ ] | merge | T-04 | 顺序落地/工具消费/规范/归档清理/009交接 | AC-05 |
 
@@ -191,6 +191,29 @@ Byte T-00 确认宏生成 FFI 的 FromVm 转换与 File.* 两种注册入口；�
 - 任务对账：T-00/T-01保留完成；T-02/T-03及其受影响关闭证据重开，T-04/T-05未完成，**current_step=2 / total_steps=6**。未改变plan_revision或削减验收范围。实现和原始材料写权现交还work；同树修复提交后只复审受影响finding与必要同类。原始证据删除权仍归最终merge，当前不得清理。
 
 - stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 6 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-988/auto-lang + auto-ui | commit: language65dcdb025c79060a9a80dc9ec99be408eee57970 / UIb0d59400a1c302c040e07c9e4938a1c13b34d937 | review_receipt_commit: 98e52a371bd28814696791c7ebc4ff0d1069b61d | next: work F988-R1-01～03。独立复审反例改变下一行动，属于实质进展；第一次final review失败，进入第一次有界修复，不合入、不标目标完成。检查两树仍干净、基线未漂移，复审进程与构建均已终态；根接回写权。无新增用户决定，原跨仓授权足以修复这些合同内缺口。009完整产品验收保持原范围，未提前完成。
+
+### 2026-11-06 work repair R1：F988-R1-01～03关闭，交回独立复审
+
+- stage: work | plan_id: PLAN-988 | plan_revision: r1 | outcome: pass | repair_cycle: 1 | worktree_path: D:/autostack/.wt/lang-988/auto-lang | branch: plan-988-dev | base: reviewed65dcdb025c79060a9a80dc9ec99be408eee57970 | code_commit: e693ad506cb94b34e334323e8d0676f52fb29e4c | UI: b0d59400a1c302c040e07c9e4938a1c13b34d937 unchanged | dependencies: auto-down58ea33f699efa5cb1194473a2d45dcec51006842 / auto-webbf72baabf28fa865b5a7c680b8a5fa4018a0a63d unchanged | next: independent affected re-review。
+- 入口复现：从R1的不可变input.at复用空局部/JSON/typed参数三源，复制到988/repair-red并替换隔离输出路径；受审构建driver执行VM得到[]或[0,127,128,255]，原样rustc三例均exit1。review原输入及脚本未覆盖，修复后沿同源重放为compile/run0、两端字节相同；raw在repair-r1/replay.log。
+
+| Finding / invariant | 范围与实际修复 | 永久断言 / 当前结论 |
+|---|---|---|
+| F988-R1-01：空列表必须经真实消费者成立 | 恢复write_bytes_list的具体Vec<Value>约束；生成器按producer类型选择入口，未知元素空列表用具体入口，不依赖仅直接[]特判。局部、分支、typed空返回、typed空参数、空列表复用均覆盖 | auto-generation-core/tests/plan988_byte_consumers.rs真实VM→生产transpile/qualify→原样rustc→exe；文件长度0、成功返回0。closed |
+| F988-R1-02：producer/参数ABI到writer贯通 | typed Vec/slice借用进入write_bytes_slice；JSON Value进入write_bytes_json；两者及旧Vec<Value>共用写前全元素验证。非数组或非整数返回-1且原哨兵不变。声明[]T的普通调用边界借用数组/Vec/已有slice；路径和源列表不移走，可重复写 | 24源码场景覆盖JSON直接/变量/字段/空/非数组/坏成员、typed参数/转传/返回/read控制、复用；合法两端0且字节一致，非法VM受控Err、Rust -1，哨兵[42,128,255]保持。closed |
+| F988-R1-03：规范与实际消费者一致 | SD-02改为File、TCP stream、HTTP Response body，移除UDP错误承诺；记录三种Rust表示与实际生成入口、范围外兼容边界 | Spec读回与生产调用链相符，无新增UDP实现要求。closed |
+
+- 同因扩展实际发现并关闭：最初JSON字段测试使用`let obj=json.parse("{\"bytes\":[0,127,128,255]}"); File.write_bytes(PATH,obj.bytes)`，VM Invalid list ID:0（permanent-v3.log），payload字段对照成功。原因是json.parse实际物化动态值，但旧rust_fn String声明污染未注解变量类型，bytes字段被抢占为str.bytes。codegen::track_store_var_type对未注解、未被变量遮蔽的json/Json.parse保留动态未知型，字段按GET_FIELD读取；原bytes字段与payload对照已加入永久回归，两端均真文件字节通过。此修复未改JSON parser/全List语法，属于本次已发现生产者边界闭合。
+- 真实动态构造交接：当前两端支持JSON整数数组经json.parse到File.write_bytes；VM另支持List.new/push。R1已确认的Rust List<int>.new语法生成既有缺口未当两端通过，也未凭直接helper绿掩盖JSON源码缺口；009后续按已验证公共路径消费，不宣称所有List API已实现。
+- 永久命令：在语言树设置`PLAN988_TEST_OUT=D:/autostack/plan-artifacts/plan-988/repair-r1/permanent`，`cargo test --offline --locked -p auto-generation-core --test plan988_byte_consumers -- --nocapture` exit0，1个集成test内24个命名源码场景全部真实执行，0 ignored，61.96秒。强制run_autovm_capture，Rust经生产qualifier而非修改生成源；逐场景检查返回状态和字节。permanent-final.log SHA256=183ba32ce02f74819d32f10274c2ebffa5286051ce253f2bed88b281a2e8b7ee。
+- 最初新测试误把run_with_capture结果当String、继而读错tuple字段，permanent.log/v2记录测试编译/断言失败；已按公开API(result,stdout)纠正，永久测试最终改用明确VM入口。没有降低产品断言。permanent-v3发现的bytes字段失败现已实修；v4为23场景绿，v5及final为24场景绿，最终以final为准。
+- `cargo test --offline --locked -p auto-lang-core --lib plan988 -- --nocapture` exit0，16 PASS/0 FAIL/0 ignored，core.log SHA256=9903fb54660f52c99eac3b6792ad8719bd4deed91460abf7d56e1c16eb0834f5。此轮在最后JSON类型修复前执行；runtime/FFI转换之后未改，其有效证据复用，后续VM代码由最终完整组和24源码覆盖。
+- 首轮`cargo t a2r --out .../repair-r1/a2r`为393 PASS/1 FAIL：statistics standard_deviation的文本golden仍期望mean(data)，现在按slice参数ABI生成mean(&(data))；真实转传slice已编译执行证明借用合法。只更新该行预期，未删除case或修改功能oracle；原生成wrong.rs核绝对路径/非链接后移到repair-r1/standard_deviation.generated.rs。首次红results.json SHA256=701be4499c7d34e6dc120fff0f23ad3ceec21c283be262d9015fbd6d3e921f31。
+- 最终冻结相关联合组：`cargo t vm a2r http --out D:/autostack/plan-artifacts/plan-988/repair-r1/affected-final` exit0，170.40秒，selected/executed1374、PASS1374、条件excluded459、not_run0、errors0，results.json SHA256=fa157a60cd9c07592ec47171ff6b695e76309352e36cd9c485f39b141b75ff77。HTTP multipart尾部曾延时但进程自然终态成功，没有重启、强杀、豁免或改超时。用户暂停后恢复，先poll原session63885并核真实process，未重启测试；当前session已exit0、无活动构建/探针。
+- 健康：全部本轮Rust源码rustfmt --check通过，diff --check通过；core lib131/libtest145既有warnings，同配置warning标题无新增。UI实现与多选API不变，R1的真实picker/生成器/provider证据复用；shim-metadata代码/配置/输入未改，原16 PASS复用。最终合入并集仍vm+shim-metadata+a2r+http，merge负责按最终review基线核有效复用/必要执行，不在work记成已完成merge门。
+- 材料对账：24场景临时目录均在指定scope，永久用例自行清理其临时子目录，耐久结果在Plan及最终日志。既有固定组内部另输出到系统Temp；本轮已按trace stored路径和Cargo.toml的精确lang-988依赖核owner并登记repair-r1/external-output-inventory.json（SHA256=309eb61e732f2d5652e7f1ec310c7eba362fb22f9ba52cec4d8ff1b4a7e13a14），8个现存目录。merge必须完成迁移/清理并记录实际文件数/字节/hash，当前不声称已清理：C:/Users/zhaop/AppData/Local/Temp下atc-pilot-agg-a2r-45840、atc-pilot-agg-vm-33924、plan727-e2e-async-c79202bf99a93129、plan727-e2e-missing-546e8ee21fdb79af、plan727-e2e-missing-f6944c4456799b08、plan727-e2e-mp-7df7c48787022bb3、plan727-e2e-mp-e7654a7ea550884、plan727-e2e-sync-f8fe651ced1681。未知归属目录不动。
+- Readiness：T-00～03 / AC-01～03的work范围完成，F01～03和发现的bytes字段路径无剩余实现/oracle缺口，无待定合同决定；同一语义revision1，未减验收。实现已提交，工作树干净，写权暂停待独立受影响复审。T-04独立通过及T-05合入/工具消费/规范读回/材料清理仍pending，当前4/6。READER-009仍需随后完成全部原产品验收，目标未完成。
+- stage: goal | plan_id: PLAN-988 | plan_revision: r1 | round: 7 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-988/auto-lang | commit: e693ad506cb94b34e334323e8d0676f52fb29e4c | next: independent affected re-review（final R2）。
 
 ## 10. 待澄清事项
 
