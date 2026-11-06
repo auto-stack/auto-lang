@@ -245,6 +245,91 @@ mod source_foreign {
     }
 
     #[test]
+    fn provider_binding_reserves_shared_budget_and_keeps_page_and_metadata_aliases_charged() {
+        let resources = ace_source_query::resources::Resources::default();
+        let caps = vec![SOURCE_CAP.into()];
+        let digest = "ab".repeat(32);
+        let environment =
+            provider::admit(provider::reviewed_add_manifest(), &digest, 1, &caps).unwrap();
+        let authority = provider::authority(&digest, 2, &caps).unwrap();
+        // Populate the ownership record capacity before measuring this port.
+        let warm = resources.rebind_foreign(&environment, &authority).unwrap();
+        drop(warm);
+        let before = resources.stats().current;
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - before.index - 64))
+            .unwrap();
+        let error = resources
+            .rebind_foreign(&environment, &authority)
+            .err()
+            .expect("binding production bypassed the shared pre-allocation budget");
+        assert!(error.starts_with("foreign.resource.binding:"), "{error}");
+        assert_eq!(environment.generation(), 1);
+        assert_eq!(resources.stats().current.resident, before.resident);
+        drop(pressure);
+
+        let ((next, alias), peak) = measured_peak(|| {
+            let next = resources.rebind_foreign(&environment, &authority).unwrap();
+            let alias = next.clone();
+            (next, alias)
+        });
+        let charged = resources.stats().current;
+        let page_charge = next.pages().binding.capacity() + 40;
+        let metadata_charge = digest.len() + 40;
+        assert_eq!(charged.resident - before.resident, page_charge);
+        assert_eq!(charged.index - before.index, metadata_charge);
+        assert!(
+            peak > 0 && peak <= page_charge + metadata_charge,
+            "binding heap {peak} exceeds precharge {}",
+            page_charge + metadata_charge
+        );
+        assert!(Arc::ptr_eq(
+            &environment.pages().logical,
+            &next.pages().logical
+        ));
+        assert!(Arc::ptr_eq(
+            environment.allocation_identity(),
+            next.allocation_identity()
+        ));
+        assert!(!Arc::ptr_eq(
+            environment.binding_metadata_identity(),
+            next.binding_metadata_identity()
+        ));
+        let page = next.pages().binding.clone();
+        drop(next);
+        assert_eq!(
+            resources.stats().current,
+            charged,
+            "environment alias lost ownership"
+        );
+        drop(alias);
+        assert_eq!(
+            resources.stats().current.index,
+            before.index,
+            "binding metadata survived its last owner"
+        );
+        assert_eq!(
+            resources.stats().current.resident - before.resident,
+            page_charge,
+            "required page alias lost its fee"
+        );
+        resources
+            .adopt(&page, Charge::resident(page_charge))
+            .unwrap();
+        assert_eq!(
+            resources.stats().current.resident - before.resident,
+            page_charge,
+            "snapshot adoption charged a reserved page twice"
+        );
+        drop(page);
+        assert_eq!(resources.stats().current, before);
+        eprintln!(
+            "binding allocation window: precharged={} actual_heap_peak={peak}",
+            page_charge + metadata_charge
+        );
+    }
+
+    #[test]
     fn actual_provider_rebind_heap_fits_its_precharged_symbol_index_window() {
         let (_root, bytes, environment, caps) = fixture("provider-index-allocation");
         let mut session = Session::cold(

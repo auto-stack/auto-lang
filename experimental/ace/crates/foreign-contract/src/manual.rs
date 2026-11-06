@@ -210,8 +210,8 @@ pub struct HostAuthority {
 pub struct AdmittedForeign {
     manifest: Arc<ManualManifest>,
     plan: Arc<PhysicalPlan>,
-    contract_digest: String,
-    provider_digest: String,
+    contract_digest: Arc<String>,
+    provider_digest: Arc<String>,
     generation: u64,
     declarations: Arc<Vec<SourceDecl>>,
     declaration_digests: Arc<BTreeMap<String, String>>,
@@ -340,6 +340,15 @@ struct BindingPage {
     provider: String,
     generation: u64,
 }
+#[derive(Serialize)]
+struct BindingPageRef<'a> {
+    schema: &'a str,
+    contract: &'a str,
+    physical: &'a str,
+    declarations: &'a str,
+    provider: &'a str,
+    generation: u64,
+}
 impl ForeignPages {
     pub fn iter(&self) -> impl Iterator<Item = (&'static str, &Arc<Vec<u8>>)> {
         [
@@ -351,20 +360,32 @@ impl ForeignPages {
         .into_iter()
     }
     fn binding(&self, host: &HostAuthority) -> Result<Arc<Vec<u8>>, String> {
+        self.binding_reserved(host, |_| Ok(()))
+    }
+    fn binding_reserved(
+        &self,
+        host: &HostAuthority,
+        reserve: impl FnOnce(usize) -> Result<(), String>,
+    ) -> Result<Arc<Vec<u8>>, String> {
         crate::work::produce("foreign-binding-encode", || {
+            // Digest formatting stays on the stack; borrowed fields preserve
+            // the existing wire without temporary String copies.
+            let physical = blake3::hash(&self.physical).to_hex();
+            let declarations = blake3::hash(&self.declarations).to_hex();
+            let record = BindingPageRef {
+                schema: "ace.foreign.binding/1",
+                contract: &host.contract_digest,
+                physical: physical.as_str(),
+                declarations: declarations.as_str(),
+                provider: &host.provider_digest,
+                generation: host.binding_generation,
+            };
+            let size = crate::codec::json_size(&record, crate::codec::MAX_CODEC_BYTES)
+                .map_err(|e| e.to_string())?;
+            reserve(size + std::mem::size_of::<Vec<u8>>() + 2 * std::mem::size_of::<usize>())?;
             Ok(Arc::new(
-                crate::codec::encode_json_bounded(
-                    &BindingPage {
-                        schema: "ace.foreign.binding/1".into(),
-                        contract: host.contract_digest.clone(),
-                        physical: crate::blake3_hex(&self.physical),
-                        declarations: crate::blake3_hex(&self.declarations),
-                        provider: host.provider_digest.clone(),
-                        generation: host.binding_generation,
-                    },
-                    crate::codec::MAX_CODEC_BYTES,
-                )
-                .map_err(|e| e.to_string())?,
+                crate::codec::encode_json_bounded(&record, crate::codec::MAX_CODEC_BYTES)
+                    .map_err(|e| e.to_string())?,
             ))
         })
     }
@@ -566,8 +587,8 @@ impl ManualManifest {
             declaration_digests: Arc::new(declaration_digests),
             manifest: Arc::new(self),
             plan: Arc::new(plan),
-            contract_digest,
-            provider_digest: host.provider_digest.clone(),
+            contract_digest: Arc::new(contract_digest),
+            provider_digest: Arc::new(host.provider_digest.clone()),
             generation: host.binding_generation,
             pages,
             allocation_identity: Arc::new(()),
@@ -636,8 +657,8 @@ impl AdmittedForeign {
         Ok(Self {
             manifest: Arc::new(manifest),
             plan: Arc::new(plan),
-            contract_digest,
-            provider_digest: host.provider_digest.clone(),
+            contract_digest: Arc::new(contract_digest),
+            provider_digest: Arc::new(host.provider_digest.clone()),
             generation: host.binding_generation,
             declarations: Arc::new(declared.declarations),
             declaration_digests: Arc::new(declared.digests),
@@ -649,12 +670,35 @@ impl AdmittedForeign {
     /// The admitted interface is immutable; a provider body edit changes only
     /// process-local authority and its untrusted binding-dependency page.
     pub fn rebind(&self, host: &HostAuthority) -> Result<Self, String> {
+        self.rebind_reserved(host, |_, _| Ok(()))
+    }
+    /// The composition reserves both the new required page and its separately
+    /// owned binding digest before either allocation. Immutable interface data
+    /// and existing digest allocations remain shared across aliases.
+    pub fn rebind_reserved(
+        &self,
+        host: &HostAuthority,
+        reserve: impl FnOnce(usize, usize) -> Result<(), String>,
+    ) -> Result<Self, String> {
         qualify_host(&self.manifest, &self.contract_digest, host)?;
+        let binding = self.pages.binding_reserved(host, |bytes| {
+            reserve(
+                bytes,
+                host.provider_digest.len()
+                    + std::mem::size_of::<String>()
+                    + 2 * std::mem::size_of::<usize>(),
+            )
+        })?;
         let mut result = self.clone();
-        result.provider_digest = host.provider_digest.clone();
+        result.provider_digest = Arc::new(host.provider_digest.clone());
         result.generation = host.binding_generation;
-        result.pages.binding = result.pages.binding(host)?;
+        result.pages.binding = binding;
         Ok(result)
+    }
+    /// Allocation identity of immutable per-binding metadata. Page aliases can
+    /// outlive an environment independently and have their own byte ownership.
+    pub fn binding_metadata_identity(&self) -> &Arc<String> {
+        &self.provider_digest
     }
 
     /// Validate persisted required pages against an already current admitted
@@ -684,7 +728,7 @@ impl AdmittedForeign {
     /// admitted immutable physical plan is neither reconstructed nor encoded.
     pub fn requalify(&self, host: &HostAuthority) -> Result<(), String> {
         qualify_host(&self.manifest, &self.contract_digest, host)?;
-        if host.provider_digest != self.provider_digest
+        if host.provider_digest != *self.provider_digest
             || host.binding_generation != self.generation
         {
             return Err("foreign.authority.binding-changed".into());

@@ -245,6 +245,32 @@ impl Resources {
             charge: Some(charge),
         })
     }
+    /// Provider-only interface production uses the existing shared account,
+    /// before the neutral contract allocates its new binding page or digest.
+    pub fn rebind_foreign(
+        &self,
+        foreign: &ace_foreign_contract::manual::AdmittedForeign,
+        host: &ace_foreign_contract::manual::HostAuthority,
+    ) -> Result<ace_foreign_contract::manual::AdmittedForeign, String> {
+        let mut allocation = None;
+        let next = foreign.rebind_reserved(host, |bytes, metadata| {
+            let page = self
+                .reserve(Charge::resident(bytes))
+                .map_err(|e| format!("foreign.resource.binding: {e}"))?;
+            let metadata = self
+                .reserve(Charge::index(metadata))
+                .map_err(|e| format!("foreign.resource.binding: {e}"))?;
+            allocation = Some((page, metadata));
+            Ok(())
+        })?;
+        let (page, metadata) = allocation.expect("successful binding encoder reserved its output");
+        page.retain(&next.pages().binding)
+            .map_err(|e| e.to_string())?;
+        metadata
+            .retain(next.binding_metadata_identity())
+            .map_err(|e| e.to_string())?;
+        Ok(next)
+    }
     pub fn stats(&self) -> Stats {
         let mut state = self.0.lock().expect("resource account");
         state.collect();

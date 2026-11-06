@@ -393,10 +393,9 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 &deck.capabilities,
             )
             .map_err(|e| err("foreign.authority", e))?;
-            let (environment, interface_work) = restored
-                .frontend()
-                .work()
-                .observe_foreign(|| restored.frontend().foreign().rebind(&authority));
+            let (environment, interface_work) = restored.frontend().work().observe_foreign(|| {
+                resources.rebind_foreign(restored.frontend().foreign(), &authority)
+            });
             let environment = environment.map_err(|e| err("foreign.authority", e))?;
             restored
                 .prepare_foreign_source_checked(
