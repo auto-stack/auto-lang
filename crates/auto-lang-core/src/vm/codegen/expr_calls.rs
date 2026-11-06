@@ -2345,6 +2345,30 @@ impl Codegen {
                         }
                     }
 
+                    // PLAN-949: legacy static Json.get/get_at returns serialized
+                    // JSON text. When that actual builtin is used directly as
+                    // encode's value, restore the JSON value before encoding.
+                    // Plain strings and shadowed receiver variables stay strings.
+                    let is_json_encode = BIGVM_NATIVES
+                        .lock()
+                        .unwrap()
+                        .resolve_qualified("auto.json.encode") == Some(id);
+                    if is_json_encode && call.args.args.len() == 1 {
+                        if let crate::ast::Arg::Pos(Expr::Call(getter)) = &call.args.args[0] {
+                            if let Expr::Dot(receiver, method) = getter.name.as_ref() {
+                                if let Expr::Ident(module) = receiver.as_ref() {
+                                    if matches!(module.as_str(), "Json" | "json")
+                                        && matches!(method.as_str(), "get" | "get_at")
+                                        && self.lookup_var(module.as_str()).is_none()
+                                        && !self.global_vars.contains(module.as_str())
+                                    {
+                                        self.emit_call_nat_by_name("auto.json.to_value", 1)?;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Plan 197 Task 6: str.slice(start) with 1 arg needs end = str.len()
                     // Compile the receiver again and call str.len to push the end arg
                     if func_name.as_deref() == Some("str.slice") && call.args.args.len() == 1 {

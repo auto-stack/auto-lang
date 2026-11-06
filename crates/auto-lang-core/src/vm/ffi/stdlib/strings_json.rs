@@ -339,19 +339,8 @@ pub fn shim_char_to_str(codepoint: i32) -> String {
 /// vm_value_to_json（i64/u64/bigint 全域已修）；字符串值仍按 JSON 字符串。
 #[auto_macros::rust_fn("Json.encode")]
 pub fn shim_json_encode(value: String) -> String {
-    // rust_fn 编组已把 int 形参转十进制字符串——裸数字串按 JSON 数值输出
-    //（json.encode(5000000001) → 5000000001，不再是位型垃圾/带引号串）。
-    if !value.is_empty() && value.parse::<i64>().is_ok() && !value.starts_with('0') {
-        return value;
-    }
-    // PLAN-949 T-02：JSON 字面量（true/false/null）按裸值输出——VM 的
-    // `json.get` 对 bool/null 返回文本形态，`json.encode` 若按普通字符串
-    // 编码会得到 `"true"`，使 back api.at 的 `ok_txt == "true"` 恒假
-    // （proxy 全量 ok=false 的根因）。字符串 "true" 的解释差异记为已知
-    // 权衡（与数值串既有口径一致）。
-    if value == "true" || value == "false" || value == "null" {
-        return value;
-    }
+    // A String is always a JSON string. The VM override below serializes
+    // actual primitive values before the legacy String ABI can erase tags.
     serde_json::to_string(&value).unwrap_or_default()
 }
 
@@ -400,6 +389,7 @@ pub fn shim_json_to_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         task.ram.push_nv(nv);
         return Ok(());
     }
+    let _stake = crate::vm::native::StakeGuard::nv(vm, nv);
     task.ram.push_nv(nv);
     let json_str: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
@@ -890,9 +880,9 @@ pub fn override_json_doc_natives(native_interface: &mut crate::vm::native::Nativ
         ("auto.json.keys", 0),
         ("auto.json.is_valid", 0),
     ];
-    // PLAN-949 T-02：文档类 `json.encode` 双态化——文档句柄直接吐原始 JSON
-    // 文本（bool `true` → `true`），不再被字符串编码成 `"true"`（back api.at
-    // 的 `ok_txt == "true"` 比较因此在 VM 里恒假、代理返回 ok=false 的根因）。
+    // Preserve actual value tags, including String("true") versus Bool(true).
+    // Legacy getter fragments are normalized at the codegen consumption site;
+    // their contents must never be used to guess the type of an ordinary string.
     if let Some(id) = BIGVM_NATIVES
         .lock()
         .unwrap()
@@ -903,6 +893,7 @@ pub fn override_json_doc_natives(native_interface: &mut crate::vm::native::Nativ
             let wrapper = move |task: &mut AutoTask, vm: &AutoVM| -> Result<(), VMError> {
                 let nv = task.ram.pop_nv();
                 if let Some(doc_id) = json_doc_heap_id(vm, nv) {
+                    let _stake = crate::vm::native::StakeGuard::nv(vm, nv);
                     let direct = json_serialize_i32_list(vm, doc_id);
                     let text = direct.or_else(|| {
                         let jv = vm_value_to_json(
@@ -920,7 +911,14 @@ pub fn override_json_doc_natives(native_interface: &mut crate::vm::native::Nativ
                         vm.rc_push_str_idx(task, idx);
                         return Ok(());
                     }
-                    task.ram.push_nv(nv);
+                    return Err(VMError::RuntimeError(
+                        "json.encode: document serialization failed".into(),
+                    ));
+                }
+                if let Some(text) = crate::vm::ffi::http_server::nv_to_json(vm, nv, 0) {
+                    let _stake = crate::vm::native::StakeGuard::nv(vm, nv);
+                    let idx = vm.add_string(text.into_bytes());
+                    vm.rc_push_str_idx(task, idx);
                     return Ok(());
                 }
                 task.ram.push_nv(nv);
@@ -1090,7 +1088,15 @@ fn json_to_vm_value_inner(
         serde_json::Value::Bool(b) => Ok(Value::Bool(*b)),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
-                Ok(Value::Int(i as i32))
+                // Keep the existing compact representation when exact;
+                // object/array fields must not truncate the i64 value.
+                Ok(match i32::try_from(i) {
+                    Ok(small) => Value::Int(small),
+                    Err(_) => Value::I64(i),
+                })
+            } else if let Some(u) = n.as_u64() {
+                let id = vm.insert_heap_object(crate::vm::heap_object::BigIntData::from_u64(u));
+                Ok(Value::VmRef(auto_val::VmRef { id: id as usize }))
             } else if let Some(f) = n.as_f64() {
                 Ok(Value::Double(f))
             } else {
@@ -1173,7 +1179,16 @@ pub(crate) fn vm_value_to_json(
                 let obj = heap_ref.read().unwrap();
                 use crate::vm::generic_registry::GenericInstanceData;
                 use crate::vm::types::ListData;
-                if let Some(inst) = obj.as_any().downcast_ref::<GenericInstanceData>() {
+                if let Some(big) = obj
+                    .as_any()
+                    .downcast_ref::<crate::vm::heap_object::BigIntData>()
+                {
+                    Ok(if big.is_unsigned {
+                        serde_json::json!(big.as_u64())
+                    } else {
+                        serde_json::json!(big.as_i64())
+                    })
+                } else if let Some(inst) = obj.as_any().downcast_ref::<GenericInstanceData>() {
                     let mut map = serde_json::Map::new();
                     for (i, name) in inst.field_names.iter().enumerate() {
                         if let Some(fv) = inst.fields.get(i) {
@@ -1329,6 +1344,123 @@ pub(super) fn register_regex_i18n_shims(natives: &mut crate::vm::native::NativeI
     // PLAN-066 T-06：str.includes 字符串包含（实例方法 CALL_NAT：[pat,
     // receiver]；register_shim_by_name 动态 id，沿 http_stream 先例）。
     natives.register_shim_by_name("auto.str.includes", shim_str_includes);
+}
+
+#[cfg(test)]
+mod p949_tests {
+    fn output(source: &str) -> String {
+        crate::execution_engine::execute_with_engine_capture(
+            crate::execution_engine::ExecutionEngine::AutoVM,
+            source,
+        )
+        .expect("real VM compile/execute")
+        .1
+    }
+
+    #[test]
+    fn p949_encode_preserves_primitive_types_and_string_contents() {
+        let cases = [
+            ("true", serde_json::json!(true)),
+            ("false", serde_json::json!(false)),
+            ("null", serde_json::Value::Null),
+            ("\"true\"", serde_json::json!("true")),
+            ("\"false\"", serde_json::json!("false")),
+            ("\"null\"", serde_json::json!("null")),
+            ("\"123\"", serde_json::json!("123")),
+            ("0", serde_json::json!(0)),
+            ("-3", serde_json::json!(-3)),
+            ("54.25", serde_json::json!(54.25)),
+            ("5000000001", serde_json::json!(5000000001_i64)),
+        ];
+        for (source, expected) in cases {
+            let out = output(&format!("print(Json.encode({source}))"));
+            let actual: serde_json::Value = serde_json::from_str(out.trim())
+                .unwrap_or_else(|e| panic!("source={source}, output={out:?}: {e}"));
+            assert_eq!(actual, expected, "source={source}, output={out:?}");
+        }
+    }
+
+    #[test]
+    fn p949_encode_nested_legacy_json_getters_as_values() {
+        let values = serde_json::json!([
+            true, false, null, "true", "false", "null", "123", "", 0, -3,
+            54.25, 5000000001_i64, i64::MIN, i64::MAX, 18446744073709551615_u64,
+            ["true", true, 8.125],
+            {"nested": [false, "null", 0, 5000000001_i64, 18446744073709551615_u64]}
+        ]);
+        for (index, expected) in values.as_array().unwrap().iter().enumerate() {
+            let object = serde_json::json!({"value": expected}).to_string();
+            let object_literal = serde_json::to_string(&object).unwrap();
+            let array_literal = serde_json::to_string(&values.to_string()).unwrap();
+            for getter in [
+                format!("Json.get(Json.parse({object_literal}), \"value\")"),
+                format!("json.get_at(json.parse({array_literal}), {index})"),
+            ] {
+                let out = output(&format!("print(Json.encode({getter}))"));
+                let actual: serde_json::Value = serde_json::from_str(out.trim())
+                    .unwrap_or_else(|e| panic!("getter={getter}, output={out:?}: {e}"));
+                assert_eq!(&actual, expected, "getter={getter}, output={out:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn p949_legacy_text_getters_and_plain_function_results_stay_distinct() {
+        let out = output(
+            r#"
+fn plain_text() str { return "true" }
+let plain = "true"
+let doc = Json.parse("{\"name\":\"auto\",\"n\":1,\"ok\":true}")
+print(Json.get(doc, "name"))
+print(Json.type_of(Json.get(doc, "n")))
+print(Json.encode(plain))
+print(Json.encode(Json.get(doc, "ok")))
+print(Json.encode(plain_text()))
+print(Json.encode(plain))
+"#,
+        );
+        assert_eq!(
+            out.trim(),
+            "\"auto\"\nnumber\n\"true\"\ntrue\n\"true\"\n\"true\""
+        );
+    }
+
+    #[test]
+    fn p949_getter_normalization_evaluates_input_once() {
+        let out = output(
+            r#"
+fn source_json() str {
+    print("once")
+    return "{\"ok\":true}"
+}
+print(Json.encode(Json.get(Json.parse(source_json()), "ok")))
+"#,
+        );
+        assert_eq!(out.trim(), "once\ntrue");
+    }
+
+    #[test]
+    fn p949_shadowed_json_receiver_is_an_ordinary_user_method() {
+        let out = output(
+            r#"
+type FakeJson { value str }
+ext FakeJson {
+    fn get(self, key str) str {
+        print("user-get")
+        return self.value
+    }
+}
+let json = FakeJson { value: "true" }
+print(Json.encode(json.get("key")))
+fn local_case() {
+    let json = FakeJson { value: "true" }
+    print(Json.encode(json.get("key")))
+}
+local_case()
+"#,
+        );
+        assert_eq!(out.trim(), "user-get\n\"true\"\nuser-get\n\"true\"");
+    }
 }
 
 
