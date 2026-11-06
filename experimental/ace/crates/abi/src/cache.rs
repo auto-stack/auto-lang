@@ -383,7 +383,69 @@ fn decode_c_object_entry(
 /// COMPILE/LINK ARTIFACTS are excluded (a build must not invalidate
 /// itself); anything else — extension-less files included — is a
 /// potential include candidate and part of the environment.
-fn search_listing(dir: &std::path::Path, artifact_paths: &[String]) -> Vec<String> {
+struct SearchListing {
+    names: Vec<String>,
+    allocation: Option<ace_source_query::resources::Reservation>,
+}
+
+struct ListingBudget {
+    allocation: Option<ace_source_query::resources::Reservation>,
+}
+impl ListingBudget {
+    fn new(
+        resources: Option<&ace_source_query::resources::Resources>,
+        bytes: usize,
+    ) -> Result<Self, StoreError> {
+        Ok(Self {
+            allocation: resources
+                .map(|r| r.reserve(ace_source_query::resources::Charge::index(bytes)))
+                .transpose()
+                .map_err(|e| StoreError::ResourceExhausted(format!("C cache listing: {e}")))?,
+        })
+    }
+    fn resize(&mut self, bytes: usize) -> Result<(), StoreError> {
+        if let Some(allocation) = &mut self.allocation {
+            allocation
+                .resize(ace_source_query::resources::Charge::index(bytes))
+                .map_err(|e| StoreError::ResourceExhausted(format!("C cache listing: {e}")))?;
+        }
+        Ok(())
+    }
+}
+fn listing_size(parts: &[usize]) -> Result<usize, StoreError> {
+    parts
+        .iter()
+        .try_fold(0usize, |n, p| n.checked_add(*p))
+        .ok_or_else(|| StoreError::ResourceExhausted("C cache listing size overflow".into()))
+}
+fn listing_capacity<T>(values: &Vec<T>) -> Result<usize, StoreError> {
+    if values.len() < values.capacity() {
+        Ok(values.capacity())
+    } else {
+        values
+            .capacity()
+            .checked_mul(2)
+            .map(|n| n.max(4))
+            .ok_or_else(|| {
+                StoreError::ResourceExhausted("C cache listing capacity overflow".into())
+            })
+    }
+}
+fn listing_grow<T>(values: &mut Vec<T>, capacity: usize) -> Result<(), StoreError> {
+    if capacity != values.capacity() {
+        values
+            .try_reserve_exact(capacity - values.len())
+            .map_err(|e| {
+                StoreError::ResourceExhausted(format!("C cache listing allocation: {e}"))
+            })?;
+    }
+    Ok(())
+}
+fn search_listing(
+    dir: &std::path::Path,
+    artifact_paths: &[String],
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<SearchListing, StoreError> {
     // ONLY the EXACT files this pipeline creates are excluded — matched
     // by FULL PATH, never by basename: a declared output `value.obj`
     // must not hide a real header `sub/value.obj` elsewhere in the
@@ -393,59 +455,147 @@ fn search_listing(dir: &std::path::Path, artifact_paths: &[String]) -> Vec<Strin
     fn is_artifact(full: &str, arts: &[String]) -> bool {
         arts.iter().any(|a| {
             full.eq_ignore_ascii_case(a)
-                || full
-                    .to_ascii_lowercase()
-                    .starts_with(&format!("{a}.tmp-").to_ascii_lowercase())
+                || (full
+                    .as_bytes()
+                    .get(..a.len())
+                    .is_some_and(|p| p.eq_ignore_ascii_case(a.as_bytes()))
+                    && full
+                        .as_bytes()
+                        .get(a.len()..a.len().saturating_add(5))
+                        .is_some_and(|p| p.eq_ignore_ascii_case(b".tmp-")))
         })
     }
-    fn walk(
+    struct Frame {
+        entries: std::vec::IntoIter<std::fs::DirEntry>,
+        prefix: String,
+        // The iterator owns its entire original allocation, even as entries
+        // are consumed. Drop its shared root and prefix before this fee.
+        _allocation: ListingBudget,
+    }
+    fn frame(
         dir: &std::path::Path,
-        root_base: &str,
-        prefix: &str,
-        out: &mut Vec<String>,
-        arts: &[String],
-    ) {
-        let Ok(rd) = std::fs::read_dir(dir) else {
-            return;
-        };
-        let mut entries: Vec<_> = rd.flatten().collect();
-        entries.sort_by_key(|e| e.file_name());
-        for e in entries {
-            let Ok(name) = e.file_name().into_string() else {
-                continue;
-            };
-            let rel = if prefix.is_empty() {
-                name.clone()
-            } else {
-                format!("{prefix}/{name}")
-            };
-            if e.file_type().is_ok_and(|t| t.is_dir()) {
-                walk(&e.path(), root_base, &rel, out, arts);
-            } else {
-                // full path = SCAN ROOT + accumulated relative path —
-                // the current dir already contains the descended prefix
-                // (F-797-R16-01: using the current dir here doubled the
-                // relative part, so a declared nested output never
-                // matched and its cleanup caused a spurious miss)
-                let full = format!("{root_base}\\{}", rel.replace('/', "\\"));
-                if !is_artifact(&full, arts) {
-                    out.push(rel);
+        prefix: String,
+        resources: Option<&ace_source_query::resources::Resources>,
+    ) -> Result<Frame, StoreError> {
+        // Windows std stores WIN32_FIND_DATAW inline in DirEntry and shares
+        // one Arc<PathBuf> root. Account root/star/UTF-16 path conversion,
+        // file_name sort keys (at most 260 UTF-16 units each), and the live
+        // relative/full/child paths before read_dir or any of those copies.
+        // Callers provide canonical absolute roots, including long paths.
+        let base = listing_size(&[
+            dir.as_os_str().len().checked_mul(16).ok_or_else(|| {
+                StoreError::ResourceExhausted("C cache listing path overflow".into())
+            })?,
+            prefix.capacity(),
+            8192,
+        ])?;
+        let mut allocation = ListingBudget::new(resources, base)?;
+        let mut entries = Vec::new();
+        if let Ok(rd) = std::fs::read_dir(dir) {
+            for e in rd.flatten() {
+                let capacity = listing_capacity(&entries)?;
+                // Two full capacities cover growth old+new coexistence and
+                // the stable sort's auxiliary storage. Nothing is collected
+                // into an uncharged temporary Vec first.
+                let buffers = capacity
+                    .checked_mul(std::mem::size_of::<std::fs::DirEntry>())
+                    .and_then(|n| n.checked_mul(2))
+                    .ok_or_else(|| {
+                        StoreError::ResourceExhausted("C cache listing entries overflow".into())
+                    })?;
+                if capacity != entries.capacity() {
+                    allocation.resize(listing_size(&[base, buffers])?)?;
                 }
+                listing_grow(&mut entries, capacity)?;
+                entries.push(e);
+            }
+        }
+        entries.sort_by_key(|e| e.file_name());
+        allocation.resize(listing_size(&[
+            base,
+            entries.capacity() * std::mem::size_of::<std::fs::DirEntry>(),
+        ])?)?;
+        Ok(Frame {
+            entries: entries.into_iter(),
+            prefix,
+            _allocation: allocation,
+        })
+    }
+    let root_bytes = dir
+        .as_os_str()
+        .len()
+        .checked_mul(4)
+        .and_then(|n| n.checked_add(64))
+        .ok_or_else(|| StoreError::ResourceExhausted("C cache listing root overflow".into()))?;
+    let _root_allocation = ListingBudget::new(resources, root_bytes)?;
+    let dir_s = dir.display().to_string();
+    let root_base = dir_s.strip_prefix("\\\\?\\").unwrap_or(&dir_s);
+    let mut output = ListingBudget::new(resources, 0)?;
+    let mut names = Vec::new();
+    let mut text_bytes = 0usize;
+    let mut stack_allocation = ListingBudget::new(resources, 0)?;
+    let mut stack: Vec<Frame> = Vec::new();
+    let first = frame(dir, String::new(), resources)?;
+    let capacity = listing_capacity(&stack)?;
+    stack_allocation.resize(capacity * std::mem::size_of::<Frame>() * 2)?;
+    listing_grow(&mut stack, capacity)?;
+    stack.push(first);
+    while let Some(top) = stack.last_mut() {
+        let Some(e) = top.entries.next() else {
+            stack.pop();
+            continue;
+        };
+        let Ok(name) = e.file_name().into_string() else {
+            continue;
+        };
+        let rel = if top.prefix.is_empty() {
+            name
+        } else {
+            format!("{}/{name}", top.prefix)
+        };
+        if e.file_type().is_ok_and(|t| t.is_dir()) {
+            let child = frame(&e.path(), rel, resources)?;
+            let capacity = listing_capacity(&stack)?;
+            let bytes = capacity
+                .checked_mul(std::mem::size_of::<Frame>())
+                .and_then(|n| n.checked_mul(2))
+                .ok_or_else(|| {
+                    StoreError::ResourceExhausted("C cache listing stack overflow".into())
+                })?;
+            stack_allocation.resize(bytes)?;
+            listing_grow(&mut stack, capacity)?;
+            stack.push(child);
+        } else {
+            // Always SCAN ROOT + accumulated relative path, not the
+            // current descended directory (F-797-R16-01).
+            let full = format!("{root_base}\\{}", rel.replace('/', "\\"));
+            if !is_artifact(&full, artifact_paths) {
+                let capacity = listing_capacity(&names)?;
+                text_bytes = listing_size(&[text_bytes, rel.capacity()])?;
+                let steady = listing_size(&[
+                    text_bytes,
+                    capacity
+                        .checked_mul(std::mem::size_of::<String>())
+                        .ok_or_else(|| {
+                            StoreError::ResourceExhausted("C cache listing output overflow".into())
+                        })?,
+                ])?;
+                let old = if capacity != names.capacity() {
+                    names.capacity() * std::mem::size_of::<String>()
+                } else {
+                    0
+                };
+                output.resize(listing_size(&[steady, old])?)?;
+                listing_grow(&mut names, capacity)?;
+                names.push(rel);
+                output.resize(steady)?;
             }
         }
     }
-    let dir_s = dir.display().to_string();
-    let root_base = {
-        let b = dir_s.as_bytes();
-        if b.len() > 4 && b.starts_with(b"\\\\?\\") {
-            dir_s[4..].to_string()
-        } else {
-            dir_s
-        }
-    };
-    let mut names = Vec::new();
-    walk(dir, &root_base, "", &mut names, artifact_paths);
-    names
+    Ok(SearchListing {
+        names,
+        allocation: output.allocation,
+    })
 }
 
 fn hash_dep(path: &str) -> Result<String, String> {
@@ -793,20 +943,29 @@ where
                     // listings) are never served; they miss and are
                     // re-proven under the current rule
                     e.v == 4
-                            && e.source == source_identity
-                            && e.src_dir == src_dir
-                            && e.include_dir == inc_dir_s
-                            && e.target == target
-                            && e.toolchain == toolchain
-                            // every RECORDED search dir (source dir,
-                            // include dir, and each recorded dep's
-                            // parent — the transitive include-chain
-                            // dirs) must still offer exactly the
-                            // recorded file set
-                            && e.dir_listings.iter().all(|(d, l)| {
-                                search_listing(std::path::Path::new(d), &artifact_paths) == *l
-                            })
+                        && e.source == source_identity
+                        && e.src_dir == src_dir
+                        && e.include_dir == inc_dir_s
+                        && e.target == target
+                        && e.toolchain == toolchain
+                    // every RECORDED search dir (source dir,
+                    // include dir, and each recorded dep's
+                    // parent — the transitive include-chain
+                    // dirs) must still offer exactly the
+                    // recorded file set
                 ) {
+                    continue;
+                }
+                let mut listings_match = true;
+                for (d, expected) in &e.dir_listings {
+                    let listing =
+                        search_listing(std::path::Path::new(d), &artifact_paths, resources)?;
+                    if listing.names != *expected {
+                        listings_match = false;
+                        break;
+                    }
+                }
+                if !listings_match {
                     continue;
                 }
                 let Some(obj) = decode_c_object_bytes(&e.obj_b64, resources)? else {
@@ -898,15 +1057,22 @@ where
     }
     dirs.sort();
     dirs.dedup();
-    let dir_listings: Vec<(String, Vec<String>)> = dirs
-        .iter()
-        .map(|d| {
-            (
-                d.clone(),
-                search_listing(std::path::Path::new(d), &artifact_paths),
-            )
-        })
-        .collect();
+    // Each listing's output fee moves into one ticket without a release /
+    // re-acquire gap, and outlives the complete borrowed encoding operation.
+    let mut listing_allocation: Option<ace_source_query::resources::Reservation> = None;
+    let mut dir_listings = Vec::new();
+    for d in &dirs {
+        let listing = search_listing(std::path::Path::new(d), &artifact_paths, resources)?;
+        if let Some(next) = listing.allocation {
+            listing_allocation = Some(match listing_allocation {
+                Some(current) => current.merge(next).map_err(|e| {
+                    StoreError::ResourceExhausted(format!("C cache listing ownership: {e}"))
+                })?,
+                None => next,
+            });
+        }
+        dir_listings.push((d.clone(), listing.names));
+    }
     let mut gen_lines: Vec<String> = hashed.iter().map(|(p, h)| format!("dep|{p}|{h}")).collect();
     gen_lines.push(format!("src_dir|{src_dir}"));
     gen_lines.push(format!("inc_dir|{inc_dir_s}"));

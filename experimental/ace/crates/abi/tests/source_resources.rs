@@ -344,6 +344,179 @@ mod source_foreign {
     }
 
     #[test]
+    fn c_cache_recursive_listing_precharges_directory_growth_and_keeps_original_applicability() {
+        use ace_artifacts::store::{ManagedStore, StoreError};
+        use ace_source_query::resources::Resources;
+        let (root, bytes, _, _) = fixture("c-cache-listing");
+        let source = root.join("provider.c");
+        let header = root.join("source_foreign938.h");
+        let object = root.join("provider.obj");
+        let artifacts = [object.clone()];
+        let sub = root.join("sub");
+        std::fs::create_dir_all(sub.join("deep")).unwrap();
+        for i in 0..300 {
+            std::fs::write(root.join(format!("candidate-{i:04}")), b"header").unwrap();
+        }
+        std::fs::write(sub.join("deep/settings"), b"extensionless").unwrap();
+        // A matching basename elsewhere is a real negative dependency.
+        std::fs::write(sub.join("provider.obj"), b"header").unwrap();
+        let staged = object.with_file_name("PROVIDER.OBJ.TMP-controlled");
+        std::fs::write(&staged, b"owned output").unwrap();
+        let legacy = ManagedStore::open(&root.with_extension("legacy-store")).unwrap();
+        ace_abi::cache::produce_c_object(&legacy, &source, &root, &artifacts, || {
+            Ok((bytes.as_ref().clone(), vec![header.clone()]))
+        })
+        .unwrap();
+        let old_id: String = legacy
+            .db()
+            .query_row("SELECT artifact_id FROM artifacts", [], |r| r.get(0))
+            .unwrap();
+        let expected = legacy.get_artifact_by_id(&old_id).unwrap().unwrap().payload;
+        let listing: serde_json::Value = serde_json::from_slice(&expected).unwrap();
+        // Original candidate derivation retains both NT-prefixed and plain
+        // spellings where applicable; exercise every recorded scan.
+        let listing_count = listing["dir_listings"].as_array().unwrap().len();
+        let names = listing["dir_listings"][0][1].as_array().unwrap();
+        assert!(names.iter().any(|n| n == "sub/deep/settings"));
+        assert!(names.iter().any(|n| n == "sub/provider.obj"));
+        assert!(!names
+            .iter()
+            .any(|n| n == "provider.obj" || n == "PROVIDER.OBJ.TMP-controlled"));
+        let store = ManagedStore::open(&root.with_extension("resource-store")).unwrap();
+        let resources = Resources::default();
+        resources
+            .adopt(&bytes, Charge::resident(bytes.capacity() + 40))
+            .unwrap();
+        let baseline = resources.stats().current;
+        // Leave enough for initial metadata but not a collected directory.
+        let pressure = resources
+            .reserve(Charge::index((8 << 20) - baseline.index - (64 << 10)))
+            .unwrap();
+        let (rejected, large) = measured_at(128 << 10, || {
+            ace_abi::cache::produce_c_object_with_resources(
+                &store,
+                &source,
+                &root,
+                &artifacts,
+                &resources,
+                || Ok((bytes.clone(), vec![header.clone()])),
+            )
+        });
+        assert!(
+            matches!(rejected, Err(StoreError::ResourceExhausted(ref message)) if message.starts_with("C cache listing:")),
+            "{rejected:?}"
+        );
+        assert_eq!(large, 0, "collected the directory before its reservation");
+        assert_eq!(resources.stats().current.index, (8 << 20) - (64 << 10));
+        assert_eq!(resources.stats().current.resident, baseline.resident);
+        assert_eq!(
+            store
+                .db()
+                .query_row("SELECT count(*) FROM artifacts", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        drop(pressure);
+        let layout = 512 * std::mem::size_of::<std::fs::DirEntry>();
+        for expected_hit in [false, true] {
+            let (result, hits, admitted) =
+                with_charge_probe(layout, &resources, Charge::index(layout * 2), || {
+                    ace_abi::cache::produce_c_object_with_resources(
+                        &store,
+                        &source,
+                        &root,
+                        &artifacts,
+                        &resources,
+                        || {
+                            assert!(!expected_hit, "hit called the compiler");
+                            Ok((bytes.clone(), vec![header.clone()]))
+                        },
+                    )
+                });
+            let (output, hit) = result.unwrap();
+            assert_eq!(hit, expected_hit);
+            assert_eq!(output.as_slice(), bytes.as_slice());
+            assert_eq!(
+                hits, listing_count,
+                "did not observe every directory vector growth"
+            );
+            assert!(
+                admitted,
+                "directory grew before reserving old/new and sort storage"
+            );
+            drop(output);
+            // The input Arc remains live, so its resident fee remains live.
+            assert_eq!(resources.stats().current.resident, bytes.capacity() + 40);
+            std::fs::remove_file(&staged).ok();
+        }
+        let id: String = store
+            .db()
+            .query_row("SELECT artifact_id FROM artifacts", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            store.get_artifact_by_id(&id).unwrap().unwrap().payload,
+            expected
+        );
+        let output_fee: usize = listing["dir_listings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| {
+                let names = entry[1].as_array().unwrap();
+                names.len().next_power_of_two().max(4) * std::mem::size_of::<String>()
+                    + names
+                        .iter()
+                        .map(|name| name.as_str().unwrap().len())
+                        .sum::<usize>()
+            })
+            .sum();
+        let other = ManagedStore::open(&root.with_extension("ownership-store")).unwrap();
+        let (written, hits, admitted) = with_charge_probe(
+            expected.len(),
+            &resources,
+            Charge::index(output_fee),
+            || {
+                ace_abi::cache::produce_c_object_with_resources(
+                    &other,
+                    &source,
+                    &root,
+                    &artifacts,
+                    &resources,
+                    || Ok((bytes.clone(), vec![header.clone()])),
+                )
+            },
+        );
+        drop(written.unwrap());
+        assert_eq!(
+            hits, 1,
+            "did not observe JSON emission after all scan frames closed"
+        );
+        assert!(
+            admitted,
+            "listing ownership fee was released before its last consumer"
+        );
+        std::fs::write(sub.join("deep/new-header"), b"new negative dependency").unwrap();
+        let mut produced = 0;
+        let (output, hit) = ace_abi::cache::produce_c_object_with_resources(
+            &store,
+            &source,
+            &root,
+            &artifacts,
+            &resources,
+            || {
+                produced += 1;
+                Ok((bytes.clone(), vec![header]))
+            },
+        )
+        .unwrap();
+        assert!(!hit);
+        assert_eq!(produced, 1);
+        drop((output, bytes));
+        assert_eq!(resources.stats().current.resident, 0);
+        assert_eq!(resources.stats().current.io, 0);
+    }
+
+    #[test]
     fn c_cache_entry_read_reserves_shared_io_before_loading_the_original_store_frame() {
         use ace_artifacts::store::StoreError;
         use ace_source_query::resources::Resources;
