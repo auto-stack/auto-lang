@@ -710,6 +710,29 @@ stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress（T16/T1
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:22 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原完整任务未完成，非phase失败） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:27457e6b3 | next:work 原T01..13完整验收（F04 phase验证完成；最终独立review待T14）
 
+### 2026-11-06 原61标量源实际AV/native扩大准入（goal第23轮）
+
+上一轮T16/17原修复phase完成为progress。本轮回原T03/04/05/10/11，唯一941树提交 **ea4243fd332b252dbd0eef3a12cf35163570e7cd**，树clean，未修改任何生产编译器/语言/资源功能；原总任务仍executing2/17。
+
+- 将已冻结scalar-obligations.tsv的**61源（40core/21scalar，53值/8具名trap）**全部接到正式AV/native两recipe，永久scalar-q4.case.ad/.suite.ad与固定组`case-ace-m1-scalar-q4-941`共**122检查**。源字节/原oracle/独立marks/原Rust debug61+release8/C61义务一律未改。两trace源保hir.test.trace.v1原cap，源序mark_b,mark_a→AV trace[b,a]/native stderr `ba`，短路源须无mark。
+- 首次入口因6个历史case名含大写B（正式Case ID仅小写）在Case装载时拒，未进入语言执行，不充语言反例；仅把新Case ID转小写，原源文件名/字节不动。第二次真正执行**114父PASS/8父FAIL**、原Job47881.497ms、整命令52.5619123s，scope/scalar-q4-current-source/results.json SHA=`31663f553f595c34072e918ec78b6443ca7fb87a01f311538ac49f25d5d5ab14`。第一次装载红原scope/scalar-q4-original-entry保留，未覆盖。
+- 8真实拒绝逐项保真：`core-f11-add-chain-100`、`core-g02-parens-200`的**AV**原admission前端预算报av.resource.frontend-nesting；`core-p04-while`、`core-p05-while-zero`、`core-p06-continue`的**AV/native两腿**均source.unsupported，native原标量→record→text-record升级链终止于Text/source.unsupported while。当前AV scalar默认入口明确走934 scalar fact前门，native依870/911原升级链；源原core域while不因consumer现默认Scalar域改成for。本轮仅具名记录**GAP-941-SCALAR-01（预算/profile覆盖差异）**，不擅自抬帽/扩profile/修语言，也不将其删行或NA。原§5.4 owner责任及T12真实red交付边界保持；这组发现尚不是经过归因认定的新已归档实现缺陷，不借此给941扩大功能修复授权。
+- 另8 native trap父PASS只有通用exit70+空stdout/stderr，缺具名Overflow/DivByZero/DivOverflow/RemOverflow/RemByZero语义证据，strict reader明确**UNOBSERVED**，不把通用70当trap证明。`bd-value70`原正常返回70是独立正控：其value70必须PASS，其他值被替成70必须FAIL。AV按原owner trap taxonomy，RemByZero与DivByZero原本共享av.trap.div-by-zero，仅在固定source/oracle下显式映射。
+
+新`ace_m1_scalar_q4_evidence.py`严格接原Case/artifact-copy/START+TERMINAL与请求/响应原字节：当前sourceSHA/FNV/nonce/重算request_hash、独立源/值/trap/trace、版本/ABI/真实link/run、store/work owner、原父终态全部核对。原fixed group在执行前准备的AV/native与trace-runtime.lib路径/SHA与当前独立文件核对一致；trace库为runtime-dev/ace_trace_runtime.lib SHA=e6a07ae71bb0d6e59aa4362b48ebf581c8dfde6f03bb538e945720ceb0a129b5。122正式/2 inventory实际捕获；永久独立portable contract277819B SHA=`b8fc0bf59aa1eb42996af15676edcb162ad8994510b52fe7b7f491da8feaae0b`，并再次逐行对原固定TSV/原表source hash/61分母/原caps/手定oracle核验，非用子报告自带oracle。最终这组严格判定为**106PASS/8FAIL/8UNOBSERVED**，不把父114绿冒语义114绿；8真实diag即使父改PASS仍FAIL。
+
+组合器原48MiB帽仍不变。为接完整122且避免同时保留已消费的原始输入，将原首例inventories/copies/认证/accounting的原读取块提取到有界helper；helper返回后原始对象实际失去引用，再由既有_compact_admission释放它们的预留，保2MiB摘要预留，**同一共享LiveBudget与全程peak从未清零**。标量逐exchange同理保32KiB摘要、外层完整标量摘要保3MiB；单件4MiB/解码与索引先预留/64KiB流SHA/private128MiB不改。先用旧当前bindings重放，原完整registered rows/gates/domain observations逐项与上一轮完全相同；仅原始对象生命周期缩短，旧不带标量预览reservation22559012/peak34957144B。接新域后仍在原帽内，不另开域预算来伪装聚合。
+
+- **20原始帧反控**：5原实际源×两端（值、Overflow、源序、正常value70、真实while拒绝）及换值/反转marks/换nonce/加未知field/同时换source并重算requesthash+FNV；10原观察按PASS/FAIL/UNOBSERVED正确判，另10反控分别FAIL/REFUSED。明确counterfactual_not_execution，scope/scalar-q4-current-source/raw-reader-controls.json SHA=`4928dd4b7d0fcb1a41bc7b010d1f3cad0b75640ad51c23607d0dfd378a291a4b`。这些反控不算新增语言执行覆盖。
+- 新5永久回归保same-wrong两端、value70/未具名trap/错具名trap、mark顺序与短路、原diag强制父PASS仍FAIL、nonce/source/未知字段/真实link计数拒绝。冻结ea4243 `cargo t infra-ace-m1-arch --out <scope>/scalar-q4-frozen-controls` **146/146**、3.4104766s、exit0，results SHA=`38d520c38f96ba61a6ce71cefef62773c0227bfbc8a3d4fe7f469ab192e6c656`。未为Python reader重新跑1779原native/AV重负载；生产工具/源/Case字节身份不变，实际122正式结果由新strict reader逐项重核后复用。py_compile/diff-check通过。
+- 冻结整组合在禁止subprocess.Popen的独立原受管Job重读：**208PASS/8FAIL/670UNOBSERVED**，登记886/全部required集合不变（expanded contracts增加scalar_q4指针，未改原分母）。父source_case_reports=false与first_slice_evidence=false保留新真实红，full_registry_closed=false、acceptance_system_delivered=false、can_claim_expanded_m1=false。当前preview236951B SHA=`dcf7ccf6de06ae3bb4892b8626235ca6ee4f7293492baedd919f4f87fa0b3ca5`，2264.1561ms，peak process28909568/Job30154752B，共享reservation25717242/峰值**47244667<50331648B**。scope/scalar-q4-frozen-preview保原meter/空stderr；新模块与现配置/全部当前依赖被真实读取，不只测小对象。
+
+原T01..15仍未完，原938/939未冒D、原旧38cert缺口不变；这轮补齐标量AV/native实证，并未声称61源Rust/C独立reference/全部debug-release认证、剩余复合/source SQ/实例/机制/ARCH完成。下一步继续原完整四目标与独立reference/认证及机制适配；上述预算/profile red和native具名trap缺证据保持可见，不在941业务实现补丁内绕过。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r2 | outcome:in_progress | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:ea4243fd332b252dbd0eef3a12cf35163570e7cd | task_ids:T03/04/05/10/11（未关闭） | evidence:122真实父114PASS8FAIL→严格106PASS8FAIL8UNOBSERVED；20反控；146冻结；全组合208PASS8FAIL670UNOBSERVED | blockers:具名budget/profile覆盖差异与native trap观测缺口；无新增用户决定，继续独立工作 | next_responsible_role:work 原完整Q4/认证/机制/ARCH
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r2 | round:23 | from:work | to:work | status:executing2/17 | outcome:needs_fix（原任务未完/真实覆盖红保留） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:ea4243fd332b252dbd0eef3a12cf35163570e7cd | next:work 原完整目标，先补剩余四端/独立reference与机制证据
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
