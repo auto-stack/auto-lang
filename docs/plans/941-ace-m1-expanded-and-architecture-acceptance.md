@@ -1651,6 +1651,20 @@ stage: work | plan_id:PLAN-941 | plan_revision:r5 | outcome:progress（T08/ARCH0
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r5 | round:65 | from:work | to:work | status:executing8/23 | outcome:progress（新增一个既有ARCH原子义务PASS，原目标未齐） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:b876cb42b1015d0a58424ec24f0754ef24d55e9f | next:work，711P8F287U当前基面，继续稳定接口机制/恢复证据；F07仍待裁定，无待poll
 
+### 第66轮：T06/T08 实际S936磁盘恢复分腿（work，原ARCH-05仍未齐）
+
+- 基面核对：主检出无代码WIP（其他会话计划/设计改动保留）；941树复用`plan-941-dev`，从`b876cb42b`到`4466520e6cf7750471c6458fdbdc80c962adbf94`，12文件/1066增4删，当前clean。无生产编译器/VM/store/预算/分母变更。源合同`ct-restore-contract.json` SHA256=`129e4969208a6db2e1156b11a34ab50fdb4ab0a63d2e9f82d866b130c7f6e5f0`，583生产者输入（原578闭包+新观察器/4源），登记合同28个、原1006义务键不变。
+- 实际路径：原`compile_scalar_ct→CtService→ManagedEnvelopeSink/S936→ManagedStore`，同一磁盘目录关闭服务后重开，不造第二store/VM。永久测试`ace-source-cte::architecture_restore_941::ordinary_source_disk_restore_first_edits_and_repair_941`：42冷执行/发布→重开**第一请求直接改实参**再执行42（无先命中/预热）；再重开禁AV两页均命中，真实R窗2probe/2263B/2decode、执行0。另一目录42冷→重开**第一请求除零**，AV实际到达1/拒绝1/发布0；旧checked owner仍42，禁AV旧页仍可命中；修复43发布→再重开**第一请求下一编辑44**实际执行/发布→再重开禁AV恢复43/44，R窗2probe/2264B/2decode。独立空目录在禁AV时真实miss/执行0/发布0，随后允许AV实执行42，不冒称恢复。11次实际owner值`42,42,42,42,42,42,43,44,43,44,42`，owner的运行AV与CT服务执行分开计量。
+- 开发首轮编译失败（`ManagedEnvelopeSink`非root重导出）原样保留`ct-restore-iteration/`，改用既有公开`store::ManagedEnvelopeSink`后定向1P（`ct-restore-iteration-2/`）。最终冻结正式入口`cargo t ace-comptime --test-name ordinary_source_disk_restore_first_edits_and_repair_941 --out <h>/ct-restore-current/gate`：1/1 PASS，146项native未选择、0条件排除/0not_run；全原Cargo配置预备/真实argv/listing/terminal与原before/after、583输入、二进制身份稳定。新观察器无警告，预备保留原AV三条存量警告（closures_fn_session unused assignment/dead fn、owned_session dead fields），本次未擅自顺修。
+- 纯读取器`ace_m1_ct_restore.py`严格读上述真实输入/原生进程/计数/日志/键/磁盘R窗/owner数值，三条**CT分腿**通过；6个新治理方法覆盖预热偷换、同键伪命中、执行冒充恢复、读/解码缺失、冻结工作篡改、失败发布、旧root丢失、修复/二次编辑旧值、空页伪恢复、源/类型/未知字段/路径穿越与错producer身份。`cargo t infra-ace-m1-arch --out <h>/ct-restore-governance-precommit` 216/216 PASS；同一最终源码下提交后复用此治理结果，不为提交再重复全门。rustfmt与diff检查通过。
+- 正式严格组合子进程禁止启动producer，`ct-restore-current/composed-bindings.json`继承全部当前source/292cert+daily/14opt及既有CT观察，仅新增可选`ct_restore_mechanisms`，产出`ct_restore_execution`。**ARCH-05三原子义务仍全部UNOBSERVED**：S936执行页不替代SQ/facts/实例/RT/集合/foreign/resource全owner恢复，也不核销坏页/全required页或原313。组合仍`711P/8F/287U`、1006键、ARCH4P45U、旧313=102P211U；与第65轮逐键无变化，完整AND/acceptance/can_claim均false。实测读取23934.949ms、记账reserve30632319B/peak48691253B<48MiB，process30642176B/Job31969280B；新增证据未突破原预算。
+- `<h>=D:/autostack/plan-artifacts/plan-941/`：`ct-restore-current/observations.json`5292B SHA256=`89d8dd9d251fca7d7bfaa907a4e7fee5daa96e032e1bfb72f2a48dc476c4c68a`；同scope`gate/results.json`=`af2348124b4127d1654b0a59854fc3922b158883aae271f902155b05e78899c3`、`capture-audit.json`=`a2a56ec8487877bc6ca305eb0c8d78562adc67cf4a15504a445ee12ce635c64f`；治理`ct-restore-governance-precommit/results.json`=`fb98ca5444577db391f8546d2bad426472ba66c81b43b152b67b5bc7982484c8`；`ct-restore-admitted/preview.stdout`619356B=`9b5e18e918bc0645193b5d9ba76ed9e332cc4ff8cafd558d5c7da360b58b33d5`、`closure-audit.json`=`3766633a444d89eb95c1c6381edf0f67033c804df0a9738adb973b7a3eeef31d`。原13工具哈希未变，完整源/认证/优化证据本轮严格联读复用；既有F07全门红未覆写、未越权修复。
+- SD01恢复证据候选`<h>/ct-restore-spec-delta-candidate.md`待最终独立T14，原T01..15均未整体齐，保持r5 executing8/23。D938/939仍须正式交付；F07待裁定，8scalar实际红/旧38cert缺口保持。全部本轮进程已终态，无live handle。下一步继续稳定接口其他恢复/实例/查询/ARCH证据，不重跑本轮已有效证据。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r5 | outcome:progress（S936磁盘恢复三分腿已严格观察，完整ARCH05/T06/T08未齐） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:4466520e6cf7750471c6458fdbdc80c962adbf94 | evidence:ct-restore-admitted/closure-audit.json | task_ids:T06/T08/V05..06/SD01候选 | next_responsible_role:work其余原required/ARCH，无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r5 | round:66 | from:work | to:work | status:executing8/23 | outcome:progress（S936真实恢复证据接入，整项不冒充PASS） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:4466520e6cf7750471c6458fdbdc80c962adbf94 | next:work，711P8F287U当前基面，继续稳定接口其余恢复与架构证据；F07仍待裁定，无待poll
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -1672,4 +1686,4 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r5 | round:65 | from:work | to:wo
 
 11. **F-941-07待裁定**：原CT 300ms fast控制在AV前已过期时正确ct_execute0，但旧断言固定>=1而误红；同库/原267218B输入的单核竞争反证已定位（第58轮）。提请在941新增test-only修复phase：保原115helper/4call/300ms与32query/10s原门及合法4call正控，按真实AV到达分态修正测试并补确定性回归/反控，不改生产计数/预算/driver。依据§5.4需具名授权；未授权仅不动该修复，继续原其他证据。
 
-12. **F-941-08工作阶段已关闭（r5 T22/T23，第64轮续录）**：用户原授权已完成实施与当前原职责/真实四端/292认证daily/原优化及CT机制严格联读，F08关闭基面81c10fcc9；第65轮当前b876cb42b/711P8F287U，仍8/23。无待poll，不再等待F08授权或重跑已有效冻结证据；原完整任务及最终独立T14仍待。F07独立test-only修复仍待裁定，不能由F08授权推定。
+12. **F-941-08工作阶段已关闭（r5 T22/T23，第64轮续录）**：用户原授权已完成实施与当前原职责/真实四端/292认证daily/原优化及CT机制严格联读，F08关闭基面81c10fcc9；第65轮b876cb42b/711P8F287U；第66轮当前4466520e6同计数，新增S936恢复分腿，仍8/23。无待poll，不再等待F08授权或重跑已有效冻结证据；原完整任务及最终独立T14仍待。F07独立test-only修复仍待裁定，不能由F08授权推定。
