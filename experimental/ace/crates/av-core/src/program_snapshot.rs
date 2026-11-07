@@ -503,6 +503,10 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<u32> {
                 | MirType::U64
                 | MirType::F32
                 | MirType::F64
+                // PLAN-961 numeric surface.
+                | MirType::I8
+                | MirType::U8
+                | MirType::U32
                 | MirType::Char
                 | MirType::Str
                 | MirType::StrView

@@ -124,6 +124,10 @@ enum ValueKind {
     Place,
     Closure,
     Dyn,
+    /// PLAN-961 numeric surface narrow kinds.
+    I8,
+    U8,
+    U32,
 }
 
 impl ValueKind {
@@ -146,6 +150,9 @@ impl ValueKind {
             ValueKind::Place => "place",
             ValueKind::Closure => "closure",
             ValueKind::Dyn => "dyn",
+            ValueKind::I8 => "i8",
+            ValueKind::U8 => "u8",
+            ValueKind::U32 => "u32",
         }
     }
 }
@@ -159,6 +166,11 @@ fn value_kind(v: &Value) -> ValueKind {
         Value::U64(_) => ValueKind::U64,
         Value::F32(_) => ValueKind::F32,
         Value::F64(_) => ValueKind::F64,
+        // PLAN-961: narrow integers are their own kinds (exact-kind
+        // admission, no phantom channel-riding).
+        Value::I8(_) => ValueKind::I8,
+        Value::U8(_) => ValueKind::U8,
+        Value::U32(_) => ValueKind::U32,
         Value::Record(_) => ValueKind::Record,
         Value::Char(_) => ValueKind::Char,
         Value::Str(_) => ValueKind::Str,

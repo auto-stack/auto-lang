@@ -130,6 +130,15 @@ fn encode_instr(out: &mut Vec<u8>, instr: &MirInstr) -> Result<(), AbcDecodeErro
                 BinOp::GeI32 => 9,
                 BinOp::EqI32 => 10,
                 BinOp::NeI32 => 11,
+                // PLAN-961: the typed numeric form exists only in the
+                // data-family wire (abc.rs BIN_NUM); the compact core-i32
+                // family refuses it here, before writing any opcode byte.
+                BinOp::Num { .. } => {
+                    return Err(format_err(
+                        "compact.encode.profile",
+                        "typed numeric binary op is outside av.core-i32/1",
+                    ))
+                }
             });
             put_uleb(out, *dst);
             put_uleb(out, *lhs);
@@ -140,9 +149,24 @@ fn encode_instr(out: &mut Vec<u8>, instr: &MirInstr) -> Result<(), AbcDecodeErro
             out.push(match op {
                 UnOp::NegI32 => 1,
                 UnOp::NotBool => 2,
+                // PLAN-961: typed negation is data-family only.
+                UnOp::NegT { .. } => {
+                    return Err(format_err(
+                        "compact.encode.profile",
+                        "typed negation is outside av.core-i32/1",
+                    ))
+                }
             });
             put_uleb(out, *dst);
             put_uleb(out, *operand);
+        }
+        // PLAN-961: conversions are data-family only; the compact wire
+        // refuses them before writing any opcode byte.
+        MirInstr::Conv { .. } => {
+            return Err(format_err(
+                "compact.encode.profile",
+                "numeric conversion is outside av.core-i32/1",
+            ))
         }
         MirInstr::Call { callee, dst, args } => {
             let argc = u32::try_from(args.len())

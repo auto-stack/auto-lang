@@ -258,6 +258,19 @@ pub const CONST_F32_BITS: u8 = 4;
 pub const CONST_CHAR: u8 = 6;
 pub const CONST_STR: u8 = 7;
 pub const CONST_F64_BITS: u8 = 5;
+// PLAN-961 numeric surface: narrow-integer consts (8..=10), the typed
+// numeric BIN/UN subcodes (12/3, both followed by op/ty tag bytes), the
+// CONV opcode (0x3A, after PLAN-960's 0x38/0x39) and the narrow type
+// tags (19..=21, after PLAN-862's TY_UNIT=18).
+pub const CONST_I8: u8 = 8;
+pub const CONST_U8: u8 = 9;
+pub const CONST_U32: u8 = 10;
+pub const BIN_NUM: u8 = 12;
+pub const UN_NEG_T: u8 = 3;
+pub const OP_CONV: u8 = 0x3A;
+pub const TY_I8: u8 = 19;
+pub const TY_U8: u8 = 20;
+pub const TY_U32: u8 = 21;
 
 /// Which wire family a codec pass handles. The families share the table
 /// and instruction encoding for the common surface; the identity headers,
@@ -580,13 +593,90 @@ fn bin_op_code(op: BinOp) -> u8 {
         BinOp::GeI32 => BIN_GE,
         BinOp::EqI32 => BIN_EQ,
         BinOp::NeI32 => BIN_NE,
+        // PLAN-961: the typed numeric form carries its op/ty as two extra
+        // tag bytes after the subcode (see `encode_function`/decode).
+        BinOp::Num { .. } => BIN_NUM,
     }
+}
+
+/// PLAN-961: the `NumOp` tag byte following `BIN_NUM` (declaration order).
+fn num_op_code(op: NumOp) -> u8 {
+    match op {
+        NumOp::Add => 1,
+        NumOp::Sub => 2,
+        NumOp::Mul => 3,
+        NumOp::Div => 4,
+        NumOp::Rem => 5,
+        NumOp::And => 6,
+        NumOp::Or => 7,
+        NumOp::Xor => 8,
+        NumOp::Shl => 9,
+        NumOp::Shr => 10,
+        NumOp::Lt => 11,
+        NumOp::Le => 12,
+        NumOp::Gt => 13,
+        NumOp::Ge => 14,
+        NumOp::Eq => 15,
+        NumOp::Ne => 16,
+    }
+}
+
+fn num_op_of(code: u8) -> Option<NumOp> {
+    Some(match code {
+        1 => NumOp::Add,
+        2 => NumOp::Sub,
+        3 => NumOp::Mul,
+        4 => NumOp::Div,
+        5 => NumOp::Rem,
+        6 => NumOp::And,
+        7 => NumOp::Or,
+        8 => NumOp::Xor,
+        9 => NumOp::Shl,
+        10 => NumOp::Shr,
+        11 => NumOp::Lt,
+        12 => NumOp::Le,
+        13 => NumOp::Gt,
+        14 => NumOp::Ge,
+        15 => NumOp::Eq,
+        16 => NumOp::Ne,
+        _ => return None,
+    })
+}
+
+/// PLAN-961: the `NumTy` tag byte (declaration order).
+fn num_ty_code(ty: NumTy) -> u8 {
+    match ty {
+        NumTy::I8 => 1,
+        NumTy::I32 => 2,
+        NumTy::U8 => 3,
+        NumTy::U32 => 4,
+        NumTy::I64 => 5,
+        NumTy::U64 => 6,
+        NumTy::F32 => 7,
+        NumTy::F64 => 8,
+    }
+}
+
+fn num_ty_of(code: u8) -> Option<NumTy> {
+    Some(match code {
+        1 => NumTy::I8,
+        2 => NumTy::I32,
+        3 => NumTy::U8,
+        4 => NumTy::U32,
+        5 => NumTy::I64,
+        6 => NumTy::U64,
+        7 => NumTy::F32,
+        8 => NumTy::F64,
+        _ => return None,
+    })
 }
 
 fn un_op_code(op: UnOp) -> u8 {
     match op {
         UnOp::NegI32 => UN_NEG,
         UnOp::NotBool => UN_NOT,
+        // PLAN-961: typed negation carries its ty as one extra tag byte.
+        UnOp::NegT { .. } => UN_NEG_T,
     }
 }
 
@@ -867,6 +957,35 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                 }
                 put_u8(&mut w, TY_F64);
             }
+            // PLAN-961 numeric surface: the narrow integers ride the same
+            // data-family gate as the wide scalars.
+            MirType::I8 => {
+                if !family.allows_data_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "i8 type in a core-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_I8);
+            }
+            MirType::U8 => {
+                if !family.allows_data_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "u8 type in a core-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_U8);
+            }
+            MirType::U32 => {
+                if !family.allows_data_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "u32 type in a core-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_U32);
+            }
             MirType::Char => {
                 if !family.allows_owned_tags() {
                     return Err(AbcDecodeError::fmt_err(
@@ -1135,6 +1254,37 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                 put_u8(&mut w, CONST_F64_BITS);
                 w.push(&bits.to_le_bytes());
             }
+            // PLAN-961 numeric surface: narrow-integer consts.
+            MirConst::I8(v) => {
+                if !family.allows_data_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "i8 constant in a core-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, CONST_I8);
+                w.push(&[*v as u8]);
+            }
+            MirConst::U8(v) => {
+                if !family.allows_data_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "u8 constant in a core-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, CONST_U8);
+                w.push(&[*v]);
+            }
+            MirConst::U32(v) => {
+                if !family.allows_data_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "u32 constant in a core-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, CONST_U32);
+                w.push(&v.to_le_bytes());
+            }
         }
     }
     // Imports.
@@ -1275,17 +1425,47 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u32(&mut w, *src);
                     }
                     MirInstr::Bin { op, dst, lhs, rhs } => {
+                        if matches!(op, BinOp::Num { .. }) && !family.allows_data_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "typed numeric binary op in a core-profile module".to_string(),
+                            ));
+                        }
                         put_u8(&mut w, OP_BIN);
                         put_u8(&mut w, bin_op_code(*op));
+                        if let BinOp::Num { op: nop, ty } = op {
+                            put_u8(&mut w, num_op_code(*nop));
+                            put_u8(&mut w, num_ty_code(*ty));
+                        }
                         put_u32(&mut w, *dst);
                         put_u32(&mut w, *lhs);
                         put_u32(&mut w, *rhs);
                     }
                     MirInstr::Un { op, dst, operand } => {
+                        if matches!(op, UnOp::NegT { .. }) && !family.allows_data_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "typed negation in a core-profile module".to_string(),
+                            ));
+                        }
                         put_u8(&mut w, OP_UN);
                         put_u8(&mut w, un_op_code(*op));
+                        if let UnOp::NegT { ty } = op {
+                            put_u8(&mut w, num_ty_code(*ty));
+                        }
                         put_u32(&mut w, *dst);
                         put_u32(&mut w, *operand);
+                    }
+                    MirInstr::Conv { dst, src } => {
+                        if !family.allows_data_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "numeric conversion in a core-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_CONV);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *src);
                     }
                     MirInstr::Call { callee, dst, args } => {
                         if args.len() > u8::MAX as usize {
@@ -2422,6 +2602,10 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
             TY_I64 if family.allows_data_tags() => module.types.push(MirType::I64),
             TY_U64 if family.allows_data_tags() => module.types.push(MirType::U64),
             TY_F32 if family.allows_data_tags() => module.types.push(MirType::F32),
+            // PLAN-961 numeric surface: narrow-integer type tags.
+            TY_I8 if family.allows_data_tags() => module.types.push(MirType::I8),
+            TY_U8 if family.allows_data_tags() => module.types.push(MirType::U8),
+            TY_U32 if family.allows_data_tags() => module.types.push(MirType::U32),
             TY_F64 if family.allows_data_tags() => module.types.push(MirType::F64),
             TY_RECORD if family.allows_data_tags() => {
                 let olen = c.u16()? as usize;
@@ -2662,6 +2846,19 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                 let bits = c.u64()?;
                 module.consts.push(MirConst::F64Bits(bits));
             }
+            // PLAN-961 numeric surface: narrow-integer consts.
+            CONST_I8 if family.allows_data_tags() => {
+                let v = c.u8()?;
+                module.consts.push(MirConst::I8(v as i8));
+            }
+            CONST_U8 if family.allows_data_tags() => {
+                let v = c.u8()?;
+                module.consts.push(MirConst::U8(v));
+            }
+            CONST_U32 if family.allows_data_tags() => {
+                let v = c.u32()?;
+                module.consts.push(MirConst::U32(v));
+            }
             CONST_CHAR if family.allows_owned_tags() => {
                 let code = c.u32()?;
                 let ch = char::from_u32(code).ok_or_else(|| {
@@ -2827,6 +3024,23 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                             BIN_GE => BinOp::GeI32,
                             BIN_EQ => BinOp::EqI32,
                             BIN_NE => BinOp::NeI32,
+                            // PLAN-961: typed numeric op — two extra tag
+                            // bytes (op, ty); data-family modules only.
+                            BIN_NUM if family.allows_data_tags() => {
+                                let nop = num_op_of(c.u8()?).ok_or_else(|| {
+                                    AbcDecodeError::fmt_err(
+                                        "abc.decode.bin-numop",
+                                        "unknown numeric op tag".to_string(),
+                                    )
+                                })?;
+                                let ty = num_ty_of(c.u8()?).ok_or_else(|| {
+                                    AbcDecodeError::fmt_err(
+                                        "abc.decode.bin-numty",
+                                        "unknown numeric type tag".to_string(),
+                                    )
+                                })?;
+                                BinOp::Num { op: nop, ty }
+                            }
                             other => {
                                 return Err(AbcDecodeError::fmt_err(
                                     "abc.decode.bin-subop",
@@ -2844,6 +3058,17 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         let op = match sub {
                             UN_NEG => UnOp::NegI32,
                             UN_NOT => UnOp::NotBool,
+                            // PLAN-961: typed negation — one extra ty tag
+                            // byte; data-family modules only.
+                            UN_NEG_T if family.allows_data_tags() => {
+                                let ty = num_ty_of(c.u8()?).ok_or_else(|| {
+                                    AbcDecodeError::fmt_err(
+                                        "abc.decode.un-numty",
+                                        "unknown numeric type tag".to_string(),
+                                    )
+                                })?;
+                                UnOp::NegT { ty }
+                            }
                             other => {
                                 return Err(AbcDecodeError::fmt_err(
                                     "abc.decode.un-subop",
@@ -2854,6 +3079,11 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         let dst = c.u32()?;
                         let operand = c.u32()?;
                         MirInstr::Un { op, dst, operand }
+                    }
+                    OP_CONV if family.allows_data_tags() => {
+                        let dst = c.u32()?;
+                        let src = c.u32()?;
+                        MirInstr::Conv { dst, src }
                     }
                     OP_CALL => {
                         let ck = c.u8()?;

@@ -316,6 +316,11 @@ pub enum Value {
     U64(u64),
     F32(f32),
     F64(f64),
+    /// PLAN-961 numeric surface: narrow integers — exact values, same
+    /// discipline as the wide scalars (no channel-riding phantoms).
+    I8(i8),
+    U8(u8),
+    U32(u32),
     Record(std::rc::Rc<RecordValue>),
     /// Unicode scalar (PLAN-774): domain-checked (no surrogates, ≤0x10FFFF)
     /// end to end; never implicitly an integer.
@@ -649,6 +654,10 @@ impl PartialEq for Value {
             (Bool(a), Bool(b)) => a == b,
             (I64(a), I64(b)) => a == b,
             (U64(a), U64(b)) => a == b,
+            // PLAN-961 numeric surface: exact-value equality.
+            (I8(a), I8(b)) => a == b,
+            (U8(a), U8(b)) => a == b,
+            (U32(a), U32(b)) => a == b,
             (F32(a), F32(b)) => a.to_bits() == b.to_bits(),
             (F64(a), F64(b)) => a.to_bits() == b.to_bits(),
             (Record(a), Record(b)) => {
@@ -690,6 +699,10 @@ impl Value {
             Value::U64(_) => "u64",
             Value::F32(_) => "f32",
             Value::F64(_) => "f64",
+            // PLAN-961 numeric surface.
+            Value::I8(_) => "i8",
+            Value::U8(_) => "u8",
+            Value::U32(_) => "u32",
             Value::Record(_) => "record",
             Value::Char(_) => "char",
             Value::Str(_) => "Str",
@@ -882,6 +895,15 @@ pub enum TrapKind {
     /// payload-moved arm at runtime (defense in depth — static guard
     /// analysis should prevent this for admitted programs).
     VariantBranch,
+    /// PLAN-961: shift amount negative (signed) or >= the value's bit
+    /// width — checked BEFORE any shift executes on every end.
+    ShiftOutOfRange,
+    /// PLAN-961: float->int conversion with NaN, ±Inf, or a truncated
+    /// value outside the destination range (checked, never host-UB).
+    FloatToInt,
+    /// PLAN-961: f64->f32 conversion of a finite value whose rounded
+    /// result exceeds the f32 range (never silently ±Inf).
+    FloatOverflow,
 }
 
 impl TrapKind {
@@ -898,6 +920,9 @@ impl TrapKind {
             TrapKind::ListIndex => "av.trap.list-index",
             TrapKind::StalePlace => "av.trap.stale-place",
             TrapKind::VariantBranch => "av.trap.variant-branch",
+            TrapKind::ShiftOutOfRange => "av.trap.shift-out-of-range",
+            TrapKind::FloatToInt => "av.trap.float-to-int",
+            TrapKind::FloatOverflow => "av.trap.float-overflow",
         }
     }
 }

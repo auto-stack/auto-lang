@@ -676,6 +676,12 @@ fn verify_owned_function_impl(
                 MirInstr::HostCall { arg, .. } => {
                     check_read!(arg, "console input");
                 }
+                // PLAN-961: a numeric conversion reads its source and
+                // defines its destination (pure value flow, Copy scalars).
+                MirInstr::Conv { dst, src } => {
+                    check_read!(src, "conversion source");
+                    st.define_slot(*dst as usize);
+                }
                 // PLAN-960: global cells hold scalars only in this cut; the
                 // read defines `dst`, the write reads `src` and defines `dst`.
                 MirInstr::GlobalGet { dst, .. } => {

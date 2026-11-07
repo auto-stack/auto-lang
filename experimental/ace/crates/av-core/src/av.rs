@@ -14,7 +14,8 @@ use crate::contract::{
     MAX_AV_INSTR_STEPS, MAX_AV_SLOT_BYTES, MAX_AV_WALL, MAX_TRACE_BYTES,
 };
 use crate::mir::{
-    BinOp, CalleeRef, MirFunction, MirInstr, MirModule, MirType, Terminator, TraceEvent, UnOp,
+    BinOp, CalleeRef, MirFunction, MirInstr, MirModule, MirType, NumOp, NumTy, Terminator,
+    TraceEvent, UnOp,
 };
 use std::time::Instant;
 
@@ -2565,6 +2566,11 @@ fn dispatch_with_host<V: ModuleView>(
                 Some(ScalarShape::U64) => matches!(arg, Value::U64(_)),
                 Some(ScalarShape::F32) => matches!(arg, Value::F32(_)),
                 Some(ScalarShape::F64) => matches!(arg, Value::F64(_)),
+                // PLAN-961: narrow-integer entry params admit exact-kind
+                // values (same admission discipline as the wide scalars).
+                Some(ScalarShape::I8) => matches!(arg, Value::I8(_)),
+                Some(ScalarShape::U8) => matches!(arg, Value::U8(_)),
+                Some(ScalarShape::U32) => matches!(arg, Value::U32(_)),
                 // PLAN-821: char entry params admit char values (the
                 // owned entry contract, contract-decision §6).
                 None => matches!(
@@ -2784,6 +2790,10 @@ fn dispatch_with_host<V: ModuleView>(
                         crate::mir::MirConst::Bool(b) => Value::Bool(b),
                         crate::mir::MirConst::I64(x) => Value::I64(x),
                         crate::mir::MirConst::U64(x) => Value::U64(x),
+                        // PLAN-961: narrow integers materialize exactly.
+                        crate::mir::MirConst::I8(x) => Value::I8(x),
+                        crate::mir::MirConst::U8(x) => Value::U8(x),
+                        crate::mir::MirConst::U32(x) => Value::U32(x),
                         // Bit-exact re-materialization: NaN payloads and
                         // signed zeros survive the const round trip.
                         crate::mir::MirConst::F32Bits(bits) => Value::F32(f32::from_bits(bits)),
@@ -2913,6 +2923,42 @@ fn dispatch_with_host<V: ModuleView>(
                             // func numbers are per-producer coordinates
                             // and may collide across real same-owner
                             // units; the frame's slot never does.
+                            return Some(ExecOutcome::Trap {
+                                kind,
+                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                            });
+                        }
+                        Err(EvalErr::Infra(msg)) => return Some(ExecOutcome::Infra(msg)),
+                    }
+                }
+                MirInstr::Conv { dst, src } => {
+                    // PLAN-961: the frozen conversion matrix, keyed by the
+                    // VERIFIED slot shapes (widening never traps; narrowing
+                    // and float->int are checked; f64->f32 traps on range).
+                    let src_val = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*src as usize].clone()
+                    };
+                    let src_ty = func.slots[*src as usize].ty;
+                    let dst_ty = func.slots[*dst as usize].ty;
+                    let (Some(src_num), Some(dst_num)) = (
+                        v.scalar_shape_of(func_idx, src_ty)
+                            .and_then(|s| s.num_ty()),
+                        v.scalar_shape_of(func_idx, dst_ty)
+                            .and_then(|s| s.num_ty()),
+                    ) else {
+                        return Some(ExecOutcome::Infra(format!(
+                            "conv slot types ({},{}) are not both numeric — admission violation",
+                            src_ty, dst_ty
+                        )));
+                    };
+                    match eval_conv(src_num, dst_num, src_val) {
+                        Ok(res) => {
+                            if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                                return Some(out);
+                            }
+                        }
+                        Err(EvalErr::Trap(kind)) => {
                             return Some(ExecOutcome::Trap {
                                 kind,
                                 span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
@@ -5639,6 +5685,11 @@ impl MirFunction {
 
 fn eval_bin(op: BinOp, l: Value, r: Value) -> Result<Value, EvalErr> {
     use BinOp::*;
+    // PLAN-961: the typed numeric surface executes through the frozen
+    // (op, ty) matrix before the legacy i32/bool shape match.
+    if let BinOp::Num { op: nop, ty } = op {
+        return eval_num(nop, ty, l, r);
+    }
     match (l, r) {
         (Value::I32(a), Value::I32(b)) => Ok(match op {
             AddI32 => Value::I32(
@@ -5677,6 +5728,13 @@ fn eval_bin(op: BinOp, l: Value, r: Value) -> Result<Value, EvalErr> {
             GeI32 => Value::Bool(a >= b),
             EqI32 => Value::Bool(a == b),
             NeI32 => Value::Bool(a != b),
+            // Unreachable through the Num early-return above; kept as a
+            // defense-in-depth admission violation, never a panic.
+            Num { .. } => {
+                return Err(EvalErr::Infra(
+                    "numeric op dispatched to the legacy i32 arm (admission violation)".into(),
+                ))
+            }
         }),
         (Value::Bool(a), Value::Bool(b)) => match op {
             EqI32 => Ok(Value::Bool(a == b)),
@@ -5700,10 +5758,290 @@ fn eval_un(op: UnOp, v: Value) -> Result<Value, EvalErr> {
                 .ok_or(EvalErr::Trap(TrapKind::IntOverflow))?,
         )),
         (UnOp::NotBool, Value::Bool(b)) => Ok(Value::Bool(!b)),
+        // PLAN-961: checked negation for the wider signed integers and the
+        // float sign-flip (0.0 -> -0.0; NaN sign bit flips — never traps).
+        (UnOp::NegT { ty: NumTy::I8 }, Value::I8(a)) => Ok(Value::I8(
+            a.checked_neg()
+                .ok_or(EvalErr::Trap(TrapKind::IntOverflow))?,
+        )),
+        (UnOp::NegT { ty: NumTy::I64 }, Value::I64(a)) => Ok(Value::I64(
+            a.checked_neg()
+                .ok_or(EvalErr::Trap(TrapKind::IntOverflow))?,
+        )),
+        (UnOp::NegT { ty: NumTy::F32 }, Value::F32(a)) => Ok(Value::F32(-a)),
+        (UnOp::NegT { ty: NumTy::F64 }, Value::F64(a)) => Ok(Value::F64(-a)),
         _ => Err(EvalErr::Infra(format!(
             "unary {:?} on wrong-shaped operand (admission violation)",
             op
         ))),
+    }
+}
+
+// ---- PLAN-961 numeric execution (frozen contract, T-01 §2/§3) ----------
+
+/// The inclusive i128 range of an integer NumTy.
+fn int_range(ty: NumTy) -> (i128, i128) {
+    match ty {
+        NumTy::I8 => (i8::MIN as i128, i8::MAX as i128),
+        NumTy::I32 => (i32::MIN as i128, i32::MAX as i128),
+        NumTy::U8 => (0, u8::MAX as i128),
+        NumTy::U32 => (0, u32::MAX as i128),
+        NumTy::I64 => (i64::MIN as i128, i64::MAX as i128),
+        NumTy::U64 => (0, u64::MAX as i128),
+        NumTy::F32 | NumTy::F64 => (0, 0),
+    }
+}
+
+/// Bit width of an integer NumTy.
+fn int_width(ty: NumTy) -> u32 {
+    match ty {
+        NumTy::I8 | NumTy::U8 => 8,
+        NumTy::I32 | NumTy::U32 => 32,
+        NumTy::I64 | NumTy::U64 => 64,
+        NumTy::F32 | NumTy::F64 => 0,
+    }
+}
+
+fn is_signed(ty: NumTy) -> bool {
+    matches!(ty, NumTy::I8 | NumTy::I32 | NumTy::I64)
+}
+
+/// Read a numeric Value on the integer domain (sign/zero-extended per the
+/// VALUE's own variant; the verifier guarantees variant == slot type).
+fn as_i128(ty: NumTy, v: &Value) -> Result<i128, EvalErr> {
+    Ok(match (ty, v) {
+        (NumTy::I8, Value::I8(x)) => *x as i128,
+        (NumTy::I32, Value::I32(x)) => *x as i128,
+        (NumTy::U8, Value::U8(x)) => *x as i128,
+        (NumTy::U32, Value::U32(x)) => *x as i128,
+        (NumTy::I64, Value::I64(x)) => *x as i128,
+        (NumTy::U64, Value::U64(x)) => *x as i128,
+        _ => {
+            return Err(EvalErr::Infra(format!(
+                "numeric {:?} on wrong-shaped operand {:?} (admission violation)",
+                ty, v
+            )))
+        }
+    })
+}
+
+/// Wrap an i128 back into the integer NumTy's width, DISCARDING bits that
+/// leave the width (only shifts reach here — checked ops trap instead).
+fn wrap_int(ty: NumTy, v: i128) -> Value {
+    let w = int_width(ty);
+    match ty {
+        NumTy::I8 => Value::I8(v as i8),
+        NumTy::I32 => Value::I32(v as i32),
+        NumTy::U8 => Value::U8((v as u128 & ((1u128 << w) - 1)) as u8),
+        NumTy::U32 => Value::U32((v as u128 & ((1u128 << w) - 1)) as u32),
+        NumTy::I64 => Value::I64(v as i64),
+        NumTy::U64 => Value::U64((v as u128 & ((1u128 << w) - 1)) as u64),
+        NumTy::F32 | NumTy::F64 => unreachable!("wrap_int on float"),
+    }
+}
+
+fn eval_num(op: NumOp, ty: NumTy, l: Value, r: Value) -> Result<Value, EvalErr> {
+    use NumOp::*;
+    if ty.is_float() {
+        return eval_num_float(op, ty, l, r);
+    }
+    let a = as_i128(ty, &l)?;
+    let b = as_i128(ty, &r)?;
+    let (lo, hi) = int_range(ty);
+    let overflow = || EvalErr::Trap(TrapKind::IntOverflow);
+    Ok(match op {
+        Add => {
+            let v = a + b;
+            if v < lo || v > hi {
+                return Err(overflow());
+            }
+            wrap_int(ty, v)
+        }
+        Sub => {
+            let v = a - b;
+            if v < lo || v > hi {
+                return Err(overflow());
+            }
+            wrap_int(ty, v)
+        }
+        Mul => {
+            let v = a.checked_mul(b).ok_or(overflow())?;
+            if v < lo || v > hi {
+                return Err(overflow());
+            }
+            wrap_int(ty, v)
+        }
+        Div => {
+            if b == 0 {
+                return Err(EvalErr::Trap(TrapKind::DivByZero));
+            }
+            if is_signed(ty) && a == lo && b == -1 {
+                return Err(EvalErr::Trap(TrapKind::DivOverflow));
+            }
+            wrap_int(ty, a / b)
+        }
+        Rem => {
+            if b == 0 {
+                return Err(EvalErr::Trap(TrapKind::DivByZero));
+            }
+            if is_signed(ty) && a == lo && b == -1 {
+                return Err(EvalErr::Trap(TrapKind::RemOverflow));
+            }
+            wrap_int(ty, a % b)
+        }
+        And => wrap_int(ty, a & b),
+        Or => wrap_int(ty, a | b),
+        Xor => wrap_int(ty, a ^ b),
+        Shl | Shr => {
+            // Frozen shift policy: the AMOUNT is checked (negative or
+            // >= width traps ShiftOutOfRange); bits leaving the width are
+            // discarded (the VALUE is not checked).
+            let w = int_width(ty);
+            if b < 0 || b >= w as i128 {
+                return Err(EvalErr::Trap(TrapKind::ShiftOutOfRange));
+            }
+            let amount = b as u32;
+            if op == Shl {
+                wrap_int(ty, a << amount)
+            } else if is_signed(ty) {
+                // Arithmetic shift: the i128 operand is sign-extended, so
+                // Rust's >> on i128 IS the per-width arithmetic shift.
+                wrap_int(ty, a >> amount)
+            } else {
+                // Logical shift on the zero-extended pattern.
+                wrap_int(ty, ((a as u128) >> amount) as i128)
+            }
+        }
+        Lt => Value::Bool(a < b),
+        Le => Value::Bool(a <= b),
+        Gt => Value::Bool(a > b),
+        Ge => Value::Bool(a >= b),
+        Eq => Value::Bool(a == b),
+        Ne => Value::Bool(a != b),
+    })
+}
+
+fn eval_num_float(op: NumOp, ty: NumTy, l: Value, r: Value) -> Result<Value, EvalErr> {
+    use NumOp::*;
+    // IEEE semantics in the operand's own precision (never lifted through
+    // f64 — double rounding would diverge from the other ends); the frozen
+    // divergences: `/` by ±0.0 TRAPS DivByZero (legacy engine parity)
+    // while `%` by ±0.0 yields NaN (legacy fmod parity). NaN compares
+    // unequal to everything; -0.0 == +0.0.
+    macro_rules! float_arm {
+        ($vt:ident, $st:ty) => {{
+            let (Value::$vt(a), Value::$vt(b)) = (&l, &r) else {
+                return Err(EvalErr::Infra(format!(
+                    "numeric {:?} on wrong-shaped float operands (admission violation)",
+                    ty
+                )));
+            };
+            Ok(match op {
+                Add => Value::$vt(*a + *b),
+                Sub => Value::$vt(*a - *b),
+                Mul => Value::$vt(*a * *b),
+                Div => {
+                    if *b == 0.0 {
+                        return Err(EvalErr::Trap(TrapKind::DivByZero));
+                    }
+                    Value::$vt(*a / *b)
+                }
+                Rem => Value::$vt(*a % *b),
+                Lt => Value::Bool(a < b),
+                Le => Value::Bool(a <= b),
+                Gt => Value::Bool(a > b),
+                Ge => Value::Bool(a >= b),
+                Eq => Value::Bool(a == b),
+                Ne => Value::Bool(a != b),
+                And | Or | Xor | Shl | Shr => {
+                    return Err(EvalErr::Infra(format!(
+                        "bit op {:?} on float operands (admission violation)",
+                        op
+                    )))
+                }
+            })
+        }};
+    }
+    match ty {
+        NumTy::F32 => float_arm!(F32, f32),
+        NumTy::F64 => float_arm!(F64, f64),
+        _ => unreachable!("eval_num_float on int"),
+    }
+}
+
+/// The frozen conversion matrix (T-01 §3). Identity pairs never reach the
+/// instruction from lowering, but execute as a plain copy here.
+fn eval_conv(src: NumTy, dst: NumTy, v: Value) -> Result<Value, EvalErr> {
+    if src == dst {
+        return Ok(v);
+    }
+    if !src.is_float() && !dst.is_float() {
+        // int -> int: widen by sign/zero extension, narrow (or re-sign the
+        // same width) CHECKED against the destination range.
+        let a = as_i128(src, &v)?;
+        let (lo, hi) = int_range(dst);
+        if a < lo || a > hi {
+            return Err(EvalErr::Trap(TrapKind::IntOverflow));
+        }
+        return Ok(wrap_int(dst, a));
+    }
+    if !src.is_float() && dst.is_float() {
+        // int -> float: exact when representable, else round-to-nearest
+        // (Rust `as`); never traps.
+        let a = as_i128(src, &v)?;
+        return Ok(match dst {
+            NumTy::F32 => Value::F32(a as f32),
+            NumTy::F64 => Value::F64(a as f64),
+            _ => unreachable!(),
+        });
+    }
+    // float -> int: CHECKED (NaN / ±Inf / out-of-range after truncation
+    // trap FloatToInt; truncation is toward zero).
+    let f = match (&v, src) {
+        (Value::F32(x), NumTy::F32) => *x as f64,
+        (Value::F64(x), NumTy::F64) => *x,
+        _ => {
+            return Err(EvalErr::Infra(format!(
+                "conv from {:?} on wrong-shaped operand {:?} (admission violation)",
+                src, v
+            )))
+        }
+    };
+    if !dst.is_float() {
+        if f.is_nan() || f.is_infinite() {
+            return Err(EvalErr::Trap(TrapKind::FloatToInt));
+        }
+        let (lo, hi) = int_range(dst);
+        let t = f.trunc();
+        if t < lo as f64 || t > hi as f64 {
+            return Err(EvalErr::Trap(TrapKind::FloatToInt));
+        }
+        return Ok(wrap_int(dst, t as i128));
+    }
+    // float -> float: f32 -> f64 exact; f64 -> f32 round-to-nearest, a
+    // finite value that rounds past the f32 range traps FloatOverflow
+    // (never silent ±Inf); NaN quiets (payload not preserved through the
+    // conversion — frozen, T-01 §8.7); ±Inf stays ±Inf.
+    match (src, dst) {
+        (NumTy::F32, NumTy::F64) => match v {
+            Value::F32(x) => Ok(Value::F64(x as f64)),
+            _ => Err(EvalErr::Infra("conv f32->f64 wrong shape".into())),
+        },
+        (NumTy::F64, NumTy::F32) => match v {
+            Value::F64(x) => {
+                if x.is_finite() {
+                    let narrowed = x as f32;
+                    if narrowed.is_infinite() {
+                        return Err(EvalErr::Trap(TrapKind::FloatOverflow));
+                    }
+                    Ok(Value::F32(narrowed))
+                } else {
+                    Ok(Value::F32(x as f32))
+                }
+            }
+            _ => Err(EvalErr::Infra("conv f64->f32 wrong shape".into())),
+        },
+        _ => unreachable!("same-width float conv"),
     }
 }
 

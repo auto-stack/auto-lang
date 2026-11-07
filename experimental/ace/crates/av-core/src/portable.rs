@@ -256,6 +256,14 @@ pub fn freeze(v: &DynValue, opts: &TraversalOptions) -> Result<Vec<u8>, Portable
                     category: "unit-value",
                 })
             }
+            // PLAN-961: the narrow integers are not part of the PLAN-824
+            // dynamic type set (DynType) — a controlled rejection here,
+            // never a silent widening to the i32 tag.
+            Value::I8(_) | Value::U8(_) | Value::U32(_) => {
+                return Err(PortableError::Unsupported {
+                    category: "narrow-integer-value",
+                })
+            }
             Value::I32(x) => {
                 write_tydesc(&mut node, ty, 1, &mut t)?;
                 node.push(TAG_I32);

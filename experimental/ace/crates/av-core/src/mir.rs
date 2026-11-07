@@ -52,6 +52,12 @@ pub enum MirType {
     U64,
     F32,
     F64,
+    /// PLAN-961 numeric surface: the narrow signed/unsigned integers.
+    /// `byte`/`uint` are source-level aliases of `U8`/`U32`; `int` stays
+    /// the adjudicated `I32` (never Rust's default width).
+    I8,
+    U8,
+    U32,
     /// Nominal record type (PLAN-820): identity is (owner_module, name,
     /// full field list with declaration order and per-field type indices).
     /// Two records of equal width but different owner/name never compare
@@ -169,6 +175,10 @@ pub enum MirConst {
     Bool(bool),
     I64(i64),
     U64(u64),
+    /// PLAN-961: narrow integers (same exact-value discipline as I64/U64).
+    I8(i8),
+    U8(u8),
+    U32(u32),
     /// f32 payload as raw bits.
     F32Bits(u32),
     /// f64 payload as raw bits.
@@ -219,6 +229,13 @@ pub struct MirSlot {
 /// Binary operations. Arithmetic traps on overflow/div-by-zero/MIN%-1 per
 /// the scalar contract; the trap policy is implicit in the profile (frozen
 /// by T-01), so it is not carried per instruction.
+///
+/// PLAN-961 numeric surface: the frozen `*I32` variants (wire subcodes
+/// 1..=11) stay untouched so existing artifacts and golden outputs are
+/// byte-stable; every OTHER numeric type rides the structural
+/// [`BinOp::Num`] form (wire subcode 12). `Num` with `ty == I32` is the
+/// ONLY encoding for i32 bit/shift ops (the legacy subcodes never carried
+/// them); i32 arithmetic/comparisons keep using the legacy subcodes.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BinOp {
     AddI32,
@@ -232,14 +249,91 @@ pub enum BinOp {
     GeI32,
     EqI32,
     NeI32,
+    /// PLAN-961: typed numeric operation — semantics (checked arithmetic,
+    /// IEEE floats, shift bounds, fmod rem) keyed by `(op, ty)` per the
+    /// frozen numeric contract (PLAN-961 T-01 §2).
+    Num { op: NumOp, ty: NumTy },
+}
+
+/// The op vocabulary of [`BinOp::Num`]. Bit ops and shifts are int-only;
+/// float rem is fmod (Rust `%`); comparisons are IEEE for floats.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum NumOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    And,
+    Or,
+    Xor,
+    Shl,
+    Shr,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    Eq,
+    Ne,
+}
+
+/// The numeric type axis of [`BinOp::Num`]: both operands AND the result
+/// (for non-comparison ops) must have exactly this scalar shape — mixed
+/// widths require an explicit `Conv` (no implicit promotion, PLAN-961
+/// T-01 §2 same-type discipline).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum NumTy {
+    I8,
+    I32,
+    U8,
+    U32,
+    I64,
+    U64,
+    F32,
+    F64,
+}
+
+impl NumTy {
+    /// Whether this is a float type (IEEE semantics; no bit/shift ops).
+    pub fn is_float(self) -> bool {
+        matches!(self, NumTy::F32 | NumTy::F64)
+    }
+
+    /// The verification shape of this numeric axis (inverse of
+    /// `ScalarShape::num_ty` for the numeric members).
+    pub fn shape_of(self) -> ScalarShape {
+        match self {
+            NumTy::I8 => ScalarShape::I8,
+            NumTy::I32 => ScalarShape::I32,
+            NumTy::U8 => ScalarShape::U8,
+            NumTy::U32 => ScalarShape::U32,
+            NumTy::I64 => ScalarShape::I64,
+            NumTy::U64 => ScalarShape::U64,
+            NumTy::F32 => ScalarShape::F32,
+            NumTy::F64 => ScalarShape::F64,
+        }
+    }
 }
 
 impl BinOp {
     pub fn result_is_bool(&self) -> bool {
-        matches!(
-            self,
-            BinOp::LtI32 | BinOp::LeI32 | BinOp::GtI32 | BinOp::GeI32 | BinOp::EqI32 | BinOp::NeI32
-        )
+        match self {
+            BinOp::LtI32
+            | BinOp::LeI32
+            | BinOp::GtI32
+            | BinOp::GeI32
+            | BinOp::EqI32
+            | BinOp::NeI32 => true,
+            BinOp::Num { op, .. } => {
+                matches!(
+                    op,
+                    NumOp::Lt | NumOp::Le | NumOp::Gt | NumOp::Ge | NumOp::Eq | NumOp::Ne
+                )
+            }
+            BinOp::AddI32 | BinOp::SubI32 | BinOp::MulI32 | BinOp::DivI32 | BinOp::RemI32 => {
+                false
+            }
+        }
     }
 }
 
@@ -247,6 +341,11 @@ impl BinOp {
 pub enum UnOp {
     NegI32,
     NotBool,
+    /// PLAN-961: checked negation for the non-i32 signed integers and the
+    /// float sign-flip (0.0 -> -0.0, NaN sign bit flips). `ty` admits only
+    /// I8/I64/F32/F64 — unsigned negation is typed away before lowering
+    /// and i32 keeps the frozen `NegI32` subcode.
+    NegT { ty: NumTy },
 }
 
 /// Test trace events (PLAN-798 §5.1): observation only, no I/O capability.
@@ -318,6 +417,15 @@ pub enum MirInstr {
         op: UnOp,
         dst: SlotId,
         operand: SlotId,
+    },
+    /// PLAN-961: explicit numeric conversion (`as`/`.as(T)`/`.to(T)`).
+    /// Source and destination types come from the slot types; the frozen
+    /// conversion matrix (sign/zero extension, checked narrowing, checked
+    /// float->int, round-to-nearest int->float and f64->f32) is enforced
+    /// by `mir_verify` and executed identically on every end.
+    Conv {
+        dst: SlotId,
+        src: SlotId,
     },
     Call {
         callee: CalleeRef,
@@ -986,6 +1094,9 @@ impl MirModule {
             MirType::U64 => Some(ScalarShape::U64),
             MirType::F32 => Some(ScalarShape::F32),
             MirType::F64 => Some(ScalarShape::F64),
+            MirType::I8 => Some(ScalarShape::I8),
+            MirType::U8 => Some(ScalarShape::U8),
+            MirType::U32 => Some(ScalarShape::U32),
             MirType::Unit
             | MirType::Fn(_)
             | MirType::Record(_)
@@ -1032,6 +1143,27 @@ pub enum ScalarShape {
     U64,
     F32,
     F64,
+    /// PLAN-961 numeric surface narrow shapes.
+    I8,
+    U8,
+    U32,
+}
+
+impl ScalarShape {
+    /// The [`NumTy`] axis for `BinOp::Num`/`UnOp::NegT` admission.
+    pub fn num_ty(self) -> Option<NumTy> {
+        match self {
+            ScalarShape::I32 => Some(NumTy::I32),
+            ScalarShape::I8 => Some(NumTy::I8),
+            ScalarShape::U8 => Some(NumTy::U8),
+            ScalarShape::U32 => Some(NumTy::U32),
+            ScalarShape::I64 => Some(NumTy::I64),
+            ScalarShape::U64 => Some(NumTy::U64),
+            ScalarShape::F32 => Some(NumTy::F32),
+            ScalarShape::F64 => Some(NumTy::F64),
+            ScalarShape::Bool => None,
+        }
+    }
 }
 
 impl MirInstr {
@@ -1044,9 +1176,14 @@ impl MirInstr {
     pub fn can_trap(&self) -> bool {
         match self {
             MirInstr::Bin { .. } => true,
+            // PLAN-961: typed negation (checked signed MIN, float never
+            // traps but rides the same family) and the checked conversion
+            // matrix (narrowing / float->int / f64->f32 overflow).
             MirInstr::Un {
-                op: UnOp::NegI32, ..
+                op: UnOp::NegI32 | UnOp::NegT { .. },
+                ..
             } => true,
+            MirInstr::Conv { .. } => true,
             // PLAN-822: index traps and the runtime variant defense.
             MirInstr::ListGet { .. }
             | MirInstr::ListSet { .. }
@@ -1164,6 +1301,9 @@ impl MirModule {
                 | MirType::U64
                 | MirType::F32
                 | MirType::F64
+                | MirType::I8
+                | MirType::U8
+                | MirType::U32
                 | MirType::Char
                 | MirType::Str
                 | MirType::StrView

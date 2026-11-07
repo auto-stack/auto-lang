@@ -215,6 +215,14 @@ impl<'a, 'r> Verifier<'a, 'r> {
     fn collections_surface(&self) -> bool {
         self.is_collections || self.is_dynamic || self.is_closures
     }
+    /// PLAN-961: the typed numeric surface (narrow/wide/float arithmetic,
+    /// bit ops, shifts, conversions) — admitted by the data profile and
+    /// every successor (owned/collections/dynamic/closures), exactly the
+    /// family that admits the wide scalar TYPES today. The frozen
+    /// `av.core-i32/1` profile keeps its i32-only surface.
+    fn numeric_surface(&self) -> bool {
+        self.is_data || self.is_owned || self.collections_surface()
+    }
     fn tick(&mut self, n: u64) -> Result<(), MirVerifyError> {
         self.steps += n;
         if self.steps > MAX_VERIFY_WORK_STEPS {
@@ -471,6 +479,19 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             t,
                             crate::contract::AV_DATA_PROFILE,
                             crate::contract::AV_OWNED_PROFILE
+                        ),
+                    ));
+                }
+                // PLAN-961: the narrow integers ride the same data-family
+                // gate as the wide scalars.
+                MirType::I8 | MirType::U8 | MirType::U32
+                    if !self.numeric_surface() =>
+                {
+                    return Err(MirVerifyError::uns(
+                        "mir.profile-type",
+                        format!(
+                            "type #{ti} ({:?}) exists only in the data-family profiles",
+                            t
                         ),
                     ));
                 }
@@ -2151,6 +2172,10 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             Some(MirConst::U64(_)) => Some(ScalarShape::U64),
                             Some(MirConst::F32Bits(_)) => Some(ScalarShape::F32),
                             Some(MirConst::F64Bits(_)) => Some(ScalarShape::F64),
+                            // PLAN-961: narrow-integer consts.
+                            Some(MirConst::I8(_)) => Some(ScalarShape::I8),
+                            Some(MirConst::U8(_)) => Some(ScalarShape::U8),
+                            Some(MirConst::U32(_)) => Some(ScalarShape::U32),
                             Some(MirConst::Char(_)) | Some(MirConst::Str(_)) => None,
                             None => {
                                 return Err(err(
@@ -2259,45 +2284,83 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             self.module.type_shape(lt),
                             self.module.type_shape(rt),
                         );
-                        // Wide scalars have NO arithmetic in this profile: a
-                        // Bin touching i64/u64/f32/f64 is an out-of-profile
-                        // operation regardless of shapes otherwise matching
-                        // (contract-decision §4 — no new Bin subcodes).
-                        if self.is_data
-                            && matches!(
-                                shapes.1.or(shapes.2),
-                                Some(ScalarShape::I64)
-                                    | Some(ScalarShape::U64)
-                                    | Some(ScalarShape::F32)
-                                    | Some(ScalarShape::F64)
-                            )
-                        {
-                            return Err(err(
-                                "mir.type-op",
-                                format!(
-                                    "binary {:?} on wide-scalar operands (types {},{}); the data profile has no wide-scalar arithmetic",
-                                    op, lt, rt
-                                ),
-                            ));
-                        }
-                        use ScalarShape::*;
-                        let ok = if op.result_is_bool() {
-                            match op {
-                                BinOp::EqI32 | BinOp::NeI32 => {
-                                    shapes.1.is_some()
-                                        && shapes.1 == shapes.2
-                                        && shapes.0 == Some(Bool)
-                                }
-                                _ => shapes == (Some(Bool), Some(I32), Some(I32)),
+                        // PLAN-961: the typed numeric surface replaces the
+                        // PLAN-820 "no wide-scalar arithmetic" gate. The
+                        // structural `Num { op, ty }` form requires BOTH
+                        // operands to have exactly `ty`'s shape (no implicit
+                        // promotion) and dst = ty (or Bool for comparisons);
+                        // bit/shift ops are int-only. The legacy `*I32`
+                        // subcodes keep their frozen i32-only typing, and
+                        // EqI32/NeI32 no longer admit wide/float pairs —
+                        // those MUST ride Num{Eq/Ne, ty} (the old admission
+                        // let through shapes the interpreter could not
+                        // execute; closing that seam is part of this plan).
+                        if let BinOp::Num { op: nop, ty } = op {
+                            if !self.numeric_surface() {
+                                return Err(err(
+                                    "mir.profile-type",
+                                    "typed numeric operations exist only in the data-family profiles".to_string(),
+                                ));
+                            }
+                            let want = ty.shape_of();
+                            if lt != rt || shapes.1 != Some(want) {
+                                return Err(err(
+                                    "mir.bin-type",
+                                    format!(
+                                        "numeric {:?} on {:?} requires same-type {:?} operands (types {},{})",
+                                        nop, ty, want, lt, rt
+                                    ),
+                                ));
+                            }
+                            let ok = if matches!(
+                                nop,
+                                NumOp::Lt
+                                    | NumOp::Le
+                                    | NumOp::Gt
+                                    | NumOp::Ge
+                                    | NumOp::Eq
+                                    | NumOp::Ne
+                            ) {
+                                shapes.0 == Some(ScalarShape::Bool)
+                            } else if matches!(nop, NumOp::And | NumOp::Or | NumOp::Xor | NumOp::Shl | NumOp::Shr)
+                                && ty.is_float()
+                            {
+                                false
+                            } else {
+                                shapes.0 == Some(want)
+                            };
+                            if !ok {
+                                return Err(err(
+                                    "mir.bin-type",
+                                    format!(
+                                        "numeric {:?} on {:?} does not type check for dst type {}",
+                                        nop, ty, dt
+                                    ),
+                                ));
                             }
                         } else {
-                            shapes == (Some(I32), Some(I32), Some(I32))
-                        };
-                        if !ok {
-                            return Err(err(
-                                "mir.bin-type",
-                                format!("binary {:?} does not type check for dst/lhs/rhs types ({},{},{})", op, dt, lt, rt),
-                            ));
+                            use ScalarShape::*;
+                            let ok = if op.result_is_bool() {
+                                match op {
+                                    // Tightened by PLAN-961: the legacy
+                                    // equality subcodes admit i32/bool only;
+                                    // every other scalar pair rides Num.
+                                    BinOp::EqI32 | BinOp::NeI32 => {
+                                        shapes.0 == Some(Bool)
+                                            && (shapes.1 == Some(I32) && shapes.2 == Some(I32)
+                                                || shapes.1 == Some(Bool) && shapes.2 == Some(Bool))
+                                    }
+                                    _ => shapes == (Some(Bool), Some(I32), Some(I32)),
+                                }
+                            } else {
+                                shapes == (Some(I32), Some(I32), Some(I32))
+                            };
+                            if !ok {
+                                return Err(err(
+                                    "mir.bin-type",
+                                    format!("binary {:?} does not type check for dst/lhs/rhs types ({},{},{})", op, dt, lt, rt),
+                                ));
+                            }
                         }
                     }
                     MirInstr::Un { op, dst, operand } => {
@@ -2312,6 +2375,15 @@ impl<'a, 'r> Verifier<'a, 'r> {
                                 self.module.type_shape(dt) == Some(ScalarShape::Bool)
                                     && self.module.type_shape(ot) == Some(ScalarShape::Bool)
                             }
+                            // PLAN-961: typed negation — signed or float
+                            // only (unsigned negation is typed away before
+                            // lowering), same shape for operand and result.
+                            UnOp::NegT { ty } => {
+                                self.numeric_surface()
+                                    && !matches!(ty, crate::mir::NumTy::U8 | crate::mir::NumTy::U32 | crate::mir::NumTy::U64 | crate::mir::NumTy::I32)
+                                    && self.module.type_shape(ot) == Some(ty.shape_of())
+                                    && self.module.type_shape(dt) == Some(ty.shape_of())
+                            }
                         };
                         if !ok {
                             return Err(err(
@@ -2319,6 +2391,33 @@ impl<'a, 'r> Verifier<'a, 'r> {
                                 format!(
                                     "unary {:?} does not type check for types ({},{})",
                                     op, dt, ot
+                                ),
+                            ));
+                        }
+                    }
+                    MirInstr::Conv { dst, src } => {
+                        // PLAN-961: the frozen conversion matrix — both
+                        // slots numeric, any pair admitted (identity pairs
+                        // are pointless but legal); the runtime checks
+                        // narrowing/float->int value bounds.
+                        let dt = slot_ty_of(f, *dst, sp, "conv dst")?;
+                        let st = slot_ty_of(f, *src, sp, "conv src")?;
+                        if !self.numeric_surface() {
+                            return Err(err(
+                                "mir.profile-type",
+                                "numeric conversions exist only in the data-family profiles".to_string(),
+                            ));
+                        }
+                        let ok = matches!(
+                            (self.module.type_shape(dt), self.module.type_shape(st)),
+                            (Some(a), Some(b)) if a.num_ty().is_some() && b.num_ty().is_some()
+                        );
+                        if !ok {
+                            return Err(err(
+                                "mir.conv-type",
+                                format!(
+                                    "conversion requires numeric slots (types {},{})",
+                                    st, dt
                                 ),
                             ));
                         }
@@ -4252,6 +4351,7 @@ impl MirInstr {
             | MirInstr::Copy { dst, .. }
             | MirInstr::Bin { dst, .. }
             | MirInstr::Un { dst, .. }
+            | MirInstr::Conv { dst, .. }
             | MirInstr::Call { dst, .. }
             | MirInstr::ForeignCall { dst, .. }
             | MirInstr::FieldGet { dst, .. }
@@ -4317,6 +4417,8 @@ impl MirInstr {
             MirInstr::FieldMove { root, .. } => vec![*root],
             MirInstr::Bin { lhs, rhs, .. } => vec![*lhs, *rhs],
             MirInstr::Un { operand, .. } => vec![*operand],
+            // PLAN-961: a conversion reads its source, defines its dst.
+            MirInstr::Conv { src, .. } => vec![*src],
             MirInstr::Call { args, .. } | MirInstr::ForeignCall { args, .. } => args.clone(),
             MirInstr::HostCall { arg, .. } => vec![*arg],
             MirInstr::GlobalGet { .. } => vec![],

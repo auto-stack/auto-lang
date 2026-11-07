@@ -36,6 +36,11 @@ pub fn scalar_layout(t: &MirType) -> Option<ScalarLayout> {
         MirType::U64 => ScalarLayout { size: 8, align: 8 },
         MirType::F32 => ScalarLayout { size: 4, align: 4 },
         MirType::F64 => ScalarLayout { size: 8, align: 8 },
+        // PLAN-961 numeric surface: i8/u8 are 1 byte at align 1, u32 is
+        // 4/4 (the same physical channel shape as i32/f32).
+        MirType::I8 => ScalarLayout { size: 1, align: 1 },
+        MirType::U8 => ScalarLayout { size: 1, align: 1 },
+        MirType::U32 => ScalarLayout { size: 4, align: 4 },
         // PLAN-821 (782 layout contract): char rides a u32 channel; an
         // owned Str field is logically {ptr u64, len u32} = 12 bytes at
         // align 8 — resource records therefore align to 8 while copyable
