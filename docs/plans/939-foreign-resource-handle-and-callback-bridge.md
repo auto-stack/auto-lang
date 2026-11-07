@@ -251,6 +251,8 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 
 ## 9. 复审记录
 
+T-08 补充验证收据（同日，round 16 收尾）：ace-abi 组偶发红定性——两次红样本分别为 cache_turnaround::abi_cache_parent_path_escape_shadow_invalidates 与 source_foreign 两个真实工具进程测试，均发生在**本轮前台组跑与后台稳定性循环并行执行**期间（双份 cl/构建负载互踩）；后台任务结束后两连干净串行整组跑全 PASS（receipt：PASS/PASS）。判定为环境归因（自致并行负载），非本包代码回归；T-08 交付（commit `7ba0611bd`）维持关闭。
+
 T-08 完成记录（2026-11-08，goal round 16，HEAD `7ba0611bd`）：**双代绑定+lease/GC+重入回调——T-08 关闭（8/14）**。939 组 56 例=55 PASS+控制位；938/937/925/ace-abi 全绿。(1) **V-06 一致性测试**（abi_resource939_provider_generations_lease_and_gc）：真实 fixture deck 经进程内完整 worker 入口（资质/旧绑定恢复/provider 事务）双代绑定——binding generation 1→2、两代 provider 对象 digest 互异；真 lease 钉住在用旧代、强制 GC 保留之；drop 钉（末次释放）后下一次强制 GC **真实回收**（deleted>0、收据干净）。(2) **deck 级转换案例 ×双腿**（provider-transition）：query(bias 0)→deck 编辑 bias 1→query——worker 先恢复旧受审绑定再事务到新 provider，两次 query 均交付受审 oracle（exit 3504）。(3) **V-07 合法重入回调 ×双腿**（callback-reentrant）：回调**体内**做 foreign view 调用（fold 进行中的嵌套 foreign 调用、同一请求、不存储）——exit 21、嵌套事件序精确 [fold, byte_length×3]；reference 精确镜像（其自身回调做嵌套调用）。过程：reference 初版前置循环多射事件被父准入红出（镜像纪律第四次生效）后精简；一次 cache_turnaround 并行偶发红（隔离重跑+整组复跑绿，记为环境归因观察）。V-06 的"错provider A/B"跨库面：单库单 provider 域内由 forged/stale 拒（T-06）+ 双代 digest 互异覆盖；跨 provider 链接面沿 797 edges 先例归 797 所有权，不在本包单库矩阵内（§5.4"已静态绑定代际"语义按 store/绑定层交付）。
 
 stage: goal | plan_id: PLAN-939 | plan_revision: r3 | round: 16 | from: work | to: work | status: executing | outcome: interim（T-08 ✅ 8/14；双代 lease/GC+重入回调）| worktree: D:/autostack/.wt/lang-939/auto-lang | commit: 7ba0611bd | next: work（T-09 全stage真实计数/精确reader失效/required资源页/真实source恢复首编辑与首错修复）
