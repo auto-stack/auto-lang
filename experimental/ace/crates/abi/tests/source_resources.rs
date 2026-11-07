@@ -1766,7 +1766,12 @@ mod source_foreign {
             },
         );
         let mir = mir.unwrap();
-        assert_eq!(hits, 1, "did not observe the real instruction array growth");
+        // PLAN-939 T-02/r3: the `.mut` write-back copies (and the S06
+        // callback marshaling) add real instructions past this fixture's
+        // original single-growth budget — the INVARIANT is that EVERY
+        // array growth goes through the reserved ticket (admitted), not
+        // the exact growth count.
+        assert!(hits >= 1, "did not observe the real instruction array growth");
         assert!(
             admitted,
             "old/new instruction arrays or live spans were not reserved together"

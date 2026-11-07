@@ -151,6 +151,28 @@ impl CertPolicy {
             Self::Resource939 => crate::resource_provider::qualify_resource(manifest, caps),
         }
     }
+    /// The RESTORE qualification's authority: derived from the STORED
+    /// pointer's ACCEPTED contract digest (the old binding), never the
+    /// incoming deck's reference — a review transition restores the old
+    /// binding first and only then transacts to the new contract.
+    pub fn authority_for_digest(
+        self,
+        provider_digest: &str,
+        generation: u64,
+        caps: &[String],
+        contract_digest: &str,
+    ) -> Result<ace_foreign_contract::manual::HostAuthority, String> {
+        match self {
+            Self::Scalar938 => Ok(provider::Review::for_digest(contract_digest)
+                .ok_or_else(|| "unreviewed accepted contract".to_string())?
+                .authority(provider_digest, generation, caps)),
+            Self::Resource939 => Ok(crate::resource_provider::resource_authority(
+                provider_digest,
+                generation,
+                caps,
+            )),
+        }
+    }
     pub fn authority(
         self,
         provider_digest: &str,
@@ -716,12 +738,14 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         }
         let mut restore_current = || {
             Ok(CurrentAuthority {
-                foreign: policy.authority(
-                    &restore_digest,
-                    restore_generation,
-                    &deck.capabilities,
-                    &deck.reference,
-                ),
+                foreign: policy
+                    .authority_for_digest(
+                        &restore_digest,
+                        restore_generation,
+                        &deck.capabilities,
+                        &previous.contract_digest,
+                    )
+                    .map_err(|e| format!("foreign.restore.authority: {e}"))?,
                 runtime_digest: policy.certification_runtime_policy(target),
                 emitter: target.identity(),
             })

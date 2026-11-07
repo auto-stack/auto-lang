@@ -483,6 +483,7 @@ fn provider_with(root: &Path, bias: i32, all: bool, bad_bool: bool) -> (PathBuf,
                 },
                 error_model: None,
                 semantic_ref: None,
+                resource: None,
             }],
             effects: vec!["pure:provider_add".into()],
             capabilities: vec![SOURCE_CAP.into()],
@@ -575,6 +576,7 @@ fn provider_with(root: &Path, bias: i32, all: bool, bad_bool: bool) -> (PathBuf,
                 form,
                 error_model,
                 semantic_ref: None,
+                resource: None,
             });
             m.declarations.push(ManualDecl {
                 source_name: name.into(),
@@ -2210,7 +2212,7 @@ fn source_foreign_warm_body_edit_p90_gate() {
             target,
         )
         .unwrap();
-        let mut current = || -> Result<ace_abi::source_foreign::CurrentAuthority, String> {
+        let current = || -> Result<ace_abi::source_foreign::CurrentAuthority, String> {
             Ok(fixture_current(&environment, target))
         };
         let mut samples = Vec::new();
