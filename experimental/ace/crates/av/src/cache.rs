@@ -1008,6 +1008,10 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
         // and the ENTRY unit is exactly the one the driver executes).
         unit.entry_kind = m.entry_kind;
         unit.capabilities = m.capabilities.clone();
+        // PLAN-960: the global cell table travels with every unit so unit
+        // verification range-checks global references (cells themselves are
+        // program-scoped at link, never persisted per unit).
+        unit.globals = m.globals.clone();
         let mut ty_map: Vec<TypeIdx> = vec![u32::MAX; m.types.len()];
         let mut c_map: Vec<u32> = vec![u32::MAX; m.consts.len()];
         // Needed types: own sig + slots + callee sigs + referenced import sigs.

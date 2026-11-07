@@ -682,12 +682,14 @@ fn verify_owned_function_impl(
                     if is_rootable[*dst as usize] {
                         check_def_conflict!(dst, "re-initialization");
                     }
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::GlobalSet { dst, src, .. } => {
                     check_read!(src, "global write");
                     if is_rootable[*dst as usize] {
                         check_def_conflict!(dst, "re-initialization");
                     }
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::Const { dst, .. }
                 | MirInstr::Bin { dst, .. }

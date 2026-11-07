@@ -28,6 +28,7 @@ use std::{path::Path, sync::Arc};
 const SCHEMA: &str = "av-source-modules/1";
 const ASSEMBLY_SCHEMA: &str = "av-source-modules/2";
 mod assembly;
+pub mod packages;
 pub use assembly::assembly_consumer;
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
