@@ -2394,7 +2394,15 @@ impl Codegen {
                     // 缺位编译期补齐（replacer=null、space=0），沿 Plan 197
                     // str.slice 补参先例。超参（>3）沿 JS 忽略语义不管——
                     // shim 只弹 3，多参调用点会失衡，现源无此形态。
-                    if func_name.as_deref() == Some("JSON.stringify") {
+                    // PLAN-995 T-02（H5）：`.at` 自然拼写 `json.stringify`（小写）
+                    // 与 JS 轨 `JSON.stringify` 解析到同一 shim/同一三参 ABI，
+                    // 原先只匹配大写拼写——.at 1 参调用未补位即弹穿（h6-mini
+                    // 探针：浅栈 panic "Stack Underflow (nanbox)"，深栈垃圾）。
+                    // 双拼写统一补位。
+                    if matches!(
+                        func_name.as_deref(),
+                        Some("JSON.stringify") | Some("json.stringify")
+                    ) {
                         match call.args.args.len() {
                             1 => {
                                 self.emit(OpCode::PUSH_NIL);

@@ -110,6 +110,10 @@ mod tests_chart_geometry;
 #[cfg(test)]
 mod tests_collections;
 
+// PLAN-995 T-01（W01）：json/codegen hazard 目录永久 probe（H1-H5 + W02 预置）。
+#[cfg(test)]
+mod tests_json_hazards;
+
 // Plan 485 T3: clipboard natives 四件套 VM 层栈协议（实剪贴板往返）。
 // PLAN-814 T-02 迁移上移：测试消费上层 UI 面，已迁 auto-lang
 // src/tests/plan485_clipboard_natives.rs（原 `native-clipboard` 门在 SDK

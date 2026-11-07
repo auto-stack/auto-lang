@@ -205,17 +205,33 @@ pub fn shim_web_json_stringify(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         0
     };
     let value = nv_to_vm_value(vm, value_nv);
-    let jv = vm_value_to_json(vm, &value, 0)?;
+    // PLAN-995 T-02：直序化（无中间 serde_json::Value 树）。深度/非有限
+    // 浮点错误文本与旧 vm_value_to_json 一致原样上抛；其余沿旧映射加
+    // `JSON.stringify:` 前缀。
+    let direct = crate::vm::ffi::stdlib::strings_json::VmJsonDirect {
+        vm,
+        value: &value,
+        depth: 0,
+    };
     let text = if space > 0 {
-        serde_json::to_string_pretty(&jv)
-            .map_err(|e| VMError::RuntimeError(format!("JSON.stringify: {}", e)))?
+        serde_json::to_string_pretty(&direct).map_err(map_stringify_error)?
     } else {
-        serde_json::to_string(&jv)
-            .map_err(|e| VMError::RuntimeError(format!("JSON.stringify: {}", e)))?
+        serde_json::to_string(&direct).map_err(map_stringify_error)?
     };
     let idx = vm.add_string(text.into_bytes());
     vm.rc_push_str_idx(task, idx as usize);
     Ok(())
+}
+
+/// stringify 错误映射：语义错误（深度/非有限浮点，文本与 vm_value_to_json
+/// 一致）原样上抛，其余加 `JSON.stringify:` 前缀（旧双层映射的等价折叠）。
+fn map_stringify_error(e: serde_json::Error) -> VMError {
+    let msg = e.to_string();
+    if msg.starts_with("vm_value_to_json") || msg.starts_with("json.from_value") {
+        VMError::RuntimeError(msg)
+    } else {
+        VMError::RuntimeError(format!("JSON.stringify: {}", msg))
+    }
 }
 
 /// `Math.trunc(x)`——int 表达式（含经宽通道的大整数商）恒等直通

@@ -65,6 +65,12 @@ pub fn shim_str_char_at(s: String, index: i32) -> i32 {
 /// Plan 057: clamp indices to the nearest char boundaries and return the
 /// (possibly empty) slice instead of panicking when a byte index lands
 /// mid-char in multi-byte UTF-8 input.
+///
+/// PLAN-995 T-01（H6）：start 的 clamp 方向改为**回退**（lo -= 1）。
+/// 原前跳（lo += 1）在步进读缝隙丢整字：跨块中文字符被上一块的 end 回退
+/// 排除、又被下一块的 start 前跳跳过——分块 substr 重建比原文短
+/// （h7-diag 实证 66354→66348，分歧点即 CJK）。双向回退后
+/// s[boundary↓(start)..boundary↓(start+len)] 使步进覆盖无损。
 #[auto_macros::rust_fn("Str.substr")]
 pub fn shim_str_substr(s: String, start: i32, len: i32) -> String {
     if start < 0 || len < 0 || start as usize > s.len() {
@@ -75,14 +81,14 @@ pub fn shim_str_substr(s: String, start: i32, len: i32) -> String {
     // Debug preview must itself be boundary-safe: truncating at a raw byte
     // count would panic the same way the slice below used to.
     let preview: String = s.chars().take(16).collect();
-    while lo < s.len() && !s.is_char_boundary(lo) {
+    while lo > 0 && !s.is_char_boundary(lo) {
         if std::env::var("ASH_DEBUG_SUBSTR").is_ok() {
             eprintln!(
                 "[SUBSTR-CLAMP] start {} inside multi-byte char of {:?}",
                 lo, preview
             );
         }
-        lo += 1;
+        lo -= 1;
     }
     while hi > 0 && !s.is_char_boundary(hi) {
         if std::env::var("ASH_DEBUG_SUBSTR").is_ok() {
@@ -101,7 +107,8 @@ pub fn shim_str_substr(s: String, start: i32, len: i32) -> String {
 
 /// END-semantics substring for the `.slice(start, end)` / `.sub(start, end)`
 /// spellings — matches a2r's `s[start..end]` / `&s[start..end]` emission.
-/// Same Plan 057 boundary clamps as the LEN sibling above.
+/// Same Plan 057 boundary clamps as the LEN sibling above；PLAN-995 T-01（H6）
+/// start 同样回退式 clamp（与 substr 一致，步进无缝隙丢字）。
 #[auto_macros::rust_fn("Str.slice")]
 pub fn shim_str_slice(s: String, start: i32, end: i32) -> String {
     if start < 0 || end < start || start as usize > s.len() || end as usize > s.len() {
@@ -109,8 +116,8 @@ pub fn shim_str_slice(s: String, start: i32, end: i32) -> String {
     }
     let mut lo = start as usize;
     let mut hi = end as usize;
-    while lo < s.len() && !s.is_char_boundary(lo) {
-        lo += 1;
+    while lo > 0 && !s.is_char_boundary(lo) {
+        lo -= 1;
     }
     while hi > 0 && !s.is_char_boundary(hi) {
         hi -= 1;
@@ -363,9 +370,8 @@ pub fn shim_json_parse(s: String) -> String {
 pub fn shim_json_parse_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let s: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(format!("json.parse: {}", e)))?;
-    let value: serde_json::Value = serde_json::from_str(&s)
-        .map_err(|e| VMError::RuntimeError(format!("json.parse: invalid JSON: {}", e)))?;
-    json_to_vm_value(task, vm, &value, 0)
+    // PLAN-995 T-02：单趟直驱物化（无中间 serde_json::Value 树）。
+    parse_json_direct(task, vm, &s).map_err(map_parse_error)
 }
 
 /// `auto.json.to_value(json_str) -> NanoValue`
@@ -398,18 +404,22 @@ pub fn shim_json_to_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         task.ram.push_nv(auto_val::encode_null());
         return Ok(());
     }
-    let parsed: serde_json::Value = match serde_json::from_str(&json_str) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!(
-                "[WARN] json.to_value: invalid JSON {:?} on payload: {:?}",
-                e, json_str
-            );
-            task.ram.push_nv(auto_val::encode_null());
-            return Ok(());
+    let parsed_direct = parse_json_direct(task, vm, &json_str);
+    if let Err(e) = parsed_direct {
+        let msg = e.to_string();
+        if msg.starts_with("json_to_vm_value") {
+            // 深度类错误：旧路径经 json_to_vm_value 的 `?` 原样上抛
+            // （语法错误才走 WARN+null 兜底）——保持错误分类不变。
+            return Err(VMError::RuntimeError(msg));
         }
-    };
-    json_to_vm_value(task, vm, &parsed, 0)
+        eprintln!(
+            "[WARN] json.to_value: invalid JSON {:?} on payload: {:?}",
+            e, json_str
+        );
+        task.ram.push_nv(auto_val::encode_null());
+        return Ok(());
+    }
+    Ok(())
 }
 
 /// `auto.json.from_value(NanoValue) -> String`
@@ -449,8 +459,24 @@ pub fn shim_json_from_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     } else {
         auto_val::Value::Nil
     };
-    let json_val = vm_value_to_json(vm, &value, 0)?;
-    let s = serde_json::to_string(&json_val).unwrap_or_default();
+    // PLAN-995 T-02：直序化。语义错误（深度/非有限浮点，文本同
+    // vm_value_to_json）沿旧 `?` 上抛；其余序列化失败沿旧
+    // unwrap_or_default → 空串。
+    let direct = VmJsonDirect {
+        vm,
+        value: &value,
+        depth: 0,
+    };
+    let s = match serde_json::to_string(&direct) {
+        Ok(text) => text,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.starts_with("vm_value_to_json") || msg.starts_with("json.from_value") {
+                return Err(VMError::RuntimeError(msg));
+            }
+            String::new()
+        }
+    };
     let bytes = s.into_bytes();
     let str_idx = vm.add_string(bytes);
     vm.rc_push_str_idx(task, str_idx);
@@ -889,11 +915,15 @@ pub fn override_json_doc_natives(native_interface: &mut crate::vm::native::Nativ
         .resolve_qualified("auto.json.encode")
     {
         if let Some(original) = native_interface.get(id) {
-            JSON_DOC_ORIGINALS.lock().unwrap().insert(id, original.clone());
+            JSON_DOC_ORIGINALS
+                .lock()
+                .unwrap()
+                .insert(id, original.clone());
             let wrapper = move |task: &mut AutoTask, vm: &AutoVM| -> Result<(), VMError> {
-                let slot = task.ram.sp.checked_sub(1).ok_or_else(|| {
-                    VMError::RuntimeError("json.encode: missing value".into())
-                })?;
+                let slot =
+                    task.ram.sp.checked_sub(1).ok_or_else(|| {
+                        VMError::RuntimeError("json.encode: missing value".into())
+                    })?;
                 // Legacy native lists use a bare i32 handle plus an owned
                 // stack-slot stake. An unowned i32 is a number, even when its
                 // bits coincide with a live document/list id (PLAN-062 ABI).
@@ -949,7 +979,9 @@ pub fn override_json_doc_natives(native_interface: &mut crate::vm::native::Nativ
                     .get(&id)
                     .cloned()
                     .ok_or_else(|| {
-                        VMError::RuntimeError("json.encode doc native: original shim missing".into())
+                        VMError::RuntimeError(
+                            "json.encode doc native: original shim missing".into(),
+                        )
                     })?;
                 original(task, vm)
             };
@@ -1159,6 +1191,435 @@ fn json_to_vm_value_inner(
             );
             let id = vm.insert_heap_object(inst);
             Ok(Value::VmRef(auto_val::VmRef { id: id as usize }))
+        }
+    }
+}
+
+// ============================================================================
+// PLAN-995 T-02：json 单趟物化 / 直序化（消除中间 serde_json::Value 树）
+// ============================================================================
+
+const JSON_DIRECT_MAX_DEPTH: u32 = 64;
+
+/// 单趟 JSON→VM inner `Value` 物化 seed（serde 驱动，无中间树）。
+/// 语义与 `json_to_vm_value_inner` 逐臂对齐：i64→i32 装箱/I64、超 i64 的
+/// u64→BigIntData 堆 VmRef、f64→Double、str→AutoStr、子 VmRef 插入即
+/// retain、64 层深度上限（错误文本保持 `json_to_vm_value_inner:` 前缀）。
+struct DirectMatSeed<'a> {
+    vm: &'a AutoVM,
+    depth: u32,
+}
+
+impl<'de, 'a> serde::de::DeserializeSeed<'de> for DirectMatSeed<'a> {
+    type Value = auto_val::Value;
+    fn deserialize<D>(self, d: D) -> Result<Self::Value, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        d.deserialize_any(DirectMatVisitor {
+            vm: self.vm,
+            depth: self.depth,
+        })
+    }
+}
+
+/// inner 物化 visitor（容器元素/字段位）。
+struct DirectMatVisitor<'a> {
+    vm: &'a AutoVM,
+    depth: u32,
+}
+
+impl<'de, 'a> serde::de::Visitor<'de> for DirectMatVisitor<'a> {
+    type Value = auto_val::Value;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("any JSON value")
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E> {
+        Ok(auto_val::Value::Nil)
+    }
+
+    fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E> {
+        Ok(auto_val::Value::Bool(v))
+    }
+
+    fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E> {
+        Ok(match i32::try_from(v) {
+            Ok(small) => auto_val::Value::Int(small),
+            Err(_) => auto_val::Value::I64(v),
+        })
+    }
+
+    fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E> {
+        // serde_json 直驱对无符号语法形态的非负整数调 visit_u64（与经
+        // serde_json::Value 中转时 `as_i64()` 先行的归一不同）——必须先
+        // 归一到 i64 语义（i32 装箱/I64），仅真超 i64::MAX 才 BigIntData，
+        // 否则每个正整数字段都物化成 BigInt 堆引用（.to_string() 断链）。
+        if let Ok(i) = i64::try_from(v) {
+            return Ok(match i32::try_from(i) {
+                Ok(small) => auto_val::Value::Int(small),
+                Err(_) => auto_val::Value::I64(i),
+            });
+        }
+        let id = self
+            .vm
+            .insert_heap_object(crate::vm::heap_object::BigIntData::from_u64(v));
+        Ok(auto_val::Value::VmRef(auto_val::VmRef { id: id as usize }))
+    }
+
+    fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E> {
+        Ok(auto_val::Value::Double(v))
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> {
+        Ok(auto_val::Value::Str(auto_val::AutoStr::from(v)))
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::SeqAccess<'de>,
+    {
+        if self.depth >= JSON_DIRECT_MAX_DEPTH {
+            return Err(serde::de::Error::custom(format!(
+                "json_to_vm_value_inner: nesting depth exceeded ({})",
+                JSON_DIRECT_MAX_DEPTH
+            )));
+        }
+        use crate::vm::types::ListData;
+        let mut list: ListData<auto_val::Value> = ListData::new();
+        while let Some(elem) = seq.next_element_seed(DirectMatSeed {
+            vm: self.vm,
+            depth: self.depth + 1,
+        })? {
+            if let auto_val::Value::VmRef(r) = &elem {
+                self.vm.rc_retain_id(r.id as u64);
+            }
+            list.push(elem);
+        }
+        let id = self.vm.insert_heap_object(list);
+        Ok(auto_val::Value::VmRef(auto_val::VmRef { id: id as usize }))
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        if self.depth >= JSON_DIRECT_MAX_DEPTH {
+            return Err(serde::de::Error::custom(format!(
+                "json_to_vm_value_inner: nesting depth exceeded ({})",
+                JSON_DIRECT_MAX_DEPTH
+            )));
+        }
+        use crate::vm::generic_registry::GenericInstanceData;
+        let mut field_names: Vec<String> = Vec::new();
+        let mut fields: Vec<auto_val::Value> = Vec::new();
+        while let Some(name) = map.next_key::<String>()? {
+            let fv = map.next_value_seed(DirectMatSeed {
+                vm: self.vm,
+                depth: self.depth + 1,
+            })?;
+            if let auto_val::Value::VmRef(r) = &fv {
+                self.vm.rc_retain_id(r.id as u64);
+            }
+            field_names.push(name);
+            fields.push(fv);
+        }
+        let inst =
+            GenericInstanceData::new_with_names("__json_object".to_string(), fields, field_names);
+        let id = self.vm.insert_heap_object(inst);
+        Ok(auto_val::Value::VmRef(auto_val::VmRef { id: id as usize }))
+    }
+}
+
+/// 顶层物化 visitor（栈推送语义与 `json_to_vm_value` 对齐：标量直推、
+/// 容器 rc_push）。
+struct DirectTopMatVisitor<'a> {
+    vm: &'a AutoVM,
+    task: &'a mut AutoTask,
+}
+
+impl<'de, 'a> serde::de::Visitor<'de> for DirectTopMatVisitor<'a> {
+    type Value = ();
+
+    fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("any JSON value")
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E> {
+        self.task.ram.push_nv(auto_val::encode_null());
+        Ok(())
+    }
+
+    fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E> {
+        self.task.ram.push_nv(auto_val::encode_bool(v));
+        Ok(())
+    }
+
+    fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E> {
+        let nv = crate::vm::ffi::convert::encode_i64_with_heap(self.vm, v);
+        self.task.ram.push_nv(nv);
+        Ok(())
+    }
+
+    fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E> {
+        // 同 inner 臂注记：无符号语法形态先归一 i64 编码，仅超 i64::MAX
+        // 才 u64 宽编码（与旧 `as_i64()` 先行的顶层语义一致）。
+        let nv = if let Ok(i) = i64::try_from(v) {
+            crate::vm::ffi::convert::encode_i64_with_heap(self.vm, i)
+        } else {
+            crate::vm::ffi::convert::encode_u64_with_heap(self.vm, v)
+        };
+        self.task.ram.push_nv(nv);
+        Ok(())
+    }
+
+    fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E> {
+        self.task.ram.push_f64(v);
+        Ok(())
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> {
+        let str_idx = self.vm.add_string(v.as_bytes().to_vec());
+        self.vm.rc_push_str_idx(self.task, str_idx as usize);
+        Ok(())
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::SeqAccess<'de>,
+    {
+        use crate::vm::types::ListData;
+        let mut list: ListData<auto_val::Value> = ListData::new();
+        while let Some(elem) = seq.next_element_seed(DirectMatSeed {
+            vm: self.vm,
+            depth: 1,
+        })? {
+            if let auto_val::Value::VmRef(r) = &elem {
+                self.vm.rc_retain_id(r.id as u64);
+            }
+            list.push(elem);
+        }
+        let id = self.vm.insert_heap_object(list);
+        self.vm
+            .rc_push(self.task, auto_val::encode_object(id as u32));
+        Ok(())
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        use crate::vm::generic_registry::GenericInstanceData;
+        let mut field_names: Vec<String> = Vec::new();
+        let mut fields: Vec<auto_val::Value> = Vec::new();
+        while let Some(name) = map.next_key::<String>()? {
+            let fv = map.next_value_seed(DirectMatSeed {
+                vm: self.vm,
+                depth: 1,
+            })?;
+            if let auto_val::Value::VmRef(r) = &fv {
+                self.vm.rc_retain_id(r.id as u64);
+            }
+            field_names.push(name);
+            fields.push(fv);
+        }
+        let inst =
+            GenericInstanceData::new_with_names("__json_object".to_string(), fields, field_names);
+        let id = self.vm.insert_heap_object(inst);
+        self.vm
+            .rc_push(self.task, auto_val::encode_object(id as u32));
+        Ok(())
+    }
+}
+
+/// 单趟物化解析入口（PLAN-995 T-02）。
+/// pass 1：`IgnoredAny` 全量语法校验（零分配；尾随垃圾同 `from_str`
+/// 拒绝）——保证 pass 2 不因语法错误中途中止而留下部分物化（旧两段式
+/// 解析期零推送，错误路径栈干净，此性质必须保持）。
+/// pass 2：直驱物化；仅深度类错误可中途失败， unwind 部分推送
+/// （含影子份额释放），错误文本保持 `json_to_vm_value*:` 前缀。
+pub(crate) fn parse_json_direct(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    s: &str,
+) -> Result<(), serde_json::Error> {
+    use serde::Deserializer as _;
+    serde_json::from_str::<serde::de::IgnoredAny>(s)?;
+    let sp_before = task.ram.sp;
+    let mut de = serde_json::Deserializer::from_str(s);
+    let r = de
+        .deserialize_any(DirectTopMatVisitor { vm, task })
+        .and_then(|()| de.end());
+    if let Err(e) = r {
+        let sp_now = task.ram.sp;
+        if sp_now > sp_before {
+            vm.rc_release_slot_range(&mut task.ram, sp_before, sp_now);
+            task.ram.sp = sp_before;
+        }
+        return Err(e);
+    }
+    Ok(())
+}
+
+/// 语义错误（深度/NaN）透传、语法错误加前缀——供 shim 错误映射与
+/// 旧路径文本保持一致。
+pub(crate) fn map_parse_error(e: serde_json::Error) -> VMError {
+    let msg = e.to_string();
+    if msg.starts_with("json_to_vm_value") {
+        VMError::RuntimeError(msg)
+    } else {
+        VMError::RuntimeError(format!("json.parse: invalid JSON: {}", msg))
+    }
+}
+
+/// PLAN-995 T-02：VM 值直序化（serde Serialize 直写，无中间 Value 树）。
+/// 序列化形状与 `vm_value_to_json` + `serde_json::to_string` 逐臂对齐
+/// （含 ObjectData 字典序键、GenericInstanceData 插入序、BigIntData
+/// i64/u64、非有限浮点错误文本）。
+pub(crate) struct VmJsonDirect<'a> {
+    pub vm: &'a AutoVM,
+    pub value: &'a auto_val::Value,
+    pub depth: u32,
+}
+
+impl serde::Serialize for VmJsonDirect<'_> {
+    fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use auto_val::Value;
+        use serde::ser::{SerializeMap as _, SerializeSeq as _};
+        if self.depth >= JSON_DIRECT_MAX_DEPTH {
+            return Err(serde::ser::Error::custom(format!(
+                "vm_value_to_json: nesting depth exceeded ({})",
+                JSON_DIRECT_MAX_DEPTH
+            )));
+        }
+        match self.value {
+            Value::Nil => s.serialize_unit(),
+            Value::Bool(b) => s.serialize_bool(*b),
+            Value::Int(i) => s.serialize_i64(*i as i64),
+            Value::Uint(u) => s.serialize_u64(*u as u64),
+            Value::I64(i) => s.serialize_i64(*i),
+            Value::Float(f) => {
+                let d = *f as f64;
+                if !d.is_finite() {
+                    return Err(serde::ser::Error::custom("json.from_value: NaN/Inf float"));
+                }
+                s.serialize_f64(d)
+            }
+            Value::Double(d) => {
+                if !d.is_finite() {
+                    return Err(serde::ser::Error::custom("json.from_value: NaN/Inf double"));
+                }
+                s.serialize_f64(*d)
+            }
+            Value::Str(st) => s.serialize_str(st),
+            Value::Char(c) => s.serialize_char(*c),
+            Value::VmRef(r) => {
+                let id = r.id as u64;
+                let Some(heap_ref) = self.vm.heap_objects.get(&id) else {
+                    return s.serialize_unit();
+                };
+                let obj = heap_ref.read().unwrap();
+                use crate::vm::generic_registry::GenericInstanceData;
+                use crate::vm::types::ListData;
+                if let Some(big) = obj
+                    .as_any()
+                    .downcast_ref::<crate::vm::heap_object::BigIntData>()
+                {
+                    if big.is_unsigned {
+                        s.serialize_u64(big.as_u64())
+                    } else {
+                        s.serialize_i64(big.as_i64())
+                    }
+                } else if let Some(inst) = obj.as_any().downcast_ref::<GenericInstanceData>() {
+                    let mut map = s.serialize_map(Some(inst.field_names.len()))?;
+                    for (i, name) in inst.field_names.iter().enumerate() {
+                        if let Some(fv) = inst.fields.get(i) {
+                            map.serialize_entry(
+                                name,
+                                &VmJsonDirect {
+                                    vm: self.vm,
+                                    value: fv,
+                                    depth: self.depth + 1,
+                                },
+                            )?;
+                        }
+                    }
+                    map.end()
+                } else if let Some(odata) =
+                    obj.as_any().downcast_ref::<crate::vm::types::ObjectData>()
+                {
+                    // PLAN-057 T6 同款：ObjectData 键字典序（确定性；
+                    // 与 JS 插入序的观感差为已知登记项）。键形与
+                    // vm_value_to_json 一致（Str/Int/Bool 键 stringify）。
+                    let mut pairs: Vec<(String, &auto_val::Value)> = odata
+                        .fields
+                        .iter()
+                        .map(|(k, v)| {
+                            let key = match k {
+                                auto_val::ValueKey::Str(st) => st.to_string(),
+                                auto_val::ValueKey::Int(i) => i.to_string(),
+                                auto_val::ValueKey::Bool(b) => b.to_string(),
+                            };
+                            (key, v)
+                        })
+                        .collect();
+                    pairs.sort_by(|a, b| a.0.cmp(&b.0));
+                    let mut map = s.serialize_map(Some(pairs.len()))?;
+                    for (k, v) in pairs {
+                        map.serialize_entry(
+                            &k,
+                            &VmJsonDirect {
+                                vm: self.vm,
+                                value: v,
+                                depth: self.depth + 1,
+                            },
+                        )?;
+                    }
+                    map.end()
+                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<auto_val::Value>>()
+                {
+                    let mut seq = s.serialize_seq(Some(list.elems.len()))?;
+                    for elem in &list.elems {
+                        seq.serialize_element(&VmJsonDirect {
+                            vm: self.vm,
+                            value: elem,
+                            depth: self.depth + 1,
+                        })?;
+                    }
+                    seq.end()
+                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<i32>>() {
+                    let mut seq = s.serialize_seq(Some(list.elems.len()))?;
+                    for e in &list.elems {
+                        seq.serialize_element(&(*e as i64))?;
+                    }
+                    seq.end()
+                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<String>>() {
+                    let mut seq = s.serialize_seq(Some(list.elems.len()))?;
+                    for e in &list.elems {
+                        seq.serialize_element(e)?;
+                    }
+                    seq.end()
+                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<char>>() {
+                    let mut seq = s.serialize_seq(Some(list.elems.len()))?;
+                    for c in &list.elems {
+                        seq.serialize_element(&c.to_string())?;
+                    }
+                    seq.end()
+                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<bool>>() {
+                    let mut seq = s.serialize_seq(Some(list.elems.len()))?;
+                    for b in &list.elems {
+                        seq.serialize_element(b)?;
+                    }
+                    seq.end()
+                } else {
+                    s.serialize_unit()
+                }
+            }
+            _ => s.serialize_unit(),
         }
     }
 }
@@ -1513,14 +1974,21 @@ print(Json.encode("4000000"))
 print(Json.encode("a,b".split(",")))
 "#,
         );
-        let actual: Vec<serde_json::Value> = out.lines()
+        let actual: Vec<serde_json::Value> = out
+            .lines()
             .map(|line| serde_json::from_str(line).expect("encoded JSON line"))
             .collect();
-        assert_eq!(actual, serde_json::json!([
-            4000000, 4000000, 4000000, 4000001, 4000001,
-            {"ok": true}, [1,2], ["ok"], 4000002, ["ok"], {"ok": true},
-            4000000, 4000001, "4000000", ["a", "b"]
-        ]).as_array().unwrap().to_vec());
+        assert_eq!(
+            actual,
+            serde_json::json!([
+                4000000, 4000000, 4000000, 4000001, 4000001,
+                {"ok": true}, [1,2], ["ok"], 4000002, ["ok"], {"ok": true},
+                4000000, 4000001, "4000000", ["a", "b"]
+            ])
+            .as_array()
+            .unwrap()
+            .to_vec()
+        );
     }
 
     #[test]
@@ -1547,9 +2015,9 @@ let json = FakeJson { value: "true" }
 print(Json.encode(value: json.get("key")))
 "#,
         );
-        assert_eq!(out.trim(), "once\ntrue\n\"true\"\ntrue\n\"true\"\nuser-get\n\"true\"");
+        assert_eq!(
+            out.trim(),
+            "once\ntrue\n\"true\"\ntrue\n\"true\"\nuser-get\n\"true\""
+        );
     }
 }
-
-
-
