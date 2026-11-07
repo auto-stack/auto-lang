@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-961
-status: execution_done
+status: executing
 feature_name: 完整数值源码与四端一致语义
 author: [Codex]
 created_at: 2026-11-06
@@ -255,6 +255,29 @@ stage: goal | plan_id: PLAN-961 | plan_revision: r2 | round: 6 | from: work | to
   与归档清理（AC-05）。规范增量 SD-01（m2-numbers spec 待落）/SD-02 待 merge 阶段沉淀。
 
 stage: work | plan_id: PLAN-961 | plan_revision: r2 | outcome: pass | worktree: D:/autostack/.wt/lang-961/auto-lang | branch: plan-961-dev | base_commit: fcc474acd | code_commit: 56559edfb | task_ids: T-01,T-02,T-03,T-04,T-08 (T-05/06/07 review/merge-owned) | evidence: t01-freeze.md + t04-six-groups.log + 各轮测试记录 | blockers: 无 | next_responsible_role: review (T-05)
+
+2026-11-08 T-05 独立复审 r1（needs_fix）：在冻结提交 `56559edfb022027440be117e173b5e7bd78a8198` 上执行。
+- 基线：worktree `D:/autostack/.wt/lang-961/auto-lang` 分支 plan-961-dev，树清（test-run 报告残留当场恢复归位），
+  base fcc474acd，13 提交/90 文件/+10218/−251；无 ledger/attachments/.wt-evidence 写入（diff 全量扫描）。
+- 独立性限制声明：本复审与实施同会话执行——结论从工件重建而非采信实施摘要；全部行为断言均为复审本轮
+  在冻结提交上重跑或复审自选新探针，非转发实施记录。
+- AC-01..03/06 行为面全部核验通过：冻结提交上重跑 av-core lib（59/59 含 instr_spec 覆盖）、core numeric 9/9、
+  av numeric 9/9、native numeric 4/4、a2x 双 provider true chain 2/2；AV 冻结矩阵代码走读 7 项不变量全部在位
+  （u64 room 检查、有符号专属 MIN/-1、移位界、f64→f32 有限溢出、float→int NaN/域、f32 原生精度、rem MIN/-1）；
+  复审自选 4 个不在实施 fixture 集内的兄弟反例全绿（i8::MIN/-1 div→div-overflow、i32 负移位量→
+  shift-out-of-range、float %±0=NaN 非 trap 且 NaN==NaN 为 false、u32 MAX*MAX 溢出 trap），混宽加法
+  →source.type-mismatch 经 CLI 复核。
+- AC-04 健康检查未过，三个具名发现（均机械性，无语义缺陷）：
+  - R5-F1（低/测试残留）：core/tests/cases/numeric_source.rs 残留 round-4 排查期 11 个无断言 eprintln
+    探针（RET-*/F1..F7/CF1/CF2/I64MIN 块，约 40 行）。
+  - R5-F2（低/死代码）：a2x-c/src/lower.rs:120 c_num_suffix 从未使用 + 5 个 unused 变量——本计划新增 6 个编译警告。
+  - R5-F3（低/格式）：交付六 crate cargo fmt --check 113 处 diff（主要 a2x-c 生成器补丁面）。
+  （mix_u64/shell_lo 两警告为未触文件既有，不记本包。）
+- 规范增量：frontmatter 三字段路径/目标 ID 精确（GOAL-002 真实于 specs/goals.md；SD-01 文本按计划 T-06
+  归 merge 沉淀，SD-02 目标在位）；SD 内容与已验证行为一致，待 merge 落文。
+- 处置：needs_fix → work 做机械修复（F1-F3，无语义变更），修复后仅复审受影响的 AC-04 健康项。
+
+stage: review | review_scope: final | reviewer_identity: 同会话独立上下文（限制已声明；结论自工件重建） | plan_id: PLAN-961 | plan_revision: r2 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-961/auto-lang | branch: plan-961-dev | reviewed_commit: 56559edfb022027440be117e173b5e7bd78a8198 | base_commit: fcc474acd | dependency_revisions: PLAN-959 archived, PLAN-960 archived | spec_inputs: docs/specs/ace-migration/{m2-denominator,replacement-scope-and-evidence}.md + goals.md | acceptance_results: AC-01 pass, AC-02 pass, AC-03 pass, AC-06 pass, AC-04 needs_fix (R5-F1/F2/F3), AC-05 merge-owned pending | findings: R5-F1 测试调试残留(低), R5-F2 死代码+未用变量6警告(低), R5-F3 fmt 113 diff(低) | evidence: 本轮冻结提交重跑记录 + 4 个复审自选探针 + 代码走读7不变量 | next: work 修复 R5-F1..F3 后受影响项复审
 
 
 2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
