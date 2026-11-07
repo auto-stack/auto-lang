@@ -2234,6 +2234,14 @@ stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（abi-inte
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:98 | from:goal继续 | to:work | status:executing32/32 | outcome:progress（16策略样本源全就绪；唯一候=上游64MiB修复） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:60e188170dfadd780bbfa0c0eb7f725676205047 | next:候上游修复落地；D939在途，无待poll
 
+### 第99轮：work D-941-1修复——plan872绑定表重冻结；上游64MiB/D939阻塞状态复核
+
+- **D-941-1修复**（995批回归新红，owner=本计划）：941树@`60e188170`复现 `plan872_binding_table_json_matches_regeneration` 红→`AUTO_LANG_872_EMIT_TABLE=1` 重冻结（提交**`ed3ddca7d`**，data-only）→diff复审仅 `native_id_entries: 882→883`（3920dd95a 的 `auto.dialog.open_files`→9942 新唯一名；该提交在NATIVE_ID_ENTRIES只落1行，债条"三条目"实为shim注册/for_each宏/ID表三处代码位置；dup_name_ids零变化）→无env重跑 plan872 全模块 **8/8 绿**、`git diff --check` 净。KNOWN-DEBT D-941-1 已标"已修复待随941合入"。
+- **外部阻塞复核（2026-11-08）**：①上游64MiB——master截至`36b5fbd4a`仍未交付：`artifacts/src/store/mod.rs` 最后触码提交仍为 `b8987bb0b`，`reserved_total` 投影仍双计 `framed_len`（L688-712），冻结门/工具对账/证据链重采/组合重读链继续候delivered（root cause交接见 `plan-artifacts/plan-941/handoff-f94120-upstream-64mib.md` v2）；②D939——executing r3 8/14（T-01..08 ✅ 2026-11-08，T-09..14未完），registry awaiting_d 仅余939七行继续保真。
+- **边界**：master自第94轮合并后又前进（961 numeric/995 json natives已合入）——最终合并前需再同步一次master（一次窗口吸收，与上游64MiB修复同批）；T-05/T-08不依赖该两阻塞，可继续推进。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（D-941-1红已修冻结ed3ddca7d；两外部阻塞状态核实未解除） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:ed3ddca7d | task_ids:债项D-941-1修复 | evidence:plan872模块8/8 + git diff --check净 | next_responsible_role:work T-05/T-08继续 | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
