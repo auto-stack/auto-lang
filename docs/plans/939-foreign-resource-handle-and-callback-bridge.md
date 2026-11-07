@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-abi/resource-and-callback-bridge.md]
 touched_goals: [GOAL-002]
 affects: [auto-abi, auto-ac, auto-a2x, auto-a2c, auto-av, auto-test-case]
 depends_on: [PLAN-937, PLAN-938, PLAN-925, PLAN-924]
-current_step: 7
+current_step: 8
 total_steps: 14
 ---
 
@@ -239,7 +239,7 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 | T-05 | work | T-04，N/C窗口 | native直接资源调用与a2x-c abi_resources/私有值显式转换/view期限；V-01/02/04；AC-01/02/03。交付（§9 round 13）：native text-runtime 链接补全（COFF ac_rt_* 符号检测+locate-or-build 支持库）+ V-02 双形态案例（owned 旁观跨调用/ctor 临时 const view）；marshalling 面为 T-02 各轮已交并持续绿 | [✅ 2026-11-08] |
 | T-06 | work | T-05 | handle移动/返回/provider clone hook/原方destroy、callback+ctx trampoline与错误channel；V-03/06/07/14/15；AC-02/04。交付（§9 round 14）：t939_clone 声明式 clone hook + t939_stored_cb noescape 可观测 + forged-handle 零状态变化拒（三案例×双腿+完整指纹周期）；trampoline/错误 channel 为 T-02C 已交持续绿；嵌套/重入回调与 lease/GC 归 T-08 | [✅ 2026-11-08] |
 | T-07 | work | T-05/06 | 多out/shadow/失败commit与全部分配域fault/cleanup；V-04/05；AC-03。交付（§9 round 15）：t939_txn3 三out事务（双 handle 出+标量出，声明序一次 commit，laststep 直接 slot 回收）+ 案例×双腿 + resource939_fault_sweep.c 全分配域扫描（域实测、k=1..N 逐点、N+1 不动、清错同进程重试、ledger 平衡、stale 拷贝拒）；round 6 的 ledger 探针债随 sweep 关闭 | [✅ 2026-11-08] |
-| T-08 | work | T-06/07 | provider代际与真实最后owner lease/已绑定双代call/GC回收证据；V-06/07；AC-04 | [ ] |
+| T-08 | work | T-06/07 | provider代际与真实最后owner lease/已绑定双代call/GC回收证据；V-06/07；AC-04。交付（§9 round 16）：双代绑定一致性测试（gen 1→2、双 digest、真 lease 挡强制 GC、末次释放后真回收）+ deck 级 provider 转换案例双腿 + V-07 合法重入回调案例（回调体内嵌套 foreign view 调用，精确事件序） | [✅ 2026-11-08] |
 | T-09 | work | T-04..08，source/query恢复窗口 | 全stage真实计数/精确reader失效/required资源页/真实source恢复首编辑与首错修复；V-08/09/16；AC-05 | [ ] |
 | T-10 | work | T-09 | resource预留/候选发布原子/超限取消/cleanup/512修订GC原样本，V-05/09/10；AC-03/06 | [ ] |
 | T-11 | work | T-03..10，H窗口 | worker/父decoder/SDK/新case固定组/完整独立认证、S01..08逐方向/原797形态与937/938回归；V-11/15/16；AC-07 | [ ] |
@@ -250,6 +250,10 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 可提前的仅独立oracle/header与source/type能力调查，不把private准备冒资源已实施。正式S/N/C集成在D938及所需单文件owner释放后；不硬等未读取的935/936整包。
 
 ## 9. 复审记录
+
+T-08 完成记录（2026-11-08，goal round 16，HEAD `7ba0611bd`）：**双代绑定+lease/GC+重入回调——T-08 关闭（8/14）**。939 组 56 例=55 PASS+控制位；938/937/925/ace-abi 全绿。(1) **V-06 一致性测试**（abi_resource939_provider_generations_lease_and_gc）：真实 fixture deck 经进程内完整 worker 入口（资质/旧绑定恢复/provider 事务）双代绑定——binding generation 1→2、两代 provider 对象 digest 互异；真 lease 钉住在用旧代、强制 GC 保留之；drop 钉（末次释放）后下一次强制 GC **真实回收**（deleted>0、收据干净）。(2) **deck 级转换案例 ×双腿**（provider-transition）：query(bias 0)→deck 编辑 bias 1→query——worker 先恢复旧受审绑定再事务到新 provider，两次 query 均交付受审 oracle（exit 3504）。(3) **V-07 合法重入回调 ×双腿**（callback-reentrant）：回调**体内**做 foreign view 调用（fold 进行中的嵌套 foreign 调用、同一请求、不存储）——exit 21、嵌套事件序精确 [fold, byte_length×3]；reference 精确镜像（其自身回调做嵌套调用）。过程：reference 初版前置循环多射事件被父准入红出（镜像纪律第四次生效）后精简；一次 cache_turnaround 并行偶发红（隔离重跑+整组复跑绿，记为环境归因观察）。V-06 的"错provider A/B"跨库面：单库单 provider 域内由 forged/stale 拒（T-06）+ 双代 digest 互异覆盖；跨 provider 链接面沿 797 edges 先例归 797 所有权，不在本包单库矩阵内（§5.4"已静态绑定代际"语义按 store/绑定层交付）。
+
+stage: goal | plan_id: PLAN-939 | plan_revision: r3 | round: 16 | from: work | to: work | status: executing | outcome: interim（T-08 ✅ 8/14；双代 lease/GC+重入回调）| worktree: D:/autostack/.wt/lang-939/auto-lang | commit: 7ba0611bd | next: work（T-09 全stage真实计数/精确reader失效/required资源页/真实source恢复首编辑与首错修复）
 
 T-07 完成记录（2026-11-08，goal round 15，HEAD `abf9e27ed`）：**三out事务 + 全分配域扫描——T-07 关闭（7/14）**。939 组 52 例=51 PASS+控制位；938/937/925/ace-abi 全绿。(1) **t939_txn3**（V-04）：两个 record 出（各携带新 handle）+标量出；成功按**声明序一次 commit**（mark/句柄/value/句柄/标量）；seed [1001,2000] 契约 laststep 失败——H1 在原方手中经**直接 slot 释放**死亡（内部清理不是 caller 可见 destroy 事件——镜像 t939_txn；初版经 t939_destroy 多射事件被父准入事件核对正确红出）；注入失败在 2-分配域任一点同样清半树；一切失败保持全部 caller 字节不动。字段名 `mark`（`tag` 是源语法保留字——parse 红出后全链改名）。(2) **V-05 扫描**（ace-abi 一致性腿，freestanding 手审驱动 resource939_fault_sweep.c，退出码=失败检查数）：分配域由净运行**实测**（非假设）；k=1..N 逐点注错（typed -3、字节不动、grew==k-1、frees==grew、live 不变——半树由原方回收且账平）；N+1 不触发（新 commit）；清错**同进程重试=fresh**；stale 拷贝销毁拒（无幂等 free 掩双 destroy）；终局 ledger 全平。设计裁定：fallible 失败传输在首个失败 foreign 调用即终止源程序——穷尽扫描结构性不能住在 deck 里，归 C 一致性腿。(3) **指纹周期**×3 轮（typedef/字段名/provider .c 不入 pin）——最终三钉 H=5210..197/T=dbf8..126/C=ba93..5b8，22 deck 再生成。(4) round 6 的具名债（回收证据移 T-07 ledger 探针）随 sweep 的平衡断言**关闭**。过程：一次临时准入错误可见性补丁定位事件真相后撤净；ctool cside 集不含 stdio/stddef——驱动改纯 freestanding。
 
