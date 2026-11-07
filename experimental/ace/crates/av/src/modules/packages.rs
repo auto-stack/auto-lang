@@ -150,10 +150,13 @@ mod tests {
         let inputs = [
             // diamond base: D's init must run exactly once (observed via
             // its store value through both paths).
+            // diamond base with a STORE bumped by its accessor: both legs
+            // share ONE initialized cell (left()=1, right()=2); a per-leg
+            // re-initialization would make both legs return 1.
             input(
                 "base",
                 "d",
-                "pub const SEED int = 5\npub fn seed() int { return SEED }",
+                "var hits int = 0\npub fn seed() int { hits = hits + 1\n return hits }",
             ),
             input(
                 "app",
@@ -183,7 +186,7 @@ mod tests {
             input(
                 "app",
                 "main",
-                "use base.d.seed\nuse app.one.hit as one_hit\nuse app.two.hit as two_hit\nuse app.one.bump as one_bump\nuse app.two.bump as two_bump\nuse app.std.greet\nfn main() int { let a = app.left.left()\n let b = app.right.right()\n let x = one_bump()\n let y = two_bump()\n let g = greet()\n return seed() + a + b + one_hit() + two_hit() + x + y + g.len() }",
+                "use base.d.seed\nuse app.one.hit as one_hit\nuse app.two.hit as two_hit\nuse app.one.bump as one_bump\nuse app.two.bump as two_bump\nuse app.std.greet\nfn main() int { let a = app.left.left()\n let b = app.right.right()\n let x = one_bump()\n let y = two_bump()\n let g = greet()\n let s = seed()\n return a + b + one_hit() + two_hit() + x + y + s + g.len() }",
             ),
         ];
         let product = compile_package_product(
@@ -193,15 +196,16 @@ mod tests {
             FrontBudget::WORK_OWNED_64MIB,
         )
         .unwrap();
-        // seed()=5, left()=5, right()=5 (both diamond legs read the SAME
-        // base cell after ONE init), one_hit()=1 + two_hit()=2 (same-name
-        // private fns stay package-isolated), one_bump()=1 + two_bump()=1
-        // (same-name private STORES stay module-isolated — a shared cell
-        // would make the second bump return 2 and the total 23),
-        // "m2".len()=2 (the public Str function really ran).
+        // main: a=left()=1, b=right()=2 (diamond base initialized ONCE, one
+        // shared cell bumped through both legs; per-leg re-init would give
+        // 1+1), one_hit()=1 + two_hit()=2 (same-name private fns stay
+        // package-isolated), one_bump()=1 + two_bump()=1 (same-name private
+        // STORES stay module-isolated — a shared cell would make the second
+        // bump return 2), seed()=3 (third bump from main), "m2".len()=2.
+        // 1+2+1+2+1+1+3+2 = 13
         let dir = tmp("run");
         let av = PackageAvTarget::cold(&dir, &product).unwrap();
-        assert_eq!(av.run_value(), Ok(ace_av_core::contract::Value::I32(22)));
+        assert_eq!(av.run_value(), Ok(ace_av_core::contract::Value::I32(13)));
         // the Str function itself runs and is observed as a Str view
         let av2 = PackageAvTarget::cold_with_entry(
             &dir,
@@ -243,6 +247,29 @@ mod tests {
             av.global_cells(),
             vec![ace_av_core::contract::Value::I32(3)]
         );
+        // a trapping initializer AFTER an earlier store was written: the run
+        // reports the trap and the generation publishes no partial state
+        // (every cell is back to its placeholder, not `a = 7`).
+        let bad = [input(
+            "app",
+            "main",
+            "fn z() int { return 0 }\nvar a int = 7\nvar b int = 1 / z()\nfn main() int { return a + b }",
+        )];
+        let product = compile_package_product(
+            &bad,
+            "app::main",
+            &[PACKAGES_CAPABILITY.into()],
+            FrontBudget::WORK_OWNED_64MIB,
+        )
+        .unwrap();
+        let av = PackageAvTarget::cold(&dir, &product).unwrap();
+        let out = av.run_value();
+        assert!(out.is_err(), "{out:?}");
+        assert!(!av.current.initialized());
+        assert!(av
+            .global_cells()
+            .iter()
+            .all(|c| *c == ace_av_core::contract::Value::I32(0)), "{:?}", av.global_cells());
         std::fs::remove_dir_all(&dir).ok();
     }
 }
