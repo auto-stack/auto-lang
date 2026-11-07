@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 20
+current_step: 21
 total_steps: 32
 ---
 
@@ -498,7 +498,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-03 | work | T-02，新registry私有面 | 新ace-m1-expanded registry逐source/target/机制/原格位与义务/组/owner/条件映射，完整覆盖而不改旧批准；AC-01，V-01 | [ ] 第85轮宇宙闭包增量（7938954802）：registry升/2 universe-closed——1006登记键（31份pinned合同活派生）+14条awaiting-D具名行（938/939各7条work AC，owner/promise/direction/close，内容sha钉定）；治理241/241（新增漏一项即拒/篡改/外来owner/外来域反控）、组合重读verdicts 716P8F282U逐键零漂移且required_universe_closed=true；逐义务深元数据仍由合同承载（活派生入口），如独立review要求registry物化再扩 |
 | T-04 | work | T-03，必要H短窗 | 新只读ace_m1_arch_acceptance.py与域reader适配/严格身份/路径/版本/原始终态/旧认证差异；AC-02/09/10，V-02/13/14 | [ ] 第86轮reducer增量（7cc50eeb29）：§5.2八域门纯谓词`reduce_acceptance`（ace.m1.acceptance-reducer/1）上线并接线组合报告——accounting/evidence/system四类输入永不单独推导can_claim、未组合测量具名missing_input blocker、complete_expanded_registry门改随宇宙闭合；治理243/243（+2 reducer控制：隔离全绿可触发谓词/未知缺失错型输入全拒）；组合重读verdicts守恒零漂移、8门仅expanded_registry_valid真、can_claim=False带14具名blocker；预算合约pin刷新（arch_acceptance字节变化）。域reader扩展（严格身份/路径/版本继续）与T05..T11测量节组合仍待 |
 | T-05 | work | T-03/04，Q4已有域稳定API | 正/负同源四端与独立oracle/reference/完整文件集认证、跨目标身份/daily分轴；AC-03/09，V-03/12/13 | [ ] |
-| T-06 | work | T-04/05，929/各实际required来源页稳定窗口 | 真实P/M/R/IO计数/依赖变化/多函数方法闭包、source恢复首操作/坏页/原子安装反控；AC-04/05，V-04..06 | [ ] |
+| T-06 | work | T-04/05，929/各实际required来源页稳定窗口 | 真实P/M/R/IO计数/依赖变化/多函数方法闭包、source恢复首操作/坏页/原子安装反控；AC-04/05，V-04..06 | [ ] 第87轮测量节首建（63f6827355）：`incremental_restore_measurements`节从已准入f94112全组门（逐测试事件）+ct-restore/architecture观察组合ARCH-05八行——2行真实PASS（恢复首好编辑/首坏修复再恢复）、6行PARTIAL（0 UNOBSERVED，逐行具名缺口），治理246/246（+3控制）、组合重读verdicts守恒且`missing_input:incremental_restore_measurements`blocker消失；V-04全依赖编辑集/934/935/938/939页/原子安装迟到等实际测量仍待补行 |
 | T-07 | work | T-06，原资源/HMR接口与正式窗口 | 原预算/cleanup/fault/lease/同PID safepoint/原样本P90/peak与新组合器资源帽；AC-06，V-07/08/16 | [ ] |
 | T-08 | work | T-04，934/935/936已审稳定接口；最终实际D | SQ/真实实例/CT执行/事实依赖及required恢复/四端实证适配；除具名§5.12/T24 F09授权外不修改其语义实现；AC-05/07，V-05/06/09/10 | [ ] |
 | T-09 | work | T-04，937/938/939已审稳定接口；最终实际D | ABI原三腿/全source-typed方向/资源/ctx/callback/独立C认证与source恢复；AC-05/08/09，V-05/06/11/12 | [ ] |
@@ -2102,6 +2102,18 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:85 | from:goal用户�
 stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（T-04总谓词reducer上线：八域门+具名blocker+治理243/243+组合零漂移） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:7cc50eeb29 | task_ids:T-04增量（勾选留review）；T-05..T11待 | evidence:f94104-reducer/t04-reducer-audit.json | next_responsible_role:work T-05/T-06测量节或域reader扩展；无具名待批项，无live handle
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:86 | from:goal用户指令 | to:work | status:executing20/32 | outcome:progress（§5.2总谓词从primitives成为真实reducer，can_claim以具名blocker诚实为false） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:7cc50eeb29 | next:work T-05/T-06测量节首建或域reader继续；D938/939未交齐，无待poll
+
+### 第87轮：work T-06测量节首建——ARCH-05八行真实覆盖组合与blocker翻转
+
+- 承第86轮reducer，按用户指定推进T-06最小可验证翻转路径：先核证据形态——P/M/R（produced/reused/discarded）计数在928/929族conformance测试内断言、恢复首操作在929(F10族)测试与936 CT admission、逐测试事件在f94112全组门results文档（401名全ok）——**全部已在既往轮严格准入**，本增量只做组合不复采。
+- **实现**（提交**`63f6827355`**，3文件）：①新`ace_m1_incremental_restore.py`：绑定{path,sha256}准入全组门文档（STALE/schema/gate_passed/组集/逐组green/事件形状全拒）后按ARCH-05八行映射覆盖——`tests`为源组事件名子串（928族/929族/F10九例按行归属）、`observations`引组合ct-restore节与architecture门行；行verdict=PASS（全部映射证据真过且无partial_missing）/PARTIAL（部分覆盖或具名缺口）/UNOBSERVED，逐行带evidence与missing清单；typed bridge恢复不代ordinary source（V-05注释入合同）。②first_slice接线：`incremental_restore_gates`绑定（白名单收录）→`incremental_restore_measurements`节；reducer的`precise_incremental_restore`门改为"ct_restore全过∧节存在∧measurements_complete"；missing_inputs仅在该节缺失时具名。③治理+3控制：合成全覆盖fixture下partial行保持partial且门不闭、删单测只降级本行（PARTIAL）删全族到UNOBSERVED、STALE/错schema/门未过/异组文档全拒。
+- **过程性修复如实记**：`read_json`返回(document,sha)元组需解包（首跑AttributeError）；删单测的分态是PARTIAL非UNOBSERVED（断言修正）；绑定白名单首漏`incremental_restore_gates`键（amend三处，均测试期缺陷非生产失败）。
+- **验证**：治理**246/246PASS**（243+3）；冻结提交组合重读（f94112证据+新绑定）：**verdicts 716P8F282U逐键零漂移**；测量节真实覆盖——**2 PASS**（restore-immediate-good-edit、bad-first-repair-second-restore，证据=929/F10族命名测试全ok）+ **6 PARTIAL**（producer-and-io-zero缺V-04全依赖编辑集、method-closure-body-edits缺method族、signature-layout-meta全缺、all-required-pages缺934/935/938/939页、historical-cross-project-ownership缺ace-semantics组绑定、atomic-publication-and-late全缺）+ 0 UNOBSERVED；`measurements_complete=false`（域门如实仍false）；**`missing_input:incremental_restore_measurements`blocker消失**，余missing_input=budget_time_measurements+T-10治理控制。13工具恒等（无重采）。审计`f94106-measure/t06-measure-audit.json`=`0323f59ae7034e3d1052f2891d8764f941e8682f3c4a9bd2e86064bccffa6d5a`。
+- 边界：T-06勾选留review——测量节与行覆盖框架已立，V-04完整依赖编辑集（method/signature/layout/meta）、V-06坏页全族与原子安装/迟到的**新实测**仍待（需真实窗口非组合既有证据）。executing21/32。下一入口：T-07 budget_time_measurements节首建（镜像本路径）或T-05 Q4全量认证深化。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（T-06测量节首建：2行真PASS/6行具名PARTIAL，blocker真实翻转，verdicts守恒） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:63f6827355 | task_ids:T-06增量（勾选留review） | evidence:f94106-measure/t06-measure-audit.json | next_responsible_role:work T-07测量节/T-05深化/V-04..06新实测；无具名待批项，无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:87 | from:goal用户指定 | to:work | status:executing21/32 | outcome:progress（incremental_restore_measurements节以真实准入证据组合上线，域门由missing_input转为具名部分覆盖） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:63f6827355 | next:work T-07/T-05/V-04..06新实测；D938/939未交齐，无待poll
 
 ## 10. 待澄清事项
 
