@@ -46,6 +46,14 @@ impl<'p> PrintCtx<'p> {
     fn ty_str(&self, ty: Ty) -> String {
         match ty {
             Ty::I32 => "i32".to_string(),
+            // PLAN-961: the numeric names are their Rust spellings.
+            Ty::I8 => "i8".to_string(),
+            Ty::U8 => "u8".to_string(),
+            Ty::U32 => "u32".to_string(),
+            Ty::I64 => "i64".to_string(),
+            Ty::U64 => "u64".to_string(),
+            Ty::F32 => "f32".to_string(),
+            Ty::F64 => "f64".to_string(),
             Ty::Bool => "bool".to_string(),
             Ty::Char => "char".to_string(),
             Ty::Str => "&str".to_string(),
@@ -356,6 +364,14 @@ fn render_stmt(ctx: &PrintCtx<'_>, s: &RStmt, ind: usize) -> String {
 fn local_ty_text(ctx: &PrintCtx<'_>, ty: Ty) -> String {
     match ty {
         Ty::I32 => "i32".to_string(),
+        // PLAN-961: numeric locals use their Rust spellings.
+        Ty::I8 => "i8".to_string(),
+        Ty::U8 => "u8".to_string(),
+        Ty::U32 => "u32".to_string(),
+        Ty::I64 => "i64".to_string(),
+        Ty::U64 => "u64".to_string(),
+        Ty::F32 => "f32".to_string(),
+        Ty::F64 => "f64".to_string(),
         Ty::Bool => "bool".to_string(),
         Ty::Char => "char".to_string(),
         Ty::Str => "&str".to_string(),

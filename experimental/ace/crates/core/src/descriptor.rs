@@ -3531,6 +3531,10 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
     let kind_word = match &e.kind {
         hir::ExprKind::ReadLocal { .. } => "read_local",
         hir::ExprKind::Constant { .. } => "constant",
+        // PLAN-961: a numeric const reuses the `constant` word with a
+        // typed suffixed value; a cast has its own word.
+        hir::ExprKind::NumericConst { .. } => "constant",
+        hir::ExprKind::Cast { .. } => "cast",
         // PLAN-862: the unit value (a Unit function's return operand).
         hir::ExprKind::Unit => "unit",
         hir::ExprKind::Binary { .. } => "binary",
@@ -3581,6 +3585,30 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         }
         hir::ExprKind::Constant { value } => {
             body_fields.push(format!("value: {}i32", value));
+        }
+        // PLAN-961: the typed numeric constant renders its payload as the
+        // type's own width word — sign-extended two's complement bytes for
+        // signed ints, plain magnitudes for unsigned, to_bits() for floats
+        // (NaN payloads and signed zeros survive the round trip).
+        hir::ExprKind::NumericConst { ty, bits } => {
+            let text = match ty {
+                hir::BuiltinType::I8 => format!("{}i8", *bits as u8 as i8),
+                hir::BuiltinType::U8 => format!("{}u8", *bits as u8),
+                hir::BuiltinType::U32 => format!("{}u32", *bits as u32),
+                hir::BuiltinType::I64 => format!("{}i64", *bits as i64),
+                hir::BuiltinType::U64 => format!("{}u64", *bits),
+                hir::BuiltinType::F32 => format!("{}f32", *bits as u32),
+                hir::BuiltinType::F64 => format!("{}f64", *bits),
+                _ => unreachable!("NumericConst of a non-numeric builtin"),
+            };
+            body_fields.push(format!("value: {}", text));
+        }
+        hir::ExprKind::Cast { operand, to } => {
+            body_fields.push(format!("to: {}", to.as_str()));
+            body_fields.push(format!(
+                "operand: {}",
+                quote(&b.exprs[operand.0 as usize].id_text)
+            ));
         }
         // PLAN-862: the unit value carries no payload — only its type.
         hir::ExprKind::Unit => {}

@@ -776,6 +776,11 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                             Ok(format!("({l} != {r})"))
                         }
                     }
+                    // PLAN-961: named rejection until the numeric producer
+                    // unit ships (never a silent i32 fallback).
+                    hir::BinOp::Num { .. } => Err(A2xReject::unsupported_op(
+                        "typed numeric binary op: numeric emission ships with the PLAN-961 producer unit",
+                    )),
                 }
             }
             hir::ExprKind::Unary { op, operand } => {
@@ -785,7 +790,11 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                         self.fall_res(id, "a2x_result", format!("a2x_neg({o})"))
                     }
                     hir::UnaryOp::NotBool => Ok(format!("!({o})")),
-                }
+                    // PLAN-961: named rejection until the numeric producer
+                    // unit ships.
+                    hir::UnaryOp::NegNumeric(_) => Err(A2xReject::unsupported_op(
+                        "typed negation: numeric emission ships with the PLAN-961 producer unit",
+                    )),                }
             }
             hir::ExprKind::Logical { op, lhs, rhs } => {
                 // bool operands are pure inline expressions in this

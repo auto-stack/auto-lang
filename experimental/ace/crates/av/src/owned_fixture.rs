@@ -75,6 +75,10 @@ pub fn canonical_owned(
         }),
         Value::I64(v) => serde_json::json!({ "kind": "i64", "bits": format!("{v:016x}") }),
         Value::U64(v) => serde_json::json!({ "kind": "u64", "bits": format!("{v:016x}") }),
+        // PLAN-961 numeric surface: exact-value narrow kinds.
+        Value::I8(v) => serde_json::json!({ "kind": "i8", "bits": format!("{v:x}") }),
+        Value::U8(v) => serde_json::json!({ "kind": "u8", "bits": format!("{v:x}") }),
+        Value::U32(v) => serde_json::json!({ "kind": "u32", "bits": format!("{v:08x}") }),
         Value::F32(v) => {
             serde_json::json!({ "kind": "f32", "bits": format!("{:08x}", v.to_bits()) })
         }

@@ -865,6 +865,14 @@ impl Lower<'_, '_> {
                         self.guard(good, error);
                         self.fb.ins().ineg(v)
                     }
+                    // PLAN-961: typed negation awaits the numeric backend
+                    // unit — named rejection, never an i32 fallback.
+                    UnOp::NegT { .. } => {
+                        return Err(unsupported(
+                            "instruction",
+                            "PLAN-961 typed numeric emission awaits the numeric backend unit",
+                        ))
+                    }
                 };
                 self.scalar_to(*dst, result);
             }

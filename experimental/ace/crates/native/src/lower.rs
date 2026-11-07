@@ -118,6 +118,24 @@ pub fn emit_function(
             Some(MirType::I32) | Some(MirType::Bool) | Some(MirType::Char) => {
                 SlotRep::Scalar(fb.declare_var(types::I32))
             }
+            // PLAN-961: narrow integer slots are admitted MIR types; their
+            // native representation ships with the numeric backend unit —
+            // until then a named rejection (never an i32 phantom).
+            Some(MirType::I8 | MirType::U8 | MirType::U32) => {
+                return Err(format!(
+                    "mn.unsupported.slot-type: PLAN-961 narrow numeric slot {} awaits the numeric backend unit",
+                    s.ty
+                ))
+            }
+            // PLAN-961: the narrow integer slots are admitted MIR types;
+            // their native representation ships with the numeric backend
+            // unit — until then a named rejection (never an i32 phantom).
+            Some(MirType::I8 | MirType::U8 | MirType::U32) => {
+                return Err(format!(
+                    "mn.unsupported.slot-type: PLAN-961 narrow numeric slot {} awaits the numeric backend unit",
+                    s.ty
+                ))
+            }
             Some(MirType::Str) | Some(MirType::StrView) => SlotRep::Pair {
                 ptr: fb.declare_var(types::I64),
                 len: fb.declare_var(types::I32),
@@ -1271,6 +1289,15 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     BinOp::GeI32 => self.icmp_bool(IntCC::SignedGreaterThanOrEqual, a, b),
                     BinOp::EqI32 => self.icmp_bool(IntCC::Equal, a, b),
                     BinOp::NeI32 => self.icmp_bool(IntCC::NotEqual, a, b),
+                    // PLAN-961: the typed numeric ops ship with the numeric
+                    // backend unit — a named rejection until then, never an
+                    // i32 fallback emission.
+                    BinOp::Num { .. } => {
+                        return Err(
+                            "mn.unsupported.num-op: PLAN-961 typed numeric emission awaits the numeric backend unit"
+                                .to_string(),
+                        )
+                    }
                 };
                 self.def_scalar(*dst, r)?;
             }
@@ -1288,7 +1315,23 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                         let r = self.icmp_bool(IntCC::Equal, x, zero);
                         self.def_scalar(*dst, r)?;
                     }
+                    // PLAN-961: typed negation — named rejection until the
+                    // numeric backend unit ships.
+                    UnOp::NegT { .. } => {
+                        return Err(
+                            "mn.unsupported.num-neg: PLAN-961 typed numeric emission awaits the numeric backend unit"
+                                .to_string(),
+                        )
+                    }
                 }
+            }
+            // PLAN-961: the conversion matrix ships with the numeric
+            // backend unit — a named rejection until then.
+            MirInstr::Conv { .. } => {
+                return Err(
+                    "mn.unsupported.conv: PLAN-961 numeric conversion emission awaits the numeric backend unit"
+                        .to_string(),
+                )
             }
             MirInstr::Call { callee, dst, args } => {
                 let CalleeRef::Import(ii) = callee else {

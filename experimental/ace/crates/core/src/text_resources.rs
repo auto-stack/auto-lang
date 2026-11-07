@@ -406,6 +406,12 @@ fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
             hir::ExprKind::ReadLocal { local } => scan.reads.push((id.0, local.0, e.span)),
             // PLAN-862: a unit value owns and reads nothing.
             hir::ExprKind::Unit => {}
+            // PLAN-961: a numeric constant owns/reads nothing; a cast
+            // traverses its operand (pure, no ownership change).
+            hir::ExprKind::NumericConst { .. } => {}
+            hir::ExprKind::Cast { operand, .. } => {
+                stack.push((*operand, mode));
+            }
             // PLAN-864: collections-domain expressions never receive a text
             // resource plan (verify_collections never calls this walk).
             hir::ExprKind::ListNew { .. }
@@ -637,6 +643,8 @@ fn const_truth(body: &hir::Body, root: hir::ExprId) -> Option<bool> {
                         match op {
                             hir::UnaryOp::NotBool => Some(1 - a),
                             hir::UnaryOp::NegI32 => 0i32.checked_sub(a),
+                            // PLAN-961: typed negation is not i32-foldable.
+                            hir::UnaryOp::NegNumeric(_) => None,
                         }
                     }
                     hir::ExprKind::Binary { op, lhs, rhs, .. } => {
@@ -654,6 +662,9 @@ fn const_truth(body: &hir::Body, root: hir::ExprId) -> Option<bool> {
                             Eq => Some((a == b) as i32),
                             Ne => Some((a != b) as i32),
                             DivI32 | RemI32 => None,
+                            // PLAN-961: the typed numeric surface has no
+                            // i32 constant form in this walk.
+                            Num { .. } => None,
                         }
                     }
                     hir::ExprKind::Logical { op, lhs, rhs } => {

@@ -290,6 +290,14 @@ fn sig_debug_of(m: &hir::Module, d: &hir::Def) -> String {
             hir::TypeUse::Builtin(b) => format!("{b:?}"),
             hir::TypeUse::Ref(tid) => match m.types.get(tid.0 as usize).map(|t| &t.kind) {
                 // PLAN-864: collections composites shape by name/kind.
+                // PLAN-961 numeric surface names.
+                Some(hir::TypeKind::I8) => "i8".to_string(),
+                Some(hir::TypeKind::U8) => "u8".to_string(),
+                Some(hir::TypeKind::U32) => "u32".to_string(),
+                Some(hir::TypeKind::I64) => "i64".to_string(),
+                Some(hir::TypeKind::U64) => "u64".to_string(),
+                Some(hir::TypeKind::F32) => "f32".to_string(),
+                Some(hir::TypeKind::F64) => "f64".to_string(),
                 Some(hir::TypeKind::List { .. }) => "list".to_string(),
                 Some(hir::TypeKind::Variant { .. }) => "variant".to_string(),
                 Some(hir::TypeKind::Function(sig)) | Some(hir::TypeKind::Closure(sig)) => {

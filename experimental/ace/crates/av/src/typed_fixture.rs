@@ -154,6 +154,10 @@ pub fn canonical_typed(value: &Value) -> Option<(&'static str, String)> {
         Value::U64(v) => ("u64", format!("{:016x}", v)),
         Value::F32(v) => ("f32", format!("{:08x}", v.to_bits())),
         Value::F64(v) => ("f64", format!("{:016x}", v.to_bits())),
+        // PLAN-961 numeric surface: exact-value narrow kinds.
+        Value::I8(v) => ("i8", format!("{:x}", v)),
+        Value::U8(v) => ("u8", format!("{:x}", v)),
+        Value::U32(v) => ("u32", format!("{:08x}", v)),
         // PLAN-821 kinds: the scalar face gains char; owned kinds report
         // their content fingerprint (records-with-resources never occur on
         // this face — entry results only).

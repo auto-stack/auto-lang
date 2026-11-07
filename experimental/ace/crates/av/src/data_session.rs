@@ -1813,6 +1813,14 @@ fn builtin_tag(b: hir::BuiltinType) -> &'static str {
         hir::BuiltinType::StrSlice => "str",
         hir::BuiltinType::StrOwned => "Str",
         hir::BuiltinType::Char => "char",
+        // PLAN-961 numeric surface names.
+        hir::BuiltinType::I8 => "i8",
+        hir::BuiltinType::U8 => "u8",
+        hir::BuiltinType::U32 => "u32",
+        hir::BuiltinType::I64 => "i64",
+        hir::BuiltinType::U64 => "u64",
+        hir::BuiltinType::F32 => "f32",
+        hir::BuiltinType::F64 => "f64",
         // PLAN-862: the unit RESULT word (entry-unit profile only; this data
         // session never feeds it — totality, not a widened surface).
         hir::BuiltinType::Unit => "unit",

@@ -322,6 +322,17 @@ pub fn encode_bundle(bundle: &Bundle) -> Result<Vec<u8>, CodecError> {
                 TypeKind::Str
                 | TypeKind::StrOwned
                 | TypeKind::Char
+                // PLAN-961: the numeric kinds live in the numeric-source
+                // domain; this core/scalar artifact codec keeps its frozen
+                // subset (numeric artifact serialization ships with the
+                // numeric schema/descriptor unit).
+                | TypeKind::I8
+                | TypeKind::U8
+                | TypeKind::U32
+                | TypeKind::I64
+                | TypeKind::U64
+                | TypeKind::F32
+                | TypeKind::F64
                 | TypeKind::Record(_)
                 // PLAN-864: List/Variant types live only in the collections
                 // domain, which this core/scalar artifact codec never sees.
@@ -472,6 +483,13 @@ fn encode_expr(w: &mut Writer, k: &ExprKind) -> Result<(), CodecError> {
             lhs,
             rhs,
         } => {
+            // PLAN-961: the typed numeric ops are outside this codec's
+            // frozen core/scalar subset.
+            if matches!(op, BinOp::Num { .. }) {
+                return Err(CodecError::UnsupportedFeature(
+                    "typed numeric op outside core/scalar subset",
+                ));
+            }
             w.u8(2);
             w.u8(binop_code(*op));
             w.u8(match overflow {
@@ -485,6 +503,12 @@ fn encode_expr(w: &mut Writer, k: &ExprKind) -> Result<(), CodecError> {
             w.u8(match op {
                 UnaryOp::NegI32 => 0,
                 UnaryOp::NotBool => 1,
+                // PLAN-961: outside this codec's frozen subset.
+                UnaryOp::NegNumeric(_) => {
+                    return Err(CodecError::UnsupportedFeature(
+                        "typed negation outside core/scalar subset",
+                    ))
+                }
             });
             w.u32(operand.0);
         }
@@ -583,6 +607,8 @@ fn encode_stmt(w: &mut Writer, s: &Stmt) -> Result<(), CodecError> {
 
 fn binop_code(op: BinOp) -> u8 {
     match op {
+        // Unreachable: the Binary encode arm rejects Num first.
+        BinOp::Num { .. } => 0,
         BinOp::AddI32 => 0,
         BinOp::SubI32 => 1,
         BinOp::MulI32 => 2,

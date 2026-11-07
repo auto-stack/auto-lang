@@ -389,6 +389,52 @@ impl Def {
     }
 }
 
+/// PLAN-961: the typed numeric op vocabulary riding [`BinOp::Num`].
+/// Semantics are keyed by (op, ty) per the frozen numeric contract
+/// (checked int arithmetic, IEEE floats, int-only bit/shift ops).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum NumOpKind {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    And,
+    Or,
+    Xor,
+    Shl,
+    Shr,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    Eq,
+    Ne,
+}
+
+impl NumOpKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            NumOpKind::Add => "add",
+            NumOpKind::Sub => "sub",
+            NumOpKind::Mul => "mul",
+            NumOpKind::Div => "div",
+            NumOpKind::Rem => "rem",
+            NumOpKind::And => "and",
+            NumOpKind::Or => "or",
+            NumOpKind::Xor => "xor",
+            NumOpKind::Shl => "shl",
+            NumOpKind::Shr => "shr",
+            NumOpKind::Lt => "lt",
+            NumOpKind::Le => "le",
+            NumOpKind::Gt => "gt",
+            NumOpKind::Ge => "ge",
+            NumOpKind::Eq => "eq",
+            NumOpKind::Ne => "ne",
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BinOp {
     AddI32,
@@ -402,6 +448,13 @@ pub enum BinOp {
     GeI32,
     Eq,
     Ne,
+    /// PLAN-961: typed numeric op for every non-i32 numeric builtin (and
+    /// i32 bit/shift ops, which have no legacy variant). Same-type
+    /// operands, no implicit promotion.
+    Num {
+        op: NumOpKind,
+        ty: BuiltinType,
+    },
 }
 
 impl BinOp {
@@ -418,6 +471,15 @@ impl BinOp {
             BinOp::GeI32 => "ge_i32",
             BinOp::Eq => "eq",
             BinOp::Ne => "ne",
+            // PLAN-961: `add_i64` / `and_i32` / `lt_f64` — the Atom-text
+            // spelling is `{op}_{ty}` (see the descriptor parser).
+            BinOp::Num { op, ty } => {
+                // A short static name per (op,ty) is not enumerable as a
+                // const table; format at call sites instead via
+                // `num_op_atom`.
+                let _ = (op, ty);
+                "num"
+            }
         }
     }
 
@@ -426,7 +488,12 @@ impl BinOp {
     /// Division/remainder traps are inherent to those ops, and comparisons
     /// cannot overflow — neither carries the field.
     pub fn has_overflow_field(&self) -> bool {
-        matches!(self, BinOp::AddI32 | BinOp::SubI32 | BinOp::MulI32)
+        match self {
+            BinOp::AddI32 | BinOp::SubI32 | BinOp::MulI32 => true,
+            // PLAN-961: typed add/sub/mul carry the policy field.
+            BinOp::Num { op: NumOpKind::Add | NumOpKind::Sub | NumOpKind::Mul, .. } => true,
+            _ => false,
+        }
     }
 
     /// True only for the original core-i32-draft operator set; the core
@@ -435,12 +502,38 @@ impl BinOp {
     pub fn in_core_profile(&self) -> bool {
         matches!(self, BinOp::AddI32 | BinOp::MulI32 | BinOp::LtI32)
     }
+
+    /// PLAN-961: whether a comparison op yields bool (used by the
+    /// shared verifier walks).
+    pub fn is_comparison(&self) -> bool {
+        matches!(
+            self,
+            BinOp::LtI32
+                | BinOp::LeI32
+                | BinOp::GtI32
+                | BinOp::GeI32
+                | BinOp::Eq
+                | BinOp::Ne
+                | BinOp::Num {
+                    op: NumOpKind::Lt
+                        | NumOpKind::Le
+                        | NumOpKind::Gt
+                        | NumOpKind::Ge
+                        | NumOpKind::Eq
+                        | NumOpKind::Ne,
+                    ..
+                }
+        )
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum UnaryOp {
     NegI32,
     NotBool,
+    /// PLAN-961: checked negation for i8/i64 and the float sign-flip for
+    /// f32/f64 (unsigned negation is rejected at the source front).
+    NegNumeric(BuiltinType),
 }
 
 impl UnaryOp {
@@ -448,8 +541,25 @@ impl UnaryOp {
         match self {
             UnaryOp::NegI32 => "neg_i32",
             UnaryOp::NotBool => "not_bool",
+            // PLAN-961: typed negation; the Atom-text spelling is
+            // `neg_{ty}` (see `unary_op_atom`).
+            UnaryOp::NegNumeric(_) => "neg",
         }
     }
+
+    /// PLAN-961: the Atom-text word for a unary op (`neg_i64`).
+    pub fn atom_word(&self) -> String {
+        match self {
+            UnaryOp::NegNumeric(ty) => format!("neg_{}", ty.as_str()),
+            other => other.as_str().to_string(),
+        }
+    }
+}
+
+/// PLAN-961: the Atom-text word for a typed numeric binary op
+/// (`add_i64`, `and_i32`, `lt_f64`).
+pub fn num_op_atom(op: NumOpKind, ty: BuiltinType) -> String {
+    format!("{}_{}", op.as_str(), ty.as_str())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -527,6 +637,23 @@ pub enum ExprKind {
     /// Unit function. It carries no payload, has no runtime width, and is
     /// the ONLY expression whose type is `unit`.
     Unit,
+    /// PLAN-961: a numeric constant of a non-i32 numeric builtin. `bits`
+    /// carries the payload in the type's own representation: i8/u8/u32 as
+    /// zero-extended integers, i64/u64 as the full 64-bit pattern, f32 as
+    /// `f32::to_bits()` (in the low 32 bits), f64 as `f64::to_bits()`.
+    /// NaN payloads and signed zeros are bit-exact end to end.
+    NumericConst {
+        ty: BuiltinType,
+        bits: u64,
+    },
+    /// PLAN-961: an explicit numeric conversion (`expr as T`, `expr.as(T)`,
+    /// `expr.to(T)`). The operand's type is the source of the conversion;
+    /// `to` is the destination. Checked narrowing / float→int per the
+    /// frozen matrix; widening and int→float never trap.
+    Cast {
+        operand: ExprId,
+        to: BuiltinType,
+    },
     Binary {
         op: BinOp,
         overflow: OverflowPolicy,

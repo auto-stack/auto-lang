@@ -939,6 +939,14 @@ fn shape_of_use(u: &hir::TypeUse, m: &hir::Module) -> String {
         hir::TypeUse::Builtin(b) => b.as_str().to_string(),
         hir::TypeUse::Ref(tid) => match m.types.get(tid.0 as usize).map(|t| &t.kind) {
             Some(hir::TypeKind::I32) => "i32".to_string(),
+            // PLAN-961 numeric surface names.
+            Some(hir::TypeKind::I8) => "i8".to_string(),
+            Some(hir::TypeKind::U8) => "u8".to_string(),
+            Some(hir::TypeKind::U32) => "u32".to_string(),
+            Some(hir::TypeKind::I64) => "i64".to_string(),
+            Some(hir::TypeKind::U64) => "u64".to_string(),
+            Some(hir::TypeKind::F32) => "f32".to_string(),
+            Some(hir::TypeKind::F64) => "f64".to_string(),
             Some(hir::TypeKind::Bool) => "bool".to_string(),
             Some(hir::TypeKind::Str) => "str".to_string(),
             Some(hir::TypeKind::StrOwned) => "Str".to_string(),
@@ -1464,6 +1472,10 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<TypeIdx> {
                 | MirType::U64
                 | MirType::F32
                 | MirType::F64
+                // PLAN-961 numeric surface: inline scalar types.
+                | MirType::I8
+                | MirType::U8
+                | MirType::U32
                 | MirType::Char
                 | MirType::Str
                 | MirType::StrView
@@ -1750,6 +1762,10 @@ pub fn render_unit_sig(unit: &MirModule) -> String {
             Some(MirType::U64) => "u64".to_string(),
             Some(MirType::F32) => "f32".to_string(),
             Some(MirType::F64) => "f64".to_string(),
+            // PLAN-961 numeric surface names.
+            Some(MirType::I8) => "i8".to_string(),
+            Some(MirType::U8) => "u8".to_string(),
+            Some(MirType::U32) => "u32".to_string(),
             Some(MirType::Char) => "char".to_string(),
             Some(MirType::Str) => "Str".to_string(),
             Some(MirType::StrView) => "str".to_string(),

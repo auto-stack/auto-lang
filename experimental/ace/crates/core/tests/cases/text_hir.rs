@@ -81,6 +81,17 @@ fn text_identity_binds_and_verifies() {
             hir::TypeUse::Builtin(hir::BuiltinType::Bool) => "bool",
             // PLAN-862: the unit RESULT word never types a text local.
             hir::TypeUse::Builtin(hir::BuiltinType::Unit) => "unit",
+            // PLAN-961: numeric builtins never type a text-profile local
+            // either (totality for the shared enum).
+            hir::TypeUse::Builtin(
+                hir::BuiltinType::I8
+                | hir::BuiltinType::U8
+                | hir::BuiltinType::U32
+                | hir::BuiltinType::I64
+                | hir::BuiltinType::U64
+                | hir::BuiltinType::F32
+                | hir::BuiltinType::F64
+            ) => "numeric",
             hir::TypeUse::Ref(_) => "ref",
         })
         .collect();

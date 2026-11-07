@@ -1135,6 +1135,13 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     hir::BinOp::GeI32 => Ok((cmp(CmpOp::Ge, l, r), Ty::Bool)),
                     hir::BinOp::Eq => Ok((cmp(CmpOp::Eq, l, r), Ty::Bool)),
                     hir::BinOp::Ne => Ok((cmp(CmpOp::Ne, l, r), Ty::Bool)),
+                    // PLAN-961: the numeric Ty names render everywhere, but
+                    // numeric OP emission ships with the numeric producer
+                    // unit — until then a named rejection, never a silent
+                    // i32 fallback.
+                    hir::BinOp::Num { .. } => Err(A2xReject::unsupported_op(
+                        "typed numeric binary op: numeric emission ships with the PLAN-961 producer unit",
+                    )),
                 }
             }
             hir::ExprKind::Unary { op, operand } => {
@@ -1148,6 +1155,11 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                         Ty::I32,
                     )),
                     hir::UnaryOp::NotBool => Ok((RExpr::Not(Box::new(o)), Ty::Bool)),
+                    // PLAN-961: typed negation — named rejection until the
+                    // numeric producer unit ships.
+                    hir::UnaryOp::NegNumeric(_) => Err(A2xReject::unsupported_op(
+                        "typed negation: numeric emission ships with the PLAN-961 producer unit",
+                    )),
                 }
             }
             hir::ExprKind::Logical { op, lhs, rhs } => {

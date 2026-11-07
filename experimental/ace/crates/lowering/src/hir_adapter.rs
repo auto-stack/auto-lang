@@ -2588,6 +2588,14 @@ fn owned_type_idx_of(
     match u {
         hir::TypeUse::Builtin(b) => match b {
             hir::BuiltinType::I32 => Ok(out.intern_type(MirType::I32)),
+            // PLAN-961 numeric surface: 1:1 builtin→MIR type intern.
+            hir::BuiltinType::I8 => Ok(out.intern_type(MirType::I8)),
+            hir::BuiltinType::U8 => Ok(out.intern_type(MirType::U8)),
+            hir::BuiltinType::U32 => Ok(out.intern_type(MirType::U32)),
+            hir::BuiltinType::I64 => Ok(out.intern_type(MirType::I64)),
+            hir::BuiltinType::U64 => Ok(out.intern_type(MirType::U64)),
+            hir::BuiltinType::F32 => Ok(out.intern_type(MirType::F32)),
+            hir::BuiltinType::F64 => Ok(out.intern_type(MirType::F64)),
             hir::BuiltinType::Bool => Ok(out.intern_type(MirType::Bool)),
             hir::BuiltinType::Char => Ok(out.intern_type(MirType::Char)),
             hir::BuiltinType::StrOwned => Ok(out.intern_type(MirType::Str)),
@@ -3435,6 +3443,37 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 self.emit(MirInstr::Const { dst, value: c }, sp)?;
                 Ok(dst)
             }
+            // PLAN-961: the typed numeric constant materializes its exact
+            // payload — bit-exact floats included (NaN/signed-zero survive).
+            hir::ExprKind::NumericConst { ty: bty, bits } => {
+                let dst = self.temp_ty(ty)?;
+                let mc = match bty {
+                    hir::BuiltinType::I8 => MirConst::I8(*bits as u8 as i8),
+                    hir::BuiltinType::U8 => MirConst::U8(*bits as u8),
+                    hir::BuiltinType::U32 => MirConst::U32(*bits as u32),
+                    hir::BuiltinType::I64 => MirConst::I64(*bits as i64),
+                    hir::BuiltinType::U64 => MirConst::U64(*bits),
+                    hir::BuiltinType::F32 => MirConst::F32Bits(*bits as u32),
+                    hir::BuiltinType::F64 => MirConst::F64Bits(*bits),
+                    other => {
+                        return Err(AdapterError::uns(
+                            "lowering.num-type",
+                            format!("numeric const of non-numeric builtin {other:?}"),
+                        ))
+                    }
+                };
+                let c = self.scalar_const(mc)?;
+                self.emit(MirInstr::Const { dst, value: c }, sp)?;
+                Ok(dst)
+            }
+            // PLAN-961: the explicit numeric conversion lowers to the
+            // structural CONV instruction (types from the verified slots).
+            hir::ExprKind::Cast { operand, .. } => {
+                let v = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::Conv { dst, src: v }, sp)?;
+                Ok(dst)
+            }
             hir::ExprKind::Binary { op, lhs, rhs, .. } if bin_eq_ne_text => {
                 // str eq/ne rides STR_CMP over VIEW operands (BIN stays
                 // scalar-only); an owned operand views first — the same
@@ -3475,6 +3514,11 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 let mop = match op {
                     hir::UnaryOp::NegI32 => UnOp::NegI32,
                     hir::UnaryOp::NotBool => UnOp::NotBool,
+                    // PLAN-961: typed negation lowers to the structural
+                    // NegT subcode.
+                    hir::UnaryOp::NegNumeric(ty) => UnOp::NegT {
+                        ty: mir_num_ty(*ty)?,
+                    },
                 };
                 self.emit(
                     MirInstr::Un {
@@ -5057,6 +5101,54 @@ fn map_binop(op: hir::BinOp) -> Result<BinOp, AdapterError> {
         hir::BinOp::GeI32 => BinOp::GeI32,
         hir::BinOp::Eq => BinOp::EqI32,
         hir::BinOp::Ne => BinOp::NeI32,
+        // PLAN-961: the typed numeric surface maps 1:1 (op vocabulary and
+        // type axis are shared).
+        hir::BinOp::Num { op, ty } => BinOp::Num {
+            op: mir_num_op(op),
+            ty: mir_num_ty(ty)?,
+        },
+    })
+}
+
+/// PLAN-961: HIR NumOpKind → MIR NumOp (same vocabulary, distinct types).
+fn mir_num_op(op: hir::NumOpKind) -> NumOp {
+    match op {
+        hir::NumOpKind::Add => NumOp::Add,
+        hir::NumOpKind::Sub => NumOp::Sub,
+        hir::NumOpKind::Mul => NumOp::Mul,
+        hir::NumOpKind::Div => NumOp::Div,
+        hir::NumOpKind::Rem => NumOp::Rem,
+        hir::NumOpKind::And => NumOp::And,
+        hir::NumOpKind::Or => NumOp::Or,
+        hir::NumOpKind::Xor => NumOp::Xor,
+        hir::NumOpKind::Shl => NumOp::Shl,
+        hir::NumOpKind::Shr => NumOp::Shr,
+        hir::NumOpKind::Lt => NumOp::Lt,
+        hir::NumOpKind::Le => NumOp::Le,
+        hir::NumOpKind::Gt => NumOp::Gt,
+        hir::NumOpKind::Ge => NumOp::Ge,
+        hir::NumOpKind::Eq => NumOp::Eq,
+        hir::NumOpKind::Ne => NumOp::Ne,
+    }
+}
+
+/// PLAN-961: HIR BuiltinType → MIR NumTy (numeric builtins only).
+fn mir_num_ty(ty: hir::BuiltinType) -> Result<NumTy, AdapterError> {
+    Ok(match ty {
+        hir::BuiltinType::I8 => NumTy::I8,
+        hir::BuiltinType::I32 => NumTy::I32,
+        hir::BuiltinType::U8 => NumTy::U8,
+        hir::BuiltinType::U32 => NumTy::U32,
+        hir::BuiltinType::I64 => NumTy::I64,
+        hir::BuiltinType::U64 => NumTy::U64,
+        hir::BuiltinType::F32 => NumTy::F32,
+        hir::BuiltinType::F64 => NumTy::F64,
+        other => {
+            return Err(AdapterError::uns(
+                "lowering.num-type",
+                format!("builtin {other:?} is not a numeric type"),
+            ))
+        }
     })
 }
 
@@ -5065,6 +5157,9 @@ fn expr_kind_name(k: &hir::ExprKind) -> &'static str {
     match k {
         ReadLocal { .. } => "read-local",
         Constant { .. } => "constant",
+        // PLAN-961: the numeric const and cast exprs.
+        NumericConst { .. } => "numeric-const",
+        Cast { .. } => "cast",
         // PLAN-862: the unit value.
         Unit => "unit",
         Binary { .. } => "binary",

@@ -282,6 +282,9 @@ impl<'a> Walker<'a> {
             }
             E::Binary { lhs, rhs, .. } => vec![*lhs, *rhs],
             E::Unary { operand, .. } => vec![*operand],
+            // PLAN-961: a numeric constant is a leaf; a cast reads one operand.
+            E::NumericConst { .. } => Vec::new(),
+            E::Cast { operand, .. } => vec![*operand],
             E::Logical { lhs, rhs, .. } => vec![*lhs, *rhs],
             E::CallClosure { callee, eval_args } => {
                 let mut v = vec![*callee];
@@ -567,6 +570,9 @@ impl<'a> Walker<'a> {
                 self.expr(rhs);
             }
             E::Unary { operand, .. } => self.expr(operand),
+            // PLAN-961: a numeric constant is a leaf; a cast walks its operand.
+            E::NumericConst { .. } => {}
+            E::Cast { operand, .. } => self.expr(operand),
             E::Logical { lhs, rhs, .. } => {
                 self.expr(lhs);
                 self.expr(rhs);
@@ -856,6 +862,18 @@ fn digest_expr_kind(h: &mut Fnv64, k: &hir::ExprKind) {
         E::Constant { value } => {
             h.str("k");
             h.u32(*value as u32);
+        }
+        // PLAN-961: digest the numeric const by (kind, ty, bits) and the
+        // cast by its destination — payload-exact, NaN bits included.
+        E::NumericConst { ty, bits } => {
+            h.str("nk");
+            h.str(ty.as_str());
+            h.u32(*bits as u32);
+            h.u32((bits >> 32) as u32);
+        }
+        E::Cast { to, .. } => {
+            h.str("cast");
+            h.str(to.as_str());
         }
         E::Unit => h.str("unit"),
         E::Binary {

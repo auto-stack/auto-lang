@@ -13,6 +13,10 @@ use ace_av_core::mir::*;
 pub(crate) fn shape(m: &MirModule, idx: TypeIdx) -> String {
     match m.types.get(idx as usize) {
         Some(MirType::I32) => "i32".into(),
+        // PLAN-961 numeric surface names (distinct cache keys per width).
+        Some(MirType::I8) => "i8".into(),
+        Some(MirType::U8) => "u8".into(),
+        Some(MirType::U32) => "u32".into(),
         Some(MirType::Bool) => "bool".into(),
         // PLAN-870 (freeze §6): the data/owned shapes render DISTINCT,
         // nominal labels — the old defensive "fn"/"avdata" labels collided
@@ -97,6 +101,10 @@ fn const_repr(c: &MirConst) -> String {
         // (The legacy emission surface still rejects wide constants before
         // fingerprinting; these arms are the typed data face.)
         MirConst::I64(v) => format!("i64:{v}"),
+        // PLAN-961: narrow consts render by exact value.
+        MirConst::I8(v) => format!("i8:{v}"),
+        MirConst::U8(v) => format!("u8:{v}"),
+        MirConst::U32(v) => format!("u32:{v}"),
         MirConst::U64(v) => format!("u64:{v}"),
         MirConst::F32Bits(b) => format!("f32:{b:08x}"),
         MirConst::F64Bits(b) => format!("f64:{b:016x}"),
@@ -192,6 +200,13 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
         } => format!("foreign {} {} {:?}", declaration.digest(), dst, args),
         MirInstr::Const { dst, value } => format!("const {} = {}", dst, const_value(m, *value)),
         MirInstr::Copy { dst, src } => format!("copy {} <- {}", dst, src),
+        // PLAN-961: conversions render by slot types (cache-key complete).
+        MirInstr::Conv { dst, src } => format!(
+            "conv {} <- {} as {}",
+            dst,
+            src,
+            shape(m, m.funcs.iter().find_map(|f| f.slots.get(*src as usize).map(|s| s.ty)).unwrap_or(0))
+        ),
         MirInstr::GlobalGet { dst, global } => format!("global_get {} <- g{}", dst, global),
         MirInstr::GlobalSet { dst, global, src } => {
             format!("global_set g{} <- {} ; {} = 0", global, src, dst)

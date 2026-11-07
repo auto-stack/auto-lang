@@ -282,6 +282,18 @@ impl FnHirEnc {
                         return Err("text builtin outside the scalar codec".into())
                     }
                     hir::BuiltinType::Char => return Err("char outside the scalar codec".into()),
+                    // PLAN-961: the numeric builtins stay outside this
+                    // frozen scalar codec (named rejection, not a silent
+                    // i32 word).
+                    hir::BuiltinType::I8
+                    | hir::BuiltinType::U8
+                    | hir::BuiltinType::U32
+                    | hir::BuiltinType::I64
+                    | hir::BuiltinType::U64
+                    | hir::BuiltinType::F32
+                    | hir::BuiltinType::F64 => {
+                        return Err("numeric builtin outside the scalar codec".into())
+                    }
                     // PLAN-862: the unit RESULT word (entry-unit profile).
                     hir::BuiltinType::Unit => "unit",
                 })?;

@@ -324,6 +324,14 @@ fn print_fragment_text(records: &[RustRecord], rust_fn: &crate::lower::RustFn) -
 fn encode_ty(ty: &Ty) -> String {
     match ty {
         Ty::I32 => "i32".into(),
+        // PLAN-961: numeric wire words (additive to the frozen tag set).
+        Ty::I8 => "i8".into(),
+        Ty::U8 => "u8".into(),
+        Ty::U32 => "u32".into(),
+        Ty::I64 => "i64".into(),
+        Ty::U64 => "u64".into(),
+        Ty::F32 => "f32".into(),
+        Ty::F64 => "f64".into(),
         Ty::Bool => "bool".into(),
         Ty::Char => "char".into(),
         Ty::Str => "str".into(),

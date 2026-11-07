@@ -2376,6 +2376,56 @@ pub(crate) enum ValueType {
     F64,
 }
 
+/// PLAN-961: whether a ValueType is a numeric kind.
+pub(crate) fn numeric_vt(v: ValueType) -> bool {
+    matches!(
+        v,
+        ValueType::I32
+            | ValueType::I8
+            | ValueType::U8
+            | ValueType::U32
+            | ValueType::I64
+            | ValueType::U64
+            | ValueType::F32
+            | ValueType::F64
+    )
+}
+
+pub(crate) fn vt_is_float(v: ValueType) -> bool {
+    matches!(v, ValueType::F32 | ValueType::F64)
+}
+
+pub(crate) fn vt_is_unsigned(v: ValueType) -> bool {
+    matches!(v, ValueType::U8 | ValueType::U32 | ValueType::U64)
+}
+
+pub(crate) fn vt_builtin(b: hir::BuiltinType) -> ValueType {
+    match b {
+        hir::BuiltinType::I32 => ValueType::I32,
+        hir::BuiltinType::Bool => ValueType::Bool,
+        hir::BuiltinType::StrSlice => ValueType::Str,
+        hir::BuiltinType::StrOwned => ValueType::StrOwned,
+        hir::BuiltinType::Char => ValueType::Char,
+        hir::BuiltinType::Unit => ValueType::Unit,
+        hir::BuiltinType::I8 => ValueType::I8,
+        hir::BuiltinType::U8 => ValueType::U8,
+        hir::BuiltinType::U32 => ValueType::U32,
+        hir::BuiltinType::I64 => ValueType::I64,
+        hir::BuiltinType::U64 => ValueType::U64,
+        hir::BuiltinType::F32 => ValueType::F32,
+        hir::BuiltinType::F64 => ValueType::F64,
+    }
+}
+
+/// PLAN-961: the ValueType a numeric-const expr must carry by its payload
+/// type (`None` when the declared type use is not the builtin itself).
+pub(crate) fn numeric_declared(e: &hir::Expr) -> Option<ValueType> {
+    match &e.ty {
+        hir::TypeUse::Builtin(b) => Some(vt_builtin(*b)),
+        hir::TypeUse::Ref(_) => None,
+    }
+}
+
 pub(crate) fn vt_name(v: ValueType) -> &'static str {
     match v {
         ValueType::I32 => "i32",
@@ -2928,6 +2978,9 @@ impl Verifier {
                 | E::BorrowMut { .. }
                 | E::ListNew { .. } => Vec::new(),
                 E::Binary { lhs, rhs, .. } | E::Logical { lhs, rhs, .. } => vec![*lhs, *rhs],
+                // PLAN-961: a numeric constant is a leaf; a cast reads its operand.
+                E::NumericConst { .. } => Vec::new(),
+                E::Cast { operand, .. } => vec![*operand],
                 E::Unary { operand, .. }
                 | E::TextLen { operand }
                 | E::TextLenBytes { operand }
@@ -4118,6 +4171,12 @@ impl Verifier {
             match &e.kind {
                 // PLAN-862: the unit value has no operands.
                 hir::ExprKind::Unit => {}
+                // PLAN-961: a numeric constant has no operands; a cast
+                // contributes its operand.
+                hir::ExprKind::NumericConst { .. } => {}
+                hir::ExprKind::Cast { operand, .. } => {
+                    children.push(operand.0);
+                }
                 hir::ExprKind::Call { eval_args, .. } => {
                     is_call = true;
                     children.extend(eval_args.iter().map(|a| a.0));
@@ -4474,6 +4533,10 @@ impl Verifier {
             match &e.kind {
                 // PLAN-862: no references to bounds-check.
                 hir::ExprKind::Unit => {}
+                // PLAN-961: a numeric const carries no refs; a cast
+                // bounds-checks its operand like every other parent.
+                hir::ExprKind::NumericConst { .. } => {}
+                hir::ExprKind::Cast { .. } => {}
                 hir::ExprKind::ReadLocal { local } => {
                     if (local.0 as usize) >= n_locals {
                         bad("local", local.0, n_locals, e.span);
@@ -4944,6 +5007,58 @@ impl Verifier {
                     let e = &body.exprs[id.0 as usize];
                     let declared = declared_of(e);
                     match &e.kind {
+                        // PLAN-961: a numeric constant contributes its own
+                        // declared type (leaf, like Constant); a cast is a
+                        // typed leaf against its DESTINATION declared type —
+                        // the operand walk covers the source side.
+                        hir::ExprKind::NumericConst { .. } => {
+                            if let Some(want) = numeric_declared(e) {
+                                if declared != want {
+                                    self.error(
+                                        "verify.type-mismatch",
+                                        format!(
+                                            "expr `{}`: numeric constant type mismatch",
+                                            e.id_text
+                                        ),
+                                        e.span,
+                                    );
+                                }
+                            }
+                            continue;
+                        }
+                        hir::ExprKind::Cast { to: to_, operand } => {
+                            let want = self.value_of(
+                                &hir::TypeUse::Builtin(*to_),
+                                type_map,
+                            );
+                            if declared != want {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: cast result must be {}",
+                                        e.id_text,
+                                        to_.as_str()
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            let ot = operand_type(
+                                tm,
+                                *operand,
+                                declared_of(&body.exprs[operand.0 as usize]),
+                            );
+                            if !numeric_vt(ot) {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: cast operand must be numeric",
+                                        e.id_text
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            continue;
+                        }
                         hir::ExprKind::ReadLocal { local } => {
                             let l = &body.locals[local.0 as usize];
                             let lt = self.value_of(&l.ty, type_map);
@@ -5312,6 +5427,10 @@ impl Verifier {
                     let e = &body.exprs[id.0 as usize];
                     let declared = declared_of(e);
                     let computed = match &e.kind {
+                        // PLAN-961: a numeric constant contributes its own
+                        // payload type; a cast computes its DESTINATION.
+                        hir::ExprKind::NumericConst { ty, .. } => vt_builtin(*ty),
+                        hir::ExprKind::Cast { to, .. } => vt_builtin(*to),
                         // PLAN-864 collections kinds: the declared type IS
                         // the computed type (list/variant ctors, len i32,
                         // guard bool, projection payload); the operand
@@ -5337,6 +5456,89 @@ impl Verifier {
                                 operand_type(tm, *rhs, declared_of(&body.exprs[rhs.0 as usize]));
                             use hir::BinOp::*;
                             match op {
+                                // PLAN-961: the typed numeric surface —
+                                // same-type operands (no implicit promotion),
+                                // result = ty for arith/bit, bool for
+                                // comparisons; bit/shift reject floats;
+                                // unsigned negation never reaches Bin.
+                                Num { op: nop, ty } => {
+                                    let want = vt_builtin(*ty);
+                                    let is_cmp = matches!(
+                                        nop,
+                                        hir::NumOpKind::Lt
+                                            | hir::NumOpKind::Le
+                                            | hir::NumOpKind::Gt
+                                            | hir::NumOpKind::Ge
+                                            | hir::NumOpKind::Eq
+                                            | hir::NumOpKind::Ne
+                                    );
+                                    for (role, vt) in [("lhs", lt), ("rhs", rt)] {
+                                        if vt != want {
+                                            self.error(
+                                                "verify.type-mismatch",
+                                                format!(
+                                                    "expr `{}`: {} operand of {} must be {}",
+                                                    e.id_text,
+                                                    role,
+                                                    hir::num_op_atom(*nop, *ty),
+                                                    ty.as_str()
+                                                ),
+                                                e.span,
+                                            );
+                                        }
+                                    }
+                                    if is_cmp {
+                                        if declared != ValueType::Bool {
+                                            self.error(
+                                                "verify.type-mismatch",
+                                                format!(
+                                                    "expr `{}`: {} must produce bool",
+                                                    e.id_text,
+                                                    hir::num_op_atom(*nop, *ty)
+                                                ),
+                                                e.span,
+                                            );
+                                        }
+                                    } else {
+                                        let bit_like = matches!(
+                                            nop,
+                                            hir::NumOpKind::And
+                                                | hir::NumOpKind::Or
+                                                | hir::NumOpKind::Xor
+                                                | hir::NumOpKind::Shl
+                                                | hir::NumOpKind::Shr
+                                        );
+                                        if bit_like && ty.is_float() {
+                                            self.error(
+                                                "verify.type-mismatch",
+                                                format!(
+                                                    "expr `{}`: bit op {} is not defined for {}",
+                                                    e.id_text,
+                                                    hir::num_op_atom(*nop, *ty),
+                                                    ty.as_str()
+                                                ),
+                                                e.span,
+                                            );
+                                        }
+                                        if declared != want {
+                                            self.error(
+                                                "verify.type-mismatch",
+                                                format!(
+                                                    "expr `{}`: {} must produce {}",
+                                                    e.id_text,
+                                                    hir::num_op_atom(*nop, *ty),
+                                                    ty.as_str()
+                                                ),
+                                                e.span,
+                                            );
+                                        }
+                                    }
+                                    if is_cmp {
+                                        ValueType::Bool
+                                    } else {
+                                        want
+                                    }
+                                }
                                 AddI32 | SubI32 | MulI32 | DivI32 | RemI32 => {
                                     for (role, vt) in [("lhs", lt), ("rhs", rt)] {
                                         if vt != ValueType::I32 {
@@ -5449,6 +5651,53 @@ impl Verifier {
                                 declared_of(&body.exprs[operand.0 as usize]),
                             );
                             match op {
+                                // PLAN-961: typed negation — signed or float
+                                // only; operand and result carry the type.
+                                hir::UnaryOp::NegNumeric(ty) => {
+                                    let want = vt_builtin(*ty);
+                                    if !matches!(
+                                        want,
+                                        ValueType::I8
+                                            | ValueType::I64
+                                            | ValueType::F32
+                                            | ValueType::F64
+                                    ) {
+                                        self.error(
+                                            "verify.type-mismatch",
+                                            format!(
+                                                "expr `{}`: negation is not defined for unsigned {}",
+                                                e.id_text,
+                                                ty.as_str()
+                                            ),
+                                            e.span,
+                                        );
+                                    }
+                                    if ot != want {
+                                        self.error(
+                                            "verify.type-mismatch",
+                                            format!(
+                                                "expr `{}`: operand of neg_{} must be {}",
+                                                e.id_text,
+                                                ty.as_str(),
+                                                ty.as_str()
+                                            ),
+                                            e.span,
+                                        );
+                                    }
+                                    if declared != want {
+                                        self.error(
+                                            "verify.type-mismatch",
+                                            format!(
+                                                "expr `{}`: neg_{} must produce {}",
+                                                e.id_text,
+                                                ty.as_str(),
+                                                ty.as_str()
+                                            ),
+                                            e.span,
+                                        );
+                                    }
+                                    want
+                                }
                                 hir::UnaryOp::NegI32 => {
                                     if ot != ValueType::I32 {
                                         self.error(
@@ -7181,6 +7430,14 @@ impl Verifier {
             match &e.kind {
                 // PLAN-862: the unit value reads no local.
                 hir::ExprKind::Unit => {}
+                // PLAN-961: a numeric constant reads no local; a cast's
+                // operand is walked by the generic children path below.
+                hir::ExprKind::NumericConst { .. } => {}
+                hir::ExprKind::Cast { .. } => {
+                    if let hir::ExprKind::Cast { operand, .. } = &e.kind {
+                        stack.push(*operand);
+                    }
+                }
                 hir::ExprKind::ReadLocal { local } => {
                     if !init.contains(local) {
                         let name = body

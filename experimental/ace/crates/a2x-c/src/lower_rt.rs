@@ -714,6 +714,11 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                         };
                         Ok((format!("(({}) {} ({}))", l, o, r), Ty::Bool))
                     }
+                    // PLAN-961: named rejection until the numeric producer
+                    // unit ships (never a silent i32 fallback).
+                    hir::BinOp::Num { .. } => Err(A2xReject::unsupported_op(
+                        "typed numeric binary op: numeric emission ships with the PLAN-961 producer unit",
+                    )),
                 }
             }
             hir::ExprKind::Unary { op, operand } => {
@@ -726,6 +731,11 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                         Ok((format!("{}.value", t), Ty::I32))
                     }
                     hir::UnaryOp::NotBool => Ok((format!("(!({}))", o), Ty::Bool)),
+                    // PLAN-961: named rejection until the numeric producer
+                    // unit ships.
+                    hir::UnaryOp::NegNumeric(_) => Err(A2xReject::unsupported_op(
+                        "typed negation: numeric emission ships with the PLAN-961 producer unit",
+                    )),
                 }
             }
             hir::ExprKind::Logical { op, lhs, rhs } => {

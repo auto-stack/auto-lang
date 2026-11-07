@@ -59,6 +59,15 @@ pub enum Ty {
     /// The unit type (PLAN-904: the collections `Eval` statement's
     /// discarded result).
     Unit,
+    /// PLAN-961 numeric surface: the signed/unsigned/float value types.
+    /// `byte`/`uint` resolve to `U8`/`U32` at the source front.
+    I8,
+    U8,
+    U32,
+    I64,
+    U64,
+    F32,
+    F64,
 }
 
 impl Ty {
@@ -75,6 +84,13 @@ impl Ty {
             Ty::List(_) => "list",
             Ty::Variant(_) => "variant",
             Ty::Unit => "unit",
+            Ty::I8 => "i8",
+            Ty::U8 => "u8",
+            Ty::U32 => "u32",
+            Ty::I64 => "i64",
+            Ty::U64 => "u64",
+            Ty::F32 => "f32",
+            Ty::F64 => "f64",
         }
     }
 
@@ -1235,6 +1251,14 @@ fn param_facts(
 fn resolve_ty(module: &hir::Module, ty: hir::TypeUse) -> Result<Ty, A2xReject> {
     match ty {
         hir::TypeUse::Builtin(hir::BuiltinType::I32) => Ok(Ty::I32),
+        // PLAN-961 numeric surface.
+        hir::TypeUse::Builtin(hir::BuiltinType::I8) => Ok(Ty::I8),
+        hir::TypeUse::Builtin(hir::BuiltinType::U8) => Ok(Ty::U8),
+        hir::TypeUse::Builtin(hir::BuiltinType::U32) => Ok(Ty::U32),
+        hir::TypeUse::Builtin(hir::BuiltinType::I64) => Ok(Ty::I64),
+        hir::TypeUse::Builtin(hir::BuiltinType::U64) => Ok(Ty::U64),
+        hir::TypeUse::Builtin(hir::BuiltinType::F32) => Ok(Ty::F32),
+        hir::TypeUse::Builtin(hir::BuiltinType::F64) => Ok(Ty::F64),
         hir::TypeUse::Builtin(hir::BuiltinType::Bool) => Ok(Ty::Bool),
         hir::TypeUse::Builtin(hir::BuiltinType::StrSlice) => Ok(Ty::Str),
         hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => Ok(Ty::StrOwned),
@@ -1242,6 +1266,14 @@ fn resolve_ty(module: &hir::Module, ty: hir::TypeUse) -> Result<Ty, A2xReject> {
         hir::TypeUse::Builtin(hir::BuiltinType::Unit) => Ok(Ty::Unit),
         hir::TypeUse::Ref(id) => match module.types.get(id.0 as usize).map(|t| &t.kind) {
             Some(hir::TypeKind::I32) => Ok(Ty::I32),
+            // PLAN-961 numeric surface.
+            Some(hir::TypeKind::I8) => Ok(Ty::I8),
+            Some(hir::TypeKind::U8) => Ok(Ty::U8),
+            Some(hir::TypeKind::U32) => Ok(Ty::U32),
+            Some(hir::TypeKind::I64) => Ok(Ty::I64),
+            Some(hir::TypeKind::U64) => Ok(Ty::U64),
+            Some(hir::TypeKind::F32) => Ok(Ty::F32),
+            Some(hir::TypeKind::F64) => Ok(Ty::F64),
             Some(hir::TypeKind::Bool) => Ok(Ty::Bool),
             Some(hir::TypeKind::Str) => Ok(Ty::Str),
             Some(hir::TypeKind::StrOwned) => Ok(Ty::StrOwned),
@@ -1318,5 +1350,12 @@ fn type_kind_name(k: &hir::TypeKind) -> &'static str {
         hir::TypeKind::Record(_) => "record",
         hir::TypeKind::List { .. } => "list",
         hir::TypeKind::Variant { .. } => "variant",
+        hir::TypeKind::I8 => "i8",
+        hir::TypeKind::U8 => "u8",
+        hir::TypeKind::U32 => "u32",
+        hir::TypeKind::I64 => "i64",
+        hir::TypeKind::U64 => "u64",
+        hir::TypeKind::F32 => "f32",
+        hir::TypeKind::F64 => "f64",
     }
 }

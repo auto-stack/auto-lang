@@ -26,6 +26,14 @@ use crate::lower::{
 pub fn rust_ty_str(view: &SemanticView<'_>, ty: Ty) -> String {
     match ty {
         Ty::I32 => "i32".into(),
+        // PLAN-961: numeric names are their Rust spellings.
+        Ty::I8 => "i8".into(),
+        Ty::U8 => "u8".into(),
+        Ty::U32 => "u32".into(),
+        Ty::I64 => "i64".into(),
+        Ty::U64 => "u64".into(),
+        Ty::F32 => "f32".into(),
+        Ty::F64 => "f64".into(),
         Ty::Bool => "bool".into(),
         Ty::Char => "char".into(),
         Ty::Str => "&str".into(),
@@ -544,6 +552,11 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         lhs: Box::new(l),
                         rhs: Box::new(r),
                     }),
+                    // PLAN-961: named rejection until the numeric producer
+                    // unit ships (never a silent i32 fallback).
+                    hir::BinOp::Num { .. } => Err(A2xReject::unsupported_op(
+                        "typed numeric binary op: numeric emission ships with the PLAN-961 producer unit",
+                    )),
                 }
             }
             other_kind => self.expr_rest(id, e, other_kind, out),
@@ -652,6 +665,11 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 match op {
                     hir::UnaryOp::NegI32 => self.checked_temp("a2x_neg", vec![o], id, out),
                     hir::UnaryOp::NotBool => Ok(RExpr::Not(Box::new(o))),
+                    // PLAN-961: named rejection until the numeric producer
+                    // unit ships.
+                    hir::UnaryOp::NegNumeric(_) => Err(A2xReject::unsupported_op(
+                        "typed negation: numeric emission ships with the PLAN-961 producer unit",
+                    )),
                 }
             }
             hir::ExprKind::Logical { op, lhs, rhs } => {
