@@ -49,8 +49,9 @@ pub struct BoundPackages {
     /// `pkg::mod` 显示键。
     pub entry: String,
     pub capabilities: Vec<String>,
-    /// 扁平化程序：fn/type 项（含合成 init 函数），名字已 mangle；
-    /// const/store 不作为项出现（见 `globals` 与 init 函数）。
+    /// 扁平化程序：fn/type 项（含合成 init 函数）与 const/store 声明项，
+    /// 名字已 mangle；声明项仅作 `module.global.get/set:` 访问器伪签名的
+    /// 类型载体（其值体由 init 函数求值，不在该层解析——见 `globals`）。
     pub program: Program,
     pub units: BTreeMap<String, PackageSyntax>,
     pub segments: Vec<PackageSegment>,
