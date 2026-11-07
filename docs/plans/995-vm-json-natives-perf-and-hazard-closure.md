@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-995
-status: execution_done
+status: reviewed
 feature_name: VM json native性能与codegen hazard收口（READER-009 cold-load框架前置）
 author: [ZCode]
 created_at: 2026-11-07
 updated_at: 2026-11-08
 plan_revision: 1
-current_step: 5
+current_step: 6
 total_steps: 7
 depends_on: [READER-009]
 supersedes_spec_components: []
@@ -185,6 +185,30 @@ canonical_ok参考实现的Reader侧落地Spec（library-workspace.md性能证�
 - stage: work | plan_id: PLAN-995 | plan_revision: r1 | outcome: pass（execution_done）| worktree: D:/autostack/.wt/lang-995/auto-lang | branch: codex/plan-995-dev | base_commit: b90c17dd1 | code_commit: f31b85a84 | dependency_revisions: auto-man@2a9b16e, auto-web@2d69841, auto-ui@061f4273, auto-down@58ea33f（构建依赖，detached）；reader@17e6b62+cohort 6ce87feb（T-04 消费链，只读）| task_ids: T-00✅ T-01✅ T-02✅ T-03✅ T-04✅（T-05 review、T-06 merge 待）| evidence: §9 T-00 处置表/基线/组名单 + T-01/02/03 记录 + 本 T-04 记录；plan-artifacts scope 全材料 | blockers: 无 | next_responsible_role: review（独立终审复演 W01～W04 与 Spec 增量定稿）。
 
 - stage: goal | plan_id: PLAN-995 | plan_revision: r1 | round: 4 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-995/auto-lang | commit: f31b85a84 | next: review T-05。
+
+2026-11-08：stage: review | PLAN-995 r1 | **T-05 独立终审记录（final）**。
+
+**基线**：reviewed_commit **8772f5d66**（= f31b85a84 代码 + SD-01/SD-02 定稿；docs-only 增量，工具链二进制按 f31b85a84 代码等价使用）。base b90c17dd1；分支 codex/plan-995-dev；worktree clean（status 0 行）。依赖：auto-man@2a9b16e、auto-web@2d69841、auto-ui@061f4273、auto-down@58ea33f（构建，detached）；T-04 消费链 reader@17e6b62 + cohort 6ce87feb（只读）。**reviewer 身份/局限**：goal 会话内终审（实施同上下文）——结论从工件重建+独立复演得出（确定性哈希逐字节比对、测试重执行、e2e 重跑），非采信执行方摘要。
+
+**W01-W04 复演（本审查实际执行）**：
+- W01：`cargo test -p auto-lang-core --lib vm::tests_json_hazards` → **7/7 ok**（1.63s）。
+- W02：`--lib json` → auto-lang-core **32/32 ok**；auto-lang 7/8（唯一红 plan872 绑定表=pristine master 同红存量，已 triage）。
+- W03：h8-canonical 五端点复演——singleparse-proof proof=true（1.801s）、multiparse 1.927s、rebuilt/negative-spacing/negative-enum 响应 **sha256 与 work 阶段逐字节一致**（d738b0ab/92fbbaa0/b8bda1eb/470841cb/911dc482）——确定性复现。
+- W04：e2e 确认 run3-review：cold **17.71s**（band 16.23-16.58 +1.1s，三 run 展布内；"未达标>15s"结论稳定）；分量 books 3.89/catalog 2.72/prefs POST 7.89s 结构与 band 一致（对账闭合）；其余 6 叶全 PASS。
+
+**健康检查**：我的 5 文件零新增编译警告（strings_json:890 unused-doc-comment 与 expr_calls:466 fmt 漂移均为 pristine master 存量，行号位移所致）；新增行 fmt 干净；diff 无新增无条件 debug print（SUBSTR-CLAMP eprintln=存量 env 门控搬移；RwLock read().unwrap()=仓内惯例）；无 TODO/FIXME/workaround 标记。
+
+**AC 清单审计**：AC-01 pass（处置表+双 pin 证据+夹具 sha+组名单实核；夹具 216KB 属"250KB级"口径、千册数组=catalog 本身、深嵌套=deep-40）；AC-02 pass（H1-H3 定谳=不复现/证伪（强于"消除"），无封界类具名（R01 允许豁免处置，vacuous 注记），H4 基线钉住）；AC-03 pass（等价 oracle 全绿+band 留档 -30%/-36%+cold parse 分量下降：native 20→14ms/次、GET 3.9→3.6-3.9/2.6→2.3-2.7s）；AC-04 pass（逐字节哈希+负控+时延记录+合规注记）；AC-05 pass（两 run band+分量对账闭合+未达标具名+预算未修订）；AC-06 本轮 pass；AC-07 merge 所属。
+
+**遗漏/延后/workaround 扫描**：§5/§6/§8 各行核对无丢项——无封界类（vacuous 已注记）、canonical_ok 落地按 §2 口径归 009 re-land（合同内）、统一回归=merge-owned pending（记录非阻塞）。存量债清单（非本计划）：plan872 绑定表 drift、sys_natives_vm 断言、expr_calls 存量 fmt 漂移、strings_json lazy_static doc-comment 警告——均 pristine master 同在，triage 在交接摘要。
+
+**Spec 增量核验**：SD-01 `docs/specs/auto-vm/vm-codegen-hazard-catalog.md`（六类定谳表+五条合同规则+检测/豁免流程+retire 记录）与 SD-02 `docs/specs/auto-vm/json-natives-performance.md`（语义保持承诺五条+夹具/口径+改善记录表+非瓶颈注记）随 8772f5d66 提交，内容与实证一致、路径沿 auto-vm/zip-natives 先例。frontmatter `new_spec_components` 与实际路径一致；`supersedes_spec_components=[]`、`touched_goals=[]`（无既有 goal 触面，SD 全为新增文档）。
+
+**结论：final pass**（绑定 reviewed_commit 8772f5d66 / r1）→ status reviewed；merge-owned pending：冻结受影响并集复跑（vm/auto-lang-core/auto-lang/http/corpus 于最终 merge 树）、canonical 落地核验、归档/计数、wt-guard 清理与 009 交接件移交（068 先例）。
+
+- stage: review | review_scope: final | reviewer: goal会话内终审（局限已注记，工件重建+独立复演） | plan_id: PLAN-995 | plan_revision: r1 | outcome: pass | worktree: D:/autostack/.wt/lang-995/auto-lang | branch: codex/plan-995-dev | reviewed_commit: 8772f5d66 | base_commit: b90c17dd1 | dependency_revisions: 同上 | spec_inputs: docs/specs/auto-vm/{vm-codegen-hazard-catalog,json-natives-performance}.md（随审提交） | acceptance_results: AC-01~06 pass / AC-07 merge-owned | pending_closeout_gates: 冻结并集复跑、canonical 核验、归档、清理、009 交接 | findings: 无 blocking（存量债 4 项已 triage） | evidence: 本段 W01-W04 复演数字+哈希 | next: merge T-06。
+
+- stage: goal | plan_id: PLAN-995 | plan_revision: r1 | round: 5 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-995/auto-lang | commit: 8772f5d66 | next: merge T-06。
 
 
 - stage: goal | plan_id: PLAN-995 | plan_revision: r1 | round: 1 | from: new | to: work | status: drafting→work待启 | outcome: pass | worktree: 待T-00创建（D:/autostack/.wt/lang-995/auto-lang拟） | commit: 本主检出簿记提交 | next: work T-00。
