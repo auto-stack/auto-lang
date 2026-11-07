@@ -4110,3 +4110,7 @@ owner=ace-native；`lower.rs` 对 `GlobalGet/GlobalSet` 返回 "module global ce
 ### D-939-CE-1 — S01-CE 文本view源导出被事实签名词表与库装配器双向挡住（2026-11-08，登记未关闭）
 
 owner=T-11 H 窗口（2026-11-08 round 14 重路由：原 T-05 未覆盖，改由 T-11 的 S01..08 逐方向收口窗承接，复审 T-13 前落地或按复审裁定再路由）+ D-960-1 事实层；PLAN-939 T-03 批2 实证：(a) certify 路径（foreign+导出）在 source-query `produce_fn_sig`/catalog 拒绝 str 参数函数（`NonPortableType Builtin(Str)`——D-960-1 同一边界的导出方向影响面）；(b) bridge 路径（纯 Auto str 参数导出，937 source leg 语义）的库装配器 `ExportSpec` 仅 i32/bool。探针证据：str 参数（NUL 为数据）与 record 参数在 native 产品路径全编译运行绿（`ac-native build-source --source-profile text-record`，exit 99/21）；certify 侧 CE 接线（EntryPlan/ce 腿/独立 caller/reference 场景）已完整实现并驱动到该接缝后按零死码纪律回退。关闭条件=T-05 record-text 导出装配器（str/record ExportSpec+包装发射）落地；certify 侧随 D-960-1 词表扩展。
+
+### D-941-1 — plan872 绑定表 fingerprint 漂移未随 native 目录新增 regenerate（2026-11-08，登记未关闭）
+
+owner=PLAN-941（multi-file dialog 能力线，commit 3920dd95a 2026-11-06 新增 NATIVE_ID_ENTRIES 三条目）；批量回归 995 批（covered 69da2dea8）实证 `plan872_builtin_binding_probes::plan872_binding_table_json_matches_regeneration` 红——`scripts/builtin-binding-table.json` 的 registry_fingerprint（native_id_entries 规模）与再生成不一致。已证非 PLAN-995（红在 pristine b90c17dd1 复现，早于 995 代码；995 diff 零绑定注册面）。关闭条件=941 侧（或其 owner）以 `AUTO_LANG_872_EMIT_TABLE=1` 重冻结绑定表并复审 diff，或后续计划显式接管该表维护。
