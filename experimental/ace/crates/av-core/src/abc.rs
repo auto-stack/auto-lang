@@ -203,8 +203,8 @@ pub const OP_DYN_PACK: u8 = 0x2F;
 pub const OP_DYN_IS: u8 = 0x30;
 pub const OP_DYN_TAKE: u8 = 0x31;
 /// PLAN-960: module global cell read/write.
-pub const OP_GLOBAL_GET: u8 = 0x36;
-pub const OP_GLOBAL_SET: u8 = 0x37;
+pub const OP_GLOBAL_GET: u8 = 0x38;
+pub const OP_GLOBAL_SET: u8 = 0x39;
 pub const TERM_JUMP: u8 = 0x10;
 pub const TERM_BRANCH: u8 = 0x11;
 pub const TERM_RETURN: u8 = 0x12;
@@ -2876,6 +2876,15 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         }
                         MirInstr::Call { callee, dst, args }
                     }
+                    OP_GLOBAL_GET => MirInstr::GlobalGet {
+                        dst: c.u32()?,
+                        global: c.u32()?,
+                    },
+                    OP_GLOBAL_SET => MirInstr::GlobalSet {
+                        dst: c.u32()?,
+                        global: c.u32()?,
+                        src: c.u32()?,
+                    },
                     OP_FOREIGN_CALL => {
                         if family != WireFamily::ForeignScalar {
                             return Err(AbcDecodeError::fmt_err(
