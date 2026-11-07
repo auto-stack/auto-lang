@@ -307,6 +307,21 @@ fn check_expr(
                     .checked_sub(program.fns.len())
                     .and_then(|i| program.foreign_by_slot(i))
                 {
+                    // PLAN-939: ONE resource-aware signature (scalar is its
+                    // special case). Record/callback shapes were admitted
+                    // by the signature pass; here only the per-argument
+                    // type, borrow mode and move rules are checked.
+                    let sig = match crate::foreign_resources::source_sig_readonly(
+                        d,
+                        &program.records,
+                        &program.function_types,
+                    ) {
+                        Ok(s) => s,
+                        Err((code, message)) => {
+                            diags.push(Diagnostic::new(Stage::Verify, code, message, e.span));
+                            continue;
+                        }
+                    };
                     for (idx, a) in args.iter().enumerate() {
                         let pos = a
                             .name
@@ -317,23 +332,42 @@ fn check_expr(
                                     .and_then(|i| i.parse::<usize>().ok())
                             })
                             .unwrap_or(idx);
-                        if let Some(k) = d.params().get(pos) {
-                            let want = if *k == ace_foreign_contract::LaneKind::Bool {
-                                VT::Bool
-                            } else {
-                                VT::I32
-                            };
+                        if let Some(want) = sig.params.get(pos).copied() {
                             if a.value.vt != want {
                                 mismatch(diags, want, a.value.vt, a.value.span);
                             }
+                            // `Rec{role: Mut}` needs the explicit `.mut`
+                            // borrow; every other lane must NOT be `.mut`.
+                            let is_mut_arg = matches!(a.value.kind, RExprKind::BorrowMut { .. });
+                            let want_mut = sig.mut_params.get(pos).copied().unwrap_or(false);
+                            if want_mut != is_mut_arg {
+                                diags.push(Diagnostic::new(
+                                    Stage::Verify,
+                                    "source.foreign-mode",
+                                    if want_mut {
+                                        "foreign mut record view requires an explicit `.mut` argument"
+                                    } else {
+                                        "`.mut` is only legal for a foreign mut record view"
+                                    },
+                                    a.value.span,
+                                ));
+                            }
                         }
                         if a.moved {
-                            diags.push(Diagnostic::new(
-                                Stage::Verify,
-                                "source.foreign-mode",
-                                "scalar foreign arguments cannot be moved",
-                                a.value.span,
-                            ));
+                            // Ownership transfer is only meaningful on a
+                            // provider handle lane (plan §5.2 move point).
+                            let is_handle = matches!(
+                                crate::foreign_resources::param_kind(d, pos),
+                                Some(ace_foreign_contract::resource::ResKind::Handle { .. })
+                            );
+                            if !is_handle {
+                                diags.push(Diagnostic::new(
+                                    Stage::Verify,
+                                    "source.foreign-mode",
+                                    "only a foreign handle argument can be moved",
+                                    a.value.span,
+                                ));
+                            }
                         }
                     }
                 } else {

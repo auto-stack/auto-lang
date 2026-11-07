@@ -856,6 +856,7 @@ pub fn commit_foreign_candidates(
     env.program.foreign = context.declarations;
     env.program.foreign_slots = context.slots;
     env.sigs = context.sigs;
+    env.program.function_types = context.function_types;
     for candidate in candidates {
         candidate.state.swap_into(env, candidate.fn_index);
     }
@@ -2333,9 +2334,9 @@ impl PlanCtx<'_> {
                                         .and_then(|i| i.parse::<usize>().ok())
                                 })
                                 .unwrap_or(idx);
-                            if pos < declaration.params().len() {
+                            if pos < declaration.arity() {
                                 bindings.push((pos as u32, idx as u32));
-                                moved.push(false);
+                                moved.push(a.moved);
                             }
                         }
                     }
@@ -3756,24 +3757,27 @@ impl<'p> Emitter<'p> {
             nl!(12);
         }
         for declaration in &self.program.foreign {
-            let ty = |k| {
-                if k == ace_foreign_contract::LaneKind::Bool {
-                    "t_bool"
-                } else {
-                    "t_i32"
-                }
-            };
-            let params: Vec<_> = declaration
-                .params()
+            // PLAN-939: the HIR function type of a foreign def is rendered
+            // from the ONE resource-aware source signature (str views,
+            // nominal records and the callback closure type reuse the
+            // module's own type ids; scalar decls are the special case).
+            let sig = crate::foreign_resources::source_sig_readonly(
+                declaration,
+                &self.program.records,
+                &self.program.function_types,
+            )
+            .expect("foreign signature admitted by the signature pass");
+            let params: Vec<_> = sig
+                .params
                 .iter()
-                .map(|k| format!("\"{}\"", ty(*k)))
+                .map(|vt| format!("\"{}\"", self.ty_name(*vt)))
                 .collect();
             frag!(
                 &format!(
                     "type t_foreign_{} function {{ params: [{}]; result: \"{}\" }}",
                     declaration.name,
                     params.join(", "),
-                    ty(declaration.result())
+                    self.ty_name(sig.result)
                 ),
                 Span { start: 0, end: 0 }
             );

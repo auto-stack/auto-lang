@@ -1022,6 +1022,7 @@ pub fn run_source_export(
                 codes: ace_a2x_c::abi_scalar::public_error_model_rows(),
             }),
             semantic_ref: None,
+            resource: None,
         })
         .collect();
     let facts = InterfaceFacts {

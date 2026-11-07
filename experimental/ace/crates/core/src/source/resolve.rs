@@ -1778,6 +1778,19 @@ fn resolve_detailed(
         }
     }
 
+
+    // PLAN-909 §5.5 warm seeding: cached owners reference the module's
+    // closure-signature table by INDEX; seeding the fresh table with the
+    // previous snapshot keeps every cached index valid (interning is
+    // value-dedup and append-only past the seed).
+    if let Some(w) = warm.as_ref() {
+        if let Some(prev) = w.prev {
+            coll.function_types = prev.function_types.clone();
+        }
+    }
+    // PLAN-939: foreign signatures are inserted AFTER warm seeding so the
+    // interned callback closure index is taken on the seeded table (no
+    // index drift between the signature pass and body resolution).
     if let Some(foreign) = supply.and_then(|s| s.foreign()) {
         for (index, declaration) in foreign.source_declarations_ref().iter().enumerate() {
             if sigs.contains_key(&declaration.name) {
@@ -1792,34 +1805,39 @@ fn resolve_detailed(
                 ));
                 continue;
             }
-            let vt = |k| match k {
-                ace_foreign_contract::LaneKind::Bool => VT::Bool,
-                _ => VT::I32,
+            // PLAN-939: ONE resource-aware mapping (scalar decls are its
+            // special case) — records must exist with the exact nominal
+            // closure; the callback closure type is interned here.
+            let sig = match crate::foreign_resources::source_sig(
+                declaration,
+                &records,
+                &mut coll.function_types,
+            ) {
+                Ok(s) => s,
+                Err((code, message)) => {
+                    diags.push(Diagnostic::new(
+                        Stage::Bind,
+                        code,
+                        message,
+                        Span { start: 0, end: 0 },
+                    ));
+                    continue;
+                }
             };
             sigs.insert(
                 declaration.name.clone(),
                 FnSig {
-                    param_names: (0..declaration.params().len())
+                    param_names: (0..sig.params.len())
                         .map(|i| format!("arg{i}"))
                         .collect(),
-                    params: declaration.params().iter().copied().map(vt).collect(),
-                    result: vt(declaration.result()),
+                    params: sig.params,
+                    result: sig.result,
                     index: flat.len() + index,
                 },
             );
         }
         if !diags.is_empty() {
             return Err(diags);
-        }
-    }
-
-    // PLAN-909 §5.5 warm seeding: cached owners reference the module's
-    // closure-signature table by INDEX; seeding the fresh table with the
-    // previous snapshot keeps every cached index valid (interning is
-    // value-dedup and append-only past the seed).
-    if let Some(w) = warm.as_ref() {
-        if let Some(prev) = w.prev {
-            coll.function_types = prev.function_types.clone();
         }
     }
     // Pass 2: per-function body resolution. PLAN-909 §5.5: with a warm
@@ -2297,6 +2315,10 @@ pub struct ForeignContext {
     pub(crate) declarations: Vec<ace_foreign_contract::manual::SourceDecl>,
     pub(crate) slots: Vec<String>,
     pub(crate) sigs: BTreeMap<String, FnSig>,
+    /// PLAN-939: the closure-signature table with the foreign callback
+    /// type interned (append-only over the environment's table) — grafted
+    /// with the sigs and committed with them.
+    pub(crate) function_types: Vec<ClosureFnType>,
 }
 impl ForeignContext {
     pub fn prepare(
@@ -2342,23 +2364,34 @@ impl ForeignContext {
         for old in &env.program.foreign {
             sigs.remove(&old.name);
         }
+        let mut function_types = env.program.function_types.clone();
         for declaration in &declarations {
             let index = slots
                 .iter()
                 .position(|n| n == &declaration.name)
                 .expect("reserved slot");
-            let vt = |k| match k {
-                ace_foreign_contract::LaneKind::Bool => VT::Bool,
-                _ => VT::I32,
-            };
+            // PLAN-939: the same resource-aware mapping as the cold pass.
+            let sig = crate::foreign_resources::source_sig(
+                declaration,
+                &env.program.records,
+                &mut function_types,
+            )
+            .map_err(|(code, message)| {
+                vec![Diagnostic::new(
+                    Stage::Bind,
+                    code,
+                    message,
+                    Span { start: 0, end: 0 },
+                )]
+            })?;
             sigs.insert(
                 declaration.name.clone(),
                 FnSig {
-                    param_names: (0..declaration.params().len())
+                    param_names: (0..sig.params.len())
                         .map(|i| format!("arg{i}"))
                         .collect(),
-                    params: declaration.params().iter().copied().map(vt).collect(),
-                    result: vt(declaration.result()),
+                    params: sig.params,
+                    result: sig.result,
                     index: env.program.fns.len() + index,
                 },
             );
@@ -2369,6 +2402,7 @@ impl ForeignContext {
             declarations,
             slots,
             sigs,
+            function_types,
         })
     }
     pub fn validate(&self, env: &CheckedEnv) -> Result<(), Vec<Diagnostic>> {
@@ -2402,11 +2436,16 @@ impl ForeignContext {
                 );
                 std::mem::swap(&mut self.env.program.foreign_slots, &mut self.context.slots);
                 std::mem::swap(&mut self.env.sigs, &mut self.context.sigs);
+                std::mem::swap(
+                    &mut self.env.program.function_types,
+                    &mut self.context.function_types,
+                );
             }
         }
         std::mem::swap(&mut env.program.foreign, &mut self.declarations);
         std::mem::swap(&mut env.program.foreign_slots, &mut self.slots);
         std::mem::swap(&mut env.sigs, &mut self.sigs);
+        std::mem::swap(&mut env.program.function_types, &mut self.function_types);
         let graft = Graft { env, context: self };
         Ok(f(graft.env))
     }

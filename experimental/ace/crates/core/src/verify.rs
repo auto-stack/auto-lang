@@ -1766,10 +1766,40 @@ fn check_foreign_declarations(
             span,
         )]
     };
-    if bundle.domain != HirDomain::Scalar {
+    // PLAN-938: scalar foreign lives in the scalar domain. PLAN-939: RESOURCE
+    // foreign (str views / nominal records / handles / callbacks) lives in
+    // the closures source domain (the 865 surface that owns Str literals,
+    // records, mut/move and closure values); no other domain admits foreign.
+    let has_resource = bundle.modules.iter().any(|m| {
+        m.defs.iter().any(|d| {
+            matches!(&d.kind, hir::DefKind::Foreign { declaration, .. } if declaration.resource().is_some())
+        })
+    });
+    match (bundle.domain, has_resource) {
+        (HirDomain::Scalar, false) => {}
+        (HirDomain::Closures, _) => {}
+        (_, true) => {
+            return Err(reject(
+                Span { start: 0, end: 0 },
+                "foreign resource declarations require the closures source domain",
+            ));
+        }
+        (_, false) => {
+            return Err(reject(
+                Span { start: 0, end: 0 },
+                "foreign declarations require the scalar source domain",
+            ));
+        }
+    }
+    if has_resource
+        && !bundle
+            .requires
+            .iter()
+            .any(|c| c == ace_foreign_contract::resource::RESOURCE_CAP)
+    {
         return Err(reject(
             Span { start: 0, end: 0 },
-            "foreign declarations require the scalar source domain",
+            "foreign resource capability is missing from the HIR requirements",
         ));
     }
     if !bundle
@@ -1823,14 +1853,66 @@ fn check_foreign_declarations(
                         "foreign declaration has no valid function signature",
                     ));
                 };
-                if sig.params.len() != declaration.params().len()
-                    || sig
-                        .params
-                        .iter()
-                        .zip(declaration.params())
-                        .any(|(p, k)| lane(p) != Some(*k))
-                    || lane(&sig.result) != Some(declaration.result())
-                {
+                let shape_ok = if let Some(res) = declaration.resource() {
+                    // PLAN-939 resource declaration: every HIR param type
+                    // must be the source projection of its resource lane.
+                    use ace_foreign_contract::resource::ResKind;
+                    let type_of = |u: &hir::TypeUse| -> Option<&hir::TypeDef> {
+                        match u {
+                            hir::TypeUse::Ref(t) => module.types.get(t.0 as usize),
+                            _ => None,
+                        }
+                    };
+                    let is_str = |u: &hir::TypeUse| {
+                        matches!(u, hir::TypeUse::Builtin(hir::BuiltinType::StrSlice))
+                            || matches!(type_of(u).map(|t| &t.kind), Some(hir::TypeKind::Str))
+                    };
+                    let is_rec = |u: &hir::TypeUse, rec: &str| {
+                        type_of(u).is_some_and(|t| {
+                            matches!(t.kind, hir::TypeKind::Record(_))
+                                && t.id_text == format!("t_rec_{rec}")
+                        })
+                    };
+                    let is_cb = |u: &hir::TypeUse| {
+                        type_of(u).is_some_and(|t| match &t.kind {
+                            hir::TypeKind::Closure(f) | hir::TypeKind::Function(f) => {
+                                f.params.len() == 2
+                                    && f.params.iter().all(|p| {
+                                        lane(p) == Some(ace_foreign_contract::LaneKind::I32)
+                                    })
+                                    && lane(&f.result)
+                                        == Some(ace_foreign_contract::LaneKind::I32)
+                            }
+                            _ => false,
+                        })
+                    };
+                    let result_ok = match declaration.source_result_kind() {
+                        ace_foreign_contract::manual::SourceResultKind::Bool => {
+                            lane(&sig.result) == Some(ace_foreign_contract::LaneKind::Bool)
+                        }
+                        _ => lane(&sig.result) == Some(ace_foreign_contract::LaneKind::I32),
+                    };
+                    sig.params.len() == res.params.len()
+                        && result_ok
+                        && sig.params.iter().zip(&res.params).all(|(p, k)| match k {
+                            ResKind::I32 | ResKind::Handle { .. } => {
+                                lane(p) == Some(ace_foreign_contract::LaneKind::I32)
+                            }
+                            ResKind::Bool => lane(p) == Some(ace_foreign_contract::LaneKind::Bool),
+                            ResKind::ViewText => is_str(p),
+                            ResKind::Rec { rec, .. } => is_rec(p, rec),
+                            ResKind::Callback { .. } => is_cb(p),
+                        })
+                } else {
+                    sig.params.len() == declaration.params().len()
+                        && sig
+                            .params
+                            .iter()
+                            .zip(declaration.params())
+                            .all(|(p, k)| lane(p) == Some(*k))
+                        && lane(&sig.result) == Some(declaration.result())
+                };
+                if !shape_ok {
                     return Err(reject(
                         def.span,
                         "foreign signature differs from the admitted logical contract",

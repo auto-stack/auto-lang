@@ -119,6 +119,7 @@ impl Review {
                     form,
                     error_model,
                     semantic_ref: None,
+                    resource: None,
                 });
                 manifest.declarations.push(ManualDecl {
                     source_name: name.into(),
@@ -232,6 +233,7 @@ pub fn reviewed_add_manifest() -> ManualManifest {
                 },
                 error_model: None,
                 semantic_ref: None,
+                resource: None,
             }],
             effects: vec!["pure:provider_add".into()],
             capabilities: vec![SOURCE_CAP.into()],

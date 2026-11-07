@@ -3631,12 +3631,15 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                 )
                             })?;
                         self.release_owned(declaration_bytes - cloned_bytes)?;
+                        // PLAN-939: source-visible arity (resource decls
+                        // count one slot per declared lane; view/callback
+                        // pairs are physical, not source arguments).
                         let mut actuals = emission_vec(
-                            declaration.params().len(),
+                            declaration.arity(),
                             &mut self.emission_bytes,
                             &mut self.emission_reserve,
                         )?;
-                        actuals.resize(declaration.params().len(), 0);
+                        actuals.resize(declaration.arity(), 0);
 
                         for binding in bindings {
                             actuals[binding.param as usize] = arg_slots[binding.arg as usize];

@@ -16,6 +16,7 @@ pub mod collections_facts;
 /// caller-supplied constant).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub mod descriptor;
+pub mod foreign_resources;
 pub mod hir;
 pub mod link;
 pub mod runtime_contract;

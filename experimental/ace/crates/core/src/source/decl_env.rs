@@ -676,7 +676,7 @@ pub fn decl_env_restore_with_foreign(
             })
         })
         .collect::<Result<_, _>>()?;
-    let function_types: Vec<ClosureFnType> = d
+    let mut function_types: Vec<ClosureFnType> = d
         .function_types
         .iter()
         .map(|t| {
@@ -816,21 +816,21 @@ pub fn decl_env_restore_with_foreign(
                 "foreign/local signature collision".into(),
             ));
         }
-        let lane = |k| {
-            if k == ace_foreign_contract::LaneKind::Bool {
-                super::resolve::VT::Bool
-            } else {
-                super::resolve::VT::I32
-            }
-        };
+        // PLAN-939: the restored signature table uses the ONE resource-aware
+        // mapping; the callback closure type is interned into the restored
+        // closure-signature table (append-only, indexes from the page stay).
+        let sig = crate::foreign_resources::source_sig(
+            declaration,
+            &records,
+            &mut function_types,
+        )
+        .map_err(|(_, message)| DeclEnvError::Malformed(message))?;
         sigs.insert(
             declaration.name.clone(),
             super::resolve::fn_sig_from_parts(
-                (0..declaration.params().len())
-                    .map(|i| format!("arg{i}"))
-                    .collect(),
-                declaration.params().iter().copied().map(lane).collect(),
-                lane(declaration.result()),
+                (0..sig.params.len()).map(|i| format!("arg{i}")).collect(),
+                sig.params,
+                sig.result,
                 fns.len() + index,
             ),
         );
