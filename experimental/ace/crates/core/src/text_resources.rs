@@ -250,6 +250,14 @@ pub(crate) fn check_body(
             hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => ValueType::StrOwned,
             hir::TypeUse::Builtin(hir::BuiltinType::Char) => ValueType::Char,
             hir::TypeUse::Builtin(hir::BuiltinType::I32) => ValueType::I32,
+            // PLAN-961 numeric surface.
+            hir::TypeUse::Builtin(hir::BuiltinType::I8) => ValueType::I8,
+            hir::TypeUse::Builtin(hir::BuiltinType::U8) => ValueType::U8,
+            hir::TypeUse::Builtin(hir::BuiltinType::U32) => ValueType::U32,
+            hir::TypeUse::Builtin(hir::BuiltinType::I64) => ValueType::I64,
+            hir::TypeUse::Builtin(hir::BuiltinType::U64) => ValueType::U64,
+            hir::TypeUse::Builtin(hir::BuiltinType::F32) => ValueType::F32,
+            hir::TypeUse::Builtin(hir::BuiltinType::F64) => ValueType::F64,
             hir::TypeUse::Builtin(hir::BuiltinType::Bool) => ValueType::Bool,
             // PLAN-862: Unit never types a local; projected only for
             // totality (the entry-unit domain owns its own verifier).
@@ -322,6 +330,14 @@ fn fn_result_of(
             hir::TypeUse::Builtin(hir::BuiltinType::Char) => ValueType::Char,
             hir::TypeUse::Builtin(hir::BuiltinType::Bool) => ValueType::Bool,
             hir::TypeUse::Builtin(hir::BuiltinType::I32) => ValueType::I32,
+            // PLAN-961 numeric surface.
+            hir::TypeUse::Builtin(hir::BuiltinType::I8) => ValueType::I8,
+            hir::TypeUse::Builtin(hir::BuiltinType::U8) => ValueType::U8,
+            hir::TypeUse::Builtin(hir::BuiltinType::U32) => ValueType::U32,
+            hir::TypeUse::Builtin(hir::BuiltinType::I64) => ValueType::I64,
+            hir::TypeUse::Builtin(hir::BuiltinType::U64) => ValueType::U64,
+            hir::TypeUse::Builtin(hir::BuiltinType::F32) => ValueType::F32,
+            hir::TypeUse::Builtin(hir::BuiltinType::F64) => ValueType::F64,
             // PLAN-862: a unit RESULT carries no resource obligation.
             hir::TypeUse::Builtin(hir::BuiltinType::Unit) => ValueType::Unit,
             hir::TypeUse::Ref(t) => type_map.get(&t.0).copied().unwrap_or(ValueType::I32),
@@ -2641,6 +2657,14 @@ fn place_final_vt(m: &hir::Module, root_vt: ValueType, path: &[u32]) -> ValueTyp
                 hir::BuiltinType::StrSlice => ValueType::Str,
                 hir::BuiltinType::StrOwned => ValueType::StrOwned,
                 hir::BuiltinType::Char => ValueType::Char,
+                // PLAN-961: numeric builtins are exact value kinds.
+                hir::BuiltinType::I8 => ValueType::I8,
+                hir::BuiltinType::U8 => ValueType::U8,
+                hir::BuiltinType::U32 => ValueType::U32,
+                hir::BuiltinType::I64 => ValueType::I64,
+                hir::BuiltinType::U64 => ValueType::U64,
+                hir::BuiltinType::F32 => ValueType::F32,
+                hir::BuiltinType::F64 => ValueType::F64,
                 // PLAN-862: totality only (Unit never types a place).
                 hir::BuiltinType::Unit => ValueType::Unit,
             },
@@ -2653,6 +2677,13 @@ fn place_final_vt(m: &hir::Module, root_vt: ValueType, path: &[u32]) -> ValueTyp
                 Some(hir::TypeKind::Function(_)) => ValueType::Function,
                 Some(hir::TypeKind::Closure(_)) => ValueType::Closure,
                 Some(hir::TypeKind::Record(_)) => ValueType::Record(t.0),
+                Some(hir::TypeKind::I8) => ValueType::I8,
+                Some(hir::TypeKind::U8) => ValueType::U8,
+                Some(hir::TypeKind::U32) => ValueType::U32,
+                Some(hir::TypeKind::I64) => ValueType::I64,
+                Some(hir::TypeKind::U64) => ValueType::U64,
+                Some(hir::TypeKind::F32) => ValueType::F32,
+                Some(hir::TypeKind::F64) => ValueType::F64,
                 // PLAN-864: totality only; the text resource walk never
                 // sees collections types.
                 Some(hir::TypeKind::List { .. }) | Some(hir::TypeKind::Variant { .. }) => {

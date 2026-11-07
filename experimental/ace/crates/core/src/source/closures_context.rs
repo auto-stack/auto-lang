@@ -74,6 +74,14 @@ pub enum BuiltinDump {
     StrOwned,
     Char,
     Unit,
+    /// PLAN-961 numeric surface.
+    I8,
+    U8,
+    U32,
+    I64,
+    U64,
+    F32,
+    F64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -293,6 +301,13 @@ fn builtin_dump(b: BuiltinType) -> BuiltinDump {
         BuiltinType::StrOwned => BuiltinDump::StrOwned,
         BuiltinType::Char => BuiltinDump::Char,
         BuiltinType::Unit => BuiltinDump::Unit,
+        BuiltinType::I8 => BuiltinDump::I8,
+        BuiltinType::U8 => BuiltinDump::U8,
+        BuiltinType::U32 => BuiltinDump::U32,
+        BuiltinType::I64 => BuiltinDump::I64,
+        BuiltinType::U64 => BuiltinDump::U64,
+        BuiltinType::F32 => BuiltinDump::F32,
+        BuiltinType::F64 => BuiltinDump::F64,
     }
 }
 
@@ -525,6 +540,13 @@ fn builtin_in(d: BuiltinDump) -> BuiltinType {
         BuiltinDump::StrOwned => BuiltinType::StrOwned,
         BuiltinDump::Char => BuiltinType::Char,
         BuiltinDump::Unit => BuiltinType::Unit,
+        BuiltinDump::I8 => BuiltinType::I8,
+        BuiltinDump::U8 => BuiltinType::U8,
+        BuiltinDump::U32 => BuiltinType::U32,
+        BuiltinDump::I64 => BuiltinType::I64,
+        BuiltinDump::U64 => BuiltinType::U64,
+        BuiltinDump::F32 => BuiltinType::F32,
+        BuiltinDump::F64 => BuiltinType::F64,
     }
 }
 

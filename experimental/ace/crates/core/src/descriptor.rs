@@ -1077,6 +1077,14 @@ impl<'d> Binder<'d> {
             };
             let kind = match word.as_str() {
                 "i32" => hir::TypeKind::I32,
+                // PLAN-961 numeric surface.
+                "i8" => hir::TypeKind::I8,
+                "u8" => hir::TypeKind::U8,
+                "u32" => hir::TypeKind::U32,
+                "i64" => hir::TypeKind::I64,
+                "u64" => hir::TypeKind::U64,
+                "f32" => hir::TypeKind::F32,
+                "f64" => hir::TypeKind::F64,
                 "bool" => hir::TypeKind::Bool,
                 "str" => hir::TypeKind::Str,
                 "Str" => hir::TypeKind::StrOwned,
@@ -3268,6 +3276,28 @@ pub fn write_canonical(bundle: &hir::Bundle, desc: &Descriptor) -> Result<String
             match &t.kind {
                 hir::TypeKind::I32 => {
                     w.line(&format!("type(id: {}, kind: i32) {{}}", quote(&t.id_text)))
+                }
+                // PLAN-961 numeric surface.
+                hir::TypeKind::I8 => {
+                    w.line(&format!("type(id: {}, kind: i8) {{}}", quote(&t.id_text)))
+                }
+                hir::TypeKind::U8 => {
+                    w.line(&format!("type(id: {}, kind: u8) {{}}", quote(&t.id_text)))
+                }
+                hir::TypeKind::U32 => {
+                    w.line(&format!("type(id: {}, kind: u32) {{}}", quote(&t.id_text)))
+                }
+                hir::TypeKind::I64 => {
+                    w.line(&format!("type(id: {}, kind: i64) {{}}", quote(&t.id_text)))
+                }
+                hir::TypeKind::U64 => {
+                    w.line(&format!("type(id: {}, kind: u64) {{}}", quote(&t.id_text)))
+                }
+                hir::TypeKind::F32 => {
+                    w.line(&format!("type(id: {}, kind: f32) {{}}", quote(&t.id_text)))
+                }
+                hir::TypeKind::F64 => {
+                    w.line(&format!("type(id: {}, kind: f64) {{}}", quote(&t.id_text)))
                 }
                 hir::TypeKind::Bool => {
                     w.line(&format!("type(id: {}, kind: bool) {{}}", quote(&t.id_text)))

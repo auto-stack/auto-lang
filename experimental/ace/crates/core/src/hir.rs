@@ -84,6 +84,16 @@ pub enum BuiltinType {
     /// width and no operators; only a function result may name it, and only
     /// the canonical [`ExprKind::Unit`] expression carries it.
     Unit,
+    /// PLAN-961 numeric surface: the signed/unsigned/float builtins.
+    /// Source-level `byte`/`uint` are aliases of `U8`/`U32`; `int`/`i32`
+    /// stay `I32` (the adjudicated width — never Rust's default).
+    I8,
+    U8,
+    U32,
+    I64,
+    U64,
+    F32,
+    F64,
 }
 
 impl BuiltinType {
@@ -95,7 +105,36 @@ impl BuiltinType {
             BuiltinType::StrOwned => "Str",
             BuiltinType::Char => "char",
             BuiltinType::Unit => "unit",
+            BuiltinType::I8 => "i8",
+            BuiltinType::U8 => "u8",
+            BuiltinType::U32 => "u32",
+            BuiltinType::I64 => "i64",
+            BuiltinType::U64 => "u64",
+            BuiltinType::F32 => "f32",
+            BuiltinType::F64 => "f64",
         }
+    }
+
+    /// PLAN-961: whether this builtin is a numeric type (member of the
+    /// conversion/operator matrix).
+    pub fn is_numeric(self) -> bool {
+        matches!(
+            self,
+            BuiltinType::I32
+                | BuiltinType::I8
+                | BuiltinType::U8
+                | BuiltinType::U32
+                | BuiltinType::I64
+                | BuiltinType::U64
+                | BuiltinType::F32
+                | BuiltinType::F64
+        )
+    }
+
+    /// PLAN-961: whether this builtin is a float type (IEEE ops; no
+    /// bit/shift ops; negation is a sign flip).
+    pub fn is_float(self) -> bool {
+        matches!(self, BuiltinType::F32 | BuiltinType::F64)
     }
 }
 
@@ -158,6 +197,14 @@ pub enum TypeKind {
     Variant {
         arms: Vec<VariantArmDecl>,
     },
+    /// PLAN-961 numeric surface: named type entries for the new builtins.
+    I8,
+    U8,
+    U32,
+    I64,
+    U64,
+    F32,
+    F64,
 }
 
 /// One arm of a [`TypeKind::Variant`], in declaration order (PLAN-864).
@@ -941,6 +988,15 @@ fn discriminant(k: &TypeKind) -> u8 {
         TypeKind::List { .. } => 7,
         TypeKind::Variant { .. } => 8,
         TypeKind::Closure(_) => 9,
+        // PLAN-961 numeric surface (discriminants 10..=16 are NEW — the
+        // old nine stay frozen; a numeric type never equals another kind).
+        TypeKind::I8 => 10,
+        TypeKind::U8 => 11,
+        TypeKind::U32 => 12,
+        TypeKind::I64 => 13,
+        TypeKind::U64 => 14,
+        TypeKind::F32 => 15,
+        TypeKind::F64 => 16,
     }
 }
 

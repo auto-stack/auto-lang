@@ -1595,6 +1595,14 @@ fn context_fingerprint(m: &hir::Module) -> String {
                     mix_use(h, &sig.result, m, depth - 1);
                 }
                 Some(hir::TypeKind::I32) => mix(h, "i32"),
+                // PLAN-961: numeric kinds mix by their frozen names.
+                Some(hir::TypeKind::I8) => mix(h, "i8"),
+                Some(hir::TypeKind::U8) => mix(h, "u8"),
+                Some(hir::TypeKind::U32) => mix(h, "u32"),
+                Some(hir::TypeKind::I64) => mix(h, "i64"),
+                Some(hir::TypeKind::U64) => mix(h, "u64"),
+                Some(hir::TypeKind::F32) => mix(h, "f32"),
+                Some(hir::TypeKind::F64) => mix(h, "f64"),
                 Some(hir::TypeKind::Bool) => mix(h, "bool"),
                 Some(hir::TypeKind::Str) => mix(h, "str"),
                 Some(hir::TypeKind::StrOwned) => mix(h, "Str"),
@@ -2357,6 +2365,15 @@ pub(crate) enum ValueType {
     /// shared record-domain walks treat it as a non-unifiable leaf; the
     /// collections verification entry owns its real rules.
     Opaque,
+    /// PLAN-961 numeric surface: each numeric builtin is its own value
+    /// kind — never unifiable with another width or with i32/bool.
+    I8,
+    U8,
+    U32,
+    I64,
+    U64,
+    F32,
+    F64,
 }
 
 pub(crate) fn vt_name(v: ValueType) -> &'static str {
@@ -2371,6 +2388,13 @@ pub(crate) fn vt_name(v: ValueType) -> &'static str {
         ValueType::Record(_) => "record",
         ValueType::Unit => "unit",
         ValueType::Opaque => "composite",
+        ValueType::I8 => "i8",
+        ValueType::U8 => "u8",
+        ValueType::U32 => "u32",
+        ValueType::I64 => "i64",
+        ValueType::U64 => "u64",
+        ValueType::F32 => "f32",
+        ValueType::F64 => "f64",
     }
 }
 
@@ -2681,6 +2705,14 @@ impl Verifier {
                 hir::BuiltinType::StrSlice => ValueType::Str,
                 hir::BuiltinType::StrOwned => ValueType::StrOwned,
                 hir::BuiltinType::Char => ValueType::Char,
+                // PLAN-961 numeric surface.
+                hir::BuiltinType::I8 => ValueType::I8,
+                hir::BuiltinType::U8 => ValueType::U8,
+                hir::BuiltinType::U32 => ValueType::U32,
+                hir::BuiltinType::I64 => ValueType::I64,
+                hir::BuiltinType::U64 => ValueType::U64,
+                hir::BuiltinType::F32 => ValueType::F32,
+                hir::BuiltinType::F64 => ValueType::F64,
                 // PLAN-862: the unit RESULT type.
                 hir::BuiltinType::Unit => ValueType::Unit,
             },
@@ -2706,6 +2738,14 @@ impl Verifier {
                     // verification gives these types their own rules.
                     hir::TypeKind::List { .. } => ValueType::Opaque,
                     hir::TypeKind::Variant { .. } => ValueType::Opaque,
+                    // PLAN-961 numeric surface.
+                    hir::TypeKind::I8 => ValueType::I8,
+                    hir::TypeKind::U8 => ValueType::U8,
+                    hir::TypeKind::U32 => ValueType::U32,
+                    hir::TypeKind::I64 => ValueType::I64,
+                    hir::TypeKind::U64 => ValueType::U64,
+                    hir::TypeKind::F32 => ValueType::F32,
+                    hir::TypeKind::F64 => ValueType::F64,
                 };
                 (i as u32, vt)
             })
@@ -3681,6 +3721,14 @@ impl Verifier {
                         hir::BuiltinType::StrSlice => ValueType::Str,
                         hir::BuiltinType::StrOwned => ValueType::StrOwned,
                         hir::BuiltinType::Char => ValueType::Char,
+                        // PLAN-961 numeric surface.
+                        hir::BuiltinType::I8 => ValueType::I8,
+                        hir::BuiltinType::U8 => ValueType::U8,
+                        hir::BuiltinType::U32 => ValueType::U32,
+                        hir::BuiltinType::I64 => ValueType::I64,
+                        hir::BuiltinType::U64 => ValueType::U64,
+                        hir::BuiltinType::F32 => ValueType::F32,
+                        hir::BuiltinType::F64 => ValueType::F64,
                         // PLAN-862: unit is a RESULT type (totality).
                         hir::BuiltinType::Unit => ValueType::Unit,
                     },
@@ -3874,6 +3922,14 @@ impl Verifier {
                 hir::TypeUse::Builtin(b) => match b {
                     hir::BuiltinType::I32 => ValueType::I32,
                     hir::BuiltinType::Bool => ValueType::Bool,
+                    // PLAN-961: numerics are non-record path leaves.
+                    hir::BuiltinType::I8 => ValueType::I8,
+                    hir::BuiltinType::U8 => ValueType::U8,
+                    hir::BuiltinType::U32 => ValueType::U32,
+                    hir::BuiltinType::I64 => ValueType::I64,
+                    hir::BuiltinType::U64 => ValueType::U64,
+                    hir::BuiltinType::F32 => ValueType::F32,
+                    hir::BuiltinType::F64 => ValueType::F64,
                     // text builtins are legal field types only in the
                     // combination domain (782); elsewhere they surface as
                     // a non-record path exactly as before
@@ -3932,6 +3988,14 @@ impl Verifier {
             hir::TypeUse::Builtin(b) => match b {
                 hir::BuiltinType::I32 => ValueType::I32,
                 hir::BuiltinType::Bool => ValueType::Bool,
+                // PLAN-961: numerics are their own kinds on field paths.
+                hir::BuiltinType::I8 => ValueType::I8,
+                hir::BuiltinType::U8 => ValueType::U8,
+                hir::BuiltinType::U32 => ValueType::U32,
+                hir::BuiltinType::I64 => ValueType::I64,
+                hir::BuiltinType::U64 => ValueType::U64,
+                hir::BuiltinType::F32 => ValueType::F32,
+                hir::BuiltinType::F64 => ValueType::F64,
                 hir::BuiltinType::StrSlice => ValueType::Str,
                 hir::BuiltinType::StrOwned => {
                     if self.domain == HirDomain::TextRecord {
@@ -4848,6 +4912,14 @@ impl Verifier {
                 hir::TypeUse::Builtin(hir::BuiltinType::StrSlice) => ValueType::Str,
                 hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => ValueType::StrOwned,
                 hir::TypeUse::Builtin(hir::BuiltinType::Char) => ValueType::Char,
+                // PLAN-961 numeric surface.
+                hir::TypeUse::Builtin(hir::BuiltinType::I8) => ValueType::I8,
+                hir::TypeUse::Builtin(hir::BuiltinType::U8) => ValueType::U8,
+                hir::TypeUse::Builtin(hir::BuiltinType::U32) => ValueType::U32,
+                hir::TypeUse::Builtin(hir::BuiltinType::I64) => ValueType::I64,
+                hir::TypeUse::Builtin(hir::BuiltinType::U64) => ValueType::U64,
+                hir::TypeUse::Builtin(hir::BuiltinType::F32) => ValueType::F32,
+                hir::TypeUse::Builtin(hir::BuiltinType::F64) => ValueType::F64,
                 // PLAN-862: the unit RESULT type.
                 hir::TypeUse::Builtin(hir::BuiltinType::Unit) => ValueType::Unit,
                 hir::TypeUse::Ref(tid) => type_map.get(&tid.0).copied().unwrap_or(ValueType::I32),
@@ -6130,7 +6202,16 @@ impl Verifier {
                                 | ValueType::Bool
                                 | ValueType::Str
                                 | ValueType::StrOwned
-                                | ValueType::Char => {
+                                | ValueType::Char
+                                // PLAN-961: numerics are scalars, never
+                                // view-borrowed.
+                                | ValueType::I8
+                                | ValueType::U8
+                                | ValueType::U32
+                                | ValueType::I64
+                                | ValueType::U64
+                                | ValueType::F32
+                                | ValueType::F64 => {
                                     self.error(
                                         "verify.type-mismatch",
                                         format!(
@@ -6310,6 +6391,14 @@ impl Verifier {
                                         hir::TypeUse::Builtin(b2) => match b2 {
                                             hir::BuiltinType::I32 => ValueType::I32,
                                             hir::BuiltinType::Bool => ValueType::Bool,
+                                            // PLAN-961 numeric surface.
+                                            hir::BuiltinType::I8 => ValueType::I8,
+                                            hir::BuiltinType::U8 => ValueType::U8,
+                                            hir::BuiltinType::U32 => ValueType::U32,
+                                            hir::BuiltinType::I64 => ValueType::I64,
+                                            hir::BuiltinType::U64 => ValueType::U64,
+                                            hir::BuiltinType::F32 => ValueType::F32,
+                                            hir::BuiltinType::F64 => ValueType::F64,
                                             // legal combination field types
                                             // (782); dead mapping elsewhere
                                             hir::BuiltinType::StrSlice => ValueType::Str,

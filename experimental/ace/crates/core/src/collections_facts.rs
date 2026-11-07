@@ -129,7 +129,15 @@ impl TypeClassifier {
                     | hir::TypeKind::Char
                     | hir::TypeKind::Str
                     | hir::TypeKind::Function(_)
-                    | hir::TypeKind::Closure(_) => None,
+                    | hir::TypeKind::Closure(_)
+                    // PLAN-961: numeric scalars own nothing.
+                    | hir::TypeKind::I8
+                    | hir::TypeKind::U8
+                    | hir::TypeKind::U32
+                    | hir::TypeKind::I64
+                    | hir::TypeKind::U64
+                    | hir::TypeKind::F32
+                    | hir::TypeKind::F64 => None,
                     hir::TypeKind::StrOwned => Some(OwnedKind::Str),
                     hir::TypeKind::List { .. } => Some(OwnedKind::List),
                     // records/variants release through a generated deep
