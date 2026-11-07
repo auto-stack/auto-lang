@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-abi/resource-and-callback-bridge.md]
 touched_goals: [GOAL-002]
 affects: [auto-abi, auto-ac, auto-a2x, auto-a2c, auto-av, auto-test-case]
 depends_on: [PLAN-937, PLAN-938, PLAN-925, PLAN-924]
-current_step: 4
+current_step: 5
 total_steps: 14
 ---
 
@@ -236,7 +236,7 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 | T-02 | work | T-01、实际D938、所需稳定S/ABI接口释放 | r3：补 resolver-owned 常驻页接线（§5.11）使资源体过 Frontend 冷/暖与恢复；随后按§5.7 A→B→C 收口三接缝（S01 文本view+恢复首编辑、S02/S05 mut/out 失败原子与 S04 opaque 唯一 cleanup、S06 callback 错误/lease——callback-by-name 前端仍按 r2 冻结）；三项齐才关闭；V-13..16，AC-01..07。已交付：合同/core/native/CI/provider/发布路径/认证链/首例+固定组（§9 round 1-4，938 组 31/31 回归绿）；round 5-8 全链收口，25 例 24 PASS+控制位，四固定组+七 crate 全绿（§9） | [✅ 2026-11-08] |
 | T-03 | work | T-02，H首例短窗 | ABI中立资源投影/布局/header、独立resource首例TestCase由T-02进入，本步扩齐S01..08/方向/正式注册材料，V-01/11/15；AC-01/07。批2（§9 round 11）：S07 TP wide 车道全链（词表/投影/描述符/emit/peers/三腿/fixtures）+ S08 恢复骨架；CE 方向实证为具名接缝 D-939-CE-1（certify 撞 D-960-1 词表、bridge 装配器 scalar-only=T-05 范围；矩阵 S01-CE 的 owner 本就含 T-05/T-11） | [✅ 2026-11-08] |
 | T-04 | work | T-03，S窗口 | core foreign_resources/资源凭证/模式/borrow/alias/deleter唯一计划与所有verify/schema消费者；V-02/03/13/15；AC-02。交付（§9 round 12）：唯一 per-call 凭证计划（view borrow+owner/排他+atomic/句柄进出+provider tag/回调目标/ctx）+ CheckedModule/CheckedFunction/SemanticView 双路携带 + a2x 严格消费（缺行=响亮拒）+ V-02 owner 案例双腿；V-03 clone-hook 与 V-13 深层重叠例按矩阵归 T-05/06/07 | [✅ 2026-11-08] |
-| T-05 | work | T-04，N/C窗口 | native直接资源调用与a2x-c abi_resources/私有值显式转换/view期限；V-01/02/04；AC-01/02/03 | [ ] |
+| T-05 | work | T-04，N/C窗口 | native直接资源调用与a2x-c abi_resources/私有值显式转换/view期限；V-01/02/04；AC-01/02/03。交付（§9 round 13）：native text-runtime 链接补全（COFF ac_rt_* 符号检测+locate-or-build 支持库）+ V-02 双形态案例（owned 旁观跨调用/ctor 临时 const view）；marshalling 面为 T-02 各轮已交并持续绿 | [✅ 2026-11-08] |
 | T-06 | work | T-05 | handle移动/返回/provider clone hook/原方destroy、callback+ctx trampoline与错误channel；V-03/06/07/14/15；AC-02/04 | [ ] |
 | T-07 | work | T-05/06 | 多out/shadow/失败commit与全部分配域fault/cleanup；V-04/05；AC-03 | [ ] |
 | T-08 | work | T-06/07 | provider代际与真实最后owner lease/已绑定双代call/GC回收证据；V-06/07；AC-04 | [ ] |
@@ -250,6 +250,10 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 可提前的仅独立oracle/header与source/type能力调查，不把private准备冒资源已实施。正式S/N/C集成在D938及所需单文件owner释放后；不硬等未读取的935/936整包。
 
 ## 9. 复审记录
+
+T-05 完成记录（2026-11-08，goal round 13，HEAD `355aafff8`）：**native 链补全 + V-02 双形态——T-05 关闭（5/14）**。939 组 42 例=41 PASS+控制位；938/937/925/ace-abi 组全绿；core 29+a2x-c 8；触面零警告。(1) **真接缝与修复**：resource foreign 模块含 owned 文本局部时 native 腿链接失败（`ac_rt_own_from_lit` 未解析——foreign native 链从未链接 text runtime）。修复：link 时扫描发射 COFF 的未解析外部符号（`ac_rt_*` 前缀——链接器自身视角，无 wire/状态改动，编辑/恢复路径全适用）→ 命中即 locate-or-build `ac_text_runtime.lib`（与 782 native 链同一工件；进程内缓存；ACE workspace target 下真 cargo 构建）入链。(2) **V-02 双形态案例**：utf8-owned ×native/c（exit 7）——owned Str 旁观者跨两个 foreign view 调用存活、仅退出释放（C 运行时 charge 记账使提前释放可观测；NUL 为数据 4 scalar+旁观者 3）；pairv-temp ×native/c（exit 47）——调用点 ctor 临时填 const view 车道（物化一次、provider 消费、随调用消亡；reference oracle 自建局部镜像）。(3) **领域证据（双门实证）**：owned Str→str view 形参=绑定精确类型拒（770 纪律）；owned Str 参数撞 D-960-1 签名词表（NonPortableType Builtin(StrOwned)）——本域可表达的 owner-extent 形态即借用局部与 ctor 临时两者，均已落绿例。(4) **marshalling 面**：native/a2x-c 私有值显式转换与 shadow/commit（V-01/04）为 T-02 各轮已交，本轮全部案例持续绿。过程事故与恢复：一次 python 补丁 `io.open('w')` 先截断后报错将 resource939_reference.c 清零（round 2 已知事故模式）——git checkout 即时恢复+ASCII 预验证+写后读回校验重打，零损失。
+
+stage: goal | plan_id: PLAN-939 | plan_revision: r3 | round: 13 | from: work | to: work | status: executing | outcome: interim（T-05 ✅ 5/14；native text-runtime 链接+V-02 双形态）| worktree: D:/autostack/.wt/lang-939/auto-lang | commit: 355aafff8 | next: work（T-06 handle移动/返回/provider clone hook/原方destroy、callback+ctx trampoline与错误channel）
 
 T-04 完成记录（2026-11-08，goal round 12，HEAD `dab2b5797`）：**唯一凭证计划落地并严格消费——T-04 关闭（4/14）**。939 组 40 例=39 PASS+控制位；938/937/925 组、ace-abi 组全绿；core 29+a2x-c 8 绿；触面零警告。(1) **core 唯一计划**（§5.2）：`ForeignCallCredential`（view_borrows 携**派生 owner local**（Extent=调用；字面量/临时=无 owner）、exclusive Mut/Out 车道+sig atomic 承诺、handles_in+provider tag、owned_out 凭证 provider、callbacks+具名目标 def、ctx symbol）+ `ForeignResourcePlan`/`bundle_foreign_plan` 由受检声明+调用点计算；核心单测钉全部行类。(2) **携带/消费**：CheckedModule.foreign_resource_plan（text-record foreign 车道；普通 782 模块形状不变）+ CheckedFunction.foreign_rows（单体凭证行——fragment 视图消费）+ SemanticView 双路（模块计划/fragment 行，body-index 查阅核）+ `foreign_call_credential` 统一入口；a2x lower_rt **严格消费**：资源 foreign 调用缺凭证行=a2c.internal 响亮拒（939 组在严格性下全绿=每个 CI 腿资源调用可证消费计划）；callback 目标计划驱动+逐实参覆盖一致性核；cur_expr 追踪降级位置。(3) **V-02 案例**（utf8-owned ×native/c）：单一 str 局部 owner 喂**双** foreign 视图（byte_length→scalar_count；凭证行钉 owner；owner 活过全部消费者）；NUL 为数据（9 字节/4 scalar：A、U+0000、U+4E2D、U+1F600；exit 4）+ reference oracle 自行计数同值。(4) **领域边界（实证记录）**：owned Str→str view 形参是绑定精确类型拒（770 纪律，无隐式 owned→view 强转）——V-02 owner 案例走借用局部面；verify 既有规则复核：.mut 双向强制、同调用排他（S03 案例）、move/clone（782 RecordClone/Move 节点=V-03 的 clone 独立 backing/move 已有源面）。(5) **路由记录**：V-02 运行期 alloc/free 事件（T-05/06 native/C marshalling owner）、V-03 provider clone hook+无 hook 拒（T-06——ResourceSig 现 clone 词表留其冻结）、V-13 嵌套字段/输入-out 重叠深例（T-05/07 共担）、native 侧凭证消费（MIR callbacks+mir_verify+TextResourcePlan 为其所有权权威；适配器接线归 T-05 窗）、计划持久化 schema 页（r3 路线重验证即重算——恢复读者面归 T-09）。过程修正：一次批量替换误改 utf8-scalars-c 期望行（手术修复）；scalar 计数初版手算漏 U+0000 亦为 scalar（reference oracle 正确红出后修正——控制位纪律生效）。
 
