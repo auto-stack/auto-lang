@@ -525,9 +525,13 @@ fn av_data_wide_scalar_arith_rejected() {
     });
     m.entry = 0;
     let err = mir_verify::verify_mir(&m).unwrap_err();
+    // PLAN-961: TYPED wide arithmetic is legal now (`BinOp::Num`); the
+    // LEGACY AddI32 subcode over i64 slots rejects by the shape rule
+    // (mir.bin-type) — the old profile-wide `mir.type-op` gate is
+    // superseded by the numeric surface (spec delta SD-01).
     assert!(
-        matches!(err, mir_verify::MirVerifyError::Invalid { ref code, .. } if code == "mir.type-op"),
-        "i64 arithmetic rejects with mir.type-op, got {err:?}"
+        matches!(err, mir_verify::MirVerifyError::Invalid { ref code, .. } if code == "mir.bin-type"),
+        "legacy AddI32 over i64 slots rejects with mir.bin-type, got {err:?}"
     );
 }
 

@@ -2576,6 +2576,7 @@ fn numeric_step_word(cx: &Cx, step: u32) -> Option<(Span, TypeWord)> {
                     || k.tok_i64_kw == Some(g)
                     || k.tok_u64_kw == Some(g)
                     || k.tok_float_kw == Some(g)
+                    || k.tok_f32_kw == Some(g)
                     || k.tok_double_kw == Some(g)
                     || k.tok_f64_kw == Some(g)
                     || g == k.tok_int_kw
@@ -2600,7 +2601,7 @@ fn numeric_step_word(cx: &Cx, step: u32) -> Option<(Span, TypeWord)> {
         TypeWord::I64
     } else if k.tok_u64_kw == Some(g) {
         TypeWord::U64
-    } else if k.tok_float_kw == Some(g) {
+    } else if k.tok_float_kw == Some(g) || k.tok_f32_kw == Some(g) {
         TypeWord::Float
     } else if k.tok_double_kw == Some(g) {
         TypeWord::Double
@@ -2625,6 +2626,56 @@ fn numeric_step_word(cx: &Cx, step: u32) -> Option<(Span, TypeWord)> {
 /// parsed with the TARGET width's correctly-rounded std parser; a
 /// magnitude that overflows the target is a `source.literal-range`
 /// rejection (never an inf literal).
+/// PLAN-961: minus-aware typed-literal decode (the int-literal node's
+/// minus arm): a negative literal folds into the signed payload (an
+/// in-range magnitude never overflows on fold; unsigned negatives are
+/// range rejections; i64 accepts exactly -2^63).
+fn decode_typed_literal_neg(raw: &str, neg: bool) -> Result<ExprKind, String> {
+    if !neg {
+        return decode_typed_literal(raw);
+    }
+    // The i64 MIN magnitude (2^63) is representable ONLY negated — accept
+    // it here before the positive-range table rejects it.
+    let body = raw
+        .strip_prefix("0x")
+        .map(|b| (16u32, b))
+        .or_else(|| raw.strip_prefix("0b").map(|b| (2u32, b)))
+        .unwrap_or((10u32, raw));
+    let digits_only: String = body
+        .1
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || (body.0 == 16 && c.to_ascii_lowercase() >= 'a' && c.to_ascii_lowercase() <= 'f') || *c == '_')
+        .filter(|c| *c != '_')
+        .collect();
+    let mag: u128 = u128::from_str_radix(&digits_only, body.0).unwrap_or(u128::MAX);
+    if body.1.ends_with("i64") && mag == 1u128 << 63 {
+        return Ok(ExprKind::TypedLit {
+            ty: crate::source::ast::TypeWord::I64,
+            bits: 1u64 << 63,
+        });
+    }
+    // Decode the positive magnitude with the frozen table, then fold.
+    let kind = decode_typed_literal(raw)?;
+    let ExprKind::TypedLit { ty, bits } = kind else {
+        return Ok(kind);
+    };
+    use crate::source::ast::TypeWord as TW;
+    let folded = match ty {
+        TW::I8 => (bits as u8).wrapping_neg() as u64,
+        TW::Int | TW::I32 => (bits as u32).wrapping_neg() as u64,
+        TW::I64 => (bits as u64).wrapping_neg(),
+        TW::Float => ((bits as u32) ^ 0x8000_0000) as u64,
+        TW::Double | TW::F64 => bits ^ 0x8000_0000_0000_0000,
+        TW::U8 | TW::Byte | TW::Uint | TW::U32 | TW::U64 => {
+            return Err(format!(
+                "negative literal `-{raw}` is not representable in an unsigned type"
+            ))
+        }
+        TW::Bool | TW::Str | TW::StrOwned | TW::Char | TW::Void => return Ok(kind),
+    };
+    Ok(ExprKind::TypedLit { ty, bits: folded })
+}
+
 fn decode_typed_literal(raw: &str) -> Result<ExprKind, String> {
     use crate::source::ast::TypeWord as TW;
     let (radix, rest) = if let Some(b) = raw.strip_prefix("0x") {
@@ -3469,6 +3520,7 @@ impl<'a> Engine<'a> {
                     || self.cx.k.tok_i64_kw == Some(k)
                     || self.cx.k.tok_u64_kw == Some(k)
                     || self.cx.k.tok_float_kw == Some(k)
+                    || self.cx.k.tok_f32_kw == Some(k)
                     || self.cx.k.tok_double_kw == Some(k)
                     || self.cx.k.tok_f64_kw == Some(k)
             })
@@ -3491,7 +3543,9 @@ impl<'a> Engine<'a> {
             x if self.cx.k.tok_u32_kw == Some(x) => return int(TypeWord::U32),
             x if self.cx.k.tok_i64_kw == Some(x) => return int(TypeWord::I64),
             x if self.cx.k.tok_u64_kw == Some(x) => return int(TypeWord::U64),
-            x if self.cx.k.tok_float_kw == Some(x) => return int(TypeWord::Float),
+            x if self.cx.k.tok_float_kw == Some(x) || self.cx.k.tok_f32_kw == Some(x) => {
+                return int(TypeWord::Float)
+            }
             x if self.cx.k.tok_double_kw == Some(x) => return int(TypeWord::Double),
             x if self.cx.k.tok_f64_kw == Some(x) => return int(TypeWord::F64),
             _ => {}
@@ -4604,6 +4658,33 @@ impl<'a> Engine<'a> {
     }
 
     fn project_int_literal(&mut self, node: u32) -> Expr {
+        // PLAN-961: the numeric profile's int-literal node may carry an
+        // affix-num leaf (typed word, optionally under the minus arm —
+        // `-9223372036854775808i64` folds HERE where the minus is visible).
+        if self.cx.profile.is_numeric() {
+            if let Some(affix) = self.cx.child_of_kind(node, self.cx.k.tok_affix_num) {
+                let raw = self.cx.spelling(affix);
+                let neg = self.cx.child_of_kind(node, self.cx.k.tok_minus).is_some();
+                let span = self.cx.span_of(node);
+                return match decode_typed_literal_neg(&raw, neg) {
+                    Ok(kind) => Expr { kind, span },
+                    Err(msg) => {
+                        self.cx.reject(span, move || {
+                            Diagnostic::new(
+                                Stage::Text,
+                                "source.literal-range",
+                                msg.clone(),
+                                span,
+                            )
+                        });
+                        Expr {
+                            kind: ExprKind::IntLit(0),
+                            span,
+                        }
+                    }
+                };
+            }
+        }
         let int_leaf = self
             .cx
             .child_of_kind(node, self.cx.k.tok_int_lit)

@@ -71,6 +71,8 @@ mod av_method_owned;
 mod av_method_perf;
 #[path = "cases/av_method_semantics.rs"]
 mod av_method_semantics;
+#[path = "cases/av_numeric_semantics.rs"]
+mod av_numeric_semantics;
 #[path = "cases/av_owned_cache_compat.rs"]
 mod av_owned_cache_compat;
 #[path = "cases/av_owned_first_case.rs"]

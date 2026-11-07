@@ -83,6 +83,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         i64-kw(profiles: [numeric]) { literal: "i64" }
         u64-kw(profiles: [numeric]) { literal: "u64" }
         float-kw(profiles: [numeric]) { literal: "float" }
+        f32-kw(profiles: [numeric]) { literal: "f32" }
         double-kw(profiles: [numeric]) { literal: "double" }
         f64-kw(profiles: [numeric]) { literal: "f64" }
         type-kw { literal: "type" }
@@ -338,6 +339,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [numeric]) { i64-kw(field: "word") }
             alt(profiles: [numeric]) { u64-kw(field: "word") }
             alt(profiles: [numeric]) { float-kw(field: "word") }
+            alt(profiles: [numeric]) { f32-kw(field: "word") }
             alt(profiles: [numeric]) { double-kw(field: "word") }
             alt(profiles: [numeric]) { f64-kw(field: "word") }
             alt(profiles: [collections, closures, numeric]) { generic-ty(field: "generic") }
@@ -358,6 +360,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [numeric]) { i64-kw(field: "word") }
             alt(profiles: [numeric]) { u64-kw(field: "word") }
             alt(profiles: [numeric]) { float-kw(field: "word") }
+            alt(profiles: [numeric]) { f32-kw(field: "word") }
             alt(profiles: [numeric]) { double-kw(field: "word") }
             alt(profiles: [numeric]) { f64-kw(field: "word") }
             alt(profiles: [collections, closures, numeric]) { generic-ty(field: "generic") }
@@ -377,6 +380,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             alt { i64-kw(field: "word") }
             alt { u64-kw(field: "word") }
             alt { float-kw(field: "word") }
+            alt { f32-kw(field: "word") }
             alt { double-kw(field: "word") }
             alt { f64-kw(field: "word") }
             alt { bool(field: "word") }
@@ -403,6 +407,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [numeric]) { i64-kw(field: "word") }
             alt(profiles: [numeric]) { u64-kw(field: "word") }
             alt(profiles: [numeric]) { float-kw(field: "word") }
+            alt(profiles: [numeric]) { f32-kw(field: "word") }
             alt(profiles: [numeric]) { double-kw(field: "word") }
             alt(profiles: [numeric]) { f64-kw(field: "word") }
             alt { generic-ty(field: "generic") }
@@ -426,6 +431,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [numeric]) { i64-kw(field: "word") }
             alt(profiles: [numeric]) { u64-kw(field: "word") }
             alt(profiles: [numeric]) { float-kw(field: "word") }
+            alt(profiles: [numeric]) { f32-kw(field: "word") }
             alt(profiles: [numeric]) { double-kw(field: "word") }
             alt(profiles: [numeric]) { f64-kw(field: "word") }
             alt { generic-ty(field: "generic") }
@@ -748,7 +754,11 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         // 带符号字面量折叠（same-line 只绑定负号分支——无符号整数字面量可跨行起始，e19 的负号换行拒绝由负号分支保持）。
         int-literal {
             alt { minus() int-lit(field: "value", same-line: true) }
+            // PLAN-961：负 typed 字面量在词法结构层折叠（-9223372036854775808i64
+            // 的正数部分超出 i64 正域，只有带负号才可表示）。
+            alt(profiles: [numeric]) { minus() affix-num(field: "value", same-line: true) }
             alt { int-lit(field: "value") }
+            alt(profiles: [numeric]) { affix-num(field: "value") }
         }
         args { arg(repeat: "opt") many { arg-tail() {} } }
         arg-tail { comma() {} arg() {} }

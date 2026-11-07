@@ -539,6 +539,9 @@ fn verify_profile(
         // update — this contract test never feeds it; route it to the
         // real collections verifier to keep the match honest.
         SourceProfile::Collections => verify::verify_collections(b),
+        // PLAN-961: the numeric profile verifies under the closures-
+        // superset domain (its descriptor identity carries the surface).
+        SourceProfile::Numeric => verify::verify_closures(b),
         // PLAN-888 discovery: PLAN-865 added this source domain. Keep
         // this test adapter exhaustive by calling its landed verifier.
         SourceProfile::Closures => verify::verify_closures(b),

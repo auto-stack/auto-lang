@@ -146,6 +146,15 @@ fn builtin_word(w: &TypeWord) -> &'static [u8] {
         TypeWord::StrOwned => b"Str",
         TypeWord::Char => b"char",
         TypeWord::Void => b"void",
+        // PLAN-961: the numeric words' canonical bytes (byte≡u8,
+        // uint≡u32, float≡f32, double/f64≡f64 aliases canonicalize).
+        TypeWord::I8 => b"i8",
+        TypeWord::U8 | TypeWord::Byte => b"u8",
+        TypeWord::U32 | TypeWord::Uint => b"u32",
+        TypeWord::I64 => b"i64",
+        TypeWord::U64 => b"u64",
+        TypeWord::Float => b"f32",
+        TypeWord::Double | TypeWord::F64 => b"f64",
     }
 }
 

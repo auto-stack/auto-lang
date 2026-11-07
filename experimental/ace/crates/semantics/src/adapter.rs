@@ -114,6 +114,9 @@ fn vt_name(v: &ace_core::source::resolve::VT) -> &'static str {
     use ace_core::source::resolve::VT;
     match v {
         VT::I32 => "i32",
+        // PLAN-961: the numeric surface is outside this inference
+        // profile's value set — a distinct label, never a silent i32.
+        VT::I8 | VT::U8 | VT::U32 | VT::I64 | VT::U64 | VT::F32 | VT::F64 => "numeric",
         VT::Bool => "bool",
         VT::Str | VT::StrOwned | VT::Char => "text",
         VT::Rec(_) => "record",
@@ -352,6 +355,18 @@ fn ann_of(a: &core_ast::TypeAnn) -> Result<Ann, String> {
             core_ast::TypeWord::Int | core_ast::TypeWord::I32 => Ann::I32,
             core_ast::TypeWord::Bool => Ann::Bool,
             // text/char annotations are outside the limited profile
+            // PLAN-961: numeric annotations are outside the limited
+            // inference profile (controlled rejection by name).
+            core_ast::TypeWord::I8
+            | core_ast::TypeWord::U8
+            | core_ast::TypeWord::Byte
+            | core_ast::TypeWord::Uint
+            | core_ast::TypeWord::U32
+            | core_ast::TypeWord::I64
+            | core_ast::TypeWord::U64
+            | core_ast::TypeWord::Float
+            | core_ast::TypeWord::Double
+            | core_ast::TypeWord::F64 => Ann::Unsupported("numeric-annotation"),
             core_ast::TypeWord::Str | core_ast::TypeWord::StrOwned | core_ast::TypeWord::Char => {
                 Ann::Unsupported("text-annotation")
             }
@@ -524,6 +539,10 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
     let span = Span::new(e.span.start as u32, e.span.end as u32);
     let kind = match &e.kind {
         core_ast::ExprKind::IntLit(v) => InputExprKind::IntLit(*v),
+        // PLAN-961: the typed literal is outside this profile (named).
+        core_ast::ExprKind::TypedLit { .. } => InputExprKind::Unsupported {
+            what: "typed-numeric-literal",
+        },
         core_ast::ExprKind::BoolLit(v) => InputExprKind::BoolLit(*v),
         core_ast::ExprKind::Var(v) => InputExprKind::Var(v.name.clone()),
         core_ast::ExprKind::Call { callee, args } => InputExprKind::Call {
@@ -534,11 +553,24 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         core_ast::ExprKind::CallValue { .. } => InputExprKind::Unsupported {
             what: "closure-call",
         },
-        core_ast::ExprKind::Binary { op, lhs, rhs } => InputExprKind::Binary {
-            op: binop(*op),
-            lhs: Box::new(project_expr(&lhs)),
-            rhs: Box::new(project_expr(&rhs)),
-        },
+        core_ast::ExprKind::Binary { op, lhs, rhs } => {
+            // PLAN-961: bit ops are outside this profile — a named
+            // unsupported construct, never a silent arithmetic mapping.
+            if matches!(
+                op,
+                core_ast::BinOp::BitAnd | core_ast::BinOp::BitOr | core_ast::BinOp::BitXor
+            ) {
+                InputExprKind::Unsupported {
+                    what: "bit-operation",
+                }
+            } else {
+                InputExprKind::Binary {
+                    op: binop(*op),
+                    lhs: Box::new(project_expr(&lhs)),
+                    rhs: Box::new(project_expr(&rhs)),
+                }
+            }
+        }
         core_ast::ExprKind::Unary { op, operand } => InputExprKind::Unary {
             neg: matches!(op, core_ast::UnaryOp::Neg),
             operand: Box::new(project_expr(&operand)),
@@ -593,6 +625,8 @@ fn binop(op: core_ast::BinOp) -> BinOpKind {
         B::Mul => BinOpKind::Mul,
         B::Div => BinOpKind::Div,
         B::Rem => BinOpKind::Rem,
+        // Unreachable: the Binary arm above intercepts bit ops first.
+        B::BitAnd | B::BitOr | B::BitXor => BinOpKind::Lt,
         B::Lt => BinOpKind::Lt,
         B::Le => BinOpKind::Le,
         B::Gt => BinOpKind::Gt,

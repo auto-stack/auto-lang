@@ -95,6 +95,24 @@ fn profile_descriptor(profile: SourceProfile) -> &'static crate::descriptor::Des
     }
 }
 
+/// PLAN-961: compile under the numeric source profile (parse → resolve →
+/// typecheck → Atom bind through the numeric descriptor → verify under
+/// the closures-superset domain).
+pub fn compile_numeric_source(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<CompiledSource, Vec<Diagnostic>> {
+    let parts = compile_parts_with(src, module_path, capabilities, SourceProfile::Numeric)?;
+    let checked = crate::verify::verify_closures(parts.bundle)?;
+    Ok(CompiledSource {
+        profile: super::NUMERIC_SOURCE_PROFILE,
+        input_hash: parts.input_hash,
+        atom_text: parts.atom_text,
+        checked,
+    })
+}
+
 pub fn compile_scalar_source(
     src: &str,
     module_path: &str,

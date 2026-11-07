@@ -41,7 +41,45 @@ fn numeric_typed_literal_parses_and_compiles_to_hir() {
     // negative-fold and operator typing land with the ops unit).
     let code = first_code(parse_program_with(src, SourceProfile::Numeric));
     assert_eq!(code, "ok", "typed literal must parse under numeric");
-
+    for w in ["i64", "u64", "f32", "f64", "double", "float", "u8", "byte", "u32", "uint", "i8"] {
+        let src = format!("fn main() {w} {{ return 1i64 }}");
+        eprintln!("RET-{}: {}", w, first_code(parse_program_with(&src, SourceProfile::Numeric)));
+    }
+    let f1 = "fn main() f64 {
+    let z = 0.0d
+    return -z
+}";
+    eprintln!("F1: {}", first_code(parse_program_with(f1, SourceProfile::Numeric)));
+    let f2 = "fn main() f64 {
+    let z = 0.0d
+    return z
+}";
+    eprintln!("F2: {}", first_code(parse_program_with(f2, SourceProfile::Numeric)));
+    let f3 = "fn main() f64 {
+    return -z
+}";
+    eprintln!("F3: {}", first_code(parse_program_with(f3, SourceProfile::Numeric)));
+    let cf = |x: &str| match ace_core::source::compile_numeric_source(x, "p.at", &[]) {
+        Ok(_) => "ok".to_string(),
+        Err(d) => format!("{}: {}", d[0].code, d[0].message),
+    };
+    eprintln!("CF1: {}", cf(f1));
+    eprintln!("CF2: {}", cf(f2));
+    let f4 = "fn main() f64 { let z = 0.0d
+ return -z }";
+    eprintln!("F4(single-line-brace): {}", first_code(parse_program_with(f4, SourceProfile::Numeric)));
+    let f5 = "fn main() int { let z = 5
+ return z }";
+    eprintln!("F5(int-same-shape): {}", first_code(parse_program_with(f5, SourceProfile::Numeric)));
+    let f6 = "fn main() f64 { let z = 1.5d
+ return z }";
+    eprintln!("F6(nofloat-dot-0): {}", first_code(parse_program_with(f6, SourceProfile::Numeric)));
+    let f7 = "fn main() f64 { let z = 0.0d
+ return z }";
+    eprintln!("F7(dot-zero): {}", first_code(parse_program_with(f7, SourceProfile::Numeric)));
+    let mn = "fn main() i64 { let m = -9223372036854775808i64
+ return m }";
+    eprintln!("I64MIN: {}", first_code(parse_program_with(mn, SourceProfile::Numeric)));
     // Full front door: parse → resolve → typecheck → emit → bind → verify.
     let parts = ace_core::source::adapter::compile_parts_with(
         src,
@@ -185,7 +223,7 @@ fn numeric_negative_surface_rejections() {
         // float bit op
         ("fn main(x f64) f64 { return x & 1.0d }", "source.type-mismatch"),
         // unsigned negation
-        ("fn main() u32 { return -1u32 }", "source.type-mismatch"),
+        ("fn main() u32 { return -1u32 }", "source.literal-range"),
         // shift amount of a different width
         ("fn main(x i64) i64 { return x.shl(1) }", "source.type-mismatch"),
         // unknown numeric method

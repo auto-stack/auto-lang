@@ -33,6 +33,7 @@ pub mod typecheck;
 
 pub use adapter::{
     compile_closures_source, compile_closures_source_incremental, compile_collections_source,
+    compile_numeric_source,
     compile_entry_unit_source, compile_host_console_source, compile_parts, compile_parts_with,
     compile_program_parts, compile_record_source, compile_scalar_source, compile_source,
     compile_text_record_source, compile_text_source, emit_collections_function_batch,
@@ -262,6 +263,7 @@ impl SourceProfile {
             HOST_CONSOLE_SOURCE_PROFILE => Some(SourceProfile::HostConsole),
             COLLECTIONS_SOURCE_PROFILE => Some(SourceProfile::Collections),
             CLOSURES_SOURCE_PROFILE => Some(SourceProfile::Closures),
+            NUMERIC_SOURCE_PROFILE => Some(SourceProfile::Numeric),
             _ => None,
         }
     }

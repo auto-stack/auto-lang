@@ -1493,6 +1493,14 @@ pub fn canonical_type_word(t: &ace_core::source::ast::TypeAnn) -> String {
         // PLAN-862: the Unit result word is canonical `unit` (entry-unit
         // source profile only; the other profiles never parse it).
         TypeRef::Builtin(TypeWord::Void) => "unit".into(),
+        // PLAN-961: numeric words are canonical by their frozen spellings.
+        TypeRef::Builtin(TypeWord::I8) => "i8".into(),
+        TypeRef::Builtin(TypeWord::U8 | TypeWord::Byte) => "u8".into(),
+        TypeRef::Builtin(TypeWord::U32 | TypeWord::Uint) => "u32".into(),
+        TypeRef::Builtin(TypeWord::I64) => "i64".into(),
+        TypeRef::Builtin(TypeWord::U64) => "u64".into(),
+        TypeRef::Builtin(TypeWord::Float) => "f32".into(),
+        TypeRef::Builtin(TypeWord::Double | TypeWord::F64) => "f64".into(),
         TypeRef::Record(id) => format!("rec:{}", id.name),
         // PLAN-935: a template type parameter word (only under the instances
         // capability face; concrete summaries see only substituted builtins).

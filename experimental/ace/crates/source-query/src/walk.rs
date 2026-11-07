@@ -21,7 +21,7 @@
 
 use crate::ident::{content_version, type_canonical, BODY_DOMAIN};
 use ace_core::atom_text::Span;
-use ace_core::source::ast::{Arg, BinOp, Block, Expr, ExprKind, Stmt, UnaryOp};
+use ace_core::source::ast::{Arg, BinOp, Block, Expr, ExprKind, Stmt, TypeWord, UnaryOp};
 use ace_semantics_contract::ContentVersion;
 
 /// Upper bound on one body's structural nodes (a controlled rejection;
@@ -393,6 +393,17 @@ fn walk_expr<'a>(
             canon.push(0);
             stack.push(Task::Int(*v));
         }
+        // PLAN-961: the typed literal carries its type word + raw bits in
+        // the canonical stream (bit-exact identity for every width). The
+        // value task keeps the query lane's i32 narrowing for the
+        // cross-reference stream; the canonical bytes keep full width.
+        ExprKind::TypedLit { ty, bits } => {
+            push_node(nodes, canon, "expr.typed_lit", e.span);
+            canon.extend_from_slice(builtin_word_query(ty));
+            canon.push(0);
+            canon.extend_from_slice(&bits.to_le_bytes());
+            stack.push(Task::Int(*bits as i32));
+        }
         ExprKind::BoolLit(b) => {
             push_node(nodes, canon, "expr.bool", e.span);
             canon.extend_from_slice(b"bool");
@@ -461,6 +472,25 @@ fn unsupported(what: &'static str, span: Span) -> Result<(), WalkError> {
     Err(WalkError::Unsupported { what, span })
 }
 
+/// PLAN-961: the canonical type-word bytes for the query walk.
+fn builtin_word_query(w: &TypeWord) -> &'static [u8] {
+    match w {
+        TypeWord::Int | TypeWord::I32 => b"i32",
+        TypeWord::Bool => b"bool",
+        TypeWord::Str => b"str",
+        TypeWord::StrOwned => b"Str",
+        TypeWord::Char => b"char",
+        TypeWord::Void => b"void",
+        TypeWord::I8 => b"i8",
+        TypeWord::U8 | TypeWord::Byte => b"u8",
+        TypeWord::U32 | TypeWord::Uint => b"u32",
+        TypeWord::I64 => b"i64",
+        TypeWord::U64 => b"u64",
+        TypeWord::Float => b"f32",
+        TypeWord::Double | TypeWord::F64 => b"f64",
+    }
+}
+
 fn bin_tag(op: BinOp) -> &'static str {
     match op {
         BinOp::Add => "+",
@@ -468,6 +498,10 @@ fn bin_tag(op: BinOp) -> &'static str {
         BinOp::Mul => "*",
         BinOp::Div => "/",
         BinOp::Rem => "%",
+        // PLAN-961: bit-op canonical tags.
+        BinOp::BitAnd => "&",
+        BinOp::BitOr => "|",
+        BinOp::BitXor => "^",
         BinOp::Lt => "<",
         BinOp::Le => "<=",
         BinOp::Gt => ">",

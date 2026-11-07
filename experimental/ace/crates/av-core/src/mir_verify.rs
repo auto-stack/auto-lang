@@ -977,6 +977,24 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         ));
                     }
                 }
+            } else if self.collections_surface() {
+                // PLAN-961: the collections/closures family (the numeric
+                // source surface rides it) admits every SCALAR as entry
+                // params/result — the frozen closure-profile i32-entry
+                // contract is superseded for this family by the numeric
+                // entry matrix (spec delta SD-01); records still never
+                // cross the entry boundary.
+                let scalar_ok = entry_sig
+                    .params
+                    .iter()
+                    .all(|p| self.module.type_shape(*p).is_some())
+                    && self.module.type_shape(entry_sig.result).is_some();
+                if !scalar_ok {
+                    return Err(MirVerifyError::inv(
+                        "mir.entry-sig",
+                        "collections/closures-family module entry params/result must be scalar".to_string(),
+                    ));
+                }
             } else if !entry_sig.params.is_empty()
                 || self.module.type_shape(entry_sig.result) != Some(ScalarShape::I32)
             {
@@ -2187,8 +2205,10 @@ impl<'a, 'r> Verifier<'a, 'r> {
                                 ))
                             }
                         };
-                        if let (Some(shape), false) = (want_shape, self.is_data) {
-                            // Wide-scalar constants are data-profile-only.
+                        // PLAN-961: wide/narrow numeric constants exist in
+                        // every numeric-surface family (the data gate below
+                        // keeps the core-i32 profile frozen).
+                        if let (Some(shape), false) = (want_shape, self.numeric_surface()) {
                             if !matches!(shape, ScalarShape::I32 | ScalarShape::Bool) {
                                 return Err(err(
                                     "mir.profile-const",

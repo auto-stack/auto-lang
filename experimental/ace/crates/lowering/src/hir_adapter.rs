@@ -2457,6 +2457,15 @@ fn collections_type_idx_of(
                 "lower.type-use",
                 "a unit type would materialize in the collections profile (effect statements discard)".to_string(),
             )),
+            // PLAN-961: the numeric builtins intern 1:1 (the numeric source
+            // profile rides this lowering family).
+            hir::BuiltinType::I8 => Ok(out.intern_type(MirType::I8)),
+            hir::BuiltinType::U8 => Ok(out.intern_type(MirType::U8)),
+            hir::BuiltinType::U32 => Ok(out.intern_type(MirType::U32)),
+            hir::BuiltinType::I64 => Ok(out.intern_type(MirType::I64)),
+            hir::BuiltinType::U64 => Ok(out.intern_type(MirType::U64)),
+            hir::BuiltinType::F32 => Ok(out.intern_type(MirType::F32)),
+            hir::BuiltinType::F64 => Ok(out.intern_type(MirType::F64)),
             other => Err(AdapterError::uns(
                 "lower.type-use",
                 format!("builtin type {other:?} is outside the av.collections/1 source surface"),
@@ -2565,6 +2574,14 @@ fn collections_type_idx_of(
                     )?;
                     Ok(out.intern_type(MirType::Closure(FnSig { params, result })))
                 }
+                // PLAN-961: numeric type-table entries intern 1:1.
+                hir::TypeKind::I8 => Ok(out.intern_type(MirType::I8)),
+                hir::TypeKind::U8 => Ok(out.intern_type(MirType::U8)),
+                hir::TypeKind::U32 => Ok(out.intern_type(MirType::U32)),
+                hir::TypeKind::I64 => Ok(out.intern_type(MirType::I64)),
+                hir::TypeKind::U64 => Ok(out.intern_type(MirType::U64)),
+                hir::TypeKind::F32 => Ok(out.intern_type(MirType::F32)),
+                hir::TypeKind::F64 => Ok(out.intern_type(MirType::F64)),
                 other => Err(AdapterError::uns(
                     "lower.type-use",
                     format!("type kind {:?} is outside the av.collections/1 source surface", other),
