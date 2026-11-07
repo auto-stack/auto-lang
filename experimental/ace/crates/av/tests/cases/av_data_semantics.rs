@@ -968,7 +968,10 @@ fn av_data_instruction_contract_round_trip_all_opcodes() {
         .iter()
         .map(|s: &InstructionSpec| s.name)
         .collect();
-    // PLAN-863: + HOST_CALL (0x35), exercised by host_console_863 = 53.
-    assert_eq!(all_mnemonics.len(), 53);
+    // PLAN-863: + HOST_CALL (0x35), exercised by host_console_863.
+    // PLAN-938: + FOREIGN_CALL (0x36, foreign-native profile; AV admission
+    // rejects, never executes) = 54.
+    assert_eq!(all_mnemonics.len(), 54);
     assert!(all_mnemonics.contains(&"HOST_CALL"));
+    assert!(all_mnemonics.contains(&"FOREIGN_CALL"));
 }
