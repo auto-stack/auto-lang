@@ -172,6 +172,48 @@ pub fn compile_scalar_product(
     module: &str,
     session: &mut crate::session::SourceQuerySession,
 ) -> Result<ProductCompile, Vec<Diagnostic>> {
+    compile_profile_product(
+        src,
+        module_path,
+        capabilities,
+        package,
+        module,
+        session,
+        SourceProfile::Scalar,
+    )
+}
+
+/// PLAN-939: the TEXT-RECORD product entry for resource foreign sources —
+/// same unified front door/instance rules as the scalar product, with the
+/// 782 domain's own verifier (foreign admission + the text-resource walk).
+pub fn compile_text_record_product(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    package: &str,
+    module: &str,
+    session: &mut crate::session::SourceQuerySession,
+) -> Result<ProductCompile, Vec<Diagnostic>> {
+    compile_profile_product(
+        src,
+        module_path,
+        capabilities,
+        package,
+        module,
+        session,
+        SourceProfile::TextRecord,
+    )
+}
+
+fn compile_profile_product(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    package: &str,
+    module: &str,
+    session: &mut crate::session::SourceQuerySession,
+    profile: SourceProfile,
+) -> Result<ProductCompile, Vec<Diagnostic>> {
     use ace_core::source::cst::{
         parse_front_with_caps, FrontBudget, FrontKind, FrontOutcome, FrontRequest,
         INSTANCES_CAPABILITY,
@@ -181,7 +223,7 @@ pub fn compile_scalar_product(
         match parse_front_with_caps(
             FrontRequest {
                 src,
-                profile: SourceProfile::Scalar,
+                profile,
                 kind: FrontKind::WholeModule,
                 budget: FrontBudget::WORK_OWNED_64MIB,
             },
@@ -218,7 +260,7 @@ pub fn compile_scalar_product(
         }
     } else {
         (
-            parse_program_with(src, SourceProfile::Scalar).map_err(|d| vec![d])?,
+            parse_program_with(src, profile).map_err(|d| vec![d])?,
             Vec::new(),
         )
     };
@@ -235,16 +277,10 @@ pub fn compile_scalar_product(
     // capability intrinsics the neutral input carries, so the session is
     // aligned with the compile request before anything is queried.
     session.set_capabilities(capabilities.iter().cloned());
-    match bind_with_facts(
-        &program,
-        capabilities,
-        package,
-        module,
-        session,
-        SourceProfile::Scalar,
-    ) {
+    let front_profile = profile;
+    match bind_with_facts(&program, capabilities, package, module, session, profile) {
         Ok((resolved, applied, supply)) => {
-            let parts = emit_resolved_parts(&resolved, src, module_path, SourceProfile::Scalar)?;
+            let parts = emit_resolved_parts(&resolved, src, module_path, profile)?;
             let SourceParts {
                 profile,
                 input_hash,
@@ -252,9 +288,25 @@ pub fn compile_scalar_product(
                 bundle,
                 ..
             } = parts;
-            let checked = match session.foreign() {
-                Some(environment) => ace_core::verify::verify_foreign_scalar(bundle, environment),
-                None => verify_scalar(bundle),
+            let checked = match (front_profile, session.foreign()) {
+                (SourceProfile::Scalar, Some(environment)) => {
+                    ace_core::verify::verify_foreign_scalar(bundle, environment)
+                }
+                (SourceProfile::Scalar, None) => verify_scalar(bundle),
+                (SourceProfile::TextRecord, Some(environment)) => {
+                    ace_core::verify::verify_foreign_text_record(bundle, environment)
+                }
+                (SourceProfile::TextRecord, None) => {
+                    ace_core::verify::verify_text_record(bundle)
+                }
+                (_, _) => {
+                    return Err(vec![Diagnostic::new(
+                        Stage::Text,
+                        "source.unsupported",
+                        "this product entry lowers the scalar and text-record profiles only",
+                        Span { start: 0, end: 0 },
+                    )])
+                }
             }?;
             Ok(ProductCompile {
                 compiled: CompiledSource {

@@ -16,15 +16,21 @@
 //!                               closure EXACTLY matches the declared one
 //!                               (same names, same order, same kinds; same
 //!                               shape under another name is rejected).
-//!                               `Mut` requires the `.mut` call-site borrow;
-//!                               `Const`/`Out` take the plain view argument
-//!                               (Out is a caller-owned slot the bridge
-//!                               commits only on success — the source type
-//!                               system sees a view, the bridge sees a slot);
+//!                               `Mut` AND `Out` require the `.mut` call-site
+//!                               borrow (both write the caller's storage; the
+//!                               bridge shadows and commits only on success —
+//!                               Mut copies the old bytes in, Out starts from
+//!                               a zeroed shadow the provider must not read);
+//!                               `Const` takes the plain view argument;
 //! * `Handle{..}`             → `int` (physical i64, bridge-checked);
-//! * `Callback{..}`           → `fn(int, int) -> int` closure value
-//!                               (`(ctx, item) -> value`), the i32 ctx
-//!                               seed travels as the next ordinary `int`.
+//! * `Callback{..}`           → a NAMED top-level source function
+//!                               `fn cb(ctx int, item int) int` referenced
+//!                               by name in the callback lane position
+//!                               (the thin trampoline: no first-class
+//!                               closure value — the text-record domain has
+//!                               none; the bridge emits a static
+//!                               i64→i32→i64 adapter), the i32 ctx seed
+//!                               travels as the next ordinary `int`.
 //!
 //! Results: pure/fallible value lanes reach the source as `int` (`Bool` as
 //! `bool`); wide physical lanes are checked-converted by the bridge.
@@ -43,7 +49,7 @@ pub const CODE_SHAPE: &str = "source.foreign.resource-shape";
 pub struct ForeignSourceSig {
     pub params: Vec<VT>,
     /// Per-param: the argument must be an explicit `.mut` borrow
-    /// (`Rec{role: Mut}`). Scalar/view/out/handle/callback params are
+    /// (`Rec{role: Mut | Out}`). Scalar/view/handle/callback params are
     /// `false`.
     pub mut_params: Vec<bool>,
     pub result: VT,
@@ -145,7 +151,7 @@ pub fn source_sig(
             ResKind::ViewText => (VT::Str, false),
             ResKind::Rec { rec, fields, role } => (
                 VT::Rec(record_index(rec, fields, records)?),
-                *role == ViewRole::Mut,
+                matches!(role, ViewRole::Mut | ViewRole::Out),
             ),
             ResKind::Handle { .. } => (VT::I32, false),
             ResKind::Callback { .. } => {
@@ -190,7 +196,7 @@ pub fn source_sig_readonly(
             ResKind::ViewText => (VT::Str, false),
             ResKind::Rec { rec, fields, role } => (
                 VT::Rec(record_index(rec, fields, records)?),
-                *role == ViewRole::Mut,
+                matches!(role, ViewRole::Mut | ViewRole::Out),
             ),
             ResKind::Handle { .. } => (VT::I32, false),
             ResKind::Callback { .. } => {

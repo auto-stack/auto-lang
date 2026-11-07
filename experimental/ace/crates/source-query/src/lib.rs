@@ -65,7 +65,7 @@ pub use apply::{
 
 pub use catalog::SignatureCatalog;
 pub use consumer::{
-    compile_scalar_product, compile_via_facts, CompileLane, ConsumerError, FactCompiled,
+    compile_scalar_product, compile_text_record_product, compile_via_facts, CompileLane, ConsumerError, FactCompiled,
     ProductCompile,
 };
 pub use facts::{

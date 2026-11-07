@@ -1746,6 +1746,9 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     .declare_function(&declaration.function.symbol, Linkage::Import, &signature)
                     .map_err(|e| format!("declare foreign symbol: {e}"))?;
                 let reference = self.om.declare_func_in_func(id, self.fb.func);
+                if let Some(res) = declaration.resource() {
+                    self.emit_resource_foreign_call(res, declaration, reference, *dst, args)?;
+                } else {
                 let mut values = Vec::new();
                 if let Some(symbol) = &declaration.context_symbol {
                     let data = self
@@ -1800,6 +1803,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     result
                 };
                 self.def_scalar(*dst, result)?;
+                }
             }
             MirInstr::Const { dst, value } => {
                 let ty = self.slot_ty(*dst);
@@ -2640,6 +2644,231 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 return Err(
                     "av.dynamic/1 dyn instructions are outside the mn scalar surface".to_string(),
                 )
+            }
+        }
+        Ok(())
+    }
+
+    /// PLAN-939: marshal ONE resource foreign call at its call site.
+    ///
+    /// * `ViewText` - the str pair (ptr, i32 len) crosses as (I64 ptr,
+    ///   u64 len); encoding was validated before the call.
+    /// * `Rec{Const}` - the record address crosses read-only.
+    /// * `Rec{Mut | Out}` - a SHADOW stack copy crosses (Mut seeds from
+    ///   the caller bytes, Out from zeroes); on the SUCCESS continuation
+    ///   only, the shadow is copied back - a failure leaves every caller
+    ///   byte untouched (V-04).
+    /// * `Handle` - the i32 slot sign-extends to the i64 opaque lane.
+    /// * wide results (i64/u64/handle) - CHECKED conversion to the
+    ///   internal i32; out of range is the named resource rejection
+    ///   status -2147483646 (`resource.wide-range`), never a truncation.
+    fn emit_resource_foreign_call(
+        &mut self,
+        res: &ace_foreign_contract::resource::ResourceSig,
+        declaration: &ace_foreign_contract::manual::SourceDecl,
+        reference: cranelift_codegen::ir::FuncRef,
+        dst: u32,
+        args: &[u32],
+    ) -> Result<(), String> {
+        use ace_foreign_contract::resource::{ResKind, ResOut, ResourceForm, ViewRole};
+        use cranelift_codegen::ir::{StackSlotData, StackSlotKind};
+        const WIDE_RANGE_STATUS: i64 = -2147483646;
+        let mut values: Vec<Value> = Vec::new();
+        if let ResourceForm::Fallible { ctx: Some(_), .. } = res.form {
+            if let Some(symbol) = &declaration.context_symbol {
+                let data = self
+                    .om
+                    .declare_data(symbol, Linkage::Import, true, false)
+                    .map_err(|e| format!("declare foreign context: {e}"))?;
+                let global = self.om.declare_data_in_func(data, self.fb.func);
+                values.push(self.fb.ins().global_value(types::I64, global));
+            }
+        }
+        struct RecShadow {
+            orig: Value,
+            shadow: Value,
+            size: u64,
+        }
+        let mut shadows: Vec<RecShadow> = Vec::new();
+        for (i, p) in res.params.iter().enumerate() {
+            let slot = args[i];
+            match p {
+                ResKind::I32 => {
+                    let v = self.fb.use_var(self.v_scalar(slot)?);
+                    let after_cb =
+                        i > 0 && matches!(res.params[i - 1], ResKind::Callback { ctx: true });
+                    if after_cb {
+                        // the ctx seed: sign-extended to the i64 ctx lane
+                        values.push(self.fb.ins().sextend(types::I64, v));
+                    } else {
+                        values.push(v);
+                    }
+                }
+                ResKind::Bool => {
+                    let v = self.fb.use_var(self.v_scalar(slot)?);
+                    let bad = self.fb.ins().icmp_imm(IntCC::UnsignedGreaterThan, v, 1);
+                    let status = self.fb.ins().iconst(types::I32, -2147483647i64);
+                    self.foreign_failure_on(bad, status)?;
+                    values.push(self.fb.ins().ireduce(types::I8, v));
+                }
+                ResKind::ViewText => {
+                    let ptr = self.use_ptr(slot)?;
+                    let len = self.use_len(slot)?;
+                    values.push(ptr);
+                    values.push(self.fb.ins().uextend(types::I64, len));
+                }
+                ResKind::Rec { role, .. } => {
+                    let addr = self.view_addr(slot)?;
+                    match role {
+                        ViewRole::Const => values.push(addr),
+                        ViewRole::Mut | ViewRole::Out => {
+                            let ty = self.unit.funcs[0].slots[slot as usize].ty;
+                            let rec = match self.unit.types.get(ty as usize) {
+                                Some(MirType::Record(r)) | Some(MirType::RecordView(r)) => {
+                                    r.clone()
+                                }
+                                _ => return Err(format!("slot {slot} is not a record view")),
+                            };
+                            let layout = crate::layout::record_layout(
+                                self.unit, ty, &rec, &mut self.layouts,
+                            )
+                            .map_err(|e| format!("foreign shadow layout: {e:?}"))?;
+                            let ss = self.fb.create_sized_stack_slot(StackSlotData::new(
+                                StackSlotKind::ExplicitSlot,
+                                layout.size.max(1) as u32,
+                                layout.align_log2 as u8,
+                            ));
+                            let shadow = self.fb.ins().stack_addr(types::I64, ss, 0);
+                            if *role == ViewRole::Mut {
+                                self.copy_bytes_aligned(shadow, addr, layout.size, true);
+                            } else {
+                                // Out: the provider must not read caller
+                                // bytes; the shadow starts zeroed.
+                                let flags = cranelift_codegen::ir::MemFlags::trusted();
+                                let mut off = 0u64;
+                                while layout.size - off >= 8 {
+                                    let z = self.fb.ins().iconst(types::I64, 0);
+                                    self.fb.ins().store(flags, z, shadow, off as i32);
+                                    off += 8;
+                                }
+                                while layout.size - off >= 4 {
+                                    let z = self.fb.ins().iconst(types::I32, 0);
+                                    self.fb.ins().store(flags, z, shadow, off as i32);
+                                    off += 4;
+                                }
+                                while layout.size - off >= 2 {
+                                    let z = self.fb.ins().iconst(types::I16, 0);
+                                    self.fb.ins().store(flags, z, shadow, off as i32);
+                                    off += 2;
+                                }
+                                if layout.size > off {
+                                    let z = self.fb.ins().iconst(types::I8, 0);
+                                    self.fb.ins().store(flags, z, shadow, off as i32);
+                                }
+                            }
+                            values.push(shadow);
+                            shadows.push(RecShadow {
+                                orig: addr,
+                                shadow,
+                                size: layout.size,
+                            });
+                        }
+                    }
+                }
+                ResKind::Handle { .. } => {
+                    let v = self.fb.use_var(self.v_scalar(slot)?);
+                    values.push(self.fb.ins().sextend(types::I64, v));
+                }
+                ResKind::Callback { .. } => {
+                    // The callback-by-name frontend (T-02C) carries the
+                    // named target on the call; a callback param reaching
+                    // this path without it is a named rejection, never a
+                    // guessed function pointer.
+                    return Err(
+                        "foreign callback lane requires the callback-by-name frontend".into(),
+                    );
+                }
+            }
+        }
+        // Checked wide->i32 result conversion (named rejection, V-15).
+        macro_rules! checked_narrow {
+            ($wide:expr, $unsigned:expr) => {{
+                let over = if $unsigned {
+                    let limit = self.fb.ins().iconst(types::I64, i32::MAX as i64);
+                    self.fb.ins().icmp(IntCC::UnsignedGreaterThan, $wide, limit)
+                } else {
+                    let hi = self.fb.ins().iconst(types::I64, i32::MAX as i64);
+                    let lo = self.fb.ins().iconst(types::I64, i32::MIN as i64);
+                    let a = self.fb.ins().icmp(IntCC::SignedGreaterThan, $wide, hi);
+                    let b = self.fb.ins().icmp(IntCC::SignedLessThan, $wide, lo);
+                    self.fb.ins().bor(a, b)
+                };
+                let status = self.fb.ins().iconst(types::I32, WIDE_RANGE_STATUS);
+                self.foreign_failure_on(over, status)?;
+                self.fb.ins().ireduce(types::I32, $wide)
+            }};
+        }
+        match &res.form {
+            ResourceForm::Pure { ret } => {
+                let call = self.fb.ins().call(reference, &values);
+                let result = self.fb.inst_results(call)[0];
+                let result = match ret {
+                    ResOut::I32 => result,
+                    ResOut::Bool => {
+                        let bad = self
+                            .fb
+                            .ins()
+                            .icmp_imm(IntCC::UnsignedGreaterThan, result, 1);
+                        let status = self.fb.ins().iconst(types::I32, -2147483647i64);
+                        self.foreign_failure_on(bad, status)?;
+                        self.fb.ins().uextend(types::I32, result)
+                    }
+                    ResOut::I64 | ResOut::Handle { .. } => checked_narrow!(result, false),
+                    ResOut::U64 => checked_narrow!(result, true),
+                };
+                self.def_scalar(dst, result)?;
+            }
+            ResourceForm::Fallible { out, .. } => {
+                let Some(lane) = out else {
+                    return Err("resource fallible entry without a value out".into());
+                };
+                let (pointee, width, align) = match lane {
+                    ResOut::I32 => (types::I32, 4u32, 2u8),
+                    ResOut::Bool => (types::I8, 1, 0),
+                    ResOut::I64 | ResOut::U64 | ResOut::Handle { .. } => (types::I64, 8, 3),
+                };
+                let ss = self.fb.create_sized_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    width,
+                    align,
+                ));
+                values.push(self.fb.ins().stack_addr(types::I64, ss, 0));
+                let call = self.fb.ins().call(reference, &values);
+                let status = self.fb.inst_results(call)[0];
+                let bad = self.fb.ins().icmp_imm(IntCC::NotEqual, status, 0);
+                self.foreign_failure_on(bad, status)?;
+                // SUCCESS continuation: commit every shadow back to its
+                // caller storage exactly once (V-04); a failure never
+                // reaches here (the transport trapped).
+                let loaded = self.fb.ins().stack_load(pointee, ss, 0);
+                let result = match lane {
+                    ResOut::I32 => loaded,
+                    ResOut::Bool => {
+                        let bad = self
+                            .fb
+                            .ins()
+                            .icmp_imm(IntCC::UnsignedGreaterThan, loaded, 1);
+                        let st = self.fb.ins().iconst(types::I32, -2147483647i64);
+                        self.foreign_failure_on(bad, st)?;
+                        self.fb.ins().uextend(types::I32, loaded)
+                    }
+                    ResOut::I64 | ResOut::Handle { .. } => checked_narrow!(loaded, false),
+                    ResOut::U64 => checked_narrow!(loaded, true),
+                };
+                self.def_scalar(dst, result)?;
+                for sh in shadows {
+                    self.copy_bytes_aligned(sh.orig, sh.shadow, sh.size, true);
+                }
             }
         }
         Ok(())

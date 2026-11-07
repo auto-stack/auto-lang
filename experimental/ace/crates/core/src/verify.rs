@@ -1767,9 +1767,11 @@ fn check_foreign_declarations(
         )]
     };
     // PLAN-938: scalar foreign lives in the scalar domain. PLAN-939: RESOURCE
-    // foreign (str views / nominal records / handles / callbacks) lives in
-    // the closures source domain (the 865 surface that owns Str literals,
-    // records, mut/move and closure values); no other domain admits foreign.
+    // foreign (str views / nominal records / handles / callback-by-name)
+    // lives in the text-record source domain (the 782 surface that owns
+    // str literals, nominal records and mut/move — the one domain BOTH real
+    // consumers lower: mn owned-profile and a2x-c 925); no other domain
+    // admits foreign.
     let has_resource = bundle.modules.iter().any(|m| {
         m.defs.iter().any(|d| {
             matches!(&d.kind, hir::DefKind::Foreign { declaration, .. } if declaration.resource().is_some())
@@ -1777,11 +1779,11 @@ fn check_foreign_declarations(
     });
     match (bundle.domain, has_resource) {
         (HirDomain::Scalar, false) => {}
-        (HirDomain::Closures, _) => {}
+        (HirDomain::TextRecord, _) => {}
         (_, true) => {
             return Err(reject(
                 Span { start: 0, end: 0 },
-                "foreign resource declarations require the closures source domain",
+                "foreign resource declarations require the text-record source domain",
             ));
         }
         (_, false) => {
@@ -2063,6 +2065,28 @@ pub fn verify_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnosti
 /// T-02; the full resource walk (ownership liveness, cleanup schedules)
 /// extends the PLAN-770 machinery in T-04.
 pub fn verify_text_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
+    verify_text_record_impl(bundle, false, None)
+}
+
+/// PLAN-939: the text-record domain WITH foreign declarations — resource
+/// foreign (str views, nominal record views, handles, callback-by-name)
+/// lives in this domain; the foreign admission prelude and the
+/// `foreign_allowed` bit are the only differences from the plain entry.
+/// The 782 resource walk (owned roots, exit frees, exclusivity fixpoint)
+/// covers the foreign call sites like any other call.
+pub fn verify_foreign_text_record(
+    bundle: hir::Bundle,
+    environment: &ace_foreign_contract::manual::AdmittedForeign,
+) -> Result<CheckedModule, Vec<Diagnostic>> {
+    check_foreign_declarations(&bundle, environment)?;
+    verify_text_record_impl(bundle, true, None)
+}
+
+fn verify_text_record_impl(
+    bundle: hir::Bundle,
+    foreign_allowed: bool,
+    _reserved: Option<()>,
+) -> Result<CheckedModule, Vec<Diagnostic>> {
     if bundle.domain != HirDomain::TextRecord {
         return Err(vec![Diagnostic::new(
             Stage::Verify,
@@ -2076,7 +2100,7 @@ pub fn verify_text_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diag
         )]);
     }
     let mut v = Verifier {
-        foreign_allowed: false,
+        foreign_allowed,
         diags: Vec::new(),
         closures_ctx: None,
         domain: HirDomain::TextRecord,
