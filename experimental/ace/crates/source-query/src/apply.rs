@@ -376,6 +376,8 @@ pub fn apply_facts_to_resolved(
             // 事实面按 fn 逐体定型，Type 项跳过（core resolve 仍注册其
             // rec_index 供 meta selector 验证）。
             Item::Type(_) => Ok(String::new()),
+            // PLAN-960: module globals carry no body facts.
+            Item::Const(_) | Item::Store(_) => Ok(String::new()),
             Item::Enum(_) => Err(ApplyError::Profile {
                 what: "enum declaration",
             }),
@@ -592,6 +594,7 @@ pub fn bind_with_facts(
             Item::Fn(f) => names.push(f.name.name.clone()),
             // PLAN-936（T-11）：fields-only record 声明跳过（meta 源形状）。
             Item::Type(_) => {}
+            Item::Const(_) | Item::Store(_) => {}
             Item::Enum(_) => return Err(BindFactsError::Profile("enum declaration")),
         }
     }

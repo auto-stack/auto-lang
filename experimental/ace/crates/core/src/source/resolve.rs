@@ -243,6 +243,18 @@ pub enum RExprKind {
         symbol: &'static str,
         args: Vec<ResolvedExpr>,
     },
+    /// PLAN-960: read of a module global (`module.global.get:<sym>`); the
+    /// packages binder rewrites bare/qualified const & store reads to this
+    /// call form. `vt` of the node is the global's declared type.
+    CallGlobalGet {
+        global: String,
+    },
+    /// PLAN-960: write of a module store (`module.global.set:<sym>(v)`);
+    /// a statement-position effect (result Unit).
+    CallGlobalSet {
+        global: String,
+        value: Box<ResolvedExpr>,
+    },
     /// PLAN-936（T-04）：`#{ expr }` CT 需求的已绑定形式。inner 是完整
     /// 绑定后的表达式（含 MetaQuery 节点）；HashExpr 的类型 = inner 的
     /// 类型。合法消费：CT 车道以冻结常量结构性替换本节点（T-06/T-07）；
@@ -442,6 +454,11 @@ impl Drop for ResolvedExpr {
             }
             RExprKind::CallIntrinsic { args, .. } => {
                 stack.extend(args.drain(..));
+            }
+            RExprKind::CallGlobalGet { .. } => {}
+            RExprKind::CallGlobalSet { value, .. } => {
+                let v = std::mem::replace(value.as_mut(), dummy());
+                stack.push(v);
             }
             RExprKind::CallFn { args, .. } | RExprKind::CtorPos { args, .. } => {
                 for a in args.iter_mut() {
@@ -1545,21 +1562,34 @@ fn resolve_detailed(
             // (globals + synthesized init functions) before resolve; a raw
             // package unit handed to the single-module resolver is a caller
             // error, never a silent skip.
-            ast::Item::Const(c) => {
-                return Err(vec![Diagnostic::new(
-                    Stage::Bind,
-                    "source.module-surface",
-                    "module globals require the packages binder (PLAN-960)",
-                    c.span,
-                )]);
-            }
-            ast::Item::Store(v) => {
-                return Err(vec![Diagnostic::new(
-                    Stage::Bind,
-                    "source.module-surface",
-                    "module globals require the packages binder (PLAN-960)",
-                    v.span,
-                )]);
+            // PLAN-960: module globals (const/store) register their accessor
+            // pseudo-signatures under the `module.global.get/set:<sym>` names
+            // the packages binder emits (names no identifier can spell, so
+            // they never shadow user functions). Their initializers are NOT
+            // resolved here — the binder moved them into the per-module init
+            // function. `index == usize::MAX` marks a non-function entry.
+            ast::Item::Const(ast::ConstItem { name, ty, .. })
+            | ast::Item::Store(ast::StoreItem { name, ty, .. }) => {
+                let vt = vt_of_ann(ty, &rec_index, &mut diags);
+                sigs.insert(
+                    format!("module.global.get:{}", name.name),
+                    FnSig {
+                        param_names: Vec::new(),
+                        params: Vec::new(),
+                        result: vt,
+                        index: usize::MAX,
+                    },
+                );
+                sigs.insert(
+                    format!("module.global.set:{}", name.name),
+                    FnSig {
+                        param_names: vec!["value".into()],
+                        params: vec![vt],
+                        // the write yields 0 so a `let` binds it in every domain
+                        result: VT::I32,
+                        index: usize::MAX,
+                    },
+                );
             }
         }
     }
@@ -8261,6 +8291,61 @@ impl<'a, 's> FnResolver<'a, 's> {
         }
         let args = &rargs[..];
         let _ = &args;
+
+        // PLAN-960: module global accessors (packages binder rewrite). The
+        // pseudo-signature carries the declared type; reads take no
+        // arguments, writes exactly one positional of that type.
+        if let Some(sym) = callee.name.strip_prefix("module.global.get:") {
+            let Some(sig) = self.sigs.get(&callee.name).cloned() else {
+                self.bind_err(
+                    "source.undefined",
+                    format!("unknown module global `{sym}`"),
+                    callee.span,
+                );
+                return ResolvedExpr { span: call_span, vt: VT::I32, kind: RExprKind::Unit };
+            };
+            if !rargs.is_empty() {
+                self.bind_err(
+                    "source.arity",
+                    format!("module global `{sym}` is read without arguments"),
+                    call_span,
+                );
+            }
+            return ResolvedExpr {
+                span: call_span,
+                vt: self.node_ty(call_span, sig.result),
+                kind: RExprKind::CallGlobalGet { global: sym.to_string() },
+            };
+        }
+        if let Some(sym) = callee.name.strip_prefix("module.global.set:") {
+            let Some(sig) = self.sigs.get(&callee.name).cloned() else {
+                self.bind_err(
+                    "source.undefined",
+                    format!("unknown module global `{sym}`"),
+                    callee.span,
+                );
+                return ResolvedExpr { span: call_span, vt: VT::I32, kind: RExprKind::Unit };
+            };
+            if rargs.len() != 1 || rargs[0].name.is_some() {
+                self.bind_err(
+                    "source.arity",
+                    format!("module store `{sym}` takes exactly one value"),
+                    call_span,
+                );
+                return ResolvedExpr { span: call_span, vt: VT::I32, kind: RExprKind::Unit };
+            }
+            let mut arg = rargs.remove(0);
+            retag_literal(&mut arg.value, sig.params[0]);
+            self.check_args(&callee.name, &sig.param_names, &sig.params, std::slice::from_ref(&arg), call_span);
+            return ResolvedExpr {
+                span: call_span,
+                vt: VT::I32,
+                kind: RExprKind::CallGlobalSet {
+                    global: sym.to_string(),
+                    value: Box::new(arg.value),
+                },
+            };
+        }
 
         if self.profile == SourceProfile::HostConsole
             && matches!(callee.name.as_str(), "print" | "eprint")

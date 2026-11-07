@@ -284,6 +284,10 @@ fn check_expr(
             RExprKind::CallIntrinsic { args, .. } => {
                 stack.extend(args.iter());
             }
+            // PLAN-960: global accessors are already typed by the resolver
+            // from the pseudo-signature; only the written value needs a walk.
+            RExprKind::CallGlobalGet { .. } => {}
+            RExprKind::CallGlobalSet { value, .. } => stack.push(value),
             RExprKind::CallFn { fn_index, args } => {
                 let callee = program.fns.get(*fn_index);
                 for (idx, a) in args.iter().enumerate() {

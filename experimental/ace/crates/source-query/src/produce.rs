@@ -529,6 +529,7 @@ fn find_free_fn<'a>(program: &'a Program, name: &str) -> Result<&'a FnItem, Prod
             }
             // PLAN-936（T-11）：fields-only record 声明跳过（meta 源形状）。
             Item::Type(_) => {}
+            Item::Const(_) | Item::Store(_) => {}
             Item::Enum(_) => {
                 return Err(ProduceError::Profile {
                     what: "enum declaration",

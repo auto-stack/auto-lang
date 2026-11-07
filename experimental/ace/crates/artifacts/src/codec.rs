@@ -1495,6 +1495,9 @@ pub fn build_decl_summary(program: &ace_core::source::ast::Program, module: &str
         match item {
             // PLAN-864: enum declarations carry no functions.
             Item::Enum(_) => {}
+            // PLAN-960: module globals are not functions in the summary;
+            // the packages lane's accessor signatures come from resolve.
+            Item::Const(_) | Item::Store(_) => {}
             Item::Fn(f) => {
                 fns.push(FnSummary {
                     name: f.name.name.clone(),

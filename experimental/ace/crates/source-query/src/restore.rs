@@ -122,6 +122,7 @@ pub fn restore_bind(
             Item::Fn(f) => names.push(f.name.name.clone()),
             // PLAN-936（T-11）：fields-only record 声明跳过（meta 源形状）。
             Item::Type(_) => {}
+            Item::Const(_) | Item::Store(_) => {}
             Item::Enum(_) => {
                 return Err(RestoreError::Profile {
                     what: "enum declaration",

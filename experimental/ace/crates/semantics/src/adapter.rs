@@ -164,6 +164,9 @@ pub fn project(prog: &core_ast::Program, package: &str, module: &str) -> Result<
             // PLAN-864: enum declarations project nothing here (no
             // functions; the sema input has no variant record shape).
             core_ast::Item::Enum(_) => {}
+            // PLAN-960: module globals are not functions; their accessor
+            // pseudo-signatures live in the resolver, not the fn summary.
+            core_ast::Item::Const(_) | core_ast::Item::Store(_) => {}
             core_ast::Item::Type(t) => {
                 records.push(InputRecord {
                     name: t.name.name.clone(),
@@ -266,6 +269,9 @@ pub fn project_body_scoped_with_caps(
         match item {
             core_ast::Item::Fn(f) => fns.push(project_fn_scoped(f, target)?),
             core_ast::Item::Enum(_) => {}
+            // PLAN-960: module globals are not functions; their accessor
+            // pseudo-signatures live in the resolver, not the fn summary.
+            core_ast::Item::Const(_) | core_ast::Item::Store(_) => {}
             core_ast::Item::Type(t) => {
                 records.push(InputRecord {
                     name: t.name.name.clone(),

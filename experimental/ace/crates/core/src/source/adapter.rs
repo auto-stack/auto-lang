@@ -1091,6 +1091,24 @@ pub fn emit_resolved_module_parts(
     )
 }
 
+/// PLAN-960: emit the already-resolved package module graph in the
+/// TextRecord domain (packages surface = text + record + modules). Same
+/// emitter/binder rules; no synthetic concatenated source is parsed.
+pub fn emit_resolved_packages_parts(
+    program: &ResolvedProgram,
+    sources: &super::packages::BoundPackages,
+    module_path: &str,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    emit_document_source(
+        program,
+        sources.source_len(),
+        sources.input_hash.clone(),
+        &|p| sources.is_char_boundary(p),
+        module_path,
+        SourceProfile::TextRecord,
+    )
+}
+
 fn emit_document_source(
     program: &ResolvedProgram,
     source_len: usize,
@@ -1231,6 +1249,11 @@ enum EKind {
     /// nodes lower to the HIR `Logical` kind — never to an eager binary.
     Logical(crate::hir::LogicOp, usize, usize),
     Unary(crate::hir::UnaryOp, usize),
+    /// PLAN-960: module global read (`module.global.get:<sym>`); lowered to
+    /// a call on a synthesized Intrinsic def carrying the declared type.
+    GlobalGet(String),
+    /// PLAN-960: module store write; operand is the new value.
+    GlobalSet(String, usize),
     Call {
         callee_fn: Option<usize>,
         callee_intrinsic: Option<&'static str>,
@@ -1428,6 +1451,9 @@ struct FnPlan {
 struct PlanCtx<'p> {
     program: &'p ResolvedProgram,
     intrinsic_first_use: &'p mut BTreeMap<&'static str, Span>,
+    /// PLAN-960: module globals used by this document — symbol -> (is_set,
+    /// declared VT, first-use span) — the emitter's def directory source.
+    global_first_use: &'p mut BTreeMap<String, (bool, VT, Span)>,
 }
 
 impl PlanCtx<'_> {
@@ -2405,6 +2431,17 @@ impl PlanCtx<'_> {
 
     fn plan_leaf(&mut self, plan: &mut FnPlan, f: &ResolvedFn, e: &ResolvedExpr) -> usize {
         match &e.kind {
+            RExprKind::CallGlobalGet { global } => {
+                self.global_first_use
+                    .entry(format!("module.global.get:{global}"))
+                    .or_insert((false, e.vt, e.span));
+                plan.exprs.push(ENode {
+                    kind: EKind::GlobalGet(global.clone()),
+                    vt: e.vt,
+                    span: e.span,
+                });
+                return plan.exprs.len() - 1;
+            }
             RExprKind::Binary { .. } | RExprKind::Unary { .. } => {
                 unreachable!("binary/unary handled by plan_expr walk")
             }
@@ -2892,6 +2929,29 @@ impl PlanCtx<'_> {
                 });
                 plan.exprs.len() - 1
             }
+            RExprKind::CallGlobalGet { global } => {
+                self.global_first_use
+                    .entry(format!("module.global.get:{global}"))
+                    .or_insert((false, e.vt, e.span));
+                plan.exprs.push(ENode {
+                    kind: EKind::GlobalGet(global.clone()),
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::CallGlobalSet { global, value } => {
+                let v = self.plan_expr(plan, f, value);
+                self.global_first_use
+                    .entry(format!("module.global.set:{global}"))
+                    .or_insert((true, value.vt, e.span));
+                plan.exprs.push(ENode {
+                    kind: EKind::GlobalSet(global.clone(), v),
+                    vt: VT::I32,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
             RExprKind::CallIntrinsic { symbol, args } => {
                 let mut eval: Vec<usize> = Vec::new();
                 for arg in args {
@@ -3095,6 +3155,8 @@ struct Emitter<'p> {
     profile: SourceProfile,
     plans: Vec<FnPlan>,
     intrinsic_first_use: BTreeMap<&'static str, Span>,
+    /// PLAN-960: module global defs (symbol -> is_set/VT/first-use span).
+    global_first_use: BTreeMap<String, (bool, VT, Span)>,
     /// Filled by [`Emitter::render`]: token-level fallback map.
     frags: Vec<(Span, Span)>,
     spans: Option<EmitSpans>,
@@ -3109,6 +3171,7 @@ struct Emitter<'p> {
 impl<'p> Emitter<'p> {
     fn new(program: &'p ResolvedProgram, src_len: usize, profile: SourceProfile) -> Self {
         Emitter {
+            global_first_use: BTreeMap::new(),
             program,
             src_len,
             profile,
@@ -3151,6 +3214,7 @@ impl<'p> Emitter<'p> {
             let mut ctx = PlanCtx {
                 program: self.program,
                 intrinsic_first_use: &mut self.intrinsic_first_use,
+                global_first_use: &mut self.global_first_use,
             };
             let plan = ctx.plan_fn(f);
             self.plans.push(plan);
@@ -3168,6 +3232,7 @@ impl<'p> Emitter<'p> {
         let mut ctx = PlanCtx {
             program: self.program,
             intrinsic_first_use: &mut self.intrinsic_first_use,
+            global_first_use: &mut self.global_first_use,
         };
         let plan = ctx.plan_fn(&self.program.fns[idx]);
         self.plans.push(plan);
@@ -3567,6 +3632,27 @@ impl<'p> Emitter<'p> {
             spans.types.push(span);
             nl!(12);
         }
+        // PLAN-960: module global accessor types (get: fn() -> T; set:
+        // fn(T) -> i32 — the write yields 0 so a `let` can bind it in every
+        // domain, including ones without an effect-statement form).
+        for (full, (is_set, vt, span)) in &self.global_first_use {
+            let (params, result) = if *is_set {
+                (self.ty_use_ref(*vt), self.ty_use_ref(VT::I32))
+            } else {
+                (String::new(), self.ty_use_ref(*vt))
+            };
+            frag!(
+                &format!(
+                    "type {} function {{ params: [{}]; result: {} }}",
+                    global_type_id(full),
+                    params,
+                    result
+                ),
+                *span
+            );
+            spans.types.push(*span);
+            nl!(12);
+        }
         frag!("}", program_span);
         nl!(8);
 
@@ -3689,6 +3775,22 @@ impl<'p> Emitter<'p> {
                 span
             );
             spans.defs.push(span);
+            nl!(12);
+        }
+        // PLAN-960: module global accessors — one Intrinsic def per (op,
+        // symbol); their function types were rendered in the type table.
+        for (full, (is_set, _vt, span)) in &self.global_first_use {
+            frag!(
+                &format!(
+                    "intrinsic {} {} {{ symbol: \"{}\"; effect: {} }}",
+                    global_def_id(full),
+                    global_type_id(full),
+                    full,
+                    if *is_set { "observable" } else { "pure" }
+                ),
+                *span
+            );
+            spans.defs.push(*span);
             nl!(12);
         }
         frag!("}", program_span);
@@ -3954,6 +4056,23 @@ impl<'p> Emitter<'p> {
                                     ei, args[0]
                                 ),
                             }
+                        }
+                        EKind::GlobalGet(global) => {
+                            format!(
+                                "expr e{} call {{ type: {}; callee: {}; eval_args: []; bindings: [] }}",
+                                ei,
+                                ty,
+                                global_def_id(&format!("module.global.get:{global}"))
+                            )
+                        }
+                        EKind::GlobalSet(global, v) => {
+                            format!(
+                                "expr e{} call {{ type: {}; callee: {}; eval_args: [e{}]; bindings: [{{ param: 0u32, arg: 0u32 }}] }}",
+                                ei,
+                                ty,
+                                global_def_id(&format!("module.global.set:{global}")),
+                                v
+                            )
                         }
                         EKind::Call {
                             callee_fn,
@@ -4395,6 +4514,17 @@ pub fn compile_host_console_source(
     })
 }
 
+/// PLAN-960: module-global accessor ids — the full symbol (op + global
+/// identity) sanitized to identifier bytes; unique per (op, symbol).
+fn global_id_suffix(sym: &str) -> String {
+    sym.replace(['.', ':'], "_")
+}
+fn global_def_id(sym: &str) -> String {
+    format!("d_{}", global_id_suffix(sym))
+}
+fn global_type_id(sym: &str) -> String {
+    format!("t_{}", global_id_suffix(sym))
+}
 fn intrinsic_id_suffix(sym: &str) -> String {
     if sym.starts_with("auto.console.") {
         sym.replace('.', "_")

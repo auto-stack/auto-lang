@@ -144,6 +144,7 @@ impl SignatureCatalog {
                 // PLAN-936（T-11）：fields-only record 声明是 meta 源形状
                 // （§5.2）——目录跳过（按 fn 定型；rec_index 归 core）。
                 Item::Type(_) => {}
+                Item::Const(_) | Item::Store(_) => {}
                 Item::Enum(_) => {
                     return Err(ProduceError::Profile {
                         what: "enum declaration",

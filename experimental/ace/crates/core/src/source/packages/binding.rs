@@ -552,6 +552,7 @@ pub fn bind_package_syntax(
             global_reads: &mut global_reads,
             work: 0,
             depth: 0,
+            set_counter: 0,
         };
         let mut inits: Vec<(String, Expr)> = Vec::new();
         for item in &unit.program.items {
@@ -607,19 +608,34 @@ pub fn bind_package_syntax(
                 }
                 Item::Const(c) => {
                     let sym = global_symbol(pkg, module, &c.name.name);
-                    let mut value = c.value.clone();
+                    let mut item = c.clone();
                     walker.current_owner = sym.clone();
-                    walker.walk_ann(&mut c.ty.clone())?;
-                    walker.walk_expr(&mut value, &BTreeSet::new())?;
-                    inits.push((sym, value));
+                    walker.walk_ann(&mut item.ty)?;
+                    walker.walk_expr(&mut item.value, &BTreeSet::new())?;
+                    inits.push((sym.clone(), item.value.clone()));
+                    // 声明项保留在扁平程序中：resolve 据其注册
+                    // `module.global.get/set:` 伪签名（值体不在该层解析——
+                    // 初始化已移入 init 函数）。
+                    item.name.name = sym;
+                    shift_ann(&mut item.ty, offset);
+                    shift_expr(&mut item.value, offset);
+                    item.span.start += offset;
+                    item.span.end += offset;
+                    program_items.push(Item::Const(item));
                 }
                 Item::Store(v) => {
                     let sym = global_symbol(pkg, module, &v.name.name);
-                    let mut value = v.value.clone();
+                    let mut item = v.clone();
                     walker.current_owner = sym.clone();
-                    walker.walk_ann(&mut v.ty.clone())?;
-                    walker.walk_expr(&mut value, &BTreeSet::new())?;
-                    inits.push((sym, value));
+                    walker.walk_ann(&mut item.ty)?;
+                    walker.walk_expr(&mut item.value, &BTreeSet::new())?;
+                    inits.push((sym.clone(), item.value.clone()));
+                    item.name.name = sym;
+                    shift_ann(&mut item.ty, offset);
+                    shift_expr(&mut item.value, offset);
+                    item.span.start += offset;
+                    item.span.end += offset;
+                    program_items.push(Item::Store(item));
                 }
                 Item::Enum(_) => unreachable!("enum rejected above"),
             }
@@ -792,7 +808,14 @@ pub fn bind_package_syntax(
             };
             init_span = Some(init_span.map_or(span, |s| s.join(span)));
             shift_expr(&mut value, start);
-            stmts.push(Stmt::ExprStmt {
+            stmts.push(Stmt::Let {
+                kw: span,
+                name: Ident {
+                    name: format!("__init{}", stmts.len()),
+                    span,
+                },
+                ann: None,
+                mutable: false,
                 value: Expr {
                     kind: ExprKind::Call {
                         callee: Ident {
@@ -1077,6 +1100,8 @@ struct Walker<'a> {
     global_reads: &'a mut BTreeMap<String, BTreeSet<String>>,
     work: usize,
     depth: usize,
+    /// 合成 `let __setN` 名计数（每模块单调）。
+    set_counter: usize,
 }
 
 const WALK_WORK_BUDGET: usize = 1 << 22;
@@ -1240,7 +1265,17 @@ impl<'a> Walker<'a> {
                             self.walk_expr(&mut v, &locals)?;
                             let span = *span;
                             let name_span = target.base.span;
-                            *s = Stmt::ExprStmt {
+                            // 存储写绑定为合成 let（set 产 0）：所有域都有 let 语句形，
+                            // 不依赖 effect-statement 形式。
+                            self.set_counter += 1;
+                            *s = Stmt::Let {
+                                kw: name_span,
+                                name: Ident {
+                                    name: format!("__set{}", self.set_counter),
+                                    span: name_span,
+                                },
+                                ann: None,
+                                mutable: false,
                                 value: Expr {
                                     kind: ExprKind::Call {
                                         callee: Ident {
@@ -1613,7 +1648,7 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let Stmt::ExprStmt { value, .. } = &bump.body.stmts[0] else {
+        let Stmt::Let { value, .. } = &bump.body.stmts[0] else {
             panic!("set stmt")
         };
         let ExprKind::Call { callee, .. } = &value.kind else {
