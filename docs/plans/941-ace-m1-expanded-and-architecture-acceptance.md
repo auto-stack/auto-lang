@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 22
+current_step: 23
 total_steps: 32
 ---
 
@@ -498,7 +498,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-03 | work | T-02，新registry私有面 | 新ace-m1-expanded registry逐source/target/机制/原格位与义务/组/owner/条件映射，完整覆盖而不改旧批准；AC-01，V-01 | [ ] 第85轮宇宙闭包增量（7938954802）：registry升/2 universe-closed——1006登记键（31份pinned合同活派生）+14条awaiting-D具名行（938/939各7条work AC，owner/promise/direction/close，内容sha钉定）；治理241/241（新增漏一项即拒/篡改/外来owner/外来域反控）、组合重读verdicts 716P8F282U逐键零漂移且required_universe_closed=true；逐义务深元数据仍由合同承载（活派生入口），如独立review要求registry物化再扩 |
 | T-04 | work | T-03，必要H短窗 | 新只读ace_m1_arch_acceptance.py与域reader适配/严格身份/路径/版本/原始终态/旧认证差异；AC-02/09/10，V-02/13/14 | [ ] 第86轮reducer增量（7cc50eeb29）：§5.2八域门纯谓词`reduce_acceptance`（ace.m1.acceptance-reducer/1）上线并接线组合报告——accounting/evidence/system四类输入永不单独推导can_claim、未组合测量具名missing_input blocker、complete_expanded_registry门改随宇宙闭合；治理243/243（+2 reducer控制：隔离全绿可触发谓词/未知缺失错型输入全拒）；组合重读verdicts守恒零漂移、8门仅expanded_registry_valid真、can_claim=False带14具名blocker；预算合约pin刷新（arch_acceptance字节变化）。域reader扩展（严格身份/路径/版本继续）与T05..T11测量节组合仍待 |
 | T-05 | work | T-03/04，Q4已有域稳定API | 正/负同源四端与独立oracle/reference/完整文件集认证、跨目标身份/daily分轴；AC-03/09，V-03/12/13 | [ ] |
-| T-06 | work | T-04/05，929/各实际required来源页稳定窗口 | 真实P/M/R/IO计数/依赖变化/多函数方法闭包、source恢复首操作/坏页/原子安装反控；AC-04/05，V-04..06 | [ ] 第87轮测量节首建（63f6827355）：`incremental_restore_measurements`节从已准入f94112全组门（逐测试事件）+ct-restore/architecture观察组合ARCH-05八行——2行真实PASS（恢复首好编辑/首坏修复再恢复）、6行PARTIAL（0 UNOBSERVED，逐行具名缺口），治理246/246（+3控制）、组合重读verdicts守恒且`missing_input:incremental_restore_measurements`blocker消失；V-04全依赖编辑集/934/935/938/939页/原子安装迟到等实际测量仍待补行 |
+| T-06 | work | T-04/05，929/各实际required来源页稳定窗口 | 真实P/M/R/IO计数/依赖变化/多函数方法闭包、source恢复首操作/坏页/原子安装反控；AC-04/05，V-04..06 | [ ] 第87轮测量节首建（63f6827355）：ARCH-05八行2真PASS/6具名PARTIAL、blocker翻转、verdicts守恒；第89轮真实窗口#1（111f5b7cbb）：ace-semantics组206测clean实跑+F09 restore-identity四测经`incremental_restore_semantics`绑定入historical行真实证据（缺口收窄为CT/foreign页族与AV侧套件绑定）；V-04多函数依赖编辑集/坏页全族/原子安装迟到/逐策略P90窗口仍待真实新采集 |
 | T-07 | work | T-06，原资源/HMR接口与正式窗口 | 原预算/cleanup/fault/lease/同PID safepoint/原样本P90/peak与新组合器资源帽；AC-06，V-07/08/16 | [ ] 第88轮测量节首建（6e49556a22）：`budget_time_measurements`节从已准入f94112全组门Job meter、原优化观察run meter与组合器自身保留帽组合——5行真实PASS（三组gate-meter/优化观察/composer-48MiB帽）+1行PARTIAL（16条预算策略声明runtime恒UNOBSERVED，逐策略P90/peak实测窗口具名缺），治理248/248、组合重读verdicts守恒且`missing_input:budget_time_measurements`blocker消失（余仅T-10治理控制）；cleanup/fault/lease/safepoint/P90实测仍待真实窗口 |
 | T-08 | work | T-04，934/935/936已审稳定接口；最终实际D | SQ/真实实例/CT执行/事实依赖及required恢复/四端实证适配；除具名§5.12/T24 F09授权外不修改其语义实现；AC-05/07，V-05/06/09/10 | [ ] |
 | T-09 | work | T-04，937/938/939已审稳定接口；最终实际D | ABI原三腿/全source-typed方向/资源/ctx/callback/独立C认证与source恢复；AC-05/08/09，V-05/06/11/12 | [ ] |
@@ -2126,6 +2126,17 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:87 | from:goal用户�
 stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（T-07测量节首建：5行真meter PASS+声明行如实PARTIAL，测量类missing_input仅余T-10治理） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:6e49556a22 | task_ids:T-07增量（勾选留review） | evidence:f94107-budget/t07-budget-audit.json | next_responsible_role:work T-05深化/V-04..06新实测窗口/T-10治理控制 | 无具名待批项，无live handle
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:88 | from:goal用户指定 | to:work | status:executing22/32 | outcome:progress（budget_time_measurements以真实meter上线，blocker真实翻转，verdicts守恒） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:6e49556a22 | next:work T-05/V-04..06实测窗口/T-10治理控制；D938/939未交齐，无待poll
+
+### 第89轮：V-04..06真实窗口#1——ace-semantics组实跑与F09套件入ARCH-05证据行
+
+- 按用户指令开启"真实新采集"路径，先取最小可闭缺口：historical-cross-project-ownership行的"组合ace-semantics restore-identity组绑定"。**真实采集**：clean提交`000aa6a23d`实跑`cargo t ace-semantics`——**206测全ok、gate_passed=true**（wall 362s、CPU 356.9s、Job峰365MB）。首次运行被守卫判废（运行期间我编辑了治理脚本，"code/config/inputs changed during execution"正确触发）——提交后clean重跑通过；此事故如实入档。
+- **接线**（提交**`111f5b7cbb`**，amend仅改needle/映射不入组二进制）：`incremental_restore_semantics`可选绑定（sha准入、组集/门绿/事件形状全拒）→其206事件并入池；historical行tests=source-query侧4个F09测试（`restore_identity_941$f94109_*`四测全ok——needle分隔符`$`初版误作`::`已修）；**AV侧3个f94109测试不在ace-semantics组**（属ace-av组、无已准入绑定）——按绑定域如实收窄映射并把AV套件列入partial_missing，不冒组外证据。
+- **验证**：治理**248/248PASS**；组合重读（三测量绑定）：**verdicts 716P8F282U逐键零漂移**；historical行=PARTIAL（如实）+ **4个真实F09测试证据**，缺口收窄为"CT/foreign页族（SQ facts之外）"与"AV侧套件（ace-av组绑定未组合）"；irs计数2P/6PARTIAL/0U不变。13工具恒等（无重采）。审计`f94113-semantics/v04-06-window1-audit.json`=`53c8d1f341d216e72e53dcbf2919d4cb58d4004fda60ed3fe04289f92b8892f7`。
+- 用户列序的其余真实窗口（多函数/方法/闭包依赖编辑集=V-04、坏页全族与原子安装/迟到=V-06、逐策略P90/peak=T-07余项、T-05 Q4深化）均需新测试编写+采集窗口，为下轮入口。executing23/32。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（V-04..06窗口#1：F09套件真实实跑入证据行，缺口具名收窄） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:111f5b7cbb | task_ids:T-06证据增补 | evidence:f94113-semantics/v04-06-window1-audit.json | next_responsible_role:work V-04依赖编辑集/V-06坏页与原子安装/T-07逐策略P90/T-05深化 | 无具名待批项，无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:89 | from:goal用户指定 | to:work | status:executing23/32 | outcome:progress（真实窗口#1交付：206测组实跑+F09入组合链） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:111f5b7cbb | next:work V-04/V-06/T-07余项/T-05真实窗口；D938/939未交齐，无待poll
 
 ## 10. 待澄清事项
 
