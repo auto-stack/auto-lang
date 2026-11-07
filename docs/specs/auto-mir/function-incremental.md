@@ -12,3 +12,10 @@
   block 级增量/活帧迁移/无语义占位指令不在本合同。
 - 内容命中：同内容版本复用现存不可变 MIR/ABC/代码对象与各自 mint 来源/代际；
   仅变更单元产生新产物（计数只计新产物）。
+
+
+## PLAN-938 增量（reviewed）
+
+- `SourceDecl::heap_bytes` 按 capacity 计量（统计零分配）；decode 先 metadata
+  预检再精确分配；单函数 lower 输出先 reserve（见 auto-ac/function-incremental-
+  source PLAN-938 增量）。

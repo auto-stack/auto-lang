@@ -65,3 +65,11 @@ PLAN-925：层 AXC2/AXP2、fileset `auto.a2x.c.record-text.fileset/1`、recipe
   纯恢复 P0+方法暖编辑（AXP2 seed 锚）。
 - 非目标（后继包）：CA-C 集合/变体、CA-D 有限 public ABI、CA-E 四端/M1
   总签章。
+
+
+## PLAN-938 增量：HIR foreign 薄 call（reviewed）
+
+- C 端消费 Checked HIR 单体经 `ForeignTargetProvider`（AXCF1）发薄 call；完整
+  library fileset（`auto.a2x.c.foreign-library.fileset/1`，无 main 剪裁）；
+  裸普通 C 入口拒 foreign；当前 authority 逐声明对照。文本输出见
+  auto-a2x/incremental-and-cache PLAN-938 增量。

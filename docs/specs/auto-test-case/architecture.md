@@ -374,3 +374,10 @@ Report/stale axes bind worker SHA/version, protocol, recipe, core version, `mir-
 - 新服务包 `ace-source-cte` 的单元/集成职责显式入 `ace-comptime` 固定组
   （被依赖编译≠测试已执行）；负例（未服务/环/deadline/禁调/篡改 envelope/
   恢复 R 窗/首坏修复）由该组包测试承载。旧 817 recipe/证书不受新面影响。
+
+
+## PLAN-938 增量（reviewed）
+
+- 新固定组 `case-ace-ca-d-source-938`（all=false 显式档）；父 typed 判定与
+  compiler current 指针分层（PLAN-773 F-03 语义）；late/非法 transport 不授
+  认证；预登记 wrong-oracle 控制不折算 PASS。

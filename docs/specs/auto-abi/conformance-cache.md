@@ -95,3 +95,15 @@ rust-lld 链接、PE 执行与 R4–R17 独立反例链支持。
 8. **正式通路**：经正式 AutoDown/probe adapter（`abi/interop-v1`
    recipe + `abiworker/1`）复测；Rust 原生测试是临时等价入口，不能
    充作正式复测（F-R4-09/R12）。
+
+
+## PLAN-938 增量：受检 source foreign 的分层依赖与恢复（reviewed）
+
+- 分层 keys：owner/decl/semantic/target/runtime/caps；实际 reader 仅真读者失效
+  （provider body 变化不重 parse/solve/lower 调用点）；provider-only 重绑仅产
+  binding 页。输出/活内存逐 owner 先 reserve（见
+  [checked-source-foreign-calls.md](checked-source-foreign-calls.md)）。
+- required 恢复：R 只深验，P0 restore；首编辑未改 P0；首错不安装、旧程序可运行。
+- store 整 namespace 128MiB ceiling：`open_with_namespace_budget` 仅可收紧；
+  put 投影 current+block+metadata 于 namespace 排他锁内、横跨 metadata commit。
+- hot GC 8→6MiB 原水位经 StorePolicy 接入 source worker 真实出口。

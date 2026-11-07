@@ -80,3 +80,9 @@ data/owned/mn 行落 sema fallback、cte 行缺 native.toolchain）是 PLAN-868 
 状态，见 KNOWN-DEBT-AND-RISKS「Plan 868」条；修复归 stale 机制维护计划。
 
 [计划来源](plans.md)；总览 [overview](overview.md)。
+
+
+## PLAN-938 增量（reviewed）
+
+- Foreign 声明 boxed 于 MirInstr（inline ≤64B 门）；声明环境 `core-decl-env/2`
+  （无 foreign 模块仍 `/1`，非别名）；恢复重锚 owner 后深验，不重投影。

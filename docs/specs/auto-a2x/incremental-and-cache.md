@@ -185,3 +185,11 @@ edition/backend/version/runtime/printer）；外部 rustc 可执行产物的认�
   `env_rebuilds` 如实 +1（R 轴装配）。
 - 片段生产者六处全部经统一前门桥；925/926 provider/runtime 面零触碰
   （TargetProvider 之后全 SemanticView）。
+
+
+## PLAN-938 增量：foreign reader 恢复/文本输出准入（reviewed）
+
+- 恢复首编辑/失败修复/原子发布沿 source session
+  （abi/source-foreign-session/1）；AXCF1 fragment cache 命中不产生输出账目。
+- C fragment/fileset 文本（generated.c/foreign_imports.h/manifest）在共享请求
+  输出账户精确准入；runtime header/状态 runtime 字节相同副本仅记活内存。

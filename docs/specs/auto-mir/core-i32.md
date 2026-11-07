@@ -17,3 +17,9 @@
 ## 实际增量边界
 
 当前adapter接受已检查模块，仍遍历/降低整模块。函数MIR独立持久化、命中恢复后重验已经接线，但不等于未改函数HIR/MIR对象驻留复用。真正lower_function和上下文凭证由828交付，未来新增类型/Place等必须保持其已交付机制。
+
+
+## PLAN-938 增量（reviewed）
+
+- `FOREIGN_CALL`（0x36，traps：status/bool 可失败；AV 具名拒不执行）；AVFI v1/
+  profile 9 wire `auto.abc.foreign-scalar/1`；u8 参数宽度 255 上限前移到声明准入。

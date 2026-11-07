@@ -1,3 +1,11 @@
+### D-989-DESIGN-R1 — 联合交付核查r2已修订、待定向复审（2026-11-07，开放）
+
+- owner：PLAN-989规划/复审；来源：[989 §9草案复核](989-split-refactor-joint-delivery-and-tag-readiness.md#9-复审记录)，r1合同hash `23e165a2fb0d86662a302d90639faf319ee01042cae4ab10ab749cd27a23fbec`。
+- F-989-R1-01：942已正式交付conditional、未证明集中workspace增量收益；989仍按原预期生产后继及旧状态/路径描述。补决策分支与实际批准结果的D-WS绑定，不能把研究归档等同生产go，不能自行取消节省目标。
+- F-989-R1-02：UI/Web独立消费与必要升级/回退须映射实际渠道/owner/关闭合同；消费D-942-P1/P2适用性证据，区分OS063闭包与986/987的ACE升级发行责任，不把生产实现塞进只核查的989或以“必要”字样漏验。
+- r2修订覆盖：§2.1及V-11补研究结果决策门；§5.2.1～2、D-CLOSURE及V-12补渠道/owner/合同、P1/P2适用性与有限升级恢复；§5.2.3补同最终版本配对收益，§5.1补三类证据复用规则。路线/战略已同步v38；本项仍开放，未以修改文档代替定向复审通过。
+- 关闭条件：989升r2，§2/5～8及SD按两项修订，保原任务/验收义务与未决目标，定向设计复审通过。本轮drafting0/9不变、未实施，审查来自同起草上下文，不冒独立final review。债务登记不豁免任何必需验收，也不重开942或预分配workspace生产Plan。
+
 ### D-942-DESIGN-R1 — 共享生成workspace研究合同复审缺口【已关闭 2026-11-06，PLAN-942 交付】
 
 - **候选/owner**：PLAN-942设计修订/复审者。
@@ -4073,3 +4081,20 @@ D-944-R1关闭补证：e269f417895ffa09493fd42390d24ef336f503f4的Arc缓存根�
 owner=Rust构建/工具链分诊；[PLAN-957](957-batch-api-gen-rustc-crash-triage.md) r1仅drafting0/5。after956完整37组batch原auto-api-gen发现命令编译auto-lang-core default lib时rustc1.98.0以0xc0000005 STATUS_ACCESS_VIOLATION退出，无常规类型error；该组未执行测试，不能计PASS。原因未定，不冒称资源/缓存/源码回归。同轮后续case-parent build成功只作不同编译图正控，不证明原profile恢复。四原始文件逐字节复制到plan-artifacts/plan-957，hash/命令/版本在Plan，具名hold关闭条件=原因/对照与必要修复复审完成、摘要折叠后删除。batch及956不做相关源码修复/不改门。
 
 同轮另复现plan707_spike_cancel_gap_active_job_future_not_stopped旧RED705原信息；源码及async_http未改，精确用例已在上方D858解决记录中保有“偶发时序族”历史，不凭旧全绿销掉本轮红。原有媒体夹具、sys_natives、core ACE误选、macros E0308、LSP缺包、pilot legacy域红保持；主线周期收据完整列出，未确认新增产品回归。
+
+
+### D-938-1 — PLAN-938 T-09 具名残余（2026-11-07，登记未关闭）
+
+owner=auto-lang/auto-abi 资源面；PLAN-938 T-13 merge 时随 SD 沉淀一并核对。①parser scratch 沿原 FrontBudget::WORK_OWNED_64MIB 独立冻结预算（原更严帽，按设计非共享账户）；②SQLite WAL 超 namespace 准入 4096B 余量的极端增长未单测；③manifest 条目/CFn/诊断字符串等小工作元数据按 wire 量级登记、未逐字节准入；④namespace 准入在锁内按 space() 文件系统扫描读取——大库下为性能开口（正确性不受影响），未来可换增量索引；⑤8bw 两个并发变异（锁前陈旧读/锁不横跨 commit）在现有控制下不可观察——既有 staging-budget 排他锁+FS 计账已序块增长，横跨锁边际仅 commit 期 WAL，按保守正确性保留不宣称控制证明。
+
+### D-938-2 — ace-native 固定组 30 分钟 wrapper 截止在高负载下截断（2026-11-07，登记未关闭）
+
+owner=scripts/test-groups runner 预算；PLAN-938 8by 首证：组两跑均 exit124 deadline（首跑含冷编译），已执行 203/203 全绿+直接补跑 23 条全绿=226/226。属吞吐/环境非用例失败；关闭条件=组预算按实际负载校准或分组拆分。
+
+### D-938-3 — plan827 测试向仓内 docs/reports 写副产物（2026-11-07，登记未关闭）
+
+owner=plan827 测试；PLAN-938 8ca ace-av 全组跑后出现 docs/reports/plan827/incremental-raw*.json（跟踪文件被改+两个 PID 副本）。本次按可再生清理恢复；根因是测试输出路径未走 TEMP/统一 scope，关闭条件=plan827 测试输出迁移至受控目录。
+
+### D-938-4 — ctool 测试改进程级 AUTOABI_MSVC_CL 环境变量（2026-11-07，影响收窄未关闭）
+
+owner=auto-abi 测试隔离；ctool.rs:520 在测试中 set/remove 进程 env。PLAN-938 8bz 已为 source_crt/abi 模块加共享 ENV_LOCK（该包 libtest 并发竞态消除、48/48 并行绿）；ctool.rs 自身的 env 变更与其余 crate 读取方仍无锁。关闭条件=ctool 测试改用子进程注入或全仓共享 env 锁。

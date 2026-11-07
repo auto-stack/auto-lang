@@ -133,3 +133,13 @@
   `diagnostic_verdicts` 在被接受程序上恒为 0）；面外/资源/取消是受控拒绝，不回退旧推导。
 - 恢复：来源/CST/声明恢复仍归 929；934 只准入 facts 页（无 solver/无重推导），
   缺页拒绝该恢复车道，显式 cold 另走。
+
+
+## PLAN-938 增量：共享 MIR foreign 直调与发射准入（reviewed）
+
+- native source 具体通路经 `lower_function_unit_reserved`：MIR 常量池/求值槽/
+  模块元数据先 reserve；Cranelift emit 工作区（unit 与 startup wrapper 两窗口）
+  在 make_isa 前 staging 准入、票据与 COFF 输出票合并随 cache 交接。
+- solver 工作集（InferSession 家族+事实映射）于 `InferSession::new` 前
+  `solver_workspace_bound` 准入；Frontend 会话元数据（ledger 行/逐函数 meter/
+  查询缓存）构造时一次 index 准入、编辑在票内增长。

@@ -36,3 +36,13 @@
   abi-worker 家族。
 - 继承的协议族属性（记录在案）：空 steps 集空过为 797 以来族属性，
   非 937 回归（938+ 可加固）。
+
+
+## PLAN-938 增量：source-foreign 认证（reviewed）
+
+- recipe `abi/source-foreign-certify-v1` 沿原 `abiworker/1` envelope；deck
+  `abi.source-import-deck/1` 严格 typed、report `abi.source-import-report/2`
+  （旧版互拒）；独立 ADD（1 函数）与 Scalar（7 函数）人工审定契约 + 10+1 份
+  ordinary-source deck；actual/reference 各对独立 parent exit oracle，期望仅在
+  父侧；wrong-oracle 预登记 FAIL 控制。正式门 `cargo t case-ace-ca-d-source-938`
+  gate_passed（8by/8cb 冻结并集）；暖 body-edit P90≤2000ms 常驻门。

@@ -72,3 +72,13 @@ P90≤2000ms；计时和原资源、正确性约束详见 [conformance-cache.md]
 - 计划过程记录：`docs/plans/archive/797-autoabi-v01-bidirectional-probe.md`（R1–R17 完整复审链）。
 - 关键裁定的理由（为什么不扩大、为什么候选而非发布）见该计划 §5 与
   freeze proposal `docs/reports/plan797/freeze-proposal.md`。
+
+
+## PLAN-938 增量：有限 source import 与支持矩阵（reviewed）
+
+- 新入口：受检有限 foreign 标量调用（见
+  [checked-source-foreign-calls.md](checked-source-foreign-calls.md)）——普通
+  Auto 源 + 独立 typed manifest；不升公共 ABI 版本。
+- 支持矩阵如实：native（共享 MIR 直调）与 C（HIR 薄 call）已支持；AV/A2R 受控
+  具名拒。SDK/MSVC 闭包进程级解析复用（用户 2026-11-07 裁定）：override 键控
+  一次解析、每请求仅元数据记账；identity/fingerprint 材料不变。

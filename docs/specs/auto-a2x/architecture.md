@@ -106,3 +106,13 @@ a2x-probe  → 以上全部（+windows-sys 仅 cfg(windows) 内存计数、serde
   不变；三 C 通道与全部 Rust 通道身份严格互斥。CA-D/CA-E 边界：内部 List/
   Variant C 表示私有、不冒公开 AutoABI；CA-E 只组合必需门不承担延期测试。
 
+
+
+## PLAN-938 增量：foreign facts 边界与 provider 生产接缝（reviewed）
+
+- `ForeignTargetProvider` 实现共享 `TargetProvider`（AXCF1 层）；与 sibling
+  ExternalFn/原 C provider 边界不变；SemanticView 消费 Checked HIR，不复制分析。
+- 中立文本生产接缝：provider 可携带 `SharedTextProduction`
+  （`Arc<Mutex<dyn PageProduction+Send>>`）——fragment/runtime/fileset 文本按
+  精确输出尺寸准入后才分配；fileset manifest 用借字段 struct 保持历史 json!
+  插入序字节。restore 命中零生产。
