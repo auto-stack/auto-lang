@@ -6,7 +6,8 @@
  * never from shadow counters.
  */
 #include "resource939.h"
-#include <string.h>
+/* No CRT headers: the ABI worker's provider compile path pins the MSVC
+ * include set only (the 938 discipline); zeroing is hand-rolled. */
 
 #ifndef BODY_BIAS
 #define BODY_BIAS 0
@@ -38,7 +39,12 @@ static int32_t alloc_ordinal = 0;
 void t939_fail_nth_alloc(int32_t n) { fail_nth = n; alloc_ordinal = 0; }
 
 void t939_reset(void) {
-    memset(slots, 0, sizeof(slots));
+    for (int32_t i = 0; i < R939_SLOTS; ++i) {
+        slots[i].live = 0;
+        slots[i].gen = 0;
+        slots[i].size = 0;
+        slots[i].value = 0;
+    }
     total_allocs = 0;
     total_frees = 0;
     fail_nth = 0;

@@ -1118,8 +1118,10 @@ fn decode_check(
         a2x_recipe,
         trace_recipe,
     )?;
-    if options.probe_recipe.as_deref() == Some("abi/source-foreign-certify-v1")
-        && matches!(expect.completion, Completion::Success)
+    if matches!(
+        options.probe_recipe.as_deref(),
+        Some("abi/source-foreign-certify-v1") | Some("abi/resource-foreign-certify-v1")
+    ) && matches!(expect.completion, Completion::Success)
         && expect.exit.is_none()
     {
         return Err(err(
@@ -1903,7 +1905,9 @@ fn decode_options(
                             "ac-av/resident-run-v1 step sequences must end with a resident-finish step (the judged step)",
                         ));
                 }
-                if (recipe == "cte/scalar-query-v1" || recipe == "abi/source-foreign-certify-v1")
+                if (recipe == "cte/scalar-query-v1"
+                    || recipe == "abi/source-foreign-certify-v1"
+                    || recipe == "abi/resource-foreign-certify-v1")
                     && !matches!(out.last(), Some(ProbeStep::Query))
                 {
                     return Err(err(
@@ -1981,6 +1985,7 @@ fn decode_options(
                 if recipe == "abi/interop-v1"
                     || recipe == "abi/ca-d1-bridge-v1"
                     || recipe == "abi/source-foreign-certify-v1"
+                    || recipe == "abi/resource-foreign-certify-v1"
                 {
                     return Err(err(
                         &f.path_of("abi"),
@@ -1993,6 +1998,7 @@ fn decode_options(
                 if recipe != "abi/interop-v1"
                     && recipe != "abi/ca-d1-bridge-v1"
                     && recipe != "abi/source-foreign-certify-v1"
+                    && recipe != "abi/resource-foreign-certify-v1"
                 {
                     return Err(err(
                         &f.path_of("abi"),
@@ -2008,7 +2014,9 @@ fn decode_options(
                 let leg = req_str(&af, "leg")?;
                 let legal = if recipe == "abi/interop-v1" {
                     matches!(leg.as_str(), "a" | "b" | "c")
-                } else if recipe == "abi/source-foreign-certify-v1" {
+                } else if recipe == "abi/source-foreign-certify-v1"
+                    || recipe == "abi/resource-foreign-certify-v1"
+                {
                     matches!(leg.as_str(), "native" | "c")
                 } else {
                     // PLAN-937: the bridge legs (source export + the three
@@ -2809,6 +2817,9 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // deck grammar/legs; strictly disjoint from abi/interop-v1).
     "abi/ca-d1-bridge-v1",
     "abi/source-foreign-certify-v1",
+    // PLAN-939: the resource certification recipe (own deck/report
+    // identities on the same worker transport).
+    "abi/resource-foreign-certify-v1",
     "ac-av/core-run-v1",
     // PLAN-817: AV-driven CTE query + frozen cache. Appended in the
     // post-797/798 single-writer window; same seam contract.

@@ -295,7 +295,22 @@ impl Frontend {
             Resources::default(),
         )
     }
-    pub fn cold_observed_with_resources(
+    /// PLAN-939: the source profile a foreign environment selects — RESOURCE
+/// declarations (str views / records / handles / callbacks) live in the
+/// text-record surface; scalar manifests keep the exact 938 scalar
+/// profile.
+fn foreign_source_profile(foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>) -> SourceProfile {
+    if foreign
+        .and_then(|f| f.source_declarations_ref().first())
+        .is_some_and(|d| d.resource().is_some())
+    {
+        SourceProfile::TextRecord
+    } else {
+        SourceProfile::Scalar
+    }
+}
+
+pub fn cold_observed_with_resources(
         source: &str,
         module: &str,
         package: &str,
@@ -310,9 +325,12 @@ impl Frontend {
         observation.whole_parse_attempts += 1;
         let work = observation.work.clone();
         let parse = work.begin("*", "whole-project", crate::work::Phase::Production);
-        let catalog =
-            UnitCatalog::build(source, SourceProfile::Scalar, FrontBudget::WORK_OWNED_64MIB)
-                .map_err(syntax_error)?;
+        let catalog = UnitCatalog::build(
+            source,
+            Self::foreign_source_profile(Some(&foreign)),
+            FrontBudget::WORK_OWNED_64MIB,
+        )
+        .map_err(syntax_error)?;
         parse.complete(1);
         if catalog.fns.len() > MAX_FUNCTIONS {
             return Err(reject("function budget"));
@@ -324,14 +342,16 @@ impl Frontend {
         queries.set_foreign(Some(foreign.clone()));
         observation.whole_parse_attempts += 1;
         let module_work = work.begin("*", "whole-frontend", crate::work::Phase::Production);
-        let product = crate::compile_scalar_product(
-            source,
-            module,
-            capabilities,
-            package,
-            module,
-            &mut queries,
-        )
+        // PLAN-939: resource environments compile in the text-record
+        // product lane (the Scalar lane pins the scalar profile).
+        let product = if Self::foreign_source_profile(Some(&foreign)) == SourceProfile::TextRecord
+        {
+            crate::compile_text_record_product(
+                source, module, capabilities, package, module, &mut queries,
+            )
+        } else {
+            crate::compile_scalar_product(source, module, capabilities, package, module, &mut queries)
+        }
         .map_err(Error::Diagnostics);
         observation.queries = queries.counters();
         let product = product?;
@@ -349,7 +369,7 @@ impl Frontend {
         let env = resolve::resolve_env_with_supply(
             &product.program,
             capabilities,
-            SourceProfile::Scalar,
+            Self::foreign_source_profile(Some(&foreign)),
             Some(&product.supply),
         )
         .map_err(Error::Diagnostics)?;
@@ -1160,24 +1180,29 @@ impl Frontend {
             return Err(reject("root envelope"));
         }
         let manifest = units::decode_manifest(&root.catalog).map_err(reject)?;
+        // PLAN-939: a RESOURCE foreign environment restores in the
+        // text-record profile (its decl env legitimately carries record
+        // types); scalar manifests keep the exact 938 restore rules.
+        let profile = Self::foreign_source_profile(Some(&foreign));
         let catalog = UnitCatalog::from_restored(
             &root.source,
             &manifest,
-            SourceProfile::Scalar,
+            profile,
             FRONT_CAPS_VERSION,
         )
         .map_err(reject)?;
         let declarations = decl_env::decode_decl_env(&root.declarations).map_err(reject)?;
-        if !declarations.records.is_empty()
-            || !declarations.lists.is_empty()
-            || !declarations.variants.is_empty()
-            || !declarations.function_types.is_empty()
+        if profile == SourceProfile::Scalar
+            && (!declarations.records.is_empty()
+                || !declarations.lists.is_empty()
+                || !declarations.variants.is_empty()
+                || !declarations.function_types.is_empty())
         {
             return Err(reject("foreign scalar declaration profile"));
         }
         let env = decl_env::decl_env_restore_with_foreign(
             &declarations,
-            SourceProfile::Scalar,
+            profile,
             &caps_key(capabilities),
             &root.source_sha,
             Some(&foreign),

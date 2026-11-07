@@ -814,17 +814,16 @@ pub fn run_check(
         .as_ref()
         .ok_or("probe check without steps (contract violation)")?;
     let bridge_mode = check.options.probe_recipe.as_deref() == Some(BRIDGE_RECIPE);
-    let source_mode = check.options.probe_recipe.as_deref() == Some(super::abi_source::RECIPE);
+    let source_mode = check.options.probe_recipe.as_deref() == Some(super::abi_source::RECIPE)
+        || check.options.probe_recipe.as_deref() == Some(super::abi_source::RESOURCE_RECIPE);
     if !bridge_mode && !source_mode && check.options.probe_recipe.as_deref() != Some(ABI_RECIPE) {
         return Err("probe check with an unregistered recipe (contract violation)".into());
     }
-    let active_recipe = if source_mode {
-        super::abi_source::RECIPE
-    } else if bridge_mode {
-        BRIDGE_RECIPE
-    } else {
-        ABI_RECIPE
-    };
+    let active_recipe = check
+        .options
+        .probe_recipe
+        .clone()
+        .unwrap_or_else(|| ABI_RECIPE.to_string());
     if source_mode
         && (matches!(oracle.completion, Completion::Success) && oracle.exit.is_none()
             || !matches!(abi.leg.as_str(), "native" | "c")

@@ -1144,7 +1144,10 @@ pub fn serve() -> i32 {
     let (nonce, request_hash) = (env.request.nonce.clone(), env.request.request_hash.clone());
     // PLAN-937: parallel recipe dispatch on the SAME envelope — the two
     // recipes share the worker lifecycle but never each other's decks.
-    let resp = match if env.request.recipe == crate::worker_source::RECIPE {
+    // PLAN-939: the resource certification recipe rides the same source
+    // flow under its own deck/report identities (CertPolicy).
+    let resp = match if crate::worker_source::CertPolicy::of_recipe(&env.request.recipe).is_some()
+    {
         crate::worker_source::execute(&env.request)
     } else if env.request.recipe == crate::worker_bridge::BRIDGE_RECIPE {
         crate::worker_bridge::execute_bridge(&env.request)

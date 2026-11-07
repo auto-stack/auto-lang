@@ -2,6 +2,8 @@
 //! dependency enters the language SDK; the existing ABI transport is reused.
 use serde::{Deserialize, Serialize};
 pub(super) const RECIPE: &str = "abi/source-foreign-certify-v1";
+/// PLAN-939: the resource certification recipe (own deck/report ids).
+pub(super) const RESOURCE_RECIPE: &str = "abi/resource-foreign-certify-v1";
 // Parent-owned acceptance pins for this finite reviewed recipe. A producer's
 // well-formed hash is evidence only when it names these independent materials.
 const REVIEWED_CONTRACT: &str = "cef4c3885f1686a00c0bb8c44ca6b95559a634fff297f8193becca2d1d35d71c";
@@ -10,6 +12,13 @@ const REVIEWED_SCALAR_CONTRACT: &str =
 const REVIEWED_HEADER: &str = "4051cd6af2acd0c07eeed8495f50ad51fdfac94c3b91928f86422e486b408b98";
 const REVIEWED_PHYSICAL_TABLE: &str =
     "0ea8be97d1026bd57dcaff7b35673e45a6a9f17e2f5c991bdd1b1fb04a94daa3";
+/// PLAN-939 parent-owned acceptance pins for the RESOURCE recipe.
+const R939_REVIEWED_CONTRACT: &str =
+    "1c037db5991479f1c1fc66df747190faf336b227c5c9312786f3ef83dc900a47";
+const R939_REVIEWED_HEADER: &str =
+    "338dfdb9c756727a4f94a74c54d2f623c1c699ca38ab4b45229ece8a733f11bb";
+const R939_REVIEWED_PHYSICAL_TABLE: &str =
+    "9a88223f4cf8a531674227fefad0f5468e418b6ed4fc949da9bdfd96088e5b94";
 fn reviewed_c_toolchain(value: &str) -> bool {
     if value.len() > 8192 || value.chars().any(char::is_control) {
         return false;
@@ -153,6 +162,9 @@ impl SourceReport {
         source: Option<&str>,
         reference: Option<&str>,
     ) -> Result<(), String> {
+        if self.schema == "abi.resource-import-report/1" {
+            return self.admit_resource_query(consumer, outcome, exit, source, reference);
+        }
         if !matches!(outcome, "ok" | "diags" | "resource" | "infra")
             || (outcome != "ok" && exit.is_some())
         {
@@ -194,6 +206,154 @@ impl SourceReport {
             },
         )
     }
+    /// PLAN-939: the RESOURCE report admission. Same shape as the scalar
+    /// judge, with the resource pins: the text-record input profile, the
+    /// 939 review/contract/header/table identities, per-DECK expected
+    /// provider events (the reference oracle mirrors the deck's exact
+    /// call sequence) and the failure-transport status each failing deck
+    /// must print. The actual/reference EXIT pair is judged by the case
+    /// oracle, not here.
+    fn admit_resource_query(
+        &self,
+        consumer: &str,
+        outcome: &str,
+        exit: Option<i32>,
+        source: Option<&str>,
+        reference: Option<&str>,
+    ) -> Result<(), String> {
+        if !matches!(outcome, "ok" | "diags" | "resource" | "infra")
+            || (outcome != "ok" && exit.is_some())
+        {
+            return Err("invalid resource outcome or exit on a refusal".into());
+        }
+        let (expected_events, expected_status): (&[&str], &[&str]) = match reference
+            .ok_or("resource-import request without a reviewed reference")?
+        {
+            "utf8-bytes" => (&["t939_byte_length"], &[]),
+            "utf8-scalars" => (&["t939_scalar_count"], &[]),
+            "record-mut" => (&["t939_bump"], &[]),
+            "record-mut-fail" => (&["t939_bump"], &["-2"]),
+            "handle-lifecycle" => (
+                &["t939_create", "t939_get", "t939_destroy", "t939_live"],
+                &[],
+            ),
+            "handle-stale" => (&["t939_create", "t939_destroy", "t939_get"], &["-1"]),
+            "txn-commit" => (&["t939_txn"], &[]),
+            "txn-seed-fail" => (&["t939_txn"], &["-2"]),
+            "txn-laststep-fail" => (&["t939_txn"], &["-3"]),
+            _ => return Err("resource reference is outside independent review".into()),
+        };
+        let digest = |s: &str| {
+            s.len() == 64
+                && s.bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        };
+        admit_work(&self.source_work)?;
+        admit_work(&self.host_work)?;
+        if self.host_work.iter().any(|row| {
+            row.owner != "*"
+                || !matches!(
+                    row.stage.as_str(),
+                    "provider-cache"
+                        | "provider-compile"
+                        | "tool-process"
+                        | "crt-context"
+                        | "reference-compile"
+                        | "actual-run"
+                        | "reference-run"
+                        | "tool-input"
+                )
+        }) {
+            return Err("resource-import host work has an unknown port or owner".into());
+        }
+        if self.schema != "abi.resource-import-report/1"
+            || self.direction != "source-import"
+            || self.input_profile != "auto.source.text-record.draft"
+            || self.abi_profile != "autoabi.win-x64.v0.1-candidate"
+            || self.abi_domain != "autoabi"
+            || self.abi_version != "0.1"
+            || self.callconv != "windows-x64"
+            || self.target != "x86_64-pc-windows-msvc"
+            || self.consumer != consumer
+            || !matches!(consumer, "native" | "c")
+            || self.review_id != "plan939-resource-provider-v1"
+            || self.contract_digest != R939_REVIEWED_CONTRACT
+            || self.header_digest != R939_REVIEWED_HEADER
+            || self.physical_table_digest != R939_REVIEWED_PHYSICAL_TABLE
+        {
+            return Err("resource-import report identity mismatch".into());
+        }
+        if let Some(source) = source {
+            if self.source_sha256
+                != auto_test_case::sha256::hex(&auto_test_case::sha256::sha256(source.as_bytes()))
+            {
+                return Err(
+                    "resource-import report source digest differs from the submitted source".into(),
+                );
+            }
+        } else if outcome == "ok" || !self.source_sha256.is_empty() {
+            return Err("resource-import report without source provenance".into());
+        }
+        if (consumer == "native"
+            && self.compiler != "ace-native-foreign/1+ace-native/0.1.0+cranelift/0.126.2")
+            || (consumer == "c"
+                && self.compiler != "auto-a2x-c-foreign/1+c11+a2x-c-foreign-print/1")
+        {
+            return Err("resource-import compiler identity mismatch".into());
+        }
+        if outcome == "ok" {
+            if self.source_work.is_empty() {
+                return Err("resource success without source work observations".into());
+            }
+            if self.actual_exit != exit
+                || self.reference_exit.is_none()
+                || !digest(&self.provider_digest)
+                || !reviewed_c_toolchain(&self.c_toolchain)
+                || self.actual_events != self.reference_events
+                || self.reference_events != expected_events
+                || !self.diagnostic_stage.is_empty()
+                || !self.diagnostics.is_empty()
+            {
+                return Err("resource actual/reference/call evidence is incomplete".into());
+            }
+            let observed = self
+                .actual_stderr
+                .lines()
+                .filter_map(|l| l.strip_prefix("source939.call=").map(String::from))
+                .collect::<Vec<_>>();
+            if observed != self.actual_events || self.actual_stderr.len() > 1 << 20 {
+                return Err("resource raw call events disagree".into());
+            }
+            let statuses = self
+                .actual_stderr
+                .lines()
+                .filter_map(|line| line.strip_prefix("foreign.status="))
+                .collect::<Vec<_>>();
+            if statuses != expected_status {
+                return Err(
+                    "resource controlled failure cause is missing or differs from review".into(),
+                );
+            }
+            let reference_statuses = self
+                .reference_stderr
+                .lines()
+                .filter_map(|line| line.strip_prefix("foreign.status="))
+                .collect::<Vec<_>>();
+            if !reference_statuses.is_empty() {
+                return Err("resource reference carried a failure transport".into());
+            }
+        } else if self.actual_exit.is_some()
+            || self.reference_exit.is_some()
+            || !self.actual_events.is_empty()
+            || !self.reference_events.is_empty()
+            || !self.actual_stderr.is_empty()
+            || !self.reference_stderr.is_empty()
+        {
+            return Err("rejected resource candidate carried execution evidence".into());
+        }
+        Ok(())
+    }
+
     #[cfg(test)]
     pub fn admit(
         &self,

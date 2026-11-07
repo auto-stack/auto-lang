@@ -1,0 +1,137 @@
+# PLAN-939 explicit resource-import CERTIFICATION (not daily emit).
+# Expected values exist only here, never in the worker request or reference.
+# Exit 70 is the frozen foreign failure transport (status printed to stderr).
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.utf8-bytes-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/utf8-bytes.atomdata", syntax: "atom-data", path: "utf8-bytes.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 8, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.utf8-bytes-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/utf8-bytes.atomdata", syntax: "atom-data", path: "utf8-bytes.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 8, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.utf8-scalars-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/utf8-scalars.atomdata", syntax: "atom-data", path: "utf8-scalars.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 3, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.utf8-scalars-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/utf8-scalars.atomdata", syntax: "atom-data", path: "utf8-scalars.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 3, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.record-mut-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/record-mut.atomdata", syntax: "atom-data", path: "record-mut.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 42, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.record-mut-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/record-mut.atomdata", syntax: "atom-data", path: "record-mut.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 42, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.record-mut-fail-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/record-mut-fail.atomdata", syntax: "atom-data", path: "record-mut-fail.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 70, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.record-mut-fail-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/record-mut-fail.atomdata", syntax: "atom-data", path: "record-mut-fail.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 70, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.handle-lifecycle-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/handle-lifecycle.atomdata", syntax: "atom-data", path: "handle-lifecycle.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 5, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.handle-lifecycle-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/handle-lifecycle.atomdata", syntax: "atom-data", path: "handle-lifecycle.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 5, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.handle-stale-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/handle-stale.atomdata", syntax: "atom-data", path: "handle-stale.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 70, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.handle-stale-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/handle-stale.atomdata", syntax: "atom-data", path: "handle-stale.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 70, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.txn-commit-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/txn-commit.atomdata", syntax: "atom-data", path: "txn-commit.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 21, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.txn-commit-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/txn-commit.atomdata", syntax: "atom-data", path: "txn-commit.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 21, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.txn-seed-fail-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/txn-seed-fail.atomdata", syntax: "atom-data", path: "txn-seed-fail.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 70, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.txn-seed-fail-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/txn-seed-fail.atomdata", syntax: "atom-data", path: "txn-seed-fail.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 70, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.txn-laststep-fail-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/txn-laststep-fail.atomdata", syntax: "atom-data", path: "txn-laststep-fail.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 70, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.txn-laststep-fail-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/txn-laststep-fail.atomdata", syntax: "atom-data", path: "txn-laststep-fail.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 70, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+# Parent control: actual and reference BOTH return 8; independent oracle 9 must FAIL.
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.wrong-oracle", tags: ["ca-d3", "certify"],
+ source: { file: "src/utf8-bytes.atomdata", syntax: "atom-data", path: "utf8-bytes.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 9, probe: [ {} ] } } ] }
+```

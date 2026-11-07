@@ -1,0 +1,3 @@
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-ca-d-resources-939", include: [ "resource-import.case.ad" ] }
+```

@@ -17,6 +17,199 @@ use std::{path::Path, sync::Arc, time::Instant};
 pub const RECIPE: &str = "abi/source-foreign-certify-v1";
 pub const DECK_SCHEMA: &str = "abi.source-import-deck/1";
 pub const REPORT_SCHEMA: &str = "abi.source-import-report/2";
+/// PLAN-939: the RESOURCE certification identities — a scalar-import
+/// deck/report never settles them and vice versa (schema strings are the
+/// version; the transport envelope is shared).
+pub const RESOURCE_RECIPE: &str = "abi/resource-foreign-certify-v1";
+pub const RESOURCE_DECK_SCHEMA: &str = "abi.resource-import-deck/1";
+pub const RESOURCE_REPORT_SCHEMA: &str = "abi.resource-import-report/1";
+
+/// The certification policy a request selects by its recipe string. The
+/// two flows share the bounded transport and the session machinery; the
+/// policy owns EVERY identity divergence (review registry, provider
+/// bytes, reference oracle, profile, pointer namespace).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CertPolicy {
+    Scalar938,
+    Resource939,
+}
+impl CertPolicy {
+    pub fn of_recipe(recipe: &str) -> Option<Self> {
+        match recipe {
+            RECIPE => Some(Self::Scalar938),
+            RESOURCE_RECIPE => Some(Self::Resource939),
+            _ => None,
+        }
+    }
+    pub fn recipe(self) -> &'static str {
+        match self {
+            Self::Scalar938 => RECIPE,
+            Self::Resource939 => RESOURCE_RECIPE,
+        }
+    }
+    pub fn deck_schema(self) -> &'static str {
+        match self {
+            Self::Scalar938 => DECK_SCHEMA,
+            Self::Resource939 => RESOURCE_DECK_SCHEMA,
+        }
+    }
+    pub fn report_schema(self) -> &'static str {
+        match self {
+            Self::Scalar938 => REPORT_SCHEMA,
+            Self::Resource939 => RESOURCE_REPORT_SCHEMA,
+        }
+    }
+    pub fn input_profile(self) -> &'static str {
+        match self {
+            Self::Scalar938 => ace_core::source::SCALAR_SOURCE_PROFILE,
+            Self::Resource939 => ace_core::source::TEXT_RECORD_SOURCE_PROFILE,
+        }
+    }
+    pub fn module_id(self) -> &'static str {
+        match self {
+            Self::Scalar938 => "source938",
+            Self::Resource939 => "source939",
+        }
+    }
+    pub fn pointer_name(self, leg: &str) -> String {
+        format!("{}-current-{}.json", self.module_id(), leg)
+    }
+    pub fn header_bytes(self) -> &'static [u8] {
+        match self {
+            Self::Scalar938 => provider::HEADER,
+            Self::Resource939 => crate::resource_provider::HEADER,
+        }
+    }
+    pub fn table_bytes(self) -> &'static [u8] {
+        match self {
+            Self::Scalar938 => provider::TABLE,
+            Self::Resource939 => crate::resource_provider::TABLE,
+        }
+    }
+    pub fn review_id(self) -> &'static str {
+        match self {
+            Self::Scalar938 => provider::REVIEW,
+            Self::Resource939 => crate::resource_provider::REVIEW,
+        }
+    }
+    pub fn contract_digest(self) -> String {
+        match self {
+            Self::Scalar938 => provider::ADD_CONTRACT_DIGEST.into(),
+            Self::Resource939 => crate::resource_provider::reviewed_resource_manifest()
+                .contract_digest()
+                .expect("reviewed resource manifest"),
+        }
+    }
+    /// The reviewed reference-table digests this policy accepts.
+    pub fn accepts_digest(self, digest: &str) -> bool {
+        match self {
+            Self::Scalar938 => provider::Review::for_digest(digest).is_some(),
+            Self::Resource939 => digest == self.contract_digest(),
+        }
+    }
+    pub fn accepts_reference(self, reference: &str) -> bool {
+        match self {
+            Self::Scalar938 => provider::Review::for_reference(reference).is_some(),
+            // PLAN-939: one reviewed reference per DECK — the independent
+            // oracle mirrors that deck's exact provider call sequence.
+            Self::Resource939 => matches!(
+                reference,
+                "utf8-bytes"
+                    | "utf8-scalars"
+                    | "record-mut"
+                    | "record-mut-fail"
+                    | "handle-lifecycle"
+                    | "handle-stale"
+                    | "txn-commit"
+                    | "txn-seed-fail"
+                    | "txn-laststep-fail"
+            ),
+        }
+    }
+    pub fn qualify(
+        self,
+        manifest: &ManualManifest,
+        caps: &[String],
+    ) -> Result<(), String> {
+        match self {
+            Self::Scalar938 => provider::qualify_candidate(manifest, caps),
+            Self::Resource939 => crate::resource_provider::qualify_resource(manifest, caps),
+        }
+    }
+    pub fn authority(
+        self,
+        provider_digest: &str,
+        generation: u64,
+        caps: &[String],
+    ) -> ace_foreign_contract::manual::HostAuthority {
+        match self {
+            Self::Scalar938 => provider::authority(provider_digest, generation, caps)
+                .expect("reviewed scalar policy"),
+            Self::Resource939 => crate::resource_provider::resource_authority(
+                provider_digest,
+                generation,
+                caps,
+            ),
+        }
+    }
+    /// The provider C translation unit (with bias/events defines applied
+    /// by the caller) and its include name.
+    pub fn provider_source(self) -> &'static str {
+        match self {
+            Self::Scalar938 => include_str!("../cside/source_foreign938.c"),
+            Self::Resource939 => include_str!("../cside/resource939.c"),
+        }
+    }
+    pub fn provider_header_name(self) -> &'static str {
+        match self {
+            Self::Scalar938 => "source_foreign938.h",
+            Self::Resource939 => "resource939.h",
+        }
+    }
+    pub fn provider_events(self) -> &'static str {
+        match self {
+            Self::Scalar938 => provider::EVENT_RUNTIME,
+            Self::Resource939 => crate::resource_provider::EVENT_RUNTIME,
+        }
+    }
+    pub fn provider_define(self) -> &'static str {
+        match self {
+            Self::Scalar938 => "SOURCE938_EVENTS",
+            Self::Resource939 => "SOURCE939_EVENTS",
+        }
+    }
+    /// The reference-oracle translation unit for one deck reference.
+    pub fn reference_source(self, reference: &str) -> Result<String, String> {
+        match self {
+            Self::Scalar938 => {
+                let case = provider::reference_case(reference)
+                    .ok_or_else(|| "unreviewed reference".to_string())?;
+                Ok(format!(
+                    "#define SOURCE938_SCENARIO {}
+{}",
+                    case,
+                    include_str!("../cside/source_foreign938_reference.c")
+                ))
+            }
+            Self::Resource939 => {
+                if !self.accepts_reference(reference) {
+                    return Err("unreviewed reference".into());
+                }
+                let guard: String = reference
+                    .bytes()
+                    .map(|b| if b == b'-' { b'_' } else { b })
+                    .map(|b| b as char)
+                    .collect();
+                Ok(format!(
+                    "#define R939_S_{}
+{}",
+                    guard,
+                    include_str!("../cside/resource939_reference.c")
+                ))
+            }
+        }
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourceDiagnostic {
@@ -172,7 +365,11 @@ fn step(
 fn events(bytes: &[u8]) -> Vec<String> {
     String::from_utf8_lossy(bytes)
         .lines()
-        .filter_map(|s| s.strip_prefix("source938.call=").map(String::from))
+        .filter_map(|s| {
+            s.strip_prefix("source938.call=")
+                .or_else(|| s.strip_prefix("source939.call="))
+                .map(String::from)
+        })
         .collect()
 }
 fn write(path: &Path, bytes: impl AsRef<[u8]>) -> Result<(), String> {
@@ -186,23 +383,25 @@ fn prepare_reference(
     reference: &str,
     provider_bytes: &[u8],
     crt: &crate::source_crt::Toolchain,
+    policy: CertPolicy,
 ) -> Result<std::path::PathBuf, DiagOut> {
     let work = host_work::begin("reference-compile", Phase::Production);
     let reference_dir = run_dir.join("reference");
     std::fs::create_dir_all(&reference_dir).map_err(|e| err("infra", e))?;
-    write(&reference_dir.join("source_foreign938.h"), provider::HEADER)
-        .map_err(|e| err("infra", e))?;
     write(
-        &reference_dir.join("reference.c"),
-        format!(
-            "#define SOURCE938_SCENARIO {}\n{}",
-            provider::reference_case(reference)
-                .ok_or_else(|| err("deck", "unreviewed reference"))?,
-            include_str!("../cside/source_foreign938_reference.c"),
-        ),
+        &reference_dir.join(policy.provider_header_name()),
+        policy.header_bytes(),
     )
     .map_err(|e| err("infra", e))?;
-    write(&reference_dir.join("events.c"), provider::EVENT_RUNTIME).map_err(|e| err("infra", e))?;
+    write(
+        &reference_dir.join("reference.c"),
+        policy
+            .reference_source(reference)
+            .map_err(|e| err("deck", e))?,
+    )
+    .map_err(|e| err("infra", e))?;
+    write(&reference_dir.join("events.c"), policy.provider_events())
+        .map_err(|e| err("infra", e))?;
     write(&reference_dir.join("provider.obj"), provider_bytes).map_err(|e| err("infra", e))?;
     let exe = reference_dir.join("reference.exe");
     crt.compile(
@@ -224,7 +423,11 @@ fn prepare_reference(
     host_work::complete(work);
     Ok(exe)
 }
-fn decode(req: &WorkerRequest, resources: &Resources) -> Result<(Deck, Reservation), DiagOut> {
+fn decode(
+    req: &WorkerRequest,
+    resources: &Resources,
+    policy: CertPolicy,
+) -> Result<(Deck, Reservation), DiagOut> {
     if req.deck_b64.len() > crate::worker::MAX_LINE {
         return Err(err("deck", "source deck transport budget"));
     }
@@ -250,11 +453,11 @@ fn decode(req: &WorkerRequest, resources: &Resources) -> Result<(Deck, Reservati
                 ace_source_query::resources::ResourceError::Budget(_) => err("foreign.resource", e),
                 ace_source_query::resources::ResourceError::Decode(_) => err("deck", e),
             })?;
-    if deck.schema != DECK_SCHEMA
+    if deck.schema != policy.deck_schema()
         || deck.source.is_empty()
         || deck.module.is_empty()
         || deck.provider_bias > 1
-        || provider::Review::for_reference(&deck.reference).is_none()
+        || !policy.accepts_reference(&deck.reference)
     {
         return Err(err(
             "deck",
@@ -283,7 +486,13 @@ fn output_limits(resources: &Resources) -> Result<OutputLimits, DiagOut> {
     Ok(OutputLimits { request, ..maximum })
 }
 pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
-    if req.recipe != RECIPE || !matches!(req.leg.as_str(), "native" | "c") || req.steps.len() != 1 {
+    let policy = match CertPolicy::of_recipe(&req.recipe) {
+        Some(p) => p,
+        None => {
+            return Err(err("recipe","source certification requires its recipe, explicit native/c consumer and one operation"));
+        }
+    };
+    if !matches!(req.leg.as_str(), "native" | "c") || req.steps.len() != 1 {
         return Err(err("recipe","source certification requires its recipe, explicit native/c consumer and one operation"));
     }
     if req.steps[0].from.is_some() || req.steps[0].to.is_some() {
@@ -291,7 +500,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     }
     if req.steps[0].op == "restart" {
         return Ok(OkOut {
-            recipe: RECIPE,
+            recipe: policy.recipe(),
             steps: vec![],
             restart_pending: true,
             worker_version: crate::worker::WORKER_VERSION.into(),
@@ -322,9 +531,9 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         source_work: Ledger::default(),
         host_work: request_work,
         diagnostics: vec![],
-        schema: REPORT_SCHEMA.into(),
+        schema: policy.report_schema().into(),
         direction: "source-import".into(),
-        input_profile: ace_core::source::SCALAR_SOURCE_PROFILE.into(),
+        input_profile: policy.input_profile().into(),
         abi_domain: ace_foreign_contract::plan::DOMAIN.into(),
         abi_version: ace_foreign_contract::plan::DOMAIN_VERSION.into(),
         callconv: "windows-x64".into(),
@@ -334,11 +543,11 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         compiler: target.identity(),
         source_sha256: String::new(),
         c_toolchain: String::new(),
-        contract_digest: provider::ADD_CONTRACT_DIGEST.into(),
+        contract_digest: policy.contract_digest(),
         provider_digest: String::new(),
-        header_digest: provider::hash(provider::HEADER),
-        physical_table_digest: provider::hash(provider::TABLE),
-        review_id: provider::REVIEW.into(),
+        header_digest: provider::hash(policy.header_bytes()),
+        physical_table_digest: provider::hash(policy.table_bytes()),
+        review_id: policy.review_id().into(),
         actual_exit: None,
         reference_exit: None,
         actual_events: vec![],
@@ -361,7 +570,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             format!("before source operation: {e}"),
         )
     })?;
-    let (deck, _request_model) = match decode(req, &resources) {
+    let (deck, _request_model) = match decode(req, &resources, policy) {
         Ok(d) => d,
         Err(d) => {
             report.diagnostic_stage = "parse".into();
@@ -371,12 +580,13 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 "diags"
             };
             let s = step(outcome, vec![d], 0, &store, started, None)?;
-            return Ok(output(s, report));
+            return Ok(output(s, report, policy));
         }
     };
-    let review = provider::Review::for_reference(&deck.reference)
-        .ok_or_else(|| err("deck", "unreviewed reference"))?;
-    report.contract_digest = review.digest().into();
+    if !policy.accepts_reference(&deck.reference) {
+        return Err(err("deck", "unreviewed reference"));
+    }
+    report.contract_digest = policy.contract_digest();
     if let Err(e) = target.admit_source_bytes(deck.source.len()) {
         report.diagnostic_stage = "parse".into();
         return Ok(output(
@@ -389,24 +599,26 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 None,
             )?,
             report,
+            policy,
         ));
     }
     report.source_sha256 = ace_a2x_core::sha256::sha256_hex(deck.source.as_bytes());
     // Reject unauthorized ABI/declaration candidates before compiling/linking
     // or calling any C provider. No candidate supplies this policy digest.
-    if let Err(e) = review.qualify(&deck.manifest, &deck.capabilities) {
+    if let Err(e) = policy.qualify(&deck.manifest, &deck.capabilities) {
         report.diagnostic_stage = "resolve".into();
         let code = e.split(':').next().unwrap_or("foreign.authority");
         return Ok(output(
             step("diags", vec![err(code, &e)], 0, &store, started, None)?,
             report,
+            policy,
         ));
     }
-    let (bytes, hit) = prepare_provider(&store, &resources, deck.provider_bias)?;
+    let (bytes, hit) = prepare_provider(&store, &resources, deck.provider_bias, policy)?;
     let mut provider_productions = (!hit) as u64;
     report.c_toolchain = crate::ctool::toolchain_fingerprint().map_err(|e| err("infra", e))?;
     report.provider_digest = provider::hash(&bytes);
-    let current = Path::new(&req.store_root).join(format!("source938-current-{}.json", req.leg));
+    let current = Path::new(&req.store_root).join(policy.pointer_name(&req.leg));
     let (previous_record, expected_pointer) =
         match crate::source_foreign::read_pointer_bytes_reserved(&current, &resources).map_err(
             |e| {
@@ -435,7 +647,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             None => (None, None),
         };
     let previous = previous_record.as_ref().map(|(record, _ticket)| record);
-    let changed_contract = previous.is_some_and(|p| p.contract_digest != review.digest());
+    let changed_contract = previous.is_some_and(|p| p.contract_digest != policy.contract_digest());
     let binding_generation = match &previous {
         Some(p) if p.provider_bias != deck.provider_bias || changed_contract => p
             .binding_generation
@@ -455,18 +667,19 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         // then uses the explicit provider transaction, never a cold fallback.
         let restore_digest = if previous.provider_bias != deck.provider_bias {
             let (old_bytes, old_hit) =
-                prepare_provider(&store, &resources, previous.provider_bias)?;
+                prepare_provider(&store, &resources, previous.provider_bias, policy)?;
             provider_productions += (!old_hit) as u64;
             provider::hash(&old_bytes)
         } else {
             report.provider_digest.clone()
         };
         let restore_generation = previous.binding_generation;
-        let previous_review = provider::Review::for_digest(&previous.contract_digest)
-            .ok_or_else(|| err("restore", "unreviewed accepted contract"))?;
+        if !policy.accepts_digest(&previous.contract_digest) {
+            return Err(err("restore", "unreviewed accepted contract"));
+        }
         let mut restore_current = || {
             Ok(CurrentAuthority {
-                foreign: previous_review.authority(
+                foreign: policy.authority(
                     &restore_digest,
                     restore_generation,
                     &deck.capabilities,
@@ -488,7 +701,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         let changed_source = restored.frontend().source() != deck.source;
         let changed_provider = previous.provider_bias != deck.provider_bias;
         let result = if changed_provider || changed_contract {
-            let authority = review.authority(
+            let authority = policy.authority(
                 &report.provider_digest,
                 binding_generation,
                 &deck.capabilities,
@@ -528,6 +741,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                     provider_productions,
                     &store,
                     started,
+                    policy,
                 );
             }
             Err(e) => return Err(budget_error("source", &resources, e)),
@@ -539,7 +753,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         let (environment, interface_work) = observation.work.observe_foreign(|| {
             resources.admit_foreign(
                 deck.manifest,
-                &review.authority(
+                &policy.authority(
                     &report.provider_digest,
                     binding_generation,
                     &deck.capabilities,
@@ -551,7 +765,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         let (front, checked) = match Frontend::cold_observed_with_resources(
             &deck.source,
             &deck.module,
-            "source938",
+            policy.module_id(),
             &deck.capabilities,
             environment,
             &mut observation,
@@ -567,6 +781,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                     provider_productions,
                     &store,
                     started,
+                    policy,
                 );
             }
             Err(e) => return Err(budget_error("source", &resources, e)),
@@ -598,7 +813,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         let runtime_policy = crate::source_foreign::certification_runtime_policy(target);
         let mut current_authority = || {
             Ok(CurrentAuthority {
-                foreign: review.authority(&digest, binding_generation, &deck.capabilities),
+                foreign: policy.authority(&digest, binding_generation, &deck.capabilities),
                 runtime_digest: runtime_policy.clone(),
                 emitter: target.identity(),
             })
@@ -632,7 +847,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                     e,
                 )
             })?;
-        let exe = prepare_reference(run_dir, &deck.reference, bytes.as_slice(), crt)?;
+        let exe = prepare_reference(run_dir, &deck.reference, bytes.as_slice(), crt, policy)?;
         let actual_work = host_work::begin("actual-run", Phase::Production);
         let actual = prepared
             .run(&mut current_authority, None)
@@ -675,7 +890,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 |stored, encoder| {
                     encoder.json(&PublicationRef {
                         module: &deck.module,
-                        contract_digest: review.digest(),
+                        contract_digest: &policy.contract_digest(),
                         provider_bias: deck.provider_bias,
                         binding_generation,
                         stored,
@@ -729,9 +944,10 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             report.actual_exit,
         )?,
         report,
+        policy,
     ))
 }
-fn output(step: StepOut, mut report: SourceReport) -> OkOut {
+fn output(step: StepOut, mut report: SourceReport, policy: CertPolicy) -> OkOut {
     if report.diagnostics.is_empty() {
         report.diagnostics = step
             .diagnostics
@@ -745,7 +961,7 @@ fn output(step: StepOut, mut report: SourceReport) -> OkOut {
             .collect();
     }
     OkOut {
-        recipe: RECIPE,
+        recipe: policy.recipe(),
         steps: vec![step],
         restart_pending: false,
         worker_version: crate::worker::WORKER_VERSION.into(),
@@ -757,6 +973,7 @@ fn prepare_provider(
     store: &ManagedStore,
     resources: &Resources,
     bias: u8,
+    policy: CertPolicy,
 ) -> Result<(Arc<Vec<u8>>, bool), DiagOut> {
     let cache_work = host_work::begin("provider-cache", Phase::Metadata);
     let scratch = crate::source_tool_scratch::ToolScratch::provider(store, resources, bias)
@@ -765,14 +982,15 @@ fn prepare_provider(
         let inputs = scratch.path();
         let src = inputs.join("provider.c");
         let object = inputs.join("provider.obj");
-        write(&inputs.join("source_foreign938.h"), provider::HEADER)
+        write(&inputs.join(policy.provider_header_name()), policy.header_bytes())
             .map_err(|e| err("store", e))?;
         write(
             &src,
             format!(
-                "#define SOURCE938_EVENTS\n#define BODY_BIAS {}\n{}",
+                "#define {}\n#define BODY_BIAS {}\n{}",
+                policy.provider_define(),
                 bias,
-                include_str!("../cside/source_foreign938.c")
+                policy.provider_source()
             ),
         )
         .map_err(|e| err("store", e))?;
@@ -856,6 +1074,7 @@ fn source_diagnostics(
     provider_productions: u64,
     store: &ManagedStore,
     started: Instant,
+    policy: CertPolicy,
 ) -> Result<OkOut, DiagOut> {
     report.source_parse = source_parse;
     report.solver = solver;
@@ -884,6 +1103,7 @@ fn source_diagnostics(
             None,
         )?,
         report,
+        policy,
     ))
 }
 
@@ -1050,7 +1270,7 @@ mod request_budget_tests {
         let resources = Resources::default();
         let baseline = resources.stats().current;
         let input = request(&deck());
-        let (decoded, model) = decode(&input, &resources).unwrap();
+        let (decoded, model) = decode(&input, &resources, CertPolicy::Scalar938).unwrap();
         assert_eq!(decoded.manifest, provider::reviewed_add_manifest());
         assert!(resources.stats().current.index > baseline.index);
         assert!(resources.stats().current.staging >= decoded.source.capacity());
@@ -1065,7 +1285,7 @@ mod request_budget_tests {
         })
         .unwrap();
         assert_eq!(
-            decode(&input, &tight).err().unwrap().code,
+            decode(&input, &tight, CertPolicy::Scalar938).err().unwrap().code,
             "foreign.resource"
         );
         assert_eq!(tight.stats().current.io, 0);
@@ -1074,11 +1294,11 @@ mod request_budget_tests {
             ..Limits::default()
         })
         .unwrap();
-        assert_eq!(decode(&input, &io).err().unwrap().code, "foreign.resource");
+        assert_eq!(decode(&input, &io, CertPolicy::Scalar938).err().unwrap().code, "foreign.resource");
         assert_eq!(io.stats().current.io, 0);
         let mut malformed = input;
         malformed.deck_b64 = "%%%".into();
-        assert_eq!(decode(&malformed, &resources).err().unwrap().code, "deck");
+        assert_eq!(decode(&malformed, &resources, CertPolicy::Scalar938).err().unwrap().code, "deck");
         assert_eq!(resources.stats().current, baseline);
         let mut unknown = serde_json::to_value(deck()).unwrap();
         unknown
@@ -1086,7 +1306,7 @@ mod request_budget_tests {
             .unwrap()
             .insert("safe".into(), true.into());
         assert_eq!(
-            decode(&request(&unknown), &resources).err().unwrap().code,
+            decode(&request(&unknown), &resources, CertPolicy::Scalar938).err().unwrap().code,
             "deck"
         );
         assert_eq!(resources.stats().current, baseline);
