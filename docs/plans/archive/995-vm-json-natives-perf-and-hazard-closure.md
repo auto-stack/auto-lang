@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-995
-status: reviewed
+status: archived
 feature_name: VM json native性能与codegen hazard收口（READER-009 cold-load框架前置）
 author: [ZCode]
 created_at: 2026-11-07
 updated_at: 2026-11-08
 plan_revision: 1
-current_step: 6
+current_step: 7
 total_steps: 7
 depends_on: [READER-009]
 supersedes_spec_components: []
@@ -220,3 +220,21 @@ canonical_ok参考实现的Reader侧落地Spec（library-workspace.md性能证�
 1. **canonical_ok落地划分**：§2注记为本计划立项口径（参考实现+009消费re-land），理由=一写入者规则；用户round27①A原文将其列入本计划范围，如要求本计划直接落地Reader仓，请明示，届时修revision并处理009写入面移交。
 2. **测量环境纪律**：round23实证环境负载±2×浮动；W04/T-04与AC-05全部数字以静负载窗口两run band为准，与009 round24基线（16.54s，ws-ui-vm-13）同口径对账；不与负载窗口数字比较。
 3. **与PLAN-069先后**：用户建议缺陷计划优先；本计划T-00不依赖069交付，可在009消费排序上让先。若069实施中对VM域提出新hazard/缺陷证据，按其§9回执互引，不在本计划内重复诊断。
+
+2026-11-08：stage: merge | PLAN-995 r1 | **T-06 落地/归档/清理回执**。
+
+| checkpoint | 证据 |
+|---|---|
+| prepared | reviewed 8772f5d66（r1 final pass）+ SD-01/SD-02 定稿；worktree clean |
+| landed | rebase 链 f31b85a84→cb721ecf6→**6b08e7ff1**（feat）与 8772f5d66→dee4ca694→**df55a6289**（SD），两段 range-diff 全等（安全改写证明）；master tip=df55a6289（ff-only，无 merge commit，线性历史；期间两次他计划 docs-only 簿记 6f4246042/8dce71961 落于中间，无冲突） |
+| canonical_verified | docs/specs/auto-vm/vm-codegen-hazard-catalog.md sha256 55f17bcca2614d99…、docs/specs/auto-vm/json-natives-performance.md sha256 0695281607fe9d8a…，均在 df55a6289 内 |
+| 冻结并集门 | merge-owned 于最终树复跑：`cargo t vm auto-lang-core auto-lang http corpus` = 1712 例 **1710 绿**，2 红=plan872 绑定表 drift + sys_natives_vm_tests（**pristine master 同红存量**，主检出复跑实证，triage 在 009 交接件）——零新增红 |
+| archived | docs/plans/archive/995-vm-json-natives-perf-and-hazard-closure.md，status: archived，completion_kind: delivered |
+| 009 交接 | D:/autostack/plan-artifacts/plan-009/handoff-plan-995/（摘要+canonical-singleparse-reference.at 参考实现+bench band+e2e band+终审 run；068 先例入 009 自有 scope） |
+| plan-artifacts | plan-995 整 scope 按 2026-10-31 删件裁定删除（材料已折叠 §9 与 009 交接件）；registry .retention/policy.json 刷新 |
+| 生产落地观察 | landing≠deployment：无本仓自持生产进程；消费面（auto-reader/009）按交接件自建新 pin 后重测 W-04 cold 叶（§0 设计）；观察项无 stale 本仓工件 |
+| cleaned | wt-guard lang-995/auto-lang clean → worktree/分支删除；组内兄弟（auto-man/auto-web/auto-ui/auto-down detached 构建依赖 + auto-reader@17e6b62 只读 pin 检出）各自 repo worktree remove；组目录删除 |
+
+- stage: merge | plan_id: PLAN-995 | plan_revision: r1 | outcome: pass（delivered/archived/cleaned） | delivery_commit: df55a6289 | canonical: SD-01/SD-02（哈希见上） | archive: docs/plans/archive/995-vm-json-natives-perf-and-hazard-closure.md | cleanup: 完成（见 cleaned 行） | next: 批量回归 due check（995%5=0）→ regress。
+
+- stage: goal | plan_id: PLAN-995 | plan_revision: r1 | round: 6 | from: merge | to: done | status: archived | outcome: pass | worktree: （已清理） | commit: df55a6289 | next: 批量回归 due（regress 技能）。
