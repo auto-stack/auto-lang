@@ -233,6 +233,18 @@ impl SourceReport {
             // V-02 owned temp -> view: the owned Str local feeds both
             // views; owner outlives both consumers.
             "utf8-owned" => (&["t939_byte_length", "t939_scalar_count"], &[]),
+            // T-08 (V-07): a limited LEGAL reentrant call — the callback
+            // itself makes a foreign view call per item (nested foreign
+            // call during a foreign call; no stored callback).
+            "callback-reentrant" => (
+                &[
+                    "t939_fold",
+                    "t939_byte_length",
+                    "t939_byte_length",
+                    "t939_byte_length",
+                ],
+                &[],
+            ),
             // T-07 (V-04): the THREE-out transaction commits all slots
             // once; both handles are gotten and destroyed exactly once.
             "txn3-commit" => (

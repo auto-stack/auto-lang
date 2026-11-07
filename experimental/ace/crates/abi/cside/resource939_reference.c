@@ -20,6 +20,11 @@
 /* S06 oracle callbacks: hand-mirrors of the deck's source-level `cb`
  * functions (ctx passes through unchanged; the fail variant returns the
  * reviewed -7 status at item 2). */
+static long long ref_cb_reentrant(long long ctx, long long item) {
+    static const uint8_t one[1] = { 'A' };
+    uint64_t unit = t939_byte_length(one, 1);
+    return ctx + item + (long long)unit;
+}
 static long long ref_cb_add(long long ctx, long long item) {
     return ctx + item;
 }
@@ -55,7 +60,21 @@ static void layout_selfcheck(void) {
 
 int main(void) {
     layout_selfcheck();
-#ifdef R939_S_txn3_commit
+#ifdef R939_S_callback_reentrant
+    {
+        /* PLAN-939 T-08 (V-07): a LIMITED LEGAL reentrant call — the
+         * callback itself makes a foreign view call per item, mirroring
+         * the deck exactly (nested foreign call DURING a foreign call,
+         * same request, no stored callback). */
+        t939_reset();
+        int32_t out = -1;
+        /* the mirror is EXACT: only the fold — its own callback makes
+         * the nested byte_length calls (one per item). */
+        R939_S_check(t939_fold(ref_cb_reentrant, 5LL, 3, &out) == 0);
+        R939_S_check(out == 6 + 7 + 8);
+        return 21;
+    }
+#elif defined(R939_S_txn3_commit)
     {
         /* PLAN-939 T-07 (V-04): the THREE-out transaction commits ALL
          * slots once in declaration order; both fresh handles read back

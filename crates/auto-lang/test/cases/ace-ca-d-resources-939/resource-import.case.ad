@@ -165,6 +165,45 @@ case { schema: "autolang.case/2", id: "ace-ca-d3.pairv-temp-c", tags: ["ca-d3", 
  abi: { leg: "c" }, steps: [ { op: "query" } ] },
  expect: { completion: "success", exit: 47, probe: [ { stages_include: ["source-import"] } ] } } ] }
 ```
+# T-08 (V-07): a LIMITED LEGAL reentrant call — the callback body makes
+# a foreign view call per item (nested foreign call DURING the fold; the
+# callback is never stored). exit 21 = (5+0+1)+(5+1+1)+(5+2+1).
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.callback-reentrant-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/callback-reentrant.atomdata", syntax: "atom-data", path: "callback-reentrant.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 21, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.callback-reentrant-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/callback-reentrant.atomdata", syntax: "atom-data", path: "callback-reentrant.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 21, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+# T-08 (V-06): TWO statically-bound provider generations in ONE session —
+# query at provider bias 0, then a deck edit transitions the binding to
+# bias 1 (the worker restores the OLD accepted binding first and
+# transacts to the new provider; the binding generation increments).
+# Both queries deliver the same reviewed oracle (exit 3504). The lease
+# pinning the in-use old generation against GC and the real reclaim
+# after the last release are proven by the ace-abi conformance leg
+# (abi_resource939_provider_generations_lease_and_gc).
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.provider-transition-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/txn3-commit.atomdata", syntax: "atom-data", path: "txn3-commit.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" }, { op: "edit-source", from: "\"provider_bias\": 0", to: "\"provider_bias\": 1" }, { op: "query" } ] },
+ expect: { completion: "success", exit: 3504, probe: [ { stages_include: ["source-import"] }, { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.provider-transition-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/txn3-commit.atomdata", syntax: "atom-data", path: "txn3-commit.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" }, { op: "edit-source", from: "\"provider_bias\": 0", to: "\"provider_bias\": 1" }, { op: "query" } ] },
+ expect: { completion: "success", exit: 3504, probe: [ { stages_include: ["source-import"] }, { stages_include: ["source-import"] } ] } } ] }
+```
 # T-07 (V-04): the THREE-out transaction (two record outs each carrying
 # a fresh handle + the scalar out) commits ALL slots once in declaration
 # order; both handles read their payloads and each owner destroys once

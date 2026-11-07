@@ -309,6 +309,103 @@ fn abi_resource_edges_independent_c_control() {
     );
 }
 
+/// PLAN-939 T-08 (V-06): two STATICALLY-BOUND provider generations in
+/// one store, the real lease that pins the in-use old generation against
+/// GC across the binding transition, and the real reclaim after the
+/// last release. The full worker entry (qualification, restore of the
+/// OLD accepted binding, provider transaction to the new generation)
+/// runs in-process against the real fixture deck.
+#[test]
+fn abi_resource939_provider_generations_lease_and_gc() {
+    use ace_abi::worker::StepIn;
+    use ace_abi::worker_source;
+    use base64::Engine as _;
+
+    let dir = run::scratch("abi_r939_gen_gc");
+    let store_root = dir.join("store");
+    let deck_path = manifest().join(
+        "../../../../crates/auto-lang/test/cases/ace-ca-d-resources-939/src/txn3-commit.atomdata",
+    );
+    let deck_json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&deck_path).unwrap()).unwrap();
+
+    let query = |bias: u8, nonce: &str| {
+        let mut deck = deck_json.clone();
+        deck["provider_bias"] = serde_json::json!(bias);
+        let request = ace_abi::worker::WorkerRequest {
+            recipe: "abi/resource-foreign-certify-v1".into(),
+            nonce: nonce.into(),
+            request_hash: nonce.into(),
+            deck_b64: base64::engine::general_purpose::STANDARD
+                .encode(serde_json::to_vec(&deck).unwrap()),
+            leg: "native".into(),
+            store_root: store_root.to_str().unwrap().into(),
+            steps: vec![StepIn { op: "query".into(), from: None, to: None }],
+        };
+        let out = worker_source::execute(&request)
+            .expect("the resource certification request succeeds");
+        let step = &out.steps[0];
+        assert_eq!(step.outcome, "ok", "bias {bias} query must be ok");
+        let report = out.source_import.as_ref().unwrap();
+        assert_eq!(report.actual_exit, Some(3504), "bias {bias} delivers");
+        assert_eq!(report.reference_exit, Some(3504));
+        report.provider_digest.clone()
+    };
+
+    // generation 1: provider bias 0 binds.
+    let digest_a = query(0, "t08-gen0");
+    let pointer = store_root.join("source939-current-native.json");
+    let read_pointer = || {
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&pointer).unwrap()).unwrap();
+        (v["binding_generation"].as_u64().unwrap(), v["provider_bias"].as_u64().unwrap(), v["stored"]["artifact_id"].as_str().unwrap().to_string())
+    };
+    let (gen1, bias1, artifact_a) = read_pointer();
+    assert_eq!((gen1, bias1), (1, 0), "the first binding is generation 1 at bias 0");
+
+    // Pin the IN-USE old generation with a real lease (the last owner
+    // still holds the old code/artifacts).
+    let store = ace_artifacts::store::ManagedStore::open(&store_root).unwrap();
+    let lease = store
+        .acquire_lease("t08-old-generation-pin", 3600, Some(&artifact_a))
+        .expect("the lease grants over the live generation-A closure");
+
+    // generation 2: the SAME module transitions to provider bias 1 —
+    // the worker restores the OLD accepted binding first, then
+    // transacts to the new provider (binding generation increments).
+    let digest_b = query(1, "t08-gen1");
+    assert_ne!(digest_a, digest_b, "the two generations are distinct objects");
+    let (gen2, bias2, _artifact_b) = read_pointer();
+    assert_eq!((gen2, bias2), (2, 1), "the transition increments the binding generation");
+
+    // GC (forced): the LEASED old generation survives.
+    let receipt_kept = ace_artifacts::store::gc::run_gc(
+        &store,
+        ace_artifacts::store::gc::GcConfig { high: 0, low: 0 },
+    )
+    .unwrap();
+    assert!(receipt_kept.ran, "the forced GC run must execute");
+    assert!(receipt_kept.live_chunks > 0, "the live closure is non-empty");
+
+    // the last release: dropping the pin makes generation A unreachable
+    // (roots moved to generation B); the NEXT GC really reclaims it.
+    drop(lease);
+    let receipt_reclaimed = ace_artifacts::store::gc::run_gc(
+        &store,
+        ace_artifacts::store::gc::GcConfig { high: 0, low: 0 },
+    )
+    .unwrap();
+    assert!(
+        receipt_reclaimed.deleted_chunks > 0,
+        "the released old generation must be actually reclaimed; receipt={:?}",
+        receipt_reclaimed
+    );
+    assert!(
+        receipt_reclaimed.failed_deletes == 0 && receipt_reclaimed.orphans_removed >= 0,
+        "the reclaim is clean"
+    );
+}
+
 /// PLAN-939 T-07 (V-05): the allocation-domain fault sweep over the
 /// THREE-out transaction — every k in 1..N (domain MEASURED by a clean
 /// run) fails in turn, N+1 is a no-op, clearing the fault retries fresh
