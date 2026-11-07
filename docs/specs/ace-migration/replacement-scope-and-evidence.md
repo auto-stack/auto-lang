@@ -83,3 +83,19 @@ examples 计数均不构成覆盖证明。跨仓不可读/owner 未明/未发布
   mn 端全局 cell（D-960-2，ace-native）；a2x 端全局 cell 发射与类型方法片段（A2X 后继）；
   L-42 跨模块泛型实例归 963；L-38 的 `alias`/type alias 语句形归 963；模块+CT 组合归 966。
   以上缺口在台账中保持 required/unknown 原状，不因 960 交付而消失。
+
+## SD-05 数值面 producer 挂接（PLAN-961 SD-02）
+
+- 分母台账 L-01/L-02/L-49（数值类型/字面量/运算转换）的 ACE 侧**已验证 producer** 为
+  [m2-numbers.md](m2-numbers.md)：`SourceProfile::Numeric` 显式源码 profile（grammar numeric
+  裁剪门控，旧 profile 字节恒等），同型运算纪律、checked 窄化/浮转整、IEEE 浮（÷±0 trap 沿
+  legacy、% ±0=NaN 不 trap 的具名不对称）、移位界 trap 的 T-01 冻结矩阵在四端一致落地——AV
+  （eval_num/eval_conv）、native（CLIF→COFF→PE）、a2x-rust（真实 rustc）、a2x-c（真实 MSVC
+  /W4 /WX），全部真实 dispatch 无 legacy fallback；823 对 closures/collections 族的冻结排除由
+  m2-numbers §MIR/wire 取代。本节只挂接来源，不改 SD-01 分类口径，也不把台账行标为
+  implemented；状态提升仍只引用 961 归档收据。
+- **具名差异（对 legacy）**：混合宽度隐式晋升矩阵不采纳（显式 as/to 替代）；legacy `as`
+  截断/clamp 改 checked；位运算/移位为新增冻结面（legacy 无此面）。**未闭缺口（具名，带
+  owner）**：semantics 查询通道数值注解具名拒绝 `numeric-annotation`（query 后继）；CTE 值面
+  维持 I32/Bool、comptime admission 未扩（具名）；聚合/泛型/动态/控制效应组合面归 962–966。
+  以上缺口在台账中保持 required/unknown 原状，不因 961 交付而消失。
