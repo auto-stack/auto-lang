@@ -204,3 +204,33 @@ int32_t t939_txn(int32_t seed, TxnResult *out2, int32_t *out) {
     *out = prepared_out;
     return R939_OK;
 }
+
+/* S06 — synchronous per-call callback with non-zero ctx (noescape: the
+ * provider never stores cb; ctx passes through unchanged). The ctx seed
+ * is the next ordinary argument after the callback, physically
+ * long long. A negative callback result is the call's failure VERBATIM
+ * (never a success sentinel); i32-domain violations fail with -2 with
+ * *out untouched. */
+int32_t t939_fold(long long (*cb)(long long ctx, long long item),
+                  long long ctx_seed, int32_t n, int32_t *out) {
+    SOURCE939_EVENT("t939_fold");
+    if (n < 0 || n > 64) {
+        return R939_ERR_SEED; /* domain guard BEFORE any callback runs */
+    }
+    long long sum = 0;
+    for (int32_t i = 0; i < n; ++i) {
+        long long r = cb(ctx_seed, (long long)i);
+        if (r < INT32_MIN || r > INT32_MAX) {
+            return R939_ERR_SEED; /* the callback domain is the checked bridge's */
+        }
+        if (r < 0) {
+            return (int32_t)r; /* the callback's failure IS the call's failure */
+        }
+        sum += r;
+        if (sum > INT32_MAX) {
+            return R939_ERR_SEED; /* total stays inside the checked out lane */
+        }
+    }
+    *out = (int32_t)sum;
+    return R939_OK;
+}

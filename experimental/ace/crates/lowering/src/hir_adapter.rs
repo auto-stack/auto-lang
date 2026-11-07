@@ -3637,14 +3637,24 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 eval_args,
                 bindings,
             } => {
-                // Source-order evaluation, then binding-map reorder.
+                // Source-order evaluation, then binding-map reorder. S06: a
+                // CallbackRef argument has NO runtime value — its slot entry
+                // stays the 0 placeholder (aligned with eval_args; the
+                // ForeignCall arm reads the named target instead).
                 let mut arg_slots = emission_vec(
                     eval_args.len(),
                     &mut self.emission_bytes,
                     &mut self.emission_reserve,
                 )?;
                 for a in eval_args {
-                    arg_slots.push(self.eval_expr(*a, depth + 1)?);
+                    if matches!(
+                        self.body.exprs[a.0 as usize].kind,
+                        hir::ExprKind::CallbackRef { .. }
+                    ) {
+                        arg_slots.push(0);
+                    } else {
+                        arg_slots.push(self.eval_expr(*a, depth + 1)?);
+                    }
                 }
                 let argument_bytes = arg_slots.capacity() * std::mem::size_of::<SlotId>();
                 let result = (|| {
@@ -3673,17 +3683,50 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                         self.release_owned(declaration_bytes - cloned_bytes)?;
                         // PLAN-939: source-visible arity (resource decls
                         // count one slot per declared lane; view/callback
-                        // pairs are physical, not source arguments).
+                        // pairs are physical, not source arguments). S06: a
+                        // Callback lane's bound CallbackRef arg carries NO
+                        // slot — its `actuals` entry stays the 0 placeholder
+                        // and the NAMED target rides the instruction.
                         let mut actuals = emission_vec(
                             declaration.arity(),
                             &mut self.emission_bytes,
                             &mut self.emission_reserve,
                         )?;
                         actuals.resize(declaration.arity(), 0);
-
+                        let mut callbacks: Vec<(u16, String)> = Vec::new();
                         for binding in bindings {
-                            actuals[binding.param as usize] = arg_slots[binding.arg as usize];
+                            let param = binding.param as usize;
+                            let arg_expr = &self.body.exprs[binding.arg as usize];
+                            if let hir::ExprKind::CallbackRef { def } = &arg_expr.kind {
+                                if !ace_core::foreign_resources::lane_is_callback(
+                                    &declaration, param,
+                                ) {
+                                    return Err(AdapterError::inv(
+                                        "mir.foreign-callback",
+                                        format!(
+                                            "argument {} of `{}` is a callback target but the lane is not a callback",
+                                            param, declaration.function.symbol
+                                        ),
+                                    ));
+                                }
+                                let name = self.hir_module.defs[def.0 as usize].id_text.clone();
+                                callbacks.push((param as u16, name));
+                            } else {
+                                if ace_core::foreign_resources::lane_is_callback(
+                                    &declaration, param,
+                                ) {
+                                    return Err(AdapterError::inv(
+                                        "mir.foreign-callback",
+                                        format!(
+                                            "callback lane {} of `{}` requires a named target",
+                                            param, declaration.function.symbol
+                                        ),
+                                    ));
+                                }
+                                actuals[param] = arg_slots[binding.arg as usize];
+                            }
                         }
+                        callbacks.sort_by_key(|(lane, _)| *lane);
                         let dst = self.temp_ty(ty)?;
                         // PLAN-939: a Rec Mut/Out lane's shadow commit lands
                         // in the BORROW TEMP's storage (the emitter's V-04
@@ -3701,6 +3744,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                 declaration,
                                 dst,
                                 args: actuals,
+                                callbacks,
                             },
                             sp,
                         )?;
@@ -5241,6 +5285,8 @@ fn expr_kind_name(k: &hir::ExprKind) -> &'static str {
         Cast { .. } => "cast",
         // PLAN-862: the unit value.
         Unit => "unit",
+        // PLAN-939 S06: the named callback target.
+        CallbackRef { .. } => "callback-ref",
         Binary { .. } => "binary",
         Unary { .. } => "unary",
         Logical { .. } => "logical",

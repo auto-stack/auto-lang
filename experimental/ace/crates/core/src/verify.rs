@@ -3097,7 +3097,9 @@ impl Verifier {
                 | E::CharLit { .. }
                 | E::CreateClosure { .. }
                 | E::BorrowMut { .. }
-                | E::ListNew { .. } => Vec::new(),
+                | E::ListNew { .. }
+                // PLAN-939 S06: a named callback target has no operands.
+                | E::CallbackRef { .. } => Vec::new(),
                 E::Binary { lhs, rhs, .. } | E::Logical { lhs, rhs, .. } => vec![*lhs, *rhs],
                 // PLAN-961: a numeric constant is a leaf; a cast reads its operand.
                 E::NumericConst { .. } => Vec::new(),
@@ -4298,6 +4300,9 @@ impl Verifier {
                 hir::ExprKind::Cast { operand, .. } => {
                     children.push(operand.0);
                 }
+                // PLAN-939 S06: a named callback target is consumed by the
+                // foreign call's marshaling; it is not a value operand.
+                hir::ExprKind::CallbackRef { .. } => {}
                 hir::ExprKind::Call { eval_args, .. } => {
                     is_call = true;
                     children.extend(eval_args.iter().map(|a| a.0));
@@ -4675,6 +4680,12 @@ impl Verifier {
                 // bounds-checks its operand like every other parent.
                 hir::ExprKind::NumericConst { .. } => {}
                 hir::ExprKind::Cast { .. } => {}
+                // PLAN-939 S06: the def reference is bounds-checked below.
+                hir::ExprKind::CallbackRef { def } => {
+                    if (def.0 as usize) >= n_defs {
+                        bad("def", def.0, n_defs, e.span);
+                    }
+                }
                 hir::ExprKind::ReadLocal { local } => {
                     if (local.0 as usize) >= n_locals {
                         bad("local", local.0, n_locals, e.span);
@@ -5191,6 +5202,9 @@ impl Verifier {
                             }
                             continue;
                         }
+                        // PLAN-939 S06: the callback target's declared type
+                        // is its own (closure) type; nothing more to check.
+                        hir::ExprKind::CallbackRef { .. } => {}
                         hir::ExprKind::ReadLocal { local } => {
                             let l = &body.locals[local.0 as usize];
                             let lt = self.value_of(&l.ty, type_map);
@@ -5580,6 +5594,8 @@ impl Verifier {
                         | hir::ExprKind::VariantProject { .. } => declared,
                         // PLAN-862: leaf, already checked at Enter.
                         hir::ExprKind::Unit => declared,
+                        // PLAN-939 S06: leaf — the declared closure type.
+                        hir::ExprKind::CallbackRef { .. } => declared,
                         hir::ExprKind::CreateClosure { .. } => declared,
                         hir::ExprKind::Binary { op, lhs, rhs, .. } => {
                             let lt =
@@ -7576,6 +7592,8 @@ impl Verifier {
                         stack.push(*operand);
                     }
                 }
+                // PLAN-939 S06: a named callback target reads no local.
+                hir::ExprKind::CallbackRef { .. } => {}
                 hir::ExprKind::ReadLocal { local } => {
                     if !init.contains(local) {
                         let name = body

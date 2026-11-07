@@ -412,6 +412,8 @@ fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
             hir::ExprKind::Cast { operand, .. } => {
                 stack.push((*operand, mode));
             }
+            // PLAN-939 S06: a named callback target owns and reads nothing.
+            hir::ExprKind::CallbackRef { .. } => {}
             // PLAN-864: collections-domain expressions never receive a text
             // resource plan (verify_collections never calls this walk).
             hir::ExprKind::ListNew { .. }

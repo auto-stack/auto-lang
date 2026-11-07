@@ -129,6 +129,8 @@ impl CertPolicy {
                     | "txn-commit"
                     | "txn-seed-fail"
                     | "txn-laststep-fail"
+                    | "callback"
+                    | "callback-fail"
             ),
         }
     }

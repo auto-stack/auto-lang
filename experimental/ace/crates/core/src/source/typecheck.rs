@@ -23,7 +23,7 @@
 //! checked here: the emitted HIR goes through the existing semantic
 //! verifier (`crate::verify`), whose conservative rules own those rejections.
 
-use super::ast::{BinOp, UnaryOp};
+use super::ast::{BinOp, Receiver, UnaryOp};
 use super::resolve::{
     param_position, RBlock, RExprKind, RStmt, ResolvedArg, ResolvedExpr, ResolvedFn,
     ResolvedProgram, VT,
@@ -254,6 +254,26 @@ fn check_expr(
             | RExprKind::Method { .. }
             | RExprKind::Unit
             | RExprKind::Move { .. } => {}
+            // PLAN-939 S06: a named callback target is a leaf whose
+            // VT::Function type already confines it to a foreign call's
+            // callback lane argument (every other binding rule mismatches).
+            // Only a FREE source function may serve (methods carry owner
+            // symbols the lane never marshals).
+            RExprKind::CallbackRef { fn_index } => {
+                if program
+                    .fns
+                    .get(*fn_index)
+                    .map(|f| f.receiver)
+                    != Some(Receiver::Free)
+                {
+                    diags.push(Diagnostic::new(
+                        Stage::Verify,
+                        "source.foreign.callback-target",
+                        "a callback target must be a free source function",
+                        e.span,
+                    ));
+                }
+            }
             RExprKind::TypeWord(_) => {
                 diags.push(Diagnostic::new(
                     Stage::Verify,

@@ -2398,6 +2398,19 @@ impl<'d> Binder<'d> {
                     bindings,
                 }
             }
+            // PLAN-939 S06: a named callback target — the referenced def is
+            // a FREE source function; only a foreign call's callback lane
+            // argument may carry it (enforced by the verifier).
+            "callback_ref" => {
+                let Some((ct, cspan)) = self.text_ref(&fields, "callee") else {
+                    return None;
+                };
+                let def = match self.resolve_in(&ct, cspan, "DefRef", def_ids, def_sibs) {
+                    Some(d) => hir::DefId(d),
+                    None => return None,
+                };
+                hir::ExprKind::CallbackRef { def }
+            }
             "call_closure" => {
                 let Some((ct, cspan)) = self.text_ref(&fields, "base") else {
                     return None;
@@ -3762,6 +3775,8 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         hir::ExprKind::Unary { .. } => "unary",
         hir::ExprKind::Logical { .. } => "logical",
         hir::ExprKind::Call { .. } => "call",
+        // PLAN-939 S06: a named foreign-callback target.
+        hir::ExprKind::CallbackRef { .. } => "callback_ref",
         hir::ExprKind::CallClosure { .. } => "call_closure",
         hir::ExprKind::CreateClosure { .. } => "create_closure",
         hir::ExprKind::ClosureClone { .. } => "closure_clone",
@@ -3833,6 +3848,10 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         }
         // PLAN-862: the unit value carries no payload — only its type.
         hir::ExprKind::Unit => {}
+        // PLAN-939 S06: the named callback target's def reference.
+        hir::ExprKind::CallbackRef { def } => {
+            body_fields.push(format!("callee: {}", quote(&m.defs[def.0 as usize].id_text)));
+        }
         hir::ExprKind::StrLit { value } => {
             body_fields.push(format!("text: {}", quote(value)));
         }

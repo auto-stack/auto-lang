@@ -56,6 +56,17 @@ void     t939_fail_nth_alloc(int32_t n);           /* 1-based; <1 = off */
  * EVERY failure returns with BOTH caller slots byte-identical (V-04). */
 int32_t t939_txn(int32_t seed, TxnResult *out2, int32_t *out);
 
+/* S06 — synchronous per-call CALLBACK with non-zero ctx: folds
+ * cb(ctx_seed, item) for item in [0, n). A negative callback result is
+ * returned VERBATIM as the status (the error channel — never a success
+ * sentinel); n outside [0,64] fails with -2 before any call; a callback
+ * result or the running sum outside the i32 range fails with -2 with
+ * *out untouched. The provider never stores cb (noescape, synchronous
+ * per-call); ctx is passed through unchanged. The ctx seed is the next
+ * ordinary argument AFTER the callback, physically long long. */
+int32_t t939_fold(long long (*cb)(long long ctx, long long item),
+                  long long ctx_seed, int32_t n, int32_t *out);
+
 /* provider reset (test isolation only; not part of the reviewed surface) */
 void t939_reset(void);
 

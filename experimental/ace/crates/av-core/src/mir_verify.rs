@@ -817,6 +817,11 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 || self.module.funcs.iter().any(|f| f.blocks.iter().any(|b| b.instrs.iter().any(|i|
                     matches!(i, MirInstr::ForeignCall { declaration, .. } if declaration.capabilities.contains(c)))))
                 || (self.is_owned && c == crate::contract::TEXT_RUNTIME_CAPABILITY)
+                // PLAN-939 S06: a foreign source module's units carry the
+                // module-level foreign caps even when THIS unit's function
+                // has no foreign call of its own (e.g. a callback target
+                // fn); the grant was admitted with the environment.
+                || (self.is_owned && c == ace_foreign_contract::resource::RESOURCE_CAP)
                 || (self.module.is_host_console_profile()
                     && matches!(c.as_str(), crate::host::STDOUT | crate::host::STDERR));
             if !known {
@@ -2451,6 +2456,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         declaration,
                         dst,
                         args,
+                        callbacks,
                     } => {
                         declaration
                             .validate()
@@ -2478,6 +2484,54 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             | (Some(MirType::Bool), ace_foreign_contract::LaneKind::Bool) => true,
                             _ => false,
                         };
+                        // PLAN-939 S06: every Callback lane carries EXACTLY
+                        // ONE named target (a reviewed identifier naming a
+                        // free source fn; the backend emits the static
+                        // trampoline); its args slot is a placeholder that
+                        // no reader may consume.
+                        let res_params = declaration
+                            .resource()
+                            .map(|r| r.params.as_slice())
+                            .unwrap_or_default();
+                        {
+                            let mut seen = std::collections::BTreeSet::new();
+                            for (lane, name) in callbacks {
+                                if (*lane as usize) >= res_params.len()
+                                    || !seen.insert(*lane)
+                                    || !matches!(
+                                        res_params[*lane as usize],
+                                        ace_foreign_contract::resource::ResKind::Callback { .. }
+                                    )
+                                    || name.is_empty()
+                                    || name.len() > 64
+                                    || !name
+                                        .bytes()
+                                        .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                                {
+                                    return Err(err(
+                                        "mir.foreign-callback",
+                                        "callback lane target is outside the reviewed surface"
+                                            .into(),
+                                    ));
+                                }
+                            }
+                            let want = res_params
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, p)| {
+                                    matches!(
+                                        p,
+                                        ace_foreign_contract::resource::ResKind::Callback { .. }
+                                    )
+                                })
+                                .count();
+                            if callbacks.len() != want {
+                                return Err(err(
+                                    "mir.foreign-callback",
+                                    "every callback lane needs exactly one named target".into(),
+                                ));
+                            }
+                        }
                         if args.len() != declaration.arity() {
                             return Err(err(
                                 "mir.foreign-arity",
@@ -4444,7 +4498,29 @@ impl MirInstr {
             MirInstr::Un { operand, .. } => vec![*operand],
             // PLAN-961: a conversion reads its source, defines its dst.
             MirInstr::Conv { src, .. } => vec![*src],
-            MirInstr::Call { args, .. } | MirInstr::ForeignCall { args, .. } => args.clone(),
+            MirInstr::Call { args, .. } => args.clone(),
+            // PLAN-939 S06: a callback lane's args entry is a PLACEHOLDER
+            // (the named target rides `callbacks`); it reads no slot.
+            MirInstr::ForeignCall {
+                args,
+                callbacks,
+                declaration: _,
+                dst: _,
+            } => {
+                let mut lanes = callbacks.iter().map(|(l, _)| *l as usize).collect::<Vec<_>>();
+                lanes.sort_unstable();
+                let mut out = Vec::with_capacity(args.len());
+                let mut li = 0usize;
+                for (i, a) in args.iter().enumerate() {
+                    if li < lanes.len() && lanes[li] == i {
+                        li += 1;
+                        continue;
+                    }
+                    out.push(*a);
+                }
+                out
+            }
+>>>>>>> 7482923ba (feat(abi): T-02C callback-by-name — S06 t939_fold across provider/frontend/both backends, 24/25 + control (Plan 939 T-02/r3))
             MirInstr::HostCall { arg, .. } => vec![*arg],
             MirInstr::GlobalGet { .. } => vec![],
             MirInstr::GlobalSet { src, .. } => vec![*src],

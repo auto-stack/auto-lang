@@ -1739,6 +1739,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 declaration,
                 dst,
                 args,
+                callbacks,
             } => {
                 let signature = crate::foreign_lower::signature(declaration)?;
                 let id = self
@@ -1747,7 +1748,14 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     .map_err(|e| format!("declare foreign symbol: {e}"))?;
                 let reference = self.om.declare_func_in_func(id, self.fb.func);
                 if let Some(res) = declaration.resource() {
-                    self.emit_resource_foreign_call(res, declaration, reference, *dst, args)?;
+                    self.emit_resource_foreign_call(
+                        res,
+                        declaration,
+                        reference,
+                        *dst,
+                        args,
+                        callbacks,
+                    )?;
                 } else {
                 let mut values = Vec::new();
                 if let Some(symbol) = &declaration.context_symbol {
@@ -2669,6 +2677,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         reference: cranelift_codegen::ir::FuncRef,
         dst: u32,
         args: &[u32],
+        callbacks: &[(u16, String)],
     ) -> Result<(), String> {
         use ace_foreign_contract::resource::{ResKind, ResOut, ResourceForm, ViewRole};
         use cranelift_codegen::ir::{StackSlotData, StackSlotKind};
@@ -2780,13 +2789,17 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     values.push(self.fb.ins().sextend(types::I64, v));
                 }
                 ResKind::Callback { .. } => {
-                    // The callback-by-name frontend (T-02C) carries the
-                    // named target on the call; a callback param reaching
-                    // this path without it is a named rejection, never a
-                    // guessed function pointer.
-                    return Err(
-                        "foreign callback lane requires the callback-by-name frontend".into(),
-                    );
+                    // PLAN-939 S06: the NAMED target rides the instruction;
+                    // the physical argument is the static trampoline's
+                    // address (never a guessed function pointer).
+                    let (_, name) = callbacks
+                        .iter()
+                        .find(|(l, _)| *l as usize == i)
+                        .ok_or_else(|| {
+                            format!("foreign callback lane {i} has no named target")
+                        })?;
+                    let tramp = self.emit_callback_trampoline(name)?;
+                    values.push(tramp);
                 }
             }
         }
@@ -2872,6 +2885,99 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             }
         }
         Ok(())
+    }
+
+    /// PLAN-939 S06: define ONE static callback trampoline for a named
+    /// target and return its ADDRESS as an I64 call argument. The provider
+    /// ABI is `long long (*)(long long, long long)`; the trampoline CHECKS
+    /// the i64 domain (a violation is the `callback.domain` failure
+    /// transport −2147483645, never a truncation), narrows both lanes to
+    /// i32, calls the target's own unit symbol and widens the i32 result.
+    /// The target fn's body trap stays the process trap it always was —
+    /// never a success sentinel.
+    fn emit_callback_trampoline(&mut self, name: &str) -> Result<Value, String> {
+        const CALLBACK_DOMAIN_STATUS: i64 = -2147483645;
+        let import_sym = crate::symbols::import_symbol(
+            &self.unit.owner,
+            &format!("fn:{name}"),
+        )
+        .map_err(|e| e.to_string())?;
+        let mut cb_sig = Signature::new(cranelift_codegen::isa::CallConv::WindowsFastcall);
+        cb_sig.params.push(AbiParam::new(types::I32));
+        cb_sig.params.push(AbiParam::new(types::I32));
+        cb_sig.returns.push(AbiParam::new(types::I32));
+        let cb_id = self
+            .om
+            .declare_function(&import_sym, Linkage::Import, &cb_sig)
+            .map_err(|e| format!("declare callback target `{name}`: {e}"))?;
+        // The trampoline is unit-local: (owner axis, unit fn, target) is
+        // unique across every unit linked into one executable.
+        let tramp_sym = format!(
+            "ac939cb.{}.{}.{}",
+            crate::symbols::owner_axis(&self.unit.owner),
+            self.unit.funcs[0].name,
+            name
+        );
+        let mut tramp_sig = Signature::new(cranelift_codegen::isa::CallConv::WindowsFastcall);
+        tramp_sig.params.push(AbiParam::new(types::I64));
+        tramp_sig.params.push(AbiParam::new(types::I64));
+        tramp_sig.returns.push(AbiParam::new(types::I64));
+        let tramp_id = self
+            .om
+            .declare_function(&tramp_sym, Linkage::Export, &tramp_sig)
+            .map_err(|e| format!("declare callback trampoline `{name}`: {e}"))?;
+        let mut fail_sig = Signature::new(cranelift_codegen::isa::CallConv::WindowsFastcall);
+        fail_sig.params.push(AbiParam::new(types::I32));
+        let fail_id = self
+            .om
+            .declare_function("ace_foreign_fail", Linkage::Import, &fail_sig)
+            .map_err(|e| format!("declare failure transport: {e}"))?;
+        let mut ctx = self.om.make_context();
+        ctx.func.signature = tramp_sig;
+        {
+            let mut fbc = FunctionBuilderContext::new();
+            let mut tfb = FunctionBuilder::new(&mut ctx.func, &mut fbc);
+            let entry = tfb.create_block();
+            tfb.append_block_params_for_function_params(entry);
+            tfb.switch_to_block(entry);
+            tfb.seal_block(entry);
+            let fail_block = tfb.create_block();
+            let ctx_v = tfb.block_params(entry)[0];
+            let item_v = tfb.block_params(entry)[1];
+            let lo = tfb.ins().iconst(types::I64, i32::MIN as i64);
+            let hi = tfb.ins().iconst(types::I64, i32::MAX as i64);
+            let ctx_under = tfb.ins().icmp(IntCC::SignedLessThan, ctx_v, lo);
+            let ctx_over = tfb.ins().icmp(IntCC::SignedGreaterThan, ctx_v, hi);
+            let item_under = tfb.ins().icmp(IntCC::SignedLessThan, item_v, lo);
+            let item_over = tfb.ins().icmp(IntCC::SignedGreaterThan, item_v, hi);
+            let bad_ctx = tfb.ins().bor(ctx_under, ctx_over);
+            let bad_item = tfb.ins().bor(item_under, item_over);
+            let bad = tfb.ins().bor(bad_ctx, bad_item);
+            let cont = tfb.create_block();
+            tfb.ins().brif(bad, fail_block, &[], cont, &[]);
+            tfb.seal_block(fail_block);
+            tfb.seal_block(cont);
+            tfb.switch_to_block(fail_block);
+            let fail_ref = self.om.declare_func_in_func(fail_id, tfb.func);
+            let status = tfb.ins().iconst(types::I32, CALLBACK_DOMAIN_STATUS);
+            tfb.ins().call(fail_ref, &[status]);
+            tfb.ins().trap(TrapCode::user(2).expect("valid trap"));
+            tfb.switch_to_block(cont);
+            let cb_ref = self.om.declare_func_in_func(cb_id, tfb.func);
+            let c32 = tfb.ins().ireduce(types::I32, ctx_v);
+            let i32v = tfb.ins().ireduce(types::I32, item_v);
+            let call = tfb.ins().call(cb_ref, &[c32, i32v]);
+            let r = tfb.inst_results(call)[0];
+            let wide = tfb.ins().sextend(types::I64, r);
+            tfb.ins().return_(&[wide]);
+            tfb.finalize();
+        }
+        self.om
+            .define_function(tramp_id, &mut ctx)
+            .map_err(|e| format!("define callback trampoline `{name}`: {e}"))?;
+        self.om.clear_context(&mut ctx);
+        let tramp_ref = self.om.declare_func_in_func(tramp_id, self.fb.func);
+        Ok(self.fb.ins().func_addr(types::I64, tramp_ref))
     }
 
     fn foreign_failure_on(&mut self, condition: Value, status: Value) -> Result<(), String> {

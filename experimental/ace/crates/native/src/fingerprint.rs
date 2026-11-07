@@ -197,7 +197,14 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
             declaration,
             dst,
             args,
-        } => format!("foreign {} {} {:?}", declaration.digest(), dst, args),
+            callbacks,
+        } => format!(
+            "foreign {} {} {:?} {:?}",
+            declaration.digest(),
+            dst,
+            args,
+            callbacks
+        ),
         MirInstr::Const { dst, value } => format!("const {} = {}", dst, const_value(m, *value)),
         MirInstr::Copy { dst, src } => format!("copy {} <- {}", dst, src),
         // PLAN-961: conversions render by slot types (cache-key complete).

@@ -667,8 +667,23 @@ fn verify_owned_function_impl(
                 }};
             }
             match instr {
-                MirInstr::ForeignCall { dst, args, .. } => {
-                    for arg in args {
+                // PLAN-939 S06: a callback lane's args entry is a
+                // PLACEHOLDER (the named target rides `callbacks`); it is
+                // neither read nor owned.
+                MirInstr::ForeignCall {
+                    dst,
+                    args,
+                    callbacks,
+                    ..
+                } => {
+                    let mut lanes = callbacks.iter().map(|(l, _)| *l as usize).collect::<Vec<_>>();
+                    lanes.sort_unstable();
+                    let mut li = 0usize;
+                    for (i, arg) in args.iter().enumerate() {
+                        if li < lanes.len() && lanes[li] == i {
+                            li += 1;
+                            continue;
+                        }
                         check_read!(arg, "foreign argument");
                     }
                     st.define_slot(*dst as usize);

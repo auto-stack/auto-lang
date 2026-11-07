@@ -1309,6 +1309,9 @@ enum EKind {
     /// String literal (PLAN-770); the VT records the contextual borrowing
     /// (Str) or promoting (StrOwned) choice.
     StrLit(String),
+    /// PLAN-939 S06: a named callback target (source fn index) — consumed
+    /// only by the foreign call's callback lane marshaling.
+    CallbackRef(usize),
     /// Char literal (PLAN-770): one Unicode scalar.
     CharLit(u32),
     /// Builtin text/char method (PLAN-770); args are planned expr indices.
@@ -2603,6 +2606,17 @@ impl PlanCtx<'_> {
                 });
                 plan.exprs.len() - 1
             }
+            // PLAN-939 S06: the named callback TARGET — planned as a leaf;
+            // only the foreign call's marshaling consumes it (backends
+            // emit the static trampoline; it is never a runtime value).
+            RExprKind::CallbackRef { fn_index } => {
+                plan.exprs.push(ENode {
+                    kind: EKind::CallbackRef(*fn_index),
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
             RExprKind::CreateClosure { callee, captures } => {
                 plan.exprs.push(ENode {
                     kind: EKind::CreateClosure {
@@ -3716,17 +3730,30 @@ impl<'p> Emitter<'p> {
         };
         // PLAN-865: source function types have structural identity within
         // this module and lower to the existing HIR function type shape.
-        if self.profile.is_closures() {
+        // PLAN-939 S06: the TEXT-RECORD resource lane also interns closure
+        // signatures (the foreign callback lane's (int,int)->int) — the
+        // CallbackRef argument's type reference needs the table emitted.
+        if self.profile.is_closures() || self.profile == SourceProfile::TextRecord {
             for (index, signature) in self.program.function_types.iter().enumerate() {
                 let params: Vec<String> = signature
                     .params
                     .iter()
                     .map(|param| self.ty_use_ref(*param))
                     .collect();
+                // PLAN-939 S06: the text-record descriptor admits the
+                // `function` type case only — the callback lane's interned
+                // closure signature rides that shape (the value it types is
+                // a named callback target, never a first-class closure).
+                let word = if self.profile.is_closures() {
+                    "closure"
+                } else {
+                    "function"
+                };
                 frag!(
                     &format!(
-                        "type t_closure_sig_{} closure {{ params: [{}]; result: {} }}",
+                        "type t_closure_sig_{} {} {{ params: [{}]; result: {} }}",
                         index,
+                        word,
                         params.join(", "),
                         self.ty_use_ref(signature.result)
                     ),
@@ -4277,6 +4304,22 @@ impl<'p> Emitter<'p> {
                                 ei,
                                 ty,
                                 Self::esc(v)
+                            )
+                        }
+                        EKind::CallbackRef(fn_index) => {
+                            // PLAN-939 S06: the named callback target — a
+                            // FREE source fn only (methods carry owner
+                            // symbols the lane never marshals).
+                            let cf = &self.program.fns[*fn_index];
+                            debug_assert_eq!(
+                                cf.receiver,
+                                crate::source::ast::Receiver::Free,
+                                "callback target `{}` must be a free function",
+                                cf.name
+                            );
+                            format!(
+                                "expr e{} callback_ref {{ type: {}; callee: d_{} }}",
+                                ei, ty, cf.name
                             )
                         }
                         EKind::CharLit(v) => {

@@ -333,6 +333,9 @@ fn collect_expr(
                 ops.insert("variant_project");
                 stack.push((*root, d + 1));
             }
+            // PLAN-939 S06: a named foreign-callback target — not a
+            // compute operand; the foreign marshaling consumes it.
+            hir::ExprKind::CallbackRef { .. } => {}
             other => {
                 return Err(A2xReject::unsupported_expr(format!(
                     "in `{}`: expression `{:?}` outside the compute surface",
@@ -547,6 +550,11 @@ fn record_digest(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<Vec<String>
                 refs.push(Nominal::Var(variant.0));
                 note(&mut refs, view.resolve_use_ty(e.ty)?);
             }
+            // PLAN-939 S06: a named callback target types as the callback
+            // lane's function signature — not a VALUE type; the marshal
+            // reads the target name, the reference walk stays closed over
+            // its def (not its type).
+            hir::ExprKind::CallbackRef { .. } => {}
             _ => note(&mut refs, view.resolve_use_ty(e.ty)?),
         }
     }
@@ -952,6 +960,19 @@ fn ser_expr(
             out.push_str(&format!("vproj#{disc}("));
             ser_expr(view, f, *root, canon, next, out, depth + 1)?;
             out.push(')');
+        }
+        // PLAN-939 S06: the named callback target — fingerprinted by the
+        // TARGET's source name (owner-stable, like the closure identity).
+        hir::ExprKind::CallbackRef { def } => {
+            let name = view
+                .fn_by_def(def.0 as usize)
+                .map(|t| t.source_name)
+                .ok_or_else(|| {
+                    A2xReject::unsupported_expr(
+                        "callback target def is not a source function",
+                    )
+                })?;
+            out.push_str(&format!("cbref#{}()", name));
         }
         other => {
             return Err(A2xReject::unsupported_expr(format!(

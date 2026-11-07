@@ -687,6 +687,14 @@ pub enum ExprKind {
         callee: ExprId,
         eval_args: Vec<ExprId>,
     },
+    /// PLAN-939 S06: a NAMED top-level function referenced by name in a
+    /// foreign call's CALLBACK lane — a callback target, never a
+    /// first-class function value. Only the foreign marshaling consumes
+    /// it (both backends emit a static trampoline); the verifier admits
+    /// it solely as a foreign call argument.
+    CallbackRef {
+        def: DefId,
+    },
     /// Construct an owned 823 closure value from a source-analyzed capture
     /// list. The referenced function body declares matching capture locals.
     CreateClosure {

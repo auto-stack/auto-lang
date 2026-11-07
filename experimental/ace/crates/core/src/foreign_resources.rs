@@ -176,6 +176,18 @@ pub fn source_sig(
     })
 }
 
+/// PLAN-939 S06: true when the declaration's resource parameter at `lane`
+/// is a callback lane (callers without a foreign-contract dependency ask
+/// the core authority instead of re-deriving).
+pub fn lane_is_callback(decl: &SourceDecl, lane: usize) -> bool {
+    decl.resource()
+        .map(|r| {
+            lane < r.params.len()
+                && matches!(r.params[lane], ResKind::Callback { .. })
+        })
+        .unwrap_or(false)
+}
+
 /// Read-only variant for consumers that must not grow the type tables
 /// (type checker, HIR adapter, verifier): the callback closure type must
 /// already be interned by the signature pass.

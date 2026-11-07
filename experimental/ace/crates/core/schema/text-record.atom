@@ -247,6 +247,10 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
             require: [type, callee, eval_args, bindings]
             forbid: [local, value, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, record, field_args, ctor_bindings, base, path]
         }
+        branch(key: "expr.callback_ref") {
+            require: [type, callee]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
         branch(key: "expr.str_lit") {
             require: [type, text]
             forbid: [local, value, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]

@@ -16,6 +16,19 @@
 #define R939_S_check(cond) do { if (!(cond)) { fprintf(stderr, "reference939 FAIL %s:%d\n", __FILE__, __LINE__); exit(70); } } while (0)
 #endif
 
+/* S06 oracle callbacks: hand-mirrors of the deck's source-level `cb`
+ * functions (ctx passes through unchanged; the fail variant returns the
+ * reviewed -7 status at item 2). */
+static long long ref_cb_add(long long ctx, long long item) {
+    return ctx + item;
+}
+static long long ref_cb_fail(long long ctx, long long item) {
+    if (item == 2) {
+        return -7;
+    }
+    return ctx + item;
+}
+
 int main(void) {
 #ifdef R939_S_utf8_bytes
     {
@@ -107,6 +120,22 @@ int main(void) {
          * original-party reclamation is a provider-internal fact, proven
          * by the T-07 fault sweep's dedicated ledger probes, not by a
          * post-mortem probe the source cannot make. */
+        return 70;
+    }
+#elif defined(R939_S_callback)
+    {
+        t939_reset();
+        int32_t out = -1;
+        R939_S_check(t939_fold(ref_cb_add, 5LL, 3, &out) == 0);
+        R939_S_check(out == 5 + 6 + 7);
+        return 18;
+    }
+#elif defined(R939_S_callback_fail)
+    {
+        t939_reset();
+        int32_t out = -1;
+        R939_S_check(t939_fold(ref_cb_fail, 5LL, 3, &out) == -7);
+        R939_S_check(out == -1); /* the failure leaves the out slot untouched */
         return 70;
     }
 #else

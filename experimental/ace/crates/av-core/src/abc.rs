@@ -49,6 +49,10 @@ pub const OP_TRACE: u8 = 0x06;
 /// PLAN-863: not admitted by any earlier wire family.
 pub const OP_HOST_CALL: u8 = 0x35;
 pub const OP_FOREIGN_CALL: u8 = 0x36;
+/// PLAN-939 S06: FOREIGN_CALL + named callback targets (same payload with
+/// the callback table between the argument slots and the declaration
+/// JSON); 0x36 stays byte-identical for callback-free calls.
+pub const OP_FOREIGN_CALL_CB: u8 = 0x3A;
 pub const ABC_FOREIGN_MAGIC: [u8; 4] = *b"AVFI";
 pub const ABC_FOREIGN_VERSION: u16 = 1;
 pub const ABC_PROFILE_FOREIGN: u16 = 9;
@@ -1353,18 +1357,35 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         declaration,
                         dst,
                         args,
+                        callbacks,
                     } => {
                         // PLAN-939: the OWNED family also carries foreign
                         // calls (resource foreign in text-record units);
-                        // the declaration encoding is unchanged.
+                        // the declaration encoding is unchanged. S06: a
+                        // call WITH named callback targets encodes under
+                        // the CB opcode; a callback-free call keeps the
+                        // byte-identical 0x36 form.
                         if !matches!(family, WireFamily::ForeignScalar | WireFamily::Owned)
                             || args.len() > 255
+                            || callbacks.len() > 16
                         {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.foreign",
                                 "foreign calls require the AVFI scalar/owned family and bounded arity"
                                     .into(),
                             ));
+                        }
+                        for (lane, name) in callbacks {
+                            if (*lane as usize) >= declaration.arity()
+                                || name.is_empty()
+                                || name.len() > 64
+                                || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                            {
+                                return Err(AbcDecodeError::fmt_err(
+                                    "abc.encode.foreign-callback",
+                                    "callback lane target is outside the reviewed surface".into(),
+                                ));
+                            }
                         }
                         w.status()?;
                         declaration
@@ -1377,11 +1398,23 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         .map_err(|e| {
                             AbcDecodeError::fmt_err("abc.encode.foreign-budget", e.to_string())
                         })?;
-                        put_u8(&mut w, OP_FOREIGN_CALL);
+                        put_u8(&mut w, if callbacks.is_empty() {
+                            OP_FOREIGN_CALL
+                        } else {
+                            OP_FOREIGN_CALL_CB
+                        });
                         put_u32(&mut w, *dst);
                         put_u8(&mut w, args.len() as u8);
                         for arg in args {
                             put_u32(&mut w, *arg);
+                        }
+                        if !callbacks.is_empty() {
+                            put_u8(&mut w, callbacks.len() as u8);
+                            for (lane, name) in callbacks {
+                                put_u16(&mut w, *lane);
+                                put_u8(&mut w, name.len() as u8);
+                                w.push(name.as_bytes());
+                            }
                         }
                         put_u32(&mut w, size as u32);
                         if expected.is_none() {
@@ -3120,7 +3153,7 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         global: c.u32()?,
                         src: c.u32()?,
                     },
-                    OP_FOREIGN_CALL => {
+                    OP_FOREIGN_CALL | OP_FOREIGN_CALL_CB => {
                         if !matches!(family, WireFamily::ForeignScalar | WireFamily::Owned) {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.decode.foreign-profile",
@@ -3136,6 +3169,40 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         let mut args = Vec::with_capacity(count);
                         for _ in 0..count {
                             args.push(c.u32()?);
+                        }
+                        // PLAN-939 S06: the CB opcode's named callback
+                        // table rides between the argument slots and the
+                        // declaration JSON.
+                        let mut callbacks = Vec::new();
+                        if op == OP_FOREIGN_CALL_CB {
+                            let cbs = c.u8()? as usize;
+                            if cbs > 16 {
+                                return Err(AbcDecodeError::fmt_err(
+                                    "abc.decode.foreign-callback",
+                                    "foreign callback table too large".into(),
+                                ));
+                            }
+                            decode_mem!(cbs * 80, "foreign callback targets");
+                            for _ in 0..cbs {
+                                let lane = c.u16()?;
+                                let nlen = c.u8()? as usize;
+                                if nlen == 0 || nlen > 64 {
+                                    return Err(AbcDecodeError::fmt_err(
+                                        "abc.decode.foreign-callback",
+                                        "foreign callback target name out of range".into(),
+                                    ));
+                                }
+                                let name_bytes = c.take(nlen)?;
+                                let name = std::str::from_utf8(name_bytes)
+                                    .map_err(|_| {
+                                        AbcDecodeError::fmt_err(
+                                            "abc.decode.foreign-callback",
+                                            "foreign callback target name is not UTF-8".into(),
+                                        )
+                                    })?
+                                    .to_string();
+                                callbacks.push((lane, name));
+                            }
                         }
                         let len = c.u32()? as usize;
                         if len > ace_foreign_contract::codec::MAX_CODEC_BYTES {
@@ -3181,10 +3248,31 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                                 + declaration.heap_bytes(),
                             "a boxed foreign declaration"
                         );
+                        for (lane, name) in &callbacks {
+                            let params = declaration
+                                .resource()
+                                .map(|r| r.params.as_slice())
+                                .unwrap_or_default();
+                            if (*lane as usize) >= params.len()
+                                || !matches!(
+                                    params[*lane as usize],
+                                    ace_foreign_contract::resource::ResKind::Callback { .. }
+                                )
+                                || name.is_empty()
+                                || name.len() > 64
+                                || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                            {
+                                return Err(AbcDecodeError::fmt_err(
+                                    "abc.decode.foreign-callback",
+                                    "callback lane target is outside the reviewed surface".into(),
+                                ));
+                            }
+                        }
                         MirInstr::ForeignCall {
                             declaration: Box::new(declaration),
                             dst,
                             args,
+                            callbacks,
                         }
                     }
                     OP_HOST_CALL => {

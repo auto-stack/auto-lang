@@ -6,8 +6,8 @@
     "schema": "ace.foreign.manual/2",
     "review_id": "plan939-resource-provider-v1",
     "provider": "r939",
-    "header_digest": "338dfdb9c756727a4f94a74c54d2f623c1c699ca38ab4b45229ece8a733f11bb",
-    "physical_table_digest": "9a88223f4cf8a531674227fefad0f5468e418b6ed4fc949da9bdfd96088e5b94",
+    "header_digest": "99993ec47b5c09ae12c9cf59c59ec4e21a6d3a687f56cee4591befdab20a3c37",
+    "physical_table_digest": "158187de83dcb1918bbe8606cbacf0bc91e3d37208d43033c7ea43f76755503b",
     "target": "x86_64-pc-windows-msvc",
     "profile": "autoabi.win-x64.v0.1-candidate",
     "callconv": "windows-x64",
@@ -271,6 +271,49 @@
           }
         },
         {
+          "symbol": "t939_fold",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": {
+            "kind": "status-i32",
+            "codes": [
+              [
+                -7,
+                "callback"
+              ],
+              [
+                -2,
+                "seed"
+              ]
+            ]
+          },
+          "semantic_ref": null,
+          "resource": {
+            "format": "autoabi.contract.resource-sig/1",
+            "params": [
+              {
+                "Callback": {
+                  "ctx": true
+                }
+              },
+              "I32",
+              "I32"
+            ],
+            "form": {
+              "Fallible": {
+                "ctx": null,
+                "out": "I32"
+              }
+            },
+            "atomic": false,
+            "noescape": true
+          }
+        },
+        {
           "symbol": "t939_live",
           "form": {
             "Pure": {
@@ -339,6 +382,11 @@
       {
         "source_name": "t939_txn",
         "symbol": "t939_txn",
+        "context_symbol": null
+      },
+      {
+        "source_name": "t939_fold",
+        "symbol": "t939_fold",
         "context_symbol": null
       },
       {

@@ -252,6 +252,8 @@ impl<'a> Walker<'a> {
         use hir::ExprKind as E;
         let kind = &self.body.exprs[e.0 as usize].kind;
         let kids: Vec<hir::ExprId> = match kind {
+            // PLAN-939 S06: a named callback target is a leaf.
+            E::CallbackRef { .. } => vec![],
             E::Move { inner } => {
                 if let E::ReadLocal { local } = self.body.exprs[inner.0 as usize].kind {
                     out.insert(local.0);
@@ -564,7 +566,8 @@ impl<'a> Walker<'a> {
             | E::CharLit { .. }
             | E::StrLit { .. }
             | E::BorrowMut { .. }
-            | E::CreateClosure { .. } => {}
+            | E::CreateClosure { .. }
+            | E::CallbackRef { .. } => {}
             E::Binary { lhs, rhs, .. } => {
                 self.expr(lhs);
                 self.expr(rhs);
@@ -858,6 +861,11 @@ fn digest_expr_kind(h: &mut Fnv64, k: &hir::ExprKind) {
         E::ReadLocal { local } => {
             h.str("rl");
             h.u32(local.0);
+        }
+        // PLAN-939 S06: named callback target (def index).
+        E::CallbackRef { def } => {
+            h.str("cbr");
+            h.u32(def.0);
         }
         E::Constant { value } => {
             h.str("k");

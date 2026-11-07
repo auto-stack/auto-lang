@@ -167,6 +167,23 @@ pub fn reviewed_resource_manifest() -> ManualManifest {
             Some(vec![(-3, "alloc"), (-2, "seed")]),
         ),
         resource_fn(
+            "t939_fold",
+            vec![
+                ResKind::Callback { ctx: true },
+                ResKind::I32,
+                ResKind::I32,
+            ],
+            ResourceForm::Fallible {
+                ctx: None,
+                out: Some(ResOut::I32),
+            },
+            false,
+            // §5.1/T-01 freeze: callback lanes are synchronous per-call
+            // and NEVER stored (noescape is mandatory, not optional).
+            true,
+            Some(vec![(-7, "callback"), (-2, "seed")]),
+        ),
+        resource_fn(
             "t939_live",
             vec![],
             ResourceForm::Pure {
@@ -269,7 +286,7 @@ mod tests {
     fn reviewed_resource_manifest_is_valid_and_admits() {
         let manifest = reviewed_resource_manifest();
         manifest.validate().expect("valid /2 resource manifest");
-        assert_eq!(manifest.facts.functions.len(), 8);
+        assert_eq!(manifest.facts.functions.len(), 9);
         let caps = vec![SOURCE_CAP.to_string(), RESOURCE_CAP.to_string()];
         let authority = resource_authority(&"c".repeat(64), 1, &caps);
         let admitted = manifest

@@ -130,7 +130,7 @@ pub fn resource_prototype(declaration: &SourceDecl) -> String {
                 ViewRole::Mut | ViewRole::Out => push(&mut out, &format!("{rec} *")),
             },
             ResKind::Handle { .. } => push(&mut out, "long long"),
-            ResKind::Callback { .. } => push(&mut out, "long long (*cb)"),
+            ResKind::Callback { .. } => push(&mut out, "long long (*cb)(long long, long long)"),
         }
     }
     if let ResourceForm::Fallible {

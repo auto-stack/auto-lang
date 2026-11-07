@@ -135,6 +135,10 @@ pub struct CFnRt {
     pub origin: (u32, u32),
     /// The function body statements (indentation-free lines).
     pub body: Vec<String>,
+    /// PLAN-939 S06: TOP-LEVEL lines emitted between the origin comment
+    /// and the fragment definition (callback trampolines — static helpers
+    /// calling this module's own fragment functions).
+    pub preface: Vec<String>,
 }
 
 /// Render one fragment: origin comment + prototype + definition. The
@@ -155,6 +159,13 @@ pub fn print_fragment_rt(f: &CFnRt) -> String {
         f.origin.0, f.origin.1, f.name
     );
     out.push_str(&format!("{} {}({});\n", ret, f.name, params));
+    // PLAN-939 S06: top-level preface lines (callback trampolines) ride
+    // AFTER the prototype line — the assembler's forward-declaration input
+    // stays the text's second line.
+    for line in &f.preface {
+        out.push_str(line);
+        out.push('\n');
+    }
     out.push_str(&format!("{} {}({}) {{\n", ret, f.name, params));
     for line in &f.body {
         out.push_str("    ");
@@ -198,6 +209,8 @@ struct FnLoweringRt<'v, 'a> {
     plan: Option<&'v BodyResourcePlan>,
     pending_frees: Vec<String>,
     out: Vec<String>,
+    /// PLAN-939 S06: top-level fragment preface lines (trampolines).
+    preface: Vec<String>,
     temp_counter: usize,
     loop_stack: Vec<u32>,
     cur_block: u32,
@@ -597,9 +610,47 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
             })?
             .clone();
         let mut evaluated: Vec<(String, Ty)> = Vec::with_capacity(eval_args.len());
+        // PLAN-939 S06: a CallbackRef argument is a NAMED callback target —
+        // no value lowers; the lane's marshaling emits the static
+        // trampoline from the fragment preface.
+        let mut callback_targets: Vec<(usize, String)> = Vec::new();
         for arg in eval_args {
-            let (v, t) = self.lower_pure(*arg)?;
-            evaluated.push((v, t));
+            if let hir::ExprKind::CallbackRef { def } =
+                self.facts.body.exprs[arg.0 as usize].kind
+            {
+                let name = self
+                    .view
+                    .fn_by_def(def.0 as usize)
+                    .map(|f| f.source_name)
+                    .ok_or_else(|| {
+                        A2xReject::new("a2x.internal", "callback target def is not a source fn")
+                    })?
+                    .to_string();
+                let lane = bindings
+                    .iter()
+                    .find(|b| b.arg == arg.0)
+                    .map(|b| b.param as usize)
+                    .ok_or_else(|| {
+                        A2xReject::new(
+                            "a2c.foreign-binding",
+                            "callback target argument is unbound",
+                        )
+                    })?;
+                if !matches!(
+                    res.params.get(lane),
+                    Some(ResKind::Callback { .. })
+                ) {
+                    return Err(A2xReject::new(
+                        "a2c.foreign-callback",
+                        "a callback target argument sits in a non-callback lane",
+                    ));
+                }
+                callback_targets.push((lane, name));
+                evaluated.push((String::new(), Ty::I32));
+            } else {
+                let (v, t) = self.lower_pure(*arg)?;
+                evaluated.push((v, t));
+            }
         }
         let mut placed: Vec<Option<(String, Ty)>> = vec![None; res.params.len()];
         for b in bindings {
@@ -698,10 +749,38 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     arguments.push(format!("(long long)({value})"));
                 }
                 ResKind::Callback { .. } => {
-                    return Err(A2xReject::new(
-                        "a2c.foreign-callback",
-                        "callback lanes require the callback-by-name frontend",
-                    ));
+                    // PLAN-939 S06: the named target's STATIC trampoline —
+                    // checked i64 domain (violation = the `callback.domain`
+                    // transport −2147483645), narrowed i32 call of this
+                    // module's own fragment fn; a trapped body routes the
+                    // `callback.trap` transport −2147483644 (a callback
+                    // failure NEVER becomes a success sentinel).
+                    let (_, name) = callback_targets
+                        .iter()
+                        .find(|(l, _)| *l == i)
+                        .ok_or_else(|| {
+                            A2xReject::new(
+                                "a2c.foreign-callback",
+                                "callback lane has no named target",
+                            )
+                        })?;
+                    let tramp = format!("a2x_cb_tramp_{}", crate::lower::sanitize(name));
+                    let callee = c_fn_name(name);
+                    if !self.preface.iter().any(|l| l.contains(&tramp)) {
+                        self.preface.push(format!(
+                            "static long long {tramp}(long long ctx, long long item) {{\n\
+                             \x20   if (ctx < INT32_MIN || ctx > INT32_MAX || item < INT32_MIN || item > INT32_MAX) {{\n\
+                             \x20       ace_foreign_fail(-2147483645);\n\
+                             \x20   }}\n\
+                             \x20   a2x_result r = {callee}((int32_t)ctx, (int32_t)item);\n\
+                             \x20   if (r.trap != A2X_TRAP_NONE) {{\n\
+                             \x20       ace_foreign_fail(-2147483644);\n\
+                             \x20   }}\n\
+                             \x20   return (long long)r.value;\n\
+                             }}"
+                        ));
+                    }
+                    arguments.push(tramp);
                 }
             }
         }
@@ -1065,6 +1144,7 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     plan: self.plan,
                     pending_frees: Vec::new(),
                     out: Vec::new(),
+                    preface: Vec::new(),
                     temp_counter: self.temp_counter,
                     loop_stack: self.loop_stack.clone(),
                     cur_block: self.cur_block,
@@ -1610,6 +1690,7 @@ pub fn lower_fn_rt(view: &SemanticView<'_>, facts: &FnFacts<'_>) -> Result<CFnRt
         plan,
         pending_frees: Vec::new(),
         out: Vec::new(),
+        preface: Vec::new(),
         temp_counter: 0,
         loop_stack: Vec::new(),
         cur_block: 0,
@@ -1637,6 +1718,7 @@ pub fn lower_fn_rt(view: &SemanticView<'_>, facts: &FnFacts<'_>) -> Result<CFnRt
         params,
         origin: facts.origin,
         body: lowering.out,
+        preface: lowering.preface,
     })
 }
 

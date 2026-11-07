@@ -384,6 +384,11 @@ pub enum MirInstr {
         declaration: Box<ace_foreign_contract::manual::SourceDecl>,
         dst: SlotId,
         args: Vec<SlotId>,
+        /// PLAN-939 S06: the named callback targets, one per Callback lane
+        /// param (lane position within `declaration.params()`, target fn
+        /// NAME — the backend emits a static trampoline calling the fn's
+        /// own unit symbol; a callback lane contributes NO `args` slot).
+        callbacks: Vec<(u16, String)>,
     },
     /// PLAN-863: a host-table reference, separate from guest Call/Import.
     HostCall {

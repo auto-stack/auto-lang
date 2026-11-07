@@ -313,6 +313,15 @@ pub enum RExprKind {
     /// receiver). Never a value; the typecheck walk rejects strays.
     TypeWord(TypeWord),
     ReadLocal(LocalRef),
+    /// PLAN-939 S06: a NAMED top-level function referenced by name as a
+    /// foreign call's CALLBACK lane argument — a callback TARGET, never a
+    /// first-class function value (the text-record domain has none). Its
+    /// type is `VT::Function` of the (params, result)-matching interned
+    /// closure type, so structurally it can only satisfy a callback lane
+    /// parameter; every other position is a type mismatch.
+    CallbackRef {
+        fn_index: usize,
+    },
     /// PLAN-862: the unit value — the operand of the synthesized return at
     /// the end of a Unit function (and of a fall-off script). It carries no
     /// payload and is never produced by user syntax.
@@ -529,6 +538,8 @@ impl Drop for ResolvedExpr {
             RExprKind::HashExpr { .. } | RExprKind::MetaQuery { .. } => {}
             // PLAN-961: a typed literal is a leaf.
             RExprKind::TypedLit { .. } => {}
+            // PLAN-939 S06: a named callback target is a leaf.
+            RExprKind::CallbackRef { .. } => {}
             RExprKind::Binary { lhs, rhs, .. } => {
                 let l = std::mem::replace(lhs.as_mut(), dummy());
                 let r = std::mem::replace(rhs.as_mut(), dummy());
@@ -3126,6 +3137,9 @@ pub(crate) fn resolve_lambda_in_context(
             ct_enabled: false,
             ct_depth: 0,
             profile: SourceProfile::Closures,
+            // callback-by-name is a text-record-only surface; the closures
+            // face never reads the boundary.
+            source_fn_count: 0,
             diags: &mut diags,
             locals: Vec::new(),
             scopes: vec![Scope {
@@ -4093,6 +4107,10 @@ struct FnResolver<'a, 's> {
     /// PLAN-934 T-04: the fact supply of a fact-driven bind (`None` = the
     /// legacy synthetic walk).
     supply: Option<&'a dyn TypeSupply>,
+    /// PLAN-939 S06: the source fn count — the index boundary below which
+    /// a `FnSig.index` addresses a SOURCE function (foreign declarations
+    /// index above it); callback-by-name targets are source fns only.
+    source_fn_count: usize,
 }
 
 fn resolve_fn(
@@ -4194,6 +4212,7 @@ fn resolve_fn_reuse<'a, 's>(
         lambda_sites,
         reuse,
         supply,
+        source_fn_count: _closure_base,
     };
     let mut param_names: Vec<String> = Vec::new();
     let mut params: Vec<VT> = Vec::new();
@@ -6420,6 +6439,39 @@ impl<'a, 's> FnResolver<'a, 's> {
                     }
                 }
                 None => {
+                    // PLAN-939 S06 callback-by-name: on the text-record
+                    // resource lane a bare SOURCE fn name whose (params,
+                    // result) exactly match an interned closure type is a
+                    // named callback TARGET (never a function value — the
+                    // typecheck confines it to callback lane arguments by
+                    // type; a manifest without a callback lane interns no
+                    // matching closure type and names stay non-values).
+                    if self.profile == SourceProfile::TextRecord {
+                        if let Some(sig) = self
+                            .sigs
+                            .get(&id.name)
+                            .filter(|s| s.index < self.source_fn_count)
+                        {
+                            let want = ClosureFnType {
+                                params: sig.params.clone(),
+                                result: sig.result,
+                            };
+                            if let Some(idx) = self
+                                .coll
+                                .function_types
+                                .iter()
+                                .position(|t| *t == want)
+                            {
+                                return ResolvedExpr {
+                                    span: e.span,
+                                    vt: self.node_ty(e.span, VT::Function(idx)),
+                                    kind: RExprKind::CallbackRef {
+                                        fn_index: sig.index,
+                                    },
+                                };
+                            }
+                        }
+                    }
                     if self.sigs.contains_key(&id.name) {
                         self.bind_err(
                             "source.undefined",

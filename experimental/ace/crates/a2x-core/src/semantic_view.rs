@@ -898,6 +898,8 @@ fn kind_in_family(k: &hir::ExprKind, family: Family) -> bool {
         Family::TextRecord => {
             text_kinds
                 || record_kinds
+                // PLAN-939 S06: a named foreign-callback target argument.
+                || matches!(k, hir::ExprKind::CallbackRef { .. })
                 || matches!(
                     k,
                     hir::ExprKind::RecordClone { .. } | hir::ExprKind::Move { .. }
@@ -1323,6 +1325,7 @@ fn resolve_ty(module: &hir::Module, ty: hir::TypeUse) -> Result<Ty, A2xReject> {
 fn kind_name(k: &hir::ExprKind) -> &'static str {
     match k {
         hir::ExprKind::Unit => "Unit",
+        hir::ExprKind::CallbackRef { .. } => "CallbackRef",
         hir::ExprKind::CallClosure { .. } => "CallClosure",
         hir::ExprKind::CreateClosure { .. } => "CreateClosure",
         hir::ExprKind::StrLit { .. } => "StrLit",
