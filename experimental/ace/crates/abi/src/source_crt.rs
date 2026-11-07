@@ -65,7 +65,9 @@ mod tests {
     use std::ffi::OsString;
     #[test]
     fn crt_output_batch_counts_objects_and_pe_but_not_input_objects() {
-        let _env = ENV_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _env = ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         use ace_source_query::resources::OutputLimits;
         let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
             .join(format!("crt-output-{}", std::process::id()));
