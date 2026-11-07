@@ -1354,10 +1354,15 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         dst,
                         args,
                     } => {
-                        if family != WireFamily::ForeignScalar || args.len() > 255 {
+                        // PLAN-939: the OWNED family also carries foreign
+                        // calls (resource foreign in text-record units);
+                        // the declaration encoding is unchanged.
+                        if !matches!(family, WireFamily::ForeignScalar | WireFamily::Owned)
+                            || args.len() > 255
+                        {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.foreign",
-                                "foreign calls require the AVFI scalar family and bounded arity"
+                                "foreign calls require the AVFI scalar/owned family and bounded arity"
                                     .into(),
                             ));
                         }
@@ -3116,10 +3121,10 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         src: c.u32()?,
                     },
                     OP_FOREIGN_CALL => {
-                        if family != WireFamily::ForeignScalar {
+                        if !matches!(family, WireFamily::ForeignScalar | WireFamily::Owned) {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.decode.foreign-profile",
-                                "foreign opcode outside AVFI".into(),
+                                "foreign opcode outside AVFI/owned".into(),
                             ));
                         }
                         let dst = c.u32()?;

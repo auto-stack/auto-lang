@@ -2478,7 +2478,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             | (Some(MirType::Bool), ace_foreign_contract::LaneKind::Bool) => true,
                             _ => false,
                         };
-                        if args.len() != declaration.params().len() {
+                        if args.len() != declaration.arity() {
                             return Err(err(
                                 "mir.foreign-arity",
                                 "foreign argument count mismatch".into(),

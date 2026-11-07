@@ -4384,6 +4384,23 @@ impl Verifier {
             };
             // callee param modes come from the callee's own param locals
             let mut modes: Vec<hir::ParamMode> = vec![hir::ParamMode::View; sig.params.len()];
+            if let hir::DefKind::Foreign { declaration, .. } = &def.kind {
+                // PLAN-939: a RESOURCE foreign callee's modes come from its
+                // resource signature — Mut/Out record views are mut borrows
+                // (the shadow/commit contract), everything else is a view.
+                if let Some(res) = declaration.resource() {
+                    for (i, p) in res.params.iter().enumerate() {
+                        if i >= modes.len() {
+                            break;
+                        }
+                        if p.is_rec_role(ace_foreign_contract::resource::ViewRole::Mut)
+                            || p.is_rec_role(ace_foreign_contract::resource::ViewRole::Out)
+                        {
+                            modes[i] = hir::ParamMode::MutBorrow;
+                        }
+                    }
+                }
+            }
             if let Some(bid) = def.kind.fn_body() {
                 if let Some(cb) = m.bodies.get(bid.0 as usize) {
                     for l in &cb.locals {

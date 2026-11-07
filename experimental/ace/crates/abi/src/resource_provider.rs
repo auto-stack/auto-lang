@@ -294,3 +294,40 @@ mod tests {
         assert!(qualify_resource(&nocaps, &caps).is_err());
     }
 }
+
+pub fn hash_pub(b: &[u8]) -> String {
+    blake3::hash(b).to_hex().to_string()
+}
+
+#[cfg(test)]
+mod c_leg_probe {
+    use base64::Engine as _;
+    #[test]
+    fn c_leg_executes_without_panic() {
+        let deck = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../../crates/auto-lang/test/cases/ace-ca-d-resources-939/src/utf8-bytes.atomdata"
+        ))
+        .expect("deck fixture");
+        let req = crate::worker::WorkerRequest {
+            recipe: "abi/resource-foreign-certify-v1".into(),
+            nonce: "n".into(),
+            request_hash: "h".into(),
+            deck_b64: base64::engine::general_purpose::STANDARD.encode(&deck),
+            leg: "c".into(),
+            store_root: std::env::temp_dir()
+                .join("r939-cleg-probe")
+                .to_string_lossy()
+                .into_owned(),
+            steps: vec![crate::worker::StepIn {
+                op: "query".into(),
+                from: None,
+                to: None,
+            }],
+        };
+        match crate::worker_source::execute(&req) {
+            Ok(_) => println!("C-LEG-OK"),
+            Err(d) => println!("C-LEG-DIAG: {} {}", d.code, d.message),
+        }
+    }
+}

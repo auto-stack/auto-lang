@@ -380,12 +380,55 @@ pub fn cold_observed_with_resources(
             ..Meter::default()
         };
         let mut per_function = BTreeMap::new();
+        let resource_lane =
+            Self::foreign_source_profile(Some(&foreign)) == SourceProfile::TextRecord;
         for s in items {
             let item = s.item.as_ref().expect("cold catalog");
-            let (facts, deps) = queries
-                .resident_page(&item.name.name)
-                .ok_or_else(|| reject("missing cold fact"))?;
-            let walk = crate::walk_body(&item.body).map_err(reject)?;
+            // r3 resolver-owned page: the text-record resource lane has no
+            // solver facts (the 934 inference surface is scalar-only); the
+            // resident page carries ZERO facts and an empty walk — every
+            // cold/warm build re-resolves the body for real (§5.11).
+            let owned_facts;
+            let mut walk_storage: Option<crate::walk::BodyWalk> = None;
+            let empty_walk = crate::walk::BodyWalk {
+                nodes: Vec::new(),
+                lets: Vec::new(),
+                version: crate::ident::content_version("sq-body", b"resolver-owned"),
+                expr_nodes: 0,
+            };
+            let (facts, deps, walk_ref) = if resource_lane {
+                owned_facts = crate::facts::InferBodyFacts {
+                    name: item.name.name.clone(),
+                    logical: crate::ident::owner_logical(
+                        &queries.package().to_string(),
+                        &queries.module().to_string(),
+                        &item.name.name,
+                    ),
+                    // the persisted walk is the synthetic empty one; the
+                    // version must match IT (restore re-validates)
+                    body_version: empty_walk.version.clone(),
+                    profile: crate::ident::SQ_PROFILE,
+                    algo: crate::ident::SQ_ALGO,
+                    schema: crate::ident::SQ_SCHEMA,
+                    producer: crate::ident::SQ_PRODUCER,
+                    revision: queries.revision(),
+                    nodes: Vec::new(),
+                    bindings: Vec::new(),
+                    diags: Vec::new(),
+                    missing: Vec::new(),
+                    sig_reads: Vec::new(),
+                    negatives: Vec::new(),
+                    steps: 0,
+                };
+                (&owned_facts, &[][..], &empty_walk)
+            } else {
+                let (facts, deps) = queries
+                    .resident_page(&item.name.name)
+                    .ok_or_else(|| reject("missing cold fact"))?;
+                walk_storage = Some(crate::walk_body(&item.body).map_err(reject)?);
+                (facts, deps, walk_storage.as_ref().expect("just stored"))
+            };
+            let walk_ref = walk_storage.as_ref().unwrap_or(&empty_walk);
             let page_work = work.begin(
                 &item.name.name,
                 "facts-encode",
@@ -395,7 +438,7 @@ pub fn cold_observed_with_resources(
                 facts,
                 deps,
                 &signatures,
-                &walk,
+                walk_ref,
                 s.span.start,
                 capabilities,
                 &source[s.span.start..s.span.end],

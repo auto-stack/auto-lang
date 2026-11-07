@@ -2719,6 +2719,7 @@ fn static_layer(id: &str) -> &'static str {
         "AXC1" => LAYER_FRAGMENT_C.id,
         "AXCF1" => LAYER_FRAGMENT_C_FOREIGN.id,
         "AXC2" => LAYER_FRAGMENT_C_RT.id,
+        "AXCFR1" => LAYER_FRAGMENT_C_FOREIGN_RT.id,
         "AXC3" => LAYER_FRAGMENT_C_COLL.id,
         "AXP1" => LAYER_SOURCE_ANCHOR.id,
         "AXP2" => LAYER_SOURCE_ANCHOR_RT.id,

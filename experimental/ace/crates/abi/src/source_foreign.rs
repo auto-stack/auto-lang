@@ -781,6 +781,12 @@ impl Session {
     pub fn frontend(&self) -> &Frontend {
         &self.front
     }
+    /// PLAN-939: the recorded runtime identity (the worker's current
+    /// authority derives from the session so resource/scalar runtimes both
+    /// qualify by construction).
+    pub fn runtime_identity(&self) -> &str {
+        &self.runtime_identity
+    }
     pub fn meter(&self) -> Meter {
         self.meter
     }
@@ -1367,8 +1373,19 @@ fn link_artifacts(
     };
     std::fs::create_dir_all(directory).map_err(|e| e.to_string())?;
     write(
+        // PLAN-939: the events runtime follows the session's environment
+        // (resource manifests pin the 939 events runtime; scalar keeps
+        // the exact 938 bytes).
         &directory.join("source938_events.c"),
-        crate::source_provider::EVENT_RUNTIME.as_bytes(),
+        if environment
+            .source_declarations_ref()
+            .iter()
+            .any(|d| d.resource().is_some())
+        {
+            crate::resource_provider::EVENT_RUNTIME.as_bytes()
+        } else {
+            crate::source_provider::EVENT_RUNTIME.as_bytes()
+        },
     )?;
     let provider_path = directory.join("provider.obj");
     write(&provider_path, provider.as_slice())?;

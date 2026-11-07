@@ -184,6 +184,21 @@ impl CertPolicy {
             Self::Resource939 => crate::resource_provider::EVENT_RUNTIME,
         }
     }
+    /// The certification runtime policy identity (the session's recorded
+    /// runtime identity must equal this).
+    pub fn certification_runtime_policy(self, target: Target) -> String {
+        match (self, target) {
+            // PLAN-939: the resource C leg's runtime page is the
+            // record-text runtime (no trace marks in the fixtures).
+            (Self::Resource939, Target::C) => crate::source_foreign::runtime_identity(
+                target,
+                &provider::hash(
+                    ace_a2x_c::rt_runtime::record_text_runtime_source(&[]).as_bytes(),
+                ),
+            ),
+            _ => crate::source_foreign::certification_runtime_policy(target),
+        }
+    }
     pub fn provider_define(self) -> &'static str {
         match self {
             Self::Scalar938 => "SOURCE938_EVENTS",
@@ -697,7 +712,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                     &deck.capabilities,
                     &deck.reference,
                 ),
-                runtime_digest: crate::source_foreign::certification_runtime_policy(target),
+                runtime_digest: policy.certification_runtime_policy(target),
                 emitter: target.identity(),
             })
         };
@@ -825,7 +840,12 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     let operation: Result<(), DiagOut> = (|| {
         let run_dir = scratch.path();
         let digest = report.provider_digest.clone();
-        let runtime_policy = crate::source_foreign::certification_runtime_policy(target);
+        // PLAN-939: the runtime digest derives from the SESSION's recorded
+        // identity (the resource C runtime depends on the view's trace
+        // marks; the scalar lanes keep the frozen policy identity).
+        let runtime_policy = session
+            .runtime_identity()
+            .to_string();
         let mut current_authority = || {
             Ok(CurrentAuthority {
                 foreign: policy.authority(

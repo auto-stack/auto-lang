@@ -20,12 +20,16 @@ int main(void) {
 #ifdef R939_S_utf8_bytes
     {
         const uint8_t text[] = { 'A', 0xE4, 0xb8, 0xad, 0xf0, 0x9f, 0x98, 0x80 };
-        R939_S_check(t939_byte_length(text, 8) == 8);
+        uint64_t n = t939_byte_length(text, 8);
+        R939_S_check(n == 8);
+        return (int)n;
     }
 #elif defined(R939_S_utf8_scalars)
     {
         const uint8_t text[] = { 'A', 0xE4, 0xb8, 0xad, 0xf0, 0x9f, 0x98, 0x80 };
-        R939_S_check(t939_scalar_count(text, 8) == 3);
+        uint64_t n = t939_scalar_count(text, 8);
+        R939_S_check(n == 3);
+        return (int)n;
     }
 #elif defined(R939_S_record_mut)
     {
@@ -34,6 +38,7 @@ int main(void) {
         c.value = 20;
         R939_S_check(t939_bump(&c, 1, &out) == 0);
         R939_S_check(c.value == 21 && out == 21);
+        return out + c.value; /* 42 */
     }
 #elif defined(R939_S_record_mut_fail)
     {
@@ -42,6 +47,7 @@ int main(void) {
         c.value = 20;
         R939_S_check(t939_bump(&c, -1, &out) == -2);
         R939_S_check(c.value == 20 && out == -1);
+        return 70; /* the frozen failure transport */
     }
 #elif defined(R939_S_handle_lifecycle)
     {
@@ -53,6 +59,7 @@ int main(void) {
         int32_t gen = -1;
         R939_S_check(t939_destroy(h, &gen) == 0 && gen >= 1);
         R939_S_check(t939_live() == 0);
+        return got + gen; /* 4 + 1 */
     }
 #elif defined(R939_S_handle_stale)
     {
@@ -62,6 +69,7 @@ int main(void) {
         R939_S_check(t939_destroy(h, &gen) == 0);
         int32_t got = -1;
         R939_S_check(t939_get(h, &got) == -1);
+        return 70; /* stale handle: the frozen failure transport */
     }
 #elif defined(R939_S_txn_commit)
     {
@@ -72,6 +80,7 @@ int main(void) {
         r.handle = 0;
         R939_S_check(t939_txn(7, &r, &out) == 0);
         R939_S_check(out == 7 && r.value == 14 && r.handle > 0);
+        return out + r.value; /* 21 */
     }
 #elif defined(R939_S_txn_seed_fail)
     {
@@ -82,6 +91,7 @@ int main(void) {
         r.handle = 6;
         R939_S_check(t939_txn(3000, &r, &out) == -2);
         R939_S_check(out == -1 && r.value == 5 && r.handle == 6);
+        return 70;
     }
 #elif defined(R939_S_txn_laststep_fail)
     {
@@ -93,11 +103,11 @@ int main(void) {
         R939_S_check(t939_txn(1500, &r, &out) == -3);
         R939_S_check(out == -1 && r.value == 5 && r.handle == 6);
         R939_S_check(t939_live() == 0); /* original-party reclamation */
+        return 70;
     }
 #else
     fprintf(stderr, "reference939: unknown scenario\n");
     return 71;
 #endif
-    fprintf(stderr, "reference939: ok\n");
-    return 0;
+    /* exactly one scenario is compiled in and every branch returns */
 }
