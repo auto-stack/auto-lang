@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 28
+current_step: 29
 total_steps: 32
 ---
 
@@ -2193,6 +2193,17 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:93 | from:goal继续 
 stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（D938入树：合并+冲突解决+三组全绿接收门+上游64MiB红master归因；证据链重采/registry转正/16-16待续） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:0c77bb2269f2c9c75d825ba3f626d6f958242fcd | task_ids:T-09接收检查点 | evidence:f94118-d938/gates | next_responsible_role:work T3重跑/工具对账/证据链重采/registry转正/16-16 | 无live handle
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:94 | from:goal继续 | to:work | status:executing28/32 | outcome:progress（D938树内接收首程：合并落地+接收门三组全绿+上游红归因；全链重采为下轮） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:0c77bb2269f2c9c75d825ba3f626d6f958242fcd | next:work T3门重跑/13工具对账/证据链重采/registry/16-16；D939仍在途，无待poll
+
+### 第95轮：work D938接收续——registry delivered-d转正、合约刷新与合并修复验证四组全绿
+
+- 承第94轮检查点完成接收的repo面：①**registry delivered-d转正**（提交**`60e188170`**，19文件）——awaiting_d拆分为`delivered_d`（938七行，+`delivered_commit=d88b0bc0e`钉定，promise/close面原样保留）+awaiting_d（仅939七行）；`ace_m1_registry`新delivered态完备性规则（缺行/空commit拒）、`universe_gate`计数delivered_d；两节均字节钉定（新AWAITING sha=`5a048316…a58`/DELIVERED sha=`1f16ac7a…ed7`）；治理三宇宙控制更新（counts=(1006,7,7)、delivered面篡改拒、双节字节钉定）。**awaiting_d 14→7**。②**parent_contracts刷新**：合并改变ac_av.rs/abi.rs→重建auto-case+fresh parent-inventory→registry快照+7源pin更新。③**合约刷新**（data-only）：budget（6 pin漂移含fixed-tests.py/worker.rs）、五native（各68 pin）、architecture-obligations（sq-core tests.rs）→registry expanded_contracts六项同步。④**abi companion绑定**：`incremental_restore_abi`（ace-abi组）+all-required-pages行入938页四needle（`scalar_bridge$bridge_restore_deep_verifies_without_producers`/`bridge_restore_negative_controls`、`source_foreign$provider_symbol_index_uses_shared_budget_before_rebind_and_repairs`、`cache_turnaround$foreign_toolchain_generation_not_served`）——行缺口收窄为**仅939 awaiting-D**。治理**253/253**。
+- **合并修复验证**（`f94119-reception/gates`，串行@`60e188170`）：**ace-source 415、ace-adapters 84、ace-av 1050、ace-abi 243 全绿**——packages语法面修复与938测试适配实证落地。
+- **关键路径阻塞（上游）**：`syntax_budget_64mib_streaming_small_queries`红已实证为**master既有回归**（pristine master临时worktree同红，wt-guard clean后已移除）——938/960 store记账边际溢出（namespace 133943768+block+allowance>128MiB），上游两组未跑过该门未暴露。该红卡住ace-syntax全绿→3-group冻结门→全部下游证据链重采与组合重读。**owner=938/960 store线具名交接**；941按S/N/X不修。native/semantics/comptime三组仍待`T3_MILESTONE=1`重跑（0真红、deadline纯）。
+- **下一入口**：①上游64MiB修复交付后→T3冻结全绿门；②13工具重prepare对账+cert/case/native/optimized/daily链重采；③五native观察+parent.command重采+组合重读（verdicts预期变化：delivered-d宇宙+938页行收窄）；④abi-interop 10真窗（938真C提供者腿metered）→16/16。executing29/32。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（delivered-d转正awaiting 14→7、六合约刷新、938页needle入行、修复验证四组全绿；上游64MiB红为组合链关键阻塞） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:60e188170dfadd780bbfa0c0eb7f725676205047 | task_ids:T-09/T-03/T-06增量 | evidence:f94119-reception/gates | next_responsible_role:work 上游64MiB修复后T3门/工具对账/证据链重采/16-16 | 无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:95 | from:goal继续 | to:work | status:executing29/32 | outcome:progress（D938接收repo面完成：registry转正+合约刷新+四组验证绿；组合链候上游红修复） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:60e188170dfadd780bbfa0c0eb7f725676205047 | next:work T3门/工具/证据链/16-16；D939在途，无待poll
 
 ## 10. 待澄清事项
 
