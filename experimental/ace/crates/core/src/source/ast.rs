@@ -167,6 +167,33 @@ pub enum Item {
     /// PLAN-864: a finite `enum` declaration (collections surface) — one
     /// nominal variant type whose arms carry at most one payload each.
     Enum(EnumItem),
+    /// PLAN-960: a module-level constant `const NAME: T = expr` (packages
+    /// module surface). Immutable global; the initializer is evaluated at
+    /// module initialization time, not folded at parse time.
+    Const(ConstItem),
+    /// PLAN-960: a module-level mutable store `var NAME: T = expr`
+    /// (packages module surface, module-private; no `pub` form).
+    Store(StoreItem),
+}
+
+/// A `const NAME: T = expr` module item (PLAN-960).
+#[derive(Clone, Debug)]
+pub struct ConstItem {
+    pub name: Ident,
+    pub ty: TypeAnn,
+    pub value: Expr,
+    /// `const` keyword through the end of the initializer expression.
+    pub span: Span,
+}
+
+/// A `var NAME: T = expr` module store item (PLAN-960).
+#[derive(Clone, Debug)]
+pub struct StoreItem {
+    pub name: Ident,
+    pub ty: TypeAnn,
+    pub value: Expr,
+    /// `var` keyword through the end of the initializer expression.
+    pub span: Span,
 }
 
 /// A `enum Name { Arm(T)? ... }` item (PLAN-864, collections surface).

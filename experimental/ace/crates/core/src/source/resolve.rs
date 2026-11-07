@@ -1018,6 +1018,11 @@ pub(crate) fn decl_context_fp(program: &ast::Program, src: &str) -> u64 {
             ast::Item::Fn(f) => mix(&src[f.span.start..f.body.span.start], &mut h),
             ast::Item::Type(t) => mix(&src[t.span.start..t.span.end], &mut h),
             ast::Item::Enum(e) => mix(&src[e.span.start..e.span.end], &mut h),
+            // PLAN-960: module globals never reach the single-module closures
+            // cache (the packages binder lowers them to init functions); their
+            // declaration text is still part of the context identity.
+            ast::Item::Const(c) => mix(&src[c.span.start..c.span.end], &mut h),
+            ast::Item::Store(v) => mix(&src[v.span.start..v.span.end], &mut h),
         }
     }
     h
@@ -1536,6 +1541,26 @@ fn resolve_detailed(
             }
             // PLAN-864: enums carry no functions.
             ast::Item::Enum(_) => {}
+            // PLAN-960: const/store items are consumed by the packages binder
+            // (globals + synthesized init functions) before resolve; a raw
+            // package unit handed to the single-module resolver is a caller
+            // error, never a silent skip.
+            ast::Item::Const(c) => {
+                return Err(vec![Diagnostic::new(
+                    Stage::Bind,
+                    "source.module-surface",
+                    "module globals require the packages binder (PLAN-960)",
+                    c.span,
+                )]);
+            }
+            ast::Item::Store(v) => {
+                return Err(vec![Diagnostic::new(
+                    Stage::Bind,
+                    "source.module-surface",
+                    "module globals require the packages binder (PLAN-960)",
+                    v.span,
+                )]);
+            }
         }
     }
     for (i, f) in flat.iter().enumerate() {

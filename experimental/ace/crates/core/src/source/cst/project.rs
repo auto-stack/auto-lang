@@ -54,6 +54,18 @@ pub(crate) fn project_program_with_caps(
     }
     let mut eng = Engine::new(p, k, tree, snap, profile, instances, ct_face);
     let tree_has_errors = tree.has_error_nodes();
+    // PLAN-960（T-02）：const/var 模块项 kind（仅 packages-modules 裁剪存在；
+    // 其余面无此二规则 = 保持原分派行为）。
+    let const_item_kind = p
+        .rules
+        .iter()
+        .position(|r| r.name == "const-item")
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
+    let var_item_kind = p
+        .rules
+        .iter()
+        .position(|r| r.name == "var-item")
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
     let mut items = Vec::new();
     let mut saw_script = false;
     for d in &tree.decls {
@@ -71,6 +83,7 @@ pub(crate) fn project_program_with_caps(
         };
         // PLAN-950: public visibility is retained in ModuleSyntax, while
         // the existing function projector consumes the nested fn item.
+        // PLAN-960（T-02）：public-type/public-const 前缀同样在分派前剥壳。
         let node = if p
             .rules
             .iter()
@@ -80,6 +93,22 @@ pub(crate) fn project_program_with_caps(
             }) {
             p.field_id("function")
                 .and_then(|f| tree.field_child(node, f))
+                .unwrap_or(node)
+        } else if p
+            .rules
+            .iter()
+            .position(|r| r.name == "public-item")
+            .is_some_and(|i| {
+                tree.kind(node) == ace_syntax_runtime::program::RULE_KIND_BASE + i as u32
+            }) {
+            // PLAN-960（T-02）：public-body 分派节点的实体孩子（fn/type/const/use）。
+            p.field_id("body")
+                .and_then(|f| tree.field_child(node, f))
+                .and_then(|b| {
+                    tree.children(b)
+                        .into_iter()
+                        .find(|&c| tree.node(c).flags & FLAG_TRIVIA == 0)
+                })
                 .unwrap_or(node)
         } else {
             node
@@ -124,6 +153,8 @@ pub(crate) fn project_program_with_caps(
         if kind == k.fn_item
             || kind == k.type_item.unwrap_or(u32::MAX)
             || kind == k.enum_item.unwrap_or(u32::MAX)
+            || Some(kind) == const_item_kind
+            || Some(kind) == var_item_kind
         {
             if saw_script {
                 let span = first_leaf_span(&eng.cx, node);
@@ -141,6 +172,10 @@ pub(crate) fn project_program_with_caps(
                 items.push(Item::Fn(eng.run_fn_item(node, None, Receiver::Free)));
             } else if kind == k.enum_item.unwrap_or(u32::MAX) {
                 items.push(Item::Enum(eng.run_enum_item(node)));
+            } else if Some(kind) == const_item_kind || Some(kind) == var_item_kind {
+                // PLAN-960（T-02）：packages-modules 面的 const/var 模块项
+                // （kind 精确匹配；use/pub-use 项仍走元数据跳过路径）。
+                items.push(eng.run_global_item(node, Some(kind) == var_item_kind));
             } else {
                 items.push(Item::Type(eng.run_type_item(node)));
             }
@@ -2646,6 +2681,14 @@ enum Frame {
         ann: Option<TypeAnn>,
         mutable: bool,
     },
+    /// PLAN-960（T-02）：module-level `const`/`var` 项——初始化表达式入场
+    /// 后包装为 Item::Const/Store。
+    GlobalItemFinish {
+        node: u32,
+        name: Ident,
+        ann: TypeAnn,
+        mutable: bool,
+    },
     AssignFinish {
         name: Ident,
         path: Vec<Ident>,
@@ -2909,6 +2952,9 @@ struct Engine<'a> {
     cx: Cx<'a>,
     stack: Vec<Frame>,
     vals: Vec<Val>,
+    /// PLAN-960（T-02）：`run_global_item` 的完成槽（const/var 项一次一 个，
+    /// 调用方立即取走；不与 vals 的 Stmt/Fn 流混用）。
+    global_item: Option<Item>,
 }
 
 fn first_leaf_span(cx: &Cx, node: u32) -> Span {
@@ -2965,6 +3011,7 @@ impl<'a> Engine<'a> {
             },
             stack: Vec::new(),
             vals: Vec::new(),
+            global_item: None,
         }
     }
 
@@ -3418,6 +3465,28 @@ impl<'a> Engine<'a> {
                 result: Box::new(result),
             },
         }
+    }
+
+    /// PLAN-960（T-02）：module-level `const NAME: T = expr` / `var` 项投影
+    /// （packages-modules 面；名字/注解/初始化表达式同 let 语句机器）。
+    fn run_global_item(&mut self, node: u32, mutable: bool) -> Item {
+        let name_leaf = self.cx.field_child(node, "name").expect("global name");
+        let name = ident_of(&mut self.cx, name_leaf);
+        let ann = self
+            .cx
+            .field_child(node, "ty")
+            .map(|n| self.classify_word(n, false))
+            .expect("global items carry a required type annotation");
+        let value_n = self.cx.field_child(node, "value").expect("global value");
+        self.stack.push(Frame::GlobalItemFinish {
+            node,
+            name,
+            ann,
+            mutable,
+        });
+        self.stack.push(Frame::ExprEnter(value_n));
+        self.drive();
+        self.global_item.take().expect("global item finished")
     }
 
     fn run_type_item(&mut self, node: u32) -> TypeItem {
@@ -5179,6 +5248,34 @@ impl<'a> Engine<'a> {
                     value,
                     span,
                 }));
+            }
+            Frame::GlobalItemFinish {
+                node,
+                name,
+                ann,
+                mutable,
+            } => {
+                let value = self.pop_e();
+                let span = Span {
+                    start: self.cx.span_of(node).start,
+                    end: value.span.end,
+                };
+                let item = if mutable {
+                    Item::Store(StoreItem {
+                        name,
+                        ty: ann,
+                        value,
+                        span,
+                    })
+                } else {
+                    Item::Const(ConstItem {
+                        name,
+                        ty: ann,
+                        value,
+                        span,
+                    })
+                };
+                self.global_item = Some(item);
             }
             Frame::AssignFinish { name, path } => {
                 let value = self.pop_e();

@@ -230,6 +230,13 @@ pub(crate) fn module_grammar() -> Result<&'static CachedGrammar, String> {
     capability_grammar(&MODULES_GRAMMAR, "scalar-modules")
 }
 
+static PACKAGES_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
+/// PLAN-960（T-02）：完整模块包面裁剪编译并缓存（进程内一次）。旧
+/// `scalar-modules` 裁剪与 GrammarId 不受影响。
+pub fn packages_grammar() -> Result<&'static CachedGrammar, String> {
+    capability_grammar(&PACKAGES_GRAMMAR, "packages-modules")
+}
+
 fn capability_grammar(
     cell: &'static OnceLock<OnceLock<CachedGrammar>>,
     slug: &str,
@@ -265,6 +272,40 @@ pub(crate) fn parse_module_fragment(
     budget: FrontBudget,
 ) -> Result<crate::source::modules::ModuleSyntax, Vec<Diagnostic>> {
     parse_module_syntax_range(src, budget, false)
+}
+
+/// PLAN-960（T-02）：packages-module 前门（与 950 模块前门同一严格投影；
+/// items 以 TextRecord 域投影，模块元数据从 CST 字段读取）。
+pub(crate) fn parse_packages_front(
+    src: &str,
+    budget: FrontBudget,
+) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
+    use crate::atom_text::{Span, Stage};
+    let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
+    let zero = Span { start: 0, end: 0 };
+    let cached = packages_grammar().map_err(|e| err("source.infra", e, zero))?;
+    crate::source::parser::note_tokenize(Span {
+        start: 0,
+        end: src.len(),
+    });
+    crate::body_work::record_whole(crate::body_work::Stage::WholeParse);
+    let pages = std::rc::Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&pages, src);
+    let parsed = parse_snapshot(
+        &cached.program,
+        &cached.scanner,
+        &snap,
+        &Budget::from(budget),
+    )
+    .map_err(|e| match e {
+        ace_syntax_runtime::program::RtError::ResourceExhausted { what, limit } => err(
+            "source.resource",
+            format!("resource exhausted: {what} (limit {limit})"),
+            zero,
+        ),
+        other => err("source.infra", format!("parse: {other}"), zero),
+    })?;
+    project_packages_front(src, vec![parsed.tree], Some(parsed.tokens))
 }
 fn parse_module_syntax_range(
     src: &str,
@@ -447,6 +488,246 @@ pub(crate) fn project_module_front(
                     })
                     .collect();
                 SyntaxPiece {
+                    source: std::rc::Rc::from(src),
+                    tree: Some(tree),
+                    tokens: tokens.clone(),
+                    placements,
+                    stored_cst: None,
+                }
+            })
+            .collect(),
+        declarations,
+    })
+}
+
+/// PLAN-960（T-02）：packages-module 元数据投影——items 以 TextRecord 域
+/// 走统一投影器（type/fn/const/var 项 + str/ctor/方法表达式），导入/重导出/
+/// 可见性事实从 CST 字段读取，绝不靠剥 token 或拼源重建。
+pub(crate) fn project_packages_front(
+    src: &str,
+    trees: Vec<CstTree>,
+    tokens: Option<Vec<ace_syntax_runtime::lexer::Token>>,
+) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
+    use crate::atom_text::{Span, Stage};
+    use crate::source::packages::{PackageImport, PackageSyntax};
+    let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
+    let cached = packages_grammar().map_err(|e| err("source.infra", e, Span { start: 0, end: 0 }))?;
+    let pages = std::rc::Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&pages, src);
+    let rule = |name: &str| {
+        cached
+            .program
+            .rules
+            .iter()
+            .position(|r| r.name == name)
+            .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+    };
+    let field = |tree: &CstTree, n, name: &str| {
+        cached
+            .program
+            .field_id(name)
+            .and_then(|f| tree.field_child(n, f))
+    };
+    let text = |tree: &CstTree, n| {
+        let (a, b) = tree.abs_range(n);
+        snap.read_str(a, b).expect("CST source range")
+    };
+    let use_item_p = rule("use-item-p");
+    let use_tail_p = rule("use-tail-p");
+    let use_alias = rule("use-alias");
+    let public_item = rule("public-item");
+    let const_item = rule("const-item");
+    let var_item = rule("var-item");
+    // public-item 的 `body` 字段指向 public-body 分派节点；实体是其首个非 trivia 孩子。
+    let public_body = |tree: &CstTree, node: u32| -> Option<u32> {
+        field(tree, node, "body").and_then(|b| {
+            tree.children(b)
+                .into_iter()
+                .find(|&c| tree.node(c).flags & ace_syntax_runtime::cst::FLAG_TRIVIA == 0)
+        })
+    };
+    // 收集 use-path 节点内按源序排列的全部 ident 叶（head + 各 seg）。
+    let path_segments = |tree: &CstTree, path_node: u32| -> Vec<String> {
+        let mut idents: Vec<(u64, String)> = Vec::new();
+        let mut stack = vec![path_node];
+        while let Some(n) = stack.pop() {
+            if tree.kind(n) == cached.kinds.tok_ident {
+                let (a, _) = tree.abs_range(n);
+                idents.push((a, text(tree, n)));
+            }
+            for c in tree.children(n).into_iter().rev() {
+                stack.push(c);
+            }
+        }
+        idents.sort_by(|a, b| a.0.cmp(&b.0));
+        idents.into_iter().map(|(_, s)| s).collect()
+    };
+    let mut declarations = std::collections::BTreeMap::new();
+    let mut exports = std::collections::BTreeSet::new();
+    let mut type_exports = std::collections::BTreeSet::new();
+    let mut const_exports = std::collections::BTreeSet::new();
+    let mut imports = Vec::new();
+    let mut saw_decl = false;
+    let mut items = Vec::new();
+    let node_span = |tree: &CstTree, n| {
+        let (start, end) = tree.abs_range(n);
+        Span {
+            start: start as usize,
+            end: end as usize,
+        }
+    };
+    for tree in &trees {
+        let program = project::project_program(
+            &cached.program,
+            &cached.kinds,
+            tree,
+            &snap,
+            SourceProfile::TextRecord,
+        )?;
+        items.extend(program.items);
+        for d in &tree.decls {
+            let node = if tree.kind(d.node) == cached.kinds.item {
+                tree.children(d.node)
+                    .into_iter()
+                    .find(|&c| tree.node(c).flags & ace_syntax_runtime::cst::FLAG_TRIVIA == 0)
+                    .unwrap_or(d.node)
+            } else {
+                d.node
+            };
+            let kind = tree.kind(node);
+            // use 项（含 public-item 内的 use 尾）——路径/别名字段读取。
+            let use_node = if Some(kind) == use_item_p {
+                Some(node)
+            } else if Some(kind) == public_item {
+                public_body(tree, node).filter(|&b| Some(tree.kind(b)) == use_tail_p)
+            } else {
+                None
+            };
+            if let Some(use_node) = use_node {
+                let span = node_span(tree, node);
+                if saw_decl {
+                    return Err(err(
+                        "source.module-import-order",
+                        "imports must precede declarations".into(),
+                        span,
+                    ));
+                }
+                let path_node = field(tree, use_node, "path").expect("use path");
+                let path = path_segments(tree, path_node);
+                // `as x` 住在 use-alias 子节点内（非直接字段）。
+                let alias = tree
+                    .children(use_node)
+                    .into_iter()
+                    .find(|&c| Some(tree.kind(c)) == use_alias)
+                    .and_then(|a| field(tree, a, "alias"))
+                    .map(|a| text(tree, a));
+                let reexport = Some(kind) == public_item;
+                let bound = alias.clone().unwrap_or_else(|| path.last().cloned().unwrap_or_default());
+                if path.len() < 2 {
+                    return Err(err(
+                        "source.module-path",
+                        "module paths need at least `module.item`".into(),
+                        span,
+                    ));
+                }
+                if imports.iter().any(|i: &PackageImport| i.bound_name() == bound) {
+                    return Err(err(
+                        "source.module-duplicate-import",
+                        format!("duplicate imported name `{bound}`"),
+                        span,
+                    ));
+                }
+                if reexport {
+                    // 重导出别名进入本模块公共面（下游 `use mod.alias` 可见）。
+                    exports.insert(bound.clone());
+                }
+                imports.push(PackageImport {
+                    path,
+                    alias,
+                    reexport,
+                    span,
+                });
+            } else if Some(kind) == public_item {
+                saw_decl = true;
+                let body = public_body(tree, node).expect("public body");
+                let bkind = tree.kind(body);
+                let (name, name_field) = if bkind == cached.kinds.fn_item {
+                    let tail = tree
+                        .children(body)
+                        .into_iter()
+                        .find(|&n| tree.kind(n) == cached.kinds.fn_tail)
+                        .expect("fn tail");
+                    (
+                        text(tree, field(tree, tail, "name").expect("fn name")),
+                        None,
+                    )
+                } else if bkind == cached.kinds.type_item.unwrap_or(u32::MAX) {
+                    (
+                        text(tree, field(tree, body, "name").expect("type name")),
+                        Some("type"),
+                    )
+                } else {
+                    (
+                        text(tree, field(tree, body, "name").expect("const name")),
+                        Some("const"),
+                    )
+                };
+                declarations.insert(name.clone(), node_span(tree, node));
+                exports.insert(name.clone());
+                match name_field {
+                    Some("type") => {
+                        type_exports.insert(name);
+                    }
+                    Some("const") => {
+                        const_exports.insert(name);
+                    }
+                    _ => {}
+                }
+            } else if Some(kind) == const_item || Some(kind) == var_item {
+                saw_decl = true;
+                let name = text(tree, field(tree, node, "name").expect("global name"));
+                declarations.insert(name, node_span(tree, node));
+            } else if kind == cached.kinds.fn_item {
+                saw_decl = true;
+                let tail = tree
+                    .children(node)
+                    .into_iter()
+                    .find(|&n| tree.kind(n) == cached.kinds.fn_tail)
+                    .expect("fn tail");
+                let name = text(tree, field(tree, tail, "name").expect("fn name"));
+                declarations.insert(name, node_span(tree, node));
+            } else if kind == cached.kinds.type_item.unwrap_or(u32::MAX) {
+                saw_decl = true;
+                let name = text(tree, field(tree, node, "name").expect("type name"));
+                declarations.insert(name, node_span(tree, node));
+            }
+        }
+    }
+    Ok(PackageSyntax {
+        program: crate::source::ast::Program { items },
+        exports,
+        type_exports,
+        const_exports,
+        imports,
+        grammar_id: format!("{}", cached.program.identity.grammar_id.0),
+        source_hash: crate::runtime_contract::sha256_hex(src.as_bytes()),
+        pieces: trees
+            .into_iter()
+            .map(|tree| {
+                let placements = tree
+                    .decls
+                    .iter()
+                    .enumerate()
+                    .map(|(index, d)| {
+                        let span = node_span(&tree, d.node);
+                        crate::source::modules::DeclarationPlacement {
+                            index,
+                            mint: span,
+                            current: span,
+                        }
+                    })
+                    .collect();
+                crate::source::modules::SyntaxPiece {
                     source: std::rc::Rc::from(src),
                     tree: Some(tree),
                     tokens: tokens.clone(),

@@ -36,6 +36,12 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         // plain scalar 裁剪 → `<T>`/裸 ident 原语法拒绝面不变。
         profile(name: "scalar-instances") { }
         profile(name: "scalar-modules") { }
+        // PLAN-960（T-02）：完整模块包面 —— scalar-modules 全表面（pub fn/use/
+        // 限定引用）+ text/record 表面（str/Str、type/字段/方法/ctor/路径）+
+        // 模块级 const/var 项 + use 别名/重导出（as/pub use）+ 多段限定路径。
+        // 仅当调用方携 `ac.source.modules.packages/v1` 能力时由模块前门以本
+        // profile 裁剪编译；旧 scalar-modules 裁剪与 `scalar/v1` 面逐字节不变。
+        profile(name: "packages-modules") { }
         // PLAN-936（T-04）：标量有限 CT 面 —— scalar-instances, scalar-ct 全表面 +
         // 编译期表达式原子 `#{ expr }`。仅当调用方携
         // `ac.source.cte.scalar/v1` 能力时由统一前门以本 profile 裁剪编译
@@ -106,7 +112,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         r-try { literal: "try" }
         r-union { literal: "union" }
         r-use { literal: "use" }
-        r-pub(profiles: [scalar-modules]) { literal: "pub" }
+        r-pub(profiles: [scalar-modules, packages-modules]) { literal: "pub" }
         r-view { literal: "view" }
         r-with { literal: "with" }
         r-yield { literal: "yield" }
@@ -168,7 +174,14 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             // PLAN-936（T-04）：scalar-ct 面的 type-item 仅字段形（member 规则中方法两 alt 仍门控在 record 族；元信息源声明，§5.2）。
             alt(profiles: [record, text-record, collections, scalar-ct]) { type-item() {} }
             alt(profiles: [scalar-modules]) { use-item() {} }
-            alt(profiles: [record, text-record, collections]) { type-item() {} }
+            // PLAN-960（T-02）：完整模块包面 items —— 单一 public-item 前缀
+            //（fn/type/const/use 各自 token 开头，避免 recover 规则与前缀
+            // 备选相互作用）；const/var 模块项与别名导入。
+            alt(profiles: [packages-modules]) { public-item() {} }
+            alt(profiles: [packages-modules]) { const-item() {} }
+            alt(profiles: [packages-modules]) { var-item() {} }
+            alt(profiles: [packages-modules]) { use-item-p() {} }
+            alt(profiles: [record, text-record, collections, packages-modules]) { type-item() {} }
             alt(profiles: [collections]) { enum-item() {} }
             alt(profiles: [entry-unit, host-console, closures]) { script-item() {} }
         }
@@ -192,13 +205,69 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             dot(same-line: true)
             ident(field: "member")
         }
+        // PLAN-960（T-02）：模块级常量 `const NAME: T = expr`（pub 形经
+        // public-const 前缀）；模块 store `var NAME: T = expr`（无私有外可见形）。
+        const-item(profiles: [packages-modules]) {
+            r-const(field: "kw") {}
+            ident(field: "name")
+            ann-ty(field: "ty")
+            assign() {}
+            expr(field: "value")
+        }
+        var-item(profiles: [packages-modules]) {
+            var(field: "kw") {}
+            ident(field: "name")
+            ann-ty(field: "ty")
+            assign() {}
+            expr(field: "value")
+        }
+        // PLAN-960（T-02）：公共项统一前缀 `pub fn/type/const/use`——
+        // public-body 各备选首 token 互异（fn/type/const/use），recover
+        // 规则在自身关键字命中前干净失败，不产生前缀误恢复。
+        public-item(profiles: [packages-modules]) {
+            r-pub(field: "pub") {}
+            public-body(field: "body")
+        }
+        public-body(profiles: [packages-modules]) {
+            alt { fn-item(field: "function") }
+            alt { type-item(field: "type") }
+            alt { const-item(field: "const") }
+            alt { use-tail-p(field: "use") }
+        }
+        // PLAN-960（T-02）：多段路径导入 `use a.b[.c] [as x]` 与重导出
+        // `pub use a.b[.c] [as x]`（2 段=本包 mod.item；3 段=pkg.mod.item）。
+        use-item-p(profiles: [packages-modules]) {
+            r-use(field: "kw") {}
+            use-path(field: "path")
+            opt { use-alias() {} }
+        }
+        use-tail-p(profiles: [packages-modules]) {
+            r-use(field: "kw") {}
+            use-path(field: "path")
+            opt { use-alias() {} }
+        }
+        use-alias(profiles: [packages-modules]) {
+            r-as(field: "kw") {}
+            ident(field: "alias")
+        }
+        use-path(profiles: [packages-modules]) {
+            ident(field: "head")
+            many { use-seg() {} }
+        }
+        use-seg(profiles: [packages-modules]) {
+            dot(same-line: true) {}
+            ident(field: "seg")
+        }
+        // PLAN-960（T-02）：限定引用 `mod.item()` / `pkg.mod.item()` 不设
+        // 独立原子——沿 record 面的 ident + 点后缀链投影为 MethodCall/Field
+        // 形状，由绑定层按局部/类型/模块可见集改写为跨模块调用/常量读取。
         // `fn` 之后的共享形状（自由函数与方法共用；receiver/owner 由投影
         // 从外层 type-item 上下文恢复）
         fn-tail {
             ident(field: "name")
             // PLAN-935（T-02）：有限类型参数 `<T>`（scalar-instances, scalar-ct 面步骤级
             // 门控——被裁 profile 该步缺席 = 形状与旧 fn-tail 逐字节等价）。
-            opt(profiles: [scalar-instances, scalar-ct]) { type-params(field: "type_params") }
+            opt(profiles: [scalar-instances, scalar-ct, packages-modules]) { type-params(field: "type_params") }
             lparen() {}
             params(repeat: "opt", field: "params")
             rparen() {}
@@ -210,19 +279,19 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         // PLAN-935（T-03）：约束/const 形状（`<T has Bound>` / `<const N>`
         // ——词法上都是 ident ident）语法可识别、投影具名拒——不能当普通
         // token 跳过。
-        type-params(profiles: [scalar-instances, scalar-ct]) {
+        type-params(profiles: [scalar-instances, scalar-ct, packages-modules]) {
             lt() {}
             type-param() {}
             many { type-param-tail() {} }
             gt() {}
         }
-        type-param-tail(profiles: [scalar-instances, scalar-ct]) { comma() {} type-param() {} }
-        type-param(profiles: [scalar-instances, scalar-ct]) {
+        type-param-tail(profiles: [scalar-instances, scalar-ct, packages-modules]) { comma() {} type-param() {} }
+        type-param(profiles: [scalar-instances, scalar-ct, packages-modules]) {
             alt { ident(field: "name") opt(profiles: [scalar-instances, scalar-ct]) { type-param-constraint(field: "constraint") } }
             // `<const N>`（r-const 保留词形状；投影具名拒）
             alt { r-const(field: "const_kw") {} ident(field: "name") }
         }
-        type-param-constraint(profiles: [scalar-instances, scalar-ct]) { r-has(field: "kw") {} ident(field: "bound") }
+        type-param-constraint(profiles: [scalar-instances, scalar-ct, packages-modules]) { r-has(field: "kw") {} ident(field: "bound") }
         params { param() {} many { param-tail() {} } }
         param-tail { comma() {} param() {} }
         param {
@@ -242,7 +311,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             alt { bool(field: "word") }
             alt(profiles: [collections, closures]) { generic-ty(field: "generic") }
             alt(profiles: [collections, closures]) { optional-ty(field: "optional") }
-            alt(profiles: [text, text-record, host-console, record, entry-unit, collections, closures, scalar-instances, scalar-ct]) { ident(field: "word") }
+            alt(profiles: [text, text-record, host-console, record, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules]) { ident(field: "word") }
             alt(profiles: [closures]) { fn-type(field: "fn") }
         }
         // 参数/字段/let 注解类型（入口 void 由 entry 面的拼写分类处理）
@@ -252,7 +321,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             alt { bool(field: "word") }
             alt(profiles: [collections, closures]) { generic-ty(field: "generic") }
             alt(profiles: [collections, closures]) { optional-ty(field: "optional") }
-            alt(profiles: [text, text-record, host-console, record, entry-unit, collections, closures, scalar-instances, scalar-ct]) { ident(field: "word") }
+            alt(profiles: [text, text-record, host-console, record, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules]) { ident(field: "word") }
             alt(profiles: [closures]) { fn-type(field: "fn") }
         }
         // PLAN-928（T-03）：参数化名义类型 `List<T>` / `Result<T, E>`（类型位；
@@ -312,7 +381,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             alt { ident(field: "word") }
             alt { fn-type(field: "fn") }
         }
-        type-item(recover: true, profiles: [record, text-record, collections, scalar-ct]) {
+        type-item(recover: true, profiles: [record, text-record, collections, scalar-ct, packages-modules]) {
             type-kw(field: "kw")
             ident(field: "name")
             lbrace() {}
@@ -334,8 +403,8 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         }
         member {
             alt { field-member() {} }
-            alt(profiles: [record, text-record, collections]) { static-method() {} }
-            alt(profiles: [record, text-record, collections]) { view-method() {} }
+            alt(profiles: [record, text-record, collections, packages-modules]) { static-method() {} }
+            alt(profiles: [record, text-record, collections, packages-modules]) { view-method() {} }
         }
         // 字段：`name` `:`? 类型（旧 parser 的可选冒号）
         field-member {
@@ -365,11 +434,11 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             alt { let-stmt() {} }
             alt { var-stmt() {} }
             alt { assign-stmt() {} }
-            alt(profiles: [record, text-record, collections, closures]) { path-assign-stmt() {} }
+            alt(profiles: [record, text-record, collections, closures, packages-modules]) { path-assign-stmt() {} }
             alt { return-stmt() {} }
             alt { if-stmt() {} }
             alt(profiles: [core]) { while-stmt() {} }
-            alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, scalar-modules]) { for-cond-stmt() {} }
+            alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, scalar-modules, packages-modules]) { for-cond-stmt() {} }
             alt(profiles: [collections, closures]) { for-in-stmt() {} }
             alt(profiles: [collections, closures]) { is-stmt() {} }
             alt { loop-stmt() {} }
@@ -423,7 +492,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             block(field: "body")
         }
         // 条件 for（wide 族；投影复用 While AST 形状）
-        for-cond-stmt(profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, scalar-modules]) {
+        for-cond-stmt(profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, scalar-modules, packages-modules]) {
             for(field: "kw")
             expr(field: "cond")
             block(field: "body")
@@ -471,7 +540,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         // ---- 表达式 ----
         expr {
             alt(profiles: [core]) { pratt(of: "core-ops") }
-            alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, collections, closures, scalar-modules]) { pratt(of: "wide-ops") }
+            alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, collections, closures, scalar-modules, packages-modules]) { pratt(of: "wide-ops") }
         }
         // 一元前缀（右结合）：字面量分支先行（`-5` 带符号折叠），`-x`/`!x`
         // 仅 wide 族；core 面经投影保真旧"仅字面量前一元减"拒绝
@@ -480,10 +549,12 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             // 一元 -/! 操作数锚定同行（旧 anchored(Unary)；负号换行的 e19 拒绝）。
             alt(profiles: [scalar, scalar-instances, scalar-ct, scalar-modules, text, record, text-record, entry-unit, host-console, collections, closures]) { minus() {} unary-expr(field: "operand", same-line: true) }
             alt(profiles: [scalar, scalar-instances, scalar-ct, scalar-modules, text, record, text-record, entry-unit, host-console, collections, closures]) { bang() {} unary-expr(field: "operand", same-line: true) }
+            alt(profiles: [scalar, scalar-instances, scalar-modules, packages-modules, text, record, text-record, entry-unit, host-console, collections, closures]) { minus() {} unary-expr(field: "operand", same-line: true) }
+            alt(profiles: [scalar, scalar-instances, scalar-modules, packages-modules, text, record, text-record, entry-unit, host-console, collections, closures]) { bang() {} unary-expr(field: "operand", same-line: true) }
             alt { postfix-expr() {} }
         }
         postfix-expr {
-            alt(profiles: [record, text-record, text, host-console, collections, closures]) { atom-expr() {} many { postfix-step() {} } }
+            alt(profiles: [record, text-record, text, host-console, collections, closures, packages-modules]) { atom-expr() {} many { postfix-step() {} } }
             alt { atom-expr() {} }
         }
         // 点后缀链。record 族：`.name`（字段；调用经 pratt call 收尾）、
@@ -491,16 +562,16 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         // = `.name` 步 + pratt call）。token 区分自然实现旧 record 臂对
         // `to` 的 carve-out。core/scalar/entry 无点后缀（`.` 在这些面由
         // 投影按旧 unsupported/语法错误合同映射）。
-        postfix-step(profiles: [record, text-record, text, host-console, collections, closures]) {
-            alt(profiles: [record, text-record, text, host-console, closures, collections]) { dot(same-line: true) ident(field: "member") }
-            alt(profiles: [record, text-record, collections]) { dot(same-line: true) mut(field: "member") }
-            alt(profiles: [text, text-record, host-console, collections, closures]) { dot(same-line: true) r-move(same-line: true, field: "member") }
-            alt(profiles: [text, text-record, host-console]) { dot(same-line: true) r-to(same-line: true) lparen(same-line: true) ident(field: "word") rparen() {} }
+        postfix-step(profiles: [record, text-record, text, host-console, collections, closures, packages-modules]) {
+            alt(profiles: [record, text-record, text, host-console, closures, collections, packages-modules]) { dot(same-line: true) ident(field: "member") }
+            alt(profiles: [record, text-record, collections, packages-modules]) { dot(same-line: true) mut(field: "member") }
+            alt(profiles: [text, text-record, host-console, collections, closures, packages-modules]) { dot(same-line: true) r-move(same-line: true, field: "member") }
+            alt(profiles: [text, text-record, host-console, packages-modules]) { dot(same-line: true) r-to(same-line: true) lparen(same-line: true) ident(field: "word") rparen() {} }
         }
         // 调用收尾后的点后缀续读（pratt `postfix:` 引用）：`f().len()`、
         // `xs.get(0).name.len()`——primary 的 postfix-expr 只覆盖 atom 起始链，
         // 调用节点之后再接 `.name` 步由本规则承载（运行时包装 KIND_POSTFIX）。
-        postfix-tail(profiles: [record, text-record, text, host-console, collections, closures]) {
+        postfix-tail(profiles: [record, text-record, text, host-console, collections, closures, packages-modules]) {
             many { postfix-step() {} }
         }
         // PLAN-936（T-04）：编译期表达式 `#{ expr }` —— 单表达式 CT 需求
@@ -515,7 +586,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             // HashExpr 原子先于其余原子形状（`#` 不与其余形状共享前缀）。
             alt(profiles: [scalar-ct]) { hash-expr() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
-            alt(profiles: [collections, closures, record, text-record]) { ctor-expr() {} }
+            alt(profiles: [collections, closures, record, text-record, packages-modules]) { ctor-expr() {} }
             // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
             // 条件镜像旧 generic_scan_commits——平衡 `<...>` 后随 `.`；普通
             // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
@@ -524,7 +595,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
             alt(profiles: [closures]) { lambda-expr() {} }
-            alt(profiles: [record, text-record, collections]) { leading-dot() {} }
+            alt(profiles: [record, text-record, collections, packages-modules]) { leading-dot() {} }
             alt { str-lit(field: "lit") }
             alt { char-lit(field: "lit") }
             alt { affix-num(field: "lit") }
@@ -564,7 +635,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             ann-ty(field: "ty")
         }
         // 隐式 self：`.name` / `.name(args)`（record 族）
-        leading-dot(profiles: [record, text-record, collections]) {
+        leading-dot(profiles: [record, text-record, collections, packages-modules]) {
             dot() {}
             ident(field: "member")
         }
@@ -573,7 +644,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         // `{` 是 cut 步：消费后 alt 失败不回退到后续备选——复刻旧 parser
         // 在 `ident {` 的无回溯提交（如 `if p { return 0 }` 拒绝在 return，
         // 而裸 ident（`total + 1`）在 `{` 不匹配时照常回退为普通名字）。
-        ctor-expr(profiles: [record, text-record, collections, closures]) {
+        ctor-expr(profiles: [record, text-record, collections, closures, packages-modules]) {
             ident(field: "ty")
             lbrace(same-line: true, cut: true) {}
             opt { ctor-fields() {} }
@@ -623,7 +694,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             nl-free: true
         }
     }
-    pratt(wide-ops, profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, collections, closures, scalar-modules]) {
+    pratt(wide-ops, profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, collections, closures, scalar-modules, packages-modules]) {
         primary: "unary-expr"
         op(binding: 1, assoc: "left") { of: "||" }
         op(binding: 2, assoc: "left") { of: "&&" }
