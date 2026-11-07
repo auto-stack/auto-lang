@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 23
+current_step: 24
 total_steps: 32
 ---
 
@@ -498,7 +498,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-03 | work | T-02，新registry私有面 | 新ace-m1-expanded registry逐source/target/机制/原格位与义务/组/owner/条件映射，完整覆盖而不改旧批准；AC-01，V-01 | [ ] 第85轮宇宙闭包增量（7938954802）：registry升/2 universe-closed——1006登记键（31份pinned合同活派生）+14条awaiting-D具名行（938/939各7条work AC，owner/promise/direction/close，内容sha钉定）；治理241/241（新增漏一项即拒/篡改/外来owner/外来域反控）、组合重读verdicts 716P8F282U逐键零漂移且required_universe_closed=true；逐义务深元数据仍由合同承载（活派生入口），如独立review要求registry物化再扩 |
 | T-04 | work | T-03，必要H短窗 | 新只读ace_m1_arch_acceptance.py与域reader适配/严格身份/路径/版本/原始终态/旧认证差异；AC-02/09/10，V-02/13/14 | [ ] 第86轮reducer增量（7cc50eeb29）：§5.2八域门纯谓词`reduce_acceptance`（ace.m1.acceptance-reducer/1）上线并接线组合报告——accounting/evidence/system四类输入永不单独推导can_claim、未组合测量具名missing_input blocker、complete_expanded_registry门改随宇宙闭合；治理243/243（+2 reducer控制：隔离全绿可触发谓词/未知缺失错型输入全拒）；组合重读verdicts守恒零漂移、8门仅expanded_registry_valid真、can_claim=False带14具名blocker；预算合约pin刷新（arch_acceptance字节变化）。域reader扩展（严格身份/路径/版本继续）与T05..T11测量节组合仍待 |
 | T-05 | work | T-03/04，Q4已有域稳定API | 正/负同源四端与独立oracle/reference/完整文件集认证、跨目标身份/daily分轴；AC-03/09，V-03/12/13 | [ ] |
-| T-06 | work | T-04/05，929/各实际required来源页稳定窗口 | 真实P/M/R/IO计数/依赖变化/多函数方法闭包、source恢复首操作/坏页/原子安装反控；AC-04/05，V-04..06 | [ ] 第87轮测量节首建（63f6827355）：ARCH-05八行2真PASS/6具名PARTIAL、blocker翻转、verdicts守恒；第89轮真实窗口#1（111f5b7cbb）：ace-semantics组206测clean实跑+F09 restore-identity四测经`incremental_restore_semantics`绑定入historical行真实证据（缺口收窄为CT/foreign页族与AV侧套件绑定）；V-04多函数依赖编辑集/坏页全族/原子安装迟到/逐策略P90窗口仍待真实新采集 |
+| T-06 | work | T-04/05，929/各实际required来源页稳定窗口 | 真实P/M/R/IO计数/依赖变化/多函数方法闭包、source恢复首操作/坏页/原子安装反控；AC-04/05，V-04..06 | [ ] 第87轮测量节首建（63f6827355）：ARCH-05八行2真PASS/6具名PARTIAL；第89轮窗口#1（111f5b7cbb）：F09套件入historical行；第90轮真实窗口#2（60ddc6f5a+0642dc076）：新`source_dependency_edits_941`六测（body/方法族/变长闭包/签名/layout/fresh≡增量+恢复身份）实测V-04全依赖编辑集P/IO，934/935坏页族与原子安装/迟到从已准入ace-semantics文档诚实映射，新`incremental_restore_comptime`绑定（ace-comptime 148测）入meta正负依赖族——ARCH-05行**6 PASS/2 PARTIAL/0 UNOBSERVED**（producer-and-io-zero、method-closure-body-edits、signature-layout-meta、atomic-publication-and-late翻PASS；all-required-pages缺口收窄为938/939 awaiting-D、historical缺口=AV侧套件绑定）；发现signature_of含坐标的保守事件缺陷（§10.17候选F-941-13，未授权未修）；T-07逐策略P90/T-10治理控制仍待 |
 | T-07 | work | T-06，原资源/HMR接口与正式窗口 | 原预算/cleanup/fault/lease/同PID safepoint/原样本P90/peak与新组合器资源帽；AC-06，V-07/08/16 | [ ] 第88轮测量节首建（6e49556a22）：`budget_time_measurements`节从已准入f94112全组门Job meter、原优化观察run meter与组合器自身保留帽组合——5行真实PASS（三组gate-meter/优化观察/composer-48MiB帽）+1行PARTIAL（16条预算策略声明runtime恒UNOBSERVED，逐策略P90/peak实测窗口具名缺），治理248/248、组合重读verdicts守恒且`missing_input:budget_time_measurements`blocker消失（余仅T-10治理控制）；cleanup/fault/lease/safepoint/P90实测仍待真实窗口 |
 | T-08 | work | T-04，934/935/936已审稳定接口；最终实际D | SQ/真实实例/CT执行/事实依赖及required恢复/四端实证适配；除具名§5.12/T24 F09授权外不修改其语义实现；AC-05/07，V-05/06/09/10 | [ ] |
 | T-09 | work | T-04，937/938/939已审稳定接口；最终实际D | ABI原三腿/全source-typed方向/资源/ctx/callback/独立C认证与source恢复；AC-05/08/09，V-05/06/11/12 | [ ] |
@@ -2138,6 +2138,18 @@ stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（V-04..06
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:89 | from:goal用户指定 | to:work | status:executing23/32 | outcome:progress（真实窗口#1交付：206测组实跑+F09入组合链） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:111f5b7cbb | next:work V-04/V-06/T-07余项/T-05真实窗口；D938/939未交齐，无待poll
 
+### 第90轮：V-04/V-06真实窗口#2——依赖编辑集新测试、坏页/原子行翻转与comptime绑定
+
+- 按用户列序开启V-04/V-06真实窗口。**V-04新测试**（提交**`60ddc6f5a`**）：新`core conformance::source_dependency_edits_941`（6测，仅用既有目录API，H面零生产写入）——callee body编辑caller真P0/IO0且Rc同一、方法族（make/consume链）逐编辑恰目标物化、变长闭包子体编辑漂移精确、签名编辑事件+摘要变化+依赖者零生产但重验必达（调用点字节不变不盲hit）、layout通知面dependents恰为名字引用集且零生产、fresh≡增量与恢复身份闭合。**现场发现具名缺陷**：`signature_of`摘要含铸造坐标——前置变长编辑漂移后，对不同函数的下一次body-only编辑触发保守`OwnerSignatureChanged`（过度失效面；不影响P/IO计量精度；core语法面修复未授权，候选F-941-13见§10.17，测试按无漂移序测语义面并具名记录边界）。
+- **V-06映射（零重采）**：934/935坏页族与原子安装/迟到的证据**已在第89轮已准入的ace-semantics门文档**（206事件全ok）——`instance_host_935`三测（单飞+commit原子安装；cancel/late(SetChanged)/集合漂移保旧集合；A→B→A历史键内容等值才复用）、`instances_restore_controls_935`坏页三测（篡改类型/损坏页/异owner拒）+restore首编辑、`restore_seam_929`facts恢复/坏页修复两测、catalog `t05_candidate_transaction_lifecycle`+`t09_stale/foreign_candidate`拒绝——按绑定域诚实映射入行。**comptime绑定**：新可选`incremental_restore_comptime`（组集/门绿/事件形状全拒；`_admit_companion_group`泛化semantics路径）+治理+1控制（合并池/错组/非绿/错sha/坏事件全拒）＝**249/249PASS**；meta正负依赖族以`meta_capability_941`九测（撤cap不能probe再授hit旧页、合法形状编辑、嵌套/callee需求）入signature-layout-meta行。
+- **合约刷新+五native重采**：五native合约source_pins漂移恰为`conformance.rs`注册行→data-only刷新（**`0642dc076`**，含registry expanded_contracts与模块CONTRACT_SHA，budget合约26 pins未漂移）；五native观察在刷新身份重采（`f94114-*-current`，测试二进制sha与第83轮恒等断言过、observations经原strict reader全PASS）；审计`f94114-v04v06/contract-refresh.json`=`9a5c23a9…a990`。
+- **干净门**：提交`60ddc6f5a`实跑三组**ace-source 407（401+6新）/ace-syntax 132/infra 249（248+1新）=788全绿**与**ace-comptime 148全绿**（`f94114-v04v06/full-groups`、`…/comptime`）。**组合重读**（`0642dc076`、禁Popen）：**verdicts 716P8F282U逐键零漂移**；ARCH-05=**6 PASS/2 PARTIAL/0 UNOBSERVED**（四行翻PASS，all-required-pages缺938/939 awaiting-D、historical缺AV侧套件绑定——两缺口均外部/后续）；budget行5P/1PARTIAL不变；`measurements_complete`仍false（两行如实PARTIAL）；13工具恒等、composer峰48.7MB<48MiB帽、`can_claim_expanded_m1=false`不变。报告`f94114-v04v06/composed/preview.stdout` SHA=`a1806104f67f152417837c8ad28e9325d63a6d3b7da717ae6c7db83f5ca27c54`，`closure-audit.json`=`06d2c692f560bbc994dff9e0e473309b87912ca29883fd2383777c5cbc6ef429`。
+- **边界**：T-07逐策略P90/peak窗口、T-05 Q4深化、T-10治理总门控制仍待（下轮入口）；D938 executing/D939 drafting未交齐不可消费。executing24/32。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（V-04依赖编辑集实测+V-06坏页/原子行翻转+comptime绑定；irs 6P/2PARTIAL/0U，verdicts零漂移） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:0642dc0764bd5b57c0b2b9c611a162b7cf51154d | task_ids:T-06证据增补 | evidence:f94114-v04v06/composed/closure-audit.json | next_responsible_role:work T-07逐策略P90/T-05 Q4深化/T-10治理控制；F-941-13候选待裁定 | 无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:90 | from:goal用户指定 | to:work | status:executing24/32 | outcome:progress（真实窗口#2交付：V-04全集+V-06四行闭，ARCH-05八行仅余两个外部缺口） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:0642dc0764bd5b57c0b2b9c611a162b7cf51154d | next:work T-07/T-05/T-10；F-941-13候选待用户裁定；D938/939未交齐，无待poll
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -2168,3 +2180,5 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:89 | from:goal用户�
 15. **F-941-11已核销（r8 T28/29，第80..81轮）**：用户具名授权的期望游走lambda头识别已实现（a65fc56c7），三面差分/合法形状/坏头形状/邻接反控永久例与原42+F10九例联合48/48、完整ace-source 398/ace-syntax 132/infra 238（768/768）PASS；第81轮V44身份闭包完成——13工具8变重核、五native合约刷新（7127d115c，data-only）+9观察strict PASS、Case466/cert292+daily292/优化14+拒绝6全部重采、组合716P8F282U**逐键零漂移**（F11效应仅限frontdoor_first_diag_941永久回归，无组合行依赖closures面错误源首诊断）。SD14候选交最终T14；F-941-12（§10.16）具名另立待裁定。
 
 16. **F-941-12已核销（r9 T30/31，第82..83轮）**：用户具名授权后，投影层产物签名修复（6a545cee7d，+15行：错误树中紧跟错误item的顶层script按恢复产物跳过投影与saw_script，run内粘滞；R04头拒绝/clean树不动）使A/H/I三形与片段面首诊断与手写oracle逐字节全等；baseline 1P2F→3/3、三phase联合51/51、完整组771/771；第83轮身份闭包（Z=c18dcd634d，8工具/五native/Case466/cert292+daily/优化14+拒绝6重采）组合716P8F282U逐键零漂移。触发器修正记录：任何完整嵌套块`}`均可（非lambda特有）；引擎恢复/grammar未改。SD15候选交最终T14；F07仍独立待批。
+
+17. **F-941-13候选（2026-11-07第90轮发现，未授权未修）**：`units.rs`的`signature_of`签名摘要以`Debug`格式包含类型`Ident.span`铸造坐标——任何前置变长编辑造成坐标漂移后，对**不同**函数的下一次body-only `edit_owner`会因旧/新载荷span不同触发保守`OwnerSignatureChanged`（过度失效事件面：依赖者被多余重验；不影响P/IO生产计量精度、不影响恰目标物化；单编辑/无漂移序列行为正确，t06既有断言不受扰）。生产修复（摘要规范化为span-free接口面）属core语法面写入，按§5.7 S/N/X行需用户具名授权，本包未动；`source_dependency_edits_941`方法族测试按无漂移编辑序测"body-only无签名事件"语义面并在注释中具名该边界。
