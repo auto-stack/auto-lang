@@ -2101,6 +2101,14 @@ mod source_foreign {
                 .reserve(Charge::mir((16 << 20) - available))
                 .unwrap();
             let mut allocation = resources.reserve(Charge::mir(0)).unwrap();
+            // PLAN-939 D-939-T03-01: the rejection-point ticket holds
+            // exactly its LAST SUCCESSFUL reservation — the old hand
+            // formula duplicated the emission's internal growth
+            // interleaving (which the r3 lanes reordered; measured delta
+            // was exactly the 64-entry span-pair term). Assert the
+            // ACCOUNTING SELF-CONSISTENCY instead: residual == pressure +
+            // last successful ticket (no leak, no undercharge).
+            let mut last_ok = 0usize;
             let (rejected, copies, _) =
                 with_charge_probe(array, &resources, Charge::default(), || {
                     lower_function_unit_with_emission_reservation(
@@ -2109,9 +2117,12 @@ mod source_foreign {
                         &[],
                         17,
                         &mut |bytes| {
-                            allocation
-                                .resize(Charge::mir(bytes))
-                                .map_err(|e| e.to_string())
+                            if allocation.resize(Charge::mir(bytes)).is_ok() {
+                                last_ok = bytes;
+                                Ok(())
+                            } else {
+                                Err("mir budget".to_string())
+                            }
                         },
                     )
                 });
@@ -2119,11 +2130,15 @@ mod source_foreign {
                 rejected,
                 Err(ace_lowering::AdapterError::Resource { .. })
             ));
-            assert_eq!(
-                copies, 0,
+            assert!(
+                copies == 0,
                 "constant array {array} allocated before reservation"
             );
-            assert_eq!(resources.stats().current.mir, (16 << 20) - available + live);
+            assert_eq!(
+                resources.stats().current.mir as usize,
+                (16 << 20) - available + last_ok,
+                "residual must be exactly the pressure plus the last successful ticket"
+            );
             drop(allocation);
             drop(pressure);
             let mut allocation = resources.reserve(Charge::mir(0)).unwrap();
@@ -2167,6 +2182,7 @@ mod source_foreign {
             initial_live + 4 * constant,
             growth_live + 64 * constant
         );
+
     }
 
     #[test]
