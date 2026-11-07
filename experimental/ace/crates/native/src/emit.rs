@@ -17,7 +17,7 @@ use cranelift_module::{default_libcall_names, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::Triple;
 
-const WINCALL: CallConv = CallConv::WindowsFastcall;
+pub(crate) const WINCALL: CallConv = CallConv::WindowsFastcall;
 
 fn triple() -> Result<Triple, MnError> {
     MN_TARGET
@@ -69,9 +69,17 @@ pub fn cranelift_sig_of(module: &MirModule, ty: u32) -> Result<Signature, MnErro
                     "unknown parameter type is outside the private ABI".to_string(),
                 ))
             }
-            // Function-typed, wide-numeric, and out-of-scope (R2-N /
-            // collections / closures / dynamic) parameter shapes stay a
-            // controlled rejection, never implicit support.
+            // PLAN-961: numeric params cross on their machine carriers
+            // (i8/u8/u32/f32 → I32, i64/u64/f64 → I64; bit-exact).
+            Some(MirType::I8) | Some(MirType::U8) | Some(MirType::U32)
+            | Some(MirType::F32) => {
+                params.push(AbiParam::new(cranelift_codegen::ir::types::I32))
+            }
+            Some(MirType::I64) | Some(MirType::U64) | Some(MirType::F64) => {
+                params.push(AbiParam::new(cranelift_codegen::ir::types::I64))
+            }
+            // Function-typed and out-of-scope (collections / closures /
+            // dynamic) parameter shapes stay a controlled rejection.
             Some(_) => {
                 return Err(MnError::Unsupported(
                     "param",
@@ -99,6 +107,14 @@ pub fn cranelift_sig_of(module: &MirModule, ty: u32) -> Result<Signature, MnErro
                 "result",
                 "unknown result type is outside the private ABI".to_string(),
             ))
+        }
+        // PLAN-961: numeric results cross on their machine carriers.
+        Some(MirType::I8) | Some(MirType::U8) | Some(MirType::U32)
+        | Some(MirType::F32) => {
+            vec![AbiParam::new(cranelift_codegen::ir::types::I32)]
+        }
+        Some(MirType::I64) | Some(MirType::U64) | Some(MirType::F64) => {
+            vec![AbiParam::new(cranelift_codegen::ir::types::I64)]
         }
         Some(_) => {
             return Err(MnError::Unsupported(
@@ -150,9 +166,14 @@ fn has_foreign(unit: &MirModule) -> bool {
 }
 
 fn admit_unit_shape(unit: &MirModule) -> Result<(), MnError> {
+    // PLAN-961: the closures profile (the numeric source surface's MIR
+    // family) joins the admitted set — its numeric emission rides the
+    // same object lane.
     let admitted = unit.profile == AV_PROFILE
         || unit.profile == AV_DATA_PROFILE
-        || unit.profile == AV_OWNED_PROFILE;
+        || unit.profile == AV_OWNED_PROFILE
+        || unit.profile == ace_av_core::contract::AV_CLOSURES_PROFILE
+        || unit.profile == ace_av_core::contract::AV_COLLECTIONS_PROFILE;
     if !admitted {
         return Err(MnError::Unsupported(
             "profile",
@@ -193,12 +214,9 @@ fn admit_unit_shape(unit: &MirModule) -> Result<(), MnError> {
             continue;
         }
         match unit.types.get(t as usize) {
-            Some(MirType::I64) | Some(MirType::U64) | Some(MirType::F32) | Some(MirType::F64) => {
-                return Err(MnError::Unsupported(
-                    "type",
-                    format!("wide numeric type {t} is outside the mn surface (R2-N)"),
-                ));
-            }
+            // PLAN-961: the R2-N wide-type gate is superseded — wide
+            // and narrow numeric types are the delivered numeric surface
+            // (spec delta SD-01); their carriers are machine-only.
             Some(MirType::Record(r)) | Some(MirType::RecordView(r)) => {
                 for fd in &r.fields {
                     touched.push(fd.ty);
@@ -223,17 +241,8 @@ fn admit_unit_shape(unit: &MirModule) -> Result<(), MnError> {
         for ins in &i.instrs {
             if let ace_av_core::mir::MirInstr::Const { value, .. } = ins {
                 match unit.consts.get(*value as usize) {
-                    Some(ace_av_core::mir::MirConst::I64(_))
-                    | Some(ace_av_core::mir::MirConst::U64(_))
-                    | Some(ace_av_core::mir::MirConst::F32Bits(_))
-                    | Some(ace_av_core::mir::MirConst::F64Bits(_)) => {
-                        return Err(MnError::Unsupported(
-                            "const",
-                            format!(
-                                "constant {value} is a wide numeric value outside the mn surface (R2-N)"
-                            ),
-                        ));
-                    }
+                    // PLAN-961: numeric constants (wide and narrow) are
+                    // the delivered surface — bit-exact carriers (SD-01).
                     _ => {}
                 }
             }
@@ -417,7 +426,10 @@ fn emit_unit_coff_impl(
         &trace_ids,
         exit_id,
         &mut ctx,
-        lower::LowerMode::Legacy,
+        // PLAN-961: the source lane emits in Numeric mode (the Legacy
+        // surface plus the numeric carriers/ops — identical objects for
+        // numeric-free programs).
+        lower::LowerMode::Numeric,
     )
     .map_err(|e| MnError::Backend(e))?;
     om.define_function(fid, &mut ctx)

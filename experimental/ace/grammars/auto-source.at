@@ -674,7 +674,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             // HashExpr 原子先于其余原子形状（`#` 不与其余形状共享前缀）。
             alt(profiles: [scalar-ct]) { hash-expr() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
-            alt(profiles: [collections, closures, record, text-record, packages-modules, numeric]) { ctor-expr() {} }
+            alt(profiles: [collections, closures, record, text-record, packages-modules]) { ctor-expr() {} }
             // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
             // 条件镜像旧 generic_scan_commits——平衡 `<...>` 后随 `.`；普通
             // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。

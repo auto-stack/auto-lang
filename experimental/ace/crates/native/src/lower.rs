@@ -46,6 +46,12 @@ use std::collections::BTreeMap;
 pub enum LowerMode {
     Legacy,
     Typed,
+    /// PLAN-961: the numeric source surface — Legacy behavior plus the
+    /// numeric carriers (i8/u8/u32/f32 ride I32, i64/u64/f64 ride I64),
+    /// typed numeric ops (checked ints, IEEE floats, shift bounds) and the
+    /// conversion matrix. Objects for numeric-free programs are identical
+    /// to Legacy.
+    Numeric,
 }
 
 /// Emit the single function of `unit` into `ctx.func`, declaring callees
@@ -118,21 +124,15 @@ pub fn emit_function(
             Some(MirType::I32) | Some(MirType::Bool) | Some(MirType::Char) => {
                 SlotRep::Scalar(fb.declare_var(types::I32))
             }
-            // PLAN-961: narrow integer slots are admitted MIR types; their
-            // native representation ships with the numeric backend unit —
-            // until then a named rejection (never an i32 phantom).
-            Some(MirType::I8 | MirType::U8 | MirType::U32) => {
-                return Err(format!(
-                    "mn.unsupported.slot-type: PLAN-961 narrow numeric slot {} awaits the numeric backend unit",
-                    s.ty
-                ))
+            // PLAN-961: narrow integers ride the I32 carrier in Numeric
+            // mode (sign/zero-extended by construction — every op maintains
+            // the invariant); the frozen Legacy surface keeps its rejection.
+            Some(MirType::I8 | MirType::U8 | MirType::U32) if mode == LowerMode::Numeric => {
+                SlotRep::Wide(fb.declare_var(types::I32))
             }
-            // PLAN-961: the narrow integer slots are admitted MIR types;
-            // their native representation ships with the numeric backend
-            // unit — until then a named rejection (never an i32 phantom).
             Some(MirType::I8 | MirType::U8 | MirType::U32) => {
                 return Err(format!(
-                    "mn.unsupported.slot-type: PLAN-961 narrow numeric slot {} awaits the numeric backend unit",
+                    "narrow numeric slot type {} is outside the frozen legacy mn surface",
                     s.ty
                 ))
             }
@@ -177,11 +177,11 @@ pub fn emit_function(
             // distinct in admission/fingerprints; the carrier is machine
             // representation only.
             Some(MirType::I64) | Some(MirType::U64) | Some(MirType::F64)
-                if mode == LowerMode::Typed =>
+                if matches!(mode, LowerMode::Typed | LowerMode::Numeric) =>
             {
                 SlotRep::Wide(fb.declare_var(types::I64))
             }
-            Some(MirType::F32) if mode == LowerMode::Typed => {
+            Some(MirType::F32) if matches!(mode, LowerMode::Typed | LowerMode::Numeric) => {
                 SlotRep::Wide(fb.declare_var(types::I32))
             }
             Some(
@@ -231,6 +231,8 @@ pub fn emit_function(
         trace_refs: BTreeMap::new(),
         rt_refs: BTreeMap::new(),
         typed_refs: BTreeMap::new(),
+        fmod_refs: BTreeMap::new(),
+        slots: &f.slots,
         lit_ids: BTreeMap::new(),
         outlen_slot: None,
         trap_block: None,
@@ -518,6 +520,10 @@ struct FnLowerer<'a, 'b> {
     rt_refs: BTreeMap<&'static str, FuncRef>,
     /// Typed transport helper refs (typed units only).
     typed_refs: BTreeMap<&'static str, FuncRef>,
+    /// PLAN-961: CRT fmod/fmodf import refs (float remainder).
+    fmod_refs: BTreeMap<&'static str, FuncRef>,
+    /// PLAN-961: the lowered function's slot table (type lookup).
+    slots: &'a [MirSlot],
     /// Static literal data objects per Str const index.
     lit_ids: BTreeMap<u32, cranelift_module::DataId>,
     /// One shared 4-byte ABI-C out-length slot per function.
@@ -530,7 +536,10 @@ struct FnLowerer<'a, 'b> {
 
 impl<'a, 'b> FnLowerer<'a, 'b> {
     fn slot_ty(&self, slot: u32) -> u32 {
-        self.unit.funcs[0].slots[slot as usize].ty
+        // PLAN-961: read from the lowered function's stored slot table
+        // (single-function units; a missing slot is a backend shape error,
+        // never an index panic — synthetic negative fixtures reach here).
+        self.slots[slot as usize].ty
     }
 
     fn mir_type(&self, ty: u32) -> Result<&MirType, String> {
@@ -774,6 +783,625 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             }
         }
         Ok(())
+    }
+
+
+    // ---- PLAN-961 numeric emission (frozen T-01 §2/§3 matrix) -----------
+
+    /// Declare (once) the CRT float-modulo import for the width.
+    fn fmod_ref(&mut self, ty: NumTy) -> Result<FuncRef, String> {
+        let (name, ft): (&'static str, cranelift_codegen::ir::types::Type) = if ty == NumTy::F32 {
+            ("fmodf", types::F32)
+        } else {
+            ("fmod", types::F64)
+        };
+        if let Some(r) = self.fmod_refs.get(name) {
+            return Ok(*r);
+        }
+        let sig = {
+            let mut s = Signature::new(crate::emit::WINCALL);
+            s.params.push(AbiParam::new(ft));
+            s.params.push(AbiParam::new(ft));
+            s.returns.push(AbiParam::new(ft));
+            s
+        };
+        let fid = self
+            .om
+            .declare_function(name, Linkage::Import, &sig)
+            .map_err(|e| format!("declare {name}: {e}"))?;
+        let r = self.om.declare_func_in_func(fid, self.fb.func);
+        self.fmod_refs.insert(name, r);
+        Ok(r)
+    }
+
+    /// Numeric-mode carrier of a slot (mirrors v_wide but asserts Numeric).
+    fn v_num(&mut self, slot: u32) -> Result<cranelift_codegen::ir::Value, String> {
+        // The i32 surface (e.g. i32 bit ops) rides the plain scalar var —
+        // same machine representation as the I32 carrier.
+        match self.reps[slot as usize] {
+            SlotRep::Wide(v) => Ok(self.fb.use_var(v)),
+            SlotRep::Scalar(v) => Ok(self.fb.use_var(v)),
+            _ => Err(format!("slot {slot} is not a numeric carrier")),
+        }
+    }
+
+    fn def_num(&mut self, slot: u32, val: cranelift_codegen::ir::Value) -> Result<(), String> {
+        // An I32-target conversion (e.g. `.as(i32)`) lands on the plain
+        // scalar slot — the machine representation is the same variable.
+        match self.reps[slot as usize] {
+            SlotRep::Wide(v) => {
+                self.fb.def_var(v, val);
+                Ok(())
+            }
+            SlotRep::Scalar(v) if self.fb.func.dfg.value_type(val) == types::I32 => {
+                self.fb.def_var(v, val);
+                Ok(())
+            }
+            _ => Err(format!("slot {slot} is not a numeric carrier")),
+        }
+    }
+
+    /// (min, max) inclusive range of a signed/unsigned integer NumTy as
+    /// I64 constants (the math domain).
+    fn int_range(&mut self, ty: NumTy) -> (cranelift_codegen::ir::Value, cranelift_codegen::ir::Value) {
+        let (lo, hi): (i64, u64) = match ty {
+            NumTy::I8 => (i8::MIN as i64, i8::MAX as u64),
+            NumTy::I32 => (i32::MIN as i64, i32::MAX as u64),
+            NumTy::U8 => (0, u8::MAX as u64),
+            NumTy::U32 => (0, u32::MAX as u64),
+            NumTy::I64 => (i64::MIN, i64::MAX as u64),
+            NumTy::U64 => (0, u64::MAX),
+            _ => unreachable!("int_range on float"),
+        };
+        (self.fb.ins().iconst(types::I64, lo), self.fb.ins().iconst(types::I64, hi as i64))
+    }
+
+    /// Widen a carrier value into the I64 math domain (sign/zero-extended
+    /// per the type's signedness).
+    fn num_to_i64(&mut self, v: cranelift_codegen::ir::Value, ty: NumTy) -> cranelift_codegen::ir::Value {
+        // An I64 carrier is already the math domain (a same-type extend is
+        // invalid CLIF); I32 carriers widen by signedness (the carrier
+        // holds the sign/zero-extended pattern by construction).
+        if self.fb.func.dfg.value_type(v) == types::I64 {
+            return v;
+        }
+        if matches!(ty, NumTy::U8 | NumTy::U32) {
+            self.fb.ins().uextend(types::I64, v)
+        } else {
+            self.fb.ins().sextend(types::I64, v)
+        }
+    }
+
+    /// Reduce an in-range I64 value back onto the type's carrier,
+    /// restoring the sign/zero-extended invariant.
+    fn i64_to_carrier(
+        &mut self,
+        v64: cranelift_codegen::ir::Value,
+        ty: NumTy,
+    ) -> cranelift_codegen::ir::Value {
+        match ty {
+            NumTy::I64 | NumTy::U64 => v64,
+            NumTy::I8 | NumTy::I32 | NumTy::U8 | NumTy::U32 | NumTy::F32 | NumTy::F64 => {
+                self.fb.ins().ireduce(types::I32, v64)
+            }
+        }
+    }
+
+    /// Trap when `cond`; exit-70 style (the Legacy trap block).
+    fn num_trap_on(&mut self, cond: cranelift_codegen::ir::Value) {
+        self.branch_to_trap_on(cond, 0);
+    }
+
+    /// Range-check an I64-domain value against the int type's bounds and
+    /// reduce to the carrier (checked narrowing / arithmetic result).
+    fn checked_reduce(
+        &mut self,
+        v64: cranelift_codegen::ir::Value,
+        ty: NumTy,
+    ) -> cranelift_codegen::ir::Value {
+        let (lo, hi) = self.int_range(ty);
+        let unsigned = matches!(ty, NumTy::U8 | NumTy::U32 | NumTy::U64);
+        let below = if unsigned {
+            // Unsigned domains: below-zero is impossible in u64; the low
+            // bound is 0 — compare unsigned against 0 not needed.
+            let zero = self.fb.ins().iconst(types::I64, 0);
+            self.icmp_bool(IntCC::UnsignedLessThan, v64, zero)
+        } else {
+            self.icmp_bool(IntCC::SignedLessThan, v64, lo)
+        };
+        let above = if unsigned {
+            self.icmp_bool(IntCC::UnsignedGreaterThan, v64, hi)
+        } else {
+            self.icmp_bool(IntCC::SignedGreaterThan, v64, hi)
+        };
+        let bad = self.fb.ins().bor(below, above);
+        self.num_trap_on(bad);
+        self.i64_to_carrier(v64, ty)
+    }
+
+    /// Float lanes: bitcast an I32/I64 carrier to F32/F64.
+    fn num_f(&mut self, v: cranelift_codegen::ir::Value, ty: NumTy) -> cranelift_codegen::ir::Value {
+        match ty {
+            NumTy::F32 => self.fb.ins().bitcast(types::F32, MemFlags::new(), v),
+            NumTy::F64 => self.fb.ins().bitcast(types::F64, MemFlags::new(), v),
+            _ => unreachable!("num_f on int"),
+        }
+    }
+
+    /// Bitcast an F32/F64 value back onto its carrier.
+    fn f_to_carrier(&mut self, f: cranelift_codegen::ir::Value) -> cranelift_codegen::ir::Value {
+        if self.fb.func.dfg.value_type(f) == types::F32 {
+            self.fb.ins().bitcast(types::I32, MemFlags::new(), f)
+        } else {
+            self.fb.ins().bitcast(types::I64, MemFlags::new(), f)
+        }
+    }
+
+    /// Emission of one typed numeric binary op (operands on carriers).
+    fn emit_num_bin(
+        &mut self,
+        op: NumOp,
+        ty: NumTy,
+        dst: u32,
+        lhs: u32,
+        rhs: u32,
+    ) -> Result<(), String> {
+        use NumOp::*;
+        let l = self.v_num(lhs)?;
+        let r = self.v_num(rhs)?;
+        // Comparison result goes to the Bool scalar slot.
+        let is_cmp = matches!(op, Lt | Le | Gt | Ge | Eq | Ne);
+        if ty.is_float() {
+            let lf = self.num_f(l, ty);
+            let rf = self.num_f(r, ty);
+            use cranelift_codegen::ir::condcodes::FloatCC::*;
+            if is_cmp {
+                let cc = match op {
+                    Lt => LessThan,
+                    Le => LessThanOrEqual,
+                    Gt => GreaterThan,
+                    Ge => GreaterThanOrEqual,
+                    Eq => Equal,
+                    _ => NotEqual,
+                };
+                let b = self.fb.ins().fcmp(cc, lf, rf);
+                let bw = self.fb.ins().uextend(types::I32, b);
+                return self.def_scalar(dst, bw);
+            }
+            let val = match op {
+                Add => self.fb.ins().fadd(lf, rf),
+                Sub => self.fb.ins().fsub(lf, rf),
+                Mul => self.fb.ins().fmul(lf, rf),
+                Div => {
+                    // Frozen: divisor == ±0.0 traps DivByZero (legacy
+                    // engine parity; -0.0 == 0.0 under fcmp Equal).
+                    let z = match ty {
+                        NumTy::F32 => self.fb.ins().f32const(0.0),
+                        _ => self.fb.ins().f64const(0.0),
+                    };
+                    let bz = self.fb.ins().fcmp(Equal, rf, z);
+                    let bz_w = self.fb.ins().uextend(types::I32, bz);
+                    self.num_trap_on(bz_w);
+                    self.fb.ins().fdiv(lf, rf)
+                }
+                Rem => {
+                    // CLIF has no float remainder — call the CRT fmod
+                    // (identical fmod semantics to Rust's `%`).
+                    let fr = self.fmod_ref(ty)?;
+                    let call = self.fb.ins().call(fr, &[lf, rf]);
+                    self.fb.inst_results(call)[0]
+                }
+                _ => unreachable!("float bit op"),
+            };
+            let carrier = self.f_to_carrier(val);
+            return self.def_num(dst, carrier);
+        }
+        // Integer lanes: compute in the I64 domain, range-check, reduce.
+        let l64 = self.num_to_i64(l, ty);
+        let r64 = self.num_to_i64(r, ty);
+        if is_cmp {
+            use IntCC::*;
+            let cc = match op {
+                Lt => {
+                    if Self::unsigned_ty(ty) {
+                        UnsignedLessThan
+                    } else {
+                        SignedLessThan
+                    }
+                }
+                Le => {
+                    if Self::unsigned_ty(ty) {
+                        UnsignedLessThanOrEqual
+                    } else {
+                        SignedLessThanOrEqual
+                    }
+                }
+                Gt => {
+                    if Self::unsigned_ty(ty) {
+                        UnsignedGreaterThan
+                    } else {
+                        SignedGreaterThan
+                    }
+                }
+                Ge => {
+                    if Self::unsigned_ty(ty) {
+                        UnsignedGreaterThanOrEqual
+                    } else {
+                        SignedGreaterThanOrEqual
+                    }
+                }
+                Eq => Equal,
+                _ => NotEqual,
+            };
+            let b = self.icmp_bool(cc, l64, r64);
+            return self.def_scalar(dst, b);
+        }
+        let val64 = match op {
+            Add => {
+                // The wrapped result alone cannot detect overflow
+                // (MAX+1 == MIN) — the room technique per signedness.
+                let (lo, hi) = self.int_range(ty);
+                let unsigned = Self::unsigned_ty(ty);
+                let ovf = if unsigned {
+                    // a + b > uMAX  <=>  b != 0 && a > uMAX - b
+                    let zero = self.fb.ins().iconst(types::I64, 0);
+                    let bz = self.icmp_bool(IntCC::NotEqual, r64, zero);
+                    let room = self.fb.ins().isub(hi, r64);
+                    let a_gt = self.icmp_bool(IntCC::UnsignedGreaterThan, l64, room);
+                    let p1 = self.fb.ins().band(bz, a_gt);
+                    p1
+                } else {
+                    let zero = self.fb.ins().iconst(types::I64, 0);
+                    let room_pos = self.fb.ins().isub(hi, r64);
+                    let b_nn = self.icmp_bool(IntCC::SignedGreaterThanOrEqual, r64, zero);
+                    let a_gt = self.icmp_bool(IntCC::SignedGreaterThan, l64, room_pos);
+                    let ovf_pos = self.fb.ins().band(b_nn, a_gt);
+                    let room_neg = self.fb.ins().isub(lo, r64);
+                    let b_neg = self.icmp_bool(IntCC::SignedLessThan, r64, zero);
+                    let a_lt = self.icmp_bool(IntCC::SignedLessThan, l64, room_neg);
+                    let ovf_neg = self.fb.ins().band(b_neg, a_lt);
+                    self.fb.ins().bor(ovf_pos, ovf_neg)
+                };
+                self.num_trap_on(ovf);
+                self.fb.ins().iadd(l64, r64)
+            }
+            Sub => {
+                let (lo, hi) = self.int_range(ty);
+                let unsigned = Self::unsigned_ty(ty);
+                let ovf = if unsigned {
+                    // a - b < 0  <=>  b != 0 && a < b (unsigned)
+                    let zero = self.fb.ins().iconst(types::I64, 0);
+                    let bz = self.icmp_bool(IntCC::NotEqual, r64, zero);
+                    let a_lt = self.icmp_bool(IntCC::UnsignedLessThan, l64, r64);
+                    self.fb.ins().band(bz, a_lt)
+                } else {
+                    let zero = self.fb.ins().iconst(types::I64, 0);
+                    let room_pos = self.fb.ins().iadd(hi, r64);
+                    let b_np = self.icmp_bool(IntCC::SignedLessThanOrEqual, r64, zero);
+                    let a_gt = self.icmp_bool(IntCC::SignedGreaterThan, l64, room_pos);
+                    let ovf_pos = self.fb.ins().band(b_np, a_gt);
+                    let room_neg = self.fb.ins().iadd(lo, r64);
+                    let b_pos = self.icmp_bool(IntCC::SignedGreaterThan, r64, zero);
+                    let a_lt = self.icmp_bool(IntCC::SignedLessThan, l64, room_neg);
+                    let ovf_neg = self.fb.ins().band(b_pos, a_lt);
+                    self.fb.ins().bor(ovf_pos, ovf_neg)
+                };
+                self.num_trap_on(ovf);
+                self.fb.ins().isub(l64, r64)
+            }
+            Mul => {
+                // Overflow detection via the high half: signed —
+                // smulhi != arithmetic-shift(low, 63); unsigned —
+                // umulhi != 0. (2^64 domain; no i128 lane exists.)
+                let unsigned = Self::unsigned_ty(ty);
+                let lo_prod = self.fb.ins().imul(l64, r64);
+                let ovf = if unsigned {
+                    let hi_prod = self.fb.ins().umulhi(l64, r64);
+                    let zero = self.fb.ins().iconst(types::I64, 0);
+                    self.icmp_bool(IntCC::NotEqual, hi_prod, zero)
+                } else {
+                    let hi_prod = self.fb.ins().smulhi(l64, r64);
+                    let k63 = self.fb.ins().iconst(types::I64, 63);
+                    let low_sext = self.fb.ins().sshr(lo_prod, k63);
+                    self.icmp_bool(IntCC::NotEqual, hi_prod, low_sext)
+                };
+                self.num_trap_on(ovf);
+                lo_prod
+            }
+            Div | Rem => {
+                // Guards: b == 0 → DivByZero; signed MIN/-1 → overflow.
+                let zero = self.fb.ins().iconst(types::I64, 0);
+                let one = self.fb.ins().iconst(types::I64, 1);
+                let bz = self.icmp_bool(IntCC::Equal, r64, zero);
+                self.num_trap_on(bz);
+                if !Self::unsigned_ty(ty) {
+                    let (lo, _) = self.int_range(ty);
+                    let m1 = self.fb.ins().iconst(types::I64, -1);
+                    let is_m1 = self.icmp_bool(IntCC::Equal, r64, m1);
+                    let is_min = self.icmp_bool(IntCC::Equal, l64, lo);
+                    let bad = self.fb.ins().band(is_m1, is_min);
+                    self.num_trap_on(bad);
+                }
+                // Sanitize: divisor 0/-1 never reaches the hardware op.
+                let safe_z = self.fb.ins().select(bz, one, r64);
+                let m1 = self.fb.ins().iconst(types::I64, -1);
+                let bm1 = self.icmp_bool(IntCC::Equal, r64, m1);
+                let safe = self.fb.ins().select(bm1, one, safe_z);
+                if op == Div {
+                    if Self::unsigned_ty(ty) {
+                        self.fb.ins().udiv(l64, safe)
+                    } else {
+                        self.fb.ins().sdiv(l64, safe)
+                    }
+                } else if Self::unsigned_ty(ty) {
+                    self.fb.ins().urem(l64, safe)
+                } else {
+                    self.fb.ins().srem(l64, safe)
+                }
+            }
+            And => self.fb.ins().band(l64, r64),
+            Or => self.fb.ins().bor(l64, r64),
+            Xor => self.fb.ins().bxor(l64, r64),
+            Shl | Shr => {
+                // Frozen: the AMOUNT is checked (0 <= n < width); value
+                // bits leaving the width are DISCARDED (no value check).
+                let width: i64 = match ty {
+                    NumTy::I8 | NumTy::U8 => 8,
+                    NumTy::I32 | NumTy::U32 => 32,
+                    NumTy::I64 | NumTy::U64 => 64,
+                    _ => unreachable!("shift on float"),
+                };
+                let zero = self.fb.ins().iconst(types::I64, 0);
+                let w = self.fb.ins().iconst(types::I64, width);
+                let neg = self.icmp_bool(IntCC::SignedLessThan, r64, zero);
+                let ge_w = self.icmp_bool(IntCC::SignedGreaterThanOrEqual, r64, w);
+                let bad = self.fb.ins().bor(neg, ge_w);
+                self.num_trap_on(bad);
+                // Sanitize the amount (the traps above fired already; safe
+                // value only keeps the hardware op in-range).
+                let safe = self.fb.ins().select(neg, zero, r64);
+                let safe = {
+                    let w1 = self.fb.ins().iconst(types::I64, width - 1);
+                    self.fb.ins().select(ge_w, w1, safe)
+                };
+                if op == Shl {
+                    let shifted = self.fb.ins().ishl(l64, safe);
+                    // Restore the width invariant: discard high bits.
+                    match ty {
+                        NumTy::I8 => {
+                            let k = self.fb.ins().iconst(types::I64, 56);
+                            let low = self.fb.ins().ishl(shifted, k);
+                            self.fb.ins().sshr(low, k)
+                        }
+                        NumTy::U8 => {
+                            let mask = self.fb.ins().iconst(types::I64, 0xFF);
+                            self.fb.ins().band(shifted, mask)
+                        }
+                        NumTy::I32 => {
+                            let k = self.fb.ins().iconst(types::I64, 32);
+                            let low = self.fb.ins().ishl(shifted, k);
+                            self.fb.ins().sshr(low, k)
+                        }
+                        NumTy::U32 => {
+                            let mask = self.fb.ins().iconst(types::I64, 0xFFFF_FFFF);
+                            self.fb.ins().band(shifted, mask)
+                        }
+                        _ => shifted,
+                    }
+                } else if Self::unsigned_ty(ty) {
+                    self.fb.ins().ushr(l64, safe)
+                } else {
+                    self.fb.ins().sshr(l64, safe)
+                }
+            }
+            _ => unreachable!("non-numeric op"),
+        };
+        let carrier = self.checked_reduce(val64, ty);
+        self.def_num(dst, carrier)
+    }
+
+    fn unsigned_ty(ty: NumTy) -> bool {
+        matches!(ty, NumTy::U8 | NumTy::U32 | NumTy::U64)
+    }
+
+    /// Typed negation (signed checked / float sign flip).
+    fn emit_num_neg(&mut self, ty: NumTy, dst: u32, operand: u32) -> Result<(), String> {
+        let v = self.v_num(operand)?;
+        if ty.is_float() {
+            let f = self.num_f(v, ty);
+            let neg = self.fb.ins().fneg(f);
+            let carrier = self.f_to_carrier(neg);
+            return self.def_num(dst, carrier);
+        }
+        let v64 = self.num_to_i64(v, ty);
+        let (lo, _) = self.int_range(ty);
+        let is_min = self.icmp_bool(IntCC::Equal, v64, lo);
+        self.num_trap_on(is_min);
+        let neg = self.fb.ins().ineg(v64);
+        let carrier = self.i64_to_carrier(neg, ty);
+        self.def_num(dst, carrier)
+    }
+
+    /// The frozen conversion matrix (T-01 §3): int widen (sign/zero
+    /// extend, never traps), int narrow/resign (checked), int→float
+    /// (round-to-nearest), float→int (NaN/±Inf/out-of-range checked,
+    /// truncation toward zero), f32→f64 exact, f64→f32 round-to-nearest
+    /// with finite-overflow trap.
+    fn emit_num_conv(&mut self, dst: u32, src: u32) -> Result<(), String> {
+        use cranelift_codegen::ir::condcodes::FloatCC::*;
+        let st = self.slot_num_ty(src)?;
+        let dt = self.slot_num_ty(dst)?;
+        let v = self.v_num(src)?;
+        // int → int
+        if !st.is_float() && !dt.is_float() {
+            let v64 = self.num_to_i64(v, st);
+            if st == dt {
+                return self.def_num(dst, v);
+            }
+            let carrier = self.checked_reduce(v64, dt);
+            return self.def_num(dst, carrier);
+        }
+        // int → float: round-to-nearest via convert; never traps.
+        if !st.is_float() && dt.is_float() {
+            let v64 = self.num_to_i64(v, st);
+            let f = if Self::unsigned_ty(st) {
+                if dt == NumTy::F32 {
+                    self.fb.ins().fcvt_from_uint(types::F32, v64)
+                } else {
+                    self.fb.ins().fcvt_from_uint(types::F64, v64)
+                }
+            } else if dt == NumTy::F32 {
+                self.fb.ins().fcvt_from_sint(types::F32, v64)
+            } else {
+                self.fb.ins().fcvt_from_sint(types::F64, v64)
+            };
+            let carrier = self.f_to_carrier(f);
+            return self.def_num(dst, carrier);
+        }
+        // float → int: NaN/±Inf/range checked, truncation toward zero.
+        if st.is_float() && !dt.is_float() {
+            let f = self.num_f(v, st);
+            let zero_f = if st == NumTy::F32 {
+                self.fb.ins().f32const(0.0)
+            } else {
+                self.fb.ins().f64const(0.0)
+            };
+            use cranelift_codegen::ir::condcodes::FloatCC::*;
+            let eq0 = self.fb.ins().fcmp(Equal, f, zero_f);
+            let ne0 = self.fb.ins().fcmp(NotEqual, f, zero_f);
+            // NaN: f != f.
+            let f2 = if st == NumTy::F32 {
+                self.fb.ins().bitcast(types::F32, MemFlags::new(), v)
+            } else {
+                self.fb.ins().bitcast(types::F64, MemFlags::new(), v)
+            };
+            let f_ne = self.fb.ins().fcmp(NotEqual, f2, f);
+            let nan = self.fb.ins().band(f_ne, f_ne);
+            let nan_w = self.fb.ins().uextend(types::I32, nan);
+            self.num_trap_on(nan_w);
+            let _ = (eq0, ne0);
+            // Range bounds as exact float constants per destination width.
+            let (lo_f, hi_f) = Self::conv_bounds(st, dt);
+            let lo_v = if st == NumTy::F32 {
+                self.fb.ins().f32const(lo_f as f32)
+            } else {
+                self.fb.ins().f64const(lo_f)
+            };
+            let hi_v = if st == NumTy::F32 {
+                self.fb.ins().f32const(hi_f as f32)
+            } else {
+                self.fb.ins().f64const(hi_f)
+            };
+            let below = self.fb.ins().fcmp(LessThan, f, lo_v);
+            let above = self.fb.ins().fcmp(GreaterThanOrEqual, f, hi_v);
+            let bad = self.fb.ins().bor(below, above);
+            let bad_w = self.fb.ins().uextend(types::I32, bad);
+            self.num_trap_on(bad_w);
+            let i64v = if Self::unsigned_ty(dt) {
+                self.fb.ins().fcvt_to_uint_sat(types::I64, f)
+            } else {
+                self.fb.ins().fcvt_to_sint_sat(types::I64, f)
+            };
+            let carrier = self.i64_to_carrier(i64v, dt);
+            return self.def_num(dst, carrier);
+        }
+        // float → float: f32→f64 exact; f64→f32 round-to-nearest with a
+        // finite-overflow trap (a finite input whose result is ±Inf).
+        let f = self.num_f(v, st);
+        let out = if dt == NumTy::F64 {
+            self.fb.ins().fpromote(types::F64, f)
+        } else {
+            let d = self.fb.ins().fdemote(types::F32, f);
+            // Overflow: result infinite while the input was finite.
+            let inf = if dt == NumTy::F32 {
+                self.fb.ins().f32const(f32::INFINITY)
+            } else {
+                self.fb.ins().f64const(f64::INFINITY)
+            };
+            let neg_inf = if dt == NumTy::F32 {
+                self.fb.ins().f32const(f32::NEG_INFINITY)
+            } else {
+                self.fb.ins().f64const(f64::NEG_INFINITY)
+            };
+            let is_inf = self.fb.ins().fcmp(Equal, d, inf);
+            let is_ninf = self.fb.ins().fcmp(Equal, d, neg_inf);
+            let was_inf = {
+                let pinf = if st == NumTy::F32 {
+                    self.fb.ins().f32const(f32::INFINITY)
+                } else {
+                    self.fb.ins().f64const(f64::INFINITY)
+                };
+                let ninf = if st == NumTy::F32 {
+                    self.fb.ins().f32const(f32::NEG_INFINITY)
+                } else {
+                    self.fb.ins().f64const(f64::NEG_INFINITY)
+                };
+                let p = self.fb.ins().fcmp(Equal, f, pinf);
+                let n = self.fb.ins().fcmp(Equal, f, ninf);
+                self.fb.ins().bor(p, n)
+            };
+            let res_inf = self.fb.ins().bor(is_inf, is_ninf);
+            let overflow = self.fb.ins().band(res_inf, was_inf);
+            let not_overflow = {
+                let f2 = self.fb.ins().bitcast(
+                    if st == NumTy::F32 { types::F32 } else { types::F64 },
+                    MemFlags::new(),
+                    v,
+                );
+                let f_ne = self.fb.ins().fcmp(NotEqual, f2, f);
+                self.fb.ins().band(f_ne, f_ne)
+            };
+            let finite_overflow = self.fb.ins().band(overflow, not_overflow);
+            let finite_overflow_w = self.fb.ins().uextend(types::I32, finite_overflow);
+            self.num_trap_on(finite_overflow_w);
+            d
+        };
+        let carrier = self.f_to_carrier(out);
+        self.def_num(dst, carrier)
+    }
+
+    /// Exact float bound constants for float→int checks: (low_inclusive,
+    /// high_exclusive) in the SOURCE float width; truncation toward zero
+    /// keeps every value in [low, high) in range.
+    fn conv_bounds(st: NumTy, dt: NumTy) -> (f64, f64) {
+        let (lo, hi): (i128, i128) = match dt {
+            NumTy::I8 => (i8::MIN as i128, i8::MAX as i128 + 1),
+            NumTy::I32 => (i32::MIN as i128, i32::MAX as i128 + 1),
+            NumTy::I64 => (i64::MIN as i128, i64::MAX as i128 + 1),
+            NumTy::U8 => (0, u8::MAX as i128 + 1),
+            NumTy::U32 => (0, u32::MAX as i128 + 1),
+            NumTy::U64 => (0, u64::MAX as u128 as i128),
+            _ => unreachable!("conv_bounds on float dst"),
+        };
+        if st == NumTy::F32 {
+            (lo as f64, hi as f64)
+        } else {
+            (lo as f64, hi as f64)
+        }
+    }
+
+    fn slot_num_ty(&self, slot: u32) -> Result<NumTy, String> {
+        let ty = self
+            .slots
+            .get(slot as usize)
+            .map(|s| s.ty)
+            .ok_or_else(|| format!("slot {slot} missing"))?;
+        let t = self
+            .unit
+            .types
+            .get(ty as usize)
+            .ok_or_else(|| format!("type {ty} missing"))?;
+        Ok(match t {
+            MirType::I8 => NumTy::I8,
+            MirType::I32 => NumTy::I32,
+            MirType::U8 => NumTy::U8,
+            MirType::U32 => NumTy::U32,
+            MirType::I64 => NumTy::I64,
+            MirType::U64 => NumTy::U64,
+            MirType::F32 => NumTy::F32,
+            MirType::F64 => NumTy::F64,
+            other => return Err(format!("slot {slot} type {other:?} is not numeric")),
+        })
     }
 
     /// `brif(cond → trap, else cont)`; the continuation is sealed with its
@@ -1203,20 +1831,42 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     // PLAN-891 typed carriers: wide constants materialize
                     // their EXACT bit pattern (iconst over the raw bits —
                     // no host float conversion anywhere).
-                    Some(MirConst::I64(v)) if self.mode == LowerMode::Typed => {
+                    Some(MirConst::I64(v))
+                        if matches!(self.mode, LowerMode::Typed | LowerMode::Numeric) =>
+                    {
                         let val = self.fb.ins().iconst(types::I64, *v);
                         self.def_wide(*dst, val)?;
                     }
-                    Some(MirConst::U64(v)) if self.mode == LowerMode::Typed => {
+                    Some(MirConst::U64(v))
+                        if matches!(self.mode, LowerMode::Typed | LowerMode::Numeric) =>
+                    {
                         let val = self.fb.ins().iconst(types::I64, *v as i64);
                         self.def_wide(*dst, val)?;
                     }
-                    Some(MirConst::F32Bits(b)) if self.mode == LowerMode::Typed => {
+                    Some(MirConst::F32Bits(b))
+                        if matches!(self.mode, LowerMode::Typed | LowerMode::Numeric) =>
+                    {
                         let val = self.fb.ins().iconst(types::I32, *b as i64);
                         self.def_wide(*dst, val)?;
                     }
-                    Some(MirConst::F64Bits(b)) if self.mode == LowerMode::Typed => {
+                    Some(MirConst::F64Bits(b))
+                        if matches!(self.mode, LowerMode::Typed | LowerMode::Numeric) =>
+                    {
                         let val = self.fb.ins().iconst(types::I64, *b as i64);
+                        self.def_wide(*dst, val)?;
+                    }
+                    // PLAN-961: narrow constants materialize sign/zero
+                    // extended on the I32 carrier (Numeric lane only).
+                    Some(MirConst::I8(v)) if self.mode == LowerMode::Numeric => {
+                        let val = self.fb.ins().iconst(types::I32, *v as i64);
+                        self.def_wide(*dst, val)?;
+                    }
+                    Some(MirConst::U8(v)) if self.mode == LowerMode::Numeric => {
+                        let val = self.fb.ins().iconst(types::I32, *v as i64);
+                        self.def_wide(*dst, val)?;
+                    }
+                    Some(MirConst::U32(v)) if self.mode == LowerMode::Numeric => {
+                        let val = self.fb.ins().iconst(types::I32, *v as i64);
                         self.def_wide(*dst, val)?;
                     }
                     // Wide numeric constants stay a controlled rejection
@@ -1266,6 +1916,19 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                         let s = self.agg_addr(*src)?;
                         self.copy_agg_bytes(d, s, size, ty);
                     }
+                    // PLAN-961: numeric carriers copy bitwise on their
+                    // machine variable (i8/u8/u32/f32 on I32; i64/u64/f64
+                    // on I64 — exact bits, NaN payloads included).
+                    MirType::I8
+                    | MirType::U8
+                    | MirType::U32
+                    | MirType::I64
+                    | MirType::U64
+                    | MirType::F32
+                    | MirType::F64 => {
+                        let s = self.v_num(*src)?;
+                        self.def_num(*dst, s)?;
+                    }
                     _ => {
                         return self.reject(
                             "mn.unsupported.instruction",
@@ -1275,6 +1938,21 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 }
             }
             MirInstr::Bin { op, dst, lhs, rhs } => {
+                // PLAN-961: the typed numeric surface executes through the
+                // carrier matrix (comparisons land on the Bool scalar).
+                if let BinOp::Num { .. } = op {
+                    let BinOp::Num { op: nop, ty } = op else {
+                        unreachable!("checked above")
+                    };
+                    if self.mode == LowerMode::Numeric {
+                        self.emit_num_bin(*nop, *ty, *dst, *lhs, *rhs)?;
+                        return Ok(());
+                    }
+                    return Err(
+                        "mn.unsupported.num-op: the typed numeric surface requires the numeric emission lane"
+                            .to_string(),
+                    );
+                }
                 let a = self.fb.use_var(self.v_scalar(*lhs)?);
                 let b = self.fb.use_var(self.v_scalar(*rhs)?);
                 let r = match op {
@@ -1289,49 +1967,49 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     BinOp::GeI32 => self.icmp_bool(IntCC::SignedGreaterThanOrEqual, a, b),
                     BinOp::EqI32 => self.icmp_bool(IntCC::Equal, a, b),
                     BinOp::NeI32 => self.icmp_bool(IntCC::NotEqual, a, b),
-                    // PLAN-961: the typed numeric ops ship with the numeric
-                    // backend unit — a named rejection until then, never an
-                    // i32 fallback emission.
-                    BinOp::Num { .. } => {
-                        return Err(
-                            "mn.unsupported.num-op: PLAN-961 typed numeric emission awaits the numeric backend unit"
-                                .to_string(),
-                        )
-                    }
+                    // Unreachable: the numeric branch above returns first.
+                    BinOp::Num { .. } => unreachable!("numeric op handled above"),
                 };
                 self.def_scalar(*dst, r)?;
             }
             MirInstr::Un { op, dst, operand } => {
-                let x = self.fb.use_var(self.v_scalar(*operand)?);
                 match op {
                     UnOp::NegI32 => {
+                        let x = self.fb.use_var(self.v_scalar(*operand)?);
                         let r = self.checked_neg(x);
                         self.def_scalar(*dst, r)?;
                     }
                     UnOp::NotBool => {
                         // Does not rely on a 0/1 precondition: compare to 0
                         // and widen — the result is strictly 0/1.
+                        let x = self.fb.use_var(self.v_scalar(*operand)?);
                         let zero = self.fb.ins().iconst(types::I32, 0);
                         let r = self.icmp_bool(IntCC::Equal, x, zero);
                         self.def_scalar(*dst, r)?;
                     }
-                    // PLAN-961: typed negation — named rejection until the
-                    // numeric backend unit ships.
-                    UnOp::NegT { .. } => {
-                        return Err(
-                            "mn.unsupported.num-neg: PLAN-961 typed numeric emission awaits the numeric backend unit"
-                                .to_string(),
-                        )
+                    // PLAN-961: typed negation on the numeric lane.
+                    UnOp::NegT { ty } => {
+                        if self.mode == LowerMode::Numeric {
+                            self.emit_num_neg(*ty, *dst, *operand)?;
+                        } else {
+                            return Err(
+                                "mn.unsupported.num-neg: the typed numeric surface requires the numeric emission lane"
+                                    .to_string(),
+                            );
+                        }
                     }
                 }
             }
-            // PLAN-961: the conversion matrix ships with the numeric
-            // backend unit — a named rejection until then.
-            MirInstr::Conv { .. } => {
-                return Err(
-                    "mn.unsupported.conv: PLAN-961 numeric conversion emission awaits the numeric backend unit"
-                        .to_string(),
-                )
+            // PLAN-961: the frozen conversion matrix on the numeric lane.
+            MirInstr::Conv { dst, src } => {
+                if self.mode == LowerMode::Numeric {
+                    self.emit_num_conv(*dst, *src)?;
+                } else {
+                    return Err(
+                        "mn.unsupported.conv: the numeric conversion matrix requires the numeric emission lane"
+                            .to_string(),
+                    );
+                }
             }
             MirInstr::Call { callee, dst, args } => {
                 let CalleeRef::Import(ii) = callee else {

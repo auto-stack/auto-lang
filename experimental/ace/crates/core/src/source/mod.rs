@@ -249,6 +249,8 @@ impl SourceProfile {
                 | SourceProfile::EntryUnit
                 | SourceProfile::Collections
                 | SourceProfile::Closures
+                // PLAN-961: the numeric surface is a closures superset.
+                | SourceProfile::Numeric
         )
     }
 

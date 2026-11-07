@@ -440,7 +440,9 @@ fn structural_first_diag(cx: &Cx, tree: &CstTree) -> Option<Diagnostic> {
         return Some(word_msg(&text));
     }
     if let Some(g) = kind {
-        let describe = if g == cx.k.tok_affix_num {
+        let describe = if g == cx.k.tok_affix_num && !cx.profile.is_numeric() {
+            // PLAN-961: the numeric profile's typed literals are decoded
+            // in the expression walk — never a raw rejection there.
             Some("suffixed/radix/float numeric literal")
         } else if g == cx.k.tok_str_lit {
             Some("string literal")
@@ -2648,11 +2650,19 @@ fn decode_typed_literal_neg(raw: &str, neg: bool) -> Result<ExprKind, String> {
         .filter(|c| *c != '_')
         .collect();
     let mag: u128 = u128::from_str_radix(&digits_only, body.0).unwrap_or(u128::MAX);
-    if body.1.ends_with("i64") && mag == 1u128 << 63 {
-        return Ok(ExprKind::TypedLit {
-            ty: crate::source::ast::TypeWord::I64,
-            bits: 1u64 << 63,
-        });
+    // The MIN magnitude (2^(bits-1)) is representable ONLY negated — for
+    // every signed width (i8/i32/i64; the fold then yields exactly MIN).
+    for (suffix, word, bits) in [
+        ("i8", crate::source::ast::TypeWord::I8, 8u32),
+        ("i32", crate::source::ast::TypeWord::Int, 32),
+        ("i64", crate::source::ast::TypeWord::I64, 64),
+    ] {
+        if body.1.ends_with(suffix) && mag == 1u128 << (bits - 1) {
+            return Ok(ExprKind::TypedLit {
+                ty: word,
+                bits: 1u64 << (bits - 1),
+            });
+        }
     }
     // Decode the positive magnitude with the frozen table, then fold.
     let kind = decode_typed_literal(raw)?;

@@ -35,6 +35,8 @@ pub enum SourceProfile {
     Scalar,
     Record,
     TextRecord,
+    /// PLAN-961: the numeric source surface (attempted last).
+    Numeric,
 }
 
 impl SourceProfile {
@@ -43,6 +45,7 @@ impl SourceProfile {
             SourceProfile::Scalar => "scalar",
             SourceProfile::Record => "record",
             SourceProfile::TextRecord => "text-record",
+            SourceProfile::Numeric => "numeric",
         }
     }
 }

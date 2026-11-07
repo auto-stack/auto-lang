@@ -359,8 +359,15 @@ fn mn_data_owned_unit_rejections() {
     };
     m.funcs.push(f);
     match ace_native::emit::emit_unit_coff(&m) {
-        Err(MnError::Unsupported(code, _)) => assert_eq!(code, "const"),
-        other => panic!("wide const must reject by name, got {other:?}"),
+        // PLAN-961: the R2-N const gate is superseded (wide consts are the
+        // delivered surface); a WIDE const into an I32 slot is now a
+        // backend shape error (verify's const-shape rule is the front
+        // gate for verified programs).
+        Err(MnError::Backend(msg)) => assert!(
+            msg.contains("not a typed wide scalar"),
+            "wide const into an i32 slot is a shape error, got {msg}"
+        ),
+        other => panic!("wide const into i32 slot must reject, got {other:?}"),
     }
 
     // Collections profile → mn.unsupported.profile (the family stays
@@ -381,7 +388,12 @@ fn mn_data_owned_unit_rejections() {
         owner: m2.owner.clone(),
         name: "d_main".into(),
         sig: sig2,
-        slots: vec![],
+        // PLAN-961: shape-valid single-slot unit (the return reads slot 0).
+        slots: vec![MirSlot {
+            kind: SlotKind::Temp,
+            ty: t,
+            name: None,
+        }],
         entry: 0,
         blocks: vec![MirBlock {
             instrs: vec![],
@@ -389,9 +401,16 @@ fn mn_data_owned_unit_rejections() {
         }],
         spans: vec![],
     });
+    let c0 = m2.intern_const(MirConst::I32(0));
+    m2.funcs.last_mut().expect("fn pushed").blocks[0].instrs.push(MirInstr::Const {
+        dst: 0,
+        value: c0,
+    });
     match ace_native::emit::emit_unit_coff(&m2) {
-        Err(MnError::Unsupported(code, _)) => assert_eq!(code, "profile"),
-        other => panic!("collections profile must reject, got {other:?}"),
+        // PLAN-961: the collections/closures family is admitted (the
+        // numeric surface rides this lane).
+        Ok(_) => {}
+        other => panic!("collections profile is admitted on the numeric lane, got {other:?}"),
     }
 }
 

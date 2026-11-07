@@ -31,6 +31,8 @@ enum Domain {
     Scalar(ace_core::source::CompiledSource),
     Data(ace_core::source::CompiledSource),
     Owned(ace_core::source::CompiledSource),
+    /// PLAN-961: the numeric source surface (closures-family lowering).
+    Numeric(ace_core::source::CompiledSource),
 }
 
 /// A profile-surface rejection (`source.unsupported` out of the Text
@@ -39,8 +41,20 @@ enum Domain {
 /// reports from the domain that produced it, exactly like AV's explicit
 /// per-domain drivers.
 fn is_surface_rejection(ds: &[ace_core::atom_text::Diagnostic]) -> bool {
-    ds.iter()
-        .all(|d| d.code == "source.unsupported" && d.stage == ace_core::atom_text::Stage::Text)
+    ds.iter().all(|d| {
+        d.code == "source.unsupported" && d.stage == ace_core::atom_text::Stage::Text
+            || {
+                // PLAN-961: the numeric-only operator characters (& | ^)
+                // lex as unknown characters on every narrower profile —
+                // that lex failure is a surface fact (the numeric profile
+                // owns the characters), so escalation continues.
+                d.code == "source.lex"
+                    && d.message.contains("unknown character")
+                    && (d.message.contains("`&`")
+                        || d.message.contains("`|`")
+                        || d.message.contains("`^`"))
+            }
+    })
 }
 
 /// The escalating source front door, PLAN-911 shape: a failure names the
@@ -87,10 +101,29 @@ fn compile_escalating(
         }
     }
     attempted.push(sd::SourceProfile::TextRecord);
-    ace_core::source::compile_text_record_source(src, "mn.at", caps)
-        .map(Domain::Owned)
-        .map_err(|ds| sd::CompileFailure {
+    let owned = match ace_core::source::compile_text_record_source(src, "mn.at", caps) {
+        Ok(c) => return Ok(Domain::Owned(c)),
+        Err(ds) if is_surface_rejection(&ds) => surface.push(sd::SurfaceRejection {
             profile: sd::SourceProfile::TextRecord,
+            codes: ds.iter().map(|d| d.code.clone()).collect(),
+        }),
+        Err(ds) => {
+            return Err(sd::CompileFailure {
+                profile: sd::SourceProfile::TextRecord,
+                attempted,
+                surface_rejections: surface,
+                diagnostics: ds,
+            })
+        }
+    };
+    let _ = owned;
+    // PLAN-961: the numeric surface attempts LAST (a strict superset of the
+    // closures vocabulary; earlier profiles keep their frozen precedence).
+    attempted.push(sd::SourceProfile::Numeric);
+    ace_core::source::compile_numeric_source(src, "mn.at", caps)
+        .map(Domain::Numeric)
+        .map_err(|ds| sd::CompileFailure {
+            profile: sd::SourceProfile::Numeric,
             attempted,
             surface_rejections: surface,
             diagnostics: ds,
@@ -103,11 +136,16 @@ impl Domain {
             Domain::Scalar(_) => Arm::Scalar,
             Domain::Data(_) => Arm::Data,
             Domain::Owned(_) => Arm::Owned,
+            // PLAN-961: numeric compiles ride the closures-family arm
+            // regardless of the binder-stamped domain.
+            Domain::Numeric(_) => Arm::Numeric,
         }
     }
     fn checked(&self) -> &ace_core::verify::CheckedModule {
         match self {
-            Domain::Scalar(c) | Domain::Data(c) | Domain::Owned(c) => &c.checked,
+            Domain::Scalar(c) | Domain::Data(c) | Domain::Owned(c) | Domain::Numeric(c) => {
+                &c.checked
+            }
         }
     }
 }
@@ -121,6 +159,8 @@ enum Arm {
     Scalar,
     Data,
     Owned,
+    /// PLAN-961: the numeric surface (collections/closures family lowering).
+    Numeric,
 }
 
 fn arm_of_domain(d: ace_core::hir::HirDomain) -> Option<Arm> {
@@ -129,6 +169,9 @@ fn arm_of_domain(d: ace_core::hir::HirDomain) -> Option<Arm> {
         HirDomain::Core | HirDomain::Scalar => Arm::Scalar,
         HirDomain::Record => Arm::Data,
         HirDomain::Text | HirDomain::TextRecord => Arm::Owned,
+        // PLAN-961: the numeric source surface rides the closures-family
+        // shared lowering arm.
+        HirDomain::Collections | HirDomain::Closures => Arm::Numeric,
         _ => return None,
     })
 }
@@ -435,6 +478,9 @@ impl MnDriver {
                 Arm::Scalar => ace_lowering::lower_checked(checked, entry, snapshot),
                 Arm::Data => ace_lowering::lower_checked_data(checked, entry, snapshot),
                 Arm::Owned => ace_lowering::lower_checked_owned(checked, entry, snapshot),
+                Arm::Numeric => {
+                    ace_lowering::lower_checked_closures(checked, entry, snapshot)
+                }
             };
             r.map_err(|e| {
                 o.counter("mir_reject", 1);
