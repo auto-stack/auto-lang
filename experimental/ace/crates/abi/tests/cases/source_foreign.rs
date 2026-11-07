@@ -2181,6 +2181,60 @@ fn source_foreign_formal_worker_rebinds_provider_without_any_caller_production()
     }
 }
 
+/// PLAN-938 T-11: the warm body-edit gate. Thirty real warm samples per leg
+/// (prepare → commit → run, each with a real compile+link+PE run through the
+/// process-resolved SDK closure); the P90 of the per-sample wall time must
+/// stay within the original 2000 ms warm gate. No thresholds, samples, or
+/// oracles are relaxed — this makes 8bj's ad-hoc probe a permanent gate.
+#[test]
+fn source_foreign_warm_body_edit_p90_gate() {
+    use ace_abi::source_foreign::{Session, Target};
+    use std::sync::Arc;
+    use std::time::Instant;
+    let p90 = |mut xs: Vec<u128>| {
+        xs.sort_unstable();
+        xs[xs.len() - xs.len() / 10]
+    };
+    for (leg, target) in [("native", Target::Native), ("c", Target::C)] {
+        let root = scope(&format!("warm-p90-{leg}"));
+        let (object, environment) = provider(&root, 0);
+        let bytes = Arc::new(std::fs::read(&object).unwrap());
+        let source = "fn main() int { return foreign_add(20,22) }";
+        let mut session = Session::cold(
+            source,
+            "source938",
+            "p938",
+            &[SOURCE_CAP.into()],
+            environment.clone(),
+            bytes,
+            target,
+        )
+        .unwrap();
+        let mut current = || -> Result<ace_abi::source_foreign::CurrentAuthority, String> {
+            Ok(fixture_current(&environment, target))
+        };
+        let mut samples = Vec::new();
+        for index in 0..30 {
+            let value = if index % 2 == 0 { 21 } else { 20 };
+            let declaration = format!("fn main() int {{ return foreign_add({value},22) }}");
+            let started = Instant::now();
+            let candidate = session.prepare("main", &declaration).unwrap();
+            session.commit(candidate).unwrap();
+            let exit = session
+                .run(&root.join(format!("run-{index}")))
+                .unwrap()
+                .exit_code;
+            samples.push(started.elapsed().as_millis());
+            assert_eq!(exit, Some(if index % 2 == 0 { 43 } else { 42 }));
+        }
+        let gate = p90(samples);
+        assert!(
+            gate <= 2000,
+            "{leg}: warm body-edit P90 {gate}ms exceeds the original 2000ms gate"
+        );
+    }
+}
+
 fn fixture_current(
     environment: &AdmittedForeign,
     target: ace_abi::source_foreign::Target,

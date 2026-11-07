@@ -16,6 +16,7 @@ use std::{
     process::Command,
 };
 
+#[derive(Clone)]
 enum Mode {
     Sdk {
         include: [PathBuf; 4],
@@ -25,12 +26,46 @@ enum Mode {
     Batch(PathBuf),
 }
 
+/// PLAN-938 T-11 (user ruling 2026-11-07): the SDK/MSVC closure resolution
+/// (cl discovery + content hash + platform query + closure layout) is
+/// PROCESS-LEVEL, keyed by the explicit override inputs — every request
+/// re-charges its own metadata reservation but never re-runs the resolver.
+/// Test-visible counters distinguish a cached reuse from a re-resolution.
+static RESOLUTIONS: std::sync::Mutex<Vec<ResolutionKey>> = std::sync::Mutex::new(Vec::new());
+static RESOLUTIONS_DONE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static SDK_DIRECT_COMPILES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+#[derive(Clone)]
+struct ResolutionKey {
+    vcvars_override: Option<String>,
+    sdk_um_override: Option<String>,
+    resolved: std::sync::Arc<ResolvedCrt>,
+}
+/// The pure resolution result shared across requests.
+struct ResolvedCrt {
+    tool: &'static ctool::CToolchain,
+    mode: Mode,
+    material: String,
+    /// The index bytes the original resolution charged for the model.
+    metadata_index_bytes: usize,
+}
+/// Test observation: completed resolutions (platform query + hashing runs).
+#[cfg(test)]
+pub(crate) fn resolution_runs() -> u64 {
+    RESOLUTIONS_DONE.load(std::sync::atomic::Ordering::Relaxed)
+}
+/// Test observation: cl invocations that ran through the direct SDK closure.
+#[cfg(test)]
+pub(crate) fn sdk_direct_compiles() -> u64 {
+    SDK_DIRECT_COMPILES.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::ffi::OsString;
     #[test]
     fn crt_output_batch_counts_objects_and_pe_but_not_input_objects() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         use ace_source_query::resources::OutputLimits;
         let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
             .join(format!("crt-output-{}", std::process::id()));
@@ -117,8 +152,16 @@ mod tests {
         drop(crt);
         assert_eq!(resources.stats().current, initial);
     }
+    /// The configuration test mutates process environment variables; the
+    /// reuse/legacy tests read them through the resolver. Serialize the
+    /// three (no behavior change under nextest's process-per-test).
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn direct_sdk_freezes_flags_and_an_explicit_batch_override_really_runs() {
+        let _env = ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         struct Environment(Vec<(&'static str, Option<OsString>)>);
         impl Drop for Environment {
             fn drop(&mut self) {
@@ -254,6 +297,87 @@ mod tests {
         assert_eq!(resources.stats().current, baseline);
         drop(saved);
     }
+
+    /// PLAN-938 T-11 (user ruling): the SDK/MSVC closure is resolved once
+    /// per process (per override key); a second request reuses it without a
+    /// new platform query or cl hash, yet still charges and releases its own
+    /// metadata reservation, and both requests carry the same identity.
+    #[test]
+    fn crt_resolution_is_reused_across_requests_and_recharges_each_request() {
+        let _env = ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let first = Resources::default();
+        let first_baseline = first.stats().current;
+        let runs_before = resolution_runs();
+        let crt1 = Toolchain::resolve(&first).unwrap();
+        let runs_after_first = resolution_runs();
+        assert!(
+            runs_after_first == runs_before || runs_after_first == runs_before + 1,
+            "the first request may resolve at most once"
+        );
+        let first_charge = first.stats().current.index - first_baseline.index;
+        assert!(first_charge > 0, "a request must charge its metadata model");
+        let second = Resources::default();
+        let second_baseline = second.stats().current;
+        let crt2 = Toolchain::resolve(&second).unwrap();
+        assert_eq!(
+            resolution_runs(),
+            runs_after_first,
+            "a second request re-ran the closure resolution"
+        );
+        assert_eq!(crt1.fingerprint(), crt2.fingerprint());
+        assert_eq!(
+            second.stats().current.index - second_baseline.index,
+            first_charge,
+            "a reused resolution must still charge the request's own metadata"
+        );
+        drop(crt1);
+        drop(crt2);
+        assert_eq!(first.stats().current, first_baseline);
+        assert_eq!(second.stats().current, second_baseline);
+    }
+
+    /// The legacy bridge leg (no shared account) compiles through the SAME
+    /// resolved direct closure: one direct cl invocation, no per-compile
+    /// setup batch, and the frozen flags still produce the program.
+    #[test]
+    fn legacy_bridge_leg_compiles_through_the_resolved_direct_closure() {
+        let _env = ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if std::env::var_os("A2C_VCVARS64").is_some_and(|v| !v.is_empty()) {
+            eprintln!("explicit batch override present; direct-closure leg not asserted here");
+            return;
+        }
+        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+            .join(format!("legacy-bridge-direct-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("value.c"),
+            "int main(void) { return 42; }
+",
+        )
+        .unwrap();
+        let exe = root.join("legacy.exe");
+        let direct_before = sdk_direct_compiles();
+        crate::bridge::compile_bridge_crt(&root, &["value.c"], &exe).unwrap();
+        assert_eq!(
+            sdk_direct_compiles(),
+            direct_before + 1,
+            "the legacy bridge leg did not use the resolved direct closure"
+        );
+        let run = ace_native::link_driver::run_pe(
+            &exe,
+            std::time::Duration::from_secs(5),
+            CaptureCaps {
+                stdout_max: BRIDGE_STREAM_CAP,
+                stderr_max: BRIDGE_STREAM_CAP,
+            },
+        )
+        .unwrap();
+        assert_eq!(run.exit_code, Some(42));
+    }
 }
 pub(crate) struct Toolchain {
     tool: &'static ctool::CToolchain,
@@ -290,6 +414,29 @@ fn diag(error: BridgeError) -> Diagnostic {
 }
 impl Toolchain {
     pub(crate) fn resolve(resources: &Resources) -> Result<Self, BridgeError> {
+        // PLAN-938 T-11: resolve the closure ONCE per (override) key per
+        // process; each request still charges its own metadata reservation
+        // from the stored sizes — never a second platform query or cl hash.
+        const VCVARS: &[u16] = &[65, 50, 67, 95, 86, 67, 86, 65, 82, 83, 54, 52, 0];
+        const SDK_UM: &[u16] = &[
+            65, 67, 55, 52, 49, 95, 83, 68, 75, 95, 85, 77, 95, 76, 73, 66, 0,
+        ];
+        let mut overrides = 0usize;
+        let mut override_key = (None::<String>, None::<String>);
+        let mut override_tickets = Vec::new();
+        for (needle, slot) in [(VCVARS, &mut override_key.0), (SDK_UM, &mut override_key.1)] {
+            if let Some(environment) =
+                crate::ctool_environment::read(needle, resources).map_err(BridgeError)?
+            {
+                let crate::ctool_environment::Value { value, allocation } = environment;
+                let text = value.to_string_lossy().into_owned();
+                overrides = overrides.saturating_add(text.len() * 16);
+                if slot.is_none() && !text.is_empty() {
+                    *slot = Some(text);
+                }
+                override_tickets.push(allocation);
+            }
+        }
         let tool = ctool::find_cl_admitted(Some(resources)).map_err(|error| match error {
             ctool::CToolFailure::Tool(error) => BridgeError(error.to_string()),
             ctool::CToolFailure::Resource(message) => {
@@ -306,24 +453,80 @@ impl Toolchain {
         let mut allocation = resources
             .reserve(Charge::index(initial))
             .map_err(|e| BridgeError(e.to_string()))?;
-        const VCVARS: &[u16] = &[65, 50, 67, 95, 86, 67, 86, 65, 82, 83, 54, 52, 0];
-        const SDK_UM: &[u16] = &[
-            65, 67, 55, 52, 49, 95, 83, 68, 75, 95, 85, 77, 95, 76, 73, 66, 0,
-        ];
-        let mode = match crate::ctool_environment::read(VCVARS, resources)
-            .map_err(BridgeError)?
-            .filter(|v| !v.value.is_empty())
-        {
-            Some(environment) => {
-                let crate::ctool_environment::Value {
-                    value: path,
-                    allocation: environment,
-                } = environment;
-                allocation = allocation
-                    .merge(environment)
-                    .map_err(|e| BridgeError(e.to_string()))?;
+        for ticket in override_tickets {
+            allocation = allocation
+                .merge(ticket)
+                .map_err(|e| BridgeError(e.to_string()))?;
+        }
+        let resolved: std::sync::Arc<ResolvedCrt> = {
+            let cache = RESOLUTIONS.lock().expect("CRT resolution cache");
+            if let Some(hit) = cache.iter().find(|entry| {
+                entry.vcvars_override == override_key.0
+                    && entry.sdk_um_override == override_key.1
+                    && entry.resolved.tool.cl_exe == tool.cl_exe
+            }) {
+                hit.resolved.clone()
+            } else {
+                drop(cache);
+                let resolved = Self::resolve_uncached(
+                    resources,
+                    tool,
+                    override_key.clone(),
+                    &mut allocation,
+                    initial,
+                    overrides,
+                )?;
+                let resolved = std::sync::Arc::new(resolved);
+                RESOLUTIONS_DONE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let mut cache = RESOLUTIONS.lock().expect("CRT resolution cache");
+                if cache.len() >= 8 {
+                    cache.remove(0);
+                }
+                cache.push(ResolutionKey {
+                    vcvars_override: override_key.0,
+                    sdk_um_override: override_key.1,
+                    resolved: resolved.clone(),
+                });
+                resolved
+            }
+        };
+        // Charge this request's metadata model at the stored size.
+        allocation
+            .resize(Charge::index(
+                initial.saturating_add(resolved.metadata_index_bytes),
+            ))
+            .map_err(|e| BridgeError(e.to_string()))?;
+        let identity = format!(
+            "cl:{}|ver:{}|hash:{}|flags:{}|crt:{}|crt-flags:{}",
+            resolved.tool.cl_exe.display(),
+            resolved.tool.version,
+            resolved.tool.cl_hash,
+            ctool::CL_FLAGS.join(" "),
+            resolved.material,
+            BRIDGE_CRT_FLAGS.join(" ")
+        );
+        Ok(Self {
+            tool: resolved.tool,
+            mode: resolved.mode.clone(),
+            identity,
+            resources: resources.clone(),
+            _allocation: allocation,
+        })
+    }
+    fn resolve_uncached(
+        resources: &Resources,
+        tool: &'static ctool::CToolchain,
+        override_key: (Option<String>, Option<String>),
+        allocation: &mut Reservation,
+        initial: usize,
+        overrides: usize,
+    ) -> Result<ResolvedCrt, BridgeError> {
+        // The override inputs were read (and accounted) by the caller.
+        let mut metadata = overrides;
+        let mode = match override_key.0 {
+            Some(path) => {
                 allocation
-                    .resize(Charge::index(initial + path.len() * 16))
+                    .resize(Charge::index(initial + metadata))
                     .map_err(|e| BridgeError(e.to_string()))?;
                 let path = PathBuf::from(path);
                 if !path.is_file() {
@@ -332,23 +535,7 @@ impl Toolchain {
                 Mode::Batch(path)
             }
             None => {
-                let explicit =
-                    match crate::ctool_environment::read(SDK_UM, resources).map_err(BridgeError)? {
-                        Some(environment) => {
-                            let crate::ctool_environment::Value {
-                                value,
-                                allocation: environment,
-                            } = environment;
-                            allocation = allocation
-                                .merge(environment)
-                                .map_err(|e| BridgeError(e.to_string()))?;
-                            allocation
-                                .resize(Charge::index(initial + value.len() * 16))
-                                .map_err(|e| BridgeError(e.to_string()))?;
-                            Some(PathBuf::from(value))
-                        }
-                        None => None,
-                    };
+                let explicit = override_key.1.map(PathBuf::from);
                 let um = ace_core::link::find_sdk_um_dir_with_query(explicit, |command| {
                     let captured = ctool_capture::run(
                         command,
@@ -436,21 +623,12 @@ impl Toolchain {
                 .map_err(|e| BridgeError(e.to_string()))?
             ),
         };
-        let identity = format!(
-            "cl:{}|ver:{}|hash:{}|flags:{}|crt:{}|crt-flags:{}",
-            tool.cl_exe.display(),
-            tool.version,
-            tool.cl_hash,
-            ctool::CL_FLAGS.join(" "),
-            material,
-            BRIDGE_CRT_FLAGS.join(" ")
-        );
-        Ok(Self {
+        metadata = metadata.saturating_add(material.len() * 2);
+        Ok(ResolvedCrt {
             tool,
             mode,
-            identity,
-            resources: resources.clone(),
-            _allocation: allocation,
+            material,
+            metadata_index_bytes: metadata,
         })
     }
     pub(crate) fn fingerprint(&self) -> String {
@@ -475,6 +653,7 @@ impl Toolchain {
             .map_err(|e| BridgeError(e.to_string()))?;
         let mut command = match &self.mode {
             Mode::Sdk { include, libs, bin } => {
+                SDK_DIRECT_COMPILES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 let mut command = Command::new(&self.tool.cl_exe);
                 command.env(
                     "INCLUDE",

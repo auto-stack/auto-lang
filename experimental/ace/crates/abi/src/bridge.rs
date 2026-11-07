@@ -633,93 +633,23 @@ pub fn compile_bridge_crt_with_objects_admitted(
     exe: &Path,
     resources: Option<&ace_source_query::resources::Resources>,
 ) -> Result<(), BridgeError> {
-    if let Some(resources) = resources {
-        return crate::source_crt::Toolchain::resolve(resources)?
-            .compile(dir, sources, objects, exe);
-    }
-    let tool = ctool::find_cl().map_err(|e| BridgeError(format!("cl locator: {e:?}")))?;
-    let vcvars = match std::env::var("A2C_VCVARS64") {
-        Ok(p) if !p.is_empty() => PathBuf::from(p),
-        _ => {
-            let vc = tool
-                .cl_exe
-                .ancestors()
-                .nth(7)
-                .ok_or_else(|| BridgeError("cannot derive VC dir".into()))?
-                .to_path_buf();
-            let p = vc.join("Auxiliary").join("Build").join("vcvars64.bat");
-            if !p.is_file() {
-                return Err(BridgeError(format!(
-                    "vcvars64.bat missing: {}",
-                    p.display()
-                )));
-            }
-            p
+    // PLAN-938 T-11 (user ruling): the legacy bridge leg reuses the SAME
+    // process-resolved SDK/MSVC closure as the source leg — one platform
+    // query/cl hash per (override) key per process, then direct cl
+    // invocations. An explicit A2C_VCVARS64 override keeps its original
+    // per-compile batch semantics through the same Toolchain. Legacy
+    // callers without a shared account charge a local default account for
+    // the per-request metadata; outputs keep the frozen flags and closure.
+    match resources {
+        Some(resources) => {
+            crate::source_crt::Toolchain::resolve(resources)?.compile(dir, sources, objects, exe)
         }
-    };
-    let mut line = String::new();
-    line.push_str(&format!("call \"{}\" >nul && ", vcvars.display()));
-    line.push_str(&format!("\"{}\"", tool.cl_exe.display()));
-    for f in BRIDGE_CRT_FLAGS {
-        line.push(' ');
-        line.push_str(f);
-    }
-    line.push_str(&format!(" -Fe:{}", exe.display()));
-    for s in sources {
-        line.push(' ');
-        line.push_str(s);
-    }
-    if !objects.is_empty() {
-        line.push_str(" /link");
-        for object in objects {
-            line.push_str(&format!(" \"{}\"", object.display()));
+        None => {
+            let local = ace_source_query::resources::Resources::default();
+            crate::source_crt::Toolchain::resolve(&local)?.compile(dir, sources, objects, exe)
         }
     }
-    let mut cmd = Command::new("cmd.exe");
-    cmd.arg("/D").arg("/C");
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.raw_arg(&line);
-    }
-    #[cfg(not(windows))]
-    {
-        cmd.arg(&line);
-    }
-    cmd.current_dir(dir);
-    let captured = crate::ctool_capture::run(
-        &mut cmd,
-        BRIDGE_BUILD_DEADLINE,
-        CaptureCaps {
-            stdout_max: BRIDGE_STREAM_CAP,
-            stderr_max: BRIDGE_STREAM_CAP,
-        },
-        resources,
-    )
-    .map_err(|e| match e {
-        crate::ctool_capture::CaptureError::Resource(message) => {
-            BridgeError(format!("foreign.resource: CRT compile capture: {message}"))
-        }
-        crate::ctool_capture::CaptureError::Subprocess(error) => {
-            BridgeError(format!("contained cl spawn: {error:?}"))
-        }
-    })?;
-    let run = &captured.value;
-    if run.exit_code != Some(0) {
-        return Err(BridgeError(format!(
-            "cl exited {:?}:\n{}\n{}",
-            run.exit_code,
-            String::from_utf8_lossy(&run.stdout).trim(),
-            String::from_utf8_lossy(&run.stderr).trim()
-        )));
-    }
-    if !exe.is_file() {
-        return Err(BridgeError("cl reported success but exe missing".into()));
-    }
-    Ok(())
 }
-
-/// The cside dir (headers + hand-written C legs).
 pub fn cside_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("cside")
 }
