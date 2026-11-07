@@ -1349,6 +1349,46 @@ pub fn lower_function_owned_unit(
     )
 }
 
+/// PLAN-939: the owned per-function entry with a staging-admission
+/// callback. The owned walker has no pre-allocation hook (unlike the
+/// scalar unit path's UnitMetadata), so the callback receives a
+/// conservative POST-build bound (instructions/slots the module actually
+/// holds) — an admission ceiling, not a pre-block; T-09's per-body owned
+/// caching threads the true pre-reserve.
+pub fn lower_function_owned_unit_reserved(
+    bundle: &hir::Bundle,
+    def_id_text: &str,
+    capabilities: &[String],
+    source_snapshot: u64,
+    reserve: &mut dyn FnMut(usize) -> Result<(), String>,
+) -> Result<MirModule, AdapterError> {
+    let mir = lower_function_owned_unit_with_modes(
+        bundle,
+        def_id_text,
+        capabilities,
+        source_snapshot,
+        &BTreeMap::new(),
+    )?;
+    let mut bytes = std::mem::size_of::<MirModule>();
+    for f in &mir.funcs {
+        bytes = bytes
+            .checked_add(f.slots.len() * 16)
+            .ok_or_else(|| AdapterError::resource("unit staging capacity overflow".into()))?;
+        for b in &f.blocks {
+            bytes = bytes
+                .checked_add(b.instrs.len() * 64)
+                .ok_or_else(|| AdapterError::resource("unit staging capacity overflow".into()))?;
+        }
+    }
+    for t in &mir.types {
+        bytes = bytes
+            .checked_add(std::mem::size_of::<MirType>() * 2)
+            .ok_or_else(|| AdapterError::resource("unit staging capacity overflow".into()))?;
+    }
+    reserve(bytes).map_err(|e| AdapterError::resource(e))?;
+    Ok(mir)
+}
+
 /// R3-F07: [`lower_function_owned_unit`] with RETAINED param-mode facts
 /// for BODY-LESS scaffold defs. A D828 single-function document binds the
 /// unchanged functions as body-less scaffolds — their MUT-record param

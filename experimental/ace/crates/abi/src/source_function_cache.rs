@@ -432,16 +432,26 @@ impl FunctionCache {
                 )?);
             }
         }
+        // PLAN-939: resource environments ride the RECORD-TEXT channel.
+        let resource_env = environment
+            .source_declarations_ref()
+            .iter()
+            .any(|d| d.resource().is_some());
         let Some(session) = &mut self.c else {
             let mut print = self
                 .work
                 .begin(f.source_name, "c-fragment", Phase::Production);
             counts.c_attempts += 1;
+            let family = if resource_env {
+                Family::RecordText
+            } else {
+                Family::Scalar
+            };
             let text = ForeignTargetProvider::with_production(
                 environment.clone(),
                 policy.clone() as ace_a2x_c::foreign::SharedTextProduction,
             )
-            .produce_fragments(view, &[f], Family::Scalar)
+            .produce_fragments(view, &[f], family)
             .map_err(|e| format!("{e:?}"))?
             .remove(0);
             counts.c_produced += 1;
@@ -458,8 +468,15 @@ impl FunctionCache {
             policy.clone() as ace_a2x_c::foreign::SharedTextProduction,
         ));
         let before = session.stats().clone();
-        let result = session
-            .checked_scalar_fragment_observed(view, f, caps, runtime, false, &self.work, work);
+        let result = if resource_env {
+            session.checked_resource_fragment_observed(
+                view, f, caps, runtime, false, &self.work, work,
+            )
+        } else {
+            session.checked_scalar_fragment_observed(
+                view, f, caps, runtime, false, &self.work, work,
+            )
+        };
         let after = session.stats();
         counts.c_attempts += after.lower - before.lower;
         counts.c_produced += after.fragments_produced - before.fragments_produced;

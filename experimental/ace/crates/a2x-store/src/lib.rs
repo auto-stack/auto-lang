@@ -270,6 +270,18 @@ pub const LAYER_FRAGMENT_C_FOREIGN: LayerSpec = LayerSpec {
     ..LAYER_FRAGMENT_C
 };
 
+/// PLAN-939 CA-D3: the C record-text RESOURCE fragment layer — resource
+/// imports ride the 925 record-text lowering with resource-aware
+/// marshaling; a scalar-foreign hit (AXCF1) or a plain record-text hit
+/// (AXC2) never satisfies it and vice versa.
+pub const LAYER_FRAGMENT_C_FOREIGN_RT: LayerSpec = LayerSpec {
+    id: "AXCFR1",
+    name: "a2x-c-foreign-rt-fragment",
+    schema_id: "a2939/axc-foreign-rt-fn/v1",
+    producer: "auto-a2x-c-foreign",
+    ..LAYER_FRAGMENT_C_RT
+};
+
 /// PLAN-925 CA-B: the C (HIR→C11 record-text) fragment layer — its own
 /// namespace beside the Rust record-text layer (AXR2) and the C scalar
 /// one (AXC1). The runtime content input is the C typed resource
@@ -587,6 +599,36 @@ impl A2xSession {
             .map_err(A2xRejectOrResource::Reject)?;
         self.produce_fragment_observed(view, f, &fingerprint, runtime_sha, read_only, observation)
     }
+    /// PLAN-939: consume one checked TEXT-RECORD resource function — the
+    /// record-text channel (family/profile/anchor rules of 925) with the
+    /// FOREIGN provider's resource-aware fragments (AXCFR1 namespace).
+    pub fn checked_resource_fragment_observed(
+        &mut self,
+        view: &SemanticView<'_>,
+        f: &FnFacts<'_>,
+        caps: &[String],
+        runtime_sha: &str,
+        read_only: bool,
+        ledger: &ace_source_query::work::Ledger,
+        work: &mut Vec<ace_source_query::work::Work>,
+    ) -> Result<ResidentFragment, A2xRejectOrResource> {
+        if view.domain != ace_core::hir::HirDomain::TextRecord {
+            return Err(A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.profile",
+                "expected checked text-record resource function",
+            )));
+        }
+        self.profile = SourceProfile::TextRecord;
+        self.caps = caps.to_vec();
+        self.ensure_target_supports()
+            .map_err(A2xRejectOrResource::Reject)?;
+        self.provider
+            .validate_view(view)
+            .map_err(A2xRejectOrResource::Reject)?;
+        let fingerprint = ace_a2x_core::prepare::semantic_fingerprint(view, f)
+            .map_err(A2xRejectOrResource::Reject)?;
+        self.produce_fragment_observed(view, f, &fingerprint, runtime_sha, read_only, Some((ledger, work)))
+    }
     /// Open a session on a (new or existing) store root with an explicit
     /// emit target provider (PLAN-921: the Rust provider is
     /// `ace_a2x_rust::RustTargetProvider::v1()`). `quota_bytes` caps the
@@ -673,6 +715,7 @@ impl A2xSession {
             Ok("AXR3") => &LAYER_FRAGMENT_COLL,
             Ok("AXC1") => &LAYER_FRAGMENT_C,
             Ok("AXCF1") => &LAYER_FRAGMENT_C_FOREIGN,
+            Ok("AXCFR1") => &LAYER_FRAGMENT_C_FOREIGN_RT,
             Ok("AXC2") => &LAYER_FRAGMENT_C_RT,
             Ok("AXC3") => &LAYER_FRAGMENT_C_COLL,
             other => panic!("provider returned unregistered fragment layer {:?}", other),
@@ -703,6 +746,7 @@ impl A2xSession {
             Ok("AXR3") => &LAYER_FRAGMENT_COLL,
             Ok("AXC1") => &LAYER_FRAGMENT_C,
             Ok("AXCF1") => &LAYER_FRAGMENT_C_FOREIGN,
+            Ok("AXCFR1") => &LAYER_FRAGMENT_C_FOREIGN_RT,
             Ok("AXC2") => &LAYER_FRAGMENT_C_RT,
             Ok("AXC3") => &LAYER_FRAGMENT_C_COLL,
             other => panic!("provider returned unregistered fragment layer {:?}", other),

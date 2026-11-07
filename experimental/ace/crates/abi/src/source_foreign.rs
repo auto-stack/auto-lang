@@ -697,8 +697,21 @@ impl Session {
             let marks_charge = resources
                 .reserve(Charge::index(bound.saturating_mul(80) + 64))
                 .map_err(|e| e.to_string())?;
+            let resource_env = front
+                .foreign()
+                .source_declarations_ref()
+                .iter()
+                .any(|d| d.resource().is_some());
             let text = ForeignTargetProvider::new(front.foreign().clone())
-                .runtime_source_admitted(&view, Family::Scalar, &mut runtime_admission)
+                .runtime_source_admitted(
+                    &view,
+                    if resource_env {
+                        Family::RecordText
+                    } else {
+                        Family::Scalar
+                    },
+                    &mut runtime_admission,
+                )
                 .map_err(|e| format!("{e:?}"))?;
             drop(marks_charge);
             Arc::new(text.into_bytes())
@@ -1459,7 +1472,15 @@ fn link_artifacts(
                     FilesetRequest {
                         entry: "main",
                         input_hash: &hash(source.as_bytes()),
-                        family: Family::Scalar,
+                        family: if environment
+                            .source_declarations_ref()
+                            .iter()
+                            .any(|d| d.resource().is_some())
+                        {
+                            Family::RecordText
+                        } else {
+                            Family::Scalar
+                        },
                         fragments: &fragments,
                         view: None,
                         runtime,
@@ -1523,17 +1544,27 @@ fn native_artifact(
     let mut lowering_allocation = resources
         .reserve(Charge::mir(0))
         .map_err(|e| e.to_string())?;
-    let mir = ace_lowering::hir_adapter::lower_function_unit_reserved(
-        bundle,
-        id,
-        caps,
-        0,
-        &mut |bytes| {
-            lowering_allocation
-                .resize(Charge::mir(bytes))
-                .map_err(|e| e.to_string())
-        },
-    )
+    // PLAN-939: RESOURCE environments lower per-function through the
+    // OWNED profile (text views + records live there); scalar manifests
+    // keep the exact 938 core-profile unit lowering.
+    let resource_env = env
+        .source_declarations_ref()
+        .iter()
+        .any(|d| d.resource().is_some());
+    let lower_one = |reserve: &mut dyn FnMut(usize) -> Result<(), String>| {
+        if resource_env {
+            ace_lowering::hir_adapter::lower_function_owned_unit_reserved(
+                bundle, id, caps, 0, reserve,
+            )
+        } else {
+            ace_lowering::hir_adapter::lower_function_unit_reserved(bundle, id, caps, 0, reserve)
+        }
+    };
+    let mir = lower_one(&mut |bytes| {
+        lowering_allocation
+            .resize(Charge::mir(bytes))
+            .map_err(|e| e.to_string())
+    })
     .map_err(|e| match e {
         ace_lowering::AdapterError::Resource { .. } => format!("foreign.resource: {e:?}"),
         _ => format!("foreign.lower: {e:?}"),
@@ -1842,12 +1873,18 @@ fn cached_artifact(
         .map_err(|e| format!("{e:?}"))?;
     let semantic =
         ace_a2x_core::prepare::semantic_fingerprint(view, f).map_err(|e| format!("{e:?}"))?;
+    let resource_env = environment
+        .source_declarations_ref()
+        .iter()
+        .any(|d| d.resource().is_some());
     let (key, _key_charge) = cache.key(
         name,
         &semantic,
         target,
         if target == Target::C {
             runtime
+        } else if resource_env {
+            "foreign-owned-runtime-abi/1"
         } else {
             "foreign-scalar-runtime-abi/1"
         },
