@@ -313,6 +313,17 @@ impl ResourceSig {
                         return Err("resource.ret: handle provider must be an identifier".into());
                     }
                 }
+                // A pure entry has no failure path to hang the atomic
+                // commit on — mut/out record views require the fallible
+                // form (plan §5.3).
+                for (i, p) in self.params.iter().enumerate() {
+                    if p.is_rec_role(ViewRole::Mut) || p.is_rec_role(ViewRole::Out) {
+                        return Err(format!(
+                            "resource.params[{i}]: mut/out record views require a fallible \
+                             (atomic) form — a pure entry cannot spell the failure invariant"
+                        ));
+                    }
+                }
             }
             ResourceForm::Fallible { out, .. } => {
                 if let Some(ResOut::Handle { provider }) = out {

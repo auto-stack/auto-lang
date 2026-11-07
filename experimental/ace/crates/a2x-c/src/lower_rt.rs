@@ -569,6 +569,243 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
         out
     }
 
+    /// PLAN-939: lower ONE resource foreign call in the text-record C
+    /// family. The provider prototype is emitted from the resource sig;
+    /// record views cross through an explicit cast to the provider-side
+    /// nominal type (hand-audited header + manifest field closure + core
+    /// nominal-shape check are the layout guarantee); Mut/Out records
+    /// cross an a2x-typed SHADOW struct committed back only past the
+    /// success guard (V-04 — the failure transport never reaches the
+    /// commit); wide results check-narrow with the named status (V-15).
+    fn lower_foreign_resource_call(
+        &mut self,
+        declaration: &ace_foreign_contract::manual::SourceDecl,
+        eval_args: &[hir::ExprId],
+        bindings: &[hir::CallBinding],
+    ) -> Result<(String, Ty), A2xReject> {
+        use ace_foreign_contract::resource::{ResKind, ResOut, ResourceForm, ViewRole};
+        declaration
+            .validate()
+            .map_err(|e| A2xReject::new("a2c.foreign-contract", e))?;
+        let res = declaration
+            .resource()
+            .ok_or_else(|| {
+                A2xReject::new(
+                    "a2c.foreign-contract",
+                    "text-record foreign requires a resource signature",
+                )
+            })?
+            .clone();
+        let mut evaluated: Vec<(String, Ty)> = Vec::with_capacity(eval_args.len());
+        for arg in eval_args {
+            let (v, t) = self.lower_pure(*arg)?;
+            evaluated.push((v, t));
+        }
+        let mut placed: Vec<Option<(String, Ty)>> = vec![None; res.params.len()];
+        for b in bindings {
+            let arg = evaluated.get(b.arg as usize).cloned().ok_or_else(|| {
+                A2xReject::new("a2c.foreign-binding", "foreign argument binding out of range")
+            })?;
+            if let Some(slot) = placed.get_mut(b.param as usize) {
+                *slot = Some(arg);
+            }
+        }
+        let mut arguments: Vec<String> = Vec::new();
+        self.out
+            .push(crate::foreign::resource_prototype(declaration));
+        self.out
+            .push("extern void ace_foreign_fail(int32_t status);".into());
+        if let Some(symbol) = &declaration.context_symbol {
+            self.out.push(format!("extern unsigned char {symbol};"));
+            arguments.push(format!("(void *)&{symbol}"));
+        }
+        struct RecShadow {
+            orig_ptr: String,
+            shadow: String,
+        }
+        let mut shadows: Vec<RecShadow> = Vec::new();
+        for (i, p) in res.params.iter().enumerate() {
+            let Some((value, vty)) = placed[i].clone() else {
+                return Err(A2xReject::new("a2c.foreign-binding", "missing foreign argument"));
+            };
+            match p {
+                ResKind::I32 => {
+                    let after_cb =
+                        i > 0 && matches!(res.params[i - 1], ResKind::Callback { ctx: true });
+                    if after_cb {
+                        arguments.push(format!("(long long)({value})"));
+                    } else {
+                        arguments.push(value);
+                    }
+                }
+                ResKind::Bool => {
+                    self.out.push(format!(
+                        "if ((uint32_t)({value}) > 1u) ace_foreign_fail(INT32_MIN + 1);"
+                    ));
+                    arguments.push(format!("(uint8_t)({value})"));
+                }
+                ResKind::ViewText => {
+                    if !matches!(vty, Ty::Str | Ty::StrOwned) {
+                        return Err(A2xReject::new(
+                            "a2c.foreign-binding",
+                            "text view lane requires a str argument",
+                        ));
+                    }
+                    arguments.push(format!("(const uint8_t *)({value}).data"));
+                    arguments.push(format!("(uint64_t)({value}).len"));
+                }
+                ResKind::Rec { rec, role, .. } => {
+                    let Ty::Record(ri) = vty else {
+                        return Err(A2xReject::new(
+                            "a2c.foreign-binding",
+                            "record view lane requires a record argument",
+                        ));
+                    };
+                    let a2x_name = self
+                        .view
+                        .record(ri)
+                        .map(|r| r.name.clone())
+                        .ok_or_else(|| {
+                            A2xReject::new("a2x.internal", "unknown record type index")
+                        })?;
+                    let a2x_cty = c_record_name(&a2x_name);
+                    let pt = rec.clone();
+                    match role {
+                        ViewRole::Const => {
+                            // address of the (addressable) record value
+                            arguments.push(format!("(const {pt} *)&({value})"));
+                        }
+                        ViewRole::Mut | ViewRole::Out => {
+                            let shadow = self.fresh_temp();
+                            self.out.push(format!("{a2x_cty} {shadow};"));
+                            if *role == ViewRole::Mut {
+                                // `value` is the `.mut` borrow pointer
+                                self.out.push(format!("{shadow} = *({value});"));
+                            } else {
+                                self.out.push(format!(
+                                    "memset(&{shadow}, 0, sizeof({shadow}));"
+                                ));
+                            }
+                            arguments.push(format!("({pt} *)&{shadow}"));
+                            shadows.push(RecShadow {
+                                orig_ptr: value,
+                                shadow,
+                            });
+                        }
+                    }
+                }
+                ResKind::Handle { .. } => {
+                    arguments.push(format!("(long long)({value})"));
+                }
+                ResKind::Callback { .. } => {
+                    return Err(A2xReject::new(
+                        "a2c.foreign-callback",
+                        "callback lanes require the callback-by-name frontend",
+                    ));
+                }
+            }
+        }
+        let result = self.fresh_temp();
+        let wide_narrow = |out: &mut Vec<String>, temp: &str, unsigned: bool| -> String {
+            if unsigned {
+                out.push(format!(
+                    "if ((unsigned long long)({temp}) > 0x7fffffffLL) ace_foreign_fail(-2147483646);"
+                ));
+            } else {
+                out.push(format!(
+                    "if (({temp}) < INT32_MIN || ({temp}) > INT32_MAX) ace_foreign_fail(-2147483646);"
+                ));
+            }
+            format!("(int32_t)({temp})")
+        };
+        let narrow = match &res.form {
+            ResourceForm::Pure { ret } => {
+                match ret {
+                    ResOut::I32 => {
+                        self.out.push(format!(
+                            "int32_t {result} = {}({});",
+                            declaration.function.symbol,
+                            arguments.join(", ")
+                        ));
+                        None
+                    }
+                    ResOut::Bool => {
+                        self.out.push(format!(
+                            "uint8_t {result} = {}({});",
+                            declaration.function.symbol,
+                            arguments.join(", ")
+                        ));
+                        self.out.push(format!(
+                            "if ((uint32_t)({result}) > 1u) ace_foreign_fail(INT32_MIN + 1);"
+                        ));
+                        None
+                    }
+                    ResOut::I64 | ResOut::Handle { .. } => {
+                        self.out.push(format!(
+                            "long long {result} = {}({});",
+                            declaration.function.symbol,
+                            arguments.join(", ")
+                        ));
+                        Some((result.clone(), false))
+                    }
+                    ResOut::U64 => {
+                        self.out.push(format!(
+                            "unsigned long long {result} = {}({});",
+                            declaration.function.symbol,
+                            arguments.join(", ")
+                        ));
+                        Some((result.clone(), true))
+                    }
+                }
+            }
+            ResourceForm::Fallible { out: lane, .. } => {
+                let Some(lane) = lane else {
+                    return Err(A2xReject::new(
+                        "a2c.foreign-contract",
+                        "resource fallible entry without a value out",
+                    ));
+                };
+                let decl_c = match lane {
+                    ResOut::I32 => "int32_t",
+                    ResOut::Bool => "uint8_t",
+                    ResOut::I64 | ResOut::Handle { .. } => "long long",
+                    ResOut::U64 => "unsigned long long",
+                };
+                self.out.push(format!("{decl_c} {result};"));
+                arguments.push(format!("&{result}"));
+                let status = self.fresh_temp();
+                self.out.push(format!(
+                    "int32_t {status} = {}({});",
+                    declaration.function.symbol,
+                    arguments.join(", ")
+                ));
+                // V-04: shadows commit only past the failure transport.
+                self.out
+                    .push(format!("if ({status} != 0) ace_foreign_fail({status});"));
+                for sh in &shadows {
+                    self.out.push(format!("*({}) = {};", sh.orig_ptr, sh.shadow));
+                }
+                match lane {
+                    ResOut::I32 => None,
+                    ResOut::Bool => {
+                        self.out.push(format!(
+                            "if ((uint32_t)({result}) > 1u) ace_foreign_fail(INT32_MIN + 1);"
+                        ));
+                        None
+                    }
+                    ResOut::I64 | ResOut::Handle { .. } => Some((result.clone(), false)),
+                    ResOut::U64 => Some((result.clone(), true)),
+                }
+            }
+        };
+        match narrow {
+            None => Ok((result, Ty::I32)),
+            Some((temp, unsigned)) => {
+                Ok((wide_narrow(&mut self.out, &temp, unsigned), Ty::I32))
+            }
+        }
+    }
+
     fn str_view_lit(value: &str) -> String {
         format!(
             "(a2x_str_view){{ (const uint8_t*){}, {}u }}",
@@ -875,6 +1112,12 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     let t = self.fresh_temp();
                     self.out.push(format!("int32_t {} = {}();", t, func));
                     return Ok((t, Ty::I32));
+                }
+                // PLAN-939: a RESOURCE foreign call (text-record domain) —
+                // resource-sig admission plus the frozen lane conversions
+                // (V-01/V-04/V-15).
+                if let Some(declaration) = self.view.foreign_by_def(target_id).cloned() {
+                    return self.lower_foreign_resource_call(&declaration, eval_args, bindings);
                 }
                 let (c_name, target_params, result_ty) =
                     if let Some(t) = self.view.fn_by_def(target_id) {

@@ -11,6 +11,9 @@ use std::sync::{Arc, Mutex};
 
 pub const SCHEMA: &str = "auto.a2x.c.foreign-library.fileset/1";
 pub const RECIPE: &str = "ac-a2c/hir-foreign-scalar-import-v1";
+/// PLAN-939: the record-text RESOURCE import recipe (a distinct identity —
+/// a scalar-import fileset never settles it and vice versa).
+pub const RESOURCE_RECIPE: &str = "ac-a2c/hir-foreign-resource-import-v1";
 pub const FAILURE_RUNTIME: &str = "#include <stdint.h>\n#include <stdio.h>\n#include <stdlib.h>\nvoid ace_foreign_fail(int32_t status) { fprintf(stderr, \"foreign.status=%ld\\n\", (long)status); fflush(stderr); exit(70); }\n";
 
 /// Host admission of a produced text's exact byte size (the request's
@@ -71,6 +74,76 @@ pub fn write_prototype(
 pub fn prototype(declaration: &SourceDecl) -> String {
     let mut out = String::new();
     write_prototype(declaration, &mut out).expect("formatting into a String cannot fail");
+    out
+}
+
+/// PLAN-939: the resource-entry C prototype. Provider-side nominal types
+/// are spelled from the manifest record ids (the hand-audited header
+/// defines them; the manifest field closure plus the core nominal-shape
+/// check are the layout guarantee). The value out is the trailing
+/// pointer; the i32 status RETURNS (the 938 convention).
+pub fn resource_prototype(declaration: &SourceDecl) -> String {
+    use ace_foreign_contract::resource::{ResKind, ResOut, ResourceForm, ViewRole};
+    let Some(res) = declaration.resource() else {
+        return prototype(declaration);
+    };
+    res.validate().expect("admitted resource signature");
+    let mut out = String::new();
+    let ret_c = match &res.form {
+        ResourceForm::Pure { ret } => match ret {
+            ResOut::I32 => "int32_t".to_string(),
+            ResOut::Bool => "uint8_t".to_string(),
+            ResOut::I64 | ResOut::Handle { .. } => "long long".to_string(),
+            ResOut::U64 => "unsigned long long".to_string(),
+        },
+        ResourceForm::Fallible { .. } => "int32_t".to_string(),
+    };
+    out.push_str(&format!(
+        "extern {ret_c} {}(",
+        declaration.function.symbol
+    ));
+    let mut first = true;
+    let mut push = |out: &mut String, text: &str| {
+        if first {
+            first = false;
+        } else {
+            out.push_str(", ");
+        }
+        out.push_str(text);
+    };
+    if let ResourceForm::Fallible { ctx: Some(_), .. } = res.form {
+        push(&mut out, "void *");
+    }
+    for (i, p) in res.params.iter().enumerate() {
+        let after_cb = i > 0 && matches!(res.params[i - 1], ResKind::Callback { ctx: true });
+        match p {
+            ResKind::I32 if after_cb => push(&mut out, "long long"),
+            ResKind::I32 => push(&mut out, "int32_t"),
+            ResKind::Bool => push(&mut out, "uint8_t"),
+            ResKind::ViewText => {
+                push(&mut out, "const uint8_t *");
+                push(&mut out, "uint64_t");
+            }
+            ResKind::Rec { rec, role, .. } => match role {
+                ViewRole::Const => push(&mut out, &format!("const {rec} *")),
+                ViewRole::Mut | ViewRole::Out => push(&mut out, &format!("{rec} *")),
+            },
+            ResKind::Handle { .. } => push(&mut out, "long long"),
+            ResKind::Callback { .. } => push(&mut out, "long long (*cb)"),
+        }
+    }
+    if let ResourceForm::Fallible {
+        out: Some(lane), ..
+    } = &res.form
+    {
+        let c = match lane {
+            ResOut::I32 => "int32_t *",
+            ResOut::Bool => "uint8_t *",
+            ResOut::I64 | ResOut::U64 | ResOut::Handle { .. } => "long long *",
+        };
+        push(&mut out, c);
+    }
+    out.push_str(");");
     out
 }
 
@@ -152,12 +225,20 @@ impl ForeignTargetProvider {
         }
     }
     fn admit(&self, view: &SemanticView<'_>) -> Result<(), A2xReject> {
-        if view.domain != ace_core::hir::HirDomain::Scalar
-            || view.foreign_declarations().next().is_none()
-        {
+        let resource_env = resource_environment(&self.environment);
+        let domain_ok = if resource_env {
+            view.domain == ace_core::hir::HirDomain::TextRecord
+        } else {
+            view.domain == ace_core::hir::HirDomain::Scalar
+        };
+        if !domain_ok || view.foreign_declarations().next().is_none() {
             return Err(A2xReject::new(
                 "a2c.foreign-profile",
-                "expected checked scalar foreign HIR",
+                if resource_env {
+                    "expected checked text-record resource foreign HIR"
+                } else {
+                    "expected checked scalar foreign HIR"
+                },
             ));
         }
         for d in view.foreign_declarations() {
@@ -179,11 +260,19 @@ impl ForeignTargetProvider {
         family: Family,
         admit: impl FnOnce(usize) -> Result<(), String>,
     ) -> Result<String, A2xReject> {
-        scalar(family)?;
+        family_admits(family)?;
         self.admit(view)?;
         let marks = view.trace_symbols().into_iter().collect::<Vec<_>>();
-        crate::runtime::runtime_source_admitted(&marks, admit)
-            .map_err(|e| A2xReject::new("a2c.foreign-resource", e))
+        match family {
+            Family::RecordText => {
+                let source = crate::rt_runtime::record_text_runtime_source(&marks);
+                admit(source.len())
+                    .map_err(|e| A2xReject::new("a2c.foreign-resource", e))?;
+                Ok(source)
+            }
+            _ => crate::runtime::runtime_source_admitted(&marks, admit)
+                .map_err(|e| A2xReject::new("a2c.foreign-resource", e)),
+        }
     }
 }
 fn scalar(family: Family) -> Result<(), A2xReject> {
@@ -195,6 +284,27 @@ fn scalar(family: Family) -> Result<(), A2xReject> {
             "only scalar foreign is admitted",
         ))
     }
+}
+
+/// PLAN-939: the foreign C channel also admits the RECORD-TEXT family —
+/// RESOURCE foreign (str views, nominal records, handles, callbacks)
+/// rides the 925 record-text lowering with resource-aware marshaling.
+fn family_admits(family: Family) -> Result<(), A2xReject> {
+    match family {
+        Family::Scalar | Family::RecordText => Ok(()),
+        Family::Collections => Err(A2xReject::new(
+            "a2c.foreign-profile",
+            "foreign is admitted on the scalar and record-text families only",
+        )),
+    }
+}
+
+/// True when the environment carries at least one resource entry.
+fn resource_environment(environment: &AdmittedForeign) -> bool {
+    environment
+        .source_declarations_ref()
+        .iter()
+        .any(|d| d.resource().is_some())
 }
 impl TargetProvider for ForeignTargetProvider {
     fn validate_view(&self, view: &SemanticView<'_>) -> Result<(), A2xReject> {
@@ -219,15 +329,23 @@ impl TargetProvider for ForeignTargetProvider {
         ]
     }
     fn fragment_layer_id(&self, family: Family) -> Result<&'static str, A2xReject> {
-        scalar(family)?;
-        Ok("AXCF1")
+        family_admits(family)?;
+        Ok(match family {
+            Family::RecordText => "AXCFR1",
+            _ => "AXCF1",
+        })
     }
     fn runtime_source(&self, view: &SemanticView<'_>, family: Family) -> Result<String, A2xReject> {
-        scalar(family)?;
+        family_admits(family)?;
         self.admit(view)?;
-        Ok(crate::runtime::runtime_source(
-            &view.trace_symbols().into_iter().collect::<Vec<_>>(),
-        ))
+        match family {
+            Family::RecordText => Ok(crate::rt_runtime::record_text_runtime_source(
+                &view.trace_symbols().into_iter().collect::<Vec<_>>(),
+            )),
+            _ => Ok(crate::runtime::runtime_source(
+                &view.trace_symbols().into_iter().collect::<Vec<_>>(),
+            )),
+        }
     }
     fn produce_fragments(
         &self,
@@ -235,28 +353,48 @@ impl TargetProvider for ForeignTargetProvider {
         fns: &[&FnFacts<'_>],
         family: Family,
     ) -> Result<Vec<String>, A2xReject> {
-        scalar(family)?;
+        family_admits(family)?;
         self.admit(view)?;
-        fns.iter()
-            .map(|f| {
-                crate::lower::lower_foreign_fn_c(view, f).and_then(|f| {
-                    let text =
-                        crate::lower::print_fragment_admitted(&f, |size| self.reserve_text(size))?;
+        match family {
+            Family::RecordText => {
+                let cfns = crate::lower_rt::lower_functions_rt(view, fns)?;
+                let mut out = Vec::with_capacity(cfns.len());
+                for cfn in &cfns {
+                    let text = crate::lower_rt::print_fragment_rt(cfn);
+                    self.reserve_text(text.len())
+                        .map_err(|e| A2xReject::new("a2c.foreign-resource", e))?;
                     self.complete_text(text.len())
                         .map_err(|e| A2xReject::new("a2c.foreign-resource", e))?;
-                    Ok(text)
+                    out.push(text);
+                }
+                Ok(out)
+            }
+            _ => fns
+                .iter()
+                .map(|f| {
+                    crate::lower::lower_foreign_fn_c(view, f).and_then(|f| {
+                        let text = crate::lower::print_fragment_admitted(&f, |size| {
+                            self.reserve_text(size)
+                        })?;
+                        self.complete_text(text.len())
+                            .map_err(|e| A2xReject::new("a2c.foreign-resource", e))?;
+                        Ok(text)
+                    })
                 })
-            })
-            .collect()
+                .collect(),
+        }
     }
     fn capture_prelude_seed(
         &self,
         view: &SemanticView<'_>,
         family: Family,
     ) -> Result<Option<String>, A2xReject> {
-        scalar(family)?;
+        family_admits(family)?;
         self.admit(view)?;
-        Ok(None)
+        match family {
+            Family::RecordText => crate::seed::encode_seed(view).map(Some),
+            _ => Ok(None),
+        }
     }
     fn assemble_fileset(&self, req: FilesetRequest<'_>) -> Result<FileSet, A2xReject> {
         self.assemble_fileset_admitted(req, &mut (), &mut |_| Ok(()))
@@ -323,7 +461,11 @@ fn write_generated(
 fn write_imports(declarations: &[SourceDecl], out: &mut dyn std::fmt::Write) -> std::fmt::Result {
     out.write_str(IMPORTS_HEAD)?;
     for d in declarations {
-        write_prototype(d, out)?;
+        if d.resource().is_some() {
+            out.write_str(&resource_prototype(d))?;
+        } else {
+            write_prototype(d, out)?;
+        }
         out.write_str("\n")?;
         if let Some(symbol) = &d.context_symbol {
             write!(out, "extern unsigned char {symbol};\n")?;
@@ -347,7 +489,7 @@ impl ForeignTargetProvider {
         output: &mut dyn PageProduction,
         admit_memory: &mut dyn FnMut(usize) -> Result<(), String>,
     ) -> Result<FileSet, A2xReject> {
-        scalar(req.family)?;
+        family_admits(req.family)?;
         if let Some(view) = req.view {
             self.admit(view)?;
         }
@@ -409,8 +551,16 @@ impl ForeignTargetProvider {
                 })
                 .collect(),
             input_hash: req.input_hash,
-            input_profile: ace_core::source::SCALAR_SOURCE_PROFILE,
-            recipe: RECIPE,
+            input_profile: if req.family == Family::RecordText {
+                ace_core::source::TEXT_RECORD_SOURCE_PROFILE
+            } else {
+                ace_core::source::SCALAR_SOURCE_PROFILE
+            },
+            recipe: if req.family == Family::RecordText {
+                RESOURCE_RECIPE
+            } else {
+                RECIPE
+            },
             schema: SCHEMA,
             target: &environment.manifest().target,
         };
