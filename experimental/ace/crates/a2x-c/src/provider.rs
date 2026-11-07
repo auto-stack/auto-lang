@@ -295,7 +295,7 @@ fn seed_field_c_ty(ty: &seed::SeedFieldTy) -> String {
 /// The record-table block of `generated.c`: struct definitions, result
 /// wrappers, value/fwd/clone/free helpers (prototypes first, then
 /// definitions — nested-record clone helpers call each other).
-fn record_table_block(recs: &[seed::SeedRecord]) -> Result<String, A2xReject> {
+pub(crate) fn record_table_block(recs: &[seed::SeedRecord]) -> Result<String, A2xReject> {
     // every record name must be unique (the verifier's nominal identity;
     // a duplicate in a seed is corruption)
     let mut seen = std::collections::BTreeSet::new();

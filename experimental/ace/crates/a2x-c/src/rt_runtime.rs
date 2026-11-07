@@ -30,31 +30,53 @@
 /// text/char/resource layer + the marks the view actually uses
 /// (content-hashed into every AXC2 fragment key, so a runtime change can
 /// never hit stale fragments).
+///
+/// PLAN-939: the source C host admits the runtime page's exact size BEFORE
+/// the single exactly-sized allocation, so the retained page's capacity
+/// matches its admitted charge (retain/adopt accounting stays consistent
+/// through publication). The plain entry keeps a no-op admission.
 pub fn record_text_runtime_source(marks: &[&'static str]) -> String {
-    let mut s = String::new();
-    s.push_str("// AUTO-GENERATED typed resource runtime (PLAN-925 CA-B) — DO NOT EDIT.\n");
-    s.push_str("// Checked i32 core + owned-Str resource layer with explicit cleanup,\n");
-    s.push_str("// pre-allocation budget checks and default-off fault/observation hooks.\n");
-    s.push_str("#ifndef A2X_C_RT_RUNTIME_H\n#define A2X_C_RT_RUNTIME_H\n\n");
-    s.push_str("#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n");
-    s.push_str(RT_CORE);
+    crate::admitted_text::render_admitted(
+        |out| write_record_text_runtime(marks, out),
+        |_| Ok(()),
+    )
+    .expect("no-op admission cannot fail and the renderer is stateless")
+}
+/// The record-text runtime with the exact byte size admitted by `admit`
+/// between the counting and rendering passes (PLAN-938 pattern).
+pub fn record_text_runtime_source_admitted(
+    marks: &[&'static str],
+    admit: impl FnOnce(usize) -> Result<(), String>,
+) -> Result<String, String> {
+    crate::admitted_text::render_admitted(|out| write_record_text_runtime(marks, out), admit)
+}
+fn write_record_text_runtime(
+    marks: &[&'static str],
+    out: &mut dyn std::fmt::Write,
+) -> std::fmt::Result {
+    out.write_str("// AUTO-GENERATED typed resource runtime (PLAN-925 CA-B) — DO NOT EDIT.\n")?;
+    out.write_str("// Checked i32 core + owned-Str resource layer with explicit cleanup,\n")?;
+    out.write_str("// pre-allocation budget checks and default-off fault/observation hooks.\n")?;
+    out.write_str("#ifndef A2X_C_RT_RUNTIME_H\n#define A2X_C_RT_RUNTIME_H\n\n")?;
+    out.write_str("#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n")?;
+    out.write_str(RT_CORE)?;
     for &mark in marks {
         let (suffix, value) = if mark == "hir.test.mark_a" {
             ("a", "1")
         } else {
             ("b", "2")
         };
-        s.push_str(&format!(
+        write!(
+            out,
             "\nstatic int32_t a2x_mark_{suf}(void) {{\n\
              \x20   fprintf(stderr, \"mark_{suf}\\n\");\n\
              \x20   return {val};\n\
              }}\n",
             suf = suffix,
             val = value
-        ));
+        )?;
     }
-    s.push_str("\n#endif /* A2X_C_RT_RUNTIME_H */\n");
-    s
+    out.write_str("\n#endif /* A2X_C_RT_RUNTIME_H */\n")
 }
 
 /// Frozen runtime core (byte-stable for a crate version).

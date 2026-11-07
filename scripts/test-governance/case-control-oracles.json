@@ -49,6 +49,13 @@
    "check": "certify",
    "expected_status": "FAIL",
    "evidence": "PLAN-938: actual and independently compiled C reference each equal 42; parent oracle 43 must mismatch both"
+  },
+  {
+   "suite": "ace-ca-d-resources-939",
+   "case": "ace-ca-d3.wrong-oracle",
+   "check": "certify",
+   "expected_status": "FAIL",
+   "evidence": "PLAN-939: actual and independently compiled C reference each return 8; parent oracle 9 must mismatch both"
   }
  ]
 }

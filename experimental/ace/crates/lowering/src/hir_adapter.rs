@@ -1380,7 +1380,7 @@ pub fn lower_function_owned_unit_reserved(
                 .ok_or_else(|| AdapterError::resource("unit staging capacity overflow".into()))?;
         }
     }
-    for t in &mir.types {
+    for _ in &mir.types {
         bytes = bytes
             .checked_add(std::mem::size_of::<MirType>() * 2)
             .ok_or_else(|| AdapterError::resource("unit staging capacity overflow".into()))?;
@@ -3685,6 +3685,17 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                             actuals[binding.param as usize] = arg_slots[binding.arg as usize];
                         }
                         let dst = self.temp_ty(ty)?;
+                        // PLAN-939: a Rec Mut/Out lane's shadow commit lands
+                        // in the BORROW TEMP's storage (the emitter's V-04
+                        // success continuation). Propagate the mutated temp
+                        // into the ORIGINAL BorrowMut'd local — mirroring
+                        // the Call arm's write-back; without it the foreign
+                        // write-back dies with the by-value temp.
+                        let mut_borrow_actuals: Vec<SlotId> = actuals
+                            .iter()
+                            .copied()
+                            .filter(|a| self.mut_borrow_target(*a).is_some())
+                            .collect();
                         self.emit(
                             MirInstr::ForeignCall {
                                 declaration,
@@ -3693,6 +3704,17 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                             },
                             sp,
                         )?;
+                        for temp in mut_borrow_actuals {
+                            let target = self
+                                .mut_borrow_target(temp)
+                                .expect("filtered by mut_borrow_actuals");
+                            let temp_ty_id = self.slot_ty_all(temp);
+                            if ace_av_core::ownership::type_is_owned(self.out, temp_ty_id) {
+                                self.emit(MirInstr::Move { dst: target, src: temp }, sp)?;
+                            } else {
+                                self.emit(MirInstr::Copy { dst: target, src: temp }, sp)?;
+                            }
+                        }
                         return Ok(dst);
                     }
                     if self.out.is_host_console_profile() {

@@ -198,6 +198,7 @@ pub struct Session {
     runtime_identity: String,
     runtime_page_id: String,
     provider_page_id: String,
+    prelude_seed: Option<String>,
     id: u64,
     generation: u64,
     meter: Meter,
@@ -735,6 +736,20 @@ impl Session {
             .adopt(&provider, Charge::resident(provider.capacity() + 40))
             .map_err(|e| e.to_string())?;
         let mut work = Vec::new();
+        // PLAN-939: the record-text C fileset references internal
+        // `a2x_rec_<Name>` types — capture the record-table seed from the
+        // SAME live view the fragments were lowered against (the scalar
+        // lanes need no record table).
+        let resource_env = front
+            .foreign()
+            .source_declarations_ref()
+            .iter()
+            .any(|d| d.resource().is_some());
+        let prelude_seed = if target == Target::C && resource_env {
+            Some(ace_a2x_c::seed::encode_seed(&view).map_err(|e| format!("{e:?}"))?)
+        } else {
+            None
+        };
         for f in view.functions() {
             let mut counts = Meter::default();
             let artifact = cached_artifact(
@@ -762,6 +777,7 @@ impl Session {
             runtime_identity: runtime_identity(target, &hash(&runtime)),
             runtime_page_id: hash(&runtime),
             provider_page_id: hash(&provider),
+            prelude_seed,
             runtime,
             provider,
             id: IDS.fetch_add(1, Ordering::Relaxed),
@@ -1068,6 +1084,16 @@ impl Session {
         }
         pages.insert(self.runtime_page_id.clone(), self.runtime.clone());
         pages.insert(provider_id.into(), provider.clone());
+        // PLAN-939: the record-table seed rides the snapshot as a digest
+        // page (the record-text C link re-assembles generated.c from it;
+        // native/scalar roots carry none).
+        let prelude = self.prelude_seed.as_ref().map(|seed| {
+            let bytes = Arc::new(seed.clone().into_bytes());
+            let id = hash(&bytes);
+            page_owners.insert(id.clone(), "prelude-seed".into());
+            pages.insert(id.clone(), bytes);
+            id
+        });
         let foreign = ForeignRoot::from_pages(environment.pages());
         for (stage, page) in environment.pages().iter() {
             let digest = hash(page);
@@ -1092,6 +1118,7 @@ impl Session {
             contract: environment.contract_digest().into(),
             foreign,
             functions,
+            prelude,
         };
         let size =
             ace_foreign_contract::codec::json_size(&root, MAX_ROOT).map_err(|e| e.to_string())?;
@@ -1270,6 +1297,22 @@ impl Session {
         qualification.accept();
         let runtime = required(&root.runtime)?;
         work.io("*", "restore-runtime", runtime.len() as u64, 0);
+        // PLAN-939: the record-table seed page (record-text C roots only);
+        // a missing page on such a root fails the record-text fileset
+        // assembly explicitly, never a silently incomplete generated.c.
+        let prelude_seed = match root.prelude.as_deref() {
+            Some(id) => {
+                let seed_work = work.begin("*", "restore-prelude", Phase::Recovery);
+                let bytes = required(id)?;
+                work.io("*", "restore-prelude", bytes.len() as u64, 0);
+                let text = std::str::from_utf8(&bytes)
+                    .map_err(|e| e.to_string())?
+                    .to_string();
+                seed_work.accept();
+                Some(text)
+            }
+            None => None,
+        };
         let front = required(&root.frontend)?;
         let mut read_error = None;
         let front = Frontend::restore_with_resources(
@@ -1331,6 +1374,7 @@ impl Session {
             runtime_identity: root.runtime_identity,
             runtime_page_id: root.runtime,
             provider_page_id: root.provider,
+            prelude_seed,
             runtime,
             provider,
             id: IDS.fetch_add(1, Ordering::Relaxed),
@@ -1359,6 +1403,7 @@ fn link_artifacts(
     environment: &AdmittedForeign,
     provider: &Arc<Vec<u8>>,
     runtime: &Arc<Vec<u8>>,
+    prelude_seed: Option<&str>,
     artifacts: &BTreeMap<String, &Artifact>,
     meter: &mut Meter,
     ledger: &Ledger,
@@ -1501,7 +1546,7 @@ fn link_artifacts(
                         fragments: &fragments,
                         view: None,
                         runtime,
-                        prelude_seed: None,
+                        prelude_seed,
                         origins: None,
                         source_sha256: None,
                     },
@@ -1771,6 +1816,10 @@ struct Root {
     contract: String,
     foreign: ForeignRoot,
     functions: BTreeMap<String, String>,
+    /// PLAN-939: the record-table seed page id for record-text C roots
+    /// (absent on scalar/native roots and legacy roots written before it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    prelude: Option<String>,
 }
 enum EnvironmentInput {
     Admitted(AdmittedForeign),

@@ -396,7 +396,7 @@ pub fn cold_observed_with_resources(
                 version: crate::ident::content_version("sq-body", b"resolver-owned"),
                 expr_nodes: 0,
             };
-            let (facts, deps, walk_ref) = if resource_lane {
+            let (facts, deps) = if resource_lane {
                 owned_facts = crate::facts::InferBodyFacts {
                     name: item.name.name.clone(),
                     logical: crate::ident::owner_logical(
@@ -420,13 +420,13 @@ pub fn cold_observed_with_resources(
                     negatives: Vec::new(),
                     steps: 0,
                 };
-                (&owned_facts, &[][..], &empty_walk)
+                (&owned_facts, &[][..])
             } else {
                 let (facts, deps) = queries
                     .resident_page(&item.name.name)
                     .ok_or_else(|| reject("missing cold fact"))?;
                 walk_storage = Some(crate::walk_body(&item.body).map_err(reject)?);
-                (facts, deps, walk_storage.as_ref().expect("just stored"))
+                (facts, deps)
             };
             let walk_ref = walk_storage.as_ref().unwrap_or(&empty_walk);
             let page_work = work.begin(

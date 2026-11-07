@@ -221,6 +221,7 @@ impl Session {
             environment,
             provider,
             &self.runtime,
+            self.prelude_seed.as_deref(),
             &artifacts,
             &mut self.meter,
             &self.front.work(),

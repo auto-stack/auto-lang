@@ -1,6 +1,6 @@
 {
   "schema": "abi.resource-import-deck/1",
-  "source": "type TxnResult { value int, handle int }\nfn main() int {\n    var r TxnResult = TxnResult(0, 0)\n    let seed int = t939_txn(1500, r.mut)\n    return seed + r.value\n}",
+  "source": "type TxnResult {\n    value int\n    handle int\n}\nfn main() int {\n    var r TxnResult = TxnResult(0, 0)\n    let seed int = t939_txn(1500, r.mut)\n    return seed + r.value\n}",
   "module": "source939",
   "manifest": {
     "schema": "ace.foreign.manual/2",

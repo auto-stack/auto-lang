@@ -102,7 +102,11 @@ int main(void) {
         r.handle = 6;
         R939_S_check(t939_txn(1500, &r, &out) == -3);
         R939_S_check(out == -1 && r.value == 5 && r.handle == 6);
-        R939_S_check(t939_live() == 0); /* original-party reclamation */
+        /* The oracle mirrors the deck's EXACT call sequence (the source
+         * program dies in the failure transport) — the transient handle's
+         * original-party reclamation is a provider-internal fact, proven
+         * by the T-07 fault sweep's dedicated ledger probes, not by a
+         * post-mortem probe the source cannot make. */
         return 70;
     }
 #else

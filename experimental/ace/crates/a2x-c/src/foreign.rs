@@ -5,6 +5,7 @@ use ace_a2x_core::{
 };
 use ace_foreign_contract::{
     manual::{AdmittedForeign, PageProduction, SourceDecl},
+    resource::{FieldKind, ResKind},
     FnForm, LaneKind,
 };
 use std::sync::{Arc, Mutex};
@@ -265,24 +266,12 @@ impl ForeignTargetProvider {
         let marks = view.trace_symbols().into_iter().collect::<Vec<_>>();
         match family {
             Family::RecordText => {
-                let source = crate::rt_runtime::record_text_runtime_source(&marks);
-                admit(source.len())
-                    .map_err(|e| A2xReject::new("a2c.foreign-resource", e))?;
-                Ok(source)
+                crate::rt_runtime::record_text_runtime_source_admitted(&marks, admit)
+                    .map_err(|e| A2xReject::new("a2c.foreign-resource", e))
             }
             _ => crate::runtime::runtime_source_admitted(&marks, admit)
                 .map_err(|e| A2xReject::new("a2c.foreign-resource", e)),
         }
-    }
-}
-fn scalar(family: Family) -> Result<(), A2xReject> {
-    if family == Family::Scalar {
-        Ok(())
-    } else {
-        Err(A2xReject::new(
-            "a2c.foreign-profile",
-            "only scalar foreign is admitted",
-        ))
     }
 }
 
@@ -443,9 +432,17 @@ fn exact_copy(text: &str) -> Result<String, A2xReject> {
 
 fn write_generated(
     fragments: &[FragmentText<'_>],
+    record_table: Option<&str>,
     out: &mut dyn std::fmt::Write,
 ) -> std::fmt::Result {
     out.write_str(GENERATED_HEAD)?;
+    if let Some(block) = record_table {
+        // PLAN-939: the record-text fragments reference `a2x_rec_<Name>`
+        // internal record types; the seed-derived record table makes the
+        // translation unit self-contained (same block the 925 session
+        // assembly emits).
+        out.write_str(block)?;
+    }
     for fragment in fragments {
         // Validated before any counting pass; see `assemble_fileset_admitted`.
         out.write_str(fragment.text.lines().nth(1).unwrap_or_default())?;
@@ -460,6 +457,38 @@ fn write_generated(
 
 fn write_imports(declarations: &[SourceDecl], out: &mut dyn std::fmt::Write) -> std::fmt::Result {
     out.write_str(IMPORTS_HEAD)?;
+    // PLAN-939: the imports header is SELF-CONTAINED. Public record
+    // closures (naturally aligned scalar layouts) are emitted from the
+    // reviewed resource signatures BEFORE any prototype references them —
+    // the provider's own header defines layout-identical types in its own
+    // translation unit (C11 6.2.7 compatible across TUs); nothing in this
+    // TU may include the provider's private header.
+    let mut records: Vec<(&str, &[(String, FieldKind)])> = Vec::new();
+    for d in declarations {
+        let Some(res) = d.resource() else {
+            continue;
+        };
+        for p in &res.params {
+            if let ResKind::Rec { rec, fields, .. } = p {
+                match records.iter().find(|(name, _)| *name == rec.as_str()) {
+                    Some((_, known)) if *known == fields.as_slice() => {}
+                    Some(_) => {
+                        // A conflicting closure for one public record name
+                        // is an unreviewed ABI, not a C layout choice.
+                        return Err(std::fmt::Error);
+                    }
+                    None => records.push((rec.as_str(), fields.as_slice())),
+                }
+            }
+        }
+    }
+    for (rec, fields) in &records {
+        out.write_str("typedef struct {")?;
+        for (name, kind) in *fields {
+            write!(out, " {} {};", field_c_type(*kind), name)?;
+        }
+        write!(out, " }} {rec};\n")?;
+    }
     for d in declarations {
         if d.resource().is_some() {
             out.write_str(&resource_prototype(d))?;
@@ -472,6 +501,20 @@ fn write_imports(declarations: &[SourceDecl], out: &mut dyn std::fmt::Write) -> 
         }
     }
     out.write_str(IMPORTS_TAIL)
+}
+
+/// The public record-closure field's C scalar (§5.1: natural alignment, no
+/// padding surprises — the physical table digest carries the same layout).
+fn field_c_type(kind: FieldKind) -> &'static str {
+    match kind {
+        FieldKind::I32 => "int32_t",
+        FieldKind::Bool => "uint8_t",
+        FieldKind::Char => "uint32_t",
+        FieldKind::U32 => "uint32_t",
+        FieldKind::I64 => "long long",
+        FieldKind::U64 => "unsigned long long",
+        FieldKind::F64 => "double",
+    }
 }
 
 impl ForeignTargetProvider {
@@ -502,7 +545,28 @@ impl ForeignTargetProvider {
         }
         let resource = |e: String| A2xReject::new("a2c.foreign-resource", e);
         let declarations = environment.source_declarations_ref();
-        let generated_size = crate::admitted_text::text_len(|out| write_generated(fragments, out));
+        // PLAN-939: the record-text family's fragments reference internal
+        // `a2x_rec_<Name>` types — the record table comes from the prelude
+        // seed (cold capture or restore anchor) or the live view; the
+        // scalar family needs none.
+        let record_table = if req.family == Family::RecordText {
+            let seed_text = match (req.prelude_seed, req.view) {
+                (Some(s), _) => s.to_string(),
+                (None, Some(v)) => crate::seed::encode_seed(v)?,
+                (None, None) => {
+                    return Err(A2xReject::new(
+                        "a2c.foreign-resource",
+                        "record-text fileset needs the record table (prelude seed or live view)",
+                    ))
+                }
+            };
+            let recs = crate::seed::decode_seed(&seed_text)?;
+            Some(crate::provider::record_table_block(&recs)?)
+        } else {
+            None
+        };
+        let generated_size =
+            crate::admitted_text::text_len(|out| write_generated(fragments, record_table.as_deref(), out));
         let imports_size = crate::admitted_text::text_len(|out| write_imports(declarations, out));
         let string_header = std::mem::size_of::<String>();
         let live_texts = generated_size
@@ -511,10 +575,11 @@ impl ForeignTargetProvider {
             .and_then(|n| n.checked_add(FAILURE_RUNTIME.len()))
             .and_then(|n| n.checked_add(4 * (2 * string_header + 16 + 64)))
             .and_then(|n| n.checked_add(fragments.len().checked_mul(2 * string_header)?))
+            .and_then(|n| n.checked_add(record_table.as_deref().map(str::len).unwrap_or(0)))
             .ok_or_else(|| resource("fileset size overflow".into()))?;
         admit_memory(live_texts).map_err(resource)?;
         let generated = crate::admitted_text::render_admitted(
-            |out| write_generated(fragments, out),
+            |out| write_generated(fragments, record_table.as_deref(), out),
             |size| output.reserve(size),
         )
         .map_err(resource)?;
