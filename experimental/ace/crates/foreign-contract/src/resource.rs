@@ -234,7 +234,7 @@ impl ResourceSig {
         if self.params.len() > 16 {
             return Err("resource.params: at most 16 parameters".into());
         }
-        let mut seen_rec = std::collections::BTreeSet::new();
+        let mut seen_rec = std::collections::BTreeMap::new();
         for (i, p) in self.params.iter().enumerate() {
             match p {
                 ResKind::I32 | ResKind::Bool | ResKind::ViewText => {}
@@ -247,11 +247,23 @@ impl ResourceSig {
                             "resource.params[{i}]: record '{rec}' must spell its field closure"
                         ));
                     }
-                    if !seen_rec.insert((rec.clone(), *role)) {
-                        return Err(format!(
-                            "resource.params[{i}]: duplicate record view '{rec}.{}'",
-                            role.spell()
-                        ));
+                    // PLAN-939 S03: the SAME closure may appear in MULTIPLE
+                    // lanes of one signature (the two-mut alias oracle);
+                    // every occurrence must spell the IDENTICAL field
+                    // closure (a different shape under one name is a
+                    // rejection, not a silent merge).
+                    match seen_rec.get(rec.as_str()) {
+                        Some(known) => {
+                            if known != fields.as_slice() {
+                                return Err(format!(
+                                    "resource.params[{i}]: record '{rec}' spells a different field closure than an earlier lane"
+                                ));
+                            }
+                            let _ = role;
+                        }
+                        None => {
+                            seen_rec.insert(rec.clone(), fields.clone());
+                        }
                     }
                     let mut names = std::collections::BTreeSet::new();
                     for (name, kind) in fields {
@@ -472,8 +484,11 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_rec_role_rejected() {
-        let s = sig(
+    fn duplicate_rec_same_closure_admits_but_divergent_shape_rejects() {
+        // PLAN-939 S03: the SAME closure may fill MULTIPLE lanes of one
+        // signature (the two-mut alias oracle); only a DIVERGENT field
+        // closure under one name is a rejection.
+        let same = sig(
             vec![
                 ResKind::Rec {
                     rec: "Counter".into(),
@@ -488,7 +503,28 @@ mod tests {
             ],
             ResourceForm::Fallible { ctx: None, out: None },
         );
-        assert!(s.validate().unwrap_err().contains("duplicate record view"));
+        let mut same = same;
+        same.atomic = true; // two-mut fallible promises caller-byte atomicity
+        assert!(same.validate().is_ok(), "{:?}", same.validate());
+        let divergent = sig(
+            vec![
+                ResKind::Rec {
+                    rec: "Counter".into(),
+                    fields: vec![("value".into(), FieldKind::I32)],
+                    role: ViewRole::Mut,
+                },
+                ResKind::Rec {
+                    rec: "Counter".into(),
+                    fields: vec![("value".into(), FieldKind::Bool)],
+                    role: ViewRole::Mut,
+                },
+            ],
+            ResourceForm::Fallible { ctx: None, out: None },
+        );
+        assert!(divergent
+            .validate()
+            .unwrap_err()
+            .contains("different field closure"));
     }
 
     #[test]

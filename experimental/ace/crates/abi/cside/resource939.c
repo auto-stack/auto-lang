@@ -234,3 +234,28 @@ int32_t t939_fold(long long (*cb)(long long ctx, long long item),
     *out = (int32_t)sum;
     return R939_OK;
 }
+
+/* S03 — two record lanes in one call. The ALIAS rejection is a verifier
+ * fact (same owner into two mutable lanes never reaches the provider);
+ * these entries prove the distinct-owners positive and the byte-exact
+ * failure discipline for the pair shape. */
+int32_t t939_pair(Counter *a, Counter *b, int32_t *out) {
+    SOURCE939_EVENT("t939_pair");
+    if (a == NULL || b == NULL || out == NULL) {
+        return R939_ERR_SEED; /* defensive; the bridge pre-validates */
+    }
+    a->value += 1;
+    b->value += 2;
+    *out = a->value + b->value;
+    return R939_OK;
+}
+
+int32_t t939_pairv(Counter *r, const Counter *v, int32_t *out) {
+    SOURCE939_EVENT("t939_pairv");
+    if (r == NULL || v == NULL || out == NULL) {
+        return R939_ERR_SEED;
+    }
+    r->value += 1;
+    *out = r->value + v->value;
+    return R939_OK;
+}

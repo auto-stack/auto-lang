@@ -9,6 +9,7 @@
  * the certification worker's policy.
  */
 #include "resource939.h"
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -29,7 +30,31 @@ static long long ref_cb_fail(long long ctx, long long item) {
     return ctx + item;
 }
 
+/* PLAN-939 V-01 layout oracle (field ORDER/offset evidence): the header's
+ * compile-time asserts pin size/alignment with builtin operators only;
+ * this runtime probe completes the picture with the REAL offsetof — the
+ * byte view of a typed store proves declaration-order offsets on the
+ * wire (little-endian target, frozen by profile). Runs before every
+ * scenario: no certified reference leg executes without it. */
+static void layout_selfcheck(void) {
+    /* auto variables keep the conditions non-constant (C4127 under /W4) */
+    unsigned long long off_c_v = offsetof(Counter, value);
+    unsigned long long off_t_v = offsetof(TxnResult, value);
+    unsigned long long off_t_h = offsetof(TxnResult, handle);
+    R939_S_check(off_c_v == 0);
+    R939_S_check(off_t_v == 0 && off_t_h == 4);
+    union {
+        TxnResult t;
+        unsigned char b[8];
+    } u;
+    u.t.value = 0x01020304;   /* little-endian bytes: 04 03 02 01 */
+    u.t.handle = 0x05060708;  /* little-endian bytes: 08 07 06 05 */
+    R939_S_check(u.b[0] == 0x04 && u.b[3] == 0x01);
+    R939_S_check(u.b[4] == 0x08 && u.b[7] == 0x05);
+}
+
 int main(void) {
+    layout_selfcheck();
 #ifdef R939_S_utf8_bytes
     {
         const uint8_t text[] = { 'A', 0xE4, 0xb8, 0xad, 0xf0, 0x9f, 0x98, 0x80 };
@@ -137,6 +162,30 @@ int main(void) {
         R939_S_check(t939_fold(ref_cb_fail, 5LL, 3, &out) == -7);
         R939_S_check(out == -1); /* the failure leaves the out slot untouched */
         return 70;
+    }
+#elif defined(R939_S_alias_pair_ok)
+    {
+        t939_reset();
+        Counter a;
+        Counter b;
+        int32_t out = -1;
+        a.value = 20;
+        b.value = 30;
+        R939_S_check(t939_pair(&a, &b, &out) == 0);
+        R939_S_check(a.value == 21 && b.value == 32 && out == 53);
+        return 53;
+    }
+#elif defined(R939_S_alias_pairv_ok)
+    {
+        t939_reset();
+        Counter r;
+        Counter v;
+        int32_t out = -1;
+        r.value = 10;
+        v.value = 5;
+        R939_S_check(t939_pairv(&r, &v, &out) == 0);
+        R939_S_check(r.value == 11 && v.value == 5 && out == 16);
+        return 16;
     }
 #else
     fprintf(stderr, "reference939: unknown scenario\n");

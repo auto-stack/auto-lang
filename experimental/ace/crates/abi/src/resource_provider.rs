@@ -96,8 +96,8 @@ pub fn reviewed_resource_manifest() -> ManualManifest {
             "t939_bump",
             vec![
                 ResKind::Rec {
-                    rec: counter,
-                    fields: counter_fields,
+                    rec: counter.clone(),
+                    fields: counter_fields.clone(),
                     role: ViewRole::Mut,
                 },
                 ResKind::I32,
@@ -182,6 +182,50 @@ pub fn reviewed_resource_manifest() -> ManualManifest {
             // and NEVER stored (noescape is mandatory, not optional).
             true,
             Some(vec![(-7, "callback"), (-2, "seed")]),
+        ),
+        resource_fn(
+            "t939_pair",
+            vec![
+                ResKind::Rec {
+                    rec: counter.clone(),
+                    fields: counter_fields.clone(),
+                    role: ViewRole::Mut,
+                },
+                ResKind::Rec {
+                    rec: counter.clone(),
+                    fields: counter_fields.clone(),
+                    role: ViewRole::Mut,
+                },
+            ],
+            ResourceForm::Fallible {
+                ctx: None,
+                out: Some(ResOut::I32),
+            },
+            true,
+            false,
+            Some(vec![(-2, "seed")]),
+        ),
+        resource_fn(
+            "t939_pairv",
+            vec![
+                ResKind::Rec {
+                    rec: counter.clone(),
+                    fields: counter_fields.clone(),
+                    role: ViewRole::Mut,
+                },
+                ResKind::Rec {
+                    rec: counter,
+                    fields: counter_fields,
+                    role: ViewRole::Const,
+                },
+            ],
+            ResourceForm::Fallible {
+                ctx: None,
+                out: Some(ResOut::I32),
+            },
+            true,
+            false,
+            Some(vec![(-2, "seed")]),
         ),
         resource_fn(
             "t939_live",
@@ -286,7 +330,7 @@ mod tests {
     fn reviewed_resource_manifest_is_valid_and_admits() {
         let manifest = reviewed_resource_manifest();
         manifest.validate().expect("valid /2 resource manifest");
-        assert_eq!(manifest.facts.functions.len(), 9);
+        assert_eq!(manifest.facts.functions.len(), 11);
         let caps = vec![SOURCE_CAP.to_string(), RESOURCE_CAP.to_string()];
         let authority = resource_authority(&"c".repeat(64), 1, &caps);
         let admitted = manifest

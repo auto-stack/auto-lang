@@ -131,6 +131,10 @@ impl CertPolicy {
                     | "txn-laststep-fail"
                     | "callback"
                     | "callback-fail"
+                    | "alias-pair-ok"
+                    | "alias-pairv-ok"
+                    | "alias-pair-reject"
+                    | "alias-pairv-reject"
             ),
         }
     }

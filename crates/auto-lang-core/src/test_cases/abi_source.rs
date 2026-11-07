@@ -14,11 +14,11 @@ const REVIEWED_PHYSICAL_TABLE: &str =
     "0ea8be97d1026bd57dcaff7b35673e45a6a9f17e2f5c991bdd1b1fb04a94daa3";
 /// PLAN-939 parent-owned acceptance pins for the RESOURCE recipe.
 const R939_REVIEWED_CONTRACT: &str =
-    "d34449002885a0ffe07fd7c720bcfa804a725c49e0e4945ffd93bde436a61c6d";
+    "ad718fde37678991237a97d9388aa2065038789ee6f2600068b750530852f2dc";
 const R939_REVIEWED_HEADER: &str =
-    "99993ec47b5c09ae12c9cf59c59ec4e21a6d3a687f56cee4591befdab20a3c37";
+    "f509b8267547a9ec0382433a1563fd6fb730095ab00bd1da6e598c9f29948a61";
 const R939_REVIEWED_PHYSICAL_TABLE: &str =
-    "158187de83dcb1918bbe8606cbacf0bc91e3d37208d43033c7ea43f76755503b";
+    "12db7d26a9588b3f7e1a9dce2767f24eb63b0e345fa54416c4b9f8c2de836b35";
 fn reviewed_c_toolchain(value: &str) -> bool {
     if value.len() > 8192 || value.chars().any(char::is_control) {
         return false;
@@ -243,6 +243,10 @@ impl SourceReport {
             "txn-laststep-fail" => (&["t939_txn"], &["-3"]),
             "callback" => (&["t939_fold"], &[]),
             "callback-fail" => (&["t939_fold"], &["-7"]),
+            "alias-pair-ok" => (&["t939_pair"], &[]),
+            "alias-pairv-ok" => (&["t939_pairv"], &[]),
+            "alias-pair-reject" => (&["t939_pair"], &[]),
+            "alias-pairv-reject" => (&["t939_pairv"], &[]),
             _ => return Err("resource reference is outside independent review".into()),
         };
         let digest = |s: &str| {

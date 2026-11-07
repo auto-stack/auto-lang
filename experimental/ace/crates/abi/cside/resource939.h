@@ -29,6 +29,20 @@
 typedef struct { int32_t value; } Counter;
 typedef struct { int32_t value; int32_t handle; } TxnResult;
 
+/* PLAN-939 V-01 layout conformance: the REAL C compiler measures the
+ * reviewed record closures at every certified compile (ctool flags
+ * -W4 -WX, default C mode) — the negative-array typedef is the C89
+ * compile-time assert and __alignof the MSVC builtin (no C11 keywords:
+ * the provider TU's toolchain pins the pre-C11 mode and the MSVC-only
+ * include set; stdint.h is in it, stddef.h is not). Field ORDER/offset
+ * evidence rides the reference oracle's runtime probe (full SDK, real
+ * offsetof). */
+typedef char r939_la_counter_size[(sizeof(Counter) == 4) ? 1 : -1];
+typedef char r939_la_counter_align[(__alignof(Counter) == 4) ? 1 : -1];
+typedef char r939_la_txn_size[(sizeof(TxnResult) == 8) ? 1 : -1];
+typedef char r939_la_txn_align[(__alignof(TxnResult) == 4) ? 1 : -1];
+typedef char r939_la_lanes[(sizeof(long long) == 8 && sizeof(int32_t) == 4) ? 1 : -1];
+
 /* S01 — text views (len is a BYTE count; encoding pre-validated by the
  * bridge; NUL is data). Both totals are pure. */
 uint64_t t939_byte_length(const uint8_t *p, uint64_t len);
@@ -66,6 +80,17 @@ int32_t t939_txn(int32_t seed, TxnResult *out2, int32_t *out);
  * ordinary argument AFTER the callback, physically long long. */
 int32_t t939_fold(long long (*cb)(long long ctx, long long item),
                   long long ctx_seed, int32_t n, int32_t *out);
+
+/* S03 — TWO record lanes in one call (the source-level alias oracle's
+ * provider side; exclusivity itself is a VERIFIER fact — the provider
+ * only proves the distinct-owners positive):
+ *  - t939_pair: two MUT views; success commits a->value += 1,
+ *    b->value += 2 and *out = a->value + b->value exactly once.
+ *  - t939_pairv: one MUT view + one CONST view of the same closure;
+ *    success commits r->value += 1 and *out = r->value + v->value.
+ * A value failure of either leaves EVERY caller byte untouched. */
+int32_t t939_pair(Counter *a, Counter *b, int32_t *out);
+int32_t t939_pairv(Counter *r, const Counter *v, int32_t *out);
 
 /* provider reset (test isolation only; not part of the reviewed surface) */
 void t939_reset(void);
