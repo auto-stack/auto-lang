@@ -511,7 +511,8 @@ pub(crate) fn project_packages_front(
     use crate::atom_text::{Span, Stage};
     use crate::source::packages::{PackageImport, PackageSyntax};
     let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
-    let cached = packages_grammar().map_err(|e| err("source.infra", e, Span { start: 0, end: 0 }))?;
+    let cached =
+        packages_grammar().map_err(|e| err("source.infra", e, Span { start: 0, end: 0 }))?;
     let pages = std::rc::Rc::new(PageStore::new());
     let snap = Snapshot::from_text(&pages, src);
     let rule = |name: &str| {
@@ -622,7 +623,9 @@ pub(crate) fn project_packages_front(
                     .and_then(|a| field(tree, a, "alias"))
                     .map(|a| text(tree, a));
                 let reexport = Some(kind) == public_item;
-                let bound = alias.clone().unwrap_or_else(|| path.last().cloned().unwrap_or_default());
+                let bound = alias
+                    .clone()
+                    .unwrap_or_else(|| path.last().cloned().unwrap_or_default());
                 if path.len() < 2 {
                     return Err(err(
                         "source.module-path",
@@ -630,7 +633,10 @@ pub(crate) fn project_packages_front(
                         span,
                     ));
                 }
-                if imports.iter().any(|i: &PackageImport| i.bound_name() == bound) {
+                if imports
+                    .iter()
+                    .any(|i: &PackageImport| i.bound_name() == bound)
+                {
                     return Err(err(
                         "source.module-duplicate-import",
                         format!("duplicate imported name `{bound}`"),

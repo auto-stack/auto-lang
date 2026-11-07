@@ -1677,11 +1677,12 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
     let scanner = cached.scanner();
     let store = std::rc::Rc::new(ace_syntax_runtime::snapshot::PageStore::new());
     let snap = ace_syntax_runtime::snapshot::Snapshot::from_text(&store, src);
-    let lex = ace_syntax_runtime::lexer::lex_all(grammar, scanner, &snap).map_err(|e| StageDiag {
-        stage: "admission".into(),
-        code: "source.infra".into(),
-        message: format!("{e:?}"),
-    })?;
+    let lex =
+        ace_syntax_runtime::lexer::lex_all(grammar, scanner, &snap).map_err(|e| StageDiag {
+            stage: "admission".into(),
+            code: "source.infra".into(),
+            message: format!("{e:?}"),
+        })?;
     if let Some(d) = lex.diags.first() {
         return Err(StageDiag {
             stage: "admission".into(),

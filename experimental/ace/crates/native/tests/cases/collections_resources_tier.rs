@@ -341,7 +341,6 @@ fn runtime_seam_snapshot_and_inprocess_retry_keep_atomicity() {
     zero_live(&run.stderr);
 }
 
-
 /// PLAN-924 V-03/V-04/V-12: the closure state probe over the same runtime —
 /// the staged env transaction's rollback on a LATER-field clone failure
 /// (sources and bytes intact), the in-process retry, the pre-dispatch

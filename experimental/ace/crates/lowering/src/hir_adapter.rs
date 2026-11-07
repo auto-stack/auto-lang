@@ -1174,7 +1174,9 @@ pub fn lower_checked_owned_with_init(
             .funcs
             .iter()
             .position(|f| f.name == *name)
-            .ok_or_else(|| AdapterError::inv("lower.init", format!("init function `{name}` missing")))?;
+            .ok_or_else(|| {
+                AdapterError::inv("lower.init", format!("init function `{name}` missing"))
+            })?;
         out.init.push(idx as u32);
     }
     Ok(out)

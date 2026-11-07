@@ -76,12 +76,11 @@ fn closures_restore_session_takes_next_lambda_edit_with_zero_first_production() 
     // A FRESH driver (a new "process") restores into a warm session.
     let mut fresh = MnDriver::with_store(&cache, "mn-closures-restore").unwrap();
     fresh.forbid_codegen = true;
-    let (mut session, run) = match fresh
-        .restore_closures_session(&manifest, &dir.join("restored-out"), None)
-    {
-        Ok(pair) => pair,
-        Err(e) => panic!("restore session: {e:?}"),
-    };
+    let (mut session, run) =
+        match fresh.restore_closures_session(&manifest, &dir.join("restored-out"), None) {
+            Ok(pair) => pair,
+            Err(e) => panic!("restore session: {e:?}"),
+        };
     assert_eq!(
         run.exit_code,
         Some(42),
@@ -105,7 +104,12 @@ fn closures_restore_session_takes_next_lambda_edit_with_zero_first_production() 
         .unwrap_or(0);
     assert!(read > 0, "no restored bytes read");
     assert_eq!(
-        run.work.obs.counters.get("cache_hit_coff").copied().unwrap_or(0),
+        run.work
+            .obs
+            .counters
+            .get("cache_hit_coff")
+            .copied()
+            .unwrap_or(0),
         3,
         "K02 has three restored units"
     );
@@ -114,7 +118,9 @@ fn closures_restore_session_takes_next_lambda_edit_with_zero_first_production() 
     // The NEXT lambda edit rides the ordinary warm route: exactly the
     // closure body unit re-codegens, the value hand-models to 43.
     let edited = source.replace("+ n }", "+ n + 1 }");
-    let edit = session.apply_source(&edited).expect("warm edit after restore");
+    let edit = session
+        .apply_source(&edited)
+        .expect("warm edit after restore");
     assert_eq!(
         edit.exit_code,
         Some(43),
@@ -155,9 +161,7 @@ fn closures_restore_rejects_forged_and_tampered_and_stays_readonly() {
 
     // Forged identity: an unknown manifest id refuses before any link.
     let mut forged = MnDriver::with_store(&cache, "mn-closures-forged").unwrap();
-    let error = match forged
-        .restore_closures_session("forged-id", &dir.join("forged-out"), None)
-    {
+    let error = match forged.restore_closures_session("forged-id", &dir.join("forged-out"), None) {
         Err(e) => e,
         Ok(_) => panic!("forged manifest id must refuse the restore chain"),
     };
@@ -197,12 +201,12 @@ fn closures_restore_rejects_forged_and_tampered_and_stays_readonly() {
     // open when the store's own marker/TOC byte was the one flipped.
     let error = match MnDriver::with_store(&tampered_root, "mn-closures-tampered") {
         Err(open) => open,
-        Ok(mut tampering) => match tampering
-            .restore_closures_session(&manifest, &dir.join("tampered-out"), None)
-        {
-            Err(e) => e,
-            Ok(_) => panic!("tampered store bytes must refuse the restore chain"),
-        },
+        Ok(mut tampering) => {
+            match tampering.restore_closures_session(&manifest, &dir.join("tampered-out"), None) {
+                Err(e) => e,
+                Ok(_) => panic!("tampered store bytes must refuse the restore chain"),
+            }
+        }
     };
     // The refusal is NAMED wherever the corruption is caught — the store
     // open (broken TOC/marker), the manifest/blob layer, or the identity
@@ -220,12 +224,11 @@ fn closures_restore_rejects_forged_and_tampered_and_stays_readonly() {
     let before = store_snapshot(&cache);
     let mut readonly = MnDriver::with_store(&cache, "mn-closures-readonly").unwrap();
     readonly.cache_mode = CacheMode::ReadOnly;
-    let (mut session, run) = match readonly
-        .restore_closures_session(&manifest, &dir.join("readonly-out"), None)
-    {
-        Ok(pair) => pair,
-        Err(e) => panic!("readonly restore: {e:?}"),
-    };
+    let (mut session, run) =
+        match readonly.restore_closures_session(&manifest, &dir.join("readonly-out"), None) {
+            Ok(pair) => pair,
+            Err(e) => panic!("readonly restore: {e:?}"),
+        };
     assert_eq!(run.exit_code, Some(42));
     assert_eq!(session.manifest_id(), None);
     let edit = session
@@ -240,12 +243,11 @@ fn closures_restore_rejects_forged_and_tampered_and_stays_readonly() {
     // the next lambda edit produces the same value.
     let mut recover = MnDriver::with_store(&cache, "mn-closures-recover").unwrap();
     recover.forbid_codegen = true;
-    let (mut recovered, run) = match recover
-        .restore_closures_session(&manifest, &dir.join("recover-out"), None)
-    {
-        Ok(pair) => pair,
-        Err(e) => panic!("recovery restore: {e:?}"),
-    };
+    let (mut recovered, run) =
+        match recover.restore_closures_session(&manifest, &dir.join("recover-out"), None) {
+            Ok(pair) => pair,
+            Err(e) => panic!("recovery restore: {e:?}"),
+        };
     assert_eq!(run.exit_code, Some(42));
     let edit = recovered
         .apply_source(&source.replace("+ n }", "+ n + 1 }"))

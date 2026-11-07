@@ -113,18 +113,20 @@ pub mod performance {
             );
             // stable editing NEVER spawns rustc/cargo: the warm applies
             // carry no runtime_cargo_invocations counter at all.
-            assert!(!edit.work.obs.counters.contains_key("runtime_cargo_invocations"));
+            assert!(!edit
+                .work
+                .obs
+                .counters
+                .contains_key("runtime_cargo_invocations"));
             session.close().expect("close");
 
             // restart: a NEW process identity restores the published
             // manifest into a warm session (P0 first run). The publish is
             // SETUP — the restart state measures the restore chain only
             // (bounded read -> deep verify -> admit -> link -> run).
-            let mut publisher = ace_native::driver::MnDriver::with_store(
-                &root.join("store"),
-                "mn-closures-perf",
-            )
-            .unwrap();
+            let mut publisher =
+                ace_native::driver::MnDriver::with_store(&root.join("store"), "mn-closures-perf")
+                    .unwrap();
             let build = publisher
                 .build_closures(&source, "main", &root.join("pub"), None)
                 .expect("publish");
@@ -144,7 +146,9 @@ pub mod performance {
             restart_t.push(t.elapsed().as_millis());
             assert_eq!(run.exit_code, Some(137));
             assert!(run.work.codegen_units.is_empty(), "restart is P0");
-            let next = restored.apply_source(&edited_base).expect("post-restart edit");
+            let next = restored
+                .apply_source(&edited_base)
+                .expect("post-restart edit");
             assert_eq!(next.exit_code, Some(138));
             restored.close().expect("close restored");
             let _ = std::fs::remove_dir_all(&root);
@@ -169,24 +173,20 @@ pub mod performance {
         // source (a unique constant rides the closure body); every apply
         // must stay exactly-one-unit production with the modeled value.
         let root = isolated("churn");
-        let (mut session, first) =
-            ace_native::closures_incremental::ClosuresNativeSession::new(
-                &source,
-                "main",
-                &root.join("out"),
-                None,
-            )
-            .expect("churn session");
+        let (mut session, first) = ace_native::closures_incremental::ClosuresNativeSession::new(
+            &source,
+            "main",
+            &root.join("out"),
+            None,
+        )
+        .expect("churn session");
         assert_eq!(first.exit_code, Some(137));
         let mut current = source.clone();
         for k in 1..=512u32 {
             let next = if k == 1 {
                 edited_base.clone()
             } else {
-                source.replace(
-                    "return base + n }",
-                    &format!("return base + n + {k} }}"),
-                )
+                source.replace("return base + n }", &format!("return base + n + {k} }}"))
             };
             let run = session.apply_source(&next).expect("churn edit");
             assert_eq!(
@@ -220,25 +220,31 @@ pub mod performance {
             std::fs::read_to_string(&path).expect("K05 corpus source")
         };
         for (tag, source, knobs, code) in [
-            ("budget", &source, WrapperKnobs { budget_bytes: Some(0), ..Default::default() }, 22),
-            ("cancel", &k05, WrapperKnobs { cancel_after_work: Some(2), ..Default::default() }, 26),
+            (
+                "budget",
+                &source,
+                WrapperKnobs {
+                    budget_bytes: Some(0),
+                    ..Default::default()
+                },
+                22,
+            ),
+            (
+                "cancel",
+                &k05,
+                WrapperKnobs {
+                    cancel_after_work: Some(2),
+                    ..Default::default()
+                },
+                26,
+            ),
         ] {
             let root = isolated(tag);
             let mut driver = ace_native::driver::MnDriver::ephemeral();
-            let res = driver.request_closures_resource(
-                source,
-                "main",
-                &root.join("out"),
-                None,
-                knobs,
-            );
+            let res =
+                driver.request_closures_resource(source, "main", &root.join("out"), None, knobs);
             let text = String::from_utf8_lossy(&res.stderr);
-            assert_eq!(
-                res.exit_code,
-                Some(70),
-                "{tag}: {}",
-                text
-            );
+            assert_eq!(res.exit_code, Some(70), "{tag}: {}", text);
             assert!(
                 text.contains(&format!("MN-COLL-TRAP code={code}\n")),
                 "{tag}: {text}"

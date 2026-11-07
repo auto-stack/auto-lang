@@ -71,3 +71,15 @@ examples 计数均不构成覆盖证明。跨仓不可读/owner 未明/未发布
 - **delta 规程**：台账冻结带源身份；新增/变更按其 §10 以 delta 行追加并使受影响旧
   证据陈旧（只重核受影响行），不重写已冻结行、不复制第二份永恒状态源；台账自身
   绝不声明实现，状态提升只引用后继计划的交付收据。
+
+## SD-04 完整模块包 producer 挂接（PLAN-960 SD-02）
+
+- 分母台账 L-37（use/dep）、L-38（别名/重导出解析）、L-41（全局 store/常量初始化次序/once/
+  diamond/失败回滚）与 L-44（模块面）的 ACE 侧**已验证 producer** 为
+  [m2-modules.md](m2-modules.md)（能力 `ac.source.modules.packages/v1`，TextRecord 域，
+  四端冷运行+恢复收据见 `av::conformance::module_packages_960`）。本节只挂接来源，不改 SD-01
+  的分类口径，也不把任何行标为 implemented；状态提升仍只引用 960 归档收据。
+- **未闭缺口（具名，带 owner）**：934 事实页类型集不覆盖 text/record（D-960-1，query 层）；
+  mn 端全局 cell（D-960-2，ace-native）；a2x 端全局 cell 发射与类型方法片段（A2X 后继）；
+  L-42 跨模块泛型实例归 963；L-38 的 `alias`/type alias 语句形归 963；模块+CT 组合归 966。
+  以上缺口在台账中保持 required/unknown 原状，不因 960 交付而消失。

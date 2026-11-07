@@ -53,10 +53,12 @@ fn cold_produce<T>(
     let compiled = ace_core::source::compile_closures_source(source, module_path, &[])
         .map_err(ColdProduceError::Source)?;
     let bundle = compiled.checked.bundle();
-    let module = bundle
-        .modules
-        .first()
-        .ok_or_else(|| ColdProduceError::Admit(crate::MnError::Admit("closures", "bundle carries no module".into())))?;
+    let module = bundle.modules.first().ok_or_else(|| {
+        ColdProduceError::Admit(crate::MnError::Admit(
+            "closures",
+            "bundle carries no module".into(),
+        ))
+    })?;
     let snapshot = ace_av_core::contract::fnv1a64(source.as_bytes());
     let defs: Vec<String> = module
         .defs
@@ -67,21 +69,19 @@ fn cold_produce<T>(
     let mut units = Vec::with_capacity(defs.len());
     let real_body_plans = defs.len();
     for def in &defs {
-        let unit = crate::collections_memory::scoped(
-            crate::resources::Partition::MirSymbol,
-            || {
-                ace_lowering::hir_adapter::lower_function_closures_unit(
-                    bundle, def, &[], snapshot,
-                )
-                .map_err(|e| ColdProduceError::Admit(crate::MnError::Backend(format!("{e:?}"))))
-            },
-        )?;
+        let unit =
+            crate::collections_memory::scoped(crate::resources::Partition::MirSymbol, || {
+                ace_lowering::hir_adapter::lower_function_closures_unit(bundle, def, &[], snapshot)
+                    .map_err(|e| ColdProduceError::Admit(crate::MnError::Backend(format!("{e:?}"))))
+            })?;
         units.push(crate::collections_memory::scoped(
             crate::resources::Partition::MirSymbol,
-            || admit(unit).map_err(|e| match e {
-                ColdError::Source(ds) => ColdProduceError::Source(ds),
-                ColdError::Admit(e) => ColdProduceError::Admit(e),
-            }),
+            || {
+                admit(unit).map_err(|e| match e {
+                    ColdError::Source(ds) => ColdProduceError::Source(ds),
+                    ColdError::Admit(e) => ColdProduceError::Admit(e),
+                })
+            },
         )?);
     }
     // The bundle and checked module die here; the resident/incremental

@@ -33,8 +33,14 @@ fn caps() -> Vec<String> {
     vec![PACKAGES_CAPABILITY.into()]
 }
 fn compile(inputs: &[PackageModuleInput]) -> Result<PackageProduct, String> {
-    compile_package_product(inputs, "app::main", &caps(), FrontBudget::WORK_OWNED_64MIB)
-        .map_err(|ds| format!("{}: {} {}", ds[0].module, ds[0].diagnostic.code, ds[0].diagnostic.message))
+    compile_package_product(inputs, "app::main", &caps(), FrontBudget::WORK_OWNED_64MIB).map_err(
+        |ds| {
+            format!(
+                "{}: {} {}",
+                ds[0].module, ds[0].diagnostic.code, ds[0].diagnostic.message
+            )
+        },
+    )
 }
 fn err(inputs: &[PackageModuleInput]) -> String {
     match compile(inputs) {
@@ -43,10 +49,8 @@ fn err(inputs: &[PackageModuleInput]) -> String {
     }
 }
 fn scratch(tag: &str) -> PathBuf {
-    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
-        "../../target/pkg960/{tag}-{}",
-        std::process::id()
-    ));
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(format!("../../target/pkg960/{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
@@ -115,8 +119,7 @@ fn c_value(files: &[(String, String)], manifest: &str, dir: &Path, expected: i32
     }
     std::fs::write(dir.join("manifest.json"), manifest).unwrap();
     let exe = dir.join("pkg_c.exe");
-    ace_a2x_worker::crun::compile_c_fileset(dir, &exe)
-        .unwrap_or_else(|e| panic!("cl failed: {e}"));
+    ace_a2x_worker::crun::compile_c_fileset(dir, &exe).unwrap_or_else(|e| panic!("cl failed: {e}"));
     let run = ace_a2x_worker::crun::run_exe(&exe).unwrap();
     assert_eq!(
         String::from_utf8_lossy(&run.stdout).trim(),
@@ -144,13 +147,17 @@ fn packages_960_four_ends_run_public_str_and_recover() {
     // identity is input-order independent (V-05)
     let mut reordered = inputs.clone();
     reordered.reverse();
-    assert_eq!(compile(&reordered).unwrap().bound.input_hash, product.bound.input_hash);
+    assert_eq!(
+        compile(&reordered).unwrap().bound.input_hash,
+        product.bound.input_hash
+    );
 
     // ---- AV: value + the Str function observed as a view ----
     let av_dir = scratch("av");
     let av = PackageAvTarget::cold(&av_dir, &product).unwrap();
     assert_eq!(av.run_value(), Ok(Value::I32(42)));
-    let greet = PackageAvTarget::cold_with_entry(&av_dir, &product, "d_p3_libm3_std_greet").unwrap();
+    let greet =
+        PackageAvTarget::cold_with_entry(&av_dir, &product, "d_p3_libm3_std_greet").unwrap();
     assert!(matches!(greet.run_value(), Ok(Value::StrView(_))));
 
     // one shared managed store for the a2x fragments and the packages root
@@ -194,7 +201,12 @@ fn packages_960_four_ends_run_public_str_and_recover() {
         &product,
     )
     .unwrap();
-    c_value(&c.current.files, &c.current.manifest, &c_dir.join("build"), 42);
+    c_value(
+        &c.current.files,
+        &c.current.manifest,
+        &c_dir.join("build"),
+        42,
+    );
     let c_receipt = c.receipt().unwrap();
     let restored_c = PackageA2xTarget::restore(
         &store,
@@ -236,10 +248,14 @@ fn packages_960_four_ends_run_public_str_and_recover() {
     assert_eq!(restored_targets.len(), 2);
     let av2 = PackageAvTarget::cold(&scratch("av2"), &restored).unwrap();
     assert_eq!(av2.run_value(), Ok(Value::I32(42)));
-    let payload = String::from_utf8(PackageStore::root_payload(&root_dir, &receipt).unwrap()).unwrap();
+    let payload =
+        String::from_utf8(PackageStore::root_payload(&root_dir, &receipt).unwrap()).unwrap();
     assert!(payload.contains("source-packages-root/1"));
     for forbidden in ["\"cells\"", "\"globals\"", "addr"] {
-        assert!(!payload.contains(forbidden), "{forbidden} leaked into the root");
+        assert!(
+            !payload.contains(forbidden),
+            "{forbidden} leaked into the root"
+        );
     }
     // a tampered receipt never restores
     let bad = PackageStoreReceipt {
@@ -249,8 +265,16 @@ fn packages_960_four_ends_run_public_str_and_recover() {
     assert!(PackageStore::restore(&root_dir, &bad).is_err());
     // a foreign product never restores an a2x root
     let other = compile(&[
-        input("lib", "std", "pub fn base() int { return 41 }\npub fn greet() str { return \"m2\" }"),
-        input("app", "main", "use lib.std.greet\nuse lib.std.base\nfn main() int { return base() + greet().len() }"),
+        input(
+            "lib",
+            "std",
+            "pub fn base() int { return 41 }\npub fn greet() str { return \"m2\" }",
+        ),
+        input(
+            "app",
+            "main",
+            "use lib.std.greet\nuse lib.std.base\nfn main() int { return base() + greet().len() }",
+        ),
     ])
     .unwrap();
     assert!(PackageA2xTarget::restore(
@@ -269,9 +293,21 @@ fn packages_960_four_ends_run_public_str_and_recover() {
 fn packages_960_isolation_rejections_and_repair() {
     // V-01: same-name private symbols in two packages stay isolated.
     let p = compile(&[
-        input("one", "m", "fn helper() int { return 1 }\npub fn get() int { return helper() }"),
-        input("two", "m", "fn helper() int { return 2 }\npub fn get() int { return helper() }"),
-        input("app", "main", "fn main() int { return one.m.get() * 10 + two.m.get() }"),
+        input(
+            "one",
+            "m",
+            "fn helper() int { return 1 }\npub fn get() int { return helper() }",
+        ),
+        input(
+            "two",
+            "m",
+            "fn helper() int { return 2 }\npub fn get() int { return helper() }",
+        ),
+        input(
+            "app",
+            "main",
+            "fn main() int { return one.m.get() * 10 + two.m.get() }",
+        ),
     ])
     .unwrap();
     let av = PackageAvTarget::cold(&scratch("v01"), &p).unwrap();
@@ -279,8 +315,16 @@ fn packages_960_isolation_rejections_and_repair() {
 
     // V-02: re-exporting a private type is rejected by name.
     let e = err(&[
-        input("lib", "geo", "type Secret { x int }\npub fn f() int { return 1 }"),
-        input("app", "main", "pub use lib.geo.Secret\nfn main() int { return 1 }"),
+        input(
+            "lib",
+            "geo",
+            "type Secret { x int }\npub fn f() int { return 1 }",
+        ),
+        input(
+            "app",
+            "main",
+            "pub use lib.geo.Secret\nfn main() int { return 1 }",
+        ),
     ]);
     assert!(e.contains("source.module-reexport-private"), "{e}");
 
@@ -292,19 +336,26 @@ fn packages_960_isolation_rejections_and_repair() {
     ];
     let e = err(&inputs);
     assert!(e.contains("source.module-symbol"), "{e}");
-    inputs[0].source.push_str("\npub fn missing() int { return 99 }");
+    inputs[0]
+        .source
+        .push_str("\npub fn missing() int { return 99 }");
     let repaired = compile(&inputs).unwrap();
     assert_eq!(
-        PackageAvTarget::cold(&scratch("v04"), &repaired).unwrap().run_value(),
+        PackageAvTarget::cold(&scratch("v04"), &repaired)
+            .unwrap()
+            .run_value(),
         Ok(Value::I32(99))
     );
 
     // V-03: a dependency body update changes only the reader's observed
     // value; the unrelated unit keeps its source identity.
-    inputs[0].source = "pub fn answer() int { return 42 }\npub fn missing() int { return 7 }".into();
+    inputs[0].source =
+        "pub fn answer() int { return 42 }\npub fn missing() int { return 7 }".into();
     let updated = compile(&inputs).unwrap();
     assert_eq!(
-        PackageAvTarget::cold(&scratch("v03"), &updated).unwrap().run_value(),
+        PackageAvTarget::cold(&scratch("v03"), &updated)
+            .unwrap()
+            .run_value(),
         Ok(Value::I32(7))
     );
     let seg = |p: &PackageProduct, m: &str| {
@@ -334,12 +385,18 @@ fn packages_960_isolation_rejections_and_repair() {
         "const A int = B + 1\nconst B int = A + 1\nfn main() int { return B }",
     )]);
     assert!(e.contains("source.module-init-cycle"), "{e}");
-    assert_eq!(old.run_value(), Ok(Value::I32(3)), "old generation still runs");
+    assert_eq!(
+        old.run_value(),
+        Ok(Value::I32(3)),
+        "old generation still runs"
+    );
 }
 
 #[test]
 fn packages_960_assembly_whitelist_admits_native_and_c_producers() {
-    use ace_semantics_contract::assembly::{Consumer, Manifest, SemanticAssembly, C_PRODUCER, NATIVE_PRODUCER};
+    use ace_semantics_contract::assembly::{
+        Consumer, Manifest, SemanticAssembly, C_PRODUCER, NATIVE_PRODUCER,
+    };
     for producer in [NATIVE_PRODUCER, C_PRODUCER] {
         let consumer = Consumer {
             producer: producer.into(),

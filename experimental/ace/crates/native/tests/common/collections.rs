@@ -142,8 +142,7 @@ pub fn run_units_with_knobs(
     }
     memory_stage(tag, "emit");
     let symbol = ace_native::symbols::function_symbol(&units[0].owner, entry);
-    let wrapper =
-        ace_native::collections_lower::emit_wrapper_coff(&symbol, knobs).unwrap();
+    let wrapper = ace_native::collections_lower::emit_wrapper_coff(&symbol, knobs).unwrap();
     let run = ace_native::link_driver::link_and_run(
         &objects,
         &wrapper,

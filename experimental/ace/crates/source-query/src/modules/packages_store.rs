@@ -181,7 +181,10 @@ impl PackageStore {
                 FrontBudget::WORK_OWNED_64MIB,
             )
             .map_err(|ds| format!("restore re-parse: {:?}", ds.first().map(|d| &d.code)))?;
-            units.insert(ace_core::source::packages::unit_key(&u.package, &u.module), syntax);
+            units.insert(
+                ace_core::source::packages::unit_key(&u.package, &u.module),
+                syntax,
+            );
         }
         let bound = bind_package_syntax(
             &inputs,
@@ -195,8 +198,12 @@ impl PackageStore {
             return Err("packages restore identity mismatch".into());
         }
         let caps = root.capabilities.clone();
-        let product = compile_bound_packages(bound, &caps)
-            .map_err(|ds| format!("restore re-compile: {} {:?}", ds[0].module, ds[0].diagnostic.code))?;
+        let product = compile_bound_packages(bound, &caps).map_err(|ds| {
+            format!(
+                "restore re-compile: {} {:?}",
+                ds[0].module, ds[0].diagnostic.code
+            )
+        })?;
         let targets = root
             .targets
             .iter()

@@ -303,10 +303,7 @@ fn manifest_envelope_snapshot(source_sha256: &str) -> u64 {
     fnv1a64(source_sha256.as_bytes())
 }
 
-fn manifest_identity<'a>(
-    owner: &'a str,
-    source_sha256: &'a str,
-) -> EnvelopeIdentity<'a> {
+fn manifest_identity<'a>(owner: &'a str, source_sha256: &'a str) -> EnvelopeIdentity<'a> {
     EnvelopeIdentity {
         kind: EnvelopeKind::ModuleManifest,
         producer: CLOSURES_PRODUCER_ID,
@@ -402,12 +399,12 @@ fn read_bounded(
 ) -> Result<Option<ace_artifacts::store::LoadedArtifact>, RecoveryError> {
     match store.get_artifact_by_id_bounded(artifact, cap) {
         Ok(found) => Ok(found),
-        Err(ace_artifacts::store::StoreError::ResourceExhausted(message)) => Err(
-            RecoveryError::new(
+        Err(ace_artifacts::store::StoreError::ResourceExhausted(message)) => {
+            Err(RecoveryError::new(
                 "recovery.oversized",
                 format!("{role} `{artifact}` was refused before materialization: {message}"),
-            ),
-        ),
+            ))
+        }
         Err(error) => Err(RecoveryError::new(
             "recovery.read",
             format!("read {role} `{artifact}`: {error}"),
@@ -470,8 +467,7 @@ pub fn publish_source_recovery_with_fault(
             artifact: u.artifact.clone(),
             mint_span: u.mint_span,
             current_span: u.current_span,
-            identity_wire_b64: base64::engine::general_purpose::STANDARD
-                .encode(&u.identity_wire),
+            identity_wire_b64: base64::engine::general_purpose::STANDARD.encode(&u.identity_wire),
             identity_fnv: format!("{:016x}", fnv1a64(&u.identity_wire)),
         })
         .collect();
@@ -529,9 +525,8 @@ pub fn publish_source_recovery_with_fault(
             ),
         ));
     }
-    let store = ManagedStore::open(store_root).map_err(|e| {
-        RecoveryError::new("recovery.store-open", format!("open store: {e}"))
-    })?;
+    let store = ManagedStore::open(store_root)
+        .map_err(|e| RecoveryError::new("recovery.store-open", format!("open store: {e}")))?;
     // CAS on the accepted generation: a slow, OLD publication never overwrites
     // a newer root. Rejected BEFORE any write, so the authoritative root and
     // its required closure are untouched (the current root's own manifest is
@@ -550,10 +545,7 @@ pub fn publish_source_recovery_with_fault(
     // The declaration context rides its own REQUIRED artifact so a manifest
     // stays bounded and the context is digest-addressed independently.
     let context_digest = ace_core::runtime_contract::sha256_hex(request.context_payload);
-    let mut context_identity = manifest_identity(
-        request.logical_owner,
-        request.source_sha256,
-    );
+    let mut context_identity = manifest_identity(request.logical_owner, request.source_sha256);
     context_identity.unit = "context-dump";
     context_identity.body_fp = &context_digest;
     let context_artifact = store
@@ -576,9 +568,7 @@ pub fn publish_source_recovery_with_fault(
         .map_err(|e| RecoveryError::new("recovery.put", format!("put context: {e}")))?;
     let _context_lease = store
         .acquire_lease("plan913-recovery-publish", 300, Some(&context_artifact))
-        .map_err(|e| {
-            RecoveryError::new("recovery.lease", format!("lease context: {e}"))
-        })?;
+        .map_err(|e| RecoveryError::new("recovery.lease", format!("lease context: {e}")))?;
     inject(fault, PublishSeam::AfterContextWrite)?;
     let manifest = SourceRecoveryManifest {
         schema: RECOVERY_SCHEMA.to_string(),
@@ -609,9 +599,8 @@ pub fn publish_source_recovery_with_fault(
         },
         units,
     };
-    let payload = serde_json::to_vec(&manifest).map_err(|e| {
-        RecoveryError::new("recovery.encode", format!("encode manifest: {e}"))
-    })?;
+    let payload = serde_json::to_vec(&manifest)
+        .map_err(|e| RecoveryError::new("recovery.encode", format!("encode manifest: {e}")))?;
     if payload.len() > MAX_MANIFEST_BYTES {
         return Err(RecoveryError::new(
             "recovery.manifest-too-large",
@@ -656,19 +645,14 @@ pub fn publish_source_recovery_with_fault(
     // publication window (an OS-backed lease dies with this process).
     let _manifest_lease = store
         .acquire_lease("plan913-recovery-publish", 300, Some(&artifact))
-        .map_err(|e| {
-            RecoveryError::new("recovery.lease", format!("lease manifest: {e}"))
-        })?;
+        .map_err(|e| RecoveryError::new("recovery.lease", format!("lease manifest: {e}")))?;
     let mut unit_leases = Vec::with_capacity(manifest.units.len());
     for u in &manifest.units {
         unit_leases.push(
             store
                 .acquire_lease("plan913-recovery-publish", 300, Some(&u.artifact))
                 .map_err(|e| {
-                    RecoveryError::new(
-                        "recovery.lease",
-                        format!("lease unit {}: {e}", u.unit),
-                    )
+                    RecoveryError::new("recovery.lease", format!("lease unit {}: {e}", u.unit))
                 })?,
         );
     }
@@ -750,9 +734,8 @@ pub fn restore_source_recovery(
             ),
         ));
     }
-    let store = ManagedStore::open(store_root).map_err(|e| {
-        RecoveryError::new("recovery.store-open", format!("open store: {e}"))
-    })?;
+    let store = ManagedStore::open(store_root)
+        .map_err(|e| RecoveryError::new("recovery.store-open", format!("open store: {e}")))?;
     // 1. Resolve the caller's expected manifest BY ID. A missing artifact is
     //    a locatable MISS — never a silent cold rebuild.
     let found = read_bounded(
@@ -762,14 +745,14 @@ pub fn restore_source_recovery(
         "manifest",
     )?
     .ok_or_else(|| {
-            RecoveryError::new(
-                "recovery.miss",
-                format!(
-                    "expected manifest {} is absent from the store",
-                    request.expected_manifest
-                ),
-            )
-        })?;
+        RecoveryError::new(
+            "recovery.miss",
+            format!(
+                "expected manifest {} is absent from the store",
+                request.expected_manifest
+            ),
+        )
+    })?;
     if found.kind != ChunkKind::LayoutData {
         return Err(RecoveryError::new(
             "recovery.kind",
@@ -818,9 +801,8 @@ pub fn restore_source_recovery(
             ),
         ));
     }
-    let manifest: SourceRecoveryManifest = serde_json::from_slice(&payload).map_err(|e| {
-        RecoveryError::new("recovery.decode", format!("decode manifest: {e}"))
-    })?;
+    let manifest: SourceRecoveryManifest = serde_json::from_slice(&payload)
+        .map_err(|e| RecoveryError::new("recovery.decode", format!("decode manifest: {e}")))?;
     // 4. Bind the manifest to THIS request (source/config/producer).
     verify_manifest_binding(&manifest, request)?;
     // 4b. The REQUIRED declaration context: read BY ARTIFACT ID, unwrap
@@ -844,21 +826,18 @@ pub fn restore_source_recovery(
             "declaration context",
         )?
         .ok_or_else(|| {
-                RecoveryError::new(
-                    "recovery.miss",
-                    format!(
-                        "declaration context artifact {} is absent",
-                        manifest.context.artifact
-                    ),
-                )
-            })?;
+            RecoveryError::new(
+                "recovery.miss",
+                format!(
+                    "declaration context artifact {} is absent",
+                    manifest.context.artifact
+                ),
+            )
+        })?;
         if found.kind != ChunkKind::LayoutData {
             return Err(RecoveryError::new(
                 "recovery.kind",
-                format!(
-                    "declaration context artifact carries kind {:?}",
-                    found.kind
-                ),
+                format!("declaration context artifact carries kind {:?}", found.kind),
             ));
         }
         let mut context_identity =
@@ -908,11 +887,11 @@ pub fn restore_source_recovery(
             "unit",
         )?
         .ok_or_else(|| {
-                RecoveryError::new(
-                    "recovery.miss",
-                    format!("unit {} artifact {} is absent", u.unit, u.artifact),
-                )
-            })?;
+            RecoveryError::new(
+                "recovery.miss",
+                format!("unit {} artifact {} is absent", u.unit, u.artifact),
+            )
+        })?;
         counters.unit_reads += 1;
         if found.kind != ChunkKind::LayoutData {
             return Err(RecoveryError::new(
@@ -974,9 +953,7 @@ pub fn restore_source_recovery(
                 format!("unit {} deep verification rejected: {e:?}", u.unit),
             )
         })?;
-        ace_core::body_work::record_attempt(ace_core::body_work::Stage::RestartDeepVerify,
-            &u.unit,
-        );
+        ace_core::body_work::record_attempt(ace_core::body_work::Stage::RestartDeepVerify, &u.unit);
         counters.unit_deep_verifies += 1;
         // Host capability authorization stays a REQUEST fact: the manifest
         // records what the unit needs, the current host decides.
@@ -1120,7 +1097,10 @@ fn unit_evidence(
     })?;
     let mut sites = Vec::new();
     for instr in func.blocks.iter().flat_map(|b| b.instrs.iter()) {
-        let MirInstr::CreateClosure { callee, captures, .. } = instr else {
+        let MirInstr::CreateClosure {
+            callee, captures, ..
+        } = instr
+        else {
             continue;
         };
         let symbol = match callee {
@@ -1255,10 +1235,7 @@ fn verify_manifest_binding(
     if m.schema != RECOVERY_SCHEMA {
         return Err(RecoveryError::new(
             "recovery.stale",
-            format!(
-                "manifest schema {} is not {RECOVERY_SCHEMA}",
-                m.schema
-            ),
+            format!("manifest schema {} is not {RECOVERY_SCHEMA}", m.schema),
         ));
     }
     let source_sha = ace_core::runtime_contract::sha256_hex(request.source.as_bytes());
@@ -1286,7 +1263,11 @@ fn verify_manifest_binding(
             "recovery.context-mismatch",
             format!(
                 "manifest context ({}/{}/{}) != request ({}/{}/{})",
-                m.logical_owner, m.entry, m.profile, request.logical_owner, request.entry,
+                m.logical_owner,
+                m.entry,
+                m.profile,
+                request.logical_owner,
+                request.entry,
                 request.profile
             ),
         ));
@@ -1307,8 +1288,7 @@ fn verify_manifest_binding(
     {
         return Err(RecoveryError::new(
             "recovery.stale",
-            "manifest producer/semantics identity differs from the current toolchain"
-                .to_string(),
+            "manifest producer/semantics identity differs from the current toolchain".to_string(),
         ));
     }
     Ok(())
@@ -1361,8 +1341,7 @@ pub fn restore_source_session(
         counters,
         ..
     } = restored;
-    let mut update =
-        crate::closures_session::ClosuresUpdateSession::new(None, &manifest.entry);
+    let mut update = crate::closures_session::ClosuresUpdateSession::new(None, &manifest.entry);
     update.set_host_grants(request.capabilities.to_vec());
     let outcome = update
         .restore_install(units)
@@ -1395,10 +1374,8 @@ mod read_bound_tests {
     /// budget, so this mapping is the reachable seam for the rule.
     #[test]
     fn read_bounded_maps_over_budget_to_recovery_oversized() {
-        let root = std::env::temp_dir().join(format!(
-            "plan913-read-bound-{}-1",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("plan913-read-bound-{}-1", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("store dir");
         let store = ManagedStore::open(&root).expect("store");

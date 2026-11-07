@@ -2431,17 +2431,6 @@ impl PlanCtx<'_> {
 
     fn plan_leaf(&mut self, plan: &mut FnPlan, f: &ResolvedFn, e: &ResolvedExpr) -> usize {
         match &e.kind {
-            RExprKind::CallGlobalGet { global } => {
-                self.global_first_use
-                    .entry(format!("module.global.get:{global}"))
-                    .or_insert((false, e.vt, e.span));
-                plan.exprs.push(ENode {
-                    kind: EKind::GlobalGet(global.clone()),
-                    vt: e.vt,
-                    span: e.span,
-                });
-                return plan.exprs.len() - 1;
-            }
             RExprKind::Binary { .. } | RExprKind::Unary { .. } => {
                 unreachable!("binary/unary handled by plan_expr walk")
             }

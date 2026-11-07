@@ -2139,8 +2139,11 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                         knobs,
                     ) {
                         Ok(r) => {
-                            let events: Vec<serde_json::Value> =
-                                r.events.iter().map(ace_av::resource_events::event_json).collect();
+                            let events: Vec<serde_json::Value> = r
+                                .events
+                                .iter()
+                                .map(ace_av::resource_events::event_json)
+                                .collect();
                             step_outs.push(serde_json::json!({
                                 "op": "run",
                                 "outcome": r.outcome,

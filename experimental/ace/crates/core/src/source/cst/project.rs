@@ -100,7 +100,8 @@ pub(crate) fn project_program_with_caps(
             .position(|r| r.name == "public-item")
             .is_some_and(|i| {
                 tree.kind(node) == ace_syntax_runtime::program::RULE_KIND_BASE + i as u32
-            }) {
+            })
+        {
             // PLAN-960（T-02）：public-body 分派节点的实体孩子（fn/type/const/use）。
             p.field_id("body")
                 .and_then(|f| tree.field_child(node, f))

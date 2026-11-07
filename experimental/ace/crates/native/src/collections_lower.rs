@@ -798,10 +798,7 @@ impl Lower<'_, '_> {
             PlaceSet { place, value } => {
                 let p = self.addr(*place);
                 let v = self.addr(*value);
-                self.checked(
-                    "mn_coll_place_set",
-                    &[(p, types::I64), (v, types::I64)],
-                )?;
+                self.checked("mn_coll_place_set", &[(p, types::I64), (v, types::I64)])?;
             }
             VariantPack {
                 dst, disc, payload, ..

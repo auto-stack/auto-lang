@@ -128,7 +128,10 @@ pub fn decode(exit: Option<i32>, stderr: &[u8]) -> Result<Observation, MnError> 
                 return Err(bad("duplicate free summary"));
             }
         } else if let Some(rest) = line.strip_prefix("MN-EVTEND total=") {
-            if evt_end.replace(rest.parse().map_err(|_| bad("malformed evt end"))?).is_some() {
+            if evt_end
+                .replace(rest.parse().map_err(|_| bad("malformed evt end"))?)
+                .is_some()
+            {
                 return Err(bad("duplicate evt end marker"));
             }
         } else if let Some(rest) = line.strip_prefix("MN-COLL-EVT cap=") {
@@ -153,7 +156,9 @@ pub fn decode(exit: Option<i32>, stderr: &[u8]) -> Result<Observation, MnError> 
             };
             let mut kv: BTreeMap<&str, &str> = BTreeMap::new();
             for t in &toks {
-                let (k, v) = t.split_once('=').ok_or_else(|| bad("malformed event field"))?;
+                let (k, v) = t
+                    .split_once('=')
+                    .ok_or_else(|| bad("malformed event field"))?;
                 if kv.insert(k, v).is_some() {
                     return Err(bad("duplicate event field"));
                 }
@@ -164,7 +169,11 @@ pub fn decode(exit: Option<i32>, stderr: &[u8]) -> Result<Observation, MnError> 
             {
                 return Err(bad("event field order/set mismatch"));
             }
-            let act = kv.get("act").copied().ok_or_else(|| bad("event without act"))?.to_string();
+            let act = kv
+                .get("act")
+                .copied()
+                .ok_or_else(|| bad("event without act"))?
+                .to_string();
             let mut ev = NativeEvt {
                 seq: num(kv.get("seq").copied().unwrap_or(""))?,
                 act: act.clone(),

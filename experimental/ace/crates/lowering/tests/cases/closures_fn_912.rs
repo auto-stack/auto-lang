@@ -32,7 +32,10 @@ fn spanless(unit: &ace_av_core::mir::MirModule) -> Vec<u8> {
     encode_abc(&identity).expect("encode").to_flat()
 }
 
-fn edit_lambda(front: &mut ClosuresFunctionFrontend, text: &str) -> ace_core::source::closures_fn::ClosuresFnCandidate {
+fn edit_lambda(
+    front: &mut ClosuresFunctionFrontend,
+    text: &str,
+) -> ace_core::source::closures_fn::ClosuresFnCandidate {
     let sha = front.source_sha().to_string();
     let unit = front
         .units()
@@ -61,13 +64,9 @@ fn closures_fn_912_checked_unit_matches_whole_module_derivation() {
     assert_eq!(credential.def_id_text(), "d___closure_main_1");
 
     // The checked path: scoped document + credential facts.
-    let checked_unit = lower_function_closures_unit_checked(
-        &candidate.parts.bundle,
-        &credential,
-        &[],
-        7,
-    )
-    .expect("checked lower");
+    let checked_unit =
+        lower_function_closures_unit_checked(&candidate.parts.bundle, &credential, &[], 7)
+            .expect("checked lower");
 
     // The 865/909 truth path: the whole-module checked bundle of the EDITED
     // source (the edit is semantically a body edit; compile the new source
@@ -104,13 +103,8 @@ fn closures_fn_912_uncredentialed_and_foreign_documents_rejected() {
 
     // A document whose body differs from the credential's verified body.
     let other = edit_lambda(&mut front, "(n int) => { return x - n * 5 }");
-    let err = lower_function_closures_unit_checked(
-        &other.parts.bundle,
-        &credential,
-        &[],
-        7,
-    )
-    .expect_err("foreign body must be refused");
+    let err = lower_function_closures_unit_checked(&other.parts.bundle, &credential, &[], 7)
+        .expect_err("foreign body must be refused");
     assert_eq!(err.code(), "lower.closure-facts");
 
     // The credential's own document lowers fine (control).

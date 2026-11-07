@@ -24,9 +24,9 @@ pub struct PackageImport {
 impl PackageImport {
     /// 绑定到本模块命名空间的裸名（`as` 别名或路径末段）。
     pub fn bound_name(&self) -> &str {
-        self.alias.as_deref().unwrap_or_else(|| {
-            self.path.last().map(|s| s.as_str()).unwrap_or_default()
-        })
+        self.alias
+            .as_deref()
+            .unwrap_or_else(|| self.path.last().map(|s| s.as_str()).unwrap_or_default())
     }
 }
 
@@ -57,10 +57,7 @@ pub fn parse_package_source(
     capabilities: &[String],
     budget: FrontBudget,
 ) -> Result<PackageSyntax, Vec<Diagnostic>> {
-    let reason = if !capabilities
-        .iter()
-        .any(|c| c == PACKAGES_CAPABILITY)
-    {
+    let reason = if !capabilities.iter().any(|c| c == PACKAGES_CAPABILITY) {
         Some("package modules require explicit ac.source.modules.packages/v1")
     } else if capabilities
         .iter()
@@ -127,7 +124,11 @@ mod tests {
     use super::*;
 
     fn parse(src: &str) -> Result<PackageSyntax, Vec<Diagnostic>> {
-        parse_package_source(src, &[PACKAGES_CAPABILITY.into()], FrontBudget::WORK_OWNED_64MIB)
+        parse_package_source(
+            src,
+            &[PACKAGES_CAPABILITY.into()],
+            FrontBudget::WORK_OWNED_64MIB,
+        )
     }
 
     #[test]
@@ -140,17 +141,15 @@ mod tests {
         let m = parse(src).unwrap();
         assert_eq!(
             m.exports,
-            BTreeSet::from([
-                "main".into(),
-                "Point".into(),
-                "LIMIT".into(),
-                "lim".into()
-            ])
+            BTreeSet::from(["main".into(), "Point".into(), "LIMIT".into(), "lim".into()])
         );
         assert_eq!(m.type_exports, BTreeSet::from(["Point".into()]));
         assert_eq!(m.const_exports, BTreeSet::from(["LIMIT".into()]));
         assert_eq!(m.imports.len(), 3);
-        assert_eq!(m.imports[1].path, vec!["math".to_string(), "util".into(), "clamp".into()]);
+        assert_eq!(
+            m.imports[1].path,
+            vec!["math".to_string(), "util".into(), "clamp".into()]
+        );
         assert_eq!(m.imports[1].alias.as_deref(), Some("cl"));
         assert!(m.imports[2].reexport);
         assert!(m.declarations.contains_key("count"));
@@ -161,8 +160,12 @@ mod tests {
     #[test]
     fn package_syntax_keeps_capability_gate_and_rejects_bad_forms() {
         assert_eq!(
-            parse_package_source("pub fn f() int { return 1 }", &[], FrontBudget::WORK_OWNED_64MIB)
-                .unwrap_err()[0]
+            parse_package_source(
+                "pub fn f() int { return 1 }",
+                &[],
+                FrontBudget::WORK_OWNED_64MIB
+            )
+            .unwrap_err()[0]
                 .code,
             "source.module-capability"
         );
@@ -170,16 +173,12 @@ mod tests {
         assert!(parse("pub var x int = 1").is_err());
         // imports must precede declarations
         assert_eq!(
-            parse("fn main() int { return 1 }\nuse std.answer")
-                .unwrap_err()[0]
-                .code,
+            parse("fn main() int { return 1 }\nuse std.answer").unwrap_err()[0].code,
             "source.module-import-order"
         );
         // duplicate bound import names
         assert_eq!(
-            parse("use a.f\nuse b.f\nfn main() int { return f() }")
-                .unwrap_err()[0]
-                .code,
+            parse("use a.f\nuse b.f\nfn main() int { return f() }").unwrap_err()[0].code,
             "source.module-duplicate-import"
         );
         // template seam: `<T>` parses under the packages face; the binder
@@ -187,5 +186,3 @@ mod tests {
         assert!(parse("pub fn f<T>(x T) T { return x }").is_ok());
     }
 }
-
-

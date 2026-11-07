@@ -77,9 +77,7 @@ pub struct BoundPackages {
 
 impl BoundPackages {
     pub fn source_len(&self) -> usize {
-        self.segments
-            .last()
-            .map_or(0, |s| s.start + s.source.len())
+        self.segments.last().map_or(0, |s| s.start + s.source.len())
     }
     pub fn is_char_boundary(&self, pos: usize) -> bool {
         self.segments
@@ -113,7 +111,12 @@ impl BoundPackages {
 pub const GLOBAL_GET_PREFIX: &str = "module.global.get:";
 pub const GLOBAL_SET_PREFIX: &str = "module.global.set:";
 
-fn fail(module_key: &str, code: &'static str, message: impl Into<String>, span: Span) -> PackageDiagnostic {
+fn fail(
+    module_key: &str,
+    code: &'static str,
+    message: impl Into<String>,
+    span: Span,
+) -> PackageDiagnostic {
     PackageDiagnostic {
         module: module_key.into(),
         diagnostic: Diagnostic::new(Stage::Bind, code, message, span),
@@ -153,20 +156,47 @@ pub fn fn_symbol(package: &str, module: &str, name: &str, entry: &str) -> String
     if unit_key(package, module) == entry && name == "main" {
         "main".into()
     } else {
-        format!("p{}_{}m{}_{}_{}", package.len(), sym_part(package), module.len(), module, name)
+        format!(
+            "p{}_{}m{}_{}_{}",
+            package.len(),
+            sym_part(package),
+            module.len(),
+            module,
+            name
+        )
     }
 }
 /// type 符号：`t{包长}_{包}m{模块长}_{模块}_{名}`。
 pub fn type_symbol(package: &str, module: &str, name: &str) -> String {
-    format!("t{}_{}m{}_{}_{}", package.len(), sym_part(package), module.len(), module, name)
+    format!(
+        "t{}_{}m{}_{}_{}",
+        package.len(),
+        sym_part(package),
+        module.len(),
+        module,
+        name
+    )
 }
 /// global（const/store）符号：`g{包长}_{包}m{模块长}_{模块}_{名}`。
 pub fn global_symbol(package: &str, module: &str, name: &str) -> String {
-    format!("g{}_{}m{}_{}_{}", package.len(), sym_part(package), module.len(), module, name)
+    format!(
+        "g{}_{}m{}_{}_{}",
+        package.len(),
+        sym_part(package),
+        module.len(),
+        module,
+        name
+    )
 }
 /// 模块 init 函数符号：`i{包长}_{包}m{模块长}_{模块}`。
 pub fn init_symbol(package: &str, module: &str) -> String {
-    format!("i{}_{}m{}_{}", package.len(), sym_part(package), module.len(), module)
+    format!(
+        "i{}_{}m{}_{}",
+        package.len(),
+        sym_part(package),
+        module.len(),
+        module
+    )
 }
 
 struct UnitDecls {
@@ -205,7 +235,12 @@ pub fn bind_packages(
             .checked_add(input.source.len())
             .ok_or_else(|| fail(&key, "source.resource", "module input byte budget", zero))?;
         if total > budget.work_bytes {
-            return Err(fail(&key, "source.resource", "module input byte budget", zero));
+            return Err(fail(
+                &key,
+                "source.resource",
+                "module input byte budget",
+                zero,
+            ));
         }
         if !valid_package(&input.package)
             || !valid_version(&input.version)
@@ -262,7 +297,12 @@ pub fn bind_package_syntax(
             .checked_add(input.source.len())
             .ok_or_else(|| fail(&key, "source.resource", "module input byte budget", zero))?;
         if bytes > budget.work_bytes {
-            return Err(fail(&key, "source.resource", "module input byte budget", zero));
+            return Err(fail(
+                &key,
+                "source.resource",
+                "module input byte budget",
+                zero,
+            ));
         }
         if !valid_package(&input.package)
             || !valid_version(&input.version)
@@ -301,7 +341,12 @@ pub fn bind_package_syntax(
         ));
     }
     if !units.contains_key(entry) {
-        return Err(fail(entry, "source.module-missing", "entry module absent", zero));
+        return Err(fail(
+            entry,
+            "source.module-missing",
+            "entry module absent",
+            zero,
+        ));
     }
 
     // ---- 声明清单与重名拒绝（fn/type/const/store 共享模块命名空间）----
@@ -330,10 +375,7 @@ pub fn bind_package_syntax(
                 }
             };
             if all.insert(name.name.clone(), span).is_some()
-                || unit
-                    .imports
-                    .iter()
-                    .any(|i| i.bound_name() == name.name)
+                || unit.imports.iter().any(|i| i.bound_name() == name.name)
             {
                 return Err(fail(
                     key,
@@ -354,31 +396,37 @@ pub fn bind_package_syntax(
     }
 
     // ---- 路径解析与公共可见性（含重导出链；V-02 私有重导出拒绝）----
-    let resolve_path = |owner: &str, path: &[String], span: Span| -> Result<(String, String), PackageDiagnostic> {
-        let (owner_pkg, _) = split_key(owner);
-        let (target_key, item) = match path.len() {
-            2 => (unit_key(owner_pkg, &path[0]), path[1].clone()),
-            3 => (unit_key(&path[0], &path[1]), path[2].clone()),
-            _ => {
+    let resolve_path =
+        |owner: &str, path: &[String], span: Span| -> Result<(String, String), PackageDiagnostic> {
+            let (owner_pkg, _) = split_key(owner);
+            let (target_key, item) = match path.len() {
+                2 => (unit_key(owner_pkg, &path[0]), path[1].clone()),
+                3 => (unit_key(&path[0], &path[1]), path[2].clone()),
+                _ => {
+                    return Err(fail(
+                        owner,
+                        "source.module-path",
+                        "module paths are `mod.item` or `pkg.mod.item`",
+                        span,
+                    ))
+                }
+            };
+            if !units.contains_key(&target_key) {
                 return Err(fail(
                     owner,
-                    "source.module-path",
-                    "module paths are `mod.item` or `pkg.mod.item`",
+                    "source.module-missing",
+                    format!("unknown module `{}`", path[..path.len() - 1].join(".")),
                     span,
-                ))
+                ));
             }
+            Ok((target_key, item))
         };
-        if !units.contains_key(&target_key) {
-            return Err(fail(
-                owner,
-                "source.module-missing",
-                format!("unknown module `{}`", path[..path.len() - 1].join(".")),
-                span,
-            ));
-        }
-        Ok((target_key, item))
-    };
-    let public_target = |owner: &str, target_key: &str, item: &str, span: Span, reexport: bool| -> Result<Target, PackageDiagnostic> {
+    let public_target = |owner: &str,
+                         target_key: &str,
+                         item: &str,
+                         span: Span,
+                         reexport: bool|
+     -> Result<Target, PackageDiagnostic> {
         let mut seen: BTreeSet<(String, String)> = BTreeSet::new();
         let mut cursor = (target_key.to_string(), item.to_string());
         loop {
@@ -403,21 +451,36 @@ pub fn bind_package_syntax(
                 return if exported {
                     Ok(Target::Fn(fn_symbol(pkg, module, &cursor.1, entry)))
                 } else {
-                    Err(fail(owner, private_code, format!("private function `{}.{}`", cursor.0, cursor.1), span))
+                    Err(fail(
+                        owner,
+                        private_code,
+                        format!("private function `{}.{}`", cursor.0, cursor.1),
+                        span,
+                    ))
                 };
             }
             if d.types.contains_key(&cursor.1) {
                 return if exported {
                     Ok(Target::Type(type_symbol(pkg, module, &cursor.1)))
                 } else {
-                    Err(fail(owner, private_code, format!("private type `{}.{}`", cursor.0, cursor.1), span))
+                    Err(fail(
+                        owner,
+                        private_code,
+                        format!("private type `{}.{}`", cursor.0, cursor.1),
+                        span,
+                    ))
                 };
             }
             if d.consts.contains_key(&cursor.1) {
                 return if exported {
                     Ok(Target::Const(global_symbol(pkg, module, &cursor.1)))
                 } else {
-                    Err(fail(owner, private_code, format!("private constant `{}.{}`", cursor.0, cursor.1), span))
+                    Err(fail(
+                        owner,
+                        private_code,
+                        format!("private constant `{}.{}`", cursor.0, cursor.1),
+                        span,
+                    ))
                 };
             }
             if d.stores.contains_key(&cursor.1) {
@@ -463,9 +526,21 @@ pub fn bind_package_syntax(
             }
             let target = public_target(key, &target_key, &item, i.span, i.reexport)?;
             let b = match target {
-                Target::Fn(s) => BoundImport { symbol: s, is_type: false, is_const: false },
-                Target::Type(s) => BoundImport { symbol: s, is_type: true, is_const: false },
-                Target::Const(s) => BoundImport { symbol: s, is_type: false, is_const: true },
+                Target::Fn(s) => BoundImport {
+                    symbol: s,
+                    is_type: false,
+                    is_const: false,
+                },
+                Target::Type(s) => BoundImport {
+                    symbol: s,
+                    is_type: true,
+                    is_const: false,
+                },
+                Target::Const(s) => BoundImport {
+                    symbol: s,
+                    is_type: false,
+                    is_const: true,
+                },
             };
             binds.insert(i.bound_name().to_string(), b);
             edges.get_mut(key).unwrap().insert(target_key);
@@ -481,7 +556,12 @@ pub fn bind_package_syntax(
                 .map(|(k, _)| k.clone())
                 .collect();
             if leaves.is_empty() {
-                return Err(fail(entry, "source.module-cycle", "cyclic module dependency", zero));
+                return Err(fail(
+                    entry,
+                    "source.module-cycle",
+                    "cyclic module dependency",
+                    zero,
+                ));
             }
             pending.retain(|k, _| !leaves.contains(k));
             for deps in pending.values_mut() {
@@ -571,7 +651,10 @@ pub fn bind_package_syntax(
                     walker.current_owner = owner.clone();
                     walker.walk_fn(&mut f)?;
                     binding_walks.insert(owner.clone());
-                    origins.insert(owner.clone(), (pkg.into(), module.into(), f.name.name.clone()));
+                    origins.insert(
+                        owner.clone(),
+                        (pkg.into(), module.into(), f.name.name.clone()),
+                    );
                     f.name.name = owner;
                     shift_fn(&mut f, offset);
                     program_items.push(Item::Fn(f));
@@ -597,11 +680,21 @@ pub fn bind_package_syntax(
                         binding_walks.insert(m_owner.clone());
                         origins.insert(
                             m_owner,
-                            (pkg.into(), module.into(), format!("{}.{}", original.name.name, m.name.name)),
+                            (
+                                pkg.into(),
+                                module.into(),
+                                format!("{}.{}", original.name.name, m.name.name),
+                            ),
                         );
-                        m.owner = Some(Ident { name: owner.clone(), span: t.name.span });
+                        m.owner = Some(Ident {
+                            name: owner.clone(),
+                            span: t.name.span,
+                        });
                     }
-                    type_origins.insert(owner.clone(), (pkg.into(), module.into(), t.name.name.clone()));
+                    type_origins.insert(
+                        owner.clone(),
+                        (pkg.into(), module.into(), t.name.name.clone()),
+                    );
                     t.name.name = owner;
                     shift_type(&mut t, offset);
                     program_items.push(Item::Type(t));
@@ -874,7 +967,9 @@ pub fn bind_package_syntax(
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect(),
-        program: Program { items: program_items },
+        program: Program {
+            items: program_items,
+        },
         units,
         segments,
         origins,
@@ -957,7 +1052,14 @@ fn shift_stmt(s: &mut Stmt, offset: usize) {
             shift_expr(value, offset);
             sh(span, offset);
         }
-        Stmt::Let { kw, name, ann, value, span, .. } => {
+        Stmt::Let {
+            kw,
+            name,
+            ann,
+            value,
+            span,
+            ..
+        } => {
             sh(kw, offset);
             sh(&mut name.span, offset);
             if let Some(a) = ann {
@@ -966,7 +1068,11 @@ fn shift_stmt(s: &mut Stmt, offset: usize) {
             shift_expr(value, offset);
             sh(span, offset);
         }
-        Stmt::Assign { target, value, span } => {
+        Stmt::Assign {
+            target,
+            value,
+            span,
+        } => {
             sh(&mut target.base.span, offset);
             for p in &mut target.path {
                 sh(&mut p.span, offset);
@@ -974,7 +1080,12 @@ fn shift_stmt(s: &mut Stmt, offset: usize) {
             shift_expr(value, offset);
             sh(span, offset);
         }
-        Stmt::If { cond, then, els, span } => {
+        Stmt::If {
+            cond,
+            then,
+            els,
+            span,
+        } => {
             shift_expr(cond, offset);
             shift_block(then, offset);
             if let Some(e) = els {
@@ -992,7 +1103,11 @@ fn shift_stmt(s: &mut Stmt, offset: usize) {
             sh(span, offset);
         }
         Stmt::Break { span } | Stmt::Continue { span } => sh(span, offset),
-        Stmt::IsMatch { scrutinee, arms, span } => {
+        Stmt::IsMatch {
+            scrutinee,
+            arms,
+            span,
+        } => {
             sh(&mut scrutinee.span, offset);
             for a in arms {
                 shift_block(&mut a.body, offset);
@@ -1000,7 +1115,12 @@ fn shift_stmt(s: &mut Stmt, offset: usize) {
             }
             sh(span, offset);
         }
-        Stmt::ForIn { var, iter, body, span } => {
+        Stmt::ForIn {
+            var,
+            iter,
+            body,
+            span,
+        } => {
             sh(&mut var.span, offset);
             shift_expr(iter, offset);
             shift_block(body, offset);
@@ -1121,7 +1241,12 @@ impl<'a> Walker<'a> {
     fn budget(&mut self, span: Span) -> Result<(), PackageDiagnostic> {
         self.work += 1;
         if self.work > WALK_WORK_BUDGET || self.depth > WALK_DEPTH_BUDGET {
-            return Err(fail(self.key, "source.resource", "module binding work budget", span));
+            return Err(fail(
+                self.key,
+                "source.resource",
+                "module binding work budget",
+                span,
+            ));
         }
         Ok(())
     }
@@ -1149,7 +1274,9 @@ impl<'a> Walker<'a> {
 
     fn walk_fn(&mut self, f: &mut FnItem) -> Result<(), PackageDiagnostic> {
         self.refs.entry(self.current_owner.clone()).or_default();
-        self.global_reads.entry(self.current_owner.clone()).or_default();
+        self.global_reads
+            .entry(self.current_owner.clone())
+            .or_default();
         self.walk_ann(&mut f.ret)?;
         for p in &mut f.params {
             self.walk_ann(&mut p.ty)?;
@@ -1193,14 +1320,23 @@ impl<'a> Walker<'a> {
             return if b.is_type {
                 Ok(b.symbol.clone())
             } else {
-                Err(fail(self.key, "source.module-symbol", format!("`{}` is not a type", name.name), name.span))
+                Err(fail(
+                    self.key,
+                    "source.module-symbol",
+                    format!("`{}` is not a type", name.name),
+                    name.span,
+                ))
             };
         }
-        Err(fail(self.key, "source.module-symbol", format!("unknown type `{}`", name.name), name.span))
+        Err(fail(
+            self.key,
+            "source.module-symbol",
+            format!("unknown type `{}`", name.name),
+            name.span,
+        ))
     }
     fn is_type_name(&self, name: &str) -> bool {
-        self.my_decls().types.contains_key(name)
-            || self.binds.get(name).is_some_and(|b| b.is_type)
+        self.my_decls().types.contains_key(name) || self.binds.get(name).is_some_and(|b| b.is_type)
     }
     /// 裸全局名 -> 全局符号（本模块 const/store，或导入常量）。
     fn global_of(&self, name: &str) -> Option<String> {
@@ -1214,7 +1350,11 @@ impl<'a> Walker<'a> {
             .map(|b| b.symbol.clone())
     }
 
-    fn walk_block(&mut self, b: &mut Block, locals: BTreeSet<String>) -> Result<(), PackageDiagnostic> {
+    fn walk_block(
+        &mut self,
+        b: &mut Block,
+        locals: BTreeSet<String>,
+    ) -> Result<(), PackageDiagnostic> {
         // 显式帧（块与其后续语句共享扩展后的局部集）。
         struct Frame<'b> {
             stmts: &'b mut [Stmt],
@@ -1232,14 +1372,20 @@ impl<'a> Walker<'a> {
             self.budget(stmt_span(s))?;
             let mut next_locals = locals.clone();
             match s {
-                Stmt::Let { name, ann, value, .. } => {
+                Stmt::Let {
+                    name, ann, value, ..
+                } => {
                     if let Some(a) = ann {
                         self.walk_ann(a)?;
                     }
                     self.walk_expr(value, &locals)?;
                     next_locals.insert(name.name.clone());
                 }
-                Stmt::Assign { target, value, span } => {
+                Stmt::Assign {
+                    target,
+                    value,
+                    span,
+                } => {
                     if !locals.contains(&target.base.name) {
                         if let Some(sym) = self.global_of(&target.base.name) {
                             if !target.path.is_empty() {
@@ -1260,7 +1406,10 @@ impl<'a> Walker<'a> {
                             }
                             let mut v = std::mem::replace(
                                 value,
-                                Expr { kind: ExprKind::IntLit(0), span: *span },
+                                Expr {
+                                    kind: ExprKind::IntLit(0),
+                                    span: *span,
+                                },
                             );
                             self.walk_expr(&mut v, &locals)?;
                             let span = *span;
@@ -1288,7 +1437,10 @@ impl<'a> Walker<'a> {
                                 },
                                 span,
                             };
-                            stack.push(Frame { stmts: rest, locals: next_locals });
+                            stack.push(Frame {
+                                stmts: rest,
+                                locals: next_locals,
+                            });
                             continue;
                         }
                         // 非局部、非全局：保留给 resolver（其未知名诊断）。
@@ -1298,24 +1450,47 @@ impl<'a> Walker<'a> {
                 Stmt::ExprStmt { value, .. } | Stmt::Return { value, .. } => {
                     self.walk_expr(value, &locals)?;
                 }
-                Stmt::If { cond, then, els, .. } => {
+                Stmt::If {
+                    cond, then, els, ..
+                } => {
                     self.walk_expr(cond, &locals)?;
-                    stack.push(Frame { stmts: rest, locals: next_locals });
+                    stack.push(Frame {
+                        stmts: rest,
+                        locals: next_locals,
+                    });
                     if let Some(e) = els {
-                        stack.push(Frame { stmts: e.stmts.as_mut_slice(), locals: locals.clone() });
+                        stack.push(Frame {
+                            stmts: e.stmts.as_mut_slice(),
+                            locals: locals.clone(),
+                        });
                     }
-                    stack.push(Frame { stmts: then.stmts.as_mut_slice(), locals });
+                    stack.push(Frame {
+                        stmts: then.stmts.as_mut_slice(),
+                        locals,
+                    });
                     continue;
                 }
                 Stmt::While { cond, body, .. } => {
                     self.walk_expr(cond, &locals)?;
-                    stack.push(Frame { stmts: rest, locals: next_locals });
-                    stack.push(Frame { stmts: body.stmts.as_mut_slice(), locals });
+                    stack.push(Frame {
+                        stmts: rest,
+                        locals: next_locals,
+                    });
+                    stack.push(Frame {
+                        stmts: body.stmts.as_mut_slice(),
+                        locals,
+                    });
                     continue;
                 }
                 Stmt::Loop { body, .. } => {
-                    stack.push(Frame { stmts: rest, locals: next_locals });
-                    stack.push(Frame { stmts: body.stmts.as_mut_slice(), locals });
+                    stack.push(Frame {
+                        stmts: rest,
+                        locals: next_locals,
+                    });
+                    stack.push(Frame {
+                        stmts: body.stmts.as_mut_slice(),
+                        locals,
+                    });
                     continue;
                 }
                 Stmt::Break { .. } | Stmt::Continue { .. } => {}
@@ -1328,24 +1503,41 @@ impl<'a> Walker<'a> {
                     ))
                 }
             }
-            stack.push(Frame { stmts: rest, locals: next_locals });
+            stack.push(Frame {
+                stmts: rest,
+                locals: next_locals,
+            });
         }
         Ok(())
     }
 
-    fn walk_arg(&mut self, a: &mut Arg, locals: &BTreeSet<String>) -> Result<(), PackageDiagnostic> {
+    fn walk_arg(
+        &mut self,
+        a: &mut Arg,
+        locals: &BTreeSet<String>,
+    ) -> Result<(), PackageDiagnostic> {
         match a {
-            Arg::Pos(v) | Arg::MovePos(v) | Arg::Named { value: v, .. } => self.walk_expr(v, locals),
+            Arg::Pos(v) | Arg::MovePos(v) | Arg::Named { value: v, .. } => {
+                self.walk_expr(v, locals)
+            }
         }
     }
-    fn walk_args(&mut self, args: &mut [Arg], locals: &BTreeSet<String>) -> Result<(), PackageDiagnostic> {
+    fn walk_args(
+        &mut self,
+        args: &mut [Arg],
+        locals: &BTreeSet<String>,
+    ) -> Result<(), PackageDiagnostic> {
         for a in args {
             self.walk_arg(a, locals)?;
         }
         Ok(())
     }
 
-    fn walk_expr(&mut self, e: &mut Expr, locals: &BTreeSet<String>) -> Result<(), PackageDiagnostic> {
+    fn walk_expr(
+        &mut self,
+        e: &mut Expr,
+        locals: &BTreeSet<String>,
+    ) -> Result<(), PackageDiagnostic> {
         self.depth += 1;
         self.budget(e.span)?;
         let r = self.walk_expr_inner(e, locals);
@@ -1353,7 +1545,11 @@ impl<'a> Walker<'a> {
         r
     }
 
-    fn walk_expr_inner(&mut self, e: &mut Expr, locals: &BTreeSet<String>) -> Result<(), PackageDiagnostic> {
+    fn walk_expr_inner(
+        &mut self,
+        e: &mut Expr,
+        locals: &BTreeSet<String>,
+    ) -> Result<(), PackageDiagnostic> {
         let span = e.span;
         match &mut e.kind {
             ExprKind::IntLit(_)
@@ -1369,7 +1565,10 @@ impl<'a> Walker<'a> {
                     self.record_read(&sym);
                     let vspan = v.span;
                     e.kind = ExprKind::Call {
-                        callee: Ident { name: format!("{GLOBAL_GET_PREFIX}{sym}"), span: vspan },
+                        callee: Ident {
+                            name: format!("{GLOBAL_GET_PREFIX}{sym}"),
+                            span: vspan,
+                        },
                         args: Vec::new(),
                     };
                     return Ok(());
@@ -1378,7 +1577,10 @@ impl<'a> Walker<'a> {
                     return Err(fail(
                         self.key,
                         "source.module-symbol",
-                        format!("function `{}` is not a value (function values close in PLAN-964)", v.name),
+                        format!(
+                            "function `{}` is not a value (function values close in PLAN-964)",
+                            v.name
+                        ),
                         v.span,
                     ));
                 }
@@ -1403,22 +1605,48 @@ impl<'a> Walker<'a> {
                         callee.name = sym;
                     } else if let Some(b) = self.binds.get(&callee.name) {
                         if b.is_const {
-                            return Err(fail(self.key, "source.module-symbol", format!("constant `{}` is not callable", callee.name), callee.span));
+                            return Err(fail(
+                                self.key,
+                                "source.module-symbol",
+                                format!("constant `{}` is not callable", callee.name),
+                                callee.span,
+                            ));
                         }
                         if b.is_type {
-                            return Err(fail(self.key, "source.module-symbol", format!("type `{}` is not callable; construct it with `{{ ... }}`", callee.name), callee.span));
+                            return Err(fail(
+                                self.key,
+                                "source.module-symbol",
+                                format!(
+                                    "type `{}` is not callable; construct it with `{{ ... }}`",
+                                    callee.name
+                                ),
+                                callee.span,
+                            ));
                         }
                         let sym = b.symbol.clone();
                         self.record_call(&sym);
                         callee.name = sym;
                     } else if self.global_of(&callee.name).is_some() {
-                        return Err(fail(self.key, "source.module-symbol", format!("`{}` is a module global, not a function", callee.name), callee.span));
+                        return Err(fail(
+                            self.key,
+                            "source.module-symbol",
+                            format!("`{}` is a module global, not a function", callee.name),
+                            callee.span,
+                        ));
                     } else if self.is_type_name(&callee.name) {
                         // 位置构造 `Pair(1, true)`：resolver 路由为 record 构造。
-                        let sym = self.type_name(&Ident { name: callee.name.clone(), span: callee.span })?;
+                        let sym = self.type_name(&Ident {
+                            name: callee.name.clone(),
+                            span: callee.span,
+                        })?;
                         callee.name = sym;
                     } else {
-                        return Err(fail(self.key, "source.module-symbol", format!("unknown function `{}`", callee.name), callee.span));
+                        return Err(fail(
+                            self.key,
+                            "source.module-symbol",
+                            format!("unknown function `{}`", callee.name),
+                            callee.span,
+                        ));
                     }
                 }
                 self.walk_args(args, locals)
@@ -1448,7 +1676,10 @@ impl<'a> Walker<'a> {
                     let mut taken = std::mem::take(args);
                     self.walk_args(&mut taken, locals)?;
                     e.kind = ExprKind::Call {
-                        callee: Ident { name: sym, span: head_span.join(name.span) },
+                        callee: Ident {
+                            name: sym,
+                            span: head_span.join(name.span),
+                        },
                         args: taken,
                     };
                     return Ok(());
@@ -1519,7 +1750,10 @@ impl<'a> Walker<'a> {
     fn module_prefix(&self, recv: &Expr, locals: &BTreeSet<String>) -> Option<(String, Span)> {
         match &recv.kind {
             ExprKind::Var(m) => {
-                if locals.contains(&m.name) || self.is_type_name(&m.name) || self.global_of(&m.name).is_some() {
+                if locals.contains(&m.name)
+                    || self.is_type_name(&m.name)
+                    || self.global_of(&m.name).is_some()
+                {
                     return None;
                 }
                 self.same_package_module(&m.name).map(|k| (k, m.span))
@@ -1528,7 +1762,10 @@ impl<'a> Walker<'a> {
                 let ExprKind::Var(pkg) = &base.kind else {
                     return None;
                 };
-                if locals.contains(&pkg.name) || self.is_type_name(&pkg.name) || self.global_of(&pkg.name).is_some() {
+                if locals.contains(&pkg.name)
+                    || self.is_type_name(&pkg.name)
+                    || self.global_of(&pkg.name).is_some()
+                {
                     return None;
                 }
                 if !self.is_package_name(&pkg.name) {
@@ -1541,23 +1778,47 @@ impl<'a> Walker<'a> {
         }
     }
 
-    fn cross_call(&self, target: &str, item: &str, span: Span) -> Result<String, PackageDiagnostic> {
+    fn cross_call(
+        &self,
+        target: &str,
+        item: &str,
+        span: Span,
+    ) -> Result<String, PackageDiagnostic> {
         let d = &self.decls[target];
         let (pkg, module) = split_key(target);
         if d.fns.contains_key(item) {
             if self.units[target].exports.contains(item) || target == self.key {
                 return Ok(fn_symbol(pkg, module, item, self.entry));
             }
-            return Err(fail(self.key, "source.module-private", format!("private function `{target}.{item}`"), span));
+            return Err(fail(
+                self.key,
+                "source.module-private",
+                format!("private function `{target}.{item}`"),
+                span,
+            ));
         }
         if d.consts.contains_key(item) || d.stores.contains_key(item) {
-            return Err(fail(self.key, "source.module-symbol", format!("`{target}.{item}` is a module global, not a function"), span));
+            return Err(fail(
+                self.key,
+                "source.module-symbol",
+                format!("`{target}.{item}` is a module global, not a function"),
+                span,
+            ));
         }
         if d.types.contains_key(item) {
-            return Err(fail(self.key, "source.module-symbol", format!("type `{target}.{item}` is not callable"), span));
+            return Err(fail(
+                self.key,
+                "source.module-symbol",
+                format!("type `{target}.{item}` is not callable"),
+                span,
+            ));
         }
         // 重导出项经链解析。
-        if let Some(re) = self.units[target].imports.iter().find(|i| i.reexport && i.bound_name() == item) {
+        if let Some(re) = self.units[target]
+            .imports
+            .iter()
+            .find(|i| i.reexport && i.bound_name() == item)
+        {
             let _ = re;
             return Err(fail(
                 self.key,
@@ -1566,22 +1827,47 @@ impl<'a> Walker<'a> {
                 span,
             ));
         }
-        Err(fail(self.key, "source.module-symbol", format!("unknown function `{target}.{item}`"), span))
+        Err(fail(
+            self.key,
+            "source.module-symbol",
+            format!("unknown function `{target}.{item}`"),
+            span,
+        ))
     }
 
-    fn cross_const(&self, target: &str, item: &str, span: Span) -> Result<String, PackageDiagnostic> {
+    fn cross_const(
+        &self,
+        target: &str,
+        item: &str,
+        span: Span,
+    ) -> Result<String, PackageDiagnostic> {
         let d = &self.decls[target];
         let (pkg, module) = split_key(target);
         if d.consts.contains_key(item) {
             if self.units[target].exports.contains(item) || target == self.key {
                 return Ok(global_symbol(pkg, module, item));
             }
-            return Err(fail(self.key, "source.module-private", format!("private constant `{target}.{item}`"), span));
+            return Err(fail(
+                self.key,
+                "source.module-private",
+                format!("private constant `{target}.{item}`"),
+                span,
+            ));
         }
         if d.stores.contains_key(item) {
-            return Err(fail(self.key, "source.module-private", format!("module store `{target}.{item}` is private"), span));
+            return Err(fail(
+                self.key,
+                "source.module-private",
+                format!("module store `{target}.{item}` is private"),
+                span,
+            ));
         }
-        Err(fail(self.key, "source.module-symbol", format!("unknown constant `{target}.{item}`"), span))
+        Err(fail(
+            self.key,
+            "source.module-symbol",
+            format!("unknown constant `{target}.{item}`"),
+            span,
+        ))
     }
 }
 
@@ -1613,8 +1899,16 @@ mod tests {
             source: source.into(),
         }
     }
-    fn bind(inputs: &[PackageModuleInput], entry: &str) -> Result<BoundPackages, PackageDiagnostic> {
-        bind_packages(inputs, entry, &[PACKAGES_CAPABILITY.into()], FrontBudget::WORK_OWNED_64MIB)
+    fn bind(
+        inputs: &[PackageModuleInput],
+        entry: &str,
+    ) -> Result<BoundPackages, PackageDiagnostic> {
+        bind_packages(
+            inputs,
+            entry,
+            &[PACKAGES_CAPABILITY.into()],
+            FrontBudget::WORK_OWNED_64MIB,
+        )
     }
 
     #[test]
@@ -1636,7 +1930,10 @@ mod tests {
         assert_eq!(b.globals.len(), 3);
         let pos = |s: &str| b.init_order.iter().position(|g| g == s).unwrap();
         assert!(pos("g3_libm3_geo_ORIGIN") < pos("g3_appm4_main_BASE"));
-        assert_eq!(b.module_init_order, vec!["lib::geo".to_string(), "app::main".to_string()]);
+        assert_eq!(
+            b.module_init_order,
+            vec!["lib::geo".to_string(), "app::main".to_string()]
+        );
         assert_eq!(b.module_init_fns["app::main"], "i3_appm4_main");
         // store write rewritten to a set call; reads to get calls.
         let bump = b
@@ -1698,8 +1995,16 @@ mod tests {
         // V-02: re-exporting a private type is rejected by name.
         let e = bind(
             &[
-                input("lib", "geo", "type Secret { x int }\npub fn f() int { return 1 }"),
-                input("app", "main", "pub use lib.geo.Secret\nfn main() int { return 1 }"),
+                input(
+                    "lib",
+                    "geo",
+                    "type Secret { x int }\npub fn f() int { return 1 }",
+                ),
+                input(
+                    "app",
+                    "main",
+                    "pub use lib.geo.Secret\nfn main() int { return 1 }",
+                ),
             ],
             "app::main",
         )
@@ -1716,7 +2021,11 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(e.diagnostic.code, "source.module-init-cycle");
-        assert!(e.diagnostic.message.contains("app::main.A"), "{}", e.diagnostic.message);
+        assert!(
+            e.diagnostic.message.contains("app::main.A"),
+            "{}",
+            e.diagnostic.message
+        );
         // indirect cycle through a function is also a cycle
         let e = bind(
             &[input(
@@ -1743,9 +2052,21 @@ mod tests {
         // but a use-edge cycle is still rejected
         let e = bind(
             &[
-                input("app", "a", "use app.b.even\npub fn odd() int { return even() }"),
-                input("app", "b", "use app.a.odd\npub fn even() int { return odd() }"),
-                input("app", "main", "use app.a.odd\nfn main() int { return odd() }"),
+                input(
+                    "app",
+                    "a",
+                    "use app.b.even\npub fn odd() int { return even() }",
+                ),
+                input(
+                    "app",
+                    "b",
+                    "use app.a.odd\npub fn even() int { return odd() }",
+                ),
+                input(
+                    "app",
+                    "main",
+                    "use app.a.odd\nfn main() int { return odd() }",
+                ),
             ],
             "app::main",
         )
@@ -1756,14 +2077,46 @@ mod tests {
     #[test]
     fn packages_reject_private_access_const_assign_store_export_and_templates() {
         for (lib, app, code) in [
-            ("fn hidden() int { return 1 }", "fn main() int { return lib.x.hidden() }", "source.module-private"),
-            ("pub const K int = 1", "fn main() int { return lib.x.K() }", "source.module-symbol"),
-            ("var s int = 1\npub fn f() int { return s }", "use lib.x.s\nfn main() int { return s }", "source.module-private"),
-            ("pub const K int = 1", "use lib.x.K\nfn main() int { K = 2\n return K }", "source.module-const-assign"),
-            ("pub fn f<T>(x T) T { return x }", "fn main() int { return 1 }", "source.module-templates"),
-            ("pub fn f() int { return 1 }", "use lib.x.f\nfn main() int { return f }", "source.module-symbol"),
-            ("pub fn f() int { return 1 }", "use lib.x.f.g\nfn main() int { return 1 }", "source.module-path"),
-            ("pub fn f() int { return 1 }", "use lib.x.f\nfn f() int { return 2 }\nfn main() int { return f() }", "source.module-duplicate-declaration"),
+            (
+                "fn hidden() int { return 1 }",
+                "fn main() int { return lib.x.hidden() }",
+                "source.module-private",
+            ),
+            (
+                "pub const K int = 1",
+                "fn main() int { return lib.x.K() }",
+                "source.module-symbol",
+            ),
+            (
+                "var s int = 1\npub fn f() int { return s }",
+                "use lib.x.s\nfn main() int { return s }",
+                "source.module-private",
+            ),
+            (
+                "pub const K int = 1",
+                "use lib.x.K\nfn main() int { K = 2\n return K }",
+                "source.module-const-assign",
+            ),
+            (
+                "pub fn f<T>(x T) T { return x }",
+                "fn main() int { return 1 }",
+                "source.module-templates",
+            ),
+            (
+                "pub fn f() int { return 1 }",
+                "use lib.x.f\nfn main() int { return f }",
+                "source.module-symbol",
+            ),
+            (
+                "pub fn f() int { return 1 }",
+                "use lib.x.f.g\nfn main() int { return 1 }",
+                "source.module-path",
+            ),
+            (
+                "pub fn f() int { return 1 }",
+                "use lib.x.f\nfn f() int { return 2 }\nfn main() int { return f() }",
+                "source.module-duplicate-declaration",
+            ),
         ] {
             let e = bind(
                 &[input("lib", "x", lib), input("app", "main", app)],
@@ -1775,16 +2128,34 @@ mod tests {
         // same-name private symbols in two packages stay isolated (V-01)
         let b = bind(
             &[
-                input("one", "m", "fn helper() int { return 1 }\npub fn get() int { return helper() }"),
-                input("two", "m", "fn helper() int { return 2 }\npub fn get() int { return helper() }"),
-                input("app", "main", "fn main() int { return one.m.get() + two.m.get() }"),
+                input(
+                    "one",
+                    "m",
+                    "fn helper() int { return 1 }\npub fn get() int { return helper() }",
+                ),
+                input(
+                    "two",
+                    "m",
+                    "fn helper() int { return 2 }\npub fn get() int { return helper() }",
+                ),
+                input(
+                    "app",
+                    "main",
+                    "fn main() int { return one.m.get() + two.m.get() }",
+                ),
             ],
             "app::main",
         )
         .unwrap();
         assert!(b.origins.contains_key("p3_onem1_m_helper"));
         assert!(b.origins.contains_key("p3_twom1_m_helper"));
-        assert_eq!(b.references["p3_onem1_m_get"], BTreeSet::from(["p3_onem1_m_helper".to_string()]));
-        assert_eq!(b.references["p3_twom1_m_get"], BTreeSet::from(["p3_twom1_m_helper".to_string()]));
+        assert_eq!(
+            b.references["p3_onem1_m_get"],
+            BTreeSet::from(["p3_onem1_m_helper".to_string()])
+        );
+        assert_eq!(
+            b.references["p3_twom1_m_get"],
+            BTreeSet::from(["p3_twom1_m_helper".to_string()])
+        );
     }
 }

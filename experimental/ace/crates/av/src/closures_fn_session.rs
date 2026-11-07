@@ -162,7 +162,10 @@ impl ClosuresFunctionSession {
         self.degrade_resubmit_unchanged = on;
     }
 
-    pub fn unit(&self, name: &str) -> Option<&std::sync::Arc<ace_av_core::function_code::FunctionCode>> {
+    pub fn unit(
+        &self,
+        name: &str,
+    ) -> Option<&std::sync::Arc<ace_av_core::function_code::FunctionCode>> {
         self.update.unit(name)
     }
 
@@ -239,12 +242,11 @@ impl ClosuresFunctionSession {
         body_work::record_whole(Stage::FragmentDiff);
         let (range, replacement) = diff_single_region(&old, source);
         let base_sha = front.source_sha().to_string();
-        match self
-            .front
-            .as_mut()
-            .expect("frontend present")
-            .edit_body(&base_sha, range, &replacement)
-        {
+        match self.front.as_mut().expect("frontend present").edit_body(
+            &base_sha,
+            range,
+            &replacement,
+        ) {
             Ok(Ok(candidate)) => self.apply_fast(candidate),
             Ok(Err(reason)) => self.apply_nonfast(source, reason),
             Err(ds) => Err(CompileAndRunError::Diagnostics(ds)),
@@ -261,7 +263,10 @@ impl ClosuresFunctionSession {
         &mut self,
         candidate: ClosuresFnCandidate,
     ) -> Result<ClosuresFunctionRun, CompileAndRunError> {
-        let front = self.front.as_ref().expect("warm implies a retained frontend");
+        let front = self
+            .front
+            .as_ref()
+            .expect("warm implies a retained frontend");
         let registry_after = if candidate.owner.is_some() {
             Some(
                 front
@@ -274,7 +279,8 @@ impl ClosuresFunctionSession {
         };
         let ctx = registry_after.as_ref().unwrap_or_else(|| front.registry());
         let source_snapshot = fnv1a64(self.source_path.as_bytes());
-        let mut lowered: Vec<(String, MirModule, Vec<u8>)> = Vec::with_capacity(candidate.units.len());
+        let mut lowered: Vec<(String, MirModule, Vec<u8>)> =
+            Vec::with_capacity(candidate.units.len());
         let mut facts: Vec<UnitCommitFacts> = Vec::with_capacity(candidate.units.len());
         for unit in &candidate.units {
             let wire_name = candidate.def_id_text_of(unit);
@@ -401,7 +407,12 @@ impl ClosuresFunctionSession {
         reason: NonFastReason,
     ) -> Result<ClosuresFunctionRun, CompileAndRunError> {
         let reason_text = non_fast_text(&reason);
-        self.apply_cold_routed(source, Some(RouteReport::NonFast { reason: reason_text }))
+        self.apply_cold_routed(
+            source,
+            Some(RouteReport::NonFast {
+                reason: reason_text,
+            }),
+        )
     }
 
     fn apply_cold(&mut self, source: &str) -> Result<ClosuresFunctionRun, CompileAndRunError> {
@@ -416,12 +427,9 @@ impl ClosuresFunctionSession {
         // A rebuild over an existing frontend CARRIES lambda logical ids by
         // unique (owner, text) match (§5.1); the truth path still runs whole.
         let (front, _parts, checked) = match self.front.as_ref() {
-            Some(prev) => ClosuresFunctionFrontend::cold_carrying(
-                source,
-                &self.source_path,
-                &[],
-                prev,
-            ),
+            Some(prev) => {
+                ClosuresFunctionFrontend::cold_carrying(source, &self.source_path, &[], prev)
+            }
             None => ClosuresFunctionFrontend::cold(source, &self.source_path, &[]),
         }
         .map_err(CompileAndRunError::Diagnostics)?;
@@ -437,12 +445,10 @@ impl ClosuresFunctionSession {
             .filter(|def| matches!(def.kind, DefKind::Function { .. }))
         {
             body_work::record_attempt(Stage::MirLower, &def.id_text);
-            let unit =
-                lower_function_closures_unit(bundle, &def.id_text, &[], source_snapshot).map_err(
-                    |error| {
-                        CompileAndRunError::Pipeline(format!("lower {}: {error:?}", def.id_text))
-                    },
-                )?;
+            let unit = lower_function_closures_unit(bundle, &def.id_text, &[], source_snapshot)
+                .map_err(|error| {
+                    CompileAndRunError::Pipeline(format!("lower {}: {error:?}", def.id_text))
+                })?;
             let name = unit.funcs[0].name.clone();
             let mut identity = unit.clone();
             for function in &mut identity.funcs {
@@ -601,13 +607,11 @@ impl ClosuresFunctionSession {
                             }
                         }
                     }
-                    (
-                        AcceptedUnitLogical::Owner,
-                        format!("{h:016x}"),
-                        None,
-                    )
+                    (AcceptedUnitLogical::Owner, format!("{h:016x}"), None)
                 }
-                UnitKind::Lambda { logical_id, owner, .. } => {
+                UnitKind::Lambda {
+                    logical_id, owner, ..
+                } => {
                     let owner_name = &front.units()[*owner].name;
                     let mut h = 0xcbf2_9ce4_8422_2325u64;
                     let mut env_layout = String::new();
@@ -636,7 +640,12 @@ impl ClosuresFunctionSession {
                 env_layout_identity,
                 mir_identity: format!(
                     "{:016x}",
-                    fnv1a64(self.current_wires.get(&wire).map(|w| w.as_slice()).unwrap_or(&[]))
+                    fnv1a64(
+                        self.current_wires
+                            .get(&wire)
+                            .map(|w| w.as_slice())
+                            .unwrap_or(&[])
+                    )
                 ),
                 store_ref: self.update.artifact_of(&wire).map(str::to_string),
                 mint_span: (u.mint_span.start, u.mint_span.end),
@@ -686,7 +695,9 @@ impl ClosuresFunctionSession {
             .update
             .store_root()
             .ok_or("source recovery requires a store-backed session")?;
-        let state = self.accepted_state().ok_or("no accepted state to publish")?;
+        let state = self
+            .accepted_state()
+            .ok_or("no accepted state to publish")?;
         let front = self.front.as_ref().ok_or("no retained frontend")?;
         // Every unit's wire was lowered against ONE MIR owner module; the
         // unit envelopes bind to it, so the manifest records it and the
@@ -765,8 +776,8 @@ impl ClosuresFunctionSession {
         // restored process could execute but never take another single-body
         // edit without re-producing the module.
         let dump = ace_core::source::closures_context::dump_context(front);
-        let context_payload = serde_json::to_vec(&dump)
-            .map_err(|e| format!("encode declaration context: {e}"))?;
+        let context_payload =
+            serde_json::to_vec(&dump).map_err(|e| format!("encode declaration context: {e}"))?;
         publish_source_recovery_with_fault(
             store_root,
             PublicationRequest {
@@ -831,9 +842,7 @@ fn diff_single_region(old: &str, new: &str) -> (std::ops::Range<usize>, String) 
     let max_prefix = ob.iter().zip(nb.iter()).take_while(|(a, b)| a == b).count();
     let mut prefix = max_prefix;
     // keep the cut on char boundaries
-    while prefix > 0
-        && (!old.is_char_boundary(prefix) || !new.is_char_boundary(prefix))
-    {
+    while prefix > 0 && (!old.is_char_boundary(prefix) || !new.is_char_boundary(prefix)) {
         prefix -= 1;
     }
     let max_suffix = ob[prefix..]
@@ -858,7 +867,12 @@ fn diff_single_region(old: &str, new: &str) -> (std::ops::Range<usize>, String) 
 /// units AND exactly-one work for the changed unit — a missing counter is a
 /// violation, not a pass.
 fn warm_gate(run: &ClosuresFunctionRun) -> WarmGateReport {
-    warm_gate_report(&run.route, &run.body, &run.stages, &run.submitted_unit_names)
+    warm_gate_report(
+        &run.route,
+        &run.body,
+        &run.stages,
+        &run.submitted_unit_names,
+    )
 }
 
 /// PLAN-912 §5.4: the warm structural gate over an OBSERVATION (route +
@@ -886,9 +900,10 @@ pub fn warm_gate_report(
         violations: Vec::new(),
     };
     if stages.whole_total() > 0 {
-        report
-            .violations
-            .push(format!("whole-axis attempts non-zero: {}", stages.whole_total()));
+        report.violations.push(format!(
+            "whole-axis attempts non-zero: {}",
+            stages.whole_total()
+        ));
     }
     let is_changed = |unit: &str| changed_units.iter().any(|c| c == unit);
     for ((unit, stage), n) in &stages.by_unit {
@@ -951,7 +966,8 @@ pub fn warm_gate_report(
         // batch (its lambdas' text is part of the owner item): re-resolved
         // lambdas inside an owner batch have no separate parse attempt.
         let produced = submitted_unit_names.iter().any(|u| u == changed);
-        let owner_batch_lambda = matches!(route, RouteReport::FastOwner { owner, .. } if owner != changed);
+        let owner_batch_lambda =
+            matches!(route, RouteReport::FastOwner { owner, .. } if owner != changed);
         let mut required = vec![Stage::HirVerify, Stage::MirLower];
         if !owner_batch_lambda {
             required.push(Stage::ParseProject);
@@ -961,9 +977,10 @@ pub fn warm_gate_report(
         }
         for stage in required {
             if stages.of(changed, stage) < 1 {
-                report
-                    .violations
-                    .push(format!("unit {changed}: missing {} attempt", stage.as_str()));
+                report.violations.push(format!(
+                    "unit {changed}: missing {} attempt",
+                    stage.as_str()
+                ));
             }
         }
     }

@@ -25,11 +25,7 @@ fn place_fixture(kind: &str) -> MirModule {
             result: 0,
         }),
     ];
-    m.consts = vec![
-        MirConst::I32(0),
-        MirConst::I32(1),
-        MirConst::I32(2),
-    ];
+    m.consts = vec![MirConst::I32(0), MirConst::I32(1), MirConst::I32(2)];
     // 0 List, 1 c1, 2 c2, 3 i0, 4 i1, 5 placeA, 6 outA, 7 placeB, 8 outB,
     // 9 placeC, 10 outC
     let slot_types = [2, 0, 0, 0, 0, 3, 0, 3, 0, 3, 0];
@@ -47,7 +43,11 @@ fn place_fixture(kind: &str) -> MirModule {
         Const { dst: 2, value: 2 },
         Const { dst: 3, value: 0 },
         Const { dst: 4, value: 1 },
-        ListNew { dst: 0, list_ty: 2, cap: 1 },
+        ListNew {
+            dst: 0,
+            list_ty: 2,
+            cap: 1,
+        },
         ListPush { root: 0, value: 1 },
         ListPush { root: 0, value: 2 },
     ];
@@ -56,7 +56,11 @@ fn place_fixture(kind: &str) -> MirModule {
         "legal-mint-get" => {
             let mut v = base;
             v.extend([
-                ListPlace { dst: 5, base: 0, index: 4 },
+                ListPlace {
+                    dst: 5,
+                    base: 0,
+                    index: 4,
+                },
                 PlaceGet { dst: 6, src: 5 },
             ]);
             v
@@ -65,7 +69,11 @@ fn place_fixture(kind: &str) -> MirModule {
         "stale-after-push" => {
             let mut v = base;
             v.extend([
-                ListPlace { dst: 5, base: 0, index: 3 },
+                ListPlace {
+                    dst: 5,
+                    base: 0,
+                    index: 3,
+                },
                 ListPush { root: 0, value: 2 },
                 PlaceGet { dst: 6, src: 5 },
             ]);
@@ -75,8 +83,16 @@ fn place_fixture(kind: &str) -> MirModule {
         "stale-after-set" => {
             let mut v = base;
             v.extend([
-                ListPlace { dst: 5, base: 0, index: 4 },
-                ListSet { root: 0, index: 4, value: 2 },
+                ListPlace {
+                    dst: 5,
+                    base: 0,
+                    index: 4,
+                },
+                ListSet {
+                    root: 0,
+                    index: 4,
+                    value: 2,
+                },
                 PlaceGet { dst: 6, src: 5 },
             ]);
             v
@@ -85,8 +101,16 @@ fn place_fixture(kind: &str) -> MirModule {
         "sibling-legal" => {
             let mut v = base;
             v.extend([
-                ListPlace { dst: 5, base: 0, index: 3 },
-                ListSet { root: 0, index: 4, value: 2 },
+                ListPlace {
+                    dst: 5,
+                    base: 0,
+                    index: 3,
+                },
+                ListSet {
+                    root: 0,
+                    index: 4,
+                    value: 2,
+                },
                 PlaceGet { dst: 6, src: 5 },
             ]);
             v
@@ -95,8 +119,16 @@ fn place_fixture(kind: &str) -> MirModule {
         "stale-after-remove" => {
             let mut v = base;
             v.extend([
-                ListPlace { dst: 5, base: 0, index: 3 },
-                ListRemove { dst: 8, root: 0, index: 3 },
+                ListPlace {
+                    dst: 5,
+                    base: 0,
+                    index: 3,
+                },
+                ListRemove {
+                    dst: 8,
+                    root: 0,
+                    index: 3,
+                },
                 PlaceGet { dst: 6, src: 5 },
             ]);
             v
@@ -105,8 +137,16 @@ fn place_fixture(kind: &str) -> MirModule {
         "fresh-after-change" => {
             let mut v = base;
             v.extend([
-                ListSet { root: 0, index: 4, value: 2 },
-                ListPlace { dst: 7, base: 0, index: 4 },
+                ListSet {
+                    root: 0,
+                    index: 4,
+                    value: 2,
+                },
+                ListPlace {
+                    dst: 7,
+                    base: 0,
+                    index: 4,
+                },
                 PlaceGet { dst: 8, src: 7 },
             ]);
             v
@@ -116,10 +156,22 @@ fn place_fixture(kind: &str) -> MirModule {
         "legal-place-set" => {
             let mut v = base;
             v.extend([
-                ListPlace { dst: 5, base: 0, index: 4 },
-                ListPlace { dst: 7, base: 0, index: 3 },
+                ListPlace {
+                    dst: 5,
+                    base: 0,
+                    index: 4,
+                },
+                ListPlace {
+                    dst: 7,
+                    base: 0,
+                    index: 3,
+                },
                 PlaceSet { place: 7, value: 2 },
-                ListPlace { dst: 9, base: 0, index: 3 },
+                ListPlace {
+                    dst: 9,
+                    base: 0,
+                    index: 3,
+                },
                 PlaceGet { dst: 10, src: 9 },
             ]);
             v
@@ -129,8 +181,16 @@ fn place_fixture(kind: &str) -> MirModule {
         "set-retires-same-elem-sibling" => {
             let mut v = base;
             v.extend([
-                ListPlace { dst: 5, base: 0, index: 3 },
-                ListPlace { dst: 7, base: 0, index: 3 },
+                ListPlace {
+                    dst: 5,
+                    base: 0,
+                    index: 3,
+                },
+                ListPlace {
+                    dst: 7,
+                    base: 0,
+                    index: 3,
+                },
                 PlaceSet { place: 7, value: 2 },
                 PlaceGet { dst: 6, src: 5 },
             ]);
@@ -143,7 +203,11 @@ fn place_fixture(kind: &str) -> MirModule {
         "stale-set-after-push" => {
             let mut v = base;
             v.extend([
-                ListPlace { dst: 5, base: 0, index: 4 },
+                ListPlace {
+                    dst: 5,
+                    base: 0,
+                    index: 4,
+                },
                 ListPush { root: 0, value: 2 },
                 PlaceSet { place: 5, value: 2 },
                 PlaceGet { dst: 6, src: 5 },
@@ -157,7 +221,11 @@ fn place_fixture(kind: &str) -> MirModule {
         "foreign-token-get" => {
             let mut v = base;
             v.extend([
-                ListPlace { dst: 5, base: 0, index: 4 },
+                ListPlace {
+                    dst: 5,
+                    base: 0,
+                    index: 4,
+                },
                 PlaceSet { place: 5, value: 2 },
                 PlaceGet { dst: 6, src: 5 },
             ]);
@@ -171,8 +239,16 @@ fn place_fixture(kind: &str) -> MirModule {
         "failed-grow-keeps-token" => {
             let mut v = base;
             v.extend([
-                ListPlace { dst: 5, base: 0, index: 4 },
-                ListInsert { root: 0, index: 3, value: 1 },
+                ListPlace {
+                    dst: 5,
+                    base: 0,
+                    index: 4,
+                },
+                ListInsert {
+                    root: 0,
+                    index: 3,
+                    value: 1,
+                },
                 PlaceGet { dst: 6, src: 5 },
             ]);
             v
@@ -182,9 +258,21 @@ fn place_fixture(kind: &str) -> MirModule {
         "cross-slot-sibling-legal" => {
             let mut v = base;
             v.extend([
-                ListPlace { dst: 5, base: 0, index: 4 },
-                ListPlace { dst: 7, base: 0, index: 3 },
-                ListSet { root: 0, index: 4, value: 2 },
+                ListPlace {
+                    dst: 5,
+                    base: 0,
+                    index: 4,
+                },
+                ListPlace {
+                    dst: 7,
+                    base: 0,
+                    index: 3,
+                },
+                ListSet {
+                    root: 0,
+                    index: 4,
+                    value: 2,
+                },
                 PlaceGet { dst: 6, src: 7 },
             ]);
             v

@@ -49,8 +49,8 @@ pub fn compile_bound_packages(
     typecheck_with(&resolved, SourceProfile::TextRecord).map_err(|ds| locate_all(&bound, ds))?;
     let parts = emit_resolved_packages_parts(&resolved, &bound, "packages")
         .map_err(|ds| locate_all(&bound, ds))?;
-    let checked = ace_core::verify::verify_text_record(parts.bundle)
-        .map_err(|ds| locate_all(&bound, ds))?;
+    let checked =
+        ace_core::verify::verify_text_record(parts.bundle).map_err(|ds| locate_all(&bound, ds))?;
     Ok(PackageProduct {
         compiled: CompiledSource {
             profile: parts.profile,
@@ -116,14 +116,12 @@ mod tests {
             })
             .collect();
         assert!(
-            syms
-                .iter()
+            syms.iter()
                 .any(|s| s.as_str() == "module.global.get:g3_libm3_std_BASE"),
             "{syms:?}"
         );
         assert!(
-            syms
-                .iter()
+            syms.iter()
                 .any(|s| s.as_str() == "module.global.set:g3_appm4_main_count"),
             "{syms:?}"
         );
@@ -133,7 +131,11 @@ mod tests {
     fn package_type_and_visibility_failures_keep_source_location() {
         let inputs = [
             input("lib", "std", "pub fn give(x bool) int { return 1 }"),
-            input("app", "main", "use lib.std.give\nfn main() int { return give(1) }"),
+            input(
+                "app",
+                "main",
+                "use lib.std.give\nfn main() int { return give(1) }",
+            ),
         ];
         let ds = compile_package_product(
             &inputs,

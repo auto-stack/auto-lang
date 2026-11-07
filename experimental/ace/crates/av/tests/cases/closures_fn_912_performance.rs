@@ -90,8 +90,8 @@ pub mod performance {
         let edit_first = scale_value(10, 1, 1, 2); // f0 body: + n -> + n + 1
         let edit_middle = scale_value(10, 0, 2, 2); // f1 body: x - n -> x - n * 2
         let edit_last = scale_value(10, 0, 1, 3); // f2 body: n * 2 -> n * 3
-        // Hand arithmetic for the base (the model's independent check):
-        // cell=30, f1=27, f2=10, sum=6+5+12+1=24, helpers=2+62=64 → 155.
+                                                  // Hand arithmetic for the base (the model's independent check):
+                                                  // cell=30, f1=27, f2=10, sum=6+5+12+1=24, helpers=2+62=64 → 155.
         assert_eq!(
             (base, edit_first, edit_middle, edit_last),
             (155, 157, 152, 160)
@@ -107,20 +107,30 @@ pub mod performance {
             let fresh = session.apply_source(&source).expect("fresh");
             fresh_t.push(ms(t.elapsed()));
             assert_eq!(fresh.value, base, "sample {id}");
-            assert!(matches!(fresh.route, RouteReport::Cold { units: 70 }), "{:?}", fresh.route);
+            assert!(
+                matches!(fresh.route, RouteReport::Cold { units: 70 }),
+                "{:?}",
+                fresh.route
+            );
             assert!(fresh.retained_bytes <= POOL);
             // The code-index build axis is WIRED at the real link seam and
             // honestly reports ZERO for the closures profile (it is
             // index-gated in ResidentProgram::prepare); a future profile
             // change would surface here instead of silently vanishing.
-            assert_eq!(fresh.stages.total(ace_core::body_work::Stage::IndexBuild), 0);
+            assert_eq!(
+                fresh.stages.total(ace_core::body_work::Stage::IndexBuild),
+                0
+            );
 
             let t = std::time::Instant::now();
             let hit = session.apply_source(&source).expect("hit");
             hit_t.push(ms(t.elapsed()));
             assert_eq!(hit.route, RouteReport::ZeroHit);
             assert_eq!(hit.submitted_units, 0);
-            assert!(hit.warm_gate.as_ref().unwrap().pass(), "sample {id} hit gate");
+            assert!(
+                hit.warm_gate.as_ref().unwrap().pass(),
+                "sample {id} hit gate"
+            );
             assert_eq!(hit.stages.whole_total(), 0);
             assert!(hit.retained_bytes <= POOL);
 
@@ -138,12 +148,17 @@ pub mod performance {
                 edit.route
             );
             assert_eq!(edit.submitted_units, 1);
-            assert!(edit.warm_gate.as_ref().unwrap().pass(), "sample {id} edit gate");
+            assert!(
+                edit.warm_gate.as_ref().unwrap().pass(),
+                "sample {id} edit gate"
+            );
             session.close().expect("close");
 
             let mut restart_session = ClosuresFunctionSession::new(&root, "scale.at");
             let t = std::time::Instant::now();
-            let restart = restart_session.apply_source(&edited_first).expect("restart");
+            let restart = restart_session
+                .apply_source(&edited_first)
+                .expect("restart");
             restart_t.push(ms(t.elapsed()));
             assert_eq!(restart.value, edit_first);
             assert!(matches!(restart.route, RouteReport::Cold { units: 70 }));
@@ -162,7 +177,10 @@ pub mod performance {
                 "restart wrote {} span-shifted units",
                 restart.production.store_writes
             );
-            assert_eq!(restart.stages.total(ace_core::body_work::Stage::MirLower), 70);
+            assert_eq!(
+                restart.stages.total(ace_core::body_work::Stage::MirLower),
+                70
+            );
             restart_session.close().expect("close");
             std::fs::remove_dir_all(&root).ok();
         }
@@ -222,7 +240,11 @@ pub mod performance {
             .expect("owner");
         assert_eq!(owner.value, scale_value(20, 0, 2, 3));
         match &owner.route {
-            RouteReport::FastOwner { owner: o, changed, reused } => {
+            RouteReport::FastOwner {
+                owner: o,
+                changed,
+                reused,
+            } => {
                 assert_eq!(o, "d_main");
                 assert!(changed.is_empty());
                 assert_eq!(reused.len(), 3, "main's three lambdas reused");

@@ -97,7 +97,6 @@ pub fn compile_scalar_checked_via_facts(
         })
 }
 
-
 /// PLAN-936（T-11）：the CT lane of the product entry — the source-cte
 /// single door (serve every `#{ ... }` demand for real → structural
 /// backfill → the fact lane) wrapped into the ProductCompile shape every
@@ -110,7 +109,12 @@ fn compile_scalar_source_ct(
 ) -> Result<ProductCompile, Vec<Diagnostic>> {
     let mut svc = ace_source_cte::CtService::new(ace_source_cte::MemoryEnvelopeSink::new());
     let out = ace_source_cte::compile_scalar_ct(
-        &mut svc, src, module_path, capabilities, package, module_path,
+        &mut svc,
+        src,
+        module_path,
+        capabilities,
+        package,
+        module_path,
     )
     .map_err(|e| match e {
         ace_source_cte::CtProductError::Diagnostics(ds) => ds,

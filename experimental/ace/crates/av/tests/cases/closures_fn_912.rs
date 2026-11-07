@@ -7,8 +7,8 @@
 
 use std::sync::Arc;
 
-use ace_av::closures_fn_session::{ClosuresFunctionSession, RouteReport};
 use ace_av::closures_865_support::ClosuresSourceSession;
+use ace_av::closures_fn_session::{ClosuresFunctionSession, RouteReport};
 use ace_core::body_work::{self, Stage};
 
 const SRC: &str = "\
@@ -26,10 +26,7 @@ fn main() int {
 // helper(1)=2. Fresh = 21 + 21 + 7 + 2 = 51.
 
 fn temp_store(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "av912-fn-session-{tag}-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("av912-fn-session-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("store dir");
     dir
@@ -78,11 +75,17 @@ fn av_closures_fn_912_warm_lambda_edit_single_unit_zero_for_siblings() {
     assert_eq!((w.resolve, w.typecheck, w.plan, w.bind), (1, 1, 1, 1));
     // Every unchanged unit keeps its OBJECT and generation.
     assert!(Arc::ptr_eq(session.unit("d_main").unwrap(), &main_obj));
-    assert!(Arc::ptr_eq(session.unit("d___closure_main_0").unwrap(), &f_obj));
+    assert!(Arc::ptr_eq(
+        session.unit("d___closure_main_0").unwrap(),
+        &f_obj
+    ));
     assert!(Arc::ptr_eq(session.unit("d_helper").unwrap(), &helper_obj));
     assert!(Arc::ptr_eq(session.unit("d_other").unwrap(), &other_obj));
     let new_g = session.unit("d___closure_main_1").unwrap().clone();
-    assert!(!Arc::ptr_eq(&new_g, &g_obj), "the edited unit gets a new object");
+    assert!(
+        !Arc::ptr_eq(&new_g, &g_obj),
+        "the edited unit gets a new object"
+    );
     assert_ne!(new_g.generation(), g_gen);
 
     // A whitespace-only edit inside `g`: same HIR/MIR → same wire → zero
@@ -95,7 +98,10 @@ fn av_closures_fn_912_warm_lambda_edit_single_unit_zero_for_siblings() {
     let gate = hit.warm_gate.as_ref().expect("gate");
     assert!(gate.pass(), "gate violations: {:?}", gate.violations);
     assert_eq!(hit.submitted_units, 0);
-    assert!(Arc::ptr_eq(session.unit("d___closure_main_1").unwrap(), &new_g));
+    assert!(Arc::ptr_eq(
+        session.unit("d___closure_main_1").unwrap(),
+        &new_g
+    ));
 
     // Zero hit: identical source re-applied.
     let zero = session.apply_source(&commented).expect("zero hit");
@@ -121,10 +127,7 @@ fn av_closures_fn_912_warm_lambda_edit_single_unit_zero_for_siblings() {
     // base stays 1: f(20)=21, f(0)=1, g(3)=4, helper=2 → 28.
     let g_before = session.unit("d___closure_main_1").unwrap().clone();
     let helper_before = session.unit("d_helper").unwrap().clone();
-    let no_write = commented.replace(
-        "base = base + n; return base",
-        "return base + n",
-    );
+    let no_write = commented.replace("base = base + n; return base", "return base + n");
     let owner = session.apply_source(&no_write).expect("owner apply");
     assert_eq!(owner.value, 28);
     assert_eq!(
@@ -138,14 +141,23 @@ fn av_closures_fn_912_warm_lambda_edit_single_unit_zero_for_siblings() {
     let gate = owner.warm_gate.as_ref().expect("gate");
     assert!(gate.pass(), "gate violations: {:?}", gate.violations);
     assert_eq!(owner.stages.whole_total(), 0);
-    assert!(owner.body.get("__closure_main_1").is_none(), "reused g has no body work");
+    assert!(
+        owner.body.get("__closure_main_1").is_none(),
+        "reused g has no body work"
+    );
     assert!(owner.body.get("helper").is_none());
     // main's wire changes (operand shape + cell local) and f's wire changes.
     let mut names = owner.submitted_unit_names.clone();
     names.sort();
     assert_eq!(names, vec!["d___closure_main_0", "d_main"]);
-    assert!(Arc::ptr_eq(session.unit("d___closure_main_1").unwrap(), &g_before));
-    assert!(Arc::ptr_eq(session.unit("d_helper").unwrap(), &helper_before));
+    assert!(Arc::ptr_eq(
+        session.unit("d___closure_main_1").unwrap(),
+        &g_before
+    ));
+    assert!(Arc::ptr_eq(
+        session.unit("d_helper").unwrap(),
+        &helper_before
+    ));
 
     session.close().expect("close");
     let _ = std::fs::remove_dir_all(&store);
@@ -167,7 +179,9 @@ fn av_closures_fn_912_failed_edit_preserves_state_and_recovers() {
         Err(other) => panic!("expected diagnostics, got pipeline {other:?}"),
         Ok(_) => panic!("a type error must not apply"),
     }
-    let retry = session.apply_source(SRC).expect("identical re-apply after failure");
+    let retry = session
+        .apply_source(SRC)
+        .expect("identical re-apply after failure");
     assert_eq!(retry.value, 51);
     assert_eq!(retry.route, RouteReport::ZeroHit);
     assert!(Arc::ptr_eq(session.unit("d_main").unwrap(), &main_obj));
@@ -193,7 +207,10 @@ fn av_closures_fn_912_forced_whole_path_is_observably_red() {
         old.apply_source(&edited, "main.at").map(|run| run.value)
     });
     assert_eq!(result.expect("865 applies the edit"), 48);
-    assert!(stages.total(Stage::WholeParse) >= 1, "the 865 path parses whole");
+    assert!(
+        stages.total(Stage::WholeParse) >= 1,
+        "the 865 path parses whole"
+    );
     assert!(stages.total(Stage::WholePlan) >= 1, "plans whole");
     assert!(stages.total(Stage::WholeVerify) >= 1, "verifies whole");
     // The function session's gate semantics: a fast-route claim on THIS
@@ -237,8 +254,14 @@ fn av_closures_fn_912_owner_body_edit_reuses_every_lambda() {
     // ZERO work for both lambdas and every other function.
     assert_eq!(run.body.keys().collect::<Vec<_>>(), vec!["main"]);
     assert_eq!(run.stages.whole_total(), 0);
-    assert!(Arc::ptr_eq(session.unit("d___closure_main_0").unwrap(), &f_obj));
-    assert!(Arc::ptr_eq(session.unit("d___closure_main_1").unwrap(), &g_obj));
+    assert!(Arc::ptr_eq(
+        session.unit("d___closure_main_0").unwrap(),
+        &f_obj
+    ));
+    assert!(Arc::ptr_eq(
+        session.unit("d___closure_main_1").unwrap(),
+        &g_obj
+    ));
     assert!(Arc::ptr_eq(session.unit("d_helper").unwrap(), &helper_obj));
     session.close().expect("close");
     let _ = std::fs::remove_dir_all(&store);
@@ -261,12 +284,25 @@ fn av_closures_fn_912_utf8_variable_length_remap_then_lambda_edit() {
     );
     let run = session.apply_source(&shifted).expect("utf8 owner edit");
     assert_eq!(run.value, 51);
-    assert!(matches!(run.route, RouteReport::FastOwner { .. }), "{:?}", run.route);
-    assert!(run.warm_gate.as_ref().unwrap().pass(), "{:?}", run.warm_gate);
-    assert!(Arc::ptr_eq(session.unit("d___closure_main_1").unwrap(), &g_obj));
+    assert!(
+        matches!(run.route, RouteReport::FastOwner { .. }),
+        "{:?}",
+        run.route
+    );
+    assert!(
+        run.warm_gate.as_ref().unwrap().pass(),
+        "{:?}",
+        run.warm_gate
+    );
+    assert!(Arc::ptr_eq(
+        session.unit("d___closure_main_1").unwrap(),
+        &g_obj
+    ));
     // Now a lambda-only edit of `g` at its SHIFTED position.
     let lambda_edit = shifted.replace("return x - n }", "return x - n * 2 }");
-    let run = session.apply_source(&lambda_edit).expect("lambda edit after shift");
+    let run = session
+        .apply_source(&lambda_edit)
+        .expect("lambda edit after shift");
     assert_eq!(run.value, 48);
     assert_eq!(
         run.route,
@@ -274,7 +310,11 @@ fn av_closures_fn_912_utf8_variable_length_remap_then_lambda_edit() {
             unit: "d___closure_main_1".to_string()
         }
     );
-    assert!(run.warm_gate.as_ref().unwrap().pass(), "{:?}", run.warm_gate);
+    assert!(
+        run.warm_gate.as_ref().unwrap().pass(),
+        "{:?}",
+        run.warm_gate
+    );
     session.close().expect("close");
     let _ = std::fs::remove_dir_all(&store);
 }
@@ -296,18 +336,38 @@ fn av_closures_fn_912_creation_point_visibility_and_param_shadowing() {
         Err(ace_av::closures_865_support::CompileAndRunError::Diagnostics(ds)) => {
             assert!(!ds.is_empty());
         }
-        other => panic!("expected diagnostics for a later-declared capture, got {}", match other { Ok(r) => format!("value {}", r.value), Err(e) => format!("{e:?}") }),
+        other => panic!(
+            "expected diagnostics for a later-declared capture, got {}",
+            match other {
+                Ok(r) => format!("value {}", r.value),
+                Err(e) => format!("{e:?}"),
+            }
+        ),
     }
-    assert_eq!(session.apply_source(&src).expect("zero hit").route, RouteReport::ZeroHit);
+    assert_eq!(
+        session.apply_source(&src).expect("zero hit").route,
+        RouteReport::ZeroHit
+    );
     // A lambda PARAMETER named like an owner local is the param, never a
     // capture: g(n) with `x` renamed param shadows the owner's x.
-    let shadow = src.replace("var g = (n int) => { return x - n }", "var g = (x int) => { return x * 2 }");
+    let shadow = src.replace(
+        "var g = (n int) => { return x - n }",
+        "var g = (x int) => { return x * 2 }",
+    );
     // The lambda's capture set changed (x no longer captured) → owner route.
     let run = session.apply_source(&shadow).expect("shadowing edit");
     // g(3) = 6 ⇒ 21 + 21 + 6 + 2 + 5 = 55.
     assert_eq!(run.value, 55);
-    assert!(matches!(run.route, RouteReport::FastOwner { .. }), "{:?}", run.route);
-    assert!(run.warm_gate.as_ref().unwrap().pass(), "{:?}", run.warm_gate);
+    assert!(
+        matches!(run.route, RouteReport::FastOwner { .. }),
+        "{:?}",
+        run.route
+    );
+    assert!(
+        run.warm_gate.as_ref().unwrap().pass(),
+        "{:?}",
+        run.warm_gate
+    );
     session.close().expect("close");
     let _ = std::fs::remove_dir_all(&store);
 }
@@ -331,19 +391,31 @@ fn av_closures_fn_912_topology_change_is_named_and_carries_identity() {
     assert_eq!(run.value, 51, "z is never called");
     match &run.route {
         RouteReport::NonFast { reason } => {
-            assert!(reason.starts_with("owner-topology-changed:2->3"), "{reason}");
+            assert!(
+                reason.starts_with("owner-topology-changed:2->3"),
+                "{reason}"
+            );
         }
         other => panic!("expected a named topology non-fast, got {other:?}"),
     }
-    assert!(run.stages.whole_total() > 0, "the truth path is honestly whole");
+    assert!(
+        run.stages.whole_total() > 0,
+        "the truth path is honestly whole"
+    );
     let ids_after: std::collections::BTreeMap<String, u64> =
         lambda_ids(&session).into_iter().collect();
     assert_eq!(ids_after.len(), 3);
     // f was __closure_main_0 (id a), g __closure_main_1 (id b); now z is
     // __closure_main_0, f is _1, g is _2 — f and g keep their logical ids.
     let (f_id, g_id) = (ids_before[0].1, ids_before[1].1);
-    assert_eq!(ids_after["__closure_main_1"], f_id, "f keeps its logical id");
-    assert_eq!(ids_after["__closure_main_2"], g_id, "g keeps its logical id");
+    assert_eq!(
+        ids_after["__closure_main_1"], f_id,
+        "f keeps its logical id"
+    );
+    assert_eq!(
+        ids_after["__closure_main_2"], g_id,
+        "g keeps its logical id"
+    );
     assert!(
         ids_after["__closure_main_0"] != f_id && ids_after["__closure_main_0"] != g_id,
         "z is a NEW logical unit"
@@ -411,7 +483,10 @@ fn av_closures_fn_912_same_hash_new_object_degradation_is_refused() {
     assert_eq!(run.value, 51);
     assert!(matches!(run.route, RouteReport::FastUnit { .. }));
     assert_eq!(run.submitted_units, 0);
-    assert!(Arc::ptr_eq(session.unit("d___closure_main_0").unwrap(), &f_now));
+    assert!(Arc::ptr_eq(
+        session.unit("d___closure_main_0").unwrap(),
+        &f_now
+    ));
     session.close().expect("close");
     let _ = std::fs::remove_dir_all(&store);
 }
@@ -455,18 +530,26 @@ fn av_closures_fn_912_gate_rejects_synthetic_default_zero_and_hidden_walks() {
     let empty_body = BTreeMap::new();
     let report = warm_gate_report(&route, &empty_body, &clean_stages, &submitted);
     assert!(!report.pass());
-    assert!(report.violations.iter().any(|v| v.contains("missing resolve walk")));
+    assert!(report
+        .violations
+        .iter()
+        .any(|v| v.contains("missing resolve walk")));
 
     // Hidden sibling walk.
     let mut sibling_body = clean_body.clone();
     sibling_body.insert("__closure_main_0".to_string(), one);
     let report = warm_gate_report(&route, &sibling_body, &clean_stages, &submitted);
     assert!(!report.pass());
-    assert!(report.violations.iter().any(|v| v.contains("__closure_main_0")));
+    assert!(report
+        .violations
+        .iter()
+        .any(|v| v.contains("__closure_main_0")));
 
     // Whole-axis attempt (whole-then-filter).
     let mut whole_stages = clean_stages.clone();
-    whole_stages.by_unit.insert(("*".to_string(), Stage::WholePlan), 1);
+    whole_stages
+        .by_unit
+        .insert(("*".to_string(), Stage::WholePlan), 1);
     let report = warm_gate_report(&route, &clean_body, &whole_stages, &submitted);
     assert!(!report.pass());
     assert!(report.violations.iter().any(|v| v.contains("whole-axis")));
@@ -503,12 +586,21 @@ fn av_closures_fn_912_guest_trap_edit_is_refused_before_commit() {
     let trapping = SRC.replace("return x - n }", "return x / (n - 3) }");
     match session.apply_source(&trapping) {
         Err(ace_av::closures_865_support::CompileAndRunError::Pipeline(msg)) => {
-            assert!(msg.contains("did not execute") || msg.contains("trap") || msg.contains("Trap"), "{msg}");
+            assert!(
+                msg.contains("did not execute") || msg.contains("trap") || msg.contains("Trap"),
+                "{msg}"
+            );
         }
         Err(other) => panic!("expected a pipeline refusal, got {other:?}"),
-        Ok(run) => panic!("a trapping revision must not commit, got value {}", run.value),
+        Ok(run) => panic!(
+            "a trapping revision must not commit, got value {}",
+            run.value
+        ),
     }
-    assert!(Arc::ptr_eq(session.unit("d___closure_main_1").unwrap(), &g_obj));
+    assert!(Arc::ptr_eq(
+        session.unit("d___closure_main_1").unwrap(),
+        &g_obj
+    ));
     let hit = session.apply_source(SRC).expect("zero hit after refusal");
     assert_eq!(hit.route, RouteReport::ZeroHit);
     let next = session
@@ -528,18 +620,34 @@ fn av_closures_fn_912_stale_and_foreign_candidates_cannot_commit() {
     use ace_core::source::closures_fn::ClosuresFunctionFrontend;
     let (mut a, _p, _c) = ClosuresFunctionFrontend::cold(SRC, "main.at", &[]).unwrap();
     let (mut b, _p2, _c2) = ClosuresFunctionFrontend::cold(SRC, "main.at", &[]).unwrap();
-    let g = a.units().iter().position(|u| u.name == "__closure_main_1").unwrap();
+    let g = a
+        .units()
+        .iter()
+        .position(|u| u.name == "__closure_main_1")
+        .unwrap();
     let span = a.units()[g].span;
     let sha = a.source_sha().to_string();
-    let first = match a.edit_body(&sha, span.start..span.end, "(n int) => { return x - n * 2 }") {
+    let first = match a.edit_body(
+        &sha,
+        span.start..span.end,
+        "(n int) => { return x - n * 2 }",
+    ) {
         Ok(Ok(c)) => c,
         _ => panic!("fast"),
     };
-    let second = match a.edit_body(&sha, span.start..span.end, "(n int) => { return x - n * 3 }") {
+    let second = match a.edit_body(
+        &sha,
+        span.start..span.end,
+        "(n int) => { return x - n * 3 }",
+    ) {
         Ok(Ok(c)) => c,
         _ => panic!("fast"),
     };
-    let foreign = match b.edit_body(&b.source_sha().to_string(), span.start..span.end, "(n int) => { return x }") {
+    let foreign = match b.edit_body(
+        &b.source_sha().to_string(),
+        span.start..span.end,
+        "(n int) => { return x }",
+    ) {
         Ok(Ok(c)) => c,
         _ => panic!("fast"),
     };
@@ -568,7 +676,11 @@ fn av_closures_fn_912_restart_reports_honest_r3() {
     let mut restart = ClosuresFunctionSession::new(&store, "main.at");
     let run = restart.apply_source(SRC).expect("restart");
     assert_eq!(run.value, 51);
-    assert!(matches!(run.route, RouteReport::Cold { units: 5 }), "{:?}", run.route);
+    assert!(
+        matches!(run.route, RouteReport::Cold { units: 5 }),
+        "{:?}",
+        run.route
+    );
     assert_eq!(run.production.cache_hits, 5);
     assert_eq!(run.production.store_writes, 0);
     assert_eq!(run.production.verified, 5);
@@ -597,7 +709,10 @@ fn av_closures_fn_912_accepted_state_export() {
     // env/cell — the type has no such fields), and moves with commits.
     let store = temp_store("accepted");
     let mut session = ClosuresFunctionSession::new(&store, "main.at");
-    assert!(session.accepted_state().is_none(), "nothing accepted before the first commit");
+    assert!(
+        session.accepted_state().is_none(),
+        "nothing accepted before the first commit"
+    );
     assert_eq!(session.apply_source(SRC).expect("cold").value, 51);
     let cold_state = session.accepted_state().expect("accepted after cold");
     assert_eq!(cold_state.schema, "ace.closures.accepted-source/1");
@@ -618,7 +733,10 @@ fn av_closures_fn_912_accepted_state_export() {
         .expect("g in accepted state");
     assert!(g_cold.mint_span == g_cold.current_span);
     assert!(!g_cold.body_digest.is_empty());
-    assert_eq!(g_cold.env_layout_identity.as_deref(), Some(g_cold.dependency_digest.as_str()));
+    assert_eq!(
+        g_cold.env_layout_identity.as_deref(),
+        Some(g_cold.dependency_digest.as_str())
+    );
 
     // A warm edit moves the export: new source sha, new generation, the
     // edited unit's digest and span change, its mir identity changes.
@@ -635,19 +753,39 @@ fn av_closures_fn_912_accepted_state_export() {
         .iter()
         .find(|u| u.unit == "d___closure_main_1")
         .expect("g");
-    assert_ne!(g_warm.body_digest, g_cold.body_digest, "the edited body's digest moved");
-    assert_ne!(g_warm.current_span, g_cold.current_span, "the longer body shifted the span");
-    assert_eq!(g_warm.mint_span, g_cold.mint_span, "mint coordinates are stable");
+    assert_ne!(
+        g_warm.body_digest, g_cold.body_digest,
+        "the edited body's digest moved"
+    );
+    assert_ne!(
+        g_warm.current_span, g_cold.current_span,
+        "the longer body shifted the span"
+    );
+    assert_eq!(
+        g_warm.mint_span, g_cold.mint_span,
+        "mint coordinates are stable"
+    );
     assert_ne!(g_warm.mir_identity, g_cold.mir_identity);
     // An unchanged sibling keeps every identity axis.
-    let f_warm = warm_state.units.iter().find(|u| u.unit == "d___closure_main_0").unwrap();
-    let f_cold = cold_state.units.iter().find(|u| u.unit == "d___closure_main_0").unwrap();
+    let f_warm = warm_state
+        .units
+        .iter()
+        .find(|u| u.unit == "d___closure_main_0")
+        .unwrap();
+    let f_cold = cold_state
+        .units
+        .iter()
+        .find(|u| u.unit == "d___closure_main_0")
+        .unwrap();
     assert_eq!(f_warm.body_digest, f_cold.body_digest);
     assert_eq!(f_warm.mir_identity, f_cold.mir_identity);
     assert_eq!(f_warm.logical, f_cold.logical);
     // Producer identity is the live contract set.
     assert_eq!(warm_state.producer_mir_lowering_version, "4");
-    assert_eq!(warm_state.producer_closures_schema, "auto.mir.av-closures/1");
+    assert_eq!(
+        warm_state.producer_closures_schema,
+        "auto.mir.av-closures/1"
+    );
     assert_eq!(warm_state.producer_unit_codec, "av-closures-unit/v1");
     session.close().expect("close");
     let _ = std::fs::remove_dir_all(&store);

@@ -14,13 +14,11 @@ use crate::driver::collections::next_candidate;
 use crate::link_driver;
 use crate::observe::Obs;
 use crate::MnError;
-use ace_core::link::CaptureCaps;
 use ace_av_core::mir::MirModule;
-use ace_core::source::closures_fn::{
-    ClosuresFnCandidate, ClosuresFunctionFrontend, NonFastReason,
-};
-use ace_core::{body_work, hir::DefKind};
+use ace_core::link::CaptureCaps;
+use ace_core::source::closures_fn::{ClosuresFnCandidate, ClosuresFunctionFrontend, NonFastReason};
 use ace_core::verify::verify_closures_function;
+use ace_core::{body_work, hir::DefKind};
 use ace_lowering::lower_function_closures_unit_checked;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -134,9 +132,7 @@ impl ClosuresNativeSession {
         Ok((session, run))
     }
 
-    fn cold_units(
-        checked: &ace_core::verify::CheckedModule,
-    ) -> Result<Vec<MirModule>, MnError> {
+    fn cold_units(checked: &ace_core::verify::CheckedModule) -> Result<Vec<MirModule>, MnError> {
         let bundle = checked.bundle();
         let module = bundle
             .modules
@@ -151,7 +147,10 @@ impl ClosuresNativeSession {
         {
             body_work::record_attempt(ace_core::body_work::Stage::MirLower, &def.id_text);
             let unit = ace_lowering::hir_adapter::lower_function_closures_unit(
-                bundle, &def.id_text, &[], snapshot,
+                bundle,
+                &def.id_text,
+                &[],
+                snapshot,
             )
             .map_err(|e| MnError::Backend(format!("lower {}: {e:?}", def.id_text)))?;
             closures_lower::admit_layouts(&unit)?;
@@ -222,9 +221,10 @@ impl ClosuresNativeSession {
             }
             let wire = crate::closures_layout::unit_wire_bytes(&unit)?;
             session.wires.insert(name.clone(), wire);
-            session
-                .symbols
-                .insert(name.clone(), crate::symbols::function_symbol(&unit.owner, &name));
+            session.symbols.insert(
+                name.clone(),
+                crate::symbols::function_symbol(&unit.owner, &name),
+            );
             let mut imports = Vec::new();
             for import in &unit.imports {
                 imports.push((
@@ -285,19 +285,24 @@ impl ClosuresNativeSession {
                     });
                 }
             }
-            let run = self.link_and_run(Vec::new(), "hit-relink", &mut obs, Default::default(), started)?;
+            let run = self.link_and_run(
+                Vec::new(),
+                "hit-relink",
+                &mut obs,
+                Default::default(),
+                started,
+            )?;
             self.knobs = knobs;
             return Ok(run);
         }
         body_work::record_whole(ace_core::body_work::Stage::FragmentDiff);
         let (range, replacement) = diff_single_region(&old, source);
         let base_sha = front.source_sha().to_string();
-        match self
-            .frontend
-            .as_mut()
-            .expect("frontend present")
-            .edit_body(&base_sha, range, &replacement)
-        {
+        match self.frontend.as_mut().expect("frontend present").edit_body(
+            &base_sha,
+            range,
+            &replacement,
+        ) {
             Ok(Ok(candidate)) => self.apply_fast(candidate, knobs, &mut obs, started),
             Ok(Err(reason)) => self.apply_nonfast(source, reason, knobs, &mut obs, started),
             Err(ds) => Err(frontend(ds)),
@@ -397,12 +402,9 @@ impl ClosuresNativeSession {
     ) -> Result<ClosuresRun, MnError> {
         let route = format!("nonfast:{}", non_fast_text(&reason));
         let (frontend, _parts, checked) = match self.frontend.as_ref() {
-            Some(prev) => ClosuresFunctionFrontend::cold_carrying(
-                source,
-                &self.source_path,
-                &[],
-                prev,
-            ),
+            Some(prev) => {
+                ClosuresFunctionFrontend::cold_carrying(source, &self.source_path, &[], prev)
+            }
             None => ClosuresFunctionFrontend::cold(source, &self.source_path, &[]),
         }
         .map_err(frontend)?;
@@ -488,15 +490,13 @@ impl ClosuresNativeSession {
             o.counter("codegen_emit_wrappers", 1);
             crate::collections_lower::emit_wrapper_coff(&entry_symbol, &self.knobs)
         })?;
-        std::fs::create_dir_all(&self.workdir)
-            .map_err(|e| MnError::Infra(e.to_string()))?;
+        std::fs::create_dir_all(&self.workdir).map_err(|e| MnError::Infra(e.to_string()))?;
         let candidate_dir = self.workdir.join(format!(
             ".closures-session-{}-{}",
             std::process::id(),
             next_candidate()
         ));
-        std::fs::create_dir(&candidate_dir)
-            .map_err(|e| MnError::Infra(e.to_string()))?;
+        std::fs::create_dir(&candidate_dir).map_err(|e| MnError::Infra(e.to_string()))?;
         let linked = obs.span("link", |o| {
             o.counter("link_invocations", 1);
             link_driver::link_only(

@@ -5,8 +5,8 @@
 //! previous current). No warm body-edit path in this first cut: declaration
 //! changes and body edits recompile through the packages lane.
 use crate::modules::{persist_unit_with_context, split_units};
-use ace_source_query::modules::PackageProduct;
 use ace_artifacts::store::ManagedStore;
+use ace_source_query::modules::PackageProduct;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -75,9 +75,7 @@ impl PackageAvTarget {
 
     /// Execute the current entry and return its raw value (i32 for scalar
     /// entries; the observation channel for text entries is `Value::Str*`).
-    pub fn run_value(
-        &self,
-    ) -> Result<ace_av_core::contract::Value, String> {
+    pub fn run_value(&self) -> Result<ace_av_core::contract::Value, String> {
         let (out, _trace) = ace_av_core::execute_program(
             &self.current,
             &ace_av_core::ExecLimits::default(),
@@ -207,12 +205,7 @@ mod tests {
         let av = PackageAvTarget::cold(&dir, &product).unwrap();
         assert_eq!(av.run_value(), Ok(ace_av_core::contract::Value::I32(13)));
         // the Str function itself runs and is observed as a Str view
-        let av2 = PackageAvTarget::cold_with_entry(
-            &dir,
-            &product,
-            "d_p3_appm3_std_greet",
-        )
-        .unwrap();
+        let av2 = PackageAvTarget::cold_with_entry(&dir, &product, "d_p3_appm3_std_greet").unwrap();
         match av2.run_value() {
             Ok(ace_av_core::contract::Value::StrView(v)) => {
                 assert!(v.start == 0, "{v:?}");
@@ -266,10 +259,13 @@ mod tests {
         let out = av.run_value();
         assert!(out.is_err(), "{out:?}");
         assert!(!av.current.initialized());
-        assert!(av
-            .global_cells()
-            .iter()
-            .all(|c| *c == ace_av_core::contract::Value::I32(0)), "{:?}", av.global_cells());
+        assert!(
+            av.global_cells()
+                .iter()
+                .all(|c| *c == ace_av_core::contract::Value::I32(0)),
+            "{:?}",
+            av.global_cells()
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 }

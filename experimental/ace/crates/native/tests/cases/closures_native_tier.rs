@@ -49,9 +49,7 @@ fn trapped_code(res: &ace_native::driver::MnRequest) -> Option<(i64, bool)> {
     let text = String::from_utf8_lossy(&res.stderr);
     let code = text
         .lines()
-        .find_map(|line| line.strip_prefix("MN-COLL-TRAP code=")?
-            .parse::<i64>()
-            .ok());
+        .find_map(|line| line.strip_prefix("MN-COLL-TRAP code=")?.parse::<i64>().ok());
     let inject = text
         .lines()
         .any(|line| line.starts_with("MN-COLL-INJECT seam=9"));
@@ -140,7 +138,9 @@ fn k06_shared_cell_capture_is_a_named_native_rejection() {
     // closure domain: a NAMED type-face rejection (the AV suites keep it
     // green; the shared-cell/K06 domain belongs to a future scope).
     let res = closures_run(&corpus("K06"), "k06", Default::default());
-    let error = res.error.expect("the shared-cell capture must not run natively");
+    let error = res
+        .error
+        .expect("the shared-cell capture must not run natively");
     assert_eq!(error.code(), "mn.unsupported.type");
     assert!(
         error.message().contains("List"),
@@ -171,18 +171,29 @@ fn k02_env_lifecycle_events_show_creator_exit_and_final_release() {
         .lines()
         .filter(|l| l.contains("act=own kind=closure"))
         .count();
-    let free_closure = text
-        .lines()
-        .filter(|l| l.contains("act=free"))
-        .count();
-    assert!(own_closure >= 1, "no closure own event:
-{text}");
-    assert!(text.contains("MN-EVTEND total="), "missing event end marker");
-    assert!(text.contains("MN-COLL live=0
-"), "env not fully released:
-{text}");
-    assert!(free_closure >= 2, "expected env + text frees:
-{text}");
+    let free_closure = text.lines().filter(|l| l.contains("act=free")).count();
+    assert!(
+        own_closure >= 1,
+        "no closure own event:
+{text}"
+    );
+    assert!(
+        text.contains("MN-EVTEND total="),
+        "missing event end marker"
+    );
+    assert!(
+        text.contains(
+            "MN-COLL live=0
+"
+        ),
+        "env not fully released:
+{text}"
+    );
+    assert!(
+        free_closure >= 2,
+        "expected env + text frees:
+{text}"
+    );
     // R05's discriminating fact: the creator frame LEAVES before the call —
     // frame-leave events must precede the call's continued liveness; the
     // closure free comes after main's frame-enter (not with make's sweep).
@@ -211,7 +222,12 @@ fn k02_env_node_seam_sweeps_with_positive_control() {
             ..Default::default()
         },
     );
-    assert_eq!(trapped_code(&res), Some((25, true)), "stderr:\n{}", String::from_utf8_lossy(&res.stderr));
+    assert_eq!(
+        trapped_code(&res),
+        Some((25, true)),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&res.stderr)
+    );
     assert_clean_after_trap(&res);
 
     let res = closures_run(
@@ -269,32 +285,64 @@ fn warm_session_lambda_edit_relinks_one_unit_and_hit_is_zero_production() {
     let (mut session, cold) =
         ace_native::closures_incremental::ClosuresNativeSession::new(&source, "main", &dir, None)
             .expect("cold session");
-    assert_eq!(cold.exit_code, Some(42), "cold run: {}", String::from_utf8_lossy(&cold.stderr));
+    assert_eq!(
+        cold.exit_code,
+        Some(42),
+        "cold run: {}",
+        String::from_utf8_lossy(&cold.stderr)
+    );
     assert_eq!(cold.work.codegen_units.len(), 3, "K02 has three units");
 
     // Lambda body edit: s.len() + n -> s.len() + n + 1 (42 -> 43). Exactly
     // the closure body unit re-codegens; make/main keep their objects.
     let edited = source.replace("+ n }", "+ n + 1 }");
     let warm = session.apply_source(&edited).expect("warm edit");
-    assert_eq!(warm.exit_code, Some(43), "warm run: {}", String::from_utf8_lossy(&warm.stderr));
-    assert_eq!(warm.work.codegen_units, vec!["d___closure_make_0".to_string()],
+    assert_eq!(
+        warm.exit_code,
+        Some(43),
+        "warm run: {}",
+        String::from_utf8_lossy(&warm.stderr)
+    );
+    assert_eq!(
+        warm.work.codegen_units,
+        vec!["d___closure_make_0".to_string()],
         "expected exactly the closure body unit re-codegen: {:?} route={}",
-        warm.work.codegen_units, warm.work.route);
-    assert!(warm.work.route.starts_with("fast-unit"), "route: {}", warm.work.route);
+        warm.work.codegen_units,
+        warm.work.route
+    );
+    assert!(
+        warm.work.route.starts_with("fast-unit"),
+        "route: {}",
+        warm.work.route
+    );
 
     // Hit: identical source re-runs with ZERO codegen (the installed PE).
     let hit = session.apply_source(&edited).expect("hit");
     assert_eq!(hit.exit_code, Some(43));
-    assert!(hit.work.codegen_units.is_empty(), "hit must not codegen: {:?}", hit.work.codegen_units);
+    assert!(
+        hit.work.codegen_units.is_empty(),
+        "hit must not codegen: {:?}",
+        hit.work.codegen_units
+    );
     assert_eq!(hit.work.route, "hit");
 
     // Owner body edit in main: f(37) -> f(38) (43 -> 44). Only d_main
     // re-codegens.
     let edited2 = edited.replace("f(37)", "f(38)");
     let owner = session.apply_source(&edited2).expect("owner edit");
-    assert_eq!(owner.exit_code, Some(44), "owner run: {}", String::from_utf8_lossy(&owner.stderr));
-    assert_eq!(owner.work.codegen_units, vec!["d_main".to_string()],
-        "owner edit codegen: {:?} route={}", owner.work.codegen_units, owner.work.route);
+    assert_eq!(
+        owner.exit_code,
+        Some(44),
+        "owner run: {}",
+        String::from_utf8_lossy(&owner.stderr)
+    );
+    assert_eq!(
+        owner.work.codegen_units,
+        vec!["d_main".to_string()],
+        "owner edit codegen: {:?} route={}",
+        owner.work.codegen_units,
+        owner.work.route
+    );
 
     session.close().expect("close");
 }
@@ -307,7 +355,9 @@ fn k04_borrow_escape_is_rejected_at_the_front_door() {
     // the SHARED source/verify front door refuses it before any native
     // admission (the native domain never sees borrow-escape input).
     let res = closures_run(&corpus("K04"), "k04", Default::default());
-    let error = res.error.expect("borrow escape must be refused at the front door");
+    let error = res
+        .error
+        .expect("borrow escape must be refused at the front door");
     assert_eq!(error.code(), "mn.unsupported.frontend");
 }
 
@@ -323,7 +373,9 @@ fn closures_entry_must_be_an_ordinary_zero_argument_int_function() {
     let res = driver.request_closures(&corpus("K02"), "d___closure_make_0", &dir, None);
     let error = res.error.expect("a closure body entry must be refused");
     assert!(
-        error.message().contains("ordinary zero-argument int function"),
+        error
+            .message()
+            .contains("ordinary zero-argument int function"),
         "named entry rejection: {}",
         error.message()
     );
@@ -385,20 +437,33 @@ fn warm_session_formal_scale_precise_codegen_identity_and_routes() {
         "cold: {}",
         String::from_utf8_lossy(&cold.stderr)
     );
-    assert_eq!(cold.work.codegen_units.len(), 72, "the scale corpus has 72 units");
+    assert_eq!(
+        cold.work.codegen_units.len(),
+        72,
+        "the scale corpus has 72 units"
+    );
     let cold_hashes = session.object_hashes();
     assert_eq!(cold_hashes.len(), 72);
 
     // Hit: zero production over the installed PE.
     let hit = session.apply_source(&source).expect("hit");
     assert_eq!(hit.exit_code, Some(137));
-    assert!(hit.work.codegen_units.is_empty(), "hit codegen: {:?}", hit.work.codegen_units);
+    assert!(
+        hit.work.codegen_units.is_empty(),
+        "hit codegen: {:?}",
+        hit.work.codegen_units
+    );
     assert_eq!(hit.work.route, "hit");
 
     // FIRST lambda body edit (main's f0): base + n -> base + n + 1 (137→138).
     let edited = source.replace("return base + n }", "return base + n + 1 }");
     let warm = session.apply_source(&edited).expect("f0 edit");
-    assert_eq!(warm.exit_code, Some(138), "f0: {}", String::from_utf8_lossy(&warm.stderr));
+    assert_eq!(
+        warm.exit_code,
+        Some(138),
+        "f0: {}",
+        String::from_utf8_lossy(&warm.stderr)
+    );
     assert_eq!(
         warm.work.codegen_units,
         vec!["d___closure_main_0".to_string()],
@@ -422,14 +487,30 @@ fn warm_session_formal_scale_precise_codegen_identity_and_routes() {
     // MIDDLE lambda edit (main's f2): n * 2 -> n * 3 (138→143).
     let edited = edited.replace("return n * 2 }", "return n * 3 }");
     let warm = session.apply_source(&edited).expect("f2 edit");
-    assert_eq!(warm.exit_code, Some(143), "f2: {}", String::from_utf8_lossy(&warm.stderr));
-    assert_eq!(warm.work.codegen_units, vec!["d___closure_main_1".to_string()]);
+    assert_eq!(
+        warm.exit_code,
+        Some(143),
+        "f2: {}",
+        String::from_utf8_lossy(&warm.stderr)
+    );
+    assert_eq!(
+        warm.work.codegen_units,
+        vec!["d___closure_main_1".to_string()]
+    );
 
     // LAST lambda edit (main's f3): base - n -> base - n - 1 (143→142).
     let edited = edited.replace("return base - n }", "return base - n - 1 }");
     let warm = session.apply_source(&edited).expect("f3 edit");
-    assert_eq!(warm.exit_code, Some(142), "f3: {}", String::from_utf8_lossy(&warm.stderr));
-    assert_eq!(warm.work.codegen_units, vec!["d___closure_main_2".to_string()]);
+    assert_eq!(
+        warm.exit_code,
+        Some(142),
+        "f3: {}",
+        String::from_utf8_lossy(&warm.stderr)
+    );
+    assert_eq!(
+        warm.work.codegen_units,
+        vec!["d___closure_main_2".to_string()]
+    );
 
     // OWNER body edit (V-07): `let base int = 10` -> 11 changes the
     // owner's own body BETWEEN its creation sites — the owner batch
@@ -451,9 +532,17 @@ fn warm_session_formal_scale_precise_codegen_identity_and_routes() {
         "owner route: {}",
         owner.work.route
     );
-    assert!(owner.work.route.starts_with("fast-owner"), "route: {}", owner.work.route);
+    assert!(
+        owner.work.route.starts_with("fast-owner"),
+        "route: {}",
+        owner.work.route
+    );
     let after_owner = session.object_hashes();
-    for sibling in ["d___closure_main_0", "d___closure_main_1", "d___closure_main_2"] {
+    for sibling in [
+        "d___closure_main_0",
+        "d___closure_main_1",
+        "d___closure_main_2",
+    ] {
         assert_eq!(
             after_owner.get(sibling),
             before_owner.get(sibling),
@@ -477,7 +566,10 @@ fn warm_session_formal_scale_precise_codegen_identity_and_routes() {
         String::from_utf8_lossy(&whole.stderr)
     );
     assert!(
-        whole.work.route.starts_with("nonfast:owner-topology-changed"),
+        whole
+            .work
+            .route
+            .starts_with("nonfast:owner-topology-changed"),
         "owner topology route: {}",
         whole.work.route
     );
@@ -519,7 +611,12 @@ fn main() int {
 }
 "#;
     let res = closures_run(source, "trapin", Default::default());
-    assert_eq!(res.exit_code, Some(70), "stderr:\n{}", String::from_utf8_lossy(&res.stderr));
+    assert_eq!(
+        res.exit_code,
+        Some(70),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&res.stderr)
+    );
     assert_clean_after_trap(&res);
 }
 
@@ -570,10 +667,16 @@ fn k02_full_seam_sweep_every_injection_traps_clean_or_completes() {
                     res.exit_code,
                     Some(42),
                     "seam {seam} nth {nth}: err={:?} {}",
-                    res.error.as_ref().map(|e| (e.code().to_string(), e.message().to_string())),
+                    res.error
+                        .as_ref()
+                        .map(|e| (e.code().to_string(), e.message().to_string())),
                     text
                 );
-                assert!(res.error.is_none(), "{:?}", res.error.map(|e| e.message().to_string()));
+                assert!(
+                    res.error.is_none(),
+                    "{:?}",
+                    res.error.map(|e| e.message().to_string())
+                );
             }
         }
     }

@@ -32,9 +32,8 @@ fn main() int {
 
 fn run_native(src: &str, tag: &str) -> i32 {
     let caps = [INSTANCES_CAPABILITY.to_string()];
-    let p =
-        query_entry::compile_scalar_source_product(src, "choose.at", &caps, "plan935")
-            .expect("instances-lane compile");
+    let p = query_entry::compile_scalar_source_product(src, "choose.at", &caps, "plan935")
+        .expect("instances-lane compile");
     assert_eq!(p.instances.len(), 2, "dual instances (T=int/T=bool)");
     let tag = format!("mn935-{tag}-{}", std::process::id());
     let mn_dir = std::env::temp_dir().join(format!("{tag}-mn"));

@@ -75,7 +75,8 @@ impl PackageA2xTarget {
         inner
             .ensure_target_supports()
             .map_err(|e| format!("{e:?}"))?;
-        let view = SemanticView::from_checked(&product.compiled.checked).map_err(|e| format!("{e:?}"))?;
+        let view =
+            SemanticView::from_checked(&product.compiled.checked).map_err(|e| format!("{e:?}"))?;
         let runtime = inner
             .provider
             .runtime_source(&view, Family::RecordText)
@@ -301,7 +302,8 @@ impl PackageA2xTarget {
             return Err("A2X packages required fragment closure mismatch".into());
         }
         let mut root = root;
-        let view = SemanticView::from_checked(&product.compiled.checked).map_err(|e| format!("{e:?}"))?;
+        let view =
+            SemanticView::from_checked(&product.compiled.checked).map_err(|e| format!("{e:?}"))?;
         let current = Self::assemble(&inner, &mut root, &product.bound, &view)?;
         Ok(Self {
             inner,

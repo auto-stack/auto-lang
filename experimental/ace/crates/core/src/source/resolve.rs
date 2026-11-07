@@ -8306,7 +8306,11 @@ impl<'a, 's> FnResolver<'a, 's> {
                     format!("unknown module global `{sym}`"),
                     callee.span,
                 );
-                return ResolvedExpr { span: call_span, vt: VT::I32, kind: RExprKind::Unit };
+                return ResolvedExpr {
+                    span: call_span,
+                    vt: VT::I32,
+                    kind: RExprKind::Unit,
+                };
             };
             if !rargs.is_empty() {
                 self.bind_err(
@@ -8318,7 +8322,9 @@ impl<'a, 's> FnResolver<'a, 's> {
             return ResolvedExpr {
                 span: call_span,
                 vt: self.node_ty(call_span, sig.result),
-                kind: RExprKind::CallGlobalGet { global: sym.to_string() },
+                kind: RExprKind::CallGlobalGet {
+                    global: sym.to_string(),
+                },
             };
         }
         if let Some(sym) = callee.name.strip_prefix("module.global.set:") {
@@ -8328,7 +8334,11 @@ impl<'a, 's> FnResolver<'a, 's> {
                     format!("unknown module global `{sym}`"),
                     callee.span,
                 );
-                return ResolvedExpr { span: call_span, vt: VT::I32, kind: RExprKind::Unit };
+                return ResolvedExpr {
+                    span: call_span,
+                    vt: VT::I32,
+                    kind: RExprKind::Unit,
+                };
             };
             if rargs.len() != 1 || rargs[0].name.is_some() {
                 self.bind_err(
@@ -8336,11 +8346,21 @@ impl<'a, 's> FnResolver<'a, 's> {
                     format!("module store `{sym}` takes exactly one value"),
                     call_span,
                 );
-                return ResolvedExpr { span: call_span, vt: VT::I32, kind: RExprKind::Unit };
+                return ResolvedExpr {
+                    span: call_span,
+                    vt: VT::I32,
+                    kind: RExprKind::Unit,
+                };
             }
             let mut arg = rargs.remove(0);
             retag_literal(&mut arg.value, sig.params[0]);
-            self.check_args(&callee.name, &sig.param_names, &sig.params, std::slice::from_ref(&arg), call_span);
+            self.check_args(
+                &callee.name,
+                &sig.param_names,
+                &sig.params,
+                std::slice::from_ref(&arg),
+                call_span,
+            );
             return ResolvedExpr {
                 span: call_span,
                 vt: VT::I32,

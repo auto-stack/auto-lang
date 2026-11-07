@@ -387,7 +387,7 @@ impl ClosuresUpdateSession {
                     .find(|entry| entry.wire == flat && entry.code.unit().module().owner == m.owner)
             }) {
                 self.counters.cache_hits += 1;
-                
+
                 return Ok((
                     entry.code.clone(),
                     entry.fingerprint.clone(),
@@ -421,10 +421,13 @@ impl ClosuresUpdateSession {
                         .map_err(|e| format!("cached unit {name} re-admit: {e:?}"))?;
                     let fc = FunctionCode::admit_unit(loaded, self.revision + 1)
                         .map_err(|e| format!("cached unit {name} unit-admit: {e}"))?;
-                    ace_core::body_work::record_attempt(ace_core::body_work::Stage::DecodeAdmit, &name);
+                    ace_core::body_work::record_attempt(
+                        ace_core::body_work::Stage::DecodeAdmit,
+                        &name,
+                    );
                     self.counters.admitted += 1;
                     self.counters.cache_hits += 1;
-                    
+
                     return Ok((Arc::new(fc), body_fp, flat, Some(artifact.artifact_id)));
                 }
                 None => self.counters.cache_misses += 1,
@@ -487,10 +490,7 @@ impl ClosuresUpdateSession {
     /// the atomic install. A recovery session is created WITHOUT a store root
     /// (`new(None, entry)`), so `close` performs no data/root write either
     /// (the read-only positive path).
-    pub fn restore_install(
-        &mut self,
-        units: Vec<AdmittedUnit>,
-    ) -> Result<ApplyOutcome, String> {
+    pub fn restore_install(&mut self, units: Vec<AdmittedUnit>) -> Result<ApplyOutcome, String> {
         let units: Vec<(String, UnitInput)> = units
             .into_iter()
             .map(|u| (u.name.clone(), UnitInput::Admitted(Box::new(u))))
@@ -498,10 +498,7 @@ impl ClosuresUpdateSession {
         self.apply_units(&units)
     }
 
-    fn apply_units(
-        &mut self,
-        submitted: &[(String, UnitInput)],
-    ) -> Result<ApplyOutcome, String> {
+    fn apply_units(&mut self, submitted: &[(String, UnitInput)]) -> Result<ApplyOutcome, String> {
         if self.closed {
             return Err("session is closed".into());
         }

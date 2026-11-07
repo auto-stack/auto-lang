@@ -38,10 +38,7 @@ fn edited_source() -> String {
 }
 
 fn temp_store(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "av913-recovery-{tag}-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("av913-recovery-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("store dir");
     dir
@@ -126,7 +123,10 @@ fn publish(tag: &str) -> Published {
     let roots = store_handle
         .root_artifacts("ac913-recovery", "source-recovery-current")
         .expect("read roots");
-    assert!(roots.contains(&ticket.manifest_artifact), "roots: {roots:?}");
+    assert!(
+        roots.contains(&ticket.manifest_artifact),
+        "roots: {roots:?}"
+    );
     assert_eq!(roots.len(), 1, "one current root per project");
     let artifact = store_handle
         .get_artifact_by_id(&ticket.manifest_artifact)
@@ -228,7 +228,11 @@ fn av_closures_recovery_913_restore_then_single_lambda_edit() {
         serde_json::json!(["d___closure_main_1"])
     );
     assert_eq!(edit["whole_total"], 0, "no whole-module fallback");
-    assert_eq!(edit["warm_gate_pass"], true, "gate: {:?}", edit["warm_gate_violations"]);
+    assert_eq!(
+        edit["warm_gate_pass"], true,
+        "gate: {:?}",
+        edit["warm_gate_violations"]
+    );
     // Only the edited unit did body work / production.
     let body = edit["body"].as_object().expect("body map");
     assert_eq!(body.len(), 1, "body work: {body:?}");
@@ -286,7 +290,11 @@ fn av_closures_recovery_913_wrong_digest_and_missing_root_are_named_rejections()
     ]);
     assert!(!probe.ok);
     assert_eq!(probe.json["code"], "recovery.miss");
-    assert_ne!(probe.json["pid"].as_u64().unwrap(), 0, "the probe still ran");
+    assert_ne!(
+        probe.json["pid"].as_u64().unwrap(),
+        0,
+        "the probe still ran"
+    );
 }
 
 #[test]
@@ -321,7 +329,11 @@ fn av_closures_recovery_913_manifest_binds_source_and_config() {
         "d_main",
         ace_core::source::CLOSURES_SOURCE_PROFILE,
     ]);
-    assert!(!probe.ok, "a foreign owner must not restore: {}", probe.line);
+    assert!(
+        !probe.ok,
+        "a foreign owner must not restore: {}",
+        probe.line
+    );
 }
 
 #[test]
@@ -331,7 +343,9 @@ fn av_closures_recovery_913_publish_republishes_root_atomically() {
     let store = temp_store("republish");
     let mut session = ClosuresFunctionSession::new(&store, "main.at");
     session.apply_source(SRC).expect("cold");
-    let first = session.publish_source_recovery("ac913-repub").expect("first");
+    let first = session
+        .publish_source_recovery("ac913-repub")
+        .expect("first");
     let edited = edited_source();
     let warm = session.apply_source(&edited).expect("warm");
     assert_eq!(warm.value, 48);
@@ -472,7 +486,10 @@ fn av_closures_recovery_913_failed_publication_keeps_previous_root() {
     let after = handle
         .root_artifacts("ac913-recovery", "source-recovery-current")
         .expect("roots");
-    assert_eq!(after, before, "the previous root survives a failed publication");
+    assert_eq!(
+        after, before,
+        "the previous root survives a failed publication"
+    );
     drop(handle);
     // ...and it still restores for real.
     let store_arg = p.store.to_string_lossy().to_string();
@@ -486,7 +503,11 @@ fn av_closures_recovery_913_failed_publication_keeps_previous_root() {
         "d_main",
         ace_core::source::CLOSURES_SOURCE_PROFILE,
     ]);
-    assert!(probe.ok, "the previous root must still restore: {}", probe.line);
+    assert!(
+        probe.ok,
+        "the previous root must still restore: {}",
+        probe.line
+    );
     assert_eq!(probe.json["restore_value"], 51);
 }
 
@@ -599,12 +620,23 @@ fn av_closures_recovery_913_stale_generation_cannot_overwrite_newer_root() {
     assert_eq!(first.accepted_generation, 0);
     let warm = session.apply_source(&edited_source()).expect("warm");
     assert_eq!(warm.value, 48);
-    let second = session.publish_source_recovery("ac913-cas").expect("second");
-    assert_eq!(second.accepted_generation, 1, "the edit advanced the generation");
+    let second = session
+        .publish_source_recovery("ac913-cas")
+        .expect("second");
+    assert_eq!(
+        second.accepted_generation, 1,
+        "the edit advanced the generation"
+    );
     // A stale (generation 0) publication attempt is refused before any write.
     let stale = publish_source_recovery(
         &store,
-        synthetic_publication("ac913-cas", 0, &p_source_sha(&second), &second.manifest_artifact, b"{}"),
+        synthetic_publication(
+            "ac913-cas",
+            0,
+            &p_source_sha(&second),
+            &second.manifest_artifact,
+            b"{}",
+        ),
     );
     assert_eq!(
         stale.expect_err("a stale generation must not publish").code,
@@ -711,7 +743,13 @@ fn av_closures_recovery_913_a_commit_b_publish_failure_keeps_old_binding() {
     // B: the publication of the NEW state fails.
     let failed = publish_source_recovery(
         &store,
-        synthetic_publication("ac913-ab", 99, &p_source_sha(&first), &first.manifest_artifact, b""),
+        synthetic_publication(
+            "ac913-ab",
+            99,
+            &p_source_sha(&first),
+            &first.manifest_artifact,
+            b"",
+        ),
     );
     assert!(
         failed.is_err(),
@@ -738,7 +776,11 @@ fn av_closures_recovery_913_a_commit_b_publish_failure_keeps_old_binding() {
         "d_main",
         ace_core::source::CLOSURES_SOURCE_PROFILE,
     ]);
-    assert!(probe.ok, "the old binding must still restore: {}", probe.line);
+    assert!(
+        probe.ok,
+        "the old binding must still restore: {}",
+        probe.line
+    );
     assert_eq!(probe.json["restore_value"], 51);
     // ...and the NEW source is NOT restoreable through it (no fake rollback,
     // no hidden re-binding).
@@ -777,7 +819,9 @@ fn av_closures_recovery_913_bad_state_cold_repair_then_restore_again() {
     let src_path = write_source(&store, "main.at", SRC);
     let mut parent = ClosuresFunctionSession::new(&store, "main.at");
     parent.apply_source(SRC).expect("cold");
-    let first = parent.publish_source_recovery("ac913-repair").expect("publish");
+    let first = parent
+        .publish_source_recovery("ac913-repair")
+        .expect("publish");
     parent.close().expect("close");
     // Break the accepted state.
     let handle = ace_artifacts::store::ManagedStore::open(&store).expect("store");
@@ -793,7 +837,9 @@ fn av_closures_recovery_913_bad_state_cold_repair_then_restore_again() {
         capabilities: &[],
         read_only: true,
     };
-    let err = restore_source_recovery(&store, &request).err().expect("miss");
+    let err = restore_source_recovery(&store, &request)
+        .err()
+        .expect("miss");
     assert!(
         err.code == "recovery.miss",
         "a broken accepted state is a named miss: {err:?}"
@@ -803,7 +849,9 @@ fn av_closures_recovery_913_bad_state_cold_repair_then_restore_again() {
     let mut repaired = ClosuresFunctionSession::new(&store, "main.at");
     let cold = repaired.apply_source(SRC).expect("cold repair");
     assert_eq!(cold.value, 51);
-    let second = repaired.publish_source_recovery("ac913-repair").expect("republish");
+    let second = repaired
+        .publish_source_recovery("ac913-repair")
+        .expect("republish");
     assert_eq!(
         first.manifest_artifact, second.manifest_artifact,
         "a byte-identical accepted state is the SAME content-addressed artifact"
@@ -900,7 +948,12 @@ fn av_closures_recovery_913_config_mismatch_is_named() {
             "",
             "recovery.context-mismatch",
         ),
-        ("d_main", "auto.source.core", "", "recovery.context-mismatch"),
+        (
+            "d_main",
+            "auto.source.core",
+            "",
+            "recovery.context-mismatch",
+        ),
         (
             "d_main",
             ace_core::source::CLOSURES_SOURCE_PROFILE,
@@ -995,8 +1048,7 @@ fn av_closures_recovery_913_caps_are_enforced_before_any_write() {
     .err()
     .expect("an oversized context must be refused");
     assert_eq!(err.code, "recovery.context-too-large");
-    let mut request =
-        synthetic_publication("ac913-caps", 1, &p.source_sha256, &p.manifest, b"{}");
+    let mut request = synthetic_publication("ac913-caps", 1, &p.source_sha256, &p.manifest, b"{}");
     request.units[0].wire_bytes = 8 * 1024 * 1024 + 1;
     let err = publish_source_recovery(&p.store, request)
         .err()
@@ -1133,15 +1185,22 @@ fn av_closures_recovery_913_churn_and_gc_keep_the_namespace_bounded() {
     let store = temp_store("churn");
     let mut session = ClosuresFunctionSession::new(&store, "main.at");
     session.apply_source(SRC).expect("cold");
-    let mut ticket = session.publish_source_recovery("ac913-churn").expect("publish 0");
+    let mut ticket = session
+        .publish_source_recovery("ac913-churn")
+        .expect("publish 0");
     for i in 2..=revisions {
         // A REAL content change per revision (helper's constant): the value
         // oracle moves with it, so a stale root cannot masquerade.
         let src = SRC.replace("return n + 1", &format!("return n + {i}"));
         let run = session.apply_source(&src).expect("revision");
         assert_eq!(run.value, 50 + i as i32, "revision {i}");
-        assert!(run.submitted_units >= 1, "revision {i}: the edited unit is submitted");
-        ticket = session.publish_source_recovery("ac913-churn").expect("publish");
+        assert!(
+            run.submitted_units >= 1,
+            "revision {i}: the edited unit is submitted"
+        );
+        ticket = session
+            .publish_source_recovery("ac913-churn")
+            .expect("publish");
     }
     let final_source = SRC.replace("return n + 1", &format!("return n + {revisions}"));
     let final_path = write_source(&store, "final.at", &final_source);
@@ -1252,7 +1311,6 @@ fn av_closures_recovery_913_concurrent_reader_survives_gc() {
     assert!(values.iter().all(|n| *n == p.units));
 }
 
-
 #[test]
 fn av_closures_recovery_913_publication_seam_faults_keep_the_old_root() {
     // F-913-R1 (V-07): a fault INJECTED at every publication seam must never
@@ -1270,7 +1328,9 @@ fn av_closures_recovery_913_publication_seam_faults_keep_the_old_root() {
         let store = temp_store("seam");
         let mut session = ClosuresFunctionSession::new(&store, "main.at");
         session.apply_source(SRC).expect("cold");
-        let first = session.publish_source_recovery("ac913-seam").expect("first");
+        let first = session
+            .publish_source_recovery("ac913-seam")
+            .expect("first");
         let units_before: Vec<String> = session
             .accepted_state()
             .expect("state")
@@ -1343,7 +1403,11 @@ fn av_closures_recovery_913_publication_seam_faults_keep_the_old_root() {
                 );
             }
             PublishSeam::BeforeReturn => {
-                assert_eq!(roots.len(), 1, "seam {seam:?}: one current root ({roots:?})");
+                assert_eq!(
+                    roots.len(),
+                    1,
+                    "seam {seam:?}: one current root ({roots:?})"
+                );
                 assert_ne!(
                     roots[0], first.manifest_artifact,
                     "seam {seam:?}: the published root is the new one"
@@ -1372,7 +1436,9 @@ fn av_closures_recovery_913_publication_seam_faults_keep_the_old_root() {
         );
         assert_eq!(probe.json["restore_value"], 51);
         // The retry publishes the SAME accepted state and restores the edit.
-        let second = session.publish_source_recovery("ac913-seam").expect("retry");
+        let second = session
+            .publish_source_recovery("ac913-seam")
+            .expect("retry");
         assert_eq!(second.units, first.units);
         let edited_path = write_source(&store, "edited.at", &edited_source());
         let edited_arg = edited_path.to_string_lossy().to_string();

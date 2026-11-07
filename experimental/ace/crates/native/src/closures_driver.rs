@@ -6,11 +6,11 @@
 //! with the closure family's own identities and cross-unit interface
 //! checks; restore-to-session lands with T-08.
 
+use super::collections::Entry;
 use super::*;
+use crate::cache::CoffMeta;
 use crate::{closures_layout as layout, closures_lower as lower};
 use crate::{collections_artifacts as art, collections_runtime as runtime};
-use crate::cache::CoffMeta;
-use super::collections::Entry;
 use ace_av_core::mir::{MirFunction, MirModule, MirType};
 use std::path::Path;
 
@@ -51,10 +51,12 @@ fn closures_interface_parts(
             .symbol
             .strip_prefix("fn:")
             .ok_or_else(|| bad("non-function closure import"))?;
-        let env = import
-            .env
-            .as_ref()
-            .map(|layout| layout.iter().map(|ty| shapes[*ty as usize].clone()).collect());
+        let env = import.env.as_ref().map(|layout| {
+            layout
+                .iter()
+                .map(|ty| shapes[*ty as usize].clone())
+                .collect()
+        });
         imports.push((name.into(), shapes[import.sig as usize].clone(), env));
     }
     let entry_eligible = matches!(&unit.types[function.sig as usize], MirType::Fn(sig)
@@ -63,10 +65,12 @@ fn closures_interface_parts(
         owner: unit.owner.clone(),
         name: function.name.clone(),
         signature: shapes[function.sig as usize].clone(),
-        env: function
-            .env
-            .as_ref()
-            .map(|layout| layout.iter().map(|ty| shapes[*ty as usize].clone()).collect()),
+        env: function.env.as_ref().map(|layout| {
+            layout
+                .iter()
+                .map(|ty| shapes[*ty as usize].clone())
+                .collect()
+        }),
         imports,
         entry_eligible,
     })
@@ -76,10 +80,7 @@ fn closures_interface_parts(
 /// and exactly one eligible entry. CreateClosure sites were already checked
 /// against the callee's declared env by shared verify; this pins the units
 /// actually being linked.
-fn check_closures_interfaces(
-    units: &[MirModule],
-    entry: &str,
-) -> Result<Entry, crate::MnError> {
+fn check_closures_interfaces(units: &[MirModule], entry: &str) -> Result<Entry, crate::MnError> {
     let mut functions = std::collections::HashMap::new();
     let mut owner = None;
     for unit in units {
@@ -129,7 +130,6 @@ fn check_closures_interfaces(
         symbol: crate::symbols::function_symbol(&entry.owner, &entry.name),
     })
 }
-
 
 /// The entry face shared by the restore chain (one eligible entry).
 fn check_closures_entry(units: &[MirModule], entry: &str) -> Result<Entry, MnError> {
@@ -213,25 +213,19 @@ impl MnDriver {
         let mut obs = Obs::default();
         let result = (|| {
             let cold = obs.span("frontend", |o| {
-                let cold = crate::closures_frontend::cold(source, "mn.at").map_err(|e| match e {
-                    crate::closures_frontend::ColdError::Source(ds) => {
-                        crate::MnError::Unsupported("frontend", format!("{ds:?}"))
-                    }
-                    crate::closures_frontend::ColdError::Admit(e) => e,
-                })?;
+                let cold =
+                    crate::closures_frontend::cold(source, "mn.at").map_err(|e| match e {
+                        crate::closures_frontend::ColdError::Source(ds) => {
+                            crate::MnError::Unsupported("frontend", format!("{ds:?}"))
+                        }
+                        crate::closures_frontend::ColdError::Admit(e) => e,
+                    })?;
                 o.counter("frontend_real_body_plans", cold.real_body_plans as u64);
                 Ok::<_, crate::MnError>(cold)
             })?;
             let units = cold.units;
-            let (build, run) = self.closures_units_inner(
-                &units,
-                source,
-                entry,
-                workdir,
-                support,
-                &mut obs,
-                true,
-            )?;
+            let (build, run) =
+                self.closures_units_inner(&units, source, entry, workdir, support, &mut obs, true)?;
             let run = run.ok_or_else(|| bad("missing candidate execution"))?;
             Ok((
                 run.exit_code,
@@ -391,7 +385,6 @@ impl MnDriver {
         )
     }
 
-
     /// The shared closures restore chain (see `RestoredClosures`).
     fn restore_closures_material(
         &mut self,
@@ -486,7 +479,9 @@ impl MnDriver {
                 &runtime.identity,
             )?;
             if meta != row.meta.to_meta() || meta.owner.module != manifest.owner_module {
-                return Err(bad("restored MIR does not match full claimed COFF identity"));
+                return Err(bad(
+                    "restored MIR does not match full claimed COFF identity",
+                ));
             }
             let bytes = obs.span("coff_restore", |_| {
                 cache::get_unit_coff_by_id(store, &meta, &row.coff_id)
@@ -737,9 +732,9 @@ impl MnDriver {
                     (&self.store, &self.project, &manifest_id)
                 {
                     if !already_rooted {
-                        store
-                            .remove_root(project, "soft", id)
-                            .map_err(|e| crate::MnError::Infra(format!("rollback new root: {e}")))?;
+                        store.remove_root(project, "soft", id).map_err(|e| {
+                            crate::MnError::Infra(format!("rollback new root: {e}"))
+                        })?;
                     }
                 }
             }

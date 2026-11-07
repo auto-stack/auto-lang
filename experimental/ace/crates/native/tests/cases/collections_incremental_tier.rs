@@ -544,15 +544,28 @@ fn collections_restore_session_takes_next_body_edit_with_real_differential_work(
     let (mut restored, run) = fresh
         .restore_collections_session(&manifest, &dir.join("restored-output"), None)
         .unwrap();
-    assert_eq!(run.exit_code, Some(49), "{}", String::from_utf8_lossy(&run.stderr));
+    assert_eq!(
+        run.exit_code,
+        Some(49),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
     assert_eq!(restored.manifest_id(), Some(manifest.as_str()));
     assert_eq!(restored.unit_fingerprints(), fp);
     // The next BODY edit re-produces exactly the edited function.
     let edit = restored.apply_source(&new_helper).unwrap();
     assert_eq!(edit.exit_code, Some(50));
-    assert_eq!(edit.work.bodies.keys().cloned().collect::<Vec<_>>(), vec!["helper"]);
     assert_eq!(
-        edit.work.obs.counters.get("codegen_emit_units").copied().unwrap_or(0),
+        edit.work.bodies.keys().cloned().collect::<Vec<_>>(),
+        vec!["helper"]
+    );
+    assert_eq!(
+        edit.work
+            .obs
+            .counters
+            .get("codegen_emit_units")
+            .copied()
+            .unwrap_or(0),
         1
     );
     assert_eq!(edit.work.obs.counters.get("mir_lower:d_helper"), Some(&1));
@@ -565,9 +578,14 @@ fn collections_restore_session_takes_next_body_edit_with_real_differential_work(
     // A second edit re-produces only its own function (history works too).
     let edit2 = restored.apply_source(&new_callee).unwrap();
     assert_eq!(edit2.exit_code, Some(51));
-    assert_eq!(edit2.work.bodies.keys().cloned().collect::<Vec<_>>(), vec!["callee"]);
+    assert_eq!(
+        edit2.work.bodies.keys().cloned().collect::<Vec<_>>(),
+        vec!["callee"]
+    );
     assert!(!edit2.work.obs.counters.contains_key("mir_lower:d_helper"));
-    let back = restored.apply_source(&new_callee.replace("push(43)", "push(42)")).unwrap();
+    let back = restored
+        .apply_source(&new_callee.replace("push(43)", "push(42)"))
+        .unwrap();
     assert_eq!(back.exit_code, Some(50));
     assert_eq!(back.work.obs.counters.get("mir_lower:d_helper"), Some(&1));
     assert!(!back.work.obs.counters.contains_key("mir_lower:d_callee"));
@@ -598,7 +616,8 @@ fn collections_restore_session_rejects_bad_identity_and_readonly_then_recovers()
     let manifest = first.manifest_id().unwrap().to_string();
     // Forged identity: an unknown manifest id refuses the whole chain.
     let mut forged = MnDriver::with_store(&cache, "p889-forged").unwrap();
-    let error = match forged.restore_collections_session("forged-id", &dir.join("forged-out"), None) {
+    let error = match forged.restore_collections_session("forged-id", &dir.join("forged-out"), None)
+    {
         Err(e) => e,
         Ok(_) => panic!("forged manifest id must refuse the restore chain"),
     };

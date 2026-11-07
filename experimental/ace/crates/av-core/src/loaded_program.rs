@@ -335,7 +335,6 @@ impl<'a> LoadedProgram<'a> {
         self.budget.usage()
     }
 
-
     pub fn builds(&self) -> u64 {
         self.builds
     }

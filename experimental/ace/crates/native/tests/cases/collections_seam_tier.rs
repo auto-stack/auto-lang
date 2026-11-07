@@ -9,9 +9,7 @@
 mod common;
 use ace_av_core::mir::*;
 use ace_native::collections_lower::WrapperKnobs;
-use ace_native::collections_lower::{
-    SEAM_CLONEWORK, SEAM_DATA, SEAM_FRAME, SEAM_GROW, SEAM_NODE,
-};
+use ace_native::collections_lower::{SEAM_CLONEWORK, SEAM_DATA, SEAM_FRAME, SEAM_GROW, SEAM_NODE};
 
 fn driver_run(source: &str, tag: &str, knobs: WrapperKnobs) -> (Option<i32>, Vec<u8>) {
     assert!(
@@ -65,12 +63,7 @@ fn expected_code(seam: u32) -> i64 {
     }
 }
 
-fn sweep_collections_seam(
-    source: &str,
-    tag: &str,
-    seam: u32,
-    base_exit: Option<i32>,
-) {
+fn sweep_collections_seam(source: &str, tag: &str, seam: u32, base_exit: Option<i32>) {
     let code = expected_code(seam);
     let mut n = 1u64;
     let mut injected = 0usize;
@@ -83,7 +76,8 @@ fn sweep_collections_seam(
         match trapped_code(&run.0, &run.1) {
             Some(actual) => {
                 assert_eq!(
-                    actual, code,
+                    actual,
+                    code,
                     "seam {seam} n={n}: wrong trap code ({})",
                     String::from_utf8_lossy(&run.1)
                 );
@@ -107,7 +101,10 @@ fn sweep_collections_seam(
         }
         assert!(n < 64, "seam {seam} runaway injection");
     }
-    assert!(injected >= 1, "seam {seam}: no allocation point was injected");
+    assert!(
+        injected >= 1,
+        "seam {seam}: no allocation point was injected"
+    );
 }
 
 /// The no-injection positive control: the program result on an unmodified run.
@@ -172,7 +169,12 @@ fn per_seam_fault_sweep_lstr_real_source_pe() {
         let run = driver_run(&source, &format!("lstr-s6-n{n}"), knobs);
         match trapped_code(&run.0, &run.1) {
             Some(actual) => {
-                assert_eq!(actual, 22, "text n={n}: {}", String::from_utf8_lossy(&run.1));
+                assert_eq!(
+                    actual,
+                    22,
+                    "text n={n}: {}",
+                    String::from_utf8_lossy(&run.1)
+                );
                 clean_after_trap(&run.1);
                 injected += 1;
                 n += 1;
@@ -220,10 +222,7 @@ fn typed_list_str_clone() -> MirModule {
         }),
         MirType::StrView,
     ];
-    m.consts = vec![
-        MirConst::Str("中".as_bytes().into()),
-        MirConst::I32(0),
-    ];
+    m.consts = vec![MirConst::Str("中".as_bytes().into()), MirConst::I32(0)];
     let slot_types = [2, 3, 3, 2, 0, 0, 5, 0];
     let slots = slot_types
         .iter()
@@ -237,10 +236,18 @@ fn typed_list_str_clone() -> MirModule {
     let instrs = vec![
         Const { dst: 0, value: 0 },
         Const { dst: 5, value: 1 },
-        ListNew { dst: 1, list_ty: 3, cap: 1 },
+        ListNew {
+            dst: 1,
+            list_ty: 3,
+            cap: 1,
+        },
         ListPush { root: 1, value: 0 },
         Clone { dst: 2, src: 1 },
-        ListRemove { dst: 3, root: 2, index: 5 },
+        ListRemove {
+            dst: 3,
+            root: 2,
+            index: 5,
+        },
         View { dst: 6, src: 3 },
         StrLen { dst: 4, view: 6 },
         BorrowEnd { token: 6 },
@@ -282,12 +289,7 @@ fn typed_list_str_clone_seam_sweep() {
         String::from_utf8_lossy(&base.stderr)
     );
     common::collections::assert_balanced(&base);
-    for seam in [
-        SEAM_NODE,
-        SEAM_DATA,
-        SEAM_CLONEWORK,
-        SEAM_FRAME,
-    ] {
+    for seam in [SEAM_NODE, SEAM_DATA, SEAM_CLONEWORK, SEAM_FRAME] {
         let mut n = 1u64;
         let mut injected = 0usize;
         loop {
@@ -304,11 +306,7 @@ fn typed_list_str_clone_seam_sweep() {
             );
             match trapped_code(&run.exit_code, &run.stderr) {
                 Some(actual) => {
-                    assert_eq!(
-                        actual,
-                        expected_code(seam),
-                        "typed seam {seam} n={n}"
-                    );
+                    assert_eq!(actual, expected_code(seam), "typed seam {seam} n={n}");
                     let text = String::from_utf8_lossy(&run.stderr);
                     assert!(
                         text.contains(&format!("MN-COLL-INJECT seam={seam}\n")),

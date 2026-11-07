@@ -260,8 +260,14 @@ fn typed_owned_record_capture_returns_42() {
         owner_module: format!("{MIR_CLOSURES_SCHEMA}/rec"),
         name: "Cell924".into(),
         fields: vec![
-            MirFieldDef { name: "s".into(), ty: 0 },
-            MirFieldDef { name: "n".into(), ty: 1 },
+            MirFieldDef {
+                name: "s".into(),
+                ty: 0,
+            },
+            MirFieldDef {
+                name: "n".into(),
+                ty: 1,
+            },
         ],
     });
     let mut m = MirModule::new_closures(owner.clone());
@@ -536,10 +542,10 @@ fn typed_direct_closure_body_call_is_a_named_native_rejection() {
     let owner = closures_owner("directcall");
     let mut unit = MirModule::closures_unit(owner.clone());
     unit.types = vec![
-        MirType::I32,                     // 0
-        MirType::Str,                     // 1
-        MirType::Fn(fn_sig(vec![0], 0)),  // 2 body sig
-        MirType::Fn(fn_sig(vec![], 0)),   // 3 this unit's sig
+        MirType::I32,                    // 0
+        MirType::Str,                    // 1
+        MirType::Fn(fn_sig(vec![0], 0)), // 2 body sig
+        MirType::Fn(fn_sig(vec![], 0)),  // 3 this unit's sig
     ];
     unit.consts = vec![MirConst::I32(0)];
     unit.imports = vec![MirImport {

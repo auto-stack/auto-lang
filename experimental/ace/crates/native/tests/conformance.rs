@@ -1,15 +1,15 @@
 #[path = "cases/cache_tier.rs"]
 mod cache_tier;
+#[path = "cases/choose_instances_935.rs"]
+mod choose_instances_935;
 #[path = "cases/cli.rs"]
 mod cli;
 #[path = "cases/closures_compat.rs"]
 mod closures_compat;
-#[path = "cases/choose_instances_935.rs"]
-mod choose_instances_935;
-#[path = "cases/closures_native_tier.rs"]
-mod closures_native_tier;
 #[path = "cases/closures_native_924_performance.rs"]
 mod closures_native_924_performance;
+#[path = "cases/closures_native_tier.rs"]
+mod closures_native_tier;
 #[path = "cases/closures_restore_tier.rs"]
 mod closures_restore_tier;
 #[path = "cases/closures_typed_tier.rs"]
@@ -26,12 +26,12 @@ mod collections_incremental_tier;
 mod collections_layout_tier;
 #[path = "cases/collections_observation_tier.rs"]
 mod collections_observation_tier;
+#[path = "cases/collections_place_tier.rs"]
+mod collections_place_tier;
 #[path = "cases/collections_resources_tier.rs"]
 mod collections_resources_tier;
 #[path = "cases/collections_seam_tier.rs"]
 mod collections_seam_tier;
-#[path = "cases/collections_place_tier.rs"]
-mod collections_place_tier;
 #[path = "cases/collections_source_tier.rs"]
 mod collections_source_tier;
 #[path = "cases/collections_typed_tier.rs"]

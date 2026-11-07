@@ -155,7 +155,10 @@ pub mod performance {
             hit_t.push(ms(t.elapsed()));
             assert_eq!(hit.route, RouteReport::ZeroHit);
             assert_eq!(hit.submitted_units, 0);
-            assert!(hit.warm_gate.as_ref().unwrap().pass(), "sample {id} hit gate");
+            assert!(
+                hit.warm_gate.as_ref().unwrap().pass(),
+                "sample {id} hit gate"
+            );
             assert!(hit.retained_bytes <= POOL);
             session.close().expect("close");
 
@@ -185,11 +188,9 @@ pub mod performance {
             assert_eq!(restored["r_deep_verifies"], UNITS);
             assert_eq!(restored["r_admits"], UNITS);
             assert_eq!(restored["r_context_reads"], 1);
-            manifest_bytes_max = manifest_bytes_max.max(
-                restored["manifest_bytes"].as_u64().unwrap_or(0),
-            );
-            wire_bytes_max =
-                wire_bytes_max.max(restored["wire_bytes"].as_u64().unwrap_or(0));
+            manifest_bytes_max =
+                manifest_bytes_max.max(restored["manifest_bytes"].as_u64().unwrap_or(0));
+            wire_bytes_max = wire_bytes_max.max(restored["wire_bytes"].as_u64().unwrap_or(0));
 
             // ── restore-then-edit: the SAME fresh process takes one edit ──
             let edited_arg = edited_path.to_string_lossy().to_string();

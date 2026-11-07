@@ -39,9 +39,10 @@ fn backend(e: impl std::fmt::Display) -> MnError {
 /// (fields in the same resource domain) and closure values.
 fn capture_value_domain(m: &MirModule, ty: TypeIdx) -> Result<(), MnError> {
     match m.types.get(ty as usize) {
-        Some(MirType::I32) | Some(MirType::Bool) | Some(MirType::Str) | Some(MirType::Record(_)) => {
-            Ok(())
-        }
+        Some(MirType::I32)
+        | Some(MirType::Bool)
+        | Some(MirType::Str)
+        | Some(MirType::Record(_)) => Ok(()),
         other => Err(unsupported(
             "capture",
             format!(
@@ -82,7 +83,9 @@ fn fn_signature_domain(m: &MirModule, sig: &FnSig) -> Result<(), MnError> {
             | Some(MirType::Closure(_)) => Ok(()),
             other => Err(unsupported(
                 face,
-                format!("fn signature component {other:?} is outside the native closure source ABI"),
+                format!(
+                    "fn signature component {other:?} is outside the native closure source ABI"
+                ),
             )),
         }
     };
@@ -368,10 +371,12 @@ fn emit_admitted(m: &MirModule, layouts: &[Descriptor]) -> Result<emit::UnitObje
                 m.types[slot.ty as usize],
                 MirType::StrView | MirType::RecordView(_)
             ) {
-                let bits = lower
-                    .fb
-                    .ins()
-                    .load(types::I64, MemFlags::new(), params[i + lower.param_base], 0);
+                let bits = lower.fb.ins().load(
+                    types::I64,
+                    MemFlags::new(),
+                    params[i + lower.param_base],
+                    0,
+                );
                 lower.fb.ins().store(MemFlags::new(), bits, dst, 0);
             } else {
                 let name = if ace_av_core::ownership::type_is_owned(m, slot.ty) {
@@ -595,21 +600,18 @@ impl Lower<'_, '_> {
     fn instruction(&mut self, instruction: &MirInstr) -> Result<(), MnError> {
         use MirInstr::*;
         let reads = match instruction {
-            Copy { src, .. }
-            | Move { src, .. }
-            | Clone { src, .. }
-            | View { src, .. } => vec![*src],
+            Copy { src, .. } | Move { src, .. } | Clone { src, .. } | View { src, .. } => {
+                vec![*src]
+            }
             BorrowEnd { .. } => vec![],
             Drop { slot } => vec![*slot],
             StrLen { view, .. } => vec![*view],
             FieldGet { base, .. } => vec![*base],
             Aggregate { operands, .. } | Call { args: operands, .. } => operands.clone(),
-            CreateClosure { captures, .. } => {
-                captures.iter().map(|c| c.src).collect()
-            }
-            CallClosure { closure, args, .. } => {
-                std::iter::once(*closure).chain(args.iter().copied()).collect()
-            }
+            CreateClosure { captures, .. } => captures.iter().map(|c| c.src).collect(),
+            CallClosure { closure, args, .. } => std::iter::once(*closure)
+                .chain(args.iter().copied())
+                .collect(),
             _ => vec![],
         };
         for slot in reads {
@@ -735,9 +737,7 @@ impl Lower<'_, '_> {
                 };
                 let mut pointers: Vec<_> = args.iter().map(|s| self.addr(*s)).collect();
                 pointers.push(self.addr(*dst));
-                self.fb
-                    .ins()
-                    .call(self.import_refs[*i as usize], &pointers);
+                self.fb.ins().call(self.import_refs[*i as usize], &pointers);
             }
             // ---- the PLAN-924 closure trio --------------------------------
             CreateClosure {
@@ -773,9 +773,11 @@ impl Lower<'_, '_> {
                 // The prepare status carries the named error (an injected
                 // S9 hit traps 25, a real budget refusal 22); the staging
                 // pointer comes back through the out slot.
-                let prep_slot =
-                    self.fb
-                        .create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 8, 3));
+                let prep_slot = self.fb.create_sized_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    8,
+                    3,
+                ));
                 let prep_ptr = self.fb.ins().stack_addr(types::I64, prep_slot, 0);
                 let status = self
                     .call(
@@ -795,10 +797,7 @@ impl Lower<'_, '_> {
                     .ins()
                     .icmp_imm(IntCC::SignedGreaterThanOrEqual, status, 0);
                 self.guard(okay, status);
-                let prep = self
-                    .fb
-                    .ins()
-                    .load(types::I64, MemFlags::new(), prep_ptr, 0);
+                let prep = self.fb.ins().load(types::I64, MemFlags::new(), prep_ptr, 0);
                 let live = self.fb.ins().icmp_imm(IntCC::NotEqual, prep, 0);
                 let invalid = self.i32(-23);
                 self.guard(live, invalid);
@@ -829,7 +828,10 @@ impl Lower<'_, '_> {
                     self.discard_guard(okay, result, prep);
                 }
                 let dstp = self.addr(*dst);
-                self.checked("mn_coll_env_commit", &[(dstp, types::I64), (prep, types::I64)])?;
+                self.checked(
+                    "mn_coll_env_commit",
+                    &[(dstp, types::I64), (prep, types::I64)],
+                )?;
                 // The staged retains made the env a co-owner; killing each
                 // move source NOW leaves the env the sole owner (Copy
                 // captures have no destructor right — their sources stay).
@@ -838,11 +840,7 @@ impl Lower<'_, '_> {
                     self.call("mn_coll_drop", &[(src, types::I64)], None)?;
                 }
             }
-            CallClosure {
-                dst,
-                closure,
-                args,
-            } => {
+            CallClosure { dst, closure, args } => {
                 let ty = self.m.funcs[0].slots[*closure as usize].ty;
                 let sig = match self.m.types.get(ty as usize) {
                     Some(MirType::Closure(s)) => s.clone(),
@@ -878,12 +876,15 @@ impl Lower<'_, '_> {
                 self.fb.ins().call_indirect(indirect_sig, target, &pointers);
             }
             EnvGet { dst, field } => {
-                let env = self.env_param.ok_or_else(|| {
-                    unsupported("env-get", "ENV_GET outside a closure body unit")
-                })?;
+                let env = self
+                    .env_param
+                    .ok_or_else(|| unsupported("env-get", "ENV_GET outside a closure body unit"))?;
                 let f = self.i64(*field as i64);
                 let dstp = self.addr(*dst);
-                self.checked("mn_coll_env_get", &[(dstp, types::I64), (env, types::I64), (f, types::I64)])?;
+                self.checked(
+                    "mn_coll_env_get",
+                    &[(dstp, types::I64), (env, types::I64), (f, types::I64)],
+                )?;
             }
             Bin { op, dst, lhs, rhs } => self.binary(*op, *dst, *lhs, *rhs),
             Un { op, dst, operand } => {
@@ -902,7 +903,12 @@ impl Lower<'_, '_> {
                 };
                 self.scalar_to(*dst, result);
             }
-            _ => return Err(unsupported("instruction", format!("unhandled admitted instruction {instruction:?}"))),
+            _ => {
+                return Err(unsupported(
+                    "instruction",
+                    format!("unhandled admitted instruction {instruction:?}"),
+                ))
+            }
         }
         Ok(())
     }
@@ -966,10 +972,10 @@ impl Lower<'_, '_> {
                 BinOp::RemI32 => self.fb.ins().srem(a, b),
                 _ => unreachable!(),
             };
-            let low = self
-                .fb
-                .ins()
-                .icmp_imm(IntCC::SignedGreaterThanOrEqual, value, i32::MIN as i64);
+            let low =
+                self.fb
+                    .ins()
+                    .icmp_imm(IntCC::SignedGreaterThanOrEqual, value, i32::MIN as i64);
             let high = self
                 .fb
                 .ins()
