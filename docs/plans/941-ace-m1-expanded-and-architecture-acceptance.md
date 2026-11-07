@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 30
+current_step: 31
 total_steps: 32
 ---
 
@@ -2214,6 +2214,15 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:95 | from:goal继续 
 stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（T3三组重跑+上游64MiB红正式交接文档；组合链候上游修复） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:60e188170dfadd780bbfa0c0eb7f725676205047 | task_ids:T-09接收门增量 | evidence:f94120-t3/gates + handoff-f94120-upstream-64mib.md | next_responsible_role:work 候上游64MiB修复→冻结门/工具/证据链/16-16 | 无live handle
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:96 | from:goal继续 | to:work | status:executing30/32 | outcome:progress（deadline三组T3闭环+上游交接） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:60e188170dfadd780bbfa0c0eb7f725676205047 | next:候上游64MiB修复；D939在途，无待poll
+
+### 第97轮：work 上游64MiB红跟进——根因精确定位至b8987bb0b的双计投影
+
+- 按指令跟进上游修复：master截至`ac77d3cca`**未交付**该修复（新增均为docs/plans簿记；artifacts/src最新仍为dd1248ded/b8987bb0b/8e0c6d4da）。遂将交接推进至**根因级**：`artifacts/src/store/mod.rs`的PLAN-938整命名空间准入（引入提交`b8987bb0b`，git -S确认）投影公式`namespace_now + framed_len + framed_len + 4096`把**同一block双计**（第二份framed_len即"metadata allowance"）。实测算术：末块后真实总量134,081,059B=**127.87MiB≤128MiB本可容纳**；双计投影134,222,446B超限恰**4,718字节**——64MiB流式构建的真实占用（源页+树页≈2×源规模）在设计预算内，被保守双计在末块误拒。修复选项三条（单计+固定WAL余量/有界allowance/保守投影仅限显式收紧路径）连同锁序约束已写入交接文档`handoff-f94120-upstream-64mib.md`（v2根因版）。
+- **边界**：修复归938/960 store线owner裁量（941 S/N/X不修）；组合链（冻结门→工具对账→证据链重采→组合重读→16/16）候该修复落地；D939在途。executing31/32。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（上游64MiB红根因级交接：b8987bb0b双计投影、4,718B误拒算术、三修复选项；master未交付） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:60e188170dfadd780bbfa0c0eb7f725676205047 | task_ids:T-09上游跟进 | evidence:handoff-f94120-upstream-64mib.md | next_responsible_role:work 候上游修复→冻结门/工具/证据链/16-16 | 无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:97 | from:goal继续 | to:work | status:executing31/32 | outcome:progress（根因定位：真实127.87MiB可容、双计投影误拒4,718B） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:60e188170dfadd780bbfa0c0eb7f725676205047 | next:候上游修复落地；D939在途，无待poll
 
 ## 10. 待澄清事项
 
