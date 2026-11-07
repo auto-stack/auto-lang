@@ -14,11 +14,11 @@ const REVIEWED_PHYSICAL_TABLE: &str =
     "0ea8be97d1026bd57dcaff7b35673e45a6a9f17e2f5c991bdd1b1fb04a94daa3";
 /// PLAN-939 parent-owned acceptance pins for the RESOURCE recipe.
 const R939_REVIEWED_CONTRACT: &str =
-    "2ebfc18707c2d43dfb27d758ae40d7104d128f9e57fdc50db98d5a6627de3aec";
+    "ba932d764b9a66c0f173b302e5ca191e8b95d295e6bd308c24854cfe827c95b8";
 const R939_REVIEWED_HEADER: &str =
-    "dcca128834223866aef0f2fb9e4152364fc0c3846ee6e9d07bdfcb26c2c78157";
+    "521011c06f1e74c8dd9b53275e319a6f12f59f76ac285ef52d51353e21c18197";
 const R939_REVIEWED_PHYSICAL_TABLE: &str =
-    "b8b00cefc987582b278e0d066ae5e36ff5d187ebb3e370a7c41d19b12bb32c10";
+    "dbf8cfe2ff46a273e0ae5da4aa5843d4cf09924853120821e12f88942d850126";
 fn reviewed_c_toolchain(value: &str) -> bool {
     if value.len() > 8192 || value.chars().any(char::is_control) {
         return false;
@@ -233,6 +233,22 @@ impl SourceReport {
             // V-02 owned temp -> view: the owned Str local feeds both
             // views; owner outlives both consumers.
             "utf8-owned" => (&["t939_byte_length", "t939_scalar_count"], &[]),
+            // T-07 (V-04): the THREE-out transaction commits all slots
+            // once; both handles are gotten and destroyed exactly once.
+            "txn3-commit" => (
+                &[
+                    "t939_txn3",
+                    "t939_get",
+                    "t939_get",
+                    "t939_destroy",
+                    "t939_destroy",
+                    "t939_live",
+                ],
+                &[],
+            ),
+            // T-07 (V-04): the contracted last-step failure — the caller
+            // bytes survive byte-identical (failure transport).
+            "txn3-lastfail" => (&["t939_txn3"], &["-3"]),
             // V-03: the DECLARED clone hook — two owners each destroy once.
             "clone-owners" => (
                 &[

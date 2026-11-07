@@ -55,7 +55,44 @@ static void layout_selfcheck(void) {
 
 int main(void) {
     layout_selfcheck();
-#ifdef R939_S_clone_owners
+#ifdef R939_S_txn3_commit
+    {
+        /* PLAN-939 T-07 (V-04): the THREE-out transaction commits ALL
+         * slots once in declaration order; both fresh handles read back
+         * their payloads and each owner destroys exactly once. */
+        t939_reset();
+        Txn3OutA a;
+        TxnResult b;
+        int32_t out = -1, g1 = -1, g2 = -1, d1 = -1, d2 = -1, live = -1;
+        a.mark = 0; a.handle = 0; b.value = 0; b.handle = 0;
+        R939_S_check(t939_txn3(500, &a, &b, &out) == 0);
+        R939_S_check(out == 500 && a.mark == 501 && b.value == 1000);
+        R939_S_check(a.handle > 0 && b.handle > 0 && a.handle != b.handle);
+        R939_S_check(t939_get(a.handle, &g1) == 0 && g1 == 501);
+        R939_S_check(t939_get(b.handle, &g2) == 0 && g2 == 1000);
+        R939_S_check(t939_destroy(a.handle, &d1) == 0);
+        R939_S_check(t939_destroy(b.handle, &d2) == 0);
+        live = t939_live();
+        R939_S_check(live == 0);
+        return (int)(out + a.mark + b.value + g1 + g2 + d1 + d2 + live); /* 3504 */
+    }
+#elif defined(R939_S_txn3_lastfail)
+    {
+        /* PLAN-939 T-07 (V-04): the contracted LAST-STEP failure — H1 is
+         * created and destroyed by the ORIGINAL provider before -3;
+         * EVERY caller byte stays untouched and live stays 0. */
+        t939_reset();
+        Txn3OutA a;
+        TxnResult b;
+        int32_t out = -1;
+        a.mark = 7; a.handle = 7; b.value = 7; b.handle = 7;
+        int32_t st = t939_txn3(1500, &a, &b, &out);
+        R939_S_check(st == -3);
+        R939_S_check(out == -1 && a.mark == 7 && a.handle == 7);
+        R939_S_check(b.value == 7 && b.handle == 7);
+        return 70; /* the frozen failure transport */
+    }
+#elif defined(R939_S_clone_owners)
     {
         /* PLAN-939 V-03 (the DECLARED clone hook): clone makes an
          * independent slot; BOTH owners get the payload and each

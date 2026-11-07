@@ -168,6 +168,35 @@ pub fn reviewed_resource_manifest() -> ManualManifest {
             Some(vec![(-3, "alloc"), (-2, "seed")]),
         ),
         resource_fn(
+            "t939_txn3",
+            vec![
+                ResKind::I32,
+                ResKind::Rec {
+                    rec: "Txn3OutA".into(),
+                    fields: vec![
+                        ("mark".into(), FieldKind::I32),
+                        ("handle".into(), FieldKind::I32),
+                    ],
+                    role: ViewRole::Out,
+                },
+                ResKind::Rec {
+                    rec: "TxnResult".into(),
+                    fields: vec![
+                        ("value".into(), FieldKind::I32),
+                        ("handle".into(), FieldKind::I32),
+                    ],
+                    role: ViewRole::Out,
+                },
+            ],
+            ResourceForm::Fallible {
+                ctx: None,
+                out: Some(ResOut::I32),
+            },
+            true,
+            false,
+            Some(vec![(-3, "alloc"), (-2, "seed")]),
+        ),
+        resource_fn(
             "t939_fold",
             vec![
                 ResKind::Callback { ctx: true },
@@ -353,7 +382,7 @@ mod tests {
     fn reviewed_resource_manifest_is_valid_and_admits() {
         let manifest = reviewed_resource_manifest();
         manifest.validate().expect("valid /2 resource manifest");
-        assert_eq!(manifest.facts.functions.len(), 13); // T-06: + t939_clone, t939_stored_cb
+        assert_eq!(manifest.facts.functions.len(), 14); // T-07: + t939_txn3
         let caps = vec![SOURCE_CAP.to_string(), RESOURCE_CAP.to_string()];
         let authority = resource_authority(&"c".repeat(64), 1, &caps);
         let admitted = manifest
@@ -415,3 +444,4 @@ mod c_leg_probe {
         }
     }
 }
+

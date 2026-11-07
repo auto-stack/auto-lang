@@ -251,6 +251,50 @@ int32_t t939_fold(long long (*cb)(long long ctx, long long item),
     return R939_OK;
 }
 
+int32_t t939_txn3(int32_t seed, Txn3OutA *outa, TxnResult *outb, int32_t *out)
+{
+    SOURCE939_EVENT("t939_txn3");
+    if (!outa || !outb || !out) {
+        return -2; /* NULL guard — caller bytes untouched */
+    }
+    if (seed < 0 || seed > 2000) {
+        return -2;
+    }
+    if (seed > 1000) {
+        /* the contracted LAST-STEP failure: H1 is created, then dies at
+         * the ORIGINAL provider's hand — direct slot release (internal
+         * cleanup is not a caller-visible destroy; mirror t939_txn). */
+        int64_t h1 = alloc_slot(seed + 1, seed + 1);
+        if (h1) {
+            struct r939_slot *s = slot_of(h1);
+            s->live = 0;
+            ++total_frees;
+        }
+        return -3;
+    }
+    /* prepare BOTH fresh handles; an injected failure at either point
+     * cleans every partial the same way (the half-tree is reclaimed by
+     * the ORIGINAL provider, never by the caller). */
+    int64_t h1 = alloc_slot(seed + 1, seed + 1);
+    if (!h1) {
+        return -3;
+    }
+    int64_t h2 = alloc_slot(seed * 2, seed * 2);
+    if (!h2) {
+        struct r939_slot *s = slot_of(h1);
+        s->live = 0;
+        ++total_frees;
+        return -3;
+    }
+    /* success: ONE commit pass in declaration order */
+    outa->mark = seed + 1;
+    outa->handle = (int32_t)h1;
+    outb->value = seed * 2;
+    outb->handle = (int32_t)h2;
+    *out = seed;
+    return 0;
+}
+
 /* S03 — two record lanes in one call. The ALIAS rejection is a verifier
  * fact (same owner into two mutable lanes never reaches the provider);
  * these entries prove the distinct-owners positive and the byte-exact

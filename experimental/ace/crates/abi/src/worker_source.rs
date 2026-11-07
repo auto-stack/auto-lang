@@ -120,7 +120,9 @@ impl CertPolicy {
             // oracle mirrors that deck's exact provider call sequence.
             Self::Resource939 => matches!(
                 reference,
-                "clone-owners"
+                "txn3-commit"
+                    | "txn3-lastfail"
+                    | "clone-owners"
                     | "forged-handle"
                     | "stored-cb"
                     | "utf8-owned"

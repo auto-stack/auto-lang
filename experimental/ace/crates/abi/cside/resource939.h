@@ -28,6 +28,7 @@
 /* public record closures (natural align, i32 fields only) */
 typedef struct { int32_t value; } Counter;
 typedef struct { int32_t value; int32_t handle; } TxnResult;
+typedef struct { int32_t mark; int32_t handle; } Txn3OutA;
 
 /* PLAN-939 V-01 layout conformance: the REAL C compiler measures the
  * reviewed record closures at every certified compile (ctool flags
@@ -41,6 +42,8 @@ typedef char r939_la_counter_size[(sizeof(Counter) == 4) ? 1 : -1];
 typedef char r939_la_counter_align[(__alignof(Counter) == 4) ? 1 : -1];
 typedef char r939_la_txn_size[(sizeof(TxnResult) == 8) ? 1 : -1];
 typedef char r939_la_txn_align[(__alignof(TxnResult) == 4) ? 1 : -1];
+typedef char r939_la_txn3a_size[(sizeof(Txn3OutA) == 8) ? 1 : -1];
+typedef char r939_la_txn3a_align[(__alignof(Txn3OutA) == 4) ? 1 : -1];
 typedef char r939_la_lanes[(sizeof(long long) == 8 && sizeof(int32_t) == 4) ? 1 : -1];
 
 /* S01 — text views (len is a BYTE count; encoding pre-validated by the
@@ -79,6 +82,18 @@ void     t939_fail_nth_alloc(int32_t n);           /* 1-based; <1 = off */
  * the typed failure returns. Any other seed fails before allocation.
  * EVERY failure returns with BOTH caller slots byte-identical (V-04). */
 int32_t t939_txn(int32_t seed, TxnResult *out2, int32_t *out);
+
+/* T-07 (V-04/V-05) — the THREE-out transaction: TWO record outs (each
+ * carrying a FRESH handle) plus the scalar out. seed in [0,1000]
+ * commits ALL slots once in DECLARATION order: outA->mark=seed+1,
+ * outA->handle=fresh H1 (payload seed+1), outB->value=seed*2,
+ * outB->handle=fresh H2 (payload seed*2), *out=seed. seed in [1001,2000]
+ * is the contracted LAST-STEP failure: H1 is created then destroyed by
+ * the ORIGINAL provider before -3 returns. An INJECTED allocation
+ * failure (t939_fail_nth_alloc) at EITHER point of the 2-allocation
+ * domain cleans every partial the same way. EVERY failure leaves ALL
+ * caller bytes untouched. */
+int32_t t939_txn3(int32_t seed, Txn3OutA *outa, TxnResult *outb, int32_t *out);
 
 /* S06 — synchronous per-call CALLBACK with non-zero ctx: folds
  * cb(ctx_seed, item) for item in [0, n). A negative callback result is

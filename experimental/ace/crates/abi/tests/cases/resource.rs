@@ -309,6 +309,44 @@ fn abi_resource_edges_independent_c_control() {
     );
 }
 
+/// PLAN-939 T-07 (V-05): the allocation-domain fault sweep over the
+/// THREE-out transaction — every k in 1..N (domain MEASURED by a clean
+/// run) fails in turn, N+1 is a no-op, clearing the fault retries fresh
+/// in the same process; every failure keeps ALL caller bytes untouched,
+/// every partial is reclaimed by the ORIGINAL provider (ledger
+/// balanced), and a stale copy of a reclaimed handle rejects (no
+/// idempotent free masking a double destroy). The fallible failure
+/// transport ends a source program at its first failed foreign call,
+/// so this sweep rides the C conformance leg (hand-audited driver +
+/// the real provider, real cl compile + link + run).
+#[test]
+fn abi_resource939_fault_sweep_allocation_domain() {
+    let dir = run::scratch("abi_r939_fault_sweep");
+    let cside = manifest().join("cside");
+    let sweep_obj = dir.join("sweep.obj");
+    ctool::compile_c(
+        &cside.join("resource939_fault_sweep.c"),
+        &cside,
+        &sweep_obj,
+    )
+    .expect("cl compiles the fault sweep driver");
+    let provider_obj = dir.join("provider.obj");
+    ctool::compile_c(&cside.join("resource939.c"), &cside, &provider_obj)
+        .expect("cl compiles the 939 provider");
+    let exe = link_pe(
+        &dir,
+        &[sweep_obj, provider_obj],
+        "r939_sweep_entry",
+    )
+    .expect("link the fault sweep PE");
+    let pe = run::run_pe(&exe).expect("run the fault sweep PE");
+    assert_eq!(
+        pe.code, 0,
+        "the allocation-domain sweep must hold end to end; out={:?} err={:?}",
+        pe.stdout, pe.stderr
+    );
+}
+
 /// F-797-R4-02 (R8): the record MUT-VIEW and CALLER-OWNED OUT-RECORD
 /// lanes the profile promises — an independent C consumer (own oracle,
 /// byte-level untouched checks on failure) drives both commit and

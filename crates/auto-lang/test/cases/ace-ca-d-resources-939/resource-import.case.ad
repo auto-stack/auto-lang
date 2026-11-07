@@ -165,6 +165,45 @@ case { schema: "autolang.case/2", id: "ace-ca-d3.pairv-temp-c", tags: ["ca-d3", 
  abi: { leg: "c" }, steps: [ { op: "query" } ] },
  expect: { completion: "success", exit: 47, probe: [ { stages_include: ["source-import"] } ] } } ] }
 ```
+# T-07 (V-04): the THREE-out transaction (two record outs each carrying
+# a fresh handle + the scalar out) commits ALL slots once in declaration
+# order; both handles read their payloads and each owner destroys once
+# (exit 3504 = 500+501+1000+501+1000+1+1+0).
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.txn3-commit-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/txn3-commit.atomdata", syntax: "atom-data", path: "txn3-commit.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 3504, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.txn3-commit-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/txn3-commit.atomdata", syntax: "atom-data", path: "txn3-commit.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 3504, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+# T-07 (V-04): the contracted LAST-STEP failure — H1 is created then
+# destroyed by the ORIGINAL provider before -3; EVERY caller byte stays
+# untouched (the frozen failure transport, exit 70). The full allocation-
+# domain fault sweep (V-05: k=1..N, N+1 no-op, clear+same-process retry,
+# ledger balance) rides the ace-abi conformance leg
+# (resource939_fault_sweep.c) — the fallible failure transport ends the
+# source program, so the sweep cannot live in a deck.
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.txn3-lastfail-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/txn3-lastfail.atomdata", syntax: "atom-data", path: "txn3-lastfail.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 70, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.txn3-lastfail-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/txn3-lastfail.atomdata", syntax: "atom-data", path: "txn3-lastfail.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 70, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
 # T-06 (V-03): the DECLARED provider clone hook — clone makes an
 # independent slot; both owners read the payload and EACH destroys
 # exactly once; the ledger ends at zero live (exit 10 = 4+4+1+1+0).
