@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-995
-status: drafting
+status: execution_done
 feature_name: VM json native性能与codegen hazard收口（READER-009 cold-load框架前置）
 author: [ZCode]
 created_at: 2026-11-07
-updated_at: 2026-11-07
+updated_at: 2026-11-08
 plan_revision: 1
-current_step: 0
+current_step: 5
 total_steps: 7
 depends_on: [READER-009]
 supersedes_spec_components: []
@@ -131,6 +131,61 @@ canonical_ok参考实现的Reader侧落地Spec（library-workspace.md性能证�
 ## 9. 复审记录
 
 2026-11-07：stage: new | PLAN-995 r1 | outcome: pass（草案可交接，未执行） | changed: 新建T-00～06、AC-01～07、W01～04、SD-01～02 | next: work T-00（hazard复核+基线冻结）。授权依据READER-009 round27①A；canonical_ok落地上限注记（§2：参考实现+009消费re-land，避免跨树双写入）为立项时口径，用户审阅可更正；H1-H3的VM内部owner未定位，T-00有界调查定谳前不实施依赖修复；所有性能提案未执行，不预报结果。
+
+2026-11-08：stage: work | PLAN-995 r1 | T-00 完成记录（hazard 复核+基线冻结+组名单实核）。worktree `D:/autostack/.wt/lang-995/auto-lang`（codex/plan-995-dev，base=b90c17dd1 master tip）；工具链组 `.wt/lang-995/`（auto-man@2a9b16e、auto-web@2d69841、auto-ui@061f4273、auto-down@58ea33f 均 detached，auto.exe 已建）。probe 材料 `D:/autostack/plan-artifacts/plan-995/auto-lang/probes/`（自建 h1/h2/h2b/h3-minimal/h3-extrafn/h4/h5/h6 + 原件引用副本 orig-dyn-iter-probe-{01,02,03,05,07,08,10..17}；fixture：catalog-1000.json=009 冻结 216,616B 拷贝 sha256 943a22f1…c5cd38、deep-40.json 102,809B sha256 781a5d60…）。
+
+**T-00 hazard 处置表（双 pin 对照：master b90c17dd1 新建工具链 vs 009 t01 冻结工具链，probe 双跑）**：
+
+| 类 | round23 目录主张 | 当前 master 复核结果 | 旧 pin（009 冻结件）对照 | 处置 |
+|---|---|---|---|---|
+| H1 动态集合二遍迭代空段 | probe-01/05 二遍空段 | 原件 probe-01/10 全绿；重建 h1（千条 books 两遍 n1=n2=1000、groups-after-books、嵌套 tags 两遍、bind-first）全绿 | 同绿 | **不复现（双 pin）**→豁免+W01 永久 probe 钉住；ws-perf01 时代遗留结论，round24 pin 已无 |
+| H2 if 条件内嵌方法调用==大文本误判 | probe-08 trace vs fulldiff | 受控矩阵 h2b（distinct 216KB、helper/inline 两种拼段 × if/expr/swap 三位置 + bisect first_diff）全 true；trace 形+正确闭合+inline trim 全 true（len 216616=216616） | 同绿 | **证伪/归因修正**：误否族（orig 05、08-proof_body/trace、13/14/15/16/17）根因=probe 源码缺 `bs = bs + "]"`（bisect 实证 fd=216478、缺 1 字节、双 pin 同一），inline-trim 归因系双变量混淆（trace 无闭合+inline vs fulldiff 有闭合+bind-local）；VM 比较路径无缺陷→W01 钉住含闭合 oracle 的四位置对照 |
+| H3 大串累积跨模块形状敏感 | 03/05 真 vs 13/16/17 假 | h3-minimal vs h3-extrafn（+额外累积比较函数的布局）重建输出逐字节同（sha 一致）；h2b 两种拼段形 first_diff=-1 | —（05 在旧 pin 亦假，同 fd） | **证伪/归因修正**：真假分歧由缺失 `]` 完全解释；master 布局无关→W01 钉住双布局等价 oracle；009 交接件注明其 t03 探针版本史需复核 |
+| H4 模块 var 大串赋值/存串比较 | probe-07/11/12 安全基线 | 原件 07/11/12 绿 + 重建 h4（store/check/dump，216KB 模块 var 跨请求存取+if/expr 两位置比较）绿 | — | **基线确认**→W01 钉住 |
+| **H5（新发现，T-02 范畴）** json.stringify 少参 ABI 崩溃/垃圾 | 目录未载 | `json.stringify(d)` 1 参→panic "Stack Underflow (nanbox)" virt_memory.rs:478（service 死）或垃圾 ""；2 参→垃圾 "0"；3 参→正确（h6-mini probe 实证）。根因=shim_web_json_stringify 固定弹 3 参（value/replacer/space）而 .at 调用按实参压栈，native_catalog:2414 注释声称的"codegen 缺参补位"从未落地 .at 路径 | 未测（T-02 修复对象） | **活缺陷**：T-02 先修正确性（JS 语义 stringify(v)=compact，缺参补 null 占位）再做性能；h6 1/2 参为红例，修后转绿入永久 oracle |
+
+**基线 bench 冻结**（h5-bench，静窗口，10 次迭代/端点，3 run band；stringify 用当前唯一正确的 3 参形态）：catalog-parse-10 0.194/0.197/0.233s；catalog-stringify-10 0.149/0.149/0.156s；deep-parse-10 0.082/0.084/0.061s；deep-stringify-10 0.042/0.045/0.039s；roundtrip-eq（parse→stringify 逐字节==原文）catalog/deep 双 fixture true。canonical proof 形状时延（服务端）：orig probe-03 proof-real 1.7s、probe-05 proof 2.0s、probe-08 variants（3 proof）6.5s——重建累积路径（.at 层字段访问+STR_CAT）而非 parse 本身主导，T-03 单 parse 化的目标面确认。
+
+**cargo 组名单实核**（`cargo t --list`）：受影响并集=**vm、auto-lang-core、auto-lang、http、corpus**（理由：engine ops/集合/串池+ffi stdlib json shims+native 绑定+codegen 调用补位在 auto-lang-core/vm 组；宿主接线 auto-lang；probe 走 service vm=http 组；.at 语料=corpus 组）。终审后冻结并集按此执行。
+
+- stage: goal | plan_id: PLAN-995 | plan_revision: r1 | round: 2 | from: work | to: work | status: executing | outcome: pass(T-00) | worktree: D:/autostack/.wt/lang-995/auto-lang | commit: b90c17dd1(基线，无代码改动) | next: work T-01（W01 永久 probe 落地）。
+
+2026-11-08：stage: work | PLAN-995 r1 | **T-01/T-02/T-03 完成记录**（worktree 同上，代码改动见下 commit）。
+
+**T-01（W01 永久 probe + 处置落地）**：新测试文件 `crates/auto-lang-core/src/vm/tests_json_hazards.rs`（vm.rs 登记）7 例全绿——h1 二遍迭代千条（豁免钉住）、h1 嵌套二遍、h2 大文本等值四位置+inline trim+负控、h3 双布局等价、h4 模块 var 大串、h5 stringify 少参 ABI、w02 往返逐字节（预置）。**新发现并修复两个活缺陷**（T-00 处置表 H5/H6）：
+- **H5 修复**：`json.stringify` 少参 ABI——PLAN-057 T6 的缺参补位只匹配 `JSON.stringify`（JS 轨），`.at` 自然拼写 `json.stringify` 未补位即弹穿（h6-mini service 探针：1 参 panic "Stack Underflow (nanbox)" virt_memory.rs:478 / 深栈垃圾 ""、2 参垃圾 "0"）。修复=expr_calls.rs 双拼写统一补位（replacer=null、space=0，JS undefined→compact 语义）。服务级验证：1/2/3 参输出全等。
+- **H6 修复**：`Str.substr`/`Str.slice` start-clamp 方向——原前跳（lo+=1）使步进读缝隙丢整字（跨块 CJK 被上块 hi-回退排除+下块 lo-前跳跳过；h7-diag 实证 66354→66348 丢 6 字，分歧点 `标签`→`标`）。修复=lo 回退式 clamp（`s[boundary↓(start)..boundary↓(start+len)]`，步进覆盖无损）。护栏：auto-lang crate 100 项 string 测试绿。
+
+**T-02（json natives 性能+等价）**：①parse 单趟物化——`DirectMatSeed/DirectMatVisitor/DirectTopMatVisitor`（serde 直驱建 ListData/GenericInstanceData，消除中间 serde_json::Value 树）；两段式入口 `parse_json_direct`（IgnoredAny 零分配语法预校验保错误路径栈干净 + 深度类错误 unwind 含影子释放）；u64 臂先归一 i64（serde_json 直驱正整数走 visit_u64，与经 Value 中转 as_i64-first 的语义差首次暴露并修正——否则正整数字段全物化 BigInt 断 `.to_string()`，p949/plan738/plan988 红已全复绿）。②stringify 直序化——`VmJsonDirect`（serde Serialize 直写，无中间树；GenericInstanceData 插入序/ObjectData 字典序/BigIntData i64/u64/非有限浮点错误文本逐臂对齐），shim_web_json_stringify 与 shim_json_from_value 接入，错误映射保持旧文本分类。
+**实测（h5-bench 同机同夹具，3 run band，10 迭代/端点）**：catalog-parse-10 0.194/0.197/0.233 → **0.116/0.137/0.170（中位 -30%）**；catalog-stringify-10 0.149/0.149/0.156 → **0.075/0.095/0.096（中位 -36%）**；deep-parse-10 持平（0.061-0.084 band 重叠，100KB 单串叶主导）；deep-stringify-10 5-run 复测 band 0.024-0.048 与 before 0.039-0.045 重叠（无回归）。W02 等价：roundtrip parse→stringify 逐字节==原文，catalog/deep 双 fixture true（service 级）+ Rust 级 w02_json_roundtrip_byte_equality 绿；json 域测试 auto-lang-core 32 绿 + auto-lang 7/8（唯一红=plan872 绑定表 drift，**pristine master 同红存量**，非本计划改动，triage 待其 owner）；原件回归 orig probe-03 proof-real eq=true 不回退。
+**cold 4 大 parse 分量预期**：parse 20ms→14ms/次（-30%），端到端 cold 分量实测入 T-04 对账。
+
+**T-03（canonical_ok 单 parse 化参考实现）**：probe `h8-canonical`（.at 参考实现+现状对照+负控，Reader 侧落地归 009 消费 re-land——§2 口径）。**等价证明**：`/canon/singleparse-proof` proof=true（rebuilt==raw，216616=216616，.at 内逐字节比较）+ `/canon/singleparse-rebuilt` 回传文本 sha256 与 h4 dump（同文本独立构造）一致；负控 spacing（值等价字节不等）正确拒（eq_rebuilt_mutated=false, len 216616 vs 216617）、负控 enum（status=banned）正确拒（rejected=true）。**时延实测（2 run band）**：singleparse-proof 2.425/2.210s vs multiparse-proof（3×全量 parse 段重建对照，无校验轻量版）1.867/1.967s——parse 本身已降至 ~14ms（×3→×1 节省 ~27ms），重建累积（.at 层 STR_CAT 链）主导 ~1.8s；单 parse 化对 Reader 的真实收益=消除 valid_catalog 字符级扫描门+段切片+冗余物化（009 侧 2.87s/proof 与 prefs POST 7-11s 的主要成分），本参考实现证明其可行性与逐字节等价性。**合规注记**：全程未用任何封界模式（H1-H4 处置后无 hazard；二遍迭代/内联比较/跨布局均 W01 钉住）。
+
+- stage: goal | plan_id: PLAN-995 | plan_revision: r1 | round: 3 | from: work | to: work | status: executing | outcome: pass(T-01/02/03) | worktree: D:/autostack/.wt/lang-995/auto-lang | commit: 待提交（worktree 未提交改动：tests_json_hazards.rs 新增、strings_json.rs/sys_env.rs/expr_calls.rs/vm.rs 修改） | next: work T-04（端到端 pin 链复测；reader@17e6b62 已检出 .wt/lang-995/auto-reader，工具 cohort 6ce87feb 交接件在案）。
+
+2026-11-08：stage: work | PLAN-995 r1 | **T-04 完成记录（端到端 pin 链静负载 band + 对账）**。
+
+**链**：reader 兄弟检出 `.wt/lang-995/auto-reader` @17e6b62（detached 只读，009 活动 worktree 零接触）+ 工具 cohort 6ce87feb（handoff/reader-p068-ui.exe，sha 断言）+ 本计划 VM pin（auto.exe sha 头 777dfab5，auto-man@2a9b16e + lang-995 worktree@f31b85a84）。方法=009 同法（verify_workspace_ui_vm.py，隔离 out-dir/自有端口/全新 fixture），静窗口（夜间，无并发构建）。
+
+**两 run band**：cold-load **16.58s / 16.23s**（round24 基线 16.54s——带内持平；15s 预算未达且不修订）。**其余 6 叶全 PASS 不回退**：grid/list 21页 walk、warm-query 0.29s、warm-sort 0.69-0.74s、warm-filter 0.54-0.56s、q-exit=0。
+
+**分量对账表（run1/run2，vs round24 基线分量）**：boot ~1.5s（持平）；GET /api/library/books **3.61/3.75s**（基线 3.9，-0.15~-0.29s）；GET /api/library/catalog **2.33/2.48s**（基线 2.6，-0.12~-0.27s）；POST /api/library/catalog/prefs **8.10/7.73s**（canonical_ok 重建比较×2+catalog 全量重序列化——**剩余最大热点**，即 T-03 参考实现的 009 侧 re-land 目标面）；渲染/采样 ~1.0s；分量和≈总时闭合（App_Init waited 12.74s 与 GETs+POST 串行吻合）。
+
+**AC-03 cold 4 大 parse 分量核**：native 级 parse -30%（20ms→14ms/次，h5-bench）；端到端可见于 books/catalog GET 的小幅下降（parse 每 GET 一次 ~6ms 节省，占 GET 总时 <0.2%）——parse 已非 cold 瓶颈，与 T-03 结论一致（重建累积主导）。
+
+**结论（AC-05 具名）**：**未达标**（16.23-16.58s > 15s）。VM pin 交付就绪；剩余缺口具名于 Reader 侧路径（prefs POST 7.7-8.1s 与 GET 内 .at 层重建），按 §0/§2 设计由 009 消费 pin + re-land 单 parse 化参考实现后重测 W-04 cold 叶。**不以单 run/负载窗口宣称**；band 材料在案（e2e/band.json + run1/run2 results+app.log）。
+
+**pin/交接件制备（work 侧）**：`plan-artifacts/plan-995/auto-lang/handoff-009-pin-and-findings.md`（pin 身份/行为变化/参考实现位置与证明/hazard 处置定谳/cold band 对账/存量红 triage）；merge 时按 068 先例入 009 自有 scope。
+
+**受影响组门（冻结代码 f31b85a84 前置 run）**：vm/auto-lang-core/auto-lang/http/corpus 1712 例 **1710 绿 / 2 红均 pristine master 存量**（plan872 绑定表 drift、sys_natives_vm_tests line49 断言——主检出复跑同红实证，非本计划改动，triage 记录在交接摘要）。
+
+**work handoff（execution_done）**：work-owned AC-01～05 全过（§9 各段证据锚：处置表=W01 测试+双 pin 对照、等价=roundtrip 逐字节+json 域 32 测试、性能=h5-bench band、参考实现=h8 证明+负控、端到端=band+对账表）。无未决 in-contract finding；无待答问题。统一回归/冻结并集=review/merge 所属门（待 T-05/T-06）。提交 f31b85a84（worktree clean）。
+
+- stage: work | plan_id: PLAN-995 | plan_revision: r1 | outcome: pass（execution_done）| worktree: D:/autostack/.wt/lang-995/auto-lang | branch: codex/plan-995-dev | base_commit: b90c17dd1 | code_commit: f31b85a84 | dependency_revisions: auto-man@2a9b16e, auto-web@2d69841, auto-ui@061f4273, auto-down@58ea33f（构建依赖，detached）；reader@17e6b62+cohort 6ce87feb（T-04 消费链，只读）| task_ids: T-00✅ T-01✅ T-02✅ T-03✅ T-04✅（T-05 review、T-06 merge 待）| evidence: §9 T-00 处置表/基线/组名单 + T-01/02/03 记录 + 本 T-04 记录；plan-artifacts scope 全材料 | blockers: 无 | next_responsible_role: review（独立终审复演 W01～W04 与 Spec 增量定稿）。
+
+- stage: goal | plan_id: PLAN-995 | plan_revision: r1 | round: 4 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-995/auto-lang | commit: f31b85a84 | next: review T-05。
+
 
 - stage: goal | plan_id: PLAN-995 | plan_revision: r1 | round: 1 | from: new | to: work | status: drafting→work待启 | outcome: pass | worktree: 待T-00创建（D:/autostack/.wt/lang-995/auto-lang拟） | commit: 本主检出簿记提交 | next: work T-00。
 
