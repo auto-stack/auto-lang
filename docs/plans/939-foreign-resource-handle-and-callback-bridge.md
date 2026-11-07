@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-abi/resource-and-callback-bridge.md]
 touched_goals: [GOAL-002]
 affects: [auto-abi, auto-ac, auto-a2x, auto-a2c, auto-av, auto-test-case]
 depends_on: [PLAN-937, PLAN-938, PLAN-925, PLAN-924]
-current_step: 1
+current_step: 2
 total_steps: 14
 ---
 
@@ -233,7 +233,7 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 | ID | owner_stage | 依赖 | 修改路径/可验证成果；对应AC/验证 | 状态 |
 |---|---|---|---|---|
 | T-01 | work | 后续实施指令；只读阶段不需D938 | 重核D937/D938及925/924/931实交，冻结P1/S01..08每方向/797原形态/Case来源/全部reader/原scale/预算；未D938只独立调查，不实接WIP；AC-01/06/07 | [✅ 2026-11-07] |
-| T-02 | work | T-01、实际D938、所需稳定S/ABI接口释放 | r3：补 resolver-owned 常驻页接线（§5.11）使资源体过 Frontend 冷/暖与恢复；随后按§5.7 A→B→C 收口三接缝（S01 文本view+恢复首编辑、S02/S05 mut/out 失败原子与 S04 opaque 唯一 cleanup、S06 callback 错误/lease——callback-by-name 前端仍按 r2 冻结）；三项齐才关闭；V-13..16，AC-01..07。已交付：合同/core/native/CI/provider/发布路径/认证链/首例+固定组（§9 round 1-4，938 组 31/31 回归绿） | [~ 进行中 r3] |
+| T-02 | work | T-01、实际D938、所需稳定S/ABI接口释放 | r3：补 resolver-owned 常驻页接线（§5.11）使资源体过 Frontend 冷/暖与恢复；随后按§5.7 A→B→C 收口三接缝（S01 文本view+恢复首编辑、S02/S05 mut/out 失败原子与 S04 opaque 唯一 cleanup、S06 callback 错误/lease——callback-by-name 前端仍按 r2 冻结）；三项齐才关闭；V-13..16，AC-01..07。已交付：合同/core/native/CI/provider/发布路径/认证链/首例+固定组（§9 round 1-4，938 组 31/31 回归绿）；round 5-8 全链收口，25 例 24 PASS+控制位，四固定组+七 crate 全绿（§9） | [✅ 2026-11-08] |
 | T-03 | work | T-02，H首例短窗 | ABI中立资源投影/布局/header、独立resource首例TestCase由T-02进入，本步扩齐S01..08/方向/正式注册材料，V-01/11/15；AC-01/07 | [ ] |
 | T-04 | work | T-03，S窗口 | core foreign_resources/资源凭证/模式/borrow/alias/deleter唯一计划与所有verify/schema消费者；V-02/03/13/15；AC-02 | [ ] |
 | T-05 | work | T-04，N/C窗口 | native直接资源调用与a2x-c abi_resources/私有值显式转换/view期限；V-01/02/04；AC-01/02/03 | [ ] |
@@ -250,6 +250,10 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 可提前的仅独立oracle/header与source/type能力调查，不把private准备冒资源已实施。正式S/N/C集成在D938及所需单文件owner释放后；不硬等未读取的935/936整包。
 
 ## 9. 复审记录
+
+T-02/r3 完成记录（2026-11-08，goal round 8，HEAD `7482923ba`）：**T-02C S06 callback-by-name 全链闭合，三接缝 A/B/C 齐，T-02 关闭**——套件 25 例 24 PASS + wrong-oracle 控制位（固定组 PASS），四固定组与七 crate lib tests 全绿（a2x-c 8/abi 51/native 12/core 28/source-query 86/foreign-contract 46/av-core 59），触面 crate 零警告。纵切片：(1) **provider 面**：`t939_fold(cb,ctx_seed,n,out)` 手审实现（[0,64] 外 -2 先拒、i32 域违例 -2 且 *out 不动、负回调结果**逐字**作 status、noescape 不存储）+ reference 场景 callback(18)/callback-fail(-7→70) -W4 -WX 实编实跑 + review 表 /3（9 表面条目，noescape 强制 true，错误码 -7/-2）+ header/table/contract 新指纹钉（worker policy 与父侧 R939_REVIEWED_*）+ 全部 11 deck manifest 再生成；(2) **前端**：`RExprKind::CallbackRef`（text-record lane 上具名自由函数匹配已 intern 闭包类型即解析为目标；VT::Function 类型结构性限定只能落 callback lane；typecheck 拒方法目标）→ HIR `ExprKind::CallbackRef{def}`（text-record descriptor schema 新 `expr.callback_ref` case + 解析/发射/规范臂；interned 闭包签名以 `function` 类型形 `t_closure_sig_N` 发射——closure case 不在本 descriptor）；a2x-core 三处 walk（family 准入/plan/refs/指纹——按目标源名指纹）放行；(3) **后端**：MIR `ForeignCall.callbacks:[(lane,name)]` + ABC 新操作码 0x3A（0x36 字节不变）双向编解码 + mir_verify 每 callback 车道恰一具名目标校验 + use_slots/ownership 跳过车道占位槽 + owned 单元 capability 准入覆盖无自身 foreign 调用单元的模块级 foreign caps（回调目标函数的单元）；native 每目标**静态 trampoline**（checked i64 域→`callback.domain` -2147483645 传输、窄化 i32 调目标自身单元符号、结果回扩，唯一符号 ac939cb.<axis>.<unit>.<target>）；a2x-c 片段 **preface**（原型行之后顶层发射，保持组装器 nth(1) 原型协议）静态 C trampoline（INT32 域守卫、body trap→`callback.trap` -2147483644 传输——回调失败绝不变成功哨兵）；`resource_prototype` 修正完整函数指针参数类型（旧文本从未被编译）。过程修正：一次 4 组合跑中 939 套件被错误路由到 sema runner（多组调度伪迹，分组调用全绿——非本包代码，具名观察待 fixed-tests owner）；scratch example/diag eprintln 零残留。
+
+stage: goal | plan_id: PLAN-939 | plan_revision: r3 | round: 8 | from: work | to: work | status: executing | outcome: T-02 pass（A/B/C 三接缝齐；25 例 24+控制位）| worktree: D:/autostack/.wt/lang-939/auto-lang | commit: 7482923ba | next: work（T-03）
 
 T-02/r3 进行中检查点 3（2026-11-08，goal round 7，HEAD `710a02eaa`）：**T-02A restart→首次 body edit 接缝闭合**——新增正式双例 `utf8-restart-edit×native/c`（query→restart→语义保持编辑→判定 query，exit 8 两步对齐），套件 21 例 20 PASS + wrong-oracle 控制位，四固定组（939/938/925/937）与六 crate lib tests 全绿。本批穿五道恢复门：(1) foreign env 嫁接（resolve.rs 嫁接臂）与 (2) decl_env 恢复签名表补齐 round 4 的 subset-callability 豁免（CODE_RECORD→不可调用而非硬错）；(3) resolver-owned 标记页恢复不再 decode/seed 空 walk（§5.11：该 lane 的 R=信封有界深验，body 按需真实重解析）；(4) 暖编辑路径 resource lane 分支——foreign-only supply（body 类型归 resolver 自身规则）、合成空 walk 页、空 marker deps、经**新增** `verify_foreign_text_function`（core 单函数 text-record 凭证 + 宿主受审声明；`verify_text_function` 重构出 foreign_allowed 实现参数）验证；(5) 恢复身份两处——native artifact 收 OWNED MIR schema（m_src 不变）、资源 C runtime policy 页摘要改 SHA-256（blake3 `provider::hash` 与 session identity 公式不一致，round 5 引入）。过程修正：一次 `touch` 误建空 `abi/src/main.rs` 入提交，amend 移除（零残留）。**T-02 剩余唯一项：C 接缝（S06 callback-by-name 前端+错误通道+lease 例）**。
 
