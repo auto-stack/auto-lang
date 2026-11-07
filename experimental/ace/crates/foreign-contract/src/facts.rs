@@ -491,6 +491,7 @@ mod tests {
             },
             atomic: false,
             noescape: false,
+            typed_peer: false,
         });
         // missing foreign.resource capability -> named reject
         let e = f.validate().unwrap_err();

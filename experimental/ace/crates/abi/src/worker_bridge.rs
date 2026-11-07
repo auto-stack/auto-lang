@@ -122,6 +122,13 @@ pub fn parse_bridge_deck(text: &str) -> Result<BridgeDeck, String> {
                 return Err("typed legs carry only deck+leg (frozen typed declarations)".into());
             }
         }
+        // PLAN-939 S07: the wide typed-resource peer legs (element-count
+        // i64 view / wide record closure / original wide callback).
+        "wide-self" | "wide-n2c" | "wide-c2n" => {
+            if !deck.module.is_empty() || !deck.exports.is_empty() || !src_lines.is_empty() {
+                return Err("typed legs carry only deck+leg (frozen typed declarations)".into());
+            }
+        }
         other => return Err(format!("unknown leg {other:?}")),
     }
     Ok(deck)
@@ -239,20 +246,38 @@ fn bridge_query_step(sess: &mut BridgeSession) -> StepOut {
         )
         .map(|o| (o.caller_exit, counters.clone())),
         leg => {
-            let tl = match leg {
-                "typed-self" => TypedLeg::SelfCheck,
-                "typed-n2c" => TypedLeg::NativeToC,
-                "typed-c2n" => TypedLeg::CToNative,
-                _ => unreachable!("parser validated the leg"),
-            };
-            run_typed_chain(
-                &store,
-                &counters,
-                &scratch_root,
-                &[tl],
-                BRIDGE_TOTAL_DEADLINE,
-            )
-            .map(|o| (o.legs.first().map(|l| l.1).unwrap_or(-1), counters.clone()))
+            if leg.starts_with("wide-") {
+                // PLAN-939 S07 wide typed-resource peer legs.
+                let w = match leg {
+                    "wide-self" => crate::bridge::WideLeg::SelfCheck,
+                    "wide-n2c" => crate::bridge::WideLeg::NativeToC,
+                    "wide-c2n" => crate::bridge::WideLeg::CToNative,
+                    _ => unreachable!("parser validated the leg"),
+                };
+                crate::bridge::run_wide_chain(
+                    &store,
+                    &counters,
+                    &scratch_root,
+                    &[w],
+                    BRIDGE_TOTAL_DEADLINE,
+                )
+                .map(|o| (o.legs.first().map(|l| l.1).unwrap_or(-1), counters.clone()))
+            } else {
+                let t = match leg {
+                    "typed-self" => TypedLeg::SelfCheck,
+                    "typed-n2c" => TypedLeg::NativeToC,
+                    "typed-c2n" => TypedLeg::CToNative,
+                    _ => unreachable!("parser validated the leg"),
+                };
+                run_typed_chain(
+                    &store,
+                    &counters,
+                    &scratch_root,
+                    &[t],
+                    BRIDGE_TOTAL_DEADLINE,
+                )
+                .map(|o| (o.legs.first().map(|l| l.1).unwrap_or(-1), counters.clone()))
+            }
         }
     };
     let (pe_exit, counters) = match res {
@@ -474,7 +499,15 @@ mod tests {
 
     #[test]
     fn typed_deck_is_minimal_and_legs_frozen() {
-        for leg in ["typed-self", "typed-n2c", "typed-c2n"] {
+        for leg in [
+            "typed-self",
+            "typed-n2c",
+            "typed-c2n",
+            // PLAN-939 S07 wide typed-resource peer legs.
+            "wide-self",
+            "wide-n2c",
+            "wide-c2n",
+        ] {
             let d = parse_bridge_deck(&format!("deck ace-ca-d1/1\nleg {leg}\n")).unwrap();
             assert_eq!(d.leg, leg);
         }

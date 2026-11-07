@@ -1307,6 +1307,7 @@ mod tests {
                 },
                 atomic: false,
                 noescape: false,
+                typed_peer: false,
             }),
         }];
         m.declarations = vec![ManualDecl {

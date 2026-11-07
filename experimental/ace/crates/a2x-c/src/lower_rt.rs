@@ -748,6 +748,16 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 ResKind::Handle { .. } => {
                     arguments.push(format!("(long long)({value})"));
                 }
+                // PLAN-939 S07: typed-peer-only wide lanes have no
+                // checked-source marshalling (the contract validator
+                // already rejects them for source sigs; this arm keeps
+                // the lowering total and fail-closed).
+                ResKind::BufViewI64 | ResKind::I64 => {
+                    return Err(A2xReject::new(
+                        "a2c.foreign-binding",
+                        "typed-peer-only resource lane has no checked-source marshalling",
+                    ));
+                }
                 ResKind::Callback { .. } => {
                     // PLAN-939 S06: the named target's STATIC trampoline —
                     // checked i64 domain (violation = the `callback.domain`

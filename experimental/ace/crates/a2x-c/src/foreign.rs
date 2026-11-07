@@ -130,6 +130,13 @@ pub fn resource_prototype(declaration: &SourceDecl) -> String {
                 ViewRole::Mut | ViewRole::Out => push(&mut out, &format!("{rec} *")),
             },
             ResKind::Handle { .. } => push(&mut out, "long long"),
+            // PLAN-939 S07 typed-peer lanes (never in a checked-source
+            // deck; the spellings are their real physical C forms).
+            ResKind::BufViewI64 => {
+                push(&mut out, "const long long *");
+                push(&mut out, "uint64_t");
+            }
+            ResKind::I64 => push(&mut out, "long long"),
             ResKind::Callback { .. } => push(&mut out, "long long (*cb)(long long, long long)"),
         }
     }

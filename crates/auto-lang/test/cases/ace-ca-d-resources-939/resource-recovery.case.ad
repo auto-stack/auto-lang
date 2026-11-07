@@ -1,0 +1,33 @@
+# PLAN-939 S08 resource-recovery SKELETON (T-03 batch 2): the file
+# registers the recovery case family and lands the flows the delivered
+# machinery already proves green — fresh publish → pure hit → worker
+# restart → FIRST semantics-preserving body edit on the RESTORED session
+# (the resolver-owned lane re-resolves and republishes; exit re-pins the
+# oracle) on a RECORD deck (the T-02A utf8 twin covered the text deck).
+#
+# T-09/T-10-owned expansions (named, NOT yet in this file — they need the
+# first-error→old-root-real-run→fix→re-restore flows, per-axis
+# body/provider/mode/layout/deleter/caps edits, precise reader
+# invalidation counters, and the static provider-generation/lease
+# probes; V-06/08/09/10/16, AC-04/05/06):
+#  - first-error → old root real run → fix → re-restore/edit (per axis)
+#  - provider-bias transitions across restart (generation/ledger statics)
+#  - runtime handle re-acquisition; stale address/authority rejection
+#  - P/R counter assertions per reader (P0/IO0 warm claims)
+
+# fresh → hit → restart → first good edit (commuted return, same 42) on
+# the restored session — both legs native and c.
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.recover-record-mut-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/record-mut.atomdata", syntax: "atom-data", path: "record-mut.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" }, { op: "query" }, { op: "restart" }, { op: "edit-source", from: "return now + x.value", to: "return x.value + now" }, { op: "query" } ] },
+ expect: { completion: "success", exit: 42, probe: [ { stages_include: ["source-import"] }, { }, { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.recover-record-mut-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/record-mut.atomdata", syntax: "atom-data", path: "record-mut.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" }, { op: "query" }, { op: "restart" }, { op: "edit-source", from: "return now + x.value", to: "return x.value + now" }, { op: "query" } ] },
+ expect: { completion: "success", exit: 42, probe: [ { stages_include: ["source-import"] }, { }, { stages_include: ["source-import"] } ] } } ] }
+```

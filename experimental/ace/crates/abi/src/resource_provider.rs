@@ -67,6 +67,7 @@ fn resource_fn(
             form,
             atomic,
             noescape,
+            typed_peer: false,
         }),
     }
 }

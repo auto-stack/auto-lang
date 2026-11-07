@@ -1,0 +1,5 @@
+# PLAN-939 S07 wide typed-resource deck: native (Cranelift-emitted) wide
+# caller against the independent hand-written C callee
+# (cside/bridge_wide_callee.c).
+deck ace-ca-d1/1
+leg wide-n2c

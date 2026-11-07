@@ -489,3 +489,491 @@ pub fn frozen_typed_checks() -> Vec<TypedCheck> {
 // status re-export guard: the 797 module keeps its own frozen codes; the
 // typed chain must not accidentally bind them.
 const _: () = assert!(status::ERR_DIV_ZERO == t937_status::ERR_DIV_ZERO);
+
+// ---------------------------------------------------------------------------
+// PLAN-939 S07: the WIDE typed-resource callee/caller (BufViewI64Sum /
+// RecMixSum / WideFold). Independent Cranelift implementations of the
+// frozen families — the peers are the Rust oracles (`typed_decl.rs`) and
+// the hand-written C (`cside/bridge_typed_callee.c` / `_caller.c`).
+// ---------------------------------------------------------------------------
+
+/// `(const i64 *p, u64 n) -> i64` (n counts ELEMENTS).
+fn wide_sum_signature() -> Signature {
+    Signature {
+        call_conv: WINCALL,
+        params: vec![AbiParam::new(types::I64), AbiParam::new(types::I64)],
+        returns: vec![AbiParam::new(types::I64)],
+    }
+}
+
+/// `(const RecMix *r) -> i64` — the frozen natural layout: flag@0 (u8),
+/// count@4 (i32), tag@8 (u32 scalar), big@16 (i64), size 24.
+fn crec_sum_signature() -> Signature {
+    Signature {
+        call_conv: WINCALL,
+        params: vec![AbiParam::new(types::I64)],
+        returns: vec![AbiParam::new(types::I64)],
+    }
+}
+
+/// `(cb, i64 ctx, const i64 *items, u64 n) -> i64` — the original wide
+/// fold shape (`p797_fold`).
+fn wide_fold_signature() -> Signature {
+    Signature {
+        call_conv: WINCALL,
+        params: vec![
+            AbiParam::new(types::I64),
+            AbiParam::new(types::I64),
+            AbiParam::new(types::I64),
+            AbiParam::new(types::I64),
+        ],
+        returns: vec![AbiParam::new(types::I64)],
+    }
+}
+
+/// The wide callback's own signature: `(i64 ctx, i64 item) -> i64`.
+fn wide_cb_signature() -> Signature {
+    Signature {
+        call_conv: WINCALL,
+        params: vec![AbiParam::new(types::I64), AbiParam::new(types::I64)],
+        returns: vec![AbiParam::new(types::I64)],
+    }
+}
+
+/// The frozen element-count sum loop over `p[0..n]` (i64 elements,
+/// wrapping machine adds; n = 0 leaves acc 0).
+fn emit_wide_sum_body(fb: &mut FunctionBuilder, p: Value, n: Value) -> Value {
+    let acc = fb.declare_var(types::I64);
+    let i = fb.declare_var(types::I64);
+    let zero = fb.ins().iconst(types::I64, 0);
+    fb.def_var(acc, zero);
+    fb.def_var(i, zero);
+
+    let head = fb.create_block();
+    let body = fb.create_block();
+    let done = fb.create_block();
+    fb.ins().jump(head, &[]);
+
+    // body first: its trailing jump completes head's predecessor set.
+    fb.switch_to_block(body);
+    let cur_i = fb.use_var(i);
+    let eight = fb.ins().iconst(types::I64, 8);
+    let off = fb.ins().imul(cur_i, eight);
+    let addr = fb.ins().iadd(p, off);
+    let x = fb.ins().load(types::I64, MemFlags::new(), addr, 0);
+    let cur = fb.use_var(acc);
+    let summed = fb.ins().iadd(cur, x);
+    fb.def_var(acc, summed);
+    let one = fb.ins().iconst(types::I64, 1);
+    let next = fb.ins().iadd(cur_i, one);
+    fb.def_var(i, next);
+    fb.ins().jump(head, &[]);
+
+    fb.switch_to_block(head);
+    fb.seal_block(head); // preds: entry + body — both jumps emitted
+    let iv = fb.use_var(i);
+    let more = fb.ins().icmp(IntCC::UnsignedLessThan, iv, n);
+    fb.ins().brif(more, body, &[], done, &[]);
+    fb.seal_block(body); // only pred: head's brif
+    fb.switch_to_block(done);
+    fb.seal_block(done);
+    fb.use_var(acc)
+}
+
+/// The frozen RecMix weighted fold `flag*1000 + count*3 + tag*5 + big`
+/// reading the record through the frozen natural-layout offsets.
+fn emit_crec_sum_body(fb: &mut FunctionBuilder, r: Value) -> Value {
+    let flags = MemFlags::new();
+    let flag = fb.ins().load(types::I8, flags, r, 0);
+    let flag = fb.ins().uextend(types::I64, flag);
+    let count = fb.ins().load(types::I32, flags, r, 4);
+    let count = fb.ins().sextend(types::I64, count);
+    let tag = fb.ins().load(types::I32, flags, r, 8);
+    let tag = fb.ins().uextend(types::I64, tag);
+    let big = fb.ins().load(types::I64, flags, r, 16);
+    let k1000 = fb.ins().iconst(types::I64, 1000);
+    let s1 = fb.ins().imul(flag, k1000);
+    let k3 = fb.ins().iconst(types::I64, 3);
+    let s2 = fb.ins().imul(count, k3);
+    let k5 = fb.ins().iconst(types::I64, 5);
+    let s3 = fb.ins().imul(tag, k5);
+    let t = fb.ins().iadd(s1, s2);
+    let t = fb.ins().iadd(t, s3);
+    fb.ins().iadd(t, big)
+}
+
+/// The original wide fold `Σ cb(ctx, items[i])` — the callback is invoked
+/// THROUGH THE FUNCTION POINTER the caller supplied (strictly per-call;
+/// the pointer is never stored).
+fn emit_wide_fold_body(fb: &mut FunctionBuilder, cb: Value, ctx: Value, items: Value, n: Value) -> Value {
+    let cb_sig = fb.import_signature(wide_cb_signature());
+    let acc = fb.declare_var(types::I64);
+    let i = fb.declare_var(types::I64);
+    let zero = fb.ins().iconst(types::I64, 0);
+    fb.def_var(acc, zero);
+    fb.def_var(i, zero);
+
+    let head = fb.create_block();
+    let body = fb.create_block();
+    let done = fb.create_block();
+    fb.ins().jump(head, &[]);
+
+    fb.switch_to_block(body);
+    let cur_i = fb.use_var(i);
+    let eight = fb.ins().iconst(types::I64, 8);
+    let off = fb.ins().imul(cur_i, eight);
+    let addr = fb.ins().iadd(items, off);
+    let x = fb.ins().load(types::I64, MemFlags::new(), addr, 0);
+    let call = fb.ins().call_indirect(cb_sig, cb, &[ctx, x]);
+    let r = fb.inst_results(call)[0];
+    let cur = fb.use_var(acc);
+    let summed = fb.ins().iadd(cur, r);
+    fb.def_var(acc, summed);
+    let one = fb.ins().iconst(types::I64, 1);
+    let next = fb.ins().iadd(cur_i, one);
+    fb.def_var(i, next);
+    fb.ins().jump(head, &[]);
+
+    fb.switch_to_block(head);
+    fb.seal_block(head);
+    let iv = fb.use_var(i);
+    let more = fb.ins().icmp(IntCC::UnsignedLessThan, iv, n);
+    fb.ins().brif(more, body, &[], done, &[]);
+    fb.seal_block(body);
+    fb.switch_to_block(done);
+    fb.seal_block(done);
+    fb.use_var(acc)
+}
+
+fn define_fn(
+    om: &mut ObjectModule,
+    symbol: &str,
+    sig: Signature,
+    body: impl FnOnce(&mut FunctionBuilder),
+) -> Result<(), String> {
+    let id = om
+        .declare_function(symbol, Linkage::Export, &sig)
+        .map_err(|e| format!("declare {symbol}: {e}"))?;
+    let mut ctx = om.make_context();
+    ctx.func.signature = sig;
+    {
+        let mut fb_ctx = FunctionBuilderContext::new();
+        let mut fb = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
+        let entry = fb.create_block();
+        fb.append_block_params_for_function_params(entry);
+        fb.switch_to_block(entry);
+        fb.seal_block(entry);
+        body(&mut fb);
+        fb.finalize();
+    }
+    om.define_function(id, &mut ctx)
+        .map_err(|e| format!("define {symbol}: {e}"))?;
+    Ok(())
+}
+
+/// Emit the WIDE typed callee object: the three S07 family bodies.
+pub fn emit_wide_callee() -> Result<Vec<u8>, String> {
+    let mut om = new_module("t939w_abi_callee")?;
+    let decls = crate::typed_decl::wide_decls();
+    let _ = decls.validate().map_err(|e| format!("wide decls: {e}"))?;
+
+    // t939_wide_sum(p, n)
+    define_fn(&mut om, "t939_wide_sum", wide_sum_signature(), |fb| {
+        let p = fb.block_params(fb.current_block().unwrap())[0];
+        let n = fb.block_params(fb.current_block().unwrap())[1];
+        let r = emit_wide_sum_body(fb, p, n);
+        fb.ins().return_(&[r]);
+    })?;
+
+    // t939_crec_sum(r)
+    define_fn(&mut om, "t939_crec_sum", crec_sum_signature(), |fb| {
+        let r_param = fb.block_params(fb.current_block().unwrap())[0];
+        let r = emit_crec_sum_body(fb, r_param);
+        fb.ins().return_(&[r]);
+    })?;
+
+    // t939_wide_fold(cb, ctx, items, n)
+    define_fn(&mut om, "t939_wide_fold", wide_fold_signature(), |fb| {
+        let blk = fb.current_block().unwrap();
+        let cb = fb.block_params(blk)[0];
+        let ctx = fb.block_params(blk)[1];
+        let items = fb.block_params(blk)[2];
+        let n = fb.block_params(blk)[3];
+        let r = emit_wide_fold_body(fb, cb, ctx, items, n);
+        fb.ins().return_(&[r]);
+    })?;
+
+    om.finish().emit().map_err(|e| format!("emit wide callee: {e}"))
+}
+
+/// One in-PE WIDE check (the PE exits with the FAILED-check count).
+#[derive(Clone, Debug)]
+pub enum WideCheck {
+    /// Call t939_wide_sum over the 8-element stack array with the given
+    /// ELEMENT count (≤ 8; prefix semantics).
+    Sum {
+        items: [i64; 8],
+        n: u64,
+        expected: i64,
+    },
+    /// Build the frozen RecMix record on the stack and call t939_crec_sum.
+    Rec {
+        flag: u8,
+        count: i32,
+        tag: u32,
+        big: i64,
+        expected: i64,
+    },
+    /// Call t939_wide_fold with THIS object's exported frozen callback
+    /// `t939w_cb` and the frozen wide ctx seed.
+    Fold {
+        items: [i64; 8],
+        n: u64,
+        expected: i64,
+    },
+}
+
+/// Emit the WIDE caller object: exports the frozen callback body
+/// `t939w_cb`, imports the three family functions, runs the checks,
+/// exits with the violation count via `t939w_entry`.
+pub fn emit_wide_caller(checks: &[WideCheck]) -> Result<Vec<u8>, String> {
+    let mut om = new_module("t939w_abi_caller")?;
+
+    let sum_callee = om
+        .declare_function("t939_wide_sum", Linkage::Import, &wide_sum_signature())
+        .map_err(|e| format!("declare import t939_wide_sum: {e}"))?;
+    let crec_callee = om
+        .declare_function("t939_crec_sum", Linkage::Import, &crec_sum_signature())
+        .map_err(|e| format!("declare import t939_crec_sum: {e}"))?;
+    let fold_callee = om
+        .declare_function("t939_wide_fold", Linkage::Import, &wide_fold_signature())
+        .map_err(|e| format!("declare import t939_wide_fold: {e}"))?;
+    let exit_sig = Signature {
+        call_conv: WINCALL,
+        params: vec![AbiParam::new(types::I32)],
+        returns: vec![],
+    };
+    let exit_id = om
+        .declare_function("ExitProcess", Linkage::Import, &exit_sig)
+        .map_err(|e| format!("declare ExitProcess: {e}"))?;
+
+    // The frozen wide callback body (xor, *3, +item) — exported so the
+    // CALLEE invokes back across the boundary through the fnptr lane.
+    define_fn(&mut om, "t939w_cb", wide_cb_signature(), |fb| {
+        let blk = fb.current_block().unwrap();
+        let ctx = fb.block_params(blk)[0];
+        let item = fb.block_params(blk)[1];
+        let x = fb.ins().bxor(ctx, item);
+        let k3 = fb.ins().iconst(types::I64, 3);
+        let m = fb.ins().imul(x, k3);
+        let r = fb.ins().iadd(m, item);
+        fb.ins().return_(&[r]);
+    })?;
+
+    let main_sig = Signature {
+        call_conv: WINCALL,
+        params: vec![],
+        returns: vec![AbiParam::new(types::I32)],
+    };
+    let main_id = om
+        .declare_function("t939w_main", Linkage::Export, &main_sig)
+        .map_err(|e| format!("declare t939w_main: {e}"))?;
+    let mut ctx = om.make_context();
+    ctx.func.signature = main_sig;
+    {
+        let mut fb_ctx = FunctionBuilderContext::new();
+        let mut fb = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
+        let sum_ref = om.declare_func_in_func(sum_callee, &mut fb.func);
+        let crec_ref = om.declare_func_in_func(crec_callee, &mut fb.func);
+        let fold_ref = om.declare_func_in_func(fold_callee, &mut fb.func);
+        let cb_func = om
+            .declare_function("t939w_cb", Linkage::Export, &wide_cb_signature())
+            .map_err(|e| format!("lookup t939w_cb (idempotent declare): {e}"))?;
+        let cb_ref = om.declare_func_in_func(cb_func, &mut fb.func);
+
+        let blk = fb.create_block();
+        fb.switch_to_block(blk);
+        fb.seal_block(blk);
+
+        let viol = fb.declare_var(types::I32);
+        let v0 = fb.ins().iconst(types::I32, 0);
+        fb.def_var(viol, v0);
+
+        let bump = |fb: &mut FunctionBuilder, bad: Value| {
+            let flag = fb.ins().uextend(types::I32, bad);
+            let cur = fb.use_var(viol);
+            let acc = fb.ins().iadd(cur, flag);
+            fb.def_var(viol, acc);
+        };
+        let check_eq = |fb: &mut FunctionBuilder, got: Value, expected: i64| {
+            let want = fb.ins().iconst(types::I64, expected);
+            fb.ins().icmp(IntCC::NotEqual, got, want)
+        };
+
+        for check in checks {
+            match check {
+                WideCheck::Sum { items, n, expected } => {
+                    let slot = fb.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        64,
+                        3,
+                    ));
+                    for (k, v) in items.iter().enumerate() {
+                        let c = fb.ins().iconst(types::I64, *v);
+                        fb.ins().stack_store(c, slot, (k * 8) as i32);
+                    }
+                    let ptr = fb.ins().stack_addr(types::I64, slot, 0);
+                    let nv = fb.ins().iconst(types::I64, *n as i64);
+                    let call = fb.ins().call(sum_ref, &[ptr, nv]);
+                    let got = fb.inst_results(call)[0];
+                    let bad = check_eq(&mut fb, got, *expected);
+                    bump(&mut fb, bad);
+                }
+                WideCheck::Rec {
+                    flag,
+                    count,
+                    tag,
+                    big,
+                    expected,
+                } => {
+                    let slot = fb.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        24,
+                        3,
+                    ));
+                    let f = fb.ins().iconst(types::I8, *flag as i64);
+                    fb.ins().stack_store(f, slot, 0);
+                    let c = fb.ins().iconst(types::I32, *count as i32 as i64);
+                    fb.ins().stack_store(c, slot, 4);
+                    let t = fb.ins().iconst(types::I32, *tag as i32 as i64);
+                    fb.ins().stack_store(t, slot, 8);
+                    let b = fb.ins().iconst(types::I64, *big);
+                    fb.ins().stack_store(b, slot, 16);
+                    let ptr = fb.ins().stack_addr(types::I64, slot, 0);
+                    let call = fb.ins().call(crec_ref, &[ptr]);
+                    let got = fb.inst_results(call)[0];
+                    let bad = check_eq(&mut fb, got, *expected);
+                    bump(&mut fb, bad);
+                }
+                WideCheck::Fold { items, n, expected } => {
+                    let slot = fb.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        64,
+                        3,
+                    ));
+                    for (k, v) in items.iter().enumerate() {
+                        let c = fb.ins().iconst(types::I64, *v);
+                        fb.ins().stack_store(c, slot, (k * 8) as i32);
+                    }
+                    let ptr = fb.ins().stack_addr(types::I64, slot, 0);
+                    let ctxv = fb.ins().iconst(types::I64, crate::typed_decl::t939w::FOLD_CTX);
+                    let nv = fb.ins().iconst(types::I64, *n as i64);
+                    // the callback lane: THIS object's exported frozen
+                    // callback travels as a function-pointer value.
+                    let cb_ptr = fb.ins().func_addr(types::I64, cb_ref);
+                    let call = fb.ins().call(fold_ref, &[cb_ptr, ctxv, ptr, nv]);
+                    let got = fb.inst_results(call)[0];
+                    let bad = check_eq(&mut fb, got, *expected);
+                    bump(&mut fb, bad);
+                }
+            }
+        }
+        let total = fb.use_var(viol);
+        fb.ins().return_(&[total]);
+        fb.finalize();
+    }
+    om.define_function(main_id, &mut ctx)
+        .map_err(|e| format!("define t939w_main: {e}"))?;
+
+    // t939w_entry() -> ExitProcess(t939w_main())
+    let entry_sig = Signature {
+        call_conv: WINCALL,
+        params: vec![],
+        returns: vec![],
+    };
+    let entry_id = om
+        .declare_function(WIDE_ENTRY_SYMBOL, Linkage::Export, &entry_sig)
+        .map_err(|e| format!("declare {}: {e}", WIDE_ENTRY_SYMBOL))?;
+    let mut ctx = om.make_context();
+    ctx.func.signature = entry_sig;
+    {
+        let mut fb_ctx = FunctionBuilderContext::new();
+        let mut fb = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
+        let main_ref = om.declare_func_in_func(main_id, &mut fb.func);
+        let exit_ref = om.declare_func_in_func(exit_id, &mut fb.func);
+        let blk = fb.create_block();
+        fb.switch_to_block(blk);
+        fb.seal_block(blk);
+        let call = fb.ins().call(main_ref, &[]);
+        let result = fb.inst_results(call)[0];
+        fb.ins().call(exit_ref, &[result]);
+        fb.ins().return_(&[]);
+        fb.finalize();
+    }
+    om.define_function(entry_id, &mut ctx)
+        .map_err(|e| format!("define {}: {e}", WIDE_ENTRY_SYMBOL))?;
+    om.finish().emit().map_err(|e| format!("emit wide caller: {e}"))
+}
+
+/// The wide chain's native-caller PE entry symbol.
+pub const WIDE_ENTRY_SYMBOL: &str = "t939w_entry";
+/// The wide chain's C-caller PE entry symbol (bridge_typed_caller.c).
+pub const WIDE_C_ENTRY_SYMBOL: &str = "t939w_c_entry";
+
+/// The frozen wide check set: element-count prefixes, empty view, record
+/// extremes (U+10FFFF tag, near-MIN big), the wide-ctx fold, empty fold.
+pub fn frozen_wide_checks() -> Vec<WideCheck> {
+    use crate::typed_decl::{oracle_crec_sum, t939w as w, wide_hand_computed as h};
+    let items = w::SUM_ITEMS;
+    vec![
+        WideCheck::Sum {
+            items,
+            n: 8,
+            expected: h::SUM_8,
+        },
+        WideCheck::Sum {
+            items,
+            n: 3,
+            expected: h::SUM_3,
+        },
+        WideCheck::Sum {
+            items,
+            n: 1,
+            expected: h::SUM_1,
+        },
+        WideCheck::Sum {
+            items,
+            n: 0,
+            expected: 0,
+        },
+        WideCheck::Rec {
+            flag: w::REC_FLAG,
+            count: w::REC_COUNT,
+            tag: w::REC_TAG,
+            big: w::REC_BIG,
+            expected: h::REC,
+        },
+        WideCheck::Rec {
+            flag: 0,
+            count: 0,
+            tag: 0x41, // 'A'
+            big: 0,
+            expected: oracle_crec_sum(0, 0, 0x41, 0),
+        },
+        WideCheck::Fold {
+            items,
+            n: 8,
+            expected: h::FOLD_8,
+        },
+        WideCheck::Fold {
+            items,
+            n: 3,
+            expected: h::FOLD_3,
+        },
+        WideCheck::Fold {
+            items,
+            n: 0,
+            expected: 0,
+        },
+    ]
+}

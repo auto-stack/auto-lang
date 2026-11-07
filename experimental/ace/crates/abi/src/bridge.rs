@@ -377,6 +377,20 @@ pub fn typed_callee_key(plan_digest: &str) -> QueryKey {
     )
 }
 
+/// Object key: the PLAN-939 S07 WIDE typed Cranelift callee (identity =
+/// plan + emitter; distinct kind from the scalar typed callee).
+pub fn wide_callee_key(plan_digest: &str) -> QueryKey {
+    QueryKey::new(
+        &LAYER_BRIDGE_V01,
+        vec![
+            ("kind".into(), "bridge-wide-callee".into()),
+            ("plan-digest".into(), plan_digest.into()),
+            ("toolchain".into(), crate::cache::emitter_identity()),
+            ("target".into(), layout::TARGET.into()),
+        ],
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Semantic identity through the REAL contract
 // ---------------------------------------------------------------------------
@@ -471,16 +485,116 @@ fn ret_kind_of(r: PhysRet) -> descriptor::RetKind {
 /// language the 797 consumers speak; descriptor semantics own the ctx
 /// lane and out slots, so the physical param list's ctx/out pointer
 /// lanes map to the FORM fields, not to params).
+///
+/// PLAN-939 S07: RESOURCE entries project their `ParamKind`s from the
+/// resource sig (the descriptor language carries the lane semantics —
+/// `buf:i64` spells the ELEMENT-count view, `rec:`/`callback:` the
+/// view/fnptr lanes) and their record table from the sig's field
+/// closures. Scalar entries keep the lane projection (byte-identical
+/// for the 937 chain).
 pub fn descriptor_from_plan(
     facts: &InterfaceFacts,
     plan: &PhysicalPlan,
 ) -> Result<descriptor::ModuleDescriptor, BridgeError> {
+    use ace_foreign_contract::resource::{FieldKind, ResKind, ResourceForm, ResOut, ViewRole};
+    use crate::layout::{FieldDefOwned, FieldTyOwned, RecordDefOwned, SemScalar};
+
     let semref_hash = interface_binding_hash(facts)?;
-    let symbols = plan
-        .functions
-        .iter()
-        .map(|pf| {
-            let form = match &pf.form {
+    let sem_scalar = |k: FieldKind| match k {
+        FieldKind::I32 => SemScalar::I32,
+        FieldKind::Bool => SemScalar::Bool,
+        FieldKind::Char => SemScalar::Char,
+        FieldKind::U32 => SemScalar::U32,
+        FieldKind::I64 => SemScalar::I64,
+        FieldKind::U64 => SemScalar::U64,
+        FieldKind::F64 => SemScalar::F64,
+    };
+    let res_param_kind = |p: &ResKind| match p {
+        ResKind::I32 => descriptor::ParamKind::I32,
+        ResKind::I64 => descriptor::ParamKind::I64,
+        ResKind::Bool => descriptor::ParamKind::Bool,
+        ResKind::ViewText => descriptor::ParamKind::BufViewUtf8,
+        ResKind::BufViewI64 => descriptor::ParamKind::BufViewI64,
+        ResKind::Rec { rec, role, .. } => descriptor::ParamKind::RecView {
+            rec: rec.clone(),
+            view: match role {
+                ViewRole::Const => descriptor::ViewRole::Const,
+                ViewRole::Mut => descriptor::ViewRole::Mut,
+                ViewRole::Out => descriptor::ViewRole::Out,
+            },
+        },
+        ResKind::Handle { provider } => descriptor::ParamKind::Handle {
+            provider: provider.clone(),
+        },
+        ResKind::Callback { ctx } => descriptor::ParamKind::CallbackFn {
+            ctx: if *ctx {
+                Some(Box::new(descriptor::ParamKind::I64))
+            } else {
+                None
+            },
+            item: Box::new(descriptor::ParamKind::I64),
+            ret: Box::new(descriptor::ParamKind::I64),
+        },
+    };
+    let res_out_param_kind = |r: &ResOut| match r {
+        ResOut::I32 => descriptor::ParamKind::I32,
+        ResOut::Bool => descriptor::ParamKind::Bool,
+        ResOut::I64 => descriptor::ParamKind::I64,
+        ResOut::U64 => descriptor::ParamKind::U64,
+        ResOut::Handle { provider } => descriptor::ParamKind::Handle {
+            provider: provider.clone(),
+        },
+    };
+    let res_ret_kind = |r: &ResOut| match r {
+        ResOut::I32 => descriptor::RetKind::I32,
+        ResOut::Bool => descriptor::RetKind::Bool,
+        ResOut::I64 => descriptor::RetKind::I64,
+        ResOut::U64 => descriptor::RetKind::U64,
+        ResOut::Handle { provider } => descriptor::RetKind::Handle {
+            provider: provider.clone(),
+        },
+    };
+
+    let mut records: Vec<RecordDefOwned> = Vec::new();
+    let mut semantic_refs: Vec<descriptor::SemanticRef> = Vec::new();
+    let mut symbols = Vec::with_capacity(plan.functions.len());
+    for pf in &plan.functions {
+        let fact = facts
+            .function(&pf.symbol)
+            .ok_or_else(|| BridgeError(format!("plan symbol {} missing from facts", pf.symbol)))?;
+        let form = if let Some(res) = &fact.resource {
+            // record table from the sig's closures (first occurrence
+            // wins; the contract validator already rejects divergent
+            // closures under one name)
+            for p in &res.params {
+                if let ResKind::Rec { rec, fields, .. } = p {
+                    if !records.iter().any(|r| &r.name == rec) {
+                        records.push(RecordDefOwned {
+                            name: rec.clone(),
+                            fields: fields
+                                .iter()
+                                .map(|(n, k)| FieldDefOwned {
+                                    name: n.clone(),
+                                    ty: FieldTyOwned::Scalar(sem_scalar(*k)),
+                                })
+                                .collect(),
+                        });
+                    }
+                }
+            }
+            match &res.form {
+                ResourceForm::Pure { ret } => descriptor::SymbolForm::Pure {
+                    params: res.params.iter().map(res_param_kind).collect(),
+                    ret: res_ret_kind(ret),
+                },
+                ResourceForm::Fallible { ctx, out } => descriptor::SymbolForm::Fallible {
+                    ctx: *ctx,
+                    params: res.params.iter().map(res_param_kind).collect(),
+                    outs: out.iter().map(res_out_param_kind).collect(),
+                },
+            }
+        } else {
+            match &pf.form {
                 PhysForm::Pure { params, ret } => descriptor::SymbolForm::Pure {
                     params: params.iter().map(|p| param_kind_of(p.lane)).collect(),
                     ret: ret_kind_of(*ret),
@@ -499,13 +613,23 @@ pub fn descriptor_from_plan(
                         .collect(),
                     outs: outs.iter().map(|l| param_kind_of(*l)).collect(),
                 },
-            };
-            descriptor::SymbolEntry {
-                name: pf.symbol.clone(),
-                form,
             }
-        })
-        .collect();
+        };
+        symbols.push(descriptor::SymbolEntry {
+            name: pf.symbol.clone(),
+            form,
+        });
+    }
+    // The frozen S07 record closure carries its semantic ref (the 797
+    // contract mints it; a same-width re-spelling dies at admission).
+    if records.iter().any(|r| r.name == "RecMix") {
+        if let Ok(r) = crate::semref::rec_mix_ref() {
+            semantic_refs.push(descriptor::SemanticRef {
+                logical: r.logical.as_str().to_string(),
+                content_version: r.content.as_str().to_string(),
+            });
+        }
+    }
     Ok(descriptor::ModuleDescriptor {
         format: descriptor::DESCRIPTOR_FORMAT.into(),
         abi_domain: descriptor::ABI_DOMAIN.into(),
@@ -515,8 +639,8 @@ pub fn descriptor_from_plan(
         packing: plan.packing.clone(),
         interface_revision: 1,
         semref_hash,
-        semantic_refs: vec![],
-        records: vec![],
+        semantic_refs,
+        records,
         symbols,
         runtime: descriptor::RuntimeReqs { services: vec![] },
     })
@@ -546,6 +670,65 @@ pub fn typed_expectation(semref_hash: String) -> ConsumerExpectation {
         offered_services: vec![],
         semref_hash,
         semantic_refs: vec![],
+    }
+}
+
+/// The hand-frozen consumer expectation of the PLAN-939 S07 WIDE typed
+/// interface — spelled from the independent cside header
+/// (`cside/bridge_typed.h`), never from the produced descriptor. The
+/// RecMix record binding carries BOTH the consumer's own field closure
+/// and the semantic ref (a same-width re-spelling dies at admission).
+pub fn wide_expectation(semref_hash: String) -> ConsumerExpectation {
+    use crate::layout::{FieldDefOwned, FieldTyOwned, RecordDefOwned, SemScalar};
+    let rec_mix = RecordDefOwned {
+        name: "RecMix".into(),
+        fields: vec![
+            FieldDefOwned {
+                name: "flag".into(),
+                ty: FieldTyOwned::Scalar(SemScalar::Bool),
+            },
+            FieldDefOwned {
+                name: "count".into(),
+                ty: FieldTyOwned::Scalar(SemScalar::I32),
+            },
+            FieldDefOwned {
+                name: "tag".into(),
+                ty: FieldTyOwned::Scalar(SemScalar::Char),
+            },
+            FieldDefOwned {
+                name: "big".into(),
+                ty: FieldTyOwned::Scalar(SemScalar::I64),
+            },
+        ],
+    };
+    let rec_ref = crate::semref::rec_mix_ref().expect("record ref mints");
+    ConsumerExpectation {
+        abi_domain: descriptor::ABI_DOMAIN.into(),
+        abi_version: descriptor::ABI_VERSION.into(),
+        target: layout::TARGET.into(),
+        profile: layout::ABI_PROFILE.into(),
+        packing: descriptor::PACKING.into(),
+        required_symbols: vec![
+            (
+                "t939_wide_sum".into(),
+                "pure(buf:i64)->i64".into(),
+            ),
+            (
+                "t939_crec_sum".into(),
+                "pure(rec:RecMix:const)->i64".into(),
+            ),
+            (
+                "t939_wide_fold".into(),
+                "pure(callback(ctx:i64,i64)->i64,i64,buf:i64)->i64".into(),
+            ),
+        ],
+        required_records: vec![rec_mix],
+        offered_services: vec![],
+        semref_hash,
+        semantic_refs: vec![descriptor::SemanticRef {
+            logical: rec_ref.logical.as_str().to_string(),
+            content_version: rec_ref.content.as_str().to_string(),
+        }],
     }
 }
 
@@ -883,6 +1066,211 @@ pub fn run_typed_caller_with_checks(
     )
     .map_err(|e| BridgeError(format!("{e:?}")))?;
     let _ = entry_callee;
+    let run = run_pe(&exe).map_err(|e| BridgeError(format!("{e:?}")))?;
+    Ok(run.code)
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-939 S07: the WIDE typed peer chain (element-count view / wide
+// record closure / original wide callback across native/C peers).
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum WideLeg {
+    /// Emitted wide caller + emitted wide callee (baseline self-check).
+    SelfCheck,
+    /// Emitted wide caller + hand-written C callee (native -> C).
+    NativeToC,
+    /// Hand-written C caller + emitted wide callee (C -> native; the C
+    /// caller's callback travels the fnptr lane into native).
+    CToNative,
+}
+
+/// Run the wide chain: facts → plan → descriptor → PRE-CALL admission →
+/// produce objects → link+run every leg. Every PE exits with its FAILED
+/// check count (0 expected).
+pub fn run_wide_chain(
+    store: &ManagedStore,
+    counters: &BridgeCounters,
+    scratch_root: &Path,
+    legs: &[WideLeg],
+    total_budget: Duration,
+) -> Result<TypedChainOutcome, BridgeError> {
+    use crate::typed_emit::{emit_wide_caller, emit_wide_callee, frozen_wide_checks};
+
+    let started = Instant::now();
+    let budget_left = || {
+        total_budget
+            .checked_sub(started.elapsed())
+            .ok_or_else(|| BridgeError("total budget exhausted".into()))
+    };
+
+    // 1) facts + plan (deterministic functions of the frozen wide decls).
+    let decls: TypedDecls = typed_decl::wide_decls();
+    let facts = decls
+        .validate()
+        .map_err(|e| BridgeError(format!("wide decls: {e}")))?;
+    let plan =
+        PhysicalPlan::project(&facts).map_err(|e| BridgeError(format!("plan projection: {e}")))?;
+    let facts_digest = facts.digest().map_err(BridgeError)?;
+    let plan_digest = plan.digest().map_err(BridgeError)?;
+
+    // 2) persist the facts/plan pages (restore identity root).
+    let source_identity = match &facts.source {
+        FactsSource::Typed { id } => format!("typed/{id}"),
+        FactsSource::CheckedSource { source_sha256, .. } => source_sha256.clone(),
+    };
+    let (facts_page, _) = produce_counted(
+        store,
+        counters,
+        &facts_key(&facts_digest, &source_identity),
+        ChunkKind::LayoutData,
+        || facts_codec::encode(&facts).map_err(|e| e.to_string()),
+    )?;
+    facts_codec::decode(&facts_page).map_err(|e| BridgeError(e.to_string()))?; // self-check
+    let (_, _) = produce_counted(
+        store,
+        counters,
+        &plan_key(&plan_digest),
+        ChunkKind::LayoutData,
+        || plan_codec::encode(&plan).map_err(|e| e.to_string()),
+    )?;
+
+    // 3) descriptor projection + PRE-CALL admission against the
+    //    hand-frozen wide expectation (independent header spelling +
+    //    the consumer's own RecMix closure and semantic ref).
+    let semref = interface_binding_hash(&facts)?;
+    let descriptor = descriptor_from_plan(&facts, &plan)?;
+    let fingerprint = descriptor
+        .fingerprint()
+        .map_err(|e| BridgeError(e.to_string()))?;
+    let expect = wide_expectation(semref);
+    if let Err(rej) = admit_descriptor(&descriptor, &expect) {
+        return Err(BridgeError(format!(
+            "pre-call admission rejected: {:?}",
+            AdmissionRejection::of(&rej)
+        )));
+    }
+
+    // 4) the wide callee object (Cranelift) — cached under the plan key.
+    let callee_key = wide_callee_key(&plan_digest);
+    let (callee_obj, _) = produce_counted(store, counters, &callee_key, ChunkKind::Object, || {
+        emit_wide_callee().map_err(|e| e)
+    })?;
+
+    let mut out_legs = Vec::new();
+    let scratch = bridge_scratch(scratch_root, "wide");
+    let _ = std::fs::remove_dir_all(&scratch);
+    for leg in legs {
+        budget_left()?;
+        match leg {
+            WideLeg::SelfCheck => {
+                let dir = scratch.join("self");
+                write_all(&dir, &[])?;
+                std::fs::write(
+                    dir.join("caller.obj"),
+                    emit_wide_caller(&frozen_wide_checks())?,
+                )
+                .map_err(|e| BridgeError(e.to_string()))?;
+                std::fs::write(dir.join("callee.obj"), &callee_obj)
+                    .map_err(|e| BridgeError(e.to_string()))?;
+                let exe = link_pe(
+                    &dir,
+                    &[dir.join("caller.obj"), dir.join("callee.obj")],
+                    crate::typed_emit::WIDE_ENTRY_SYMBOL,
+                )
+                .map_err(|e| BridgeError(format!("{e:?}")))?;
+                let run = run_pe(&exe).map_err(|e| BridgeError(format!("{e:?}")))?;
+                out_legs.push(("wide-self-check".into(), run.code));
+            }
+            WideLeg::NativeToC => {
+                let dir = scratch.join("n2c");
+                write_all(&dir, &[])?;
+                let c_obj = dir.join("bridge_wide_callee.obj");
+                produce_c_object_cached(
+                    store,
+                    counters,
+                    &cside_dir().join("bridge_wide_callee.c"),
+                    &c_obj,
+                )?;
+                std::fs::write(
+                    dir.join("caller.obj"),
+                    emit_wide_caller(&frozen_wide_checks())?,
+                )
+                .map_err(|e| BridgeError(e.to_string()))?;
+                let exe = link_pe(
+                    &dir,
+                    &[dir.join("caller.obj"), c_obj],
+                    crate::typed_emit::WIDE_ENTRY_SYMBOL,
+                )
+                .map_err(|e| BridgeError(format!("{e:?}")))?;
+                let run = run_pe(&exe).map_err(|e| BridgeError(format!("{e:?}")))?;
+                out_legs.push(("wide-native-to-c".into(), run.code));
+            }
+            WideLeg::CToNative => {
+                let dir = scratch.join("c2n");
+                write_all(&dir, &[])?;
+                let c_obj = dir.join("bridge_wide_caller.obj");
+                produce_c_object_cached(
+                    store,
+                    counters,
+                    &cside_dir().join("bridge_wide_caller.c"),
+                    &c_obj,
+                )?;
+                std::fs::write(dir.join("callee.obj"), &callee_obj)
+                    .map_err(|e| BridgeError(e.to_string()))?;
+                let exe = link_pe(
+                    &dir,
+                    &[c_obj, dir.join("callee.obj")],
+                    crate::typed_emit::WIDE_C_ENTRY_SYMBOL,
+                )
+                .map_err(|e| BridgeError(format!("{e:?}")))?;
+                let run = run_pe(&exe).map_err(|e| BridgeError(format!("{e:?}")))?;
+                out_legs.push(("wide-c-to-native".into(), run.code));
+            }
+        }
+    }
+    Ok(TypedChainOutcome {
+        facts_digest,
+        plan_digest,
+        descriptor_fingerprint: fingerprint,
+        legs: out_legs,
+    })
+}
+
+/// Run the wide chain with a caller check-set mutation (the negative
+/// control hook: an intentionally wrong expected value must FAIL the PE).
+pub fn run_wide_caller_with_checks(
+    store: &ManagedStore,
+    counters: &BridgeCounters,
+    scratch_root: &Path,
+    checks: &[crate::typed_emit::WideCheck],
+) -> Result<i32, BridgeError> {
+    use crate::typed_emit::{emit_wide_caller, WIDE_ENTRY_SYMBOL};
+    let dir = bridge_scratch(scratch_root, "wide-mut");
+    let _ = std::fs::remove_dir_all(&dir);
+    write_all(&dir, &[])?;
+    std::fs::write(dir.join("caller.obj"), emit_wide_caller(checks)?)
+        .map_err(|e| BridgeError(e.to_string()))?;
+    // callee from the store (same identity as the chain)
+    let decls: TypedDecls = typed_decl::wide_decls();
+    let facts = decls.validate().map_err(|e| BridgeError(e))?;
+    let plan = PhysicalPlan::project(&facts).map_err(|e| BridgeError(e))?;
+    let plan_digest = plan.digest().map_err(BridgeError)?;
+    let (callee_obj, _) = produce_counted(
+        store,
+        counters,
+        &wide_callee_key(&plan_digest),
+        ChunkKind::Object,
+        crate::typed_emit::emit_wide_callee,
+    )?;
+    std::fs::write(dir.join("callee.obj"), &callee_obj).map_err(|e| BridgeError(e.to_string()))?;
+    let exe = link_pe(
+        &dir,
+        &[dir.join("caller.obj"), dir.join("callee.obj")],
+        WIDE_ENTRY_SYMBOL,
+    )
+    .map_err(|e| BridgeError(format!("{e:?}")))?;
     let run = run_pe(&exe).map_err(|e| BridgeError(format!("{e:?}")))?;
     Ok(run.code)
 }

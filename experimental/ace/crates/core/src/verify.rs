@@ -1927,6 +1927,10 @@ fn check_foreign_declarations(
                             ResKind::ViewText => is_str(p),
                             ResKind::Rec { rec, .. } => is_rec(p, rec),
                             ResKind::Callback { .. } => is_cb(p),
+                            // PLAN-939 S07: typed-peer-only wide lanes
+                            // can never be spelled by a checked source
+                            // declaration — the source shape check fails.
+                            ResKind::BufViewI64 | ResKind::I64 => false,
                         })
                 } else {
                     sig.params.len() == declaration.params().len()

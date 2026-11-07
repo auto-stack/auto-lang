@@ -31,6 +31,7 @@ fn checksum_decls() -> TypedDecls {
             error_model: None,
             ctx: None,
             outs: vec![],
+            resource: None,
         }],
     }
 }

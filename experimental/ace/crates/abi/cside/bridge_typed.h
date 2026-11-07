@@ -67,4 +67,66 @@ long long t937_mix(int p0, unsigned int p1, long long p2,
                    unsigned int p6, long long p7);
 int t937_div(void *ctx, long long n, long long d, long long *out);
 
+/* ------------------------------------------------------------------
+ * PLAN-939 S07 — the WIDE typed-resource families. Frozen shapes:
+ *  - BufViewI64Sum  (const long long *p, u64 n) -> i64, n counts
+ *    ELEMENTS (never bytes);
+ *  - RecMixSum      (const RecMixT *r) -> i64 over the frozen wide
+ *    field closure flag/count/tag/big under natural layout;
+ *  - WideFold       the ORIGINAL wide synchronous callback
+ *    long long (*)(long long ctx, long long item) invoked per element
+ *    (never stored — strictly per-call).
+ * This header's RecMixT is an INDEPENDENT hand-maintained mirror of
+ * the frozen closure; the negative-array typedefs pin size/align at
+ * every compile (layout drift fails -W4 -WX loudly).
+ * ------------------------------------------------------------------ */
+
+typedef struct RecMixT {
+    unsigned char flag; /* 0/1            @0  */
+    int           count; /* i32            @4  */
+    unsigned int  tag; /* char scalar value @8 */
+    long long     big; /* i64            @16 */
+} RecMixT;
+
+typedef char t939w_recmix_size[(sizeof(RecMixT) == 24) ? 1 : -1];
+typedef char t939w_recmix_align[(__alignof(RecMixT) == 8) ? 1 : -1];
+typedef char t939w_lanes[(sizeof(long long) == 8 && sizeof(int) == 4) ? 1 : -1];
+
+/* The frozen i64 element array (asymmetric extremes) and prefixes. */
+#define T939W_I0 0x7FFFFFFFFFFFF001LL
+#define T939W_I1 (-1234567890123LL)
+#define T939W_I2 0LL
+#define T939W_I3 (-1LL)
+#define T939W_I4 (-9223372036854775801LL) /* i64::MIN + 7 */
+#define T939W_I5 42LL
+#define T939W_I6 (-9223372036854775807LL - 1) /* i64::MIN */
+#define T939W_I7 9223372036854775807LL         /* i64::MAX */
+
+/* The wide fold's non-zero WIDE ctx seed (beyond the i32 domain). */
+#define T939W_FOLD_CTX 0x000BAD1DEA600DLL
+
+/* The frozen RecMix field values (flag 0/1, tag U+10FFFF, big near MIN). */
+#define T939W_REC_FLAG 1u
+#define T939W_REC_COUNT (-123456)
+#define T939W_REC_TAG 0x0010FFFFu
+#define T939W_REC_BIG (-9223372036854775801LL)
+
+/* Hand-computed expectations (independent Python folds of the frozen
+ * inputs — NOT derived from any generator; guard the C bodies). */
+#define T939W_SUM_8 (-1234567894171LL)
+#define T939W_SUM_3 9223370802286881590LL
+#define T939W_SUM_1 9223372036854771713LL
+#define T939W_REC (-9223372036849574614LL)
+#define T939W_FOLD_8 1995608927678LL
+#define T939W_FOLD_3 (-36518868513495LL)
+#define T939W_CB_AT_0 38514477441063LL /* cb(ctx, 0) */
+
+/* The frozen wide callback body: (ctx ^ item) * 3 + item on the
+ * two's-complement bit patterns (machine wrapping). */
+long long t939_wide_sum(const long long *p, unsigned long long n);
+long long t939_crec_sum(const RecMixT *r);
+long long t939_wide_fold(long long (*cb)(long long ctx, long long item),
+                         long long ctx, const long long *items,
+                         unsigned long long n);
+
 #endif /* BRIDGE_TYPED_H */

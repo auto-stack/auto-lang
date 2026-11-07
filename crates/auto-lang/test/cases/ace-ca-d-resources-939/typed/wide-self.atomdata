@@ -1,0 +1,5 @@
+# PLAN-939 S07 wide typed-resource deck: the frozen wide declarations
+# are code (abi typed_decl.rs wide_decls); the deck only names the leg.
+# Self-check leg: emitted wide caller + emitted wide callee.
+deck ace-ca-d1/1
+leg wide-self

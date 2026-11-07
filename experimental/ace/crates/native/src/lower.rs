@@ -2788,6 +2788,14 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     let v = self.fb.use_var(self.v_scalar(slot)?);
                     values.push(self.fb.ins().sextend(types::I64, v));
                 }
+                // PLAN-939 S07: typed-peer-only wide lanes have no
+                // checked-source marshalling (the contract validator
+                // rejects them for source sigs; fail closed here).
+                ResKind::BufViewI64 | ResKind::I64 => {
+                    return Err(
+                        "typed-peer-only resource lane has no checked-source marshalling".into(),
+                    );
+                }
                 ResKind::Callback { .. } => {
                     // PLAN-939 S06: the NAMED target rides the instruction;
                     // the physical argument is the static trampoline's

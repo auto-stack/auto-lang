@@ -14,3 +14,5 @@ mod resource;
 mod scalar_bridge;
 #[path = "cases/source_foreign.rs"]
 mod source_foreign;
+#[path = "cases/wide_bridge.rs"]
+mod wide_bridge;

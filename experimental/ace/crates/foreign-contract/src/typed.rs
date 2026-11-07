@@ -12,6 +12,7 @@
 
 use crate::facts::{ErrorModel, FactsSource, FnFact, FnForm, InterfaceFacts, FACTS_FORMAT};
 use crate::lane::LaneKind;
+use crate::resource::{FieldKind, ResKind, ResourceForm, ResourceSig, ResOut, ViewRole};
 use serde::{Deserialize, Serialize};
 
 /// Recorded totality evidence for a PURE typed entry (plan §2: public
@@ -52,6 +53,23 @@ pub enum TypedBodyFamily {
     /// Fallible typed div over two i64 lanes with one i64 out: d==0 is
     /// the controlled failure (status -1, out untouched).
     FallibleDivV1,
+    /// PLAN-939 S07: wrapping sum over a borrowed i64-ELEMENT view
+    /// `{const int64_t *p, u64 n}` — n counts ELEMENTS (the element-count
+    /// len-unit proof; a byte-count misread observably fails). Pure and
+    /// total by construction (machine wrapping add; empty view = 0).
+    BufViewI64Sum,
+    /// PLAN-939 S07: weighted fold over a CONST view of the frozen
+    /// RecMix wide-field closure `flag*1000 + count*3 + tag*5 + big`
+    /// (natural layout, trailing padding: flag@0 count@4 tag@8 big@16).
+    /// flag/tag range validation is a PRE-CALL fact (the caller's lane
+    /// values), so the body itself is pure and total.
+    RecMixSum,
+    /// PLAN-939 S07: the ORIGINAL wide synchronous callback lane —
+    /// `long long (*)(long long ctx, long long item)` invoked per item of
+    /// an i64-element view with a wide i64 ctx seed
+    /// (`(cb, ctx, items, n)`; the 797 p797_fold shape). Pure by
+    /// construction; the callback is never stored (noescape).
+    WideFold,
 }
 
 /// One typed declaration.
@@ -69,6 +87,13 @@ pub struct TypedDecl {
     /// The fallible ctx lane: None = context-free; Some(nullable).
     pub ctx: Option<bool>,
     pub outs: Vec<LaneKind>,
+    /// PLAN-939 S07 typed-RESOURCE binding: present iff the body is one
+    /// of the S07 families (BufViewI64Sum / RecMixSum / WideFold). The
+    /// sig must be a `typed_peer` sig whose shape the family binds
+    /// EXACTLY (see validate). Absent on every 937 scalar decl — the
+    /// wire and content_version of the frozen scalar set are unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource: Option<ResourceSig>,
 }
 
 /// A validated typed-declaration set.
@@ -114,6 +139,108 @@ impl TypedDecls {
             }
             if !seen.insert(d.symbol.clone()) {
                 return Err(format!("duplicate symbol '{}'", d.symbol));
+            }
+            if d.resource.is_some() {
+                // PLAN-939 S07 typed-resource family: the sig binds the
+                // lanes; the scalar spine must stay empty and the family
+                // shape is enforced exactly (a wrong shape is a named
+                // rejection, mirroring the FallibleDivV1 discipline).
+                if !d.params.is_empty() || !d.outs.is_empty() || d.ctx.is_some() {
+                    return Err(format!(
+                        "symbol '{}': typed-resource families carry their lanes in the sig \
+                         (scalar spine stays empty)",
+                        d.symbol
+                    ));
+                }
+                let sig = d.resource.as_ref().expect("checked above");
+                sig.validate()
+                    .map_err(|e| format!("symbol '{}': {}", d.symbol, e))?;
+                if !sig.typed_peer {
+                    return Err(format!(
+                        "symbol '{}': typed-resource family sigs must spell the typed_peer \
+                         domain",
+                        d.symbol
+                    ));
+                }
+                let expect_params: Vec<ResKind> = match d.body {
+                    TypedBodyFamily::BufViewI64Sum => vec![ResKind::BufViewI64],
+                    TypedBodyFamily::RecMixSum => vec![rec_mix_const()],
+                    TypedBodyFamily::WideFold => vec![
+                        ResKind::Callback { ctx: true },
+                        ResKind::I64,
+                        ResKind::BufViewI64,
+                    ],
+                    other => {
+                        return Err(format!(
+                            "symbol '{}': body family {other:?} does not take a resource sig",
+                            d.symbol
+                        ));
+                    }
+                };
+                if sig.params != expect_params {
+                    return Err(format!(
+                        "symbol '{}': family {:?} binds exactly {:?}, got {:?}",
+                        d.symbol,
+                        d.body,
+                        expect_params
+                            .iter()
+                            .map(|k| k.spell())
+                            .collect::<Vec<_>>(),
+                        sig.params
+                            .iter()
+                            .map(|k| k.spell())
+                            .collect::<Vec<_>>()
+                    ));
+                }
+                let ret_out = match &sig.form {
+                    ResourceForm::Pure { ret } => ret.clone(),
+                    ResourceForm::Fallible { .. } => {
+                        return Err(format!(
+                            "symbol '{}': S07 families are pure (no status/out slots)",
+                            d.symbol
+                        ));
+                    }
+                };
+                if ret_out != ResOut::I64 || d.ret != LaneKind::I64 {
+                    return Err(format!(
+                        "symbol '{}': S07 families return i64",
+                        d.symbol
+                    ));
+                }
+                if let Some(ev) = &d.totality {
+                    if !ev.valid() {
+                        return Err(format!(
+                            "symbol '{}': totality evidence basis must be \
+                             frozen-family-total with a note",
+                            d.symbol
+                        ));
+                    }
+                } else {
+                    return Err(format!(
+                        "symbol '{}': pure family requires recorded totality evidence",
+                        d.symbol
+                    ));
+                }
+                if d.error_model.is_some() {
+                    return Err(format!(
+                        "symbol '{}': total family cannot carry an error model",
+                        d.symbol
+                    ));
+                }
+                // Resource entries: the FnFact scalar form is the ignored
+                // spine (the sig owns admission/projection) — same
+                // convention as the checked-source resource entries.
+                functions.push(FnFact {
+                    symbol: d.symbol.clone(),
+                    form: FnForm::Pure {
+                        params: vec![],
+                        ret: d.ret,
+                    },
+                    error_model: None,
+                    semantic_ref: None,
+                    resource: Some(sig.clone()),
+                });
+                continue;
             }
             if let Some(bad) = d.params.iter().chain(d.outs.iter()).find(|k| {
                 !matches!(
@@ -207,6 +334,15 @@ impl TypedDecls {
                         false,
                     )
                 }
+                TypedBodyFamily::BufViewI64Sum
+                | TypedBodyFamily::RecMixSum
+                | TypedBodyFamily::WideFold => {
+                    return Err(format!(
+                        "symbol '{}': S07 resource families REQUIRE the resource sig \
+                         (resource: Some(...)); the scalar spine cannot spell them",
+                        d.symbol
+                    ));
+                }
             };
             functions.push(FnFact {
                 symbol: d.symbol.clone(),
@@ -233,10 +369,36 @@ impl TypedDecls {
             },
             functions,
             effects: Vec::new(),
-            capabilities: Vec::new(),
+            capabilities: if self.decls.iter().any(|d| d.resource.is_some()) {
+                vec![crate::resource::RESOURCE_CAP.into()]
+            } else {
+                Vec::new()
+            },
         };
         facts.validate()?;
         Ok(facts)
+    }
+}
+
+/// The frozen RecMix public closure (PLAN-939 S07 `RecMixSum`): wide
+/// fields under natural alignment — bool flag@0, i32 count@4, char
+/// (u32 scalar value) tag@8, i64 big@16, size 24 align 8. The same
+/// nominal closure the 797 layout model freezes; spelled HERE so this
+/// crate stays backend-free.
+pub fn rec_mix_fields() -> Vec<(String, FieldKind)> {
+    vec![
+        ("flag".into(), FieldKind::Bool),
+        ("count".into(), FieldKind::I32),
+        ("tag".into(), FieldKind::Char),
+        ("big".into(), FieldKind::I64),
+    ]
+}
+
+fn rec_mix_const() -> ResKind {
+    ResKind::Rec {
+        rec: "RecMix".into(),
+        fields: rec_mix_fields(),
+        role: ViewRole::Const,
     }
 }
 
@@ -268,6 +430,7 @@ mod tests {
                 error_model: None,
                 ctx: None,
                 outs: vec![],
+                resource: None,
             }],
         }
     }
@@ -304,6 +467,7 @@ mod tests {
             }),
             ctx: Some(true),
             outs: vec![LaneKind::I64],
+            resource: None,
         };
         assert!(d
             .validate()
@@ -324,5 +488,137 @@ mod tests {
             a.validate().unwrap().content_version,
             b.validate().unwrap().content_version
         );
+    }
+
+    /// The S07 wide decl set (same shapes the abi crate freezes).
+    pub fn wide_decls_for_test() -> TypedDecls {
+        use crate::resource::RESOURCE_SIG_FORMAT;
+
+        let sig = |params: Vec<ResKind>, noescape: bool| ResourceSig {
+            format: RESOURCE_SIG_FORMAT.into(),
+            params,
+            form: ResourceForm::Pure {
+                ret: ResOut::I64,
+            },
+            atomic: false,
+            noescape,
+            typed_peer: true,
+        };
+        let decl = |symbol: &str, body: TypedBodyFamily, sig: ResourceSig| TypedDecl {
+            symbol: symbol.into(),
+            params: vec![],
+            ret: LaneKind::I64,
+            body,
+            totality: Some(TotalityEvidence::frozen_family(
+                "wrapping machine arithmetic only; no checked ops, no failure path",
+            )),
+            error_model: None,
+            ctx: None,
+            outs: vec![],
+            resource: Some(sig),
+        };
+        TypedDecls {
+            format: TYPED_DECLS_FORMAT.into(),
+            id: "t939w".into(),
+            decls: vec![
+                decl(
+                    "t939_wide_sum",
+                    TypedBodyFamily::BufViewI64Sum,
+                    sig(vec![ResKind::BufViewI64], false),
+                ),
+                decl(
+                    "t939_crec_sum",
+                    TypedBodyFamily::RecMixSum,
+                    sig(vec![rec_mix_const()], false),
+                ),
+                decl(
+                    "t939_wide_fold",
+                    TypedBodyFamily::WideFold,
+                    sig(
+                        vec![
+                            ResKind::Callback { ctx: true },
+                            ResKind::I64,
+                            ResKind::BufViewI64,
+                        ],
+                        true,
+                    ),
+                ),
+            ],
+        }
+    }
+
+    #[test]
+    fn wide_decls_project_to_resource_facts_and_plan() {
+        let facts = wide_decls_for_test().validate().unwrap();
+        assert!(facts
+            .capabilities
+            .iter()
+            .any(|c| c == crate::resource::RESOURCE_CAP));
+        for sym in ["t939_wide_sum", "t939_crec_sum", "t939_wide_fold"] {
+            assert!(facts.function(sym).unwrap().is_resource());
+        }
+        let plan = crate::PhysicalPlan::project(&facts).unwrap();
+        // element-count view = ptr + n pair; fold = fn + wide ctx + ptr + n.
+        let fold = plan
+            .functions
+            .iter()
+            .find(|f| f.symbol == "t939_wide_fold")
+            .unwrap();
+        let params = match &fold.form {
+            crate::plan::PhysForm::Pure { params, .. } => params.clone(),
+            other => panic!("fold must be pure: {other:?}"),
+        };
+        let names: Vec<&str> = params.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, vec!["p0_fn", "p1_w", "p2_ptr", "p2_n"]);
+    }
+
+    #[test]
+    fn wide_family_wrong_shape_is_named_rejection() {
+        // BufViewI64Sum must bind EXACTLY one element view.
+        let mut d = wide_decls_for_test();
+        d.decls[0].resource.as_mut().unwrap().params =
+            vec![ResKind::BufViewI64, ResKind::I64];
+        assert!(d.validate().unwrap_err().contains("binds exactly"));
+        // RecMixSum with a divergent closure (a valid sig on its own —
+        // the FAMILY binding is what rejects the shape change).
+        let mut d = wide_decls_for_test();
+        if let Some(ResKind::Rec { fields, .. }) =
+            d.decls[1].resource.as_mut().unwrap().params.get_mut(0)
+        {
+            fields.pop();
+        }
+        assert!(d.validate().unwrap_err().contains("binds exactly"));
+        // Fallible form rejected.
+        let mut d = wide_decls_for_test();
+        d.decls[0].resource.as_mut().unwrap().form = ResourceForm::Fallible {
+            ctx: None,
+            out: None,
+        };
+        assert!(d.validate().unwrap_err().contains("pure"));
+        // A scalar-family decl carrying a resource sig is rejected (the
+        // wide sig on a ChecksumV1 body; spine already empty so the
+        // FAMILY match is the rejection point).
+        let mut d = wide_decls_for_test();
+        d.decls[0].body = TypedBodyFamily::ChecksumV1;
+        assert!(d.validate().unwrap_err().contains("does not take a resource sig"));
+        // A scalar spine on a wide family is rejected too.
+        let mut d = checksum_decls();
+        d.decls[0].resource = Some(wide_decls_for_test().decls[0].resource.clone().unwrap());
+        assert!(d
+            .validate()
+            .unwrap_err()
+            .contains("scalar spine stays empty"));
+    }
+
+    #[test]
+    fn scalar_decl_wire_is_byte_identical_without_the_resource_field() {
+        // The frozen t937 set digests over its serialized bytes; the new
+        // optional field must not appear when None.
+        let d = checksum_decls();
+        let json = serde_json::to_string(&d).unwrap();
+        assert!(!json.contains("resource"));
+        let back: TypedDecls = serde_json::from_str(&json).unwrap();
+        assert!(back.decls[0].resource.is_none());
+        assert_eq!(back, d);
     }
 }

@@ -154,6 +154,15 @@ pub fn source_sig(
                 matches!(role, ViewRole::Mut | ViewRole::Out),
             ),
             ResKind::Handle { .. } => (VT::I32, false),
+            // PLAN-939 S07: typed-peer-only wide lanes have NO checked
+            // source mapping (the contract validator rejects them for
+            // source sigs; this arm keeps the core authority exhaustive).
+            ResKind::BufViewI64 | ResKind::I64 => {
+                return Err((
+                    CODE_SHAPE,
+                    "typed-peer-only resource lane has no checked-source mapping".into(),
+                ));
+            }
             ResKind::Callback { .. } => {
                 let sig = callback_type();
                 let idx = match function_types.iter().position(|s| *s == sig) {
@@ -211,6 +220,15 @@ pub fn source_sig_readonly(
                 matches!(role, ViewRole::Mut | ViewRole::Out),
             ),
             ResKind::Handle { .. } => (VT::I32, false),
+            // PLAN-939 S07: typed-peer-only wide lanes have NO checked
+            // source mapping (the contract validator rejects them for
+            // source sigs; this arm keeps the core authority exhaustive).
+            ResKind::BufViewI64 | ResKind::I64 => {
+                return Err((
+                    CODE_SHAPE,
+                    "typed-peer-only resource lane has no checked-source mapping".into(),
+                ));
+            }
             ResKind::Callback { .. } => {
                 let sig = callback_type();
                 let Some(idx) = function_types.iter().position(|s| *s == sig) else {

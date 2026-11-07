@@ -145,6 +145,13 @@ pub fn resource_signature(res: &ace_foreign_contract::resource::ResourceSig) -> 
             ResKind::Rec { .. } | ResKind::Handle { .. } => {
                 signature.params.push(AbiParam::new(types::I64))
             }
+            // PLAN-939 S07 typed-peer wide lanes (real physical forms:
+            // element view = ptr + u64 element count; bare wide i64).
+            ResKind::BufViewI64 => {
+                signature.params.push(AbiParam::new(types::I64));
+                signature.params.push(AbiParam::new(types::I64));
+            }
+            ResKind::I64 => signature.params.push(AbiParam::new(types::I64)),
             ResKind::Callback { .. } => signature.params.push(AbiParam::new(types::I64)),
         }
     }

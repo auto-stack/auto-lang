@@ -132,6 +132,7 @@ pub fn typed_decls() -> TypedDecls {
                 error_model: None,
                 ctx: None,
                 outs: vec![],
+                resource: None,
             },
             TypedDecl {
                 symbol: "t937_div".into(),
@@ -145,6 +146,7 @@ pub fn typed_decls() -> TypedDecls {
                 }),
                 ctx: Some(true), // nullable ctx (never dereferenced)
                 outs: vec![LaneKind::I64],
+                resource: None,
             },
         ],
     }
@@ -164,6 +166,164 @@ pub fn frozen_lane_values() -> [LaneValue; 8] {
         LaneValue::CharScalar(x.h),
         LaneValue::I64(x.i),
     ]
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-939 S07: the WIDE typed-resource families (BufViewI64Sum /
+// RecMixSum / WideFold). Three independent implementations pin the
+// semantics: the Rust oracles here, the Cranelift bodies in
+// `typed_emit.rs`, and the hand-written freestanding C in
+// `cside/bridge_typed_callee.c` / `bridge_typed_caller.c`.
+// ---------------------------------------------------------------------------
+
+/// Fallible... no: pure wide status namespace placeholder — S07 families
+/// are total (no status codes of their own).
+pub mod t939w {
+    /// The frozen wide-sum element array — asymmetric extremes from the
+    /// i64 element domain (a prefix of any length is itself a frozen
+    /// case; n is an ELEMENT count).
+    pub const SUM_ITEMS: [i64; 8] = [
+        0x7FFF_FFFF_FFFF_F001,
+        -1_234_567_890_123,
+        0,
+        -1,
+        i64::MIN + 7,
+        42,
+        i64::MIN,
+        i64::MAX,
+    ];
+    /// The wide fold's non-zero WIDE ctx seed (beyond the i32 domain —
+    /// the original 797 fold's `long long ctx` lane).
+    pub const FOLD_CTX: i64 = 0x000B_AD1D_EA60_0D;
+    /// The frozen RecMix field values (flag 0/1, char tag at the LAST
+    /// Unicode scalar value, wide big near i64::MIN).
+    pub const REC_FLAG: u8 = 1;
+    pub const REC_COUNT: i32 = -123_456;
+    pub const REC_TAG: u32 = 0x0010_FFFF; // U+10FFFF
+    pub const REC_BIG: i64 = i64::MIN + 7;
+}
+
+/// Independent Rust oracle: element-count wrapping sum (empty view = 0).
+pub fn oracle_wide_sum(items: &[i64], n: u64) -> i64 {
+    let mut acc: i64 = 0;
+    for &x in items.iter().take(n as usize) {
+        acc = acc.wrapping_add(x);
+    }
+    acc
+}
+
+/// Independent Rust oracle: the frozen RecMix weighted fold
+/// `flag*1000 + count*3 + tag*5 + big` (machine wrapping).
+pub fn oracle_crec_sum(flag: u8, count: i32, tag: u32, big: i64) -> i64 {
+    (flag as i64)
+        .wrapping_mul(1000)
+        .wrapping_add((count as i64).wrapping_mul(3))
+        .wrapping_add((tag as i64).wrapping_mul(5))
+        .wrapping_add(big)
+}
+
+/// The frozen wide callback body: `(ctx ^ item) * 3 + item` on the
+/// two's-complement bit patterns (machine wrapping) — implementable
+/// bit-identically in Rust, C, and Cranelift.
+pub fn wide_cb(ctx: i64, item: i64) -> i64 {
+    (ctx ^ item).wrapping_mul(3).wrapping_add(item)
+}
+
+/// Independent Rust oracle: the wide fold `Σ cb(ctx, items[i])`.
+pub fn oracle_wide_fold(ctx: i64, items: &[i64], n: u64) -> i64 {
+    let mut acc: i64 = 0;
+    for &x in items.iter().take(n as usize) {
+        acc = acc.wrapping_add(wide_cb(ctx, x));
+    }
+    acc
+}
+
+/// Hand-computed expectations (independent Python folds of the frozen
+/// inputs — guard the Rust oracles, mirrored as literals in
+/// `cside/bridge_typed.h`).
+pub mod wide_hand_computed {
+    /// Sum of all 8 frozen elements.
+    pub const SUM_8: i64 = -1_234_567_894_171;
+    /// Prefix sum of the first 3 (element-count evidence: a byte-unit
+    /// misread of n observably fails).
+    pub const SUM_3: i64 = 9_223_370_802_286_881_590;
+    /// First element alone.
+    pub const SUM_1: i64 = 9_223_372_036_854_771_713;
+    /// The frozen RecMix fold.
+    pub const REC: i64 = -9_223_372_036_849_574_614;
+    /// Wide fold over all 8 elements with the frozen wide ctx.
+    pub const FOLD_8: i64 = 1_995_608_927_678;
+    /// Wide fold prefix of 3.
+    pub const FOLD_3: i64 = -36_518_868_513_495;
+    /// cb(ctx, 0) — the ctx-only term.
+    pub const CB_AT_0: i64 = 38_514_477_441_063;
+}
+
+/// The frozen WIDE typed-lane declarations (the input identity of the
+/// S07 typed chain; id `t939w`).
+pub fn wide_decls() -> TypedDecls {
+    use ace_foreign_contract::resource::{
+        ResKind, ResourceForm, ResourceSig, ResOut, RESOURCE_SIG_FORMAT,
+    };
+    use ace_foreign_contract::typed::rec_mix_fields;
+    let sig = |params: Vec<ResKind>, noescape: bool| ResourceSig {
+        format: RESOURCE_SIG_FORMAT.into(),
+        params,
+        form: ResourceForm::Pure {
+            ret: ResOut::I64,
+        },
+        atomic: false,
+        noescape,
+        typed_peer: true,
+    };
+    let decl = |symbol: &str, body: TypedBodyFamily, sig: ResourceSig| TypedDecl {
+        symbol: symbol.into(),
+        params: vec![],
+        ret: LaneKind::I64,
+        body,
+        totality: Some(TotalityEvidence::frozen_family(
+            "machine wrapping arithmetic over admitted lanes only; no checked ops, no failure path",
+        )),
+        error_model: None,
+        ctx: None,
+        outs: vec![],
+        resource: Some(sig),
+    };
+    TypedDecls {
+        format: ace_foreign_contract::typed::TYPED_DECLS_FORMAT.into(),
+        id: "t939w".into(),
+        decls: vec![
+            decl(
+                "t939_wide_sum",
+                TypedBodyFamily::BufViewI64Sum,
+                sig(vec![ResKind::BufViewI64], false),
+            ),
+            decl(
+                "t939_crec_sum",
+                TypedBodyFamily::RecMixSum,
+                sig(
+                    vec![ResKind::Rec {
+                        rec: "RecMix".into(),
+                        fields: rec_mix_fields(),
+                        role: ace_foreign_contract::resource::ViewRole::Const,
+                    }],
+                    false,
+                ),
+            ),
+            decl(
+                "t939_wide_fold",
+                TypedBodyFamily::WideFold,
+                sig(
+                    vec![
+                        ResKind::Callback { ctx: true },
+                        ResKind::I64,
+                        ResKind::BufViewI64,
+                    ],
+                    true,
+                ),
+            ),
+        ],
+    }
 }
 
 #[cfg(test)]
@@ -245,5 +405,89 @@ mod tests {
         assert!(facts
             .validate_call_values("t937_mix", None, &frozen_lane_values())
             .is_ok());
+    }
+
+    #[test]
+    fn wide_oracles_match_hand_computed_frozen_values() {
+        use super::t939w as w;
+        assert_eq!(
+            oracle_wide_sum(&w::SUM_ITEMS, 8),
+            wide_hand_computed::SUM_8
+        );
+        assert_eq!(
+            oracle_wide_sum(&w::SUM_ITEMS, 3),
+            wide_hand_computed::SUM_3
+        );
+        assert_eq!(
+            oracle_wide_sum(&w::SUM_ITEMS, 1),
+            wide_hand_computed::SUM_1
+        );
+        assert_eq!(oracle_wide_sum(&w::SUM_ITEMS, 0), 0);
+        assert_eq!(
+            oracle_crec_sum(w::REC_FLAG, w::REC_COUNT, w::REC_TAG, w::REC_BIG),
+            wide_hand_computed::REC
+        );
+        assert_eq!(
+            oracle_wide_fold(w::FOLD_CTX, &w::SUM_ITEMS, 8),
+            wide_hand_computed::FOLD_8
+        );
+        assert_eq!(
+            oracle_wide_fold(w::FOLD_CTX, &w::SUM_ITEMS, 3),
+            wide_hand_computed::FOLD_3
+        );
+        assert_eq!(wide_cb(w::FOLD_CTX, 0), wide_hand_computed::CB_AT_0);
+    }
+
+    #[test]
+    fn wide_sum_observes_every_element_and_the_len_unit() {
+        use super::t939w as w;
+        // flipping any element changes the 8-sum (every lane observed)
+        for i in 0..8 {
+            let mut items = w::SUM_ITEMS;
+            items[i] = items[i].wrapping_add(1);
+            assert_ne!(oracle_wide_sum(&items, 8), wide_hand_computed::SUM_8);
+        }
+        // the len is an ELEMENT count: n and n+1 prefixes differ whenever
+        // the next element is nonzero (here: element 3 = -1).
+        assert_ne!(
+            oracle_wide_sum(&w::SUM_ITEMS, 3),
+            oracle_wide_sum(&w::SUM_ITEMS, 4)
+        );
+    }
+
+    #[test]
+    fn wide_crec_sum_observes_every_field() {
+        use super::t939w as w;
+        let base = oracle_crec_sum(w::REC_FLAG, w::REC_COUNT, w::REC_TAG, w::REC_BIG);
+        assert_ne!(
+            oracle_crec_sum(1 - w::REC_FLAG, w::REC_COUNT, w::REC_TAG, w::REC_BIG),
+            base
+        );
+        assert_ne!(
+            oracle_crec_sum(w::REC_FLAG, w::REC_COUNT + 1, w::REC_TAG, w::REC_BIG),
+            base
+        );
+        assert_ne!(
+            oracle_crec_sum(w::REC_FLAG, w::REC_COUNT, w::REC_TAG - 1, w::REC_BIG),
+            base
+        );
+        assert_ne!(
+            oracle_crec_sum(w::REC_FLAG, w::REC_COUNT, w::REC_TAG, w::REC_BIG + 1),
+            base
+        );
+    }
+
+    #[test]
+    fn wide_decls_project_to_valid_resource_facts_and_plan() {
+        let facts = wide_decls().validate().unwrap();
+        let plan = ace_foreign_contract::PhysicalPlan::project(&facts).unwrap();
+        for sym in ["t939_wide_sum", "t939_crec_sum", "t939_wide_fold"] {
+            assert!(plan.function(sym).is_some());
+        }
+        // The scalar 937 set is untouched by the wide vocabulary: its
+        // serialized identity (content_version basis) is byte-stable.
+        let a = typed_decls();
+        let json = serde_json::to_string(&a).unwrap();
+        assert!(!json.contains("resource"));
     }
 }

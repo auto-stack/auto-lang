@@ -2020,10 +2020,17 @@ fn decode_options(
                     matches!(leg.as_str(), "native" | "c")
                 } else {
                     // PLAN-937: the bridge legs (source export + the three
-                    // typed peer legs).
+                    // typed peer legs); PLAN-939 S07: the wide
+                    // typed-resource peer legs.
                     matches!(
                         leg.as_str(),
-                        "source" | "typed-self" | "typed-n2c" | "typed-c2n"
+                        "source"
+                            | "typed-self"
+                            | "typed-n2c"
+                            | "typed-c2n"
+                            | "wide-self"
+                            | "wide-n2c"
+                            | "wide-c2n"
                     )
                 };
                 if !legal {

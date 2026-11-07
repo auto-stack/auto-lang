@@ -245,3 +245,30 @@ case { schema: "autolang.case/2", id: "ace-ca-d3.wrong-oracle", tags: ["ca-d3", 
  abi: { leg: "native" }, steps: [ { op: "query" } ] },
  expect: { completion: "success", exit: 9, probe: [ {} ] } } ] }
 ```
+# S07 — the WIDE typed-resource peer legs (TP direction; rides the 937
+# typed bridge recipe): BufViewI64 element-count view, RecMix wide-field
+# closure (layout admission + the C caller's runtime offsetof probe), and
+# the ORIGINAL wide synchronous callback crossing both boundaries. Each
+# leg's first query produces the wide bridge artifacts (facts+plan+callee,
+# plus the C object on the cross legs); the second query is a pure hit.
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.wide-self", tags: ["ca-d3", "certify"],
+ source: { file: "typed/wide-self.atomdata", syntax: "atom-data", path: "wide-self.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "wide-self", adapter: "probe", action: "run", options: { recipe: "abi/ca-d1-bridge-v1",
+ abi: { leg: "wide-self" }, steps: [ { op: "query" }, { op: "query" } ] },
+ expect: { completion: "success", probe: [ { cache: "published", compute_calls: 3, stages_include: ["bridge"] }, { cache: "hit", compute_calls: 0 } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.wide-n2c", tags: ["ca-d3", "certify"],
+ source: { file: "typed/wide-n2c.atomdata", syntax: "atom-data", path: "wide-n2c.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "wide-n2c", adapter: "probe", action: "run", options: { recipe: "abi/ca-d1-bridge-v1",
+ abi: { leg: "wide-n2c" }, steps: [ { op: "query" }, { op: "query" } ] },
+ expect: { completion: "success", probe: [ { cache: "published", compute_calls: 4, stages_include: ["bridge"] }, { cache: "hit", compute_calls: 0 } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.wide-c2n", tags: ["ca-d3", "certify"],
+ source: { file: "typed/wide-c2n.atomdata", syntax: "atom-data", path: "wide-c2n.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "wide-c2n", adapter: "probe", action: "run", options: { recipe: "abi/ca-d1-bridge-v1",
+ abi: { leg: "wide-c2n" }, steps: [ { op: "query" }, { op: "query" } ] },
+ expect: { completion: "success", probe: [ { cache: "published", compute_calls: 4, stages_include: ["bridge"] }, { cache: "hit", compute_calls: 0 } ] } } ] }
+```
