@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-abi/resource-and-callback-bridge.md]
 touched_goals: [GOAL-002]
 affects: [auto-abi, auto-ac, auto-a2x, auto-a2c, auto-av, auto-test-case]
 depends_on: [PLAN-937, PLAN-938, PLAN-925, PLAN-924]
-current_step: 5
+current_step: 6
 total_steps: 14
 ---
 
@@ -237,7 +237,7 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 | T-03 | work | T-02，H首例短窗 | ABI中立资源投影/布局/header、独立resource首例TestCase由T-02进入，本步扩齐S01..08/方向/正式注册材料，V-01/11/15；AC-01/07。批2（§9 round 11）：S07 TP wide 车道全链（词表/投影/描述符/emit/peers/三腿/fixtures）+ S08 恢复骨架；CE 方向实证为具名接缝 D-939-CE-1（certify 撞 D-960-1 词表、bridge 装配器 scalar-only=T-05 范围；矩阵 S01-CE 的 owner 本就含 T-05/T-11） | [✅ 2026-11-08] |
 | T-04 | work | T-03，S窗口 | core foreign_resources/资源凭证/模式/borrow/alias/deleter唯一计划与所有verify/schema消费者；V-02/03/13/15；AC-02。交付（§9 round 12）：唯一 per-call 凭证计划（view borrow+owner/排他+atomic/句柄进出+provider tag/回调目标/ctx）+ CheckedModule/CheckedFunction/SemanticView 双路携带 + a2x 严格消费（缺行=响亮拒）+ V-02 owner 案例双腿；V-03 clone-hook 与 V-13 深层重叠例按矩阵归 T-05/06/07 | [✅ 2026-11-08] |
 | T-05 | work | T-04，N/C窗口 | native直接资源调用与a2x-c abi_resources/私有值显式转换/view期限；V-01/02/04；AC-01/02/03。交付（§9 round 13）：native text-runtime 链接补全（COFF ac_rt_* 符号检测+locate-or-build 支持库）+ V-02 双形态案例（owned 旁观跨调用/ctor 临时 const view）；marshalling 面为 T-02 各轮已交并持续绿 | [✅ 2026-11-08] |
-| T-06 | work | T-05 | handle移动/返回/provider clone hook/原方destroy、callback+ctx trampoline与错误channel；V-03/06/07/14/15；AC-02/04 | [ ] |
+| T-06 | work | T-05 | handle移动/返回/provider clone hook/原方destroy、callback+ctx trampoline与错误channel；V-03/06/07/14/15；AC-02/04。交付（§9 round 14）：t939_clone 声明式 clone hook + t939_stored_cb noescape 可观测 + forged-handle 零状态变化拒（三案例×双腿+完整指纹周期）；trampoline/错误 channel 为 T-02C 已交持续绿；嵌套/重入回调与 lease/GC 归 T-08 | [✅ 2026-11-08] |
 | T-07 | work | T-05/06 | 多out/shadow/失败commit与全部分配域fault/cleanup；V-04/05；AC-03 | [ ] |
 | T-08 | work | T-06/07 | provider代际与真实最后owner lease/已绑定双代call/GC回收证据；V-06/07；AC-04 | [ ] |
 | T-09 | work | T-04..08，source/query恢复窗口 | 全stage真实计数/精确reader失效/required资源页/真实source恢复首编辑与首错修复；V-08/09/16；AC-05 | [ ] |
@@ -250,6 +250,10 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 可提前的仅独立oracle/header与source/type能力调查，不把private准备冒资源已实施。正式S/N/C集成在D938及所需单文件owner释放后；不硬等未读取的935/936整包。
 
 ## 9. 复审记录
+
+T-06 完成记录（2026-11-08，goal round 14，HEAD `50dee04f8`）：**声明式 clone hook + noescape 可观测 + forged 拒——T-06 关闭（6/14）**。939 组 48 例=47 PASS+控制位；938/937/925/ace-abi 全绿；abi lib 55/55。(1) **provider 面 +2**（V-03/V-14/V-06）：`t939_clone`（声明式 clone hook——同载荷入全新独立 slot/代际，双主各毁一次，唯一 clone 路径=无源级隐式句柄克隆，未声明 clone 的 provider 即无 clone 面）；`t939_stored_cb`（noescape 可观测，恒 0）；review 表 t939_create 的"no clone hook exists"陈旧句退役。(2) **完整指纹周期**：header/table/contract 三 digest 重算（临时探针测试取值后删除）、父侧三钉更新、17 个 deck manifest 按受审序再生成（qualify=精确 manifest 等价）。(3) **案例×双腿**：clone-owners（exit 10：create/clone/get×2/destroy×2/live——两主各恰一次销毁、ledger 归零）；forged-handle（exit 70：良构编码但从未分配的 slot → -1 且 provider 零状态变化）；stored-cb（exit 180：真实 fold 回调后 noescape 可观测读 0）。过程修正：reference oracle 初版未精确镜像 deck 调用序列被父准入正确拒绝（per-deck 纪律生效）——改为镜像后全绿；forged reference 返回值对齐冻结传输（70）。(4) **归属记录**：callback+ctx trampoline/错误 channel（V-07/15 主体）为 T-02C 已交持续绿（callback/callback-fail 腿）；嵌套/重入回调、双代 lease/GC 归 T-08；**D-939-CE-1 重路由**：bridge 库装配器扩展由 T-11 H 窗口（S01..08 逐方向收口）承接，T-13 复审前落地或按复审裁定再路由（KNOWN-DEBT 已更新 owner）。
+
+stage: goal | plan_id: PLAN-939 | plan_revision: r3 | round: 14 | from: work | to: work | status: executing | outcome: interim（T-06 ✅ 6/14；clone hook/noescape/forged + 指纹周期）| worktree: D:/autostack/.wt/lang-939/auto-lang | commit: 50dee04f8 | next: work（T-07 多out/shadow/失败commit与全部分配域fault/cleanup）
 
 T-05 完成记录（2026-11-08，goal round 13，HEAD `355aafff8`）：**native 链补全 + V-02 双形态——T-05 关闭（5/14）**。939 组 42 例=41 PASS+控制位；938/937/925/ace-abi 组全绿；core 29+a2x-c 8；触面零警告。(1) **真接缝与修复**：resource foreign 模块含 owned 文本局部时 native 腿链接失败（`ac_rt_own_from_lit` 未解析——foreign native 链从未链接 text runtime）。修复：link 时扫描发射 COFF 的未解析外部符号（`ac_rt_*` 前缀——链接器自身视角，无 wire/状态改动，编辑/恢复路径全适用）→ 命中即 locate-or-build `ac_text_runtime.lib`（与 782 native 链同一工件；进程内缓存；ACE workspace target 下真 cargo 构建）入链。(2) **V-02 双形态案例**：utf8-owned ×native/c（exit 7）——owned Str 旁观者跨两个 foreign view 调用存活、仅退出释放（C 运行时 charge 记账使提前释放可观测；NUL 为数据 4 scalar+旁观者 3）；pairv-temp ×native/c（exit 47）——调用点 ctor 临时填 const view 车道（物化一次、provider 消费、随调用消亡；reference oracle 自建局部镜像）。(3) **领域证据（双门实证）**：owned Str→str view 形参=绑定精确类型拒（770 纪律）；owned Str 参数撞 D-960-1 签名词表（NonPortableType Builtin(StrOwned)）——本域可表达的 owner-extent 形态即借用局部与 ctor 临时两者，均已落绿例。(4) **marshalling 面**：native/a2x-c 私有值显式转换与 shadow/commit（V-01/04）为 T-02 各轮已交，本轮全部案例持续绿。过程事故与恢复：一次 python 补丁 `io.open('w')` 先截断后报错将 resource939_reference.c 清零（round 2 已知事故模式）——git checkout 即时恢复+ASCII 预验证+写后读回校验重打，零损失。
 
