@@ -1,0 +1,10 @@
+# PLAN-992 a2r-only certification extension suite (5 checks). Kept OUTSIDE
+# the frozen 852 base suite (36 cases / 97 checks stay unexpanded); the
+# daily snapshot scope runs base + this extension and counts 26 + 5 a2r
+# checks. Certification (compile+run) remains ace-certify's explicit scope.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "legacy-a2r-cert-992", include: [
+  "legacy-a2r-cert-992.case.ad",
+] }
+```

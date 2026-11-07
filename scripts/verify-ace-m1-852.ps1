@@ -579,7 +579,16 @@ switch ($Scope) {
         # The daily snapshot NEVER builds (no cargo/rustc spawn — F-852-R1-02).
         $bin = Find-Prebuilt 'auto-case'
         $suite = Join-Path $corpusDir 'ace-m1-base.suite.ad'
+        # PLAN-992: the a2r-only certification extension suite (the five
+        # H-02 goldens B08/B11/R01/R03/R04) rides the SAME daily face under
+        # the SAME instrumentation; the 852 base suite itself stays frozen
+        # (36 cases / 97 checks unexpanded) and the gate counts the UNION
+        # (26 base + 5 extension = 31 a2r checks).
+        $extSuite = Join-Path $corpusDir 'legacy-a2r-cert-992.suite.ad'
+        if (-not (Test-Path $extSuite)) { Fail "a2r certification extension suite missing: $extSuite" }
         $report = Join-Path $OutDir 'ace-m1-a2r-report.json'
+        $extOut = Join-Path $OutDir 'ext-992'
+        $extReport = Join-Path $extOut 'ace-m1-a2r-ext-report.json'
 
         # ---- REAL process-creation instrumentation (F-852-R1-02) ----------
         # Run the suite async and poll the OS process table (in-process CIM;
@@ -587,16 +596,6 @@ switch ($Scope) {
         # binary process DESCENDED FROM OUR RUN is a G02 violation; unrelated
         # concurrent builds on the machine (other sessions) are ignored by
         # ancestry, not by luck.
-        $baseline = Get-CimInstance Win32_Process -Filter "Name='rustc.exe' OR Name='cargo.exe' OR Name LIKE 'm1%'" -ErrorAction SilentlyContinue
-        $baselineIds = @($baseline | ForEach-Object { $_.ProcessId })
-        $suiteOut = Join-Path $OutDir 'suite-console.txt'
-        $proc = Start-Process -FilePath $bin `
-            -ArgumentList @('run', '--suite', $suite, '--out', $OutDir, '--format', 'console', '--json-out', $report) `
-            -RedirectStandardOutput $suiteOut -RedirectStandardError (Join-Path $OutDir 'suite-stderr.txt') `
-            -PassThru -NoNewWindow
-        $runnerId = $proc.Id
-        $violations = @()
-        $maintenance = 0
         function Test-Descendant([uint32]$targetId, [uint32]$ancestor, [hashtable]$procs) {
             $seen = @{}
             $cur = $targetId
@@ -608,55 +607,109 @@ switch ($Scope) {
             }
             return $false
         }
-        while (-not $proc.HasExited) {
-            $now = Get-CimInstance Win32_Process -Filter "Name='rustc.exe' OR Name='cargo.exe' OR Name LIKE 'm1%'" -ErrorAction SilentlyContinue
-            $fresh = @($now | Where-Object { $baselineIds -notcontains $_.ProcessId })
-            if ($fresh.Count -gt 0) {
-                $table = @{}
-                foreach ($p in (Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) { $table[$p.ProcessId] = $p }
-                foreach ($f in $fresh) {
-                    if (-not (Test-Descendant -targetId $f.ProcessId -ancestor $runnerId -procs $table)) { continue }
-                    $parent = $table[$f.ParentProcessId]
-                    if ($f.Name -eq 'cargo.exe') {
-                        # Engine-worker maintenance build (PLAN-818 memoized no-op
-                        # discipline; builds the mn/av HARNESS, never transpiled
-                        # corpus artifacts). Reported, not a G02 violation.
-                        $maintenance += 1
-                    }
-                    elseif ($f.Name -eq 'rustc.exe' -and $parent -and $parent.Name -eq 'cargo.exe') {
-                        $maintenance += 1   # rustc under a maintenance cargo
-                    }
-                    else {
-                        # A DIRECT rustc invocation or a certified binary
-                        # (m1_*_wrap/m1_*_ref) — the a2r certification face,
-                        # which the daily snapshot must NEVER touch.
-                        $violations += "$($f.Name) (pid $($f.ProcessId))"
+        # Ancestor chain image names (bounded walk; the target's own name is
+        # included). Used to recognize the ENGINE-WORKER MAINTENANCE toolchain
+        # under our runner: cargo -> (sccache ->) (rustc ->) rustc. The a2r
+        # certification face never has a toolchain ancestor — its rustc/m1_*
+        # children hang DIRECTLY off the runner.
+        function Get-AncestorNames([uint32]$targetId, [hashtable]$procs) {
+            $names = @()
+            $seen = @{}
+            $cur = $targetId
+            while ($cur -and -not $seen.ContainsKey($cur) -and $names.Count -lt 32) {
+                $p = $procs[$cur]
+                if (-not $p) { break }
+                $names += $p.Name
+                $seen[$cur] = $true
+                $cur = $p.ParentProcessId
+            }
+            return ,$names
+        }
+        function Invoke-InstrumentedSuiteRun([string]$binPath, [string]$suitePath, [string]$outDir, [string]$reportPath, [string]$label) {
+            $baseline = Get-CimInstance Win32_Process -Filter "Name='rustc.exe' OR Name='cargo.exe' OR Name LIKE 'm1%'" -ErrorAction SilentlyContinue
+            $baselineIds = @($baseline | ForEach-Object { $_.ProcessId })
+            $suiteOut = Join-Path $outDir 'suite-console.txt'
+            $proc = Start-Process -FilePath $binPath `
+                -ArgumentList @('run', '--suite', $suitePath, '--out', $outDir, '--format', 'console', '--json-out', $reportPath) `
+                -RedirectStandardOutput $suiteOut -RedirectStandardError (Join-Path $outDir 'suite-stderr.txt') `
+                -PassThru -NoNewWindow
+            $runnerId = $proc.Id
+            $violations = @()
+            $maintenance = 0
+            $identityProbes = 0
+            while (-not $proc.HasExited) {
+                $now = Get-CimInstance Win32_Process -Filter "Name='rustc.exe' OR Name='cargo.exe' OR Name LIKE 'm1%'" -ErrorAction SilentlyContinue
+                $fresh = @($now | Where-Object { $baselineIds -notcontains $_.ProcessId })
+                if ($fresh.Count -gt 0) {
+                    $table = @{}
+                    foreach ($p in (Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) { $table[$p.ProcessId] = $p }
+                    foreach ($f in $fresh) {
+                        if (-not (Test-Descendant -targetId $f.ProcessId -ancestor $runnerId -procs $table)) { continue }
+                        $chainNames = Get-AncestorNames $f.ProcessId $table
+                        $parent = $table[$f.ParentProcessId]
+                        if ($f.Name -eq 'cargo.exe') {
+                            # Engine-worker maintenance build (PLAN-818 memoized no-op
+                            # discipline; builds the mn/av HARNESS, never transpiled
+                            # corpus artifacts). Reported, not a G02 violation.
+                            $maintenance += 1
+                        }
+                        elseif ($f.Name -eq 'rustc.exe' -and ($chainNames -contains 'cargo.exe' -or $chainNames -contains 'sccache.exe' -or ($chainNames -match '^rustc\.exe$').Count -gt 1)) {
+                            # rustc inside the maintenance toolchain: cargo spawns
+                            # rustc directly, through sccache (RUSTC_WRAPPER), or
+                            # rustc itself re-spawns rustc. The a2r certification
+                            # face never has a toolchain ancestor — its rustc/m1_*
+                            # children hang DIRECTLY off the runner.
+                            $maintenance += 1
+                        }
+                        elseif ($f.Name -eq 'rustc.exe' -and $f.CommandLine -and $f.CommandLine -match '(^|\s)--print(\s|$)' -and $f.CommandLine -notmatch '(^|\s)(-o|--crate-name|--emit|-Z)(\s|=)') {
+                            # A pure toolchain IDENTITY query (e.g. the ac adapter's
+                            # displayed-identity sysroot probe, PLAN-814 stale axes:
+                            # `rustc --print sysroot`). It compiles and runs NOTHING —
+                            # a certification-face compile always carries an input
+                            # file with -o/--crate-name and never --print.
+                            $identityProbes += 1
+                        }
+                        else {
+                            # A DIRECT rustc invocation or a certified binary
+                            # (m1_*_wrap/m1_*_ref) — the a2r certification face,
+                            # which the daily snapshot must NEVER touch.
+                            $violations += "$($f.Name) (pid $($f.ProcessId))"
+                        }
                     }
                 }
+                Start-Sleep -Milliseconds 300
             }
-            Start-Sleep -Milliseconds 300
+            $proc.WaitForExit()
+            $proc.Refresh()
+            $gate = $proc.ExitCode
+            if ($null -eq $gate) {
+                # Handle already released (PS quirk): fall back to the report's
+                # presence + later content checks; absence means failure.
+                $gate = if (Test-Path $reportPath) { 0 } else { 1 }
+            }
+            return [pscustomobject]@{ gate = $gate; violations = $violations; maintenance = $maintenance; identityProbes = $identityProbes; label = $label }
         }
-        $proc.WaitForExit()
-        $proc.Refresh()
-        $gate = $proc.ExitCode
-        if ($null -eq $gate) {
-            # Handle already released (PS quirk): fall back to the report's
-            # presence + later content checks; absence means failure.
-            $gate = if (Test-Path $report) { 0 } else { 1 }
-        }
-        if ($gate -ne 0) { Fail "base suite gate exit $gate under the snapshot scope (expected 0)" }
+        $baseRun = Invoke-InstrumentedSuiteRun $bin $suite $OutDir $report 'base'
+        $extRun = Invoke-InstrumentedSuiteRun $bin $extSuite $extOut $extReport 'ext-992'
+        if ($baseRun.gate -ne 0) { Fail "base suite gate exit $($baseRun.gate) under the snapshot scope (expected 0)" }
+        if ($extRun.gate -ne 0) { Fail "a2r certification extension suite gate exit $($extRun.gate) under the snapshot scope (expected 0)" }
+        $violations = @($baseRun.violations) + @($extRun.violations)
         if ($violations.Count -gt 0) {
             Fail ("G02 VIOLATION: the daily snapshot run spawned the a2r certification face (direct rustc / certified binaries): {0}" -f ($violations -join ', '))
         }
-        Write-Host "verify-ace-m1-852 [snapshot]: process instrumentation: 0 certification-face spawns (direct rustc / m1_* binaries; ancestry-checked); $maintenance engine-worker maintenance build process(es) observed (PLAN-818 memoized harness discipline, not corpus compilation)."
+        $maintenance = $baseRun.maintenance + $extRun.maintenance
+        $identityProbes = $baseRun.identityProbes + $extRun.identityProbes
+        Write-Host "verify-ace-m1-852 [snapshot]: process instrumentation: 0 certification-face spawns (direct rustc / m1_* binaries; ancestry-checked, base + ext-992 suites); $maintenance engine-worker maintenance build process(es) observed (PLAN-818 memoized harness discipline, not corpus compilation); $identityProbes rustc identity query(/-ies) (`--print`, no compile axes — PLAN-814 ac stale-axes probe)."
 
         $r = Get-Content $report -Raw | ConvertFrom-Json
-        $a2r = @($r.results | Where-Object adapter -eq 'a2r')
+        $re = Get-Content $extReport -Raw | ConvertFrom-Json
+        $extA2r = @($re.results | Where-Object adapter -eq 'a2r')
+        $a2r = @($r.results | Where-Object adapter -eq 'a2r') + $extA2r
         $nonPass = @($a2r | Where-Object status -ne 'PASS')
         if ($nonPass.Count -gt 0) {
             Fail ("a2r snapshot has {0} non-PASS check(s); first: {1}:{2} {3}" -f $nonPass.Count, $nonPass[0].case, $nonPass[0].check, $nonPass[0].status)
         }
-        if ($a2r.Count -lt 26) { Fail "a2r snapshot check count $($a2r.Count) < 26" }
+        if ($a2r.Count -lt 31) { Fail "a2r snapshot check count $($a2r.Count) < 31 (base 26 + PLAN-992 extension 5 — checks were dropped)" }
 
         # ---- STRICT certificate validity (shared function) ----
         $buildIdentity = $r.toolchain.'build-rustc-identity'
@@ -664,11 +717,12 @@ switch ($Scope) {
         $certCount = Invoke-ReceiptValidation -RepoRoot $RepoRoot -corpusDir $corpusDir -buildIdentity $buildIdentity
 
         $goldens = @(Get-ChildItem (Join-Path $corpusDir 'oracle') -Filter 'm1_*.rs')
-        Write-Host "verify-ace-m1-852 [snapshot]: PASS — $($a2r.Count) a2r checks green (emit + byte-compare);" `
+        Write-Host "verify-ace-m1-852 [snapshot]: PASS — $($a2r.Count) a2r checks green (emit + byte-compare;" `
+            "26 base + $($extA2r.Count) PLAN-992 extension);" `
             "$certCount certificates STRICTLY valid (typed exact-key schema + file axes + default-toolchain" `
             "axis vs this run's build identity). Certification-face process watch: 0 direct-rustc/m1_* spawns" `
             "observed in periodic CIM ancestry sampling (a sampling observer, not a lossless creation count)." `
-            "Full base suite $($r.results.Count) checks green." `
+            "Full base suite $($r.results.Count) checks green; extension suite $($re.results.Count) checks green." `
             "Emit PASS is not a behavior claim; re-certification is the explicit certify scope."
         exit 0
     }

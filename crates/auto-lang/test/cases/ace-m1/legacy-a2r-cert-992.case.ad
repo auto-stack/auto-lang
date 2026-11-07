@@ -1,0 +1,88 @@
+# PLAN-992 legacy-a2r certification extension — the five H-02 a2r-snapshot
+# checks (B08/B11/R01/R03/R04) whose goldens were never frozen. a2r-ONLY by
+# design: these rows' legacy-engine faces are engine-difference cells owned
+# elsewhere; this suite adds exactly the daily a2r emit+byte-compare face
+# that certification requires. The original 12 composite snapshot checks
+# stay in legacy-composite.case.ad (single obligation, no duplication).
+# Goldens frozen only after explicit per-source G04 semantic review; the
+# explicit certification itself is the ace-certify tool (never this suite).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b08"
+  tags: ["ace-m1", "a2r-cert-992"]
+  links: ["PLAN-992"]
+  source: { file: "src/B08.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_b08" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b08.rs", file: "oracle/m1_b08.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b11"
+  tags: ["ace-m1", "a2r-cert-992"]
+  links: ["PLAN-992"]
+  source: { file: "src/B11.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_b11" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b11.rs", file: "oracle/m1_b11.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r01"
+  tags: ["ace-m1", "a2r-cert-992"]
+  links: ["PLAN-992"]
+  source: { file: "src/R01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_r01" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r01.rs", file: "oracle/m1_r01.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r03"
+  tags: ["ace-m1", "a2r-cert-992"]
+  links: ["PLAN-992"]
+  source: { file: "src/R03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_r03" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r03.rs", file: "oracle/m1_r03.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r04"
+  tags: ["ace-m1", "a2r-cert-992"]
+  links: ["PLAN-992"]
+  source: { file: "src/R04.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_r04" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_r04.rs", file: "oracle/m1_r04.rs", compare: "bytes" } ] } }
+  ]
+}
+```
