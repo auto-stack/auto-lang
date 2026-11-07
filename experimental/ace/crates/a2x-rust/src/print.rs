@@ -100,7 +100,7 @@ pub fn print_program(p: &RustProgram) -> String {
         }
         for v in &p.variants {
             out.push_str(&coll_variant_helpers(&ctx, v, p));
-        out.push('\n');
+            out.push('\n');
         }
     }
     for f in &p.functions {
@@ -185,7 +185,14 @@ pub fn print_fn_records(records: &[crate::lower::RustRecord], f: &RustFn) -> Str
     for r in records {
         map.insert(r.type_index, r);
     }
-    print_fn_in(&PrintCtx { records: map, variants: HashMap::new() }, f, false)
+    print_fn_in(
+        &PrintCtx {
+            records: map,
+            variants: HashMap::new(),
+        },
+        f,
+        false,
+    )
 }
 
 fn print_record(ctx: &PrintCtx<'_>, r: &RustRecord) -> String {
@@ -729,21 +736,12 @@ fn coll_record_helpers(
         match ty {
             Ty::StrOwned => {
                 free_body.push_str(&format!("    a2x_str_free(&mut v.{});\n", fname));
-                bytes_body.push_str(&format!(
-                    "    b += self.{}.as_str().len() as u64;\n",
-                    fname
-                ));
+                bytes_body.push_str(&format!("    b += self.{}.as_str().len() as u64;\n", fname));
             }
             Ty::Record(id) => {
                 let inner = record_name_of(p, *id);
-                free_body.push_str(&format!(
-                    "    a2x_coll_free_{}(&mut v.{});\n",
-                    inner, fname
-                ));
-                bytes_body.push_str(&format!(
-                    "    b += self.{}.a2x_elem_str_bytes();\n",
-                    fname
-                ));
+                free_body.push_str(&format!("    a2x_coll_free_{}(&mut v.{});\n", inner, fname));
+                bytes_body.push_str(&format!("    b += self.{}.a2x_elem_str_bytes();\n", fname));
             }
             _ => {}
         }
@@ -937,7 +935,14 @@ pub fn print_coll_fn(
     for v in variants {
         vmap.insert(v.type_index, v);
     }
-    print_fn_in(&PrintCtx { records: map, variants: vmap }, f, false)
+    print_fn_in(
+        &PrintCtx {
+            records: map,
+            variants: vmap,
+        },
+        f,
+        false,
+    )
 }
 
 /// PLAN-904: the collections assembly prelude — nominal record structs,

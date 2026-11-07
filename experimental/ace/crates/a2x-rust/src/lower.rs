@@ -1087,11 +1087,12 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             // PLAN-961: conversion through the frozen matrix helper.
             hir::ExprKind::Cast { operand, to } => {
                 let (v, from) = self.lower_expr(*operand, out)?;
-                let from_b = ty_builtin(from)
-                    .ok_or_else(|| A2xReject::unsupported_type(format!(
+                let from_b = ty_builtin(from).ok_or_else(|| {
+                    A2xReject::unsupported_type(format!(
                         "in `{}`: cast source {from:?} is not a numeric builtin",
                         self.facts.name
-                    )))?;
+                    ))
+                })?;
                 if from_b == *to && from == builtin_ty(*to)? {
                     return Ok((v, from));
                 }
@@ -1804,11 +1805,17 @@ pub(super) fn num_lit(b: hir::BuiltinType, bits: u64) -> Result<RExpr, A2xReject
         },
         hir::BuiltinType::I64 => RExpr::Checked {
             func: "a2x_lit_i64",
-            args: vec![RExpr::I32Lit(bits as i32), RExpr::I32Lit((bits >> 32) as i32)],
+            args: vec![
+                RExpr::I32Lit(bits as i32),
+                RExpr::I32Lit((bits >> 32) as i32),
+            ],
         },
         hir::BuiltinType::U64 => RExpr::Checked {
             func: "a2x_lit_u64",
-            args: vec![RExpr::I32Lit(bits as u32 as i32), RExpr::I32Lit((bits >> 32) as u32 as i32)],
+            args: vec![
+                RExpr::I32Lit(bits as u32 as i32),
+                RExpr::I32Lit((bits >> 32) as u32 as i32),
+            ],
         },
         hir::BuiltinType::F32 => RExpr::Checked {
             func: "a2x_lit_f32",
@@ -1816,7 +1823,10 @@ pub(super) fn num_lit(b: hir::BuiltinType, bits: u64) -> Result<RExpr, A2xReject
         },
         hir::BuiltinType::F64 => RExpr::Checked {
             func: "a2x_lit_f64",
-            args: vec![RExpr::I32Lit(bits as u32 as i32), RExpr::I32Lit((bits >> 32) as u32 as i32)],
+            args: vec![
+                RExpr::I32Lit(bits as u32 as i32),
+                RExpr::I32Lit((bits >> 32) as u32 as i32),
+            ],
         },
         other => {
             return Err(A2xReject::unsupported_type(format!(
@@ -1922,11 +1932,7 @@ pub(super) fn num_bin_expr(
             (K::Div, false) => "a2x_div_f64",
             (K::Rem, true) => "a2x_rem_f32",
             (K::Rem, false) => "a2x_rem_f64",
-            _ => {
-                return Err(A2xReject::unsupported_op(format!(
-                    "float op {op:?}"
-                )))
-            }
+            _ => return Err(A2xReject::unsupported_op(format!("float op {op:?}"))),
         };
         if is_cmp {
             let c = match op {
@@ -1979,72 +1985,70 @@ fn is_float32(b: hir::BuiltinType) -> bool {
 fn int_helper(op: hir::NumOpKind, ty: hir::BuiltinType) -> Result<&'static str, A2xReject> {
     use hir::BuiltinType as B;
     use hir::NumOpKind as K;
-    Ok(
-        match (op, ty) {
-            (K::Add, B::I8) => "a2x_add_i8",
-            (K::Sub, B::I8) => "a2x_sub_i8",
-            (K::Mul, B::I8) => "a2x_mul_i8",
-            (K::Div, B::I8) => "a2x_div_i8",
-            (K::Rem, B::I8) => "a2x_rem_i8",
-            (K::Add, B::U8) => "a2x_add_u8",
-            (K::Sub, B::U8) => "a2x_sub_u8",
-            (K::Mul, B::U8) => "a2x_mul_u8",
-            (K::Div, B::U8) => "a2x_div_u8",
-            (K::Rem, B::U8) => "a2x_rem_u8",
-            (K::Add, B::U32) => "a2x_add_u32",
-            (K::Sub, B::U32) => "a2x_sub_u32",
-            (K::Mul, B::U32) => "a2x_mul_u32",
-            (K::Div, B::U32) => "a2x_div_u32",
-            (K::Rem, B::U32) => "a2x_rem_u32",
-            (K::Add, B::I64) => "a2x_add_i64",
-            (K::Sub, B::I64) => "a2x_sub_i64",
-            (K::Mul, B::I64) => "a2x_mul_i64",
-            (K::Div, B::I64) => "a2x_div_i64",
-            (K::Rem, B::I64) => "a2x_rem_i64",
-            (K::Add, B::U64) => "a2x_add_u64",
-            (K::Sub, B::U64) => "a2x_sub_u64",
-            (K::Mul, B::U64) => "a2x_mul_u64",
-            (K::Div, B::U64) => "a2x_div_u64",
-            (K::Rem, B::U64) => "a2x_rem_u64",
-            // i32 legacy ops keep the frozen subcodes; only bit/shift ride
-            // the numeric helpers for i32.
-            (K::And, B::I32) => "a2x_and_i32",
-            (K::Or, B::I32) => "a2x_or_i32",
-            (K::Xor, B::I32) => "a2x_xor_i32",
-            (K::Shl, B::I32) => "a2x_shl_i32",
-            (K::Shr, B::I32) => "a2x_shr_i32",
-            (K::And, B::I8) => "a2x_and_i8",
-            (K::Or, B::I8) => "a2x_or_i8",
-            (K::Xor, B::I8) => "a2x_xor_i8",
-            (K::Shl, B::I8) => "a2x_shl_i8",
-            (K::Shr, B::I8) => "a2x_shr_i8",
-            (K::And, B::U8) => "a2x_and_u8",
-            (K::Or, B::U8) => "a2x_or_u8",
-            (K::Xor, B::U8) => "a2x_xor_u8",
-            (K::Shl, B::U8) => "a2x_shl_u8",
-            (K::Shr, B::U8) => "a2x_shr_u8",
-            (K::And, B::U32) => "a2x_and_u32",
-            (K::Or, B::U32) => "a2x_or_u32",
-            (K::Xor, B::U32) => "a2x_xor_u32",
-            (K::Shl, B::U32) => "a2x_shl_u32",
-            (K::Shr, B::U32) => "a2x_shr_u32",
-            (K::And, B::I64) => "a2x_and_i64",
-            (K::Or, B::I64) => "a2x_or_i64",
-            (K::Xor, B::I64) => "a2x_xor_i64",
-            (K::Shl, B::I64) => "a2x_shl_i64",
-            (K::Shr, B::I64) => "a2x_shr_i64",
-            (K::And, B::U64) => "a2x_and_u64",
-            (K::Or, B::U64) => "a2x_or_u64",
-            (K::Xor, B::U64) => "a2x_xor_u64",
-            (K::Shl, B::U64) => "a2x_shl_u64",
-            (K::Shr, B::U64) => "a2x_shr_u64",
-            (op, ty) => {
-                return Err(A2xReject::unsupported_op(format!(
-                    "integer op {op:?} on {ty:?}"
-                )))
-            }
-        },
-    )
+    Ok(match (op, ty) {
+        (K::Add, B::I8) => "a2x_add_i8",
+        (K::Sub, B::I8) => "a2x_sub_i8",
+        (K::Mul, B::I8) => "a2x_mul_i8",
+        (K::Div, B::I8) => "a2x_div_i8",
+        (K::Rem, B::I8) => "a2x_rem_i8",
+        (K::Add, B::U8) => "a2x_add_u8",
+        (K::Sub, B::U8) => "a2x_sub_u8",
+        (K::Mul, B::U8) => "a2x_mul_u8",
+        (K::Div, B::U8) => "a2x_div_u8",
+        (K::Rem, B::U8) => "a2x_rem_u8",
+        (K::Add, B::U32) => "a2x_add_u32",
+        (K::Sub, B::U32) => "a2x_sub_u32",
+        (K::Mul, B::U32) => "a2x_mul_u32",
+        (K::Div, B::U32) => "a2x_div_u32",
+        (K::Rem, B::U32) => "a2x_rem_u32",
+        (K::Add, B::I64) => "a2x_add_i64",
+        (K::Sub, B::I64) => "a2x_sub_i64",
+        (K::Mul, B::I64) => "a2x_mul_i64",
+        (K::Div, B::I64) => "a2x_div_i64",
+        (K::Rem, B::I64) => "a2x_rem_i64",
+        (K::Add, B::U64) => "a2x_add_u64",
+        (K::Sub, B::U64) => "a2x_sub_u64",
+        (K::Mul, B::U64) => "a2x_mul_u64",
+        (K::Div, B::U64) => "a2x_div_u64",
+        (K::Rem, B::U64) => "a2x_rem_u64",
+        // i32 legacy ops keep the frozen subcodes; only bit/shift ride
+        // the numeric helpers for i32.
+        (K::And, B::I32) => "a2x_and_i32",
+        (K::Or, B::I32) => "a2x_or_i32",
+        (K::Xor, B::I32) => "a2x_xor_i32",
+        (K::Shl, B::I32) => "a2x_shl_i32",
+        (K::Shr, B::I32) => "a2x_shr_i32",
+        (K::And, B::I8) => "a2x_and_i8",
+        (K::Or, B::I8) => "a2x_or_i8",
+        (K::Xor, B::I8) => "a2x_xor_i8",
+        (K::Shl, B::I8) => "a2x_shl_i8",
+        (K::Shr, B::I8) => "a2x_shr_i8",
+        (K::And, B::U8) => "a2x_and_u8",
+        (K::Or, B::U8) => "a2x_or_u8",
+        (K::Xor, B::U8) => "a2x_xor_u8",
+        (K::Shl, B::U8) => "a2x_shl_u8",
+        (K::Shr, B::U8) => "a2x_shr_u8",
+        (K::And, B::U32) => "a2x_and_u32",
+        (K::Or, B::U32) => "a2x_or_u32",
+        (K::Xor, B::U32) => "a2x_xor_u32",
+        (K::Shl, B::U32) => "a2x_shl_u32",
+        (K::Shr, B::U32) => "a2x_shr_u32",
+        (K::And, B::I64) => "a2x_and_i64",
+        (K::Or, B::I64) => "a2x_or_i64",
+        (K::Xor, B::I64) => "a2x_xor_i64",
+        (K::Shl, B::I64) => "a2x_shl_i64",
+        (K::Shr, B::I64) => "a2x_shr_i64",
+        (K::And, B::U64) => "a2x_and_u64",
+        (K::Or, B::U64) => "a2x_or_u64",
+        (K::Xor, B::U64) => "a2x_xor_u64",
+        (K::Shl, B::U64) => "a2x_shl_u64",
+        (K::Shr, B::U64) => "a2x_shr_u64",
+        (op, ty) => {
+            return Err(A2xReject::unsupported_op(format!(
+                "integer op {op:?} on {ty:?}"
+            )))
+        }
+    })
 }
 
 fn arith(func: &'static str, l: RExpr, r: RExpr) -> RExpr {

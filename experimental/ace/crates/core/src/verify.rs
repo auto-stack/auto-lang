@@ -2391,14 +2391,6 @@ pub(crate) fn numeric_vt(v: ValueType) -> bool {
     )
 }
 
-pub(crate) fn vt_is_float(v: ValueType) -> bool {
-    matches!(v, ValueType::F32 | ValueType::F64)
-}
-
-pub(crate) fn vt_is_unsigned(v: ValueType) -> bool {
-    matches!(v, ValueType::U8 | ValueType::U32 | ValueType::U64)
-}
-
 pub(crate) fn vt_builtin(b: hir::BuiltinType) -> ValueType {
     match b {
         hir::BuiltinType::I32 => ValueType::I32,
@@ -5027,10 +5019,7 @@ impl Verifier {
                             continue;
                         }
                         hir::ExprKind::Cast { to: to_, operand } => {
-                            let want = self.value_of(
-                                &hir::TypeUse::Builtin(*to_),
-                                type_map,
-                            );
+                            let want = self.value_of(&hir::TypeUse::Builtin(*to_), type_map);
                             if declared != want {
                                 self.error(
                                     "verify.type-mismatch",
@@ -5050,10 +5039,7 @@ impl Verifier {
                             if !numeric_vt(ot) {
                                 self.error(
                                     "verify.type-mismatch",
-                                    format!(
-                                        "expr `{}`: cast operand must be numeric",
-                                        e.id_text
-                                    ),
+                                    format!("expr `{}`: cast operand must be numeric", e.id_text),
                                     e.span,
                                 );
                             }

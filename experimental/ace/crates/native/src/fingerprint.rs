@@ -205,7 +205,13 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
             "conv {} <- {} as {}",
             dst,
             src,
-            shape(m, m.funcs.iter().find_map(|f| f.slots.get(*src as usize).map(|s| s.ty)).unwrap_or(0))
+            shape(
+                m,
+                m.funcs
+                    .iter()
+                    .find_map(|f| f.slots.get(*src as usize).map(|s| s.ty))
+                    .unwrap_or(0)
+            )
         ),
         MirInstr::GlobalGet { dst, global } => format!("global_get {} <- g{}", dst, global),
         MirInstr::GlobalSet { dst, global, src } => {

@@ -14,8 +14,6 @@ mod closures_native_tier;
 mod closures_restore_tier;
 #[path = "cases/closures_typed_tier.rs"]
 mod closures_typed_tier;
-#[path = "cases/numeric_codegen_tier.rs"]
-mod numeric_codegen_tier;
 #[path = "cases/codegen_tier.rs"]
 mod codegen_tier;
 #[path = "cases/collections_driver_tier.rs"]
@@ -50,6 +48,8 @@ mod gap_closure;
 mod host_console_compat;
 #[path = "cases/incremental_tier.rs"]
 mod incremental_tier;
+#[path = "cases/numeric_codegen_tier.rs"]
+mod numeric_codegen_tier;
 #[path = "cases/parity_tier.rs"]
 mod parity_tier;
 #[path = "cases/record_method_tier.rs"]

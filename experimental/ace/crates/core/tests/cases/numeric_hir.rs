@@ -40,11 +40,17 @@ fn numeric_descriptor_parses_with_the_typed_vocabulary() {
     }
     let un = d.enum_cases("UnaryOp").expect("UnaryOp enum");
     for word in ["neg_i8", "neg_i64", "neg_f32", "neg_f64"] {
-        assert!(un.contains(&word.to_string()), "missing UnaryOp case {word}");
+        assert!(
+            un.contains(&word.to_string()),
+            "missing UnaryOp case {word}"
+        );
     }
     let tk = d.enum_cases("TypeKind").expect("TypeKind enum");
     for word in ["i8", "u8", "u32", "i64", "u64", "f32", "f64"] {
-        assert!(tk.contains(&word.to_string()), "missing TypeKind case {word}");
+        assert!(
+            tk.contains(&word.to_string()),
+            "missing TypeKind case {word}"
+        );
     }
     // Float bit-ops are NOT in the vocabulary (frozen rule).
     for word in ["and_f32", "shl_f64", "xor_f64"] {
@@ -99,8 +105,7 @@ fn numeric_ops_bind_and_verify() {
     assert!(consts.contains(&(hir::BuiltinType::U8, 200)));
     // 1.5f64 == 0x3FF8000000000000
     assert!(
-        consts
-            .contains(&(hir::BuiltinType::F64, 0x3FF8_0000_0000_0000)),
+        consts.contains(&(hir::BuiltinType::F64, 0x3FF8_0000_0000_0000)),
         "f64 bits exact: {consts:?}"
     );
     // the casts bound as Cast exprs
@@ -118,12 +123,17 @@ fn numeric_canonical_roundtrip_is_stable() {
     let b = bind_numeric_ok(&src);
     let text = descriptor::write_canonical(&b, numeric_descriptor()).expect("canonical write");
     let b2 = descriptor::bind(numeric_descriptor(), &text).expect("roundtrip bind");
-    let text2 =
-        descriptor::write_canonical(&b2, numeric_descriptor()).expect("second write");
+    let text2 = descriptor::write_canonical(&b2, numeric_descriptor()).expect("second write");
     assert_eq!(text, text2, "canonical form must be a fixed point");
     // the typed words survive the roundtrip verbatim
-    assert!(text.contains("op: add_i64"), "typed op word in canonical: {text}");
-    assert!(text.contains("value: 4609434218613702656f64"), "f64 bits word");
+    assert!(
+        text.contains("op: add_i64"),
+        "typed op word in canonical: {text}"
+    );
+    assert!(
+        text.contains("value: 4609434218613702656f64"),
+        "f64 bits word"
+    );
 }
 
 #[test]

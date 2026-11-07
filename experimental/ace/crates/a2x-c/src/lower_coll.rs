@@ -831,11 +831,7 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                             K::Shr => format!("a2x_shr_{name}"),
                             _ => unreachable!(),
                         };
-                        self.fall_res(
-                            id,
-                            chan,
-                            format!("{f}(({dom})({l}), ({dom})({r}))"),
-                        )
+                        self.fall_res(id, chan, format!("{f}(({dom})({l}), ({dom})({r}))"))
                     }
                 }
             }
@@ -849,17 +845,16 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                     // PLAN-961: typed negation (float inline flip; the
                     // operand's range was verified — C unary minus on the
                     // in-range narrow value cannot overflow the width).
-                    hir::UnaryOp::NegNumeric(bty) => {
-                        match bty {
-                            hir::BuiltinType::F32
-                            | hir::BuiltinType::F64
-                            | hir::BuiltinType::I8
-                            | hir::BuiltinType::I64 => Ok(format!("(-({}))", o)),
-                            other => Err(A2xReject::unsupported_op(format!(
-                                "typed negation on {other:?}"
-                            ))),
-                        }
-                    }                }
+                    hir::UnaryOp::NegNumeric(bty) => match bty {
+                        hir::BuiltinType::F32
+                        | hir::BuiltinType::F64
+                        | hir::BuiltinType::I8
+                        | hir::BuiltinType::I64 => Ok(format!("(-({}))", o)),
+                        other => Err(A2xReject::unsupported_op(format!(
+                            "typed negation on {other:?}"
+                        ))),
+                    },
+                }
             }
             hir::ExprKind::Logical { op, lhs, rhs } => {
                 // bool operands are pure inline expressions in this

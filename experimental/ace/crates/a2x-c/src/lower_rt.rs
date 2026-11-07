@@ -772,9 +772,8 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                             _ => unreachable!(),
                         };
                         let t = self.fresh_temp();
-                        self.out.push(format!(
-                            "{chan} {t} = {f}(({dom})({l}), ({dom})({r}));"
-                        ));
+                        self.out
+                            .push(format!("{chan} {t} = {f}(({dom})({l}), ({dom})({r}));"));
                         self.check_trap(&t);
                         Ok((format!("{t}.value"), out_ty))
                     }

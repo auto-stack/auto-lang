@@ -287,7 +287,10 @@ pub struct ResolvedArg {
 pub enum RExprKind {
     IntLit(i32),
     /// PLAN-961: typed numeric literal, payload bits in the type's width.
-    TypedLit { vt: VT, bits: u64 },
+    TypedLit {
+        vt: VT,
+        bits: u64,
+    },
     BoolLit(bool),
     StrLit(String),
     CharLit(u32),
@@ -7973,12 +7976,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                     let vt = if typed_num_present {
                         let is_cmp = matches!(
                             op,
-                            BinOp::Lt
-                                | BinOp::Le
-                                | BinOp::Gt
-                                | BinOp::Ge
-                                | BinOp::Eq
-                                | BinOp::Ne
+                            BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge | BinOp::Eq | BinOp::Ne
                         );
                         if l.vt != r.vt || !vt_is_numeric(l.vt) || !vt_is_numeric(r.vt) {
                             self.bind_err(
@@ -8075,10 +8073,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                         } else {
                             self.bind_err(
                                 "source.type-mismatch",
-                                format!(
-                                    "unary `-` is not defined for unsigned {}",
-                                    o.vt.as_str()
-                                ),
+                                format!("unary `-` is not defined for unsigned {}", o.vt.as_str()),
                                 span,
                             );
                         }
@@ -8269,7 +8264,11 @@ impl<'a, 's> FnResolver<'a, 's> {
                     if !vt_is_numeric(target) {
                         self.bind_err(
                             "source.type-mismatch",
-                            format!("`.{}({})` target is not a numeric type word", name.name, word_text(word)),
+                            format!(
+                                "`.{}({})` target is not a numeric type word",
+                                name.name,
+                                word_text(word)
+                            ),
                             span,
                         );
                     }

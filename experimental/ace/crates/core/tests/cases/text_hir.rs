@@ -90,7 +90,7 @@ fn text_identity_binds_and_verifies() {
                 | hir::BuiltinType::I64
                 | hir::BuiltinType::U64
                 | hir::BuiltinType::F32
-                | hir::BuiltinType::F64
+                | hir::BuiltinType::F64,
             ) => "numeric",
             hir::TypeUse::Ref(_) => "ref",
         })

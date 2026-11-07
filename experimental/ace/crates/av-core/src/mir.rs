@@ -252,7 +252,10 @@ pub enum BinOp {
     /// PLAN-961: typed numeric operation — semantics (checked arithmetic,
     /// IEEE floats, shift bounds, fmod rem) keyed by `(op, ty)` per the
     /// frozen numeric contract (PLAN-961 T-01 §2).
-    Num { op: NumOp, ty: NumTy },
+    Num {
+        op: NumOp,
+        ty: NumTy,
+    },
 }
 
 /// The op vocabulary of [`BinOp::Num`]. Bit ops and shifts are int-only;
@@ -330,9 +333,7 @@ impl BinOp {
                     NumOp::Lt | NumOp::Le | NumOp::Gt | NumOp::Ge | NumOp::Eq | NumOp::Ne
                 )
             }
-            BinOp::AddI32 | BinOp::SubI32 | BinOp::MulI32 | BinOp::DivI32 | BinOp::RemI32 => {
-                false
-            }
+            BinOp::AddI32 | BinOp::SubI32 | BinOp::MulI32 | BinOp::DivI32 | BinOp::RemI32 => false,
         }
     }
 }
@@ -345,7 +346,9 @@ pub enum UnOp {
     /// float sign-flip (0.0 -> -0.0, NaN sign bit flips). `ty` admits only
     /// I8/I64/F32/F64 — unsigned negation is typed away before lowering
     /// and i32 keeps the frozen `NegI32` subcode.
-    NegT { ty: NumTy },
+    NegT {
+        ty: NumTy,
+    },
 }
 
 /// Test trace events (PLAN-798 §5.1): observation only, no I/O capability.

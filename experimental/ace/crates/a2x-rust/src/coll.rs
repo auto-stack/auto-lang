@@ -51,7 +51,13 @@ pub struct CollFileSet {
 /// Canonical execution configuration (PLAN-904 §5.6): keys in fixed
 /// order; any field difference is a different config identity (certs are
 /// keyed per config/mode and never cross-trust).
-pub fn canonical_execution_config(mode: &str, budget: u64, fault_alloc: Option<u64>, events: bool, cancel: bool) -> String {
+pub fn canonical_execution_config(
+    mode: &str,
+    budget: u64,
+    fault_alloc: Option<u64>,
+    events: bool,
+    cancel: bool,
+) -> String {
     format!(
         "{{\"budget_work_units\":{},\"cancel\":{},\"events\":{},\"fault_alloc\":{},\"mode\":\"{}\"}}",
         budget,
@@ -159,10 +165,7 @@ fn build_coll_manifest(
         "  \"source_sha256\": \"{}\",\n",
         full_source_sha256
     ));
-    out.push_str(&format!(
-        "  \"execution_config\": {},\n",
-        execution_config
-    ));
+    out.push_str(&format!("  \"execution_config\": {},\n", execution_config));
     out.push_str(&format!("  \"entry\": \"{}\",\n", entry_source_name));
     out.push_str(&format!("  \"entry_fn\": \"{}\",\n", program.entry));
     out.push_str(&format!(

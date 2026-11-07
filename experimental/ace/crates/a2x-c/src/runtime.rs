@@ -142,27 +142,56 @@ pub fn write_runtime(marks: &[&'static str], out: &mut dyn std::fmt::Write) -> s
     // Per-width integer arithmetic: (name, cty, signed, min, max, width,
     // result channel i=I64/u=U64).
     let int_tys: &[(&str, &str, bool, i128, u128, u32, u8)] = &[
-        ("i8", "int8_t", true, i8::MIN as i128, i8::MAX as u128, 8, b'i'),
+        (
+            "i8",
+            "int8_t",
+            true,
+            i8::MIN as i128,
+            i8::MAX as u128,
+            8,
+            b'i',
+        ),
         ("u8", "uint8_t", false, 0, u8::MAX as u128, 8, b'u'),
-        ("i32", "int32_t", true, i32::MIN as i128, i32::MAX as u128, 32, b'i'),
+        (
+            "i32",
+            "int32_t",
+            true,
+            i32::MIN as i128,
+            i32::MAX as u128,
+            32,
+            b'i',
+        ),
         ("u32", "uint32_t", false, 0, u32::MAX as u128, 32, b'u'),
-        ("i64", "int64_t", true, i64::MIN as i128, i64::MAX as u128, 64, b'i'),
+        (
+            "i64",
+            "int64_t",
+            true,
+            i64::MIN as i128,
+            i64::MAX as u128,
+            64,
+            b'i',
+        ),
         ("u64", "uint64_t", false, 0, u64::MAX as u128, 64, b'u'),
     ];
     for &(name, cty, sgn, lo, hi, width, chan) in int_tys {
         let rt = if chan == b'i' { "i64" } else { "u64" };
         let ok = if chan == b'i' { "A2X_OK_I" } else { "A2X_OK_U" };
-        let trap = if chan == b'i' { "A2X_TRAP_I" } else { "A2X_TRAP_U" };
-        let dom = if chan == b'i' { "int64_t" } else { "uint64_t" };
-        let bounds = if sgn {
-            format!("a < ({lo}LL) || a > ({hi}LL)")
+        let trap = if chan == b'i' {
+            "A2X_TRAP_I"
         } else {
-            format!("a > ({hi}ULL)")
+            "A2X_TRAP_U"
         };
+        let dom = if chan == b'i' { "int64_t" } else { "uint64_t" };
         let _ = cty;
         // add / sub / mul: domain arithmetic + width range check.
         for op in ["add", "sub", "mul"] {
-            let sym = if op == "add" { "+" } else if op == "sub" { "-" } else { "*" };
+            let sym = if op == "add" {
+                "+"
+            } else if op == "sub" {
+                "-"
+            } else {
+                "*"
+            };
             out.write_str(&format!(
                 "static inline a2x_result_{rt} a2x_{op}_{name}({dom} a, {dom} b) {{\n"
             ))?;
@@ -206,7 +235,11 @@ pub fn write_runtime(marks: &[&'static str], out: &mut dyn std::fmt::Write) -> s
         }
         // div / rem: zero, per-width MIN/-1, then domain op + range check.
         for op in ["div", "rem"] {
-            let tcode = if op == "div" { "A2X_TRAP_DIV_OVERFLOW" } else { "A2X_TRAP_REM_OVERFLOW" };
+            let tcode = if op == "div" {
+                "A2X_TRAP_DIV_OVERFLOW"
+            } else {
+                "A2X_TRAP_REM_OVERFLOW"
+            };
             out.write_str(&format!(
                 "static inline a2x_result_{rt} a2x_{op}_{name}({dom} a, {dom} b) {{\n"
             ))?;
@@ -302,11 +335,18 @@ pub fn write_runtime(marks: &[&'static str], out: &mut dyn std::fmt::Write) -> s
     // Conversion matrix: int→int checked narrowing/widening; int→float;
     // float→int checked; f32→f64 exact; f64→f32 checked.
     let all_tys: &[(&str, bool)] = &[
-        ("i8", true), ("i32", true), ("i64", true),
-        ("u8", false), ("u32", false), ("u64", false),
+        ("i8", true),
+        ("i32", true),
+        ("i64", true),
+        ("u8", false),
+        ("u32", false),
+        ("u64", false),
     ];
     let dom_ty = |n: &str| -> &'static str {
-        match n { "i8"|"i32"|"i64" => "int64_t", _ => "uint64_t" }
+        match n {
+            "i8" | "i32" | "i64" => "int64_t",
+            _ => "uint64_t",
+        }
     };
     // PLAN-961: the conversion channel mirrors the emission-side
     // c_result_ty (i32 keeps the frozen a2x_result int32 channel).
@@ -329,9 +369,10 @@ pub fn write_runtime(marks: &[&'static str], out: &mut dyn std::fmt::Write) -> s
     };
     for &(f, _) in all_tys {
         for &(t, t_sgn) in all_tys {
-            if f == t { continue; }
+            if f == t {
+                continue;
+            }
             let fdom = dom_ty(f);
-            let tdom = dom_ty(t);
             let frt = rt_chan(t);
             let chan_name: &str = if frt.is_empty() {
                 "a2x_result"
@@ -361,9 +402,7 @@ pub fn write_runtime(marks: &[&'static str], out: &mut dyn std::fmt::Write) -> s
             } else {
                 "(a2x_result_u64)A2X_TRAP_U(A2X_TRAP_OVERFLOW)".to_string()
             };
-            out.write_str(&format!(
-                "    if ({check}) {{ return {trap_lit}; }}\n"
-            ))?;
+            out.write_str(&format!("    if ({check}) {{ return {trap_lit}; }}\n"))?;
             let (ok_lit, out_dom): (String, &str) = if frt.is_empty() {
                 ("a2x_value".to_string(), "int32_t")
             } else if frt == "i64" {
@@ -385,7 +424,11 @@ pub fn write_runtime(marks: &[&'static str], out: &mut dyn std::fmt::Write) -> s
             out.write_str(&format!(
                 "static inline a2x_result_{t} a2x_c_{f}_{t}({fdom} a) {{\n"
             ))?;
-            let ok = if t == "f32" { "A2X_OK_F32" } else { "A2X_OK_F64" };
+            let ok = if t == "f32" {
+                "A2X_OK_F32"
+            } else {
+                "A2X_OK_F64"
+            };
             out.write_str(&format!("    return (a2x_result_{t}){ok}(({tcty})a);\n"))?;
             out.write_str("}\n\n")?;
         }
@@ -395,7 +438,6 @@ pub fn write_runtime(marks: &[&'static str], out: &mut dyn std::fmt::Write) -> s
         for &(t, _) in all_tys {
             let (tlo, thi) = lo_hi(t);
             let frt = rt_chan(t);
-            let tdom = dom_ty(t);
             let chan_name2: &str = if frt.is_empty() {
                 "a2x_result"
             } else if frt == "i64" {
@@ -407,13 +449,19 @@ pub fn write_runtime(marks: &[&'static str], out: &mut dyn std::fmt::Write) -> s
                 "static inline {chan_name2} a2x_c_{f}_{t}({fcty} a) {{\n"
             ))?;
             out.write_str("    if (!(a == a)) { goto bad; }\n")?;
-            let lo_lit = if tlo == 0 { "0.0".to_string() } else { format!("{tlo}.0") };
+            let lo_lit = if tlo == 0 {
+                "0.0".to_string()
+            } else {
+                format!("{tlo}.0")
+            };
             let hi_lit = if tlo == 0 {
                 format!("{thi}.0")
             } else {
                 format!("{}.0", thi.wrapping_add(1))
             };
-            out.write_str(&format!("    if (a < {lo_lit} || a >= {hi_lit}) {{ goto bad; }}\n"))?;
+            out.write_str(&format!(
+                "    if (a < {lo_lit} || a >= {hi_lit}) {{ goto bad; }}\n"
+            ))?;
             let (ok_lit, out_dom): (String, &str) = if frt.is_empty() {
                 ("a2x_value".to_string(), "int32_t")
             } else if frt == "i64" {
@@ -432,9 +480,7 @@ pub fn write_runtime(marks: &[&'static str], out: &mut dyn std::fmt::Write) -> s
             } else {
                 "(a2x_result_u64)A2X_TRAP_U(A2X_TRAP_INVALID)".to_string()
             };
-            out.write_str(&format!(
-                "bad: return {bad_lit};\n"
-            ))?;
+            out.write_str(&format!("bad: return {bad_lit};\n"))?;
             out.write_str("}\n\n")?;
         }
     }

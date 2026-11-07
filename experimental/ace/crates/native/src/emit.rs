@@ -71,8 +71,7 @@ pub fn cranelift_sig_of(module: &MirModule, ty: u32) -> Result<Signature, MnErro
             }
             // PLAN-961: numeric params cross on their machine carriers
             // (i8/u8/u32/f32 → I32, i64/u64/f64 → I64; bit-exact).
-            Some(MirType::I8) | Some(MirType::U8) | Some(MirType::U32)
-            | Some(MirType::F32) => {
+            Some(MirType::I8) | Some(MirType::U8) | Some(MirType::U32) | Some(MirType::F32) => {
                 params.push(AbiParam::new(cranelift_codegen::ir::types::I32))
             }
             Some(MirType::I64) | Some(MirType::U64) | Some(MirType::F64) => {
@@ -109,8 +108,7 @@ pub fn cranelift_sig_of(module: &MirModule, ty: u32) -> Result<Signature, MnErro
             ))
         }
         // PLAN-961: numeric results cross on their machine carriers.
-        Some(MirType::I8) | Some(MirType::U8) | Some(MirType::U32)
-        | Some(MirType::F32) => {
+        Some(MirType::I8) | Some(MirType::U8) | Some(MirType::U32) | Some(MirType::F32) => {
             vec![AbiParam::new(cranelift_codegen::ir::types::I32)]
         }
         Some(MirType::I64) | Some(MirType::U64) | Some(MirType::F64) => {

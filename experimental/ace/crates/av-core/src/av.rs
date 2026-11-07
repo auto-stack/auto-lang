@@ -2942,10 +2942,8 @@ fn dispatch_with_host<V: ModuleView>(
                     let src_ty = func.slots[*src as usize].ty;
                     let dst_ty = func.slots[*dst as usize].ty;
                     let (Some(src_num), Some(dst_num)) = (
-                        v.scalar_shape_of(func_idx, src_ty)
-                            .and_then(|s| s.num_ty()),
-                        v.scalar_shape_of(func_idx, dst_ty)
-                            .and_then(|s| s.num_ty()),
+                        v.scalar_shape_of(func_idx, src_ty).and_then(|s| s.num_ty()),
+                        v.scalar_shape_of(func_idx, dst_ty).and_then(|s| s.num_ty()),
                     ) else {
                         return Some(ExecOutcome::Infra(format!(
                             "conv slot types ({},{}) are not both numeric — admission violation",

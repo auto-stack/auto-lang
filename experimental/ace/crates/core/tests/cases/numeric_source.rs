@@ -41,53 +41,10 @@ fn numeric_typed_literal_parses_and_compiles_to_hir() {
     // negative-fold and operator typing land with the ops unit).
     let code = first_code(parse_program_with(src, SourceProfile::Numeric));
     assert_eq!(code, "ok", "typed literal must parse under numeric");
-    for w in ["i64", "u64", "f32", "f64", "double", "float", "u8", "byte", "u32", "uint", "i8"] {
-        let src = format!("fn main() {w} {{ return 1i64 }}");
-        eprintln!("RET-{}: {}", w, first_code(parse_program_with(&src, SourceProfile::Numeric)));
-    }
-    let f1 = "fn main() f64 {
-    let z = 0.0d
-    return -z
-}";
-    eprintln!("F1: {}", first_code(parse_program_with(f1, SourceProfile::Numeric)));
-    let f2 = "fn main() f64 {
-    let z = 0.0d
-    return z
-}";
-    eprintln!("F2: {}", first_code(parse_program_with(f2, SourceProfile::Numeric)));
-    let f3 = "fn main() f64 {
-    return -z
-}";
-    eprintln!("F3: {}", first_code(parse_program_with(f3, SourceProfile::Numeric)));
-    let cf = |x: &str| match ace_core::source::compile_numeric_source(x, "p.at", &[]) {
-        Ok(_) => "ok".to_string(),
-        Err(d) => format!("{}: {}", d[0].code, d[0].message),
-    };
-    eprintln!("CF1: {}", cf(f1));
-    eprintln!("CF2: {}", cf(f2));
-    let f4 = "fn main() f64 { let z = 0.0d
- return -z }";
-    eprintln!("F4(single-line-brace): {}", first_code(parse_program_with(f4, SourceProfile::Numeric)));
-    let f5 = "fn main() int { let z = 5
- return z }";
-    eprintln!("F5(int-same-shape): {}", first_code(parse_program_with(f5, SourceProfile::Numeric)));
-    let f6 = "fn main() f64 { let z = 1.5d
- return z }";
-    eprintln!("F6(nofloat-dot-0): {}", first_code(parse_program_with(f6, SourceProfile::Numeric)));
-    let f7 = "fn main() f64 { let z = 0.0d
- return z }";
-    eprintln!("F7(dot-zero): {}", first_code(parse_program_with(f7, SourceProfile::Numeric)));
-    let mn = "fn main() i64 { let m = -9223372036854775808i64
- return m }";
-    eprintln!("I64MIN: {}", first_code(parse_program_with(mn, SourceProfile::Numeric)));
     // Full front door: parse → resolve → typecheck → emit → bind → verify.
-    let parts = ace_core::source::adapter::compile_parts_with(
-        src,
-        "n_lit.at",
-        &[],
-        SourceProfile::Numeric,
-    )
-    .expect("numeric compile parts");
+    let parts =
+        ace_core::source::adapter::compile_parts_with(src, "n_lit.at", &[], SourceProfile::Numeric)
+            .expect("numeric compile parts");
     let checked = ace_core::verify::verify_closures(parts.bundle).expect("verify");
     let body = &checked.bundle().modules[0].bodies[0];
     let consts: Vec<(ace_core::hir::BuiltinType, u64)> = body
@@ -115,15 +72,33 @@ fn numeric_typed_literal_parses_and_compiles_to_hir() {
         ("1_000_000u32", ace_core::hir::BuiltinType::U32, 1_000_000),
         ("0x1Fi8", ace_core::hir::BuiltinType::I8, 31),
         ("0b101b", ace_core::hir::BuiltinType::U8, 5),
-        ("9223372036854775807i64", ace_core::hir::BuiltinType::I64, i64::MAX as u64),
-        ("18446744073709551615u64", ace_core::hir::BuiltinType::U64, u64::MAX),
-        ("1.5f32", ace_core::hir::BuiltinType::F32, 1.5f32.to_bits() as u64),
+        (
+            "9223372036854775807i64",
+            ace_core::hir::BuiltinType::I64,
+            i64::MAX as u64,
+        ),
+        (
+            "18446744073709551615u64",
+            ace_core::hir::BuiltinType::U64,
+            u64::MAX,
+        ),
+        (
+            "1.5f32",
+            ace_core::hir::BuiltinType::F32,
+            1.5f32.to_bits() as u64,
+        ),
         ("2.5d", ace_core::hir::BuiltinType::F64, 2.5f64.to_bits()),
-        ("0.5", ace_core::hir::BuiltinType::F32, 0.5f32.to_bits() as u64),
+        (
+            "0.5",
+            ace_core::hir::BuiltinType::F32,
+            0.5f32.to_bits() as u64,
+        ),
     ] {
-        let srcs = format!("fn f() int {{ return 0 }}
+        let srcs = format!(
+            "fn f() int {{ return 0 }}
 fn g(x int) int {{ return x }}
-fn h() i64 {{ return {word} }}");
+fn h() i64 {{ return {word} }}"
+        );
         // Only the parse+decode level for the vocabulary matrix (typing of
         // every width rides the resolve unit).
         let c = first_code(parse_program_with(&srcs, SourceProfile::Numeric));
@@ -156,13 +131,9 @@ fn numeric_ops_shifts_casts_compile_to_hir() {
     return k + j
 }
 ";
-    let parts = ace_core::source::adapter::compile_parts_with(
-        src,
-        "n_ops.at",
-        &[],
-        SourceProfile::Numeric,
-    )
-    .expect("ops compile parts");
+    let parts =
+        ace_core::source::adapter::compile_parts_with(src, "n_ops.at", &[], SourceProfile::Numeric)
+            .expect("ops compile parts");
     let checked = ace_core::verify::verify_closures(parts.bundle).expect("verify");
     let body = &checked.bundle().modules[0].bodies[0];
     use ace_core::hir::{BinOp, BuiltinType, ExprKind, NumOpKind};
@@ -178,10 +149,22 @@ fn numeric_ops_shifts_casts_compile_to_hir() {
         })
         .collect();
     words.sort();
-    assert!(words.contains(&"Add_I64".to_string()), "typed add: {words:?}");
-    assert!(words.contains(&"And_I32".to_string()), "i32 bit and: {words:?}");
-    assert!(words.contains(&"Shl_I64".to_string()), "typed shl: {words:?}");
-    assert!(words.contains(&"Lt_I64".to_string()), "typed cmp: {words:?}");
+    assert!(
+        words.contains(&"Add_I64".to_string()),
+        "typed add: {words:?}"
+    );
+    assert!(
+        words.contains(&"And_I32".to_string()),
+        "i32 bit and: {words:?}"
+    );
+    assert!(
+        words.contains(&"Shl_I64".to_string()),
+        "typed shl: {words:?}"
+    );
+    assert!(
+        words.contains(&"Lt_I64".to_string()),
+        "typed cmp: {words:?}"
+    );
     assert!(words.contains(&"Add_U8".to_string()), "u8 add: {words:?}");
     // casts bound as Cast exprs with their destinations
     let casts: Vec<&ace_core::hir::BuiltinType> = body
@@ -219,15 +202,27 @@ fn numeric_ops_shifts_casts_compile_to_hir() {
 fn numeric_negative_surface_rejections() {
     let cases = [
         // mixed widths without conversion
-        ("fn main(x i64) i64 { return x + 1 }", "source.type-mismatch"),
+        (
+            "fn main(x i64) i64 { return x + 1 }",
+            "source.type-mismatch",
+        ),
         // float bit op
-        ("fn main(x f64) f64 { return x & 1.0d }", "source.type-mismatch"),
+        (
+            "fn main(x f64) f64 { return x & 1.0d }",
+            "source.type-mismatch",
+        ),
         // unsigned negation
         ("fn main() u32 { return -1u32 }", "source.literal-range"),
         // shift amount of a different width
-        ("fn main(x i64) i64 { return x.shl(1) }", "source.type-mismatch"),
+        (
+            "fn main(x i64) i64 { return x.shl(1) }",
+            "source.type-mismatch",
+        ),
         // unknown numeric method
-        ("fn main(x i64) i64 { return x.frob() }", "source.unsupported"),
+        (
+            "fn main(x i64) i64 { return x.frob() }",
+            "source.unsupported",
+        ),
     ];
     for (src, want) in cases {
         // Typing rules live in resolve — compile, not just parse.

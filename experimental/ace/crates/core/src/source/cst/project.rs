@@ -2646,7 +2646,11 @@ fn decode_typed_literal_neg(raw: &str, neg: bool) -> Result<ExprKind, String> {
     let digits_only: String = body
         .1
         .chars()
-        .take_while(|c| c.is_ascii_digit() || (body.0 == 16 && c.to_ascii_lowercase() >= 'a' && c.to_ascii_lowercase() <= 'f') || *c == '_')
+        .take_while(|c| {
+            c.is_ascii_digit()
+                || (body.0 == 16 && c.to_ascii_lowercase() >= 'a' && c.to_ascii_lowercase() <= 'f')
+                || *c == '_'
+        })
         .filter(|c| *c != '_')
         .collect();
     let mag: u128 = u128::from_str_radix(&digits_only, body.0).unwrap_or(u128::MAX);
@@ -4680,12 +4684,7 @@ impl<'a> Engine<'a> {
                     Ok(kind) => Expr { kind, span },
                     Err(msg) => {
                         self.cx.reject(span, move || {
-                            Diagnostic::new(
-                                Stage::Text,
-                                "source.literal-range",
-                                msg.clone(),
-                                span,
-                            )
+                            Diagnostic::new(Stage::Text, "source.literal-range", msg.clone(), span)
                         });
                         Expr {
                             kind: ExprKind::IntLit(0),

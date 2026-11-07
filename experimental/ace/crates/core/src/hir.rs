@@ -491,7 +491,10 @@ impl BinOp {
         match self {
             BinOp::AddI32 | BinOp::SubI32 | BinOp::MulI32 => true,
             // PLAN-961: typed add/sub/mul carry the policy field.
-            BinOp::Num { op: NumOpKind::Add | NumOpKind::Sub | NumOpKind::Mul, .. } => true,
+            BinOp::Num {
+                op: NumOpKind::Add | NumOpKind::Sub | NumOpKind::Mul,
+                ..
+            } => true,
             _ => false,
         }
     }

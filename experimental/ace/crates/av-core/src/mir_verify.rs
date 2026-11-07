@@ -484,9 +484,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 }
                 // PLAN-961: the narrow integers ride the same data-family
                 // gate as the wide scalars.
-                MirType::I8 | MirType::U8 | MirType::U32
-                    if !self.numeric_surface() =>
-                {
+                MirType::I8 | MirType::U8 | MirType::U32 if !self.numeric_surface() => {
                     return Err(MirVerifyError::uns(
                         "mir.profile-type",
                         format!(
@@ -992,7 +990,8 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 if !scalar_ok {
                     return Err(MirVerifyError::inv(
                         "mir.entry-sig",
-                        "collections/closures-family module entry params/result must be scalar".to_string(),
+                        "collections/closures-family module entry params/result must be scalar"
+                            .to_string(),
                     ));
                 }
             } else if !entry_sig.params.is_empty()
@@ -2342,8 +2341,10 @@ impl<'a, 'r> Verifier<'a, 'r> {
                                     | NumOp::Ne
                             ) {
                                 shapes.0 == Some(ScalarShape::Bool)
-                            } else if matches!(nop, NumOp::And | NumOp::Or | NumOp::Xor | NumOp::Shl | NumOp::Shr)
-                                && ty.is_float()
+                            } else if matches!(
+                                nop,
+                                NumOp::And | NumOp::Or | NumOp::Xor | NumOp::Shl | NumOp::Shr
+                            ) && ty.is_float()
                             {
                                 false
                             } else {
@@ -2400,7 +2401,13 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             // lowering), same shape for operand and result.
                             UnOp::NegT { ty } => {
                                 self.numeric_surface()
-                                    && !matches!(ty, crate::mir::NumTy::U8 | crate::mir::NumTy::U32 | crate::mir::NumTy::U64 | crate::mir::NumTy::I32)
+                                    && !matches!(
+                                        ty,
+                                        crate::mir::NumTy::U8
+                                            | crate::mir::NumTy::U32
+                                            | crate::mir::NumTy::U64
+                                            | crate::mir::NumTy::I32
+                                    )
                                     && self.module.type_shape(ot) == Some(ty.shape_of())
                                     && self.module.type_shape(dt) == Some(ty.shape_of())
                             }
@@ -2425,7 +2432,8 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         if !self.numeric_surface() {
                             return Err(err(
                                 "mir.profile-type",
-                                "numeric conversions exist only in the data-family profiles".to_string(),
+                                "numeric conversions exist only in the data-family profiles"
+                                    .to_string(),
                             ));
                         }
                         let ok = matches!(
@@ -2435,10 +2443,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         if !ok {
                             return Err(err(
                                 "mir.conv-type",
-                                format!(
-                                    "conversion requires numeric slots (types {},{})",
-                                    st, dt
-                                ),
+                                format!("conversion requires numeric slots (types {},{})", st, dt),
                             ));
                         }
                     }

@@ -3696,11 +3696,8 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                             // PLAN-960: module global cell read/write.
                             if let Some(gname) = symbol.strip_prefix("module.global.get:") {
                                 let sig = self.out.imports[imp as usize].sig;
-                                let result_ty = self
-                                    .out
-                                    .sig_of(sig)
-                                    .map(|f| f.result)
-                                    .ok_or_else(|| {
+                                let result_ty =
+                                    self.out.sig_of(sig).map(|f| f.result).ok_or_else(|| {
                                         AdapterError::inv(
                                             "global.signature",
                                             "accessor signature".into(),

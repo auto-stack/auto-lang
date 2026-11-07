@@ -42,18 +42,17 @@ enum Domain {
 /// per-domain drivers.
 fn is_surface_rejection(ds: &[ace_core::atom_text::Diagnostic]) -> bool {
     ds.iter().all(|d| {
-        d.code == "source.unsupported" && d.stage == ace_core::atom_text::Stage::Text
-            || {
-                // PLAN-961: the numeric-only operator characters (& | ^)
-                // lex as unknown characters on every narrower profile —
-                // that lex failure is a surface fact (the numeric profile
-                // owns the characters), so escalation continues.
-                d.code == "source.lex"
-                    && d.message.contains("unknown character")
-                    && (d.message.contains("`&`")
-                        || d.message.contains("`|`")
-                        || d.message.contains("`^`"))
-            }
+        d.code == "source.unsupported" && d.stage == ace_core::atom_text::Stage::Text || {
+            // PLAN-961: the numeric-only operator characters (& | ^)
+            // lex as unknown characters on every narrower profile —
+            // that lex failure is a surface fact (the numeric profile
+            // owns the characters), so escalation continues.
+            d.code == "source.lex"
+                && d.message.contains("unknown character")
+                && (d.message.contains("`&`")
+                    || d.message.contains("`|`")
+                    || d.message.contains("`^`"))
+        }
     })
 }
 
@@ -478,9 +477,7 @@ impl MnDriver {
                 Arm::Scalar => ace_lowering::lower_checked(checked, entry, snapshot),
                 Arm::Data => ace_lowering::lower_checked_data(checked, entry, snapshot),
                 Arm::Owned => ace_lowering::lower_checked_owned(checked, entry, snapshot),
-                Arm::Numeric => {
-                    ace_lowering::lower_checked_closures(checked, entry, snapshot)
-                }
+                Arm::Numeric => ace_lowering::lower_checked_closures(checked, entry, snapshot),
             };
             r.map_err(|e| {
                 o.counter("mir_reject", 1);

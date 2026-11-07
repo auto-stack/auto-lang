@@ -402,10 +402,9 @@ fn mn_data_owned_unit_rejections() {
         spans: vec![],
     });
     let c0 = m2.intern_const(MirConst::I32(0));
-    m2.funcs.last_mut().expect("fn pushed").blocks[0].instrs.push(MirInstr::Const {
-        dst: 0,
-        value: c0,
-    });
+    m2.funcs.last_mut().expect("fn pushed").blocks[0]
+        .instrs
+        .push(MirInstr::Const { dst: 0, value: c0 });
     match ace_native::emit::emit_unit_coff(&m2) {
         // PLAN-961: the collections/closures family is admitted (the
         // numeric surface rides this lane).

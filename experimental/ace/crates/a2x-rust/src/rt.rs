@@ -640,4 +640,3 @@ pub fn a2x_lit_f64(lo: i32, hi: i32) -> A2xResult<f64> {
 }
 
 "#;
-

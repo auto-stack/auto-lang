@@ -3260,9 +3260,7 @@ impl<'d> Binder<'d> {
                 Some(hir::TypeUse::Builtin(hir::BuiltinType::Bool))
             }
             // PLAN-961: numeric builtin type words (numeric identity only).
-            Value::Ident(word)
-                if self.desc.is_numeric() && numeric_builtin(word).is_some() =>
-            {
+            Value::Ident(word) if self.desc.is_numeric() && numeric_builtin(word).is_some() => {
                 Some(hir::TypeUse::Builtin(numeric_builtin(word).unwrap()))
             }
             // PLAN-862: `unit` is the entry-unit domain's result word; under

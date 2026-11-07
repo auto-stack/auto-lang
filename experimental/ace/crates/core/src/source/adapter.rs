@@ -1260,7 +1260,10 @@ enum EKind {
     Const(i32),
     /// PLAN-961: a typed numeric const — payload bits in the type's own
     /// width (floats as to_bits()).
-    TypedConst { vt: VT, bits: u64 },
+    TypedConst {
+        vt: VT,
+        bits: u64,
+    },
     /// PLAN-961: numeric shift `.shl(n)`/`.shr(n)` (same-type amount).
     NumShift {
         op: crate::hir::NumOpKind,
@@ -2396,7 +2399,10 @@ impl PlanCtx<'_> {
                             let target = to
                                 .and_then(crate::source::resolve::vt_numeric_hir)
                                 .unwrap_or(crate::hir::BuiltinType::I64);
-                            EKind::NumCast { recv: r, to: target }
+                            EKind::NumCast {
+                                recv: r,
+                                to: target,
+                            }
                         }
                         other => unreachable!("NumMethodOut on {other:?}"),
                     };
@@ -2587,7 +2593,10 @@ impl PlanCtx<'_> {
             // typed const.
             RExprKind::TypedLit { vt, bits } => {
                 plan.exprs.push(ENode {
-                    kind: EKind::TypedConst { vt: *vt, bits: *bits },
+                    kind: EKind::TypedConst {
+                        vt: *vt,
+                        bits: *bits,
+                    },
                     vt: *vt,
                     span: e.span,
                 });
@@ -4164,10 +4173,7 @@ impl<'p> Emitter<'p> {
                             // legacy words (`add_i32`..`ne`); the typed Num
                             // words serve every non-I32 numeric pair AND
                             // the i32 bit ops (which have no legacy word).
-                            let is_bit = matches!(
-                                op,
-                                BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor
-                            );
+                            let is_bit = matches!(op, BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor);
                             let numeric_ty = if lvt == rvt
                                 && crate::source::resolve::vt_is_numeric(lvt)
                                 && (is_bit || !matches!(lvt, VT::I32))

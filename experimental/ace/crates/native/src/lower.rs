@@ -785,7 +785,6 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         Ok(())
     }
 
-
     // ---- PLAN-961 numeric emission (frozen T-01 §2/§3 matrix) -----------
 
     /// Declare (once) the CRT float-modulo import for the width.
@@ -843,7 +842,10 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
 
     /// (min, max) inclusive range of a signed/unsigned integer NumTy as
     /// I64 constants (the math domain).
-    fn int_range(&mut self, ty: NumTy) -> (cranelift_codegen::ir::Value, cranelift_codegen::ir::Value) {
+    fn int_range(
+        &mut self,
+        ty: NumTy,
+    ) -> (cranelift_codegen::ir::Value, cranelift_codegen::ir::Value) {
         let (lo, hi): (i64, u64) = match ty {
             NumTy::I8 => (i8::MIN as i64, i8::MAX as u64),
             NumTy::I32 => (i32::MIN as i64, i32::MAX as u64),
@@ -853,12 +855,19 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             NumTy::U64 => (0, u64::MAX),
             _ => unreachable!("int_range on float"),
         };
-        (self.fb.ins().iconst(types::I64, lo), self.fb.ins().iconst(types::I64, hi as i64))
+        (
+            self.fb.ins().iconst(types::I64, lo),
+            self.fb.ins().iconst(types::I64, hi as i64),
+        )
     }
 
     /// Widen a carrier value into the I64 math domain (sign/zero-extended
     /// per the type's signedness).
-    fn num_to_i64(&mut self, v: cranelift_codegen::ir::Value, ty: NumTy) -> cranelift_codegen::ir::Value {
+    fn num_to_i64(
+        &mut self,
+        v: cranelift_codegen::ir::Value,
+        ty: NumTy,
+    ) -> cranelift_codegen::ir::Value {
         // An I64 carrier is already the math domain (a same-type extend is
         // invalid CLIF); I32 carriers widen by signedness (the carrier
         // holds the sign/zero-extended pattern by construction).
@@ -920,7 +929,11 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
     }
 
     /// Float lanes: bitcast an I32/I64 carrier to F32/F64.
-    fn num_f(&mut self, v: cranelift_codegen::ir::Value, ty: NumTy) -> cranelift_codegen::ir::Value {
+    fn num_f(
+        &mut self,
+        v: cranelift_codegen::ir::Value,
+        ty: NumTy,
+    ) -> cranelift_codegen::ir::Value {
         match ty {
             NumTy::F32 => self.fb.ins().bitcast(types::F32, MemFlags::new(), v),
             NumTy::F64 => self.fb.ins().bitcast(types::F64, MemFlags::new(), v),
@@ -1344,7 +1357,11 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             let overflow = self.fb.ins().band(res_inf, was_inf);
             let not_overflow = {
                 let f2 = self.fb.ins().bitcast(
-                    if st == NumTy::F32 { types::F32 } else { types::F64 },
+                    if st == NumTy::F32 {
+                        types::F32
+                    } else {
+                        types::F64
+                    },
                     MemFlags::new(),
                     v,
                 );

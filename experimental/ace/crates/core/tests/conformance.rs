@@ -22,16 +22,16 @@ mod hir_verify;
 mod host_console;
 #[path = "cases/link_capture.rs"]
 mod link_capture;
+#[path = "cases/numeric_hir.rs"]
+mod numeric_hir;
+#[path = "cases/numeric_source.rs"]
+mod numeric_source;
 #[path = "cases/record_hir.rs"]
 mod record_hir;
 #[path = "cases/record_source.rs"]
 mod record_source;
 #[path = "cases/scalar_hir.rs"]
 mod scalar_hir;
-#[path = "cases/numeric_hir.rs"]
-mod numeric_hir;
-#[path = "cases/numeric_source.rs"]
-mod numeric_source;
 #[path = "cases/scalar_source.rs"]
 mod scalar_source;
 #[path = "cases/source_frontend.rs"]

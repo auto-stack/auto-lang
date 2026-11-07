@@ -111,29 +111,12 @@ pub(crate) fn c_dom_ty(ty: Ty) -> Result<&'static str, A2xReject> {
     Ok(match ty {
         Ty::I8 | Ty::I64 => "int64_t",
         Ty::U8 | Ty::U32 | Ty::U64 => "uint64_t",
-        other => c_ty(ty)?,
+        _ => c_ty(ty)?,
     })
 }
 
 /// PLAN-961: helper suffix per value type (i32 keeps the frozen unsuffixed
 /// i32 helpers for arithmetic; bit/shift ops gain _i32).
-fn c_num_suffix(ty: Ty) -> Result<&'static str, A2xReject> {
-    Ok(match ty {
-        Ty::I32 => "i32",
-        Ty::I8 => "i8",
-        Ty::U8 => "u8",
-        Ty::U32 => "u32",
-        Ty::I64 => "i64",
-        Ty::U64 => "u64",
-        Ty::F32 => "f32",
-        Ty::F64 => "f64",
-        other => {
-            return Err(A2xReject::unsupported_type(format!(
-                "no numeric helper suffix for {other:?}"
-            )))
-        }
-    })
-}
 
 /// One lowered C function (name, params, result, origin, body text).
 #[derive(Clone, Debug)]
@@ -314,11 +297,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 K::Mul => return Ok(format!("(({}) * ({}))", l, r)),
                 K::Div => format!("a2x_div_{name}"),
                 K::Rem => format!("a2x_rem_{name}"),
-                _ => {
-                    return Err(A2xReject::unsupported_op(format!(
-                        "float bit op {op:?}"
-                    )))
-                }
+                _ => return Err(A2xReject::unsupported_op(format!("float bit op {op:?}"))),
             };
             return Ok(self.typed_call(chan, format!("{f}({l}, {r})")));
         }
@@ -339,11 +318,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             _ => unreachable!("cmp handled above"),
         };
         let cast = c_ty(ty)?;
-        Ok(self.typed_call_as(
-            chan,
-            format!("{f}(({dom})({l}), ({dom})({r}))"),
-            cast,
-        ))
+        Ok(self.typed_call_as(chan, format!("{f}(({dom})({l}), ({dom})({r}))"), cast))
     }
 
     /// Lower an expression whose RESULT must be side-effect-free at its
@@ -399,9 +374,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 let v = self.lower_pure(*operand)?;
                 let from = self
                     .view
-                    .resolve_use_ty(
-                        self.facts.body.exprs[operand.0 as usize].ty,
-                    )
+                    .resolve_use_ty(self.facts.body.exprs[operand.0 as usize].ty)
                     .map_err(|_| A2xReject::unsupported_type("cast source type"))?;
                 let from_b = c_builtin_of(from)?;
                 if from_b == *to {
@@ -454,9 +427,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                         };
                         Ok(format!("(({}) {} ({}))", l, o, r))
                     }
-                    hir::BinOp::Num { op, ty } => {
-                        self.num_bin_c(*op, *ty, l, r)
-                    }
+                    hir::BinOp::Num { op, ty } => self.num_bin_c(*op, *ty, l, r),
                 }
             }
             hir::ExprKind::Unary { op, operand } => {
@@ -484,11 +455,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                                 )))
                             }
                         };
-                        let dom = c_dom_ty(builtin_ty_of(*bty)?)?;
-                        Ok(self.typed_call(
-                            "a2x_result_i64",
-                            format!("{name}((int64_t){})", o),
-                        ))
+                        Ok(self.typed_call("a2x_result_i64", format!("{name}((int64_t){})", o)))
                     }
                 }
             }
@@ -712,12 +679,8 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 // type (typed numerics wrap in their own OK struct).
                 let rty = self
                     .view
-                    .resolve_use_ty(
-                        self.facts.body.exprs[value.0 as usize].ty,
-                    )
-                    .map_err(|_| {
-                        A2xReject::unsupported_type("return type outside the channel")
-                    })?;
+                    .resolve_use_ty(self.facts.body.exprs[value.0 as usize].ty)
+                    .map_err(|_| A2xReject::unsupported_type("return type outside the channel"))?;
                 match rty {
                     Ty::I32 | Ty::Bool => {
                         self.out.push(format!("return a2x_value({});", v));
@@ -975,10 +938,18 @@ pub(crate) fn c_bname(b: hir::BuiltinType) -> &'static str {
 
 /// MIN spellings never round-trip through a wider type.
 fn c_min_or_cast_i8(v: i8) -> String {
-    if v == i8::MIN { "(int8_t)(-127 - 1)".to_string() } else { format!("(int8_t){v}") }
+    if v == i8::MIN {
+        "(int8_t)(-127 - 1)".to_string()
+    } else {
+        format!("(int8_t){v}")
+    }
 }
 fn c_min_or_cast_i32(v: i32) -> String {
-    if v == i32::MIN { "(int32_t)(-2147483647 - 1)".to_string() } else { format!("(int32_t){v}") }
+    if v == i32::MIN {
+        "(int32_t)(-2147483647 - 1)".to_string()
+    } else {
+        format!("(int32_t){v}")
+    }
 }
 fn c_min_or_cast_i64(v: i64) -> String {
     if v == i64::MIN {

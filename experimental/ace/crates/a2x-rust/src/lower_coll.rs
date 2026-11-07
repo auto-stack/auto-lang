@@ -90,10 +90,7 @@ pub fn lower_coll_functions(view: &SemanticView<'_>) -> Result<RustProgram, A2xR
 }
 
 /// Lower one function of the collections channel.
-pub fn lower_coll_fn(
-    view: &SemanticView<'_>,
-    f: &FnFacts<'_>,
-) -> Result<RustFn, A2xReject> {
+pub fn lower_coll_fn(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<RustFn, A2xReject> {
     let facts = view.body_facts(f).ok_or_else(|| {
         A2xReject::new(
             "a2x.internal",
@@ -264,9 +261,7 @@ impl<'a, 'v> CollLower<'a, 'v> {
                                 .unwrap_or_else(|| "a2x_str_free".into());
                             (self.local_name_of(hir::LocalId(*l)), call)
                         }
-                        FreeRef::Temp(e, kind) => {
-                            (format!("e{}", e), self.free_call(*kind))
-                        }
+                        FreeRef::Temp(e, kind) => (format!("e{}", e), self.free_call(*kind)),
                     })
                     .collect()
             })
@@ -309,10 +304,9 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     } else {
                         self.expr(*value, &mut out)?
                     };
-                    let l = self
-                        .locals
-                        .get(local.0 as usize)
-                        .ok_or_else(|| A2xReject::new("a2x.internal", "local index out of range"))?;
+                    let l = self.locals.get(local.0 as usize).ok_or_else(|| {
+                        A2xReject::new("a2x.internal", "local index out of range")
+                    })?;
                     let ty = self.view.resolve_use_ty(l.ty)?;
                     out.push(RStmt::CollLet {
                         name: self.local_name_of(*local),
@@ -405,7 +399,10 @@ impl<'a, 'v> CollLower<'a, 'v> {
                                     FreeRef::Local(l) => {
                                         let ty = self.local_ty(hir::LocalId(*l)).ok()?;
                                         let k = self.owned_kind_of_ty(ty)?;
-                                        Some((self.local_name_of(hir::LocalId(*l)), self.free_call(k)))
+                                        Some((
+                                            self.local_name_of(hir::LocalId(*l)),
+                                            self.free_call(k),
+                                        ))
                                     }
                                     _ => None,
                                 })
@@ -416,8 +413,10 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         for l in surv {
                             if let Some(ty) = self.local_ty(hir::LocalId(*l)).ok() {
                                 if let Some(k) = self.owned_kind_of_ty(ty) {
-                                    poll_frees
-                                        .push((self.local_name_of(hir::LocalId(*l)), self.free_call(k)));
+                                    poll_frees.push((
+                                        self.local_name_of(hir::LocalId(*l)),
+                                        self.free_call(k),
+                                    ));
                                 }
                             }
                         }
@@ -496,7 +495,10 @@ impl<'a, 'v> CollLower<'a, 'v> {
     }
 
     fn owned_kind_of_expr_ty(&self, e: &hir::Expr) -> Option<OwnedKind> {
-        self.view.resolve_use_ty(e.ty).ok().and_then(|t| self.owned_kind_of_ty(t))
+        self.view
+            .resolve_use_ty(e.ty)
+            .ok()
+            .and_then(|t| self.owned_kind_of_ty(t))
     }
 
     /// Emit one expression; fallible/owned nodes materialize as named
@@ -577,13 +579,7 @@ impl<'a, 'v> CollLower<'a, 'v> {
             name: name.clone(),
             ty_str: "i32".into(),
             mutable: m,
-            init: self.wrap(
-                id,
-                RExpr::Checked {
-                    func,
-                    args,
-                },
-            ),
+            init: self.wrap(id, RExpr::Checked { func, args }),
         });
         Ok(RExpr::Local(name))
     }
@@ -593,25 +589,26 @@ impl<'a, 'v> CollLower<'a, 'v> {
     /// Whether a LOCAL appears in any free schedule (its binding needs
     /// `mut` for the explicit free, independent of source mutability).
     fn local_needs_mut(&self, local: u32) -> bool {
-        let in_frees = self
-            .facts
-            .exit_frees
-            .values()
-            .any(|set| set.iter().any(|r| matches!(r, FreeRef::Local(l) if *l == local)))
+        let in_frees = self.facts.exit_frees.values().any(|set| {
+            set.iter()
+                .any(|r| matches!(r, FreeRef::Local(l) if *l == local))
+        }) || self.facts.err_frees.values().any(|set| {
+            set.iter()
+                .any(|r| matches!(r, FreeRef::Local(l) if *l == local))
+        }) || self.facts.replace_frees.values().any(|&l| l == local);
+        in_frees
             || self
-                .facts
-                .err_frees
-                .values()
-                .any(|set| set.iter().any(|r| matches!(r, FreeRef::Local(l) if *l == local)))
-            || self.facts.replace_frees.values().any(|&l| l == local);
-        in_frees || self.locals.get(local as usize).map(|l| l.mutable).unwrap_or(false)
+                .locals
+                .get(local as usize)
+                .map(|l| l.mutable)
+                .unwrap_or(false)
     }
 
     fn temp_needs_mut(&self, id: hir::ExprId) -> bool {
-        self.facts
-            .err_frees
-            .values()
-            .any(|set| set.iter().any(|r| matches!(r, FreeRef::Temp(e, _) if *e == id.0)))
+        self.facts.err_frees.values().any(|set| {
+            set.iter()
+                .any(|r| matches!(r, FreeRef::Temp(e, _) if *e == id.0))
+        })
     }
 
     /// Emit an infallible value into a typed temp (no Wrap).
@@ -702,7 +699,9 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     },
                 })
             }
-            hir::ExprKind::Call { callee, eval_args, .. } => {
+            hir::ExprKind::Call {
+                callee, eval_args, ..
+            } => {
                 let mut args = Vec::new();
                 for a in eval_args {
                     args.push(self.expr(a, out)?);
@@ -803,16 +802,17 @@ impl<'a, 'v> CollLower<'a, 'v> {
             }
             hir::ExprKind::FieldGet { base, path } => {
                 let b = self.expr(base, out)?;
-                let base_ty = self.view.resolve_use_ty(
-                    self.f.body.exprs[base.0 as usize].ty,
-                )?;
+                let base_ty = self
+                    .view
+                    .resolve_use_ty(self.f.body.exprs[base.0 as usize].ty)?;
                 let mut names = Vec::new();
                 let mut owner = base_ty;
                 for fid in &path {
                     let rec = match owner {
-                        Ty::Record(rid) => self.view.record(rid).ok_or_else(|| {
-                            A2xReject::new("a2x.internal", "record out of range")
-                        })?,
+                        Ty::Record(rid) => self
+                            .view
+                            .record(rid)
+                            .ok_or_else(|| A2xReject::new("a2x.internal", "record out of range"))?,
                         other => {
                             return Err(A2xReject::unsupported_type(format!(
                                 "field path through non-record `{}`",
@@ -963,9 +963,10 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 disc,
                 payload,
             } => {
-                let v = self.view.variant(variant.0).ok_or_else(|| {
-                    A2xReject::new("a2x.internal", "variant out of range")
-                })?;
+                let v = self
+                    .view
+                    .variant(variant.0)
+                    .ok_or_else(|| A2xReject::new("a2x.internal", "variant out of range"))?;
                 let arm = v
                     .arms
                     .get(disc as usize)
@@ -999,7 +1000,8 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 }
             }
             hir::ExprKind::VariantGuardTest { root, disc } => {
-                let (vname, aname, has_payload) = self.variant_arm(root_ty_of(self, root)?, disc)?;
+                let (vname, aname, has_payload) =
+                    self.variant_arm(root_ty_of(self, root)?, disc)?;
                 let r = self.expr(root, out)?;
                 Ok(RExpr::VariantIs {
                     variant: vname,
@@ -1083,9 +1085,10 @@ impl<'a, 'v> CollLower<'a, 'v> {
         // list operand is a ReadLocal of list type
         match &self.f.body.exprs[list_place.0 as usize].kind {
             hir::ExprKind::ReadLocal { local } => {
-                let l = self.locals.get(local.0 as usize).ok_or_else(|| {
-                    A2xReject::new("a2x.internal", "local index out of range")
-                })?;
+                let l = self
+                    .locals
+                    .get(local.0 as usize)
+                    .ok_or_else(|| A2xReject::new("a2x.internal", "local index out of range"))?;
                 match self.view.resolve_use_ty(l.ty)? {
                     Ty::List(id) => self.view.list_elem(id),
                     other => Err(A2xReject::unsupported_type(format!(
@@ -1123,8 +1126,7 @@ impl<'a, 'v> CollLower<'a, 'v> {
 }
 
 fn root_ty_of(w: &CollLower<'_, '_>, root: hir::ExprId) -> Result<Ty, A2xReject> {
-    w.view
-        .resolve_use_ty(w.f.body.exprs[root.0 as usize].ty)
+    w.view.resolve_use_ty(w.f.body.exprs[root.0 as usize].ty)
 }
 
 fn is_lit(body: &hir::Body, id: hir::ExprId) -> bool {
