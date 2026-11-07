@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-961
-status: reviewed
+status: archived
 feature_name: 完整数值源码与四端一致语义
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-06
+updated_at: 2026-11-08
 plan_revision: 2
-current_step: 5
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-959]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -114,9 +114,9 @@ T-01有界前探：用一个最小真实正例、同类型非法近邻和一次�
 - [x] **T-02｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
 - [x] **T-03｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
 - [x] **T-04｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
-- [ ] **T-05｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
-- [ ] **T-06｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
-- [ ] **T-07｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
+- [x] **T-05｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
+- [x] **T-06｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
+- [x] **T-07｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
 
 T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06→07串行。外仓owner交付可按稳定接口提前准备，但最终不得拿未交付接口背书。
 材料唯一目录 `D:/autostack/plan-artifacts/plan-961/`，开工登记owner/用途/在途；本轮未创建。不可另建attachments/证据仓目录，不留第二套target/SDK副本。
@@ -293,6 +293,57 @@ stage: review | review_scope: final | reviewer_identity: 同会话独立上下�
   a2x 双 provider、六 crate fmt 面（无新门，union 已在 T-04 跑过，环境红具名）。
 
 stage: review | review_scope: final | reviewer_identity: 同会话独立上下文（限制同 r1 声明） | plan_id: PLAN-961 | plan_revision: r2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-961/auto-lang | branch: plan-961-dev | reviewed_commit: 9cea5a881c729c2ddcb4f13d27ca1e347d45f9c0 | base_commit: fcc474acd | dependency_revisions: PLAN-959/960 archived | spec_inputs: docs/specs/ace-migration/{m2-denominator,replacement-scope-and-evidence}.md + goals.md | acceptance_results: AC-01 pass, AC-02 pass, AC-03 pass, AC-04 pass, AC-06 pass, AC-05 merge-owned pending | findings: 无未闭项（r1 三发现在 9cea5a881 闭合） | evidence: r1 冻结基线全量记录 + r2 健康核对与行为抽查 | next: merge (T-06/07)
+
+2026-11-08 T-06/T-07 merge（PLAN-961:r2 合并收据，completion_kind: delivered）：
+- **prepared**：reviewed 基线 9cea5a881（r2 pass）；master 自 base fcc474acd 起 25 提交全为 docs
+  簿记（experimental//crates//docs/specs/ 零变更，diff 实证）。worktree 内 rebase master：
+  12/12 patch `=`（range-diff），代码与 9cea5a881 逐字节一致（`git diff 9cea5a881..HEAD --
+  experimental/ crates/` = 0 行）；映射 9cea5a881→6ee8ced2b。规范增量落 worktree：SD-01 新增
+  `docs/specs/ace-migration/m2-numbers.md`、SD-02 在 replacement-scope-and-evidence.md 追加
+  SD-05 数值面 producer 挂接（沿 960 SD-04 型式，不改旧义务、不把台账行标 implemented）。
+  期间 PLAN-995 并发合入 master（0093e7eca，文件重叠 0——其 spec 在 docs/specs/auto-vm/），
+  二次 rebase 14/14 patch `=`，映射 9cea5a881→…→1b6d9c765（delivery tip）。
+- **merge-owned 冻结受影响模块并集**（delivery tip 上执行，与 r2 基线数字逐一相符）：core
+  conformance numeric_ 9/9、av-core lib 59/59、av conformance av_numeric 9/9、native
+  numeric_codegen 4/4（真实 COFF+PE）、a2x-c lib 8/8、a2x-core lib 2/2+conformance 7/7、
+  a2x-rust lib 2/2、lowering conformance 5/5、a2x-worker numeric 真链 2/2（真实 rustc+MSVC cl，
+  22.45s）；六 crate（core/av-core/lowering/native/a2x-c/a2x-rust）`cargo fmt --check` clean。
+  **fmt 面补全**：merge 时发现 av/tests/cases/av_numeric_semantics.rs（本包新增 fixture，base 无
+  此文件）有 4 处 rustfmt 机械 diff——在 R5-F3 六 crate 冻结面之外（ace-av 未入 fmt 面）。以
+  计划分支内 style 提交机械闭合（token 流恒等，av_numeric 9/9 复跑绿，fmt --check 含 ace-av
+  归零），无语义变更，未走债务登记。
+- **landed**：main 检出 `git merge --ff-only plan-961-dev`：master 0093e7eca→**1b6d9c765**
+  （=分支 tip，无 merge 提交，线性历史）；94 文件 +10491/−342。主检出落地检查：av-core lib
+  59/59、a2x-worker numeric 真链 2/2（20.83s）main 上全绿；主检出他会在途 docs WIP
+  （design/reports/945-977 计划书）与本包 diff 零重叠、原样保留。
+- **canonical_verified**：master tip 处 `docs/specs/ace-migration/m2-numbers.md` sha256
+  `8f10b476c76d8ac442c731805c5f322447252e3f6b5537bd86b96c9882a6387b`、
+  `replacement-scope-and-evidence.md` sha256
+  `cba25ceda706b937f26e072c6f1ad397befeb469b00d2ea9f42c99615191eae6`（落盘提交 50cd541ee）。
+  无 ledger/attachments/.wt-evidence 写入（分支全量 diff 扫描沿 r1 结论）；M1/M2 分账保持：
+  历史 M1 收据仅作输入，SD-05 只挂接 producer 不改分类口径。
+- **archived**：`git mv docs/plans/961-ace-m2-numbers.md docs/plans/archive/` + status: archived
+  （本提交）；T-05/T-06 勾选，T-07 显式 pending。
+- **cleaned**（T-07 收尾，2026-11-08）：**输出路径逐目录对账**——本计划命令实际输出仅三处：
+  ① `D:/autostack/plan-artifacts/plan-961/`（唯一暂存区，45 文件/~410KB：t01-freeze 矩阵已规范化
+  入 m2-numbers.md、t04 六组并集结果与环境归因已折入 §9 work handoff、patch/probe 脚本属历史
+  过程件）→ 折叠完成后整目录删除；② worktree 内 cargo target 树/构建中间产物 → 随 worktree
+  删除，不回收暂存；③ 测试临时目录：`%TEMP%/a2x-num-*` 泄漏 28 个（开发期 panic 残留，测试
+  本体通过路径自清理）→ 已清零；`/tmp/fmt-check.log` 删除。核验：无 `D:/autostack-build`、无
+  其他盘符第二 scope、plan-961 目录无 reparse point/junction。scope 根非链接，登记表
+  `.retention/policy.json` 已刷新（deleted-at-merge，无持有）。**worktree 清理**：
+  `wt-guard.sh D:/autostack/.wt/lang-961/auto-lang` → clean（无 reparse point）；树清 0 脏、
+  HEAD 1b6d9c765 已全量落地 → `git worktree remove` + `git branch -d plan-961-dev`（was
+  1b6d9c765）+ 组目录 rmdir（组内仅本仓，无兄弟）；其余 worktree（939/941/955/reader 等）属
+  其他在途会话，未触。最终状态：master 线性历史，任务 8/8（T-01..T-08）全部勾选，
+  status: archived。
+- **观察项**：批量回归门 DUE——`docs/plans/.last-batch-regression.json` last_covered_plan_id=956
+  （2026-11-06，gate_passed=false 已有具名红）；995（%5=0）与 961 相继落地、回执超 48h，按
+  PLAN-898 归 auto-plan:regress 单实例主检出门，非本包每计划门。生产工件：本包仅
+  experimental/ace + 测试金样，无 auto-lang 仓级发行二进制/web bundle 消费面（backend
+  release/`auto build` 属 auto-musk 域），无需重建；如后续把 ace 面接产品腿，由该腿计划自证。
+
+
 
 
 2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
