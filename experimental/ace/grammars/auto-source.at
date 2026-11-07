@@ -804,9 +804,10 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
 
     }
     // PLAN-961：数值面算符表（wide-ops 超集 + 位算 & | ^（同层，混用需
-    // 括号——冻结记录）+ `as` 转换（最紧，右操作数为类型词，由投影按
-    // r-as 叶分类）。移位不入 pratt：双 token 算符引擎不支持且 `>>` 与
-    // 嵌套泛型闭合冲突——`.shl(n)`/`.shr(n)` 方法形承载（投影层分类）。
+    // 括号——冻结记录）。转换/移位均不入 pratt：pratt 算子右操作数只能
+    // 是表达式（类型词 RHS 不支持），移位双 token 算符不支持且 `>>` 与
+    // 嵌套泛型闭合冲突——`.as(T)`/`.to(T)`/`.shl(n)`/`.shr(n)` 方法形
+    // 承载（后缀步 r-as/r-to 已门控 numeric；中缀 `as` 具名延后）。
     pratt(numeric-ops, profiles: [numeric]) {
         primary: "unary-expr"
         op(binding: 1, assoc: "left") { of: "||" }
@@ -825,7 +826,6 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         op(binding: 7, assoc: "left") { of: "*" }
         op(binding: 7, assoc: "left") { of: "/" }
         op(binding: 7, assoc: "left") { of: "%" }
-        op(binding: 8, assoc: "left") { of: "as" }
         postfix: "postfix-tail"
         group: ["(", ")"]
         call {

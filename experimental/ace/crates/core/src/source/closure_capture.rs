@@ -69,6 +69,8 @@ pub(crate) fn analyze_capture_uses(
             ExprKind::HashExpr { expr: inner } => {
                 visit_expr(inner, outer_locals, scopes, uses, by_name)
             }
+            // PLAN-961: a typed literal captures nothing.
+            ExprKind::TypedLit { .. } => {}
             ExprKind::Var(id) => record(id, false, outer_locals, scopes, uses, by_name),
             ExprKind::Call { callee, args } => {
                 record(callee, false, outer_locals, scopes, uses, by_name);
@@ -281,6 +283,8 @@ pub(crate) fn scan_shared_capture_cells(
     ) {
         match &expr.kind {
             ExprKind::HashExpr { expr: inner } => visit_expr(inner, scopes, shared),
+            // PLAN-961: a typed literal captures nothing.
+            ExprKind::TypedLit { .. } => {}
             ExprKind::Call { args, .. } => {
                 for arg in args {
                     visit_arg(arg, scopes, shared);

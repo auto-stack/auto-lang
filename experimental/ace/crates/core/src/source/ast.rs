@@ -305,6 +305,16 @@ pub enum ExprKind {
     /// Range-checked signed 32-bit literal (`-2147483648` and
     /// `- 2147483648` are one literal; see the parser).
     IntLit(i32),
+    /// PLAN-961: a typed numeric literal (`1i64`, `0x1Fu32`, `1.5f32`,
+    /// `2.5d`, `3b`). Decoded at the projection: `bits` carries the
+    /// payload in the type's own width (i8/u8/u32 low bits, i64/u64 full,
+    /// f32/f64 `to_bits()`); negative literals fold into the signed
+    /// payload there; a negative unsigned literal is a projection-time
+    /// `source.literal-range` rejection.
+    TypedLit {
+        ty: TypeWord,
+        bits: u64,
+    },
     BoolLit(bool),
     Var(Ident),
     /// Decoded string literal (text profile, PLAN-770); cross-line breaks

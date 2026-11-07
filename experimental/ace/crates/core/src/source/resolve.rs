@@ -222,6 +222,8 @@ pub struct ResolvedArg {
 #[derive(Clone, Debug)]
 pub enum RExprKind {
     IntLit(i32),
+    /// PLAN-961: typed numeric literal, payload bits in the type's width.
+    TypedLit { vt: VT, bits: u64 },
     BoolLit(bool),
     StrLit(String),
     CharLit(u32),
@@ -458,6 +460,8 @@ impl Drop for ResolvedExpr {
             // PLAN-936（T-04）：CT 需求/meta 查询在 closures 面不可达（语法
             // 面门控）；叶处理。
             RExprKind::HashExpr { .. } | RExprKind::MetaQuery { .. } => {}
+            // PLAN-961: a typed literal is a leaf.
+            RExprKind::TypedLit { .. } => {}
             RExprKind::Binary { lhs, rhs, .. } => {
                 let l = std::mem::replace(lhs.as_mut(), dummy());
                 let r = std::mem::replace(rhs.as_mut(), dummy());
@@ -4251,6 +4255,8 @@ impl<'a, 's> FnResolver<'a, 's> {
             // 不产 HashExpr；本臂仅为穷尽性——inner 递归即可）。
             ExprKind::HashExpr { expr: inner } => self.infer_closure_expr(inner, locals),
             ExprKind::IntLit(_) => VT::I32,
+            // PLAN-961: the typed literal carries its own type.
+            ExprKind::TypedLit { ty, .. } => vt_of_word(*ty),
             ExprKind::BoolLit(_) => VT::Bool,
             ExprKind::StrLit(_) => VT::Str,
             ExprKind::CharLit(_) => VT::Char,
@@ -6185,6 +6191,16 @@ impl<'a, 's> FnResolver<'a, 's> {
                     span: e.span,
                     vt,
                     kind: RExprKind::IntLit(*v),
+                }
+            }
+            // PLAN-961: the typed numeric literal binds with its payload
+            // type (bits already folded/validated at the projection).
+            ExprKind::TypedLit { ty, bits } => {
+                let vt = self.node_ty(e.span, vt_of_word(*ty));
+                ResolvedExpr {
+                    span: e.span,
+                    vt,
+                    kind: RExprKind::TypedLit { vt, bits: *bits },
                 }
             }
             ExprKind::BoolLit(v) => {

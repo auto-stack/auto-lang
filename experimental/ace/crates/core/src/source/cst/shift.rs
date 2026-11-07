@@ -75,7 +75,9 @@ fn shift_expr(e: &mut Expr, delta: i64) {
         | ExprKind::BoolLit(_)
         | ExprKind::StrLit(_)
         | ExprKind::CharLit(_)
-        | ExprKind::TypeWordArg(_) => {}
+        | ExprKind::TypeWordArg(_)
+        // PLAN-961: a typed literal is a leaf.
+        | ExprKind::TypedLit { .. } => {}
         ExprKind::Var(id) => shift_ident(id, delta),
         ExprKind::Method { recv, name, args } | ExprKind::MethodCall { recv, name, args } => {
             shift_expr(recv, delta);

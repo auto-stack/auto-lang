@@ -1240,6 +1240,9 @@ fn internal_diag(msg: String) -> Diagnostic {
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum EKind {
     Const(i32),
+    /// PLAN-961: a typed numeric const — payload bits in the type's own
+    /// width (floats as to_bits()).
+    TypedConst { vt: VT, bits: u64 },
     /// PLAN-862: the unit value — a Unit body's return operand.
     Unit,
     Read(usize),
@@ -2446,6 +2449,16 @@ impl PlanCtx<'_> {
                 });
                 plan.exprs.len() - 1
             }
+            // PLAN-961: the typed numeric literal plans as a bit-exact
+            // typed const.
+            RExprKind::TypedLit { vt, bits } => {
+                plan.exprs.push(ENode {
+                    kind: EKind::TypedConst { vt: *vt, bits: *bits },
+                    vt: *vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
             RExprKind::CreateClosure { callee, captures } => {
                 plan.exprs.push(ENode {
                     kind: EKind::CreateClosure {
@@ -3320,6 +3333,13 @@ impl<'p> Emitter<'p> {
             }
             crate::hir::HirDomain::Closures => ("auto.hir.closures.draft", "source-closures-draft"),
         };
+        // PLAN-961: the numeric profile renders its own identity triple
+        // (its Atom text binds against the numeric descriptor).
+        let (schema, profile_word) = if self.profile.is_numeric() {
+            ("auto.hir.numeric.draft", "source-numeric-draft")
+        } else {
+            (schema, profile_word)
+        };
         frag!(
             &format!(
                 "hir(schema: \"{}\", revision: 1u32, profile: \"{}\")",
@@ -3385,6 +3405,23 @@ impl<'p> Emitter<'p> {
         frag!("type t_bool bool {}", program_span);
         spans.types.push(program_span);
         nl!(12);
+        // PLAN-961: the numeric profile declares its builtin type entries
+        // (the ty_name refs resolve here; unused rows ride like t_i32).
+        if self.profile.is_numeric() {
+            for (name, kind) in [
+                ("t_i8", "i8"),
+                ("t_u8", "u8"),
+                ("t_u32", "u32"),
+                ("t_i64", "i64"),
+                ("t_u64", "u64"),
+                ("t_f32", "f32"),
+                ("t_f64", "f64"),
+            ] {
+                frag!(&format!("type {} {} {{}}", name, kind), program_span);
+                spans.types.push(program_span);
+                nl!(12);
+            }
+        }
         if self.profile.is_text() {
             frag!("type t_str str {}", program_span);
             spans.types.push(program_span);
@@ -3937,6 +3974,25 @@ impl<'p> Emitter<'p> {
                     let line = match &e.kind {
                         EKind::Const(v) => {
                             format!("expr e{} constant {{ type: {}; value: {}i32 }}", ei, ty, v)
+                        }
+                        // PLAN-961: the typed const renders its suffixed
+                        // payload word (the descriptor's numeric-const arm
+                        // parses the suffix back — bit-exact round trip).
+                        EKind::TypedConst { vt, bits } => {
+                            let text = match vt {
+                                VT::I8 => format!("{}i8", *bits as u8 as i8),
+                                VT::U8 => format!("{}u8", *bits as u8),
+                                VT::U32 => format!("{}u32", *bits as u32),
+                                VT::I64 => format!("{}i64", *bits as i64),
+                                VT::U64 => format!("{}u64", *bits),
+                                VT::F32 => format!("{}f32", *bits as u32),
+                                VT::F64 => format!("{}f64", *bits),
+                                // Unreachable: the resolver only types
+                                // TypedLit with numeric VTs; render a
+                                // plain word rather than guess a payload.
+                                other => format!("{other:?}"),
+                            };
+                            format!("expr e{} constant {{ type: {}; value: {} }}", ei, ty, text)
                         }
                         // PLAN-862: the unit value carries only its type.
                         EKind::Unit => format!("expr e{} unit {{ type: {} }}", ei, ty),

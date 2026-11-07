@@ -249,6 +249,8 @@ fn check_expr(
             | RExprKind::ReadLocal(_)
             | RExprKind::StrLit(_)
             | RExprKind::CharLit(_)
+            // PLAN-961: a typed literal is a leaf.
+            | RExprKind::TypedLit { .. }
             | RExprKind::Method { .. }
             | RExprKind::Unit
             | RExprKind::Move { .. } => {}

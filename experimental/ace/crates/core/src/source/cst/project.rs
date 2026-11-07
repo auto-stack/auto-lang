@@ -2555,6 +2555,118 @@ fn is_kw_leaf(g: u32, k: &super::kinds::SourceKinds) -> bool {
     .contains(&g)
 }
 
+/// PLAN-961: decode a typed numeric literal word per the frozen T-01 §1
+/// table — prefixes `0x`/`0b`, `_` separators, integer suffixes
+/// (none/`i`/`i32`→i32, `i8`, `u`/`u32`, `u8`, `u64`, `i64`, `b`→u8) and
+/// float text (`d.d` with `f`/`f32`/`d`/`f64`, dot-without-suffix→f32),
+/// parsed with the TARGET width's correctly-rounded std parser; a
+/// magnitude that overflows the target is a `source.literal-range`
+/// rejection (never an inf literal).
+fn decode_typed_literal(raw: &str) -> Result<ExprKind, String> {
+    use crate::source::ast::TypeWord as TW;
+    let (radix, rest) = if let Some(b) = raw.strip_prefix("0x") {
+        (16u32, b)
+    } else if let Some(b) = raw.strip_prefix("0b") {
+        (2u32, b)
+    } else {
+        (10u32, raw)
+    };
+    // Split the alphabetic suffix from the numeric body (the token shape
+    // guarantees digits lead and the suffix is contiguous letters).
+    let split = rest
+        .find(|ch: char| ch.is_ascii_alphabetic())
+        .ok_or_else(|| format!("numeric literal `{raw}` carries no digits"))?;
+    let (body, suffix) = (&rest[..split], &rest[split..]);
+    let has_dot = body.contains('.');
+    if has_dot && radix != 10 {
+        return Err(format!("radix literal `{raw}` cannot carry a fraction"));
+    }
+    let clean: String = body.chars().filter(|c| *c != '_').collect();
+    if has_dot {
+        // Float text: parse with the target width's own std parser
+        // (correctly rounded); overflow-to-inf is a range rejection.
+        let word = match suffix {
+            "f" | "f32" => TW::Float,
+            "d" | "f64" => TW::Double,
+            "" => TW::Float,
+            other => return Err(format!("suffix `{other}` is not a float literal suffix")),
+        };
+        let bits = if matches!(word, TW::Double) {
+            let v: f64 = clean
+                .parse()
+                .map_err(|_| format!("float literal `{raw}` is not a number"))?;
+            if v.is_infinite() {
+                return Err(format!("float literal `{raw}` overflows the f64 range"));
+            }
+            v.to_bits()
+        } else {
+            let v: f32 = clean
+                .parse()
+                .map_err(|_| format!("float literal `{raw}` is not a number"))?;
+            if v.is_infinite() {
+                return Err(format!("float literal `{raw}` overflows the f32 range"));
+            }
+            v.to_bits() as u64
+        };
+        return Ok(ExprKind::TypedLit { ty: word, bits });
+    }
+    // Integer text: magnitude in the radix, then per-type range checks.
+    let mag = u128::from_str_radix(&clean, radix)
+        .map_err(|_| format!("integer literal `{raw}` is out of range"))?;
+    let (word, bits) = match suffix {
+        "" | "i" | "i32" => {
+            if mag > i32::MAX as u128 {
+                return Err(format!(
+                    "integer literal `{raw}` is not representable as int (i32)"
+                ));
+            }
+            (TW::Int, mag as u64)
+        }
+        "i8" => {
+            if mag > i8::MAX as u128 {
+                return Err(format!(
+                    "integer literal `{raw}` is not representable as i8"
+                ));
+            }
+            (TW::I8, mag as u8 as u64)
+        }
+        "u8" | "b" => {
+            if mag > u8::MAX as u128 {
+                return Err(format!(
+                    "integer literal `{raw}` is not representable as u8"
+                ));
+            }
+            (TW::U8, mag as u8 as u64)
+        }
+        "u" | "u32" => {
+            if mag > u32::MAX as u128 {
+                return Err(format!(
+                    "integer literal `{raw}` is not representable as u32"
+                ));
+            }
+            (TW::U32, mag as u32 as u64)
+        }
+        "i64" => {
+            if mag > i64::MAX as u128 {
+                return Err(format!(
+                    "integer literal `{raw}` is not representable as i64"
+                ));
+            }
+            (TW::I64, mag as u64)
+        }
+        "u64" => {
+            if mag > u64::MAX as u128 {
+                return Err(format!(
+                    "integer literal `{raw}` is not representable as u64"
+                ));
+            }
+            (TW::U64, mag as u64)
+        }
+        other => return Err(format!("suffix `{other}` is not an integer literal suffix")),
+    };
+    Ok(ExprKind::TypedLit { ty: word, bits })
+}
+
 fn raw_describe(g: u32, _text: &str, k: &super::kinds::SourceKinds) -> &'static str {
     if g == k.tok_affix_num {
         "suffixed/radix/float numeric literal"
@@ -4241,9 +4353,35 @@ impl<'a> Engine<'a> {
                 return;
             }
             if ck == self.cx.k.tok_affix_num {
-                // 带缀/进制/浮点数字面量：所有面都是 Raw 排除面（旧 Raw 臂）。
                 let span = self.cx.span_of(c);
                 let raw = self.cx.spelling(c);
+                // PLAN-961: the numeric profile decodes the typed literal
+                // (prefix/suffix/fraction per the frozen T-01 §1 table);
+                // every other profile keeps the frozen raw rejection.
+                if self.cx.profile.is_numeric() {
+                    match decode_typed_literal(&raw) {
+                        Ok(kind) => {
+                            self.vals.push(Val::E(Expr { kind, span }));
+                            return;
+                        }
+                        Err(msg) => {
+                            let m = msg;
+                            self.cx.reject(span, move || {
+                                Diagnostic::new(
+                                    Stage::Text,
+                                    "source.literal-range",
+                                    m.clone(),
+                                    span,
+                                )
+                            });
+                            self.vals.push(Val::E(Expr {
+                                kind: ExprKind::IntLit(0),
+                                span,
+                            }));
+                            return;
+                        }
+                    }
+                }
                 self.cx.reject(span, move || {
                     Diagnostic::new(
                         Stage::Text,

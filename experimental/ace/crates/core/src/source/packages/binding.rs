@@ -1146,7 +1146,9 @@ fn shift_expr(e: &mut Expr, offset: usize) {
         | ExprKind::BoolLit(_)
         | ExprKind::StrLit(_)
         | ExprKind::CharLit(_)
-        | ExprKind::TypeWordArg(_) => {}
+        | ExprKind::TypeWordArg(_)
+        // PLAN-961: a typed literal is a leaf.
+        | ExprKind::TypedLit { .. } => {}
         ExprKind::Var(i) | ExprKind::MutArg { name: i } => sh(&mut i.span, offset),
         ExprKind::Call { callee, args } => {
             sh(&mut callee.span, offset);
@@ -1557,7 +1559,9 @@ impl<'a> Walker<'a> {
             | ExprKind::BoolLit(_)
             | ExprKind::StrLit(_)
             | ExprKind::CharLit(_)
-            | ExprKind::TypeWordArg(_) => Ok(()),
+            | ExprKind::TypeWordArg(_)
+            // PLAN-961: a typed literal is a leaf.
+            | ExprKind::TypedLit { .. } => Ok(()),
             ExprKind::Var(v) => {
                 if locals.contains(&v.name) {
                     return Ok(());
