@@ -5,14 +5,14 @@ feature_name: CA-E／ARCH 扩大后M1登记与最终组合验收
 author: [Codex]
 created_at: 2026-11-05
 updated_at: 2026-11-07
-plan_revision: 9
+plan_revision: 10
 supersedes_spec_components: [docs/specs/auto-test-case/ace-m1-conformance.md, docs/specs/auto-test-case/ace-m1-applicability.md, docs/specs/auto-test-case/unified-source-syntax-admission.md, docs/specs/auto-test-case/ace-ca-d-bridge-certification.md, docs/specs/auto-test-case/architecture.md, docs/specs/auto-syntax/source-frontdoor.md, docs/specs/auto-a2r/record-text-hir-backend.md, docs/specs/auto-a2x/incremental-and-cache.md, docs/specs/auto-av/data-layout.md, docs/specs/auto-cte/source-query-integration.md, docs/specs/auto-semantics/source-query-session.md]
 new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 16
-total_steps: 31
+current_step: 17
+total_steps: 32
 ---
 
 # [PLAN-941] CA-E／ARCH 扩大后M1登记与最终组合验收
@@ -21,7 +21,7 @@ total_steps: 31
 
 正式认领CA-E与ARCH最终组合门，一个验收集成包，不拆成空schema与以后才找consumer。新增独立target/机制登记、严格父侧证据适配、四端同源独立oracle与版本化组合报告，组合原313 required门、C A/B/C/D、SYN与ARCH-01..08；复核真实函数级增量、恢复首编辑、资源、在线更新及独立认证。编译/语言/资源功能仍由原owner交付，本包不变相接走延期功能，不再造编译器、store、runner或meter。
 
-架构：[Design51 §16](../design/51-shared-a2x-and-hir-to-rust.md#16-ca-earch最终组合验收2026-11-05target-state)；现状/基线/遗留认证差异见[立项报告](reports/ace-ca-e-arch-baseline-and-schedule-2026-11-05.md)。规划轮仅授权规划；2026-11-06执行授权及当前进度见§4/§9。 r2已加入并完成F-941-04条件解析修复phase（§5.8/T16/17）；r3的F-941-05 Rust字段写修复已完成（§5.9/T18/19）；r4按用户第48轮明确授权新增F-941-06 AV data结构化诊断透传修复phase（§5.10/T20/21）。r5的F-941-08 source-CT meta能力修复phase（§5.11/T22/23）已完成工作验证；r6按第67轮明确授权新增F-941-09 SQ恢复逻辑归属修复phase（§5.12/T24/25），F07 test-only提案仍独立待批。r7按第75轮用户具名授权新增F-941-10 lambda编辑诊断绝对坐标修复phase（§5.13/T26/27），F07仍独立待批；r8按第79轮用户具名授权新增F-941-11共享前门首诊断保真修复phase（§5.14/T28/29）；r9按第82轮用户具名授权新增F-941-12恢复产物script区首诊断修复phase（§5.15/T30/31）。原完整目标/阈值及未闭任务保持。
+架构：[Design51 §16](../design/51-shared-a2x-and-hir-to-rust.md#16-ca-earch最终组合验收2026-11-05target-state)；现状/基线/遗留认证差异见[立项报告](reports/ace-ca-e-arch-baseline-and-schedule-2026-11-05.md)。规划轮仅授权规划；2026-11-06执行授权及当前进度见§4/§9。 r2已加入并完成F-941-04条件解析修复phase（§5.8/T16/17）；r3的F-941-05 Rust字段写修复已完成（§5.9/T18/19）；r4按用户第48轮明确授权新增F-941-06 AV data结构化诊断透传修复phase（§5.10/T20/21）。r5的F-941-08 source-CT meta能力修复phase（§5.11/T22/23）已完成工作验证；r6按第67轮明确授权新增F-941-09 SQ恢复逻辑归属修复phase（§5.12/T24/25），F07 test-only提案仍独立待批。r7按第75轮用户具名授权新增F-941-10 lambda编辑诊断绝对坐标修复phase（§5.13/T26/27），F07仍独立待批；r8按第79轮用户具名授权新增F-941-11共享前门首诊断保真修复phase（§5.14/T28/29）；r9按第82轮用户具名授权新增F-941-12恢复产物script区首诊断修复phase（§5.15/T30/31）；r10按第84轮用户具名授权新增F-941-07 test-only请求deadline计数断言修复phase（§5.16/T32）。原完整目标/阈值及未闭任务保持。
 
 ## 1. 目标
 
@@ -74,6 +74,8 @@ total_steps: 31
 
 2026-11-07第75轮F-941-10追加授权：用户对call_b5e7efa002154a8fbecf471a80b07029明确“授权941新增修复phase（推荐）”。按第73轮具名最小提案在941唯一树实施、核验并纳入原最终独立review/merge链；新增§5.13/T26/27/AC19/V37..40/SD13，不重复确认、不新建Plan或树、不自动派发agent。r7 executing10/27，原T01..25及已有证据保留；F07未获授权，原8scalar red/38旧cert-gap/D938939未交齐不被该授权核销。
 
+2026-11-07第84轮F-941-07追加授权：用户对第83轮报告的F07具名提问明确“授权修复”。按第58轮§9最小提案在941唯一树实施**test-only**修复：保原115helper/4call/300ms与32query/10s原门及合法单call正控，按真实AV到达分态（`av_execute`阶段事实）修正fast控制断言并补确定性AV前耗尽回归，不改生产driver/公共协议/计数规则/预算。新增§5.16/T32/AC22/V49..50/SD16，不重复确认、不新建Plan或树。r10 executing17/32；8scalar red/38旧cert-gap/D938939未交齐不被该授权核销。
+
 2026-11-07第82轮F-941-12追加授权：用户对第81轮具名提问明确“授权 941 新增修复 phase”。按§10.16具名发现在941唯一树实施、核验并纳入原最终独立review/merge链；新增§5.15/T30/31/AC21/V45..48/SD15，不重复确认、不新建Plan或树、不自动派发agent。r9 executing14/31，原T01..29及已有证据保留；F07仍待裁定，原8scalar red/38旧cert-gap/D938939未交齐不被该授权核销。
 
 2026-11-07第79轮F-941-11追加授权：用户对第76轮具名F11提问明确“授权941新增修复phase（推荐）”。按第76轮§9最小提案在941唯一树实施、核验并纳入原最终独立review/merge链；新增§5.14/T28/29/AC20/V41..44/SD14，不重复确认、不新建Plan或树、不自动派发agent。r8 executing10/29，原T01..27及已有证据保留；F07未获授权，原8scalar red/38旧cert-gap/D938939未交齐不被该授权核销；F10授权继续有效，T26的F11差异由此phase承接而非T26自行扩大写面。
@@ -119,7 +121,7 @@ Q4每条positive/trace/trap/diagnostic分别对独立冻结oracle；不能仅四
 | ARCH-07在线更新 | 866/929同PID safepoint/旧链/lease | 入口一次、在途旧链与新调用分别看代际，最后owner才回收；重启/暂停恢复不可充在线HMR；不要求新native loader/完整AJ |
 | ARCH-08父准入/来源 | 908/893/933真实固定组、独立oracle与本包registry/report | 完整义务集合、真实运行终态与成本归因，不用摘要/目录存在/忽略附件/零选择/伪PASS铸绿 |
 
-T-01/T-02把表拆到每个required原子义务/具体entry与closing oracle；不能只有八个总布尔字段。存在新功能缺口仍归原owner，已归档能力发现新缺陷默认走具名独立修复流程；**F-941-04/05/06/08/09/10/11/12分别获用户明确941内phase授权，按§5.8/r2、§5.9/r3、§5.10/r4、§5.11/r5、§5.12/r6、§5.13/r7、§5.14/r8及§5.15/r9执行**。F-941-07未授权；不得把这些具名例外推广到其他缺陷、悄悄重开旧Plan或在组合器模拟能力。
+T-01/T-02把表拆到每个required原子义务/具体entry与closing oracle；不能只有八个总布尔字段。存在新功能缺口仍归原owner，已归档能力发现新缺陷默认走具名独立修复流程；**F-941-04/05/06/07/08/09/10/11/12分别获用户明确941内phase授权，按§5.8/r2、§5.9/r3、§5.10/r4、§5.16/r10、§5.11/r5、§5.12/r6、§5.13/r7、§5.14/r8及§5.15/r9执行**。不得把这些具名例外推广到其他缺陷、悄悄重开旧Plan或在组合器模拟能力。
 
 ### 5.5 函数级增量与恢复首操作
 
@@ -320,6 +322,24 @@ F11仅在AC20/V41..44/T28/29全部真实闭合后核销；SD14候选由最终r8/
 
 F12仅在AC21/V45..48/T30/31全部真实闭合后核销；SD15候选由最终r9/冻结SHA独立复审。F07/8scalar/旧38与其余原required保持。
 
+### 5.16 r10新增phase：F-941-07 test-only 请求deadline计数按真实阶段核对断言
+
+**授权/执行入口**：承接第84轮用户“授权修复”。唯一树`D:/autostack/.wt/lang-941/auto-lang`、`plan-941-dev`，当前clean代码基面`c18dcd634dde615e315f8422f06b37e1b2349e71`（r9身份闭包终态）。新增T32、AC22、V49..50、SD16；原十六个完成任务保留，当前executing17/32。**test-only**：只改`experimental/ace/crates/comptime/tests/cases/cte_resources_tests.rs`，不改生产driver/公共协议/计数规则/预算/样本规模/其他门。
+
+**规范与原反证（第58轮在档）**：canonical `docs/specs/auto-cte/source-query-integration.md`已明文“Counters are trust anchors: `ct_execute` counts only attempts that reached the AV”。第58轮同库探针实证：300ms累计deadline可在**前端阶段**（进入AV前）正确耗尽——单核竞争下project 383.57ms、无av_execute span、`ct_execute=0`、`cte.resource.deadline`资源态、不发布；恢复无竞争后同deck默认限额单call正控仍绿。原`cte_resources_request_deadline_fast_control`的`assert!(out.ct_execute >= 1)`把“300ms超时”误推成“必已进入AV”，与规范相悖、按调度真实误红（原2红）。不能伪记成1、放宽时间、缩源码/查询或删除AV侧保障。
+
+**最小写面/规则**：fast控制按真实阶段核计数——以`CteStepOutcome.spans`的`av_execute`阶段事实分态：进入执行（span存在）必`ct_execute>=1`，AV前耗尽（span缺失）必`ct_execute==0`（双向反控：不漏记也不伪造）；资源态/非language/不发布/中断时窗与默认限额单call正控原样。新增确定性回归：1ms deadline×原115helper/4call deck——前端实测百ms级必在前端阶段触发，确定给出无span/计数0/不发布，随后正控恢复绿。原`cte_resources_request_wall_real_ten_seconds`（32query/10s累计负例，AV侧计数≥1）与同规模4call正控**逐字保留**。诊断产物`CteStepOutcome::diag`携带`obs.spans()`克隆，阶段事实在diag上同样可核。
+
+**路径对账**：仅测试文件；ace-comptime-worker等13工具二进制不含该测试（合约source_pins不含`comptime/tests`，第84轮已核），无身份闭包负担——修后以13工具hash与`f94112-consumer-tools/tools-current.json`恒等实证。验证走具名新/受影响deadline控制与原10s用例（`cargo nextest -p ace-comptime --test conformance`命名选择）；未触的GC/32MiB/512修订/原性能证据保持来源和历史状态，不为test-only立刻重跑整135压力；旧frozen-window记录不重标绿，最终T12完整冻结并集再统一收。
+
+| 当前入口/状态与所有权 | producer→consumer / work关闭条件 | 反控与范围 |
+|---|---|---|
+| fast控制（300ms×115helper×4call） | 状态/编码/非language/不发布/时窗断言不变；计数按`av_execute` span分态双向核（进入≥1、AV前=0） | 不删AV侧保障；正控（默认限额单call ct_execute=1）原样；不为绿改样本/时限 |
+| 确定性AV前耗尽回归 | 1ms deadline×同deck必在前端触发：无span、计数0、资源态、不发布；同族正控恢复绿 | 前端≫1ms确定成立；不引入affinity/竞争线程等调度依赖 |
+| 原10s真实负例与正控 | `cte_resources_request_wall_real_ten_seconds`及4call正控逐字保留，AV侧计数≥1义务不变 | test-only不改生产；13工具hash恒等实证；最终T12/T14按r10冻结SHA复审 |
+
+F07仅在AC22/V49..50/T32全部真实闭合后核销；SD16候选交最终T10冻结SHA独立复审。8scalar/旧38与其余原required保持。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
@@ -339,6 +359,7 @@ F12仅在AC21/V45..48/T30/31全部真实闭合后核销；SD15候选由最终r9/
 | SD-13 | modify | docs/specs/auto-syntax/source-frontdoor.md | lambda单元编辑失败诊断从合成包装回当前源码绝对UTF-8字节位置；保typed资源/infra/源码分态及失败保旧，不引整源重建 | F10原恢复首错返回包装坐标，补公开目录边界与真实消费者回归 | AC-04,AC-05,AC-07,AC-19 |
 | SD-14 | modify | docs/specs/auto-syntax/source-frontdoor.md | 期望游走器在closures面`(`位（及`move`前缀）识别`( 参数 ) =>` lambda头，按旧parser参数/注解/`=>`/body期望序列游走；反例首诊断与独立手写oracle逐字节全等，保普通括号/async拒绝/合法lambda行为与原profile/预算分态 | F11整源/片段把合法lambda参数注解当括号表达式失败，首诊断位置/message与手写oracle不符 | AC-04,AC-05,AC-07,AC-20 |
 | SD-15 | modify | docs/specs/auto-syntax/source-frontdoor.md | 投影层识别“错误树中紧跟错误item的顶层script_item”为恢复产物（外层body在最后完整块`}`提前闭合的产物），跳过其script形投影与saw_script，首诊断由结构层期望游走权威给出；clean真script形/R04头拒绝/entry-unit语义保持 | F12产物script区的entry-top-return/entry-order按更早位置抢在结构层首诊断之前，与手写oracle的main体内分歧点不符 | AC-04,AC-05,AC-07,AC-21 |
+| SD-16 | modify | docs/specs/auto-cte/source-query-integration.md | 请求累计deadline可在前端阶段耗尽：`ct_execute`只计到达AV的尝试（AV前耗尽恒0），资源态分态与不发布不变；测试按`av_execute`阶段事实双向核对计数 | F07旧断言把“300ms超时”误推成“必已进入AV且ct_execute>=1”，与“counters are trust anchors”规范相悖并按调度误红 | AC-22 |
 
 本表为计划规范增量；实现树中的候选仍须独立review后由merge沉淀并读回，不把候选当主线已交付，不写派生索引。
 
@@ -427,6 +448,8 @@ r4 F06补充验证（T20定向12项见§9第50轮，T21完整职责1493/当前�
 | V-46 | AC-04/05/07/21；work T30 | clean顶层return/let、script-then-fn（entry-order）、R04头type、错误item后真script、D/E形（无块/未闭合块）邻接反控；F10/F11永久例与原语料联合 | clean树零变化；R04位置序保留；产物run多script段粘滞；不为修F12改变其他首诊断或成功路径 |
 | V-47 | AC-04/05/07/21；work T30 | F10 42目标+F11六例联合与完整ace-source/ace-syntax/infra-ace-m1-arch在冻结提交全绿；rustfmt/check净 | 三phase叠加不回退；仅既有告警；治理反控含产物签名边界 |
 | V-48 | AC-02/04/05/07/09/21；work T31 | 13工具实际变化身份、五native合约/Case466/cert292+daily/优化14+拒绝6按新身份重采，组合逐键对账（镜像T29链） | 变化身份真实刷新、未变严格复用；F12相关键变化须对应手写oracle真实差异，其余守恒；最终T14按r9冻结SHA复审 |
+| V-49 | AC-22；work T32 | 修后fast控制按`av_execute` span分态双向核计数；确定性1ms AV前耗尽回归与同族正控恢复；原10s负例/4call正控逐字保留仍绿 | 不改生产/样本/时限；不伪记计数、不删AV侧保障；调度依赖（affinity/竞争线程）不入永久例 |
+| V-50 | AC-22；work T32 | 13工具hash与`f94112-consumer-tools/tools-current.json`恒等（test-only无身份漂移）；fmt/check净；命名新/受影响用例+原10s用例全绿 | 未触GC/32MiB/512修订/性能证据不重跑不重标；旧frozen-window红保留历史，最终T12并集统一收 |
 
 ## 7. 验收标准
 
@@ -464,6 +487,8 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 
 **AC-21（r9，owner_stage: work/review）**：§5.15投影层把“错误树中紧跟错误item的顶层script_item”按恢复产物处理（跳过script形投影与saw_script），A/H/I三形首诊断与手写oracle逐字节全等；clean真script/entry-order/R04/entry-unit语义与F10/F11语义守恒按V45..47闭合，V48当前身份闭包完整才核销F12。原语言/预算/required与F07等其他红不变；最终T14按当前r9/冻结SHA独立复审。
 
+**AC-22（r10，owner_stage: work/review）**：§5.16使fast控制计数断言与“`ct_execute`只计到达AV的尝试”规范一致——按`av_execute`阶段事实分态双向核（进入≥1、AV前耗尽=0）并补确定性AV前耗尽回归；原10s负例/正控与全部资源态断言逐字保留。V49/V50闭合才核销F07；8scalar/旧38/其余原required不变，最终T14按当前r10/冻结SHA独立复审。
+
 ## 8. 执行步骤
 
 | ID | owner_stage | 依赖/写面 | 具体路径/可验证结果；AC/验证 | 状态 |
@@ -500,6 +525,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-29 | work | T-28冻结，实际触面及工具/源身份对账 | 完整ace-source/ace-syntax/infra-ace-m1-arch及必要具名consumer；13工具实际变化身份、受影响Case/cert/daily/优化真实刷新，其他证据strict复用，当前组合逐键对账；F11工作关闭/SD14候选交T14；AC-04/05/07/09/20、V44 | [x] 第81轮：漂移审计5合约{project.rs,conformance.rs}+新模块→13工具8变（同F10集）→合约刷新提交7127d115c（data-only，门复用）→治理238/五native9观察/Case466(8红保持)/cert292+daily292/优化14+拒绝6全部在Y重采，组合716P8F282U逐键零漂移；F11核销、SD14候选交T14 |
 | T-30 | work | 第82轮用户F12内phase授权；§5.15/7127d115c基面与第81..82轮反证 | 新recovered_script_first_diag_941先固定A/H/I三形baseline红/clean反控绿，再在project_module_front decl循环按产物签名（错误树+script+前item错误，run内粘滞）跳过script投影与saw_script；AC-21、V45..47、SD15 | [x] 第82轮6a545cee7d：baseline 1P2F（entry-top-return更早位抢占，含片段面）→投影层+15行修复→F12 3/3、F10/F11/F12联合51/51、完整source401/syntax132/infra238（771/771）PASS，fmt/check净；片段面边界EOF按片段范围合同改用内容内分歧形状 |
 | T-31 | work | T-30冻结，实际触面及工具/源身份对账 | 13工具实际变化身份、五native合约/Case466/cert292+daily/优化14+拒绝6按新身份重采，组合逐键对账（镜像T29链）；F12工作关闭/SD15候选交T14；AC-04/05/07/09/21、V48 | [x] 第83轮：漂移5合约{project.rs,conformance.rs}+新模块→工具8变→合约刷新Z=c18dcd634d（data-only，771门复用）→治理238/五native9观察/Case466(8红保持)/cert292+daily292/优化14+拒绝6全部重采，组合716P8F282U逐键零漂移；F12核销、SD15候选交T14 |
+| T-32 | work | 第84轮用户F07 test-only授权；§5.16/c18dcd634d基面与第58轮反证 | fast控制按`av_execute` span分态双向核计数+确定性1ms AV前耗尽回归；原10s负例/4call正控逐字保留；13工具hash恒等实证；AC-22、V49..50、SD16 | [ ] |
 
 T-18/19已完成（§9第43轮）；T20/T21已完成（第52轮），当前回到原完整T-01..13。 T22/23的F08已完成工作验证；r6的T24/25已完成F09工作阶段；下一入口回到原T01..13全部未闭任务；F07仍独立待批，不预占/勾选任务。T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；继续原T-01/T-02等完整任务，尚未关闭的验收保持未完成。
 
@@ -2062,7 +2088,7 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r9 | round:83 | from:work | to:wo
 
 10. **F-941-06工作阶段已关闭（r4 T20/21，第52轮）**：用户授权的typed data诊断修复、原4反例/合法与失败边界、1493完整职责/消费者门、408当前Case重采/原16诊断严格PASS及当前全组合679P8F319U已闭。SD10候选已在冻结树；最终独立review仍T14，不再等待授权，不扩为其他后端修复。
 
-11. **F-941-07待裁定**：原CT 300ms fast控制在AV前已过期时正确ct_execute0，但旧断言固定>=1而误红；同库/原267218B输入的单核竞争反证已定位（第58轮）。提请在941新增test-only修复phase：保原115helper/4call/300ms与32query/10s原门及合法4call正控，按真实AV到达分态修正测试并补确定性回归/反控，不改生产计数/预算/driver。依据§5.4需具名授权；未授权仅不动该修复，继续原其他证据。
+11. **F-941-07已获r10内test-only phase授权（第84轮）**：用户明确“授权修复”。按第58轮提案只修`cte_resources_tests.rs`计数断言（按`av_execute`阶段事实分态）+确定性AV前耗尽回归；原10s负例/正控逐字保留；工作状态见§9第84轮。8scalar/旧38/D938939不受影响。
 
 12. **F-941-08工作阶段已关闭（r5 T22/T23，第64轮续录）**：用户原授权已完成实施与当前原职责/真实四端/292认证daily/原优化及CT机制严格联读，F08关闭基面81c10fcc9；第65轮b876cb42b/711P8F287U；第66轮4466520e6同计数、新增S936恢复分腿；第67轮当前5adfe480d/712P9F285U，新增SQ权威PASS与F09实际FAIL，仍8/23。无待poll，不再等待F08授权或重跑已有效冻结证据；原完整任务及最终独立T14仍待。F07独立test-only修复仍待裁定，不能由F08授权推定。
 
