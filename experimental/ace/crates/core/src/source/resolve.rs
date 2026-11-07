@@ -1269,6 +1269,13 @@ pub trait TypeSupply {
     fn foreign(&self) -> Option<&ace_foreign_contract::manual::AdmittedForeign> {
         None
     }
+    /// PLAN-939: a supply may carry ONLY the admitted foreign environment
+    /// (the text-record resource lane has no solver facts — the 934
+    /// inference surface is scalar-only). Such a supply grafts foreign
+    /// declarations but leaves body typing to the resolver's own rules.
+    fn facts_enabled(&self) -> bool {
+        true
+    }
     /// Type of the expression node at this source span.
     fn expr_ty(&self, span: Span) -> Option<VT>;
     /// Type of the `let`/`var` declaration whose statement span is given.
@@ -1291,6 +1298,44 @@ pub trait TypeSupply {
 /// taken from `supply`; the resolver's own typing rules become checks
 /// (mismatch/missing fact = `source.fact-mismatch` / `source.fact-missing`
 /// at stage `bind`). No typecheck walk and no post-hoc overwrite runs.
+/// PLAN-939: the TEXT-RECORD full-resolve lane for resource foreign
+/// sources. The supply contributes the admitted foreign environment ONLY
+/// — no solver facts exist for this surface (the 934 inference surface is
+/// scalar-only), so every body resolves with its own full walk. The
+/// scalar lane's fact-supplied shortcut is untouched.
+pub fn resolve_text_record_with_foreign(
+    program: &ast::Program,
+    capabilities: &[String],
+    surface: SourceProfile,
+    supply: &dyn TypeSupply,
+) -> Result<ResolvedProgram, Vec<Diagnostic>> {
+    if surface != SourceProfile::TextRecord {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.fact-profile",
+            format!(
+                "the resource foreign lane lowers the text-record surface only, not `{}`",
+                surface.as_str()
+            ),
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    let (fns, records, coll, _) =
+        resolve_detailed(program, capabilities, surface, None, Some(supply))?;
+    Ok(ResolvedProgram {
+        foreign_slots: Vec::new(),
+        foreign: supply
+            .foreign()
+            .map(|f| f.source_declarations())
+            .unwrap_or_default(),
+        fns,
+        records,
+        lists: coll.lists,
+        variants: coll.variants,
+        function_types: coll.function_types,
+    })
+}
+
 pub fn resolve_with_supply(
     program: &ast::Program,
     capabilities: &[String],
@@ -1815,6 +1860,16 @@ fn resolve_detailed(
             ) {
                 Ok(s) => s,
                 Err((code, message)) => {
+                    // PLAN-939 subset callability: a resource declaration
+                    // whose record view names no type in THIS module is
+                    // simply not callable here (the call site resolves as
+                    // an unknown function) — a whole-surface manifest must
+                    // not require every record type to exist in every
+                    // module that admits it. Any other mapping failure is
+                    // still a hard diagnostic.
+                    if code == crate::foreign_resources::CODE_RECORD {
+                        continue;
+                    }
                     diags.push(Diagnostic::new(
                         Stage::Bind,
                         code,
@@ -4267,6 +4322,10 @@ impl<'a, 's> FnResolver<'a, 's> {
                 crate::type_synth::record_synth(&self.owner_name);
                 rule
             }
+            Some(s) if !s.facts_enabled() => {
+                crate::type_synth::record_synth(&self.owner_name);
+                rule
+            }
             Some(s) => {
                 let facts = s.expr_tys(span);
                 let Some(fact) = facts
@@ -4304,6 +4363,10 @@ impl<'a, 's> FnResolver<'a, 's> {
     fn binding_ty(&mut self, span: Span, rule: VT) -> VT {
         match self.supply {
             None => {
+                crate::type_synth::record_synth(&self.owner_name);
+                rule
+            }
+            Some(s) if !s.facts_enabled() => {
                 crate::type_synth::record_synth(&self.owner_name);
                 rule
             }

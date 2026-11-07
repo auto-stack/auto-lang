@@ -452,11 +452,20 @@ pub struct BodyTypeSupply {
     exprs: BTreeMap<(u32, u32), Vec<VT>>,
     bindings: BTreeMap<(u32, u32), VT>,
     admitted: usize,
+    /// PLAN-939: the text-record resource lane grafts foreign declarations
+    /// only — no solver facts exist for that surface, body typing stays
+    /// with the resolver's own rules.
+    foreign_only: bool,
 }
 
 impl BodyTypeSupply {
     pub fn with_foreign(mut self, foreign: ace_foreign_contract::manual::AdmittedForeign) -> Self {
         self.foreign = Some(foreign);
+        self
+    }
+    /// PLAN-939: foreign-only supply (no facts; legacy body typing).
+    pub fn foreign_only(mut self) -> Self {
+        self.foreign_only = true;
         self
     }
     pub fn new() -> Self {
@@ -516,6 +525,9 @@ impl BodyTypeSupply {
 }
 
 impl TypeSupply for BodyTypeSupply {
+    fn facts_enabled(&self) -> bool {
+        !self.foreign_only
+    }
     fn foreign(&self) -> Option<&ace_foreign_contract::manual::AdmittedForeign> {
         self.foreign.as_ref()
     }
@@ -587,6 +599,24 @@ pub fn bind_with_facts(
     if let Some(foreign) = session.foreign() {
         ace_core::source::resolve::validate_foreign_context(program, foreign, capabilities)
             .map_err(BindFactsError::Resolve)?;
+    }
+    // PLAN-939: the TEXT-RECORD lane has no solver facts (the 934
+    // inference surface is scalar-only by design) — resource foreign
+    // sources resolve fully with the admitted foreign environment in the
+    // supply; the scalar fact lane below is untouched.
+    if profile == ace_core::source::SourceProfile::TextRecord {
+        let mut supply = BodyTypeSupply::new();
+        supply.foreign = session.foreign().cloned();
+        supply.foreign_only = true;
+        let resolved =
+            ace_core::source::resolve::resolve_text_record_with_foreign(
+                program,
+                capabilities,
+                profile,
+                &supply,
+            )
+            .map_err(BindFactsError::Resolve)?;
+        return Ok((resolved, Vec::new(), supply));
     }
     let mut names: Vec<String> = Vec::new();
     for item in &program.items {

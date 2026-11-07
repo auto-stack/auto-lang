@@ -32,6 +32,7 @@ fn environment() -> AdmittedForeign {
                 },
                 error_model: None,
                 semantic_ref: None,
+                resource: None,
             }],
             effects: vec!["pure:provider_add".into()],
             capabilities: vec![SOURCE_CAP.into()],

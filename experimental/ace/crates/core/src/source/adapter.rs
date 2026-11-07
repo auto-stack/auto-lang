@@ -3761,12 +3761,20 @@ impl<'p> Emitter<'p> {
             // from the ONE resource-aware source signature (str views,
             // nominal records and the callback closure type reuse the
             // module's own type ids; scalar decls are the special case).
-            let sig = crate::foreign_resources::source_sig_readonly(
+            // Subset callability: a resource declaration whose record view
+            // names no type in THIS module is not callable here and gets
+            // neither a type nor a def (resolve would reject any call).
+            let sig = match crate::foreign_resources::source_sig_readonly(
                 declaration,
                 &self.program.records,
                 &self.program.function_types,
-            )
-            .expect("foreign signature admitted by the signature pass");
+            ) {
+                Ok(sig) => sig,
+                Err((crate::foreign_resources::CODE_RECORD, _)) => continue,
+                Err((code, message)) => {
+                    panic!("foreign signature admitted by the signature pass: ({code}, {message})")
+                }
+            };
             let params: Vec<_> = sig
                 .params
                 .iter()
@@ -3922,6 +3930,16 @@ impl<'p> Emitter<'p> {
             nl!(12);
         }
         for declaration in &self.program.foreign {
+            if crate::foreign_resources::source_sig_readonly(
+                declaration,
+                &self.program.records,
+                &self.program.function_types,
+            )
+            .is_err()
+            {
+                // subset callability: uncallable in this module — no def
+                continue;
+            }
             let contract = serde_json::to_string(declaration).expect("serializable contract");
             frag!(
                 &format!(

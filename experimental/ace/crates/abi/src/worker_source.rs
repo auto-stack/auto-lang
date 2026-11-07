@@ -92,9 +92,15 @@ impl CertPolicy {
             Self::Resource939 => crate::resource_provider::REVIEW,
         }
     }
-    pub fn contract_digest(self) -> String {
+    /// The reviewed contract digest FOR ONE REFERENCE (938 has two
+    /// reviewed contract shapes selected by reference; 939 has one).
+    pub fn contract_digest(self, reference: Option<&str>) -> String {
         match self {
-            Self::Scalar938 => provider::ADD_CONTRACT_DIGEST.into(),
+            Self::Scalar938 => provider::Review::for_reference(
+                reference.unwrap_or("add"),
+            )
+            .map(|r| r.digest().to_string())
+            .unwrap_or_else(|| provider::ADD_CONTRACT_DIGEST.into()),
             Self::Resource939 => crate::resource_provider::reviewed_resource_manifest()
                 .contract_digest()
                 .expect("reviewed resource manifest"),
@@ -104,7 +110,7 @@ impl CertPolicy {
     pub fn accepts_digest(self, digest: &str) -> bool {
         match self {
             Self::Scalar938 => provider::Review::for_digest(digest).is_some(),
-            Self::Resource939 => digest == self.contract_digest(),
+            Self::Resource939 => digest == self.contract_digest(None),
         }
     }
     pub fn accepts_reference(self, reference: &str) -> bool {
@@ -130,9 +136,12 @@ impl CertPolicy {
         self,
         manifest: &ManualManifest,
         caps: &[String],
+        reference: &str,
     ) -> Result<(), String> {
         match self {
-            Self::Scalar938 => provider::qualify_candidate(manifest, caps),
+            Self::Scalar938 => provider::Review::for_reference(reference)
+                .ok_or_else(|| "unreviewed reference".to_string())?
+                .qualify(manifest, caps),
             Self::Resource939 => crate::resource_provider::qualify_resource(manifest, caps),
         }
     }
@@ -141,10 +150,13 @@ impl CertPolicy {
         provider_digest: &str,
         generation: u64,
         caps: &[String],
+        reference: &str,
     ) -> ace_foreign_contract::manual::HostAuthority {
         match self {
-            Self::Scalar938 => provider::authority(provider_digest, generation, caps)
-                .expect("reviewed scalar policy"),
+            Self::Scalar938 => provider::Review::for_reference(reference)
+                .ok_or_else(|| "unreviewed reference".to_string())
+                .expect("checked by accepts_reference")
+                .authority(provider_digest, generation, caps),
             Self::Resource939 => crate::resource_provider::resource_authority(
                 provider_digest,
                 generation,
@@ -543,7 +555,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         compiler: target.identity(),
         source_sha256: String::new(),
         c_toolchain: String::new(),
-        contract_digest: policy.contract_digest(),
+        contract_digest: policy.contract_digest(None),
         provider_digest: String::new(),
         header_digest: provider::hash(policy.header_bytes()),
         physical_table_digest: provider::hash(policy.table_bytes()),
@@ -586,7 +598,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     if !policy.accepts_reference(&deck.reference) {
         return Err(err("deck", "unreviewed reference"));
     }
-    report.contract_digest = policy.contract_digest();
+    report.contract_digest = policy.contract_digest(Some(&deck.reference));
     if let Err(e) = target.admit_source_bytes(deck.source.len()) {
         report.diagnostic_stage = "parse".into();
         return Ok(output(
@@ -605,7 +617,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     report.source_sha256 = ace_a2x_core::sha256::sha256_hex(deck.source.as_bytes());
     // Reject unauthorized ABI/declaration candidates before compiling/linking
     // or calling any C provider. No candidate supplies this policy digest.
-    if let Err(e) = policy.qualify(&deck.manifest, &deck.capabilities) {
+    if let Err(e) = policy.qualify(&deck.manifest, &deck.capabilities, &deck.reference) {
         report.diagnostic_stage = "resolve".into();
         let code = e.split(':').next().unwrap_or("foreign.authority");
         return Ok(output(
@@ -647,7 +659,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             None => (None, None),
         };
     let previous = previous_record.as_ref().map(|(record, _ticket)| record);
-    let changed_contract = previous.is_some_and(|p| p.contract_digest != policy.contract_digest());
+    let changed_contract = previous.is_some_and(|p| p.contract_digest != policy.contract_digest(Some(&deck.reference)));
     let binding_generation = match &previous {
         Some(p) if p.provider_bias != deck.provider_bias || changed_contract => p
             .binding_generation
@@ -683,6 +695,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                     &restore_digest,
                     restore_generation,
                     &deck.capabilities,
+                    &deck.reference,
                 ),
                 runtime_digest: crate::source_foreign::certification_runtime_policy(target),
                 emitter: target.identity(),
@@ -705,6 +718,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 &report.provider_digest,
                 binding_generation,
                 &deck.capabilities,
+                &deck.reference,
             );
             let (environment, interface_work) = restored.frontend().work().observe_foreign(|| {
                 if changed_contract {
@@ -757,6 +771,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                     &report.provider_digest,
                     binding_generation,
                     &deck.capabilities,
+                    &deck.reference,
                 ),
             )
         });
@@ -813,7 +828,12 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         let runtime_policy = crate::source_foreign::certification_runtime_policy(target);
         let mut current_authority = || {
             Ok(CurrentAuthority {
-                foreign: policy.authority(&digest, binding_generation, &deck.capabilities),
+                foreign: policy.authority(
+                    &digest,
+                    binding_generation,
+                    &deck.capabilities,
+                    &deck.reference,
+                ),
                 runtime_digest: runtime_policy.clone(),
                 emitter: target.identity(),
             })
@@ -890,7 +910,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 |stored, encoder| {
                     encoder.json(&PublicationRef {
                         module: &deck.module,
-                        contract_digest: &policy.contract_digest(),
+                        contract_digest: &policy.contract_digest(Some(&deck.reference)),
                         provider_bias: deck.provider_bias,
                         binding_generation,
                         stored,

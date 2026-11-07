@@ -50,7 +50,7 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
             fields { path: Text }
             containers {
                 types: [type]
-                declarations: [function, intrinsic, method]
+                declarations: [function, intrinsic, method, foreign]
                 bodies: [body]
             }
         }
@@ -66,6 +66,13 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
                 name: Text
                 body: BodyRef
             }
+        }
+
+        // PLAN-939: resource foreign declarations (str views, nominal
+        // record views, handles, callbacks) in the text-record domain.
+        node foreign {
+            slots: [Id, TypeRef]
+            fields { contract: Text }
         }
 
         node method {
@@ -168,6 +175,9 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
             forbid: [symbol, effect]
         }
         branch(key: "intrinsic") { require: [symbol, effect]; forbid: [name, body, record, receiver] }
+        // PLAN-939: resource foreign declarations carry the serialized
+        // contract only (the scalar-domain rule, now in this domain too).
+        branch(key: "foreign") { require: [contract]; forbid: [name, body, symbol, effect, record, receiver] }
         branch(key: "body") { require: [owner, entry] }
         branch(key: "local.param") { require: [name, role]; forbid: [mutable] }
         branch(key: "local.binding") { require: [name, role]; forbid: [index, mode] }
