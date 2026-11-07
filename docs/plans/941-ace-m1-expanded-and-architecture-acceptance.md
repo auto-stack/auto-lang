@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 18
+current_step: 19
 total_steps: 32
 ---
 
@@ -495,7 +495,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 |---|---|---|---|---|
 | T-01 | work | §4原goal全链授权；只读当前Specs/收据 | 冻结main/929/937/934..939实际D与reader、旧313/38清单、完整语料/原预算/具体固定组/全部owner，scope登记；AC-01/10，V-01/14 | [ ] 第72轮实际D/30合同/旧524格与313/38已审计；D938/939实际输入未交、T03全宇宙未闭，完整冻结仍待 |
 | T-02 | work | T-01，私有P | 首例同源文件/独立oracle/四目标AutoDown-TestCase从本步入跟踪并走既有正式父入口，不等收尾才补；有界全链：真实一个scalar四端+原旧核算/SYN/937收据→strict reader→registry→报告；四端同错/缺C/旧claimfalse控制红，冻结schema/required闭包/预算无自指/不spawn；不成立needs_replan；AC-02/03/10 | [ ] 第72轮独立有界20/20实际tracked CLI、四端同错/缺C/旧claim反控已证；不以首例替T01完整输入冻结及后续全量工作 |
-| T-03 | work | T-02，新registry私有面 | 新ace-m1-expanded registry逐source/target/机制/原格位与义务/组/owner/条件映射，完整覆盖而不改旧批准；AC-01，V-01 | [ ] |
+| T-03 | work | T-02，新registry私有面 | 新ace-m1-expanded registry逐source/target/机制/原格位与义务/组/owner/条件映射，完整覆盖而不改旧批准；AC-01，V-01 | [ ] 第85轮宇宙闭包增量（7938954802）：registry升/2 universe-closed——1006登记键（31份pinned合同活派生）+14条awaiting-D具名行（938/939各7条work AC，owner/promise/direction/close，内容sha钉定）；治理241/241（新增漏一项即拒/篡改/外来owner/外来域反控）、组合重读verdicts 716P8F282U逐键零漂移且required_universe_closed=true；逐义务深元数据仍由合同承载（活派生入口），如独立review要求registry物化再扩 |
 | T-04 | work | T-03，必要H短窗 | 新只读ace_m1_arch_acceptance.py与域reader适配/严格身份/路径/版本/原始终态/旧认证差异；AC-02/09/10，V-02/13/14 | [ ] |
 | T-05 | work | T-03/04，Q4已有域稳定API | 正/负同源四端与独立oracle/reference/完整文件集认证、跨目标身份/daily分轴；AC-03/09，V-03/12/13 | [ ] |
 | T-06 | work | T-04/05，929/各实际required来源页稳定窗口 | 真实P/M/R/IO计数/依赖变化/多函数方法闭包、source恢复首操作/坏页/原子安装反控；AC-04/05，V-04..06 | [ ] |
@@ -2079,6 +2079,17 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r9 | round:83 | from:work | to:wo
 stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress→F07核销（test-only计数断言按真实阶段核+确定性回归；13工具恒等） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:a9dc4c3507 | task_ids:T32勾选 | evidence:f94107-implementation-audit.json | next_responsible_role:work原T01..15未闭义务；无具名待批项，无live handle
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:84 | from:goal用户授权 | to:work | status:executing18/32 | outcome:progress（r10契约+T32 test-only修复真实闭合；F04..F12七项具名缺陷全部核销） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a9dc4c3507 | next:work原T01..15未闭义务/独立required；D938/939未交齐，无待poll
+
+### 第85轮：work T-03宇宙闭包增量——registry /2 awaiting-D具名宇宙与治理/组合双重验证
+
+- 按用户指令回原T01..15未闭义务，选T-03（registry全量闭包）先行：先核写面边界——registry.json不在五native合约source_pins内、Case套件与13工具二进制均不消费它（T-03增量不触发重采链）；938/939承诺面以两计划work-stage AC表（各7条）为权威枚举源。
+- **宇宙闭包实现**（提交**`7938954802`**，4文件）：①`registry.json`升`ace.m1.expanded-registry/2`、scope=universe-closed、full_registry_closed=true、新增`awaiting_d`14行（938/939各7条AC：key/owner/promise/direction/close，逐字取自两计划表；canonical sha=`c00a89b76c9a4d96f0c05c06e4ddd114f437c2acedf256ea725750941bd899f0`）；②`ace_m1_registry.py`新增`universe_rows/universe_gate`：登记键活派生（31份pinned合同，与registered index同源）+awaiting-D结构校验（字段完备/命名空间/owner白名单/{938:7,939:7}完备计数=V-01"漏一项即拒"）+闭包语义（闭包=每义务有显式owner；evidence/M1 claim恒为独立门，awaiting-D永不带verdict、不解锁旧38/8红）；`registered_gate`增universe_closed参数（默认False：纯reducer永不自闭宇宙）；③`ace_m1_first_slice.py`准入升/2形状+awaiting_d内容sha钉定（改任何promise/direction/close即拒）；④治理新增3控制测试（闭包仅随具名awaiting成立且evidence门保持开、缺行/空promise/空close/外来owner/外来命名空间/外来观测全拒、字节钉定公式+篡改即裂）。
+- **验证**：完整`cargo t infra-ace-m1-arch`（两次中间红均为新测试自身stub缺陷——report桩缺键与`.get`默认参急切求值既有怪癖，修正桩后）**241/241PASS**（238+3新）；冻结clean提交上以f94112当前证据组合重读（`verify-f94103-universe-composed.py`，禁Popen reader）：**verdicts 716P8F282U与f94112报告逐键零漂移**、`required_universe_closed=true`、1006+14（938:7/939:7）、`registered_observations_complete=false`、`can_claim_expanded_m1=false`、registry sha=`4c39e56e…8ccd`，审计`f94103-universe/t03-universe-audit.json`=`e3d0a7614cb7d6fff698f13c3477b42f283ffe0b5e52f799f581f8acf69be25b`。13工具hash恒等（ALL-UNCHANGED，无重采负担）。
+- 边界如实：T-01仍开（D938 executing/D939 drafting非可消费D；宇宙闭包以具名awaiting-D行承载而非假装交付）；T-03勾选与否交独立review——本增量闭了宇宙门与全部V-01拒绝控制，逐义务深元数据（recipe/oracle/预算域字段）仍由31份合同承载经活派生为映射入口；后续组合close脚本须改断言`required_universe_closed=true`（旧脚本断言False，已在审计boundary记录）。T-04（域reader适配继续）与原T05..T11照旧待做。executing19/32（T-03增量记progress，不冒整任务完成——留独立T14复核裁量）。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（T-03宇宙闭包增量：registry/2+awaiting-D具名、治理241/241、组合零漂移且宇宙闭合） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:7938954802 | task_ids:T-03增量（勾选留review）；T-04待 | evidence:f94103-universe/t03-universe-audit.json | next_responsible_role:work T-04域reader/原T05..义务；无具名待批项，无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:85 | from:goal用户指令 | to:work | status:executing19/32 | outcome:progress（required universe以具名awaiting-D闭合，verdicts守恒零漂移） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:7938954802 | next:work T-04域reader适配/原T05..T11；D938/939未交齐，无待poll
 
 ## 10. 待澄清事项
 
