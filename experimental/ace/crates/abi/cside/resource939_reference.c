@@ -55,7 +55,22 @@ static void layout_selfcheck(void) {
 
 int main(void) {
     layout_selfcheck();
-#ifdef R939_S_utf8_owned
+#ifdef R939_S_pairv_temp
+    {
+        /* PLAN-939 V-02 (ctor temp as the CONST view lane): the call-site
+         * temp Counter(5) is materialized once, viewed, consumed by the
+         * provider, and dies with the call. Mirror: 20->21, out 21+5. */
+        Counter x;
+        Counter v;
+        int32_t out = -1;
+        x.value = 20;
+        v.value = 5;
+        int32_t st = t939_pairv(&x, &v, &out);
+        R939_S_check(st == 0);
+        R939_S_check(out == 26 && x.value == 21);
+        return (int)(out + x.value); /* 47 */
+    }
+#elif defined(R939_S_utf8_owned)
     {
         /* PLAN-939 V-02 (owned temp -> view): the deck's owned Str
          * local feeds BOTH views; the owner outlives every consumer and
@@ -67,7 +82,9 @@ int main(void) {
         /* NUL is DATA and a valid scalar: A, U+0000, U+4E2D, U+1F600. */
         n = t939_scalar_count(text, 9);
         R939_S_check(n == 4);
-        return (int)n;
+        /* the deck's owned bystander (A + U+4E2D + U+1F600) stays live
+         * across BOTH foreign calls and adds its scalar count (3). */
+        return (int)n + 3;
     }
 #elif defined(R939_S_utf8_bytes)
     {

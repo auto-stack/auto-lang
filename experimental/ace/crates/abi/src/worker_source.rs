@@ -121,6 +121,7 @@ impl CertPolicy {
             Self::Resource939 => matches!(
                 reference,
                 "utf8-owned"
+                    | "pairv-temp"
                     | "utf8-bytes"
                     | "utf8-scalars"
                     | "record-mut"

@@ -1396,6 +1396,107 @@ impl Session {
     // declaration, provider binding or target root.
 }
 
+/// PLAN-939 T-05: does one emitted COFF object reference the text
+/// runtime (`ac_rt_*` unresolved externals)? Read-only view of the exact
+/// symbols the linker will see - no wire/state changes, valid across
+/// edits and restores.
+fn coff_references_ac_rt(coff: &[u8]) -> bool {
+    // COFF object header: u16 machine, u16 n_sections, u32 timestamp,
+    // u32 ptr_symtab, u32 n_syms, u16 opt_size, u16 characteristics.
+    if coff.len() < 20 {
+        return false;
+    }
+    let u16_at = |o: usize| u16::from_le_bytes([coff[o], coff[o + 1]]);
+    let u32_at = |o: usize| {
+        u32::from_le_bytes([coff[o], coff[o + 1], coff[o + 2], coff[o + 3]])
+    };
+    let ptr_sym = u32_at(8) as usize;
+    let mut n_syms = u32_at(12) as usize;
+    if ptr_sym == 0 || n_syms == 0 || ptr_sym.saturating_add(n_syms * 18) > coff.len() {
+        return false;
+    }
+    let string_table_at = ptr_sym + n_syms * 18;
+    let name_at = |off: usize| -> Option<String> {
+        let raw = coff.get(off..off + 8)?;
+        if raw[0] == 0 {
+            let so = u32_at(off + 4) as usize;
+            let base = string_table_at.checked_add(so)?;
+            let end = coff[base..].iter().position(|&b| b == 0)? + base;
+            Some(String::from_utf8_lossy(&coff[base..end]).into_owned())
+        } else {
+            let end = raw.iter().position(|&b| b == 0).unwrap_or(8);
+            Some(String::from_utf8_lossy(&raw[..end]).into_owned())
+        }
+    };
+    let mut any = false;
+    let mut i = 0usize;
+    while i < n_syms {
+        let rec = ptr_sym + i * 18;
+        if let Some(name) = name_at(rec) {
+            // storage class 2 = external; section number 0 = undefined
+            let storage = coff.get(rec + 16).copied().unwrap_or(0);
+            let sec = u16::from_le_bytes([
+                coff.get(rec + 12).copied().unwrap_or(1),
+                coff.get(rec + 13).copied().unwrap_or(1),
+            ]);
+            if storage == 2 && sec == 0 && name.starts_with("ac_rt_") {
+                any = true;
+            }
+        }
+        // auxiliary records follow the primary; their count is the last
+        // byte of the primary record - skip them wholesale.
+        let aux = coff.get(rec + 17).copied().unwrap_or(0) as usize;
+        i += 1 + aux;
+        n_syms = n_syms.min(i + 1 + 0xFFFF); // bound by file size anyway
+        let _ = u16_at;
+    }
+    any
+}
+
+/// PLAN-939 T-05: locate-or-build the text runtime support library
+/// (`ac_text_runtime.lib`) - the same artifact the 782 native chain
+/// links (av::text_runtime_lib); cached per process, built by the real
+/// cargo under the ACE workspace's own target dir.
+fn text_runtime_support_lib() -> Result<std::path::PathBuf, String> {
+    use std::sync::Mutex;
+    static CACHE: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
+    let mut g = CACHE.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(p) = g.as_ref() {
+        return Ok(p.clone());
+    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    if !root.join("crates/text-runtime/Cargo.toml").is_file() {
+        return Err("text runtime workspace missing".into());
+    }
+    let out = std::process::Command::new("cargo")
+        .args([
+            "build",
+            "-p",
+            "ace-text-runtime",
+            "--profile",
+            "runtime-release",
+            "--locked",
+        ])
+        .current_dir(&root)
+        .env_remove("CARGO_TARGET_DIR")
+        .arg("--target-dir")
+        .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"))
+        .output()
+        .map_err(|e| format!("spawn cargo for the text runtime: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "text runtime build failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    let lib = root.join("target/runtime-release/ac_text_runtime.lib");
+    if !lib.is_file() {
+        return Err(format!("runtime lib missing at {}", lib.display()));
+    }
+    *g = Some(lib.clone());
+    Ok(lib)
+}
+
 fn link_artifacts(
     directory: &Path,
     target: Target,
@@ -1439,16 +1540,30 @@ fn link_artifacts(
     match target {
         Target::Native => {
             let mut entry = None;
+            let mut needs_text_runtime = false;
             for (i, (name, a)) in artifacts.iter().enumerate() {
                 let TargetWire::Native { symbol, coff, .. } = &a.decoded else {
                     return Err("foreign.target".into());
                 };
+                // PLAN-939 T-05 (V-02): owned text locals in a resource
+                // foreign module emit ac_rt_* runtime calls — the text
+                // runtime support lib joins the link exactly when some
+                // emitted object references it (the linker's own view,
+                // valid across edits and restores).
+                needs_text_runtime |= coff_references_ac_rt(coff);
                 let path = directory.join(format!("caller-{i}.obj"));
                 write(&path, coff)?;
                 objects.push(path);
                 if name == "main" {
                     entry = Some(symbol);
                 }
+            }
+            if needs_text_runtime {
+                let mut rt_work = ledger.begin("*", "text-runtime-lib", Phase::Production);
+                let lib = text_runtime_support_lib()?;
+                rt_work.produced(1);
+                work.push(rt_work);
+                objects.push(lib);
             }
             let mut wrapper_work = ledger.begin("*", "entry-wrapper", Phase::Production);
             let wrapper = ace_native::emit::emit_wrapper_coff_reserved(

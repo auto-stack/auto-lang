@@ -1,6 +1,6 @@
 {
   "schema": "abi.resource-import-deck/1",
-  "source": "fn main() int {\n    let s str = \"A\\0中😀\"\n    let n int = t939_byte_length(s)\n    if n == 9 { return t939_scalar_count(s) }\n    return n\n}\n",
+  "source": "fn main() int {\n    let keep Str = \"A中😀\"\n    let s str = \"A\\0中😀\"\n    let n int = t939_byte_length(s)\n    if n == 9 { return t939_scalar_count(s) + keep.len() }\n    return n\n}\n",
   "module": "source939",
   "manifest": {
     "schema": "ace.foreign.manual/2",
@@ -520,7 +520,8 @@
   },
   "capabilities": [
     "foreign.scalar",
-    "foreign.resource"
+    "foreign.resource",
+    "ac.runtime.text.v1"
   ],
   "provider_bias": 0,
   "reference": "utf8-owned"
