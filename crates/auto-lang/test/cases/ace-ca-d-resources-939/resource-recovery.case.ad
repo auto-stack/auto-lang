@@ -5,15 +5,32 @@
 # (the resolver-owned lane re-resolves and republishes; exit re-pins the
 # oracle) on a RECORD deck (the T-02A utf8 twin covered the text deck).
 #
-# T-09/T-10-owned expansions (named, NOT yet in this file — they need the
-# first-error→old-root-real-run→fix→re-restore flows, per-axis
-# body/provider/mode/layout/deleter/caps edits, precise reader
-# invalidation counters, and the static provider-generation/lease
-# probes; V-06/08/09/10/16, AC-04/05/06):
-#  - first-error → old root real run → fix → re-restore/edit (per axis)
-#  - provider-bias transitions across restart (generation/ledger statics)
-#  - runtime handle re-acquisition; stale address/authority rejection
-#  - P/R counter assertions per reader (P0/IO0 warm claims)
+# T-09/T-10-owned expansions (V-06/08/09/10/16, AC-04/05/06):
+#  - first-error → fix → re-restore: DELIVERED by T-09 as
+#    `ace-ca-d3.recover-first-error-{native,c}` in resource-import.case.ad
+#    (the reviewed fail deck opens at its failure, the edits switch the
+#    seed AND the reviewed reference scenario in the same move, the fix
+#    admits under the record-mut oracle with a per-step pe_exit override,
+#    the reverse pair restores the reviewed failure) plus the worker-level
+#    `abi_resource939_restore_first_edit_fails_publishes_nothing_then_fix_and_recover`
+#    (a FAILED first edit after restore publishes nothing; the accepted
+#    root survives byte-identical).
+#  - precise reader invalidation counters: DELIVERED by T-09 as
+#    `ace-ca-d3.increment-body-edit-{native,c}` (per-query compute pins)
+#    plus the worker-level per-stage pins
+#    (`abi_resource939_body_edit_reproduces_only_the_edited_function`:
+#    fresh 2/2/2 → hit all-P0 → body edit exactly 1/1/1 → provider-only
+#    transition 0 source stages + binding generation 2; declaration-side
+#    mode/layout/clone/deleter axes are bound to the frozen reviewed
+#    provider manifest v1 — their digest-keyed invalidation mechanism is
+#    evidenced by the provider-generation axis, distinct per-axis cases
+#    would need new reviewed manifests, named to T-11).
+#  - required resource/contract/provider pages: DELIVERED by T-09 at the
+#    worker level (missing/corrupt/forged-pointer axes all refuse —
+#    never a silent cold start, never a forged decode; the accepted
+#    pointer is never overwritten by a refusal).
+#  - T-10 remains owner of: 512-revision GC convergence, budget caps on
+#    the recovery lane, and the original 6×30 sample discipline.
 
 # fresh → hit → restart → first good edit (commuted return, same 42) on
 # the restored session — both legs native and c.

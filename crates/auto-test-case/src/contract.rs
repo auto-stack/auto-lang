@@ -3148,6 +3148,11 @@ pub struct ProbeStepExpect {
     pub bindings_file: Option<String>,
     /// Stage names the step trace must include.
     pub stages_include: Vec<String>,
+    /// PLAN-939 T-09: per-step PE exit override for multi-query flows
+    /// whose intermediate steps are legitimate failure transports (the
+    /// first-error -> fix -> re-restore discipline); absent steps keep
+    /// the check-level `exit` oracle.
+    pub pe_exit: Option<i32>,
 }
 
 /// Logical artifact paths syntax checks may byte-compare against (T-06):
@@ -3648,7 +3653,13 @@ fn decode_expect(
                     let pf = Fields::new(
                         &ipath,
                         pairs,
-                        &["cache", "compute_calls", "bindings_file", "stages_include"],
+                        &[
+                            "cache",
+                            "compute_calls",
+                            "bindings_file",
+                            "stages_include",
+                            "pe_exit",
+                        ],
                     )?;
                     let cache = match pf.sub("cache") {
                         None => None,
@@ -3725,11 +3736,25 @@ fn decode_expect(
                             out
                         }
                     };
+                    let pe_exit = match pf.sub("pe_exit") {
+                        None => None,
+                        Some(CVal::Int(n)) if *n >= 0 && *n <= 255 => Some(*n as i32),
+                        Some(other) => {
+                            return Err(err(
+                                &pf.path_of("pe_exit"),
+                                format!(
+                                    "pe_exit must be a small non-negative integer, got {}",
+                                    other.type_name()
+                                ),
+                            ))
+                        }
+                    };
                     out.push(ProbeStepExpect {
                         cache,
                         compute_calls,
                         bindings_file,
                         stages_include,
+                        pe_exit,
                     });
                 }
                 Some(out)

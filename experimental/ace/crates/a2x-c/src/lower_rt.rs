@@ -645,10 +645,19 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                         "the verifier plan names a callback lane the sig does not",
                     ));
                 }
+                // PLAN-939 T-09: after a BODY EDIT the re-published
+                // function's fragment view carries the target as an
+                // EXTERNAL (signature-only scaffold) — the source name
+                // resolves through either table.
                 let name = self
                     .view
                     .fn_by_def(*def as usize)
                     .map(|f| f.source_name)
+                    .or_else(|| {
+                        self.view
+                            .external_by_def(*def as usize)
+                            .map(|x| x.source_name.as_str())
+                    })
                     .ok_or_else(|| {
                         A2xReject::new(
                             "a2c.internal",

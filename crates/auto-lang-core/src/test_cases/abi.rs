@@ -603,12 +603,15 @@ fn judge_query_step(
                     first_diff: None,
                 });
             }
-            // a successful query must be a REAL PE pass
-            if got.pe_exit != expected_exit {
+            // a successful query must be a REAL PE pass (PLAN-939 T-09:
+            // a per-step override carries legitimate mid-flow failure
+            // transports; absent steps keep the check-level oracle).
+            let step_exit = want.pe_exit.or(expected_exit);
+            if got.pe_exit != step_exit {
                 mismatches.push(Mismatch {
                     observation: format!("probe[{i}].pe_exit"),
                     kind: "text",
-                    expected: format!("{:?}", expected_exit),
+                    expected: format!("{:?}", step_exit),
                     actual: format!("{:?}", got.pe_exit),
                     first_diff: None,
                 });
@@ -1185,12 +1188,18 @@ pub fn run_check(
                             .map(|r| r.diagnostic_stage.as_str()),
                     );
                     if source_mode && matches!(oracle.completion, Completion::Success) {
+                        // PLAN-939 T-09: the independent reference mirrors
+                        // the deck's CURRENT scenario — a per-step pe_exit
+                        // override (a mid-flow edit that legitimately
+                        // changes the delivered exit) retargets the
+                        // reference oracle the same way.
+                        let step_ref_exit = want.pe_exit.or(oracle.exit);
                         let reference = ok.source_import.as_ref().and_then(|r| r.reference_exit);
-                        if reference != oracle.exit {
+                        if reference != step_ref_exit {
                             mismatches.push(Mismatch {
                                 observation: format!("probe[{qi}].reference_exit"),
                                 kind: "text",
-                                expected: format!("{:?}", oracle.exit),
+                                expected: format!("{:?}", step_ref_exit),
                                 actual: format!("{reference:?}"),
                                 first_diff: None,
                             });

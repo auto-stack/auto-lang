@@ -165,6 +165,50 @@ case { schema: "autolang.case/2", id: "ace-ca-d3.pairv-temp-c", tags: ["ca-d3", 
  abi: { leg: "c" }, steps: [ { op: "query" } ] },
  expect: { completion: "success", exit: 47, probe: [ { stages_include: ["source-import"] } ] } } ] }
 ```
+# T-09 (V-08): precise reader invalidation — a body edit to MAIN only
+# (`0 +` inserted, semantics preserved) leaves every other producer
+# untouched: the warm hit (q1) is P0/IO0, and the post-edit query (q2)
+# re-produces ONLY the edited function's artifacts (compute 3 < cold 7 —
+# the real producer counts are PINNED per stage-tenet of T-09); cb's
+# fragment and every signature reader stay cached. Final warm hit (q3)
+# is again P0.
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.increment-body-edit-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/callback-reentrant.atomdata", syntax: "atom-data", path: "callback-reentrant.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" }, { op: "query" }, { op: "edit-source", from: "return sum", to: "return 0 + sum" }, { op: "query" }, { op: "query" } ] },
+ expect: { completion: "success", exit: 21, probe: [ { cache: "published", compute_calls: 7 }, { cache: "hit", compute_calls: 0 }, { cache: "published", compute_calls: 3 }, { cache: "hit", compute_calls: 0 } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.increment-body-edit-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/callback-reentrant.atomdata", syntax: "atom-data", path: "callback-reentrant.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" }, { op: "query" }, { op: "edit-source", from: "return sum", to: "return 0 + sum" }, { op: "query" }, { op: "query" } ] },
+ expect: { completion: "success", exit: 21, probe: [ { compute_calls: 5 }, { cache: "hit", compute_calls: 0 }, { compute_calls: 2 }, { cache: "hit", compute_calls: 0 } ] } } ] }
+```
+# T-09 (V-09): first-error -> fix -> re-deliver — the FAIL-REVIEWED deck
+# opens at its reviewed failure (exit 70); the edits fix the body AND
+# switch the deck's reviewed scenario in the same move (seed -1 -> 1 with
+# reference record-mut-fail -> record-mut: the edited deck is byte-exact
+# the reviewed record-mut deck, so the mid query admits under that
+# scenario's oracle and delivers 42 as a per-step pe_exit override — the
+# T-09 contract extension); the reverse pair restores the reviewed
+# failure byte-exact (the final query re-admits against the failing
+# scenario: exit 70 with the pinned failure transport).
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.recover-first-error-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/record-mut-fail.atomdata", syntax: "atom-data", path: "record-mut-fail.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" }, { op: "edit-source", from: "t939_bump(x.mut, -1)", to: "t939_bump(x.mut, 1)" }, { op: "edit-source", from: "\"reference\": \"record-mut-fail\"", to: "\"reference\": \"record-mut\"" }, { op: "query" }, { op: "edit-source", from: "t939_bump(x.mut, 1)", to: "t939_bump(x.mut, -1)" }, { op: "edit-source", from: "\"reference\": \"record-mut\"", to: "\"reference\": \"record-mut-fail\"" }, { op: "query" } ] },
+ expect: { completion: "success", exit: 70, probe: [ { stages_include: ["source-import"], compute_calls: 4 }, { pe_exit: 42, compute_calls: 3 }, { stages_include: ["source-import"], compute_calls: 1 } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.recover-first-error-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/record-mut-fail.atomdata", syntax: "atom-data", path: "record-mut-fail.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" }, { op: "edit-source", from: "t939_bump(x.mut, -1)", to: "t939_bump(x.mut, 1)" }, { op: "edit-source", from: "\"reference\": \"record-mut-fail\"", to: "\"reference\": \"record-mut\"" }, { op: "query" }, { op: "edit-source", from: "t939_bump(x.mut, 1)", to: "t939_bump(x.mut, -1)" }, { op: "edit-source", from: "\"reference\": \"record-mut\"", to: "\"reference\": \"record-mut-fail\"" }, { op: "query" } ] },
+ expect: { completion: "success", exit: 70, probe: [ { stages_include: ["source-import"], compute_calls: 3 }, { pe_exit: 42, compute_calls: 2 }, { stages_include: ["source-import"], compute_calls: 1 } ] } } ] }
+```
 # T-08 (V-07): a LIMITED LEGAL reentrant call — the callback body makes
 # a foreign view call per item (nested foreign call DURING the fold; the
 # callback is never stored). exit 21 = (5+0+1)+(5+1+1)+(5+2+1).

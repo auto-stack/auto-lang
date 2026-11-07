@@ -10,6 +10,8 @@ mod contract_layout_admission;
 mod feasibility;
 #[path = "cases/resource.rs"]
 mod resource;
+#[path = "cases/resource_recovery.rs"]
+mod resource_recovery;
 #[path = "cases/scalar_bridge.rs"]
 mod scalar_bridge;
 #[path = "cases/source_foreign.rs"]

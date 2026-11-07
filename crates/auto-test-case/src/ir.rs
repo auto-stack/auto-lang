@@ -216,6 +216,8 @@ pub struct ResolvedProbeStep {
     pub bindings_bytes: Option<Vec<u8>>,
     pub bindings_sha256: Option<String>,
     pub stages_include: Vec<String>,
+    /// PLAN-939 T-09: per-step PE exit override (see contract).
+    pub pe_exit: Option<i32>,
 }
 
 /// Resolve every `file:` reference of a check's expectation against
@@ -284,6 +286,7 @@ pub fn resolve_oracle(
                 bindings_bytes: bbytes,
                 bindings_sha256: bsha,
                 stages_include: st.stages_include.clone(),
+                pe_exit: st.pe_exit,
             });
         }
         probe = Some(out);

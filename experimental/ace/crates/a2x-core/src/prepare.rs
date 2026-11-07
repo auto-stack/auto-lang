@@ -964,13 +964,18 @@ fn ser_expr(
         // PLAN-939 S06: the named callback target — fingerprinted by the
         // TARGET's source name (owner-stable, like the closure identity).
         hir::ExprKind::CallbackRef { def } => {
+            // PLAN-939 T-09: after a BODY EDIT the re-published function's
+            // fragment view carries the target as an EXTERNAL scaffold —
+            // the source name resolves through either table.
             let name = view
                 .fn_by_def(def.0 as usize)
                 .map(|t| t.source_name)
+                .or_else(|| {
+                    view.external_by_def(def.0 as usize)
+                        .map(|x| x.source_name.as_str())
+                })
                 .ok_or_else(|| {
-                    A2xReject::unsupported_expr(
-                        "callback target def is not a source function",
-                    )
+                    A2xReject::unsupported_expr("callback target def is not a source function")
                 })?;
             out.push_str(&format!("cbref#{}()", name));
         }

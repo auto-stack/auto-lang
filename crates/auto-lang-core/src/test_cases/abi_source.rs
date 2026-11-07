@@ -387,9 +387,10 @@ impl SourceReport {
                 .filter_map(|line| line.strip_prefix("foreign.status="))
                 .collect::<Vec<_>>();
             if statuses != expected_status {
-                return Err(
-                    "resource controlled failure cause is missing or differs from review".into(),
-                );
+                return Err(format!(
+                    "resource controlled failure cause is missing or differs from review [statuses={:?} expected={:?} stderr={:?}]",
+                    statuses, expected_status, self.actual_stderr
+                ));
             }
             let reference_statuses = self
                 .reference_stderr
