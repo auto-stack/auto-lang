@@ -238,3 +238,5 @@ canonical_ok参考实现的Reader侧落地Spec（library-workspace.md性能证�
 - stage: merge | plan_id: PLAN-995 | plan_revision: r1 | outcome: pass（delivered/archived/cleaned） | delivery_commit: df55a6289 | canonical: SD-01/SD-02（哈希见上） | archive: docs/plans/archive/995-vm-json-natives-perf-and-hazard-closure.md | cleanup: 完成（见 cleaned 行） | next: 批量回归 due check（995%5=0）→ regress。
 
 - stage: goal | plan_id: PLAN-995 | plan_revision: r1 | round: 6 | from: merge | to: done | status: archived | outcome: pass | worktree: （已清理） | commit: df55a6289 | next: 批量回归 due（regress 技能）。
+
+- stage: goal | plan_id: PLAN-995 | plan_revision: r1 | round: 7 | from: merge | to: done | status: archived | outcome: pass | commit: df55a6289（delivery）/ 0093e7eca（archive）/ 68210696b（批量回执） | next: done——批量回归已执行：28 PASS/6 FAIL/3 N.A.，原子红 3（fixture_manifest、sys_natives=956 同族已知；plan872=新增红，归属 PLAN-941 债 D-941-1），api-gen 崩溃未复现；回执 .last-batch-regression.json 已提交（covered 69da2dea8，last_covered_plan_id 995）。目标完成。
