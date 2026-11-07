@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-960
-status: reviewed
+status: archived
 feature_name: 完整模块包与公共类型绑定
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-07
 plan_revision: 2
-current_step: 6
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-959, PLAN-950]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -127,8 +127,8 @@ T-01有界前探：用一个最小真实正例、同类型非法近邻和一次�
 - [x] **T-03｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 [✅ 2026-11-07] e9919cdf0（MIR `MirGlobal`/`GlobalGet`/`GlobalSet` 新增 opcode 0x36/0x37、`MirModule.globals/init`；`ProgramSnapshot::link_with_globals` 程序级 cell + 每代一次 init 链、失败重置不发布；executor/verify/ownership/abc/instr_spec；lowering `module.global.*` 作逻辑 import → GlobalGet/Set，`lower_checked_owned_with_init`）与 b36376578（`PackageAvTarget` cold/cold_with_entry/run_value/global_cells；split_units 携带全局表；同名私有 store 隔离=22 非 23、diamond 基 cell、公共 Str fn=StrView）；26f93cc79（`a2x-store modules::packages::PackageA2xTarget<P>` RecordText 族冷/收据/恢复——Rust AXR2 与 C AXC2，恢复 lower/print=0 仅重装配；`source-query modules::packages_store` 根 `source-packages-root/1` 身份+单元源+目标收据，不存 cell 值/宿主地址，恢复经同一前门/绑定/编译并核 input_hash，篡改收据/外来产品拒绝；944 白名单 `ace-native/modules/1`/`ace-a2x-c/modules/1` + packages profile 接纳；四端 conformance 3/3）。native 腿：`MnDriver::build_checked` owned 臂真 exe，`ac_start` 退出码转发 i32（42 oracle）。**具名边界**：a2x 全局 cell 发射与类型方法片段为后继（四端 Str 产品不含全局，全局三项在 AV 见证）；mn 全局 cell 具名拒（D-960-2）。
 - [x] **T-04｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 [✅ 2026-11-07] V-01..V-08 全部真实运行：单测 core 5 + source-query 3（packages/packages_store）+ av 2（packages_av，V-08 全五条：store 隔离 22≠23、diamond once 共享 cell 1→2→3、init 失败无半态 cell 全归 0/initialized=false、恢复后重初始化、根无地址）+ conformance `module_packages_960` 3/3（四端 Str：AV I32(42)+StrView、rustc exe stdout value:42、cl exe stdout value:42、mn exit code 42；rust/c 恢复 lower/print=0 且文件集一致；根恢复身份相等；V-05 顺序无关；V-02/V-04/V-06 具名拒绝 + 旧程序仍运行）。固定组：`cargo t ace-source ace-semantics ace-artifacts ace-av ace-a2x` → 5/5 PASS，executed 385/204/40/1024/196=1849，gate_passed=true，wall 1773s（收据 plan-artifacts/plan-960/t04-fixed-groups.log sha256 c90bfc1f1ba347e05da1f0d0530187727fc38ea0f7c0a684a58801241ddd3add）。
 - [x] **T-05｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。 [✅ 2026-11-07] 第 3 轮 final review needs_fix（F-960-R1 文档矛盾 + F-960-R2/R3/R4 记录，见 §9）；第 4 轮修复 ad2372024（仅注释，git diff 674473a27..ad2372024 = 1 文件 3+/2− 全为 /// 行）后受影响项 re-review pass：F-960-R1 闭合，其余证据绑 674473a27 行为等价树继续有效；冻结基线 5/5 executed=1849 gate=true（§9 复核收据）。
-- [ ] **T-06｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
-- [ ] **T-07｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
+- [x] **T-06｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。 [✅ 2026-11-07] rebase 到含 PLAN-938 的 master（8/9 提交，两处冲突解决：grammar 单目 gates 合并、lowering 调用面并入 938 错误传播形并重插全局访问器臂；resolve foreign 目录补 Const/Store 臂；plan827 可再生污染从分支剔除）；合并期集成修复 `95cda695a`（0x36 与 938 OP_FOREIGN_CALL 冲突→改 0x38/0x39 + AVFI 解码臂，受影响复验 av 2/2 + conformance 3/3 绿）；冻结门：5 组中 4 组在 `6d18f0f99` PASS + ace-av 修复后 `95cda695a` 重跑 PASS executed=1035（其余 4 组输入与 av-core 变更无关，cargo tree 证实独立）；环境红 closures_recovery_913 perf 隔离重放绿（50.8s）记录为环境归因；docs-only master 前移后二次 rebase 代码零差异（95cda695a..8b5a1d980 experimental/ diff 为空）；`git merge --ff-only` 落地 master=8b5a1d980；canonical specs 落地核验（m2-modules.md sha256 be25b0c6…dae84、replacement-scope SD-04 sha256 1c7c15d0…6a41c）。
+- [x] **T-07｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。 [✅ 2026-11-07] 输出对账：本计划命令输出仅 plan-artifacts/plan-960/{t01,t04,t05,t06}*.log 与 worktree target/（随树删除）；未发现外盘/第二证据目录（探针/补丁脚本同 scope）；无外置构建 target；worktree 内 plan827 可再生脏物属 D-938-4 owner（随树消亡，未动 master 对应文件）。scope 收尾按裁定全删（见 §9 merge receipt）。
 
 T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06→07串行。外仓owner交付可按稳定接口提前准备，但最终不得拿未交付接口背书。
 材料唯一目录 `D:/autostack/plan-artifacts/plan-960/`，开工登记owner/用途/在途；本轮未创建。不可另建attachments/证据仓目录，不留第二套target/SDK副本。
@@ -136,6 +136,8 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 - [x] **T-08｜owner_stage: work｜AC-06**：明确全局store/常量初始化次序、once/session归属、失败回滚、diamond依赖和模块卸载；把950/944扩到文本/聚合/宿主公共签名及AV/AC/Rust/C装配恢复。类型表示消费既有text/record；新增集合布局归962。模板/CT组合本包提供接面，963/966最终闭合，禁止反向等待。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。 [✅ 2026-11-07] 初始化次序/once/session归属（每代一次、代内 `initialized` 状态）、失败回滚（cell 全重置+不发布半态，av 单测）、diamond（共享 cell 三路递增见证 once）、模块卸载（代随 snapshot 释放，cell 从不持久化）；文本/聚合/宿主公共签名（TextRecord 域、Str 入口四端、公共类型/常量/方法经绑定）；AV/AC(native)/Rust/C 装配恢复（冷+恢复收据，944 白名单扩 native/C + packages profile）；V-08 五条全部有真实结果（av 单测 2 + conformance）。
 
 ## 9. 复审记录
+
+stage: merge | plan_id: PLAN-960 | plan_revision: r2 | outcome: pass（delivered） | worktree_path: D:/autostack/.wt/lang-960/auto-lang（清理中） | branch: plan-960-dev | delivery_commit: 8b5a1d980（ff-only；旧链 a36f63af0..ad2372024 → 重放链 fbf56ddeb..95cda695a + docs-rebase；95cda695a..8b5a1d980 代码零差异） | base_commit: fd3b3116a | dependency_revisions: PLAN-950/959 archived；合并期集成 PLAN-938（master 已落地） | spec_inputs/outputs: docs/specs/ace-migration/m2-modules.md（新增，sha256 be25b0c69f2f8cc064045558534188a449f1f40d2ae63e827b1f2b6074adae84）、replacement-scope-and-evidence.md SD-04（sha256 1c7c15d07008f2a99a973cbcf566cd6d55cefb8b7f7faca0d2ffb43ff9e6a41c）均随 delivery commit 落 master | frozen_gate: ace-source/semantics/artifacts/a2x 4 组 PASS@6d18f0f99（executed 388/236/47/197）+ ace-av PASS@95cda695a executed=1035（AVFI 修复后重跑；4 组与 av-core 独立经 cargo tree 核证）；t06 日志 sha256 3eb2b417976a3b3831e44c54f9088a52d39bb34b8abc8e4b5d56ae46966fda1c | merge_repair: 95cda695a（opcode 冲突 + AVFI 解码臂，属与 938 并行落地的等价局部适配，受影响复验绿） | evidence_cleanup: plan-artifacts/plan-960/ 全目录删除（t01/t04/t05/t06 日志摘要已折入本文件；无具名持有）；registry 已刷新 | landing_checks: master docs-only 前移两次均 rebase 后 ff-only；主检出自有代码零 WIP（他人 docs/ 计划 WIP 保留为其 owner 的共享簿记例外）；生产件观察：auto-lang 无本计划消费的发布产物（语言仓发布链归 986），主检出 target/ 为可再生构建缓存显式记为陈旧观察 | batch_regression: 960%5==0 → due，按 959 先例 due-queued 交接 auto-plan-regress（主检出单实例，非本会话执行） | next: done（goal complete）
 
 stage: work | plan_id: PLAN-960 | plan_revision: r2 | outcome: pass（修复轮：F-960-R1 闭合） | worktree_path: D:/autostack/.wt/lang-960/auto-lang | branch: plan-960-dev | base_commit: 674473a27 | code_commit: ad2372024（仅 binding.rs 文档 3+/2−，git diff 核对无代码行；先误并 plan827 可再生测试输出已从提交剔除，留树为外来 WIP） | task_ids: T-02 重勾 | evidence: 受影响面 cargo nextest run -p ace-core --lib -E 'test(package)' 5/5 PASS；cargo check -p ace-core 新警告 0 | next_responsible_role: review（受影响项 re-review）
 
