@@ -9,7 +9,6 @@ use ace_av_core::contract::{ExecOutcome, Value};
 use ace_av_core::{abc_verify, mir_verify};
 
 fn run(src: &str) -> ExecOutcome {
-
     let compiled =
         ace_core::source::compile_numeric_source(src, "n.at", &[]).expect("numeric compile");
     let mir = ace_lowering::lower_checked_closures(&compiled.checked, "d_main", 0x961)
@@ -67,7 +66,10 @@ fn v02_u64_high_bit_compare() {
     return 0i64
 }",
     );
-    assert_eq!(v, 1, "unsigned high-bit add: (MAX-2)+1 > MAX-2 (signed would trap)");
+    assert_eq!(
+        v, 1,
+        "unsigned high-bit add: (MAX-2)+1 > MAX-2 (signed would trap)"
+    );
 }
 
 // V-03: MAX+1 traps per the checked contract (never wraps).
@@ -119,7 +121,11 @@ fn v05_float_bit_exact_values() {
 #[test]
 fn v08_literal_rounding() {
     let v = ok_f64("fn main() f64 { return (0.1f32).as(f64) }");
-    assert_eq!(v.to_bits(), (0.1f32 as f64).to_bits(), "0.1f32 rounds to nearest f32");
+    assert_eq!(
+        v.to_bits(),
+        (0.1f32 as f64).to_bits(),
+        "0.1f32 rounds to nearest f32"
+    );
     let v2 = ok_f64("fn main() f64 { return 0.1d }");
     assert_eq!(v2.to_bits(), 0.1f64.to_bits(), "0.1d rounds to nearest f64");
 }
@@ -243,7 +249,10 @@ fn v08_bit_and_shift_values() {
     return ((c + d) + e) + (f + g)
 }",
     );
-    assert_eq!(v, (12 & 10) + (12 | 10) + (12 ^ 10) + (1i64 << 62) + (1i64 << 2));
+    assert_eq!(
+        v,
+        (12 & 10) + (12 | 10) + (12 ^ 10) + (1i64 << 62) + (1i64 << 2)
+    );
     // i32 bit ops (the only Num-encoded i32 surface).
     let v2 = ok_i64(
         "fn main() i64 {
