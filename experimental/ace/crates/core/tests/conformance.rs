@@ -30,6 +30,8 @@ mod record_source;
 mod scalar_hir;
 #[path = "cases/numeric_hir.rs"]
 mod numeric_hir;
+#[path = "cases/numeric_source.rs"]
+mod numeric_source;
 #[path = "cases/scalar_source.rs"]
 mod scalar_source;
 #[path = "cases/source_frontend.rs"]

@@ -3284,6 +3284,18 @@ impl<'a> Engine<'a> {
                     || k == self.cx.k.tok_i32
                     || k == self.cx.k.tok_bool
                     || k == self.cx.k.tok_ident
+                    // PLAN-961: the numeric type-word tokens (numeric
+                    // trim only; Option kinds elsewhere).
+                    || self.cx.k.tok_i8_kw == Some(k)
+                    || self.cx.k.tok_u8_kw == Some(k)
+                    || self.cx.k.tok_byte_kw == Some(k)
+                    || self.cx.k.tok_uint_kw == Some(k)
+                    || self.cx.k.tok_u32_kw == Some(k)
+                    || self.cx.k.tok_i64_kw == Some(k)
+                    || self.cx.k.tok_u64_kw == Some(k)
+                    || self.cx.k.tok_float_kw == Some(k)
+                    || self.cx.k.tok_double_kw == Some(k)
+                    || self.cx.k.tok_f64_kw == Some(k)
             })
             .expect("type word leaf");
         let span = self.cx.span_of(word_leaf);
@@ -3295,6 +3307,18 @@ impl<'a> Engine<'a> {
             x if x == self.cx.k.tok_int_kw => return int(TypeWord::Int),
             x if x == self.cx.k.tok_i32 => return int(TypeWord::I32),
             x if x == self.cx.k.tok_bool => return int(TypeWord::Bool),
+            // PLAN-961: numeric type words (numeric trim only — gated
+            // tokens cannot reach a type position in any other profile).
+            x if self.cx.k.tok_i8_kw == Some(x) => return int(TypeWord::I8),
+            x if self.cx.k.tok_u8_kw == Some(x) => return int(TypeWord::U8),
+            x if self.cx.k.tok_byte_kw == Some(x) => return int(TypeWord::Byte),
+            x if self.cx.k.tok_uint_kw == Some(x) => return int(TypeWord::Uint),
+            x if self.cx.k.tok_u32_kw == Some(x) => return int(TypeWord::U32),
+            x if self.cx.k.tok_i64_kw == Some(x) => return int(TypeWord::I64),
+            x if self.cx.k.tok_u64_kw == Some(x) => return int(TypeWord::U64),
+            x if self.cx.k.tok_float_kw == Some(x) => return int(TypeWord::Float),
+            x if self.cx.k.tok_double_kw == Some(x) => return int(TypeWord::Double),
+            x if self.cx.k.tok_f64_kw == Some(x) => return int(TypeWord::F64),
             _ => {}
         }
         let word = self.cx.spelling(word_leaf);

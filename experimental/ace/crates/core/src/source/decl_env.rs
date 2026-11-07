@@ -107,6 +107,14 @@ fn vt_token(v: &super::resolve::VT) -> String {
         VT::List(i) => format!("list:{i}"),
         VT::Variant(i) => format!("var:{i}"),
         VT::Function(i) => format!("fn:{i}"),
+        // PLAN-961 numeric names.
+        VT::I8 => "i8".into(),
+        VT::U8 => "u8".into(),
+        VT::U32 => "u32".into(),
+        VT::I64 => "i64".into(),
+        VT::U64 => "u64".into(),
+        VT::F32 => "f32".into(),
+        VT::F64 => "f64".into(),
     }
 }
 

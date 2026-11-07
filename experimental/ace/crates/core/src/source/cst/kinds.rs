@@ -134,6 +134,22 @@ pub struct SourceKinds {
     pub op_ne: u32,
     pub op_andand: u32,
     pub op_oror: u32,
+    // PLAN-961：数值面 token（profiles 门控——numeric 裁剪外不存在，
+    // Option 解析；r-as 全域保留常在）。
+    pub tok_i8_kw: Option<u32>,
+    pub tok_u8_kw: Option<u32>,
+    pub tok_byte_kw: Option<u32>,
+    pub tok_uint_kw: Option<u32>,
+    pub tok_u32_kw: Option<u32>,
+    pub tok_i64_kw: Option<u32>,
+    pub tok_u64_kw: Option<u32>,
+    pub tok_float_kw: Option<u32>,
+    pub tok_double_kw: Option<u32>,
+    pub tok_f64_kw: Option<u32>,
+    pub tok_r_as: u32,
+    pub op_amp: Option<u32>,
+    pub op_vbar: Option<u32>,
+    pub op_caret: Option<u32>,
 }
 
 fn rule_kind(p: &GrammarProgram, name: &str) -> Option<u32> {
@@ -365,6 +381,21 @@ impl SourceKinds {
             op_ne: tk("ne"),
             op_andand: tk("andand"),
             op_oror: tk("oror"),
+            // PLAN-961：数值面 token 解析（门控 token → Option）。
+            tok_i8_kw: token_kind(p, "i8-kw"),
+            tok_u8_kw: token_kind(p, "u8-kw"),
+            tok_byte_kw: token_kind(p, "byte-kw"),
+            tok_uint_kw: token_kind(p, "uint-kw"),
+            tok_u32_kw: token_kind(p, "u32-kw"),
+            tok_i64_kw: token_kind(p, "i64-kw"),
+            tok_u64_kw: token_kind(p, "u64-kw"),
+            tok_float_kw: token_kind(p, "float-kw"),
+            tok_double_kw: token_kind(p, "double-kw"),
+            tok_f64_kw: token_kind(p, "f64-kw"),
+            tok_r_as: tk("r-as"),
+            op_amp: token_kind(p, "amp"),
+            op_vbar: token_kind(p, "vbar"),
+            op_caret: token_kind(p, "caret"),
         })
     }
 

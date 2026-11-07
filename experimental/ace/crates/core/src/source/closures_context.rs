@@ -64,6 +64,14 @@ pub enum VtDump {
     List(usize),
     Variant(usize),
     Function(usize),
+    /// PLAN-961 numeric kinds.
+    I8,
+    U8,
+    U32,
+    I64,
+    U64,
+    F32,
+    F64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -290,6 +298,14 @@ fn vt_dump(v: VT) -> VtDump {
         VT::List(i) => VtDump::List(i),
         VT::Variant(i) => VtDump::Variant(i),
         VT::Function(i) => VtDump::Function(i),
+        // PLAN-961 numeric kinds.
+        VT::I8 => VtDump::I8,
+        VT::U8 => VtDump::U8,
+        VT::U32 => VtDump::U32,
+        VT::I64 => VtDump::I64,
+        VT::U64 => VtDump::U64,
+        VT::F32 => VtDump::F32,
+        VT::F64 => VtDump::F64,
     }
 }
 
@@ -529,6 +545,14 @@ fn vt_in(d: VtDump) -> VT {
         VtDump::List(i) => VT::List(i),
         VtDump::Variant(i) => VT::Variant(i),
         VtDump::Function(i) => VT::Function(i),
+        // PLAN-961 numeric kinds.
+        VtDump::I8 => VT::I8,
+        VtDump::U8 => VT::U8,
+        VtDump::U32 => VT::U32,
+        VtDump::I64 => VT::I64,
+        VtDump::U64 => VT::U64,
+        VtDump::F32 => VT::F32,
+        VtDump::F64 => VT::F64,
     }
 }
 

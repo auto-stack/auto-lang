@@ -75,6 +75,26 @@ pub fn compile_source(
 /// typecheck on the scalar surface, bind against the scalar descriptor and
 /// verify through the scalar entry. Receipt data mirrors [`compile_source`]
 /// with the scalar profile identity.
+/// PLAN-961: the descriptor a source profile's Atom text binds against.
+/// The numeric profile owns its vocabulary (the closures-superset VERIFICATION
+/// domain it maps to would reject the numeric kinds).
+fn profile_descriptor(profile: SourceProfile) -> &'static crate::descriptor::Descriptor {
+    if profile.is_numeric() {
+        return crate::numeric_descriptor();
+    }
+    match profile.hir_domain() {
+        crate::hir::HirDomain::Core => crate::descriptor(),
+        crate::hir::HirDomain::Scalar => crate::scalar_descriptor(),
+        crate::hir::HirDomain::Text => crate::text_descriptor(),
+        crate::hir::HirDomain::Record => crate::record_descriptor(),
+        crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
+        crate::hir::HirDomain::EntryUnit => crate::entry_unit_descriptor(),
+        crate::hir::HirDomain::HostConsole => crate::host_console_descriptor(),
+        crate::hir::HirDomain::Collections => crate::collections_descriptor(),
+        crate::hir::HirDomain::Closures => crate::closures_descriptor(),
+    }
+}
+
 pub fn compile_scalar_source(
     src: &str,
     module_path: &str,
@@ -554,17 +574,7 @@ fn emit_scoped_source(
         real_body_plans: indices.len(),
         scaffold_fns: env.program.fns.len().saturating_sub(indices.len()),
     };
-    let descriptor = match profile.hir_domain() {
-        crate::hir::HirDomain::Core => crate::descriptor(),
-        crate::hir::HirDomain::Scalar => crate::scalar_descriptor(),
-        crate::hir::HirDomain::Text => crate::text_descriptor(),
-        crate::hir::HirDomain::Record => crate::record_descriptor(),
-        crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
-        crate::hir::HirDomain::EntryUnit => crate::entry_unit_descriptor(),
-        crate::hir::HirDomain::HostConsole => crate::host_console_descriptor(),
-        crate::hir::HirDomain::Collections => crate::collections_descriptor(),
-        crate::hir::HirDomain::Closures => crate::closures_descriptor(),
-    };
+    let descriptor = profile_descriptor(profile);
     let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
         Ok(b) => b,
         Err(ds) => {
@@ -984,17 +994,7 @@ fn compile_program_observed(
         o.stage(SourceStage::Emit, &[]);
     }
 
-    let descriptor = match profile.hir_domain() {
-        crate::hir::HirDomain::Core => crate::descriptor(),
-        crate::hir::HirDomain::Scalar => crate::scalar_descriptor(),
-        crate::hir::HirDomain::Text => crate::text_descriptor(),
-        crate::hir::HirDomain::Record => crate::record_descriptor(),
-        crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
-        crate::hir::HirDomain::EntryUnit => crate::entry_unit_descriptor(),
-        crate::hir::HirDomain::HostConsole => crate::host_console_descriptor(),
-        crate::hir::HirDomain::Collections => crate::collections_descriptor(),
-        crate::hir::HirDomain::Closures => crate::closures_descriptor(),
-    };
+    let descriptor = profile_descriptor(profile);
     let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
         Ok(b) => b,
         Err(ds) => {
@@ -1120,17 +1120,7 @@ fn emit_document_source(
     let mut em = Emitter::new(program, source_len, profile);
     em.plan_module();
     let atom_text = em.render(module_path);
-    let descriptor = match profile.hir_domain() {
-        crate::hir::HirDomain::Core => crate::descriptor(),
-        crate::hir::HirDomain::Scalar => crate::scalar_descriptor(),
-        crate::hir::HirDomain::Text => crate::text_descriptor(),
-        crate::hir::HirDomain::Record => crate::record_descriptor(),
-        crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
-        crate::hir::HirDomain::EntryUnit => crate::entry_unit_descriptor(),
-        crate::hir::HirDomain::HostConsole => crate::host_console_descriptor(),
-        crate::hir::HirDomain::Collections => crate::collections_descriptor(),
-        crate::hir::HirDomain::Closures => crate::closures_descriptor(),
-    };
+    let descriptor = profile_descriptor(profile);
     let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
         Ok(b) => b,
         Err(ds) => {
@@ -1202,6 +1192,15 @@ fn ty_name(
 ) -> String {
     match vt {
         VT::I32 => "t_i32".to_string(),
+        // PLAN-961: named numeric type entries (mirroring the schema's
+        // `type(id, kind: i8)` rows).
+        VT::I8 => "t_i8".to_string(),
+        VT::U8 => "t_u8".to_string(),
+        VT::U32 => "t_u32".to_string(),
+        VT::I64 => "t_i64".to_string(),
+        VT::U64 => "t_u64".to_string(),
+        VT::F32 => "t_f32".to_string(),
+        VT::F64 => "t_f64".to_string(),
         VT::Bool => "t_bool".to_string(),
         VT::Str => "t_str".to_string(),
         VT::StrOwned => "t_Str".to_string(),

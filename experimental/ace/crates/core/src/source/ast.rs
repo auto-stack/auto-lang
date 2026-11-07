@@ -37,6 +37,19 @@ pub enum TypeWord {
     /// Legal in RESULT position of a function declaration; never a value
     /// type (no locals, params, fields or expression types).
     Void,
+    /// PLAN-961 numeric surface type words (`byte`≡U8, `uint`≡U32,
+    /// `float`≡F32, `double`≡`f64`≡F64; `int`/`i32` stay the adjudicated
+    /// 32-bit integer above).
+    I8,
+    U8,
+    Byte,
+    Uint,
+    U32,
+    I64,
+    U64,
+    Float,
+    Double,
+    F64,
 }
 
 /// A type annotation. `int` and `i32` are synonyms inside this profile

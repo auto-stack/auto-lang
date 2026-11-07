@@ -45,6 +45,15 @@ pub enum VT {
     Variant(usize),
     /// PLAN-865: invariant function signature, interned in `CollTables`.
     Function(usize),
+    /// PLAN-961 numeric surface (`byte`≡U8, `uint`≡U32, `float`≡F32,
+    /// `double`≡`f64`≡F64).
+    I8,
+    U8,
+    U32,
+    I64,
+    U64,
+    F32,
+    F64,
 }
 
 impl VT {
@@ -58,6 +67,14 @@ impl VT {
             VT::Rec(_) => "record",
             VT::Unit => "unit",
             VT::List(_) => "list",
+            // PLAN-961 numeric names.
+            VT::I8 => "i8",
+            VT::U8 => "u8",
+            VT::U32 => "u32",
+            VT::I64 => "i64",
+            VT::U64 => "u64",
+            VT::F32 => "f32",
+            VT::F64 => "f64",
             VT::Variant(_) => "variant",
             VT::Function(_) => "function",
         }
@@ -87,6 +104,14 @@ pub fn vt_of_word(w: TypeWord) -> VT {
         TypeWord::StrOwned => VT::StrOwned,
         TypeWord::Char => VT::Char,
         TypeWord::Void => VT::Unit,
+        // PLAN-961 numeric surface words.
+        TypeWord::I8 => VT::I8,
+        TypeWord::U8 | TypeWord::Byte => VT::U8,
+        TypeWord::U32 | TypeWord::Uint => VT::U32,
+        TypeWord::I64 => VT::I64,
+        TypeWord::U64 => VT::U64,
+        TypeWord::Float => VT::F32,
+        TypeWord::Double | TypeWord::F64 => VT::F64,
     }
 }
 

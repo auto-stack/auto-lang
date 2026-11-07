@@ -100,6 +100,9 @@ pub const ENTRY_UNIT_SOURCE_PROFILE: &str = "auto.source.entry-unit.draft";
 pub const COLLECTIONS_SOURCE_PROFILE: &str = "auto.source.collections.draft";
 /// PLAN-865: the entry-unit and collections surface with source closures.
 pub const CLOSURES_SOURCE_PROFILE: &str = "auto.source.closures.draft";
+/// PLAN-961: the numeric surface (closures superset + wide/narrow integers,
+/// floats, typed literals, bit ops, shifts as methods, conversions).
+pub const NUMERIC_SOURCE_PROFILE: &str = "auto.source.numeric.draft";
 
 /// The explicitly selected source profile of a compilation. Never inferred
 /// from file extensions or content.
@@ -114,6 +117,8 @@ pub enum SourceProfile {
     HostConsole,
     Collections,
     Closures,
+    /// PLAN-961: the numeric profile (closures surface + numerics).
+    Numeric,
 }
 
 impl SourceProfile {
@@ -128,6 +133,7 @@ impl SourceProfile {
             SourceProfile::HostConsole => HOST_CONSOLE_SOURCE_PROFILE,
             SourceProfile::Collections => COLLECTIONS_SOURCE_PROFILE,
             SourceProfile::Closures => CLOSURES_SOURCE_PROFILE,
+            SourceProfile::Numeric => NUMERIC_SOURCE_PROFILE,
         }
     }
 
@@ -143,6 +149,9 @@ impl SourceProfile {
             SourceProfile::HostConsole => crate::hir::HirDomain::HostConsole,
             SourceProfile::Collections => crate::hir::HirDomain::Collections,
             SourceProfile::Closures => crate::hir::HirDomain::Closures,
+            // PLAN-961: numeric documents verify under the closures-superset
+            // domain (numeric typing rules live in the shared walks).
+            SourceProfile::Numeric => crate::hir::HirDomain::Closures,
         }
     }
 
@@ -159,6 +168,7 @@ impl SourceProfile {
                 | SourceProfile::EntryUnit
                 | SourceProfile::Collections
                 | SourceProfile::Closures
+                | SourceProfile::Numeric
         )
     }
 
@@ -167,13 +177,22 @@ impl SourceProfile {
     /// construction with owned fields, Str literals and the restricted
     /// method surface.
     pub fn is_collections(&self) -> bool {
-        matches!(self, SourceProfile::Collections | SourceProfile::Closures)
+        matches!(
+            self,
+            SourceProfile::Collections | SourceProfile::Closures | SourceProfile::Numeric
+        )
     }
 
     /// PLAN-865: whether lambda expressions and closure indirect calls are
     /// accepted on this otherwise collection-compatible source surface.
     pub fn is_closures(&self) -> bool {
-        matches!(self, SourceProfile::Closures)
+        matches!(self, SourceProfile::Closures | SourceProfile::Numeric)
+    }
+
+    /// PLAN-961: whether the numeric surface is accepted — typed literals,
+    /// numeric type words, bit ops, shift methods and conversions.
+    pub fn is_numeric(&self) -> bool {
+        matches!(self, SourceProfile::Numeric)
     }
 
     /// PLAN-864: whether string literals lex on this surface (the text

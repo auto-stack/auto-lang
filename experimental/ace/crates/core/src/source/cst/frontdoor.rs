@@ -134,6 +134,8 @@ pub fn profile_slug(profile: SourceProfile) -> &'static str {
         // 切换由 T-04/T-07 冻结）。
         SourceProfile::Closures => "closures",
         SourceProfile::Collections => "collections",
+        // PLAN-961：数值面 slug。
+        SourceProfile::Numeric => "numeric",
     }
 }
 
@@ -150,6 +152,8 @@ pub fn profile_from_slug(slug: &str) -> Option<SourceProfile> {
         "host-console" => SourceProfile::HostConsole,
         "closures" => SourceProfile::Closures,
         "collections" => SourceProfile::Collections,
+        // PLAN-961：数值面 slug 反向映射。
+        "numeric" => SourceProfile::Numeric,
         _ => return None,
     })
 }
@@ -173,7 +177,7 @@ impl CachedGrammar {
     }
 }
 
-static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 9]> = OnceLock::new();
+static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 10]> = OnceLock::new();
 
 /// PLAN-935（T-02）：`scalar-instances` 裁剪程序（scalar 全表面 + 有限模板
 /// 面）。独立缓存槽：plain profile 程序逐字节不变，grammar-id 自然隔离。
@@ -759,6 +763,8 @@ pub fn profile_grammar(profile: SourceProfile) -> Result<&'static CachedGrammar,
         SourceProfile::HostConsole => 6,
         SourceProfile::Closures => 7,
         SourceProfile::Collections => 8,
+        // PLAN-961：数值面槽位。
+        SourceProfile::Numeric => 9,
     };
     let slots = GRAMMARS.get_or_init(|| Default::default());
     // 先试读（快路径无锁竞争）；未命中再写入。

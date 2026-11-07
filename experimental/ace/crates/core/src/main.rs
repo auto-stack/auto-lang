@@ -222,6 +222,20 @@ fn check_source(args: &SourceArgs) -> Result<String, (u8, Vec<ace_core::atom_tex
         SourceProfile::Closures => {
             ace_core::source::compile_closures_source(&src, &module_path, &args.capabilities)
         }
+        // PLAN-961: the numeric surface's standalone entry lands with the
+        // front-end emit unit (resolve/adapter numeric typing); the profile
+        // is accepted at the CST front door already.
+        SourceProfile::Numeric => {
+            return Err((
+                EXIT_PIPELINE,
+                vec![ace_core::atom_text::Diagnostic::new(
+                    ace_core::atom_text::Stage::Verify,
+                    "verify.domain",
+                    "the numeric source profile is not accepted by this standalone binary yet",
+                    ace_core::atom_text::Span { start: 0, end: 0 },
+                )],
+            ));
+        }
     };
     match compile {
         Ok(c) => Ok(format!(
