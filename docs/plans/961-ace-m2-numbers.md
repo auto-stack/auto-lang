@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-961
-status: executing
+status: reviewed
 feature_name: 完整数值源码与四端一致语义
 author: [Codex]
 created_at: 2026-11-06
@@ -278,6 +278,21 @@ stage: work | plan_id: PLAN-961 | plan_revision: r2 | outcome: pass | worktree: 
 - 处置：needs_fix → work 做机械修复（F1-F3，无语义变更），修复后仅复审受影响的 AC-04 健康项。
 
 stage: review | review_scope: final | reviewer_identity: 同会话独立上下文（限制已声明；结论自工件重建） | plan_id: PLAN-961 | plan_revision: r2 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-961/auto-lang | branch: plan-961-dev | reviewed_commit: 56559edfb022027440be117e173b5e7bd78a8198 | base_commit: fcc474acd | dependency_revisions: PLAN-959 archived, PLAN-960 archived | spec_inputs: docs/specs/ace-migration/{m2-denominator,replacement-scope-and-evidence}.md + goals.md | acceptance_results: AC-01 pass, AC-02 pass, AC-03 pass, AC-06 pass, AC-04 needs_fix (R5-F1/F2/F3), AC-05 merge-owned pending | findings: R5-F1 测试调试残留(低), R5-F2 死代码+未用变量6警告(低), R5-F3 fmt 113 diff(低) | evidence: 本轮冻结提交重跑记录 + 4 个复审自选探针 + 代码走读7不变量 | next: work 修复 R5-F1..F3 后受影响项复审
+
+2026-11-08 T-05 独立复审 r2（final pass）：health 修复提交 `9cea5a881c729c2ddcb4f13d27ca1e347d45f9c0`。
+- 修复核对（repair re-review 范围=仅 R5-F1..F3 受影响 AC-04 健康项；行为路径未变更，r1 行为证据按未变
+  输入复用）：R5-F1 numeric_source.rs eprintln=0；R5-F2 a2x-c/ace-core unused+never-used 警告=0
+  （c_num_suffix、bounds/tdom×2、lower.rs dom/other、verify.rs vt_is_float/vt_is_unsigned 全移除）；
+  R5-F3 六交付 crate `cargo fmt --check` diff=0。剩余警告（mix_u64、shell_lo/hi、OP_GLOBAL 重复臂、
+  env_layout）经 git 基线核验均为 base 已有（PLAN-960/8xx 残留，本计划未触），不属本包。
+- 修复后行为抽查：core numeric 9/9、av-core lib 59/59、a2x-c 8/8、a2x-core 7/7、a2x-rust 2/2、
+  lowering 5/5、native mn_numeric 4/4、av numeric 9/9——全绿。
+- 结论：AC-01/02/03/06 pass（r1 冻结基线证据 + r2 未变路径复用），AC-04 pass（健康项 r2 闭合），
+  AC-05 merge-owned 待 T-06/07。规范增量 SD-01/SD-02 定义已验证（路径/ID 精确），文本归 merge 落。
+- 冻结受影响模块并集留 merge 执行：core numeric 源/描述符、av numeric、native mn_numeric、
+  a2x 双 provider、六 crate fmt 面（无新门，union 已在 T-04 跑过，环境红具名）。
+
+stage: review | review_scope: final | reviewer_identity: 同会话独立上下文（限制同 r1 声明） | plan_id: PLAN-961 | plan_revision: r2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-961/auto-lang | branch: plan-961-dev | reviewed_commit: 9cea5a881c729c2ddcb4f13d27ca1e347d45f9c0 | base_commit: fcc474acd | dependency_revisions: PLAN-959/960 archived | spec_inputs: docs/specs/ace-migration/{m2-denominator,replacement-scope-and-evidence}.md + goals.md | acceptance_results: AC-01 pass, AC-02 pass, AC-03 pass, AC-04 pass, AC-06 pass, AC-05 merge-owned pending | findings: 无未闭项（r1 三发现在 9cea5a881 闭合） | evidence: r1 冻结基线全量记录 + r2 健康核对与行为抽查 | next: merge (T-06/07)
 
 
 2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
