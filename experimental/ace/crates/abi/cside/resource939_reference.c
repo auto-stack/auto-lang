@@ -55,7 +55,21 @@ static void layout_selfcheck(void) {
 
 int main(void) {
     layout_selfcheck();
-#ifdef R939_S_utf8_bytes
+#ifdef R939_S_utf8_owned
+    {
+        /* PLAN-939 V-02 (owned temp -> view): the deck's owned Str
+         * local feeds BOTH views; the owner outlives every consumer and
+         * is freed exactly once at exit (the text plan). Mirror: byte
+         * length 9 (NUL is data), then scalar count 3. */
+        const uint8_t text[] = { 'A', 0x00, 0xE4, 0xb8, 0xad, 0xf0, 0x9f, 0x98, 0x80 };
+        uint64_t n = t939_byte_length(text, 9);
+        R939_S_check(n == 9);
+        /* NUL is DATA and a valid scalar: A, U+0000, U+4E2D, U+1F600. */
+        n = t939_scalar_count(text, 9);
+        R939_S_check(n == 4);
+        return (int)n;
+    }
+#elif defined(R939_S_utf8_bytes)
     {
         const uint8_t text[] = { 'A', 0xE4, 0xb8, 0xad, 0xf0, 0x9f, 0x98, 0x80 };
         uint64_t n = t939_byte_length(text, 8);

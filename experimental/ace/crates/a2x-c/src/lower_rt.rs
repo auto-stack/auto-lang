@@ -215,6 +215,9 @@ struct FnLoweringRt<'v, 'a> {
     loop_stack: Vec<u32>,
     cur_block: u32,
     cur_stmt: usize,
+    /// PLAN-939 T-04: the expression currently being lowered (the
+    /// verifier credential-plan lookup key for foreign calls).
+    cur_expr: u32,
     depth: usize,
 }
 
@@ -610,42 +613,78 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
             })?
             .clone();
         let mut evaluated: Vec<(String, Ty)> = Vec::with_capacity(eval_args.len());
-        // PLAN-939 S06: a CallbackRef argument is a NAMED callback target —
-        // no value lowers; the lane's marshaling emits the static
-        // trampoline from the fragment preface.
+        // PLAN-939 T-04 (§5.2): the callback lanes and their NAMED
+        // targets come from the verifier's UNIQUE credential plan — the
+        // consumer never re-derives ownership facts. A single-body
+        // FRAGMENT view carries no module plan and falls back to the HIR
+        // walk (identical input; emission-only re-read).
+        let plan_rows = self
+            .view
+            .foreign_call_credential(self.facts.body_index, self.cur_expr);
+        // T-04 strictness: every RESOURCE foreign call carries its
+        // verifier credential rows (module plan or this view's own
+        // single-body credential) — a missing row is an invariant
+        // violation, never a silent fallback to re-derivation.
+        let plan_rows = plan_rows.ok_or_else(|| {
+            A2xReject::new(
+                "a2c.internal",
+                "resource foreign call has no verifier credential rows",
+            )
+        })?;
         let mut callback_targets: Vec<(usize, String)> = Vec::new();
-        for arg in eval_args {
-            if let hir::ExprKind::CallbackRef { def } =
-                self.facts.body.exprs[arg.0 as usize].kind
-            {
-                let name = self
-                    .view
-                    .fn_by_def(def.0 as usize)
-                    .map(|f| f.source_name)
-                    .ok_or_else(|| {
-                        A2xReject::new("a2x.internal", "callback target def is not a source fn")
-                    })?
-                    .to_string();
-                let lane = bindings
-                    .iter()
-                    .find(|b| b.arg == arg.0)
-                    .map(|b| b.param as usize)
-                    .ok_or_else(|| {
-                        A2xReject::new(
-                            "a2c.foreign-binding",
-                            "callback target argument is unbound",
-                        )
-                    })?;
+        {
+            let cred = plan_rows;
+            for (lane, def) in &cred.callbacks {
+                let lane_u = *lane as usize;
                 if !matches!(
-                    res.params.get(lane),
+                    res.params.get(lane_u),
                     Some(ResKind::Callback { .. })
                 ) {
                     return Err(A2xReject::new(
                         "a2c.foreign-callback",
-                        "a callback target argument sits in a non-callback lane",
+                        "the verifier plan names a callback lane the sig does not",
                     ));
                 }
-                callback_targets.push((lane, name));
+                let name = self
+                    .view
+                    .fn_by_def(*def as usize)
+                    .map(|f| f.source_name)
+                    .ok_or_else(|| {
+                        A2xReject::new(
+                            "a2c.internal",
+                            "plan callback target def is not a source fn",
+                        )
+                    })?
+                    .to_string();
+                callback_targets.push((lane_u, name));
+            }
+        }
+        // S06: a CallbackRef argument carries NO value — its named target
+        // rides the verifier plan (strict: rows are present for every
+        // resource call); the lane's marshaling emits the static
+        // trampoline from the fragment preface.
+        for arg in eval_args {
+            if let hir::ExprKind::CallbackRef { .. } = self.facts.body.exprs[arg.0 as usize].kind
+            {
+                {
+                    let cred = plan_rows;
+                    // consistency (defense in depth): every CallbackRef
+                    // argument is covered by the verifier plan's rows.
+                    let covered = bindings
+                        .iter()
+                        .find(|b| b.arg == arg.0)
+                        .is_some_and(|b| {
+                            cred.callbacks
+                                .iter()
+                                .any(|(pl, _)| *pl as usize == b.param as usize)
+                        });
+                    if !covered {
+                        return Err(A2xReject::new(
+                            "a2c.internal",
+                            "callback argument is not covered by the verifier plan",
+                        ));
+                    }
+                }
                 evaluated.push((String::new(), Ty::I32));
             } else {
                 let (v, t) = self.lower_pure(*arg)?;
@@ -906,6 +945,7 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
     /// Lower one expression; appends pinning statements to `out`. Returns
     /// the value expression and its (representation) type.
     fn lower_expr(&mut self, id: hir::ExprId) -> Result<(String, Ty), A2xReject> {
+        self.cur_expr = id.0;
         self.depth += 1;
         if self.depth > ace_a2x_core::MAX_STRUCTURE_DEPTH {
             self.depth -= 1;
@@ -1159,6 +1199,7 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     loop_stack: self.loop_stack.clone(),
                     cur_block: self.cur_block,
                     cur_stmt: self.cur_stmt,
+                    cur_expr: self.cur_expr,
                     depth: self.depth,
                 };
                 let (r, _) = side.lower_pure(*rhs)?;
@@ -1705,6 +1746,7 @@ pub fn lower_fn_rt(view: &SemanticView<'_>, facts: &FnFacts<'_>) -> Result<CFnRt
         loop_stack: Vec::new(),
         cur_block: 0,
         cur_stmt: 0,
+        cur_expr: 0,
         depth: 0,
     };
     // declarations for every non-param local, in index order

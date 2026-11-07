@@ -226,9 +226,21 @@ pub struct SemanticView<'a> {
     /// PLAN-904: the verifier-computed collections facts plan
     /// (collections/closures domains), consumed verbatim.
     coll_plan: Option<&'a ace_core::collections_facts::CollectionsPlan>,
+    /// PLAN-939 T-04: the verifier-computed foreign resource credential
+    /// plan (resource-foreign text-record modules), consumed verbatim —
+    /// per-call ownership facts (view borrows, exclusive lanes, handle
+    /// credentials, callback targets) are READ, never re-derived.
+    foreign_plan: Option<&'a ace_core::foreign_resources::ForeignResourcePlan>,
     /// PLAN-904: a single-body credential's OWN collections facts (fragment
     /// views); bound to the credential's body index, lookup-checked.
     fragment_facts: Option<(&'a ace_core::collections_facts::CollectionsBodyFacts, u32)>,
+    /// PLAN-939 T-04: a single-body credential's OWN foreign resource
+    /// credential rows (fragment views); the per-call ownership authority
+    /// when no module plan is present.
+    fragment_foreign: Option<(
+        &'a std::collections::BTreeMap<u32, ace_core::foreign_resources::ForeignCallCredential>,
+        u32,
+    )>,
     /// Authorized trace intrinsic defs present: def_index → symbol.
     trace_defs: Vec<(usize, &'static str)>,
     /// Document-level capabilities (trimmed to the ones A2X cares about).
@@ -263,6 +275,8 @@ impl<'a> SemanticView<'a> {
             fragment_plan: None,
             coll_plan: checked.collections_plan(),
             fragment_facts: None,
+            foreign_plan: checked.foreign_resource_plan(),
+            fragment_foreign: None,
             trace_defs,
             capabilities: bundle.requires.clone(),
         };
@@ -355,6 +369,10 @@ impl<'a> SemanticView<'a> {
         let fragment_facts = credential
             .coll_facts()
             .map(|p| (p, functions[0].body_index));
+        // PLAN-939 T-04: the same binding for the foreign credential rows.
+        let fragment_foreign = credential
+            .foreign_rows()
+            .map(|rows| (rows, functions[0].body_index));
         let view = SemanticView {
             module,
             domain,
@@ -367,6 +385,10 @@ impl<'a> SemanticView<'a> {
             fragment_plan,
             coll_plan: None,
             fragment_facts,
+            // PLAN-939 T-04: a single-body fragment view has no whole-
+            // module foreign plan; its OWN credential rows ride instead.
+            foreign_plan: None,
+            fragment_foreign,
             trace_defs,
             capabilities: bundle.requires.clone(),
         };
@@ -433,6 +455,39 @@ impl<'a> SemanticView<'a> {
     /// one (text/text-record). `None` for core/scalar/record.
     pub fn resource_plan(&self) -> Option<&TextResourcePlan> {
         self.resource_plan
+    }
+
+    /// PLAN-939 T-04: the verifier-computed foreign resource credential
+    /// plan (per-call ownership rows); `None` outside resource-foreign
+    /// modules.
+    pub fn foreign_resource_plan(
+        &self,
+    ) -> Option<&ace_core::foreign_resources::ForeignResourcePlan> {
+        self.foreign_plan
+    }
+
+    /// PLAN-939 T-04: the credential rows of ONE foreign call — the
+    /// module plan first, then this view's own single-body credential
+    /// rows (body-index lookup-checked); `None` when neither carries a
+    /// row (the consumer falls back to no plan: fragment views without
+    /// foreign calls).
+    pub fn foreign_call_credential(
+        &self,
+        body_index: u32,
+        expr: u32,
+    ) -> Option<&ace_core::foreign_resources::ForeignCallCredential> {
+        if let Some(plan) = self.foreign_plan {
+            if let Some(rows) = plan.bodies.get(&(0, body_index)) {
+                if let Some(row) = rows.get(&expr) {
+                    return Some(row);
+                }
+            }
+        }
+        let (rows, bound_body) = self.fragment_foreign.as_ref()?;
+        if *bound_body != body_index {
+            return None;
+        }
+        rows.get(&expr)
     }
 
     /// The resource plan of one function's body (module 0; body index of

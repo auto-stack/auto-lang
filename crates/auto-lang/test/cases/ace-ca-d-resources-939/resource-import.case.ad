@@ -127,6 +127,25 @@ case { schema: "autolang.case/2", id: "ace-ca-d3.txn-laststep-fail-c", tags: ["c
  abi: { leg: "c" }, steps: [ { op: "query" } ] },
  expect: { completion: "success", exit: 70, probe: [ { stages_include: ["source-import"] } ] } } ] }
 ```
+# V-02 (borrowed owner -> views): one str-local owner feeds BOTH foreign
+# views — the owner outlives every consumer (byte_length then
+# scalar_count) and the verifier credential row pins the owner local;
+# NUL is DATA (9 bytes / 4 scalars: A, U+0000, U+4E2D, U+1F600; exit 4
+# = the scalar count when the byte count reads 9).
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.utf8-owned-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/utf8-owned.atomdata", syntax: "atom-data", path: "utf8-owned.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 4, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.utf8-owned-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/utf8-owned.atomdata", syntax: "atom-data", path: "utf8-owned.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 4, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
 # T-02A restart seam: publish cold, restart the worker session, then the
 # FIRST body edit (a semantics-preserving statement change; the oracle stays
 # 8/3-scalar-independent) re-resolves on the RESTORED session (resolver-owned

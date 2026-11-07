@@ -64,6 +64,12 @@ pub struct CheckedModule {
     /// replace frees, per-fallible-node error-path frees) the Rust target
     /// consumes instead of re-deriving ownership.
     coll_plan: Option<crate::collections_facts::CollectionsPlan>,
+    /// PLAN-939 T-04: the foreign resource credential plan — present
+    /// only for text-record bundles containing resource foreign calls.
+    /// The UNIQUE per-call ownership authority (view-borrow extents,
+    /// exclusive lanes, handle credentials in/out, callback targets);
+    /// backends consume it and never re-derive these facts (§5.2).
+    foreign_plan: Option<crate::foreign_resources::ForeignResourcePlan>,
 }
 
 impl CheckedModule {
@@ -109,6 +115,15 @@ impl CheckedModule {
     pub fn collections_plan(&self) -> Option<&crate::collections_facts::CollectionsPlan> {
         self.coll_plan.as_ref()
     }
+
+    /// PLAN-939 T-04: the verifier-computed foreign resource credential
+    /// plan. `None` outside resource-foreign text-record modules; the
+    /// native/A2C consumers read per-call ownership facts (view borrows,
+    /// exclusive lanes, handle credentials, callback targets) from here
+    /// instead of re-deriving them (§5.2 single authority).
+    pub fn foreign_resource_plan(&self) -> Option<&crate::foreign_resources::ForeignResourcePlan> {
+        self.foreign_plan.as_ref()
+    }
 }
 
 /// ONE function body verified against its module's declaration context
@@ -138,6 +153,12 @@ pub struct CheckedFunction {
     /// plan travels with the credential so a fragment consumer lowers
     /// cleanup from verified facts — it never re-derives ownership.
     resource_plan: Option<crate::text_resources::BodyResourcePlan>,
+    /// PLAN-939 T-04: this body's per-call foreign resource credentials
+    /// (§5.2 unique authority) — carried by the single-body credential so
+    /// fragment views consume them without a module plan.
+    foreign_rows: Option<
+        std::collections::BTreeMap<u32, crate::foreign_resources::ForeignCallCredential>,
+    >,
     /// PLAN-902 T-03: the pairwise parameter exclusivity constraints
     /// discovered for THIS body's own signature at its call sites (r4
     /// R4-05) — the facts a retained environment merges into its fixpoint
@@ -200,6 +221,15 @@ impl CheckedFunction {
     /// credentials; PLAN-902 T-03).
     pub fn resource_plan(&self) -> Option<&crate::text_resources::BodyResourcePlan> {
         self.resource_plan.as_ref()
+    }
+
+    /// PLAN-939 T-04: this body's per-call foreign resource credentials
+    /// (§5.2); `None` for bodies without resource foreign calls.
+    pub fn foreign_rows(
+        &self,
+    ) -> Option<&std::collections::BTreeMap<u32, crate::foreign_resources::ForeignCallCredential>>
+    {
+        self.foreign_rows.as_ref()
     }
 
     /// Exclusivity constraints this body's signature discovered at its
@@ -534,6 +564,7 @@ fn verify_function_impl(
             domain: bundle.domain,
             intrinsics,
             resource_plan: None,
+            foreign_rows: None,
             excl_adds: std::collections::BTreeSet::new(),
             body_digest: crate::collections_facts::body_content_digest(body),
             coll_facts: if matches!(bundle.domain, HirDomain::Collections | HirDomain::Closures) {
@@ -785,6 +816,16 @@ fn verify_text_function_impl(
             }
         }
     }
+    // PLAN-939 T-04: the per-call foreign credentials of THIS body (the
+    // single-body credential's slice of the unique verifier plan).
+    let foreign_rows = {
+        let rows = crate::foreign_resources::body_foreign_plan(m, body);
+        if rows.is_empty() {
+            None
+        } else {
+            Some(rows)
+        }
+    };
     Ok(CheckedFunction {
         body: body.clone(),
         def: def.clone(),
@@ -793,6 +834,7 @@ fn verify_text_function_impl(
         domain: bundle.domain,
         intrinsics,
         resource_plan: Some(plan),
+        foreign_rows,
         excl_adds,
         body_digest: crate::collections_facts::body_content_digest(body),
         coll_facts: None,
@@ -1762,6 +1804,7 @@ pub fn verify_foreign_scalar(
             text_plan: None,
             runtime_text_needed: false,
             coll_plan: None,
+            foreign_plan: None,
         })
     } else {
         Err(verifier.diags)
@@ -2071,6 +2114,9 @@ fn verify_text_domain(
             text_plan: Some(plan),
             runtime_text_needed: needs_runtime,
             coll_plan: None,
+            // PLAN-939 T-04: the plain text domain never carries foreign
+            // declarations (its verifier entry rejects them).
+            foreign_plan: None,
         })
     } else {
         Err(v.diags)
@@ -2194,11 +2240,17 @@ fn verify_text_record_impl(
                 Span { start: 0, end: 0 },
             )]);
         }
+        // PLAN-939 T-04: the UNIQUE per-call foreign resource credential
+        // plan (§5.2) — view-borrow extents, exclusive lanes, handle
+        // credentials, callback targets — computed from the verified
+        // bundle; None keeps plain 782 modules byte-shaped as before.
+        let foreign_plan = crate::foreign_resources::bundle_foreign_plan(&bundle);
         Ok(CheckedModule {
             bundle,
             text_plan: Some(plan),
             runtime_text_needed: needs_runtime,
             coll_plan: None,
+            foreign_plan,
         })
     } else {
         Err(v.diags)
@@ -2287,6 +2339,7 @@ fn verify_collection_family(
             text_plan: None,
             runtime_text_needed: false,
             coll_plan: Some(plan),
+            foreign_plan: None,
         })
     } else {
         Err(v.diags)
@@ -2398,6 +2451,7 @@ fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule
             text_plan: None,
             runtime_text_needed: false,
             coll_plan: None,
+            foreign_plan: None,
         })
     } else {
         Err(v.diags)

@@ -35,6 +35,7 @@
 //! Results: pure/fallible value lanes reach the source as `int` (`Bool` as
 //! `bool`); wide physical lanes are checked-converted by the bridge.
 
+use crate::hir;
 use crate::source::resolve::{ClosureFnType, ResolvedRecord, VT};
 use ace_foreign_contract::manual::{SourceDecl, SourceResultKind};
 use ace_foreign_contract::resource::{FieldKind, ResKind, ViewRole};
@@ -275,6 +276,192 @@ pub fn param_kind(decl: &SourceDecl, pos: usize) -> Option<&ResKind> {
     decl.resource().and_then(|r| r.params.get(pos))
 }
 
+// ---------------------------------------------------------------------------
+// PLAN-939 T-04 (§5.2): the UNIQUE per-body foreign resource credential
+// plan. Computed by the core verifier from the checked declarations and
+// the call sites; carried on the CheckedModule and exposed through the
+// semantic view. Backends consume it for every OWNERSHIP-bearing fact of
+// a foreign call — who borrows what (view extent), which lanes are
+// exclusive (shadow/commit), which handle credentials cross in/out, and
+// which callback lanes invoke which named targets — and never re-derive
+// those facts. Physical MARSHALLING (private representation conversion)
+// stays the backends' own job per the plan §2 split.
+// ---------------------------------------------------------------------------
+
+/// The credential rows of ONE foreign call site.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForeignCallCredential {
+    /// The foreign def index in the owning module.
+    pub def: u32,
+    /// The reviewed provider symbol.
+    pub symbol: String,
+    /// Borrowed view lanes (`ViewText` and const `Rec` views):
+    /// (lane, owner local). `None` owner = a static literal (immortal)
+    /// or a call-materialized temp — the consumer extent is the call by
+    /// construction. The owner's storage outlives the WHOLE call (V-02:
+    /// owned temps live to the last consumer; the text plan schedules
+    /// frees at exits, structurally after every call).
+    pub view_borrows: Vec<(u32, Option<u32>)>,
+    /// Exclusive lanes (`Rec` Mut/Out views): the adapter shadows and
+    /// commits once on success — a failure leaves every caller byte
+    /// untouched (V-13; the sig's `atomic` promise is checked at
+    /// admission for exactly these lanes).
+    pub exclusive: Vec<u32>,
+    /// Handle credentials crossing IN: (lane, owning provider). The
+    /// provider runtime's ledger owns identity/generation (§5.4); the
+    /// plan pins the provider tag each lane expects so a mismatched
+    /// credential is a controlled rejection, never a silent rebind.
+    pub handles_in: Vec<(u32, String)>,
+    /// A fresh handle credential is CREATED by this call (a pure
+    /// handle-return): the new credential's provider (V-03 owned
+    /// returns; the provider lease to its real last release is the
+    /// runtime's, T-08).
+    pub owned_out: Option<String>,
+    /// Callback lanes: (lane, named target def) — strictly synchronous
+    /// per-call (noescape is a sig admission requirement); the target is
+    /// a top-level source function, never a stored value.
+    pub callbacks: Vec<(u32, u32)>,
+    /// The fallible ctx binding symbol (the 938 context lane), if the
+    /// declaration names one. The symbol is a module-level static —
+    /// borrow returns are outside this package's matrix (§5.2 clause
+    /// recorded as a frozen boundary: no foreign entry returns a
+    /// borrow).
+    pub ctx_symbol: Option<String>,
+    /// The sig's failure-atomicity promise (shadow/commit discipline of
+    /// the exclusive lanes).
+    pub atomic: bool,
+}
+
+/// The per-bundle foreign resource credential plan: (module, body) →
+/// per-call credentials keyed by the CALL expression id. Present only
+/// for text-record bundles that actually contain resource foreign calls.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ForeignResourcePlan {
+    pub bodies: std::collections::BTreeMap<(usize, u32), std::collections::BTreeMap<u32, ForeignCallCredential>>,
+}
+
+impl ForeignResourcePlan {
+    pub fn is_empty(&self) -> bool {
+        self.bodies.values().all(|m| m.is_empty())
+    }
+}
+
+/// Derive the owner local of one view-lane argument, when the argument
+/// names a place (a local read or a borrow of a local base). Literals
+/// and constructor temps have no owner local — their extent is the call.
+fn view_owner(body: &hir::Body, arg: u32) -> Option<u32> {
+    match &body.exprs[arg as usize].kind {
+        hir::ExprKind::ReadLocal { local } => Some(local.0),
+        hir::ExprKind::BorrowMut { local } => Some(local.0),
+        hir::ExprKind::BorrowView { base } => match &body.exprs[base.0 as usize].kind {
+            hir::ExprKind::ReadLocal { local } => Some(local.0),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Compute one body's per-call credentials. Only calls whose callee is a
+/// FOREIGN def with a resource sig produce rows; scalar foreign calls
+/// (938) and ordinary calls produce nothing (their facts live on the 938
+/// scalar chain / the ordinary verifier).
+pub fn body_foreign_plan(m: &hir::Module, body: &hir::Body) -> std::collections::BTreeMap<u32, ForeignCallCredential> {
+    use ace_foreign_contract::resource::ResourceForm;
+    let mut out = std::collections::BTreeMap::new();
+    for (ei, e) in body.exprs.iter().enumerate() {
+        let hir::ExprKind::Call { callee, bindings, .. } = &e.kind else {
+            continue;
+        };
+        let Some(hir::DefKind::Foreign { declaration, .. }) =
+            m.defs.get(callee.0 as usize).map(|d| &d.kind)
+        else {
+            continue;
+        };
+        let Some(res) = declaration.resource() else {
+            continue;
+        };
+        let arg_of = |lane: usize| -> Option<u32> {
+            bindings
+                .iter()
+                .find(|b| b.param as usize == lane)
+                .map(|b| b.arg)
+        };
+        let mut cred = ForeignCallCredential {
+            def: callee.0,
+            symbol: declaration.function.symbol.clone(),
+            view_borrows: Vec::new(),
+            exclusive: Vec::new(),
+            handles_in: Vec::new(),
+            owned_out: None,
+            callbacks: Vec::new(),
+            ctx_symbol: declaration.context_symbol.clone(),
+            atomic: res.atomic,
+        };
+        for (lane, p) in res.params.iter().enumerate() {
+            let lane = lane as u32;
+            match p {
+                ResKind::ViewText => {
+                    let owner = arg_of(lane as usize).and_then(|a| view_owner(body, a));
+                    cred.view_borrows.push((lane, owner));
+                }
+                ResKind::Rec { role, .. } => match role {
+                    ViewRole::Const => {
+                        let owner = arg_of(lane as usize).and_then(|a| view_owner(body, a));
+                        cred.view_borrows.push((lane, owner));
+                    }
+                    ViewRole::Mut | ViewRole::Out => {
+                        cred.exclusive.push(lane);
+                    }
+                },
+                ResKind::Handle { provider } => {
+                    cred.handles_in.push((lane, provider.clone()));
+                }
+                ResKind::Callback { .. } => {
+                    if let Some(a) = arg_of(lane as usize) {
+                        if let hir::ExprKind::CallbackRef { def } =
+                            &body.exprs[a as usize].kind
+                        {
+                            cred.callbacks.push((lane, def.0));
+                        }
+                    }
+                }
+                ResKind::I32 | ResKind::Bool => {}
+                // Typed-peer-only lanes never reach a checked source
+                // module (admission rejects them before verification).
+                ResKind::BufViewI64 | ResKind::I64 => {}
+            }
+        }
+        if let ResourceForm::Pure {
+            ret: ace_foreign_contract::resource::ResOut::Handle { provider },
+        } = &res.form
+        {
+            cred.owned_out = Some(provider.clone());
+        }
+        out.insert(ei as u32, cred);
+    }
+    out
+}
+
+/// Compute the whole bundle's foreign resource plan; `None` when no body
+/// contains a resource foreign call (plain 782 modules keep their exact
+/// previous shape).
+pub fn bundle_foreign_plan(bundle: &hir::Bundle) -> Option<ForeignResourcePlan> {
+    let mut plan = ForeignResourcePlan::default();
+    for (mi, m) in bundle.modules.iter().enumerate() {
+        for (bi, body) in m.bodies.iter().enumerate() {
+            let rows = body_foreign_plan(m, body);
+            if !rows.is_empty() {
+                plan.bodies.insert((mi, bi as u32), rows);
+            }
+        }
+    }
+    if plan.is_empty() {
+        None
+    } else {
+        Some(plan)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,6 +502,7 @@ mod tests {
                     form,
                     atomic,
                     noescape,
+                    typed_peer: false,
                 }),
             },
             effects: vec!["checked".into()],
@@ -405,6 +593,182 @@ mod tests {
         let ro = source_sig_readonly(&d, &[], &table).unwrap();
         assert_eq!(ro, s);
         assert!(source_sig_readonly(&d, &[], &[]).is_err());
+    }
+
+    fn local(id: &str, name: &str) -> hir::LocalDef {
+        hir::LocalDef {
+            id_text: format!("l_{id}"),
+            ty: hir::TypeUse::Builtin(hir::BuiltinType::I32),
+            name: name.into(),
+            role: hir::LocalRole::Binding,
+            index: None,
+            mutable: true,
+            mutable_explicit: false,
+            param_mode: hir::ParamMode::View,
+            span: Span { start: 0, end: 0 },
+        }
+    }
+
+    fn plan_expr(kind: hir::ExprKind) -> hir::Expr {
+        hir::Expr {
+            id_text: String::new(),
+            ty: hir::TypeUse::Builtin(hir::BuiltinType::I32),
+            kind,
+            span: Span { start: 0, end: 0 },
+        }
+    }
+
+    fn foreign_def(name: &str, declaration: SourceDecl) -> hir::Def {
+        hir::Def {
+            id_text: name.into(),
+            kind: hir::DefKind::Foreign {
+                ty: hir::TypeId(0),
+                declaration,
+            },
+            span: Span { start: 0, end: 0 },
+        }
+    }
+
+    fn call(callee: u32, bindings: Vec<(u32, u32)>, eval: Vec<u32>) -> hir::Expr {
+        plan_expr(hir::ExprKind::Call {
+            callee: hir::DefId(callee),
+            eval_args: eval.into_iter().map(hir::ExprId).collect(),
+            bindings: bindings
+                .into_iter()
+                .map(|(param, arg)| hir::CallBinding { param, arg, moved: false })
+                .collect(),
+        })
+    }
+
+    /// T-04: the credential plan derives every ownership row of every
+    /// resource call — view borrow (owner), exclusive lanes, handle
+    /// credentials in/out, callback targets — from the checked
+    /// declaration + call site alone.
+    #[test]
+    fn body_foreign_plan_carries_every_credential_row() {
+        use ace_foreign_contract::resource::{ResOut, ResourceForm, ViewRole};
+        let fields = vec![("value".to_string(), FieldKind::I32)];
+        // def 0: two MUT Counter lanes (atomic) — the S03 shape
+        let pair = decl(
+            vec![
+                ResKind::Rec { rec: "Counter".into(), fields: fields.clone(), role: ViewRole::Mut },
+                ResKind::Rec { rec: "Counter".into(), fields, role: ViewRole::Mut },
+            ],
+            ResourceForm::Fallible { ctx: None, out: Some(ResOut::I32) },
+            true,
+            false,
+        );
+        // def 1: the named callback target (an ordinary fn def)
+        let cb_def = || hir::Def {
+            id_text: "cb".into(),
+            kind: hir::DefKind::Function { name: "cb".into(), ty: hir::TypeId(0), body: hir::BodyId(0) },
+            span: Span { start: 0, end: 0 },
+        };
+        // def 2: callback + ctx seed
+        let fold = decl(
+            vec![ResKind::Callback { ctx: true }, ResKind::I32],
+            ResourceForm::Fallible { ctx: None, out: Some(ResOut::I32) },
+            false,
+            true,
+        );
+        // def 3: text view
+        let blen = decl(
+            vec![ResKind::ViewText],
+            ResourceForm::Pure { ret: ResOut::U64 },
+            false,
+            false,
+        );
+        // def 4: handle create (pure handle return)
+        let create = decl(
+            vec![ResKind::I32],
+            ResourceForm::Pure { ret: ResOut::Handle { provider: "r939".into() } },
+            false,
+            false,
+        );
+        // def 5: handle get (handle in)
+        let get = decl(
+            vec![ResKind::Handle { provider: "r939".into() }],
+            ResourceForm::Fallible { ctx: None, out: Some(ResOut::I32) },
+            false,
+            false,
+        );
+        let mut m = hir::Module {
+            id_text: "m".into(),
+            path: None,
+            types: vec![],
+            defs: vec![
+                foreign_def("t939_pair", pair),
+                cb_def(),
+                foreign_def("t939_fold", fold),
+                foreign_def("t939_byte_length", blen),
+                foreign_def("t939_create", create),
+                foreign_def("t939_get", get),
+            ],
+            bodies: vec![],
+            span: Span { start: 0, end: 0 },
+        };
+        // body exprs:
+        //  0 ReadLocal(local 0)  1/2 BorrowMut(local 1/2)
+        //  3 CallbackRef(def 1)  4 I32 literal (seed)
+        //  5 Call byte_length{view: arg0}
+        //  6 Call pair{mut: arg1, mut: arg2}
+        //  7 Call fold{cb: arg3, seed: arg4}
+        //  8 Call create{size: arg4}
+        //  9 Call get{handle: arg4}
+        let mut exprs = vec![
+            plan_expr(hir::ExprKind::ReadLocal { local: hir::LocalId(0) }),
+            plan_expr(hir::ExprKind::BorrowMut { local: hir::LocalId(1) }),
+            plan_expr(hir::ExprKind::BorrowMut { local: hir::LocalId(2) }),
+            plan_expr(hir::ExprKind::CallbackRef { def: hir::DefId(1) }),
+            plan_expr(hir::ExprKind::Constant { value: 7 }),
+            call(3, vec![(0, 0)], vec![0]),
+            call(0, vec![(0, 1), (1, 2)], vec![1, 2]),
+            call(2, vec![(0, 3), (1, 4)], vec![3, 4]),
+            call(4, vec![(0, 4)], vec![4]),
+            call(5, vec![(0, 4)], vec![4]),
+        ];
+        exprs[0].ty = hir::TypeUse::Builtin(hir::BuiltinType::StrSlice);
+        let body = hir::Body {
+            id_text: "main".into(),
+            owner: hir::DefId(1),
+            entry: hir::BlockId(0),
+            locals: vec![local("s", "s"), local("a", "a"), local("b", "b")],
+            places: vec![],
+            exprs,
+            blocks: vec![],
+            loops: vec![],
+            span: Span { start: 0, end: 0 },
+        };
+        m.bodies.push(body);
+        let rows = body_foreign_plan(&m, &m.bodies[0]);
+        assert_eq!(rows.len(), 5, "every resource call has a row");
+        // byte_length: one view borrow with a DERIVED owner local
+        let bl = &rows[&5];
+        assert_eq!(bl.symbol, "t939"); // the shared test-helper symbol
+        assert_eq!(bl.view_borrows, vec![(0, Some(0))]);
+        assert!(bl.exclusive.is_empty());
+        // pair: two exclusive lanes, atomic promise
+        let pr = &rows[&6];
+        assert_eq!(pr.exclusive, vec![0, 1]);
+        assert!(pr.atomic);
+        assert!(pr.view_borrows.is_empty());
+        // fold: the callback target def rides the plan (no re-derivation)
+        let fd = &rows[&7];
+        assert_eq!(fd.callbacks, vec![(0, 1)]);
+        // create: fresh credential out
+        let cr = &rows[&8];
+        assert_eq!(cr.owned_out.as_deref(), Some("r939"));
+        // get: credential in with its provider tag
+        let gt = &rows[&9];
+        assert_eq!(gt.handles_in, vec![(0, "r939".to_string())]);
+        // bundle plan: present, one body
+        let bundle = hir::Bundle {
+            domain: hir::HirDomain::TextRecord,
+            modules: vec![m],
+            requires: vec![],
+        };
+        let plan = bundle_foreign_plan(&bundle).expect("plan present");
+        assert_eq!(plan.bodies.len(), 1);
     }
 
     #[test]

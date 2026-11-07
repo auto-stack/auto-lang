@@ -120,7 +120,8 @@ impl CertPolicy {
             // oracle mirrors that deck's exact provider call sequence.
             Self::Resource939 => matches!(
                 reference,
-                "utf8-bytes"
+                "utf8-owned"
+                    | "utf8-bytes"
                     | "utf8-scalars"
                     | "record-mut"
                     | "record-mut-fail"

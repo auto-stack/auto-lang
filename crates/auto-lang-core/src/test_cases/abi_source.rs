@@ -230,6 +230,9 @@ impl SourceReport {
             .ok_or("resource-import request without a reviewed reference")?
         {
             "utf8-bytes" => (&["t939_byte_length"], &[]),
+            // V-02 owned temp -> view: the owned Str local feeds both
+            // views; owner outlives both consumers.
+            "utf8-owned" => (&["t939_byte_length", "t939_scalar_count"], &[]),
             "utf8-scalars" => (&["t939_scalar_count"], &[]),
             "record-mut" => (&["t939_bump"], &[]),
             "record-mut-fail" => (&["t939_bump"], &["-2"]),
