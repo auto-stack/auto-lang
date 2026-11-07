@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 21
+current_step: 22
 total_steps: 32
 ---
 
@@ -499,7 +499,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-04 | work | T-03，必要H短窗 | 新只读ace_m1_arch_acceptance.py与域reader适配/严格身份/路径/版本/原始终态/旧认证差异；AC-02/09/10，V-02/13/14 | [ ] 第86轮reducer增量（7cc50eeb29）：§5.2八域门纯谓词`reduce_acceptance`（ace.m1.acceptance-reducer/1）上线并接线组合报告——accounting/evidence/system四类输入永不单独推导can_claim、未组合测量具名missing_input blocker、complete_expanded_registry门改随宇宙闭合；治理243/243（+2 reducer控制：隔离全绿可触发谓词/未知缺失错型输入全拒）；组合重读verdicts守恒零漂移、8门仅expanded_registry_valid真、can_claim=False带14具名blocker；预算合约pin刷新（arch_acceptance字节变化）。域reader扩展（严格身份/路径/版本继续）与T05..T11测量节组合仍待 |
 | T-05 | work | T-03/04，Q4已有域稳定API | 正/负同源四端与独立oracle/reference/完整文件集认证、跨目标身份/daily分轴；AC-03/09，V-03/12/13 | [ ] |
 | T-06 | work | T-04/05，929/各实际required来源页稳定窗口 | 真实P/M/R/IO计数/依赖变化/多函数方法闭包、source恢复首操作/坏页/原子安装反控；AC-04/05，V-04..06 | [ ] 第87轮测量节首建（63f6827355）：`incremental_restore_measurements`节从已准入f94112全组门（逐测试事件）+ct-restore/architecture观察组合ARCH-05八行——2行真实PASS（恢复首好编辑/首坏修复再恢复）、6行PARTIAL（0 UNOBSERVED，逐行具名缺口），治理246/246（+3控制）、组合重读verdicts守恒且`missing_input:incremental_restore_measurements`blocker消失；V-04全依赖编辑集/934/935/938/939页/原子安装迟到等实际测量仍待补行 |
-| T-07 | work | T-06，原资源/HMR接口与正式窗口 | 原预算/cleanup/fault/lease/同PID safepoint/原样本P90/peak与新组合器资源帽；AC-06，V-07/08/16 | [ ] |
+| T-07 | work | T-06，原资源/HMR接口与正式窗口 | 原预算/cleanup/fault/lease/同PID safepoint/原样本P90/peak与新组合器资源帽；AC-06，V-07/08/16 | [ ] 第88轮测量节首建（6e49556a22）：`budget_time_measurements`节从已准入f94112全组门Job meter、原优化观察run meter与组合器自身保留帽组合——5行真实PASS（三组gate-meter/优化观察/composer-48MiB帽）+1行PARTIAL（16条预算策略声明runtime恒UNOBSERVED，逐策略P90/peak实测窗口具名缺），治理248/248、组合重读verdicts守恒且`missing_input:budget_time_measurements`blocker消失（余仅T-10治理控制）；cleanup/fault/lease/safepoint/P90实测仍待真实窗口 |
 | T-08 | work | T-04，934/935/936已审稳定接口；最终实际D | SQ/真实实例/CT执行/事实依赖及required恢复/四端实证适配；除具名§5.12/T24 F09授权外不修改其语义实现；AC-05/07，V-05/06/09/10 | [ ] |
 | T-09 | work | T-04，937/938/939已审稳定接口；最终实际D | ABI原三腿/全source-typed方向/资源/ctx/callback/独立C认证与source恢复；AC-05/08/09，V-05/06/11/12 | [ ] |
 | T-10 | work | T-04..09 | 总门AND/完整required/preview/38旧cert差异/缺门/伪PASS/空steps/迟到及各失败分态治理反控；AC-10/11，V-14/15 | [ ] |
@@ -2114,6 +2114,18 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:86 | from:goal用户�
 stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（T-06测量节首建：2行真PASS/6行具名PARTIAL，blocker真实翻转，verdicts守恒） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:63f6827355 | task_ids:T-06增量（勾选留review） | evidence:f94106-measure/t06-measure-audit.json | next_responsible_role:work T-07测量节/T-05深化/V-04..06新实测；无具名待批项，无live handle
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:87 | from:goal用户指定 | to:work | status:executing21/32 | outcome:progress（incremental_restore_measurements节以真实准入证据组合上线，域门由missing_input转为具名部分覆盖） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:63f6827355 | next:work T-07/T-05/V-04..06新实测；D938/939未交齐，无待poll
+
+### 第88轮：work T-07预算/时间测量节首建——真实meter组合与最后一个测量类missing_input翻转
+
+- 按用户指令镜像T-06路径推进T-07。先核实测源：f94112全组门results带逐组Job meter（wall/cpu/peak/进程，均为真实采集原口径）、原优化观察run的gate.command.json带meter、组合器自身admission保留帽（≤48MiB）在报告内；预算合约16条策略的`runtime_verdict`恒为UNOBSERVED（既有控制"declarations never prove runtime"的规则）。
+- **实现**（提交**`6e49556a22`**，3文件）：①新`ace_m1_budget_time.py`：`budget_time_gates`+`budget_time_optimized`双绑定按sha准入文档（STALE/错schema/门未过/异组/meter字段非正数全拒），组合六行——三组gate-meter、优化观察meter、composer-live-cap-48mib（超帽=真实FAIL非缺行）、policy-runtime-samples（16声明runtime恒UNOBSERVED→PARTIAL具名"逐策略P90/peak实测窗口"）；`budgets_time_complete`仅六行全PASS。②first_slice接线（白名单两键+reducer `budgets_time`门改为"合约∧节∧budgets_time_complete"+missing_inputs按节缺失具名+admission_sources收录）。③治理+2控制：meter行真过但声明行保门开/超帽为FAIL；STALE/错schema/exit非0/零meter/空策略全拒。
+- **过程性修复如实记**：heredoc换行转义破坏三处字面量（语法错，修复）；新类插入点把incremental类的stale测试切进BudgetTime类（AttributeError，移回原类）——均测试装配缺陷非生产失败。
+- **验证**：治理**248/248PASS**（246+2）；冻结提交组合重读（f94112证据+第87轮绑定+budget_time两绑定）：**verdicts 716P8F282U逐键零漂移**；六行=**5真实PASS+1 PARTIAL**（声明16条runtime_unobserved=16如实）；`missing_input:budget_time_measurements`blocker消失——**missing_input类仅余`acceptance_system_controls(T-10 governance)`**；`budgets_time`域门如实false。13工具恒等（无重采）。审计`f94107-budget/t07-budget-audit.json`=`ffa9c65c198245133c18441446cc72b3227fe5ed7c37e02a098337d5dd88142b`。
+- T-05（Q4全量认证深化）与V-04..06新实测窗口本轮未动——两者需真实新采集/测试编写（多函数方法闭包依赖编辑集、坏页全族、原子安装/迟到、逐策略P90/peak窗口），非组合既有证据可闭；按用户列序为下轮入口。executing22/32（T-07增量记progress）。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（T-07测量节首建：5行真meter PASS+声明行如实PARTIAL，测量类missing_input仅余T-10治理） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:6e49556a22 | task_ids:T-07增量（勾选留review） | evidence:f94107-budget/t07-budget-audit.json | next_responsible_role:work T-05深化/V-04..06新实测窗口/T-10治理控制 | 无具名待批项，无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:88 | from:goal用户指定 | to:work | status:executing22/32 | outcome:progress（budget_time_measurements以真实meter上线，blocker真实翻转，verdicts守恒） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:6e49556a22 | next:work T-05/V-04..06实测窗口/T-10治理控制；D938/939未交齐，无待poll
 
 ## 10. 待澄清事项
 
