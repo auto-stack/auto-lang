@@ -11,3 +11,7 @@ ace-a2x-core = { path = "../a2x-core" }
 # abi side (pure model crate — no backend stack inside).
 ace-foreign-contract = { path = "../foreign-contract" }
 ace-core = { path = "../core" }
+# PLAN-938: borrowed fileset manifest serialization (exact output admission
+# without a serde_json Value tree); same serde the contract crate already pins.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

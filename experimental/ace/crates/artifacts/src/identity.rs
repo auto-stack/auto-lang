@@ -13,16 +13,55 @@ use std::fmt;
 /// Domain-separated content hash: `hex(blake3(tag ‖ payload…))`.
 /// The tag is `ac783/<family>/v<n>` — never a bare byte hash.
 pub fn domain_hash(family: &str, parts: &[&[u8]]) -> String {
-    let mut h = Hasher::new();
-    h.update(crate::HASH_ALGO.as_bytes());
-    h.update(&[0]);
-    h.update(family.as_bytes());
-    h.update(&[0]);
+    domain_hash_iter(&[family], parts.iter().copied())
+}
+
+/// Borrowed parts preserve the original domain/length framing without a
+/// second owned representation of all fingerprint bytes or a refs array.
+fn domain_hash_iter<'a>(family: &[&str], parts: impl IntoIterator<Item = &'a [u8]>) -> String {
+    let mut h = DomainHasher::new(family);
     for p in parts {
-        h.update(&(p.len() as u64).to_le_bytes());
-        h.update(p);
+        h.part(&[p]);
     }
-    h.finalize().to_hex().to_string()
+    h.finish_prefixed("")
+}
+
+/// One domain-framed logical part may consist of borrowed segments. The
+/// length prefix covers their concatenation, exactly as an owned part did.
+pub(crate) struct DomainHasher(Hasher);
+impl DomainHasher {
+    pub(crate) fn new(family: &[&str]) -> Self {
+        let mut h = Hasher::new();
+        h.update(crate::HASH_ALGO.as_bytes());
+        h.update(&[0]);
+        for piece in family {
+            h.update(piece.as_bytes());
+        }
+        h.update(&[0]);
+        Self(h)
+    }
+    pub(crate) fn part(&mut self, pieces: &[&[u8]]) {
+        let size = pieces
+            .iter()
+            .try_fold(0usize, |n, p| n.checked_add(p.len()))
+            .expect("domain hash part size overflow");
+        self.0.update(&(size as u64).to_le_bytes());
+        for piece in pieces {
+            self.0.update(piece);
+        }
+    }
+    pub(crate) fn finish_prefixed(self, prefix: &str) -> String {
+        let hex = self.0.finalize().to_hex();
+        let mut result = String::with_capacity(
+            prefix
+                .len()
+                .checked_add(hex.len())
+                .expect("identity size overflow"),
+        );
+        result.push_str(prefix);
+        result.push_str(hex.as_str());
+        result
+    }
 }
 
 macro_rules! id_type {
@@ -85,28 +124,47 @@ impl QueryKey {
 
     /// Canonical textual form (stable, diagnostic-friendly).
     pub fn canonical(&self) -> String {
-        let mut s = format!("{}[", self.layer);
+        let mut s = String::with_capacity(
+            self.canonical_len()
+                .expect("canonical query key size overflow"),
+        );
+        s.push_str(self.layer);
+        s.push('[');
         for (i, (k, v)) in self.components.iter().enumerate() {
             if i > 0 {
                 s.push(',');
             }
-            s.push_str(&format!("{}={}", k, v));
+            s.push_str(k);
+            s.push('=');
+            s.push_str(v);
         }
         s.push(']');
         s
     }
 
+    /// Exact UTF-8 bytes of canonical(), before allocating its output. Hosts
+    /// can admit this owned buffer without formatting temporary field copies.
+    pub fn canonical_len(&self) -> Option<usize> {
+        self.components.iter().enumerate().try_fold(
+            self.layer.len().checked_add(2)?,
+            |n, (i, (key, value))| {
+                n.checked_add(key.len())?
+                    .checked_add(value.len())?
+                    .checked_add(1 + usize::from(i > 0))
+            },
+        )
+    }
+
     /// Hash form for index lookups (domain: query-key of the layer).
     pub fn hash(&self) -> String {
-        let parts: Vec<Vec<u8>> = std::iter::once(self.layer.as_bytes().to_vec())
-            .chain(
+        domain_hash_iter(
+            &["qk/", self.layer],
+            std::iter::once(self.layer.as_bytes()).chain(
                 self.components
                     .iter()
-                    .flat_map(|(k, v)| vec![k.clone().into_bytes(), v.clone().into_bytes()]),
-            )
-            .collect();
-        let refs: Vec<&[u8]> = parts.iter().map(|v| v.as_slice()).collect();
-        domain_hash(&format!("qk/{}", self.layer), &refs)
+                    .flat_map(|(k, v)| [k.as_bytes(), v.as_bytes()]),
+            ),
+        )
     }
 
     pub fn component(&self, name: &str) -> Option<&str> {

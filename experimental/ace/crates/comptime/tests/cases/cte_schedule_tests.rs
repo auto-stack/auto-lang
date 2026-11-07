@@ -326,6 +326,7 @@ fn unit_request(queries: Vec<QueryNodeV1>) -> CteRequestV1 {
 
 fn input() -> SemaInput {
     SemaInput {
+        external_signatures: Vec::new(),
         package: "cte817".into(),
         module: "m".into(),
         source_fp: String::new(),

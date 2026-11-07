@@ -36,6 +36,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub enum AdapterError {
     Unsupported { code: String, message: String },
     Invalid { code: String, message: String },
+    Resource { code: String, message: String },
 }
 
 impl AdapterError {
@@ -51,11 +52,17 @@ impl AdapterError {
             message,
         }
     }
+    fn resource(message: String) -> Self {
+        Self::Resource {
+            code: "lower.resource".into(),
+            message,
+        }
+    }
     pub fn code(&self) -> String {
         match self {
-            AdapterError::Unsupported { code, .. } | AdapterError::Invalid { code, .. } => {
-                code.clone()
-            }
+            AdapterError::Unsupported { code, .. }
+            | AdapterError::Invalid { code, .. }
+            | AdapterError::Resource { code, .. } => code.clone(),
         }
     }
 }
@@ -72,32 +79,28 @@ const MAX_EXPR_DEPTH: u32 = 512;
 /// against free functions' `d_<name>` and against every other method —
 /// two same-named methods on different records, or a method sharing a
 /// name with a free function, can never collide.
-fn method_mir_name(
+fn method_mir_name_reserved(
     module: &hir::Module,
     record: hir::TypeId,
     method_name: &str,
+    metadata: &mut Option<UnitMetadata<'_>>,
 ) -> Result<String, AdapterError> {
     let rec_name = module
         .types
         .get(record.0 as usize)
-        .map(|t| {
-            t.id_text
-                .strip_prefix("t_rec_")
-                .unwrap_or(&t.id_text)
-                .to_string()
-        })
+        .map(|t| t.id_text.strip_prefix("t_rec_").unwrap_or(&t.id_text))
         .ok_or_else(|| {
             AdapterError::inv(
                 "lower.method-owner",
                 format!("method `{method_name}` references a missing owner type"),
             )
         })?;
-    Ok(format!("m.{rec_name}.{method_name}"))
+    metadata_text(&["m.", rec_name, ".", method_name], metadata)
 }
 
 /// PLAN-881: the MIR-level name of any function-or-method def — free
 /// functions keep their def id (`d_<name>`); methods take the
-/// owner-based [`method_mir_name`]. This is the unit/import identity the
+/// owner-based [`method_mir_name_reserved`]. This is the unit/import identity the
 /// whole split/link/cache chain keys on.
 ///
 /// A method's BARE name is recovered from its fi-indexed def id
@@ -106,6 +109,14 @@ fn method_mir_name(
 /// emitter's internal symbol (`sm_<Rec>_<name>`), which cannot be split
 /// unambiguously.
 pub fn mir_name_of_def(module: &hir::Module, di: usize) -> Result<String, AdapterError> {
+    mir_name_of_def_reserved(module, di, &mut None)
+}
+
+fn mir_name_of_def_reserved(
+    module: &hir::Module,
+    di: usize,
+    metadata: &mut Option<UnitMetadata<'_>>,
+) -> Result<String, AdapterError> {
     match &module.defs[di].kind {
         hir::DefKind::Method { record, .. } => {
             let id = &module.defs[di].id_text;
@@ -131,9 +142,9 @@ pub fn mir_name_of_def(module: &hir::Module, di: usize) -> Result<String, Adapte
                         format!("method def id `{id}` is neither `d_f<fi>_<name>` nor `d_<name>`"),
                     )
                 })?;
-            method_mir_name(module, *record, bare)
+            method_mir_name_reserved(module, *record, bare, metadata)
         }
-        _ => Ok(module.defs[di].id_text.clone()),
+        _ => metadata_text(&[&module.defs[di].id_text], metadata),
     }
 }
 
@@ -193,6 +204,7 @@ pub fn lower_checked(
     let mut next_fn_idx: u32 = 0;
     for (di, d) in module.defs.iter().enumerate() {
         match &d.kind {
+            hir::DefKind::Foreign { .. } => continue,
             hir::DefKind::Function { ty, body, .. } => {
                 def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
                 next_fn_idx += 1;
@@ -346,6 +358,7 @@ pub fn lower_checked_data(
     let mut next_fn_idx: u32 = 0;
     for (di, d) in module.defs.iter().enumerate() {
         match &d.kind {
+            hir::DefKind::Foreign { .. } => continue,
             hir::DefKind::Function { ty, body, .. } => {
                 def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
                 next_fn_idx += 1;
@@ -506,6 +519,7 @@ fn lower_checked_collection_family(
     let mut next_fn_idx: u32 = 0;
     for (di, d) in module.defs.iter().enumerate() {
         match &d.kind {
+            hir::DefKind::Foreign { .. } => continue,
             hir::DefKind::Function { ty, body, .. } => {
                 def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
                 next_fn_idx += 1;
@@ -838,7 +852,10 @@ impl ClosureFacts for ModuleScanFacts {
             return Ok(None);
         };
         let def = module.defs.get(def_index as usize).ok_or_else(|| {
-            AdapterError::inv("lower.callee", format!("callee def {def_index} out of range"))
+            AdapterError::inv(
+                "lower.callee",
+                format!("callee def {def_index} out of range"),
+            )
         })?;
         let hir::DefKind::Function { body, .. } = &def.kind else {
             return Err(AdapterError::uns(
@@ -1184,6 +1201,7 @@ pub fn lower_checked_owned(
     let mut next_fn_idx: u32 = 0;
     for (di, d) in module.defs.iter().enumerate() {
         match &d.kind {
+            hir::DefKind::Foreign { .. } => continue,
             hir::DefKind::Function { ty, body, .. } => {
                 def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
                 next_fn_idx += 1;
@@ -1322,6 +1340,7 @@ pub fn lower_function_owned_unit_with_modes(
     let mut target: Option<(u32, hir::TypeId, hir::BodyId)> = None;
     for (di, d) in module.defs.iter().enumerate() {
         match &d.kind {
+            hir::DefKind::Foreign { .. } => continue,
             hir::DefKind::Function { ty, body, .. } => {
                 // R1-F08: mode-aware — the import's sig must equal the
                 // callee's own emission (borrowed record params =
@@ -1446,6 +1465,57 @@ pub fn lower_function_unit(
         source_snapshot,
         false,
         &BTreeMap::new(),
+        None,
+        false,
+    )
+}
+
+/// The same unit lowering with pre-allocation admission for the emitted
+/// instruction/span/block/slot/constant arrays, call arguments, foreign
+/// declaration ownership and traversal indices. The callback
+/// receives their combined live capacity, including old/new buffers while
+/// growing and all three slot arrays during the final merge. Traversal fees
+/// are released after their owners drop; the caller retains the remaining
+/// ticket through the returned MIR's last use. Other module tables and
+/// profile-specific workspace retain their admission obligations.
+pub fn lower_function_unit_with_emission_reservation(
+    bundle: &hir::Bundle,
+    def_id_text: &str,
+    capabilities: &[String],
+    source_snapshot: u64,
+    reserve: &mut dyn FnMut(usize) -> Result<(), String>,
+) -> Result<MirModule, AdapterError> {
+    lower_function_unit_impl(
+        bundle,
+        def_id_text,
+        capabilities,
+        source_snapshot,
+        false,
+        &BTreeMap::new(),
+        Some(reserve),
+        false,
+    )
+}
+
+/// The scalar unit composition with both module metadata and function
+/// emission admitted before ownership/allocation. It uses the same type,
+/// import and function algorithms as the unreserved unit entry.
+pub fn lower_function_unit_reserved(
+    bundle: &hir::Bundle,
+    def_id_text: &str,
+    capabilities: &[String],
+    source_snapshot: u64,
+    reserve: &mut dyn FnMut(usize) -> Result<(), String>,
+) -> Result<MirModule, AdapterError> {
+    lower_function_unit_impl(
+        bundle,
+        def_id_text,
+        capabilities,
+        source_snapshot,
+        false,
+        &BTreeMap::new(),
+        Some(reserve),
+        true,
     )
 }
 
@@ -1466,6 +1536,8 @@ pub fn lower_function_data_unit(
         source_snapshot,
         true,
         &BTreeMap::new(),
+        None,
+        false,
     )
 }
 
@@ -1487,6 +1559,8 @@ pub fn lower_function_data_unit_with_modes(
         source_snapshot,
         true,
         mode_overrides,
+        None,
+        false,
     )
 }
 
@@ -1497,6 +1571,8 @@ fn lower_function_unit_impl(
     source_snapshot: u64,
     data: bool,
     mode_overrides: &BTreeMap<String, Vec<hir::ParamMode>>,
+    mut emission_reserve: Option<&mut dyn FnMut(usize) -> Result<(), String>>,
+    reserve_unit_metadata: bool,
 ) -> Result<MirModule, AdapterError> {
     match bundle.domain {
         hir::HirDomain::Scalar | hir::HirDomain::Core if !data => {}
@@ -1522,6 +1598,47 @@ fn lower_function_unit_impl(
         ));
     }
     let module = &bundle.modules[0];
+    let mut metadata = if reserve_unit_metadata {
+        emission_reserve.take().map(|reserve| UnitMetadata {
+            bytes: 0,
+            map_bytes: 0,
+            function_bytes: 0,
+            reserve,
+        })
+    } else {
+        None
+    };
+    if let Some(metadata) = metadata.as_mut() {
+        // Both module and final function own a schema/module pair. Reserve
+        // those two owners before the first clone, plus the profile/caps.
+        let schema = if data {
+            ace_av_core::contract::MIR_DATA_SCHEMA
+        } else {
+            ace_av_core::contract::MIR_SCHEMA
+        };
+        let profile = if data {
+            ace_av_core::contract::AV_DATA_PROFILE
+        } else {
+            ace_av_core::contract::AV_PROFILE
+        };
+        let overflow = || AdapterError::resource("unit identity capacity overflow".into());
+        let identity = schema
+            .len()
+            .checked_add(module.id_text.len())
+            .and_then(|n| n.checked_mul(2))
+            .and_then(|n| n.checked_add(profile.len()))
+            .ok_or_else(overflow)?;
+        let caps = capabilities
+            .len()
+            .checked_mul(std::mem::size_of::<String>())
+            .ok_or_else(overflow)?;
+        let bytes = capabilities.iter().try_fold(
+            identity.checked_add(caps).ok_or_else(overflow)?,
+            |n, cap| n.checked_add(cap.len()).ok_or_else(overflow),
+        )?;
+        metadata.add(bytes)?;
+    }
+
     let owner = if data {
         OwnerScope {
             schema: ace_av_core::contract::MIR_DATA_SCHEMA.to_string(),
@@ -1547,6 +1664,7 @@ fn lower_function_unit_impl(
     let mut target: Option<(u32, hir::TypeId, hir::BodyId)> = None;
     for (di, d) in module.defs.iter().enumerate() {
         match &d.kind {
+            hir::DefKind::Foreign { .. } => continue,
             hir::DefKind::Function { ty, body, .. } => {
                 if d.id_text == def_id_text {
                     // Self-recursion also rides the unit's import
@@ -1557,42 +1675,60 @@ fn lower_function_unit_impl(
                     let self_sig = if data {
                         data_fn_sig_for_def(module, di as u32, *ty, &mut out, mode_overrides)?
                     } else {
-                        fn_type_index(
+                        fn_type_index_ext_reserved(
                             *ty,
                             module,
                             &mut out,
                             data,
+                            false,
                             &mut std::collections::BTreeMap::new(),
                             &mut std::collections::BTreeSet::new(),
+                            &mut metadata,
                         )?
                     };
-                    let imp = out.intern_import(MirImport {
-                        symbol: format!("fn:{}", d.id_text),
-                        effect: Effect::Pure,
-                        sig: self_sig,
-                        env: None,
-                    });
+                    let imp = intern_import_reserved(
+                        &mut out,
+                        MirImport {
+                            symbol: metadata_text(&["fn:", &d.id_text], &mut metadata)?,
+                            effect: Effect::Pure,
+                            sig: self_sig,
+                            env: None,
+                        },
+                        &mut metadata,
+                    )?;
+                    if let Some(metadata) = metadata.as_mut() {
+                        metadata.map_entry()?;
+                    }
                     def_map.insert(di as u32, CalleeRef::Import(imp));
                     target = Some((di as u32, *ty, *body));
                 } else {
                     let sig = if data {
                         data_fn_sig_for_def(module, di as u32, *ty, &mut out, mode_overrides)?
                     } else {
-                        fn_type_index(
+                        fn_type_index_ext_reserved(
                             *ty,
                             module,
                             &mut out,
                             data,
+                            false,
                             &mut std::collections::BTreeMap::new(),
                             &mut std::collections::BTreeSet::new(),
+                            &mut metadata,
                         )?
                     };
-                    let idx = out.intern_import(MirImport {
-                        symbol: format!("fn:{}", d.id_text),
-                        effect: Effect::Pure,
-                        sig,
-                        env: None,
-                    });
+                    let idx = intern_import_reserved(
+                        &mut out,
+                        MirImport {
+                            symbol: metadata_text(&["fn:", &d.id_text], &mut metadata)?,
+                            effect: Effect::Pure,
+                            sig,
+                            env: None,
+                        },
+                        &mut metadata,
+                    )?;
+                    if let Some(metadata) = metadata.as_mut() {
+                        metadata.map_entry()?;
+                    }
                     def_map.insert(di as u32, CalleeRef::Import(idx));
                 }
             }
@@ -1600,25 +1736,40 @@ fn lower_function_unit_impl(
             // `fn:m.<Rec>.<name>` import identity; the target is still
             // selected by HIR def id (a transient handle).
             hir::DefKind::Method { ty, body, .. } => {
-                let symbol = format!("fn:{}", mir_name_of_def(module, di)?);
+                let method_name = mir_name_of_def_reserved(module, di, &mut metadata)?;
+                let symbol = metadata_text(&["fn:", &method_name], &mut metadata)?;
+                let temporary = method_name.capacity();
+                drop(method_name);
+                if let Some(metadata) = metadata.as_mut() {
+                    metadata.release(temporary)?;
+                }
                 let sig = if data {
                     data_fn_sig_for_def(module, di as u32, *ty, &mut out, mode_overrides)?
                 } else {
-                    fn_type_index(
+                    fn_type_index_ext_reserved(
                         *ty,
                         module,
                         &mut out,
                         data,
+                        false,
                         &mut std::collections::BTreeMap::new(),
                         &mut std::collections::BTreeSet::new(),
+                        &mut metadata,
                     )?
                 };
-                let idx = out.intern_import(MirImport {
-                    symbol,
-                    effect: Effect::Pure,
-                    sig,
-                    env: None,
-                });
+                let idx = intern_import_reserved(
+                    &mut out,
+                    MirImport {
+                        symbol,
+                        effect: Effect::Pure,
+                        sig,
+                        env: None,
+                    },
+                    &mut metadata,
+                )?;
+                if let Some(metadata) = metadata.as_mut() {
+                    metadata.map_entry()?;
+                }
                 def_map.insert(di as u32, CalleeRef::Import(idx));
                 if d.id_text == def_id_text {
                     target = Some((di as u32, *ty, *body));
@@ -1631,23 +1782,32 @@ fn lower_function_unit_impl(
                         format!("intrinsic `{symbol}` is not in the av profile"),
                     ));
                 }
-                let sig = fn_type_index(
+                let sig = fn_type_index_ext_reserved(
                     *ty,
                     module,
                     &mut out,
                     data,
+                    false,
                     &mut std::collections::BTreeMap::new(),
                     &mut std::collections::BTreeSet::new(),
+                    &mut metadata,
                 )?;
-                let idx = out.intern_import(MirImport {
-                    symbol: symbol.clone(),
-                    effect: match effect {
-                        hir::Effect::Observable => Effect::Observable,
-                        hir::Effect::Pure => Effect::Pure,
+                let idx = intern_import_reserved(
+                    &mut out,
+                    MirImport {
+                        symbol: metadata_text(&[symbol], &mut metadata)?,
+                        effect: match effect {
+                            hir::Effect::Observable => Effect::Observable,
+                            hir::Effect::Pure => Effect::Pure,
+                        },
+                        sig,
+                        env: None,
                     },
-                    sig,
-                    env: None,
-                });
+                    &mut metadata,
+                )?;
+                if let Some(metadata) = metadata.as_mut() {
+                    metadata.map_entry()?;
+                }
                 def_map.insert(di as u32, CalleeRef::Import(idx));
             }
         }
@@ -1661,16 +1821,44 @@ fn lower_function_unit_impl(
     let sig = if data {
         data_fn_sig_for_def(module, di, ty, &mut out, mode_overrides)?
     } else {
-        fn_type_index(
+        fn_type_index_ext_reserved(
             ty,
             module,
             &mut out,
             data,
+            false,
             &mut BTreeMap::new(),
             &mut std::collections::BTreeSet::new(),
+            &mut metadata,
         )?
     };
-    let mir_fn = lower_function(
+    if metadata.is_some() {
+        intern_type_reserved(&mut out, MirType::I32, 0, &mut metadata)?;
+        intern_type_reserved(&mut out, MirType::Bool, 0, &mut metadata)?;
+    }
+    let name = mir_name_of_def_reserved(module, di as usize, &mut metadata)?;
+    let admitted = metadata.is_some() || emission_reserve.is_some();
+    let mut function_bytes = 0;
+    let mut reserve_function = |bytes| {
+        function_bytes = bytes;
+        if let Some(metadata) = metadata.as_mut() {
+            let total = metadata
+                .bytes
+                .checked_add(bytes)
+                .ok_or("unit/function capacity overflow")?;
+            (metadata.reserve)(total)
+        } else if let Some(reserve) = emission_reserve.as_mut() {
+            reserve(bytes)
+        } else {
+            Ok(())
+        }
+    };
+    let function_port: Option<&mut dyn FnMut(usize) -> Result<(), String>> = if admitted {
+        Some(&mut reserve_function)
+    } else {
+        None
+    };
+    let mir_fn = lower_function_with_emission(
         module,
         &mut out,
         di,
@@ -1678,11 +1866,21 @@ fn lower_function_unit_impl(
         sig,
         source_snapshot,
         &def_map,
-        mir_name_of_def(module, di as usize)?,
+        name,
         data,
         false,
         mode_overrides,
+        &ModuleScanFacts,
+        function_port,
     )?;
+    drop(reserve_function);
+    drop(def_map);
+    if let Some(metadata) = metadata.as_mut() {
+        metadata.function_bytes = function_bytes;
+        metadata.release(metadata.map_bytes)?;
+        metadata.map_bytes = 0;
+        metadata.grow(&mut out.funcs)?;
+    }
     out.funcs.push(mir_fn);
     out.entry = 0;
     Ok(out)
@@ -1714,15 +1912,24 @@ fn scalar_type_idx_of(
     m: &hir::Module,
     out: &mut MirModule,
 ) -> Result<TypeIdx, AdapterError> {
+    scalar_type_idx_of_reserved(u, m, out, &mut None)
+}
+
+fn scalar_type_idx_of_reserved(
+    u: &hir::TypeUse,
+    m: &hir::Module,
+    out: &mut MirModule,
+    metadata: &mut Option<UnitMetadata<'_>>,
+) -> Result<TypeIdx, AdapterError> {
     // PLAN-862: Unit is the entry-unit profile's zero-width RESULT type. It
     // is NOT a scalar shape (it has no runtime width), so it maps before the
     // scalar-shape lookup; the verifier owns its placement.
     if matches!(u, hir::TypeUse::Builtin(hir::BuiltinType::Unit)) {
-        return Ok(out.intern_type(MirType::Unit));
+        return intern_type_reserved(out, MirType::Unit, 0, metadata);
     }
     match scalar_shape_of_use(u, m)? {
-        ScalarShape::I32 => Ok(out.intern_type(MirType::I32)),
-        ScalarShape::Bool => Ok(out.intern_type(MirType::Bool)),
+        ScalarShape::I32 => intern_type_reserved(out, MirType::I32, 0, metadata),
+        ScalarShape::Bool => intern_type_reserved(out, MirType::Bool, 0, metadata),
         // Unreachable via HIR: the source front doors expose no
         // wide-scalar syntax (defense for hand-made bundles).
         _ => Err(AdapterError::uns(
@@ -2052,31 +2259,49 @@ fn fn_type_index_ext(
     memo: &mut std::collections::BTreeMap<hir::TypeId, TypeIdx>,
     visiting: &mut std::collections::BTreeSet<hir::TypeId>,
 ) -> Result<TypeIdx, AdapterError> {
+    fn_type_index_ext_reserved(ty, m, out, data, owned, memo, visiting, &mut None)
+}
+
+fn fn_type_index_ext_reserved(
+    ty: hir::TypeId,
+    m: &hir::Module,
+    out: &mut MirModule,
+    data: bool,
+    owned: bool,
+    memo: &mut std::collections::BTreeMap<hir::TypeId, TypeIdx>,
+    visiting: &mut std::collections::BTreeSet<hir::TypeId>,
+    metadata: &mut Option<UnitMetadata<'_>>,
+) -> Result<TypeIdx, AdapterError> {
     let td = m.types.get(ty.0 as usize).ok_or_else(|| {
         AdapterError::inv("lower.type-ref", format!("type id {} out of range", ty.0))
     })?;
     match &td.kind {
         hir::TypeKind::Function(sig) | hir::TypeKind::Closure(sig) => {
-            let mut params = Vec::with_capacity(sig.params.len());
+            let mut params = metadata_vec(sig.params.len(), metadata)?;
             for p in &sig.params {
                 params.push(if owned {
                     owned_type_idx_of(p, m, out, memo, visiting)?
-                } else {
+                } else if data {
                     type_idx_of_use(p, m, out, data, memo, visiting)?
+                } else {
+                    scalar_type_idx_of_reserved(p, m, out, metadata)?
                 });
             }
             let result = if owned {
                 owned_type_idx_of(&sig.result, m, out, memo, visiting)?
-            } else {
+            } else if data {
                 type_idx_of_use(&sig.result, m, out, data, memo, visiting)?
+            } else {
+                scalar_type_idx_of_reserved(&sig.result, m, out, metadata)?
             };
+            let payload = params.capacity() * std::mem::size_of::<TypeIdx>();
             let mir_sig = FnSig { params, result };
             let mir_ty = if matches!(td.kind, hir::TypeKind::Closure(_)) {
                 MirType::Closure(mir_sig)
             } else {
                 MirType::Fn(mir_sig)
             };
-            Ok(out.intern_type(mir_ty))
+            intern_type_reserved(out, mir_ty, payload, metadata)
         }
         _ => Err(AdapterError::inv(
             "lower.fn-type",
@@ -2414,7 +2639,203 @@ struct Task {
     exit: Option<Exit>,
 }
 
-struct FnLower<'a> {
+fn grow_emission<T>(
+    values: &mut Vec<T>,
+    live: &mut usize,
+    reserve: &mut dyn FnMut(usize) -> Result<(), String>,
+) -> Result<(), AdapterError> {
+    if values.len() < values.capacity() {
+        return Ok(());
+    }
+    let capacity = values
+        .capacity()
+        .checked_mul(2)
+        .map(|n| n.max(4))
+        .ok_or_else(|| AdapterError::resource("emission capacity overflow".into()))?;
+    reserve_emission_capacity(values, capacity, live, reserve)
+}
+
+fn reserve_emission_capacity<T>(
+    values: &mut Vec<T>,
+    capacity: usize,
+    live: &mut usize,
+    reserve: &mut dyn FnMut(usize) -> Result<(), String>,
+) -> Result<(), AdapterError> {
+    if capacity <= values.capacity() {
+        return Ok(());
+    }
+    let overflow = || AdapterError::resource("emission capacity overflow".into());
+    let old = values
+        .capacity()
+        .checked_mul(std::mem::size_of::<T>())
+        .ok_or_else(overflow)?;
+    let bytes = capacity
+        .checked_mul(std::mem::size_of::<T>())
+        .ok_or_else(overflow)?;
+    let temporary = live.checked_add(bytes).ok_or_else(overflow)?;
+    reserve(temporary).map_err(AdapterError::resource)?;
+    values
+        .try_reserve_exact(capacity - values.len())
+        .map_err(|e| AdapterError::resource(format!("emission allocation: {e}")))?;
+    debug_assert_eq!(values.capacity(), capacity);
+    *live = temporary - old;
+    reserve(*live).map_err(AdapterError::resource)?;
+    Ok(())
+}
+
+fn emission_vec<T>(
+    capacity: usize,
+    live: &mut usize,
+    reserve: &mut Option<&mut dyn FnMut(usize) -> Result<(), String>>,
+) -> Result<Vec<T>, AdapterError> {
+    if let Some(reserve) = reserve {
+        let mut values = Vec::new();
+        reserve_emission_capacity(&mut values, capacity, live, *reserve)?;
+        Ok(values)
+    } else {
+        Ok(Vec::with_capacity(capacity))
+    }
+}
+
+/// Unit metadata is owned alongside the function emitter, rather than
+/// absorbed into its mutable array subtotal. `function_bytes` protects the
+/// returned function while the outer unit finishes its tables and drops its
+/// temporary definition index.
+struct UnitMetadata<'budget> {
+    bytes: usize,
+    map_bytes: usize,
+    function_bytes: usize,
+    reserve: &'budget mut dyn FnMut(usize) -> Result<(), String>,
+}
+
+impl UnitMetadata<'_> {
+    fn resize(&mut self, bytes: usize) -> Result<(), AdapterError> {
+        let total = bytes
+            .checked_add(self.function_bytes)
+            .ok_or_else(|| AdapterError::resource("unit metadata capacity overflow".into()))?;
+        (self.reserve)(total).map_err(AdapterError::resource)?;
+        self.bytes = bytes;
+        Ok(())
+    }
+
+    fn add(&mut self, bytes: usize) -> Result<(), AdapterError> {
+        let next = self
+            .bytes
+            .checked_add(bytes)
+            .ok_or_else(|| AdapterError::resource("unit metadata capacity overflow".into()))?;
+        self.resize(next)
+    }
+
+    fn release(&mut self, bytes: usize) -> Result<(), AdapterError> {
+        self.resize(self.bytes - bytes)
+    }
+
+    fn array<T>(&mut self, values: &mut Vec<T>, capacity: usize) -> Result<(), AdapterError> {
+        let offset = self.function_bytes;
+        reserve_emission_capacity(values, capacity, &mut self.bytes, &mut |bytes| {
+            let total = bytes
+                .checked_add(offset)
+                .ok_or("unit metadata capacity overflow")?;
+            (self.reserve)(total)
+        })
+    }
+
+    fn grow<T>(&mut self, values: &mut Vec<T>) -> Result<(), AdapterError> {
+        if values.len() < values.capacity() {
+            return Ok(());
+        }
+        let capacity = values
+            .capacity()
+            .checked_mul(2)
+            .map(|n| n.max(4))
+            .ok_or_else(|| AdapterError::resource("unit metadata capacity overflow".into()))?;
+        self.array(values, capacity)
+    }
+
+    fn map_entry(&mut self) -> Result<(), AdapterError> {
+        // libstd B=6: a leaf holds 11 key/value pairs, and an internal node
+        // has 12 child pointers. One full internal allocation per insertion
+        // is a conservative bound for this single live BTreeMap, including
+        // a split; its entire fee is released after the map actually drops.
+        let node = 64
+            + 11 * (std::mem::size_of::<u32>() + std::mem::size_of::<CalleeRef>())
+            + 12 * std::mem::size_of::<usize>();
+        self.add(node)?;
+        self.map_bytes += node;
+        Ok(())
+    }
+}
+
+fn metadata_vec<T>(
+    capacity: usize,
+    metadata: &mut Option<UnitMetadata<'_>>,
+) -> Result<Vec<T>, AdapterError> {
+    if let Some(metadata) = metadata {
+        let mut values = Vec::new();
+        metadata.array(&mut values, capacity)?;
+        Ok(values)
+    } else {
+        Ok(Vec::with_capacity(capacity))
+    }
+}
+
+fn metadata_text(
+    parts: &[&str],
+    metadata: &mut Option<UnitMetadata<'_>>,
+) -> Result<String, AdapterError> {
+    let bytes = parts
+        .iter()
+        .try_fold(0usize, |bytes, part| bytes.checked_add(part.len()))
+        .ok_or_else(|| AdapterError::resource("unit text capacity overflow".into()))?;
+    if let Some(metadata) = metadata {
+        metadata.add(bytes)?;
+    }
+    let mut text = String::with_capacity(bytes);
+    for part in parts {
+        text.push_str(part);
+    }
+    Ok(text)
+}
+
+fn intern_type_reserved(
+    out: &mut MirModule,
+    ty: MirType,
+    payload: usize,
+    metadata: &mut Option<UnitMetadata<'_>>,
+) -> Result<TypeIdx, AdapterError> {
+    let Some(metadata) = metadata else {
+        return Ok(out.intern_type(ty));
+    };
+    if let Some(index) = out.types.iter().position(|existing| *existing == ty) {
+        drop(ty);
+        metadata.release(payload)?;
+        return Ok(index as TypeIdx);
+    }
+    metadata.grow(&mut out.types)?;
+    out.types.push(ty);
+    Ok(out.types.len() as TypeIdx - 1)
+}
+
+fn intern_import_reserved(
+    out: &mut MirModule,
+    import: MirImport,
+    metadata: &mut Option<UnitMetadata<'_>>,
+) -> Result<ImportIdx, AdapterError> {
+    let Some(metadata) = metadata else {
+        return Ok(out.intern_import(import));
+    };
+    if let Some(index) = out.imports.iter().position(|existing| *existing == import) {
+        let bytes = import.symbol.capacity();
+        drop(import);
+        metadata.release(bytes)?;
+        return Ok(index as ImportIdx);
+    }
+    metadata.grow(&mut out.imports)?;
+    out.imports.push(import);
+    Ok(out.imports.len() as ImportIdx - 1)
+}
+
+struct FnLower<'a, 'budget> {
     hir_module: &'a hir::Module,
     body: &'a hir::Body,
     def_map: &'a BTreeMap<u32, CalleeRef>,
@@ -2480,9 +2901,39 @@ struct FnLower<'a> {
     /// credential) — the ONE source of callee environment facts at
     /// creation sites.
     closure_facts: &'a dyn ClosureFacts,
+    emission_reserve: Option<&'budget mut dyn FnMut(usize) -> Result<(), String>>,
+    emission_bytes: usize,
 }
 
-impl<'a> FnLower<'a> {
+impl<'a, 'budget> FnLower<'a, 'budget> {
+    fn reserve_owned(&mut self, bytes: usize) -> Result<(), AdapterError> {
+        if let Some(reserve) = self.emission_reserve.as_mut() {
+            let next = self
+                .emission_bytes
+                .checked_add(bytes)
+                .ok_or_else(|| AdapterError::resource("owned emission capacity overflow".into()))?;
+            reserve(next).map_err(AdapterError::resource)?;
+            self.emission_bytes = next;
+        }
+        Ok(())
+    }
+
+    fn release_owned(&mut self, bytes: usize) -> Result<(), AdapterError> {
+        if let Some(reserve) = self.emission_reserve.as_mut() {
+            self.emission_bytes -= bytes;
+            reserve(self.emission_bytes).map_err(AdapterError::resource)?;
+        }
+        Ok(())
+    }
+
+    fn push_task(&mut self, stack: &mut Vec<Task>, task: Task) -> Result<(), AdapterError> {
+        if let Some(reserve) = self.emission_reserve.as_mut() {
+            grow_emission(stack, &mut self.emission_bytes, *reserve)?;
+        }
+        stack.push(task);
+        Ok(())
+    }
+
     /// The HIR TypeUse of an expression (declared type).
     fn expr_ty_hir(&self, eid: hir::ExprId) -> Result<hir::TypeUse, AdapterError> {
         self.body
@@ -2572,32 +3023,46 @@ impl<'a> FnLower<'a> {
         }
     }
 
-    fn new_block(&mut self) -> BlockId {
+    fn new_block(&mut self) -> Result<BlockId, AdapterError> {
+        if let Some(reserve) = self.emission_reserve.as_mut() {
+            grow_emission(&mut self.blocks, &mut self.emission_bytes, *reserve)?;
+        }
         self.blocks.push(MirBlock {
             instrs: vec![],
             // Placeholder; every created block is the target of exactly one
             // task and receives a real terminator before the walk ends.
             term: Terminator::Jump { target: u32::MAX },
         });
-        (self.blocks.len() - 1) as BlockId
+        Ok((self.blocks.len() - 1) as BlockId)
     }
 
-    fn emit(&mut self, instr: MirInstr, span: Option<SpanInfo>) {
+    fn emit(&mut self, instr: MirInstr, span: Option<SpanInfo>) -> Result<(), AdapterError> {
+        if let Some(reserve) = self.emission_reserve.as_mut() {
+            grow_emission(
+                &mut self.blocks[self.cur as usize].instrs,
+                &mut self.emission_bytes,
+                *reserve,
+            )?;
+        }
         self.blocks[self.cur as usize].instrs.push(instr);
         if let Some(sp) = span {
+            if let Some(reserve) = self.emission_reserve.as_mut() {
+                grow_emission(&mut self.spans, &mut self.emission_bytes, *reserve)?;
+            }
             self.spans.push((self.flat, sp));
         }
         self.flat += 1;
+        Ok(())
     }
 
     /// Allocate (once) the join block of an on-demand join cell.
-    fn join_block(&mut self, slot: usize) -> BlockId {
+    fn join_block(&mut self, slot: usize) -> Result<BlockId, AdapterError> {
         if let Some(b) = self.pending_joins[slot] {
-            return b;
+            return Ok(b);
         }
-        let b = self.new_block();
+        let b = self.new_block()?;
         self.pending_joins[slot] = Some(b);
-        b
+        Ok(b)
     }
 
     fn set_term(&mut self, term: Terminator) {
@@ -2608,7 +3073,7 @@ impl<'a> FnLower<'a> {
         }
     }
 
-    fn temp(&mut self, shape: ScalarShape) -> SlotId {
+    fn temp(&mut self, shape: ScalarShape) -> Result<SlotId, AdapterError> {
         let ty = match shape {
             ScalarShape::I32 => self.t_i32,
             ScalarShape::Bool => self.t_bool,
@@ -2619,14 +3084,8 @@ impl<'a> FnLower<'a> {
 
     /// Allocate a temp slot of an arbitrary (possibly record) MIR type.
     /// A temp of an already-interned type index (write-back unwrap).
-    fn temp_ty_from_cache(&mut self, ty: TypeIdx) -> SlotId {
-        let idx = self.base_slots as usize + self.extra_slots.len();
-        self.extra_slots.push(MirSlot {
-            kind: SlotKind::Temp,
-            ty,
-            name: None,
-        });
-        idx as SlotId
+    fn temp_ty_from_cache(&mut self, ty: TypeIdx) -> Result<SlotId, AdapterError> {
+        self.temp_ty(ty)
     }
 
     /// R3-F08: text receivers take a VIEW. An owned-Str operand (e.g. an
@@ -2642,9 +3101,9 @@ impl<'a> FnLower<'a> {
         let src_ty = self.expr_ty(*operand)?;
         if matches!(self.out.types.get(src_ty as usize), Some(MirType::Str)) {
             let view_ty = self.out.intern_type(MirType::StrView);
-            let view = self.temp_ty_from_cache(view_ty);
+            let view = self.temp_ty_from_cache(view_ty)?;
             let sp = None;
-            self.emit(MirInstr::View { dst: view, src: v }, sp);
+            self.emit(MirInstr::View { dst: view, src: v }, sp)?;
             Ok(view)
         } else {
             Ok(v)
@@ -2732,21 +3191,24 @@ impl<'a> FnLower<'a> {
         }
     }
 
-    fn temp_ty(&mut self, ty: TypeIdx) -> SlotId {
+    fn temp_ty(&mut self, ty: TypeIdx) -> Result<SlotId, AdapterError> {
+        if let Some(reserve) = self.emission_reserve.as_mut() {
+            grow_emission(&mut self.extra_slots, &mut self.emission_bytes, *reserve)?;
+        }
         let idx = self.base_slots + self.extra_slots.len() as SlotId;
         self.extra_slots.push(MirSlot {
             kind: SlotKind::Temp,
             ty,
             name: None,
         });
-        idx
+        Ok(idx)
     }
 
     /// End every StrView TEMP minted since the statement watermark (774
     /// statement-tail lifetime): a method-receiver view dies with its
     /// statement, so a later field replace of the root is legal. Named
     /// view LOCALS live to scope end (782's root-hold semantics).
-    fn end_stmt_temp_views(&mut self) {
+    fn end_stmt_temp_views(&mut self) -> Result<(), AdapterError> {
         let base = self.base_slots;
         let wm = self.stmt_slot_watermark;
         let mut ends: Vec<SlotId> = Vec::new();
@@ -2760,22 +3222,36 @@ impl<'a> FnLower<'a> {
             }
         }
         for t in ends {
-            self.emit(MirInstr::BorrowEnd { token: t }, None);
+            self.emit(MirInstr::BorrowEnd { token: t }, None)?;
         }
         self.stmt_slot_watermark = base + self.extra_slots.len() as u32;
+        Ok(())
     }
 
-    fn const_i32(&mut self, v: i32) -> u32 {
-        self.out.intern_const(MirConst::I32(v))
+    fn scalar_const(&mut self, value: MirConst) -> Result<u32, AdapterError> {
+        if let Some(index) = self.out.consts.iter().position(|c| *c == value) {
+            return Ok(index as u32);
+        }
+        if let Some(reserve) = self.emission_reserve.as_mut() {
+            grow_emission(&mut self.out.consts, &mut self.emission_bytes, *reserve)?;
+        }
+        // The lookup above already established absence. Insert directly
+        // rather than repeat the entire pool scan for every new constant.
+        self.out.consts.push(value);
+        Ok(self.out.consts.len() as u32 - 1)
+    }
+
+    fn const_i32(&mut self, v: i32) -> Result<u32, AdapterError> {
+        self.scalar_const(MirConst::I32(v))
     }
 
     /// PLAN-909: a fresh i32 constant slot holding the cell element index
     /// (single-element cells read/write index 0).
-    fn cell_index_slot(&mut self, t_i32: TypeIdx) -> SlotId {
-        let idx = self.temp_ty(t_i32);
-        let c = self.const_i32(0);
-        self.emit(MirInstr::Const { dst: idx, value: c }, None);
-        idx
+    fn cell_index_slot(&mut self, t_i32: TypeIdx) -> Result<SlotId, AdapterError> {
+        let idx = self.temp_ty(t_i32)?;
+        let c = self.const_i32(0)?;
+        self.emit(MirInstr::Const { dst: idx, value: c }, None)?;
+        Ok(idx)
     }
 
     /// PLAN-909: the scalar element type of a cell slot (`List<T>`), if the
@@ -2787,8 +3263,8 @@ impl<'a> FnLower<'a> {
         }
     }
 
-    fn const_bool(&mut self, v: bool) -> u32 {
-        self.out.intern_const(MirConst::Bool(v))
+    fn const_bool(&mut self, v: bool) -> Result<u32, AdapterError> {
+        self.scalar_const(MirConst::Bool(v))
     }
 
     /// The MIR type index of an expression's HIR type (data path maps
@@ -2877,8 +3353,8 @@ impl<'a> FnLower<'a> {
                     // PLAN-909: a cell read observes the CURRENT shared
                     // value (never a snapshot): LIST_GET element 0 of the
                     // creator/callee-shared buffer.
-                    let dst = self.temp_ty(ty);
-                    let index = self.cell_index_slot(self.t_i32);
+                    let dst = self.temp_ty(ty)?;
+                    let index = self.cell_index_slot(self.t_i32)?;
                     self.emit(
                         MirInstr::ListGet {
                             dst,
@@ -2886,7 +3362,7 @@ impl<'a> FnLower<'a> {
                             index,
                         },
                         sp,
-                    );
+                    )?;
                     Ok(dst)
                 } else {
                     Ok(slot)
@@ -2897,11 +3373,11 @@ impl<'a> FnLower<'a> {
             // to write). `verify_mir` treats Unit slots as initialized by
             // width and admits this slot only as the Unit entry's return
             // operand.
-            hir::ExprKind::Unit => Ok(self.temp_ty(ty)),
+            hir::ExprKind::Unit => Ok(self.temp_ty(ty)?),
             hir::ExprKind::Constant { value } => {
-                let dst = self.temp_ty(ty);
-                let c = self.const_i32(*value);
-                self.emit(MirInstr::Const { dst, value: c }, sp);
+                let dst = self.temp_ty(ty)?;
+                let c = self.const_i32(*value)?;
+                self.emit(MirInstr::Const { dst, value: c }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::Binary { op, lhs, rhs, .. } if bin_eq_ne_text => {
@@ -2910,7 +3386,7 @@ impl<'a> FnLower<'a> {
                 // dispatch as the str ops.
                 let l = self.text_view_operand(lhs, depth + 1)?;
                 let r = self.text_view_operand(rhs, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::StrCmp {
                         eq: matches!(op, hir::BinOp::Eq),
@@ -2919,13 +3395,13 @@ impl<'a> FnLower<'a> {
                         rhs: r,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::Binary { op, lhs, rhs, .. } => {
                 let l = self.eval_expr(*lhs, depth + 1)?;
                 let r = self.eval_expr(*rhs, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 let mop = map_binop(*op)?;
                 self.emit(
                     MirInstr::Bin {
@@ -2935,12 +3411,12 @@ impl<'a> FnLower<'a> {
                         rhs: r,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::Unary { op, operand } => {
                 let v = self.eval_expr(*operand, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 let mop = match op {
                     hir::UnaryOp::NegI32 => UnOp::NegI32,
                     hir::UnaryOp::NotBool => UnOp::NotBool,
@@ -2952,16 +3428,16 @@ impl<'a> FnLower<'a> {
                         operand: v,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::Logical { op, lhs, rhs } => {
                 // Short-circuit: the result slot is defined in BOTH arms.
                 let l = self.eval_expr(*lhs, depth + 1)?;
-                let result = self.temp(ScalarShape::Bool);
-                let rhs_b = self.new_block();
-                let skip_b = self.new_block();
-                let join = self.new_block();
+                let result = self.temp(ScalarShape::Bool)?;
+                let rhs_b = self.new_block()?;
+                let skip_b = self.new_block()?;
+                let join = self.new_block()?;
                 let (then_b, else_b) = match op {
                     hir::LogicOp::And => (rhs_b, skip_b),
                     hir::LogicOp::Or => (skip_b, rhs_b),
@@ -2974,14 +3450,14 @@ impl<'a> FnLower<'a> {
                 // Skipped arm: result = the short-circuit value.
                 self.cur = skip_b;
                 self.terminated = false;
-                let c = self.const_bool(matches!(op, hir::LogicOp::Or));
+                let c = self.const_bool(matches!(op, hir::LogicOp::Or))?;
                 self.emit(
                     MirInstr::Const {
                         dst: result,
                         value: c,
                     },
                     sp,
-                );
+                )?;
                 self.set_term(Terminator::Jump { target: join });
                 // Taken arm: result = rhs.
                 self.cur = rhs_b;
@@ -2994,7 +3470,7 @@ impl<'a> FnLower<'a> {
                         src: r,
                     },
                     rsp,
-                );
+                )?;
                 self.set_term(Terminator::Jump { target: join });
                 self.cur = join;
                 self.terminated = false;
@@ -3006,308 +3482,398 @@ impl<'a> FnLower<'a> {
                 bindings,
             } => {
                 // Source-order evaluation, then binding-map reorder.
-                let mut arg_slots = Vec::with_capacity(eval_args.len());
+                let mut arg_slots = emission_vec(
+                    eval_args.len(),
+                    &mut self.emission_bytes,
+                    &mut self.emission_reserve,
+                )?;
                 for a in eval_args {
                     arg_slots.push(self.eval_expr(*a, depth + 1)?);
                 }
-                if self.out.is_host_console_profile() {
-                    if let hir::DefKind::Intrinsic { symbol, .. } =
+                let argument_bytes = arg_slots.capacity() * std::mem::size_of::<SlotId>();
+                let result = (|| {
+                    if let hir::DefKind::Foreign { declaration, .. } =
                         &self.hir_module.defs[callee.0 as usize].kind
                     {
-                        let host = self
-                            .out
-                            .host_imports
-                            .iter()
-                            .position(|h| &h.symbol == symbol)
+                        let declaration_bytes = std::mem::size_of_val(declaration)
+                            .checked_add(declaration.heap_bytes())
                             .ok_or_else(|| {
-                                AdapterError::inv(
-                                    "host.reference",
-                                    "host declaration missing".into(),
+                                AdapterError::resource(
+                                    "foreign declaration capacity overflow".into(),
                                 )
-                            })? as u32;
-                        if arg_slots.len() != 1 {
-                            return Err(AdapterError::inv(
-                                "host.signature",
-                                "console call needs one argument".into(),
-                            ));
+                            })?;
+                        self.reserve_owned(declaration_bytes)?;
+                        let declaration = Box::new(declaration.clone());
+                        // Clone retains lengths rather than unused source
+                        // capacities. The whole bound protected allocation;
+                        // now keep only the actual newly owned graph's fee.
+                        let cloned_bytes = std::mem::size_of_val(&*declaration)
+                            .checked_add(declaration.heap_bytes())
+                            .ok_or_else(|| {
+                                AdapterError::resource(
+                                    "cloned foreign declaration capacity overflow".into(),
+                                )
+                            })?;
+                        self.release_owned(declaration_bytes - cloned_bytes)?;
+                        let mut actuals = emission_vec(
+                            declaration.params().len(),
+                            &mut self.emission_bytes,
+                            &mut self.emission_reserve,
+                        )?;
+                        actuals.resize(declaration.params().len(), 0);
+
+                        for binding in bindings {
+                            actuals[binding.param as usize] = arg_slots[binding.arg as usize];
                         }
+                        let dst = self.temp_ty(ty)?;
                         self.emit(
-                            MirInstr::HostCall {
-                                host,
-                                arg: arg_slots[0],
+                            MirInstr::ForeignCall {
+                                declaration,
+                                dst,
+                                args: actuals,
                             },
                             sp,
-                        );
-                        // No runtime Unit local/dst: HIR has already forbidden value consumers.
-                        return Ok(u32::MAX);
-                    }
-                }
-                let callee_ref = self.def_map.get(&callee.0).cloned().ok_or_else(|| {
-                    AdapterError::inv(
-                        "lower.callee",
-                        format!("callee def {} out of range", callee.0),
-                    )
-                })?;
-                if let CalleeRef::Import(imp) = callee_ref {
-                    let symbol = self.out.imports[imp as usize].symbol.clone();
-                    if !symbol.starts_with("fn:") {
-                        // Test marks: trace event + frozen i32 result.
-                        let dst = self.temp_ty(self.t_i32);
-                        let (event, value) = match symbol.as_str() {
-                            "hir.test.mark_a" => (TraceEvent::MarkA, 1i32),
-                            "hir.test.mark_b" => (TraceEvent::MarkB, 2),
-                            other => {
-                                return Err(AdapterError::uns(
-                                    "lower.intrinsic",
-                                    format!("intrinsic `{}` is not in the av profile", other),
-                                ));
-                            }
-                        };
-                        self.emit(MirInstr::Trace { event }, sp);
-                        let c = self.const_i32(value);
-                        self.emit(MirInstr::Const { dst, value: c }, sp);
+                        )?;
                         return Ok(dst);
                     }
-                    // Unit lowering (PLAN-828 T-04): a cross-function
-                    // callee is a `fn:<name>` unit import call — the same
-                    // shape split_units produces post-hoc; the checked
-                    // linking environment resolves it at snapshot link
-                    // with a signature check. PLAN-881 V-09: fn: imports
-                    // now FALL THROUGH to the shared call lowering so a
-                    // callee with mut-record params gets the SAME
-                    // t_MutRet unwrap + write-back treatment as the
-                    // Func-path call (the wrapper detection reads this
-                    // import's wrapped signature).
-                }
-                // The callee signature comes from the HIR def table —
-                // forward and self references resolve before any body of
-                // that function has been lowered.
-                let callee_def = *callee;
-                let hir_ty = self
-                    .hir_module
-                    .defs
-                    .get(callee_def.0 as usize)
-                    .and_then(|d| d.kind.fn_type())
-                    .ok_or_else(|| {
-                        AdapterError::inv(
-                            "lower.callee-sig",
-                            "callee lacks a function type".to_string(),
-                        )
-                    })?;
-                let sig_idx = fn_type_index_ext(
-                    hir_ty,
-                    self.hir_module,
-                    self.out,
-                    self.data,
-                    self.owned,
-                    &mut self.ty_memo,
-                    &mut self.ty_visiting,
-                )?;
-                let n_params = self
-                    .out
-                    .sig_of(sig_idx)
-                    .map(|s| s.params.len())
-                    .unwrap_or(0);
-                let mut actuals: Vec<SlotId> = vec![0; n_params];
-                for b in bindings {
-                    let pos = b.param as usize;
-                    if pos >= n_params {
-                        return Err(AdapterError::inv(
-                            "lower.binding",
-                            format!("call binding param {} out of range", b.param),
-                        ));
-                    }
-                    actuals[pos] = arg_slots[b.arg as usize];
-                }
-                // R2-F08': does the callee carry mut record params? Its
-                // MIR sig result is then the t_MutRet wrapper.
-                //
-                // PLAN-871 T-05 gap (771 HIR fixture): a call can be lowered
-                // BEFORE the callee body (HIR declaration order is not a
-                // topological order), so the already-lowered function table
-                // may not carry the callee yet — reading only that table made
-                // the wrapper ABI order-dependent (the call took the plain
-                // HIR result type and the callee returned the wrapper).
-                // The wrapper ABI is a property of the DEF (param modes +
-                // types), so a forward reference derives the def-level
-                // signature through the same builder the callee will use.
-                let callee_sig_ty: Option<MirType> = match callee_ref {
-                    CalleeRef::Import(ii) => self
-                        .out
-                        .imports
-                        .get(ii as usize)
-                        .and_then(|imp| self.out.types.get(imp.sig as usize).cloned()),
-                    CalleeRef::Func(fi) => {
-                        let table = self
-                            .out
-                            .funcs
-                            .get(fi as usize)
-                            .and_then(|f| self.out.types.get(f.sig as usize).cloned());
-                        let already_wrapped = matches!(
-                            &table,
-                            Some(MirType::Fn(f))
-                                if matches!(
-                                    self.out.types.get(f.result as usize),
-                                    Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_")
-                                )
-                        );
-                        // The def-level derivation belongs to the data/owned
-                        // profiles (their t_MutRet ABI). The COLLECTIONS
-                        // profile has its own type walker (Variants/lists are
-                        // outside av.owned/1), so it keeps the table answer.
-                        if already_wrapped || self.collections() || !(self.owned || self.data) {
-                            table
-                        } else {
-                            let overrides = self.sig_mode_overrides.clone();
-                            let derived = if self.owned {
-                                owned_fn_sig_for_def(
-                                    self.hir_module,
-                                    callee_def.0,
-                                    hir_ty,
-                                    self.out,
-                                    &overrides,
-                                )?
-                            } else {
-                                data_fn_sig_for_def(
-                                    self.hir_module,
-                                    callee_def.0,
-                                    hir_ty,
-                                    self.out,
-                                    &overrides,
-                                )?
-                            };
-                            self.out.types.get(derived as usize).cloned()
-                        }
-                    }
-                };
-                let wrapper_fields = match callee_sig_ty.as_ref() {
-                    Some(MirType::Fn(f)) => match self.out.types.get(f.result as usize) {
-                        Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_") => {
-                            Some((f.result, r.fields.clone()))
-                        }
-                        _ => None,
-                    },
-                    _ => None,
-                };
-                if let Some((wrap_ty, fields)) = wrapper_fields {
-                    // The call result IS the wrapper: dst gets the WRAPPER
-                    // type; then f0 = the source result, wb* write back.
-                    let wrap_dst = self.temp_ty_from_cache(wrap_ty);
-                    self.emit(
-                        MirInstr::Call {
-                            callee: callee_ref,
-                            dst: wrap_dst,
-                            args: actuals.clone(),
-                        },
-                        sp,
-                    );
-                    // f0: the SOURCE result. A copyable result copies out
-                    // (FIELD_GET); an OWNED result (Str / resource record)
-                    // is not Copy — FIELD_MOVE field 0 is the only
-                    // ownership exit (R3-F08: FieldGet of a Str field only
-                    // ever mints a view).
-                    let f0_owned = ace_av_core::ownership::type_is_owned(&self.out, fields[0].ty);
-                    let v = self.temp_ty(ty);
-                    if f0_owned {
-                        self.emit(
-                            MirInstr::FieldMove {
-                                dst: v,
-                                root: wrap_dst,
-                                path: vec![0],
-                            },
-                            sp,
-                        );
-                    } else {
-                        self.emit(
-                            MirInstr::FieldGet {
-                                dst: v,
-                                base: wrap_dst,
-                                path: vec![0],
-                            },
-                            sp,
-                        );
-                    }
-                    // wb*: one write-back field per MUT-RECORD param of the
-                    // callee, in signature order (fields[1..] mirror that
-                    // order exactly). Only the callee's OWN mut params
-                    // consume wrapper fields — plain (read-only) record
-                    // args and non-record args contribute NOTHING (R3-F08:
-                    // the old loop keyed on "any record actual", mis-
-                    // indexing mixed signatures and panicking past the
-                    // wrapper's field count).
-                    let mut wb_idx = 1usize;
-                    for pos in self.callee_mut_record_params(callee_def, &callee_sig_ty) {
-                        let back = self.temp_ty_from_cache(fields[wb_idx].ty);
-                        // PLAN-881 V-09: a COPYABLE wb field copies out and
-                        // copies back (data profile / copyable records on
-                        // owned); an owned one keeps the transfer pair.
-                        let wb_owned =
-                            ace_av_core::ownership::type_is_owned(self.out, fields[wb_idx].ty);
-                        if wb_owned {
+                    if self.out.is_host_console_profile() {
+                        if let hir::DefKind::Intrinsic { symbol, .. } =
+                            &self.hir_module.defs[callee.0 as usize].kind
+                        {
+                            let host = self
+                                .out
+                                .host_imports
+                                .iter()
+                                .position(|h| &h.symbol == symbol)
+                                .ok_or_else(|| {
+                                    AdapterError::inv(
+                                        "host.reference",
+                                        "host declaration missing".into(),
+                                    )
+                                })? as u32;
+                            if arg_slots.len() != 1 {
+                                return Err(AdapterError::inv(
+                                    "host.signature",
+                                    "console call needs one argument".into(),
+                                ));
+                            }
                             self.emit(
-                                MirInstr::FieldMove {
-                                    dst: back,
-                                    root: wrap_dst,
-                                    path: vec![wb_idx as u16],
+                                MirInstr::HostCall {
+                                    host,
+                                    arg: arg_slots[0],
                                 },
                                 sp,
-                            );
+                            )?;
+                            // No runtime Unit local/dst: HIR has already forbidden value consumers.
+                            return Ok(u32::MAX);
+                        }
+                    }
+                    let callee_ref = self.def_map.get(&callee.0).cloned().ok_or_else(|| {
+                        AdapterError::inv(
+                            "lower.callee",
+                            format!("callee def {} out of range", callee.0),
+                        )
+                    })?;
+                    if let CalleeRef::Import(imp) = callee_ref {
+                        let symbol = &self.out.imports[imp as usize].symbol;
+                        if !symbol.starts_with("fn:") {
+                            // Test marks: trace event + frozen i32 result.
+                            let (event, value) = match symbol.as_str() {
+                                "hir.test.mark_a" => (TraceEvent::MarkA, 1i32),
+                                "hir.test.mark_b" => (TraceEvent::MarkB, 2),
+                                other => {
+                                    return Err(AdapterError::uns(
+                                        "lower.intrinsic",
+                                        format!("intrinsic `{}` is not in the av profile", other),
+                                    ));
+                                }
+                            };
+                            let dst = self.temp_ty(self.t_i32)?;
+                            self.emit(MirInstr::Trace { event }, sp)?;
+                            let c = self.const_i32(value)?;
+                            self.emit(MirInstr::Const { dst, value: c }, sp)?;
+                            return Ok(dst);
+                        }
+                        // Unit lowering (PLAN-828 T-04): a cross-function
+                        // callee is a `fn:<name>` unit import call — the same
+                        // shape split_units produces post-hoc; the checked
+                        // linking environment resolves it at snapshot link
+                        // with a signature check. PLAN-881 V-09: fn: imports
+                        // now FALL THROUGH to the shared call lowering so a
+                        // callee with mut-record params gets the SAME
+                        // t_MutRet unwrap + write-back treatment as the
+                        // Func-path call (the wrapper detection reads this
+                        // import's wrapped signature).
+                    }
+                    // The callee signature comes from the HIR def table —
+                    // forward and self references resolve before any body of
+                    // that function has been lowered.
+                    let callee_def = *callee;
+                    let hir_ty = self
+                        .hir_module
+                        .defs
+                        .get(callee_def.0 as usize)
+                        .and_then(|d| d.kind.fn_type())
+                        .ok_or_else(|| {
+                            AdapterError::inv(
+                                "lower.callee-sig",
+                                "callee lacks a function type".to_string(),
+                            )
+                        })?;
+                    // In the admitted scalar unit, every local callee's
+                    // signature was already validated/interned in the unit
+                    // import pass. Borrow it; rebuilding and cloning it here
+                    // would own unneeded parameter tables at each call.
+                    let scalar_unit = self.emission_reserve.is_some()
+                        && !self.data
+                        && !self.owned
+                        && !self.collections();
+                    let imported_sig = if scalar_unit {
+                        match callee_ref {
+                            CalleeRef::Import(index) => {
+                                self.out.imports.get(index as usize).map(|i| i.sig)
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                    let sig_idx = if let Some(sig) = imported_sig {
+                        sig
+                    } else {
+                        fn_type_index_ext(
+                            hir_ty,
+                            self.hir_module,
+                            self.out,
+                            self.data,
+                            self.owned,
+                            &mut self.ty_memo,
+                            &mut self.ty_visiting,
+                        )?
+                    };
+                    let n_params = self
+                        .out
+                        .sig_of(sig_idx)
+                        .map(|s| s.params.len())
+                        .unwrap_or(0);
+                    let mut actuals = emission_vec(
+                        n_params,
+                        &mut self.emission_bytes,
+                        &mut self.emission_reserve,
+                    )?;
+                    actuals.resize(n_params, 0);
+                    for b in bindings {
+                        let pos = b.param as usize;
+                        if pos >= n_params {
+                            return Err(AdapterError::inv(
+                                "lower.binding",
+                                format!("call binding param {} out of range", b.param),
+                            ));
+                        }
+                        actuals[pos] = arg_slots[b.arg as usize];
+                    }
+                    // R2-F08': does the callee carry mut record params? Its
+                    // MIR sig result is then the t_MutRet wrapper.
+                    //
+                    // PLAN-871 T-05 gap (771 HIR fixture): a call can be lowered
+                    // BEFORE the callee body (HIR declaration order is not a
+                    // topological order), so the already-lowered function table
+                    // may not carry the callee yet — reading only that table made
+                    // the wrapper ABI order-dependent (the call took the plain
+                    // HIR result type and the callee returned the wrapper).
+                    // The wrapper ABI is a property of the DEF (param modes +
+                    // types), so a forward reference derives the def-level
+                    // signature through the same builder the callee will use.
+                    let callee_sig_ty: Option<MirType> = if scalar_unit {
+                        // Scalar signatures have no mut-record return wrapper.
+                        None
+                    } else {
+                        match callee_ref {
+                            CalleeRef::Import(ii) => self
+                                .out
+                                .imports
+                                .get(ii as usize)
+                                .and_then(|imp| self.out.types.get(imp.sig as usize).cloned()),
+                            CalleeRef::Func(fi) => {
+                                let table = self
+                                    .out
+                                    .funcs
+                                    .get(fi as usize)
+                                    .and_then(|f| self.out.types.get(f.sig as usize).cloned());
+                                let already_wrapped = matches!(
+                                    &table,
+                                    Some(MirType::Fn(f))
+                                        if matches!(
+                                            self.out.types.get(f.result as usize),
+                                            Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_")
+                                        )
+                                );
+                                // The def-level derivation belongs to the data/owned
+                                // profiles (their t_MutRet ABI). The COLLECTIONS
+                                // profile has its own type walker (Variants/lists are
+                                // outside av.owned/1), so it keeps the table answer.
+                                if already_wrapped
+                                    || self.collections()
+                                    || !(self.owned || self.data)
+                                {
+                                    table
+                                } else {
+                                    let overrides = self.sig_mode_overrides.clone();
+                                    let derived = if self.owned {
+                                        owned_fn_sig_for_def(
+                                            self.hir_module,
+                                            callee_def.0,
+                                            hir_ty,
+                                            self.out,
+                                            &overrides,
+                                        )?
+                                    } else {
+                                        data_fn_sig_for_def(
+                                            self.hir_module,
+                                            callee_def.0,
+                                            hir_ty,
+                                            self.out,
+                                            &overrides,
+                                        )?
+                                    };
+                                    self.out.types.get(derived as usize).cloned()
+                                }
+                            }
+                        }
+                    };
+                    let wrapper_fields = match callee_sig_ty.as_ref() {
+                        Some(MirType::Fn(f)) => match self.out.types.get(f.result as usize) {
+                            Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_") => {
+                                Some((f.result, r.fields.clone()))
+                            }
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    if let Some((wrap_ty, fields)) = wrapper_fields {
+                        // The call result IS the wrapper: dst gets the WRAPPER
+                        // type; then f0 = the source result, wb* write back.
+                        let wrap_dst = self.temp_ty_from_cache(wrap_ty)?;
+                        self.emit(
+                            MirInstr::Call {
+                                callee: callee_ref,
+                                dst: wrap_dst,
+                                args: actuals.clone(),
+                            },
+                            sp,
+                        )?;
+                        // f0: the SOURCE result. A copyable result copies out
+                        // (FIELD_GET); an OWNED result (Str / resource record)
+                        // is not Copy — FIELD_MOVE field 0 is the only
+                        // ownership exit (R3-F08: FieldGet of a Str field only
+                        // ever mints a view).
+                        let f0_owned =
+                            ace_av_core::ownership::type_is_owned(&self.out, fields[0].ty);
+                        let v = self.temp_ty(ty)?;
+                        if f0_owned {
+                            self.emit(
+                                MirInstr::FieldMove {
+                                    dst: v,
+                                    root: wrap_dst,
+                                    path: vec![0],
+                                },
+                                sp,
+                            )?;
                         } else {
                             self.emit(
                                 MirInstr::FieldGet {
-                                    dst: back,
+                                    dst: v,
                                     base: wrap_dst,
-                                    path: vec![wb_idx as u16],
+                                    path: vec![0],
                                 },
                                 sp,
-                            );
+                            )?;
                         }
-                        // The write-back target: the ORIGINAL BorrowMut'd
-                        // local — recover it from the HIR binding (the
-                        // arg slot is the borrow temp).
-                        if let Some(target) = self.mut_borrow_target(actuals[pos]) {
+                        // wb*: one write-back field per MUT-RECORD param of the
+                        // callee, in signature order (fields[1..] mirror that
+                        // order exactly). Only the callee's OWN mut params
+                        // consume wrapper fields — plain (read-only) record
+                        // args and non-record args contribute NOTHING (R3-F08:
+                        // the old loop keyed on "any record actual", mis-
+                        // indexing mixed signatures and panicking past the
+                        // wrapper's field count).
+                        let mut wb_idx = 1usize;
+                        for pos in self.callee_mut_record_params(callee_def, &callee_sig_ty) {
+                            let back = self.temp_ty_from_cache(fields[wb_idx].ty)?;
+                            // PLAN-881 V-09: a COPYABLE wb field copies out and
+                            // copies back (data profile / copyable records on
+                            // owned); an owned one keeps the transfer pair.
+                            let wb_owned =
+                                ace_av_core::ownership::type_is_owned(self.out, fields[wb_idx].ty);
                             if wb_owned {
                                 self.emit(
-                                    MirInstr::Move {
-                                        dst: target,
-                                        src: back,
+                                    MirInstr::FieldMove {
+                                        dst: back,
+                                        root: wrap_dst,
+                                        path: vec![wb_idx as u16],
                                     },
                                     sp,
-                                );
+                                )?;
                             } else {
                                 self.emit(
-                                    MirInstr::Copy {
-                                        dst: target,
-                                        src: back,
+                                    MirInstr::FieldGet {
+                                        dst: back,
+                                        base: wrap_dst,
+                                        path: vec![wb_idx as u16],
                                     },
                                     sp,
-                                );
+                                )?;
                             }
-                        } else if wb_owned {
-                            // Untracked target: drop the extracted record
-                            // (the borrow discipline was violated
-                            // upstream).
-                            self.emit(MirInstr::Drop { slot: back }, sp);
+                            // The write-back target: the ORIGINAL BorrowMut'd
+                            // local — recover it from the HIR binding (the
+                            // arg slot is the borrow temp).
+                            if let Some(target) = self.mut_borrow_target(actuals[pos]) {
+                                if wb_owned {
+                                    self.emit(
+                                        MirInstr::Move {
+                                            dst: target,
+                                            src: back,
+                                        },
+                                        sp,
+                                    )?;
+                                } else {
+                                    self.emit(
+                                        MirInstr::Copy {
+                                            dst: target,
+                                            src: back,
+                                        },
+                                        sp,
+                                    )?;
+                                }
+                            } else if wb_owned {
+                                // Untracked target: drop the extracted record
+                                // (the borrow discipline was violated
+                                // upstream).
+                                self.emit(MirInstr::Drop { slot: back }, sp)?;
+                            }
+                            wb_idx += 1;
                         }
-                        wb_idx += 1;
+                        debug_assert_eq!(
+                            wb_idx,
+                            fields.len(),
+                            "the wrapper is fully consumed: f0 + every wb field"
+                        );
+                        return Ok(v);
                     }
-                    debug_assert_eq!(
-                        wb_idx,
-                        fields.len(),
-                        "the wrapper is fully consumed: f0 + every wb field"
-                    );
-                    return Ok(v);
-                }
-                let dst = self.temp_ty(ty);
-                self.emit(
-                    MirInstr::Call {
-                        callee: callee_ref,
-                        dst,
-                        args: actuals,
-                    },
-                    sp,
-                );
-                Ok(dst)
+                    let dst = self.temp_ty(ty)?;
+                    self.emit(
+                        MirInstr::Call {
+                            callee: callee_ref,
+                            dst,
+                            args: actuals,
+                        },
+                        sp,
+                    )?;
+                    Ok(dst)
+                })();
+                drop(arg_slots);
+                self.release_owned(argument_bytes)?;
+                result
             }
             hir::ExprKind::CallClosure { callee, eval_args } => {
                 // Evaluate the function value first, then actuals in source
@@ -3317,8 +3883,8 @@ impl<'a> FnLower<'a> {
                 for arg in eval_args {
                     args.push(self.eval_expr(*arg, depth + 1)?);
                 }
-                let dst = self.temp_ty(ty);
-                self.emit(MirInstr::CallClosure { dst, closure, args }, sp);
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::CallClosure { dst, closure, args }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::CreateClosure { callee, captures } => {
@@ -3379,8 +3945,8 @@ impl<'a> FnLower<'a> {
                                 // WRITES it, the snapshot seeds a fresh
                                 // PRIVATE cell the env alone owns.
                                 let elem = self.cell_elem_of(source_ty).unwrap_or(source_ty);
-                                let value = self.temp_ty_from_cache(elem);
-                                let index = self.cell_index_slot(self.t_i32);
+                                let value = self.temp_ty_from_cache(elem)?;
+                                let index = self.cell_index_slot(self.t_i32)?;
                                 self.emit(
                                     MirInstr::ListGet {
                                         dst: value,
@@ -3388,9 +3954,9 @@ impl<'a> FnLower<'a> {
                                         index,
                                     },
                                     sp,
-                                );
+                                )?;
                                 if child_writes {
-                                    let cell = self.temp_ty(source_ty);
+                                    let cell = self.temp_ty(source_ty)?;
                                     self.emit(
                                         MirInstr::ListNew {
                                             dst: cell,
@@ -3398,8 +3964,8 @@ impl<'a> FnLower<'a> {
                                             cap: 1,
                                         },
                                         sp,
-                                    );
-                                    self.emit(MirInstr::ListPush { root: cell, value }, sp);
+                                    )?;
+                                    self.emit(MirInstr::ListPush { root: cell, value }, sp)?;
                                     operands.push(CaptureOperand {
                                         kind: CaptureKind::Move,
                                         src: cell,
@@ -3417,18 +3983,18 @@ impl<'a> FnLower<'a> {
                                 // scalar into a FRESH one-element list the
                                 // environment alone owns; the source stays
                                 // live and is never written back.
-                                let copied = self.temp_ty_from_cache(source_ty);
+                                let copied = self.temp_ty_from_cache(source_ty)?;
                                 self.emit(
                                     MirInstr::Copy {
                                         dst: copied,
                                         src: source,
                                     },
                                     sp,
-                                );
+                                )?;
                                 let cell_ty = self.out.intern_type(MirType::List(
                                     ace_av_core::mir::ListTypeRef { elem: source_ty },
                                 ));
-                                let cell = self.temp_ty(cell_ty);
+                                let cell = self.temp_ty(cell_ty)?;
                                 self.emit(
                                     MirInstr::ListNew {
                                         dst: cell,
@@ -3436,14 +4002,14 @@ impl<'a> FnLower<'a> {
                                         cap: 1,
                                     },
                                     sp,
-                                );
+                                )?;
                                 self.emit(
                                     MirInstr::ListPush {
                                         root: cell,
                                         value: copied,
                                     },
                                     sp,
-                                );
+                                )?;
                                 operands.push(CaptureOperand {
                                     kind: CaptureKind::Move,
                                     src: cell,
@@ -3455,14 +4021,14 @@ impl<'a> FnLower<'a> {
                                 // a fresh temp, then transfer that temp into
                                 // the closure env so CREATE_CLOSURE retains
                                 // one uniform ownership contract.
-                                let copied = self.temp_ty_from_cache(source_ty);
+                                let copied = self.temp_ty_from_cache(source_ty)?;
                                 self.emit(
                                     MirInstr::Copy {
                                         dst: copied,
                                         src: source,
                                     },
                                     sp,
-                                );
+                                )?;
                                 operands.push(CaptureOperand {
                                     kind: CaptureKind::Move,
                                     src: copied,
@@ -3474,7 +4040,7 @@ impl<'a> FnLower<'a> {
                     };
                     operands.push(CaptureOperand { kind, src: source });
                 }
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::CreateClosure {
                         dst,
@@ -3482,7 +4048,7 @@ impl<'a> FnLower<'a> {
                         captures: operands,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             // -- PLAN-821 owned text surface (av.owned/1) ------------------
@@ -3490,15 +4056,15 @@ impl<'a> FnLower<'a> {
                 // Destination kind follows the expression's HIR type: an
                 // owning context materializes a fresh buffer; a borrowing
                 // context gets the immortal static view (770).
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 let c = self
                     .out
                     .intern_const(MirConst::Str(value.as_bytes().to_vec().into_boxed_slice()));
-                self.emit(MirInstr::Const { dst, value: c }, sp);
+                self.emit(MirInstr::Const { dst, value: c }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::CharLit { scalar } if self.owned => {
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 let ch = char::from_u32(*scalar).ok_or_else(|| {
                     AdapterError::inv(
                         "lower.char-domain",
@@ -3506,25 +4072,25 @@ impl<'a> FnLower<'a> {
                     )
                 })?;
                 let c = self.out.intern_const(MirConst::Char(ch));
-                self.emit(MirInstr::Const { dst, value: c }, sp);
+                self.emit(MirInstr::Const { dst, value: c }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::TextLen { operand } if self.owned && !self.collections() => {
                 let v = self.text_view_operand(operand, depth)?;
-                let dst = self.temp_ty(ty);
-                self.emit(MirInstr::StrLen { dst, view: v }, sp);
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::StrLen { dst, view: v }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::TextLenBytes { operand } if self.owned && !self.collections() => {
                 let v = self.text_view_operand(operand, depth)?;
-                let dst = self.temp_ty(ty);
-                self.emit(MirInstr::StrLenBytes { dst, view: v }, sp);
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::StrLenBytes { dst, view: v }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::TextCharAt { operand, index } if self.owned && !self.collections() => {
                 let v = self.text_view_operand(operand, depth)?;
                 let i = self.eval_expr(*index, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::StrCharAt {
                         dst,
@@ -3532,7 +4098,7 @@ impl<'a> FnLower<'a> {
                         index: i,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::TextSlice {
@@ -3543,7 +4109,7 @@ impl<'a> FnLower<'a> {
                 let v = self.text_view_operand(operand, depth)?;
                 let a = self.eval_expr(*start, depth + 1)?;
                 let b = self.eval_expr(*end, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::StrSlice {
                         dst,
@@ -3552,7 +4118,7 @@ impl<'a> FnLower<'a> {
                         end: b,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::TextConcat { lhs, rhs } if self.owned && !self.collections() => {
@@ -3561,7 +4127,7 @@ impl<'a> FnLower<'a> {
                 // first, the same dispatch as the str ops.
                 let l = self.text_view_operand(lhs, depth + 1)?;
                 let r = self.text_view_operand(rhs, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::StrConcat {
                         dst,
@@ -3569,7 +4135,7 @@ impl<'a> FnLower<'a> {
                         rhs: r,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             // PLAN-889: the collections source descriptor also exposes the
@@ -3581,27 +4147,27 @@ impl<'a> FnLower<'a> {
                 // owned copy of its range (770 AP-2 over both receivers).
                 let src_ty = self.expr_ty(*operand)?;
                 let v = self.eval_expr(*operand, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 match self.out.types.get(src_ty as usize) {
                     Some(MirType::StrView) => {
-                        self.emit(MirInstr::StrToOwned { dst, view: v }, sp);
+                        self.emit(MirInstr::StrToOwned { dst, view: v }, sp)?;
                     }
                     _ => {
-                        self.emit(MirInstr::Clone { dst, src: v }, sp);
+                        self.emit(MirInstr::Clone { dst, src: v }, sp)?;
                     }
                 }
                 Ok(dst)
             }
             hir::ExprKind::ClosureClone { operand } if self.out.is_closures_profile() => {
                 let src = self.eval_expr(*operand, depth + 1)?;
-                let dst = self.temp_ty(ty);
-                self.emit(MirInstr::Clone { dst, src }, sp);
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::Clone { dst, src }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::TextToOwned { operand } if self.owned => {
                 let v = self.eval_expr(*operand, depth + 1)?;
-                let dst = self.temp_ty(ty);
-                self.emit(MirInstr::StrToOwned { dst, view: v }, sp);
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::StrToOwned { dst, view: v }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::TextToBorrowed { operand } if self.owned => {
@@ -3609,33 +4175,33 @@ impl<'a> FnLower<'a> {
                 // view it is the identity borrow (a legal view share).
                 let src_ty = self.expr_ty(*operand)?;
                 let v = self.eval_expr(*operand, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 match self.out.types.get(src_ty as usize) {
                     Some(MirType::Str) => {
-                        self.emit(MirInstr::View { dst, src: v }, sp);
+                        self.emit(MirInstr::View { dst, src: v }, sp)?;
                     }
                     _ => {
-                        self.emit(MirInstr::Copy { dst, src: v }, sp);
+                        self.emit(MirInstr::Copy { dst, src: v }, sp)?;
                     }
                 }
                 Ok(dst)
             }
             hir::ExprKind::CharToCodepoint { operand } if self.owned => {
                 let v = self.eval_expr(*operand, depth + 1)?;
-                let dst = self.temp_ty(ty);
-                self.emit(MirInstr::CharToCodepoint { dst, ch: v }, sp);
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::CharToCodepoint { dst, ch: v }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::CharFromCodepoint { operand } if self.owned => {
                 let v = self.eval_expr(*operand, depth + 1)?;
-                let dst = self.temp_ty(ty);
-                self.emit(MirInstr::CharFromCodepoint { dst, code: v }, sp);
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::CharFromCodepoint { dst, code: v }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::RecordClone { base, .. } if self.owned => {
                 let v = self.eval_expr(*base, depth + 1)?;
                 let src_ty = self.slot_ty_all(v);
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 // PLAN-871 T-05 gap (782 TP02): the base of a record clone can
                 // be a READ-ONLY VIEW — a plain `t: Tok` parameter is typed as
                 // `RecordView` (R1-F08). CLONE requires an owned value, so a
@@ -3659,7 +4225,7 @@ impl<'a> FnLower<'a> {
                             // comes from `StrToOwned` over that view.
                             if matches!(self.out.types.get(f.ty as usize), Some(MirType::Str)) {
                                 let str_view_t = self.out.intern_type(MirType::StrView);
-                                let view = self.temp_ty(str_view_t);
+                                let view = self.temp_ty(str_view_t)?;
                                 self.emit(
                                     MirInstr::FieldGet {
                                         dst: view,
@@ -3667,9 +4233,9 @@ impl<'a> FnLower<'a> {
                                         path: vec![i as u16],
                                     },
                                     sp,
-                                );
-                                let owned = self.temp_ty(f.ty);
-                                self.emit(MirInstr::StrToOwned { dst: owned, view }, sp);
+                                )?;
+                                let owned = self.temp_ty(f.ty)?;
+                                self.emit(MirInstr::StrToOwned { dst: owned, view }, sp)?;
                                 operands.push(owned);
                                 continue;
                             }
@@ -3689,7 +4255,7 @@ impl<'a> FnLower<'a> {
                                     ),
                                 ));
                             }
-                            let got = self.temp_ty(f.ty);
+                            let got = self.temp_ty(f.ty)?;
                             self.emit(
                                 MirInstr::FieldGet {
                                     dst: got,
@@ -3697,7 +4263,7 @@ impl<'a> FnLower<'a> {
                                     path: vec![i as u16],
                                 },
                                 sp,
-                            );
+                            )?;
                             operands.push(got);
                         }
                         self.emit(
@@ -3707,11 +4273,11 @@ impl<'a> FnLower<'a> {
                                 operands,
                             },
                             sp,
-                        );
+                        )?;
                         Ok(dst)
                     }
                     _ => {
-                        self.emit(MirInstr::Clone { dst, src: v }, sp);
+                        self.emit(MirInstr::Clone { dst, src: v }, sp)?;
                         Ok(dst)
                     }
                 }
@@ -3723,8 +4289,8 @@ impl<'a> FnLower<'a> {
                 match &self.body.exprs[inner.0 as usize].kind {
                     hir::ExprKind::ReadLocal { local } => {
                         let src = self.slot_of_local[local.0 as usize];
-                        let dst = self.temp_ty(ty);
-                        self.emit(MirInstr::Move { dst, src }, sp);
+                        let dst = self.temp_ty(ty)?;
+                        self.emit(MirInstr::Move { dst, src }, sp)?;
                         Ok(dst)
                     }
                     _ => Err(AdapterError::uns(
@@ -3763,7 +4329,7 @@ impl<'a> FnLower<'a> {
                         )
                     })?;
                 let ty = self.slot_ty_cache[slot as usize];
-                let tmp = self.temp_ty(ty);
+                let tmp = self.temp_ty(ty)?;
                 self.mut_borrow_temps.push((tmp, slot));
                 let owned_ty = ace_av_core::ownership::type_is_owned(self.out, ty);
                 if owned_ty {
@@ -3773,7 +4339,7 @@ impl<'a> FnLower<'a> {
                             src: slot,
                         },
                         sp,
-                    );
+                    )?;
                 } else {
                     self.emit(
                         MirInstr::Copy {
@@ -3781,7 +4347,7 @@ impl<'a> FnLower<'a> {
                             src: slot,
                         },
                         sp,
-                    );
+                    )?;
                 }
                 Ok(tmp)
             }
@@ -3818,8 +4384,8 @@ impl<'a> FnLower<'a> {
                         matches!(self.out.types.get(t as usize), Some(MirType::Record(_)))
                             && !ace_av_core::ownership::type_is_owned(self.out, t);
                     if copyable_record {
-                        let snap = self.temp_ty(t);
-                        self.emit(MirInstr::Copy { dst: snap, src: s }, sp);
+                        let snap = self.temp_ty(t)?;
+                        self.emit(MirInstr::Copy { dst: snap, src: s }, sp)?;
                         arg_slots.push(snap);
                     } else {
                         arg_slots.push(s);
@@ -3890,7 +4456,7 @@ impl<'a> FnLower<'a> {
                     }
                     operands[b.field as usize] = arg_slots[b.arg as usize];
                 }
-                let dst = self.temp_ty(rec_ty);
+                let dst = self.temp_ty(rec_ty)?;
                 self.emit(
                     MirInstr::Aggregate {
                         dst,
@@ -3898,13 +4464,13 @@ impl<'a> FnLower<'a> {
                         operands,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             // -- PLAN-864 collections surface ------------------------------
             hir::ExprKind::ListNew { list } if self.collections() => {
                 let ty = self.expr_ty(eid)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::ListNew {
                         dst,
@@ -3912,19 +4478,19 @@ impl<'a> FnLower<'a> {
                         cap: 4,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::ListLen { list } if self.collections() => {
                 let l = self.eval_expr(*list, depth + 1)?;
-                let dst = self.temp_ty(ty);
-                self.emit(MirInstr::ListLen { dst, src: l }, sp);
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::ListLen { dst, src: l }, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::ListPush { list, value } if self.collections() => {
                 let l = self.eval_expr(*list, depth + 1)?;
                 let v = self.eval_expr(*value, depth + 1)?;
-                self.emit(MirInstr::ListPush { root: l, value: v }, sp);
+                self.emit(MirInstr::ListPush { root: l, value: v }, sp)?;
                 Ok(NO_SLOT)
             }
             hir::ExprKind::ListInsert { list, index, value }
@@ -3946,7 +4512,7 @@ impl<'a> FnLower<'a> {
                             value: v,
                         },
                         sp,
-                    );
+                    )?;
                 } else {
                     self.emit(
                         MirInstr::ListSet {
@@ -3955,7 +4521,7 @@ impl<'a> FnLower<'a> {
                             value: v,
                         },
                         sp,
-                    );
+                    )?;
                 }
                 Ok(NO_SLOT)
             }
@@ -3970,7 +4536,7 @@ impl<'a> FnLower<'a> {
                 }
                 let l = self.eval_expr(*list, depth + 1)?;
                 let i = self.eval_expr(*index, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::ListGet {
                         dst,
@@ -3978,13 +4544,13 @@ impl<'a> FnLower<'a> {
                         index: i,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::ListRemove { list, index } if self.collections() => {
                 let l = self.eval_expr(*list, depth + 1)?;
                 let i = self.eval_expr(*index, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::ListRemove {
                         dst,
@@ -3992,7 +4558,7 @@ impl<'a> FnLower<'a> {
                         index: i,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::ListClear { list } if self.collections() => {
@@ -4020,15 +4586,15 @@ impl<'a> FnLower<'a> {
                 let owned_elem = self.hir_elem_owned(*list)?;
                 let t_i32 = self.out.intern_type(MirType::I32);
                 let t_bool = self.out.intern_type(MirType::Bool);
-                let header = self.new_block();
-                let body_b = self.new_block();
-                let exit_b = self.new_block();
+                let header = self.new_block()?;
+                let body_b = self.new_block()?;
+                let exit_b = self.new_block()?;
                 self.set_term(Terminator::Jump { target: header });
                 self.cur = header;
                 self.terminated = false;
-                let n = self.temp_ty(t_i32);
-                self.emit(MirInstr::ListLen { dst: n, src: l }, sp);
-                let zero = self.temp_ty(t_i32);
+                let n = self.temp_ty(t_i32)?;
+                self.emit(MirInstr::ListLen { dst: n, src: l }, sp)?;
+                let zero = self.temp_ty(t_i32)?;
                 let c0 = self.out.intern_const(MirConst::I32(0));
                 self.emit(
                     MirInstr::Const {
@@ -4036,8 +4602,8 @@ impl<'a> FnLower<'a> {
                         value: c0,
                     },
                     sp,
-                );
-                let c = self.temp_ty(t_bool);
+                )?;
+                let c = self.temp_ty(t_bool)?;
                 self.emit(
                     MirInstr::Bin {
                         op: BinOp::GtI32,
@@ -4046,7 +4612,7 @@ impl<'a> FnLower<'a> {
                         rhs: zero,
                     },
                     sp,
-                );
+                )?;
                 self.set_term(Terminator::Branch {
                     cond: c,
                     then: body_b,
@@ -4054,7 +4620,7 @@ impl<'a> FnLower<'a> {
                 });
                 self.cur = body_b;
                 self.terminated = false;
-                let one = self.temp_ty(t_i32);
+                let one = self.temp_ty(t_i32)?;
                 let c1 = self.out.intern_const(MirConst::I32(1));
                 self.emit(
                     MirInstr::Const {
@@ -4062,8 +4628,8 @@ impl<'a> FnLower<'a> {
                         value: c1,
                     },
                     sp,
-                );
-                let idx = self.temp_ty(t_i32);
+                )?;
+                let idx = self.temp_ty(t_i32)?;
                 self.emit(
                     MirInstr::Bin {
                         op: BinOp::SubI32,
@@ -4072,8 +4638,8 @@ impl<'a> FnLower<'a> {
                         rhs: one,
                     },
                     sp,
-                );
-                let e = self.temp_ty(elem_ty.unwrap_or(t_i32));
+                )?;
+                let e = self.temp_ty(elem_ty.unwrap_or(t_i32))?;
                 self.emit(
                     MirInstr::ListRemove {
                         dst: e,
@@ -4081,9 +4647,9 @@ impl<'a> FnLower<'a> {
                         index: idx,
                     },
                     sp,
-                );
+                )?;
                 if owned_elem {
-                    self.emit(MirInstr::Drop { slot: e }, sp);
+                    self.emit(MirInstr::Drop { slot: e }, sp)?;
                 }
                 self.set_term(Terminator::Jump { target: header });
                 self.cur = exit_b;
@@ -4100,7 +4666,7 @@ impl<'a> FnLower<'a> {
                     Some(p) => Some(self.eval_expr(*p, depth + 1)?),
                     None => None,
                 };
-                let dst = self.temp_ty(vt);
+                let dst = self.temp_ty(vt)?;
                 self.emit(
                     MirInstr::VariantPack {
                         dst,
@@ -4109,12 +4675,12 @@ impl<'a> FnLower<'a> {
                         payload: pl,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::VariantGuardTest { root, disc } if self.collections() => {
                 let r = self.eval_expr(*root, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::VariantGuard {
                         dst,
@@ -4122,12 +4688,12 @@ impl<'a> FnLower<'a> {
                         disc: *disc,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::VariantProject { root, disc } if self.collections() => {
                 let r = self.eval_expr(*root, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::VariantProject {
                         dst,
@@ -4135,7 +4701,7 @@ impl<'a> FnLower<'a> {
                         disc: *disc,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             // TextLen over an owned-element projection: the fused view
@@ -4146,8 +4712,8 @@ impl<'a> FnLower<'a> {
                 let Some((list_e, index_e, path)) = proj else {
                     // plain receiver (a local Str / literal): owned path
                     let v = self.text_view_operand(operand, depth)?;
-                    let dst = self.temp_ty(ty);
-                    self.emit(MirInstr::StrLen { dst, view: v }, sp);
+                    let dst = self.temp_ty(ty)?;
+                    self.emit(MirInstr::StrLen { dst, view: v }, sp)?;
                     return Ok(dst);
                 };
                 let (l, i) = (
@@ -4157,7 +4723,7 @@ impl<'a> FnLower<'a> {
                 let view_ty = self.out.intern_type(MirType::StrView);
                 // 1. move the element OUT (single extraction)
                 let evty = self.elem_vt_of(list_e)?;
-                let e = self.temp_ty(evty);
+                let e = self.temp_ty(evty)?;
                 self.emit(
                     MirInstr::ListRemove {
                         dst: e,
@@ -4165,7 +4731,7 @@ impl<'a> FnLower<'a> {
                         index: i,
                     },
                     sp,
-                );
+                )?;
                 // 2. reach the terminal Str: a whole Str element is already
                 // a Str slot; a field rides the profile-4 FieldGet contract
                 // (exact-type dst — the runtime handle-SHARES the field, no
@@ -4175,7 +4741,7 @@ impl<'a> FnLower<'a> {
                     e
                 } else {
                     let str_ty = self.out.intern_type(MirType::Str);
-                    let tmp = self.temp_ty(str_ty);
+                    let tmp = self.temp_ty(str_ty)?;
                     let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
                     self.emit(
                         MirInstr::FieldGet {
@@ -4184,23 +4750,23 @@ impl<'a> FnLower<'a> {
                             path: segs,
                         },
                         sp,
-                    );
+                    )?;
                     tmp
                 };
                 // 3. view + read
-                let v = self.temp_ty(view_ty);
+                let v = self.temp_ty(view_ty)?;
                 self.emit(
                     MirInstr::View {
                         dst: v,
                         src: str_slot,
                     },
                     sp,
-                );
-                let dst = self.temp_ty(ty);
-                self.emit(MirInstr::StrLen { dst, view: v }, sp);
+                )?;
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::StrLen { dst, view: v }, sp)?;
                 // end the view BEFORE the restore — an insert of a value
                 // under an active borrow is a mut-conflict in the lattice.
-                self.emit(MirInstr::BorrowEnd { token: v }, sp);
+                self.emit(MirInstr::BorrowEnd { token: v }, sp)?;
                 // 4. restore the element exactly (same buffers; len back)
                 self.emit(
                     MirInstr::ListInsert {
@@ -4209,7 +4775,7 @@ impl<'a> FnLower<'a> {
                         value: e,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             // FieldGet rooted at a ListGet over an OWNED list: the fused
@@ -4222,7 +4788,7 @@ impl<'a> FnLower<'a> {
                     if self.hir_elem_owned(list)? {
                         let l = self.eval_expr(list, depth + 1)?;
                         let i = self.eval_expr(index, depth + 1)?;
-                        let dst = self.temp_ty(ty);
+                        let dst = self.temp_ty(ty)?;
                         let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
                         self.emit(
                             MirInstr::ListFieldGet {
@@ -4232,13 +4798,13 @@ impl<'a> FnLower<'a> {
                                 path: segs,
                             },
                             sp,
-                        );
+                        )?;
                         let _ = root;
                         return Ok(dst);
                     }
                 }
                 let b = self.eval_expr(*base, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
                 self.emit(
                     MirInstr::FieldGet {
@@ -4247,7 +4813,7 @@ impl<'a> FnLower<'a> {
                         path: segs,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             hir::ExprKind::FieldGet { base, path } => {
@@ -4258,7 +4824,7 @@ impl<'a> FnLower<'a> {
                     ));
                 }
                 let b = self.eval_expr(*base, depth + 1)?;
-                let dst = self.temp_ty(ty);
+                let dst = self.temp_ty(ty)?;
                 let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
                 // PLAN-871 T-05 gap (782 HP01): hand-authored HIR reads an
                 // OWNED field as its owned type after the whole record was
@@ -4303,7 +4869,7 @@ impl<'a> FnLower<'a> {
                             };
                             if matches!(self.out.types.get(fty as usize), Some(MirType::Str)) {
                                 let str_view_t = self.out.intern_type(MirType::StrView);
-                                let view = self.temp_ty(str_view_t);
+                                let view = self.temp_ty(str_view_t)?;
                                 self.emit(
                                     MirInstr::FieldGet {
                                         dst: view,
@@ -4311,8 +4877,8 @@ impl<'a> FnLower<'a> {
                                         path: segs,
                                     },
                                     sp,
-                                );
-                                self.emit(MirInstr::StrToOwned { dst, view }, sp);
+                                )?;
+                                self.emit(MirInstr::StrToOwned { dst, view }, sp)?;
                                 return Ok(dst);
                             }
                             return Err(AdapterError::uns(
@@ -4329,7 +4895,7 @@ impl<'a> FnLower<'a> {
                                     path: segs,
                                 },
                                 sp,
-                            );
+                            )?;
                             return Ok(dst);
                         }
                     }
@@ -4341,7 +4907,7 @@ impl<'a> FnLower<'a> {
                         path: segs,
                     },
                     sp,
-                );
+                )?;
                 Ok(dst)
             }
             // By-value record parameters/returns ride a BorrowView WRAPPER
@@ -4482,6 +5048,38 @@ fn lower_function_with(
     mode_overrides: &BTreeMap<String, Vec<hir::ParamMode>>,
     closure_facts: &dyn ClosureFacts,
 ) -> Result<MirFunction, AdapterError> {
+    lower_function_with_emission(
+        hir_module,
+        out,
+        def_index,
+        body_id,
+        sig,
+        source_snapshot,
+        def_map,
+        name,
+        data,
+        owned,
+        mode_overrides,
+        closure_facts,
+        None,
+    )
+}
+
+fn lower_function_with_emission(
+    hir_module: &hir::Module,
+    out: &mut MirModule,
+    def_index: u32,
+    body_id: hir::BodyId,
+    sig: TypeIdx,
+    source_snapshot: u64,
+    def_map: &BTreeMap<u32, CalleeRef>,
+    name: String,
+    data: bool,
+    owned: bool,
+    mode_overrides: &BTreeMap<String, Vec<hir::ParamMode>>,
+    closure_facts: &dyn ClosureFacts,
+    mut emission_reserve: Option<&mut dyn FnMut(usize) -> Result<(), String>>,
+) -> Result<MirFunction, AdapterError> {
     let body = hir_module.bodies.get(body_id.0 as usize).ok_or_else(|| {
         AdapterError::inv("lower.body-ref", format!("body {} out of range", body_id.0))
     })?;
@@ -4534,8 +5132,18 @@ fn lower_function_with(
 
     // Base slots: params lead in signature order (HIR verify guarantees the
     // param locals lead the local table in order), then the other locals.
-    let mut slots: Vec<MirSlot> = Vec::with_capacity(body.locals.len());
-    let mut slot_of_local = vec![0u32; body.locals.len()];
+    let mut emission_bytes = 0;
+    let mut slots: Vec<MirSlot> = emission_vec(
+        body.locals.len(),
+        &mut emission_bytes,
+        &mut emission_reserve,
+    )?;
+    let mut slot_of_local = emission_vec(
+        body.locals.len(),
+        &mut emission_bytes,
+        &mut emission_reserve,
+    )?;
+    slot_of_local.resize(body.locals.len(), 0u32);
     let mut ty_memo = BTreeMap::new();
     let mut ty_visiting = std::collections::BTreeSet::new();
     for (li, l) in body.locals.iter().enumerate() {
@@ -4560,6 +5168,12 @@ fn lower_function_with(
             }
         }
         let idx = slots.len() as SlotId;
+        if let Some(reserve) = emission_reserve.as_mut() {
+            emission_bytes = emission_bytes
+                .checked_add(l.name.len())
+                .ok_or_else(|| AdapterError::resource("slot name capacity overflow".into()))?;
+            reserve(emission_bytes).map_err(AdapterError::resource)?;
+        }
         slots.push(MirSlot {
             kind: if l.role == hir::LocalRole::Param {
                 SlotKind::Param
@@ -4572,7 +5186,11 @@ fn lower_function_with(
         slot_of_local[li] = idx;
     }
     let base_slots = slots.len() as u32;
-    let slot_ty_cache: Vec<TypeIdx> = slots.iter().map(|s| s.ty).collect();
+    let mut slot_ty_cache = emission_vec(slots.len(), &mut emission_bytes, &mut emission_reserve)?;
+    slot_ty_cache.extend(slots.iter().map(|s| s.ty));
+    let mut loop_targets =
+        emission_vec(body.loops.len(), &mut emission_bytes, &mut emission_reserve)?;
+    loop_targets.resize(body.loops.len(), (0, 0));
 
     // R2-F08': mut record params — plain OWNED record slots (move-in);
     // their final values wrap into the t_MutRet result at Return.
@@ -4620,7 +5238,7 @@ fn lower_function_with(
         blocks: vec![],
         cur: 0,
         terminated: false,
-        loop_targets: vec![(0, 0); body.loops.len()],
+        loop_targets,
         func_index: def_index,
         flat: 0,
         mut_wrap_ty,
@@ -4633,8 +5251,10 @@ fn lower_function_with(
         pending_joins: vec![],
         cell_locals,
         closure_facts,
+        emission_reserve,
+        emission_bytes,
     };
-    let entry_b = lower.new_block();
+    let entry_b = lower.new_block()?;
     debug_assert_eq!(entry_b, 0);
 
     // A HIR function referenced by CREATE_CLOSURE is a closure body. The
@@ -4661,18 +5281,23 @@ fn lower_function_with(
                 )
             })?;
             let dst = lower.slot_of_local[*local_index];
-            lower.emit(MirInstr::EnvGet { dst, field }, None);
+            lower.emit(MirInstr::EnvGet { dst, field }, None)?;
             layout.push(ty);
         }
         env = Some(layout);
     }
 
-    let mut stack: Vec<Task> = vec![Task {
-        hir_block: body.entry,
-        stmt_idx: 0,
-        mir_block: Start::Block(0),
-        exit: None,
-    }];
+    let mut stack: Vec<Task> =
+        emission_vec(1, &mut lower.emission_bytes, &mut lower.emission_reserve)?;
+    lower.push_task(
+        &mut stack,
+        Task {
+            hir_block: body.entry,
+            stmt_idx: 0,
+            mir_block: Start::Block(0),
+            exit: None,
+        },
+    )?;
     while let Some(mut task) = stack.pop() {
         // F798-R7-05: an after-if continuation whose join was never
         // allocated (both arms terminated) and that has no remaining
@@ -4689,7 +5314,7 @@ fn lower_function_with(
                 if lower.pending_joins[slot].is_none() && !has_stmts {
                     continue;
                 }
-                lower.join_block(slot)
+                lower.join_block(slot)?
             }
         };
         lower.cur = start_block;
@@ -4722,7 +5347,7 @@ fn lower_function_with(
                                 None => None,
                             };
                             let disc = *disc;
-                            lower.end_stmt_temp_views();
+                            lower.end_stmt_temp_views()?;
                             lower.emit(
                                 MirInstr::VariantSwitch {
                                     root: dst,
@@ -4730,12 +5355,12 @@ fn lower_function_with(
                                     payload: pl,
                                 },
                                 lower.span(*value),
-                            );
+                            )?;
                             continue;
                         }
                     }
                     let v = lower.eval_expr(*value, 0)?;
-                    lower.end_stmt_temp_views();
+                    lower.end_stmt_temp_views()?;
                     let dst = lower.slot_of_local[local.0 as usize];
                     let sp = lower.span(*value);
                     if lower.cell_locals.contains(&(local.0 as usize)) {
@@ -4753,14 +5378,14 @@ fn lower_function_with(
                                 cap: 1,
                             },
                             sp,
-                        );
+                        )?;
                         lower.emit(
                             MirInstr::ListPush {
                                 root: dst,
                                 value: v,
                             },
                             sp,
-                        );
+                        )?;
                         continue;
                     }
                     let slot_ty = lower
@@ -4770,7 +5395,7 @@ fn lower_function_with(
                         .cloned();
                     let is_closure = matches!(slot_ty, Some(MirType::Closure(_)));
                     if is_closure {
-                        lower.emit(MirInstr::Move { dst, src: v }, sp);
+                        lower.emit(MirInstr::Move { dst, src: v }, sp)?;
                     } else if lower.owned {
                         // The binding's slot type decides: owned kinds
                         // transfer (MOVE — the temp dies), copyables copy.
@@ -4782,12 +5407,12 @@ fn lower_function_with(
                             })
                             .unwrap_or(false);
                         if is_owned {
-                            lower.emit(MirInstr::Move { dst, src: v }, sp);
+                            lower.emit(MirInstr::Move { dst, src: v }, sp)?;
                         } else {
-                            lower.emit(MirInstr::Copy { dst, src: v }, sp);
+                            lower.emit(MirInstr::Copy { dst, src: v }, sp)?;
                         }
                     } else {
-                        lower.emit(MirInstr::Copy { dst, src: v }, sp);
+                        lower.emit(MirInstr::Copy { dst, src: v }, sp)?;
                     }
                 }
                 hir::Stmt::Assign { place, value } => {
@@ -4807,9 +5432,9 @@ fn lower_function_with(
                                 // closures observe it through their own
                                 // handle of the same cell.
                                 let v = lower.eval_expr(*value, 0)?;
-                                lower.end_stmt_temp_views();
+                                lower.end_stmt_temp_views()?;
                                 let sp = lower.span(*value);
-                                let index = lower.cell_index_slot(lower.t_i32);
+                                let index = lower.cell_index_slot(lower.t_i32)?;
                                 lower.emit(
                                     MirInstr::ListSet {
                                         root: dst,
@@ -4817,7 +5442,7 @@ fn lower_function_with(
                                         value: v,
                                     },
                                     sp,
-                                );
+                                )?;
                                 continue;
                             }
                             // PLAN-864: `r = Ok(42)` — variant slot writes
@@ -4832,7 +5457,7 @@ fn lower_function_with(
                                         None => None,
                                     };
                                     let disc = *disc;
-                                    lower.end_stmt_temp_views();
+                                    lower.end_stmt_temp_views()?;
                                     lower.emit(
                                         MirInstr::VariantSwitch {
                                             root: dst,
@@ -4840,12 +5465,12 @@ fn lower_function_with(
                                             payload: pl,
                                         },
                                         lower.span(*value),
-                                    );
+                                    )?;
                                     continue;
                                 }
                             }
                             let v = lower.eval_expr(*value, 0)?;
-                            lower.end_stmt_temp_views();
+                            lower.end_stmt_temp_views()?;
                             let sp = lower.span(*value);
                             if lower.owned {
                                 let slot_ty = lower
@@ -4860,12 +5485,12 @@ fn lower_function_with(
                                     })
                                     .unwrap_or(false);
                                 if is_owned {
-                                    lower.emit(MirInstr::Move { dst, src: v }, sp);
+                                    lower.emit(MirInstr::Move { dst, src: v }, sp)?;
                                 } else {
-                                    lower.emit(MirInstr::Copy { dst, src: v }, sp);
+                                    lower.emit(MirInstr::Copy { dst, src: v }, sp)?;
                                 }
                             } else {
-                                lower.emit(MirInstr::Copy { dst, src: v }, sp);
+                                lower.emit(MirInstr::Copy { dst, src: v }, sp)?;
                             }
                         }
                         hir::PlaceKind::FieldPath(path) => {
@@ -4880,7 +5505,7 @@ fn lower_function_with(
                             // overlap invariant), then the structural write
                             // through the root local (contract-decision §4).
                             let v = lower.eval_expr(*value, 0)?;
-                            lower.end_stmt_temp_views();
+                            lower.end_stmt_temp_views()?;
                             let root = lower.slot_of_local[p.local.0 as usize];
                             let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
                             let sp = lower.span(*value);
@@ -4891,13 +5516,13 @@ fn lower_function_with(
                                     value: v,
                                 },
                                 sp,
-                            );
+                            )?;
                         }
                     }
                 }
                 hir::Stmt::Return { value } => {
                     let v = lower.eval_expr(*value, 0)?;
-                    lower.end_stmt_temp_views();
+                    lower.end_stmt_temp_views()?;
                     // R2-F08': a mut-record-param function returns the
                     // (source result, final mut params) wrapper — the
                     // caller unwraps and writes the params back.
@@ -4906,7 +5531,7 @@ fn lower_function_with(
                         for p in &lower.mut_param_slots {
                             operands.push(*p);
                         }
-                        let w = lower.temp_ty(wrap_ty);
+                        let w = lower.temp_ty(wrap_ty)?;
                         lower.emit(
                             MirInstr::Aggregate {
                                 dst: w,
@@ -4914,7 +5539,7 @@ fn lower_function_with(
                                 operands,
                             },
                             None,
-                        );
+                        )?;
                         w
                     } else {
                         v
@@ -4924,16 +5549,23 @@ fn lower_function_with(
                 }
                 hir::Stmt::If { cond, then, els } => {
                     let c = lower.eval_expr(*cond, 0)?;
-                    lower.end_stmt_temp_views();
-                    let then_b = lower.new_block();
+                    lower.end_stmt_temp_views()?;
+                    let then_b = lower.new_block()?;
                     let then_exit;
                     match els {
                         Some(else_hir) => {
                             // F798-R7-05: with both arms present the join
                             // is ON DEMAND — `if a { return } else { return }`
                             // never materializes an unreachable join block.
-                            let else_b = lower.new_block();
+                            let else_b = lower.new_block()?;
                             let slot = lower.pending_joins.len();
+                            if let Some(reserve) = lower.emission_reserve.as_mut() {
+                                grow_emission(
+                                    &mut lower.pending_joins,
+                                    &mut lower.emission_bytes,
+                                    *reserve,
+                                )?;
+                            }
                             lower.pending_joins.push(None);
                             then_exit = Some(Exit::Join(slot));
                             lower.set_term(Terminator::Branch {
@@ -4942,69 +5574,87 @@ fn lower_function_with(
                                 else_: else_b,
                             });
                             // LIFO: continuation processed last.
-                            stack.push(Task {
-                                hir_block: task.hir_block,
-                                stmt_idx: task.stmt_idx,
-                                mir_block: Start::JoinOnDemand(slot),
-                                exit: task.exit,
-                            });
-                            stack.push(Task {
-                                hir_block: *else_hir,
-                                stmt_idx: 0,
-                                mir_block: Start::Block(else_b),
-                                exit: Some(Exit::Join(slot)),
-                            });
+                            lower.push_task(
+                                &mut stack,
+                                Task {
+                                    hir_block: task.hir_block,
+                                    stmt_idx: task.stmt_idx,
+                                    mir_block: Start::JoinOnDemand(slot),
+                                    exit: task.exit,
+                                },
+                            )?;
+                            lower.push_task(
+                                &mut stack,
+                                Task {
+                                    hir_block: *else_hir,
+                                    stmt_idx: 0,
+                                    mir_block: Start::Block(else_b),
+                                    exit: Some(Exit::Join(slot)),
+                                },
+                            )?;
                         }
                         None => {
                             // No else: the branch's false edge targets the
                             // join, so it is required eagerly.
-                            let join = lower.new_block();
+                            let join = lower.new_block()?;
                             then_exit = Some(Exit::Block(join));
                             lower.set_term(Terminator::Branch {
                                 cond: c,
                                 then: then_b,
                                 else_: join,
                             });
-                            stack.push(Task {
-                                hir_block: task.hir_block,
-                                stmt_idx: task.stmt_idx,
-                                mir_block: Start::Block(join),
-                                exit: task.exit,
-                            });
+                            lower.push_task(
+                                &mut stack,
+                                Task {
+                                    hir_block: task.hir_block,
+                                    stmt_idx: task.stmt_idx,
+                                    mir_block: Start::Block(join),
+                                    exit: task.exit,
+                                },
+                            )?;
                         }
                     }
-                    stack.push(Task {
-                        hir_block: *then,
-                        stmt_idx: 0,
-                        mir_block: Start::Block(then_b),
-                        exit: then_exit,
-                    });
+                    lower.push_task(
+                        &mut stack,
+                        Task {
+                            hir_block: *then,
+                            stmt_idx: 0,
+                            mir_block: Start::Block(then_b),
+                            exit: then_exit,
+                        },
+                    )?;
                     break;
                 }
                 hir::Stmt::Loop {
                     id,
                     body: loop_body,
                 } => {
-                    let header = lower.new_block();
-                    let body_b = lower.new_block();
-                    let exit = lower.new_block();
+                    let header = lower.new_block()?;
+                    let body_b = lower.new_block()?;
+                    let exit = lower.new_block()?;
                     lower.loop_targets[id.0 as usize] = (header, exit);
                     lower.set_term(Terminator::Jump { target: header });
                     lower.cur = header;
                     lower.terminated = false;
                     lower.set_term(Terminator::Jump { target: body_b });
-                    stack.push(Task {
-                        hir_block: task.hir_block,
-                        stmt_idx: task.stmt_idx,
-                        mir_block: Start::Block(exit),
-                        exit: task.exit,
-                    });
-                    stack.push(Task {
-                        hir_block: *loop_body,
-                        stmt_idx: 0,
-                        mir_block: Start::Block(body_b),
-                        exit: Some(Exit::Block(header)),
-                    });
+                    lower.push_task(
+                        &mut stack,
+                        Task {
+                            hir_block: task.hir_block,
+                            stmt_idx: task.stmt_idx,
+                            mir_block: Start::Block(exit),
+                            exit: task.exit,
+                        },
+                    )?;
+                    lower.push_task(
+                        &mut stack,
+                        Task {
+                            hir_block: *loop_body,
+                            stmt_idx: 0,
+                            mir_block: Start::Block(body_b),
+                            exit: Some(Exit::Block(header)),
+                        },
+                    )?;
                     break;
                 }
                 hir::Stmt::Break { target } => {
@@ -5039,7 +5689,7 @@ fn lower_function_with(
                                 slot: lower.slot_of_local[local.0 as usize],
                             },
                             None,
-                        );
+                        )?;
                     }
                 }
                 hir::Stmt::Eval { value } => {
@@ -5050,7 +5700,7 @@ fn lower_function_with(
                     // unit sentinel) releases with the frame; owned
                     // transfers are verify-rejected at the source.
                     let _ = lower.eval_expr(*value, 0)?;
-                    lower.end_stmt_temp_views();
+                    lower.end_stmt_temp_views()?;
                 }
             }
         }
@@ -5062,7 +5712,7 @@ fn lower_function_with(
                     lower.set_term(Terminator::Jump { target: b });
                 }
                 Some(Exit::Join(slot)) => {
-                    let j = lower.join_block(slot);
+                    let j = lower.join_block(slot)?;
                     lower.set_term(Terminator::Jump { target: j });
                 }
                 // exit == None (root): the placeholder stays; rejected below.
@@ -5093,7 +5743,38 @@ fn lower_function_with(
 
     let owner = lower.out.owner.clone();
     let mut slots_final = slots;
+    if let Some(reserve) = lower.emission_reserve.as_mut() {
+        let capacity = slots_final
+            .len()
+            .checked_add(lower.extra_slots.len())
+            .ok_or_else(|| AdapterError::resource("final slot capacity overflow".into()))?;
+        reserve_emission_capacity(
+            &mut slots_final,
+            capacity,
+            &mut lower.emission_bytes,
+            *reserve,
+        )?;
+    }
     slots_final.append(&mut lower.extra_slots);
+    // The temporary slot array and traversal indices are not part of the
+    // returned MIR. Release their fees only after their actual owners drop.
+    if lower.emission_reserve.is_some() {
+        let scratch = lower.extra_slots.capacity() * std::mem::size_of::<MirSlot>()
+            + lower.slot_of_local.capacity() * std::mem::size_of::<SlotId>()
+            + lower.slot_ty_cache.capacity() * std::mem::size_of::<TypeIdx>()
+            + lower.loop_targets.capacity() * std::mem::size_of::<(BlockId, BlockId)>()
+            + lower.pending_joins.capacity() * std::mem::size_of::<Option<BlockId>>()
+            + stack.capacity() * std::mem::size_of::<Task>();
+        drop(lower.extra_slots);
+        drop(lower.slot_of_local);
+        drop(lower.slot_ty_cache);
+        drop(lower.loop_targets);
+        drop(lower.pending_joins);
+        drop(stack);
+        lower.emission_bytes -= scratch;
+        lower.emission_reserve.as_mut().unwrap()(lower.emission_bytes)
+            .map_err(AdapterError::resource)?;
+    }
     Ok(MirFunction {
         owner,
         name,

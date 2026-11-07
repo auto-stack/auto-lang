@@ -87,6 +87,12 @@ impl TargetProvider for RustTargetProvider {
         view: &SemanticView<'_>,
         _family: Family,
     ) -> Result<String, A2xReject> {
+        if view.foreign_declarations().next().is_some() {
+            return Err(A2xReject::new(
+                "a2r.foreign-unsupported",
+                "Rust target does not execute source foreign calls",
+            ));
+        }
         let marks: Vec<&'static str> = view.trace_symbols().into_iter().collect();
         Ok(match view.domain {
             ace_core::hir::HirDomain::Text

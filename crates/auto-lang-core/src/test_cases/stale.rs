@@ -177,6 +177,7 @@ pub fn check_with_families(
     // only reports carrying native rows pay for the discovery.
     let mut current_ac: Option<BTreeMap<String, String>> = ac_axes;
     let mut current_probe_abi: Option<std::collections::BTreeMap<String, String>> = None;
+    let mut current_probe_abi_source: Option<std::collections::BTreeMap<String, String>> = None;
     let mut current_probe_av: Option<BTreeMap<String, String>> = None;
     let mut current_probe_console: Option<BTreeMap<String, String>> = None;
     let mut current_probe_collections: Option<BTreeMap<String, String>> = None;
@@ -301,6 +302,17 @@ pub fn check_with_families(
                                     == Some(crate::test_cases::ac_av::AV_CONSOLE_RECIPE)
                         })
                     });
+            let abi_source_row = is_probe
+                && r.get("native")
+                    .and_then(|n| n.get("toolchain"))
+                    .and_then(|t| t.as_array())
+                    .map(|arr| {
+                        arr.iter().any(|p| {
+                            p[0].as_str() == Some("recipe")
+                                && p[1].as_str() == Some(super::abi_source::RECIPE)
+                        })
+                    })
+                    .unwrap_or(false);
             let abi_probe_row = is_probe
                 && r.get("native")
                     .and_then(|n| n.get("toolchain"))
@@ -345,18 +357,19 @@ pub fn check_with_families(
                     .is_some_and(|axes| {
                         axes.iter().any(|pair| {
                             pair[0].as_str() == Some("recipe")
-                                && pair[1].as_str()
-                                    == Some(crate::test_cases::ac_mn::TYPED_RECIPE)
+                                && pair[1].as_str() == Some(crate::test_cases::ac_mn::TYPED_RECIPE)
                         })
                     });
             let current = if typed_probe_row {
-                current_probe_typed.get_or_insert_with(
-                    crate::test_cases::ac_mn::current_typed_toolchain_identity,
-                )
+                current_probe_typed
+                    .get_or_insert_with(crate::test_cases::ac_mn::current_typed_toolchain_identity)
             } else if collections_probe_row {
                 current_probe_collections.get_or_insert_with(
                     crate::test_cases::ac_mn::current_collections_toolchain_identity,
                 )
+            } else if abi_source_row {
+                current_probe_abi_source
+                    .get_or_insert_with(crate::test_cases::abi::current_source_toolchain_identity)
             } else if abi_probe_row {
                 current_probe_abi
                     .get_or_insert_with(crate::test_cases::abi::current_toolchain_identity)
@@ -415,9 +428,11 @@ pub fn check_with_families(
                 // PLAN-797 T-06: probe rows carry a RECIPE-SPECIFIC axis
                 // family — the ABI recipe binds to the abi worker's
                 // identity axes, everything else to the sema worker's.
-                let abi_row = row_axes.get("recipe").map(
-                    |r| r == "abi/interop-v1" || r == "abi/ca-d1-bridge-v1",
-                );
+                let abi_row = row_axes.get("recipe").map(|r| {
+                    r == "abi/interop-v1"
+                        || r == "abi/ca-d1-bridge-v1"
+                        || r == super::abi_source::RECIPE
+                });
                 let mut applicable: Vec<&str> = if is_probe {
                     match abi_row {
                         Some(true) => vec![

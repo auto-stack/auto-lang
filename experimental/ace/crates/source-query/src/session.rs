@@ -25,7 +25,7 @@ use crate::catalog::SignatureCatalog;
 use crate::facts::{FactsError, FnSigFacts, InferBodyFacts, NegativeDep};
 use crate::ident::owner_logical;
 use crate::keys::QueryKey;
-use crate::produce::{produce_infer_body, ProduceError, ProduceLimits};
+use crate::produce::{ProduceError, ProduceLimits};
 use crate::walk::walk_body;
 use ace_core::source::ast::{FnItem, Item, Program};
 use ace_semantics_contract::{ContentVersion, LogicalId};
@@ -129,6 +129,7 @@ pub(crate) struct QueryCacheCheckpoint {
 
 /// The per-module query session.
 pub struct SourceQuerySession {
+    foreign: Option<ace_foreign_contract::manual::AdmittedForeign>,
     package: String,
     module: String,
     capabilities: Vec<String>,
@@ -140,9 +141,23 @@ pub struct SourceQuerySession {
     sigs: BTreeMap<String, Arc<SigPage>>,
     bodies: BTreeMap<LogicalId, Arc<BodyPage>>,
     counters: Counters,
+    work: crate::work::Ledger,
+    /// PLAN-938: the shared account every body query admits its solver
+    /// working set on; `None` keeps the legacy unaccounted query.
+    resources: Option<crate::resources::Resources>,
 }
 
 impl SourceQuerySession {
+    pub fn with_resources(mut self, resources: crate::resources::Resources) -> Self {
+        self.resources = Some(resources);
+        self
+    }
+    pub fn set_foreign(&mut self, foreign: Option<ace_foreign_contract::manual::AdmittedForeign>) {
+        self.foreign = foreign;
+    }
+    pub fn foreign(&self) -> Option<&ace_foreign_contract::manual::AdmittedForeign> {
+        self.foreign.as_ref()
+    }
     pub(crate) fn cache_checkpoint(&self) -> QueryCacheCheckpoint {
         QueryCacheCheckpoint {
             declaration_contexts: self.declaration_contexts.clone(),
@@ -159,6 +174,7 @@ impl SourceQuerySession {
 
     pub fn new(package: &str, module: &str) -> Self {
         SourceQuerySession {
+            foreign: None,
             package: package.to_string(),
             module: module.to_string(),
             capabilities: Vec::new(),
@@ -170,12 +186,18 @@ impl SourceQuerySession {
             sigs: BTreeMap::new(),
             bodies: BTreeMap::new(),
             counters: Counters::default(),
+            work: crate::work::Ledger::default(),
+            resources: None,
         }
     }
 
     /// The caller's capability set participates in every key: enabling or
     /// disabling a capability can change what the source means, so old
     /// answers are never reused across it.
+    pub fn with_work(mut self, work: crate::work::Ledger) -> Self {
+        self.work = work;
+        self
+    }
     pub fn with_capabilities<I, S>(mut self, caps: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -230,6 +252,17 @@ impl SourceQuerySession {
         self.revision
     }
 
+    /// Read the already resident immutable answer and its actual dependency
+    /// versions. This performs no AST walk and never invokes a producer.
+    pub fn resident_page(
+        &self,
+        name: &str,
+    ) -> Option<(&InferBodyFacts, &[(String, ContentVersion)])> {
+        self.bodies
+            .get(&owner_logical(&self.package, &self.module, name))
+            .map(|p| (&p.facts, p.sig_deps.as_slice()))
+    }
+
     pub fn capabilities(&self) -> &[String] {
         &self.capabilities
     }
@@ -253,9 +286,14 @@ impl SourceQuerySession {
     /// The current module's signature catalog (declarations only: building
     /// it never reads a body).
     pub fn catalog(&self, program: &Program) -> Result<SignatureCatalog, QueryError> {
-        SignatureCatalog::build(program, &self.package, &self.module)
-            .and_then(|c| c.with_declaration_contexts(&self.declaration_contexts))
-            .map_err(QueryError::Produce)
+        SignatureCatalog::build_with_foreign(
+            program,
+            &self.package,
+            &self.module,
+            self.foreign.as_ref(),
+        )
+        .and_then(|c| c.with_declaration_contexts(&self.declaration_contexts))
+        .map_err(QueryError::Produce)
     }
 
     pub fn declaration_contexts(&self) -> &BTreeMap<String, String> {
@@ -269,9 +307,14 @@ impl SourceQuerySession {
         program: &Program,
         contexts: BTreeMap<String, String>,
     ) -> Result<(), QueryError> {
-        SignatureCatalog::build(program, &self.package, &self.module)
-            .and_then(|c| c.with_declaration_contexts(&contexts))
-            .map_err(QueryError::Produce)?;
+        SignatureCatalog::build_with_foreign(
+            program,
+            &self.package,
+            &self.module,
+            self.foreign.as_ref(),
+        )
+        .and_then(|c| c.with_declaration_contexts(&contexts))
+        .map_err(QueryError::Produce)?;
         self.declaration_contexts = contexts;
         Ok(())
     }
@@ -322,6 +365,49 @@ impl SourceQuerySession {
         let f = find_fn(program, &name)
             .ok_or_else(|| QueryError::Produce(ProduceError::UnknownFn { name: name.clone() }))?;
         let walk = walk_body(&f.body).map_err(|e| QueryError::Produce(ProduceError::Walk(e)))?;
+        let catalog = self.catalog(program)?;
+        let dependencies = std::iter::once(page.name.clone())
+            .chain(page.sig_reads.iter().cloned())
+            .filter_map(|n| catalog.current_version(&n).map(|v| (n, v)))
+            .collect::<BTreeMap<_, _>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        self.seed_with_walk(&catalog, page, &walk, &dependencies)
+    }
+
+    /// Source-bound restore has already decoded its REQUIRED structural walk.
+    /// Frozen dependency versions are checked, never stamped from current names.
+    pub fn seed_with_walk(
+        &mut self,
+        catalog: &SignatureCatalog,
+        page: &InferBodyFacts,
+        walk: &crate::walk::BodyWalk,
+        dependencies: &[(String, ContentVersion)],
+    ) -> Result<(), QueryError> {
+        let name = page.name.clone();
+        let mut seen = std::collections::BTreeSet::new();
+        for (n, v) in dependencies {
+            if !seen.insert(n) || catalog.version(n) != Some(v) {
+                return Err(QueryError::Reject(FactsError::BodyVersionMismatch {
+                    facts: "stale or duplicate signature dependency".into(),
+                    body: n.clone(),
+                }));
+            }
+        }
+        let required: Vec<_> = std::iter::once(&name)
+            .chain(page.sig_reads.iter())
+            .collect();
+        for dependency in required {
+            if !dependencies
+                .iter()
+                .any(|(n, v)| n == dependency && catalog.version(n) == Some(v))
+            {
+                return Err(QueryError::Reject(FactsError::BodyVersionMismatch {
+                    facts: "stale signature dependency".into(),
+                    body: dependency.clone(),
+                }));
+            }
+        }
         page.validate_against(&walk).map_err(QueryError::Reject)?;
         page.admit(&walk).map_err(QueryError::Reject)?;
         let own = owner_logical(&self.package, &self.module, &name);
@@ -331,7 +417,6 @@ impl SourceQuerySession {
                 body: own.as_str().to_string(),
             }));
         }
-        let catalog = self.catalog(program)?;
         let sig_now = catalog
             .current_version(&name)
             .ok_or_else(|| QueryError::Produce(ProduceError::UnknownFn { name: name.clone() }))?;
@@ -451,13 +536,31 @@ impl SourceQuerySession {
         catalog: &SignatureCatalog,
         name: &str,
     ) -> Result<QueryOutcome<InferBodyFacts>, QueryError> {
-        self.revision += 1;
-        let rev = self.revision;
         let f = find_fn(program, name).ok_or_else(|| {
             QueryError::Produce(ProduceError::UnknownFn {
                 name: name.to_string(),
             })
         })?;
+        self.infer_item_internal(f, catalog, Some(program))
+    }
+
+    pub fn infer_item_with_catalog(
+        &mut self,
+        item: &FnItem,
+        catalog: &SignatureCatalog,
+    ) -> Result<QueryOutcome<InferBodyFacts>, QueryError> {
+        self.infer_item_internal(item, catalog, None)
+    }
+
+    fn infer_item_internal(
+        &mut self,
+        f: &FnItem,
+        catalog: &SignatureCatalog,
+        program: Option<&Program>,
+    ) -> Result<QueryOutcome<InferBodyFacts>, QueryError> {
+        let name = f.name.name.as_str();
+        self.revision += 1;
+        let rev = self.revision;
         let walk = walk_body(&f.body).map_err(|e| QueryError::Produce(ProduceError::Walk(e)))?;
         let logical = owner_logical(&self.package, &self.module, name);
         let sig_now = catalog.current_version(name).ok_or_else(|| {
@@ -474,6 +577,7 @@ impl SourceQuerySession {
 
         if let Some(page) = self.bodies.get(&logical) {
             if page.key == key && page_deps_fresh(page, &catalog).is_ok() {
+                self.work.reuse(name, "infer", 1);
                 self.counters.body_hits += 1;
                 let mut facts = page.facts.clone();
                 facts.revision = rev;
@@ -489,17 +593,40 @@ impl SourceQuerySession {
                 owner: name.to_string(),
             });
         }
-        let mut facts = produce_infer_body(
-            program,
+        let single;
+        let input = if let Some(program) = program {
+            program
+        } else {
+            single = Program {
+                items: vec![Item::Fn(f.clone())],
+            };
+            &single
+        };
+        let work = self
+            .work
+            .begin(name, "infer", crate::work::Phase::Production);
+        let before_solver = self.work.totals(name, "solver").attempted;
+        let result = crate::produce::produce_infer_body_with_catalog_observed(
+            input,
             &self.package,
             &self.module,
             name,
             &self.capabilities,
             self.limits,
             self.cancel.clone(),
-        )
-        .map_err(QueryError::Produce)?;
-        self.counters.solver_runs += 1;
+            self.foreign.as_ref(),
+            if program.is_none() {
+                Some(catalog)
+            } else {
+                None
+            },
+            Some(&self.work),
+            self.resources.as_ref(),
+        );
+        self.counters.solver_runs += self.work.totals(name, "solver").attempted - before_solver;
+        let mut facts = result.map_err(QueryError::Produce)?;
+
+        work.complete(1);
         facts.revision = rev;
 
         let mut sig_deps = Vec::new();

@@ -26,6 +26,8 @@ dependencies = [
  "ace-a2x-core",
  "ace-core",
  "ace-foreign-contract",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -33,6 +35,7 @@ name = "ace-a2x-core"
 version = "0.1.0"
 dependencies = [
  "ace-core",
+ "ace-foreign-contract",
 ]
 
 [[package]]
@@ -81,19 +84,27 @@ version = "0.1.0"
 dependencies = [
  "ace-a2x-c",
  "ace-a2x-core",
+ "ace-a2x-rust",
+ "ace-a2x-store",
  "ace-artifacts",
+ "ace-av-core",
  "ace-core",
  "ace-foreign-contract",
+ "ace-lowering",
+ "ace-native",
  "ace-semantics-contract",
+ "ace-source-query",
  "base64 0.22.1",
  "blake3",
  "cranelift-codegen",
  "cranelift-frontend",
  "cranelift-module",
  "cranelift-object",
+ "object 0.37.3",
  "serde",
  "serde_json",
  "target-lexicon",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -139,6 +150,10 @@ dependencies = [
 [[package]]
 name = "ace-av-core"
 version = "0.1.0"
+dependencies = [
+ "ace-foreign-contract",
+ "serde_json",
+]
 
 [[package]]
 name = "ace-case-worker"
@@ -223,6 +238,7 @@ name = "ace-core"
 version = "0.1.0"
 dependencies = [
  "ace-core",
+ "ace-foreign-contract",
  "ace-syntax-grammar",
  "ace-syntax-runtime",
  "anyhow",
@@ -275,7 +291,9 @@ dependencies = [
  "ace-av",
  "ace-av-core",
  "ace-core",
+ "ace-foreign-contract",
  "ace-lowering",
+ "ace-source-query",
  "auto-tool-execution",
  "base64 0.22.1",
  "blake3",
@@ -339,6 +357,7 @@ version = "0.1.0"
 dependencies = [
  "ace-artifacts",
  "ace-core",
+ "ace-foreign-contract",
  "ace-semantics",
  "ace-semantics-contract",
  "ace-syntax-artifacts",
@@ -346,6 +365,7 @@ dependencies = [
  "blake3",
  "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

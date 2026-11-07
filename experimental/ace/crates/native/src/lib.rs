@@ -29,6 +29,7 @@ pub mod driver;
 pub mod emit;
 pub mod entry;
 pub mod fingerprint;
+pub mod foreign_lower;
 pub mod incremental;
 pub mod layout;
 pub mod link_driver;

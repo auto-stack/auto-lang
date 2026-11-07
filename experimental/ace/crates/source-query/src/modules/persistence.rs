@@ -1288,7 +1288,9 @@ mod tests {
         let work = body["m3_std_answer"];
         assert_eq!(
             (work.resolve, work.typecheck, work.plan, work.bind),
-            (1, 1, 1, 1)
+            // Shared query facts are the type authority. The actual legacy
+            // typechecker port is not entered again on the supplied-facts path.
+            (1, 0, 1, 1)
         );
         assert_eq!(
             edit.bound.binding_walks,

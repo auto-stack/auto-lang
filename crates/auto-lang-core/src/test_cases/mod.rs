@@ -40,6 +40,7 @@ use auto_test_case::suite::apply_defaults;
 pub mod a2r;
 pub mod a2r_emit_917_cert;
 pub mod abi;
+mod abi_source;
 pub mod ac;
 pub mod ac_a2c_hir;
 pub mod ac_a2r_hir;
@@ -1042,7 +1043,8 @@ fn dispatch_check(
         }
         (Adapter::Probe, auto_test_case::contract::Action::Run)
             if check.options.probe_recipe.as_deref() == Some(abi::ABI_RECIPE)
-                || check.options.probe_recipe.as_deref() == Some(abi::BRIDGE_RECIPE) =>
+                || check.options.probe_recipe.as_deref() == Some(abi::BRIDGE_RECIPE)
+                || check.options.probe_recipe.as_deref() == Some(abi_source::RECIPE) =>
         {
             abi::run_check(
                 resolved,

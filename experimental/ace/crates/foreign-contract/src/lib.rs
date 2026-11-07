@@ -43,8 +43,10 @@
 pub mod codec;
 pub mod facts;
 pub mod lane;
+pub mod manual;
 pub mod plan;
 pub mod typed;
+pub mod work;
 
 pub use facts::{ErrorModel, FactsSource, FnFact, FnForm, InterfaceFacts, FACTS_FORMAT};
 pub use lane::{LaneKind, LaneValue, PhysLane};

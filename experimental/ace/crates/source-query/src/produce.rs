@@ -158,6 +158,124 @@ pub fn produce_infer_body(
     limits: ProduceLimits,
     cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 ) -> Result<InferBodyFacts, ProduceError> {
+    produce_infer_body_with_foreign(
+        program,
+        package,
+        module,
+        name,
+        capabilities,
+        limits,
+        cancel,
+        None,
+    )
+}
+
+pub fn produce_infer_body_with_foreign(
+    program: &Program,
+    package: &str,
+    module: &str,
+    name: &str,
+    capabilities: &[String],
+    limits: ProduceLimits,
+    cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+) -> Result<InferBodyFacts, ProduceError> {
+    produce_infer_body_with_catalog(
+        program,
+        package,
+        module,
+        name,
+        capabilities,
+        limits,
+        cancel,
+        foreign,
+        None,
+    )
+}
+
+pub fn produce_infer_body_with_catalog(
+    program: &Program,
+    package: &str,
+    module: &str,
+    name: &str,
+    capabilities: &[String],
+    limits: ProduceLimits,
+    cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+    catalog: Option<&crate::catalog::SignatureCatalog>,
+) -> Result<InferBodyFacts, ProduceError> {
+    produce_infer_body_with_catalog_observed(
+        program,
+        package,
+        module,
+        name,
+        capabilities,
+        limits,
+        cancel,
+        foreign,
+        catalog,
+        None,
+        None,
+    )
+}
+
+/// Conservative bound of one body query's solver working set (PLAN-938):
+/// the solver's per-node families (scopes/vars/eq pairs/bindings/expr
+/// types/diagnostics) and this layer's span cursor/typed maps, plus the
+/// external signature inputs. Reserved on the shared staging account
+/// BEFORE the solver session exists and released when the facts return.
+pub fn solver_workspace_bound(nodes: usize, externals: usize) -> Option<usize> {
+    let bound = 8usize << 10;
+    let bound = bound.checked_add(nodes.checked_mul(512)?)?;
+    bound.checked_add(externals.checked_mul(256)?)
+}
+
+/// The host-admitted body query: same answer as
+/// [`produce_infer_body_with_catalog`], with the solver working set admitted
+/// on `resources` before the solver session is created.
+#[allow(clippy::too_many_arguments)]
+pub fn produce_infer_body_with_catalog_admitted(
+    program: &Program,
+    package: &str,
+    module: &str,
+    name: &str,
+    capabilities: &[String],
+    limits: ProduceLimits,
+    cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+    catalog: Option<&crate::catalog::SignatureCatalog>,
+    work: Option<&crate::work::Ledger>,
+    resources: &crate::resources::Resources,
+) -> Result<InferBodyFacts, ProduceError> {
+    produce_infer_body_with_catalog_observed(
+        program,
+        package,
+        module,
+        name,
+        capabilities,
+        limits,
+        cancel,
+        foreign,
+        catalog,
+        work,
+        Some(resources),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn produce_infer_body_with_catalog_observed(
+    program: &Program,
+    package: &str,
+    module: &str,
+    name: &str,
+    capabilities: &[String],
+    limits: ProduceLimits,
+    cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+    catalog: Option<&crate::catalog::SignatureCatalog>,
+    work: Option<&crate::work::Ledger>,
+    resources: Option<&crate::resources::Resources>,
+) -> Result<InferBodyFacts, ProduceError> {
     if limits.max_body_nodes == 0 {
         return Err(ProduceError::Profile {
             what: "empty node budget",
@@ -174,7 +292,7 @@ pub fn produce_infer_body(
     // Body-scoped LAZY input (PLAN-934 T-03): the shared adapter projects
     // ONLY the target function's body; every other function is a
     // signature stub and no AST is cloned or walked.
-    let input = ace_semantics::adapter::project_body_scoped_with_caps(
+    let mut input = ace_semantics::adapter::project_body_scoped_with_caps(
         program,
         name,
         package,
@@ -183,16 +301,81 @@ pub fn produce_infer_body(
     )
     .map_err(ProduceError::Projection)?;
 
+    if let Some(catalog) = catalog {
+        for signature in catalog.entries().filter(|s| s.name != name) {
+            let lane = |k| match k {
+                PortableTy::I32 => ace_semantics::input::Ann::I32,
+                PortableTy::Bool => ace_semantics::input::Ann::Bool,
+                _ => ace_semantics::input::Ann::Unsupported("foreign-scalar signature"),
+            };
+            input
+                .external_signatures
+                .push(ace_semantics::input::ExternalSignature {
+                    name: signature.name.clone(),
+                    params: signature
+                        .params
+                        .iter()
+                        .map(|(n, t)| (n.clone(), lane(*t)))
+                        .collect(),
+                    ret: lane(signature.ret),
+                    contract: signature.version.as_str().into(),
+                });
+        }
+    } else if let Some(environment) = foreign {
+        let lane = |k| {
+            if k == ace_foreign_contract::LaneKind::Bool {
+                ace_semantics::input::Ann::Bool
+            } else {
+                ace_semantics::input::Ann::I32
+            }
+        };
+        for d in environment.source_declarations_ref() {
+            input
+                .external_signatures
+                .push(ace_semantics::input::ExternalSignature {
+                    name: d.name.clone(),
+                    params: d
+                        .params()
+                        .iter()
+                        .copied()
+                        .enumerate()
+                        .map(|(i, k)| (format!("arg{i}"), lane(k)))
+                        .collect(),
+                    ret: lane(d.result()),
+                    contract: d.digest(),
+                });
+        }
+    }
+
+    // PLAN-938: the solver working set is admitted BEFORE the session
+    // exists and stays admitted through the fact mapping below.
+    let _solver_workspace = match resources {
+        Some(resources) => Some(
+            resources
+                .reserve(crate::resources::Charge::staging(
+                    solver_workspace_bound(walk.expr_nodes, input.external_signatures.len())
+                        .ok_or_else(|| {
+                            ProduceError::Resource("solver workspace bound overflow".into())
+                        })?,
+                ))
+                .map_err(|e| ProduceError::Resource(e.to_string()))?,
+        ),
+        None => None,
+    };
     let mut session = InferSession::new(&input).with_budget(limits.max_steps, limits.wall);
     if let Some(flag) = cancel {
         session = session.with_cancel(flag);
     }
+    let solver = work.map(|w| w.begin(name, "solver", crate::work::Phase::Production));
     let outcome = session.infer_function(name);
     let summary = match outcome {
         InferOutcome::Ok(s) | InferOutcome::Diags(s) => s,
         InferOutcome::ResourceExhausted(e) => return Err(ProduceError::Resource(e.to_string())),
         InferOutcome::Cancelled => return Err(ProduceError::Cancelled),
     };
+    if let Some(solver) = solver {
+        solver.complete(1);
+    }
 
     // PLAN-934 T-08 corpus finding: the core parser gives a unary
     // expression the span of its operand, so one span can describe a

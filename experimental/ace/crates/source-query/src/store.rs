@@ -78,18 +78,34 @@ impl std::fmt::Display for PageReadError {
 // -- codec --------------------------------------------------------------
 
 struct Writer {
-    out: Vec<u8>,
+    out: Option<Vec<u8>>,
+    len: usize,
+    overflow: bool,
 }
 
 impl Writer {
+    fn bytes(&mut self, bytes: &[u8]) {
+        let Some(len) = self
+            .len
+            .checked_add(bytes.len())
+            .filter(|n| *n <= MAX_PAGE_BYTES)
+        else {
+            self.overflow = true;
+            return;
+        };
+        self.len = len;
+        if let Some(out) = &mut self.out {
+            out.extend_from_slice(bytes);
+        }
+    }
     fn u8(&mut self, v: u8) {
-        self.out.push(v);
+        self.bytes(&[v]);
     }
     fn u32(&mut self, v: u32) {
-        self.out.extend_from_slice(&v.to_le_bytes());
+        self.bytes(&v.to_le_bytes());
     }
     fn u64(&mut self, v: u64) {
-        self.out.extend_from_slice(&v.to_le_bytes());
+        self.bytes(&v.to_le_bytes());
     }
     fn s(&mut self, v: &str) -> Result<(), PageReadError> {
         if v.len() > MAX_STR {
@@ -99,7 +115,12 @@ impl Writer {
             )));
         }
         self.u32(v.len() as u32);
-        self.out.extend_from_slice(v.as_bytes());
+        self.bytes(v.as_bytes());
+        if self.overflow {
+            return Err(PageReadError::Decode(
+                "page exceeds the byte cap before allocation".into(),
+            ));
+        }
         Ok(())
     }
     fn ty(&mut self, t: PortableTy) {
@@ -114,11 +135,44 @@ impl Writer {
 struct Reader<'a> {
     bytes: &'a [u8],
     at: usize,
+    decoded_bytes: usize,
 }
 
 impl<'a> Reader<'a> {
     fn new(bytes: &'a [u8]) -> Self {
-        Reader { bytes, at: 0 }
+        Reader {
+            bytes,
+            at: 0,
+            decoded_bytes: 0,
+        }
+    }
+    fn reserve(&mut self, bytes: usize) -> Result<(), PageReadError> {
+        self.decoded_bytes = self
+            .decoded_bytes
+            .checked_add(bytes)
+            .filter(|n| *n <= 8 << 20)
+            .ok_or_else(|| {
+                PageReadError::Decode("decoded page/index exceeds 8MiB budget".into())
+            })?;
+        Ok(())
+    }
+    fn vector<T>(&mut self, count: usize, minimum_wire: usize) -> Result<Vec<T>, PageReadError> {
+        if count
+            .checked_mul(minimum_wire)
+            .is_none_or(|n| n > self.bytes.len() - self.at)
+        {
+            return Err(PageReadError::Decode(
+                "truncated page before vector allocation".into(),
+            ));
+        }
+        let size = count
+            .checked_mul(std::mem::size_of::<T>())
+            .ok_or_else(|| PageReadError::Decode("vector size overflow".into()))?;
+        self.reserve(size)?;
+        let mut out = Vec::new();
+        out.try_reserve_exact(count)
+            .map_err(|e| PageReadError::Decode(format!("page allocation: {e}")))?;
+        Ok(out)
     }
     fn take(&mut self, n: usize) -> Result<&'a [u8], PageReadError> {
         let end = self
@@ -162,7 +216,13 @@ impl<'a> Reader<'a> {
             )));
         }
         let b = self.take(n)?;
-        String::from_utf8(b.to_vec()).map_err(|_| PageReadError::Decode("bad UTF-8".into()))
+        let text = std::str::from_utf8(b).map_err(|_| PageReadError::Decode("bad UTF-8".into()))?;
+        self.reserve(n)?;
+        let mut out = String::new();
+        out.try_reserve_exact(n)
+            .map_err(|e| PageReadError::Decode(format!("page string allocation: {e}")))?;
+        out.push_str(text);
+        Ok(out)
     }
     fn ty(&mut self) -> Result<PortableTy, PageReadError> {
         Ok(match self.u8()? {
@@ -204,8 +264,46 @@ fn kind_of(i: u8) -> Result<&'static str, PageReadError> {
 
 /// Encode one complete fact page (payload only; the store frames it).
 pub fn encode_page(key: &QueryKey, facts: &InferBodyFacts) -> Result<Vec<u8>, PageReadError> {
-    let mut w = Writer { out: Vec::new() };
-    w.out.extend_from_slice(PAGE_MAGIC);
+    let size = encoded_page_size(key, facts)?;
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(size)
+        .map_err(|e| PageReadError::Decode(format!("page allocation: {e}")))?;
+    let mut writer = Writer {
+        out: Some(bytes),
+        len: 0,
+        overflow: false,
+    };
+    write_page(&mut writer, key, facts)?;
+    Ok(writer.out.expect("encoding writer"))
+}
+
+pub fn encoded_page_size(key: &QueryKey, facts: &InferBodyFacts) -> Result<usize, PageReadError> {
+    for n in [
+        facts.nodes.len(),
+        facts.bindings.len(),
+        facts.diags.len(),
+        facts.missing.len(),
+        facts.sig_reads.len(),
+        facts.negatives.len(),
+    ] {
+        if n > MAX_COUNT {
+            return Err(PageReadError::Decode(
+                "entry count exceeds the page budget".into(),
+            ));
+        }
+    }
+    let mut measure = Writer {
+        out: None,
+        len: 0,
+        overflow: false,
+    };
+    write_page(&mut measure, key, facts)?;
+    Ok(measure.len)
+}
+
+fn write_page(w: &mut Writer, key: &QueryKey, facts: &InferBodyFacts) -> Result<(), PageReadError> {
+    w.bytes(PAGE_MAGIC);
     w.u8(PAGE_CODEC_VERSION);
     w.s(&key.canonical())?;
     w.s(SQ_PRODUCER)?;
@@ -254,13 +352,12 @@ pub fn encode_page(key: &QueryKey, facts: &InferBodyFacts) -> Result<Vec<u8>, Pa
         w.s(&n.domain)?;
         w.s(&n.name)?;
     }
-    if w.out.len() > MAX_PAGE_BYTES {
-        return Err(PageReadError::Decode(format!(
-            "page of {} bytes exceeds the {MAX_PAGE_BYTES}-byte cap",
-            w.out.len()
-        )));
+    if w.overflow {
+        return Err(PageReadError::Decode(
+            "page exceeds the byte cap before allocation".into(),
+        ));
     }
-    Ok(w.out)
+    Ok(())
 }
 
 /// Decode + admit one page payload. Every identity is re-derived and
@@ -303,7 +400,7 @@ pub fn decode_page(bytes: &[u8]) -> Result<(String, InferBodyFacts), PageReadErr
     let steps = r.u64()?;
 
     let n = r.count("node")?;
-    let mut nodes = Vec::with_capacity(n);
+    let mut nodes = r.vector(n, 6)?;
     for _ in 0..n {
         let id = crate::walk::NodeId(r.u32()?);
         let kind = kind_of(r.u8()?)?;
@@ -311,7 +408,7 @@ pub fn decode_page(bytes: &[u8]) -> Result<(String, InferBodyFacts), PageReadErr
         nodes.push(NodeFact { id, kind, ty });
     }
     let n = r.count("binding")?;
-    let mut bindings = Vec::with_capacity(n);
+    let mut bindings = r.vector(n, 9)?;
     for _ in 0..n {
         bindings.push(BindingFact {
             node: crate::walk::NodeId(r.u32()?),
@@ -320,7 +417,7 @@ pub fn decode_page(bytes: &[u8]) -> Result<(String, InferBodyFacts), PageReadErr
         });
     }
     let n = r.count("diag")?;
-    let mut diags = Vec::with_capacity(n);
+    let mut diags = r.vector(n, 9)?;
     for _ in 0..n {
         let code = r.s()?;
         let node = match r.u8()? {
@@ -335,17 +432,17 @@ pub fn decode_page(bytes: &[u8]) -> Result<(String, InferBodyFacts), PageReadErr
         });
     }
     let n = r.count("missing")?;
-    let mut missing = Vec::with_capacity(n);
+    let mut missing = r.vector(n, 4)?;
     for _ in 0..n {
         missing.push(crate::walk::NodeId(r.u32()?));
     }
     let n = r.count("sig-read")?;
-    let mut sig_reads = Vec::with_capacity(n);
+    let mut sig_reads = r.vector(n, 4)?;
     for _ in 0..n {
         sig_reads.push(r.s()?);
     }
     let n = r.count("negative")?;
-    let mut negatives = Vec::with_capacity(n);
+    let mut negatives = r.vector(n, 8)?;
     for _ in 0..n {
         negatives.push(NegativeDep {
             domain: r.s()?,

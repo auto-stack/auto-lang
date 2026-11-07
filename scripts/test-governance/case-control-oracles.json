@@ -42,6 +42,13 @@
    "check": "ac-native-strict-generic-shell",
    "expected_status": "FAIL",
    "evidence": "PLAN-911 V-05/V-07/V-11: strict source-v1 face compares the real cause (crates/auto-lang-core/src/test_cases/ac_mn.rs source_diag); the pre-911 generic mn.unsupported.frontend shell is not accepted as the typed face"
+  },
+  {
+   "suite": "ace-ca-d-source-938",
+   "case": "ace-ca-d2.wrong-oracle",
+   "check": "certify",
+   "expected_status": "FAIL",
+   "evidence": "PLAN-938: actual and independently compiled C reference each equal 42; parent oracle 43 must mismatch both"
   }
  ]
 }

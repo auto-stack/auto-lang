@@ -38,7 +38,7 @@ pub fn query_signature(
     fn_name: &str,
     content: ace_semantics_contract::ContentVersion,
 ) -> Option<FnMeta> {
-    let f = input.lookup_fn(fn_name)?;
+    let f = input.lookup_signature(fn_name)?;
     Some(FnMeta {
         decl: DeclRef::new(
             &ace_semantics_contract::PackageId::new(&input.package),
@@ -447,6 +447,7 @@ mod tests {
 
     fn input() -> SemaInput {
         SemaInput {
+            external_signatures: Vec::new(),
             package: "p".into(),
             module: "m".into(),
             source_fp: String::new(),

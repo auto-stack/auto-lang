@@ -107,30 +107,63 @@ pub fn lower_functions_c<'a>(
 
 /// Render one fragment: origin comment + prototype + definition. The
 /// prototype line is the assembler's forward-declaration input.
+///
+/// PLAN-938: `write_fragment` is the ONE formatter; the legacy entry keeps
+/// its exact historical bytes, and the admitted entry reserves the exact
+/// output size with the host before allocating the payload.
 pub fn print_fragment(f: &CFn) -> String {
-    let params = if f.params.is_empty() {
-        "void".to_string()
-    } else {
-        f.params
-            .iter()
-            .map(|(t, n)| format!("{} {}", t, n))
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-    let ret = "a2x_result";
-    let mut out = format!(
+    let mut out = String::new();
+    write_fragment(f, &mut out).expect("formatting into a String cannot fail");
+    out
+}
+
+/// Same bytes as [`print_fragment`], with the exact size admitted by `admit`
+/// BEFORE the single exactly-sized allocation.
+pub fn print_fragment_admitted(
+    f: &CFn,
+    admit: impl FnOnce(usize) -> Result<(), String>,
+) -> Result<String, A2xReject> {
+    crate::admitted_text::render_admitted(|out| write_fragment(f, out), admit)
+        .map_err(|e| A2xReject::new("a2c.foreign-resource", e))
+}
+
+fn write_params(f: &CFn, out: &mut dyn std::fmt::Write) -> std::fmt::Result {
+    if f.params.is_empty() {
+        return out.write_str("void");
+    }
+    for (index, (ty, name)) in f.params.iter().enumerate() {
+        if index > 0 {
+            out.write_str(", ")?;
+        }
+        write!(out, "{ty} {name}")?;
+    }
+    Ok(())
+}
+
+/// The single formatter behind both entries (counting pass allocates
+/// nothing; the writer is bounded by the admitted size).
+pub fn write_fragment(f: &CFn, out: &mut dyn std::fmt::Write) -> std::fmt::Result {
+    write!(
+        out,
         "// origin: {}..{} (def `{}`, byte span in the compiled source)\n",
         f.origin.0, f.origin.1, f.name
-    );
-    out.push_str(&format!("{} {}({});\n", ret, f.name, params));
-    out.push_str(&format!("{} {}({}) {{\n", ret, f.name, params));
+    )?;
+    out.write_str("a2x_result ")?;
+    out.write_str(&f.name)?;
+    out.write_str("(")?;
+    write_params(f, out)?;
+    out.write_str(");\n")?;
+    out.write_str("a2x_result ")?;
+    out.write_str(&f.name)?;
+    out.write_str("(")?;
+    write_params(f, out)?;
+    out.write_str(") {\n")?;
     for line in &f.body {
-        out.push_str("    ");
-        out.push_str(line);
-        out.push('\n');
+        out.write_str("    ")?;
+        out.write_str(line)?;
+        out.write_str("\n")?;
     }
-    out.push_str("}\n");
-    out
+    out.write_str("}\n")
 }
 
 struct FnLowering<'v, 'a> {
@@ -278,6 +311,77 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 bindings,
             } => {
                 let target_id = callee.0 as usize;
+                if let Some(declaration) = self.view.foreign_by_def(target_id).cloned() {
+                    declaration
+                        .validate()
+                        .map_err(|e| A2xReject::new("a2c.foreign-contract", e))?;
+                    let mut evaluated = Vec::new();
+                    for arg in eval_args {
+                        let expression = self.lower_pure(*arg)?;
+                        let temp = self.fresh_temp();
+                        self.out.push(format!("int32_t {temp} = {expression};"));
+                        evaluated.push(temp);
+                    }
+                    let mut placed = vec![None; declaration.params().len()];
+                    for binding in bindings {
+                        placed[binding.param as usize] =
+                            Some(evaluated[binding.arg as usize].clone());
+                    }
+                    let mut arguments = Vec::new();
+                    self.out.push(crate::foreign::prototype(&declaration));
+                    self.out
+                        .push("extern void ace_foreign_fail(int32_t status);".into());
+                    if let Some(symbol) = &declaration.context_symbol {
+                        self.out.push(format!("extern unsigned char {symbol};"));
+                        arguments.push(format!("(void *)&{symbol}"));
+                    }
+                    for (value, lane) in placed.into_iter().zip(declaration.params()) {
+                        let value = value.ok_or_else(|| {
+                            A2xReject::new("a2c.foreign-binding", "missing foreign argument")
+                        })?;
+                        if *lane == ace_foreign_contract::LaneKind::Bool {
+                            self.out.push(format!(
+                                "if ((uint32_t){value} > 1u) ace_foreign_fail(INT32_MIN + 1);"
+                            ));
+                            arguments.push(format!("(uint8_t){value}"));
+                        } else {
+                            arguments.push(value);
+                        }
+                    }
+                    let result = self.fresh_temp();
+                    let c_type = if declaration.result() == ace_foreign_contract::LaneKind::Bool {
+                        "uint8_t"
+                    } else {
+                        "int32_t"
+                    };
+                    if matches!(
+                        declaration.function.form,
+                        ace_foreign_contract::FnForm::Fallible { .. }
+                    ) {
+                        self.out.push(format!("{c_type} {result};"));
+                        arguments.push(format!("&{result}"));
+                        let status = self.fresh_temp();
+                        self.out.push(format!(
+                            "int32_t {status} = {}({});",
+                            declaration.function.symbol,
+                            arguments.join(", ")
+                        ));
+                        self.out
+                            .push(format!("if ({status} != 0) ace_foreign_fail({status});"));
+                    } else {
+                        self.out.push(format!(
+                            "{c_type} {result} = {}({});",
+                            declaration.function.symbol,
+                            arguments.join(", ")
+                        ));
+                    }
+                    if declaration.result() == ace_foreign_contract::LaneKind::Bool {
+                        self.out.push(format!(
+                            "if ({result} > 1u) ace_foreign_fail(INT32_MIN + 1);"
+                        ));
+                    }
+                    return Ok(format!("(int32_t){result}"));
+                }
                 if let Some(sym) = self.view.trace_symbol(target_id) {
                     if !eval_args.is_empty() {
                         return Err(A2xReject::new(
@@ -464,6 +568,19 @@ fn clone_map(m: &HashMap<u32, String>) -> HashMap<u32, String> {
 
 /// Lower ONE function of the view to its [`CFn`].
 pub fn lower_fn_c(view: &SemanticView<'_>, facts: &FnFacts<'_>) -> Result<CFn, A2xReject> {
+    if view.foreign_declarations().next().is_some() {
+        return Err(A2xReject::new(
+            "a2c.foreign-authority",
+            "foreign HIR requires the explicit checked foreign target",
+        ));
+    }
+    lower_foreign_fn_c(view, facts)
+}
+
+pub(crate) fn lower_foreign_fn_c(
+    view: &SemanticView<'_>,
+    facts: &FnFacts<'_>,
+) -> Result<CFn, A2xReject> {
     // local names: index-prefixed sanitized (stable across whole-module
     // and single-body bundles — same scheme as the Rust target)
     let mut local_names = HashMap::new();

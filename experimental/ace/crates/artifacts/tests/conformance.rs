@@ -2,6 +2,10 @@
 mod gc_metadata;
 #[path = "cases/layout.rs"]
 mod layout;
+#[path = "cases/leased_publication.rs"]
+mod leased_publication;
+#[path = "cases/namespace_budget.rs"]
+mod namespace_budget;
 #[path = "cases/review_r2.rs"]
 mod review_r2;
 #[path = "cases/review_r3.rs"]

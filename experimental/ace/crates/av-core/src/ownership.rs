@@ -667,6 +667,12 @@ fn verify_owned_function_impl(
                 }};
             }
             match instr {
+                MirInstr::ForeignCall { dst, args, .. } => {
+                    for arg in args {
+                        check_read!(arg, "foreign argument");
+                    }
+                    st.define_slot(*dst as usize);
+                }
                 MirInstr::HostCall { arg, .. } => {
                     check_read!(arg, "console input");
                 }

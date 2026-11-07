@@ -297,7 +297,42 @@ fn check_expr(
                         }
                     }
                 }
-                check_arg_modes(*fn_index, 0, args, program, diags, e.span);
+                if let Some(d) = fn_index
+                    .checked_sub(program.fns.len())
+                    .and_then(|i| program.foreign_by_slot(i))
+                {
+                    for (idx, a) in args.iter().enumerate() {
+                        let pos = a
+                            .name
+                            .as_ref()
+                            .and_then(|n| {
+                                n.name
+                                    .strip_prefix("arg")
+                                    .and_then(|i| i.parse::<usize>().ok())
+                            })
+                            .unwrap_or(idx);
+                        if let Some(k) = d.params().get(pos) {
+                            let want = if *k == ace_foreign_contract::LaneKind::Bool {
+                                VT::Bool
+                            } else {
+                                VT::I32
+                            };
+                            if a.value.vt != want {
+                                mismatch(diags, want, a.value.vt, a.value.span);
+                            }
+                        }
+                        if a.moved {
+                            diags.push(Diagnostic::new(
+                                Stage::Verify,
+                                "source.foreign-mode",
+                                "scalar foreign arguments cannot be moved",
+                                a.value.span,
+                            ));
+                        }
+                    }
+                } else {
+                    check_arg_modes(*fn_index, 0, args, program, diags, e.span);
+                }
             }
             RExprKind::CallClosure { callee, args } => {
                 stack.push(callee.as_ref());

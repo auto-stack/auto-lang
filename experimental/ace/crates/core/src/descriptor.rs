@@ -1388,6 +1388,27 @@ impl<'d> Binder<'d> {
                     };
                     hir::DefKind::Function { name, ty, body }
                 }
+                "foreign" => {
+                    let raw = dfields
+                        .get("contract")
+                        .and_then(|f| self.text_of(&f.value))
+                        .unwrap_or_default();
+                    let declaration = match serde_json::from_str::<
+                        ace_foreign_contract::manual::SourceDecl,
+                    >(&raw)
+                    {
+                        Ok(d) => d,
+                        Err(e) => {
+                            self.error(
+                                "bind.foreign-contract",
+                                format!("invalid foreign declaration: {e}"),
+                                d.span,
+                            );
+                            continue;
+                        }
+                    };
+                    hir::DefKind::Foreign { ty, declaration }
+                }
                 "method" => {
                     // PLAN-771: type-bound method. `record` names the owning
                     // nominal type; `receiver` selects static vs readonly
@@ -1721,6 +1742,9 @@ impl<'d> Binder<'d> {
         };
         let _ = (loop_sibs, place_sibs); // reserved for future ref categories
 
+        if let Some(name) = id_text.strip_prefix("b_") {
+            crate::body_work::record_produced("hir-bind", name);
+        }
         hir::Body {
             id_text,
             owner,
@@ -3326,6 +3350,14 @@ pub fn write_canonical(bundle: &hir::Bundle, desc: &Descriptor) -> Result<String
         w.open("declarations");
         for d in &m.defs {
             match &d.kind {
+                hir::DefKind::Foreign { ty, declaration } => {
+                    w.line(&format!(
+                        "foreign(id: {}, type: {}) {{ contract: {} }}",
+                        quote(&d.id_text),
+                        quote(&m.types[ty.0 as usize].id_text),
+                        quote(&serde_json::to_string(declaration).expect("serializable contract"))
+                    ));
+                }
                 hir::DefKind::Function { name, ty, body } => {
                     let body_text = m
                         .bodies

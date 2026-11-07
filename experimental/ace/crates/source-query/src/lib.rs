@@ -39,17 +39,22 @@ pub mod assembly;
 pub mod catalog;
 pub mod consumer;
 pub mod facts;
+pub mod frontend;
 pub mod host;
 pub mod ident;
 pub mod instance_host;
 pub mod instances;
 pub mod keys;
 pub mod produce;
+pub mod resources;
 pub mod restore;
 pub mod session;
 pub mod store;
 pub mod walk;
+pub mod work;
 
+#[cfg(test)]
+mod foreign_tests;
 #[cfg(test)]
 mod tests;
 

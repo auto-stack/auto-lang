@@ -129,6 +129,27 @@ fn exit_sig() -> Signature {
 /// controlled rejection. Rejected here with codegen count 0 — never NOP'd
 /// past.
 pub fn admit_unit(unit: &MirModule) -> Result<(), MnError> {
+    admit_unit_shape(unit)?;
+    if has_foreign(unit) {
+        return Err(MnError::Unsupported(
+            "foreign.authority",
+            "use the current-host foreign codegen entry".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn has_foreign(unit: &MirModule) -> bool {
+    unit.funcs.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.instrs
+                .iter()
+                .any(|i| matches!(i, ace_av_core::mir::MirInstr::ForeignCall { .. }))
+        })
+    })
+}
+
+fn admit_unit_shape(unit: &MirModule) -> Result<(), MnError> {
     let admitted = unit.profile == AV_PROFILE
         || unit.profile == AV_DATA_PROFILE
         || unit.profile == AV_OWNED_PROFILE;
@@ -233,7 +254,76 @@ pub struct UnitObject {
 
 /// Lower and emit one verified MIR unit to a relocatable COFF object.
 pub fn emit_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
-    admit_unit(unit)?;
+    emit_unit_coff_impl(unit, None, None).map(|(object, _)| object)
+}
+
+pub fn emit_foreign_unit_coff(
+    unit: &MirModule,
+    environment: &ace_foreign_contract::manual::AdmittedForeign,
+) -> Result<UnitObject, MnError> {
+    emit_unit_coff_impl(unit, Some(environment), None).map(|(object, _)| object)
+}
+
+/// Keep the exact output reservation through the caller's cache handoff.
+pub fn emit_foreign_unit_coff_reserved(
+    unit: &MirModule,
+    environment: &ace_foreign_contract::manual::AdmittedForeign,
+    resources: &ace_source_query::resources::Resources,
+) -> Result<(UnitObject, ace_source_query::resources::Reservation), MnError> {
+    let (object, reservation) = emit_unit_coff_impl(unit, Some(environment), Some(resources))?;
+    Ok((object, reservation.expect("host-backed COFF reservation")))
+}
+
+#[path = "coff_buffer.rs"]
+mod coff_buffer;
+
+/// Conservative bound of the Cranelift emit workspace (PLAN-938): the
+/// ISA/object-module/context fixed cost (measured ~53 KiB for a minimal
+/// scalar unit on the pinned cranelift; the base doubles it) plus
+/// per-element allowances for the CLIF working set of a verified scalar
+/// unit. Reserved on the shared staging account BEFORE `make_isa` and held
+/// through the whole window (merged into the returned COFF reservation).
+fn codegen_workspace_bound(unit: &MirModule) -> Option<usize> {
+    let f = unit.funcs.first()?;
+    let instrs: usize = f.blocks.iter().map(|b| b.instrs.len()).sum();
+    let bound = 96usize << 10;
+    let bound = bound.checked_add(instrs.checked_mul(1024)?)?;
+    let bound = bound.checked_add(f.blocks.len().checked_mul(1024)?)?;
+    let bound = bound.checked_add(unit.imports.len().checked_mul(2048)?)?;
+    let bound = bound.checked_add(unit.types.len().checked_mul(256)?)?;
+    let bound = bound.checked_add(unit.consts.len().checked_mul(256)?)?;
+    bound.checked_add(f.slots.len().checked_mul(64)?)
+}
+
+fn emit_unit_coff_impl(
+    unit: &MirModule,
+    environment: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<(UnitObject, Option<ace_source_query::resources::Reservation>), MnError> {
+    if let Some(environment) = environment {
+        admit_unit_shape(unit)?;
+        if let Some(resources) = resources {
+            crate::foreign_lower::admit_reserved(unit, environment, resources)?;
+        } else {
+            crate::foreign_lower::admit(unit, environment)
+                .map_err(|e| MnError::Unsupported("foreign.authority", e))?;
+        }
+    } else {
+        admit_unit(unit)?;
+    }
+    let mut workspace = match resources {
+        Some(resources) => {
+            let bound = codegen_workspace_bound(unit).ok_or_else(|| {
+                MnError::Resource("codegen-memory", "workspace bound overflow".into())
+            })?;
+            Some(
+                resources
+                    .reserve(ace_source_query::resources::Charge::staging(bound))
+                    .map_err(|e| MnError::Resource("codegen-memory", e.to_string()))?,
+            )
+        }
+        None => None,
+    };
     let f = &unit.funcs[0];
     let isa = make_isa()?;
     let obj_name = format!("mn8-{}", f.name);
@@ -256,6 +346,41 @@ pub fn emit_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
             .map_err(|e| MnError::Backend(format!("declare import {}: {e}", logical)))?;
         import_ids.push(id);
         import_syms.push((imp.symbol.clone(), logical));
+    }
+    for block in &f.blocks {
+        for instruction in &block.instrs {
+            if let ace_av_core::mir::MirInstr::ForeignCall { declaration, .. } = instruction {
+                let item = (
+                    format!("foreign:{}:{}", declaration.logical, declaration.digest()),
+                    declaration.function.symbol.clone(),
+                );
+                if !import_syms.contains(&item) {
+                    import_syms.push(item);
+                }
+                if let Some(context) = &declaration.context_symbol {
+                    let item = (
+                        format!("foreign-context:{}", declaration.logical),
+                        context.clone(),
+                    );
+                    if !import_syms.contains(&item) {
+                        import_syms.push(item);
+                    }
+                }
+                if matches!(
+                    declaration.function.form,
+                    ace_foreign_contract::FnForm::Fallible { .. }
+                ) || declaration
+                    .params()
+                    .contains(&ace_foreign_contract::LaneKind::Bool)
+                    || declaration.result() == ace_foreign_contract::LaneKind::Bool
+                {
+                    let item = ("foreign-status-runtime/1".into(), "ace_foreign_fail".into());
+                    if !import_syms.contains(&item) {
+                        import_syms.push(item);
+                    }
+                }
+            }
+        }
     }
     // A bare Trace instruction without a matching table import still needs
     // its runtime symbol (verify admits trace via capability; the unit
@@ -298,26 +423,28 @@ pub fn emit_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
     om.define_function(fid, &mut ctx)
         .map_err(|e| MnError::Backend(format!("define {symbol}: {e}")))?;
 
-    let bytes = om
-        .finish()
-        .emit()
-        .map_err(|e| MnError::Backend(format!("emit object: {e}")))?;
-    if bytes.len() > MAX_COFF_BYTES {
-        return Err(MnError::Resource(
-            "object-size",
-            format!(
-                "COFF for `{}` is {} bytes, above the frozen {} cap",
-                f.name,
-                bytes.len(),
-                MAX_COFF_BYTES
-            ),
-        ));
-    }
-    Ok(UnitObject {
-        symbol,
-        bytes,
-        imports: import_syms,
-    })
+    let product = om.finish();
+    let (bytes, reservation) = coff_buffer::emit(&product.object, resources)?;
+    // The emit workspace's ticket joins the output ticket in ONE account
+    // entry (no release/reacquire gap); the caller holds both through its
+    // cache handoff.
+    let reservation = match (workspace.take(), reservation) {
+        (Some(workspace), Some(output)) => Some(
+            workspace
+                .merge(output)
+                .map_err(|e| MnError::Resource("codegen-memory", e.to_string()))?,
+        ),
+        (Some(workspace), None) => Some(workspace),
+        (None, reservation) => reservation,
+    };
+    Ok((
+        UnitObject {
+            symbol,
+            bytes,
+            imports: import_syms,
+        },
+        reservation,
+    ))
 }
 
 fn trace_sig() -> Signature {
@@ -340,6 +467,50 @@ pub(crate) fn event_symbol(e: ace_av_core::mir::TraceEvent) -> &'static str {
 /// the full 32-bit exit code). Emitted per request — it is not a cached
 /// unit artifact (contract-decision §8 note).
 pub fn emit_wrapper_coff(entry_symbol: &str) -> Result<Vec<u8>, MnError> {
+    emit_wrapper_coff_impl(entry_symbol, None).map(|(bytes, _)| bytes)
+}
+
+/// Source request wrapper bytes retain their real memory reservation through
+/// their last use, including file-write failures. The payload drops first.
+pub struct ReservedWrapper {
+    bytes: Vec<u8>,
+    _allocation: ace_source_query::resources::Reservation,
+}
+impl ReservedWrapper {
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+pub fn emit_wrapper_coff_reserved(
+    entry_symbol: &str,
+    resources: &ace_source_query::resources::Resources,
+) -> Result<ReservedWrapper, MnError> {
+    let (bytes, allocation) = emit_wrapper_coff_impl(entry_symbol, Some(resources))?;
+    Ok(ReservedWrapper {
+        bytes,
+        _allocation: allocation.expect("reserved wrapper output"),
+    })
+}
+/// Conservative bound of the startup wrapper's Cranelift window: the same
+/// fixed ISA/object-module/context cost as the unit emit (measured ~53 KiB,
+/// base doubled) plus slack for the fixed two-import function shape
+/// (PLAN-938; the wrapper is emitted per request, never cached).
+const WRAPPER_WORKSPACE_BOUND: usize = (96 << 10) + (8 << 10);
+
+fn emit_wrapper_coff_impl(
+    entry_symbol: &str,
+    resources: Option<&ace_source_query::resources::Resources>,
+) -> Result<(Vec<u8>, Option<ace_source_query::resources::Reservation>), MnError> {
+    let mut workspace = match resources {
+        Some(resources) => Some(
+            resources
+                .reserve(ace_source_query::resources::Charge::staging(
+                    WRAPPER_WORKSPACE_BOUND,
+                ))
+                .map_err(|e| MnError::Resource("codegen-memory", e.to_string()))?,
+        ),
+        None => None,
+    };
     let isa = make_isa()?;
     let builder = ObjectBuilder::new(isa, "mn8-ac-start", default_libcall_names())
         .map_err(|e| MnError::Backend(format!("object builder: {e}")))?;
@@ -377,7 +548,26 @@ pub fn emit_wrapper_coff(entry_symbol: &str) -> Result<Vec<u8>, MnError> {
     }
     om.define_function(start_id, &mut ctx)
         .map_err(|e| MnError::Backend(format!("define {}: {e}", START_SYMBOL)))?;
-    om.finish()
-        .emit()
-        .map_err(|e| MnError::Backend(format!("emit wrapper: {e}")))
+    let product = om.finish();
+    if resources.is_some() {
+        // The workspace ticket joins the wrapper's output ticket in ONE
+        // account entry, held through the wrapper bytes' last use.
+        let (bytes, reservation) = coff_buffer::emit(&product.object, resources)?;
+        let reservation = match (workspace.take(), reservation) {
+            (Some(workspace), Some(output)) => Some(
+                workspace
+                    .merge(output)
+                    .map_err(|e| MnError::Resource("codegen-memory", e.to_string()))?,
+            ),
+            (Some(workspace), None) => Some(workspace),
+            (None, reservation) => reservation,
+        };
+        Ok((bytes, reservation))
+    } else {
+        // Preserve the original legacy wrapper path and its acceptance.
+        product
+            .emit()
+            .map(|bytes| (bytes, None))
+            .map_err(|e| MnError::Backend(format!("emit wrapper: {e}")))
+    }
 }

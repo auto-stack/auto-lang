@@ -455,6 +455,7 @@ pub fn execute_bridge(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         steps: steps_out,
         restart_pending,
         worker_version: BRIDGE_WORKER_VERSION.to_string(),
+        source_import: None,
     })
 }
 

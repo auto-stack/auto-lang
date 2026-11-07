@@ -84,6 +84,25 @@ pub fn blake3_hex(bytes: &[u8]) -> String {
     h.finalize().to_hex().to_string()
 }
 
+/// The same raw-byte BLAKE3 identity from a reader, with one fixed 8KiB
+/// scratch block. Callers own the reader and its allocation admission.
+pub fn blake3_reader(mut reader: impl std::io::Read) -> std::io::Result<String> {
+    let mut hash = blake3::Hasher::new();
+    let mut buffer = [0u8; 8192];
+    loop {
+        let count = match reader.read(&mut buffer) {
+            Ok(count) => count,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        if count == 0 {
+            break;
+        }
+        hash.update(&buffer[..count]);
+    }
+    Ok(hash.finalize().to_hex().to_string())
+}
+
 /// The semantic fn type of `p797_mix` as a REAL contract TypeDesc.
 pub fn mix_fn_type() -> TypeDesc {
     TypeDesc::Fn {

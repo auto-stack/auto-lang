@@ -22,7 +22,13 @@
 pub mod bridge;
 pub mod build;
 pub mod cache;
+pub(crate) mod cache_paths;
 pub mod ctool;
+mod ctool_capture;
+mod ctool_dependencies;
+mod ctool_environment;
+mod ctool_output;
+mod ctool_text;
 pub mod decl;
 pub mod descriptor;
 pub mod emit;
@@ -30,12 +36,19 @@ pub mod layout;
 pub mod link;
 pub mod run;
 pub mod semref;
+mod source_crt;
+pub mod source_foreign;
+pub mod source_provider;
+mod source_request_work;
+pub mod source_store;
+mod source_tool_scratch;
 pub mod trace;
 pub mod typed_decl;
 pub mod typed_emit;
 pub mod validate;
 pub mod worker;
 pub mod worker_bridge;
+pub mod worker_source;
 
 /// PLAN-937 CA-D1: the neutral foreign-interface contract shared with
 /// the A2C C side (both real consumers bind to this one model).

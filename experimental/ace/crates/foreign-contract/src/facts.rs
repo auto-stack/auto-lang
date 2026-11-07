@@ -170,97 +170,12 @@ impl InterfaceFacts {
         if self.content_version.trim().is_empty() {
             return Err("content version must be non-empty".into());
         }
-        let mut seen = std::collections::BTreeSet::new();
-        if self.functions.is_empty() {
-            return Err("interface must export at least one function".into());
-        }
-        for f in &self.functions {
-            if f.symbol.is_empty()
-                || !f
-                    .symbol
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'_')
-            {
-                return Err(format!(
-                    "symbol '{}' must be a non-empty C identifier",
-                    f.symbol
-                ));
-            }
-            if !seen.insert(f.symbol.clone()) {
-                return Err(format!("duplicate symbol '{}'", f.symbol));
-            }
-            match &f.form {
-                FnForm::Pure { .. } => {
-                    if f.error_model.is_some() {
-                        return Err(format!(
-                            "pure entry '{}' must not carry an error model",
-                            f.symbol
-                        ));
-                    }
-                    // A checked-source pure entry needs recorded pure
-                    // evidence in the effects vocabulary.
-                    if matches!(self.source, FactsSource::CheckedSource { .. })
-                        && !self
-                            .effects
-                            .iter()
-                            .any(|e| e == &format!("pure:{}", f.symbol))
-                    {
-                        return Err(format!(
-                            "checked-source entry '{}' is pure without totality evidence \
-                             (effects must record pure:<symbol>; ordinary checked \
-                             arithmetic is fallible)",
-                            f.symbol
-                        ));
-                    }
-                }
-                FnForm::Fallible { outs, .. } => {
-                    let m = f.error_model.as_ref().ok_or_else(|| {
-                        format!(
-                            "fallible entry '{}' must carry an explicit error model",
-                            f.symbol
-                        )
-                    })?;
-                    if m.kind != "status-i32" {
-                        return Err(format!(
-                            "entry '{}': unknown error model kind '{}' (v0.1: status-i32)",
-                            f.symbol, m.kind
-                        ));
-                    }
-                    let mut codes: Vec<i32> = m.codes.iter().map(|(c, _)| *c).collect();
-                    let mut sorted = codes.clone();
-                    sorted.sort();
-                    if codes != sorted {
-                        return Err(format!(
-                            "entry '{}': error codes must be sorted ascending",
-                            f.symbol
-                        ));
-                    }
-                    codes.dedup();
-                    if codes.len() != m.codes.len() {
-                        return Err(format!("entry '{}': duplicate status codes", f.symbol));
-                    }
-                    if m.codes.iter().any(|(c, _)| *c >= 0) {
-                        return Err(format!(
-                            "entry '{}': status codes must be negative (0 is success)",
-                            f.symbol
-                        ));
-                    }
-                    if m.codes.is_empty() {
-                        return Err(format!(
-                            "entry '{}': fallible form with an EMPTY status table cannot \
-                             spell its failure semantics; declare the failure codes",
-                            f.symbol
-                        ));
-                    }
-                    // Status-only fallible entries (empty outs) are legal;
-                    // no additional v0.1 constraint beyond the table above.
-                    let _ = outs;
-                }
-            }
-        }
-        Ok(())
+        validate_functions(
+            &self.functions,
+            matches!(self.source, FactsSource::CheckedSource { .. }),
+            &self.effects,
+        )
     }
-
     /// Find a function by symbol (nominal lookup only; content identity
     /// is the whole-object content version, never the symbol).
     pub fn function(&self, symbol: &str) -> Option<&FnFact> {
@@ -317,6 +232,99 @@ impl InterfaceFacts {
         }
         Ok(())
     }
+}
+
+/// Shared borrowed structural rules; source declarations must not clone a
+/// whole interface (including module-wide effects) merely to validate one call.
+pub(crate) fn validate_functions(
+    functions: &[FnFact],
+    checked_source: bool,
+    effects: &[String],
+) -> Result<(), String> {
+    let mut seen = std::collections::BTreeSet::new();
+    if functions.is_empty() {
+        return Err("interface must export at least one function".into());
+    }
+    for f in functions {
+        if f.symbol.is_empty()
+            || !f
+                .symbol
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        {
+            return Err(format!(
+                "symbol '{}' must be a non-empty C identifier",
+                f.symbol
+            ));
+        }
+        if !seen.insert(f.symbol.as_str()) {
+            return Err(format!("duplicate symbol '{}'", f.symbol));
+        }
+        match &f.form {
+            FnForm::Pure { .. } => {
+                if f.error_model.is_some() {
+                    return Err(format!(
+                        "pure entry '{}' must not carry an error model",
+                        f.symbol
+                    ));
+                }
+                // A checked-source pure entry needs recorded pure
+                // evidence in the effects vocabulary.
+                if checked_source
+                    && !effects
+                        .iter()
+                        .any(|e| e.strip_prefix("pure:") == Some(f.symbol.as_str()))
+                {
+                    return Err(format!(
+                        "checked-source entry '{}' is pure without totality evidence \
+                             (effects must record pure:<symbol>; ordinary checked \
+                             arithmetic is fallible)",
+                        f.symbol
+                    ));
+                }
+            }
+            FnForm::Fallible { outs, .. } => {
+                let m = f.error_model.as_ref().ok_or_else(|| {
+                    format!(
+                        "fallible entry '{}' must carry an explicit error model",
+                        f.symbol
+                    )
+                })?;
+                if m.kind != "status-i32" {
+                    return Err(format!(
+                        "entry '{}': unknown error model kind '{}' (v0.1: status-i32)",
+                        f.symbol, m.kind
+                    ));
+                }
+                if m.codes.windows(2).any(|pair| pair[0].0 > pair[1].0) {
+                    return Err(format!(
+                        "entry '{}': error codes must be sorted ascending",
+                        f.symbol
+                    ));
+                }
+                if m.codes.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+                    return Err(format!("entry '{}': duplicate status codes", f.symbol));
+                }
+                if m.codes.iter().any(|(c, _)| *c >= 0) {
+                    return Err(format!(
+                        "entry '{}': status codes must be negative (0 is success)",
+                        f.symbol
+                    ));
+                }
+                if m.codes.is_empty() {
+                    return Err(format!(
+                        "entry '{}': fallible form with an EMPTY status table cannot \
+                             spell its failure semantics; declare the failure codes",
+                        f.symbol
+                    ));
+                }
+                // Status-only fallible entries (empty outs) are legal;
+                // no additional v0.1 constraint beyond the table above.
+                let _ = outs;
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -7,3 +7,4 @@ publish = false
 
 [dependencies]
 ace-core = { path = "../core" }
+ace-foreign-contract = { path = "../foreign-contract" }

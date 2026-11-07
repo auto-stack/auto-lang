@@ -12,7 +12,7 @@
 //! components, and the capability list is sorted so caller order cannot
 //! change the key.
 
-use crate::ident::{sq_hash, SQ_ALGO, SQ_PRODUCER, SQ_PROFILE, SQ_SCHEMA};
+use crate::ident::{sq_hash_parts, SQ_ALGO, SQ_PRODUCER, SQ_PROFILE, SQ_SCHEMA};
 use ace_semantics_contract::{ContentVersion, LogicalId};
 
 /// Target-relevant semantics marker. The infer facts are
@@ -100,30 +100,26 @@ impl QueryKey {
 
     /// Canonical, deterministic encoding of the whole key.
     pub fn canonical(&self) -> String {
-        let query = self.query.as_str().as_bytes().to_vec();
-        let logical = self.logical.as_str().as_bytes().to_vec();
-        let sig = self.sig_version.as_str().as_bytes().to_vec();
-        let body = self
-            .body_version
-            .as_ref()
-            .map(|v| v.as_str().as_bytes().to_vec())
-            .unwrap_or_else(|| b"-".to_vec());
-        let mut parts: Vec<Vec<u8>> = vec![
-            query,
-            logical,
-            sig,
-            body,
-            self.profile.as_bytes().to_vec(),
-            self.algo.as_bytes().to_vec(),
-            self.schema.as_bytes().to_vec(),
-            self.producer.as_bytes().to_vec(),
-            self.target.as_bytes().to_vec(),
+        let parts = [
+            self.query.as_str().as_bytes(),
+            self.logical.as_str().as_bytes(),
+            self.sig_version.as_str().as_bytes(),
+            self.body_version
+                .as_ref()
+                .map(|v| v.as_str().as_bytes())
+                .unwrap_or(b"-"),
+            self.profile.as_bytes(),
+            self.algo.as_bytes(),
+            self.schema.as_bytes(),
+            self.producer.as_bytes(),
+            self.target.as_bytes(),
         ];
-        for c in &self.capabilities {
-            parts.push(c.as_bytes().to_vec());
-        }
-        let refs: Vec<&[u8]> = parts.iter().map(|p| p.as_slice()).collect();
-        sq_hash(KEY_DOMAIN, &refs)
+        sq_hash_parts(
+            KEY_DOMAIN,
+            parts
+                .into_iter()
+                .chain(self.capabilities.iter().map(|c| c.as_bytes())),
+        )
     }
 }
 

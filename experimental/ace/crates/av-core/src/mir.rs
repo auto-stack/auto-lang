@@ -264,6 +264,15 @@ pub enum CalleeRef {
 
 #[derive(Clone, Debug)]
 pub enum MirInstr {
+    /// PLAN-938: a typed external call, never a guest import or console HostCall.
+    /// Only the native consumer admits execution with current host authority.
+    ForeignCall {
+        // Keep foreign metadata out of every scalar instruction's inline
+        // footprint. Its heap allocation is charged explicitly below.
+        declaration: Box<ace_foreign_contract::manual::SourceDecl>,
+        dst: SlotId,
+        args: Vec<SlotId>,
+    },
     /// PLAN-863: a host-table reference, separate from guest Call/Import.
     HostCall {
         host: u32,
@@ -1199,6 +1208,13 @@ impl MirModule {
             for blk in &f.blocks {
                 for instr in &blk.instrs {
                     match instr {
+                        MirInstr::ForeignCall {
+                            declaration, args, ..
+                        } => {
+                            b += args.len() * std::mem::size_of::<SlotId>() + VEC;
+                            b += std::mem::size_of::<ace_foreign_contract::manual::SourceDecl>()
+                                + declaration.heap_bytes();
+                        }
                         MirInstr::Call { args, .. } => {
                             b += args.len() * std::mem::size_of::<SlotId>() + VEC
                         }

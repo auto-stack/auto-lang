@@ -666,7 +666,27 @@ impl ResolvedFn {
     }
 }
 
+impl ResolvedProgram {
+    pub fn foreign_by_slot(
+        &self,
+        slot: usize,
+    ) -> Option<&ace_foreign_contract::manual::SourceDecl> {
+        if self.foreign_slots.is_empty() {
+            self.foreign.get(slot)
+        } else {
+            self.foreign_slots
+                .get(slot)
+                .and_then(|name| self.foreign.iter().find(|d| &d.name == name))
+        }
+    }
+}
+
 pub struct ResolvedProgram {
+    /// Stable process-local foreign call slots. Empty means the cold declaration
+    /// order. Removed names remain tombstones; additions append without touching
+    /// any non-reader body. Restore has no resolved bodies and starts fresh slots.
+    pub foreign_slots: Vec<String>,
+    pub foreign: Vec<ace_foreign_contract::manual::SourceDecl>,
     pub fns: Vec<ResolvedFn>,
     /// Nominal record types in declaration order (PLAN-771). `VT::Rec(i)`
     /// indexes here.
@@ -1035,6 +1055,8 @@ pub fn resolve_closures_cached(
     )?;
     Ok((
         ResolvedProgram {
+            foreign: Vec::new(),
+            foreign_slots: Vec::new(),
             fns,
             records,
             lists: coll.lists,
@@ -1078,6 +1100,8 @@ pub(crate) fn resolve_closures_env(
     Ok((
         CheckedEnv {
             program: ResolvedProgram {
+                foreign: Vec::new(),
+                foreign_slots: Vec::new(),
                 fns,
                 records,
                 lists: coll.lists,
@@ -1105,6 +1129,8 @@ pub fn resolve_with(
 ) -> Result<ResolvedProgram, Vec<Diagnostic>> {
     let (fns, records, coll, _) = resolve_detailed(program, capabilities, surface, None, None)?;
     Ok(ResolvedProgram {
+        foreign: Vec::new(),
+        foreign_slots: Vec::new(),
         fns,
         records,
         lists: coll.lists,
@@ -1122,6 +1148,9 @@ pub fn resolve_with(
 /// authoritative and its own rule as the expectation to CHECK — a missing
 /// or mismatching fact is a bind-stage rejection.
 pub trait TypeSupply {
+    fn foreign(&self) -> Option<&ace_foreign_contract::manual::AdmittedForeign> {
+        None
+    }
     /// Type of the expression node at this source span.
     fn expr_ty(&self, span: Span) -> Option<VT>;
     /// Type of the `let`/`var` declaration whose statement span is given.
@@ -1164,6 +1193,11 @@ pub fn resolve_with_supply(
     let (fns, records, coll, _) =
         resolve_detailed(program, capabilities, surface, None, Some(supply))?;
     Ok(ResolvedProgram {
+        foreign_slots: Vec::new(),
+        foreign: supply
+            .foreign()
+            .map(|f| f.source_declarations())
+            .unwrap_or_default(),
         fns,
         records,
         lists: coll.lists,
@@ -1220,6 +1254,71 @@ fn reject_variant_cycles(coll: &CollTables, diags: &mut Vec<Diagnostic>) {
 /// The declaration passes + per-function resolve shared by the
 /// whole-module entry ([`resolve_with`]) and the retained-environment
 /// cold entry ([`resolve_env`]).
+/// Declaration-only foreign admission, shared by the fact-query entry and
+/// core binding. It never walks a body and keeps the source name's location.
+pub fn validate_foreign_context(
+    program: &ast::Program,
+    foreign: &ace_foreign_contract::manual::AdmittedForeign,
+    capabilities: &[String],
+) -> Result<(), Vec<Diagnostic>> {
+    let names: Vec<_> = program
+        .items
+        .iter()
+        .map(|item| match item {
+            ast::Item::Fn(f) => (f.name.name.as_str(), f.name.span, true),
+            ast::Item::Type(t) => (t.name.name.as_str(), t.name.span, false),
+            ast::Item::Enum(e) => (e.name.name.as_str(), e.name.span, false),
+        })
+        .collect();
+    validate_foreign_declarations(&names, foreign, capabilities)
+}
+/// Same admission for a restored declaration directory: name/span metadata is
+/// sufficient; no placeholder local function or body projection is needed.
+pub fn validate_foreign_declarations(
+    names: &[(&str, Span, bool)],
+    foreign: &ace_foreign_contract::manual::AdmittedForeign,
+    capabilities: &[String],
+) -> Result<(), Vec<Diagnostic>> {
+    if !capabilities
+        .iter()
+        .any(|c| c == ace_foreign_contract::manual::SOURCE_CAP)
+        || foreign
+            .manifest()
+            .facts
+            .capabilities
+            .iter()
+            .any(|c| !capabilities.contains(c))
+    {
+        let span = names
+            .first()
+            .map(|(_, span, _)| *span)
+            .unwrap_or(Span { start: 0, end: 0 });
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.foreign-capability",
+            "foreign.scalar capability is required",
+            span,
+        )]);
+    }
+    let declarations = foreign.source_declarations_ref();
+    let mut ds = Vec::new();
+    for (name, span, function) in names {
+        if *function && declarations.iter().any(|d| d.name == *name) {
+            ds.push(Diagnostic::new(
+                Stage::Bind,
+                "source.foreign-conflict",
+                format!("foreign declaration `{name}` conflicts with a source function"),
+                *span,
+            ));
+        }
+    }
+    if ds.is_empty() {
+        Ok(())
+    } else {
+        Err(ds)
+    }
+}
+
 fn resolve_detailed(
     program: &ast::Program,
     capabilities: &[String],
@@ -1235,6 +1334,9 @@ fn resolve_detailed(
     ),
     Vec<Diagnostic>,
 > {
+    if let Some(foreign) = supply.and_then(|s| s.foreign()) {
+        validate_foreign_context(program, foreign, capabilities)?;
+    }
     let trace_enabled = capabilities.iter().any(|c| c == TRACE_CAPABILITY);
     // PLAN-936（T-04）：meta 查询与 CT 表达式能力（各自独立门；meta 默认关）。
     let meta_enabled = capabilities.iter().any(|c| c == META_CAPABILITY);
@@ -1518,6 +1620,41 @@ fn resolve_detailed(
                 fn_index: i,
                 span: f.span,
             });
+        }
+    }
+
+    if let Some(foreign) = supply.and_then(|s| s.foreign()) {
+        for (index, declaration) in foreign.source_declarations_ref().iter().enumerate() {
+            if sigs.contains_key(&declaration.name) {
+                diags.push(Diagnostic::new(
+                    Stage::Bind,
+                    "source.foreign-conflict",
+                    format!(
+                        "foreign declaration `{}` conflicts with a source function",
+                        declaration.name
+                    ),
+                    Span { start: 0, end: 0 },
+                ));
+                continue;
+            }
+            let vt = |k| match k {
+                ace_foreign_contract::LaneKind::Bool => VT::Bool,
+                _ => VT::I32,
+            };
+            sigs.insert(
+                declaration.name.clone(),
+                FnSig {
+                    param_names: (0..declaration.params().len())
+                        .map(|i| format!("arg{i}"))
+                        .collect(),
+                    params: declaration.params().iter().copied().map(vt).collect(),
+                    result: vt(declaration.result()),
+                    index: flat.len() + index,
+                },
+            );
+        }
+        if !diags.is_empty() {
+            return Err(diags);
         }
     }
 
@@ -1997,6 +2134,129 @@ pub struct CheckedEnv {
     pub(crate) closed: bool,
 }
 
+/// Declaration-only candidate. Preparing it never visits or copies a retained
+/// body. Body candidates are checked under this context and published together.
+pub struct ForeignContext {
+    pub(crate) env_id: u64,
+    pub(crate) base_generation: u64,
+    pub(crate) declarations: Vec<ace_foreign_contract::manual::SourceDecl>,
+    pub(crate) slots: Vec<String>,
+    pub(crate) sigs: BTreeMap<String, FnSig>,
+}
+impl ForeignContext {
+    pub fn prepare(
+        env: &CheckedEnv,
+        foreign: &ace_foreign_contract::manual::AdmittedForeign,
+    ) -> Result<Self, Vec<Diagnostic>> {
+        let declarations = foreign.source_declarations();
+        if env.closed
+            || declarations
+                .iter()
+                .any(|d| env.program.fns.iter().any(|f| f.name == d.name))
+        {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.foreign-conflict",
+                "foreign context is closed or conflicts with a source declaration",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        let mut slots = if env.program.foreign_slots.is_empty() {
+            env.program
+                .foreign
+                .iter()
+                .map(|d| d.name.clone())
+                .collect::<Vec<_>>()
+        } else {
+            env.program.foreign_slots.clone()
+        };
+        for declaration in &declarations {
+            if !slots.contains(&declaration.name) {
+                slots.push(declaration.name.clone());
+            }
+        }
+        if slots.len() > 8192 {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.foreign-slot-budget",
+                "foreign declaration slot budget exceeded",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        let mut sigs = env.sigs.clone();
+        for old in &env.program.foreign {
+            sigs.remove(&old.name);
+        }
+        for declaration in &declarations {
+            let index = slots
+                .iter()
+                .position(|n| n == &declaration.name)
+                .expect("reserved slot");
+            let vt = |k| match k {
+                ace_foreign_contract::LaneKind::Bool => VT::Bool,
+                _ => VT::I32,
+            };
+            sigs.insert(
+                declaration.name.clone(),
+                FnSig {
+                    param_names: (0..declaration.params().len())
+                        .map(|i| format!("arg{i}"))
+                        .collect(),
+                    params: declaration.params().iter().copied().map(vt).collect(),
+                    result: vt(declaration.result()),
+                    index: env.program.fns.len() + index,
+                },
+            );
+        }
+        Ok(Self {
+            env_id: env.id,
+            base_generation: env.generation,
+            declarations,
+            slots,
+            sigs,
+        })
+    }
+    pub fn validate(&self, env: &CheckedEnv) -> Result<(), Vec<Diagnostic>> {
+        if env.closed || self.env_id != env.id || self.base_generation != env.generation {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.stale",
+                "foreign context candidate is closed, foreign or stale",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        Ok(())
+    }
+    /// Exclusive temporary declaration graft, restored even if the caller
+    /// unwinds. The body port still owns its own temporary one-slot graft.
+    pub(crate) fn with_env<T>(
+        &mut self,
+        env: &mut CheckedEnv,
+        f: impl FnOnce(&mut CheckedEnv) -> T,
+    ) -> Result<T, Vec<Diagnostic>> {
+        self.validate(env)?;
+        struct Graft<'a> {
+            env: &'a mut CheckedEnv,
+            context: &'a mut ForeignContext,
+        }
+        impl Drop for Graft<'_> {
+            fn drop(&mut self) {
+                std::mem::swap(
+                    &mut self.env.program.foreign,
+                    &mut self.context.declarations,
+                );
+                std::mem::swap(&mut self.env.program.foreign_slots, &mut self.context.slots);
+                std::mem::swap(&mut self.env.sigs, &mut self.context.sigs);
+            }
+        }
+        std::mem::swap(&mut env.program.foreign, &mut self.declarations);
+        std::mem::swap(&mut env.program.foreign_slots, &mut self.slots);
+        std::mem::swap(&mut env.sigs, &mut self.sigs);
+        let graft = Graft { env, context: self };
+        Ok(f(graft.env))
+    }
+}
+
 impl CheckedEnv {
     /// Cold retained-environment consumer: run the same whole typecheck once,
     /// without first rendering/binding a second whole-module Atom document.
@@ -2144,6 +2404,11 @@ pub fn resolve_env_with_supply(
     let (fns, records, coll, ix) = resolve_detailed(program, capabilities, surface, None, supply)?;
     Ok(CheckedEnv {
         program: ResolvedProgram {
+            foreign_slots: Vec::new(),
+            foreign: supply
+                .and_then(|s| s.foreign())
+                .map(|f| f.source_declarations())
+                .unwrap_or_default(),
             fns,
             records,
             lists: coll.lists,
@@ -2221,6 +2486,14 @@ pub fn env_fn_regions(env: &CheckedEnv) -> Vec<FunctionRegion> {
         })
         .collect()
 }
+/// Declaration source-map metadata only; no body is visited or copied.
+pub fn env_fn_declarations(env: &CheckedEnv) -> impl Iterator<Item = (&str, Span, Span)> + '_ {
+    env.program
+        .fns
+        .iter()
+        .map(|f| (f.name.as_str(), f.name_span, f.item_span))
+}
+
 /// Diagnostic producer identity of the actual retained statement allocation.
 /// A same-content freshly resolved body has a different live allocation; this
 /// number is never used as a cache key or a verification credential.
@@ -2314,12 +2587,21 @@ pub(crate) fn recheck_swap(
 ) -> Result<BodyState, Vec<Diagnostic>> {
     recheck_swap_with_supply(env, item, fn_index, None)
 }
+
 pub(crate) fn recheck_swap_with_supply(
     env: &mut CheckedEnv,
     item: &ast::FnItem,
     fn_index: usize,
     supply: Option<&dyn TypeSupply>,
 ) -> Result<BodyState, Vec<Diagnostic>> {
+    if supply.is_some() && !env.profile.is_scalar() {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.fact-profile",
+            "fact-supplied recheck supports the scalar surface only",
+            item.span,
+        )]);
+    }
     if env.closed {
         return Err(vec![Diagnostic::new(
             Stage::Bind,
@@ -2491,6 +2773,7 @@ pub(crate) fn recheck_swap_with_supply(
         entry: resolved,
         pools: None,
     };
+    crate::body_work::record_produced("resolve", &sig_key);
     if env.profile == SourceProfile::Collections {
         previous.pools = Some(BodyTypePools {
             lists: coll.lists,
@@ -2499,8 +2782,12 @@ pub(crate) fn recheck_swap_with_supply(
         });
     }
     let previous = previous.swap_into(env, fn_index);
-    env.check_walks += 1;
-    let check_diags = super::typecheck::check_body_in(&env.program, fn_index);
+    let check_diags = if supply.is_some() {
+        Vec::new()
+    } else {
+        env.check_walks += 1;
+        super::typecheck::check_body_in(&env.program, fn_index)
+    };
     if !check_diags.is_empty() {
         previous.swap_into(env, fn_index);
         return Err(check_diags);

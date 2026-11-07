@@ -1,0 +1,189 @@
+{
+  "schema": "abi.source-import-deck/1",
+  "source": "fn main() int { return foreign_div(84,0) }",
+  "module": "source938",
+  "manifest": {
+    "schema": "ace.foreign.manual/1",
+    "review_id": "plan938-independent-provider-v1",
+    "provider": "independent-c938",
+    "header_digest": "4051cd6af2acd0c07eeed8495f50ad51fdfac94c3b91928f86422e486b408b98",
+    "physical_table_digest": "0ea8be97d1026bd57dcaff7b35673e45a6a9f17e2f5c991bdd1b1fb04a94daa3",
+    "target": "x86_64-pc-windows-msvc",
+    "profile": "autoabi.win-x64.v0.1-candidate",
+    "callconv": "windows-x64",
+    "direction": "source-import",
+    "facts": {
+      "format": "autoabi.contract.facts/1",
+      "logical": "independent-c938",
+      "content_version": "scalar-v1",
+      "source": {
+        "Typed": {
+          "id": "plan938-independent-provider-v1"
+        }
+      },
+      "functions": [
+        {
+          "symbol": "provider_add",
+          "form": {
+            "Pure": {
+              "params": [
+                "I32",
+                "I32"
+              ],
+              "ret": "I32"
+            }
+          },
+          "error_model": null,
+          "semantic_ref": null
+        },
+        {
+          "symbol": "provider_not",
+          "form": {
+            "Pure": {
+              "params": [
+                "Bool"
+              ],
+              "ret": "Bool"
+            }
+          },
+          "error_model": null,
+          "semantic_ref": null
+        },
+        {
+          "symbol": "provider_div",
+          "form": {
+            "Fallible": {
+              "ctx": false,
+              "params": [
+                "I32",
+                "I32"
+              ],
+              "outs": [
+                "I32"
+              ]
+            }
+          },
+          "error_model": {
+            "kind": "status-i32",
+            "codes": [
+              [
+                -3,
+                "context"
+              ],
+              [
+                -2,
+                "overflow"
+              ],
+              [
+                -1,
+                "zero"
+              ]
+            ]
+          },
+          "semantic_ref": null
+        },
+        {
+          "symbol": "provider_tick",
+          "form": {
+            "Pure": {
+              "params": [
+                "I32"
+              ],
+              "ret": "I32"
+            }
+          },
+          "error_model": null,
+          "semantic_ref": null
+        },
+        {
+          "symbol": "provider_trace",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": null,
+          "semantic_ref": null
+        },
+        {
+          "symbol": "provider_calls",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": null,
+          "semantic_ref": null
+        },
+        {
+          "symbol": "provider_mix",
+          "form": {
+            "Pure": {
+              "params": [
+                "I32",
+                "Bool",
+                "I32",
+                "Bool",
+                "I32"
+              ],
+              "ret": "I32"
+            }
+          },
+          "error_model": null,
+          "semantic_ref": null
+        }
+      ],
+      "effects": [
+        "pure:provider_add",
+        "checked"
+      ],
+      "capabilities": [
+        "foreign.scalar"
+      ]
+    },
+    "declarations": [
+      {
+        "source_name": "foreign_add",
+        "symbol": "provider_add",
+        "context_symbol": null
+      },
+      {
+        "source_name": "foreign_not",
+        "symbol": "provider_not",
+        "context_symbol": null
+      },
+      {
+        "source_name": "foreign_div",
+        "symbol": "provider_div",
+        "context_symbol": "provider_ctx"
+      },
+      {
+        "source_name": "foreign_tick",
+        "symbol": "provider_tick",
+        "context_symbol": null
+      },
+      {
+        "source_name": "foreign_trace",
+        "symbol": "provider_trace",
+        "context_symbol": null
+      },
+      {
+        "source_name": "foreign_calls",
+        "symbol": "provider_calls",
+        "context_symbol": null
+      },
+      {
+        "source_name": "foreign_mix",
+        "symbol": "provider_mix",
+        "context_symbol": null
+      }
+    ]
+  },
+  "capabilities": [
+    "foreign.scalar"
+  ],
+  "provider_bias": 0,
+  "reference": "zero"
+}

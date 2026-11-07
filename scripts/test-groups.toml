@@ -1049,6 +1049,18 @@ suite = "crates/auto-lang/test/cases/ace-ca-d-scalar-937/ace-ca-d-scalar-937.sui
 all = false
 
 [[group]]
+name = "case-ace-ca-d-source-938"
+title = "TestCase PLAN-938 source foreign explicit certification"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "abi"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-ca-d-source-938/ace-ca-d-source-938.suite.ad"
+all = false
+
+[[group]]
 name = "case-autoabi"
 title = "TestCase case-autoabi"
 runner = "case"

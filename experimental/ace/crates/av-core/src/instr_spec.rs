@@ -43,6 +43,7 @@ pub struct InstructionSpec {
 
 /// The frozen instruction contract of both wire families.
 pub const SPECS: &[InstructionSpec] = &[
+    InstructionSpec { opcode: 0x36, name: "FOREIGN_CALL", family: "instr", operands: &[("args", "R"), ("dst", "W")], type_rule: "exact admitted i32/bool contract; native binding requalified; AV admission rejects", traps: true, fuel: 1, profiles: &["foreign-native"], ownership: "scalar Copy; no addresses persisted" },
     InstructionSpec { opcode: 0x35, name: "HOST_CALL", family: "instr", operands: &[("host", "R"), ("arg", "R")], type_rule: "host table exact signature; current capability admission precedes execution", traps: false, fuel: 1, profiles: &["host-console"], ownership: "readonly borrow; bounded output; no guest reentry" },
     InstructionSpec {
         opcode: 0x01,
@@ -657,6 +658,7 @@ pub fn coverage_check() -> Result<(), String> {
         "CALL",
         "TRACE",
         "HOST_CALL",
+        "FOREIGN_CALL",
         "FIELD_GET",
         "FIELD_SET",
         "AGGREGATE",
@@ -728,6 +730,7 @@ pub fn mnemonic_of_instr(i: &MirInstr) -> &'static str {
         MirInstr::Copy { .. } => "COPY",
         MirInstr::Bin { .. } => "BIN",
         MirInstr::Un { .. } => "UN",
+        MirInstr::ForeignCall { .. } => "FOREIGN_CALL",
         MirInstr::Call { .. } => "CALL",
         MirInstr::Trace { .. } => "TRACE",
         MirInstr::FieldGet { .. } => "FIELD_GET",
@@ -793,11 +796,13 @@ mod tests {
         coverage_check().expect("the V-11 instruction contract table is complete");
         // Trap classification frozen: BIN/UN plus the text-runtime traps,
         // the PLAN-822 index/variant-defense traps, and PLAN-824's
-        // runtime-CHECKED wrong-type take.
+        // runtime-CHECKED wrong-type take, plus PLAN-938's foreign
+        // status/bool boundary failures (AV execution remains unsupported).
         let trapping: Vec<&str> = SPECS.iter().filter(|s| s.traps).map(|s| s.name).collect();
         assert_eq!(
             trapping,
             vec![
+                "FOREIGN_CALL",
                 "BIN",
                 "UN",
                 "STR_CHAR_AT",

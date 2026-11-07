@@ -260,6 +260,16 @@ pub const LAYER_FRAGMENT_C: LayerSpec = LayerSpec {
     coverage: ace_artifacts::schema::LayerCoverage::Codec,
 };
 
+/// Checked foreign HIR uses the same target-provider machinery with a
+/// distinct printer namespace; legacy C/Rust fragments never satisfy it.
+pub const LAYER_FRAGMENT_C_FOREIGN: LayerSpec = LayerSpec {
+    id: "AXCF1",
+    name: "a2x-c-foreign-fragment",
+    schema_id: "a2938/axc-foreign-fn/v1",
+    producer: "auto-a2x-c-foreign",
+    ..LAYER_FRAGMENT_C
+};
+
 /// PLAN-925 CA-B: the C (HIR→C11 record-text) fragment layer — its own
 /// namespace beside the Rust record-text layer (AXR2) and the C scalar
 /// one (AXC1). The runtime content input is the C typed resource
@@ -417,6 +427,9 @@ pub struct ProducerStats {
     pub verify: u64,
     pub lower: u64,
     pub print: u64,
+    /// Actual successful provider outputs, including outputs whose later
+    /// persistence fails. Distinct from entering lower/print.
+    pub fragments_produced: u64,
     pub persist: u64,
     pub bytes_persisted: u64,
     pub store_hit_semantic: u64,
@@ -513,6 +526,67 @@ pub struct A2xSession {
 }
 
 impl A2xSession {
+    /// Consume a checked scalar function from the shared frontend. This is the
+    /// original semantic/fragment cache port, without source parsing or an env
+    /// rebuild. The provider's current authority is checked even on a hit.
+    pub fn checked_scalar_fragment(
+        &mut self,
+        view: &SemanticView<'_>,
+        f: &FnFacts<'_>,
+        caps: &[String],
+        runtime_sha: &str,
+        read_only: bool,
+    ) -> Result<ResidentFragment, A2xRejectOrResource> {
+        self.checked_scalar_fragment_internal(view, f, caps, runtime_sha, read_only, None)
+    }
+    pub fn checked_scalar_fragment_observed(
+        &mut self,
+        view: &SemanticView<'_>,
+        f: &FnFacts<'_>,
+        caps: &[String],
+        runtime_sha: &str,
+        read_only: bool,
+        ledger: &ace_source_query::work::Ledger,
+        work: &mut Vec<ace_source_query::work::Work>,
+    ) -> Result<ResidentFragment, A2xRejectOrResource> {
+        self.checked_scalar_fragment_internal(
+            view,
+            f,
+            caps,
+            runtime_sha,
+            read_only,
+            Some((ledger, work)),
+        )
+    }
+    fn checked_scalar_fragment_internal(
+        &mut self,
+        view: &SemanticView<'_>,
+        f: &FnFacts<'_>,
+        caps: &[String],
+        runtime_sha: &str,
+        read_only: bool,
+        observation: Option<(
+            &ace_source_query::work::Ledger,
+            &mut Vec<ace_source_query::work::Work>,
+        )>,
+    ) -> Result<ResidentFragment, A2xRejectOrResource> {
+        if view.domain != ace_core::hir::HirDomain::Scalar {
+            return Err(A2xRejectOrResource::Reject(A2xReject::new(
+                "a2x.profile",
+                "expected checked scalar function",
+            )));
+        }
+        self.profile = SourceProfile::Scalar;
+        self.caps = caps.to_vec();
+        self.ensure_target_supports()
+            .map_err(A2xRejectOrResource::Reject)?;
+        self.provider
+            .validate_view(view)
+            .map_err(A2xRejectOrResource::Reject)?;
+        let fingerprint = ace_a2x_core::prepare::semantic_fingerprint(view, f)
+            .map_err(A2xRejectOrResource::Reject)?;
+        self.produce_fragment_observed(view, f, &fingerprint, runtime_sha, read_only, observation)
+    }
     /// Open a session on a (new or existing) store root with an explicit
     /// emit target provider (PLAN-921: the Rust provider is
     /// `ace_a2x_rust::RustTargetProvider::v1()`). `quota_bytes` caps the
@@ -598,6 +672,7 @@ impl A2xSession {
             Ok("AXR2") => &LAYER_FRAGMENT_RT,
             Ok("AXR3") => &LAYER_FRAGMENT_COLL,
             Ok("AXC1") => &LAYER_FRAGMENT_C,
+            Ok("AXCF1") => &LAYER_FRAGMENT_C_FOREIGN,
             Ok("AXC2") => &LAYER_FRAGMENT_C_RT,
             Ok("AXC3") => &LAYER_FRAGMENT_C_COLL,
             other => panic!("provider returned unregistered fragment layer {:?}", other),
@@ -627,6 +702,7 @@ impl A2xSession {
             Ok("AXR2") => &LAYER_FRAGMENT_RT,
             Ok("AXR3") => &LAYER_FRAGMENT_COLL,
             Ok("AXC1") => &LAYER_FRAGMENT_C,
+            Ok("AXCF1") => &LAYER_FRAGMENT_C_FOREIGN,
             Ok("AXC2") => &LAYER_FRAGMENT_C_RT,
             Ok("AXC3") => &LAYER_FRAGMENT_C_COLL,
             other => panic!("provider returned unregistered fragment layer {:?}", other),
@@ -1054,6 +1130,7 @@ impl A2xSession {
                 .provider
                 .produce_fragments(view, &fns, family)
                 .map_err(A2xRejectOrResource::Reject)?;
+            self.stats.fragments_produced += texts.len() as u64;
             for (i, ((f, sem_fp), text)) in misses.iter().zip(texts).enumerate() {
                 if !read_only {
                     // semantic layer first
@@ -2284,9 +2361,79 @@ impl A2xSession {
         read_only: bool,
         context: Option<&str>,
     ) -> Result<ResidentFragment, A2xRejectOrResource> {
+        self.produce_fragment_with_context_observed(
+            view,
+            f,
+            sem_fp,
+            runtime_sha,
+            read_only,
+            context,
+            None,
+        )
+    }
+    fn produce_fragment_observed(
+        &mut self,
+        view: &SemanticView<'_>,
+        f: &FnFacts<'_>,
+        sem_fp: &str,
+        runtime_sha: &str,
+        read_only: bool,
+        observation: Option<(
+            &ace_source_query::work::Ledger,
+            &mut Vec<ace_source_query::work::Work>,
+        )>,
+    ) -> Result<ResidentFragment, A2xRejectOrResource> {
+        self.produce_fragment_with_context_observed(
+            view,
+            f,
+            sem_fp,
+            runtime_sha,
+            read_only,
+            None,
+            observation,
+        )
+    }
+    fn produce_fragment_with_context_observed(
+        &mut self,
+        view: &SemanticView<'_>,
+        f: &FnFacts<'_>,
+        sem_fp: &str,
+        runtime_sha: &str,
+        read_only: bool,
+        context: Option<&str>,
+        mut observation: Option<(
+            &ace_source_query::work::Ledger,
+            &mut Vec<ace_source_query::work::Work>,
+        )>,
+    ) -> Result<ResidentFragment, A2xRejectOrResource> {
         let frag_key = self.fragment_key_with_context(f, sem_fp, runtime_sha, context);
-        if let Ok(Some(hit)) = self.store.get_artifact(self.layer_fragment().id, &frag_key) {
+        let lookup = observation.as_ref().map(|(l, _)| {
+            l.begin(
+                f.source_name,
+                "c-cache-lookup",
+                ace_source_query::work::Phase::Metadata,
+            )
+        });
+        let hit = if observation.is_some() {
+            self.store.get_artifact_bounded(
+                self.layer_fragment().id,
+                &frag_key,
+                (64 << 20) + ace_artifacts::codec::CHUNK_HEADER_LEN as u64,
+            )
+        } else {
+            self.store.get_artifact(self.layer_fragment().id, &frag_key)
+        };
+        if let Some(lookup) = lookup {
+            lookup.accept();
+        }
+        if let Ok(Some(hit)) = hit {
+            if let Some((ledger, _)) = &observation {
+                ledger.io(f.source_name, "c-cache", hit.payload.len() as u64, 0);
+            }
             if let Ok(text) = String::from_utf8(hit.payload) {
+                if let Some((ledger, _)) = &observation {
+                    ledger.reuse(f.source_name, "c-fragment", 1);
+                }
                 self.stats.store_hit_fragment += 1;
                 return Ok(ResidentFragment {
                     source_name: f.source_name.to_string(),
@@ -2296,6 +2443,13 @@ impl A2xSession {
                 });
             }
         }
+        let mut print = observation.as_ref().map(|(l, _)| {
+            l.begin(
+                f.source_name,
+                "c-fragment",
+                ace_source_query::work::Phase::Production,
+            )
+        });
         self.stats.lower += 1;
         self.stats.print += 1;
         let texts = self
@@ -2308,6 +2462,10 @@ impl A2xSession {
                 format!("fragment for `{}` missing after lowering", f.source_name),
             ))
         })?;
+        self.stats.fragments_produced += 1;
+        if let Some(print) = &mut print {
+            print.produced(1);
+        }
         if !read_only {
             let sig_input = self.signature_input(view, f);
             let sem_key = self.semantic_key(f, sem_fp, view.domain.schema(), &sig_input);
@@ -2318,6 +2476,9 @@ impl A2xSession {
                 view.canonical_signature(f),
                 sem_fp
             );
+            if let Some((ledger, _)) = &observation {
+                ledger.io(f.source_name, "c-cache", 0, sem_payload.len() as u64);
+            }
             let sem_id = self.quota_put(
                 self.layer_semantic().id,
                 sem_key,
@@ -2325,6 +2486,9 @@ impl A2xSession {
                 sem_payload.as_bytes(),
                 vec![],
             )?;
+            if let Some((ledger, _)) = &observation {
+                ledger.io(f.source_name, "c-cache", 0, text.len() as u64);
+            }
             self.quota_put(
                 self.layer_fragment().id,
                 frag_key,
@@ -2332,6 +2496,9 @@ impl A2xSession {
                 text.as_bytes(),
                 vec![(sem_id, RefKind::Provenance)],
             )?;
+        }
+        if let (Some(print), Some((_, work))) = (print, observation.as_mut()) {
+            work.push(print);
         }
         Ok(ResidentFragment {
             source_name: f.source_name.to_string(),
@@ -2501,6 +2668,7 @@ fn static_layer(id: &str) -> &'static str {
         "AXS3" => LAYER_SEMANTIC_COLL.id,
         "AXR3" => LAYER_FRAGMENT_COLL.id,
         "AXC1" => LAYER_FRAGMENT_C.id,
+        "AXCF1" => LAYER_FRAGMENT_C_FOREIGN.id,
         "AXC2" => LAYER_FRAGMENT_C_RT.id,
         "AXC3" => LAYER_FRAGMENT_C_COLL.id,
         "AXP1" => LAYER_SOURCE_ANCHOR.id,

@@ -33,13 +33,14 @@
 //! and refuses a mismatched address (review R1 F-04).
 
 use crate::codec::{frame_chunk, unframe_chunk, ChunkKind, CodecError};
-use crate::identity::{ArtifactId, ChunkId, QueryKey, RefKind};
+use crate::identity::{ChunkId, QueryKey, RefKind};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, UNIX_EPOCH};
 
+mod artifact_identity;
 pub mod gc;
 
 pub use gc::{gc_config_default, run_gc, GcConfig, GcReceipt, GC_HIGH, GC_LOW};
@@ -333,9 +334,44 @@ struct Marker {
 pub struct ManagedStore {
     pub root: PathBuf,
     canonical_root: PathBuf,
+    store_id: String,
     db: Mutex<Connection>,
     /// Isolated adapter over auto-cache's BlobStore (SD-04 audit point).
     blobs: auto_cache::storage::BlobStore,
+    /// Whole-namespace ceiling for COMMITS (PLAN-938): every put's projected
+    /// permanent growth (new block + metadata allowance) is admitted under an
+    /// exclusive namespace lock held through the metadata commit, so
+    /// concurrent publishers cannot overshoot between check and commit.
+    /// Only tightnable below [`Self::NAMESPACE_BUDGET`].
+    namespace_budget: u64,
+}
+
+/// An original-store staging maintenance/write turn. The caller may clean
+/// owned residue even when already above the cap, then MUST admit its complete
+/// new physical copy count before writing. Both guards remain held through
+/// publication/removal; GC and other staging producers cannot race the check.
+pub struct StagingTurn<'a> {
+    store: &'a ManagedStore,
+    _budget: FileGuard,
+    _live: FileGuard,
+}
+impl StagingTurn<'_> {
+    pub fn admit_bytes(&self, extra: u64) -> Result<(), StoreError> {
+        let current = ManagedStore::dir_size(&self.store.root.join("staging"));
+        let residue = self.store.cas_tmp_bytes();
+        let total = current
+            .checked_add(residue)
+            .and_then(|n| n.checked_add(extra))
+            .ok_or_else(|| StoreError::ResourceExhausted("staging size overflow".into()))?;
+        if total > ManagedStore::STAGING_BUDGET {
+            return Err(StoreError::ResourceExhausted(format!(
+                "staging {current} + CAS residue {residue} + new {extra} exceeds {}",
+                ManagedStore::STAGING_BUDGET
+            )));
+        }
+        PEAK_TRANSIENT.fetch_max(total, std::sync::atomic::Ordering::Relaxed);
+        Ok(())
+    }
 }
 
 /// Classified on-disk accounting: blocks, DB/WAL, staging, trash, locks,
@@ -379,6 +415,27 @@ pub struct LoadedArtifact {
 }
 
 impl ManagedStore {
+    /// Borrow the identity captured at open without allocating a second path.
+    /// Mutating users still validate the live namespace through staging_turn.
+    pub fn canonical_root(&self) -> &Path {
+        &self.canonical_root
+    }
+    pub fn store_id(&self) -> &str {
+        &self.store_id
+    }
+
+    pub fn staging_turn(&self) -> Result<StagingTurn<'_>, StoreError> {
+        check_namespace_roots(self)?;
+        let live = self.liveness_shared()?;
+        let budget =
+            FileGuard::lock_timeout(&self.lock_path("staging-budget"), true, CHUNK_LOCK_WAIT)?
+                .ok_or_else(|| StoreError::Busy("staging budget lock".into()))?;
+        Ok(StagingTurn {
+            store: self,
+            _live: live,
+            _budget: budget,
+        })
+    }
     /// Open (creating when absent) an isolated managed store.
     pub fn open(root: &Path) -> Result<Self, StoreError> {
         if is_reparse(root) {
@@ -421,9 +478,26 @@ impl ManagedStore {
         Ok(ManagedStore {
             root: root.to_path_buf(),
             canonical_root,
+            store_id: marker.store_id,
             db: Mutex::new(db),
             blobs: auto_cache::storage::BlobStore::new(root.join("blocks")),
+            namespace_budget: Self::NAMESPACE_BUDGET,
         })
+    }
+
+    /// Open with a TIGHTER whole-namespace ceiling (PLAN-938 host seam:
+    /// pressure controls and constrained hosts; never above the frozen
+    /// [`Self::NAMESPACE_BUDGET`]).
+    pub fn open_with_namespace_budget(root: &Path, budget: u64) -> Result<Self, StoreError> {
+        if budget > Self::NAMESPACE_BUDGET {
+            return Err(StoreError::ResourceExhausted(format!(
+                "namespace budget {budget} exceeds the frozen ceiling {}",
+                Self::NAMESPACE_BUDGET
+            )));
+        }
+        let mut store = Self::open(root)?;
+        store.namespace_budget = budget;
+        Ok(store)
     }
 
     /// Open refusing to create: operations that delete require the marker.
@@ -529,28 +603,15 @@ impl ManagedStore {
 
     /// Deterministic artifact content identity.
     fn artifact_id(req: &PutRequest, chunk_id: &str) -> String {
-        let mut parts: Vec<Vec<u8>> = vec![
-            req.layer.as_bytes().to_vec(),
-            req.key.hash().into_bytes(),
-            chunk_id.as_bytes().to_vec(),
-            format!("{:?}", req.kind).into_bytes(),
-        ];
-        let mut edges: Vec<String> = req
-            .edges
-            .iter()
-            .map(|(a, k)| format!("{}:{}", a, k.as_str()))
-            .collect();
-        edges.sort();
-        for e in edges {
-            parts.push(e.into_bytes());
-        }
-        let refs: Vec<&[u8]> = parts.iter().map(|p| p.as_slice()).collect();
-        ArtifactId::from_parts(&refs).0
+        artifact_identity::artifact_id(req, chunk_id)
     }
 
     /// Staging/temp budget (§5.4): in-flight staging above the cap is a
     /// controlled resource rejection (bounded backoff / stop-write).
     pub const STAGING_BUDGET: u64 = 8 * 1024 * 1024;
+    /// The frozen whole-namespace ceiling (the ABI windows-x64-v01
+    /// namespace share). Host seams may only tighten it.
+    pub const NAMESPACE_BUDGET: u64 = 128 * 1024 * 1024;
 
     pub fn put_artifact(&self, req: PutRequest) -> Result<String, StoreError> {
         // Staging identity is unique even across same-millisecond threads
@@ -567,10 +628,29 @@ impl ManagedStore {
         result
     }
 
+    /// Publish bytes and acquire their reader lease in ONE liveness interval.
+    /// A rootless prepared artifact cannot be collected in the gap between
+    /// `put_artifact` returning and the caller obtaining its lease. Shared
+    /// guards compose; lock order remains liveness -> budget/chunk -> SQLite.
+    pub fn put_artifact_leased(
+        &self,
+        req: PutRequest,
+        purpose: &str,
+        ttl_secs: u64,
+    ) -> Result<(String, Lease), StoreError> {
+        let _live = self.liveness_shared()?;
+        let id = self.put_artifact(req)?;
+        let lease = self.acquire_lease(purpose, ttl_secs, Some(&id))?;
+        Ok((id, lease))
+    }
+
     fn put_inner(&self, req: &PutRequest, staging_dir: &Path) -> Result<String, StoreError> {
-        let framed = frame_chunk(req.kind, &req.payload);
-        let chunk_id = ChunkId::from_parts(&[framed.as_slice()]).0;
-        let art_id = Self::artifact_id(req, &chunk_id);
+        let framed_len = req
+            .payload
+            .len()
+            .checked_add(crate::codec::CHUNK_HEADER_LEN)
+            .and_then(|n| u64::try_from(n).ok())
+            .ok_or_else(|| StoreError::ResourceExhausted("framed size overflow".into()))?;
 
         // ONE critical section (R2-01/03): staging allocation, budget
         // reservation, CAS placement and the metadata commit all run under
@@ -595,18 +675,57 @@ impl ManagedStore {
                 .ok_or_else(|| StoreError::Busy("staging budget lock".into()))?;
         let staging_now = Self::dir_size(&self.root.join("staging"));
         let tmp_residue = self.cas_tmp_bytes();
-        let reserved_total = staging_now + tmp_residue + 2 * framed.len() as u64;
+        let reserved_total = framed_len
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(staging_now))
+            .and_then(|n| n.checked_add(tmp_residue))
+            .ok_or_else(|| StoreError::ResourceExhausted("staging size overflow".into()))?;
         if reserved_total > Self::STAGING_BUDGET {
             return Err(StoreError::ResourceExhausted(format!(
                 "transient (staging {} + leftover CAS tmp {} + staged {} + CAS tmp {}) exceeds budget {}",
                 staging_now,
                 tmp_residue,
-                framed.len(),
-                framed.len(),
+                framed_len,
+                framed_len,
                 Self::STAGING_BUDGET
             )));
         }
         PEAK_TRANSIENT.fetch_max(reserved_total, std::sync::atomic::Ordering::Relaxed);
+
+        // WHOLE-NAMESPACE ADMISSION (PLAN-938): the staging budget above only
+        // caps transient copies. The permanent growth of this commit — the
+        // new block plus a metadata (rows/WAL) allowance — is admitted
+        // against the namespace ceiling under an EXCLUSIVE namespace lock
+        // held from this reading THROUGH the metadata commit, so two
+        // publishers cannot both pass a stale total and overshoot. The lock
+        // is taken before any staging write (no allocation before refusal).
+        // Lock order: liveness(shared) → budget(excl) → namespace(excl) →
+        // chunk → sqlite; GC/recovery hold liveness(exclusive) and take
+        // neither budget nor namespace — no cycle. An idempotent re-put of a
+        // live block projects conservatively (its transient copies are real).
+        let _namespace =
+            FileGuard::lock_timeout(&self.lock_path("namespace-budget"), true, CHUNK_LOCK_WAIT)?
+                .ok_or_else(|| StoreError::Busy("namespace budget lock".into()))?;
+        let namespace_now = self.space().total;
+        let projected = namespace_now
+            .checked_add(framed_len)
+            .and_then(|n| n.checked_add(framed_len))
+            .and_then(|n| n.checked_add(4096))
+            .ok_or_else(|| StoreError::ResourceExhausted("namespace size overflow".into()))?;
+        if projected > self.namespace_budget {
+            return Err(StoreError::ResourceExhausted(format!(
+                "namespace (current {namespace_now} + block {framed_len} + metadata allowance {}) exceeds budget {}",
+                framed_len + 4096,
+                self.namespace_budget
+            )));
+        }
+
+        // Admission above uses only the incoming length and actual in-flight
+        // bytes. Do not allocate a complete frame (or hash/copy it) before a
+        // refusal whose purpose is to prevent precisely that extra allocation.
+        let framed = frame_chunk(req.kind, &req.payload);
+        let chunk_id = ChunkId::from_parts(&[framed.as_slice()]).0;
+        let art_id = Self::artifact_id(req, &chunk_id);
 
         // 1. Stage (transient sharing violations retried — AV scanners can
         //    hold a freshly created file; R2 repair-round observation). The
@@ -1075,6 +1194,18 @@ impl ManagedStore {
             .flatten()
             .collect();
         Ok(out)
+    }
+
+    /// Retire other generations of an EXCLUSIVELY OWNED project root set.
+    /// External publishers hold their own publication lock and select the
+    /// surviving kind from the ACTUAL accepted pointer bytes. This is not a
+    /// global root/lease cleanup; other projects and all reader leases survive.
+    pub fn retain_root_kind(&self, project: &str, keep: Option<&str>) -> Result<usize, StoreError> {
+        let _live = self.liveness_shared()?;
+        Ok(self.db.lock().unwrap().execute(
+            "DELETE FROM roots WHERE project=?1 AND (?2 IS NULL OR kind<>?2)",
+            params![project, keep],
+        )?)
     }
 
     /// Artifact payload by artifact id (adapter read seam; gated chunk read —

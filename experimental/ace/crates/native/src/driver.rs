@@ -17,10 +17,10 @@ use ace_av_core::mir_verify::{verify_mir, MirVerifyError};
 use ace_core::link::CaptureCaps;
 use std::path::{Path, PathBuf};
 
-#[path = "collections_driver.rs"]
-pub(crate) mod collections;
 #[path = "closures_driver.rs"]
 pub(crate) mod closures;
+#[path = "collections_driver.rs"]
+pub(crate) mod collections;
 
 /// The narrowest source domain that admits a request (PLAN-870 freeze §4):
 /// scalar → record → text-record escalation picks the narrowest compiling
@@ -438,11 +438,15 @@ impl MnDriver {
             };
             r.map_err(|e| {
                 o.counter("mir_reject", 1);
-                let msg = match &e {
+                match e {
                     ace_lowering::AdapterError::Unsupported { message, .. }
-                    | ace_lowering::AdapterError::Invalid { message, .. } => message.clone(),
-                };
-                MnError::Unsupported("adapter", msg)
+                    | ace_lowering::AdapterError::Invalid { message, .. } => {
+                        MnError::Unsupported("adapter", message)
+                    }
+                    ace_lowering::AdapterError::Resource { message, .. } => {
+                        MnError::Resource("adapter", message)
+                    }
+                }
             })
         })?;
         let checked_mir = obs.span("mir_verify", |o| {

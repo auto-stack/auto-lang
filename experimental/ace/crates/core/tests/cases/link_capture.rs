@@ -13,8 +13,8 @@
 #![cfg(windows)]
 
 use ace_core::link::{
-    run_deadlined_captured, run_deadlined_captured_with, run_deadlined_split, CaptureCaps,
-    SubprocError,
+    run_deadlined_captured, run_deadlined_captured_into, run_deadlined_captured_with,
+    run_deadlined_split, CaptureCaps, SubprocError,
 };
 use std::io::Write;
 use std::process::Command;
@@ -38,6 +38,102 @@ fn type_cmd(path: &std::path::Path) -> Command {
     let mut c = Command::new("powershell");
     c.arg("-NoProfile").arg("-Command").arg(script);
     c
+}
+
+#[test]
+fn reserved_capture_keeps_caller_buffers_and_exact_bytes_on_both_streams() {
+    let dir = scratch("reserved-buffers");
+    let file = dir.join("bytes.bin");
+    let bytes: Vec<u8> = (0..65539).map(|i| (i % 256) as u8).collect();
+    std::fs::write(&file, &bytes).unwrap();
+    let mut cmd = Command::new("powershell");
+    cmd.args(["-NoProfile", "-Command", &format!(
+        "$b=[IO.File]::ReadAllBytes('{}');[Console]::OpenStandardOutput().Write($b,0,$b.Length);[Console]::OpenStandardError().Write($b,0,$b.Length)", file.display())]);
+    let out = Vec::with_capacity(bytes.len());
+    let err = Vec::with_capacity(bytes.len());
+    let out_ptr = out.as_ptr();
+    let err_ptr = err.as_ptr();
+    let run = run_deadlined_captured_into(
+        &mut cmd,
+        Duration::from_secs(30),
+        CaptureCaps {
+            stdout_max: bytes.len(),
+            stderr_max: bytes.len(),
+        },
+        out,
+        err,
+    )
+    .unwrap();
+    assert_eq!(run.exit_code, Some(0));
+    assert_eq!(run.stdout, bytes);
+    assert_eq!(run.stderr, bytes);
+    assert_eq!(run.stdout.as_ptr(), out_ptr, "stdout storage was replaced");
+    assert_eq!(run.stderr.as_ptr(), err_ptr, "stderr storage was replaced");
+    assert_eq!(run.stdout.capacity(), bytes.len());
+    assert_eq!(run.stderr.capacity(), bytes.len());
+}
+
+#[test]
+fn reserved_capture_rejects_overflow_and_invalid_storage_before_start() {
+    let dir = scratch("reserved-rejection");
+    let marker = dir.join("child-started.txt");
+    for (out, err, caps) in [
+        (
+            Vec::with_capacity(7),
+            Vec::with_capacity(8),
+            CaptureCaps {
+                stdout_max: 8,
+                stderr_max: 8,
+            },
+        ),
+        (
+            vec![1],
+            Vec::with_capacity(8),
+            CaptureCaps {
+                stdout_max: 1,
+                stderr_max: 8,
+            },
+        ),
+        (Vec::new(), Vec::new(), CaptureCaps::none()),
+    ] {
+        let mut cmd = Command::new("cmd");
+        cmd.args([
+            "/d",
+            "/c",
+            &format!("echo child > \"{}\"", marker.display()),
+        ]);
+        let failure =
+            run_deadlined_captured_into(&mut cmd, Duration::from_secs(30), caps, out, err);
+        assert!(
+            matches!(failure, Err(SubprocError::Spawn(ref e)) if e.kind() == std::io::ErrorKind::InvalidInput)
+        );
+        assert!(!marker.exists());
+    }
+    let file = dir.join("overflow.bin");
+    std::fs::write(&file, vec![0xff; 4097]).unwrap();
+    for stream in ["stdout", "stderr"] {
+        let mut cmd = Command::new("powershell");
+        cmd.args([
+            "-NoProfile",
+            "-Command",
+            &format!(
+            "$b=[IO.File]::ReadAllBytes('{}');[Console]::OpenStandard{}().Write($b,0,$b.Length)",
+            file.display(), if stream == "stdout" { "Output" } else { "Error" }),
+        ]);
+        let failure = run_deadlined_captured_into(
+            &mut cmd,
+            Duration::from_secs(30),
+            CaptureCaps {
+                stdout_max: 4096,
+                stderr_max: 4096,
+            },
+            Vec::with_capacity(4096),
+            Vec::with_capacity(4096),
+        );
+        assert!(
+            matches!(failure, Err(SubprocError::OutputCapExceeded { stream: actual, cap: 4096, observed }) if actual == stream && observed > 4096)
+        );
+    }
 }
 
 #[test]

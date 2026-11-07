@@ -34,6 +34,69 @@ pub struct SignatureCatalog {
 }
 
 impl SignatureCatalog {
+    /// Replace only declaration metadata; no AST/body is projected or walked.
+    pub fn replace_foreign(
+        &self,
+        previous: &ace_foreign_contract::manual::AdmittedForeign,
+        next: &ace_foreign_contract::manual::AdmittedForeign,
+    ) -> Result<Self, ProduceError> {
+        let names: std::collections::BTreeSet<_> = previous
+            .source_declarations_ref()
+            .iter()
+            .map(|d| d.name.as_str())
+            .collect();
+        let foreign = Self::build_with_foreign(
+            &Program { items: Vec::new() },
+            &self.package,
+            &self.module,
+            Some(next),
+        )?;
+        let entries = self
+            .entries()
+            .filter(|f| !names.contains(f.name.as_str()))
+            .cloned()
+            .chain(foreign.entries().cloned())
+            .collect();
+        Self::from_entries(&self.package, &self.module, entries)
+    }
+    pub fn entries(&self) -> impl Iterator<Item = &FnSigFacts> {
+        self.by_name.values()
+    }
+
+    /// Reconstitute declaration metadata only. The source-bound required page
+    /// owns the stored version; no body, AST projection or solver runs here.
+    pub fn from_entries(
+        package: &str,
+        module: &str,
+        entries: Vec<FnSigFacts>,
+    ) -> Result<Self, ProduceError> {
+        let mut by_name = BTreeMap::new();
+        let mut by_logical = BTreeMap::new();
+        for facts in entries {
+            if facts.check_envelope().is_err()
+                || facts.logical != owner_logical(package, module, &facts.name)
+                || by_name.contains_key(&facts.name)
+                || facts.version.as_str().len() != 64
+            {
+                return Err(ProduceError::Profile {
+                    what: "invalid restored signature catalog",
+                });
+            }
+            by_logical.insert(facts.logical.clone(), facts.name.clone());
+            by_name.insert(facts.name.clone(), facts);
+        }
+        let candidates: Vec<String> = by_name.keys().cloned().collect();
+        let parts: Vec<&[u8]> = candidates.iter().map(|n| n.as_bytes()).collect();
+        let candidates_fp = sq_hash("ac934/candidates/fn/v1", &parts);
+        Ok(Self {
+            package: package.into(),
+            module: module.into(),
+            by_name,
+            by_logical,
+            candidates,
+            candidates_fp,
+        })
+    }
     /// Apply only the explicit declaration/effect inputs read by this owner.
     /// The empty map leaves every original SQ-A version byte-for-byte intact.
     pub fn with_declaration_contexts(
@@ -60,6 +123,15 @@ impl SignatureCatalog {
     /// Build the catalog from a parsed module. Declarations outside the
     /// finite signature surface are a controlled rejection.
     pub fn build(program: &Program, package: &str, module: &str) -> Result<Self, ProduceError> {
+        Self::build_with_foreign(program, package, module, None)
+    }
+
+    pub fn build_with_foreign(
+        program: &Program,
+        package: &str,
+        module: &str,
+        foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+    ) -> Result<Self, ProduceError> {
         let mut by_name: BTreeMap<String, FnSigFacts> = BTreeMap::new();
         let mut by_logical: BTreeMap<LogicalId, String> = BTreeMap::new();
         for item in &program.items {
@@ -77,6 +149,45 @@ impl SignatureCatalog {
                         what: "enum declaration",
                     })
                 }
+            }
+        }
+        if let Some(environment) = foreign {
+            for declaration in environment.source_declarations_ref() {
+                if by_name.contains_key(&declaration.name) {
+                    return Err(ProduceError::Profile {
+                        what: "foreign/source declaration conflict",
+                    });
+                }
+                let lane = |k| {
+                    if k == ace_foreign_contract::LaneKind::Bool {
+                        crate::facts::PortableTy::Bool
+                    } else {
+                        crate::facts::PortableTy::I32
+                    }
+                };
+                let facts = FnSigFacts {
+                    name: declaration.name.clone(),
+                    logical: owner_logical(package, module, &declaration.name),
+                    version: ContentVersion::of_canonical(
+                        environment
+                            .declaration_digest(&declaration.name)
+                            .expect("admitted declaration digest")
+                            .as_bytes(),
+                    ),
+                    params: declaration
+                        .params()
+                        .iter()
+                        .copied()
+                        .enumerate()
+                        .map(|(i, k)| (format!("arg{i}"), lane(k)))
+                        .collect(),
+                    ret: lane(declaration.result()),
+                    profile: crate::ident::SQ_PROFILE,
+                    schema: crate::ident::SQ_SCHEMA,
+                    producer: crate::ident::SQ_PRODUCER,
+                };
+                by_logical.insert(facts.logical.clone(), facts.name.clone());
+                by_name.insert(facts.name.clone(), facts);
             }
         }
         let candidates: Vec<String> = by_name.keys().cloned().collect();

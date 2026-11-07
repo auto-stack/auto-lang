@@ -615,6 +615,8 @@ pub struct FnCandidate {
     state: super::resolve::BodyState,
     parts: SourceParts,
     receipt: BodyEmitReceipt,
+    foreign_context: Vec<ace_foreign_contract::manual::SourceDecl>,
+    foreign_slots: Vec<String>,
 }
 
 impl FnCandidate {
@@ -696,6 +698,21 @@ impl FnCandidate {
     /// this function is a controlled rejection that modifies nothing.
     /// Commit repeats these same checks at its single publication point.
     pub fn validate(&self, env: &super::resolve::CheckedEnv) -> Result<(), Vec<Diagnostic>> {
+        self.validate_base(env)?;
+        if self.foreign_context != env.program.foreign
+            || self.foreign_slots != env.program.foreign_slots
+        {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.foreign-context",
+                "candidate declaration context differs from the current context",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        Ok(())
+    }
+
+    fn validate_base(&self, env: &super::resolve::CheckedEnv) -> Result<(), Vec<Diagnostic>> {
         if env.closed {
             return Err(vec![Diagnostic::new(
                 Stage::Bind,
@@ -759,6 +776,65 @@ impl FnCandidate {
     pub fn cancel(self) {}
 }
 
+impl super::resolve::ForeignContext {
+    /// The same ordinary one-body producer, temporarily bound to the candidate
+    /// declarations. The declaration graft is private to core; callers cannot
+    /// publish an unrelated mutation through a borrowed candidate environment.
+    pub fn prepare_document(
+        &mut self,
+        env: &mut super::resolve::CheckedEnv,
+        item: &super::ast::FnItem,
+        fn_index: usize,
+        src: &str,
+        module_path: &str,
+        supply: &dyn super::resolve::TypeSupply,
+    ) -> Result<FnCandidate, Vec<Diagnostic>> {
+        self.with_env(env, |env| {
+            prepare_candidate_document_with_supply(
+                env,
+                item,
+                fn_index,
+                src,
+                module_path,
+                Some(supply),
+            )
+        })?
+    }
+}
+
+/// Validate every owner before installing any declaration or body. No producer,
+/// allocation, I/O or fallible operation occurs after the validation loop.
+pub fn commit_foreign_candidates(
+    context: super::resolve::ForeignContext,
+    env: &mut super::resolve::CheckedEnv,
+    candidates: Vec<FnCandidate>,
+) -> Result<(), Vec<Diagnostic>> {
+    context.validate(env)?;
+    let mut slots = std::collections::BTreeSet::new();
+    for candidate in &candidates {
+        candidate.validate_base(env)?;
+        if candidate.foreign_context != context.declarations
+            || candidate.foreign_slots != context.slots
+            || !slots.insert(candidate.fn_index)
+        {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.foreign-context",
+                "foreign batch contains a mismatched context or duplicate owner",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+    }
+    env.program.foreign = context.declarations;
+    env.program.foreign_slots = context.slots;
+    env.sigs = context.sigs;
+    for candidate in candidates {
+        candidate.state.swap_into(env, candidate.fn_index);
+    }
+    env.generation += 1;
+    Ok(())
+}
+
 /// PLAN-828 T-02: the PRODUCTION candidate document transaction — recheck
 /// + single-body emission, WITHOUT verification: the consuming session
 /// decides between content-addressed reuse of a stored, already-verified
@@ -775,9 +851,21 @@ pub fn prepare_candidate_document(
     src: &str,
     module_path: &str,
 ) -> Result<FnCandidate, Vec<Diagnostic>> {
+    prepare_candidate_document_with_supply(env, item, fn_index, src, module_path, None)
+}
+
+/// The ordinary single-body transaction with SQ-A facts as type authority.
+pub fn prepare_candidate_document_with_supply(
+    env: &mut super::resolve::CheckedEnv,
+    item: &super::ast::FnItem,
+    fn_index: usize,
+    src: &str,
+    module_path: &str,
+    supply: Option<&dyn super::resolve::TypeSupply>,
+) -> Result<FnCandidate, Vec<Diagnostic>> {
     // Bounded temporary graft (exclusive access): the re-check grafts the
     // candidate body and hands back the displaced CURRENT entry.
-    let current = super::resolve::recheck_swap(env, item, fn_index)?;
+    let current = super::resolve::recheck_swap_with_supply(env, item, fn_index, supply)?;
     match emit_function_body(env, fn_index, src, module_path) {
         Ok((parts, receipt)) => {
             // Restore current and take the candidate BEFORE returning —
@@ -791,6 +879,8 @@ pub fn prepare_candidate_document(
                 state,
                 parts,
                 receipt,
+                foreign_context: env.program.foreign.clone(),
+                foreign_slots: env.program.foreign_slots.clone(),
             })
         }
         Err(ds) => {
@@ -1383,6 +1473,7 @@ impl PlanCtx<'_> {
                 }
             };
         }
+        crate::body_work::record_produced("hir-plan", &f.work_key(&self.program.records));
         plan
     }
 
@@ -2118,6 +2209,26 @@ impl PlanCtx<'_> {
                             }
                         }
                     }
+                    if let Some(declaration) = fn_index
+                        .checked_sub(self.program.fns.len())
+                        .and_then(|i| self.program.foreign_by_slot(i))
+                    {
+                        for (idx, a) in args.iter().enumerate() {
+                            let pos = a
+                                .name
+                                .as_ref()
+                                .and_then(|n| {
+                                    n.name
+                                        .strip_prefix("arg")
+                                        .and_then(|i| i.parse::<usize>().ok())
+                                })
+                                .unwrap_or(idx);
+                            if pos < declaration.params().len() {
+                                bindings.push((pos as u32, idx as u32));
+                                moved.push(false);
+                            }
+                        }
+                    }
                     plan.exprs.push(ENode {
                         kind: EKind::Call {
                             callee_fn: Some(*fn_index),
@@ -2408,6 +2519,25 @@ impl PlanCtx<'_> {
                         if let Some(pos) = param_position(idx, a, callee) {
                             bindings.push((pos as u32, idx as u32));
                             moved.push(a.moved);
+                        }
+                    }
+                } else if let Some(declaration) = fn_index
+                    .checked_sub(self.program.fns.len())
+                    .and_then(|i| self.program.foreign_by_slot(i))
+                {
+                    for (idx, a) in args.iter().enumerate() {
+                        let pos = a
+                            .name
+                            .as_ref()
+                            .and_then(|n| {
+                                n.name
+                                    .strip_prefix("arg")
+                                    .and_then(|i| i.parse::<usize>().ok())
+                            })
+                            .unwrap_or(idx);
+                        if pos < declaration.params().len() {
+                            bindings.push((pos as u32, idx as u32));
+                            moved.push(false);
                         }
                     }
                 }
@@ -3148,7 +3278,17 @@ impl<'p> Emitter<'p> {
         frag!("{", program_span);
         nl!(4);
 
-        let mut requires: Vec<&'static str> = Vec::new();
+        let mut requires: Vec<&str> = Vec::new();
+        if !self.program.foreign.is_empty() {
+            requires.push(ace_foreign_contract::manual::SOURCE_CAP);
+            for declaration in &self.program.foreign {
+                for capability in &declaration.capabilities {
+                    if !requires.contains(&capability.as_str()) {
+                        requires.push(capability);
+                    }
+                }
+            }
+        }
         for sym in &use_intrinsics {
             let cap = super::console::signature(sym)
                 .map(|(_, cap)| cap)
@@ -3382,6 +3522,31 @@ impl<'p> Emitter<'p> {
             spans.types.push(span);
             nl!(12);
         }
+        for declaration in &self.program.foreign {
+            let ty = |k| {
+                if k == ace_foreign_contract::LaneKind::Bool {
+                    "t_bool"
+                } else {
+                    "t_i32"
+                }
+            };
+            let params: Vec<_> = declaration
+                .params()
+                .iter()
+                .map(|k| format!("\"{}\"", ty(*k)))
+                .collect();
+            frag!(
+                &format!(
+                    "type t_foreign_{} function {{ params: [{}]; result: \"{}\" }}",
+                    declaration.name,
+                    params.join(", "),
+                    ty(declaration.result())
+                ),
+                Span { start: 0, end: 0 }
+            );
+            spans.types.push(Span { start: 0, end: 0 });
+            nl!(12);
+        }
         for sym in &use_intrinsics {
             let span = self.intrinsic_first_use[*sym];
             frag!(
@@ -3496,6 +3661,20 @@ impl<'p> Emitter<'p> {
                 m_span
             );
             spans.defs.push(m_span);
+            nl!(12);
+        }
+        for declaration in &self.program.foreign {
+            let contract = serde_json::to_string(declaration).expect("serializable contract");
+            frag!(
+                &format!(
+                    "foreign d_foreign_{} t_foreign_{} {{ contract: \"{}\" }}",
+                    declaration.name,
+                    declaration.name,
+                    Self::esc(&contract)
+                ),
+                Span { start: 0, end: 0 }
+            );
+            spans.defs.push(Span { start: 0, end: 0 });
             nl!(12);
         }
         for sym in &use_intrinsics {
@@ -3785,11 +3964,18 @@ impl<'p> Emitter<'p> {
                         } => {
                             let callee = match (callee_fn, callee_intrinsic) {
                                 (Some(i), _) => {
-                                    let cf = &self.program.fns[*i];
-                                    if cf.receiver == crate::source::ast::Receiver::Free {
-                                        format!("d_{}", cf.name)
+                                    if let Some(decl) = i
+                                        .checked_sub(self.program.fns.len())
+                                        .and_then(|i| self.program.foreign_by_slot(i))
+                                    {
+                                        format!("d_foreign_{}", decl.name)
                                     } else {
-                                        format!("d_f{}_{}", i, cf.name)
+                                        let cf = &self.program.fns[*i];
+                                        if cf.receiver == crate::source::ast::Receiver::Free {
+                                            format!("d_{}", cf.name)
+                                        } else {
+                                            format!("d_f{}_{}", i, cf.name)
+                                        }
                                     }
                                 }
                                 (None, Some(s)) => intrinsic_def_id(s).to_string(),
@@ -4254,6 +4440,8 @@ pub fn prepare_module_candidate(
             state: candidate_state,
             parts,
             receipt,
+            foreign_context: env.program.foreign.clone(),
+            foreign_slots: env.program.foreign_slots.clone(),
         };
         let def = format!("d_{}", item.name.name);
         let def_index = candidate.parts.bundle.modules[0]

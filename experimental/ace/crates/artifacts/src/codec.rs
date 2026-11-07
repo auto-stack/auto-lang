@@ -246,6 +246,7 @@ fn hex(b: &[u8]) -> String {
 // ---------------------------------------------------------------------------
 
 pub const HIR_CODEC_VERSION: u16 = 1;
+pub const FOREIGN_HIR_CODEC_VERSION: u16 = 2;
 
 use ace_core::hir::{
     Access, BinOp, Bundle, CallBinding, Def, DefKind, Effect, Expr, ExprKind, FnSig, HirDomain,
@@ -283,7 +284,17 @@ pub fn encode_bundle_chunk(bundle: &Bundle) -> Result<Vec<u8>, CodecError> {
 pub fn encode_bundle(bundle: &Bundle) -> Result<Vec<u8>, CodecError> {
     domain_code(bundle.domain)?; // text/record bundles are refused
     let mut w = Writer::new();
-    w.u16(HIR_CODEC_VERSION);
+    w.u16(
+        if bundle.modules.iter().any(|m| {
+            m.defs
+                .iter()
+                .any(|d| matches!(d.kind, DefKind::Foreign { .. }))
+        }) {
+            FOREIGN_HIR_CODEC_VERSION
+        } else {
+            HIR_CODEC_VERSION
+        },
+    );
     w.u8(domain_code(bundle.domain)?);
     w.u8(0); // flags
     w.strs(&bundle.requires);
@@ -327,6 +338,13 @@ pub fn encode_bundle(bundle: &Bundle) -> Result<Vec<u8>, CodecError> {
             w.str(&d.id_text);
             w.span(&d.span);
             match &d.kind {
+                DefKind::Foreign { ty, declaration } => {
+                    w.u8(2);
+                    w.u32(ty.0);
+                    w.str(&serde_json::to_string(declaration).map_err(|_| {
+                        CodecError::UnsupportedFeature("invalid foreign declaration")
+                    })?);
+                }
                 DefKind::Function { name, ty, body } => {
                     w.u8(0);
                     w.str(name);
@@ -685,7 +703,7 @@ pub fn decode_bundle_chunk(bytes: &[u8]) -> Result<Bundle, CodecError> {
 pub fn decode_bundle(payload: &[u8]) -> Result<Bundle, CodecError> {
     let mut r = Reader::new(payload);
     let version = r.u16("version")?;
-    if version != HIR_CODEC_VERSION {
+    if version != HIR_CODEC_VERSION && version != FOREIGN_HIR_CODEC_VERSION {
         return Err(CodecError::UnsupportedVersion(version));
     }
     let domain = domain_from_code(r.u8("domain")?)?;
@@ -727,6 +745,14 @@ pub fn decode_bundle(payload: &[u8]) -> Result<Bundle, CodecError> {
             let dspan = r.span()?;
             let tag = r.u8("def.kind")?;
             let kind = match tag {
+                2 if version == FOREIGN_HIR_CODEC_VERSION => {
+                    let ty = TypeId(r.u32("foreign.ty")?);
+                    let raw = r.string("foreign.contract")?;
+                    let declaration = serde_json::from_str(&raw).map_err(|_| {
+                        CodecError::UnsupportedFeature("invalid foreign declaration")
+                    })?;
+                    DefKind::Foreign { ty, declaration }
+                }
                 0 => {
                     let name = r.string("fn.name")?;
                     let ty = TypeId(r.u32("fn.ty")?);
@@ -1071,7 +1097,7 @@ fn validate_bundle(b: &Bundle) -> Result<(), CodecError> {
         for d in &m.defs {
             let (ty, body) = match &d.kind {
                 DefKind::Function { ty, body, .. } => (*ty, Some(*body)),
-                DefKind::Intrinsic { ty, .. } => (*ty, None),
+                DefKind::Intrinsic { ty, .. } | DefKind::Foreign { ty, .. } => (*ty, None),
                 DefKind::Method { ty, .. } => (*ty, None),
             };
             if ty.0 as u64 >= n_types {

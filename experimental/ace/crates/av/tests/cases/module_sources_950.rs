@@ -279,7 +279,9 @@ fn run_case(local: bool) {
     assert_eq!(work.len(), 1);
     assert_eq!(syntax.parsed_functions.len(), 1);
     let w = work["m3_std_answer"];
-    assert_eq!((w.resolve, w.typecheck, w.plan, w.bind), (1, 1, 1, 1));
+    // PLAN-938 (8l merge ruling): the warm edit runs the real TypeSupply
+    // path, which does not invoke the legacy typecheck stage.
+    assert_eq!((w.resolve, w.typecheck, w.plan, w.bind), (1, 0, 1, 1));
     assert_eq!(session.query.counters().solver_runs, 1);
     let av_edit = av.prepare(&edit).unwrap();
     let rust_edit = rust.prepare(&edit).unwrap();

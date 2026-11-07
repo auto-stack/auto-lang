@@ -75,6 +75,24 @@ pub fn verify_abc(
     decoded: DecodedAbc,
     expected_owner: &crate::mir::OwnerScope,
 ) -> Result<LoadedModule, AbcAdmissionError> {
+    if decoded.profile == crate::abc::ABC_PROFILE_FOREIGN
+        || decoded
+            .module
+            .capabilities
+            .iter()
+            .any(|c| c == ace_foreign_contract::manual::SOURCE_CAP)
+        || decoded.module.funcs.iter().any(|f| {
+            f.blocks.iter().any(|b| {
+                b.instrs
+                    .iter()
+                    .any(|i| matches!(i, crate::mir::MirInstr::ForeignCall { .. }))
+            })
+        })
+    {
+        return Err(AbcAdmissionError::Identity(
+            "foreign.unsupported: AV does not execute source foreign calls".into(),
+        ));
+    }
     // Version/profile re-check on the PUBLIC struct (F798-R3-01): decode
     // rejects unknown values on the wire, but a hand-constructed
     // DecodedAbc must not smuggle them past this constructor.

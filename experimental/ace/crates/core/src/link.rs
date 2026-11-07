@@ -394,6 +394,72 @@ pub fn run_deadlined_captured(
     run_captured_inner(cmd, deadline, caps, job::JobGuard::for_child, None)
 }
 
+pub fn run_deadlined_captured_observed(
+    cmd: &mut Command,
+    deadline: Duration,
+    caps: CaptureCaps,
+    mut observe: impl FnMut() -> std::io::Result<()>,
+) -> Result<CapturedRun, SubprocError> {
+    run_captured_inner_buffers(
+        cmd,
+        deadline,
+        caps,
+        job::JobGuard::for_child,
+        None,
+        None,
+        &mut observe,
+    )
+}
+
+/// The same executor with caller-owned, empty capture buffers. Finite caps
+/// must fit their capacities before the process starts, so readers never
+/// allocate stream storage. The caller can reserve this memory before creating
+/// the buffers and retain that reservation through the returned bytes' use.
+pub fn run_deadlined_captured_into(
+    cmd: &mut Command,
+    deadline: Duration,
+    caps: CaptureCaps,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+) -> Result<CapturedRun, SubprocError> {
+    run_deadlined_captured_into_observed(cmd, deadline, caps, stdout, stderr, || Ok(()))
+}
+
+/// The same caller-owned capture and containment contract, with synchronous
+/// observations before start, at each existing wait-loop poll and at exit.
+/// This measures sampled state; it cannot establish peaks between polls.
+/// An observation error terminates and reaps the contained tree and readers.
+pub fn run_deadlined_captured_into_observed(
+    cmd: &mut Command,
+    deadline: Duration,
+    caps: CaptureCaps,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    mut observe: impl FnMut() -> std::io::Result<()>,
+) -> Result<CapturedRun, SubprocError> {
+    if !stdout.is_empty()
+        || !stderr.is_empty()
+        || caps.stdout_max == usize::MAX
+        || caps.stderr_max == usize::MAX
+        || stdout.capacity() < caps.stdout_max
+        || stderr.capacity() < caps.stderr_max
+    {
+        return Err(SubprocError::Spawn(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "capture buffers must be empty and cover both finite caps",
+        )));
+    }
+    run_captured_inner_buffers(
+        cmd,
+        deadline,
+        caps,
+        job::JobGuard::for_child,
+        None,
+        Some((stdout, stderr)),
+        &mut observe,
+    )
+}
+
 /// [`run_deadlined_captured`] with an injectable containment factory so
 /// tests can deterministically drive the containment-failure branch (same
 /// seam the legacy executor exposes).
@@ -440,6 +506,31 @@ fn run_captured_inner(
     job_factory: fn(&std::process::Child) -> Option<job::JobGuard>,
     stdin_bytes: Option<Vec<u8>>,
 ) -> Result<CapturedRun, SubprocError> {
+    run_captured_inner_buffers(
+        cmd,
+        deadline,
+        caps,
+        job_factory,
+        stdin_bytes,
+        None,
+        &mut || Ok(()),
+    )
+}
+
+fn run_captured_inner_buffers(
+    cmd: &mut Command,
+    deadline: Duration,
+    caps: CaptureCaps,
+    job_factory: fn(&std::process::Child) -> Option<job::JobGuard>,
+    stdin_bytes: Option<Vec<u8>>,
+    buffers: Option<(Vec<u8>, Vec<u8>)>,
+    observe: &mut dyn FnMut() -> std::io::Result<()>,
+) -> Result<CapturedRun, SubprocError> {
+    fn observation(observe: &mut dyn FnMut() -> std::io::Result<()>) -> std::io::Result<()> {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(observe))
+            .unwrap_or_else(|_| Err(std::io::Error::other("subprocess observer panicked")))
+    }
+    observation(observe).map_err(SubprocError::Wait)?;
     // Controlled start (R3-QA-01): the suspended child cannot run, and
     // therefore cannot spawn descendants, until it is inside the job.
     #[cfg(windows)]
@@ -490,54 +581,66 @@ fn run_captured_inner(
             drop(pipe);
         })
     });
-    // Readers stream raw bytes in chunks and stop ONE byte past the cap:
+    // Readers stream raw bytes in chunks and reject the first chunk passing
+    // the cap before appending it (observed includes that whole read):
     // Err(observed) means "cap exceeded mid-stream" and the main loop kills
     // the tree immediately; Ok(buf) is the exact EOF-terminated byte stream
     // (invalid UTF-8 and all — read_to_string's all-or-nothing validation
     // is exactly the truncated-success shape the contract forbids).
     let (out_tx, mut out_rx) = std::sync::mpsc::channel::<Result<Vec<u8>, usize>>();
     let (err_tx, mut err_rx) = std::sync::mpsc::channel::<Result<Vec<u8>, usize>>();
+    let (out_buffer, err_buffer) = buffers.unwrap_or_default();
     let out_reader = std::thread::spawn(move || {
-        let mut buf = Vec::new();
+        let mut buf = out_buffer;
         let mut chunk = [0u8; 65536];
-        let mut exceeded = false;
+        let mut exceeded = None;
         if let Some(p) = stdout_pipe.as_mut() {
             loop {
                 match p.read(&mut chunk) {
                     Ok(0) => break,
                     Ok(n) => {
-                        buf.extend_from_slice(&chunk[..n]);
-                        if buf.len() > caps.stdout_max {
-                            exceeded = true;
+                        let observed = buf.len().saturating_add(n);
+                        if observed > caps.stdout_max {
+                            exceeded = Some(observed);
                             break;
                         }
+                        buf.extend_from_slice(&chunk[..n]);
                     }
                     Err(_) => break,
                 }
             }
         }
-        let _ = out_tx.send(if exceeded { Err(buf.len()) } else { Ok(buf) });
+        let _ = out_tx.send(if let Some(observed) = exceeded {
+            Err(observed)
+        } else {
+            Ok(buf)
+        });
     });
     let err_reader = std::thread::spawn(move || {
-        let mut buf = Vec::new();
+        let mut buf = err_buffer;
         let mut chunk = [0u8; 65536];
-        let mut exceeded = false;
+        let mut exceeded = None;
         if let Some(p) = stderr_pipe.as_mut() {
             loop {
                 match p.read(&mut chunk) {
                     Ok(0) => break,
                     Ok(n) => {
-                        buf.extend_from_slice(&chunk[..n]);
-                        if buf.len() > caps.stderr_max {
-                            exceeded = true;
+                        let observed = buf.len().saturating_add(n);
+                        if observed > caps.stderr_max {
+                            exceeded = Some(observed);
                             break;
                         }
+                        buf.extend_from_slice(&chunk[..n]);
                     }
                     Err(_) => break,
                 }
             }
         }
-        let _ = err_tx.send(if exceeded { Err(buf.len()) } else { Ok(buf) });
+        let _ = err_tx.send(if let Some(observed) = exceeded {
+            Err(observed)
+        } else {
+            Ok(buf)
+        });
     });
 
     // Stashed early reader results (EOF can arrive while the child still
@@ -608,6 +711,12 @@ fn run_captured_inner(
     };
 
     loop {
+        if let Err(error) = observation(observe) {
+            let _ = child.kill();
+            let _ = child.wait();
+            reap(subtree, out_reader, err_reader, stdin_writer);
+            return Err(SubprocError::Wait(error));
+        }
         match child.try_wait() {
             Ok(Some(status)) => {
                 let (out, err) = (
@@ -621,6 +730,7 @@ fn run_captured_inner(
                         let _ = out_reader.join();
                         let _ = err_reader.join();
                         drop(subtree);
+                        observation(observe).map_err(SubprocError::Wait)?;
                         if out.len() > caps.stdout_max {
                             return Err(SubprocError::OutputCapExceeded {
                                 stream: "stdout",
@@ -735,8 +845,22 @@ pub fn find_rust_lld() -> Result<PathBuf, Diagnostic> {
 /// The registry query runs under the deadline executor (QA-06); a missing or
 /// hung `reg` falls through to the known roots as before.
 pub fn find_sdk_um_dir() -> Result<PathBuf, Diagnostic> {
-    if let Ok(env_dir) = std::env::var("AC741_SDK_UM_LIB") {
-        let p = PathBuf::from(env_dir);
+    let explicit = std::env::var("AC741_SDK_UM_LIB").ok().map(PathBuf::from);
+    find_sdk_um_dir_with_query(explicit, |command| {
+        Ok(run_with_deadline(command, SUBPROC_DEADLINE)
+            .ok()
+            .map(|(_, out)| out))
+    })
+}
+
+/// The same SDK selection policy with a caller-owned registry capture port.
+/// A resource refusal propagates; an ordinary missing registry tool may still
+/// use the original known-root fallback. No second SDK resolver is needed.
+pub fn find_sdk_um_dir_with_query(
+    explicit: Option<PathBuf>,
+    query: impl FnOnce(&mut Command) -> Result<Option<String>, Diagnostic>,
+) -> Result<PathBuf, Diagnostic> {
+    if let Some(p) = explicit {
         if p.join("kernel32.lib").is_file() {
             return Ok(p);
         }
@@ -746,15 +870,12 @@ pub fn find_sdk_um_dir() -> Result<PathBuf, Diagnostic> {
         ));
     }
     let mut roots: Vec<PathBuf> = Vec::new();
-    if let Ok((_, out)) = run_with_deadline(
-        Command::new("reg").args([
-            "query",
-            r"HKLM\SOFTWARE\Microsoft\Windows Kits\Installed Roots",
-            "/v",
-            "KitsRoot10",
-        ]),
-        SUBPROC_DEADLINE,
-    ) {
+    if let Some(out) = query(Command::new("reg").args([
+        "query",
+        r"HKLM\SOFTWARE\Microsoft\Windows Kits\Installed Roots",
+        "/v",
+        "KitsRoot10",
+    ]))? {
         for line in out.lines() {
             if line.contains("KitsRoot10") && line.contains("REG_SZ") {
                 if let Some(pos) = line.rfind("REG_SZ") {
@@ -1133,6 +1254,60 @@ pub fn run_exe(exe_path: &Path) -> Result<i32, Diagnostic> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(windows)]
+    fn captured_observer_failure_or_panic_reaps_real_child_and_open_file() {
+        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests").join(format!(
+            "capture-observer-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        for panic in [false, true] {
+            let held = root.join(format!("held-{panic}.bin"));
+            let mut cmd = Command::new("python");
+            cmd.args(["-c", "import sys,time; f=open(sys.argv[1],'wb'); f.write(b'live'); f.flush(); time.sleep(30)"]).arg(&held);
+            let mut observed_live_child = false;
+            let result = run_deadlined_captured_into_observed(
+                &mut cmd,
+                Duration::from_secs(5),
+                CaptureCaps {
+                    stdout_max: 64,
+                    stderr_max: 64,
+                },
+                Vec::with_capacity(64),
+                Vec::with_capacity(64),
+                || {
+                    if held.is_file() {
+                        observed_live_child = true;
+                        assert!(!panic, "injected observer unwind with live child");
+                        return Err(std::io::Error::other("injected observer refusal"));
+                    }
+                    Ok(())
+                },
+            );
+            assert!(
+                observed_live_child,
+                "never reached the live observation seam"
+            );
+            let Err(SubprocError::Wait(error)) = result else {
+                panic!("wrong observer outcome: {result:?}")
+            };
+            assert!(error.to_string().contains(if panic {
+                "observer panicked"
+            } else {
+                "observer refusal"
+            }));
+            // Python's retained file does not permit deletion while alive.
+            // Reclaimed readers also prove inherited pipes were closed.
+            std::fs::remove_file(&held).unwrap();
+        }
+        std::fs::remove_dir(root).unwrap();
+    }
 
     #[test]
     #[cfg(windows)]

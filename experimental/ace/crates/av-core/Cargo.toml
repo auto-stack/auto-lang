@@ -7,8 +7,14 @@ description = "PLAN-798 auto-av-core: Typed MIR model/verifier, ABC wire codec/v
 publish = false
 
 [dependencies]
-# Intentionally empty: this crate is the portable correctness layer.
+# Backend-free declaration data, shared with HIR and both foreign consumers.
+ace-foreign-contract = { path = "../foreign-contract" }
+serde_json = "1"
 
 [[test]]
 name = "conformance"
 path = "tests/conformance.rs"
+
+[[test]]
+name = "foreign_resources"
+path = "tests/foreign_resources.rs"

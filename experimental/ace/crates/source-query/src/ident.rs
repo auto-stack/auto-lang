@@ -53,6 +53,12 @@ pub const BODY_DOMAIN: &str = "ac934/fn-body/v1";
 
 /// Domain-separated content hash over `SQ_PRODUCER ‖ domain ‖ parts`.
 pub fn sq_hash(domain: &str, parts: &[&[u8]]) -> String {
+    sq_hash_parts(domain, parts.iter().copied())
+}
+
+/// Streaming variant for keys: borrowed components do not need payload copies
+/// or a temporary vector of references.
+pub fn sq_hash_parts<'a>(domain: &str, parts: impl IntoIterator<Item = &'a [u8]>) -> String {
     let mut h = Hasher::new();
     h.update(SQ_PRODUCER.as_bytes());
     h.update(&[0]);

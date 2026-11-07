@@ -156,7 +156,8 @@ pub fn request_data(
                 e.code(),
                 match e {
                     ace_lowering::AdapterError::Unsupported { message, .. }
-                    | ace_lowering::AdapterError::Invalid { message, .. } => message,
+                    | ace_lowering::AdapterError::Invalid { message, .. }
+                    | ace_lowering::AdapterError::Resource { message, .. } => message,
                 }
             )
         })?;

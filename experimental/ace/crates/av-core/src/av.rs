@@ -491,7 +491,9 @@ fn execute_module_impl_with_host(
     finish_trace(&mut st, &limits);
     // PLAN-919: seal the lifecycle log AFTER the shared trace finisher.
     if st.lifecycle_on {
-        st.trace.lifecycle.push_end(lifecycle_end_info(&out, st.steps));
+        st.trace
+            .lifecycle
+            .push_end(lifecycle_end_info(&out, st.steps));
     }
     (out, st.trace)
 }
@@ -2035,9 +2037,7 @@ fn cleanup_owned_frames(st: &mut LoopState) {
         release_frame_owned_lifo(st, &mut frame);
         // PLAN-919: unwind-path frame leaves (trap / budget / cancel).
         if st.lifecycle_on {
-            st.trace
-                .lifecycle
-                .push_frame_leave(frame_seq, true);
+            st.trace.lifecycle.push_frame_leave(frame_seq, true);
         }
         drop(frame);
     }
@@ -2707,6 +2707,11 @@ fn dispatch_with_host<V: ModuleView>(
                 st.trace.reference_pc_lookups += 1;
             }
             match instr {
+                MirInstr::ForeignCall { .. } => {
+                    return Some(ExecOutcome::Infra(
+                        "foreign.unsupported: AV admission invariant violated".into(),
+                    ))
+                }
                 MirInstr::Const { dst, value } => {
                     let cv = match v.const_at(func_idx, *value) {
                         Some(cv) => cv,

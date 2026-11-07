@@ -446,12 +446,17 @@ use ace_core::source::SourceProfile;
 /// [`TypeSupply`] and treats the returned type as authoritative.
 #[derive(Clone, Debug, Default)]
 pub struct BodyTypeSupply {
+    foreign: Option<ace_foreign_contract::manual::AdmittedForeign>,
     exprs: BTreeMap<(u32, u32), Vec<VT>>,
     bindings: BTreeMap<(u32, u32), VT>,
     admitted: usize,
 }
 
 impl BodyTypeSupply {
+    pub fn with_foreign(mut self, foreign: ace_foreign_contract::manual::AdmittedForeign) -> Self {
+        self.foreign = Some(foreign);
+        self
+    }
     pub fn new() -> Self {
         BodyTypeSupply::default()
     }
@@ -509,6 +514,9 @@ impl BodyTypeSupply {
 }
 
 impl TypeSupply for BodyTypeSupply {
+    fn foreign(&self) -> Option<&ace_foreign_contract::manual::AdmittedForeign> {
+        self.foreign.as_ref()
+    }
     fn expr_ty(&self, span: CoreSpan) -> Option<VT> {
         self.exprs
             .get(&(span.start as u32, span.end as u32))
@@ -574,6 +582,10 @@ pub fn bind_with_facts(
     if session.package() != package || session.module() != module {
         return Err(BindFactsError::Profile("session/module identity mismatch"));
     }
+    if let Some(foreign) = session.foreign() {
+        ace_core::source::resolve::validate_foreign_context(program, foreign, capabilities)
+            .map_err(BindFactsError::Resolve)?;
+    }
     let mut names: Vec<String> = Vec::new();
     for item in &program.items {
         match item {
@@ -586,6 +598,8 @@ pub fn bind_with_facts(
     if names.is_empty() {
         return Ok((
             ResolvedProgram {
+                foreign: Vec::new(),
+                foreign_slots: Vec::new(),
                 fns: Vec::new(),
                 records: Vec::new(),
                 lists: Vec::new(),
@@ -598,6 +612,7 @@ pub fn bind_with_facts(
     }
 
     let mut supply = BodyTypeSupply::new();
+    supply.foreign = session.foreign().cloned();
     let mut sigs: Vec<(String, FnSigFacts, bool)> = Vec::new();
     let mut applied: Vec<AppliedFn> = Vec::new();
     // PLAN-934 T-08: ONE declaration catalog for the whole module compile
@@ -621,6 +636,14 @@ pub fn bind_with_facts(
         let body = session
             .infer_body_with(program, &catalog, name)
             .map_err(BindFactsError::Query)?;
+        // Foreign-aware inference has new declarations that the legacy
+        // diagnostic-only frontend cannot see. Preserve its actual ordered
+        // diagnostics and re-anchor them through the admitted structural walk.
+        if session.foreign().is_some() && !body.facts.diags.is_empty() {
+            let diagnostics =
+                foreign_diagnostics(ast_body, &body.facts).map_err(BindFactsError::Apply)?;
+            return Err(BindFactsError::Resolve(diagnostics));
+        }
         supply
             .add_body(ast_body, &body.facts)
             .map_err(BindFactsError::Apply)?;
@@ -652,4 +675,33 @@ pub fn bind_with_facts(
         }
     }
     Ok((resolved, applied, supply))
+}
+
+/// Preserve the solver's ordered diagnostics through the shared structural map.
+pub(crate) fn foreign_diagnostics(
+    ast_body: &Block,
+    facts: &InferBodyFacts,
+) -> Result<Vec<ace_core::atom_text::Diagnostic>, ApplyError> {
+    use ace_core::atom_text::{Diagnostic, Span as CoreSpan};
+    let walk = walk_body(ast_body).map_err(ApplyError::Walk)?;
+    Ok(facts
+        .diags
+        .iter()
+        .map(|d| {
+            let span = d
+                .node
+                .and_then(|id| walk.nodes.iter().find(|n| n.id == id))
+                .map(|n| CoreSpan {
+                    start: n.span.start as usize,
+                    end: n.span.end as usize,
+                })
+                .unwrap_or(ast_body.span);
+            Diagnostic::new(
+                ace_core::atom_text::Stage::Bind,
+                &format!("source.foreign.{}", d.code),
+                d.message.clone(),
+                span,
+            )
+        })
+        .collect())
 }

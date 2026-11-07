@@ -57,6 +57,25 @@ pub struct InputFn {
     pub body: InputBlock,
 }
 
+/// PLAN-938: an external callable has a signature and nominal contract identity,
+/// never a fabricated local body. It is selectable by call inference only.
+#[derive(Clone, Debug)]
+pub struct ExternalSignature {
+    pub name: String,
+    pub params: Vec<(String, Ann)>,
+    pub ret: Ann,
+    pub contract: String,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SignatureView<'a> {
+    pub name: &'a str,
+    pub type_params: &'a [String],
+    pub params: &'a [(String, Ann)],
+    pub ret: Ann,
+    pub external_contract: Option<&'a str>,
+}
+
 /// One record declaration (fields in declaration order; methods kept
 /// separately).
 #[derive(Clone, Debug)]
@@ -72,6 +91,7 @@ pub struct SemaInput {
     pub package: String,
     pub module: String,
     pub fns: Vec<InputFn>,
+    pub external_signatures: Vec<ExternalSignature>,
     pub records: Vec<InputRecord>,
     /// Exact-source fingerprint at projection time (F-796-R4-05):
     /// binds position-bearing facts to the source bytes they were
@@ -82,6 +102,28 @@ pub struct SemaInput {
 }
 
 impl SemaInput {
+    pub fn signatures(&self) -> impl Iterator<Item = SignatureView<'_>> {
+        self.fns
+            .iter()
+            .map(|f| SignatureView {
+                name: &f.name,
+                type_params: &f.type_params,
+                params: &f.params,
+                ret: f.ret,
+                external_contract: None,
+            })
+            .chain(self.external_signatures.iter().map(|f| SignatureView {
+                name: &f.name,
+                type_params: &[],
+                params: &f.params,
+                ret: f.ret,
+                external_contract: Some(&f.contract),
+            }))
+    }
+
+    pub fn lookup_signature(&self, name: &str) -> Option<SignatureView<'_>> {
+        self.signatures().find(|s| s.name == name)
+    }
     pub fn lookup_fn(&self, name: &str) -> Option<&InputFn> {
         self.fns.iter().find(|f| f.name == name)
     }
@@ -91,7 +133,7 @@ impl SemaInput {
     /// The function-domain candidate set (sorted: the negative-dependency
     /// fingerprint input).
     pub fn fn_candidates(&self) -> Vec<String> {
-        let mut v: Vec<String> = self.fns.iter().map(|f| f.name.clone()).collect();
+        let mut v: Vec<String> = self.signatures().map(|f| f.name.to_string()).collect();
         v.sort();
         v
     }

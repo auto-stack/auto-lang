@@ -27,9 +27,13 @@
 //! Rust target; only the fragment layers are C-private.
 
 pub mod abi_scalar;
+// PLAN-938: one formatter, two passes — counting admits the exact text size
+// with the host before the single exactly-sized allocation.
+mod admitted_text;
 pub mod cert;
 pub mod coll_runtime;
 pub mod coll_table;
+pub mod foreign;
 pub mod lower;
 pub mod lower_coll;
 pub mod lower_rt;

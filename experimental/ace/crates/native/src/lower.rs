@@ -1072,6 +1072,72 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
 
     fn emit_instr(&mut self, i: &MirInstr) -> Result<(), String> {
         match i {
+            MirInstr::ForeignCall {
+                declaration,
+                dst,
+                args,
+            } => {
+                let signature = crate::foreign_lower::signature(declaration)?;
+                let id = self
+                    .om
+                    .declare_function(&declaration.function.symbol, Linkage::Import, &signature)
+                    .map_err(|e| format!("declare foreign symbol: {e}"))?;
+                let reference = self.om.declare_func_in_func(id, self.fb.func);
+                let mut values = Vec::new();
+                if let Some(symbol) = &declaration.context_symbol {
+                    let data = self
+                        .om
+                        .declare_data(symbol, Linkage::Import, true, false)
+                        .map_err(|e| format!("declare foreign context: {e}"))?;
+                    let global = self.om.declare_data_in_func(data, self.fb.func);
+                    values.push(self.fb.ins().global_value(types::I64, global));
+                }
+                for (slot, lane) in args.iter().zip(declaration.params()) {
+                    let value = self.fb.use_var(self.v_scalar(*slot)?);
+                    if *lane == ace_foreign_contract::LaneKind::Bool {
+                        let bad = self.fb.ins().icmp_imm(IntCC::UnsignedGreaterThan, value, 1);
+                        let status = self.fb.ins().iconst(types::I32, -2147483647i64);
+                        self.foreign_failure_on(bad, status)?;
+                        values.push(self.fb.ins().ireduce(types::I8, value));
+                    } else {
+                        values.push(value);
+                    }
+                }
+                let bool_result = declaration.result() == ace_foreign_contract::LaneKind::Bool;
+                let result_type = if bool_result { types::I8 } else { types::I32 };
+                let result = if matches!(
+                    declaration.function.form,
+                    ace_foreign_contract::FnForm::Fallible { .. }
+                ) {
+                    let slot = self.fb.create_sized_stack_slot(StackSlotData::new(
+                        cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
+                        if bool_result { 1 } else { 4 },
+                        if bool_result { 0 } else { 2 },
+                    ));
+                    values.push(self.fb.ins().stack_addr(types::I64, slot, 0));
+                    let call = self.fb.ins().call(reference, &values);
+                    let status = self.fb.inst_results(call)[0];
+                    let bad = self.fb.ins().icmp_imm(IntCC::NotEqual, status, 0);
+                    self.foreign_failure_on(bad, status)?;
+                    // Out is consumed only on the success continuation.
+                    self.fb.ins().stack_load(result_type, slot, 0)
+                } else {
+                    let call = self.fb.ins().call(reference, &values);
+                    self.fb.inst_results(call)[0]
+                };
+                let result = if bool_result {
+                    let bad = self
+                        .fb
+                        .ins()
+                        .icmp_imm(IntCC::UnsignedGreaterThan, result, 1);
+                    let status = self.fb.ins().iconst(types::I32, -2147483647i64);
+                    self.foreign_failure_on(bad, status)?;
+                    self.fb.ins().uextend(types::I32, result)
+                } else {
+                    result
+                };
+                self.def_scalar(*dst, result)?;
+            }
             MirInstr::Const { dst, value } => {
                 let ty = self.slot_ty(*dst);
                 match self.unit.consts.get(*value as usize) {
@@ -1832,6 +1898,28 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 )
             }
         }
+        Ok(())
+    }
+
+    fn foreign_failure_on(&mut self, condition: Value, status: Value) -> Result<(), String> {
+        let mut signature = Signature::new(cranelift_codegen::isa::CallConv::WindowsFastcall);
+        signature.params.push(AbiParam::new(types::I32));
+        let id = self
+            .om
+            .declare_function("ace_foreign_fail", Linkage::Import, &signature)
+            .map_err(|e| format!("declare foreign failure transport: {e}"))?;
+        let reference = self.om.declare_func_in_func(id, self.fb.func);
+        let failure = self.fb.create_block();
+        let continuation = self.fb.create_block();
+        self.fb
+            .ins()
+            .brif(condition, failure, &[], continuation, &[]);
+        self.fb.seal_block(failure);
+        self.fb.seal_block(continuation);
+        self.fb.switch_to_block(failure);
+        self.fb.ins().call(reference, &[status]);
+        self.fb.ins().trap(TrapCode::user(1).expect("valid trap"));
+        self.fb.switch_to_block(continuation);
         Ok(())
     }
 

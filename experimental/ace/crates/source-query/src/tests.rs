@@ -41,6 +41,48 @@ fn kinds(w: &BodyWalk) -> Vec<&'static str> {
 }
 
 #[test]
+fn solver_attempts_include_cancel_and_resource_but_exclude_preflight_rejects() {
+    use std::sync::{atomic::AtomicBool, Arc};
+    let p = parse(A);
+    let ledger = crate::work::Ledger::default();
+    let mut cancelled = SourceQuerySession::new("pkg", "mod")
+        .with_work(ledger.clone())
+        .with_cancel(Arc::new(AtomicBool::new(true)));
+    assert!(matches!(
+        cancelled.infer_body(&p, "leaf"),
+        Err(QueryError::Produce(ProduceError::Cancelled))
+    ));
+    assert_eq!(cancelled.counters().solver_runs, 1);
+    let t = ledger.totals("leaf", "solver");
+    assert_eq!((t.attempted, t.produced, t.p), (1, 0, 1));
+    let mut exhausted = SourceQuerySession::new("pkg", "mod")
+        .with_work(ledger.clone())
+        .with_limits(ProduceLimits {
+            max_steps: 0,
+            ..ProduceLimits::default()
+        });
+    assert!(matches!(
+        exhausted.infer_body(&p, "leaf"),
+        Err(QueryError::Produce(ProduceError::Resource(_)))
+    ));
+    assert_eq!(exhausted.counters().solver_runs, 1);
+    let mut preflight = SourceQuerySession::new("pkg", "mod")
+        .with_work(ledger.clone())
+        .with_limits(ProduceLimits {
+            max_body_nodes: 0,
+            ..ProduceLimits::default()
+        });
+    assert!(matches!(
+        preflight.infer_body(&p, "leaf"),
+        Err(QueryError::Produce(ProduceError::Profile { .. }))
+    ));
+    assert_eq!(preflight.counters().solver_runs, 0);
+    assert_eq!(ledger.totals("leaf", "solver").attempted, 2);
+    assert_eq!(ledger.totals("leaf", "infer").attempted, 3);
+    assert_eq!(ledger.totals("leaf", "infer").produced, 0);
+}
+
+#[test]
 fn sq01_one_body_yields_complete_structural_facts() {
     let p = parse(A);
     let mut s = SourceQuerySession::new("pkg", "mod");
@@ -892,7 +934,7 @@ fn sq29_single_flight_shares_one_computation_per_key() {
 fn sq30_read_only_view_never_installs() {
     let p = parse(A);
     let mut s = SourceQuerySession::new("pkg", "mod");
-    let mut host = QueryHost::new(MemorySink::new());
+    let host = QueryHost::new(MemorySink::new());
     let view = host.view(&mut s, &p, "main").expect("view");
     assert!(host.current().is_none(), "a view is not an install");
     assert!(host.sink().is_empty());
@@ -998,6 +1040,24 @@ fn sq32_page_codec_rejects_foreign_truncated_and_tampered_pages() {
         decode_page(&foreign),
         Err(PageReadError::Envelope { .. })
     ));
+}
+
+#[test]
+fn fact_page_preflight_refuses_oversized_payload_and_count_before_materialization() {
+    let p = parse(A);
+    let mut session = SourceQuerySession::new("pkg", "mod");
+    let mut facts = session.infer_body(&p, "leaf").unwrap().facts;
+    let key = session.body_key(&p, "leaf").unwrap();
+    facts.sig_reads = vec!["x".repeat(4096); 129];
+    assert!(encode_page(&key, &facts)
+        .unwrap_err()
+        .to_string()
+        .contains("before allocation"));
+    facts.sig_reads = vec![String::new(); 8193];
+    assert!(encode_page(&key, &facts)
+        .unwrap_err()
+        .to_string()
+        .contains("count"));
 }
 
 #[test]

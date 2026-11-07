@@ -32,6 +32,11 @@ ace-foreign-contract = { path = "../foreign-contract" }
 # is abi->a2x only; a2x-* never depends on ace-abi.
 ace-a2x-core = { path = "../a2x-core" }
 ace-a2x-c = { path = "../a2x-c" }
+ace-a2x-store = { path = "../a2x-store" }
+ace-native = { path = "../native" }
+ace-source-query = { path = "../source-query" }
+ace-av-core = { path = "../av-core" }
+ace-lowering = { path = "../lowering" }
 # Cranelift stack pinned to the same versions as ac-core (plan §3).
 cranelift-codegen = "0.126"
 cranelift-frontend = "0.126"
@@ -42,12 +47,27 @@ blake3 = "1.5"
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+object = "0.37"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_Foundation", "Win32_System_Environment"] }
+
+[dev-dependencies]
+ace-a2x-rust = { path = "../a2x-rust" }
 
 [[bin]]
 name = "abi-worker"
 path = "src/bin/abi-worker.rs"
 
+[[bin]]
+name = "source-foreign-restore-probe"
+path = "src/bin/source-foreign-restore-probe.rs"
+
 
 [[test]]
 name = "conformance"
 path = "tests/conformance.rs"
+
+[[test]]
+name = "source_resources"
+path = "tests/source_resources.rs"

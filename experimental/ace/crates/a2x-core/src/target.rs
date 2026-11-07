@@ -90,6 +90,10 @@ pub struct FilesetRequest<'a> {
 /// The narrow emit-target seam (plan §5.2/D-01): one implementation per
 /// target crate. Providers are stateless value types.
 pub trait TargetProvider {
+    /// Current process-local admission before either a cache hit or production.
+    fn validate_view(&self, _view: &SemanticView<'_>) -> Result<(), A2xReject> {
+        Ok(())
+    }
     /// The frozen identity of this target (fragment keys, manifests).
     fn descriptor(&self) -> TargetDescriptor;
 
