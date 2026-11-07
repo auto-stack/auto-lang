@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 29
+current_step: 30
 total_steps: 32
 ---
 
@@ -2204,6 +2204,16 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:94 | from:goal继续 
 stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（delivered-d转正awaiting 14→7、六合约刷新、938页needle入行、修复验证四组全绿；上游64MiB红为组合链关键阻塞） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:60e188170dfadd780bbfa0c0eb7f725676205047 | task_ids:T-09/T-03/T-06增量 | evidence:f94119-reception/gates | next_responsible_role:work 上游64MiB修复后T3门/工具对账/证据链重采/16-16 | 无live handle
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:95 | from:goal继续 | to:work | status:executing29/32 | outcome:progress（D938接收repo面完成：registry转正+合约刷新+四组验证绿；组合链候上游红修复） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:60e188170dfadd780bbfa0c0eb7f725676205047 | next:work T3门/工具/证据链/16-16；D939在途，无待poll
+
+### 第96轮：work D938接收续——T3重跑三组与上游64MiB红正式交接
+
+- 按指令以`T3_MILESTONE=1`（14400s既有机制）串行重跑三组deadline组（@`60e188170`）：ace-native 全绿（226测，0红，0 not_run）；ace-semantics 全绿（241测，0红，0 not_run）；ace-comptime 全绿（148测，0红，0 not_run）。
+- **上游交接落地**：`plan-artifacts/plan-941/handoff-f94120-upstream-64mib.md`——`syntax_budget_64mib_streaming_small_queries` 128MiB namespace边际溢出的精确复现/失败数字（133943768+block+allowance>134217728）、pristine master同红的决定性归因、嫌疑提交（938 store spanning-lock/edges流式与960 packages lane）、owner=938/960 store线、以及修复落地后的五步下游解锁清单（冻结门→13工具对账→证据链重采→组合重读→16/16）。
+- **边界**：组合重读仍被该上游红卡住（ace-syntax非全绿→3-group冻结门不成立）；abi-interop 10真窗与16/16候该链；D939仍在途。executing30/32。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（T3三组重跑+上游64MiB红正式交接文档；组合链候上游修复） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:60e188170dfadd780bbfa0c0eb7f725676205047 | task_ids:T-09接收门增量 | evidence:f94120-t3/gates + handoff-f94120-upstream-64mib.md | next_responsible_role:work 候上游64MiB修复→冻结门/工具/证据链/16-16 | 无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:96 | from:goal继续 | to:work | status:executing30/32 | outcome:progress（deadline三组T3闭环+上游交接） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:60e188170dfadd780bbfa0c0eb7f725676205047 | next:候上游64MiB修复；D939在途，无待poll
 
 ## 10. 待澄清事项
 
