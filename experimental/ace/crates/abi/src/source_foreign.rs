@@ -2056,9 +2056,16 @@ fn validate_target_artifact(
             ..
         } if target == Target::Native && stored.as_str() == name => {
             // The shared source adapter uses the stable HIR module
-            // id `m_src`; its logical source path lives separately in
-            // the authenticated frontend root.
-            if owner_schema != ace_av_core::contract::MIR_SCHEMA || owner_module != "m_src" {
+            // id `m_src`; its logical source path lives separately in the
+            // authenticated frontend root. PLAN-939: the RESOURCE lane
+            // lowers per-function through the OWNED profile — its unit
+            // carries the owned MIR schema (same `m_src` module identity).
+            if owner_module != "m_src"
+                || !matches!(
+                    owner_schema.as_str(),
+                    ace_av_core::contract::MIR_SCHEMA | ace_av_core::contract::MIR_OWNED_SCHEMA
+                )
+            {
                 return Err("foreign.restore.native-owner".into());
             }
             // ABC deliberately omits the project/unit owner. Rebind

@@ -819,12 +819,18 @@ pub fn decl_env_restore_with_foreign(
         // PLAN-939: the restored signature table uses the ONE resource-aware
         // mapping; the callback closure type is interned into the restored
         // closure-signature table (append-only, indexes from the page stay).
-        let sig = crate::foreign_resources::source_sig(
+        // Subset callability matches the cold signature pass: a record view
+        // naming no type in THIS module is not callable here (no sig row);
+        // every other mapping failure is malformed.
+        let sig = match crate::foreign_resources::source_sig(
             declaration,
             &records,
             &mut function_types,
-        )
-        .map_err(|(_, message)| DeclEnvError::Malformed(message))?;
+        ) {
+            Ok(sig) => sig,
+            Err((crate::foreign_resources::CODE_RECORD, _)) => continue,
+            Err((_, message)) => return Err(DeclEnvError::Malformed(message)),
+        };
         sigs.insert(
             declaration.name.clone(),
             super::resolve::fn_sig_from_parts(

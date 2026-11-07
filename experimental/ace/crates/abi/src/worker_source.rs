@@ -189,10 +189,14 @@ impl CertPolicy {
     pub fn certification_runtime_policy(self, target: Target) -> String {
         match (self, target) {
             // PLAN-939: the resource C leg's runtime page is the
-            // record-text runtime (no trace marks in the fixtures).
+            // record-text runtime (no trace marks in the fixtures). The
+            // page digest inside the identity formula is SHA-256 like
+            // every other term (the store's page ids are sha256; the
+            // blake3 `provider::hash` digests the provider OBJECT, a
+            // different identity space).
             (Self::Resource939, Target::C) => crate::source_foreign::runtime_identity(
                 target,
-                &provider::hash(
+                &ace_a2x_core::sha256::sha256_hex(
                     ace_a2x_c::rt_runtime::record_text_runtime_source(&[]).as_bytes(),
                 ),
             ),

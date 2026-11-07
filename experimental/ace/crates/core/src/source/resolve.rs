@@ -2425,20 +2425,29 @@ impl ForeignContext {
                 .iter()
                 .position(|n| n == &declaration.name)
                 .expect("reserved slot");
-            // PLAN-939: the same resource-aware mapping as the cold pass.
-            let sig = crate::foreign_resources::source_sig(
+            // PLAN-939: the same resource-aware mapping as the cold pass —
+            // INCLUDING subset callability: a record view naming no type in
+            // THIS module is not callable here (the call site resolves as
+            // an unknown function); a whole-surface manifest must not
+            // require every record type in every module that admits it.
+            let sig = match crate::foreign_resources::source_sig(
                 declaration,
                 &env.program.records,
                 &mut function_types,
-            )
-            .map_err(|(code, message)| {
-                vec![Diagnostic::new(
-                    Stage::Bind,
-                    code,
-                    message,
-                    Span { start: 0, end: 0 },
-                )]
-            })?;
+            ) {
+                Ok(s) => s,
+                Err((code, message)) => {
+                    if code == crate::foreign_resources::CODE_RECORD {
+                        continue;
+                    }
+                    return Err(vec![Diagnostic::new(
+                        Stage::Bind,
+                        code,
+                        message,
+                        Span { start: 0, end: 0 },
+                    )]);
+                }
+            };
             sigs.insert(
                 declaration.name.clone(),
                 FnSig {

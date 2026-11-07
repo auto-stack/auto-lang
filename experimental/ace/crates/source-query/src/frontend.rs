@@ -631,20 +631,56 @@ pub fn cold_observed_with_resources(
         {
             return Err(reject("body edit changed declaration signature"));
         }
-        let answer = self
-            .queries
-            .infer_item_with_catalog(item, &self.signatures)
-            .map_err(reject)?;
+        // r3 §5.11: the RESOLVER-OWNED lane has no solver facts (the 934
+        // inference surface is scalar-only) — the edit re-resolves the body
+        // for real through the resolver's own rules (foreign-only supply)
+        // and re-mints the ZERO-facts marker page; the fact walk never runs.
+        let resource_lane =
+            Self::foreign_source_profile(Some(&self.foreign)) == SourceProfile::TextRecord;
+        let answer = if resource_lane {
+            crate::QueryOutcome {
+                facts: crate::InferBodyFacts {
+                    name: owner.into(),
+                    logical: crate::ident::owner_logical(&self.package, &self.module, owner),
+                    body_version: crate::ident::content_version("sq-body", b"resolver-owned"),
+                    profile: crate::ident::SQ_PROFILE,
+                    algo: crate::ident::SQ_ALGO,
+                    schema: crate::ident::SQ_SCHEMA,
+                    producer: crate::ident::SQ_PRODUCER,
+                    revision: self.queries.revision(),
+                    nodes: Vec::new(),
+                    bindings: Vec::new(),
+                    diags: Vec::new(),
+                    missing: Vec::new(),
+                    sig_reads: Vec::new(),
+                    negatives: Vec::new(),
+                    steps: 0,
+                },
+                hit: false,
+            }
+        } else {
+            self.queries
+                .infer_item_with_catalog(item, &self.signatures)
+                .map_err(reject)?
+        };
         if !answer.facts.diags.is_empty() {
             return Err(Error::Diagnostics(
                 crate::apply::foreign_diagnostics(&item.body, &answer.facts).map_err(reject)?,
             ));
         }
         let mut supply = BodyTypeSupply::new().with_foreign(self.foreign.clone());
+        if resource_lane {
+            // §5.11: body types come from the resolver's own text-record
+            // rules (the cold lane's foreign-only supply) — no solver
+            // facts exist on this lane.
+            supply = supply.foreign_only();
+        }
         let mut application = self
             .work
             .begin(owner, "facts-apply", crate::work::Phase::Production);
-        supply.add_body(&item.body, &answer.facts).map_err(reject)?;
+        if !resource_lane {
+            supply.add_body(&item.body, &answer.facts).map_err(reject)?;
+        }
         application.produced(1);
         work.push(application);
         let slot = resolve::env_free_fn_index(&self.env, owner)
@@ -674,12 +710,27 @@ pub fn cold_observed_with_resources(
         let mut verify_work = self
             .work
             .begin(owner, "hir-verify", crate::work::Phase::Production);
-        let checked = ace_core::verify::verify_foreign_function(
-            &semantic.parts().bundle,
-            slot,
-            &self.foreign,
-        )
-        .map_err(Error::Diagnostics)?;
+        // r3 §5.11: the resource lane verifies the edited body through the
+        // TEXT-RECORD single-function credential (its exclusivity seed from
+        // the whole-module fixpoint, like the a2x warm lane); the scalar
+        // lane keeps the 938 credential.
+        let checked = if resource_lane {
+            let seed = ace_core::text_resources::param_exclusions_fixpoint(&semantic.parts().bundle);
+            ace_core::verify::verify_foreign_text_function(
+                &semantic.parts().bundle,
+                slot,
+                &self.foreign,
+                &seed,
+            )
+            .map_err(Error::Diagnostics)?
+        } else {
+            ace_core::verify::verify_foreign_function(
+                &semantic.parts().bundle,
+                slot,
+                &self.foreign,
+            )
+            .map_err(Error::Diagnostics)?
+        };
         verify_work.produced(1);
         work.push(verify_work);
         self.meter.hir_produced += semantic.receipt().real_body_plans as u64;
@@ -687,11 +738,37 @@ pub fn cold_observed_with_resources(
             .entry(owner.into())
             .or_default()
             .hir_produced += semantic.receipt().real_body_plans as u64;
-        let walk = crate::walk_body(&item.body).map_err(reject)?;
-        let (_, deps) = self
-            .queries
-            .resident_page(owner)
-            .ok_or_else(|| reject("missing candidate facts"))?;
+        // §5.11: the resolver-owned lane persists the synthetic EMPTY walk
+        // (zero facts); every other lane walks the edited body for the page.
+        let walk_storage;
+        let owned_walk;
+        let walk = if resource_lane {
+            owned_walk = crate::walk::BodyWalk {
+                nodes: Vec::new(),
+                lets: Vec::new(),
+                version: crate::ident::content_version("sq-body", b"resolver-owned"),
+                expr_nodes: 0,
+            };
+            &owned_walk
+        } else {
+            walk_storage = crate::walk_body(&item.body).map_err(reject)?;
+            &walk_storage
+        };
+        // §5.11: the resolver-owned lane keeps its marker page's dependency
+        // list EMPTY (no solver facts to depend on); every other lane reads
+        // the resident dependency metadata.
+        let empty_deps: Vec<(String, ContentVersion)> = Vec::new();
+        let deps_storage: Vec<(String, ContentVersion)>;
+        let deps: &[(String, ContentVersion)] = if resource_lane {
+            &empty_deps
+        } else {
+            deps_storage = self
+                .queries
+                .resident_page(owner)
+                .map(|(_, deps)| deps.to_vec())
+                .ok_or_else(|| reject("missing candidate facts"))?;
+            &deps_storage
+        };
         self.meter.page_encode_attempts += 1;
         self.per_function
             .entry(owner.into())
@@ -1337,6 +1414,32 @@ pub fn cold_observed_with_resources(
             );
             if key != expected.canonical() || facts.name != name {
                 return Err(reject("required fact query key"));
+            }
+            // PLAN-939 §5.11: a RESOLVER-OWNED marker page carries ZERO
+            // solver facts and the synthetic empty walk — its body is
+            // re-resolved on demand (R on this lane is the bounded deep
+            // validation of the required envelope; walk reuse is not
+            // promised). Mirror the cold lane: register the resident
+            // marker, never decode/seed a walk.
+            if facts.body_version == crate::ident::content_version("sq-body", b"resolver-owned") {
+                if !wire.walk.nodes.is_empty() || !wire.dependencies.is_empty() {
+                    return Err(reject("resolver-owned marker carries facts"));
+                }
+                residents.insert(
+                    name,
+                    Resident {
+                        page: Page {
+                            digest: edge.digest,
+                            bytes,
+                        },
+                        mint_origin: edge.mint_origin,
+                        dependencies: Vec::new(),
+                        negative_candidates: None,
+                    },
+                );
+                page_work.accept();
+                meter.restore_pages += 1;
+                continue;
             }
             let walk = wire.walk.decode(
                 &facts,

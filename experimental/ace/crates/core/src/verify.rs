@@ -578,6 +578,29 @@ pub fn verify_text_function(
     def_index: usize,
     excl_seed: &crate::text_resources::ParamExclusions,
 ) -> Result<CheckedFunction, Vec<Diagnostic>> {
+    verify_text_function_impl(bundle, def_index, excl_seed, false)
+}
+
+/// PLAN-939: the single-function text-record credential for the FOREIGN
+/// lane — the same complete verification as [`verify_text_function`], with
+/// the resource declarations admitted by the current host
+/// (`foreign_allowed`) and checked against that host first.
+pub fn verify_foreign_text_function(
+    bundle: &hir::Bundle,
+    def_index: usize,
+    environment: &ace_foreign_contract::manual::AdmittedForeign,
+    excl_seed: &crate::text_resources::ParamExclusions,
+) -> Result<CheckedFunction, Vec<Diagnostic>> {
+    check_foreign_declarations(bundle, environment)?;
+    verify_text_function_impl(bundle, def_index, excl_seed, true)
+}
+
+fn verify_text_function_impl(
+    bundle: &hir::Bundle,
+    def_index: usize,
+    excl_seed: &crate::text_resources::ParamExclusions,
+    foreign_allowed: bool,
+) -> Result<CheckedFunction, Vec<Diagnostic>> {
     if !matches!(bundle.domain, HirDomain::Text | HirDomain::TextRecord) {
         return Err(vec![Diagnostic::new(
             Stage::Verify,
@@ -602,7 +625,7 @@ pub fn verify_text_function(
     }
     let m = &bundle.modules[0];
     let mut v = Verifier {
-        foreign_allowed: false,
+        foreign_allowed,
         diags: Vec::new(),
         closures_ctx: None,
         domain: bundle.domain,
