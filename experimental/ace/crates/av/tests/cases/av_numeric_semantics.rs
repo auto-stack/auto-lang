@@ -114,6 +114,16 @@ fn v05_float_bit_exact_values() {
     assert_eq!(v.to_bits(), ((0.1f32 as f64) + (0.2f32 as f64)).to_bits());
 }
 
+// T-08: literal rounding — a non-exact decimal rounds to the target
+// width's nearest representable value (0.1f32 observed bit-exactly).
+#[test]
+fn v08_literal_rounding() {
+    let v = ok_f64("fn main() f64 { return (0.1f32).as(f64) }");
+    assert_eq!(v.to_bits(), (0.1f32 as f64).to_bits(), "0.1f32 rounds to nearest f32");
+    let v2 = ok_f64("fn main() f64 { return 0.1d }");
+    assert_eq!(v2.to_bits(), 0.1f64.to_bits(), "0.1d rounds to nearest f64");
+}
+
 // V-08 edge families (T-08 core): shifts, MIN/-1, float→int, casts.
 #[test]
 fn v08_shift_and_division_edges() {
