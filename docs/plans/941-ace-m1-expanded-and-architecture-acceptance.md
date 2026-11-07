@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 17
+current_step: 18
 total_steps: 32
 ---
 
@@ -525,7 +525,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-29 | work | T-28冻结，实际触面及工具/源身份对账 | 完整ace-source/ace-syntax/infra-ace-m1-arch及必要具名consumer；13工具实际变化身份、受影响Case/cert/daily/优化真实刷新，其他证据strict复用，当前组合逐键对账；F11工作关闭/SD14候选交T14；AC-04/05/07/09/20、V44 | [x] 第81轮：漂移审计5合约{project.rs,conformance.rs}+新模块→13工具8变（同F10集）→合约刷新提交7127d115c（data-only，门复用）→治理238/五native9观察/Case466(8红保持)/cert292+daily292/优化14+拒绝6全部在Y重采，组合716P8F282U逐键零漂移；F11核销、SD14候选交T14 |
 | T-30 | work | 第82轮用户F12内phase授权；§5.15/7127d115c基面与第81..82轮反证 | 新recovered_script_first_diag_941先固定A/H/I三形baseline红/clean反控绿，再在project_module_front decl循环按产物签名（错误树+script+前item错误，run内粘滞）跳过script投影与saw_script；AC-21、V45..47、SD15 | [x] 第82轮6a545cee7d：baseline 1P2F（entry-top-return更早位抢占，含片段面）→投影层+15行修复→F12 3/3、F10/F11/F12联合51/51、完整source401/syntax132/infra238（771/771）PASS，fmt/check净；片段面边界EOF按片段范围合同改用内容内分歧形状 |
 | T-31 | work | T-30冻结，实际触面及工具/源身份对账 | 13工具实际变化身份、五native合约/Case466/cert292+daily/优化14+拒绝6按新身份重采，组合逐键对账（镜像T29链）；F12工作关闭/SD15候选交T14；AC-04/05/07/09/21、V48 | [x] 第83轮：漂移5合约{project.rs,conformance.rs}+新模块→工具8变→合约刷新Z=c18dcd634d（data-only，771门复用）→治理238/五native9观察/Case466(8红保持)/cert292+daily292/优化14+拒绝6全部重采，组合716P8F282U逐键零漂移；F12核销、SD15候选交T14 |
-| T-32 | work | 第84轮用户F07 test-only授权；§5.16/c18dcd634d基面与第58轮反证 | fast控制按`av_execute` span分态双向核计数+确定性1ms AV前耗尽回归；原10s负例/4call正控逐字保留；13工具hash恒等实证；AC-22、V49..50、SD16 | [ ] |
+| T-32 | work | 第84轮用户F07 test-only授权；§5.16/c18dcd634d基面与第58轮反证 | fast控制按`av_execute` span分态双向核计数+确定性1ms AV前耗尽回归；原10s负例/4call正控逐字保留；13工具hash恒等实证；AC-22、V49..50、SD16 | [x] 第84轮a9dc4c350：baseline本机1P（调度依赖，与第58轮定性一致）→仅`cte_resources_tests.rs`修复→deadline控制2/2+原10s负例1/1（AV侧≥1逐字保留）PASS、13工具ALL-UNCHANGED、fmt/check净（仅既有告警）；超早期限经看门狗cancel通道报cte.cancelled（同族受控态）已入注释与审计 |
 
 T-18/19已完成（§9第43轮）；T20/T21已完成（第52轮），当前回到原完整T-01..13。 T22/23的F08已完成工作验证；r6的T24/25已完成F09工作阶段；下一入口回到原T01..13全部未闭任务；F07仍独立待批，不预占/勾选任务。T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；继续原T-01/T-02等完整任务，尚未关闭的验收保持未完成。
 
@@ -2069,6 +2069,17 @@ stage: work | plan_id:PLAN-941 | plan_revision:r9 | outcome:progress→F12工作
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r9 | round:83 | from:work | to:work | status:executing16/31 | outcome:progress（F12身份闭包完成、组合逐键零漂移；F10/F11/F12三修复全部核销） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:c18dcd634dde615e315f8422f06b37e1b2349e71 | next:work原T01..15未闭义务/独立required；F07待用户裁定；D938/939未交齐，无待poll
 
+### 第84轮：new r10承接F07具名test-only授权；work T32计数断言按真实阶段核
+
+- 用户对第83轮报告的F07具名提问明确“授权修复”（T01..15外部阻塞/38旧cert-gap非修复授权范畴，维持原状）。r10落实：16/32→18/32，新增§5.16/T32/AC22/V49..50/SD16（master `692ed1b23`）。第84轮先核写面边界：五native合约source_pins均不含`comptime/tests`（test-only无身份闭包负担）；canonical `auto-cte/source-query-integration.md`已明文“ct_execute counts only attempts that reached the AV”——旧断言与规范相悖。
+- **baseline如实记录**：fast控制本机当前1P（3.33s，AV已进入：本机前端<300ms）——与第58轮“依赖现场调度、两次历史红”定性一致；缺陷在断言原则，不在当前偶绿。生产最小改动仅`cte_resources_tests.rs`：①fast控制计数改按`CteStepOutcome.spans`的`av_execute`阶段事实分态双向核（span存在必`ct_execute>=1`、span缺失必`==0`，不伪记不漏记），状态/编码/非language/时窗/不发布/默认限额单call正控全部原样；②新增确定性`cte_resources_request_deadline_before_execution_counts_zero`：1ms累计deadline×原115helper/4call deck（前端实测百ms级≫1ms，无调度依赖）——必在前端阶段触发：无av_execute span、计数0、资源族非language态、不发布、同族正控恢复绿。**现场发现并如实入档**：超早期限落在准备阶段时由deadline看门狗的cancel通道报出`cte.cancelled`（project后则报`cte.resource.deadline`）——码别是期限落点的阶段产物，两者同为受控资源族态，计数不变量恒定，确定性控制按族核码、精确计数控。原`cte_resources_request_wall_real_ten_seconds`（32query/10s累计负例、AV侧`ct_execute>=1`）与4call正控**逐字保留**。
+- 提交**`a9dc4c3507`**（单测试文件；初次提交漏一处注释重排，`cargo fmt`后amend，非测试失败）。验证：deadline控制**2/2PASS**（1.74s确定性+3.52s fast）、原10s负例**1/1PASS**（10.52s）、fmt后复跑2/2；`cargo fmt --check`净、`cargo check -p ace-comptime --tests`仅既有告警（ace-core `first_lex_fact`、ace-av `mix_u64`/`shell_lo`/`env_layout`）；**13工具hash与`f94112-consumer-tools/tools-current.json`全部恒等**（ALL-UNCHANGED，test-only无身份漂移实证）。审计`f94107-implementation-audit.json` SHA256=`bd2327027116d568ddeeb9126b91d01e12fb5e540b1f4b7a00dff475f34559f6`。
+- **T32勾选，executing18/32**：AC-22/V49..50闭合，F-941-07核销；SD16候选交最终T14。未触的GC/32MiB/512修订/原性能证据保持来源与历史状态，旧frozen-window红不重标绿（最终T12完整冻结并集统一收）；8scalar/旧38/D938939原样。下一步回原T01..15未闭义务；本轮无live handle，`f94107-*`目录已入scope。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress→F07核销（test-only计数断言按真实阶段核+确定性回归；13工具恒等） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:a9dc4c3507 | task_ids:T32勾选 | evidence:f94107-implementation-audit.json | next_responsible_role:work原T01..15未闭义务；无具名待批项，无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:84 | from:goal用户授权 | to:work | status:executing18/32 | outcome:progress（r10契约+T32 test-only修复真实闭合；F04..F12七项具名缺陷全部核销） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a9dc4c3507 | next:work原T01..15未闭义务/独立required；D938/939未交齐，无待poll
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
@@ -2088,7 +2099,7 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r9 | round:83 | from:work | to:wo
 
 10. **F-941-06工作阶段已关闭（r4 T20/21，第52轮）**：用户授权的typed data诊断修复、原4反例/合法与失败边界、1493完整职责/消费者门、408当前Case重采/原16诊断严格PASS及当前全组合679P8F319U已闭。SD10候选已在冻结树；最终独立review仍T14，不再等待授权，不扩为其他后端修复。
 
-11. **F-941-07已获r10内test-only phase授权（第84轮）**：用户明确“授权修复”。按第58轮提案只修`cte_resources_tests.rs`计数断言（按`av_execute`阶段事实分态）+确定性AV前耗尽回归；原10s负例/正控逐字保留；工作状态见§9第84轮。8scalar/旧38/D938939不受影响。
+11. **F-941-07已核销（r10 T32，第84轮）**：用户明确“授权修复”后，test-only修复（a9dc4c350，仅`cte_resources_tests.rs`）使fast控制计数断言与“`ct_execute`只计到达AV的尝试”规范一致（按`av_execute`阶段事实双向核），新增确定性1ms AV前耗尽回归（无span/计数0/资源族态/不发布/正控恢复），原10s负例与4call正控逐字保留仍绿；13工具hash恒等（无身份漂移），SD16候选交最终T14。8scalar/旧38/D938939不受影响。
 
 12. **F-941-08工作阶段已关闭（r5 T22/T23，第64轮续录）**：用户原授权已完成实施与当前原职责/真实四端/292认证daily/原优化及CT机制严格联读，F08关闭基面81c10fcc9；第65轮b876cb42b/711P8F287U；第66轮4466520e6同计数、新增S936恢复分腿；第67轮当前5adfe480d/712P9F285U，新增SQ权威PASS与F09实际FAIL，仍8/23。无待poll，不再等待F08授权或重跑已有效冻结证据；原完整任务及最终独立T14仍待。F07独立test-only修复仍待裁定，不能由F08授权推定。
 
