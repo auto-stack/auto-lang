@@ -202,6 +202,9 @@ fn decode_capture_kind(b: u8) -> Result<crate::mir::CaptureKind, AbcDecodeError>
 pub const OP_DYN_PACK: u8 = 0x2F;
 pub const OP_DYN_IS: u8 = 0x30;
 pub const OP_DYN_TAKE: u8 = 0x31;
+/// PLAN-960: module global cell read/write.
+pub const OP_GLOBAL_GET: u8 = 0x36;
+pub const OP_GLOBAL_SET: u8 = 0x37;
 pub const TERM_JUMP: u8 = 0x10;
 pub const TERM_BRANCH: u8 = 0x11;
 pub const TERM_RETURN: u8 = 0x12;
@@ -1249,6 +1252,17 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u8(&mut w, OP_HOST_CALL);
                         put_u32(&mut w, *host);
                         put_u32(&mut w, *arg);
+                    }
+                    MirInstr::GlobalGet { dst, global } => {
+                        put_u8(&mut w, OP_GLOBAL_GET);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *global);
+                    }
+                    MirInstr::GlobalSet { dst, global, src } => {
+                        put_u8(&mut w, OP_GLOBAL_SET);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *global);
+                        put_u32(&mut w, *src);
                     }
                     MirInstr::Const { dst, value } => {
                         put_u8(&mut w, OP_CONST);
@@ -2341,6 +2355,10 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
     );
     let mut module = MirModule {
         host_imports,
+        // PLAN-960: global cells and init order live on the linked program
+        // snapshot, never on the wire.
+        globals: Vec::new(),
+        init: Vec::new(),
         profile: match family {
             WireFamily::Core | WireFamily::ForeignScalar => crate::contract::AV_PROFILE.to_string(),
             WireFamily::Data => crate::contract::AV_DATA_PROFILE.to_string(),
@@ -2937,6 +2955,15 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                             arg: c.u32()?,
                         }
                     }
+                    OP_GLOBAL_GET => MirInstr::GlobalGet {
+                        dst: c.u32()?,
+                        global: c.u32()?,
+                    },
+                    OP_GLOBAL_SET => MirInstr::GlobalSet {
+                        dst: c.u32()?,
+                        global: c.u32()?,
+                        src: c.u32()?,
+                    },
                     OP_TRACE => {
                         let ev = c.u8()?;
                         let event = match ev {

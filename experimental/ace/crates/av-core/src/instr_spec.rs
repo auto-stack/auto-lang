@@ -726,6 +726,8 @@ pub fn coverage_check() -> Result<(), String> {
 pub fn mnemonic_of_instr(i: &MirInstr) -> &'static str {
     match i {
         MirInstr::HostCall { .. } => "HOST_CALL",
+        MirInstr::GlobalGet { .. } => "GLOBAL_GET",
+        MirInstr::GlobalSet { .. } => "GLOBAL_SET",
         MirInstr::Const { .. } => "CONST",
         MirInstr::Copy { .. } => "COPY",
         MirInstr::Bin { .. } => "BIN",

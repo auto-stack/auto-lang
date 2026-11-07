@@ -1290,6 +1290,10 @@ pub fn validate_foreign_context(
             ast::Item::Fn(f) => (f.name.name.as_str(), f.name.span, true),
             ast::Item::Type(t) => (t.name.name.as_str(), t.name.span, false),
             ast::Item::Enum(e) => (e.name.name.as_str(), e.name.span, false),
+            // PLAN-960: module globals are callable-surface declarations for
+            // the foreign directory (name/spans only; accessors are not fns).
+            ast::Item::Const(c) => (c.name.name.as_str(), c.name.span, false),
+            ast::Item::Store(v) => (v.name.name.as_str(), v.name.span, false),
         })
         .collect();
     validate_foreign_declarations(&names, foreign, capabilities)

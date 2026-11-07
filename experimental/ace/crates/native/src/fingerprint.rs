@@ -192,6 +192,10 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
         } => format!("foreign {} {} {:?}", declaration.digest(), dst, args),
         MirInstr::Const { dst, value } => format!("const {} = {}", dst, const_value(m, *value)),
         MirInstr::Copy { dst, src } => format!("copy {} <- {}", dst, src),
+        MirInstr::GlobalGet { dst, global } => format!("global_get {} <- g{}", dst, global),
+        MirInstr::GlobalSet { dst, global, src } => {
+            format!("global_set g{} <- {} ; {} = 0", global, src, dst)
+        }
         MirInstr::Bin { op, dst, lhs, rhs } => format!("bin {:?} {} {} {}", op, dst, lhs, rhs),
         MirInstr::Un { op, dst, operand } => format!("un {:?} {} {}", op, dst, operand),
         MirInstr::Call { callee, dst, args } => match callee {

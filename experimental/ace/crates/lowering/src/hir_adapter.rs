@@ -1145,6 +1145,41 @@ fn collections_fn_sig_for_def(
     Ok(sig_ty)
 }
 
+/// PLAN-960: the global cell index for `name` in `out` (registered on first
+/// reference; the cell type is the accessor's declared value type).
+fn global_cell_index(out: &mut MirModule, name: &str, ty: TypeIdx) -> u32 {
+    if let Some(i) = out.globals.iter().position(|g| g.name == name) {
+        return i as u32;
+    }
+    out.globals.push(ace_av_core::mir::MirGlobal {
+        name: name.to_string(),
+        ty,
+        mutable: true,
+    });
+    (out.globals.len() - 1) as u32
+}
+
+/// PLAN-960: owned-domain lowering with the module init functions recorded
+/// (by function name, dependency order) so the linked program runs them
+/// once per generation before the entry.
+pub fn lower_checked_owned_with_init(
+    checked: &CheckedModule,
+    entry_name: &str,
+    source_snapshot: u64,
+    init_names: &[String],
+) -> Result<MirModule, AdapterError> {
+    let mut out = lower_checked_owned(checked, entry_name, source_snapshot)?;
+    for name in init_names {
+        let idx = out
+            .funcs
+            .iter()
+            .position(|f| f.name == *name)
+            .ok_or_else(|| AdapterError::inv("lower.init", format!("init function `{name}` missing")))?;
+        out.init.push(idx as u32);
+    }
+    Ok(out)
+}
+
 pub fn lower_checked_owned(
     checked: &CheckedModule,
     entry_name: &str,
@@ -1222,6 +1257,24 @@ pub fn lower_checked_owned(
                 let h = ace_av_core::host::declaration(symbol, sig)
                     .map_err(|e| AdapterError::inv(e.code, e.message))?;
                 out.host_imports.push(h);
+            }
+            // PLAN-960: module global accessors are logical imports (symbol +
+            // signature); the call site lowers them to GlobalGet/GlobalSet
+            // over the module's global cell table.
+            hir::DefKind::Intrinsic { symbol, effect, ty }
+                if symbol.starts_with("module.global.") =>
+            {
+                let sig = owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
+                def_map.insert(di as u32, CalleeRef::Import(out.imports.len() as u32));
+                out.imports.push(MirImport {
+                    symbol: symbol.clone(),
+                    effect: match effect {
+                        hir::Effect::Observable => ace_av_core::mir::Effect::Observable,
+                        hir::Effect::Pure => ace_av_core::mir::Effect::Pure,
+                    },
+                    sig,
+                    env: None,
+                });
             }
             hir::DefKind::Intrinsic { .. } => {
                 return Err(AdapterError::uns(
@@ -3575,8 +3628,56 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                         )
                     })?;
                     if let CalleeRef::Import(imp) = callee_ref {
-                        let symbol = &self.out.imports[imp as usize].symbol;
+                        let symbol = self.out.imports[imp as usize].symbol.clone();
                         if !symbol.starts_with("fn:") {
+                            // PLAN-960: module global cell read/write.
+                            if let Some(gname) = symbol.strip_prefix("module.global.get:") {
+                                let sig = self.out.imports[imp as usize].sig;
+                                let result_ty = self
+                                    .out
+                                    .sig_of(sig)
+                                    .map(|f| f.result)
+                                    .ok_or_else(|| {
+                                        AdapterError::inv(
+                                            "global.signature",
+                                            "accessor signature".into(),
+                                        )
+                                    })?;
+                                let g = global_cell_index(self.out, gname, result_ty);
+                                let dst = self.temp_ty(result_ty)?;
+                                self.emit(MirInstr::GlobalGet { dst, global: g }, sp)?;
+                                return Ok(dst);
+                            }
+                            if let Some(gname) = symbol.strip_prefix("module.global.set:") {
+                                let sig = self.out.imports[imp as usize].sig;
+                                let value_ty = self
+                                    .out
+                                    .sig_of(sig)
+                                    .and_then(|f| f.params.first().copied())
+                                    .ok_or_else(|| {
+                                        AdapterError::inv(
+                                            "global.signature",
+                                            "accessor signature".into(),
+                                        )
+                                    })?;
+                                if arg_slots.len() != 1 {
+                                    return Err(AdapterError::inv(
+                                        "global.signature",
+                                        "global write needs one argument".into(),
+                                    ));
+                                }
+                                let g = global_cell_index(self.out, gname, value_ty);
+                                let dst = self.temp_ty(self.t_i32)?;
+                                self.emit(
+                                    MirInstr::GlobalSet {
+                                        dst,
+                                        global: g,
+                                        src: arg_slots[0],
+                                    },
+                                    sp,
+                                )?;
+                                return Ok(dst);
+                            }
                             // Test marks: trace event + frozen i32 result.
                             let (event, value) = match symbol.as_str() {
                                 "hir.test.mark_a" => (TraceEvent::MarkA, 1i32),

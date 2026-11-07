@@ -688,6 +688,13 @@ fn execute_program_impl(
         Ok(limits) => limits,
         Err(out) => return (out, st.trace),
     };
+    // PLAN-960: module initialization runs once per program generation
+    // before the entry (dependency order; a failing init aborts the run
+    // and leaves the cells unpublished for this generation).
+    if let Some(out) = run_module_inits(prog, &limits, cancel, &mut st, optimize) {
+        finish_trace(&mut st, &limits);
+        return (out, st.trace);
+    }
     let view = if optimize {
         prog.unit_view()
     } else {
@@ -700,6 +707,48 @@ fn execute_program_impl(
     }
     finish_trace(&mut st, &limits);
     (out, st.trace)
+}
+
+/// PLAN-960: run the snapshot's module init functions (once per generation).
+/// Returns `Some(outcome)` on a non-Ok init result; the generation stays
+/// uninitialized so a retry re-runs from a clean cell table.
+fn run_module_inits(
+    prog: &crate::program_snapshot::ProgramSnapshot,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    st: &mut LoopState,
+    optimize: bool,
+) -> Option<ExecOutcome> {
+    if prog.initialized() {
+        return None;
+    }
+    let slots = prog.init_slots().to_vec();
+    if slots.is_empty() {
+        prog.mark_initialized();
+        return None;
+    }
+    prog.reset_global_cells();
+    for slot in slots {
+        let view = if optimize {
+            prog.unit_view_at(slot)
+        } else {
+            prog.reference_unit_view_at(slot)
+        };
+        let out = dispatch(&view, limits, cancel, &[], st, None, false)
+            .expect("no budget: the loop always terminates with an outcome");
+        if !st.frames.is_empty() {
+            cleanup_owned_frames(st);
+        }
+        match out {
+            ExecOutcome::Success { .. } => {}
+            other => {
+                prog.reset_global_cells();
+                return Some(other);
+            }
+        }
+    }
+    prog.mark_initialized();
+    None
 }
 
 /// A paused in-flight execution (PLAN-828 T-06): the live call chain plus
@@ -1076,6 +1125,13 @@ pub(crate) trait ModuleView {
     }
     /// The entry function slot.
     fn entry(&self) -> u32;
+    /// PLAN-960: module global cells (program-scoped). Default: none.
+    fn global_read(&self, _idx: u32) -> Option<Value> {
+        None
+    }
+    fn global_write(&self, _idx: u32, _value: Value) -> Result<(), String> {
+        Err("global.reference: this view has no global cells".into())
+    }
 }
 
 /// The whole-module view over the merged MirModule (today's behavior,
@@ -2784,6 +2840,28 @@ fn dispatch_with_host<V: ModuleView>(
                         fr.slots[*src as usize].clone()
                     };
                     if let Err(out) = commit_slot_write(st, *dst as usize, val, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::GlobalGet { dst, global } => {
+                    let Some(val) = v.global_read(*global) else {
+                        return Some(ExecOutcome::Infra(format!(
+                            "global.reference: cell #{global} missing"
+                        )));
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, val, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::GlobalSet { dst, global, src } => {
+                    let val = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*src as usize].clone()
+                    };
+                    if let Err(e) = v.global_write(*global, val) {
+                        return Some(ExecOutcome::Infra(e));
+                    }
+                    if let Err(out) = commit_slot_write(st, *dst as usize, Value::I32(0), limits) {
                         return Some(out);
                     }
                 }

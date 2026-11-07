@@ -1159,6 +1159,8 @@ pub fn decode_compact_abc(bytes: &[u8]) -> Result<DecodedCompactAbc, AbcDecodeEr
             funcs,
             entry,
             capabilities,
+            globals: Vec::new(),
+            init: Vec::new(),
         },
     })
 }

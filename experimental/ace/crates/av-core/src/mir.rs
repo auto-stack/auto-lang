@@ -262,6 +262,16 @@ pub enum CalleeRef {
     Import(ImportIdx),
 }
 
+/// PLAN-960: a module-level global cell (`const` or `var` store). Storage is
+/// program-scoped — one cell per linked program generation, initialized by
+/// the module init functions in `MirModule::init` order; never persisted.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct MirGlobal {
+    pub name: String,
+    pub ty: TypeIdx,
+    pub mutable: bool,
+}
+
 #[derive(Clone, Debug)]
 pub enum MirInstr {
     /// PLAN-938: a typed external call, never a guest import or console HostCall.
@@ -277,6 +287,18 @@ pub enum MirInstr {
     HostCall {
         host: u32,
         arg: SlotId,
+    },
+    /// PLAN-960: read a module global cell into `dst`.
+    GlobalGet {
+        dst: SlotId,
+        global: u32,
+    },
+    /// PLAN-960: write `src` into a module global cell (the source-level
+    /// write yields i32 0 into `dst`).
+    GlobalSet {
+        dst: SlotId,
+        global: u32,
+        src: SlotId,
     },
     Const {
         dst: SlotId,
@@ -788,6 +810,11 @@ pub struct MirModule {
     pub entry: FuncIdx,
     /// Document-level capabilities this unit requires (e.g. trace).
     pub capabilities: Vec<String>,
+    /// PLAN-960: module global cells referenced by this module/unit.
+    pub globals: Vec<MirGlobal>,
+    /// PLAN-960: module init functions in dependency order (each runs once
+    /// per linked program generation before the entry).
+    pub init: Vec<FuncIdx>,
 }
 
 impl MirModule {
@@ -804,6 +831,8 @@ impl MirModule {
             funcs: Vec::new(),
             entry: 0,
             capabilities: Vec::new(),
+            globals: Vec::new(),
+            init: Vec::new(),
         }
     }
 

@@ -1892,6 +1892,9 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             MirInstr::HostCall { .. } => {
                 return Err("av.host-console/1 calls are outside the native surface".into())
             }
+            MirInstr::GlobalGet { .. } | MirInstr::GlobalSet { .. } => {
+                return Err("module global cells are outside the mn surface first cut (PLAN-960 follow-up)".into())
+            }
             MirInstr::DynPack { .. } | MirInstr::DynIs { .. } | MirInstr::DynTake { .. } => {
                 return Err(
                     "av.dynamic/1 dyn instructions are outside the mn scalar surface".to_string(),

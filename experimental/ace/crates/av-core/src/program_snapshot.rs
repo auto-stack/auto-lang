@@ -49,9 +49,77 @@ pub struct ProgramSnapshot {
     /// snapshot-owned view (F-828-R1-04/R3a).
     span_maps: Vec<crate::span_map::SpanSegments>,
     loaded: crate::loaded_program::ResidentProgram,
+    /// PLAN-960: module global cells (program-scoped; never persisted) and
+    /// the init functions' code slots in dependency order.
+    globals: Vec<crate::mir::MirGlobal>,
+    cells: std::cell::RefCell<Vec<crate::contract::Value>>,
+    init_slots: Vec<u32>,
+    initialized: std::cell::Cell<bool>,
 }
 
 impl ProgramSnapshot {
+    /// PLAN-960: link with module global cells and init functions (by
+    /// function name, dependency order). Missing init names fail the link.
+    pub fn link_with_globals(
+        code: Vec<Arc<FunctionCode>>,
+        entry: &str,
+        revision: u64,
+        span_maps: Vec<crate::span_map::SpanSegments>,
+        globals: Vec<crate::mir::MirGlobal>,
+        init_names: &[String],
+    ) -> Result<ProgramSnapshot, String> {
+        let mut snap = Self::link_with_maps_and_previous(code, entry, revision, span_maps, None)?;
+        let mut slots = Vec::with_capacity(init_names.len());
+        for name in init_names {
+            let slot = snap
+                .code
+                .iter()
+                .position(|c| c.name() == name)
+                .ok_or_else(|| format!("init function `{name}` is not linked"))?;
+            slots.push(slot as u32);
+        }
+        snap.cells = std::cell::RefCell::new(vec![crate::contract::Value::I32(0); globals.len()]);
+        snap.globals = globals;
+        snap.init_slots = slots;
+        snap.initialized = std::cell::Cell::new(false);
+        Ok(snap)
+    }
+    pub fn initialized(&self) -> bool {
+        self.initialized.get()
+    }
+    pub(crate) fn mark_initialized(&self) {
+        self.initialized.set(true);
+    }
+    pub(crate) fn init_slots(&self) -> &[u32] {
+        &self.init_slots
+    }
+    pub(crate) fn reset_global_cells(&self) {
+        let mut cells = self.cells.borrow_mut();
+        for c in cells.iter_mut() {
+            *c = crate::contract::Value::I32(0);
+        }
+    }
+    /// PLAN-960: the global cell table (for observation; never serialized).
+    pub fn global_cells(&self) -> Vec<crate::contract::Value> {
+        self.cells.borrow().clone()
+    }
+    pub fn globals(&self) -> &[crate::mir::MirGlobal] {
+        &self.globals
+    }
+    pub fn unit_view_at(&self, entry: u32) -> UnitView<'_> {
+        UnitView {
+            snap: self,
+            use_loaded: true,
+            entry_override: Some(entry),
+        }
+    }
+    pub fn reference_unit_view_at(&self, entry: u32) -> UnitView<'_> {
+        UnitView {
+            snap: self,
+            use_loaded: false,
+            entry_override: Some(entry),
+        }
+    }
     /// Link an ordered code set into one program snapshot. Fails (leaving
     /// the caller's previous root untouched) on duplicate function names,
     /// unresolved `fn:<name>` callees, signature mismatches or a missing
@@ -252,6 +320,10 @@ impl ProgramSnapshot {
             bindings,
             span_maps,
             loaded,
+            globals: Vec::new(),
+            cells: std::cell::RefCell::new(Vec::new()),
+            init_slots: Vec::new(),
+            initialized: std::cell::Cell::new(false),
         })
     }
 
@@ -269,6 +341,10 @@ impl ProgramSnapshot {
             bindings: Vec::new(),
             span_maps: Vec::new(),
             loaded: crate::loaded_program::ResidentProgram::vacant(),
+            globals: Vec::new(),
+            cells: std::cell::RefCell::new(Vec::new()),
+            init_slots: Vec::new(),
+            initialized: std::cell::Cell::new(false),
         }
     }
 
@@ -291,6 +367,7 @@ impl ProgramSnapshot {
         UnitView {
             snap: self,
             use_loaded: true,
+            entry_override: None,
         }
     }
 
@@ -298,6 +375,7 @@ impl ProgramSnapshot {
         UnitView {
             snap: self,
             use_loaded: false,
+            entry_override: None,
         }
     }
 
@@ -593,6 +671,8 @@ fn imp_target(symbol: &str) -> Option<&str> {
 pub struct UnitView<'a> {
     snap: &'a ProgramSnapshot,
     use_loaded: bool,
+    /// PLAN-960: dispatch entry override (module init functions).
+    entry_override: Option<u32>,
 }
 
 impl crate::av::ModuleView for UnitView<'_> {
@@ -670,7 +750,18 @@ impl crate::av::ModuleView for UnitView<'_> {
         }
     }
     fn entry(&self) -> u32 {
-        self.snap.entry_slot
+        self.entry_override.unwrap_or(self.snap.entry_slot)
+    }
+    fn global_read(&self, idx: u32) -> Option<crate::contract::Value> {
+        self.snap.cells.borrow().get(idx as usize).cloned()
+    }
+    fn global_write(&self, idx: u32, value: crate::contract::Value) -> Result<(), String> {
+        let mut cells = self.snap.cells.borrow_mut();
+        let Some(cell) = cells.get_mut(idx as usize) else {
+            return Err(format!("global.reference: cell #{idx} missing"));
+        };
+        *cell = value;
+        Ok(())
     }
 
     /// B2-C03: a trap span of the function executing in frame slot

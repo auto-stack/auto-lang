@@ -212,6 +212,8 @@ fn decl_spans(program: &ace_core::source::ast::Program) -> (Vec<DeclFn>, Vec<(u6
                 hi: f.span.end as u64,
                 name: f.name.name.clone(),
             }),
+            // PLAN-960: module globals are single-module-lane agnostic.
+            Item::Const(_) | Item::Store(_) => {}
             Item::Type(t) => {
                 types.push((t.span.start as u64, t.span.end as u64));
                 for m in &t.methods {

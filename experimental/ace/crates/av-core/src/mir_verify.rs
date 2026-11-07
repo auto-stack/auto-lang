@@ -2495,6 +2495,41 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             ));
                         }
                     }
+                    // PLAN-960: global cells are checked against the module's
+                    // global table (index range + slot type == cell type).
+                    MirInstr::GlobalGet { dst, global } => {
+                        let g = self.module.globals.get(*global as usize).ok_or_else(|| {
+                            err("global.reference", "global index out of range".into())
+                        })?;
+                        let dst_ty = slot_ty_of(f, *dst, sp, "global dst")?;
+                        if !self.ty_equiv(dst_ty, g.ty) {
+                            return Err(err(
+                                "global.type",
+                                "global read into a slot of another type".into(),
+                            ));
+                        }
+                    }
+                    MirInstr::GlobalSet { dst, global, src } => {
+                        let g = self.module.globals.get(*global as usize).ok_or_else(|| {
+                            err("global.reference", "global index out of range".into())
+                        })?;
+                        let src_ty = slot_ty_of(f, *src, sp, "global src")?;
+                        if !self.ty_equiv(src_ty, g.ty) {
+                            return Err(err(
+                                "global.type",
+                                "global write from a slot of another type".into(),
+                            ));
+                        }
+                        if !g.mutable && self.module.init.is_empty() {
+                            // writes to a const cell are only legal inside
+                            // the module init functions (init list non-empty)
+                            return Err(err(
+                                "global.const-write",
+                                "write to an immutable global outside initialization".into(),
+                            ));
+                        }
+                        let _ = dst;
+                    }
                     MirInstr::HostCall { host, arg } => {
                         if !self.module.is_host_console_profile() {
                             return Err(err(
@@ -4211,7 +4246,9 @@ impl MirInstr {
     /// The slot this instruction initializes (its definition), if any.
     pub fn def_slot(&self) -> Option<SlotId> {
         match self {
-            MirInstr::Const { dst, .. }
+            MirInstr::GlobalGet { dst, .. }
+            | MirInstr::GlobalSet { dst, .. }
+            | MirInstr::Const { dst, .. }
             | MirInstr::Copy { dst, .. }
             | MirInstr::Bin { dst, .. }
             | MirInstr::Un { dst, .. }
@@ -4282,6 +4319,8 @@ impl MirInstr {
             MirInstr::Un { operand, .. } => vec![*operand],
             MirInstr::Call { args, .. } | MirInstr::ForeignCall { args, .. } => args.clone(),
             MirInstr::HostCall { arg, .. } => vec![*arg],
+            MirInstr::GlobalGet { .. } => vec![],
+            MirInstr::GlobalSet { src, .. } => vec![*src],
             MirInstr::FieldGet { base, .. } => vec![*base],
             // FieldSet READS the root record (structural rebuild source) and
             // the already-materialized value slot.

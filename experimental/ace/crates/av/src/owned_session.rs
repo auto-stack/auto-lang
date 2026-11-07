@@ -327,6 +327,8 @@ fn decl_facts_of(
                 lo: f.span.start as u64,
                 hi: f.span.end as u64,
             }),
+// PLAN-960: module globals contribute no fn/outline entry.
+Item::Const(_) | Item::Store(_) => {}
             Item::Type(t) => {
                 let shell_end = t
                     .methods
