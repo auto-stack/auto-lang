@@ -423,25 +423,44 @@ fn check_expr(
                     BinOp::Add => {
                         // PLAN-770: text + text is concatenation; i32 + i32
                         // stays arithmetic. Any mixed shape is a mismatch.
+                        // PLAN-961: same-type non-I32 numeric pairs are the
+                        // typed surface.
                         let both_text = lhs.vt.is_text() && rhs.vt.is_text();
                         let both_i32 = lhs.vt == VT::I32 && rhs.vt == VT::I32;
-                        if !both_text && !both_i32 {
+                        let typed_num = crate::source::resolve::vt_is_numeric(lhs.vt)
+                            && !matches!(lhs.vt, VT::I32)
+                            && lhs.vt == rhs.vt;
+                        if !both_text && !both_i32 && !typed_num {
                             mismatch(diags, VT::I32, lhs.vt, lhs.span);
                             mismatch(diags, VT::I32, rhs.vt, rhs.span);
                         }
                     }
                     BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem => {
-                        for (role, v) in [("lhs", lhs), ("rhs", rhs)] {
-                            if v.vt != VT::I32 {
-                                mismatch(diags, VT::I32, v.vt, v.span);
-                                let _ = role;
+                        // PLAN-961: same-type non-I32 numeric operands are
+                        // the typed surface (resolver-typed); skip the i32
+                        // expectation.
+                        let typed_num = crate::source::resolve::vt_is_numeric(lhs.vt)
+                            && !matches!(lhs.vt, VT::I32)
+                            && lhs.vt == rhs.vt;
+                        if !typed_num {
+                            for (role, v) in [("lhs", lhs), ("rhs", rhs)] {
+                                if v.vt != VT::I32 {
+                                    mismatch(diags, VT::I32, v.vt, v.span);
+                                    let _ = role;
+                                }
                             }
                         }
                     }
                     BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
-                        for v in [lhs.as_ref(), rhs.as_ref()] {
-                            if v.vt != VT::I32 {
-                                mismatch(diags, VT::I32, v.vt, v.span);
+                        // PLAN-961: as above — same-type numeric pairs pass.
+                        let typed_num = crate::source::resolve::vt_is_numeric(lhs.vt)
+                            && !matches!(lhs.vt, VT::I32)
+                            && lhs.vt == rhs.vt;
+                        if !typed_num {
+                            for v in [lhs.as_ref(), rhs.as_ref()] {
+                                if v.vt != VT::I32 {
+                                    mismatch(diags, VT::I32, v.vt, v.span);
+                                }
                             }
                         }
                     }
@@ -465,6 +484,30 @@ fn check_expr(
                             if v.vt != VT::Bool {
                                 mismatch(diags, VT::Bool, v.vt, v.span);
                             }
+                        }
+                    }
+                    // PLAN-961: the typed numeric surface — same-type
+                    // numeric operands for every numeric op; the bit ops
+                    // are int-only. The resolver validated this; the walk
+                    // re-verifies (defense in depth).
+                    BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor => {
+                        if crate::source::resolve::vt_is_numeric(lhs.vt)
+                            && lhs.vt == rhs.vt
+                            && !crate::source::resolve::vt_is_float(lhs.vt)
+                        {
+                            // ok
+                        } else {
+                            diags.push(Diagnostic::new(
+                                Stage::Verify,
+                                "source.type-mismatch",
+                                format!(
+                                    "bit operator `{}` requires same-type integer operands ({} vs {})",
+                                    op.as_str(),
+                                    lhs.vt.as_str(),
+                                    rhs.vt.as_str()
+                                ),
+                                lhs.span.join(rhs.span),
+                            ));
                         }
                     }
                 }
@@ -515,7 +558,11 @@ fn check_expr(
                 stack.push(operand.as_ref());
                 match op {
                     UnaryOp::Neg => {
-                        if operand.vt != VT::I32 {
+                        // PLAN-961: typed negation admits the signed and
+                        // float numerics (unsigned was rejected at bind).
+                        let typed_num = crate::source::resolve::vt_is_numeric(operand.vt)
+                            && !matches!(operand.vt, VT::I32);
+                        if operand.vt != VT::I32 && !typed_num {
                             mismatch(diags, VT::I32, operand.vt, operand.span);
                         }
                     }

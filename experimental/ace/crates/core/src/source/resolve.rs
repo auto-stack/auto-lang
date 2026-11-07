@@ -130,6 +130,13 @@ pub enum BuiltinMethod {
     To,
     ToCodepoint,
     FromCodepoint,
+    /// PLAN-961: numeric shift `.shl(n)`/`.shr(n)` — the amount must have
+    /// the receiver's exact type (checked in `resolve_method`).
+    Shl,
+    Shr,
+    /// PLAN-961: numeric conversion `.as(T)`/`.to(T)` — target in the
+    /// Method node's `to` field.
+    NumTo,
 }
 
 /// (receiver VT, method name) -> (builtin, param VTs, result VT).
@@ -164,6 +171,10 @@ fn retag_literal(v: &mut ResolvedExpr, want: VT) {
 pub fn bin_op_vt(op: BinOp) -> VT {
     match op {
         BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem => VT::I32,
+        // PLAN-961: the bit ops' REAL result type is the (same-type)
+        // operand type — Combine recomputes it; this placeholder only
+        // covers the impossible numeric-free path.
+        BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor => VT::I32,
         BinOp::Lt
         | BinOp::Le
         | BinOp::Gt
@@ -173,6 +184,59 @@ pub fn bin_op_vt(op: BinOp) -> VT {
         | BinOp::And
         | BinOp::Or => VT::Bool,
     }
+}
+
+/// PLAN-961: the source spelling of a type word (diagnostics).
+fn word_text(w: TypeWord) -> &'static str {
+    match w {
+        TypeWord::Int => "int",
+        TypeWord::I32 => "i32",
+        TypeWord::Bool => "bool",
+        TypeWord::Str => "str",
+        TypeWord::StrOwned => "Str",
+        TypeWord::Char => "char",
+        TypeWord::Void => "void",
+        TypeWord::I8 => "i8",
+        TypeWord::U8 => "u8",
+        TypeWord::Byte => "byte",
+        TypeWord::Uint => "uint",
+        TypeWord::U32 => "u32",
+        TypeWord::I64 => "i64",
+        TypeWord::U64 => "u64",
+        TypeWord::Float => "float",
+        TypeWord::Double => "double",
+        TypeWord::F64 => "f64",
+    }
+}
+
+/// PLAN-961: whether a VT is a numeric value type (the operator domain).
+pub fn vt_is_numeric(v: VT) -> bool {
+    matches!(
+        v,
+        VT::I32 | VT::I8 | VT::U8 | VT::U32 | VT::I64 | VT::U64 | VT::F32 | VT::F64
+    )
+}
+
+/// PLAN-961: whether a VT is a FLOAT numeric (no bit/shift ops; negation
+/// is a sign flip).
+pub fn vt_is_float(v: VT) -> bool {
+    matches!(v, VT::F32 | VT::F64)
+}
+
+/// PLAN-961: the numeric-alias builtin type of a VT (I32 included; used
+/// for the typed op axis).
+pub fn vt_numeric_hir(v: VT) -> Option<crate::hir::BuiltinType> {
+    Some(match v {
+        VT::I32 => crate::hir::BuiltinType::I32,
+        VT::I8 => crate::hir::BuiltinType::I8,
+        VT::U8 => crate::hir::BuiltinType::U8,
+        VT::U32 => crate::hir::BuiltinType::U32,
+        VT::I64 => crate::hir::BuiltinType::I64,
+        VT::U64 => crate::hir::BuiltinType::U64,
+        VT::F32 => crate::hir::BuiltinType::F32,
+        VT::F64 => crate::hir::BuiltinType::F64,
+        _ => return None,
+    })
 }
 
 /// Index into [`ResolvedFn::locals`].
@@ -7898,9 +7962,60 @@ impl<'a, 's> FnResolver<'a, 's> {
                     let l = std::mem::replace(&mut out[lslot], dummy_resolved());
                     let r = std::mem::replace(&mut out[rslot], dummy_resolved());
                     let vt = bin_op_vt(op);
-                    // PLAN-770: `+` over two text operands is concatenation
-                    // (owned result); the arithmetic i32 rule is unchanged.
-                    let vt = if op == BinOp::Add && l.vt.is_text() && r.vt.is_text() {
+                    // PLAN-961: the typed numeric surface — same-type
+                    // operands (no implicit promotion), comparisons → bool,
+                    // bit ops int-only; the result carries the operand type.
+                    // The typed branch fires only when a NON-I32 numeric
+                    // participates (pure i32/bool pairs keep the legacy
+                    // walk and its frozen diagnostics).
+                    let typed_num_present = vt_is_numeric(l.vt) && !matches!(l.vt, VT::I32)
+                        || vt_is_numeric(r.vt) && !matches!(r.vt, VT::I32);
+                    let vt = if typed_num_present {
+                        let is_cmp = matches!(
+                            op,
+                            BinOp::Lt
+                                | BinOp::Le
+                                | BinOp::Gt
+                                | BinOp::Ge
+                                | BinOp::Eq
+                                | BinOp::Ne
+                        );
+                        if l.vt != r.vt || !vt_is_numeric(l.vt) || !vt_is_numeric(r.vt) {
+                            self.bind_err(
+                                "source.type-mismatch",
+                                format!(
+                                    "binary `{}` requires same-type numeric operands ({} vs {}); mixed widths need an explicit conversion",
+                                    op.as_str(),
+                                    l.vt.as_str(),
+                                    r.vt.as_str()
+                                ),
+                                span,
+                            );
+                            if is_cmp {
+                                VT::Bool
+                            } else {
+                                l.vt
+                            }
+                        } else if matches!(op, BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor)
+                            && vt_is_float(l.vt)
+                        {
+                            self.bind_err(
+                                "source.type-mismatch",
+                                format!(
+                                    "bit operator `{}` is not defined for float operands",
+                                    op.as_str()
+                                ),
+                                span,
+                            );
+                            l.vt
+                        } else if is_cmp {
+                            VT::Bool
+                        } else {
+                            l.vt
+                        }
+                    } else if op == BinOp::Add && l.vt.is_text() && r.vt.is_text() {
+                        // PLAN-770: `+` over two text operands is
+                        // concatenation (owned result).
                         VT::StrOwned
                     } else {
                         vt
@@ -7923,6 +8038,61 @@ impl<'a, 's> FnResolver<'a, 's> {
                     dest,
                 } => {
                     let o = std::mem::replace(&mut out[oslot], dummy_resolved());
+                    // PLAN-961: typed negation — signed checked / float
+                    // sign-flip; `-lit` folds into the payload bits (an
+                    // in-range positive literal never overflows on fold;
+                    // unsigned negation is a named rejection).
+                    if op == UnaryOp::Neg && vt_is_numeric(o.vt) {
+                        if vt_is_float(o.vt) {
+                            if let RExprKind::TypedLit { vt, bits } = o.kind {
+                                let flipped = match vt {
+                                    VT::F32 => ((bits as u32) ^ 0x8000_0000) as u64,
+                                    VT::F64 => bits ^ 0x8000_0000_0000_0000,
+                                    other => unreachable!("float fold on {other:?}"),
+                                };
+                                out[dest] = ResolvedExpr {
+                                    span,
+                                    vt,
+                                    kind: RExprKind::TypedLit { vt, bits: flipped },
+                                };
+                                continue;
+                            }
+                        } else if matches!(o.vt, VT::I8 | VT::I32 | VT::I64) {
+                            if let RExprKind::TypedLit { vt, bits } = o.kind {
+                                let folded = match vt {
+                                    VT::I8 => (bits as u8).wrapping_neg() as u64,
+                                    VT::I32 => (bits as u32).wrapping_neg() as u64,
+                                    VT::I64 => (bits as u64).wrapping_neg(),
+                                    other => unreachable!("int fold on {other:?}"),
+                                };
+                                out[dest] = ResolvedExpr {
+                                    span,
+                                    vt,
+                                    kind: RExprKind::TypedLit { vt, bits: folded },
+                                };
+                                continue;
+                            }
+                        } else {
+                            self.bind_err(
+                                "source.type-mismatch",
+                                format!(
+                                    "unary `-` is not defined for unsigned {}",
+                                    o.vt.as_str()
+                                ),
+                                span,
+                            );
+                        }
+                        let vt = self.node_ty(span, o.vt);
+                        out[dest] = ResolvedExpr {
+                            span,
+                            vt,
+                            kind: RExprKind::Unary {
+                                op,
+                                operand: Box::new(o),
+                            },
+                        };
+                        continue;
+                    }
                     let vt = match op {
                         UnaryOp::Neg => VT::I32,
                         UnaryOp::Not => VT::Bool,
@@ -8033,6 +8203,97 @@ impl<'a, 's> FnResolver<'a, 's> {
                 };
             }
         }
+        // PLAN-961: numeric-receiver builtins — shifts take one
+        // same-type amount; `.as(T)`/`.to(T)` convert to the numeric
+        // target word (frozen matrix; checked narrowing at runtime).
+        if vt_is_numeric(recv.vt) {
+            match name.name.as_str() {
+                "shl" | "shr" => {
+                    if args.len() != 1 {
+                        self.bind_err(
+                            "source.syntax",
+                            format!("`.{}()` takes exactly one amount argument", name.name),
+                            span,
+                        );
+                    }
+                    let amount_vt = args.first().map(|a| a.value.vt).unwrap_or(recv.vt);
+                    if amount_vt != recv.vt {
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!(
+                                "`.{}()` amount must have the receiver's type {} (got {})",
+                                name.name,
+                                recv.vt.as_str(),
+                                amount_vt.as_str()
+                            ),
+                            span,
+                        );
+                    }
+                    let method = if name.name == "shl" {
+                        BuiltinMethod::Shl
+                    } else {
+                        BuiltinMethod::Shr
+                    };
+                    let vt = self.node_ty(span, recv.vt);
+                    return ResolvedExpr {
+                        span,
+                        vt,
+                        kind: RExprKind::Method {
+                            recv: Box::new(recv),
+                            method,
+                            to: None,
+                            args,
+                        },
+                    };
+                }
+                "as" | "to" => {
+                    let Some(word) = to_word else {
+                        self.bind_err(
+                            "source.syntax",
+                            format!("`.{}()` takes a numeric type word argument", name.name),
+                            span,
+                        );
+                        let rv = recv.vt;
+                        return ResolvedExpr {
+                            span,
+                            vt: rv,
+                            kind: RExprKind::Method {
+                                recv: Box::new(recv),
+                                method: BuiltinMethod::NumTo,
+                                to: Some(rv),
+                                args,
+                            },
+                        };
+                    };
+                    let target = vt_of_word(word);
+                    if !vt_is_numeric(target) {
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!("`.{}({})` target is not a numeric type word", name.name, word_text(word)),
+                            span,
+                        );
+                    }
+                    let vt = self.node_ty(span, target);
+                    return ResolvedExpr {
+                        span,
+                        vt,
+                        kind: RExprKind::Method {
+                            recv: Box::new(recv),
+                            method: BuiltinMethod::NumTo,
+                            to: Some(target),
+                            args,
+                        },
+                    };
+                }
+                other => {
+                    self.bind_err(
+                        "source.unsupported",
+                        format!("numeric receiver has no method `{other}` in this profile"),
+                        span,
+                    );
+                }
+            }
+        }
         let Some((method, params, _result)) = builtin_method(recv.vt, &name.name) else {
             self.bind_err(
                 "source.undefined",
@@ -8126,6 +8387,8 @@ impl<'a, 's> FnResolver<'a, 's> {
             BuiltinMethod::Clone => VT::StrOwned,
             BuiltinMethod::ClosureClone => recv.vt,
             BuiltinMethod::To => VT::Str,
+            // Unreachable: numeric methods return before the table walk.
+            BuiltinMethod::Shl | BuiltinMethod::Shr | BuiltinMethod::NumTo => recv.vt,
         };
         ResolvedExpr {
             span,

@@ -98,6 +98,115 @@ fn h() i64 {{ return {word} }}");
 }
 
 #[test]
+fn numeric_ops_shifts_casts_compile_to_hir() {
+    // The full operator surface through the production front door:
+    // typed arith/cmp, i32 bit ops, typed shifts (method form), the
+    // `.as(T)`/`.to(T)` conversions and negative-literal folds.
+    let src = "fn main(x i64) i64 {
+    let a = 2147483648i64
+    let b = x + a
+    let c = 12 & 10
+    let d = c.as(i64)
+    let e = b.shl(1i64)
+    let f = 1.5d
+    let g = -1.5d
+    let h = -2147483648i64
+    let i = 200u8 + 55u8
+    let j = i.to(i64)
+    let k = e + d
+    let m = b < 4294967296i64
+    return k + j
+}
+";
+    let parts = ace_core::source::adapter::compile_parts_with(
+        src,
+        "n_ops.at",
+        &[],
+        SourceProfile::Numeric,
+    )
+    .expect("ops compile parts");
+    let checked = ace_core::verify::verify_closures(parts.bundle).expect("verify");
+    let body = &checked.bundle().modules[0].bodies[0];
+    use ace_core::hir::{BinOp, BuiltinType, ExprKind, NumOpKind};
+    let mut words: Vec<String> = body
+        .exprs
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ExprKind::Binary {
+                op: BinOp::Num { op, ty },
+                ..
+            } => Some(format!("{:?}_{:?}", op, ty)),
+            _ => None,
+        })
+        .collect();
+    words.sort();
+    assert!(words.contains(&"Add_I64".to_string()), "typed add: {words:?}");
+    assert!(words.contains(&"And_I32".to_string()), "i32 bit and: {words:?}");
+    assert!(words.contains(&"Shl_I64".to_string()), "typed shl: {words:?}");
+    assert!(words.contains(&"Lt_I64".to_string()), "typed cmp: {words:?}");
+    assert!(words.contains(&"Add_U8".to_string()), "u8 add: {words:?}");
+    // casts bound as Cast exprs with their destinations
+    let casts: Vec<&ace_core::hir::BuiltinType> = body
+        .exprs
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ExprKind::Cast { to, .. } => Some(to),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(casts.len(), 2, "two casts (as + to): {casts:?}");
+    assert!(casts.contains(&&BuiltinType::I64));
+    // negative literal folds: -2147483648i64 → -(2^31) two's complement
+    // (0xFFFFFFFF80000000); -1.5d → sign-flipped f64 bits.
+    let consts: Vec<(BuiltinType, u64)> = body
+        .exprs
+        .iter()
+        .filter_map(|e| match &e.kind {
+            ExprKind::NumericConst { ty, bits } => Some((*ty, *bits)),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        consts.contains(&(BuiltinType::I64, (-2147483648i64) as u64)),
+        "negative i64 fold: {consts:?}"
+    );
+    assert!(
+        consts.contains(&(BuiltinType::F64, (-1.5f64).to_bits())),
+        "negative f64 fold: {consts:?}"
+    );
+    let _: NumOpKind;
+}
+
+#[test]
+fn numeric_negative_surface_rejections() {
+    let cases = [
+        // mixed widths without conversion
+        ("fn main(x i64) i64 { return x + 1 }", "source.type-mismatch"),
+        // float bit op
+        ("fn main(x f64) f64 { return x & 1.0d }", "source.type-mismatch"),
+        // unsigned negation
+        ("fn main() u32 { return -1u32 }", "source.type-mismatch"),
+        // shift amount of a different width
+        ("fn main(x i64) i64 { return x.shl(1) }", "source.type-mismatch"),
+        // unknown numeric method
+        ("fn main(x i64) i64 { return x.frob() }", "source.unsupported"),
+    ];
+    for (src, want) in cases {
+        // Typing rules live in resolve — compile, not just parse.
+        let code = match ace_core::source::adapter::compile_parts_with(
+            src,
+            "n_neg.at",
+            &[],
+            SourceProfile::Numeric,
+        ) {
+            Ok(_) => "ok".to_string(),
+            Err(ds) => ds[0].code.clone(),
+        };
+        assert_eq!(code, want, "src `{src}`: got {code}, want {want}");
+    }
+}
+
+#[test]
 fn numeric_profile_isolation_other_profiles_unchanged() {
     // Suffixed numerics stay rejected in the closures profile (the numeric
     // vocabulary must not leak).

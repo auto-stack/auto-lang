@@ -249,6 +249,11 @@ pub enum BinOp {
     Ne,
     And,
     Or,
+    /// PLAN-961: int-family bit ops (numeric profile; the projection
+    /// maps amp/vbar/caret leaves — `&&`/`||` stay the logical And/Or).
+    BitAnd,
+    BitOr,
+    BitXor,
 }
 
 impl BinOp {
@@ -267,6 +272,10 @@ impl BinOp {
             BinOp::Ne => "!=",
             BinOp::And => "&&",
             BinOp::Or => "||",
+            // PLAN-961: bit-op spellings.
+            BinOp::BitAnd => "&",
+            BinOp::BitOr => "|",
+            BinOp::BitXor => "^",
         }
     }
 }

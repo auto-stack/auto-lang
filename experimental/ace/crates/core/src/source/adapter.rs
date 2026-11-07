@@ -1243,6 +1243,17 @@ enum EKind {
     /// PLAN-961: a typed numeric const — payload bits in the type's own
     /// width (floats as to_bits()).
     TypedConst { vt: VT, bits: u64 },
+    /// PLAN-961: numeric shift `.shl(n)`/`.shr(n)` (same-type amount).
+    NumShift {
+        op: crate::hir::NumOpKind,
+        recv: usize,
+        amount: usize,
+    },
+    /// PLAN-961: numeric conversion `.as(T)`/`.to(T)` — target builtin.
+    NumCast {
+        recv: usize,
+        to: crate::hir::BuiltinType,
+    },
     /// PLAN-862: the unit value — a Unit body's return operand.
     Unit,
     Read(usize),
@@ -2006,6 +2017,17 @@ impl PlanCtx<'_> {
                 callee_slot: usize,
                 arg_slots: Vec<usize>,
             },
+            /// PLAN-961: receiver (and shift-amount) slots filled; plan
+            /// the numeric shift/conversion into `dest`.
+            NumMethodOut {
+                method: crate::source::resolve::BuiltinMethod,
+                to: Option<VT>,
+                vt: VT,
+                span: Span,
+                recv_slot: usize,
+                amount_slot: usize,
+                dest: usize,
+            },
             /// receiver + argument slots planned; assemble the builtin
             /// text method node (PLAN-770; iterative so method chains of
             /// any depth cannot recurse).
@@ -2125,6 +2147,45 @@ impl PlanCtx<'_> {
                         slot_idx.push(usize::MAX);
                         let mut arg_slots = Vec::with_capacity(args.len());
                         let mut subtasks = Vec::with_capacity(args.len() + 1);
+                        // PLAN-961: numeric shifts/casts plan their own
+                        // task (no text runtime capability involved).
+                        use crate::source::resolve::BuiltinMethod as BM;
+                        if matches!(method, BM::Shl | BM::Shr | BM::NumTo) {
+                            let recv_slot2 = slot_idx.len();
+                            slot_idx.push(usize::MAX);
+                            let mut amount_slot = usize::MAX;
+                            if matches!(method, BM::Shl | BM::Shr) {
+                                amount_slot = slot_idx.len();
+                                slot_idx.push(usize::MAX);
+                                if let Some(a) = args.first() {
+                                    subtasks.push(Task::Plan {
+                                        node: &a.value,
+                                        slot: amount_slot,
+                                    });
+                                }
+                            }
+                            if !matches!(recv.kind, RExprKind::TypeWord(_)) {
+                                subtasks.push(Task::Plan {
+                                    node: recv,
+                                    slot: recv_slot2,
+                                });
+                            }
+                            // Children first: reversed iteration pops the
+                            // assembly task LAST (slots filled by then).
+                            subtasks.push(Task::NumMethodOut {
+                                method: *method,
+                                to: *to,
+                                vt: node.vt,
+                                span: node.span,
+                                recv_slot: recv_slot2,
+                                amount_slot,
+                                dest: slot,
+                            });
+                            for t in subtasks.into_iter().rev() {
+                                stack.push(t);
+                            }
+                            continue;
+                        }
                         // `.to` carries its target in `to`: none of its
                         // arguments are values; other methods plan each
                         // argument (TypeWord markers never plan)
@@ -2285,6 +2346,45 @@ impl PlanCtx<'_> {
                     });
                     slot_idx[dest] = plan.exprs.len() - 1;
                 }
+                Task::NumMethodOut {
+                    method,
+                    to,
+                    vt,
+                    span,
+                    recv_slot,
+                    amount_slot,
+                    dest,
+                } => {
+                    use crate::source::resolve::BuiltinMethod as BM;
+                    let r = slot_idx[recv_slot];
+                    let kind = match method {
+                        BM::Shl | BM::Shr => {
+                            let a = if amount_slot == usize::MAX {
+                                r
+                            } else {
+                                slot_idx[amount_slot]
+                            };
+                            EKind::NumShift {
+                                op: if matches!(method, BM::Shl) {
+                                    crate::hir::NumOpKind::Shl
+                                } else {
+                                    crate::hir::NumOpKind::Shr
+                                },
+                                recv: r,
+                                amount: a,
+                            }
+                        }
+                        BM::NumTo => {
+                            let target = to
+                                .and_then(crate::source::resolve::vt_numeric_hir)
+                                .unwrap_or(crate::hir::BuiltinType::I64);
+                            EKind::NumCast { recv: r, to: target }
+                        }
+                        other => unreachable!("NumMethodOut on {other:?}"),
+                    };
+                    plan.exprs.push(ENode { kind, vt, span });
+                    slot_idx[dest] = plan.exprs.len() - 1;
+                }
                 Task::TextOut {
                     method,
                     to,
@@ -2368,6 +2468,22 @@ impl PlanCtx<'_> {
                     dest,
                 } => {
                     let o = slot_idx[oslot];
+                    // PLAN-961: typed negation — signed checked / float
+                    // sign-flip (the literal fold already happened in the
+                    // resolver; unsigned negation was rejected there).
+                    if op == UnaryOp::Neg && crate::source::resolve::vt_is_numeric(plan.exprs[o].vt)
+                    {
+                        let ovt = plan.exprs[o].vt;
+                        let ty = crate::source::resolve::vt_numeric_hir(ovt)
+                            .expect("numeric vt maps to a builtin");
+                        plan.exprs.push(ENode {
+                            kind: EKind::Unary(crate::hir::UnaryOp::NegNumeric(ty), o),
+                            vt: ovt,
+                            span,
+                        });
+                        slot_idx[dest] = plan.exprs.len() - 1;
+                        continue;
+                    }
                     let (hop, vt) = match op {
                         UnaryOp::Neg => (crate::hir::UnaryOp::NegI32, VT::I32),
                         UnaryOp::Not => (crate::hir::UnaryOp::NotBool, VT::Bool),
@@ -3994,15 +4110,90 @@ impl<'p> Emitter<'p> {
                             };
                             format!("expr e{} constant {{ type: {}; value: {} }}", ei, ty, text)
                         }
+                        // PLAN-961: shifts render as typed binaries; casts
+                        // as the cast word (operand types verified).
+                        EKind::NumShift { op, recv, amount } => {
+                            let bty = crate::source::resolve::vt_numeric_hir(e.vt)
+                                .unwrap_or(crate::hir::BuiltinType::I32);
+                            let word = crate::hir::num_op_atom(*op, bty);
+                            format!(
+                                "expr e{} binary {{ type: {}; op: {}; lhs: e{}; rhs: e{} }}",
+                                ei, ty, word, recv, amount
+                            )
+                        }
+                        EKind::NumCast { recv, to } => {
+                            format!(
+                                "expr e{} cast {{ type: {}; to: {}; operand: e{} }}",
+                                ei,
+                                ty,
+                                to.as_str(),
+                                recv
+                            )
+                        }
                         // PLAN-862: the unit value carries only its type.
                         EKind::Unit => format!("expr e{} unit {{ type: {} }}", ei, ty),
                         EKind::Read(l) => {
                             format!("expr e{} read_local {{ type: {}; local: l{} }}", ei, ty, l)
                         }
                         EKind::Bin(op, l, r) => {
-                            // PLAN-770: `+` planned with a text result type
-                            // is concatenation, not add_i32
-                            if e.vt.is_text() {
+                            // PLAN-961: numeric operands route the word to
+                            // the typed `{op}_{ty}` form (comparisons take
+                            // the ty from the OPERANDS; the node's own vt
+                            // is bool there). Bit ops are always typed.
+                            let lvt = plan.exprs[*l].vt;
+                            let rvt = plan.exprs[*r].vt;
+                            // i32 arithmetic/comparisons keep the frozen
+                            // legacy words (`add_i32`..`ne`); the typed Num
+                            // words serve every non-I32 numeric pair AND
+                            // the i32 bit ops (which have no legacy word).
+                            let is_bit = matches!(
+                                op,
+                                BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor
+                            );
+                            let numeric_ty = if lvt == rvt
+                                && crate::source::resolve::vt_is_numeric(lvt)
+                                && (is_bit || !matches!(lvt, VT::I32))
+                            {
+                                crate::source::resolve::vt_numeric_hir(lvt)
+                            } else {
+                                None
+                            };
+                            if let Some(bty) = numeric_ty {
+                                let kind = match op {
+                                    BinOp::Add => crate::hir::NumOpKind::Add,
+                                    BinOp::Sub => crate::hir::NumOpKind::Sub,
+                                    BinOp::Mul => crate::hir::NumOpKind::Mul,
+                                    BinOp::Div => crate::hir::NumOpKind::Div,
+                                    BinOp::Rem => crate::hir::NumOpKind::Rem,
+                                    BinOp::Lt => crate::hir::NumOpKind::Lt,
+                                    BinOp::Le => crate::hir::NumOpKind::Le,
+                                    BinOp::Gt => crate::hir::NumOpKind::Gt,
+                                    BinOp::Ge => crate::hir::NumOpKind::Ge,
+                                    BinOp::Eq => crate::hir::NumOpKind::Eq,
+                                    BinOp::Ne => crate::hir::NumOpKind::Ne,
+                                    BinOp::BitAnd => crate::hir::NumOpKind::And,
+                                    BinOp::BitOr => crate::hir::NumOpKind::Or,
+                                    BinOp::BitXor => crate::hir::NumOpKind::Xor,
+                                    BinOp::And | BinOp::Or => {
+                                        unreachable!("logical ops lower to Logical")
+                                    }
+                                };
+                                let word = crate::hir::num_op_atom(kind, bty);
+                                let overflow = if matches!(
+                                    kind,
+                                    crate::hir::NumOpKind::Add
+                                        | crate::hir::NumOpKind::Sub
+                                        | crate::hir::NumOpKind::Mul
+                                ) {
+                                    "; overflow: trap"
+                                } else {
+                                    ""
+                                };
+                                format!(
+                                    "expr e{} binary {{ type: {}; op: {}{}; lhs: e{}; rhs: e{} }}",
+                                    ei, ty, word, overflow, l, r
+                                )
+                            } else if e.vt.is_text() {
                                 format!(
                                     "expr e{} text_concat {{ type: {}; lhs: e{}; rhs: e{} }}",
                                     ei, ty, l, r
@@ -4030,7 +4221,7 @@ impl<'p> Emitter<'p> {
                                 "expr e{} unary {{ type: {}; op: {}; operand: e{} }}",
                                 ei,
                                 ty,
-                                op.as_str(),
+                                op.atom_word(),
                                 o
                             )
                         }
@@ -4054,6 +4245,11 @@ impl<'p> Emitter<'p> {
                             use crate::source::resolve::BuiltinMethod as BM;
                             let recv_s = format!("e{}", recv);
                             match method {
+                                // PLAN-961: numeric builtins never render
+                                // through the text arm.
+                                BM::Shl | BM::Shr | BM::NumTo => {
+                                    unreachable!("numeric methods render via their own EKind")
+                                }
                                 BM::Len => format!(
                                     "expr e{} text_len {{ type: {}; operand: {} }}",
                                     ei, ty, recv_s
@@ -4529,6 +4725,11 @@ fn bin_op_atom(op: BinOp) -> (&'static str, &'static str) {
         BinOp::Eq => ("eq", ""),
         BinOp::Ne => ("ne", ""),
         BinOp::And | BinOp::Or => unreachable!("logical ops lower to EKind::Logical"),
+        // PLAN-961: bit ops render through the typed Num word (see the
+        // Bin render arm); this i32 legacy table never sees them.
+        BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor => {
+            unreachable!("bit ops render via the typed Num word")
+        }
     }
 }
 

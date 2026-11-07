@@ -2555,6 +2555,69 @@ fn is_kw_leaf(g: u32, k: &super::kinds::SourceKinds) -> bool {
     .contains(&g)
 }
 
+/// PLAN-961: extract a numeric `.as(T)`/`.to(T)` step's type word —
+/// the num-ty-word child's keyword leaf mapped to its TypeWord.
+#[allow(clippy::type_complexity)]
+fn numeric_step_word(cx: &Cx, step: u32) -> Option<(Span, TypeWord)> {
+    let k = &cx.k;
+    // The `.as(T)`/`.to(T)` step carries the num-ty-word NODE (field
+    // "word"); the keyword LEAF is its direct child.
+    let word = match cx.field_child(step, "word") {
+        Some(nty) => cx.children(nty).into_iter().next()?,
+        None => {
+            // Fallback: a direct keyword leaf (shape tolerance).
+            cx.children(step).into_iter().find(|&c| {
+                let g = cx.tree.kind(c);
+                k.tok_i8_kw == Some(g)
+                    || k.tok_u8_kw == Some(g)
+                    || k.tok_byte_kw == Some(g)
+                    || k.tok_uint_kw == Some(g)
+                    || k.tok_u32_kw == Some(g)
+                    || k.tok_i64_kw == Some(g)
+                    || k.tok_u64_kw == Some(g)
+                    || k.tok_float_kw == Some(g)
+                    || k.tok_double_kw == Some(g)
+                    || k.tok_f64_kw == Some(g)
+                    || g == k.tok_int_kw
+                    || g == k.tok_i32
+                    || g == k.tok_bool
+            })?
+        }
+    };
+    let span = cx.span_of(word);
+    let g = cx.tree.kind(word);
+    let tw = if k.tok_i8_kw == Some(g) {
+        TypeWord::I8
+    } else if k.tok_u8_kw == Some(g) {
+        TypeWord::U8
+    } else if k.tok_byte_kw == Some(g) {
+        TypeWord::Byte
+    } else if k.tok_uint_kw == Some(g) {
+        TypeWord::Uint
+    } else if k.tok_u32_kw == Some(g) {
+        TypeWord::U32
+    } else if k.tok_i64_kw == Some(g) {
+        TypeWord::I64
+    } else if k.tok_u64_kw == Some(g) {
+        TypeWord::U64
+    } else if k.tok_float_kw == Some(g) {
+        TypeWord::Float
+    } else if k.tok_double_kw == Some(g) {
+        TypeWord::Double
+    } else if k.tok_f64_kw == Some(g) {
+        TypeWord::F64
+    } else if g == k.tok_int_kw {
+        TypeWord::Int
+    } else if g == k.tok_i32 {
+        TypeWord::I32
+    } else if g == k.tok_bool {
+        TypeWord::Bool
+    } else {
+        return None;
+    };
+    Some((span, tw))
+}
+
 /// PLAN-961: decode a typed numeric literal word per the frozen T-01 §1
 /// table — prefixes `0x`/`0b`, `_` separators, integer suffixes
 /// (none/`i`/`i32`→i32, `i8`, `u`/`u32`, `u8`, `u64`, `i64`, `b`→u8) and
@@ -4644,6 +4707,27 @@ impl<'a> Engine<'a> {
             .into_iter()
             .any(|c| self.cx.tree.kind(c) == self.cx.k.tok_r_to);
         if has_to {
+            // PLAN-961: the numeric `.to(T)` step carries a num-ty-word
+            // child whose word leaf is a numeric KEYWORD token.
+            let numeric_word = numeric_step_word(&self.cx, step);
+            if numeric_word.is_some() {
+                let (word_span, tw) = numeric_word.expect("checked");
+                let span = recv.span.join(word_span);
+                return Expr {
+                    span,
+                    kind: ExprKind::Method {
+                        recv: Box::new(recv),
+                        name: Ident {
+                            name: "to".to_string(),
+                            span: word_span,
+                        },
+                        args: vec![Arg::Pos(Expr {
+                            span: word_span,
+                            kind: ExprKind::TypeWordArg(tw),
+                        })],
+                    },
+                };
+            }
             let word_leaf = self
                 .cx
                 .children(step)
@@ -4698,6 +4782,45 @@ impl<'a> Engine<'a> {
                     }
                 }
             };
+        }
+        // PLAN-961: the numeric `.as(T)` step (r-as member + num-ty-word).
+        let has_as = self
+            .cx
+            .children(step)
+            .into_iter()
+            .any(|c| self.cx.tree.kind(c) == self.cx.k.tok_r_as);
+        if has_as {
+            match numeric_step_word(&self.cx, step) {
+                Some((word_span, tw)) => {
+                    let span = recv.span.join(word_span);
+                    return Expr {
+                        span,
+                        kind: ExprKind::Method {
+                            recv: Box::new(recv),
+                            name: Ident {
+                                name: "as".to_string(),
+                                span: word_span,
+                            },
+                            args: vec![Arg::Pos(Expr {
+                                span: word_span,
+                                kind: ExprKind::TypeWordArg(tw),
+                            })],
+                        },
+                    };
+                }
+                None => {
+                    let span = recv.span;
+                    self.cx.reject(span, || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.syntax",
+                            "`.as` expects a numeric type word".to_string(),
+                            span,
+                        )
+                    });
+                    return recv;
+                }
+            }
         }
         let Some(member) = member else {
             return recv;
@@ -5249,6 +5372,10 @@ impl<'a> Engine<'a> {
             self.cx.k.op_oror,
         ]
         .contains(&kind)
+            // PLAN-961: the numeric bit-op tokens (numeric trim only).
+            || self.cx.k.op_amp == Some(kind)
+            || self.cx.k.op_vbar == Some(kind)
+            || self.cx.k.op_caret == Some(kind)
     }
 
     fn op_of_token(&self, kind: u32) -> BinOp {
@@ -5276,6 +5403,14 @@ impl<'a> Engine<'a> {
             BinOp::Ne
         } else if kind == self.cx.k.op_andand {
             BinOp::And
+        } else if kind == self.cx.k.op_oror {
+            BinOp::Or
+        } else if self.cx.k.op_amp == Some(kind) {
+            BinOp::BitAnd
+        } else if self.cx.k.op_vbar == Some(kind) {
+            BinOp::BitOr
+        } else if self.cx.k.op_caret == Some(kind) {
+            BinOp::BitXor
         } else {
             BinOp::Or
         }
