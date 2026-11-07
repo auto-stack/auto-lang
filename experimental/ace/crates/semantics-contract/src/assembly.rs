@@ -6,8 +6,15 @@ use std::collections::BTreeSet;
 
 pub const SCHEMA: &str = "ace-stdlib-assembly/1";
 pub const SCALAR_MODULES: &str = "ac.source.modules.scalar/v1";
+/// PLAN-960: the complete package-module capability profile (text-record
+/// domain) is an admitted assembly profile alongside the finite scalar one.
+pub const PACKAGE_MODULES: &str = "ac.source.modules.packages/v1";
 pub const AV_PRODUCER: &str = "ace-av/modules/1";
 pub const RUST_PRODUCER: &str = "ace-a2x-rust/modules/1";
+/// PLAN-960: the native (mn) and C module lanes join the assembly producer
+/// whitelist (four-end assembly recovery; consumers carry their own receipts).
+pub const NATIVE_PRODUCER: &str = "ace-native/modules/1";
+pub const C_PRODUCER: &str = "ace-a2x-c/modules/1";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -226,10 +233,13 @@ impl Manifest {
         if self.schema != SCHEMA {
             return Err("assembly.schema".into());
         }
-        if s.profile != SCALAR_MODULES {
+        if s.profile != SCALAR_MODULES && s.profile != PACKAGE_MODULES {
             return Err("assembly.profile".into());
         }
-        if !matches!(c.producer.as_str(), AV_PRODUCER | RUST_PRODUCER) {
+        if !matches!(
+            c.producer.as_str(),
+            AV_PRODUCER | RUST_PRODUCER | NATIVE_PRODUCER | C_PRODUCER
+        ) {
             return Err("assembly.producer".into());
         }
         if [&s.host, &s.platform, &c.abi, &c.runtime, &c.toolchain]

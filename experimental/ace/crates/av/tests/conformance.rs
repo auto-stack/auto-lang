@@ -178,5 +178,7 @@ mod assembly_944;
 mod choose_instances_935;
 #[path = "cases/module_sources_950.rs"]
 mod module_sources_950;
+#[path = "cases/module_packages_960.rs"]
+mod module_packages_960;
 #[path = "cases/sq_source_facts_934.rs"]
 mod sq_source_facts_934;

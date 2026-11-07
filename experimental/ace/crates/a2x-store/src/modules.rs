@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 const SCHEMA: &str = "a2x-source-modules/1";
 const ASSEMBLY_SCHEMA: &str = "a2x-source-modules/2";
 mod assembly;
+pub mod packages;
 pub use assembly::assembly_consumer;
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

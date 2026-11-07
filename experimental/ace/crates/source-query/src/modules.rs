@@ -345,6 +345,8 @@ mod tests {
 
 pub mod packages;
 pub use packages::{compile_bound_packages, compile_package_product, PackageProduct};
+pub mod packages_store;
+pub use packages_store::{PackageStore, PackageStoreReceipt, PACKAGES_ROOT_SCHEMA};
 
 mod persistence;
 pub use persistence::{

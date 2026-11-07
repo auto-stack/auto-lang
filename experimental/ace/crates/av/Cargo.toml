@@ -46,6 +46,11 @@ windows-sys = { version = "0.59", features = [
 # the A2X production and test prohibition on depending on this executor.
 ace-a2x-rust = { path = "../a2x-rust" }
 ace-a2x-store = { path = "../a2x-store" }
+# PLAN-960 four-end packages conformance (dev-only): the C provider, the
+# cl.exe runner and the native mn driver.
+ace-a2x-c = { path = "../a2x-c" }
+ace-a2x-worker = { path = "../a2x-worker" }
+ace-native = { path = "../native" }
 # PLAN-934 T-02: the bounded fact-driven source chain runs in this
 # consumer's conformance suite (dev-only; the product path is T-08).
 # PLAN-827: seed-identity receipts (SHA256 over the frozen AP fixture bytes).
