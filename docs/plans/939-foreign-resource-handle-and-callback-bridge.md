@@ -251,6 +251,10 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 
 ## 9. 复审记录
 
+T-02/r3 进行中检查点（2026-11-08，goal round 5，HEAD `3eceffa24`）：**resolver-owned 页路线落地，19 例中 5 例全绿（utf8-bytes/scalars + handle-lifecycle×native/c + wrong-oracle 控制位）**——本轮穿过并修复：事实页冷 lane（零事实+合成空 walk+版本对齐）、MIR arity（`declaration.arity()`）、ABC wire（Owned 族携带 ForeignCall 编解码）、verifier 外源 mut 模式（Rec Mut/Out=mut 借用，`.mut` 合法且必需）、native 链接事件运行时（source939_event 解析）、第三方 layer 派发点 AXCFR1 panic、认证 runtime 身份改为**由 session 记录推导**（资源 C runtime 依赖 view trace marks）、参考 oracle 改为**逐 deck 返回期望值**（父侧对 actual/reference 同一期望比较）并过 -W4 -WX。**剩余两个精确接缝**：(a) native Rec Mut 回写落在副本——record-mut-native 41/42（`.mut` 实参在 foreign 调用点的槽是按值临时）；(b) 资源 C 发布撞 `inconsistent immutable object charge`（runtime Arc 的 retain/adopt 记账不一致）。C 腿 panic 已修（第三 layer 派发点）。
+
+stage: goal | plan_id: PLAN-939 | plan_revision: r3 | round: 5 | from: work | to: work | status: executing | outcome: interim（5/19 全绿；两个接缝已定位到具体机制）| worktree: D:/autostack/.wt/lang-939/auto-lang | commit: 3eceffa24 | next: work
+
 r3 修订记录（2026-11-08，stage:new；needs_replan 的有界路径级修订——目标/验收/范围/仓集合不变，授权沿用 /goal 完成计划939 链）：依据 §9 round 4 实证（Frontend 事实页边界 + semantics/src/adapter.rs 有限推理面），冻结 §5.11 resolver-owned 常驻页路线；T-02 行改写（含已交付清单引用）；事实面 typed-leaf 增量记具名后继不入本包。AC-01..09/V-01..16/SD-01..07/T-01/T-03..T-14 全部保留不删。修订后 T-02 剩余：resolver-owned 页接线（frontend resident/restore/warm 三点）→ A/B/C 三接缝正式收口。round 1-4 全部交付物与证据保留有效（未受修订影响——它们与路线正交）。
 
 stage: new | PLAN-939 r3 | outcome: pass（修订就绪，无待决用户问题） | next: work（T-02 resolver-owned 页接线）
