@@ -1,0 +1,61 @@
+// n01: the PLAN-961 numeric surface in one legal single-use DAG — typed
+// constants (i64 magnitude beyond i32, u8, f64 bits), typed add/compare,
+// i32 bit ops, typed negation and explicit casts. T-01 probe anchor.
+hir(schema: "auto.hir.numeric.draft", revision: 1u32, profile: "source-numeric-draft") {
+    module m_s {
+        types {
+            type t_i32 i32 {}
+            type t_i64 i64 {}
+            type t_u8 u8 {}
+            type t_f64 f64 {}
+            type t_bool bool {}
+            type t_f function { params: ["t_i64"]; result: "t_i64" }
+        }
+        declarations {
+            function d_main t_f { name: "nf_main"; body: "b_main" }
+        }
+        bodies {
+            body b_main {
+                owner: "d_main"
+                entry: "k0"
+                locals {
+                    local l0 t_i64 { name: "x"; role: param; index: 0u32 }
+                    local l2 t_bool { name: "c"; role: binding }
+                    local l3 t_f64 { name: "f"; role: binding }
+                }
+                expressions {
+                    expr e0 constant { type: t_i64; value: 2147483648i64 }
+                    expr e1 constant { type: t_i64; value: 1i64 }
+                    expr e2 binary { type: t_i64; op: add_i64; overflow: trap; lhs: e0; rhs: e1 }
+                    expr e3 read_local { type: t_i64; local: l0 }
+                    expr e4 cast { type: t_i64; to: i64; operand: e2 }
+                    expr e5 binary { type: t_i64; op: add_i64; overflow: trap; lhs: e4; rhs: e3 }
+                    expr e6 constant { type: t_u8; value: 200u8 }
+                    expr e7 constant { type: t_u8; value: 55u8 }
+                    expr e8 binary { type: t_u8; op: add_u8; overflow: trap; lhs: e6; rhs: e7 }
+                    expr e9 cast { type: t_i64; to: i64; operand: e8 }
+                    expr e10 binary { type: t_i64; op: add_i64; overflow: trap; lhs: e9; rhs: e5 }
+                    // i32 bit ops ride the typed Num names
+                    expr e11 constant { type: t_i32; value: 12i32 }
+                    expr e12 constant { type: t_i32; value: 10i32 }
+                    expr e13 binary { type: t_i32; op: and_i32; lhs: e11; rhs: e12 }
+                    expr e14 cast { type: t_i64; to: i64; operand: e13 }
+                    expr e15 binary { type: t_i64; op: add_i64; overflow: trap; lhs: e14; rhs: e10 }
+                    // f64 bits: 1.5 = 0x3FF8000000000000 = 4609434218613702656
+                    expr e16 constant { type: t_f64; value: 4609434218613702656f64 }
+                    expr e17 unary { type: t_f64; op: neg_f64; operand: e16 }
+                    expr e18 constant { type: t_i64; value: 4294967296i64 }
+                    expr e19 constant { type: t_i64; value: 1i64 }
+                    expr e20 binary { type: t_bool; op: lt_i64; lhs: e18; rhs: e19 }
+                }
+                blocks {
+                    block k0 {
+                        let(local: l2, value: e20)
+                        let(local: l3, value: e17)
+                        return(value: e15)
+                    }
+                }
+            }
+        }
+    }
+}

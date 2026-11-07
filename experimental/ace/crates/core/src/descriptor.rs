@@ -244,7 +244,9 @@ impl Descriptor {
         Ok(desc)
     }
 
-    fn enum_cases(&self, name: &str) -> Option<&Vec<String>> {
+    /// PLAN-961: public read access to a descriptor's enum vocabulary
+    /// (tests and tooling assert the frozen case sets).
+    pub fn enum_cases(&self, name: &str) -> Option<&Vec<String>> {
         self.enums.get(name)
     }
 
@@ -253,6 +255,15 @@ impl Descriptor {
     /// (PLAN-767 §5.1, review P767-R1): an unknown schema/revision/profile
     /// is `None`, never silently classified as the core domain. Binders and
     /// the canonical writer must reject such descriptors explicitly.
+    /// PLAN-961: whether this descriptor carries the numeric identity
+    /// (`auto.hir.numeric.draft/1/source-numeric-draft`) — the numeric
+    /// type words and typed constants bind only under it.
+    pub fn is_numeric(&self) -> bool {
+        self.schema == "auto.hir.numeric.draft"
+            && self.revision == 1
+            && self.profile == "source-numeric-draft"
+    }
+
     pub fn domain(&self) -> Option<hir::HirDomain> {
         if self.schema == "auto.hir.core.draft"
             && self.revision == 1
@@ -303,6 +314,15 @@ impl Descriptor {
         {
             // PLAN-865: source closure declarations and call sites have a
             // separate identity from the collections-only descriptor.
+            Some(hir::HirDomain::Closures)
+        } else if self.schema == "auto.hir.numeric.draft"
+            && self.revision == 1
+            && self.profile == "source-numeric-draft"
+        {
+            // PLAN-961: the numeric surface rides the closures-superset
+            // VERIFICATION domain (the numeric typing rules live in the
+            // shared walks and the MIR-level contract, not a domain gate);
+            // the descriptor identity itself stays distinct.
             Some(hir::HirDomain::Closures)
         } else {
             None
@@ -2022,22 +2042,60 @@ impl<'d> Binder<'d> {
                     return None;
                 };
                 match int_value(&f.value) {
-                    Some(lit) => match lit.to_i32() {
-                        Some(v) if matches!(lit.suffix.as_deref(), None | Some("i32")) => {
-                            hir::ExprKind::Constant { value: v }
+                    Some(lit) => {
+                        // PLAN-961: a typed suffix routes to the numeric
+                        // const (exact payload bits; floats carry to_bits()
+                        // as a decimal integer). Range-checked per type.
+                        if let Some(suffix) = lit.suffix.as_deref() {
+                            if !matches!(suffix, "i32") {
+                                match numeric_const_of(&lit, suffix) {
+                                    Some(kind) => kind,
+                                    None => {
+                                        self.error(
+                                            "bind.literal-range",
+                                            format!(
+                                                "value `{}` is not representable as {}",
+                                                lit.span.slice(self.src),
+                                                suffix
+                                            ),
+                                            f.value_span,
+                                        );
+                                        return None;
+                                    }
+                                }
+                            } else {
+                                match lit.to_i32() {
+                                    Some(v) => hir::ExprKind::Constant { value: v },
+                                    None => {
+                                        self.error(
+                                            "bind.literal-range",
+                                            format!(
+                                                "value `{}` is not representable as i32",
+                                                lit.span.slice(self.src)
+                                            ),
+                                            f.value_span,
+                                        );
+                                        return None;
+                                    }
+                                }
+                            }
+                        } else {
+                            match lit.to_i32() {
+                                Some(v) => hir::ExprKind::Constant { value: v },
+                                None => {
+                                    self.error(
+                                        "bind.literal-range",
+                                        format!(
+                                            "value `{}` is not representable as i32",
+                                            lit.span.slice(self.src)
+                                        ),
+                                        f.value_span,
+                                    );
+                                    return None;
+                                }
+                            }
                         }
-                        _ => {
-                            self.error(
-                                "bind.literal-range",
-                                format!(
-                                    "value `{}` is not representable as i32",
-                                    lit.span.slice(self.src)
-                                ),
-                                f.value_span,
-                            );
-                            return None;
-                        }
-                    },
+                    }
                     None => {
                         self.error(
                             "bind.type-shape",
@@ -2047,6 +2105,45 @@ impl<'d> Binder<'d> {
                         return None;
                     }
                 }
+            }
+            // PLAN-961: the explicit numeric conversion (`expr as T`).
+            "cast" => {
+                let Some((to_t, to_span)) = self.text_ref(&fields, "to") else {
+                    return None;
+                };
+                let Some((op_t, op_span)) = self.text_ref(&fields, "operand") else {
+                    return None;
+                };
+                let operand =
+                    match self.resolve_in(&op_t, op_span, "ExprRef", &body.exprs, expr_sibs) {
+                        Some(e) => hir::ExprId(e),
+                        None => return None,
+                    };
+                let to = match self.resolve_typeuse(
+                    &crate::atom_text::Value::Ident(to_t.clone()),
+                    to_span,
+                    type_ids,
+                ) {
+                    Some(u) => u,
+                    None => return None,
+                };
+                let hir::TypeUse::Builtin(bt) = to else {
+                    self.error(
+                        "bind.type-shape",
+                        "cast destination must be a numeric builtin",
+                        to_span,
+                    );
+                    return None;
+                };
+                if !bt.is_numeric() {
+                    self.error(
+                        "bind.type-shape",
+                        "cast destination must be a numeric builtin",
+                        to_span,
+                    );
+                    return None;
+                }
+                hir::ExprKind::Cast { operand, to: bt }
             }
             // PLAN-862: the unit value. Payload-free; the verifier owns the
             // "type must be unit" and "result-position only" rules.
@@ -2098,7 +2195,12 @@ impl<'d> Binder<'d> {
                     "ge_i32" => hir::BinOp::GeI32,
                     "eq" => hir::BinOp::Eq,
                     "ne" => hir::BinOp::Ne,
-                    _ => return None,
+                    // PLAN-961: the typed numeric names `{op}_{ty}` (the
+                    // schema's BinOp enum gates the exact vocabulary).
+                    other => match parse_typed_binop(other) {
+                        Some(op) => op,
+                        None => return None,
+                    },
                 };
                 hir::ExprKind::Binary {
                     op,
@@ -2117,6 +2219,11 @@ impl<'d> Binder<'d> {
                 let op = match op_word.as_str() {
                     "neg_i32" => hir::UnaryOp::NegI32,
                     "not_bool" => hir::UnaryOp::NotBool,
+                    // PLAN-961: typed negation words `neg_{ty}`.
+                    "neg_i8" => hir::UnaryOp::NegNumeric(hir::BuiltinType::I8),
+                    "neg_i64" => hir::UnaryOp::NegNumeric(hir::BuiltinType::I64),
+                    "neg_f32" => hir::UnaryOp::NegNumeric(hir::BuiltinType::F32),
+                    "neg_f64" => hir::UnaryOp::NegNumeric(hir::BuiltinType::F64),
                     _ => return None,
                 };
                 let Some((ot, ospan2)) = self.text_ref(&fields, "operand") else {
@@ -3133,12 +3240,30 @@ impl<'d> Binder<'d> {
             "char" => Some(hir::BuiltinType::Char),
             _ => None,
         };
+        // PLAN-961: the numeric builtin words bind only under the numeric
+        // descriptor identity (never under closures/earlier vocabularies).
+        let numeric_builtin = |word: &str| match word {
+            "i8" => Some(hir::BuiltinType::I8),
+            "u8" | "byte" => Some(hir::BuiltinType::U8),
+            "u32" | "uint" => Some(hir::BuiltinType::U32),
+            "i64" => Some(hir::BuiltinType::I64),
+            "u64" => Some(hir::BuiltinType::U64),
+            "f32" | "float" => Some(hir::BuiltinType::F32),
+            "f64" | "double" => Some(hir::BuiltinType::F64),
+            _ => None,
+        };
         match v {
             Value::Ident(word) if word == "i32" => {
                 Some(hir::TypeUse::Builtin(hir::BuiltinType::I32))
             }
             Value::Ident(word) if word == "bool" => {
                 Some(hir::TypeUse::Builtin(hir::BuiltinType::Bool))
+            }
+            // PLAN-961: numeric builtin type words (numeric identity only).
+            Value::Ident(word)
+                if self.desc.is_numeric() && numeric_builtin(word).is_some() =>
+            {
+                Some(hir::TypeUse::Builtin(numeric_builtin(word).unwrap()))
             }
             // PLAN-862: `unit` is the entry-unit domain's result word; under
             // every other descriptor it stays a dangling reference exactly
@@ -3215,6 +3340,104 @@ fn str_value(v: &Value) -> Option<String> {
         Value::Str(s) => Some(s.clone()),
         _ => None,
     }
+}
+
+/// PLAN-961: parse a typed numeric constant payload into the exact-bits
+/// `NumericConst` (i8/u8/u32/i64/u64 carry magnitudes in the type's own
+/// width; f32/f64 carry `to_bits()` as a plain decimal integer — the
+/// writer and this parser are bit-exact twins).
+fn numeric_const_of(lit: &IntLit, suffix: &str) -> Option<hir::ExprKind> {
+    let digits: u128 = lit.digits.parse().ok()?;
+    let signed_val: i128 = if lit.negative {
+        -(digits as i128)
+    } else {
+        digits as i128
+    };
+    let (ty, bits) = match suffix {
+        "i8" => {
+            let v = i8::try_from(signed_val).ok()?;
+            (hir::BuiltinType::I8, v as u8 as u64)
+        }
+        "u8" => {
+            if lit.negative {
+                return None;
+            }
+            let v = u8::try_from(digits).ok()?;
+            (hir::BuiltinType::U8, v as u64)
+        }
+        "u32" => {
+            if lit.negative {
+                return None;
+            }
+            let v = u32::try_from(digits).ok()?;
+            (hir::BuiltinType::U32, v as u64)
+        }
+        "i64" => {
+            let v = i64::try_from(signed_val).ok()?;
+            (hir::BuiltinType::I64, v as u64)
+        }
+        "u64" => {
+            if lit.negative {
+                return None;
+            }
+            let v = u64::try_from(digits).ok()?;
+            (hir::BuiltinType::U64, v)
+        }
+        "f32" => {
+            if lit.negative {
+                return None;
+            }
+            let v = u32::try_from(digits).ok()?;
+            (hir::BuiltinType::F32, v as u64)
+        }
+        "f64" => {
+            if lit.negative {
+                return None;
+            }
+            let v = u64::try_from(digits).ok()?;
+            (hir::BuiltinType::F64, v)
+        }
+        _ => return None,
+    };
+    Some(hir::ExprKind::NumericConst { ty, bits })
+}
+
+/// PLAN-961: parse a typed binary op name `{op}_{ty}` into the structural
+/// `BinOp::Num` (the descriptor schema's enum cases gate the vocabulary;
+/// semantic legality — e.g. bit ops never on floats — is the verifier's).
+fn parse_typed_binop(word: &str) -> Option<hir::BinOp> {
+    let (op_w, ty_w) = word.rsplit_once('_')?;
+    let op = match op_w {
+        "add" => hir::NumOpKind::Add,
+        "sub" => hir::NumOpKind::Sub,
+        "mul" => hir::NumOpKind::Mul,
+        "div" => hir::NumOpKind::Div,
+        "rem" => hir::NumOpKind::Rem,
+        "and" => hir::NumOpKind::And,
+        "or" => hir::NumOpKind::Or,
+        "xor" => hir::NumOpKind::Xor,
+        "shl" => hir::NumOpKind::Shl,
+        "shr" => hir::NumOpKind::Shr,
+        "lt" => hir::NumOpKind::Lt,
+        "le" => hir::NumOpKind::Le,
+        "gt" => hir::NumOpKind::Gt,
+        "ge" => hir::NumOpKind::Ge,
+        "eq" => hir::NumOpKind::Eq,
+        "ne" => hir::NumOpKind::Ne,
+        _ => return None,
+    };
+    let ty = match ty_w {
+        "i8" => hir::BuiltinType::I8,
+        "i32" => hir::BuiltinType::I32,
+        "u8" => hir::BuiltinType::U8,
+        "u32" => hir::BuiltinType::U32,
+        "i64" => hir::BuiltinType::I64,
+        "u64" => hir::BuiltinType::U64,
+        "f32" => hir::BuiltinType::F32,
+        "f64" => hir::BuiltinType::F64,
+        _ => return None,
+    };
+    Some(hir::BinOp::Num { op, ty })
 }
 
 fn int_value(v: &Value) -> Option<IntLit> {
@@ -3666,7 +3889,12 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
             lhs,
             rhs,
         } => {
-            body_fields.push(format!("op: {}", op.as_str()));
+            // PLAN-961: typed ops render their full `{op}_{ty}` word.
+            let op_word = match op {
+                hir::BinOp::Num { op, ty } => hir::num_op_atom(*op, *ty),
+                other => other.as_str().to_string(),
+            };
+            body_fields.push(format!("op: {}", op_word));
             // the overflow policy exists only for add/sub/mul; div/rem traps
             // are inherent and comparisons cannot overflow, so the canonical
             // form must not emit the field for them.
@@ -3677,7 +3905,8 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
             body_fields.push(format!("rhs: {}", quote(&b.exprs[rhs.0 as usize].id_text)));
         }
         hir::ExprKind::Unary { op, operand } => {
-            body_fields.push(format!("op: {}", op.as_str()));
+            // PLAN-961: typed negation renders `neg_{ty}`.
+            body_fields.push(format!("op: {}", op.atom_word()));
             body_fields.push(format!(
                 "operand: {}",
                 quote(&b.exprs[operand.0 as usize].id_text)

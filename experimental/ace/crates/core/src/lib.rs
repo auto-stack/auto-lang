@@ -464,6 +464,22 @@ pub fn closures_descriptor() -> &'static descriptor::Descriptor {
     })
 }
 
+/// PLAN-961 source-numeric descriptor. It starts from the closures
+/// vocabulary (the largest frozen source surface) and adds the numeric
+/// kinds/ops/constants/cast — same-type operands, checked narrowing and
+/// the frozen float/shift semantics are enforced by the shared verifier
+/// walks and the MIR-level contract.
+pub const NUMERIC_DESCRIPTOR_SCHEMA: &str = include_str!("../schema/numeric.atom");
+
+pub fn numeric_descriptor() -> &'static descriptor::Descriptor {
+    use std::sync::OnceLock;
+    static DESC: OnceLock<descriptor::Descriptor> = OnceLock::new();
+    DESC.get_or_init(|| {
+        descriptor::Descriptor::parse(NUMERIC_DESCRIPTOR_SCHEMA)
+            .expect("embedded source-numeric descriptor must parse")
+    })
+}
+
 /// Convenience: bind a source document with the embedded core descriptor.
 pub fn bind_source(source: &str) -> Result<hir::Bundle, Vec<atom_text::Diagnostic>> {
     descriptor::bind(descriptor(), source)

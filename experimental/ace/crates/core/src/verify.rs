@@ -6817,6 +6817,12 @@ impl Verifier {
                 | hir::ExprKind::VariantProject { root, .. } => {
                     targets.push(root.0);
                 }
+                // PLAN-961: a numeric const is a leaf; a cast owns its
+                // operand like every other value-producing wrapper.
+                hir::ExprKind::NumericConst { .. } => {}
+                hir::ExprKind::Cast { operand, .. } => {
+                    targets.push(operand.0);
+                }
                 _ => {}
             }
             for t in targets {
