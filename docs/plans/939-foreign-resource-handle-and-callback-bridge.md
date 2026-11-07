@@ -4,8 +4,8 @@ status: executing
 feature_name: CA-D3 有限foreign资源句柄与同步回调桥
 author: [Codex]
 created_at: 2026-11-05
-updated_at: 2026-11-07
-plan_revision: 2
+updated_at: 2026-11-08
+plan_revision: 3
 supersedes_spec_components: [docs/specs/auto-abi/project.md, docs/specs/auto-abi/windows-x64-v01.md, docs/specs/auto-abi/conformance-cache.md, docs/specs/auto-a2x/checked-resource-facts.md, docs/specs/auto-a2x/incremental-and-cache.md, docs/specs/auto-a2c/record-text-hir-backend.md, docs/specs/auto-test-case/architecture.md, docs/specs/auto-test-case/ace-ca-d-bridge-certification.md]
 new_spec_components: [docs/specs/auto-abi/resource-and-callback-bridge.md]
 touched_goals: [GOAL-002]
@@ -21,7 +21,9 @@ total_steps: 14
 
 承937共享facts/物理计划、938真实source foreign调用，将797既有资源形态接到新的受检资源事实与native/A2C bridge：buffer view、record const/mut/out、多out成功提交、opaque原方destroy、同步per-call callback+ctx。资源分析仍唯一core verifier权威；新backend只消费，不复制。D939后才能把CA-D整体列已交付，最终CA-E/ARCH/M1签章仍另有owner。
 
-r2仅修订阶段合同、具体输入/方向/验收映射与交接边界；保留T-01..14、AC-01..09、V-01..12、SD-01..07及全部原资源/样本/范围。新增V-13..16是原别名、noescape、source承诺与阶段边界的区分性补例，不新增ABI形态。38格旧A2R认证另由[PLAN-991](991-ace-m1-legacy-a2r-cert-gap-triage.md)分诊；它不是本包前置，本包不接手旧A2R修复或签M1。
+r2仅修订阶段合同、具体输入/方向/验收映射与交接边界；保留T-01..14、AC-01..09、V-01..12、SD-01..07及全部原资源/样本/范围。
+
+r3（2026-11-08，T-02 needs_replan 后的路径级有界修订；目标/验收/范围/仓集合不变）：资源 source 会话采用 **resolver-owned 常驻页路线**——text-record 资源体无 solver 事实（934 推理面为 scalar-only 冻结设计），Frontend 逐 owner 常驻页对资源体记"resolver-owned"标记页（零伪造事实），冷/暖编译均真实重解析并在 P/R 计数如实记录；声明/环境轴失效仍走 digest 键。事实面 text-record typed-leaf 增量（str-literal/record-construction/field-read/mut-arg 结构性类型传递进 solver+页编码）记为**具名后继**，不入本包——本包不以伪造事实页换取 R 指标。新增V-13..16是原别名、noescape、source承诺与阶段边界的区分性补例，不新增ABI形态。38格旧A2R认证另由[PLAN-991](991-ace-m1-legacy-a2r-cert-gap-triage.md)分诊；它不是本包前置，本包不接手旧A2R修复或签M1。
 
 ## 1. 目标
 
@@ -159,6 +161,16 @@ T-01/T-02须把每行下的多输入拆为唯一Case ID与check，保留source/t
 
 38格旧A2R分诊由[PLAN-991](991-ace-m1-legacy-a2r-cert-gap-triage.md)独立持有，939不等待它、不修改binding/批准/hash/旧cert守卫，不修执行中的938/941。939对941交付S01..08逐方向矩阵/原797形态映射/完整证据/真实残余；是否安装新reader或更新941由其现owner安排，禁止本包改941计划或消费未审WIP冒D。991对941交接是逐格可审核材料，不自动写入941或称M1可签。F-941-07/09及原8scalar红仍归原具名记录，本次规划授权不等修复授权。
 
+### 5.11 r3 资源 source 会话路线：resolver-owned 常驻页
+
+T-02 探查实证（§9 round 4）：Frontend 的逐 owner 常驻页是事实原生存储（928/934）；text-record 资源源在 `semantics/src/adapter.rs` 的有限推理面（str-literal/record-construction/field-read/mut-arg 显式 Unsupported）外，无法产出 solver 事实页。r3 冻结路线：
+
+- **resolver-owned 页**：资源体（foreign-only supply lane 的 body）在 Frontend 目录中以带 `resolver-owned` 标记的常驻页存在——页**不携带任何类型事实**，仅记录 owner 身份、body 文本摘要与 foreign 环境身份（manifest/contract digest 键）。`resident_page` 对其返回该页；事实 admit/walk 路径不参与。
+- **零伪造**：任何 warm 复用都**不得**把 resolver-owned 页当作事实命中；body 变更、环境/声明 digest 变更都走真实重解析。P 计数如实计 resolve 实产；R 的"无重分析"承诺对本 lane 明确为 **R=有界深验（required 页/契约），body 重解析是预期行为而非违规**——S08 恢复首编辑的验收以真实 resolve 计数为准。
+- **失效轴**：layout/mode/provider/contract 变更经现有 digest 键精确失效（与本包 §5.5 一致）；无关函数不受影响。
+- **计量边界**：本 lane 的暖 body-edit P90 门（§5.5 原预算）以"含真实 resolve 的全链时间"计，不与 938 事实命中 lane 的 P0 混比；T-10 按此口径出数。
+- **具名后继（非本包）**：事实面 text-record typed-leaf 增量（solver 输入投影+类型事实+页编码携带）使资源体获得真 R 复用——记入 KNOWN-DEBT 与 M2 后继清单；本包不得以实现它为由扩范围。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
@@ -221,7 +233,7 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 | ID | owner_stage | 依赖 | 修改路径/可验证成果；对应AC/验证 | 状态 |
 |---|---|---|---|---|
 | T-01 | work | 后续实施指令；只读阶段不需D938 | 重核D937/D938及925/924/931实交，冻结P1/S01..08每方向/797原形态/Case来源/全部reader/原scale/预算；未D938只独立调查，不实接WIP；AC-01/06/07 | [✅ 2026-11-07] |
-| T-02 | work | T-01、实际D938、所需稳定S/ABI接口释放 | P2按§5.7 A→B→C：最小正式Case先入、一次source文本恢复首编辑、mut/out失败与opaque唯一cleanup、callback错误/lease；冻结source形态/别名/原子commit决定与全reader，三项齐才关闭；只证明可行不核销后续全域，失败needs_replan；V-13..16，AC-01..07 | [~ 进行中] |
+| T-02 | work | T-01、实际D938、所需稳定S/ABI接口释放 | r3：补 resolver-owned 常驻页接线（§5.11）使资源体过 Frontend 冷/暖与恢复；随后按§5.7 A→B→C 收口三接缝（S01 文本view+恢复首编辑、S02/S05 mut/out 失败原子与 S04 opaque 唯一 cleanup、S06 callback 错误/lease——callback-by-name 前端仍按 r2 冻结）；三项齐才关闭；V-13..16，AC-01..07。已交付：合同/core/native/CI/provider/发布路径/认证链/首例+固定组（§9 round 1-4，938 组 31/31 回归绿） | [~ 进行中 r3] |
 | T-03 | work | T-02，H首例短窗 | ABI中立资源投影/布局/header、独立resource首例TestCase由T-02进入，本步扩齐S01..08/方向/正式注册材料，V-01/11/15；AC-01/07 | [ ] |
 | T-04 | work | T-03，S窗口 | core foreign_resources/资源凭证/模式/borrow/alias/deleter唯一计划与所有verify/schema消费者；V-02/03/13/15；AC-02 | [ ] |
 | T-05 | work | T-04，N/C窗口 | native直接资源调用与a2x-c abi_resources/私有值显式转换/view期限；V-01/02/04；AC-01/02/03 | [ ] |
@@ -238,6 +250,10 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 可提前的仅独立oracle/header与source/type能力调查，不把private准备冒资源已实施。正式S/N/C集成在D938及所需单文件owner释放后；不硬等未读取的935/936整包。
 
 ## 9. 复审记录
+
+r3 修订记录（2026-11-08，stage:new；needs_replan 的有界路径级修订——目标/验收/范围/仓集合不变，授权沿用 /goal 完成计划939 链）：依据 §9 round 4 实证（Frontend 事实页边界 + semantics/src/adapter.rs 有限推理面），冻结 §5.11 resolver-owned 常驻页路线；T-02 行改写（含已交付清单引用）；事实面 typed-leaf 增量记具名后继不入本包。AC-01..09/V-01..16/SD-01..07/T-01/T-03..T-14 全部保留不删。修订后 T-02 剩余：resolver-owned 页接线（frontend resident/restore/warm 三点）→ A/B/C 三接缝正式收口。round 1-4 全部交付物与证据保留有效（未受修订影响——它们与路线正交）。
+
+stage: new | PLAN-939 r3 | outcome: pass（修订就绪，无待决用户问题） | next: work（T-02 resolver-owned 页接线）
 
 T-02 结果记录（2026-11-07，goal round 4，HEAD `231f2c46b`）：**资源 source 链已穿 6 道门至 Frontend 事实页边界**——本轮打通：profile 选择（frontend 冷目录/resolve/product/恢复四路按环境路由）、`resolve_text_record_with_foreign` 全解析 lane（`TypeSupply::facts_enabled`——foreign-only supply 只嫁接声明、body 类型归 resolver 自身规则；scalar 事实 lane 字节不变）、subset callability（record view 无本模块类型=不可调用而非硬错，resolve/HIR type/def/verify 全链一致）、`text-record.atom` 增 foreign 声明产生式（scalar 语法不动）。**回归事故与修复**：CertPolicy 最初把 938 的 per-reference contract digest/qualify/authority 折叠成单一身份——938 组从 31 绿跌到 10+1+20；三处全部改为 reference 感知后 **938 组 31/31 恢复绿（含 wrong-oracle FAIL 控制）**；六 crate lib tests 全绿（core 28/source-query 86/abi 50/a2x-c 8/native 12/foreign-contract 46）。**T-02A/B/C 最终具名接缝（§5.7 停止条件命中）**：`frontend.rs:387` 的逐 owner 常驻**事实页**（`resident_page`）——Frontend 的存储模型本身是事实原生的（928/934），text-record 资源源在无 solver 事实时无法产页；打通需 (a) 事实面 text-record typed-leaf 增量（语义适配器 str-literal/record-construction/field-read/mut-arg 的结构性类型传递 + solver/页编码），或 (b) 非 facts 的 Frontend 会话路径。两者皆超出 T-02"最小接线"量级=计划 §5.7 明示的 needs_replan 触发。**已交付且不回退**：合同/manifest /2、core 单源映射、native/CI 封送、provider+oracle（实编实跑 4 场景绿）、发布路径、认证 recipe/worker/父判全链、9+1 首例与固定组注册——这些与所选路线无关均复用。
 
@@ -269,5 +285,8 @@ T-01 冻结记录（2026-11-07，worktree `D:/autostack/.wt/lang-939/auto-lang` 
 2026-11-07 r2静态复核收据：0..10章节；T14/AC9/V16/SD7唯一连续且引用有效，S01..08与任务/方向/AC映射齐；拟输入及未定语法均标待使能，原预算/原V/SD及r1历史保留。表格列数/链接/既有Spec路径/空白/编码、现有固定组名称通过；939/991编号唯一，中央取号后.next-id=992。本轮实际写入仅939、991及取号计数；不写938/941、代码、current Specs、原binding/批准/源/expected，不建树/scope或运行产品测试。938原会话在核查期间有并发收据变化，完整保留，不将全局文件hash不变作为本轮未写它的证明。仅文档静态通过，不是独立实施复审或M1通过。
 
 ## 10. 待澄清事项
+
+（r3）无需新用户决策。具名后继（非本包、不豁免 M2 硬门）：事实面 text-record typed-leaf 增量——`semantics` 输入投影（str-literal/char-literal/record-construction/field-read/mut-arg 的结构性类型传递）、solver 规则、事实页编码携带，使资源体获得真实 R 复用与 P0 暖命中；届时 resolver-owned 页退役为兼容读取。原 r2 事项保持：S04/S05/S06 确切声明/语法已按 r2/r3 冻结；公开 i64 元素 view/宽 callback 的 typed 证据不核销宽 source。
+
 
 不需新ABI形态/预算放宽，具体source opaque注入/cleanup facts/callback error与ctx映射由T-02 A/B/C有界证明，S04/S05/S06确切声明/语法是阻塞后续实现的具名决定，不能先默认有新类型或把代码生成成功当资源语义完成。公开i64元素view/宽callback的typed证据不核销宽source。若必须保存/跨线程callback或动态loader才满足实际旧产品需求，归M2具名后继，不塞本有限桥，也不据此豁免M2产品接管硬门。
