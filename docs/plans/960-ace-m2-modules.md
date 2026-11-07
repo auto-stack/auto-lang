@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-960
-status: executing
+status: reviewed
 feature_name: 完整模块包与公共类型绑定
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-07
 plan_revision: 2
-current_step: 4
+current_step: 6
 total_steps: 8
 depends_on: [PLAN-959, PLAN-950]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -123,10 +123,10 @@ T-01有界前探：用一个最小真实正例、同类型非法近邻和一次�
 预定唯一实施树 `D:/autostack/.wt/lang-960/auto-lang`，分支 `plan-960-dev`（沿仓规），尚未创建。跨仓同组每仓唯一树。计划簿记留主检出；实现和构建测试只在专属树。
 
 - [x] **T-01｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。 [✅ 2026-11-07] 依赖 959/950 archived 核验；§4 路径/符号核定；T-01 冻结决定（D1..D7）入 §5；有界前探：worktree `D:/autostack/.wt/lang-960/auto-lang` @fd3b3116a 冷启，`cargo nextest run -p ace-core -p ace-source-query -p ace-av --lib --tests --features ace-av/test-case-batch -E 'test(modules)|test(module_sources_950)|test(assembly_944)'` → 26/26 PASS（正例 module_sources_950 42-oracle 全链含 restore-first-edit；失败恢复腿 candidate_cancellation...preserve_old_recovery PASS；非法近邻=core 模块面既有拒绝断言 use-as/pub-type/generic，T-02 起新面正反例）。收据 plan-artifacts/plan-960/t01-baseline-probe.log sha256 bb3007700a3a762edd415d95c8cf6a78b9cc0ea5e7fed30c4f741636e81aac99。
-- [ ] **T-02｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 [✅ 2026-11-07] 提交 a36f63af0（grammar `packages-modules` 裁剪 + AST Const/Store 项 + 投影 + `source::packages` v2 绑定：包锁身份 input_hash、别名/重导出链（私有重导出 `source.module-reexport-private`=V-02）、仅 use/reexport 边的模块环、值初始化环具名 `source.module-init-cycle`（V-06 绑定腿）、全局 get/set 改写与每模块 init 合成、V-01 跨包同名隔离、V-05 输入序/版本身份）与 d4f0a4e17（resolve 伪签名 `module.global.get/set:`、CallGlobalGet/Set、adapter Intrinsic def/类型表、`compile_package_product` 走共享 TextRecord resolve/typecheck/emit/verify_text_record）。永久正反例：core `source::packages` 5 测试 + `source::packages::binding` 3 测试（含 8 行拒绝矩阵）+ source-query `modules::packages` 2 测试；验证命令 `cargo nextest run -p ace-core -p ace-source-query --lib -E 'test(package)'` → 7/7（含 950 模块面 28/28 回归不变）。**T-01 适配记录**：934 事实页 `PortableTy` 仅 {Unit,I32,Bool}（47 处、`sq-module-page/1` 存储合同），文本/记录程序不能经事实页——包通道直接跑同一 resolver（非平行分析），增量证据改由绑定账本 `binding_walks` 承担；事实页文本/记录覆盖为具名 query 层后继（KNOWN-DEBT 候选），非静默回退。
+- [x] **T-02｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 [✅ 2026-11-07] 提交 a36f63af0（grammar `packages-modules` 裁剪 + AST Const/Store 项 + 投影 + `source::packages` v2 绑定：包锁身份 input_hash、别名/重导出链（私有重导出 `source.module-reexport-private`=V-02）、仅 use/reexport 边的模块环、值初始化环具名 `source.module-init-cycle`（V-06 绑定腿）、全局 get/set 改写与每模块 init 合成、V-01 跨包同名隔离、V-05 输入序/版本身份）与 d4f0a4e17（resolve 伪签名 `module.global.get/set:`、CallGlobalGet/Set、adapter Intrinsic def/类型表、`compile_package_product` 走共享 TextRecord resolve/typecheck/emit/verify_text_record）。永久正反例：core `source::packages` 5 测试 + `source::packages::binding` 3 测试（含 8 行拒绝矩阵）+ source-query `modules::packages` 2 测试；验证命令 `cargo nextest run -p ace-core -p ace-source-query --lib -E 'test(package)'` → 7/7（含 950 模块面 28/28 回归不变）。**T-01 适配记录**：934 事实页 `PortableTy` 仅 {Unit,I32,Bool}（47 处、`sq-module-page/1` 存储合同），文本/记录程序不能经事实页——包通道直接跑同一 resolver（非平行分析），增量证据改由绑定账本 `binding_walks` 承担；事实页文本/记录覆盖为具名 query 层后继（KNOWN-DEBT 候选），非静默回退。
 - [x] **T-03｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 [✅ 2026-11-07] e9919cdf0（MIR `MirGlobal`/`GlobalGet`/`GlobalSet` 新增 opcode 0x36/0x37、`MirModule.globals/init`；`ProgramSnapshot::link_with_globals` 程序级 cell + 每代一次 init 链、失败重置不发布；executor/verify/ownership/abc/instr_spec；lowering `module.global.*` 作逻辑 import → GlobalGet/Set，`lower_checked_owned_with_init`）与 b36376578（`PackageAvTarget` cold/cold_with_entry/run_value/global_cells；split_units 携带全局表；同名私有 store 隔离=22 非 23、diamond 基 cell、公共 Str fn=StrView）；26f93cc79（`a2x-store modules::packages::PackageA2xTarget<P>` RecordText 族冷/收据/恢复——Rust AXR2 与 C AXC2，恢复 lower/print=0 仅重装配；`source-query modules::packages_store` 根 `source-packages-root/1` 身份+单元源+目标收据，不存 cell 值/宿主地址，恢复经同一前门/绑定/编译并核 input_hash，篡改收据/外来产品拒绝；944 白名单 `ace-native/modules/1`/`ace-a2x-c/modules/1` + packages profile 接纳；四端 conformance 3/3）。native 腿：`MnDriver::build_checked` owned 臂真 exe，`ac_start` 退出码转发 i32（42 oracle）。**具名边界**：a2x 全局 cell 发射与类型方法片段为后继（四端 Str 产品不含全局，全局三项在 AV 见证）；mn 全局 cell 具名拒（D-960-2）。
 - [x] **T-04｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 [✅ 2026-11-07] V-01..V-08 全部真实运行：单测 core 5 + source-query 3（packages/packages_store）+ av 2（packages_av，V-08 全五条：store 隔离 22≠23、diamond once 共享 cell 1→2→3、init 失败无半态 cell 全归 0/initialized=false、恢复后重初始化、根无地址）+ conformance `module_packages_960` 3/3（四端 Str：AV I32(42)+StrView、rustc exe stdout value:42、cl exe stdout value:42、mn exit code 42；rust/c 恢复 lower/print=0 且文件集一致；根恢复身份相等；V-05 顺序无关；V-02/V-04/V-06 具名拒绝 + 旧程序仍运行）。固定组：`cargo t ace-source ace-semantics ace-artifacts ace-av ace-a2x` → 5/5 PASS，executed 385/204/40/1024/196=1849，gate_passed=true，wall 1773s（收据 plan-artifacts/plan-960/t04-fixed-groups.log sha256 c90bfc1f1ba347e05da1f0d0530187727fc38ea0f7c0a684a58801241ddd3add）。
-- [ ] **T-05｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
+- [x] **T-05｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。 [✅ 2026-11-07] 第 3 轮 final review needs_fix（F-960-R1 文档矛盾 + F-960-R2/R3/R4 记录，见 §9）；第 4 轮修复 ad2372024（仅注释，git diff 674473a27..ad2372024 = 1 文件 3+/2− 全为 /// 行）后受影响项 re-review pass：F-960-R1 闭合，其余证据绑 674473a27 行为等价树继续有效；冻结基线 5/5 executed=1849 gate=true（§9 复核收据）。
 - [ ] **T-06｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
 - [ ] **T-07｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
 
@@ -136,6 +136,12 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 - [x] **T-08｜owner_stage: work｜AC-06**：明确全局store/常量初始化次序、once/session归属、失败回滚、diamond依赖和模块卸载；把950/944扩到文本/聚合/宿主公共签名及AV/AC/Rust/C装配恢复。类型表示消费既有text/record；新增集合布局归962。模板/CT组合本包提供接面，963/966最终闭合，禁止反向等待。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。 [✅ 2026-11-07] 初始化次序/once/session归属（每代一次、代内 `initialized` 状态）、失败回滚（cell 全重置+不发布半态，av 单测）、diamond（共享 cell 三路递增见证 once）、模块卸载（代随 snapshot 释放，cell 从不持久化）；文本/聚合/宿主公共签名（TextRecord 域、Str 入口四端、公共类型/常量/方法经绑定）；AV/AC(native)/Rust/C 装配恢复（冷+恢复收据，944 白名单扩 native/C + packages profile）；V-08 五条全部有真实结果（av 单测 2 + conformance）。
 
 ## 9. 复审记录
+
+stage: work | plan_id: PLAN-960 | plan_revision: r2 | outcome: pass（修复轮：F-960-R1 闭合） | worktree_path: D:/autostack/.wt/lang-960/auto-lang | branch: plan-960-dev | base_commit: 674473a27 | code_commit: ad2372024（仅 binding.rs 文档 3+/2−，git diff 核对无代码行；先误并 plan827 可再生测试输出已从提交剔除，留树为外来 WIP） | task_ids: T-02 重勾 | evidence: 受影响面 cargo nextest run -p ace-core --lib -E 'test(package)' 5/5 PASS；cargo check -p ace-core 新警告 0 | next_responsible_role: review（受影响项 re-review）
+
+stage: review | review_scope: final（受影响项 re-review） | reviewer_identity/limitations: goal 会话第 4 轮，同会话局限同前 | plan_id: PLAN-960 | plan_revision: r2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-960/auto-lang | branch: plan-960-dev | reviewed_commit: ad2372024 | base_commit: fd3b3116a | dependency_revisions: PLAN-950/959 archived | spec_inputs: 同第 3 轮 | acceptance_results: F-960-R1=pass（文档与 :717/:731 一致；674473a27..ad2372024 仅 /// 行，行为等价——其余 AC/V 证据按第 3 轮映射继续有效，不重跑）；冻结基线门=第 3 轮 674473a27 上 5/5 executed=1849 | pending_closeout_gates: merge-owned 冻结受影响并集（本计划=同基线 5 组已过，行为等价树沿用；无新增待跑）；plan-artifacts scope 收尾删除 | findings: 无新增 | evidence: 本记录 + §8 | next: merge（T-06/T-07）
+
+stage: goal | plan_id: PLAN-960 | plan_revision: r2 | round: 4 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-960/auto-lang | commit: ad2372024 | next: merge
 
 stage: goal | plan_id: PLAN-960 | plan_revision: r2 | round: 3 | from: review | to: work | status: executing | outcome: needs_fix（F-960-R1 单点） | worktree: D:/autostack/.wt/lang-960/auto-lang | commit: 674473a27 | next: work
 
