@@ -776,11 +776,67 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                             Ok(format!("({l} != {r})"))
                         }
                     }
-                    // PLAN-961: named rejection until the numeric producer
-                    // unit ships (never a silent i32 fallback).
-                    hir::BinOp::Num { .. } => Err(A2xReject::unsupported_op(
-                        "typed numeric binary op: numeric emission ships with the PLAN-961 producer unit",
-                    )),
+                    // PLAN-961: typed numeric ops via the shared matrix.
+                    // PLAN-961: typed numeric ops (comparisons native;
+                    // arith on typed fall_res temps).
+                    hir::BinOp::Num { op, ty } => {
+                        use hir::NumOpKind as K;
+                        let bty = ty;
+                        let name = crate::lower::c_bname(bty);
+                        let is_cmp = matches!(op, K::Lt | K::Le | K::Gt | K::Ge | K::Eq | K::Ne);
+                        if is_cmp {
+                            let o = match op {
+                                K::Lt => "<",
+                                K::Le => "<=",
+                                K::Gt => ">",
+                                K::Ge => ">=",
+                                K::Eq => "==",
+                                _ => "!=",
+                            };
+                            return Ok(format!("({l} {o} {r})"));
+                        }
+                        if matches!(bty, hir::BuiltinType::F32 | hir::BuiltinType::F64) {
+                            let chan = if matches!(bty, hir::BuiltinType::F32) {
+                                "a2x_result_f32"
+                            } else {
+                                "a2x_result_f64"
+                            };
+                            let f: String = match op {
+                                K::Add => return Ok(format!("({l} + {r})")),
+                                K::Sub => return Ok(format!("({l} - {r})")),
+                                K::Mul => return Ok(format!("({l} * {r})")),
+                                K::Div => format!("a2x_div_{name}"),
+                                K::Rem => format!("a2x_rem_{name}"),
+                                _ => {
+                                    return Err(A2xReject::unsupported_op(format!(
+                                        "float bit op {op:?}"
+                                    )))
+                                }
+                            };
+                            return self.fall_res(id, chan, format!("{f}({l}, {r})"));
+                        }
+                        let t = crate::lower::builtin_ty_of(bty)?;
+                        let chan = crate::lower::c_result_ty(t)?;
+                        let dom = crate::lower::c_dom_ty(t)?;
+                        let f = match op {
+                            K::Add => format!("a2x_add_{name}"),
+                            K::Sub => format!("a2x_sub_{name}"),
+                            K::Mul => format!("a2x_mul_{name}"),
+                            K::Div => format!("a2x_div_{name}"),
+                            K::Rem => format!("a2x_rem_{name}"),
+                            K::And => format!("a2x_and_{name}"),
+                            K::Or => format!("a2x_or_{name}"),
+                            K::Xor => format!("a2x_xor_{name}"),
+                            K::Shl => format!("a2x_shl_{name}"),
+                            K::Shr => format!("a2x_shr_{name}"),
+                            _ => unreachable!(),
+                        };
+                        self.fall_res(
+                            id,
+                            chan,
+                            format!("{f}(({dom})({l}), ({dom})({r}))"),
+                        )
+                    }
                 }
             }
             hir::ExprKind::Unary { op, operand } => {
@@ -790,11 +846,20 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                         self.fall_res(id, "a2x_result", format!("a2x_neg({o})"))
                     }
                     hir::UnaryOp::NotBool => Ok(format!("!({o})")),
-                    // PLAN-961: named rejection until the numeric producer
-                    // unit ships.
-                    hir::UnaryOp::NegNumeric(_) => Err(A2xReject::unsupported_op(
-                        "typed negation: numeric emission ships with the PLAN-961 producer unit",
-                    )),                }
+                    // PLAN-961: typed negation (float inline flip; the
+                    // operand's range was verified — C unary minus on the
+                    // in-range narrow value cannot overflow the width).
+                    hir::UnaryOp::NegNumeric(bty) => {
+                        match bty {
+                            hir::BuiltinType::F32
+                            | hir::BuiltinType::F64
+                            | hir::BuiltinType::I8
+                            | hir::BuiltinType::I64 => Ok(format!("(-({}))", o)),
+                            other => Err(A2xReject::unsupported_op(format!(
+                                "typed negation on {other:?}"
+                            ))),
+                        }
+                    }                }
             }
             hir::ExprKind::Logical { op, lhs, rhs } => {
                 // bool operands are pure inline expressions in this

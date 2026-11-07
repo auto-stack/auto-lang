@@ -1078,6 +1078,32 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 Ok((RExpr::Local(self.local_name(local.0)?), ty))
             }
             hir::ExprKind::Constant { value } => Ok((RExpr::I32Lit(*value), Ty::I32)),
+            // PLAN-961: typed numeric constant — bit-exact payload.
+            hir::ExprKind::NumericConst { ty: bty, bits } => {
+                let t = builtin_ty(*bty)?;
+                let lit = num_lit(*bty, *bits)?;
+                Ok((lit, t))
+            }
+            // PLAN-961: conversion through the frozen matrix helper.
+            hir::ExprKind::Cast { operand, to } => {
+                let (v, from) = self.lower_expr(*operand, out)?;
+                let from_b = ty_builtin(from)
+                    .ok_or_else(|| A2xReject::unsupported_type(format!(
+                        "in `{}`: cast source {from:?} is not a numeric builtin",
+                        self.facts.name
+                    )))?;
+                if from_b == *to && from == builtin_ty(*to)? {
+                    return Ok((v, from));
+                }
+                let func = conv_helper(from_b, *to)?;
+                Ok((
+                    RExpr::Checked {
+                        func,
+                        args: vec![v],
+                    },
+                    builtin_ty(*to)?,
+                ))
+            }
             hir::ExprKind::StrLit { value } => match ty {
                 // owned promotion context (AP-4): an allocation
                 Ty::StrOwned => Ok((
@@ -1135,13 +1161,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     hir::BinOp::GeI32 => Ok((cmp(CmpOp::Ge, l, r), Ty::Bool)),
                     hir::BinOp::Eq => Ok((cmp(CmpOp::Eq, l, r), Ty::Bool)),
                     hir::BinOp::Ne => Ok((cmp(CmpOp::Ne, l, r), Ty::Bool)),
-                    // PLAN-961: the numeric Ty names render everywhere, but
-                    // numeric OP emission ships with the numeric producer
-                    // unit — until then a named rejection, never a silent
-                    // i32 fallback.
-                    hir::BinOp::Num { .. } => Err(A2xReject::unsupported_op(
-                        "typed numeric binary op: numeric emission ships with the PLAN-961 producer unit",
-                    )),
+                    hir::BinOp::Num { op, ty } => self.num_bin(*op, *ty, l, r),
                 }
             }
             hir::ExprKind::Unary { op, operand } => {
@@ -1155,11 +1175,28 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                         Ty::I32,
                     )),
                     hir::UnaryOp::NotBool => Ok((RExpr::Not(Box::new(o)), Ty::Bool)),
-                    // PLAN-961: typed negation — named rejection until the
-                    // numeric producer unit ships.
-                    hir::UnaryOp::NegNumeric(_) => Err(A2xReject::unsupported_op(
-                        "typed negation: numeric emission ships with the PLAN-961 producer unit",
-                    )),
+                    // PLAN-961: typed negation (signed checked / float
+                    // sign flip; unsigned was rejected at bind).
+                    hir::UnaryOp::NegNumeric(bty) => {
+                        let func = match bty {
+                            hir::BuiltinType::I8 => "a2x_neg_i8",
+                            hir::BuiltinType::I64 => "a2x_neg_i64",
+                            hir::BuiltinType::F32 => "a2x_neg_f32",
+                            hir::BuiltinType::F64 => "a2x_neg_f64",
+                            other => {
+                                return Err(A2xReject::unsupported_op(format!(
+                                    "typed negation on {other:?}"
+                                )))
+                            }
+                        };
+                        Ok((
+                            RExpr::Checked {
+                                func,
+                                args: vec![o],
+                            },
+                            builtin_ty(*bty)?,
+                        ))
+                    }
                 }
             }
             hir::ExprKind::Logical { op, lhs, rhs } => {
@@ -1709,6 +1746,305 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             Ok((v, ty))
         }
     }
+}
+
+// ---- PLAN-961 numeric emission helpers ----------------------------------
+
+/// The a2x Ty of a numeric builtin.
+pub(super) fn builtin_ty(b: hir::BuiltinType) -> Result<Ty, A2xReject> {
+    Ok(match b {
+        hir::BuiltinType::I32 => Ty::I32,
+        hir::BuiltinType::I8 => Ty::I8,
+        hir::BuiltinType::U8 => Ty::U8,
+        hir::BuiltinType::U32 => Ty::U32,
+        hir::BuiltinType::I64 => Ty::I64,
+        hir::BuiltinType::U64 => Ty::U64,
+        hir::BuiltinType::F32 => Ty::F32,
+        hir::BuiltinType::F64 => Ty::F64,
+        other => {
+            return Err(A2xReject::unsupported_type(format!(
+                "{other:?} is not a numeric builtin"
+            )))
+        }
+    })
+}
+
+/// The numeric builtin of an a2x Ty (None for non-numerics).
+pub(super) fn ty_builtin(t: Ty) -> Option<hir::BuiltinType> {
+    Some(match t {
+        Ty::I32 => hir::BuiltinType::I32,
+        Ty::I8 => hir::BuiltinType::I8,
+        Ty::U8 => hir::BuiltinType::U8,
+        Ty::U32 => hir::BuiltinType::U32,
+        Ty::I64 => hir::BuiltinType::I64,
+        Ty::U64 => hir::BuiltinType::U64,
+        Ty::F32 => hir::BuiltinType::F32,
+        Ty::F64 => hir::BuiltinType::F64,
+        _ => return None,
+    })
+}
+
+/// Bit-exact typed literal rendering (MIN spellings never via a wider
+/// type; floats render via raw-bit transmutes so NaN payloads and -0.0
+/// survive verbatim).
+pub(super) fn num_lit(b: hir::BuiltinType, bits: u64) -> Result<RExpr, A2xReject> {
+    Ok(match b {
+        hir::BuiltinType::I8 => RExpr::Checked {
+            func: "a2x_lit_i8",
+            args: vec![RExpr::I32Lit(bits as i8 as i32)],
+        },
+        hir::BuiltinType::I32 => RExpr::I32Lit(bits as i32),
+        hir::BuiltinType::U8 => RExpr::Checked {
+            func: "a2x_lit_u8",
+            args: vec![RExpr::I32Lit(bits as u8 as i32)],
+        },
+        hir::BuiltinType::U32 => RExpr::Checked {
+            func: "a2x_lit_u32",
+            args: vec![RExpr::I32Lit(bits as u32 as i32)],
+        },
+        hir::BuiltinType::I64 => RExpr::Checked {
+            func: "a2x_lit_i64",
+            args: vec![RExpr::I32Lit(bits as i32), RExpr::I32Lit((bits >> 32) as i32)],
+        },
+        hir::BuiltinType::U64 => RExpr::Checked {
+            func: "a2x_lit_u64",
+            args: vec![RExpr::I32Lit(bits as u32 as i32), RExpr::I32Lit((bits >> 32) as u32 as i32)],
+        },
+        hir::BuiltinType::F32 => RExpr::Checked {
+            func: "a2x_lit_f32",
+            args: vec![RExpr::I32Lit(bits as u32 as i32)],
+        },
+        hir::BuiltinType::F64 => RExpr::Checked {
+            func: "a2x_lit_f64",
+            args: vec![RExpr::I32Lit(bits as u32 as i32), RExpr::I32Lit((bits >> 32) as u32 as i32)],
+        },
+        other => {
+            return Err(A2xReject::unsupported_type(format!(
+                "{other:?} is not a numeric builtin"
+            )))
+        }
+    })
+}
+
+/// The frozen conversion helper name (checked matrix).
+pub(super) fn conv_helper(
+    from: hir::BuiltinType,
+    to: hir::BuiltinType,
+) -> Result<&'static str, A2xReject> {
+    use hir::BuiltinType as B;
+    Ok(match (from, to) {
+        (B::I8, B::I32) => "a2x_c_i8_i32",
+        (B::I8, B::I64) => "a2x_c_i8_i64",
+        (B::I32, B::I8) => "a2x_c_i32_i8",
+        (B::I32, B::I64) => "a2x_c_i32_i64",
+        (B::I32, B::U8) => "a2x_c_i32_u8",
+        (B::I32, B::U32) => "a2x_c_i32_u32",
+        (B::I32, B::U64) => "a2x_c_i32_u64",
+        (B::I64, B::I8) => "a2x_c_i64_i8",
+        (B::I64, B::I32) => "a2x_c_i64_i32",
+        (B::I64, B::U8) => "a2x_c_i64_u8",
+        (B::I64, B::U32) => "a2x_c_i64_u32",
+        (B::I64, B::U64) => "a2x_c_i64_u64",
+        (B::U8, B::I32) => "a2x_c_u8_i32",
+        (B::U8, B::I64) => "a2x_c_u8_i64",
+        (B::U32, B::I32) => "a2x_c_u32_i32",
+        (B::U32, B::I64) => "a2x_c_u32_i64",
+        (B::U32, B::U8) => "a2x_c_u32_u8",
+        (B::U64, B::I64) => "a2x_c_u64_i64",
+        (B::U64, B::U32) => "a2x_c_u64_u32",
+        (B::U64, B::U8) => "a2x_c_u64_u8",
+        (B::I8, B::F32) => "a2x_c_i8_f32",
+        (B::I8, B::F64) => "a2x_c_i8_f64",
+        (B::I32, B::F32) => "a2x_c_i32_f32",
+        (B::I32, B::F64) => "a2x_c_i32_f64",
+        (B::I64, B::F32) => "a2x_c_i64_f32",
+        (B::I64, B::F64) => "a2x_c_i64_f64",
+        (B::U8, B::F32) => "a2x_c_u8_f32",
+        (B::U8, B::F64) => "a2x_c_u8_f64",
+        (B::U32, B::F32) => "a2x_c_u32_f32",
+        (B::U32, B::F64) => "a2x_c_u32_f64",
+        (B::U64, B::F32) => "a2x_c_u64_f32",
+        (B::U64, B::F64) => "a2x_c_u64_f64",
+        (B::F32, B::I8) => "a2x_c_f32_i8",
+        (B::F32, B::I32) => "a2x_c_f32_i32",
+        (B::F32, B::I64) => "a2x_c_f32_i64",
+        (B::F32, B::U8) => "a2x_c_f32_u8",
+        (B::F32, B::U32) => "a2x_c_f32_u32",
+        (B::F64, B::I8) => "a2x_c_f64_i8",
+        (B::F64, B::I32) => "a2x_c_f64_i32",
+        (B::F64, B::I64) => "a2x_c_f64_i64",
+        (B::F64, B::U8) => "a2x_c_f64_u8",
+        (B::F64, B::U32) => "a2x_c_f64_u32",
+        (B::F64, B::U64) => "a2x_c_f64_u64",
+        (B::F32, B::F64) => "a2x_c_f32_f64",
+        (B::F64, B::F32) => "a2x_c_f64_f32",
+        (a, b) => {
+            return Err(A2xReject::unsupported_op(format!(
+                "conversion {a:?} -> {b:?} is outside the frozen matrix"
+            )))
+        }
+    })
+}
+
+impl<'v, 'a> FnLowering<'v, 'a> {
+    /// Typed numeric binary op → checked helper / comparison.
+    pub(super) fn num_bin(
+        &mut self,
+        op: hir::NumOpKind,
+        ty: hir::BuiltinType,
+        l: RExpr,
+        r: RExpr,
+    ) -> Result<(RExpr, Ty), A2xReject> {
+        num_bin_expr(op, ty, l, r)
+    }
+}
+
+/// Shared typed-numeric binary emission (both lowering families).
+pub(super) fn num_bin_expr(
+    op: hir::NumOpKind,
+    ty: hir::BuiltinType,
+    l: RExpr,
+    r: RExpr,
+) -> Result<(RExpr, Ty), A2xReject> {
+    use hir::NumOpKind as K;
+    let out_ty = builtin_ty(ty)?;
+    let is_cmp = matches!(op, K::Lt | K::Le | K::Gt | K::Ge | K::Eq | K::Ne);
+    let res_ty = if is_cmp { Ty::Bool } else { out_ty };
+    if ty.is_float() {
+        let f: &'static str = match (op, is_float32(ty)) {
+            (K::Add, true) => "a2x_add_f32",
+            (K::Add, false) => "a2x_add_f64",
+            (K::Sub, true) => "a2x_sub_f32",
+            (K::Sub, false) => "a2x_sub_f64",
+            (K::Mul, true) => "a2x_mul_f32",
+            (K::Mul, false) => "a2x_mul_f64",
+            (K::Div, true) => "a2x_div_f32",
+            (K::Div, false) => "a2x_div_f64",
+            (K::Rem, true) => "a2x_rem_f32",
+            (K::Rem, false) => "a2x_rem_f64",
+            _ => {
+                return Err(A2xReject::unsupported_op(format!(
+                    "float op {op:?}"
+                )))
+            }
+        };
+        if is_cmp {
+            let c = match op {
+                K::Lt => CmpOp::Lt,
+                K::Le => CmpOp::Le,
+                K::Gt => CmpOp::Gt,
+                K::Ge => CmpOp::Ge,
+                K::Eq => CmpOp::Eq,
+                _ => CmpOp::Ne,
+            };
+            // Float comparisons use Rust's native IEEE operators.
+            return Ok((cmp(c, l, r), Ty::Bool));
+        }
+        // Float arith is infallible except div — uniform Checked
+        // helpers keep the fallible-root discipline.
+        return Ok((
+            RExpr::Checked {
+                func: f,
+                args: vec![l, r],
+            },
+            res_ty,
+        ));
+    }
+    if is_cmp {
+        let c = match op {
+            K::Lt => CmpOp::Lt,
+            K::Le => CmpOp::Le,
+            K::Gt => CmpOp::Gt,
+            K::Ge => CmpOp::Ge,
+            K::Eq => CmpOp::Eq,
+            _ => CmpOp::Ne,
+        };
+        // Rust's native operators are already width/signedness-correct.
+        return Ok((cmp(c, l, r), Ty::Bool));
+    }
+    let f = int_helper(op, ty)?;
+    Ok((
+        RExpr::Checked {
+            func: f,
+            args: vec![l, r],
+        },
+        res_ty,
+    ))
+}
+
+fn is_float32(b: hir::BuiltinType) -> bool {
+    matches!(b, hir::BuiltinType::F32)
+}
+
+fn int_helper(op: hir::NumOpKind, ty: hir::BuiltinType) -> Result<&'static str, A2xReject> {
+    use hir::BuiltinType as B;
+    use hir::NumOpKind as K;
+    Ok(
+        match (op, ty) {
+            (K::Add, B::I8) => "a2x_add_i8",
+            (K::Sub, B::I8) => "a2x_sub_i8",
+            (K::Mul, B::I8) => "a2x_mul_i8",
+            (K::Div, B::I8) => "a2x_div_i8",
+            (K::Rem, B::I8) => "a2x_rem_i8",
+            (K::Add, B::U8) => "a2x_add_u8",
+            (K::Sub, B::U8) => "a2x_sub_u8",
+            (K::Mul, B::U8) => "a2x_mul_u8",
+            (K::Div, B::U8) => "a2x_div_u8",
+            (K::Rem, B::U8) => "a2x_rem_u8",
+            (K::Add, B::U32) => "a2x_add_u32",
+            (K::Sub, B::U32) => "a2x_sub_u32",
+            (K::Mul, B::U32) => "a2x_mul_u32",
+            (K::Div, B::U32) => "a2x_div_u32",
+            (K::Rem, B::U32) => "a2x_rem_u32",
+            (K::Add, B::I64) => "a2x_add_i64",
+            (K::Sub, B::I64) => "a2x_sub_i64",
+            (K::Mul, B::I64) => "a2x_mul_i64",
+            (K::Div, B::I64) => "a2x_div_i64",
+            (K::Rem, B::I64) => "a2x_rem_i64",
+            (K::Add, B::U64) => "a2x_add_u64",
+            (K::Sub, B::U64) => "a2x_sub_u64",
+            (K::Mul, B::U64) => "a2x_mul_u64",
+            (K::Div, B::U64) => "a2x_div_u64",
+            (K::Rem, B::U64) => "a2x_rem_u64",
+            // i32 legacy ops keep the frozen subcodes; only bit/shift ride
+            // the numeric helpers for i32.
+            (K::And, B::I32) => "a2x_and_i32",
+            (K::Or, B::I32) => "a2x_or_i32",
+            (K::Xor, B::I32) => "a2x_xor_i32",
+            (K::Shl, B::I32) => "a2x_shl_i32",
+            (K::Shr, B::I32) => "a2x_shr_i32",
+            (K::And, B::I8) => "a2x_and_i8",
+            (K::Or, B::I8) => "a2x_or_i8",
+            (K::Xor, B::I8) => "a2x_xor_i8",
+            (K::Shl, B::I8) => "a2x_shl_i8",
+            (K::Shr, B::I8) => "a2x_shr_i8",
+            (K::And, B::U8) => "a2x_and_u8",
+            (K::Or, B::U8) => "a2x_or_u8",
+            (K::Xor, B::U8) => "a2x_xor_u8",
+            (K::Shl, B::U8) => "a2x_shl_u8",
+            (K::Shr, B::U8) => "a2x_shr_u8",
+            (K::And, B::U32) => "a2x_and_u32",
+            (K::Or, B::U32) => "a2x_or_u32",
+            (K::Xor, B::U32) => "a2x_xor_u32",
+            (K::Shl, B::U32) => "a2x_shl_u32",
+            (K::Shr, B::U32) => "a2x_shr_u32",
+            (K::And, B::I64) => "a2x_and_i64",
+            (K::Or, B::I64) => "a2x_or_i64",
+            (K::Xor, B::I64) => "a2x_xor_i64",
+            (K::Shl, B::I64) => "a2x_shl_i64",
+            (K::Shr, B::I64) => "a2x_shr_i64",
+            (K::And, B::U64) => "a2x_and_u64",
+            (K::Or, B::U64) => "a2x_or_u64",
+            (K::Xor, B::U64) => "a2x_xor_u64",
+            (K::Shl, B::U64) => "a2x_shl_u64",
+            (K::Shr, B::U64) => "a2x_shr_u64",
+            (op, ty) => {
+                return Err(A2xReject::unsupported_op(format!(
+                    "integer op {op:?} on {ty:?}"
+                )))
+            }
+        },
+    )
 }
 
 fn arith(func: &'static str, l: RExpr, r: RExpr) -> RExpr {

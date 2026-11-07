@@ -102,9 +102,11 @@ mod tests {
         // The explicit no-trace certification fixture pins this exact runtime
         // material (abi CERTIFICATION_C_RUNTIME_SHA256); renderer drift fails
         // here first, before any host qualification compares the pin.
+        // PLAN-961: re-pinned — the C runtime gained the numeric helper
+        // family (typed channels, checked matrix, shifts, conversions).
         assert_eq!(
             ace_a2x_core::sha256::sha256_hex(runtime_source(&[]).as_bytes()),
-            "c7cf3971f2058ef57ca4d55386336abceb7af60ceb9fcef71ed4641954de6427"
+            "bd260a8b7d62f2b2956488fdeabffcf027605da89608ff81865cf8a8151de12d"
         );
     }
 

@@ -552,11 +552,12 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         lhs: Box::new(l),
                         rhs: Box::new(r),
                     }),
-                    // PLAN-961: named rejection until the numeric producer
-                    // unit ships (never a silent i32 fallback).
-                    hir::BinOp::Num { .. } => Err(A2xReject::unsupported_op(
-                        "typed numeric binary op: numeric emission ships with the PLAN-961 producer unit",
-                    )),
+                    // PLAN-961: typed numeric ops ride the shared
+                    // num_bin matrix (checked helpers / native compares).
+                    hir::BinOp::Num { op, ty } => {
+                        let (v, _) = crate::lower::num_bin_expr(op, ty, l, r)?;
+                        Ok(v)
+                    }
                 }
             }
             other_kind => self.expr_rest(id, e, other_kind, out),
@@ -665,11 +666,21 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 match op {
                     hir::UnaryOp::NegI32 => self.checked_temp("a2x_neg", vec![o], id, out),
                     hir::UnaryOp::NotBool => Ok(RExpr::Not(Box::new(o))),
-                    // PLAN-961: named rejection until the numeric producer
-                    // unit ships.
-                    hir::UnaryOp::NegNumeric(_) => Err(A2xReject::unsupported_op(
-                        "typed negation: numeric emission ships with the PLAN-961 producer unit",
-                    )),
+                    // PLAN-961: typed negation via the runtime helpers.
+                    hir::UnaryOp::NegNumeric(bty) => {
+                        let func = match bty {
+                            hir::BuiltinType::I8 => "a2x_neg_i8",
+                            hir::BuiltinType::I64 => "a2x_neg_i64",
+                            hir::BuiltinType::F32 => "a2x_neg_f32",
+                            hir::BuiltinType::F64 => "a2x_neg_f64",
+                            other => {
+                                return Err(A2xReject::unsupported_op(format!(
+                                    "typed negation on {other:?}"
+                                )))
+                            }
+                        };
+                        self.checked_temp(func, vec![o], id, out)
+                    }
                 }
             }
             hir::ExprKind::Logical { op, lhs, rhs } => {

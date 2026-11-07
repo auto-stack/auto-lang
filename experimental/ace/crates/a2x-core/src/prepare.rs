@@ -173,6 +173,13 @@ fn collect_expr(
             .ok_or_else(|| A2xReject::new("a2x.internal", "expr index out of range"))?;
         match &e.kind {
             hir::ExprKind::ReadLocal { .. } | hir::ExprKind::Constant { .. } => {}
+            // PLAN-961: the numeric const is a leaf; the cast walks its
+            // operand and records its own op class.
+            hir::ExprKind::NumericConst { .. } => {}
+            hir::ExprKind::Cast { operand, .. } => {
+                ops.insert("cast");
+                stack.push((*operand, d + 1));
+            }
             hir::ExprKind::Binary { op, lhs, rhs, .. } => {
                 ops.insert(op.as_str());
                 stack.push((*lhs, d + 1));
@@ -654,6 +661,16 @@ fn ser_expr(
             out.push_str(&format!("${}", id));
         }
         hir::ExprKind::Constant { value } => out.push_str(&format!("c{}", value)),
+        // PLAN-961: numeric const serializes (kind, ty, bits); the cast
+        // wraps its operand with the destination.
+        hir::ExprKind::NumericConst { ty, bits } => {
+            out.push_str(&format!("nc:{:?}:{bits}", ty))
+        }
+        hir::ExprKind::Cast { operand, to } => {
+            out.push_str(&format!("cast:{:?}(", to));
+            ser_expr(view, f, *operand, canon, next, out, depth + 1)?;
+            out.push(')');
+        }
         hir::ExprKind::Binary { op, lhs, rhs, .. } => {
             out.push_str(&format!("{}(", op.as_str()));
             ser_expr(view, f, *lhs, canon, next, out, depth + 1)?;

@@ -714,11 +714,70 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                         };
                         Ok((format!("(({}) {} ({}))", l, o, r), Ty::Bool))
                     }
-                    // PLAN-961: named rejection until the numeric producer
-                    // unit ships (never a silent i32 fallback).
-                    hir::BinOp::Num { .. } => Err(A2xReject::unsupported_op(
-                        "typed numeric binary op: numeric emission ships with the PLAN-961 producer unit",
-                    )),
+                    // PLAN-961: typed numeric ops via the shared matrix.
+                    // PLAN-961: typed numeric ops via the shared matrix.
+                    hir::BinOp::Num { op, ty } => {
+                        use hir::NumOpKind as K;
+                        let bty = *ty;
+                        let name = crate::lower::c_bname(bty);
+                        let out_ty = crate::lower::builtin_ty_of(bty)?;
+                        let is_cmp = matches!(op, K::Lt | K::Le | K::Gt | K::Ge | K::Eq | K::Ne);
+                        if is_cmp {
+                            let o = match op {
+                                K::Lt => "<",
+                                K::Le => "<=",
+                                K::Gt => ">",
+                                K::Ge => ">=",
+                                K::Eq => "==",
+                                _ => "!=",
+                            };
+                            return Ok((format!("(({}) {} ({}))", l, o, r), Ty::Bool));
+                        }
+                        if matches!(bty, hir::BuiltinType::F32 | hir::BuiltinType::F64) {
+                            let chan = if matches!(bty, hir::BuiltinType::F32) {
+                                "a2x_result_f32"
+                            } else {
+                                "a2x_result_f64"
+                            };
+                            let f: String = match op {
+                                K::Add => return Ok((format!("(({}) + ({}))", l, r), out_ty)),
+                                K::Sub => return Ok((format!("(({}) - ({}))", l, r), out_ty)),
+                                K::Mul => return Ok((format!("(({}) * ({}))", l, r), out_ty)),
+                                K::Div => format!("a2x_div_{name}"),
+                                K::Rem => format!("a2x_rem_{name}"),
+                                _ => {
+                                    return Err(A2xReject::unsupported_op(format!(
+                                        "float bit op {op:?}"
+                                    )))
+                                }
+                            };
+                            let t = self.fresh_temp();
+                            self.out.push(format!("{chan} {t} = {f}({l}, {r});"));
+                            self.check_trap(&t);
+                            return Ok((format!("{t}.value"), out_ty));
+                        }
+                        let chan = crate::lower::c_result_ty(out_ty)?;
+                        let dom = crate::lower::c_dom_ty(out_ty)?;
+                        let f = match op {
+                            K::Add => format!("a2x_add_{name}"),
+                            K::Sub => format!("a2x_sub_{name}"),
+                            K::Mul => format!("a2x_mul_{name}"),
+                            K::Div => format!("a2x_div_{name}"),
+                            K::Rem => format!("a2x_rem_{name}"),
+                            K::And => format!("a2x_and_{name}"),
+                            K::Or => format!("a2x_or_{name}"),
+                            K::Xor => format!("a2x_xor_{name}"),
+                            K::Shl => format!("a2x_shl_{name}"),
+                            K::Shr => format!("a2x_shr_{name}"),
+                            _ => unreachable!(),
+                        };
+                        let t = self.fresh_temp();
+                        self.out.push(format!(
+                            "{chan} {t} = {f}(({dom})({l}), ({dom})({r}));"
+                        ));
+                        self.check_trap(&t);
+                        Ok((format!("{t}.value"), out_ty))
+                    }
                 }
             }
             hir::ExprKind::Unary { op, operand } => {
@@ -731,11 +790,28 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                         Ok((format!("{}.value", t), Ty::I32))
                     }
                     hir::UnaryOp::NotBool => Ok((format!("(!({}))", o), Ty::Bool)),
-                    // PLAN-961: named rejection until the numeric producer
-                    // unit ships.
-                    hir::UnaryOp::NegNumeric(_) => Err(A2xReject::unsupported_op(
-                        "typed negation: numeric emission ships with the PLAN-961 producer unit",
-                    )),
+                    // PLAN-961: typed negation (float inline; signed
+                    // via the checked helper pinned on a typed temp).
+                    hir::UnaryOp::NegNumeric(bty) => {
+                        let out_ty = crate::lower::builtin_ty_of(*bty)?;
+                        if matches!(bty, hir::BuiltinType::F32 | hir::BuiltinType::F64) {
+                            return Ok((format!("(-({}))", o), out_ty));
+                        }
+                        let name = match bty {
+                            hir::BuiltinType::I8 => "a2x_neg_i8",
+                            hir::BuiltinType::I64 => "a2x_neg_i64",
+                            other => {
+                                return Err(A2xReject::unsupported_op(format!(
+                                    "typed negation on {other:?}"
+                                )))
+                            }
+                        };
+                        let t = self.fresh_temp();
+                        self.out
+                            .push(format!("a2x_result_i64 {t} = {name}((int64_t){o});"));
+                        self.check_trap(&t);
+                        Ok((format!("{t}.value"), out_ty))
+                    }
                 }
             }
             hir::ExprKind::Logical { op, lhs, rhs } => {

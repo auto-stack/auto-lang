@@ -64,6 +64,8 @@ mod resource_budget;
 mod rt_common;
 #[path = "cases/scalar_semantics.rs"]
 mod scalar_semantics;
+#[path = "cases/numeric_semantics.rs"]
+mod numeric_semantics;
 #[path = "cases/store_cache.rs"]
 mod store_cache;
 #[path = "cases/store_coll_904.rs"]

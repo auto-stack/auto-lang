@@ -1926,7 +1926,7 @@ pub fn runtime_identity(target: Target, runtime_page: &str) -> String {
 /// emitter to reconstruct the expected bytes. The source conformance test
 /// compares this pin with the current runtime material.
 pub const CERTIFICATION_C_RUNTIME_SHA256: &str =
-    "c7cf3971f2058ef57ca4d55386336abceb7af60ceb9fcef71ed4641954de6427";
+    "bd260a8b7d62f2b2956488fdeabffcf027605da89608ff81865cf8a8151de12d";
 pub fn certification_runtime_policy(target: Target) -> String {
     let page = match target {
         Target::Native => hash(ace_a2x_c::foreign::FAILURE_RUNTIME.as_bytes()),

@@ -73,11 +73,66 @@ fn c_ty(ty: Ty) -> Result<&'static str, A2xReject> {
     match ty {
         Ty::I32 => Ok("int32_t"),
         Ty::Bool => Ok("bool"),
+        // PLAN-961: the numeric C locals in their native widths.
+        Ty::I8 => Ok("int8_t"),
+        Ty::U8 => Ok("uint8_t"),
+        Ty::U32 => Ok("uint32_t"),
+        Ty::I64 => Ok("int64_t"),
+        Ty::U64 => Ok("uint64_t"),
+        Ty::F32 => Ok("float"),
+        Ty::F64 => Ok("double"),
         other => Err(A2xReject::unsupported_type(format!(
-            "the C scalar channel serves i32/bool locals, not `{:?}`",
+            "the C scalar channel serves the numeric/bool locals, not `{:?}`",
             other
         ))),
     }
+}
+
+/// PLAN-961: the typed result CHANNEL of a value type (the trap-carrying
+/// struct family); i32/bool keep the frozen `a2x_result`.
+pub(crate) fn c_result_ty(ty: Ty) -> Result<&'static str, A2xReject> {
+    Ok(match ty {
+        Ty::I32 | Ty::Bool => "a2x_result",
+        Ty::I8 | Ty::I64 => "a2x_result_i64",
+        Ty::U8 | Ty::U32 | Ty::U64 => "a2x_result_u64",
+        Ty::F32 => "a2x_result_f32",
+        Ty::F64 => "a2x_result_f64",
+        other => {
+            return Err(A2xReject::unsupported_type(format!(
+                "no numeric result channel for {other:?}"
+            )))
+        }
+    })
+}
+
+/// PLAN-961: the domain type the typed helpers take (i8/u8/u32 widen to
+/// the i64/u64 helper domain; the helpers range-check internally).
+pub(crate) fn c_dom_ty(ty: Ty) -> Result<&'static str, A2xReject> {
+    Ok(match ty {
+        Ty::I8 | Ty::I64 => "int64_t",
+        Ty::U8 | Ty::U32 | Ty::U64 => "uint64_t",
+        other => c_ty(ty)?,
+    })
+}
+
+/// PLAN-961: helper suffix per value type (i32 keeps the frozen unsuffixed
+/// i32 helpers for arithmetic; bit/shift ops gain _i32).
+fn c_num_suffix(ty: Ty) -> Result<&'static str, A2xReject> {
+    Ok(match ty {
+        Ty::I32 => "i32",
+        Ty::I8 => "i8",
+        Ty::U8 => "u8",
+        Ty::U32 => "u32",
+        Ty::I64 => "i64",
+        Ty::U64 => "u64",
+        Ty::F32 => "f32",
+        Ty::F64 => "f64",
+        other => {
+            return Err(A2xReject::unsupported_type(format!(
+                "no numeric helper suffix for {other:?}"
+            )))
+        }
+    })
 }
 
 /// One lowered C function (name, params, result, origin, body text).
@@ -169,6 +224,9 @@ pub fn write_fragment(f: &CFn, out: &mut dyn std::fmt::Write) -> std::fmt::Resul
 struct FnLowering<'v, 'a> {
     view: &'v SemanticView<'a>,
     facts: &'v FnFacts<'a>,
+    /// PLAN-961: the function's own trap-return channel (typed results
+    /// return their typed struct; i32/bool keep a2x_result).
+    ret_chan: &'static str,
     local_names: HashMap<u32, String>,
     out: Vec<String>,
     temp_counter: usize,
@@ -197,6 +255,97 @@ impl<'v, 'a> FnLowering<'v, 'a> {
         ));
     }
 
+    /// PLAN-961: pin one typed fallible numeric call into a fresh typed
+    /// temp (checked, early-returned) and yield `tN.value`.
+    fn typed_call(&mut self, chan: &str, call: String) -> String {
+        let t = self.fresh_temp();
+        self.out.push(format!("{chan} {t} = {call};"));
+        // The trap propagates through the FUNCTION's channel (a typed
+        // temp inside an i32-result function narrows to a2x_result{0,trap}).
+        self.out.push(format!(
+            "if ({t}.trap != A2X_TRAP_NONE) {{ return ({}){{ 0, {t}.trap }}; }}",
+            self.ret_chan
+        ));
+        format!("{t}.value")
+    }
+
+    /// PLAN-961: typed_call + an explicit narrowing cast to the value's
+    /// own C width (u8/u32 helpers return the u64 channel — W4-clean
+    /// assignment needs the cast; range was checked inside the helper).
+    fn typed_call_as(&mut self, chan: &str, call: String, cast: &str) -> String {
+        let v = self.typed_call(chan, call);
+        format!("({cast})({v})")
+    }
+
+    /// PLAN-961: typed numeric binary emission. Integers ride the typed
+    /// checked helpers; comparisons use native C operators (width/
+    /// signedness correct); float +,-,* are infallible native ops, / and %
+    /// go through the trap/fmod helpers.
+    fn num_bin_c(
+        &mut self,
+        op: hir::NumOpKind,
+        bty: hir::BuiltinType,
+        l: String,
+        r: String,
+    ) -> Result<String, A2xReject> {
+        use hir::NumOpKind as K;
+        let name = c_bname(bty);
+        let is_cmp = matches!(op, K::Lt | K::Le | K::Gt | K::Ge | K::Eq | K::Ne);
+        if is_cmp {
+            let o = match op {
+                K::Lt => "<",
+                K::Le => "<=",
+                K::Gt => ">",
+                K::Ge => ">=",
+                K::Eq => "==",
+                _ => "!=",
+            };
+            return Ok(format!("(({}) {} ({}))", l, o, r));
+        }
+        if matches!(bty, hir::BuiltinType::F32 | hir::BuiltinType::F64) {
+            let chan = if matches!(bty, hir::BuiltinType::F32) {
+                "a2x_result_f32"
+            } else {
+                "a2x_result_f64"
+            };
+            let f: String = match op {
+                K::Add => return Ok(format!("(({}) + ({}))", l, r)),
+                K::Sub => return Ok(format!("(({}) - ({}))", l, r)),
+                K::Mul => return Ok(format!("(({}) * ({}))", l, r)),
+                K::Div => format!("a2x_div_{name}"),
+                K::Rem => format!("a2x_rem_{name}"),
+                _ => {
+                    return Err(A2xReject::unsupported_op(format!(
+                        "float bit op {op:?}"
+                    )))
+                }
+            };
+            return Ok(self.typed_call(chan, format!("{f}({l}, {r})")));
+        }
+        let ty = builtin_ty_of(bty)?;
+        let dom = c_dom_ty(ty)?;
+        let chan = c_result_ty(ty)?;
+        let f = match op {
+            K::Add => format!("a2x_add_{name}"),
+            K::Sub => format!("a2x_sub_{name}"),
+            K::Mul => format!("a2x_mul_{name}"),
+            K::Div => format!("a2x_div_{name}"),
+            K::Rem => format!("a2x_rem_{name}"),
+            K::And => format!("a2x_and_{name}"),
+            K::Or => format!("a2x_or_{name}"),
+            K::Xor => format!("a2x_xor_{name}"),
+            K::Shl => format!("a2x_shl_{name}"),
+            K::Shr => format!("a2x_shr_{name}"),
+            _ => unreachable!("cmp handled above"),
+        };
+        let cast = c_ty(ty)?;
+        Ok(self.typed_call_as(
+            chan,
+            format!("{f}(({dom})({l}), ({dom})({r}))"),
+            cast,
+        ))
+    }
+
     /// Lower an expression whose RESULT must be side-effect-free at its
     /// use site: fallible roots (checked ops, user calls) pin into fresh
     /// `a2x_result` temporaries (checked + returned on trap), trace marks
@@ -219,6 +368,52 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 } else {
                     Ok(format!("(int32_t){}", value))
                 }
+            }
+            // PLAN-961: typed numeric constants — exact payload spellings
+            // (MIN via constant expressions; floats via raw-bit
+            // constructors so NaN payloads and -0.0 survive verbatim).
+            hir::ExprKind::NumericConst { ty, bits } => Ok(match ty {
+                hir::BuiltinType::I8 => {
+                    let v = *bits as u8 as i8;
+                    c_min_or_cast_i8(v)
+                }
+                hir::BuiltinType::I32 => c_min_or_cast_i32(*bits as i32),
+                hir::BuiltinType::U8 => format!("(uint8_t){}", *bits as u8),
+                hir::BuiltinType::U32 => format!("(uint32_t){}u", *bits as u32),
+                hir::BuiltinType::I64 => c_min_or_cast_i64(*bits as i64),
+                hir::BuiltinType::U64 => format!("(uint64_t){}ull", *bits),
+                hir::BuiltinType::F32 => {
+                    format!("a2x_f32_bits({}u)", *bits as u32)
+                }
+                hir::BuiltinType::F64 => {
+                    format!("a2x_f64_bits({}ull)", *bits)
+                }
+                other => {
+                    return Err(A2xReject::unsupported_type(format!(
+                        "{other:?} is not a numeric builtin"
+                    )))
+                }
+            }),
+            // PLAN-961: conversion through the frozen helper matrix.
+            hir::ExprKind::Cast { operand, to } => {
+                let v = self.lower_pure(*operand)?;
+                let from = self
+                    .view
+                    .resolve_use_ty(
+                        self.facts.body.exprs[operand.0 as usize].ty,
+                    )
+                    .map_err(|_| A2xReject::unsupported_type("cast source type"))?;
+                let from_b = c_builtin_of(from)?;
+                if from_b == *to {
+                    return Ok(v);
+                }
+                let to_ty = builtin_ty_of(*to)?;
+                let chan = c_result_ty(to_ty)?;
+                let dom = c_dom_ty(builtin_ty_of(from_b)?)?;
+                Ok(self.typed_call(
+                    chan,
+                    format!("a2x_c_{}_{}(({}){})", c_bname(from_b), c_bname(*to), dom, v),
+                ))
             }
             hir::ExprKind::Binary { op, lhs, rhs, .. } => {
                 // pin BOTH operands at their source-order positions first
@@ -259,11 +454,9 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                         };
                         Ok(format!("(({}) {} ({}))", l, o, r))
                     }
-                    // PLAN-961: named rejection until the numeric producer
-                    // unit ships (never a silent i32 fallback).
-                    hir::BinOp::Num { .. } => Err(A2xReject::unsupported_op(
-                        "typed numeric binary op: numeric emission ships with the PLAN-961 producer unit",
-                    )),
+                    hir::BinOp::Num { op, ty } => {
+                        self.num_bin_c(*op, *ty, l, r)
+                    }
                 }
             }
             hir::ExprKind::Unary { op, operand } => {
@@ -276,11 +469,27 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                         Ok(format!("{}.value", t))
                     }
                     hir::UnaryOp::NotBool => Ok(format!("(!({}))", o)),
-                    // PLAN-961: named rejection until the numeric producer
-                    // unit ships.
-                    hir::UnaryOp::NegNumeric(_) => Err(A2xReject::unsupported_op(
-                        "typed negation: numeric emission ships with the PLAN-961 producer unit",
-                    )),
+                    // PLAN-961: typed negation (signed checked; float
+                    // sign flip inline).
+                    hir::UnaryOp::NegNumeric(bty) => {
+                        if matches!(bty, hir::BuiltinType::F32 | hir::BuiltinType::F64) {
+                            return Ok(format!("(-({}))", o));
+                        }
+                        let name = match bty {
+                            hir::BuiltinType::I8 => "a2x_neg_i8",
+                            hir::BuiltinType::I64 => "a2x_neg_i64",
+                            other => {
+                                return Err(A2xReject::unsupported_op(format!(
+                                    "typed negation on {other:?}"
+                                )))
+                            }
+                        };
+                        let dom = c_dom_ty(builtin_ty_of(*bty)?)?;
+                        Ok(self.typed_call(
+                            "a2x_result_i64",
+                            format!("{name}((int64_t){})", o),
+                        ))
+                    }
                 }
             }
             hir::ExprKind::Logical { op, lhs, rhs } => {
@@ -291,6 +500,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 let mut side = FnLowering {
                     view: self.view,
                     facts: self.facts,
+                    ret_chan: self.ret_chan,
                     local_names: clone_map(&self.local_names),
                     out: Vec::new(),
                     temp_counter: self.temp_counter,
@@ -498,7 +708,50 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             }
             hir::Stmt::Return { value } => {
                 let v = self.lower_pure(*value)?;
-                self.out.push(format!("return a2x_value({});", v));
+                // PLAN-961: the return channel follows the expr's own
+                // type (typed numerics wrap in their own OK struct).
+                let rty = self
+                    .view
+                    .resolve_use_ty(
+                        self.facts.body.exprs[value.0 as usize].ty,
+                    )
+                    .map_err(|_| {
+                        A2xReject::unsupported_type("return type outside the channel")
+                    })?;
+                match rty {
+                    Ty::I32 | Ty::Bool => {
+                        self.out.push(format!("return a2x_value({});", v));
+                    }
+                    Ty::I8 | Ty::I64 => {
+                        self.out.push(format!(
+                            "return (a2x_result_i64){{ (int64_t)({}), A2X_TRAP_NONE }};",
+                            v
+                        ));
+                    }
+                    Ty::U8 | Ty::U32 | Ty::U64 => {
+                        self.out.push(format!(
+                            "return (a2x_result_u64){{ (uint64_t)({}), A2X_TRAP_NONE }};",
+                            v
+                        ));
+                    }
+                    Ty::F32 => {
+                        self.out.push(format!(
+                            "return (a2x_result_f32){{ (float)({}), A2X_TRAP_NONE }};",
+                            v
+                        ));
+                    }
+                    Ty::F64 => {
+                        self.out.push(format!(
+                            "return (a2x_result_f64){{ (double)({}), A2X_TRAP_NONE }};",
+                            v
+                        ));
+                    }
+                    _ => {
+                        return Err(A2xReject::unsupported_type(
+                            "return type outside the numeric channels",
+                        ))
+                    }
+                }
             }
             hir::Stmt::If { cond, then, els } => {
                 // the condition materializes into a bool temporary first:
@@ -630,9 +883,12 @@ pub(crate) fn lower_foreign_fn_c(
         params.push((c_ty(ty)?.to_string(), local_names[&id].clone()));
     }
 
+    let ret_chan = c_result_ty(facts.result).unwrap_or("a2x_result");
+    let ret_chan: &'static str = Box::leak(ret_chan.to_string().into_boxed_str());
     let mut lowering = FnLowering {
         view,
         facts,
+        ret_chan,
         local_names,
         out: Vec::new(),
         temp_counter: 0,
@@ -664,4 +920,70 @@ pub(crate) fn lower_foreign_fn_c(
         origin: facts.origin,
         body: lowering.out,
     })
+}
+
+/// PLAN-961 helpers mapping the HIR builtin axis onto C spellings.
+pub(crate) fn builtin_ty_of(b: hir::BuiltinType) -> Result<Ty, A2xReject> {
+    Ok(match b {
+        hir::BuiltinType::I32 => Ty::I32,
+        hir::BuiltinType::I8 => Ty::I8,
+        hir::BuiltinType::U8 => Ty::U8,
+        hir::BuiltinType::U32 => Ty::U32,
+        hir::BuiltinType::I64 => Ty::I64,
+        hir::BuiltinType::U64 => Ty::U64,
+        hir::BuiltinType::F32 => Ty::F32,
+        hir::BuiltinType::F64 => Ty::F64,
+        other => {
+            return Err(A2xReject::unsupported_type(format!(
+                "{other:?} is not a numeric builtin"
+            )))
+        }
+    })
+}
+
+pub(crate) fn c_builtin_of(t: Ty) -> Result<hir::BuiltinType, A2xReject> {
+    Ok(match t {
+        Ty::I32 => hir::BuiltinType::I32,
+        Ty::I8 => hir::BuiltinType::I8,
+        Ty::U8 => hir::BuiltinType::U8,
+        Ty::U32 => hir::BuiltinType::U32,
+        Ty::I64 => hir::BuiltinType::I64,
+        Ty::U64 => hir::BuiltinType::U64,
+        Ty::F32 => hir::BuiltinType::F32,
+        Ty::F64 => hir::BuiltinType::F64,
+        other => {
+            return Err(A2xReject::unsupported_type(format!(
+                "{other:?} is not numeric"
+            )))
+        }
+    })
+}
+
+pub(crate) fn c_bname(b: hir::BuiltinType) -> &'static str {
+    match b {
+        hir::BuiltinType::I8 => "i8",
+        hir::BuiltinType::I32 => "i32",
+        hir::BuiltinType::U8 => "u8",
+        hir::BuiltinType::U32 => "u32",
+        hir::BuiltinType::I64 => "i64",
+        hir::BuiltinType::U64 => "u64",
+        hir::BuiltinType::F32 => "f32",
+        hir::BuiltinType::F64 => "f64",
+        _ => "i32",
+    }
+}
+
+/// MIN spellings never round-trip through a wider type.
+fn c_min_or_cast_i8(v: i8) -> String {
+    if v == i8::MIN { "(int8_t)(-127 - 1)".to_string() } else { format!("(int8_t){v}") }
+}
+fn c_min_or_cast_i32(v: i32) -> String {
+    if v == i32::MIN { "(int32_t)(-2147483647 - 1)".to_string() } else { format!("(int32_t){v}") }
+}
+fn c_min_or_cast_i64(v: i64) -> String {
+    if v == i64::MIN {
+        "(int64_t)(-9223372036854775807LL - 1)".to_string()
+    } else {
+        format!("(int64_t){v}LL")
+    }
 }

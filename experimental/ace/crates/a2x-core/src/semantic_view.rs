@@ -664,6 +664,24 @@ impl<'a> SemanticView<'a> {
                     | hir::BinOp::Eq
                     | hir::BinOp::Ne
             ),
+            // PLAN-961: the closures domain carries the numeric surface
+            // (the numeric source profile binds under it): the legacy i32
+            // set plus every typed Num op — semantic legality (float bit
+            // ops) was rejected by the HIR verifier before this point.
+            hir::HirDomain::Closures => matches!(
+                op,
+                hir::BinOp::AddI32
+                    | hir::BinOp::SubI32
+                    | hir::BinOp::MulI32
+                    | hir::BinOp::DivI32
+                    | hir::BinOp::RemI32
+                    | hir::BinOp::LtI32
+                    | hir::BinOp::LeI32
+                    | hir::BinOp::GtI32
+                    | hir::BinOp::GeI32
+                    | hir::BinOp::Eq
+                    | hir::BinOp::Ne
+            ) || matches!(op, hir::BinOp::Num { .. }),
             _ => false,
         }
     }
@@ -710,6 +728,13 @@ impl<'a> SemanticView<'a> {
     fn admit_expr(&self, f: &FnFacts<'_>, e: &hir::Expr) -> Result<(), A2xReject> {
         match &e.kind {
             hir::ExprKind::ReadLocal { .. } | hir::ExprKind::Constant { .. } => Ok(()),
+            // PLAN-961: the typed numeric const and the conversion are
+            // closures-domain (numeric profile) surface.
+            hir::ExprKind::NumericConst { .. } | hir::ExprKind::Cast { .. }
+                if self.domain == hir::HirDomain::Closures =>
+            {
+                Ok(())
+            }
             hir::ExprKind::Binary { op, .. } => {
                 if self.op_admitted(*op) {
                     Ok(())
@@ -726,6 +751,7 @@ impl<'a> SemanticView<'a> {
                 if self.domain == hir::HirDomain::Scalar
                     || self.text_record_family(self.domain).is_some()
                     || self.domain == hir::HirDomain::Collections
+                    || self.domain == hir::HirDomain::Closures
                 {
                     Ok(())
                 } else {
@@ -912,8 +938,11 @@ fn profile_of(domain: hir::HirDomain) -> Result<&'static str, A2xReject> {
         hir::HirDomain::TextRecord => Ok("auto.source.text-record.draft"),
         // PLAN-904: the collections source domain (List/Variant surface).
         hir::HirDomain::Collections => Ok("auto.source.collections.draft"),
+        // PLAN-961: the numeric surface binds under the closures domain —
+        // its semantic view carries the numeric operator/const/cast set.
+        hir::HirDomain::Closures => Ok("auto.source.numeric.draft"),
         other => Err(A2xReject::domain(format!(
-            "supported domains are core/scalar/record/text/text-record/collections drafts; bundle is {}",
+            "supported domains are core/scalar/record/text/text-record/collections/numeric drafts; bundle is {}",
             other.as_str()
         ))),
     }

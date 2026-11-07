@@ -139,7 +139,7 @@ pub fn runtime_source(marks: &[&'static str]) -> String {
         "/// Named Auto trap reasons (plan §5.1): add/sub/mul/neg overflow,\n\
          /// division/remainder by zero, MIN/-1 division and MIN%-1 remainder.\n\
          #[derive(Debug, Clone, Copy, PartialEq, Eq)]\n\
-         pub enum AutoTrap { Overflow, DivByZero, DivOverflow, RemByZero, RemOverflow }\n\n\
+         pub enum AutoTrap { Overflow, DivByZero, DivOverflow, RemByZero, RemOverflow, InvalidScalar }\n\n\
          impl AutoTrap {\n\
          \x20   pub fn name(self) -> &'static str {\n\
          \x20       match self {\n\
@@ -147,7 +147,8 @@ pub fn runtime_source(marks: &[&'static str]) -> String {
          \x20           AutoTrap::DivByZero => \"DivByZero\",\n\
          \x20           AutoTrap::DivOverflow => \"DivOverflow\",\n\
          \x20           AutoTrap::RemByZero => \"RemByZero\",\n\
-         \x20           AutoTrap::RemOverflow => \"RemOverflow\",\n\
+         \x20           AutoTrap::RemOverflow => \"RemOverflow\",
+\n                     AutoTrap::InvalidScalar => \"InvalidScalar\",\n\
          \x20       }\n\
          \x20   }\n\
          }\n\n\
@@ -178,5 +179,7 @@ pub fn runtime_source(marks: &[&'static str]) -> String {
             val = value
         ));
     }
+    // PLAN-961: the numeric runtime helpers join every emitted fileset.
+    s.push_str(crate::rt::RT_NUMERIC);
     s
 }

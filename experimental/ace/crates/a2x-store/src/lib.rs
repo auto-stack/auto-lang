@@ -939,6 +939,11 @@ impl A2xSession {
             SourceProfile::Text => compile_text_source(src, "a2x", caps),
             SourceProfile::TextRecord => compile_text_record_source(src, "a2x", caps),
             SourceProfile::Collections => compile_collections_source(src, "a2x", caps),
+            // PLAN-961: the numeric surface compiles through its own
+            // profile (closures-superset domain).
+            SourceProfile::Numeric => {
+                ace_core::source::compile_numeric_source(src, "a2x", caps)
+            }
             other => {
                 return Err(A2xRejectOrResource::Reject(A2xReject::domain(format!(
                     "unsupported profile {:?}",
