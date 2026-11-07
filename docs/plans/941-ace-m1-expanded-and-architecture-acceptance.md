@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 24
+current_step: 25
 total_steps: 32
 ---
 
@@ -502,7 +502,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-07 | work | T-06，原资源/HMR接口与正式窗口 | 原预算/cleanup/fault/lease/同PID safepoint/原样本P90/peak与新组合器资源帽；AC-06，V-07/08/16 | [ ] 第88轮测量节首建（6e49556a22）：`budget_time_measurements`节从已准入f94112全组门Job meter、原优化观察run meter与组合器自身保留帽组合——5行真实PASS（三组gate-meter/优化观察/composer-48MiB帽）+1行PARTIAL（16条预算策略声明runtime恒UNOBSERVED，逐策略P90/peak实测窗口具名缺），治理248/248、组合重读verdicts守恒且`missing_input:budget_time_measurements`blocker消失（余仅T-10治理控制）；cleanup/fault/lease/safepoint/P90实测仍待真实窗口 |
 | T-08 | work | T-04，934/935/936已审稳定接口；最终实际D | SQ/真实实例/CT执行/事实依赖及required恢复/四端实证适配；除具名§5.12/T24 F09授权外不修改其语义实现；AC-05/07，V-05/06/09/10 | [ ] |
 | T-09 | work | T-04，937/938/939已审稳定接口；最终实际D | ABI原三腿/全source-typed方向/资源/ctx/callback/独立C认证与source恢复；AC-05/08/09，V-05/06/11/12 | [ ] |
-| T-10 | work | T-04..09 | 总门AND/完整required/preview/38旧cert差异/缺门/伪PASS/空steps/迟到及各失败分态治理反控；AC-10/11，V-14/15 | [ ] |
+| T-10 | work | T-04..09 | 总门AND/完整required/preview/38旧cert差异/缺门/伪PASS/空steps/迟到及各失败分态治理反控；AC-10/11，V-14/15 | [ ] 第91轮（3176e4e54）：新`ace_m1_system_controls`——16具名V-14/V-15控制类（总门具名blocker/未知输入拒/preview不可签/exit0-布尔不晋/伪造绿保38差/空steps伪执行拒/声明不证runtime/部分覆盖降级/坏文档拒/companion域严/awaiting-D篡改拒/迟到取消发布红/终态二进制身份/child冒名拒/infra-语言分态/取消错meter拒）经`acceptance_system_controls`绑定准入治理门文档（infra组251测全绿实证）才置`system_delivered`；缺任一类保incomplete具名。治理251/251（+2控制）、组合重读verdicts零漂移、**`missing_input`类blocker全部清零**、`acceptance_system_delivered=true`、余blocker均为真实证据/产品缺口（7域门+evidence_incomplete+38旧cert+awaiting14）；`can_claim`仍false |
 | T-11 | work | T-03..10，公共H单写窗 | 从T-02首例扩齐全部TestCase/独立oracle、必要父adapter/SDK/所有reader、scripts/test-groups.toml新完整组/测试target注册；AC-01/02/09/11，V-12/13/17 | [ ] |
 | T-12 | work | T-11及T-18/19/20/21/22/23/24/25；最终D934/935/936/938/939与已交929/937；正式采样窗 | 冻结真实完整证据并集/原样本规模、fresh/hit/restart/first-edit/资源/真实独立认证→组合报告，缺项保持真实red；AC-01..11，V-01..17 | [ ] |
 | T-13 | work | T-12 | SD/coverage守恒/全部owner接口/健康冻结/遗留cert与新缺陷交接；明确系统交付与M1是否可签，不能藏in-contract未执行；AC-11 | [ ] |
@@ -2149,6 +2149,17 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:89 | from:goal用户�
 stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（V-04依赖编辑集实测+V-06坏页/原子行翻转+comptime绑定；irs 6P/2PARTIAL/0U，verdicts零漂移） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:0642dc0764bd5b57c0b2b9c611a162b7cf51154d | task_ids:T-06证据增补 | evidence:f94114-v04v06/composed/closure-audit.json | next_responsible_role:work T-07逐策略P90/T-05 Q4深化/T-10治理控制；F-941-13候选待裁定 | 无live handle
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:90 | from:goal用户指定 | to:work | status:executing24/32 | outcome:progress（真实窗口#2交付：V-04全集+V-06四行闭，ARCH-05八行仅余两个外部缺口） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:0642dc0764bd5b57c0b2b9c611a162b7cf51154d | next:work T-07/T-05/T-10；F-941-13候选待用户裁定；D938/939未交齐，无待poll
+
+### 第91轮：work T-10治理总门控制——16具名控制族准入交付翻转与最后一个missing_input清零
+
+- 按用户列序推进T-10。**实现**（提交**`3176e4e54`**，3文件）：①新`ace_m1_system_controls.py`——`CONTROL_MAP`16具名控制类（覆盖T-10声明面：总门AND具名blocker、未知/缺输入拒、preview恒不可签、legacy exit0/布尔不晋claim、伪造绿不闭registry并保38旧cert差、空steps/0选择/伪执行拒、声明不证runtime、部分覆盖只降级本行、STALE/非绿文档拒、companion绑定域严、awaiting-D篡改拒、迟到/取消/发布故障红、原始终态与二进制身份必需、child冒名拒、infra与语言失败分态、取消/错meter拒），逐类needle须在已准入治理门文档（infra组，sha钉定、gate_passed、report selected=executed且无skip/fail/error）真实执行绿；②`first_slice`新可选绑定`acceptance_system_controls`——`system_delivered`从硬编码False改为"控制族complete"，未绑定时仍具名missing_input；③治理+2控制（全类合成控制complete=true/删一类保incomplete具名缺类、错组/非绿/失败/stale/count不齐全拒）。
+- **验证**：治理**251/251PASS**（249+2）；三组干净重跑（`3176e4e54`）**ace-source 407/ace-syntax 132/infra 251=790全绿**（`f94115-t10/full-groups`）；组合重读（同提交、禁Popen、comptime门文档按内容hash复用——本轮未触comptime crate）：**verdicts 716P8F282U逐键零漂移**、irs 6P/2PARTIAL/0U与bt 5P/1PARTIAL不变、16控制类全executed绿、**`acceptance_system_delivered=true`且`missing_input:`类blocker全部清零**——余blockers=7域门（legacy-current/legacy-required/c-core/q4/syntax-arch/precise-incremental/budgets-time）+evidence_incomplete+legacy_cert_gaps:38+awaiting_d:14，全部为真实证据/产品缺口非系统缺输入；`can_claim_expanded_m1=false`不变。报告`f94115-t10/composed/preview.stdout` SHA=`4c47a40eb7137d102612c3fb3f2163abb271dc2b1ebe7935cbddf764bd0cf555`，`closure-audit.json`=`3f67fefe4ec5cf9e052069836d19a60ebcceac25dca3ef2e2ae8d4114f80719e`。13工具恒等。
+- **T-01输入审计更新（D938已交付）**：PLAN-938已于2026-11-07归档（`d88b0bc0e`，master祖先；specs已沉淀auto-abi/checked-source-foreign-calls等11文件）——第72轮"D938 executing"记录更新为**D938真实可消费**；但`d88b0bc0e`尚非plan-941-dev祖先，941树接收D938（H面逐文件SHA/符号/全部consumer/兼容门释放 + registry awaiting_d的938七行转正 + all-required-pages行938页缺口收窄）为下轮T-09入口。D939仍executing r2（T-02 needs_replan，前端事实页边界），不可消费。
+- **边界**：T-07逐策略P90/peak实测窗口与T-05 Q4深化仍待（T-05分析：q4 14节中13节全PASS，唯一红格`source-original-scalar/c02/AC-native`属已知8-scalar红真产品缺陷族，组合侧无可闭项）；executing25/32。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（T-10控制族准入：system_delivered=true、missing_input清零、verdicts零漂移；D938交付审计更新） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:3176e4e544b7fe614ebf0b667a3845af097d8e99 | task_ids:T-10增量（勾选留review） | evidence:f94115-t10/composed/closure-audit.json | next_responsible_role:work D938接收/T-07逐策略/T-05/T-09；F-941-13候选待裁定 | 无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:91 | from:goal继续 | to:work | status:executing25/32 | outcome:progress（验收系统控制族交付翻转：余blocker全为真实缺口） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:3176e4e544b7fe614ebf0b667a3845af097d8e99 | next:work D938接收窗口/T-07逐策略P90/T-05；D939未交齐，无待poll
 
 ## 10. 待澄清事项
 
