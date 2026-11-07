@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-abi/resource-and-callback-bridge.md]
 touched_goals: [GOAL-002]
 affects: [auto-abi, auto-ac, auto-a2x, auto-a2c, auto-av, auto-test-case]
 depends_on: [PLAN-937, PLAN-938, PLAN-925, PLAN-924]
-current_step: 2
+current_step: 3
 total_steps: 14
 ---
 
@@ -234,7 +234,7 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 |---|---|---|---|---|
 | T-01 | work | 后续实施指令；只读阶段不需D938 | 重核D937/D938及925/924/931实交，冻结P1/S01..08每方向/797原形态/Case来源/全部reader/原scale/预算；未D938只独立调查，不实接WIP；AC-01/06/07 | [✅ 2026-11-07] |
 | T-02 | work | T-01、实际D938、所需稳定S/ABI接口释放 | r3：补 resolver-owned 常驻页接线（§5.11）使资源体过 Frontend 冷/暖与恢复；随后按§5.7 A→B→C 收口三接缝（S01 文本view+恢复首编辑、S02/S05 mut/out 失败原子与 S04 opaque 唯一 cleanup、S06 callback 错误/lease——callback-by-name 前端仍按 r2 冻结）；三项齐才关闭；V-13..16，AC-01..07。已交付：合同/core/native/CI/provider/发布路径/认证链/首例+固定组（§9 round 1-4，938 组 31/31 回归绿）；round 5-8 全链收口，25 例 24 PASS+控制位，四固定组+七 crate 全绿（§9） | [✅ 2026-11-08] |
-| T-03 | work | T-02，H首例短窗 | ABI中立资源投影/布局/header、独立resource首例TestCase由T-02进入，本步扩齐S01..08/方向/正式注册材料，V-01/11/15；AC-01/07 | [ ] |
+| T-03 | work | T-02，H首例短窗 | ABI中立资源投影/布局/header、独立resource首例TestCase由T-02进入，本步扩齐S01..08/方向/正式注册材料，V-01/11/15；AC-01/07。批2（§9 round 11）：S07 TP wide 车道全链（词表/投影/描述符/emit/peers/三腿/fixtures）+ S08 恢复骨架；CE 方向实证为具名接缝 D-939-CE-1（certify 撞 D-960-1 词表、bridge 装配器 scalar-only=T-05 范围；矩阵 S01-CE 的 owner 本就含 T-05/T-11） | [✅ 2026-11-08] |
 | T-04 | work | T-03，S窗口 | core foreign_resources/资源凭证/模式/borrow/alias/deleter唯一计划与所有verify/schema消费者；V-02/03/13/15；AC-02 | [ ] |
 | T-05 | work | T-04，N/C窗口 | native直接资源调用与a2x-c abi_resources/私有值显式转换/view期限；V-01/02/04；AC-01/02/03 | [ ] |
 | T-06 | work | T-05 | handle移动/返回/provider clone hook/原方destroy、callback+ctx trampoline与错误channel；V-03/06/07/14/15；AC-02/04 | [ ] |
@@ -250,6 +250,10 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 可提前的仅独立oracle/header与source/type能力调查，不把private准备冒资源已实施。正式S/N/C集成在D938及所需单文件owner释放后；不硬等未读取的935/936整包。
 
 ## 9. 复审记录
+
+T-03 批 2 完成记录（2026-11-08，goal round 11，HEAD `b1f1553e3`）：**T-03 关闭——S07 TP wide 车道全链 + S08 恢复骨架落地；CE 方向实证为具名接缝（D-939-CE-1）**。939 组 38 例=37 PASS+wrong-oracle FAIL 控制位；四固定组（939/938/937/925）全绿；ace-abi 254（--lib+--tests，含新 wide_bridge 4 例）；ace-foreign-contract 49 绿；触面 crate 零警告。(1) **S07 词表**：`ResKind::BufViewI64`（元素计 view，投影 lane 名 `p{i}_n` 与字节 `_len` 可区分）+ `ResKind::I64`（原宽种子）+ `ResourceSig.typed_peer`（skip_serializing_if——旧 manifest 字节/digest 不变，测试钉死）；typed_peer 域 admit 宽 record 字段与宽 lane，source 域具名拒（core/a2x-c/native 三处消费臂 fail-closed）；`TypedBodyFamily::{BufViewI64Sum,RecMixSum,WideFold}` 逐族精确绑定校验（错形=具名拒），`TypedDecl.resource` 可选字段（937 标量集 wire/content_version 字节稳定，测试钉死）。(2) **投影/准入**：descriptor_from_plan 资源感知（`buf:i64`/`rec:RecMix:const`/`callback(ctx:i64,i64)->i64` + record 表 + 语义 ref）；wide_expectation 手冻结自 bridge_typed.h（消费方自带 RecMix 闭包+semref——同宽改写死在准入）；admission 绿后才生产。(3) **三方实现**：Rust oracle（typed_decl.rs，含独立 Python 手算常量 SUM_8/3/1、REC、FOLD_8/3、CB_AT_0）；Cranelift callee（元素循环/frozen 偏移 record 折叠/call_indirect 回调）+ caller（导出 frozen 回调 t939w_cb 过 fnptr 车道）；C peers bridge_wide_callee/caller.c（独立实现+运行期 offsetof 探针+自身回调与求和走查；size/align 由头部负数组 typedef 编译期钉）。冻结输入带边界：元素前缀 n=8/3/1/0（len 单位证据——字节误读必红）、空 view、U+10FFFF tag、近 MIN 宽字段、超 i32 域宽 ctx、空 fold。(4) **腿/注册**：worker_bridge wide-self/n2c/c2n 三腿（937 typed 腿不动）；typed/wide-*.atomdata×3 + case 行（published 3/4/4→hit）；mutation 负控（错期望 PE 必非零）。(5) **S08 骨架**：resource-recovery.case.ad（fresh→hit→restart→恢复会话首好编辑 ×native/c，exit 42；probe 按 query 步对齐）；T-09/10 扩展（首错流/逐轴失效/provider 代际与 lease 静态/计数断言）具名在文件头。(6) **CE 接缝（已完整接线并驱动到真边界后回退，零死码）**：certify 路径 str 参数导出函数在 `produce_fn_sig`（PortableTy={Unit,I32,Bool}，D-960-1）处 `NonPortableType Builtin(Str)` 拒绝——签名轴词表属 934 冻结面，扩展=r3 具名后继/D-960-1 关闭条件；bridge 路径库装配器 ExportSpec 仅 i32/bool（record-text 导出装配=T-05 abi_resources 行）。探针：str 参数（NUL 数据语义）+ record 参数 native 产品路径全绿（exit 99/21）；接缝登记 D-939-CE-1。过程修正：批量替换误伤 937 typed-c2n 的 C caller（同形匹配）——单点修复后 937 组恢复绿；wide 测试 scratch 根按 tag 隔离消除并行竞态。
+
+stage: goal | plan_id: PLAN-939 | plan_revision: r3 | round: 11 | from: work | to: work | status: executing | outcome: interim（T-03 ✅ 关闭；S07/S08 骨架交付；CE=D-939-CE-1 具名接缝归 T-05）| worktree: D:/autostack/.wt/lang-939/auto-lang | commit: b1f1553e3 | next: work（T-04 core 资源计划与消费者）
 
 T-03 进行中检查点 1（2026-11-08，goal round 9，HEAD `0f0e7a1a6` 前后）：**S03 双记录车道别名 oracle + V-01 编译器实测布局 oracle 落地**——套件 33 例 32 PASS + 控制位，四固定组、foreign-contract/abi/a2x-c lib tests 全绿。(1) foreign-contract `validate()` 规则演进：同一 record 闭包可出现于同一签名的**多个车道**（S03 双 mut oracle 所需）；各次出现必须拼写**完全相同**的字段闭包（异形同名=具名拒；旧"重复视图"整拒规则被取代，测试更新为两半）；(2) provider `t939_pair`（双 MUT 车道）+ `t939_pairv`（MUT+CONST）：commit-once、NULL 守卫 -2 调用方字节不动 + review 表行 + oracle 场景 alias-pair-ok(53)/alias-pairv-ok(16)；(3) **S03 四 deck×双腿**：`alias-pair-reject`（同 owner 双 `.mut`）与 `alias-pairv-reject`（同 owner mut+view）以 `completion {stage:"verify", code:"verify.mut-conflict"}` 判定——verifier 排他性在调用前拒（"local is mutably borrowed while also accessed in the same call"），正例独立 owner 53/16；(4) **V-01 布局 oracle（编译器实测）**：受审 header 以负数组 typedef + `__alignof`（ctool 钉 pre-C11 默认模式与 MSVC-only include 集——无 _Static_assert/stddef；布局漂移使 provider/reference 双构建在 -W4 -WX 下响亮失败）断言 Counter/TxnResult size+align；reference oracle 运行期探针以真 offsetof + union 字节视图补齐**声明序 wire offset** 证据（每个场景前运行）；(5) 完整指纹周期：header/table/contract 三钉（worker policy+父侧）、15 deck manifest 再生成。**T-03 剩余**：S07 TP typed 车道（BufViewI64 按元素计 len、RecMix 宽字段/嵌套、宽 callback——经 worker_bridge typed 腿扩展 typed_decl/typed_emit/C peers；797 layout_probe/RecMix 实测机制可复用）、CE source-export 方向、S08 恢复 case 骨架（主体归 T-09/10）。间歇伪迹复现一次（单组 `cargo t` 偶发 sema runner 误路由，重跑即绿——fixed-tests owner 具名观察）。
 

@@ -4098,3 +4098,15 @@ owner=plan827 测试；PLAN-938 8ca ace-av 全组跑后出现 docs/reports/plan8
 ### D-938-4 — ctool 测试改进程级 AUTOABI_MSVC_CL 环境变量（2026-11-07，影响收窄未关闭）
 
 owner=auto-abi 测试隔离；ctool.rs:520 在测试中 set/remove 进程 env。PLAN-938 8bz 已为 source_crt/abi 模块加共享 ENV_LOCK（该包 libtest 并发竞态消除、48/48 并行绿）；ctool.rs 自身的 env 变更与其余 crate 读取方仍无锁。关闭条件=ctool 测试改用子进程注入或全仓共享 env 锁。
+
+### D-960-1 — 934 事实页 PortableTy 不覆盖文本/记录类型，包通道无法走增量事实页（2026-11-07，候选）
+
+owner=source-query 事实层（934/935 线）；`PortableTy` 仅 {Unit,I32,Bool}（47 处、`sq-module-page/1` 存储合同）。PLAN-960 包通道（text-record 域）改为直接跑同一 resolver/typecheck/emit/verify（无平行分析），增量证据由绑定账本 `binding_walks` 承担；无整函数事实复用。关闭条件=事实页类型集扩到 str/Str/char/record（含页 schema 版本与恢复核验），包通道回接 `bind_with_facts`。
+
+### D-960-2 — native(mn) 端模块全局 cell 具名拒绝（2026-11-07，候选）
+
+owner=ace-native；`lower.rs` 对 `GlobalGet/GlobalSet` 返回 "module global cells are outside the mn surface first cut"。PLAN-960 四端 Str 函数产品不含全局，V-08 的 store/diamond/回滚三项在 AV 端见证。关闭条件=cranelift 全局数据 + init 调用序接入 mn 驱动。
+
+### D-939-CE-1 — S01-CE 文本view源导出被事实签名词表与库装配器双向挡住（2026-11-08，登记未关闭）
+
+owner=T-05 a2x-c 库装配 + D-960-1 事实层；PLAN-939 T-03 批2 实证：(a) certify 路径（foreign+导出）在 source-query `produce_fn_sig`/catalog 拒绝 str 参数函数（`NonPortableType Builtin(Str)`——D-960-1 同一边界的导出方向影响面）；(b) bridge 路径（纯 Auto str 参数导出，937 source leg 语义）的库装配器 `ExportSpec` 仅 i32/bool。探针证据：str 参数（NUL 为数据）与 record 参数在 native 产品路径全编译运行绿（`ac-native build-source --source-profile text-record`，exit 99/21）；certify 侧 CE 接线（EntryPlan/ce 腿/独立 caller/reference 场景）已完整实现并驱动到该接缝后按零死码纪律回退。关闭条件=T-05 record-text 导出装配器（str/record ExportSpec+包装发射）落地；certify 侧随 D-960-1 词表扩展。
