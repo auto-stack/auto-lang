@@ -131,6 +131,19 @@ pub struct FnFact {
     /// may mint one through the contract).
     #[serde(default)]
     pub semantic_ref: Option<(String, String)>,
+    /// PLAN-939 resource signature: when present, THIS is the
+    /// authoritative form (the scalar `form` field is then ignored for
+    /// projection/admission and the entry is a resource entry of an
+    /// `ace.foreign.manual/2` manifest). `None` keeps the 937/938 wire
+    /// bytes and digests byte-identical.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource: Option<crate::resource::ResourceSig>,
+}
+
+impl FnFact {
+    pub fn is_resource(&self) -> bool {
+        self.resource.is_some()
+    }
 }
 
 /// The neutral interface facts object.
@@ -174,6 +187,7 @@ impl InterfaceFacts {
             &self.functions,
             matches!(self.source, FactsSource::CheckedSource { .. }),
             &self.effects,
+            &self.capabilities,
         )
     }
     /// Find a function by symbol (nominal lookup only; content identity
@@ -240,6 +254,7 @@ pub(crate) fn validate_functions(
     functions: &[FnFact],
     checked_source: bool,
     effects: &[String],
+    capabilities: &[String],
 ) -> Result<(), String> {
     let mut seen = std::collections::BTreeSet::new();
     if functions.is_empty() {
@@ -259,6 +274,40 @@ pub(crate) fn validate_functions(
         }
         if !seen.insert(f.symbol.as_str()) {
             return Err(format!("duplicate symbol '{}'", f.symbol));
+        }
+        if let Some(res) = &f.resource {
+            // PLAN-939 resource entry: the resource sig's own form is the
+            // SINGLE authoritative form — the scalar `form` field is
+            // ignored for admission/projection of resource entries.
+            res.validate()
+                .map_err(|e| format!("resource entry '{}': {e}", f.symbol))?;
+            match res.form {
+                crate::resource::ResourceForm::Pure { .. } => {
+                    if f.error_model.is_some() {
+                        return Err(format!(
+                            "pure resource entry '{}' must not carry an error model",
+                            f.symbol
+                        ));
+                    }
+                }
+                crate::resource::ResourceForm::Fallible { .. } => {
+                    let m = f.error_model.as_ref().ok_or_else(|| {
+                        format!(
+                            "fallible resource entry '{}' must carry an explicit error model",
+                            f.symbol
+                        )
+                    })?;
+                    validate_error_table(&f.symbol, m)?;
+                }
+            }
+            if !capabilities.iter().any(|c| c == crate::resource::RESOURCE_CAP) {
+                return Err(format!(
+                    "resource entry '{}' requires the {} capability",
+                    f.symbol,
+                    crate::resource::RESOURCE_CAP
+                ));
+            }
+            continue;
         }
         match &f.form {
             FnForm::Pure { .. } => {
@@ -290,39 +339,43 @@ pub(crate) fn validate_functions(
                         f.symbol
                     )
                 })?;
-                if m.kind != "status-i32" {
-                    return Err(format!(
-                        "entry '{}': unknown error model kind '{}' (v0.1: status-i32)",
-                        f.symbol, m.kind
-                    ));
-                }
-                if m.codes.windows(2).any(|pair| pair[0].0 > pair[1].0) {
-                    return Err(format!(
-                        "entry '{}': error codes must be sorted ascending",
-                        f.symbol
-                    ));
-                }
-                if m.codes.windows(2).any(|pair| pair[0].0 == pair[1].0) {
-                    return Err(format!("entry '{}': duplicate status codes", f.symbol));
-                }
-                if m.codes.iter().any(|(c, _)| *c >= 0) {
-                    return Err(format!(
-                        "entry '{}': status codes must be negative (0 is success)",
-                        f.symbol
-                    ));
-                }
-                if m.codes.is_empty() {
-                    return Err(format!(
-                        "entry '{}': fallible form with an EMPTY status table cannot \
-                             spell its failure semantics; declare the failure codes",
-                        f.symbol
-                    ));
-                }
+                validate_error_table(&f.symbol, m)?;
                 // Status-only fallible entries (empty outs) are legal;
                 // no additional v0.1 constraint beyond the table above.
                 let _ = outs;
             }
         }
+    }
+    Ok(())
+}
+
+/// Shared explicit-error-table discipline (negative, unique, ascending,
+/// non-empty, `status-i32`).
+pub(crate) fn validate_error_table(symbol: &str, m: &ErrorModel) -> Result<(), String> {
+    if m.kind != "status-i32" {
+        return Err(format!(
+            "entry '{symbol}': unknown error model kind '{}' (v0.1: status-i32)",
+            m.kind
+        ));
+    }
+    if m.codes.windows(2).any(|pair| pair[0].0 > pair[1].0) {
+        return Err(format!(
+            "entry '{symbol}': error codes must be sorted ascending"
+        ));
+    }
+    if m.codes.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+        return Err(format!("entry '{symbol}': duplicate status codes"));
+    }
+    if m.codes.iter().any(|(c, _)| *c >= 0) {
+        return Err(format!(
+            "entry '{symbol}': status codes must be negative (0 is success)"
+        ));
+    }
+    if m.codes.is_empty() {
+        return Err(format!(
+            "entry '{symbol}': fallible form with an EMPTY status table cannot \
+                 spell its failure semantics; declare the failure codes"
+        ));
     }
     Ok(())
 }
@@ -356,6 +409,7 @@ mod tests {
                 },
                 error_model: None,
                 semantic_ref: None,
+                resource: None,
             }],
             effects: vec![],
             capabilities: vec![],
@@ -423,6 +477,42 @@ mod tests {
             source_sha256: "1".into(),
         };
         assert_ne!(a.digest().unwrap(), c.digest().unwrap());
+    }
+
+    #[test]
+    fn resource_entry_needs_capability_and_own_discipline() {
+        use crate::resource::{ResKind, ResourceForm, ResourceSig, RESOURCE_SIG_FORMAT};
+        let mut f = typed_facts();
+        f.functions[0].resource = Some(ResourceSig {
+            format: RESOURCE_SIG_FORMAT.into(),
+            params: vec![ResKind::ViewText],
+            form: ResourceForm::Pure {
+                ret: crate::resource::ResOut::I32,
+            },
+            atomic: false,
+            noescape: false,
+        });
+        // missing foreign.resource capability -> named reject
+        let e = f.validate().unwrap_err();
+        assert!(e.contains("foreign.resource"), "{e}");
+        f.capabilities.push("foreign.resource".into());
+        assert!(f.validate().is_ok());
+        // wire bytes of a None-resource fact stay unchanged (digest
+        // identity of 937/938 facts is not disturbed by this extension)
+        let mut scalar = typed_facts();
+        scalar.capabilities = f.capabilities.clone();
+        let plain = serde_json::to_string(&FnFact {
+            symbol: "s".into(),
+            form: FnForm::Pure {
+                params: vec![],
+                ret: LaneKind::I32,
+            },
+            error_model: None,
+            semantic_ref: None,
+            resource: None,
+        })
+        .unwrap();
+        assert!(!plain.contains("resource"));
     }
 
     #[test]

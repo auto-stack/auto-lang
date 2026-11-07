@@ -9,6 +9,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 pub const MANUAL_SCHEMA: &str = "ace.foreign.manual/1";
+/// PLAN-939: the resource-manifest version (carries resource entries via
+/// `FnFact::resource`). `/1` bytes decode unchanged; resource entries are
+/// legal only in `/2`.
+pub const MANUAL_SCHEMA_V2: &str = "ace.foreign.manual/2";
 pub const SOURCE_CAP: &str = "foreign.scalar";
 
 /// Process-local host policy at the actual required-page producer. Restoring
@@ -116,6 +120,23 @@ impl SourceDecl {
             add(id.capacity());
             add(version.capacity());
         }
+        if let Some(res) = &self.function.resource {
+            add(res.params.capacity().saturating_mul(std::mem::size_of::<
+                crate::resource::ResKind,
+            >()));
+            for p in &res.params {
+                if let crate::resource::ResKind::Rec { rec, fields, .. } = p {
+                    add(rec.capacity());
+                    add(fields.capacity().saturating_mul(std::mem::size_of::<(String, crate::resource::FieldKind)>()));
+                    for (name, _) in fields {
+                        add(name.capacity());
+                    }
+                }
+                if let crate::resource::ResKind::Handle { provider } = p {
+                    add(provider.capacity());
+                }
+            }
+        }
         for values in [&self.effects, &self.capabilities] {
             add(values
                 .capacity()
@@ -132,7 +153,15 @@ impl SourceDecl {
             &self.effects,
             &self.capabilities,
         )?;
-        let needs_context = matches!(self.function.form, FnForm::Fallible { ctx: Some(_), .. });
+        let needs_context = match &self.function.resource {
+            Some(res) => {
+                matches!(
+                    res.form,
+                    crate::resource::ResourceForm::Fallible { ctx: Some(_), .. }
+                )
+            }
+            None => matches!(self.function.form, FnForm::Fallible { ctx: Some(_), .. }),
+        };
         if needs_context != self.context_symbol.is_some()
             || self.context_symbol.as_ref().is_some_and(|s| !ident(s))
         {
@@ -149,15 +178,50 @@ impl SourceDecl {
         {
             return Err("foreign.declaration: invalid identity/provenance".into());
         }
-        let scalar = |k: &LaneKind| matches!(k, LaneKind::I32 | LaneKind::Bool);
-        let valid = match &self.function.form {
-            FnForm::Pure { params, ret } => params.iter().all(scalar) && scalar(ret),
-            FnForm::Fallible { params, outs, .. } => {
-                params.iter().all(scalar) && outs.len() == 1 && outs.iter().all(scalar)
+        if self.function.resource.is_some() {
+            // PLAN-939 resource declaration: the resource sig (validated
+            // below via validate_functions) is the authoritative form;
+            // the source-visible surface keeps the checked-source scalar
+            // domain (i32/bool) plus str views, nominal records and
+            // handle/callback lanes spelled by the sig.
+            if !self
+                .capabilities
+                .iter()
+                .any(|c| c == crate::resource::RESOURCE_CAP)
+            {
+                return Err(format!(
+                    "foreign.resource: declaration '{}' requires the {} capability",
+                    self.name,
+                    crate::resource::RESOURCE_CAP
+                ));
             }
-        };
-        if !valid {
-            return Err("foreign.signature: expected finite scalar signature".into());
+            // Mirror the 938 source discipline: a fallible entry binds
+            // exactly ONE value out as the source result (rec Out params
+            // carry additional outputs; a second value out is TP-only).
+            if let Some(res) = self.resource() {
+                if matches!(res.form, crate::resource::ResourceForm::Fallible { .. })
+                    && !matches!(
+                        res.form,
+                        crate::resource::ResourceForm::Fallible { out: Some(_), .. }
+                    )
+                {
+                    return Err(
+                        "foreign.signature: fallible resource entry must carry exactly one value out"
+                            .into(),
+                    );
+                }
+            }
+        } else {
+            let scalar = |k: &LaneKind| matches!(k, LaneKind::I32 | LaneKind::Bool);
+            let valid = match &self.function.form {
+                FnForm::Pure { params, ret } => params.iter().all(scalar) && scalar(ret),
+                FnForm::Fallible { params, outs, .. } => {
+                    params.iter().all(scalar) && outs.len() == 1 && outs.iter().all(scalar)
+                }
+            };
+            if !valid {
+                return Err("foreign.signature: expected finite scalar signature".into());
+            }
         }
         if self.logical.trim().is_empty() {
             return Err("logical id must be non-empty".into());
@@ -165,7 +229,12 @@ impl SourceDecl {
         if self.content_version.trim().is_empty() {
             return Err("content version must be non-empty".into());
         }
-        crate::facts::validate_functions(std::slice::from_ref(&self.function), false, &self.effects)
+        crate::facts::validate_functions(
+            std::slice::from_ref(&self.function),
+            false,
+            &self.effects,
+            &self.capabilities,
+        )
     }
 
     pub fn digest(&self) -> String {
@@ -198,6 +267,66 @@ impl SourceDecl {
             FnForm::Fallible { outs, .. } => outs[0],
         }
     }
+
+    /// PLAN-939: the resource sig when this is a resource declaration.
+    pub fn resource(&self) -> Option<&crate::resource::ResourceSig> {
+        self.function.resource.as_ref()
+    }
+
+    /// Source-visible arity (one slot per declared param — view/callback
+    /// pairs are PHYSICAL shapes, not two source arguments).
+    pub fn arity(&self) -> usize {
+        match self.resource() {
+            Some(res) => res.params.len(),
+            None => self.params().len(),
+        }
+    }
+
+    /// Fallible-with-value-out (938 shape: exactly one out binding the
+    /// source result). Resource fallible entries carry the out in the
+    /// resource sig; at most ONE value out is source-expressible.
+    pub fn is_fallible(&self) -> bool {
+        match self.resource() {
+            Some(res) => {
+                matches!(res.form, crate::resource::ResourceForm::Fallible { .. })
+            }
+            None => matches!(self.function.form, FnForm::Fallible { .. }),
+        }
+    }
+
+    /// Source-result kind: I32/Bool for scalar decls; for resource decls
+    /// the resource out lane (checked-converted to the internal i32 where
+    /// the physical lane is wide — see the bridge conversion contract).
+    pub fn source_result_kind(&self) -> SourceResultKind {
+        match self.resource() {
+            Some(res) => match &res.form {
+                crate::resource::ResourceForm::Pure { ret }
+                | crate::resource::ResourceForm::Fallible {
+                    out: Some(ret), ..
+                } => match ret {
+                    crate::resource::ResOut::Bool => SourceResultKind::Bool,
+                    _ => SourceResultKind::I32,
+                },
+                crate::resource::ResourceForm::Fallible { out: None, .. } => {
+                    SourceResultKind::UnitStatus
+                }
+            },
+            None => match self.result() {
+                LaneKind::Bool => SourceResultKind::Bool,
+                _ => SourceResultKind::I32,
+            },
+        }
+    }
+}
+
+/// Source-visible result classification shared by resolve/typecheck.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SourceResultKind {
+    I32,
+    Bool,
+    /// Fallible status-only entry: the source call has no result value
+    /// (its failure path is the trap/error channel).
+    UnitStatus,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -459,15 +588,28 @@ fn manual_facts(
         );
     }
     for f in functions {
-        let required = match f.form {
-            FnForm::Pure { .. } => format!("pure:{}", f.symbol),
-            FnForm::Fallible { .. } => "checked".into(),
+        let required = match f
+            .resource
+            .as_ref()
+            .map(|r| &r.form)
+        {
+            Some(crate::resource::ResourceForm::Pure { .. }) => format!("pure:{}", f.symbol),
+            Some(crate::resource::ResourceForm::Fallible { .. }) => "checked".into(),
+            None => match f.form {
+                FnForm::Pure { .. } => format!("pure:{}", f.symbol),
+                FnForm::Fallible { .. } => "checked".into(),
+            },
         };
         // A reviewed mixed interface can carry the module's `checked`
         // effects while each total C form remains explicitly Pure. This is
         // the existing bool/order/fallible fixture's admitted contract.
+        let is_pure = match f.resource.as_ref().map(|r| &r.form) {
+            Some(crate::resource::ResourceForm::Pure { .. }) => true,
+            Some(crate::resource::ResourceForm::Fallible { .. }) => false,
+            None => matches!(f.form, FnForm::Pure { .. }),
+        };
         if !effects.contains(&required)
-            && !(matches!(f.form, FnForm::Pure { .. }) && effects.iter().any(|e| e == "checked"))
+            && !(is_pure && effects.iter().any(|e| e == "checked"))
         {
             return Err("foreign.effect: missing explicit totality/error evidence".into());
         }
@@ -477,8 +619,18 @@ fn manual_facts(
 
 impl ManualManifest {
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema != MANUAL_SCHEMA {
+        // PLAN-939: /2 adds resource entries (FnFact::resource); a /1
+        // manifest decodes exactly as before — the two versions never
+        // settle each other's identity (schema string is the version).
+        let has_resource = self.facts.functions.iter().any(|f| f.is_resource());
+        if self.schema != MANUAL_SCHEMA && self.schema != MANUAL_SCHEMA_V2 {
             return Err("foreign.schema: unknown manual declaration version".into());
+        }
+        if has_resource && self.schema != MANUAL_SCHEMA_V2 {
+            return Err(
+                "foreign.schema: resource entries require manifest schema ace.foreign.manual/2"
+                    .into(),
+            );
         }
         if self.target != crate::plan::TARGET
             || self.profile != crate::plan::PROFILE
@@ -522,6 +674,50 @@ impl ManualManifest {
                 .facts
                 .function(&d.symbol)
                 .ok_or("foreign.symbol: declaration has no logical facts")?;
+            if let Some(res) = &f.resource {
+                // Resource entry: sig discipline + handle providers must
+                // name THIS manifest's provider (cross-provider handles
+                // are describable and rejected, descriptor3 rule).
+                res.validate()
+                    .map_err(|e| format!("foreign.resource: {e}"))?;
+                let check_provider = |p: &str| -> Result<(), String> {
+                    if p != self.provider {
+                        return Err(format!(
+                            "foreign.resource: handle provider '{p}' does not name the manifest provider '{}'",
+                            self.provider
+                        ));
+                    }
+                    Ok(())
+                };
+                for p in &res.params {
+                    if let crate::resource::ResKind::Handle { provider } = p {
+                        check_provider(provider)?;
+                    }
+                }
+                match &res.form {
+                    crate::resource::ResourceForm::Pure { ret }
+                    | crate::resource::ResourceForm::Fallible {
+                        out: Some(ret), ..
+                    } => {
+                        if let crate::resource::ResOut::Handle { provider } = ret {
+                            check_provider(provider)?;
+                        }
+                    }
+                    crate::resource::ResourceForm::Fallible { out: None, .. } => {
+                        return Err("foreign.signature: resource fallible entry requires exactly one value out".into());
+                    }
+                }
+                let needs_context = matches!(
+                    res.form,
+                    crate::resource::ResourceForm::Fallible { ctx: Some(_), .. }
+                );
+                if needs_context != d.context_symbol.is_some()
+                    || d.context_symbol.as_ref().is_some_and(|s| !ident(s))
+                {
+                    return Err("foreign.context: explicit target context symbol required exactly for ctx forms".into());
+                }
+                continue;
+            }
             let scalar = |k: &LaneKind| matches!(k, LaneKind::I32 | LaneKind::Bool);
             let supported = match &f.form {
                 FnForm::Pure { params, ret } => params.iter().all(scalar) && scalar(ret),
@@ -1056,6 +1252,7 @@ mod tests {
                     },
                     error_model: None,
                     semantic_ref: None,
+                resource: None,
                 }],
                 effects: vec!["pure:c_add".into()],
                 capabilities: vec![SOURCE_CAP.into()],
@@ -1079,6 +1276,82 @@ mod tests {
             binding_generation: 7,
         };
         (m, host)
+    }
+
+    #[test]
+    fn resource_manifest_admits_projects_and_restores() {
+        use crate::resource::{
+            FieldKind, ResKind, ResOut, ResourceForm, ResourceSig, ViewRole, RESOURCE_CAP,
+            RESOURCE_SIG_FORMAT,
+        };
+        let mut m = fixture().0;
+        m.schema = MANUAL_SCHEMA_V2.into();
+        m.provider = "r939".into();
+        m.facts.capabilities = vec![SOURCE_CAP.into(), RESOURCE_CAP.into()];
+        m.facts.effects = vec!["pure:t939_byte_length".into()];
+        m.facts.functions = vec![FnFact {
+            symbol: "t939_byte_length".into(),
+            // Authoritative form is the resource sig; the scalar form is
+            // ignored for resource entries.
+            form: FnForm::Pure {
+                params: vec![],
+                ret: LaneKind::I32,
+            },
+            error_model: None,
+            semantic_ref: None,
+            resource: Some(ResourceSig {
+                format: RESOURCE_SIG_FORMAT.into(),
+                params: vec![ResKind::ViewText],
+                form: ResourceForm::Pure {
+                    ret: ResOut::U64,
+                },
+                atomic: false,
+                noescape: false,
+            }),
+        }];
+        m.declarations = vec![ManualDecl {
+            context_symbol: None,
+            source_name: "t939_byte_length".into(),
+            symbol: "t939_byte_length".into(),
+        }];
+        let host = HostAuthority {
+            review_id: m.review_id.clone(),
+            contract_digest: m.contract_digest().unwrap(),
+            provider: m.provider.clone(),
+            provider_digest: "c".repeat(64),
+            header_digest: m.header_digest.clone(),
+            physical_table_digest: m.physical_table_digest.clone(),
+            target: m.target.clone(),
+            capabilities: [SOURCE_CAP.into(), RESOURCE_CAP.into()]
+                .into_iter()
+                .collect(),
+            available_symbols: ["t939_byte_length".into()].into_iter().collect(),
+            binding_generation: 1,
+        };
+        assert!(m.validate().is_ok());
+        let admitted = m.clone().admit(&host).expect("resource manifest admits");
+        let decl = admitted.source_declarations_ref()[0].clone();
+        assert!(decl.resource().is_some());
+        assert_eq!(decl.arity(), 1);
+        assert_eq!(decl.source_result_kind(), crate::manual::SourceResultKind::I32);
+        assert_eq!(decl.resource().unwrap().phys_param_count(), 2);
+        // pages restore fail-closed against the same authority
+        let pages = admitted.pages().clone();
+        let restored = AdmittedForeign::restore_pages(pages, &host).expect("restore");
+        assert!(restored.admits_declaration(&decl));
+        // resource entries in a /1 manifest are a version mismatch
+        let mut v1 = m.clone();
+        v1.schema = MANUAL_SCHEMA.into();
+        assert!(v1.validate().unwrap_err().contains("ace.foreign.manual/2"));
+        // missing foreign.resource capability is named-rejected
+        let mut nocap = m.clone();
+        nocap.facts.capabilities = vec![SOURCE_CAP.into()];
+        let mut host_nc = host.clone();
+        host_nc.capabilities.remove(RESOURCE_CAP);
+        assert!(nocap
+            .validate()
+            .unwrap_err()
+            .contains("foreign.resource"));
     }
 
     #[test]

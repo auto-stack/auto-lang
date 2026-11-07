@@ -217,6 +217,7 @@ impl TypedDecls {
                     d.error_model.clone()
                 },
                 semantic_ref: None,
+                resource: None,
             });
         }
         let facts = InterfaceFacts {

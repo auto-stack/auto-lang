@@ -164,6 +164,138 @@ fn ret_lane(ret: LaneKind) -> PhysRet {
     }
 }
 
+/// Scalar (937/938) form projection — unchanged behavior, extracted.
+fn project_scalar(form: &FnForm) -> Result<PhysForm, String> {
+    Ok(match form {
+        FnForm::Pure { params, ret } => {
+            let lanes: Vec<(String, PhysLane, SlotBank)> = params
+                .iter()
+                .enumerate()
+                .map(|(i, k)| (format!("p{i}"), k.physical(), k.physical().slot_class()))
+                .collect();
+            PhysForm::Pure {
+                params: classify(&lanes),
+                ret: ret_lane(*ret),
+            }
+        }
+        FnForm::Fallible { ctx, params, outs } => {
+            // ctx lane (pointer width, GP), then declared params,
+            // then one pointer-width GP lane per out slot.
+            let mut all: Vec<(String, PhysLane, SlotBank)> = Vec::new();
+            if ctx.is_some() {
+                // Pointer lanes are GP-class; PhysLane has no raw
+                // pointer variant by design — the ctx lane is
+                // spelled by the form, classified as GP I64-width.
+                all.push(("ctx".into(), PhysLane::I64, SlotBank::Gp));
+            }
+            for (i, k) in params.iter().enumerate() {
+                let p = k.physical();
+                all.push((format!("p{i}"), p, p.slot_class()));
+            }
+            // Out slots travel as trailing pointer-width lanes.
+            for (i, k) in outs.iter().enumerate() {
+                let p = k.physical();
+                all.push((format!("out{i}_ptr"), p, p.slot_class()));
+            }
+            PhysForm::Fallible {
+                ctx: *ctx,
+                params: classify(&all),
+                outs: outs.iter().map(|k| k.physical()).collect(),
+            }
+        }
+    })
+}
+
+/// PLAN-939 resource physical projection (Windows x64). Pointer lanes are
+/// GP I64-width by design (the 797 ctx-lane convention); the view pair is
+/// (ptr, u64 len); the callback fnptr lane is followed by the sign-
+/// extended i64 ctx lane spelled by the adjacent i32 ctx-seed param.
+fn project_resource(res: &crate::resource::ResourceSig) -> Result<PhysForm, String> {
+    use crate::resource::{ResKind, ResourceForm, ViewRole};
+    res.validate()?;
+    let mut all: Vec<(String, PhysLane, SlotBank)> = Vec::new();
+    let mut out_lanes: Vec<PhysLane> = Vec::new();
+    match &res.form {
+        ResourceForm::Fallible { ctx, .. } => {
+            if ctx.is_some() {
+                all.push(("ctx".into(), PhysLane::I64, SlotBank::Gp));
+            }
+        }
+        ResourceForm::Pure { .. } => {}
+    }
+    let mut i = 0usize;
+    while i < res.params.len() {
+        let after_cb = i > 0 && matches!(res.params[i - 1], ResKind::Callback { ctx: true });
+        let p = &res.params[i];
+        match p {
+            ResKind::I32 => {
+                if after_cb {
+                    // The ctx seed: sign-extended to the i64 ctx lane.
+                    all.push((format!("p{i}_ctx"), PhysLane::I64, SlotBank::Gp));
+                } else {
+                    all.push((format!("p{i}"), PhysLane::I32, SlotBank::Gp));
+                }
+            }
+            ResKind::Bool => all.push((format!("p{i}"), PhysLane::BoolU8, SlotBank::Gp)),
+            ResKind::ViewText => {
+                all.push((format!("p{i}_ptr"), PhysLane::I64, SlotBank::Gp));
+                all.push((format!("p{i}_len"), PhysLane::U64, SlotBank::Gp));
+            }
+            ResKind::Rec { rec, role, .. } => {
+                let tag = match role {
+                    ViewRole::Out => "out",
+                    _ => "view",
+                };
+                all.push((format!("p{i}_{tag}_{rec}"), PhysLane::I64, SlotBank::Gp));
+            }
+            ResKind::Handle { .. } => all.push((format!("p{i}_h"), PhysLane::I64, SlotBank::Gp)),
+            ResKind::Callback { .. } => all.push((format!("p{i}_fn"), PhysLane::I64, SlotBank::Gp)),
+        }
+        i += 1;
+    }
+    match &res.form {
+        ResourceForm::Pure { ret } => Ok(PhysForm::Pure {
+            params: classify(&all),
+            ret: resource_ret_lane(ret),
+        }),
+        ResourceForm::Fallible { out, .. } => {
+            if let Some(o) = out {
+                all.push(("out0_ptr".into(), resource_out_lane(o), SlotBank::Gp));
+                out_lanes.push(resource_out_lane(o));
+            }
+            let ctx = match &res.form {
+                ResourceForm::Fallible { ctx, .. } => *ctx,
+                _ => None,
+            };
+            Ok(PhysForm::Fallible {
+                ctx,
+                params: classify(&all),
+                outs: out_lanes,
+            })
+        }
+    }
+}
+
+fn resource_ret_lane(ret: &crate::resource::ResOut) -> PhysRet {
+    use crate::resource::ResOut;
+    match ret {
+        ResOut::I32 => PhysRet::RaxI32,
+        ResOut::Bool => PhysRet::RaxBoolU8,
+        ResOut::I64 | ResOut::Handle { .. } => PhysRet::RaxI64,
+        ResOut::U64 => PhysRet::RaxU64,
+    }
+}
+
+fn resource_out_lane(out: &crate::resource::ResOut) -> PhysLane {
+    use crate::resource::ResOut;
+    match out {
+        ResOut::I32 => PhysLane::I32,
+        ResOut::Bool => PhysLane::BoolU8,
+        ResOut::I64 | ResOut::Handle { .. } => PhysLane::I64,
+        ResOut::U64 => PhysLane::U64,
+    }
+}
+
 impl PhysicalPlan {
     /// Project logical facts into the physical plan for the current
     /// frozen domain. Named rejections: unknown domain fields, forms the
@@ -173,43 +305,10 @@ impl PhysicalPlan {
         facts.validate()?;
         let mut functions = Vec::new();
         for f in &facts.functions {
-            let form = match &f.form {
-                FnForm::Pure { params, ret } => {
-                    let lanes: Vec<(String, PhysLane, SlotBank)> = params
-                        .iter()
-                        .enumerate()
-                        .map(|(i, k)| (format!("p{i}"), k.physical(), k.physical().slot_class()))
-                        .collect();
-                    PhysForm::Pure {
-                        params: classify(&lanes),
-                        ret: ret_lane(*ret),
-                    }
-                }
-                FnForm::Fallible { ctx, params, outs } => {
-                    // ctx lane (pointer width, GP), then declared params,
-                    // then one pointer-width GP lane per out slot.
-                    let mut all: Vec<(String, PhysLane, SlotBank)> = Vec::new();
-                    if ctx.is_some() {
-                        // Pointer lanes are GP-class; PhysLane has no raw
-                        // pointer variant by design — the ctx lane is
-                        // spelled by the form, classified as GP I64-width.
-                        all.push(("ctx".into(), PhysLane::I64, SlotBank::Gp));
-                    }
-                    for (i, k) in params.iter().enumerate() {
-                        let p = k.physical();
-                        all.push((format!("p{i}"), p, p.slot_class()));
-                    }
-                    // Out slots travel as trailing pointer-width lanes.
-                    for (i, k) in outs.iter().enumerate() {
-                        let p = k.physical();
-                        all.push((format!("out{i}_ptr"), p, p.slot_class()));
-                    }
-                    PhysForm::Fallible {
-                        ctx: *ctx,
-                        params: classify(&all),
-                        outs: outs.iter().map(|k| k.physical()).collect(),
-                    }
-                }
+            let form = if let Some(res) = &f.resource {
+                project_resource(res)?
+            } else {
+                project_scalar(&f.form)?
             };
             functions.push(PhysFn {
                 symbol: f.symbol.clone(),
@@ -294,6 +393,19 @@ impl PhysicalPlan {
             let logical = facts
                 .function(&physical.symbol)
                 .ok_or("plan unknown logical symbol")?;
+            if let Some(res) = &logical.resource {
+                // PLAN-939 resource entry: the decoded physical form must
+                // equal a fresh projection of the resource sig (bounded
+                // per-form work; the plan itself is not re-projected).
+                let expected = project_resource(res)?;
+                if physical.form != expected {
+                    return Err(format!(
+                        "plan resource form mismatch for '{}'",
+                        physical.symbol
+                    ));
+                }
+                continue;
+            }
             let valid = match (&physical.form, &logical.form) {
                 (
                     PhysForm::Pure {
@@ -565,6 +677,7 @@ pub mod tests_support {
                 },
                 error_model: None,
                 semantic_ref: None,
+                resource: None,
             }],
             effects: vec![],
             capabilities: vec![],
