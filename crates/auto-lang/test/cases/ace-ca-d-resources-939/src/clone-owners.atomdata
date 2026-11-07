@@ -1,0 +1,591 @@
+{
+  "schema": "abi.resource-import-deck/1",
+  "source": "fn main() int {\n    let h int = t939_create(4)\n    let g int = t939_clone(h)\n    let a int = t939_get(h)\n    let b int = t939_get(g)\n    let d1 int = t939_destroy(h)\n    let d2 int = t939_destroy(g)\n    let live int = t939_live()\n    return a + b + d1 + d2 + live\n}\n",
+  "module": "source939",
+  "manifest": {
+    "schema": "ace.foreign.manual/2",
+    "review_id": "plan939-resource-provider-v1",
+    "provider": "r939",
+    "header_digest": "dcca128834223866aef0f2fb9e4152364fc0c3846ee6e9d07bdfcb26c2c78157",
+    "physical_table_digest": "b8b00cefc987582b278e0d066ae5e36ff5d187ebb3e370a7c41d19b12bb32c10",
+    "target": "x86_64-pc-windows-msvc",
+    "profile": "autoabi.win-x64.v0.1-candidate",
+    "callconv": "windows-x64",
+    "direction": "source-import",
+    "facts": {
+      "format": "autoabi.contract.facts/1",
+      "logical": "r939",
+      "content_version": "resource-v1",
+      "source": {
+        "Typed": {
+          "id": "plan939-resource-provider-v1"
+        }
+      },
+      "functions": [
+        {
+          "symbol": "t939_byte_length",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": null,
+          "semantic_ref": null,
+          "resource": {
+            "format": "autoabi.contract.resource-sig/1",
+            "params": [
+              "ViewText"
+            ],
+            "form": {
+              "Pure": {
+                "ret": "U64"
+              }
+            },
+            "atomic": false,
+            "noescape": false
+          }
+        },
+        {
+          "symbol": "t939_scalar_count",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": null,
+          "semantic_ref": null,
+          "resource": {
+            "format": "autoabi.contract.resource-sig/1",
+            "params": [
+              "ViewText"
+            ],
+            "form": {
+              "Pure": {
+                "ret": "U64"
+              }
+            },
+            "atomic": false,
+            "noescape": false
+          }
+        },
+        {
+          "symbol": "t939_bump",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": {
+            "kind": "status-i32",
+            "codes": [
+              [
+                -2,
+                "seed"
+              ]
+            ]
+          },
+          "semantic_ref": null,
+          "resource": {
+            "format": "autoabi.contract.resource-sig/1",
+            "params": [
+              {
+                "Rec": {
+                  "rec": "Counter",
+                  "fields": [
+                    [
+                      "value",
+                      "i32"
+                    ]
+                  ],
+                  "role": "mut"
+                }
+              },
+              "I32"
+            ],
+            "form": {
+              "Fallible": {
+                "ctx": null,
+                "out": "I32"
+              }
+            },
+            "atomic": true,
+            "noescape": false
+          }
+        },
+        {
+          "symbol": "t939_create",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": null,
+          "semantic_ref": null,
+          "resource": {
+            "format": "autoabi.contract.resource-sig/1",
+            "params": [
+              "I32"
+            ],
+            "form": {
+              "Pure": {
+                "ret": {
+                  "Handle": {
+                    "provider": "r939"
+                  }
+                }
+              }
+            },
+            "atomic": false,
+            "noescape": false
+          }
+        },
+        {
+          "symbol": "t939_get",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": {
+            "kind": "status-i32",
+            "codes": [
+              [
+                -1,
+                "handle"
+              ]
+            ]
+          },
+          "semantic_ref": null,
+          "resource": {
+            "format": "autoabi.contract.resource-sig/1",
+            "params": [
+              {
+                "Handle": {
+                  "provider": "r939"
+                }
+              }
+            ],
+            "form": {
+              "Fallible": {
+                "ctx": null,
+                "out": "I32"
+              }
+            },
+            "atomic": false,
+            "noescape": false
+          }
+        },
+        {
+          "symbol": "t939_destroy",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": {
+            "kind": "status-i32",
+            "codes": [
+              [
+                -1,
+                "handle"
+              ]
+            ]
+          },
+          "semantic_ref": null,
+          "resource": {
+            "format": "autoabi.contract.resource-sig/1",
+            "params": [
+              {
+                "Handle": {
+                  "provider": "r939"
+                }
+              }
+            ],
+            "form": {
+              "Fallible": {
+                "ctx": null,
+                "out": "I32"
+              }
+            },
+            "atomic": false,
+            "noescape": false
+          }
+        },
+        {
+          "symbol": "t939_txn",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": {
+            "kind": "status-i32",
+            "codes": [
+              [
+                -3,
+                "alloc"
+              ],
+              [
+                -2,
+                "seed"
+              ]
+            ]
+          },
+          "semantic_ref": null,
+          "resource": {
+            "format": "autoabi.contract.resource-sig/1",
+            "params": [
+              "I32",
+              {
+                "Rec": {
+                  "rec": "TxnResult",
+                  "fields": [
+                    [
+                      "value",
+                      "i32"
+                    ],
+                    [
+                      "handle",
+                      "i32"
+                    ]
+                  ],
+                  "role": "out"
+                }
+              }
+            ],
+            "form": {
+              "Fallible": {
+                "ctx": null,
+                "out": "I32"
+              }
+            },
+            "atomic": true,
+            "noescape": false
+          }
+        },
+        {
+          "symbol": "t939_fold",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": {
+            "kind": "status-i32",
+            "codes": [
+              [
+                -7,
+                "callback"
+              ],
+              [
+                -2,
+                "seed"
+              ]
+            ]
+          },
+          "semantic_ref": null,
+          "resource": {
+            "format": "autoabi.contract.resource-sig/1",
+            "params": [
+              {
+                "Callback": {
+                  "ctx": true
+                }
+              },
+              "I32",
+              "I32"
+            ],
+            "form": {
+              "Fallible": {
+                "ctx": null,
+                "out": "I32"
+              }
+            },
+            "atomic": false,
+            "noescape": true
+          }
+        },
+        {
+          "symbol": "t939_pair",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": {
+            "kind": "status-i32",
+            "codes": [
+              [
+                -2,
+                "seed"
+              ]
+            ]
+          },
+          "semantic_ref": null,
+          "resource": {
+            "format": "autoabi.contract.resource-sig/1",
+            "params": [
+              {
+                "Rec": {
+                  "rec": "Counter",
+                  "fields": [
+                    [
+                      "value",
+                      "i32"
+                    ]
+                  ],
+                  "role": "mut"
+                }
+              },
+              {
+                "Rec": {
+                  "rec": "Counter",
+                  "fields": [
+                    [
+                      "value",
+                      "i32"
+                    ]
+                  ],
+                  "role": "mut"
+                }
+              }
+            ],
+            "form": {
+              "Fallible": {
+                "ctx": null,
+                "out": "I32"
+              }
+            },
+            "atomic": true,
+            "noescape": false
+          }
+        },
+        {
+          "symbol": "t939_pairv",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": {
+            "kind": "status-i32",
+            "codes": [
+              [
+                -2,
+                "seed"
+              ]
+            ]
+          },
+          "semantic_ref": null,
+          "resource": {
+            "format": "autoabi.contract.resource-sig/1",
+            "params": [
+              {
+                "Rec": {
+                  "rec": "Counter",
+                  "fields": [
+                    [
+                      "value",
+                      "i32"
+                    ]
+                  ],
+                  "role": "mut"
+                }
+              },
+              {
+                "Rec": {
+                  "rec": "Counter",
+                  "fields": [
+                    [
+                      "value",
+                      "i32"
+                    ]
+                  ],
+                  "role": "const"
+                }
+              }
+            ],
+            "form": {
+              "Fallible": {
+                "ctx": null,
+                "out": "I32"
+              }
+            },
+            "atomic": true,
+            "noescape": false
+          }
+        },
+        {
+          "symbol": "t939_live",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": null,
+          "semantic_ref": null,
+          "resource": {
+            "format": "autoabi.contract.resource-sig/1",
+            "params": [],
+            "form": {
+              "Pure": {
+                "ret": "I64"
+              }
+            },
+            "atomic": false,
+            "noescape": false
+          }
+        },
+        {
+          "symbol": "t939_clone",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": null,
+          "semantic_ref": null,
+          "resource": {
+            "format": "autoabi.contract.resource-sig/1",
+            "params": [
+              {
+                "Handle": {
+                  "provider": "r939"
+                }
+              }
+            ],
+            "form": {
+              "Pure": {
+                "ret": {
+                  "Handle": {
+                    "provider": "r939"
+                  }
+                }
+              }
+            },
+            "atomic": false,
+            "noescape": false
+          }
+        },
+        {
+          "symbol": "t939_stored_cb",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": null,
+          "semantic_ref": null,
+          "resource": {
+            "format": "autoabi.contract.resource-sig/1",
+            "params": [],
+            "form": {
+              "Pure": {
+                "ret": "I32"
+              }
+            },
+            "atomic": false,
+            "noescape": false
+          }
+        }
+      ],
+      "effects": [
+        "pure:t939_byte_length",
+        "pure:t939_scalar_count",
+        "pure:t939_create",
+        "pure:t939_live",
+        "checked"
+      ],
+      "capabilities": [
+        "foreign.scalar",
+        "foreign.resource"
+      ]
+    },
+    "declarations": [
+      {
+        "source_name": "t939_byte_length",
+        "symbol": "t939_byte_length",
+        "context_symbol": null
+      },
+      {
+        "source_name": "t939_scalar_count",
+        "symbol": "t939_scalar_count",
+        "context_symbol": null
+      },
+      {
+        "source_name": "t939_bump",
+        "symbol": "t939_bump",
+        "context_symbol": null
+      },
+      {
+        "source_name": "t939_create",
+        "symbol": "t939_create",
+        "context_symbol": null
+      },
+      {
+        "source_name": "t939_get",
+        "symbol": "t939_get",
+        "context_symbol": null
+      },
+      {
+        "source_name": "t939_destroy",
+        "symbol": "t939_destroy",
+        "context_symbol": null
+      },
+      {
+        "source_name": "t939_txn",
+        "symbol": "t939_txn",
+        "context_symbol": null
+      },
+      {
+        "source_name": "t939_fold",
+        "symbol": "t939_fold",
+        "context_symbol": null
+      },
+      {
+        "source_name": "t939_pair",
+        "symbol": "t939_pair",
+        "context_symbol": null
+      },
+      {
+        "source_name": "t939_pairv",
+        "symbol": "t939_pairv",
+        "context_symbol": null
+      },
+      {
+        "source_name": "t939_live",
+        "symbol": "t939_live",
+        "context_symbol": null
+      },
+      {
+        "source_name": "t939_clone",
+        "symbol": "t939_clone",
+        "context_symbol": null
+      },
+      {
+        "source_name": "t939_stored_cb",
+        "symbol": "t939_stored_cb",
+        "context_symbol": null
+      }
+    ]
+  },
+  "capabilities": [
+    "foreign.scalar",
+    "foreign.resource"
+  ],
+  "provider_bias": 0,
+  "reference": "clone-owners"
+}

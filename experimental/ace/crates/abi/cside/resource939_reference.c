@@ -55,7 +55,48 @@ static void layout_selfcheck(void) {
 
 int main(void) {
     layout_selfcheck();
-#ifdef R939_S_pairv_temp
+#ifdef R939_S_clone_owners
+    {
+        /* PLAN-939 V-03 (the DECLARED clone hook): clone makes an
+         * independent slot; BOTH owners get the payload and each
+         * destroys exactly once; the ledger ends at zero live. */
+        int64_t h = t939_create(4);
+        int64_t g;
+        int32_t a = -1, b = -1, d1 = -1, d2 = -1, live = -1;
+        R939_S_check(h != 0);
+        g = t939_clone(h);
+        R939_S_check(g != 0 && g != h);
+        R939_S_check(t939_get(h, &a) == 0 && a == 4);
+        R939_S_check(t939_get(g, &b) == 0 && b == 4);
+        R939_S_check(t939_destroy(h, &d1) == 0);
+        R939_S_check(t939_destroy(g, &d2) == 0);
+        live = t939_live();
+        R939_S_check(live == 0);
+        return (int)(a + b + d1 + d2 + live); /* 10 */
+    }
+#elif defined(R939_S_forged_handle)
+    {
+        /* PLAN-939 V-06: a well-formed encoding of a NEVER-allocated
+         * slot — the provider rejects with ZERO state change. */
+        int32_t out = 77;
+        int32_t st = t939_get(65536, &out);
+        R939_S_check(st == -1);
+        R939_S_check(out == 77); /* untouched — zero provider state change */
+        return 70; /* the frozen failure transport, like every failing deck */
+    }
+#elif defined(R939_S_stored_cb)
+    {
+        /* PLAN-939 V-14: the noescape observable — after a REAL fold
+         * (mirrored exactly: the same provider call with the reference's
+         * own callback), nothing was stored. */
+        t939_reset();
+        int32_t out = -1;
+        R939_S_check(t939_fold(ref_cb_add, 5LL, 3, &out) == 0);
+        R939_S_check(out == 18);
+        R939_S_check(t939_stored_cb() == 0);
+        return (int)(out * 10 + 0); /* 180 */
+    }
+#elif defined(R939_S_pairv_temp)
     {
         /* PLAN-939 V-02 (ctor temp as the CONST view lane): the call-site
          * temp Counter(5) is materialized once, viewed, consumed by the

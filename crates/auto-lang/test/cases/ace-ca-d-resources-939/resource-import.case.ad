@@ -165,6 +165,56 @@ case { schema: "autolang.case/2", id: "ace-ca-d3.pairv-temp-c", tags: ["ca-d3", 
  abi: { leg: "c" }, steps: [ { op: "query" } ] },
  expect: { completion: "success", exit: 47, probe: [ { stages_include: ["source-import"] } ] } } ] }
 ```
+# T-06 (V-03): the DECLARED provider clone hook — clone makes an
+# independent slot; both owners read the payload and EACH destroys
+# exactly once; the ledger ends at zero live (exit 10 = 4+4+1+1+0).
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.clone-owners-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/clone-owners.atomdata", syntax: "atom-data", path: "clone-owners.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 10, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.clone-owners-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/clone-owners.atomdata", syntax: "atom-data", path: "clone-owners.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 10, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+# T-06 (V-06): a FORGED handle (well-formed encoding of a never-allocated
+# slot) — the provider rejects with -1 and ZERO state change (the frozen
+# failure transport, exit 70).
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.forged-handle-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/forged-handle.atomdata", syntax: "atom-data", path: "forged-handle.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 70, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.forged-handle-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/forged-handle.atomdata", syntax: "atom-data", path: "forged-handle.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 70, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+# T-06 (V-14): after a REAL fold, the noescape observable reads 0 — the
+# provider stored nothing (exit 180 = 18*10 + 0).
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.stored-cb-native", tags: ["ca-d3", "certify"],
+ source: { file: "src/stored-cb.atomdata", syntax: "atom-data", path: "stored-cb.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 180, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ace-ca-d3.stored-cb-c", tags: ["ca-d3", "certify"],
+ source: { file: "src/stored-cb.atomdata", syntax: "atom-data", path: "stored-cb.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/resource-foreign-certify-v1",
+ abi: { leg: "c" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 180, probe: [ { stages_include: ["source-import"] } ] } } ] }
+```
 # T-02A restart seam: publish cold, restart the worker session, then the
 # FIRST body edit (a semantics-preserving statement change; the oracle stays
 # 8/3-scalar-independent) re-resolves on the RESTORED session (resolver-owned

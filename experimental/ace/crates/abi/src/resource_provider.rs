@@ -238,6 +238,28 @@ pub fn reviewed_resource_manifest() -> ManualManifest {
             false,
             None,
         ),
+        resource_fn(
+            "t939_clone",
+            vec![ResKind::Handle {
+                provider: "r939".into(),
+            }],
+            ResourceForm::Pure {
+                ret: ResOut::Handle {
+                    provider: "r939".into(),
+                },
+            },
+            false,
+            false,
+            None,
+        ),
+        resource_fn(
+            "t939_stored_cb",
+            vec![],
+            ResourceForm::Pure { ret: ResOut::I32 },
+            false,
+            false,
+            None,
+        ),
     ];
     let declarations = functions
         .iter()
@@ -331,7 +353,7 @@ mod tests {
     fn reviewed_resource_manifest_is_valid_and_admits() {
         let manifest = reviewed_resource_manifest();
         manifest.validate().expect("valid /2 resource manifest");
-        assert_eq!(manifest.facts.functions.len(), 11);
+        assert_eq!(manifest.facts.functions.len(), 13); // T-06: + t939_clone, t939_stored_cb
         let caps = vec![SOURCE_CAP.to_string(), RESOURCE_CAP.to_string()];
         let authority = resource_authority(&"c".repeat(64), 1, &caps);
         let admitted = manifest

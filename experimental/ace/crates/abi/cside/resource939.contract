@@ -7,7 +7,7 @@
     "t939_byte_length": "u64(const uint8_t*,u64); total; len is a BYTE count; bridge pre-validates UTF-8; NUL is data",
     "t939_scalar_count": "u64(const uint8_t*,u64); total; counts non-continuation bytes (bridge pre-validated encoding)",
     "t939_bump": "status-i32(Counter* mut,int32_t,int32_t* out); success commits r->value+=delta and *out=new value exactly once; delta<0 -> -2 with EVERY caller byte untouched; no read of *out",
-    "t939_create": "i64(int32_t); returns gen*1024+idx handle (positive, inside i32 range) or 0 on injected/real allocation failure; no clone hook exists",
+    "t939_create": "i64(int32_t); returns gen*1024+idx handle (positive, inside i32 range) or 0 on injected/real allocation failure",
     "t939_get": "status-i32(i64,int32_t* out); stale/forged/double-destroyed handle -> -1 with *out untouched",
     "t939_destroy": "status-i32(i64,int32_t* out); exactly-once destroy enforced by the slot ledger; success writes the destroyed generation to *out; stale/double -> -1 with *out untouched",
     "t939_live": "i32(); probe returning the current live-handle count (slot-table derived); effectful observation",
@@ -16,6 +16,8 @@
     "t939_txn": "status-i32(int32_t seed,TxnResult* out2,int32_t* out); seed in [0,1000] commits BOTH slots once (out2->value=seed*2, out2->handle=fresh positive-i32 handle, *out=seed); seed in [1001,2000] creates the transient handle then destroys it at the ORIGINAL provider before returning -3; other seeds -> -2 before allocation; EVERY failure leaves both caller slots byte-identical",
     "t939_fold": "status-i32(long long (*)(long long,long long),long long ctx_seed,int32_t n,int32_t* out); folds cb(ctx_seed,item) for item in [0,n) SYNCHRONOUSLY per call; n outside [0,64] -> -2 before any callback; a NEGATIVE callback result is returned verbatim as the status (the error channel, never a success sentinel); a callback result or the running sum outside i32 -> -2 with *out untouched; the provider never stores cb (noescape); ctx passes through unchanged",
     "t939_pair": "status-i32(Counter* a mut,Counter* b mut,int32_t* out); success commits a->value+=1 and b->value+=2 exactly once with *out=a->value+b->value; same-owner aliasing into both lanes is a VERIFIER rejection that never reaches the provider; NULL guard -> -2 with every caller byte untouched",
+    "t939_clone": "i64(i64); the DECLARED provider clone hook — clones h's slot into a FRESH slot (independent storage and generation, same payload); invalid h -> 0; each copy carries its own destroy responsibility (two owners each destroy exactly once)",
+    "t939_stored_cb": "i32(); the noescape observable — the provider never stores a callback; always 0",
     "t939_pairv": "status-i32(Counter* r mut,const Counter* v,int32_t* out); success commits r->value+=1 once with *out=r->value+v->value; same-owner mut+view aliasing is a VERIFIER rejection; the const lane is never written; NULL guard -> -2 with every caller byte untouched"
   },
   "review_rule": "header and review-table bytes are independently authored; compile provider with the same header; bind their BLAKE3 digests and the actual object BLAKE3 digest at the host composition root; record views cross through the provider nominal types (Counter, TxnResult) whose natural-align i32-field closures must equal the manifest field closures; no symbol-name inference of physical signature"

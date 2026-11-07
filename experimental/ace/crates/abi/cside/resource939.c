@@ -129,6 +129,22 @@ int64_t t939_create(int32_t size) {
     return alloc_slot(size, size);
 }
 
+int64_t t939_clone(int64_t h) {
+    SOURCE939_EVENT("t939_clone");
+    struct r939_slot *s = slot_of(h);
+    if (!s) {
+        return 0;
+    }
+    /* independent backing: a fresh slot with the same payload — the two
+     * owners' handles are distinct storage and distinct generations */
+    return alloc_slot(s->size, s->value);
+}
+
+int32_t t939_stored_cb(void) {
+    SOURCE939_EVENT("t939_stored_cb");
+    return 0; /* noescape: nothing is ever stored */
+}
+
 int32_t t939_get(int64_t h, int32_t *out) {
     SOURCE939_EVENT("t939_get");
     struct r939_slot *s = slot_of(h);

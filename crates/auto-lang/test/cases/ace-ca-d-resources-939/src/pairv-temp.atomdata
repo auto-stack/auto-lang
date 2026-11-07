@@ -6,8 +6,8 @@
     "schema": "ace.foreign.manual/2",
     "review_id": "plan939-resource-provider-v1",
     "provider": "r939",
-    "header_digest": "f509b8267547a9ec0382433a1563fd6fb730095ab00bd1da6e598c9f29948a61",
-    "physical_table_digest": "12db7d26a9588b3f7e1a9dce2767f24eb63b0e345fa54416c4b9f8c2de836b35",
+    "header_digest": "dcca128834223866aef0f2fb9e4152364fc0c3846ee6e9d07bdfcb26c2c78157",
+    "physical_table_digest": "b8b00cefc987582b278e0d066ae5e36ff5d187ebb3e370a7c41d19b12bb32c10",
     "target": "x86_64-pc-windows-msvc",
     "profile": "autoabi.win-x64.v0.1-candidate",
     "callconv": "windows-x64",
@@ -446,6 +446,60 @@
             "atomic": false,
             "noescape": false
           }
+        },
+        {
+          "symbol": "t939_clone",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": null,
+          "semantic_ref": null,
+          "resource": {
+            "format": "autoabi.contract.resource-sig/1",
+            "params": [
+              {
+                "Handle": {
+                  "provider": "r939"
+                }
+              }
+            ],
+            "form": {
+              "Pure": {
+                "ret": {
+                  "Handle": {
+                    "provider": "r939"
+                  }
+                }
+              }
+            },
+            "atomic": false,
+            "noescape": false
+          }
+        },
+        {
+          "symbol": "t939_stored_cb",
+          "form": {
+            "Pure": {
+              "params": [],
+              "ret": "I32"
+            }
+          },
+          "error_model": null,
+          "semantic_ref": null,
+          "resource": {
+            "format": "autoabi.contract.resource-sig/1",
+            "params": [],
+            "form": {
+              "Pure": {
+                "ret": "I32"
+              }
+            },
+            "atomic": false,
+            "noescape": false
+          }
         }
       ],
       "effects": [
@@ -514,6 +568,16 @@
       {
         "source_name": "t939_live",
         "symbol": "t939_live",
+        "context_symbol": null
+      },
+      {
+        "source_name": "t939_clone",
+        "symbol": "t939_clone",
+        "context_symbol": null
+      },
+      {
+        "source_name": "t939_stored_cb",
+        "symbol": "t939_stored_cb",
         "context_symbol": null
       }
     ]

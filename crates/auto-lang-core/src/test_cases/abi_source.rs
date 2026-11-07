@@ -14,11 +14,11 @@ const REVIEWED_PHYSICAL_TABLE: &str =
     "0ea8be97d1026bd57dcaff7b35673e45a6a9f17e2f5c991bdd1b1fb04a94daa3";
 /// PLAN-939 parent-owned acceptance pins for the RESOURCE recipe.
 const R939_REVIEWED_CONTRACT: &str =
-    "ad718fde37678991237a97d9388aa2065038789ee6f2600068b750530852f2dc";
+    "2ebfc18707c2d43dfb27d758ae40d7104d128f9e57fdc50db98d5a6627de3aec";
 const R939_REVIEWED_HEADER: &str =
-    "f509b8267547a9ec0382433a1563fd6fb730095ab00bd1da6e598c9f29948a61";
+    "dcca128834223866aef0f2fb9e4152364fc0c3846ee6e9d07bdfcb26c2c78157";
 const R939_REVIEWED_PHYSICAL_TABLE: &str =
-    "12db7d26a9588b3f7e1a9dce2767f24eb63b0e345fa54416c4b9f8c2de836b35";
+    "b8b00cefc987582b278e0d066ae5e36ff5d187ebb3e370a7c41d19b12bb32c10";
 fn reviewed_c_toolchain(value: &str) -> bool {
     if value.len() > 8192 || value.chars().any(char::is_control) {
         return false;
@@ -233,6 +233,24 @@ impl SourceReport {
             // V-02 owned temp -> view: the owned Str local feeds both
             // views; owner outlives both consumers.
             "utf8-owned" => (&["t939_byte_length", "t939_scalar_count"], &[]),
+            // V-03: the DECLARED clone hook — two owners each destroy once.
+            "clone-owners" => (
+                &[
+                    "t939_create",
+                    "t939_clone",
+                    "t939_get",
+                    "t939_get",
+                    "t939_destroy",
+                    "t939_destroy",
+                    "t939_live",
+                ],
+                &[],
+            ),
+            // V-06: a forged (never-allocated) handle rejects with zero
+            // provider state change (failure transport).
+            "forged-handle" => (&["t939_get"], &["-1"]),
+            // V-14: after a real fold the noescape observable reads 0.
+            "stored-cb" => (&["t939_fold", "t939_stored_cb"], &[]),
             // V-02 ctor-temp const view lane: the temp dies with the call.
             "pairv-temp" => (&["t939_pairv"], &[]),
             "utf8-scalars" => (&["t939_scalar_count"], &[]),

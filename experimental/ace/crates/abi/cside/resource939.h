@@ -57,6 +57,16 @@ int32_t t939_bump(Counter *r, int32_t delta, int32_t *out);
 int64_t  t939_create(int32_t size);                /* 0 = injected failure */
 int32_t  t939_get(int64_t h, int32_t *out);
 int32_t  t939_destroy(int64_t h, int32_t *out);    /* *out = destroyed gen; stale/double -> -1 with *out untouched */
+/* PLAN-939 T-06 (V-03): the DECLARED provider clone hook — clones h's
+ * slot into a FRESH slot (independent storage, own generation); invalid
+ * h -> 0. Each copy carries its OWN destroy responsibility (two owners
+ * each destroy exactly once). This is the ONLY clone path: the source
+ * surface has no implicit handle clone, and a provider without a
+ * declared clone op offers none. */
+int64_t  t939_clone(int64_t h);
+/* PLAN-939 T-06 (V-14): the noescape observable — the provider never
+ * stores a callback; always 0. */
+int32_t  t939_stored_cb(void);
 int32_t  t939_live(void);                          /* probe: current live-handle count (slot-table derived) */
 int32_t  t939_ledger(int64_t *live, int64_t *allocs, int64_t *frees); /* reference leg only */
 void     t939_fail_nth_alloc(int32_t n);           /* 1-based; <1 = off */
