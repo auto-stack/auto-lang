@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 31
+current_step: 32
 total_steps: 32
 ---
 
@@ -2223,6 +2223,16 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:96 | from:goal继续 
 stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（上游64MiB红根因级交接：b8987bb0b双计投影、4,718B误拒算术、三修复选项；master未交付） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:60e188170dfadd780bbfa0c0eb7f725676205047 | task_ids:T-09上游跟进 | evidence:handoff-f94120-upstream-64mib.md | next_responsible_role:work 候上游修复→冻结门/工具/证据链/16-16 | 无live handle
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:97 | from:goal继续 | to:work | status:executing31/32 | outcome:progress（根因定位：真实127.87MiB可容、双计投影误拒4,718B） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:60e188170dfadd780bbfa0c0eb7f725676205047 | next:候上游修复落地；D939在途，无待poll
+
+### 第98轮：work T-07十六策略证据面就绪——abi-interop 10真窗采集，16/16样本源齐
+
+- 承第97轮（上游64MiB未交付），组合链虽候冻结门，但**abi-interop-runtime真窗不依赖组合**：D938接收后938真C提供者腿已在树内且ace-abi 243全绿（第95轮）。本轮采集10个metered窗口（`f94121-abi-interop/policy-runs`，@`60e188170`）：每窗执行PLAN-938三条真interop腿（`source_foreign_native_calls_real_c_provider...`真C提供者调用+body编辑、`source_foreign_c_consumes_checked_hir...`独立编译C消费者、`source_foreign_both_targets_preserve...`双目标语义）——含真实cl链接与执行，wall 8019–10531ms、峰108.4MB。
+- **16/16样本源就绪**：`policy-runtime-samples.json`绑定扩至全部16策略（abi-interop n=10 p90=10529ms入行）；sampler干跑验证**16/16全部n≥10 observed**、无外来策略、meter原处重读。组合重读时policy行预期**16/16实测PASS**（候冻结门）。
+- **边界**：组合重读仍候上游64MiB修复（第97轮根因级交接：b8987bb0b双计投影、4,718B误拒、三修复选项）→冻结门→工具对账→证据链重采；本绑定与真窗已staged，修复落地即可直入组合。D939在途。executing32/32。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（abi-interop 10真窗+16/16样本源staged；组合候上游修复） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:60e188170dfadd780bbfa0c0eb7f725676205047 | task_ids:T-07证据增补 | evidence:f94121-abi-interop/policy-runs.json | next_responsible_role:work 候上游修复→冻结门/工具/证据链/组合重读(16/16) | 无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:98 | from:goal继续 | to:work | status:executing32/32 | outcome:progress（16策略样本源全就绪；唯一候=上游64MiB修复） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:60e188170dfadd780bbfa0c0eb7f725676205047 | next:候上游修复落地；D939在途，无待poll
 
 ## 10. 待澄清事项
 
