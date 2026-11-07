@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 19
+current_step: 20
 total_steps: 32
 ---
 
@@ -496,7 +496,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-01 | work | §4原goal全链授权；只读当前Specs/收据 | 冻结main/929/937/934..939实际D与reader、旧313/38清单、完整语料/原预算/具体固定组/全部owner，scope登记；AC-01/10，V-01/14 | [ ] 第72轮实际D/30合同/旧524格与313/38已审计；D938/939实际输入未交、T03全宇宙未闭，完整冻结仍待 |
 | T-02 | work | T-01，私有P | 首例同源文件/独立oracle/四目标AutoDown-TestCase从本步入跟踪并走既有正式父入口，不等收尾才补；有界全链：真实一个scalar四端+原旧核算/SYN/937收据→strict reader→registry→报告；四端同错/缺C/旧claimfalse控制红，冻结schema/required闭包/预算无自指/不spawn；不成立needs_replan；AC-02/03/10 | [ ] 第72轮独立有界20/20实际tracked CLI、四端同错/缺C/旧claim反控已证；不以首例替T01完整输入冻结及后续全量工作 |
 | T-03 | work | T-02，新registry私有面 | 新ace-m1-expanded registry逐source/target/机制/原格位与义务/组/owner/条件映射，完整覆盖而不改旧批准；AC-01，V-01 | [ ] 第85轮宇宙闭包增量（7938954802）：registry升/2 universe-closed——1006登记键（31份pinned合同活派生）+14条awaiting-D具名行（938/939各7条work AC，owner/promise/direction/close，内容sha钉定）；治理241/241（新增漏一项即拒/篡改/外来owner/外来域反控）、组合重读verdicts 716P8F282U逐键零漂移且required_universe_closed=true；逐义务深元数据仍由合同承载（活派生入口），如独立review要求registry物化再扩 |
-| T-04 | work | T-03，必要H短窗 | 新只读ace_m1_arch_acceptance.py与域reader适配/严格身份/路径/版本/原始终态/旧认证差异；AC-02/09/10，V-02/13/14 | [ ] |
+| T-04 | work | T-03，必要H短窗 | 新只读ace_m1_arch_acceptance.py与域reader适配/严格身份/路径/版本/原始终态/旧认证差异；AC-02/09/10，V-02/13/14 | [ ] 第86轮reducer增量（7cc50eeb29）：§5.2八域门纯谓词`reduce_acceptance`（ace.m1.acceptance-reducer/1）上线并接线组合报告——accounting/evidence/system四类输入永不单独推导can_claim、未组合测量具名missing_input blocker、complete_expanded_registry门改随宇宙闭合；治理243/243（+2 reducer控制：隔离全绿可触发谓词/未知缺失错型输入全拒）；组合重读verdicts守恒零漂移、8门仅expanded_registry_valid真、can_claim=False带14具名blocker；预算合约pin刷新（arch_acceptance字节变化）。域reader扩展（严格身份/路径/版本继续）与T05..T11测量节组合仍待 |
 | T-05 | work | T-03/04，Q4已有域稳定API | 正/负同源四端与独立oracle/reference/完整文件集认证、跨目标身份/daily分轴；AC-03/09，V-03/12/13 | [ ] |
 | T-06 | work | T-04/05，929/各实际required来源页稳定窗口 | 真实P/M/R/IO计数/依赖变化/多函数方法闭包、source恢复首操作/坏页/原子安装反控；AC-04/05，V-04..06 | [ ] |
 | T-07 | work | T-06，原资源/HMR接口与正式窗口 | 原预算/cleanup/fault/lease/同PID safepoint/原样本P90/peak与新组合器资源帽；AC-06，V-07/08/16 | [ ] |
@@ -2090,6 +2090,18 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:84 | from:goal用户�
 stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（T-03宇宙闭包增量：registry/2+awaiting-D具名、治理241/241、组合零漂移且宇宙闭合） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:7938954802 | task_ids:T-03增量（勾选留review）；T-04待 | evidence:f94103-universe/t03-universe-audit.json | next_responsible_role:work T-04域reader/原T05..义务；无具名待批项，无live handle
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:85 | from:goal用户指令 | to:work | status:executing19/32 | outcome:progress（required universe以具名awaiting-D闭合，verdicts守恒零漂移） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:7938954802 | next:work T-04域reader适配/原T05..T11；D938/939未交齐，无待poll
+
+### 第86轮：work T-04总谓词reducer增量——§5.2八域门上线、具名blocker与预算合约pin刷新
+
+- 承第85轮宇宙闭包，按用户指令推进T-04：`ace_m1_arch_acceptance.py`从primitives扩为**总谓词reducer**——纯函数`reduce_acceptance`（schema `ace.m1.acceptance-reducer/1`）：八域门（legacy_current_gate/legacy_required_execution/c_core_and_resource/q4_oracle_certification/syntax_architecture/precise_incremental_restore/budgets_time/expanded_registry_valid）逐键exact校验；accounting_valid/evidence_complete/system_delivered三类输入与域门**互相独立**，`can_claim_expanded_m1`需全部为真且cert-gap=0且awaiting-D=0且无missing_input；缺任何输入输出具名blocker，绝不把缺输入转绿。
+- `compose_first_slice`接线：八门映射到**实际已组合**的报告节（q4六族cert+七族execution、scalar/original-data含8红如实fail、architecture_required、ct_restore；未组合的T-06/T-07测量节按`missing_input:incremental_restore_measurements/budget_time_measurements`具名，`system_delivered=False`带`acceptance_system_controls(T-10 governance)`具名缺项）；顶层evidence_complete/acceptance_system_delivered/can_claim_expanded_m1由硬编码False改为reducer计算值；过时门`complete_expanded_registry`改随`required_universe_closed`。ct_restore节为纯字符串verdict、q4节为judgement文档——helper按节schema分态读取。
+- **现场pin漂移如实处理**：`original-budget-contracts.json` pin了`ace_m1_arch_acceptance.py`字节——本增量使其STALE（守卫正确触发），刷新pin（新合约sha=`9acd3fc9c25203ad23df473b3b895e71f8e38c2afccf9067909cc8c0071c0e67`）+模块CONTRACT_SHA+registry摘要；awaiting_d钉定不受扰。提交**`7cc50eeb29`**（6文件；首版helper遇ct_restore字符串形状AttributeError，修正后amend——测试期缺陷非生产失败）。
+- **验证**：完整治理**243/243PASS**（241+2新：隔离全绿合成控制可触发谓词且逐blocker类具名——仅控制永不作生产证据；未知/缺键/错型/负数/空串输入全拒）；冻结提交组合重读（f94112证据、禁Popen）：**verdicts 716P8F282U逐键零漂移**、八门仅`expanded_registry_valid=true`（如实）、`can_claim_expanded_m1=false`带**14具名blocker**（8域门+evidence_incomplete+legacy_cert_gaps:38+awaiting_d:14+system_not_delivered+3 missing_input）、registry sha=`4f52fa3c…`。13工具恒等（无重采）。审计`f94104-reducer/t04-reducer-audit.json`=`938f8f4c66534784b6507d3a6c89069337ad0edff6b2527abffec36b0c01ae12`。
+- 边界：T-04勾选留review——reducer骨架+接线+控制已交付，域reader严格身份/路径/版本/原始终态的逐项扩展与T05..T11测量节（真正能把八门翻绿的输入）仍待；T-10治理总门控制完成后system_delivered才可评估。executing20/32（T-04增量记progress）。下一入口：T-05 Q4全量认证组合深化或T-06增量/恢复测量节首建。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（T-04总谓词reducer上线：八域门+具名blocker+治理243/243+组合零漂移） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:7cc50eeb29 | task_ids:T-04增量（勾选留review）；T-05..T11待 | evidence:f94104-reducer/t04-reducer-audit.json | next_responsible_role:work T-05/T-06测量节或域reader扩展；无具名待批项，无live handle
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:86 | from:goal用户指令 | to:work | status:executing20/32 | outcome:progress（§5.2总谓词从primitives成为真实reducer，can_claim以具名blocker诚实为false） | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:7cc50eeb29 | next:work T-05/T-06测量节首建或域reader继续；D938/939未交齐，无待poll
 
 ## 10. 待澄清事项
 
