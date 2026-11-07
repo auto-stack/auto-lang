@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/auto-abi/resource-and-callback-bridge.md]
 touched_goals: [GOAL-002]
 affects: [auto-abi, auto-ac, auto-a2x, auto-a2c, auto-av, auto-test-case]
 depends_on: [PLAN-937, PLAN-938, PLAN-925, PLAN-924]
-current_step: 8
+current_step: 9
 total_steps: 14
 ---
 
@@ -240,7 +240,7 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 | T-06 | work | T-05 | handle移动/返回/provider clone hook/原方destroy、callback+ctx trampoline与错误channel；V-03/06/07/14/15；AC-02/04。交付（§9 round 14）：t939_clone 声明式 clone hook + t939_stored_cb noescape 可观测 + forged-handle 零状态变化拒（三案例×双腿+完整指纹周期）；trampoline/错误 channel 为 T-02C 已交持续绿；嵌套/重入回调与 lease/GC 归 T-08 | [✅ 2026-11-08] |
 | T-07 | work | T-05/06 | 多out/shadow/失败commit与全部分配域fault/cleanup；V-04/05；AC-03。交付（§9 round 15）：t939_txn3 三out事务（双 handle 出+标量出，声明序一次 commit，laststep 直接 slot 回收）+ 案例×双腿 + resource939_fault_sweep.c 全分配域扫描（域实测、k=1..N 逐点、N+1 不动、清错同进程重试、ledger 平衡、stale 拷贝拒）；round 6 的 ledger 探针债随 sweep 关闭 | [✅ 2026-11-08] |
 | T-08 | work | T-06/07 | provider代际与真实最后owner lease/已绑定双代call/GC回收证据；V-06/07；AC-04。交付（§9 round 16）：双代绑定一致性测试（gen 1→2、双 digest、真 lease 挡强制 GC、末次释放后真回收）+ deck 级 provider 转换案例双腿 + V-07 合法重入回调案例（回调体内嵌套 foreign view 调用，精确事件序） | [✅ 2026-11-08] |
-| T-09 | work | T-04..08，source/query恢复窗口 | 全stage真实计数/精确reader失效/required资源页/真实source恢复首编辑与首错修复；V-08/09/16；AC-05 | [ ] |
+| T-09 | work | T-04..08，source/query恢复窗口 | 全stage真实计数/精确reader失效/required资源页/真实source恢复首编辑与首错修复；V-08/09/16；AC-05。交付（§9 round 17）：per-step `pe_exit` 探针契约（PE/reference 出口逐步判定）+ V-08 精确失效 ×native/c（warm P0→body 编辑恰一函数再产→P0，逐 query 计数钉）+ V-09 首错→修复→再恢复 ×native/c（seed+受审 reference 场景成对切换，修复态=受审 record-mut deck 逐字节）+ worker 三测（失败首编辑零发布/required 页缺页-篡改-伪pointer 三轴受控拒不暗冷启动/全 stage 计数钉含 provider 轴 0 源 stage+gen 2）；声明侧 mode/layout/clone/deleter 轴绑定冻结受审 manifest v1（边界记录，机制由 provider 代际轴佐证，逐轴案例具名归 T-11）；V-16 的 512/预算/原样本归 T-10/T-12 | [✅ 2026-11-08] |
 | T-10 | work | T-09 | resource预留/候选发布原子/超限取消/cleanup/512修订GC原样本，V-05/09/10；AC-03/06 | [ ] |
 | T-11 | work | T-03..10，H窗口 | worker/父decoder/SDK/新case固定组/完整独立认证、S01..08逐方向/原797形态与937/938回归；V-11/15/16；AC-07 | [ ] |
 | T-12 | work | T-01..11，正式采样窗 | 原sample/P90/冻结完整职责自查，SD与CA-D整体矩阵/CA-E交接；AC-01..07 | [ ] |
@@ -250,6 +250,10 @@ C库导出采用正式新增library fileset/assembler而非认证时剪旧exe ma
 可提前的仅独立oracle/header与source/type能力调查，不把private准备冒资源已实施。正式S/N/C集成在D938及所需单文件owner释放后；不硬等未读取的935/936整包。
 
 ## 9. 复审记录
+
+T-09 完成记录（2026-11-08，goal round 17，HEAD `326ec881a`）：**全stage计数/精确失效/required页/首错修复——T-09 关闭（9/14）**。939 组 60 例=59 PASS+wrong-oracle FAIL 控制位；938 31（30+控制位）/937 6/925 5/ace-abi 259 全绿；worker 新测 3/3；auto-test-case lib 30、a2x-c 8、a2x-core 2 绿。(1) **per-step `pe_exit` 契约扩展**（contract.rs/ir.rs/abi.rs 判定）：多 query 流的中间步可携带逐步 PE/reference 出口（缺省保持 check 级 oracle）——首错流中步（修复态 42）在受审场景切换下诚实准入；admission 错误消息补 statuses/stderr 上下文。(2) **V-08 精确失效 ×native/c**（increment-body-edit，callback-reentrant 双函数 deck）：warm hit P0（compute 0）→main body 语义保持编辑（`0 +`）后**恰一函数**再产（native 3 vs 冷 7、c 2 vs 5，逐 query 钉）→再 warm P0；cb 读者/签名读者保持缓存。(3) **V-09 首错→修复→再恢复 ×native/c**（recover-first-error）：edit 成对切换 seed+`reference` 场景（-1/record-mut-fail ↔ 1/record-mut——修复态 deck 与受审 record-mut deck **逐字节相同**），q0 4/3→fix 3/2→restore 1/1 计数钉。(4) **worker 三测**（ace-abi conformance `resource_recovery`）：首编辑失败（bool seed 撞 i32 lane）→verify diags、**零发布**、接受根逐字节存活→修复真发布（指针移动）→fail deck 再恢复 70/-2；required 页三轴拒——缺页（代际账本 unverifiable entry，typed infra 拒+pointer 不动）、篡改 blob（自校验信封 infra 拒）、**伪 pointer**（restore decode 拒且不覆写伪造记录）——全部不暗冷启动；全 stage 计数钉 fresh 2/0/2/2/2/0→hit **全 0**（warm 连 parse 都不重跑）→body edit 1/0/1/1/1/0→provider-only 轴（bias 1）**0 源 stage**+provider digest 互异+binding generation 2。(5) **接缝修复**：body 编辑后重发布 fragment 的 callback 目标经 external scaffold 表解析（a2x-core prepare/a2x-c lower_rt 双点）。(6) **边界记录**（S08 文件头）：声明侧 mode/layout/clone/deleter 轴绑定冻结受审 provider manifest v1（deck 不可编辑）——digest 键失效机制由 provider 代际轴佐证，逐轴独立案例需新受审 manifest，具名归 T-11；V-16 的 512/GC 收敛/预算帽/原 6×30 归 T-10/T-12。归属核验：auto-lang-core lib 5 红（plan738×2、http_service×2、plan884）经基线 `7ba0611bd` stash 复跑**全部复现**——898-N5 分诊族预存红，零归属本轮；触面文件 fmt-clean、警告 132==132 零新增。
+
+stage: goal | plan_id: PLAN-939 | plan_revision: r3 | round: 17 | from: work | to: work | status: executing | outcome: interim（T-09 ✅ 9/14；全stage计数/精确失效/required页/首错修复）| worktree: D:/autostack/.wt/lang-939/auto-lang | commit: 326ec881a | next: work（T-10 resource预留/候选发布原子/超限取消/cleanup/512修订GC原样本，V-05/09/10；AC-03/06）
 
 T-08 补充验证收据（同日，round 16 收尾）：ace-abi 组偶发红定性——两次红样本分别为 cache_turnaround::abi_cache_parent_path_escape_shadow_invalidates 与 source_foreign 两个真实工具进程测试，均发生在**本轮前台组跑与后台稳定性循环并行执行**期间（双份 cl/构建负载互踩）；后台任务结束后两连干净串行整组跑全 PASS（receipt：PASS/PASS）。判定为环境归因（自致并行负载），非本包代码回归；T-08 交付（commit `7ba0611bd`）维持关闭。
 
