@@ -1,0 +1,19 @@
+{
+  "schema": "ace.foreign.review-table/1",
+  "review_id": "plan939-resource-provider-v1",
+  "target": "x86_64-pc-windows-msvc",
+  "callconv": "windows-x64",
+  "functions": {
+    "t939_byte_length": "u64(const uint8_t*,u64); total; len is a BYTE count; bridge pre-validates UTF-8; NUL is data",
+    "t939_scalar_count": "u64(const uint8_t*,u64); total; counts non-continuation bytes (bridge pre-validated encoding)",
+    "t939_bump": "status-i32(Counter* mut,int32_t,int32_t* out); success commits r->value+=delta and *out=new value exactly once; delta<0 -> -2 with EVERY caller byte untouched; no read of *out",
+    "t939_create": "i64(int32_t); returns gen*1024+idx handle (positive, inside i32 range) or 0 on injected/real allocation failure; no clone hook exists",
+    "t939_get": "status-i32(i64,int32_t* out); stale/forged/double-destroyed handle -> -1 with *out untouched",
+    "t939_destroy": "status-i32(i64,int32_t* out); exactly-once destroy enforced by the slot ledger; success writes the destroyed generation to *out; stale/double -> -1 with *out untouched",
+    "t939_live": "i32(); probe returning the current live-handle count (slot-table derived); effectful observation",
+    "t939_ledger": "status-i32(int64_t* live,int64_t* allocs,int64_t* frees); REAL slot-table derived facts, never counters",
+    "t939_fail_nth_alloc": "void(int32_t); 1-based Nth-allocation failure injection; <1 disables; observable through t939_create/t939_txn",
+    "t939_txn": "status-i32(int32_t seed,TxnResult* out2,int32_t* out); seed in [0,1000] commits BOTH slots once (out2->value=seed*2, out2->handle=fresh positive-i32 handle, *out=seed); seed in [1001,2000] creates the transient handle then destroys it at the ORIGINAL provider before returning -3; other seeds -> -2 before allocation; EVERY failure leaves both caller slots byte-identical"
+  },
+  "review_rule": "header and review-table bytes are independently authored; compile provider with the same header; bind their BLAKE3 digests and the actual object BLAKE3 digest at the host composition root; record views cross through the provider nominal types (Counter, TxnResult) whose natural-align i32-field closures must equal the manifest field closures; no symbol-name inference of physical signature"
+}

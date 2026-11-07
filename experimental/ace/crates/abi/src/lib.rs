@@ -38,6 +38,7 @@ pub mod run;
 pub mod semref;
 mod source_crt;
 pub mod source_foreign;
+pub mod resource_provider;
 pub mod source_provider;
 mod source_request_work;
 pub mod source_store;
