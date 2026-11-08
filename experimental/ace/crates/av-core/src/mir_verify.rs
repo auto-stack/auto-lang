@@ -4520,7 +4520,6 @@ impl MirInstr {
                 }
                 out
             }
->>>>>>> 7482923ba (feat(abi): T-02C callback-by-name — S06 t939_fold across provider/frontend/both backends, 24/25 + control (Plan 939 T-02/r3))
             MirInstr::HostCall { arg, .. } => vec![*arg],
             MirInstr::GlobalGet { .. } => vec![],
             MirInstr::GlobalSet { src, .. } => vec![*src],
