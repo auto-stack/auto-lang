@@ -1,17 +1,17 @@
 ---
 plan_id: PLAN-994
-status: drafting
+status: execution_done
 feature_name: 旧A2R四个文本值例lowering修复与独立认证
 author: [Codex]
 created_at: 2026-11-07
-updated_at: 2026-11-07
+updated_at: 2026-11-08
 plan_revision: 1
 supersedes_spec_components: [docs/specs/auto-test-case/a2r-golden-certification.md, docs/specs/auto-test-case/ace-m1-gap-audit.md, docs/specs/auto-lang/trans/legacy-rust-mut-and-text-evidence.md, docs/specs/auto-lang/trans/design/a2r-string-ownership.md]
 new_spec_components: []
 touched_goals: [GOAL-002]
 affects: [legacy-a2r, auto-test-case]
 depends_on: [PLAN-991, PLAN-992]
-current_step: 0
+current_step: 5
 total_steps: 8
 ---
 
@@ -21,7 +21,7 @@ total_steps: 8
 
 认领991 H-03：修复原T01..T04限定source路径的字符数/字节数、字符位两参slice、codepoint发射，使用std-only完整产物完成四格认证；不全局重定义旧len或更换expected。
 
-本轮仅正式规划，drafting r1/0-of-8；全部实现/认证/复审均未执行。按991分诊证据提出的候选不是本包当前PASS。本包不修改执行中的939/941，不启动其他会话，不改变M1范围/原source/oracle或预算。
+2026-11-08 `/goal 完成计划994`为实施指令（一次授权覆盖work/review/bounded repair/merge）；work阶段（T-01..T-05）已完成：声明型字符串局部len=字符数/len_bytes=UTF8字节/两参slice=917字符位守卫块恢复/char to_codepoint=标量值；四格certified（cert 28→32）、snapshot日常26+5+4=35、cert-gap 20→16、can_claim_m1=false不变；917三红（D-993-2）随守卫块恢复转绿；详见§7.3/§9。本包未修改939/941，M1范围/原source/oracle/预算不变。
 
 ## 1. 目标
 
@@ -157,17 +157,42 @@ T-01冻结可用CLI/固定组/工具及完整原Case集合，未来显式例：�
 | AC-05 | review | 同树独立上下文逐AC/V/SD/source/golden审阅/实际命令/reader/遗漏健康核验，结论绑定r1/冻结源码与配置 |
 | AC-06 | merge | review pass后冻结适用并集/漂移核验、SD沉淀读回、来源交付/归档，全输出路径核对、scope整删与guard清树；不改939/941计划 |
 
+### 7.3 work阶段验证记录（2026-11-08，树`D:/autostack/.wt/lang-994/auto-lang`，base`8514d2f87`，code`adddf8d06`）
+
+- **入口冻结**：`cargo build -p auto-lang --bin auto-case --bin ace-certify` exit 0；rustc 1.98.0 (88d9e12ae 2026-08-18) PATH身份=32证书`default_identity_at_certify`一致。
+- **首次红重放**（scope `t01-freeze/first-red/`，wrap.rs现场编译运行）：T01 E0599`len_bytes`、T02 E0432`use a2r_std`、T03 run `i32:25`≠23、T04 E0599`to_codepoint`——与991 §5.4.1逐字一致。
+- **修复**（emit路径全冻结于`plan-artifacts/plan-994/t01-freeze/FREEZE.md`）：`str_typed_stores`/`char_typed_stores`声明型集合（store()注册、fn_decl清空、重声明改型即除名）；`len`/`len_bytes`/`to_codepoint`三零参臂；`emit_str_slice_chars`恢复917守卫块（两参）+chars-skip（单参），sub/slice/Bina镜像共4调用点同步，不再设a2r_std_used。
+- **四值全链**：actual编译运行`i32:38/27/23/128512`全对oracle；reference独立同值；T08现场运行panic"auto str slice out of range"（917冻结trap回归）。
+- **近邻字节稳定**：字段`(b.name.len() as i64)`/模式绑定`(e.len() as i64)`/参数`(s.len() as i64)`/List计数/T06调用结果——修后发射与base逐字节一致；K04在解析期即拒（auto_syntax_E0001）。值近邻：空串0、NUL串33、emoji 14、ASCII codepoint 65、单参slice 27、sub(1,3) 27、越界panic。
+- **认证**：`ace-certify --only t01,t02,t03,t04` → 4 certified exit 0；全量复跑 32 reused/0 failed exit 0（旧28 strict复用）。
+- **三scope+contract**：snapshot=**35** a2r全绿（26 base+5 ext-992+4 ext-994）+32证书strict+认证面spawn=0；receipts（-BuildIdentity）32有效；acceptance=cert-gap **16**/can_claim_m1 **false**/313/45/32不变；contract=131行+manifest全验PASS。
+- **固定组**：`cargo t a2r`（405例含plan994单元8例）、`case-legacy-a2r-text-994`、`case-legacy-a2r-cert-992`、`case-ace-m1-base`、`case-ace-m1-a2r-emit-917`（**D-993-2三红转绿**）、`infra-ace-m1`、`auto-test-case`、`ace-adapters`、`case-ace-m1-a2r-semantics-916`全PASS；`case-ace-m1-shared-mutable-909`首跑红（`av-s02-closures-source-fresh`，`%TEMP%/av798-session-av_closures_909_s02`暖store，同993环境归因），parent清store后单独复跑PASS——非代码回归（本包零触909面）。
+- **反控**（scope副本，树未触）：C1金样1B漂移→daily FAIL 1/4且树证书hash不变；C2证书未知字段→REJECTED（--force同拒）；C3登记expected 38→39→证书REJECTED desync；C3b删证书重认证→run mismatch FAIL且无半证书；C4扩展套件删t04检查→snapshot FAIL `34 < 35`；C5伪BuildIdentity→证书STALE。
+- **具名修订**：3个cookbook冻结期望随声明型len投影更新（rand_passwd/hex/graphemes，ASCII值恒等、仅发射形变）——"所有相关已支持行为回归保留"的具名修订面，其余a2r全绿。
+- **941只读交接**（原owner按真实身份接纳，本包不写941）：
+
+| 格位 | source SHA16 | golden SHA16 | cert SHA16 | 终态 |
+|---|---|---|---|---|
+| corpus:T01:a2r | `d60380e49fee0af3` | `cd580bd003bea128` | `bf805815c5f52aa0` | certified |
+| corpus:T02:a2r | `58deb24678579081` | `a1494c1b3e83af19` | `e6c345b50c45c1c4` | certified |
+| corpus:T03:a2r | `f895f9d1577bbea6` | `2edff30cd95a9b65` | `d98f313820fc6ff0` | certified |
+| corpus:T04:a2r | `314fb56ca9ccbdae` | `f5f5c31c01ecf134` | `f2416fcfa8f7f354` | certified |
+
+- **剩余16格**（acceptance冻结，本包不预填/不改守卫）：H-04 L01/L02/L03/L04/L05/L07（集合缺失）、H-06 B13/B14/B15/B20（trap/宽度裁定）、H-07 scenario R01-R06（场景面）。全M1仍不可冒绿：`can_claim_m1=false`（cert-gap 16>0 且 future 45 在账）。
+- **健康**：新增代码零警告（既有警告不增）、触面文件rustfmt净（a2r_tests.rs既有8-18行漂移为master存量，不属本包）、零调试打印；worktree提交`adddf8d06`，树clean。
+- **材料根**：唯一scope `D:/autostack/plan-artifacts/plan-994/`（t01-freeze/t01-out/t02-verify/t03-goldens/t04-certify/t04-scopes/t04-controls等，merge折叠后整删）；树内常规target正常，无第二输出根。
+
 ## 8. 执行步骤
 
 预定唯一树`D:/autostack/.wt/lang-994/auto-lang`、分支`plan-994-dev`；本轮未创建。后续实施授权后先核唯一树/仓/分支/base/HEAD及实际D；材料只在`D:/autostack/plan-artifacts/plan-994/`，开工登记owner/用途/在途；无junction、跨树可写target或第二输出根。常规target在专树，外置target只能在本scope。原始证据merge折计划摘要后整删，独立review同树停写。
 
 | T | owner_stage | 前置/写面 | 具体结果/验证与AC | 状态 |
 |---|---|---|---|---|
-| T-01 | work | 后续实施指令；D991/D992；993仅推荐写窗序 | 冻结原四source/参考/首次红与拆分发射路径、917 Spec差额、receiver识别/自包含策略及合法/非法近邻；不能凭日志推当前机制；V-01..V-05按对应入口，AC-01..04 | [ ] |
-| T-02 | work | T-01 | 实现有限文本方法/字符slice/codepoint最小修复，std-only、源序单求值、clone/move与非文本方法保护；永久原例及兄弟真实编译运行；V-01..V-05按对应入口，AC-01..04 | [ ] |
-| T-03 | work | T-02 | 逐源G04审阅，冻结四新golden、四格token/manifest与a2r-only Case/日常扩展接线及拟新固定组；保原base不扩；V-01..V-05按对应入口，AC-01..04 | [ ] |
-| T-04 | work | T-03 | 四例原域显式认证，已有证书strict复用，原+扩展35检查零spawn、缺件/坏轴/非法选择反控；按实际基面降低4gap；V-01..V-05按对应入口，AC-01..04 | [ ] |
-| T-05 | work | T-04 | 完整a2r/旧base/917及治理职责通过，记录917/runtime字节与source字符边界SD、source-gap/余16或17清单与941只读交接；V-01..V-05按对应入口，AC-01..04 | [ ] |
+| T-01 | work | 后续实施指令；D991/D992；993仅推荐写窗序 | 冻结原四source/参考/首次红与拆分发射路径、917 Spec差额、receiver识别/自包含策略及合法/非法近邻；不能凭日志推当前机制；V-01..V-05按对应入口，AC-01..04 | [x] 2026-11-08：D991/992/993均归档核验；首次红四例现场重放逐字同991（E0599/E0432/i32:25/E0599）；发射路径与956→917投影差额冻结（scope `t01-freeze/FREEZE.md`：956(764f454d1)将emit_str_slice_chars换a2r_std字节域未重冻917金样=三红根因）；分类规则冻结=声明型let/var文本局部（显式str/Str/str(N)/char），字段/模式绑定/参数/推断/调用结果保持字节remap（近邻基线全部字节稳定）；策略比较冻结=内联自包含std表达式（与917金样字节一致，私有helper会改T08金样否决） |
+| T-02 | work | T-01 | 实现有限文本方法/字符slice/codepoint最小修复，std-only、源序单求值、clone/move与非文本方法保护；永久原例及兄弟真实编译运行；V-01..V-05按对应入口，AC-01..04 | [x] 2026-11-08：`str_typed_stores`/`char_typed_stores`+len/len_bytes/to_codepoint零参臂+emit_str_slice_chars恢复（4调用点）；四值38/27/23/128512双侧编译运行对oracle；T08 panic回归；永久单元plan994_*8例进a2r_tests.rs；值近邻（空/NUL/组合/emoji/单参slice/sub/bounds调用）全绿；近邻字节稳定（字段/模式/参数/List/调用结果）；K04解析拒绝确认 |
+| T-03 | work | T-02 | 逐源G04审阅，冻结四新golden、四格token/manifest与a2r-only Case/日常扩展接线及拟新固定组；保原base不扩；V-01..V-05按对应入口，AC-01..04 | [x] 2026-11-08：逐源G04（求值序/绑定/资源/单求值/语义忠实）结论入§7.3；`oracle/m1_t01..t04.rs`冻结（SHA256全64位见manifest）；binding.tsv仅4行f[8]→ok-emit+PLAN-994注（131/313/批准集不变）；`legacy-a2r-text-994.case.ad`+`.suite.ad`（ID ace.m1.a2rt.t01..t04避让t-r-native同名）；固定组`case-legacy-a2r-text-994`注册并实跑PASS；verify-ace-m1-852.ps1 snapshot三套件插桩+`-lt 35`并集守卫；manifest：binding sha更新/golden 29→33/certs 28→32（T-04）/suites 83→85；certifier谓词未动 |
+| T-04 | work | T-03 | 四例原域显式认证，已有证书strict复用，原+扩展35检查零spawn、缺件/坏轴/非法选择反控；按实际基面降低4gap；V-01..V-05按对应入口，AC-01..04 | [x] 2026-11-08：`ace-certify --only t01,t02,t03,t04`→4 certified exit 0；全量32 reused/0 failed；snapshot=35全绿+32 strict+spawn 0（含base+ext-992+ext-994三套件插桩）；receipts 32有效；acceptance cert-gap 20→**16**、can_claim_m1=false、313/45/32不变；contract PASS；反控C1-C5全红（金样漂移/未知字段--force拒/登记desync/删证run mismatch无半证书/删检查34<35/伪身份STALE） |
+| T-05 | work | T-04 | 完整a2r/旧base/917及治理职责通过，记录917/runtime字节与source字符边界SD、source-gap/余16或17清单与941只读交接；V-01..V-05按对应入口，AC-01..04 | [x] 2026-11-08：冻结并集10组全绿（a2r 405例/994ext/992ext/base/917【D-993-2三红转绿】/infra-ace-m1/auto-test-case/ace-adapters/916/909【暖store环境归因，parent清后PASS】）；SD-01..04候选维持§5表（源字符/917守卫块/runtime a2r_std字节API边界——review验证、merge沉淀）；具名修订3个cookbook期望（ASCII值恒等）；余16清单冻结于§7.3；941只读交接表（4格SHA16）；健康零新警告/触面fmt净/无调试输出；commit `adddf8d06` |
 | T-06 | review | T-01..05完成；冻结后停实现写入 | V-06独立逐AC/SD/全部原例反控/reader/健康审查，绑定r1/冻结commit；AC-05 | [ ] |
 | T-07 | merge | T-06 pass与后续合入指令 | 冻结明确职责并集/有效证据复用与触码漂移核验，SD实际沉淀读回/来源交付/归档，逐格证据交接但不写941；AC-06 | [ ] |
 | T-08 | merge | T-07来源与归档核实 | 全部命令输出根对账、证据摘要折本Plan后scope整删（具名持有另记），wt-guard clean后移除唯一树/分支/空组，登记刷新；AC-06 | [ ] |
@@ -177,6 +202,10 @@ T-01冻结可用CLI/固定组/工具及完整原Case集合，未来显式例：�
 2026-11-07 stage:new / PLAN-994 r1 / outcome:pass（仅规划静态合同，非实施/产品/认证通过） / next:后续实施指令及实际依赖就绪后T-01。T-01..08全部未执行，0/8，未建树/scope，未修改production/current Specs/语料/证书；规划不等golden批准或M1签章。静态复核收据在此续录。
 
 2026-11-07 规划静态复核：0..10章节、T8/AC6/V6/SD4唯一连续且互引完整，work/review/merge任务均未执行；本包4格与当前binding的corpus域/原token/outcome/expected完全对账，src与独立reference存在，三包22格不重叠，余16不在本次范围。当前Spec路径、计划交叉链接、表格列数/空白/编码、现有固定组名与拟新增组标记、唯一编号/中央next-id=995通过。第一轮文档检查器将固定all入口误当未知组而退出，纠正检查器识别后完整静态复核通过；未修改产品入口或为通过放宽产品门。939/941规划前后内容hash一致；本轮仅写992/993/994与取号.next-id，未施工、未运行产品/认证/性能/独立实施review、未建树/scope/会话。
+
+2026-11-08 stage: work | plan_id: PLAN-994 | plan_revision: r1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-994/auto-lang | branch: plan-994-dev | base_commit: 8514d2f87 | code_commit: adddf8d06 | dependency_revisions: D991/D992/D993均归档（991计划hash与§4一致；992=64f93cb99、993=79e990f82为base祖先）；rustc 1.98.0 (88d9e12ae 2026-08-18) PATH身份=32证书 | task_ids: T-01..T-05（5/5） | evidence: §7.3（首次红重放/修复/四值双侧38-27-23-128512/4 certified+32 reused/snapshot 35+0 spawn/receipts 32/acceptance gap16 claim false 313/contract PASS/10固定组绿含917三红转绿/反控C1-C5全红/近邻字节稳定/941交接4格SHA16） | blockers: 无阻塞性；909首跑红=暖store环境归因（parent清后PASS，同993）；D-993-2（917三红）由本包守卫块恢复关闭，KNOWN-DEBT落账归review/merge | 未执行: 全仓统一回归（owner=merge按冻结并集；周期cargo t all按due由原owner） | next_responsible_role: review（T-06，同树独立上下文，冻结commit adddf8d06 + 本Plan文件）
+
+stage: goal | plan_id: PLAN-994 | plan_revision: r1 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-994/auto-lang | commit: adddf8d06 | next: review（T-06）
 
 ## 10. 待澄清事项
 
