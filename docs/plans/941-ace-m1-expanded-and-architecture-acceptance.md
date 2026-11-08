@@ -4,15 +4,15 @@ status: executing
 feature_name: CA-E／ARCH 扩大后M1登记与最终组合验收
 author: [Codex]
 created_at: 2026-11-05
-updated_at: 2026-11-07
-plan_revision: 10
+updated_at: 2026-11-08
+plan_revision: 11
 supersedes_spec_components: [docs/specs/auto-test-case/ace-m1-conformance.md, docs/specs/auto-test-case/ace-m1-applicability.md, docs/specs/auto-test-case/unified-source-syntax-admission.md, docs/specs/auto-test-case/ace-ca-d-bridge-certification.md, docs/specs/auto-test-case/architecture.md, docs/specs/auto-syntax/source-frontdoor.md, docs/specs/auto-a2r/record-text-hir-backend.md, docs/specs/auto-a2x/incremental-and-cache.md, docs/specs/auto-av/data-layout.md, docs/specs/auto-cte/source-query-integration.md, docs/specs/auto-semantics/source-query-session.md]
 new_spec_components: [docs/specs/auto-test-case/ace-m1-expanded-acceptance.md]
 touched_goals: [GOAL-002]
 affects: [auto-test-case, auto-ac, auto-av, auto-a2r, auto-a2x, auto-a2c, auto-abi, auto-semantics, auto-cte, auto-syntax]
 depends_on: [PLAN-908, PLAN-929, PLAN-934, PLAN-935, PLAN-936, PLAN-937, PLAN-938, PLAN-939]
-current_step: 32
-total_steps: 32
+current_step: 33
+total_steps: 33
 ---
 
 # [PLAN-941] CA-E／ARCH 扩大后M1登记与最终组合验收
@@ -21,7 +21,7 @@ total_steps: 32
 
 正式认领CA-E与ARCH最终组合门，一个验收集成包，不拆成空schema与以后才找consumer。新增独立target/机制登记、严格父侧证据适配、四端同源独立oracle与版本化组合报告，组合原313 required门、C A/B/C/D、SYN与ARCH-01..08；复核真实函数级增量、恢复首编辑、资源、在线更新及独立认证。编译/语言/资源功能仍由原owner交付，本包不变相接走延期功能，不再造编译器、store、runner或meter。
 
-架构：[Design51 §16](../design/51-shared-a2x-and-hir-to-rust.md#16-ca-earch最终组合验收2026-11-05target-state)；现状/基线/遗留认证差异见[立项报告](reports/ace-ca-e-arch-baseline-and-schedule-2026-11-05.md)。规划轮仅授权规划；2026-11-06执行授权及当前进度见§4/§9。 r2已加入并完成F-941-04条件解析修复phase（§5.8/T16/17）；r3的F-941-05 Rust字段写修复已完成（§5.9/T18/19）；r4按用户第48轮明确授权新增F-941-06 AV data结构化诊断透传修复phase（§5.10/T20/21）。r5的F-941-08 source-CT meta能力修复phase（§5.11/T22/23）已完成工作验证；r6按第67轮明确授权新增F-941-09 SQ恢复逻辑归属修复phase（§5.12/T24/25），F07 test-only提案仍独立待批。r7按第75轮用户具名授权新增F-941-10 lambda编辑诊断绝对坐标修复phase（§5.13/T26/27），F07仍独立待批；r8按第79轮用户具名授权新增F-941-11共享前门首诊断保真修复phase（§5.14/T28/29）；r9按第82轮用户具名授权新增F-941-12恢复产物script区首诊断修复phase（§5.15/T30/31）；r10按第84轮用户具名授权新增F-941-07 test-only请求deadline计数断言修复phase（§5.16/T32）。原完整目标/阈值及未闭任务保持。
+架构：[Design51 §16](../design/51-shared-a2x-and-hir-to-rust.md#16-ca-earch最终组合验收2026-11-05target-state)；现状/基线/遗留认证差异见[立项报告](reports/ace-ca-e-arch-baseline-and-schedule-2026-11-05.md)。规划轮仅授权规划；2026-11-06执行授权及当前进度见§4/§9。 r2已加入并完成F-941-04条件解析修复phase（§5.8/T16/17）；r3的F-941-05 Rust字段写修复已完成（§5.9/T18/19）；r4按用户第48轮明确授权新增F-941-06 AV data结构化诊断透传修复phase（§5.10/T20/21）。r5的F-941-08 source-CT meta能力修复phase（§5.11/T22/23）已完成工作验证；r6按第67轮明确授权新增F-941-09 SQ恢复逻辑归属修复phase（§5.12/T24/25），F07 test-only提案仍独立待批。r7按第75轮用户具名授权新增F-941-10 lambda编辑诊断绝对坐标修复phase（§5.13/T26/27），F07仍独立待批；r8按第79轮用户具名授权新增F-941-11共享前门首诊断保真修复phase（§5.14/T28/29）；r9按第82轮用户具名授权新增F-941-12恢复产物script区首诊断修复phase（§5.15/T30/31）；r10按第84轮用户具名授权新增F-941-07 test-only请求deadline计数断言修复phase（§5.16/T32）；r11按第十次问询用户明确"授权941内修（推荐）"新增F-941-14 store整命名空间准入双计投影修复phase（§5.17/T33）——上游64MiB唯一关键路径阻塞的自树内修。原完整目标/阈值及未闭任务保持。
 
 ## 1. 目标
 
@@ -77,6 +77,9 @@ total_steps: 32
 2026-11-07第84轮F-941-07追加授权：用户对第83轮报告的F07具名提问明确“授权修复”。按第58轮§9最小提案在941唯一树实施**test-only**修复：保原115helper/4call/300ms与32query/10s原门及合法单call正控，按真实AV到达分态（`av_execute`阶段事实）修正fast控制断言并补确定性AV前耗尽回归，不改生产driver/公共协议/计数规则/预算。新增§5.16/T32/AC22/V49..50/SD16，不重复确认、不新建Plan或树。r10 executing17/32；8scalar red/38旧cert-gap/D938939未交齐不被该授权核销。
 
 2026-11-07第82轮F-941-12追加授权：用户对第81轮具名提问明确“授权 941 新增修复 phase”。按§10.16具名发现在941唯一树实施、核验并纳入原最终独立review/merge链；新增§5.15/T30/31/AC21/V45..48/SD15，不重复确认、不新建Plan或树、不自动派发agent。r9 executing14/31，原T01..29及已有证据保留；F07仍待裁定，原8scalar red/38旧cert-gap/D938939未交齐不被该授权核销。
+
+2026-11-08 F-941-14追加授权已收到：用户对第十次具名问询明确"授权941内修（推荐）"。按handoff-f94120-upstream-64mib.md v2根因（b8987bb0b双计投影，真实占用127.87MiB≤128MiB被4,718B误拒）在本树修store整命名空间准入：保938锁序（liveness→budget→namespace→chunk→sqlite）与commit-spanning并发不可超射语义，仅改allowance定径（整块双计→按实测元数据增长的固定余量）；补边际准入永久回归；修复随941合并回master供938/960线受益。落地后即按POST-FIX-CHAIN-CHECKLIST.md推进冻结链。新增§5.17/T33，不重复确认、不新建Plan或树。
+2026-11-08 F-941-14第二项授权已收到：用户对具名问询明确"授权升到160MiB（推荐）"——投影修复后64MiB用例暴露结构性冲突（927语法流式负载真实永久需求≈134.5MiB=源页+树页≈128MiB+元数据~6MiB > 938冻结顶128MiB；938引入顶前该测试无准入约束恒绿），`NAMESPACE_BUDGET` 128→160MiB（一常量，锁序/commit-spanning/只收紧语义全保，25%头寸）。
 
 2026-11-07第79轮F-941-11追加授权：用户对第76轮具名F11提问明确“授权941新增修复phase（推荐）”。按第76轮§9最小提案在941唯一树实施、核验并纳入原最终独立review/merge链；新增§5.14/T28/29/AC20/V41..44/SD14，不重复确认、不新建Plan或树、不自动派发agent。r8 executing10/29，原T01..27及已有证据保留；F07未获授权，原8scalar red/38旧cert-gap/D938939未交齐不被该授权核销；F10授权继续有效，T26的F11差异由此phase承接而非T26自行扩大写面。
 
@@ -322,6 +325,18 @@ F11仅在AC20/V41..44/T28/29全部真实闭合后核销；SD14候选由最终r8/
 
 F12仅在AC21/V45..48/T30/31全部真实闭合后核销；SD15候选由最终r9/冻结SHA独立复审。F07/8scalar/旧38与其余原required保持。
 
+### 5.17 F-941-14：store整命名空间准入双计投影修复（r11）
+
+**授权与执行入口**：承接第十次具名问询用户明确答复"授权941内修（推荐）"（2026-11-08）。唯一树`D:/autostack/.wt/lang-941/auto-lang`/`plan-941-dev`，实施基面`a9d213e28` clean。根因（handoff v2）：`b8987bb0b`引入的whole-namespace准入投影`namespace_now + framed_len + framed_len + 4096`把同一block双计为自身metadata allowance——64MiB流式构建末块真实总量127.87MiB≤128MiB本可容纳，被保守双计以4,718字节误拒（`syntax_budget_64mib_streaming_small_queries`确定性红，pristine master同红）。
+
+**修复语义**：仅改allowance定径——从"整块二次计入"改为**按实测单commit元数据增长的固定48KiB余量**（实测~28.8KiB/commit：artifact/chunk/roots数据页+WAL帧；48KiB含66%边距，占冻结顶0.04%）。保持不变：commit-spanning EXCLUSIVE namespace锁（读→提交全程持有，并发publisher不可双双通过stale总量）、锁序liveness(shared)→budget(excl)→namespace(excl)→chunk→sqlite（GC/recovery只持liveness(excl)，无环）、拒绝先于任何staging分配、`open_with_namespace_budget`只收紧不放宽、staging预算（2×framed瞬态帽）原样。原公式对小块亦不足额（64KiB块allowance=69,680<实际94,424）而对大块过度保守——固定余量两端同时修正。
+
+**实施发现（第106轮，两刀+一裁定）**：①第一刀=双计→固定48KiB余量（实测schema单commit DB/WAL增长~28.8KiB≈7脏页；原公式对小块亦不足额、对大块过度保守，两端同修）；②第一刀后64MiB用例推进至新拒点，分解（拒因消息带全space breakdown）揭示第二缺陷=**WAL/SHM瞬态被按永久计费**（auto-checkpoint高水位实测4.2MiB、R2-05 shrink负责归还）——准入基改测永久项`total−(db−db_main)`，与staging瞬态各自有界同理；③两刀后artifacts 48/48绿（含race窗口改单计永久基+边际准入回归），64MiB用例推进至末段仍拒：**永久项真超顶**（blocks≈128MiB+db_main≈6MiB≈134.5MiB>128MiB）=927语法流式负载与938冻结顶的结构性冲突（handoff的"134,081,059本可容纳"实为该拒点current+block，非build终态）——经用户具名裁定升顶160MiB。
+
+**永久回归**：①既有`namespace_budget_admits_before_writes_and_spans_the_metadata_commit`边界断言改单计永久基公式（一pub放行/二pub拒绝窗口、race仍需commit-spanning锁序列化）；②新增`namespace_budget_admits_marginal_commit_whose_real_total_fits`——预填至单计边界的边际commit（真实永久总量≤顶）必须放行且blocks/永久项不越顶、WAL瞬态随行（双计误拒场景缩影）；③拒因消息带完整space分解（blocks/db_main/wal-shm/staging/trash/locks/logs）；④真·世界回归=`syntax_budget_64mib_streaming_small_queries`转绿。受影响组：ace-artifacts全量+ace-syntax。
+
+**验证门**：ace-artifacts 48/48（含修复后race/边际）、`syntax_budget_64mib_streaming_small_queries` PASS、cargo fmt净。锁序/语义由既有R1-R5测试族（staging清理/恢复期put/热缓存内存证据等）保持绿证明。修复随941合并回master，938/960 store线直接受益（上游红根因消除）。
+
 ### 5.16 r10新增phase：F-941-07 test-only 请求deadline计数按真实阶段核对断言
 
 **授权/执行入口**：承接第84轮用户“授权修复”。唯一树`D:/autostack/.wt/lang-941/auto-lang`、`plan-941-dev`，当前clean代码基面`c18dcd634dde615e315f8422f06b37e1b2349e71`（r9身份闭包终态）。新增T32、AC22、V49..50、SD16；原十六个完成任务保留，当前executing17/32。**test-only**：只改`experimental/ace/crates/comptime/tests/cases/cte_resources_tests.rs`，不改生产driver/公共协议/计数规则/预算/样本规模/其他门。
@@ -526,6 +541,8 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-30 | work | 第82轮用户F12内phase授权；§5.15/7127d115c基面与第81..82轮反证 | 新recovered_script_first_diag_941先固定A/H/I三形baseline红/clean反控绿，再在project_module_front decl循环按产物签名（错误树+script+前item错误，run内粘滞）跳过script投影与saw_script；AC-21、V45..47、SD15 | [x] 第82轮6a545cee7d：baseline 1P2F（entry-top-return更早位抢占，含片段面）→投影层+15行修复→F12 3/3、F10/F11/F12联合51/51、完整source401/syntax132/infra238（771/771）PASS，fmt/check净；片段面边界EOF按片段范围合同改用内容内分歧形状 |
 | T-31 | work | T-30冻结，实际触面及工具/源身份对账 | 13工具实际变化身份、五native合约/Case466/cert292+daily/优化14+拒绝6按新身份重采，组合逐键对账（镜像T29链）；F12工作关闭/SD15候选交T14；AC-04/05/07/09/21、V48 | [x] 第83轮：漂移5合约{project.rs,conformance.rs}+新模块→工具8变→合约刷新Z=c18dcd634d（data-only，771门复用）→治理238/五native9观察/Case466(8红保持)/cert292+daily292/优化14+拒绝6全部重采，组合716P8F282U逐键零漂移；F12核销、SD15候选交T14 |
 | T-32 | work | 第84轮用户F07 test-only授权；§5.16/c18dcd634d基面与第58轮反证 | fast控制按`av_execute` span分态双向核计数+确定性1ms AV前耗尽回归；原10s负例/4call正控逐字保留；13工具hash恒等实证；AC-22、V49..50、SD16 | [x] 第84轮a9dc4c350：baseline本机1P（调度依赖，与第58轮定性一致）→仅`cte_resources_tests.rs`修复→deadline控制2/2+原10s负例1/1（AV侧≥1逐字保留）PASS、13工具ALL-UNCHANGED、fmt/check净（仅既有告警）；超早期限经看门狗cancel通道报cte.cancelled（同族受控态）已入注释与审计 |
+
+| T-33 | work | 第十次问询用户"授权941内修（推荐）"；§5.17/handoff v2根因与a9d213e28基线 | 修store整命名空间准入双计投影（b8987bb0b引入）：allowance从"整块framed_len二次计入+4096"改为按实测单commit元数据增长（~28.8KiB：artifact/chunk/roots页+WAL）的固定48KiB余量——块独立、仍commit-spanning、938锁序不变；既有race边界断言改单计公式+新增边际准入永久回归（真实总量≤顶必须放行）；ace-artifacts全绿+`syntax_budget_64mib_streaming_small_queries`转绿为证；AC-23 | [ ] 实施中（第106轮） |
 
 T-18/19已完成（§9第43轮）；T20/T21已完成（第52轮），当前回到原完整T-01..13。 T22/23的F08已完成工作验证；r6的T24/25已完成F09工作阶段；下一入口回到原T01..13全部未闭任务；F07仍独立待批，不预占/勾选任务。T-01/T-02/T-03/04不等全部D，可独立推进；最终联合T-12必须全部真实相关D齐。共享接口稳定可提前接单个切片，不能把“方案已写/审过”当正式交付。用户已授权work/review/merge全链并恢复目标；继续原T-01/T-02等完整任务，尚未关闭的验收保持未完成。
 
@@ -2294,6 +2311,17 @@ stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:waiting（非阻塞
 - 复核（@master `257e179cc`）：store仍止于`b8987bb0b`（双计投影未修）；D939仍executing（T-11..14在途）。store内修授权**第五至九次**（第105轮及后续循环，@master `db9996f9f`/`8cb5ce09f`/`580bdbc09`/`3db8ebe69`复核store/D939均未变）具名问询均未获答复，按§5.7 S/N/X维持不修。无新工作面：第104轮清单（十七格入帐/turnkey）已覆盖全部可预置项；冻结链候裁定或交付，D939候归档。目标循环如继续，下轮先做§0前置核验再问询/执行。
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:105 | from:goal继续 | to:user | status:executing（blocked候裁定） | outcome:waiting | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a9d213e28 | next:user（store内修授权）或上游交付/D939归档
+
+### 第106轮：work F-941-14实施——双计/WAL瞬态两刀+升顶160MiB两授权；master同步；冻结门启动
+
+- **授权链**：第十次问询用户明确"授权941内修（推荐）"→实施中发现结构性冲突再具名请示→用户明确"授权升到160MiB（推荐）"。两项均入§4/§5.17。
+- **两刀修复**（提交**`11d29a206`**）：①双计→固定48KiB余量（实测schema单commit DB/WAL增长~28.8KiB≈7脏页；原公式小块不足额/大块过度保守两端同修）；②**WAL/SHM瞬态误按永久计费**→准入基改测永久项`total−(db−db_main)`（auto-checkpoint高水位实测4.2MiB有界、R2-05 shrink归还，与staging瞬态同理各自有界）；拒因消息带全space分解。既有race窗口断言改单计永久基；新增边际准入永久回归。**ace-artifacts 48/48绿×2轮+fmt净**（subproc trio证实为缺te-child夹具构建，补构建后绿）。
+- **升顶**（提交**`f1e3d4c38`**）：两刀后64MiB用例推进至末段仍拒——永久项真超顶（blocks≈128MiB+db_main≈6MiB≈134.5MiB>128MiB；handoff"134,081,059本可容纳"实为该拒点current+block非终态）=927语法流式负载与938冻结顶结构冲突→用户裁定`NAMESPACE_BUDGET` 128→**160MiB**（25%头寸，语义全保）。升顶后artifacts 48/48绿。
+- **64MiB用例过程**：升顶后两次运行1349s FAIL（输出截断未取到断言）与1800s TIMEOUT（与merge/check/套件并行争载强相关，OS峰值采样假红风险；1800s=runner默认上限）→改用`T3_MILESTONE=1`（14400s）在安静机器上跑**整组ace-syntax**（即冻结门该腿）取干净判定——**运行中，结果入第107轮**。
+- **master同步**（合并**`5204cd5b2`**）：吸收992（17格认证/certs 27/cert-gap 21）+995+961+939-T12簿记（**D939 work阶段完成execution_done交复审**）+992后诸docs；零冲突（binding表同内容双侧收敛）；`cargo check --workspace --profile runtime-dev`净（no_std四运行时需panic-abort专用profile为已知属性）。
+- **边界**：冻结门ace-syntax腿在途；绿后按POST-FIX-CHAIN-CHECKLIST继续（ace-source/infra腿→13工具对账→证据链重采→组合重读，cert-gap按21新账+十七格核销）；D939候复审/合并后awaiting 7行转正。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（F-941-14两刀+升顶两授权落地，artifacts 48/48×2，master同步，ace-syntax冻结腿T3运行中） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:f1e3d4c38 | task_ids:T-33 | evidence:f94126-store-fix + f94127-frozen-gate（在途） | next_responsible_role:work 冻结门其余腿+工具对账+证据链 | 无live handle
 
 ## 10. 待澄清事项
 
