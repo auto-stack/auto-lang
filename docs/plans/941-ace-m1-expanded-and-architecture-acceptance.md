@@ -2368,6 +2368,15 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§4-1 ca
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§4核心链全成：五native 9观察/cert292全PASS/daily292/optimized14/拒绝6/abi 243；av档在途） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:10c4723b8 | task_ids:CHECKLIST §4 | evidence:f94131-{native-admitted,current-certifications,current-optimized,current-query-refusals,abi-gate} | next_responsible_role:work av档判定→§5组合重读 | 无live handle
 
+### 第112轮：work D939交付同步+av档上游回归bisect定案；§4候av处置裁定
+
+- **D939交付确认**：master `dfe5a1002`（T-14✅14/14，archive 7b7a88c15）——rebase双轮共存修复（961 OP_CONV与CB的0x3A撞号→CB重编0x3B字节级差分定案、av-core abc/mir_verify六处并集）、SD-01..07落盘、7组并集全PASS。awaiting-D 939七行具备转正条件（round-95模式）。
+- **master同步**（合并**`11960bcca`**）：吸收D939终态+993-997（**cert-gap已至6**：993 K06→20、994 text→16、997 trap四格→6）+profiles_927共存；.gitignore/test-groups.toml双侧新增块并集解（0冲突残留）；`cargo check --workspace --profile runtime-dev`净。
+- **av档上游回归bisect定案**：ace-av 3测确定性栈溢出（`av_collections_semantics_{deep_chain_cleanup,partial_clone_rollback}_{small_stack,controls}`——3072深variant链×256KB栈契约）；bisect：pre-961点`0093e7eca`**PASS**→post-961 numeric点`fca54b769`**ABORT**→根因=**PLAN-961 av-core数字提交（d583a0328/7b2a9d628）增大verify/encode递归帧**；pristine master与合并树同红（961自身门未覆盖small-stack族）。已向用户具名请示"授权941新增修复phase内修（缩递归帧保栈契约）"未获答复，按S/N/X不修av-core——**§4 av档与§5组合链候此裁定或owner线交付**。
+- **边界**：不候av的并行面=D939七行转正（需reader允许空awaiting+控制计数更新）+994-997 pin级联刷新（cert-gap 6）+all-required-pages行939页needle（abi档需在合并树重跑）→治理绿；av档绿后§5组合重读一次成型。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:waiting-on-ruling（av栈回归上游归属已bisect定案961；内修请示未答；D939已交付可转正、gap已6） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:11960bcca | task_ids:CHECKLIST §4 av档阻塞 | evidence:av-bisect（0093e7eca PASS→fca54b769 ABORT）+ D939 archive dfe5a1002 | next_responsible_role:user（av内修裁定）或961线交付；并行=D939转正+gap6刷新 | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
