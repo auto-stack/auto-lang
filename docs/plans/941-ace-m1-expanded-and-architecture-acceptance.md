@@ -2280,6 +2280,15 @@ stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（CT隔离
 
 stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（D992接收评估完成：master实测21格/分母hash守恒/余21归属明确；同步窗口后941按21记账） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:a9d213e28（评估基于master@98445c7a3） | task_ids:CE-BASE-01账面更新 | evidence:f94125-d992-reception/legacy-accounting（exit0，Integrity PASS） | next_responsible_role:work 候上游64MiB授权/交付；D939 T-11..14 | 无live handle
 
+### 第104轮：work D992十七格清单入帐+冻结链turnkey清单；上游第四次问询未答
+
+- **十七格清单入帐**（同步窗口后逐格核销依据，992 §5）：H-01十二格（既有金样字节不改，G04重审+原域认证）=T05/R02/R05/R06/V01/V02/V04/V05/V06/V07/K01/K03；H-02五格（新金样，现场proposal→逐源审阅→冻结）=B08/B11/R01/R03/R04。余21格owner=F-A2R-3线（第103轮已录）。
+- **turnkey清单**：`plan-artifacts/plan-941/POST-FIX-CHAIN-CHECKLIST.md`——修复入树两来源（授权内修/上游交付）→3-group冻结门→13工具对账→证据链重采（含cert-gap 21新账与17格核销、全companions重绑、16/16重验）→组合重读（预期723+P）→D939交付后awaiting转正→T-12/13/14/15。修复落地即按单执行，无再设计。
+- **上游64MiB**：第四次具名问询未获答复（含"无答复则按S/N/X保持不修"明示）；master截至`ee789e617` store仍止于`b8987bb0b`。**D939**：仍executing（第103轮录10/14，T-11..14在途）。
+- **边界**：本会话（第99-104轮）非阻塞面已尽——组合级增量全部落地（D-941-1终闭/ARCH-05回灌723P预期/AV+CT+foreign证据/A companion机制/D992评估入帐）；剩余全部候两项外部条件（store修复授权或交付、D939交付）。T-05逐例重采/T-11注册面候冻结链窗口，不在非冻结提交上做废功。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:waiting（非阻塞面已尽；十七格清单+turnkey清单入档；候store修复授权/交付与D939） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:a9d213e28 | task_ids:接收准备完成 | evidence:POST-FIX-CHAIN-CHECKLIST.md + 本轮入帐 | next_responsible_role:user（store内修授权裁定）或上游交付/D939 | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
