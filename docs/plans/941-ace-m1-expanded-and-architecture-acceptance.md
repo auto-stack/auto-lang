@@ -2416,6 +2416,14 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§4稳�
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（F-941-15授权落地：深度诊断完成、余量为零定案、修复候选排序、树clean@9c9ed650a） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:9c9ed650a | task_ids:F-941-15诊断 | evidence:f94135-av-stack-diag/DOSSIER.md | next_responsible_role:work F-941-15修复实施（候选A起） | 无live handle
 
+### 第117轮：work F-941-15修复落地——全量ace-av 941/941全绿，av档重跑中
+
+- **修复实施**（提交`4dd624110`+`ba31ad2bc`+`1bc56b174`，dumpbin帧审计驱动）：①check_function的51臂typing-walk拆为两个`#[inline(never)]`半走查（dispatch臂路由，帧并集减半）+961 numeric Bin冷帧提取（`check_bin_numeric`）；②close-out：冷helper的slot/type索引错用修正（dst_shape/type_shape按slot的type索引派生——av_numeric 9/9）；③**grammar回归修复**：F-941-04的condition-expr裁剪先于961落成，两处if-cond alternation的profiles清单均漏`numeric`→合并语法中numeric profile丢失条件产生式（u64/i64源解析失败，pristine master同测绿实证=合并引入非961本体）——numeric入plain-expr cond清单（最小2行，字节保持）。
+- **验证**：三栈契约测全绿→`av_numeric` 9/9→**全量ace-av 941/941 PASS**（T3窗1241.2s，4 slow，`avgate-fixed2.log`）；profiles_927与core numeric探针保持绿；rustfmt收口（fmt --check净）。
+- **av档重跑中**（正式`cargo t ace-av`门档@HEAD，结果入第118轮）→绿即§4收官。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（F-941-15修复落地：ace-av 941/941全绿+numeric grammar回归修复；av档门档重跑中） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:1bc56b174 | task_ids:F-941-15 | evidence:f94135-av-stack-diag/avgate-fixed2.log 941/941 + f94135-av-gate（在途） | next_responsible_role:work av档判定→§5组合重读 | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
