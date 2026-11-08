@@ -360,9 +360,15 @@ const TRAP_RUN_KEYS: &[&str] = &["exit", "stdout", "stderr"];
 /// STRICT trap receipt validation (mirrors `ace_certify::validate_receipt`).
 /// `Ok(())` = valid AND current; `Invalid` = structural break (never reused,
 /// never overwritten); `Stale` = honest re-certification path.
-pub fn validate_trap_receipt(
+///
+/// F-997-R1-02: the declarative registry cell (`cell`) is authoritative —
+/// the receipt's `expected_trap` must equal the cell's {kind, op, line}, so a
+/// self-consistently forged typed event can never be reused (the PS reader
+/// enforces the same cross-check on the daily face).
+fn validate_trap_receipt(
     cert: &serde_json::Value,
     case_id: &str,
+    cell: &TrapOracleCell,
     axes: &TrapAxes,
     toolchain_identity: &str,
 ) -> Result<(), super::ace_certify::ReceiptProblem> {
@@ -435,6 +441,14 @@ pub fn validate_trap_receipt(
     if expected.get("exit").and_then(|v| v.as_i64()) != Some(TRAP_EXIT_CODE) {
         return Err(invalid(format!(
             "expected_trap.exit is not the frozen {TRAP_EXIT_CODE}"
+        )));
+    }
+    // F-997-R1-02: the registry cell is authoritative — a self-consistent
+    // but non-registry typed event is a structural forgery, never a reuse.
+    if kind != cell.kind || op != cell.op || line != cell.line {
+        return Err(invalid(format!(
+            "expected_trap does not equal the trap-oracle registry cell for {case_id} (receipt {kind}:{op}, registry {}:{})",
+            cell.kind, cell.op
         )));
     }
     // observed: BOTH sides must show the identical typed event with clean
@@ -668,7 +682,7 @@ fn trap_certify_one(
     let cert_path = args.certs_dir.join(format!("{module}.trap-cert.json"));
     if let Ok(old_text) = std::fs::read_to_string(&cert_path) {
         match serde_json::from_str::<serde_json::Value>(&old_text) {
-            Ok(old) => match validate_trap_receipt(&old, id, &axes, toolchain_identity) {
+            Ok(old) => match validate_trap_receipt(&old, id, cell, &axes, toolchain_identity) {
                 Ok(()) => {
                     if !args.force {
                         return super::ace_certify::CaseSummary {
