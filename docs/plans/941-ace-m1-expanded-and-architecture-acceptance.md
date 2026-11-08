@@ -2387,6 +2387,16 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:waiting-on-ruling�
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（D939转正+gap-6接收257/257全绿；合并语义冲突修复；稳定树ad4a11550+达成；abi档PASS） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:ad4a11550 | task_ids:CHECKLIST D939/gap6接收 | evidence:f94133-gap6-reception/{accounting,abi-gate2} + 治理257/257 | next_responsible_role:work 稳定树重采§4全链（av候裁定） | 无live handle
 
+### 第114轮：work 稳定树§4重采——case466✓五native✓，cert292链在途；av内修再请示未答
+
+- **工具盘点v3**（`f94134-stable-tools/`）：14工具prepare@`e6967f02f`——10工具身份变化（合并后全worker重编）、identity-audit同步。
+- **case466重采✓**（`f94134-current-source-cases/`@`e6967f02f`）：17组466 fresh checks带wire导出、八scalar红逐键保持、composed-bindings落盘。
+- **机制合同pin再刷**（提交`9c9ed650a`，合并修复触码所致）→治理257/257→**五native重采✓**（`f94134-native-admitted/`@`9c9ed650a`）：9观察全PASS严格准入。
+- **cert292+daily292在途**：f94134适配（输入审计✓292行），长链后台运行中（~148/292）；optimized+拒绝6脚本已备好候cert后串行。
+- **av内修请示**：再次具名提问未获答复——按S/N/X继续不修av-core；av档与§5候裁定或961线交付。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（稳定树重采：case466✓五native✓、cert292在途；av候裁定） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:9c9ed650a | task_ids:CHECKLIST §4稳定树重采 | evidence:f94134-{current-source-cases,native-admitted} + cert在途 | next_responsible_role:work cert完成→optimized→（av候）→§5 | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
