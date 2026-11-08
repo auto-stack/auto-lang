@@ -1,0 +1,21 @@
+# PLAN-939 T-11 CE (S02 record): the Auto source exports a mut record
+# lane under the text-record profile. The independent C caller
+# (ce_record_caller.c) statically checks the closed public layout
+# (sizeof/alignof/offsetof) and observes the mut writeback — including
+# the §5.3 failure-atomicity oracle: an overflow trap keeps the caller's
+# record byte-identical and the out sentinel untouched.
+# (deck src grammar: a line that trims to `}` closes the block — closing
+# braces ride inline with their code.)
+deck ace-ca-d1/1
+leg source
+profile text-record
+caller ce_record_caller.c
+module t939ce_rec
+export bump as t939ce_bump
+src {
+type Counter { value int }
+fn bump(mut x Counter, delta int) int {
+    x.value = x.value + delta
+    return x.value }
+fn main() int { return 0 }
+}

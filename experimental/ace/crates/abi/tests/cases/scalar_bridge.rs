@@ -23,9 +23,13 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 fn scratch_root(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("t937-bridge-{}", std::process::id()));
+    // PLAN-939 T-11 (test-infra repair): the tag MUST name the dir — the
+    // old form ignored it, so every test in this binary shared ONE
+    // scratch root that each call wiped first; parallel runs collided on
+    // live .obj writes (C1083). Per-tag roots keep the wipe semantics
+    // without cross-test interference (mirroring store_at's roots).
+    let dir = std::env::temp_dir().join(format!("t937-bridge-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    let _ = tag;
     dir
 }
 
@@ -238,6 +242,8 @@ fn source_body_edit_flips_delivered_value() {
             ("sum".into(), "t937_sum".into()),
             ("div".into(), "t937_div".into()),
         ],
+        profile: bridge::SourceProfileTag::Scalar,
+        caller: "bridge_source_caller.c".into(),
     };
     let out = run_source_export(
         &store,
@@ -309,6 +315,8 @@ fn per_function_increment_accounting() {
             ("sum".into(), "t937_sum".into()),
             ("div".into(), "t937_div".into()),
         ],
+        profile: bridge::SourceProfileTag::Scalar,
+        caller: "bridge_source_caller.c".into(),
     };
     let second = run_source_export(&store, &counters, &scratch, &edited, BRIDGE_TOTAL_DEADLINE)
         .expect("edited run");
@@ -410,6 +418,8 @@ fn bridge_restore_deep_verifies_without_producers() {
             ("sum".into(), "t937_sum".into()),
             ("div".into(), "t937_div".into()),
         ],
+        profile: bridge::SourceProfileTag::Scalar,
+        caller: "bridge_source_caller.c".into(),
     };
     let second = run_source_export(&store, &counters, &scratch, &edited, BRIDGE_TOTAL_DEADLINE)
         .expect("edited chain");

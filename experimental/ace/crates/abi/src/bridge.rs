@@ -496,8 +496,8 @@ pub fn descriptor_from_plan(
     facts: &InterfaceFacts,
     plan: &PhysicalPlan,
 ) -> Result<descriptor::ModuleDescriptor, BridgeError> {
-    use ace_foreign_contract::resource::{FieldKind, ResKind, ResourceForm, ResOut, ViewRole};
     use crate::layout::{FieldDefOwned, FieldTyOwned, RecordDefOwned, SemScalar};
+    use ace_foreign_contract::resource::{FieldKind, ResKind, ResOut, ResourceForm, ViewRole};
 
     let semref_hash = interface_binding_hash(facts)?;
     let sem_scalar = |k: FieldKind| match k {
@@ -709,14 +709,8 @@ pub fn wide_expectation(semref_hash: String) -> ConsumerExpectation {
         profile: layout::ABI_PROFILE.into(),
         packing: descriptor::PACKING.into(),
         required_symbols: vec![
-            (
-                "t939_wide_sum".into(),
-                "pure(buf:i64)->i64".into(),
-            ),
-            (
-                "t939_crec_sum".into(),
-                "pure(rec:RecMix:const)->i64".into(),
-            ),
+            ("t939_wide_sum".into(), "pure(buf:i64)->i64".into()),
+            ("t939_crec_sum".into(), "pure(rec:RecMix:const)->i64".into()),
             (
                 "t939_wide_fold".into(),
                 "pure(callback(ctx:i64,i64)->i64,i64,buf:i64)->i64".into(),
@@ -739,6 +733,7 @@ pub fn source_expectation(
     exports: &[ace_a2x_c::abi_scalar::ExportSpec],
     semref_hash: String,
 ) -> ConsumerExpectation {
+    use ace_a2x_c::abi_scalar::ExportLane;
     let mut required = Vec::new();
     for s in exports {
         let params = s
@@ -747,13 +742,25 @@ pub fn source_expectation(
             .map(|p| p.spell())
             .collect::<Vec<_>>()
             .join(",");
-        required.push((
-            s.public_symbol.clone(),
+        // PLAN-939 T-11: a resource-lane export's logical contract is its
+        // ResourceSig form (the descriptor's resource arm) — the view
+        // lanes with ONE status out. The wrapper's C-mechanical ctx and
+        // reason lanes are transport, exactly like the 937 scalar form's
+        // (which the scalar arm spells in full because the scalar
+        // physical plan models them).
+        let sig = if s
+            .params
+            .iter()
+            .all(|p| matches!(p, ExportLane::I32 | ExportLane::Bool))
+        {
             format!(
                 "fallible(ctx:nullable,{params})->status,out {},i32",
                 s.ret.spell()
-            ),
-        ));
+            )
+        } else {
+            format!("fallible({params})->status,out {}", s.ret.spell())
+        };
+        required.push((s.public_symbol.clone(), sig));
     }
     ConsumerExpectation {
         abi_domain: descriptor::ABI_DOMAIN.into(),
@@ -1096,7 +1103,7 @@ pub fn run_wide_chain(
     legs: &[WideLeg],
     total_budget: Duration,
 ) -> Result<TypedChainOutcome, BridgeError> {
-    use crate::typed_emit::{emit_wide_caller, emit_wide_callee, frozen_wide_checks};
+    use crate::typed_emit::{emit_wide_callee, emit_wide_caller, frozen_wide_checks};
 
     let started = Instant::now();
     let budget_left = || {
@@ -1287,6 +1294,24 @@ pub struct SourceExportRequest {
     pub module: String,
     /// (source function name, public symbol) pairs to export.
     pub exports: Vec<(String, String)>,
+    /// The source profile the deck declares. PLAN-939 T-11: a
+    /// `text-record` deck may export the resource view lanes (UTF-8
+    /// views, closed records) through the RecordText fragment family;
+    /// the scalar profile keeps the exact 937 surface.
+    pub profile: SourceProfileTag,
+    /// The INDEPENDENT caller C file (under `cside/`) that executes the
+    /// exports. PLAN-939 T-11: resource-shaped decks name their own
+    /// hand-audited caller; the scalar first case keeps the frozen
+    /// 937 caller.
+    pub caller: String,
+}
+
+/// The deck-declared source profile for a source-export leg.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum SourceProfileTag {
+    #[default]
+    Scalar,
+    TextRecord,
 }
 
 #[derive(Debug)]
@@ -1309,6 +1334,8 @@ pub fn source_export_first_case() -> SourceExportRequest {
             ("sum".into(), "t937_sum".into()),
             ("div".into(), "t937_div".into()),
         ],
+        profile: SourceProfileTag::Scalar,
+        caller: "bridge_source_caller.c".into(),
     }
 }
 
@@ -1318,7 +1345,10 @@ pub fn source_export_body_edit() -> String {
     "fn sum(a int, b int) int { return a + b + 1 }\nfn div(n int, d int) int { return n / d }\nfn main() int { return 0 }\n".into()
 }
 
-use ace_a2x_c::abi_scalar::{assemble_library_fileset, ExportSpec, LibraryFilesetInputs};
+use ace_a2x_c::abi_scalar::{
+    assemble_library_fileset, ExportLane, ExportSpec, LibraryFilesetInputs, PublicRecDef,
+    PublicRecField,
+};
 
 /// Map the source channel's compute types to public lanes.
 fn lane_of_ty(ty: &ace_a2x_core::Ty) -> Result<LaneKind, BridgeError> {
@@ -1329,6 +1359,163 @@ fn lane_of_ty(ty: &ace_a2x_core::Ty) -> Result<LaneKind, BridgeError> {
             "source export serves i32/bool only, not {other:?}"
         ))),
     }
+}
+
+/// PLAN-939 T-11 (D-939-CE-1 bridge arm): resolve ONE exported param to
+/// its public lane against the real checked view. The resource view
+/// lanes (UTF-8 view, closed record const/mut views) exist only on
+/// text-record decks; the wider vocabulary (owned moves, char, lists)
+/// stays a NAMED refusal — the frozen 934 signature face (D-960-1) is
+/// not extended here.
+fn export_lane_of(
+    p: &ace_a2x_core::semantic_view::ParamFacts,
+    view: &ace_a2x_core::SemanticView<'_>,
+    text_record: bool,
+) -> Result<ExportLane, BridgeError> {
+    use ace_a2x_core::Ty;
+    use ace_core::hir::ParamMode;
+    match (&p.ty, p.mode) {
+        (Ty::I32, _) => Ok(ExportLane::I32),
+        (Ty::Bool, _) => Ok(ExportLane::Bool),
+        (Ty::Str | Ty::StrOwned, ParamMode::View | ParamMode::MutBorrow) if text_record => {
+            Ok(ExportLane::ViewText)
+        }
+        (Ty::Record(idx), ParamMode::View) if text_record => Ok(ExportLane::RecConst {
+            rec: view
+                .record(*idx)
+                .map(|r| r.name.clone())
+                .ok_or_else(|| BridgeError("unknown record type index".into()))?,
+        }),
+        (Ty::Record(idx), ParamMode::MutBorrow) if text_record => Ok(ExportLane::RecMut {
+            rec: view
+                .record(*idx)
+                .map(|r| r.name.clone())
+                .ok_or_else(|| BridgeError("unknown record type index".into()))?,
+        }),
+        (Ty::Str | Ty::StrOwned | Ty::Record(_), ParamMode::MoveOwn) => Err(BridgeError(
+            "owned-move params do not cross the C export boundary (transfer needs an owned-buffer ABI — named successor)"
+                .into(),
+        )),
+        (Ty::Char | Ty::List(_), _) => Err(BridgeError(
+            "char/list params are outside the source export channel (the frozen portable vocabulary — D-960-1)"
+                .into(),
+        )),
+        _ => Err(BridgeError(
+            "resource view lanes need a text-record deck; the scalar profile exports i32/bool only"
+                .into(),
+        )),
+    }
+}
+
+/// The closed public record definition for one nominal record (i32/bool
+/// scalar fields in declaration order; wider/nested closures are a named
+/// refusal — §5.1's public closure is naturally aligned scalars).
+fn public_rec_def_of(
+    r: &ace_a2x_core::semantic_view::RecordFacts,
+) -> Result<PublicRecDef, BridgeError> {
+    let mut fields = Vec::with_capacity(r.fields.len());
+    for f in &r.fields {
+        let ty = match f.ty {
+            ace_a2x_core::Ty::I32 => PublicRecField::I32,
+            ace_a2x_core::Ty::Bool => PublicRecField::Bool,
+            _ => {
+                return Err(BridgeError(format!(
+                    "record '{}' has a non-scalar public field '{}': the public closure is i32/bool scalars",
+                    r.name, f.name
+                )))
+            }
+        };
+        fields.push((f.name.clone(), ty));
+    }
+    Ok(PublicRecDef {
+        name: r.name.clone(),
+        fields,
+    })
+}
+
+/// The ResourceSig of one resource-lane export: the sig's form is the
+/// single authoritative form (fallible with the scalar out; the wrapper
+/// discards ctx); view lanes promise noescape (the C caller's buffers
+/// are never kept) and Mut record lanes promise §5.3 atomicity (the
+/// fragment only writes back through the caller's pointer on success).
+fn resource_sig_of(
+    spec: &ExportSpec,
+    recs: &[PublicRecDef],
+) -> Result<ace_foreign_contract::resource::ResourceSig, BridgeError> {
+    use ace_foreign_contract::resource::{FieldKind, ResKind, ResourceForm, ResourceSig, ViewRole};
+    let mut atomic = false;
+    let mut params = Vec::with_capacity(spec.params.len());
+    for p in &spec.params {
+        match p {
+            ExportLane::I32 => params.push(ResKind::I32),
+            ExportLane::Bool => params.push(ResKind::Bool),
+            ExportLane::ViewText => params.push(ResKind::ViewText),
+            ExportLane::RecConst { rec } => {
+                let def = recs
+                    .iter()
+                    .find(|r| &r.name == rec)
+                    .ok_or_else(|| BridgeError(format!("record '{rec}' undefined")))?;
+                params.push(ResKind::Rec {
+                    rec: def.name.clone(),
+                    fields: def
+                        .fields
+                        .iter()
+                        .map(|(n, f)| {
+                            (
+                                n.clone(),
+                                match f {
+                                    PublicRecField::I32 => FieldKind::I32,
+                                    PublicRecField::Bool => FieldKind::Bool,
+                                },
+                            )
+                        })
+                        .collect(),
+                    role: ViewRole::Const,
+                });
+            }
+            ExportLane::RecMut { rec } => {
+                atomic = true; // Mut lanes promise §5.3 failure atomicity
+                let def = recs
+                    .iter()
+                    .find(|r| &r.name == rec)
+                    .ok_or_else(|| BridgeError(format!("record '{rec}' undefined")))?;
+                params.push(ResKind::Rec {
+                    rec: def.name.clone(),
+                    fields: def
+                        .fields
+                        .iter()
+                        .map(|(n, f)| {
+                            (
+                                n.clone(),
+                                match f {
+                                    PublicRecField::I32 => FieldKind::I32,
+                                    PublicRecField::Bool => FieldKind::Bool,
+                                },
+                            )
+                        })
+                        .collect(),
+                    role: ViewRole::Mut,
+                });
+            }
+        }
+    }
+    let out = match spec.ret {
+        LaneKind::I32 => ace_foreign_contract::resource::ResOut::I32,
+        LaneKind::Bool => ace_foreign_contract::resource::ResOut::Bool,
+        _ => return Err(BridgeError("resource export out lane".into())),
+    };
+    Ok(ResourceSig {
+        format: ace_foreign_contract::resource::RESOURCE_SIG_FORMAT.into(),
+        params,
+        form: ResourceForm::Fallible {
+            ctx: None,
+            out: Some(out),
+        },
+        atomic,
+        noescape: true,
+        // the typed-peer-only marker lane (S07) is not a source export
+        typed_peer: false,
+    })
 }
 
 fn sha256_hex(text: &str) -> String {
@@ -1356,9 +1543,18 @@ pub fn run_source_export(
     use ace_a2x_core::target::{Family, TargetProvider};
     use ace_a2x_core::{semantic_fingerprint, SemanticView};
 
-    // 1) REAL checked source through the unified frontdoor.
-    let compiled = ace_core::source::compile_scalar_source(&req.src, &req.module, &[])
-        .map_err(|e| BridgeError(format!("frontdoor: {e:?}")))?;
+    // 1) REAL checked source through the unified frontdoor. PLAN-939
+    //    T-11: a text-record deck (resource view lanes) compiles under
+    //    the TEXT-RECORD profile and emits through the RecordText
+    //    fragment family; a scalar deck keeps the exact 937 path.
+    let text_record = req.profile == SourceProfileTag::TextRecord;
+    let compiled = if text_record {
+        ace_core::source::compile_text_record_source(&req.src, &req.module, &[])
+            .map_err(|e| BridgeError(format!("frontdoor: {e:?}")))?
+    } else {
+        ace_core::source::compile_scalar_source(&req.src, &req.module, &[])
+            .map_err(|e| BridgeError(format!("frontdoor: {e:?}")))?
+    };
     let view = SemanticView::from_checked(&compiled.checked)
         .map_err(|e| BridgeError(format!("semantic view: {e:?}")))?;
     let source_sha = sha256_hex(&req.src);
@@ -1366,8 +1562,15 @@ pub fn run_source_export(
     // 2) Resolve the exported functions against the REAL view.
     let provider = ace_a2x_c::CTargetProvider::v1();
     let provider_inputs = provider.fragment_key_inputs("");
+    let family = if text_record {
+        Family::RecordText
+    } else {
+        Family::Scalar
+    };
     let mut specs = Vec::new();
     let mut exported = Vec::new();
+    let mut rec_defs: Vec<PublicRecDef> = Vec::new();
+    let mut resource_lanes = false;
     for (src_name, public_symbol) in &req.exports {
         let f = view
             .functions()
@@ -1378,11 +1581,14 @@ pub fn run_source_export(
                     "export '{src_name}' not found in the checked source"
                 ))
             })?;
-        let params: Vec<LaneKind> = f
-            .params
-            .iter()
-            .map(|p| lane_of_ty(&p.ty))
-            .collect::<Result<_, _>>()?;
+        let mut params: Vec<ExportLane> = Vec::with_capacity(f.params.len());
+        for p in &f.params {
+            let lane = export_lane_of(p, &view, text_record)?;
+            if !matches!(lane, ExportLane::I32 | ExportLane::Bool) {
+                resource_lanes = true;
+            }
+            params.push(lane);
+        }
         let ret = lane_of_ty(&f.result)?;
         exported.push(f);
         specs.push(ExportSpec {
@@ -1392,27 +1598,77 @@ pub fn run_source_export(
             ret,
         });
     }
+    // The closed public record table: every record referenced by a lane,
+    // each defined exactly once from the checked type table.
+    for spec in &specs {
+        for rec in spec.referenced_recs() {
+            if rec_defs.iter().any(|r| r.name == rec) {
+                continue;
+            }
+            let facts = view
+                .records()
+                .iter()
+                .find(|r| r.name == rec)
+                .ok_or_else(|| BridgeError(format!("record '{rec}' missing from the view")))?;
+            rec_defs.push(public_rec_def_of(facts)?);
+        }
+    }
 
     // 3) Interface facts from the REAL checked source (every source
     //    export is FALLIBLE — checked arithmetic; the wrapper's explicit
     //    trap table is the error model, the reason lane keeps the cause).
+    //    PLAN-939 T-11: a resource-lane export carries its ResourceSig
+    //    (the sig's form is the single authoritative form; the scalar
+    //    form keeps only the ctx + value/reason out lanes) and the
+    //    facts gain the resource capability.
     let functions: Vec<FnFact> = specs
         .iter()
-        .map(|s| FnFact {
-            symbol: s.public_symbol.clone(),
-            form: FnForm::Fallible {
-                ctx: Some(true),
-                params: s.params.clone(),
-                outs: vec![s.ret, LaneKind::I32], // value + reason lanes
-            },
-            error_model: Some(ErrorModel {
-                kind: "status-i32".into(),
-                codes: ace_a2x_c::abi_scalar::public_error_model_rows(),
-            }),
-            semantic_ref: None,
-            resource: None,
+        .map(|s| {
+            let resource = if s
+                .params
+                .iter()
+                .any(|p| !matches!(p, ExportLane::I32 | ExportLane::Bool))
+            {
+                Some(resource_sig_of(s, &rec_defs)?)
+            } else {
+                None
+            };
+            // A scalar-only export's form carries its lanes (the 937
+            // shape, byte-identical); a resource entry's form params are
+            // IGNORED for admission/projection (the sig is authoritative)
+            // — the view lanes live only in the sig.
+            let scalar_params: Vec<LaneKind> = if resource.is_some() {
+                Vec::new()
+            } else {
+                s.params
+                    .iter()
+                    .map(|p| match p {
+                        ExportLane::I32 => LaneKind::I32,
+                        ExportLane::Bool => LaneKind::Bool,
+                        _ => unreachable!("resource lanes imply a sig"),
+                    })
+                    .collect()
+            };
+            Ok(FnFact {
+                symbol: s.public_symbol.clone(),
+                form: FnForm::Fallible {
+                    ctx: Some(true),
+                    params: scalar_params,
+                    outs: vec![s.ret, LaneKind::I32], // value + reason lanes
+                },
+                error_model: Some(ErrorModel {
+                    kind: "status-i32".into(),
+                    codes: ace_a2x_c::abi_scalar::public_error_model_rows(),
+                }),
+                semantic_ref: None,
+                resource,
+            })
         })
-        .collect();
+        .collect::<Result<_, BridgeError>>()?;
+    let mut capabilities: Vec<String> = Vec::new();
+    if resource_lanes {
+        capabilities.push(ace_foreign_contract::resource::RESOURCE_CAP.into());
+    }
     let facts = InterfaceFacts {
         format: ace_foreign_contract::FACTS_FORMAT.into(),
         logical: format!("source/{}", req.module),
@@ -1423,7 +1679,7 @@ pub fn run_source_export(
         },
         functions,
         effects: vec![],
-        capabilities: vec![],
+        capabilities,
     };
     facts
         .validate()
@@ -1453,7 +1709,7 @@ pub fn run_source_export(
     // 4) Per-function C fragments through the store (per-function P0:
     //    unchanged function -> hit; edited body -> exactly one miss).
     let runtime = provider
-        .runtime_source(&view, Family::Scalar)
+        .runtime_source(&view, family)
         .map_err(|e| BridgeError(format!("runtime: {e:?}")))?;
     let runtime_sha = sha256_hex(&runtime);
     budget_left()?;
@@ -1466,7 +1722,7 @@ pub fn run_source_export(
         fragment_key_canonicals.push(key.canonical());
         let (bytes, _) = produce_counted(store, counters, &key, ChunkKind::SourcePage, || {
             let texts = provider
-                .produce_fragments(&view, &[f], Family::Scalar)
+                .produce_fragments(&view, &[f], family)
                 .map_err(|e| format!("fragment: {e:?}"))?;
             Ok(texts[0].clone().into_bytes())
         })?;
@@ -1480,6 +1736,14 @@ pub fn run_source_export(
         specs
             .iter()
             .map(|s| format!("{}={}", s.public_symbol, s.source_fn))
+            .chain(
+                // PLAN-939 T-11: the public record closures are part of
+                // the library identity — same symbols with different
+                // record tables must never share one fileset key.
+                rec_defs
+                    .iter()
+                    .map(|r| format!("{}:{}", r.name, r.fields.len())),
+            )
             .collect::<Vec<_>>()
             .join(",")
             .as_bytes(),
@@ -1496,6 +1760,7 @@ pub fn run_source_export(
             &fragments.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
             &runtime,
             &specs,
+            &rec_defs,
             &inputs,
         )
         .map_err(|e| e)?;
@@ -1546,16 +1811,14 @@ pub fn run_source_export(
             .map(|(p, t)| (p.as_str(), t.as_str()))
             .collect::<Vec<_>>(),
     )?;
-    std::fs::copy(
-        cside_dir().join("bridge_source_caller.c"),
-        dir.join("bridge_source_caller.c"),
-    )
-    .map_err(|e| BridgeError(format!("caller copy: {e}")))?;
+    let caller_file = req.caller.clone();
+    std::fs::copy(cside_dir().join(&caller_file), dir.join(&caller_file))
+        .map_err(|e| BridgeError(format!("caller copy: {e}")))?;
     let exe = dir.join("source_export.exe");
     budget_left()?;
     compile_bridge_crt(
         &dir,
-        &["library.c", "generated.c", "bridge_source_caller.c"],
+        &["library.c", "generated.c", caller_file.as_str()],
         &exe,
     )?;
     let mut cmd = Command::new(&exe);

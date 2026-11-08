@@ -51,6 +51,12 @@ pub struct BridgeDeck {
     pub module: String,
     pub exports: Vec<(String, String)>,
     pub src: String,
+    /// PLAN-939 T-11 (source leg only): `profile text-record` enables
+    /// the resource view export lanes; absent keeps the scalar profile.
+    pub profile_text_record: bool,
+    /// PLAN-939 T-11 (source leg only): `caller <file.c>` names the
+    /// independent cside caller; absent keeps the frozen 937 caller.
+    pub caller: Option<String>,
 }
 
 pub fn parse_bridge_deck(text: &str) -> Result<BridgeDeck, String> {
@@ -69,6 +75,8 @@ pub fn parse_bridge_deck(text: &str) -> Result<BridgeDeck, String> {
         module: String::new(),
         exports: vec![],
         src: String::new(),
+        profile_text_record: false,
+        caller: None,
     };
     let mut in_src = false;
     let mut src_lines: Vec<String> = Vec::new();
@@ -101,6 +109,22 @@ pub fn parse_bridge_deck(text: &str) -> Result<BridgeDeck, String> {
             }
             deck.exports
                 .push((parts[0].trim().to_string(), parts[1].trim().to_string()));
+        } else if t == "profile text-record" {
+            deck.profile_text_record = true;
+        } else if let Some(c) = t.strip_prefix("caller ") {
+            let name = c.trim();
+            if deck.caller.is_some() {
+                return Err("duplicate caller".into());
+            }
+            if name.is_empty()
+                || !name.ends_with(".c")
+                || !name
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.')
+            {
+                return Err(format!("caller line must be `caller <file.c>`: {t:?}"));
+            }
+            deck.caller = Some(name.to_string());
         } else if t == "src {" {
             in_src = true;
         } else {
@@ -118,14 +142,24 @@ pub fn parse_bridge_deck(text: &str) -> Result<BridgeDeck, String> {
             }
         }
         "typed-self" | "typed-n2c" | "typed-c2n" => {
-            if !deck.module.is_empty() || !deck.exports.is_empty() || !src_lines.is_empty() {
+            if !deck.module.is_empty()
+                || !deck.exports.is_empty()
+                || !src_lines.is_empty()
+                || deck.profile_text_record
+                || deck.caller.is_some()
+            {
                 return Err("typed legs carry only deck+leg (frozen typed declarations)".into());
             }
         }
         // PLAN-939 S07: the wide typed-resource peer legs (element-count
         // i64 view / wide record closure / original wide callback).
         "wide-self" | "wide-n2c" | "wide-c2n" => {
-            if !deck.module.is_empty() || !deck.exports.is_empty() || !src_lines.is_empty() {
+            if !deck.module.is_empty()
+                || !deck.exports.is_empty()
+                || !src_lines.is_empty()
+                || deck.profile_text_record
+                || deck.caller.is_some()
+            {
                 return Err("typed legs carry only deck+leg (frozen typed declarations)".into());
             }
         }
@@ -241,6 +275,15 @@ fn bridge_query_step(sess: &mut BridgeSession) -> StepOut {
                 src: deck.src.clone(),
                 module: deck.module.clone(),
                 exports: deck.exports.clone(),
+                profile: if deck.profile_text_record {
+                    crate::bridge::SourceProfileTag::TextRecord
+                } else {
+                    crate::bridge::SourceProfileTag::Scalar
+                },
+                caller: deck
+                    .caller
+                    .clone()
+                    .unwrap_or_else(|| "bridge_source_caller.c".into()),
             },
             BRIDGE_TOTAL_DEADLINE,
         )

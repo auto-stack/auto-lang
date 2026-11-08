@@ -112,17 +112,77 @@ pub fn public_error_model_rows() -> Vec<(i32, String)> {
     rows
 }
 
-/// One source-function export specification. Lanes are restricted to
-/// the source channel's compute types (i32/bool); wider public lanes
-/// belong to the typed bridge, not the source exporter.
+/// One PUBLIC param lane of a source export. PLAN-939 T-11 (D-939-CE-1's
+/// bridge arm): besides the 937 scalar lanes (i32/bool), the source
+/// channel exports the resource shapes the 939 matrix promises for CE —
+/// a borrowed UTF-8 view and closed record views. Wider scalar lanes
+/// (i64/u64/f64) still belong to the typed bridge, never the exporter.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum ExportLane {
+    I32,
+    Bool,
+    /// Borrowed UTF-8 view — public `(const uint8_t* data, size_t len)`
+    /// pair, marshalled to the fragment's `a2x_str_view`.
+    ViewText,
+    /// Closed record view — public `const <Rec>*` (natural scalar layout).
+    RecConst {
+        rec: String,
+    },
+    /// Closed record mut view — public `<Rec>*` (written back through it).
+    RecMut {
+        rec: String,
+    },
+}
+
+impl ExportLane {
+    /// The admission-grammar spelling (must match descriptor3's
+    /// `ParamKind::spell` for the same shape).
+    pub fn spell(&self) -> String {
+        match self {
+            ExportLane::I32 => "i32".into(),
+            ExportLane::Bool => "bool".into(),
+            ExportLane::ViewText => "buf:utf8".into(),
+            ExportLane::RecConst { rec } => format!("rec:{rec}:const"),
+            ExportLane::RecMut { rec } => format!("rec:{rec}:mut"),
+        }
+    }
+}
+
+/// A public record closure emitted into the export header: closed
+/// scalar fields in declaration order, natural alignment (§5.1: the
+/// public record closure is naturally aligned scalars — never the
+/// internal resource record's private representation).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct PublicRecDef {
+    pub name: String,
+    pub fields: Vec<(String, PublicRecField)>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PublicRecField {
+    I32,
+    Bool,
+}
+
+impl PublicRecField {
+    fn c_spell(self) -> &'static str {
+        match self {
+            PublicRecField::I32 => "int32_t",
+            PublicRecField::Bool => "bool",
+        }
+    }
+}
+
+/// One source-function export specification. Params carry the source
+/// channel's `ExportLane` vocabulary; the result lane stays i32/bool.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ExportSpec {
     /// Public C symbol of the wrapper (hygiene: ASCII identifier).
     pub public_symbol: String,
     /// C name of the generated business body (the provider's `fn_*`).
     pub source_fn: String,
-    /// Logical param lanes (i32/bool only for the source channel).
-    pub params: Vec<LaneKind>,
+    /// Logical param lanes (i32/bool + the 939 resource view lanes).
+    pub params: Vec<ExportLane>,
     /// Logical result lane (written to `*out` on success).
     pub ret: LaneKind,
 }
@@ -143,20 +203,128 @@ impl ExportSpec {
                 self.source_fn
             ));
         }
-        for k in self.params.iter().chain(std::iter::once(&self.ret)) {
-            if !matches!(k, LaneKind::I32 | LaneKind::Bool) {
-                return Err(format!(
-                    "export '{}': lane {k:?} is outside the source channel (i32/bool)",
-                    self.public_symbol
-                ));
-            }
+        if !matches!(self.ret, LaneKind::I32 | LaneKind::Bool) {
+            return Err(format!(
+                "export '{}': ret lane {:?} is outside the source channel (i32/bool)",
+                self.public_symbol, self.ret
+            ));
         }
         Ok(())
     }
+    /// Every record name referenced by a param lane.
+    pub fn referenced_recs(&self) -> Vec<&str> {
+        self.params
+            .iter()
+            .filter_map(|p| match p {
+                ExportLane::RecConst { rec } | ExportLane::RecMut { rec } => Some(rec.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+/// The INTERNAL record table for the compiled TUs (library.c +
+/// generated.c): the fragments spell `a2x_rec_<Rec>` with hygienic
+/// `f_`-prefixed field names — the exact struct the record-text
+/// lowering emits (same layout as the public closure by construction:
+/// same field types, same declaration order).
+fn record_block(recs: &[PublicRecDef]) -> String {
+    let mut s = String::new();
+    for r in recs {
+        s.push_str("typedef struct {");
+        for (name, ty) in &r.fields {
+            s.push_str(&format!(" {} f_{};", ty.c_spell(), name));
+        }
+        s.push_str(&format!(" }} a2x_rec_{};\n", r.name));
+    }
+    s
+}
+
+/// The public-header record closures (public field names; the internal
+/// `a2x_rec_*` hygienic names never cross the public boundary).
+fn public_record_block(recs: &[PublicRecDef]) -> String {
+    let mut s = String::new();
+    for r in recs {
+        s.push_str("typedef struct {");
+        for (name, ty) in &r.fields {
+            s.push_str(&format!(" {} {};", ty.c_spell(), name));
+        }
+        s.push_str(&format!(" }} {};\n", r.name));
+    }
+    s
+}
+
+/// Check that every record a spec's lanes reference has exactly one
+/// closed definition in the table.
+fn check_rec_refs(specs: &[ExportSpec], recs: &[PublicRecDef]) -> Result<(), String> {
+    let ident =
+        |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+    for r in recs {
+        if !ident(&r.name) {
+            return Err(format!("record name '{}' is not a C identifier", r.name));
+        }
+    }
+    for spec in specs {
+        for rec in spec.referenced_recs() {
+            if !recs.iter().any(|r| r.name == rec) {
+                return Err(format!(
+                    "export '{}': record '{}' has no closed public definition",
+                    spec.public_symbol, rec
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn c_lane(k: LaneKind) -> &'static str {
     k.physical().c_spell()
+}
+
+/// The public C parameter declaration(s) of one export lane.
+fn public_param_decl(p: &ExportLane, i: usize) -> String {
+    match p {
+        ExportLane::I32 => format!("int32_t p{i}"),
+        ExportLane::Bool => format!("bool p{i}"),
+        ExportLane::ViewText => format!("const uint8_t* p{i}_data, size_t p{i}_len"),
+        ExportLane::RecConst { rec } => format!("const {rec}* p{i}"),
+        ExportLane::RecMut { rec } => format!("{rec}* p{i}"),
+    }
+}
+
+/// The fragment-side C parameter declaration of one export lane (the
+/// internal ABI the generated business body actually takes).
+fn fragment_param_decl(p: &ExportLane, i: usize) -> String {
+    match p {
+        ExportLane::I32 => format!("int32_t p{i}"),
+        ExportLane::Bool => format!("bool p{i}"),
+        ExportLane::ViewText => format!("a2x_str_view p{i}_v"),
+        ExportLane::RecConst { rec } => format!("const a2x_rec_{rec}* p{i}"),
+        ExportLane::RecMut { rec } => format!("a2x_rec_{rec}* p{i}"),
+    }
+}
+
+/// The wrapper's call argument for one export lane (built after any
+/// marshalling locals the lane needs).
+fn call_argument(p: &ExportLane, i: usize) -> String {
+    match p {
+        ExportLane::I32 | ExportLane::Bool => format!("p{i}"),
+        ExportLane::ViewText => format!("p{i}_v"),
+        ExportLane::RecConst { rec } => format!("(const a2x_rec_{rec}*)p{i}"),
+        ExportLane::RecMut { rec } => format!("(a2x_rec_{rec}*)p{i}"),
+    }
+}
+
+/// The wrapper's marshalling locals for one lane (the UTF-8 view pair
+/// becomes one `a2x_str_view`; record pointers need no local — the call
+/// argument casts to the layout-identical internal struct).
+fn marshalling_locals(p: &ExportLane, i: usize) -> String {
+    match p {
+        ExportLane::ViewText => format!(
+            "    a2x_str_view p{i}_v;\n    p{i}_v.data = p{i}_data;\n    p{i}_v.len = p{i}_len;\n"
+        ),
+        _ => String::new(),
+    }
 }
 
 /// The public prototype of one export (the form both the generated
@@ -164,7 +332,7 @@ fn c_lane(k: LaneKind) -> &'static str {
 pub fn public_prototype(spec: &ExportSpec) -> String {
     let mut s = format!("int32_t {}(void* ctx", spec.public_symbol);
     for (i, p) in spec.params.iter().enumerate() {
-        s.push_str(&format!(", {} p{}", c_lane(*p), i));
+        s.push_str(&format!(", {}", public_param_decl(p, i)));
     }
     s.push_str(&format!(", {}* out, int32_t* reason)", c_lane(spec.ret)));
     s
@@ -173,11 +341,18 @@ pub fn public_prototype(spec: &ExportSpec) -> String {
 /// The wrapper definitions text (`library.c` body): explicit ctx
 /// discard, trap-table switch, reason-preserving failure path, and
 /// success committing out/reason in declaration order.
-pub fn wrapper_c(specs: &[ExportSpec]) -> String {
+pub fn wrapper_c(specs: &[ExportSpec], recs: &[PublicRecDef]) -> String {
     let mut s = String::new();
     s.push_str("// PLAN-937 CA-D1: public scalar export wrappers (generated; fallible form).\n");
     s.push_str("// The private a2x_result never crosses this boundary.\n");
     s.push_str("#include \"a2x_c_runtime.h\"\n\n");
+    // PLAN-939 T-11: BOTH record spellings live in this TU — the PUBLIC
+    // closure (the prototypes below spell its names) and the INTERNAL
+    // table the fragments spell (hygienic f_-prefixed fields; same
+    // layout by construction: same field types, same order).
+    s.push_str(&public_record_block(recs));
+    s.push_str(&record_block(recs));
+    s.push('\n');
     // extern prototypes of the real business bodies (generated.c is a
     // separate translation unit in the library link).
     for spec in specs {
@@ -187,7 +362,7 @@ pub fn wrapper_c(specs: &[ExportSpec]) -> String {
             spec.params
                 .iter()
                 .enumerate()
-                .map(|(i, p)| format!("{} p{}", c_lane(*p), i))
+                .map(|(i, p)| fragment_param_decl(p, i))
                 .collect::<Vec<_>>()
                 .join(", ")
         };
@@ -201,13 +376,16 @@ pub fn wrapper_c(specs: &[ExportSpec]) -> String {
         s.push_str(&format!("// {}\n", public_prototype(spec)));
         s.push_str(&format!("int32_t {}(void* ctx", spec.public_symbol));
         for (i, p) in spec.params.iter().enumerate() {
-            s.push_str(&format!(", {} p{}", c_lane(*p), i));
+            s.push_str(&format!(", {}", public_param_decl(p, i)));
         }
         s.push_str(&format!(
             ", {}* out, int32_t* reason) {{\n",
             c_lane(spec.ret)
         ));
         s.push_str("    (void)ctx;\n");
+        for (i, p) in spec.params.iter().enumerate() {
+            s.push_str(&marshalling_locals(p, i));
+        }
         s.push_str("    a2x_result r = ");
         s.push_str(&spec.source_fn);
         s.push('(');
@@ -216,7 +394,7 @@ pub fn wrapper_c(specs: &[ExportSpec]) -> String {
                 .params
                 .iter()
                 .enumerate()
-                .map(|(i, _)| format!("p{i}"))
+                .map(|(i, p)| call_argument(p, i))
                 .collect::<Vec<_>>()
                 .join(", "),
         );
@@ -248,14 +426,19 @@ pub fn wrapper_c(specs: &[ExportSpec]) -> String {
     s
 }
 
-/// The generated public header (`abi_export.h`) — prototypes only.
-pub fn public_header(specs: &[ExportSpec]) -> String {
+/// The generated public header (`abi_export.h`) — record closures plus
+/// prototypes only.
+pub fn public_header(specs: &[ExportSpec], recs: &[PublicRecDef]) -> String {
     let mut s = String::new();
     s.push_str("// PLAN-937 CA-D1: public scalar export header (generated).\n");
     s.push_str("// Fallible form: 0 = success (out/reason committed), negative =\n");
     s.push_str("// mapped status (reason carries the original trap code).\n");
     s.push_str("#ifndef A2X_ABI_EXPORT_H\n#define A2X_ABI_EXPORT_H\n\n");
-    s.push_str("#include <stdint.h>\n#include <stdbool.h>\n\n");
+    s.push_str("#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n\n");
+    // PLAN-939 T-11: the public record closures (closed scalar fields,
+    // natural alignment — the internal a2x_rec_* names never appear).
+    s.push_str(&public_record_block(recs));
+    s.push('\n');
     for spec in specs {
         s.push_str(&public_prototype(spec));
         s.push_str(";\n");
@@ -290,11 +473,13 @@ pub fn assemble_library_fileset(
     fragments: &[&str],
     runtime_h: &str,
     specs: &[ExportSpec],
+    recs: &[PublicRecDef],
     inputs: &LibraryFilesetInputs,
 ) -> Result<FileSet, String> {
     for spec in specs {
         spec.check()?;
     }
+    check_rec_refs(specs, recs)?;
     if specs.is_empty() {
         return Err("library fileset needs at least one export".into());
     }
@@ -307,14 +492,17 @@ pub fn assemble_library_fileset(
             return Err(format!("duplicate public symbol '{}'", spec.public_symbol));
         }
     }
-    // generated.c: header comment + runtime include + forward
-    // declarations (each fragment's prototype line) + definitions.
+    // generated.c: header comment + runtime include + the record table
+    // (the fragments spell a2x_rec_* — the TU is self-contained) +
+    // forward declarations (each fragment's prototype line) + definitions.
     let mut generated = String::new();
     generated.push_str(&format!(
         "// PLAN-937 CA-D1 library form (module {}, entry {})\n",
         inputs.module, inputs.entry
     ));
     generated.push_str("#include \"a2x_c_runtime.h\"\n\n");
+    generated.push_str(&record_block(recs));
+    generated.push('\n');
     for frag in fragments {
         let proto = frag
             .lines()
@@ -328,8 +516,8 @@ pub fn assemble_library_fileset(
         generated.push_str(frag);
         generated.push_str("\n\n");
     }
-    let library_c = wrapper_c(specs);
-    let header = public_header(specs);
+    let library_c = wrapper_c(specs, recs);
+    let header = public_header(specs, recs);
     let files: Vec<(String, String)> = vec![
         ("library.c".to_string(), library_c),
         ("abi_export.h".to_string(), header),
@@ -377,7 +565,7 @@ mod tests {
         ExportSpec {
             public_symbol: "t937_sum".into(),
             source_fn: "fn_sum".into(),
-            params: vec![LaneKind::I32, LaneKind::I32],
+            params: vec![ExportLane::I32, ExportLane::I32],
             ret: LaneKind::I32,
         }
     }
@@ -391,7 +579,7 @@ mod tests {
         let b = ExportSpec {
             public_symbol: "t937_flag".into(),
             source_fn: "fn_flag".into(),
-            params: vec![LaneKind::I32],
+            params: vec![ExportLane::I32],
             ret: LaneKind::Bool,
         };
         assert_eq!(
@@ -402,7 +590,7 @@ mod tests {
 
     #[test]
     fn wrapper_maps_traps_by_enum_not_by_string_or_exit() {
-        let c = wrapper_c(&[sum_spec()]);
+        let c = wrapper_c(&[sum_spec()], &[]);
         assert!(c.contains("case A2X_TRAP_DIV_BY_ZERO: return -102;"));
         assert!(c.contains("case A2X_TRAP_OVERFLOW: return -101;"));
         assert!(c.contains("default: return -100;"));
@@ -430,7 +618,7 @@ mod tests {
             input_hash: "ih".into(),
             module: "m".into(),
         };
-        let fs = assemble_library_fileset(&[frag], "RT", &[sum_spec()], &inputs).unwrap();
+        let fs = assemble_library_fileset(&[frag], "RT", &[sum_spec()], &[], &inputs).unwrap();
         let names: Vec<&str> = fs.files.iter().map(|(p, _)| p.as_str()).collect();
         assert_eq!(
             names,
@@ -452,7 +640,7 @@ mod tests {
         assert!(fs.manifest.contains(LIBRARY_EXPORT_RECIPE));
         assert!(fs.manifest.contains("\"symbol\":\"t937_sum\""));
         // determinism: identical inputs -> byte-identical outputs
-        let fs2 = assemble_library_fileset(&[frag], "RT", &[sum_spec()], &inputs).unwrap();
+        let fs2 = assemble_library_fileset(&[frag], "RT", &[sum_spec()], &[], &inputs).unwrap();
         assert!(
             fs.files == fs2.files,
             "library fileset must be byte-deterministic"
@@ -463,32 +651,116 @@ mod tests {
         // the fragment text carries the runtime helper, not raw )
         let frag2 = frag.replace("a2x_add(a, b)", "a2x_add(b, a)");
         let fs3 =
-            assemble_library_fileset(&[frag2.as_str()], "RT", &[sum_spec()], &inputs).unwrap();
+            assemble_library_fileset(&[frag2.as_str()], "RT", &[sum_spec()], &[], &inputs).unwrap();
         assert_ne!(fs.manifest, fs3.manifest);
     }
 
     #[test]
     fn lane_restriction_enforced() {
+        // The RET lane stays the finite scalar set (i32/bool); params
+        // carry the ExportLane vocabulary by construction.
         let bad = ExportSpec {
             public_symbol: "x".into(),
             source_fn: "fn_x".into(),
-            params: vec![LaneKind::F64],
-            ret: LaneKind::I32,
+            params: vec![ExportLane::I32],
+            ret: LaneKind::F64,
         };
         let err = match assemble_library_fileset(
             &["// origin: [0,1]\na2x_result fn_x(double a);"],
             "R",
             &[bad],
+            &[],
             &LibraryFilesetInputs {
                 entry: "e".into(),
                 input_hash: "i".into(),
                 module: "m".into(),
             },
         ) {
-            Ok(_) => panic!("f64 lane must be rejected for the source channel"),
+            Ok(_) => panic!("f64 ret lane must be rejected for the source channel"),
             Err(e) => e,
         };
         assert!(err.contains("source channel"), "{err}");
+        // A record lane without a closed public definition is refused.
+        let rec_lane = ExportSpec {
+            public_symbol: "y".into(),
+            source_fn: "fn_y".into(),
+            params: vec![ExportLane::RecMut {
+                rec: "Counter".into(),
+            }],
+            ret: LaneKind::I32,
+        };
+        let err = match assemble_library_fileset(
+            &["// origin: [0,1]\na2x_result fn_y(a2x_rec_Counter* p0);"],
+            "R",
+            &[rec_lane.clone()],
+            &[],
+            &LibraryFilesetInputs {
+                entry: "e".into(),
+                input_hash: "i".into(),
+                module: "m".into(),
+            },
+        ) {
+            Ok(_) => panic!("an undefined record closure must be rejected"),
+            Err(e) => e,
+        };
+        assert!(err.contains("no closed public definition"), "{err}");
+    }
+
+    /// PLAN-939 T-11 (D-939-CE-1 bridge arm): the resource view lanes'
+    /// public form — the UTF-8 view pair, the closed record pointers,
+    /// the marshalling locals, and the public/internal record duality.
+    #[test]
+    fn resource_view_lanes_generate_the_public_ce_form() {
+        use ExportLane::{RecConst, RecMut, ViewText};
+        let counter = PublicRecDef {
+            name: "Counter".into(),
+            fields: vec![("value".into(), PublicRecField::I32)],
+        };
+        let spec = ExportSpec {
+            public_symbol: "t939ce_probe".into(),
+            source_fn: "fn_probe".into(),
+            params: vec![
+                ViewText,
+                RecConst {
+                    rec: "Counter".into(),
+                },
+                RecMut {
+                    rec: "Counter".into(),
+                },
+            ],
+            ret: LaneKind::I32,
+        };
+        let proto = public_prototype(&spec);
+        assert_eq!(
+            proto,
+            "int32_t t939ce_probe(void* ctx, const uint8_t* p0_data, size_t p0_len, \
+const Counter* p1, Counter* p2, int32_t* out, int32_t* reason)"
+        );
+        let header = public_header(&[spec.clone()], &[counter.clone()]);
+        assert!(
+            header.contains("typedef struct { int32_t value; } Counter;"),
+            "the public header carries the closed record closure"
+        );
+        assert!(
+            !header.contains("a2x_rec_"),
+            "the internal a2x_rec_* names never cross the public boundary"
+        );
+        let c = wrapper_c(&[spec], &[counter]);
+        // the UTF-8 view pair marshals to ONE a2x_str_view before the call
+        assert!(c.contains("a2x_str_view p0_v;"));
+        assert!(c.contains("p0_v.data = p0_data;"));
+        assert!(c.contains("p0_v.len = p0_len;"));
+        // record pointers pass through typed via the public/internal alias
+        assert!(c.contains("typedef struct { int32_t f_value; } a2x_rec_Counter;"));
+        assert!(c.contains(
+            "extern a2x_result fn_probe(a2x_str_view p0_v, \
+const a2x_rec_Counter* p1, a2x_rec_Counter* p2);"
+        ));
+        assert!(c.contains("r = fn_probe(p0_v, (const a2x_rec_Counter*)p1, (a2x_rec_Counter*)p2);"));
+        // the admission spellings match descriptor3's ParamKind vocabulary
+        assert_eq!(ViewText.spell(), "buf:utf8");
+        assert_eq!(RecConst { rec: "C".into() }.spell(), "rec:C:const");
+        assert_eq!(RecMut { rec: "C".into() }.spell(), "rec:C:mut");
     }
 
     #[test]

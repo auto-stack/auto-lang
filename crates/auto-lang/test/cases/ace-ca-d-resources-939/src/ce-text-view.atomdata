@@ -1,0 +1,16 @@
+# PLAN-939 T-11 CE (S01 text view): the Auto source exports a borrowed
+# UTF-8 view consumer under the text-record profile. The independent C
+# caller (ce_text_caller.c) passes NUL-bearing and multibyte fixtures and
+# checks the byte-length oracle (NUL is DATA; len counts BYTES).
+# (deck src grammar: a line that trims to `}` closes the block — closing
+# braces ride inline with their code.)
+deck ace-ca-d1/1
+leg source
+profile text-record
+caller ce_text_caller.c
+module t939ce_text
+export bytes_of as t939ce_bytes
+src {
+fn bytes_of(s str) int { return s.len() }
+fn main() int { return 0 }
+}
