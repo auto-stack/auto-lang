@@ -2348,6 +2348,15 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（3-group�
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§3工具对账完成：10变3不变全触面确认；§4重采序列冻结） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:f1093efbe | task_ids:CHECKLIST §3 | evidence:f94129-frozen-tools/{identity-audit,tools-current}.json | next_responsible_role:work §4证据链重采（f94110/11脚本适配） | 无live handle
 
+### 第110轮：work §4-1 case466重采完成——961金样漂移接收修复+17组捕获全成
+
+- **961金样漂移发现与修复**：§4首跑（refresh-f94130适配自f94111：commit/tools/输出三处换基）在q4-001/sq934.leaf42的a2r/a2c-emit暴露**runtime+manifest金样漂移**——961重生成双端a2x运行时模板（Rust RT_NUMERIC+C生成器）但只重冻结921金样，漏892族与941 emit-oracle（pristine master同红实证：`certify_dry_run_b01` golden drift、ace-a2x组3红）。修复（交付现实re-freeze，提交**`ee60c65cd`**）：q4-001与sq934.leaf42金样从当前worker实际发射重冻结（runtime×2+manifest×2每例；main/generated字节相同未动）；contract_certification自冻结金样清标记重冻结；ace-a2x组**PASS**；两组复检4/4+14/14绿。C运行时新字节与961已审921金样逐字节一致（交付现实判定依据）；wrong-legs/958隔离绿（组内并行环境红）。
+- **pin级联三度同步**（提交**`bf8eb3835`**）：金样变化→TSV快照pin（8处）→registry inventory_contracts的`file/sha256`对（4处，首轮刷新漏此键型）→CASE_CATALOG_SHA→治理**257/257绿**。
+- **case466捕获全成**（`f94130-current-source-cases/`，@`bf8eb3835`）：工具盘点v2（case-parent双二进制重建非确定性→HEAD重prepare刷新）；17组`cargo t`整跑466 fresh checks带raw wire导出、八scalar红逐键保持、composed-bindings.json+capture-audit.json落盘（strict admission pending cert/daily链）。
+- **边界**：§4剩余=cert292+daily292（refresh-*-certifications适配）→五native观察/optimized14/拒绝6→abi+av档重采→parent.command→policy 16/16重验→§5组合重读。892族在树金样若cert链再暴露漂移同法处置。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§4-1 case466全成@bf8eb3835；961金样漂移接收修复+三度pin同步；治理257/257） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:bf8eb3835 | task_ids:CHECKLIST §4-1 | evidence:f94130-current-source-cases/{composed-bindings,capture-audit}.json | next_responsible_role:work §4 cert链重采 | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
