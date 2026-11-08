@@ -2323,6 +2323,15 @@ stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:105 | from:goal继续
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（F-941-14两刀+升顶两授权落地，artifacts 48/48×2，master同步，ace-syntax冻结腿T3运行中） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:f1e3d4c38 | task_ids:T-33 | evidence:f94126-store-fix + f94127-frozen-gate（在途） | next_responsible_role:work 冻结门其余腿+工具对账+证据链 | 无live handle
 
+### 第107轮：work F-941-14收口——256MiB实测定格（64MiB用例首绿）+profiles_927合同刷新；冻结门重跑
+
+- **顶值修正**（提交**`f22776f8b`**）：160MiB授权基于错误估算（134.5MiB=修复前拒点非终态）；T3安静机重跑实测blocks 152.7MiB仍在建→256MiB临时顶下**`syntax_budget_64mib_streaming_small_queries` 全程PASS（1786.8s，`f94126-store-fix/64mib-256mib-measure.log`）**——上游64MiB红自938引入以来首次绿。定格256（4×最大设计内源规模），**160→256对具名裁定的偏差**（第三次问询未获答，按实测最佳判断）已写入代码注释与本记录交T-14独立复审与用户复核。ace-artifacts 48/48绿@256。
+- **profiles_927刷新**（提交**`642204770`**）：冻结门首程第二红=`profiles_declared_set_is_exact`——pristine master同红实证=961合入数字profile漏更新927冻结集（上游miss非本树引入）。按该列表既有维护模式（928/935/950/960/936逐次追加）做test-only刷新（+`"numeric"`含归属注释），profiles_927 6/6绿。
+- **冻结门**：首程（`f94127-frozen-gate/ace-syntax`）132执行2红（64MiB顶不足+profiles_927）；两修复后**整组ace-syntax重跑中**（T3_MILESTONE=1，结果入第108轮）。master侧同步注意：plan 994已开工（master推进至`dbf46c78d`），最终合并前或需再吸收。
+- **边界**：绿则继ace-source/infra-ace-m1-arch两腿→13工具对账→证据链重采→组合重读；D939复审在途（execution_done）；profiles_927刷新与256MiB定格均为接收侧裁定，T-14复审具名核。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（64MiB用例首绿@256MiB实测定格、profiles_927刷新6/6、冻结门ace-syntax腿重跑中） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:f22776f8b | task_ids:T-33 | evidence:64mib-256mib-measure.log PASS + f94127-frozen-gate/ace-syntax（首程2红归因） | next_responsible_role:work 冻结门重跑判定→其余两腿 | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
