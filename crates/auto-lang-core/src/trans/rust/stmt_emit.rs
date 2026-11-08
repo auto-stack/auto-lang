@@ -2178,6 +2178,24 @@ impl RustTrans {
             ty_name = "Vec<i64>".to_string();
             has_unknown = false;
         }
+        // PLAN-996：`var/let xs = List<T>.new()`（0 参泛型构造，语料
+        // L01..L07 形）——ty.rs 已把 effective_ty 推成 List<T'>，声明注解
+        // 用该实型（构造类型参数真实流入 Vec 元素表示）。仅当泛型参数在
+        // 有限域解析（elem 非 Unknown）时；未解析保持既有跳过注解行为，
+        // 绝不注成 serde_json 动态桶。源显式类型，无 PLAN-010 的
+        // later_used_locals 抑制（注解忠实于源，不与推断争型）。
+        let init_is_generic_list_new = matches!(&store.expr, Expr::Call(c)
+            if c.args.args.is_empty()
+                && matches!(c.name.as_ref(),
+                    Expr::Dot(obj, m) if m.as_str() == "new"
+                        && self.generic_list_ctor_elem_ty(obj).is_some()));
+        if init_is_generic_list_new
+            && matches!(store.ty, Type::Unknown)
+            && matches!(&effective_ty, Type::List(elem) if !matches!(elem.as_ref(), Type::Unknown))
+        {
+            ty_name = self.rust_type_name(&effective_ty);
+            has_unknown = false;
+        }
         // PLAN-010 T2 (009 ledger 002_option_construct): `let b = None` with
         // no constrained type — E0282. Default to Option<i64> (Auto's
         // int-default rule; the Option twin of the List.new default above).

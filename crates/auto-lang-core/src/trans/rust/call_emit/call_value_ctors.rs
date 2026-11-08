@@ -91,6 +91,17 @@ impl RustTrans {
         // generic-ident forms. Only strips when there is exactly one positional arg.
         if let Expr::Dot(obj, method) = call.name.as_ref() {
             if method.as_str() == "new" {
+                // PLAN-996：0 参泛型构造 `List<T>.new()` → `Vec::new()`
+                // （std 自包含——cert std-only 轴；元素型经 ty.rs 单源解析
+                // 流入绑定注解/方法分发，不动态桶化）。语料形 obj 是携带
+                // 全文的 GenName("List<int>")，Bina(List Lt T) 另一投影——
+                // 两形都经 helper 识别；仅 0 参、仅有限域可解析时接管。
+                // 1 参剥离（musk-022）维持原识别面不动：GenName 泛型 1 参
+                // 形的逐字发射是冻结金样载荷（25_lifecycle/002），不得扩展。
+                if call.args.args.is_empty() && self.generic_list_ctor_elem_ty(obj).is_some() {
+                    write!(out, "Vec::new()")?;
+                    return Ok(CallShape::Handled);
+                }
                 let is_collection_ctor = match obj.as_ref() {
                     Expr::GenName(n) => matches!(n.as_str(), "List" | "Array"),
                     Expr::Ident(n) => matches!(n.as_str(), "List" | "Array"),

@@ -1035,6 +1035,52 @@ impl RustTrans {
     }
 
     /// Infer Rust type from an Auto expression (for let-bound variables without type annotation).
+    /// PLAN-996：0 参有限集合构造 `List<T>.new()` 的泛型参数名 → 元素型
+    /// 解析（单源，推断/发射/声明注解三处共享）。`List<int>` 按现行约定
+    /// 解析为 `Bina(List Lt int)`（`<` 是比较符），GenName 形可含
+    /// `List<int>` 文本。有限域：标量名 + 已知 struct；解析不出返回 None，
+    /// 调用方保持既有行为——绝不猜 JSON 动态桶、不复制类型分析。
+    pub(super) fn generic_list_ctor_elem_ty(&self, obj: &Expr) -> Option<Type> {
+        let resolve = |name: &str| -> Option<Type> {
+            match name {
+                "int" | "i64" | "i32" => Some(Type::Int),
+                "str" | "Str" => Some(Type::StrOwned),
+                "bool" => Some(Type::Bool),
+                "float" => Some(Type::Float),
+                "double" => Some(Type::Double),
+                "char" => Some(Type::Char),
+                other => {
+                    if self.struct_field_types.contains_key(other)
+                        || self.struct_fields.contains_key(other)
+                    {
+                        Some(Self::placeholder_user_type(AutoStr::from(other)))
+                    } else {
+                        None
+                    }
+                }
+            }
+        };
+        match obj {
+            Expr::Bina(lhs, Op::Lt, rhs)
+                if matches!(lhs.as_ref(), Expr::Ident(n) if matches!(n.as_str(), "List" | "Array")) =>
+            {
+                match rhs.as_ref() {
+                    // 嵌套泛型（rhs 仍为 Bina）不在有限域内 → None
+                    Expr::Ident(n) => resolve(n.as_str()),
+                    _ => None,
+                }
+            }
+            Expr::GenName(n) => {
+                let (base, rest) = n.as_str().split_once('<')?;
+                if !matches!(base, "List" | "Array") {
+                    return None;
+                }
+                resolve(rest.trim_end_matches('>'))
+            }
+            _ => None,
+        }
+    }
+
     pub(super) fn infer_type_from_expr(&self, expr: &Expr) -> Type {
         if self.expr_is_dynamic_json(expr) {
             return Self::placeholder_user_type("JsonValue".into());
@@ -1073,6 +1119,14 @@ impl RustTrans {
                             } else {
                                 inferred
                             };
+                        }
+                    }
+                    // PLAN-996：0 参泛型构造 `List<T>.new()`（语料 L01..L07 形）
+                    // ——元素型经 generic_list_ctor_elem_ty 单源解析；裸
+                    // `List.new()`（无泛型参）不在此列（PLAN-010 域不变）。
+                    if collection && method.as_str() == "new" && call.args.args.is_empty() {
+                        if let Some(elem) = self.generic_list_ctor_elem_ty(obj) {
+                            return Type::List(Box::new(elem));
                         }
                     }
                 }

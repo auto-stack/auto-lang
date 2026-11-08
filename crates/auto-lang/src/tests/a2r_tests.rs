@@ -3383,3 +3383,214 @@ fn plan994_empty_nul_emoji_values_split_char_and_byte_domains() {
         );
     }
 }
+
+// =============================================================================
+// PLAN-996 T-01 probe (temporary): dump the current production emission of the
+// six corpus list sources to the plan-artifacts scope for first-red freezing.
+
+// =============================================================================
+// PLAN-996 legacy A2R finite list construction & method faces (corpus L01..L07
+// minus the L06 trap domain). `List<T>.new()` (0-arg generic ctor, parsed as
+// GenName("List<int>") / Bina(List Lt T)) lowers to a typed `Vec::new()`; the
+// generic arg flows into the binding annotation (Vec<i64> / Vec<Item> /
+// Vec<String>) through the single-source generic_list_ctor_elem_ty — never a
+// JSON dynamic bucket. List-typed receivers keep the Auto-List method faces:
+// get = index read (+ the 433 A1 owned-value .clone() convention), set =
+// index assignment (REPLACE semantics, PLAN-019 — never Vec::insert),
+// insert/remove/clear/push native Vec forms, len = element count as i64.
+
+fn plan996_transpile(src: &str) -> String {
+    let mut rcode = transpile_rust("plan996", src).unwrap();
+    String::from_utf8_lossy(rcode.done().unwrap()).to_string()
+}
+
+#[test]
+fn plan996_list_int_ctor_flows_element_annotation() {
+    // corpus L01: push 20/22, get(0)+get(1) -> 42.
+    let code = plan996_transpile(
+        "fn main() int {\n    var xs = List<int>.new()\n    xs.push(20)\n    xs.push(22)\n    return xs.get(0) + xs.get(1)\n}\n",
+    );
+    assert!(
+        code.contains("let mut xs: Vec<i64> = Vec::new();"),
+        "0-arg generic ctor emits typed Vec::new and the elem type flows into the annotation:\n{}",
+        code
+    );
+    assert!(
+        code.contains("xs[(0) as usize].clone() + xs[(1) as usize].clone()"),
+        "list get is the 433 A1 index+clone owned-value form:\n{}",
+        code
+    );
+    assert!(!code.contains("List<int>"), "no pseudo ctor survives:\n{}", code);
+    assert!(!code.contains("a2r_std"), "std-only self-contained:\n{}", code);
+}
+
+#[test]
+fn plan996_insert_remove_len_value_chain() {
+    // corpus L02: [10,30] insert(1,20) -> [10,20,30], remove(1) -> [10,30],
+    // 10+30+2 = 42.
+    let code = plan996_transpile(
+        "fn main() int {\n    var xs = List<int>.new()\n    xs.push(10)\n    xs.push(30)\n    xs.insert(1, 20)\n    xs.remove(1)\n    return xs.get(0) + xs.get(1) + xs.len()\n}\n",
+    );
+    assert!(code.contains("xs.insert(1, 20);"), "native insert:\n{}", code);
+    assert!(code.contains("xs.remove(1);"), "native remove:\n{}", code);
+    assert!(
+        code.contains("xs[(0) as usize].clone() + xs[(1) as usize].clone() + (xs.len() as i64)"),
+        "len is the element count as i64:\n{}",
+        code
+    );
+}
+
+#[test]
+fn plan996_empty_len_clear_zero() {
+    // corpus L03: empty len check, push, clear -> 0.
+    let code = plan996_transpile(
+        "fn main() int {\n    var xs = List<int>.new()\n    if xs.len() != 0 { return 1 }\n    xs.push(42)\n    xs.clear()\n    return xs.len()\n}\n",
+    );
+    assert!(
+        code.contains("if (xs.len() as i64) != 0 {"),
+        "empty-list len check keeps the i64 cast form:\n{}",
+        code
+    );
+    assert!(code.contains("xs.clear();"), "native clear:\n{}", code);
+}
+
+#[test]
+fn plan996_owned_struct_push_and_field_reads() {
+    // corpus L04: owned Item moves into the list; field reads borrow via the
+    // index+clone form (no implicit copy of the element out of the list).
+    let code = plan996_transpile(
+        "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    let x Item = Item(\"hello\", 37)\n    xs.push(x.move)\n    return xs.get(0).name.len() + xs.get(0).code\n}\n",
+    );
+    assert!(
+        code.contains("let mut xs: Vec<Item> = Vec::new();"),
+        "struct elem type flows into the annotation:\n{}",
+        code
+    );
+    assert!(
+        code.contains("xs.push(x);"),
+        ".move on push is a plain ownership transfer (no clone):\n{}",
+        code
+    );
+    assert!(
+        code.contains("(xs[(0) as usize].clone().name.len() as i64) + xs[(0) as usize].clone().code"),
+        "field reads go through the index+clone element read:\n{}",
+        code
+    );
+    assert!(!code.contains(".unwrap()"), "no Option-unwrap patchup needed:\n{}", code);
+}
+
+#[test]
+fn plan996_remove_returns_owner_and_len_after() {
+    // corpus L05: remove transfers the owner out; the list len drops.
+    let code = plan996_transpile(
+        "type Item { name Str; code int }\nfn main() int {\n    var xs = List<Item>.new()\n    xs.push(Item(\"hello\", 37))\n    let x Item = xs.remove(0)\n    return x.name.len() + x.code + xs.len()\n}\n",
+    );
+    assert!(
+        code.contains("let x: Item = xs.remove(0);"),
+        "remove yields the owned element:\n{}",
+        code
+    );
+    assert!(
+        code.contains("(x.name.len() as i64) + x.code + (xs.len() as i64)"),
+        "post-remove use + len-after-remove:\n{}",
+        code
+    );
+}
+
+#[test]
+fn plan996_set_is_replace_assignment_not_insert() {
+    // corpus L07: set REPLACES the element (PLAN-019) — never Vec::insert.
+    let code = plan996_transpile(
+        "fn main() int {\n    var xs = List<int>.new()\n    xs.push(20)\n    xs.push(1)\n    xs.set(1, 22)\n    return xs.get(0) + xs.get(1)\n}\n",
+    );
+    assert!(
+        code.contains("xs[(1) as usize] = 22;"),
+        "set is index assignment (replace semantics):\n{}",
+        code
+    );
+    assert!(!code.contains(".insert("), "set must not become insert:\n{}", code);
+}
+
+#[test]
+fn plan996_two_containers_distinct_element_types() {
+    // Sibling: two live containers keep distinct element representations.
+    let code = plan996_transpile(
+        "fn main() int {\n    var ns = List<int>.new()\n    var ss = List<Str>.new()\n    ns.push(1)\n    ss.push(\"x\")\n    return ns.get(0) + ss.len()\n}\n",
+    );
+    assert!(
+        code.contains("let mut ns: Vec<i64> = Vec::new();")
+            && code.contains("let mut ss: Vec<String> = Vec::new();"),
+        "int and Str elems stay distinct typed Vecs:\n{}",
+        code
+    );
+}
+
+#[test]
+fn plan996_str_elem_remove_reuse_after_move_out() {
+    // Sibling: owned Str moves out via remove and stays usable (994 declared
+    // str len face: char count).
+    let code = plan996_transpile(
+        "fn main() int {\n    var ss = List<Str>.new()\n    ss.push(\"hello\")\n    var t Str = ss.remove(0)\n    return t.len() + ss.len()\n}\n",
+    );
+    assert!(
+        code.contains("let mut t: String = ss.remove(0);"),
+        "declared Str binding receives the removed owner:\n{}",
+        code
+    );
+    assert!(
+        code.contains("(t.chars().count() as i64) + (ss.len() as i64)"),
+        "declared str len keeps the 994 char-count face:\n{}",
+        code
+    );
+}
+
+#[test]
+fn plan996_call_args_evaluated_once_in_source_order() {
+    // Sibling: call args are emitted exactly once, in source order.
+    let code = plan996_transpile(
+        "fn f() int { return 7 }\nfn main() int {\n    var xs = List<int>.new()\n    xs.push(f())\n    xs.insert(0, f())\n    return xs.get(0) + xs.get(1)\n}\n",
+    );
+    let main_body = code.split("fn main").nth(1).unwrap_or("");
+    assert_eq!(
+        main_body.matches("f()").count(),
+        2,
+        "each call argument emitted exactly once in the main body:\n{}",
+        code
+    );
+    assert!(
+        main_body.contains("xs.push(f())") && main_body.contains("xs.insert(0, f())"),
+        "argument order preserved:\n{}",
+        code
+    );
+}
+
+#[test]
+fn plan996_bare_and_one_arg_ctor_domains_unchanged() {
+    // Boundary: bare `List.new()` (PLAN-010 domain) keeps its existing
+    // `Vec::new()` + i64-default outcome; the 1-arg GenName generic form stays
+    // VERBATIM (frozen golden payload, 25_lifecycle/002); declared str len
+    // keeps the 994 char-count face alongside a list len — name-based
+    // rewriting cannot leak across receiver domains.
+    let code = plan996_transpile(
+        "fn main() int {\n    let l = List.new()\n    let ys = List<int>.new([1, 2, 3])\n    return 0\n}\n",
+    );
+    assert!(
+        code.contains("let l: Vec<i64> = Vec::new();"),
+        "bare ctor keeps the PLAN-010 outcome:\n{}",
+        code
+    );
+    assert!(
+        code.contains("let ys = List<int>.new(vec![1, 2, 3]);"),
+        "1-arg GenName form stays the frozen verbatim payload:\n{}",
+        code
+    );
+
+    let code = plan996_transpile(
+        "fn main() int {\n    let s str = \"hello\"\n    var xs = List<int>.new()\n    return s.len() + xs.len()\n}\n",
+    );
+    assert!(
+        code.contains("(s.chars().count() as i64) + (xs.len() as i64)"),
+        "str len (chars) and list len (elements) keep their own faces:\n{}",
+        code
+    );
+}
