@@ -2393,7 +2393,7 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（D939转�
 - **case466重采✓**（`f94134-current-source-cases/`@`e6967f02f`）：17组466 fresh checks带wire导出、八scalar红逐键保持、composed-bindings落盘。
 - **机制合同pin再刷**（提交`9c9ed650a`，合并修复触码所致）→治理257/257→**五native重采✓**（`f94134-native-admitted/`@`9c9ed650a`）：9观察全PASS严格准入。
 - **cert292+daily292在途**：f94134适配（输入审计✓292行），长链后台运行中（~148/292）；optimized+拒绝6脚本已备好候cert后串行。
-- **av内修请示**：再次具名提问未获答复——按S/N/X继续不修av-core；av档与§5候裁定或961线交付。**截至第115轮共五次请示均未获答复**，master侧亦未交付该修复（av-core最后触码仍为939共存修复`766be4f27`；栈溢出回归依旧：`av_collections_semantics_partial_clone_rollback_controls`在pristine master确定性ABORT）。
+- **av内修请示**：再次具名提问未获答复——按S/N/X继续不修av-core；av档与§5候裁定或961线交付。**截至第115轮共六次请示均未获答复**，master侧亦未交付该修复（av-core最后触码仍为939共存修复`766be4f27`；栈溢出回归依旧：`av_collections_semantics_partial_clone_rollback_controls`在pristine master确定性ABORT）。
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（稳定树重采：case466✓五native✓、cert292在途；av候裁定） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:9c9ed650a | task_ids:CHECKLIST §4稳定树重采 | evidence:f94134-{current-source-cases,native-admitted} + cert在途 | next_responsible_role:work cert完成→optimized→（av候）→§5 | 无live handle
 
