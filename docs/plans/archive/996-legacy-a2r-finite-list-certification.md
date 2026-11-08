@@ -223,6 +223,8 @@ stage: goal | plan_id: PLAN-996 | plan_revision: r1 | round: 3 | from: review | 
 
 2026-11-08 stage: merge | PLAN-996:r1 | checkpoints: prepared→landed→canonical_verified→archived→cleaned | delivery_commit: 6ecd6c190（`--ff-only`线性；两轮rebase零冲突，range-diff 5/5全`=`等价——安全重写证明；映射 ef37eaa71/109249da8/3fe3e20ed/4fe361107/6ecd6c190） | canonical: SD-01 `docs/specs/auto-test-case/a2r-golden-certification.md` `65c80b6835f4a95f…`、SD-02 `docs/specs/auto-test-case/ace-m1-gap-audit.md` `5315585282591265…`、SD-03 `docs/specs/auto-lang/trans/architecture.md` `018e4bb51a79e1e6…` 均在master读回一致 | master冒烟: receipts **38证书strict PASS**（in-PowerShell BuildIdentity）+contract 131行/manifest全验PASS | 冻结职责并集复用: 9组在rebased代码tip（4fe361107等价位）gate_passed=True，SD docs-only后代零触面inputs不变（显式复用理由） | F-996-R1-01教训落SD-01（证书入库纪律） | landing_is_not_deployment: 本包交付=测试语料/治理脚本/规范文档+transpile期emitter行为（编译期），无后端二进制/daemon/web bundle消费者；auto-case/ace-certify为按需重建dev-harness（Find-Prebuilt），无重启项 | batch_regression_due: 见收据尾注（996%5≠0，receipt<48h） | outcome: **pass**（delivered+archived+cleaned） | next: done
 
+stage: goal | plan_id: PLAN-996 | plan_revision: r1 | round: 4 | from: merge | to: done | status: archived | outcome: pass | worktree: removed (D:/autostack/.wt/lang-996 absent) | commit: 6ecd6c190 (delivery) ← 1b0a4746a (archive bookkeeping) | next: done | final: H-04六格原域认证关闭（cert 32→38、snapshot 35→41、cert-gap 16→10）；F-996-R1-01证书入库纪律沉淀SD-01；ADR-11定型有限0参泛型List<T>.new()构造；余10格=H-06 trap4+H-07场景6（997/998域）冻结于规范与§7.3；can_claim_m1=false；SD-01..03已在master读回（65c80b68…/53155852…/018e4bb5…）；scope/树/分支/组目录已清，两处.retention刷新；b09临时store已清（909/912/913属他会话fail-closed不动）；batch due=否（996%5≠0、receipt 2026-11-08T03:22<48h、无1000级ID合入） | pending merge-owned gates: 无
+
 
 
 ## 10. 待澄清事项
