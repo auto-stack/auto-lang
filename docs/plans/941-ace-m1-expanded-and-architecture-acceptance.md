@@ -2251,6 +2251,16 @@ stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（D-941-1�
 
 stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（ARCH-05测量→registered回灌+3控制；治理256绿；live翻转候冻结链） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:c0a8468e6 | task_ids:T-04/T-06增量 | evidence:f94122-arch05-rollup/gates executed=256 PASS | next_responsible_role:work T-05/T-08或候上游修复 | 无live handle
 
+### 第101轮：work T-06增量——AV侧f94109消费套件入ARCH-05 historical行；上游/D939再次复核仍未解除
+
+- **上游复核（2026-11-08第101轮）**：master截至`d86c2f78a`仍无store修复（`store/mod.rs`最后触码仍`b8987bb0b`，L711-712双计`framed_len`原样）；D939仍executing 8/14。内修提案两轮具名提问未获答复，按§5.7 S/N/X继续不修。
+- **AV companion绑定**（提交**`73512d11f`**，3文件+85/-21）：①`incremental_restore_av`可选绑定入组合器允许键集；②`_admit_companion_group`改**per-doc transient release**（ace-av 1050事件全组文档单读预留即近48MiB，第92轮设计意图补齐——只保留抽取的events，检查后释放原文档预留）；③historical-cross-project-ownership行加3条AV needle（`sq_source_facts_934::f94109_av_{foreign_package,foreign_module,same_shape_foreign_owner}_refused_old_42_survives`），`partial_missing`收窄为仅`CT/foreign page families beyond SQ facts`。
+- **身份复用依据**：AV伴读gate=第95轮接收门`f94119-reception/gates/ace-av/results.json`（executed=1050全ok、单组、gate_passed）@`60e188170`；`60e188170..HEAD`全仓仅触`scripts/`五个文件（binding表+治理三件），**ace workspace与crates/零触码**——套件/工具身份逐字节不变，符合§5.3身份相同严格复用。
+- **验证**：治理新控制1项（AV伴读只贡献本组事件、缺伴读3 needle在missing、wrong-group/non-green拒）；`cargo t infra-ace-m1-arch`×2（`f94123-av-companion/gates{,2}`，release修复前后）**executed=257 PASS**；`git diff --check`净。**真实文档隔离演示**（`demo-f94123-av-companion.py`，round-89/90/95真gate文档+真实round-93 arch rows）：with-av行匹配**7/7测**（4 SDK+3 AV）、missing收窄为仅CT/foreign族、counts守恒6P/2PARTIAL/0U。
+- **边界**：行仍PARTIAL（诚实）——CT/foreign页族跨owner反例无绿色测试：`source-cte` store有project身份字段（`ManagedEnvelopeSink::from_store(store, project)`）但无cross-owner拒用例；abi域foreign测试为cache/generation面非restore-identity面。**下一增量候选**：专门探针判定该缺口是测试缺口（T-06可补）还是产品缺口（新F候选需用户授权）；正式组合仍候冻结链（全量bindings强制键）。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（AV侧f94109入historical行7/7匹配、缺口收窄为CT/foreign族；治理257绿；行仍诚实PARTIAL） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:73512d11f | task_ids:T-06证据增补 | evidence:f94123-av-companion/gates2 executed=257 PASS + demo 7/7 | next_responsible_role:work CT/foreign缺口探针或候上游修复/D939 | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
