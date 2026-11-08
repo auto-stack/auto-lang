@@ -336,6 +336,8 @@ T-10 证据：§5.6五份材料①-⑤已按实际交付填入（①八格表②
 输出根包括实际命令用过的target/外部副本/临时源码，不能只看登记目录。merge按政策整删scope及worktree构建产物；具名持有必须有owner/理由/关闭条件，未知归属fail-closed。日志/探针/截图等不进仓；接口/身份漂移只重验受影响面，不继承失配PASS。
 
 ## 9. 复审记录
+stage: goal | plan_id: PLAN-999 | plan_revision: r1 | round: 3 | from: review | to: done | status: archived | outcome: pass | worktree: (removed) | commit: 6d8ec265f | next: done
+
 
 stage: goal | plan_id: PLAN-999 | plan_revision: r1 | round: 2 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-999/auto-lang | commit: 99f43e6fe (+comment-only fold for R9-01/02) | next: merge
 
