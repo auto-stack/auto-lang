@@ -126,3 +126,43 @@ case {
   ]
 }
 ```
+
+# PLAN-999 T-08 — negative controls for the shared selection gate and the
+# real deep-input budgets (V-02/V-03 legs that live end-to-end):
+#  * neg-syntax-before-while: a REAL syntax error ahead of a `while` — the
+#    gate must report the syntax verdict (never fall to Core, never green);
+#  * neg-over-ceiling-chain: a 600-term add chain (599 construction levels)
+#    — past the lowering's real 512 ceiling the verdict is the adapter's
+#    `mir.lower.depth` resource rejection (never the old 128 door proxy).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.res999.neg-syntax-before-while"
+  tags: ["ace-m1", "residual-999", "plan-999", "negative"]
+  links: ["PLAN-999"]
+  source: { file: "src/neg-syntax-before-while.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "source.syntax" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.res999.neg-over-ceiling-chain"
+  tags: ["ace-m1", "residual-999", "plan-999", "negative"]
+  links: ["PLAN-999"]
+  source: { file: "src/neg-over-ceiling-chain.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "verify", code: "mir.lower.depth" } } }
+  ]
+}
+```

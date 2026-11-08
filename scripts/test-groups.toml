@@ -929,6 +929,24 @@ suite = "crates/auto-lang/test/cases/ace-m1/native-warm-admission-932/native-war
 domain = "ace"
 all = false
 
+# PLAN-999: the M1 residual correctness closure suite — the eight frozen
+# red cells (6 Core-admission `while` sources through the shared selection
+# gate on AV+native, 2 deep-input sources through the real budgets) plus the
+# two native positive controls and the end-to-end negative controls (a real
+# syntax error ahead of `while` is not swallowed by the gate; a chain past
+# the lowering's real 512 ceiling is the mir.lower.depth resource verdict).
+[[group]]
+name = "case-ace-m1-residual-999"
+title = "ACE M1 residual correctness 999 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1-residual-999/ace-m1-residual-999.suite.ad"
+domain = "ace"
+all = false
+
 # PLAN-915: the R02 allocation-fault sweep / R03 stale-Place scenario suite
 # (the two ns=scenario AV cells; frozen corpus sources + typed place witness).
 [[group]]
