@@ -1,0 +1,11 @@
+# PLAN-996 a2r-only finite list certification extension suite (6 checks). Kept
+# OUTSIDE the frozen 852 base suite (36 cases / 97 checks stay unexpanded) and
+# alongside the PLAN-992/994 extensions; the daily snapshot scope runs base +
+# all three extensions and counts 26 + 5 + 4 + 6 a2r checks.
+# Certification (compile+run) remains ace-certify's explicit scope.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "legacy-a2r-list-996", include: [
+  "legacy-a2r-list-996.case.ad",
+] }
+```

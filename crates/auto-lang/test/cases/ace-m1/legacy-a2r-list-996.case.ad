@@ -1,0 +1,109 @@
+# PLAN-996 legacy A2R finite list certification extension — the six H-04 list
+# value sources (L01/L02/L03/L04/L05/L07) whose 0-arg generic construction
+# `List<T>.new()` was lowered: typed Vec::new() with the element type flowing
+# into the binding annotation, Auto-List method faces (get = index+clone
+# owned-value read, set = index assignment REPLACE semantics, native
+# insert/remove/clear/push, len = element count). a2r-ONLY by design: these
+# rows' legacy-engine faces are engine-difference cells owned elsewhere; this
+# suite adds exactly the daily a2r emit+byte-compare face that certification
+# requires. The original composite snapshot checks stay in
+# legacy-composite.case.ad and the PLAN-992/994 certification extensions stay
+# in their own case files (single obligation each, no duplication).
+# Goldens frozen only after explicit per-source G04 semantic review; the
+# explicit certification itself is the ace-certify tool (never this suite).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rt.l01"
+  tags: ["ace-m1", "a2r-cert-996"]
+  links: ["PLAN-996"]
+  source: { file: "src/L01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_l01" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_l01.rs", file: "oracle/m1_l01.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rt.l02"
+  tags: ["ace-m1", "a2r-cert-996"]
+  links: ["PLAN-996"]
+  source: { file: "src/L02.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_l02" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_l02.rs", file: "oracle/m1_l02.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rt.l03"
+  tags: ["ace-m1", "a2r-cert-996"]
+  links: ["PLAN-996"]
+  source: { file: "src/L03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_l03" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_l03.rs", file: "oracle/m1_l03.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rt.l04"
+  tags: ["ace-m1", "a2r-cert-996"]
+  links: ["PLAN-996"]
+  source: { file: "src/L04.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_l04" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_l04.rs", file: "oracle/m1_l04.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rt.l05"
+  tags: ["ace-m1", "a2r-cert-996"]
+  links: ["PLAN-996"]
+  source: { file: "src/L05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_l05" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_l05.rs", file: "oracle/m1_l05.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rt.l07"
+  tags: ["ace-m1", "a2r-cert-996"]
+  links: ["PLAN-996"]
+  source: { file: "src/L07.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_l07" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_l07.rs", file: "oracle/m1_l07.rs", compare: "bytes" } ] } }
+  ]
+}
+```

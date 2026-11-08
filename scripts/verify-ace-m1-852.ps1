@@ -596,6 +596,14 @@ switch ($Scope) {
         if (-not (Test-Path $ext2Suite)) { Fail "a2r text certification extension suite missing: $ext2Suite" }
         $ext2Out = Join-Path $OutDir 'ext-994'
         $ext2Report = Join-Path $ext2Out 'ace-m1-a2r-ext2-report.json'
+        # PLAN-996: the a2r-only finite-LIST certification extension suite (the
+        # six H-04 goldens L01/L02/L03/L04/L05/L07 whose 0-arg generic
+        # List<T>.new() construction was lowered) rides the same daily face;
+        # union gate becomes 26 + 5 + 4 + 6 = 41 a2r checks.
+        $ext3Suite = Join-Path $corpusDir 'legacy-a2r-list-996.suite.ad'
+        if (-not (Test-Path $ext3Suite)) { Fail "a2r list certification extension suite missing: $ext3Suite" }
+        $ext3Out = Join-Path $OutDir 'ext-996'
+        $ext3Report = Join-Path $ext3Out 'ace-m1-a2r-ext3-report.json'
 
         # ---- REAL process-creation instrumentation (F-852-R1-02) ----------
         # Run the suite async and poll the OS process table (in-process CIM;
@@ -699,28 +707,32 @@ switch ($Scope) {
         $baseRun = Invoke-InstrumentedSuiteRun $bin $suite $OutDir $report 'base'
         $extRun = Invoke-InstrumentedSuiteRun $bin $extSuite $extOut $extReport 'ext-992'
         $ext2Run = Invoke-InstrumentedSuiteRun $bin $ext2Suite $ext2Out $ext2Report 'ext-994'
+        $ext3Run = Invoke-InstrumentedSuiteRun $bin $ext3Suite $ext3Out $ext3Report 'ext-996'
         if ($baseRun.gate -ne 0) { Fail "base suite gate exit $($baseRun.gate) under the snapshot scope (expected 0)" }
         if ($extRun.gate -ne 0) { Fail "a2r certification extension suite gate exit $($extRun.gate) under the snapshot scope (expected 0)" }
         if ($ext2Run.gate -ne 0) { Fail "a2r text certification extension suite gate exit $($ext2Run.gate) under the snapshot scope (expected 0)" }
-        $violations = @($baseRun.violations) + @($extRun.violations) + @($ext2Run.violations)
+        if ($ext3Run.gate -ne 0) { Fail "a2r list certification extension suite gate exit $($ext3Run.gate) under the snapshot scope (expected 0)" }
+        $violations = @($baseRun.violations) + @($extRun.violations) + @($ext2Run.violations) + @($ext3Run.violations)
         if ($violations.Count -gt 0) {
             Fail ("G02 VIOLATION: the daily snapshot run spawned the a2r certification face (direct rustc / certified binaries): {0}" -f ($violations -join ', '))
         }
-        $maintenance = $baseRun.maintenance + $extRun.maintenance + $ext2Run.maintenance
-        $identityProbes = $baseRun.identityProbes + $extRun.identityProbes + $ext2Run.identityProbes
-        Write-Host "verify-ace-m1-852 [snapshot]: process instrumentation: 0 certification-face spawns (direct rustc / m1_* binaries; ancestry-checked, base + ext-992 + ext-994 suites); $maintenance engine-worker maintenance build process(es) observed (PLAN-818 memoized harness discipline, not corpus compilation); $identityProbes rustc identity query(/-ies) (`--print`, no compile axes — PLAN-814 ac stale-axes probe)."
+        $maintenance = $baseRun.maintenance + $extRun.maintenance + $ext2Run.maintenance + $ext3Run.maintenance
+        $identityProbes = $baseRun.identityProbes + $extRun.identityProbes + $ext2Run.identityProbes + $ext3Run.identityProbes
+        Write-Host "verify-ace-m1-852 [snapshot]: process instrumentation: 0 certification-face spawns (direct rustc / m1_* binaries; ancestry-checked, base + ext-992 + ext-994 + ext-996 suites); $maintenance engine-worker maintenance build process(es) observed (PLAN-818 memoized harness discipline, not corpus compilation); $identityProbes rustc identity query(/-ies) (`--print`, no compile axes — PLAN-814 ac stale-axes probe)."
 
         $r = Get-Content $report -Raw | ConvertFrom-Json
         $re = Get-Content $extReport -Raw | ConvertFrom-Json
         $re2 = Get-Content $ext2Report -Raw | ConvertFrom-Json
+        $re3 = Get-Content $ext3Report -Raw | ConvertFrom-Json
         $extA2r = @($re.results | Where-Object adapter -eq 'a2r')
         $ext2A2r = @($re2.results | Where-Object adapter -eq 'a2r')
-        $a2r = @($r.results | Where-Object adapter -eq 'a2r') + $extA2r + $ext2A2r
+        $ext3A2r = @($re3.results | Where-Object adapter -eq 'a2r')
+        $a2r = @($r.results | Where-Object adapter -eq 'a2r') + $extA2r + $ext2A2r + $ext3A2r
         $nonPass = @($a2r | Where-Object status -ne 'PASS')
         if ($nonPass.Count -gt 0) {
             Fail ("a2r snapshot has {0} non-PASS check(s); first: {1}:{2} {3}" -f $nonPass.Count, $nonPass[0].case, $nonPass[0].check, $nonPass[0].status)
         }
-        if ($a2r.Count -lt 35) { Fail "a2r snapshot check count $($a2r.Count) < 35 (base 26 + PLAN-992 extension 5 + PLAN-994 extension 4 — checks were dropped)" }
+        if ($a2r.Count -lt 41) { Fail "a2r snapshot check count $($a2r.Count) < 41 (base 26 + PLAN-992 extension 5 + PLAN-994 extension 4 + PLAN-996 extension 6 — checks were dropped)" }
 
         # ---- STRICT certificate validity (shared function) ----
         $buildIdentity = $r.toolchain.'build-rustc-identity'
@@ -729,7 +741,7 @@ switch ($Scope) {
 
         $goldens = @(Get-ChildItem (Join-Path $corpusDir 'oracle') -Filter 'm1_*.rs')
         Write-Host "verify-ace-m1-852 [snapshot]: PASS — $($a2r.Count) a2r checks green (emit + byte-compare;" `
-            "26 base + $($extA2r.Count) PLAN-992 extension + $($ext2A2r.Count) PLAN-994 extension);" `
+            "26 base + $($extA2r.Count) PLAN-992 extension + $($ext2A2r.Count) PLAN-994 extension + $($ext3A2r.Count) PLAN-996 extension);" `
             "$certCount certificates STRICTLY valid (typed exact-key schema + file axes + default-toolchain" `
             "axis vs this run's build identity). Certification-face process watch: 0 direct-rustc/m1_* spawns" `
             "observed in periodic CIM ancestry sampling (a sampling observer, not a lossless creation count)." `
