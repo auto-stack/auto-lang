@@ -381,3 +381,13 @@ Report/stale axes bind worker SHA/version, protocol, recipe, core version, `mir-
 - 新固定组 `case-ace-ca-d-source-938`（all=false 显式档）；父 typed 判定与
   compiler current 指针分层（PLAN-773 F-03 语义）；late/非法 transport 不授
   认证；预登记 wrong-oracle 控制不折算 PASS。
+
+## PLAN-939 增量（reviewed）
+
+- 资源认证 TestCase 族：`ace-ca-d-resources-939`（62 例：S01..S08×方向+
+  wrong-oracle 控制+2 CE 导出）；契约扩展 per-step `pe_exit`（多 query 流
+  中间步的合法失败/差异传输出口）；bridge deck 语法增
+  `profile text-record`/`caller <file.c>`（source 腿专用，typed/wide 拒）。
+- 恢复/预算/采样纪律：恢复首编辑与首错→修复→再恢复、required 页三轴拒、
+  超限取消零配额清理、修订 churn+lease+GC、6×30 五暖门 P90≤2000ms——
+  详见 [ace-ca-d-bridge-certification.md](ace-ca-d-bridge-certification.md)。

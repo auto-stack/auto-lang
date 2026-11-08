@@ -46,3 +46,15 @@
   ordinary-source deck；actual/reference 各对独立 parent exit oracle，期望仅在
   父侧；wrong-oracle 预登记 FAIL 控制。正式门 `cargo t case-ace-ca-d-source-938`
   gate_passed（8by/8cb 冻结并集）；暖 body-edit P90≤2000ms 常驻门。
+
+## PLAN-939 增量：资源认证 recipe 与逐步出口（reviewed）
+
+- 新 recipe `abi/resource-foreign-certify-v1`（deck
+  `abi.resource-import-deck/1`、report `abi.resource-import-report/1`、
+  逐 deck 受审 reference oracle、wrong-oracle 预登记 FAIL 控制）；固定组
+  `case-ace-ca-d-resources-939`（62 例含 2 CE+控制位）。
+- **per-step `pe_exit` 探针契约**：多 query 流的中间步可携带逐步 PE 与
+  reference 出口（缺省保持 check 级 oracle）——首错→修复→再恢复流的
+  中间态（修复态不同出口）在受审场景切换下诚实判定。
+- worker 级一致性测试（ace-abi conformance `resource_recovery`/
+  `resource`：凭证/代际 lease-GC/故障扫描/超限取消/指针原子/6×30 采样）。

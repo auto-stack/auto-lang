@@ -193,3 +193,14 @@ edition/backend/version/runtime/printer）；外部 rustc 可执行产物的认�
   （abi/source-foreign-session/1）；AXCF1 fragment cache 命中不产生输出账目。
 - C fragment/fileset 文本（generated.c/foreign_imports.h/manifest）在共享请求
   输出账户精确准入；runtime header/状态 runtime 字节相同副本仅记活内存。
+
+## PLAN-939 增量：resolver-owned 常驻页路线（r3）
+
+- 资源源（foreign-only supply lane 的 body）在 Frontend 目录中以带
+  `resolver-owned` 标记的常驻页存在——页**不携带类型事实**（零伪造），
+  仅记录 owner 身份、body 文本摘要与 foreign 环境身份；冷/暖编译均真实
+  重解析，P/R 计数如实。warm body-edit P90 门以"含真实 resolve 的全链
+  时间"计。
+- 失效轴：layout/mode/provider/contract 变更经 digest 键精确失效。
+- **具名后继（非现状）**：事实面 text-record typed-leaf 增量（solver 输入
+  投影+页编码携带）使资源体获得真 R 复用——见 KNOWN-DEBT 与 939 §10。

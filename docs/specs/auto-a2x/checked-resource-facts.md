@@ -76,3 +76,16 @@
   [temporary-consumer-lifetime](temporary-consumer-lifetime.md)——pin
   Let/语句根为消费者，`drain_since(mark)` 作用域释放，短路侧块自责。
   目标不重推导、不把 move 强转 view、不默认 View 片段模式。
+
+## PLAN-939 增量：唯一 per-call 凭证计划与严格消费（reviewed）
+
+- core 产出唯一 `ForeignCallCredential`（view borrow 携**派生 owner local**
+  （Extent=调用；字面量/临时=无 owner）、exclusive Mut/Out 车道+sig atomic
+  承诺、handles_in+provider tag、owned_out 凭证 provider、callback 具名
+  目标 def、ctx symbol）与 `ForeignResourcePlan`（受检声明+调用点计算）；
+  经 CheckedModule.foreign_resource_plan / CheckedFunction.foreign_rows /
+  SemanticView 双路携带，`foreign_call_credential` 统一入口。
+- a2x lower_rt **严格消费**：资源 foreign 调用缺凭证行=`a2c.internal` 响亮
+  拒（绿色=每个 CI 腿资源调用可证消费计划）；callback 目标计划驱动+逐实参
+  覆盖一致性核。native 侧以 MIR callbacks+TextResourcePlan 为所有权权威。
+- 后端不复制 ownership 推导；中立 facts 只是投影。

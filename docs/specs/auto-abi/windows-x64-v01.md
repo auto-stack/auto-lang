@@ -68,3 +68,25 @@ runtime services；未知 format 拒绝。C provider 的 descriptor 与
   flatten 路径成本（共享子图不因 memo 命中被截短）+结果表示
   （F-R4-10/R12）。
 - 超限 = resource 状态，与 ABI 不兼容拒绝分开。
+
+## PLAN-939 增量：资源桥转换/失败 commit/lease 实际约束（reviewed）
+
+公开形态**不扩**（descriptor3 与 797 冻结面不变）；以下为资源桥在现有
+形态上的实际约束（详见
+[resource-and-callback-bridge.md](resource-and-callback-bridge.md)）：
+
+- **文本 view 车道**：source `str` 形参经 `(const uint8_t* data, size_t len)`
+  对跨 C 边界（导出侧）或 `(data,len)` 对（导入侧）封送为 `a2x_str_view`；
+  NUL 为数据、长度单位为字节；超内部 I32 长度域受控拒不截断。
+- **公开 record 闭包**=自然对齐标量（i32/bool 首族）；公共头用公共字段名、
+  编译 TU 同时带内部 `a2x_rec_<Rec>`+`f_` 前缀同构表（fragment 所拼），
+  显式 cast 桥接；记录闭包折入库 fileset 身份键。
+- **失败 commit**：mut/out 事务 shadow 先行、成功一次 commit；失败保持
+  caller 字节逐字节不变、半树由原方回收；溢出 trap 同律（CE caller 的
+  `_Static_assert` 布局断言+哨兵 oracle 佐证）。
+- **provider 身份确定性**：cl 编译旗标含 `-Brepro`——provider 对象 digest
+  是绑定身份，GC 回收后重编译必须同 digest（否则 restore 身份断裂）。
+  工具链指纹含旗标串，父判定钉精确值。
+- **句柄/回调**：provider 代际+binding generation 单调；同步 per-call
+  callback 静态 trampoline（域检查、错误 latch 非成功哨兵）；noescape
+  与 stored_cb 可观测。

@@ -107,3 +107,23 @@ rust-lld 链接、PE 执行与 R4–R17 独立反例链支持。
 - store 整 namespace 128MiB ceiling：`open_with_namespace_budget` 仅可收紧；
   put 投影 current+block+metadata 于 namespace 排他锁内、横跨 metadata commit。
 - hot GC 8→6MiB 原水位经 StorePolicy 接入 source worker 真实出口。
+
+## PLAN-939 增量：资源依赖/恢复/P0/真 GC/认证预算（reviewed）
+
+- **资源缓存依赖**：session 发布物键含 nominal/mode/borrow/alias/error/
+  caps/deleter/callback 生命周期；provider 对象为 store 级可复产工具产物
+  （-Brepro 确定性重编译同 digest）；layout/长度单位/provider 变更经
+  digest 键精确失效。
+- **P0/IO0**：warm 命中全 stage 零产出（含 parse）；body 编辑恰一函数
+  再产（native 3 vs 冷 7、c 2 vs 5 实测钉）；provider-only 转换（bias）
+  零源 stage 产出+binding generation 递增。
+- **恢复**：restore 为有界深验（R）——缺 required 会话页 typed
+  `foreign.restore.*` 拒、不暗冷启动；伪 pointer decode 拒且不覆写；
+  GC 可回收 provider chunk（确定性重编译后 restore 接受）。
+- **真 GC/lease**：强制 GC 回收无引用修订；真 lease 钉住在用旧代；末次
+  释放后下一次 GC 真回收（收据干净）。
+- **预算**：超限=typed `foreign.resource` 取消（reserve 先于分配）、接受根
+  保留、清理在配额耗尽下完成（零配额需求）；指针替换失败=typed store 拒、
+  接受指针字节原样、重试发布。
+- **正式采样**：资源 lane 六场景×30、五暖门 P90≤2000ms（实测 776–1025ms）
+  与原 797 六场景/512 churn 同 crate 常驻。

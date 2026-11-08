@@ -82,3 +82,14 @@ P90≤2000ms；计时和原资源、正确性约束详见 [conformance-cache.md]
 - 支持矩阵如实：native（共享 MIR 直调）与 C（HIR 薄 call）已支持；AV/A2R 受控
   具名拒。SDK/MSVC 闭包进程级解析复用（用户 2026-11-07 裁定）：override 键控
   一次解析、每请求仅元数据记账；identity/fingerprint 材料不变。
+
+## PLAN-939 增量：有限资源/句柄/同步回调桥（reviewed）
+
+- 新入口：受检有限 foreign 资源调用与导出（现状合同见
+  [resource-and-callback-bridge.md](resource-and-callback-bridge.md)）——
+  buffer view/record const-mut-out/opaque handle/同步 callback 接到双真实
+  消费者；资源分析唯一权威在 core verifier，后端只消费投影。
+- 交付方向矩阵如实：NI/CI=S01..S06 全绿；CE=S01/S02（bridge 臂；certify
+  臂=D-960-1 后继）；TP=S07/S05/S06 原宽形态；797 原公开形态逐条有位。
+  真实残余见 KNOWN-DEBT D-939-CE-1/D-939-AX-1/D-939-PERF-1——不冒通用
+  FFI/M1 通过。

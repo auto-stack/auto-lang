@@ -61,3 +61,14 @@
   沿受管执行器。
 - 内部 C struct/指针布局是**私有**表示，不构成公开 AutoABI；公开 wrapper/import
   与 foreign 语法归 CA-D。
+
+## PLAN-939 增量：私有资源与公共薄 wrapper 分层（reviewed）
+
+- CI 导入腿：record-text runtime/fragments/prelude seed（AXCFR1 层，
+  recipe `ac-a2c/hir-foreign-resource-import-v1`）；`foreign_imports.h`
+  自含（受审资源签名发射公共 record 闭包 typedef 先于原型）。
+- CE 导出腿（bridge 装配器）：`ExportLane` 词表（i32/bool/ViewText/
+  RecConst/RecMut）+公共/内部双记录表+`(data,len)` 封送；deck 语法
+  `profile text-record`/`caller <file.c>`；资源导出 FnFact 携
+  ResourceSig（mut 车道 atomic、noescape）。标量路径逐字节不变。
+- 私有 C record/Str 表示绝不直接 repr cast 跨界；公开闭包独立定义。
