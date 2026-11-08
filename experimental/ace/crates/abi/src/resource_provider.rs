@@ -27,16 +27,16 @@ fn hash(b: &[u8]) -> String {
 }
 
 fn counter_rec() -> (String, Vec<(String, FieldKind)>) {
-    (
-        "Counter".into(),
-        vec![("value".into(), FieldKind::I32)],
-    )
+    ("Counter".into(), vec![("value".into(), FieldKind::I32)])
 }
 
 fn txn_rec() -> (String, Vec<(String, FieldKind)>) {
     (
         "TxnResult".into(),
-        vec![("value".into(), FieldKind::I32), ("handle".into(), FieldKind::I32)],
+        vec![
+            ("value".into(), FieldKind::I32),
+            ("handle".into(), FieldKind::I32),
+        ],
     )
 }
 
@@ -198,11 +198,7 @@ pub fn reviewed_resource_manifest() -> ManualManifest {
         ),
         resource_fn(
             "t939_fold",
-            vec![
-                ResKind::Callback { ctx: true },
-                ResKind::I32,
-                ResKind::I32,
-            ],
+            vec![ResKind::Callback { ctx: true }, ResKind::I32, ResKind::I32],
             ResourceForm::Fallible {
                 ctx: None,
                 out: Some(ResOut::I32),
@@ -260,9 +256,7 @@ pub fn reviewed_resource_manifest() -> ManualManifest {
         resource_fn(
             "t939_live",
             vec![],
-            ResourceForm::Pure {
-                ret: ResOut::I64,
-            },
+            ResourceForm::Pure { ret: ResOut::I64 },
             false,
             false,
             None,
@@ -359,9 +353,7 @@ pub fn resource_authority(
 pub fn qualify_resource(candidate: &ManualManifest, caps: &[String]) -> Result<(), String> {
     candidate.validate()?;
     if *candidate != reviewed_resource_manifest() {
-        return Err(
-            "foreign.authority: candidate is outside the resource review registry".into(),
-        );
+        return Err("foreign.authority: candidate is outside the resource review registry".into());
     }
     if candidate
         .facts
@@ -428,20 +420,30 @@ mod c_leg_probe {
             request_hash: "h".into(),
             deck_b64: base64::engine::general_purpose::STANDARD.encode(&deck),
             leg: "c".into(),
-            store_root: std::env::temp_dir()
-                .join("r939-cleg-probe")
-                .to_string_lossy()
-                .into_owned(),
+            // PLAN-939 T-13 R-1: a FRESH store per run — the fixed path
+            // carried a stale accepted root across code states (the
+            // print-only era silently refused on it every time).
+            store_root: {
+                let dir = std::env::temp_dir().join("r939-cleg-probe");
+                let _ = std::fs::remove_dir_all(&dir);
+                dir.to_string_lossy().into_owned()
+            },
             steps: vec![crate::worker::StepIn {
                 op: "query".into(),
                 from: None,
                 to: None,
             }],
         };
+        // PLAN-939 T-13 R-1: the probe ASSERTS its outcome (a print-only
+        // probe cannot fail and is not evidence). The C leg must deliver
+        // the reviewed utf8-bytes oracle.
         match crate::worker_source::execute(&req) {
-            Ok(_) => println!("C-LEG-OK"),
-            Err(d) => println!("C-LEG-DIAG: {} {}", d.code, d.message),
+            Ok(out) => assert_eq!(
+                out.source_import.as_ref().and_then(|r| r.actual_exit),
+                Some(8),
+                "the C leg must deliver the reviewed utf8-bytes oracle"
+            ),
+            Err(d) => panic!("the C leg query must succeed: {} {}", d.code, d.message),
         }
     }
 }
-
