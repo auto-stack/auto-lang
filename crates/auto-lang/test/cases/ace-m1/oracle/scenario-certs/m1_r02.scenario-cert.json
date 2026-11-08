@@ -1,0 +1,535 @@
+{
+  "schema": "ace.m1.a2r-resource-scenario/1",
+  "case": "R02",
+  "profile": "legacy-a2r.resources-observe/1",
+  "wrapper_file": "oracle/resource-wrapper-v1.rs",
+  "identity": {
+    "sources": {
+      "R02-K02": "be2e36e09e0a6e3d4929aaa2d7f6ee84c00793db0c6f86e65797d33f6ee42376",
+      "R02-L04": "a79b03e53e6e82bda9000a1b6cd1bcfae695d4cc427928261e9d13bda19b0b99",
+      "R02-L05": "3c55fc65f45724c072aaf7a772cfdc7d52da0d4f117ec6f23841795551629149",
+      "R02-LSTR": "f36e92cfa92d4bc4240995c75e312fa84076e7bb7d983b75141dadb7e70524ff",
+      "R02-V05": "734c211d1ea0e62d52f14617369a77c975c0a23c915e3ed9dff91fa1f4c7c0c3"
+    },
+    "goldens": {
+      "R02-K02": "1a4546afb54a5d0b1d8d10178c5eff987811cc8b6671d84bbec4a51cebb6d667",
+      "R02-L04": "f1b3ae8daded024551dcfb5503c16cab6866894bf5b567419e596ada51b3173e",
+      "R02-L05": "8026e0a7a1f57833487981805c2edc9d69b7e0d607910f8219544ee636229674",
+      "R02-LSTR": "ec9c6f1cc5c18777c865bf02ed81d3c772cc75741d36714d23f83d75434d5f7a",
+      "R02-V05": "ba918ec0503e45d44beb588b41b76ebf23ad59703b576fe8004dcc9a230747f2"
+    },
+    "references": {
+      "R02-K02": "a9b0e0268b99f10add4b1c87d64052fc0b75b28f3c2b5d255ded420bc2bf9c6e",
+      "R02-L04": "ee4676274f1823cfeeea1699afe0a3242a36e0d9ddb306503bc1be15e6055591",
+      "R02-L05": "70c7c03f8a7b7dcdbee4a4585b1143278dcf3f255dfde441447099135c6c31d2",
+      "R02-LSTR": "bd43d017ec2cfe973448a16ff5c601f54bec7464b964c62276989bbd301ffd80",
+      "R02-V05": "3732676bbd040280c73855e462519a2f27c613c1ece9543704e371c9480bc471"
+    },
+    "wrapper_sha256": "35939921c824032f6c29a3362caebb4f15e066d4b141166e2691d51e9d83a88c",
+    "scenario_oracle_sha256": "19b34f89ab7482d3bcb504c7e854a0023df67e40f9ec7702c0db9b962a472933"
+  },
+  "toolchain": {
+    "identity": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.0\nLLVM version: 22.1.8",
+    "identity_source": "PATH",
+    "default_identity_at_certify": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.0\nLLVM version: 22.1.8",
+    "flags": [
+      "--edition=2021",
+      "-O"
+    ]
+  },
+  "deps": {
+    "external": [],
+    "closure": "std-only"
+  },
+  "legs": [
+    {
+      "id": "R02-L04",
+      "runs": [
+        {
+          "run": "clean",
+          "exit": 0,
+          "stdout_tail": "auto.res:read:main:xs | auto.res:release:main:xs | auto.res:heap:4 | auto.res:result:42",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "fault-1",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:main:xs | auto.res:fault | auto.res:release:main:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "fault-2",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:main:x | auto.res:transfer:main:x | auto.res:fault | auto.res:release:main:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "fault-3",
+          "exit": 71,
+          "stdout_tail": "auto.res:mut:main:xs | auto.res:read:main:xs | auto.res:fault | auto.res:release:main:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "fault-4",
+          "exit": 71,
+          "stdout_tail": "auto.res:read:main:xs | auto.res:read:main:xs | auto.res:fault | auto.res:release:main:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "n-plus-one",
+          "exit": 0,
+          "stdout_tail": "auto.res:read:main:xs | auto.res:release:main:xs | auto.res:heap:4 | auto.res:result:42",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "retry-2",
+          "exit": 0,
+          "stdout_tail": "auto.res:read:main:xs | auto.res:release:main:xs | auto.res:heap:4 | auto.res:result:42",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-clean",
+          "exit": 0,
+          "stdout_tail": "auto.res:transfer:ref:x | auto.res:release:ref:xs | auto.res:heap:4 | auto.res:result:42",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-1",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:ref:x | auto.res:fault | auto.res:release:ref:x | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-2",
+          "exit": 71,
+          "stdout_tail": "auto.res:mut:ref:xs | auto.res:fault | auto.res:release:ref:x | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-3",
+          "exit": 71,
+          "stdout_tail": "auto.res:mut:ref:xs | auto.res:fault | auto.res:release:ref:x | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-4",
+          "exit": 71,
+          "stdout_tail": "auto.res:mut:ref:xs | auto.res:transfer:ref:x | auto.res:fault | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-n-plus-one",
+          "exit": 0,
+          "stdout_tail": "auto.res:transfer:ref:x | auto.res:release:ref:xs | auto.res:heap:4 | auto.res:result:42",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-retry-2",
+          "exit": 0,
+          "stdout_tail": "auto.res:transfer:ref:x | auto.res:release:ref:xs | auto.res:heap:10 | auto.res:result:42",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        }
+      ]
+    },
+    {
+      "id": "R02-L05",
+      "runs": [
+        {
+          "run": "clean",
+          "exit": 0,
+          "stdout_tail": "auto.res:release:main:x | auto.res:release:main:xs | auto.res:heap:2 | auto.res:result:42",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "fault-1",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:main:xs | auto.res:fault | auto.res:release:main:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "fault-2",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:main:xs | auto.res:fault | auto.res:release:main:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "n-plus-one",
+          "exit": 0,
+          "stdout_tail": "auto.res:release:main:x | auto.res:release:main:xs | auto.res:heap:2 | auto.res:result:42",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "retry-1",
+          "exit": 0,
+          "stdout_tail": "auto.res:release:main:x | auto.res:release:main:xs | auto.res:heap:2 | auto.res:result:42",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-clean",
+          "exit": 0,
+          "stdout_tail": "auto.res:release:ref:x | auto.res:release:ref:xs | auto.res:heap:5 | auto.res:result:42",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-1",
+          "exit": 71,
+          "stdout_tail": "auto.res:mut:ref:xs | auto.res:fault | auto.res:release:ref:x | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-2",
+          "exit": 71,
+          "stdout_tail": "auto.res:mut:ref:xs | auto.res:fault | auto.res:release:ref:x | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-3",
+          "exit": 71,
+          "stdout_tail": "auto.res:mut:ref:xs | auto.res:fault | auto.res:release:ref:x | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-4",
+          "exit": 71,
+          "stdout_tail": "auto.res:mut:ref:xs | auto.res:fault | auto.res:release:ref:x | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-5",
+          "exit": 71,
+          "stdout_tail": "auto.res:mut:ref:xs | auto.res:fault | auto.res:release:ref:x | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-n-plus-one",
+          "exit": 0,
+          "stdout_tail": "auto.res:release:ref:x | auto.res:release:ref:xs | auto.res:heap:5 | auto.res:result:42",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-retry-3",
+          "exit": 0,
+          "stdout_tail": "auto.res:release:ref:x | auto.res:release:ref:xs | auto.res:heap:12 | auto.res:result:42",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        }
+      ]
+    },
+    {
+      "id": "R02-V05",
+      "runs": [
+        {
+          "run": "clean",
+          "exit": 0,
+          "stdout_tail": "auto.res:heap:1 | auto.res:result:42",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "fault-1",
+          "exit": 71,
+          "stdout_tail": "auto.res:fault",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "n-plus-one",
+          "exit": 0,
+          "stdout_tail": "auto.res:heap:1 | auto.res:result:42",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "retry-1",
+          "exit": 0,
+          "stdout_tail": "auto.res:fault | auto.res:retry | auto.res:heap:1 | auto.res:result:42",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-clean",
+          "exit": 0,
+          "stdout_tail": "auto.res:create:ref:t | auto.res:release:ref:t | auto.res:heap:1 | auto.res:result:42",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-1",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:ref:t | auto.res:fault | auto.res:release:ref:t",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-n-plus-one",
+          "exit": 0,
+          "stdout_tail": "auto.res:create:ref:t | auto.res:release:ref:t | auto.res:heap:1 | auto.res:result:42",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-retry-1",
+          "exit": 0,
+          "stdout_tail": "auto.res:create:ref:t | auto.res:release:ref:t | auto.res:heap:6 | auto.res:result:42",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        }
+      ]
+    },
+    {
+      "id": "R02-LSTR",
+      "runs": [
+        {
+          "run": "clean",
+          "exit": 0,
+          "stdout_tail": "auto.res:release:main:removed | auto.res:release:main:xs | auto.res:heap:4 | auto.res:result:53",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "fault-1",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:main:xs | auto.res:fault | auto.res:release:main:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "fault-2",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:main:xs | auto.res:fault | auto.res:release:main:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "fault-3",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:main:xs | auto.res:mut:main:xs | auto.res:fault | auto.res:release:main:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "fault-4",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:main:xs | auto.res:mut:main:xs | auto.res:fault | auto.res:release:main:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "n-plus-one",
+          "exit": 0,
+          "stdout_tail": "auto.res:release:main:removed | auto.res:release:main:xs | auto.res:heap:4 | auto.res:result:53",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "retry-2",
+          "exit": 0,
+          "stdout_tail": "auto.res:release:main:removed | auto.res:release:main:xs | auto.res:heap:4 | auto.res:result:53",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-clean",
+          "exit": 0,
+          "stdout_tail": "auto.res:release:ref:removed | auto.res:release:ref:xs | auto.res:heap:9 | auto.res:result:53",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-1",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:ref:xs | auto.res:fault | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-2",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:ref:xs | auto.res:mut:ref:xs | auto.res:fault | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-3",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:ref:xs | auto.res:mut:ref:xs | auto.res:fault | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-4",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:ref:xs | auto.res:mut:ref:xs | auto.res:fault | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-5",
+          "exit": 71,
+          "stdout_tail": "auto.res:mut:ref:xs | auto.res:mut:ref:xs | auto.res:fault | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-6",
+          "exit": 71,
+          "stdout_tail": "auto.res:mut:ref:xs | auto.res:mut:ref:xs | auto.res:fault | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-7",
+          "exit": 71,
+          "stdout_tail": "auto.res:mut:ref:xs | auto.res:fault | auto.res:release:ref:removed | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-8",
+          "exit": 71,
+          "stdout_tail": "auto.res:mut:ref:xs | auto.res:fault | auto.res:release:ref:removed | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-9",
+          "exit": 71,
+          "stdout_tail": "auto.res:mut:ref:xs | auto.res:fault | auto.res:release:ref:removed | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-n-plus-one",
+          "exit": 0,
+          "stdout_tail": "auto.res:release:ref:removed | auto.res:release:ref:xs | auto.res:heap:9 | auto.res:result:53",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-retry-5",
+          "exit": 0,
+          "stdout_tail": "auto.res:release:ref:removed | auto.res:release:ref:xs | auto.res:heap:18 | auto.res:result:53",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        }
+      ]
+    },
+    {
+      "id": "R02-K02",
+      "runs": [
+        {
+          "run": "clean",
+          "exit": 0,
+          "stdout_tail": "auto.res:create:main:f | auto.res:release:main:f | auto.res:heap:2 | auto.res:result:42",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "fault-1",
+          "exit": 71,
+          "stdout_tail": "auto.res:fault",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "fault-2",
+          "exit": 71,
+          "stdout_tail": "auto.res:transfer:main:s | auto.res:create:make:s | auto.res:fault | auto.res:release:make:s",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "n-plus-one",
+          "exit": 0,
+          "stdout_tail": "auto.res:create:main:f | auto.res:release:main:f | auto.res:heap:2 | auto.res:result:42",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "retry-1",
+          "exit": 0,
+          "stdout_tail": "auto.res:create:main:f | auto.res:release:main:f | auto.res:heap:2 | auto.res:result:42",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-clean",
+          "exit": 0,
+          "stdout_tail": "auto.res:create:ref:f | auto.res:release:ref:f | auto.res:heap:3 | auto.res:result:42",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-1",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:ref:s | auto.res:fault | auto.res:release:ref:s",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-2",
+          "exit": 71,
+          "stdout_tail": "auto.res:transfer:ref:s | auto.res:create:ref:make_s | auto.res:transfer:ref:make_s | auto.res:fault",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-fault-3",
+          "exit": 71,
+          "stdout_tail": "auto.res:transfer:ref:s | auto.res:create:ref:make_s | auto.res:transfer:ref:make_s | auto.res:fault",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-n-plus-one",
+          "exit": 0,
+          "stdout_tail": "auto.res:create:ref:f | auto.res:release:ref:f | auto.res:heap:3 | auto.res:result:42",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-retry-2",
+          "exit": 0,
+          "stdout_tail": "auto.res:create:ref:f | auto.res:release:ref:f | auto.res:heap:9 | auto.res:result:42",
+          "stderr_line": "auto.res:fail:fault",
+          "invariants": "pass"
+        }
+      ]
+    }
+  ],
+  "observed": {
+    "note": "per-leg run matrices (clean/sweep/N+1/retry/budget/cancel/trap/compile-boundary/reference) with the frozen invariant suite evaluated on BOTH sides"
+  },
+  "verdict": "certified",
+  "produced_by": {
+    "tool": "ace-certify --resource",
+    "schema_note": "resource-scenario domain is independent of ace.m1.cert/1 and ace.m1.a2r-trap/1; receipts never mix domains"
+  },
+  "created_at": 1794137568
+}

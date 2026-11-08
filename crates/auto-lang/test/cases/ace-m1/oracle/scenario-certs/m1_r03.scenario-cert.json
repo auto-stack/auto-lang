@@ -1,0 +1,89 @@
+{
+  "schema": "ace.m1.a2r-resource-scenario/1",
+  "case": "R03",
+  "profile": "legacy-a2r.resources-observe/1",
+  "wrapper_file": "oracle/resource-wrapper-v1.rs",
+  "identity": {
+    "sources": {
+      "R03-legal": "afebd81b5eb6e3462f7cea29578429fceaa65d44d5deb570db02e3a6499b8bb5",
+      "R03-static": "2d17a68d39fe3e437a7ecd7ba35ec0e0e0a4b7f2e26a275317d736466f03736b"
+    },
+    "goldens": {
+      "R03-legal": "0813a2c93e964c58c3ba230b762cd6932f2bcb93b36d23f6a51d0a500d2f9900",
+      "R03-static": "cce2654b6934701b85933ec9598b256a395b316ce9cfd5a8c63fbad9ce4ae192"
+    },
+    "references": {
+      "R03-legal": "4714b0416b9c01f2ec983fa77e1bb5426c4758033b7235df59a7e0087dd0c058",
+      "R03-stale": "acf51ae37a46839c51c889f356e080045b4c819858714593f295794466d983fa"
+    },
+    "wrapper_sha256": "35939921c824032f6c29a3362caebb4f15e066d4b141166e2691d51e9d83a88c",
+    "scenario_oracle_sha256": "19b34f89ab7482d3bcb504c7e854a0023df67e40f9ec7702c0db9b962a472933"
+  },
+  "toolchain": {
+    "identity": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.0\nLLVM version: 22.1.8",
+    "identity_source": "PATH",
+    "default_identity_at_certify": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.0\nLLVM version: 22.1.8",
+    "flags": [
+      "--edition=2021",
+      "-O"
+    ]
+  },
+  "deps": {
+    "external": [],
+    "closure": "std-only"
+  },
+  "legs": [
+    {
+      "id": "R03-legal",
+      "runs": [
+        {
+          "run": "clean",
+          "exit": 0,
+          "stdout_tail": "auto.res:read:main:xs | auto.res:release:main:xs | auto.res:heap:1 | auto.res:result:130",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-clean",
+          "exit": 0,
+          "stdout_tail": "auto.res:read:ref:xs | auto.res:release:ref:xs | auto.res:heap:4 | auto.res:result:130",
+          "stderr_line": "",
+          "invariants": "pass"
+        }
+      ]
+    },
+    {
+      "id": "R03-static",
+      "runs": [
+        {
+          "run": "compile-boundary",
+          "exit": -1,
+          "stdout_tail": "rustc rejected the emitted actual: rustc produced no binary",
+          "stderr_line": "",
+          "invariants": "pass"
+        }
+      ]
+    },
+    {
+      "id": "R03-stale",
+      "runs": [
+        {
+          "run": "typed-probe",
+          "exit": 71,
+          "stdout_tail": "auto.res:read:ref:xs | auto.res:mut:ref:xs | auto.res:release:ref:xs | auto.res:stale",
+          "stderr_line": "auto.res:fail:stale",
+          "invariants": "pass"
+        }
+      ]
+    }
+  ],
+  "observed": {
+    "note": "per-leg run matrices (clean/sweep/N+1/retry/budget/cancel/trap/compile-boundary/reference) with the frozen invariant suite evaluated on BOTH sides"
+  },
+  "verdict": "certified",
+  "produced_by": {
+    "tool": "ace-certify --resource",
+    "schema_note": "resource-scenario domain is independent of ace.m1.cert/1 and ace.m1.a2r-trap/1; receipts never mix domains"
+  },
+  "created_at": 1794137570
+}

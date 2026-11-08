@@ -1,0 +1,62 @@
+{
+  "schema": "ace.m1.a2r-resource-scenario/1",
+  "case": "R01",
+  "profile": "legacy-a2r.resources-observe/1",
+  "wrapper_file": "oracle/resource-wrapper-v1.rs",
+  "identity": {
+    "sources": {
+      "R01": "05efbc08c800c95de70fcb0a1caf6d2629999bc0de3409162e5cbea5a02630be"
+    },
+    "goldens": {
+      "R01": "6e36768127d15ea751f53850510012f7adb51dcf3364bd7fef7a7aa37f10798a"
+    },
+    "references": {
+      "R01": "2fe2f17dd1623f6d2daba7f345e0fd1d562b1243ff0fa24726bf40f15e99ced7"
+    },
+    "wrapper_sha256": "35939921c824032f6c29a3362caebb4f15e066d4b141166e2691d51e9d83a88c",
+    "scenario_oracle_sha256": "19b34f89ab7482d3bcb504c7e854a0023df67e40f9ec7702c0db9b962a472933"
+  },
+  "toolchain": {
+    "identity": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.0\nLLVM version: 22.1.8",
+    "identity_source": "PATH",
+    "default_identity_at_certify": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.0\nLLVM version: 22.1.8",
+    "flags": [
+      "--edition=2021",
+      "-O"
+    ]
+  },
+  "deps": {
+    "external": [],
+    "closure": "std-only"
+  },
+  "legs": [
+    {
+      "id": "R01",
+      "runs": [
+        {
+          "run": "clean",
+          "exit": 0,
+          "stdout_tail": "auto.res:release:main:c | auto.res:release:main:a | auto.res:heap:15 | auto.res:result:1048",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-clean",
+          "exit": 0,
+          "stdout_tail": "auto.res:release:ref:it | auto.res:release:ref:a | auto.res:heap:11 | auto.res:result:1048",
+          "stderr_line": "",
+          "invariants": "pass"
+        }
+      ]
+    }
+  ],
+  "observed": {
+    "note": "per-leg run matrices (clean/sweep/N+1/retry/budget/cancel/trap/compile-boundary/reference) with the frozen invariant suite evaluated on BOTH sides"
+  },
+  "verdict": "certified",
+  "produced_by": {
+    "tool": "ace-certify --resource",
+    "schema_note": "resource-scenario domain is independent of ace.m1.cert/1 and ace.m1.a2r-trap/1; receipts never mix domains"
+  },
+  "created_at": 1794137559
+}

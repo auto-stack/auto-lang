@@ -1,0 +1,126 @@
+{
+  "schema": "ace.m1.a2r-resource-scenario/1",
+  "case": "R06",
+  "profile": "legacy-a2r.resources-observe/1",
+  "wrapper_file": "oracle/resource-wrapper-v1.rs",
+  "identity": {
+    "sources": {
+      "R06-budget": "71a220b4963cb72355ab8d75835b738387e720fa0618a13a91fca62a551372e7",
+      "R06-cancel": "71a220b4963cb72355ab8d75835b738387e720fa0618a13a91fca62a551372e7",
+      "R06-deep": "71a220b4963cb72355ab8d75835b738387e720fa0618a13a91fca62a551372e7",
+      "R06-trap": "706f843292a5709c592ad26d3437497579b707fdf0b55f54116075aadf8ff110"
+    },
+    "goldens": {
+      "R06-budget": "cb82758ece34056433e25b30f3996db73d2829e6dacdfd87d44ea4963f974b67",
+      "R06-cancel": "cb82758ece34056433e25b30f3996db73d2829e6dacdfd87d44ea4963f974b67",
+      "R06-deep": "cb82758ece34056433e25b30f3996db73d2829e6dacdfd87d44ea4963f974b67",
+      "R06-trap": "0f7ee59f277b0dc22df5c55f569b4be51d62f80bb32ea545af7857df491f2b30"
+    },
+    "references": {
+      "R06-deep": "301f4537029c6ffb0b9fa1fbdf83ff48af7201a350d5d131706b24f93981fa70",
+      "R06-trap": "e35fd646cf1a15dbaa074d2e63800575c6c27f9fa19c0f69ab9a9c83fce32bba"
+    },
+    "wrapper_sha256": "35939921c824032f6c29a3362caebb4f15e066d4b141166e2691d51e9d83a88c",
+    "scenario_oracle_sha256": "19b34f89ab7482d3bcb504c7e854a0023df67e40f9ec7702c0db9b962a472933"
+  },
+  "toolchain": {
+    "identity": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.0\nLLVM version: 22.1.8",
+    "identity_source": "PATH",
+    "default_identity_at_certify": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.0\nLLVM version: 22.1.8",
+    "flags": [
+      "--edition=2021",
+      "-O"
+    ]
+  },
+  "deps": {
+    "external": [],
+    "closure": "std-only"
+  },
+  "legs": [
+    {
+      "id": "R06-deep",
+      "runs": [
+        {
+          "run": "clean",
+          "exit": 0,
+          "stdout_tail": "auto.res:release:main:xs | auto.res:release:main:seed | auto.res:heap:66 | auto.res:result:2359360",
+          "stderr_line": "",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-clean",
+          "exit": 0,
+          "stdout_tail": "auto.res:mut:ref:xs | auto.res:release:ref:xs | auto.res:heap:192 | auto.res:result:2359360",
+          "stderr_line": "",
+          "invariants": "pass"
+        }
+      ]
+    },
+    {
+      "id": "R06-budget",
+      "runs": [
+        {
+          "run": "budget",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:main:xs | auto.res:budget | auto.res:release:main:xs | auto.res:release:main:seed",
+          "stderr_line": "auto.res:fail:budget",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-budget",
+          "exit": 71,
+          "stdout_tail": "auto.res:mut:ref:xs | auto.res:mut:ref:xs | auto.res:budget | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:budget",
+          "invariants": "pass"
+        }
+      ]
+    },
+    {
+      "id": "R06-cancel",
+      "runs": [
+        {
+          "run": "cancel",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:main:seed | auto.res:cancel | auto.res:release:main:seed",
+          "stderr_line": "auto.res:fail:cancel",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-cancel",
+          "exit": 71,
+          "stdout_tail": "auto.res:create:ref:xs | auto.res:mut:ref:xs | auto.res:cancel | auto.res:release:ref:xs",
+          "stderr_line": "auto.res:fail:cancel",
+          "invariants": "pass"
+        }
+      ]
+    },
+    {
+      "id": "R06-trap",
+      "runs": [
+        {
+          "run": "trap",
+          "exit": 70,
+          "stdout_tail": "auto.res:create:boom:t | auto.res:release:boom:t | auto.res:release:main:keep | auto.res:release:main:xs",
+          "stderr_line": "auto.trap:div-by-zero:div",
+          "invariants": "pass"
+        },
+        {
+          "run": "ref-trap",
+          "exit": 70,
+          "stdout_tail": "auto.res:create:ref:t | auto.res:release:ref:t | auto.res:release:ref:keep | auto.res:release:ref:xs",
+          "stderr_line": "auto.trap:div-by-zero:div",
+          "invariants": "pass"
+        }
+      ]
+    }
+  ],
+  "observed": {
+    "note": "per-leg run matrices (clean/sweep/N+1/retry/budget/cancel/trap/compile-boundary/reference) with the frozen invariant suite evaluated on BOTH sides"
+  },
+  "verdict": "certified",
+  "produced_by": {
+    "tool": "ace-certify --resource",
+    "schema_note": "resource-scenario domain is independent of ace.m1.cert/1 and ace.m1.a2r-trap/1; receipts never mix domains"
+  },
+  "created_at": 1794137577
+}
