@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-993
-status: executing
+status: execution_done
 feature_name: 旧A2R K06写捕获闭包move发射修复与认证
 author: [Codex]
 created_at: 2026-11-07
@@ -11,7 +11,7 @@ new_spec_components: []
 touched_goals: [GOAL-002]
 affects: [legacy-a2r, auto-test-case]
 depends_on: [PLAN-991, PLAN-992]
-current_step: 0
+current_step: 5
 total_steps: 8
 ---
 
@@ -154,11 +154,11 @@ T-01冻结可用CLI/固定组/工具及完整原Case集合，未来显式例：�
 
 | T | owner_stage | 前置/写面 | 具体结果/验证与AC | 状态 |
 |---|---|---|---|---|
-| T-01 | work | 后续实施指令；实际D991/D992 | 冻结当前Expr::Closure/capture路径、K06首次红/K01K03合法值、四类capture全链反例与资源边界；V-01..V-04按对应入口，AC-01..04 | [ ] |
-| T-02 | work | T-01 | 最小按机制修重复move，保Rc/RefCell/alias语义，新增永久K06/捕获组合实际编译运行反例；不改parser或新HIR；V-01..V-04按对应入口，AC-01..04 | [ ] |
-| T-03 | work | T-02 | 审阅K06 source/actual/既有reference及新golden语义，记录G04；仅目标token/manifest/字节更新并核所有登记读者；V-01..V-04按对应入口，AC-01..04 | [ ] |
-| T-04 | work | T-03 | 原域K06显式认证、旧27strict复用、原日常31检查零spawn与receipt/变异反控，确认21→20；V-01..V-04按对应入口，AC-01..04 | [ ] |
-| T-05 | work | T-04 | 完整a2r职责与相邻旧Case/治理通过，SD候选/具名余账/逐格941只读交接，冻结实现交review；V-01..V-04按对应入口，AC-01..04 | [ ] |
+| T-01 | work | 后续实施指令；实际D991/D992 | 冻结当前Expr::Closure/capture路径、K06首次红/K01K03合法值、四类capture全链反例与资源边界；V-01..V-04按对应入口，AC-01..04 | [x] 2026-11-08：D991归档hash一致、D992 delivery `64f93cb99`为worktree base `eef2f3f21`祖先；scope探针套件（生产a2r adapter）K01/K03/K06 fresh emit==树金样逐字节（K06快照如实含`move move`）；rustc+冻结wrapper矩阵：K06/P-A（写捕获+move）编译红`expected one of async,\|,\|\|, found keyword move`、P-B（写捕获无move）编译过但运行panic 101（BorrowMutError：RHS Ref临时活过LHS borrow_mut）、K01/K03/P-C/P-D绿42、P-F（嵌套写捕获）绿但22≠42（逃逸分析不给嵌套Rc降级——先存缺陷，非H-05机制，具名余账）；全测试树`move move`仅m1_k06.rs一处；工具身份rustc 1.98.0(88d9e12ae)与27旧cert一致；ace-certify/auto-case CLI实参冻结 |
+| T-02 | work | T-01 | 最小按机制修重复move，保Rc/RefCell/alias语义，新增永久K06/捕获组合实际编译运行反例；不改parser或新HIR；V-01..V-04按对应入口，AC-01..04 | [x] 2026-11-08：`expr_emit.rs`两处最小修复——①Closure臂：捕获块已强制move语义，显式`move`不再发第二个关键字（恰一次，四种组合字节中三种不变）；②Op::Asn臂：写捕获cell自引用赋值按Plan 347全局变量先例提升`{ let __a2r_wc = rhs; *x.borrow_mut() = __a2r_wc; }`消运行时BorrowMutError。commit `1eef27d32`。永久反例`test/a2r/25_lifecycle/005/006/007`（写+move/写无move/多写+move跨调用共享）实际rustc编译+运行42/42/67（scope证明）；001/003期望恰漂移1行（潜伏运行时重叠随修闭合，001的ledger E0277根因不变）；K01/K03 fresh emit字节不变 |
+| T-03 | work | T-02 | 审阅K06 source/actual/既有reference及新golden语义，记录G04；仅目标token/manifest/字节更新并核所有登记读者；V-01..V-04按对应入口，AC-01..04 | [x] 2026-11-08：G04逐行语义审阅新K06字节（int→i64、var写捕获→Rc<RefCell>、克隆遮蔽+恰一次move、`__a2r_wc`提升保RHS先读后写求值序、`return *base.borrow()`读共享cell、两次调用21+21=42共享单一cell、无泄漏/无悬空借用）——golden重冻结`e28247fa…`（diff恰1行）；fresh emit==新金样（fidelity探针复跑PASS）；binding K06 token→`ok-emit`+PLAN-993注记；manifest golden hash更新、binding.sha256滚动；读者核验：legacy-composite snapshot（31检查内绿）、certifier选择谓词、acceptance重算、ac_av（AV链不读金样字节） |
+| T-04 | work | T-03 | 原域K06显式认证、旧27strict复用、原日常31检查零spawn与receipt/变异反控，确认21→20；V-01..V-04按对应入口，AC-01..04 | [x] 2026-11-08：`ace-certify --only K06` certified（actual==golden，wrapper与独立reference双侧`i32:42`exit0）；全量复跑28 reused/0 failed（旧27 strict复用不重认证）；cert `m1_k06.cert.json`（f803b152…）入库+manifest certs 27→28；snapshot scope PASS（31 a2r检查全绿、28证书strict、认证面spawn=0）；receipts seam PASS（原生多行BuildIdentity）；acceptance Integrity PASS：green 292→293、green-cert-gap 21→**20**、131/524/313/45/32守恒、can_claim_m1=false。反控全红：金样1B漂移（cert hash不变）、cert未知字段（--force仍拒）、旧双move金样、registry 42→43 desync、错expected+无cert→oracle mismatch且无半证书 |
+| T-05 | work | T-04 | 完整a2r职责与相邻旧Case/治理通过，SD候选/具名余账/逐格941只读交接，冻结实现交review；V-01..V-04按对应入口，AC-01..04 | [x] 2026-11-08：冻结并集`cargo t a2r case-ace-m1-base case-ace-m1-a2r-emit-917 case-ace-m1-a2r-semantics-916 case-ace-m1-shared-mutable-909 infra-ace-m1 auto-test-case ace-adapters`：7/8绿；case-ace-m1-a2r-emit-917三红（t08.single/t08.project/nb_slice_ok，a2r_std头前导漂移）经base emitter（eef2f3f21的expr_emit.rs）同参复跑**同三红**——先存master红，非本包引入（814时代搬迁后的a2r_std发射条件变化vs917冻结金样，owner=917域，review落KNOWN-DEBT）；health：expr_emit零新警告、fmt净；具名余账：①嵌套写捕获无Rc降级（P-F：22≠42，先存，owner=逃逸分析）②917三红（先存）；941只读交接见§9 work收据（K06格位全hash链）；commit `aea776c63` |
 | T-06 | review | T-01..05完成；冻结后停实现写入 | V-05独立逐AC/SD/全部原例反控/reader/健康审查，绑定r1/冻结commit；AC-05 | [ ] |
 | T-07 | merge | T-06 pass与后续合入指令 | 冻结明确职责并集/有效证据复用与触码漂移核验，SD实际沉淀读回/来源交付/归档，逐格证据交接但不写941；AC-06 | [ ] |
 | T-08 | merge | T-07来源与归档核实 | 全部命令输出根对账、证据摘要折本Plan后scope整删（具名持有另记），wt-guard clean后移除唯一树/分支/空组，登记刷新；AC-06 | [ ] |
@@ -168,6 +168,12 @@ T-01冻结可用CLI/固定组/工具及完整原Case集合，未来显式例：�
 2026-11-07 stage:new / PLAN-993 r1 / outcome:pass（仅规划静态合同，非实施/产品/认证通过） / next:后续实施指令及实际依赖就绪后T-01。T-01..08全部未执行，0/8，未建树/scope，未修改production/current Specs/语料/证书；规划不等golden批准或M1签章。静态复核收据在此续录。
 
 2026-11-07 规划静态复核：0..10章节、T8/AC6/V5/SD3唯一连续且互引完整，work/review/merge任务均未执行；本包1格与当前binding的corpus域/原token/outcome/expected完全对账，src与独立reference存在，三包22格不重叠，余16不在本次范围。当前Spec路径、计划交叉链接、表格列数/空白/编码、现有固定组名与拟新增组标记、唯一编号/中央next-id=995通过。第一轮文档检查器将固定all入口误当未知组而退出，纠正检查器识别后完整静态复核通过；未修改产品入口或为通过放宽产品门。939/941规划前后内容hash一致；本轮仅写992/993/994与取号.next-id，未施工、未运行产品/认证/性能/独立实施review、未建树/scope/会话。
+
+stage: work | plan_id: PLAN-993 | plan_revision: r1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-993/auto-lang | branch: plan-993-dev | base_commit: eef2f3f21 | code_commit: 1eef27d32（修复+永久反例）→ aea776c63（K06认证/金样/登记） | dependency_revisions: D991已归档37fbf69a…、D992 delivery 64f93cb99（base祖先已核）；rustc 1.98.0 (88d9e12ae 2026-08-18) PATH身份=27旧cert | task_ids: T-01..T-05（5/5） | evidence: scope `D:/autostack/plan-artifacts/plan-993/`（t01-freeze矩阵/t02冻结/cr-proof/t04-certify/t04-controls反控M1..M5全红/t05-gate base归因）；AC-01四组合+多写+跨调用全链rustc编译运行42/42/67、K06首红→42；AC-02 K06 certified双侧i32:42、28 reused/0 failed、金样e28247fa…；AC-03 snapshot 31检查零spawn、receipts strict、acceptance 21→20守恒；AC-04逐hash见下行交接、941只读 | blockers: 无阻塞性；先存余账两条（嵌套写捕获无Rc降级 P-F 22≠42 owner=逃逸分析；case-ace-m1-a2r-emit-917 三红 a2r_std头漂移，base emitter同参复跑同红证非本包引入，owner=917域）——均不在H-05关闭范围，未静默修复 | next_responsible_role: review（T-06独立复审；KNOWN-DEBT落账归review/merge）
+
+**941只读交接（corpus:K06:a2r 格位终态，2026-11-08）**：producer=旧production A2R（trans/rust，worktree `aea776c63`）；source `src/K06.at` sha `aa426014e0d01ea43505e0a2cc23cc672105481d59cba301030b7dc5282382c3`；golden `oracle/m1_k06.rs` sha `e28247fafcc7676842763f2c6d65cb8b2d81af63ce01db226f6f316c9afc897a`（G04逐行审阅+wrapper实跑42）；独立reference `reference/K06.rs` sha `42dfd158f93e875f639e1de7e73f69bd4d1783a32462198f560b32145c429f34`（未改动）；cert `oracle/certs/m1_k06.cert.json` sha `f803b1528a2019afc5beb7c3200be1f3e1ea0fe70cc4ae2eba87527fec37c958`（actual==golden，双侧i32:42，std-only，flags [--edition=2021,-O]，rustc身份同27旧cert）；日常检查=base snapshot legacy-composite a2r-snapshot（31检查之1，新金样绿）；binding.tsv sha `2ccf370d6a460d74eb33473a81a4987274ed1a6f82c5d4f39f76d00621969be5`（仅K06行token→ok-emit+注记，131行/12列/313 required/集合hash不变）；余账：cert-gap 21→20（余20=994后16的先导：H-04×6+H-06×4+H-07×6+994文本×4——993后为H-04/H-06/H-07/994四类），can_claim_m1=false。941是否接纳由原owner按真实身份自行执行；本包未触939/941任何文件。
+
+stage: goal | plan_id: PLAN-993 | plan_revision: r1 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-993/auto-lang | commit: aea776c63 | next: review
 
 ## 10. 待澄清事项
 
