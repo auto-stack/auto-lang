@@ -2953,11 +2953,18 @@ impl RustTrans {
                 // Plan 419 §4.5: 写捕获自由变量在闭包内持 Rc 克隆 ——
                 // `{ let x = Rc::clone(&x); move |..| .. }`(体内访问由 Ident
                 // 改写统一走 borrow/borrow_mut,克隆名与原绑定同名)。
-                let captured: Vec<AutoStr> = self
+                let mut captured: Vec<AutoStr> = self
                     .write_capture_names()
                     .into_iter()
                     .filter(|n| Self::expr_references_ident(&closure.body, n))
                     .collect();
+                // PLAN-993 T-06 review finding: `write_capture_names()` feeds
+                // from a HashSet — with TWO OR MORE write captures the clone
+                // lines emitted in randomized per-process order (25_lifecycle
+                // 007 flaked: `a,b` vs `b,a`). Frozen goldens must be
+                // byte-stable, so emit the clone block in a deterministic
+                // (lexical) order. Single-capture shapes are unaffected.
+                captured.sort();
                 // PLAN-993 H-05: the write-capture clone block already forces
                 // move semantics (the closure owns its clones), so an explicit
                 // source `move` must not emit a SECOND keyword — `move move
