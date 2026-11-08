@@ -2397,6 +2397,16 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（D939转�
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（稳定树重采：case466✓五native✓、cert292在途；av候裁定） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:9c9ed650a | task_ids:CHECKLIST §4稳定树重采 | evidence:f94134-{current-source-cases,native-admitted} + cert在途 | next_responsible_role:work cert完成→optimized→（av候）→§5 | 无live handle
 
+### 第115轮：work §4稳定树重采全链完成——cert292全PASS+optimized14+拒绝6+abi 263
+
+- **cert292+daily292✓**（`f94134-current-certifications/`@`9c9ed650a`）：292×3真实操作全PASS（292实际认证+292 daily+292 identity/toolchain），capture-terminal落盘。
+- **optimized14+拒绝6✓**（`f94134-current-optimized/`+`f94134-current-query-refusals/`）：三优化观察者（8+4+2）+六untyped拒绝。
+- **ace-abi档✓@HEAD**（`f94134-abi-gate`）：**263 PASS**（较243新增=997 trap组+939终态测试）。
+- **§4稳定树重采全部完成**：case466✓+五native✓+cert292✓+optimized/refusals✓+abi✓——唯一余项=**av档**（候961栈帧回归的内修裁定或owner线交付；三次请示未答）。
+- **边界**：av绿后=§5组合重读（f94134全链bindings+新宇宙awaiting=0/cert-gap 6/delivered 14）→T-12→T-13→T-14→T-15。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§4稳定树重采全链完成：cert292全PASS/optimized14/拒绝6/abi 263；唯余av档候裁定） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:9c9ed650a | task_ids:CHECKLIST §4完成 | evidence:f94134-{current-certifications,current-optimized,current-query-refusals,abi-gate} | next_responsible_role:user（av内修裁定）或961线；随后§5→终态 | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
