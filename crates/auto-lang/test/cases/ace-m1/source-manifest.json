@@ -5,7 +5,7 @@
     "binding": {
         "path": "binding.tsv",
         "sha256_pre_908": "d9f05da057dfd658df09a7725aa391bc4c9e14993e13e9846724160915ff5d7a",
-        "sha256": "35ecebeb3ff55db3c96c7d1ac50ee81032f5f2e4d195ad0775775f56015c8a44"
+        "sha256": "684afa35ae6039f0f376fcd3d307d717d4c33d3613fcf7cd2bc4e73558c10937"
     },
     "corpus_src": {
         "dir": "src",
@@ -193,7 +193,7 @@
         "dir": "oracle",
         "wrapper": "wrapper-main-v1.rs",
         "wrapper_sha256": "774b7c57b752c0bbd4ce94a05b2d8580669135367cded6cc3dfbba99c8539ba0",
-        "expected_count": 33,
+        "expected_count": 39,
         "files": {
             "m1_b01.rs": "f1e2f9be676156708f0bc16a5d6a24e0ef1c65a742ae4f5c073ef0d0fa99709e",
             "m1_b02.rs": "048176f0dd05d54cb8b07098aa87c0263dba2812e51537890a6827d78cffc761",
@@ -227,12 +227,18 @@
             "m1_t01.rs": "cd580bd003bea128d6be25a9251b768654c30810247b67d6d9d55609ec29e3cc",
             "m1_t02.rs": "a1494c1b3e83af19e813d98da2fb7ade56edd78159205f21712490532199545b",
             "m1_t03.rs": "2edff30cd95a9b65fa8df94127c8a5ae34a01f06c68b0828b661b5808711a38a",
-            "m1_t04.rs": "f5f5c31c01ecf134a9c856c139529d25afefdc10c96416ec87d37a4e921f9614"
+            "m1_t04.rs": "f5f5c31c01ecf134a9c856c139529d25afefdc10c96416ec87d37a4e921f9614",
+            "m1_l01.rs": "cae1ca88014809c85d1f4ed518c1ae96229ae98b280e604309259ba0ec84e4ed",
+            "m1_l02.rs": "61cf65c61b518c922c2c45d661015045e7a5e0c329e9661b21f7a3f9b55e8b3f",
+            "m1_l03.rs": "c076319d294ffe0bf021055305985874b8166a6f5fa6c1d75865cde27842734b",
+            "m1_l04.rs": "b5ec91ac4dee611b2ee83e2c0aa339b0e03ebb64d828baf40069cf8b6ad808b3",
+            "m1_l05.rs": "88f24d5f8a077268ecd4133a454c96fef30d346643d5c1489404861040777733",
+            "m1_l07.rs": "67d445576543f89fc90266f278367951bec9838a49e27661f91e2f2e8a930491"
         }
     },
     "oracle_certs": {
         "dir": "oracle/certs",
-        "expected_count": 32,
+        "expected_count": 38,
         "files": {
             "m1_b01.cert.json": "c4f77934af20206d4d1e6f1ac9dcdf4742456d1cef6a3d27e6ce8df51bfebbb7",
             "m1_b02.cert.json": "43b53632c216cf7c01e52e3020a21b540012efae22080e17e135b4ea82aca47f",
@@ -265,7 +271,13 @@
             "m1_t01.cert.json": "bf805815c5f52aa034ef73428813110365affff3d7f5831f856388a8305b490e",
             "m1_t02.cert.json": "e6c345b50c45c1c436cd75a7dfa959a23a67c05634a0a308ed6691e14817ded9",
             "m1_t03.cert.json": "d98f313820fc6ff07e82975555e3dd16eb1245edbbda5ad4060e4072d8ab39ce",
-            "m1_t04.cert.json": "f2416fcfa8f7f3545947bc5ef723c00a69ec76c5fcb20ae7591ddfd70c4026b9"
+            "m1_t04.cert.json": "f2416fcfa8f7f3545947bc5ef723c00a69ec76c5fcb20ae7591ddfd70c4026b9",
+            "m1_l01.cert.json": "f227785e6497f6abcc22d5f6dcbb9dc9ea329db71b9de144e891a3809e063624",
+            "m1_l02.cert.json": "14e6d684ad48e2b9199a750b3d2f326a9c7f734a154f307d36cb8100702e556b",
+            "m1_l03.cert.json": "310072ff7b28c9de72e0dfb5d95a2ae17aa3c18e64b96ab297829d6cc66cb719",
+            "m1_l04.cert.json": "81883e046ed9e32bf0ca36ea77c5fd97604d87e5942267e19c7b1c851f012a4a",
+            "m1_l05.cert.json": "e328dc7c447203e9cad0d0c2d9f075ce381b41cf449ebb0d94a919805eae8061",
+            "m1_l07.cert.json": "fe7379138ca61e9999dc52df03558492b9b3cf1bb5e5a32c44cff3193bcdeed4"
         }
     },
     "reference": {
@@ -318,7 +330,7 @@
         }
     },
     "suites_cases": {
-        "expected_count": 85,
+        "expected_count": 87,
         "files": {
             "ace-m1-base.suite.ad": "7fd00b8d1c79d45be1f4d5ad90083780a8acb67798c6c36b9d29b8f53d26ae63",
             "ace-m1-tr-native.suite.ad": "4e2b320d1b44f6c317ff1c69e29706efb4fc1332b04864f955f85aa5208d7fb3",
@@ -404,7 +416,9 @@
             "legacy-a2r-cert-992.case.ad": "c62673f31390044d92f2831a7994700d61d31686562cd22ca9f4797654e09631",
             "legacy-a2r-cert-992.suite.ad": "92fd0fb0fbf3ceaf897eddb9910da9c7504c6c364bad27685c7c622ab2f78b30",
             "legacy-a2r-text-994.case.ad": "6b2853fcd946186aff4e59382ccfc356b796c7a72513e23c72caf6ebd6a2b6e8",
-            "legacy-a2r-text-994.suite.ad": "1ac3620958cc8df6e3ceeb93df8e7fcdc98328afa18b199f36102f775b49e8d8"
+            "legacy-a2r-text-994.suite.ad": "1ac3620958cc8df6e3ceeb93df8e7fcdc98328afa18b199f36102f775b49e8d8",
+            "legacy-a2r-list-996.case.ad": "cc9bcc7dcf911361111171e2eeaad78e99be7d3feae1e3dfcb96d033e03e6194",
+            "legacy-a2r-list-996.suite.ad": "ee87c899f93d32747722c7b3af4d1ea08a38b26a6b611fb9d73e6cf540f4c040"
         }
     },
     "scenario_oracles": {
@@ -515,5 +529,9 @@
     "plan_924_update": {
         "date": "2026-11-03",
         "summary": "PLAN-924: native closures suite case-ace-m1-native-closures-924 (R02 closure domain + R05 ac cells; frozen K02/K05 source rides through the closures pipeline with S9/S1/S4 injection and N+1 controls; parent table ac_mn/native_closures judges trap/seam/cleanup + R05 env-lifecycle events). binding R02/R05 scenario ac -> ok:P924-closures after both parent gates (this suite + the 923 non-closure suite re-verified under the same final runtime/4)."
+    },
+    "plan_996_update": {
+        "date": "2026-11-08",
+        "note": "PLAN-996 finite-list a2r certification: binding sha re-anchored (six corpus:a2r rows L01/L02/L03/L04/L05/L07 emit-ok-run-unverified -> ok-emit with PLAN-996 note; 131 rows / 313 required / approvals unchanged); six G04-reviewed goldens oracle/m1_l*.rs added (33->39); six certs oracle/certs/m1_l*.cert.json added (32->38); legacy-a2r-list-996 case+suite added (85->87). src/reference/wrapper/applicability untouched."
     }
 }

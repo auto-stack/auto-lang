@@ -1061,8 +1061,7 @@ impl RustTrans {
             }
         };
         match obj {
-            Expr::Bina(lhs, Op::Lt, rhs)
-                if matches!(lhs.as_ref(), Expr::Ident(n) if matches!(n.as_str(), "List" | "Array")) =>
+            Expr::Bina(lhs, Op::Lt, rhs) if matches!(lhs.as_ref(), Expr::Ident(n) if matches!(n.as_str(), "List" | "Array")) =>
             {
                 match rhs.as_ref() {
                     // 嵌套泛型（rhs 仍为 Bina）不在有限域内 → None
