@@ -11,7 +11,7 @@ new_spec_components: []
 touched_goals: [GOAL-002]
 affects: [legacy-a2r, auto-test-case]
 depends_on: [PLAN-991, PLAN-993, PLAN-994, PLAN-996, PLAN-997]
-current_step: 9
+current_step: 12
 total_steps: 12
 ---
 
