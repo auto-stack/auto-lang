@@ -82,3 +82,12 @@ threads-required = "num-test-threads"
 [[profile.default.overrides]]
 filter = "test(abi_resource939_over_budget_cancellation_preserves_root_and_cleans_without_quota)"
 threads-required = "num-test-threads"
+
+# PLAN-939 T-14: the resource 6x30 formal sampling carries five hard
+# P90<=2000ms gates over full certification requests (cl/link storms);
+# it must not sample under sibling-test contention (marginal P90 blows
+# under parallel load — reproduced rotating with the 797 hard gates in
+# plain parallel runs). Reserve the pool while it runs.
+[[profile.default.overrides]]
+filter = "test(abi_resource939_six_scenarios_30_samples)"
+threads-required = "num-test-threads"
