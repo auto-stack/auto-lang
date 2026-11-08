@@ -5,17 +5,17 @@ use std::fs::read_to_string;
 use std::path::PathBuf;
 
 fn test_a2r_with_base(base: &str, case: &str) -> AutoResult<()> {
-        crate::test_cases::execution_trace::observe(
-            || {
-                crate::test_cases::execution_trace::legacy_files(
-                    env!("CARGO_MANIFEST_DIR"),
-                    base,
-                    case,
-                    &[".expected.rs"],
-                )
-            },
-            || test_a2r_with_base_impl(base, case),
-        )
+    crate::test_cases::execution_trace::observe(
+        || {
+            crate::test_cases::execution_trace::legacy_files(
+                env!("CARGO_MANIFEST_DIR"),
+                base,
+                case,
+                &[".expected.rs"],
+            )
+        },
+        || test_a2r_with_base_impl(base, case),
+    )
 }
 
 fn test_a2r_with_base_impl(base: &str, case: &str) -> AutoResult<()> {
@@ -3383,11 +3383,6 @@ fn plan994_empty_nul_emoji_values_split_char_and_byte_domains() {
         );
     }
 }
-
-// =============================================================================
-// PLAN-996 T-01 probe (temporary): dump the current production emission of the
-// six corpus list sources to the plan-artifacts scope for first-red freezing.
-
 // =============================================================================
 // PLAN-996 legacy A2R finite list construction & method faces (corpus L01..L07
 // minus the L06 trap domain). `List<T>.new()` (0-arg generic ctor, parsed as
@@ -3420,8 +3415,16 @@ fn plan996_list_int_ctor_flows_element_annotation() {
         "list get is the 433 A1 index+clone owned-value form:\n{}",
         code
     );
-    assert!(!code.contains("List<int>"), "no pseudo ctor survives:\n{}", code);
-    assert!(!code.contains("a2r_std"), "std-only self-contained:\n{}", code);
+    assert!(
+        !code.contains("List<int>"),
+        "no pseudo ctor survives:\n{}",
+        code
+    );
+    assert!(
+        !code.contains("a2r_std"),
+        "std-only self-contained:\n{}",
+        code
+    );
 }
 
 #[test]
@@ -3431,7 +3434,11 @@ fn plan996_insert_remove_len_value_chain() {
     let code = plan996_transpile(
         "fn main() int {\n    var xs = List<int>.new()\n    xs.push(10)\n    xs.push(30)\n    xs.insert(1, 20)\n    xs.remove(1)\n    return xs.get(0) + xs.get(1) + xs.len()\n}\n",
     );
-    assert!(code.contains("xs.insert(1, 20);"), "native insert:\n{}", code);
+    assert!(
+        code.contains("xs.insert(1, 20);"),
+        "native insert:\n{}",
+        code
+    );
     assert!(code.contains("xs.remove(1);"), "native remove:\n{}", code);
     assert!(
         code.contains("xs[(0) as usize].clone() + xs[(1) as usize].clone() + (xs.len() as i64)"),
@@ -3472,11 +3479,17 @@ fn plan996_owned_struct_push_and_field_reads() {
         code
     );
     assert!(
-        code.contains("(xs[(0) as usize].clone().name.len() as i64) + xs[(0) as usize].clone().code"),
+        code.contains(
+            "(xs[(0) as usize].clone().name.len() as i64) + xs[(0) as usize].clone().code"
+        ),
         "field reads go through the index+clone element read:\n{}",
         code
     );
-    assert!(!code.contains(".unwrap()"), "no Option-unwrap patchup needed:\n{}", code);
+    assert!(
+        !code.contains(".unwrap()"),
+        "no Option-unwrap patchup needed:\n{}",
+        code
+    );
 }
 
 #[test]
@@ -3508,7 +3521,11 @@ fn plan996_set_is_replace_assignment_not_insert() {
         "set is index assignment (replace semantics):\n{}",
         code
     );
-    assert!(!code.contains(".insert("), "set must not become insert:\n{}", code);
+    assert!(
+        !code.contains(".insert("),
+        "set must not become insert:\n{}",
+        code
+    );
 }
 
 #[test]
