@@ -145,3 +145,10 @@ graph TD
 - 备选：文本级 `lower_list_constructs` 推广到全程序管线（body-only 管线方案无法携带类型、绕过类型分析）；A8 式生成后正则补丁（无类型，L01 算术/L07 set 形已证不覆盖）；元素型注 JSON 桶（破坏名义 record 字段，违背源语义）。
 - 后果：ace-m1 六集合值格认证关闭（cert 32→38、cert-gap 16→10，快照日常 35→41）；`a2r_tests.rs` plan996 10 例永久面（含裸/1 参域守恒与 994 字符 len 共存反控）；既有 415 a2r 例字节稳定。已知边界：嵌套泛型/枚举元素名/非有限域类型不在本轮（保持落穿）；L06 越界 trap 属 997 trap 域；`oracle/certs/*.json` 受根 `.gitignore` 吞没须显式入库（F-996-R1-01）。
 - 状态：active
+
+### ADR-12: 显式版本化源整数 profile `legacy-a2r.checked-i32/1`——运算时 i32 域检查与受控 typed trap 通道
+- 日期 / 来源：PLAN-997（H-06，B13/B14/B15/B20 trap 域）；`trans/rust.rs`（`IntProfile` 精确 id 准入、`transpile_rust_full_with_profile`/`transpile_rust_with_source_dir_profile`、懒 helper 块追加）、`trans/rust/expr_emit.rs`（`expr_is_source_int` 结构化分类 + Add/catch-all/一元 neg/复合赋值四钩子）、`test_cases/a2r.rs`（case 选项 `int_profile`）
+- 决策：①profile 显式选择才生效（`IntProfile::from_id` 精确匹配 `legacy-a2r.checked-i32/1`；contract 层与 adapter 双重准入；suite defaults 层不承认；project 模式选择即 contract error）；默认 `LegacyI64` 输出与全部已认证值金样逐字节相同（每钩子 `checked_i32_active()` 门控+全语料快照证明）。②源整数运算走私有 typed helper `__a2r_i32_{add,sub,mul,div,mod,neg}`：i64 载体不变、**运算时**检查结果 i32 域（div/rem 另分零除与 MIN/-1 两类、neg 检查 MIN），绝不以末尾 `as i32` 补救；helper 块仅在用到时追加（BTreeSet 固定序）。③分类为结构化有限域：`Expr::Int` 字面量、int 型局部/参数、一元 neg（含 `neg(I64(2^31))`=i32::MIN 字面量特例；负字面量 `-Int(k≠MIN)`/`-I64(2^31)` 保持默认 `-k` 字节）、int-only 算术复合；显式 i64/f64/char/str/调用/字段/cast/全局/cell 不入域（默认发射）。④trap 通道：stderr 单行 `auto.trap:<kind>:<op>` + 受控 `exit(70)`、stdout 干净——自定义 fn 调用不被 rustc 常量折叠（E0080 逃逸），`&&`/`||` 原生短路保留（`false && 10/0` 不陷阱），helper 调用实参保证每操作数恰一次源序求值。⑤int 局部复合赋值脱糖 `x = __a2r_i32_<op>(x, y)`（运算时检查）。
+- 备选：内联 checked 表达式（字节膨胀/括号风险/`unwrap_or_else` 捕获非受控结束且常量除零仍被 lint 拒）；i64 原生 `checked_add`（检的是 i64 域——i32 操作数在 i64 永不溢出，语义错）；末尾 cast 补救（违反运算时检查义务）。
+- 后果：ace-m1 H-06 四 trap 格独立认证关闭（cert-gap 10→6，快照日常 41→45，trap 证书 4 张 `ace.m1.a2r-trap/1` 独立域）；`a2r_tests.rs` plan997 9 例永久面；默认金样字节零变化。已知边界：调用/字段/cast/全局承载的整数运算不入域（保持默认）；trap 观察通道属认证域（用户源可打印相似 stdout 文本不能伪造——事件在 stderr+exit 码）。
+- 状态：active

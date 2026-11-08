@@ -327,3 +327,20 @@ cert 38 gap；`can_claim_m1=false`。**治理交付完成 ≠ M1 通过**；签�
   corpus 行、future 45、313 required、32 ruled-accepted。M1 claim 守卫新增
   cert 轴显式条件（严格强化，无弱化——突变控制绿），`can_claim_m1=false`
   仍冻结。
+
+## PLAN-997 后状态（2026-11-08，SD-02；此前各节为冻结历史）
+
+- **H-06 四格关闭**：B13（overflow）/B14（div-by-zero）/B15（rem-overflow）/
+  B20（div-by-zero，短路右支真执行）经显式 `legacy-a2r.checked-i32/1` profile
+  +独立 trap 认证域关闭（binding token `cert-diff`→`ok-emit-trap`；原
+  source/outcome/expected 逐字不变；avm `diff-old-int-i64` 差异行不动——旧
+  引擎 i64 载体差异仍由语言语义裁定在账）。认证契约与反控见
+  [a2r-golden-certification.md](a2r-golden-certification.md) PLAN-997 节。
+- **cert-gap 10→6**（996 六集合+997 四 trap 后）：余 6 = H-07 R01-R06 场景格
+  （998 域，typed trap 通道不顶场景观察）。cert 38 值域+4 trap 域分计不混；
+  313 required/NA/32 accepted/45 future 与零 gap 守卫不变；
+  `can_claim_m1=false`。
+- **与 996 的并集记账**：snapshot 五套件 45 检查（26 base+5+4+6+4）；
+  receipts 38 值+4 trap strict；PS reader 对 trap 域 token 门控（无
+  ok-emit-trap 行时休眠，migrated 后强制证书在场——假 token/删证/自洽伪造
+  均拒）。

@@ -137,3 +137,16 @@ I04 依赖精确失效/无关零生产；I09 按实际策略拒绝且旧状态�
 - 判定实现：`ac_mn/native_closures.rs`（父侧从严解码，不信 worker 自述）；
   suite 资产 `native-closures-924/`。坏身份/坏载荷沿既有拒绝面（forge/
   字节翻转 store/open 或链条具名拒）。
+
+## PLAN-997：trap 域与场景域的隔离（2026-11-08，SD-03）
+
+- H-06 四格的 typed trap 事件（stderr `auto.trap:<kind>:<op>` + exit 70）是
+  **a2r trap 认证域**的观察通道（schema `ace.m1.a2r-trap/1`，
+  `oracle/trap-certs/`），不是本规范的 scenario 观察面：H-07 R01-R06 仍按
+  §1/§2 的场景 oracle 认证（998 域），不得以 trap 证书核销场景格，也不得把
+  场景套件输出充 trap 证据——两域 reader/路径/计数互斥。
+- trap 的类型化原因词（overflow|div-by-zero|rem-overflow）以 binding
+  expected 为权威、由声明式注册表 `oracle/trap/trap-oracle.json`
+  （`ace.m1.a2r-trap-oracle/1`）逐格声明；该注册表 hash 是每张 trap 证书的
+  身份轴。场景 oracle 文档（本文件）不新增 trap 语义；资源预算/流帽沿认证
+  器既有冻结（120s/30s/1MiB），场景更严预算不因 trap 域放宽。

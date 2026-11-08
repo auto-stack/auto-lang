@@ -207,3 +207,41 @@ receipt 结构校验为硬错误，文件漂移=诚实重认证，无 --force �
 - **缺口账 16→10、零 gap 守卫不变**：余 10 = H-06 trap/宽度 4 + H-07 场景 6
   （997/998 域）；`can_claim_m1` 仍要求 cert-gap=0 且 future=45 在账，M1 不签。
   坏金样/坏证书/漏检查/错 expected 反控与"无半证书、--force 不覆写"行为保持。
+
+## 四例 trap 域独立认证（PLAN-997，2026-11-08）
+
+- **独立域（与 `ace.m1.cert/1` 零共享 reader/路径/谓词）**：H-06 四格
+  （B13/B14/B15/B20）以显式版本化源整数 profile
+  `legacy-a2r.checked-i32/1`（精确 id 准入，未知 id=contract error；project 模式
+  选择即拒）经旧 production RustTrans 现场发射——源整数 `+ - * / %`/neg 在
+  **运算时**做 i32 域检查（i64 载体不变，绝无末尾 `as i32` 补救），违例=stderr
+  单行 `auto.trap:<kind>:<op>`（kind=overflow|div-by-zero|rem-overflow，即 binding
+  expected 词；op=add|sub|mul|div|rem|neg 稳定原操作身份）+受控 `exit(70)`，
+  stdout 干净——非 panic/非 abort/非父 kill，rustc 常量折叠（E0080）对自定义
+  fn 调用不生效故常量 `10/0` 也在运行点陷阱。默认（未选 profile）输出与已认证
+  值金样逐字节相同（逐钩子 profile 门控+全语料快照证明）。
+- **schema `ace.m1.a2r-trap/1`**（`oracle/trap-certs/m1_<id>.trap-cert.json`，
+  `.gitignore` 有 `!` 豁免）：全层级 exact-keys；身份六轴
+  source/trap-golden（`oracle/trap/m1_<id>.rs`）/actual==golden/wrapper/
+  trap-reference（`reference/trap/<ID>.rs`，std `checked_*` i32 载体独立实现，
+  与发射零共享代码）/trap-oracle（声明式注册表
+  `oracle/trap/trap-oracle.json`，schema `ace.m1.a2r-trap-oracle/1`，其 kind
+  必须逐格等于 binding expected——绑定仍权威）；`expected_trap{kind,op,line,
+  exit}` 与注册表逐格交叉核验（自洽伪造=reuse 也 REJECTED）；observed 双侧
+  {exit:70, stdout:"", stderr:换行终止 oracle 行}；toolchain/flags/std-only
+  语义同值域。复用 Invalid-vs-Stale 纪律同值域；cert-diff 行须 `--only` 点名
+  才可认证（证据先行），`ok-emit-trap` 行全集认证。
+- **入口 `ace-certify --trap`**（`auto-lang-core/src/test_cases/ace_trap_certify.rs`
+  ，复用 contained 执行器/Job/120s 编译/30s 运行/1MiB 流帽）；值域 certifier
+  谓词 `outcome=value AND ok-emit` 不可误收 trap 行。
+- **日常面 41→45（与 996 并集）**：a2r-only 扩展套件
+  `legacy-a2r-trap-997.{case,suite}.ad`（4 例 checked 金样字节检查，case 选项
+  `int_profile`），固定组 `case-legacy-a2r-trap-997`；snapshot 五套件
+  （base+992+994+996+997）并集守卫 45；`Invoke-TrapReceiptValidation`
+  token 门控（outcome=trap AND ok-emit-trap）严格验证接入 snapshot/receipts
+  （绑 BuildIdentity）与 acceptance（无条件结构+轴验证）——删证书/未知字段/
+  伪造终态/自洽伪造/假 token/漏检查/金样漂移全红（反控 C1-C6+C3b 冻结）。
+- **缺口账 10→6**：四格 binding token `cert-diff`→`ok-emit-trap`（原
+  outcome/expected/注记保义，131/12/313/批准集不变）；余 6=H-07 场景（998 域）
+  ；`can_claim_m1=false` 不变。manifest `trap_assets_*` 三组（oracle/trap、
+  oracle/trap-certs、reference/trap）递归精确枚举，值域计数不混。
