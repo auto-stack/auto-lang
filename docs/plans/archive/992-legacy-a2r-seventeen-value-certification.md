@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-992
-status: reviewed
+status: archived
 feature_name: 旧A2R 17格值例金样审阅与独立认证
 author: [Codex]
 created_at: 2026-11-07
@@ -11,7 +11,7 @@ new_spec_components: []
 touched_goals: [GOAL-002]
 affects: [legacy-a2r, auto-test-case]
 depends_on: [PLAN-991]
-current_step: 6
+current_step: 8
 total_steps: 8
 ---
 
@@ -206,8 +206,8 @@ T-01冻结可用CLI/固定组/工具及完整原Case集合，未来显式例：�
 | T-04 | work | T-03 | 17值例原域显式认证+旧10strict复用，坏件/漂移/漏check/零spawn与半证书反控闭合，验38→21/10→27/26→31；V-01..V-04按对应入口，AC-01..04 | [x] 2026-11-08：`ace-certify --only <17>`17 certified exit 0；全量复跑27 reused/0 failed exit 0（旧10 strict复用不重认证）；manifest certs 10→27；snapshot scope（绝对RepoRoot）：31 a2r检查全绿（26 base+5扩展）、27证书strict有效、base 97+扩展5全绿、认证面spawn=0；receipts scope（-BuildIdentity直缝）27有效；acceptance：cert-gap 38→**21**、can_claim_m1=false、313/45/32不变；contract PASS。反控全红：C1金样漂移1B→FAIL且证书hash不变；C2坏cert未知字段→REJECTED（--force也不覆盖）；C3登记expected改→证书REJECTED desync、C3b删cert后fresh认证→run mismatch FAIL且无半证书；C4扩展套件删检查→snapshot红`29<31`。G02观测器修复：冷构建churn下rustc经`sccache.exe`/rustc-under-rustc/`--print`身份探针被误判认证面——分类改为工具链祖先链识别（cargo/sccache/rustc祖先=维护、纯`--print`无编译轴=身份探针、直连rustc/m1_*仍违规），regex单元判定+churn实跑+终跑0违规验证 |
 | T-05 | work | T-04 | 完整职责/原旧域相邻回归、Spec候选与逐格941只读交接，剩余21清单与不签M1明确；V-01..V-04按对应入口，AC-01..04 | [x] 2026-11-08：职责组并集全绿——`cargo t case-legacy-a2r-cert-992`/`case-ace-m1-base`/`infra-ace-m1`（终版脚本复跑）/`auto-test-case`/`ace-adapters`全PASS；SD-01/02候选维持§5表（review验证、merge沉淀）；941只读交接表（§7.3：格位/源/金样/证书SHA16×17）；剩余21清单冻结（§7.3：H-03 T01-T04/H-04 L01-L05,L07/H-05 K06/H-06 B13,B14,B15,B20/H-07 scn R01-R06），M1不签（can_claim_m1=false）；worktree提交`ec92e5ff4` |
 | T-06 | review | T-01..05完成；冻结后停实现写入 | V-05独立逐AC/SD/全部原例反控/reader/健康审查，绑定r1/冻结commit；AC-05 | [x] 2026-11-08：独立subagent上下文终审**pass**（AC-01..05全pass；7例独立G04重审含B11闭包形/R01克隆/T05 NUL；27证书strict+轴hash重算对盘；gap 21格清单逐格核对；17行binding/manifest 83+29+27全hash对盘；自带金样漂移反控red；G02豁免判据regex五例评估不可掩盖认证面；发现仅3条info级，见§9） |
-| T-07 | merge | T-06 pass与后续合入指令 | 冻结明确职责并集/有效证据复用与触码漂移核验，SD实际沉淀读回/来源交付/归档，逐格证据交接但不写941；AC-06 | [ ] |
-| T-08 | merge | T-07来源与归档核实 | 全部命令输出根对账、证据摘要折本Plan后scope整删（具名持有另记），wt-guard clean后移除唯一树/分支/空组，登记刷新；AC-06 | [ ] |
+| T-07 | merge | T-06 pass与后续合入指令 | 冻结明确职责并集/有效证据复用与触码漂移核验，SD实际沉淀读回/来源交付/归档，逐格证据交接但不写941；AC-06 | [x] 2026-11-08：SD-01/02以docs-only后代`4679ab46e`沉淀（实现/依赖未变，按merge规则成为delivery commit）；rebase到master后range-diff逐位等价（ec92e5ff4→6fb27ae0b、4679ab46e→64f93cb99），master `--ff-only`合入tip=`64f93cb99`线性；规范读回：`a2r-golden-certification.md`=`bbccbf34…`、`ace-m1-gap-audit.md`=`f22f90b1…`，master receipts scope 27证书strict PASS冒烟；冻结职责并集复用（5组在ec92e5ff4全PASS，docs commit零触面inputs不变，显式复用理由）；941未写（交接材料在本Plan §7.3） |
+| T-08 | merge | T-07来源与归档核实 | 全部命令输出根对账、证据摘要折本Plan后scope整删（具名持有另记），wt-guard clean后移除唯一树/分支/空组，登记刷新；AC-06 | [x] 2026-11-08：输出根对账——本计划命令仅写`D:/autostack/plan-artifacts/plan-992/`（t01-freeze/t04-certify/t04-controls/review/REGISTER.md）与专属树target；scope整删（无具名持有），`.retention/policy.json`两处登记刷新；wt-guard clean→树/分支`plan-992-dev`/空组目录移除；归档`docs/plans/archive/`，T 8/8 |
 
 ## 9. 复审记录
 
@@ -227,3 +227,7 @@ stage: goal | plan_id: PLAN-992 | plan_revision: r1 | round: 1 | from: work | to
 2. G04逐例审阅在任务内完成，非自动接受actual；语义无法证明/出现超出本包的producer问题，保具名阻塞并修订，不能换expected。原cert schema/std-only与资源帽不放宽。
 3. H-04/H-06/H-07仍需原用户裁定/正式后继；本轮不预填NA/accepted、不改零gap守卫，三包全闭仍余16格。
 4. 本轮只有规划授权，未来work/review/merge按后续指令；不为等价内部实现重复审批，不将其扩为新语言/新认证平台或修改939/941的授权。
+
+2026-11-08 stage: merge | PLAN-992:r1 | checkpoints: prepared→landed→canonical_verified→archived→cleaned | delivery_commit: 64f93cb99（`--ff-only`线性：36b5fbd4a→8011c85fc[簿记]→6fb27ae0b→64f93cb99；range-diff与reviewed ec92e5ff4/4679ab46e逐位等价——安全重写证明） | canonical: SD-01 `docs/specs/auto-test-case/a2r-golden-certification.md` sha256 `bbccbf34dbb3779641edb0f8d11c865f061a5c911fff188a5a6f7583f8e094db`、SD-02 `docs/specs/auto-test-case/ace-m1-gap-audit.md` sha256 `f22f90b1d7853baa43e45e6a666242964af7bfa35a57fa64dc42dbef9f51e1c7`（master读回+receipts 27证书strict冒烟PASS） | 冻结职责并集复用: 5组（case-legacy-a2r-cert-992/case-ace-m1-base/infra-ace-m1/auto-test-case/ace-adapters）在ec92e5ff4全PASS，delivery为docs-only后代零触面inputs不变 | archive: `docs/plans/archive/992-legacy-a2r-seventeen-value-certification.md` status archived T 8/8 | cleaned: wt-guard clean → worktree/`plan-992-dev`/空组目录`D:/autostack/.wt/lang-992`移除（worktree list/branch均0）；scope `D:/autostack/plan-artifacts/plan-992/`（9109文件/46MB）整删、无具名持有，`.retention/policy.json`（仓根+plan-artifacts两处）刷新 | landing_is_not_deployment: 本包交付=测试语料/治理脚本/规范文档，无后端二进制/daemon/web bundle消费者；auto-case/ace-certify为按需重建dev-harness（Find-Prebuilt），无重启项 | batch_regression_due: 否（last_covered=995@2026-11-08T03:22+08:00≈4.9h前<48h；992%5≠0） | outcome: **pass**（delivered+archived+cleaned） | next: done
+
+stage: goal | plan_id: PLAN-992 | plan_revision: r1 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: removed (D:/autostack/.wt/lang-992 absent) | commit: 64f93cb99 (delivery) ← 6fb27ae0b ← 8011c85fc | next: done | final: 17格原域认证关闭（cert 10→27、snapshot 26→31、cert-gap 38→21）；余21格清单冻结于规范与§7.3；can_claim_m1=false；规范SD-01/02已沉淀读回；scope/树/分支已清；D-992-1候选在册 | pending merge-owned gates: 无
