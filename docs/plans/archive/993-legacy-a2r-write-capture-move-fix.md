@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-993
-status: reviewed
+status: archived
 feature_name: 旧A2R K06写捕获闭包move发射修复与认证
 author: [Codex]
 created_at: 2026-11-07
@@ -11,7 +11,7 @@ new_spec_components: []
 touched_goals: [GOAL-002]
 affects: [legacy-a2r, auto-test-case]
 depends_on: [PLAN-991, PLAN-992]
-current_step: 6
+current_step: 8
 total_steps: 8
 ---
 
@@ -160,8 +160,8 @@ T-01冻结可用CLI/固定组/工具及完整原Case集合，未来显式例：�
 | T-04 | work | T-03 | 原域K06显式认证、旧27strict复用、原日常31检查零spawn与receipt/变异反控，确认21→20；V-01..V-04按对应入口，AC-01..04 | [x] 2026-11-08：`ace-certify --only K06` certified（actual==golden，wrapper与独立reference双侧`i32:42`exit0）；全量复跑28 reused/0 failed（旧27 strict复用不重认证）；cert `m1_k06.cert.json`（f803b152…）入库+manifest certs 27→28；snapshot scope PASS（31 a2r检查全绿、28证书strict、认证面spawn=0）；receipts seam PASS（原生多行BuildIdentity）；acceptance Integrity PASS：green 292→293、green-cert-gap 21→**20**、131/524/313/45/32守恒、can_claim_m1=false。反控全红：金样1B漂移（cert hash不变）、cert未知字段（--force仍拒）、旧双move金样、registry 42→43 desync、错expected+无cert→oracle mismatch且无半证书 |
 | T-05 | work | T-04 | 完整a2r职责与相邻旧Case/治理通过，SD候选/具名余账/逐格941只读交接，冻结实现交review；V-01..V-04按对应入口，AC-01..04 | [x] 2026-11-08：冻结并集`cargo t a2r case-ace-m1-base case-ace-m1-a2r-emit-917 case-ace-m1-a2r-semantics-916 case-ace-m1-shared-mutable-909 infra-ace-m1 auto-test-case ace-adapters`：7/8绿；case-ace-m1-a2r-emit-917三红（t08.single/t08.project/nb_slice_ok，a2r_std头前导漂移）经base emitter（eef2f3f21的expr_emit.rs）同参复跑**同三红**——先存master红，非本包引入（814时代搬迁后的a2r_std发射条件变化vs917冻结金样，owner=917域，review落KNOWN-DEBT）；health：expr_emit零新警告、fmt净；具名余账：①嵌套写捕获无Rc降级（P-F：22≠42，先存，owner=逃逸分析）②917三红（先存）；941只读交接见§9 work收据（K06格位全hash链）；commit `aea776c63` |
 | T-06 | review | T-01..05完成；冻结后停实现写入 | V-05独立逐AC/SD/全部原例反控/reader/健康审查，绑定r1/冻结commit；AC-05 | [x] 2026-11-08：同树独立复核（实现同会话——限制已声明，裁决从committed工件重建）：diff全量审读（14文件恰两机制+登记，source/reference零改动）；审阅者自有反例重放（K06 fresh emit==金样PASS、committed expected实跑42/42/67、certify 28 reused×2、snapshot/acceptance终态复跑绿、金样1B漂移反控复验红）。**发现F-993-R1-01/P1（已修）**：`write_capture_names()`源HashSet，≥2写捕获时克隆行序随机（007 a,b/b,a跨进程抖动）——修复=发射前lexical排序（commit `982f3f795`，单捕获字节不变：K06 fidelity PASS、28 reused、lifecycle 8/8稳、全a2r组绿）；先存余账F-993-R1-02/03（info）落KNOWN-DEBT D-993-1/D-993-2；F-993-R1-04（info）过程注记：归因探针后stale binary致审阅者首跑假红，touch+rebuild后消——终局证据均出自fresh binary |
-| T-07 | merge | T-06 pass与后续合入指令 | 冻结明确职责并集/有效证据复用与触码漂移核验，SD实际沉淀读回/来源交付/归档，逐格证据交接但不写941；AC-06 | [ ] |
-| T-08 | merge | T-07来源与归档核实 | 全部命令输出根对账、证据摘要折本Plan后scope整删（具名持有另记），wt-guard clean后移除唯一树/分支/空组，登记刷新；AC-06 | [ ] |
+| T-07 | merge | T-06 pass与后续合入指令 | 冻结明确职责并集/有效证据复用与触码漂移核验，SD实际沉淀读回/来源交付/归档，逐格证据交接但不写941；AC-06 | [x] 2026-11-08：SD-01..03沉淀（worktree `acf4057ad`）——a2r-golden-certification 认证集27→28+§K06写捕获闭包认证、gap-audit PLAN-993更新+F-A2R-3余20/certs 28、architecture ADR-10（恰一次move/`__a2r_wc`无重叠提升/字典序克隆+D-993-1边界）；rebase master无冲突，range-diff四提交全`=`等价，ff-only落地 master=`79e990f82`（无merge commit）；canonical核验：三Spec+金样`e28247fa…`+cert`f803b152…`落地hash逐位一致；主检出smoke 7/7绿。冻结并集于交付commit：a2r/base/916/infra-ace-m1/auto-test-case/ace-adapters PASS+909 PASS（清`av798-session-av_closures_909_s02`后——该套件"跨调用重启契约"由parent持有清理，重复gate运行预热store致fresh腿红，非代码回归，按环境状态归因记录）；917三红=先存D-993-2不变。批量回归不due（.last-batch-regression covered 995@今日03:22，<48h，无%5新落）。941交接只读（§9 hash链），未写939/941 |
+| T-08 | merge | T-07来源与归档核实 | 全部命令输出根对账、证据摘要折本Plan后scope整删（具名持有另记），wt-guard clean后移除唯一树/分支/空组，登记刷新；AC-06 | [x] 2026-11-08：输出根对账——所有命令输出均落 `D:/autostack/plan-artifacts/plan-993/`（t01-freeze/t01-out/t02-*/t03-out/t04-*/t05-gate/t06-review*/t07-gate*）与worktree常规target，无其他盘符/外置根（rustc scratch均在显式scope路径）；证据摘要已折入§8行内+§9收据（关键SHA/退出码/反控矩阵全录）；scope整删（无具名持有——D-993-1/D-993-2为KNOWN-DEBT账面登记非文件持有）；wt-guard clean→唯一树/分支/空组目录移除；`.retention/policy.json` 刷新（plan-993 scope 删除记录） |
 
 ## 9. 复审记录
 
@@ -178,6 +178,10 @@ stage: goal | plan_id: PLAN-993 | plan_revision: r1 | round: 1 | from: work | to
 stage: review | review_scope: final | reviewer_identity: 同会话独立复核（实现会话内review——非分离上下文；裁决自committed工件与fresh重放重建，非采信执行者摘要） | plan_id: PLAN-993 | plan_revision: r1 | outcome: pass（含一轮bounded repair） | worktree_path: D:/autostack/.wt/lang-993/auto-lang | branch: plan-993-dev | reviewed_commit: 982f3f795（repair后终基线；初基线 aea776c63） | base_commit: eef2f3f21 | dependency_revisions: D991归档37fbf69a…、D992 delivery 64f93cb99（祖先已核） | spec_inputs: §4八输入SHA T-01复核一致；SD目标三文件存在 | acceptance_results: AC-01 pass（source/reference diff零改动；四组合+多写+跨调用 42/42/42/67/42，K06首红→42）；AC-02 pass（golden e28247fa… G04、fresh emit字节同、cert真实双侧编译运行i32:42、28 reused×2独立）；AC-03 pass（31+97+5零spawn、反控M1..M5红且M1审阅者复验、相邻7组绿）；AC-04 pass（131/524/313/45/32守恒、gap 21→20、仅K06行、941交接hash链完整）；AC-05 pass（本记录） | pending_closeout_gates: merge-owned——冻结并集复跑于最终commit（a2r已于982f3f795后绿；917三红为先存D-993-2不阻塞）、SD-01..03沉淀读回、归档清树 | findings: F-993-R1-01/P1已修（捕获序非确定性→排序，982f3f795）；F-993-R1-02/03 info先存→KNOWN-DEBT D-993-1/D-993-2（f5e18bf3f）；F-993-R1-04 info过程注记（stale binary假红已消） | evidence: 计划内§8行内+§9 work收据；scope t01-freeze/t02*/t04-*/t05-gate/t06-review*（merge折计划后整删） | next: merge
 
 stage: goal | plan_id: PLAN-993 | plan_revision: r1 | round: 2 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-993/auto-lang | commit: 982f3f795 | next: merge
+
+stage: merge | plan_id: PLAN-993:r1 | outcome: pass | prepared: reviewed基线982f3f795+SD三件冻结（acf4057ad，docs-only后裔=delivery候选） | landed: master=`79e990f82`（ff-only，无merge commit；rebase后range-diff四提交全`=`等价：2461ac072/30c242a48/5510ad672/79e990f82） | canonical_verified: docs/specs/auto-test-case/a2r-golden-certification.md `885f570f…`、ace-m1-gap-audit.md `31fdb924…`、docs/specs/auto-lang/trans/architecture.md `94d0a210…`、oracle/m1_k06.rs `e28247fa…`、certs/m1_k06.cert.json `f803b152…` 均在master逐位一致 | archived: docs/plans/archive/993-legacy-a2r-write-capture-move-fix.md status=archived T 8/8 本提交 | cleaned: wt-guard clean→worktree/branch(79e990f82)/组目录移除；plan-artifacts/plan-993 整删（无具名持有）；registry无在册条目 | merge门: 冻结并集@delivery commit 全绿（909经parent清store后PASS——环境状态归因；917三红=先存D-993-2）；主检出smoke 7/7；批量回归不due（covered 995@03:22<48h） | pending: 无（landing≠deployment注记：本仓无daemon/web bundle产物；release二进制非本合同面）
+
+stage: goal | plan_id: PLAN-993 | plan_revision: r1 | round: 3 | from: merge | to: done | status: archived | outcome: pass | delivery_commit: 79e990f82 | next: done
 
 ## 10. 待澄清事项
 
