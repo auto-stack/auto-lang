@@ -1,0 +1,14 @@
+// PLAN-993 H-05: MULTIPLE write captures + explicit move + cross-call
+// shared state. Both cells are cloned into the closure once; every call
+// mutates the SAME cells (a per-call clone would give 23+23=46).
+// f(20): a=21, b=2+21=23; f(0): a=21, b=23+21=44; total 67.
+fn main() {
+    var a int = 1
+    var b int = 2
+    var f = move (n int) => {
+        a = a + n
+        b = b + a
+        return b
+    }
+    print(f(20) + f(0))
+}

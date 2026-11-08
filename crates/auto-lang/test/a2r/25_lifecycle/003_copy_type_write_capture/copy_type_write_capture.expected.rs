@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::cell::{RefCell, Cell};
 fn main() {
     let hits = std::rc::Rc::new(std::cell::RefCell::new(0));
-    let bump = { let hits = std::rc::Rc::clone(&hits); move || { *hits.borrow_mut() = *hits.borrow() + 1} };
+    let bump = { let hits = std::rc::Rc::clone(&hits); move || { { let __a2r_wc = *hits.borrow() + 1; *hits.borrow_mut() = __a2r_wc; }} };
     bump();
     println!("{}", *hits.borrow());
 }

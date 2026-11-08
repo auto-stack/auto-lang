@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::cell::{RefCell, Cell};
 fn make_counter() {
     let count = std::rc::Rc::new(std::cell::RefCell::new(0));
-    let inc = { let count = std::rc::Rc::clone(&count); move || { *count.borrow_mut() = *count.borrow() + 1} };
+    let inc = { let count = std::rc::Rc::clone(&count); move || { { let __a2r_wc = *count.borrow() + 1; *count.borrow_mut() = __a2r_wc; }} };
     inc();
     inc();
     *count.borrow();

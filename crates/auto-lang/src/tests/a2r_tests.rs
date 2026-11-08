@@ -1278,6 +1278,27 @@ fn test_25_lifecycle_003_copy_type_write_capture() {
 fn test_25_lifecycle_004_read_capture_stays_plain() {
     test_a2r("25_lifecycle/004_read_capture_stays_plain").unwrap();
 }
+// PLAN-993 H-05 (K06): write-capture × explicit-move emission matrix.
+// 005/006 emit byte-identical closure lines — an explicit `move` adds NO
+// bytes once the write-capture clone block already forces move semantics
+// (`move move |..|` was a rustc syntax error); 007 adds multiple write
+// captures + cross-call shared state (per-call clones would give 46, not
+// 67). The self-referencing cell assignment is hoisted (`__a2r_wc`) — the
+// direct one-statement form panics (BorrowMutError). Run-semantics proof:
+// scope probes (PLAN-993 T-02) and the K06 certification; the daily face
+// pins the bytes and the rustc real-compile gate typechecks them.
+#[test]
+fn test_25_lifecycle_005_write_capture_explicit_move() {
+    test_a2r("25_lifecycle/005_write_capture_explicit_move").unwrap();
+}
+#[test]
+fn test_25_lifecycle_006_write_capture_no_move() {
+    test_a2r("25_lifecycle/006_write_capture_no_move").unwrap();
+}
+#[test]
+fn test_25_lifecycle_007_multi_write_capture_move() {
+    test_a2r("25_lifecycle/007_multi_write_capture_move").unwrap();
+}
 // === 26_plan577 (emitter gap batch: R1 dot-chain str borrow / R4 loop
 // owned-Vec move / Phase 0 five small fixes — DEBTS 016 directed probes) ===
 #[test]

@@ -1,0 +1,15 @@
+// PLAN-993 H-05 control: write capture WITHOUT the explicit `move` keyword.
+// Bytes must stay exactly the historical single-`move` form (clone block +
+// one move); the self-referencing cell assignment `base = base + n` is
+// hoisted (`let __a2r_wc = *base.borrow() + n; *base.borrow_mut() =
+// __a2r_wc;`) — the direct one-statement form panics (BorrowMutError:
+// the RHS Ref outlives the LHS borrow_mut). Shared cell across two calls:
+// 21 + 21 = 42.
+fn main() {
+    var base int = 1
+    var f = (n int) => {
+        base = base + n
+        return base
+    }
+    print(f(20) + f(0))
+}

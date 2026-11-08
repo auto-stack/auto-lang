@@ -1589,6 +1589,36 @@ impl RustTrans {
                             }
                         }
 
+                        // PLAN-993 H-05: a plain assignment whose LHS is a
+                        // write-captured binding (an Rc<RefCell<T>> cell) and
+                        // whose RHS reads the SAME cell — the direct emission
+                        // `*x.borrow_mut() = *x.borrow() + n` PANICS at run
+                        // time (BorrowMutError): the RHS `Ref` temporary lives
+                        // until the `;`, past the LHS borrow_mut call. Same
+                        // discipline as the global-var path above (Plan 347,
+                        // non-reentrant Mutex): bind the RHS in a `let` first
+                        // (a real temporary scope — verified there that bare
+                        // braces are not one), then take the write borrow.
+                        // Plain Asn only; compound ops keep their in-place
+                        // form (no known source combines them with a
+                        // self-referencing write-captured cell).
+                        if matches!(op, Op::Asn) {
+                            if let Expr::Ident(name) = lhs.as_ref() {
+                                if self.is_write_captured(name.as_str())
+                                    && Self::expr_references_ident(rhs, name)
+                                {
+                                    write!(out, "{{ let __a2r_wc = ")?;
+                                    self.expr(rhs, out)?;
+                                    write!(out, "; ")?;
+                                    self.assign_lhs_depth += 1;
+                                    self.expr(lhs, out)?;
+                                    self.assign_lhs_depth -= 1;
+                                    write!(out, " = __a2r_wc; }}")?;
+                                    return Ok(());
+                                }
+                            }
+                        }
+
                         // Plan 577 ② (DEBTS 016 Phase 0): `m[key] = value` on
                         // a Map receiver is an insert (Rust maps have no
                         // index-assign). Key/value str conversions mirror the
@@ -2928,6 +2958,13 @@ impl RustTrans {
                     .into_iter()
                     .filter(|n| Self::expr_references_ident(&closure.body, n))
                     .collect();
+                // PLAN-993 H-05: the write-capture clone block already forces
+                // move semantics (the closure owns its clones), so an explicit
+                // source `move` must not emit a SECOND keyword — `move move
+                // |..|` is a rustc syntax error (K06). Emit exactly one
+                // `move` when either axis needs it; bytes are unchanged for
+                // every already-correct shape (write-capture without explicit
+                // move / explicit move without write-captures / neither).
                 if !captured.is_empty() {
                     write!(out, "{{ ")?;
                     for n in &captured {
@@ -2939,9 +2976,8 @@ impl RustTrans {
                         )?;
                     }
                     write!(out, "move ")?;
-                }
-                // Plan 364 W5 (D4): explicit `move` prefix → `move |..| ..`
-                if closure.is_move {
+                } else if closure.is_move {
+                    // Plan 364 W5 (D4): explicit `move` prefix → `move |..| ..`
                     write!(out, "move ")?;
                 }
                 write!(out, "|")?;

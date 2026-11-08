@@ -1,0 +1,13 @@
+// PLAN-993 H-05: write-captured closure WITH the explicit `move` prefix.
+// The write-capture clone block already forces move semantics (the closure
+// owns its Rc clones); the explicit `move` must not emit a second keyword
+// (`move move |..|` is a rustc syntax error — K06). Two calls observe ONE
+// shared cell: f(20) -> 21, f(0) -> 21, total 42.
+fn main() {
+    var base int = 1
+    var f = move (n int) => {
+        base = base + n
+        return base
+    }
+    print(f(20) + f(0))
+}
