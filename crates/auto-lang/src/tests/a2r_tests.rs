@@ -3207,3 +3207,179 @@ fn pilot_aggregate_a2r() {
     }
     println!("pilot a2r half: {} dynamic check(s) green", rust.len());
 }
+
+// =============================================================================
+// PLAN-994 legacy A2R text-method source semantics (corpus T01..T04).
+// Declared string locals: `.len()` = scalar-char count, `.len_bytes()` =
+// UTF-8 byte length, both self-contained std expressions (no a2r_std dep —
+// the cert std-only axis). Declared char locals: `.to_codepoint()` = scalar
+// value. Two-arg slice/sub on string receivers keeps the 917-frozen guarded
+// char-position block (bounds panic). Params/fields/pattern bindings/call
+// results/inferred locals keep the legacy byte-len remap (approved
+// difference — asserted unchanged below).
+
+fn plan994_transpile(src: &str) -> String {
+    let mut rcode = transpile_rust("plan994", src).unwrap();
+    String::from_utf8_lossy(rcode.done().unwrap()).to_string()
+}
+
+#[test]
+fn plan994_declared_str_len_and_len_bytes_split_char_vs_byte() {
+    // corpus T01: "A中😀" = 3 scalars / 8 UTF-8 bytes -> 3*10+8 = 38.
+    let code = plan994_transpile(
+        "fn main() int {\n    let s str = \"A\u{4e2d}\u{1f600}\"\n    return s.len() * 10 + s.len_bytes()\n}\n",
+    );
+    assert!(
+        code.contains("(s.chars().count() as i64) * 10 + (s.len() as i64)"),
+        "declared str local len must be char count and len_bytes byte count:\n{}",
+        code
+    );
+    assert!(
+        !code.contains("a2r_std"),
+        "self-contained std only:\n{}",
+        code
+    );
+    assert!(
+        !code.contains("len_bytes"),
+        "len_bytes must not pass through:\n{}",
+        code
+    );
+}
+
+#[test]
+fn plan994_declared_str_len_after_clone_move_concat() {
+    // corpus T03: a="ab" (2 chars), c="ab\u{4e2d}" (3 chars) -> 2*10+3 = 23.
+    let code = plan994_transpile(
+        "fn main() int {\n    let a Str = \"ab\"\n    let b Str = a.clone()\n    var c Str = b.move\n    c = c + \"\u{4e2d}\"\n    return a.len() * 10 + c.len()\n}\n",
+    );
+    assert!(
+        code.contains("(a.chars().count() as i64) * 10 + (c.chars().count() as i64)"),
+        "declared Str locals keep char-count len across clone/move/concat:\n{}",
+        code
+    );
+}
+
+#[test]
+fn plan994_two_arg_slice_is_guarded_char_block_std_only() {
+    // corpus T02: slice(1, 3) by char positions -> "\u{4e2d}\u{1f600}" = 2 chars /
+    // 7 bytes -> 27. The 917-frozen guarded block: receiver bound once,
+    // each bound once, a <= b <= char_count asserted (panic on violation).
+    let code = plan994_transpile(
+        "fn main() int {\n    let s str = \"A\u{4e2d}\u{1f600}\"\n    let t str = s.slice(1, 3)\n    return t.len() * 10 + t.len_bytes()\n}\n",
+    );
+    assert!(
+        code.contains("let __a2r_s = &(s); let __a2r_a = (1) as usize; let __a2r_b = (3) as usize"),
+        "guarded char block with each bound evaluated once:\n{}",
+        code
+    );
+    assert!(
+        code.contains(
+            "assert!(__a2r_a <= __a2r_b && __a2r_b <= __a2r_n, \"auto str slice out of range\")"
+        ),
+        "bounds assertion present:\n{}",
+        code
+    );
+    assert!(
+        code.contains("__a2r_s.chars().skip(__a2r_a).take(__a2r_b - __a2r_a).collect::<String>()"),
+        "char-domain take:\n{}",
+        code
+    );
+    assert!(
+        !code.contains("a2r_std"),
+        "no runtime dep on the source path:\n{}",
+        code
+    );
+}
+
+#[test]
+fn plan994_single_arg_slice_keeps_char_skip_form() {
+    let code = plan994_transpile(
+        "fn main() int {\n    let s str = \"A\u{4e2d}\u{1f600}\"\n    let t str = s.slice(1)\n    return t.len() * 10 + t.len_bytes()\n}\n",
+    );
+    assert!(
+        code.contains("s.chars().skip((1) as usize).collect::<String>()"),
+        "single-arg slice keeps the 917 char-skip form:\n{}",
+        code
+    );
+    assert!(!code.contains("a2r_std"), "no runtime dep:\n{}", code);
+}
+
+#[test]
+fn plan994_char_to_codepoint_is_scalar_value() {
+    // corpus T04: '\u{1f600}' -> 128512 (full i32 observation, > 255).
+    let code = plan994_transpile(
+        "fn main() int {\n    let c char = '\u{1f600}'\n    return c.to_codepoint()\n}\n",
+    );
+    assert!(
+        code.contains("return (c as u32 as i64);"),
+        "declared char local to_codepoint lowers to the scalar value:\n{}",
+        code
+    );
+}
+
+#[test]
+fn plan994_non_declared_len_receivers_keep_byte_remap() {
+    // Field read (R04/R05/V05 shape), pattern binding (V02/V06 shape), call
+    // result (T06 shape) and List length keep the legacy `.len()` remap.
+    let code = plan994_transpile(
+        "type Item { name Str; code int }\nfn bad() Str { return \"x\" }\nfn main() int {\n    let b Item = Item(\"hello\", 1)\n    let xs List<int> = [1, 2, 3]\n    return b.name.len() + xs.len() + bad().len()\n}\n",
+    );
+    assert!(
+        code.contains("(b.name.len() as i64)"),
+        "field receiver keeps byte-len remap:\n{}",
+        code
+    );
+    assert!(
+        code.contains("(xs.len() as i64)"),
+        "List receiver keeps count len remap:\n{}",
+        code
+    );
+    assert!(
+        code.contains("bad().len()"),
+        "call-result receiver unchanged:\n{}",
+        code
+    );
+    let n_chars = code.matches("chars().count()").count();
+    assert_eq!(
+        n_chars, 0,
+        "no receiver here is a declared string local:\n{}",
+        code
+    );
+}
+
+#[test]
+fn plan994_str_param_len_keeps_byte_remap() {
+    // Params are outside the declared-local set (approved difference): the
+    // `&str` param keeps Rust's byte len; `len_bytes` on a param is NOT
+    // rewritten (no declared-local proof) — boundary is deliberate.
+    let code = plan994_transpile(
+        "fn f(s str) int {\n    return s.len()\n}\nfn main() int {\n    return f(\"A\u{4e2d}\")\n}\n",
+    );
+    assert!(
+        code.contains("(s.len() as i64)"),
+        "str param keeps the legacy byte-len remap:\n{}",
+        code
+    );
+}
+
+#[test]
+fn plan994_empty_nul_emoji_values_split_char_and_byte_domains() {
+    // Same emission shape, distinguishing values: "" 0/0; "A\0B" 3/3;
+    // "\u{1f600}" 1/4. The NUL neighbor uses the Auto-level `\0` escape (raw
+    // NUL bytes in source are a lexer-domain question outside this face).
+    // Compiled+run evidence lives in the corpus certs; this pins the emitted
+    // arithmetic shape for all three neighbors.
+    for (lit, _expected) in [("", 0i64), ("A\\0B", 33), ("\u{1f600}", 14)] {
+        let src = format!(
+            "fn main() int {{\n    let s str = \"{}\"\n    return s.len() * 10 + s.len_bytes()\n}}\n",
+            lit
+        );
+        let code = plan994_transpile(&src);
+        assert!(
+            code.contains(".chars().count() as i64) * 10 + (s.len() as i64)"),
+            "value neighbor {} keeps the split domains:\n{}",
+            lit.escape_debug(),
+            code
+        );
+    }
+}

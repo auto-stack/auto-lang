@@ -1,0 +1,44 @@
+{
+  "schema": "ace.m1.cert/1",
+  "case": "T03",
+  "module": "m1_t03",
+  "wrapper_file": "oracle/wrapper-main-v1.rs",
+  "expected_oracle": "i32:23\n",
+  "identity": {
+    "source_sha256": "f895f9d1577bbea6850156b2f3364399f1e6d7b2257dad491bcb8f2d4e02c542",
+    "golden_sha256": "2edff30cd95a9b65fa8df94127c8a5ae34a01f06c68b0828b661b5808711a38a",
+    "actual_sha256": "2edff30cd95a9b65fa8df94127c8a5ae34a01f06c68b0828b661b5808711a38a",
+    "wrapper_sha256": "774b7c57b752c0bbd4ce94a05b2d8580669135367cded6cc3dfbba99c8539ba0",
+    "oracle_sha256": "40e3aed760e135eba52dcbd39c71199aece2947983cc0f0215c0b72b3d4fc110",
+    "reference_sha256": "19e145cbd98f90ea5004a1e3ea09690e864670c35434cad0c73e648190b47a1f"
+  },
+  "toolchain": {
+    "identity": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.0\nLLVM version: 22.1.8",
+    "identity_source": "PATH",
+    "default_identity_at_certify": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.0\nLLVM version: 22.1.8",
+    "flags": [
+      "--edition=2021",
+      "-O"
+    ]
+  },
+  "deps": {
+    "external": [],
+    "closure": "std-only"
+  },
+  "observed": {
+    "actual_run": {
+      "exit": 0,
+      "stdout": "i32:23\n"
+    },
+    "reference_run": {
+      "exit": 0,
+      "stdout": "i32:23\n"
+    }
+  },
+  "verdict": "certified",
+  "produced_by": {
+    "tool": "ace-certify",
+    "schema_note": "transpiler identity is audit-only, not a staleness axis"
+  },
+  "created_at": 1794108496
+}

@@ -50,6 +50,10 @@ impl RustTrans {
         // Plan 016 (auto-down R1): loop-var tracking sets are function-scoped
         // as well; see transpile_body_stmts.
         self.borrowed_iter_vars.clear();
+        // PLAN-994: declared string/char locals are function-scoped (params and
+        // pattern bindings never enter these sets).
+        self.str_typed_stores.clear();
+        self.char_typed_stores.clear();
         self.by_value_iter_bindings.clear();
         for param in &fn_decl.params {
             self.local_var_types

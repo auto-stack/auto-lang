@@ -5,7 +5,7 @@
     "binding": {
         "path": "binding.tsv",
         "sha256_pre_908": "d9f05da057dfd658df09a7725aa391bc4c9e14993e13e9846724160915ff5d7a",
-        "sha256": "2ccf370d6a460d74eb33473a81a4987274ed1a6f82c5d4f39f76d00621969be5"
+        "sha256": "35ecebeb3ff55db3c96c7d1ac50ee81032f5f2e4d195ad0775775f56015c8a44"
     },
     "corpus_src": {
         "dir": "src",
@@ -193,7 +193,7 @@
         "dir": "oracle",
         "wrapper": "wrapper-main-v1.rs",
         "wrapper_sha256": "774b7c57b752c0bbd4ce94a05b2d8580669135367cded6cc3dfbba99c8539ba0",
-        "expected_count": 29,
+        "expected_count": 33,
         "files": {
             "m1_b01.rs": "f1e2f9be676156708f0bc16a5d6a24e0ef1c65a742ae4f5c073ef0d0fa99709e",
             "m1_b02.rs": "048176f0dd05d54cb8b07098aa87c0263dba2812e51537890a6827d78cffc761",
@@ -223,12 +223,16 @@
             "m1_b11.rs": "9503344ae9737a70ed2ba9460619a7a5ad74666099f1bf6e26ce58cf26223425",
             "m1_r01.rs": "b535213ebf143c4a2a873f9c954c00c6b08c795f465598ded4c2dd9282f38025",
             "m1_r03.rs": "1586b56106fe37d3aa1a54aeea0abf455db6944a7f3eba28d64fac0e1e730414",
-            "m1_r04.rs": "5ace7a57920a2853ab771819c9041310a21610c903b75abe8b86359aad2b8457"
+            "m1_r04.rs": "5ace7a57920a2853ab771819c9041310a21610c903b75abe8b86359aad2b8457",
+            "m1_t01.rs": "cd580bd003bea128d6be25a9251b768654c30810247b67d6d9d55609ec29e3cc",
+            "m1_t02.rs": "a1494c1b3e83af19e813d98da2fb7ade56edd78159205f21712490532199545b",
+            "m1_t03.rs": "2edff30cd95a9b65fa8df94127c8a5ae34a01f06c68b0828b661b5808711a38a",
+            "m1_t04.rs": "f5f5c31c01ecf134a9c856c139529d25afefdc10c96416ec87d37a4e921f9614"
         }
     },
     "oracle_certs": {
         "dir": "oracle/certs",
-        "expected_count": 28,
+        "expected_count": 32,
         "files": {
             "m1_b01.cert.json": "c4f77934af20206d4d1e6f1ac9dcdf4742456d1cef6a3d27e6ce8df51bfebbb7",
             "m1_b02.cert.json": "43b53632c216cf7c01e52e3020a21b540012efae22080e17e135b4ea82aca47f",
@@ -257,7 +261,11 @@
             "m1_v05.cert.json": "cabc5ac63740d2304744980f31f6e6e3e1346d6d4564e553bb03589b2e86761f",
             "m1_v06.cert.json": "f7880bac1c9c964c184848adcfb7f9caca76d1ebb7c1dcf59eef44357ac9c701",
             "m1_v07.cert.json": "e8887e36a3dbff47b3105567b6d1541e61b741d98b26fa8fde6ddeebfb82db7a",
-            "m1_k06.cert.json": "f803b1528a2019afc5beb7c3200be1f3e1ea0fe70cc4ae2eba87527fec37c958"
+            "m1_k06.cert.json": "f803b1528a2019afc5beb7c3200be1f3e1ea0fe70cc4ae2eba87527fec37c958",
+            "m1_t01.cert.json": "bf805815c5f52aa034ef73428813110365affff3d7f5831f856388a8305b490e",
+            "m1_t02.cert.json": "e6c345b50c45c1c436cd75a7dfa959a23a67c05634a0a308ed6691e14817ded9",
+            "m1_t03.cert.json": "d98f313820fc6ff07e82975555e3dd16eb1245edbbda5ad4060e4072d8ab39ce",
+            "m1_t04.cert.json": "f2416fcfa8f7f3545947bc5ef723c00a69ec76c5fcb20ae7591ddfd70c4026b9"
         }
     },
     "reference": {
@@ -310,7 +318,7 @@
         }
     },
     "suites_cases": {
-        "expected_count": 83,
+        "expected_count": 85,
         "files": {
             "ace-m1-base.suite.ad": "7fd00b8d1c79d45be1f4d5ad90083780a8acb67798c6c36b9d29b8f53d26ae63",
             "ace-m1-tr-native.suite.ad": "4e2b320d1b44f6c317ff1c69e29706efb4fc1332b04864f955f85aa5208d7fb3",
@@ -394,7 +402,9 @@
             "immutable-avm-920/NB18S.at": "3c0841d9b5d59007a1c09b7dd2d2bfab0d6b5d514cabbd6470dbdbe1f078d61a",
             "immutable-avm-920/TOP.at": "8d26487ebc42749556d2bee81e61fa93f94a5781c6e4c2536c8583147b50e472",
             "legacy-a2r-cert-992.case.ad": "c62673f31390044d92f2831a7994700d61d31686562cd22ca9f4797654e09631",
-            "legacy-a2r-cert-992.suite.ad": "92fd0fb0fbf3ceaf897eddb9910da9c7504c6c364bad27685c7c622ab2f78b30"
+            "legacy-a2r-cert-992.suite.ad": "92fd0fb0fbf3ceaf897eddb9910da9c7504c6c364bad27685c7c622ab2f78b30",
+            "legacy-a2r-text-994.case.ad": "6b2853fcd946186aff4e59382ccfc356b796c7a72513e23c72caf6ebd6a2b6e8",
+            "legacy-a2r-text-994.suite.ad": "1ac3620958cc8df6e3ceeb93df8e7fcdc98328afa18b199f36102f775b49e8d8"
         }
     },
     "scenario_oracles": {

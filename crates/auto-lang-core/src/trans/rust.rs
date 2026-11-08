@@ -197,6 +197,19 @@ pub struct RustTrans {
     /// emit `.clone()` because `x` is `&T`. Cleared per function (function-scope
     /// set; nested loops just add to it).
     borrowed_iter_vars: std::collections::HashSet<AutoStr>,
+    /// PLAN-994: names of `let`/`var` locals with an EXPLICITLY DECLARED string
+    /// type (str / Str / str(N)). Only these carry the Auto source semantics
+    /// `.len()` = scalar-char count and `.len_bytes()` = UTF-8 byte count as
+    /// self-contained std expressions (corpus T01/T02/T03). Params, record
+    /// fields, pattern bindings and inferred locals keep the legacy byte-len
+    /// remap (approved difference; not unified here). Maintained at store()
+    /// registration time alongside local_var_types — redeclaration with a
+    /// non-string type removes the name (shadowing stays correct).
+    str_typed_stores: std::collections::HashSet<AutoStr>,
+    /// PLAN-994: names of `let`/`var` locals explicitly declared `char`;
+    /// `.to_codepoint()` lowers to `(name as u32 as i64)` (scalar value,
+    /// corpus T04). Same registration lifecycle as str_typed_stores.
+    char_typed_stores: std::collections::HashSet<AutoStr>,
     /// Plan 032 G2-core: `Some(x)` is-arm bindings whose scrutinee is a
     /// `.get(...)` call (Map/Vec/Value lookups — Rust returns `Option<&V>`).
     /// The binding is `&V` in the emitted Rust: returning it / binding it to
@@ -518,6 +531,8 @@ impl RustTrans {
             struct_fields: HashMap::new(),
             struct_field_types: HashMap::new(),
             borrowed_iter_vars: std::collections::HashSet::new(),
+            str_typed_stores: std::collections::HashSet::new(),
+            char_typed_stores: std::collections::HashSet::new(),
             get_ref_bindings: std::collections::HashSet::new(),
             by_value_iter_bindings: std::collections::HashSet::new(),
             str_slice_pattern_bindings: std::collections::HashSet::new(),
@@ -632,6 +647,8 @@ impl RustTrans {
             struct_fields: HashMap::new(),
             struct_field_types: HashMap::new(),
             borrowed_iter_vars: std::collections::HashSet::new(),
+            str_typed_stores: std::collections::HashSet::new(),
+            char_typed_stores: std::collections::HashSet::new(),
             get_ref_bindings: std::collections::HashSet::new(),
             by_value_iter_bindings: std::collections::HashSet::new(),
             str_slice_pattern_bindings: std::collections::HashSet::new(),

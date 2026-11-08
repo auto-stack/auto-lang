@@ -3,6 +3,6 @@
 use unicode_segmentation::UnicodeSegmentation;
 fn main() {
     let text: String = "hello world".to_string();
-    let count = (text.len() as i64);
+    let count = (text.chars().count() as i64);
     assert!(count == 11);
 }

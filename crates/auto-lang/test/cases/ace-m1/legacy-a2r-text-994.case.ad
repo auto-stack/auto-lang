@@ -1,0 +1,76 @@
+# PLAN-994 legacy A2R text certification extension — the four H-03 text
+# value sources (T01/T02/T03/T04) whose lowering was repaired: declared
+# string-local len = char count, len_bytes = UTF-8 bytes, two-arg slice =
+# the 917-frozen guarded char block, char to_codepoint = scalar value.
+# a2r-ONLY by design: these rows' legacy-engine faces are engine-difference
+# cells owned elsewhere; this suite adds exactly the daily a2r emit+
+# byte-compare face that certification requires. The original 12 composite
+# snapshot checks stay in legacy-composite.case.ad and the five PLAN-992
+# certification checks stay in legacy-a2r-cert-992.case.ad (single
+# obligation each, no duplication).
+# Goldens frozen only after explicit per-source G04 semantic review; the
+# explicit certification itself is the ace-certify tool (never this suite).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rt.t01"
+  tags: ["ace-m1", "a2r-cert-994"]
+  links: ["PLAN-994"]
+  source: { file: "src/T01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_t01" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_t01.rs", file: "oracle/m1_t01.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rt.t02"
+  tags: ["ace-m1", "a2r-cert-994"]
+  links: ["PLAN-994"]
+  source: { file: "src/T02.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_t02" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_t02.rs", file: "oracle/m1_t02.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rt.t03"
+  tags: ["ace-m1", "a2r-cert-994"]
+  links: ["PLAN-994"]
+  source: { file: "src/T03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_t03" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_t03.rs", file: "oracle/m1_t03.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.a2rt.t04"
+  tags: ["ace-m1", "a2r-cert-994"]
+  links: ["PLAN-994"]
+  source: { file: "src/T04.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_t04" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_t04.rs", file: "oracle/m1_t04.rs", compare: "bytes" } ] } }
+  ]
+}
+```

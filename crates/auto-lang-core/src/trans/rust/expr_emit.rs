@@ -536,29 +536,45 @@ impl RustTrans {
     /// `a <= b <= char_count` (panic on violation — the Auto trap
     /// certification for this channel is a separate gap, per plan §5.2),
     /// then take the char range.
-    pub(super) fn emit_str_slice_bytes(
+    /// PLAN-994: restored to this 917-frozen self-contained std form. The
+    /// PLAN-956 interim routed both arities through the a2r_std::str::str_slice
+    /// byte-domain runtime helper (silent empty-string on out-of-range, plus
+    /// the a2r_std dep that the cert std-only axis forbids) WITHOUT re-freezing
+    /// the 917 daily goldens — the source slice contract (char positions,
+    /// bounds panic, receiver/bounds evaluated once) is unchanged; the public
+    /// a2r_std::str_slice byte API stays byte-domain for its explicit callers.
+    pub(super) fn emit_str_slice_chars(
         &mut self,
         recv: &Expr,
         args: &[Arg],
         out: &mut impl Write,
     ) -> AutoResult<()> {
-        self.a2r_std_used.set(true);
-        // Bind the receiver once. Arguments retain their source evaluation order.
-        write!(out, "{{ let __a2r_s = &(")?;
+        if args.len() >= 2 {
+            if let (Some(Arg::Pos(a)), Some(Arg::Pos(b))) = (args.first(), args.get(1)) {
+                write!(out, "{{ let __a2r_s = &(")?;
+                self.expr(recv, out)?;
+                write!(out, "); let __a2r_a = (")?;
+                self.expr(a, out)?;
+                write!(out, ") as usize; let __a2r_b = (")?;
+                self.expr(b, out)?;
+                write!(
+                    out,
+                    ") as usize; let __a2r_n = __a2r_s.chars().count(); \
+                     assert!(__a2r_a <= __a2r_b && __a2r_b <= __a2r_n, \
+                             \"auto str slice out of range\"); \
+                     __a2r_s.chars().skip(__a2r_a).take(__a2r_b - __a2r_a).collect::<String>() }}"
+                )?;
+                return Ok(());
+            }
+        }
         self.expr(recv, out)?;
-        write!(out, "); a2r_std::str::str_slice(__a2r_s, ")?;
-        if let Some(Arg::Pos(start)) = args.first() {
-            self.expr(start, out)?;
-        } else {
-            write!(out, "0")?;
+        write!(out, ".chars()")?;
+        if let Some(Arg::Pos(a)) = args.first() {
+            write!(out, ".skip((")?;
+            self.expr(a, out)?;
+            write!(out, ") as usize)")?;
         }
-        write!(out, ", ")?;
-        if let Some(Arg::Pos(end)) = args.get(1) {
-            self.expr(end, out)?;
-        } else {
-            write!(out, "__a2r_s.len()")?;
-        }
-        write!(out, ") }}")?;
+        write!(out, ".collect::<String>()")?;
         Ok(())
     }
     /// PLAN-018: List 元素非 Copy(str 系)时索引改写后置 .clone()

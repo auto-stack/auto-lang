@@ -1683,6 +1683,27 @@ impl RustTrans {
             self.local_var_types
                 .insert(store.name.clone(), effective_ty.clone());
         }
+        // PLAN-994: register DECLARED string/char locals for the source-semantics
+        // text method faces (len = char count, len_bytes = UTF-8 bytes,
+        // to_codepoint = scalar value). Keyed on the declared `store.ty` (not
+        // the inferred effective type): only explicitly typed `let`/`var`
+        // stores qualify. Redeclaration with a non-string/char type removes
+        // the name so shadowing cannot leave a stale entry behind.
+        if matches!(store.kind, StoreKind::Let | StoreKind::Var) {
+            if matches!(
+                store.ty,
+                Type::StrSlice | Type::StrOwned | Type::StrFixed(_)
+            ) {
+                self.str_typed_stores.insert(store.name.clone());
+            } else {
+                self.str_typed_stores.remove(store.name.as_str());
+            }
+            if matches!(store.ty, Type::Char) {
+                self.char_typed_stores.insert(store.name.clone());
+            } else {
+                self.char_typed_stores.remove(store.name.as_str());
+            }
+        }
         // PLAN-724 T-06: HTTP 客户端变量分型登记——流生产者绑定（async/
         // sync 面按当前上下文定型，决定 .next()/.is_done()/.close()/for-in
         // 的发射形态）；http.request(...) 绑定（.send 分派）。

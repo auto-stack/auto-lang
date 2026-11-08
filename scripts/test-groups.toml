@@ -709,6 +709,18 @@ suite = "crates/auto-lang/test/cases/ace-m1/legacy-a2r-cert-992.suite.ad"
 all = false
 
 [[group]]
+name = "case-legacy-a2r-text-994"
+title = "TestCase case-legacy-a2r-text-994（PLAN-994 H-03 四例文本lowering修复a2r-only金样快照）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/legacy-a2r-text-994.suite.ad"
+all = false
+
+[[group]]
 name = "case-ace-m1-nb-diags-908"
 title = "TestCase case-ace-m1-nb-diags-908（PLAN-908 B17-19合法近邻2/2/0）"
 runner = "case"

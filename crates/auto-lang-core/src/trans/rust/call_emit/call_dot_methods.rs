@@ -386,7 +386,7 @@ impl RustTrans {
                 }
                 "sub" => {
                     if self.expr_is_string_like(object) {
-                        self.emit_str_slice_bytes(object, &call.args.args, out)?;
+                        self.emit_str_slice_chars(object, &call.args.args, out)?;
                         return Ok(CallShape::Handled);
                     }
                     // s.sub(start, end) -> s[start..end].to_string()
@@ -423,7 +423,7 @@ impl RustTrans {
                     // non-string receivers keep the byte-index form.
                     if self.expr_is_string_like(object) {
                         return self
-                            .emit_str_slice_bytes(object, &call.args.args, out)
+                            .emit_str_slice_chars(object, &call.args.args, out)
                             .map(|_| CallShape::Handled);
                     }
                     self.expr(object, out)?;
@@ -533,6 +533,23 @@ impl RustTrans {
                             }
                         }
                     }
+                    // PLAN-994 (corpus T01/T03): on a DECLARED string local the
+                    // source-semantics `.len()` is the scalar-char count
+                    // ("A中😀" = 3), not Rust's byte len (= 8). Self-contained
+                    // std expression, receiver evaluated once. `length`,
+                    // params/fields/pattern bindings/inferred locals keep the
+                    // legacy byte-len remap (approved difference, not unified
+                    // here); `.len(n)` builder setters need args and never hit
+                    // this zero-arg gate.
+                    if method_name.as_str() == "len"
+                        && call.args.args.is_empty()
+                        && matches!(object.as_ref(), Expr::Ident(name) if self.str_typed_stores.contains(name.as_str()))
+                    {
+                        write!(out, "(")?;
+                        self.expr(object, out)?;
+                        write!(out, ".chars().count() as i64)")?;
+                        return Ok(CallShape::Handled);
+                    }
                     // Skip if object is a known stdlib module — handled by Expr::Ident block below.
                     // But if the name is a known local variable (e.g. param named "json"), it's NOT a module.
                     let is_stdlib_module = if let Expr::Ident(name) = object.as_ref() {
@@ -596,6 +613,39 @@ impl RustTrans {
                     self.expr_as_str(object, out)?;
                     write!(out, ")")?;
                     return Ok(CallShape::Handled);
+                }
+                "len_bytes" => {
+                    // PLAN-994 (corpus T01/T02): `.len_bytes()` on a DECLARED
+                    // string local = UTF-8 byte length as a self-contained std
+                    // expression (String::len), receiver evaluated once — the
+                    // old generic-fallback passthrough emitted `s.len_bytes()`
+                    // (E0599: no such method) and the byte_len helper pulls in
+                    // the a2r_std dep, which the cert std-only axis forbids.
+                    // Non-declared receivers keep the passthrough (foreign/raw
+                    // Rust same-name methods are not rewritten by name).
+                    if call.args.args.is_empty()
+                        && matches!(object.as_ref(), Expr::Ident(name) if self.str_typed_stores.contains(name.as_str()))
+                    {
+                        write!(out, "(")?;
+                        self.expr(object, out)?;
+                        write!(out, ".len() as i64)")?;
+                        return Ok(CallShape::Handled);
+                    }
+                }
+                "to_codepoint" => {
+                    // PLAN-994 (corpus T04): `.to_codepoint()` on a DECLARED
+                    // char local = the Unicode scalar value (`'😀' as u32` =
+                    // 128512) as `as u32 as i64`, receiver evaluated once.
+                    // Old behavior: passthrough `c.to_codepoint()` (E0599).
+                    // Non-declared receivers keep the passthrough.
+                    if call.args.args.is_empty()
+                        && matches!(object.as_ref(), Expr::Ident(name) if self.char_typed_stores.contains(name.as_str()))
+                    {
+                        write!(out, "(")?;
+                        self.expr(object, out)?;
+                        write!(out, " as u32 as i64)")?;
+                        return Ok(CallShape::Handled);
+                    }
                 }
                 "match_count" => {
                     // s.match_count(pattern) -> a2r_std::str::match_count(s, pattern)
