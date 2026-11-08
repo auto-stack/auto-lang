@@ -1285,7 +1285,8 @@ fn sq99_host_republish_same_semantics_is_idempotent() {
         "idempotent republish reuses the existing page"
     );
 
-    // A fresh process reads the same page back under the same key.
+    // A fresh store handle (the persistence decode path a new process
+    // takes) reads the same page back under the same key.
     drop(host);
     let sink2 = crate::store::ManagedStoreSink::open(&dir, None).expect("reopen store");
     let key = sink2_key(&sink2, &p);

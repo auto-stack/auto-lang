@@ -1466,26 +1466,6 @@ fn sig_string(module: &ace_core::hir::Module, ty: ace_core::hir::TypeId) -> Stri
 // Front-door admission
 // ---------------------------------------------------------------------------
 
-/// Frozen front-door policy: input size + token-stream nesting ≤128 over
-/// ALL bracket kinds — measured on the REAL token streams of both landed
-/// frontends (`source::lexer::tokenize`, `atom_text::tokenize`). The source
-/// lexer/parser/resolve/typecheck walks are ITERATIVE (landed R5/R6), so
-/// the genuine host-recursion paths in the old frontends are the Atom
-/// document parser's nested-list recursion (the `[` depth scan in
-/// [`front_door_admit_atom`]) and operator CHAINS: a flat `a + b + c + …`
-/// run builds one construction level per operator even at bracket depth 1,
-/// so the front door measures the expression CONSTRUCTION depth too
-/// (F798-R3-04 — a 600-term flat chain must be a resource rejection HERE,
-/// not a `mir.lower.depth` unsupported from inside the recursive parser at
-/// its own 512 limit).
-/// Breaches are RESOURCE rejections, never syntax errors.
-///
-/// The construction metric (F798-R12-01) is a miniature
-/// operator-precedence depth evaluator ([`LevelChain`]): it reproduces the
-/// tree depth of the REAL parser's association (parser.rs
-/// `scalar_prec_of`, left-associative), so the door measures the LONGEST
-/// CONSTRUCTION PATH — branch-sibling depths never add, genuinely nested
-/// levels still compose, and every call level counts exactly once.
 /// PLAN-999 (T-04): the Auto-source front door. The obsolete 128
 /// token/expression-construction proxy comparison is GONE for this lane — it
 /// existed to mask the expression lowering's recursion, which now carries its
