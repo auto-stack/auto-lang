@@ -52,7 +52,13 @@ pub const OP_FOREIGN_CALL: u8 = 0x36;
 /// PLAN-939 S06: FOREIGN_CALL + named callback targets (same payload with
 /// the callback table between the argument slots and the declaration
 /// JSON); 0x36 stays byte-identical for callback-free calls.
-pub const OP_FOREIGN_CALL_CB: u8 = 0x3A;
+// PLAN-939 T-14 (rebase coexistence): 0x3A was CB's first number, but
+// PLAN-961 (landed on master during the 939 window) assigned OP_CONV
+// 0x3A — duplicate opcode constants silently shadow in the decode
+// dispatch (CONV's arm won, desyncing the callback stream). CB moves to
+// the next free opcode; stored caches re-encode per run (no persistent
+// wire with the old number exists).
+pub const OP_FOREIGN_CALL_CB: u8 = 0x3B;
 pub const ABC_FOREIGN_MAGIC: [u8; 4] = *b"AVFI";
 pub const ABC_FOREIGN_VERSION: u16 = 1;
 pub const ABC_PROFILE_FOREIGN: u16 = 9;
