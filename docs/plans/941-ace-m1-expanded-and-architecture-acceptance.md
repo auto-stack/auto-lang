@@ -2440,6 +2440,15 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§4全�
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§5身份对账完成+F-941-15级联重采四腿绿；abi/av档在途） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:745f4e9aa | task_ids:CHECKLIST §5 | evidence:f94136-{current-source-cases,native-admitted,current-certifications,current-optimized} | next_responsible_role:work abi/av档→全量组合 | 无live handle
 
+### 第119轮b：work §5组合重读推进——全域fingerprint漂移六层接收（治理全绿保持），bridge store交换分叉为当前卡点
+
+- **abi/av档收官**：abi **263 PASS** + av **1059 PASS**@`745f4e9aa`（`f94136-abi-gate`/`f94136-av-gate`正式门档）——§4全链证据链最终收官。
+- **全域fingerprint漂移发现与系统性接收**：D939终态+master全量并入后case指纹（contract/suite sha族）系统性漂移，组合重读逐层暴露并全部按"交付现实再冻结"收口（每层治理257/257保持）：①identity/parent inventory命令面恢复（`cdcb58741`+`bac9c0fe3`——ad4a11550取master时丢的941面整体复原00ed76b3e版）；②legacy-base K06线+父/预算pin（`f648a8b18`+`60be988c0`）；③BASE组@最终二进制重跑97 PASS绑定重指；④七套registry inventory_contracts按f94136交付指纹刷新（69检查）；⑤六份Q4冻结合同+query/instances双合同+diagnostics合同再生成；⑥q4/syntax/bridge首例inventory三套再生成。提交至`35a21a3810a4`。
+- **当前卡点（bridge交换协议分叉）**：首例`_admit_base_slice`按`abiworker/1` worker-exchanges查线，但D937终态bridge套件六检查已走**store seam交换**（copy只有store/bridge-scratch布局，无worker-exchanges目录）——bridge首例reader需适配store交换面（真实reader适配，非pin刷新）。
+- **边界**：治理257/257@`35a21a3810a4`；下一入口=bridge store-exchange reader适配→组合重读→T-12→T-13→T-14→T-15。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§4终态收官abi263/av1059；§5六层fingerprint合同再冻结全绿；bridge store reader适配为下一入口） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:35a21a3810a4 | task_ids:CHECKLIST §5 | evidence:治理257/257×7层 + f94136组合重读在途 | next_responsible_role:work bridge store reader适配→组合 | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
