@@ -4114,3 +4114,7 @@ owner=T-11 H 窗口（2026-11-08 round 14 重路由：原 T-05 未覆盖，改�
 ### D-941-1 — plan872 绑定表 fingerprint 漂移未随 native 目录新增 regenerate（2026-11-08，已关闭）
 
 owner=PLAN-941（multi-file dialog 能力线，commit 3920dd95a 2026-11-06 新增 NATIVE_ID_ENTRIES 条目 `auto.dialog.open_files`→9942）；批量回归 995 批（covered 69da2dea8）实证 `plan872_builtin_binding_probes::plan872_binding_table_json_matches_regeneration` 红——`scripts/builtin-binding-table.json` 的 registry_fingerprint（native_id_entries 规模）与再生成不一致。已证非 PLAN-995（红在 pristine b90c17dd1 复现，早于 995 代码；995 diff 零绑定注册面）。**已关闭（2026-11-08，941 第99轮）**：941 树 `ed3ddca7d` 以 `AUTO_LANG_872_EMIT_TABLE=1` 重冻结——diff 仅 `native_id_entries: 882→883`（`auto.dialog.open_files` 新唯一名，dup_name_ids 无变化）；同日经L0轻量路径（`fix-872-bindtable` worktree，cherry-pick后plan872 8/8绿、wt-guard clean、树/分支/组目录已清）以 ff 合入 master **`3d8f3dc64`**，master 侧红终闭；plan-941-dev 内同内容变更（`ed3ddca7d`）待最终merge自然收敛。
+
+### D-992-1 — snapshot G02 观测器祖先链未在 runner PID 截断（2026-11-08，候选）
+
+owner=ace-m1 验证脚本线（PLAN-992 终审 F-992-R1-01，info级）；`scripts/verify-ace-m1-852.ps1` snapshot scope 的 `Get-AncestorNames` 向上走全链不停在 runner：若该 scope 未来自 cargo 进程树内启动（现无此入口——文档入口为 `powershell -NoProfile` 直调，治理测试只跑 contract/acceptance），认证面 rustc 的链会含 cargo.exe 而被误分类 maintenance。关闭条件=祖先链walk到 runner PID 即停；当前不可利用，零gap守卫与can_claim_m1判据不受影响。
