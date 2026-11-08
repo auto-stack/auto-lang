@@ -2432,6 +2432,14 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（F-941-15
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§4全链收官：av档1059 PASS；CHECKLIST §1-§4完成；§5组合重读为唯一余程） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:1bc56b174 | task_ids:CHECKLIST §4收官 | evidence:f94135-av-gate PASS 1059 | next_responsible_role:work §5组合重读（身份对账→治理→组合） | 无live handle
 
+### 第119轮：work §5身份对账+最终树全链重采——F-941-15触码级联，四腿+abi/av档@745f4e9aa
+
+- **身份对账定案**：F-941-15触码=av-core三文件+grammar。①五机制合同pin这三个文件→**pin刷新**（提交`745f4e9aa`，15 pin）+registry同步→治理**257/257**；②8个worker二进制重建（链接av-core）→case466/cert链/optimized/拒绝6/五native全部身份过期→**f94136系列全量重采@`745f4e9aa`**；③case466绑定不pin触码文件但parent二进制变→同重采。
+- **重采完成**（`f94136-*`）：case466✓（466 checks带wire、八scalar红保持）、五native✓（9观察全PASS严格准入）、**cert292+daily292✓**（292实际认证全PASS，输入审计全对）、optimized14+拒绝6✓；abi/av档重跑中（f94136-abi-gate/f94136-av-gate，结果入第120轮）。
+- **边界**：abi/av绿后=全量组合重读（f94136全链bindings+新宇宙+增量恢复companions——增量恢复的semantics/comptime/abi/av伴读档全部换f94136新档）→T-12→T-13→T-14→T-15。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§5身份对账完成+F-941-15级联重采四腿绿；abi/av档在途） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:745f4e9aa | task_ids:CHECKLIST §5 | evidence:f94136-{current-source-cases,native-admitted,current-certifications,current-optimized} | next_responsible_role:work abi/av档→全量组合 | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
