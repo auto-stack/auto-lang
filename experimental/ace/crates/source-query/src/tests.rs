@@ -1234,3 +1234,84 @@ fn sq37_fact_entry_produces_the_same_hir_as_the_legacy_entry() {
         assert!(fact.supply.admitted_bodies() >= 1);
     }
 }
+
+// -- PLAN-999 T-06: D-950-1 permanent regressions -------------------------
+// Same owner, same body, consecutive prepare/commit on the PUBLIC
+// QueryHost<ManagedStoreSink> chain: the hit still carries a fresh
+// per-request revision, and the second publish used to hit the store's
+// same-key-different-content Conflict (identical semantics rejected). The
+// sink now treats republishing semantics-equal facts (revision excluded —
+// live view data, never a fact) as idempotent; genuinely different content
+// keeps the hard Conflict.
+
+#[test]
+fn sq99_host_republish_same_semantics_is_idempotent() {
+    let dir = temp_dir("d950-host");
+    let _ = std::fs::remove_dir_all(&dir);
+    let p = parse(A);
+    let sink = crate::store::ManagedStoreSink::open(&dir, None).expect("open store");
+    let mut host = crate::host::QueryHost::new(sink);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+
+    let cand1 = host.prepare(&mut s, &p, "leaf").expect("prepare1");
+    assert_eq!(cand1.facts.revision, 1);
+    let key1 = cand1.key.canonical();
+    host.commit(cand1, &s, &p, None).expect("commit1");
+    let art1 = host.current().expect("record1").artifact.clone();
+    assert_eq!(host.revision(), 1);
+
+    // Same source again: the session HIT still carries revision 2 — the
+    // republish must be idempotent (same page, no Conflict) and the host
+    // revision keeps its monotone climb.
+    let cand2 = host.prepare(&mut s, &p, "leaf").expect("prepare2");
+    assert_eq!(cand2.facts.revision, 2, "hit still stamps a fresh revision");
+    assert_eq!(cand2.key.canonical(), key1, "same canonical key across requests");
+    host.commit(cand2, &s, &p, None)
+        .unwrap_or_else(|e| panic!("commit2 must not reject identical semantics: {e}"));
+    assert_eq!(host.revision(), 2, "host revision stays monotone");
+    assert_eq!(
+        host.current().expect("record2").artifact,
+        art1,
+        "idempotent republish reuses the existing page"
+    );
+
+    // A fresh process reads the same page back under the same key.
+    drop(host);
+    let sink2 = crate::store::ManagedStoreSink::open(&dir, None).expect("reopen store");
+    let key = sink2_key(&sink2, &p);
+    let page = sink2.get_by_key(&key).expect("read back").expect("page present");
+    assert_eq!(page.name, "leaf");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn sq98_sink_duplicate_put_and_real_conflict_preserved() {
+    let dir = temp_dir("d950-sink");
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut sink = crate::store::ManagedStoreSink::open(&dir, None).expect("open store");
+    let p = parse(A);
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    let f1 = s.infer_body(&p, "leaf").expect("infer1").facts;
+    let k1 = s.body_key(&p, "leaf").expect("key1");
+    let f2 = s.infer_body(&p, "leaf").expect("infer2").facts;
+    assert_ne!(f1.revision, f2.revision, "per-request revisions differ");
+    assert_eq!(k1.canonical(), s.body_key(&p, "leaf").expect("key2").canonical());
+
+    use crate::host::PageSink;
+    let art1 = sink.put(&k1, &f1).expect("put1");
+    let art2 = sink.put(&k1, &f2).expect("duplicate revision-only put is idempotent");
+    assert_eq!(art1, art2, "same artifact");
+
+    // Genuinely different content under the SAME key: the store's hard
+    // Conflict still rejects (never an overwrite).
+    let mut tampered = f1.clone();
+    tampered.nodes[0].id = crate::walk::NodeId(9999);
+    let err = sink.put(&k1, &tampered).expect_err("real conflict preserved");
+    assert!(err.contains("conflict"), "store conflict surfaced: {err}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn sink2_key(_sink: &crate::store::ManagedStoreSink, p: &Program) -> crate::keys::QueryKey {
+    let mut s = SourceQuerySession::new("pkg", "mod");
+    s.body_key(p, "leaf").expect("key")
+}

@@ -552,6 +552,29 @@ impl ManagedStoreSink {
 
 impl crate::host::PageSink for ManagedStoreSink {
     fn put(&mut self, key: &QueryKey, facts: &InferBodyFacts) -> Result<String, String> {
+        // PLAN-999 (T-06, D-950-1): republishing the SAME semantics under
+        // the SAME complete key is IDEMPOTENT. The per-request `revision`
+        // stamped into a candidate is live view data (the session/host own
+        // the current revision), never a semantic fact — an existing page
+        // whose payload equals the candidate on every other field IS this
+        // page: return its artifact id instead of re-putting. The old path
+        // re-put with a fresh revision byte stream, hit the store's
+        // same-key-different-content Conflict, and rejected identical
+        // semantics. Content that genuinely differs still falls through to
+        // the real put and keeps the store's hard Conflict.
+        let sk = store_key(key);
+        if let Ok(Some(existing)) = self.store.get_artifact(SQ_LAYER, &sk) {
+            if let Ok((_, page)) = decode_page(&existing.payload) {
+                if facts_eq_mod_revision(&page, facts) {
+                    if let Some(project) = &self.project {
+                        self.store
+                            .register_root(project, &existing.artifact_id, SQ_ROOT_KIND)
+                            .map_err(|e| e.to_string())?;
+                    }
+                    return Ok(existing.artifact_id);
+                }
+            }
+        }
         let payload = encode_page(key, facts).map_err(|e| e.to_string())?;
         let req = PutRequest {
             layer: SQ_LAYER,
@@ -589,4 +612,26 @@ pub fn store_key(key: &QueryKey) -> StoreQueryKey {
         layer: SQ_LAYER,
         components: vec![("sq-key".to_string(), key.canonical())],
     }
+}
+
+/// PLAN-999 (T-06): page-semantic equality — every field of
+/// [`InferBodyFacts`] except the per-request `revision` (live view data the
+/// session/host own; a stored page's revision is the first publication's
+/// stamp, never current authorization). Used by the sink's idempotent
+/// republish check.
+fn facts_eq_mod_revision(a: &InferBodyFacts, b: &InferBodyFacts) -> bool {
+    a.name == b.name
+        && a.logical == b.logical
+        && a.body_version == b.body_version
+        && a.profile == b.profile
+        && a.algo == b.algo
+        && a.schema == b.schema
+        && a.producer == b.producer
+        && a.steps == b.steps
+        && a.nodes == b.nodes
+        && a.bindings == b.bindings
+        && a.diags == b.diags
+        && a.missing == b.missing
+        && a.sig_reads == b.sig_reads
+        && a.negatives == b.negatives
 }
