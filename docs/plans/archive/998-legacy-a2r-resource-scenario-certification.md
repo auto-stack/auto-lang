@@ -241,3 +241,8 @@ stage: goal | plan_id: PLAN-998 | plan_revision: r1 | round: 1 | from: work | to
 - 终态核对：master tip=fff9eedf0（delivery）+ 9b7a9432f（archive bookkeeping）；plan 位于 docs/plans/archive/ status=archived；T 12/12；required 313 守恒；cert-gap 0（38 value + 4 trap + 6 scene 分域）。
 
 stage: goal | plan_id: PLAN-998 | plan_revision: r1 | round: 1 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: fff9eedf0 (delivery) / 9b7a9432f (archive) | next: done
+
+2026-11-08 closeout repair（gitignore 缺口，T-12）：
+- 发现：仓库根 .gitignore 的 `*.json` 全局规则在 worktree 提交时静默跳过 `oracle/scenario/scenario-oracle.json` 与 6 张 `oracle/scenario-certs/*.json`（金样/代码/引用/wrapper 均正常落线；worktree 磁盘上文件存在故认证与复审全绿，git status 不显示 ignored 文件）。主检出 python 验收首跑抓住（FileNotFound）。
+- 修复：按编辑史逐字重建注册表（内容与复审所见一致）+ `git add -f`；主检出 `--resource` 全矩阵确定性再生成 6 证书（6 certified 0 failed）+ force-add。修复后主检出：python 24/24 OK、contract/acceptance 双 scope exit 0（SCENARIO 6/6、cert-gap 0）、case-legacy-a2r-resources-998 + case-ace-m1-base PASS。
+- 教训（并入收尾对账义务）：`git add -A` 对 ignored 交付文件不设防；凡 *.json 类交付必须显式 force-add 并以 fresh 主检出（非 worktree 磁盘）验收。
