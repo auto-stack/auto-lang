@@ -141,9 +141,17 @@ fn mn_sd911_cold_escalation_names_terminating_profile() {
         .source_diagnostic()
         .unwrap_or_else(|| panic!("typed snapshot, got {e:?}"));
     assert_eq!(snap.profile, SourceProfile::Record, "record terminates");
+    // PLAN-999 (T-03): the CORE side face is attempted between scalar and
+    // record (it can only ever SUCCEED for while/loop sources — its
+    // failures never terminate the ladder and surface_rejections keeps
+    // listing only the monotone rungs' rejections).
     assert_eq!(
         snap.attempted,
-        vec![SourceProfile::Scalar, SourceProfile::Record]
+        vec![
+            SourceProfile::Scalar,
+            SourceProfile::Core,
+            SourceProfile::Record
+        ]
     );
     // The escalation's surface rejection is recorded, not silently consumed.
     assert_eq!(snap.surface_rejections.len(), 1);

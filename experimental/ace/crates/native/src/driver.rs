@@ -86,25 +86,18 @@ fn compile_escalating(
             });
         }
     }
-    // PLAN-999 (T-03): the CORE fact lane answers the constructs the scalar
-    // face surface-rejects (`while`/`loop`); the SAME shared fact producer
-    // and the Core-domain verifier. Its own surface rejections keep the
-    // ladder climbing (record/text-record precedence unchanged).
+    // PLAN-999 (T-03, T-09 repair): the CORE fact lane answers the
+    // constructs the scalar face surface-rejects (`while`/`loop`); the SAME
+    // shared fact producer and the Core-domain verifier. Core is a SIDE
+    // face, not a monotone rung: it owns `while`/`loop` but is NARROWER
+    // than scalar in operators — constructs that are syntax errors to Core
+    // (numeric literals/operators) can be legal surface in the wider faces.
+    // A Core failure therefore NEVER terminates this ladder: only success
+    // returns here; every failure keeps climbing to the unchanged
+    // record/text-record/numeric rungs (their terminal rules are intact).
     attempted.push(sd::SourceProfile::Core);
-    match ace_av::query_entry::compile_core_source_via_facts(src, "mn.at", caps) {
-        Ok(c) => return Ok(Domain::Core(c)),
-        Err(ds) if is_surface_rejection(&ds) => surface.push(sd::SurfaceRejection {
-            profile: sd::SourceProfile::Core,
-            codes: ds.iter().map(|d| d.code.clone()).collect(),
-        }),
-        Err(ds) => {
-            return Err(sd::CompileFailure {
-                profile: sd::SourceProfile::Core,
-                attempted,
-                surface_rejections: surface,
-                diagnostics: ds,
-            });
-        }
+    if let Ok(c) = ace_av::query_entry::compile_core_source_via_facts(src, "mn.at", caps) {
+        return Ok(Domain::Core(c));
     }
     attempted.push(sd::SourceProfile::Record);
     match ace_core::source::compile_record_source(src, "mn.at", caps) {
