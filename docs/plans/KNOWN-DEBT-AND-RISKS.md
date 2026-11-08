@@ -4107,6 +4107,14 @@ owner=source-query 事实层（934/935 线）；`PortableTy` 仅 {Unit,I32,Bool}
 
 owner=ace-native；`lower.rs` 对 `GlobalGet/GlobalSet` 返回 "module global cells are outside the mn surface first cut"。PLAN-960 四端 Str 函数产品不含全局，V-08 的 store/diamond/回滚三项在 AV 端见证。关闭条件=cranelift 全局数据 + init 调用序接入 mn 驱动。
 
+### D-939-AX-1 — 声明侧 mode/layout/clone/deleter 逐轴失效案例需新受审 provider manifest（2026-11-08，T-13/R-3 登记）
+
+owner=PLAN-939 T-11 边界（§9 round 19）；冻结受审 provider manifest v1（header/table/contract 三钉）使 deck 侧不可编辑声明轴——逐轴独立失效案例（mode 切换/layout 变更/clone hook 增删/deleter 变更）需各自新受审 manifest（指纹周期：三 digest 重算+22 deck 再生成+父侧钉更新）。机制已由 provider 代际轴（bias/digest 互异/binding generation）与 digest 键精确失效（§5.5）佐证；CA-E 若需逐轴案例=新计划承接，939 矩阵按机制证据+具名边界交付。关闭条件=受审 manifest 多版本机制或 CA-E 逐轴计划落地。
+
+### D-939-PERF-1 — ace-performance 全窗 62 测试超 30 分钟截止（2026-11-08，T-13/R-3 登记）
+
+owner=fixed-tests owner（窗规模张力，非 939 引入——本包仅 +153s）；PLAN-939 T-12 冻结并集实证：窗在 30 分钟组截止到 21/62、零测试红（AV 战役单项 497s、`av_resources_32mib_product_random_read_and_churn`）。939/797/938 相关 performance 测试经 ace-abi 组（all()）与串行专项双绿。关闭条件=窗分组/截止预算重排（里程碑档单独时段或分组预算）。
+
 ### D-939-CE-1 — S01-CE 文本view源导出被事实签名词表与库装配器双向挡住（2026-11-08，**bridge 臂已关闭**，certify 臂随 D-960-1）
 
 owner=T-11 H 窗口（2026-11-08 round 14 重路由：原 T-05 未覆盖，改由 T-11 的 S01..08 逐方向收口窗承接，复审 T-13 前落地或按复审裁定再路由）+ D-960-1 事实层；PLAN-939 T-03 批2 实证：(a) certify 路径（foreign+导出）在 source-query `produce_fn_sig`/catalog 拒绝 str 参数函数（`NonPortableType Builtin(Str)`——D-960-1 同一边界的导出方向影响面）；(b) bridge 路径（纯 Auto str 参数导出，937 source leg 语义）的库装配器 `ExportSpec` 仅 i32/bool。探针证据：str 参数（NUL 为数据）与 record 参数在 native 产品路径全编译运行绿（`ac-native build-source --source-profile text-record`，exit 99/21）；certify 侧 CE 接线（EntryPlan/ce 腿/独立 caller/reference 场景）已完整实现并驱动到该接缝后按零死码纪律回退。**bridge 臂已关闭（2026-11-08，T-11/goal round 19，commit 见 §9）**：`ExportLane` 词表（i32/bool/ViewText/RecConst/RecMut）+ 公共记录闭包发射（公共字段名/内部 `a2x_rec_*`+`f_` 前缀双表、cast 桥接）+ UTF-8 view 对 `(data,len)`→`a2x_str_view` marshalling + deck 语法 `profile text-record`/`caller <file>` + 资源导出 FnFact 携 ResourceSig（fallible 单 out、mut 车道 §5.3 atomic、noescape）+ 期望侧按资源逻辑形式拼写；S01/S02 CE 案例 `ace-ca-d3.ce-text-view`/`ce-record`（冷出版+暖 P0，手审 caller：NUL 为数据/多字节 scalar 计数跨全字节 span 证明、`_Static_assert` 布局断言、mut 回写、溢出 trap 失败原子性）。**certify 臂保持开放**：导出函数签名事实（source-query 词表）扩展仍属 D-960-1 关闭条件，939 不扩 934 冻结面。
