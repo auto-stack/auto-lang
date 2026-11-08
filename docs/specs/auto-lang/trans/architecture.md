@@ -138,3 +138,10 @@ graph TD
 - 备选：生成后字符串替换 `move move`（violates 字节级金样纪律）；每次调用独立 clone 值（破坏共享可变捕获语义，被独立性 oracle 抓红）。
 - 后果：K06 认证关闭（cert-gap 21→20）；`test/a2r/25_lifecycle/005/006/007` 永久反例（42/42/67）；已正确形状（K01/K03 等）字节不变。已知边界：嵌套闭包写捕获不获 Rc 降级（KNOWN-DEBT D-993-1）；复合赋值（`+=` 等）自引用不提升（无已知语料）。
 - 状态：active
+
+### ADR-11: 有限 0 参泛型 `List<T>.new()` 构造定型——typed `Vec::new()` + 元素型单源解析流入绑定注解
+- 日期 / 来源：PLAN-996（H-04，L01..L07 值域）；`trans/rust/ty.rs`（`generic_list_ctor_elem_ty` + `infer_type_from_expr` 0 参臂）、`trans/rust/call_emit/call_value_ctors.rs`（0 参 `Vec::new()` 发射）、`trans/rust/stmt_emit.rs`（声明注解孪生）
+- 决策：①`List<T>.new()`（0 参、泛型参数在有限域）推断 `Type::List(elem)` 并发射自包含 `Vec::new()`（std-only，cert 轴不变）；元素型由单源 helper 从泛型参数名解析（int/str 族/标量+已知 struct；`GenName("List<int>")` 与 `Bina(List Lt T)` 两解析投影都识别；嵌套泛型/未知名→None 保持既有落穿），真实流入绑定注解（`Vec<i64>`/`Vec<Item>`/`Vec<String>`），未解析时保持跳注解——绝不注 serde_json 动态桶；②List 接收者方法面沿用既有 Auto 语义臂：get=索引+`.clone()` 拥有值读（433 A1）、set=`__list_set_idx__` 索引赋值**替换**（PLAN-019，非 insert 右移）、insert/remove/clear/push/len 原生 Vec 形；拥有权纯 Rust native（push=move、remove=移出 owner）。③1 参 `List<T>.new(expr)` 剥离（musk-022）与裸 `List.new()`（PLAN-010）识别面**不动**：GenName 泛型 1 参形的逐字发射是冻结金样载荷（`25_lifecycle/002`）。
+- 备选：文本级 `lower_list_constructs` 推广到全程序管线（body-only 管线方案无法携带类型、绕过类型分析）；A8 式生成后正则补丁（无类型，L01 算术/L07 set 形已证不覆盖）；元素型注 JSON 桶（破坏名义 record 字段，违背源语义）。
+- 后果：ace-m1 六集合值格认证关闭（cert 32→38、cert-gap 16→10，快照日常 35→41）；`a2r_tests.rs` plan996 10 例永久面（含裸/1 参域守恒与 994 字符 len 共存反控）；既有 415 a2r 例字节稳定。已知边界：嵌套泛型/枚举元素名/非有限域类型不在本轮（保持落穿）；L06 越界 trap 属 997 trap 域；`oracle/certs/*.json` 受根 `.gitignore` 吞没须显式入库（F-996-R1-01）。
+- 状态：active

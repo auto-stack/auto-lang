@@ -179,3 +179,31 @@ receipt 结构校验为硬错误，文件漂移=诚实重认证，无 --force �
   H-07 场景 6（见 gap-audit F-A2R-3）；`can_claim_m1` 仍要求 cert-gap=0 且
   future=45 在账，M1 不签。坏金样/坏证书/漏检查/错 expected 反控与"无半证书、
   --force 不覆写"行为保持。
+
+## 六例有限集合值例原域认证（PLAN-996，2026-11-08）
+
+- **认证集 32→38**：H-04 的 6 格（L01/L02/L03/L04/L05/L07）经旧 producer **0 参
+  泛型构造 lowering 修复**后认证关闭——`List<T>.new()`（`GenName("List<int>")`/
+  `Bina(List Lt T)` 两解析投影）发射 typed `Vec::new()`；泛型参数经单源
+  `generic_list_ctor_elem_ty`（标量+已知 struct；嵌套/非有限域→None 保持落穿）
+  真实流入绑定注解（`Vec<i64>`/`Vec<Item>`/`Vec<String>`，绝不 JSON 动态桶）。
+  List 接收者 Auto 语义方法面：get=索引+`.clone()` 拥有值读（433 A1 冻结约定）、
+  set=索引赋值**替换**（PLAN-019，非 insert 右移）、insert/remove/clear/push 原生
+  Vec 形、len=元素计数 `as i64`。六新金样 `oracle/m1_l01..l07.rs` 经逐源 G04
+  审阅冻结（求值序/单求值/拥有转移/L04 字段位字节 remap 面与独立 reference 双侧
+  `i32:42/42/0/42/42/42`）；6 certified，旧 32 例 strict 复用未重认证；
+  cert-gap **16→10**。
+- **域边界（冻结）**：1 参 `List<T>.new(expr)` 剥离（musk-022）与裸 `List.new()`
+  （PLAN-010）识别面不动——GenName 泛型 1 参形的逐字发射是冻结金样载荷
+  （`25_lifecycle/002`）；未解析元素型保持跳注解既有行为（不注 JSON 桶）。
+- **日常面 35→41**：新增 a2r-only 扩展套件 `legacy-a2r-list-996.{case,suite}.ad`
+  （仅 6 例新金样快照检查，ID `ace.m1.a2rt.l01..l07`），固定组
+  `case-legacy-a2r-list-996`；snapshot scope 四套件（base+ext-992+ext-994+
+  ext-996）插桩运行并集守卫 41，认证面 spawn=0 判据不变。
+- **证书入库纪律（F-996-R1-01）**：`oracle/certs/*.json` 会被根 `.gitignore`
+  的 `*.json` 吞没——新证书必须显式 `git add -f` 入库（852 先例）且与
+  source-manifest 钉值逐字节一致；证书含 `created_at`，再生成即破 SHA，入库
+  是唯一交付路径。
+- **缺口账 16→10、零 gap 守卫不变**：余 10 = H-06 trap/宽度 4 + H-07 场景 6
+  （997/998 域）；`can_claim_m1` 仍要求 cert-gap=0 且 future=45 在账，M1 不签。
+  坏金样/坏证书/漏检查/错 expected 反控与"无半证书、--force 不覆写"行为保持。
