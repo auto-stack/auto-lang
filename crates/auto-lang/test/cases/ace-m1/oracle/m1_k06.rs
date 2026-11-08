@@ -6,6 +6,6 @@ use std::rc::Rc;
 use std::cell::{RefCell, Cell};
 fn main() -> i64 {
     let base = std::rc::Rc::new(std::cell::RefCell::new(1));
-    let mut f = { let base = std::rc::Rc::clone(&base); move move |n: i64| { *base.borrow_mut() = *base.borrow() + n; return *base.borrow(); } };
+    let mut f = { let base = std::rc::Rc::clone(&base); move |n: i64| { { let __a2r_wc = *base.borrow() + n; *base.borrow_mut() = __a2r_wc; }; return *base.borrow(); } };
     return f(20) + f(0);
 }

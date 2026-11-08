@@ -5,7 +5,7 @@
     "binding": {
         "path": "binding.tsv",
         "sha256_pre_908": "d9f05da057dfd658df09a7725aa391bc4c9e14993e13e9846724160915ff5d7a",
-        "sha256": "a86365c8398290b95075f90d058cac434743b8bebcdf37558265ebd78d10e405"
+        "sha256": "2ccf370d6a460d74eb33473a81a4987274ed1a6f82c5d4f39f76d00621969be5"
     },
     "corpus_src": {
         "dir": "src",
@@ -207,7 +207,7 @@
             "m1_b12.rs": "e4735ac284e53a81ade4cd879545b3f4a41da43999a6a58188dcfd56f79284cd",
             "m1_k01.rs": "a41dd1f0074cfcefdc8f3984f987fd71ee7aefdcd0ea11981b2d21d52837761f",
             "m1_k03.rs": "350b633e11fce94c30b050d6b30cc61777f380feeed7fb1f77077629be790f1c",
-            "m1_k06.rs": "50f445010e20eea361f3ade40ed809d695b1180a58e4f8942b9b33e2c2623079",
+            "m1_k06.rs": "e28247fafcc7676842763f2c6d65cb8b2d81af63ce01db226f6f316c9afc897a",
             "m1_r02.rs": "09d3f186faf52c650c3944398ecbc6f00ef2b2891190a139971193d2234be427",
             "m1_r05.rs": "11375a3948d661473f4d29bc032b24fbaa4e8916314a049be0d673383a9a4ca7",
             "m1_r06.rs": "14fbe8ebff2187232cbae84843060b175d2b466373034639b253397fc515a225",
@@ -228,7 +228,7 @@
     },
     "oracle_certs": {
         "dir": "oracle/certs",
-        "expected_count": 27,
+        "expected_count": 28,
         "files": {
             "m1_b01.cert.json": "c4f77934af20206d4d1e6f1ac9dcdf4742456d1cef6a3d27e6ce8df51bfebbb7",
             "m1_b02.cert.json": "43b53632c216cf7c01e52e3020a21b540012efae22080e17e135b4ea82aca47f",
@@ -256,7 +256,8 @@
             "m1_v04.cert.json": "c09fc07b58883576082915c246aae6e9d329c2d0023016e6809c2dcda47ee542",
             "m1_v05.cert.json": "cabc5ac63740d2304744980f31f6e6e3e1346d6d4564e553bb03589b2e86761f",
             "m1_v06.cert.json": "f7880bac1c9c964c184848adcfb7f9caca76d1ebb7c1dcf59eef44357ac9c701",
-            "m1_v07.cert.json": "e8887e36a3dbff47b3105567b6d1541e61b741d98b26fa8fde6ddeebfb82db7a"
+            "m1_v07.cert.json": "e8887e36a3dbff47b3105567b6d1541e61b741d98b26fa8fde6ddeebfb82db7a",
+            "m1_k06.cert.json": "f803b1528a2019afc5beb7c3200be1f3e1ea0fe70cc4ae2eba87527fec37c958"
         }
     },
     "reference": {
