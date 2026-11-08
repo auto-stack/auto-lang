@@ -86,6 +86,12 @@ cert-gap **38→21**，详见 a2r-golden-certification §PLAN-992）；"伪 Rust
 H-04 集合 6（L01–L05/L07）+ H-05 `move move` 1（K06）+ H-06 trap/宽度裁定 4
 （B13/B14/B15/B20）+ H-07 场景 6（scn R01–R06），仍为 ok+cert-gap 等价账、owner
 不变、`can_claim_m1=false` 不变。
+**PLAN-993 更新（2026-11-08）**：余 21 中的 **H-05 K06 已关闭**——写捕获闭包×
+显式 move 的双 `move` 发射缺陷修复（恰一次 move + 自引用 cell 赋值 `__a2r_wc`
+提升消 BorrowMutError + 捕获克隆字典序），金样重冻结 G04 重审、原域显式认证
+（证书 27→28、cert-gap **21→20**，详见 a2r-golden-certification §PLAN-993）。
+余 20 格 = H-03 文本 4 + H-04 集合 6 + H-06 trap/宽度裁定 4 + H-07 场景 6，
+等价账/owner/`can_claim_m1=false` 不变。
 
 **bare `n/a` 54 格无规则 ID**（ac7/av7/avm24/a2r16：G01–G08 部分、C01/C02、I01–I11
 部分、H01–03 avm/a2r）：按裁定 §5 反滥用规则 1 视为待裁定，**不自行纳为 na:m1**
@@ -122,7 +128,7 @@ avm `diff-legacy-*` 不翻绿；任意非零 exit 不当负例成功（L06 必�
 | F-OK-1 底座标量/文本/记录源码四路径 | B/T/R 大部、E03、C01/C02、I01–03/05/06/10–12（237+38 格） | ① | 已交付（852/870/881/889/891/894/862/863/866/823/824/865） | 固定组 case-ace-m1-* + ace_m1_tests.rs 常驻负控 | 是（均已归档） | 无 | 同源冻结 oracle + 父侧判定 + 金样/证书 hash | 复用冻结收据；本审计窄重验 base 组（§10） |
 | F-A2R-1 a2r 静态检查（名解析） | B16/E03 a2r | ③ | a2r 线（[242 tracker](../../plans/242-a2r-feature-gap-tracker.md) active） | 同左 | 242 在册（未专列施工计划） | a2r 前端名解析 | R-E 已裁真缺口：未执行分支未定义名必须被拒（SCENARIOS E03/B16） | 242 线立项施工；不转 accepted |
 | F-A2R-2 a2r 未定型发射 | R07 a2r | ③ | a2r 线（242） | 同左 | 242 在册 | mut-record emit 定型 | R07 emit→可编译金样（旧 a2r 身份） | 242 线；892/902/904 新线不自动替换 |
-| F-A2R-3 a2r 复合认证 | ~~38 格 cert 轴~~→**余 21 格**（PLAN-992 关闭 17：H-01 12+H-02 5）+ `oracle/certs` 10→**27** | ③（独立账，不阻 M1 emit 轴） | a2r 复合 lowering（242 跟踪）；余 21 分解 H-03 文本4/H-04 集合6/H-05 move1/H-06 trap4/H-07 场景6（991 §5.4.1 合同，993/994 承接 H-05/H-03 后继） | 同左 | 242 在册；904（新线 collections/variants）drafting r1 已立项；992 已闭 17 格（2026-11-08） | 伪 Rust（`List<int>`/`int`）可编译化仅指余 21 格（17 格勘误为可编译，E-STALE） | 认证 spec：actual==golden 且 rustc 编译运行==行为 oracle（G01/G04–G08 语义） | 旧线=242；新线=904 后继；993（write/capture/move）→994（文本）按 D992 交付；**M1 消费者是否迁移=专门审计另立项** |
+| F-A2R-3 a2r 复合认证 | ~~38 格 cert 轴~~→**余 20 格**（PLAN-992 关闭 17：H-01 12+H-02 5；PLAN-993 关闭 1：H-05 K06）+ `oracle/certs` 10→**28** | ③（独立账，不阻 M1 emit 轴） | a2r 复合 lowering（242 跟踪）；余 20 分解 H-03 文本4/H-04 集合6/H-06 trap4/H-07 场景6（991 §5.4.1 合同，994 承接 H-03 后继；H-05 已闭） | 同左 | 242 在册；904（新线 collections/variants）drafting r1 已立项；992 已闭 17 格、993 已闭 K06（2026-11-08） | 伪 Rust（`List<int>`/`int`）可编译化仅指余 20 格（18 格勘误为可编译，E-STALE） | 认证 spec：actual==golden 且 rustc 编译运行==行为 oracle（G01/G04–G08 语义） | 旧线=242；新线=904 后继；994（文本）按 D992 交付；**M1 消费者是否迁移=专门审计另立项** |
 | F-SCN-1 scenario 观察通道（trace/events/harness） | E01/E02×4、R01/R04/R06 scn、I04/I09（14 格 `gap:scenario-tooling`） | ②（引擎能力多已有，观测通道缺） | scenario 工具包（未立项；E01 av 有 `av.core.trace-order` 既有 recipe 证据） | 同左 | **否** | 新 scenario harness 写面（不动生产） | SCENARIOS.md 逐行 oracle：trace 字节恰 ba（E01）、逐 owner LIFO 事件（R01）、构造/clone 失败注入回收（R02）、budget/cancel 退出面（R06）、layout 漂移拒绝（I04/I09） | 立项 scenario 工具包（规划责任=ACE 路线） |
 | F-AV-1 AV 分配失败注入 | R02 scn av | ③ | AV 资源故障代际包（未立项；852 T-05 调查 owner） | 同左 | 否 | 注入通道 API | SCENARIOS R02：逐分配点注入+合法正控+部分回收，错误分类不伪装语言错误 | 与 F-SCN-1 合并候选 |
 | F-AV-2 AV 句柄代际运行期校验 | R03 scn av | ③ | AV 句柄/generation 包（未立项；821 gen 字段≠运行期校验） | 同左 | 否 | gen 字段→运行期校验 | SCENARIOS R03：扩容后旧 view 访问受控拒绝、危险访问=0 | 同上候选 |

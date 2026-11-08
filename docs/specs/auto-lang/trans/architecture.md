@@ -131,3 +131,10 @@ graph TD
 - 备选：开启旧 `infer` 全部诊断（会误拒闭包/Option/generator）；交给 rustc 拒绝（不是 Auto 前端准入）。
 - 后果：B16/B17/B18/B19/T06/R09/R10 与 E03 a2r 格关闭；既有合法 import/动态边界及所有合法 golden 保持。细则见 [rust-semantic-admission](rust-semantic-admission.md)。
 - 状态：active
+
+### ADR-10: 写捕获闭包发射契约——恰一次 move、无重叠 cell 赋值、确定性克隆序
+- 日期 / 来源：PLAN-993（H-05，K06）；`crates/auto-lang-core/src/trans/rust/expr_emit.rs`
+- 决策：①写捕获 Rc::clone 块已强制 move 语义，源级显式 `move` 不再叠加第二个关键字（四种 capture 组合恰一次/零次发射）；②写捕获绑定上 RHS 引用同 cell 的 `Op::Asn` 按 ADR-Plan-347 全局变量先例提升 `{ let __a2r_wc = rhs; *x.borrow_mut() = __a2r_wc; }`（直接形单语句 BorrowMutError）；③≥2 写捕获时克隆行按名字典序发射（HashSet 迭代序非确定性）。
+- 备选：生成后字符串替换 `move move`（violates 字节级金样纪律）；每次调用独立 clone 值（破坏共享可变捕获语义，被独立性 oracle 抓红）。
+- 后果：K06 认证关闭（cert-gap 21→20）；`test/a2r/25_lifecycle/005/006/007` 永久反例（42/42/67）；已正确形状（K01/K03 等）字节不变。已知边界：嵌套闭包写捕获不获 Rc 降级（KNOWN-DEBT D-993-1）；复合赋值（`+=` 等）自引用不提升（无已知语料）。
+- 状态：active
