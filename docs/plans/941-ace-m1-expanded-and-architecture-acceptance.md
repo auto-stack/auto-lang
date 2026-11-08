@@ -2357,6 +2357,17 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§3工�
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§4-1 case466全成@bf8eb3835；961金样漂移接收修复+三度pin同步；治理257/257） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:bf8eb3835 | task_ids:CHECKLIST §4-1 | evidence:f94130-current-source-cases/{composed-bindings,capture-audit}.json | next_responsible_role:work §4 cert链重采 | 无live handle
 
+### 第111轮：work §4核心链完成——五native/cert292+daily292/optimized14+拒绝6/abi档全采@10c4723b8
+
+- **机制合同pin刷新**（提交**`10c4723b8`**，11文件）：五机制合同（ct-source/child/meta/restore/sq）各43个source pin因合并树（store修复/profiles集/t02_09/961数字面）全面过期→批量重算+CONTRACT_SHA+registry三向同步；治理**257/257绿**。
+- **五native捕获**（`f94131-*-current`×5+`f94131-native-admitted/`，@`10c4723b8`）：五机制观察测试真跑（env指向observation导出）+严格准入——**9条观察全PASS**（ARCH-02×2/ARCH-04×4/ct_restore×3）；admissions.json+native-only bindings落盘（基=f94130 composed）。
+- **cert292+daily292**（`f94131-current-certifications/`，@`10c4723b8`）：输入审计292行全对（源/引用哈希逐项、40 collections debug模式）→292×3真实操作（identity/toolchain+daily-emit+certify，真实编译）——**292实际认证全PASS**；capture-terminal.json落盘（strict admission pending原文reader）。
+- **optimized14+拒绝6**（`f94131-current-optimized/`+`f94131-current-query-refusals/`）：三优化观察者（8+4+2）重放+六untyped拒绝全采。适配三处漏改（refusals输出名/tools-current引用×2）已修。
+- **abi/av档**：ace-abi **243 PASS**（`f94131-abi-gate`）；ace-av（1050测）nextest-t3后台运行中（结果入第112轮）。
+- **边界**：§4剩av档判定+policy 16/16重验（组合时）；然后§5组合重读（新bindings全链=f94130/31系列+治理门+增量恢复companions——semantics T3档/comptime含t02_09档身份核对、abi新档、av新档）。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§4核心链全成：五native 9观察/cert292全PASS/daily292/optimized14/拒绝6/abi 243；av档在途） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:10c4723b8 | task_ids:CHECKLIST §4 | evidence:f94131-{native-admitted,current-certifications,current-optimized,current-query-refusals,abi-gate} | next_responsible_role:work av档判定→§5组合重读 | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
