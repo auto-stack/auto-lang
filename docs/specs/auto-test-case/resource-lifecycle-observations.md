@@ -111,3 +111,21 @@
   计划 T-04/V-12 证据）。
 - 注入分类学不变：S9 env 节点注入 trap INJECTED(25)；S4 帧注入沿 923 冻结
   的 frame-open 空路径（trap 22 + INJECT 事实行）。
+
+## PLAN-998：a2r 面资源生命周期观察（2026-11-08，SD-04）
+
+- a2r 侧 per-owner 生命周期事件（stdout `auto.res:<kind>[:<arg>]`，
+  kind ∈ create|transfer|release|mut|read|view|env|fault|budget|cancel|
+  stale|retry|heap|result）随 `legacy-a2r.resources-observe/1` 落地：
+  release 由 RAII guard 的真实 Drop 观测（逐帧 LIFO=Rust drop 序），
+  transfer 解除源 guard（转移≠释放），enum 赋值走代际 replace（旧 payload
+  在真实替换点释放恰一次），结构变异先求参数再检查增长点。与 av/mn 面
+  （av.lifecycle/1、MN-EVT，PLAN-919）分属不同引擎通道，互不借用。
+- fault/budget/cancel/stale 的 typed 终态：stderr `auto.res:fail:<kind>`
+  + exit 71（组合 profile 的 trap 仍 exit 70），unwind 过真实 Drop——
+  无剩余预算时清理仍完成；合作取消点与父 Job kill 分态，kill 不充资源
+  释放。分配计数：各侧只计各自真实 fresh alloc()（realloc 增长不计，
+  方法级对称：各侧以 N+1 对照证明自身计数精确），观察机制自身分配
+  （事件打印/环境读取）被 IN 旗标排除。
+- 历史边界记录：R03-static 旧前端门不静态拒迭代中变异（发射产物由
+  rustc 编译期拒），typed stale 面经 reference helper 面交付。

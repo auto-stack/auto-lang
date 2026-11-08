@@ -150,3 +150,35 @@ I04 依赖精确失效/无关零生产；I09 按实际策略拒绝且旧状态�
   （`ace.m1.a2r-trap-oracle/1`）逐格声明；该注册表 hash 是每张 trap 证书的
   身份轴。场景 oracle 文档（本文件）不新增 trap 语义；资源预算/流帽沿认证
   器既有冻结（120s/30s/1MiB），场景更严预算不因 trap 域放宽。
+
+## PLAN-998：H-07 六场景格的 a2r 资源观察认证域（2026-11-08，SD-01）
+
+- R01-R06 六格已由 **a2r resource-scenario 认证域**真实关闭（token
+  `ok-emit-scene`；schema `ace.m1.a2r-resource-scenario/1`；证书
+  `oracle/scenario-certs/`；声明式注册表 `oracle/scenario/scenario-oracle.json`
+  = `ace.m1.a2r-resource-oracle/1`，其 hash 为每张证书身份轴）。§1 各行
+  文字 oracle（输入/不变量/区分性反例）不变；原 snapshot 注记由此废除：
+  R05 的历史 "快照" 从无 `m1_k02.rs` 工件；R02 的域是五腿全扫（L04/L05/
+  V05/LSTR/K02），非 V05 单金样；R06 的源锚为 998 冻结 fixture（deep/trap）。
+- 观察通道：显式 profile `legacy-a2r.resources-observe/1`（默认字节恒等），
+  在**生成产物的真实拥有路径**上插桩——逐绑定 RAII guard 观测真实 Drop
+  （逐帧 LIFO 为 Rust 自身 drop 序）、`.move` 位转移解除（转移≠释放）、
+  enum 代际 replace 观测旧 payload、参数先求值的结构变异包装（增长点 fault
+  检查）、字面量/clone chk 哨兵、静默计数分配器（只计数；fault 在安全 chk
+  点交付）、budget/cancel 步进、闭包 env 转移。typed 失败（fault/budget/
+  cancel/stale）经 panic 载荷 unwind 过真实 Drop（清理被观测而非断言），
+  wrapper 只接精确载荷，exit 71；组合 checked-i32 的 trap 腿 exit 70。
+- 独立性：每腿配手写独立 reference（自有观测机制、原子分配探针域、与
+  emission 零代码共享），双侧各自真实 allocation 域扫 fault（1..N + N+1
+  对照 + 同进程 retry），事件词汇表共享而事件流不要求逐字相同。
+- R03 边界（如实）：合法近邻真实运行（buffer_reads 只含合法读）；
+  R03-static 的旧前端门**不**静态拒迭代中变异——发射产物由 rustc 在编译期
+  拒绝（E0308，编译期边界，非 typed 语言负例）；typed stale 面由 reference
+  驱动（mint→合法读→结构变异→stale 使用，typed 拒先于任何 buffer 读）。
+- K04（corpus 负例）通道迁移：T-06 为 K02 补 fn-type 返回位源入口后，
+  parse 级冻结通道（auto_syntax_E0001）结构上不可保留；K04 现于设计通道
+  拒绝——a2r `type/auto_type_E0101`（borrow-capturing 闭包不得逃逸创建帧）、
+  avm `run/RuntimeError`；负例本身保留。
+- 域互斥：value（ace.m1.cert/1）/ trap（ace.m1.a2r-trap/1）/ scene
+  （ace.m1.a2r-resource-scenario/1）三域 reader/路径/计数互斥；日常零
+  spawn 面为 suite `legacy-a2r-resources-998`（12 checks emit+bytes）。

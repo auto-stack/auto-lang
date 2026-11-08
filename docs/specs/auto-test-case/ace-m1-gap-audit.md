@@ -344,3 +344,17 @@ cert 38 gap；`can_claim_m1=false`。**治理交付完成 ≠ M1 通过**；签�
   receipts 38 值+4 trap strict；PS reader 对 trap 域 token 门控（无
   ok-emit-trap 行时休眠，migrated 后强制证书在场——假 token/删证/自洽伪造
   均拒）。
+
+## PLAN-998：缺口归零与守卫形态（2026-11-08，SD-03）
+
+- 六个 scenario:a2r cert-gap 格（R01/R03/R04=emit-ok-run-unverified，
+  R02/R05/R06=snapshot-only-cert-gap）全部以真实双侧认证关闭，token 迁移
+  `ok-emit-scene`（证据先行，同 commit 落证书）；required 313 集合不变。
+- 991 分诊 G33-G38 的根因分类对应关闭：E-MISSING→fixture+通道落地；
+  E-STALE/不一致→真实场景金样替换注记（含 R05 `m1_k02.rs` 不存在、R02
+  非 V05 单证、R06 无源锚三处来源注记纠正）；C-CHANNEL→本域 reader。
+- `Get-CellState` 语义未改：`ok-emit-scene` 走既有 `^ok`→green/cert=none，
+  绿 token 从不冒证书——scenario 证书由 `Invoke-ScenarioReceiptValidation`
+  （snapshot/receipts/acceptance 三面）独立强制，缺证书/坏件/错域/漏
+  check/自洽伪造均拒；value/trap/scene 三轴分报，canClaimM1 的零
+  cert-gap 条件由真实证书而非 token 表面支撑。

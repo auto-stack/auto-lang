@@ -245,3 +245,21 @@ receipt 结构校验为硬错误，文件漂移=诚实重认证，无 --force �
   outcome/expected/注记保义，131/12/313/批准集不变）；余 6=H-07 场景（998 域）
   ；`can_claim_m1=false` 不变。manifest `trap_assets_*` 三组（oracle/trap、
   oracle/trap-certs、reference/trap）递归精确枚举，值域计数不混。
+
+## PLAN-998：resource-scenario 域与十六格闭合（2026-11-08，SD-02）
+
+- M1 a2r cert-gap 三域 16 格全闭合：996 六集合 + 997 四 trap + 998 六场景
+  = 16/16；值域 38、trap 4、scene 6 分域计数，零 cert-gap 守卫恒存。
+  历史 991 分诊只作来源（其 38 格静态分类已被 992/994/996/997/998 的真实
+  认证取代），不再引用其过时总数。
+- 本域实际有限能力（v1 冻结，随 `legacy-a2r.resources-observe/1`）：
+  owner=绑定级（含 enum 代际 `fn:var#k`）；分配域=真实 heap fresh alloc()
+  （realloc 增长与原地增长不计数；各侧按各自真实计数扫 fault，N+1 对照）；
+  未插桩面：表达式位结构变异、return 位 clone、FStr 强转（fixtures 不含，
+  998 域不外推）。channel：certifier `ace-certify --resource`
+  （`ace_resource_certify.rs`），per-INSTANCE 不变量（unique_terminal/
+  transfer≠release/per-frame LIFO/no-leak + R04 switch-once/R05 env-chain/
+  R03 stale-before-read），strict receipt（Invalid vs Stale，注册表交叉核
+  防自洽伪造），复用仅严格验证通过；证书原子安装（全腿成功才写）。
+- 941 交接：六格证据经 binding note 只读交接；0gap 是 M1 必要条件，
+  941 其余 required 门不因此自动绿。

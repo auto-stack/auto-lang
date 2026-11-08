@@ -152,3 +152,19 @@ graph TD
 - 备选：内联 checked 表达式（字节膨胀/括号风险/`unwrap_or_else` 捕获非受控结束且常量除零仍被 lint 拒）；i64 原生 `checked_add`（检的是 i64 域——i32 操作数在 i64 永不溢出，语义错）；末尾 cast 补救（违反运算时检查义务）。
 - 后果：ace-m1 H-06 四 trap 格独立认证关闭（cert-gap 10→6，快照日常 41→45，trap 证书 4 张 `ace.m1.a2r-trap/1` 独立域）；`a2r_tests.rs` plan997 9 例永久面；默认金样字节零变化。已知边界：调用/字段/cast/全局承载的整数运算不入域（保持默认）；trap 观察通道属认证域（用户源可打印相似 stdout 文本不能伪造——事件在 stderr+exit 码）。
 - 状态：active
+
+## PLAN-998：发射 profile 双轴与 fn-type 源入口（2026-11-08，SD-05）
+
+- RustTrans 发射 profile 双轴：`IntProfile`（997）+ `ResourceProfile`
+  （998，`legacy-a2r.resources-observe/1`，默认 None 字节恒等；两轴可组合，
+  组合时 trap 经 typed 载荷 unwind 以观测清理）。入口
+  `transpile_rust_with_source_dir_profiles`；a2r 契约面 `resource_profile`
+  per-check 精确 id 准入（suite 级禁带）。
+- T-06 有界源入口：decl 返回位 lookahead 纳入 Fn token（fn-type 语法本
+  存在，Plan 060）；fn-type 返回渲染 `Box<dyn Fn(..)>`，返回的 move 闭包
+  `Box::new`；move-Str 参数按值 String（View 态仍 &str）。负例面：非
+  move 闭包自 fn-type 返回函数返回 = typed 拒绝
+  （`auto_type_E0101`，borrow-capture 逃逸创建帧）。
+- 插桩模块 `trans/rust/res_obs.rs`：绑定 guard/xfer/代际 replace/结构变
+  异包装/字面量与 clone chk/loop 步进/envgo；helper 块仅在使用时追加
+  （懒挂），未选 profile 的发射字节与冻结金样逐字节相同。
