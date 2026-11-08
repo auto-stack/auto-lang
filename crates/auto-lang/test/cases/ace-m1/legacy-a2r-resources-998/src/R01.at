@@ -1,0 +1,51 @@
+// PLAN-998 scenario R01 (a2r cell): the oracle's named inputs in one
+// program — T03 (Str clone/move/concat), R04 (record clone/mutate), R05
+// (move-Item param relay across frames) — plus an early-return branch
+// whose frame-local temporaries die with the callee, and a loop with
+// break/continue. Every shape is a corpus-proven legacy-a2r form.
+// Frozen oracle: value 1046; per-owner create/transfer/release with
+// per-frame LIFO; transfer is never a release.
+type Item { name Str; code int }
+fn relay(move x Item) Item { return x.move }
+fn pick(move x Item, early bool) int {
+    let t Str = "tail"
+    if early {
+        return x.code * 100 + t.len()
+    }
+    var n Str = x.name.clone()
+    n = n + "!"
+    return x.code + n.len()
+}
+fn main() int {
+    let a Str = "ab"
+    let b Str = a.clone()
+    var c Str = b.move
+    c = c + "中"
+    var it Item = Item("hello", 1)
+    let keep Item = it.clone()
+    it.name = "x"
+    let got Item = relay(keep.move)
+    let e Item = it.clone()
+    let early = pick(e.move, true)
+    let l Item = it.clone()
+    let late = pick(l.move, false)
+    let d Str = a.clone()
+    c = d.clone()
+    var ns = List<int>.new()
+    ns.push(1)
+    ns.push(2)
+    ns.push(3)
+    var total = 0
+    var seen = 0
+    for i in ns {
+        seen = seen + 1
+        if seen > 2 {
+            continue
+        }
+        if seen > 1 {
+            break
+        }
+        total = total + 1
+    }
+    return early * 10 + late + got.code + it.name.len() + total + c.len()
+}

@@ -1,0 +1,7 @@
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(10)
+    let a int = xs.get(0)
+    xs.push(30)
+    return a * 10 + xs.get(1)
+}

@@ -28,6 +28,7 @@ fn main() {
     let mut rustc: Option<String> = None;
     let mut scratch: Option<PathBuf> = None;
     let mut trap = false;
+    let mut resource = false; // PLAN-998 resource-scenario domain
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -70,6 +71,7 @@ fn main() {
                 ));
             }
             "--trap" => trap = true,
+            "--resource" => resource = true,
             other => {
                 eprintln!("ace-certify: unknown argument {other:?}");
                 std::process::exit(2);
@@ -93,6 +95,24 @@ fn main() {
         use auto_lang::test_cases::ace_trap_certify::{trap_certify_and_report, TrapCertifyArgs};
         let certs_dir = certs.unwrap_or_else(|| corpus.join("oracle").join("trap-certs"));
         std::process::exit(trap_certify_and_report(&TrapCertifyArgs {
+            corpus,
+            certs_dir,
+            only,
+            force,
+            rustc,
+            scratch,
+        }));
+    }
+
+    if resource {
+        // PLAN-998 resource-scenario domain: independent schema/profile/cert
+        // path; the value/trap domain flags keep their exact meaning (--certs
+        // default becomes the scenario-certs dir).
+        use auto_lang::test_cases::ace_resource_certify::{
+            resource_certify_and_report, ResourceCertifyArgs,
+        };
+        let certs_dir = certs.unwrap_or_else(|| corpus.join("oracle").join("scenario-certs"));
+        std::process::exit(resource_certify_and_report(&ResourceCertifyArgs {
             corpus,
             certs_dir,
             only,

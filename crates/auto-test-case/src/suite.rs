@@ -650,6 +650,9 @@ pub fn apply_defaults(check: &CheckSpec, defaults: &Defaults) -> (CheckSpec, Vec
                     // defaults never carry it (validate_options_shape already
                     // rejects it loudly at suite decode).
                     a2r_int_profile: None,
+                    // PLAN-998: resource_profile is per-check only —
+                    // suite-level defaults never carry it.
+                    a2r_resource_profile: None,
                     ac_profile: None,
                     ac_target: None,
                     ac_entry: None,
@@ -700,6 +703,9 @@ pub fn apply_defaults(check: &CheckSpec, defaults: &Defaults) -> (CheckSpec, Vec
                     // defaults never carry it (validate_options_shape already
                     // rejects it loudly at suite decode).
                     a2r_int_profile: None,
+                    // PLAN-998: resource_profile is per-check only —
+                    // suite-level defaults never carry it.
+                    a2r_resource_profile: None,
                     ac_profile: None,
                     ac_target: None,
                     ac_entry: None,

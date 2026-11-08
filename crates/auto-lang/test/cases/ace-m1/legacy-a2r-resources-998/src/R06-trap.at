@@ -1,0 +1,15 @@
+// PLAN-919 scenario R06 trap face (both cells): a language trap inside a
+// callee while both frames own live values — the fatal sweep releases the
+// callee first, then the caller.
+fn boom(s Str, d int) int {
+    let t Str = "inner"
+    let total int = s.len() + t.len()
+    return total / d
+}
+fn main() int {
+    var xs = List<Str>.new()
+    xs.push("a")
+    xs.push("bb")
+    let keep Str = "kept"
+    return boom(keep, 0) + xs.len()
+}

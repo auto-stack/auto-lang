@@ -1,0 +1,36 @@
+// PLAN-919 scenario R06 (both cells): a deep owned structure alive across
+// the exit — 64 payload strings in a list, then a long scalar spin. The
+// budget/cancel knobs bite in the spin (after the build), so the sweep
+// releases every owner deterministically.
+fn main() int {
+    var seed = List<int>.new()
+    seed.push(1)
+    seed.push(2)
+    seed.push(3)
+    seed.push(4)
+    seed.push(5)
+    seed.push(6)
+    seed.push(7)
+    seed.push(8)
+    var xs = List<Str>.new()
+    for a in seed {
+        for b in seed {
+            xs.push("payload")
+        }
+    }
+    var n = 0
+    for a in seed {
+        for b in seed {
+            for c in seed {
+                for d in seed {
+                    for e in seed {
+                        for f in seed {
+                            n = n + a + f
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return n + xs.len()
+}

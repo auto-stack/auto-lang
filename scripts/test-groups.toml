@@ -1677,6 +1677,18 @@ domain = "ace"
 all = false
 
 [[group]]
+name = "case-legacy-a2r-resources-998"
+title = "TestCase case-legacy-a2r-resources-998（PLAN-998 H-07 六场景 resources-observe profile a2r-only金样快照）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998.suite.ad"
+all = false
+
+[[group]]
 name = "case-legacy-a2r-trap-997"
 title = "TestCase case-legacy-a2r-trap-997（PLAN-997 H-06 四例trap checked-i32 profile a2r-only金样快照）"
 runner = "case"

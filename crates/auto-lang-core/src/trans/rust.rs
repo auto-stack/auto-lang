@@ -125,6 +125,46 @@ impl IntProfile {
     }
 }
 
+/// PLAN-998: EXPLICIT versioned resource-observation emission profile for
+/// the legacy A2R transpiler. `None` is the frozen default (byte-identical
+/// emission — no instrumentation, no helper block); `Observe` is the opt-in
+/// `legacy-a2r.resources-observe/1` — the ACTUAL ownership paths of the
+/// emitted Rust (owned bindings, moves, clones, real allocation attempts,
+/// structural list mutations, loop heads) are instrumented with a private
+/// typed helper block so per-owner lifecycle events (`auto.res:*` lines on
+/// stdout) become observable WITHOUT changing business results. Typed
+/// resource failures (fault/budget/cancel/stale) are delivered as a typed
+/// `panic!` payload that unwinds through the real Drop guards (cleanup is
+/// OBSERVED, not asserted); the frozen resource wrapper catches ONLY those
+/// exact payloads and re-panics anything else.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ResourceProfile {
+    #[default]
+    None,
+    Observe,
+}
+
+impl ResourceProfile {
+    pub const OBSERVE_ID: &'static str = "legacy-a2r.resources-observe/1";
+
+    /// Exact-match admission: unknown ids are None (callers must turn that
+    /// into a contract error, never a silent default).
+    pub fn from_id(id: &str) -> Option<Self> {
+        if id == Self::OBSERVE_ID {
+            Some(ResourceProfile::Observe)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_id(&self) -> &'static str {
+        match self {
+            ResourceProfile::None => "legacy-a2r.resources-plain/1",
+            ResourceProfile::Observe => Self::OBSERVE_ID,
+        }
+    }
+}
+
 pub struct RustTrans {
     pub assembly_modules: HashSet<String>,
     pub assembly_references: Vec<crate::stdlib_assembly::reference::ReferenceProof>,
@@ -556,6 +596,27 @@ pub struct RustTrans {
     // helper block is appended to the module only when non-empty, so sources
     // with no checked int op keep helper-free bytes.
     pub checked_i32_used: std::collections::BTreeSet<&'static str>,
+
+    // PLAN-998: explicit resource-observation emission profile
+    // (`legacy-a2r.resources-observe/1`). Default None keeps the frozen
+    // bytes byte-identical; Observe instruments the real ownership paths
+    // and appends the private resource helper block when any hook fired.
+    pub resource_profile: ResourceProfile,
+    /// PLAN-998: set when any observation hook fired (gates the helper
+    /// block append — sources with no hook keep helper-free bytes).
+    pub res_obs_used: bool,
+    /// PLAN-998: per-fn scope stack of guarded owned bindings (innermost
+    /// last): name -> (guard rust ident, owner label). Maintained by the
+    /// observe hooks; used to disarm guards at `.move` sites.
+    pub res_guard_scopes: Vec<std::collections::BTreeMap<AutoStr, (AutoStr, String)>>,
+    /// PLAN-998: assignment generation counter per enum-with-owned-payload
+    /// binding (owner label becomes `fn:var#k`); reset per fn.
+    pub res_enum_gens: std::collections::BTreeMap<AutoStr, usize>,
+    /// PLAN-998: set when the statement pre-hook emitted the full statement
+    /// (enum payload replace) and the original emission must be skipped.
+    pub res_suppressed_last: std::cell::Cell<bool>,
+    /// PLAN-998: param guards pending for the next body() opening brace.
+    pub res_pending_param_guards: Vec<(AutoStr, String)>,
 }
 
 impl RustTrans {
@@ -673,6 +734,12 @@ impl RustTrans {
             handle_task_map: std::collections::HashMap::new(),
             int_profile: IntProfile::LegacyI64,
             checked_i32_used: std::collections::BTreeSet::new(),
+            resource_profile: ResourceProfile::None,
+            res_obs_used: false,
+            res_guard_scopes: Vec::new(),
+            res_enum_gens: std::collections::BTreeMap::new(),
+            res_suppressed_last: std::cell::Cell::new(false),
+            res_pending_param_guards: Vec::new(),
         }
     }
 
@@ -791,6 +858,12 @@ impl RustTrans {
             handle_task_map: std::collections::HashMap::new(),
             int_profile: IntProfile::LegacyI64,
             checked_i32_used: std::collections::BTreeSet::new(),
+            resource_profile: ResourceProfile::None,
+            res_obs_used: false,
+            res_guard_scopes: Vec::new(),
+            res_enum_gens: std::collections::BTreeMap::new(),
+            res_suppressed_last: std::cell::Cell::new(false),
+            res_pending_param_guards: Vec::new(),
         }
     }
 
@@ -814,9 +887,19 @@ impl RustTrans {
         let mut s = String::from(
             "\n// a2r checked-i32 profile helpers (legacy-a2r.checked-i32/1) —\n// source-int arithmetic is domain-checked at operation time; a violation\n// emits a typed stderr diagnostic and exits controlled (code 70).\n",
         );
-        s.push_str(
-            "fn __a2r_i32_trap(kind: &str, op: &str) -> ! {\n    eprintln!(\"auto.trap:{}:{}\", kind, op);\n    std::process::exit(70)\n}\n",
-        );
+        if self.resource_profile == ResourceProfile::Observe {
+            // PLAN-998 combined profiles (checked-i32 + resources-observe):
+            // same stderr line, but delivered through the typed panic payload
+            // so the real Drop guards run first; the wrapper exits 70 after
+            // observing cleanup. The single-profile block stays exit(70).
+            s.push_str(
+                "fn __a2r_i32_trap(kind: &str, op: &str) -> ! {\n    eprintln!(\"auto.trap:{}:{}\", kind, op);\n    __a2r_trap_unwind(kind, op)\n}\n",
+            );
+        } else {
+            s.push_str(
+                "fn __a2r_i32_trap(kind: &str, op: &str) -> ! {\n    eprintln!(\"auto.trap:{}:{}\", kind, op);\n    std::process::exit(70)\n}\n",
+            );
+        }
         for op in ["add", "sub", "mul", "div", "mod", "neg"] {
             if !self.checked_i32_used.contains(op) {
                 continue;
@@ -842,6 +925,52 @@ impl RustTrans {
                 ),
                 _ => {}
             }
+        }
+        s
+    }
+
+    /// PLAN-998 (`legacy-a2r.resources-observe/1`): the private typed
+    /// resource-observation helper block, appended when any observation
+    /// hook fired. Contract of the block (frozen with the profile id):
+    /// - events are one stdout line each, flushed through immediately
+    ///   (they survive panic unwinding): `auto.res:<kind>[:<arg>]` with
+    ///   kind ∈ create|transfer|release|alloc:<domain>|read|view|env|
+    ///   fault|budget|cancel|stale; domains ∈ str|vec|clone|env;
+    /// - `__A2rObsGuard` observes the REAL Rust drop of an owned binding
+    ///   (release fires exactly once, at the actual drop point — per-frame
+    ///   LIFO is Rust's own drop order, observed rather than asserted);
+    /// - a transfer DISARMS the source guard (a move is NOT a release);
+    /// - allocation attempts are counted per REAL domain: `str` (string
+    ///   literals/format), `clone`, `env` (boxed closure envs), `vec`
+    ///   (capacity growth, predicted at cap==len on push/insert and
+    ///   verified after the call — never a blanket per-push count);
+    /// - typed failures (fault/budget/cancel/stale) print one stderr line
+    ///   `auto.res:fail:<kind>` and unwind via a typed panic payload so
+    ///   every real Drop guard runs (cleanup OBSERVED); the frozen
+    ///   resource wrapper catches ONLY these exact payloads (plus the
+    ///   combined-profile trap payload) and re-panics anything foreign.
+    pub(crate) fn res_obs_helper_block(&self) -> String {
+        let mut s = String::from(
+            "\n// a2r resources-observe profile helpers (legacy-a2r.resources-observe/1) —\n// per-owner lifecycle events over the real ownership paths; business\n// results are unchanged. Typed resource failures unwind through the real\n// Drop guards (cleanup is observed); the resource wrapper catches only the\n// exact typed payloads and re-panics anything foreign.\n",
+        );
+        s.push_str("#[allow(non_snake_case)]\npub struct __A2rObsGuard { owner: &'static str, live: bool }\n#[allow(non_snake_case)]\nimpl __A2rObsGuard {\n    pub fn arm(owner: &'static str) -> Self { __A2rObsGuard { owner, live: true } }\n}\nimpl std::ops::Drop for __A2rObsGuard {\n    fn drop(&mut self) {\n        if self.live { __a2r_evt(\"release\", self.owner); }\n    }\n}\n");
+        s.push_str("static __A2R_STEPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);\nstatic __A2R_CANCEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\nstatic __A2R_GEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);\nstatic __A2R_HEAP_N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);\nstatic __A2R_EVT_IN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\nfn __a2r_budget() -> Option<usize> {\n    static B: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();\n    *B.get_or_init(|| {\n        let was = __A2R_EVT_IN.swap(true, std::sync::atomic::Ordering::SeqCst);\n        let r = std::env::var(\"A2R_BUDGET\").ok().and_then(|v| v.parse().ok());\n        __A2R_EVT_IN.store(was, std::sync::atomic::Ordering::SeqCst);\n        r\n    })\n}\nfn __a2r_fault_at() -> Option<usize> {\n    static F: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();\n    *F.get_or_init(|| {\n        let was = __A2R_EVT_IN.swap(true, std::sync::atomic::Ordering::SeqCst);\n        let r = std::env::var(\"A2R_FAULT\").ok().and_then(|v| {\n            let (dom, k) = v.split_once('#')?;\n            if dom != \"heap\" { return None; }\n            k.parse::<usize>().ok()\n        });\n        __A2R_EVT_IN.store(was, std::sync::atomic::Ordering::SeqCst);\n        r\n    })\n}\n");
+        s.push_str("// The counting global allocator: REAL heap-allocation counting\n// (a plain atomic fetch_add - NEVER any I/O inside the allocator; std\n// output machinery during early-startup allocations deadlocks). The\n// aggregate count is printed by the frozen resource wrapper after the\n// entry completes; the fault is delivered at the safe `__a2r_chk` sentinel\n// sites instead, right before the k-th allocation happens. Boundary\n// (frozen with v1): realloc-based Vec growth and in-place growth are not\n// counted as fresh allocations - only fresh `alloc()` calls are.\n#[allow(non_snake_case)]\nstruct __A2rCountingAlloc;\nunsafe impl std::alloc::GlobalAlloc for __A2rCountingAlloc {\n    unsafe fn alloc(&self, l: std::alloc::Layout) -> *mut u8 {\n        if !__A2R_EVT_IN.load(std::sync::atomic::Ordering::SeqCst) {\n            let _ = __A2R_HEAP_N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);\n        }\n        std::alloc::System.alloc(l)\n    }\n    unsafe fn dealloc(&self, p: *mut u8, l: std::alloc::Layout) {\n        std::alloc::System.dealloc(p, l)\n    }\n    unsafe fn realloc(&self, p: *mut u8, l: std::alloc::Layout, nl: usize) -> *mut u8 {\n        std::alloc::System.realloc(p, l, nl)\n    }\n}\n#[allow(non_snake_case)]\n#[global_allocator]\nstatic __A2R_GLOBAL: __A2rCountingAlloc = __A2rCountingAlloc;\npub fn __a2r_heap_n() -> usize {\n    __A2R_HEAP_N.load(std::sync::atomic::Ordering::SeqCst)\n}");
+        s.push_str("pub fn __a2r_evt(kind: &str, arg: &str) {\n    use std::io::Write;\n    let was = __A2R_EVT_IN.swap(true, std::sync::atomic::Ordering::SeqCst);\n    let mut o = std::io::stdout().lock();\n    if arg.is_empty() {\n        let _ = writeln!(o, \"auto.res:{}\", kind);\n    } else {\n        let _ = writeln!(o, \"auto.res:{}:{}\", kind, arg);\n    }\n    let _ = o.flush();\n    drop(o);\n    __A2R_EVT_IN.store(was, std::sync::atomic::Ordering::SeqCst);\n}\npub fn __a2r_step() {\n    if let Some(b) = __a2r_budget() {\n        if __A2R_STEPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1 > b {\n            __a2r_fail(\"budget\");\n        }\n    }\n    if __A2R_CANCEL.load(std::sync::atomic::Ordering::SeqCst) {\n        __a2r_fail(\"cancel\");\n    }\n}\npub fn __a2r_fail(kind: &'static str) -> ! {\n    __a2r_evt(kind, \"\");\n    let was = __A2R_EVT_IN.swap(true, std::sync::atomic::Ordering::SeqCst);\n    eprintln!(\"auto.res:fail:{}\", kind);\n    __A2R_EVT_IN.store(was, std::sync::atomic::Ordering::SeqCst);\n    std::panic::panic_any(format!(\"auto.res:fail:{}\", kind))\n}");
+        s.push_str("static __A2R_FAULT_OFF: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\npub fn __a2r_chk() {\n    __a2r_step();\n    if !__A2R_FAULT_OFF.load(std::sync::atomic::Ordering::SeqCst) {\n        if let Some(k) = __a2r_fault_at() {\n            if __A2R_HEAP_N.load(std::sync::atomic::Ordering::SeqCst) + 1 == k {\n                __a2r_fail(\"fault\");\n            }\n        }\n    }\n}\npub fn __a2r_fault_clear() {\n    __A2R_FAULT_OFF.store(true, std::sync::atomic::Ordering::SeqCst);\n}\npub fn __a2r_reset() {\n    __A2R_HEAP_N.store(0, std::sync::atomic::Ordering::SeqCst);\n    __A2R_STEPS.store(0, std::sync::atomic::Ordering::SeqCst);\n    __A2R_CANCEL.store(false, std::sync::atomic::Ordering::SeqCst);\n}\n");
+        s.push_str("pub fn __a2r_own(owner: &'static str) -> __A2rObsGuard {\n    __a2r_step();\n    __a2r_evt(\"create\", owner);\n    __A2rObsGuard::arm(owner)\n}\npub fn __a2r_xfer<T>(mut g: __A2rObsGuard, v: T) -> T {\n    g.live = false; // a transfer is NOT a release\n    let owner = g.owner;\n    __a2r_evt(\"transfer\", owner);\n    v\n}\npub fn __a2r_replace_go<T>(mut old: __A2rObsGuard, slot: &mut T, owner: &'static str, new: T) -> __A2rObsGuard {\n    let old_owner = old.owner;\n    old.live = false; // disarm: the observed release is the event below\n    drop(old); // disarmed silently — its payload's release is observed below\n    __a2r_step();\n    let prev = std::mem::replace(slot, new);\n    drop(prev); // the REAL drop of the previous payload — observed at this point\n    __a2r_evt(\"release\", old_owner);\n    __a2r_evt(\"create\", owner);\n    __A2rObsGuard::arm(owner)\n}\npub fn __a2r_read(owner: &'static str) {\n    __a2r_step();\n    __a2r_evt(\"read\", owner);\n}\n");
+        s.push_str("pub fn __a2r_list_pre(owner: &'static str) {\n    __a2r_chk();\n    __a2r_evt(\"mut\", owner);\n    __A2R_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);\n}\npub fn __a2r_mut_call<T>(v: &mut Vec<T>, f: impl FnOnce(&mut Vec<T>)) {
+    // A structural mutation whose ARGUMENTS are already evaluated: the
+    // growth-imminent fault check runs AFTER the argument allocations and
+    // immediately before the mutation's own allocation.
+    if v.capacity() == v.len() {
+        __a2r_chk();
+    }
+    f(v);
+}
+pub fn __a2r_view(owner: &'static str) -> usize {\n    __a2r_step();\n    __a2r_evt(\"view\", owner);\n    __A2R_GEN.load(std::sync::atomic::Ordering::SeqCst)\n}\npub fn __a2r_view_use(owner: &'static str, gen: usize) {\n    __a2r_step();\n    if gen != __A2R_GEN.load(std::sync::atomic::Ordering::SeqCst) {\n        __a2r_fail(\"stale\"); // rejected BEFORE any buffer access\n    }\n    __a2r_evt(\"read\", owner);\n}\npub fn __a2r_envgo<const N: usize>(gs: [__A2rObsGuard; N]) {\n    for mut g in gs {\n        g.live = false; // captured into the closure env: transferred, not released\n        let owner = g.owner;\n        __a2r_evt(\"transfer\", owner);\n    }\n    __a2r_evt(\"env\", \"\");\n}\npub fn __a2r_cancel_set() {\n    __A2R_CANCEL.store(true, std::sync::atomic::Ordering::SeqCst);\n}\n");
+        if self.int_profile == IntProfile::CheckedI32 {
+            s.push_str("// combined profiles (checked-i32 + resources-observe): the typed trap\n// keeps its stderr line and terminal exit 70, but is DELIVERED through a\n// typed panic payload so the real Drop guards run first; the resource\n// wrapper observes cleanup, then exits 70.\npub fn __a2r_trap_unwind(kind: &str, op: &str) -> ! {\n    std::panic::panic_any(format!(\"auto.trap:{}:{}\", kind, op))\n}\n");
         }
         s
     }
@@ -1214,6 +1343,14 @@ impl RustTrans {
     /// Previously, only Stmt::Expr and Stmt::Store were handled, silently
     /// dropping other statement types (nested loops, if, break, return, etc.)
     fn emit_loop_body(&mut self, body: &Body, sink: &mut Sink) -> AutoResult<()> {
+        // PLAN-998 (resources-observe): a per-iteration step check at the
+        // loop head — the budget/cancel knobs bite inside real spins.
+        // Profile-gated; default bytes untouched.
+        if self.res_on() {
+            self.res_mark();
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"__a2r_step();\n")?;
+        }
         for (i, stmt) in body.stmts.iter().enumerate() {
             sink.record();
             if i < body.source_lines.len() {
@@ -2459,7 +2596,7 @@ pub fn transpile_rust_with_source_dir_profile(
     code: &str,
     int_profile: IntProfile,
 ) -> AutoResult<Sink> {
-    transpile_rust_full_with_profile(
+    transpile_rust_full_with_profiles(
         name,
         code,
         None,
@@ -2467,6 +2604,32 @@ pub fn transpile_rust_with_source_dir_profile(
         None,
         false,
         int_profile,
+        ResourceProfile::None,
+    )
+    .map(|(sink, _)| sink)
+}
+
+/// PLAN-998: single-file transpile with EXPLICIT versioned profiles for BOTH
+/// axes — the source-int profile (`legacy-a2r.checked-i32/1`) and the
+/// resource-observation profile (`legacy-a2r.resources-observe/1`). The two
+/// combine freely (the R06 trap leg needs both); callers that select none
+/// keep the frozen default bytes.
+pub fn transpile_rust_with_source_dir_profiles(
+    source_dir: impl AsRef<std::path::Path>,
+    name: impl Into<AutoStr>,
+    code: &str,
+    int_profile: IntProfile,
+    resource_profile: ResourceProfile,
+) -> AutoResult<Sink> {
+    transpile_rust_full_with_profiles(
+        name,
+        code,
+        None,
+        Some(source_dir.as_ref().to_path_buf()),
+        None,
+        false,
+        int_profile,
+        resource_profile,
     )
     .map(|(sink, _)| sink)
 }
@@ -2505,7 +2668,7 @@ pub fn transpile_rust_full_with_options(
     assembly_runtime: Option<crate::stdlib_assembly::host::RustRuntime>,
     take_references: bool,
 ) -> AutoResult<(Sink, Vec<crate::stdlib_assembly::reference::ReferenceProof>)> {
-    transpile_rust_full_with_profile(
+    transpile_rust_full_with_profiles(
         name,
         code,
         sibling_store,
@@ -2513,6 +2676,7 @@ pub fn transpile_rust_full_with_options(
         assembly_runtime,
         take_references,
         IntProfile::LegacyI64,
+        ResourceProfile::None,
     )
 }
 
@@ -2530,6 +2694,32 @@ pub fn transpile_rust_full_with_profile(
     assembly_runtime: Option<crate::stdlib_assembly::host::RustRuntime>,
     take_references: bool,
     int_profile: IntProfile,
+) -> AutoResult<(Sink, Vec<crate::stdlib_assembly::reference::ReferenceProof>)> {
+    transpile_rust_full_with_profiles(
+        name,
+        code,
+        sibling_store,
+        source_dir,
+        assembly_runtime,
+        take_references,
+        int_profile,
+        ResourceProfile::None,
+    )
+}
+
+/// PLAN-998: the two-axis profile-carrying core — the 997 source-int
+/// profile plus the resource-observation profile. Both default profiles
+/// keep the frozen bytes byte-identical; each opt-in appends its own
+/// private helper block only when its hooks actually fired.
+pub fn transpile_rust_full_with_profiles(
+    name: impl Into<AutoStr>,
+    code: &str,
+    sibling_store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>,
+    source_dir: Option<std::path::PathBuf>,
+    assembly_runtime: Option<crate::stdlib_assembly::host::RustRuntime>,
+    take_references: bool,
+    int_profile: IntProfile,
+    resource_profile: ResourceProfile,
 ) -> AutoResult<(Sink, Vec<crate::stdlib_assembly::reference::ReferenceProof>)> {
     let name = name.into();
     let _scope = shared(crate::scope_manager::ScopeManager::new());
@@ -2602,6 +2792,7 @@ pub fn transpile_rust_full_with_profile(
     let mut transpiler = RustTrans::new(name);
     transpiler.escape_results = escape_results;
     transpiler.int_profile = int_profile; // PLAN-997
+    transpiler.resource_profile = resource_profile; // PLAN-998
     transpiler.source_dir = source_dir; // Plan 610 ⑥
                                         // Plan 433 A1: pre-register fn return types for the whole file so
                                         // `let x = fn()` bindings infer their type regardless of declaration
@@ -2628,6 +2819,13 @@ pub fn transpile_rust_full_with_profile(
     if !transpiler.checked_i32_used.is_empty() {
         out.body
             .extend_from_slice(transpiler.checked_i32_helper_block().as_bytes());
+    }
+
+    // PLAN-998: append the resource-observation helper block when any
+    // observation hook fired (the default profile never appends).
+    if transpiler.res_obs_used {
+        out.body
+            .extend_from_slice(transpiler.res_obs_helper_block().as_bytes());
     }
 
     // Apply post-processing fixes (replaces fix_transpiled.py)
@@ -4585,5 +4783,6 @@ mod call_emit;
 mod decl_emit;
 mod expr_emit;
 mod project_fixups;
+mod res_obs;
 mod stmt_emit;
 mod ty;

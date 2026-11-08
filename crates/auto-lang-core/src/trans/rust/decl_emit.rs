@@ -122,6 +122,32 @@ impl RustTrans {
         };
         self.current_scope_depth = 0;
 
+        // PLAN-998 (resources-observe): enter the frame's guard scope and
+        // stage guards for owned params (drained as the first statements of
+        // the body by body()). Profile-gated; default bytes untouched.
+        self.res_frame_enter();
+        self.res_enum_gens.clear();
+        self.res_pending_param_guards.clear();
+        if self.res_on() {
+            for param in &fn_decl.params {
+                // View-mode str params render as borrowed &str (not owners).
+                let borrowed_str = matches!(param.mode, crate::ast::ParamMode::View)
+                    && matches!(
+                        param.ty,
+                        Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit
+                    );
+                if !borrowed_str && self.res_owned_type(&param.ty, 0) {
+                    self.res_mark();
+                    let owner = self.res_owner(param.name.as_str());
+                    self.res_pending_param_guards.push((
+                        RustTrans::res_guard_ident(param.name.as_str()),
+                        owner.clone(),
+                    ));
+                    self.res_note_guard(param.name.as_str(), owner);
+                }
+            }
+        }
+
         // Plan 204 Phase 3: Track whether current function returns !T or Result<T,E> (for Err boxing)
         self.current_fn_is_result = matches!(fn_decl.ret, Type::Result(_))
             || matches!(&fn_decl.ret, Type::GenericInstance(inst) if inst.base_name == "Result");
@@ -464,10 +490,22 @@ impl RustTrans {
             })
             .collect();
         for param in &fn_decl.params {
-            if matches!(
+            // PLAN-998 T-06: Move-mode Str params are OWNED (String) — they
+            // never enter the borrowed-str registries.
+            #[allow(deprecated)] // `take` is the deprecated alias of `move`
+            let move_str = matches!(
+                param.mode,
+                crate::ast::ParamMode::Move | crate::ast::ParamMode::Take
+            ) && matches!(
                 param.ty,
                 Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit
-            ) {
+            );
+            if !move_str
+                && matches!(
+                    param.ty,
+                    Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit
+                )
+            {
                 self.current_fn_str_params.insert(param.name.clone());
                 self.fn_param_str_slice.insert(param.name.clone());
             }
@@ -665,6 +703,23 @@ impl RustTrans {
                     }
                     other => self.rust_return_type_name(other),
                 }
+            } else if matches!(effective_ret_type, Type::Fn(_, _)) {
+                // PLAN-998 T-06: a declared fn-type return is the boxed
+                // callable carrier — legacy fn-type values are closures
+                // WITH environments (a bare fn pointer cannot carry the
+                // captured env). Params render like the closure-trait form.
+                let (params, ret) = match &effective_ret_type {
+                    Type::Fn(p, r) => (p.clone(), r.as_ref().clone()),
+                    _ => unreachable!(),
+                };
+                let param_str: Vec<String> =
+                    params.iter().map(|t| self.rust_type_name(t)).collect();
+                let ret_str2 = self.rust_type_name(&ret);
+                if matches!(ret, Type::Void) {
+                    format!("Box<dyn Fn({})>", param_str.join(", "))
+                } else {
+                    format!("Box<dyn Fn({}) -> {}>", param_str.join(", "), ret_str2)
+                }
             } else {
                 self.rust_return_type_name(&effective_ret_type)
             };
@@ -715,6 +770,7 @@ impl RustTrans {
             write!(sink.body, " }} }}")?;
         }
 
+        self.res_frame_exit(); // PLAN-998: leave the observe frame scope
         Ok(())
     }
 

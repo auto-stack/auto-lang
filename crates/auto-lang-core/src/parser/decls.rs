@@ -1054,6 +1054,11 @@ impl<'a> Parser<'a> {
         }
         // TODO: determine return type with last stmt if it's not specified
         // Support: Ident (int, str), LSquare ([]int), Star (*int), Question (?T), Not (!T - Plan 121), LParen (tuple)
+        // PLAN-998 T-06: also Fn — the fn-type grammar (`fn(int) int`, Plan
+        // 060) exists in parse_type_base but was never admitted in the
+        // legacy decl return-type lookahead, so `fn make(...) fn(int) int {`
+        // failed to parse ("expected LBrace, found fn"). The fn-type return
+        // renders as the boxed callable carrier in the a2r transpiler.
         else if self.is_kind(TokenKind::Ident)
             || self.is_kind(TokenKind::LSquare)
             || self.is_kind(TokenKind::Star)
@@ -1061,6 +1066,7 @@ impl<'a> Parser<'a> {
             || self.is_kind(TokenKind::Not)
             || self.is_kind(TokenKind::Tilde)
             || self.is_kind(TokenKind::LParen)
+            || self.is_kind(TokenKind::Fn)
         {
             if self.is_kind(TokenKind::Ident) {
                 ret_type_name = Some(self.cur.text.clone());
@@ -1318,6 +1324,11 @@ impl<'a> Parser<'a> {
         }
         // TODO: determine return type with last stmt if it's not specified
         // Support: Ident (int, str), LSquare ([]int), Star (*int), Question (?T), Not (!T - Plan 121), LParen (tuple)
+        // PLAN-998 T-06: also Fn — the fn-type grammar (`fn(int) int`, Plan
+        // 060) exists in parse_type_base but was never admitted in the
+        // legacy decl return-type lookahead, so `fn make(...) fn(int) int {`
+        // failed to parse ("expected LBrace, found fn"). The fn-type return
+        // renders as the boxed callable carrier in the a2r transpiler.
         else if self.is_kind(TokenKind::Ident)
             || self.is_kind(TokenKind::LSquare)
             || self.is_kind(TokenKind::Star)
@@ -1325,6 +1336,7 @@ impl<'a> Parser<'a> {
             || self.is_kind(TokenKind::Not)
             || self.is_kind(TokenKind::Tilde)
             || self.is_kind(TokenKind::LParen)
+            || self.is_kind(TokenKind::Fn)
         {
             if self.is_kind(TokenKind::Ident) {
                 ret_type_name = Some(self.cur.text.clone());

@@ -1,8 +1,16 @@
 # PLAN-852 ace-m1 negative cases rejected by BOTH legacy paths with
 # typed codes (error completions need no oracle sidecar). T07 invalid
-# unicode scalar: lexer E0001 on both. K04 borrow-escaping closure: the
-# legacy grammar rejects the source at parse (auto_syntax_E0001); the
-# designed type-level rule differs — channel frozen as observed.
+# unicode scalar: lexer E0001 on both. K04 borrow-escaping closure:
+# ORIGINALLY frozen at the observed parse channel (auto_syntax_E0001 —
+# the legacy grammar rejected the whole fn-type-return construct).
+# PLAN-998 T-06 admitted the fn-type grammar for the K02 source entry
+# (user-ruled H-04/H-07), which supersedes that parse-level rejection;
+# K04 now rejects at the DESIGNED channels (a borrow-capturing closure
+# may not escape its creator frame): a2r type/auto_type_E0101 at emit;
+# avm run/RuntimeError (its typed runtime channel) after the VM compiles
+# the now-grammatical source. Re-target recorded in PLAN-998; the
+# negative itself is preserved (the source is still rejected by both
+# legacy paths).
 
 ```test-case
 case {
@@ -31,9 +39,9 @@ case {
   entry: { mode: "program" }
   checks: [
     { id: "autovm", adapter: "avm", action: "run",
-      expect: { completion: { stage: "parse", code: "auto_syntax_E0001" } } },
+      expect: { completion: { stage: "run", code: "RuntimeError" } } },
     { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_k04" },
-      expect: { completion: { stage: "parse", code: "auto_syntax_E0001" } } }
+      expect: { completion: { stage: "type", code: "auto_type_E0101" } } }
   ]
 }
 ```

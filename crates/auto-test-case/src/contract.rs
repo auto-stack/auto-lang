@@ -236,6 +236,10 @@ pub struct Options {
     /// carrier (byte-identical to the certified value goldens). An unknown
     /// id is a contract error, never a silent default.
     pub a2r_int_profile: Option<String>,
+    /// a2r only (v2, PLAN-998). The explicit versioned resource-observation
+    /// profile; the only admitted value is the exact id
+    /// `legacy-a2r.resources-observe/1` (unknown ids are a contract error).
+    pub a2r_resource_profile: Option<String>,
     /// ac only (v2). Decoded to its effective value: absent → the frozen
     /// implicit default (Core / AC_TARGET / "main" / Reuse).
     pub ac_profile: Option<AcProfile>,
@@ -280,6 +284,7 @@ impl Default for Options {
         Options {
             module_name: None,
             a2r_int_profile: None,
+            a2r_resource_profile: None,
             ac_profile: None,
             ac_target: None,
             ac_entry: None,
@@ -1258,7 +1263,7 @@ fn decode_options(
     let pairs = as_obj(v, path)?;
     let known: &[&str] = match adapter {
         Adapter::Avm => &[], // avm/run has no options (v1 and v2)
-        Adapter::A2r => &["module_name", "int_profile"],
+        Adapter::A2r => &["module_name", "int_profile", "resource_profile"],
         Adapter::Ac => &[
             "profile",
             "target",
@@ -1302,6 +1307,15 @@ fn decode_options(
     // anything else (typos, future ids) fails admission instead of silently
     // emitting the default bytes.
     let a2r_int_profile = opt_str(&f, "int_profile")?;
+    let a2r_resource_profile = opt_str(&f, "resource_profile")?;
+    if let Some(id) = &a2r_resource_profile {
+        if id != "legacy-a2r.resources-observe/1" {
+            return Err(err(
+                &f.path_of("resource_profile"),
+                "resource_profile must be exactly legacy-a2r.resources-observe/1 — unknown profile ids are a contract error, not a silent default",
+            ));
+        }
+    }
     if let Some(id) = &a2r_int_profile {
         if id != "legacy-a2r.checked-i32/1" {
             return Err(err(
@@ -2804,6 +2818,7 @@ fn decode_options(
     Ok(Options {
         module_name,
         a2r_int_profile,
+        a2r_resource_profile,
         ac_profile,
         ac_target,
         ac_entry,

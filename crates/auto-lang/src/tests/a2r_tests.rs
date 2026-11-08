@@ -3895,3 +3895,247 @@ fn plan997_checked_helper_block_is_lazy_and_typed() {
         div_only
     );
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-998 (`legacy-a2r.resources-observe/1`): resource-scenario profile
+// ---------------------------------------------------------------------------
+
+fn plan998_transpile_observe(src: &str) -> String {
+    use crate::trans::rust::{
+        transpile_rust_with_source_dir_profiles, IntProfile, ResourceProfile,
+    };
+    let mut rcode = transpile_rust_with_source_dir_profiles(
+        std::env::temp_dir(),
+        "plan998",
+        src,
+        IntProfile::LegacyI64,
+        ResourceProfile::Observe,
+    )
+    .unwrap();
+    String::from_utf8_lossy(rcode.done().unwrap()).to_string()
+}
+
+#[test]
+fn plan998_profile_admission_is_exact_versioned_id() {
+    use crate::trans::rust::ResourceProfile;
+    assert_eq!(
+        ResourceProfile::OBSERVE_ID,
+        "legacy-a2r.resources-observe/1"
+    );
+    assert_eq!(
+        ResourceProfile::from_id("legacy-a2r.resources-observe/1"),
+        Some(ResourceProfile::Observe)
+    );
+    assert_eq!(
+        ResourceProfile::from_id("legacy-a2r.resources-observe/2"),
+        None
+    );
+    assert_eq!(ResourceProfile::from_id("legacy-a2r.checked-i32/1"), None);
+    assert_eq!(
+        ResourceProfile::None.as_id(),
+        "legacy-a2r.resources-plain/1"
+    );
+    assert_eq!(
+        ResourceProfile::Observe.as_id(),
+        "legacy-a2r.resources-observe/1"
+    );
+}
+
+#[test]
+fn plan998_default_emission_stays_byte_identical() {
+    // The observe profile never fires without explicit selection: the same
+    // source emits byte-identical bytes through the default entry and the
+    // profiles entry with ResourceProfile::None.
+    use crate::trans::rust::{
+        transpile_rust_with_source_dir_profiles, IntProfile, ResourceProfile,
+    };
+    let src = "fn main() int {\n    let a Str = \"x\"\n    return a.len()\n}\n";
+    let mut d1 = transpile_rust("plan998d", src).unwrap();
+    let b1 = d1.done().unwrap().clone();
+    let mut d2 = transpile_rust_with_source_dir_profiles(
+        std::env::temp_dir(),
+        "plan998d",
+        src,
+        IntProfile::LegacyI64,
+        ResourceProfile::None,
+    )
+    .unwrap();
+    let b2 = d2.done().unwrap().clone();
+    assert_eq!(b1, b2);
+    assert!(!String::from_utf8_lossy(&b1).contains("__a2r_"));
+}
+
+#[test]
+fn plan998_observe_guards_moves_and_helper_block() {
+    let src = "fn relay(move x Str) Str { return x.move }\nfn main() int {\n    let a Str = \"ab\"\n    let b Str = relay(a.move)\n    return b.len()\n}\n";
+    let out = plan998_transpile_observe(src);
+    // guard on the owned binding + the caller-side transfer disarm
+    assert!(
+        out.contains("__a2r_own(\"main:a\")"),
+        "no guard binding:\n{out}"
+    );
+    assert!(
+        out.contains("__a2r_xfer(__a2r_oa"),
+        "no move-site transfer:\n{out}"
+    );
+    // param guard in the callee frame
+    assert!(
+        out.contains("__a2r_own(\"relay:x\")"),
+        "no param guard:\n{out}"
+    );
+    // the private helper block is appended only under the profile
+    assert!(out.contains("legacy-a2r.resources-observe/1"));
+    assert!(out.contains("impl std::ops::Drop for __A2rObsGuard"));
+    assert!(out.contains("pub fn __a2r_chk()"));
+    // default bytes for the same source carry none of it
+    let plain = plan997_transpile(src);
+    assert!(!plain.contains("__a2r_"));
+}
+
+#[test]
+fn plan998_observe_enum_reassignment_models_generations() {
+    let out = plan998_transpile_observe(
+        "fn main() int {\n    var r Result<int, Str> = Err(\"old\")\n    r = Ok(42)\n    is r {\n        Ok(v) -> { return v }\n        Err(e) -> { return e.len() }\n    }\n}\n",
+    );
+    assert!(
+        out.contains("__a2r_replace_go(__a2r_or, &mut r, \"main:r#2\""),
+        "enum reassignment must observe the payload generation at the switch:\n{out}"
+    );
+}
+
+#[test]
+fn plan998_t06_fn_type_return_parses_and_boxes() {
+    // PLAN-998 T-06: the legacy decl return-type lookahead now admits the
+    // fn-type grammar; the fn-type return renders as the boxed callable
+    // carrier and a returned move-closure travels in a Box::new.
+    let src = "fn make(move s Str) fn(int) int {\n    return move (n int) => { return s.len() + n }\n}\nfn main() int {\n    let s Str = \"hello\"\n    let f = make(s.move)\n    return f(37)\n}\n";
+    let out = plan997_transpile(src);
+    assert!(
+        out.contains("-> Box<dyn Fn(i64) -> i64>"),
+        "fn-type return carrier:\n{out}"
+    );
+    assert!(
+        out.contains("Box::new(move |n: i64|"),
+        "returned closure boxing:\n{out}"
+    );
+    // the move-Str param carries ownership (String by value), not &str
+    assert!(
+        out.contains("fn make(") && !out.contains("fn make(s: &str)"),
+        "move-Str param:\n{out}"
+    );
+}
+
+#[test]
+fn plan998_invariant_checker_terminal_discipline() {
+    use crate::test_cases::ace_resource_certify::{check_invariants, parse_stream};
+    let inv = vec![
+        "unique_terminal".to_string(),
+        "transfer_not_release".to_string(),
+        "per_frame_lifo".to_string(),
+        "no_leak_at_result".to_string(),
+    ];
+    let ok = b"auto.res:create:main:a\nauto.res:create:main:b\nauto.res:transfer:main:b\nauto.res:release:main:a\nauto.res:result:1\n";
+    assert!(check_invariants(&parse_stream(ok), &inv, "clean").ok);
+    // leak: b created, never terminal
+    let leak = b"auto.res:create:main:a\nauto.res:create:main:b\nauto.res:release:main:a\nauto.res:result:1\n";
+    assert!(!check_invariants(&parse_stream(leak), &inv, "clean").ok);
+    // double terminal: a released twice
+    let dbl = b"auto.res:create:main:a\nauto.res:release:main:a\nauto.res:release:main:a\n";
+    assert!(!check_invariants(&parse_stream(dbl), &inv, "clean").ok);
+    // transfer then release of the SAME instance
+    let both = b"auto.res:create:main:a\nauto.res:transfer:main:a\nauto.res:release:main:a\n";
+    assert!(!check_invariants(&parse_stream(both), &inv, "clean").ok);
+    // LIFO violation: a created before b, a released while b is innermost
+    let lifo = b"auto.res:create:main:a\nauto.res:create:main:b\nauto.res:release:main:a\nauto.res:release:main:b\n";
+    let r = check_invariants(&parse_stream(lifo), &inv, "clean");
+    assert!(!r.ok, "expected LIFO failure, got ok");
+    // repeated frame invocations legitimately reuse labels (per-instance)
+    let reuse = b"auto.res:create:pick:x\nauto.res:release:pick:x\nauto.res:create:pick:x\nauto.res:release:pick:x\n";
+    assert!(check_invariants(&parse_stream(reuse), &inv, "clean").ok);
+}
+
+#[test]
+fn plan998_invariant_checker_targeted_faces() {
+    use crate::test_cases::ace_resource_certify::{check_invariants, parse_stream};
+    // R04: switch releases the old generation exactly once, before create#2
+    let r04 = vec![
+        "switch_releases_old_once".to_string(),
+        "unique_terminal".to_string(),
+    ];
+    let good = b"auto.res:create:main:r#1\nauto.res:release:main:r#1\nauto.res:create:main:r#2\nauto.res:release:main:r#2\n";
+    assert!(check_invariants(&parse_stream(good), &r04, "clean").ok);
+    let twice = b"auto.res:create:main:r#1\nauto.res:release:main:r#1\nauto.res:create:main:r#2\nauto.res:release:main:r#2\nauto.res:release:main:r#1\n";
+    assert!(!check_invariants(&parse_stream(twice), &r04, "clean").ok);
+    // R05: env survival chain — two transfers, env event, release after env
+    let r05 = vec!["env_survives_creator_and_last_owner_releases".to_string()];
+    let good = b"auto.res:create:main:s\nauto.res:transfer:main:s\nauto.res:create:make:s\nauto.res:transfer:make:s\nauto.res:env\nauto.res:create:main:f\nauto.res:release:main:f\n";
+    assert!(check_invariants(&parse_stream(good), &r05, "clean").ok);
+    let early =
+        b"auto.res:create:main:s\nauto.res:transfer:main:s\nauto.res:env\nauto.res:create:main:f\n";
+    assert!(!check_invariants(&parse_stream(early), &r05, "clean").ok);
+    // R03: stale rejected, no read may follow
+    let r03 = vec!["stale_rejected_before_read".to_string()];
+    let good = b"auto.res:view:ref:xs\nauto.res:read:ref:xs\nauto.res:stale\n";
+    assert!(check_invariants(&parse_stream(good), &r03, "typed-probe").ok);
+    let bad = b"auto.res:stale\nauto.res:read:ref:xs\n";
+    assert!(!check_invariants(&parse_stream(bad), &r03, "typed-probe").ok);
+}
+
+#[test]
+fn plan998_scene_receipt_strict_validation_rejects_forgeries() {
+    use crate::test_cases::ace_resource_certify::{validate_scene_receipt, CellAxes};
+    let axes = CellAxes {
+        source_shas: [("R01".to_string(), "a".repeat(64))].into_iter().collect(),
+        golden_shas: [("R01".to_string(), "b".repeat(64))].into_iter().collect(),
+        reference_shas: [("R01".to_string(), "c".repeat(64))].into_iter().collect(),
+        wrapper_sha: "d".repeat(64),
+        oracle_sha: "e".repeat(64),
+    };
+    let base = serde_json::json!({
+        "schema": "ace.m1.a2r-resource-scenario/1",
+        "case": "R01",
+        "profile": "legacy-a2r.resources-observe/1",
+        "wrapper_file": "oracle/resource-wrapper-v1.rs",
+        "identity": {
+            "sources": {"R01": "a".repeat(64)},
+            "goldens": {"R01": "b".repeat(64)},
+            "references": {"R01": "c".repeat(64)},
+            "wrapper_sha256": "d".repeat(64),
+            "scenario_oracle_sha256": "e".repeat(64),
+        },
+        "toolchain": {
+            "identity": "rustc-test", "identity_source": "PATH",
+            "default_identity_at_certify": crate::test_cases::ace_certify::BUILD_TOOLCHAIN_IDENTITY.trim(),
+            "flags": ["--edition=2021", "-O"],
+        },
+        "deps": {"external": [], "closure": "std-only"},
+        "legs": [ {"id": "R01", "runs": [ {"run": "clean", "exit": 0, "stdout_tail": "x", "stderr_line": "", "invariants": "pass"} ]} ],
+        "observed": {"note": "x"},
+        "verdict": "certified",
+        "produced_by": {"tool": "ace-certify --resource"},
+        "created_at": 1u64,
+    });
+    // structurally valid + axes current
+    assert!(validate_scene_receipt(&base, "R01", &axes, "rustc-test").is_ok());
+    // unknown root field -> Invalid
+    let mut forged = base.clone();
+    forged["extra"] = serde_json::json!(1);
+    assert!(matches!(
+        validate_scene_receipt(&forged, "R01", &axes, "rustc-test"),
+        Err(crate::test_cases::ace_certify::ReceiptProblem::Invalid(_))
+    ));
+    // a run without invariants:pass -> Invalid (forged green)
+    let mut forged2 = base.clone();
+    forged2["legs"][0]["runs"][0]["invariants"] = serde_json::json!("fail");
+    assert!(matches!(
+        validate_scene_receipt(&forged2, "R01", &axes, "rustc-test"),
+        Err(crate::test_cases::ace_certify::ReceiptProblem::Invalid(_))
+    ));
+    // drifted wrapper -> Stale
+    let mut drifted = axes.clone();
+    drifted.wrapper_sha = "f".repeat(64);
+    assert!(matches!(
+        validate_scene_receipt(&base, "R01", &drifted, "rustc-test"),
+        Err(crate::test_cases::ace_certify::ReceiptProblem::Stale(_))
+    ));
+}

@@ -1144,8 +1144,32 @@ impl RustTrans {
                 }
             }
             .map_err(Into::into),
-            Expr::Str(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
-            Expr::CStr(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
+            // PLAN-998 (resources-observe): every string literal carries
+            // the chk fault sentinel — the k-th heap allocation is failed
+            // right before it happens (literal-to-String coercions are the
+            // str allocation path). Profile-gated; default bytes untouched.
+            Expr::Str(s) => {
+                if self.res_on() {
+                    self.res_mark();
+                    write!(out, "{{ __a2r_chk(); ")?;
+                }
+                write!(out, "\"{}\"", escape_str(s))?;
+                if self.res_on() {
+                    write!(out, " }}")?;
+                }
+                Ok(())
+            }
+            Expr::CStr(s) => {
+                if self.res_on() {
+                    self.res_mark();
+                    write!(out, "{{ __a2r_chk(); ")?;
+                }
+                write!(out, "\"{}\"", escape_str(s))?;
+                if self.res_on() {
+                    write!(out, " }}")?;
+                }
+                Ok(())
+            }
             Expr::Ident(name) => {
                 // Plan 387: inside a task hook/handler body, a bare state-field
                 // identifier reads `self.<field>`.
@@ -2178,6 +2202,20 @@ impl RustTrans {
             Expr::Move(expr) | Expr::Take(expr) => {
                 // e.move / e.take -> e (move semantics, default in Rust)
                 // Plan 122: .move is preferred, .take is deprecated
+                // PLAN-998 (resources-observe): a move of a GUARDED binding
+                // transfers — the source guard is disarmed (a transfer is
+                // NOT a release) and the value passes through unchanged.
+                if self.res_on() {
+                    if let Expr::Ident(name) = expr.as_ref() {
+                        if let Some((guard_ident, _owner)) = self.res_guard_for(name.as_str()) {
+                            self.res_mark();
+                            write!(out, "__a2r_xfer({}, ", guard_ident)?;
+                            self.expr(expr, out)?;
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                    }
+                }
                 self.expr(expr, out)?;
                 Ok(())
             }
@@ -3126,6 +3164,40 @@ impl RustTrans {
                 // `move` when either axis needs it; bytes are unchanged for
                 // every already-correct shape (write-capture without explicit
                 // move / explicit move without write-captures / neither).
+                // PLAN-998 (resources-observe): a move closure TRANSFERS its
+                // owned captured bindings into the closure env — disarm their
+                // guards (transfer, not release) and mark the env. The value
+                // semantics are unchanged (the guards are separate bindings).
+                let mut res_envgo: Vec<AutoStr> = Vec::new();
+                if self.res_on() && closure.is_move && captured.is_empty() {
+                    let mut names: Vec<AutoStr> = Vec::new();
+                    for scope in self.res_guard_scopes.iter().rev() {
+                        for n in scope.keys() {
+                            names.push(n.clone());
+                        }
+                    }
+                    names.sort();
+                    names.dedup();
+                    for n in names {
+                        if !Self::expr_references_ident(&closure.body, &n) {
+                            continue;
+                        }
+                        if let Some((guard_ident, _)) = self.res_guard_for(n.as_str()) {
+                            res_envgo.push(guard_ident);
+                        }
+                    }
+                    if !res_envgo.is_empty() {
+                        self.res_mark();
+                        write!(out, "{{ __a2r_envgo([")?;
+                        for (i, g) in res_envgo.iter().enumerate() {
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
+                            write!(out, "{}", g)?;
+                        }
+                        write!(out, "]); ")?;
+                    }
+                }
                 if !captured.is_empty() {
                     write!(out, "{{ ")?;
                     for n in &captured {
@@ -3156,6 +3228,9 @@ impl RustTrans {
 
                 // Closure body - it's a boxed expression
                 self.expr(&closure.body, out)?;
+                if !res_envgo.is_empty() {
+                    write!(out, " }}")?;
+                }
                 if !captured.is_empty() {
                     write!(out, " }}")?;
                 }

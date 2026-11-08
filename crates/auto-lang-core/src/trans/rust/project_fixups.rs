@@ -2302,6 +2302,17 @@ impl RustTrans {
         sink.body.write(b"{\n")?;
         self.indent();
 
+        // PLAN-998 (resources-observe): param guards staged by fn_decl
+        // for owned params land as the first statements of the frame.
+        // Profile-gated (the pending list is only filled under the
+        // profile).
+        if self.res_on() && !self.res_pending_param_guards.is_empty() {
+            for (ident, owner) in std::mem::take(&mut self.res_pending_param_guards) {
+                self.print_indent(&mut sink.body)?;
+                let _ = write!(sink.body, "let {} = __a2r_own(\"{}\");\n", ident, owner);
+            }
+        }
+
         // Plan 387: actor `fn main` prologue (e.g. `let mut __rt = ...;`).
         if let Some(prologue) = &self.main_actor_prologue {
             self.print_indent(&mut sink.body)?;
@@ -2446,12 +2457,24 @@ impl RustTrans {
                 // Regular statement: add semicolon if needed
                 match stmt {
                     Stmt::Expr(expr) => {
-                        self.expr(expr, &mut sink.body)?;
+                        // PLAN-998 (resources-observe): statement pre-hooks
+                        // (list-mutation pre / enum payload replace) — a
+                        // suppressed statement was fully emitted by the hook.
+                        self.res_suppressed_last.set(false);
+                        if self.res_on() {
+                            self.res_expr_stmt_pre(expr, &mut sink.body)?;
+                        }
+                        if !self.res_suppressed_last.get() {
+                            self.expr(expr, &mut sink.body)?;
+                        }
                         sink.body.write(b";\n")?;
                     }
                     Stmt::Store(store) => {
                         self.store(store, &mut sink.body)?;
                         sink.body.write(b";\n")?;
+                        if self.res_on() {
+                            self.res_after_store(store, &mut sink.body);
+                        }
                     }
                     Stmt::EmptyLine(n) => {
                         for _ in 0..*n {

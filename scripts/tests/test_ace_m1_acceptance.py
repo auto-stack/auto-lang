@@ -165,6 +165,66 @@ class StaticRegistryTests(unittest.TestCase):
         base = (CORPUS / 'ace-m1-base.suite.ad').read_text(encoding='utf-8')
         self.assertNotIn('nb-diags-908.case.ad', base)
 
+    def test_scenario_certs(self):
+        """PLAN-998 resource-scenario domain: the six H-07 scenario cells
+        (ns=scenario R01..R06, outcome=events) carry the ok-emit-scene a2r
+        token AND a structurally valid, current
+        ace.m1.a2r-resource-scenario/1 receipt; the registry
+        (oracle/scenario/scenario-oracle.json) is the authority for leg
+        membership and every registry-declared fixture source exists on
+        disk (registry -> disk consistency; no fabricated sources)."""
+        import hashlib
+        wrapper_sha = hashlib.sha256(
+            (CORPUS / 'oracle/resource-wrapper-v1.rs').read_bytes()).hexdigest()
+        rows = {f[0]: f for f in load_binding() if f[1] == 'scenario'}
+        registry = json.loads(
+            (CORPUS / 'oracle/scenario/scenario-oracle.json').read_text(encoding='utf-8'))
+        self.assertEqual(registry['schema'], 'ace.m1.a2r-resource-oracle/1')
+        for rid in ('R01', 'R02', 'R03', 'R04', 'R05', 'R06'):
+            f = rows[rid]
+            self.assertEqual(f[3], 'events', f"{rid}: outcome must be events")
+            self.assertEqual(f[8], 'ok-emit-scene',
+                             f"{rid}: a2r token must be ok-emit-scene")
+            cert = json.loads(
+                (CORPUS / f'oracle/scenario-certs/m1_{rid.lower()}.scenario-cert.json')
+                .read_text(encoding='utf-8'))
+            self.assertEqual(cert['schema'], 'ace.m1.a2r-resource-scenario/1',
+                             f"{rid}: receipt schema")
+            self.assertEqual(cert['case'], rid, f"{rid}: receipt case id")
+            self.assertEqual(cert['verdict'], 'certified', f"{rid}: verdict")
+            self.assertEqual(cert['identity']['wrapper_sha256'], wrapper_sha,
+                             f"{rid}: wrapper axis is not the frozen resource wrapper")
+            for leg in cert['legs']:
+                for run in leg['runs']:
+                    self.assertEqual(run['invariants'], 'pass',
+                                     f"{rid}/{leg['id']}/{run['run']}: invariants")
+            # registry-authoritative leg cross-check (F-998 mirror of
+            # F-997-R1-02): non-empty subset of the registry cell's legs.
+            self.assertIn(rid, registry['cells'], f"{rid}: registry cell missing")
+            reg_leg_ids = {leg['id'] for leg in registry['cells'][rid]['legs']}
+            receipt_leg_ids = {leg['id'] for leg in cert['legs']}
+            self.assertTrue(receipt_leg_ids, f"{rid}: receipt carries no legs")
+            self.assertTrue(receipt_leg_ids <= reg_leg_ids,
+                            f"{rid}: receipt legs outside the registry cell")
+        # registry -> disk consistency: the declared fixture sources (the 12
+        # legacy-a2r-resources-998 byte-copies) all exist; the feature dir
+        # never fabricates D*.at corpus-pattern sources.
+        sources = set()
+        for cell in registry['cells'].values():
+            for leg in cell['legs']:
+                if 'source' in leg:
+                    sources.add(leg['source'].replace('\\', '/'))
+        self.assertEqual(len(sources), 12,
+                         f"expected 12 distinct fixture sources, got {sorted(sources)}")
+        for rel in sorted(sources):
+            self.assertTrue(rel.startswith('legacy-a2r-resources-998/src/'),
+                            f"fixture source outside the 998 feature dir: {rel}")
+            self.assertTrue((CORPUS / rel).is_file(),
+                            f"registry fixture source missing on disk: {rel}")
+        self.assertFalse(
+            list((CORPUS / 'legacy-a2r-resources-998/src').glob('D*.at')),
+            "fabricated D*.at scenario source in the 998 feature dir")
+
 
 class MutationControlTests(unittest.TestCase):
     """V-01/V-02/V-03/V-05/V-07: one injected defect per scratch copy; the
@@ -212,7 +272,12 @@ class MutationControlTests(unittest.TestCase):
             self.assertEqual(code, 0, f"control {scope} must stay green:\n{out}")
         report = json.loads((self.tree / 'acc-out' / 'ace-m1-acceptance.json').read_text(encoding='utf-8'))
         self.assertEqual(report['schema'], 'ace.m1.acceptance/2')
-        self.assertFalse(report['verdicts']['can_claim_m1'])
+        # PLAN-998 closed the last six required a2r cells (ok-emit-scene,
+        # cert-gap 6 -> 0): the registry is now 313/313 green with strictly
+        # validated receipts, so the honest G-DEC-5 claim is True. Any
+        # regression that flips a required cell back to red/gap (or drops a
+        # scenario certificate) must flip this False again.
+        self.assertTrue(report['verdicts']['can_claim_m1'])
         self.assertEqual(report['layers']['required_cells'], 313)
         self.assertEqual(len(report['future_gaps']), 45)
         self.assertEqual(len(report['ruled_accepted']), 32)
@@ -372,6 +437,12 @@ class MutationControlTests(unittest.TestCase):
 
     def test_v05_full_never_claimed_from_green_subset(self):
         # a passing parent report for a local selection must NOT flip M1:
+        # since PLAN-998 completed the registry (313/313 green, zero
+        # cert-gap) the claim is honestly True WITHOUT any parent admission
+        # (proven by the unmutated control) — so the guard here is that the
+        # one-check subset admission neither manufactures nor retracts it:
+        # the claim must equal the no-parent state, never the report's own
+        # scope.
         good = self.tree / 'good-report.json'
         good.write_text(json.dumps({'results': [
             {'case': 'ace.m1.b01', 'check': 'ac-native', 'status': 'PASS'}],
@@ -379,8 +450,10 @@ class MutationControlTests(unittest.TestCase):
         code, out = self.run_verifier('acceptance', ('-OutDir', str(self.tree / "a4"), '-ParentReport', str(good)))
         self.assertEqual(code, 0, out)
         report = json.loads((self.tree / 'a4' / 'ace-m1-acceptance.json').read_text(encoding='utf-8'))
-        self.assertFalse(report['verdicts']['can_claim_m1'])
-        self.assertIn('red', report['verdicts']['core'])
+        self.assertTrue(report['verdicts']['can_claim_m1'])
+        self.assertIn('pass(parent-report-admitted, 1 checks)',
+                      report['verdicts']['base'])
+        self.assertIn('pass', report['verdicts']['core'])
 
 
 if __name__ == '__main__':

@@ -82,6 +82,24 @@ impl RustTrans {
                             // so any single-arg .get on a List receiver indexes.
                             let is_auto_list = self.is_auto_list_expr(object);
                             if is_auto_list {
+                                // PLAN-998 (resources-observe): a List index
+                                // read records the buffer read (the R03
+                                // buffer_reads face) and carries the chk fault
+                                // sentinel before the element clone. Profile-
+                                // gated; default bytes untouched.
+                                let res_owner_label = if self.res_on() {
+                                    match object.as_ref() {
+                                        Expr::Ident(n) => Some(self.res_owner(n.as_str())),
+                                        _ => None,
+                                    }
+                                } else {
+                                    None
+                                };
+                                let res_has_owner = res_owner_label.is_some();
+                                if let Some(owner) = res_owner_label {
+                                    self.res_mark();
+                                    write!(out, "{{ __a2r_read(\"{}\"); __a2r_chk(); ", owner)?;
+                                }
                                 self.expr(object, out)?;
                                 write!(out, "[(")?;
                                 self.expr(arg, out)?;
@@ -91,6 +109,9 @@ impl RustTrans {
                                 // writing to the clone would be a no-op.
                                 if self.assign_lhs_depth == 0 {
                                     write!(out, ".clone()")?;
+                                }
+                                if res_has_owner {
+                                    write!(out, " }}")?;
                                 }
                                 return Ok(CallShape::Handled);
                             }

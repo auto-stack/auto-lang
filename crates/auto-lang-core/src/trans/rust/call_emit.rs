@@ -36,6 +36,19 @@ impl RustTrans {
         // 真实调用事实）。
         let args_text = self.serialize_positional_args(call);
         self.collect_core_reference(call, &text, &args_text)?;
+        // PLAN-998 (resources-observe): a zero-arg `.clone()` on any
+        // receiver carries the chk fault sentinel right before the clone
+        // allocation. Profile-gated; default bytes untouched.
+        let is_clone_call = matches!(call.name.as_ref(),
+            Expr::Dot(_, m) if m.as_str() == "clone")
+            && call.args.args.is_empty();
+        if self.res_on() && is_clone_call {
+            self.res_mark();
+            out.write_all(b"{ __a2r_chk(); ")?;
+            out.write_all(&emitted)?;
+            out.write_all(b" }")?;
+            return Ok(());
+        }
         out.write_all(&emitted)?;
         Ok(())
     }

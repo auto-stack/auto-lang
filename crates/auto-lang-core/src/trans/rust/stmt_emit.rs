@@ -434,7 +434,19 @@ impl RustTrans {
     pub(super) fn stmt(&mut self, stmt: &Stmt, sink: &mut Sink) -> AutoResult<bool> {
         match stmt {
             Stmt::Expr(expr) => {
-                self.expr(expr, &mut sink.body)?;
+                // PLAN-998 (resources-observe): pre-statement hooks for the
+                // allocating/structural constructs in statement position —
+                // the list-mutation pre (chk sentinel + generation bump +
+                // `mut` event) and the enum-payload replace. Profile-gated;
+                // default bytes untouched. A suppressed statement was fully
+                // emitted by the hook.
+                self.res_suppressed_last.set(false);
+                if self.res_on() {
+                    self.res_expr_stmt_pre(expr, &mut sink.body)?;
+                }
+                if !self.res_suppressed_last.get() {
+                    self.expr(expr, &mut sink.body)?;
+                }
                 // No semicolon for expressions in expression position
                 // (handled by body() method)
                 Ok(true)
@@ -446,6 +458,7 @@ impl RustTrans {
             // emit_loop_body's delegation pattern.
             Stmt::Block(body) => {
                 sink.body.write(b"{\n")?;
+                self.res_on().then(|| self.res_push_scope());
                 self.indent();
                 for inner in &body.stmts {
                     self.print_indent(&mut sink.body)?;
@@ -458,12 +471,25 @@ impl RustTrans {
                 self.dedent();
                 self.print_indent(&mut sink.body)?;
                 sink.body.write(b"}")?;
+                self.res_on().then(|| self.res_pop_scope());
                 Ok(true)
             }
 
             Stmt::Store(store) => {
                 self.store(store, &mut sink.body)?;
                 sink.body.write(b";")?;
+                // PLAN-998: guard binding for an owned let/var — the
+                // guard's Drop observes the REAL release (per-frame LIFO is
+                // Rust's own drop order). Profile-gated; default bytes
+                // untouched.
+                if self.res_on() && self.res_store_needs_guard(store) {
+                    let owner = self.res_owner(store.name.as_str());
+                    sink.body.write(b"\n")?;
+                    self.print_indent(&mut sink.body)?;
+                    self.res_write_guard(store.name.as_str(), &owner, &mut sink.body)?;
+                    sink.body.write(b";")?;
+                    self.res_note_guard(store.name.as_str(), owner);
+                }
                 Ok(true)
             }
 
@@ -473,17 +499,23 @@ impl RustTrans {
             }
 
             Stmt::For(for_stmt) => {
+                self.res_on().then(|| self.res_push_scope());
                 self.for_stmt(for_stmt, sink)?;
+                self.res_on().then(|| self.res_pop_scope());
                 Ok(true)
             }
 
             Stmt::If(if_) => {
+                self.res_on().then(|| self.res_push_scope());
                 self.if_stmt(if_, sink)?;
+                self.res_on().then(|| self.res_pop_scope());
                 Ok(true)
             }
 
             Stmt::Is(is_stmt) => {
+                self.res_on().then(|| self.res_push_scope());
                 self.is_stmt(is_stmt, sink)?;
+                self.res_on().then(|| self.res_pop_scope());
                 // Statement-position `is` is a `match` block; if its arms
                 // end in a value-bearing expression (e.g. map.insert(...)
                 // returning Option), the match's type isn't `()` → E0308.
@@ -585,6 +617,47 @@ impl RustTrans {
                     // Only Nil/None/Null/Bool are truly void-compatible
                 }
                 sink.body.write(b"return ")?;
+                // PLAN-998 T-06: a closure returned from a fn whose declared
+                // return type is a fn-type travels in the boxed callable
+                // carrier (`Box<dyn Fn(..)>..`). Under the observe profile
+                // the box allocation carries the chk fault sentinel (env
+                // domain).
+                if matches!(self.current_fn_ret_type.as_ref(), Some(Type::Fn(_, _)))
+                    && matches!(expr.as_ref(), Expr::Closure(_))
+                {
+                    // PLAN-998 T-06 negative face (K04): a NON-move closure
+                    // returned from a fn-type-return function borrow-captures
+                    // its environment and escapes the creator frame — the
+                    // designed type-level rejection (the legacy grammar-level
+                    // rejection of the whole construct was superseded by the
+                    // bounded fn-type source entry this plan delivers). A
+                    // borrow-capturing closure may not escape; move it or
+                    // restructure.
+                    if let Expr::Closure(c) = expr.as_ref() {
+                        if !c.is_move {
+                            return Err(crate::error::TypeError::Mismatch {
+                                expected: "a move closure (owned env) in fn-type return position"
+                                    .to_string(),
+                                found: "a borrow-capturing closure returned from its creator frame"
+                                    .to_string(),
+                                span: miette::SourceSpan::new(0.into(), 1),
+                            }
+                            .into());
+                        }
+                    }
+                    if self.res_on() {
+                        self.res_mark();
+                        sink.body.write(b"{ __a2r_chk(); ")?;
+                    }
+                    sink.body.write(b"Box::new(")?;
+                    self.expr(expr, &mut sink.body)?;
+                    sink.body.write(b")")?;
+                    if self.res_on() {
+                        sink.body.write(b" }")?;
+                    }
+                    sink.body.write(b";")?;
+                    return Ok(true);
+                }
                 // Plan 232: If returning a &str parameter, add .to_string()
                 if let Expr::Ident(name) = expr.as_ref() {
                     if self.current_fn_str_params.contains(name) {

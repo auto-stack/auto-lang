@@ -784,6 +784,20 @@ impl RustTrans {
             // Inferred Result type for an untyped param matched against Ok/Err.
             return "Result<String, String>".to_string();
         }
+        // PLAN-998 T-06: a MOVE-mode Str param carries ownership (String by
+        // value) — the default &str borrow is for View-mode str params. The
+        // K02 creator-returns-closure shape moves the owned Str into the
+        // closure env; a &str param cannot outlive the creator frame.
+        #[allow(deprecated)] // `take` is the deprecated alias of `move`
+        if matches!(
+            param.mode,
+            crate::ast::ParamMode::Move | crate::ast::ParamMode::Take
+        ) && matches!(
+            param.ty,
+            Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit
+        ) {
+            return "String".to_string();
+        }
         self.rust_param_type_name(&param.ty)
     }
 

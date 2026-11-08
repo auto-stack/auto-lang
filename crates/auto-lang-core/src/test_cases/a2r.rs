@@ -109,6 +109,21 @@ pub fn run_check(
     // checked-i32 profile is single-file emission only — project mode has no
     // finite-domain freeze, so selecting it there is a contract error, never
     // a silent default.
+    // PLAN-998: the explicit versioned resource-observation profile.
+    // Exact-id admission (the contract layer already rejected unknown ids).
+    let resource_profile = match &check.options.a2r_resource_profile {
+        None => crate::trans::rust::ResourceProfile::None,
+        Some(id) => match crate::trans::rust::ResourceProfile::from_id(id) {
+            Some(p) => p,
+            None => {
+                return Err(format!(
+                    "resource_profile {:?} is not admitted (only legacy-a2r.resources-observe/1)",
+                    id
+                ))
+            }
+        },
+    };
+
     let int_profile = match &check.options.a2r_int_profile {
         None => crate::trans::rust::IntProfile::LegacyI64,
         Some(id) => match crate::trans::rust::IntProfile::from_id(id) {
@@ -145,11 +160,12 @@ pub fn run_check(
                         .map(|(k, (bytes, _maps))| (k, bytes))
                         .collect())
                 } else {
-                    let mut sink = crate::trans::rust::transpile_rust_with_source_dir_profile(
+                    let mut sink = crate::trans::rust::transpile_rust_with_source_dir_profiles(
                         &project_dir,
                         module_name,
                         &entry_str,
                         int_profile,
+                        resource_profile,
                     )?;
                     let bytes = sink.done()?.clone();
                     Ok(BTreeMap::from([(
