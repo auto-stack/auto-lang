@@ -71,7 +71,7 @@ fn expect_query(
     store_root: &Path,
     leg: &str,
 ) -> ace_abi::worker::OkOut {
-    query(tag, deck, store_root, leg).expect("the resource certification request succeeds")
+    query(tag, deck, store_root, leg).unwrap_or_else(|e| panic!("query {tag:?} failed: {e:?}"))
 }
 
 fn report_of(out: &ace_abi::worker::OkOut) -> &ace_abi::worker_source::SourceReport {
