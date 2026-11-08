@@ -2289,6 +2289,12 @@ stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（D992接�
 
 stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:waiting（非阻塞面已尽；十七格清单+turnkey清单入档；候store修复授权/交付与D939） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:a9d213e28 | task_ids:接收准备完成 | evidence:POST-FIX-CHAIN-CHECKLIST.md + 本轮入帐 | next_responsible_role:user（store内修授权裁定）或上游交付/D939 | 无live handle
 
+### 第105轮：blocked——上游第五次问询未答；两外部条件复核未变，非阻塞面维持已尽
+
+- 复核（@master `257e179cc`）：store仍止于`b8987bb0b`（双计投影未修）；D939仍executing（T-11..14在途）。store内修授权**第五次**具名问询未获答复，按§5.7 S/N/X维持不修。无新工作面：第104轮清单（十七格入帐/turnkey）已覆盖全部可预置项；冻结链候裁定或交付，D939候归档。目标循环如继续，下轮先做§0前置核验再问询/执行。
+
+stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:105 | from:goal继续 | to:user | status:executing（blocked候裁定） | outcome:waiting | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a9d213e28 | next:user（store内修授权）或上游交付/D939归档
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
