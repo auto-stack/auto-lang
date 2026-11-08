@@ -2407,6 +2407,15 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（稳定�
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§4稳定树重采全链完成：cert292全PASS/optimized14/拒绝6/abi 263；唯余av档候裁定） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:9c9ed650a | task_ids:CHECKLIST §4完成 | evidence:f94134-{current-certifications,current-optimized,current-query-refusals,abi-gate} | next_responsible_role:user（av内修裁定）或961线；随后§5→终态 | 无live handle
 
+### 第116轮：work F-941-15授权内修启动——深度诊断完成，余量为零结论定案；树已还原干净
+
+- **授权**：第九次请示用户明确"授权内修（推荐）"（同F-941-14模式）。av-core生产修复授权生效。
+- **诊断定案**（`f94135-av-stack-diag/DOSSIER.md`，全部探针已还原、树@`9c9ed650a` clean、基线ABORT复现）：①根因确证=961 av-core提交把整条admission管线推过256KB（512K/1MB全绿）；②**余量为零/负**——扰动证明：通过态探针仅加一行诊断即翻倒；③非递归walk问题（所有已知walk迭代/有界）；④深链各函数帧叠加+check_function/ownership巨match临时量并集为帧主体；⑤probe18（最小帧直调verify）通过vs probe20（verify_abc整链）翻倒——帧叠加差决定成败。
+- **修复候选已排序**（A：提取961 numeric臂出热帧→C：系统性帧审计装箱；D：枚举装箱为兜底）——下轮按档案入口实施。
+- **边界**：av档=§4唯一余项；其余全链稳定树就绪。F-941-15修复实施+全量av回归→av档→§5→终态。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（F-941-15授权落地：深度诊断完成、余量为零定案、修复候选排序、树clean@9c9ed650a） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:9c9ed650a | task_ids:F-941-15诊断 | evidence:f94135-av-stack-diag/DOSSIER.md | next_responsible_role:work F-941-15修复实施（候选A起） | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
