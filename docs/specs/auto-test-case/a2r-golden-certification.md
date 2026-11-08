@@ -151,3 +151,31 @@ receipt 结构校验为硬错误，文件漂移=诚实重认证，无 --force �
   仍要求 cert-gap=0 且 future=45 在账，本轮后余 21（见 gap-audit F-A2R-3），M1
   不签。坏金样/坏证书/漏检查/错 expected 反控与"无半证书、--force 不覆写"行为
   保持。
+
+## 四例文本值例原域认证（PLAN-994，2026-11-08）
+
+- **认证集 28→32**：H-03 的 4 格（T01/T02/T03/T04）经旧 producer **lowering 修复**后
+  认证关闭——声明型字符串局部（显式 `let`/`var` 声明 `str`/`Str`/`str(N)`）
+  `.len()`=标量字符数（`(name.chars().count() as i64)`）、`.len_bytes()`=UTF-8 字节数
+  （`(name.len() as i64)`），自包含 std 表达式（无 a2r_std 依赖，std-only 轴不变）；
+  声明型 `char` 局部 `.to_codepoint()`=标量值（`(name as u32 as i64)`）；两参
+  `slice`/`sub` 于字符串接收者恢复 PLAN-917 冻结的字符位守卫块（接收者 `&(recv)`
+  绑定一次、双界各一次、越界 panic）。四新金样 `oracle/m1_t01..t04.rs` 经逐源 G04
+  审阅冻结；4 certified（双侧编译运行 `i32:38/27/23/128512` 对 oracle），旧 28 例
+  strict 复用未重认证；cert-gap **20→16**。
+- **日常面 31→35**：新增 a2r-only 扩展套件 `legacy-a2r-text-994.{case,suite}.ad`
+  （仅 4 例新金样快照检查，ID `ace.m1.a2rt.t01..t04` 避让既有 t-r-native 同名），
+  固定组 `case-legacy-a2r-text-994`；snapshot scope 三套件（base+ext-992+ext-994）
+  插桩运行并集守卫 35，认证面 spawn=0 判据不变。
+- **D-993-2 随修复关闭**：PLAN-956 曾把 `emit_str_slice_chars` 换成
+  `a2r_std::str::str_slice` 字节域调用且未重冻 917 金样，致 case-ace-m1-a2r-emit-917
+  三红；恢复守卫块后三检查回到绿（917 金样字节未动）。公共 `a2r_std::str_slice`
+  字节 API 对其显式调用方不变。
+- **接收者分类边界（冻结）**：参数、记录字段、match/is 模式绑定、推断局部与调用
+  结果的 `.len()`/`.length`/`byte_len` 保持既有字节/计数 remap（已批准差异，不在
+  本轮统一）；`.len(n)` builder 设置器与用户 record 同名方法不受名称匹配改写。
+  3 个 cookbook 冻结期望随声明型 len 投影具名修订（ASCII 值恒等，仅发射形变）。
+- **缺口账 20→16、零 gap 守卫不变**：余 16 = H-04 集合 6 + H-06 trap/宽度 4 +
+  H-07 场景 6（见 gap-audit F-A2R-3）；`can_claim_m1` 仍要求 cert-gap=0 且
+  future=45 在账，M1 不签。坏金样/坏证书/漏检查/错 expected 反控与"无半证书、
+  --force 不覆写"行为保持。

@@ -38,3 +38,32 @@ owner=前端/916 准入缝，见 KNOWN-DEBT-AND-RISKS）。
   与 852 标量域（`ace.m1.cert/1`，oracle/certs/）严格隔离，旧消费者不会误收。
 - T08 的 trap oracle 是**冻结行为观察**（Rust panic），不是 Auto trap 认证；
   Auto trap 认证通道保持独立 cert-gap。
+
+## 文本长度/码点域与守卫块恢复（PLAN-994，SD-03）
+
+- **声明型文本局部的源语义（冻结分类规则）**：仅显式 `let`/`var` 声明为
+  `str`/`Str`/`str(N)` 的局部（发射侧 `str_typed_stores`/`char_typed_stores`，
+  store() 注册、按声明类型维护、重声明改型即除名）获得源语义文本方法：
+  `.len()`（零参）=标量字符数（`(name.chars().count() as i64)`）、
+  `.len_bytes()`（零参）=UTF-8 字节数（`(name.len() as i64)`）、声明型 `char`
+  局部 `.to_codepoint()`=Unicode 标量值（`(name as u32 as i64)`）——均为
+  自包含 std 表达式、接收者恰求值一次、不设 a2r_std 依赖（std-only 认证轴）。
+- **边界（已批准差异，不统一）**：函数参数（`&str`）、记录字段读、match/is
+  模式绑定、推断局部与调用结果的 `.len()`/`.length` 保持既有 remap（Rust
+  `len()` 字节/元素计数，如 `(b.name.len() as i64)`/`(e.len() as i64)`）；
+  `.len(n)` builder 设置器（带参形态）与用户 record/foreign 同名方法不受
+  名称匹配改写；`byte_len`（a2r_std helper）保持原发射。
+- **两参 slice/sub 守卫块恢复**：PLAN-956 曾将字符串接收者的 `slice`/`sub`
+  发射整体替换为 `a2r_std::str::str_slice` 字节域调用（越界静默空串）且未重冻
+  917 金样，造成 case-ace-m1-a2r-emit-917 三红（D-993-2）；PLAN-994 恢复
+  `emit_str_slice_chars`：两参守卫字符位块（见上 §发射契约）+ 单参
+  `recv.chars().skip((a) as usize).collect::<String>()`，四调用点
+  （call_dot_methods 的 slice/sub × dot 与 Bina 镜像）同步，不再设
+  a2r_std_used。公共 `a2r_std::str::str_slice` 字节 API 对其显式调用方不变
+  （runtime 字节域与 source 字符域的边界即此）。
+- **认证与近邻事实**：四格（T01 "A中😀"=3/8→38、T02 slice(1,3)="中😀"=2/7→27、
+  T03 clone/move/拼接=2·10+3→23、T04 '😀'=128512）certified，双侧对
+  oracle；值近邻（空串 0/0、嵌 NUL 33、emoji 14、ASCII codepoint 65、单参
+  slice/sub 27、越界 panic）与字节稳定近邻（字段/模式/参数/List/调用结果）
+  由 `a2r_tests.rs` plan994_* 永久单元钉住；3 个 cookbook 冻结期望随声明型
+  len 投影具名修订（ASCII 值恒等）。

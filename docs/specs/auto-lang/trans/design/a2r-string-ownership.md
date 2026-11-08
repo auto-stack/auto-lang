@@ -55,3 +55,19 @@ Auto 有统一字符串模型（`str` / `Str` / 字面量），Rust 区分 `&str
 越界即 panic。语料 T08（`"中".slice(0, 2)`）的冻结 slice-oob 语义由此在旧 A2R 产物中
 真实可观察（Rust panic 级行为观察；Auto trap 认证通道仍为独立 cert-gap）。
 单参 `slice(a)` 形态与所有权约定不变。
+
+## 文本长度域拆分与码点映射（PLAN-994，SD-04）
+
+- **声明型字符串局部的长度双域**：显式声明 `str`/`Str`/`str(N)` 的 `let`/`var`
+  局部上，`.len()`=标量字符数（`chars().count()`）、`.len_bytes()`=UTF-8 字节数
+  （`String::len`）——两者在多字节文本上可区分（"A中😀"=3/8、emoji=1/4）。
+  声明型 `char` 局部 `.to_codepoint()`=标量值（`as u32 as i64`，'😀'=128512）。
+  发射为自包含 std 表达式、接收者单求值，不引入 a2r_std 依赖。
+- **所有权/语境边界不变**：参数（`&str`）、字段、模式绑定、推断局部与调用结果
+  维持本文既有映射与字节 len remap（已批准差异）；`str_slice_pattern_bindings`
+  等 &str 绑定机制不受影响。
+- **两参 slice 守卫块为 source 字符域唯一形态**：PLAN-956 的 a2r_std 字节域
+  中间态（未重冻 917 金样，D-993-2 三红）已移除；`slice`/`sub` 于字符串接收者
+  恢复 PLAN-917 守卫块（接收者 `&(recv)` 绑定一次、双界各一次、越界 panic），
+  单参维持 chars-skip。runtime `a2r_std::str_slice`/`str_substr` 公共字节 API
+  与其显式调用方（字节偏移游标域）不变。
