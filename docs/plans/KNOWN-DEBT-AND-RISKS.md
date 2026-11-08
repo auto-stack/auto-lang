@@ -4131,6 +4131,7 @@ owner=ace-m1 验证脚本线（PLAN-992 终审 F-992-R1-01，info级）；`scrip
 
 owner=a2r 逃逸分析（Plan 419 §4.5 域）。事实：写捕获发生在**嵌套**闭包内层（外层闭包体内再定义内层闭包写同一绑定）时，`write_capture_names` 不登记该绑定——`var base` 保持 `let mut base: i64` 直值，外层 `move` 按值拷贝，内层改外层副本：编译过但语义背离 Auto 共享可变环境（探针 P993F：`outer(10)+base` 实跑 22，正确共享 cell 应为 42）。PLAN-993 H-05 只关闭外层写捕获×显式move的双move发射与自引用赋值重叠，嵌套降级缺口未修（超合同范围）。单层写捕获（K06/25_lifecycle 001/003/005/006/007）全部正确。关闭条件：逃逸分析穿透嵌套闭包登记写捕获并 Rc 降级，配套嵌套共享 cell 正反例（预期 outer(10)+base=42 形）。
 
-### D-993-2 — case-ace-m1-a2r-emit-917 三检查先存红：a2r_std 头前导 vs 冻结金样（2026-11-08）
+### D-993-2 — case-ace-m1-a2r-emit-917 三检查先存红：a2r_std 头前导 vs 冻结金样（2026-11-08）【已关闭 2026-11-08，PLAN-994】
 
 owner=PLAN-917 域（a2r_std 发射条件变化 vs 917 T-05 冻结金样）。事实：`case-ace-m1-a2r-emit-917` 组内 `ace.m1.a2r917.t08.single` / `t08.project` / `nb_slice_ok` 三检查红——actual 带 `// a2r Standard Library (from crate)` + `use a2r_std;` 前导而金样无（byte 37 起）。PLAN-993 以 base emitter（`eef2f3f21` 的 `expr_emit.rs`）同参复跑**同三红**，证非 993 引入（993 前已在 master 红；PLAN-814 搬迁时代 a2r_std 发射条件演化）。同组另 8 检查绿。关闭条件：917 owner 重审 a2r_std 前导的合法域并重冻结三金样（走其 G04 等价审阅），或修发射条件回归。993 未触 917 写面。
+**关闭（2026-11-08，PLAN-994）**：根因实为 PLAN-956（764f454d1）将 `emit_str_slice_chars` 整体替换为 `a2r_std::str::str_slice` 字节域调用（设 a2r_std_used → 前导 + 发射体漂移）且未重冻 917 金样；994 恢复 917 冻结守卫块字符位形态（接收者 &绑定/双界各一次/越界 assert panic）后三检查回绿，917 金样字节未动（独立复审核验 closure 为真发射修复，见 docs/plans/archive/994-* §9 与 F-994-R1-03）。公共 a2r_std::str_slice 字节 API 对显式调用方不变。
