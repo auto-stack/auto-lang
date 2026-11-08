@@ -3646,14 +3646,22 @@ fn plan997_transpile_checked(src: &str) -> String {
 fn plan997_profile_admission_is_exact_versioned_id() {
     use crate::trans::rust::IntProfile;
     assert_eq!(IntProfile::CHECKED_I32_ID, "legacy-a2r.checked-i32/1");
-    assert_eq!(IntProfile::from_id("legacy-a2r.checked-i32/1"), Some(IntProfile::CheckedI32));
+    assert_eq!(
+        IntProfile::from_id("legacy-a2r.checked-i32/1"),
+        Some(IntProfile::CheckedI32)
+    );
     for typo in [
         "legacy-a2r.checked-i32/2",
         "legacy-a2r.checked-i32",
         "checked-i32/1",
         "",
     ] {
-        assert_eq!(IntProfile::from_id(typo), None, "typo {:?} must not admit", typo);
+        assert_eq!(
+            IntProfile::from_id(typo),
+            None,
+            "typo {:?} must not admit",
+            typo
+        );
     }
     assert_eq!(IntProfile::CheckedI32.as_id(), "legacy-a2r.checked-i32/1");
     assert_eq!(IntProfile::LegacyI64.as_id(), "legacy-a2r.default-i64/1");
@@ -3686,9 +3694,23 @@ fn plan997_checked_emission_shapes_for_the_four_trap_cells() {
     ];
     for (src, call, trap) in cases {
         let code = plan997_transpile_checked(src);
-        assert!(code.contains(call), "checked call shape for {:?}:\n{}", src, code);
-        assert!(code.contains("__a2r_i32_trap"), "helper block present for {:?}", src);
-        assert!(code.contains(trap), "typed trap kind/op {} for {:?}", trap, src);
+        assert!(
+            code.contains(call),
+            "checked call shape for {:?}:\n{}",
+            src,
+            code
+        );
+        assert!(
+            code.contains("__a2r_i32_trap"),
+            "helper block present for {:?}",
+            src
+        );
+        assert!(
+            code.contains(trap),
+            "typed trap kind/op {} for {:?}",
+            trap,
+            src
+        );
         assert!(
             code.contains("std::process::exit(70)"),
             "controlled exit(70) for {:?}:\n{}",
@@ -3723,8 +3745,17 @@ fn plan997_default_profile_keeps_certified_bytes_and_no_helpers() {
     ];
     for (src, body) in cases {
         let code = plan997_transpile(src);
-        assert!(code.contains(body), "default bytes for {:?}:\n{}", src, code);
-        assert!(!code.contains("__a2r_i32_"), "no helper bytes by default:\n{}", code);
+        assert!(
+            code.contains(body),
+            "default bytes for {:?}:\n{}",
+            src,
+            code
+        );
+        assert!(
+            !code.contains("__a2r_i32_"),
+            "no helper bytes by default:\n{}",
+            code
+        );
     }
 }
 
@@ -3760,9 +3791,8 @@ fn plan997_checked_neg_forms_min_literal_fold_neg_ident_helper() {
         "MIN literal folds, -1 stays a literal:\n{}",
         rem
     );
-    let neg_ident = plan997_transpile_checked(
-        "fn main() int {\n    let a int = -2147483648\n    return -a\n}",
-    );
+    let neg_ident =
+        plan997_transpile_checked("fn main() int {\n    let a int = -2147483648\n    return -a\n}");
     assert!(
         neg_ident.contains("__a2r_i32_neg(a)"),
         "neg on an int ident is a runtime check:\n{}",
@@ -3844,7 +3874,13 @@ fn plan997_checked_helper_block_is_lazy_and_typed() {
         "used helpers present:\n{}",
         div_only
     );
-    for absent in ["__a2r_i32_add", "__a2r_i32_sub", "__a2r_i32_mul", "__a2r_i32_mod", "__a2r_i32_neg"] {
+    for absent in [
+        "__a2r_i32_add",
+        "__a2r_i32_sub",
+        "__a2r_i32_mul",
+        "__a2r_i32_mod",
+        "__a2r_i32_neg",
+    ] {
         assert!(
             !div_only.contains(&format!("fn {}", absent)),
             "unused helper {} must not be emitted:\n{}",
@@ -3853,7 +3889,8 @@ fn plan997_checked_helper_block_is_lazy_and_typed() {
         );
     }
     assert!(
-        div_only.contains("eprintln!(\"auto.trap:{}:{}\", kind, op)") && div_only.contains("exit(70)"),
+        div_only.contains("eprintln!(\"auto.trap:{}:{}\", kind, op)")
+            && div_only.contains("exit(70)"),
         "typed stderr event + controlled exit:\n{}",
         div_only
     );

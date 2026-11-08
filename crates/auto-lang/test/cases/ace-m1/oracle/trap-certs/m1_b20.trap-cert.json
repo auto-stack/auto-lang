@@ -1,0 +1,52 @@
+{
+  "schema": "ace.m1.a2r-trap/1",
+  "case": "B20",
+  "module": "m1_b20",
+  "profile": "legacy-a2r.checked-i32/1",
+  "wrapper_file": "oracle/wrapper-main-v1.rs",
+  "expected_trap": {
+    "kind": "div-by-zero",
+    "op": "div",
+    "line": "auto.trap:div-by-zero:div",
+    "exit": 70
+  },
+  "identity": {
+    "source_sha256": "72df0623d74f6aebe149cc5f037271d4e11ecd6b0c9dfbec82a82b1a8386aa9a",
+    "golden_sha256": "77bbcaaa69a83fb965203eccceb7fbc52e6e90fc73c80511a7896d11386b732d",
+    "actual_sha256": "77bbcaaa69a83fb965203eccceb7fbc52e6e90fc73c80511a7896d11386b732d",
+    "wrapper_sha256": "774b7c57b752c0bbd4ce94a05b2d8580669135367cded6cc3dfbba99c8539ba0",
+    "reference_sha256": "5e199415d9462dc21667e1f845c4f7170861297b981fb6d545f564f96c3e1a51",
+    "trap_oracle_sha256": "5b3a77800d71fe5d30dbb8a39e8cd3302f9ed1bbbdf70297eb88b2fa11d3ba02"
+  },
+  "toolchain": {
+    "identity": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.0\nLLVM version: 22.1.8",
+    "identity_source": "PATH",
+    "default_identity_at_certify": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.0\nLLVM version: 22.1.8",
+    "flags": [
+      "--edition=2021",
+      "-O"
+    ]
+  },
+  "deps": {
+    "external": [],
+    "closure": "std-only"
+  },
+  "observed": {
+    "actual_run": {
+      "exit": 70,
+      "stdout": "",
+      "stderr": "auto.trap:div-by-zero:div\n"
+    },
+    "reference_run": {
+      "exit": 70,
+      "stdout": "",
+      "stderr": "auto.trap:div-by-zero:div\n"
+    }
+  },
+  "verdict": "certified",
+  "produced_by": {
+    "tool": "ace-certify --trap",
+    "schema_note": "trap domain is independent of ace.m1.cert/1; receipts never mix domains"
+  },
+  "created_at": 1794119246
+}

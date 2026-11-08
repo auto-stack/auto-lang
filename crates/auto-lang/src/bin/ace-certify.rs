@@ -10,11 +10,15 @@
 //!             [--force]              (skip reuse validation, certify fresh)
 //!             [--rustc <path>]       (default $RUSTC or `rustc`)
 //!             [--scratch <dir>]      (default: isolated temp dir; removed)
+//!             [--trap]               (PLAN-997: certify the trap domain
+//!                                    instead — certs at
+//!                                    <corpus>/oracle/trap-certs, profile
+//!                                    legacy-a2r.checked-i32/1, schema
+//!                                    ace.m1.a2r-trap/1; outcome=trap rows
+//!                                    only, cert-diff rows need --only)
 //! ```
 
-
 fn main() {
-    use auto_lang::test_cases::ace_certify::{certify_and_report, CertifyArgs};
     use std::path::PathBuf;
 
     let mut corpus: Option<PathBuf> = None;
@@ -23,6 +27,7 @@ fn main() {
     let mut force = false;
     let mut rustc: Option<String> = None;
     let mut scratch: Option<PathBuf> = None;
+    let mut trap = false;
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -64,6 +69,7 @@ fn main() {
                     args.get(i).cloned().unwrap_or_else(|| missing("--scratch")),
                 ));
             }
+            "--trap" => trap = true,
             other => {
                 eprintln!("ace-certify: unknown argument {other:?}");
                 std::process::exit(2);
@@ -79,6 +85,24 @@ fn main() {
             std::process::exit(2);
         }
     };
+
+    if trap {
+        // PLAN-997 trap domain: independent schema/profile/cert path; the
+        // value domain flags keep their exact meaning (--certs default
+        // becomes the trap-certs dir).
+        use auto_lang::test_cases::ace_trap_certify::{trap_certify_and_report, TrapCertifyArgs};
+        let certs_dir = certs.unwrap_or_else(|| corpus.join("oracle").join("trap-certs"));
+        std::process::exit(trap_certify_and_report(&TrapCertifyArgs {
+            corpus,
+            certs_dir,
+            only,
+            force,
+            rustc,
+            scratch,
+        }));
+    }
+
+    use auto_lang::test_cases::ace_certify::{certify_and_report, CertifyArgs};
     let certs_dir = certs.unwrap_or_else(|| corpus.join("oracle").join("certs"));
 
     std::process::exit(certify_and_report(&CertifyArgs {

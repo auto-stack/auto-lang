@@ -186,6 +186,11 @@ test_temp.txt
 # 吞掉两件致交付提交缺失、fresh 检出 contract 必红——同 F-793-R1-01 缺陷类）
 !crates/auto-lang/test/cases/ace-m1/applicability.json
 !crates/auto-lang/test/cases/ace-m1/source-manifest.json
+# PLAN-997：M1 trap域证书与声明式trap oracle（verify-ace-m1-852 snapshot/
+# receipts/acceptance 消费的长期测试合同数据；*.json 母规则吞掉致 fresh 检出
+# daily 必红——同 F-908-R1-01 缺陷类）
+!crates/auto-lang/test/cases/ace-m1/oracle/trap-certs/*.trap-cert.json
+!crates/auto-lang/test/cases/ace-m1/oracle/trap/trap-oracle.json
 # PLAN-893：13项慢例接入策略元数据（ace_cost_report/ace-policy 治理测试消费；
 # *.json 母规则会吞掉致固定组治理断——同 F-793-R1-01 缺陷类）
 !scripts/test-governance/ace-test-policy.json

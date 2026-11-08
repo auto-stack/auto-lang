@@ -1,0 +1,12 @@
+{
+  "schema": "ace.m1.a2r-trap-oracle/1",
+  "profile": "legacy-a2r.checked-i32/1",
+  "exit_code": 70,
+  "stderr_prefix": "auto.trap:",
+  "cells": {
+    "B13": { "kind": "overflow", "op": "add", "line": "auto.trap:overflow:add" },
+    "B14": { "kind": "div-by-zero", "op": "div", "line": "auto.trap:div-by-zero:div" },
+    "B15": { "kind": "rem-overflow", "op": "rem", "line": "auto.trap:rem-overflow:rem" },
+    "B20": { "kind": "div-by-zero", "op": "div", "line": "auto.trap:div-by-zero:div" }
+  }
+}

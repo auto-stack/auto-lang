@@ -1,0 +1,12 @@
+# PLAN-997 a2r-only trap certification extension suite (4 checks). Kept
+# OUTSIDE the frozen 852 base suite (36 cases / 97 checks stay unexpanded)
+# and alongside the PLAN-992/PLAN-994 extensions; the daily snapshot scope
+# runs base + all extensions and counts 26 + 5 + 4 + 4 a2r checks.
+# Real trap certification (compile+run of actual+reference) remains the
+# ace-certify --trap tool's explicit scope — never this suite.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "legacy-a2r-trap-997", include: [
+  "legacy-a2r-trap-997.case.ad",
+] }
+```

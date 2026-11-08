@@ -275,7 +275,11 @@ function Load-SourceManifest {
     # EXACTLY (extra files fail), hash every file, and reject drift.
     # PLAN-915: EVERY plan-scoped scenario asset group is enumerated exactly
     # (the 914 group and the 915 group each carry dir/expected_count/files).
-    foreach ($assetsProp in @($m.PSObject.Properties | Where-Object { $_.Name -like 'scenario_assets*' })) {
+    # PLAN-997: `trap_assets*` groups (oracle/trap, oracle/trap-certs,
+    # reference/trap) use the SAME exact enumeration discipline — the trap
+    # domain's goldens/certs/references are drift-checked like every other
+    # frozen asset while staying OUTSIDE the value-domain counters.
+    foreach ($assetsProp in @($m.PSObject.Properties | Where-Object { $_.Name -like 'scenario_assets*' -or $_.Name -like 'trap_assets*' })) {
         $sa = $assetsProp.Value
         $saRel = [string]$sa.dir
         $saDir = Join-Path $corpusDir $saRel
@@ -454,6 +458,94 @@ function Invoke-ReceiptValidation {
     return $certRows.Count
 }
 
+# ---- PLAN-997: STRICT trap-domain receipt validation -------------------------
+# Token-gated (outcome=trap AND a2r=ok-emit-trap), zero-spawn, independent of
+# the value validator and of token surface green: a migrated trap row WITHOUT
+# a structurally valid, current `ace.m1.a2r-trap/1` receipt at
+# oracle/trap-certs/m1_<id>.trap-cert.json FAILS here — deleting the
+# certificate or faking the token can never sign the daily face.
+function Invoke-TrapReceiptValidation {
+    # $buildIdentity is OPTIONAL here: without it the default-toolchain axis
+    # check is skipped (the acceptance face runs identity-free; snapshot and
+    # receipts always bind a real run's identity). Existence, structure,
+    # observed typed events, and file axes are enforced unconditionally.
+    param($RepoRoot, $corpusDir, $buildIdentity)
+    $rows = Load-Binding
+    $trapRows = @($rows | Where-Object { $_.ns -eq 'corpus' -and $_.outcome -eq 'trap' -and $_.a2r -eq 'ok-emit-trap' })
+    if ($trapRows.Count -eq 0) { return 0 }
+    $oraclePath = Join-Path $corpusDir 'oracle/trap/trap-oracle.json'
+    if (-not (Test-Path $oraclePath)) { Fail "trap oracle registry missing: oracle/trap/trap-oracle.json" }
+    $oracle = Get-Content $oraclePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($oracle.schema -cne 'ace.m1.a2r-trap-oracle/1') { Fail "trap oracle schema is '$($oracle.schema)', expected ace.m1.a2r-trap-oracle/1" }
+    if ($oracle.profile -cne 'legacy-a2r.checked-i32/1') { Fail "trap oracle profile is '$($oracle.profile)', expected legacy-a2r.checked-i32/1" }
+    if ([int]$oracle.exit_code -ne 70) { Fail "trap oracle exit_code is $($oracle.exit_code), expected 70" }
+    $rootKeys = @('schema','case','module','profile','wrapper_file','expected_trap','identity','toolchain','deps','observed','verdict','produced_by','created_at')
+    foreach ($row in $trapRows) {
+        $id = $row.id
+        $module = "m1_$($id.ToLower())"
+        $cell = $oracle.cells.$id
+        if (-not $cell) { Fail "trap oracle has no cell for $id" }
+        if ($cell.kind -cne $row.expected) { Fail "trap oracle kind for $id is '$($cell.kind)' but binding expected '$($row.expected)' — the binding stays authoritative" }
+        $certPath = Join-Path $corpusDir "oracle/trap-certs/$module.trap-cert.json"
+        if (-not (Test-Path $certPath)) { Fail "trap certificate MISSING for ok-emit-trap row ${id}: $certPath (a green token without a receipt never signs)" }
+        $cert = $null
+        try { $cert = Get-Content $certPath -Raw -Encoding UTF8 | ConvertFrom-Json }
+        catch { Fail "trap certificate $module is not valid JSON: $_" }
+        $have = @($cert.PSObject.Properties.Name)
+        $unknown = @($have | Where-Object { $rootKeys -notcontains $_ })
+        if ($unknown.Count -gt 0) { Fail "trap certificate $module REJECTED: unknown root field(s): $($unknown -join ', ')" }
+        $missing = @($rootKeys | Where-Object { $have -notcontains $_ })
+        if ($missing.Count -gt 0) { Fail "trap certificate $module REJECTED: missing root field(s): $($missing -join ', ')" }
+        if ($cert.schema -cne 'ace.m1.a2r-trap/1') { Fail "trap certificate $module REJECTED: schema is not ace.m1.a2r-trap/1" }
+        if ($cert.case -cne $id) { Fail "trap certificate $module REJECTED: case is not $id" }
+        if ($cert.module -cne $module) { Fail "trap certificate $module REJECTED: module is not $module" }
+        if ($cert.profile -cne 'legacy-a2r.checked-i32/1') { Fail "trap certificate $module REJECTED: profile is not legacy-a2r.checked-i32/1" }
+        if ($cert.wrapper_file -cne 'oracle/wrapper-main-v1.rs') { Fail "trap certificate $module REJECTED: wrapper_file is not the frozen wrapper" }
+        if ($cert.verdict -cne 'certified') { Fail "trap certificate $module REJECTED: verdict is not certified" }
+        if ($null -eq $cert.created_at -or $cert.created_at -isnot [long] -and $cert.created_at -isnot [int] -and $cert.created_at -isnot [double]) { Fail "trap certificate $module REJECTED: created_at is not an unsigned integer" }
+        # expected_trap: the typed event, cross-checked against the registry.
+        $et = $cert.expected_trap
+        if (-not $et -or @($et.PSObject.Properties.Name).Count -ne 4 -or $et.kind -isnot [string] -or $et.op -isnot [string] -or $et.line -isnot [string]) { Fail "trap certificate $module REJECTED: expected_trap must have exactly {kind, op, line, exit}" }
+        if ($et.kind -cne $cell.kind -or $et.op -cne $cell.op -or $et.line -cne $cell.line) { Fail "trap certificate $module REJECTED: expected_trap does not equal the trap-oracle registry cell" }
+        if ("auto.trap:$($et.kind):$($et.op)" -cne $et.line) { Fail "trap certificate $module REJECTED: expected_trap line is not prefix+kind+op" }
+        if ([int]$et.exit -ne 70) { Fail "trap certificate $module REJECTED: expected_trap.exit is not 70" }
+        # observed: both sides the exact typed event, clean stdout.
+        foreach ($side in @('actual_run','reference_run')) {
+            $run = $cert.observed.$side
+            if (-not $run -or @($run.PSObject.Properties.Name).Count -ne 3) { Fail "trap certificate $module REJECTED: observed.$side must have exactly {exit, stdout, stderr}" }
+            if ([int]$run.exit -ne 70) { Fail "trap certificate $module REJECTED: observed.$side.exit is not the integer 70" }
+            if ($run.stdout -isnot [string] -or $run.stdout -cne '') { Fail "trap certificate $module REJECTED: observed.$side.stdout is not empty (clean stdout is part of the trap contract)" }
+            if ($run.stderr -isnot [string] -or $run.stderr -cne "$($cell.line)`n") { Fail "trap certificate $module REJECTED: observed.$side.stderr does not equal the newline-terminated oracle line" }
+        }
+        # toolchain: frozen shape; default axis must equal this run's identity.
+        $tc = $cert.toolchain
+        if (-not $tc -or @($tc.PSObject.Properties.Name).Count -ne 4) { Fail "trap certificate $module REJECTED: toolchain must have exactly {identity, identity_source, default_identity_at_certify, flags}" }
+        if (@($tc.flags).Count -ne 2 -or @($tc.flags)[0] -cne '--edition=2021' -or @($tc.flags)[1] -cne '-O') { Fail "trap certificate $module REJECTED: toolchain.flags is not the frozen set" }
+        if ($tc.identity -isnot [string] -or -not $tc.identity.Trim()) { Fail "trap certificate $module REJECTED: toolchain.identity is not a non-empty string" }
+        if (@('--rustc override','env RUSTC','PATH') -notcontains $tc.identity_source) { Fail "trap certificate $module REJECTED: toolchain.identity_source is not a frozen selection rule" }
+        if ($buildIdentity) {
+            if ($tc.default_identity_at_certify -isnot [string] -or $tc.default_identity_at_certify -cne $buildIdentity) { Fail "trap certificate $module is STALE: default toolchain drifted since certification (re-certify to re-bind)" }
+        } elseif ($tc.default_identity_at_certify -isnot [string] -or -not $tc.default_identity_at_certify.Trim()) {
+            Fail "trap certificate $module REJECTED: default_identity_at_certify is not a non-empty string"
+        }
+        # deps: std-only, empty external.
+        if (-not $cert.deps -or @($cert.deps.PSObject.Properties.Name).Count -ne 2 -or @($cert.deps.external).Count -ne 0 -or $cert.deps.closure -cne 'std-only') { Fail "trap certificate $module REJECTED: deps must be {external: [], closure: std-only}" }
+        # identity axes: exact keys, hashes vs the current tree.
+        $idKeys = @('source_sha256','golden_sha256','actual_sha256','wrapper_sha256','reference_sha256','trap_oracle_sha256')
+        $haveId = @($cert.identity.PSObject.Properties.Name)
+        $unknownId = @($haveId | Where-Object { $idKeys -notcontains $_ })
+        if ($unknownId.Count -gt 0 -or @($idKeys | Where-Object { $haveId -notcontains $_ }).Count -gt 0) { Fail "trap certificate $module REJECTED: identity must have exactly the six axes" }
+        if ($cert.identity.actual_sha256 -cne $cert.identity.golden_sha256) { Fail "trap certificate $module REJECTED: actual_sha256 != golden_sha256 (self-inconsistent)" }
+        if ((Sha256File (Join-Path $corpusDir "src/$id.at")) -cne $cert.identity.source_sha256) { Fail "trap certificate $module is STALE: source drifted" }
+        if ((Sha256File (Join-Path $corpusDir "oracle/trap/$module.rs")) -cne $cert.identity.golden_sha256) { Fail "trap certificate $module is STALE: trap golden drifted" }
+        if ((Sha256File (Join-Path $corpusDir "reference/trap/$id.rs")) -cne $cert.identity.reference_sha256) { Fail "trap certificate $module is STALE: trap reference drifted" }
+        if ((Sha256File (Join-Path $corpusDir 'oracle/trap/trap-oracle.json')) -cne $cert.identity.trap_oracle_sha256) { Fail "trap certificate $module is STALE: trap oracle drifted" }
+        $wrapperHash = Sha256File (Join-Path $corpusDir 'oracle/wrapper-main-v1.rs')
+        if ($wrapperHash -cne $cert.identity.wrapper_sha256) { Fail "trap certificate $module is STALE: wrapper drifted" }
+    }
+    return $trapRows.Count
+}
+
 
 switch ($Scope) {
     'contract' {
@@ -596,14 +688,23 @@ switch ($Scope) {
         if (-not (Test-Path $ext2Suite)) { Fail "a2r text certification extension suite missing: $ext2Suite" }
         $ext2Out = Join-Path $OutDir 'ext-994'
         $ext2Report = Join-Path $ext2Out 'ace-m1-a2r-ext2-report.json'
+
         # PLAN-996: the a2r-only finite-LIST certification extension suite (the
         # six H-04 goldens L01/L02/L03/L04/L05/L07 whose 0-arg generic
         # List<T>.new() construction was lowered) rides the same daily face;
-        # union gate becomes 26 + 5 + 4 + 6 = 41 a2r checks.
+        # union gate becomes 26 + 5 + 4 + 6 + 4 = 45 a2r checks.
         $ext3Suite = Join-Path $corpusDir 'legacy-a2r-list-996.suite.ad'
         if (-not (Test-Path $ext3Suite)) { Fail "a2r list certification extension suite missing: $ext3Suite" }
         $ext3Out = Join-Path $OutDir 'ext-996'
         $ext3Report = Join-Path $ext3Out 'ace-m1-a2r-ext3-report.json'
+        # PLAN-997: the a2r-only TRAP certification extension suite (the four
+        # H-06 trap cells B13/B14/B15/B20 under the explicit
+        # legacy-a2r.checked-i32/1 profile, goldens at oracle/trap/) rides the
+        # same daily zero-spawn face; union gate becomes 26 + 5 + 4 + 4 = 39.
+        $ext4Suite = Join-Path $corpusDir 'legacy-a2r-trap-997.suite.ad'
+        if (-not (Test-Path $ext4Suite)) { Fail "a2r trap certification extension suite missing: $ext4Suite" }
+        $ext4Out = Join-Path $OutDir 'ext-997'
+        $ext4Report = Join-Path $ext4Out 'ace-m1-a2r-ext4-report.json'
 
         # ---- REAL process-creation instrumentation (F-852-R1-02) ----------
         # Run the suite async and poll the OS process table (in-process CIM;
@@ -708,41 +809,49 @@ switch ($Scope) {
         $extRun = Invoke-InstrumentedSuiteRun $bin $extSuite $extOut $extReport 'ext-992'
         $ext2Run = Invoke-InstrumentedSuiteRun $bin $ext2Suite $ext2Out $ext2Report 'ext-994'
         $ext3Run = Invoke-InstrumentedSuiteRun $bin $ext3Suite $ext3Out $ext3Report 'ext-996'
+        $ext4Run = Invoke-InstrumentedSuiteRun $bin $ext4Suite $ext4Out $ext4Report 'ext-997'
         if ($baseRun.gate -ne 0) { Fail "base suite gate exit $($baseRun.gate) under the snapshot scope (expected 0)" }
         if ($extRun.gate -ne 0) { Fail "a2r certification extension suite gate exit $($extRun.gate) under the snapshot scope (expected 0)" }
         if ($ext2Run.gate -ne 0) { Fail "a2r text certification extension suite gate exit $($ext2Run.gate) under the snapshot scope (expected 0)" }
         if ($ext3Run.gate -ne 0) { Fail "a2r list certification extension suite gate exit $($ext3Run.gate) under the snapshot scope (expected 0)" }
-        $violations = @($baseRun.violations) + @($extRun.violations) + @($ext2Run.violations) + @($ext3Run.violations)
+        if ($ext4Run.gate -ne 0) { Fail "a2r trap certification extension suite gate exit $($ext4Run.gate) under the snapshot scope (expected 0)" }
+        $violations = @($baseRun.violations) + @($extRun.violations) + @($ext2Run.violations) + @($ext3Run.violations) + @($ext4Run.violations)
         if ($violations.Count -gt 0) {
             Fail ("G02 VIOLATION: the daily snapshot run spawned the a2r certification face (direct rustc / certified binaries): {0}" -f ($violations -join ', '))
         }
-        $maintenance = $baseRun.maintenance + $extRun.maintenance + $ext2Run.maintenance + $ext3Run.maintenance
-        $identityProbes = $baseRun.identityProbes + $extRun.identityProbes + $ext2Run.identityProbes + $ext3Run.identityProbes
-        Write-Host "verify-ace-m1-852 [snapshot]: process instrumentation: 0 certification-face spawns (direct rustc / m1_* binaries; ancestry-checked, base + ext-992 + ext-994 + ext-996 suites); $maintenance engine-worker maintenance build process(es) observed (PLAN-818 memoized harness discipline, not corpus compilation); $identityProbes rustc identity query(/-ies) (`--print`, no compile axes — PLAN-814 ac stale-axes probe)."
+        $maintenance = $baseRun.maintenance + $extRun.maintenance + $ext2Run.maintenance + $ext3Run.maintenance + $ext4Run.maintenance
+        $identityProbes = $baseRun.identityProbes + $extRun.identityProbes + $ext2Run.identityProbes + $ext3Run.identityProbes + $ext4Run.identityProbes
+        Write-Host "verify-ace-m1-852 [snapshot]: process instrumentation: 0 certification-face spawns (direct rustc / m1_* binaries; ancestry-checked, base + ext-992 + ext-994 + ext-996 + ext-997 suites); $maintenance engine-worker maintenance build process(es) observed (PLAN-818 memoized harness discipline, not corpus compilation); $identityProbes rustc identity query(/-ies) (`--print`, no compile axes — PLAN-814 ac stale-axes probe)."
 
         $r = Get-Content $report -Raw | ConvertFrom-Json
         $re = Get-Content $extReport -Raw | ConvertFrom-Json
         $re2 = Get-Content $ext2Report -Raw | ConvertFrom-Json
         $re3 = Get-Content $ext3Report -Raw | ConvertFrom-Json
+        $re4 = Get-Content $ext4Report -Raw | ConvertFrom-Json
         $extA2r = @($re.results | Where-Object adapter -eq 'a2r')
         $ext2A2r = @($re2.results | Where-Object adapter -eq 'a2r')
         $ext3A2r = @($re3.results | Where-Object adapter -eq 'a2r')
-        $a2r = @($r.results | Where-Object adapter -eq 'a2r') + $extA2r + $ext2A2r + $ext3A2r
+        $ext4A2r = @($re4.results | Where-Object adapter -eq 'a2r')
+        $a2r = @($r.results | Where-Object adapter -eq 'a2r') + $extA2r + $ext2A2r + $ext3A2r + $ext4A2r
         $nonPass = @($a2r | Where-Object status -ne 'PASS')
         if ($nonPass.Count -gt 0) {
             Fail ("a2r snapshot has {0} non-PASS check(s); first: {1}:{2} {3}" -f $nonPass.Count, $nonPass[0].case, $nonPass[0].check, $nonPass[0].status)
         }
-        if ($a2r.Count -lt 41) { Fail "a2r snapshot check count $($a2r.Count) < 41 (base 26 + PLAN-992 extension 5 + PLAN-994 extension 4 + PLAN-996 extension 6 — checks were dropped)" }
+        if ($a2r.Count -lt 45) { Fail "a2r snapshot check count $($a2r.Count) < 45 (base 26 + PLAN-992 extension 5 + PLAN-994 extension 4 + PLAN-996 extension 6 + PLAN-997 trap extension 4 — checks were dropped)" }
 
         # ---- STRICT certificate validity (shared function) ----
         $buildIdentity = $r.toolchain.'build-rustc-identity'
         if (-not $buildIdentity) { Fail "suite report lacks the build-rustc-identity toolchain axis (rebuild auto-case)" }
         $certCount = Invoke-ReceiptValidation -RepoRoot $RepoRoot -corpusDir $corpusDir -buildIdentity $buildIdentity
+        # PLAN-997: the trap domain's STRICT receipt validation — token-gated
+        # (only rows already migrated to the trap-domain token), zero-spawn,
+        # same Invalid-vs-missing discipline as the value domain.
+        $trapCertCount = Invoke-TrapReceiptValidation -RepoRoot $RepoRoot -corpusDir $corpusDir -buildIdentity $buildIdentity
 
         $goldens = @(Get-ChildItem (Join-Path $corpusDir 'oracle') -Filter 'm1_*.rs')
         Write-Host "verify-ace-m1-852 [snapshot]: PASS — $($a2r.Count) a2r checks green (emit + byte-compare;" `
-            "26 base + $($extA2r.Count) PLAN-992 extension + $($ext2A2r.Count) PLAN-994 extension + $($ext3A2r.Count) PLAN-996 extension);" `
-            "$certCount certificates STRICTLY valid (typed exact-key schema + file axes + default-toolchain" `
+            "26 base + $($extA2r.Count) PLAN-992 extension + $($ext2A2r.Count) PLAN-994 extension + $($ext3A2r.Count) PLAN-996 extension + $($ext4A2r.Count) PLAN-997 trap extension);" `
+            "$certCount value certificates + $trapCertCount trap certificates STRICTLY valid (typed exact-key schema + file axes + default-toolchain" `
             "axis vs this run's build identity). Certification-face process watch: 0 direct-rustc/m1_* spawns" `
             "observed in periodic CIM ancestry sampling (a sampling observer, not a lossless creation count)." `
             "Full base suite $($r.results.Count) checks green; extension suite $($re.results.Count) checks green." `
@@ -763,7 +872,8 @@ switch ($Scope) {
             exit 2
         }
         $count = Invoke-ReceiptValidation -RepoRoot $RepoRoot -corpusDir $corpusDir -buildIdentity $BuildIdentity
-        Write-Host "verify-ace-m1-852 [receipts]: PASS — $count certificates STRICTLY valid (direct seam; no suite run)."
+        $trapCount = Invoke-TrapReceiptValidation -RepoRoot $RepoRoot -corpusDir $corpusDir -buildIdentity $BuildIdentity
+        Write-Host "verify-ace-m1-852 [receipts]: PASS — $count value certificates + $trapCount trap certificates STRICTLY valid (direct seam; no suite run)."
         exit 0
     }
 
@@ -785,6 +895,22 @@ switch ($Scope) {
         $ErrorActionPreference = 'Stop'
         if ($code -ne 0) { Fail "certification exit $code (0 = certified/reused, 1 = failure)" }
 
+        # PLAN-997: the trap domain's explicit certification pass. Runs once
+        # any outcome=trap row has been migrated to the trap-domain token
+        # (ok-emit-trap); before migration the trap domain is still an
+        # accounted cert-gap and this pass stays dormant (no bulk green sweep
+        # of unmigrated rows — evidence first, token flip afterwards).
+        $trapRows = @(Load-Binding | Where-Object { $_.ns -eq 'corpus' -and $_.outcome -eq 'trap' -and $_.a2r -eq 'ok-emit-trap' })
+        if ($trapRows.Count -gt 0) {
+            $ErrorActionPreference = 'Continue'
+            & $bin @('--trap', '--corpus', $corpus) 2>$null
+            $code = $LASTEXITCODE
+            $ErrorActionPreference = 'Stop'
+            if ($code -ne 0) { Fail "trap certification exit $code (0 = certified/reused, 1 = failure)" }
+        } else {
+            Write-Host "verify-ace-m1-852 [certify]: trap domain dormant — no ok-emit-trap rows yet (pre-PLAN-997 token state)"
+        }
+
         # Explicit-only governance controls (F-852-R1-02/03): stream ordering,
         # per-stream overflow kill, and the wall kill. Full test paths +
         # --ignored so a typo can never silently match zero tests.
@@ -800,8 +926,9 @@ switch ($Scope) {
         if ($code -ne 0) { Fail "certifier governance controls failed (exit $code)" }
         Write-Host "verify-ace-m1-852 [certify]: PASS — every ok-emit row certified or reused" `
             "(real contained rustc compile+run of actual and reference, or an axes-identical" `
-            "receipt); stream-order/overflow/wall governance controls green." `
-            "Receipts live in oracle/certs and are versioned."
+            "receipt); trap domain certified when migrated (ace-certify --trap);" `
+            "stream-order/overflow/wall governance controls green." `
+            "Receipts live in oracle/certs (value) and oracle/trap-certs (trap) and are versioned."
         exit 0
     }
 
@@ -977,6 +1104,13 @@ switch ($Scope) {
         if ($BuildIdentity) {
             $certValidated = Invoke-ReceiptValidation -RepoRoot $RepoRoot -corpusDir $corpusDir -buildIdentity $BuildIdentity
         }
+        # PLAN-997: the trap domain's required evidence check runs
+        # UNCONDITIONALLY (identity-free when -BuildIdentity is absent): a
+        # trap row migrated to ok-emit-trap without a structurally valid,
+        # current `ace.m1.a2r-trap/1` receipt FAILs acceptance — a green
+        # token alone, a deleted certificate, or a forged receipt never
+        # signs the face.
+        $trapValidated = Invoke-TrapReceiptValidation -RepoRoot $RepoRoot -corpusDir $corpusDir -buildIdentity $BuildIdentity
         $certAxisRequired = @($ledger | Where-Object { $_.required -and $_.path -eq 'a2r' })
         $certGapCells = @($certAxisRequired | Where-Object { $_.cert_axis -eq 'cert-gap' })
 
@@ -985,9 +1119,9 @@ switch ($Scope) {
         $extVerdict = if ($extGreen.Count -eq $extRequired.Count) { 'pass' } else { 'red' }
         $futureVerdict = 'reported-not-required'
         $baseVerdict = if ($parentAdmission) { "pass(parent-report-admitted, $($parentAdmission.executed_checks) checks)" } else { 'not-claimed(this scope never executes)' }
-        $certVerdict = if ($null -ne $certValidated) { "strictly-validated($certValidated receipts)" }
-            elseif ($certGapCells.Count -gt 0) { "gap($($certGapCells.Count) required a2r cells carry cert-gap; validation via snapshot/receipts scope)" }
-            else { 'not-validated(supply -BuildIdentity or run snapshot/receipts)' }
+        $certVerdict = if ($null -ne $certValidated) { "strictly-validated($certValidated value receipts + $trapValidated trap receipts)" }
+            elseif ($certGapCells.Count -gt 0) { "gap($($certGapCells.Count) required a2r cells carry cert-gap; $trapValidated trap receipt(s) strictly validated; validation via snapshot/receipts scope)" }
+            else { "trap-validated($trapValidated trap receipt(s)); value axis: supply -BuildIdentity or run snapshot/receipts" }
         # G-DEC-5: M1 may be claimed only when the core obligation AND the
         # committed extension profile are fully green WITH VALID EVIDENCE,
         # while the full 131/524 registry still displays its remaining gaps

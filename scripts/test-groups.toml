@@ -1675,3 +1675,959 @@ expression = "test(tests::rust_lowering::)"
 tools = ["a2x"]
 domain = "ace"
 all = false
+
+[[group]]
+name = "case-legacy-a2r-trap-997"
+title = "TestCase case-legacy-a2r-trap-997（PLAN-997 H-06 四例trap checked-i32 profile a2r-only金样快照）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/legacy-a2r-trap-997.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-m1-nb-diags-908"
+title = "TestCase case-ace-m1-nb-diags-908（PLAN-908 B17-19合法近邻2/2/0）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/nb-diags-908.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-m1-native-diags-911"
+title = "TestCase case-ace-m1-native-diags-911（PLAN-911 native源码诊断事实通道 B17-19 typed cause/近邻/变体/异族）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/native-diags-911.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-m1-immutable-avm-920"
+title = "TestCase case-ace-m1-immutable-avm-920（PLAN-920 B18 avm typed不可变赋值/近邻）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/immutable-avm-920.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-m1-a2r-semantics-916"
+title = "TestCase legacy A2R semantic admission 916"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+suite = "crates/auto-lang/test/cases/ace-m1/a2r-semantics-916/a2r-semantics-916.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-m1-a2r-emit-917"
+title = "TestCase legacy A2R R07/T08 emit evidence 917（日常emit轴，零Rust编译）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+suite = "crates/auto-lang/test/cases/ace-m1/a2r-emit-917/a2r-emit-917.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-m1-tr-native"
+title = "TestCase case-ace-m1-tr-native"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/ace-m1-tr-native.suite.ad"
+all = false
+
+# PLAN-909: the shared mutable captures source suite (six positives through
+# the real closures recipe + two named unsupported-domain negatives).
+[[group]]
+name = "case-ace-m1-shared-mutable-909"
+title = "ACE M1 shared mutable captures 909 source suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/shared-mutable-909/shared-mutable-909.suite.ad"
+domain = "ace"
+all = false
+
+# PLAN-912: the closures FUNCTION session suite (single-unit warm
+# production, zero-production axes judged by the parent).
+[[group]]
+name = "case-ace-m1-closures-fn-912"
+title = "ACE M1 closures function session 912 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/closures-fn-912/closures-fn-912.suite.ad"
+domain = "ace"
+all = false
+
+# PLAN-919: the per-owner lifecycle scenario suite (R01/R04/R06 on the
+# av/owned + native collections production paths; budget/cancel/trap exits).
+[[group]]
+name = "case-ace-m1-resource-events-919"
+title = "ACE M1 resource lifecycle scenario 919 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/resource-events-919/resource-events-919.suite.ad"
+all = false
+
+# PLAN-914: the named evaluation-order scenario suite (E01/E02 on the four
+# real production paths; I04/I09 join in T-04).
+[[group]]
+name = "case-ace-m1-order-layout-914"
+title = "ACE M1 named-order scenario 914 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/order-layout-914/order-layout-914.suite.ad"
+domain = "ace"
+all = false
+
+# PLAN-934: SQ-A ordinary-source query family (T-09) — closed-form values
+# (42/43/7 + mark trace), frozen frontend diagnostics, and the Rust/C emit
+# goldens of the same HASH-bound HIR, executed by the product entries that
+# consume the fact layer. The facts-layer negative controls (solver-off,
+# tampered facts, cold/warm counters) live in the `ace-source-query` crate
+# tests carried by the `ace-semantics` fixed package group.
+[[group]]
+name = "case-ace-source-query-934"
+title = "ACE M1 SQ-A source query 934 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/source-query-934/source-query-934.suite.ad"
+domain = "ace"
+all = false
+
+# PLAN-935: SQ-B finite scalar template instances family (T-09) — closed-form
+# values (42/0/42/40/40: dual instances, template body swap, expected-type
+# solving, cross-template fixpoint, same-instance recursion) through the
+# product entries under the instances capability, plus the frozen
+# heterogeneous-arguments rejection. The instances-layer negative controls
+# (solver-off, tampered instance pages, restore/first-edit, A-B-A,
+# single-flight counters, budget states) live in the `ace-source-query` crate
+# tests carried by the `ace-semantics` fixed package group.
+[[group]]
+name = "case-ace-source-instances-935"
+title = "ACE M1 SQ-B source instances 935 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/source-instances-935/source-instances-935.suite.ad"
+domain = "ace"
+all = false
+
+# PLAN-936 T-11：SQ-C 普通源码真实 AV CT 查询族（CT 产品车道：真实 AV
+# 执行→结构回灌→事实车道→各端同 HIR）。负例（未服务/环/deadline/禁调/
+# 篡改 envelope/恢复 R 窗）由 ace-comptime 固定组的 ace-source-cte 包
+# 测试承载。
+[[group]]
+name = "case-ace-source-cte-936"
+title = "ACE M1 SQ-C source CTE 936 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.suite.ad"
+domain = "ace"
+all = false
+
+# PLAN-932: the native warm-edit admission suite — typed refusal verdicts
+# (914 N3 face), language-vs-policy-vs-infra separation, fail→repair,
+# state survival and history A→B→A on the real scalar worker (source-v1).
+[[group]]
+name = "case-ace-native-warm-admission-932"
+title = "ACE M1 native暖编辑准入与拒绝分类 932 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/native-warm-admission-932/native-warm-admission-932.suite.ad"
+domain = "ace"
+all = false
+
+# PLAN-915: the R02 allocation-fault sweep / R03 stale-Place scenario suite
+# (the two ns=scenario AV cells; frozen corpus sources + typed place witness).
+[[group]]
+name = "case-ace-m1-resource-915"
+title = "ACE M1 resource-fault/stale-place scenario 915 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/resource-915/resource-915.suite.ad"
+domain = "ace"
+all = false
+
+# PLAN-923: the native resource-guards scenario suite (the R03 ac/av cell) —
+# real source PEs with ONE injected per-seam allocation failure per run
+# (seam 1/2/4 node/data/frame, seam 3 grow, S6/S7 text backing/ledger);
+# the parent judges the frozen trap/seam/cleanup facts and the base exits.
+[[group]]
+name = "case-ace-m1-native-resource-923"
+title = "ACE M1 native resource-guards scenario 923 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/native-resource-923/native-resource-923.suite.ad"
+domain = "ace"
+all = false
+
+# PLAN-924: the native closures-resource scenario suite (the R02 closure
+# domain + R05 ac cells) — real source PEs through the closures pipeline
+# with the env-node seam (S9) in the injection domain; the parent judges
+# the frozen trap/seam/cleanup facts, the base exits and R05's
+# env-lifecycle event shape from the observed stream.
+[[group]]
+name = "case-ace-m1-native-closures-924"
+title = "ACE M1 native closures scenario 924 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/native-closures-924/native-closures-924.suite.ad"
+domain = "ace"
+all = false
+
+# PLAN-913: the source-bound recovery suite (publish -> fresh-process
+# restore with zero source production -> the next warm single-unit edit).
+[[group]]
+name = "case-ace-m1-closures-recovery-913"
+title = "ACE M1 closures source-bound recovery 913 suite"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+suite = "crates/auto-lang/test/cases/ace-m1/closures-recovery-913/closures-recovery-913.suite.ad"
+domain = "ace"
+all = false
+
+[[group]]
+name = "case-ace-m1-closures-865-source"
+title = "TestCase case-ace-m1-closures-865-source"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/closures-source-865.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-m1-collections-864"
+title = "TestCase case-ace-m1-collections-864"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/collections-source-864.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-m1-entry-862"
+title = "TestCase case-ace-m1-entry-862"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/entry-862/entry-unit-862.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-m1-method-881"
+title = "TestCase case-ace-m1-method-881"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/method-881.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-m1-resident-866"
+title = "TestCase case-ace-m1-resident-866"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/resident-online-866.suite.ad"
+all = false
+
+[[group]]
+name = "ace-foreign-contract"
+title = "Cargo包 ace-foreign-contract（PLAN-937 CA-D1 中立接口事实/物理投影）"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-foreign-contract", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = false
+
+[[group]]
+name = "ace-a2c-abi"
+title = "Cargo包 ace-a2x-c ABI 标量导出面（PLAN-937 CA-D1 abi_scalar）"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-a2x-c", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = false
+
+[[group]]
+name = "case-ace-ca-d-scalar-937"
+title = "TestCase case-ace-ca-d-scalar-937（PLAN-937 CA-D1 标量桥首例）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "a2x", "abi"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-ca-d-scalar-937/ace-ca-d-scalar-937.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-ca-d-source-938"
+title = "TestCase PLAN-938 source foreign explicit certification"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "abi"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-ca-d-source-938/ace-ca-d-source-938.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-ca-d-resources-939"
+title = "TestCase PLAN-939 resource foreign explicit certification"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "abi"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-ca-d-resources-939/ace-ca-d-resources-939.suite.ad"
+all = false
+
+[[group]]
+name = "case-autoabi"
+title = "TestCase case-autoabi"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/autoabi/autoabi.suite.ad"
+all = false
+
+[[group]]
+name = "case-av-abc-825"
+title = "TestCase case-av-abc-825"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/av-abc/825/av-abc-825.suite.ad"
+all = false
+
+[[group]]
+name = "case-av-abc-826"
+title = "TestCase case-av-abc-826"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/av-abc/826/av-abc-826.suite.ad"
+all = false
+
+[[group]]
+name = "case-av-data-821"
+title = "TestCase case-av-data-821"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/av-data/821/av-data-821.suite.ad"
+all = false
+
+[[group]]
+name = "case-av-data-822"
+title = "TestCase case-av-data-822"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/av-data/822/av-data-822.suite.ad"
+all = false
+
+[[group]]
+name = "case-av-data-823"
+title = "TestCase case-av-data-823"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/av-data/823/av-data-823.suite.ad"
+all = false
+
+[[group]]
+name = "case-av-data-824"
+title = "TestCase case-av-data-824"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/av-data/824/av-data-824.suite.ad"
+all = false
+
+[[group]]
+name = "case-av-source-827"
+title = "TestCase case-av-source-827"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/av-source-827/av-source-827.suite.ad"
+all = false
+
+[[group]]
+name = "case-governance-887-first-wave"
+title = "TestCase case-governance-887-first-wave"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/governance-887/first-wave.suite.ad"
+all = false
+
+[[group]]
+name = "case-pilot"
+title = "TestCase case-pilot"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+suite = "crates/auto-lang/test/cases/pilot/pilot.suite.ad"
+all = true
+
+[[group]]
+name = "case-ace-m1-native-collections-889"
+title = "TestCase case-ace-m1-native-collections-889"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/native-collections-889.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-m1-typed-native-891"
+title = "TestCase case-ace-m1-typed-native-891"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/typed-native-891/typed-native-891.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-m1-console-863"
+title = "TestCase case-ace-m1-console-863"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/console-863/console-863.suite.ad"
+all = false
+
+[[group]]
+name = "ace-host"
+title = "语言宿主ACE完整组"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
+expression = "all()"
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
+domain = "ace"
+all = false
+
+[[group]]
+name = "ace-batch"
+title = "ACE batch协议集成"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml", "--features", "test-case-batch"]
+expression = "test(/^batch::/)"
+tools = ["case-parent", "batch-av"]
+domain = "ace"
+all = false
+
+[[group]]
+name = "ace-console"
+title = "ACE控制台真实宿主"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
+expression = "test(/^console::/)"
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
+domain = "ace"
+all = false
+
+[[group]]
+name = "infra-ace-m1"
+title = "治理 scripts/tests/test_ace_m1_acceptance.py（PLAN-908 M1适用/来源/严格核算控制）"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/tests/test_ace_m1_acceptance.py"
+all = false
+
+[[group]]
+name = "infra-ace-policy"
+title = "治理 scripts/tests/test_ace_test_policy.py"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/tests/test_ace_test_policy.py"
+all = true
+
+[[group]]
+name = "infra-ace-cost-report"
+title = "治理 scripts/tests/test_ace_cost_report.py"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/tests/test_ace_cost_report.py"
+all = true
+
+[[group]]
+name = "infra-fixed"
+title = "固定Cargo/Rust模块分组与缓存所有权"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/tests/test_fixed_groups.py"
+all = true
+
+[[group]]
+name = "ace-a2x"
+title = "ACE A2X共享表示与Rust输出"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = false
+
+[[group]]
+name = "stdlib"
+title = "标准库与装配"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^stdlib_assembly::/) or test(/^vm::ffi::stdlib::/) or test(/^tests::(stdlib_tests|plan738_stdlib_assembly_tests|plan738_assembly_probe_tests|plan872_builtin_semantics_tests)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "ace-stdlib"
+title = "SDK标准操作证明与ACE装配双端集成"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-stdlib-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
+expression = "all()"
+tools = []
+domain = "ace"
+all = false
+
+[[group]]
+name = "ffi"
+title = "FFI与互操作"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^vm::ffi::/) or test(/^libs::/) or test(/^tests::(ffi_tests|ffi_dual_tests|ffi_dep_parity_tests)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "storage"
+title = "数据库与存储"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^database::/) or test(/^tests::(storage_tests|storage_strategy_tests|storage_integration_tests|default_storage_tests|plan746_pg_mem_tests)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "comptime"
+title = "编译期求值"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^comptime::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "dialect"
+title = "方言端口"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^dialect::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "api"
+title = "SDK接口与宿主集成"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^api::/) or test(/^tests::(unified_api_tests|unified_registry_tests)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "a2js"
+title = "JavaScript转译"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^trans::javascript::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "a2gd"
+title = "GDScript转译"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^trans::(gdscript|tscn)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "s2s"
+title = "源码重写与发射"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^trans::(auto_s2s|emit|s2s_rules)::/)"
+tools = []
+domain = "legacy"
+all = false
+
+[[group]]
+name = "ace-workspace"
+title = "ACE独立workspace常规自动测试"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-stdlib-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
+expression = "all() and not test(/::performance::/)"
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "execution-fixture"]
+domain = "ace"
+all = false
+
+[[group]]
+name = "ace-adapters"
+title = "语言侧私有ACE协议反例桥接"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-lang-core", "--lib", "--features", "code-editor", "--config-file", ".config/nextest-full.toml"]
+expression = "test(/^test_cases::(ac|abi|sema|ace_)/)"
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
+domain = "ace"
+all = false
+
+[[group]]
+name = "ace-runtime"
+title = "ACE原生ABI运行时完整验证"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-text-conformance", "-p", "ace-data-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+expression = "all()"
+tools = ["trace-runtime", "text-runtime", "data-runtime"]
+domain = "ace"
+all = false
+
+[[group]]
+name = "ace-performance"
+title = "ACE原正式收益与资源专项"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-stdlib-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
+expression = "test(/::performance::/)"
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "execution-fixture"]
+domain = "ace"
+all = false
+
+[[group]]
+name = "case-ace-unified-source-929"
+title = "TestCase 九 profile 统一源码共享前门 parse/门反控/AV 执行腿"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["av"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/unified-source-syntax-929.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-source-composite-928"
+title = "TestCase 集合/闭包复合语法 parse/门反控/值腿/同文λoracle"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/source-composite-syntax-928/source-composite-syntax-928.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-source-syntax-927"
+title = "TestCase 七 profile 统一源码 parse/lossless 面"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/source-syntax-927/source-syntax-927.suite.ad"
+all = false
+
+[[group]]
+name = "case-ace-m1-text-source-894"
+title = "TestCase shared text source dual oracle"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/text-source-894.suite.ad"
+all = false
+
+[[group]]
+name = "case-a2r-hir-record-text-902"
+title = "TestCase a2x record/text emit daily golden oracle"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "a2x"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/a2r-hir-record-text-902/a2r-hir-record-text-902.suite.ad"
+all = false
+
+[[group]]
+name = "case-a2r-hir-collections-904"
+title = "TestCase a2x collections (List/Variant) emit daily golden oracle"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "a2x"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/a2r-hir-collections-904/a2r-hir-collections-904.suite.ad"
+all = false
+
+[[group]]
+name = "case-a2c-hir-collections-926"
+title = "TestCase case-a2c-hir-collections-926（PLAN-926 CA-C HIR→C11 集合/变体首例）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "a2x"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/a2c-hir-collections-926/a2c-hir-collections-926.suite.ad"
+all = false
+
+[[group]]
+name = "case-a2c-hir-record-text-925"
+title = "TestCase case-a2c-hir-record-text-925（PLAN-925 CA-B HIR→C11 record/text 首例）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "a2x"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/a2c-hir-record-text-925/a2c-hir-record-text-925.suite.ad"
+all = false
+
+[[group]]
+name = "case-a2r-owned-temporaries-931"
+title = "TestCase a2r owned temporaries consumer lifetime (PLAN-931 D-925-2 closure)"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "a2x"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1/a2r-owned-temporaries-931/a2r-owned-temporaries-931.suite.ad"
+all = false
+
+[[group]]
+name = "case-a2c-hir-scalar-921"
+title = "TestCase case-a2c-hir-scalar-921（PLAN-921 CA-A HIR→C11 标量首例）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "a2x"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/a2c-hir-scalar-921/a2c-hir-scalar-921.suite.ad"
+all = false
+
+[[group]]
+name = "auto-generation-core"
+title = "共享生成核心完整包（Web与非HTTP消费者）"
+runner = "nextest"
+workspace = "."
+args = ["-p", "auto-generation-core", "--lib", "--tests"]
+expression = "all()"
+tools = []
+domain = "legacy"
+all = true
+
+[[group]]
+name = "web-delivery-controls"
+title = "四仓固定入口准入负控"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/test_four_repository_fixed.py"
+all = true
+
+[[group]]
+name = "generated-delivery-controls"
+title = "生成工程交付回归便宜控制（PLAN-930：成员身份/产物比较/坏来源/子失败传播）"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/tests/test_generated_delivery_controls.py"
+all = true
+
+[[group]]
+name = "ace-rust-lowering"
+title = "ACE已迁移Rust lowering宿主完整命名空间"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
+expression = "test(tests::rust_lowering::)"
+tools = ["a2x"]
+domain = "ace"
+all = false

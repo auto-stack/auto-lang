@@ -5,7 +5,7 @@
     "binding": {
         "path": "binding.tsv",
         "sha256_pre_908": "d9f05da057dfd658df09a7725aa391bc4c9e14993e13e9846724160915ff5d7a",
-        "sha256": "684afa35ae6039f0f376fcd3d307d717d4c33d3613fcf7cd2bc4e73558c10937"
+        "sha256": "5109d416491f911e1b0b4d17d0aca1b02a84be8b91cca139cfb049af03520318"
     },
     "corpus_src": {
         "dir": "src",
@@ -330,7 +330,7 @@
         }
     },
     "suites_cases": {
-        "expected_count": 87,
+        "expected_count": 89,
         "files": {
             "ace-m1-base.suite.ad": "7fd00b8d1c79d45be1f4d5ad90083780a8acb67798c6c36b9d29b8f53d26ae63",
             "ace-m1-tr-native.suite.ad": "4e2b320d1b44f6c317ff1c69e29706efb4fc1332b04864f955f85aa5208d7fb3",
@@ -418,7 +418,9 @@
             "legacy-a2r-text-994.case.ad": "6b2853fcd946186aff4e59382ccfc356b796c7a72513e23c72caf6ebd6a2b6e8",
             "legacy-a2r-text-994.suite.ad": "1ac3620958cc8df6e3ceeb93df8e7fcdc98328afa18b199f36102f775b49e8d8",
             "legacy-a2r-list-996.case.ad": "cc9bcc7dcf911361111171e2eeaad78e99be7d3feae1e3dfcb96d033e03e6194",
-            "legacy-a2r-list-996.suite.ad": "ee87c899f93d32747722c7b3af4d1ea08a38b26a6b611fb9d73e6cf540f4c040"
+            "legacy-a2r-list-996.suite.ad": "ee87c899f93d32747722c7b3af4d1ea08a38b26a6b611fb9d73e6cf540f4c040",
+            "legacy-a2r-trap-997.case.ad": "029b9ef6944fa0347e0d8ec80e886ad4590c8d661b4326ac294567039e2e34c1",
+            "legacy-a2r-trap-997.suite.ad": "032e0a643bb68c129f67e99d4706f44a8f944364949256c82d6a662fd4afcddb"
         }
     },
     "scenario_oracles": {
@@ -533,5 +535,40 @@
     "plan_996_update": {
         "date": "2026-11-08",
         "note": "PLAN-996 finite-list a2r certification: binding sha re-anchored (six corpus:a2r rows L01/L02/L03/L04/L05/L07 emit-ok-run-unverified -> ok-emit with PLAN-996 note; 131 rows / 313 required / approvals unchanged); six G04-reviewed goldens oracle/m1_l*.rs added (33->39); six certs oracle/certs/m1_l*.cert.json added (32->38); legacy-a2r-list-996 case+suite added (85->87). src/reference/wrapper/applicability untouched."
+    },
+    "trap_assets_golden_997": {
+        "dir": "oracle/trap",
+        "expected_count": 5,
+        "files": {
+            "m1_b13.rs": "ca98a3bb95a219dd38406240f009538c38c24f228288c6a4e0f405f9ab4766f9",
+            "m1_b14.rs": "b2b2933e1b0a564643693716799f9ca4802b1403de7435de9447bd171187b3c7",
+            "m1_b15.rs": "209d12cb1313180659a7b41c3d9623b099df48b2574d34dff7ebe650fe6e6b6c",
+            "m1_b20.rs": "77bbcaaa69a83fb965203eccceb7fbc52e6e90fc73c80511a7896d11386b732d",
+            "trap-oracle.json": "5b3a77800d71fe5d30dbb8a39e8cd3302f9ed1bbbdf70297eb88b2fa11d3ba02"
+        }
+    },
+    "trap_assets_certs_997": {
+        "dir": "oracle/trap-certs",
+        "expected_count": 4,
+        "files": {
+            "m1_b13.trap-cert.json": "929ab82fae4702a77c21a311fcaa07f392f1fa30bb4ebf6dfd601b3c430155aa",
+            "m1_b14.trap-cert.json": "495f63a3514dacbc9a1947075ef752523d22754b6b4e631ae5f4d5d65315f187",
+            "m1_b15.trap-cert.json": "be050b05a45a83c9f96f62e149e21c6805f9cb68b5d8328ff0e95567d4cb0adf",
+            "m1_b20.trap-cert.json": "deb6e7b393a01340ccd8964552e0b41ca173e41a60eb263928dfacb6c45ddb29"
+        }
+    },
+    "trap_assets_reference_997": {
+        "dir": "reference/trap",
+        "expected_count": 4,
+        "files": {
+            "B13.rs": "f949357cb00ec3daaa77260c0d4f60ef9ce7f44623fbbe1e63e4e18fe35c742a",
+            "B14.rs": "cbd0be3a4d088267af6dc35a944ca0daecbb15d6b0e775e4ff9b89fe2eb10aa0",
+            "B15.rs": "8c55681500114c173e894f1bbad409e2ab0af3832beb8bd864b3a35998000036",
+            "B20.rs": "5e199415d9462dc21667e1f845c4f7170861297b981fb6d545f564f96c3e1a51"
+        }
+    },
+    "plan_997_update": {
+        "date": "2026-11-08",
+        "summary": "PLAN-997 trap domain: explicit legacy-a2r.checked-i32/1 profile, four H-06 trap cells (B13/B14/B15/B20) with checked goldens at oracle/trap, independent references at reference/trap, declarative trap-oracle registry, trap certs at oracle/trap-certs (schema ace.m1.a2r-trap/1), and the legacy-a2r-trap-997 a2r-only daily extension suite."
     }
 }

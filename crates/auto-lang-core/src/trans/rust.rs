@@ -2626,7 +2626,8 @@ pub fn transpile_rust_full_with_profile(
     // at least one checked op (deterministic content/order — see
     // `checked_i32_helper_block`; the default profile never appends).
     if !transpiler.checked_i32_used.is_empty() {
-        out.body.extend_from_slice(transpiler.checked_i32_helper_block().as_bytes());
+        out.body
+            .extend_from_slice(transpiler.checked_i32_helper_block().as_bytes());
     }
 
     // Apply post-processing fixes (replaces fix_transpiled.py)
