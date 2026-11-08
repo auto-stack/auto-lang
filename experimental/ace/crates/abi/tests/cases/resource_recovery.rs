@@ -665,3 +665,250 @@ fn abi_resource939_revision_churn_gc_convergence_and_lease() {
     let after = expect_query("t10d-after", &seeded(25), &store_root, "native");
     assert_eq!(report_of(&after).actual_exit, Some(90));
 }
+
+/// Explicit formal benchmark or sustained scale/stress contract.
+///
+/// PLAN-939 T-12 (V-10/V-16, AC-06): the resource lane's formal sampling
+/// window — SIX scenarios × 30 samples, every sample a FULL certification
+/// request through the real worker entry (restore→resolve→prepare→
+/// publish→PE). The ORIGINAL 797 six-scenario discipline keeps running
+/// green in this same crate (`abi_turnaround_six_scenarios_30_samples`);
+/// this module is the resource adaptation — the lane mapping is recorded
+/// in the plan §9 receipt (layout/object-hot collapse into warm-hit: the
+/// resource lane has one artifact tier; restart-disk-hot is the worker
+/// entry's CONSTRUCTION — every query restores from disk in a fresh
+/// process-equivalent; the freed slots carry the resource-specific
+/// provider-transition, callback-warm and recovery-edit scenarios).
+/// Applicable warm gates: P90 ≤ 2000ms per the original budget.
+mod performance {
+    use super::{deck, expect_query, query, report_of};
+    use std::time::Instant;
+
+    fn p90(mut xs: Vec<u128>) -> u128 {
+        xs.sort_unstable();
+        xs[xs.len() - xs.len() / 10]
+    }
+
+    struct Scen {
+        name: &'static str,
+        totals: Vec<u128>,
+        oks: usize,
+        gate: Option<u128>,
+    }
+
+    impl Scen {
+        fn check(&self, summary: &mut String) {
+            let p90 = p90(self.totals.clone());
+            summary.push_str(&format!(
+                "{}: oks={}/{} p50={}ms p90={}ms{}\n",
+                self.name,
+                self.oks,
+                self.totals.len(),
+                self.totals[self.totals.len() / 2],
+                p90,
+                self.gate
+                    .map(|g| format!(" gate={g}ms"))
+                    .unwrap_or_default()
+            ));
+            assert_eq!(
+                self.oks,
+                self.totals.len(),
+                "{}: every sample ok",
+                self.name
+            );
+            if let Some(gate) = self.gate {
+                assert!(
+                    p90 <= gate,
+                    "{}: P90 {p90}ms exceeds the {}ms original gate",
+                    self.name,
+                    gate
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn abi_resource939_six_scenarios_30_samples() {
+        let root = ace_abi::run::scratch("abi_r939_turnaround");
+        let mut summary = String::from("# PLAN-939 T-12 resource turnaround raw summary\n\n");
+        // Tool discovery prewarm (untimed, per contract-decision §9).
+        let t0 = Instant::now();
+        ace_abi::ctool::find_cl().expect("cl prewarm");
+        summary.push_str(&format!(
+            "cl discovery prewarm (untimed): {:.1} ms\n\n",
+            t0.elapsed().as_secs_f64() * 1000.0
+        ));
+
+        // 1) fresh: a new store per sample — everything cold (the real
+        //    provider compile, reference compile, fragments, publication).
+        {
+            let mut s = Scen {
+                name: "fresh",
+                totals: Vec::new(),
+                oks: 0,
+                gate: None,
+            };
+            for i in 0..30 {
+                let store = root.join(format!("fresh-{i}"));
+                let started = Instant::now();
+                let out =
+                    expect_query(&format!("fresh-{i}"), &deck("utf8-bytes"), &store, "native");
+                s.totals.push(started.elapsed().as_millis());
+                if report_of(&out).actual_exit == Some(8) {
+                    s.oks += 1;
+                }
+            }
+            s.check(&mut summary);
+        }
+
+        // 2) warm-hit: shared store, the SAME deck 30 times — the warm
+        //    gate (P90 ≤ 2000ms; every sample must be a hit, zero compute).
+        {
+            let store = root.join("warm-store");
+            expect_query("warm-pre", &deck("utf8-bytes"), &store, "native");
+            let mut s = Scen {
+                name: "warm-hit",
+                totals: Vec::new(),
+                oks: 0,
+                gate: Some(2000),
+            };
+            for i in 0..30 {
+                let started = Instant::now();
+                let out = expect_query(&format!("warm-{i}"), &deck("utf8-bytes"), &store, "native");
+                s.totals.push(started.elapsed().as_millis());
+                if report_of(&out).actual_exit == Some(8)
+                    && out.steps[0].compute_calls == 0
+                    && out.steps[0].cache == "hit"
+                {
+                    s.oks += 1;
+                }
+            }
+            s.check(&mut summary);
+        }
+
+        // 3) body-edit (HARD GATE): alternating distinct seeds — each
+        //    sample is a REAL producer run (one function re-published),
+        //    never a hot-hit majority. P90 ≤ 2000ms.
+        {
+            let store = root.join("body-edit-store");
+            let seeded = |seed: i32| {
+                let mut d = deck("record-mut");
+                d["source"] = serde_json::json!(format!(
+                    "type Counter {{ value int }}\nfn main() int {{\n    var x Counter = Counter(20)\n    let now int = t939_bump(x.mut, {seed})\n    return now + x.value\n}}"
+                ));
+                d
+            };
+            expect_query("be-pre", &seeded(1), &store, "native");
+            let mut s = Scen {
+                name: "body-edit",
+                totals: Vec::new(),
+                oks: 0,
+                gate: Some(2000),
+            };
+            for i in 0..30 {
+                let seed = if i % 2 == 0 { 2 } else { 3 };
+                let started = Instant::now();
+                let out = expect_query(&format!("be-{i}"), &seeded(seed), &store, "native");
+                s.totals.push(started.elapsed().as_millis());
+                if report_of(&out).actual_exit == Some(40 + 2 * seed) {
+                    s.oks += 1;
+                }
+            }
+            s.check(&mut summary);
+        }
+
+        // 4) provider-transition: alternating provider biases — every
+        //    sample a real binding transaction (restore old binding,
+        //    rebind to the new provider object, generation increments).
+        //    P90 ≤ 2000ms.
+        {
+            let store = root.join("provider-store");
+            let mut bias_deck = deck("txn3-commit");
+            bias_deck["provider_bias"] = serde_json::json!(0);
+            expect_query("pt-pre", &bias_deck, &store, "native");
+            let mut s = Scen {
+                name: "provider-transition",
+                totals: Vec::new(),
+                oks: 0,
+                gate: Some(2000),
+            };
+            for i in 0..30 {
+                let mut d = deck("txn3-commit");
+                d["provider_bias"] = serde_json::json!(u8::from(i % 2 == 1));
+                let started = Instant::now();
+                let out = expect_query(&format!("pt-{i}"), &d, &store, "native");
+                s.totals.push(started.elapsed().as_millis());
+                if report_of(&out).actual_exit == Some(3504) {
+                    s.oks += 1;
+                }
+            }
+            s.check(&mut summary);
+        }
+
+        // 5) callback-warm: the heaviest deck (the reentrant callback)
+        //    as warm hits — P90 ≤ 2000ms.
+        {
+            let store = root.join("callback-store");
+            expect_query("cb-pre", &deck("callback-reentrant"), &store, "native");
+            let mut s = Scen {
+                name: "callback-warm",
+                totals: Vec::new(),
+                oks: 0,
+                gate: Some(2000),
+            };
+            for i in 0..30 {
+                let started = Instant::now();
+                let out = expect_query(
+                    &format!("cb-{i}"),
+                    &deck("callback-reentrant"),
+                    &store,
+                    "native",
+                );
+                s.totals.push(started.elapsed().as_millis());
+                if report_of(&out).actual_exit == Some(21)
+                    && out.steps[0].compute_calls == 0
+                    && out.steps[0].cache == "hit"
+                {
+                    s.oks += 1;
+                }
+            }
+            s.check(&mut summary);
+        }
+
+        // 6) recovery-edit: the S08 recovery cycle at worker level —
+        //    alternate the reviewed success/failure scenarios (seed AND
+        //    reference switch together, the T-09 discipline); every
+        //    sample restores the previous root then re-delivers under
+        //    the other scenario. P90 ≤ 2000ms.
+        {
+            let store = root.join("recovery-store");
+            expect_query("re-pre", &deck("record-mut"), &store, "native");
+            let mut s = Scen {
+                name: "recovery-edit",
+                totals: Vec::new(),
+                oks: 0,
+                gate: Some(2000),
+            };
+            for i in 0..30 {
+                let (d, exit) = if i % 2 == 0 {
+                    (deck("record-mut-fail"), 70)
+                } else {
+                    (deck("record-mut"), 42)
+                };
+                let started = Instant::now();
+                let out = query(&format!("re-{i}"), &d, &store, "native")
+                    .expect("recovery sample delivers");
+                s.totals.push(started.elapsed().as_millis());
+                if report_of(&out).actual_exit == Some(exit) {
+                    s.oks += 1;
+                }
+            }
+            s.check(&mut summary);
+        }
+
+        std::fs::write(root.join("summary.txt"), &summary).unwrap();
+        // The raw summary is scratch evidence (plan-artifacts discipline);
+        // the durable numbers land in the plan §9 receipt.
+        eprintln!("{summary}");
+    }
+}

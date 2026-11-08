@@ -104,6 +104,9 @@ fn declaration() -> SourceDecl {
             },
             error_model: None,
             semantic_ref: None,
+            // PLAN-939 T-02/T-04 fields (resource lane): this scalar
+            // fixture stays a pure scalar entry.
+            resource: None,
         },
         effects: vec!["pure:c_add".into()],
         capabilities: vec!["foreign.scalar".into()],
@@ -143,6 +146,9 @@ fn module() -> MirModule {
                     declaration: Box::new(declaration()),
                     dst: 2,
                     args: vec![0, 1],
+                    // PLAN-939 T-02C: the per-lane named callback targets
+                    // (empty for the pure scalar call).
+                    callbacks: vec![],
                 },
             ],
             term: Terminator::Return { value: 2 },
@@ -390,6 +396,7 @@ fn pressure_wire(calls: usize) -> Vec<u8> {
                 declaration: Box::new(declaration.clone()),
                 dst: 2,
                 args: vec![0, 1],
+                callbacks: vec![],
             });
     }
     ace_av_core::encode_abc(&module).unwrap().to_flat()

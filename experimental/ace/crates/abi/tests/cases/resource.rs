@@ -340,10 +340,14 @@ fn abi_resource939_provider_generations_lease_and_gc() {
                 .encode(serde_json::to_vec(&deck).unwrap()),
             leg: "native".into(),
             store_root: store_root.to_str().unwrap().into(),
-            steps: vec![StepIn { op: "query".into(), from: None, to: None }],
+            steps: vec![StepIn {
+                op: "query".into(),
+                from: None,
+                to: None,
+            }],
         };
-        let out = worker_source::execute(&request)
-            .expect("the resource certification request succeeds");
+        let out =
+            worker_source::execute(&request).expect("the resource certification request succeeds");
         let step = &out.steps[0];
         assert_eq!(step.outcome, "ok", "bias {bias} query must be ok");
         let report = out.source_import.as_ref().unwrap();
@@ -358,10 +362,18 @@ fn abi_resource939_provider_generations_lease_and_gc() {
     let read_pointer = || {
         let v: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&pointer).unwrap()).unwrap();
-        (v["binding_generation"].as_u64().unwrap(), v["provider_bias"].as_u64().unwrap(), v["stored"]["artifact_id"].as_str().unwrap().to_string())
+        (
+            v["binding_generation"].as_u64().unwrap(),
+            v["provider_bias"].as_u64().unwrap(),
+            v["stored"]["artifact_id"].as_str().unwrap().to_string(),
+        )
     };
     let (gen1, bias1, artifact_a) = read_pointer();
-    assert_eq!((gen1, bias1), (1, 0), "the first binding is generation 1 at bias 0");
+    assert_eq!(
+        (gen1, bias1),
+        (1, 0),
+        "the first binding is generation 1 at bias 0"
+    );
 
     // Pin the IN-USE old generation with a real lease (the last owner
     // still holds the old code/artifacts).
@@ -374,9 +386,16 @@ fn abi_resource939_provider_generations_lease_and_gc() {
     // the worker restores the OLD accepted binding first, then
     // transacts to the new provider (binding generation increments).
     let digest_b = query(1, "t08-gen1");
-    assert_ne!(digest_a, digest_b, "the two generations are distinct objects");
+    assert_ne!(
+        digest_a, digest_b,
+        "the two generations are distinct objects"
+    );
     let (gen2, bias2, _artifact_b) = read_pointer();
-    assert_eq!((gen2, bias2), (2, 1), "the transition increments the binding generation");
+    assert_eq!(
+        (gen2, bias2),
+        (2, 1),
+        "the transition increments the binding generation"
+    );
 
     // GC (forced): the LEASED old generation survives.
     let receipt_kept = ace_artifacts::store::gc::run_gc(
@@ -385,7 +404,10 @@ fn abi_resource939_provider_generations_lease_and_gc() {
     )
     .unwrap();
     assert!(receipt_kept.ran, "the forced GC run must execute");
-    assert!(receipt_kept.live_chunks > 0, "the live closure is non-empty");
+    assert!(
+        receipt_kept.live_chunks > 0,
+        "the live closure is non-empty"
+    );
 
     // the last release: dropping the pin makes generation A unreachable
     // (roots moved to generation B); the NEXT GC really reclaims it.
@@ -401,7 +423,7 @@ fn abi_resource939_provider_generations_lease_and_gc() {
         receipt_reclaimed
     );
     assert!(
-        receipt_reclaimed.failed_deletes == 0 && receipt_reclaimed.orphans_removed >= 0,
+        receipt_reclaimed.failed_deletes == 0,
         "the reclaim is clean"
     );
 }
@@ -421,21 +443,13 @@ fn abi_resource939_fault_sweep_allocation_domain() {
     let dir = run::scratch("abi_r939_fault_sweep");
     let cside = manifest().join("cside");
     let sweep_obj = dir.join("sweep.obj");
-    ctool::compile_c(
-        &cside.join("resource939_fault_sweep.c"),
-        &cside,
-        &sweep_obj,
-    )
-    .expect("cl compiles the fault sweep driver");
+    ctool::compile_c(&cside.join("resource939_fault_sweep.c"), &cside, &sweep_obj)
+        .expect("cl compiles the fault sweep driver");
     let provider_obj = dir.join("provider.obj");
     ctool::compile_c(&cside.join("resource939.c"), &cside, &provider_obj)
         .expect("cl compiles the 939 provider");
-    let exe = link_pe(
-        &dir,
-        &[sweep_obj, provider_obj],
-        "r939_sweep_entry",
-    )
-    .expect("link the fault sweep PE");
+    let exe = link_pe(&dir, &[sweep_obj, provider_obj], "r939_sweep_entry")
+        .expect("link the fault sweep PE");
     let pe = run::run_pe(&exe).expect("run the fault sweep PE");
     assert_eq!(
         pe.code, 0,
