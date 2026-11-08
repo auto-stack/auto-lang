@@ -2271,10 +2271,19 @@ stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（AV侧f94
 
 stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（CT隔离绿测+foreign证据needle入行，historical行PASS 10/10、7P/1PARTIAL/0U；pin三处同步；治理257绿） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:a9d213e28 | task_ids:T-06收口 | evidence:f94124-ct-owner/{gates 149,governance-final 257} + demo PASS | next_responsible_role:work 候上游64MiB修复/D939；T-05/T-11结构面 | 无live handle
 
+### 第103轮：work D992接收评估——master实测cert-gap 38→21、分母hash守恒；上游第三次问询未答继续候
+
+- **D992交付确认**：PLAN-992（legacy-a2r 17值例认证）已归档，D=`64f93cb99`在master（`6fb27ae0b`代码+SD沉淀+归档/清理8/8）；17格=H-01 12既有复合金样G04重审+H-02 5新金样，原域显式认证、emitter零改动、扩展suite入日常snapshot（26→31）、证书10→27；992明确"交941原owner独立接纳"。
+- **master实测**（`f94125-d992-reception/legacy-accounting`，`verify-ace-m1-852.ps1 -Scope acceptance` @master含D992）：**cert-gap 21**（38→21，green-cert-gap=21）、**required-set hash逐字不变**=`35ad43aae27ffb2d2c9a162c3dd5b99f971e4cd7b2ed36f4fe747a56a4bd770e`（分母纪律保持）、CORE 285/285绿、EXTENSION 28/28绿、`can_claim_m1=False`不变（21格仍阻签）。余21格归属（992 SD）：H-03文本4、H-04集合6、H-05 `move move` 1、H-06 trap/宽度裁定4、H-07场景6（owner=gap-audit F-A2R-3线）。
+- **对941的影响**：①CE-BASE-01阻塞表（§5.2的38格）在本树master同步窗口后收窄为21格——17格（992 §5逐格清单）凭D992实际证书/close记录核销；②本树（plan-941-dev@`a9d213e28`，基面pre-992）组合仍按38记账，最终合并前一次master同步窗口（与上游64MiB修复同批，第99轮裁定）后重出legacy核算收据、组合重读按21格记账；③M1签章仍阻（21格+legacy_current_gate）。
+- **上游64MiB**：第三次具名问询（含992新格局提示）未获答复；master截至`98445c7a3` store仍止于`b8987bb0b`，按S/N/X继续不修，冻结链候。**D939**：T-10完成（`f8e24b70a`：预算取消/发布原子/churn GC+B-repro确定性身份根因修复），10/14，余T-11/12/13复审/14合并——awaiting-D 7行继续保真候D。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:progress（D992接收评估完成：master实测21格/分母hash守恒/余21归属明确；同步窗口后941按21记账） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:a9d213e28（评估基于master@98445c7a3） | task_ids:CE-BASE-01账面更新 | evidence:f94125-d992-reception/legacy-accounting（exit0，Integrity PASS） | next_responsible_role:work 候上游64MiB授权/交付；D939 T-11..14 | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
-2. CE-BASE-01不是本轮解除项：默认沿当前924旧cert守卫保红，旧38格功能缺失归旧A2R线，证据接线由T-01/04审计。若希望恢复G-DEC原双轴的独立记账签章，须用户明确裁定并修订r1后执行；不把该选择预填为已批准。本包规划与只读实现准备不依赖该口径变更。
+2. CE-BASE-01不是本轮解除项：默认沿当前924旧cert守卫保红，旧38格功能缺失归旧A2R线，证据接线由T-01/04审计。若希望恢复G-DEC原双轴的独立记账签章，须用户明确裁定并修订r1后执行；不把该选择预填为已批准。本包规划与只读实现准备不依赖该口径变更。**更新（2026-11-08第103轮）**：D992（`64f93cb99`）已认证17格（master实测cert-gap 38→21、分母hash守恒），本树master同步窗口后按21格记账，余21格owner=F-A2R-3线（992 SD）；M1签章仍阻，守卫不撤。
 3. 在途934..936、938/939若无法提供承诺字段/原始计量/required页，原owner交稳定接口或具名新缺陷计划；不能由本包改expected/删行/绕checker模拟通过，不给未立项后继预占号。
 4. **F-941-01 已关闭（2026-11-06，D951=fec8a9602）**：用户已授权独立修复并继续；951实际复审/合入/归档/清理6/6完成，941本树重建原worker并重放Rust/C完整actual+独立reference，两证书均由原严格reader接受。原授权和T-01/T-02其余工作继续有效，无待决定producer修复事项；不得用本项关闭替代其余验收或旧38格认证。
 
