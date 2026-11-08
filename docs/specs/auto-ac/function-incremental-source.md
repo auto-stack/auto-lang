@@ -143,3 +143,14 @@
 - solver 工作集（InferSession 家族+事实映射）于 `InferSession::new` 前
   `solver_workspace_bound` 准入；Frontend 会话元数据（ledger 行/逐函数 meter/
   查询缓存）构造时一次 index 准入、编辑在票内增长。
+
+## 目录签名的无坐标摘要（PLAN-999，SD-03；关闭 F-941-13）
+
+`UnitCatalog` 的签名摘要（`signature_of`→`type_digest`）是**无来源坐标**的结构
+化投影：覆盖全部携带 `Ident` 或嵌套 `TypeAnn` 的 TypeRef 变体
+（Record/TyVar/Optional/Generic/Function）；名字、参数名/序/mode、名义与嵌套
+类型、返回类型全保留，仅不编入 span。跨 owner 的 body 加长使后续 owner 注解
+坐标漂移，不再误报 `OwnerSignatureChanged`；真参数类型/参数名/mode/返回/嵌套
+名义变化仍触发事件与真实依赖失效。摘要字符串不入 `CatalogManifest`（清单只带
+content_sha）也无其它持久面——无版本迁移。两处比较点（`edit_owner` 直路与
+暂存候选提交）与 `signature_snapshot` 同规则。

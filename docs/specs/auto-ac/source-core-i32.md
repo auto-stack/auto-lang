@@ -75,3 +75,16 @@ source_frontend/hir 覆盖 token、求值顺序、trap、真实 Bundle 变异、
 实现收据：[verification.md](../../reports/745-source-core-i32/verification.md)；
 过程：[PLAN-745](../../plans/archive/745-ac-source-checked-hir-native.md)。
 完整宽度/char语义及ACC主体/Gen1–3仍 open，未重开 GOAL-017。
+
+## Core 面的共享产品准入（PLAN-999，SD-01）
+
+普通 Auto 源码产品车道（AV `ac-av/core-run-v1`、native `ac/mir-native-scalar-v1`）
+经**共享选择门**接纳 Core 面：av 侧 `compile_scalar_or_core_source_product`
+先跑原 scalar 产品，仅当其全部诊断为 `source.unsupported`@Text（profile 表面
+排除类）才以**同一事实 producer** 重试 Core 面，验证走 Core 域入口
+（`verify::verify`，与 legacy `compile_source` 同 descriptor/域）；fact 供给绑定
+（`resolve_with_supply`）放行 Core 面。scalar 成功的产物/字节/身份不变；真实
+语法/类型/资源/取消/infra 判决不被吞改道（坏语法优先报语法，不转 Core 不绿）。
+显式 `compile_scalar_product` 语义冻结不变——仍拒 `while`。native 侧 Core 为
+**侧脸**：阶梯中仅成功返回，任何失败不终止升级（数字字面量对 Core 是语法错、
+对更宽面是合法 surface）；record/text-record/numeric 终态规则原样。

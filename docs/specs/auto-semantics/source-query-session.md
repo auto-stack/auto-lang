@@ -155,3 +155,14 @@ required 边和强 digest 保活/准入，旧 target 不可重绑新 source-set�
   真实 concretize（935），hash 内模板调用点按 hash-span 键重绑到具体实例。
 - CT 挂起/恢复沿 934 会话身份：冻结 envelope 经统一 store 跨上下文复用
   （hit 零 AV、R 窗真实读计量），实例/闭包版本轴经执行键闭包传递。
+
+## bare S934 页的幂等重发布（PLAN-999，SD-05；关闭 D-950-1）
+
+`ManagedStoreSink::put` 在发布前按完整键预读现存页：facts 除 per-request
+`revision` 外逐字段相等 ⇒ **幂等返回现存 artifact id**（不再二次 put）；真异
+内容照常 put，保留 store 同键异内容硬 Conflict。`revision` 是会话/宿主持有的
+活视图数据，非语义事实；存储页内的 revision 语义为"首次发布时的请求视图戳"，
+读取方不得当当前授权或当前请求 revision。页 codec（`SQ934P` v1）字节不变、
+bare 旧页按原地址可读不被重写、模块 `sq-module-page/1` 配方（read-versions、
+revision=0）零变化；公开 `QueryHost<ManagedStoreSink>` 同源连续 prepare/commit
+不再 Conflict，宿主 revision 仍单调；跨进程/新句柄按完整键重读成功。

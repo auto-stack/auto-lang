@@ -115,3 +115,13 @@ oracle，经 `auto-source@<profile>` 语法名路由 case-worker/contract——�
 导入/来源的 ModuleSyntax，再经模块 binder 和原 query/Checked 链消费。
 不走 legacy parser，也不将模块元数据丢弃后交给普通 scalar 编译。
 范围、来源迁移和恢复合同见[有限公共函数模块](finite-source-modules.md)。
+
+## Core 兼容共享选择门与侧脸阶梯（PLAN-999，SD-04）
+
+统一前门增加 Core 兼容共享选择门（`ace-av` query_entry）：产品车道按上表
+（SD-01）选择受检 profile，选择依据是真实受检面能力，不按 case id/路径/
+expected/字符串改写。目录签名/来源图/版本轴不变：`FRONT_CAPS_VERSION` 维持
+`ac-source-front/3`，grammar-id 与裁剪面零变化（本包未触语法运行时）。native
+escalating ladder 的 attempted 序列为 Scalar → **Core（侧脸，仅成功返回）** →
+Record → TextRecord → Numeric；Core 的失败不进入 surface_rejections、不终止
+升级；终态判决仍由单调 rung 产生。

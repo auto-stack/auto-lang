@@ -39,3 +39,15 @@
 - 计划相关材料唯一暂存区 `D:/autostack/plan-artifacts/plan-<NNN>/`；
   附件目录（`docs/plans/attachments/`）保持整目录不入库，不因任何验收
   依赖而恢复。
+
+## M1 残余闭包跟踪 fixture（PLAN-999，SD-06）
+
+`crates/auto-lang/test/cases/ace-m1-residual-999/`：五源字节级冻结（SHA256 见
+PLAN-999 §5.1，只读冻结自 941 scalar-q4 测试输入，不复制其在途生产实现）、
+10 正例 checks（八冻结格 R-01..08 + 两 native 正对照，recipe/oracle 与原
+`ace.m1.scalarq4.*` 一对一映射）与 2 端到端负控（真语法错误在选择门前保持
+parse 判决；超 512 构造深为 `mir.lower.depth` 资源态）。固定组
+`case-ace-m1-residual-999`（test-groups.toml）为唯一正式入口；fixture 仅引用
+跟踪 `src/` 文件，新鲜检出/worktree 自足，零依赖 941 磁盘残留或 ignored 文件。
+"本包 8/8"与"941 原八格接纳转绿"分别报告；最终组合判定归 941 原 owner 或具名
+后继验收责任，本包不设置 `can_claim_expanded_m1`。

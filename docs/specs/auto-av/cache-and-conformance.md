@@ -208,3 +208,14 @@ hit 5ms / restart 53ms（执行腿 39ms）/ restore+edit 42ms。详见
 - **扫面不污染生产**：值 seam 仅在 `fault_after_allocs` 配置时计数，place facts 仅在
   `observe_places` 时随 trace 返回；默认路径的 wire/布局/结果不变。
   与 913 的来源绑定恢复互不依赖：本场景不发布、不恢复、不跨进程缓存。
+
+## Auto source 前门真实预算（PLAN-999，SD-02）
+
+Auto source 车道的 `front_door_admit` 不再施加过期的 128 token/表达式构造代理
+比较（它曾为掩盖表达式 lower 的递归而设）。准入保留：输入尺寸帽（resource
+判决）与共享扫描器 lex 早判（`source.lex` 形状不变）。语法深度归统一前门显式
+预算（64MiB work / 1M parse depth，迭代实现）；表达式构造深度归 lowering 的
+真实 512 帽——超限为 `mir.lower.depth` **resource** 判决（mir-lower 段，原先
+按 Unsupported 分类）。≤512 的深链（含左结合长链与透明深括号）在原资源内
+执行；Atom 车道 `front_door_admit_atom` 的冻结 128 递归保护原样不变，
+`av-core::MAX_FRONTEND_NESTING` 常量与其余消费者不动。
