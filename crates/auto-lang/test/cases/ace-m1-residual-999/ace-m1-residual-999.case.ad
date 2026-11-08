@@ -1,0 +1,128 @@
+# PLAN-999 T-01/T-08 — ACE M1 residual correctness closure (8 red cells),
+# inputs frozen byte-identical from PLAN-941's ace-m1-expanded/scalar-src
+# (read-only freeze of test inputs only; no 941 WIP production code copied).
+#
+# Cell mapping to the original 941 suite (ace.m1.scalarq4.*):
+#   R-01 core-p04-while        / av        expect exit 3  (was source.unsupported)
+#   R-02 core-p04-while        / ac-native expect exit 3  (was source.unsupported)
+#   R-03 core-p05-while-zero   / av        expect exit 1  (was source.unsupported)
+#   R-04 core-p05-while-zero   / ac-native expect exit 1  (was source.unsupported)
+#   R-05 core-p06-continue     / av        expect exit 3  (was source.unsupported)
+#   R-06 core-p06-continue     / ac-native expect exit 3  (was source.unsupported)
+#   R-07 core-f11-add-chain-100/ av        expect exit 300 (name says 100; the
+#         frozen source sums 300 ones — the oracle is the value, not the name;
+#         was av.resource.frontend-nesting)
+#   R-08 core-g02-parens-200   / av        expect exit 1  (was av.resource.frontend-nesting)
+# The ac-native cells of the two deep sources (f11/g02) and the Rust/C legs are
+# positive controls: they must stay green across this plan's changes.
+#
+# recipe/profile/entry/step semantics are copied 1:1 from the original
+# ace.m1.scalarq4.* checks (ac-av/core-run-v1, ac/mir-native-scalar-v1).
+
+  # original cell: ace.m1.scalarq4.core-p04-while (R-01 av / R-02 ac-native)
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.res999.core-p04-while"
+  tags: ["ace-m1", "residual-999", "plan-999"]
+  links: ["PLAN-999", "PLAN-941"]
+  source: { file: "src/core-p04-while.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 3 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 3, stderr: { text: "", compare: "bytes" } } }
+  ]
+}
+```
+
+  # original cell: ace.m1.scalarq4.core-p05-while-zero (R-03 av / R-04 ac-native)
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.res999.core-p05-while-zero"
+  tags: ["ace-m1", "residual-999", "plan-999"]
+  links: ["PLAN-999", "PLAN-941"]
+  source: { file: "src/core-p05-while-zero.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 1 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 1, stderr: { text: "", compare: "bytes" } } }
+  ]
+}
+```
+
+  # original cell: ace.m1.scalarq4.core-p06-continue (R-05 av / R-06 ac-native)
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.res999.core-p06-continue"
+  tags: ["ace-m1", "residual-999", "plan-999"]
+  links: ["PLAN-999", "PLAN-941"]
+  source: { file: "src/core-p06-continue.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 3 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 3, stderr: { text: "", compare: "bytes" } } }
+  ]
+}
+```
+
+  # original cell: ace.m1.scalarq4.core-f11-add-chain-100 (R-07 av; ac-native is
+  # the passing positive control). Oracle is exit 300: the frozen source sums
+  # 300 ones — do not derive the oracle from the case name.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.res999.core-f11-add-chain-100"
+  tags: ["ace-m1", "residual-999", "plan-999"]
+  links: ["PLAN-999", "PLAN-941"]
+  source: { file: "src/core-f11-add-chain-100.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 300 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 300, stderr: { text: "", compare: "bytes" } } }
+  ]
+}
+```
+
+  # original cell: ace.m1.scalarq4.core-g02-parens-200 (R-08 av; ac-native is
+  # the passing positive control).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.res999.core-g02-parens-200"
+  tags: ["ace-m1", "residual-999", "plan-999"]
+  links: ["PLAN-999", "PLAN-941"]
+  source: { file: "src/core-g02-parens-200.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 1 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 1, stderr: { text: "", compare: "bytes" } } }
+  ]
+}
+```

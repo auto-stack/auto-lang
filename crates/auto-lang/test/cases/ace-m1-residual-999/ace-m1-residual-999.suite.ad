@@ -1,0 +1,8 @@
+# PLAN-999 — ACE M1 residual correctness closure suite (8 red cells frozen
+# from PLAN-941's scalar-q4 family, byte-identical inputs, original recipes).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-residual-999", include: [
+  "ace-m1-residual-999.case.ad",
+] }
+```
