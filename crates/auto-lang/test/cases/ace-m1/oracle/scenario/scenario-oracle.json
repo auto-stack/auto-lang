@@ -1,0 +1,49 @@
+{
+  "schema": "ace.m1.a2r-resource-oracle/1",
+  "profile": "legacy-a2r.resources-observe/1",
+  "trap_profile": "legacy-a2r.checked-i32/1",
+  "wrapper_file": "oracle/resource-wrapper-v1.rs",
+  "typed_fail_exit": 71,
+  "trap_exit": 70,
+  "cells": {
+    "R01": {
+      "legs": [{ "id": "R01", "source": "legacy-a2r-resources-998/src/R01.at", "module": "m1_r01", "profiles": ["legacy-a2r.resources-observe/1"], "mode": "clean", "value": 1048 }],
+      "invariants": ["unique_terminal", "transfer_not_release", "per_frame_lifo", "no_leak_at_result", "value"]
+    },
+    "R02": {
+      "legs": [
+        { "id": "R02-L04",  "source": "legacy-a2r-resources-998/src/R02-L04.at",  "module": "m1_r02_l04",  "profiles": ["legacy-a2r.resources-observe/1"], "mode": "sweep", "value": 42 },
+        { "id": "R02-L05",  "source": "legacy-a2r-resources-998/src/R02-L05.at",  "module": "m1_r02_l05",  "profiles": ["legacy-a2r.resources-observe/1"], "mode": "sweep", "value": 42 },
+        { "id": "R02-V05",  "source": "legacy-a2r-resources-998/src/R02-V05.at",  "module": "m1_r02_v05",  "profiles": ["legacy-a2r.resources-observe/1"], "mode": "sweep", "value": 42 },
+        { "id": "R02-LSTR", "source": "legacy-a2r-resources-998/src/R02-LSTR.at", "module": "m1_r02_lstr", "profiles": ["legacy-a2r.resources-observe/1"], "mode": "sweep", "value": 53 },
+        { "id": "R02-K02",  "source": "legacy-a2r-resources-998/src/R02-K02.at",  "module": "m1_r02_k02",  "profiles": ["legacy-a2r.resources-observe/1"], "mode": "sweep", "value": 42 }
+      ],
+      "invariants": ["unique_terminal", "transfer_not_release", "per_frame_lifo", "no_leak_at_result", "value", "fault_sweep", "n_plus_one_control", "same_process_retry"]
+    },
+    "R03": {
+      "legs": [
+        { "id": "R03-legal",  "source": "legacy-a2r-resources-998/src/R03-legal.at",  "module": "m1_r03_legal",  "profiles": ["legacy-a2r.resources-observe/1"], "mode": "clean", "value": 130, "reads": 2 },
+        { "id": "R03-static", "source": "legacy-a2r-resources-998/src/R03-static.at", "module": "m1_r03_static", "profiles": ["legacy-a2r.resources-observe/1"], "mode": "compile-boundary", "note": "the legacy front door does not statically reject mutation-while-iterating; the emitted actual is rejected by the Rust borrow checker (E0308) at compile time — recorded as the honest compile-time boundary, never a typed language negative" },
+        { "id": "R03-stale",  "reference_only": true, "mode": "typed-probe", "note": "the typed stale face is carried by the independent reference (the legacy source surface cannot mint a view); the reference drives mint -> legal read -> structural mutation -> stale use and must reject typed BEFORE any buffer access" }
+      ],
+      "invariants": ["unique_terminal", "transfer_not_release", "no_leak_at_result", "value", "reads_only_legal", "stale_rejected_before_read"]
+    },
+    "R04": {
+      "legs": [{ "id": "R04", "source": "legacy-a2r-resources-998/src/R04.at", "module": "m1_r04", "profiles": ["legacy-a2r.resources-observe/1"], "mode": "clean", "value": 42 }],
+      "invariants": ["unique_terminal", "per_frame_lifo", "no_leak_at_result", "value", "switch_releases_old_once"]
+    },
+    "R05": {
+      "legs": [{ "id": "R05", "source": "legacy-a2r-resources-998/src/R05.at", "module": "m1_r05", "profiles": ["legacy-a2r.resources-observe/1"], "mode": "clean", "value": 42 }],
+      "invariants": ["unique_terminal", "transfer_not_release", "no_leak_at_result", "value", "env_survives_creator_and_last_owner_releases"]
+    },
+    "R06": {
+      "legs": [
+        { "id": "R06-deep", "source": "legacy-a2r-resources-998/src/R06-deep.at", "module": "m1_r06_deep", "profiles": ["legacy-a2r.resources-observe/1"], "mode": "clean", "value": 2359360 },
+        { "id": "R06-budget", "source": "legacy-a2r-resources-998/src/R06-deep.at", "module": "m1_r06_deep", "profiles": ["legacy-a2r.resources-observe/1"], "mode": "budget", "budget": 40000, "reference": "R06-deep" },
+        { "id": "R06-cancel", "source": "legacy-a2r-resources-998/src/R06-deep.at", "module": "m1_r06_deep", "profiles": ["legacy-a2r.resources-observe/1"], "mode": "cancel", "cancel_ms": 0, "reference": "R06-deep" },
+        { "id": "R06-trap", "source": "legacy-a2r-resources-998/src/R06-trap.at", "module": "m1_r06_trap", "profiles": ["legacy-a2r.resources-observe/1", "legacy-a2r.checked-i32/1"], "mode": "trap", "trap_kind": "div-by-zero", "trap_op": "div" }
+      ],
+      "invariants": ["unique_terminal", "transfer_not_release", "no_leak_at_result", "cleanup_on_every_typed_exit"]
+    }
+  }
+}
