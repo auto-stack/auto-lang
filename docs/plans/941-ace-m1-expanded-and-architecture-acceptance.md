@@ -2377,6 +2377,16 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§4核�
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:waiting-on-ruling（av栈回归上游归属已bisect定案961；内修请示未答；D939已交付可转正、gap已6） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:11960bcca | task_ids:CHECKLIST §4 av档阻塞 | evidence:av-bisect（0093e7eca PASS→fca54b769 ABORT）+ D939 archive dfe5a1002 | next_responsible_role:user（av内修裁定）或961线交付；并行=D939转正+gap6刷新 | 无live handle
 
+### 第113轮：work D939七行转正+gap-6接收全绿；合并语义冲突修复；稳定树达成
+
+- **D939转正**（提交`00ed76b3e`）：registry awaiting_d 939七行→delivered_d（`delivered_commit=dfe5a1002`），awaiting空——reader允许空节、universe控制迁移至delivered面（缺行/空白commit/篡改promise-close-owner-namespace全拒）、AWAITING/DELIVERED字节pin重钉；宇宙=(1006,0,14)。
+- **gap-6接收**（同提交）：994-997全级联（binding/manifest INPUTS、map 14格token+14 gap摘除、legacy-arch合同4、机制合同22×5、budget/parent合同）+cert文本结构校验（gap数严格+trap子句）+期望20→6（样本改scenario:R01、tamper方向反转B08 none→cert-gap）+map/universe计数。治理从1F41E逐层收敛**257/257**。
+- **test-groups.toml合并修复**：union解产生997组重复/交错——两父版本精确重建（152组无重复、q4/997块完整）。
+- **主workspace语义冲突修复**（提交`ad4a11550`）：合并自动解把round-94本系abi.rs适配与D939终态rebase混出E0308——pristine master实证干净→取master的abi.rs/inventory.rs/auto-case.rs三件（本系旧适配废）；主workspace check净（auto-macros红=master既有上游，非本树）；**ace-abi档PASS@合并树**（abi-gate2）。
+- **边界**：§4证据链（f94130/31系）身份已随两次sync过期——**最终序列冻结**：稳定树上一次性重采（case466→五native→cert292→optimized→abi✓已有→av候上游栈回归裁定）→§5组合重读（awaiting=0、cert-gap 6、delivered 14的新宇宙）。av栈回归内修请示仍未答。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（D939转正+gap-6接收257/257全绿；合并语义冲突修复；稳定树ad4a11550+达成；abi档PASS） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:ad4a11550 | task_ids:CHECKLIST D939/gap6接收 | evidence:f94133-gap6-reception/{accounting,abi-gate2} + 治理257/257 | next_responsible_role:work 稳定树重采§4全链（av候裁定） | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
