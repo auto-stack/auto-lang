@@ -29,8 +29,19 @@
 #    worker level (missing/corrupt/forged-pointer axes all refuse —
 #    never a silent cold start, never a forged decode; the accepted
 #    pointer is never overwritten by a refusal).
-#  - T-10 remains owner of: 512-revision GC convergence, budget caps on
-#    the recovery lane, and the original 6×30 sample discipline.
+#  - T-10 (DELIVERED at the worker level, `resource_recovery.rs`): the
+#    over-budget cancellation (typed foreign.resource refusal, accepted
+#    root preserved, cleanup completes under the exhausted quota), the
+#    pointer-replace publication fault (accepted root intact, retry
+#    publishes), and the revision churn + lease + forced-GC convergence
+#    (24 full-certification revisions; the 512-scale store-level churn
+#    anchor is the 797-lane abi_cache_512_revision_churn_gc_convergence
+#    in the same group). The churn exposed and fixed a ROOT CAUSE: cl
+#    objects carry a COFF TimeDateStamp, so a GC-reclaimed provider chunk
+#    recompiled to a DIFFERENT digest and bricked the session's restore
+#    identity — CL_FLAGS now carries -Brepro (deterministic objects; the
+#    provider digest is recompile-stable). T-12 remains owner of the
+#    original 6×30 formal sampling and the warm-gate P90 numbers.
 
 # fresh → hit → restart → first good edit (commuted return, same 42) on
 # the restored session — both legs native and c.

@@ -43,7 +43,7 @@ fn reviewed_c_toolchain(value: &str) -> bool {
     if !fields.contains_key("cl")
         || !fields.contains_key("ver")
         || !digest("hash")
-        || fields.get("flags") != Some(&"-c -nologo -GS- -Zl -W4 -WX -O2")
+        || fields.get("flags") != Some(&"-c -nologo -GS- -Zl -W4 -WX -O2 -Brepro")
         || fields.get("crt-flags") != Some(&"-nologo -std:c11 -TC -W4 -WX -O2 -MT")
     {
         return false;
@@ -674,7 +674,7 @@ mod tests {
             );
         }
         let mut explicit = report.clone();
-        explicit.c_toolchain = format!("cl:C:/tools/cl.exe|ver:19.44.1|hash:{}|flags:-c -nologo -GS- -Zl -W4 -WX -O2|crt:vcvars/1|crt-vcvars:C:/tools/setup.bat|crt-vcvars-hash:{}|crt-flags:-nologo -std:c11 -TC -W4 -WX -O2 -MT", "c".repeat(64), "e".repeat(64));
+        explicit.c_toolchain = format!("cl:C:/tools/cl.exe|ver:19.44.1|hash:{}|flags:-c -nologo -GS- -Zl -W4 -WX -O2 -Brepro|crt:vcvars/1|crt-vcvars:C:/tools/setup.bat|crt-vcvars-hash:{}|crt-flags:-nologo -std:c11 -TC -W4 -WX -O2 -MT", "c".repeat(64), "e".repeat(64));
         explicit
             .admit("native", true, Some(42), Some(source))
             .unwrap();
@@ -769,7 +769,7 @@ mod tests {
             "host_work":[row("actual-run",false,1),row("crt-context",true,1),row("provider-cache",true,1),row("reference-compile",false,1),row("reference-run",false,1),row("tool-process",false,2)],
             "abi_domain":"autoabi","abi_version":"0.1","abi_profile":"autoabi.win-x64.v0.1-candidate","callconv":"windows-x64",
             "target":"x86_64-pc-windows-msvc","consumer":"native","source_sha256":auto_test_case::sha256::hex(&auto_test_case::sha256::sha256(source.as_bytes())),
-            "compiler":"ace-native-foreign/1+ace-native/0.1.0+cranelift/0.126.2","c_toolchain":format!("cl:C:/tools/cl.exe|ver:19.44.1|hash:{}|flags:-c -nologo -GS- -Zl -W4 -WX -O2|crt:explicit-sdk/1|crt-sdk:C:/sdk/um/x64|crt-msvc:C:/vc/include|crt-link-hash:{}|crt-flags:-nologo -std:c11 -TC -W4 -WX -O2 -MT", "c".repeat(64), "d".repeat(64)),
+            "compiler":"ace-native-foreign/1+ace-native/0.1.0+cranelift/0.126.2","c_toolchain":format!("cl:C:/tools/cl.exe|ver:19.44.1|hash:{}|flags:-c -nologo -GS- -Zl -W4 -WX -O2 -Brepro|crt:explicit-sdk/1|crt-sdk:C:/sdk/um/x64|crt-msvc:C:/vc/include|crt-link-hash:{}|crt-flags:-nologo -std:c11 -TC -W4 -WX -O2 -MT", "c".repeat(64), "d".repeat(64)),
             "contract_digest":REVIEWED_CONTRACT,"provider_digest":"b".repeat(64),"header_digest":REVIEWED_HEADER,"physical_table_digest":REVIEWED_PHYSICAL_TABLE,
             "review_id":"plan938-independent-provider-v1","actual_exit":42,"reference_exit":42,
             "actual_events":["provider_add"],"reference_events":["provider_add"],"actual_stderr":"source938.call=provider_add\n","reference_stderr":"source938.call=provider_add\n",

@@ -74,3 +74,11 @@ threads-required = "num-test-threads"
 [[profile.default.overrides]]
 filter = "test(/^source_foreign::/) or test(/^test_cases::abi::source_protocol_tests::/)"
 threads-required = "num-test-threads"
+
+# PLAN-939 T-10: the resource over-budget cancellation control sets the
+# host-scoped ABI_TEST_PRODUCED_BUDGET_BYTES process env for its duration;
+# reserve the pool while it runs so no sibling worker entry reads the
+# squeezed budget.
+[[profile.default.overrides]]
+filter = "test(abi_resource939_over_budget_cancellation_preserves_root_and_cleans_without_quota)"
+threads-required = "num-test-threads"

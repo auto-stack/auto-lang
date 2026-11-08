@@ -25,7 +25,16 @@ pub(crate) const TOOL_STREAM_MAX: usize = 1 << 20;
 
 /// Frozen flags for every C compile (freestanding objects: no CRT init,
 /// no stack cookies, no default-lib directives, warnings as errors).
-pub const CL_FLAGS: &[&str] = &["-c", "-nologo", "-GS-", "-Zl", "-W4", "-WX", "-O2"];
+/// PLAN-939 T-10: `-Brepro` zeroes the COFF TimeDateStamp, making object
+/// bytes DETERMINISTIC per (source, flags) — the provider object's digest
+/// is a binding identity (§5.4: the accepted root pins the provider code
+/// it was certified with), so a GC-reclaimed provider chunk must
+/// recompile to the SAME digest instead of bricking the session's
+/// restore identity (empirically: without -Brepro two compiles of the
+/// same source differ in the timestamp + checksum bytes).
+pub const CL_FLAGS: &[&str] = &[
+    "-c", "-nologo", "-GS-", "-Zl", "-W4", "-WX", "-O2", "-Brepro",
+];
 
 #[derive(Debug)]
 pub struct CToolError(pub String);
