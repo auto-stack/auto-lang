@@ -61,9 +61,14 @@ scratch：显式 `--scratch <dir>` 或隔离 temp（PID 域），全退出路径
 
 ## 范围边界
 
-当前认证集=标量值例（10 例）。a2r 复合产物为伪 Rust（`List<int>`/`int` 不可编
-译），复合行为认证是登记 gap（owner=a2r 复合 lowering）；陷阱/诊断负例按前端拒
-绝通道判决，不生成可执行金样。
+当前认证集=**27 例值例**（10 例标量 + PLAN-992 认证的 17 例：12 例既有复合金样
+经 G04 语义重审后认证 + 5 例新冻结可编译金样 B08/B11/R01/R03/R04）。PLAN-992
+（2026-11-08）勘误：binding 曾注"a2r 复合产物为伪 Rust（`List<int>`/`int`）不可
+编译"——该过度概括对已认证的 17 例不成立（record/enum/闭包/遮蔽/命名实参/move/
+深clone 等形状经真实 rustc 编译运行 == oracle）；伪 Rust 缺口仍真实存在于其余
+**21 格** required a2r 值例/场景（H-03 文本 4、H-04 集合 6、H-05 `move move` 1、
+H-06 trap/宽度裁定 4、H-07 场景 6，owner 见 gap-audit F-A2R-3），认证缺口账
+38→21。陷阱/诊断负例按前端拒绝通道判决，不生成可执行金样。
 
 ## 诊断负例面与双轴（PLAN-908，G-DEC-3 2026-11-01 裁定）
 
@@ -105,3 +110,22 @@ receipt 存于 `a2r-emit-917/certs/`，与本文所述 852 标量域（`ace.m1.c
 verify 脚本）不会误收本域证书。日常轴仍是零编译 emit+字节比对（固定组
 `case-ace-m1-a2r-emit-917`）；认证轴经显式入口 `a2r-emit-917-cert` 执行，
 receipt 结构校验为硬错误，文件漂移=诚实重认证，无 --force 覆写路径。
+
+## 17 例值例原域认证（PLAN-992，2026-11-08）
+
+- **认证集 10→27**：H-01 的 12 例既有复合金样（T05/R02/R05/R06/V01/V02/V04-V07/
+  K01/K03，字节未动）经逐源 G04 语义重审后显式认证；H-02 的 5 例（B08/B11/R01/
+  R03/R04）从当前旧 producer 现场发射提案、G04 审阅后冻结新金样并认证。全部 27
+  份证书 schema `ace.m1.cert/1`、flags/std-only/资源帽不变；旧 10 份仅 strict
+  复用未重认证。B11 的 914 命名实参闭包形（`(|__p914_a0,__p914_a1| sub(__p914_a1,
+  __p914_a0))(3,10)`=7）经审阅确认为预期生产形态。
+- **日常面 26→31**：新增 a2r-only 扩展套件 `legacy-a2r-cert-992.{case,suite}.ad`
+  （仅 5 例新金样快照检查，corpus 域；原 12 例检查留 legacy-composite 不复制），
+  固定组 `case-legacy-a2r-cert-992`；snapshot scope 双套件插桩运行并集守卫 31，
+  认证面 spawn=0 判据不变（G02 维护链豁免精确到 cargo/sccache/rustc 祖先与纯
+  `--print` 身份查询，直连 rustc/m1_* 二进制仍违规）。
+- **缺口账 38→21、零 gap 守卫不变**：certifier 选择谓词（corpus∧value∧ok-emit）
+  未扩大——是 17 格 binding token 经 G04+显式认证后转 `ok-emit`；`can_claim_m1`
+  仍要求 cert-gap=0 且 future=45 在账，本轮后余 21（见 gap-audit F-A2R-3），M1
+  不签。坏金样/坏证书/漏检查/错 expected 反控与"无半证书、--force 不覆写"行为
+  保持。
