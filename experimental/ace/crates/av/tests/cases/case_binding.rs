@@ -54,12 +54,16 @@ fn av_binding_case_trace_order() {
 
 #[test]
 fn av_binding_case_front_door_nesting() {
+    // PLAN-999 (T-04): 201 transparent parens around `1` — expression
+    // depth 1, parse depth inside the unified front door's explicit budget.
+    // The obsolete 128 admission proxy no longer rejects this shape (the
+    // same class as the frozen R-08 cell): the request EXECUTES with the
+    // wrapped value.
     let src = case_src("av/resources/nesting_over_budget.at");
     let mut d = Driver::ephemeral();
     let r = d.request(&src, "d_main", &[]);
-    let diag = r.diag.expect("oracle: admission-stage rejection");
-    assert_eq!(diag.stage, "admission");
-    assert_eq!(diag.code, "av.resource.frontend-nesting");
+    assert!(r.diag.is_none(), "deep transparent parens run: {:?}", r.diag);
+    assert_eq!(r.value_i32(), Some(1), "oracle: the wrapped literal's value");
 }
 
 fn run(src: &str, caps: &[String]) -> ace_av::driver::RequestOutcome {
