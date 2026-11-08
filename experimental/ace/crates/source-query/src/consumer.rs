@@ -14,14 +14,14 @@
 //! artifact the legacy entry produces (byte-identical for the finite
 //! surface, which is what lets every downstream end share it).
 
-use crate::apply::{bind_with_facts, AppliedFn, ApplyError, BindFactsError, BodyTypeSupply};
+use crate::apply::{AppliedFn, ApplyError, BindFactsError, BodyTypeSupply, bind_with_facts};
 use crate::facts::FactsError;
 use crate::session::QueryError;
 use ace_core::atom_text::{Diagnostic, Span, Stage};
 use ace_core::source::{
-    emit_resolved_parts, parse_program_with, CompiledSource, SourceParts, SourceProfile,
+    CompiledSource, SourceParts, SourceProfile, emit_resolved_parts, parse_program_with,
 };
-use ace_core::verify::{verify_scalar, CheckedModule};
+use ace_core::verify::{CheckedModule, verify_scalar};
 
 /// What the shared entry produced.
 pub struct FactCompiled {
@@ -239,8 +239,8 @@ fn compile_profile_product(
     profile: SourceProfile,
 ) -> Result<ProductCompile, Vec<Diagnostic>> {
     use ace_core::source::cst::{
-        parse_front_with_caps, FrontBudget, FrontKind, FrontOutcome, FrontRequest,
-        INSTANCES_CAPABILITY,
+        FrontBudget, FrontKind, FrontOutcome, FrontRequest, INSTANCES_CAPABILITY,
+        parse_front_with_caps,
     };
     let instances_lane = capabilities.iter().any(|c| c == INSTANCES_CAPABILITY);
     let (program, instance_records) = if instances_lane {
@@ -271,7 +271,7 @@ fn compile_profile_product(
                     "source.resource",
                     format!("resource exhausted: {what} (limit {limit})"),
                     Span { start: 0, end: 0 },
-                )])
+                )]);
             }
             FrontOutcome::StaleForeign(m) | FrontOutcome::Infra(m) => {
                 return Err(vec![Diagnostic::new(
@@ -279,7 +279,7 @@ fn compile_profile_product(
                     "source.infra",
                     m,
                     Span { start: 0, end: 0 },
-                )])
+                )]);
             }
         }
     } else {
@@ -325,16 +325,14 @@ fn compile_profile_product(
                 (SourceProfile::TextRecord, Some(environment)) => {
                     ace_core::verify::verify_foreign_text_record(bundle, environment)
                 }
-                (SourceProfile::TextRecord, None) => {
-                    ace_core::verify::verify_text_record(bundle)
-                }
+                (SourceProfile::TextRecord, None) => ace_core::verify::verify_text_record(bundle),
                 (_, _) => {
                     return Err(vec![Diagnostic::new(
                         Stage::Text,
                         "source.unsupported",
                         "this product entry lowers the core, scalar and text-record profiles only",
                         Span { start: 0, end: 0 },
-                    )])
+                    )]);
                 }
             }?;
             Ok(ProductCompile {

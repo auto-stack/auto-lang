@@ -62,8 +62,16 @@ fn av_binding_case_front_door_nesting() {
     let src = case_src("av/resources/nesting_over_budget.at");
     let mut d = Driver::ephemeral();
     let r = d.request(&src, "d_main", &[]);
-    assert!(r.diag.is_none(), "deep transparent parens run: {:?}", r.diag);
-    assert_eq!(r.value_i32(), Some(1), "oracle: the wrapped literal's value");
+    assert!(
+        r.diag.is_none(),
+        "deep transparent parens run: {:?}",
+        r.diag
+    );
+    assert_eq!(
+        r.value_i32(),
+        Some(1),
+        "oracle: the wrapped literal's value"
+    );
 }
 
 fn run(src: &str, caps: &[String]) -> ace_av::driver::RequestOutcome {

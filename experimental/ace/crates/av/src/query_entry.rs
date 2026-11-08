@@ -18,7 +18,7 @@ use ace_core::atom_text::{Diagnostic, Stage};
 use ace_core::source::CompiledSource;
 use ace_core::verify::CheckedModule;
 use ace_source_query::{
-    compile_core_product, compile_scalar_product, CompileLane, ProductCompile, SourceQuerySession,
+    CompileLane, ProductCompile, SourceQuerySession, compile_core_product, compile_scalar_product,
 };
 
 /// Compile one ordinary scalar source for a product consumer.
@@ -112,9 +112,8 @@ pub fn compile_scalar_or_core_source_product(
 /// escalation rule — anything else (parse, bind, verify, resource, cancel)
 /// is terminal and never re-routed.
 fn is_profile_surface_rejection(ds: &[Diagnostic]) -> bool {
-    ds.iter().all(|d| {
-        d.code == "source.unsupported" && d.stage == Stage::Text
-    })
+    ds.iter()
+        .all(|d| d.code == "source.unsupported" && d.stage == Stage::Text)
 }
 
 /// Convenience form of the shared selection gate (compiled artifact only).
@@ -136,8 +135,15 @@ pub fn compile_core_source_via_facts(
 ) -> Result<CompiledSource, Vec<Diagnostic>> {
     let mut session = SourceQuerySession::new("ace-av", module_path)
         .with_capabilities(capabilities.iter().cloned());
-    compile_core_product(src, module_path, capabilities, "ace-av", module_path, &mut session)
-        .map(|p| p.compiled)
+    compile_core_product(
+        src,
+        module_path,
+        capabilities,
+        "ace-av",
+        module_path,
+        &mut session,
+    )
+    .map(|p| p.compiled)
 }
 
 /// The fact-driven entry plus its provenance (used by tests and by hosts

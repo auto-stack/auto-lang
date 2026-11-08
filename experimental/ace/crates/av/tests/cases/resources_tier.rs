@@ -2,8 +2,8 @@
 //! legs) + the turnaround smoke (full six-scenario release bench runs via
 //! scripts/verify-ac-av-798.ps1 -Scope turnaround).
 
-use ace_av::driver::{front_door_admit, front_door_admit_atom, Driver};
-use ace_av_core::contract::{ResourceKind, MAX_FRONTEND_NESTING, MAX_TABLE_ENTRIES};
+use ace_av::driver::{Driver, front_door_admit, front_door_admit_atom};
+use ace_av_core::contract::{MAX_FRONTEND_NESTING, MAX_TABLE_ENTRIES, ResourceKind};
 
 /// PLAN-999 (T-04): deep-expression tests run on an explicitly sized stack.
 /// The lowering's declared construction ceiling (512) is a REAL budget the
@@ -224,7 +224,10 @@ fn av_resources_front_door_nesting_boundary() {
         let diag = r.diag.expect("over-ceiling chain rejected");
         (diag.stage, diag.code)
     });
-    assert_eq!(verdict, ("mir-lower".to_string(), "mir.lower.depth".to_string()));
+    assert_eq!(
+        verdict,
+        ("mir-lower".to_string(), "mir.lower.depth".to_string())
+    );
 }
 
 /// F798-R11-01: the CURRENT sibling COMPOSES internally — a deep call as
@@ -283,7 +286,10 @@ fn main() int {{
     // argument, true path 131 — is INSIDE the lowering's real 512 ceiling:
     // the obsolete 128 proxy no longer rejects it; it executes (value 70).
     let over = with_chain(60);
-    assert!(front_door_admit(&over).is_ok(), "131-path admits under the real ceiling");
+    assert!(
+        front_door_admit(&over).is_ok(),
+        "131-path admits under the real ceiling"
+    );
     let r = with_deep_stack(move || {
         let mut d = Driver::ephemeral();
         d.request(&over, "d_main", &[]).value_i32()
@@ -415,7 +421,10 @@ fn av_resources_sequential_shallow_statements_not_depth_summed() {
     let mut mixed = String::from("fn main() int {\n    return ");
     mixed.push_str(&"idfn(".repeat(0)); // built below via named chain instead
     let chain = vec!["1"; 70].join(" + ");
-    let nested = format!("fn idfn(x int) int {{\n    return x\n}}\n\nfn main() int {{\n    return idfn(idfn(idfn({})))\n}}\n", chain);
+    let nested = format!(
+        "fn idfn(x int) int {{\n    return x\n}}\n\nfn main() int {{\n    return idfn(idfn(idfn({})))\n}}\n",
+        chain
+    );
     let _ = mixed;
     assert!(
         front_door_admit(&nested).is_ok(),
@@ -514,7 +523,10 @@ fn av_resources_bool_and_named_arg_chains_front_door() {
     // (129/400); past it (600) the verdict is the lowering's own resource
     // rejection — never the old 128 door proxy.
     for n in [129usize, 400] {
-        let wants = [("bool", bool_chain(n.clone()), 0i32), ("named", named_chain(n.clone()), n as i32)];
+        let wants = [
+            ("bool", bool_chain(n.clone()), 0i32),
+            ("named", named_chain(n.clone()), n as i32),
+        ];
         for (tag, src, want) in wants {
             assert!(front_door_admit(&src).is_ok(), "{tag} {n} admits");
             let value = with_deep_stack(move || {
@@ -563,7 +575,10 @@ fn av_resources_parenthesized_flat_chain_front_door_boundary() {
     // Inside the real ceiling: bracketed chains execute with true values.
     for n in [100usize, 200, 400] {
         let src = chain(n);
-        assert!(front_door_admit(&src).is_ok(), "{n}-term bracketed chain admits");
+        assert!(
+            front_door_admit(&src).is_ok(),
+            "{n}-term bracketed chain admits"
+        );
         let value = with_deep_stack(move || {
             let mut d = Driver::ephemeral();
             d.request(&src, "d_main", &[]).value_i32()
@@ -578,7 +593,10 @@ fn av_resources_parenthesized_flat_chain_front_door_boundary() {
         let diag = r.diag.expect("rejected");
         (diag.stage, diag.code)
     });
-    assert_eq!(verdict, ("mir-lower".to_string(), "mir.lower.depth".to_string()));
+    assert_eq!(
+        verdict,
+        ("mir-lower".to_string(), "mir.lower.depth".to_string())
+    );
 }
 
 /// F798-R3-04: flat operator CHAINS are expression-construction depth —
@@ -625,7 +643,10 @@ fn av_resources_flat_chain_front_door_boundary() {
         let diag = r.diag.expect("rejected");
         (diag.stage, diag.code)
     });
-    assert_eq!(verdict, ("mir-lower".to_string(), "mir.lower.depth".to_string()));
+    assert_eq!(
+        verdict,
+        ("mir-lower".to_string(), "mir.lower.depth".to_string())
+    );
 }
 
 /// F798-R12-01: the construction path follows the REAL association — a
@@ -794,7 +815,7 @@ fn av_resources_atom_front_door_rejects_before_recursive_parser() {
 #[test]
 #[cfg(windows)]
 fn av_resources_peak_sampler_distinguishes_transient_spike() {
-    use ace_av::mempeek::{sample_private_bytes, PeakSampler};
+    use ace_av::mempeek::{PeakSampler, sample_private_bytes};
     let m0 = sample_private_bytes();
     let sampler = PeakSampler::start(5);
     let spike: Vec<Vec<u8>> = (0..96).map(|_| vec![7u8; 1024 * 1024]).collect();
@@ -822,7 +843,7 @@ fn av_resources_peak_sampler_distinguishes_transient_spike() {
 /// charges the whole peak). Neither line is advisory.
 #[test]
 fn av_turnaround_two_line_memory_gate() {
-    use ace_av::bench::{validate_and_gate, BenchSummary, SampleRow, SCENARIOS};
+    use ace_av::bench::{BenchSummary, SCENARIOS, SampleRow, validate_and_gate};
     // Supply valid raw windows so only the memory lines can fail.
     let rows: Vec<SampleRow> = SCENARIOS
         .iter()

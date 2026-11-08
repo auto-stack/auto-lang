@@ -17,12 +17,12 @@
 //! 证明机制（whole-path 探针的载体，也是后续正式目录的基座）。
 
 use crate::atom_text::Span;
-use crate::source::ast::{ClosureBody, Expr, ExprKind, FnItem, Item, ParamMode, Program, Stmt};
 use crate::source::SourceProfile;
+use crate::source::ast::{ClosureBody, Expr, ExprKind, FnItem, Item, ParamMode, Program, Stmt};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use super::frontdoor::{parse_front, FrontBudget, FrontKind, FrontOutcome, FrontRequest};
+use super::frontdoor::{FrontBudget, FrontKind, FrontOutcome, FrontRequest, parse_front};
 
 /// 内容指纹（FNV-1a 64；身份机制用，非密码学）。
 pub fn content_sha(bytes: &[u8]) -> u64 {

@@ -10,20 +10,20 @@
 //! hit STILL executes AV — nothing here caches PASS or run results.
 
 use crate::cache::{
-    abc_unit_key_with_codec, assemble_closure, caps_fingerprint, decode_sidecar, encode_sidecar,
-    manifest_key, merge_spans, open_store, payload_fingerprint, put_enveloped, sidecar_key,
-    split_units, Counters, EnvelopeIdentity, ModuleManifest, SemaRefSer, UnitLink,
+    Counters, EnvelopeIdentity, ModuleManifest, SemaRefSer, UnitLink, abc_unit_key_with_codec,
+    assemble_closure, caps_fingerprint, decode_sidecar, encode_sidecar, manifest_key, merge_spans,
+    open_store, payload_fingerprint, put_enveloped, sidecar_key, split_units,
 };
 use crate::observations::{Obs, SpanRec};
 use ace_av_core::contract::{
-    fnv1a64, ExecOutcome, ResourceKind, SpanInfo, Value, MAX_FRONTEND_NESTING, MAX_INPUT_BYTES,
+    ExecOutcome, MAX_FRONTEND_NESTING, MAX_INPUT_BYTES, ResourceKind, SpanInfo, Value, fnv1a64,
 };
 use ace_av_core::mir::{MirModule, OwnerScope, TraceEvent};
 use ace_av_core::{
-    decode_abc, encode_abc, execute, verify_mir, CancelFlag, ExecLimits, LoadedModule,
+    CancelFlag, ExecLimits, LoadedModule, decode_abc, encode_abc, execute, verify_mir,
 };
 use ace_core::verify::CheckedModule;
-use ace_lowering::{lower_checked, AdapterError};
+use ace_lowering::{AdapterError, lower_checked};
 use serde::{Deserialize, Serialize};
 
 /// One diagnosed pipeline failure: stage + code + message.
@@ -273,7 +273,9 @@ impl Driver {
                     // the Core-compatible shared selection gate — a scalar
                     // success keeps its exact old identity/bytes; only a
                     // profile-surface rejection re-attempts through Core.
-                    crate::query_entry::compile_scalar_or_core_source_via_facts(src, "probe.at", caps)
+                    crate::query_entry::compile_scalar_or_core_source_via_facts(
+                        src, "probe.at", caps,
+                    )
                 }
                 RequestProfile::EntryUnit => {
                     ace_core::source::compile_entry_unit_source(src, "probe.at", caps)
@@ -426,7 +428,7 @@ impl Driver {
                                         None,
                                         vec![],
                                         None,
-                                    )
+                                    );
                                 }
                             }
                         }
@@ -490,7 +492,7 @@ impl Driver {
                                     None,
                                     vec![],
                                     None,
-                                )
+                                );
                             }
                         }
                         staging_now += payload.len();
@@ -518,7 +520,7 @@ impl Driver {
                                     None,
                                     vec![],
                                     None,
-                                )
+                                );
                             }
                         };
                         // F798-R15-02: the A08 envelope declares a UNIT —
@@ -586,7 +588,7 @@ impl Driver {
                                     None,
                                     vec![],
                                     None,
-                                )
+                                );
                             }
                             Ok(checked) => {
                                 verify_analysis_bytes += checked.stats().analysis_bytes as usize;
@@ -732,7 +734,7 @@ impl Driver {
                             None,
                             vec![],
                             None,
-                        )
+                        );
                     }
                 };
                 // Persist the MIR unit (code content, spans stripped) under
@@ -754,7 +756,7 @@ impl Driver {
                                 None,
                                 vec![],
                                 None,
-                            )
+                            );
                         }
                     };
                     staging_now += spanless.heap_estimate() + mbytes.total_len;
@@ -821,7 +823,7 @@ impl Driver {
                             None,
                             vec![],
                             None,
-                        )
+                        );
                     }
                 };
                 let mut spanless = (*unit).clone();
@@ -838,7 +840,7 @@ impl Driver {
                             None,
                             vec![],
                             None,
-                        )
+                        );
                     }
                 };
                 staging_now += spanless.heap_estimate() + payload.len();
@@ -929,7 +931,7 @@ impl Driver {
                         None,
                         vec![],
                         None,
-                    )
+                    );
                 }
             };
             // F798-R15-02: the A09 envelope declares a UNIT — a
@@ -997,7 +999,7 @@ impl Driver {
                         None,
                         vec![],
                         None,
-                    )
+                    );
                 }
             }
             let mut modu = decoded.module;

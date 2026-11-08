@@ -12,8 +12,8 @@
 //! True signature surfaces (param type / mode / return type / param name /
 //! nested nominal argument) must STILL fire the event.
 
-use ace_core::source::cst::units;
 use ace_core::source::SourceProfile;
+use ace_core::source::cst::units;
 
 const BUDGET: ace_core::source::cst::FrontBudget =
     ace_core::source::cst::FrontBudget::WORK_OWNED_64MIB;
@@ -21,9 +21,9 @@ const BUDGET: ace_core::source::cst::FrontBudget =
 fn signature_events(cat: &units::UnitCatalog, owner: &str) -> usize {
     cat.events
         .iter()
-        .filter(|e| {
-            matches!(e, units::CatalogEvent::OwnerSignatureChanged { owner: o } if o == owner)
-        })
+        .filter(
+            |e| matches!(e, units::CatalogEvent::OwnerSignatureChanged { owner: o } if o == owner),
+        )
         .count()
 }
 
@@ -33,7 +33,8 @@ fn body_edit(cat: &mut units::UnitCatalog, owner: &str, from: &str, to: &str) {
     let text = cat.src()[span.start as usize..span.end as usize].to_string();
     let edited = text.replacen(from, to, 1);
     assert_ne!(text, edited, "body-only edit must apply");
-    cat.edit_owner(owner, &edited, BUDGET).expect("body-only edit");
+    cat.edit_owner(owner, &edited, BUDGET)
+        .expect("body-only edit");
 }
 
 /// The F-941-13 representative sequence: `a` before `b`, `b` carries a
@@ -50,7 +51,11 @@ fn f13_record_param_span_drift_no_false_event() {
         .expect("edit a (body lengthened)");
     let drift = cat.fns["b"].span.start;
     assert!(drift > 0, "b's position drifted after a's edit");
-    assert_eq!(signature_events(&cat, "b"), 0, "drift alone reports nothing");
+    assert_eq!(
+        signature_events(&cat, "b"),
+        0,
+        "drift alone reports nothing"
+    );
 
     body_edit(&mut cat, "b", "return p.a", "return p.a + 0");
     assert_eq!(
@@ -79,8 +84,7 @@ fn f13_true_signature_changes_still_fire() {
         ("param name", "fn b(q P) int { return q.a }"),
     ] {
         let src = "type P { a int }\nfn b(p P) int { return p.a }\n";
-        let mut cat = units::UnitCatalog::build(src, SourceProfile::Record, BUDGET)
-            .expect("cold");
+        let mut cat = units::UnitCatalog::build(src, SourceProfile::Record, BUDGET).expect("cold");
         cat.edit_owner("b", new_text, BUDGET)
             .unwrap_or_else(|e| panic!("{tag} edit must parse: {e:?}"));
         assert_eq!(
@@ -108,7 +112,10 @@ fn f13_crlf_utf8_comment_stability() {
     );
     let cold2 =
         units::UnitCatalog::build(cat.src(), SourceProfile::Record, BUDGET).expect("rebuild");
-    assert_eq!(cold2.signature_snapshot("b").as_deref(), Some(before.as_str()));
+    assert_eq!(
+        cold2.signature_snapshot("b").as_deref(),
+        Some(before.as_str())
+    );
 }
 
 /// Nested annotations (Generic with a NOMINAL argument) carry inner Idents on
@@ -118,8 +125,7 @@ fn f13_crlf_utf8_comment_stability() {
 #[test]
 fn f13_nested_generic_annotation() {
     let src = "type P { a int }\nfn a() int { return 1 }\nfn g(x List<P>) int { return x.len() }\n";
-    let mut cat = units::UnitCatalog::build(src, SourceProfile::Collections, BUDGET)
-        .expect("cold");
+    let mut cat = units::UnitCatalog::build(src, SourceProfile::Collections, BUDGET).expect("cold");
     let before = cat.signature_snapshot("g").expect("snapshot");
 
     cat.edit_owner("a", "fn a() int { return 1 + 1 + 1 + 1 + 1 + 1 }", BUDGET)
@@ -130,12 +136,19 @@ fn f13_nested_generic_annotation() {
         0,
         "嵌套Generic内层Ident的坐标漂移不得误报"
     );
-    let cold2 = units::UnitCatalog::build(cat.src(), SourceProfile::Collections, BUDGET)
-        .expect("rebuild");
-    assert_eq!(cold2.signature_snapshot("g").as_deref(), Some(before.as_str()));
+    let cold2 =
+        units::UnitCatalog::build(cat.src(), SourceProfile::Collections, BUDGET).expect("rebuild");
+    assert_eq!(
+        cold2.signature_snapshot("g").as_deref(),
+        Some(before.as_str())
+    );
 
     // The real nested-argument change still fires.
     cat.edit_owner("g", "fn g(x List<int>) int { return x.len() }", BUDGET)
         .expect("real nested change");
-    assert_eq!(signature_events(&cat, "g"), 1, "List<P> → List<int> 是真签名变化");
+    assert_eq!(
+        signature_events(&cat, "g"),
+        1,
+        "List<P> → List<int> 是真签名变化"
+    );
 }

@@ -10,10 +10,10 @@ use crate::link_driver::{self, ObjectInput};
 use crate::observe::Obs;
 use crate::resources::Partition;
 use crate::source_diagnostics as sd;
-use crate::{emit, MnError};
+use crate::{MnError, emit};
 use ace_artifacts::store::ManagedStore;
 use ace_av_core::mir::MirType;
-use ace_av_core::mir_verify::{verify_mir, MirVerifyError};
+use ace_av_core::mir_verify::{MirVerifyError, verify_mir};
 use ace_core::link::CaptureCaps;
 use std::path::{Path, PathBuf};
 
@@ -83,7 +83,7 @@ fn compile_escalating(
                 attempted,
                 surface_rejections: surface,
                 diagnostics: ds,
-            })
+            });
         }
     }
     // PLAN-999 (T-03): the CORE fact lane answers the constructs the scalar
@@ -103,7 +103,7 @@ fn compile_escalating(
                 attempted,
                 surface_rejections: surface,
                 diagnostics: ds,
-            })
+            });
         }
     }
     attempted.push(sd::SourceProfile::Record);
@@ -119,7 +119,7 @@ fn compile_escalating(
                 attempted,
                 surface_rejections: surface,
                 diagnostics: ds,
-            })
+            });
         }
     }
     attempted.push(sd::SourceProfile::TextRecord);
@@ -135,7 +135,7 @@ fn compile_escalating(
                 attempted,
                 surface_rejections: surface,
                 diagnostics: ds,
-            })
+            });
         }
     };
     let _ = owned;
@@ -168,7 +168,10 @@ impl Domain {
     }
     fn checked(&self) -> &ace_core::verify::CheckedModule {
         match self {
-            Domain::Scalar(c) | Domain::Core(c) | Domain::Data(c) | Domain::Owned(c)
+            Domain::Scalar(c)
+            | Domain::Core(c)
+            | Domain::Data(c)
+            | Domain::Owned(c)
             | Domain::Numeric(c) => &c.checked,
         }
     }

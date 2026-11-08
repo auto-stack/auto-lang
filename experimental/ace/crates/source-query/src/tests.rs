@@ -17,7 +17,7 @@
 
 use super::*;
 use ace_core::source::ast::{Block, Item, Program};
-use ace_core::source::{parse_program_with, SourceProfile};
+use ace_core::source::{SourceProfile, parse_program_with};
 
 const A: &str = "fn leaf(x int) int { return x + 1 }\n\nfn main() int { return leaf(41) }\n";
 
@@ -42,7 +42,7 @@ fn kinds(w: &BodyWalk) -> Vec<&'static str> {
 
 #[test]
 fn solver_attempts_include_cancel_and_resource_but_exclude_preflight_rejects() {
-    use std::sync::{atomic::AtomicBool, Arc};
+    use std::sync::{Arc, atomic::AtomicBool};
     let p = parse(A);
     let ledger = crate::work::Ledger::default();
     let mut cancelled = SourceQuerySession::new("pkg", "mod")
@@ -201,11 +201,12 @@ fn sq06_negative_dependency_flips_when_the_name_appears() {
     let mut s = SourceQuerySession::new("pkg", "mod");
     let cold = s.infer_body(&p1, "main").expect("solve with absent callee");
     assert!(!cold.facts.is_complete(), "the call has no fact yet");
-    assert!(cold
-        .facts
-        .negatives
-        .iter()
-        .any(|n| n.domain == "fn" && n.name == "helper"));
+    assert!(
+        cold.facts
+            .negatives
+            .iter()
+            .any(|n| n.domain == "fn" && n.name == "helper")
+    );
 
     let p2 = parse("fn helper(v int) int { return v }\n\nfn main() int { return helper(1) }\n");
     let warm = s
@@ -381,10 +382,12 @@ fn sq12_apply_facts_drives_emission_and_verification() {
     let parts = ace_core::source::emit_resolved_parts(&resolved, A, "m.at", SourceProfile::Scalar)
         .expect("emit from facts");
     ace_core::verify::verify_scalar(parts.bundle).expect("the fact-typed HIR verifies");
-    assert!(resolved
-        .fns
-        .iter()
-        .all(|f| f.result == ace_core::source::resolve::VT::I32));
+    assert!(
+        resolved
+            .fns
+            .iter()
+            .all(|f| f.result == ace_core::source::resolve::VT::I32)
+    );
 }
 
 #[test]
@@ -546,8 +549,7 @@ fn sq17_session_signature_query_matches_the_catalog() {
 
 // -- T-04: named-argument input ---------------------------------------
 
-const NAMED_SRC: &str =
-    "fn pick(a int, b bool) int { if b { return a }\n  return 0 }\n\nfn main() int { return pick(b: true, a: 7) }\n";
+const NAMED_SRC: &str = "fn pick(a int, b bool) int { if b { return a }\n  return 0 }\n\nfn main() int { return pick(b: true, a: 7) }\n";
 
 #[test]
 fn sq18_named_arguments_produce_clean_facts_and_a_distinct_key() {
@@ -946,7 +948,7 @@ fn sq30_read_only_view_never_installs() {
 // -- T-06: ManagedStore page sink + page codec -------------------------
 
 use crate::host::PageSink;
-use crate::store::{decode_page, encode_page, ManagedStoreSink, PageReadError};
+use crate::store::{ManagedStoreSink, PageReadError, decode_page, encode_page};
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 
 fn temp_dir(tag: &str) -> std::path::PathBuf {
@@ -1049,15 +1051,19 @@ fn fact_page_preflight_refuses_oversized_payload_and_count_before_materializatio
     let mut facts = session.infer_body(&p, "leaf").unwrap().facts;
     let key = session.body_key(&p, "leaf").unwrap();
     facts.sig_reads = vec!["x".repeat(4096); 129];
-    assert!(encode_page(&key, &facts)
-        .unwrap_err()
-        .to_string()
-        .contains("before allocation"));
+    assert!(
+        encode_page(&key, &facts)
+            .unwrap_err()
+            .to_string()
+            .contains("before allocation")
+    );
     facts.sig_reads = vec![String::new(); 8193];
-    assert!(encode_page(&key, &facts)
-        .unwrap_err()
-        .to_string()
-        .contains("count"));
+    assert!(
+        encode_page(&key, &facts)
+            .unwrap_err()
+            .to_string()
+            .contains("count")
+    );
 }
 
 #[test]
@@ -1265,7 +1271,11 @@ fn sq99_host_republish_same_semantics_is_idempotent() {
     // revision keeps its monotone climb.
     let cand2 = host.prepare(&mut s, &p, "leaf").expect("prepare2");
     assert_eq!(cand2.facts.revision, 2, "hit still stamps a fresh revision");
-    assert_eq!(cand2.key.canonical(), key1, "same canonical key across requests");
+    assert_eq!(
+        cand2.key.canonical(),
+        key1,
+        "same canonical key across requests"
+    );
     host.commit(cand2, &s, &p, None)
         .unwrap_or_else(|e| panic!("commit2 must not reject identical semantics: {e}"));
     assert_eq!(host.revision(), 2, "host revision stays monotone");
@@ -1279,7 +1289,10 @@ fn sq99_host_republish_same_semantics_is_idempotent() {
     drop(host);
     let sink2 = crate::store::ManagedStoreSink::open(&dir, None).expect("reopen store");
     let key = sink2_key(&sink2, &p);
-    let page = sink2.get_by_key(&key).expect("read back").expect("page present");
+    let page = sink2
+        .get_by_key(&key)
+        .expect("read back")
+        .expect("page present");
     assert_eq!(page.name, "leaf");
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -1295,18 +1308,25 @@ fn sq98_sink_duplicate_put_and_real_conflict_preserved() {
     let k1 = s.body_key(&p, "leaf").expect("key1");
     let f2 = s.infer_body(&p, "leaf").expect("infer2").facts;
     assert_ne!(f1.revision, f2.revision, "per-request revisions differ");
-    assert_eq!(k1.canonical(), s.body_key(&p, "leaf").expect("key2").canonical());
+    assert_eq!(
+        k1.canonical(),
+        s.body_key(&p, "leaf").expect("key2").canonical()
+    );
 
     use crate::host::PageSink;
     let art1 = sink.put(&k1, &f1).expect("put1");
-    let art2 = sink.put(&k1, &f2).expect("duplicate revision-only put is idempotent");
+    let art2 = sink
+        .put(&k1, &f2)
+        .expect("duplicate revision-only put is idempotent");
     assert_eq!(art1, art2, "same artifact");
 
     // Genuinely different content under the SAME key: the store's hard
     // Conflict still rejects (never an overwrite).
     let mut tampered = f1.clone();
     tampered.nodes[0].id = crate::walk::NodeId(9999);
-    let err = sink.put(&k1, &tampered).expect_err("real conflict preserved");
+    let err = sink
+        .put(&k1, &tampered)
+        .expect_err("real conflict preserved");
     assert!(err.contains("conflict"), "store conflict surfaced: {err}");
     let _ = std::fs::remove_dir_all(&dir);
 }
