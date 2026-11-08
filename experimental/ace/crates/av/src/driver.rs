@@ -269,7 +269,11 @@ impl Driver {
                 // source through the SQ-A fact entry (query facts are the
                 // type authority). Diagnostics are the frontend's own.
                 RequestProfile::Scalar => {
-                    crate::query_entry::compile_scalar_source_via_facts(src, "probe.at", caps)
+                    // PLAN-999 (T-03): the ordinary Auto source lane rides
+                    // the Core-compatible shared selection gate — a scalar
+                    // success keeps its exact old identity/bytes; only a
+                    // profile-surface rejection re-attempts through Core.
+                    crate::query_entry::compile_scalar_or_core_source_via_facts(src, "probe.at", caps)
                 }
                 RequestProfile::EntryUnit => {
                     ace_core::source::compile_entry_unit_source(src, "probe.at", caps)
@@ -1480,179 +1484,18 @@ fn sig_string(module: &ace_core::hir::Module, ty: ace_core::hir::TypeId) -> Stri
 /// `scalar_prec_of`, left-associative), so the door measures the LONGEST
 /// CONSTRUCTION PATH — branch-sibling depths never add, genuinely nested
 /// levels still compose, and every call level counts exactly once.
-#[derive(Default)]
-struct LevelChain {
-    /// Completed operand path depths at this level.
-    vals: Vec<u32>,
-    /// Precedences of pending binary operators (mirrors `scalar_prec_of`).
-    ops: Vec<u8>,
-    /// Pending prefix unary operators (Neg/Not nest one level each).
-    unary: u32,
-    /// The last significant token completed an operand (binary vs prefix
-    /// `-` disambiguation).
-    after_operand: bool,
-    /// The top of `vals` is a bare identifier — `(`/`:` may retract it as
-    /// a callee/parameter NAME (names are not construction levels).
-    ident_top: bool,
-    /// Prefix unary levels folded into the `ident_top` value
-    /// (F798-R13-01): the `(`-retract of a callee name RESTORES them so
-    /// they bind to the full CALL expression (`Unary(Call(..))`), never
-    /// vanish with the discarded name.
-    ident_unary: u32,
-    /// Folded max path of COMPLETED siblings (argument-list commas).
-    sib_done: u32,
-    /// This level is a sibling list (argument commas / named colons).
-    had_comma: bool,
-}
-
-impl LevelChain {
-    /// Left-associative reduction of pending operators `>= min_prec`
-    /// (same `>=` pop rule as the parser's precedence climbing). Reducing
-    /// `a OP b` yields `1 + max(a, b)` — the real tree's depth.
-    fn reduce_ge(&mut self, min_prec: u8) {
-        while self.ops.last().is_some_and(|&top| top >= min_prec) {
-            self.ops.pop();
-            let b = self.vals.pop().unwrap_or(1);
-            let a = self.vals.pop().unwrap_or(1);
-            self.vals.push(1 + a.max(b));
-            self.ident_top = false;
-        }
-    }
-
-    fn reduce_all(&mut self) -> u32 {
-        self.reduce_ge(0);
-        // Defensive max over adjacency-merged leftovers (malformed input
-        // is the parser's to reject; the door just stays robust).
-        self.vals.iter().copied().max().unwrap_or(0)
-    }
-
-    /// A completed operand — literal, `true`/`false`, or a closed paren
-    /// group of path `depth` — joins the current chain; pending prefix
-    /// unary operators nest around it.
-    fn operand(&mut self, depth: u32) {
-        let depth = depth + std::mem::take(&mut self.unary);
-        if self.after_operand {
-            // Adjacent operands with no operator (`a.b`-shapes): one node.
-            if let Some(top) = self.vals.last_mut() {
-                *top = (*top).max(depth);
-            } else {
-                self.vals.push(depth);
-            }
-            self.ident_top = false;
-            self.ident_unary = 0;
-        } else {
-            self.vals.push(depth);
-        }
-        self.after_operand = true;
-    }
-
-    /// A bare IDENTIFIER operand. When it is a FRESH value it becomes the
-    /// callee/name candidate (`ident_top`), and the prefix unary levels
-    /// folded into it are recorded (`ident_unary`) — the `(`-retract then
-    /// RESTORES them onto the full CALL expression instead of letting them
-    /// vanish with the discarded name (F798-R13-01: `-f(..)`/`!f(..)` are
-    /// `Unary(Call(..))`, one level per prefix, on the construction path).
-    fn ident_operand(&mut self) {
-        let prefix = std::mem::take(&mut self.unary);
-        if self.after_operand {
-            // Adjacent identifiers with no operator: one node, not a name.
-            if let Some(top) = self.vals.last_mut() {
-                *top = (*top).max(1 + prefix);
-            } else {
-                self.vals.push(1 + prefix);
-            }
-            self.ident_top = false;
-            self.ident_unary = 0;
-        } else {
-            self.vals.push(1 + prefix);
-            self.ident_top = true;
-            self.ident_unary = prefix;
-        }
-        self.after_operand = true;
-    }
-
-    fn binary(&mut self, prec: u8) {
-        self.reduce_ge(prec);
-        self.ops.push(prec);
-        self.after_operand = false;
-        self.ident_top = false;
-        self.ident_unary = 0;
-    }
-
-    fn prefix_unary(&mut self) {
-        self.unary += 1;
-        self.after_operand = false;
-        self.ident_top = false;
-        self.ident_unary = 0;
-    }
-
-    /// A comma ends the current sibling: its COMPOSED path folds by MAX
-    /// into the completed-siblings pool (F798-R10-01 — different arguments'
-    /// maxima never concatenate); the next sibling starts fresh.
-    fn end_sibling(&mut self) -> u32 {
-        let v = self.reduce_all();
-        self.sib_done = self.sib_done.max(v);
-        self.vals.clear();
-        self.ops.clear();
-        self.unary = 0;
-        self.after_operand = false;
-        self.ident_top = false;
-        self.ident_unary = 0;
-        self.had_comma = true;
-        v
-    }
-
-    /// Close the level: the call/group level itself adds exactly ONE level
-    /// over the deepest sibling path — a named single-argument call is not
-    /// a list level PLUS an expression level (F798-R12-01: each call layer
-    /// counts once).
-    fn close(&mut self) -> u32 {
-        let v = self.reduce_all();
-        1 + self.sib_done.max(v)
-    }
-
-    /// Statement/clause boundary (keywords, `;`, `=`, `{`, `}`): the
-    /// current chain folds into the global peak (a MAX, never a sum across
-    /// statements — F798-R9-01) and the level resets.
-    fn clause_boundary(&mut self, peak: &mut u32) {
-        let v = self.reduce_all();
-        *peak = (*peak).max(v);
-        self.vals.clear();
-        self.ops.clear();
-        self.unary = 0;
-        self.after_operand = false;
-        self.ident_top = false;
-        self.ident_unary = 0;
-        self.sib_done = 0;
-        self.had_comma = false;
-    }
-}
-
-/// PLAN-929（T-03）：准入 token 分类（共享扫描器产物的语法名+拼写分类——
-/// 拼写是语言面，不是第二套语法规则；类别面与旧手写 lexer 的 Tok 面一致）。
-enum FTok {
-    LParen,
-    LBracket,
-    RParen,
-    RBracket,
-    LBrace,
-    RBrace,
-    Semi,
-    Comma,
-    Colon,
-    Assign,
-    Bang,
-    Minus,
-    Bin(u8),
-    /// 其余关键字/保留字：子句边界（旧 Tok::Kw/Reserved 面）。
-    Word,
-    /// `true`/`false`：表达式操作数（F798-R7-02）。
-    TrueFalse,
-    Ident,
-    /// int/str/char 字面量与其余原始面：操作数。
-    Lit,
-}
-
+/// PLAN-999 (T-04): the Auto-source front door. The obsolete 128
+/// token/expression-construction proxy comparison is GONE for this lane — it
+/// existed to mask the expression lowering's recursion, which now carries its
+/// own REAL ceiling (`MAX_EXPR_DEPTH` = 512 in `ace-lowering`, reported as the
+/// `mir.lower.depth` resource verdict). Admission keeps:
+/// * the frozen input-size budget (`MAX_INPUT_BYTES`) — a resource rejection;
+/// * the cheap shared-scanner lex pass — early `source.lex` verdicts and the
+///   grammar admission shape are unchanged.
+/// Syntax depth itself is governed by the unified front door's explicit
+/// budget (64 MiB work / 1 Mi parse depth), and expression construction
+/// depth by the lowering's resource ceiling. The ATOM lane door
+/// (`front_door_admit_atom`) keeps its frozen 128 recursion guard.
 pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
     if src.len() > MAX_INPUT_BYTES {
         return Err(StageDiag {
@@ -1688,165 +1531,6 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
             stage: "admission".into(),
             code: "source.lex".into(),
             message: d.message.clone(),
-        });
-    }
-    let mut fts: Vec<FTok> = Vec::with_capacity(lex.tokens.len());
-    for t in &lex.tokens {
-        let name = grammar.token_name(t.token);
-        if matches!(name, "ws" | "line-comment" | "block-comment") {
-            continue;
-        }
-        let text = snap.read_str(t.start, t.end).unwrap_or_default();
-        let ft = if name == "ident" {
-            FTok::Ident
-        } else if name == "int-lit" {
-            FTok::Lit
-        } else if name == "true-kw" || name == "false-kw" {
-            FTok::TrueFalse
-        } else {
-            // Scalar binary-operator precedence (mirrors the real parser's
-            // `scalar_prec_of`: higher binds tighter; left-associative). This
-            // is what makes the depth evaluator follow the REAL association
-            // instead of summing branch-sibling depths (F798-R12-01).
-            match text.as_str() {
-                "(" => FTok::LParen,
-                "[" => FTok::LBracket,
-                ")" => FTok::RParen,
-                "]" => FTok::RBracket,
-                "{" => FTok::LBrace,
-                "}" => FTok::RBrace,
-                ";" => FTok::Semi,
-                "," => FTok::Comma,
-                ":" => FTok::Colon,
-                "=" => FTok::Assign,
-                "!" => FTok::Bang,
-                "-" => FTok::Minus,
-                "||" => FTok::Bin(1),
-                "&&" => FTok::Bin(2),
-                "==" | "!=" => FTok::Bin(3),
-                "<" | ">" | "<=" | ">=" => FTok::Bin(4),
-                "+" => FTok::Bin(5),
-                "*" | "/" | "%" => FTok::Bin(6),
-                _ => {
-                    if text.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') {
-                        FTok::Word
-                    } else {
-                        FTok::Lit
-                    }
-                }
-            }
-        };
-        fts.push(ft);
-    }
-    let (mut depth, mut max_depth) = (0u32, 0u32);
-    // The CURRENT bracket level's chain; `[`/`(` push a fresh one.
-    let mut cur = LevelChain::default();
-    let mut level_stack: Vec<LevelChain> = Vec::new();
-    let mut peak = 0u32;
-    for ft in &fts {
-        match ft {
-            FTok::LParen | FTok::LBracket => {
-                depth += 1;
-                max_depth = max_depth.max(depth);
-                // A callee identifier directly before `(` is a NAME, not
-                // an operand of the enclosing chain. The prefix unary
-                // levels folded into it are RESTORED here — they bind to
-                // the full CALL expression (`-f(..)`/`!f(..)` are
-                // `Unary(Call(..))`), never vanish with the name
-                // (F798-R13-01).
-                if cur.ident_top {
-                    cur.vals.pop();
-                    cur.unary += cur.ident_unary;
-                    cur.ident_unary = 0;
-                    cur.after_operand = false;
-                    cur.ident_top = false;
-                }
-                level_stack.push(std::mem::take(&mut cur));
-            }
-            FTok::RParen | FTok::RBracket => {
-                depth = depth.saturating_sub(1);
-                // F798-R12-01: closing a level yields ITS OWN longest path
-                // (call level counted once); the closed group then joins
-                // the enclosing chain as ONE operand — composing on the
-                // real association path, never a sibling-sum.
-                let path = cur.close();
-                peak = peak.max(path);
-                match level_stack.pop() {
-                    Some(mut outer) => {
-                        std::mem::swap(&mut cur, &mut outer);
-                        cur.operand(path);
-                    }
-                    None => cur = LevelChain::default(),
-                }
-            }
-            FTok::LBrace => {
-                depth += 1;
-                max_depth = max_depth.max(depth);
-                // Block structure is a statement boundary, not an
-                // expression level (bracket depth covers it).
-                cur.clause_boundary(&mut peak);
-            }
-            FTok::RBrace => {
-                depth = depth.saturating_sub(1);
-                cur.clause_boundary(&mut peak);
-            }
-            // Clause boundaries end the current statement's expression.
-            FTok::Semi | FTok::Assign => {
-                cur.clause_boundary(&mut peak);
-            }
-            FTok::Comma => {
-                // An argument comma ends the current sibling; its composed
-                // path folds by MAX into the siblings pool.
-                let v = cur.end_sibling();
-                peak = peak.max(v);
-            }
-            FTok::Colon => {
-                // Named-argument `name:` — the parameter NAME is not a
-                // construction level (retract it); the VALUE expression is
-                // this level's sibling. The value's own internal
-                // composition stays intact (F798-R11-01).
-                if cur.ident_top {
-                    cur.vals.pop();
-                }
-                let v = cur.end_sibling();
-                peak = peak.max(v);
-            }
-            // Prefix unary always nests one level; `-` after an operand is
-            // the left-associative binary subtraction instead.
-            FTok::Bang => cur.prefix_unary(),
-            FTok::Minus => {
-                if cur.after_operand {
-                    cur.binary(5);
-                } else {
-                    cur.prefix_unary();
-                }
-            }
-            FTok::Bin(prec) => {
-                cur.binary(*prec);
-            }
-            // `true`/`false` are expression OPERANDS, not clause
-            // boundaries (F798-R7-02); every other keyword starts a fresh
-            // clause in this newline-terminated grammar.
-            FTok::TrueFalse => cur.operand(1),
-            FTok::Word => cur.clause_boundary(&mut peak),
-            FTok::Ident => cur.ident_operand(),
-            FTok::Lit => cur.operand(1),
-        }
-    }
-    // The final statement's path closes the metric.
-    cur.clause_boundary(&mut peak);
-    // The accumulated per-level max construction PATH is the expression
-    // construction depth.
-    let expr_depth = peak;
-    let over = max_depth > MAX_FRONTEND_NESTING || expr_depth > MAX_FRONTEND_NESTING;
-    if over {
-        return Err(StageDiag {
-            stage: "admission".into(),
-            code: "av.resource.frontend-nesting".into(),
-            message: format!(
-                "token nesting {} / expression construction path {} exceeds the frozen front-door budget {}",
-                max_depth, expr_depth, MAX_FRONTEND_NESTING
-            ),
         });
     }
     Ok(())

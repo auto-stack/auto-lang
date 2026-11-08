@@ -14,10 +14,12 @@
 //! can seed it from the same facts instead of re-deriving types with the
 //! legacy rules.
 
-use ace_core::atom_text::Diagnostic;
+use ace_core::atom_text::{Diagnostic, Stage};
 use ace_core::source::CompiledSource;
 use ace_core::verify::CheckedModule;
-use ace_source_query::{compile_scalar_product, CompileLane, ProductCompile, SourceQuerySession};
+use ace_source_query::{
+    compile_core_product, compile_scalar_product, CompileLane, ProductCompile, SourceQuerySession,
+};
 
 /// Compile one ordinary scalar source for a product consumer.
 ///
@@ -61,6 +63,81 @@ pub fn compile_scalar_source_via_facts(
     capabilities: &[String],
 ) -> Result<CompiledSource, Vec<Diagnostic>> {
     compile_scalar_source_product(src, module_path, capabilities, "ace-av").map(|p| p.compiled)
+}
+
+/// PLAN-999 (T-03): the Core-compatible shared selection gate for the
+/// ordinary Auto source lane. The explicit scalar entry above keeps its
+/// frozen old meaning (it refuses `while`); this gate first runs that exact
+/// scalar product, and ONLY when the scalar face reports a profile-SURFACE
+/// rejection (`source.unsupported` at the Text stage — the projector's
+/// "not part of this source profile" class) does it re-attempt the same
+/// source through the CORE fact entry (same producer, Core verifier). A
+/// scalar success keeps its original identity and bytes untouched; real
+/// syntax/type/resource/cancel/infra verdicts pass through unchanged (no
+/// retry); if the Core face also fails, ITS diagnostics are the answer —
+/// the face that owns the rejected construct reports the next real problem.
+pub fn compile_scalar_or_core_source_product(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    package: &str,
+) -> Result<ProductCompile, Vec<Diagnostic>> {
+    // The CT lane keeps its single-door contract (unchanged by this gate).
+    if capabilities
+        .iter()
+        .any(|c| c == ace_core::source::cst::CT_CAPABILITY)
+    {
+        return compile_scalar_source_product(src, module_path, capabilities, package);
+    }
+    match compile_scalar_source_product(src, module_path, capabilities, package) {
+        Ok(p) => Ok(p),
+        Err(ds) if is_profile_surface_rejection(&ds) => {
+            let mut session = SourceQuerySession::new(package, module_path)
+                .with_capabilities(capabilities.iter().cloned());
+            compile_core_product(
+                src,
+                module_path,
+                capabilities,
+                package,
+                module_path,
+                &mut session,
+            )
+        }
+        Err(ds) => Err(ds),
+    }
+}
+
+/// A profile-surface rejection: every diagnostic is the projector's
+/// `source.unsupported` at the Text stage. Mirrors the native driver's
+/// escalation rule — anything else (parse, bind, verify, resource, cancel)
+/// is terminal and never re-routed.
+fn is_profile_surface_rejection(ds: &[Diagnostic]) -> bool {
+    ds.iter().all(|d| {
+        d.code == "source.unsupported" && d.stage == Stage::Text
+    })
+}
+
+/// Convenience form of the shared selection gate (compiled artifact only).
+pub fn compile_scalar_or_core_source_via_facts(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<CompiledSource, Vec<Diagnostic>> {
+    compile_scalar_or_core_source_product(src, module_path, capabilities, "ace-av")
+        .map(|p| p.compiled)
+}
+
+/// PLAN-999 (T-03): the CORE fact entry as a compiled-artifact convenience —
+/// the native driver's escalation ladder calls this for its Core step.
+pub fn compile_core_source_via_facts(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<CompiledSource, Vec<Diagnostic>> {
+    let mut session = SourceQuerySession::new("ace-av", module_path)
+        .with_capabilities(capabilities.iter().cloned());
+    compile_core_product(src, module_path, capabilities, "ace-av", module_path, &mut session)
+        .map(|p| p.compiled)
 }
 
 /// The fact-driven entry plus its provenance (used by tests and by hosts

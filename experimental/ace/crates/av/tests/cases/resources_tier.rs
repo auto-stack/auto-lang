@@ -4,6 +4,22 @@
 
 use ace_av::driver::{front_door_admit, front_door_admit_atom, Driver};
 use ace_av_core::contract::{ResourceKind, MAX_FRONTEND_NESTING, MAX_TABLE_ENTRIES};
+
+/// PLAN-999 (T-04): deep-expression tests run on an explicitly sized stack.
+/// The lowering's declared construction ceiling (512) is a REAL budget the
+/// production (release) workers honor on their own threads; debug test
+/// threads (2 MiB) cannot hold ~500 recursive evaluation frames, so the
+/// regressions that execute or reject near/over the ceiling allocate the
+/// stack their inputs require instead of depending on runner defaults.
+fn with_deep_stack<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(f)
+        .expect("deep-stack thread")
+        .join()
+        .expect("deep-stack test panicked")
+}
+
 use ace_av_core::mir::*;
 use ace_av_core::verify_mir_with_deadline;
 use std::time::{Duration, Instant};
@@ -155,9 +171,16 @@ fn av_resources_over_table_budget_is_resource() {
 /// V-09: source front door — 128 nesting boundary BOTH sides; rejection is
 /// a RESOURCE classification that fires BEFORE the (iterative) parser, and
 /// the input is never handed to the frontend afterwards.
+/// V-09 (PLAN-999 T-04 re-pointed): the source front door no longer
+/// applies the obsolete 128 nesting proxy — deep-but-legal shapes are the
+/// REAL budgets' to judge. The unified front door's explicit parse budget
+/// admits 4096 transparent parens (expression depth 1) and the chain
+/// EXECUTES; a construction path past the lowering's real 512 ceiling is a
+/// `mir.lower.depth` RESOURCE rejection at the mir-lower stage (never a
+/// syntax error, never a door proxy).
 #[test]
 fn av_resources_front_door_nesting_boundary() {
-    // Just under: 120 nested parens around an expression.
+    // Just under the old proxy: 120 nested parens around an expression.
     let ok_src = format!(
         "fn main() int {{\n    var x = {}1{}\n    return x\n}}\n",
         "(".repeat(120),
@@ -168,26 +191,40 @@ fn av_resources_front_door_nesting_boundary() {
     let r = d.request(&ok_src, "d_main", &[]);
     assert!(r.ok(), "under-budget deep parens execute: {:?}", r.diag);
 
-    // Over: 4096 nested parens — resource rejection at the door.
+    // 4096 transparent parens: expression depth 1, parse depth 4096 is
+    // inside the unified front door's explicit budget — the door admits and
+    // the chain EXECUTES (PLAN-999: the proxy no longer masks this).
     let deep_src = format!(
         "fn main() int {{\n    var x = {}1{}\n    return x\n}}\n",
         "(".repeat(4096),
         ")".repeat(4096)
     );
     let started = Instant::now();
-    let err = front_door_admit(&deep_src).unwrap_err();
-    assert_eq!(err.code, "av.resource.frontend-nesting");
+    assert!(front_door_admit(&deep_src).is_ok(), "4096 parens admit");
     assert!(
         started.elapsed() < Duration::from_millis(500),
         "door is cheap"
     );
-    // And through the driver: the SAME resource classification, before the
-    // frontend (frontend_reject counter absent, admission_reject present).
-    let r = d.request(&deep_src, "d_main", &[]);
-    let diag = r.diag.expect("rejected");
-    assert_eq!(diag.stage, "admission");
-    assert_eq!(diag.code, "av.resource.frontend-nesting");
-    assert_eq!(*r.counters.get("admission_reject").unwrap_or(&0), 1);
+    let value = with_deep_stack(move || {
+        let mut d = Driver::ephemeral();
+        d.request(&deep_src, "d_main", &[]).value_i32()
+    });
+    assert_eq!(value, Some(1), "deep transparent parens evaluate to 1");
+
+    // A construction path PAST the real ceiling (600-term add chain = 599
+    // construction levels) — resource rejection at the lowering's own
+    // ceiling, classified as a resource verdict.
+    let over = format!(
+        "fn main() int {{\n    var x = 1{}\n    return x\n}}\n",
+        " + 1".repeat(599)
+    );
+    let verdict = with_deep_stack(move || {
+        let mut d = Driver::ephemeral();
+        let r = d.request(&over, "d_main", &[]);
+        let diag = r.diag.expect("over-ceiling chain rejected");
+        (diag.stage, diag.code)
+    });
+    assert_eq!(verdict, ("mir-lower".to_string(), "mir.lower.depth".to_string()));
 }
 
 /// F798-R11-01: the CURRENT sibling COMPOSES internally — a deep call as
@@ -242,17 +279,17 @@ fn main() int {{
         assert!(r.ok(), "{tag} control executes: {:?}", r.diag);
         assert_eq!(r.value_i32(), Some(want));
     }
-    // The R11 shape: 60-nest + 70-chain INSIDE ONE named argument — true
-    // path 131 — must be rejected AT THE DOOR (was bypassed, Driver
-    // returned 70).
+    // PLAN-999 (T-04): the R11 shape — 60-nest + 70-chain INSIDE ONE named
+    // argument, true path 131 — is INSIDE the lowering's real 512 ceiling:
+    // the obsolete 128 proxy no longer rejects it; it executes (value 70).
     let over = with_chain(60);
-    let err = front_door_admit(&over).unwrap_err();
-    assert_eq!(err.code, "av.resource.frontend-nesting");
-    let r = d.request(&over, "d_main", &[]);
-    let diag = r.diag.clone().expect("rejected");
-    assert_eq!(diag.stage, "admission");
-    assert_eq!(diag.code, "av.resource.frontend-nesting");
-    // The positional-argument equivalent was already rejected and stays.
+    assert!(front_door_admit(&over).is_ok(), "131-path admits under the real ceiling");
+    let r = with_deep_stack(move || {
+        let mut d = Driver::ephemeral();
+        d.request(&over, "d_main", &[]).value_i32()
+    });
+    assert_eq!(r, Some(70), "composed path evaluates");
+    // The positional-argument equivalent (same true path) likewise.
     let positional = format!(
         "fn idfn(x int) int {{
     return x
@@ -264,7 +301,11 @@ fn main() int {{
 ",
         format!("{} + {}", nested(60, "1"), vec!["1"; 69].join(" + "))
     );
-    assert!(front_door_admit(&positional).is_err());
+    let value = with_deep_stack(move || {
+        let mut d = Driver::ephemeral();
+        d.request(&positional, "d_main", &[]).value_i32()
+    });
+    assert_eq!(value, Some(70));
 }
 
 /// F798-R10-01: two SIBLING ARGUMENTS' maximal paths never concatenate —
@@ -314,8 +355,10 @@ fn main() int {{
             assert_eq!(r.value_i32(), Some(want));
         }
     }
-    // The TRUE composition control stays rejected: the chain INSIDE the
-    // nesting is one path of ~pa+ch levels.
+    // PLAN-999 (T-04): the TRUE composition control — the chain INSIDE the
+    // nesting, one path of ~130 levels — is inside the real 512 ceiling and
+    // now EXECUTES (the sibling-max rule itself is unchanged: still no
+    // concatenation).
     let composed = format!(
         "fn main() int {{
     return {}
@@ -323,10 +366,11 @@ fn main() int {{
 ",
         format!("{}{}{}", "(".repeat(60), chain(70), ")".repeat(60))
     );
-    assert!(
-        front_door_admit(&composed).is_err(),
-        "60 nesting around a 70-chain (~130 path) is still rejected"
-    );
+    let value = with_deep_stack(move || {
+        let mut d = Driver::ephemeral();
+        d.request(&composed, "d_main", &[]).value_i32()
+    });
+    assert_eq!(value, Some(70), "~130-path composed chain executes");
 }
 
 /// F798-R9-01: sequential STATEMENTS are independent expressions — 64
@@ -355,15 +399,17 @@ fn av_resources_sequential_shallow_statements_not_depth_summed() {
         assert!(r.ok(), "{n} shallow statements execute: {:?}", r.diag);
         assert_eq!(r.value_i32(), Some(2), "{n} statements value");
     }
-    // The deep rejections stay: serial chain and mixed nesting+chain.
+    // PLAN-999 (T-04): a 129-term serial chain is inside the real 512
+    // ceiling — it now admits and executes (129).
     let serial = format!(
         "fn main() int {{\n    return {}\n}}\n",
         vec!["(1)"; 129].join(" + ")
     );
-    assert!(
-        front_door_admit(&serial).is_err(),
-        "serial 129 still rejected"
-    );
+    let value = with_deep_stack(move || {
+        let mut d = Driver::ephemeral();
+        d.request(&serial, "d_main", &[]).value_i32()
+    });
+    assert_eq!(value, Some(129));
     // Mixed: a 70-deep nesting of calls each containing a 70-op chain —
     // the true max path (~140) must be rejected, not just one axis.
     let mut mixed = String::from("fn main() int {\n    return ");
@@ -383,10 +429,11 @@ fn av_resources_sequential_shallow_statements_not_depth_summed() {
             format!("{}{}", chain, ")".repeat(60))
         )
     );
-    assert!(
-        front_door_admit(&deep_nested).is_err(),
-        "60-deep nesting of a 70-op chain (path ~130) is rejected"
-    );
+    let value = with_deep_stack(move || {
+        let mut d = Driver::ephemeral();
+        d.request(&deep_nested, "d_main", &[]).value_i32()
+    });
+    assert_eq!(value, Some(70), "~130-path mixed nesting+chain executes");
 }
 
 /// F798-R8-01: sibling arguments of ONE call are separate expressions —
@@ -420,15 +467,17 @@ fn av_resources_wide_shallow_call_not_depth_rejected() {
         assert!(r.ok(), "{n} shallow args execute: {:?}", r.diag);
         assert_eq!(r.value_i32(), Some(1), "{n} args value");
     }
-    // The serial-chain rejections from R7 stay.
+    // PLAN-999 (T-04): the 129-term serial chain is inside the real 512
+    // ceiling — it admits and executes.
     let deep = format!(
         "fn main() int {{\n    return {}\n}}\n",
         vec!["(1)"; 129].join(" + ")
     );
-    assert!(
-        front_door_admit(&deep).is_err(),
-        "serial 129 still rejected"
-    );
+    let value = with_deep_stack(move || {
+        let mut d = Driver::ephemeral();
+        d.request(&deep, "d_main", &[]).value_i32()
+    });
+    assert_eq!(value, Some(129));
 }
 
 /// F798-R7-02: bool-literal operands and named-argument separators are
@@ -461,15 +510,32 @@ fn av_resources_bool_and_named_arg_chains_front_door() {
         assert!(r.ok(), "named chain {n} executes: {:?}", r.diag);
         assert_eq!(r.value_i32(), Some(n as i32), "value proves evaluation");
     }
-    for n in [129usize, 400, 600] {
-        for (tag, src) in [("bool", bool_chain(n)), ("named", named_chain(n))] {
-            let err = front_door_admit(&src).unwrap_err();
-            assert_eq!(err.code, "av.resource.frontend-nesting", "{tag} n={n}");
-            let r = d.request(&src, "d_main", &[]);
-            let diag = r.diag.clone().expect("rejected");
-            assert_eq!(diag.stage, "admission", "{tag} n={n}: at the door");
-            assert_eq!(diag.code, "av.resource.frontend-nesting", "{tag} n={n}");
+    // PLAN-999 (T-04): chains inside the real 512 ceiling now EXECUTE
+    // (129/400); past it (600) the verdict is the lowering's own resource
+    // rejection — never the old 128 door proxy.
+    for n in [129usize, 400] {
+        let wants = [("bool", bool_chain(n.clone()), 0i32), ("named", named_chain(n.clone()), n as i32)];
+        for (tag, src, want) in wants {
+            assert!(front_door_admit(&src).is_ok(), "{tag} {n} admits");
+            let value = with_deep_stack(move || {
+                let mut d = Driver::ephemeral();
+                d.request(&src, "d_main", &[]).value_i32()
+            });
+            assert_eq!(value, Some(want), "{tag} {n} executes");
         }
+    }
+    for (tag, src) in [("bool", bool_chain(600)), ("named", named_chain(600))] {
+        let verdict = with_deep_stack(move || {
+            let mut d = Driver::ephemeral();
+            let r = d.request(&src, "d_main", &[]);
+            let diag = r.diag.expect("600-chain rejected");
+            (diag.stage, diag.code)
+        });
+        assert_eq!(
+            verdict,
+            ("mir-lower".to_string(), "mir.lower.depth".to_string()),
+            "{tag} 600 hits the real ceiling"
+        );
     }
 }
 
@@ -477,6 +543,11 @@ fn av_resources_bool_and_named_arg_chains_front_door() {
 /// `(1) + (1) + …` nests exactly like the unbracketed chain and must hit
 /// the same 128 front door, at the DOOR (never `mir.lower.depth` from
 /// inside the recursive parser).
+/// F798-R6-04 (PLAN-999 T-04 re-pointed): BRACKETED operands do not reset
+/// the construction run — `(1) + (1) + …` nests exactly like the unbracketed
+/// chain. Chains inside the lowering's real 512 ceiling (100/200/400 terms)
+/// now EXECUTE with their true values; past it (600) the verdict is the
+/// adapter's own `mir.lower.depth` resource rejection.
 #[test]
 fn av_resources_parenthesized_flat_chain_front_door_boundary() {
     let chain = |n: usize| {
@@ -489,39 +560,35 @@ fn av_resources_parenthesized_flat_chain_front_door_boundary() {
             vec!["(1)"; n].join(" + ")
         )
     };
-    // Under budget: 100 bracketed terms execute.
-    let ok_src = chain(100);
-    assert!(
-        front_door_admit(&ok_src).is_ok(),
-        "100-term bracketed chain admits"
-    );
-    let mut d = Driver::ephemeral();
-    let r = d.request(&ok_src, "d_main", &[]);
-    assert!(
-        r.ok(),
-        "under-budget bracketed chain executes: {:?}",
-        r.diag
-    );
-    assert_eq!(r.value_i32(), Some(100), "value proves full evaluation");
-
-    // Over budget: the R6 replay numbers — 129/400/600 all rejected AT THE
-    // DOOR as resource (600 previously slipped through to mir.lower.depth).
-    for n in [129usize, 400, 600] {
-        let over = chain(n);
-        let err = front_door_admit(&over).unwrap_err();
-        assert_eq!(err.code, "av.resource.frontend-nesting", "n={n}");
-        assert_eq!(err.stage, "admission");
-        let r = d.request(&over, "d_main", &[]);
-        let diag = r.diag.clone().expect("rejected");
-        assert_eq!(diag.stage, "admission", "n={n}");
-        assert_eq!(diag.code, "av.resource.frontend-nesting", "n={n}");
+    // Inside the real ceiling: bracketed chains execute with true values.
+    for n in [100usize, 200, 400] {
+        let src = chain(n);
+        assert!(front_door_admit(&src).is_ok(), "{n}-term bracketed chain admits");
+        let value = with_deep_stack(move || {
+            let mut d = Driver::ephemeral();
+            d.request(&src, "d_main", &[]).value_i32()
+        });
+        assert_eq!(value, Some(n as i32), "{n}-term bracketed chain executes");
     }
+    // Past the real ceiling: the adapter's resource rejection.
+    let over = chain(600);
+    let verdict = with_deep_stack(move || {
+        let mut d = Driver::ephemeral();
+        let r = d.request(&over, "d_main", &[]);
+        let diag = r.diag.expect("rejected");
+        (diag.stage, diag.code)
+    });
+    assert_eq!(verdict, ("mir-lower".to_string(), "mir.lower.depth".to_string()));
 }
 
 /// F798-R3-04: flat operator CHAINS are expression-construction depth —
 /// a `1+1+…` run past the frozen budget is a front-door RESOURCE
 /// rejection, not a `mir.lower.depth` unsupported raised from inside the
 /// recursive parser at its own 512 limit.
+/// F798-R3-04 (PLAN-999 T-04 re-pointed): flat operator CHAINS are
+/// expression-construction depth — a `1+1+…` run past the adapter's real
+/// 512 ceiling is a `mir.lower.depth` RESOURCE rejection from the lowering
+/// itself; inside the ceiling the chain executes with its true value.
 #[test]
 fn av_resources_flat_chain_front_door_boundary() {
     let chain = |n: usize| {
@@ -534,35 +601,31 @@ fn av_resources_flat_chain_front_door_boundary() {
             " + 1".repeat(n - 1)
         )
     };
-    // Under budget: 100 terms execute.
-    let ok_src = chain(100);
-    assert!(front_door_admit(&ok_src).is_ok(), "100-term chain admits");
-    let mut d = Driver::ephemeral();
-    let r = d.request(&ok_src, "d_main", &[]);
-    assert!(r.ok(), "under-budget chain executes: {:?}", r.diag);
-
-    // Over budget: 200 terms — resource rejection at the door, before the
-    // frontend (and never the parser's own depth error).
-    let over_src = chain(200);
-    let started = Instant::now();
-    let err = front_door_admit(&over_src).unwrap_err();
-    assert_eq!(err.code, "av.resource.frontend-nesting");
-    assert_eq!(err.stage, "admission");
-    assert!(
-        started.elapsed() < Duration::from_millis(500),
-        "door is cheap"
-    );
-    let r = d.request(&over_src, "d_main", &[]);
-    let diag = r.diag.expect("rejected");
-    assert_eq!(diag.stage, "admission");
-    assert_eq!(diag.code, "av.resource.frontend-nesting");
-    // A chain that would have sailed through the parser's 512 limit must
-    // STILL be rejected at the 128 door (the R3 replay shape: 400 terms
-    // used to succeed, 600 hit mir.lower.depth).
-    let r400 = d.request(&chain(400), "d_main", &[]);
-    let diag = r400.diag.expect("400-term chain rejected at the door");
-    assert_eq!(diag.stage, "admission");
-    assert_eq!(diag.code, "av.resource.frontend-nesting");
+    // Inside the real ceiling: 100/200/400 terms execute with true values.
+    for n in [100usize, 200, 400] {
+        let src = chain(n);
+        let started = Instant::now();
+        assert!(front_door_admit(&src).is_ok(), "{n}-term chain admits");
+        assert!(
+            started.elapsed() < Duration::from_millis(500),
+            "door is cheap"
+        );
+        let value = with_deep_stack(move || {
+            let mut d = Driver::ephemeral();
+            d.request(&src, "d_main", &[]).value_i32()
+        });
+        assert_eq!(value, Some(n as i32), "{n}-term chain executes");
+    }
+    // Past the real ceiling (600 terms = 599 construction levels): the
+    // adapter's own resource rejection, not a door proxy.
+    let over_src = chain(600);
+    let verdict = with_deep_stack(move || {
+        let mut d = Driver::ephemeral();
+        let r = d.request(&over_src, "d_main", &[]);
+        let diag = r.diag.expect("rejected");
+        (diag.stage, diag.code)
+    });
+    assert_eq!(verdict, ("mir-lower".to_string(), "mir.lower.depth".to_string()));
 }
 
 /// F798-R12-01: the construction path follows the REAL association — a
@@ -571,6 +634,12 @@ fn av_resources_flat_chain_front_door_boundary() {
 /// returns 70), while the same call as the FIRST operand sits ON the left
 /// spine (true path 131, still a resource rejection). The pre-R12 door
 /// summed the two branches into 192 and rejected both.
+/// F798-R12-01 (PLAN-999 T-04 re-pointed): the construction path follows
+/// the REAL association — a deep call as the LAST operand of a
+/// left-associative chain is a sibling BRANCH (deepest left spine 70 + the
+/// call = true path 71), while the same call as the FIRST operand sits ON
+/// the left spine (true path 131). Both are inside the real 512 ceiling and
+/// now EXECUTE (value 70) — the association itself is unchanged.
 #[test]
 fn av_resources_tail_operand_deep_call_not_concatenated() {
     let nested = |n: usize| format!("{}1{}", "idfn(x: ".repeat(n), ")".repeat(n));
@@ -582,7 +651,6 @@ fn av_resources_tail_operand_deep_call_not_concatenated() {
             operands.join(" + ")
         )
     };
-    let mut d = Driver::ephemeral();
     // Tail operand: the deep call and the arithmetic chain are branches of
     // one tree — true path 71, admits and executes.
     let tail = src(false);
@@ -590,15 +658,20 @@ fn av_resources_tail_operand_deep_call_not_concatenated() {
         front_door_admit(&tail).is_ok(),
         "tail deep call is a sibling branch, not a concatenated path"
     );
-    let r = d.request(&tail, "d_main", &[]);
-    assert!(r.ok(), "tail deep call executes: {:?}", r.diag);
-    assert_eq!(r.value_i32(), Some(70));
-    // Head operand: the deep call is on the left spine — true path 131.
+    let value = with_deep_stack(move || {
+        let mut d = Driver::ephemeral();
+        d.request(&tail, "d_main", &[]).value_i32()
+    });
+    assert_eq!(value, Some(70));
+    // Head operand (PLAN-999): the deep call on the left spine — true path
+    // 131 — is inside the real ceiling and now executes too.
     let head = src(true);
-    let err = front_door_admit(&head).unwrap_err();
-    assert_eq!(err.code, "av.resource.frontend-nesting");
-    let r = d.request(&head, "d_main", &[]);
-    assert_eq!(r.diag.expect("rejected").stage, "admission");
+    assert!(front_door_admit(&head).is_ok());
+    let value = with_deep_stack(move || {
+        let mut d = Driver::ephemeral();
+        d.request(&head, "d_main", &[]).value_i32()
+    });
+    assert_eq!(value, Some(70));
     // Low-depth controls in both positions stay legal.
     let mut shallow_tail = vec!["1".to_string(); 70];
     shallow_tail[69] = nested(3);
@@ -616,6 +689,13 @@ fn av_resources_tail_operand_deep_call_not_concatenated() {
 /// evaluation); the 20-prefix + 110-call shape (true path 131) rejects
 /// with AND without an extra grouping pair (132); prefixes on a plain
 /// literal operand count as before; the bool `!` family behaves the same.
+/// F798-R13-01 (PLAN-999 T-04 re-pointed): prefix unary binds to the FULL
+/// CALL expression (`-f(..)`/`!f(..)` are `Unary(Call(..))`, one path level
+/// per prefix). The old discriminators around the obsolete 128 door are now
+/// inside the real 512 ceiling: the 20-prefix + 110-call shape (true path
+/// 131) — with and without an extra grouping pair — EXECUTES with the even
+/// negation value; low-depth controls and the plain-literal family keep
+/// their values.
 #[test]
 fn av_resources_prefix_unary_binds_to_full_call() {
     let calls = |n: usize| format!("{}1{}", "idfn(x: ".repeat(n), ")".repeat(n));
@@ -626,7 +706,6 @@ fn av_resources_prefix_unary_binds_to_full_call() {
             calls(depth)
         )
     };
-    let mut d = Driver::ephemeral();
     // Low-depth controls (true paths 116 / 24): legal and execute.
     for (p, n, want) in [(5usize, 110usize, -1i32), (20, 3, 1)] {
         let s = src(p, n);
@@ -635,37 +714,43 @@ fn av_resources_prefix_unary_binds_to_full_call() {
             "{p} prefixes + {n}-call admits: {:?}",
             front_door_admit(&s).err()
         );
-        let r = d.request(&s, "d_main", &[]);
-        assert!(r.ok(), "{p}+{n} executes: {:?}", r.diag);
-        assert_eq!(r.value_i32(), Some(want), "{p} prefixes value");
+        let value = with_deep_stack(move || {
+            let mut d = Driver::ephemeral();
+            d.request(&s, "d_main", &[]).value_i32()
+        });
+        assert_eq!(value, Some(want), "{p} prefixes value");
     }
-    // The R13 shape: 20 prefixes + 110-call — true path 131 — rejects at
-    // the door (was admitted before the retract restored the prefixes).
+    // The R13 shape: 20 prefixes + 110-call — true path 131 — is inside the
+    // real ceiling and executes (even negation count ⇒ 1).
     let over = src(20, 110);
-    let err = front_door_admit(&over).unwrap_err();
-    assert_eq!(err.code, "av.resource.frontend-nesting");
-    let r = d.request(&over, "d_main", &[]);
-    assert_eq!(r.diag.expect("rejected").stage, "admission");
-    // The SAME shape with one extra grouping pair (path 132) stays
-    // rejected — grouping never lowers the path.
+    assert!(front_door_admit(&over).is_ok());
+    let value = with_deep_stack(move || {
+        let mut d = Driver::ephemeral();
+        d.request(&over, "d_main", &[]).value_i32()
+    });
+    assert_eq!(value, Some(1));
+    // The SAME shape with one extra grouping pair (path 132) executes too —
+    // grouping never lowers the path.
     let grouped = format!(
         "fn idfn(x int) int {{\n    return x\n}}\n\nfn main() int {{\n    return ({}{})\n}}\n",
         "-".repeat(20),
         calls(110)
     );
-    assert!(
-        front_door_admit(&grouped).is_err(),
-        "grouped 132-path still rejects"
-    );
+    let value = with_deep_stack(move || {
+        let mut d = Driver::ephemeral();
+        d.request(&grouped, "d_main", &[]).value_i32()
+    });
+    assert_eq!(value, Some(1), "grouped 132-path executes");
     // Prefixes on a PLAIN literal operand (no callee retract involved):
     // 20 negations of 1 = path 21, legal, value 1.
     let plain = format!("fn main() int {{\n    return {}1\n}}\n", "-".repeat(20));
     assert!(front_door_admit(&plain).is_ok(), "plain prefixes admit");
+    let mut d = Driver::ephemeral();
     let r = d.request(&plain, "d_main", &[]);
     assert!(r.ok(), "{:?}", r.diag);
     assert_eq!(r.value_i32(), Some(1), "even negation count");
-    // Bool family: 20 `!` + 110-call chain (true path ≥131) rejects; the
-    // low-depth bool control stays legal and evaluates.
+    // Bool family: 20 `!` + 110-call chain (true path ≥131) now executes
+    // (even `!` count ⇒ true ⇒ the 1 branch); the low-depth control stays.
     let bsrc = |n: usize| {
         format!(
             "fn bfn(b bool) bool {{\n    return b\n}}\n\nfn main() int {{\n    if {}{} {{\n        return 1\n    }}\n    return 0\n}}\n",
@@ -673,11 +758,11 @@ fn av_resources_prefix_unary_binds_to_full_call() {
             format!("{}true{}", "bfn(b: ".repeat(n), ")".repeat(n))
         )
     };
-    let err = front_door_admit(&bsrc(110)).unwrap_err();
-    assert_eq!(
-        err.code, "av.resource.frontend-nesting",
-        "bool 20!+110-call"
-    );
+    let value = with_deep_stack(move || {
+        let mut d = Driver::ephemeral();
+        d.request(&bsrc(110), "d_main", &[]).value_i32()
+    });
+    assert_eq!(value, Some(1), "bool 20!+110-call executes");
     assert!(front_door_admit(&bsrc(3)).is_ok(), "bool low-depth control");
     let r = d.request(&bsrc(3), "d_main", &[]);
     assert!(r.ok(), "{:?}", r.diag);

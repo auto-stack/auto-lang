@@ -21,9 +21,11 @@
 //!   so HIR constants are i32-only here.
 //!
 //! Statement walking is iterative (explicit task stack — HIR block nesting
-//! is unbounded); expression evaluation recurses with a depth ceiling well
-//! above the 128-level source front door, rejecting deeper hand-made trees
-//! with a controlled `mir.lower.depth` error.
+//! is unbounded); expression evaluation recurses with a depth ceiling — the
+//! REAL expression-construction resource budget of this adapter (PLAN-999
+//! T-04: the source front door no longer pre-rejects deep chains with a
+//! 128 proxy), rejecting deeper trees with a controlled `mir.lower.depth`
+//! resource error.
 
 use ace_av_core::contract::SpanInfo;
 use ace_av_core::mir::*;
@@ -3424,13 +3426,17 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
     /// opens new blocks; the cursor lands on the join.
     fn eval_expr(&mut self, eid: hir::ExprId, depth: u32) -> Result<SlotId, AdapterError> {
         if depth > MAX_EXPR_DEPTH {
-            return Err(AdapterError::uns(
-                "mir.lower.depth",
-                format!(
+            // PLAN-999 (T-04): expression construction depth is a REAL
+            // resource budget of this adapter (the source front door's old
+            // 128 proxy no longer pre-rejects these) — report it as the
+            // resource verdict it is, not an unsupported.
+            return Err(AdapterError::Resource {
+                code: "mir.lower.depth".into(),
+                message: format!(
                     "expression nesting exceeds the lowering ceiling {}",
                     MAX_EXPR_DEPTH
                 ),
-            ));
+            });
         }
         // PLAN-864: unit-typed expressions (push/insert/set/clear) never
         // map their type — Unit is not a profile-4 table entry and the

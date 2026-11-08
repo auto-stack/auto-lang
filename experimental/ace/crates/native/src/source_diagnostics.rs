@@ -33,6 +33,10 @@ pub const SD_MAX_PAYLOAD_UTF8: usize = 64 * 1024;
 #[serde(rename_all = "kebab-case")]
 pub enum SourceProfile {
     Scalar,
+    /// PLAN-999 (T-03): the core-i32 surface — attempted after scalar
+    /// surface-rejects (it owns `while`/`loop`); Core-domain bundles lower
+    /// through the scalar arm.
+    Core,
     Record,
     TextRecord,
     /// PLAN-961: the numeric source surface (attempted last).
@@ -43,6 +47,7 @@ impl SourceProfile {
     pub fn as_str(&self) -> &'static str {
         match self {
             SourceProfile::Scalar => "scalar",
+            SourceProfile::Core => "core",
             SourceProfile::Record => "record",
             SourceProfile::TextRecord => "text-record",
             SourceProfile::Numeric => "numeric",

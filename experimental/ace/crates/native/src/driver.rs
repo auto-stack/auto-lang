@@ -29,6 +29,9 @@ pub(crate) mod collections;
 /// frontend stack AV uses (diagnostics included).
 enum Domain {
     Scalar(ace_core::source::CompiledSource),
+    /// PLAN-999 (T-03): the core-i32 fact-lane compile (`while`/`loop`
+    /// sources); its Core-domain bundle lowers through the scalar arm.
+    Core(ace_core::source::CompiledSource),
     Data(ace_core::source::CompiledSource),
     Owned(ace_core::source::CompiledSource),
     /// PLAN-961: the numeric source surface (closures-family lowering).
@@ -65,7 +68,7 @@ fn compile_escalating(
     src: &str,
     caps: &[String],
 ) -> std::result::Result<Domain, sd::CompileFailure> {
-    let mut attempted = Vec::with_capacity(3);
+    let mut attempted = Vec::with_capacity(4);
     let mut surface = Vec::new();
     attempted.push(sd::SourceProfile::Scalar);
     match ace_av::query_entry::compile_scalar_source_via_facts(src, "mn.at", caps) {
@@ -77,6 +80,26 @@ fn compile_escalating(
         Err(ds) => {
             return Err(sd::CompileFailure {
                 profile: sd::SourceProfile::Scalar,
+                attempted,
+                surface_rejections: surface,
+                diagnostics: ds,
+            })
+        }
+    }
+    // PLAN-999 (T-03): the CORE fact lane answers the constructs the scalar
+    // face surface-rejects (`while`/`loop`); the SAME shared fact producer
+    // and the Core-domain verifier. Its own surface rejections keep the
+    // ladder climbing (record/text-record precedence unchanged).
+    attempted.push(sd::SourceProfile::Core);
+    match ace_av::query_entry::compile_core_source_via_facts(src, "mn.at", caps) {
+        Ok(c) => return Ok(Domain::Core(c)),
+        Err(ds) if is_surface_rejection(&ds) => surface.push(sd::SurfaceRejection {
+            profile: sd::SourceProfile::Core,
+            codes: ds.iter().map(|d| d.code.clone()).collect(),
+        }),
+        Err(ds) => {
+            return Err(sd::CompileFailure {
+                profile: sd::SourceProfile::Core,
                 attempted,
                 surface_rejections: surface,
                 diagnostics: ds,
@@ -133,6 +156,9 @@ impl Domain {
     fn arm(&self) -> Arm {
         match self {
             Domain::Scalar(_) => Arm::Scalar,
+            // PLAN-999 (T-03): Core-domain bundles lower through the scalar
+            // arm (`arm_of_domain` already maps `HirDomain::Core` there).
+            Domain::Core(_) => Arm::Scalar,
             Domain::Data(_) => Arm::Data,
             Domain::Owned(_) => Arm::Owned,
             // PLAN-961: numeric compiles ride the closures-family arm
@@ -142,9 +168,8 @@ impl Domain {
     }
     fn checked(&self) -> &ace_core::verify::CheckedModule {
         match self {
-            Domain::Scalar(c) | Domain::Data(c) | Domain::Owned(c) | Domain::Numeric(c) => {
-                &c.checked
-            }
+            Domain::Scalar(c) | Domain::Core(c) | Domain::Data(c) | Domain::Owned(c)
+            | Domain::Numeric(c) => &c.checked,
         }
     }
 }

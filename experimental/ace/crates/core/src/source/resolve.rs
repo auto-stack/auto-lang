@@ -1353,12 +1353,17 @@ pub fn resolve_with_supply(
     surface: SourceProfile,
     supply: &dyn TypeSupply,
 ) -> Result<ResolvedProgram, Vec<Diagnostic>> {
-    if !surface.is_scalar() {
+    // PLAN-999 (T-03): the fact-supplied binding admits the CORE surface
+    // alongside the scalar family — the same fact producer/walk covers its
+    // statement set (`while`/`loop`), and the product entry verifies the
+    // emitted bundle through the Core-domain verifier. Every other
+    // surface (record/text domain binding) still rejects here.
+    if !(surface.is_scalar() || matches!(surface, SourceProfile::Core)) {
         return Err(vec![Diagnostic::new(
             Stage::Bind,
             "source.fact-profile",
             format!(
-                "fact-supplied binding supports the scalar surface only, not `{}`",
+                "fact-supplied binding supports the core and scalar surfaces only, not `{}`",
                 surface.as_str()
             ),
             Span { start: 0, end: 0 },

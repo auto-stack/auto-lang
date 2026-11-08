@@ -183,6 +183,30 @@ pub fn compile_scalar_product(
     )
 }
 
+/// PLAN-999 (T-03): the CORE product entry — the shared fact producer with
+/// the Core profile's own front face and the Core-domain verifier. Hosts
+/// reach this through the shared selection gate
+/// (`ace_av::query_entry::compile_scalar_or_core_source_via_facts`); the
+/// explicit scalar entry keeps refusing `while` (its old meaning is frozen).
+pub fn compile_core_product(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    package: &str,
+    module: &str,
+    session: &mut crate::session::SourceQuerySession,
+) -> Result<ProductCompile, Vec<Diagnostic>> {
+    compile_profile_product(
+        src,
+        module_path,
+        capabilities,
+        package,
+        module,
+        session,
+        SourceProfile::Core,
+    )
+}
+
 /// PLAN-939: the TEXT-RECORD product entry for resource foreign sources —
 /// same unified front door/instance rules as the scalar product, with the
 /// 782 domain's own verifier (foreign admission + the text-resource walk).
@@ -293,6 +317,11 @@ fn compile_profile_product(
                     ace_core::verify::verify_foreign_scalar(bundle, environment)
                 }
                 (SourceProfile::Scalar, None) => verify_scalar(bundle),
+                // PLAN-999 (T-03): the CORE fact lane — same producer, same
+                // bind/emit, verified through the Core domain entry the
+                // legacy `compile_source` uses. Core has no foreign lane
+                // (legacy parity); a foreign environment stays unsupported.
+                (SourceProfile::Core, None) => ace_core::verify::verify(bundle),
                 (SourceProfile::TextRecord, Some(environment)) => {
                     ace_core::verify::verify_foreign_text_record(bundle, environment)
                 }
@@ -303,7 +332,7 @@ fn compile_profile_product(
                     return Err(vec![Diagnostic::new(
                         Stage::Text,
                         "source.unsupported",
-                        "this product entry lowers the scalar and text-record profiles only",
+                        "this product entry lowers the core, scalar and text-record profiles only",
                         Span { start: 0, end: 0 },
                     )])
                 }
