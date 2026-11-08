@@ -646,6 +646,10 @@ pub fn apply_defaults(check: &CheckSpec, defaults: &Defaults) -> (CheckSpec, Vec
                 // frozen implicit defaults for execution-side `effective_*`.
                 merged.options = Options {
                     module_name,
+                    // PLAN-997: int_profile is per-check only — suite-level
+                    // defaults never carry it (validate_options_shape already
+                    // rejects it loudly at suite decode).
+                    a2r_int_profile: None,
                     ac_profile: None,
                     ac_target: None,
                     ac_entry: None,
@@ -692,6 +696,10 @@ pub fn apply_defaults(check: &CheckSpec, defaults: &Defaults) -> (CheckSpec, Vec
             } else {
                 merged.options = Options {
                     module_name,
+                    // PLAN-997: int_profile is per-check only — suite-level
+                    // defaults never carry it (validate_options_shape already
+                    // rejects it loudly at suite decode).
+                    a2r_int_profile: None,
                     ac_profile: None,
                     ac_target: None,
                     ac_entry: None,

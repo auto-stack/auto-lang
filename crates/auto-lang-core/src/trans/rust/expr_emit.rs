@@ -70,6 +70,63 @@ impl RustTrans {
     }
 
     /// Recursively check if an expression tree contains string-typed elements
+    /// PLAN-997 (`legacy-a2r.checked-i32/1`): whether the checked-i32
+    /// profile is active for this emission.
+    fn checked_i32_active(&self) -> bool {
+        self.int_profile == super::IntProfile::CheckedI32
+    }
+
+    /// PLAN-997: conservative STRUCTURAL source-int classification for the
+    /// checked-i32 profile's finite scalar domain — i32 int literals
+    /// (`Expr::Int` is i32 by construction), int-typed locals/params (via
+    /// `local_var_types`), unary neg, and int-only arithmetic over those.
+    /// Everything else (explicit i64/f64 literals, char/str, calls, fields,
+    /// casts, unknown types) is out of domain and keeps the default
+    /// emission — the profile never narrows what it did not classify.
+    fn expr_is_source_int(&self, e: &Expr) -> bool {
+        match e {
+            Expr::Int(_) => true,
+            Expr::Ident(n) => matches!(self.local_var_types.get(n), Some(Type::Int)),
+            Expr::Unary(op, inner) => {
+                matches!(op, Op::Sub)
+                    && (self.expr_is_source_int(inner)
+                        // The i32::MIN literal parses as neg(I64(2^31)) — the
+                        // magnitude does not fit Expr::Int(i32). Negated it is
+                        // exactly MIN (in domain); any OTHER I64 magnitude is
+                        // an explicit i64 literal and stays out of domain.
+                        || matches!(inner.as_ref(), Expr::I64(k) if *k == 2147483648i64))
+            }
+            Expr::Bina(l, op, r) => {
+                matches!(op, Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Mod)
+                    && !self.expr_contains_string(l)
+                    && !self.expr_contains_string(r)
+                    && self.expr_is_source_int(l)
+                    && self.expr_is_source_int(r)
+            }
+            _ => false,
+        }
+    }
+
+    /// PLAN-997: emit `__a2r_i32_<op>(lhs, rhs)` — a call keeps each operand
+    /// evaluated exactly once, in source order (Rust argument evaluation),
+    /// and composes with native `&&`/`||` short-circuiting; the private
+    /// helper does the i32-domain check at operation time.
+    fn emit_i32_checked_op(
+        &mut self,
+        op: &'static str,
+        lhs: &Expr,
+        rhs: &Expr,
+        out: &mut impl std::io::Write,
+    ) -> AutoResult<()> {
+        self.checked_i32_used.insert(op);
+        write!(out, "__a2r_i32_{}(", op)?;
+        self.expr(lhs, out)?;
+        write!(out, ", ")?;
+        self.expr(rhs, out)?;
+        write!(out, ")")?;
+        Ok(())
+    }
+
     pub(super) fn expr_contains_string(&self, e: &Expr) -> bool {
         match e {
             Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => true,
@@ -1546,6 +1603,17 @@ impl RustTrans {
                             write!(out, ")")?;
                         } else {
                             // Default to numeric +
+                            // PLAN-997 (`legacy-a2r.checked-i32/1`): a
+                            // structurally source-int `+` routes through the
+                            // typed private helper (i32-domain check at
+                            // operation time); unclassified operands keep the
+                            // default i64 emission.
+                            if self.checked_i32_active()
+                                && self.expr_is_source_int(&lhs)
+                                && self.expr_is_source_int(&rhs)
+                            {
+                                return self.emit_i32_checked_op("add", &lhs, &rhs, out);
+                            }
                             let (cast_l, cast_r) = self.bina_char_cast(&lhs, &rhs);
                             if cast_l {
                                 write!(out, "(")?;
@@ -1685,6 +1753,40 @@ impl RustTrans {
                         // List `.get()` → index conversion skips `.clone()` —
                         // in-place element mutation writes the real element.
                         // Also: assigning to a `mut p T` (&mut) param emits
+                        // PLAN-997 (`legacy-a2r.checked-i32/1`): a compound
+                        // assign on a source-int LOCAL desugars to the typed
+                        // checked op and a plain re-assignment (`x += y` →
+                        // `x = __a2r_i32_add(x, y)`) — the check happens at
+                        // operation time; globals/cells/fields and
+                        // unclassified operands keep their paths above/below.
+                        if self.checked_i32_active()
+                            && matches!(
+                                op,
+                                Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq | Op::ModEq
+                            )
+                            && matches!(lhs.as_ref(), Expr::Ident(n)
+                                if matches!(self.local_var_types.get(n), Some(Type::Int)))
+                            && !matches!(lhs.as_ref(), Expr::Ident(n) if self.is_global_var(n))
+                            && self.expr_is_source_int(rhs)
+                        {
+                            let name: &'static str = match op {
+                                Op::AddEq => "add",
+                                Op::SubEq => "sub",
+                                Op::MulEq => "mul",
+                                Op::DivEq => "div",
+                                _ => "mod",
+                            };
+                            self.checked_i32_used.insert(name);
+                            self.expr(lhs, out)?;
+                            write!(out, " = ")?;
+                            write!(out, "__a2r_i32_{}(", name)?;
+                            self.expr(lhs, out)?;
+                            write!(out, ", ")?;
+                            self.expr(rhs, out)?;
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+
                         // `*p = x` (deref-assign into the caller's value).
                         if matches!(op, Op::Asn)
                             && matches!(lhs.as_ref(), Expr::Ident(n) if self.current_fn_mut_params.contains(n))
@@ -1908,6 +2010,24 @@ impl RustTrans {
                     }
                     _ => {
                         // Binary operators: lhs OP rhs
+                        // PLAN-997 (`legacy-a2r.checked-i32/1`): source-int
+                        // - * / % route through the typed private helpers
+                        // (i32-domain check at operation time). Comparisons,
+                        // &&/||, and unclassified operands keep the default
+                        // emission — native short-circuit is preserved.
+                        if self.checked_i32_active()
+                            && matches!(op, Op::Sub | Op::Mul | Op::Div | Op::Mod)
+                            && self.expr_is_source_int(lhs)
+                            && self.expr_is_source_int(rhs)
+                        {
+                            let name = match op {
+                                Op::Sub => "sub",
+                                Op::Mul => "mul",
+                                Op::Div => "div",
+                                _ => "mod",
+                            };
+                            return self.emit_i32_checked_op(name, lhs, rhs, out);
+                        }
                         // Plan 514 W2 (P511-1 根因②): 优先级括号——嵌套二元
                         // 在低优先级算子下方时必须括号化，否则 `(a || b) && c`
                         // 发射为 `a || b && c`（Rust && 更紧）语义反转
@@ -2012,6 +2132,24 @@ impl RustTrans {
                     self.expr(expr, out)?;
                     write!(out, ")")?;
                 } else {
+                    // PLAN-997 (`legacy-a2r.checked-i32/1`): unary neg on a
+                    // source-int operand checks at the i32 domain
+                    // (neg(i32::MIN) traps "overflow"). A negated int
+                    // LITERAL keeps the default `-k` bytes — Int(i32) can
+                    // only overflow via neg at i32::MIN, which still routes
+                    // through the runtime helper.
+                    if self.checked_i32_active()
+                        && matches!(op, Op::Sub)
+                        && self.expr_is_source_int(expr)
+                        && !matches!(expr.as_ref(), Expr::Int(k) if *k != i32::MIN)
+                        && !matches!(expr.as_ref(), Expr::I64(k) if *k == 2147483648i64)
+                    {
+                        self.checked_i32_used.insert("neg");
+                        write!(out, "__a2r_i32_neg(")?;
+                        self.expr(expr, out)?;
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
                     write!(out, "{}", op_str)?;
                     // Plan 523 H7: 一元符作用于二元操作数需括号——此前
                     // `-(x + y)` 发射 `-x + y` 语义反转（b40/g24：参考 -4，

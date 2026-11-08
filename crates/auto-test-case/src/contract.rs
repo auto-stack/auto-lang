@@ -230,6 +230,12 @@ pub struct Options {
     /// a2r/emit only: module name passed to the emitter (legacy-compat
     /// metadata; does not affect emitted bytes).
     pub module_name: Option<String>,
+    /// a2r/emit only (PLAN-997): EXPLICIT versioned source-int emission
+    /// profile. The only admitted value is the exact id
+    /// `legacy-a2r.checked-i32/1`; absent means the frozen default i64
+    /// carrier (byte-identical to the certified value goldens). An unknown
+    /// id is a contract error, never a silent default.
+    pub a2r_int_profile: Option<String>,
     /// ac only (v2). Decoded to its effective value: absent → the frozen
     /// implicit default (Core / AC_TARGET / "main" / Reuse).
     pub ac_profile: Option<AcProfile>,
@@ -273,6 +279,7 @@ impl Default for Options {
     fn default() -> Self {
         Options {
             module_name: None,
+            a2r_int_profile: None,
             ac_profile: None,
             ac_target: None,
             ac_entry: None,
@@ -1251,7 +1258,7 @@ fn decode_options(
     let pairs = as_obj(v, path)?;
     let known: &[&str] = match adapter {
         Adapter::Avm => &[], // avm/run has no options (v1 and v2)
-        Adapter::A2r => &["module_name"],
+        Adapter::A2r => &["module_name", "int_profile"],
         Adapter::Ac => &[
             "profile",
             "target",
@@ -1288,6 +1295,18 @@ fn decode_options(
             return Err(err(
                 &f.path_of("module_name"),
                 "module_name must be a single path component ([A-Za-z0-9_-], non-empty, <=64 chars) — it names an emitted artifact",
+            ));
+        }
+    }
+    // PLAN-997: the checked-i32 profile id is a versioned contract constant —
+    // anything else (typos, future ids) fails admission instead of silently
+    // emitting the default bytes.
+    let a2r_int_profile = opt_str(&f, "int_profile")?;
+    if let Some(id) = &a2r_int_profile {
+        if id != "legacy-a2r.checked-i32/1" {
+            return Err(err(
+                &f.path_of("int_profile"),
+                "int_profile must be exactly legacy-a2r.checked-i32/1 — unknown profile ids are a contract error, not a silent default",
             ));
         }
     }
@@ -2784,6 +2803,7 @@ fn decode_options(
 
     Ok(Options {
         module_name,
+        a2r_int_profile,
         ac_profile,
         ac_target,
         ac_entry,

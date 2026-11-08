@@ -104,6 +104,30 @@ pub fn run_check(
     let use_project_mode =
         case.spec.files.len() > 1 || case.spec.entry == auto_test_case::contract::EntryMode::Module;
 
+    // PLAN-997: the explicit versioned source-int profile. Admission is
+    // exact-id only (the contract layer already rejects unknown ids); the
+    // checked-i32 profile is single-file emission only — project mode has no
+    // finite-domain freeze, so selecting it there is a contract error, never
+    // a silent default.
+    let int_profile = match &check.options.a2r_int_profile {
+        None => crate::trans::rust::IntProfile::LegacyI64,
+        Some(id) => match crate::trans::rust::IntProfile::from_id(id) {
+            Some(p) => p,
+            None => {
+                return Err(format!(
+                    "int_profile {:?} is not admitted (only legacy-a2r.checked-i32/1)",
+                    id
+                ))
+            }
+        },
+    };
+    if int_profile == crate::trans::rust::IntProfile::CheckedI32 && use_project_mode {
+        return Err(
+            "int_profile legacy-a2r.checked-i32/1 is single-file emission only — project mode has no checked-i32 profile"
+                .to_string(),
+        );
+    }
+
     let emit_handle = std::thread::Builder::new()
         .stack_size(EMIT_STACK_BYTES)
         .spawn({
@@ -112,6 +136,7 @@ pub fn run_check(
             let module_name_for_file = module_name.clone();
             let module_name = module_name.clone();
             let project_dir = project_dir.to_path_buf();
+            let int_profile = int_profile;
             move || -> Result<BTreeMap<String, Vec<u8>>, crate::error::AutoError> {
                 if use_project_mode {
                     let map = crate::trans::rust::transpile_rust_project(&entry_path_str)?;
@@ -120,10 +145,11 @@ pub fn run_check(
                         .map(|(k, (bytes, _maps))| (k, bytes))
                         .collect())
                 } else {
-                    let mut sink = crate::trans::rust::transpile_rust_with_source_dir(
+                    let mut sink = crate::trans::rust::transpile_rust_with_source_dir_profile(
                         &project_dir,
                         module_name,
                         &entry_str,
+                        int_profile,
                     )?;
                     let bytes = sink.done()?.clone();
                     Ok(BTreeMap::from([(

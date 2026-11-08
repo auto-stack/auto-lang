@@ -3611,3 +3611,250 @@ fn plan996_bare_and_one_arg_ctor_domains_unchanged() {
         code
     );
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-997 — legacy-a2r.checked-i32/1: explicit versioned source-int profile.
+// Default emission stays byte-identical to the certified value goldens; the
+// opt-in profile routes source-int + - * / % and neg through private typed
+// helpers that check the i32 domain AT OPERATION TIME and, on violation, emit
+// `auto.trap:<kind>:<op>` on stderr followed by a controlled exit(70).
+// Compile+run evidence for the four trap cells lives in the corpus trap
+// certification; these unit tests pin the classification, emission shapes,
+// helper-block laziness, and the default-profile isolation.
+
+fn plan997_transpile(src: &str) -> String {
+    let mut rcode = transpile_rust("plan997", src).unwrap();
+    String::from_utf8_lossy(rcode.done().unwrap()).to_string()
+}
+
+fn plan997_transpile_checked(src: &str) -> String {
+    use crate::trans::rust::{transpile_rust_full_with_profile, IntProfile};
+    let (mut rcode, _) = transpile_rust_full_with_profile(
+        "plan997",
+        src,
+        None,
+        None,
+        None,
+        false,
+        IntProfile::CheckedI32,
+    )
+    .unwrap();
+    String::from_utf8_lossy(rcode.done().unwrap()).to_string()
+}
+
+#[test]
+fn plan997_profile_admission_is_exact_versioned_id() {
+    use crate::trans::rust::IntProfile;
+    assert_eq!(IntProfile::CHECKED_I32_ID, "legacy-a2r.checked-i32/1");
+    assert_eq!(IntProfile::from_id("legacy-a2r.checked-i32/1"), Some(IntProfile::CheckedI32));
+    for typo in [
+        "legacy-a2r.checked-i32/2",
+        "legacy-a2r.checked-i32",
+        "checked-i32/1",
+        "",
+    ] {
+        assert_eq!(IntProfile::from_id(typo), None, "typo {:?} must not admit", typo);
+    }
+    assert_eq!(IntProfile::CheckedI32.as_id(), "legacy-a2r.checked-i32/1");
+    assert_eq!(IntProfile::LegacyI64.as_id(), "legacy-a2r.default-i64/1");
+}
+
+#[test]
+fn plan997_checked_emission_shapes_for_the_four_trap_cells() {
+    // B13/B14/B15/B20 verbatim sources → the four original trap expectations.
+    let cases = [
+        (
+            "fn main() int { return 2147483647 + 1 }",
+            "__a2r_i32_add(2147483647, 1)",
+            "\"overflow\", \"add\"",
+        ),
+        (
+            "fn main() int { return 10 / 0 }",
+            "__a2r_i32_div(10, 0)",
+            "\"div-by-zero\", \"div\"",
+        ),
+        (
+            "fn main() int { return -2147483648 % -1 }",
+            "__a2r_i32_mod(-2147483648, -1)",
+            "\"rem-overflow\", \"rem\"",
+        ),
+        (
+            "fn main() int {\n    let b bool = true && 10 / 0 > 0\n    if b { return 1 }\n    return 42\n}",
+            "true && __a2r_i32_div(10, 0) > 0",
+            "\"div-by-zero\", \"div\"",
+        ),
+    ];
+    for (src, call, trap) in cases {
+        let code = plan997_transpile_checked(src);
+        assert!(code.contains(call), "checked call shape for {:?}:\n{}", src, code);
+        assert!(code.contains("__a2r_i32_trap"), "helper block present for {:?}", src);
+        assert!(code.contains(trap), "typed trap kind/op {} for {:?}", trap, src);
+        assert!(
+            code.contains("std::process::exit(70)"),
+            "controlled exit(70) for {:?}:\n{}",
+            src,
+            code
+        );
+    }
+}
+
+#[test]
+fn plan997_default_profile_keeps_certified_bytes_and_no_helpers() {
+    // The same sources through the DEFAULT profile: byte shapes identical to
+    // the pre-997 emission (i64 carrier, plain operators) and zero helper
+    // bytes — the profile never leaks into unselected emission.
+    let cases = [
+        (
+            "fn main() int { return 2147483647 + 1 }",
+            "fn main() -> i64 {\n    return 2147483647 + 1;\n}",
+        ),
+        (
+            "fn main() int { return 10 / 0 }",
+            "fn main() -> i64 {\n    return 10 / 0;\n}",
+        ),
+        (
+            "fn main() int { return -2147483648 % -1 }",
+            "fn main() -> i64 {\n    return -2147483648 % -1;\n}",
+        ),
+        (
+            "fn main() int { return 2147483646 + 1 }",
+            "fn main() -> i64 {\n    return 2147483646 + 1;\n}",
+        ),
+    ];
+    for (src, body) in cases {
+        let code = plan997_transpile(src);
+        assert!(code.contains(body), "default bytes for {:?}:\n{}", src, code);
+        assert!(!code.contains("__a2r_i32_"), "no helper bytes by default:\n{}", code);
+    }
+}
+
+#[test]
+fn plan997_checked_legal_neighbors_stay_value_paths() {
+    // false && … keeps native short-circuiting (RHS never evaluates → no
+    // trap); legal boundary values keep the checked carrier and return.
+    let legal = plan997_transpile_checked(
+        "fn main() int {\n    let b bool = false && 10 / 0 > 0\n    if b { return 1 }\n    return 42\n}",
+    );
+    assert!(
+        legal.contains("false && __a2r_i32_div(10, 0) > 0"),
+        "short-circuit composes with the helper call:\n{}",
+        legal
+    );
+    let max_neighbor = plan997_transpile_checked("fn main() int { return 2147483646 + 1 }");
+    assert!(
+        max_neighbor.contains("__a2r_i32_add(2147483646, 1)"),
+        "MAX-1 neighbor stays a checked value path:\n{}",
+        max_neighbor
+    );
+}
+
+#[test]
+fn plan997_checked_neg_forms_min_literal_fold_neg_ident_helper() {
+    // -1 is Unary(Sub, Int(1)): a statically in-range negated literal keeps
+    // the default `-1` operand bytes (no helper noise). i32::MIN parses as
+    // neg(I64(2^31)) — in domain as a literal, folded to `-2147483648`.
+    // neg(ident) routes through the runtime helper (neg(i32::MIN) traps).
+    let rem = plan997_transpile_checked("fn main() int { return -2147483648 % -1 }");
+    assert!(
+        rem.contains("__a2r_i32_mod(-2147483648, -1)") && !rem.contains("__a2r_i32_neg(1)"),
+        "MIN literal folds, -1 stays a literal:\n{}",
+        rem
+    );
+    let neg_ident = plan997_transpile_checked(
+        "fn main() int {\n    let a int = -2147483648\n    return -a\n}",
+    );
+    assert!(
+        neg_ident.contains("__a2r_i32_neg(a)"),
+        "neg on an int ident is a runtime check:\n{}",
+        neg_ident
+    );
+}
+
+#[test]
+fn plan997_checked_compound_assign_on_int_local_desugars() {
+    let code = plan997_transpile_checked(
+        "fn main() int {\n    var x int = 20\n    x += 2147483647\n    return x\n}",
+    );
+    assert!(
+        code.contains("x = __a2r_i32_add(x, 2147483647)"),
+        "int-local compound assign desugars to a checked op:\n{}",
+        code
+    );
+    let plain = plan997_transpile(
+        "fn main() int {\n    var x int = 20\n    x += 2147483647\n    return x\n}",
+    );
+    assert!(
+        plain.contains("x += 2147483647") && !plain.contains("__a2r_i32_"),
+        "default keeps the native compound assign:\n{}",
+        plain
+    );
+}
+
+#[test]
+fn plan997_checked_out_of_domain_operands_keep_default_emission() {
+    // Explicit i64 locals, float arithmetic, and string concat are NOT
+    // source-int — the profile never narrows what it did not classify.
+    let i64_local = plan997_transpile_checked(
+        "fn main() int {\n    let x i64 = 5000000000\n    return (x + x) as int\n}",
+    );
+    assert!(
+        !i64_local.contains("__a2r_i32_add"),
+        "explicit i64 local stays out of domain:\n{}",
+        i64_local
+    );
+    let concat = plan997_transpile_checked(
+        "fn main() int {\n    let s str = \"a\"\n    let t str = s + \"b\"\n    return t.len()\n}",
+    );
+    assert!(
+        concat.contains("format!") && !concat.contains("__a2r_i32_add"),
+        "string + keeps the format! concat path:\n{}",
+        concat
+    );
+    let no_ops = plan997_transpile_checked("fn main() int { return 42 }");
+    assert!(
+        !no_ops.contains("__a2r_i32_"),
+        "no int ops → no helper block:\n{}",
+        no_ops
+    );
+}
+
+#[test]
+fn plan997_checked_nested_ops_keep_left_assoc_source_order() {
+    // `a * b * k` nests the checked calls left-associatively — the inner
+    // (source-first) operation runs and traps before the outer one; the
+    // side-effect probe (scope t01/nside) proves both fn-call operands ran
+    // exactly once before the trap point on the real compile+run chain.
+    let code = plan997_transpile_checked(
+        "fn main() int {\n    let a int = 10\n    let b int = 10\n    let c int = a * b * 214748364\n    return c\n}",
+    );
+    assert!(
+        code.contains("__a2r_i32_mul(__a2r_i32_mul(a, b), 214748364)"),
+        "left-assoc nesting preserved:\n{}",
+        code
+    );
+}
+
+#[test]
+fn plan997_checked_helper_block_is_lazy_and_typed() {
+    // Only the helpers actually used are emitted; the block always carries
+    // the trap fn, the typed kinds, and the controlled exit — never a panic.
+    let div_only = plan997_transpile_checked("fn main() int { return 10 / 2 }");
+    assert!(
+        div_only.contains("fn __a2r_i32_div") && div_only.contains("fn __a2r_i32_trap"),
+        "used helpers present:\n{}",
+        div_only
+    );
+    for absent in ["__a2r_i32_add", "__a2r_i32_sub", "__a2r_i32_mul", "__a2r_i32_mod", "__a2r_i32_neg"] {
+        assert!(
+            !div_only.contains(&format!("fn {}", absent)),
+            "unused helper {} must not be emitted:\n{}",
+            absent,
+            div_only
+        );
+    }
+    assert!(
+        div_only.contains("eprintln!(\"auto.trap:{}:{}\", kind, op)") && div_only.contains("exit(70)"),
+        "typed stderr event + controlled exit:\n{}",
+        div_only
+    );
+}

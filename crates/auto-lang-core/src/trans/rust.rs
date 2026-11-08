@@ -91,6 +91,40 @@ fn snake_of(n: &crate::ast::Name) -> String {
     out
 }
 
+/// PLAN-997: EXPLICIT versioned source-int emission profile for the legacy
+/// A2R transpiler. `LegacyI64` is the frozen default (i64 carrier, all
+/// certified value goldens byte-identical); `CheckedI32` is the opt-in
+/// `legacy-a2r.checked-i32/1` — source-int arithmetic (+ - * / % and neg)
+/// is checked at the i32 domain AT OPERATION TIME (never repaired by a
+/// final `as i32`), and a domain violation emits a typed trap diagnostic
+/// on stderr followed by a controlled `exit(70)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntProfile {
+    LegacyI64,
+    CheckedI32,
+}
+
+impl IntProfile {
+    pub const CHECKED_I32_ID: &'static str = "legacy-a2r.checked-i32/1";
+
+    /// Exact-match admission: unknown ids are None (callers must turn that
+    /// into a contract error, never a silent default).
+    pub fn from_id(id: &str) -> Option<Self> {
+        if id == Self::CHECKED_I32_ID {
+            Some(IntProfile::CheckedI32)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_id(&self) -> &'static str {
+        match self {
+            IntProfile::LegacyI64 => "legacy-a2r.default-i64/1",
+            IntProfile::CheckedI32 => Self::CHECKED_I32_ID,
+        }
+    }
+}
+
 pub struct RustTrans {
     pub assembly_modules: HashSet<String>,
     pub assembly_references: Vec<crate::stdlib_assembly::reference::ReferenceProof>,
@@ -511,6 +545,17 @@ pub struct RustTrans {
     // resolve the message enum from the receiver's task, disambiguating
     // same-named variants across tasks.
     handle_task_map: std::collections::HashMap<AutoStr, String>,
+
+    // PLAN-997: explicit source-int emission profile. The default keeps the
+    // frozen i64-carrier bytes byte-identical; CheckedI32 is the versioned
+    // opt-in that checks source-int arithmetic at the i32 domain at
+    // operation time. Never set implicitly — callers choose it explicitly
+    // (the a2r adapter admits only the exact versioned id).
+    pub int_profile: IntProfile,
+    // PLAN-997: which checked-i32 helpers the emission actually used. The
+    // helper block is appended to the module only when non-empty, so sources
+    // with no checked int op keep helper-free bytes.
+    pub checked_i32_used: std::collections::BTreeSet<&'static str>,
 }
 
 impl RustTrans {
@@ -626,6 +671,8 @@ impl RustTrans {
             main_actor_epilogue: None,
             task_variants: std::collections::HashMap::new(),
             handle_task_map: std::collections::HashMap::new(),
+            int_profile: IntProfile::LegacyI64,
+            checked_i32_used: std::collections::BTreeSet::new(),
         }
     }
 
@@ -742,7 +789,61 @@ impl RustTrans {
             main_actor_epilogue: None,
             task_variants: std::collections::HashMap::new(),
             handle_task_map: std::collections::HashMap::new(),
+            int_profile: IntProfile::LegacyI64,
+            checked_i32_used: std::collections::BTreeSet::new(),
         }
+    }
+
+    /// PLAN-997 (`legacy-a2r.checked-i32/1`): the private typed helper block
+    /// appended to a module whose emission used at least one checked int op.
+    ///
+    /// Contract of the block (frozen with the profile id):
+    /// - the carrier stays i64; every check is an i32-DOMAIN check made AT
+    ///   OPERATION TIME (a result outside [-2^31, 2^31-1] traps immediately —
+    ///   never repaired by a final `as i32`);
+    /// - a trap is a TYPED event: one stderr line `auto.trap:<kind>:<op>`
+    ///   (kind ∈ overflow | div-by-zero | rem-overflow, op = the stable
+    ///   original operation identity add/sub/mul/div/rem/neg) followed by a
+    ///   CONTROLLED `std::process::exit(70)` — never a Rust panic, never an
+    ///   abort, and stdout stays clean;
+    /// - div/rem distinguish zero-divisor (div-by-zero) from the i32 MIN/-1
+    ///   quotient overflow (`overflow` for div, `rem-overflow` for rem);
+    /// - only helpers actually used by the emission are present, in the fixed
+    ///   order add, sub, mul, div, mod, neg.
+    pub(crate) fn checked_i32_helper_block(&self) -> String {
+        let mut s = String::from(
+            "\n// a2r checked-i32 profile helpers (legacy-a2r.checked-i32/1) —\n// source-int arithmetic is domain-checked at operation time; a violation\n// emits a typed stderr diagnostic and exits controlled (code 70).\n",
+        );
+        s.push_str(
+            "fn __a2r_i32_trap(kind: &str, op: &str) -> ! {\n    eprintln!(\"auto.trap:{}:{}\", kind, op);\n    std::process::exit(70)\n}\n",
+        );
+        for op in ["add", "sub", "mul", "div", "mod", "neg"] {
+            if !self.checked_i32_used.contains(op) {
+                continue;
+            }
+            match op {
+                "add" => s.push_str(
+                    "fn __a2r_i32_add(a: i64, b: i64) -> i64 {\n    let r = a + b;\n    if r < -2147483648i64 || r > 2147483647i64 {\n        __a2r_i32_trap(\"overflow\", \"add\")\n    }\n    r\n}\n",
+                ),
+                "sub" => s.push_str(
+                    "fn __a2r_i32_sub(a: i64, b: i64) -> i64 {\n    let r = a - b;\n    if r < -2147483648i64 || r > 2147483647i64 {\n        __a2r_i32_trap(\"overflow\", \"sub\")\n    }\n    r\n}\n",
+                ),
+                "mul" => s.push_str(
+                    "fn __a2r_i32_mul(a: i64, b: i64) -> i64 {\n    let r = a * b;\n    if r < -2147483648i64 || r > 2147483647i64 {\n        __a2r_i32_trap(\"overflow\", \"mul\")\n    }\n    r\n}\n",
+                ),
+                "div" => s.push_str(
+                    "fn __a2r_i32_div(a: i64, b: i64) -> i64 {\n    if b == 0 {\n        __a2r_i32_trap(\"div-by-zero\", \"div\")\n    }\n    if a == -2147483648i64 && b == -1 {\n        __a2r_i32_trap(\"overflow\", \"div\")\n    }\n    a / b\n}\n",
+                ),
+                "mod" => s.push_str(
+                    "fn __a2r_i32_mod(a: i64, b: i64) -> i64 {\n    if b == 0 {\n        __a2r_i32_trap(\"div-by-zero\", \"rem\")\n    }\n    if a == -2147483648i64 && b == -1 {\n        __a2r_i32_trap(\"rem-overflow\", \"rem\")\n    }\n    a % b\n}\n",
+                ),
+                "neg" => s.push_str(
+                    "fn __a2r_i32_neg(a: i64) -> i64 {\n    if a == -2147483648i64 {\n        __a2r_i32_trap(\"overflow\", \"neg\")\n    }\n    -a\n}\n",
+                ),
+                _ => {}
+            }
+        }
+        s
     }
 
     /// Plan 400 Phase 2: transpile only body statements (no signature).
@@ -2347,6 +2448,29 @@ pub fn transpile_rust_with_source_dir(
     transpile_rust_full(name, code, None, Some(source_dir.as_ref().to_path_buf()))
 }
 
+/// PLAN-997: single-file transpile with an EXPLICIT versioned source-int
+/// profile (`legacy-a2r.checked-i32/1` via `IntProfile::from_id`). The
+/// default entry points above stay on the frozen i64 carrier
+/// byte-for-byte; only callers that explicitly select the checked profile
+/// get i32-domain operation-time checks and the private helper block.
+pub fn transpile_rust_with_source_dir_profile(
+    source_dir: impl AsRef<std::path::Path>,
+    name: impl Into<AutoStr>,
+    code: &str,
+    int_profile: IntProfile,
+) -> AutoResult<Sink> {
+    transpile_rust_full_with_profile(
+        name,
+        code,
+        None,
+        Some(source_dir.as_ref().to_path_buf()),
+        None,
+        false,
+        int_profile,
+    )
+    .map(|(sink, _)| sink)
+}
+
 /// Plan 376D: Transpile with an optional sibling TypeStore.
 /// When `sibling_store` is Some, it contains type declarations from ALL sibling
 /// .at files in the same crate, enabling cross-module type inference.
@@ -2380,6 +2504,32 @@ pub fn transpile_rust_full_with_options(
     source_dir: Option<std::path::PathBuf>,
     assembly_runtime: Option<crate::stdlib_assembly::host::RustRuntime>,
     take_references: bool,
+) -> AutoResult<(Sink, Vec<crate::stdlib_assembly::reference::ReferenceProof>)> {
+    transpile_rust_full_with_profile(
+        name,
+        code,
+        sibling_store,
+        source_dir,
+        assembly_runtime,
+        take_references,
+        IntProfile::LegacyI64,
+    )
+}
+
+/// PLAN-997: the profile-carrying core behind
+/// [`transpile_rust_full_with_options`] — identical pipeline, plus the
+/// EXPLICIT source-int emission profile. `LegacyI64` keeps the frozen
+/// default bytes; `CheckedI32` (only via its versioned id) checks
+/// source-int arithmetic at the i32 domain at operation time and appends
+/// the private typed helper block when any checked op was emitted.
+pub fn transpile_rust_full_with_profile(
+    name: impl Into<AutoStr>,
+    code: &str,
+    sibling_store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>,
+    source_dir: Option<std::path::PathBuf>,
+    assembly_runtime: Option<crate::stdlib_assembly::host::RustRuntime>,
+    take_references: bool,
+    int_profile: IntProfile,
 ) -> AutoResult<(Sink, Vec<crate::stdlib_assembly::reference::ReferenceProof>)> {
     let name = name.into();
     let _scope = shared(crate::scope_manager::ScopeManager::new());
@@ -2451,6 +2601,7 @@ pub fn transpile_rust_full_with_options(
     let mut out = Sink::new(name.clone());
     let mut transpiler = RustTrans::new(name);
     transpiler.escape_results = escape_results;
+    transpiler.int_profile = int_profile; // PLAN-997
     transpiler.source_dir = source_dir; // Plan 610 ⑥
                                         // Plan 433 A1: pre-register fn return types for the whole file so
                                         // `let x = fn()` bindings infer their type regardless of declaration
@@ -2470,6 +2621,13 @@ pub fn transpile_rust_full_with_options(
     // Plan 013 (B1/BUG3): local-type pre-scan lives in trans() so all entry
     // points (single-file, project, CLI) benefit uniformly.
     transpiler.trans(ast, &mut out)?;
+
+    // PLAN-997: append the checked-i32 helper block when the profile emitted
+    // at least one checked op (deterministic content/order — see
+    // `checked_i32_helper_block`; the default profile never appends).
+    if !transpiler.checked_i32_used.is_empty() {
+        out.body.extend_from_slice(transpiler.checked_i32_helper_block().as_bytes());
+    }
 
     // Apply post-processing fixes (replaces fix_transpiled.py)
     RustTrans::post_process_with(&mut out.body, &transpiler.ord_restricted_names);
