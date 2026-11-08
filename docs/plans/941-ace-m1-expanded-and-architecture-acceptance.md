@@ -2291,7 +2291,7 @@ stage: work | plan_id:PLAN-941 | plan_revision:r10 | outcome:waiting（非阻塞
 
 ### 第105轮：blocked——上游第五次问询未答；两外部条件复核未变，非阻塞面维持已尽
 
-- 复核（@master `257e179cc`）：store仍止于`b8987bb0b`（双计投影未修）；D939仍executing（T-11..14在途）。store内修授权**第五次**（第105轮）及**第六次**（后续循环，@master `db9996f9f`复核store/D939仍均未变）具名问询均未获答复，按§5.7 S/N/X维持不修。无新工作面：第104轮清单（十七格入帐/turnkey）已覆盖全部可预置项；冻结链候裁定或交付，D939候归档。目标循环如继续，下轮先做§0前置核验再问询/执行。
+- 复核（@master `257e179cc`）：store仍止于`b8987bb0b`（双计投影未修）；D939仍executing（T-11..14在途）。store内修授权**第五至七次**（第105轮及后续循环，@master `db9996f9f`/`8cb5ce09f`复核store/D939均未变）具名问询均未获答复，按§5.7 S/N/X维持不修。无新工作面：第104轮清单（十七格入帐/turnkey）已覆盖全部可预置项；冻结链候裁定或交付，D939候归档。目标循环如继续，下轮先做§0前置核验再问询/执行。
 
 stage: goal | plan_id:PLAN-941 | plan_revision:r10 | round:105 | from:goal继续 | to:user | status:executing（blocked候裁定） | outcome:waiting | worktree:D:/autostack/.wt/lang-941/auto-lang | commit:a9d213e28 | next:user（store内修授权）或上游交付/D939归档
 
