@@ -2340,6 +2340,14 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（64MiB用
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（3-group冻结门132+424+257全绿，边界①解除；D992/993/961接收刷新38→20全绿） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:f1093efbe | task_ids:T-09冻结门/接收刷新 | evidence:f94127-frozen-gate/{ace-syntax3,ace-source,infra} | next_responsible_role:work §3工具对账→§4证据链重采→§5组合重读 | 无live handle
 
+### 第109轮：work §3工具身份对账——14工具prepare@冻结树，10变3不变，§4触面确认
+
+- **§3完成**（`f94129-frozen-tools/`，@`f1093efbe`）：14工具重prepare（prepare_tools显式source-bound构建+收据）→13 pin对账（基线=f94112第81/83轮身份闭包）：**10工具身份变化**（a2x/abi/case/comptime/av/mn/mn-collections/sema八个worker+case-parent的auto-case/test-case-pilot双二进制——D938合并+961/995+F-941-14 store/syntax修复叠加所致），3不变（trace/text/data三个runtime .lib，源未触）。`identity-audit.json`/`tools-current.json`入档。
+- **§4触面确认**（对照第78-83轮闭包链）：全部worker身份变化→cert292/case466/native五观察/optimized14/daily292/拒绝6 + parent.command**全量重采**（无严格复用项）；采集脚本复用f94110/11系列（adapt/capture/refresh-*-certifications/native-contracts/optimized-and-refusals/source-cases.py）适配新identity输出至f94130-*；incremental_restore全companions重绑（semantics T3档已有、comptime需含t02_09新档=f94124已有、abi/av=reception档身份有效但worker变化→abi档需重跑？——abi-worker变→ace-abi档重采、av-worker变→ace-av档重采）；policy-runtime-samples 16/16按新identity重验（f94121 staged或重采）。
+- **边界**：§4为多小时真实链（cert链×292+case×466+五native+优化+daily），按序执行入第110+轮；§5组合重读预期：716→**723+P**（+ARCH-05七行）、cert-gap按20、awaiting 939七行（D939复审在途）。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§3工具对账完成：10变3不变全触面确认；§4重采序列冻结） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:f1093efbe | task_ids:CHECKLIST §3 | evidence:f94129-frozen-tools/{identity-audit,tools-current}.json | next_responsible_role:work §4证据链重采（f94110/11脚本适配） | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
