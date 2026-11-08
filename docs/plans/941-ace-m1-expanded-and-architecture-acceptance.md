@@ -2332,6 +2332,14 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（F-941-14
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（64MiB用例首绿@256MiB实测定格、profiles_927刷新6/6、冻结门ace-syntax腿重跑中） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:f22776f8b | task_ids:T-33 | evidence:64mib-256mib-measure.log PASS + f94127-frozen-gate/ace-syntax（首程2红归因） | next_responsible_role:work 冻结门重跑判定→其余两腿 | 无live handle
 
+### 第108轮：work 3-group冻结门全绿——第94轮遗留边界①解除；D992/993/961接收刷新
+
+- **冻结门全绿**（@`f1093efbe`系）：①ace-syntax **132/132**（nextest-t3直接整组，3610.7s；`cargo t`的T3 env未达runner为已知路径问题，绕行记录在案）；②ace-source **424/424**（327.3s，含995/961并入后全部core测试）；③infra-ace-m1-arch **257/257**（正式cargo t门档）。第94轮"D938接收检查点"的冻结全绿门自设立以来**首次成立**。
+- **D992/993/961接收刷新**（提交**`f1093efbe`**，9文件）：master同步后治理层pin全面过期（binding.tsv/source-manifest/m1_k06 oracle/golden-C01..05 runtime+manifest/verify脚本）——逐层刷新legacy map（含18格token转ok-emit、gaps去`legacy-a2r-cert-gap`）、legacy-architecture合约（4 pin）、case-obligations目录（runtime×5+manifest×6）、模块常量与registry三处同步；**cert-gap期望38→20**（D992 17格+D993 K06核销；守卫语义不变：非零gap阻claim、新HIR证书不核销）；治理从5F24E逐层收敛至**257/257绿**。期间Q4_CATALOG_SHA两度误置（上下文替换副作用），已修回并全量复验。
+- **边界**：检查清单§1/§2完成；下一步§3 13工具重prepare身份对账→§4证据链重采（cert/case/native/optimized/daily+parent.command，cert-gap按20新账）→§5组合重读（预期716→723+P、cert-gap 20、awaiting 939七行）。D939 execution_done复审在途；master侧994在途（gap 16，最终合并前再吸收）。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（3-group冻结门132+424+257全绿，边界①解除；D992/993/961接收刷新38→20全绿） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:f1093efbe | task_ids:T-09冻结门/接收刷新 | evidence:f94127-frozen-gate/{ace-syntax3,ace-source,infra} | next_responsible_role:work §3工具对账→§4证据链重采→§5组合重读 | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
