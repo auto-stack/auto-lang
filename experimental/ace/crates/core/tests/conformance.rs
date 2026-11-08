@@ -22,6 +22,9 @@ mod hir_verify;
 mod host_console;
 #[path = "cases/link_capture.rs"]
 mod link_capture;
+// PLAN-999 T-05: F-941-13 span-free signature digest regressions.
+#[path = "cases/m1_residual_999.rs"]
+mod m1_residual_999;
 #[path = "cases/numeric_hir.rs"]
 mod numeric_hir;
 #[path = "cases/numeric_source.rs"]

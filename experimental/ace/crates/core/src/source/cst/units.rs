@@ -398,6 +398,10 @@ impl UnitCatalog {
 }
 
 /// 签名摘要（声明序：名(参数, ...) -> 返回；mode 词计入）。
+/// PLAN-999（T-05，F-941-13）：摘要为**无来源坐标**的结构化投影——名字、
+/// 参数名/序/mode、名义类型与嵌套类型、返回类型全部保留；TypeRef 内
+/// Ident 携带的 span 不再进入摘要（旧 `{:?}` 面把 span 一起编入，跨
+/// owner 编辑的坐标漂移会误报 `OwnerSignatureChanged`）。
 fn signature_of(f: &FnItem) -> String {
     let params: Vec<String> = f
         .params
@@ -408,10 +412,46 @@ fn signature_of(f: &FnItem) -> String {
                 ParamMode::Mut => "mut ",
                 ParamMode::Default => "",
             };
-            format!("{}{}: {:?}", mode, p.name.name, p.ty.kind)
+            format!("{}{}: {}", mode, p.name.name, type_digest(&p.ty.kind))
         })
         .collect();
-    format!("{}({}) -> {:?}", f.name.name, params.join(", "), f.ret.kind)
+    format!(
+        "{}({}) -> {}",
+        f.name.name,
+        params.join(", "),
+        type_digest(&f.ret.kind)
+    )
+}
+
+/// PLAN-999（T-05）：类型注解的无坐标结构化投影。覆盖每一个携带
+/// `Ident`（名字+span）或嵌套 `TypeAnn` 的变体；语义信息与旧 Debug 面
+/// 一致，仅不编入 span。纯 int 例没有内层 Ident，区分不了本修复——
+/// 反例必须含名义/嵌套注解（§5.4）。
+fn type_digest(t: &crate::source::ast::TypeRef) -> String {
+    use crate::source::ast::TypeRef;
+    match t {
+        TypeRef::Builtin(w) => format!("{w:?}"),
+        TypeRef::TyVar(id) => format!("tv:{}", id.name),
+        TypeRef::Record(id) => format!("rec:{}", id.name),
+        TypeRef::Optional(inner) => format!("opt:{}", type_digest(&inner.kind)),
+        TypeRef::Generic { name, args } => format!(
+            "gen:{}<{}>",
+            name.name,
+            args.iter()
+                .map(|a| type_digest(&a.kind))
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        TypeRef::Function { params, result } => format!(
+            "fn({}){}",
+            params
+                .iter()
+                .map(|a| type_digest(&a.kind))
+                .collect::<Vec<_>>()
+                .join(","),
+            type_digest(&result.kind)
+        ),
+    }
 }
 
 /// PLAN-929（T-07）：名字引用扫描扩为**全语法引用面**——注解（参数/返回/
