@@ -38,6 +38,19 @@ SUITES = {
     'typed_av': 'crates/auto-lang/test/cases/ac-av/ac-av.suite.ad',
     'typed_native': 'crates/auto-lang/test/cases/ace-m1/typed-native-891/typed-native-891.suite.ad',
     'source_cte': 'crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.suite.ad',
+    # PLAN-1000 T-03: original a2r emit/snapshot/scene suites (strict in-process
+    # emit admission; see ace_m1_legacy_a2r).
+    'a2r_cert_992': 'crates/auto-lang/test/cases/ace-m1/legacy-a2r-cert-992.suite.ad',
+    'a2r_text_994': 'crates/auto-lang/test/cases/ace-m1/legacy-a2r-text-994.suite.ad',
+    'a2r_list_996': 'crates/auto-lang/test/cases/ace-m1/legacy-a2r-list-996.suite.ad',
+    'a2r_trap_997': 'crates/auto-lang/test/cases/ace-m1/legacy-a2r-trap-997.suite.ad',
+    'a2r_scene_998': 'crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998.suite.ad',
+    'a2r_semantics_916': 'crates/auto-lang/test/cases/ace-m1/a2r-semantics-916/a2r-semantics-916.suite.ad',
+    'a2r_emit_917': 'crates/auto-lang/test/cases/ace-m1/a2r-emit-917/a2r-emit-917.suite.ad',
+    'a2r_hir_rt_902': 'crates/auto-lang/test/cases/a2r-hir-record-text-902/a2r-hir-record-text-902.suite.ad',
+    'a2r_hir_coll_904': 'crates/auto-lang/test/cases/a2r-hir-collections-904/a2r-hir-collections-904.suite.ad',
+    'a2r_owned_931': 'crates/auto-lang/test/cases/ace-m1/a2r-owned-temporaries-931/a2r-owned-temporaries-931.suite.ad',
+    'legacy_base': 'crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad',
 }
 WORKERS = {'av': 'av-worker.exe', 'native': 'mn-worker.exe',
            'syntax': 'ace-case-worker.exe', 'bridge': 'abi-worker.exe'}
@@ -234,7 +247,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
     evidence = EvidenceScope(evidence_root, budget)
     bindings, bindings_sha = evidence.read_json(bindings_path)
     mandatory = {'inventories', 'copies', 'workers', 'certification', 'legacy'}
-    require(type(bindings) is dict and mandatory <= bindings.keys() <= mandatory | {'legacy_base_execution', 'legacy_execution', 'parent_contracts', 'legacy_typed_av', 'legacy_typed_native', 'source_cte_execution', 'text_certifications', 'source_cte_certifications', 'text_q4_execution', 'scalar_q4_execution', 'scalar_certifications', 'scalar_release_execution', 'record_text_execution', 'record_text_certifications', 'record_text_release_execution', 'collections_execution', 'collections_certifications', 'query_instances_execution', 'query_certifications', 'query_frontdoor_refusals', 'query_release_execution', 'source_supplement_execution', 'source_supplement_certifications', 'original_data_execution', 'original_data_certifications', 'original_data_diagnostics', 'ct_source_mechanisms', 'ct_child_mechanisms', 'ct_meta_mechanisms', 'ct_restore_mechanisms', 'sq_fact_mechanisms', 'syntax_mechanisms', 'legacy_architecture', 'incremental_restore_gates', 'incremental_restore_semantics', 'incremental_restore_comptime', 'incremental_restore_abi', 'incremental_restore_av', 'budget_time_gates', 'budget_time_optimized', 'acceptance_system_controls', 'policy_runtime_samples'},
+    require(type(bindings) is dict and mandatory <= bindings.keys() <= mandatory | {'legacy_base_execution', 'legacy_execution', 'legacy_a2r_execution', 'parent_contracts', 'legacy_typed_av', 'legacy_typed_native', 'source_cte_execution', 'text_certifications', 'source_cte_certifications', 'text_q4_execution', 'scalar_q4_execution', 'scalar_certifications', 'scalar_release_execution', 'record_text_execution', 'record_text_certifications', 'record_text_release_execution', 'collections_execution', 'collections_certifications', 'query_instances_execution', 'query_certifications', 'query_frontdoor_refusals', 'query_release_execution', 'source_supplement_execution', 'source_supplement_certifications', 'original_data_execution', 'original_data_certifications', 'original_data_diagnostics', 'ct_source_mechanisms', 'ct_child_mechanisms', 'ct_meta_mechanisms', 'ct_restore_mechanisms', 'sq_fact_mechanisms', 'syntax_mechanisms', 'legacy_architecture', 'incremental_restore_gates', 'incremental_restore_semantics', 'incremental_restore_comptime', 'incremental_restore_abi', 'incremental_restore_av', 'budget_time_gates', 'budget_time_optimized', 'acceptance_system_controls', 'policy_runtime_samples'},
             'unknown/missing preview parent bindings')
     exact_keys(bindings['workers'], ('av', 'native', 'syntax', 'bridge'), 'current preview workers')
     require('scalar_release_execution' not in bindings or 'scalar_certifications' in bindings,
@@ -394,6 +407,19 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
             legacy_data['required'], earlier | legacy_data['observations']), 2 << 20)
         legacy['execution'] = legacy['execution_summary']['verdict']
         legacy['data_pending_observations'] = legacy_data['pending_observations']
+    if 'legacy_a2r_execution' in bindings:
+        from ace_m1_legacy_a2r import admit_a2r_execution
+        a2r = _compact_admission(inputs, lambda _: admit_a2r_execution(
+            inputs, evidence, bindings['legacy_a2r_execution'], registry), 2 << 20)
+        from ace_m1_legacy_execution import execution_summary as _es
+        from ace_m1_legacy import frozen_ledger
+        earlier = legacy.get('execution_summary', {}).get('observations', {})
+        require(not earlier.keys() & a2r['observations'].keys(), 'duplicate original a2r execution')
+        required = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in frozen_ledger(inputs) if row['required'])
+        legacy['execution_summary'] = _compact_admission(inputs, lambda _: _es(
+            required, earlier | a2r['observations']), 3 << 20)
+        legacy['execution'] = legacy['execution_summary']['verdict']
+        legacy['a2r_claimed_cells'] = a2r['claimed_cells']
     result = retain_case_reports(reduce_preview(registry_sha, observations, legacy), parents)
     if original_data_diagnostics is not None:
         result['original_data_diagnostics'] = original_data_diagnostics
