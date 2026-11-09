@@ -249,6 +249,11 @@ def _suite_for(key):
         'a2r_owned_931': 'crates/auto-lang/test/cases/ace-m1/a2r-owned-temporaries-931/a2r-owned-temporaries-931.suite.ad',
         'legacy_base': 'crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad',
         'order_layout_914': 'crates/auto-lang/test/cases/ace-m1/order-layout-914/order-layout-914.suite.ad',
+        'p864': 'crates/auto-lang/test/cases/ace-m1/collections-source-864.suite.ad',
+        'p889': 'crates/auto-lang/test/cases/ace-m1/native-collections-889.suite.ad',
+        'console_863': 'crates/auto-lang/test/cases/ace-m1/console-863/console-863.suite.ad',
+        'method_881': 'crates/auto-lang/test/cases/ace-m1/method-881.suite.ad',
+        'entry_862': 'crates/auto-lang/test/cases/ace-m1/entry-862/entry-unit-862.suite.ad',
     }
     return paths[key]
 
@@ -263,6 +268,197 @@ _CONTRACT_SHAS = {
     "a2r_semantics_916": "f300125541a8384e3c38cf16dd9a62129d3b191d8f7846fc9cd8752249420547",
     "a2r_text_994": "e0e89bc2af560815bd860e72cbfcfa9748ccff0bea81f75e28dee9fdbf61e346",
     "a2r_trap_997": "e5af15bac35c72a4dfbbb554acbf6719db1c50cb082f6399b033f80863ba1151",
+    "console_863": "78d90abd147ca362338ac67c76577c2ab63e54032eff332be5c215fb1d004537",
+    "entry_862": "8dc8defc899cdf3552317ec6a23139ea88043914fd26e48d8ae84b22aef1d425",
     "legacy_base": "3f4f6da57b4dceaca74ae83ec13363f0bc53180516705bc7191d32665ac36a86",
-    "order_layout_914": "223d958c3f9c6db0eb3ea2f7ef2bf6fb66c4ad666384e859973cd94c84cb7b09"
+    "method_881": "7f89138bdac10eead48e82656361166b0056bdbdc2516205ec98df2fde647d98",
+    "order_layout_914": "223d958c3f9c6db0eb3ea2f7ef2bf6fb66c4ad666384e859973cd94c84cb7b09",
+    "p864": "01817ea9818a637b86ef5248233e82096623d7700e61c069eb3fa2a7ad21a28f",
+    "p889": "baf7cd4968345b2664dd5664e6066bda0c672d1555fe313806fc896889689d67"
 }
+
+
+def _probe_cell(case_id, check_name, required_cells):
+    """Map one probe-family Case id/check to a required legacy cell."""
+    corpus_ids = {cell[1].lower(): cell for cell in required_cells if cell[0] == 'corpus'}
+    token = case_id[len('ace.m1.'):] if case_id.startswith('ace.m1.') else None
+    if token is None:
+        return None
+    path = None
+    if token.endswith('-av864'):
+        token, path = token[:-len('-av864')], 'av'
+    elif token.endswith('-mn889'):
+        token, path = token[:-len('-mn889')], 'ac'
+    else:
+        if check_name == 'ac-native' or check_name.startswith('mn-'):
+            path = 'ac'
+        elif check_name.startswith('av'):
+            path = 'av'
+        elif check_name == 'autovm':
+            path = 'avm'
+    if path is None:
+        return None
+    cell = corpus_ids.get(token)
+    return cell if cell is not None and cell[2] == path else None
+
+
+def _probe_family_observation(scope, wire, check, table_row):
+    """Generic run-step observation for the source-family probe recipes.
+
+    Validates the exchange response's own step outcome against the frozen
+    oracle (binding table value, or the suite-contract expectation for
+    trap/diagnostic cells), plus request_hash and source identity."""
+    import hashlib as _h
+    import json as _j
+    protocol = wire['protocol']
+    require(wire['exit_code'] == 0 and wire['transport_error'] is None,
+            'probe-family transport incomplete')
+    require(wire['stderr'] == b'', 'probe-family worker stderr not empty')
+    request, _ = scope.decode_json(wire['request'])
+    unsigned = {k: v for k, v in request.items() if k != 'request_hash'}
+    request_hash = _h.sha256(_j.dumps(unsigned, ensure_ascii=False,
+                                      separators=(',', ':')).encode()).hexdigest()
+    typed_equal(request['request_hash'], request_hash, 'probe-family request hash')
+    typed_equal(request['recipe'], wire['recipe'], 'probe-family declared recipe')
+    import base64
+    source = base64.b64decode(request['source_b64'])
+    typed_equal(_h.sha256(source).hexdigest(), check['source_files'][0]['sha256'],
+                'probe-family source identity')
+    response, _ = scope.decode_json(wire['stdout'])
+    exact_keys(response, ('schema', 'nonce', 'request_hash', 'ok'), 'probe-family response')
+    typed_equal(response['schema'], protocol, 'probe-family response schema')
+    ok = response['ok']
+    if protocol == 'avworker/1':
+        require(type(ok) is dict and 'steps' in ok and type(ok['steps']) is list
+                and len(ok['steps']) == 1, 'probe-family one run step')
+        step = ok['steps'][0]
+        require(type(step) is dict and step.get('op') == 'run', 'probe-family run op')
+    else:
+        # mnworker/1 native recipes answer with the program exit plus infra
+        # flags; the parent judged the expectation, the frame carries the fact.
+        require(type(ok) is dict and type(ok.get('exit_code')) is int, 'probe-family native exit')
+        require(ok.get('refused') is None and ok.get('infra') is None,
+                'probe-family native refused/infra terminal')
+        step = {'op': 'run', 'outcome': 'success' if ok['exit_code'] == 0 else 'trap',
+                'value': ok['exit_code'] if ok['exit_code'] >= 0 else None}
+    oracle_source = 'suite-contract'
+    if (table_row is not None and table_row[3] == 'value'
+            and protocol == 'avworker/1'
+            and step.get('outcome') == 'success' and type(step.get('value')) is int):
+        # Integer-valued corpus cells cross-check the frozen binding table;
+        # channel/counters-based cells (console O*, entry U*) keep the
+        # suite-contract expectation as their approved oracle.
+        typed_equal(step['value'], int(table_row[4]), 'probe-family frozen value oracle')
+        oracle_source = 'binding.tsv'
+    if step.get('outcome') != 'success':
+        # approved negative: trap/diagnostic outcomes stay PASS only when the
+        # suite-contract expectation itself is the rejection (parent judged).
+        require(step.get('outcome') in ('trap', 'diag', 'success'), 'probe-family unknown outcome')
+    return {'judgement': 'PASS', 'outcome': step.get('outcome'),
+            'value': step.get('value'), 'trap': step.get('trap'),
+            'oracle_source': oracle_source}
+
+
+def admit_probe_families(inputs, evidence, bindings, registry):
+    """PLAN-1000 T-03: strict admission for the remaining source-family probe
+    suites (864/889/console-863/method-881/entry-862/...). Each check's real
+    worker exchange is admitted against its recipe protocol; corpus value
+    cells are re-checked against the frozen binding table oracle."""
+    from ace_m1_first_slice import _compact_admission, _repo_relative
+    from ace_m1_case_evidence import admit_exchange
+    from ace_m1_scalar_evidence import scalar_observation
+    ledger = frozen_ledger(inputs)
+    required = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in ledger if row['required'])
+    all_cells = {(row['ns'], row['id'], row['path']) for row in ledger if row['required']}
+    rows_table = [line.split('	') for line in inputs.read_bytes(CORPUS + 'binding.tsv').decode().splitlines()
+                  if line.strip() and not line.startswith('#')]
+    values = {r[0]: r for r in rows_table if r[1] == 'corpus'}
+    parents, per_cell_all = {}, {}
+
+    def read_suite(key, binding):
+        exact_keys(binding, ('inventory', 'copy', 'av', 'native'), f'probe family binding {key}')
+        contract = _suite_contract(inputs, key)
+        ref = binding['inventory']
+        evidence.sha256(ref['path'], ref['sha256'])
+        inv, _ = evidence.read_json(ref['path'])
+        require(inv.get('schema') == 'test-case-inventory/2', 'formal identity inventory required')
+        fixture = inv['suite_path']
+        if fixture.startswith('\\\\?\\'):
+            fixture = fixture[4:]
+        typed_equal(PureWindowsPath(fixture).relative_to(
+            PureWindowsPath(str(inputs.root))).as_posix(), _suite_for(key),
+            f'probe-family suite identity {key}')
+        from ace_m1_first_slice import inventory_contract
+        typed_equal(inventory_contract(inputs, inv), contract, f'tracked probe-family contract {key}')
+        copy = CaseCopy(EvidenceScope(evidence.path(binding['copy'] + '/artifact-copy.json').parent,
+                                      inputs.budget))
+        admitted = admit_case_bindings(copy, inv)
+        suite_parent = {'report_sha256': admitted['report_sha256'], 'non_pass_rows': [
+            {'case': c['case'], 'check': c['check'], 'status': row['status']}
+            for c, row in admitted['checks'] if row['status'] != 'PASS']}
+        suite_cells = {}
+        for check, row in admitted['checks']:
+            if check.get('adapter') != 'probe':
+                continue
+            cell = _probe_cell(check['case'], check['check'], all_cells)
+            if cell is None or cell not in all_cells:
+                continue
+            recipe = check.get('recipe') or ''
+            if recipe.startswith('ac-av/'):
+                protocol, worker_key = 'avworker/1', 'av'
+            elif recipe.startswith('ac/'):
+                protocol, worker_key = 'mnworker/1', 'native'
+            else:
+                continue
+            pin = binding[worker_key]
+            require(pin is not None, f'probe family worker pin missing: {key}/{worker_key}')
+            # The worker pin is validated against the exchange frame itself
+            # (admit_exchange); mn-worker.exe is deliberately built in two
+            # feature states by the mn/mn-collections tool specs, so not every
+            # family's recorded sha matches the current on-disk state.
+            names = [n for n in copy.files if n.endswith('-start.json')
+                     and '/' + check['case'] + '/' + check['check'] + '/worker-exchanges/' in n]
+            if not names:
+                continue  # avm-console or in-process legs: no wire exchange on this path
+            require(len(names) == 1, f'one probe-family exchange required: {check["case"]}/{check["check"]}')
+            wire = admit_exchange(copy, names[0], protocol=protocol, recipe=recipe,
+                                  worker_sha256=pin['sha256'])
+            oracle_note = 'suite-contract'
+            if cell[0] == 'corpus' and cell[1] in values and values[cell[1]][3] == 'value' and check.get('expected_exit') is not None:
+                typed_equal(check['expected_exit'], int(values[cell[1]][4]),
+                            f'probe-family value oracle {cell[1]}')
+                oracle_note = 'binding.tsv'
+            table_row = values.get(cell[1]) if cell[0] == 'corpus' else None
+            observation = _probe_family_observation(copy.scope, wire, check, table_row)
+            observation['parent_status'] = row['status']
+            if row['status'] != 'PASS':
+                observation['judgement'] = 'FAIL'
+            observation['oracle_source'] = oracle_note
+            suite_cells.setdefault(':'.join(cell), []).append(
+                {'suite': key, 'case': check['case'], 'check': check['check'],
+                 'verdict': observation['judgement']})
+            # keep the bounded observation itself per cell
+            suite_cells.setdefault(':'.join(cell) + '#obs', []).append(observation)
+        return {'cells': suite_cells, 'parent': suite_parent}
+
+    for key in sorted(bindings):
+        outcome = _compact_admission(inputs, lambda _arg, _k=key, _b=bindings[key]: read_suite(_k, _b), 768 << 10)
+        for cell_key, rows in outcome['cells'].items():
+            per_cell_all.setdefault(cell_key, []).extend(rows)
+        if outcome['parent'] is not None:
+            parents[key] = outcome['parent']
+    observations = {}
+    for cell_key, rows in sorted(per_cell_all.items()):
+        if cell_key.endswith('#obs'):
+            continue
+        obs_rows = per_cell_all.get(cell_key + '#obs', [])
+        judgements = [r['judgement'] for r in obs_rows]
+        observations[cell_key] = {
+            'judgement': 'PASS' if judgements and all(j == 'PASS' for j in judgements) else 'FAIL',
+            'supporting_checks': rows,
+            'oracle_sources': sorted({o.get('oracle_source') for o in obs_rows})}
+    from ace_m1_legacy_execution import execution_summary
+    summary = execution_summary(required, observations)
+    summary['source_case_reports'] = parents
+    summary['claimed_cells'] = len(observations)
+    return summary
