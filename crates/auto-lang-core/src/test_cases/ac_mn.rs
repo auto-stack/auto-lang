@@ -217,12 +217,14 @@ mod source_diag {
     ];
     const SURFACE_FIELDS: &[&str] = &["profile", "codes"];
     const SPAN_FIELDS: &[&str] = &["start", "end"];
-    const PROFILES: &[&str] = &["scalar", "record", "text-record"];
+    /// PLAN-961 added the numeric source surface as a terminating rung of
+    /// the native escalation ladder; PLAN-1000 T-09 (911 red) admits it here.
+    const PROFILES: &[&str] = &["scalar", "record", "text-record", "numeric"];
     /// PLAN-999 (T-03) reception: the native ladder attempts a Core side face
     /// between the monotone rungs, so "core" may appear in `attempted`. It is
     /// never the terminating profile (side faces cannot terminate escalation)
     /// and never lists a surface rejection.
-    const ATTEMPTED_PROFILES: &[&str] = &["scalar", "record", "text-record", "core"];
+    const ATTEMPTED_PROFILES: &[&str] = &["scalar", "record", "text-record", "numeric", "core"];
     const OPERATIONS: &[&str] = &["cold", "warm-edit", "fallback-cold"];
     /// The raw stage vocabulary (Stage::as_str()); only these three can
     /// carry a language-rejection family — anything else is admitted as a

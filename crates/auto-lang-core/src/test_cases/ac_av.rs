@@ -1957,15 +1957,21 @@ fn run_check_with_transport(
     // across worker processes; the PARENT owns cleanup. Without a session
     // the check's own artifact dir hosts a private per-request store.
     let store_root = match &av.session {
-        // Explicit module-case execution owns a private run. Ordinary suite
-        // callers may intentionally restart the same session across runs.
-        Some(_)
+        // PLAN-1000 T-09 (909/912 reds): the closures session stores ALWAYS
+        // live under this run's private directory. The old global
+        // %TEMP%/av798-session-<name> root leaked warm content-addressed
+        // state across invocations, so a second run of the same suite saw
+        // cache hits on its `fresh` checks (and all-hit zeros where misses
+        // were expected). Every suite pairs fresh/hit/restart within one
+        // invocation, so per-run scoping keeps the warm semantics those
+        // checks exist to prove while restoring fresh-run isolation.
+        Some(s)
             if matches!(
                 family,
                 RecipeFamily::ClosuresSource | RecipeFamily::ClosuresFn
-            ) && MODULE_PRIVATE_SESSIONS.with(|scope| scope.get()) =>
+            ) =>
         {
-            _run_dir.join("av-closures-sessions")
+            _run_dir.join("av-closures-sessions").join(s)
         }
         Some(s) => std::env::temp_dir().join(format!("av798-session-{s}")),
         None => artifact_dir.join("store"),
