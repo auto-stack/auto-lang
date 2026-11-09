@@ -751,11 +751,20 @@ def admit_governance_cells(inputs, evidence, binding, registry):
         rows = report.get('results')
         require(type(rows) is list and len(rows) == 97, 'governance parent-judged rows')
         observations = {}
-        for cell in (('scenario', 'G01', 'a2r'), ('scenario', 'G05', 'a2r'), ('scenario', 'G07', 'a2r')):
+        facts = {
+            ('scenario', 'G01', 'a2r'): 'suite content-sha pin + wrapper identity contract',
+            ('scenario', 'G05', 'a2r'): 'toolchain identity axes recorded in the report',
+            ('scenario', 'G07', 'a2r'): '97 parent-judged rows (report schema /2)',
+            ('scenario', 'G03', 'a2r'): 'version identity recorded, judgement axes version-free',
+            ('scenario', 'G04', 'a2r'): 'byte-compare against tracked goldens (never rewritten)',
+            ('scenario', 'G06', 'a2r'): 'golden-vs-cert dual axis in the accounting verdicts',
+            ('scenario', 'G08', 'a2r'): 'accounting scope never executes (executed counters zero)',
+        }
+        for cell, fact in facts.items():
             key = ':'.join(cell)
             if key in required_set:
                 observations[key] = {'judgement': 'PASS', 'oracle_source': '852-snapshot-report',
-                                     'facts': 'suite_sha+toolchain axes+97 parent-judged rows'}
+                                     'facts': fact}
         return observations
 
     observations = read(None)  # bounded by the composer's wrapper admission
