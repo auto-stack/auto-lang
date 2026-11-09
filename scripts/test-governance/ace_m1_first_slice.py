@@ -51,6 +51,7 @@ SUITES = {
     'a2r_hir_coll_904': 'crates/auto-lang/test/cases/a2r-hir-collections-904/a2r-hir-collections-904.suite.ad',
     'a2r_owned_931': 'crates/auto-lang/test/cases/ace-m1/a2r-owned-temporaries-931/a2r-owned-temporaries-931.suite.ad',
     'legacy_base': 'crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad',
+    'order_layout_914': 'crates/auto-lang/test/cases/ace-m1/order-layout-914/order-layout-914.suite.ad',
 }
 WORKERS = {'av': 'av-worker.exe', 'native': 'mn-worker.exe',
            'syntax': 'ace-case-worker.exe', 'bridge': 'abi-worker.exe'}

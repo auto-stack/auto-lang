@@ -30,7 +30,6 @@ def _cell_key(case_id, required_cells):
     """Map one Case id to at most one required legacy cell (ns, id, path=a2r)."""
     corpus_ids = {cell[1].lower(): cell for cell in required_cells if cell[0] == 'corpus'}
     scenario_ids = {cell[1].lower(): cell for cell in required_cells if cell[0] == 'scenario'}
-    token = None
     if case_id.startswith(_SCENE):
         token = case_id[len(_SCENE):]
         # fixture families: r02_l04 -> family r02 when the whole token is not an id
@@ -38,40 +37,40 @@ def _cell_key(case_id, required_cells):
             token = token.split('_')[0]
         return scenario_ids.get(token)
     if case_id.startswith(_TRAP) or case_id.startswith(_TEXT):
-        token = case_id.rsplit('.', 1)[-1]
-        return corpus_ids.get(token)
+        return corpus_ids.get(case_id.rsplit('.', 1)[-1])
     if case_id.startswith(_SEM) or case_id.startswith(_EMIT):
         # ace.m1.a2r916.b16.single / .project: the obligation id is the second
         # dot segment; single/project are two modes of the same family cell.
         # (Checked before _PLAIN, whose shorter prefix would swallow these.)
         parts = case_id.split('.')
         token = parts[3].lower() if len(parts) > 3 else parts[-1].lower()
-        if token in corpus_ids:
-            return corpus_ids[token]
-        if token in scenario_ids:
-            return scenario_ids[token]
-        return None
+        return corpus_ids.get(token) or scenario_ids.get(token)
     if case_id.startswith(_PLAIN):
         token = case_id[len(_PLAIN):]
+        # order-layout-914: e01.legacy/e02.legacy are the scenario a2r legs
+        if token.endswith('.legacy'):
+            return scenario_ids.get(token.split('.')[0])
         return corpus_ids.get(token)
     for prefix in (_HIR_RT, _HIR_COLL, _OWNED):
         if case_id.startswith(prefix):
-            token = case_id[len(prefix):]
-            return corpus_ids.get(token)
-    if case_id.startswith(_SEM) or case_id.startswith(_EMIT):
-        # ace.m1.a2r916.b16.single / .project: the obligation id is the second
-        # dot segment; single/project are two modes of the same family cell.
-        parts = case_id.split('.')
-        token = parts[3].lower() if len(parts) > 3 else parts[-1].lower()
-        if token in corpus_ids:
-            return corpus_ids[token]
-        if token in scenario_ids:
-            return scenario_ids[token]
-        return None
+            return corpus_ids.get(case_id[len(prefix):])
     return None
 
 
-def admit_a2r_execution(inputs, evidence, bindings, registry):
+def _cells_for(case_id, required_cells):
+    """One check may close several documented group cells (E03 example)."""
+    primary = _cell_key(case_id, required_cells)
+    cells = [primary] if primary is not None else []
+    if case_id.startswith(_SEM) and case_id.split('.')[3].lower() == 'b16':
+        # E03 = B04/B20/B16 group cell (frozen binding note): the 916 b16 legs
+        # close scenario:E03:a2r without a separate E03 source.
+        e03 = next((c for c in required_cells if c == ('scenario', 'E03', 'a2r')), None)
+        if e03 is not None and e03 not in cells:
+            cells.append(e03)
+    return cells
+
+
+def admit_a2r_execution(inputs, evidence, bindings, registry, workers=None):
     """Admit every bound a2r suite run and reduce per-cell observations.
 
     bindings: {suite_key: {'inventory': {'path','sha256'}, 'copy': <scope dir>}}
@@ -124,28 +123,38 @@ def admit_a2r_execution(inputs, evidence, bindings, registry):
                 inputs.sha256(PurePosixPath(base_rel, artifact['file']).as_posix(), artifact['sha256'])
         return inv
 
-    def read_one(_):
-        for key, binding in sorted(bindings.items()):
-            exact_keys(binding, ('inventory', 'copy'), f'a2r binding {key}')
-            inv = _admit_inventory(key, binding)
-            copy = CaseCopy(EvidenceScope(evidence.path(binding['copy'] + '/artifact-copy.json').parent,
-                                          inputs.budget))
-            from ace_m1_first_slice import _repo_relative
-            fixture = inv['fixture_base']
-            if fixture.startswith('\\\\?\\'):
-                fixture = fixture[4:]
-            base_relative = PureWindowsPath(fixture).relative_to(
-                PureWindowsPath(str(inputs.root))).as_posix()
-            admitted = admit_case_bindings(copy, inv)
-            parents[key] = {'report_sha256': admitted['report_sha256'], 'non_pass_rows': [
-                {'case': c['case'], 'check': c['check'], 'status': row['status']}
-                for c, row in admitted['checks'] if row['status'] != 'PASS']}
-            for check, row in admitted['checks']:
-                if check.get('adapter') != 'a2r':
-                    continue
-                cell = _cell_key(check['case'], required_cells)
-                if cell is None:
-                    continue  # suite-level extra coverage; no required cell claimed
+    from ace_m1_first_slice import _compact_admission
+
+    def read_suite(key, binding):
+        """One suite per bounded admission: its decoded inventory and contract
+        snapshot die before the next suite's documents reserve live bytes."""
+        exact_keys(binding, ('inventory', 'copy', 'worker'), f'a2r binding {key}')
+        require(binding['worker'] is None or set(binding['worker']) == {'path', 'sha256'},
+                f'a2r worker pin {key}')
+        suite_cells = {}
+        inv = _admit_inventory(key, binding)
+        copy = CaseCopy(EvidenceScope(evidence.path(binding['copy'] + '/artifact-copy.json').parent,
+                                      inputs.budget))
+        from ace_m1_first_slice import _repo_relative
+        fixture = inv['fixture_base']
+        if fixture.startswith('\\\\?\\'):
+            fixture = fixture[4:]
+        base_relative = PureWindowsPath(fixture).relative_to(
+            PureWindowsPath(str(inputs.root))).as_posix()
+        admitted = admit_case_bindings(copy, inv)
+        suite_parent = {'report_sha256': admitted['report_sha256'], 'non_pass_rows': [
+            {'case': c['case'], 'check': c['check'], 'status': row['status']}
+            for c, row in admitted['checks'] if row['status'] != 'PASS']}
+        worker = binding.get('worker')
+        for check, row in admitted['checks']:
+            recipe = check.get('recipe') or ''
+            is_a2x_emit = check.get('adapter') == 'probe' and recipe.startswith('ac-a2r/')
+            if check.get('adapter') != 'a2r' and not is_a2x_emit:
+                continue
+            cells = _cells_for(check['case'], required_cells)
+            if not cells:
+                continue  # suite-level extra coverage; no required cell claimed
+            for cell in cells:
                 require(cell in required_cells, 'a2r cell mapping escaped the required set')
                 # source identity: corpus cells re-verify the frozen source bytes
                 name = cell[1]
@@ -154,6 +163,17 @@ def admit_a2r_execution(inputs, evidence, bindings, registry):
                     digest = manifest['corpus_src']['files'][name + '.at']
                     typed_equal(check['source_files'][0]['sha256'], digest,
                                 'a2r source identity ' + name)
+                # a2x-emit legs additionally admit the real worker exchange
+                wire = None
+                if is_a2x_emit:
+                    require(worker is not None, f'a2x-emit worker pin required for {key}')
+                    inputs.sha256(worker['path'], worker['sha256'])
+                    names = [n for n in copy.files if n.endswith('-start.json')
+                             and '/' + check['case'] + '/' + check['check'] + '/worker-exchanges/' in n]
+                    require(len(names) == 1, f'one a2x-emit exchange required: {check["case"]}')
+                    from ace_m1_case_evidence import admit_exchange
+                    wire = admit_exchange(copy, names[0], protocol='a2xworker/1',
+                                          recipe=recipe, worker_sha256=worker['sha256'])
                 # oracle: every declared golden artifact re-hashed in the repo,
                 # and the retained emitted bytes compared byte-for-byte.
                 oracles = []
@@ -169,17 +189,24 @@ def admit_a2r_execution(inputs, evidence, bindings, registry):
                             f'a2r golden byte-compare failed: {check["case"]}/{check["check"]}')
                     oracles.append({'golden': artifact['file'], 'sha256': artifact['sha256']})
                 verdict = 'PASS' if (row['status'] == 'PASS' and source_ok) else 'FAIL'
-                per_cell.setdefault(cell, []).append(
+                suite_cells.setdefault(cell, []).append(
                     {'suite': key, 'case': check['case'], 'check': check['check'],
-                     'verdict': verdict, 'oracles': oracles})
-        result = {}
-        for cell, rows in sorted(per_cell.items()):
-            result[':'.join(cell)] = {
-                'judgement': 'PASS' if all(r['verdict'] == 'PASS' for r in rows) else 'FAIL',
-                'supporting_checks': rows}
-        return result
+                     'verdict': verdict, 'oracle_count': len(oracles),
+                     **({'exchange': True} if wire is not None else {})})
+        return {'cells': {':'.join(cell): rows for cell, rows in suite_cells.items()},
+                'parent': suite_parent}
 
-    observations = _compact_admission(inputs, read_one, 2 << 20)
+    per_cell_all = {}
+    for key in sorted(bindings):
+        outcome = _compact_admission(inputs, lambda _arg, _k=key, _b=bindings[key]: read_suite(_k, _b), 512 << 10)
+        for cell_key, rows in outcome['cells'].items():
+            per_cell_all.setdefault(cell_key, []).extend(rows)
+        if outcome['parent'] is not None:
+            parents[key] = outcome['parent']
+    observations = {cell_key: {
+            'judgement': 'PASS' if all(r['verdict'] == 'PASS' for r in rows) else 'FAIL',
+            'supporting_checks': rows}
+        for cell_key, rows in sorted(per_cell_all.items())}
     from ace_m1_legacy_execution import execution_summary
     summary = execution_summary(required, observations)
     summary['source_case_reports'] = parents
@@ -202,5 +229,6 @@ def _suite_for(key):
         'a2r_hir_coll_904': 'crates/auto-lang/test/cases/a2r-hir-collections-904/a2r-hir-collections-904.suite.ad',
         'a2r_owned_931': 'crates/auto-lang/test/cases/ace-m1/a2r-owned-temporaries-931/a2r-owned-temporaries-931.suite.ad',
         'legacy_base': 'crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad',
+        'order_layout_914': 'crates/auto-lang/test/cases/ace-m1/order-layout-914/order-layout-914.suite.ad',
     }
     return paths[key]
