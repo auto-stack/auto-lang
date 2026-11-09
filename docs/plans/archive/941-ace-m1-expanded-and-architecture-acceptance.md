@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-941
-status: reviewed
+status: archived
 feature_name: CA-E／ARCH 扩大后M1登记与最终组合验收
 author: [Codex]
 created_at: 2026-11-05
@@ -522,7 +522,7 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-12 | work | T-11及T-18/19/20/21/22/23/24/25；最终D934/935/936/938/939与已交929/937；正式采样窗 | 冻结真实完整证据并集/原样本规模、fresh/hit/restart/first-edit/资源/真实独立认证→组合报告，缺项保持真实red；AC-01..11，V-01..17 | [x] 第122轮：f94138-current-composed/closure-audit-t12——组合严格读出GREEN@9eb19674b+伴读五组@HEAD（full-groups 433/132/262、semantics 243、comptime 149@T3窗）；verdicts 730P/0F/276U（对gap-6基线恰14变=999八scalar红转绿+T-06六ARCH-05测量行回灌，逐键无其他漂移）；样本规模全量在档（case466/cert292+daily292/opt14/拒6/abi263/av1059/policy14of16窗/增量8行）；acceptance_system_delivered=true（T-10控制族绿）；余7 blocker全为真实未执行产品义务（legacy执行211格/C-core与资源/Q4 oracle认证/syntax架构/精确增量2 PARTIAL/budgets_time 2缺窗+cleanup族/evidence_incomplete），can_claim_expanded_m1=false——AC-11『不全绿则明确red/owner，绝不写M1交付pass』满足 |
 | T-13 | work | T-12 | SD/coverage守恒/全部owner接口/健康冻结/遗留cert与新缺陷交接；明确系统交付与M1是否可签，不能藏in-contract未执行；AC-11 | [x] 第122轮：①coverage守恒——1006登记键/31合同/map 313required/524格（validate_map绿）、旧313观测102守恒、八scalar红转绿后legacy execution failed=0；②owner接口——map每格evidence_owner=PLAN-941/capability_owner具名（validate_map绿），7 blocker各有归属面；③健康冻结——941写面唯一.rs（ac_mn.rs）fmt净、零debug print、治理262/262；master侧71文件fmt漂移=998/999代码继承（非941写面，登记不修）；④遗留交接——§10.2 gap-0终态、§10.17 F-941-13关闭、F07核销（§10.11）、F-941-15 av栈修复已交付；余债=7 blocker对应产品线+master fmt漂移；⑤系统交付=true、M1不可签（can_claim_expanded_m1=false，§1交付边界满足） |
 | T-14 | review | T-01..13及T-16..25完成，停止实现写入 | 同树独立上下文重建source→producer→consumer→oracle→gate全链/反控/所有SD与债，不采信摘要；AC-12，V-18 | [x] 第123轮final pass：冻结提交9eb19674b/r11树clean零dirty；①组合读者新鲜重跑自解析——1006键/31合同/730P/0F/276U、7 blocker、system_delivered=true与closure-audit-t12逐项一致；②14漂移逐键断言=恰999八scalar闭+ARCH-05六行回灌；③八捕采宣称全部原始档复核（case466全绿/cert292×3/av1059/abi263/伴读433-132-262-243-149/opt14）；④治理262/262（含全部负控）；⑤F01..F12永久回归8/8在场（F04实名conditional_941_*三族）；⑥Spec delta有效（11 supersede路径实在/新组件为merge建/GOAL-002真实/规范增量§在）；⑦零legacy-ledger写入；AC-01..11+14..22全pass（AC-13属merge）。非阻断观察R-1..R-5（master fmt漂移71文件=998/999继承/盘间歇/comptime冷跑需T3窗/活数据峰99.2%帽/分支spec态归merge调和）。独立性限制：与实现同会话，结论自原始工件重建非采信摘要 |
-| T-15 | merge | T-14 pass与§4已有全链合入授权 | 冻结职责并集/漂移复验、SD沉淀/主线读回/归档、所有输出scope与树guard清理；AC-13；M1未绿不改成绿 | [ ] |
+| T-15 | merge | T-14 pass与§4已有全链合入授权 | 冻结职责并集/漂移复验、SD沉淀/主线读回/归档、所有输出scope与树guard清理；AC-13；M1未绿不改成绿 | [x] 第124轮：SD-01..16沉淀（新ace-m1-expanded-acceptance.md+15修改，worktree预备546b89bf7）；落地=树等价单提交4e105b992（与reviewed树唯一差异=计划文件取master共享簿记版）+收尾CRLF修复1671a3f02（abi.rs/store mod.rs/profiles_927三处CRLF型pin→LF内容sha，cascade镜像/registry，双检出治理262/262）；ff-only入master（tip=1671a3f02）；归档docs/plans/archive/；wt-guard后树/分支/组目录清理+plan-artifacts scope删除+登记表刷新；M1未绿保持未绿（7真实blocker） |
 | T-16 | work | 用户r2直接加phase授权；§5.8；当前941唯一树 | 确认生产CST/条件诊断与旧oracle共享歧义，修复既有条件/body-vs-Ctor边界并补whole/fragment与合法/非法Ctor永久回归；AC-14，V-19/20 | [x] |
 | T-17 | work | T-16，实际provider/grammar/工具身份冻结 | 原十源20Case/同源Rust-C认证逐oracle重验与原失败闭环；完整ace-source及实际AV/native消费者职责并集、必要ace-syntax及身份变化刷新，SD-07；AC-03/04/09/14，V-21 | [x] |
 | T-18 | work | 用户r3新增phase授权；§5.9；a236a44基面、原失败与Spec | Rust lower.rs值根/参数模式修复；沿provider既有print版本轴失效旧片段；新record_field_writes_941.rs并conformance注册，原3源+独立reference/default与-O、分支/循环/readonly/mut/view/move兄弟；AC-15，V-22/23，SD-08/09 | [x] |
@@ -2492,6 +2492,19 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | round:122 | from:work | to:
 - **下一阶段**：T-15 merge（SD沉淀§规范增量→主线合入→归档→wt-guard清理→plan-artifacts scope删除）。
 
 stage: review | review_scope:final | reviewer_identity:同会话独立上下文（限制已声明，结论自原始工件重建） | plan_id:PLAN-941 | plan_revision:r11 | outcome:pass | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | reviewed_commit:9eb19674b2b53f043ee7cf372ac13de4dbafcce7 | base_commit:d057ae5ea（master） | dependency_revisions:D998=c30dfeb36、D999=c2f60dc79/6dd05a17a/99f43e6fe系、D939=dfe5a1002 | spec_inputs:11 supersede路径+新ace-m1-expanded-acceptance.md（merge建）+GOAL-002 | acceptance_results:AC-01..11 pass、AC-14..22 pass、AC-13 merge-pending | pending_closeout_gates:merge冻结职责并集重验+Specs沉淀读回+归档+wt-guard+scope清理 | findings:无阻断；R-1..R-5非阻断观察 | evidence:f94138-review-compose.out（新鲜重跑）+ closure-audit-t12 + 八捕采原始档 + 治理262/262 | next:merge
+
+### 第124轮：merge T-15 交付——SD沉淀、ff落地master@1671a3f02、CRLF收尾修复、归档与清理
+
+- **prepared**：SD-01..16 于实现树沉淀（新增 `docs/specs/auto-test-case/ace-m1-expanded-acceptance.md` + 15 处修改，提交 `546b89bf7`，reviewed 9eb19674b 的 docs-only 后继=交付基线）。
+- **landed**：分支含多次 master 吸收、整链 rebase 结构性重演远古冲突——按树等价单提交落地：landing 分支 `4e105b992`（`git diff 4e105b992 546b89bf7` 仅计划文件一项=master 共享簿记版，其余字节一致，树等价证明强于 range-diff）；`git merge --ff-only` 入 master，无合并提交。
+- **收尾缺陷修复（落地验证期发现，未隐藏）**：三处 pin 为 CRLF 盘上字节时代的 sha（abi.rs 于 budget/registry、store/mod.rs+profiles_927.rs 于三 CT 合同）——复审期盘上恰为 CRLF 故 262/262 通过，后续 checkout 归一 LF 后 3 测试真实红；修复为 LF 内容 sha+cascade（budget/CT 四镜像+registry 四引用），双检出治理 **262/262**，`1671a3f02` 成为最终交付提交（master tip）。
+- **canonical_verified**：16 条 delta 路径在 master（11 supersede 实在+新组件在树）；主线治理 262/262=落地面绿。
+- **archived**：本计划 git mv 至 `docs/plans/archive/`，status=archived，任务 33/33。
+- **cleaned**：wt-guard clean 后移除 worktree/两分支/组目录；plan-artifacts/plan-941 整 scope 删除（2026-10-31 裁定），.retention 登记刷新；具名持有=无（七 blocker 为产品义务非证据持有）。
+- **部署观察**：本仓无运行时产物部署面（验收/治理系统）；master 侧 `cargo t` 固定组即门档。批量回归 due-check：941%5≠0，last-batch-receipt 覆盖 999 链后无新 divisible-by-5 落地 → not due。
+- **最终态**：M1 未签（can_claim_expanded_m1=false，7 真实 blocker 全为未执行产品义务）；验收系统按 §1 边界交付。
+
+stage: merge | plan_id:PLAN-941 | plan_revision:r11 | outcome:pass | delivery_commit:1671a3f02266ef64416cb6c50d4e029bbbff759c（=4e105b992树+CRLF收尾修复） | reviewed_commit:9eb19674b | spec_paths:docs/specs/auto-test-case/ace-m1-expanded-acceptance.md(新)+15修改 | archive:docs/plans/archive/941-ace-m1-expanded-and-architecture-acceptance.md | cleanup:worktree/branch/group/plan-artifacts-scope 已清 | pending_gates:批量回归 not due | evidence:双检出治理262/262 + 树等价diff + merge ff-only记录
 
 ## 10. 待澄清事项
 
