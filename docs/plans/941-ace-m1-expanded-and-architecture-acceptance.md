@@ -2449,10 +2449,22 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§5身�
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§4终态收官abi263/av1059；§5六层fingerprint合同再冻结全绿；bridge store reader适配为下一入口） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:35a21a3810a4 | task_ids:CHECKLIST §5 | evidence:治理257/257×7层 + f94136组合重读在途 | next_responsible_role:work bridge store reader适配→组合 | 无live handle
 
+### 第120轮：work 998+999同步合并+gap-0接收+bridge store reader适配落地——治理262/262，身份对账10工具变，case466重采启动
+
+- **998+999同步合并**（merge `85414f25e`，零冲突）：master自35a21a381前进37提交，D998（资源场景域，cert-gap 6→0三域闭合16/16）+D999（Core共享准入门/真实预算深准入、span-free签名摘要=F-941-13生产修复、SQ同义页幂等重发布、934金样补冻）+941各轮docs簿记全部并入；根/ace双workspace check净（auto-api-gen既有告警=master继承）。四个934金样双侧字节一致（941树内refreeze与999 master刷新收敛）。
+- **gap-0接收**（提交`5b8fc358e`，25文件）：①16个交付文件pin三层重钉（五机制合同+sq-fact各9 source pin、legacy-architecture 5、map 3、budget 2、case-obligations.tsv/legacy-base/architecture-obligations深层引用、CONTRACT_SHA七镜像、registry expanded_contracts八对+级联三对）；②map六scenario:a2r格token→`ok-emit-scene`、`legacy-a2r-cert-gap`摘除；③reader适配诚实态：旧门`can_claim_m1: True`（三域闭合后其自身313门会计如实翻绿）、CERT行新`trap+scene-validated(4 trap + 6 ...)`格式+scenario verdict键、`old_certification_gaps==0`、`original_claim=True`；④控制面重定向（claim篡改方向翻转、gap移除反控改用仍开口命名gap、reducer无改动——cert_gaps=0自动摘除blocker）。治理**257/257**。
+- **bridge store-seam reader适配**（提交`ba5e59064`，119b卡点闭合）：新`bridge_store_query_observations`（ace_m1_abi_evidence）——D937终态store seam下交换帧/nonce/request_hash链不可观测，如实出scope；逐query消费parent Job样本（typed字段集、seq/op/outcome/cache/compute_calls/stages/meter/Job计数、completion语义、probe_oracle三轴）+store真实面准入（journal.db必备、compute发生时bridge-scratch产品按leg分道要求：source=generated.c+a2x_c_runtime.h+bridge_source_caller.c、typed=self|n2c|c2n道.obj；parse级拒绝cache='-'合法无scratch）。首例bridge分支切换至store reader；新增5控制类（负控：缺scratch/journal、错道、多余字段、分母错、oracle错FAIL）。**真实f94136捕获六检查全PASS**（source-export/body-edit/typed-self/n2c/c2n/bad-leg）。治理**262/262**。
+- **F-941-13闭合计账**（§10.17）：D999=`6dd05a17a`具名修复（type_digest结构化span-free投影+突变验证+永久回归），941合并后缺陷不在树，无需941侧处置；§10.2追记gap-0终态（expanded-M1签章仍由§5.2八域门独立裁决，旧门claim只是legacy_current_gate域输入）。
+- **身份对账**（f94138-final-tools@`ba5e59064`）：14工具面重build（同metered argv）——**10变**（八worker+auto-case+test-case-pilot，999触source-query/core/lowering/av/native所致）/3不变（三runtime .lib）；全部捕获腿身份过期，§4链于新HEAD整体重采。
+- **case466重采启动**（refresh-f94138-source-cases.py，17组`cargo t`带wire导出@`ba5e59064`，后台在途，结果入第121轮）。
+- **边界**：下一入口=case466完成→五native→cert292+daily292→optimized14+拒绝6→abi/av档→registry parent pin刷新→§5组合重读（新宇宙：awaiting=0/delivered=14/cert-gap=0、预期723+P与ARCH-05回灌）→T-12→T-13→T-14→T-15。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | round:120 | outcome:progress（998+999合并+gap-0接收+bridge store reader六检查PASS+F-941-13闭合计账；治理262/262@ba5e59064；10工具变，case466重采在途） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:ba5e59064 | task_ids:CHECKLIST §4重采启动/§5前置 | evidence:f94138-final-tools/identity-audit.json + receive-f94137-998-999.py + smoke-f94137-bridge-store-reader.py(6/6 PASS) + 治理262/262 | next_responsible_role:work case466完成→§4链重采→§5组合 | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
-2. CE-BASE-01不是本轮解除项：默认沿当前924旧cert守卫保红，旧38格功能缺失归旧A2R线，证据接线由T-01/04审计。若希望恢复G-DEC原双轴的独立记账签章，须用户明确裁定并修订r1后执行；不把该选择预填为已批准。本包规划与只读实现准备不依赖该口径变更。**更新（2026-11-08第103轮）**：D992（`64f93cb99`）已认证17格（master实测cert-gap 38→21、分母hash守恒），本树master同步窗口后按21格记账，余21格owner=F-A2R-3线（992 SD）；M1签章仍阻，守卫不撤。
+2. CE-BASE-01不是本轮解除项：默认沿当前924旧cert守卫保红，旧38格功能缺失归旧A2R线，证据接线由T-01/04审计。若希望恢复G-DEC原双轴的独立记账签章，须用户明确裁定并修订r1后执行；不把该选择预填为已批准。本包规划与只读实现准备不依赖该口径变更。**更新（2026-11-08第103轮）**：D992（`64f93cb99`）已认证17格（master实测cert-gap 38→21、分母hash守恒），本树master同步窗口后按21格记账，余21格owner=F-A2R-3线（992 SD）；M1签章仍阻，守卫不撤。**再更新（2026-11-09第120轮）**：993..998三域闭合（value 38+trap 4+scene 6，D998=`c30dfeb36`收尾6格）后旧门自身会计cert-gap=0、`can_claim_m1`如实翻True；941第120轮gap-0接收完成（map六格转ok-emit-scene、reader/控制面按诚实声明重定向，治理262/262）。**expanded-M1签章仍由本包§5.2八域门+reducer独立裁决**，旧门claim只是legacy_current_gate域输入，不代M1签章；G-DEC双轴独立记账的裁定问题保持不变。
 3. 在途934..936、938/939若无法提供承诺字段/原始计量/required页，原owner交稳定接口或具名新缺陷计划；不能由本包改expected/删行/绕checker模拟通过，不给未立项后继预占号。
 4. **F-941-01 已关闭（2026-11-06，D951=fec8a9602）**：用户已授权独立修复并继续；951实际复审/合入/归档/清理6/6完成，941本树重建原worker并重放Rust/C完整actual+独立reference，两证书均由原严格reader接受。原授权和T-01/T-02其余工作继续有效，无待决定producer修复事项；不得用本项关闭替代其余验收或旧38格认证。
 
@@ -2480,4 +2492,4 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§4终�
 
 16. **F-941-12已核销（r9 T30/31，第82..83轮）**：用户具名授权后，投影层产物签名修复（6a545cee7d，+15行：错误树中紧跟错误item的顶层script按恢复产物跳过投影与saw_script，run内粘滞；R04头拒绝/clean树不动）使A/H/I三形与片段面首诊断与手写oracle逐字节全等；baseline 1P2F→3/3、三phase联合51/51、完整组771/771；第83轮身份闭包（Z=c18dcd634d，8工具/五native/Case466/cert292+daily/优化14+拒绝6重采）组合716P8F282U逐键零漂移。触发器修正记录：任何完整嵌套块`}`均可（非lambda特有）；引擎恢复/grammar未改。SD15候选交最终T14；F07仍独立待批。
 
-17. **F-941-13候选（2026-11-07第90轮发现，未授权未修）**：`units.rs`的`signature_of`签名摘要以`Debug`格式包含类型`Ident.span`铸造坐标——任何前置变长编辑造成坐标漂移后，对**不同**函数的下一次body-only `edit_owner`会因旧/新载荷span不同触发保守`OwnerSignatureChanged`（过度失效事件面：依赖者被多余重验；不影响P/IO生产计量精度、不影响恰目标物化；单编辑/无漂移序列行为正确，t06既有断言不受扰）。生产修复（摘要规范化为span-free接口面）属core语法面写入，按§5.7 S/N/X行需用户具名授权，本包未动；`source_dependency_edits_941`方法族测试按无漂移编辑序测"body-only无签名事件"语义面并在注释中具名该边界。
+17. **F-941-13候选（2026-11-07第90轮发现，未授权未修）**：`units.rs`的`signature_of`签名摘要以`Debug`格式包含类型`Ident.span`铸造坐标——任何前置变长编辑造成坐标漂移后，对**不同**函数的下一次body-only `edit_owner`会因旧/新载荷span不同触发保守`OwnerSignatureChanged`（过度失效事件面：依赖者被多余重验；不影响P/IO生产计量精度、不影响恰目标物化；单编辑/无漂移序列行为正确，t06既有断言不受扰）。生产修复（摘要规范化为span-free接口面）属core语法面写入，按§5.7 S/N/X行需用户具名授权，本包未动；`source_dependency_edits_941`方法族测试按无漂移编辑序测"body-only无签名事件"语义面并在注释中具名该边界。**已关闭（2026-11-09 D999=`6dd05a17a`）**：999在master具名修复（`signature_of`经结构化span-free `type_digest`投影TypeRef，Ident/嵌套注解全覆盖；语义变更仍触发且三漂移场景突变验证旧Debug摘要失败）并交付永久回归；941第120轮合并后本树不含该缺陷，`source_dependency_edits_941`方法族无漂移语义面继续有效，无需941侧另行处置。
