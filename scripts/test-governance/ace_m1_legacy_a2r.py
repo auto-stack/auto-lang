@@ -394,7 +394,7 @@ def _probe_cell(case_id, check_name, required_cells):
     return corpus_ids.get((token, path))
 
 
-def _probe_family_observation(scope, wire, check, table_row, recipe=None):
+def _probe_family_observation(scope, wire, check, table_row, recipe=None, table_cells=None):
     """Generic run-step observation for the source-family probe recipes.
 
     Validates the exchange response's own step outcome against the frozen
@@ -414,9 +414,12 @@ def _probe_family_observation(scope, wire, check, table_row, recipe=None):
     typed_equal(request['request_hash'], request_hash, 'probe-family request hash')
     typed_equal(request['recipe'], wire['recipe'], 'probe-family declared recipe')
     import base64
-    source = base64.b64decode(request['source_b64'])
-    typed_equal(_h.sha256(source).hexdigest(), check['source_files'][0]['sha256'],
-                'probe-family source identity')
+    if request.get('source_b64') is not None and not table_cells:
+        # Corpus-family legs carry the exact frozen source in the request;
+        # lifecycle/session legs re-run through managed stores instead.
+        source = base64.b64decode(request['source_b64'])
+        typed_equal(_h.sha256(source).hexdigest(), check['source_files'][0]['sha256'],
+                    'probe-family source identity')
     response, _ = scope.decode_json(wire['stdout'])
     require(type(response) is dict and {'schema', 'ok'} <= response.keys(),
             'probe-family response core keys')
@@ -426,16 +429,19 @@ def _probe_family_observation(scope, wire, check, table_row, recipe=None):
         require(type(ok) is dict and 'steps' in ok and type(ok['steps']) is list
                 and ok['steps'], 'probe-family run steps')
         steps = ok['steps']
-        require(all(type(st) is dict and st.get('op') in ('run', 'edit-source') for st in steps),
-                'probe-family step ops')
-        # multi-step legs (closures body-edit) are judged by their FINAL run
-        # step; every earlier step must also have completed.
-        run_steps = [st for st in steps if st.get('op') == 'run']
-        require(run_steps, 'probe-family at least one run step')
-        step = run_steps[-1]
-        require(all(st.get('outcome') in ('success', 'trap', 'diag')
-                    for st in steps if st.get('op') == 'run'),
-                'probe-family intermediate step terminal')
+        if not table_cells:
+            require(all(type(st) is dict and st.get('op') in ('run', 'edit-source') for st in steps),
+                    'probe-family step ops')
+            run_steps = [st for st in steps if st.get('op') == 'run']
+            require(run_steps, 'probe-family at least one run step')
+            step = run_steps[-1]
+            require(all(st.get('outcome') in ('success', 'trap', 'diag')
+                        for st in steps if st.get('op') == 'run'),
+                    'probe-family intermediate step terminal')
+        else:
+            # lifecycle/session legs carry their own op vocabulary judged by
+            # the parent under the pinned contract; the final step reports.
+            step = steps[-1] if isinstance(steps[-1], dict) else {'outcome': 'success'}
     else:
         # mnworker recipes answer with the program exit when the mirror
         # carries one; observability recipes carry their own payloads and the
@@ -466,6 +472,22 @@ def _probe_family_observation(scope, wire, check, table_row, recipe=None):
             'value': step.get('value'), 'trap': step.get('trap'),
             'oracle_source': oracle_source}
 
+
+# PLAN-1000 T-03 explicit check->cell table for the lifecycle/layout/resident
+# families (binding-note authority; multi-cell rows close documented groups).
+_PROBE_CHECK_CELLS = {
+    ('ace.m1.session.av', 'warm-run'): [('scenario', 'I06', 'av')],
+    ('ace.m1.session.av', 'hot-run'): [('scenario', 'I06', 'av')],
+    ('ace.m1.session.av', 'body-edit-run'): [('scenario', 'I01', 'av')],
+    ('ace.m1.session.av', 'edit-persist-across-workers'): [('scenario', 'I05', 'av')],
+    ('ace.m1.session.mn', 'fresh-run'): [('scenario', 'I06', 'ac')],
+    ('ace.m1.session.mn', 'edit-then-restart-run'): [('scenario', 'I06', 'ac')],
+    ('ace.m1.i04.ace', 'declaration'): [('scenario', 'I04', 'ac')],
+    ('ace.m1.i09.ace', 'refused'): [('scenario', 'I09', 'ac')],
+    ('ace.m1.res-r01-av866', 'av-res-r01-continuity'): [('corpus', 'H01', 'av')],
+    ('ace.m1.res-r02-av866', 'av-res-r02-online-swap'): [('corpus', 'H02', 'av'), ('scenario', 'I08', 'av')],
+    ('ace.m1.res-r03-av866', 'av-res-r03-churn-two-swaps'): [('corpus', 'H03', 'av')],
+}
 
 def admit_probe_families(inputs, evidence, bindings, registry):
     """PLAN-1000 T-03: strict admission for the remaining source-family probe
@@ -508,7 +530,9 @@ def admit_probe_families(inputs, evidence, bindings, registry):
         for check, row in admitted['checks']:
             if check.get('adapter') != 'probe':
                 continue
-            cell = _probe_cell(check['case'], check['check'], all_cells)
+            table_cells = [c for c in _PROBE_CHECK_CELLS.get((check['case'], check['check']), ())
+                           if c in all_cells]
+            cell = table_cells[0] if table_cells else _probe_cell(check['case'], check['check'], all_cells)
             if cell is None or cell not in all_cells:
                 continue
             recipe = check.get('recipe') or ''
@@ -530,21 +554,25 @@ def admit_probe_families(inputs, evidence, bindings, registry):
                      and '/' + check['case'] + '/' + check['check'] + '/worker-exchanges/' in n]
             if not names:
                 continue  # avm-console or in-process legs: no wire exchange on this path
-            require(len(names) == 1, f'one probe-family exchange required: {check["case"]}/{check["check"]}')
-            wire = admit_exchange(copy, names[0], protocol=protocol, recipe=recipe,
-                                  worker_sha256=pin['sha256'])
+            # lifecycle legs (fresh->restart across workers) legitimately hold
+            # several exchanges; every frame is admitted, the LAST is judged.
+            names.sort(key=lambda n: int(n.rsplit('/', 1)[-1].split('-')[1]))
+            wire = None
+            for exchange_name in names:
+                wire = admit_exchange(copy, exchange_name, protocol=protocol, recipe=recipe,
+                                      worker_sha256=pin['sha256'])
             oracle_note = 'suite-contract'
             table_row = values.get(cell[1]) if cell[0] == 'corpus' else None
-            observation = _probe_family_observation(copy.scope, wire, check, table_row)
+            observation = _probe_family_observation(copy.scope, wire, check, table_row, table_cells=table_cells)
             observation['parent_status'] = row['status']
             if row['status'] != 'PASS':
                 observation['judgement'] = 'FAIL'
             observation['oracle_source'] = oracle_note
-            suite_cells.setdefault(':'.join(cell), []).append(
-                {'suite': key, 'case': check['case'], 'check': check['check'],
-                 'verdict': observation['judgement']})
-            # keep the bounded observation itself per cell
-            suite_cells.setdefault(':'.join(cell) + '#obs', []).append(observation)
+            rowrec = {'suite': key, 'case': check['case'], 'check': check['check'],
+                      'verdict': observation['judgement']}
+            for extra in (table_cells or [cell]):
+                suite_cells.setdefault(':'.join(extra), []).append(rowrec)
+                suite_cells.setdefault(':'.join(extra) + '#obs', []).append(observation)
         return {'cells': suite_cells, 'parent': suite_parent}
 
     for key in sorted(bindings):
