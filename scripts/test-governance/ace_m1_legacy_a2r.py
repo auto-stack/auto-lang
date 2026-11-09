@@ -250,6 +250,10 @@ def _suite_for(key):
         'legacy_base': 'crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad',
         'order_layout_914': 'crates/auto-lang/test/cases/ace-m1/order-layout-914/order-layout-914.suite.ad',
         'legacy_base_probe': 'crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad',
+        'p909': 'crates/auto-lang/test/cases/ace-m1/shared-mutable-909/shared-mutable-909.suite.ad',
+        'p912': 'crates/auto-lang/test/cases/ace-m1/closures-fn-912/closures-fn-912.suite.ad',
+        'p913': 'crates/auto-lang/test/cases/ace-m1/closures-recovery-913/closures-recovery-913.suite.ad',
+        'p865': 'crates/auto-lang/test/cases/ace-m1/closures-source-865.suite.ad',
         'p864': 'crates/auto-lang/test/cases/ace-m1/collections-source-864.suite.ad',
         'p889': 'crates/auto-lang/test/cases/ace-m1/native-collections-889.suite.ad',
         'console_863': 'crates/auto-lang/test/cases/ace-m1/console-863/console-863.suite.ad',
@@ -276,7 +280,11 @@ _CONTRACT_SHAS = {
     "method_881": "7f89138bdac10eead48e82656361166b0056bdbdc2516205ec98df2fde647d98",
     "order_layout_914": "223d958c3f9c6db0eb3ea2f7ef2bf6fb66c4ad666384e859973cd94c84cb7b09",
     "p864": "01817ea9818a637b86ef5248233e82096623d7700e61c069eb3fa2a7ad21a28f",
-    "p889": "baf7cd4968345b2664dd5664e6066bda0c672d1555fe313806fc896889689d67"
+    "p865": "4612389684c8cbf43df35f2829c5978efe243183b7cee08f25bae6ccdd30773d",
+    "p889": "baf7cd4968345b2664dd5664e6066bda0c672d1555fe313806fc896889689d67",
+    "p909": "7e6837002fa7d95795b1dca9aa2ac9a80ecc6bad18ed786709359f89876b4db0",
+    "p912": "285b032e3e805a68f1edb2001fa755d08d914b3d8fd5ab26c5922be063a213d0",
+    "p913": "ed59394c341ee9d619c27130b1ac39f7cc8b6cbb587e0f1386ce2edc93abaa9a"
 }
 
 
@@ -288,8 +296,12 @@ def _probe_cell(case_id, check_name, required_cells):
     if token is None:
         return None
     path = None
-    if token.endswith('-av864'):
-        token, path = token[:-len('-av864')], 'av'
+    if token.endswith(('-av864', '-av865', '-av909', '-av912', '-av913')):
+        token = token[:token.rindex('-av')]
+        for mode in ('fn', 'rcv'):
+            if token.endswith(mode):
+                token = token[:-len(mode)]
+        path = 'av'
     elif token.endswith('-mn889'):
         token, path = token[:-len('-mn889')], 'ac'
     else:
