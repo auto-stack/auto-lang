@@ -274,6 +274,13 @@ def _suite_for(key):
         'p926': 'crates/auto-lang/test/cases/a2c-hir-collections-926/a2c-hir-collections-926.suite.ad',
         'p823': 'crates/auto-lang/test/cases/av-data/823/av-data-823.suite.ad',
         'order_layout_914_probe': 'crates/auto-lang/test/cases/ace-m1/order-layout-914/order-layout-914.suite.ad',
+        'text_q4': 'crates/auto-lang/test/cases/ace-m1-expanded/text-q4.suite.ad',
+        'scalar_q4': 'crates/auto-lang/test/cases/ace-m1-expanded/scalar-q4.suite.ad',
+        'record_text_q4': 'crates/auto-lang/test/cases/ace-m1-expanded/record-text-q4.suite.ad',
+        'collections_q4': 'crates/auto-lang/test/cases/ace-m1-expanded/collections-q4.suite.ad',
+        'source_supplement_q4': 'crates/auto-lang/test/cases/ace-m1-expanded/source-supplement.suite.ad',
+        'source_query': 'crates/auto-lang/test/cases/ace-m1/source-query-934/source-query-934.suite.ad',
+        'source_instances': 'crates/auto-lang/test/cases/ace-m1/source-instances-935/source-instances-935.suite.ad',
         'p864': 'crates/auto-lang/test/cases/ace-m1/collections-source-864.suite.ad',
         'p889': 'crates/auto-lang/test/cases/ace-m1/native-collections-889.suite.ad',
         'console_863': 'crates/auto-lang/test/cases/ace-m1/console-863/console-863.suite.ad',
@@ -293,6 +300,7 @@ _CONTRACT_SHAS = {
     "a2r_semantics_916": "f300125541a8384e3c38cf16dd9a62129d3b191d8f7846fc9cd8752249420547",
     "a2r_text_994": "e0e89bc2af560815bd860e72cbfcfa9748ccff0bea81f75e28dee9fdbf61e346",
     "a2r_trap_997": "e5af15bac35c72a4dfbbb554acbf6719db1c50cb082f6399b033f80863ba1151",
+    "collections_q4": "070a092d841dad88f153d4dbcd29b8bebfc80719675b8aa2945431b2d3087eaa",
     "console_863": "78d90abd147ca362338ac67c76577c2ab63e54032eff332be5c215fb1d004537",
     "entry_862": "8dc8defc899cdf3552317ec6a23139ea88043914fd26e48d8ae84b22aef1d425",
     "legacy_base": "3f4f6da57b4dceaca74ae83ec13363f0bc53180516705bc7191d32665ac36a86",
@@ -323,7 +331,13 @@ _CONTRACT_SHAS = {
     "p928": "02dbfc0637c44014bc19b2f8a54c47c98b29bcb9c3a59b6b63b2664be081c710",
     "p999": "6532223f4daaac45b837583c70912a42ee400b70a90d074caa6aea3c74c081e9",
     "pcte936": "4e9da6ed610abc1ced770dcbab798634d122327bb424b98b3a60199f3d4859ca",
-    "ptr": "6555045c3d17831c4f689286dfb0cf50148b756cb417abd7a1cc5fd9f69011fe"
+    "ptr": "6555045c3d17831c4f689286dfb0cf50148b756cb417abd7a1cc5fd9f69011fe",
+    "record_text_q4": "389d3f1ec77e35ae95eb573e4dbe093e68570f26c94b8f57fc92e5e4455a4095",
+    "scalar_q4": "163b2d2ec2411f1840b5a744b43d2f23d55412d3ffb77a9a7da3ca583411f4d1",
+    "source_instances": "482d18c8795e5c578e4e22672c379ffe3b7096fc029829423510f94247745b96",
+    "source_query": "62027b325d5115f3451d5ba4961907647be32feb3af73dadf93d989a7a894d10",
+    "source_supplement_q4": "35a2a801ec940514af2d2fa6d4d4efb3c737399c4747455ecc01477453a41a47",
+    "text_q4": "542e16b519c96951e46046e82bfcd84b065f249d375aa33069a2275ba9995cfb"
 }
 
 
