@@ -1,290 +1,290 @@
 {
-  "schema": "ace.m1.original-budget-contracts/1",
-  "policies": {
-    "fixed-case-suite": {
-      "scope": "whole original Case suite and descendants; not an inner per-check cap",
-      "owner": "fixed-tests",
-      "limits": {
-        "wall_ms": 1800000,
-        "stdout_bytes": 67108864,
-        "stderr_bytes": 16777216
-      },
-      "sources": [
-        "scripts/fixed-tests.py",
-        "scripts/test-governance/process_capture.py"
-      ],
-      "runtime_verdict": "UNOBSERVED"
-    },
-    "nextest-default": {
-      "scope": "original nextest slow-test policy; per-test, distinct from command timeout",
-      "owner": "fixed-tests",
-      "limits": {
-        "warning_period_ms": 900000,
-        "terminate_after_periods": 2
-      },
-      "sources": [
-        ".config/nextest-full.toml"
-      ],
-      "runtime_verdict": "UNOBSERVED"
-    },
-    "ac-v2-check": {
-      "scope": "adapter ac only; these values do not supply probe/AV/native/ABI limits",
-      "owner": "auto-test-case",
-      "limits": {
-        "build_ms": 60000,
-        "run_ms": 5000,
-        "total_ms": 70000
-      },
-      "sources": [
-        "crates/auto-test-case/src/contract.rs"
-      ],
-      "runtime_verdict": "UNOBSERVED"
-    },
-    "legacy-inprocess": {
-      "scope": "original avm/a2r in-process adapter has no added inner process deadline; outer Case policy still applies",
-      "owner": "legacy adapters; PLAN-941 evidence",
-      "limits": {
-        "inner_deadline_ms": null,
-        "inner_stream_cap_bytes": null
-      },
-      "sources": [
-        "crates/auto-lang-core/src/test_cases/avm.rs",
-        "crates/auto-lang-core/src/test_cases/a2r.rs",
-        "scripts/fixed-tests.py"
-      ],
-      "runtime_verdict": "UNOBSERVED"
-    },
-    "a2x-daily-parent": {
-      "scope": "original daily adapter output() has no separate inner deadline/capture cap; Case outer policy and worker profile remain distinct",
-      "owner": "auto-a2x/auto-a2c",
-      "limits": {
-        "inner_deadline_ms": null,
-        "inner_stream_cap_bytes": null
-      },
-      "sources": [
-        "crates/auto-lang-core/src/test_cases/ac_a2r_hir.rs",
-        "crates/auto-lang-core/src/test_cases/ac_a2c_hir.rs",
-        "scripts/fixed-tests.py"
-      ],
-      "runtime_verdict": "UNOBSERVED"
-    },
-    "abi-interop-runtime": {
-      "scope": "original public ABI runtime policy, AND with IPC/session containment; private typed frames cannot supply it",
-      "owner": "auto-abi",
-      "limits": {
-        "build_ms": 60000,
-        "run_ms": 5000,
-        "total_ms": 70000,
-        "stdout_bytes": 1048576,
-        "stderr_bytes": 1048576,
-        "ipc_bytes": 4194304,
-        "single_artifact_bytes": 67108864,
-        "request_artifact_bytes": 134217728,
-        "hot_bytes": 8388608,
-        "staging_and_index_bytes": 8388608
-      },
-      "sources": [
-        "docs/specs/auto-abi/windows-x64-v01.md",
-        "experimental/ace/crates/abi/src/layout.rs",
-        "experimental/ace/crates/abi/src/worker.rs"
-      ],
-      "runtime_verdict": "UNOBSERVED"
-    },
-    "cte-original-service": {
-      "scope": "original 817 CT service; source936 must prove its inherited limits via the stable provider",
-      "owner": "PLAN-817/936",
-      "limits": {
-        "request_wall_ms": 10000,
-        "av_call_wall_ms": 2000,
-        "managed_hot_bytes": 8388608,
-        "managed_staging_bytes": 16777216,
-        "managed_av_slots_bytes": 8388608,
-        "managed_total_bytes": 33554432,
-        "worker_wire_bytes": 6291456,
-        "worker_private_peak_bytes": 402653184,
-        "simultaneous_tree_bytes": 536870912,
-        "formal_frozen_page_bytes_min": 33554432,
-        "formal_revisions": 512
-      },
-      "sources": [
-        "docs/specs/auto-cte/scalar-query-profile.md",
-        "docs/specs/auto-cte/frozen-cache.md"
-      ],
-      "runtime_verdict": "UNOBSERVED"
-    },
-    "a2x-warm-management": {
-      "scope": "A2X warm management working set; original cold frontend transient reported separately, not charged as warm steady state",
-      "owner": "auto-a2x",
-      "limits": {
-        "warm_management_bytes": 50331648,
-        "stress_functions_min": 115,
-        "stress_source_bytes_min": 262144
-      },
-      "sources": [
-        "experimental/ace/crates/a2x-worker/tests/cases/resource_budget.rs"
-      ],
-      "runtime_verdict": "UNOBSERVED"
-    },
-    "explicit-cert-941-capture": {
-      "scope": "941 explicit original-worker capture envelope; does not replace stricter domain/runtime limits",
-      "owner": "PLAN-941",
-      "limits": {
-        "wall_ms": 360000,
-        "stdout_bytes": 1048576,
-        "stderr_bytes": 1048576
-      },
-      "sources": [
-        "scripts/test-governance/ace_m1_cert_evidence.py"
-      ],
-      "runtime_verdict": "UNOBSERVED"
-    },
-    "composer": {
-      "scope": "read-only composer own live allocations and parent private peak increment",
-      "owner": "PLAN-941",
-      "limits": {
-        "document_bytes": 4194304,
-        "live_bytes": 50331648,
-        "parent_private_peak_increment_bytes": 134217728,
-        "hash_block_bytes": 65536
-      },
-      "sources": [
-        "scripts/test-governance/ace_m1_arch_acceptance.py"
-      ],
-      "runtime_verdict": "UNOBSERVED"
-    },
-    "av-worker": {
-      "scope": "original av worker parent IPC/build/session limits; not runtime/ABI policy",
-      "owner": "av parent",
-      "limits": {
-        "response_bytes": 4259840,
-        "request_bytes": 4194304,
-        "stderr_bytes": 1048576,
-        "reader_grace_ms": 2000,
-        "default_session_wall_ms": 60000,
-        "default_build_wall_ms": 300000,
-        "override_environment": {
-          "AV798_SESSION_WALL_MS": null,
-          "AV798_BUILD_WALL_MS": null
-        }
-      },
-      "sources": [
-        "crates/auto-lang-core/src/test_cases/ac_av.rs"
-      ],
-      "runtime_verdict": "UNOBSERVED"
-    },
-    "native-worker": {
-      "scope": "original native worker parent IPC/build/session limits; not runtime/ABI policy",
-      "owner": "native parent",
-      "limits": {
-        "response_bytes": 4259840,
-        "stderr_bytes": 1048576,
-        "default_session_wall_ms": 120000,
-        "default_build_wall_ms": 300000,
-        "effective_rounds_wall_ms": 120000,
-        "rounds_override": null
-      },
-      "sources": [
-        "crates/auto-lang-core/src/test_cases/ac_mn.rs"
-      ],
-      "runtime_verdict": "UNOBSERVED"
-    },
-    "abi-worker-ipc": {
-      "scope": "original abi worker parent IPC/build/session limits; not runtime/ABI policy",
-      "owner": "abi parent",
-      "limits": {
-        "response_bytes": 4259840,
-        "request_bytes": 4194304,
-        "stderr_bytes": 1048576,
-        "reader_grace_ms": 2000,
-        "session_wall_ms": 60000,
-        "build_wall_ms": 300000
-      },
-      "sources": [
-        "crates/auto-lang-core/src/test_cases/abi.rs"
-      ],
-      "runtime_verdict": "UNOBSERVED"
-    },
-    "a2x-scalar-formal": {
-      "scope": "original a2x-scalar-formal load/sampling; standalone formal entry, not a daily single run",
-      "owner": "auto-a2x/auto-a2c",
-      "limits": {
-        "samples_per_state": 30,
-        "p90_ms": 2000,
-        "source_functions": 115,
-        "frozen_source_bytes": 273575
-      },
-      "sources": [
-        "experimental/ace/crates/a2x-worker/src/bin/a2x-formal.rs",
-        "experimental/ace/crates/a2x-worker/src/bin/a2c-formal.rs"
-      ],
-      "runtime_verdict": "UNOBSERVED"
-    },
-    "a2x-record-text-formal": {
-      "scope": "original a2x-record-text-formal load/sampling; standalone formal entry, not a daily single run",
-      "owner": "auto-a2x/auto-a2c",
-      "limits": {
-        "samples_per_state": 30,
-        "p90_ms": 2000,
-        "unchanged_callers": 24,
-        "c_body_revisions": 256,
-        "c_method_revisions": 256
-      },
-      "sources": [
-        "experimental/ace/crates/a2x-worker/src/bin/a2x-rt-formal.rs",
-        "experimental/ace/crates/a2x-worker/src/bin/a2c-rt-formal.rs"
-      ],
-      "runtime_verdict": "UNOBSERVED"
-    },
-    "a2x-collections-formal": {
-      "scope": "original a2x-collections-formal load/sampling; standalone formal entry, not a daily single run",
-      "owner": "auto-a2x/auto-a2c",
-      "limits": {
-        "samples_per_state": 30,
-        "p90_ms": 2000,
-        "source_functions_min": 40,
-        "data_helpers": 16,
-        "unchanged_callers": 32,
-        "non_comment_source_bytes_min": 16384,
-        "string_data_bytes_min": 4096,
-        "distinct_revisions": 512
-      },
-      "sources": [
-        "experimental/ace/crates/a2x-worker/src/bin/a2x-coll-formal.rs",
-        "experimental/ace/crates/a2x-worker/src/bin/a2c-coll-c-formal.rs",
-        "docs/specs/auto-test-case/a2c-hir-collections-certification.md"
-      ],
-      "runtime_verdict": "UNOBSERVED"
+ "schema": "ace.m1.original-budget-contracts/1",
+ "policies": {
+  "fixed-case-suite": {
+   "scope": "whole original Case suite and descendants; not an inner per-check cap",
+   "owner": "fixed-tests",
+   "limits": {
+    "wall_ms": 1800000,
+    "stdout_bytes": 67108864,
+    "stderr_bytes": 16777216
+   },
+   "sources": [
+    "scripts/fixed-tests.py",
+    "scripts/test-governance/process_capture.py"
+   ],
+   "runtime_verdict": "UNOBSERVED"
+  },
+  "nextest-default": {
+   "scope": "original nextest slow-test policy; per-test, distinct from command timeout",
+   "owner": "fixed-tests",
+   "limits": {
+    "warning_period_ms": 900000,
+    "terminate_after_periods": 2
+   },
+   "sources": [
+    ".config/nextest-full.toml"
+   ],
+   "runtime_verdict": "UNOBSERVED"
+  },
+  "ac-v2-check": {
+   "scope": "adapter ac only; these values do not supply probe/AV/native/ABI limits",
+   "owner": "auto-test-case",
+   "limits": {
+    "build_ms": 60000,
+    "run_ms": 5000,
+    "total_ms": 70000
+   },
+   "sources": [
+    "crates/auto-test-case/src/contract.rs"
+   ],
+   "runtime_verdict": "UNOBSERVED"
+  },
+  "legacy-inprocess": {
+   "scope": "original avm/a2r in-process adapter has no added inner process deadline; outer Case policy still applies",
+   "owner": "legacy adapters; PLAN-941 evidence",
+   "limits": {
+    "inner_deadline_ms": null,
+    "inner_stream_cap_bytes": null
+   },
+   "sources": [
+    "crates/auto-lang-core/src/test_cases/avm.rs",
+    "crates/auto-lang-core/src/test_cases/a2r.rs",
+    "scripts/fixed-tests.py"
+   ],
+   "runtime_verdict": "UNOBSERVED"
+  },
+  "a2x-daily-parent": {
+   "scope": "original daily adapter output() has no separate inner deadline/capture cap; Case outer policy and worker profile remain distinct",
+   "owner": "auto-a2x/auto-a2c",
+   "limits": {
+    "inner_deadline_ms": null,
+    "inner_stream_cap_bytes": null
+   },
+   "sources": [
+    "crates/auto-lang-core/src/test_cases/ac_a2r_hir.rs",
+    "crates/auto-lang-core/src/test_cases/ac_a2c_hir.rs",
+    "scripts/fixed-tests.py"
+   ],
+   "runtime_verdict": "UNOBSERVED"
+  },
+  "abi-interop-runtime": {
+   "scope": "original public ABI runtime policy, AND with IPC/session containment; private typed frames cannot supply it",
+   "owner": "auto-abi",
+   "limits": {
+    "build_ms": 60000,
+    "run_ms": 5000,
+    "total_ms": 70000,
+    "stdout_bytes": 1048576,
+    "stderr_bytes": 1048576,
+    "ipc_bytes": 4194304,
+    "single_artifact_bytes": 67108864,
+    "request_artifact_bytes": 134217728,
+    "hot_bytes": 8388608,
+    "staging_and_index_bytes": 8388608
+   },
+   "sources": [
+    "docs/specs/auto-abi/windows-x64-v01.md",
+    "experimental/ace/crates/abi/src/layout.rs",
+    "experimental/ace/crates/abi/src/worker.rs"
+   ],
+   "runtime_verdict": "UNOBSERVED"
+  },
+  "cte-original-service": {
+   "scope": "original 817 CT service; source936 must prove its inherited limits via the stable provider",
+   "owner": "PLAN-817/936",
+   "limits": {
+    "request_wall_ms": 10000,
+    "av_call_wall_ms": 2000,
+    "managed_hot_bytes": 8388608,
+    "managed_staging_bytes": 16777216,
+    "managed_av_slots_bytes": 8388608,
+    "managed_total_bytes": 33554432,
+    "worker_wire_bytes": 6291456,
+    "worker_private_peak_bytes": 402653184,
+    "simultaneous_tree_bytes": 536870912,
+    "formal_frozen_page_bytes_min": 33554432,
+    "formal_revisions": 512
+   },
+   "sources": [
+    "docs/specs/auto-cte/scalar-query-profile.md",
+    "docs/specs/auto-cte/frozen-cache.md"
+   ],
+   "runtime_verdict": "UNOBSERVED"
+  },
+  "a2x-warm-management": {
+   "scope": "A2X warm management working set; original cold frontend transient reported separately, not charged as warm steady state",
+   "owner": "auto-a2x",
+   "limits": {
+    "warm_management_bytes": 50331648,
+    "stress_functions_min": 115,
+    "stress_source_bytes_min": 262144
+   },
+   "sources": [
+    "experimental/ace/crates/a2x-worker/tests/cases/resource_budget.rs"
+   ],
+   "runtime_verdict": "UNOBSERVED"
+  },
+  "explicit-cert-941-capture": {
+   "scope": "941 explicit original-worker capture envelope; does not replace stricter domain/runtime limits",
+   "owner": "PLAN-941",
+   "limits": {
+    "wall_ms": 360000,
+    "stdout_bytes": 1048576,
+    "stderr_bytes": 1048576
+   },
+   "sources": [
+    "scripts/test-governance/ace_m1_cert_evidence.py"
+   ],
+   "runtime_verdict": "UNOBSERVED"
+  },
+  "composer": {
+   "scope": "read-only composer own live allocations and parent private peak increment",
+   "owner": "PLAN-941",
+   "limits": {
+    "document_bytes": 4194304,
+    "live_bytes": 50331648,
+    "parent_private_peak_increment_bytes": 134217728,
+    "hash_block_bytes": 65536
+   },
+   "sources": [
+    "scripts/test-governance/ace_m1_arch_acceptance.py"
+   ],
+   "runtime_verdict": "UNOBSERVED"
+  },
+  "av-worker": {
+   "scope": "original av worker parent IPC/build/session limits; not runtime/ABI policy",
+   "owner": "av parent",
+   "limits": {
+    "response_bytes": 4259840,
+    "request_bytes": 4194304,
+    "stderr_bytes": 1048576,
+    "reader_grace_ms": 2000,
+    "default_session_wall_ms": 60000,
+    "default_build_wall_ms": 300000,
+    "override_environment": {
+     "AV798_SESSION_WALL_MS": null,
+     "AV798_BUILD_WALL_MS": null
     }
+   },
+   "sources": [
+    "crates/auto-lang-core/src/test_cases/ac_av.rs"
+   ],
+   "runtime_verdict": "UNOBSERVED"
   },
-  "source_pins": {
-    "scripts/fixed-tests.py": "518448502925e69b0de6d96c2bba90f8523164445761e7f4965345a19457f654",
-    "scripts/test-governance/process_capture.py": "b3bfe935d72b3b41f4d47efcbc6a5f669bfc5a93b4aec49f09be97d3a5389c13",
-    ".config/nextest-full.toml": "fc8d9c684826d0645afe80ffe7471355b10c18f0b1020cc030abbefd19eaf89d",
-    "crates/auto-test-case/src/contract.rs": "828e32932200425cf84bad73508a3c9d16ec0897051a7d7fccd5cb9c1796e90e",
-    "crates/auto-lang-core/src/test_cases/avm.rs": "4357078a0a1f559df9b3062f2010b74dbee1debfa41d191e95ff16bd053071b0",
-    "crates/auto-lang-core/src/test_cases/a2r.rs": "935a474740e4f541c300adf8bcf6cc9b6c65ab0c76fbc6194dbec46e598853c4",
-    "crates/auto-lang-core/src/test_cases/ac_a2r_hir.rs": "5b6e456b7001bba4716485e0628c7944b5d7aa7faa1ac004eb6be18ae4e409e0",
-    "crates/auto-lang-core/src/test_cases/ac_a2c_hir.rs": "0a7dbe916c97599074401dccf7d14eac01dd3a0418a171b75d775eb1e0968dbf",
-    "docs/specs/auto-abi/windows-x64-v01.md": "a3b6a47b8c13be8ec1ea860ab336bac589d96566b1498b99ae0c8adc78af1f2d",
-    "experimental/ace/crates/abi/src/layout.rs": "b11a8b9e0f2e7903fccccf21410c7ad2df1be54dec7ee919bbc45fd7593a87d4",
-    "experimental/ace/crates/abi/src/worker.rs": "047f1568a2e834cb0839c3693a7477fb7c8931d533d6a024733576837789c1c4",
-    "docs/specs/auto-cte/scalar-query-profile.md": "d0057906487995a231684e228ab260f9a91f17a5f5cd51428b07d5b67a73bf61",
-    "docs/specs/auto-cte/frozen-cache.md": "ed4144c8a45a2bbf175740308bd6a796a0cf4b7af82e765e5de88f690d7fb8e0",
-    "experimental/ace/crates/a2x-worker/tests/cases/resource_budget.rs": "19075389715f8c3dc6728108abcd54368149bebb2ce2fef9fb18d2ff53165e20",
-    "scripts/test-governance/ace_m1_cert_evidence.py": "4e65f5d8c94e7c05c84c673308f8dc7f03d889a13e6243bdac9e5db7f60e1469",
-    "scripts/test-governance/ace_m1_arch_acceptance.py": "d0a1b80763335f448ecc775c902586e80841afc58dccc84f1cd7d52037ddf82f",
-    "crates/auto-lang-core/src/test_cases/ac_av.rs": "6fb157529aa26fe61b713bc4fd4aacd3a7d8f69f2ee4bc8f6e71abb96efff39c",
-    "crates/auto-lang-core/src/test_cases/ac_mn.rs": "8284325bbab4f7fa3388f0b76b0272d0230169cf2a508ccd11e79a682ff6a224",
-    "crates/auto-lang-core/src/test_cases/abi.rs": "dfa474a74d056054d383f13c470d6b8b6961d633bb7a56adc336771ffeab1920",
-    "experimental/ace/crates/a2x-worker/src/bin/a2x-formal.rs": "749fb39307dcae13db14c1f0b752cddc6a43f15b6f6ed699ccefc4d45392b06c",
-    "experimental/ace/crates/a2x-worker/src/bin/a2c-formal.rs": "aa90b3898385a16abbacc3d9697624613dea64c94b5b1c0a8324582217a38c1d",
-    "experimental/ace/crates/a2x-worker/src/bin/a2x-rt-formal.rs": "f89e126f32361e1afde0c0fa17f096768e4e04da1f8854829efd883182da7ec0",
-    "experimental/ace/crates/a2x-worker/src/bin/a2c-rt-formal.rs": "769a5182bb1726c6ca213c158e2a6c093f2bc74cff5396a63fa9d7a42f630fdc",
-    "experimental/ace/crates/a2x-worker/src/bin/a2x-coll-formal.rs": "a82e047824c97abc4f445e100cc9605d5d80fd85e2d2cfd0f54589512a36fcac",
-    "experimental/ace/crates/a2x-worker/src/bin/a2c-coll-c-formal.rs": "0a1d6aaafeeb475c70b2f7491ec2f30a9ec1745185c414b716670ffb84063c2d",
-    "docs/specs/auto-test-case/a2c-hir-collections-certification.md": "94e00af47b2015bcf0290138d831ddc2b013755df09a51d636ce28c0286ef256"
+  "native-worker": {
+   "scope": "original native worker parent IPC/build/session limits; not runtime/ABI policy",
+   "owner": "native parent",
+   "limits": {
+    "response_bytes": 4259840,
+    "stderr_bytes": 1048576,
+    "default_session_wall_ms": 120000,
+    "default_build_wall_ms": 300000,
+    "effective_rounds_wall_ms": 120000,
+    "rounds_override": null
+   },
+   "sources": [
+    "crates/auto-lang-core/src/test_cases/ac_mn.rs"
+   ],
+   "runtime_verdict": "UNOBSERVED"
   },
-  "execution": "UNOBSERVED",
-  "executed": 0,
-  "can_claim_budget_pass": false
+  "abi-worker-ipc": {
+   "scope": "original abi worker parent IPC/build/session limits; not runtime/ABI policy",
+   "owner": "abi parent",
+   "limits": {
+    "response_bytes": 4259840,
+    "request_bytes": 4194304,
+    "stderr_bytes": 1048576,
+    "reader_grace_ms": 2000,
+    "session_wall_ms": 60000,
+    "build_wall_ms": 300000
+   },
+   "sources": [
+    "crates/auto-lang-core/src/test_cases/abi.rs"
+   ],
+   "runtime_verdict": "UNOBSERVED"
+  },
+  "a2x-scalar-formal": {
+   "scope": "original a2x-scalar-formal load/sampling; standalone formal entry, not a daily single run",
+   "owner": "auto-a2x/auto-a2c",
+   "limits": {
+    "samples_per_state": 30,
+    "p90_ms": 2000,
+    "source_functions": 115,
+    "frozen_source_bytes": 273575
+   },
+   "sources": [
+    "experimental/ace/crates/a2x-worker/src/bin/a2x-formal.rs",
+    "experimental/ace/crates/a2x-worker/src/bin/a2c-formal.rs"
+   ],
+   "runtime_verdict": "UNOBSERVED"
+  },
+  "a2x-record-text-formal": {
+   "scope": "original a2x-record-text-formal load/sampling; standalone formal entry, not a daily single run",
+   "owner": "auto-a2x/auto-a2c",
+   "limits": {
+    "samples_per_state": 30,
+    "p90_ms": 2000,
+    "unchanged_callers": 24,
+    "c_body_revisions": 256,
+    "c_method_revisions": 256
+   },
+   "sources": [
+    "experimental/ace/crates/a2x-worker/src/bin/a2x-rt-formal.rs",
+    "experimental/ace/crates/a2x-worker/src/bin/a2c-rt-formal.rs"
+   ],
+   "runtime_verdict": "UNOBSERVED"
+  },
+  "a2x-collections-formal": {
+   "scope": "original a2x-collections-formal load/sampling; standalone formal entry, not a daily single run",
+   "owner": "auto-a2x/auto-a2c",
+   "limits": {
+    "samples_per_state": 30,
+    "p90_ms": 2000,
+    "source_functions_min": 40,
+    "data_helpers": 16,
+    "unchanged_callers": 32,
+    "non_comment_source_bytes_min": 16384,
+    "string_data_bytes_min": 4096,
+    "distinct_revisions": 512
+   },
+   "sources": [
+    "experimental/ace/crates/a2x-worker/src/bin/a2x-coll-formal.rs",
+    "experimental/ace/crates/a2x-worker/src/bin/a2c-coll-c-formal.rs",
+    "docs/specs/auto-test-case/a2c-hir-collections-certification.md"
+   ],
+   "runtime_verdict": "UNOBSERVED"
+  }
+ },
+ "source_pins": {
+  "scripts/fixed-tests.py": "518448502925e69b0de6d96c2bba90f8523164445761e7f4965345a19457f654",
+  "scripts/test-governance/process_capture.py": "b3bfe935d72b3b41f4d47efcbc6a5f669bfc5a93b4aec49f09be97d3a5389c13",
+  ".config/nextest-full.toml": "fc8d9c684826d0645afe80ffe7471355b10c18f0b1020cc030abbefd19eaf89d",
+  "crates/auto-test-case/src/contract.rs": "828e32932200425cf84bad73508a3c9d16ec0897051a7d7fccd5cb9c1796e90e",
+  "crates/auto-lang-core/src/test_cases/avm.rs": "4357078a0a1f559df9b3062f2010b74dbee1debfa41d191e95ff16bd053071b0",
+  "crates/auto-lang-core/src/test_cases/a2r.rs": "935a474740e4f541c300adf8bcf6cc9b6c65ab0c76fbc6194dbec46e598853c4",
+  "crates/auto-lang-core/src/test_cases/ac_a2r_hir.rs": "5b6e456b7001bba4716485e0628c7944b5d7aa7faa1ac004eb6be18ae4e409e0",
+  "crates/auto-lang-core/src/test_cases/ac_a2c_hir.rs": "0a7dbe916c97599074401dccf7d14eac01dd3a0418a171b75d775eb1e0968dbf",
+  "docs/specs/auto-abi/windows-x64-v01.md": "a3b6a47b8c13be8ec1ea860ab336bac589d96566b1498b99ae0c8adc78af1f2d",
+  "experimental/ace/crates/abi/src/layout.rs": "b11a8b9e0f2e7903fccccf21410c7ad2df1be54dec7ee919bbc45fd7593a87d4",
+  "experimental/ace/crates/abi/src/worker.rs": "047f1568a2e834cb0839c3693a7477fb7c8931d533d6a024733576837789c1c4",
+  "docs/specs/auto-cte/scalar-query-profile.md": "d0057906487995a231684e228ab260f9a91f17a5f5cd51428b07d5b67a73bf61",
+  "docs/specs/auto-cte/frozen-cache.md": "ed4144c8a45a2bbf175740308bd6a796a0cf4b7af82e765e5de88f690d7fb8e0",
+  "experimental/ace/crates/a2x-worker/tests/cases/resource_budget.rs": "19075389715f8c3dc6728108abcd54368149bebb2ce2fef9fb18d2ff53165e20",
+  "scripts/test-governance/ace_m1_cert_evidence.py": "4e65f5d8c94e7c05c84c673308f8dc7f03d889a13e6243bdac9e5db7f60e1469",
+  "scripts/test-governance/ace_m1_arch_acceptance.py": "d0a1b80763335f448ecc775c902586e80841afc58dccc84f1cd7d52037ddf82f",
+  "crates/auto-lang-core/src/test_cases/ac_av.rs": "dee61c503b3e509b697702a909d68e7660e7c7bf697752056b8280401e7c1945",
+  "crates/auto-lang-core/src/test_cases/ac_mn.rs": "a99c8a03690f316d2069110d21bf0c1544262217cc1eee593186690b6946947c",
+  "crates/auto-lang-core/src/test_cases/abi.rs": "dfa474a74d056054d383f13c470d6b8b6961d633bb7a56adc336771ffeab1920",
+  "experimental/ace/crates/a2x-worker/src/bin/a2x-formal.rs": "749fb39307dcae13db14c1f0b752cddc6a43f15b6f6ed699ccefc4d45392b06c",
+  "experimental/ace/crates/a2x-worker/src/bin/a2c-formal.rs": "aa90b3898385a16abbacc3d9697624613dea64c94b5b1c0a8324582217a38c1d",
+  "experimental/ace/crates/a2x-worker/src/bin/a2x-rt-formal.rs": "f89e126f32361e1afde0c0fa17f096768e4e04da1f8854829efd883182da7ec0",
+  "experimental/ace/crates/a2x-worker/src/bin/a2c-rt-formal.rs": "769a5182bb1726c6ca213c158e2a6c093f2bc74cff5396a63fa9d7a42f630fdc",
+  "experimental/ace/crates/a2x-worker/src/bin/a2x-coll-formal.rs": "a82e047824c97abc4f445e100cc9605d5d80fd85e2d2cfd0f54589512a36fcac",
+  "experimental/ace/crates/a2x-worker/src/bin/a2c-coll-c-formal.rs": "0a1d6aaafeeb475c70b2f7491ec2f30a9ec1745185c414b716670ffb84063c2d",
+  "docs/specs/auto-test-case/a2c-hir-collections-certification.md": "94e00af47b2015bcf0290138d831ddc2b013755df09a51d636ce28c0286ef256"
+ },
+ "execution": "UNOBSERVED",
+ "executed": 0,
+ "can_claim_budget_pass": false
 }

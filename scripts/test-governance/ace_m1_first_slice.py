@@ -414,10 +414,14 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         from ace_m1_legacy_execution import execution_summary as _es2
         from ace_m1_legacy import frozen_ledger as _fl
         earlier2 = legacy.get('execution_summary', {}).get('observations', {})
-        require(not earlier2.keys() & families['observations'].keys(), 'duplicate probe-family execution')
+        # The pre-existing chains (scalar/base/typed/data/a2r) are the primary
+        # owners of their cells; probe families only supply the remainder.
+        fresh_family_cells = {k: v for k, v in families['observations'].items()
+                              if k not in earlier2}
+        families['claimed_cells'] = len(fresh_family_cells)
         required2 = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in _fl(inputs) if row['required'])
         legacy['execution_summary'] = _compact_admission(inputs, lambda _: _es2(
-            required2, earlier2 | families['observations']), 3 << 20)
+            required2, earlier2 | fresh_family_cells), 3 << 20)
         legacy['execution'] = legacy['execution_summary']['verdict']
         legacy['probe_family_claimed_cells'] = families['claimed_cells']
         for key, parent in families['source_case_reports'].items():

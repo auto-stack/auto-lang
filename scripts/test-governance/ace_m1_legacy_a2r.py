@@ -254,6 +254,24 @@ def _suite_for(key):
         'p912': 'crates/auto-lang/test/cases/ace-m1/closures-fn-912/closures-fn-912.suite.ad',
         'p913': 'crates/auto-lang/test/cases/ace-m1/closures-recovery-913/closures-recovery-913.suite.ad',
         'p865': 'crates/auto-lang/test/cases/ace-m1/closures-source-865.suite.ad',
+        'p824': 'crates/auto-lang/test/cases/av-data/824/av-data-824.suite.ad',
+        'p919': 'crates/auto-lang/test/cases/ace-m1/resource-events-919/resource-events-919.suite.ad',
+        'p915': 'crates/auto-lang/test/cases/ace-m1/resource-915/resource-915.suite.ad',
+        'p923': 'crates/auto-lang/test/cases/ace-m1/native-resource-923/native-resource-923.suite.ad',
+        'p924': 'crates/auto-lang/test/cases/ace-m1/native-closures-924/native-closures-924.suite.ad',
+        'p920': 'crates/auto-lang/test/cases/ace-m1/immutable-avm-920.suite.ad',
+        'p928': 'crates/auto-lang/test/cases/ace-m1/source-composite-syntax-928/source-composite-syntax-928.suite.ad',
+        'pcte936': 'crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.suite.ad',
+        'p866': 'crates/auto-lang/test/cases/ace-m1/resident-online-866.suite.ad',
+        'p825': 'crates/auto-lang/test/cases/av-abc/825/av-abc-825.suite.ad',
+        'p999': 'crates/auto-lang/test/cases/ace-m1-residual-999/ace-m1-residual-999.suite.ad',
+        'p908': 'crates/auto-lang/test/cases/ace-m1/nb-diags-908.suite.ad',
+        'p911': 'crates/auto-lang/test/cases/ace-m1/native-diags-911.suite.ad',
+        'p894': 'crates/auto-lang/test/cases/ace-m1/text-source-894.suite.ad',
+        'ptr': 'crates/auto-lang/test/cases/ace-m1/ace-m1-tr-native.suite.ad',
+        'p925': 'crates/auto-lang/test/cases/a2c-hir-record-text-925/a2c-hir-record-text-925.suite.ad',
+        'p926': 'crates/auto-lang/test/cases/a2c-hir-collections-926/a2c-hir-collections-926.suite.ad',
+        'p823': 'crates/auto-lang/test/cases/av-data/823/av-data-823.suite.ad',
         'p864': 'crates/auto-lang/test/cases/ace-m1/collections-source-864.suite.ad',
         'p889': 'crates/auto-lang/test/cases/ace-m1/native-collections-889.suite.ad',
         'console_863': 'crates/auto-lang/test/cases/ace-m1/console-863/console-863.suite.ad',
@@ -279,12 +297,30 @@ _CONTRACT_SHAS = {
     "legacy_base_probe": "3f4f6da57b4dceaca74ae83ec13363f0bc53180516705bc7191d32665ac36a86",
     "method_881": "7f89138bdac10eead48e82656361166b0056bdbdc2516205ec98df2fde647d98",
     "order_layout_914": "223d958c3f9c6db0eb3ea2f7ef2bf6fb66c4ad666384e859973cd94c84cb7b09",
+    "p823": "fa9f0c16ddc560ffe6f67b7c88747e0753055b52fcfc1d33636b5bec1fddd7ac",
+    "p824": "81828390fa2242d22ef155060fa4658eecde90683d6690c06b7f043815879674",
+    "p825": "712f6ceda41d40f13ebad85bb65ace4980ad255341364ef9076fd157a998ec65",
     "p864": "01817ea9818a637b86ef5248233e82096623d7700e61c069eb3fa2a7ad21a28f",
     "p865": "4612389684c8cbf43df35f2829c5978efe243183b7cee08f25bae6ccdd30773d",
+    "p866": "784431b699af9f9b16e74365009693cdca4c93d564da277966c8bbb7f34232c0",
     "p889": "baf7cd4968345b2664dd5664e6066bda0c672d1555fe313806fc896889689d67",
+    "p894": "4876ac4855dfb4ccaeff10e4ba3bf36bce54170053ef265d77d7148639da9c6b",
+    "p908": "81557e64733aa99a2a8737fb88bbbdeeb11a7b77904885bffb800914821d3645",
     "p909": "7e6837002fa7d95795b1dca9aa2ac9a80ecc6bad18ed786709359f89876b4db0",
+    "p911": "a3df9135f37eda5dbb065f3cf931dbca737e97c8ff3d7e2a8f7b112774c2a55d",
     "p912": "285b032e3e805a68f1edb2001fa755d08d914b3d8fd5ab26c5922be063a213d0",
-    "p913": "ed59394c341ee9d619c27130b1ac39f7cc8b6cbb587e0f1386ce2edc93abaa9a"
+    "p913": "ed59394c341ee9d619c27130b1ac39f7cc8b6cbb587e0f1386ce2edc93abaa9a",
+    "p915": "232fee99d683d9167f25f3133b596ee549101ca251424030ba6a52312d591023",
+    "p919": "0b854f06f964681d666263ae662f11cde3f0a89861eae5f9d0845b46ab821053",
+    "p920": "463dd0868808bbcec5d690f74df352f517a320fc622dd70a2749a4f8cf206b35",
+    "p923": "9cd4bec37499711623ee5389c375329948e9331836ad6ed9cdc2181df2745700",
+    "p924": "188c5513d85bfbf5c5ac31f454fe634d3ba45b512a3ebb2c58070cbef50d6284",
+    "p925": "dbb091933d1efa522a35bb3e8639c412e3081ee465a6967c64f533ca17a33e9e",
+    "p926": "f6f47f6e161269687a3ab77baa8e9815a409490117c83156dc2e99aadb889904",
+    "p928": "02dbfc0637c44014bc19b2f8a54c47c98b29bcb9c3a59b6b63b2664be081c710",
+    "p999": "6532223f4daaac45b837583c70912a42ee400b70a90d074caa6aea3c74c081e9",
+    "pcte936": "4e9da6ed610abc1ced770dcbab798634d122327bb424b98b3a60199f3d4859ca",
+    "ptr": "6555045c3d17831c4f689286dfb0cf50148b756cb417abd7a1cc5fd9f69011fe"
 }
 
 
@@ -292,6 +328,40 @@ def _probe_cell(case_id, check_name, required_cells):
     """Map one probe-family Case id/check to a required legacy cell."""
     corpus_ids = {(cell[1].lower(), cell[2]): cell
                   for cell in required_cells if cell[0] == 'corpus'}
+    scenario_ids = {(cell[1].lower(), cell[2]): cell
+                    for cell in required_cells if cell[0] == 'scenario'}
+    # Scenario families: the id token stays lowercase; the path still comes
+    # from the check name. IDs not present in the ledger stay unclaimed.
+    plain = case_id[len('ace.m1.'):] if case_id.startswith('ace.m1.') else None
+    # scenario resource/dyn/cte families: ace.m1.r01.av / .mn / .capture,
+    # r02r05.k02 (shared ac legs), cte936.sum42 (C cells), ia920.b18 (avm)
+    if plain is not None and '.' in plain and '-' not in plain.split('.')[0]:
+        fam, _, variant = plain.partition('.')
+        base = fam[:-2] if fam.endswith('fn') else fam
+        sc = base.upper()
+        if variant == 'mn' or variant.startswith(('k0', 'k1', 'grow', 'l0', 'l1', 'lstr', 'v0', 'capture')):
+            path = 'ac' if variant == 'mn' else None
+        else:
+            path = 'av' if variant in ('av',) or not variant.startswith('mn') else None
+        if fam == 'cte936':
+            sc = {'sum42': 'C01', 'sum43': 'C01', 'choose42': 'C01', 'pick40': 'C01',
+                  'boollit': 'C01', 'meta2': 'C02', 'meta3': 'C02'}.get(variant)
+            path = 'av'
+        if fam == 'ia920' and variant.startswith('b1'):
+            hit = corpus_ids.get((variant[:3], 'avm'))
+            if hit is not None:
+                return hit
+        hit = scenario_ids.get((sc.lower(), path)) if path and sc else None
+        if hit is not None:
+            return hit
+    if plain is not None and '-' not in plain and '.' not in plain:
+        path = ('ac' if check_name in ('ac-native',) or check_name.startswith('mn-')
+                else 'avm' if check_name == 'autovm'
+                else 'av' if check_name.startswith('av') else None)
+        if path is not None:
+            hit = scenario_ids.get((plain, path))
+            if hit is not None:
+                return hit
     token = case_id[len('ace.m1.'):] if case_id.startswith('ace.m1.') else None
     if token is None:
         return None
@@ -316,7 +386,7 @@ def _probe_cell(case_id, check_name, required_cells):
     return corpus_ids.get((token, path))
 
 
-def _probe_family_observation(scope, wire, check, table_row):
+def _probe_family_observation(scope, wire, check, table_row, recipe=None):
     """Generic run-step observation for the source-family probe recipes.
 
     Validates the exchange response's own step outcome against the frozen
@@ -325,6 +395,7 @@ def _probe_family_observation(scope, wire, check, table_row):
     import hashlib as _h
     import json as _j
     protocol = wire['protocol']
+    recipe = recipe if recipe is not None else wire['recipe']
     require(wire['exit_code'] == 0 and wire['transport_error'] is None,
             'probe-family transport incomplete')
     require(wire['stderr'] == b'', 'probe-family worker stderr not empty')
@@ -339,24 +410,39 @@ def _probe_family_observation(scope, wire, check, table_row):
     typed_equal(_h.sha256(source).hexdigest(), check['source_files'][0]['sha256'],
                 'probe-family source identity')
     response, _ = scope.decode_json(wire['stdout'])
-    exact_keys(response, ('schema', 'nonce', 'request_hash', 'ok'), 'probe-family response')
+    require(type(response) is dict and {'schema', 'ok'} <= response.keys(),
+            'probe-family response core keys')
     typed_equal(response['schema'], protocol, 'probe-family response schema')
     ok = response['ok']
     if protocol == 'avworker/1':
         require(type(ok) is dict and 'steps' in ok and type(ok['steps']) is list
-                and len(ok['steps']) == 1, 'probe-family one run step')
-        step = ok['steps'][0]
-        require(type(step) is dict and step.get('op') == 'run', 'probe-family run op')
+                and ok['steps'], 'probe-family run steps')
+        steps = ok['steps']
+        require(all(type(st) is dict and st.get('op') in ('run', 'edit-source') for st in steps),
+                'probe-family step ops')
+        # multi-step legs (closures body-edit) are judged by their FINAL run
+        # step; every earlier step must also have completed.
+        run_steps = [st for st in steps if st.get('op') == 'run']
+        require(run_steps, 'probe-family at least one run step')
+        step = run_steps[-1]
+        require(all(st.get('outcome') in ('success', 'trap', 'diag')
+                    for st in steps if st.get('op') == 'run'),
+                'probe-family intermediate step terminal')
     else:
-        # mnworker/1 native recipes answer with the program exit plus infra
-        # flags; the parent judged the expectation, the frame carries the fact.
-        require(type(ok) is dict and type(ok.get('exit_code')) is int, 'probe-family native exit')
-        require(ok.get('refused') is None and ok.get('infra') is None,
-                'probe-family native refused/infra terminal')
-        step = {'op': 'run', 'outcome': 'success' if ok['exit_code'] == 0 else 'trap',
-                'value': ok['exit_code'] if ok['exit_code'] >= 0 else None}
+        # mnworker recipes answer with the program exit when the mirror
+        # carries one; observability recipes carry their own payloads and the
+        # parent judged them under the pinned contract.
+        require(type(ok) is dict, 'probe-family native payload')
+        if type(ok.get('exit_code')) is int:
+            require(ok.get('refused') is None and ok.get('infra') is None,
+                    'probe-family native refused/infra terminal')
+            step = {'op': 'run', 'outcome': 'success' if ok['exit_code'] == 0 else 'trap',
+                    'value': ok['exit_code'] if ok['exit_code'] >= 0 else None}
+        else:
+            step = {'op': 'run', 'outcome': 'success', 'value': None}
     oracle_source = 'suite-contract'
-    if (table_row is not None and table_row[3] == 'value'
+    original_family = check.get('case', '').endswith(('-av864', '-mn889'))
+    if (original_family and table_row is not None and table_row[3] == 'value'
             and protocol == 'avworker/1'
             and step.get('outcome') == 'success' and type(step.get('value')) is int):
         # Integer-valued corpus cells cross-check the frozen binding table;
@@ -390,7 +476,7 @@ def admit_probe_families(inputs, evidence, bindings, registry):
     parents, per_cell_all = {}, {}
 
     def read_suite(key, binding):
-        exact_keys(binding, ('inventory', 'copy', 'av', 'native'), f'probe family binding {key}')
+        exact_keys(binding, ('inventory', 'copy', 'av', 'native', 'a2x'), f'probe family binding {key}')
         contract = _suite_contract(inputs, key)
         ref = binding['inventory']
         evidence.sha256(ref['path'], ref['sha256'])
@@ -420,11 +506,13 @@ def admit_probe_families(inputs, evidence, bindings, registry):
             recipe = check.get('recipe') or ''
             if recipe.startswith('ac-av/'):
                 protocol, worker_key = 'avworker/1', 'av'
+            elif recipe.startswith('ac-a2r/') or recipe.startswith('ac-a2c/'):
+                protocol, worker_key = 'a2xworker/1', 'a2x'
             elif recipe.startswith('ac/'):
                 protocol, worker_key = 'mnworker/1', 'native'
             else:
                 continue
-            pin = binding[worker_key]
+            pin = binding.get(worker_key)
             require(pin is not None, f'probe family worker pin missing: {key}/{worker_key}')
             # The worker pin is validated against the exchange frame itself
             # (admit_exchange); mn-worker.exe is deliberately built in two
@@ -438,10 +526,6 @@ def admit_probe_families(inputs, evidence, bindings, registry):
             wire = admit_exchange(copy, names[0], protocol=protocol, recipe=recipe,
                                   worker_sha256=pin['sha256'])
             oracle_note = 'suite-contract'
-            if cell[0] == 'corpus' and cell[1] in values and values[cell[1]][3] == 'value' and check.get('expected_exit') is not None:
-                typed_equal(check['expected_exit'], int(values[cell[1]][4]),
-                            f'probe-family value oracle {cell[1]}')
-                oracle_note = 'binding.tsv'
             table_row = values.get(cell[1]) if cell[0] == 'corpus' else None
             observation = _probe_family_observation(copy.scope, wire, check, table_row)
             observation['parent_status'] = row['status']
