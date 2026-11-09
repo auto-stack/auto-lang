@@ -224,7 +224,8 @@ def admit_a2r_execution(inputs, evidence, bindings, registry, workers=None):
             parents[key] = outcome['parent']
     observations = {cell_key: {
             'judgement': 'PASS' if all(r['verdict'] == 'PASS' for r in rows) else 'FAIL',
-            'supporting_checks': rows}
+            'sources': [f"{r['suite']}:{r['check']}" for r in rows][:4],
+            'check_count': len(rows)}
         for cell_key, rows in sorted(per_cell_all.items())}
     from ace_m1_legacy_execution import execution_summary
     summary = execution_summary(required, observations)
