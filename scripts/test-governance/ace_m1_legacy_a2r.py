@@ -280,7 +280,8 @@ _CONTRACT_SHAS = {
 
 def _probe_cell(case_id, check_name, required_cells):
     """Map one probe-family Case id/check to a required legacy cell."""
-    corpus_ids = {cell[1].lower(): cell for cell in required_cells if cell[0] == 'corpus'}
+    corpus_ids = {(cell[1].lower(), cell[2]): cell
+                  for cell in required_cells if cell[0] == 'corpus'}
     token = case_id[len('ace.m1.'):] if case_id.startswith('ace.m1.') else None
     if token is None:
         return None
@@ -298,8 +299,7 @@ def _probe_cell(case_id, check_name, required_cells):
             path = 'avm'
     if path is None:
         return None
-    cell = corpus_ids.get(token)
-    return cell if cell is not None and cell[2] == path else None
+    return corpus_ids.get((token, path))
 
 
 def _probe_family_observation(scope, wire, check, table_row):
