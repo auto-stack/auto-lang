@@ -14,6 +14,25 @@ from pathlib import PureWindowsPath, PurePosixPath
 
 from ace_m1_legacy import CORPUS, frozen_ledger, typed_equal
 
+# Tracked per-suite identity contracts (PLAN-1000 T-03): the twelve a2r-family
+# suites live outside the original seven registry contracts; their frozen
+# contracts are tracked files pinned here by content hash.
+_CONTRACT_DIR = 'crates/auto-lang/test/cases/ace-m1-expanded/legacy-a2r-contracts'
+import json as _json
+
+
+def _suite_contract(inputs, key):
+    """Load and hash-verify the tracked contract for one suite key."""
+    path = f'{_CONTRACT_DIR}/{key}.json'
+    raw = inputs.read_bytes(path)
+    import hashlib
+    digest = hashlib.sha256(raw).hexdigest()
+    expected = _CONTRACT_SHAS.get(key)
+    require(expected is not None and digest == expected, f'tracked a2r contract identity {key}')
+    value, _ = inputs.decode_json(raw)
+    return value
+
+
 # cell-key extraction per suite family: (case-id prefix, namespace hint)
 _SCENE = 'ace.m1.a2rscene.'
 _TRAP = 'ace.m1.a2rtrap.'
@@ -100,7 +119,7 @@ def admit_a2r_execution(inputs, evidence, bindings, registry, workers=None):
         typed_equal(PureWindowsPath(fixture).relative_to(
             PureWindowsPath(str(inputs.root))).as_posix(), _suite_for(key),
             f'frozen suite identity {key}')
-        typed_equal(inventory_contract(inputs, inv), registry['inventory_contracts'][key],
+        typed_equal(inventory_contract(inputs, inv), _suite_contract(inputs, key),
                     f'tracked independent typed contract {key}')
         inputs.sha256(PureWindowsPath(fixture).relative_to(
             PureWindowsPath(str(inputs.root))).as_posix(), inv['suite_sha256'])
@@ -232,3 +251,18 @@ def _suite_for(key):
         'order_layout_914': 'crates/auto-lang/test/cases/ace-m1/order-layout-914/order-layout-914.suite.ad',
     }
     return paths[key]
+
+_CONTRACT_SHAS = {
+    "a2r_cert_992": "22042644a7a127a1809669a975a59db0f7c218d9df8385b9224a21ac8fa6d6d6",
+    "a2r_emit_917": "a5bc9ec25ee42280f5f62b391c54e8d733dd0f5953e342729912b7e029292e37",
+    "a2r_hir_coll_904": "c98d4ab20a1bc29519092cee1c93d92262cd44ec8f2df7b11957f40abf0598f2",
+    "a2r_hir_rt_902": "f69a31d0aa8bd8d4e2d5b2f2537c2a01659a049f49a7c0fd0ca75eec8cd78875",
+    "a2r_list_996": "5a4bfbaf1111fba5c52f155d09980f64f7cab8ee73d8dba903657035ddc1366c",
+    "a2r_owned_931": "bfc14382cbc1d5bcb7b1ea4c44a71033b62a675c3d8fe02a5ddf1088ee5dccd8",
+    "a2r_scene_998": "e273fbdf80442c62fef11c31b99a12d586c6fb9245ded0688f50f97e6c30d12d",
+    "a2r_semantics_916": "f300125541a8384e3c38cf16dd9a62129d3b191d8f7846fc9cd8752249420547",
+    "a2r_text_994": "e0e89bc2af560815bd860e72cbfcfa9748ccff0bea81f75e28dee9fdbf61e346",
+    "a2r_trap_997": "e5af15bac35c72a4dfbbb554acbf6719db1c50cb082f6399b033f80863ba1151",
+    "legacy_base": "3f4f6da57b4dceaca74ae83ec13363f0bc53180516705bc7191d32665ac36a86",
+    "order_layout_914": "223d958c3f9c6db0eb3ea2f7ef2bf6fb66c4ad666384e859973cd94c84cb7b09"
+}

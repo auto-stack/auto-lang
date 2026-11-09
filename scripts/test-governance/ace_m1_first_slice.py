@@ -38,20 +38,6 @@ SUITES = {
     'typed_av': 'crates/auto-lang/test/cases/ac-av/ac-av.suite.ad',
     'typed_native': 'crates/auto-lang/test/cases/ace-m1/typed-native-891/typed-native-891.suite.ad',
     'source_cte': 'crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.suite.ad',
-    # PLAN-1000 T-03: original a2r emit/snapshot/scene suites (strict in-process
-    # emit admission; see ace_m1_legacy_a2r).
-    'a2r_cert_992': 'crates/auto-lang/test/cases/ace-m1/legacy-a2r-cert-992.suite.ad',
-    'a2r_text_994': 'crates/auto-lang/test/cases/ace-m1/legacy-a2r-text-994.suite.ad',
-    'a2r_list_996': 'crates/auto-lang/test/cases/ace-m1/legacy-a2r-list-996.suite.ad',
-    'a2r_trap_997': 'crates/auto-lang/test/cases/ace-m1/legacy-a2r-trap-997.suite.ad',
-    'a2r_scene_998': 'crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998.suite.ad',
-    'a2r_semantics_916': 'crates/auto-lang/test/cases/ace-m1/a2r-semantics-916/a2r-semantics-916.suite.ad',
-    'a2r_emit_917': 'crates/auto-lang/test/cases/ace-m1/a2r-emit-917/a2r-emit-917.suite.ad',
-    'a2r_hir_rt_902': 'crates/auto-lang/test/cases/a2r-hir-record-text-902/a2r-hir-record-text-902.suite.ad',
-    'a2r_hir_coll_904': 'crates/auto-lang/test/cases/a2r-hir-collections-904/a2r-hir-collections-904.suite.ad',
-    'a2r_owned_931': 'crates/auto-lang/test/cases/ace-m1/a2r-owned-temporaries-931/a2r-owned-temporaries-931.suite.ad',
-    'legacy_base': 'crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad',
-    'order_layout_914': 'crates/auto-lang/test/cases/ace-m1/order-layout-914/order-layout-914.suite.ad',
 }
 WORKERS = {'av': 'av-worker.exe', 'native': 'mn-worker.exe',
            'syntax': 'ace-case-worker.exe', 'bridge': 'abi-worker.exe'}
