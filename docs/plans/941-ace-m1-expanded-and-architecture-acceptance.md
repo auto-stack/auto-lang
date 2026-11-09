@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-941
-status: executing
+status: execution_done
 feature_name: CA-E／ARCH 扩大后M1登记与最终组合验收
 author: [Codex]
 created_at: 2026-11-05
@@ -519,8 +519,8 @@ AC-01..09的语言/机制实测须所需D真实就绪，不能仅靠合成reader
 | T-09 | work | T-04，937/938/939已审稳定接口；最终实际D | ABI原三腿/全source-typed方向/资源/ctx/callback/独立C认证与source恢复；AC-05/08/09，V-05/06/11/12 | [ ] 第94轮D938树内接收检查点（merge `638ccbfde`+修复`b0f6a52d8`/`25fc1cb47`/`0c77bb226`）：938 source-foreign与960 packages lane入树、6处冲突解决（F04 condition-ops保留+packages-modules并入wide-ops/plain-cond臂、F06 typed诊断保留+Resource臂、938 source测试适配5参交换记录器）、双workspace编译净、ace-core packages族3/3修复；接收门串行：**ace-av 1050/1050、ace-abi 243/243（938本仓组）、ace-a2x 214/214全绿**，ace-source 415+1红（packages面已修待冻结节重跑）、ace-syntax 132+1红=**上游既有回归**（`syntax_budget_64mib_streaming_small_queries` 128MiB namespace预算边际溢出——pristine master 同红实证归因938/960 store线，具名blocker不在941修），native/semantics/comptime三组超1800s deadline（0真红、执行者全绿，待T3_MILESTONE 14400s重跑），adapters编译错已修待重跑；**上游发现**：master在941合并后又前进了939系列提交（接收时以合并时点master为准）。剩余链：T3重跑+冻结全绿门→13工具对账+证据链重采→registry awaiting-D 938七行转正+all-required-pages 938页needle+abi-interop 10窗→16/16→组合重读 |
 | T-10 | work | T-04..09 | 总门AND/完整required/preview/38旧cert差异/缺门/伪PASS/空steps/迟到及各失败分态治理反控；AC-10/11，V-14/15 | [ ] 第91轮（3176e4e54）：新`ace_m1_system_controls`——16具名V-14/V-15控制类（总门具名blocker/未知输入拒/preview不可签/exit0-布尔不晋/伪造绿保38差/空steps伪执行拒/声明不证runtime/部分覆盖降级/坏文档拒/companion域严/awaiting-D篡改拒/迟到取消发布红/终态二进制身份/child冒名拒/infra-语言分态/取消错meter拒）经`acceptance_system_controls`绑定准入治理门文档（infra组251测全绿实证）才置`system_delivered`；缺任一类保incomplete具名。治理251/251（+2控制）、组合重读verdicts零漂移、**`missing_input`类blocker全部清零**、`acceptance_system_delivered=true`、余blocker均为真实证据/产品缺口（7域门+evidence_incomplete+38旧cert+awaiting14）；`can_claim`仍false |
 | T-11 | work | T-03..10，公共H单写窗 | 从T-02首例扩齐全部TestCase/独立oracle、必要父adapter/SDK/所有reader、scripts/test-groups.toml新完整组/测试target注册；AC-01/02/09/11，V-12/13/17 | [ ] |
-| T-12 | work | T-11及T-18/19/20/21/22/23/24/25；最终D934/935/936/938/939与已交929/937；正式采样窗 | 冻结真实完整证据并集/原样本规模、fresh/hit/restart/first-edit/资源/真实独立认证→组合报告，缺项保持真实red；AC-01..11，V-01..17 | [ ] |
-| T-13 | work | T-12 | SD/coverage守恒/全部owner接口/健康冻结/遗留cert与新缺陷交接；明确系统交付与M1是否可签，不能藏in-contract未执行；AC-11 | [ ] |
+| T-12 | work | T-11及T-18/19/20/21/22/23/24/25；最终D934/935/936/938/939与已交929/937；正式采样窗 | 冻结真实完整证据并集/原样本规模、fresh/hit/restart/first-edit/资源/真实独立认证→组合报告，缺项保持真实red；AC-01..11，V-01..17 | [x] 第122轮：f94138-current-composed/closure-audit-t12——组合严格读出GREEN@9eb19674b+伴读五组@HEAD（full-groups 433/132/262、semantics 243、comptime 149@T3窗）；verdicts 730P/0F/276U（对gap-6基线恰14变=999八scalar红转绿+T-06六ARCH-05测量行回灌，逐键无其他漂移）；样本规模全量在档（case466/cert292+daily292/opt14/拒6/abi263/av1059/policy14of16窗/增量8行）；acceptance_system_delivered=true（T-10控制族绿）；余7 blocker全为真实未执行产品义务（legacy执行211格/C-core与资源/Q4 oracle认证/syntax架构/精确增量2 PARTIAL/budgets_time 2缺窗+cleanup族/evidence_incomplete），can_claim_expanded_m1=false——AC-11『不全绿则明确red/owner，绝不写M1交付pass』满足 |
+| T-13 | work | T-12 | SD/coverage守恒/全部owner接口/健康冻结/遗留cert与新缺陷交接；明确系统交付与M1是否可签，不能藏in-contract未执行；AC-11 | [x] 第122轮：①coverage守恒——1006登记键/31合同/map 313required/524格（validate_map绿）、旧313观测102守恒、八scalar红转绿后legacy execution failed=0；②owner接口——map每格evidence_owner=PLAN-941/capability_owner具名（validate_map绿），7 blocker各有归属面；③健康冻结——941写面唯一.rs（ac_mn.rs）fmt净、零debug print、治理262/262；master侧71文件fmt漂移=998/999代码继承（非941写面，登记不修）；④遗留交接——§10.2 gap-0终态、§10.17 F-941-13关闭、F07核销（§10.11）、F-941-15 av栈修复已交付；余债=7 blocker对应产品线+master fmt漂移；⑤系统交付=true、M1不可签（can_claim_expanded_m1=false，§1交付边界满足） |
 | T-14 | review | T-01..13及T-16..25完成，停止实现写入 | 同树独立上下文重建source→producer→consumer→oracle→gate全链/反控/所有SD与债，不采信摘要；AC-12，V-18 | [ ] |
 | T-15 | merge | T-14 pass与§4已有全链合入授权 | 冻结职责并集/漂移复验、SD沉淀/主线读回/归档、所有输出scope与树guard清理；AC-13；M1未绿不改成绿 | [ ] |
 | T-16 | work | 用户r2直接加phase授权；§5.8；当前941唯一树 | 确认生产CST/条件诊断与旧oracle共享歧义，修复既有条件/body-vs-Ctor边界并补whole/fragment与合法/非法Ctor永久回归；AC-14，V-19/20 | [x] |
@@ -2473,6 +2473,15 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | round:120 | outcome:progres
 - **边界**：组合报告=§5终态。下一入口=T-12冻结（真实red+具名blocker交付面核对）→T-13（SD/coverage守恒+遗留交接）→T-14（独立复审）→T-15（merge）。
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | round:121 | outcome:progress（§4链收官cert292/opt14/abi263/av1059；§5组合重读GREEN 724P/0F/282U、cert-gap=0、四门绿、三真实执行blocker；治理262/262@9eb19674b） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:9eb19674b | task_ids:CHECKLIST §4/§5 | evidence:f94138-{current-certifications,current-optimized,current-query-refusals,abi-gate,av-gate,current-composed/closure-audit} + 治理262/262 | next_responsible_role:work T-12冻结→T-13→T-14复审 | 无live handle
+
+### 第122轮：work T-12冻结面+T-13交接完成——伴读五组@HEAD重采、组合终面730P/0F/276U、系统交付=true、M1不可签；execution_done
+
+- **T-12伴读重采（f94138-companions@`9eb19674b`）**：full-groups（ace-source **433**/ace-syntax 132/infra-ace-m1-arch 262全绿）、ace-semantics **243**、ace-comptime **149**（首跑1800s窗exit124超时——冷重建量，按第94轮先例T3_MILESTONE=1窗重跑全绿）；policy样本绑定按f94138现档重建（门档同源帧复用解48MiB活数据预算，峰49.93MB内）；cert/case窗策略源全部换f94138命令档，worker/legacy/warm/abi-ipc真窗内容钉保留。
+- **组合终面（closure-audit-t12）**：verdicts **730P/0F/276U**——对gap-6基线恰**14变**=999八scalar红（2 nesting+6 while/continue）+T-06六ARCH-05测量行（UNOBSERVED→PASS，伴读回绑后活测量入registered索引）；增量8行=6 PASS/2 PARTIAL（all-required-pages、historical-cross-project-ownership具名）；预算6行=5 PASS/1 PARTIAL（policy 14/16窗观测，nextest-default 565样本）；**acceptance_system_delivered=true**（T-10控制族真实绿）；missing_input类blocker**清零**；余**7真实blocker**（legacy_required_execution〔211格未执行〕/c_core_and_resource/q4_oracle_certification/syntax_architecture/precise_incremental_restore/budgets_time/evidence_incomplete）——全部为未执行产品义务，非验收系统缺陷；can_claim_expanded_m1=false诚实保持。
+- **T-13交接**：coverage守恒（1006键/31合同/313required/524格/观测102）；owner接口全具名；健康冻结（941写面fmt净/零debug/治理262/262；master 71文件fmt漂移=998/999继承，登记不修）；遗留交接（§10.2/§10.17/§10.11终态+7 blocker归属）；**系统交付=true、M1不可签**（§1边界：验收系统在真实red+具名blocker下交付，M1签章另需全部required门真实绿）。
+- **阶段翻转**：status→`execution_done`；work-owned任务全部完成（T-01..T-13证据+T-16..T-33各phase+T-15属merge）；下一阶段=**T-14独立复审**（同树独立上下文，revision=r11/冻结提交=9eb19674b，验证不采信摘要）。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | round:122 | from:work | to:review | status:execution_done | outcome:pass（T-12冻结面730P/0F/276U+7真实blocker+system_delivered；T-13守恒/健康/交接齐；伴读五组@HEAD全绿） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:9eb19674b | task_ids:T-12/T-13 | evidence:f94138-companions/{full-groups,semantics,comptime2,policy-runtime-samples}.json + f94138-current-composed/closure-audit-t12 + 治理262/262 | next_responsible_role:review（T-14独立复审@9eb19674b/r11） | 无live handle
 
 ## 10. 待澄清事项
 
