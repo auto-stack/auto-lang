@@ -332,8 +332,12 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
     scalar_certifications = None
     if 'scalar_certifications' in bindings:
         from ace_m1_scalar_cert_evidence import admit_scalar_certifications
-        scalar_certifications = _compact_admission(inputs, lambda _: admit_scalar_certifications(
-            inputs, evidence, bindings['scalar_certifications'], bindings.get('scalar_release_execution')), 3 << 20)
+        def _scalar_certs(_):
+            value = admit_scalar_certifications(
+                inputs, evidence, bindings['scalar_certifications'], bindings.get('scalar_release_execution'))
+            value['observations'] = _slim_obs(value.get('observations', {}))
+            return value
+        scalar_certifications = _compact_admission(inputs, _scalar_certs, 1 << 20)
     rt_source = rt_certifications = None
     if 'record_text_execution' in bindings:
         from ace_m1_record_text_evidence import admit_source
@@ -342,7 +346,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
     if 'record_text_certifications' in bindings:
         from ace_m1_record_text_evidence import admit_certifications
         rt_certifications = _compact_admission(inputs, lambda _: admit_certifications(
-            inputs, evidence, bindings['record_text_certifications'], bindings.get('record_text_release_execution')), 1 << 20)
+            inputs, evidence, bindings['record_text_certifications'], bindings.get('record_text_release_execution')), 896 << 10)
     collections_source = collections_certifications = None
     if 'collections_execution' in bindings:
         from ace_m1_collections_evidence import admit_source
@@ -361,7 +365,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
     if 'query_certifications' in bindings:
         from ace_m1_query_evidence import admit_certifications
         query_certifications = _compact_admission(inputs, lambda _: admit_certifications(
-            inputs, evidence, bindings['query_certifications'], bindings.get('query_release_execution')), 1 << 20)
+            inputs, evidence, bindings['query_certifications'], bindings.get('query_release_execution')), 896 << 10)
     if 'query_frontdoor_refusals' in bindings:
         from ace_m1_query_evidence import admit_frontdoor_refusals
         query_frontdoor_refusals = _compact_admission(inputs, lambda _: admit_frontdoor_refusals(
@@ -407,21 +411,26 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         legacy['data_pending_observations'] = legacy_data['pending_observations']
     if 'legacy_a2r_execution' in bindings:
         from ace_m1_legacy_a2r import admit_a2r_execution
-        a2r = _compact_admission(inputs, lambda _: admit_a2r_execution(
-            inputs, evidence, bindings['legacy_a2r_execution'], registry), 2 << 20)
+        def _a2r_exec(_):
+            value = admit_a2r_execution(inputs, evidence, bindings['legacy_a2r_execution'], registry)
+            value['observations'] = _slim_obs(value.get('observations', {}))
+            value.pop('unobserved_cells', None)
+            return value
+        a2r = _compact_admission(inputs, _a2r_exec, 1 << 20)
         from ace_m1_legacy_execution import execution_summary as _es
         from ace_m1_legacy import frozen_ledger
         earlier = legacy.get('execution_summary', {}).get('observations', {})
         require(not earlier.keys() & a2r['observations'].keys(), 'duplicate original a2r execution')
-        required = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in frozen_ledger(inputs) if row['required'])
-        legacy['execution_summary'] = _compact_admission(inputs, lambda _: _es(
-            required, _slim_obs(earlier) | _slim_obs(a2r['observations'])), 2 << 20)
+        legacy.setdefault('_merged_obs', {}).update(_slim_obs(a2r['observations']))
         legacy['execution'] = legacy['execution_summary']['verdict']
         legacy['a2r_claimed_cells'] = a2r['claimed_cells']
     if 'legacy_probe_families' in bindings:
         from ace_m1_legacy_a2r import admit_probe_families
-        families = _compact_admission(inputs, lambda _: admit_probe_families(
-            inputs, evidence, bindings['legacy_probe_families'], registry), 2 << 20)
+        def _probe_families(_):
+            value = admit_probe_families(inputs, evidence, bindings['legacy_probe_families'], registry)
+            value['observations'] = _slim_obs(value.get('observations', {}))
+            return value
+        families = _compact_admission(inputs, _probe_families, 1 << 20)
         from ace_m1_legacy_execution import execution_summary as _es2
         from ace_m1_legacy import frozen_ledger as _fl
         earlier2 = legacy.get('execution_summary', {}).get('observations', {})
@@ -433,7 +442,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         families['claimed_cells'] = len(fresh_family_cells)
         required2 = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in _fl(inputs) if row['required'])
         legacy['execution_summary'] = _compact_admission(inputs, lambda _: _es2(
-            required2, _slim_obs(earlier2) | _slim_obs(fresh_family_cells)), 2 << 20)
+            required2, _slim_obs(earlier2) | _slim_obs(fresh_family_cells)), 896 << 10)
         legacy['execution'] = legacy['execution_summary']['verdict']
         legacy['probe_family_claimed_cells'] = families['claimed_cells']
     if 'legacy_rust_tests' in bindings:
@@ -449,7 +458,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         rust['claimed_cells'] = len(rust['observations'])
         required3 = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in _fl3(inputs) if row['required'])
         legacy['execution_summary'] = _compact_admission(inputs, lambda _: _es3(
-            required3, _slim_obs(earlier3) | _slim_obs(rust['observations'])), 2 << 20)
+            required3, _slim_obs(earlier3) | _slim_obs(rust['observations'])), 896 << 10)
         legacy['execution'] = legacy['execution_summary']['verdict']
         legacy['rust_test_claimed_cells'] = rust['claimed_cells']
     if 'legacy_governance' in bindings:
@@ -464,7 +473,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         gov['claimed_cells'] = len(gov['observations'])
         required4 = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in _fl4(inputs) if row['required'])
         legacy['execution_summary'] = _compact_admission(inputs, lambda _: _es4(
-            required4, _slim_obs(earlier4) | _slim_obs(gov['observations'])), 2 << 20)
+            required4, _slim_obs(earlier4) | _slim_obs(gov['observations'])), 896 << 10)
         legacy['execution'] = legacy['execution_summary']['verdict']
         legacy['governance_claimed_cells'] = gov['claimed_cells']
         for key, parent in families['source_case_reports'].items():
@@ -475,32 +484,39 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         parents['original_data_diagnostics'] = original_data_diagnostics['source_case_report']
         retain_case_reports(result, parents)
     if original_data_certifications is not None:
+        original_data_certifications['observations'] = _slim_obs(original_data_certifications.get('observations', {}))
         result['original_data_certifications'] = original_data_certifications
     if original_data is not None:
         result['original_data_execution'] = original_data
         parents['original_data'] = original_data['source_case_report']
         retain_case_reports(result, parents)
     if supplement_certifications is not None:
+        supplement_certifications['observations'] = _slim_obs(supplement_certifications.get('observations', {}))
         result['source_supplement_certifications'] = supplement_certifications
     if supplement_result is not None:
         result['source_supplement_execution'] = supplement_result
         parents['source_supplement'] = supplement_result['source_case_report']
         retain_case_reports(result, parents)
     if scalar_certifications is not None:
+        scalar_certifications['observations'] = _slim_obs(scalar_certifications.get('observations', {}))
         result['scalar_certifications'] = scalar_certifications
     if rt_certifications is not None:
+        rt_certifications['observations'] = _slim_obs(rt_certifications.get('observations', {}))
         result['record_text_certifications'] = rt_certifications
     if rt_source is not None:
         result['record_text_execution'] = rt_source
         parents['record_text'] = rt_source['source_case_report']
         retain_case_reports(result, parents)
     if collections_certifications is not None:
+        collections_certifications['observations'] = _slim_obs(collections_certifications.get('observations', {}))
         result['collections_certifications'] = collections_certifications
     if query_instances_source is not None:
         result['query_instances_execution'] = query_instances_source
         for family,parent in query_instances_source['source_case_reports'].items():parents[family] = parent
         retain_case_reports(result, parents)
-    if query_certifications is not None:result['query_certifications'] = query_certifications
+    if query_certifications is not None:
+        query_certifications['observations'] = _slim_obs(query_certifications.get('observations', {}))
+        result['query_certifications'] = query_certifications
     if query_frontdoor_refusals is not None:result['query_frontdoor_refusals'] = query_frontdoor_refusals
     if collections_source is not None:
         result['collections_execution'] = collections_source
@@ -566,12 +582,34 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         retain_case_reports(result, parents)
     if 'text_certifications' in bindings:
         from ace_m1_text_evidence import admit_text_certifications
-        result['text_certifications'] = _compact_admission(inputs, lambda _: admit_text_certifications(
+        _text = _compact_admission(inputs, lambda _: admit_text_certifications(
             inputs, evidence, bindings['text_certifications']))
+        _text['observations'] = _slim_obs(_text.get('observations', {}))
+        result['text_certifications'] = _text
     if 'source_cte_certifications' in bindings:
         from ace_m1_cte_evidence import admit_cte_certifications
         result['source_cte_certifications'] = _compact_admission(inputs, lambda _: admit_cte_certifications(
             inputs, evidence, bindings['source_cte_certifications']))
+    # PLAN-1000 T-05: certification observations are slimmed to what the
+    # registered gate and report consume (judgement + source); full documents
+    # stay in their bounded per-family sections and archived captures.
+    for _fam in ('text_certifications', 'scalar_certifications', 'record_text_certifications',
+                 'collections_certifications', 'query_certifications', 'source_supplement_certifications',
+                 'original_data_certifications'):
+        _section = result.get(_fam)
+        if isinstance(_section, dict):
+            _obs = _section.get('observations')
+            if isinstance(_obs, dict):
+                _section['observations'] = _slim_obs(_obs)
+    if '_merged_obs' in legacy:
+        from ace_m1_legacy_execution import execution_summary as _esf
+        from ace_m1_legacy import frozen_ledger as _flf
+        _merged = _slim_obs(legacy.pop('_merged_obs'))
+        _earlier = legacy.get('execution_summary', {}).get('observations', {})
+        _required = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in _flf(inputs) if row['required'])
+        legacy['execution_summary'] = _compact_admission(inputs, lambda _: _esf(
+            _required, _slim_obs(_earlier) | _merged), 1 << 20)
+        legacy['execution'] = legacy['execution_summary']['verdict']
     from ace_m1_obligation_catalog import admit_catalogs
     from ace_m1_legacy_obligations import admit_legacy_obligations
     result['coverage_inventory'] = _compact_admission(inputs, admit_catalogs, 128 << 10)
