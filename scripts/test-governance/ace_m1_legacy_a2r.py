@@ -335,18 +335,26 @@ def _probe_cell(case_id, check_name, required_cells):
     plain = case_id[len('ace.m1.'):] if case_id.startswith('ace.m1.') else None
     # scenario resource/dyn/cte families: ace.m1.r01.av / .mn / .capture,
     # r02r05.k02 (shared ac legs), cte936.sum42 (C cells), ia920.b18 (avm)
+    def _path_from(check_name, variant):
+        if check_name == 'ac-native' or check_name.startswith('mn-'):
+            return 'ac'
+        if check_name == 'autovm':
+            return 'avm'
+        if check_name.startswith('av'):
+            return 'av'
+        if variant == 'mn':
+            return 'ac'
+        if variant == 'av':
+            return 'av'
+        return None
     if plain is not None and '.' in plain and '-' not in plain.split('.')[0]:
         fam, _, variant = plain.partition('.')
         base = fam[:-2] if fam.endswith('fn') else fam
         sc = base.upper()
-        if variant == 'mn' or variant.startswith(('k0', 'k1', 'grow', 'l0', 'l1', 'lstr', 'v0', 'capture')):
-            path = 'ac' if variant == 'mn' else None
-        else:
-            path = 'av' if variant in ('av',) or not variant.startswith('mn') else None
+        path = _path_from(check_name, variant)
         if fam == 'cte936':
             sc = {'sum42': 'C01', 'sum43': 'C01', 'choose42': 'C01', 'pick40': 'C01',
                   'boollit': 'C01', 'meta2': 'C02', 'meta3': 'C02'}.get(variant)
-            path = 'av'
         if fam == 'ia920' and variant.startswith('b1'):
             hit = corpus_ids.get((variant[:3], 'avm'))
             if hit is not None:
