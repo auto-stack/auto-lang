@@ -1,0 +1,4 @@
+fn main() int {
+    let s Str = "a\u{0}b"
+    return s.len() * 10 + s.len_bytes()
+}

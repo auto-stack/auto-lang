@@ -93,3 +93,12 @@ compiles actual and independent references separately; the regression
 also executes both newly materialized executables through the owned
 process facility and compares raw bytes with each hand oracle. This cold
 worker contract does not establish warm CT reuse or public restore pages.
+
+## meta 能力先校验与请求 deadline 计数（PLAN-941，SD-11/SD-16）
+
+- source-CT 当前请求的 meta 能力/保护名在任何执行、命中或发布前按同一权威语义校验：
+  冷缺 cap 与暖撤 cap 早拒；旧合法 product/缓存不破坏且再授 cap 真实 hit；无 meta cap
+  的普通同名函数正常。（F-941-08；AC-02/03/07/17）
+- 请求累计 deadline 可在前端阶段耗尽：`ct_execute` 只计到达 AV 的尝试（AV 前耗尽恒 0），
+  资源态分态与不发布不变；计数断言按 `av_execute` 阶段事实双向核对。（F-941-07；
+  AC-22）

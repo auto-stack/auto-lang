@@ -57,6 +57,70 @@ fn expr_check(id: &str, expect_extra: &str) -> String {
 }
 
 #[test]
+fn avm_failure_artifact_is_actual_even_when_oracle_fails() {
+    let root = temp_root("941-typed-failure");
+    let source = "var a = 6\nvar b = 0\nprint(a / b)";
+    let doc = case(
+        "t941.failure",
+        &format!(
+            r#"source: {{ text: {:?}, syntax: "auto", path: "main.at" }},
+entry: {{ mode: "script" }}, checks: [
+{{ id: "right", adapter: "avm", action: "run", expect: {{ completion: {{ stage: "run", code: "DivisionByZero" }} }} }},
+{{ id: "wrong-code", adapter: "avm", action: "run", expect: {{ completion: {{ stage: "run", code: "Overflow" }} }} }},
+{{ id: "wrong-stage", adapter: "avm", action: "run", expect: {{ completion: {{ stage: "parse", code: "DivisionByZero" }} }} }},
+{{ id: "wrong-success", adapter: "avm", action: "run", expect: {{ completion: "success" }} }}
+]"#,
+            source
+        ),
+    );
+    build_suite(&root, &doc);
+    let report = run_suite(
+        &root.join("t04.suite.ad"),
+        &out_of(&root, "out"),
+        &Limits::defaults(),
+    )
+    .unwrap();
+    assert_eq!(report.results.len(), 4, "{}", report.to_console());
+    let mut actuals = Vec::new();
+    for row in &report.results {
+        assert_eq!(
+            row.status,
+            if row.check_id == "right" {
+                Status::Pass
+            } else {
+                Status::Fail
+            },
+            "{}",
+            report.to_console()
+        );
+        assert_eq!(row.artifacts.len(), 1);
+        let artifact = &row.artifacts[0];
+        assert_eq!(artifact.logical_path, "failure.json");
+        let raw = std::fs::read(&artifact.stored_path).unwrap();
+        assert_eq!(artifact.bytes, Some(raw.len()));
+        assert_eq!(
+            artifact.sha256,
+            auto_test_case::sha256::hex(&auto_test_case::sha256::sha256(&raw))
+        );
+        let actual: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+        assert_eq!(actual["schema"], "autolang.avm-failure/1");
+        assert_eq!(actual["adapter"], "avm");
+        assert_eq!(actual["action"], "run");
+        assert_eq!(actual["outcome"], "language-error");
+        assert_eq!(actual["stage"], "run");
+        assert_eq!(actual["code"], "DivisionByZero");
+        assert_eq!(actual["source_sha256"], row.identity.source);
+        assert_eq!(actual["entry"], "main.at");
+        assert_eq!(
+            actual["entry_sha256"],
+            auto_test_case::sha256::hex(&auto_test_case::sha256::sha256(source.as_bytes()))
+        );
+        actuals.push(raw);
+    }
+    assert!(actuals.windows(2).all(|pair| pair[0] == pair[1]));
+}
+
+#[test]
 fn avm_positive_negative_and_independence() {
     let root = temp_root("pos-neg");
     let mut doc = String::new();

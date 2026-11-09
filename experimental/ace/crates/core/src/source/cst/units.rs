@@ -1024,8 +1024,12 @@ impl UnitCatalog {
             });
         }
         let new_src = replace_range(&self.src, old.span, new_slice);
+        let replacement_span = Span {
+            start: old.span.start,
+            end: old.span.start + new_slice.len(),
+        };
         // 单元域重解析（共享链：同 grammar/同投影；包装为 return 表达式位）。
-        match parse_lambda_unit(new_slice, self.profile, budget) {
+        match parse_lambda_unit(new_slice, self.profile, budget, replacement_span.start) {
             Ok((expr, consumed_len)) => {
                 if consumed_len != new_slice.len() {
                     // 片段必须完整消耗（§5.1 前门合同）。
@@ -1034,7 +1038,7 @@ impl UnitCatalog {
                         crate::atom_text::Stage::Text,
                         "source.incremental-fragment",
                         "a lambda fragment must be consumed completely",
-                        crate::atom_text::Span { start: 0, end: 0 },
+                        replacement_span,
                     )]));
                 }
                 let body = match &expr.kind {
@@ -1045,7 +1049,7 @@ impl UnitCatalog {
                             crate::atom_text::Stage::Text,
                             "source.incremental-fragment",
                             "a lambda fragment must be a lambda expression",
-                            crate::atom_text::Span { start: 0, end: 0 },
+                            replacement_span,
                         )]));
                     }
                 };
@@ -1850,14 +1854,31 @@ fn parse_whole(
 
 /// 单 lambda 片段经共享链重解析：合成 `fn __lambda_unit() int { return <slice> }`
 /// 宿主走统一前门（同 grammar/同投影/同预算），取出 return 位表达式并平移
-/// 回片内坐标。返回 (expr, 消费长度)。
+/// 回片内坐标。返回 (expr, 消费长度)；失败诊断返回当前原源绝对坐标。
 fn parse_lambda_unit(
     slice: &str,
     profile: SourceProfile,
     budget: FrontBudget,
+    source_start: usize,
 ) -> Result<(Expr, usize), EditError> {
     let wrapped = format!("fn __lambda_unit() int {{\n    return {slice}\n}}\n");
-    let program = parse_whole(&wrapped, profile, budget)?;
+    let program = parse_whole(&wrapped, profile, budget).map_err(|error| match error {
+        EditError::Diag(mut diagnostics) => {
+            // F-941-10: wrapper coordinates belong to neither the catalog nor
+            // the caller's current source. Clamp synthetic prefix/suffix spans
+            // to this replacement, and translate every diagnostic in byte units.
+            for diagnostic in &mut diagnostics {
+                let position =
+                    |p: usize| source_start + p.saturating_sub(WRAP_PREFIX_LEN).min(slice.len());
+                diagnostic.span = Span {
+                    start: position(diagnostic.span.start),
+                    end: position(diagnostic.span.end),
+                };
+            }
+            EditError::Diag(diagnostics)
+        }
+        other => other,
+    })?;
     let mut items = program.items;
     let Some(Item::Fn(mut f)) = items.pop() else {
         return Err(EditError::Infra("lambda wrapper carried no fn".into()));

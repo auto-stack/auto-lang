@@ -132,8 +132,89 @@ pub struct DataRequestOutcome {
     pub wall_ms: f64,
 }
 
+/// Typed failures survive until the protocol boundary (PLAN-941 F06).
+/// In particular, the complete ordered frontend diagnostics are retained;
+/// neither the worker nor callers need to re-parse their human rendering.
+#[derive(Clone, Debug)]
+pub enum DataRequestError {
+    FrontDoor(crate::driver::StageDiag),
+    Frontend(Vec<ace_core::atom_text::Diagnostic>),
+    Lower(ace_lowering::AdapterError),
+    MirVerify(ace_av_core::mir_verify::MirVerifyError),
+    Encode(ace_av_core::abc::AbcDecodeError),
+    AbcAdmit(ace_av_core::abc_verify::AbcAdmissionError),
+    Infrastructure(String),
+}
+
+impl DataRequestError {
+    /// Project actual typed facts onto the existing data recipe's pipeline
+    /// stages. Shared source stages (text/bind/verify) remain in `Frontend`;
+    /// the wire's `frontend` means the compilation boundary, not a parser claim.
+    /// No stable diagnostic, or an infrastructure failure, yields no language face.
+    pub fn diagnostic(&self) -> Option<crate::driver::StageDiag> {
+        use ace_av_core::abc_verify::AbcAdmissionError;
+        let (stage, code, message) = match self {
+            Self::FrontDoor(d) if d.code != "source.infra" => {
+                ("frontend", d.code.clone(), d.message.clone())
+            }
+            Self::Frontend(ds) => {
+                let d = ds.first()?;
+                if d.code == "source.infra" {
+                    return None;
+                }
+                ("frontend", d.code.clone(), d.message.clone())
+            }
+            Self::Lower(e) => ("frontend", e.code(), lower_message(e).to_string()),
+            Self::MirVerify(e) => ("verify", e.code(), format!("{e:?}")),
+            Self::Encode(e) => ("verify", e.code(), format!("{e:?}")),
+            Self::AbcAdmit(AbcAdmissionError::Decode(e)) => ("verify", e.code(), format!("{e:?}")),
+            Self::AbcAdmit(AbcAdmissionError::Verify(e)) => ("verify", e.code(), format!("{e:?}")),
+            Self::FrontDoor(_)
+            | Self::AbcAdmit(AbcAdmissionError::Identity(_))
+            | Self::Infrastructure(_) => return None,
+        };
+        if code.is_empty() {
+            return None;
+        }
+        Some(crate::driver::StageDiag {
+            stage: stage.into(),
+            code,
+            message,
+        })
+    }
+}
+
+fn lower_message(error: &ace_lowering::AdapterError) -> &str {
+    match error {
+        ace_lowering::AdapterError::Unsupported { message, .. }
+        | ace_lowering::AdapterError::Invalid { message, .. }
+        | ace_lowering::AdapterError::Resource { message, .. } => message,
+    }
+}
+
+// The old String API keeps its original human-facing prefixes. These are
+// presentation only; classification above never consumes this Display output.
+impl std::fmt::Display for DataRequestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FrontDoor(d) => write!(f, "front door: {} {}", d.stage, d.code),
+            Self::Frontend(ds) => match ds.first() {
+                Some(d) => write!(f, "frontend: {} {}", d.code, d.message),
+                None => write!(f, "frontend failed"),
+            },
+            Self::Lower(e) => write!(f, "lower: {} {}", e.code(), lower_message(e)),
+            Self::MirVerify(e) => write!(f, "mir verify: {e:?}"),
+            Self::Encode(e) => write!(f, "encode: {}", e.code()),
+            Self::AbcAdmit(e) => write!(f, "abc admit: {e}"),
+            Self::Infrastructure(message) => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for DataRequestError {}
+
 /// Run one data-profile request; persist the AVAD module when `store_root`
-/// is given. The AV execution result is independent of persistence.
+/// is given. Compatibility String API; typed consumers use `request_data_staged`.
 pub fn request_data(
     store_root: Option<&Path>,
     project: &str,
@@ -141,35 +222,34 @@ pub fn request_data(
     entry: &str,
     caps: &[String],
 ) -> Result<DataRequestOutcome, String> {
+    request_data_staged(store_root, project, src, entry, caps).map_err(|e| e.to_string())
+}
+
+/// The same production pipeline with typed failures retained through each
+/// boundary. The AV execution result is independent of persistence.
+pub fn request_data_staged(
+    store_root: Option<&Path>,
+    project: &str,
+    src: &str,
+    entry: &str,
+    caps: &[String],
+) -> Result<DataRequestOutcome, DataRequestError> {
     let started = std::time::Instant::now();
-    crate::driver::front_door_admit(src)
-        .map_err(|d| format!("front door: {} {}", d.stage, d.code))?;
-    let compiled = ace_core::source::compile_record_source(src, "data.at", caps).map_err(|ds| {
-        ds.first()
-            .map(|d| format!("frontend: {} {}", d.code, d.message))
-            .unwrap_or_else(|| "frontend failed".to_string())
-    })?;
-    let mir =
-        lower_checked_data(&compiled.checked, entry, fnv1a64(src.as_bytes())).map_err(|e| {
-            format!(
-                "lower: {} {}",
-                e.code(),
-                match e {
-                    ace_lowering::AdapterError::Unsupported { message, .. }
-                    | ace_lowering::AdapterError::Invalid { message, .. }
-                    | ace_lowering::AdapterError::Resource { message, .. } => message,
-                }
-            )
-        })?;
-    verify_mir(&mir).map_err(|e| format!("mir verify: {:?}", e))?;
-    let wire = encode_abc(&mir).map_err(|e| format!("encode: {}", e.code()))?;
+    crate::driver::front_door_admit(src).map_err(DataRequestError::FrontDoor)?;
+    let compiled = ace_core::source::compile_record_source(src, "data.at", caps)
+        .map_err(DataRequestError::Frontend)?;
+    let mir = lower_checked_data(&compiled.checked, entry, fnv1a64(src.as_bytes()))
+        .map_err(DataRequestError::Lower)?;
+    verify_mir(&mir).map_err(DataRequestError::MirVerify)?;
+    let wire = encode_abc(&mir).map_err(DataRequestError::Encode)?;
     let flat = wire.to_flat();
 
     let owner = mir.owner.module.clone();
     let snapshot = fnv1a64(src.as_bytes());
     let mut artifact = None;
     if let Some(root) = store_root {
-        let store = ManagedStore::open(root).map_err(|e| format!("open store: {e}"))?;
+        let store = ManagedStore::open(root)
+            .map_err(|e| DataRequestError::Infrastructure(format!("open store: {e}")))?;
         let key = data_module_key(&owner, entry, &mir);
         let env = envelope_wrap(&flat, &data_envelope(&owner, entry, snapshot));
         let art = store
@@ -181,11 +261,11 @@ pub fn request_data(
                 edges: vec![],
                 project: Some(project.to_string()),
             })
-            .map_err(|e| format!("persist: {e}"))?;
+            .map_err(|e| DataRequestError::Infrastructure(format!("persist: {e}")))?;
         artifact = Some(art);
     }
 
-    let loaded = verify_abc_bytes(&flat, &mir.owner).map_err(|e| format!("abc admit: {e}"))?;
+    let loaded = verify_abc_bytes(&flat, &mir.owner).map_err(DataRequestError::AbcAdmit)?;
     let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
     Ok(DataRequestOutcome {
         av: Some(out),

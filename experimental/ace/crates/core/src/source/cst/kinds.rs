@@ -44,6 +44,11 @@ pub struct SourceKinds {
     pub expr_stmt: u32,
     // expr
     pub expr: u32,
+    pub condition_expr: Option<u32>,
+    pub condition_unary: Option<u32>,
+    pub condition_postfix: Option<u32>,
+    pub condition_atom: Option<u32>,
+    pub condition_ctor: Option<u32>,
     pub unary_expr: u32,
     pub postfix_expr: u32,
     pub postfix_step: Option<u32>,
@@ -254,6 +259,22 @@ fn missing_names(p: &GrammarProgram) -> Vec<&'static str> {
 }
 
 impl SourceKinds {
+    /// Condition rules share the existing expression projection machine.
+    pub fn expression_kind(&self, kind: u32) -> u32 {
+        for (alias, ordinary) in [
+            (self.condition_expr, self.expr),
+            (self.condition_unary, self.unary_expr),
+            (self.condition_postfix, self.postfix_expr),
+            (self.condition_atom, self.atom_expr),
+            (self.condition_ctor, self.ctor_expr.unwrap_or(u32::MAX)),
+        ] {
+            if alias == Some(kind) {
+                return ordinary;
+            }
+        }
+        kind
+    }
+
     pub fn from_program(p: &GrammarProgram) -> Result<SourceKinds, Vec<&'static str>> {
         let missing = missing_names(p);
         if !missing.is_empty() {
@@ -301,6 +322,11 @@ impl SourceKinds {
             loop_stmt: rk("loop-stmt"),
             expr_stmt: rk("expr-stmt"),
             expr: rk("expr"),
+            condition_expr: rk_opt(p, "condition-expr"),
+            condition_unary: rk_opt(p, "condition-unary"),
+            condition_postfix: rk_opt(p, "condition-postfix"),
+            condition_atom: rk_opt(p, "condition-atom"),
+            condition_ctor: rk_opt(p, "condition-ctor"),
             unary_expr: rk("unary-expr"),
             postfix_expr: rk("postfix-expr"),
             postfix_step: rk_opt(p, "postfix-step"),

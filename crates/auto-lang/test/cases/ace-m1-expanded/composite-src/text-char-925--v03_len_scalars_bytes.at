@@ -1,0 +1,4 @@
+fn main() int {
+    let s Str = "héllo"
+    return s.len() * 100 + s.len_bytes()
+}

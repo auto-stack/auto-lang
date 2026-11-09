@@ -1,0 +1,6 @@
+fn main() int {
+    let a Str = "héllo"
+    let b Str = a.clone()
+    let c Str = a + b
+    return c.len() * 10 + c.len_bytes()
+}

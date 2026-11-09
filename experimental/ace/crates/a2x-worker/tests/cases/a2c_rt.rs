@@ -167,98 +167,33 @@ fn a2c_rt_required_four() {
 /// literals, full-byte equality (no normalization), scalar-indexed
 /// char_at/slice with typed TextIndex traps, codepoint roundtrip with
 /// typed InvalidScalar.
+pub(super) fn text_char_contracts_941(
+) -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
+    vec![
+        ("v03_len_scalars_bytes", "fn main() int {\n    let s Str = \"héllo\"\n    return s.len() * 100 + s.len_bytes()\n}", "value", "506"),
+        ("v03_nul_data", "fn main() int {\n    let s Str = \"a\\u{0}b\"\n    return s.len() * 10 + s.len_bytes()\n}", "value", "33"),
+        ("v03_eq_full_bytes", "fn main() int {\n    let a Str = \"é\"\n    let b Str = \"é\"\n    if a == b { return 1 }\n    return 0\n}", "value", "1"),
+        ("v03_char_at", "fn main() int {\n    let s Str = \"héllo\"\n    let c char = s.char_at(1)\n    return c.to_codepoint()\n}", "value", "233"),
+        ("v03_char_at_negative", "fn main() int {\n    let s Str = \"abc\"\n    let c char = s.char_at(-1)\n    return c.to_codepoint()\n}", "trap", "TextIndex"),
+        ("v03_slice_oob", "fn main() int {\n    let s Str = \"héllo\"\n    let t str = s.slice(0, 6)\n    return t.len()\n}", "trap", "TextIndex"),
+        ("v03_slice_scalars", "fn main() int {\n    let s Str = \"héllo\"\n    let t str = s.slice(2, 5)\n    return t.len()\n}", "value", "3"),
+        ("v03_codepoint_ok", "fn main() int {\n    let c char = char.from_codepoint(20013)\n    return c.to_codepoint()\n}", "value", "20013"),
+        ("v03_codepoint_surrogate", "fn main() int {\n    let c char = char.from_codepoint(55296)\n    return c.to_codepoint()\n}", "trap", "InvalidScalar"),
+        ("v03_concat_clone", "fn main() int {\n    let a Str = \"héllo\"\n    let b Str = a.clone()\n    let c Str = a + b\n    return c.len() * 10 + c.len_bytes()\n}", "value", "112"),
+    ]
+}
+
 #[test]
 fn a2c_rt_text_char_surface() {
     let mut s = open_session("text_char_surface");
-    // scalar count 4 (h é l l o... "héllo" = 5 chars) vs byte count 6
-    let (out, _) = run_c_chain(
-        &mut s,
-        "v03_len_scalars_bytes",
-        "fn main() int {\n    let s Str = \"héllo\"\n    return s.len() * 100 + s.len_bytes()\n}",
-        "text",
-        &[],
-    );
-    assert_value("v03_len_scalars_bytes", &out, 506);
-    // NUL is data: never strlen-truncated (len 3, bytes 3)
-    let (out, _) = run_c_chain(
-        &mut s,
-        "v03_nul_data",
-        "fn main() int {\n    let s Str = \"a\\u{0}b\"\n    return s.len() * 10 + s.len_bytes()\n}",
-        "text",
-        &[],
-    );
-    assert_value("v03_nul_data", &out, 33);
-    // full-byte equality: equal text, different scalars describing é
-    let (out, _) = run_c_chain(
-        &mut s,
-        "v03_eq_full_bytes",
-        "fn main() int {\n    let a Str = \"é\"\n    let b Str = \"é\"\n    if a == b { return 1 }\n    return 0\n}",
-        "text",
-        &[],
-    );
-    assert_value("v03_eq_full_bytes", &out, 1);
-    // char_at is scalar-indexed; é at index 1 → 233
-    let (out, _) = run_c_chain(
-        &mut s,
-        "v03_char_at",
-        "fn main() int {\n    let s Str = \"héllo\"\n    let c char = s.char_at(1)\n    return c.to_codepoint()\n}",
-        "text",
-        &[],
-    );
-    assert_value("v03_char_at", &out, 233);
-    // negative index → TextIndex (never a byte misread)
-    let (out, _) = run_c_chain(
-        &mut s,
-        "v03_char_at_negative",
-        "fn main() int {\n    let s Str = \"abc\"\n    let c char = s.char_at(-1)\n    return c.to_codepoint()\n}",
-        "text",
-        &[],
-    );
-    assert_trap("v03_char_at_negative", &out, "TextIndex");
-    // out-of-range slice end → TextIndex
-    let (out, _) = run_c_chain(
-        &mut s,
-        "v03_slice_oob",
-        "fn main() int {\n    let s Str = \"héllo\"\n    let t str = s.slice(0, 6)\n    return t.len()\n}",
-        "text",
-        &[],
-    );
-    assert_trap("v03_slice_oob", &out, "TextIndex");
-    // valid slice: scalar range on multi-byte text ("llo" → len 3)
-    let (out, _) = run_c_chain(
-        &mut s,
-        "v03_slice_scalars",
-        "fn main() int {\n    let s Str = \"héllo\"\n    let t str = s.slice(2, 5)\n    return t.len()\n}",
-        "text",
-        &[],
-    );
-    assert_value("v03_slice_scalars", &out, 3);
-    // codepoint roundtrip: valid → char; surrogate → InvalidScalar
-    let (out, _) = run_c_chain(
-        &mut s,
-        "v03_codepoint_ok",
-        "fn main() int {\n    let c char = char.from_codepoint(20013)\n    return c.to_codepoint()\n}",
-        "text",
-        &[],
-    );
-    assert_value("v03_codepoint_ok", &out, 20013);
-    let (out, _) = run_c_chain(
-        &mut s,
-        "v03_codepoint_surrogate",
-        "fn main() int {\n    let c char = char.from_codepoint(55296)\n    return c.to_codepoint()\n}",
-        "text",
-        &[],
-    );
-    assert_trap("v03_codepoint_surrogate", &out, "InvalidScalar");
-    // concat + clone + to(Str) chain over multi-byte text
-    let (out, _) = run_c_chain(
-        &mut s,
-        "v03_concat_clone",
-        "fn main() int {\n    let a Str = \"héllo\"\n    let b Str = a.clone()\n    let c Str = a + b\n    return c.len() * 10 + c.len_bytes()\n}",
-        "text",
-        &[],
-    );
-    assert_value("v03_concat_clone", &out, 112);
+    for (tag, source, kind, expected) in text_char_contracts_941() {
+        let (out, _) = run_c_chain(&mut s, tag, source, "text", &[]);
+        match kind {
+            "value" => assert_value(tag, &out, expected.parse().unwrap()),
+            "trap" => assert_trap(tag, &out, expected),
+            other => panic!("unknown original text oracle: {other}"),
+        }
+    }
 }
 
 /// The cleanup counterexample through C: value oracle plus the EXACT C

@@ -1,0 +1,8 @@
+type Counter { value int }
+fn scale(x Counter, k int) int {
+    return x.value * k
+}
+fn main() int {
+    let x Counter = Counter(6)
+    return scale(x, 7)
+}

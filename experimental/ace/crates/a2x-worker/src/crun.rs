@@ -161,6 +161,11 @@ pub fn toolchain_identity() -> Result<ace_a2x_c::cert::CToolchainIdentity, CTool
 /// reference) into an exe with the same frozen flags + contained
 /// executor — its own translation unit, no generated inputs.
 pub fn compile_c_standalone(src: &Path, exe: &Path) -> Result<(), CToolError> {
+    compile_c_standalone_observed(src, exe).map(|_| ())
+}
+
+/// Same original compile, retaining the captured bytes for explicit certification.
+pub fn compile_c_standalone_observed(src: &Path, exe: &Path) -> Result<CapturedRun, CToolError> {
     let tc = resolve_toolchain()?;
     let mut argv: Vec<String> = C_FLAGS.iter().map(|s| s.to_string()).collect();
     argv.push(format!("-Fe:{}", exe.display()));
@@ -186,13 +191,18 @@ pub fn compile_c_standalone(src: &Path, exe: &Path) -> Result<(), CToolError> {
             exe.display()
         )));
     }
-    Ok(())
+    Ok(run)
 }
 
 /// Compile the C file set (main.c + generated.c, runtime header beside
 /// them) into `exe` with the frozen flags. A nonzero exit is an infra
 /// error carrying the diagnostics.
 pub fn compile_c_fileset(dir: &Path, exe: &Path) -> Result<(), CToolError> {
+    compile_c_fileset_observed(dir, exe).map(|_| ())
+}
+
+/// Same original fileset compile with its original captured process terminal.
+pub fn compile_c_fileset_observed(dir: &Path, exe: &Path) -> Result<CapturedRun, CToolError> {
     let tc = resolve_toolchain()?;
     let mut argv: Vec<String> = C_FLAGS.iter().map(|s| s.to_string()).collect();
     argv.push(format!("-Fe:{}", exe.display()));
@@ -215,7 +225,7 @@ pub fn compile_c_fileset(dir: &Path, exe: &Path) -> Result<(), CToolError> {
             exe.display()
         )));
     }
-    Ok(())
+    Ok(run)
 }
 
 /// Run a produced exe under the contained executor (30s deadline).
@@ -236,8 +246,20 @@ pub fn run_exe(exe: &Path) -> Result<CapturedRun, CToolError> {
 /// (stdout, stderr) of the run. Used by the corpus leg and certification
 /// (actual and reference compile the same way, independently).
 pub fn compile_and_run_c(dir: &Path, exe_name: &str) -> Result<(String, String), CToolError> {
+    let (_, run) = compile_and_run_c_observed(dir, exe_name)?;
+    Ok((
+        String::from_utf8_lossy(&run.stdout).into_owned(),
+        String::from_utf8_lossy(&run.stderr).into_owned(),
+    ))
+}
+
+/// Certification's original two process observations; no second execution.
+pub fn compile_and_run_c_observed(
+    dir: &Path,
+    exe_name: &str,
+) -> Result<(CapturedRun, CapturedRun), CToolError> {
     let exe = dir.join(exe_name);
-    compile_c_fileset(dir, &exe)?;
+    let compile = compile_c_fileset_observed(dir, &exe)?;
     let run = run_exe(&exe)?;
     if run.exit_code != Some(0) {
         return Err(CToolError(format!(
@@ -246,8 +268,15 @@ pub fn compile_and_run_c(dir: &Path, exe_name: &str) -> Result<(String, String),
             String::from_utf8_lossy(&run.stderr)
         )));
     }
-    Ok((
-        String::from_utf8_lossy(&run.stdout).into_owned(),
-        String::from_utf8_lossy(&run.stderr).into_owned(),
-    ))
+    Ok((compile, run))
+}
+
+/// Byte-exact original sub-process observation. Contains no PASS/FAIL field.
+pub fn captured_observation(run: &CapturedRun) -> serde_json::Value {
+    let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    serde_json::json!({
+        "exit_code": run.exit_code,
+        "stdout_hex": hex(&run.stdout),
+        "stderr_hex": hex(&run.stderr),
+    })
 }

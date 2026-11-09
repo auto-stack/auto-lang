@@ -13,6 +13,7 @@
 //! | `t02_06` | restore: a second service over the SAME on-disk store hits with ct_execute=0 and reuses the frozen bytes; a fresh demand still executes for real (§5.5 有界腿) |
 //! | `t02_07` | the lane is structurally deck-free and acyclic: no forbidden crate deps, wrapper entry collides safely (AST construction, not text append) (§5.1 判据 1/3) |
 //! | `t02_08` | unknown callee / out-of-surface returns are controlled rejections that never reach the AV (§5.2) |
+//! | `t02_09` | a foreign package never addresses another owner's page: the owner-scoped ExecKey derives differently, so the foreign demand misses and executes for real while the owning package still restore-hits over the same store (§5.7 owner isolation; PLAN-941 ARCH-05) |
 
 use crate::executor::{checked_module_of, run_entry_on_av};
 use crate::identity::UseBinding;
@@ -349,6 +350,84 @@ fn t02_06_restore_hits_with_zero_execution_over_the_real_store() {
         assert!(!b.from_cache);
         assert_eq!(b.value, CtValue::I32(42));
         assert_eq!(svc.counters().ct_execute, 1);
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn t02_09_foreign_package_never_addresses_another_owners_page() {
+    // PLAN-941 (ARCH-05 historical row): the CT page key is owner-scoped
+    // by construction — owner_logical(package, module, name) enters the
+    // ExecKey hash — so a foreign package issuing the SAME demand over
+    // the SAME on-disk store derives a different key, probes a miss and
+    // executes for real. It can never read, hit or reuse another owner's
+    // frozen page: the SQ lane refuses foreign pages explicitly because
+    // its pages travel externally; this lane isolates by unaddressable
+    // keys.
+    let dir = std::env::temp_dir().join(format!(
+        "ct936-foreign-owner-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let program = parse(SUM_V1);
+    let owner_request = |package: &str| CtRequest {
+        callee: "sum".into(),
+        args: vec![CtValue::I32(20), CtValue::I32(22)],
+        expect: ExpectTy::I32,
+        binding: UseBinding {
+            package: package.into(),
+            module: "m.at".into(),
+            owner: "main".into(),
+            expect: ExpectTy::I32,
+        },
+    };
+    // Owning package: cold, real AV, freeze to the on-disk store.
+    {
+        let sink =
+            ManagedEnvelopeSink::open(&dir, Some("ct936-foreign-owner")).expect("open store");
+        let mut svc = CtService::new(sink);
+        let a = svc
+            .execute_ct(&program, SUM_V1, "m.at", &owner_request("proj-a"))
+            .expect("cold");
+        assert!(!a.from_cache);
+        assert_eq!(a.value, CtValue::I32(42));
+        assert_eq!(svc.counters().ct_execute, 1);
+    }
+    // Foreign package over the SAME store root: structurally identical
+    // demand, different owner — a miss by key construction, real
+    // execution, and the owning package still restores hit-only.
+    {
+        let sink =
+            ManagedEnvelopeSink::open(&dir, Some("ct936-foreign-owner")).expect("reopen store");
+        let mut svc = CtService::new(sink);
+        let b = svc
+            .execute_ct(&program, SUM_V1, "m.at", &owner_request("proj-b"))
+            .expect("foreign demand executes");
+        assert!(
+            !b.from_cache,
+            "a foreign owner never hits another owner's page"
+        );
+        assert_eq!(b.value, CtValue::I32(42));
+        assert_eq!(
+            svc.counters().ct_execute,
+            1,
+            "the foreign owner executes for real"
+        );
+        assert_eq!(svc.counters().ct_hits, 0);
+        let a = svc
+            .execute_ct(&program, SUM_V1, "m.at", &owner_request("proj-a"))
+            .expect("own restore");
+        assert!(a.from_cache, "the owning package still restores its page");
+        assert_eq!(a.value, CtValue::I32(42));
+        assert_eq!(
+            svc.counters().ct_execute,
+            1,
+            "the own restore-hit still executes nothing"
+        );
+        assert_eq!(svc.counters().ct_hits, 1);
     }
     std::fs::remove_dir_all(&dir).ok();
 }

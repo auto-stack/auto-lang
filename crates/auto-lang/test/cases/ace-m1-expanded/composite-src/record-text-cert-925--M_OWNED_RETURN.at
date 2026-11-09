@@ -1,0 +1,8 @@
+fn dupe(s str) Str {
+    return s.clone()
+}
+fn main() int {
+    let a Str = "ab"
+    let b Str = dupe(a.to(str))
+    return b.len() * 10 + a.len()
+}

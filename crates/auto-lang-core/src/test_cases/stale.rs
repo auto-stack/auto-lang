@@ -48,6 +48,9 @@ pub struct NativeApplicability {
     /// switch is PER PROFILE, so the current backend axis is recomputed for
     /// exactly this profile (not a global default).
     pub profile: String,
+    /// Declared recipe, reconstructed from the current contract, never the
+    /// persisted row's echo. ABI's two recipes share a worker, not authority.
+    pub probe_recipe: Option<String>,
 }
 
 fn fingerprint(v: &dyn std::fmt::Debug) -> String {
@@ -131,6 +134,7 @@ pub fn current_identities(
                         ),
                     support_lib: check.options.effective_support_lib().is_some(),
                     profile: check.options.effective_profile().as_str().to_string(),
+                    probe_recipe: check.options.probe_recipe.clone(),
                 };
                 out.insert(
                     format!("{}:{}", spec.id, check.id),
@@ -314,16 +318,10 @@ pub fn check_with_families(
                     })
                     .unwrap_or(false);
             let abi_probe_row = is_probe
-                && r.get("native")
-                    .and_then(|n| n.get("toolchain"))
-                    .and_then(|t| t.as_array())
-                    .map(|arr| {
-                        arr.iter().any(|p| {
-                            p[0].as_str() == Some("recipe")
-                                && p[1].as_str() == Some("abi/interop-v1")
-                        })
-                    })
-                    .unwrap_or(false);
+                && matches!(
+                    applicability.probe_recipe.as_deref(),
+                    Some("abi/interop-v1" | "abi/ca-d1-bridge-v1")
+                );
             let cte_probe_row = is_probe
                 && r.get("native")
                     .and_then(|n| n.get("toolchain"))
@@ -428,11 +426,15 @@ pub fn check_with_families(
                 // PLAN-797 T-06: probe rows carry a RECIPE-SPECIFIC axis
                 // family — the ABI recipe binds to the abi worker's
                 // identity axes, everything else to the sema worker's.
-                let abi_row = row_axes.get("recipe").map(|r| {
-                    r == "abi/interop-v1"
-                        || r == "abi/ca-d1-bridge-v1"
-                        || r == super::abi_source::RECIPE
-                });
+                let abi_row = if abi_probe_row {
+                    Some(true)
+                } else {
+                    row_axes.get("recipe").map(|r| {
+                        r == "abi/interop-v1"
+                            || r == "abi/ca-d1-bridge-v1"
+                            || r == super::abi_source::RECIPE
+                    })
+                };
                 let mut applicable: Vec<&str> = if is_probe {
                     match abi_row {
                         Some(true) => vec![
@@ -511,6 +513,10 @@ pub fn check_with_families(
                 // profile into a per-row copy of the family identity map
                 // (never into the shared lazy cache).
                 let mut current_row: BTreeMap<String, String> = current.clone();
+                if abi_probe_row {
+                    current_row
+                        .insert("recipe".into(), applicability.probe_recipe.clone().unwrap());
+                }
                 if applicability.links_conditionally && linked {
                     current_row.insert(
                         "ac-native-backend".into(),

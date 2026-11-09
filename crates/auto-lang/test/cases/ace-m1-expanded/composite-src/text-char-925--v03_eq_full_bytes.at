@@ -1,0 +1,6 @@
+fn main() int {
+    let a Str = "é"
+    let b Str = "é"
+    if a == b { return 1 }
+    return 0
+}

@@ -25,7 +25,6 @@
 //! auto-case stale    --suite <pilot.suite.ad> --report <old report.json>
 //! ```
 
-
 fn main() {
     // PLAN-906: no implicit Web host here — the language workspace builds
     // without auto-web. No TestCase uses `serve`; an HTTP service call without
@@ -73,6 +72,17 @@ fn require<'a>(args: &'a [String], name: &str) -> Result<&'a str, String> {
 
 fn run(args: &[String]) -> Result<i32, String> {
     let cmd = args.first().ok_or_else(|| usage())?;
+    if cmd == "parent-inventory" {
+        if args.len() != 1 {
+            return Err("parent-inventory accepts no input or execution flags".into());
+        }
+        let inventory = auto_lang::test_cases::inventory::parent_contract_inventory();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&inventory).map_err(|e| e.to_string())?
+        );
+        return Ok(0);
+    }
     if cmd == "legacy-inventory" {
         let root = PathBuf::from(require(args, "--test-root")?);
         let inventory = auto_lang::test_cases::inventory::legacy_inventory(&root)?;
@@ -95,6 +105,17 @@ fn run(args: &[String]) -> Result<i32, String> {
             );
             Ok(0)
         }
+        "identity-inventory" => {
+            let inventory = auto_lang::test_cases::inventory::suite_identity_inventory(
+                &suite,
+                &Limits::defaults(),
+            )?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&inventory).map_err(|e| e.to_string())?
+            );
+            Ok(0)
+        }
         "inspect" => inspect(&suite, require(args, "--case")?),
         "run" => run_cmd(&suite, args),
         "module-case" => module_case_cmd(&suite, args),
@@ -106,7 +127,7 @@ fn run(args: &[String]) -> Result<i32, String> {
 }
 
 fn usage() -> String {
-    "usage: auto-case <lint|list|inventory|inspect|run|proposal|stale> --suite <path> [flags]; auto-case legacy-inventory --test-root <path>"
+    "usage: auto-case <lint|list|inventory|identity-inventory|inspect|run|proposal|stale> --suite <path> [flags]; auto-case legacy-inventory --test-root <path>; auto-case parent-inventory"
         .to_string()
 }
 

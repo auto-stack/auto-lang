@@ -1,0 +1,11 @@
+type Cell { v int }
+fn pair(mut a Cell, mut b Cell) int {
+    a.v = 1
+    b.v = 2
+    return a.v * 10 + b.v
+}
+fn main() int {
+    var x Cell = Cell(0)
+    var y Cell = Cell(0)
+    return pair(x.mut, y.mut)
+}

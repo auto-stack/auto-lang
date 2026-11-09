@@ -53,6 +53,9 @@ pub mod parent_observations;
 pub mod resource_events;
 pub mod test_batch;
 
+#[path = "ac_av/contract_inventory.rs"]
+pub(crate) mod contract_inventory;
+
 const READ_CAP: usize = (4 << 20) + (64 << 10);
 const STDERR_CAP: usize = 1 << 20;
 const REQUEST_CAP: usize = 4 << 20;
@@ -325,7 +328,10 @@ fn probe_toolchain_axes(
     if family == RecipeFamily::Dynamic {
         v.push(("av-profile".into(), "5".into()));
     }
-    if matches!(family, RecipeFamily::ClosuresSource | RecipeFamily::ClosuresFn) {
+    if matches!(
+        family,
+        RecipeFamily::ClosuresSource | RecipeFamily::ClosuresFn
+    ) {
         v.push(("av-profile".into(), "6".into()));
     }
     v
@@ -983,7 +989,12 @@ fn reject_duplicate_keys(line: &str) -> Result<(), String> {
 /// After a normal exit the response must be a SUCCESS exit status and
 /// EXACTLY one non-empty stdout line — trailing protocol frames and
 /// non-zero exits are Infra, never green (F798-R3-05).
-fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse, String> {
+fn call_worker(
+    request_json: &str,
+    deadline: Duration,
+    artifact_dir: &Path,
+    recipe: &str,
+) -> Result<WorkerResponse, String> {
     if request_json.len() > REQUEST_CAP {
         return Err(format!(
             "av worker request exceeds the {} byte metadata cap ({} bytes)",
@@ -992,6 +1003,17 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
         ));
     }
     let exe = worker_binary()?;
+    let exchange = if super::execution_trace::WorkerExchange::enabled()? {
+        super::execution_trace::WorkerExchange::start(
+            artifact_dir,
+            AV_WORKER_PROTOCOL,
+            recipe,
+            &worker_file_sha256(&exe)?,
+            request_json.as_bytes(),
+        )?
+    } else {
+        None
+    };
     let started = Instant::now();
     let mut cmd = Command::new(&exe);
     cmd.arg("case-serve")
@@ -1191,6 +1213,9 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
     drop(cleanup);
     // plausible JSON line preceded it.
     let status = exit_status.unwrap_or_else(|| child.wait().unwrap_or_default());
+    if let Some(exchange) = exchange {
+        exchange.finish(&out_buf, &err_buf, status.code(), None)?;
+    }
     if !status.success() {
         return Err(format!(
             "av worker exited with {:?} (non-zero worker exits are infra, never a language verdict); stderr: {:.300}",
@@ -1777,6 +1802,7 @@ fn run_check_impl(
     _run_dir: &Path,
     family: RecipeFamily,
 ) -> Result<Verdict, String> {
+    let recipe = family.recipe();
     run_check_with_transport(
         case,
         check,
@@ -1785,7 +1811,7 @@ fn run_check_impl(
         artifact_dir,
         _run_dir,
         family,
-        call_worker,
+        |request, deadline| call_worker(request, deadline, artifact_dir, recipe),
         None,
     )
 }
@@ -1934,8 +1960,10 @@ fn run_check_with_transport(
         // Explicit module-case execution owns a private run. Ordinary suite
         // callers may intentionally restart the same session across runs.
         Some(_)
-            if matches!(family, RecipeFamily::ClosuresSource | RecipeFamily::ClosuresFn)
-                && MODULE_PRIVATE_SESSIONS.with(|scope| scope.get()) =>
+            if matches!(
+                family,
+                RecipeFamily::ClosuresSource | RecipeFamily::ClosuresFn
+            ) && MODULE_PRIVATE_SESSIONS.with(|scope| scope.get()) =>
         {
             _run_dir.join("av-closures-sessions")
         }
@@ -2083,9 +2111,7 @@ fn run_check_with_transport(
     };
     let is_closures_source_family = matches!(
         family,
-        RecipeFamily::ClosuresSource
-            | RecipeFamily::ClosuresFn
-            | RecipeFamily::ClosuresRecovery
+        RecipeFamily::ClosuresSource | RecipeFamily::ClosuresFn | RecipeFamily::ClosuresRecovery
     );
     let closures_source_id = if is_closures_source_family {
         let selector = av.entry.strip_prefix("source:").ok_or_else(|| {
@@ -2121,7 +2147,9 @@ fn run_check_with_transport(
         } else if fn_family {
             closures_fn_case(id).is_some()
         } else {
-            CLOSURES_SOURCE_CASES.iter().any(|(case_id, ..)| *case_id == id)
+            CLOSURES_SOURCE_CASES
+                .iter()
+                .any(|(case_id, ..)| *case_id == id)
         };
         if !registered {
             return Err(format!(
@@ -2205,7 +2233,9 @@ fn run_check_with_transport(
             .as_ref()
             .ok_or_else(|| "resource-events requires av.resource".to_string())?;
         if av.profile.is_some() {
-            return Err("resource-events does not take av.profile (use av.resource.profile)".into());
+            return Err(
+                "resource-events does not take av.profile (use av.resource.profile)".into(),
+            );
         }
         request["profile"] = serde_json::json!(res.profile);
         let mut limits = serde_json::Map::new();
@@ -2852,8 +2882,10 @@ fn malformed_resource_events(steps: &[StepOut]) -> Option<String> {
 /// PLAN-865: the source-session face belongs only to the source closures
 /// recipe; fixture closures keep their original ledger contract.
 fn closures_source_on_non_recipe(family: RecipeFamily, steps: &[StepOut]) -> bool {
-    !matches!(family, RecipeFamily::ClosuresSource | RecipeFamily::ClosuresFn)
-        && steps.iter().any(|s| s.closures_source.is_some())
+    !matches!(
+        family,
+        RecipeFamily::ClosuresSource | RecipeFamily::ClosuresFn
+    ) && steps.iter().any(|s| s.closures_source.is_some())
 }
 
 fn malformed_closures_source(steps: &[StepOut]) -> Option<String> {
@@ -3944,12 +3976,7 @@ fn face_u64(face: &serde_json::Value, field: &str) -> Option<u64> {
     face.get(field).and_then(|v| v.as_u64())
 }
 
-fn judge_closures_fn(
-    id: &str,
-    mode: Option<&str>,
-    step: &StepOut,
-    mismatches: &mut Vec<Mismatch>,
-) {
+fn judge_closures_fn(id: &str, mode: Option<&str>, step: &StepOut, mismatches: &mut Vec<Mismatch>) {
     let Some((_, base_value, want_code, function_count)) = closures_fn_case(id) else {
         mismatches.push(Mismatch {
             observation: "closures_fn".into(),
@@ -3973,7 +4000,12 @@ fn judge_closures_fn(
         };
     if let Some(want_code) = want_code {
         if step.outcome != "diag" {
-            bad(mismatches, "source-rejection", format!("compile-time diagnostic {want_code}"), step_summary(step));
+            bad(
+                mismatches,
+                "source-rejection",
+                format!("compile-time diagnostic {want_code}"),
+                step_summary(step),
+            );
             return;
         }
         let got_code = step
@@ -3983,10 +4015,20 @@ fn judge_closures_fn(
             .and_then(|c| c.as_str())
             .unwrap_or_default();
         if got_code != want_code {
-            bad(mismatches, "source-diagnostic", want_code.to_string(), got_code.to_string());
+            bad(
+                mismatches,
+                "source-diagnostic",
+                want_code.to_string(),
+                got_code.to_string(),
+            );
         }
         if step.closures_source.is_some() {
-            bad(mismatches, "source-rejection-face", "no runtime face for a rejected source".into(), "face present".into());
+            bad(
+                mismatches,
+                "source-rejection-face",
+                "no runtime face for a rejected source".into(),
+                "face present".into(),
+            );
         }
         return;
     }
@@ -3996,22 +4038,47 @@ fn judge_closures_fn(
         _ => base_value.expect("success case has an expected value"),
     };
     if step.outcome != "success" {
-        bad(mismatches, "source-outcome", "success".into(), step_summary(step));
+        bad(
+            mismatches,
+            "source-outcome",
+            "success".into(),
+            step_summary(step),
+        );
         return;
     }
     if step.value != Some(want_value) {
-        bad(mismatches, "source-result", want_value.to_string(), format!("{:?}", step.value));
+        bad(
+            mismatches,
+            "source-result",
+            want_value.to_string(),
+            format!("{:?}", step.value),
+        );
     }
     let Some(face) = &step.closures_source else {
-        bad(mismatches, "source-resource-report", "function-session face".into(), "no closures_source report".into());
+        bad(
+            mismatches,
+            "source-resource-report",
+            "function-session face".into(),
+            "no closures_source report".into(),
+        );
         return;
     };
     if face_u64(face, "live_after_release") != Some(0) {
-        bad(mismatches, "source-live", "0".into(), format!("{:?}", face_u64(face, "live_after_release")));
+        bad(
+            mismatches,
+            "source-live",
+            "0".into(),
+            format!("{:?}", face_u64(face, "live_after_release")),
+        );
     }
     let (allocs, frees) = (face_u64(face, "allocs"), face_u64(face, "frees"));
     if allocs.is_none() || frees.is_none() || allocs != frees {
-        bad(mismatches, "source-alloc-free-balance", format!("{allocs:?}"), format!("{frees:?}"));
+        bad(
+            mismatches,
+            "source-alloc-free-balance",
+            format!("{allocs:?}"),
+            format!("{frees:?}"),
+        );
     }
     // The 912 axes.
     let route = face.get("route").and_then(|r| r.as_str()).unwrap_or("");
@@ -4025,42 +4092,86 @@ fn judge_closures_fn(
     match mode {
         Some("body-edit") | Some("hit") => {
             if gate.is_none() {
-                bad(mismatches, "warm-gate", "warm gate verdict present".into(), "absent".into());
+                bad(
+                    mismatches,
+                    "warm-gate",
+                    "warm gate verdict present".into(),
+                    "absent".into(),
+                );
             }
         }
         _ => {
-            if face.get("warm_gate_pass").map(|v| !v.is_null()).unwrap_or(false) {
-                bad(mismatches, "warm-gate", "null on a cold route".into(), "present".into());
+            if face
+                .get("warm_gate_pass")
+                .map(|v| !v.is_null())
+                .unwrap_or(false)
+            {
+                bad(
+                    mismatches,
+                    "warm-gate",
+                    "null on a cold route".into(),
+                    "present".into(),
+                );
             }
         }
     }
     // §5.5 pool: the retained frontend estimate stays within 16 MiB.
     if retained > 16 * 1024 * 1024 {
-        bad(mismatches, "retained-pool", "<= 16 MiB".into(), retained.to_string());
+        bad(
+            mismatches,
+            "retained-pool",
+            "<= 16 MiB".into(),
+            retained.to_string(),
+        );
     }
     let counters = |field: &str| face_u64(face, field);
     match mode {
         Some("body-edit") => {
             if route != "fast-unit" && route != "fast-owner" {
-                bad(mismatches, "route", "fast-unit|fast-owner".into(), route.to_string());
+                bad(
+                    mismatches,
+                    "route",
+                    "fast-unit|fast-owner".into(),
+                    route.to_string(),
+                );
             }
             if gate != Some(true) {
                 bad(mismatches, "warm-gate", "pass".into(), format!("{gate:?}"));
             }
             if whole != Some(0) {
-                bad(mismatches, "whole-attempts", "0".into(), whole.unwrap_or_default().to_string());
+                bad(
+                    mismatches,
+                    "whole-attempts",
+                    "0".into(),
+                    whole.unwrap_or_default().to_string(),
+                );
             }
             let submitted = counters("submitted_units");
             if submitted.is_none() || submitted.unwrap() == 0 || submitted.unwrap() >= units {
-                bad(mismatches, "submitted", format!("1..{} (strictly fewer than whole)", units - 1), format!("{submitted:?}"));
+                bad(
+                    mismatches,
+                    "submitted",
+                    format!("1..{} (strictly fewer than whole)", units - 1),
+                    format!("{submitted:?}"),
+                );
             }
             for field in ["verified", "encoded", "admitted"] {
                 if counters(field) != submitted {
-                    bad(mismatches, field, format!("{submitted:?}"), format!("{:?}", counters(field)));
+                    bad(
+                        mismatches,
+                        field,
+                        format!("{submitted:?}"),
+                        format!("{:?}", counters(field)),
+                    );
                 }
             }
             if counters("cache_hits") != Some(0) {
-                bad(mismatches, "cache-hits", "0".into(), format!("{:?}", counters("cache_hits")));
+                bad(
+                    mismatches,
+                    "cache-hits",
+                    "0".into(),
+                    format!("{:?}", counters("cache_hits")),
+                );
             }
         }
         Some("hit") => {
@@ -4071,15 +4182,38 @@ fn judge_closures_fn(
                 bad(mismatches, "warm-gate", "pass".into(), format!("{gate:?}"));
             }
             if whole != Some(0) {
-                bad(mismatches, "whole-attempts", "0".into(), whole.unwrap_or_default().to_string());
+                bad(
+                    mismatches,
+                    "whole-attempts",
+                    "0".into(),
+                    whole.unwrap_or_default().to_string(),
+                );
             }
-            for field in ["submitted_units", "verified", "encoded", "admitted", "store_writes", "cache_misses", "cache_hits"] {
+            for field in [
+                "submitted_units",
+                "verified",
+                "encoded",
+                "admitted",
+                "store_writes",
+                "cache_misses",
+                "cache_hits",
+            ] {
                 if counters(field) != Some(0) {
-                    bad(mismatches, field, "0".into(), format!("{:?}", counters(field)));
+                    bad(
+                        mismatches,
+                        field,
+                        "0".into(),
+                        format!("{:?}", counters(field)),
+                    );
                 }
             }
             if mir_lower != Some(0) {
-                bad(mismatches, "mir-lower", "0 on a hit".into(), mir_lower.unwrap_or_default().to_string());
+                bad(
+                    mismatches,
+                    "mir-lower",
+                    "0 on a hit".into(),
+                    mir_lower.unwrap_or_default().to_string(),
+                );
             }
         }
         Some("restart") => {
@@ -4088,22 +4222,47 @@ fn judge_closures_fn(
             }
             for field in ["verified", "encoded", "admitted"] {
                 if counters(field) != Some(units) {
-                    bad(mismatches, field, units.to_string(), format!("{:?}", counters(field)));
+                    bad(
+                        mismatches,
+                        field,
+                        units.to_string(),
+                        format!("{:?}", counters(field)),
+                    );
                 }
             }
             if counters("cache_hits") != Some(units) {
-                bad(mismatches, "cache-hits", units.to_string(), format!("{:?}", counters("cache_hits")));
+                bad(
+                    mismatches,
+                    "cache-hits",
+                    units.to_string(),
+                    format!("{:?}", counters("cache_hits")),
+                );
             }
             if counters("store_writes") != Some(0) {
-                bad(mismatches, "store-writes", "0".into(), format!("{:?}", counters("store_writes")));
+                bad(
+                    mismatches,
+                    "store-writes",
+                    "0".into(),
+                    format!("{:?}", counters("store_writes")),
+                );
             }
             // R3 stays OPEN and is REPORTED, not hidden: a restart still
             // re-lowers every unit before the content key is computable.
             if mir_lower != Some(units) {
-                bad(mismatches, "mir-lower", format!("{units} (R3 open: honestly non-zero)"), mir_lower.unwrap_or_default().to_string());
+                bad(
+                    mismatches,
+                    "mir-lower",
+                    format!("{units} (R3 open: honestly non-zero)"),
+                    mir_lower.unwrap_or_default().to_string(),
+                );
             }
             if whole.unwrap_or_default() < 1 {
-                bad(mismatches, "whole-attempts", ">= 1 (the truth path is whole)".into(), whole.unwrap_or_default().to_string());
+                bad(
+                    mismatches,
+                    "whole-attempts",
+                    ">= 1 (the truth path is whole)".into(),
+                    whole.unwrap_or_default().to_string(),
+                );
             }
         }
         _ => {
@@ -4111,16 +4270,38 @@ fn judge_closures_fn(
             if route != "cold" {
                 bad(mismatches, "route", "cold".into(), route.to_string());
             }
-            for field in ["submitted_units", "verified", "encoded", "admitted", "store_writes", "cache_misses"] {
+            for field in [
+                "submitted_units",
+                "verified",
+                "encoded",
+                "admitted",
+                "store_writes",
+                "cache_misses",
+            ] {
                 if counters(field) != Some(units) {
-                    bad(mismatches, field, units.to_string(), format!("{:?}", counters(field)));
+                    bad(
+                        mismatches,
+                        field,
+                        units.to_string(),
+                        format!("{:?}", counters(field)),
+                    );
                 }
             }
             if counters("cache_hits") != Some(0) {
-                bad(mismatches, "cache-hits", "0".into(), format!("{:?}", counters("cache_hits")));
+                bad(
+                    mismatches,
+                    "cache-hits",
+                    "0".into(),
+                    format!("{:?}", counters("cache_hits")),
+                );
             }
             if whole.unwrap_or_default() < 1 {
-                bad(mismatches, "whole-attempts", ">= 1 (the truth path is whole)".into(), whole.unwrap_or_default().to_string());
+                bad(
+                    mismatches,
+                    "whole-attempts",
+                    ">= 1 (the truth path is whole)".into(),
+                    whole.unwrap_or_default().to_string(),
+                );
             }
         }
     }
@@ -4779,9 +4960,12 @@ fn judge_expectation(
             // for any non-empty oracle).
             if let Some(want) = &expect.trace {
                 let actual: String = step.trace.concat();
-                if let Some(m) =
-                    compare_bytes(want.text.as_bytes(), actual.as_bytes(), want.compare, "trace")
-                {
+                if let Some(m) = compare_bytes(
+                    want.text.as_bytes(),
+                    actual.as_bytes(),
+                    want.compare,
+                    "trace",
+                ) {
                     mismatches.push(m);
                 }
             }
@@ -5750,9 +5934,6 @@ mod console_tests {
     }
 }
 
-
-
-
 /// PLAN-914 (I04, D-05 criterion): judge the data-incremental edits against
 /// the declared invalidation oracle — every declared rebuilt def must really
 /// be in the edit's dependency-precise rebuild set, and every def declared
@@ -5801,10 +5982,8 @@ fn judge_invalidation(
         }
         let mut seen = false;
         for e in &edits {
-            if let (Some(b), Some(a)) = (
-                e.identities_before.get(def),
-                e.identities_after.get(def),
-            ) {
+            if let (Some(b), Some(a)) = (e.identities_before.get(def), e.identities_after.get(def))
+            {
                 seen = true;
                 if b != a {
                     mismatches.push(Mismatch {
@@ -5828,7 +6007,6 @@ fn judge_invalidation(
         }
     }
 }
-
 
 // -- PLAN-913: source-bound recovery ---------------------------------------
 
@@ -5890,7 +6068,12 @@ fn judge_closures_recovery(
             });
         };
     if step.outcome != "success" {
-        bad(mismatches, "recovery-outcome", "success".into(), step_summary(step));
+        bad(
+            mismatches,
+            "recovery-outcome",
+            "success".into(),
+            step_summary(step),
+        );
         return;
     }
     let Some(face) = &step.recovery else {
@@ -5903,10 +6086,7 @@ fn judge_closures_recovery(
         return;
     };
     let units_want = units as u64;
-    let phase = face
-        .get("phase")
-        .and_then(|p| p.as_str())
-        .unwrap_or("");
+    let phase = face.get("phase").and_then(|p| p.as_str()).unwrap_or("");
     if !matches!(phase, "publish" | "restore" | "edit") {
         bad(
             mismatches,

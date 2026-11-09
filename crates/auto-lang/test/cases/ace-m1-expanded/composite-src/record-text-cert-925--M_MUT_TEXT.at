@@ -1,0 +1,8 @@
+fn twice(mut s Str) int {
+    let t Str = s + s
+    return t.len()
+}
+fn main() int {
+    var a Str = "ab"
+    return twice(a)
+}

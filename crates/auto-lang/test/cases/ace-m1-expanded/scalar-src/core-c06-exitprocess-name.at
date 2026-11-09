@@ -1,0 +1,1 @@
+fn ExitProcess() int { return 4 } fn main() int { return ExitProcess() }

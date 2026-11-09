@@ -6,7 +6,7 @@
 //! the CASE's expect.typed — they never enter the request. The worker only
 //! ever reports what the real PE returned.
 
-use super::{call_worker, worker_binary, TYPED_RECIPE};
+use super::{call_worker_observed, worker_binary, TYPED_RECIPE};
 use crate::test_cases::avm::Verdict;
 use auto_test_case::compare::Mismatch;
 use auto_test_case::contract::{CheckSpec, Completion, Stage};
@@ -94,7 +94,7 @@ pub fn run_check_typed(
     let request_hash = hex(&sha256(request_text.as_bytes()));
     request["request_hash"] = serde_json::json!(request_hash);
 
-    let response = call_worker(&request.to_string())?;
+    let response = call_worker_observed(&request.to_string(), Some(artifact_dir))?;
     let resp: serde_json::Value = serde_json::from_str(&response)
         .map_err(|e| format!("typed worker response is not JSON: {e}"))?;
 

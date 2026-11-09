@@ -466,29 +466,29 @@ impl Codegen {
                                 }
                             }
                         } else {
-                        for (i, arg) in call.args.args.iter().enumerate() {
-                            match arg {
-                                crate::ast::Arg::Pos(expr) => {
-                                    self.compile_expr(expr)?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                match arg {
+                                    crate::ast::Arg::Pos(expr) => {
+                                        self.compile_expr(expr)?;
+                                    }
+                                    crate::ast::Arg::Pair(_key, expr) => {
+                                        self.compile_expr(expr)?;
+                                    }
+                                    crate::ast::Arg::Name(_) => {
+                                        // Name-only arg - placeholder
+                                    }
                                 }
-                                crate::ast::Arg::Pair(_key, expr) => {
-                                    self.compile_expr(expr)?;
-                                }
-                                crate::ast::Arg::Name(_) => {
-                                    // Name-only arg - placeholder
-                                }
-                            }
-                            // Plan 230: promote f32 -> f64 when field type is Double
-                            if let Some(ref field_types) = constructor_field_types {
-                                if let Some(field_type) = field_types.get(i) {
-                                    if matches!(field_type, Type::Double)
-                                        && self.last_expr_type == ObjectType::Float
-                                    {
-                                        self.emit(OpCode::PROMOTE_F64);
+                                // Plan 230: promote f32 -> f64 when field type is Double
+                                if let Some(ref field_types) = constructor_field_types {
+                                    if let Some(field_type) = field_types.get(i) {
+                                        if matches!(field_type, Type::Double)
+                                            && self.last_expr_type == ObjectType::Float
+                                        {
+                                            self.emit(OpCode::PROMOTE_F64);
+                                        }
                                     }
                                 }
                             }
-                        }
                         }
 
                         // Create object keys using type member names
@@ -507,10 +507,8 @@ impl Codegen {
                         let types: Vec<ObjectType> = if let Some(mapping) = field_order.as_ref() {
                             (0..arg_count as usize)
                                 .map(|field| {
-                                    let src = mapping
-                                        .iter()
-                                        .position(|&f| f == field)
-                                        .unwrap_or(field);
+                                    let src =
+                                        mapping.iter().position(|&f| f == field).unwrap_or(field);
                                     match &call.args.args[src] {
                                         crate::ast::Arg::Pair(_, expr) => {
                                             self.infer_object_type(expr)
@@ -2352,7 +2350,8 @@ impl Codegen {
                     let is_json_encode = BIGVM_NATIVES
                         .lock()
                         .unwrap()
-                        .resolve_qualified("auto.json.encode") == Some(id);
+                        .resolve_qualified("auto.json.encode")
+                        == Some(id);
                     if is_json_encode && call.args.args.len() == 1 {
                         if let crate::ast::Arg::Pos(Expr::Call(getter))
                         | crate::ast::Arg::Pair(_, Expr::Call(getter)) = &call.args.args[0]
@@ -2953,8 +2952,7 @@ impl Codegen {
                     {
                         match self.fn_params.get(func_name_for_params) {
                             Some(params)
-                                if !params.is_empty()
-                                    && params.len() == call.args.args.len() =>
+                                if !params.is_empty() && params.len() == call.args.args.len() =>
                             {
                                 let mut mapping = Vec::with_capacity(params.len());
                                 let mut used = vec![false; params.len()];
@@ -2975,12 +2973,7 @@ impl Codegen {
                                         }
                                     }
                                 }
-                                if ok
-                                    && mapping
-                                        .iter()
-                                        .enumerate()
-                                        .any(|(src, &dst)| src != dst)
-                                {
+                                if ok && mapping.iter().enumerate().any(|(src, &dst)| src != dst) {
                                     Some(mapping)
                                 } else {
                                     None
@@ -3028,96 +3021,110 @@ impl Codegen {
                             }
                         }
                     } else {
-                    for (i, arg) in call.args.args.iter().enumerate() {
-                        match arg {
-                            crate::ast::Arg::Pos(expr) => {
-                                let param_index = i + arg_offset;
-                                if !func_name_for_params.is_empty()
-                                    && self.fn_params.contains_key(func_name_for_params)
-                                {
-                                    vm_debug!(
-                                        "DEBUG:   Arg {}: smart param passing for '{}'",
-                                        param_index,
-                                        func_name_for_params
-                                    );
-                                    self.compile_call_arg(expr, func_name_for_params, param_index)?;
-                                } else {
-                                    vm_debug!("DEBUG:   Arg {}: normal compile", param_index);
-                                    self.compile_expr(expr)?;
-                                }
-                                // Plan 230: promote f32 -> f64 for type constructor args
-                                if let Some(ref field_types) = constructor_field_types {
-                                    if let Some(field_type) = field_types.get(i) {
-                                        if matches!(field_type, Type::Double)
-                                            && self.last_expr_type == ObjectType::Float
-                                        {
-                                            self.emit(OpCode::PROMOTE_F64);
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            match arg {
+                                crate::ast::Arg::Pos(expr) => {
+                                    let param_index = i + arg_offset;
+                                    if !func_name_for_params.is_empty()
+                                        && self.fn_params.contains_key(func_name_for_params)
+                                    {
+                                        vm_debug!(
+                                            "DEBUG:   Arg {}: smart param passing for '{}'",
+                                            param_index,
+                                            func_name_for_params
+                                        );
+                                        self.compile_call_arg(
+                                            expr,
+                                            func_name_for_params,
+                                            param_index,
+                                        )?;
+                                    } else {
+                                        vm_debug!("DEBUG:   Arg {}: normal compile", param_index);
+                                        self.compile_expr(expr)?;
+                                    }
+                                    // Plan 230: promote f32 -> f64 for type constructor args
+                                    if let Some(ref field_types) = constructor_field_types {
+                                        if let Some(field_type) = field_types.get(i) {
+                                            if matches!(field_type, Type::Double)
+                                                && self.last_expr_type == ObjectType::Float
+                                            {
+                                                self.emit(OpCode::PROMOTE_F64);
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            crate::ast::Arg::Pair(_, expr) => {
-                                // Named argument (e.g., add(a: 12, b: 2))
-                                // Extract the value expression and compile it like a positional arg
-                                let param_index = i + arg_offset;
-                                if !func_name_for_params.is_empty()
-                                    && self.fn_params.contains_key(func_name_for_params)
-                                {
-                                    vm_debug!(
-                                        "DEBUG:   Named arg {}: smart param passing for '{}'",
-                                        param_index,
-                                        func_name_for_params
-                                    );
-                                    self.compile_call_arg(expr, func_name_for_params, param_index)?;
-                                } else {
-                                    vm_debug!("DEBUG:   Named arg {}: normal compile", param_index);
-                                    self.compile_expr(expr)?;
-                                }
-                                // Plan 230: promote f32 -> f64 for type constructor args
-                                if let Some(ref field_types) = constructor_field_types {
-                                    if let Some(field_type) = field_types.get(i) {
-                                        if matches!(field_type, Type::Double)
-                                            && self.last_expr_type == ObjectType::Float
-                                        {
-                                            self.emit(OpCode::PROMOTE_F64);
+                                crate::ast::Arg::Pair(_, expr) => {
+                                    // Named argument (e.g., add(a: 12, b: 2))
+                                    // Extract the value expression and compile it like a positional arg
+                                    let param_index = i + arg_offset;
+                                    if !func_name_for_params.is_empty()
+                                        && self.fn_params.contains_key(func_name_for_params)
+                                    {
+                                        vm_debug!(
+                                            "DEBUG:   Named arg {}: smart param passing for '{}'",
+                                            param_index,
+                                            func_name_for_params
+                                        );
+                                        self.compile_call_arg(
+                                            expr,
+                                            func_name_for_params,
+                                            param_index,
+                                        )?;
+                                    } else {
+                                        vm_debug!(
+                                            "DEBUG:   Named arg {}: normal compile",
+                                            param_index
+                                        );
+                                        self.compile_expr(expr)?;
+                                    }
+                                    // Plan 230: promote f32 -> f64 for type constructor args
+                                    if let Some(ref field_types) = constructor_field_types {
+                                        if let Some(field_type) = field_types.get(i) {
+                                            if matches!(field_type, Type::Double)
+                                                && self.last_expr_type == ObjectType::Float
+                                            {
+                                                self.emit(OpCode::PROMOTE_F64);
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            crate::ast::Arg::Name(name) => {
-                                // Name-only argument (e.g., add(a) where a is both name and value)
-                                // Convert to expression by wrapping in Ident
-                                let param_index = i + arg_offset;
-                                if !func_name_for_params.is_empty()
-                                    && self.fn_params.contains_key(func_name_for_params)
-                                {
-                                    vm_debug!(
-                                        "DEBUG:   Named arg {}: smart param passing for '{}'",
-                                        param_index,
-                                        func_name_for_params
-                                    );
-                                    self.compile_call_arg(
-                                        &Expr::Ident(name.clone()),
-                                        func_name_for_params,
-                                        param_index,
-                                    )?;
-                                } else {
-                                    vm_debug!("DEBUG:   Named arg {}: normal compile", param_index);
-                                    self.compile_expr(&Expr::Ident(name.clone()))?;
-                                }
-                                // Plan 230: promote f32 -> f64 for type constructor args
-                                if let Some(ref field_types) = constructor_field_types {
-                                    if let Some(field_type) = field_types.get(i) {
-                                        if matches!(field_type, Type::Double)
-                                            && self.last_expr_type == ObjectType::Float
-                                        {
-                                            self.emit(OpCode::PROMOTE_F64);
+                                crate::ast::Arg::Name(name) => {
+                                    // Name-only argument (e.g., add(a) where a is both name and value)
+                                    // Convert to expression by wrapping in Ident
+                                    let param_index = i + arg_offset;
+                                    if !func_name_for_params.is_empty()
+                                        && self.fn_params.contains_key(func_name_for_params)
+                                    {
+                                        vm_debug!(
+                                            "DEBUG:   Named arg {}: smart param passing for '{}'",
+                                            param_index,
+                                            func_name_for_params
+                                        );
+                                        self.compile_call_arg(
+                                            &Expr::Ident(name.clone()),
+                                            func_name_for_params,
+                                            param_index,
+                                        )?;
+                                    } else {
+                                        vm_debug!(
+                                            "DEBUG:   Named arg {}: normal compile",
+                                            param_index
+                                        );
+                                        self.compile_expr(&Expr::Ident(name.clone()))?;
+                                    }
+                                    // Plan 230: promote f32 -> f64 for type constructor args
+                                    if let Some(ref field_types) = constructor_field_types {
+                                        if let Some(field_type) = field_types.get(i) {
+                                            if matches!(field_type, Type::Double)
+                                                && self.last_expr_type == ObjectType::Float
+                                            {
+                                                self.emit(OpCode::PROMOTE_F64);
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
                     }
                 }
                 // 2. Emit CALL or CALL_SPEC opcode

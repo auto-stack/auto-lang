@@ -125,7 +125,7 @@ fn main() {
         Err(e) => fail(&format!("bad request json: {e}")),
     };
     let out = match v["op"].as_str().unwrap_or("") {
-        "identity" => identity(),
+        "identity" => identity(&v),
         "daily-emit" => daily_emit(&v),
         "certify" => certify(&v),
         "daily-emit-c" => daily_emit_c(&v),
@@ -152,9 +152,9 @@ fn ok_base(recipe: &str) -> serde_json::Value {
     })
 }
 
-fn identity() -> serde_json::Value {
+fn identity(v: &serde_json::Value) -> serde_json::Value {
     let t = ace_a2x_rust::TargetProfile::v1();
-    serde_json::json!({
+    let mut identity = serde_json::json!({
         "status": "ok",
         "tool": "a2x-worker",
         "protocol": PROTOCOL,
@@ -166,7 +166,29 @@ fn identity() -> serde_json::Value {
         "targets": ["rust", "c"],
         "c_backend": "auto-a2x-c",
         "c_standard": ace_a2x_c::C_STANDARD,
-    })
+    });
+    // Explicit certification preparation only. Ordinary identity/daily calls
+    // keep their original spawn-zero behavior. The composer never calls this.
+    if let Some(target) = v.get("certification_target") {
+        identity["certification_toolchain"] = match target.as_str() {
+            Some("rust") => {
+                let vv = toolchain_vv();
+                serde_json::json!({ "kind": "rustc", "version_vv_sha256": sha256_hex(vv.as_bytes()),
+                    "version_vv": vv, "flags": ["--edition", "2021"] })
+            }
+            Some("c") => {
+                let tc = ace_a2x_worker::crun::toolchain_identity()
+                    .unwrap_or_else(|e| fail(&format!("cert toolchain identity: {e}")));
+                // Preserve the original schema's field name; its value is
+                // the original C locator's BLAKE3 image digest, not SHA256.
+                serde_json::json!({ "kind": "cl", "version": tc.cl_version,
+                    "version_sha256": tc.cl_hash, "vcvars_sha256": tc.vcvars_sha256,
+                    "flags": tc.flags })
+            }
+            _ => fail("certification_target must be rust or c"),
+        };
+    }
+    identity
 }
 
 struct EmitOutcome {
@@ -546,8 +568,10 @@ fn certify_c(v: &serde_json::Value) -> serde_json::Value {
 
     // 2) ACTUAL: real cl compile + run under the contained executor
     let actual_dir = PathBuf::from(out_dir);
-    let (actual_stdout, _) = ace_a2x_worker::crun::compile_and_run_c(&actual_dir, "actual.exe")
-        .unwrap_or_else(|e| fail(&format!("actual compile/run: {}", e)));
+    let (actual_compile, actual_run) =
+        ace_a2x_worker::crun::compile_and_run_c_observed(&actual_dir, "actual.exe")
+            .unwrap_or_else(|e| fail(&format!("actual compile/run: {}", e)));
+    let actual_stdout = String::from_utf8_lossy(&actual_run.stdout).into_owned();
     if actual_stdout != expected_line {
         fail(&format!(
             "a2x.oracle: actual observed `{}` != oracle `{}`",
@@ -567,8 +591,9 @@ fn certify_c(v: &serde_json::Value) -> serde_json::Value {
     let ref_file = ref_dir.join("reference.c");
     std::fs::write(&ref_file, &ref_src).unwrap_or_else(|e| fail(&format!("write reference: {e}")));
     let ref_exe = ref_dir.join("reference.exe");
-    ace_a2x_worker::crun::compile_c_standalone(&ref_file, &ref_exe)
-        .unwrap_or_else(|e| fail(&format!("reference compile: {}", e)));
+    let reference_compile =
+        ace_a2x_worker::crun::compile_c_standalone_observed(&ref_file, &ref_exe)
+            .unwrap_or_else(|e| fail(&format!("reference compile: {}", e)));
     let ref_run = ace_a2x_worker::crun::run_exe(&ref_exe)
         .unwrap_or_else(|e| fail(&format!("reference run: {}", e)));
     let ref_stdout = String::from_utf8_lossy(&ref_run.stdout).into_owned();
@@ -683,6 +708,16 @@ fn certify_c(v: &serde_json::Value) -> serde_json::Value {
     r["cert_sha256"] = sha256_hex(cert_json.as_bytes()).into();
     r["spawned_cl"] = 2.into(); // actual + reference compiles
     r["spawned_rustc"] = 0.into();
+    if std::env::var("AUTO_CASE_WIRE_EVIDENCE").as_deref() == Ok("1") {
+        use ace_a2x_worker::crun::captured_observation;
+        r["execution_observations"] = serde_json::json!({
+            "schema": "ace.a2x.cert-execution/1",
+            "actual": { "compile": captured_observation(&actual_compile),
+                        "run": captured_observation(&actual_run) },
+            "reference": { "compile": captured_observation(&reference_compile),
+                           "run": captured_observation(&ref_run) },
+        });
+    }
     r
 }
 
@@ -726,7 +761,8 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
     // walls are OBSERVED per the 852 budget lines (compile <=120s, run
     // <=30s, whole certify <=360s) — the caller asserts the caps
     let t0 = std::time::Instant::now();
-    let (actual_out, actual_err) = compile_and_run(&dir, "main.rs", "a2x_actual.exe");
+    let (actual_out, actual_err, actual_processes) =
+        compile_and_run(&dir, "main.rs", "a2x_actual.exe");
     let actual_wall_ms = t0.elapsed().as_millis() as u64;
     // independent hand-written reference: compile + run separately
     let reference_src = std::fs::read_to_string(&reference_path)
@@ -734,7 +770,8 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
     std::fs::write(dir.join("reference.rs"), &reference_src)
         .unwrap_or_else(|e| fail(&format!("write reference: {e}")));
     let t1 = std::time::Instant::now();
-    let (reference_out, reference_err) = compile_and_run(&dir, "reference.rs", "a2x_reference.exe");
+    let (reference_out, reference_err, reference_processes) =
+        compile_and_run(&dir, "reference.rs", "a2x_reference.exe");
     let reference_wall_ms = t1.elapsed().as_millis() as u64;
 
     let mut r = ok_base(recipe_of_profile(&profile));
@@ -746,6 +783,12 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
     let stdout_ok = actual_out == oracle_line && reference_out == oracle_line;
     let marks_ok = actual_err == reference_err;
     r["marks_match_reference"] = marks_ok.into();
+    if std::env::var("AUTO_CASE_WIRE_EVIDENCE").as_deref() == Ok("1") {
+        r["execution_observations"] = serde_json::json!({
+            "schema": "ace.a2x.cert-execution/1",
+            "actual": actual_processes, "reference": reference_processes,
+        });
+    }
     let verdict = if stdout_ok && marks_ok {
         "PASS"
     } else {
@@ -885,7 +928,7 @@ fn contained(cmd: &mut Command, deadline: std::time::Duration) -> ace_core::link
     }
 }
 
-fn compile_and_run(dir: &Path, src: &str, exe_name: &str) -> (String, String) {
+fn compile_and_run(dir: &Path, src: &str, exe_name: &str) -> (String, String, serde_json::Value) {
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
     let exe = dir.join(exe_name);
     let mut compile = Command::new(&rustc);
@@ -913,5 +956,12 @@ fn compile_and_run(dir: &Path, src: &str, exe_name: &str) -> (String, String) {
     (
         String::from_utf8_lossy(&run.stdout).trim().to_string(),
         String::from_utf8_lossy(&run.stderr).trim().to_string(),
+        if std::env::var("AUTO_CASE_WIRE_EVIDENCE").as_deref() == Ok("1") {
+            use ace_a2x_worker::crun::captured_observation;
+            serde_json::json!({ "compile": captured_observation(&out),
+                                "run": captured_observation(&run) })
+        } else {
+            serde_json::Value::Null
+        },
     )
 }

@@ -32,6 +32,8 @@ mod bridge_flags;
 mod cert_coll_904;
 #[path = "cases/cert_domain_952.rs"]
 mod cert_domain_952;
+#[path = "cases/cert_execution_941.rs"]
+mod cert_execution_941;
 #[path = "cases/cert_json_951.rs"]
 mod cert_json_951;
 #[path = "cases/cert_rt_902.rs"]
@@ -52,16 +54,24 @@ mod contract_certification;
 mod hir_shape;
 #[path = "cases/incremental_cache.rs"]
 mod incremental_cache;
+#[path = "cases/inventory_941.rs"]
+mod inventory_941;
+#[path = "cases/query_release_941.rs"]
+mod query_release_941;
 #[path = "cases/record_text_902.rs"]
 mod record_text_902;
 #[path = "cases/record_text_modes.rs"]
 mod record_text_modes;
+#[path = "cases/record_text_release_941.rs"]
+mod record_text_release_941;
 #[path = "cases/record_text_t04.rs"]
 mod record_text_t04;
 #[path = "cases/resource_budget.rs"]
 mod resource_budget;
 #[path = "cases/rt_common.rs"]
 mod rt_common;
+#[path = "cases/scalar_release_941.rs"]
+mod scalar_release_941;
 #[path = "cases/scalar_semantics.rs"]
 mod scalar_semantics;
 #[path = "cases/numeric_semantics.rs"]
@@ -76,3 +86,6 @@ mod store_coll_933;
 mod store_rt_902;
 #[path = "cases/worker_ct_frontdoor_958.rs"]
 mod worker_ct_frontdoor_958;
+
+#[path = "cases/record_field_writes_941.rs"]
+mod record_field_writes_941;

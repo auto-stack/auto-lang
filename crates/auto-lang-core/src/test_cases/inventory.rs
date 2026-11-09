@@ -7,8 +7,22 @@ use auto_test_case::discovery::{load_suite, CASE_FENCE_LANGUAGE};
 use auto_test_case::ir::{resolve_case, resolve_oracle};
 use auto_test_case::suite::apply_defaults;
 
+#[path = "inventory_probe.rs"]
+mod probe;
 #[path = "inventory_wrappers.rs"]
 mod wrappers;
+
+/// The original parent constants/tables, not a reconstructed language model.
+pub fn parent_contract_inventory() -> serde_json::Value {
+    serde_json::json!({
+        "schema":"test-parent-contract-inventory/1", "scope":"discovery", "executed":0,
+        "parents": {
+            "av":super::ac_av::contract_inventory::snapshot(),
+            "native":super::ac_mn::contract_inventory(),
+            "abi":super::abi::contract_inventory(),
+        },
+    })
+}
 
 /// Production file discoverers shared with entry.rs and sys_env.rs. Discovery
 /// never claims that a Rust wrapper selected or executed the returned cases.
@@ -74,6 +88,21 @@ pub fn legacy_inventory(test_root: &Path) -> Result<serde_json::Value, String> {
 }
 
 pub fn suite_inventory(path: &Path, limits: &Limits) -> Result<serde_json::Value, String> {
+    suite_inventory_impl(path, limits, false)
+}
+
+/// PLAN-941: independent current expectations for an evidence consumer.
+/// Uses the execution parser's own typed fingerprints, without executing a
+/// check or reading a previous child verdict. The original /1 stays unchanged.
+pub fn suite_identity_inventory(path: &Path, limits: &Limits) -> Result<serde_json::Value, String> {
+    suite_inventory_impl(path, limits, true)
+}
+
+fn suite_inventory_impl(
+    path: &Path,
+    limits: &Limits,
+    identities: bool,
+) -> Result<serde_json::Value, String> {
     let loaded = load_suite(path, limits).map_err(|e| e.to_string())?;
     if !loaded.errors.is_empty() {
         return Err(loaded
@@ -128,7 +157,7 @@ pub fn suite_inventory(path: &Path, limits: &Limits) -> Result<serde_json::Value
                     })
                     .collect();
                 let skip = effective.skip.as_ref().or(spec.status_skip.as_ref());
-                checks.push(serde_json::json!({
+                let mut row = serde_json::json!({
                     "suite": loaded.suite.id,
                     "case": spec.id, "check": effective.id,
                     "case_file": file.path, "case_file_sha256": file.sha256,
@@ -148,7 +177,70 @@ pub fn suite_inventory(path: &Path, limits: &Limits) -> Result<serde_json::Value
                     "state": if skip.is_some() { "SKIP" } else { "RUN" },
                     "skip_reason": skip.map(|s| &s.reason), "skip_owner": skip.and_then(|s| s.owner.as_ref()),
                     "defaults": defaults,
-                }));
+                });
+                if identities {
+                    row["source_origin"] = serde_json::json!({"kind":match &spec.source.payload {
+                        auto_test_case::contract::PayloadSpec::File(_) => "file",
+                        auto_test_case::contract::PayloadSpec::Text(_) => "text",
+                        auto_test_case::contract::PayloadSpec::Block(_) => "block",
+                    }});
+                    probe::append(&mut row, &effective, &oracle, &loaded.fixture_base);
+                    row["contract_sha256"] = super::fingerprint(spec).into();
+                    row["check_sha256"] = super::fingerprint(&effective).into();
+                    use auto_test_case::contract::{Compare, Completion, MessageMatcher};
+                    row["completion"] = match &oracle.completion {
+                        Completion::Success => serde_json::json!({ "kind": "success" }),
+                        Completion::Error {
+                            stage,
+                            code,
+                            message,
+                        } => serde_json::json!({
+                            "kind": "error", "stage": stage.as_str(), "code": code,
+                            "message": message.as_ref().map(|m| match m {
+                                MessageMatcher::Exact(text) => serde_json::json!({"kind":"exact", "text":text}),
+                                MessageMatcher::Contains(text) => serde_json::json!({"kind":"contains", "text":text}),
+                            }),
+                        }),
+                    };
+                    let budget = effective.options.effective_budget();
+                    row["ac_options"] = serde_json::json!({
+                        "profile": effective.options.effective_profile().as_str(),
+                        "entry": effective.options.effective_entry(),
+                        "cache": effective.options.effective_cache().as_str(),
+                        "grammar": if effective.adapter == auto_test_case::contract::Adapter::Syntax {
+                            Some(effective.options.effective_grammar())
+                        } else { None },
+                        "capabilities": effective.options.effective_capabilities(),
+                        "budget": {"build_ms":budget.build_ms, "run_ms":budget.run_ms, "total_ms":budget.total_ms},
+                    });
+                    if let Some(abi) = &effective.options.probe_abi {
+                        use auto_test_case::contract::ProbeStep;
+                        row["abi_options"] = serde_json::json!({"leg": abi.leg});
+                        let steps = effective.options.probe_steps.as_deref().unwrap_or_default();
+                        let mut exported = Vec::new();
+                        for step in steps {
+                            exported.push(match step {
+                                ProbeStep::Query => serde_json::json!({"op":"query"}),
+                                ProbeStep::Restart => serde_json::json!({"op":"restart"}),
+                                ProbeStep::EditSource { from, to } => {
+                                    serde_json::json!({"op":"edit-source", "from":from, "to":to})
+                                }
+                                _ => {
+                                    return Err("unsupported ABI step in identity inventory".into())
+                                }
+                            });
+                        }
+                        row["abi_steps"] = exported.into();
+                        row["probe_oracles"] = oracle.probe.as_ref().map(|steps| steps.iter().map(|s| serde_json::json!({
+                            "cache":s.cache, "compute_calls":s.compute_calls, "bindings_sha256":s.bindings_sha256,
+                            "stages_include":s.stages_include,
+                        })).collect::<Vec<_>>()).into();
+                    }
+                    row["artifact_modes"] = oracle.artifacts.iter().map(|a| serde_json::json!({
+                        "path":a.path, "compare":match a.compare { Compare::Bytes => "bytes", Compare::Lf => "lf" },
+                    })).collect::<Vec<_>>().into();
+                }
+                checks.push(row);
             }
         }
     }
@@ -156,7 +248,7 @@ pub fn suite_inventory(path: &Path, limits: &Limits) -> Result<serde_json::Value
         return Err("suite inventory selected zero atomic checks".into());
     }
     Ok(serde_json::json!({
-        "schema": "test-case-inventory/1", "scope": "discovery", "executed": 0,
+        "schema": if identities { "test-case-inventory/2" } else { "test-case-inventory/1" }, "scope": "discovery", "executed": 0,
         "suite": loaded.suite.id, "suite_path": loaded.suite_path,
         "fixture_base": loaded.fixture_base,
         "suite_sha256": loaded.suite_sha256, "checks": checks,

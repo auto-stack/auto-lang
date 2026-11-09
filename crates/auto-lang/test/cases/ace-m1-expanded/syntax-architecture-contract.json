@@ -1,0 +1,127 @@
+{
+  "schema": "ace.m1.syntax-architecture-contract/1",
+  "plan": "PLAN-941:r6",
+  "mechanisms": [
+    "ARCH-01/all-grammars"
+  ],
+  "checks": [
+    {
+      "check": "parse-core",
+      "case": "ace.m1.unified-source-929.parse-core",
+      "source": "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/core.at",
+      "source_sha256": "54943ad037b05733996d41d88161225d7bcd0bdd0cb5a7ec9ba50941e3fd481e",
+      "source_bytes": 40,
+      "grammar": "auto-source@core",
+      "request_profile": "core",
+      "completion": "success"
+    },
+    {
+      "check": "parse-scalar",
+      "case": "ace.m1.unified-source-929.parse-scalar",
+      "source": "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/scalar.at",
+      "source_sha256": "b7e5f25e46902be22c9bd3db35a334cb56e130e11cae090b6927314fc2d980c6",
+      "source_bytes": 35,
+      "grammar": "auto-source@scalar",
+      "request_profile": "core",
+      "completion": "success"
+    },
+    {
+      "check": "parse-text",
+      "case": "ace.m1.unified-source-929.parse-text",
+      "source": "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/text.at",
+      "source_sha256": "58deb24678579081cc6bae98ab2ca18f5705d7af0e340bf09f23a3c406660a34",
+      "source_bytes": 115,
+      "grammar": "auto-source@text",
+      "request_profile": "core",
+      "completion": "success"
+    },
+    {
+      "check": "parse-record",
+      "case": "ace.m1.unified-source-929.parse-record",
+      "source": "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/record.at",
+      "source_sha256": "6e1e8ec8d9ec2fe9ff67ea57433eb15e0ee3abdb30f66fff7158ce05a538c5ee",
+      "source_bytes": 600,
+      "grammar": "auto-source@record",
+      "request_profile": "core",
+      "completion": "success"
+    },
+    {
+      "check": "parse-text-record",
+      "case": "ace.m1.unified-source-929.parse-text-record",
+      "source": "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/text_record.at",
+      "source_sha256": "7487bed0a9fb8bfa0b672b1e3862fb38576e6d31fdc4c9bdb40677c7f8bca982",
+      "source_bytes": 179,
+      "grammar": "auto-source@text-record",
+      "request_profile": "core",
+      "completion": "success"
+    },
+    {
+      "check": "parse-entry-unit",
+      "case": "ace.m1.unified-source-929.parse-entry-unit",
+      "source": "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/entry_unit.at",
+      "source_sha256": "9efb89a1327645c108b415a4318a467a7b41240d33c45fd83611b83116ac1d2b",
+      "source_bytes": 43,
+      "grammar": "auto-source@entry-unit",
+      "request_profile": "core",
+      "completion": "success"
+    },
+    {
+      "check": "parse-host-console",
+      "case": "ace.m1.unified-source-929.parse-host-console",
+      "source": "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/host_console.at",
+      "source_sha256": "bcf58c48b30dc459c4242db3dd78420319767a4e2570f56d30b513d0ddce4b5a",
+      "source_bytes": 112,
+      "grammar": "auto-source@host-console",
+      "request_profile": "core",
+      "completion": "success"
+    },
+    {
+      "check": "parse-closures",
+      "case": "ace.m1.unified-source-929.parse-closures",
+      "source": "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/closures.at",
+      "source_sha256": "35a1ef2966577a68e242bb2ed366e075a08d4e6fa0712b524a20278eb4546e04",
+      "source_bytes": 373,
+      "grammar": "auto-source@closures",
+      "request_profile": "core",
+      "completion": "success"
+    },
+    {
+      "check": "parse-collections",
+      "case": "ace.m1.unified-source-929.parse-collections",
+      "source": "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/collections.at",
+      "source_sha256": "893aad86f5696312dc8f756add991fcb014aa57a882990f68b438e4de236ae9f",
+      "source_bytes": 445,
+      "grammar": "auto-source@collections",
+      "request_profile": "core",
+      "completion": "success"
+    },
+    {
+      "check": "parse-record-under-scalar-grammar-refused",
+      "case": "ace.m1.unified-source-929.profile-gate-negative",
+      "source": "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/record.at",
+      "source_sha256": "6e1e8ec8d9ec2fe9ff67ea57433eb15e0ee3abdb30f66fff7158ce05a538c5ee",
+      "source_bytes": 600,
+      "grammar": "auto-source@scalar",
+      "request_profile": "core",
+      "completion": {
+        "stage": "parse",
+        "code": "syntax.parse"
+      }
+    }
+  ],
+  "source_pins": {
+    "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/unified-source-syntax-929.suite.ad": "165bffd91e994f49ad843f6d7db254f6ba47021f3afe8b2c999f00b627731647",
+    "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/unified-source-syntax-929.case.ad": "ea84675aa212625dc6e86035f92cca7a29bfb7bed59704f66cc08b852ad0a0bd",
+    "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/core.at": "54943ad037b05733996d41d88161225d7bcd0bdd0cb5a7ec9ba50941e3fd481e",
+    "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/scalar.at": "b7e5f25e46902be22c9bd3db35a334cb56e130e11cae090b6927314fc2d980c6",
+    "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/text.at": "58deb24678579081cc6bae98ab2ca18f5705d7af0e340bf09f23a3c406660a34",
+    "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/record.at": "6e1e8ec8d9ec2fe9ff67ea57433eb15e0ee3abdb30f66fff7158ce05a538c5ee",
+    "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/text_record.at": "7487bed0a9fb8bfa0b672b1e3862fb38576e6d31fdc4c9bdb40677c7f8bca982",
+    "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/entry_unit.at": "9efb89a1327645c108b415a4318a467a7b41240d33c45fd83611b83116ac1d2b",
+    "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/host_console.at": "bcf58c48b30dc459c4242db3dd78420319767a4e2570f56d30b513d0ddce4b5a",
+    "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/closures.at": "35a1ef2966577a68e242bb2ed366e075a08d4e6fa0712b524a20278eb4546e04",
+    "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/oracle/collections.at": "893aad86f5696312dc8f756add991fcb014aa57a882990f68b438e4de236ae9f"
+  },
+  "execution": "UNOBSERVED",
+  "scope": "Nine original grammar parse/reconstruction controls plus same-record scalar refusal; wire profile core is preserved separately from selected grammar; no semantic typing/incremental/restore claim"
+}

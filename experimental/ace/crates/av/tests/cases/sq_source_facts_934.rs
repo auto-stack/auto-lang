@@ -330,6 +330,94 @@ fn sq934_restore_bind_executes_from_pages_only() {
     assert_eq!(run_value(&checked), Value::I32(42));
 }
 
+const F94109_SOURCE: &str = include_str!(
+    "../../../../../../crates/auto-lang/test/cases/ace-m1-expanded/query-instances/fact-authority.at"
+);
+
+fn f94109_restore_identity_control(axis: &str) {
+    let package = "plan941";
+    let module = "facts.at";
+    let program = parse_program_with(F94109_SOURCE, SourceProfile::Scalar).unwrap();
+    let mut producer = SourceQuerySession::new(package, module);
+    let mut pages = BTreeMap::new();
+    for name in ["leaf", "twin", "main"] {
+        pages.insert(
+            name.to_string(),
+            producer.infer_body(&program, name).unwrap().facts,
+        );
+    }
+    let (resolved, _, _) = ace_source_query::restore_bind(
+        &program,
+        &[],
+        package,
+        module,
+        &pages,
+        SourceProfile::Scalar,
+    )
+    .unwrap();
+    let parts =
+        emit_resolved_parts(&resolved, F94109_SOURCE, module, SourceProfile::Scalar).unwrap();
+    let old = verify_scalar(parts.bundle).unwrap();
+    assert_eq!(run_value(&old), Value::I32(42));
+    let old_bytes = format!("{:?}", old.bundle());
+    let (foreign_package, foreign_module, owner) = match axis {
+        "package" => ("another-project", module, "leaf"),
+        "module" => (package, "another.at", "leaf"),
+        "owner" => (package, module, "twin"),
+        _ => panic!("unknown identity axis"),
+    };
+    let mut foreign = SourceQuerySession::new(foreign_package, foreign_module);
+    let key = foreign.body_key(&program, owner).unwrap();
+    let mut page = foreign.infer_body(&program, owner).unwrap().facts;
+    page.name = "leaf".into();
+    let (_, page) =
+        ace_source_query::decode_page(&ace_source_query::encode_page(&key, &page).unwrap())
+            .unwrap();
+    assert_ne!(page.logical, pages["leaf"].logical);
+    assert_eq!(page.body_version, pages["leaf"].body_version);
+    pages.insert("leaf".into(), page);
+    let error = ace_source_query::restore_bind(
+        &program,
+        &[],
+        package,
+        module,
+        &pages,
+        SourceProfile::Scalar,
+    )
+    .err()
+    .expect("foreign facts must not reach the AV preparation boundary");
+    assert!(
+        matches!(
+            error,
+            ace_source_query::RestoreError::Facts(
+                ace_source_query::FactsError::BodyVersionMismatch { .. }
+            )
+        ),
+        "{axis}: {error:?}"
+    );
+    assert_eq!(format!("{:?}", old.bundle()), old_bytes);
+    assert_eq!(
+        run_value(&old),
+        Value::I32(42),
+        "failed restore preserves old executable"
+    );
+}
+
+#[test]
+fn f94109_av_foreign_package_refused_old_42_survives() {
+    f94109_restore_identity_control("package");
+}
+
+#[test]
+fn f94109_av_foreign_module_refused_old_42_survives() {
+    f94109_restore_identity_control("module");
+}
+
+#[test]
+fn f94109_av_same_shape_foreign_owner_refused_old_42_survives() {
+    f94109_restore_identity_control("owner");
+}
+
 #[test]
 fn sq934_shared_consumer_entry_feeds_real_execution_without_typecheck() {
     let mut session = SourceQuerySession::new("sq934", "main");

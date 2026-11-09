@@ -1,0 +1,7 @@
+type Pair {
+    x int
+    y int
+}
+fn main() int {
+    return #{ ct_field_count(Pair) }
+}

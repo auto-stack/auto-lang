@@ -21,7 +21,8 @@ pub const AUTO_SOURCE_GRAMMAR: &str = include_str!("../../../../../grammars/auto
 /// `ac.source.cte.scalar/v1` 显式能力（`#{ expr }` CT 需求原子）。
 /// PLAN-935（T-02）：`ac-source-front/2` —— 新增 `scalar-instances` 裁剪面
 /// 与 `ac.source.instances.scalar/v1` 显式能力（fn `<T>`/类型位裸 ident）。
-pub const FRONT_CAPS_VERSION: &str = "ac-source-front/3";
+// PLAN-941 r2: condition/body braces are distinct from record constructors.
+pub const FRONT_CAPS_VERSION: &str = "ac-source-front/4";
 
 /// 前端显式预算（V-09：不得沿 `Budget::default()` 的 256MiB work_bytes 冒
 /// 64MiB 档授权；各消费门按原适用域显式传入）。

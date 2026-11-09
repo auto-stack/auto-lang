@@ -1,0 +1,5 @@
+fn main() int {
+    let s Str = "abc"
+    let c char = s.char_at(-1)
+    return c.to_codepoint()
+}

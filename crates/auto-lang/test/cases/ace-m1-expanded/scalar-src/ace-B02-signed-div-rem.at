@@ -1,0 +1,1 @@
+fn main() int { return (-7 / 3) * 10 + (-7 % 3) }

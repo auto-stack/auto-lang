@@ -61,7 +61,7 @@ fn parse_hash_expr_with_capability() {
     let FrontOutcome::Ok(ok) = with_ct(SUM_HASH) else {
         panic!("sum/hash must parse under the CT capability");
     };
-    assert_eq!(ok.caps_version, "ac-source-front/3");
+    assert_eq!(ok.caps_version, "ac-source-front/4");
     let body = main_body(&ok.program);
     let Stmt::Let { value, .. } = &body.stmts[0] else {
         panic!("first stmt is the let");

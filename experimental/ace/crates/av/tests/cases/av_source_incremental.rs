@@ -123,8 +123,10 @@ struct IncrementalRawRun {
 }
 
 fn report_file(rel: &str) -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../docs/reports/plan827")
+    std::env::var_os("AUTO_PLAN_ARTIFACTS")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("ace-av-plan827")
         .join(rel)
 }
 

@@ -1694,6 +1694,19 @@ tools = ["a2x"]
 domain = "ace"
 all = false
 
+# PLAN-941 T-02 first slice; daily emit is separate from explicit certification.
+[[group]]
+name = "case-ace-m1-q4-941"
+title = "TestCase expanded M1 first Q4 same-source slice (PLAN-941)"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1-expanded/ace-m1-expanded.suite.ad"
+all = false
+
 [[group]]
 name = "case-legacy-a2r-resources-998"
 title = "TestCase case-legacy-a2r-resources-998（PLAN-998 H-07 六场景 resources-observe profile a2r-only金样快照）"
@@ -1716,4 +1729,120 @@ expression = "all()"
 tools = []
 domain = "ace"
 suite = "crates/auto-lang/test/cases/ace-m1/legacy-a2r-trap-997.suite.ad"
+all = false
+
+[[group]]
+name = "infra-ace-m1-arch"
+title = "PLAN-941 strict expanded M1 evidence admission controls"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "legacy"
+file = "scripts/tests/test_ace_m1_arch_acceptance.py"
+all = false
+
+# PLAN-941: previously missing original B08/B11 required native/AV entrypoints.
+[[group]]
+name = "case-ace-m1-legacy-941"
+title = "TestCase original B08/B11 required execution coverage (PLAN-941)"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1-expanded/legacy-coverage.suite.ad"
+all = false
+
+# PLAN-941: source-bound text Q4 AV/native observations, separate from cert.
+[[group]]
+name = "case-ace-m1-text-q4-941"
+title = "TestCase expanded M1 text/char same-source AV and native observations"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["av", "mn"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1-expanded/text-q4.suite.ad"
+all = false
+
+# PLAN-941: every frozen scalar source on AV/native, with trap/trace oracles.
+[[group]]
+name = "case-ace-m1-scalar-q4-941"
+title = "TestCase expanded M1 scalar same-source AV and native observations"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["av", "mn", "trace-runtime"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1-expanded/scalar-q4.suite.ad"
+all = false
+
+# PLAN-941: original record/text mode/base sources, source/domain distinct.
+[[group]]
+name = "case-ace-m1-record-text-q4-941"
+title = "TestCase expanded M1 original record/text same-source AV and native observations"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["av", "mn", "text-runtime"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1-expanded/record-text-q4.suite.ad"
+all = false
+
+# PLAN-941: original collections source semantics, both original recipes.
+[[group]]
+name = "case-ace-m1-collections-q4-941"
+title = "TestCase expanded M1 original collections same-source AV and native"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["av", "mn-collections"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1-expanded/collections-q4.suite.ad"
+all = false
+
+# PLAN-941: original 892/921 scalar byte variants, not inferred aliases.
+[[group]]
+name = "case-ace-m1-source-supplement-941"
+title = "TestCase expanded M1 original scalar source variants"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["av", "mn", "trace-runtime"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1-expanded/source-supplement.suite.ad"
+all = false
+
+# PLAN-941: all original positive/trap method/record/text byte variants.
+[[group]]
+name = "case-ace-m1-original-data-q4-941"
+title = "TestCase original method record text same-source AV and native"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["av", "mn", "text-runtime"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1-expanded/original-data-q4.suite.ad"
+all = false
+
+# PLAN-941: original source diagnostics, not arbitrary nonzero exits.
+[[group]]
+name = "case-ace-m1-original-data-diagnostics-941"
+title = "TestCase original data source typed diagnostics"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["av", "mn"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m1-expanded/original-data-diagnostics.suite.ad"
 all = false

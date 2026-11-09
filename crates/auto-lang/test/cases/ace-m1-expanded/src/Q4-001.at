@@ -1,0 +1,9 @@
+// PLAN-934 SQ-A closed-form oracle: leaf(41) = 42 through the ordinary
+// scalar source path (query facts are the type authority).
+fn leaf(x int) int {
+    return x + 1
+}
+
+fn main() int {
+    return leaf(41)
+}

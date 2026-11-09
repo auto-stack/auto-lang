@@ -129,7 +129,30 @@ pub fn run_check(
             )),
             StageOutcome::Language(failure) => {
                 let _ = std::fs::write(artifact_dir.join("error.txt"), &failure.message);
-                match &oracle.completion {
+                // Persist typed production facts before consulting the oracle.
+                // The rendered message is deliberately not a classification channel.
+                let observed = serde_json::to_vec(&serde_json::json!({
+                    "schema": "autolang.avm-failure/1",
+                    "adapter": "avm",
+                    "action": "run",
+                    "outcome": "language-error",
+                    "source_sha256": case.source_sha256,
+                    "entry": case.entry_path,
+                    "entry_sha256": hex(&sha256(code.as_bytes())),
+                    "stage": failure.stage.as_str(),
+                    "code": failure.code,
+                }))
+                .map_err(|e| format!("serialize AVM failure observation: {}", e))?;
+                let stored = artifact_dir.join("failure.json");
+                std::fs::write(&stored, &observed)
+                    .map_err(|e| format!("persist AVM failure observation: {}", e))?;
+                let observed_ref = ArtifactRef {
+                    logical_path: "failure.json".into(),
+                    stored_path: stored.display().to_string(),
+                    sha256: hex(&sha256(&observed)),
+                    bytes: Some(observed.len()),
+                };
+                let mut judged = match &oracle.completion {
                     Completion::Success => Verdict::fail(vec![Mismatch {
                         observation: "completion".into(),
                         kind: "stage",
@@ -175,7 +198,9 @@ pub fn run_check(
                             Verdict::fail(mismatches)
                         }
                     }
-                }
+                };
+                judged.artifacts.push(observed_ref);
+                judged
             }
         },
         Ok(Ok((result, stdout))) => {

@@ -1576,3 +1576,17 @@ mod source_protocol_tests {
         }
     }
 }
+
+/// PLAN-941: the parent-contract surface snapshot (restored from the
+/// pre-takeover branch version after ad4a11550; feeds parent_contract_inventory).
+pub(crate) fn contract_inventory() -> serde_json::Value {
+    serde_json::json!({
+        "source":"crates/auto-lang-core/src/test_cases/abi.rs", "protocol":"abiworker/1",
+        "limits": {
+            "response_bytes":READ_CAP, "request_bytes":REQUEST_CAP, "stderr_bytes":STDERR_CAP,
+            "reader_grace_ms":READER_GRACE.as_millis() as u64,
+            "session_wall_ms":SESSION_WALL.as_millis() as u64,
+            "build_wall_ms":BUILD_WALL.as_millis() as u64,
+        },
+    })
+}

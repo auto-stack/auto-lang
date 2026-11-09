@@ -1102,4 +1102,3 @@ impl AutoVM {
         Ok(StepResult::Continue)
     }
 }
-

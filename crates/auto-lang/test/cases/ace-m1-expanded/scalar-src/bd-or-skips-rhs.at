@@ -1,0 +1,1 @@
+fn main() int { if true || mark_b() > 99 { return 8 }; return 9 }

@@ -51,4 +51,3 @@ pub fn has_host_calls() -> bool {
 pub fn has_host_call(name: &str) -> bool {
     HOST_CALLS.lock().unwrap().contains_key(name)
 }
-

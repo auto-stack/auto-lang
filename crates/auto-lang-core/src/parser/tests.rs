@@ -9,7 +9,9 @@ fn ui053_nested_statement_calls_fit_default_worker_stack() {
                 let source = format!("{}0{}", "wrap(".repeat(depth), ")".repeat(depth));
                 let mut parser = Parser::from(source.as_str());
                 parser.skip_check = true;
-                let mut expr = parser.node_or_call_expr().expect("nested identifier arguments");
+                let mut expr = parser
+                    .node_or_call_expr()
+                    .expect("nested identifier arguments");
                 let mut observed = 0;
                 while let Expr::Call(call) = expr {
                     observed += 1;
@@ -23,11 +25,23 @@ fn ui053_nested_statement_calls_fit_default_worker_stack() {
                 assert!(matches!(expr, Expr::Int(0)));
             }
             let call = format!("{}0{}", "wrap(".repeat(24), ")".repeat(24));
-            let body = format!("{}{}{}", "if true { loop { ".repeat(12), call, " } }".repeat(12));
+            let body = format!(
+                "{}{}{}",
+                "if true { loop { ".repeat(12),
+                call,
+                " } }".repeat(12)
+            );
             let source = format!("fn main() {{ {body} }}");
             let mut parser = Parser::from(source.as_str());
             parser.skip_check = true;
-            assert_eq!(parser.parse().expect("mixed statement and argument recursion").stmts.len(), 1);
+            assert_eq!(
+                parser
+                    .parse()
+                    .expect("mixed statement and argument recursion")
+                    .stmts
+                    .len(),
+                1
+            );
             let mut malformed = Parser::from("wrap(wrap(0)");
             malformed.skip_check = true;
             assert!(malformed.node_or_call_expr().is_err());
@@ -1797,9 +1811,7 @@ impl auto_parser_api::DomainDialect for Plan940GadgetDialect {
         &self,
         ctx: &mut dyn auto_parser_api::DomainParseContext,
         _keyword: &str,
-    ) -> auto_parser_api::error::AutoResult<
-        Option<auto_parser_api::DomainStmt<()>>,
-    > {
+    ) -> auto_parser_api::error::AutoResult<Option<auto_parser_api::DomainStmt<()>>> {
         if self.decline {
             return Ok(None);
         }
@@ -1885,7 +1897,9 @@ fn plan940_domain_truncation_bounded_and_recovers() {
     // 下一次合法源码：同公开流程（新 Parser）成功，领域与 core 语句并存。
     let good = "gadget g {\n  let x = 1\n}\nfn ok() -> int { 7 }";
     let mut parser = Parser::from(good);
-    let code = parser.parse_domain(&dialect).expect("next legal source parses");
+    let code = parser
+        .parse_domain(&dialect)
+        .expect("next legal source parses");
     assert_eq!(code.items.len(), 2, "gadget + fn both consumed");
 }
 

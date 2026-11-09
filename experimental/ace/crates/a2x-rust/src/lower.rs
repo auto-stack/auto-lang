@@ -622,7 +622,8 @@ impl<'v, 'a> FnLowering<'v, 'a> {
         // vars alike), every local the resource plan FREES (an owned
         // buffer freed by `a2x_str_free(&mut ..)` must be rebindable as
         // mutable) and every exclusively-borrowed local (`&mut l_x` call
-        // arguments). Field-path writes borrow the root — never rebind it.
+        // arguments). Field-path writes also require mutable VALUE roots;
+        // borrowed record parameters already provide their reference mode.
         let mut assigned = std::collections::BTreeSet::new();
         collect_assignees(facts, &mut assigned);
         for e in &facts.body.exprs {
@@ -2066,15 +2067,24 @@ fn cmp(op: CmpOp, l: RExpr, r: RExpr) -> RExpr {
     }
 }
 
-/// Collect every local that is a WHOLE-LOCAL assignment target anywhere in
-/// the body (Rust `mut` decision; field-path writes are excluded — they
-/// write through the root's reference, never rebind it).
+/// Collect assignment roots that need a mutable Rust binding. A field write
+/// mutates a value local (or an owned move parameter), but writes through an
+/// already-borrowed record parameter without rebinding that reference.
 fn collect_assignees(f: &FnFacts<'_>, into: &mut std::collections::BTreeSet<u32>) {
     for block in &f.body.blocks {
         for stmt in &block.stmts {
             if let hir::Stmt::Assign { place, .. } = stmt {
                 if let Some(p) = f.body.places.get(place.0 as usize) {
-                    if matches!(p.kind, hir::PlaceKind::Local) {
+                    let needs_mut = match &p.kind {
+                        hir::PlaceKind::Local => true,
+                        hir::PlaceKind::FieldPath(_) => {
+                            f.body.locals.get(p.local.0 as usize).is_some_and(|local| {
+                                local.role != hir::LocalRole::Param
+                                    || local.param_mode == hir::ParamMode::MoveOwn
+                            })
+                        }
+                    };
+                    if needs_mut {
                         into.insert(p.local.0);
                     }
                 }

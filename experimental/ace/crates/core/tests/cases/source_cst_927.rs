@@ -122,7 +122,7 @@ fn probe_typed_budget_outcome() {
             assert!(!ok.grammar_id.is_empty());
             // PLAN-936（T-04）：前门能力面加 scalar-ct → caps 键升 /3（语法/
             // 能力/映射面变更必须换键；本面行为不变）。
-            assert_eq!(ok.caps_version, "ac-source-front/3"); // PLAN-935: instances face bump
+            assert_eq!(ok.caps_version, "ac-source-front/4"); // PLAN-941: conditional/body disambiguation identity
             assert!(!ok.program.items.is_empty());
         }
         other => panic!("expected Ok, got {other:?}"),
@@ -636,5 +636,104 @@ fn fragment_method_context() {
             }
         }
         other => panic!("expected Ok, got {other:?}"),
+    }
+}
+
+// PLAN-941 r2 F04: body braces must not become a trailing-name ctor.
+#[test]
+fn conditional_941_guards_and_record_constructors() {
+    use ace_core::source::ast::{ExprKind, Item, Stmt};
+    for profile in [
+        SourceProfile::Record,
+        SourceProfile::TextRecord,
+        SourceProfile::Collections,
+        SourceProfile::Closures,
+    ] {
+        for condition in ["a == b", "flag", "!flag", "ready()", "(a == b)"] {
+            for body in ["", "return 1"] {
+                let src = format!("fn main() int {{ if {condition} {{ {body} }}\nreturn 0 }}");
+                let parsed = parse_program_with(&src, profile)
+                    .unwrap_or_else(|d| panic!("{profile:?} {src}: {d:?}"));
+                let Item::Fn(f) = &parsed.items[0] else {
+                    panic!("expected function")
+                };
+                let Stmt::If { cond, .. } = &f.body.stmts[0] else {
+                    panic!("expected if")
+                };
+                assert!(
+                    !matches!(cond.kind, ExprKind::CtorNamed { .. }),
+                    "body interpreted as constructor"
+                );
+                assert_same(&src, profile, "941 conditional");
+            }
+        }
+        for condition in [
+            "P { flag: true }.flag",
+            "(P { flag: true }).flag",
+            "check(P { flag: true })",
+        ] {
+            let src = format!("fn main() int {{ if {condition} {{ return 1 }}\nreturn 0 }}");
+            assert!(
+                parse_program_with(&src, profile).is_ok(),
+                "valid ctor guard: {src}"
+            );
+            assert_same(&src, profile, "941 constructor condition");
+        }
+    }
+}
+
+#[test]
+fn conditional_941_for_loop_and_fragment() {
+    let src = "fn main() int { for i < limit { i = i + 1 }\nreturn i }";
+    for profile in [SourceProfile::Record, SourceProfile::TextRecord] {
+        assert!(parse_program_with(src, profile).is_ok());
+        assert_same(src, profile, "941 conditional for");
+        let a = ace_core::source::parse_function_fragment(src, 0..src.len(), profile).unwrap();
+        let b = cst::parse_function_fragment_via_cst(src, 0..src.len(), profile).unwrap();
+        assert_eq!(format!("{a:?}"), format!("{b:?}"));
+        assert!(
+            parse_program_with(
+                "fn main() int { while flag { return 1 }\nreturn 0 }",
+                profile
+            )
+            .is_err(),
+            "while must retain its profile gate"
+        );
+    }
+}
+
+#[test]
+fn conditional_941_method_and_invalid_constructor_boundaries() {
+    let src = "type P { v int\nfn get(flag bool) int { if flag { return 1 }\nreturn 0 }\n}\n";
+    for profile in [SourceProfile::Record, SourceProfile::TextRecord] {
+        assert!(parse_program_with(src, profile).is_ok());
+        assert_same(src, profile, "941 whole method");
+        let start = src.find("fn get").unwrap();
+        let end = src[start..].find("}\n}").unwrap() + start + 1;
+        let out = cst::parse_front(cst::FrontRequest {
+            src,
+            profile,
+            kind: cst::FrontKind::MethodFragment {
+                range: start..end,
+                owner: "P".to_owned(),
+                receiver: ace_core::source::ast::Receiver::View,
+            },
+            budget: cst::FrontBudget::WORK_OWNED_64MIB,
+        });
+        assert!(
+            matches!(out, cst::FrontOutcome::Ok(_)),
+            "method fragment: {out:?}"
+        );
+        for bad in [
+            "fn main() int { let p P = P { value 1 }\nreturn 0 }",
+            "fn main() int { if P { value: }.flag { return 1 }\nreturn 0 }",
+            "fn main() int { if flag\nreturn 0 }",
+        ] {
+            let d = parse_program_with(bad, profile)
+                .expect_err("invalid condition/constructor accepted");
+            assert_eq!(d.code, "source.syntax");
+            assert!(d.span.start <= d.span.end && d.span.end <= bad.len());
+            assert_same(bad, profile, "941 invalid guard/constructor");
+        }
     }
 }

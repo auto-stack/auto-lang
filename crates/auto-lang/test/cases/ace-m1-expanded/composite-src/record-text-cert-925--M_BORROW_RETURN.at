@@ -1,0 +1,8 @@
+fn tail(s str) str {
+    return s.slice(1, 3)
+}
+fn main() int {
+    let a Str = "wxyz"
+    let t str = tail(a.to(str))
+    return t.len()
+}

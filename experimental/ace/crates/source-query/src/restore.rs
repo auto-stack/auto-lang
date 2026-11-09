@@ -88,6 +88,16 @@ pub fn restore_verify(
             body: name.to_string(),
         }));
     }
+    // A same-name, same-shape page may belong to another package/module or
+    // owner. Check the page's identity before projecting any of its types;
+    // constructing a key in the current domain cannot authorize that page.
+    let own = owner_logical(package, module, name);
+    if page.logical != own {
+        return Err(RestoreError::Facts(FactsError::BodyVersionMismatch {
+            facts: page.logical.as_str().to_string(),
+            body: own.as_str().to_string(),
+        }));
+    }
     let body = body_of(program, name).ok_or_else(|| RestoreError::MissingRequiredPage {
         owner: name.to_string(),
     })?;
@@ -98,12 +108,7 @@ pub fn restore_verify(
     page.admit(&walk).map_err(RestoreError::Facts)?;
     let sig = produce_fn_sig(program, package, module, name)
         .map_err(|e| RestoreError::Signature(e.to_string()))?;
-    Ok(QueryKey::infer_body(
-        owner_logical(package, module, name),
-        sig.version,
-        walk.version,
-        &[],
-    ))
+    Ok(QueryKey::infer_body(own, sig.version, walk.version, &[]))
 }
 
 /// Bind a whole restored module from its pages ONLY: every free function

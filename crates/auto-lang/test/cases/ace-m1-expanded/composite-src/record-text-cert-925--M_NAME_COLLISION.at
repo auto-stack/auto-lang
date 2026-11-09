@@ -1,0 +1,10 @@
+type Counter { value int
+  fn read() int { return .value } }
+type Gauge { value int
+  fn read() int { return .value + 1 } }
+fn read() int { return 7 }
+fn main() int {
+    let c Counter = Counter(1)
+    let g Gauge = Gauge(2)
+    return c.read() * 100 + g.read() * 10 + read()
+}

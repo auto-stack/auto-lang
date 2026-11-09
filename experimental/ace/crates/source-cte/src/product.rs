@@ -4,7 +4,8 @@
 //! carry `#{ ... }` demands:
 //!
 //! ```text
-//! CT face parse (caps front door) → serve every demand (T-05 planner:
+//! CT face parse (caps front door) → current-request meta admission
+//! → serve every demand (T-05 planner:
 //!   real AV / frozen hits / local meta, one shared root budget)
 //! → substitute every hash site with its frozen literal (structural —
 //!   no text is formatted or re-parsed)
@@ -127,6 +128,33 @@ pub fn compile_scalar_ct<S: CtEnvelopeSink>(
             )]))
         }
     };
+    // Admission belongs to THIS request, even if all demands already have
+    // frozen pages. Ask the existing cap-aware binder before any scheduler,
+    // sink probe, or AV effect. Only policy diagnostics are used here: its
+    // speculative resolved output is discarded, and the served program's
+    // source-query facts below remain the final type authority. In particular
+    // never typecheck this unserved AST (that would reject every valid Hash).
+    // Check the original declarations BEFORE concretization renames/removes
+    // template names. Template type inference remains the instance lane's job.
+    // Include admission and concretization in the same cumulative root budget.
+    let root_budget = RootBudget::new(RootBudget::default_total());
+    if let Err(ds) = ace_core::source::resolve_with(&parsed, capabilities, SourceProfile::Scalar) {
+        let policy_rejected = ds.iter().any(|d| {
+            matches!(
+                d.code.as_str(),
+                "source.cte.meta-capability" | "source.cte.meta-name-conflict"
+            )
+        });
+        if policy_rejected {
+            // Preserve the product's existing typed-Resolve aggregation.
+            return Err(CtProductError::Diagnostics(vec![Diagnostic::new(
+                ace_core::atom_text::Stage::Bind,
+                "source.cte.bind",
+                ace_source_query::apply::BindFactsError::Resolve(ds).to_string(),
+                ace_core::atom_text::Span { start: 0, end: 0 },
+            )]));
+        }
+    }
     let (program, instances) = if instances_lane {
         match ace_source_query::instances::instantiate_program(
             &parsed,
@@ -148,7 +176,7 @@ pub fn compile_scalar_ct<S: CtEnvelopeSink>(
         module_path,
         package,
         module,
-        &RootBudget::new(RootBudget::default_total()),
+        &root_budget,
     )?;
     // 3) Structural backfill: every served site -> its frozen literal.
     let mut substituted = program.clone();

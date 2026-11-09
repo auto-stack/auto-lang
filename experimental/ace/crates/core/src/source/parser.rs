@@ -1429,7 +1429,7 @@ impl<'s> Parser<'s> {
             }
             Some(Tok::Kw(Kw::If)) => {
                 let kw = self.bump();
-                let cond = self.expr(false)?;
+                let cond = self.expr_context(true)?;
                 let lb = self.expect_punct(P::LBrace, "`{`")?;
                 stack.push(OpenBlock {
                     lb,
@@ -1450,7 +1450,7 @@ impl<'s> Parser<'s> {
             }
             Some(Tok::Kw(Kw::While)) => {
                 let kw = self.bump();
-                let cond = self.expr(false)?;
+                let cond = self.expr_context(true)?;
                 let lb = self.expect_punct(P::LBrace, "`{`")?;
                 stack.push(OpenBlock {
                     lb,
@@ -1505,7 +1505,7 @@ impl<'s> Parser<'s> {
                 // entry into the body, `continue` re-tests it, `break`
                 // leaves the nearest loop. The HIR lowering is identical.
                 let kw = self.bump();
-                let cond = self.expr(false)?;
+                let cond = self.expr_context(true)?;
                 let lb = self.expect_punct(P::LBrace, "`{`")?;
                 stack.push(OpenBlock {
                     lb,
@@ -2593,6 +2593,10 @@ impl<'s> Parser<'s> {
     }
 
     fn expr(&mut self, _bracketed: bool) -> Result<Expr, Diagnostic> {
+        self.expr_context(false)
+    }
+
+    fn expr_context(&mut self, condition: bool) -> Result<Expr, Diagnostic> {
         let mut frames: Vec<Frame> = Vec::new();
         let mut vals: Vec<Expr> = Vec::new();
         // line anchor for the NEXT primary at the unbracketed top level:
@@ -2953,6 +2957,12 @@ impl<'s> Parser<'s> {
                         // brackets). Whether `name` really is a record type
                         // is resolved later; the parse is purely syntactic.
                         if self.surface.is_record()
+                            && (!condition
+                                || Self::in_bracket(&frames)
+                                || self
+                                    .toks
+                                    .get(self.pos + 3)
+                                    .is_some_and(|t| t.tok == Tok::Punct(P::Colon)))
                             && matches!(
                                 self.peek2(),
                                 Some(t2) if t2.tok == Tok::Punct(P::LBrace)
@@ -3666,7 +3676,9 @@ impl<'s> Parser<'s> {
                         // (R6-QA-02: `f(1+2 }` used to build+publish).
                         Self::reduce_ops(&mut frames, &mut vals);
                         match frames.last() {
-                            Some(Frame::Call(_)) => return Err(self.syntax("expected `,` or `)`")),
+                            Some(Frame::Call(_)) | Some(Frame::Ctor(_)) => {
+                                return Err(self.syntax("expected `,` or `)`"))
+                            }
                             Some(Frame::Op(OpFrame::Paren)) => {
                                 return Err(self.syntax("expected `)`"))
                             }

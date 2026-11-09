@@ -6348,7 +6348,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                     };
                 }
                 self.ct_depth += 1;
-                let r = self.expr(inner);
+                let r = self.expr_iterative(inner);
                 self.ct_depth -= 1;
                 let vt = r.vt;
                 ResolvedExpr {
@@ -7351,8 +7351,11 @@ impl<'a, 's> FnResolver<'a, 's> {
                     if let ExprKind::Call { callee, args } = &node.kind {
                         // PLAN-936（T-04）：meta 查询内在——selector 实参在
                         // 调度前拦截（不作为子表达式任务解析）。
-                        // 拦截条件同 call()：能力已授或 CT 子树内。
-                        if self.meta_enabled || self.ct_depth > 0 {
+                        // With no meta grant an actual user declaration keeps
+                        // its ordinary meaning, including inside a CT demand.
+                        if self.meta_enabled
+                            || (self.ct_depth > 0 && !self.sigs.contains_key(&callee.name))
+                        {
                             if let Some(op) = meta_intrinsic(&callee.name) {
                                 out[slot] = self.meta_query(op, callee, args, node.span);
                                 continue;
@@ -8693,10 +8696,10 @@ impl<'a, 's> FnResolver<'a, 's> {
     fn call(&mut self, callee: &ast::Ident, args: &[Arg], call_span: Span) -> ResolvedExpr {
         // PLAN-936（T-04）：meta 查询内在在此拦截——selector 实参绝不进入
         // 值解析（裸 record 名/字符串字面量不是值位置合法形状）。
-        // 拦截条件：能力已授（名字受保护）或当前在 CT 子树内
-        // （CT 内的查询名受保护，缺能力的拒绝精确具名）；两者皆无时
-        // 是普通名字（trace 模式：无能力不劫持）。
-        if self.meta_enabled || self.ct_depth > 0 {
+        // A grant protects the names. Without it, declared user functions
+        // remain ordinary; an undeclared selector inside CT gets the named
+        // capability rejection rather than being evaluated by the scheduler.
+        if self.meta_enabled || (self.ct_depth > 0 && !self.sigs.contains_key(&callee.name)) {
             if let Some(op) = meta_intrinsic(&callee.name) {
                 return self.meta_query(op, callee, args, call_span);
             }

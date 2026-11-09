@@ -18,6 +18,10 @@ const NINE: &[&str] = &[
     // PLAN-928：集合/闭包两面。
     "collections",
     "closures",
+    // PLAN-961：数字面（scalar 全表面 + 类型词/数字算子 profile；声明序
+    // 在闭包之后、模板面之前——961 合入时漏更新本冻结集，941 接收侧
+    // 按已交付现实刷新，合同语义不变）。
+    "numeric",
     // PLAN-935：有限模板面（scalar 全表面 + fn <T>；仅实例能力前门使用；
     // 声明序在闭包之后）。
     "scalar-instances",

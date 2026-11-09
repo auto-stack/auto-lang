@@ -165,10 +165,8 @@ impl Codegen {
                                     source_fields.push((Some(key.to_string()), expr.clone()));
                                 }
                                 crate::ast::Arg::Name(key) => {
-                                    source_fields.push((
-                                        Some(key.to_string()),
-                                        crate::ast::Expr::Nil,
-                                    ));
+                                    source_fields
+                                        .push((Some(key.to_string()), crate::ast::Expr::Nil));
                                 }
                             }
                         }
@@ -267,23 +265,23 @@ impl Codegen {
                                 }
                             }
                         } else {
-                        for (i, value_expr) in field_values.iter().enumerate() {
-                            vm_debug!("DEBUG codegen: Compiling field value {}", i);
-                            self.compile_expr(value_expr)?;
-                            // Plan 230: promote f32 -> f64 when field type is Double
-                            if let Some(field_def) = field_defs.get(i) {
-                                if matches!(field_def.field_type, Type::Double)
-                                    && self.last_expr_type == ObjectType::Float
-                                {
-                                    self.emit(OpCode::PROMOTE_F64);
+                            for (i, value_expr) in field_values.iter().enumerate() {
+                                vm_debug!("DEBUG codegen: Compiling field value {}", i);
+                                self.compile_expr(value_expr)?;
+                                // Plan 230: promote f32 -> f64 when field type is Double
+                                if let Some(field_def) = field_defs.get(i) {
+                                    if matches!(field_def.field_type, Type::Double)
+                                        && self.last_expr_type == ObjectType::Float
+                                    {
+                                        self.emit(OpCode::PROMOTE_F64);
+                                    }
                                 }
+                                vm_debug!(
+                                    "DEBUG codegen: code.len() = 0x{:04x} after field value {}",
+                                    self.code.len(),
+                                    i
+                                );
                             }
-                            vm_debug!(
-                                "DEBUG codegen: code.len() = 0x{:04x} after field value {}",
-                                self.code.len(),
-                                i
-                            );
-                        }
                         }
 
                         // 2. Push mono_name length onto stack (for NEW_INSTANCE to pop)

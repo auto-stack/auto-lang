@@ -191,11 +191,22 @@ pub fn run_check(
         "nonce": nonce,
     });
 
+    let request_text = request.to_string();
+    let exchange = super::execution_trace::WorkerExchange::start(
+        artifact_dir,
+        A2X_WORKER_PROTOCOL,
+        recipe,
+        &worker_sha,
+        request_text.as_bytes(),
+    )?;
     // The ONLY process this adapter ever spawns (plan §5.5 spawn-zero).
     let out = Command::new(&worker)
-        .arg(request.to_string())
+        .arg(&request_text)
         .output()
         .map_err(|e| format!("spawn a2x worker {}: {e}", worker.display()))?;
+    if let Some(exchange) = exchange {
+        exchange.finish(&out.stdout, &out.stderr, out.status.code(), None)?;
+    }
     if !out.status.success() {
         // A worker refusal is INFRA, never a language verdict.
         return Ok(Verdict {
@@ -357,7 +368,8 @@ pub fn run_check(
 /// Returns one human-readable problem per violation.
 pub fn path_domain_problems(paths: &[String]) -> Vec<String> {
     let mut problems = Vec::new();
-    let mut normalized: std::collections::BTreeMap<String, &str> = std::collections::BTreeMap::new();
+    let mut normalized: std::collections::BTreeMap<String, &str> =
+        std::collections::BTreeMap::new();
     for p in paths {
         if std::path::Path::new(p).is_absolute()
             || p.starts_with('/')

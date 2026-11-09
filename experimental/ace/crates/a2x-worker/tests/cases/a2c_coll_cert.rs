@@ -32,7 +32,7 @@ fn out_base() -> PathBuf {
 }
 
 /// (case, oracle-kind, oracle-value)
-const CASES: &[(&str, &str, &str)] = &[
+pub(super) const CASES: &[(&str, &str, &str)] = &[
     ("L01", "value", "42"),
     ("L02", "value", "42"),
     ("L03", "value", "0"),
@@ -136,8 +136,9 @@ fn a2c_coll_certify_all_suite_cases() {
         assert_eq!(r["spawned_cl"], 2, "{case}: both legs compile");
         assert_eq!(r["spawned_rustc"], 0, "{case}");
         // the strict cert on disk
-        let cert = std::fs::read_to_string(out_base().join("all").join(case).join("case.cert.json"))
-            .unwrap_or_else(|e| panic!("{case}: {e}"));
+        let cert =
+            std::fs::read_to_string(out_base().join("all").join(case).join("case.cert.json"))
+                .unwrap_or_else(|e| panic!("{case}: {e}"));
         assert!(
             cert.contains("\"schema\": \"ace.a2c-hir.collections.cert/1\""),
             "{case}"
@@ -181,7 +182,8 @@ fn a2c_coll_certify_wrong_legs_rejected() {
     // the release-mode config identity differs from debug (key material)
     let r = certify("wrong", "L01", "value", "42", None, "release");
     assert_eq!(r["verdict"], "PASS", "{r}");
-    let cert = std::fs::read_to_string(out_base().join("wrong").join("L01").join("case.cert.json")).unwrap();
+    let cert = std::fs::read_to_string(out_base().join("wrong").join("L01").join("case.cert.json"))
+        .unwrap();
     assert!(
         cert.contains("\"mode\":\"release\""),
         "mode is cert key material"

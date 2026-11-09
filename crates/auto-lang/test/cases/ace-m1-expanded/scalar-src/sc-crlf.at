@@ -1,0 +1,12 @@
+fn main() int {
+    let a = 1
+    let b = a - 2
+    var c = (b +
+        4) * 3
+    if c != 9 { return 1 }
+    for c > 0 {
+        c = c - 3
+    }
+    if c != 0 { return 2 }
+    return 0
+}

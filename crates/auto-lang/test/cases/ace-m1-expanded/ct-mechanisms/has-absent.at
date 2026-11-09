@@ -1,0 +1,11 @@
+type Pair {
+    x int
+    y int
+}
+fn pick(b bool) int {
+    if b { return 40 }
+    return 42
+}
+fn main() int {
+    return #{ pick(ct_has_field(Pair, "z")) }
+}

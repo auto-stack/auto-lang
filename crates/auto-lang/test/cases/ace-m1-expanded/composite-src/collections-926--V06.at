@@ -1,0 +1,8 @@
+fn main() int {
+    var r Result<int, Str> = Err("old")
+    r = Ok(42)
+    is r {
+        Ok(v) -> { return v }
+        Err(e) -> { return e.len() }
+    }
+}

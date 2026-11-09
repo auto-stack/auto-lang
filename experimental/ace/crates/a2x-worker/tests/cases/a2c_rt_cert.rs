@@ -64,15 +64,15 @@ fn base_req(tag: &str) -> serde_json::Value {
 
 /// One certification case: an inline source with a HAND-WRITTEN reference
 /// and a closed-form oracle. The two legs run independently.
-struct CertCase {
-    id: &'static str,
-    src: &'static str,
-    profile: &'static str,
-    caps: &'static [&'static str],
-    oracle_kind: &'static str,
-    oracle_value: i64,
-    oracle_trap: &'static str,
-    reference: String,
+pub(super) struct CertCase {
+    pub(super) id: &'static str,
+    pub(super) src: &'static str,
+    pub(super) profile: &'static str,
+    pub(super) caps: &'static [&'static str],
+    pub(super) oracle_kind: &'static str,
+    pub(super) oracle_value: i64,
+    pub(super) oracle_trap: &'static str,
+    pub(super) reference: String,
 }
 
 /// Certify one inline case: stage src+reference under the tag dir and run
@@ -303,9 +303,8 @@ fn rt_certify_all_suite_cases() {
 /// certification channel — every parameter mode and method shape with its
 /// own hand-written reference, closing the same frozen oracle values the
 /// daily actual-only matrix pins.
-#[test]
-fn rt_certify_modes_matrix() {
-    let cases: Vec<CertCase> = vec![
+pub(super) fn mode_contracts_941() -> Vec<CertCase> {
+    vec![
         // Copy snapshot: evaluation-point value survives the later writeback
         CertCase {
             id: "M_COPY_SNAP",
@@ -402,7 +401,12 @@ fn rt_certify_modes_matrix() {
                 "    int32_t c = 1, g = 2;\n    printf(\"value:%d\\n\", c * 100 + (g + 1) * 10 + 7);\n",
             ),
         },
-    ];
+    ]
+}
+
+#[test]
+fn rt_certify_modes_matrix() {
+    let cases = mode_contracts_941();
     for c in &cases {
         certify_inline_case(c);
     }
@@ -411,9 +415,8 @@ fn rt_certify_modes_matrix() {
 /// PLAN-925 T-09 (V-03 axis): the trap surface certifies with kind=trap —
 /// the boundary check is an independent decision in each leg; a wrong
 /// trap NAME is refused just like a wrong value.
-#[test]
-fn rt_certify_trap_axis() {
-    let cases: Vec<CertCase> = vec![
+pub(super) fn trap_contracts_941() -> Vec<CertCase> {
+    vec![
         // negative char index traps before any pointer arithmetic
         CertCase {
             id: "T_CHAR_AT_NEG",
@@ -453,7 +456,12 @@ fn rt_certify_trap_axis() {
                 "    uint32_t cp = 55296u;\n    if (cp >= 0xD800u && cp <= 0xDFFFu) { printf(\"trap:InvalidScalar\\n\"); return 0; }\n    printf(\"value:99\\n\");\n",
             ),
         },
-    ];
+    ]
+}
+
+#[test]
+fn rt_certify_trap_axis() {
+    let cases = trap_contracts_941();
     for c in &cases {
         certify_inline_case(c);
     }

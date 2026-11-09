@@ -676,7 +676,10 @@ fn verify_owned_function_impl(
                     callbacks,
                     ..
                 } => {
-                    let mut lanes = callbacks.iter().map(|(l, _)| *l as usize).collect::<Vec<_>>();
+                    let mut lanes = callbacks
+                        .iter()
+                        .map(|(l, _)| *l as usize)
+                        .collect::<Vec<_>>();
                     lanes.sort_unstable();
                     let mut li = 0usize;
                     for (i, arg) in args.iter().enumerate() {

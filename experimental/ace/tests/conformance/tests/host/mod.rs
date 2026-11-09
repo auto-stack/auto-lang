@@ -4,6 +4,7 @@ pub(crate) mod closures;
 pub(crate) mod collections;
 pub(crate) mod collections_resources;
 pub(crate) mod comptime_protocol;
+pub(crate) mod ct_meta_capability_941;
 pub(crate) mod dynamic;
 pub(crate) mod language_conformance;
 pub(crate) mod latency;

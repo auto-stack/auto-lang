@@ -50,6 +50,16 @@ crates/auto-lang（adapters/orchestration/CLI）──▶  auto-test-case
   Type/Name/Comptime/MsgWithSource → type；MultipleErrors 全递归取首个叶子；
   其余（Io/panic/合成超时/无名 Msg）= Infrastructure → ERROR，**永不满足语言
   负例**。
+- AVM语言失败在oracle比较前持久化并注册`failure.json`
+  （`autolang.avm-failure/1`）：实际stage、可空code、组合source哈希及entry字节哈希。
+  PASS与oracle不符的FAIL均保留相同事实；基础设施错误不生成该语言失败产物，
+  写入失败仍为基础设施ERROR。`error.txt`仅供阅读，不能据文本补造stage/code。
+  该产物不提供值类型、位模式、trace或生命周期证明；成功路径仍为result/stdout产物。
+- PLAN-941的旧BASE严格reader只认领B14/B20、B16、T07、K04五个原负例：
+  先核对原required/binding/source及完整Case身份，再核对注册产物的owner/hash/size
+  （单份≤16KiB）和实际stage/code。缺code保持UNOBSERVED，基础设施或文本产物
+  不能补足命名错误；父侧非PASS始终保红。K04仅证明原批准的解析拒绝，
+  不证明借用规则。登记表仍是executed=0的发现数据，运行证据单独判定。
 - 已知边界（F-773-R2-01 债务）：a2r project 模式两入口仍把 parse 错误包成无名
   Msg → 归 Infrastructure（fail-safe：永不假 PASS，但 project-mode 强错误
   oracle 不可满足）。
@@ -375,6 +385,27 @@ Report/stale axes bind worker SHA/version, protocol, recipe, core version, `mir-
   （被依赖编译≠测试已执行）；负例（未服务/环/deadline/禁调/篡改 envelope/
   恢复 R 窗/首坏修复）由该组包测试承载。旧 817 recipe/证书不受新面影响。
 
+## 原记录/文本义务与当前证据关联（PLAN-941，候选）
+
+组合器以旧冻结binding的`(namespace, id, target)`认领原required格位，逐项核对旧source-manifest、
+当前source合同与严格wire reader产生的事实。R01..R06、T01/T02/T04的数值、T08具名越界及
+R09/R10/T06/T07的结构化诊断分别对旧独立oracle重新判定；旧诊断分类到当前code的映射有限且显式。
+AV data与native目标保各自recipe、profile/caps和父侧原始证据准入，通用退出码70不证明具名陷阱。
+缺少类型化诊断权威保UNOBSERVED，源reader或父Case失败不能被关联变绿。
+
+本关联只覆盖同源的14例、AC/AV共28格。新增M方法源、同ID的scenario、legacy-AVM/A2R及
+资源/性能/生命周期义务仍各自认领；返回值相同、formal locator存在或登记成功均不构成执行证据。
+
+CT机制的父侧证据可消费原服务公开的计数与执行边界日志：原sum42冷态真实AV、禁止AV下
+同键命中，以及仅callee改变到sum43后的失效分别关联原始native终态、冻结输入与当前测试二进制。
+测试二进制须按正式组的Cargo包/特性配置准备；单包配置的另一个产物不能替代。hit日志保留
+冻结执行的steps/wall，它们不是本次新AV工作；本次工作由ct_execute变化和from_cache共同认定。
+该窄面不证明managed恢复、meta/实例、资源或完整四端HIR机制；声明表仍只作发现，实际准入另列。
+
+实例内的子CT只改callee时，原模板的InstanceRecord键可以保持不变；应分别核对模板声明身份与
+常量回灌后的实际执行体版本。原pick链的内层flag和外层pick执行键均须失效，实际值40→42、
+真实执行2→4、后续禁止AV下命中且执行数不增长，分别绑定同一服务的日志及成功发布的原ExecKey。
+该证据独立认领instance-child-ct-version，不能代替meta能力或实例恢复义务。
 
 ## PLAN-938 增量（reviewed）
 

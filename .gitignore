@@ -186,6 +186,14 @@ test_temp.txt
 # 吞掉两件致交付提交缺失、fresh 检出 contract 必红——同 F-793-R1-01 缺陷类）
 !crates/auto-lang/test/cases/ace-m1/applicability.json
 !crates/auto-lang/test/cases/ace-m1/source-manifest.json
+
+# PLAN-941: permanent first-slice golden manifests and expanded registry.
+!crates/auto-lang/test/cases/ace-m1-expanded/golden-*/manifest.json
+!crates/auto-lang/test/cases/ace-m1-expanded/registry.json
+# Permanent approved-obligation source data, never a runtime receipt.
+!crates/auto-lang/test/cases/ace-m1-expanded/legacy-required-map.json
+!crates/auto-lang/test/cases/ace-m1-expanded/original-budget-contracts.json
+!crates/auto-lang/test/cases/ace-m1-expanded/architecture-obligations.json
 # PLAN-997：M1 trap域证书与声明式trap oracle（verify-ace-m1-852 snapshot/
 # receipts/acceptance 消费的长期测试合同数据；*.json 母规则吞掉致 fresh 检出
 # daily 必红——同 F-908-R1-01 缺陷类）
@@ -307,3 +315,23 @@ examples/rust-workspace/testt1/
 !crates/auto-lang/test/cases/governance-888/batch-allowlist.json
 
 !scripts/test-governance/input-contract.json
+
+!crates/auto-lang/test/cases/ace-m1-expanded/text-q4-contract.json
+
+!/crates/auto-lang/test/cases/ace-m1-expanded/scalar-q4-contract.json
+
+!/crates/auto-lang/test/cases/ace-m1-expanded/record-text-q4-contract.json
+
+!/crates/auto-lang/test/cases/ace-m1-expanded/collections-q4-contract.json
+
+!/crates/auto-lang/test/cases/ace-m1-expanded/source-query-q4-contract.json
+
+!/crates/auto-lang/test/cases/ace-m1-expanded/source-instances-q4-contract.json
+
+!/crates/auto-lang/test/cases/ace-m1-expanded/source-supplement-q4-contract.json
+
+!/crates/auto-lang/test/cases/ace-m1-expanded/original-data-q4-contract.json
+
+!/crates/auto-lang/test/cases/ace-m1-expanded/original-data-diagnostics-contract.json
+
+!/crates/auto-lang/test/cases/ace-m1-expanded/legacy-base-contract.json

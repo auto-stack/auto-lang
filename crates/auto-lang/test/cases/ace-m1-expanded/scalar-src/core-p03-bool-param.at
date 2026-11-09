@@ -1,0 +1,2 @@
+fn choose(c bool) int { if c { return 7 } else { return 9 } }
+fn main() int { return choose(true) }

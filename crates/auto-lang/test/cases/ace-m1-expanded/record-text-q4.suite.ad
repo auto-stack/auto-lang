@@ -1,0 +1,3 @@
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-record-text-q4-941", fixture_root: "..", include: ["record-text-q4.case.ad"] }
+```

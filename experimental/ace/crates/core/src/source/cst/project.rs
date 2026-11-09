@@ -68,6 +68,9 @@ pub(crate) fn project_program_with_caps(
         .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
     let mut items = Vec::new();
     let mut saw_script = false;
+    // F-941-12（r9）：前一个非产物顶层 item 是否含错误子树（恢复产物 script
+    // 区判定用）。
+    let mut last_item_errored = false;
     for d in &tree.decls {
         // decl 单元 = `item` 分派节点；真实声明是其首个非 trivia 孩子。
         let node = {
@@ -148,9 +151,22 @@ pub(crate) fn project_program_with_caps(
                 });
             }
         }
-        if tree_has_errors && subtree_has_errors(tree, node) {
+        let node_errored = tree_has_errors && subtree_has_errors(tree, node);
+        // F-941-12（PLAN-941 r9）：恢复产物 script 区——错误树中紧跟含错误
+        // item 的顶层 script 是引擎在最后一个完整块 `}` 处提前闭合外层 body、
+        // 把尾部语句重释为顶层的产物（旧 parser 线性解析不产生该区域）；其
+        // script 形能力拒绝（entry-top-return/entry-order）会按更早位置抢在
+        // 结构层首诊断之前。跳过其投影与 saw_script（产物 run 内粘滞），首
+        // 诊断交结构层期望游走；上方头部 type/enum/static 拒绝（R04 位置序）
+        // 与干净树的真 script 不受影响。
+        if tree_has_errors && kind == k.script_item.unwrap_or(u32::MAX) && last_item_errored {
+            continue; // 产物 run 延续：不更新 last_item_errored
+        }
+        if node_errored {
+            last_item_errored = true;
             continue;
         }
+        last_item_errored = false;
         if kind == k.fn_item
             || kind == k.type_item.unwrap_or(u32::MAX)
             || kind == k.enum_item.unwrap_or(u32::MAX)
@@ -370,7 +386,9 @@ fn structural_first_diag(cx: &Cx, tree: &CstTree) -> Option<Diagnostic> {
     let mut in_stmt = path
         .iter()
         .any(|&g| g == cx.k.stmt || g == cx.k.block || g == cx.k.script_item.unwrap_or(u32::MAX));
-    let in_expr = path.iter().any(|&g| g == cx.k.expr || g == cx.k.unary_expr);
+    let in_expr = path.iter().any(|&g| {
+        cx.k.expression_kind(g) == cx.k.expr || cx.k.expression_kind(g) == cx.k.unary_expr
+    });
     if cx.profile.is_entry_unit() && !in_expr {
         // entry 面：items() 把一切非 `fn` 顶层 token 路由进脚本语句序列
         // （旧 script_item → parse_stmt_head）——顶层错误即语句位。
@@ -1550,7 +1568,7 @@ impl<'c, 'a> Walker<'c, 'a> {
             }
             "if" => {
                 self.i += 1;
-                if let Some(d) = self.walk_expr(false) {
+                if let Some(d) = self.walk_condition() {
                     return Some(d);
                 }
                 if let Some(d) = self.expect_text("{") {
@@ -1578,7 +1596,7 @@ impl<'c, 'a> Walker<'c, 'a> {
                     ));
                 }
                 self.i += 1;
-                if let Some(d) = self.walk_expr(false) {
+                if let Some(d) = self.walk_condition() {
                     return Some(d);
                 }
                 if let Some(d) = self.expect_text("{") {
@@ -1652,7 +1670,7 @@ impl<'c, 'a> Walker<'c, 'a> {
                     );
                 }
                 self.i += 1;
-                if let Some(d) = self.walk_expr(false) {
+                if let Some(d) = self.walk_condition() {
                     return Some(d);
                 }
                 if let Some(d) = self.expect_text("{") {
@@ -1964,6 +1982,120 @@ impl<'c, 'a> Walker<'c, 'a> {
         false
     }
 
+    /// F-941-11（PLAN-941 r8）：lambda 头/参数/body 期望游走——镜像旧 parser
+    /// `closure_expr`：`(`、参数名（旧 expect_ident("lambda parameter")）+
+    /// 注解（旧 param_type→closures_type）序列、`,` 或 `)`、`=>`、`{` 块体
+    /// （旧 body_machine）或表达式体（旧 expr）。入参 `i` 在 `(`（可选的
+    /// `move` 前缀由调用方消费）；返回 Some = 分歧点首诊断。
+    fn walk_closure_expr(&mut self) -> Option<Diagnostic> {
+        let k = self.k();
+        self.i += 1; // `(`
+        if !matches!(self.cur(), Some((_, _, ")", _))) {
+            loop {
+                // 参数名。
+                match self.cur() {
+                    Some((_, g, _, _)) if g == k.tok_ident => self.i += 1,
+                    Some((sp, g, text, _)) if self.is_kw(g, text) || self.is_reserved(g) => {
+                        return Some(self.unsupported(
+                            format!("keyword `{}` cannot be used as a name", text),
+                            sp,
+                        ));
+                    }
+                    Some((sp, g, text, _)) if self.is_raw(g) => {
+                        return Some(self.unsupported(
+                            format!(
+                                "{} cannot be used as a name in this source profile",
+                                raw_describe(g, text, k)
+                            ),
+                            sp,
+                        ));
+                    }
+                    _ => {
+                        return Some(self.syntax(format!(
+                            "expected lambda parameter, found {}",
+                            self.describe_cur()
+                        )));
+                    }
+                }
+                // 参数注解。
+                if let Some(d) = self.walk_closure_param_type() {
+                    return Some(d);
+                }
+                // `,` 或 `)`（旧 parser 不收尾逗号：`,` 后重入参数名期望）。
+                match self.cur() {
+                    Some((_, _, ",", _)) => self.i += 1,
+                    Some((_, _, ")", _)) => break,
+                    _ => {
+                        return Some(self.syntax("expected `,` or `)` in lambda parameters".into()))
+                    }
+                }
+            }
+        }
+        // `)` 然后 `=>`。
+        self.i += 1;
+        match self.cur() {
+            Some((_, _, "=>", _)) => self.i += 1,
+            _ => return Some(self.syntax(format!("expected `=>`, found {}", self.describe_cur()))),
+        }
+        // body：`{` 块体或表达式体。
+        if matches!(self.cur(), Some((_, _, "{", _))) {
+            self.i += 1;
+            self.walk_block_body(false)
+        } else {
+            self.walk_expr(false)
+        }
+    }
+
+    /// F-941-11（PLAN-941 r8）：lambda 参数注解期望游走——镜像旧 parser
+    /// `closures_type`：`?T` 糖、`fn(...) [->] R` 函数型（复用
+    /// skip_fn_type_leaves）、int/i32/bool、`void`/`Str`/`char`(closures)/
+    /// 泛型 `Id<...>`/record 名义 ident（小写 `str` 与非 closures `char`
+    /// 具名拒绝）；其余 → "expected a type"。
+    fn walk_closure_param_type(&mut self) -> Option<Diagnostic> {
+        let k = self.k();
+        if matches!(self.cur(), Some((_, _, "?", _))) {
+            self.i += 1;
+            return self.walk_closure_param_type();
+        }
+        let Some((sp, g, text, _)) = self.cur() else {
+            return Some(self.syntax("expected a type, found end of file".into()));
+        };
+        if text == "fn" {
+            self.i = skip_fn_type_leaves(self.leaves, self.i);
+            return None;
+        }
+        if text == "int" || text == "i32" || text == "bool" {
+            self.i += 1;
+            return None;
+        }
+        if g == k.tok_ident {
+            if text == "str" || (text == "char" && !self.cx.profile.is_closures()) {
+                return Some(self.unsupported(
+                    format!("type `{}` is not part of this source profile", text),
+                    sp,
+                ));
+            }
+            self.i += 1;
+            if matches!(self.cur(), Some((_, _, "<", _))) {
+                let mut depth = 0usize;
+                while let Some((_, _, t, _)) = self.cur() {
+                    if t == "<" {
+                        depth += 1;
+                    } else if t == ">" {
+                        depth -= 1;
+                        if depth == 0 {
+                            self.i += 1;
+                            break;
+                        }
+                    }
+                    self.i += 1;
+                }
+            }
+            return None;
+        }
+        Some(self.syntax(format!("expected a type, found {}", self.describe_cur())))
+    }
+
     /// PLAN-928（T-03）：`ident <` 位是否为泛型接收——平衡 `<...>` 后随
     /// `.` 才提交（镜像旧 parser 的 generic_scan_commits）。
     fn generic_scan_commits(&self, open_lt: usize) -> bool {
@@ -1994,6 +2126,14 @@ impl<'c, 'a> Walker<'c, 'a> {
 
     /// 表达式游走：primary + 算子/关闭循环（括号帧跟踪，行纪律）。
     fn walk_expr(&mut self, _bracketed: bool) -> Option<Diagnostic> {
+        self.walk_expr_context(false)
+    }
+
+    fn walk_condition(&mut self) -> Option<Diagnostic> {
+        self.walk_expr_context(true)
+    }
+
+    fn walk_expr_context(&mut self, condition: bool) -> Option<Diagnostic> {
         let k = self.k();
         let mut frames: Vec<Br> = Vec::new();
         let mut anchored = false; // 算子后需同行 primary
@@ -2090,6 +2230,17 @@ impl<'c, 'a> Walker<'c, 'a> {
                     format!("`{}` is not a value in this source profile", text),
                     sp,
                 ));
+            } else if g == k.tok_r_move
+                && self.cx.profile.is_closures()
+                && self.closure_header_ahead_tokens(self.i + 1)
+            {
+                // F-941-11（PLAN-941 r8）：`move ( 参数 ) =>`——镜像旧 parser 的
+                // move 闭包分支（closure_expr(true)）：消费 `move` 后走 lambda
+                // 头期望游走，不落入 reserved 关键字拒绝。
+                self.i += 1;
+                if let Some(d) = self.walk_closure_expr() {
+                    return Some(d);
+                }
             } else if self.is_reserved(g) {
                 return Some(self.unsupported(
                     format!("keyword `{}` is not part of this source profile", text),
@@ -2111,10 +2262,21 @@ impl<'c, 'a> Walker<'c, 'a> {
                 };
                 return Some(self.unsupported(msg, sp));
             } else if text == "(" {
-                self.i += 1;
-                frames.push(Br::Paren);
-                anchored = false;
-                continue;
+                if self.cx.profile.is_closures() && self.closure_header_ahead_tokens(self.i) {
+                    // F-941-11（PLAN-941 r8）：`( 参数 ) =>` lambda 头——镜像旧
+                    // parser 的 `(` 闭包优先分支（closure_header_ahead →
+                    // closure_expr）：按参数/注解/`=>`/body 期望序列游走，不落入
+                    // Br::Paren 把参数注解当括号表达式（整源会把后续错误误报到
+                    // 前一个合法 lambda 的注解上）。lambda 完成后按值进入算子循环。
+                    if let Some(d) = self.walk_closure_expr() {
+                        return Some(d);
+                    }
+                } else {
+                    self.i += 1;
+                    frames.push(Br::Paren);
+                    anchored = false;
+                    continue;
+                }
             } else if text == "." && self.cx.profile.is_record() {
                 // leading-dot self
                 self.i += 1;
@@ -2188,7 +2350,9 @@ impl<'c, 'a> Walker<'c, 'a> {
                     }
                 }
                 // ctor（record 面，`{` 同行或括号内）
-                if self.cx.profile.is_record() {
+                if self.cx.profile.is_record()
+                    && (!condition || in_br || matches!(self.at(self.i + 3), Some((_, _, ":", _))))
+                {
                     if let Some((_, _, "{", l2)) = self.at(self.i + 1) {
                         if in_br || l2 == line {
                             self.i += 2;
@@ -3148,10 +3312,14 @@ impl<'a> Cx<'a> {
         let f = self.p.field_id(field)?;
         self.tree.field_child(n, f)
     }
+    fn expression_kind(&self, node: u32) -> u32 {
+        self.k.expression_kind(self.tree.kind(node))
+    }
+
     fn child_of_kind(&self, n: u32, kind: u32) -> Option<u32> {
         self.children(n)
             .into_iter()
-            .find(|&c| self.tree.kind(c) == kind)
+            .find(|&c| self.expression_kind(c) == self.k.expression_kind(kind))
     }
     fn check_name(&mut self, id: &Ident) {
         if self.profile == SourceProfile::HostConsole
@@ -4155,7 +4323,7 @@ impl<'a> Engine<'a> {
     // ------------------------------------------------------------ exprs
 
     fn enter_expr(&mut self, node: u32) {
-        let kind = self.cx.tree.kind(node);
+        let kind = self.cx.expression_kind(node);
         if kind == self.cx.k.expr {
             // 分派节点 → 内层产物。
             let inner = self
@@ -4270,7 +4438,7 @@ impl<'a> Engine<'a> {
 
     fn enter_atom(&mut self, node: u32) {
         for c in self.cx.children(node) {
-            let ck = self.cx.tree.kind(c);
+            let ck = self.cx.expression_kind(c);
             // PLAN-950: preserve the qualified source identity for module binding.
             if self
                 .cx
@@ -4307,7 +4475,7 @@ impl<'a> Engine<'a> {
                     .cx
                     .children(c)
                     .into_iter()
-                    .find(|&l| self.cx.tree.kind(l) == self.cx.k.op_gt)
+                    .find(|&l| self.cx.expression_kind(l) == self.cx.k.op_gt)
                     .map(|l| self.cx.span_of(l))
                     .unwrap_or_else(|| self.cx.span_of(c));
                 let g_span = name.span.join(gt_leaf);
@@ -4363,7 +4531,7 @@ impl<'a> Engine<'a> {
                     .cx
                     .children(c)
                     .into_iter()
-                    .find(|&l| self.cx.tree.kind(l) == self.cx.k.tok_dot);
+                    .find(|&l| self.cx.expression_kind(l) == self.cx.k.tok_dot);
                 let dspan = dot_leaf
                     .map(|l| self.cx.span_of(l))
                     .unwrap_or_else(|| self.cx.span_of(c));
@@ -4371,7 +4539,7 @@ impl<'a> Engine<'a> {
                     .cx
                     .children(c)
                     .into_iter()
-                    .find(|&l| self.cx.tree.kind(l) == self.cx.k.tok_ident)
+                    .find(|&l| self.cx.expression_kind(l) == self.cx.k.tok_ident)
                     .expect("leading-dot member");
                 let mspan = self.cx.span_of(member);
                 let mname = self.cx.spelling(member);
@@ -4745,14 +4913,14 @@ impl<'a> Engine<'a> {
 
     fn split_postfix(&self, node: u32) -> (u32, Vec<u32>) {
         // KIND_POSTFIX（调用收尾续读）：孩子 = [操作数, postfix-tail 规则节点]。
-        if self.cx.tree.kind(node) == KIND_POSTFIX {
+        if self.cx.expression_kind(node) == KIND_POSTFIX {
             let kids = self.cx.children(node);
             let base = *kids.first().expect("postfix wrap operand");
             let mut steps: Vec<u32> = Vec::new();
             if let Some(&tail) = kids.get(1) {
                 let step_kind = self.cx.k.postfix_step.unwrap_or(u32::MAX);
                 for c in self.cx.children(tail) {
-                    if self.cx.tree.kind(c) == step_kind {
+                    if self.cx.expression_kind(c) == step_kind {
                         steps.push(c);
                     }
                 }
@@ -4762,7 +4930,7 @@ impl<'a> Engine<'a> {
         let mut base = None;
         let mut steps: Vec<u32> = Vec::new();
         for c in self.cx.children(node) {
-            let k = self.cx.tree.kind(c);
+            let k = self.cx.expression_kind(c);
             if k == self.cx.k.atom_expr && base.is_none() {
                 base = Some(c);
             } else if k == self.cx.k.postfix_step.unwrap_or(u32::MAX) {
@@ -5010,12 +5178,12 @@ impl<'a> Engine<'a> {
         let callee_n = kids
             .iter()
             .copied()
-            .find(|&c| self.cx.tree.kind(c) != self.cx.k.args)
+            .find(|&c| self.cx.expression_kind(c) != self.cx.k.args)
             .expect("call callee");
         let args_n = kids
             .iter()
             .copied()
-            .find(|&c| self.cx.tree.kind(c) == self.cx.k.args);
+            .find(|&c| self.cx.expression_kind(c) == self.cx.k.args);
         let close_end = self.cx.span_of(node).end;
         let arg_nodes: Vec<u32> = args_n
             .map(|an| collect_seq(&self.cx, an, self.cx.k.arg, "arg-tail"))
@@ -5034,7 +5202,7 @@ impl<'a> Engine<'a> {
         let plan = {
             let mut unary_pre: Vec<UnaryOp> = Vec::new();
             let mut wrap = callee_n;
-            while self.cx.tree.kind(wrap) == self.cx.k.unary_expr {
+            while self.cx.expression_kind(wrap) == self.cx.k.unary_expr {
                 let hm = self.cx.child_of_kind(wrap, self.cx.k.tok_minus).is_some();
                 let hb = self.cx.child_of_kind(wrap, self.cx.k.tok_bang).is_some();
                 if !hm && !hb {
@@ -5053,12 +5221,12 @@ impl<'a> Engine<'a> {
             // PLAN-928（T-07）：括号组被调（paren-group callee）恒为间接调用
             // CallValue（镜像旧 CallFrame callee_expr——含 (f)(3) 形）。
             let mut paren_callee: Option<u32> = None;
-            if self.cx.tree.kind(wrap) == self.cx.k.expr {
+            if self.cx.expression_kind(wrap) == self.cx.k.expr {
                 paren_callee = Some(wrap);
             }
             if paren_callee.is_none()
-                && self.cx.tree.kind(wrap) != KIND_POSTFIX
-                && self.cx.tree.kind(wrap) != self.cx.k.postfix_expr
+                && self.cx.expression_kind(wrap) != KIND_POSTFIX
+                && self.cx.expression_kind(wrap) != self.cx.k.postfix_expr
             {
                 wrap = self
                     .cx
@@ -5080,7 +5248,7 @@ impl<'a> Engine<'a> {
                 let mut a = wrap;
                 let mut through_postfix_step = false;
                 loop {
-                    let ka = self.cx.tree.kind(a);
+                    let ka = self.cx.expression_kind(a);
                     if ka == self.cx.k.atom_expr {
                         break;
                     }
@@ -5093,7 +5261,7 @@ impl<'a> Engine<'a> {
                                 .cx
                                 .children(a)
                                 .into_iter()
-                                .any(|c| self.cx.tree.kind(c) == step_kind)
+                                .any(|c| self.cx.expression_kind(c) == step_kind)
                             {
                                 through_postfix_step = true;
                             }
@@ -5111,12 +5279,12 @@ impl<'a> Engine<'a> {
                         break;
                     }
                 }
-                if !through_postfix_step && self.cx.tree.kind(a) == self.cx.k.atom_expr {
+                if !through_postfix_step && self.cx.expression_kind(a) == self.cx.k.atom_expr {
                     if let Some(e) = self
                         .cx
                         .children(a)
                         .into_iter()
-                        .find(|&c| self.cx.tree.kind(c) == self.cx.k.expr)
+                        .find(|&c| self.cx.expression_kind(c) == self.cx.k.expr)
                     {
                         paren_callee = Some(e);
                     }
@@ -5124,7 +5292,7 @@ impl<'a> Engine<'a> {
             }
             let mut unary_ops: Vec<UnaryOp> = unary_pre;
             loop {
-                if self.cx.tree.kind(wrap) == self.cx.k.unary_expr {
+                if self.cx.expression_kind(wrap) == self.cx.k.unary_expr {
                     let has_minus = self.cx.child_of_kind(wrap, self.cx.k.tok_minus).is_some();
                     let has_bang = self.cx.child_of_kind(wrap, self.cx.k.tok_bang).is_some();
                     if !has_minus && !has_bang {
@@ -5143,8 +5311,8 @@ impl<'a> Engine<'a> {
                     break;
                 }
             }
-            if self.cx.tree.kind(wrap) == self.cx.k.postfix_expr
-                || self.cx.tree.kind(wrap) == KIND_POSTFIX
+            if self.cx.expression_kind(wrap) == self.cx.k.postfix_expr
+                || self.cx.expression_kind(wrap) == KIND_POSTFIX
             {
                 let (base, steps) = self.split_postfix(wrap);
                 // PLAN-928（T-07）：括号组 callee 优先于名字/方法分析。
@@ -5165,7 +5333,8 @@ impl<'a> Engine<'a> {
                             // PLAN-928（T-03）：`List<T>.m(...)`——泛型接收原子自带
                             // 尾随 dot 成员（generic-atom）。
                             let ga = self.cx.children(base).into_iter().find(|&c| {
-                                self.cx.tree.kind(c) == self.cx.k.generic_atom.unwrap_or(u32::MAX)
+                                self.cx.expression_kind(c)
+                                    == self.cx.k.generic_atom.unwrap_or(u32::MAX)
                             });
                             match ga.and_then(|g| self.cx.field_child(g, "member")) {
                                 Some(member) => CalleePlan::Method {
@@ -5321,7 +5490,7 @@ impl<'a> Engine<'a> {
     fn callee_base_leading_dot(&self, callee_n: u32) -> bool {
         let mut n = callee_n;
         for _ in 0..10 {
-            let kind = self.cx.tree.kind(n);
+            let kind = self.cx.expression_kind(n);
             if kind == self.cx.k.postfix_expr || kind == KIND_POSTFIX {
                 let (base, steps) = self.split_postfix(n);
                 if !steps.is_empty() {
@@ -5335,7 +5504,7 @@ impl<'a> Engine<'a> {
                     .cx
                     .children(n)
                     .into_iter()
-                    .find(|&c| self.cx.tree.kind(c) != self.cx.k.args)
+                    .find(|&c| self.cx.expression_kind(c) != self.cx.k.args)
                 {
                     Some(c) => {
                         n = c;

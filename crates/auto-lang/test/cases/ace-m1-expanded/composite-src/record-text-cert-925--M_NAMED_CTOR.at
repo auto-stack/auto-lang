@@ -1,0 +1,8 @@
+type P {
+    a int
+    b int
+}
+fn main() int {
+    let p P = P { b: 2, a: 1 }
+    return p.a * 10 + p.b
+}

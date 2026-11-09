@@ -39,6 +39,8 @@ mod av_collections_semantics;
 mod av_collections_session;
 #[path = "cases/av_data.rs"]
 mod av_data;
+#[path = "cases/data_diagnostics_941.rs"]
+mod data_diagnostics_941;
 #[path = "cases/av_data_cache_compat.rs"]
 mod av_data_cache_compat;
 #[path = "cases/av_data_incremental.rs"]

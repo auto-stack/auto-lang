@@ -31,3 +31,16 @@ record 的数据表示与布局。语义版本轴 1/1/1 独立；core-i32 的 1/
 V-01..05/11/12：稳定用例 ID、独立反例及复用关系见
 [review-r10](../../plans/attachments/820/review-r10/review.md)；
 core layout/instr_spec 测试；`scripts/verify-av-data-820.ps1` 8 Scope。
+
+## 请求失败观察（PLAN-941）
+
+`request_data_staged`在同一data生产管线保留typed失败；共享前端的有序
+`Diagnostic`（stage/code/message/span）一直保留到worker投影。既有
+`request_data -> Result<_, String>`仍是兼容包装，展示文本不参与worker分类。
+data recipe的wire仍为`avworker/1`：源码编译/降低边投影为`frontend`，
+MIR/codec准入边为`verify`，code来自实际typed原因。空诊断、无稳定code的
+身份错误和基础设施失败不制造源码诊断；store I/O仍走request error。
+资源原因保留原ResourceKind/code与预算，不冒作特定源码拒绝。
+
+该接线不改变成功值/typed结果、guest trap/trace、AVAD、缓存身份或恢复准入。
+owned/core入口仍按各自原实现与合同观察，本修复不宣称其内部诊断链已改变。

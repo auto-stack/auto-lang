@@ -1,0 +1,42 @@
+// V-05: short-circuit expressions in every declaration context — let,
+// assign, if condition, conditional-for condition (>= 2 rounds, condition
+// re-tested per round), positional call argument and named argument
+// (source evaluation order preserved through the named binding map).
+fn lhs_a() bool {
+    let x = mark_a()
+    return true
+}
+
+fn rhs_b() bool {
+    let x = mark_b()
+    return true
+}
+
+fn of_bool(x bool) int {
+    if x { return 1 }
+    return 0
+}
+
+fn named2(a int, b bool) int {
+    if b { return a }
+    return 0
+}
+
+fn main() int {
+    let l = lhs_a() && rhs_b()
+    var v = false
+    v = lhs_a() && rhs_b()
+    if lhs_a() && rhs_b() { v = true } else { v = false }
+    var n = 0
+    for lhs_a() && n < 2 {
+        n = n + 1
+    }
+    let p = of_bool(lhs_a() && rhs_b())
+    let q = named2(b: lhs_a() && rhs_b(), a: 1)
+    if !l { return 1 }
+    if !v { return 2 }
+    if n != 2 { return 3 }
+    if p != 1 { return 4 }
+    if q != 1 { return 5 }
+    return 0
+}

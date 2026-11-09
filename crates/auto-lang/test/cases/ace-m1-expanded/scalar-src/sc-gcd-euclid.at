@@ -1,0 +1,22 @@
+// V-11/V-12: Euclid gcd via the conditional for loop (r2 §5.2.1).
+// gcd(48, 18) must be 6; the loop re-tests `y != 0` every round and after
+// every continue-equivalent fall-through.
+fn gcd(a int, b int) int {
+    var x = a
+    var y = b
+    for y != 0 {
+        let t = y
+        y = x % y
+        x = t
+    }
+    return x
+}
+
+fn main() int {
+    if gcd(48, 18) != 6 { return 1 }
+    if gcd(18, 48) != 6 { return 2 }
+    if gcd(7, 5) != 1 { return 3 }
+    if gcd(0, 9) != 9 { return 4 }
+    if gcd(9, 0) != 9 { return 5 }
+    return 0
+}

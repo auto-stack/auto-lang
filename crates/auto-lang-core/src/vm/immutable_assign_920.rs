@@ -66,9 +66,12 @@ fn b18_plain_reassign_nonstaged_typed_name_error() {
 #[test]
 fn b18_staged_classified_language_type_e0203() {
     // V-01 staged：同一生产路径的 staged 孪生 + classify_staged 判面。
-    let staged = crate::run_with_capture_and_path_staged(B18, "main.at")
-        .expect_err("B18 staged must fail");
-    assert!(staged.run_trap_code.is_none(), "compile-stage rejection is not a VM trap");
+    let staged =
+        crate::run_with_capture_and_path_staged(B18, "main.at").expect_err("B18 staged must fail");
+    assert!(
+        staged.run_trap_code.is_none(),
+        "compile-stage rejection is not a VM trap"
+    );
     match classify_staged(&staged.error, staged.run_trap_code) {
         StageOutcome::Language(Failure { stage, code, .. }) => {
             assert_eq!(stage.as_str(), "type");
@@ -87,7 +90,11 @@ fn compound_reassign_same_typed_family() {
     let err = crate::run_autovm_capture(COMPOUND).expect_err("compound must be rejected");
     let (name, span) = expect_immutable_assignment(&err);
     assert_eq!(name, "x");
-    assert_eq!(span.offset(), 34, "span must start at the `    x += 2` line");
+    assert_eq!(
+        span.offset(),
+        34,
+        "span must start at the `    x += 2` line"
+    );
     assert_eq!(span.len(), 10, "span covers `    x += 2` (10 bytes)");
 }
 
@@ -97,7 +104,7 @@ fn store_stmt_guard_ast_level_typed_family() {
     // StoreKind::Field 可入且 Field 语句位由 TypeDecl 编译），以 Codegen
     // API 级证人锁族一致：先 let 声明（mutability=false + 入域），再以
     // Store{kind:Field} 语句重赋值 → 同一 typed 错误。
-    use crate::ast::{Store, StoreKind, Stmt};
+    use crate::ast::{Stmt, Store, StoreKind};
     let let_x = Stmt::Store(Store {
         kind: StoreKind::Let,
         name: "x".into(),
@@ -115,7 +122,9 @@ fn store_stmt_guard_ast_level_typed_family() {
         is_pub: false,
     });
     let mut codegen = crate::vm::codegen::Codegen::new();
-    codegen.compile_stmt(&let_x).expect("let declaration compiles");
+    codegen
+        .compile_stmt(&let_x)
+        .expect("let declaration compiles");
     let err = codegen
         .compile_stmt(&field_reassign)
         .expect_err("Field-kind store reassignment must be rejected");
@@ -179,7 +188,10 @@ fn plain_msg_with_b18_text_stays_infrastructure() {
     );
     match classify_staged(&forged, None) {
         StageOutcome::Infrastructure(_) => {}
-        other => panic!("forged Msg text must never be a language negative: {:?}", other),
+        other => panic!(
+            "forged Msg text must never be a language negative: {:?}",
+            other
+        ),
     }
 }
 
@@ -196,7 +208,11 @@ fn other_family_typed_name_keeps_its_own_code() {
     match classify_staged(&e, None) {
         StageOutcome::Language(Failure { stage, code, .. }) => {
             assert_eq!(stage.as_str(), "type");
-            assert_eq!(code.as_deref(), Some("auto_name_E0201"), "each typed variant keeps its own stable code");
+            assert_eq!(
+                code.as_deref(),
+                Some("auto_name_E0201"),
+                "each typed variant keeps its own stable code"
+            );
         }
         other => panic!("typed Name must classify as language, got: {:?}", other),
     }
@@ -206,7 +222,8 @@ fn other_family_typed_name_keeps_its_own_code() {
 fn run_trap_channel_does_not_cross_into_b18_compile_stage() {
     // V-04 run trap 反控：带 typed trap 的运行期失败判 Run；B18 的编译期
     // 拒绝（无 trap，b18_staged… 已证）判 Type——两条 typed 通道不串道。
-    let e = AutoError::Msg("Cannot reassign to immutable variable 'x' (declared with 'let')".into());
+    let e =
+        AutoError::Msg("Cannot reassign to immutable variable 'x' (declared with 'let')".into());
     match classify_staged(&e, Some("ImmutableWriteTrap")) {
         StageOutcome::Language(Failure { stage, code, .. }) => {
             assert_eq!(stage.as_str(), "run");
@@ -222,7 +239,8 @@ fn negative_repair_recheck_cycle_on_same_fixture() {
     // 类型/原因不串（修复期合法运行得 2，再破坏仍回到同一 typed 事实），
     // 不报伪 P0；每次断言都由真实执行产生。
     let b18 = "fn main() int {\n    let x int = 1\n    x = 2\n    return x\n}\n";
-    let repaired = "fn main() int {\n    let x int = 1\n    var x2 int = x\n    x2 = 2\n    return x2\n}\n";
+    let repaired =
+        "fn main() int {\n    let x int = 1\n    var x2 int = x\n    x2 = 2\n    return x2\n}\n";
 
     // 负：typed E0203。
     let err1 = crate::run_autovm_capture(b18).expect_err("cycle step 1: negative must reject");
@@ -230,11 +248,13 @@ fn negative_repair_recheck_cycle_on_same_fixture() {
     assert_eq!(name, "x");
 
     // 修复：合法 body 真实运行得 2（合法重验）。
-    let (result, _) = crate::run_autovm_capture(repaired).expect("cycle step 2: repaired body must run");
+    let (result, _) =
+        crate::run_autovm_capture(repaired).expect("cycle step 2: repaired body must run");
     assert_eq!(result.trim(), "2");
 
     // 再破坏：同一 typed 事实重现（重复执行/串行回归不因上一步合法而漂移）。
-    let err3 = crate::run_autovm_capture(b18).expect_err("cycle step 3: re-broken must reject again");
+    let err3 =
+        crate::run_autovm_capture(b18).expect_err("cycle step 3: re-broken must reject again");
     let (name2, _) = expect_immutable_assignment(&err3);
     assert_eq!(name2, "x");
 }

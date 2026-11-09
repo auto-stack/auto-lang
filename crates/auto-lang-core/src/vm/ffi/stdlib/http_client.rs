@@ -3503,4 +3503,3 @@ pub(super) fn register_response_stream_shims(natives: &mut crate::vm::native::Na
 pub fn async_stream_registered_for_test(id: u64) -> bool {
     ASYNC_STREAMS.lock().unwrap().contains_key(&id)
 }
-

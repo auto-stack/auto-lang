@@ -36,3 +36,10 @@ SYN（语法统一）门的父侧准入合同：可对语法统一签章，**不
 字节无损重建）+ profile 门负控（record@scalar 语法必拒）+ AV 源执行腿。
 深恢复/无预热首编辑/清单准入的 in-process 反控由 ace-source/ace-a2x
 固定组承载。
+
+## SYN 签章消费范围与 ARCH 原子义务映射（PLAN-941，SD-04）
+
+- SYN 准入签章只覆盖其冻结义务面；新 ARCH-01..08 原子义务经各自机制证据行入 registered
+  索引（测量行回灌：PASS 升级占位/PARTIAL 保 UNOBSERVED/FAILvsPASS 冲突拒）。
+- P/M/R/IO 与精确依赖失效（producer-and-io-zero、method-closure、signature/layout/
+  meta、原子安装/迟到）由真实窗口测量行承载，反控随治理组常驻。（AC-04/05/06）

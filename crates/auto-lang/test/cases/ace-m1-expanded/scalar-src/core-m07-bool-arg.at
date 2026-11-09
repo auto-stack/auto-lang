@@ -1,0 +1,2 @@
+fn f(x bool, y int) int { if x { return y }; return 0 }
+fn main() int { return f(1+2<4,5) }

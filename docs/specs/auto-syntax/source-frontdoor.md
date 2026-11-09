@@ -21,7 +21,7 @@ collections 顶层=type/enum 声明（T-04 合同：closures 顶层无 type/enum
 
 ## 入口与 typed 结果
 
-- `parse_front(FrontRequest)`：绑定 profile/能力版本（`ac-source-front/1`）/
+- `parse_front(FrontRequest)`：绑定 profile/能力版本（`ac-source-front/4`）/
   入口 kind（WholeModule/FreeFnFragment/MethodFragment——同一语法规则，不是
   四套实现）/显式预算（不得沿 `Budget::default()` 256MiB 冒 64MiB 档授权；
   步1前置检查，超限=资源态）。
@@ -71,6 +71,23 @@ pratt `postfix: "postfix-tail"` 规则引用；运行时包装 `KIND_POSTFIX`
 误落被裁剪表=门 None，`bad().len()` 静默回退——曾由差分 oracle 失明掩盖，
 已修）。一元操作数同行锚定由规则步 `same-line` 承载（`Save` 携
 `expr_anchor`/`same_line_pending` 随回退恢复）。
+
+## 条件与记录构造（PLAN-941 r2）
+
+`if` 以及原 profile 支持的条件循环在 record/text-record/collections/closures
+面使用独立 `condition-expr` Pratt 规则。条件末尾的变量、比较、一元或调用
+后面的 `{` 属于 body，不再误提交为记录构造；空 body 同样适用。带字段的
+具名构造条件（如 `P { flag: true }.flag`）、括号内构造与调用实参中的构造
+仍走原表达式语义。普通表达式的 ctor cut 与空 ctor 兼容行为保持。
+`while` 仍只属于原 Core 面，wide 条件循环仍拼作 `for cond`。
+
+新规则节点在投影、方法/静态调用分类和结构诊断中规范化到同一既有表达式
+帧机；不增加第二 AST parser，也不在消费者改写源码。手写差分 oracle 对
+条件采用同一消歧边界；非法构造仍是有 span 的 source.syntax，不因残留
+Ctor 帧 panic。整源、自由函数片段和方法片段共同消费这些规则。
+
+共享语法 revision=3、前门能力身份=`ac-source-front/4`；canonical bytes
+自然换 GrammarId。旧语法/能力键的缓存、恢复与认证证据不得冒当前身份。
 
 ## 验证锚
 
@@ -125,3 +142,14 @@ expected/字符串改写。目录签名/来源图/版本轴不变：`FRONT_CAPS_
 escalating ladder 的 attempted 序列为 Scalar → **Core（侧脸，仅成功返回）** →
 Record → TextRecord → Numeric；Core 的失败不进入 surface_rejections、不终止
 升级；终态判决仍由单调 rung 产生。
+
+## 恢复产物 script 区与 lambda 头期望游走（PLAN-941，SD-13/14/15）
+
+- lambda 单元编辑失败诊断使用当前源码绝对 UTF-8 字节位置（非合成包装坐标）；冷/codec
+  恢复首坏编辑、前缀漂移、词法与结构边界按公开目录边界回归。（F-941-10；AC-19）
+- 期望游走器在 closures 面 `(` 位（含 `move` 前缀）识别 `( 参数 ) =>` lambda 头，按旧
+  parser 参数/注解/`=>`/body 期望序列游走；反例首诊断与独立手写 oracle 逐字节全等。
+  （F-941-11；AC-20）
+- 投影层把"错误树中紧跟错误 item 的顶层 script_item"按恢复产物处理（跳过 script 形投影
+  与 saw_script，run 内粘滞）；首诊断由结构层期望游走权威给出，clean 真 script/R04 头
+  拒绝/entry-unit 语义保持。（F-941-12；AC-21）

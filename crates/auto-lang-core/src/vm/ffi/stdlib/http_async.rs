@@ -825,4 +825,3 @@ pub(super) fn register_warn_noop_shims(natives: &mut crate::vm::native::NativeIn
     // PLAN-053 P-053-4: merged 模式下 #[api] no-op 告警
     natives.register_shim_by_name("auto.vm.warn_api_noop", shim_warn_api_noop);
 }
-

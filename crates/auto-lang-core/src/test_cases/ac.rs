@@ -124,8 +124,47 @@ fn call_worker(
     deadline: Duration,
     envs: &[(&str, &str)],
 ) -> Result<serde_json::Value, String> {
+    call_worker_observed(
+        request_json,
+        nonce,
+        request_hash,
+        kind,
+        deadline,
+        envs,
+        None,
+    )
+}
+
+fn call_worker_observed(
+    request_json: &str,
+    nonce: &str,
+    request_hash: &str,
+    kind: &str,
+    deadline: Duration,
+    envs: &[(&str, &str)],
+    observation: Option<(&Path, &str)>,
+) -> Result<serde_json::Value, String> {
     let exe = worker_binary()?;
     let started = Instant::now();
+    let wire_request = format!(
+        "{{\"op\":\"begin\",\"schema\":\"acworker/1\"}}\n{{\"op\":\"request\",\"request\":{} }}\n{{\"op\":\"end\"}}\n",
+        request_json
+    );
+    let exchange = match observation {
+        Some((directory, recipe)) if super::execution_trace::WorkerExchange::enabled()? => {
+            let worker_sha256 = hex(&sha256(
+                &std::fs::read(&exe).map_err(|e| format!("worker hash: {e}"))?,
+            ));
+            super::execution_trace::WorkerExchange::start(
+                directory,
+                "acworker/1",
+                recipe,
+                &worker_sha256,
+                wire_request.as_bytes(),
+            )?
+        }
+        _ => None,
+    };
     let mut cmd = Command::new(&exe);
     for (k, v) in envs {
         cmd.env(k, v);
@@ -143,11 +182,8 @@ fn call_worker(
     // write unblocks via the broken pipe.
     {
         let mut stdin = child.stdin.take().expect("piped stdin");
-        let request_json = request_json.to_string();
         std::thread::spawn(move || {
-            let _ = writeln!(stdin, r#"{{"op":"begin","schema":"acworker/1"}}"#);
-            let _ = writeln!(stdin, r#"{{"op":"request","request":{} }}"#, request_json);
-            let _ = writeln!(stdin, r#"{{"op":"end"}}"#);
+            let _ = stdin.write_all(wire_request.as_bytes());
             let _ = stdin.flush();
         });
     }
@@ -259,7 +295,7 @@ fn call_worker(
     // R1 (F03): the stdout side keeps its own hard READ_CAP — an oversized
     // response is a controlled failure and the worker is killed for it.
     let response = match response {
-        Ok(bytes) => String::from_utf8_lossy(&bytes).to_string(),
+        Ok(bytes) => bytes,
         Err(observed) => {
             kill_and_reap(&mut child);
             let _ = out_reader.join();
@@ -327,6 +363,10 @@ fn call_worker(
             STDERR_CAP, observed
         ));
     }
+    if let Some(exchange) = exchange {
+        exchange.finish(&response, &stderr_result.unwrap(), status.code(), None)?;
+    }
+    let response = String::from_utf8_lossy(&response).to_string();
     if !status.success() {
         return Err(format!(
             "ac-case-worker exited abnormally ({:?}); no response is trusted from a dead worker",
@@ -562,13 +602,19 @@ pub fn run_check(
     // grace margin may smuggle extra time past a declared deadline; spawn
     // and IPC happen inside it.
     let wall = Duration::from_millis(total_ms);
-    let response = call_worker(
+    let recipe = if check.adapter == auto_test_case::contract::Adapter::Syntax {
+        format!("syntax/{}", check.options.effective_grammar())
+    } else {
+        format!("ac/{}", check.action.as_str())
+    };
+    let response = call_worker_observed(
         &request.to_string(),
         &ipc.nonce,
         &ipc.request_hash,
         check.action.as_str(),
         wall,
         &[],
+        Some((artifact_dir, &recipe)),
     )?;
 
     if let Some(err) = response.get("error") {

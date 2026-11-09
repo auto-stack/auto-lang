@@ -306,6 +306,16 @@ fn serve_site_inner<S: CtEnvelopeSink>(
     let mut meta_vals: BTreeMap<(u64, u64), CtValue> = BTreeMap::new();
     let mut meta_axes: Vec<MetaAxis> = Vec::new();
     for sel in meta_selectors_in(inner) {
+        // Product admission has already rejected protected declarations
+        // under the meta grant. Otherwise a declared same-name function is
+        // ordinary, even when its arguments resemble record selectors. Do
+        // not fold an ill-typed ordinary call into a successful meta result.
+        if program.items.iter().any(|item| {
+            matches!(item, Item::Fn(f)
+                if ace_core::source::meta_intrinsic(&f.name.name) == Some(sel.op))
+        }) {
+            continue;
+        }
         let Some(rec) = record_of(program, &sel.type_name) else {
             return Err(PlanError::Demand {
                 owner: owner.to_string(),

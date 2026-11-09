@@ -82,3 +82,9 @@ SKIP、伪父报告均不授信 full（acceptance 拒假报告，选择不改判
   contract 不依赖任何 attachments。
 - a2r 双轴与诊断负例面见 [a2r-golden-certification.md](a2r-golden-certification.md)；
   M1 判据=金样/emit 轴，认证轴独立账。
+
+## 924 当前 cert 守卫与双轴差异（PLAN-941，SD-03）
+
+- 现行守卫沿 992..998 三域闭合后的诚实态：cert-gap=0、旧门 `can_claim_m1=true`（其自身
+  313 门会计）。原 G-DEC 双轴独立记账签章的恢复须用户裁定，不预填为已批准。
+- 旧批准/分母/hash 全程守恒；blocked ledger 明列，不暗绕旧门。（AC-10/11）

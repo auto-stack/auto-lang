@@ -58,3 +58,13 @@
   中间态（修复态不同出口）在受审场景切换下诚实判定。
 - worker 级一致性测试（ace-abi conformance `resource_recovery`/
   `resource`：凭证/代际 lease-GC/故障扫描/超限取消/指针原子/6×30 采样）。
+
+## D937 终态 store seam 与总门映射（PLAN-941，SD-05）
+
+- 桥接套件六检查（source-export/source-body-edit/typed-self/n2c/c2n/bad-leg）经 case
+  parent 走 store seam（journal.db + bridge-scratch 产品）；组合侧按 parent Job 样本逐
+  query 严格准入（completion 语义、probe oracle 三轴、cache/compute_calls/stages/meter），
+  compute 发生时按 leg 要求真实编译产品在场（source=generated.c+a2x_c_runtime.h+
+  bridge_source_caller.c；typed=self|n2c|c2n 道 .obj；parse 级拒绝合法无 scratch）。
+- 交换帧/nonce/request_hash 不可观测即不冒认；typed 三腿与 source 腿不混同，937 不冒
+  完整 FFI。（AC-08/09）

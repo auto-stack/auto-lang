@@ -1,0 +1,1533 @@
+{
+  "schema": "ace.m1.arch-obligation-contract/1",
+  "plan": "PLAN-941:r1",
+  "scope": "ARCH-01..08; source/typed/target execution models remain distinct",
+  "entry_semantics": "Concrete entry locators, not coverage or PASS authority. Provider-pending entries require stable actual delivery before use.",
+  "entries": {
+    "syn": {
+      "kind": "case-suite",
+      "group": "case-ace-unified-source-929",
+      "suite_file": "crates/auto-lang/test/cases/ace-m1/unified-source-syntax-929/unified-source-syntax-929.suite.ad",
+      "source_sha256": "165bffd91e994f49ad843f6d7db254f6ba47021f3afe8b2c999f00b627731647"
+    },
+    "sq": {
+      "kind": "case-suite",
+      "group": "case-ace-source-query-934",
+      "suite_file": "crates/auto-lang/test/cases/ace-m1/source-query-934/source-query-934.suite.ad",
+      "source_sha256": "25ab8d5bc5e04020d8f58e960be842dea5adb78377f6c165ae7449176e789a6c"
+    },
+    "inst": {
+      "kind": "case-suite",
+      "group": "case-ace-source-instances-935",
+      "suite_file": "crates/auto-lang/test/cases/ace-m1/source-instances-935/source-instances-935.suite.ad",
+      "source_sha256": "1134232647d6f3daa97c00246459a4488eb27cbcb94b4f8248c0e6dadb953fc4"
+    },
+    "q4": {
+      "kind": "case-suite",
+      "group": "case-ace-m1-q4-941",
+      "suite_file": "crates/auto-lang/test/cases/ace-m1-expanded/ace-m1-expanded.suite.ad",
+      "source_sha256": "98d83748f3128c213aca0555a71f599fbf8214ace713c87ffef828dce8595895"
+    },
+    "order": {
+      "kind": "case-suite",
+      "group": "case-ace-m1-order-layout-914",
+      "suite_file": "crates/auto-lang/test/cases/ace-m1/order-layout-914/order-layout-914.suite.ad",
+      "source_sha256": "6cf8f0960ad31e3cc1fcb0330f2537395df970ffa6d7ccded8db818c2f33bbe4"
+    },
+    "recovery": {
+      "kind": "case-suite",
+      "group": "case-ace-m1-closures-recovery-913",
+      "suite_file": "crates/auto-lang/test/cases/ace-m1/closures-recovery-913/closures-recovery-913.suite.ad",
+      "source_sha256": "22ec80d6c6c727c0fb75f489dba2a27a7b6ea0a79a05f0f922a1a8f22680a3e5"
+    },
+    "events": {
+      "kind": "case-suite",
+      "group": "case-ace-m1-resource-events-919",
+      "suite_file": "crates/auto-lang/test/cases/ace-m1/resource-events-919/resource-events-919.suite.ad",
+      "source_sha256": "d63242b0cbc3b191fa7d0d7852536d6c9c4a3798fabd57a53808f1a649c422dc"
+    },
+    "av-fault": {
+      "kind": "case-suite",
+      "group": "case-ace-m1-resource-915",
+      "suite_file": "crates/auto-lang/test/cases/ace-m1/resource-915/resource-915.suite.ad",
+      "source_sha256": "19c8e93a5fe9dfd691d18f82f3b93664ed83d4b87378c8676162b21606075bc8"
+    },
+    "native-fault": {
+      "kind": "case-suite",
+      "group": "case-ace-m1-native-resource-923",
+      "suite_file": "crates/auto-lang/test/cases/ace-m1/native-resource-923/native-resource-923.suite.ad",
+      "source_sha256": "f5c17dd21c05bc08d5944c8fb5a3473776c66915af5a15fab90d7c9dba760be3"
+    },
+    "closure-fault": {
+      "kind": "case-suite",
+      "group": "case-ace-m1-native-closures-924",
+      "suite_file": "crates/auto-lang/test/cases/ace-m1/native-closures-924/native-closures-924.suite.ad",
+      "source_sha256": "e9400afdbddb9d5164832eeeedfde20c6ec6cfad1f8a6f0909ef0b1374e81f19"
+    },
+    "resident": {
+      "kind": "case-suite",
+      "group": "case-ace-m1-resident-866",
+      "suite_file": "crates/auto-lang/test/cases/ace-m1/resident-online-866.suite.ad",
+      "source_sha256": "f4d8ebb9c439102110ba6190b4a7cf56f70be784d45a698357337e18a3e59bb4"
+    },
+    "bridge": {
+      "kind": "case-suite",
+      "group": "case-ace-ca-d-scalar-937",
+      "suite_file": "crates/auto-lang/test/cases/ace-ca-d-scalar-937/ace-ca-d-scalar-937.suite.ad",
+      "source_sha256": "0372dbfbd0446b8bc5e3accdfaa8e902dfa9b6531999c7371d256b01ef2932da"
+    },
+    "syn-local": {
+      "kind": "native-module",
+      "group": "ace-syntax",
+      "binary": "ace-syntax-core::conformance",
+      "module": "incremental_local",
+      "source_file": "experimental/ace/crates/syntax-core/tests/cases/incremental_local.rs",
+      "source_sha256": "736b312fc26f1ab7e7ef59643352cd2b8192a8a8cc79f0d734189bcafce8fee9"
+    },
+    "syn-replay": {
+      "kind": "native-module",
+      "group": "ace-syntax",
+      "binary": "ace-syntax-core::conformance",
+      "module": "incremental_replay",
+      "source_file": "experimental/ace/crates/syntax-core/tests/cases/incremental_replay.rs",
+      "source_sha256": "9590c740b65ce0581fdd425d2f5fb3b7ea8a145b90dfe8e8e4249e3a9a65dea1"
+    },
+    "sq-core": {
+      "kind": "native-module",
+      "group": "ace-semantics",
+      "binary": "ace-source-query",
+      "module": "tests",
+      "source_file": "experimental/ace/crates/source-query/src/tests.rs",
+      "source_sha256": "7af42824d1b3b2ff774fb6ea9e4d553e628c6ba6c867208f5d7fd8b4ef3c3bae"
+    },
+    "sq-restore": {
+      "kind": "native-module",
+      "group": "ace-semantics",
+      "binary": "ace-source-query::restore_seam_929",
+      "module": "restore_seam_929",
+      "source_file": "experimental/ace/crates/source-query/tests/restore_seam_929.rs",
+      "source_sha256": "13111ad98ae811dc9d107fcde1246233d1eadd3c4198fed56661803af6b7db5b"
+    },
+    "inst-restore": {
+      "kind": "native-module",
+      "group": "ace-semantics",
+      "binary": "ace-source-query::instances_restore_controls_935",
+      "module": "instances_restore_controls_935",
+      "source_file": "experimental/ace/crates/source-query/tests/instances_restore_controls_935.rs",
+      "source_sha256": "6b413a08a6af3eea37eeafc3288213676d23535c71f95ccf6fbe59fc5d3f23d6"
+    },
+    "rt-restore": {
+      "kind": "native-module",
+      "group": "ace-a2x",
+      "binary": "ace-a2x-worker::conformance",
+      "module": "a2c_rt_restore",
+      "source_file": "experimental/ace/crates/a2x-worker/tests/cases/a2c_rt_restore.rs",
+      "source_sha256": "ec56985da4978285424ab99dcebd31f3ced7c0467fee284b8096864134069067"
+    },
+    "coll-restore": {
+      "kind": "native-module",
+      "group": "ace-a2x",
+      "binary": "ace-a2x-worker::conformance",
+      "module": "a2c_coll_restore",
+      "source_file": "experimental/ace/crates/a2x-worker/tests/cases/a2c_coll_restore.rs",
+      "source_sha256": "158146d58227be503b0fc29ec49161c8ed427c1cd58b50638f0b7041df6ff382"
+    },
+    "scalar-cert": {
+      "kind": "native-module",
+      "group": "ace-a2x",
+      "binary": "ace-a2x-worker::conformance",
+      "module": "contract_certification",
+      "source_file": "experimental/ace/crates/a2x-worker/tests/cases/contract_certification.rs",
+      "source_sha256": "2bff8395b8383fc27df42fc4aaa7cfe4cb5a9ba636e911f9c28b128387efc93c"
+    },
+    "rt-cert": {
+      "kind": "native-module",
+      "group": "ace-a2x",
+      "binary": "ace-a2x-worker::conformance",
+      "module": "a2c_rt_cert",
+      "source_file": "experimental/ace/crates/a2x-worker/tests/cases/a2c_rt_cert.rs",
+      "source_sha256": "642b51d5fa365ea426aed00fc2460591aa5974a6ca77036505f13e110cf92ad2"
+    },
+    "coll-cert": {
+      "kind": "native-module",
+      "group": "ace-a2x",
+      "binary": "ace-a2x-worker::conformance",
+      "module": "a2c_coll_cert",
+      "source_file": "experimental/ace/crates/a2x-worker/tests/cases/a2c_coll_cert.rs",
+      "source_sha256": "43a9fdfae88925888d4ce9335bd57d1c7415df3c02ce14e8efa04bf90e60d81d"
+    },
+    "abi-three": {
+      "kind": "native-module",
+      "group": "ace-abi",
+      "binary": "ace-abi::conformance",
+      "module": "calls",
+      "source_file": "experimental/ace/crates/abi/tests/cases/calls.rs",
+      "source_sha256": "bdd8505111c9a981f55475da10d1ebac8b1d8c7f1203b6aa17ffc75f2799f0d3"
+    },
+    "abi-layout": {
+      "kind": "native-module",
+      "group": "ace-abi",
+      "binary": "ace-abi::conformance",
+      "module": "contract_layout_admission",
+      "source_file": "experimental/ace/crates/abi/tests/cases/contract_layout_admission.rs",
+      "source_sha256": "5ce681ecb3c85afa888ce21703eebdcf3e5ca8ef994eb9049ddc5ce223d92d2a"
+    },
+    "abi-cache": {
+      "kind": "native-module",
+      "group": "ace-abi",
+      "binary": "ace-abi::conformance",
+      "module": "cache_turnaround",
+      "source_file": "experimental/ace/crates/abi/tests/cases/cache_turnaround.rs",
+      "source_sha256": "6e91835a989ac7821d597658b3807a32b0c1c0fa3f628924dee9641060d4f4ba"
+    },
+    "av-resident": {
+      "kind": "native-module",
+      "group": "ace-av",
+      "binary": "ace-av::conformance",
+      "module": "av_resident",
+      "source_file": "experimental/ace/crates/av/tests/cases/av_resident.rs",
+      "source_sha256": "204b26c92304843b87abb56c19653e3347bd42db786194908073c693c4fecfa9"
+    },
+    "ct": {
+      "kind": "case-suite",
+      "group": "case-ace-source-cte-936",
+      "suite_file": "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.suite.ad",
+      "source_sha256": "636be13658126c53b54304ac3c91c9eac07abd5d860a6030901cf6cfe438a0e6"
+    },
+    "foreign": {
+      "kind": "provider-pending",
+      "owner": "PLAN-938",
+      "contract": "Ordinary source foreign imports, native/C real provider calls and restore first-edit"
+    },
+    "foreign-resource": {
+      "kind": "provider-pending",
+      "owner": "PLAN-939",
+      "contract": "Finite opaque/destroy, record/out/buffer and synchronous callback+ctx observer"
+    },
+    "ct-service": {
+      "kind": "native-module",
+      "group": "ace-comptime",
+      "binary": "ace-source-cte",
+      "module": "tests",
+      "source_file": "experimental/ace/crates/source-cte/src/tests.rs",
+      "source_sha256": "b2552171b01c88289741ddf7a19f27278f45a05e26a18e95dabb343eb4f46a85"
+    }
+  },
+  "obligations": [
+    {
+      "id": "ARCH-01/all-grammars",
+      "arch": "ARCH-01",
+      "owner": "PLAN-929",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "syn"
+      ],
+      "budget_domains": [
+        "composer",
+        "fixed-case-suite"
+      ],
+      "verification_ids": [
+        "V-01",
+        "V-02"
+      ],
+      "closing_oracle": "All ten original syntax checks retain source, grammar, semantic profile and explicit refusal identity.",
+      "negative_control": "Cross-grammar/core vs record evidence cannot authorize the row.",
+      "required_observations": [
+        "input",
+        "raw-terminal",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-01/single-frontdoor",
+      "arch": "ARCH-01",
+      "owner": "PLAN-927/928/929",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "syn",
+        "syn-local"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-02",
+        "V-04"
+      ],
+      "closing_oracle": "Real consumers use the unified source/CST/decl frontdoor, not a copied parser or old producer.",
+      "negative_control": "A legacy/CST-only parse success cannot satisfy source consumers.",
+      "required_observations": [
+        "input",
+        "producer",
+        "counters"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-01/nested-body-reuse",
+      "arch": "ARCH-01",
+      "owner": "PLAN-929",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "syn-local"
+      ],
+      "budget_domains": [
+        "composer",
+        "nextest-default"
+      ],
+      "verification_ids": [
+        "V-04"
+      ],
+      "closing_oracle": "Method/closure child-body edits preserve unaffected parent/node identity and zero unrelated production.",
+      "negative_control": "Whole parse followed by filtering, copied nodes or reset counters must fail.",
+      "required_observations": [
+        "input",
+        "counters",
+        "identity",
+        "io"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-01/source-position-freshness",
+      "arch": "ARCH-01",
+      "owner": "PLAN-929",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "syn-replay"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-05"
+      ],
+      "closing_oracle": "Prefix/source-position drift yields fresh equivalent diagnostics after restore and first edit.",
+      "negative_control": "Old absolute spans with correct text/value remain stale.",
+      "required_observations": [
+        "input",
+        "oracle",
+        "restore"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-01/public-first-edit",
+      "arch": "ARCH-01",
+      "owner": "PLAN-929",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "sq-restore",
+        "syn-replay"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-05",
+        "V-06"
+      ],
+      "closing_oracle": "Restart then immediate first source edit has no dummy edit, ensure_env or prewarm production.",
+      "negative_control": "A preparatory parse hidden in maintenance/restore must fail.",
+      "required_observations": [
+        "input",
+        "counters",
+        "restore",
+        "io"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-02/solver-authority",
+      "arch": "ARCH-02",
+      "owner": "PLAN-934",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "sq",
+        "sq-core"
+      ],
+      "budget_domains": [
+        "composer",
+        "nextest-default"
+      ],
+      "verification_ids": [
+        "V-09"
+      ],
+      "closing_oracle": "Cold solver-disabled request fails; warm fact hit with solver disabled succeeds and genuinely consumes type facts.",
+      "negative_control": "Query log presence or a fresh solver fallback is not fact authority.",
+      "required_observations": [
+        "input",
+        "counters",
+        "facts",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-02/facts-before-hir",
+      "arch": "ARCH-02",
+      "owner": "PLAN-934",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "sq-core"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-09"
+      ],
+      "closing_oracle": "Bad/foreign-owner facts are rejected before bind/HIR consumption; same-shape owner mismatch remains invalid.",
+      "negative_control": "Accepting child Checked/PASS credentials or later rejection after use must fail.",
+      "required_observations": [
+        "input",
+        "facts",
+        "identity",
+        "publication"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-02/positive-negative-deps",
+      "arch": "ARCH-02",
+      "owner": "PLAN-934/935",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "sq-core",
+        "inst"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-04",
+        "V-09"
+      ],
+      "closing_oracle": "Positive and negative metadata dependencies flip precise consumers and keep actual non-readers P/IO zero.",
+      "negative_control": "Module-wide invalidation or a blind negative hit must fail.",
+      "required_observations": [
+        "input",
+        "facts",
+        "counters",
+        "io"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-02/real-instances",
+      "arch": "ARCH-02",
+      "owner": "PLAN-935",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "inst"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-10"
+      ],
+      "closing_oracle": "Concrete choose instantiations, expected-type, recursive and cross-template consumers use real distinct instance sets.",
+      "negative_control": "The old model instance/deck or a reused template body is insufficient.",
+      "required_observations": [
+        "input",
+        "instances",
+        "identity",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-02/effective-implementation",
+      "arch": "ARCH-02",
+      "owner": "PLAN-935",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "inst",
+        "inst-restore"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-04",
+        "V-10"
+      ],
+      "closing_oracle": "Signature and checked effective implementation version are distinct; dependent target reads the current implementation.",
+      "negative_control": "Unchanged call-site bytes cannot keep stale instantiated/CT implementation.",
+      "required_observations": [
+        "input",
+        "instances",
+        "counters",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-02/required-instance-pages",
+      "arch": "ARCH-02",
+      "owner": "PLAN-935",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "inst-restore"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-05",
+        "V-06"
+      ],
+      "closing_oracle": "Restore deep-validates instance/source/fact ownership and immediately edits without solver/instantiate prewarm.",
+      "negative_control": "Missing/bad required instance pages cannot restore-P0 then cold on the first edit.",
+      "required_observations": [
+        "input",
+        "instances",
+        "restore",
+        "counters"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-03/all-declared-q4",
+      "arch": "ARCH-03",
+      "owner": "PLAN-892/902/904/921/925/926/934/935/936",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "q4",
+        "rt-cert",
+        "coll-cert",
+        "sq",
+        "inst",
+        "ct",
+        "ct-service"
+      ],
+      "budget_domains": [
+        "composer",
+        "a2x-scalar-formal",
+        "a2x-record-text-formal",
+        "a2x-collections-formal"
+      ],
+      "verification_ids": [
+        "V-01",
+        "V-03",
+        "V-12"
+      ],
+      "closing_oracle": "Every approved source/profile/target uses identical source bytes and an independent original oracle; scope cannot be capability intersection.",
+      "negative_control": "All targets agreeing on the same wrong result or deleting C still fails.",
+      "required_observations": [
+        "input",
+        "identity",
+        "oracle",
+        "raw-terminal"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-03/source-order-and-traps",
+      "arch": "ARCH-03",
+      "owner": "PLAN-914",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "order"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-03"
+      ],
+      "closing_oracle": "Source order, short circuit, side-effect trace and exact supported checked trap/diagnostic axes are observed independently.",
+      "negative_control": "A correct final value with reversed/missing trace or wrong cause is insufficient.",
+      "required_observations": [
+        "input",
+        "oracle",
+        "raw-terminal"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-03/shared-ir-boundary",
+      "arch": "ARCH-03",
+      "owner": "auto-ac/auto-av/auto-a2x/auto-a2c",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "q4",
+        "sq",
+        "inst"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-03"
+      ],
+      "closing_oracle": "AV/native consume the one shared checked HIR->MIR path; new Rust/C consume their HIR target identities.",
+      "negative_control": "Legacy AVM/AST Rust or another profile cannot impersonate a HIR/current target.",
+      "required_observations": [
+        "input",
+        "identity",
+        "facts"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-03/source-vs-typed",
+      "arch": "ARCH-03",
+      "owner": "PLAN-891/941",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "q4"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-01",
+        "V-02"
+      ],
+      "closing_oracle": "Wide typed fixtures remain a separate evidence face; no fabricated Auto source, bool/type collapse or float conversion.",
+      "negative_control": "Matching i64/f64 bits do not authorize the other kind or broad source coverage.",
+      "required_observations": [
+        "input",
+        "identity",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-03/certification-two-legs",
+      "arch": "ARCH-03",
+      "owner": "auto-a2x/auto-a2c",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "scalar-cert",
+        "rt-cert",
+        "coll-cert"
+      ],
+      "budget_domains": [
+        "explicit-cert-941-capture",
+        "composer"
+      ],
+      "verification_ids": [
+        "V-12"
+      ],
+      "closing_oracle": "Complete actual and independent handwritten reference compile/run outputs each match the frozen oracle.",
+      "negative_control": "Only compilation, reference copied as actual, trimmed main or a late failed leg cannot pass.",
+      "required_observations": [
+        "input",
+        "identity",
+        "oracle",
+        "raw-terminal"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-04/cold-real-av-and-hit",
+      "arch": "ARCH-04",
+      "owner": "PLAN-936",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "ct",
+        "ct-service"
+      ],
+      "budget_domains": [
+        "cte-original-service",
+        "composer"
+      ],
+      "verification_ids": [
+        "V-10"
+      ],
+      "closing_oracle": "Ordinary source Hash sum(20,22) gives 42: cold real AV execute>0, valid hit execute=0.",
+      "negative_control": "Host folding, fabricated marks or a typed/deck-only success must fail.",
+      "required_observations": [
+        "input",
+        "facts",
+        "counters",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-04/callee-body-change",
+      "arch": "ARCH-04",
+      "owner": "PLAN-936",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "ct",
+        "ct-service"
+      ],
+      "budget_domains": [
+        "cte-original-service"
+      ],
+      "verification_ids": [
+        "V-10"
+      ],
+      "closing_oracle": "Changing checked callee a+b to a+b+1 gives 43 with unchanged call-site bytes and invalidated Exec/Use.",
+      "negative_control": "Source-text-only or call-site-only keys cannot preserve stale results.",
+      "required_observations": [
+        "input",
+        "facts",
+        "counters",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-04/meta-args-and-negative",
+      "arch": "ARCH-04",
+      "owner": "PLAN-936",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "ct",
+        "ct-service"
+      ],
+      "budget_domains": [
+        "cte-original-service"
+      ],
+      "verification_ids": [
+        "V-09",
+        "V-10"
+      ],
+      "closing_oracle": "FieldCount/HasField facts feed real AV args; two->three fields gives42->43, missing->present invalidates.",
+      "negative_control": "Meta-only work cannot be counted as AV execution; no-cap must reject before AV.",
+      "required_observations": [
+        "input",
+        "facts",
+        "counters",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-04/instance-child-ct-version",
+      "arch": "ARCH-04",
+      "owner": "PLAN-935/936",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "ct",
+        "ct-service",
+        "inst"
+      ],
+      "budget_domains": [
+        "cte-original-service"
+      ],
+      "verification_ids": [
+        "V-10"
+      ],
+      "closing_oracle": "Concrete instance and nested CT child folded effective versions invalidate parents even when callee text/call site is unchanged.",
+      "negative_control": "Template/deck reuse or source-hash-only keys that miss child effective changes must fail.",
+      "required_observations": [
+        "input",
+        "instances",
+        "facts",
+        "counters",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-04/frozen-hir-four-targets",
+      "arch": "ARCH-04",
+      "owner": "PLAN-936",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "ct",
+        "ct-service"
+      ],
+      "budget_domains": [
+        "cte-original-service",
+        "composer"
+      ],
+      "verification_ids": [
+        "V-10",
+        "V-12"
+      ],
+      "closing_oracle": "Frozen values re-enter source inference and verified constant HIR, then all four target real observations independently agree with oracle.",
+      "negative_control": "A runtime call left in HIR or a new target using old CT setup cannot pass.",
+      "required_observations": [
+        "input",
+        "facts",
+        "oracle",
+        "raw-terminal"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-04/unsupported-and-resources",
+      "arch": "ARCH-04",
+      "owner": "PLAN-936",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "ct",
+        "ct-service"
+      ],
+      "budget_domains": [
+        "cte-original-service"
+      ],
+      "verification_ids": [
+        "V-06",
+        "V-07"
+      ],
+      "closing_oracle": "Unsupported/runtime/IO operations, traps, fuel, cancellation and stale results retain proper outcomes and publish no invalid current root.",
+      "negative_control": "Resource/infra cannot masquerade as language diagnostics or cached permanent failures.",
+      "required_observations": [
+        "input",
+        "counters",
+        "publication",
+        "raw-terminal"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-05/producer-and-io-zero",
+      "arch": "ARCH-05",
+      "owner": "PLAN-929/934/935/936",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "sq-restore",
+        "inst-restore",
+        "ct",
+        "ct-service",
+        "rt-restore",
+        "coll-restore"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-04"
+      ],
+      "closing_oracle": "Unaffected functions/instances/bindings have actual parse/project/resolve/solve/instantiate/CT/resource/lower/encode/emit P=0 and payload IO=0.",
+      "negative_control": "Whole work then filtering, fake zero or cached guest result must fail.",
+      "required_observations": [
+        "input",
+        "counters",
+        "io",
+        "identity"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-05/method-closure-body-edits",
+      "arch": "ARCH-05",
+      "owner": "PLAN-929/913/925",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "syn-local",
+        "recovery",
+        "rt-restore"
+      ],
+      "budget_domains": [
+        "composer",
+        "a2x-record-text-formal"
+      ],
+      "verification_ids": [
+        "V-04"
+      ],
+      "closing_oracle": "Length-changing body, method, closure-child and source-prefix edits use the predeclared affected set and resident identities.",
+      "negative_control": "A body label on whole module recompilation or forced-copy identity cannot pass.",
+      "required_observations": [
+        "input",
+        "counters",
+        "identity",
+        "io"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-05/signature-layout-meta",
+      "arch": "ARCH-05",
+      "owner": "PLAN-914/934/935",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "order",
+        "sq-core",
+        "inst"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-04"
+      ],
+      "closing_oracle": "Signature/layout/mode/declaration/meta dependency edits invalidate exactly actual readers and bind new target implementations.",
+      "negative_control": "Unchanged caller text cannot override a changed dependency, nor justify whole invalidation.",
+      "required_observations": [
+        "input",
+        "facts",
+        "counters",
+        "identity"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-05/restore-immediate-good-edit",
+      "arch": "ARCH-05",
+      "owner": "PLAN-929/934/935/936/938/939",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "sq-restore",
+        "inst-restore",
+        "ct",
+        "ct-service",
+        "rt-restore",
+        "coll-restore",
+        "foreign",
+        "foreign-resource"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-05"
+      ],
+      "closing_oracle": "Fresh->hit->restart/deep-R->immediate first good source edit works without prewarm or dummy ensure_env.",
+      "negative_control": "M/R labels cannot hide new front-end/instance/CT production.",
+      "required_observations": [
+        "input",
+        "restore",
+        "counters",
+        "io"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-05/bad-first-repair-second-restore",
+      "arch": "ARCH-05",
+      "owner": "PLAN-929/936/938/939",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "recovery",
+        "ct",
+        "ct-service",
+        "rt-restore",
+        "coll-restore",
+        "foreign",
+        "foreign-resource"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-05",
+        "V-06"
+      ],
+      "closing_oracle": "Restart->first illegal edit preserves old runnable coherent root; repair then another restart/first edit is fresh-equivalent.",
+      "negative_control": "Only the immediate fallback result or an unrepaired persisted page is insufficient.",
+      "required_observations": [
+        "input",
+        "restore",
+        "publication",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-05/all-required-pages",
+      "arch": "ARCH-05",
+      "owner": "PLAN-929/934/935/936/938/939",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "sq-restore",
+        "inst-restore",
+        "ct",
+        "ct-service",
+        "rt-restore",
+        "coll-restore",
+        "foreign",
+        "foreign-resource"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-06"
+      ],
+      "closing_oracle": "Missing/bad source/facts/instance/Exec/Use/foreign/resource pages refuse before use or explicit separately-accounted cold.",
+      "negative_control": "Missing required pages cannot be treated optional after a P0 restore.",
+      "required_observations": [
+        "input",
+        "facts",
+        "restore",
+        "identity"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-05/atomic-publication-and-late",
+      "arch": "ARCH-05",
+      "owner": "PLAN-929/934/935/936/938/939",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "sq-restore",
+        "inst-restore",
+        "ct",
+        "ct-service",
+        "rt-restore",
+        "coll-restore",
+        "foreign",
+        "foreign-resource"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-06"
+      ],
+      "closing_oracle": "Failed/cancelled/late/cap-revoked/base-conflicting candidates cannot install half source/semantic/target generations.",
+      "negative_control": "A late valid-looking candidate or partial target set must not replace current coherent roots.",
+      "required_observations": [
+        "input",
+        "publication",
+        "identity",
+        "raw-terminal"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-05/historical-cross-project-ownership",
+      "arch": "ARCH-05",
+      "owner": "PLAN-929/934/935/936",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "sq-restore",
+        "inst-restore",
+        "ct",
+        "ct-service"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-04",
+        "V-06"
+      ],
+      "closing_oracle": "Historical content is revalidated, real execution rejudged, and same-shape foreign project/owner credentials are rejected.",
+      "negative_control": "Historical PASS, absolute span or foreign owner cannot authorize a hit.",
+      "required_observations": [
+        "input",
+        "identity",
+        "restore",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-06/resource-facts-authority",
+      "arch": "ARCH-06",
+      "owner": "PLAN-881/894/904/925/926/931",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "events",
+        "native-fault",
+        "closure-fault",
+        "rt-cert",
+        "coll-cert"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-07"
+      ],
+      "closing_oracle": "Shared core resource facts drive each consumer; normal/return/branch/loop/temporary/trap paths preserve declared cleanup.",
+      "negative_control": "Backend-specific duplicated analysis or totals-only/OS process cleanup is insufficient.",
+      "required_observations": [
+        "input",
+        "facts",
+        "lifetime",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-06/every-allocation-fault-and-retry",
+      "arch": "ARCH-06",
+      "owner": "PLAN-915/923/924/925/926",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "av-fault",
+        "native-fault",
+        "closure-fault",
+        "rt-cert",
+        "coll-cert"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-07"
+      ],
+      "closing_oracle": "Every allocation attempt1..N plus N+1 controls, clear-fault and same-process retry preserves all original ownership and cleanup oracles.",
+      "negative_control": "Sampling fewer faults, fresh-process retry or nonzero process exit alone cannot pass.",
+      "required_observations": [
+        "input",
+        "lifetime",
+        "counters",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-06/failed-source-mut-out-atomicity",
+      "arch": "ARCH-06",
+      "owner": "PLAN-923/924/925/926/939",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "native-fault",
+        "closure-fault",
+        "rt-cert",
+        "coll-cert",
+        "foreign-resource"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-07",
+        "V-11"
+      ],
+      "closing_oracle": "Failed clone/constructor/out/mut keeps original values and bytes; partial objects free without remaining budget; last consumer/provider releases correctly.",
+      "negative_control": "A mutated source/out or cleanup that needs extra quota must fail.",
+      "required_observations": [
+        "input",
+        "lifetime",
+        "publication",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-06/all-domain-budgets",
+      "arch": "ARCH-06",
+      "owner": "all-original-owners",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "native-fault",
+        "av-fault",
+        "rt-cert",
+        "coll-cert",
+        "abi-layout"
+      ],
+      "budget_domains": [
+        "composer",
+        "abi-interop-runtime",
+        "cte-original-service",
+        "a2x-warm-management"
+      ],
+      "verification_ids": [
+        "V-07",
+        "V-16"
+      ],
+      "closing_oracle": "All original caps AND; A2X48MiB/store128MiB/cert scratch512MiB/source-meta4MiB/stream1MiB/value8MiB/managed32MiB/privateDelta128MiB, C compile120s/run30s/cert360s; source/SQ 1MiB/30edits/16MiBpages/512churn/4096chain retained.",
+      "negative_control": "A broad outer cap, absent metric=0 or a reduced scale cannot replace any stricter original limit.",
+      "required_observations": [
+        "input",
+        "budget",
+        "counters",
+        "raw-terminal"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-06/abi-original-three-directions",
+      "arch": "ARCH-06",
+      "owner": "PLAN-797/937",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "abi-three",
+        "abi-layout",
+        "bridge"
+      ],
+      "budget_domains": [
+        "abi-interop-runtime",
+        "abi-worker-ipc"
+      ],
+      "verification_ids": [
+        "V-11"
+      ],
+      "closing_oracle": "Original self/native-to-C/C-to-native directions, independently audited C prototypes/layout, heterogeneous stack args and calling ownership all hold.",
+      "negative_control": "Private native frames or same-struct self-consistency cannot stand in for public ABI.",
+      "required_observations": [
+        "input",
+        "identity",
+        "oracle",
+        "raw-terminal"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-06/d1-source-vs-typed",
+      "arch": "ARCH-06",
+      "owner": "PLAN-937",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "bridge"
+      ],
+      "budget_domains": [
+        "abi-interop-runtime",
+        "abi-worker-ipc"
+      ],
+      "verification_ids": [
+        "V-11"
+      ],
+      "closing_oracle": "D1 source export and typed three legs keep independent deck/recipe/leg and real caller/provider identities.",
+      "negative_control": "Typed/deck restoration cannot authorize ordinary source import or another leg.",
+      "required_observations": [
+        "input",
+        "identity",
+        "oracle",
+        "raw-terminal"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-06/d2-real-source-imports",
+      "arch": "ARCH-06",
+      "owner": "PLAN-938",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "foreign"
+      ],
+      "budget_domains": [
+        "abi-interop-runtime"
+      ],
+      "verification_ids": [
+        "V-04",
+        "V-05",
+        "V-11"
+      ],
+      "closing_oracle": "Ordinary source native/C calls real provider; body/contract/library/cap changes update actual read dependencies and immediate restore first-edit.",
+      "negative_control": "An outer wrapper bypass, stale provider body or ABI mismatch with nonzero foreign calls must fail.",
+      "required_observations": [
+        "input",
+        "identity",
+        "counters",
+        "oracle",
+        "restore"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-06/d3-resources-and-callback",
+      "arch": "ARCH-06",
+      "owner": "PLAN-939",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "foreign-resource"
+      ],
+      "budget_domains": [
+        "abi-interop-runtime"
+      ],
+      "verification_ids": [
+        "V-07",
+        "V-11"
+      ],
+      "closing_oracle": "Finite buffer/view, record const/mut/out, multi-out commit, opaque original destroy and synchronous callback+nonzero ctx use correct units/lifetimes/errors.",
+      "negative_control": "Dropping ctx, cross-allocator destroy, wrong length units or failed-out mutation cannot pass.",
+      "required_observations": [
+        "input",
+        "identity",
+        "lifetime",
+        "oracle",
+        "publication"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-07/one-pid-one-entry",
+      "arch": "ARCH-07",
+      "owner": "PLAN-866/929",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "resident",
+        "av-resident"
+      ],
+      "budget_domains": [
+        "av-worker",
+        "composer"
+      ],
+      "verification_ids": [
+        "V-08"
+      ],
+      "closing_oracle": "One continuously running guest entry and PID uses call-boundary safepoints; actual old in-flight chain and new calls see their generations.",
+      "negative_control": "Restart, pause-only restore or a second entry cannot impersonate online HMR.",
+      "required_observations": [
+        "input",
+        "identity",
+        "publication",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-07/last-owner-gc",
+      "arch": "ARCH-07",
+      "owner": "PLAN-866/929",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "resident",
+        "av-resident"
+      ],
+      "budget_domains": [
+        "av-worker",
+        "composer"
+      ],
+      "verification_ids": [
+        "V-08"
+      ],
+      "closing_oracle": "Old roots, active chains and external pins remain live until the actual last owner, then cleanup/GC converges and sentinels remain intact.",
+      "negative_control": "Early free, close dropping external pins or never reclaiming the last owner must fail.",
+      "required_observations": [
+        "input",
+        "lifetime",
+        "identity",
+        "counters"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-07/original-churn-and-samples",
+      "arch": "ARCH-07",
+      "owner": "all-original-owners",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "resident",
+        "av-resident",
+        "rt-restore",
+        "coll-restore",
+        "abi-cache"
+      ],
+      "budget_domains": [
+        "a2x-scalar-formal",
+        "a2x-record-text-formal",
+        "a2x-collections-formal",
+        "cte-original-service",
+        "abi-interop-runtime"
+      ],
+      "verification_ids": [
+        "V-08",
+        "V-16"
+      ],
+      "closing_oracle": "Original distinct512 revisions, per-state30 samples/loads, ABI six scenariosx30 and original domain tighter gates remain; P90<=2000ms only where applicable.",
+      "negative_control": "Duplicate revisions, shortened loads, missing/bad results or one warm sample cannot satisfy formal gates.",
+      "required_observations": [
+        "input",
+        "budget",
+        "oracle",
+        "counters"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-08/approved-old-conservation",
+      "arch": "ARCH-08",
+      "owner": "PLAN-908/941",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "q4"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-01",
+        "V-14"
+      ],
+      "closing_oracle": "Original131rows/524cells/313required/134NA/32accepted/45future and all approved input/set hashes remain unchanged.",
+      "negative_control": "New target columns, changed expected/NA or accepted/future painted green must fail.",
+      "required_observations": [
+        "input",
+        "identity",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-08/old38-cert-separation",
+      "arch": "ARCH-08",
+      "owner": "legacy-A2R composite owner; PLAN-941 evidence",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "scalar-cert"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-14"
+      ],
+      "closing_oracle": "Current924 old38 cert-gap guard remains false; new Rust/C/HIR certs cannot discharge old A2R identities.",
+      "negative_control": "Old script exit0, accounting valid or new cert PASS cannot upgrade old claim.",
+      "required_observations": [
+        "input",
+        "identity",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-08/strict-all-fields-and-paths",
+      "arch": "ARCH-08",
+      "owner": "PLAN-941",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "q4"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-02",
+        "V-15"
+      ],
+      "closing_oracle": "Duplicate/missing/unknown fields, wrong enums/types/booleans, overflow/nonfinite/trailing bytes, stale hashes and escaped/reparse/aliased paths refuse before admission.",
+      "negative_control": "Rehashing an invalid payload or echoing PASS cannot create valid evidence.",
+      "required_observations": [
+        "input",
+        "identity",
+        "raw-terminal"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-08/original-execution-terminal",
+      "arch": "ARCH-08",
+      "owner": "PLAN-908/893/941",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "q4"
+      ],
+      "budget_domains": [
+        "fixed-case-suite",
+        "composer"
+      ],
+      "verification_ids": [
+        "V-02",
+        "V-15"
+      ],
+      "closing_oracle": "Actual selection/execution/condition exclusions, nonce/source/worker/config/tool/dependency and Job terminal are bound to original raw producer output.",
+      "negative_control": "Zero selection, cancelled/resource/infra/truncated/no terminal/late output or parent exit0 alone cannot pass.",
+      "required_observations": [
+        "input",
+        "identity",
+        "raw-terminal",
+        "counters"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-08/daily-cert-axis",
+      "arch": "ARCH-08",
+      "owner": "auto-a2x/auto-a2c",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "scalar-cert",
+        "rt-cert",
+        "coll-cert"
+      ],
+      "budget_domains": [
+        "composer",
+        "explicit-cert-941-capture"
+      ],
+      "verification_ids": [
+        "V-12",
+        "V-13"
+      ],
+      "closing_oracle": "Daily emits/current golden/cert checks have zero compiler/link/guest spawn; explicit certs retain independent full actual/reference and tool identities.",
+      "negative_control": "Stale must not implicitly recompile/update golden; missing tool is infra, not language failure.",
+      "required_observations": [
+        "input",
+        "identity",
+        "counters",
+        "raw-terminal",
+        "oracle"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-08/required-and-no-empty",
+      "arch": "ARCH-08",
+      "owner": "PLAN-941",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "q4"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-14",
+        "V-15"
+      ],
+      "closing_oracle": "Every frozen required child/domain is ANDed; preview always ineligible, honest missing/red stays explicit, isolated synthetic controls never enter real collections.",
+      "negative_control": "Deleting any C/D/SQ/CT/ARCH requirement, empty steps or a forged all-green summary cannot pass.",
+      "required_observations": [
+        "input",
+        "identity",
+        "oracle",
+        "raw-terminal"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-08/cost-memory-and-phase",
+      "arch": "ARCH-08",
+      "owner": "PLAN-893/941",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "q4"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-16"
+      ],
+      "closing_oracle": "UTF8 docs/output<=4MiB, total live<=48MiB before allocation, privateDelta<=128MiB, streaming64KiB hashes and original overlap/phase attribution stay bounded.",
+      "negative_control": "Character counts, hidden retained documents, unknown phases=0, double meter or summed overlapping peaks must fail.",
+      "required_observations": [
+        "input",
+        "budget",
+        "counters",
+        "raw-terminal"
+      ],
+      "execution": "UNOBSERVED"
+    },
+    {
+      "id": "ARCH-08/fresh-union-spec-review",
+      "arch": "ARCH-08",
+      "owner": "PLAN-941",
+      "evidence_owner": "PLAN-941",
+      "entries": [
+        "q4",
+        "sq",
+        "inst",
+        "ct",
+        "ct-service",
+        "bridge",
+        "foreign",
+        "foreign-resource"
+      ],
+      "budget_domains": [
+        "composer"
+      ],
+      "verification_ids": [
+        "V-17",
+        "V-18"
+      ],
+      "closing_oracle": "Tracked-only current delivered D identities, complete real union, health/Spec delta and independent revision-bound review distinguish system delivery from M1 claim.",
+      "negative_control": "Ignored local evidence, unapproved deferral, branch-as-D or M1-as-M2 claim cannot pass.",
+      "required_observations": [
+        "input",
+        "identity",
+        "oracle",
+        "publication"
+      ],
+      "execution": "UNOBSERVED"
+    }
+  ],
+  "execution": "UNOBSERVED"
+}

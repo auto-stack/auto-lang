@@ -45,6 +45,19 @@ const STDERR_CAP: usize = 1 << 20;
 const SESSION_WALL: Duration = Duration::from_secs(120);
 const BUILD_WALL: Duration = Duration::from_secs(300);
 
+pub(crate) fn contract_inventory() -> serde_json::Value {
+    serde_json::json!({
+        "source":"crates/auto-lang-core/src/test_cases/ac_mn.rs", "protocol":"mnworker/1",
+        "limits": {
+            "response_bytes":READ_CAP, "stderr_bytes":STDERR_CAP,
+            "default_session_wall_ms":SESSION_WALL.as_millis() as u64,
+            "default_build_wall_ms":BUILD_WALL.as_millis() as u64,
+            "effective_rounds_wall_ms":rounds_wall().as_millis() as u64,
+            "rounds_override":std::env::var("AC_MN_ROUNDS_WALL_SECS").ok(),
+        },
+    })
+}
+
 /// PLAN-914: decode a worker-reported hex stream (`stdout_hex`/`stderr_hex`).
 /// Odd length or a non-hex byte is a real admission mismatch on the stream
 /// face (never a silently skipped comparison).
@@ -205,6 +218,11 @@ mod source_diag {
     const SURFACE_FIELDS: &[&str] = &["profile", "codes"];
     const SPAN_FIELDS: &[&str] = &["start", "end"];
     const PROFILES: &[&str] = &["scalar", "record", "text-record"];
+    /// PLAN-999 (T-03) reception: the native ladder attempts a Core side face
+    /// between the monotone rungs, so "core" may appear in `attempted`. It is
+    /// never the terminating profile (side faces cannot terminate escalation)
+    /// and never lists a surface rejection.
+    const ATTEMPTED_PROFILES: &[&str] = &["scalar", "record", "text-record", "core"];
     const OPERATIONS: &[&str] = &["cold", "warm-edit", "fallback-cold"];
     /// The raw stage vocabulary (Stage::as_str()); only these three can
     /// carry a language-rejection family — anything else is admitted as a
@@ -429,7 +447,7 @@ mod source_diag {
         }
         for a in attempted {
             let a = req_str(a, "source_error.attempted[..]")?;
-            if !PROFILES.contains(&a.as_str()) {
+            if !ATTEMPTED_PROFILES.contains(&a.as_str()) {
                 return Err(format!("source_error.attempted entry {a:?} is unknown"));
             }
         }
@@ -1127,7 +1145,31 @@ fn b64(bytes: &[u8]) -> String {
 /// single absolute deadline over the whole session, tree-killed on
 /// breach. Returns the response line.
 fn call_worker(request: &str) -> Result<String, String> {
+    call_worker_observed(request, None)
+}
+
+fn call_worker_observed(request: &str, artifact_dir: Option<&Path>) -> Result<String, String> {
     let exe = worker_binary_for(request_recipe(request))?;
+    let exchange = match artifact_dir {
+        Some(directory) if super::execution_trace::WorkerExchange::enabled()? => {
+            // Worker routing coalesces several recipes onto one binary; the
+            // evidence identity must retain the exact original request recipe.
+            let request_value: serde_json::Value = serde_json::from_str(request)
+                .map_err(|e| format!("native evidence request: {e}"))?;
+            let evidence_recipe = request_value
+                .get("recipe")
+                .and_then(|v| v.as_str())
+                .ok_or("native evidence request has no recipe")?;
+            super::execution_trace::WorkerExchange::start(
+                directory,
+                MN_WORKER_PROTOCOL,
+                evidence_recipe,
+                &worker_file_sha256(&exe)?,
+                request.as_bytes(),
+            )?
+        }
+        _ => None,
+    };
     let mut cmd = Command::new(&exe);
     cmd.arg("case-run")
         .stdin(Stdio::piped())
@@ -1226,6 +1268,10 @@ fn call_worker(request: &str) -> Result<String, String> {
     let _ = write_t.join();
     let (out_over, out_buf) = out_t.join().map_err(|_| "stdout reader panicked")?;
     let (err_over, err_buf) = err_t.join().map_err(|_| "stderr reader panicked")?;
+    let status = exit_status.unwrap_or_else(|| child.wait().unwrap_or_default());
+    if let Some(exchange) = exchange {
+        exchange.finish(&out_buf, &err_buf, status.code(), None)?;
+    }
     if out_over {
         return Err(format!("mn worker stdout exceeded the {READ_CAP}-byte cap"));
     }
@@ -1235,7 +1281,6 @@ fn call_worker(request: &str) -> Result<String, String> {
             String::from_utf8_lossy(&err_buf)
         ));
     }
-    let status = exit_status.unwrap_or_else(|| child.wait().unwrap_or_default());
     if !status.success() {
         return Err(format!(
             "mn worker exited {:?} (non-zero worker exits are infra, never a verdict); stderr: {:.300}",
@@ -1873,7 +1918,7 @@ pub fn run_check(
         request["request_hash"] = serde_json::json!(request_hash);
 
         let worker_started = Instant::now();
-        let resp_result = call_worker(&request.to_string());
+        let resp_result = call_worker_observed(&request.to_string(), Some(artifact_dir));
         let worker_us = worker_started.elapsed().as_micros() as u64;
 
         let mut counters: Vec<(String, u32)> = Vec::new();

@@ -423,3 +423,11 @@ R02/R05 scenario **ac** 格由 `ok:P924-closures` 关闭：闭包域
 （923 套件 + ace-native 组在 runtime/4 下复验）双父门先绿后回填。av/a2r/
 avm/cert 各格与 corpus 行不变；cert 轴仍 `snapshot-only-cert-gap`，M1 claim
 守卫已显式引用 cert 轴，本交付不签含 C 的新 M1。
+
+## Q4/ARCH 扩大义务与原 313 平行 AND（PLAN-941，SD-02）
+
+- 扩大 Q4/ARCH 固定组与原 313 required 平行进入总门 AND；原 binding 不插第五列、
+  source/expected/NA/分母不为结果修改。共同源域四端身份固定（AC-native/AV/
+  ACE-A2R-HIR/ACE-A2C-HIR）；每对独立 oracle/reference，四端相等不构成通过。
+- 认证分轴：identity/toolchain+daily-emit+certify 为真实操作（292×3 于冻结提交全绿），
+  旧脚本 exit0 或登记 ok 不代实际执行。（AC-01/03/09）

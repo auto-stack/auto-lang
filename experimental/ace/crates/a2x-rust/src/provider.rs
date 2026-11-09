@@ -32,7 +32,9 @@ pub struct RustTargetProvider;
 /// modes and MoveOwn arg transfer change the printed fragment bytes, so
 /// every pre-931 Rust fragment (all three families share this axis) must
 /// miss once and re-lower — never serve the old premature-free shape.
-pub const RUST_PRINT_VERSION: &str = "a2x-print/2";
+/// PLAN-941 F-941-05 bumps 2→3: field writes now mark value roots mutable.
+/// A cached pre-fix fragment must miss even when its semantic facts match.
+pub const RUST_PRINT_VERSION: &str = "a2x-print/3";
 
 impl RustTargetProvider {
     pub fn v1() -> Self {

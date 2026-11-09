@@ -1,12 +1,15 @@
-# ac-av probe: 200-deep paren nesting exceeds the frozen 128 front-door
-# budget -> a PARSE-stage resource rejection BEFORE the frontend (V-09).
+# ac-av probe: 200-deep transparent paren nesting. PLAN-798 froze this as a
+# 128-proxy parse-stage rejection (V-09); PLAN-999 (T-04) removed the obsolete
+# proxy and admitted the shape under the REAL front-door budgets — the wrapped
+# literal executes (the same class as the frozen R-08 cell, repointed here per
+# the delivered oracle: 999 fb0a69788).
 
 ```test-case
 case {
   schema: "autolang.case/2"
   id: "av.core.front-door-nesting"
   tags: ["ac-av", "probe", "resources"]
-  links: ["PLAN-798"]
+  links: ["PLAN-798", "PLAN-999"]
   source: { file: "av/resources/nesting_over_budget.at", syntax: "auto", path: "main.at" }
   entry: { mode: "program" }
   checks: [
@@ -16,7 +19,7 @@ case {
         av: { entry: "d_main" },
         steps: [ { op: "run" } ]
       },
-      expect: { completion: { stage: "parse", code: "av.resource.frontend-nesting" } } }
+      expect: { completion: "success", exit: 1 } }
   ]
 }
 ```

@@ -1,0 +1,4 @@
+fn main() int {
+    let c char = char.from_codepoint(55296)
+    return c.to_codepoint()
+}

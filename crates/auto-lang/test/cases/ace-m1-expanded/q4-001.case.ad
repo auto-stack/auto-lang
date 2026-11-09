@@ -1,0 +1,38 @@
+# PLAN-941 T-02 first slice. Independent arithmetic oracle: leaf(41) = 41 + 1 = 42.
+# Rust/C daily checks prove complete emitted bytes, NOT execution/certification.
+# Reviewed 934 golden bytes are reused unchanged with the identical source/profile.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.expanded.q4-001"
+  tags: ["ace-m1", "expanded", "q4", "plan-941"]
+  links: ["PLAN-941"]
+  source: { file: "src/Q4-001.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "a2r-emit", adapter: "probe", action: "run",
+      options: { recipe: "ac-a2r/hir-scalar-emit-v1", a2x_hir: { profile: "scalar", entry: "main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "golden-a2r/main.rs", compare: "bytes" },
+        { path: "a2x_runtime.rs", file: "golden-a2r/a2x_runtime.rs", compare: "bytes" },
+        { path: "generated.rs", file: "golden-a2r/generated.rs", compare: "bytes" },
+        { path: "manifest.json", file: "golden-a2r/manifest.json", compare: "bytes" }
+      ] } },
+    { id: "a2c-emit", adapter: "probe", action: "run",
+      options: { recipe: "ac-a2c/hir-scalar-emit-v1", a2x_hir: { profile: "scalar", entry: "main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", artifacts: [
+        { path: "main.c", file: "golden-a2c/main.c", compare: "bytes" },
+        { path: "a2x_c_runtime.h", file: "golden-a2c/a2x_c_runtime.h", compare: "bytes" },
+        { path: "generated.c", file: "golden-a2c/generated.c", compare: "bytes" },
+        { path: "manifest.json", file: "golden-a2c/manifest.json", compare: "bytes" }
+      ] } }
+  ]
+}
+```

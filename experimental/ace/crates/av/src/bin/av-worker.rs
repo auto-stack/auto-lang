@@ -2416,7 +2416,7 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                     // first case's oracle is parent-side like the core
                     // recipe. Wide scalars have no source syntax — data
                     // cases are record-source programs with scalar exits.
-                    match ace_av::data_driver::request_data(
+                    match ace_av::data_driver::request_data_staged(
                         Some(&store_dir),
                         "autodown-data-case",
                         &current_source,
@@ -2473,22 +2473,9 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                             }));
                         }
                         Err(e) => {
-                            // Front-door/frontend/lowering rejections are
-                            // PARSE-stage diagnoses (same mapping as the
-                            // core recipe); admission failures (mir
-                            // verify/encode/abc admit) are VERIFY stage.
-                            // Every other failure shape is a request error.
-                            let stage = if e.starts_with("front door")
-                                || e.starts_with("frontend")
-                                || e.starts_with("lower")
-                            {
-                                "frontend"
-                            } else if e.starts_with("mir verify")
-                                || e.starts_with("encode")
-                                || e.starts_with("abc admit")
-                            {
-                                "verify"
-                            } else {
+                            // Classify while the actual typed failure still
+                            // exists. Display prefixes are never authority.
+                            let Some(diag) = e.diagnostic() else {
                                 eprintln!("data pipeline: {e}");
                                 exit(2);
                             };
@@ -2497,7 +2484,7 @@ fn case_request(req: serde_json::Value) -> serde_json::Value {
                                 "outcome": "diag",
                                 "value": null,
                                 "trap": null,
-                                "diag": { "stage": stage, "code": "", "message": e },
+                                "diag": { "stage": diag.stage, "code": diag.code, "message": diag.message },
                                 "source_hash": format!(
                                     "{:016x}",
                                     ace_av_core::contract::fnv1a64(current_source.as_bytes())

@@ -410,7 +410,21 @@ fn cte_resources_request_deadline_fast_control() {
         !out.language_class,
         "deadline is a resource state, never a language verdict"
     );
-    assert!(out.ct_execute >= 1, "execution facts still count");
+    // F-941-07（PLAN-941 r10）：累计deadline可能在进入AV前（前端阶段）或
+    // 实际执行中触发；计数按真实阶段核（counters are trust anchors——
+    // ct_execute 只计到达AV的尝试）：进入执行（av_execute span存在）必
+    // >=1，AV前耗尽（span缺失）恒0——不伪记也不漏记。
+    if out.spans.contains_key("av_execute") {
+        assert!(
+            out.ct_execute >= 1,
+            "execution facts still count once AV ran"
+        );
+    } else {
+        assert_eq!(
+            out.ct_execute, 0,
+            "a deadline expired before AV must not fabricate execution facts"
+        );
+    }
     assert!(elapsed >= std::time::Duration::from_millis(300));
     assert!(
         elapsed < std::time::Duration::from_secs(10),
@@ -424,6 +438,54 @@ fn cte_resources_request_deadline_fast_control() {
     // under the frozen default limit stays green (the 4-call form is
     // the real-10s replay below).
     let mut ok_driver = CteDriver::with_store(root.path(), "dl-ok").unwrap();
+    let ok = ok_driver.query_step(&wall_deck(1), None);
+    assert_eq!(ok.status, StepStatus::Ok);
+    assert_eq!(ok.ct_execute, 1);
+    assert_eq!(
+        ok.values.get("main.ct").map(|v| v.render()).as_deref(),
+        Some(format!("i32:{WALL_BASE}").as_str())
+    );
+}
+
+/// F-941-07（PLAN-941 r10）：AV前耗尽的确定性控制——1ms累计deadline远小于
+/// 该deck的前端耗时（115helper实测百ms级），必在前端阶段触发：无
+/// av_execute span、ct_execute==0、资源族非language态、不发布；同族默认
+/// 限额单call正控随后恢复绿。不依赖调度（不用affinity/竞争线程）。注：超
+/// 早期限落在准备阶段时由deadline看门狗的cancel通道报出（`cte.cancelled`
+/// 同为受控资源族态）；落在project后则由AV前门报`cte.resource.deadline`
+/// ——码别是阶段产物，计数不变量恒定。
+#[test]
+fn cte_resources_request_deadline_before_execution_counts_zero() {
+    let root = tempfile::tempdir().unwrap();
+    let mut d = CteDriver::with_store(root.path(), "dl-pre").unwrap();
+    d.set_request_wall_limit(std::time::Duration::from_millis(1));
+    let out = d.query_step(&wall_deck(4), None);
+    assert_eq!(out.status, StepStatus::Diag);
+    assert!(
+        matches!(
+            out.code.as_deref(),
+            Some("cte.resource.deadline") | Some("cte.cancelled")
+        ),
+        "a pre-AV expiry surfaces a controlled resource-family state, got {:?}",
+        out.code
+    );
+    assert!(
+        !out.language_class,
+        "deadline/cancel is a resource state, never a language verdict"
+    );
+    assert!(
+        !out.spans.contains_key("av_execute"),
+        "a 1ms budget expires on the frontend phase; AV is never entered"
+    );
+    assert_eq!(
+        out.ct_execute, 0,
+        "no execution facts may be counted or fabricated"
+    );
+    assert!(
+        d.last_published_artifact().is_none(),
+        "an aborted request publishes nothing"
+    );
+    let mut ok_driver = CteDriver::with_store(root.path(), "dl-pre-ok").unwrap();
     let ok = ok_driver.query_step(&wall_deck(1), None);
     assert_eq!(ok.status, StepStatus::Ok);
     assert_eq!(ok.ct_execute, 1);

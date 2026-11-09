@@ -166,3 +166,10 @@ required 边和强 digest 保活/准入，旧 target 不可重绑新 source-set�
 bare 旧页按原地址可读不被重写、模块 `sq-module-page/1` 配方（read-versions、
 revision=0）零变化；公开 `QueryHost<ManagedStoreSink>` 同源连续 prepare/commit
 不再 Conflict，宿主 revision 仍单调；跨进程/新句柄按完整键重读成功。
+
+## 恢复事实页的 logical 归属校验（PLAN-941，SD-12）
+
+- restore_verify/restore_bind 与 seed 同样在消费前核当前 package/module/name 推导的
+  logical；同形同名跨域（外域/同形 owner/codec 还原）页 typed 拒。合法页、位置漂移恢复、
+  fresh 等值与 seed solver-disabled 暖命中保持；实际 AV 失败后旧负例族可继续。
+  （F-941-09；AC-02/05/07/18）

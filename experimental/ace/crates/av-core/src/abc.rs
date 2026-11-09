@@ -1404,11 +1404,14 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         .map_err(|e| {
                             AbcDecodeError::fmt_err("abc.encode.foreign-budget", e.to_string())
                         })?;
-                        put_u8(&mut w, if callbacks.is_empty() {
-                            OP_FOREIGN_CALL
-                        } else {
-                            OP_FOREIGN_CALL_CB
-                        });
+                        put_u8(
+                            &mut w,
+                            if callbacks.is_empty() {
+                                OP_FOREIGN_CALL
+                            } else {
+                                OP_FOREIGN_CALL_CB
+                            },
+                        );
                         put_u32(&mut w, *dst);
                         put_u8(&mut w, args.len() as u8);
                         for arg in args {

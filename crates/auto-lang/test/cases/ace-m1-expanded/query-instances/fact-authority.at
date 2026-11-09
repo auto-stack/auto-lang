@@ -1,0 +1,11 @@
+fn leaf(x int) int {
+    let y = x + 1
+    return y
+}
+fn twin(x int) int {
+    let y = x + 1
+    return y
+}
+fn main() int {
+    return leaf(41)
+}

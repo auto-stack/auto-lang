@@ -186,6 +186,15 @@ edition/backend/version/runtime/printer）；外部 rustc 可执行产物的认�
 - 片段生产者六处全部经统一前门桥；925/926 provider/runtime 面零触碰
   （TargetProvider 之后全 SemanticView）。
 
+## Rust 打印配方失效（PLAN-941）
+
+Rust provider 既有 `print_version` 轴从 `a2x-print/2` 升为
+`a2x-print/3`：record 字段写现在为值根生成正确的可变绑定。AXR1/2/3
+共享该打印版本轴；语义层键与独立 C 片段键不因这次修复改变。
+旧 `/2` 缓存仍可存在，但当前 provider 不得命中其中的错误 Rust 片段；
+第一次打开须按新键生产，后续同身份打开可完整命中并保持装配字节。
+不通过删除旧 store、改旧证据或伪造恢复计数取得通过。真实 store
+三代回归包括旧缺陷片段的 rustc E0594、新片段实际值19及再次命中。
 
 ## PLAN-938 增量：foreign reader 恢复/文本输出准入（reviewed）
 

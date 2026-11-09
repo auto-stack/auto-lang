@@ -14,3 +14,13 @@ experimental/ace/**/*.at -text
 experimental/ace/**/*.ad -text
 experimental/ace/**/*.bin -text
 experimental/ace/**/*.json -text
+
+# PLAN-941: copied original contract inputs are byte identities. In particular,
+# scalar CRLF cases must preserve their intentional CRLF bytes in fresh trees.
+crates/auto-lang/test/cases/ace-m1-expanded/scalar-src/*.at -text
+crates/auto-lang/test/cases/ace-m1-expanded/composite-src/*.at -text
+crates/auto-lang/test/cases/ace-m1-expanded/composite-reference/*.c -text
+crates/auto-lang/test/cases/ace-m1-expanded/text-reference/*.c -text
+crates/auto-lang/test/cases/ace-m1-expanded/text-reference/*.rs -text
+crates/auto-lang/test/cases/ace-m1-expanded/cte-reference/*.c -text
+crates/auto-lang/test/cases/ace-m1-expanded/cte-reference/*.rs -text

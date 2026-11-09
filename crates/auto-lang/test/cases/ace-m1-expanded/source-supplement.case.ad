@@ -1,0 +1,61 @@
+# PLAN-941: four original scalar sources missed by the initial open catalog.
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.original-scalar.c01"
+ tags: ["ace-m1", "q4", "original-scalar", "plan-941"]
+ links: ["PLAN-941", "PLAN-921", "PLAN-892"]
+ source: { file: "a2c-hir-scalar-921/src/C01.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 42 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.original-scalar.c02"
+ tags: ["ace-m1", "q4", "original-scalar", "plan-941"]
+ links: ["PLAN-941", "PLAN-921", "PLAN-892"]
+ source: { file: "a2c-hir-scalar-921/src/C02.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: { stage: "run", code: "av.trap.div-overflow" } } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 70 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.original-scalar.c03"
+ tags: ["ace-m1", "q4", "original-scalar", "plan-941"]
+ links: ["PLAN-941", "PLAN-921", "PLAN-892"]
+ source: { file: "a2c-hir-scalar-921/src/C03.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 61 } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 61 } }
+ ]
+}
+```
+
+```test-case
+case {
+ schema: "autolang.case/2"
+ id: "ace.m1.original-scalar.named-01"
+ tags: ["ace-m1", "q4", "original-scalar", "plan-941"]
+ links: ["PLAN-941", "PLAN-921", "PLAN-892"]
+ source: { file: "a2r-hir-892/src/NAMED-01.at", syntax: "auto", path: "main.at" }
+ entry: { mode: "program" }
+ checks: [
+  { id: "av", adapter: "probe", action: "run", options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["hir.test.trace.v1"] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 23, trace: { text: "ba" } } },
+  { id: "ac-native", adapter: "probe", action: "run", options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["hir.test.trace.v1"] }, steps: [{ op: "run" }] }, expect: { completion: "success", exit: 23, stderr: { text: "ba" } } }
+ ]
+}
+```

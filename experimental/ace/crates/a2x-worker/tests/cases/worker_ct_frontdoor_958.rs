@@ -9,7 +9,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 struct Scratch(PathBuf);
 impl Scratch {
     fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
+        let parent = std::env::var_os("AUTO_PLAN_941_CONSUMER_ROOT")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        std::fs::create_dir_all(&parent).unwrap();
+        let path = parent.join(format!(
             "worker-ct-958-{}-{}",
             std::process::id(),
             SystemTime::now()
@@ -342,4 +346,90 @@ fn worker_ct_958_c_rejects_wrong_oracle_and_reference() {
         .as_str()
         .unwrap()
         .contains("a2x.oracle: reference"));
+}
+
+// PLAN-941 F08: actual four-operation admission, with the original CLI
+// protocol boundary (status/detail only; no invented typed diagnosis).
+const OPS_941: &[&str] = &["daily-emit", "daily-emit-c", "certify", "certify-c"];
+fn operations_941() -> impl Iterator<Item = &'static str> {
+    OPS_941
+        .iter()
+        .copied()
+        .filter(|op| cfg!(windows) || *op != "certify-c")
+}
+const HAS_941: &str = "type Pair { x int\ny int }\nfn pick(b bool) int { if b { return 40 }; return 42 }\nfn main() int { return #{ pick(ct_has_field(Pair, \"z\")) } }";
+const USER_FIELD_941: &str =
+    "fn ct_field_count(x int) int { return x+7 }\nfn main() int { return #{ ct_field_count(35) } }";
+const USER_HAS_941: &str =
+    "fn ct_has_field(x int) int { return x+7 }\nfn main() int { return #{ ct_has_field(35) } }";
+
+fn operation_941(op: &str, root: &Path) -> Value {
+    if op.starts_with("certify") {
+        certify_request(&CASES[0], op == "certify-c", root)
+    } else {
+        request(&CASES[0], op, root)
+    }
+}
+
+fn assert_refused_941(request: &Value, root: &Path) {
+    let (result, response) = execute(request, root);
+    assert!(matches!(result.kind, ExitKind::Failure(2)), "{response}");
+    assert_eq!(response["status"], "error");
+    assert!(!response["detail"].as_str().unwrap().is_empty());
+    assert!(
+        !Path::new(request["out_dir"].as_str().unwrap()).exists(),
+        "no emitted or compiled artifact set on refusal"
+    );
+}
+
+#[test]
+fn worker_ct_941_missing_meta_capability_four_operations() {
+    let scratch = Scratch::new();
+    let has = scratch.0.join("has.at");
+    std::fs::write(&has, HAS_941).unwrap();
+    let field_source = request(&CASES[3], "daily-emit", &scratch.0)["source_path"].clone();
+    for op in operations_941() {
+        let mut request = operation_941(op, &scratch.0);
+        request["source_path"] = field_source.clone();
+        request["caps"] = json!(["ac.source.cte.scalar/v1"]);
+        assert_refused_941(&request, &scratch.0);
+        request["source_path"] = json!(has);
+        assert_refused_941(&request, &scratch.0);
+    }
+}
+
+#[test]
+fn worker_ct_941_protected_names_four_operations() {
+    let scratch = Scratch::new();
+    let path = scratch.0.join("user.at");
+    for source in [USER_FIELD_941, USER_HAS_941, "fn ct_field_count<T>(x T) T { return x }\nfn main() int { return #{ ct_field_count(42) } }"] {
+        std::fs::write(&path, source).unwrap();
+        for op in operations_941() {
+            let mut request = operation_941(op, &scratch.0);
+            request["source_path"] = json!(path);
+            request["caps"] = json!(["ac.source.cte.scalar/v1", "cte.meta.fields/v1", "ac.source.instances.scalar/v1"]);
+            assert_refused_941(&request, &scratch.0);
+        }
+    }
+}
+
+#[test]
+fn worker_ct_941_ordinary_same_names_four_operations() {
+    let scratch = Scratch::new();
+    let path = scratch.0.join("user.at");
+    for (index, source) in [USER_FIELD_941, USER_HAS_941].iter().enumerate() {
+        std::fs::write(&path, source).unwrap();
+        for op in operations_941() {
+            let mut request = operation_941(op, &scratch.0);
+            request["source_path"] = json!(path);
+            request["out_dir"] = json!(scratch.0.join(format!("user-{index}-{op}")));
+            let (result, response) = execute(&request, &scratch.0);
+            assert!(matches!(result.kind, ExitKind::Success), "{response}");
+            if op.starts_with("certify") {
+                assert_certified(&CASES[0], op == "certify-c", &request, &response);
+            } else {
+                assert_daily(&request, &response);
+            }
+        }
+    }
 }

@@ -1,0 +1,21 @@
+enum Outer { Wrap(Inner)
+Empty }
+enum Inner { Data(Item)
+End }
+type Item { name Str; code int }
+fn make() Outer { return Outer.Wrap(Inner.Data(Item("中", 41))) }
+fn main() int {
+    var xs = List<Outer>.new()
+    let created = make()
+    xs.push(created.move)
+    let o Outer = xs.remove(0)
+    is o {
+        Outer.Wrap(inner) -> {
+            is inner {
+                Inner.Data(v) -> { return v.name.len() + v.code }
+                Inner.End -> { return 0 }
+            }
+        }
+        Outer.Empty -> { return 0 }
+    }
+}

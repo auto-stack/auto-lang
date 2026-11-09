@@ -2004,6 +2004,1970 @@ impl<'a, 'r> Verifier<'a, 'r> {
         Ok(())
     }
 
+    /// PLAN-961 typed-numeric Bin typing — cold frame (F-941-15): the deep
+    /// verify path must fit the frozen 256 KiB small-stack contract, so the
+    /// numeric-only temporaries live in their own #[inline(never)] frame;
+    /// non-numeric deep chains never pay for them.
+    #[inline(never)]
+    fn check_bin_numeric(
+        &self,
+        f: &MirFunction,
+        op: crate::mir::NumOp,
+        ty: crate::mir::NumTy,
+        dst: SlotId,
+        lhs: SlotId,
+        rhs: SlotId,
+        sp: Option<SpanInfo>,
+    ) -> Result<(), MirVerifyError> {
+        let err = |code: &str, msg: String| MirVerifyError::Invalid {
+            code: code.to_string(),
+            message: msg,
+            span: sp,
+        };
+        if !self.numeric_surface() {
+            return Err(err(
+                "mir.profile-type",
+                "typed numeric operations exist only in the data-family profiles".to_string(),
+            ));
+        }
+        let lt = slot_ty_of(f, lhs, sp, "bin lhs")?;
+        let rt = slot_ty_of(f, rhs, sp, "bin rhs")?;
+        let dt = slot_ty_of(f, dst, sp, "bin dst")?;
+        let want = ty.shape_of();
+        if lt != rt || self.module.type_shape(lt) != Some(want) {
+            return Err(err(
+                "mir.bin-type",
+                format!(
+                    "numeric {:?} on {:?} requires same-type {:?} operands (types {},{})",
+                    op, ty, want, lt, rt
+                ),
+            ));
+        }
+        let dst_shape = self.module.type_shape(dt);
+        let ok = if matches!(
+            op,
+            crate::mir::NumOp::Lt
+                | crate::mir::NumOp::Le
+                | crate::mir::NumOp::Gt
+                | crate::mir::NumOp::Ge
+                | crate::mir::NumOp::Eq
+                | crate::mir::NumOp::Ne
+        ) {
+            dst_shape == Some(ScalarShape::Bool)
+        } else if matches!(
+            op,
+            crate::mir::NumOp::And
+                | crate::mir::NumOp::Or
+                | crate::mir::NumOp::Xor
+                | crate::mir::NumOp::Shl
+                | crate::mir::NumOp::Shr
+        ) && ty.is_float()
+        {
+            false
+        } else {
+            dst_shape == Some(want)
+        };
+        if !ok {
+            return Err(err(
+                "mir.bin-type",
+                format!(
+                    "numeric {:?} on {:?} does not type check for dst type {}",
+                    op, ty, dt
+                ),
+            ));
+        }
+        Ok(())
+    }
+
+    /// F-941-15 cold half A of the per-instruction typing walk (union frame halved; see check_function).
+    #[inline(never)]
+    fn check_instr_typing_a(
+        &mut self,
+        f: &MirFunction,
+        instr: &MirInstr,
+        sp: Option<SpanInfo>,
+    ) -> Result<(), MirVerifyError> {
+        let err = |code: &str, msg: String| MirVerifyError::Invalid {
+            code: code.to_string(),
+            message: msg,
+            span: sp,
+        };
+        let module = self.module;
+        match instr {
+            MirInstr::Const { dst, value } => {
+                let dt = slot_ty_of(f, *dst, sp, "const dst")?;
+                // PLAN-821: Char/Str consts are owned-profile-only
+                // and carry NO ScalarShape — they type against the
+                // slot's MirType directly (below).
+                let owned_const = match self.module.consts.get(*value as usize) {
+                    Some(MirConst::Char(_)) | Some(MirConst::Str(_)) => true,
+                    _ => false,
+                };
+                if owned_const && !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-const",
+                        "char/Str constants exist only in the owned profile".to_string(),
+                    ));
+                }
+                let want_shape = match self.module.consts.get(*value as usize) {
+                    Some(MirConst::I32(_)) => Some(ScalarShape::I32),
+                    Some(MirConst::Bool(_)) => Some(ScalarShape::Bool),
+                    Some(MirConst::I64(_)) => Some(ScalarShape::I64),
+                    Some(MirConst::U64(_)) => Some(ScalarShape::U64),
+                    Some(MirConst::F32Bits(_)) => Some(ScalarShape::F32),
+                    Some(MirConst::F64Bits(_)) => Some(ScalarShape::F64),
+                    // PLAN-961: narrow-integer consts.
+                    Some(MirConst::I8(_)) => Some(ScalarShape::I8),
+                    Some(MirConst::U8(_)) => Some(ScalarShape::U8),
+                    Some(MirConst::U32(_)) => Some(ScalarShape::U32),
+                    Some(MirConst::Char(_)) | Some(MirConst::Str(_)) => None,
+                    None => {
+                        return Err(err(
+                            "mir.const-ref",
+                            format!(
+                                "const instruction references out-of-range constant {}",
+                                value
+                            ),
+                        ))
+                    }
+                };
+                // PLAN-961: wide/narrow numeric constants exist in
+                // every numeric-surface family (the data gate below
+                // keeps the core-i32 profile frozen).
+                if let (Some(shape), false) = (want_shape, self.numeric_surface()) {
+                    if !matches!(shape, ScalarShape::I32 | ScalarShape::Bool) {
+                        return Err(err(
+                            "mir.profile-const",
+                            format!(
+                                "constant of shape {:?} exists only in the data profile",
+                                shape
+                            ),
+                        ));
+                    }
+                }
+                // Shape comparison, not index equality: a wire table
+                // may carry duplicate scalar type entries.
+                if let Some(c) = self.module.consts.get(*value as usize) {
+                    if let Some(want_ty) = match c {
+                        MirConst::Char(_) => Some(MirType::Char),
+                        // A Str const materializes by DESTINATION
+                        // kind: an owned Str slot gets a fresh
+                        // allocation; a StrView slot gets the
+                        // immortal static view (770 literal rule).
+                        MirConst::Str(_) => Some(match self.module.types.get(dt as usize) {
+                            Some(MirType::StrView) => MirType::StrView,
+                            _ => MirType::Str,
+                        }),
+                        _ => None,
+                    } {
+                        if self.module.types.get(dt as usize) != Some(&want_ty) {
+                            return Err(err(
+                                "mir.const-type",
+                                format!(
+                                    "const into slot {} of type {}; constant has another kind",
+                                    dst, dt
+                                ),
+                            ));
+                        }
+                    }
+                }
+                if self.module.type_shape(dt) != want_shape {
+                    return Err(err(
+                        "mir.const-type",
+                        format!(
+                            "const into slot {} of type {}; constant has another shape",
+                            dst, dt
+                        ),
+                    ));
+                }
+            }
+            MirInstr::Copy { dst, src } => {
+                let dt = slot_ty_of(f, *dst, sp, "copy dst")?;
+                let st = slot_ty_of(f, *src, sp, "copy src")?;
+                if !self.ty_equiv(dt, st) {
+                    return Err(err(
+                        "mir.copy-type",
+                        format!("copy from type {} into type {}", st, dt),
+                    ));
+                }
+                // PLAN-821: copying an owned value or a write token
+                // is a borrow of ownership semantics the profile
+                // forbids — explicit CLONE / token transfer only.
+                // A StrView copy is the legal multi-view share.
+                if self.is_owned {
+                    match self.module.types.get(st as usize) {
+                        Some(MirType::Str) | Some(MirType::MutRef) | Some(MirType::Record(_))
+                            if crate::ownership::type_is_owned(self.module, st) =>
+                        {
+                            return Err(err(
+                                "mir.copy-owned",
+                                format!(
+                                    "COPY of owned type {}; use CLONE/MOVE (or the value path)",
+                                    st
+                                ),
+                            ));
+                        }
+                        Some(MirType::MutRef) => {
+                            return Err(err(
+                                "mir.copy-owned",
+                                "COPY of a MutRef token breaks exclusivity".to_string(),
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            MirInstr::Bin { op, dst, lhs, rhs } => {
+                let dt = slot_ty_of(f, *dst, sp, "bin dst")?;
+                let lt = slot_ty_of(f, *lhs, sp, "bin lhs")?;
+                let rt = slot_ty_of(f, *rhs, sp, "bin rhs")?;
+                let shapes = (
+                    self.module.type_shape(dt),
+                    self.module.type_shape(lt),
+                    self.module.type_shape(rt),
+                );
+                // PLAN-961: the typed numeric surface replaces the
+                // PLAN-820 "no wide-scalar arithmetic" gate. The
+                // structural `Num { op, ty }` form requires BOTH
+                // operands to have exactly `ty`'s shape (no implicit
+                // promotion) and dst = ty (or Bool for comparisons);
+                // bit/shift ops are int-only. The legacy `*I32`
+                // subcodes keep their frozen i32-only typing, and
+                // EqI32/NeI32 no longer admit wide/float pairs —
+                // those MUST ride Num{Eq/Ne, ty} (the old admission
+                // let through shapes the interpreter could not
+                // execute; closing that seam is part of this plan).
+                if let BinOp::Num { op: nop, ty } = op {
+                    return self
+                        .check_bin_numeric(f, *nop, *ty, *dst, *lhs, *rhs, sp)
+                        .map(|()| ());
+                } else {
+                    use ScalarShape::*;
+                    let ok = if op.result_is_bool() {
+                        match op {
+                            // Tightened by PLAN-961: the legacy
+                            // equality subcodes admit i32/bool only;
+                            // every other scalar pair rides Num.
+                            BinOp::EqI32 | BinOp::NeI32 => {
+                                shapes.0 == Some(Bool)
+                                    && (shapes.1 == Some(I32) && shapes.2 == Some(I32)
+                                        || shapes.1 == Some(Bool) && shapes.2 == Some(Bool))
+                            }
+                            _ => shapes == (Some(Bool), Some(I32), Some(I32)),
+                        }
+                    } else {
+                        shapes == (Some(I32), Some(I32), Some(I32))
+                    };
+                    if !ok {
+                        return Err(err(
+                            "mir.bin-type",
+                            format!(
+                                "binary {:?} does not type check for dst/lhs/rhs types ({},{},{})",
+                                op, dt, lt, rt
+                            ),
+                        ));
+                    }
+                }
+            }
+            MirInstr::Un { op, dst, operand } => {
+                let dt = slot_ty_of(f, *dst, sp, "un dst")?;
+                let ot = slot_ty_of(f, *operand, sp, "un operand")?;
+                let ok = match op {
+                    UnOp::NegI32 => {
+                        self.module.type_shape(dt) == Some(ScalarShape::I32)
+                            && self.module.type_shape(ot) == Some(ScalarShape::I32)
+                    }
+                    UnOp::NotBool => {
+                        self.module.type_shape(dt) == Some(ScalarShape::Bool)
+                            && self.module.type_shape(ot) == Some(ScalarShape::Bool)
+                    }
+                    // PLAN-961: typed negation — signed or float
+                    // only (unsigned negation is typed away before
+                    // lowering), same shape for operand and result.
+                    UnOp::NegT { ty } => {
+                        self.numeric_surface()
+                            && !matches!(
+                                ty,
+                                crate::mir::NumTy::U8
+                                    | crate::mir::NumTy::U32
+                                    | crate::mir::NumTy::U64
+                                    | crate::mir::NumTy::I32
+                            )
+                            && self.module.type_shape(ot) == Some(ty.shape_of())
+                            && self.module.type_shape(dt) == Some(ty.shape_of())
+                    }
+                };
+                if !ok {
+                    return Err(err(
+                        "mir.un-type",
+                        format!(
+                            "unary {:?} does not type check for types ({},{})",
+                            op, dt, ot
+                        ),
+                    ));
+                }
+            }
+            MirInstr::Conv { dst, src } => {
+                // PLAN-961: the frozen conversion matrix — both
+                // slots numeric, any pair admitted (identity pairs
+                // are pointless but legal); the runtime checks
+                // narrowing/float->int value bounds.
+                let dt = slot_ty_of(f, *dst, sp, "conv dst")?;
+                let st = slot_ty_of(f, *src, sp, "conv src")?;
+                if !self.numeric_surface() {
+                    return Err(err(
+                        "mir.profile-type",
+                        "numeric conversions exist only in the data-family profiles".to_string(),
+                    ));
+                }
+                let ok = matches!(
+                    (self.module.type_shape(dt), self.module.type_shape(st)),
+                    (Some(a), Some(b)) if a.num_ty().is_some() && b.num_ty().is_some()
+                );
+                if !ok {
+                    return Err(err(
+                        "mir.conv-type",
+                        format!("conversion requires numeric slots (types {},{})", st, dt),
+                    ));
+                }
+            }
+            MirInstr::ForeignCall {
+                declaration,
+                dst,
+                args,
+                callbacks,
+            } => {
+                declaration
+                    .validate()
+                    .map_err(|m| err("mir.foreign-contract", m))?;
+                if !self
+                    .module
+                    .capabilities
+                    .iter()
+                    .any(|c| c == ace_foreign_contract::manual::SOURCE_CAP)
+                    || declaration
+                        .capabilities
+                        .iter()
+                        .any(|c| !self.module.capabilities.contains(c))
+                {
+                    return Err(err(
+                        "mir.foreign-capability",
+                        "foreign requirements are missing".into(),
+                    ));
+                }
+                let matches_lane = |ty: u32, lane: ace_foreign_contract::LaneKind| match (
+                    self.module.types.get(ty as usize),
+                    lane,
+                ) {
+                    (Some(MirType::I32), ace_foreign_contract::LaneKind::I32)
+                    | (Some(MirType::Bool), ace_foreign_contract::LaneKind::Bool) => true,
+                    _ => false,
+                };
+                // PLAN-939 S06: every Callback lane carries EXACTLY
+                // ONE named target (a reviewed identifier naming a
+                // free source fn; the backend emits the static
+                // trampoline); its args slot is a placeholder that
+                // no reader may consume.
+                let res_params = declaration
+                    .resource()
+                    .map(|r| r.params.as_slice())
+                    .unwrap_or_default();
+                {
+                    let mut seen = std::collections::BTreeSet::new();
+                    for (lane, name) in callbacks {
+                        if (*lane as usize) >= res_params.len()
+                            || !seen.insert(*lane)
+                            || !matches!(
+                                res_params[*lane as usize],
+                                ace_foreign_contract::resource::ResKind::Callback { .. }
+                            )
+                            || name.is_empty()
+                            || name.len() > 64
+                            || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                        {
+                            return Err(err(
+                                "mir.foreign-callback",
+                                "callback lane target is outside the reviewed surface".into(),
+                            ));
+                        }
+                    }
+                    let want = res_params
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, p)| {
+                            matches!(p, ace_foreign_contract::resource::ResKind::Callback { .. })
+                        })
+                        .count();
+                    if callbacks.len() != want {
+                        return Err(err(
+                            "mir.foreign-callback",
+                            "every callback lane needs exactly one named target".into(),
+                        ));
+                    }
+                }
+                if args.len() != declaration.arity() {
+                    return Err(err(
+                        "mir.foreign-arity",
+                        "foreign argument count mismatch".into(),
+                    ));
+                }
+                for (arg, lane) in args.iter().zip(declaration.params()) {
+                    let ty = slot_ty_of(f, *arg, sp, "foreign arg")?;
+                    if !matches_lane(ty, *lane) {
+                        return Err(err(
+                            "mir.foreign-type",
+                            "foreign argument logical type mismatch".into(),
+                        ));
+                    }
+                }
+                let ty = slot_ty_of(f, *dst, sp, "foreign dst")?;
+                if !matches_lane(ty, declaration.result()) {
+                    return Err(err(
+                        "mir.foreign-type",
+                        "foreign result logical type mismatch".into(),
+                    ));
+                }
+            }
+            MirInstr::Call { callee, dst, args } => {
+                let dt = slot_ty_of(f, *dst, sp, "call dst")?;
+                let callee_sig: &FnSig = match callee {
+                    CalleeRef::Func(idx) => {
+                        if self.module.is_unit {
+                            return Err(err(
+                                "mir.unit-callee",
+                                "a unit must address callees through imports".to_string(),
+                            ));
+                        }
+                        // PLAN-823: a closure body executes ONLY with
+                        // an env binding — a direct call can never
+                        // provide one.
+                        if self.closure_bodies.contains(idx) {
+                            return Err(err(
+                                "mir.closure.body-direct-call",
+                                format!(
+                                    "direct call targets function #{} which is a \
+                                             closure body (reachable only through CALL_CLOSURE)",
+                                    idx
+                                ),
+                            ));
+                        }
+                        match module.funcs.get(*idx as usize) {
+                            Some(target) => match module.sig_of(target.sig) {
+                                Some(s) => s,
+                                None => {
+                                    return Err(err(
+                                        "mir.callee-sig",
+                                        format!("callee #{} has no function type", idx),
+                                    ))
+                                }
+                            },
+                            None => {
+                                return Err(err(
+                                    "mir.callee-ref",
+                                    format!("call references out-of-range function {}", idx),
+                                ))
+                            }
+                        }
+                    }
+                    CalleeRef::Import(idx) => match module.imports.get(*idx as usize) {
+                        Some(imp) => match module.sig_of(imp.sig) {
+                            Some(s) => s,
+                            None => {
+                                return Err(err(
+                                    "mir.import-sig",
+                                    format!("import #{} has no function type", idx),
+                                ))
+                            }
+                        },
+                        None => {
+                            return Err(err(
+                                "mir.import-ref",
+                                format!("call references out-of-range import {}", idx),
+                            ))
+                        }
+                    },
+                };
+                if callee_sig.params.len() != args.len() {
+                    return Err(err(
+                        "mir.call-arity",
+                        format!(
+                            "call passes {} args, callee signature takes {}",
+                            args.len(),
+                            callee_sig.params.len()
+                        ),
+                    ));
+                }
+                for (ai, (a, want)) in args.iter().zip(callee_sig.params.iter()).enumerate() {
+                    let at = slot_ty_of(f, *a, sp, &format!("call arg #{}", ai))?;
+                    // R1-F08 borrowing coercion: an owned record arg
+                    // satisfies a RecordView (borrowed) param — one
+                    // way only (a view never satisfies an owned
+                    // param; .move semantics stay explicit).
+                    let borrow_ok = matches!(
+                        (
+                            self.module.types.get(at as usize),
+                            self.module.types.get(*want as usize),
+                        ),
+                        (
+                            Some(MirType::Record(ra)),
+                            Some(MirType::RecordView(rw)),
+                        ) if ra == rw
+                    );
+                    if !self.ty_equiv(at, *want) && !borrow_ok {
+                        return Err(err(
+                            "mir.call-arg-type",
+                            format!("call arg #{} has type {}, signature wants {}", ai, at, want),
+                        ));
+                    }
+                }
+                // R2-F08': a mut-param callee returns the t_MutRet
+                // wrapper — the call dst legitimately holds the
+                // WRAPPER (the adapter unwraps right after).
+                let dst_is_wrapper = (|| {
+                    matches!(
+                        self.module.types.get(callee_sig.result as usize),
+                        Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_")
+                    )
+                })();
+                if !self.ty_equiv(dt, callee_sig.result) && !dst_is_wrapper {
+                    return Err(err(
+                        "mir.call-result-type",
+                        format!(
+                            "call dst has type {}, callee returns {}",
+                            dt, callee_sig.result
+                        ),
+                    ));
+                }
+            }
+            // PLAN-960: global cells are checked against the module's
+            // global table (index range + slot type == cell type).
+            MirInstr::GlobalGet { dst, global } => {
+                // The decoded-unit path carries no global table (cells
+                // are program-scoped at link, never on the wire): the
+                // range/type check runs when the table is present and
+                // the executor guards the decoded case.
+                if !self.module.globals.is_empty() {
+                    let g = self.module.globals.get(*global as usize).ok_or_else(|| {
+                        err("global.reference", "global index out of range".into())
+                    })?;
+                    let dst_ty = slot_ty_of(f, *dst, sp, "global dst")?;
+                    if !self.ty_equiv(dst_ty, g.ty) {
+                        return Err(err(
+                            "global.type",
+                            "global read into a slot of another type".into(),
+                        ));
+                    }
+                }
+            }
+            MirInstr::GlobalSet { dst, global, src } => {
+                if !self.module.globals.is_empty() {
+                    let g = self.module.globals.get(*global as usize).ok_or_else(|| {
+                        err("global.reference", "global index out of range".into())
+                    })?;
+                    let src_ty = slot_ty_of(f, *src, sp, "global src")?;
+                    if !self.ty_equiv(src_ty, g.ty) {
+                        return Err(err(
+                            "global.type",
+                            "global write from a slot of another type".into(),
+                        ));
+                    }
+                }
+                let _ = dst;
+            }
+            MirInstr::HostCall { host, arg } => {
+                if !self.module.is_host_console_profile() {
+                    return Err(err("host.profile", "host call in a legacy profile".into()));
+                }
+                let h = self
+                    .module
+                    .host_imports
+                    .get(*host as usize)
+                    .ok_or_else(|| err("host.reference", "host index out of range".into()))?;
+                let sig = self
+                    .module
+                    .sig_of(h.sig)
+                    .ok_or_else(|| err("host.signature", "invalid host signature".into()))?;
+                let at = slot_ty_of(f, *arg, sp, "host arg")?;
+                if !self.ty_equiv(at, sig.params[0]) {
+                    return Err(err("host.signature", "host operand type mismatch".into()));
+                }
+            }
+            MirInstr::Trace { .. } => {}
+            MirInstr::FieldGet { dst, base, path } => {
+                if !self.is_data && !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "FIELD_GET exists only in the data/owned profiles".to_string(),
+                    ));
+                }
+                self.check_field_path(f, *base, path, sp, "field-get")?;
+                let dt = slot_ty_of(f, *dst, sp, "field-get dst")?;
+                let bt = slot_ty_of(f, *base, sp, "field-get base")?;
+                let Some((final_ty, _owner)) = self.module.resolve_field_path(bt, path) else {
+                    return Err(err(
+                        "mir.field-path",
+                        format!(
+                            "field path {:?} does not resolve from base type {}",
+                            path, bt
+                        ),
+                    ));
+                };
+                if self.is_owned {
+                    // PLAN-821: a Str field read is a BORROW VIEW
+                    // rooted at the base place (782: 字段读取=视图);
+                    // a resource-record field never implicitly
+                    // copies its owner out.
+                    match self.module.types.get(final_ty as usize) {
+                        Some(MirType::Str) => {
+                            if !matches!(self.module.types.get(dt as usize), Some(MirType::StrView))
+                            {
+                                return Err(err(
+                                            "mir.field-type",
+                                            format!(
+                                                "field-get of a Str field must land in a StrView slot (dst {})",
+                                                dt
+                                            ),
+                                        ));
+                            }
+                        }
+                        Some(t) if crate::ownership::type_is_owned(self.module, final_ty) => {
+                            let _ = t;
+                            return Err(err(
+                                        "mir.ownership-required",
+                                        format!(
+                                            "field-get of resource-record field type {} never copies the owner (views only)",
+                                            final_ty
+                                        ),
+                                    ));
+                        }
+                        _ => {
+                            if !self.ty_equiv(dt, final_ty) {
+                                return Err(err(
+                                    "mir.field-type",
+                                    format!(
+                                        "field-get dst type {} does not match path final type {}",
+                                        dt, final_ty
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                } else if !self.ty_equiv(dt, final_ty) {
+                    return Err(err(
+                        "mir.field-type",
+                        format!(
+                            "field-get dst type {} does not match path final type {}",
+                            dt, final_ty
+                        ),
+                    ));
+                }
+            }
+            MirInstr::FieldSet { root, path, value } => {
+                if !self.is_data && !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "FIELD_SET exists only in the data/owned profiles".to_string(),
+                    ));
+                }
+                self.check_field_path(f, *root, path, sp, "field-set")?;
+                let rt_slot = slot_ty_of(f, *root, sp, "field-set root")?;
+                let Some((final_ty, _owner)) = self.module.resolve_field_path(rt_slot, path) else {
+                    return Err(err(
+                        "mir.field-path",
+                        format!(
+                            "field path {:?} does not resolve from root type {}",
+                            path, rt_slot
+                        ),
+                    ));
+                };
+                let vt = slot_ty_of(f, *value, sp, "field-set value")?;
+                if !self.ty_equiv(vt, final_ty) {
+                    return Err(err(
+                        "mir.field-type",
+                        format!(
+                            "field-set value type {} does not match path final type {}",
+                            vt, final_ty
+                        ),
+                    ));
+                }
+                // The root must be a place the frame owns across the
+                // write: a named local or a param (temps are lowered
+                // away by the adapter; a hand-made unit writing a
+                // temp root is legal-by-shape but pointless — still
+                // admitted, the rebuild is well-defined).
+            }
+            MirInstr::Aggregate {
+                dst,
+                record_ty,
+                operands,
+            } => {
+                if !self.is_data && !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "AGGREGATE exists only in the data/owned profiles".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "aggregate dst")?;
+                let want_fields = match self.module.types.get(*record_ty as usize) {
+                    Some(MirType::Record(r)) => r,
+                    _ => {
+                        return Err(err(
+                            "mir.aggregate-type",
+                            format!("aggregate references non-record type {}", record_ty),
+                        ))
+                    }
+                };
+                if !self.ty_equiv(dt, *record_ty) {
+                    return Err(err(
+                        "mir.aggregate-type",
+                        format!(
+                            "aggregate dst type {} does not match record type {}",
+                            dt, record_ty
+                        ),
+                    ));
+                }
+                if operands.len() != want_fields.fields.len() {
+                    return Err(err(
+                        "mir.aggregate-arity",
+                        format!(
+                            "aggregate passes {} operands, record declares {} fields",
+                            operands.len(),
+                            want_fields.fields.len()
+                        ),
+                    ));
+                }
+                for (fi_, (op_slot, field)) in
+                    operands.iter().zip(want_fields.fields.iter()).enumerate()
+                {
+                    let ot = slot_ty_of(f, *op_slot, sp, &format!("aggregate operand #{}", fi_))?;
+                    if self.is_owned
+                        && matches!(
+                            self.module.types.get(ot as usize),
+                            Some(MirType::StrView) | Some(MirType::MutRef)
+                        )
+                    {
+                        return Err(err(
+                            "mir.type-op",
+                            format!(
+                                "aggregate operand #{} is a borrow kind; fields own their values",
+                                fi_
+                            ),
+                        ));
+                    }
+                    if !self.ty_equiv(ot, field.ty) {
+                        return Err(err(
+                            "mir.aggregate-field-type",
+                            format!(
+                                "aggregate operand #{} has type {}, field `{}` wants {}",
+                                fi_, ot, field.name, field.ty
+                            ),
+                        ));
+                    }
+                }
+            }
+            // -- PLAN-821 owned surface (av.owned/1) -------------------
+            MirInstr::Clone { dst, src } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "CLONE exists only in the owned profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "clone dst")?;
+                let st = slot_ty_of(f, *src, sp, "clone src")?;
+                if !self.ty_equiv(dt, st) {
+                    return Err(err(
+                        "mir.clone-type",
+                        format!("clone from type {} into type {}", st, dt),
+                    ));
+                }
+                // Clone is the EXPLICIT deep copy of owned data;
+                // cloning a copyable is a plain COPY. PLAN-823: a
+                // Closure is deep-cloneable too (the env's fields
+                // deep-clone under a fresh store handle).
+                let is_closure_ty = matches!(
+                    self.module.types.get(st as usize),
+                    Some(MirType::Closure(_))
+                );
+                if !is_closure_ty && !crate::ownership::type_is_owned(self.module, st) {
+                    return Err(err(
+                        "mir.ownership-required",
+                        format!("CLONE of copyable type {} (use COPY)", st),
+                    ));
+                }
+            }
+            MirInstr::Move { dst, src } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "MOVE exists only in the owned profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "move dst")?;
+                let st = slot_ty_of(f, *src, sp, "move src")?;
+                if !self.ty_equiv(dt, st) {
+                    return Err(err(
+                        "mir.move-type",
+                        format!("move from type {} into type {}", st, dt),
+                    ));
+                }
+                if !crate::ownership::type_is_owned(self.module, st) {
+                    return Err(err(
+                        "mir.ownership-required",
+                        format!(
+                            "MOVE of copyable type {} (ownership transfer is for owned data)",
+                            st
+                        ),
+                    ));
+                }
+            }
+            MirInstr::View { dst, src } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "VIEW exists only in the owned profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "view dst")?;
+                let st = slot_ty_of(f, *src, sp, "view src")?;
+                if !matches!(self.module.types.get(st as usize), Some(MirType::Str)) {
+                    return Err(err(
+                        "mir.type-op",
+                        format!("VIEW source type {} is not an owned Str slot", st),
+                    ));
+                }
+                if !matches!(self.module.types.get(dt as usize), Some(MirType::StrView)) {
+                    return Err(err(
+                        "mir.type-op",
+                        format!("VIEW destination type {} is not StrView", dt),
+                    ));
+                }
+            }
+            MirInstr::MutRef { dst, src } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "MUTREF exists only in the owned profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "mutref dst")?;
+                let st = slot_ty_of(f, *src, sp, "mutref src")?;
+                if !matches!(self.module.types.get(dt as usize), Some(MirType::MutRef)) {
+                    return Err(err(
+                        "mir.type-op",
+                        format!("MUTREF destination type {} is not MutRef", dt),
+                    ));
+                }
+                if !crate::ownership::type_is_rootable(self.module, st) {
+                    return Err(err(
+                        "mir.type-op",
+                        format!(
+                            "MUTREF source type {} is not an ownable root (Str / resource record)",
+                            st
+                        ),
+                    ));
+                }
+            }
+            MirInstr::Drop { slot } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "DROP exists only in the owned profile".to_string(),
+                    ));
+                }
+                let st = slot_ty_of(f, *slot, sp, "drop slot")?;
+                // PLAN-823: a Closure slot drops too — the release
+                // path is the env-store release (its fields own the
+                // resources).
+                let is_closure_ty = matches!(
+                    self.module.types.get(st as usize),
+                    Some(MirType::Closure(_))
+                );
+                if !is_closure_ty && !crate::ownership::type_is_owned(self.module, st) {
+                    return Err(err(
+                        "mir.type-op",
+                        format!(
+                            "DROP of type {} (only owned Str / resource records drop)",
+                            st
+                        ),
+                    ));
+                }
+            }
+            MirInstr::FieldMove { dst, root, path } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "FIELDMOVE exists only in the owned profile".to_string(),
+                    ));
+                }
+                self.check_field_path(f, *root, path, sp, "field-move")?;
+                let dt = slot_ty_of(f, *dst, sp, "field-move dst")?;
+                let rt = slot_ty_of(f, *root, sp, "field-move root")?;
+                let Some((final_ty, _owner)) = self.module.resolve_field_path(rt, path) else {
+                    return Err(err(
+                        "mir.field-path",
+                        format!(
+                            "field path {:?} does not resolve from root type {}",
+                            path, rt
+                        ),
+                    ));
+                };
+                // The extracted field must be OWNED (a resource
+                // record — Str fields ride FIELD_GET views; the
+                // write-back wrapper only carries records).
+                if !crate::ownership::type_is_owned(self.module, final_ty) {
+                    return Err(err(
+                        "mir.ownership-required",
+                        format!(
+                            "field-move of non-owned field type {} (use FIELD_GET)",
+                            final_ty
+                        ),
+                    ));
+                }
+                if !self.ty_equiv(dt, final_ty) {
+                    return Err(err(
+                        "mir.field-type",
+                        format!("field-move dst {} != field type {}", dt, final_ty),
+                    ));
+                }
+            }
+            // -- PLAN-822 collections surface (typing arms) --------
+            MirInstr::ListNew { dst, list_ty, cap } => {
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "LIST_NEW exists only in the collections profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "list-new dst")?;
+                if !self.ty_equiv(dt, *list_ty) {
+                    return Err(err(
+                        "mir.list-type",
+                        format!("list-new dst {} != declared list type {}", dt, list_ty),
+                    ));
+                }
+                if !matches!(
+                    self.module.types.get(*list_ty as usize),
+                    Some(MirType::List(_))
+                ) {
+                    return Err(err(
+                        "mir.list-type",
+                        format!("list-new type {} is not a List type", list_ty),
+                    ));
+                }
+                if *cap as usize > crate::contract::MAX_LIST_ELEMS {
+                    return Err(MirVerifyError::Resource {
+                        kind: ResourceKind::ListElems,
+                        message: format!(
+                            "list-new capacity {} above the frozen guard {}",
+                            cap,
+                            crate::contract::MAX_LIST_ELEMS
+                        ),
+                    });
+                }
+            }
+            MirInstr::ListLen { dst, src } | MirInstr::ListCap { dst, src } => {
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "LIST_LEN/LIST_CAP exist only in the collections profile".to_string(),
+                    ));
+                }
+                let st = slot_ty_of(f, *src, sp, "list-op source")?;
+                if !matches!(self.module.types.get(st as usize), Some(MirType::List(_))) {
+                    return Err(err(
+                        "mir.list-type",
+                        format!("slot type {} is not a List", st),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "list-op dst")?;
+                if !matches!(self.module.types.get(dt as usize), Some(MirType::I32)) {
+                    return Err(err(
+                        "mir.list-type",
+                        format!("list-op dst {} is not i32", dt),
+                    ));
+                }
+            }
+            MirInstr::ListGet { dst, base, index } => {
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "LIST_GET exists only in the collections profile".to_string(),
+                    ));
+                }
+                let elem = self.list_elem_of(f, *base, sp)?;
+                self.check_list_index_slot(f, *index, sp)?;
+                let dt = slot_ty_of(f, *dst, sp, "list-get dst")?;
+                if !self.ty_equiv(dt, elem) {
+                    return Err(err(
+                        "mir.list-type",
+                        format!("list-get dst {} != element type {}", dt, elem),
+                    ));
+                }
+                if crate::ownership::type_is_owned(self.module, elem) {
+                    return Err(err(
+                        "mir.list-type",
+                        format!(
+                            "list-get of owned element type {} (use LIST_REMOVE / LIST_FIELD_*)",
+                            elem
+                        ),
+                    ));
+                }
+            }
+            MirInstr::ListPush { root, value } => {
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "LIST_PUSH exists only in the collections profile".to_string(),
+                    ));
+                }
+                let elem = self.list_elem_of(f, *root, sp)?;
+                let vt = slot_ty_of(f, *value, sp, "list-push value")?;
+                if !self.ty_equiv(vt, elem) {
+                    return Err(err(
+                        "mir.list-type",
+                        format!("list-push value {} != element type {}", vt, elem),
+                    ));
+                }
+            }
+            MirInstr::ListInsert { root, index, value }
+            | MirInstr::ListSet { root, index, value } => {
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "LIST_INSERT/LIST_SET exist only in the collections profile".to_string(),
+                    ));
+                }
+                let elem = self.list_elem_of(f, *root, sp)?;
+                self.check_list_index_slot(f, *index, sp)?;
+                let vt = slot_ty_of(f, *value, sp, "list-op value")?;
+                if !self.ty_equiv(vt, elem) {
+                    return Err(err(
+                        "mir.list-type",
+                        format!("list-op value {} != element type {}", vt, elem),
+                    ));
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// F-941-15 cold half B of the per-instruction typing walk (union frame halved; see check_function).
+    #[inline(never)]
+    fn check_instr_typing_b(
+        &mut self,
+        f: &MirFunction,
+        instr: &MirInstr,
+        sp: Option<SpanInfo>,
+    ) -> Result<(), MirVerifyError> {
+        let err = |code: &str, msg: String| MirVerifyError::Invalid {
+            code: code.to_string(),
+            message: msg,
+            span: sp,
+        };
+        let module = self.module;
+        match instr {
+            MirInstr::ListRemove { dst, root, index } => {
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "LIST_REMOVE exists only in the collections profile".to_string(),
+                    ));
+                }
+                let elem = self.list_elem_of(f, *root, sp)?;
+                self.check_list_index_slot(f, *index, sp)?;
+                let dt = slot_ty_of(f, *dst, sp, "list-remove dst")?;
+                if !self.ty_equiv(dt, elem) {
+                    return Err(err(
+                        "mir.list-type",
+                        format!("list-remove dst {} != element type {}", dt, elem),
+                    ));
+                }
+            }
+            MirInstr::ListFieldGet {
+                dst,
+                base,
+                index,
+                path,
+            } => {
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "LIST_FIELD_GET exists only in the collections profile".to_string(),
+                    ));
+                }
+                let elem = self.list_elem_of(f, *base, sp)?;
+                self.check_list_index_slot(f, *index, sp)?;
+                let Some((final_ty, _owner)) = self.module.resolve_field_path(elem, path) else {
+                    return Err(err(
+                        "mir.field-path",
+                        format!(
+                            "field path {:?} does not resolve from element type {}",
+                            path, elem
+                        ),
+                    ));
+                };
+                let dt = slot_ty_of(f, *dst, sp, "list-field-get dst")?;
+                if !self.ty_equiv(dt, final_ty) {
+                    return Err(err(
+                        "mir.field-type",
+                        format!("list-field-get dst {} != field type {}", dt, final_ty),
+                    ));
+                }
+                if crate::ownership::type_is_owned(self.module, final_ty) {
+                    return Err(err(
+                                "mir.field-type",
+                                format!(
+                                    "list-field-get of owned field type {} (fields ride records; use LIST_REMOVE first)",
+                                    final_ty
+                                ),
+                            ));
+                }
+            }
+            MirInstr::ListFieldSet {
+                root,
+                index,
+                path,
+                value,
+            } => {
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "LIST_FIELD_SET exists only in the collections profile".to_string(),
+                    ));
+                }
+                let elem = self.list_elem_of(f, *root, sp)?;
+                self.check_list_index_slot(f, *index, sp)?;
+                let Some((final_ty, _owner)) = self.module.resolve_field_path(elem, path) else {
+                    return Err(err(
+                        "mir.field-path",
+                        format!(
+                            "field path {:?} does not resolve from element type {}",
+                            path, elem
+                        ),
+                    ));
+                };
+                let vt = slot_ty_of(f, *value, sp, "list-field-set value")?;
+                if !self.ty_equiv(vt, final_ty) {
+                    return Err(err(
+                        "mir.field-type",
+                        format!("list-field-set value {} != field type {}", vt, final_ty),
+                    ));
+                }
+            }
+            MirInstr::VariantPack {
+                dst,
+                variant_ty,
+                disc,
+                payload,
+            } => {
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "VARIANT_PACK exists only in the collections profile".to_string(),
+                    ));
+                }
+                let vt = slot_ty_of(f, *dst, sp, "variant-pack dst")?;
+                if !self.ty_equiv(vt, *variant_ty) {
+                    return Err(err(
+                        "mir.variant-type",
+                        format!(
+                            "variant-pack dst {} != declared variant type {}",
+                            vt, variant_ty
+                        ),
+                    ));
+                }
+                self.check_variant_arm(f, *variant_ty, *disc, payload.as_ref(), sp)?;
+            }
+            MirInstr::VariantDisc { dst, src } => {
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "VARIANT_DISC exists only in the collections profile".to_string(),
+                    ));
+                }
+                let st = slot_ty_of(f, *src, sp, "variant source")?;
+                if !matches!(
+                    self.module.types.get(st as usize),
+                    Some(MirType::Variant(_))
+                ) {
+                    return Err(err(
+                        "mir.variant-type",
+                        format!("slot type {} is not a Variant", st),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "variant-disc dst")?;
+                if !matches!(self.module.types.get(dt as usize), Some(MirType::I32)) {
+                    return Err(err(
+                        "mir.variant-type",
+                        format!("variant-disc dst {} is not i32", dt),
+                    ));
+                }
+            }
+            MirInstr::VariantGuard { dst, src, disc } => {
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "VARIANT_GUARD exists only in the collections profile".to_string(),
+                    ));
+                }
+                let st = slot_ty_of(f, *src, sp, "variant source")?;
+                let Some(MirType::Variant(v)) = self.module.types.get(st as usize) else {
+                    return Err(err(
+                        "mir.variant-type",
+                        format!("slot type {} is not a Variant", st),
+                    ));
+                };
+                if *disc as usize >= v.arms.len() {
+                    return Err(err(
+                        "mir.variant.arm-mismatch",
+                        format!("guard discriminant {} out of range", disc),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "variant-guard dst")?;
+                if !matches!(self.module.types.get(dt as usize), Some(MirType::Bool)) {
+                    return Err(err(
+                        "mir.variant-type",
+                        format!("variant-guard dst {} is not bool", dt),
+                    ));
+                }
+            }
+            MirInstr::VariantProject { dst, root, disc } => {
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "VARIANT_PROJECT exists only in the collections profile".to_string(),
+                    ));
+                }
+                let rt = slot_ty_of(f, *root, sp, "variant root")?;
+                let Some(MirType::Variant(v)) = self.module.types.get(rt as usize) else {
+                    return Err(err(
+                        "mir.variant-type",
+                        format!("slot type {} is not a Variant", rt),
+                    ));
+                };
+                let Some(arm) = v.arms.get(*disc as usize) else {
+                    return Err(err(
+                        "mir.variant.arm-mismatch",
+                        format!("project discriminant {} out of range", disc),
+                    ));
+                };
+                let Some(pt) = arm.payload else {
+                    return Err(err(
+                        "mir.variant.arm-mismatch",
+                        format!("project of no-payload arm {}", disc),
+                    ));
+                };
+                let dt = slot_ty_of(f, *dst, sp, "variant-project dst")?;
+                if !self.ty_equiv(dt, pt) {
+                    return Err(err(
+                        "mir.variant-type",
+                        format!("variant-project dst {} != payload type {}", dt, pt),
+                    ));
+                }
+            }
+            MirInstr::VariantSwitch {
+                root,
+                disc,
+                payload,
+            } => {
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "VARIANT_SWITCH exists only in the collections profile".to_string(),
+                    ));
+                }
+                let rt = slot_ty_of(f, *root, sp, "variant root")?;
+                if !matches!(
+                    self.module.types.get(rt as usize),
+                    Some(MirType::Variant(_))
+                ) {
+                    return Err(err(
+                        "mir.variant-type",
+                        format!("slot type {} is not a Variant", rt),
+                    ));
+                }
+                self.check_variant_arm(f, rt, *disc, payload.as_ref(), sp)?;
+            }
+            // -- PLAN-822 R2 index-place surface (typing arms) -----
+            MirInstr::ListPlace { dst, base, index } => {
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "LIST_PLACE exists only in the collections profile".to_string(),
+                    ));
+                }
+                // F822-R3-01: the referent element type BINDS at
+                // the mint — dst must be Place{elem == base's
+                // element}. A Place over a different element is a
+                // typed-admission rejection.
+                let elem = self.list_elem_of(f, *base, sp)?;
+                self.check_list_index_slot(f, *index, sp)?;
+                let dt = slot_ty_of(f, *dst, sp, "list-place dst")?;
+                match self.module.types.get(dt as usize) {
+                    Some(MirType::Place(want)) => {
+                        if want.elem != elem {
+                            return Err(err(
+                                        "mir.list-type",
+                                        format!(
+                                            "list-place dst Place refers to element {}, but the base list holds {}",
+                                            want.elem, elem
+                                        ),
+                                    ));
+                        }
+                    }
+                    _ => {
+                        return Err(err(
+                            "mir.list-type",
+                            format!("list-place dst {} is not a Place type", dt),
+                        ))
+                    }
+                }
+            }
+            MirInstr::PlaceGet { dst, src } => {
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "PLACE_GET exists only in the collections profile".to_string(),
+                    ));
+                }
+                let st = slot_ty_of(f, *src, sp, "place source")?;
+                let elem = match self.module.types.get(st as usize) {
+                    Some(MirType::Place(want)) => want.elem,
+                    _ => {
+                        return Err(err(
+                            "mir.list-type",
+                            format!("place-get source {} is not a Place type", st),
+                        ))
+                    }
+                };
+                // F822-R3-01: the destination must BE the bound
+                // element type — a bool destination over a
+                // List<i32> place is rejected at typing.
+                let dt = slot_ty_of(f, *dst, sp, "place-get dst")?;
+                if !self.ty_equiv(dt, elem) {
+                    return Err(err(
+                        "mir.list-type",
+                        format!(
+                            "place-get dst {} != the place's bound element type {}",
+                            dt, elem
+                        ),
+                    ));
+                }
+                if crate::ownership::type_is_owned(self.module, elem) {
+                    return Err(err(
+                                "mir.list-type",
+                                format!(
+                                    "place-get of owned element type {} (places read Copy elements; use LIST_REMOVE)",
+                                    elem
+                                ),
+                            ));
+                }
+            }
+            MirInstr::PlaceSet { place, value } => {
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "PLACE_SET exists only in the collections profile".to_string(),
+                    ));
+                }
+                let st = slot_ty_of(f, *place, sp, "place source")?;
+                let elem = match self.module.types.get(st as usize) {
+                    Some(MirType::Place(want)) => want.elem,
+                    _ => {
+                        return Err(err(
+                            "mir.list-type",
+                            format!("place-set source {} is not a Place type", st),
+                        ))
+                    }
+                };
+                // F822-R3-01: the value must BE the bound element
+                // type — writing a bool into a List<i32> through a
+                // place is rejected at typing, before any access.
+                let vt = slot_ty_of(f, *value, sp, "place-set value")?;
+                if !self.ty_equiv(vt, elem) {
+                    return Err(err(
+                        "mir.list-type",
+                        format!(
+                            "place-set value {} != the place's bound element type {}",
+                            vt, elem
+                        ),
+                    ));
+                }
+            }
+            // -- PLAN-823 closure surface (av.closures/1) ----------
+            MirInstr::CreateClosure {
+                dst,
+                callee,
+                captures,
+            } => {
+                if !self.is_closures {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "CREATE_CLOSURE exists only in the closures profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "create-closure dst")?;
+                let callee_sig: crate::mir::FnSig = match callee {
+                    crate::mir::CalleeRef::Func(idx) => {
+                        let target = match self.module.funcs.get(*idx as usize) {
+                            Some(t) => t,
+                            None => {
+                                return Err(err(
+                                    "mir.callee-ref",
+                                    format!(
+                                        "create-closure references out-of-range \
+                                                 function {}",
+                                        idx
+                                    ),
+                                ))
+                            }
+                        };
+                        match self.module.sig_of(target.sig) {
+                            Some(s) => s.clone(),
+                            None => {
+                                return Err(err(
+                                    "mir.callee-sig",
+                                    format!("closure callee #{} has no function type", idx),
+                                ))
+                            }
+                        }
+                    }
+                    crate::mir::CalleeRef::Import(idx) => {
+                        let imp = match self.module.imports.get(*idx as usize) {
+                            Some(t) => t,
+                            None => {
+                                return Err(err(
+                                    "mir.import-ref",
+                                    format!(
+                                        "create-closure references out-of-range \
+                                                 import {}",
+                                        idx
+                                    ),
+                                ))
+                            }
+                        };
+                        match self.module.sig_of(imp.sig) {
+                            Some(s) => s.clone(),
+                            None => {
+                                return Err(err(
+                                    "mir.import-sig",
+                                    format!("closure import #{} has no function type", idx),
+                                ))
+                            }
+                        }
+                    }
+                };
+                // dst must be EXACTLY the callee's Closure type: an
+                // Fn slot never accepts an arbitrary closure
+                // (§5.1.1) — the bound signature is structural.
+                match self.module.types.get(dt as usize) {
+                    Some(MirType::Closure(s)) if s == &callee_sig => {}
+                    other => {
+                        return Err(err(
+                            "mir.closure.type",
+                            format!(
+                            "create-closure dst type {} is {:?}, must be the callee's Closure type",
+                            dt, other
+                        ),
+                        ))
+                    }
+                }
+                for (ci, c) in captures.iter().enumerate() {
+                    if c.kind == crate::mir::CaptureKind::MoveFromEnv {
+                        // R1-F01: src is a FIELD index of the
+                        // CURRENT frame's env — typed against the
+                        // parent's own declared layout by the
+                        // pre-scan and the alias/moved gates.
+                        if f.env.is_none() {
+                            return Err(err(
+                                        "mir.capture.env-field",
+                                        format!(
+                                            "capture #{} moves an env field but `{}` declares no env layout",
+                                            ci, f.name
+                                        ),
+                                    ));
+                        }
+                        if c.src as usize >= f.env.as_ref().unwrap().len() {
+                            return Err(err(
+                                "mir.capture.env-field",
+                                format!(
+                                    "capture #{} env field {} out of range ({} declared)",
+                                    ci,
+                                    c.src,
+                                    f.env.as_ref().unwrap().len()
+                                ),
+                            ));
+                        }
+                        continue;
+                    }
+                    let st = slot_ty_of(f, c.src, sp, &format!("capture #{}", ci))?;
+                    if c.kind == crate::mir::CaptureKind::Borrow {
+                        // The delivered borrow domain: an owned Str
+                        // source; the env field is a share view.
+                        if !matches!(self.module.types.get(st as usize), Some(MirType::Str)) {
+                            return Err(err(
+                                "mir.capture.borrow-domain",
+                                format!("borrow capture #{} type {} is not an owned Str", ci, st),
+                            ));
+                        }
+                        continue;
+                    }
+                    if c.kind == crate::mir::CaptureKind::Shared {
+                        // PLAN-909 cell domain: a handle share is
+                        // admitted ONLY over the cell representation
+                        // — `List<T>` with a Copy scalar element
+                        // (i32/bool/char). Sharing any other owned
+                        // aggregate (Str, record, nested list,
+                        // variant) is not a cell contract and is
+                        // rejected by name; an ordinary list copy
+                        // never stands in for a cell.
+                        let cell_ok = match self.module.types.get(st as usize) {
+                            Some(MirType::List(l)) => matches!(
+                                self.module.types.get(l.elem as usize),
+                                Some(MirType::I32 | MirType::Bool | MirType::Char)
+                            ),
+                            _ => false,
+                        };
+                        if !cell_ok {
+                            return Err(err(
+                                "mir.capture.shared-domain",
+                                format!(
+                                    "shared capture #{} type {} is not a scalar cell \
+                                             (List<i32|bool|char>); shared captures exist only \
+                                             over the single-element cell representation",
+                                    ci, st
+                                ),
+                            ));
+                        }
+                        continue;
+                    }
+                    if matches!(
+                        self.module.types.get(st as usize),
+                        Some(MirType::StrView)
+                            | Some(MirType::MutRef)
+                            | Some(MirType::Place(_))
+                            | Some(MirType::Closure(_))
+                            | Some(MirType::Fn(_))
+                    ) {
+                        return Err(err(
+                            "mir.capture.kind",
+                            format!(
+                                "capture #{} type {} is not escape-capturable \
+                                         (borrow/token/place/closure kinds are rejected)",
+                                ci, st
+                            ),
+                        ));
+                    }
+                }
+            }
+            MirInstr::CallClosure { dst, closure, args } => {
+                if !self.is_closures {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "CALL_CLOSURE exists only in the closures profile".to_string(),
+                    ));
+                }
+                let ct = slot_ty_of(f, *closure, sp, "call-closure operand")?;
+                let sig = match self.module.types.get(ct as usize) {
+                    Some(MirType::Closure(s)) => s.clone(),
+                    other => {
+                        return Err(err(
+                            "mir.closure.type",
+                            format!(
+                                "call-closure operand type {} is {:?}, not a Closure",
+                                ct, other
+                            ),
+                        ))
+                    }
+                };
+                if sig.params.len() != args.len() {
+                    return Err(err(
+                        "mir.closure.arity",
+                        format!(
+                            "closure call passes {} args, signature takes {}",
+                            args.len(),
+                            sig.params.len()
+                        ),
+                    ));
+                }
+                for (ai, (a, want)) in args.iter().zip(sig.params.iter()).enumerate() {
+                    let at = slot_ty_of(f, *a, sp, &format!("closure arg #{}", ai))?;
+                    if !self.ty_equiv(at, *want) {
+                        return Err(err(
+                            "mir.closure.arg-type",
+                            format!(
+                                "closure arg #{} has type {}, signature wants {}",
+                                ai, at, want
+                            ),
+                        ));
+                    }
+                }
+                let dt = slot_ty_of(f, *dst, sp, "call-closure dst")?;
+                if !self.ty_equiv(dt, sig.result) {
+                    return Err(err(
+                        "mir.closure.result-type",
+                        format!(
+                            "closure call dst type {} does not match signature result {}",
+                            dt, sig.result
+                        ),
+                    ));
+                }
+            }
+            MirInstr::EnvGet { dst, field } => {
+                if !self.is_closures {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "ENV_GET exists only in the closures profile".to_string(),
+                    ));
+                }
+                // r8: the env layout is the function's OWN
+                // declaration — a body unit verifies standalone.
+                let layout = match &f.env {
+                    Some(l) => l,
+                    None => {
+                        return Err(err(
+                            "mir.env.not-closure-body",
+                            format!(
+                                "ENV_GET in `{}` which declares no env layout \
+                                         (env reads live only in closure bodies)",
+                                f.name
+                            ),
+                        ))
+                    }
+                };
+                if *field as usize >= layout.len() {
+                    return Err(err(
+                        "mir.env.field-range",
+                        format!(
+                            "env field {} out of range (env layout has {} captures)",
+                            field,
+                            layout.len()
+                        ),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "env-get dst")?;
+                let want = layout[*field as usize];
+                if !self.ty_equiv(dt, want) {
+                    return Err(err(
+                        "mir.env.field-type",
+                        format!(
+                            "env-get dst type {} does not match captured field type {}",
+                            dt, want
+                        ),
+                    ));
+                }
+            }
+            // -- PLAN-824 dynamic surface (typing arms) ----------
+            MirInstr::DynPack { dst, src } => {
+                if !self.is_dynamic {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "DYN_PACK exists only in the dynamic profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "dyn-pack dst")?;
+                if !matches!(self.module.types.get(dt as usize), Some(MirType::Dyn)) {
+                    return Err(err(
+                        "mir.dyn.type",
+                        format!("DYN_PACK dst {} is not the Dyn type", dt),
+                    ));
+                }
+                let st = slot_ty_of(f, *src, sp, "dyn-pack src")?;
+                if !self.dyn_whitelisted(st) {
+                    return Err(err(
+                        "mir.dyn.whitelist",
+                        format!(
+                            "DYN_PACK src type {} is outside the erasable closure \
+                                     (Fn/borrows/Places rejected at any depth)",
+                            st
+                        ),
+                    ));
+                }
+            }
+            MirInstr::DynIs { dst, src, ty } => {
+                if !self.is_dynamic {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "DYN_IS exists only in the dynamic profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "dyn-is dst")?;
+                if !matches!(self.module.types.get(dt as usize), Some(MirType::Bool)) {
+                    return Err(err(
+                        "mir.dyn.type",
+                        format!("DYN_IS dst {} is not bool", dt),
+                    ));
+                }
+                let st = slot_ty_of(f, *src, sp, "dyn-is src")?;
+                if !matches!(self.module.types.get(st as usize), Some(MirType::Dyn)) {
+                    return Err(err(
+                        "mir.dyn.type",
+                        format!("DYN_IS src {} is not the Dyn type", st),
+                    ));
+                }
+                if self.module.types.get(*ty as usize).is_none() {
+                    return Err(err(
+                        "mir.dyn.type",
+                        format!("DYN_IS type operand {} is out of bounds", ty),
+                    ));
+                }
+                if !self.dyn_whitelisted(*ty) {
+                    return Err(err(
+                        "mir.dyn.whitelist",
+                        format!("DYN_IS type operand {} is outside the erasable closure", ty),
+                    ));
+                }
+            }
+            MirInstr::DynTake { dst, src, ty } => {
+                if !self.is_dynamic {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "DYN_TAKE exists only in the dynamic profile".to_string(),
+                    ));
+                }
+                let st = slot_ty_of(f, *src, sp, "dyn-take src")?;
+                if !matches!(self.module.types.get(st as usize), Some(MirType::Dyn)) {
+                    return Err(err(
+                        "mir.dyn.type",
+                        format!("DYN_TAKE src {} is not the Dyn type", st),
+                    ));
+                }
+                if self.module.types.get(*ty as usize).is_none() {
+                    return Err(err(
+                        "mir.dyn.type",
+                        format!("DYN_TAKE type operand {} is out of bounds", ty),
+                    ));
+                }
+                if !self.dyn_whitelisted(*ty) {
+                    return Err(err(
+                        "mir.dyn.whitelist",
+                        format!(
+                            "DYN_TAKE type operand {} is outside the erasable closure",
+                            ty
+                        ),
+                    ));
+                }
+                // dst receives exactly the requested type.
+                let dt = slot_ty_of(f, *dst, sp, "dyn-take dst")?;
+                if !self.ty_equiv(dt, *ty) {
+                    return Err(err(
+                        "mir.dyn.type",
+                        format!("DYN_TAKE dst {} != the requested type {}", dt, ty),
+                    ));
+                }
+            }
+            MirInstr::BorrowEnd { token } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "BORROW_END exists only in the owned profile".to_string(),
+                    ));
+                }
+                let tt = slot_ty_of(f, *token, sp, "borrow-end token")?;
+                if !matches!(
+                    self.module.types.get(tt as usize),
+                    Some(MirType::StrView) | Some(MirType::MutRef)
+                ) {
+                    return Err(err(
+                        "mir.type-op",
+                        format!("BORROW_END operand type {} is not a borrow token", tt),
+                    ));
+                }
+            }
+            MirInstr::StrLen { dst, view } | MirInstr::StrLenBytes { dst, view } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "str operations exist only in the owned profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "str-op dst")?;
+                let vt = slot_ty_of(f, *view, sp, "str-op view")?;
+                self.want_strview_i32(vt, dt, &err, sp)?;
+            }
+            MirInstr::StrCharAt { dst, view, index } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "str operations exist only in the owned profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "char_at dst")?;
+                let vt = slot_ty_of(f, *view, sp, "char_at view")?;
+                let it = slot_ty_of(f, *index, sp, "char_at index")?;
+                if !matches!(self.module.types.get(vt as usize), Some(MirType::StrView)) {
+                    return Err(err(
+                        "mir.type-op",
+                        format!("char_at operand {} is not a view", vt),
+                    ));
+                }
+                if self.module.type_shape(it) != Some(ScalarShape::I32) {
+                    return Err(err(
+                        "mir.type-op",
+                        format!("char_at index type {} is not i32", it),
+                    ));
+                }
+                if !matches!(self.module.types.get(dt as usize), Some(MirType::Char)) {
+                    return Err(err(
+                        "mir.type-op",
+                        format!("char_at dst type {} is not char", dt),
+                    ));
+                }
+            }
+            MirInstr::StrSlice {
+                dst,
+                view,
+                start,
+                end,
+            } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "str operations exist only in the owned profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "slice dst")?;
+                let vt = slot_ty_of(f, *view, sp, "slice view")?;
+                let stt = slot_ty_of(f, *start, sp, "slice start")?;
+                let ent = slot_ty_of(f, *end, sp, "slice end")?;
+                if !matches!(self.module.types.get(vt as usize), Some(MirType::StrView)) {
+                    return Err(err(
+                        "mir.type-op",
+                        format!("slice operand {} is not a view", vt),
+                    ));
+                }
+                if self.module.type_shape(stt) != Some(ScalarShape::I32)
+                    || self.module.type_shape(ent) != Some(ScalarShape::I32)
+                {
+                    return Err(err("mir.type-op", "slice bounds must be i32".to_string()));
+                }
+                if !matches!(self.module.types.get(dt as usize), Some(MirType::StrView)) {
+                    return Err(err(
+                        "mir.type-op",
+                        format!("slice dst type {} is not StrView", dt),
+                    ));
+                }
+            }
+            MirInstr::StrConcat { dst, lhs, rhs } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "str operations exist only in the owned profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "concat dst")?;
+                let lt = slot_ty_of(f, *lhs, sp, "concat lhs")?;
+                let rt = slot_ty_of(f, *rhs, sp, "concat rhs")?;
+                if !matches!(self.module.types.get(lt as usize), Some(MirType::StrView))
+                    || !matches!(self.module.types.get(rt as usize), Some(MirType::StrView))
+                {
+                    return Err(err(
+                        "mir.type-op",
+                        "concat operands must be views".to_string(),
+                    ));
+                }
+                if !matches!(self.module.types.get(dt as usize), Some(MirType::Str)) {
+                    return Err(err(
+                        "mir.type-op",
+                        format!("concat dst type {} is not Str", dt),
+                    ));
+                }
+            }
+            MirInstr::StrToOwned { dst, view } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "str operations exist only in the owned profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "to-owned dst")?;
+                let vt = slot_ty_of(f, *view, sp, "to-owned view")?;
+                if !matches!(self.module.types.get(vt as usize), Some(MirType::StrView)) {
+                    return Err(err(
+                        "mir.type-op",
+                        "to-owned operand must be a view".to_string(),
+                    ));
+                }
+                if !matches!(self.module.types.get(dt as usize), Some(MirType::Str)) {
+                    return Err(err(
+                        "mir.type-op",
+                        format!("to-owned dst type {} is not Str", dt),
+                    ));
+                }
+            }
+            MirInstr::StrCmp { dst, lhs, rhs, .. } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "str operations exist only in the owned profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "cmp dst")?;
+                let lt = slot_ty_of(f, *lhs, sp, "cmp lhs")?;
+                let rt = slot_ty_of(f, *rhs, sp, "cmp rhs")?;
+                if !matches!(self.module.types.get(lt as usize), Some(MirType::StrView))
+                    || !matches!(self.module.types.get(rt as usize), Some(MirType::StrView))
+                {
+                    return Err(err("mir.type-op", "cmp operands must be views".to_string()));
+                }
+                if self.module.type_shape(dt) != Some(ScalarShape::Bool) {
+                    return Err(err(
+                        "mir.type-op",
+                        format!("cmp dst type {} is not bool", dt),
+                    ));
+                }
+            }
+            MirInstr::CharToCodepoint { dst, ch } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "char conversions exist only in the owned profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "to-codepoint dst")?;
+                let ct = slot_ty_of(f, *ch, sp, "to-codepoint char")?;
+                if !matches!(self.module.types.get(ct as usize), Some(MirType::Char)) {
+                    return Err(err(
+                        "mir.type-op",
+                        "to_codepoint operand must be char".to_string(),
+                    ));
+                }
+                if self.module.type_shape(dt) != Some(ScalarShape::I32) {
+                    return Err(err(
+                        "mir.type-op",
+                        "to_codepoint dst must be i32".to_string(),
+                    ));
+                }
+            }
+            MirInstr::CharFromCodepoint { dst, code } => {
+                if !self.is_owned && !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "char conversions exist only in the owned profile".to_string(),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "from-codepoint dst")?;
+                let ct = slot_ty_of(f, *code, sp, "from-codepoint code")?;
+                if self.module.type_shape(ct) != Some(ScalarShape::I32) {
+                    return Err(err(
+                        "mir.type-op",
+                        "from_codepoint operand must be i32".to_string(),
+                    ));
+                }
+                if !matches!(self.module.types.get(dt as usize), Some(MirType::Char)) {
+                    return Err(err(
+                        "mir.type-op",
+                        "from_codepoint dst must be char".to_string(),
+                    ));
+                }
+            }
+
+            _ => {}
+        }
+        Ok(())
+    }
     fn check_function(&mut self, _fi: u32, f: &MirFunction) -> Result<(), MirVerifyError> {
         if !(self.is_owned || self.collections_surface()) {
             let bytes = init_analysis_bound(f);
@@ -2172,1939 +4136,13 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     span: sp,
                 };
                 match instr {
-                    MirInstr::Const { dst, value } => {
-                        let dt = slot_ty_of(f, *dst, sp, "const dst")?;
-                        // PLAN-821: Char/Str consts are owned-profile-only
-                        // and carry NO ScalarShape — they type against the
-                        // slot's MirType directly (below).
-                        let owned_const = match self.module.consts.get(*value as usize) {
-                            Some(MirConst::Char(_)) | Some(MirConst::Str(_)) => true,
-                            _ => false,
-                        };
-                        if owned_const && !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-const",
-                                "char/Str constants exist only in the owned profile".to_string(),
-                            ));
-                        }
-                        let want_shape = match self.module.consts.get(*value as usize) {
-                            Some(MirConst::I32(_)) => Some(ScalarShape::I32),
-                            Some(MirConst::Bool(_)) => Some(ScalarShape::Bool),
-                            Some(MirConst::I64(_)) => Some(ScalarShape::I64),
-                            Some(MirConst::U64(_)) => Some(ScalarShape::U64),
-                            Some(MirConst::F32Bits(_)) => Some(ScalarShape::F32),
-                            Some(MirConst::F64Bits(_)) => Some(ScalarShape::F64),
-                            // PLAN-961: narrow-integer consts.
-                            Some(MirConst::I8(_)) => Some(ScalarShape::I8),
-                            Some(MirConst::U8(_)) => Some(ScalarShape::U8),
-                            Some(MirConst::U32(_)) => Some(ScalarShape::U32),
-                            Some(MirConst::Char(_)) | Some(MirConst::Str(_)) => None,
-                            None => {
-                                return Err(err(
-                                    "mir.const-ref",
-                                    format!(
-                                        "const instruction references out-of-range constant {}",
-                                        value
-                                    ),
-                                ))
-                            }
-                        };
-                        // PLAN-961: wide/narrow numeric constants exist in
-                        // every numeric-surface family (the data gate below
-                        // keeps the core-i32 profile frozen).
-                        if let (Some(shape), false) = (want_shape, self.numeric_surface()) {
-                            if !matches!(shape, ScalarShape::I32 | ScalarShape::Bool) {
-                                return Err(err(
-                                    "mir.profile-const",
-                                    format!(
-                                        "constant of shape {:?} exists only in the data profile",
-                                        shape
-                                    ),
-                                ));
-                            }
-                        }
-                        // Shape comparison, not index equality: a wire table
-                        // may carry duplicate scalar type entries.
-                        if let Some(c) = self.module.consts.get(*value as usize) {
-                            if let Some(want_ty) = match c {
-                                MirConst::Char(_) => Some(MirType::Char),
-                                // A Str const materializes by DESTINATION
-                                // kind: an owned Str slot gets a fresh
-                                // allocation; a StrView slot gets the
-                                // immortal static view (770 literal rule).
-                                MirConst::Str(_) => {
-                                    Some(match self.module.types.get(dt as usize) {
-                                        Some(MirType::StrView) => MirType::StrView,
-                                        _ => MirType::Str,
-                                    })
-                                }
-                                _ => None,
-                            } {
-                                if self.module.types.get(dt as usize) != Some(&want_ty) {
-                                    return Err(err(
-                                        "mir.const-type",
-                                        format!(
-                                            "const into slot {} of type {}; constant has another kind",
-                                            dst, dt
-                                        ),
-                                    ));
-                                }
-                            }
-                        }
-                        if self.module.type_shape(dt) != want_shape {
-                            return Err(err(
-                                "mir.const-type",
-                                format!(
-                                    "const into slot {} of type {}; constant has another shape",
-                                    dst, dt
-                                ),
-                            ));
-                        }
-                    }
-                    MirInstr::Copy { dst, src } => {
-                        let dt = slot_ty_of(f, *dst, sp, "copy dst")?;
-                        let st = slot_ty_of(f, *src, sp, "copy src")?;
-                        if !self.ty_equiv(dt, st) {
-                            return Err(err(
-                                "mir.copy-type",
-                                format!("copy from type {} into type {}", st, dt),
-                            ));
-                        }
-                        // PLAN-821: copying an owned value or a write token
-                        // is a borrow of ownership semantics the profile
-                        // forbids — explicit CLONE / token transfer only.
-                        // A StrView copy is the legal multi-view share.
-                        if self.is_owned {
-                            match self.module.types.get(st as usize) {
-                                Some(MirType::Str)
-                                | Some(MirType::MutRef)
-                                | Some(MirType::Record(_))
-                                    if crate::ownership::type_is_owned(self.module, st) =>
-                                {
-                                    return Err(err(
-                                        "mir.copy-owned",
-                                        format!(
-                                            "COPY of owned type {}; use CLONE/MOVE (or the value path)",
-                                            st
-                                        ),
-                                    ));
-                                }
-                                Some(MirType::MutRef) => {
-                                    return Err(err(
-                                        "mir.copy-owned",
-                                        "COPY of a MutRef token breaks exclusivity".to_string(),
-                                    ));
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    MirInstr::Bin { op, dst, lhs, rhs } => {
-                        let dt = slot_ty_of(f, *dst, sp, "bin dst")?;
-                        let lt = slot_ty_of(f, *lhs, sp, "bin lhs")?;
-                        let rt = slot_ty_of(f, *rhs, sp, "bin rhs")?;
-                        let shapes = (
-                            self.module.type_shape(dt),
-                            self.module.type_shape(lt),
-                            self.module.type_shape(rt),
-                        );
-                        // PLAN-961: the typed numeric surface replaces the
-                        // PLAN-820 "no wide-scalar arithmetic" gate. The
-                        // structural `Num { op, ty }` form requires BOTH
-                        // operands to have exactly `ty`'s shape (no implicit
-                        // promotion) and dst = ty (or Bool for comparisons);
-                        // bit/shift ops are int-only. The legacy `*I32`
-                        // subcodes keep their frozen i32-only typing, and
-                        // EqI32/NeI32 no longer admit wide/float pairs —
-                        // those MUST ride Num{Eq/Ne, ty} (the old admission
-                        // let through shapes the interpreter could not
-                        // execute; closing that seam is part of this plan).
-                        if let BinOp::Num { op: nop, ty } = op {
-                            if !self.numeric_surface() {
-                                return Err(err(
-                                    "mir.profile-type",
-                                    "typed numeric operations exist only in the data-family profiles".to_string(),
-                                ));
-                            }
-                            let want = ty.shape_of();
-                            if lt != rt || shapes.1 != Some(want) {
-                                return Err(err(
-                                    "mir.bin-type",
-                                    format!(
-                                        "numeric {:?} on {:?} requires same-type {:?} operands (types {},{})",
-                                        nop, ty, want, lt, rt
-                                    ),
-                                ));
-                            }
-                            let ok = if matches!(
-                                nop,
-                                NumOp::Lt
-                                    | NumOp::Le
-                                    | NumOp::Gt
-                                    | NumOp::Ge
-                                    | NumOp::Eq
-                                    | NumOp::Ne
-                            ) {
-                                shapes.0 == Some(ScalarShape::Bool)
-                            } else if matches!(
-                                nop,
-                                NumOp::And | NumOp::Or | NumOp::Xor | NumOp::Shl | NumOp::Shr
-                            ) && ty.is_float()
-                            {
-                                false
-                            } else {
-                                shapes.0 == Some(want)
-                            };
-                            if !ok {
-                                return Err(err(
-                                    "mir.bin-type",
-                                    format!(
-                                        "numeric {:?} on {:?} does not type check for dst type {}",
-                                        nop, ty, dt
-                                    ),
-                                ));
-                            }
-                        } else {
-                            use ScalarShape::*;
-                            let ok = if op.result_is_bool() {
-                                match op {
-                                    // Tightened by PLAN-961: the legacy
-                                    // equality subcodes admit i32/bool only;
-                                    // every other scalar pair rides Num.
-                                    BinOp::EqI32 | BinOp::NeI32 => {
-                                        shapes.0 == Some(Bool)
-                                            && (shapes.1 == Some(I32) && shapes.2 == Some(I32)
-                                                || shapes.1 == Some(Bool) && shapes.2 == Some(Bool))
-                                    }
-                                    _ => shapes == (Some(Bool), Some(I32), Some(I32)),
-                                }
-                            } else {
-                                shapes == (Some(I32), Some(I32), Some(I32))
-                            };
-                            if !ok {
-                                return Err(err(
-                                    "mir.bin-type",
-                                    format!("binary {:?} does not type check for dst/lhs/rhs types ({},{},{})", op, dt, lt, rt),
-                                ));
-                            }
-                        }
-                    }
-                    MirInstr::Un { op, dst, operand } => {
-                        let dt = slot_ty_of(f, *dst, sp, "un dst")?;
-                        let ot = slot_ty_of(f, *operand, sp, "un operand")?;
-                        let ok = match op {
-                            UnOp::NegI32 => {
-                                self.module.type_shape(dt) == Some(ScalarShape::I32)
-                                    && self.module.type_shape(ot) == Some(ScalarShape::I32)
-                            }
-                            UnOp::NotBool => {
-                                self.module.type_shape(dt) == Some(ScalarShape::Bool)
-                                    && self.module.type_shape(ot) == Some(ScalarShape::Bool)
-                            }
-                            // PLAN-961: typed negation — signed or float
-                            // only (unsigned negation is typed away before
-                            // lowering), same shape for operand and result.
-                            UnOp::NegT { ty } => {
-                                self.numeric_surface()
-                                    && !matches!(
-                                        ty,
-                                        crate::mir::NumTy::U8
-                                            | crate::mir::NumTy::U32
-                                            | crate::mir::NumTy::U64
-                                            | crate::mir::NumTy::I32
-                                    )
-                                    && self.module.type_shape(ot) == Some(ty.shape_of())
-                                    && self.module.type_shape(dt) == Some(ty.shape_of())
-                            }
-                        };
-                        if !ok {
-                            return Err(err(
-                                "mir.un-type",
-                                format!(
-                                    "unary {:?} does not type check for types ({},{})",
-                                    op, dt, ot
-                                ),
-                            ));
-                        }
-                    }
-                    MirInstr::Conv { dst, src } => {
-                        // PLAN-961: the frozen conversion matrix — both
-                        // slots numeric, any pair admitted (identity pairs
-                        // are pointless but legal); the runtime checks
-                        // narrowing/float->int value bounds.
-                        let dt = slot_ty_of(f, *dst, sp, "conv dst")?;
-                        let st = slot_ty_of(f, *src, sp, "conv src")?;
-                        if !self.numeric_surface() {
-                            return Err(err(
-                                "mir.profile-type",
-                                "numeric conversions exist only in the data-family profiles"
-                                    .to_string(),
-                            ));
-                        }
-                        let ok = matches!(
-                            (self.module.type_shape(dt), self.module.type_shape(st)),
-                            (Some(a), Some(b)) if a.num_ty().is_some() && b.num_ty().is_some()
-                        );
-                        if !ok {
-                            return Err(err(
-                                "mir.conv-type",
-                                format!("conversion requires numeric slots (types {},{})", st, dt),
-                            ));
-                        }
-                    }
-                    MirInstr::ForeignCall {
-                        declaration,
-                        dst,
-                        args,
-                        callbacks,
-                    } => {
-                        declaration
-                            .validate()
-                            .map_err(|m| err("mir.foreign-contract", m))?;
-                        if !self
-                            .module
-                            .capabilities
-                            .iter()
-                            .any(|c| c == ace_foreign_contract::manual::SOURCE_CAP)
-                            || declaration
-                                .capabilities
-                                .iter()
-                                .any(|c| !self.module.capabilities.contains(c))
-                        {
-                            return Err(err(
-                                "mir.foreign-capability",
-                                "foreign requirements are missing".into(),
-                            ));
-                        }
-                        let matches_lane = |ty: u32, lane: ace_foreign_contract::LaneKind| match (
-                            self.module.types.get(ty as usize),
-                            lane,
-                        ) {
-                            (Some(MirType::I32), ace_foreign_contract::LaneKind::I32)
-                            | (Some(MirType::Bool), ace_foreign_contract::LaneKind::Bool) => true,
-                            _ => false,
-                        };
-                        // PLAN-939 S06: every Callback lane carries EXACTLY
-                        // ONE named target (a reviewed identifier naming a
-                        // free source fn; the backend emits the static
-                        // trampoline); its args slot is a placeholder that
-                        // no reader may consume.
-                        let res_params = declaration
-                            .resource()
-                            .map(|r| r.params.as_slice())
-                            .unwrap_or_default();
-                        {
-                            let mut seen = std::collections::BTreeSet::new();
-                            for (lane, name) in callbacks {
-                                if (*lane as usize) >= res_params.len()
-                                    || !seen.insert(*lane)
-                                    || !matches!(
-                                        res_params[*lane as usize],
-                                        ace_foreign_contract::resource::ResKind::Callback { .. }
-                                    )
-                                    || name.is_empty()
-                                    || name.len() > 64
-                                    || !name
-                                        .bytes()
-                                        .all(|b| b.is_ascii_alphanumeric() || b == b'_')
-                                {
-                                    return Err(err(
-                                        "mir.foreign-callback",
-                                        "callback lane target is outside the reviewed surface"
-                                            .into(),
-                                    ));
-                                }
-                            }
-                            let want = res_params
-                                .iter()
-                                .enumerate()
-                                .filter(|(_, p)| {
-                                    matches!(
-                                        p,
-                                        ace_foreign_contract::resource::ResKind::Callback { .. }
-                                    )
-                                })
-                                .count();
-                            if callbacks.len() != want {
-                                return Err(err(
-                                    "mir.foreign-callback",
-                                    "every callback lane needs exactly one named target".into(),
-                                ));
-                            }
-                        }
-                        if args.len() != declaration.arity() {
-                            return Err(err(
-                                "mir.foreign-arity",
-                                "foreign argument count mismatch".into(),
-                            ));
-                        }
-                        for (arg, lane) in args.iter().zip(declaration.params()) {
-                            let ty = slot_ty_of(f, *arg, sp, "foreign arg")?;
-                            if !matches_lane(ty, *lane) {
-                                return Err(err(
-                                    "mir.foreign-type",
-                                    "foreign argument logical type mismatch".into(),
-                                ));
-                            }
-                        }
-                        let ty = slot_ty_of(f, *dst, sp, "foreign dst")?;
-                        if !matches_lane(ty, declaration.result()) {
-                            return Err(err(
-                                "mir.foreign-type",
-                                "foreign result logical type mismatch".into(),
-                            ));
-                        }
-                    }
-                    MirInstr::Call { callee, dst, args } => {
-                        let dt = slot_ty_of(f, *dst, sp, "call dst")?;
-                        let callee_sig: &FnSig = match callee {
-                            CalleeRef::Func(idx) => {
-                                if self.module.is_unit {
-                                    return Err(err(
-                                        "mir.unit-callee",
-                                        "a unit must address callees through imports".to_string(),
-                                    ));
-                                }
-                                // PLAN-823: a closure body executes ONLY with
-                                // an env binding — a direct call can never
-                                // provide one.
-                                if self.closure_bodies.contains(idx) {
-                                    return Err(err(
-                                        "mir.closure.body-direct-call",
-                                        format!(
-                                            "direct call targets function #{} which is a \
-                                             closure body (reachable only through CALL_CLOSURE)",
-                                            idx
-                                        ),
-                                    ));
-                                }
-                                match module.funcs.get(*idx as usize) {
-                                    Some(target) => match module.sig_of(target.sig) {
-                                        Some(s) => s,
-                                        None => {
-                                            return Err(err(
-                                                "mir.callee-sig",
-                                                format!("callee #{} has no function type", idx),
-                                            ))
-                                        }
-                                    },
-                                    None => {
-                                        return Err(err(
-                                            "mir.callee-ref",
-                                            format!(
-                                                "call references out-of-range function {}",
-                                                idx
-                                            ),
-                                        ))
-                                    }
-                                }
-                            }
-                            CalleeRef::Import(idx) => match module.imports.get(*idx as usize) {
-                                Some(imp) => match module.sig_of(imp.sig) {
-                                    Some(s) => s,
-                                    None => {
-                                        return Err(err(
-                                            "mir.import-sig",
-                                            format!("import #{} has no function type", idx),
-                                        ))
-                                    }
-                                },
-                                None => {
-                                    return Err(err(
-                                        "mir.import-ref",
-                                        format!("call references out-of-range import {}", idx),
-                                    ))
-                                }
-                            },
-                        };
-                        if callee_sig.params.len() != args.len() {
-                            return Err(err(
-                                "mir.call-arity",
-                                format!(
-                                    "call passes {} args, callee signature takes {}",
-                                    args.len(),
-                                    callee_sig.params.len()
-                                ),
-                            ));
-                        }
-                        for (ai, (a, want)) in args.iter().zip(callee_sig.params.iter()).enumerate()
-                        {
-                            let at = slot_ty_of(f, *a, sp, &format!("call arg #{}", ai))?;
-                            // R1-F08 borrowing coercion: an owned record arg
-                            // satisfies a RecordView (borrowed) param — one
-                            // way only (a view never satisfies an owned
-                            // param; .move semantics stay explicit).
-                            let borrow_ok = matches!(
-                                (
-                                    self.module.types.get(at as usize),
-                                    self.module.types.get(*want as usize),
-                                ),
-                                (
-                                    Some(MirType::Record(ra)),
-                                    Some(MirType::RecordView(rw)),
-                                ) if ra == rw
-                            );
-                            if !self.ty_equiv(at, *want) && !borrow_ok {
-                                return Err(err(
-                                    "mir.call-arg-type",
-                                    format!(
-                                        "call arg #{} has type {}, signature wants {}",
-                                        ai, at, want
-                                    ),
-                                ));
-                            }
-                        }
-                        // R2-F08': a mut-param callee returns the t_MutRet
-                        // wrapper — the call dst legitimately holds the
-                        // WRAPPER (the adapter unwraps right after).
-                        let dst_is_wrapper = (|| {
-                            matches!(
-                                self.module.types.get(callee_sig.result as usize),
-                                Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_")
-                            )
-                        })();
-                        if !self.ty_equiv(dt, callee_sig.result) && !dst_is_wrapper {
-                            return Err(err(
-                                "mir.call-result-type",
-                                format!(
-                                    "call dst has type {}, callee returns {}",
-                                    dt, callee_sig.result
-                                ),
-                            ));
-                        }
-                    }
-                    // PLAN-960: global cells are checked against the module's
-                    // global table (index range + slot type == cell type).
-                    MirInstr::GlobalGet { dst, global } => {
-                        // The decoded-unit path carries no global table (cells
-                        // are program-scoped at link, never on the wire): the
-                        // range/type check runs when the table is present and
-                        // the executor guards the decoded case.
-                        if !self.module.globals.is_empty() {
-                            let g = self.module.globals.get(*global as usize).ok_or_else(|| {
-                                err("global.reference", "global index out of range".into())
-                            })?;
-                            let dst_ty = slot_ty_of(f, *dst, sp, "global dst")?;
-                            if !self.ty_equiv(dst_ty, g.ty) {
-                                return Err(err(
-                                    "global.type",
-                                    "global read into a slot of another type".into(),
-                                ));
-                            }
-                        }
-                    }
-                    MirInstr::GlobalSet { dst, global, src } => {
-                        if !self.module.globals.is_empty() {
-                            let g = self.module.globals.get(*global as usize).ok_or_else(|| {
-                                err("global.reference", "global index out of range".into())
-                            })?;
-                            let src_ty = slot_ty_of(f, *src, sp, "global src")?;
-                            if !self.ty_equiv(src_ty, g.ty) {
-                                return Err(err(
-                                    "global.type",
-                                    "global write from a slot of another type".into(),
-                                ));
-                            }
-                        }
-                        let _ = dst;
-                    }
-                    MirInstr::HostCall { host, arg } => {
-                        if !self.module.is_host_console_profile() {
-                            return Err(err(
-                                "host.profile",
-                                "host call in a legacy profile".into(),
-                            ));
-                        }
-                        let h = self
-                            .module
-                            .host_imports
-                            .get(*host as usize)
-                            .ok_or_else(|| {
-                                err("host.reference", "host index out of range".into())
-                            })?;
-                        let sig = self.module.sig_of(h.sig).ok_or_else(|| {
-                            err("host.signature", "invalid host signature".into())
-                        })?;
-                        let at = slot_ty_of(f, *arg, sp, "host arg")?;
-                        if !self.ty_equiv(at, sig.params[0]) {
-                            return Err(err("host.signature", "host operand type mismatch".into()));
-                        }
-                    }
-                    MirInstr::Trace { .. } => {}
-                    MirInstr::FieldGet { dst, base, path } => {
-                        if !self.is_data && !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "FIELD_GET exists only in the data/owned profiles".to_string(),
-                            ));
-                        }
-                        self.check_field_path(f, *base, path, sp, "field-get")?;
-                        let dt = slot_ty_of(f, *dst, sp, "field-get dst")?;
-                        let bt = slot_ty_of(f, *base, sp, "field-get base")?;
-                        let Some((final_ty, _owner)) = self.module.resolve_field_path(bt, path)
-                        else {
-                            return Err(err(
-                                "mir.field-path",
-                                format!(
-                                    "field path {:?} does not resolve from base type {}",
-                                    path, bt
-                                ),
-                            ));
-                        };
-                        if self.is_owned {
-                            // PLAN-821: a Str field read is a BORROW VIEW
-                            // rooted at the base place (782: 字段读取=视图);
-                            // a resource-record field never implicitly
-                            // copies its owner out.
-                            match self.module.types.get(final_ty as usize) {
-                                Some(MirType::Str) => {
-                                    if !matches!(
-                                        self.module.types.get(dt as usize),
-                                        Some(MirType::StrView)
-                                    ) {
-                                        return Err(err(
-                                            "mir.field-type",
-                                            format!(
-                                                "field-get of a Str field must land in a StrView slot (dst {})",
-                                                dt
-                                            ),
-                                        ));
-                                    }
-                                }
-                                Some(t)
-                                    if crate::ownership::type_is_owned(self.module, final_ty) =>
-                                {
-                                    let _ = t;
-                                    return Err(err(
-                                        "mir.ownership-required",
-                                        format!(
-                                            "field-get of resource-record field type {} never copies the owner (views only)",
-                                            final_ty
-                                        ),
-                                    ));
-                                }
-                                _ => {
-                                    if !self.ty_equiv(dt, final_ty) {
-                                        return Err(err(
-                                            "mir.field-type",
-                                            format!(
-                                                "field-get dst type {} does not match path final type {}",
-                                                dt, final_ty
-                                            ),
-                                        ));
-                                    }
-                                }
-                            }
-                        } else if !self.ty_equiv(dt, final_ty) {
-                            return Err(err(
-                                "mir.field-type",
-                                format!(
-                                    "field-get dst type {} does not match path final type {}",
-                                    dt, final_ty
-                                ),
-                            ));
-                        }
-                    }
-                    MirInstr::FieldSet { root, path, value } => {
-                        if !self.is_data && !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "FIELD_SET exists only in the data/owned profiles".to_string(),
-                            ));
-                        }
-                        self.check_field_path(f, *root, path, sp, "field-set")?;
-                        let rt_slot = slot_ty_of(f, *root, sp, "field-set root")?;
-                        let Some((final_ty, _owner)) =
-                            self.module.resolve_field_path(rt_slot, path)
-                        else {
-                            return Err(err(
-                                "mir.field-path",
-                                format!(
-                                    "field path {:?} does not resolve from root type {}",
-                                    path, rt_slot
-                                ),
-                            ));
-                        };
-                        let vt = slot_ty_of(f, *value, sp, "field-set value")?;
-                        if !self.ty_equiv(vt, final_ty) {
-                            return Err(err(
-                                "mir.field-type",
-                                format!(
-                                    "field-set value type {} does not match path final type {}",
-                                    vt, final_ty
-                                ),
-                            ));
-                        }
-                        // The root must be a place the frame owns across the
-                        // write: a named local or a param (temps are lowered
-                        // away by the adapter; a hand-made unit writing a
-                        // temp root is legal-by-shape but pointless — still
-                        // admitted, the rebuild is well-defined).
-                    }
-                    MirInstr::Aggregate {
-                        dst,
-                        record_ty,
-                        operands,
-                    } => {
-                        if !self.is_data && !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "AGGREGATE exists only in the data/owned profiles".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "aggregate dst")?;
-                        let want_fields = match self.module.types.get(*record_ty as usize) {
-                            Some(MirType::Record(r)) => r,
-                            _ => {
-                                return Err(err(
-                                    "mir.aggregate-type",
-                                    format!("aggregate references non-record type {}", record_ty),
-                                ))
-                            }
-                        };
-                        if !self.ty_equiv(dt, *record_ty) {
-                            return Err(err(
-                                "mir.aggregate-type",
-                                format!(
-                                    "aggregate dst type {} does not match record type {}",
-                                    dt, record_ty
-                                ),
-                            ));
-                        }
-                        if operands.len() != want_fields.fields.len() {
-                            return Err(err(
-                                "mir.aggregate-arity",
-                                format!(
-                                    "aggregate passes {} operands, record declares {} fields",
-                                    operands.len(),
-                                    want_fields.fields.len()
-                                ),
-                            ));
-                        }
-                        for (fi_, (op_slot, field)) in
-                            operands.iter().zip(want_fields.fields.iter()).enumerate()
-                        {
-                            let ot = slot_ty_of(
-                                f,
-                                *op_slot,
-                                sp,
-                                &format!("aggregate operand #{}", fi_),
-                            )?;
-                            if self.is_owned
-                                && matches!(
-                                    self.module.types.get(ot as usize),
-                                    Some(MirType::StrView) | Some(MirType::MutRef)
-                                )
-                            {
-                                return Err(err(
-                                    "mir.type-op",
-                                    format!(
-                                        "aggregate operand #{} is a borrow kind; fields own their values",
-                                        fi_
-                                    ),
-                                ));
-                            }
-                            if !self.ty_equiv(ot, field.ty) {
-                                return Err(err(
-                                    "mir.aggregate-field-type",
-                                    format!(
-                                        "aggregate operand #{} has type {}, field `{}` wants {}",
-                                        fi_, ot, field.name, field.ty
-                                    ),
-                                ));
-                            }
-                        }
-                    }
-                    // -- PLAN-821 owned surface (av.owned/1) -------------------
-                    MirInstr::Clone { dst, src } => {
-                        if !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "CLONE exists only in the owned profile".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "clone dst")?;
-                        let st = slot_ty_of(f, *src, sp, "clone src")?;
-                        if !self.ty_equiv(dt, st) {
-                            return Err(err(
-                                "mir.clone-type",
-                                format!("clone from type {} into type {}", st, dt),
-                            ));
-                        }
-                        // Clone is the EXPLICIT deep copy of owned data;
-                        // cloning a copyable is a plain COPY. PLAN-823: a
-                        // Closure is deep-cloneable too (the env's fields
-                        // deep-clone under a fresh store handle).
-                        let is_closure_ty = matches!(
-                            self.module.types.get(st as usize),
-                            Some(MirType::Closure(_))
-                        );
-                        if !is_closure_ty && !crate::ownership::type_is_owned(self.module, st) {
-                            return Err(err(
-                                "mir.ownership-required",
-                                format!("CLONE of copyable type {} (use COPY)", st),
-                            ));
-                        }
-                    }
-                    MirInstr::Move { dst, src } => {
-                        if !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "MOVE exists only in the owned profile".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "move dst")?;
-                        let st = slot_ty_of(f, *src, sp, "move src")?;
-                        if !self.ty_equiv(dt, st) {
-                            return Err(err(
-                                "mir.move-type",
-                                format!("move from type {} into type {}", st, dt),
-                            ));
-                        }
-                        if !crate::ownership::type_is_owned(self.module, st) {
-                            return Err(err(
-                                "mir.ownership-required",
-                                format!("MOVE of copyable type {} (ownership transfer is for owned data)", st),
-                            ));
-                        }
-                    }
-                    MirInstr::View { dst, src } => {
-                        if !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "VIEW exists only in the owned profile".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "view dst")?;
-                        let st = slot_ty_of(f, *src, sp, "view src")?;
-                        if !matches!(self.module.types.get(st as usize), Some(MirType::Str)) {
-                            return Err(err(
-                                "mir.type-op",
-                                format!("VIEW source type {} is not an owned Str slot", st),
-                            ));
-                        }
-                        if !matches!(self.module.types.get(dt as usize), Some(MirType::StrView)) {
-                            return Err(err(
-                                "mir.type-op",
-                                format!("VIEW destination type {} is not StrView", dt),
-                            ));
-                        }
-                    }
-                    MirInstr::MutRef { dst, src } => {
-                        if !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "MUTREF exists only in the owned profile".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "mutref dst")?;
-                        let st = slot_ty_of(f, *src, sp, "mutref src")?;
-                        if !matches!(self.module.types.get(dt as usize), Some(MirType::MutRef)) {
-                            return Err(err(
-                                "mir.type-op",
-                                format!("MUTREF destination type {} is not MutRef", dt),
-                            ));
-                        }
-                        if !crate::ownership::type_is_rootable(self.module, st) {
-                            return Err(err(
-                                "mir.type-op",
-                                format!(
-                                    "MUTREF source type {} is not an ownable root (Str / resource record)",
-                                    st
-                                ),
-                            ));
-                        }
-                    }
-                    MirInstr::Drop { slot } => {
-                        if !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "DROP exists only in the owned profile".to_string(),
-                            ));
-                        }
-                        let st = slot_ty_of(f, *slot, sp, "drop slot")?;
-                        // PLAN-823: a Closure slot drops too — the release
-                        // path is the env-store release (its fields own the
-                        // resources).
-                        let is_closure_ty = matches!(
-                            self.module.types.get(st as usize),
-                            Some(MirType::Closure(_))
-                        );
-                        if !is_closure_ty && !crate::ownership::type_is_owned(self.module, st) {
-                            return Err(err(
-                                "mir.type-op",
-                                format!(
-                                    "DROP of type {} (only owned Str / resource records drop)",
-                                    st
-                                ),
-                            ));
-                        }
-                    }
-                    MirInstr::FieldMove { dst, root, path } => {
-                        if !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "FIELDMOVE exists only in the owned profile".to_string(),
-                            ));
-                        }
-                        self.check_field_path(f, *root, path, sp, "field-move")?;
-                        let dt = slot_ty_of(f, *dst, sp, "field-move dst")?;
-                        let rt = slot_ty_of(f, *root, sp, "field-move root")?;
-                        let Some((final_ty, _owner)) = self.module.resolve_field_path(rt, path)
-                        else {
-                            return Err(err(
-                                "mir.field-path",
-                                format!(
-                                    "field path {:?} does not resolve from root type {}",
-                                    path, rt
-                                ),
-                            ));
-                        };
-                        // The extracted field must be OWNED (a resource
-                        // record — Str fields ride FIELD_GET views; the
-                        // write-back wrapper only carries records).
-                        if !crate::ownership::type_is_owned(self.module, final_ty) {
-                            return Err(err(
-                                "mir.ownership-required",
-                                format!(
-                                    "field-move of non-owned field type {} (use FIELD_GET)",
-                                    final_ty
-                                ),
-                            ));
-                        }
-                        if !self.ty_equiv(dt, final_ty) {
-                            return Err(err(
-                                "mir.field-type",
-                                format!("field-move dst {} != field type {}", dt, final_ty),
-                            ));
-                        }
-                    }
-                    // -- PLAN-822 collections surface (typing arms) --------
-                    MirInstr::ListNew { dst, list_ty, cap } => {
-                        if !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "LIST_NEW exists only in the collections profile".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "list-new dst")?;
-                        if !self.ty_equiv(dt, *list_ty) {
-                            return Err(err(
-                                "mir.list-type",
-                                format!("list-new dst {} != declared list type {}", dt, list_ty),
-                            ));
-                        }
-                        if !matches!(
-                            self.module.types.get(*list_ty as usize),
-                            Some(MirType::List(_))
-                        ) {
-                            return Err(err(
-                                "mir.list-type",
-                                format!("list-new type {} is not a List type", list_ty),
-                            ));
-                        }
-                        if *cap as usize > crate::contract::MAX_LIST_ELEMS {
-                            return Err(MirVerifyError::Resource {
-                                kind: ResourceKind::ListElems,
-                                message: format!(
-                                    "list-new capacity {} above the frozen guard {}",
-                                    cap,
-                                    crate::contract::MAX_LIST_ELEMS
-                                ),
-                            });
-                        }
-                    }
-                    MirInstr::ListLen { dst, src } | MirInstr::ListCap { dst, src } => {
-                        if !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "LIST_LEN/LIST_CAP exist only in the collections profile"
-                                    .to_string(),
-                            ));
-                        }
-                        let st = slot_ty_of(f, *src, sp, "list-op source")?;
-                        if !matches!(self.module.types.get(st as usize), Some(MirType::List(_))) {
-                            return Err(err(
-                                "mir.list-type",
-                                format!("slot type {} is not a List", st),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "list-op dst")?;
-                        if !matches!(self.module.types.get(dt as usize), Some(MirType::I32)) {
-                            return Err(err(
-                                "mir.list-type",
-                                format!("list-op dst {} is not i32", dt),
-                            ));
-                        }
-                    }
-                    MirInstr::ListGet { dst, base, index } => {
-                        if !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "LIST_GET exists only in the collections profile".to_string(),
-                            ));
-                        }
-                        let elem = self.list_elem_of(f, *base, sp)?;
-                        self.check_list_index_slot(f, *index, sp)?;
-                        let dt = slot_ty_of(f, *dst, sp, "list-get dst")?;
-                        if !self.ty_equiv(dt, elem) {
-                            return Err(err(
-                                "mir.list-type",
-                                format!("list-get dst {} != element type {}", dt, elem),
-                            ));
-                        }
-                        if crate::ownership::type_is_owned(self.module, elem) {
-                            return Err(err(
-                                "mir.list-type",
-                                format!(
-                                    "list-get of owned element type {} (use LIST_REMOVE / LIST_FIELD_*)",
-                                    elem
-                                ),
-                            ));
-                        }
-                    }
-                    MirInstr::ListPush { root, value } => {
-                        if !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "LIST_PUSH exists only in the collections profile".to_string(),
-                            ));
-                        }
-                        let elem = self.list_elem_of(f, *root, sp)?;
-                        let vt = slot_ty_of(f, *value, sp, "list-push value")?;
-                        if !self.ty_equiv(vt, elem) {
-                            return Err(err(
-                                "mir.list-type",
-                                format!("list-push value {} != element type {}", vt, elem),
-                            ));
-                        }
-                    }
-                    MirInstr::ListInsert { root, index, value }
-                    | MirInstr::ListSet { root, index, value } => {
-                        if !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "LIST_INSERT/LIST_SET exist only in the collections profile"
-                                    .to_string(),
-                            ));
-                        }
-                        let elem = self.list_elem_of(f, *root, sp)?;
-                        self.check_list_index_slot(f, *index, sp)?;
-                        let vt = slot_ty_of(f, *value, sp, "list-op value")?;
-                        if !self.ty_equiv(vt, elem) {
-                            return Err(err(
-                                "mir.list-type",
-                                format!("list-op value {} != element type {}", vt, elem),
-                            ));
-                        }
-                    }
-                    MirInstr::ListRemove { dst, root, index } => {
-                        if !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "LIST_REMOVE exists only in the collections profile".to_string(),
-                            ));
-                        }
-                        let elem = self.list_elem_of(f, *root, sp)?;
-                        self.check_list_index_slot(f, *index, sp)?;
-                        let dt = slot_ty_of(f, *dst, sp, "list-remove dst")?;
-                        if !self.ty_equiv(dt, elem) {
-                            return Err(err(
-                                "mir.list-type",
-                                format!("list-remove dst {} != element type {}", dt, elem),
-                            ));
-                        }
-                    }
-                    MirInstr::ListFieldGet {
-                        dst,
-                        base,
-                        index,
-                        path,
-                    } => {
-                        if !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "LIST_FIELD_GET exists only in the collections profile".to_string(),
-                            ));
-                        }
-                        let elem = self.list_elem_of(f, *base, sp)?;
-                        self.check_list_index_slot(f, *index, sp)?;
-                        let Some((final_ty, _owner)) = self.module.resolve_field_path(elem, path)
-                        else {
-                            return Err(err(
-                                "mir.field-path",
-                                format!(
-                                    "field path {:?} does not resolve from element type {}",
-                                    path, elem
-                                ),
-                            ));
-                        };
-                        let dt = slot_ty_of(f, *dst, sp, "list-field-get dst")?;
-                        if !self.ty_equiv(dt, final_ty) {
-                            return Err(err(
-                                "mir.field-type",
-                                format!("list-field-get dst {} != field type {}", dt, final_ty),
-                            ));
-                        }
-                        if crate::ownership::type_is_owned(self.module, final_ty) {
-                            return Err(err(
-                                "mir.field-type",
-                                format!(
-                                    "list-field-get of owned field type {} (fields ride records; use LIST_REMOVE first)",
-                                    final_ty
-                                ),
-                            ));
-                        }
-                    }
-                    MirInstr::ListFieldSet {
-                        root,
-                        index,
-                        path,
-                        value,
-                    } => {
-                        if !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "LIST_FIELD_SET exists only in the collections profile".to_string(),
-                            ));
-                        }
-                        let elem = self.list_elem_of(f, *root, sp)?;
-                        self.check_list_index_slot(f, *index, sp)?;
-                        let Some((final_ty, _owner)) = self.module.resolve_field_path(elem, path)
-                        else {
-                            return Err(err(
-                                "mir.field-path",
-                                format!(
-                                    "field path {:?} does not resolve from element type {}",
-                                    path, elem
-                                ),
-                            ));
-                        };
-                        let vt = slot_ty_of(f, *value, sp, "list-field-set value")?;
-                        if !self.ty_equiv(vt, final_ty) {
-                            return Err(err(
-                                "mir.field-type",
-                                format!("list-field-set value {} != field type {}", vt, final_ty),
-                            ));
-                        }
-                    }
-                    MirInstr::VariantPack {
-                        dst,
-                        variant_ty,
-                        disc,
-                        payload,
-                    } => {
-                        if !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "VARIANT_PACK exists only in the collections profile".to_string(),
-                            ));
-                        }
-                        let vt = slot_ty_of(f, *dst, sp, "variant-pack dst")?;
-                        if !self.ty_equiv(vt, *variant_ty) {
-                            return Err(err(
-                                "mir.variant-type",
-                                format!(
-                                    "variant-pack dst {} != declared variant type {}",
-                                    vt, variant_ty
-                                ),
-                            ));
-                        }
-                        self.check_variant_arm(f, *variant_ty, *disc, payload.as_ref(), sp)?;
-                    }
-                    MirInstr::VariantDisc { dst, src } => {
-                        if !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "VARIANT_DISC exists only in the collections profile".to_string(),
-                            ));
-                        }
-                        let st = slot_ty_of(f, *src, sp, "variant source")?;
-                        if !matches!(
-                            self.module.types.get(st as usize),
-                            Some(MirType::Variant(_))
-                        ) {
-                            return Err(err(
-                                "mir.variant-type",
-                                format!("slot type {} is not a Variant", st),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "variant-disc dst")?;
-                        if !matches!(self.module.types.get(dt as usize), Some(MirType::I32)) {
-                            return Err(err(
-                                "mir.variant-type",
-                                format!("variant-disc dst {} is not i32", dt),
-                            ));
-                        }
-                    }
-                    MirInstr::VariantGuard { dst, src, disc } => {
-                        if !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "VARIANT_GUARD exists only in the collections profile".to_string(),
-                            ));
-                        }
-                        let st = slot_ty_of(f, *src, sp, "variant source")?;
-                        let Some(MirType::Variant(v)) = self.module.types.get(st as usize) else {
-                            return Err(err(
-                                "mir.variant-type",
-                                format!("slot type {} is not a Variant", st),
-                            ));
-                        };
-                        if *disc as usize >= v.arms.len() {
-                            return Err(err(
-                                "mir.variant.arm-mismatch",
-                                format!("guard discriminant {} out of range", disc),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "variant-guard dst")?;
-                        if !matches!(self.module.types.get(dt as usize), Some(MirType::Bool)) {
-                            return Err(err(
-                                "mir.variant-type",
-                                format!("variant-guard dst {} is not bool", dt),
-                            ));
-                        }
-                    }
-                    MirInstr::VariantProject { dst, root, disc } => {
-                        if !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "VARIANT_PROJECT exists only in the collections profile"
-                                    .to_string(),
-                            ));
-                        }
-                        let rt = slot_ty_of(f, *root, sp, "variant root")?;
-                        let Some(MirType::Variant(v)) = self.module.types.get(rt as usize) else {
-                            return Err(err(
-                                "mir.variant-type",
-                                format!("slot type {} is not a Variant", rt),
-                            ));
-                        };
-                        let Some(arm) = v.arms.get(*disc as usize) else {
-                            return Err(err(
-                                "mir.variant.arm-mismatch",
-                                format!("project discriminant {} out of range", disc),
-                            ));
-                        };
-                        let Some(pt) = arm.payload else {
-                            return Err(err(
-                                "mir.variant.arm-mismatch",
-                                format!("project of no-payload arm {}", disc),
-                            ));
-                        };
-                        let dt = slot_ty_of(f, *dst, sp, "variant-project dst")?;
-                        if !self.ty_equiv(dt, pt) {
-                            return Err(err(
-                                "mir.variant-type",
-                                format!("variant-project dst {} != payload type {}", dt, pt),
-                            ));
-                        }
-                    }
-                    MirInstr::VariantSwitch {
-                        root,
-                        disc,
-                        payload,
-                    } => {
-                        if !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "VARIANT_SWITCH exists only in the collections profile".to_string(),
-                            ));
-                        }
-                        let rt = slot_ty_of(f, *root, sp, "variant root")?;
-                        if !matches!(
-                            self.module.types.get(rt as usize),
-                            Some(MirType::Variant(_))
-                        ) {
-                            return Err(err(
-                                "mir.variant-type",
-                                format!("slot type {} is not a Variant", rt),
-                            ));
-                        }
-                        self.check_variant_arm(f, rt, *disc, payload.as_ref(), sp)?;
-                    }
-                    // -- PLAN-822 R2 index-place surface (typing arms) -----
-                    MirInstr::ListPlace { dst, base, index } => {
-                        if !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "LIST_PLACE exists only in the collections profile".to_string(),
-                            ));
-                        }
-                        // F822-R3-01: the referent element type BINDS at
-                        // the mint — dst must be Place{elem == base's
-                        // element}. A Place over a different element is a
-                        // typed-admission rejection.
-                        let elem = self.list_elem_of(f, *base, sp)?;
-                        self.check_list_index_slot(f, *index, sp)?;
-                        let dt = slot_ty_of(f, *dst, sp, "list-place dst")?;
-                        match self.module.types.get(dt as usize) {
-                            Some(MirType::Place(want)) => {
-                                if want.elem != elem {
-                                    return Err(err(
-                                        "mir.list-type",
-                                        format!(
-                                            "list-place dst Place refers to element {}, but the base list holds {}",
-                                            want.elem, elem
-                                        ),
-                                    ));
-                                }
-                            }
-                            _ => {
-                                return Err(err(
-                                    "mir.list-type",
-                                    format!("list-place dst {} is not a Place type", dt),
-                                ))
-                            }
-                        }
-                    }
-                    MirInstr::PlaceGet { dst, src } => {
-                        if !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "PLACE_GET exists only in the collections profile".to_string(),
-                            ));
-                        }
-                        let st = slot_ty_of(f, *src, sp, "place source")?;
-                        let elem = match self.module.types.get(st as usize) {
-                            Some(MirType::Place(want)) => want.elem,
-                            _ => {
-                                return Err(err(
-                                    "mir.list-type",
-                                    format!("place-get source {} is not a Place type", st),
-                                ))
-                            }
-                        };
-                        // F822-R3-01: the destination must BE the bound
-                        // element type — a bool destination over a
-                        // List<i32> place is rejected at typing.
-                        let dt = slot_ty_of(f, *dst, sp, "place-get dst")?;
-                        if !self.ty_equiv(dt, elem) {
-                            return Err(err(
-                                "mir.list-type",
-                                format!(
-                                    "place-get dst {} != the place's bound element type {}",
-                                    dt, elem
-                                ),
-                            ));
-                        }
-                        if crate::ownership::type_is_owned(self.module, elem) {
-                            return Err(err(
-                                "mir.list-type",
-                                format!(
-                                    "place-get of owned element type {} (places read Copy elements; use LIST_REMOVE)",
-                                    elem
-                                ),
-                            ));
-                        }
-                    }
-                    MirInstr::PlaceSet { place, value } => {
-                        if !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "PLACE_SET exists only in the collections profile".to_string(),
-                            ));
-                        }
-                        let st = slot_ty_of(f, *place, sp, "place source")?;
-                        let elem = match self.module.types.get(st as usize) {
-                            Some(MirType::Place(want)) => want.elem,
-                            _ => {
-                                return Err(err(
-                                    "mir.list-type",
-                                    format!("place-set source {} is not a Place type", st),
-                                ))
-                            }
-                        };
-                        // F822-R3-01: the value must BE the bound element
-                        // type — writing a bool into a List<i32> through a
-                        // place is rejected at typing, before any access.
-                        let vt = slot_ty_of(f, *value, sp, "place-set value")?;
-                        if !self.ty_equiv(vt, elem) {
-                            return Err(err(
-                                "mir.list-type",
-                                format!(
-                                    "place-set value {} != the place's bound element type {}",
-                                    vt, elem
-                                ),
-                            ));
-                        }
-                    }
-                    // -- PLAN-823 closure surface (av.closures/1) ----------
-                    MirInstr::CreateClosure {
-                        dst,
-                        callee,
-                        captures,
-                    } => {
-                        if !self.is_closures {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "CREATE_CLOSURE exists only in the closures profile".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "create-closure dst")?;
-                        let callee_sig: crate::mir::FnSig = match callee {
-                            crate::mir::CalleeRef::Func(idx) => {
-                                let target = match self.module.funcs.get(*idx as usize) {
-                                    Some(t) => t,
-                                    None => {
-                                        return Err(err(
-                                            "mir.callee-ref",
-                                            format!(
-                                                "create-closure references out-of-range \
-                                                 function {}",
-                                                idx
-                                            ),
-                                        ))
-                                    }
-                                };
-                                match self.module.sig_of(target.sig) {
-                                    Some(s) => s.clone(),
-                                    None => {
-                                        return Err(err(
-                                            "mir.callee-sig",
-                                            format!("closure callee #{} has no function type", idx),
-                                        ))
-                                    }
-                                }
-                            }
-                            crate::mir::CalleeRef::Import(idx) => {
-                                let imp = match self.module.imports.get(*idx as usize) {
-                                    Some(t) => t,
-                                    None => {
-                                        return Err(err(
-                                            "mir.import-ref",
-                                            format!(
-                                                "create-closure references out-of-range \
-                                                 import {}",
-                                                idx
-                                            ),
-                                        ))
-                                    }
-                                };
-                                match self.module.sig_of(imp.sig) {
-                                    Some(s) => s.clone(),
-                                    None => {
-                                        return Err(err(
-                                            "mir.import-sig",
-                                            format!("closure import #{} has no function type", idx),
-                                        ))
-                                    }
-                                }
-                            }
-                        };
-                        // dst must be EXACTLY the callee's Closure type: an
-                        // Fn slot never accepts an arbitrary closure
-                        // (§5.1.1) — the bound signature is structural.
-                        match self.module.types.get(dt as usize) {
-                            Some(MirType::Closure(s)) if s == &callee_sig => {}
-                            other => {
-                                return Err(err(
-                                    "mir.closure.type",
-                                    format!(
-                                        "create-closure dst type {} is {:?}, must be the callee's Closure type",
-                                        dt, other
-                                    ),
-                                ))
-                            }
-                        }
-                        for (ci, c) in captures.iter().enumerate() {
-                            if c.kind == crate::mir::CaptureKind::MoveFromEnv {
-                                // R1-F01: src is a FIELD index of the
-                                // CURRENT frame's env — typed against the
-                                // parent's own declared layout by the
-                                // pre-scan and the alias/moved gates.
-                                if f.env.is_none() {
-                                    return Err(err(
-                                        "mir.capture.env-field",
-                                        format!(
-                                            "capture #{} moves an env field but `{}` declares no env layout",
-                                            ci, f.name
-                                        ),
-                                    ));
-                                }
-                                if c.src as usize >= f.env.as_ref().unwrap().len() {
-                                    return Err(err(
-                                        "mir.capture.env-field",
-                                        format!(
-                                            "capture #{} env field {} out of range ({} declared)",
-                                            ci,
-                                            c.src,
-                                            f.env.as_ref().unwrap().len()
-                                        ),
-                                    ));
-                                }
-                                continue;
-                            }
-                            let st = slot_ty_of(f, c.src, sp, &format!("capture #{}", ci))?;
-                            if c.kind == crate::mir::CaptureKind::Borrow {
-                                // The delivered borrow domain: an owned Str
-                                // source; the env field is a share view.
-                                if !matches!(self.module.types.get(st as usize), Some(MirType::Str))
-                                {
-                                    return Err(err(
-                                        "mir.capture.borrow-domain",
-                                        format!(
-                                            "borrow capture #{} type {} is not an owned Str",
-                                            ci, st
-                                        ),
-                                    ));
-                                }
-                                continue;
-                            }
-                            if c.kind == crate::mir::CaptureKind::Shared {
-                                // PLAN-909 cell domain: a handle share is
-                                // admitted ONLY over the cell representation
-                                // — `List<T>` with a Copy scalar element
-                                // (i32/bool/char). Sharing any other owned
-                                // aggregate (Str, record, nested list,
-                                // variant) is not a cell contract and is
-                                // rejected by name; an ordinary list copy
-                                // never stands in for a cell.
-                                let cell_ok = match self.module.types.get(st as usize) {
-                                    Some(MirType::List(l)) => matches!(
-                                        self.module.types.get(l.elem as usize),
-                                        Some(MirType::I32 | MirType::Bool | MirType::Char)
-                                    ),
-                                    _ => false,
-                                };
-                                if !cell_ok {
-                                    return Err(err(
-                                        "mir.capture.shared-domain",
-                                        format!(
-                                            "shared capture #{} type {} is not a scalar cell \
-                                             (List<i32|bool|char>); shared captures exist only \
-                                             over the single-element cell representation",
-                                            ci, st
-                                        ),
-                                    ));
-                                }
-                                continue;
-                            }
-                            if matches!(
-                                self.module.types.get(st as usize),
-                                Some(MirType::StrView)
-                                    | Some(MirType::MutRef)
-                                    | Some(MirType::Place(_))
-                                    | Some(MirType::Closure(_))
-                                    | Some(MirType::Fn(_))
-                            ) {
-                                return Err(err(
-                                    "mir.capture.kind",
-                                    format!(
-                                        "capture #{} type {} is not escape-capturable \
-                                         (borrow/token/place/closure kinds are rejected)",
-                                        ci, st
-                                    ),
-                                ));
-                            }
-                        }
-                    }
-                    MirInstr::CallClosure { dst, closure, args } => {
-                        if !self.is_closures {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "CALL_CLOSURE exists only in the closures profile".to_string(),
-                            ));
-                        }
-                        let ct = slot_ty_of(f, *closure, sp, "call-closure operand")?;
-                        let sig = match self.module.types.get(ct as usize) {
-                            Some(MirType::Closure(s)) => s.clone(),
-                            other => {
-                                return Err(err(
-                                    "mir.closure.type",
-                                    format!(
-                                        "call-closure operand type {} is {:?}, not a Closure",
-                                        ct, other
-                                    ),
-                                ))
-                            }
-                        };
-                        if sig.params.len() != args.len() {
-                            return Err(err(
-                                "mir.closure.arity",
-                                format!(
-                                    "closure call passes {} args, signature takes {}",
-                                    args.len(),
-                                    sig.params.len()
-                                ),
-                            ));
-                        }
-                        for (ai, (a, want)) in args.iter().zip(sig.params.iter()).enumerate() {
-                            let at = slot_ty_of(f, *a, sp, &format!("closure arg #{}", ai))?;
-                            if !self.ty_equiv(at, *want) {
-                                return Err(err(
-                                    "mir.closure.arg-type",
-                                    format!(
-                                        "closure arg #{} has type {}, signature wants {}",
-                                        ai, at, want
-                                    ),
-                                ));
-                            }
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "call-closure dst")?;
-                        if !self.ty_equiv(dt, sig.result) {
-                            return Err(err(
-                                "mir.closure.result-type",
-                                format!(
-                                    "closure call dst type {} does not match signature result {}",
-                                    dt, sig.result
-                                ),
-                            ));
-                        }
-                    }
-                    MirInstr::EnvGet { dst, field } => {
-                        if !self.is_closures {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "ENV_GET exists only in the closures profile".to_string(),
-                            ));
-                        }
-                        // r8: the env layout is the function's OWN
-                        // declaration — a body unit verifies standalone.
-                        let layout = match &f.env {
-                            Some(l) => l,
-                            None => {
-                                return Err(err(
-                                    "mir.env.not-closure-body",
-                                    format!(
-                                        "ENV_GET in `{}` which declares no env layout \
-                                         (env reads live only in closure bodies)",
-                                        f.name
-                                    ),
-                                ))
-                            }
-                        };
-                        if *field as usize >= layout.len() {
-                            return Err(err(
-                                "mir.env.field-range",
-                                format!(
-                                    "env field {} out of range (env layout has {} captures)",
-                                    field,
-                                    layout.len()
-                                ),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "env-get dst")?;
-                        let want = layout[*field as usize];
-                        if !self.ty_equiv(dt, want) {
-                            return Err(err(
-                                "mir.env.field-type",
-                                format!(
-                                    "env-get dst type {} does not match captured field type {}",
-                                    dt, want
-                                ),
-                            ));
-                        }
-                    }
-                    // -- PLAN-824 dynamic surface (typing arms) ----------
-                    MirInstr::DynPack { dst, src } => {
-                        if !self.is_dynamic {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "DYN_PACK exists only in the dynamic profile".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "dyn-pack dst")?;
-                        if !matches!(self.module.types.get(dt as usize), Some(MirType::Dyn)) {
-                            return Err(err(
-                                "mir.dyn.type",
-                                format!("DYN_PACK dst {} is not the Dyn type", dt),
-                            ));
-                        }
-                        let st = slot_ty_of(f, *src, sp, "dyn-pack src")?;
-                        if !self.dyn_whitelisted(st) {
-                            return Err(err(
-                                "mir.dyn.whitelist",
-                                format!(
-                                    "DYN_PACK src type {} is outside the erasable closure \
-                                     (Fn/borrows/Places rejected at any depth)",
-                                    st
-                                ),
-                            ));
-                        }
-                    }
-                    MirInstr::DynIs { dst, src, ty } => {
-                        if !self.is_dynamic {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "DYN_IS exists only in the dynamic profile".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "dyn-is dst")?;
-                        if !matches!(self.module.types.get(dt as usize), Some(MirType::Bool)) {
-                            return Err(err(
-                                "mir.dyn.type",
-                                format!("DYN_IS dst {} is not bool", dt),
-                            ));
-                        }
-                        let st = slot_ty_of(f, *src, sp, "dyn-is src")?;
-                        if !matches!(self.module.types.get(st as usize), Some(MirType::Dyn)) {
-                            return Err(err(
-                                "mir.dyn.type",
-                                format!("DYN_IS src {} is not the Dyn type", st),
-                            ));
-                        }
-                        if self.module.types.get(*ty as usize).is_none() {
-                            return Err(err(
-                                "mir.dyn.type",
-                                format!("DYN_IS type operand {} is out of bounds", ty),
-                            ));
-                        }
-                        if !self.dyn_whitelisted(*ty) {
-                            return Err(err(
-                                "mir.dyn.whitelist",
-                                format!(
-                                    "DYN_IS type operand {} is outside the erasable closure",
-                                    ty
-                                ),
-                            ));
-                        }
-                    }
-                    MirInstr::DynTake { dst, src, ty } => {
-                        if !self.is_dynamic {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "DYN_TAKE exists only in the dynamic profile".to_string(),
-                            ));
-                        }
-                        let st = slot_ty_of(f, *src, sp, "dyn-take src")?;
-                        if !matches!(self.module.types.get(st as usize), Some(MirType::Dyn)) {
-                            return Err(err(
-                                "mir.dyn.type",
-                                format!("DYN_TAKE src {} is not the Dyn type", st),
-                            ));
-                        }
-                        if self.module.types.get(*ty as usize).is_none() {
-                            return Err(err(
-                                "mir.dyn.type",
-                                format!("DYN_TAKE type operand {} is out of bounds", ty),
-                            ));
-                        }
-                        if !self.dyn_whitelisted(*ty) {
-                            return Err(err(
-                                "mir.dyn.whitelist",
-                                format!(
-                                    "DYN_TAKE type operand {} is outside the erasable closure",
-                                    ty
-                                ),
-                            ));
-                        }
-                        // dst receives exactly the requested type.
-                        let dt = slot_ty_of(f, *dst, sp, "dyn-take dst")?;
-                        if !self.ty_equiv(dt, *ty) {
-                            return Err(err(
-                                "mir.dyn.type",
-                                format!("DYN_TAKE dst {} != the requested type {}", dt, ty),
-                            ));
-                        }
-                    }
-                    MirInstr::BorrowEnd { token } => {
-                        if !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "BORROW_END exists only in the owned profile".to_string(),
-                            ));
-                        }
-                        let tt = slot_ty_of(f, *token, sp, "borrow-end token")?;
-                        if !matches!(
-                            self.module.types.get(tt as usize),
-                            Some(MirType::StrView) | Some(MirType::MutRef)
-                        ) {
-                            return Err(err(
-                                "mir.type-op",
-                                format!("BORROW_END operand type {} is not a borrow token", tt),
-                            ));
-                        }
-                    }
-                    MirInstr::StrLen { dst, view } | MirInstr::StrLenBytes { dst, view } => {
-                        if !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "str operations exist only in the owned profile".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "str-op dst")?;
-                        let vt = slot_ty_of(f, *view, sp, "str-op view")?;
-                        self.want_strview_i32(vt, dt, &err, sp)?;
-                    }
-                    MirInstr::StrCharAt { dst, view, index } => {
-                        if !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "str operations exist only in the owned profile".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "char_at dst")?;
-                        let vt = slot_ty_of(f, *view, sp, "char_at view")?;
-                        let it = slot_ty_of(f, *index, sp, "char_at index")?;
-                        if !matches!(self.module.types.get(vt as usize), Some(MirType::StrView)) {
-                            return Err(err(
-                                "mir.type-op",
-                                format!("char_at operand {} is not a view", vt),
-                            ));
-                        }
-                        if self.module.type_shape(it) != Some(ScalarShape::I32) {
-                            return Err(err(
-                                "mir.type-op",
-                                format!("char_at index type {} is not i32", it),
-                            ));
-                        }
-                        if !matches!(self.module.types.get(dt as usize), Some(MirType::Char)) {
-                            return Err(err(
-                                "mir.type-op",
-                                format!("char_at dst type {} is not char", dt),
-                            ));
-                        }
-                    }
-                    MirInstr::StrSlice {
-                        dst,
-                        view,
-                        start,
-                        end,
-                    } => {
-                        if !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "str operations exist only in the owned profile".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "slice dst")?;
-                        let vt = slot_ty_of(f, *view, sp, "slice view")?;
-                        let stt = slot_ty_of(f, *start, sp, "slice start")?;
-                        let ent = slot_ty_of(f, *end, sp, "slice end")?;
-                        if !matches!(self.module.types.get(vt as usize), Some(MirType::StrView)) {
-                            return Err(err(
-                                "mir.type-op",
-                                format!("slice operand {} is not a view", vt),
-                            ));
-                        }
-                        if self.module.type_shape(stt) != Some(ScalarShape::I32)
-                            || self.module.type_shape(ent) != Some(ScalarShape::I32)
-                        {
-                            return Err(err("mir.type-op", "slice bounds must be i32".to_string()));
-                        }
-                        if !matches!(self.module.types.get(dt as usize), Some(MirType::StrView)) {
-                            return Err(err(
-                                "mir.type-op",
-                                format!("slice dst type {} is not StrView", dt),
-                            ));
-                        }
-                    }
-                    MirInstr::StrConcat { dst, lhs, rhs } => {
-                        if !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "str operations exist only in the owned profile".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "concat dst")?;
-                        let lt = slot_ty_of(f, *lhs, sp, "concat lhs")?;
-                        let rt = slot_ty_of(f, *rhs, sp, "concat rhs")?;
-                        if !matches!(self.module.types.get(lt as usize), Some(MirType::StrView))
-                            || !matches!(self.module.types.get(rt as usize), Some(MirType::StrView))
-                        {
-                            return Err(err(
-                                "mir.type-op",
-                                "concat operands must be views".to_string(),
-                            ));
-                        }
-                        if !matches!(self.module.types.get(dt as usize), Some(MirType::Str)) {
-                            return Err(err(
-                                "mir.type-op",
-                                format!("concat dst type {} is not Str", dt),
-                            ));
-                        }
-                    }
-                    MirInstr::StrToOwned { dst, view } => {
-                        if !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "str operations exist only in the owned profile".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "to-owned dst")?;
-                        let vt = slot_ty_of(f, *view, sp, "to-owned view")?;
-                        if !matches!(self.module.types.get(vt as usize), Some(MirType::StrView)) {
-                            return Err(err(
-                                "mir.type-op",
-                                "to-owned operand must be a view".to_string(),
-                            ));
-                        }
-                        if !matches!(self.module.types.get(dt as usize), Some(MirType::Str)) {
-                            return Err(err(
-                                "mir.type-op",
-                                format!("to-owned dst type {} is not Str", dt),
-                            ));
-                        }
-                    }
-                    MirInstr::StrCmp { dst, lhs, rhs, .. } => {
-                        if !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "str operations exist only in the owned profile".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "cmp dst")?;
-                        let lt = slot_ty_of(f, *lhs, sp, "cmp lhs")?;
-                        let rt = slot_ty_of(f, *rhs, sp, "cmp rhs")?;
-                        if !matches!(self.module.types.get(lt as usize), Some(MirType::StrView))
-                            || !matches!(self.module.types.get(rt as usize), Some(MirType::StrView))
-                        {
-                            return Err(err(
-                                "mir.type-op",
-                                "cmp operands must be views".to_string(),
-                            ));
-                        }
-                        if self.module.type_shape(dt) != Some(ScalarShape::Bool) {
-                            return Err(err(
-                                "mir.type-op",
-                                format!("cmp dst type {} is not bool", dt),
-                            ));
-                        }
-                    }
-                    MirInstr::CharToCodepoint { dst, ch } => {
-                        if !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "char conversions exist only in the owned profile".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "to-codepoint dst")?;
-                        let ct = slot_ty_of(f, *ch, sp, "to-codepoint char")?;
-                        if !matches!(self.module.types.get(ct as usize), Some(MirType::Char)) {
-                            return Err(err(
-                                "mir.type-op",
-                                "to_codepoint operand must be char".to_string(),
-                            ));
-                        }
-                        if self.module.type_shape(dt) != Some(ScalarShape::I32) {
-                            return Err(err(
-                                "mir.type-op",
-                                "to_codepoint dst must be i32".to_string(),
-                            ));
-                        }
-                    }
-                    MirInstr::CharFromCodepoint { dst, code } => {
-                        if !self.is_owned && !self.collections_surface() {
-                            return Err(err(
-                                "mir.profile-instr",
-                                "char conversions exist only in the owned profile".to_string(),
-                            ));
-                        }
-                        let dt = slot_ty_of(f, *dst, sp, "from-codepoint dst")?;
-                        let ct = slot_ty_of(f, *code, sp, "from-codepoint code")?;
-                        if self.module.type_shape(ct) != Some(ScalarShape::I32) {
-                            return Err(err(
-                                "mir.type-op",
-                                "from_codepoint operand must be i32".to_string(),
-                            ));
-                        }
-                        if !matches!(self.module.types.get(dt as usize), Some(MirType::Char)) {
-                            return Err(err(
-                                "mir.type-op",
-                                "from_codepoint dst must be char".to_string(),
-                            ));
-                        }
+                    _ => {
+                        // F-941-15: the 51-arm typing union split into two
+                        // cold half-walks — the debug frame unions halve; the
+                        // deep chain's 256 KiB contract no longer pays for
+                        // unreachable arms (PLAN-961 regression fix).
+                        self.check_instr_typing_a(f, instr, sp)?;
+                        self.check_instr_typing_b(f, instr, sp)?;
                     }
                 }
             }
@@ -4507,7 +4545,10 @@ impl MirInstr {
                 declaration: _,
                 dst: _,
             } => {
-                let mut lanes = callbacks.iter().map(|(l, _)| *l as usize).collect::<Vec<_>>();
+                let mut lanes = callbacks
+                    .iter()
+                    .map(|(l, _)| *l as usize)
+                    .collect::<Vec<_>>();
                 lanes.sort_unstable();
                 let mut out = Vec::with_capacity(args.len());
                 let mut li = 0usize;

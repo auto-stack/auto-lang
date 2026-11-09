@@ -16,7 +16,7 @@
 //
 // 诊断事实（stage/code/span/message 顺序）由 core 投影层从 CST 事实映射，
 // 本文件只承载语法形状与身份；被裁剪 token 在该 profile 内为保留面。
-grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbrace"], sep: ["semi"], sync: ["semi", "rbrace"]) {
+grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbrace"], sep: ["semi"], sync: ["semi", "rbrace"]) {
     profiles(version: 1) {
         profile(name: "core") { }
         profile(name: "scalar") { }
@@ -564,7 +564,8 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         }
         if-stmt {
             if(field: "kw")
-            expr(field: "cond")
+            condition-expr(profiles: [record, text-record, collections, closures], field: "cond")
+            expr(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-modules, numeric], field: "cond")
             block(field: "then")
             else-block(repeat: "opt")
         }
@@ -577,7 +578,8 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         // 条件 for（wide 族；投影复用 While AST 形状）
         for-cond-stmt(profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, scalar-modules, packages-modules]) {
             for(field: "kw")
-            expr(field: "cond")
+            condition-expr(profiles: [record, text-record, collections, closures], field: "cond")
+            expr(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-modules, numeric], field: "cond")
             block(field: "body")
         }
         // PLAN-928（T-03）：PLAN-864 `for x in <List 局部> { .. }`。
@@ -670,6 +672,49 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             expr(field: "expr")
             rbrace() {}
         }
+        // PLAN-941 F04: a guard's body brace does not belong to its final
+        // identifier. A ctor here must start actual fields; groups and call
+        // arguments retain ordinary expression syntax and ctor diagnostics.
+        condition-expr(profiles: [record, text-record, collections, closures]) {
+            pratt(of: "condition-ops")
+        }
+        condition-unary(profiles: [record, text-record, collections, closures]) {
+            alt { int-literal() {} }
+            alt { minus() {} condition-unary(field: "operand", same-line: true) }
+            alt { bang() {} condition-unary(field: "operand", same-line: true) }
+            alt { condition-postfix() {} }
+        }
+        condition-postfix(profiles: [record, text-record, collections, closures]) {
+            condition-atom() {} many { postfix-step() {} }
+        }
+        condition-ctor(profiles: [record, text-record, collections, closures]) {
+            ident(field: "ty")
+            lbrace(same-line: true) {}
+            ctor-fields() {}
+            rbrace() {}
+        }
+        condition-atom(profiles: [record, text-record, collections, closures]) {
+            // HashExpr 原子先于其余原子形状（`#` 不与其余形状共享前缀）。
+            alt(profiles: [scalar-ct]) { hash-expr() {} }
+            alt(profiles: [scalar-modules]) { qualified-name() {} }
+            alt { condition-ctor() {} }
+            // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
+            // 条件镜像旧 generic_scan_commits——平衡 `<...>` 后随 `.`；普通
+            // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
+            alt(profiles: [collections, closures]) { generic-atom() {} }
+            // lambda 先于括号组备选：`( 参数 ) =>` 形状提交后不回退（ordered
+            // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
+            // 缺席时由 lambda 备选干净失败回退到括号组备选）。
+            alt(profiles: [closures]) { lambda-expr() {} }
+            alt(profiles: [record, text-record, collections]) { leading-dot() {} }
+            alt { str-lit(field: "lit") }
+            alt { char-lit(field: "lit") }
+            alt { affix-num(field: "lit") }
+            alt { true-kw(field: "kw") }
+            alt { false-kw(field: "kw") }
+            alt { ident() {} }
+            alt { lparen() {} expr() {} rparen() {} }
+        }
         atom-expr {
             // HashExpr 原子先于其余原子形状（`#` 不与其余形状共享前缀）。
             alt(profiles: [scalar-ct]) { hash-expr() {} }
@@ -730,7 +775,7 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
         // 具名构造 `Ty { f: v, ... }`（record 族；`{` 须同行——括号内放宽
         // 由 bracket==0 语义承担，与旧 in_bracket||same_line 提交一致）。
         // `{` 是 cut 步：消费后 alt 失败不回退到后续备选——复刻旧 parser
-        // 在 `ident {` 的无回溯提交（如 `if p { return 0 }` 拒绝在 return，
+        // 在普通表达式 `ident {` 的无回溯提交；条件另走 condition-expr，
         // 而裸 ident（`total + 1`）在 `{` 不匹配时照常回退为普通名字）。
         ctor-expr(profiles: [record, text-record, collections, closures, packages-modules, numeric]) {
             ident(field: "ty")
@@ -785,6 +830,33 @@ grammar(name: "auto-source", revision: 2, newline: true, stmt-end: ["semi", "rbr
             same-line: true
             nl-free: true
         }
+    }
+    pratt(condition-ops, profiles: [record, text-record, collections, closures]) {
+        primary: "condition-unary"
+        op(binding: 1, assoc: "left") { of: "||" }
+        op(binding: 2, assoc: "left") { of: "&&" }
+        op(binding: 3, assoc: "left") { of: "==" }
+        op(binding: 3, assoc: "left") { of: "!=" }
+        op(binding: 4, assoc: "left") { of: "<" }
+        op(binding: 4, assoc: "left") { of: ">" }
+        op(binding: 4, assoc: "left") { of: "<=" }
+        op(binding: 4, assoc: "left") { of: ">=" }
+        op(binding: 5, assoc: "left") { of: "+" }
+        op(binding: 5, assoc: "left") { of: "-" }
+        op(binding: 6, assoc: "left") { of: "*" }
+        op(binding: 6, assoc: "left") { of: "/" }
+        op(binding: 6, assoc: "left") { of: "%" }
+        // PLAN-927：调用收尾后的点后缀续读（`f().len()`——KIND_POSTFIX）。
+        postfix: "postfix-tail"
+        group: ["(", ")"]
+        call {
+            open: "("
+            close: ")"
+            args: "args"
+            same-line: true
+            nl-free: true
+        }
+
     }
     pratt(wide-ops, profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, collections, closures, scalar-modules, packages-modules]) {
         primary: "unary-expr"
