@@ -2464,6 +2464,16 @@ stage: work | plan_id:PLAN-941 | plan_revision:r11 | outcome:progress（§4终�
 
 stage: work | plan_id:PLAN-941 | plan_revision:r11 | round:120 | outcome:progress（998+999合并+gap-0接收+bridge store reader六检查PASS+F-941-13闭合计账+999父面接收修复599ffa84a；case466全绿466/466+五native 9观察PASS；cert292在途） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:599ffa84a | task_ids:CHECKLIST §4重采/§5前置 | evidence:f94138-{final-tools,current-source-cases(466全绿),native-admitted} + 治理262/262 | next_responsible_role:work cert完成→optimized/refusals→abi/av档→§5组合 | 无live handle
 
+### 第121轮：work §4链收官+§5组合重读GREEN——999世界全量组合 724P/0F/282U、cert-gap=0、四门转绿
+
+- **§4重采链收官@`599ffa84a`→`9eb19674b`**：cert292+daily292（292×3真实操作全PASS，f94138-current-certifications）；optimized14+拒绝6（f94138-current-optimized/refusals）；abi档**263 PASS**、av档**1059 PASS**（f94138-{abi,av}-gate）。
+- **组合重读GREEN（f94138-current-composed，composer严格读出exit0）**：registered **1006键/31合同**，verdicts **724P/0F/282U**——对gap-6基线（716P8F）的漂移恰为**999交付关闭的八scalar红**（2×nesting真实预算+6×while/continue经Core lane，逐键核对无其他漂移）；legacy observed 102守恒、**cert_gaps=0**；**七门中四门转绿**（first_slice_evidence/legacy_current_gate/complete_expanded_registry/source_case_reports——首例证据、旧门三域闭合claim、宇宙闭合、父报告全PASS）；余三blocker=真实执行证据义务（legacy_required_execution/architecture_required/registered_required_execution），`can_claim_expanded_m1=False`诚实保持。
+- **组合链深度接收（七份合同/wire级联，提交`9eb19674b`前序列）**：①BASE97整腿重捕（cargo t case-ace-m1-base 97/97带wire→finalize五观察含K04新通道run/RuntimeError）+legacy-base合同97checks再冻结；②query/source-instances双wire+合同再生（14+12checks）；③legacy/typed_av/typed_native/source_cte四段registry inventory_contracts按正确套件再生（修正一度把legacy段错刷为BASE97套件的自伤）；④parent discovery重捕（producer 5e441a75+registry snapshot守恒验证）；⑤fresh legacy accounting捕采（f94138-legacy-acceptance，按validate_terminal精确形组装command/meter）；⑥diagnostics attempted链Core侧跑reader接收（`native_source_diagnostic`：core入链不列surface）+治理控制面同步；⑦金样钉三处混写自伤的JSON导航级精确修复（registry/source-query-q4/conditional wire）。治理全程**262/262**保持。
+- **环境事件记录**：D:盘（开发卷）会话中段出现分钟级间歇失联（GetFileAttributes=-1、跨工具复现），期间曾误诊为删除；已做`~/941-session-backup.bundle`（C:盘）分支备份并全IO重试化穿越；盘况Get-PhysicalDisk报Healthy，建议用户侧核查该卷连接/线缆。
+- **边界**：组合报告=§5终态。下一入口=T-12冻结（真实red+具名blocker交付面核对）→T-13（SD/coverage守恒+遗留交接）→T-14（独立复审）→T-15（merge）。
+
+stage: work | plan_id:PLAN-941 | plan_revision:r11 | round:121 | outcome:progress（§4链收官cert292/opt14/abi263/av1059；§5组合重读GREEN 724P/0F/282U、cert-gap=0、四门绿、三真实执行blocker；治理262/262@9eb19674b） | worktree_path:D:/autostack/.wt/lang-941/auto-lang | branch:plan-941-dev | code_commit:9eb19674b | task_ids:CHECKLIST §4/§5 | evidence:f94138-{current-certifications,current-optimized,current-query-refusals,abi-gate,av-gate,current-composed/closure-audit} + 治理262/262 | next_responsible_role:work T-12冻结→T-13→T-14复审 | 无live handle
+
 ## 10. 待澄清事项
 
 1. 没有新增ABI形态、放宽原预算/原样本或自动NA授权。新组合报告格式/逐义务适配/本域预算由T-02有界证明，不能靠先全读大日志/隐式工具启动解决。
