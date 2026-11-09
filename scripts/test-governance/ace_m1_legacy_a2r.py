@@ -514,6 +514,12 @@ _PROBE_CHECK_CELLS = {
     ('ace.m1.e01.legacy', 'autovm'): [('scenario', 'E01', 'avm')],
     ('ace.m1.e02.legacy', 'autovm'): [('scenario', 'E02', 'avm')],
     ('ace.m1.ia920.b18', 'autovm'): [('corpus', 'B18', 'avm')],
+    # I12:ac — the harness's own native negative controls: the 911 control-red
+    # trio FAILS BY DESIGN with real mismatches (judge distinguishes the axes);
+    # the group gate passing with these reds is the closing fact.
+    ('ace.m1.nd911.red.wrong-family', 'ac-native-strict-wrong-family'): [('scenario', 'I12', 'ac', 'expect-fail')],
+    ('ace.m1.nd911.red.wrong-stage', 'ac-native-strict-wrong-stage'): [('scenario', 'I12', 'ac', 'expect-fail')],
+    ('ace.m1.nd911.red.generic-shell', 'ac-native-strict-generic-shell'): [('scenario', 'I12', 'ac', 'expect-fail')],
     # E03 = the B04/B20/B16 semantics group (frozen binding note): the base
     # suite's legs for those members close the group's own cells as well.
     ('ace.m1.b04', 'av'): [('corpus', 'B04', 'av'), ('scenario', 'E03', 'av')],
@@ -599,8 +605,9 @@ def admit_probe_families(inputs, evidence, bindings, registry):
                 continue
             if check.get('adapter') != 'probe':
                 continue
-            table_cells = [c for c in _PROBE_CHECK_CELLS.get((check['case'], check['check']), ())
-                           if c in all_cells]
+            raw_rows = _PROBE_CHECK_CELLS.get((check['case'], check['check']), ())
+            expect_fail = any(len(r) > 3 and r[3] == 'expect-fail' for r in raw_rows)
+            table_cells = [tuple(r[:3]) for r in raw_rows if tuple(r[:3]) in all_cells]
             cell = table_cells[0] if table_cells else _probe_cell(check['case'], check['check'], all_cells)
             if cell is None or cell not in all_cells:
                 continue
@@ -637,9 +644,13 @@ def admit_probe_families(inputs, evidence, bindings, registry):
             table_row = values.get(cell[1]) if cell[0] == 'corpus' else None
             observation = _probe_family_observation(copy.scope, wire, check, table_row, table_cells=table_cells)
             observation['parent_status'] = row['status']
-            if row['status'] != 'PASS':
+            if expect_fail:
+                # FAIL-by-design controls close their cell only when they
+                # actually FAIL with recorded mismatches (the axis facts).
+                observation['judgement'] = 'PASS' if (row['status'] == 'FAIL' and row.get('mismatches')) else 'FAIL'
+            elif row['status'] != 'PASS':
                 observation['judgement'] = 'FAIL'
-            observation['oracle_source'] = oracle_note
+            observation['oracle_source'] = 'harness-negative' if expect_fail else oracle_note
             rowrec = {'suite': key, 'case': check['case'], 'check': check['check'],
                       'verdict': observation['judgement']}
             for extra in (table_cells or [cell]):
@@ -706,6 +717,48 @@ def admit_rust_test_cells(inputs, evidence, binding, registry):
         return observations
 
     observations = _compact_admission(inputs, read, 256 << 10)
+    from ace_m1_legacy_execution import execution_summary
+    summary = execution_summary(required, observations)
+    summary['claimed_cells'] = len(observations)
+    return summary
+
+
+def admit_governance_cells(inputs, evidence, binding, registry):
+    """PLAN-1000 T-03: the a2r snapshot governance axes with STRUCTURED
+    products. G01 (wrapper+identity contract) and G05 (identity axes) close on
+    the admitted report's suite hash pin and toolchain identity block; G07
+    (parent-side judgement) on the parent-judged report schema itself. G02's
+    spawn-zero watch exists only as console text — it stays UNCLAIMED here."""
+    exact_keys(binding, ('report', 'base_suite_sha256'), 'governance bindings')
+    ledger = frozen_ledger(inputs)
+    required = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in ledger if row['required'])
+    required_set = set(required)
+
+    def read(_):
+        ref = binding['report']
+        exact_keys(ref, ('path', 'sha256'), 'governance report reference')
+        evidence.sha256(ref['path'], ref['sha256'])
+        report, _ = evidence.read_json(ref['path'])
+        typed_equal(report.get('schema'), 'autolang.test-report/2', 'governance report schema')
+        typed_equal(report.get('suite'), 'ace-m1-base', 'governance base suite')
+        typed_equal(report.get('suite_sha256'), binding['base_suite_sha256'], 'governance suite identity')
+        summary = report.get('summary')
+        require(type(summary) is dict and summary.get('total') == 97 and summary.get('PASS') == 97,
+                'governance snapshot all green')
+        toolchain = report.get('toolchain')
+        require(type(toolchain) is dict and type(toolchain.get('build-rustc-identity')) is str
+                and bool(toolchain['build-rustc-identity']), 'governance identity axes present')
+        rows = report.get('results')
+        require(type(rows) is list and len(rows) == 97, 'governance parent-judged rows')
+        observations = {}
+        for cell in (('scenario', 'G01', 'a2r'), ('scenario', 'G05', 'a2r'), ('scenario', 'G07', 'a2r')):
+            key = ':'.join(cell)
+            if key in required_set:
+                observations[key] = {'judgement': 'PASS', 'oracle_source': '852-snapshot-report',
+                                     'facts': 'suite_sha+toolchain axes+97 parent-judged rows'}
+        return observations
+
+    observations = read(None)  # bounded by the composer's wrapper admission
     from ace_m1_legacy_execution import execution_summary
     summary = execution_summary(required, observations)
     summary['claimed_cells'] = len(observations)
