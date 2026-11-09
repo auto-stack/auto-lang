@@ -245,7 +245,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
     evidence = EvidenceScope(evidence_root, budget)
     bindings, bindings_sha = evidence.read_json(bindings_path)
     mandatory = {'inventories', 'copies', 'workers', 'certification', 'legacy'}
-    require(type(bindings) is dict and mandatory <= bindings.keys() <= mandatory | {'legacy_base_execution', 'legacy_execution', 'legacy_a2r_execution', 'legacy_probe_families', 'legacy_rust_tests', 'legacy_governance', 'parent_contracts', 'legacy_typed_av', 'legacy_typed_native', 'source_cte_execution', 'text_certifications', 'source_cte_certifications', 'text_q4_execution', 'scalar_q4_execution', 'scalar_certifications', 'scalar_release_execution', 'record_text_execution', 'record_text_certifications', 'record_text_release_execution', 'collections_execution', 'collections_certifications', 'query_instances_execution', 'query_certifications', 'query_frontdoor_refusals', 'query_release_execution', 'source_supplement_execution', 'source_supplement_certifications', 'original_data_execution', 'original_data_certifications', 'original_data_diagnostics', 'ct_source_mechanisms', 'ct_child_mechanisms', 'ct_meta_mechanisms', 'ct_restore_mechanisms', 'sq_fact_mechanisms', 'syntax_mechanisms', 'legacy_architecture', 'incremental_restore_gates', 'incremental_restore_semantics', 'incremental_restore_comptime', 'incremental_restore_abi', 'incremental_restore_av', 'budget_time_gates', 'budget_time_optimized', 'acceptance_system_controls', 'policy_runtime_samples'},
+    require(type(bindings) is dict and mandatory <= bindings.keys() <= mandatory | {'legacy_base_execution', 'legacy_execution', 'legacy_a2r_execution', 'legacy_probe_families', 'legacy_rust_tests', 'legacy_governance', 'phased_cert_observations', 'parent_contracts', 'legacy_typed_av', 'legacy_typed_native', 'source_cte_execution', 'text_certifications', 'source_cte_certifications', 'text_q4_execution', 'scalar_q4_execution', 'scalar_certifications', 'scalar_release_execution', 'record_text_execution', 'record_text_certifications', 'record_text_release_execution', 'collections_execution', 'collections_certifications', 'query_instances_execution', 'query_certifications', 'query_frontdoor_refusals', 'query_release_execution', 'source_supplement_execution', 'source_supplement_certifications', 'original_data_execution', 'original_data_certifications', 'original_data_diagnostics', 'ct_source_mechanisms', 'ct_child_mechanisms', 'ct_meta_mechanisms', 'ct_restore_mechanisms', 'sq_fact_mechanisms', 'syntax_mechanisms', 'legacy_architecture', 'incremental_restore_gates', 'incremental_restore_semantics', 'incremental_restore_comptime', 'incremental_restore_abi', 'incremental_restore_av', 'budget_time_gates', 'budget_time_optimized', 'acceptance_system_controls', 'policy_runtime_samples'},
             'unknown/missing preview parent bindings')
     exact_keys(bindings['workers'], ('av', 'native', 'syntax', 'bridge'), 'current preview workers')
     require('scalar_release_execution' not in bindings or 'scalar_certifications' in bindings,
@@ -601,6 +601,25 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
             _obs = _section.get('observations')
             if isinstance(_obs, dict):
                 _section['observations'] = _slim_obs(_obs)
+    if 'phased_cert_observations' in bindings:
+        # PLAN-1000 T-05 phased composition: slim per-family observation files
+        # produced by disjoint sub-compositions; the registered gate consumes
+        # judgements, so this admission is lossless for the final verdict while
+        # keeping the whole under the frozen composer live-data cap.
+        phased = bindings['phased_cert_observations']
+        require(type(phased) is dict and phased, 'phased cert observations map')
+        for section, ref in sorted(phased.items()):
+            exact_keys(ref, ('path', 'sha256'), f'phased observations {section}')
+            evidence.sha256(ref['path'], ref['sha256'])
+            document, _ = evidence.read_json(ref['path'])
+            typed_equal(document.get('schema'), 'ace.m1.phased-observations/1',
+                        f'phased schema {section}')
+            observations = document.get('observations')
+            require(type(observations) is dict and observations,
+                    f'phased observations {section} rows')
+            result[section] = {'schema': 'ace.m1.phased-certifications/1',
+                               'observations': observations,
+                               'source': ref['path']}
     if '_merged_obs' in legacy:
         from ace_m1_legacy_execution import execution_summary as _esf
         from ace_m1_legacy import frozen_ledger as _flf
