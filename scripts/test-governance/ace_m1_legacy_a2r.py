@@ -272,6 +272,7 @@ def _suite_for(key):
         'p925': 'crates/auto-lang/test/cases/a2c-hir-record-text-925/a2c-hir-record-text-925.suite.ad',
         'p926': 'crates/auto-lang/test/cases/a2c-hir-collections-926/a2c-hir-collections-926.suite.ad',
         'p823': 'crates/auto-lang/test/cases/av-data/823/av-data-823.suite.ad',
+        'order_layout_914_probe': 'crates/auto-lang/test/cases/ace-m1/order-layout-914/order-layout-914.suite.ad',
         'p864': 'crates/auto-lang/test/cases/ace-m1/collections-source-864.suite.ad',
         'p889': 'crates/auto-lang/test/cases/ace-m1/native-collections-889.suite.ad',
         'console_863': 'crates/auto-lang/test/cases/ace-m1/console-863/console-863.suite.ad',
@@ -297,6 +298,7 @@ _CONTRACT_SHAS = {
     "legacy_base_probe": "3f4f6da57b4dceaca74ae83ec13363f0bc53180516705bc7191d32665ac36a86",
     "method_881": "7f89138bdac10eead48e82656361166b0056bdbdc2516205ec98df2fde647d98",
     "order_layout_914": "223d958c3f9c6db0eb3ea2f7ef2bf6fb66c4ad666384e859973cd94c84cb7b09",
+    "order_layout_914_probe": "223d958c3f9c6db0eb3ea2f7ef2bf6fb66c4ad666384e859973cd94c84cb7b09",
     "p823": "fa9f0c16ddc560ffe6f67b7c88747e0753055b52fcfc1d33636b5bec1fddd7ac",
     "p824": "81828390fa2242d22ef155060fa4658eecde90683d6690c06b7f043815879674",
     "p825": "712f6ceda41d40f13ebad85bb65ace4980ad255341364ef9076fd157a998ec65",
@@ -484,9 +486,24 @@ _PROBE_CHECK_CELLS = {
     ('ace.m1.session.mn', 'edit-then-restart-run'): [('scenario', 'I06', 'ac')],
     ('ace.m1.i04.ace', 'declaration'): [('scenario', 'I04', 'ac')],
     ('ace.m1.i09.ace', 'refused'): [('scenario', 'I09', 'ac')],
+    ('ace.m1.i09.ace', 'survives'): [('scenario', 'I09', 'ac')],
+    ('ace.m1.i09.av', 'partial-rebuild-refused'): [('scenario', 'I09', 'av')],
+    ('ace.m1.i04.av', 'unused-declaration-carry'): [('scenario', 'I04', 'av')],
+    ('ace.m1.i04.av', 'layout-change-rebuild'): [('scenario', 'I04', 'av')],
+    ('ace.m1.i04.av', 'body-edit-precision'): [('scenario', 'I04', 'av')],
+    ('ace.m1.e01.ace', 'ac-native'): [('scenario', 'E01', 'ac')],
+    ('ace.m1.e01.ace', 'av'): [('scenario', 'E01', 'av')],
+    ('ace.m1.e02.ace', 'ac-native'): [('scenario', 'E02', 'ac')],
+    ('ace.m1.e02.ace', 'av-data'): [('scenario', 'E02', 'av')],
+    ('ace.m1.e02.av', 'unused-declaration-carry'): [],
     ('ace.m1.res-r01-av866', 'av-res-r01-continuity'): [('corpus', 'H01', 'av')],
     ('ace.m1.res-r02-av866', 'av-res-r02-online-swap'): [('corpus', 'H02', 'av'), ('scenario', 'I08', 'av')],
     ('ace.m1.res-r03-av866', 'av-res-r03-churn-two-swaps'): [('corpus', 'H03', 'av')],
+    ('av.dynamic.first', 'run-dynamic-fixture'): [('scenario', 'D01', 'av')],
+    ('av.dynamic.take_probe', 'run-dynamic-take-probe'): [('scenario', 'D02', 'av')],
+    ('ace.m1.e01.legacy', 'autovm'): [('scenario', 'E01', 'avm')],
+    ('ace.m1.e02.legacy', 'autovm'): [('scenario', 'E02', 'avm')],
+    ('ace.m1.ia920.b18', 'autovm'): [('corpus', 'B18', 'avm')],
 }
 
 def admit_probe_families(inputs, evidence, bindings, registry):
@@ -528,6 +545,39 @@ def admit_probe_families(inputs, evidence, bindings, registry):
             for c, row in admitted['checks'] if row['status'] != 'PASS']}
         suite_cells = {}
         for check, row in admitted['checks']:
+            if check.get('adapter') == 'avm':
+                # In-process VM legs: the parent judged them; the retained
+                # products are re-verified against the pinned oracle bytes.
+                avm_cells = [c for c in _PROBE_CHECK_CELLS.get((check['case'], check['check']), ())
+                             if c in all_cells]
+                if not avm_cells or row['status'] != 'PASS':
+                    continue
+                artifacts_ok = True
+                base_rel = None
+                fixture = inv.get('fixture_base')
+                if fixture:
+                    verbatim = '\\\\?\\'
+                    fx = fixture[4:] if fixture.startswith(verbatim) else fixture
+                    base_rel = PureWindowsPath(fx).relative_to(PureWindowsPath(str(inputs.root))).as_posix()
+                for artifact in check.get('oracle_artifacts', ()):
+                    if base_rel is None:
+                        artifacts_ok = False
+                        break
+                    golden = inputs.read_bytes(PurePosixPath(base_rel, artifact['file']).as_posix())
+                    emitted_name = next((n for n in copy.files
+                                         if n.endswith('/' + check['case'] + '/' + check['check']
+                                                       + '/' + artifact['path'])), None)
+                    if emitted_name is None or copy.scope.read_bytes(emitted_name) != golden:
+                        artifacts_ok = False
+                        break
+                if artifacts_ok:
+                    for extra in avm_cells:
+                        suite_cells.setdefault(':'.join(extra), []).append(
+                            {'suite': key, 'case': check['case'], 'check': check['check'],
+                             'verdict': 'PASS', 'oracle_count': len(check.get('oracle_artifacts', ()))})
+                        suite_cells.setdefault(':'.join(extra) + '#obs', []).append(
+                            {'judgement': 'PASS', 'oracle_source': 'suite-contract', 'parent_status': row['status']})
+                continue
             if check.get('adapter') != 'probe':
                 continue
             table_cells = [c for c in _PROBE_CHECK_CELLS.get((check['case'], check['check']), ())
@@ -545,7 +595,10 @@ def admit_probe_families(inputs, evidence, bindings, registry):
             else:
                 continue
             pin = binding.get(worker_key)
-            require(pin is not None, f'probe family worker pin missing: {key}/{worker_key}')
+            require(pin is not None or worker_key == 'native',
+                    f'probe family worker pin missing: {key}/{worker_key}')
+            if pin is None:
+                continue  # no native pin bound and none needed for this leg
             # The worker pin is validated against the exchange frame itself
             # (admit_exchange); mn-worker.exe is deliberately built in two
             # feature states by the mn/mn-collections tool specs, so not every
