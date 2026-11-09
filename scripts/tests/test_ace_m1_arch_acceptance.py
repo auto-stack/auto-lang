@@ -53,7 +53,7 @@ import ace_m1_legacy_arch as legacy_arch
 class LegacyArchitectureControls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        scratch = Path(os.environ.get('PLAN941_SCRATCH', 'D:/autostack/plan-artifacts/plan-941'))
+        scratch = Path(os.environ.get('PLAN941_SCRATCH', tempfile.gettempdir()))
         cls.temp = tempfile.TemporaryDirectory(prefix='legacy-architecture-controls-', dir=scratch)
         cls.addClassCleanup(cls.temp.cleanup)
         cls.root = Path(cls.temp.name)
@@ -149,7 +149,7 @@ class LegacyArchitectureControls(unittest.TestCase):
 
 class EvidenceAdmissionTests(unittest.TestCase):
     def setUp(self):
-        scratch = Path(os.environ.get('PLAN941_SCRATCH', 'D:/autostack/plan-artifacts/plan-941'))
+        scratch = Path(os.environ.get('PLAN941_SCRATCH', tempfile.gettempdir()))
         scratch.mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(prefix='admission-', dir=scratch)
         self.addCleanup(self.temp.cleanup)
@@ -280,7 +280,7 @@ class LegacyAccountingTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        scratch = Path(os.environ.get('PLAN941_SCRATCH', 'D:/autostack/plan-artifacts/plan-941'))
+        scratch = Path(os.environ.get('PLAN941_SCRATCH', tempfile.gettempdir()))
         scratch.mkdir(parents=True, exist_ok=True)
         cls.temp = tempfile.TemporaryDirectory(prefix='legacy-controls-', dir=scratch)
         cls.addClassCleanup(cls.temp.cleanup)
@@ -405,7 +405,7 @@ class LegacyAccountingTests(unittest.TestCase):
 class CaseCopyBindingTests(unittest.TestCase):
     """Schema/linkage unit controls; generated ERROR data supplies no M1 PASS."""
     def setUp(self):
-        scratch = Path(os.environ.get('PLAN941_SCRATCH', 'D:/autostack/plan-artifacts/plan-941'))
+        scratch = Path(os.environ.get('PLAN941_SCRATCH', tempfile.gettempdir()))
         self.temp = tempfile.TemporaryDirectory(prefix='case-binding-', dir=scratch)
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
