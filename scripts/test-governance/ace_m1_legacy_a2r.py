@@ -649,3 +649,45 @@ def admit_probe_families(inputs, evidence, bindings, registry):
     summary['source_case_reports'] = parents
     summary['claimed_cells'] = len(observations)
     return summary
+
+
+def admit_rust_test_cells(inputs, evidence, binding, registry):
+    """PLAN-1000 T-03: named Rust test observations as legacy cell evidence.
+
+    The fixed-group nextest report is the parent record: per-test events with
+    the group's meter receipts. Only the explicitly mapped cell->test rows are
+    claimed; every mapped test must be `ok` (ignored/failed = no PASS)."""
+    from ace_m1_first_slice import _compact_admission
+    exact_keys(binding, ('group', 'report', 'cells'), 'rust test bindings')
+    ledger = frozen_ledger(inputs)
+    required = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in ledger if row['required'])
+    required_set = set(required)
+
+    def read(_):
+        ref = binding['report']
+        exact_keys(ref, ('path', 'sha256'), 'rust test report reference')
+        evidence.sha256(ref['path'], ref['sha256'])
+        document, _ = evidence.read_json(ref['path'])
+        require(document.get('groups') == [binding['group']], 'rust test fixed group')
+        require(type(document.get('results')) is dict, 'rust test per-test results')
+        results = document['results']
+        cells = binding['cells']
+        require(type(cells) is dict and cells, 'rust test cell map')
+        observations = {}
+        for cell_key, test_name in sorted(cells.items()):
+            require(cell_key in required_set, 'rust test cell outside the required set')
+            hits = [k for k in results if k.endswith(test_name)]
+            require(len(hits) == 1, f'rust test name not unique: {test_name}')
+            event = results[hits[0]]
+            require(type(event) is dict and event.get('event') == 'ok',
+                    f'rust test not ok: {test_name}')
+            observations[cell_key] = {
+                'judgement': 'PASS', 'oracle_source': 'rust-test',
+                'test': hits[0], 'group': binding['group']}
+        return observations
+
+    observations = _compact_admission(inputs, read, 256 << 10)
+    from ace_m1_legacy_execution import execution_summary
+    summary = execution_summary(required, observations)
+    summary['claimed_cells'] = len(observations)
+    return summary

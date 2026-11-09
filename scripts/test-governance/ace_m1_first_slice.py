@@ -234,7 +234,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
     evidence = EvidenceScope(evidence_root, budget)
     bindings, bindings_sha = evidence.read_json(bindings_path)
     mandatory = {'inventories', 'copies', 'workers', 'certification', 'legacy'}
-    require(type(bindings) is dict and mandatory <= bindings.keys() <= mandatory | {'legacy_base_execution', 'legacy_execution', 'legacy_a2r_execution', 'legacy_probe_families', 'parent_contracts', 'legacy_typed_av', 'legacy_typed_native', 'source_cte_execution', 'text_certifications', 'source_cte_certifications', 'text_q4_execution', 'scalar_q4_execution', 'scalar_certifications', 'scalar_release_execution', 'record_text_execution', 'record_text_certifications', 'record_text_release_execution', 'collections_execution', 'collections_certifications', 'query_instances_execution', 'query_certifications', 'query_frontdoor_refusals', 'query_release_execution', 'source_supplement_execution', 'source_supplement_certifications', 'original_data_execution', 'original_data_certifications', 'original_data_diagnostics', 'ct_source_mechanisms', 'ct_child_mechanisms', 'ct_meta_mechanisms', 'ct_restore_mechanisms', 'sq_fact_mechanisms', 'syntax_mechanisms', 'legacy_architecture', 'incremental_restore_gates', 'incremental_restore_semantics', 'incremental_restore_comptime', 'incremental_restore_abi', 'incremental_restore_av', 'budget_time_gates', 'budget_time_optimized', 'acceptance_system_controls', 'policy_runtime_samples'},
+    require(type(bindings) is dict and mandatory <= bindings.keys() <= mandatory | {'legacy_base_execution', 'legacy_execution', 'legacy_a2r_execution', 'legacy_probe_families', 'legacy_rust_tests', 'parent_contracts', 'legacy_typed_av', 'legacy_typed_native', 'source_cte_execution', 'text_certifications', 'source_cte_certifications', 'text_q4_execution', 'scalar_q4_execution', 'scalar_certifications', 'scalar_release_execution', 'record_text_execution', 'record_text_certifications', 'record_text_release_execution', 'collections_execution', 'collections_certifications', 'query_instances_execution', 'query_certifications', 'query_frontdoor_refusals', 'query_release_execution', 'source_supplement_execution', 'source_supplement_certifications', 'original_data_execution', 'original_data_certifications', 'original_data_diagnostics', 'ct_source_mechanisms', 'ct_child_mechanisms', 'ct_meta_mechanisms', 'ct_restore_mechanisms', 'sq_fact_mechanisms', 'syntax_mechanisms', 'legacy_architecture', 'incremental_restore_gates', 'incremental_restore_semantics', 'incremental_restore_comptime', 'incremental_restore_abi', 'incremental_restore_av', 'budget_time_gates', 'budget_time_optimized', 'acceptance_system_controls', 'policy_runtime_samples'},
             'unknown/missing preview parent bindings')
     exact_keys(bindings['workers'], ('av', 'native', 'syntax', 'bridge'), 'current preview workers')
     require('scalar_release_execution' not in bindings or 'scalar_certifications' in bindings,
@@ -416,14 +416,31 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         earlier2 = legacy.get('execution_summary', {}).get('observations', {})
         # The pre-existing chains (scalar/base/typed/data/a2r) are the primary
         # owners of their cells; probe families only supply the remainder.
-        fresh_family_cells = {k: v for k, v in families['observations'].items()
-                              if k not in earlier2}
+        fresh_family_cells = {k: {'judgement': v['judgement'],
+                                  'supporting': [r['suite'] + ':' + r['check'] for r in v.get('supporting_checks', [])][:3]}
+                              for k, v in families['observations'].items() if k not in earlier2}
         families['claimed_cells'] = len(fresh_family_cells)
         required2 = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in _fl(inputs) if row['required'])
         legacy['execution_summary'] = _compact_admission(inputs, lambda _: _es2(
             required2, earlier2 | fresh_family_cells), 3 << 20)
         legacy['execution'] = legacy['execution_summary']['verdict']
         legacy['probe_family_claimed_cells'] = families['claimed_cells']
+    if 'legacy_rust_tests' in bindings:
+        from ace_m1_legacy_a2r import admit_rust_test_cells
+        rust = _compact_admission(inputs, lambda _: admit_rust_test_cells(
+            inputs, evidence, bindings['legacy_rust_tests'], registry), 512 << 10)
+        from ace_m1_legacy_execution import execution_summary as _es3
+        from ace_m1_legacy import frozen_ledger as _fl3
+        earlier3 = legacy.get('execution_summary', {}).get('observations', {})
+        rust['observations'] = {k: {'judgement': v['judgement'], 'oracle_source': v.get('oracle_source'),
+                                    'test': v.get('test')}
+                                for k, v in rust['observations'].items() if k not in earlier3}
+        rust['claimed_cells'] = len(rust['observations'])
+        required3 = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in _fl3(inputs) if row['required'])
+        legacy['execution_summary'] = _compact_admission(inputs, lambda _: _es3(
+            required3, earlier3 | rust['observations']), 3 << 20)
+        legacy['execution'] = legacy['execution_summary']['verdict']
+        legacy['rust_test_claimed_cells'] = rust['claimed_cells']
         for key, parent in families['source_case_reports'].items():
             parents['probe:' + key] = parent
     result = retain_case_reports(reduce_preview(registry_sha, observations, legacy), parents)
