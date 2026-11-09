@@ -365,6 +365,15 @@ def _probe_cell(case_id, check_name, required_cells):
         hit = scenario_ids.get((sc.lower(), path)) if path and sc else None
         if hit is not None:
             return hit
+    if plain is not None and '.' in plain:
+        # dotted corpus legs (text-source-894: t03.value/t05.value): the
+        # obligation id is the leading segment, the path from the check name.
+        head, _, tail = plain.partition('.')
+        head_base = head[:-2] if head.endswith('fn') else head
+        p2 = _path_from(check_name, tail)
+        hit2 = corpus_ids.get((head_base, p2)) if p2 else None
+        if hit2 is not None:
+            return hit2
     if plain is not None and '-' not in plain and '.' not in plain:
         path = ('ac' if check_name in ('ac-native',) or check_name.startswith('mn-')
                 else 'avm' if check_name == 'autovm'
@@ -505,6 +514,15 @@ _PROBE_CHECK_CELLS = {
     ('ace.m1.e01.legacy', 'autovm'): [('scenario', 'E01', 'avm')],
     ('ace.m1.e02.legacy', 'autovm'): [('scenario', 'E02', 'avm')],
     ('ace.m1.ia920.b18', 'autovm'): [('corpus', 'B18', 'avm')],
+    # E03 = the B04/B20/B16 semantics group (frozen binding note): the base
+    # suite's legs for those members close the group's own cells as well.
+    ('ace.m1.b04', 'av'): [('corpus', 'B04', 'av'), ('scenario', 'E03', 'av')],
+    ('ace.m1.b04', 'ac-native'): [('corpus', 'B04', 'ac'), ('scenario', 'E03', 'ac')],
+    ('ace.m1.b20', 'av'): [('corpus', 'B20', 'av'), ('scenario', 'E03', 'av')],
+    ('ace.m1.b20', 'ac-native'): [('corpus', 'B20', 'ac'), ('scenario', 'E03', 'ac')],
+    ('ace.m1.b16', 'av'): [('corpus', 'B16', 'av'), ('scenario', 'E03', 'av')],
+    ('ace.m1.b16', 'ac-native'): [('corpus', 'B16', 'ac'), ('scenario', 'E03', 'ac')],
+    ('ace.m1.b16', 'autovm'): [('corpus', 'B16', 'avm'), ('scenario', 'E03', 'avm')],
 }
 
 def admit_probe_families(inputs, evidence, bindings, registry):
