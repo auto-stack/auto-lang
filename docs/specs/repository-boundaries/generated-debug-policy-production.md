@@ -44,8 +44,14 @@ app+vendored 闭包、registry 依赖为非成员——两类成员集的有效�
   缓存根+独立 lease；多并存策略物理隔离，同名旧件不可能串用。
 - `context.json` 加性记录 `debug_policy`/`debug_policy_source`；旧根无字段
   =legacy 判定。前端收据 `generation.json` 加性记录 `debug_policy`：缺字段
-  （legacy/旧工具产物）或异标签=不新鲜=重建重发布；`discover_front_exe`
-  同时校验策略标签与发布件 sha256——策略切换/换名同 exe/伪造标签均不发现。
+  （legacy/旧工具产物）或异标签=不新鲜=重建重发布。
+- 发现身份=收据 `context_id`==当前 ctx8 **且** 策略标签一致（标签单独可被
+  改写，不是身份：`full` 构建件仅改标签为 `c` 不得被发现——1003 复审反例）。
+  `discover_front_exe`（执行/交出产物）在身份之上校验发布件字节=记录 sha256
+  （防“已拷贝新件、收据未写”的同名异件）；`discover_front_exe_identity`
+  （注册表扫描等分类）不读字节——逐扫描哈希实测 +81 ms/应用（10 应用
+  811.7 ms vs 1.9 ms），故分类与执行分级。910 前约定路径回退不在本身份
+  规则内（legacy 布局兜底，既有边界）。
 - 无变更 ensure/重跑：manifest、config、context.json、收据 bytes 与 mtime
   稳定（写前比较）；失败/取消/坏配置不覆盖 last-good 发布件。
 
@@ -78,7 +84,9 @@ dbghelp 的 exe 目录回退按该名查找。publish_artifact 除用户可见 s
 
 交付根 manifest 消费核心单一策略块（不抄取 producer 工具根自身
 `[profile.dev]`——该抄取丢 `package."*"` 覆盖）；块随包静态携带、消费侧不读
-环境；`delivery-manifest.json` 记 `debug_policy{label,source}`。策略在任何
+环境；`delivery-manifest.json` 记 `debug_policy{label,source,
+generation_env_override_not_carried}`——label 只描述随包静态块（`c`/`full`），
+生成期 `CARGO_PROFILE_DEV_DEBUG` 不随包、单列审计，不得把纯 C 包标成覆盖臂。策略在任何
 staging 写入前解析，未知/冲突失败时既往交付原样保留。移根包按实际成员集
 生效（实测：app/vendored 成员=line-tables、registry 依赖与 exclude 的
 vendor 树=无调试信息）。

@@ -86,8 +86,10 @@ ensure 任何写入前解析，未知值/显式策略与 `CARGO_PROFILE_DEV_DEBU
   以下划线命名 `counter_<id8>.pdb`），发布为 `<published>.pdb`，**并以 cargo
   报告名硬链接一份别名**（PLAN-1003：发布 exe 的 RSDS 记录该名，dbghelp 按
   exe 目录回退查找；只发改名 pdb 会使原样发布件 0 成员符号可解析；别名随
-  重链接刷新）。前端收据含 `debug_policy` 标签，策略切换/legacy 缺字段/换名
-  同 exe/伪造标签均不 fresh、不发现。
+  重链接刷新）。前端收据含 `debug_policy` 标签；发现身份=收据 `context_id`==当前
+  ctx8 **且**标签一致（与 `front_needs_regeneration` 同一规则——标签单独可被
+  改写，不构成身份）。`discover_front_exe`（执行/交出产物）另校验发布件字节=
+  记录 sha256；`discover_front_exe_identity`（注册表扫描等分类）不读字节。
 - `context.json.producer_origin` 为首见值：同一 producer 经不同选择臂（env/
   发现/编译期）再写入时不翻转该字段。
 - 发现：`generated_build::discover_front_exe(app_dir)`（收据优先）；auto-ui
