@@ -34,7 +34,18 @@ case {
   checks: [
     { id: "av-r02-l04-sweep", adapter: "probe", action: "run",
       options: { recipe: "ac-av/resource-run-v1", av: { entry: "source:l04" }, steps: [ { op: "run" } ] },
-      expect: { completion: "success" } }
+      expect: { completion: "success" } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "autovm-fault-1", adapter: "avm", action: "run",
+      options: { fail_alloc_at: 1 },
+      expect: { completion: { stage: "run", code: "AllocFault" } } },
+    { id: "autovm-fault-2", adapter: "avm", action: "run",
+      options: { fail_alloc_at: 2 },
+      expect: { completion: { stage: "run", code: "AllocFault" } } },
+    { id: "autovm-fault-3", adapter: "avm", action: "run",
+      options: { fail_alloc_at: 3 },
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } }
   ]
 }
 ```
@@ -50,7 +61,18 @@ case {
   checks: [
     { id: "av-r02-l05-sweep", adapter: "probe", action: "run",
       options: { recipe: "ac-av/resource-run-v1", av: { entry: "source:l05" }, steps: [ { op: "run" } ] },
-      expect: { completion: "success" } }
+      expect: { completion: "success" } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "autovm-fault-1", adapter: "avm", action: "run",
+      options: { fail_alloc_at: 1 },
+      expect: { completion: { stage: "run", code: "AllocFault" } } },
+    { id: "autovm-fault-2", adapter: "avm", action: "run",
+      options: { fail_alloc_at: 2 },
+      expect: { completion: { stage: "run", code: "AllocFault" } } },
+    { id: "autovm-fault-3", adapter: "avm", action: "run",
+      options: { fail_alloc_at: 3 },
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } }
   ]
 }
 ```
@@ -66,7 +88,18 @@ case {
   checks: [
     { id: "av-r02-v05-sweep", adapter: "probe", action: "run",
       options: { recipe: "ac-av/resource-run-v1", av: { entry: "source:v05" }, steps: [ { op: "run" } ] },
-      expect: { completion: "success" } }
+      expect: { completion: "success" } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "autovm-fault-1", adapter: "avm", action: "run",
+      options: { fail_alloc_at: 1 },
+      expect: { completion: { stage: "run", code: "AllocFault" } } },
+    { id: "autovm-fault-2", adapter: "avm", action: "run",
+      options: { fail_alloc_at: 2 },
+      expect: { completion: { stage: "run", code: "AllocFault" } } },
+    { id: "autovm-fault-3", adapter: "avm", action: "run",
+      options: { fail_alloc_at: 3 },
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } }
   ]
 }
 ```
@@ -82,7 +115,15 @@ case {
   checks: [
     { id: "av-r02-lstr-sweep", adapter: "probe", action: "run",
       options: { recipe: "ac-av/resource-run-v1", av: { entry: "source:lstr" }, steps: [ { op: "run" } ] },
-      expect: { completion: "success" } }
+      expect: { completion: "success" } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "51" } } },
+    { id: "autovm-fault-1", adapter: "avm", action: "run",
+      options: { fail_alloc_at: 1 },
+      expect: { completion: { stage: "run", code: "AllocFault" } } },
+    { id: "autovm-fault-2", adapter: "avm", action: "run",
+      options: { fail_alloc_at: 2 },
+      expect: { completion: "success", result: { format: "legacy-display", text: "51" } } }
   ]
 }
 ```
@@ -114,7 +155,12 @@ case {
   checks: [
     { id: "av-r02-k02-sweep", adapter: "probe", action: "run",
       options: { recipe: "ac-av/resource-run-v1", av: { entry: "source:k02" }, steps: [ { op: "run" } ] },
-      expect: { completion: "success" } }
+      expect: { completion: "success" } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "autovm-fault-none", adapter: "avm", action: "run",
+      options: { fail_alloc_at: 1 },
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } }
   ]
 }
 ```

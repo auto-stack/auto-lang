@@ -2048,6 +2048,17 @@ impl Codegen {
                         // Check if it's a static method call (Type.method with capital T)
                         // Also treat stdlib module names (env, fs, etc.) as static
                         let is_static_method = match obj.as_ref() {
+                            // Plan 322 / PLAN-1000 R02:avm: GenName("List<int>")
+                            // is a static type name, never an instance — without
+                            // this arm `List<int>.new()` compiled the GenName as
+                            // a receiver (expr_fallback pushes a placeholder 0),
+                            // and shim_list_new's has-arg heuristic swallowed
+                            // that placeholder as a first element: every generic
+                            // list was born with a phantom zero element (len 1
+                            // after new(), get(0)==0, values shifted to index 1+).
+                            // Mirrors the GenName arm of the second static check
+                            // below (which this native path never reaches).
+                            Expr::GenName(_) => true,
                             Expr::Ident(obj_name) => {
                                 // If the identifier resolves to a variable (local OR
                                 // module-level global), it's an instance method call on

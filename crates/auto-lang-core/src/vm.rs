@@ -29,6 +29,9 @@ mod immutable_assign_920;
 // 逃逸仍被帧守卫拒绝的反控）。
 #[cfg(test)]
 mod move_closures_1000;
+// PLAN-1000 R02:avm — 分配故障注入 seam（旧值保持/部分回收/typed 分类）。
+#[cfg(test)]
+mod alloc_fault_1000;
 // Plan 419 Phase 1:引用计数生命周期里程碑测试(§2.2)。
 #[cfg(test)]
 mod tests_rc_lifecycle;

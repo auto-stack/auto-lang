@@ -279,6 +279,10 @@ pub enum VMError {
     /// requested exit code. The embedding shell's run loop treats this as a
     /// cooperative stop, not a failure.
     ExitRequested(i32),
+    /// PLAN-1000 R02:avm — injected allocation failure (resource-domain
+    /// fault seam, see [`set_next_run_alloc_fault_at`]). Deliberately NOT a
+    /// language/type error: a resource fault never masquerades as one.
+    AllocFault { ordinal: u64 },
 }
 
 /// Plan 773 F-08: stable variant-name identity of a VM trap, decided where
@@ -296,6 +300,7 @@ pub fn vm_error_code(e: &VMError) -> &'static str {
         VMError::RuntimeError(_) => "RuntimeError",
         VMError::FFI(_) => "FFI",
         VMError::ExitRequested(_) => "ExitRequested",
+        VMError::AllocFault { .. } => "AllocFault",
     }
 }
 
@@ -457,6 +462,24 @@ pub struct ParkedSegment {
 /// PLAN-776 R1-F03：VM 实例唯一号分配器（凭据 owner 身份的来源侧）。
 static VM_INSTANCE_ID_GEN: AtomicU64 = AtomicU64::new(1);
 
+/// PLAN-1000 R02:avm — one-shot allocation-fault point for the NEXT
+/// constructed [`AutoVM`] (1-based allocation ordinal; 0 = off). A
+/// test-observation seam only: with it unset (the production default) engine
+/// behavior is byte-identical. The avm adapter sets it around a staged run;
+/// [`AutoVM::new_inner`] consumes and clears it.
+static NEXT_RUN_ALLOC_FAULT_AT: AtomicU64 = AtomicU64::new(0);
+
+/// PLAN-1000 R02:avm — arm the next engine construction with an injected
+/// allocation failure at the given 1-based allocation ordinal.
+pub fn set_next_run_alloc_fault_at(ordinal: u64) {
+    NEXT_RUN_ALLOC_FAULT_AT.store(ordinal, Ordering::SeqCst);
+}
+
+/// PLAN-1000 R02:avm — disarm the seam (adapter cleanup arm).
+pub fn clear_next_run_alloc_fault_at() {
+    NEXT_RUN_ALLOC_FAULT_AT.store(0, Ordering::SeqCst);
+}
+
 pub struct AutoVM {
     pub flash: Arc<VirtualFlash>,
     pub native_interface: Arc<NativeInterface>,
@@ -526,6 +549,14 @@ pub struct AutoVM {
     pub rc_created_total: AtomicU64,
     pub rc_freed_total: AtomicU64,
     pub rc_traffic: AtomicU64,
+    /// PLAN-1000 R02:avm — allocation-fault injection seam (test-observation
+    /// channel; production default 0 = off). `alloc_ordinal` counts every
+    /// `insert_heap_object` birth; when it reaches `alloc_fault_at` the frame
+    /// loop aborts with [`VMError::AllocFault`]. Mirrors the mn worker's
+    /// `resource.fail_seam` knob shape; consumed one-shot from
+    /// [`NEXT_RUN_ALLOC_FAULT_AT`] at construction.
+    pub alloc_ordinal: AtomicU64,
+    pub alloc_fault_at: AtomicU64,
     // PLAN-062: 状态突变序号——堆/状态**写点**统一 bump（insert_heap_object/
     // SET_FIELD/list 元素突变/字符串池新内容），读与 dedup 命中不 bump。
     // 用途：fire_timer 派发前后对比判定"本拍是否零状态写"（空转拍不置脏，
@@ -988,6 +1019,11 @@ impl AutoVM {
             rc_created_total: AtomicU64::new(0),
             rc_freed_total: AtomicU64::new(0),
             rc_traffic: AtomicU64::new(0),
+            // PLAN-1000 R02:avm — one-shot consumption: only the next
+            // constructed engine picks the knob up (self-clearing, no
+            // cross-run leakage).
+            alloc_ordinal: AtomicU64::new(0),
+            alloc_fault_at: AtomicU64::new(NEXT_RUN_ALLOC_FAULT_AT.swap(0, Ordering::SeqCst)),
             state_mutation_seq: AtomicU64::new(0),
             path_versions: DashMap::new(),
             dep_recorder_slot: std::sync::Mutex::new(None),
@@ -2720,6 +2756,20 @@ impl AutoVM {
     /// This can be called recursively for AWAIT_FUTURE body execution.
     pub fn execute_single_frame(&self, task: &mut AutoTask, budget: u32) -> FrameResult {
         for _ in 0..budget {
+            // PLAN-1000 R02:avm — allocation-fault seam: when the engine's
+            // allocation ordinal has reached the armed fault point, abort the
+            // frame with the typed resource error. Checked at the step
+            // boundary (never mid-opcode, so no half-built object escapes)
+            // and raised directly — the injected resource fault is not
+            // program-catchable, mirroring the mn `allocation-injected` trap
+            // faces.
+            let fault_at = self.alloc_fault_at.load(Ordering::Relaxed);
+            if fault_at != 0 {
+                let ordinal = self.alloc_ordinal.load(Ordering::Relaxed);
+                if ordinal >= fault_at {
+                    return FrameResult::Error(VMError::AllocFault { ordinal });
+                }
+            }
             let ip_before = task.ip;
             let line_before = task.current_line;
             match self.run_one_instruction(task) {

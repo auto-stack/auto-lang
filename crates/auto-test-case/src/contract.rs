@@ -277,6 +277,11 @@ pub struct Options {
     pub probe_mn: Option<ProbeMnSpec>,
     /// probe only (PLAN-892): ac-a2r/hir-scalar-emit-v1 binding.
     pub probe_a2x_hir: Option<ProbeA2xHirSpec>,
+    /// avm only (PLAN-1000 R02:avm): 1-based allocation ordinal at which the
+    /// engine's fault seam aborts the run with the typed `AllocFault` code
+    /// (test-observation channel mirroring the mn `resource.fail_seam`
+    /// knob). Absent = off (production behavior).
+    pub avm_fail_alloc_at: Option<u64>,
 }
 
 impl Default for Options {
@@ -302,6 +307,7 @@ impl Default for Options {
             probe_cte: None,
             probe_mn: None,
             probe_a2x_hir: None,
+            avm_fail_alloc_at: None,
         }
     }
 }
@@ -1262,7 +1268,8 @@ fn decode_options(
 ) -> Result<Options, ContractError> {
     let pairs = as_obj(v, path)?;
     let known: &[&str] = match adapter {
-        Adapter::Avm => &[], // avm/run has no options (v1 and v2)
+        // PLAN-1000 R02:avm — the allocation-fault seam ordinal.
+        Adapter::Avm => &["fail_alloc_at"],
         Adapter::A2r => &["module_name", "int_profile", "resource_profile"],
         Adapter::Ac => &[
             "profile",
@@ -1324,6 +1331,21 @@ fn decode_options(
             ));
         }
     }
+    // PLAN-1000 R02:avm — allocation-fault seam ordinal (avm only): a
+    // positive integer literal; anything else is a contract error.
+    let avm_fail_alloc_at = match f.sub("fail_alloc_at") {
+        None => None,
+        Some(CVal::Int(n)) if *n >= 1 => Some(*n as u64),
+        Some(other) => {
+            return Err(err(
+                &f.path_of("fail_alloc_at"),
+                format!(
+                    "fail_alloc_at must be a positive integer allocation ordinal, got {}",
+                    other.type_name()
+                ),
+            ))
+        }
+    };
 
     let mut ac_profile = None;
     let mut ac_target = None;
@@ -2912,6 +2934,7 @@ fn decode_options(
         probe_cte,
         probe_mn,
         probe_a2x_hir,
+        avm_fail_alloc_at,
     })
 }
 

@@ -753,7 +753,7 @@ fn dispatch_check(
     o.duration_ms = started.elapsed().as_millis();
     let dispatched = match (check.adapter, check.action) {
         (Adapter::Avm, auto_test_case::contract::Action::Run) => {
-            avm::run_check(resolved, oracle, &project_dir, &artifact_dir)
+            avm::run_check(resolved, check, oracle, &project_dir, &artifact_dir)
         }
         (Adapter::A2r, auto_test_case::contract::Action::Emit) => {
             a2r::run_check(resolved, check, oracle, &project_dir, &artifact_dir)

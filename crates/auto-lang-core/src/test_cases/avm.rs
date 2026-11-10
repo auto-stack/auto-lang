@@ -18,7 +18,7 @@ use std::panic::AssertUnwindSafe;
 use std::path::Path;
 
 use auto_test_case::compare::{compare_bytes, compare_text_exact, match_message, Mismatch};
-use auto_test_case::contract::{Completion, EntryMode, Syntax};
+use auto_test_case::contract::{CheckSpec, Completion, EntryMode, Syntax};
 use auto_test_case::ir::{ResolvedCase, ResolvedOracle};
 use auto_test_case::report::{ArtifactRef, Status};
 use auto_test_case::sha256::{hex, sha256};
@@ -69,6 +69,7 @@ impl Verdict {
 /// backend ran (scratch problems, unsupported entry, non-UTF-8 source).
 pub fn run_check(
     case: &ResolvedCase,
+    check: &CheckSpec,
     oracle: &ResolvedOracle,
     project_dir: &Path,
     artifact_dir: &Path,
@@ -110,9 +111,20 @@ pub fn run_check(
 
     // Staged twin of the legacy capture API (F-08): identical execution,
     // typed trap code attached to run-stage failures.
+    // PLAN-1000 R02:avm — allocation-fault seam: arm the NEXT engine with
+    // the declared fault ordinal when present. One-shot (consumed at engine
+    // construction on the staged thread); cleared defensively after the run
+    // so a leaked arming can never affect a later check in this process.
+    let fault_at = check.options.avm_fail_alloc_at.unwrap_or(0);
+    if fault_at != 0 {
+        crate::vm::engine::set_next_run_alloc_fault_at(fault_at);
+    }
     let execution = std::panic::catch_unwind(AssertUnwindSafe(|| {
         crate::run_with_capture_and_path_staged(&code, &entry_path_str)
     }));
+    if fault_at != 0 {
+        crate::vm::engine::clear_next_run_alloc_fault_at();
+    }
 
     let mut verdict = match execution {
         Err(payload) => {

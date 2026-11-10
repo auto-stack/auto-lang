@@ -468,7 +468,7 @@
     "dir": "resource-915",
     "expected_count": 9,
     "files": {
-      "resource-915.case.ad": "867111701c722e8a48323ed26ee089a1638d05071262bd628761ebfb75ca0c32",
+      "resource-915.case.ad": "4d9e43bebf0f5992463a1adf17259c6990d097fa3f5a250f531fd58db3d5f28a",
       "resource-915.suite.ad": "19c8e93a5fe9dfd691d18f82f3b93664ed83d4b87378c8676162b21606075bc8",
       "src/K02-915.at": "be2e36e09e0a6e3d4929aaa2d7f6ee84c00793db0c6f86e65797d33f6ee42376",
       "src/L04-915.at": "a79b03e53e6e82bda9000a1b6cd1bcfae695d4cc427928261e9d13bda19b0b99",

@@ -321,7 +321,7 @@ _CONTRACT_SHAS = {
     "p911": "a3df9135f37eda5dbb065f3cf931dbca737e97c8ff3d7e2a8f7b112774c2a55d",
     "p912": "285b032e3e805a68f1edb2001fa755d08d914b3d8fd5ab26c5922be063a213d0",
     "p913": "ed59394c341ee9d619c27130b1ac39f7cc8b6cbb587e0f1386ce2edc93abaa9a",
-    "p915": "232fee99d683d9167f25f3133b596ee549101ca251424030ba6a52312d591023",
+    "p915": "405e8af0dc3aa09bdb9f6f790159f84fc7d9d3d48fbbd4d8c39aa1908bdedf36",
     "p919": "4f35d765e3930513baf3d2ca7cebc312d9f1a397dd919f2cf52b7ff77f339380",
     "p920": "463dd0868808bbcec5d690f74df352f517a320fc622dd70a2749a4f8cf206b35",
     "p923": "9cd4bec37499711623ee5389c375329948e9331836ad6ed9cdc2181df2745700",
@@ -557,6 +557,28 @@ _PROBE_CHECK_CELLS = {
     # value per Plan 364 W5 D4) and the creator-exit indirect call yields
     # the R05 value (42).
     ('ace.m1.r05.avm', 'autovm'): [('scenario', 'R05', 'avm')],
+    # PLAN-1000 R02:avm — the legacy VM's own allocation-fault sweep on the
+    # five frozen R02 sources (per-allocation-point injection via the avm
+    # fail_alloc_at seam + N+1 beyond-sweep positive controls; the K02
+    # closure-creator allocates no heap objects on the VM — its face
+    # degenerates to the positive control, lifecycle owned by R05:avm).
+    ('ace.m1.r02.l04', 'autovm'): [('scenario', 'R02', 'avm')],
+    ('ace.m1.r02.l04', 'autovm-fault-1'): [('scenario', 'R02', 'avm')],
+    ('ace.m1.r02.l04', 'autovm-fault-2'): [('scenario', 'R02', 'avm')],
+    ('ace.m1.r02.l04', 'autovm-fault-3'): [('scenario', 'R02', 'avm')],
+    ('ace.m1.r02.l05', 'autovm'): [('scenario', 'R02', 'avm')],
+    ('ace.m1.r02.l05', 'autovm-fault-1'): [('scenario', 'R02', 'avm')],
+    ('ace.m1.r02.l05', 'autovm-fault-2'): [('scenario', 'R02', 'avm')],
+    ('ace.m1.r02.l05', 'autovm-fault-3'): [('scenario', 'R02', 'avm')],
+    ('ace.m1.r02.v05', 'autovm'): [('scenario', 'R02', 'avm')],
+    ('ace.m1.r02.v05', 'autovm-fault-1'): [('scenario', 'R02', 'avm')],
+    ('ace.m1.r02.v05', 'autovm-fault-2'): [('scenario', 'R02', 'avm')],
+    ('ace.m1.r02.v05', 'autovm-fault-3'): [('scenario', 'R02', 'avm')],
+    ('ace.m1.r02.lstr', 'autovm'): [('scenario', 'R02', 'avm')],
+    ('ace.m1.r02.lstr', 'autovm-fault-1'): [('scenario', 'R02', 'avm')],
+    ('ace.m1.r02.lstr', 'autovm-fault-2'): [('scenario', 'R02', 'avm')],
+    ('ace.m1.r02.k02', 'autovm'): [('scenario', 'R02', 'avm')],
+    ('ace.m1.r02.k02', 'autovm-fault-none'): [('scenario', 'R02', 'avm')],
     ('ace.m1.res-r01-av866', 'av-res-r01-continuity'): [('corpus', 'H01', 'av')],
     ('ace.m1.res-r02-av866', 'av-res-r02-online-swap'): [('corpus', 'H02', 'av'), ('scenario', 'I08', 'av')],
     ('ace.m1.res-r03-av866', 'av-res-r03-churn-two-swaps'): [('corpus', 'H03', 'av')],
