@@ -2415,7 +2415,12 @@ class IncrementalRestoreMeasurementTests(unittest.TestCase):
         # companion, the row now reaches PASS.
         self.assertEqual(row['verdict'], 'PASS')
         self.assertEqual(row['missing'], [])
-        self.assertEqual(len(row['evidence']['tests']), len(historical['tests']))
+        # PLAN-1000: per-needle coverage, not exact matched-list length —
+        # the corrected cache_turnaround:: needle legitimately substring-
+        # matches the all-required-pages needle's event too.
+        for needle in historical['tests']:
+            self.assertTrue(any(needle in t for t in row['evidence']['tests']),
+                            'uncovered historical needle: ' + needle)
         for change in ('groups', 'outcome'):
             bad = json.loads(json.dumps(av_doc))
             if change == 'groups': bad['results'][0]['groups'] = ['ace-semantics']
@@ -2434,8 +2439,12 @@ class IncrementalRestoreMeasurementTests(unittest.TestCase):
         # PARTIAL, and the gate only closes when ALL rows are PASS.
         full = [row for row in incremental_restore.ROWS if not row['partial_missing']]
         self.assertEqual(sum(row['verdict'] == 'PASS' for row in section['rows']), len(full))
-        self.assertFalse(section['gate']['measurements_complete'])
-        self.assertTrue(all(row['missing'] for row in section['rows'] if row['verdict'] != 'PASS'))
+        # PLAN-1000 (delivered D939 mapping): every row's partial_missing is
+        # now empty, so full synthetic coverage closes the measurement gate;
+        # the isolated-control caveat still stands (this document is synthetic
+        # and never production evidence).
+        self.assertTrue(section['gate']['measurements_complete'])
+        self.assertTrue(all(row['verdict'] == 'PASS' for row in section['rows']))
 
     def test_dropping_a_mapped_test_degrades_only_its_row(self):
         needle = incremental_restore.ROWS[0]['tests'][0]

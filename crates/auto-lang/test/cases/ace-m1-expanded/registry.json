@@ -6162,7 +6162,7 @@
   },
   "budget": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/original-budget-contracts.json",
-   "sha256": "6c47f857f3b3838ca2e087102ea89f6f250b88ff351528114c67bb02abe6bdac"
+   "sha256": "400f1957026905370aee2764c92cc6cf85ce2b60c35a57444c8c43a9cf1b2a68"
   },
   "text_reference": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/text-reference-contracts.tsv",
