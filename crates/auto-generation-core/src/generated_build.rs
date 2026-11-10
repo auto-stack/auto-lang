@@ -1018,6 +1018,21 @@ pub fn publish_artifact(
         if !same_file(&pdb, &pdb_dest) {
             replace_durable(&pdb, &pdb_dest, false)?;
         }
+        // PLAN-1003 T-05 finding: the published exe's RSDS record names the
+        // pdb by its cargo-reported file name (`counter_<id8>.pdb`), not the
+        // user-visible stem. A lone renamed `counter.pdb` is therefore NOT
+        // found by dbghelp's exe-directory fallback — the artifact users run
+        // resolved zero member symbols (observed: 163 exports, 0 lines).
+        // Keep the reported name as a hard-link alias next to the published
+        // exe so standard symbol lookup works; the user-stem name stays for
+        // F-910-R1-02 compatibility. A pdb is never mapped by the running
+        // process, so a hard link is safe (same reasoning as above).
+        if let Some(reported) = pdb.file_name() {
+            let alias = dest_dir.join(reported);
+            if !same_file(&pdb, &alias) {
+                replace_durable(&pdb, &alias, false)?;
+            }
+        }
     }
     Ok(dest)
 }
@@ -1373,6 +1388,31 @@ mod plan910_tests {
         assert_eq!(
             fs::read(member.join("bin/debug/app.pdb")).unwrap(),
             b"pdb-bytes"
+        );
+        // PLAN-1003 T-05: the cargo-reported name stays alongside as an
+        // alias — the published exe's RSDS record names the pdb that way,
+        // and dbghelp's exe-directory fallback needs the exact name (the
+        // renamed-only form resolved zero member symbols).
+        assert_eq!(
+            fs::read(member.join("bin/debug/app_12345678.pdb")).unwrap(),
+            b"pdb-bytes",
+            "reported-name pdb alias is published next to the exe"
+        );
+        // Relink with new pdb content: both the stem name and the alias
+        // refresh (a stale alias would lie to symbol lookup). The linker
+        // emits a NEW file — remove + recreate so the old hard links keep
+        // the old inode and only a real re-link makes these assertions pass
+        // (an in-place rewrite would follow the links and prove nothing).
+        fs::remove_file(&pdb_src).unwrap();
+        fs::write(&pdb_src, b"pdb-bytes-v2").unwrap();
+        publish_artifact(&src, Some(&pdb_src), &member, false, "app.exe").unwrap();
+        assert_eq!(
+            fs::read(member.join("bin/debug/app.pdb")).unwrap(),
+            b"pdb-bytes-v2"
+        );
+        assert_eq!(
+            fs::read(member.join("bin/debug/app_12345678.pdb")).unwrap(),
+            b"pdb-bytes-v2"
         );
     }
 
