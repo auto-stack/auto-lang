@@ -5,7 +5,7 @@ from ace_m1_legacy import typed_equal
 from ace_m1_obligation_catalog import Q4_CATALOG,Q4_CATALOG_SHA,Q4_FIELDS,read_tsv,CASE_CATALOG,CASE_CATALOG_SHA
 from ace_m1_source_supplement import source_contracts as scalar_supplement
 CATALOG='crates/auto-lang/test/cases/ace-m1-expanded/original-data-source-contracts.tsv'
-CATALOG_SHA='a51d7b345013b063e5c04a146896bf509f2213bcab4fdcfe480e2c4bb4f4edf4'
+CATALOG_SHA='dbf34b87c819aa673027f3c9992220e687ed49a8c226112678ee516bd863ded5'
 FIELDS='family case profile caps source_file source_sha256 oracle_kind oracle_value origin_case_file origin_case_sha256 origin_case_id origin_group original_checks'.split()
 values={'M01':0,'M02':57,'M03':75,'M04':135,'M05':42,'M06':52,'M07':84,'M08':42,'R01':19,'R02':9,'R03':23,'R04':51,'R05':42,'R06':21,'T01':38,'T02':27,'T04':128512}
 negative={'M09':'method-called-as-static','M10':'immutable-write','M11':'alias-mut-self','M12':'reserved-owned-method','R09':'record-type-mismatch','R10':'use-after-move','T06':'borrow-escape','T07':'invalid-scalar'}
