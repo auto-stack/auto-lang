@@ -9,7 +9,7 @@ from ace_m1_legacy import admit_accounting, typed_equal
 
 ARCH = ('ARCH-08/approved-old-conservation', 'ARCH-08/old38-cert-separation')
 CONTRACT = 'crates/auto-lang/test/cases/ace-m1-expanded/legacy-architecture-contract.json'
-CONTRACT_SHA = 'e3767e8680e0698ea2d10e8c435e439f2aebd9388cec6e61f9adb66175b5c501'
+CONTRACT_SHA = 'cfb256d0dfc2828e62f8bae773d7628841cccbd8c7ea23d26c1c010776b0c80b'
 SCRIPT = 'scripts/verify-ace-m1-852.ps1'
 METER_FIELDS = ('argv', 'exit', 'error', 'wall_ms', 'workload_cpu_ms', 'meter_cpu_ms',
                 'total_cpu_ms', 'peak_process_bytes', 'peak_job_bytes', 'job_processes')

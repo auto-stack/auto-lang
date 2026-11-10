@@ -290,7 +290,7 @@
     "docs/specs/auto-test-case/ace-m1-scenario-oracles.md": "cb1796d84f23a3dcd8514583e9b29bd17b6ed740140eb6338f593233bce558b4",
     "scripts/test-governance/native_meter.py": "c6f72525fb1e80f33ad9f0e6849060d98aaa081db9645ca938415c0b5300b6d3",
     "scripts/test-governance/process_capture.py": "b3bfe935d72b3b41f4d47efcbc6a5f669bfc5a93b4aec49f09be97d3a5389c13",
-    "scripts/verify-ace-m1-852.ps1": "59a4903259601e8ce491df990f414b440e80299f257d86f62f7507bc9efe9795"
+    "scripts/verify-ace-m1-852.ps1": "1c5505adcddacc83aa7f0149234ff2900de10a8327c8e10ee822abf15fcb84b8"
   },
   "execution": "UNOBSERVED"
 }

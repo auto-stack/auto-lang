@@ -8,7 +8,7 @@ tracked golden oracle. Accounting stays a separate axis: this module never
 reads a ledger state column as an execution verdict, and a check whose parent
 row is not PASS can never produce a PASS observation.
 """
-from ace_m1_arch_acceptance import AdmissionError, EvidenceScope, exact_keys
+from ace_m1_arch_acceptance import AdmissionError, EvidenceScope, counter, exact_keys
 from ace_m1_case_evidence import CaseCopy, admit_case_bindings, require
 from pathlib import PureWindowsPath, PurePosixPath
 
@@ -741,9 +741,11 @@ def admit_governance_cells(inputs, evidence, binding, registry):
     """PLAN-1000 T-03: the a2r snapshot governance axes with STRUCTURED
     products. G01 (wrapper+identity contract) and G05 (identity axes) close on
     the admitted report's suite hash pin and toolchain identity block; G07
-    (parent-side judgement) on the parent-judged report schema itself. G02's
-    spawn-zero watch exists only as console text — it stays UNCLAIMED here."""
-    exact_keys(binding, ('report', 'base_suite_sha256'), 'governance bindings')
+    (parent-side judgement) on the parent-judged report schema itself. G02
+    closes on the STRUCTURED spawn-watch document (PLAN-1000: the same CIM
+    ancestry-sampling facts the console line reports, persisted beside the
+    report) — console text alone was never authority."""
+    exact_keys(binding, ('report', 'base_suite_sha256', 'spawn_watch'), 'governance bindings')
     ledger = frozen_ledger(inputs)
     required = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in ledger if row['required'])
     required_set = set(required)
@@ -765,7 +767,38 @@ def admit_governance_cells(inputs, evidence, binding, registry):
         rows = report.get('results')
         require(type(rows) is list and len(rows) == 97, 'governance parent-judged rows')
         observations = {}
+        # PLAN-1000 G02: the structured spawn-watch — the instrumented
+        # snapshot runs' process-creation facts. Every run gate green, every
+        # ancestry violation list empty, the sampling discipline declared,
+        # and the document lives in the SAME snapshot scope as the report.
+        watch_ref = binding['spawn_watch']
+        exact_keys(watch_ref, ('path', 'sha256'), 'governance spawn-watch reference')
+        require(PurePosixPath(watch_ref['path']).parent == PurePosixPath(binding['report']['path']).parent,
+                'governance spawn-watch shares the snapshot scope')
+        evidence.sha256(watch_ref['path'], watch_ref['sha256'])
+        watch, _ = evidence.read_json(watch_ref['path'])
+        exact_keys(watch, ('schema', 'scope', 'observer', 'sample_interval_ms', 'watched',
+                           'ancestry', 'runs', 'violations_total'), 'governance spawn watch')
+        typed_equal(watch['schema'], 'ace.m1.a2r-spawn-watch/1', 'governance spawn-watch schema')
+        typed_equal(watch['scope'], 'snapshot', 'governance spawn-watch scope')
+        typed_equal(watch['observer'], 'cim-ancestry-sampling', 'governance spawn-watch observer')
+        counter(watch['sample_interval_ms'], 'governance spawn-watch interval')
+        typed_equal(watch['sample_interval_ms'], 300, 'governance spawn-watch declared interval')
+        typed_equal(watch['watched'], ['rustc.exe', 'cargo.exe', 'm1_*'], 'governance spawn-watch watched set')
+        typed_equal(watch['ancestry'], 'descendant-of-runner', 'governance spawn-watch ancestry rule')
+        require(type(watch['runs']) is list and len(watch['runs']) == 6, 'governance spawn-watch run count')
+        for run in watch['runs']:
+            exact_keys(run, ('label', 'gate', 'violations', 'maintenance_spawns', 'identity_probes'),
+                       'governance spawn-watch run')
+            require(run['label'] in ('base', 'ext-992', 'ext-994', 'ext-996', 'ext-997', 'ext-998'),
+                    'governance spawn-watch run label')
+            typed_equal(run['gate'], 0, 'governance spawn-watch run gate')
+            require(type(run['violations']) is list and run['violations'] == [], 'governance spawn-watch run clean')
+            counter(run['maintenance_spawns'], 'governance spawn-watch maintenance')
+            counter(run['identity_probes'], 'governance spawn-watch identity probes')
+        typed_equal(watch['violations_total'], 0, 'governance spawn-watch zero violations')
         facts = {
+            ('scenario', 'G02', 'a2r'): 'structured spawn-watch: 6 instrumented runs, 0 ancestry violations',
             ('scenario', 'G01', 'a2r'): 'suite content-sha pin + wrapper identity contract',
             ('scenario', 'G05', 'a2r'): 'toolchain identity axes recorded in the report',
             ('scenario', 'G07', 'a2r'): '97 parent-judged rows (report schema /2)',

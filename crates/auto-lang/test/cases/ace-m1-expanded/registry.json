@@ -6270,7 +6270,7 @@
   },
   "legacy_arch": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/legacy-architecture-contract.json",
-   "sha256": "e3767e8680e0698ea2d10e8c435e439f2aebd9388cec6e61f9adb66175b5c501"
+   "sha256": "cfb256d0dfc2828e62f8bae773d7628841cccbd8c7ea23d26c1c010776b0c80b"
   }
  },
  "awaiting_d": [],
