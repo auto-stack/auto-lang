@@ -22,7 +22,7 @@ use ace_native::incremental::MnIncrementalSession;
 /// All four legs spawn real link/run subprocesses and the V-12.1 leg is
 /// a wall-clock gate — serialize the tier (parallel legs' link storms
 /// doubled the gate leg's tail: P95 1131 vs ~850 solo).
-static T11_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub static T11_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn temp_root(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("mn8-t11-{tag}-{}", std::process::id()));

@@ -457,6 +457,20 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         rust['claimed_cells'] = len(rust['observations'])
         legacy.setdefault('_merged_obs', {}).update(rust['observations'])
         legacy['rust_test_claimed_cells'] = rust['claimed_cells']
+    if 'legacy_rust_tests_mn' in bindings:
+        # PLAN-1000 I10:ac — the mn-side named Rust observations (the churn
+        # + GC face lives in the ace-native fixed group; same admission
+        # contract as legacy_rust_tests, second report).
+        from ace_m1_legacy_a2r import admit_rust_test_cells
+        rustmn = _compact_admission(inputs, lambda _: admit_rust_test_cells(
+            inputs, evidence, bindings['legacy_rust_tests_mn'], registry), 512 << 10)
+        earlier3b = legacy.get('execution_summary', {}).get('observations', {})
+        rustmn['observations'] = {k: {'judgement': v['judgement'], 'oracle_source': v.get('oracle_source'),
+                                      'test': v.get('test')}
+                                  for k, v in rustmn['observations'].items() if k not in earlier3b}
+        rustmn['claimed_cells'] = len(rustmn['observations'])
+        legacy.setdefault('_merged_obs', {}).update(rustmn['observations'])
+        legacy['rust_test_mn_claimed_cells'] = rustmn['claimed_cells']
     if 'legacy_governance' in bindings:
         from ace_m1_legacy_a2r import admit_governance_cells
         gov = _compact_admission(inputs, lambda _: admit_governance_cells(

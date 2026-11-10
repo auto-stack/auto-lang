@@ -391,8 +391,12 @@ def main(argv=None):
     except ValueError as error:
         ap.error(str(error))
     selected = select(args.groups, value, groups)
-    if args.ignored and any(g['name'] != 'aavm' for g in selected):
-        ap.error('ignored-only replay must explicitly name aavm')
+    # 2026-10-31 ruling: bulk ignored-only replay is the aavm discipline's
+    # explicit manual entry. PLAN-1000 I10: a NAMED single-test ignored
+    # replay (--test-name) is the same explicit-manual-entry discipline for
+    # stress legs that live inside other groups — never a bulk run.
+    if args.ignored and any(g['name'] != 'aavm' for g in selected) and not args.test_name:
+        ap.error('ignored-only replay must explicitly name aavm or a single test (--test-name)')
     plan = invocations(selected, args.test_name)
     summary = {'schema': 'fixed-test-run/1', 'selected_groups': [g['name'] for g in selected],
                'config_sha256': value['_sha256'],

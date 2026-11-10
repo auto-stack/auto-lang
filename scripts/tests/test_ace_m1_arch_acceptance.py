@@ -4289,3 +4289,113 @@ class FirstSliceFourTargetOracleTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ArchitectureEntryGateControls(unittest.TestCase):
+    """PLAN-1000 R-02: per-row differential controls for the entry-gates
+    admission (ace_m1_arch_entry_gates). The green path admits a row only
+    when EVERY declared entry has a green single-group gate; each mutation
+    below removes or corrupts one required fact and MUST reject the entry
+    or leave the row UNOBSERVED — a group PASS never survives on its own."""
+
+    @classmethod
+    def setUpClass(cls):
+        import ace_m1_arch_entry_gates as entry_gates
+        cls.entry_gates = entry_gates
+        scratch = Path(os.environ.get('PLAN941_SCRATCH', tempfile.gettempdir()))
+        cls.temp = tempfile.TemporaryDirectory(prefix='arch-entry-gate-controls-', dir=scratch)
+        cls.addClassCleanup(cls.temp.cleanup)
+        cls.ev_root = Path(cls.temp.name)
+        contract = json.loads((ROOT / entry_gates.CONTRACT).read_text(encoding='utf-8'))
+        cls.contract = contract
+        # A real two-entry row for the downgrade control.
+        cls.row_id = next(o['id'] for o in contract['obligations'] if len(o['entries']) >= 2)
+        cls.row_entries = next(o['entries'] for o in contract['obligations'] if o['id'] == cls.row_id)
+
+    def _scope(self):
+        return m.EvidenceScope(self.ev_root)
+
+    def _gate_doc(self, entry, outcome='PASS', group=None, events=None):
+        declared = self.contract['entries'][entry]
+        g = group if group is not None else (
+            declared.get('group') or self.entry_gates.DELIVERED_PROVIDERS[entry][1])
+        doc = {'schema': 'fixed-test-run/1', 'selected_groups': [g]}
+        if events is not None:
+            doc['results'] = events
+        else:
+            doc['outcome'] = outcome
+        return doc
+
+    def _binding_for(self, docs):
+        """Write gate docs into the scope; return the binding."""
+        entries = {}
+        for name, doc in docs.items():
+            rel = f'gate-{name}.json'
+            (self.ev_root / rel).write_text(json.dumps(doc), encoding='utf-8')
+            entries[name] = {'path': rel,
+                             'sha256': hashlib.sha256((self.ev_root / rel).read_bytes()).hexdigest()}
+        return {'entries': entries}
+
+    def _admit(self, docs):
+        binding = self._binding_for(docs)
+        inputs = m.EvidenceScope(ROOT)
+        evidence = self._scope()
+        return self.entry_gates.admit_arch_entry_gates(inputs, evidence, binding)
+
+    def test_green_gates_admit_the_row(self):
+        docs = {name: self._gate_doc(name) for name in self.row_entries}
+        out = self._admit(docs)
+        self.assertEqual(out['observations'].get(self.row_id), 'PASS')
+
+    def test_flipped_outcome_rejects(self):
+        docs = {name: self._gate_doc(name, outcome='FAIL') for name in self.row_entries}
+        with self.assertRaises(ValueError):
+            self._admit(docs)
+
+    def test_failed_event_is_not_green(self):
+        events = {'a::t1': {'event': 'ok'}, 'a::t2': {'event': 'failed'}}
+        docs = {name: self._gate_doc(name, events=events) for name in self.row_entries}
+        with self.assertRaises(ValueError):
+            self._admit(docs)
+
+    def test_wrong_group_identity_rejected(self):
+        first = self.row_entries[0]
+        docs = {name: self._gate_doc(name) for name in self.row_entries}
+        docs[first] = self._gate_doc(first, group='case-foreign-group')
+        with self.assertRaises(m.AdmissionError):
+            self._admit(docs)
+
+    def test_stale_credential_rejected(self):
+        docs = {name: self._gate_doc(name) for name in self.row_entries}
+        binding = self._binding_for(docs)
+        first = self.row_entries[0]
+        (self.ev_root / binding['entries'][first]['path']).write_text(
+            json.dumps(docs[first]) + ' ', encoding='utf-8')  # byte drift
+        with self.assertRaises(ValueError):
+            self.entry_gates.admit_arch_entry_gates(
+                m.EvidenceScope(ROOT), self._scope(), binding)
+
+    def test_foreign_entry_rejected(self):
+        docs = {name: self._gate_doc(name) for name in self.row_entries}
+        binding = self._binding_for(docs)
+        binding['entries']['not-in-the-contract'] = binding['entries'][self.row_entries[0]]
+        with self.assertRaises(Exception):
+            self.entry_gates.admit_arch_entry_gates(
+                m.EvidenceScope(ROOT), self._scope(), binding)
+
+    def test_multi_group_doc_rejected(self):
+        first = self.row_entries[0]
+        declared = self.contract['entries'][first]
+        docs = {name: self._gate_doc(name) for name in self.row_entries}
+        multi = self._gate_doc(first)
+        multi['selected_groups'] = [declared.get('group') or 'ace-abi', 'case-extra']
+        docs[first] = multi
+        with self.assertRaises(m.AdmissionError):
+            self._admit(docs)
+
+    def test_row_downgrades_when_one_entry_lacks_its_gate(self):
+        # Green gate for all but ONE declared entry: the row must stay
+        # UNOBSERVED (absent), never partially claimed.
+        docs = {name: self._gate_doc(name) for name in self.row_entries[:-1]}
+        out = self._admit(docs)
+        self.assertNotIn(self.row_id, out['observations'])
