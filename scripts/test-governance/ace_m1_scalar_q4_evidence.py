@@ -12,7 +12,7 @@ from ace_m1_legacy import typed_equal
 from ace_m1_scalar_evidence import _counts, _duration, _fnv1a64
 
 CONTRACT = 'crates/auto-lang/test/cases/ace-m1-expanded/scalar-q4-contract.json'
-CONTRACT_SHA  = '66f5a66c4b4f0bc3f5846b82ca39f35d28f284b51d18eae6a06d553f8708bf84'
+CONTRACT_SHA = '599e9579e5cdc4c6121033554161bef04380b46eec71cfab0385c93138ab72e4'
 SUITE = 'crates/auto-lang/test/cases/ace-m1-expanded/scalar-q4.suite.ad'
 TRACE_CAP = 'hir.test.trace.v1'
 TRAPS = {'Overflow':'av.trap.int-overflow', 'DivByZero':'av.trap.div-by-zero',

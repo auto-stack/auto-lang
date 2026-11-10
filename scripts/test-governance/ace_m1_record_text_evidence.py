@@ -11,7 +11,7 @@ from ace_m1_text_q4_evidence import text_observation, DEPENDENCIES, AV_TRAPS
 REFERENCE = BASE+'record-text-reference-contracts.tsv'
 REFERENCE_SHA = '7869cb3729409f4dce41bb5018e51bd0fab694d4a90d18ac74866dd923b78f8e'
 CONTRACT = BASE+'record-text-q4-contract.json'
-CONTRACT_SHA  = 'e540412e5920051ac8e998b713e8d59af74153d09463cfe4392bdf22f32c73fc'
+CONTRACT_SHA = 'b765ead131f474cd46932a62b092c60c7556889e54e4ac0df0f87d5a8ca500c6'
 SUITE = BASE+'record-text-q4.suite.ad'
 FIELDS = 'family case profile caps source_file source_sha256 oracle_kind oracle_value rust_reference rust_reference_sha256 c_reference c_reference_sha256 rust_debug_runs rust_release_runs rust_release_flags c_runs execution'.split()
 FAMILIES = ('record-text-cert-925','record-text-base')

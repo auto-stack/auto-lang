@@ -14,7 +14,7 @@ from ace_m1_obligation_catalog import (BASE, Q4_CATALOG, Q4_CATALOG_SHA, Q4_FIEL
 from ace_m1_scalar_evidence import _duration, _fnv1a64, _counts
 
 CONTRACT = BASE+'collections-q4-contract.json'
-CONTRACT_SHA  = '8d327888606c0fd75f5d292aa7db1ee0187af479bde04aff5dc4dd65ff790c79'
+CONTRACT_SHA = 'b31cc462bc0b9c9be45a105569e2074ba710f02f6dabd42946efc5c2ee8d45ec'
 SUITE = BASE+'collections-q4.suite.ad'
 AV_RECIPE = 'ac-av/collections-source-run-v1'
 MN_RECIPE = 'ac/mir-native-collections-v1'
