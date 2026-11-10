@@ -3,6 +3,8 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
+import shutil
 import subprocess
 from pathlib import Path
 import sys
@@ -442,6 +444,458 @@ class CacheOwnership(unittest.TestCase):
                 with self.assertRaises(subprocess.CalledProcessError):
                     build_storage.inspect(cache, unrelated)
             self.assertEqual((cache / 'rebuildable.o').read_bytes(), b'owned')
+
+
+class IncrementalGovernance(unittest.TestCase):
+    """PLAN-1001 V-01..V-05: inventory / preview / apply-manifest controls."""
+
+    def setUp(self):
+        self._temp = tempfile.TemporaryDirectory()
+        self.base = Path(self._temp.name)
+        self.root = self.base / 'ours'
+        (self.root / 'target').mkdir(parents=True)
+        # Fail-closed retention registry for the mocked ROOT.
+        registry = self.root / '.retention'
+        registry.mkdir()
+        (registry / 'policy.json').write_text(json.dumps({'policy': 'test', 'scopes': [], 'holds': []}), encoding='utf-8')
+
+    def tearDown(self):
+        self._temp.cleanup()
+
+    # -- fixtures ----------------------------------------------------
+
+    @staticmethod
+    def make_unit(path, files=3, content=b'x' * 4096):
+        path.mkdir(parents=True)
+        for index in range(files):
+            (path / ('sess%d-1a2b3c4d5e6f' % index)).write_bytes(content)
+        (path.parent / '.cargo-lock').write_bytes(b'')
+        return path
+
+    def write_policy(self, owners, watermarks=None):
+        path = self.base / 'policy.json'
+        path.write_text(json.dumps({
+            'schema': 'incremental-cache-policy/v1',
+            'owners': [{'owner': owner, 'root': str(root), 'rationale': 'test',
+                        'foreign': foreign} for owner, root, foreign in owners],
+            'watermarks': watermarks or {},
+        }, indent=1), encoding='utf-8')
+        return path
+
+    def preview(self, policy, output=None):
+        output = output or (self.base / 'preview.json')
+        code = build_storage.main(['--incremental', '--preview', '--policy', str(policy),
+                                   '--output', str(output)])
+        self.assertEqual(code, 0)
+        return json.loads(output.read_text(encoding='utf-8')), output
+
+    def apply(self, manifest, policy, output=None):
+        output = output or (self.base / 'apply.json')
+        code = build_storage.main(['--incremental', '--apply-manifest', str(manifest),
+                                   '--policy', str(policy), '--idle-confirmed',
+                                   '--output', str(output)])
+        return code, json.loads(output.read_text(encoding='utf-8'))
+
+    @staticmethod
+    def tree_state(path):
+        state = {}
+        for folder, _dirs, names in os.walk(path):
+            for name in names:
+                child = Path(folder) / name
+                state[str(child)] = child.stat().st_size
+        return state
+
+    # -- V-01 preview is read-only; admission and manifest honesty ----
+
+    def test_incremental_preview_is_read_only_with_positive_control(self):
+        unit = self.make_unit(self.root / 'target' / 'debug' / 'incremental')
+        before = self.tree_state(self.root / 'target')
+        policy = self.write_policy([('ours', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root), \
+                mock.patch.object(build_storage, 'refuse_active_processes'):
+            manifest, _ = self.preview(policy)
+        self.assertEqual(len(manifest['units']), 1)
+        self.assertEqual(manifest['units'][0]['status'], 'eligible-idle')
+        self.assertEqual(manifest['units'][0]['files'], 3)
+        self.assertTrue(manifest['zero_deletion'])
+        self.assertEqual(self.tree_state(self.root / 'target'), before)
+        self.assertTrue(unit.is_dir())
+
+    def test_incremental_refuses_unregistered_foreign_root(self):
+        foreign = self.base / 'foreign'
+        foreign.mkdir()
+        (foreign / 'Cargo.toml').write_text('[workspace]\n', encoding='utf-8')
+        self.make_unit(foreign / 'target' / 'debug' / 'incremental')
+        policy = self.write_policy([('ours', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            with self.assertRaises(ValueError) as ctx:
+                build_storage.main(['--incremental', '--inventory', str(foreign / 'target'),
+                                    '--output', str(self.base / 'inv.json')])
+        self.assertIn('not a registered incremental-cache owner root', str(ctx.exception))
+
+    def test_incremental_foreign_root_needs_dual_proof(self):
+        foreign = self.base / 'foreign'
+        foreign.mkdir()
+        (foreign / 'Cargo.toml').write_text('[workspace]\n', encoding='utf-8')
+        self.make_unit(foreign / 'target' / 'debug' / 'incremental')
+        with_repo = self.write_policy([('man', foreign / 'target', True)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, _ = self.preview(with_repo)
+        self.assertEqual([u['status'] for u in manifest['units']], ['eligible-idle'])
+        self.assertEqual(manifest['units'][0]['owner'], 'man')
+        # Registration without a workspace manifest is refused.
+        (foreign / 'Cargo.toml').unlink()
+        policy = self.write_policy([('man', foreign / 'target', True)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, _ = self.preview(policy)
+        self.assertEqual(manifest['units'], [])
+        self.assertIn('not a registered incremental-cache owner root',
+                      manifest['refused'][0]['reason'])
+
+    def test_incremental_apply_rejects_hand_written_manifest_paths(self):
+        self.make_unit(self.root / 'target' / 'debug' / 'incremental')
+        victim = self.make_unit(self.base / 'victim' / 'target' / 'debug' / 'incremental')
+        policy = self.write_policy([('ours', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, path = self.preview(policy)
+        manifest['units'].append({'path': str(victim), 'status': 'eligible-idle',
+                                  'tree_digest': '0' * 64, 'files': 3})
+        tampered = self.base / 'tampered.json'
+        tampered.write_text(json.dumps(manifest), encoding='utf-8')
+        before = self.tree_state(self.root / 'target')
+        with mock.patch.object(build_storage, 'ROOT', self.root), \
+                mock.patch.object(build_storage, 'refuse_active_processes'):
+            with self.assertRaises(ValueError) as ctx:
+                self.apply(tampered, policy)
+        self.assertIn('no longer an eligible unit', str(ctx.exception))
+        self.assertEqual(self.tree_state(self.root / 'target'), before)
+        self.assertTrue(victim.is_dir())
+
+    def test_incremental_policy_digest_binding(self):
+        self.make_unit(self.root / 'target' / 'debug' / 'incremental')
+        policy = self.write_policy([('ours', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, path = self.preview(policy)
+        policy2 = self.write_policy([('ours-renamed', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root), \
+                mock.patch.object(build_storage, 'refuse_active_processes'):
+            with self.assertRaises(ValueError) as ctx:
+                self.apply(path, policy2)
+        self.assertIn('policy does not match the snapshot policy', str(ctx.exception))
+
+    # -- V-02 protections refuse; protected trees unchanged ----------
+
+    def test_incremental_live_lease_refused_dead_lease_stale(self):
+        ctx_root = self.root / 'target' / 'generated-consumers' / 'abcd1234'
+        ctx_root.mkdir(parents=True)
+        (ctx_root / 'context.json').write_text(json.dumps({
+            'schema': 'generated-build-context/v1', 'context_id': 'abcd1234',
+            'producer_root': str(self.root.resolve())}), encoding='utf-8')
+        unit = self.make_unit(ctx_root / 'debug' / 'incremental')
+        lease = ctx_root / '.lease'
+        lease.mkdir()
+        (lease / 'run.json').write_text(json.dumps({'pid': 424242, 'purpose': 'test'}), encoding='utf-8')
+        policy = self.write_policy([('gen', ctx_root, False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root), \
+                mock.patch.object(build_storage, 'process_alive', return_value=True):
+            manifest, _ = self.preview(policy)
+        self.assertEqual(manifest['units'], [])
+        self.assertIn('live build/run lease', manifest['refused'][0]['reason'])
+        with mock.patch.object(build_storage, 'ROOT', self.root), \
+                mock.patch.object(build_storage, 'process_alive', return_value=False):
+            manifest, _ = self.preview(policy)
+        self.assertEqual(manifest['units'][0]['status'], 'eligible-idle')
+        self.assertEqual(manifest['units'][0]['stale_leases_ignored'], [str(lease / 'run.json')])
+        self.assertTrue(unit.is_dir())
+
+    def test_incremental_evidence_and_reparse_refused(self):
+        unit = self.make_unit(self.root / 'target' / 'debug' / 'incremental')
+        (unit / 'results.json').write_text('{}', encoding='utf-8')
+        policy = self.write_policy([('ours', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, _ = self.preview(policy)
+        self.assertEqual(manifest['units'][0]['status'], 'protected')
+        self.assertIn('evidence mixed into incremental unit', manifest['units'][0]['refusal_reason'])
+        (unit / 'results.json').unlink()
+        with mock.patch.object(build_storage, 'ROOT', self.root), \
+                mock.patch.object(build_storage, 'reparse', side_effect=lambda p: p.name == 'sess0-1a2b3c4d5e6f'):
+            manifest, _ = self.preview(policy)
+        self.assertIn('reparse point inside incremental unit', manifest['units'][0]['refusal_reason'])
+        self.assertTrue(unit.is_dir())
+
+    def test_incremental_retention_hold_blocks_apply(self):
+        unit = self.make_unit(self.root / 'target' / 'debug' / 'incremental')
+        policy = self.write_policy([('ours', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, path = self.preview(policy)
+        registry = self.root / '.retention' / 'policy.json'
+        registry.write_text(json.dumps({'policy': 'test', 'scopes': [], 'holds': [
+            {'path': str(unit), 'owner': 'user', 'reason': 'audit'}]}), encoding='utf-8')
+        before = self.tree_state(unit)
+        with mock.patch.object(build_storage, 'ROOT', self.root), \
+                mock.patch.object(build_storage, 'refuse_active_processes'):
+            with self.assertRaises(ValueError) as ctx:
+                self.apply(path, policy)
+        self.assertIn('retention hold covers this unit', str(ctx.exception))
+        self.assertEqual(self.tree_state(unit), before)
+        registry.unlink()
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            with self.assertRaises(ValueError) as ctx:
+                build_storage.retention_hold_paths()
+        self.assertIn('retention registry missing', str(ctx.exception))
+
+    def test_incremental_missing_registry_fails_closed(self):
+        (self.root / '.retention' / 'policy.json').unlink()
+        self.make_unit(self.root / 'target' / 'debug' / 'incremental')
+        policy = self.write_policy([('ours', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, path = self.preview(policy)
+        with mock.patch.object(build_storage, 'ROOT', self.root), \
+                mock.patch.object(build_storage, 'refuse_active_processes'):
+            with self.assertRaises(ValueError) as ctx:
+                self.apply(path, policy)
+        self.assertIn('retention registry missing', str(ctx.exception))
+
+    def test_incremental_apply_refuses_without_idle_confirmation(self):
+        self.make_unit(self.root / 'target' / 'debug' / 'incremental')
+        policy = self.write_policy([('ours', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, path = self.preview(policy)
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            with self.assertRaises(SystemExit):
+                build_storage.main(['--incremental', '--apply-manifest', str(path),
+                                    '--policy', str(policy), '--output', str(self.base / 'a.json')])
+
+    # -- V-03 real mutex, identity change, failure receipts ----------
+
+    def test_incremental_apply_blocks_when_cargo_lock_held(self):
+        unit = self.make_unit(self.root / 'target' / 'debug' / 'incremental')
+        policy = self.write_policy([('ours', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, path = self.preview(policy)
+        lock = self.root / 'target' / 'debug' / '.cargo-lock'
+        if os.name == 'nt':
+            import msvcrt
+            held = os.open(str(lock), os.O_RDWR)
+            os.lseek(held, 0, os.SEEK_SET)
+            msvcrt.locking(held, msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            held = os.open(str(lock), os.O_RDWR)
+            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            with mock.patch.object(build_storage, 'ROOT', self.root), \
+                    mock.patch.object(build_storage, 'refuse_active_processes'):
+                with self.assertRaises(ValueError) as ctx:
+                    self.apply(path, policy)
+            self.assertIn('cargo lock held by another producer', str(ctx.exception))
+        finally:
+            if os.name == 'nt':
+                import msvcrt
+                os.lseek(held, 0, os.SEEK_SET)
+                msvcrt.locking(held, msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(held, fcntl.LOCK_UN)
+            os.close(held)
+        self.assertTrue(unit.is_dir())
+
+    def test_incremental_apply_identity_change_refused(self):
+        unit = self.make_unit(self.root / 'target' / 'debug' / 'incremental')
+        policy = self.write_policy([('ours', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, path = self.preview(policy)
+        (unit / 'late-arrival').write_bytes(b'new')
+        with mock.patch.object(build_storage, 'ROOT', self.root), \
+                mock.patch.object(build_storage, 'refuse_active_processes'):
+            with self.assertRaises(ValueError) as ctx:
+                self.apply(path, policy)
+        self.assertIn('identity changed since the preview', str(ctx.exception))
+        self.assertTrue(unit.is_dir())
+
+    def test_incremental_apply_partial_failure_receipts(self):
+        first = self.make_unit(self.root / 'target' / 'debug' / 'incremental')
+        second = self.make_unit(self.root / 'target' / 'release' / 'incremental', files=2)
+        policy = self.write_policy([('ours', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, path = self.preview(policy)
+        self.assertEqual(len(manifest['units']), 2)
+        real_rmtree = shutil.rmtree
+
+        def flaky_rmtree(target, *args, **kwargs):
+            if str(second) in str(target):
+                raise OSError('simulated mid-delete failure')
+            return real_rmtree(target, *args, **kwargs)
+
+        with mock.patch.object(build_storage, 'ROOT', self.root), \
+                mock.patch.object(build_storage, 'refuse_active_processes'), \
+                mock.patch.object(build_storage.shutil, 'rmtree', side_effect=flaky_rmtree):
+            code, receipt = self.apply(path, policy)
+        self.assertEqual(code, 3)
+        self.assertEqual([d['path'] for d in receipt['deleted']], [str(first)])
+        self.assertEqual([f['path'] for f in receipt['failed']], [str(second)])
+        self.assertFalse(first.exists())
+        self.assertTrue(second.is_dir())
+
+    def test_incremental_apply_happy_path_deletes_only_units(self):
+        unit = self.make_unit(self.root / 'target' / 'debug' / 'incremental')
+        deps = self.root / 'target' / 'debug' / 'deps'
+        deps.mkdir()
+        (deps / 'libkeep.rlib').write_bytes(b'keep me')
+        policy = self.write_policy([('ours', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, path = self.preview(policy)
+        with mock.patch.object(build_storage, 'ROOT', self.root), \
+                mock.patch.object(build_storage, 'refuse_active_processes'):
+            code, receipt = self.apply(path, policy)
+        self.assertEqual(code, 0)
+        self.assertFalse(unit.exists())
+        self.assertTrue(deps.is_dir())
+        self.assertEqual((deps / 'libkeep.rlib').read_bytes(), b'keep me')
+        self.assertTrue((self.root / 'target' / 'debug' / '.cargo-lock').is_file())
+        # Lock released: a second exclusive lock can be taken again.
+        fd = os.open(str(self.root / 'target' / 'debug' / '.cargo-lock'), os.O_RDWR)
+        build_storage._lock_byte(fd)
+        build_storage._unlock_byte(fd)
+        os.close(fd)
+
+    # -- V-04 nesting, hard links, unknowns, shapes -------------------
+
+    def test_incremental_nested_roots_and_hardlink_dedup(self):
+        main_unit = self.make_unit(self.root / 'target' / 'debug' / 'incremental')
+        ctx_root = self.root / 'target' / 'generated-consumers' / 'abcd1234'
+        ctx_root.mkdir(parents=True)
+        (ctx_root / 'context.json').write_text(json.dumps({
+            'schema': 'generated-build-context/v1', 'context_id': 'abcd1234',
+            'producer_root': str(self.root.resolve())}), encoding='utf-8')
+        gen_unit = self.make_unit(ctx_root / 'debug' / 'incremental', files=2)
+        os.link(main_unit / 'sess0-1a2b3c4d5e6f', gen_unit / 'shared-with-main')
+        (self.root / 'target' / 'test-tools' / 'regular').mkdir(parents=True)
+        (self.root / 'target' / 'test-tools' / 'regular' / 'marker').write_bytes(b't')
+        policy = self.write_policy([('ours', self.root / 'target', False), ('gen', ctx_root, False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, _ = self.preview(policy)
+        by_root = {u['root']: u for u in manifest['units']}
+        self.assertEqual({str(self.root / 'target'), str(ctx_root)}, set(by_root))
+        # The nested generated-consumers root is not double-counted under
+        # the main root, and test-tools is pruned from the walk.
+        self.assertEqual(sum(1 for u in manifest['units'] if u['root'] == str(self.root / 'target')), 1)
+        self.assertEqual(manifest['shared_file_ids_across_units'], 1)
+        gen_row = by_root[str(ctx_root)]
+        # The shared file is not reclaimable by deleting the generated unit.
+        self.assertLess(gen_row['reclaimable_allocated_upper_bound'], gen_row['allocated_bytes'])
+
+    def test_incremental_unknown_allocation_demotes_unit(self):
+        self.make_unit(self.root / 'target' / 'debug' / 'incremental')
+        policy = self.write_policy([('ours', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root), \
+                mock.patch.object(build_storage, 'allocated_bytes', return_value=None):
+            manifest, _ = self.preview(policy)
+        self.assertEqual(manifest['units'][0]['status'], 'unknown')
+        self.assertGreater(manifest['units'][0]['unknown_alloc_files'], 0)
+        self.assertNotEqual(manifest['units'][0]['logical_bytes'], manifest['units'][0]['allocated_bytes'])
+
+    def test_incremental_foreign_generated_context_admission(self):
+        # A registered foreign workspace's generated-consumer context is
+        # admitted through its context.json producer proof (dual proof),
+        # from a checkout other than the producer's own.
+        foreign_repo = self.base / 'langmain'
+        foreign_repo.mkdir()
+        (foreign_repo / 'Cargo.toml').write_text('[workspace]\n', encoding='utf-8')
+        ctx_root = foreign_repo / 'target' / 'generated-consumers' / 'abcd1234'
+        ctx_root.mkdir(parents=True)
+        (ctx_root / 'context.json').write_text(json.dumps({
+            'schema': 'generated-build-context/v1', 'context_id': 'abcd1234',
+            'producer_root': str(foreign_repo.resolve())}), encoding='utf-8')
+        self.make_unit(foreign_repo / 'target' / 'debug' / 'incremental')
+        self.make_unit(ctx_root / 'debug' / 'incremental')
+        policy = self.write_policy([('lang-main', foreign_repo / 'target', True),
+                                    ('gen-ctx', ctx_root, True)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, _ = self.preview(policy)
+        by_root = {u['root']: u for u in manifest['units']}
+        self.assertIn(str(foreign_repo / 'target'), by_root)
+        self.assertIn(str(ctx_root), by_root)
+        self.assertEqual(by_root[str(ctx_root)]['kind'], 'foreign-generated:lang-main')
+        # A context.json lying about its producer is refused.
+        (ctx_root / 'context.json').write_text(json.dumps({
+            'schema': 'generated-build-context/v1', 'context_id': 'abcd1234',
+            'producer_root': str(self.base / 'someone-else')}), encoding='utf-8')
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, _ = self.preview(policy)
+        self.assertNotIn(str(ctx_root), {u['root'] for u in manifest['units']})
+        self.assertIn('does not prove its producer',
+                      next(r['reason'] for r in manifest['refused'] if r['root'] == str(ctx_root)))
+
+    def test_incremental_triple_profile_unit_shape(self):
+        self.make_unit(self.root / 'target' / 'x86_64-pc-windows-msvc' / 'runtime-release' / 'incremental')
+        policy = self.write_policy([('ours', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, _ = self.preview(policy)
+        unit = manifest['units'][0]
+        self.assertEqual(unit['profile'], 'runtime-release')
+        self.assertEqual(unit['triple'], 'x86_64-pc-windows-msvc')
+
+    # -- V-05 idempotence, watermarks, legacy CLI ---------------------
+
+    def test_incremental_consumed_manifest_cannot_reapply(self):
+        self.make_unit(self.root / 'target' / 'debug' / 'incremental')
+        policy = self.write_policy([('ours', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, path = self.preview(policy)
+        with mock.patch.object(build_storage, 'ROOT', self.root), \
+                mock.patch.object(build_storage, 'refuse_active_processes'):
+            code, _ = self.apply(path, policy)
+        self.assertEqual(code, 0)
+        with mock.patch.object(build_storage, 'ROOT', self.root), \
+                mock.patch.object(build_storage, 'refuse_active_processes'):
+            with self.assertRaises(ValueError) as ctx:
+                self.apply(path, policy)
+        self.assertIn('no longer an eligible unit', str(ctx.exception))
+
+    def test_incremental_watermark_shortfall_reported(self):
+        # Shortfall is only real when protected bytes alone already exceed
+        # the ceiling: eligible reclamation alone cannot cross protection.
+        eligible_row = self.make_unit(self.root / 'target' / 'debug' / 'incremental', files=2, content=b'y' * 8192)
+        protected_unit = self.make_unit(self.root / 'target' / 'release' / 'incremental', files=2, content=b'y' * 8192)
+        (protected_unit / 'results.json').write_text('{}', encoding='utf-8')
+        policy = self.write_policy([('ours', self.root / 'target', False)],
+                                   {'ours': {'high_bytes': 1, 'low_bytes': None,
+                                             'rationale': 'test ceiling'}})
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, _ = self.preview(policy)
+        mark = manifest['watermarks']['ours']
+        self.assertTrue(mark['above_high_watermark'])
+        self.assertGreater(mark['shortfall_bytes'], 0)
+        self.assertEqual(mark['shortfall_bytes'],
+                         mark['non_eligible_allocated_bytes'] - mark['high_bytes'])
+        self.assertEqual(mark['eligible_idle_allocated_bytes'],
+                         sum(u['allocated_bytes'] for u in manifest['units']
+                             if u['status'] == 'eligible-idle'))
+        self.assertTrue(protected_unit.is_dir())
+
+    def test_incremental_zero_candidates_are_legal(self):
+        (self.root / 'target' / 'debug').mkdir(parents=True)
+        policy = self.write_policy([('ours', self.root / 'target', False)])
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, path = self.preview(policy)
+        self.assertEqual(manifest['units'], [])
+        with mock.patch.object(build_storage, 'ROOT', self.root), \
+                mock.patch.object(build_storage, 'refuse_active_processes'):
+            code, receipt = self.apply(path, policy)
+        self.assertEqual(code, 0)
+        self.assertTrue(receipt['zero_delete'])
+
+    def test_legacy_cli_unchanged(self):
+        cache = self.root / 'target'
+        (cache / 'debug' / 'incremental').mkdir(parents=True)
+        (cache / 'debug' / 'incremental' / 's').write_bytes(b'z')
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            with contextlib.redirect_stdout(io.StringIO()) as captured:
+                self.assertEqual(build_storage.main([str(cache)]), 0)
+        payload = json.loads(captured.getvalue())
+        self.assertEqual(payload['mode'], 'preview')
+        self.assertEqual(payload['caches'][0]['files'], 1)
 
 
 if __name__ == '__main__':
