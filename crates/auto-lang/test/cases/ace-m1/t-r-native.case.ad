@@ -146,6 +146,8 @@ case {
     { id: "av", adapter: "probe", action: "run",
       options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
       expect: { completion: { stage: "run", code: "av.trap.str-index" } } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "0" } } },
   ]
 }
 ```

@@ -331,7 +331,7 @@ _CONTRACT_SHAS = {
     "p928": "02dbfc0637c44014bc19b2f8a54c47c98b29bcb9c3a59b6b63b2664be081c710",
     "p999": "6532223f4daaac45b837583c70912a42ee400b70a90d074caa6aea3c74c081e9",
     "pcte936": "4e9da6ed610abc1ced770dcbab798634d122327bb424b98b3a60199f3d4859ca",
-    "ptr": "6555045c3d17831c4f689286dfb0cf50148b756cb417abd7a1cc5fd9f69011fe",
+    "ptr": "9ff5ec6beccf992e5b3db26200c96cc69f3e33603e67099f9f981b732bad051e",
     "record_text_q4": "389d3f1ec77e35ae95eb573e4dbe093e68570f26c94b8f57fc92e5e4455a4095",
     "scalar_q4": "163b2d2ec2411f1840b5a744b43d2f23d55412d3ffb77a9a7da3ca583411f4d1",
     "source_instances": "482d18c8795e5c578e4e22672c379ffe3b7096fc029829423510f94247745b96",
@@ -507,7 +507,11 @@ _PROBE_CHECK_CELLS = {
     ('ace.m1.session.av', 'body-edit-run'): [('scenario', 'I01', 'av')],
     ('ace.m1.session.av', 'edit-persist-across-workers'): [('scenario', 'I05', 'av')],
     ('ace.m1.session.mn', 'fresh-run'): [('scenario', 'I06', 'ac')],
-    ('ace.m1.session.mn', 'edit-then-restart-run'): [('scenario', 'I06', 'ac')],
+    # PLAN-1000 I01:ac — the mn edit/restart leg IS the I01 scalar-subset
+    # observation (single frozen source, one body edit, judged on the NEW
+    # value; the 30-revision full spectrum stays the named gap) AND the I06
+    # restart-state observation. Multi-cell mapping per the E03/B04 note.
+    ('ace.m1.session.mn', 'edit-then-restart-run'): [('scenario', 'I06', 'ac'), ('scenario', 'I01', 'ac')],
     ('ace.m1.i04.ace', 'declaration'): [('scenario', 'I04', 'ac')],
     ('ace.m1.i09.ace', 'refused'): [('scenario', 'I09', 'ac')],
     ('ace.m1.i09.ace', 'survives'): [('scenario', 'I09', 'ac')],
@@ -520,6 +524,7 @@ _PROBE_CHECK_CELLS = {
     ('ace.m1.e02.ace', 'ac-native'): [('scenario', 'E02', 'ac')],
     ('ace.m1.e02.ace', 'av-data'): [('scenario', 'E02', 'av')],
     ('ace.m1.e02.av', 'unused-declaration-carry'): [],
+    ('ace.m1.t08', 'autovm'): [('corpus', 'T08', 'avm')],
     ('ace.m1.res-r01-av866', 'av-res-r01-continuity'): [('corpus', 'H01', 'av')],
     ('ace.m1.res-r02-av866', 'av-res-r02-online-swap'): [('corpus', 'H02', 'av'), ('scenario', 'I08', 'av')],
     ('ace.m1.res-r03-av866', 'av-res-r03-churn-two-swaps'): [('corpus', 'H03', 'av')],
