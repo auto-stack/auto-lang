@@ -234,7 +234,9 @@ def _admit_base_slice(inputs, evidence, bindings, registry, workers):
         exact_keys(leg, ('inventory', 'copy'), 'original execution bindings')
         expected = _inventory(inputs, evidence, leg['inventory'], 'legacy', registry['inventory_contracts']['legacy'])
         copy = CaseCopy(EvidenceScope(evidence.path(leg['copy'] + '/artifact-copy.json').parent, budget))
-        legacy['execution_summary'] = _compact_admission(inputs, lambda _: admit_scalar_slice(copy, expected, inputs, workers))
+        _scalar_slice = _compact_admission(inputs, lambda _: admit_scalar_slice(copy, expected, inputs, workers))
+        _scalar_slice['observations'] = _slim_obs(_scalar_slice.get('observations', {}))
+        legacy['execution_summary'] = _scalar_slice
         legacy['execution'] = legacy['execution_summary']['verdict']
     return {'observations':observations, 'parents':parents, 'legacy':legacy}
 
@@ -397,7 +399,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         require(not earlier.keys() & legacy_base['observations'].keys(), 'duplicate original BASE execution')
         required = sorted(set(legacy_base['unobserved_cells']) | legacy_base['observations'].keys())
         legacy['execution_summary'] = _compact_admission(inputs, lambda _: execution_summary(
-            required, earlier | legacy_base['observations']), 1 << 20)
+            required, _slim_obs(earlier) | _slim_obs(legacy_base['observations'])), 1 << 20)
         legacy['execution'] = legacy['execution_summary']['verdict']
         parents['legacy_base'] = legacy_base['source_case_report']
         legacy['base_pending_observations'] = legacy_base['pending_observations']
@@ -406,7 +408,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         earlier = legacy.get('execution_summary', {}).get('observations', {})
         require(not earlier.keys() & legacy_data['observations'].keys(), 'duplicate original data execution')
         legacy['execution_summary'] = _compact_admission(inputs, lambda _: execution_summary(
-            legacy_data['required'], earlier | legacy_data['observations']), 2 << 20)
+            legacy_data['required'], _slim_obs(earlier) | _slim_obs(legacy_data['observations'])), 1 << 20)
         legacy['execution'] = legacy['execution_summary']['verdict']
         legacy['data_pending_observations'] = legacy_data['pending_observations']
     if 'legacy_a2r_execution' in bindings:
@@ -440,10 +442,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
                                   'supporting': [r['suite'] + ':' + r['check'] for r in v.get('supporting_checks', [])][:3]}
                               for k, v in families['observations'].items() if k not in earlier2}
         families['claimed_cells'] = len(fresh_family_cells)
-        required2 = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in _fl(inputs) if row['required'])
-        legacy['execution_summary'] = _compact_admission(inputs, lambda _: _es2(
-            required2, _slim_obs(earlier2) | _slim_obs(fresh_family_cells)), 896 << 10)
-        legacy['execution'] = legacy['execution_summary']['verdict']
+        legacy.setdefault('_merged_obs', {}).update(fresh_family_cells)
         legacy['probe_family_claimed_cells'] = families['claimed_cells']
     if 'legacy_rust_tests' in bindings:
         from ace_m1_legacy_a2r import admit_rust_test_cells
@@ -456,10 +455,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
                                     'test': v.get('test')}
                                 for k, v in rust['observations'].items() if k not in earlier3}
         rust['claimed_cells'] = len(rust['observations'])
-        required3 = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in _fl3(inputs) if row['required'])
-        legacy['execution_summary'] = _compact_admission(inputs, lambda _: _es3(
-            required3, _slim_obs(earlier3) | _slim_obs(rust['observations'])), 896 << 10)
-        legacy['execution'] = legacy['execution_summary']['verdict']
+        legacy.setdefault('_merged_obs', {}).update(rust['observations'])
         legacy['rust_test_claimed_cells'] = rust['claimed_cells']
     if 'legacy_governance' in bindings:
         from ace_m1_legacy_a2r import admit_governance_cells
@@ -471,10 +467,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         gov['observations'] = {k: {'judgement': v['judgement'], 'oracle_source': v.get('oracle_source')}
                                for k, v in gov['observations'].items() if k not in earlier4}
         gov['claimed_cells'] = len(gov['observations'])
-        required4 = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in _fl4(inputs) if row['required'])
-        legacy['execution_summary'] = _compact_admission(inputs, lambda _: _es4(
-            required4, _slim_obs(earlier4) | _slim_obs(gov['observations'])), 896 << 10)
-        legacy['execution'] = legacy['execution_summary']['verdict']
+        legacy.setdefault('_merged_obs', {}).update(gov['observations'])
         legacy['governance_claimed_cells'] = gov['claimed_cells']
         for key, parent in families['source_case_reports'].items():
             parents['probe:' + key] = parent
@@ -614,6 +607,12 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
             document, _ = evidence.read_json(ref['path'])
             typed_equal(document.get('schema'), 'ace.m1.phased-observations/1',
                         f'phased schema {section}')
+            if 'section' in document:
+                # A phased whole-section payload (e.g. the incremental-restore
+                # measurement document): injected verbatim under its name; the
+                # downstream gates consume its own shape.
+                result[section] = document['section'] | {'source': ref['path']}
+                continue
             observations = document.get('observations')
             require(type(observations) is dict and observations,
                     f'phased observations {section} rows')
@@ -685,7 +684,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
                 bindings.get('incremental_restore_av')), 256 << 10)
     from ace_m1_registry import compose_registered_inventory
     result['registered_obligations'] = _compact_admission(
-        inputs, lambda _: compose_registered_inventory(inputs, registry, result, REQUIRED), 3 << 20)
+        inputs, lambda _: compose_registered_inventory(inputs, registry, result, REQUIRED), 2561 << 10)
     result['gates']['registered_required_execution'] = result['registered_obligations']['registered_observations_complete']
     result['gates']['complete_expanded_registry'] = result['registered_obligations']['required_universe_closed']
     # PLAN-941 T-07: the budget/time measurement section — real meters from
