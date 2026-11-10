@@ -52,6 +52,38 @@ pub enum LowerMode {
     /// conversion matrix. Objects for numeric-free programs are identical
     /// to Legacy.
     Numeric,
+    /// PLAN-1000 F-1000-01 (owner option a): the trap-probe observation
+    /// build — the `Numeric` value surface point for point, except trap
+    /// branches carry their bounded reason to the typed runtime's
+    /// `mn_typed_trap` helper (named trap frames) instead of the frozen
+    /// exit-70 block. Probe objects are standalone observation builds:
+    /// never cached, never published, never production artifacts — the
+    /// production pipeline still lowers `Numeric` and its objects keep
+    /// their frozen bytes.
+    TrapProbe,
+}
+
+impl LowerMode {
+    /// The PLAN-961 numeric emission lane (carriers, typed numeric ops,
+    /// conversion matrix) — `TrapProbe` mirrors production `Numeric`
+    /// semantics exactly.
+    pub fn numeric_lane(self) -> bool {
+        matches!(self, LowerMode::Numeric | LowerMode::TrapProbe)
+    }
+
+    /// Wide typed carriers (I64/U64/F64 on I64, F32 on I32) are live.
+    pub fn wide_carriers(self) -> bool {
+        matches!(
+            self,
+            LowerMode::Typed | LowerMode::Numeric | LowerMode::TrapProbe
+        )
+    }
+
+    /// Trap branches carry a bounded reason code (typed trap helper), not
+    /// the frozen unlabelled exit-70 block.
+    pub fn trap_carries_reason(self) -> bool {
+        matches!(self, LowerMode::Typed | LowerMode::TrapProbe)
+    }
 }
 
 /// Emit the single function of `unit` into `ctx.func`, declaring callees
@@ -127,7 +159,7 @@ pub fn emit_function(
             // PLAN-961: narrow integers ride the I32 carrier in Numeric
             // mode (sign/zero-extended by construction — every op maintains
             // the invariant); the frozen Legacy surface keeps its rejection.
-            Some(MirType::I8 | MirType::U8 | MirType::U32) if mode == LowerMode::Numeric => {
+            Some(MirType::I8 | MirType::U8 | MirType::U32) if mode.numeric_lane() => {
                 SlotRep::Wide(fb.declare_var(types::I32))
             }
             Some(MirType::I8 | MirType::U8 | MirType::U32) => {
@@ -177,11 +209,11 @@ pub fn emit_function(
             // distinct in admission/fingerprints; the carrier is machine
             // representation only.
             Some(MirType::I64) | Some(MirType::U64) | Some(MirType::F64)
-                if matches!(mode, LowerMode::Typed | LowerMode::Numeric) =>
+                if mode.wide_carriers() =>
             {
                 SlotRep::Wide(fb.declare_var(types::I64))
             }
-            Some(MirType::F32) if matches!(mode, LowerMode::Typed | LowerMode::Numeric) => {
+            Some(MirType::F32) if mode.wide_carriers() => {
                 SlotRep::Wide(fb.declare_var(types::I32))
             }
             Some(
@@ -1430,7 +1462,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
     /// code into the typed trap helper (PLAN-891: a named trap frame, never
     /// an exit-70 guess).
     fn branch_to_trap_on(&mut self, cond: cranelift_codegen::ir::Value, reason: u32) {
-        if self.mode == LowerMode::Typed {
+        if self.mode.trap_carries_reason() {
             let (trap, _) = self.ensure_typed_trap_block();
             let cont = self.fb.create_block();
             let r = self.fb.ins().iconst(types::I32, reason as i64);
@@ -1557,7 +1589,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         let q = self.fb.ins().select(bm1, neg, raw);
         let a_min = self.icmp_bool(IntCC::Equal, a, min);
         let m1_min = self.fb.ins().band(bm1, a_min);
-        if self.mode == LowerMode::Typed {
+        if self.mode.trap_carries_reason() {
             // PLAN-891: the two trap causes carry DISTINCT bounded reasons.
             self.branch_to_trap_on(bz, crate::typed_entry::TRAP_DIV_ZERO);
             self.branch_to_trap_on(m1_min, crate::typed_entry::TRAP_DIV_OVERFLOW);
@@ -1589,7 +1621,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         let r = self.fb.ins().select(bm1, z, raw);
         let a_min = self.icmp_bool(IntCC::Equal, a, min);
         let m1_min = self.fb.ins().band(bm1, a_min);
-        if self.mode == LowerMode::Typed {
+        if self.mode.trap_carries_reason() {
             self.branch_to_trap_on(bz, crate::typed_entry::TRAP_DIV_ZERO);
             self.branch_to_trap_on(m1_min, crate::typed_entry::TRAP_DIV_OVERFLOW);
         } else {
@@ -1757,60 +1789,60 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                         callbacks,
                     )?;
                 } else {
-                let mut values = Vec::new();
-                if let Some(symbol) = &declaration.context_symbol {
-                    let data = self
-                        .om
-                        .declare_data(symbol, Linkage::Import, true, false)
-                        .map_err(|e| format!("declare foreign context: {e}"))?;
-                    let global = self.om.declare_data_in_func(data, self.fb.func);
-                    values.push(self.fb.ins().global_value(types::I64, global));
-                }
-                for (slot, lane) in args.iter().zip(declaration.params()) {
-                    let value = self.fb.use_var(self.v_scalar(*slot)?);
-                    if *lane == ace_foreign_contract::LaneKind::Bool {
-                        let bad = self.fb.ins().icmp_imm(IntCC::UnsignedGreaterThan, value, 1);
+                    let mut values = Vec::new();
+                    if let Some(symbol) = &declaration.context_symbol {
+                        let data = self
+                            .om
+                            .declare_data(symbol, Linkage::Import, true, false)
+                            .map_err(|e| format!("declare foreign context: {e}"))?;
+                        let global = self.om.declare_data_in_func(data, self.fb.func);
+                        values.push(self.fb.ins().global_value(types::I64, global));
+                    }
+                    for (slot, lane) in args.iter().zip(declaration.params()) {
+                        let value = self.fb.use_var(self.v_scalar(*slot)?);
+                        if *lane == ace_foreign_contract::LaneKind::Bool {
+                            let bad = self.fb.ins().icmp_imm(IntCC::UnsignedGreaterThan, value, 1);
+                            let status = self.fb.ins().iconst(types::I32, -2147483647i64);
+                            self.foreign_failure_on(bad, status)?;
+                            values.push(self.fb.ins().ireduce(types::I8, value));
+                        } else {
+                            values.push(value);
+                        }
+                    }
+                    let bool_result = declaration.result() == ace_foreign_contract::LaneKind::Bool;
+                    let result_type = if bool_result { types::I8 } else { types::I32 };
+                    let result = if matches!(
+                        declaration.function.form,
+                        ace_foreign_contract::FnForm::Fallible { .. }
+                    ) {
+                        let slot = self.fb.create_sized_stack_slot(StackSlotData::new(
+                            cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
+                            if bool_result { 1 } else { 4 },
+                            if bool_result { 0 } else { 2 },
+                        ));
+                        values.push(self.fb.ins().stack_addr(types::I64, slot, 0));
+                        let call = self.fb.ins().call(reference, &values);
+                        let status = self.fb.inst_results(call)[0];
+                        let bad = self.fb.ins().icmp_imm(IntCC::NotEqual, status, 0);
+                        self.foreign_failure_on(bad, status)?;
+                        // Out is consumed only on the success continuation.
+                        self.fb.ins().stack_load(result_type, slot, 0)
+                    } else {
+                        let call = self.fb.ins().call(reference, &values);
+                        self.fb.inst_results(call)[0]
+                    };
+                    let result = if bool_result {
+                        let bad = self
+                            .fb
+                            .ins()
+                            .icmp_imm(IntCC::UnsignedGreaterThan, result, 1);
                         let status = self.fb.ins().iconst(types::I32, -2147483647i64);
                         self.foreign_failure_on(bad, status)?;
-                        values.push(self.fb.ins().ireduce(types::I8, value));
+                        self.fb.ins().uextend(types::I32, result)
                     } else {
-                        values.push(value);
-                    }
-                }
-                let bool_result = declaration.result() == ace_foreign_contract::LaneKind::Bool;
-                let result_type = if bool_result { types::I8 } else { types::I32 };
-                let result = if matches!(
-                    declaration.function.form,
-                    ace_foreign_contract::FnForm::Fallible { .. }
-                ) {
-                    let slot = self.fb.create_sized_stack_slot(StackSlotData::new(
-                        cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
-                        if bool_result { 1 } else { 4 },
-                        if bool_result { 0 } else { 2 },
-                    ));
-                    values.push(self.fb.ins().stack_addr(types::I64, slot, 0));
-                    let call = self.fb.ins().call(reference, &values);
-                    let status = self.fb.inst_results(call)[0];
-                    let bad = self.fb.ins().icmp_imm(IntCC::NotEqual, status, 0);
-                    self.foreign_failure_on(bad, status)?;
-                    // Out is consumed only on the success continuation.
-                    self.fb.ins().stack_load(result_type, slot, 0)
-                } else {
-                    let call = self.fb.ins().call(reference, &values);
-                    self.fb.inst_results(call)[0]
-                };
-                let result = if bool_result {
-                    let bad = self
-                        .fb
-                        .ins()
-                        .icmp_imm(IntCC::UnsignedGreaterThan, result, 1);
-                    let status = self.fb.ins().iconst(types::I32, -2147483647i64);
-                    self.foreign_failure_on(bad, status)?;
-                    self.fb.ins().uextend(types::I32, result)
-                } else {
-                    result
-                };
-                self.def_scalar(*dst, result)?;
+                        result
+                    };
+                    self.def_scalar(*dst, result)?;
                 }
             }
             MirInstr::Const { dst, value } => {
@@ -1860,41 +1892,33 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     // PLAN-891 typed carriers: wide constants materialize
                     // their EXACT bit pattern (iconst over the raw bits —
                     // no host float conversion anywhere).
-                    Some(MirConst::I64(v))
-                        if matches!(self.mode, LowerMode::Typed | LowerMode::Numeric) =>
-                    {
+                    Some(MirConst::I64(v)) if self.mode.wide_carriers() => {
                         let val = self.fb.ins().iconst(types::I64, *v);
                         self.def_wide(*dst, val)?;
                     }
-                    Some(MirConst::U64(v))
-                        if matches!(self.mode, LowerMode::Typed | LowerMode::Numeric) =>
-                    {
+                    Some(MirConst::U64(v)) if self.mode.wide_carriers() => {
                         let val = self.fb.ins().iconst(types::I64, *v as i64);
                         self.def_wide(*dst, val)?;
                     }
-                    Some(MirConst::F32Bits(b))
-                        if matches!(self.mode, LowerMode::Typed | LowerMode::Numeric) =>
-                    {
+                    Some(MirConst::F32Bits(b)) if self.mode.wide_carriers() => {
                         let val = self.fb.ins().iconst(types::I32, *b as i64);
                         self.def_wide(*dst, val)?;
                     }
-                    Some(MirConst::F64Bits(b))
-                        if matches!(self.mode, LowerMode::Typed | LowerMode::Numeric) =>
-                    {
+                    Some(MirConst::F64Bits(b)) if self.mode.wide_carriers() => {
                         let val = self.fb.ins().iconst(types::I64, *b as i64);
                         self.def_wide(*dst, val)?;
                     }
                     // PLAN-961: narrow constants materialize sign/zero
                     // extended on the I32 carrier (Numeric lane only).
-                    Some(MirConst::I8(v)) if self.mode == LowerMode::Numeric => {
+                    Some(MirConst::I8(v)) if self.mode.numeric_lane() => {
                         let val = self.fb.ins().iconst(types::I32, *v as i64);
                         self.def_wide(*dst, val)?;
                     }
-                    Some(MirConst::U8(v)) if self.mode == LowerMode::Numeric => {
+                    Some(MirConst::U8(v)) if self.mode.numeric_lane() => {
                         let val = self.fb.ins().iconst(types::I32, *v as i64);
                         self.def_wide(*dst, val)?;
                     }
-                    Some(MirConst::U32(v)) if self.mode == LowerMode::Numeric => {
+                    Some(MirConst::U32(v)) if self.mode.numeric_lane() => {
                         let val = self.fb.ins().iconst(types::I32, *v as i64);
                         self.def_wide(*dst, val)?;
                     }
@@ -1973,7 +1997,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     let BinOp::Num { op: nop, ty } = op else {
                         unreachable!("checked above")
                     };
-                    if self.mode == LowerMode::Numeric {
+                    if self.mode.numeric_lane() {
                         self.emit_num_bin(*nop, *ty, *dst, *lhs, *rhs)?;
                         return Ok(());
                     }
@@ -2018,7 +2042,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     }
                     // PLAN-961: typed negation on the numeric lane.
                     UnOp::NegT { ty } => {
-                        if self.mode == LowerMode::Numeric {
+                        if self.mode.numeric_lane() {
                             self.emit_num_neg(*ty, *dst, *operand)?;
                         } else {
                             return Err(
@@ -2031,7 +2055,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             }
             // PLAN-961: the frozen conversion matrix on the numeric lane.
             MirInstr::Conv { dst, src } => {
-                if self.mode == LowerMode::Numeric {
+                if self.mode.numeric_lane() {
                     self.emit_num_conv(*dst, *src)?;
                 } else {
                     return Err(
@@ -2739,7 +2763,10 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                                 _ => return Err(format!("slot {slot} is not a record view")),
                             };
                             let layout = crate::layout::record_layout(
-                                self.unit, ty, &rec, &mut self.layouts,
+                                self.unit,
+                                ty,
+                                &rec,
+                                &mut self.layouts,
                             )
                             .map_err(|e| format!("foreign shadow layout: {e:?}"))?;
                             let ss = self.fb.create_sized_stack_slot(StackSlotData::new(
@@ -2803,9 +2830,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     let (_, name) = callbacks
                         .iter()
                         .find(|(l, _)| *l as usize == i)
-                        .ok_or_else(|| {
-                            format!("foreign callback lane {i} has no named target")
-                        })?;
+                        .ok_or_else(|| format!("foreign callback lane {i} has no named target"))?;
                     let tramp = self.emit_callback_trampoline(name)?;
                     values.push(tramp);
                 }
@@ -2905,11 +2930,8 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
     /// never a success sentinel.
     fn emit_callback_trampoline(&mut self, name: &str) -> Result<Value, String> {
         const CALLBACK_DOMAIN_STATUS: i64 = -2147483645;
-        let import_sym = crate::symbols::import_symbol(
-            &self.unit.owner,
-            &format!("fn:{name}"),
-        )
-        .map_err(|e| e.to_string())?;
+        let import_sym = crate::symbols::import_symbol(&self.unit.owner, &format!("fn:{name}"))
+            .map_err(|e| e.to_string())?;
         let mut cb_sig = Signature::new(cranelift_codegen::isa::CallConv::WindowsFastcall);
         cb_sig.params.push(AbiParam::new(types::I32));
         cb_sig.params.push(AbiParam::new(types::I32));

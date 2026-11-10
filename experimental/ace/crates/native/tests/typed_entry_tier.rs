@@ -326,6 +326,71 @@ fn typed_probe_value70_and_div_trap_are_distinct_real_pe() {
     }
 }
 
+/// PLAN-1000 F-1000-01 (owner option a): the trap-probe observation
+/// build names the EXECUTED trap for a source whose production run ends
+/// in the frozen unlabelled exit 70 with empty streams, and honestly
+/// reports no observation for a source that returns a value. The probe
+/// shares the production `Numeric` value surface point for point; only
+/// the trap branches carry bounded reasons (mn-worker maps them to the
+/// `mn.trap.*` response names).
+#[test]
+#[cfg(windows)]
+fn trap_probe_names_the_executed_trap_real_pe() {
+    if !tools_available() {
+        eprintln!("infra-blocked: rust-lld/SDK unavailable — trap probe skipped");
+        return;
+    }
+    let mut driver = ace_native::driver::MnDriver::ephemeral();
+    // remainder by zero → the shared division-zero trap
+    let dir = workdir("tprobe-remz");
+    let reason = driver
+        .trap_probe("fn main() int { return 10 % 0 }", "d_main", &[], &dir, None)
+        .expect("trap probe runs");
+    assert_eq!(
+        reason,
+        Some(typed_entry::TRAP_DIV_ZERO),
+        "named rem-by-zero"
+    );
+    // checked add overflow → the add-overflow trap
+    let dir = workdir("tprobe-add");
+    let reason = driver
+        .trap_probe(
+            "fn main() int { return 2147483647 + 1 }",
+            "d_main",
+            &[],
+            &dir,
+            None,
+        )
+        .expect("trap probe runs");
+    assert_eq!(
+        reason,
+        Some(typed_entry::TRAP_ADD_OVERFLOW),
+        "named add-overflow"
+    );
+    // division MIN / -1 → the division-overflow trap
+    let dir = workdir("tprobe-divmin");
+    let reason = driver
+        .trap_probe(
+            "fn main() int { return -2147483648 / -1 }",
+            "d_main",
+            &[],
+            &dir,
+            None,
+        )
+        .expect("trap probe runs");
+    assert_eq!(
+        reason,
+        Some(typed_entry::TRAP_DIV_OVERFLOW),
+        "named div-overflow"
+    );
+    // a value source has no trap to observe — the honest absence
+    let dir = workdir("tprobe-value");
+    let reason = driver
+        .trap_probe("fn main() int { return 7 }", "d_main", &[], &dir, None)
+        .expect("trap probe runs");
+    assert_eq!(reason, None, "no named trap for a value source");
+}
+
 /// Host-side frame codec negatives (V-05/V-12 axis): every shape
 /// violation is a NAMED rejection — a success-looking fragment never
 /// passes.

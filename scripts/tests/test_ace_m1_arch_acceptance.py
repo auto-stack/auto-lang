@@ -3127,6 +3127,62 @@ class ScalarQ4ObservationTests(unittest.TestCase):
         step['trap'] = 'av.trap.div-by-zero';wire['stdout'] = json.dumps(response).encode()
         self.assertEqual(self.judge(wire, check, contract)['judgement'], 'FAIL')
 
+    def test_native_trap_probe_names_close_exactly_the_expected_cell(self):
+        # PLAN-1000 F-1000-01 (owner option a): the response-side named trap
+        # (trap-probe observation build) closes ONLY the matching oracle.
+        closing = {'Overflow':'mn.trap.add-overflow','DivByZero':'mn.trap.div-zero',
+                   'DivOverflow':'mn.trap.div-overflow','RemOverflow':'mn.trap.div-overflow',
+                   'RemByZero':'mn.trap.div-zero'}
+        for oracle, native in closing.items():
+            with self.subTest(oracle=oracle):
+                wire, check, contract = self.sample('native', 70)
+                contract.update(oracle_kind='trap', oracle_value=oracle)
+                response = json.loads(wire['stdout'])
+                response['ok'].update(trap=native, trap_reason=1, trap_observation='trap-probe/1')
+                wire['stdout'] = json.dumps(response).encode()
+                self.assertEqual(self.judge(wire, check, contract)['judgement'], 'PASS')
+        # a machine-valid name that contradicts the oracle FAILS
+        wire, check, contract = self.sample('native', 70)
+        contract.update(oracle_kind='trap', oracle_value='DivByZero')
+        response = json.loads(wire['stdout'])
+        response['ok'].update(trap='mn.trap.div-overflow', trap_reason=2, trap_observation='trap-probe/1')
+        wire['stdout'] = json.dumps(response).encode()
+        self.assertEqual(self.judge(wire, check, contract)['judgement'], 'FAIL')
+        # the whole int-overflow family closes the shared Overflow oracle
+        for native in ('mn.trap.sub-overflow','mn.trap.mul-overflow','mn.trap.neg-overflow'):
+            with self.subTest(family=native):
+                wire, check, contract = self.sample('native', 70)
+                contract.update(oracle_kind='trap', oracle_value='Overflow')
+                response = json.loads(wire['stdout'])
+                response['ok'].update(trap=native, trap_reason=4, trap_observation='trap-probe/1')
+                wire['stdout'] = json.dumps(response).encode()
+                self.assertEqual(self.judge(wire, check, contract)['judgement'], 'PASS')
+
+    def test_native_trap_probe_fields_are_refused_when_malformed(self):
+        refusals = {
+            'unknown-name': dict(trap='mn.trap.sudden-death', trap_reason=1, trap_observation='trap-probe/1'),
+            'foreign-name': dict(trap='av.trap.int-overflow', trap_reason=3, trap_observation='trap-probe/1'),
+            'missing-mode': dict(trap='mn.trap.add-overflow', trap_reason=3),
+            'missing-reason': dict(trap='mn.trap.add-overflow', trap_observation='trap-probe/1'),
+            'null-trap': dict(trap=None, trap_reason=3, trap_observation='trap-probe/1'),
+            'bad-reason': dict(trap='mn.trap.add-overflow', trap_reason=9, trap_observation='trap-probe/1'),
+            'wrong-mode': dict(trap='mn.trap.add-overflow', trap_reason=3, trap_observation='guess/0'),
+        }
+        for label, fields in refusals.items():
+            with self.subTest(label=label), self.assertRaises(m.AdmissionError):
+                wire, check, contract = self.sample('native', 70)
+                contract.update(oracle_kind='trap', oracle_value='Overflow')
+                response = json.loads(wire['stdout'])
+                response['ok'].update(fields)
+                wire['stdout'] = json.dumps(response).encode()
+                self.judge(wire, check, contract)
+        # trap fields never rescue a VALUE oracle whose exit disagrees
+        wire, check, contract = self.sample('native', 70)
+        response = json.loads(wire['stdout'])
+        response['ok'].update(trap='mn.trap.add-overflow', trap_reason=3, trap_observation='trap-probe/1')
+        wire['stdout'] = json.dumps(response).encode()
+        self.assertEqual(self.judge(wire, check, contract)['judgement'], 'FAIL')
+
     def test_original_mark_order_and_short_circuit_are_required(self):
         for target in ('av', 'native'):
             wire, check, contract = self.sample(target, trace=True)

@@ -10,10 +10,10 @@ use crate::link_driver::{self, ObjectInput};
 use crate::observe::Obs;
 use crate::resources::Partition;
 use crate::source_diagnostics as sd;
-use crate::{MnError, emit};
+use crate::{emit, MnError};
 use ace_artifacts::store::ManagedStore;
 use ace_av_core::mir::MirType;
-use ace_av_core::mir_verify::{MirVerifyError, verify_mir};
+use ace_av_core::mir_verify::{verify_mir, MirVerifyError};
 use ace_core::link::CaptureCaps;
 use std::path::{Path, PathBuf};
 
@@ -400,6 +400,105 @@ impl MnDriver {
             .map_err(|failure| {
                 sd::mn_error_from_compile_failure(src, "mn.at", failure, sd::Operation::cold(src))
             })
+    }
+
+    /// PLAN-1000 F-1000-01 (owner option a): a response-side NAMED trap
+    /// observation for a production run that ended in the frozen
+    /// unlabelled exit 70 with empty streams. The SAME source re-runs the
+    /// identical escalating frontend / MIR verify / unit-split pipeline,
+    /// then lowers in `LowerMode::TrapProbe` (the production `Numeric`
+    /// value surface with reason-carrying trap branches into the typed
+    /// runtime's `mn_typed_trap`) and links + runs ONCE in `workdir`
+    /// against the typed-entry runtime. The probe build is a distinct
+    /// observation object: it never enters the A09'/A10' caches or any
+    /// manifest, and the production objects keep their frozen bytes. Only
+    /// the pure-value arms (Scalar/Core via `Arm::Scalar`, Numeric) are
+    /// probeable; data/owned arms honestly return no observation.
+    pub fn trap_probe(
+        &mut self,
+        src: &str,
+        entry: &str,
+        caps: &[String],
+        workdir: &Path,
+        trace_lib: Option<&Path>,
+    ) -> Result<Option<u32>, MnError> {
+        let compiled = compile_escalating(src, caps).map_err(|failure| {
+            sd::mn_error_from_compile_failure(src, "mn.at", failure, sd::Operation::cold(src))
+        })?;
+        let arm = compiled.arm();
+        if !matches!(arm, Arm::Scalar | Arm::Numeric) {
+            return Ok(None);
+        }
+        let checked = compiled.checked();
+        let snapshot = ace_av_core::contract::fnv1a64(src.as_bytes());
+        let module = match arm {
+            Arm::Scalar => ace_lowering::lower_checked(checked, entry, snapshot),
+            Arm::Numeric => ace_lowering::lower_checked_closures(checked, entry, snapshot),
+            _ => unreachable!("checked above"),
+        }
+        .map_err(|e| match e {
+            ace_lowering::AdapterError::Unsupported { message, .. }
+            | ace_lowering::AdapterError::Invalid { message, .. } => {
+                MnError::Unsupported("trap-probe", message)
+            }
+            ace_lowering::AdapterError::Resource { message, .. } => {
+                MnError::Resource("trap-probe", message)
+            }
+        })?;
+        let checked_mir = verify_mir(&module)
+            .map_err(|e| MnError::Unsupported("trap-probe", format!("mir: {e:?}")))?;
+        let units = ace_av::cache::split_units(checked_mir.module())
+            .map_err(|e| MnError::Backend(format!("trap-probe split: {e}")))?;
+        let mut objects = Vec::with_capacity(units.len());
+        for unit in &units {
+            let object = emit::emit_unit_coff_trap_probe(unit)?;
+            objects.push(ObjectInput {
+                name: object.symbol,
+                bytes: object.bytes,
+            });
+        }
+        let entry_unit = units
+            .iter()
+            .find(|u| u.funcs[0].name == entry)
+            .ok_or_else(|| {
+                MnError::Unsupported("trap-probe", format!("entry unit `{entry}` absent"))
+            })?;
+        let entry_meta = cache::CoffMeta::for_unit(entry_unit, cache::unit_fp(entry_unit))?;
+        let entry_symbol = entry_meta.symbol;
+        let wrapper = emit::emit_wrapper_coff(&entry_symbol)?;
+        let runtime = crate::typed_runtime::prepare(None)?;
+        let mut support = vec![runtime.library];
+        if let Some(t) = trace_lib {
+            support.push(t.to_path_buf());
+        }
+        let linked = link_driver::link_only(
+            &objects,
+            &wrapper,
+            START_SYMBOL,
+            workdir,
+            &support,
+            "plan1000-trap-probe/1",
+        )?;
+        let run = link_driver::run_pe(
+            &linked.exe_path,
+            RUN_BUDGET,
+            CaptureCaps {
+                stdout_max: STREAM_CAP,
+                stderr_max: STREAM_CAP,
+            },
+        )?;
+        // The probe PE never read a request frame, so the response frame
+        // echoes zero sig/nonce; only STATUS+reason matter here. Any other
+        // outcome (value frame, resource/error frame, bad exit) is the
+        // honest absence of a named trap.
+        match crate::typed_entry::admit_frame_and_exit(&run.stdout, run.exit_code) {
+            Ok((_, _, crate::typed_entry::TypedOutcome::Trap { reason }))
+                if crate::typed_entry::trap_label(reason).is_some() =>
+            {
+                Ok(Some(reason))
+            }
+            _ => Ok(None),
+        }
     }
 
     /// PLAN-871 backend entry: run the SAME mn pipeline from a

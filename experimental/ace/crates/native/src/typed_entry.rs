@@ -64,6 +64,22 @@ pub const TRAP_SUB_OVERFLOW: u32 = 4;
 pub const TRAP_MUL_OVERFLOW: u32 = 5;
 pub const TRAP_NEG_OVERFLOW: u32 = 6;
 
+/// PLAN-1000 F-1000-01: the native machine's own trap names for the
+/// bounded reasons (the `mn.trap.*` taxonomy — a native-side observation
+/// authority, never an AV-engine inference). Shared by the mn-worker's
+/// response-side trap naming and the probe's frame admission.
+pub fn trap_label(reason: u32) -> Option<&'static str> {
+    match reason {
+        TRAP_DIV_ZERO => Some("mn.trap.div-zero"),
+        TRAP_DIV_OVERFLOW => Some("mn.trap.div-overflow"),
+        TRAP_ADD_OVERFLOW => Some("mn.trap.add-overflow"),
+        TRAP_SUB_OVERFLOW => Some("mn.trap.sub-overflow"),
+        TRAP_MUL_OVERFLOW => Some("mn.trap.mul-overflow"),
+        TRAP_NEG_OVERFLOW => Some("mn.trap.neg-overflow"),
+        _ => None,
+    }
+}
+
 /// The six admitted typed entry scalars.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TypedKind {

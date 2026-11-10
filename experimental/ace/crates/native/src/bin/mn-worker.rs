@@ -1400,6 +1400,29 @@ mod case_run {
                 ok["exit_code"] = serde_json::json!(r.exit_code);
                 ok["stderr_hex"] = serde_json::json!(hex(&r.stderr));
                 ok["stdout_hex"] = serde_json::json!(hex(&r.stdout));
+                // PLAN-1000 F-1000-01 (owner option a): a frozen exit-70
+                // run with empty streams gains a response-side NAMED trap —
+                // a trap-probe observation build of the SAME source (the
+                // production `Numeric` surface with reason-carrying trap
+                // branches) reports which bounded trap the machine executes.
+                // Production objects and streams stay byte-identical; a
+                // probe that yields no named trap keeps the frozen
+                // response shape (the observation honestly stays absent).
+                if r.exit_code == Some(ace_native::config::TRAP_EXIT_CODE)
+                    && r.stdout.is_empty()
+                    && r.stderr.is_empty()
+                {
+                    let probe_dir = PathBuf::from(&workdir).join("trap-probe");
+                    if let Ok(Some(reason)) =
+                        driver.trap_probe(&source, &entry, &caps, &probe_dir, tracelib.as_deref())
+                    {
+                        if let Some(label) = ace_native::typed_entry::trap_label(reason) {
+                            ok["trap"] = serde_json::json!(label);
+                            ok["trap_reason"] = serde_json::json!(reason);
+                            ok["trap_observation"] = serde_json::json!("trap-probe/1");
+                        }
+                    }
+                }
                 let mut resp = echo;
                 resp["ok"] = ok;
                 println!("{resp}");
