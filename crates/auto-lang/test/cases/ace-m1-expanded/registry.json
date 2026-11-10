@@ -6230,7 +6230,7 @@
     },
     "original_data_q4": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/original-data-q4-contract.json",
-      "sha256": "c19142b748fc69c1cfba68fc78a3451076ebb9e574da69fd9bd2727b63ff9e79"
+      "sha256": "1f9b03e0e3d8988404d26e8996d56b6da8b592346113d5f018152690be5ebf4e"
     },
     "original_data_reference": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/original-data-reference-contracts.tsv",
@@ -6238,7 +6238,7 @@
     },
     "original_data_diagnostics": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/original-data-diagnostics-contract.json",
-      "sha256": "ab4ebfef1227b9ed9a446c9614cf984ec86d7c3967d56e1c682468c53ddc477e"
+      "sha256": "20e0542ee0ae63e0cb8f7b69f74e757fa029b068246557b1a166d15be4d56209"
     },
     "legacy_base": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/legacy-base-contract.json",

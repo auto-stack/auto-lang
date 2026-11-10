@@ -12,7 +12,7 @@ from ace_m1_scalar_evidence import _fnv1a64,_duration,_counts
 from ace_m1_text_q4_evidence import DEPENDENCIES,canonical_i32,owned_i32
 
 CONTRACT='crates/auto-lang/test/cases/ace-m1-expanded/original-data-diagnostics-contract.json'
-CONTRACT_SHA='ab4ebfef1227b9ed9a446c9614cf984ec86d7c3967d56e1c682468c53ddc477e'
+CONTRACT_SHA='20e0542ee0ae63e0cb8f7b69f74e757fa029b068246557b1a166d15be4d56209'
 SUITE='crates/auto-lang/test/cases/ace-m1-expanded/original-data-diagnostics.suite.ad'
 ORACLES={'M09':('bind','source.not-callable','record'),
          'M10':('verify','verify.immutable-write','record'),

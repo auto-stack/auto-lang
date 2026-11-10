@@ -45,7 +45,7 @@ from ace_m1_case_evidence import CaseCopy,admit_case_bindings
 from ace_m1_text_q4_evidence import text_observation,DEPENDENCIES,AV_TRAPS
 from pathlib import PurePosixPath
 CONTRACT='crates/auto-lang/test/cases/ace-m1-expanded/original-data-q4-contract.json'
-CONTRACT_SHA = 'c19142b748fc69c1cfba68fc78a3451076ebb9e574da69fd9bd2727b63ff9e79'
+CONTRACT_SHA='1f9b03e0e3d8988404d26e8996d56b6da8b592346113d5f018152690be5ebf4e'
 SUITE='crates/auto-lang/test/cases/ace-m1-expanded/original-data-q4.suite.ad'
 # T08 binds a str view to a static literal, not an owning Str buffer.
 # hir_adapter StrLit preserves the borrowed destination; only the failed
