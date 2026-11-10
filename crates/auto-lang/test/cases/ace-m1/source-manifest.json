@@ -524,7 +524,7 @@
     "expected_count": 4,
     "files": {
       "native-closures-924.suite.ad": "e9400afdbddb9d5164832eeeedfde20c6ec6cfad1f8a6f0909ef0b1374e81f19",
-      "native-closures-924.case.ad": "7e6eb07e619de80cf948775d197721f16bfc5b28eff08c3032bbe01c660f3437",
+      "native-closures-924.case.ad": "7fc27081f57012ccb2eaae970f901ec618bad953172f063ec69815624058a815",
       "src/K02-924.at": "be2e36e09e0a6e3d4929aaa2d7f6ee84c00793db0c6f86e65797d33f6ee42376",
       "src/K05-924.at": "1e72b1adeff6d5a313c9f7602142189df9ec21ea6cf14e026fd921068d07e87e"
     }

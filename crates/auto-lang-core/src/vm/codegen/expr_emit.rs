@@ -1521,7 +1521,17 @@ impl Codegen {
         // Emit variable name indices + slot offsets for each captured variable
         // Plan 385: slot_offset lets LOAD/STORE_CAPTURED directly access the
         // creator's stack frame (by-reference capture instead of value copy).
+        // Plan 364 W5 (D4)/PLAN-1000: `move (x) => ...` captures BY VALUE —
+        // every slot_offset is 0xFFFF (env-only), so the closure owns copies
+        // and stays callable after the creator frame returns (R05 creator-exit
+        // face). Non-move closures keep the Plan 385 by-reference slots.
         for var_name in &free_vars {
+            if closure.is_move {
+                let var_idx = self.add_string(var_name);
+                self.code.extend_from_slice(&var_idx.to_le_bytes());
+                self.code.extend_from_slice(&0xFFFFu16.to_le_bytes());
+                continue;
+            }
             let var_idx = self.add_string(var_name);
             self.code.extend_from_slice(&var_idx.to_le_bytes());
             // Plan 385: emit the variable's local slot offset (relative to bp+1)

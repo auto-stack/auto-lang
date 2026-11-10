@@ -25,6 +25,10 @@ mod tests_known_limits;
 // 合法近邻/span 精度/文本反控）。
 #[cfg(test)]
 mod immutable_assign_920;
+// PLAN-1000 R05:avm — move 闭包按值捕获（creator-exit 存活正例 + by-ref
+// 逃逸仍被帧守卫拒绝的反控）。
+#[cfg(test)]
+mod move_closures_1000;
 // Plan 419 Phase 1:引用计数生命周期里程碑测试(§2.2)。
 #[cfg(test)]
 mod tests_rc_lifecycle;

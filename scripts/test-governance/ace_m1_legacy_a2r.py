@@ -325,7 +325,7 @@ _CONTRACT_SHAS = {
     "p919": "4f35d765e3930513baf3d2ca7cebc312d9f1a397dd919f2cf52b7ff77f339380",
     "p920": "463dd0868808bbcec5d690f74df352f517a320fc622dd70a2749a4f8cf206b35",
     "p923": "9cd4bec37499711623ee5389c375329948e9331836ad6ed9cdc2181df2745700",
-    "p924": "188c5513d85bfbf5c5ac31f454fe634d3ba45b512a3ebb2c58070cbef50d6284",
+    "p924": "d624e910b3668a5981e9074115b71b9673090439c3447089751fe9e5172cbcc8",
     "p925": "dbb091933d1efa522a35bb3e8639c412e3081ee465a6967c64f533ca17a33e9e",
     "p926": "f6f47f6e161269687a3ab77baa8e9815a409490117c83156dc2e99aadb889904",
     "p928": "02dbfc0637c44014bc19b2f8a54c47c98b29bcb9c3a59b6b63b2664be081c710",
@@ -552,6 +552,11 @@ _PROBE_CHECK_CELLS = {
     # the R06 trap fixture (DivisionByZero with both frames owning live
     # values; the budget/cancel arms are the av/mn specialized faces).
     ('ace.m1.r06.avm', 'autovm'): [('scenario', 'R06', 'avm')],
+    # PLAN-1000 R05:avm — the creator-exit lifecycle face on the legacy VM:
+    # the move closure survives its creator frame's return (captures by
+    # value per Plan 364 W5 D4) and the creator-exit indirect call yields
+    # the R05 value (42).
+    ('ace.m1.r05.avm', 'autovm'): [('scenario', 'R05', 'avm')],
     ('ace.m1.res-r01-av866', 'av-res-r01-continuity'): [('corpus', 'H01', 'av')],
     ('ace.m1.res-r02-av866', 'av-res-r02-online-swap'): [('corpus', 'H02', 'av'), ('scenario', 'I08', 'av')],
     ('ace.m1.res-r03-av866', 'av-res-r03-churn-two-swaps'): [('corpus', 'H03', 'av')],
