@@ -63,3 +63,20 @@ foreign生成根经登记工作区链+context.json三核（schema/context_id/pro
 非foreign登记不构成任意路径钥匙。水位仅排序/告警：容量不足报protected-bytes与shortfall，不越保护、不自动
 关incremental；零候选合法，无持续净收益如实记（1001实测一次性回收41.5GiB、工作集恢复后净+15.05GiB、
 增量随编辑自然回长）。长期巡检只读；旧精确target CLI完全不变。水位初值依据与四根实测见归档PLAN-1001。
+
+## 调试策略变体残留边界（PLAN-1003 SD-03）
+
+调试策略C落地后（[generated-debug-policy-production](../repository-boundaries/generated-debug-policy-production.md)），
+默认 ctx 根内 dev 单位原地迁移产生**旧变体非增量残留**：旧 A 变体 rlib/pdb 与
+新 C 变体按各自 metadata 哈希并存于 `deps/`（002+013 工作集实测残留≈9.85 GiB，
+迁移瞬态峰 16.0 GiB）。边界：
+
+- 本页增量治理工具的治理单元=incremental 子树，**不含**该类 deps/pdb 残留；
+  不得借增量 apply 回收或删除它们。
+- 旧变体残留的唯一受支持回收路径=整根守卫删除（generated-cargo-build-lifecycle
+  §5：context.json producer 证明+活 lease 拒绝+闲置预览/显式 apply），删除后
+  按当前策略冷重建即达稳态；非默认策略根（`full`/用户局部覆盖）切换产生整根
+  切换而非原地变体叠加，旧根整体闲置后同路径回收。
+- 活 lease/活动编译/无法证明归属的编译进程在场时守卫拒绝并推迟（维护窗口
+  语义）；禁止自动广扫/全局 `cargo clean`/清理共享用户缓存，不为收尾强迫用户
+  即时清理。共存峰与残留如实入空间账，不得移出 scope 隐藏。

@@ -15,7 +15,7 @@
 |---|---|---|
 | 生成源码 workspace `<ws>` | `AUTO_RUST_WORKSPACE`（权威）→ 项目在 producer 树内=`<producer>/examples/rust-workspace`（**以项目目录为锚**，cwd 无关）→ 项目本地 `<project>/rust-workspace` | 成员表、`.cargo/config.toml`、`Cargo.lock`、`.generation.lock` 在此 |
 | 成员身份 | `<ws>/<basename>-<id8>`（front）/ `<ws>/<basename>-<id8>-back`（back） | `id8=sha256("generated-member/v1"‖canonical 小写规范化工程路径)[..8]`；`member.json` 记 role+project_path 二次一致性校验 |
-| 受管缓存根（同 producer 兼容消费者共用） | 开发：`<producer>/target/generated-consumers/<ctx8>/`；安装 SDK：`<ws>/target`（不写 producer）；显式：`AUTO_GENERATED_TARGET_ROOT`（兼容 `CARGO_TARGET_DIR`） | `ctx8=sha256("generated-build-context/v1"‖canonical producer_root‖flags 策略)[..8]`；`context.json` 记 schema/ctx/mode/producer/target/rustflags/用户覆盖/toolchain/producer_origin（可复验，非键） |
+| 受管缓存根（同 producer 兼容消费者共用） | 开发：`<producer>/target/generated-consumers/<ctx8>/`；安装 SDK：`<ws>/target`（不写 producer）；显式：`AUTO_GENERATED_TARGET_ROOT`（兼容 `CARGO_TARGET_DIR`） | `ctx8=sha256("generated-build-context/v1"‖canonical producer_root‖flags 策略‖[调试策略键])[..8]`（PLAN-1003：缺省 `c` **无**第 4 段——哈希输入与旧三段逐字节一致，既有根/release 缓存存活；显式 `full` 或用户 `CARGO_PROFILE_DEV_DEBUG` 局部覆盖作第 4 段隔离根）；`context.json` 记 schema/ctx/mode/producer/target/rustflags/用户覆盖/toolchain/producer_origin/debug_policy(+source)（可复验，非键） |
 
 producer = `select_language_producer` 单选（显式 `AUTO_DELIVERY_SOURCE_ROOT`/
 `AUTO_LANG_ROOT`/`AUTO_LANG_CRATE` → exe 旁安装 SDK → 项目上溯/兄弟发现 →
@@ -36,6 +36,15 @@ producer/非项目树）。linker 不钉（不影响依赖 rlib 指纹；终端�
 config，记为边界）。`<ws>/.cargo/config.toml` 同步写入同一 target-dir 与栈
 flags 供手工 cargo 使用；**在受管根内运行未钉 flags 的手工 cargo 会造成指纹
 漂移并触发全量重编**（实测 582 单位）。
+
+## 2b. 受管调试策略（PLAN-1003）
+
+受管 ws 根 manifest 携带受管调试策略块（默认策略 C：成员 line-tables、
+非成员依赖 debug=false；`full`=仅 marker 省段），配置落点=根 manifest 而非
+`.cargo/config.toml`（config 发现锚 cwd；manifest 与 cwd 无关）。策略在
+ensure 任何写入前解析，未知值/显式策略与 `CARGO_PROFILE_DEV_DEBUG` 并存=
+具名失败、受管文件不动。定义/接口/迁移与实测见
+[generated-debug-policy-production](generated-debug-policy-production.md)。
 
 ## 3. 内容收据与新鲜度
 
@@ -74,7 +83,11 @@ flags 供手工 cargo 使用；**在受管根内运行未钉 flags 的手工 car
 - 受管 cargo 派生 cwd 恒为 `<ws>`（不从缓存根反推；显式根亦然），config 链只
   来自 ws 自身及其祖先。`auto run` = 受管 build+发布 + 直接运行发布件（应用
   cwd=前端目录）。pdb 取 cargo `compiler-artifact.filenames` 所报路径（rustc
-  以下划线命名 `counter_<id8>.pdb`），发布为 `<published>.pdb`。
+  以下划线命名 `counter_<id8>.pdb`），发布为 `<published>.pdb`，**并以 cargo
+  报告名硬链接一份别名**（PLAN-1003：发布 exe 的 RSDS 记录该名，dbghelp 按
+  exe 目录回退查找；只发改名 pdb 会使原样发布件 0 成员符号可解析；别名随
+  重链接刷新）。前端收据含 `debug_policy` 标签，策略切换/legacy 缺字段/换名
+  同 exe/伪造标签均不 fresh、不发现。
 - `context.json.producer_origin` 为首见值：同一 producer 经不同选择臂（env/
   发现/编译期）再写入时不翻转该字段。
 - 发现：`generated_build::discover_front_exe(app_dir)`（收据优先）；auto-ui
@@ -133,7 +146,10 @@ unique=file-ID 去重（非 CoW 物理块）；NTFS 分配=unique（无压缩/�
 - 候选导出实证边界：PLAN-792 交付入口在 producer 921bfa518 生成/主题腿可用，
   但 bundle 未收 `experimental/ace/crates/semantics-contract` → 消费侧
   `--locked` 红（P1，930 原 oracle 同红）；Web 成员移根受 workspace 继承的
-  开发根路径依赖阻断（P2）。两者关闭前，交付链消费侧验证以
+  开发根路径依赖阻断（P2）。**P1 已于 PLAN-1003 关闭**（vendored 该 crate +
+  交付根输入补 `stdlib/contracts/{operations,compatibility}.toml`，930 driver
+  43 项全绿，见 generated-debug-policy-production §6 与 KNOWN-DEBT 登记）；
+  P2 仍开放。P2 关闭前，交付链消费侧验证以
   [generated-delivery-regression](generated-delivery-regression.md) 的既有
   绿基线为准，不以上述红推断本规范行为回归。
 - 迁移：ctx8 不变时集中 ws 复用既有共享 target、id8 不变，净新增 ~0（假设
