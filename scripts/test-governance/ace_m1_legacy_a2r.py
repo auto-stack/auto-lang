@@ -593,6 +593,12 @@ _PROBE_CHECK_CELLS = {
     ('ace.m1.nd911.red.wrong-family', 'ac-native-strict-wrong-family'): [('scenario', 'I12', 'ac', 'expect-fail')],
     ('ace.m1.nd911.red.wrong-stage', 'ac-native-strict-wrong-stage'): [('scenario', 'I12', 'ac', 'expect-fail')],
     ('ace.m1.nd911.red.generic-shell', 'ac-native-strict-generic-shell'): [('scenario', 'I12', 'ac', 'expect-fail')],
+    # PLAN-1000 I12:avm / I12:a2r — the harness's own VM/A2R negative controls
+    # (the 911 trio's adapter siblings): the real B01 run yields 14 and the
+    # real m1_b01 emission differs from the m1_k01 golden — the wrong-value /
+    # wrong-golden expectations FAIL BY DESIGN with genuine mismatches.
+    ('ace.m1.red.i12-avm', 'autovm-wrong-value'): [('scenario', 'I12', 'avm', 'expect-fail')],
+    ('ace.m1.red.i12-a2r', 'a2r-wrong-golden'): [('scenario', 'I12', 'a2r', 'expect-fail')],
     # E03 = the B04/B20/B16 semantics group (frozen binding note): the base
     # suite's legs for those members close the group's own cells as well.
     ('ace.m1.b04', 'av'): [('corpus', 'B04', 'av'), ('scenario', 'E03', 'av')],
