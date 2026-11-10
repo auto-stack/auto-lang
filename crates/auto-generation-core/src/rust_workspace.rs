@@ -235,7 +235,30 @@ impl ProducerSelection {
 /// Select the language producer for a project: explicit envs (setting is
 /// authoritative), adjacent installed SDK, project walk-up/sibling discovery,
 /// compiled-in fallback — same order the workspace rel-path anchor uses.
+/// The selected candidate is validated; an invalid selected candidate is an
+/// error, never a fall-through to the next arm.
 pub fn select_language_producer(
+    project_dir: &Path,
+    requirements: WorkspaceRequirements,
+) -> AutoResult<ProducerSelection> {
+    let selection = locate_language_producer(project_dir, requirements)?;
+    let label = match selection.origin.as_str() {
+        key @ ("AUTO_DELIVERY_SOURCE_ROOT" | "AUTO_LANG_ROOT" | "AUTO_LANG_CRATE") => {
+            format!("显式 {key}")
+        }
+        other => other.to_string(),
+    };
+    validate_language_candidate(&selection.lang_crate, &label, requirements)?;
+    Ok(selection)
+}
+
+/// Selection ORDER only — the producer [`select_language_producer`] would
+/// pick, without validating it. For identity-only consumers: artifact
+/// discovery needs the producer ROOT (a context-key input), not a validated
+/// producer, and validating on every registry scan cost ~25 ms per app
+/// (PLAN-1003 review R1, F-1003-R1-02). Generation paths must keep using
+/// [`select_language_producer`].
+pub fn locate_language_producer(
     project_dir: &Path,
     requirements: WorkspaceRequirements,
 ) -> AutoResult<ProducerSelection> {
@@ -251,7 +274,6 @@ pub fn select_language_producer(
             } else {
                 path.join("crates/auto-lang")
             };
-            validate_language_candidate(&candidate, &format!("显式 {key}"), requirements)?;
             return Ok(ProducerSelection {
                 lang_crate: candidate,
                 origin: key.to_string(),
@@ -267,10 +289,8 @@ pub fn select_language_producer(
                 if !dir.join("install-manifest.json").is_file() {
                     return Err("producer 安装清单缺失".into());
                 }
-                let candidate = sdk.join("crates/auto-lang");
-                validate_language_candidate(&candidate, "安装 SDK", requirements)?;
                 return Ok(ProducerSelection {
-                    lang_crate: candidate,
+                    lang_crate: sdk.join("crates/auto-lang"),
                     origin: "安装 SDK".to_string(),
                 });
             }
@@ -280,7 +300,6 @@ pub fn select_language_producer(
     for _ in 0..10 {
         let direct = dir.join("crates/auto-lang");
         if direct.exists() {
-            validate_language_candidate(&direct, "发现的语言源", requirements)?;
             return Ok(ProducerSelection {
                 lang_crate: direct,
                 origin: "发现的语言源".to_string(),
@@ -289,7 +308,6 @@ pub fn select_language_producer(
         if let Some(parent) = dir.parent() {
             let sibling = parent.join("auto-lang/crates/auto-lang");
             if sibling.exists() {
-                validate_language_candidate(&sibling, "发现的语言兄弟源", requirements)?;
                 return Ok(ProducerSelection {
                     lang_crate: sibling,
                     origin: "发现的语言兄弟源".to_string(),
@@ -310,7 +328,6 @@ pub fn select_language_producer(
                     .parent()
                     .is_some_and(|crates| crates.join("auto-lang-core/Cargo.toml").is_file())
     }) {
-        validate_language_candidate(&candidate, "编译期语言源", requirements)?;
         return Ok(ProducerSelection {
             lang_crate: candidate,
             origin: "编译期语言源".to_string(),

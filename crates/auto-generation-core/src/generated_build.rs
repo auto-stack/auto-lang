@@ -459,6 +459,55 @@ fn validate_explicit_root(
     Ok(abs)
 }
 
+/// Flags identity shared by the full context and the identity-only path:
+/// (user override name+value, managed flags we pin, context key part).
+fn flags_identity() -> (Option<(&'static str, String)>, Option<String>, String) {
+    let user_flags = user_flags_override();
+    let managed_rustflags = if cfg!(all(windows, target_env = "msvc")) && user_flags.is_none() {
+        Some(MANAGED_MSVC_STACK_FLAG.to_string())
+    } else {
+        None
+    };
+    let flags_key = match (&user_flags, &managed_rustflags) {
+        (Some((name, value)), _) => format!("user:{name}:{}", sha256_hex(&[value])),
+        (None, Some(flags)) => format!("managed:{}", sha256_hex(&[flags])),
+        (None, None) => "managed:none".to_string(),
+    };
+    (user_flags, managed_rustflags, flags_key)
+}
+
+/// The 8-hex context id. PLAN-1003: the debug policy joins the identity only
+/// when it deviates from the managed default — the default keeps the legacy
+/// three-part hash input byte-identical (existing roots and Web release
+/// caches survive; non-default policies get isolated roots).
+fn context_id_for(producer_root: &Path, flags_key: &str, debug: &DebugPolicySelection) -> String {
+    let producer_key = canonical_key(producer_root);
+    let debug_key = debug.context_key();
+    let mut id_parts = vec![CONTEXT_SCHEMA, producer_key.as_str(), flags_key];
+    if let Some(key) = debug_key.as_deref() {
+        id_parts.push(key);
+    }
+    sha256_hex(&id_parts)[..8].to_string()
+}
+
+/// Identity of the current context — `(context_id, debug-policy label)` —
+/// WITHOUT validating the producer. Same producer selection order, flags
+/// and policy inputs as [`GeneratedBuildContext::resolve`], so both yield
+/// the same id for a valid producer (asserted in tests). For artifact
+/// identity checks only; generation paths use the validated resolve.
+pub fn context_identity(
+    project_dir: &Path,
+    requirements: WorkspaceRequirements,
+) -> AutoResult<(String, String)> {
+    let selection = crate::rust_workspace::locate_language_producer(project_dir, requirements)?;
+    let (_, _, flags_key) = flags_identity();
+    let debug = resolve_debug_policy()?;
+    Ok((
+        context_id_for(&selection.producer_root(), &flags_key, &debug),
+        debug.label,
+    ))
+}
+
 impl GeneratedBuildContext {
     /// Resolve the single managed context for a project's generated cargo
     /// consumers. Deterministic for (project env, producer, flags policy).
@@ -468,30 +517,10 @@ impl GeneratedBuildContext {
         requirements: WorkspaceRequirements,
     ) -> AutoResult<Self> {
         let (producer_root, origin) = resolve_producer_root(project_dir, requirements)?;
-        let user_flags = user_flags_override();
-        let managed_rustflags = if cfg!(all(windows, target_env = "msvc")) && user_flags.is_none() {
-            Some(MANAGED_MSVC_STACK_FLAG.to_string())
-        } else {
-            None
-        };
+        let (user_flags, managed_rustflags, flags_key) = flags_identity();
         let sdk = is_managed_sdk(&producer_root) || origin == "安装 SDK";
-        let flags_key = match (&user_flags, &managed_rustflags) {
-            (Some((name, value)), _) => format!("user:{name}:{}", sha256_hex(&[value])),
-            (None, Some(flags)) => format!("managed:{}", sha256_hex(&[flags])),
-            (None, None) => "managed:none".to_string(),
-        };
-        let producer_key = canonical_key(&producer_root);
-        // PLAN-1003: the debug policy joins the identity only when it
-        // deviates from the managed default — the default keeps the legacy
-        // three-part hash input byte-identical (existing roots and Web
-        // release caches survive; non-default policies get isolated roots).
         let debug = resolve_debug_policy()?;
-        let debug_key = debug.context_key();
-        let mut id_parts = vec![CONTEXT_SCHEMA, producer_key.as_str(), flags_key.as_str()];
-        if let Some(key) = debug_key.as_deref() {
-            id_parts.push(key);
-        }
-        let context_id = sha256_hex(&id_parts)[..8].to_string();
+        let context_id = context_id_for(&producer_root, &flags_key, &debug);
         let mode = if let Some(raw) = std::env::var_os(TARGET_ROOT_ENV) {
             let root = validate_explicit_root(
                 Path::new(&raw),
@@ -1283,13 +1312,12 @@ fn discover_front_exe_with(project_dir: &Path, verify_bytes: bool) -> Option<Pat
     if !exe.is_file() {
         return None;
     }
-    let context = GeneratedBuildContext::resolve(
+    let (context_id, policy_label) = context_identity(
         project_dir,
-        &ws_dir,
         crate::rust_workspace::WorkspaceRequirements::Ui,
     )
     .ok()?;
-    if !receipt.debug_policy_matches(&context) {
+    if receipt.debug_policy.as_deref() != Some(policy_label.as_str()) {
         return None;
     }
     // PLAN-1003 review R1 (F-1003-R1-01): the receipt's context identity must
@@ -1297,7 +1325,7 @@ fn discover_front_exe_with(project_dir: &Path, verify_bytes: bool) -> Option<Pat
     // one JSON field, and a `full`-built exe must never be discovered under
     // the default policy. This mirrors `front_needs_regeneration`'s identity
     // rule, so discovery and build freshness can never disagree.
-    if receipt.context_id != context.context_id {
+    if receipt.context_id != context_id {
         return None;
     }
     if !verify_bytes {
@@ -1745,6 +1773,11 @@ mod plan910_tests {
         let legacy_id =
             sha256_hex(&[CONTEXT_SCHEMA, &canonical_key(&producer), &flags_key])[..8].to_string();
         assert_eq!(ctx.context_id, legacy_id);
+        // The validation-free identity path yields the same (id, label).
+        assert_eq!(
+            context_identity(&project, WorkspaceRequirements::Ui).unwrap(),
+            (ctx.context_id.clone(), ctx.debug_policy.clone())
+        );
         // Full recovery: isolated root (different id AND different dir).
         std::env::set_var(DEBUG_POLICY_ENV, "full");
         let full =
@@ -1752,6 +1785,10 @@ mod plan910_tests {
         assert_eq!(full.debug_policy, "full");
         assert_ne!(full.context_id, ctx.context_id);
         assert_ne!(full.target_root, ctx.target_root);
+        assert_eq!(
+            context_identity(&project, WorkspaceRequirements::Ui).unwrap(),
+            (full.context_id.clone(), full.debug_policy.clone())
+        );
         // User partial override: kept, value-keyed isolation.
         std::env::remove_var(DEBUG_POLICY_ENV);
         std::env::set_var(DEV_DEBUG_ENV, "2");
