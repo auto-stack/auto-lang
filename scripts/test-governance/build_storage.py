@@ -294,7 +294,14 @@ def toolchain_fingerprint():
 
 
 def normalize_root(path):
-    return str(Path(path).resolve(strict=False)).replace('\\', '/').casefold()
+    """Canonical comparison form. Strips Windows verbatim (\\\\?\\) prefixes:
+    generator-written context.json records producer roots verbatim."""
+    text = str(path)
+    if text.startswith('\\\\?\\UNC\\'):
+        text = '\\\\' + text[8:]
+    elif text.startswith('\\\\?\\'):
+        text = text[4:]
+    return str(Path(text).resolve(strict=False)).replace('\\', '/').casefold()
 
 
 def load_policy(path):

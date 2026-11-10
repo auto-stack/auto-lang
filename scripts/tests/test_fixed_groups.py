@@ -817,6 +817,15 @@ class IncrementalGovernance(unittest.TestCase):
         self.assertIn(str(foreign_repo / 'target'), by_root)
         self.assertIn(str(ctx_root), by_root)
         self.assertEqual(by_root[str(ctx_root)]['kind'], 'foreign-generated:lang-main')
+        # Generator-written context.json records producer roots verbatim
+        # (\\?\-prefixed); normalization must strip the prefix.
+        (ctx_root / 'context.json').write_text(json.dumps({
+            'schema': 'generated-build-context/v1', 'context_id': 'abcd1234',
+            'producer_root': '\\\\?\\' + str(foreign_repo.resolve())}), encoding='utf-8')
+        with mock.patch.object(build_storage, 'ROOT', self.root):
+            manifest, _ = self.preview(policy)
+        by_root = {u['root']: u for u in manifest['units']}
+        self.assertIn(str(ctx_root), by_root)
         # A context.json lying about its producer is refused.
         (ctx_root / 'context.json').write_text(json.dumps({
             'schema': 'generated-build-context/v1', 'context_id': 'abcd1234',
