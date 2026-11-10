@@ -15,7 +15,7 @@
   （独立子代理上下文）pass；结论 conditional（增量空间收益未获证明）。四项 finding 均有合同/控制/实测
   对应，见归档 [942 §9](archive/942-generated-workspace-incremental-sharing.md)。
 
-### D-942-P1 — 交付 bundle 未收 experimental/ace/crates/semantics-contract，消费侧 locked 构建红（2026-11-06 立项；开放）
+### D-942-P1 — 交付 bundle 未收 experimental/ace/crates/semantics-contract，消费侧 locked 构建红（2026-11-06 立项；**已关闭 2026-11-11，PLAN-1003 交付 auto-ui 393ea17c**）
 
 - **候选/owner**：auto-lang 交付 vendor 链（PLAN-792 语义）。
 - **现象**：producer 921bfa518 下，交付入口生成/主题腿 PASS，但 bundle 缺
@@ -24,6 +24,7 @@
   ——预存生产回归，非研究 scope 环境问题。
 - **关闭条件**：vendor 该 crate 或重组依赖；重跑 930 driver V01/V02 与候选导出链复绿。
 - **证据**：归档 PLAN-942 §9 T-04/T-06（原红日志 hash 摘要在案）。
+- **关闭记录（2026-11-11，PLAN-1003）**：交付闭包 vendored `experimental/ace/crates/semantics-contract`（DELIVERY_VENDOR_TREES）；并补该缺口的隐藏第二层——`stdlib/contracts/{operations,compatibility}.toml` 入 DELIVERY_ROOT_INPUTS（auto-lang-core 自 PLAN-943 起 include_str! 越界引用，此前被 metadata 101 挡住未露头）。792/930 driver 二轮 43 项全 PASS（V01 fresh+locked 构建、V02 移根 locked、导出链）。归档 PLAN-1003 §8 T-05。
 
 ### D-942-P2 — Web 服务无生产交付导出入口，成员移根被 workspace 继承路径依赖阻断（2026-11-06 立项；开放）
 
@@ -4176,8 +4177,21 @@ owner=PLAN-917 域（a2r_std 发射条件变化 vs 917 T-05 冻结金样）。�
 - 现象：PLAN-1001 行号 oracle 以 dbghelp 完成（三臂成员 main.rs:379 均可解析）；断点/变量按计划记"未验证"。用户裁定采用 C 后，依赖帧调试本就让位，此项紧迫性降低。
 - 关闭条件：装任一调试器后对生成成员 exe 复测断点/变量并记录（或按裁定明确豁免）。
 
-### D-1001-R7 — 调试策略裁定"采用 C"待落地（2026-11-10 用户裁定，开放）
+### D-1001-R7 — 调试策略裁定"采用 C"待落地（2026-11-10 用户裁定；**已关闭 2026-11-11，PLAN-1003 交付 auto-lang 11e1f1fd5 / auto-ui 393ea17c**）
 
-- 候选/owner：后续独立计划（生成器/默认配置变更；跨 auto-ui-tools/auto-generation-core/仓级 config）。
+- 候选/owner：[PLAN-1003 r1](archive/1003-generated-debug-policy-c-production.md)（生成器/默认配置、有效身份、迁移/回退；跨 auto-ui-tools/auto-generation-core/真实调用链）。2026-11-10仅认领，drafting0/10，债务保持OPEN，正式交付才关。
 - 现象：PLAN-1001 研究实测 C=空间 −51.0%（11.71→5.13 GiB）、冷编 −31%、编辑 −52%、成员行号保留（oracle 证）、依赖帧无行号=裁定已知代价、Web 零差、迁移共存峰 17.01 GiB/回退 16.00 GiB。用户裁定采用 C；PLAN-1001 合同不含实施推广。
 - 关闭条件：落地计划交付（生成 ws 默认注入成员 line-tables-only+依赖 debug=false，含迁移/共存处置与回归），并复测 013/002/chat/db 四入口。
+- **关闭记录（2026-11-11）**：受管生成 ws 根 manifest 默认注入策略C（成员 line-tables-only + 非成员 debug=false），`AUTO_GENERATED_DEBUG_POLICY=full` 完整恢复、迁移/共存/整根回收与回归齐；002-counter/013-todo/auto-chat/auto-database 四入口复测通过；规范见 `docs/specs/repository-boundaries/generated-debug-policy-production.md`；证据见归档 PLAN-1003 §8/§9。
+
+
+### PLAN-1003 复审R1登记的候选债（2026-11-11；均非1003引入，未在1003内修复）
+
+- **D-1003-C1 — 792/930 driver V06 腿写入主检出缓存**：随包工具腿不钉 producer，scratch 位于 `D:/autostack` 下时上溯兄弟发现命中主检出，向 `<主检出>/target/generated-consumers/<ctx8>` 写入整闭包（1003 实测 4.642 GiB/9,677 文件）。owner：generated-ui-consumer driver。关闭：V06 腿显式钉 producer 或默认 scratch 移出主检出祖先，并加“主检出根零写入”断言。
+- **D-1003-C2 — `shared_generation::backend_diagnostic_tests::reader_dynamic_json_nested_return_and_list_reuse_are_admitted` 负载下偶发红**：裸 `cargo test` 线程模式+并行构建负载下 1/15 复现，temp fixture 生产者发现命中他用例 fixture 的 `auto-lang`（缺 `stdlib/auto`）。owner：auto-generation-core 测试隔离。nextest 进程隔离下未见。
+- **D-1003-C3 — auto-ui 基线红**：`rust_ui::tests::test_shell_pack_lib_freshness`（shell-pack 入库物过期，需 `regen_shell_pack`）；auto-ui-compiler `test_bare_popover_point_anchor_codegen`/`test_display_family_codegen_arm_fixture`。owner：auto-ui。
+- **D-1003-C4 — rust 编译轨 `-q`/直连的验收可观测性缺口**：`run_native_client` 无 MCP 共位（仅 VM 轨 `run_dynamic_client` 有）；rust 直连臂 MCP `autoui_screenshot` 超时；013-todo `onenter` 经 MCP 键盘 Enter 未触发。owner：auto-ui runtime/验收通道。
+- **D-1003-C5 — 桌面 RQ 下 002-counter 第三主题按钮（“切换明暗”）渲染为灰块**：保真观察，归 OS068 RQ 范畴核实。
+- **D-1003-C6 — 交付有效调试值无永久控制**：移根包内成员/非成员实际 debuginfo 值仅有 1003 手工 `cargo build -v` 证据；`scripts/tests/test_generated_delivery_controls.py` 未扩展。owner：generated-delivery 控制。
+- **D-1003-C7 — 安装 SDK producer 形态未随 1003 实测**：策略块写入与 producer 形态无关（同一 ensure），但 InstalledSdk 上下文（`<ws>/target`）未做真实构建取证。
+- **D-1003-C8 — auto-man `Cargo.lock` 相对 auto-lang master 漂移**：组内构建会改写其锁（+38 行），表明主分支锁未随语言仓新增依赖更新。owner：auto-man。
