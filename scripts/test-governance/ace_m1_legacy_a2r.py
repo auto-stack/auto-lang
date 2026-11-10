@@ -562,7 +562,11 @@ def admit_probe_families(inputs, evidence, bindings, registry):
     parents, per_cell_all = {}, {}
 
     def read_suite(key, binding):
-        exact_keys(binding, ('inventory', 'copy', 'av', 'native', 'a2x'), f'probe family binding {key}')
+        # PLAN-1000 I04:ac — an optional 'collections' pin carries the
+        # mn-collections worker for receipt-backed declaration legs.
+        exact_keys(binding, {'inventory', 'copy', 'av', 'native', 'a2x'}
+                   | ({'collections'} if 'collections' in binding else set()),
+                   f'probe family binding {key}')
         contract = _suite_contract(inputs, key)
         ref = binding['inventory']
         evidence.sha256(ref['path'], ref['sha256'])
@@ -646,7 +650,67 @@ def admit_probe_families(inputs, evidence, bindings, registry):
             names = [n for n in copy.files if n.endswith('-start.json')
                      and '/' + check['case'] + '/' + check['check'] + '/worker-exchanges/' in n]
             if not names:
-                continue  # avm-console or in-process legs: no wire exchange on this path
+                # PLAN-1000 I04:ac — the collections DECLARATION-invalidate
+                # session has no wire exchange on this path: its retained
+                # product is the mn PROBE RECEIPT whose steps carry the
+                # declared invalidation facts. Admit the receipt against the
+                # family's collections-worker pin and the check's declared
+                # bounds; claim the mapped cells from those real facts.
+                declaration = ((check.get('probe_bindings') or {}).get('native') or {}).get('declaration')
+                receipt_name = next((n for n in copy.files if n.endswith(
+                    '/' + check['case'] + '/' + check['check'] + '/mn-probe-receipt.json')), None)
+                if (declaration is None or receipt_name is None
+                        or recipe != 'ac/mir-native-collections-v1' or expect_fail):
+                    continue  # avm-console or in-process legs: no wire exchange on this path
+                collections_pin = binding.get('collections')
+                require(collections_pin is not None
+                        and _repo_relative(inputs, collections_pin['path'])
+                        == 'experimental/ace/target/release/mn-collections-worker.exe',
+                        f'probe family collections worker pin missing: {key}')
+                receipt, _ = copy.json(receipt_name)
+                require(type(receipt) is dict and receipt.get('recipe') == recipe
+                        and receipt.get('protocol') == 'mnworker/1'
+                        and receipt.get('incremental') is True,
+                        'collections session receipt identity')
+                toolchain = receipt.get('toolchain') or {}
+                typed_equal(toolchain.get('recipe'), recipe, 'collections receipt toolchain recipe')
+                typed_equal(toolchain.get('mn-worker-exe-sha256'), collections_pin['sha256'],
+                            'collections session producer identity')
+                steps = receipt.get('steps')
+                require(type(steps) is list and steps, 'collections session steps')
+                invalidate = [st for st in steps if st.get('op') == 'declaration-invalidate']
+                require(len(invalidate) == 1, 'one declaration-invalidate step')
+                counters = invalidate[0].get('counters') or {}
+                invalidated = counters.get('declaration_frontend_invalidations')
+                codegen_units = invalidate[0].get('codegen_units')
+                require(type(invalidated) is int and invalidated >= declaration['min_frontend_invalidations'],
+                        'declared frontend invalidations observed')
+                require(type(codegen_units) is int and codegen_units <= declaration['max_codegen_units'],
+                        'declared codegen unit bound observed')
+                # Stable-def evidence: the re-emitted unit count plus the
+                # declared carried defs covers exactly the parsed functions —
+                # the carried defs were NOT recompiled (identity triples are
+                # store addresses and legitimately rotate; the unit
+                # accounting is the parent-judged stability fact).
+                parsed = invalidate[0].get('parsed_functions') or {}
+                emitted = counters.get('codegen_emit_units')
+                require(type(emitted) is int and type(parsed) is dict
+                        and len(parsed) == emitted + len(declaration['stable_defs'])
+                        and all(name in parsed for name in declaration['stable_defs']),
+                        'declared stable defs carried without recompilation')
+                final = steps[-1]
+                typed_equal(final.get('exit_code'), check.get('expected_exit'),
+                            'collections session judged exit')
+                observation = {'judgement': 'PASS' if row['status'] == 'PASS' else 'FAIL',
+                               'parent_status': row['status'], 'oracle_source': 'mn-probe-receipt',
+                               'frontend_invalidations': invalidated, 'codegen_units': codegen_units,
+                               'stable_defs': declaration['stable_defs']}
+                rowrec = {'suite': key, 'case': check['case'], 'check': check['check'],
+                          'verdict': observation['judgement']}
+                for extra in (table_cells or [cell]):
+                    suite_cells.setdefault(':'.join(extra), []).append(rowrec)
+                    suite_cells.setdefault(':'.join(extra) + '#obs', []).append(observation)
+                continue
             # lifecycle legs (fresh->restart across workers) legitimately hold
             # several exchanges; every frame is admitted, the LAST is judged.
             names.sort(key=lambda n: int(n.rsplit('/', 1)[-1].split('-')[1]))
