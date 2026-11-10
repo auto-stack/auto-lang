@@ -228,13 +228,16 @@ def untyped_frontdoor_observation(response):
                 reason='A2X error/detail lacks typed diagnostic/source/operation identity; rendered message is not semantic authority')
 
 
-def typed_frontdoor_observation(response,request,contract,source):
+def typed_frontdoor_observation(response,request,contract,source,stage=None,code=None):
     """PLAN-1000 F-1000-02 (GAP-941-A2X-DIAG-01 closure): the a2x worker's
     refusal now carries the TYPED diagnostic channel — structured frontend
     facts (stage/code/message/span per cause, source identity, primary
     index). The FIRST cause's stage/code is the semantic authority; the
     rendered `detail` string is only the legacy projection and must
-    re-derive from the causes exactly (no free-text parsing either way)."""
+    re-derive from the causes exactly (no free-text parsing either way).
+    `stage`/`code` default to the query families' oracle mapping; callers
+    with their own diagnostic authority (the original-data families use
+    the same ORACLES table as their execution legs) pass it explicitly."""
     exact_keys(response,('status','detail','diagnostics'),'typed A2X frontdoor refusal')
     typed_equal(response['status'],'error','typed A2X refusal status')
     snap=response['diagnostics']
@@ -257,12 +260,13 @@ def typed_frontdoor_observation(response,request,contract,source):
         try:source[:span['start']].decode('utf-8');source[:span['end']].decode('utf-8')
         except UnicodeError as error:raise AdmissionError('typed A2X span is not a UTF-8 boundary') from error
     # the legacy projection must re-derive from the typed causes verbatim
-    prefix='frontend diagnostics: ' if request['op']=='daily-emit' else 'a2x.compile: '
+    prefix='a2x.compile: ' if request['op'] in ('daily-emit-c','certify-c') else 'frontend diagnostics: '
     rendered=prefix+'; '.join(f"{c['code']}: {c['message']}" for c in snap['causes'])
     typed_equal(response['detail'],rendered,'typed A2X legacy projection linkage')
     first=snap['causes'][0]
-    stage='verify' if contract['family']=='source-query' else 'bind'
-    matches=first['stage']==stage and first['code']==contract['oracle_value']
+    if stage is None:stage='verify' if contract['family']=='source-query' else 'bind'
+    if code is None:code=contract['oracle_value']
+    matches=first['stage']==stage and first['code']==code
     return dict(observed=dict(kind='typed-frontdoor-refusal',stage=first['stage'],code=first['code'],
                               source_sha256=contract['source_sha256'],primary=0,causes=len(snap['causes'])),
                 judgement='PASS' if matches else 'FAIL',

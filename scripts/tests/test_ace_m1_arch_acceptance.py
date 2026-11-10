@@ -3626,6 +3626,29 @@ class QueryRefusalCommandTests(unittest.TestCase):
                 query_evidence.untyped_frontdoor_observation(response)
 
 
+class OriginalDataNegativeCertificationTests(unittest.TestCase):
+    """PLAN-1000 16 diagnostic legs: negative certification coverage."""
+
+    def test_diagnostic_slots_join_coverage_and_missing_stay_unobserved(self):
+        import ace_m1_original_data_sources as ods
+        contracts={'M01':dict(family='original-method-881',case='M01')}
+        diagnostics=[dict(family='original-method-881',case='M09'),
+                     dict(family='original-record-text',case='R09')]
+        observations={'q4-source/original-method-881/M01/ACE-A2R-HIR':dict(judgement='PASS'),
+                      'q4-source/original-method-881/M01/ACE-A2C-HIR':dict(judgement='PASS')}
+        complete,missing=ods.certification_coverage(contracts,observations,diagnostics)
+        expected_diag={'q4-source/original-method-881/M09/ACE-A2R-HIR','q4-source/original-method-881/M09/ACE-A2C-HIR',
+                       'q4-source/original-record-text/R09/ACE-A2R-HIR','q4-source/original-record-text/R09/ACE-A2C-HIR'}
+        self.assertEqual(set(complete),set(observations)|expected_diag)
+        self.assertEqual(set(missing),expected_diag)
+        for key in expected_diag:
+            self.assertEqual(complete[key]['judgement'],'UNOBSERVED')
+        # supplied negative rows must carry completed verdicts
+        with self.assertRaises(m.AdmissionError):
+            ods.certification_coverage(contracts,{**observations,
+                'q4-source/original-method-881/M09/ACE-A2R-HIR':dict(judgement='UNOBSERVED')},diagnostics)
+
+
 class LegacyDataJoinTests(unittest.TestCase):
     """Synthetic admitted facts test the join; they are not execution evidence."""
 
