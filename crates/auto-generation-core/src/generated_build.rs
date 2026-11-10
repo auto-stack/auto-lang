@@ -1627,18 +1627,27 @@ mod plan910_tests {
         assert!(!managed_profile_toml(DebugPolicy::ManagedC).contains("release"));
         // Unknown value: named diagnosis.
         let err = resolve(Some("bogus"), None).unwrap_err().to_string();
-        assert!(err.contains("AUTO_GENERATED_DEBUG_POLICY") && err.contains("bogus"), "{err}");
+        assert!(
+            err.contains("AUTO_GENERATED_DEBUG_POLICY") && err.contains("bogus"),
+            "{err}"
+        );
         // User partial kept+recorded under the unset default, value-keyed.
         let partial = resolve(None, Some("2")).unwrap();
         assert_eq!(partial.label, "c+user:CARGO_PROFILE_DEV_DEBUG");
         assert_eq!(partial.source, "user-env:CARGO_PROFILE_DEV_DEBUG");
         let key_two = partial.context_key().unwrap();
         let key_one = resolve(None, Some("1")).unwrap().context_key().unwrap();
-        assert_ne!(key_two, key_one, "differing partial values must not share a root");
+        assert_ne!(
+            key_two, key_one,
+            "differing partial values must not share a root"
+        );
         // Explicit policy + partial = named conflict (result would not be
         // the asserted policy; "*" has no env-override form).
         let err = resolve(Some("c"), Some("2")).unwrap_err().to_string();
-        assert!(err.contains("冲突") && err.contains("CARGO_PROFILE_DEV_DEBUG"), "{err}");
+        assert!(
+            err.contains("冲突") && err.contains("CARGO_PROFILE_DEV_DEBUG"),
+            "{err}"
+        );
         let err = resolve(Some("full"), Some("2")).unwrap_err().to_string();
         assert!(err.contains("冲突"), "{err}");
     }
@@ -1689,7 +1698,8 @@ mod plan910_tests {
         assert_eq!(ctx.context_id, legacy_id);
         // Full recovery: isolated root (different id AND different dir).
         std::env::set_var(DEBUG_POLICY_ENV, "full");
-        let full = GeneratedBuildContext::resolve(&project, &ws, WorkspaceRequirements::Ui).unwrap();
+        let full =
+            GeneratedBuildContext::resolve(&project, &ws, WorkspaceRequirements::Ui).unwrap();
         assert_eq!(full.debug_policy, "full");
         assert_ne!(full.context_id, ctx.context_id);
         assert_ne!(full.target_root, ctx.target_root);
