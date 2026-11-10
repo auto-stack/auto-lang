@@ -6242,7 +6242,7 @@
     },
     "legacy_base": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/legacy-base-contract.json",
-      "sha256": "b66a4134f22e5526f3700e19cd74f5105baa7a199d36a51dff99a7538476e78e"
+      "sha256": "1d499e6973ed6e83e8a57c3fc528fe82ecea76c599ea9521a735e7dc8f237ef1"
     },
     "ct_mechanisms": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-source-mechanisms-contract.json",

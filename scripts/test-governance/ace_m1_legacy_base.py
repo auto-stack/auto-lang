@@ -8,7 +8,7 @@ from ace_m1_legacy_execution import execution_summary
 from ace_m1_scalar_evidence import scalar_observation
 
 CONTRACT='crates/auto-lang/test/cases/ace-m1-expanded/legacy-base-contract.json'
-CONTRACT_SHA = 'b66a4134f22e5526f3700e19cd74f5105baa7a199d36a51dff99a7538476e78e'
+CONTRACT_SHA = '1d499e6973ed6e83e8a57c3fc528fe82ecea76c599ea9521a735e7dc8f237ef1'
 SUITE='crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad'
 VALUE_CASES=('B01','B02','B03','B04','B05','B06','B07','B09','B10','B12')
 TRAP_CASES=('B13','B14','B15','B20')
