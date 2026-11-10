@@ -96,7 +96,20 @@ pub fn resolve_debug_policy() -> AutoResult<DebugPolicySelection> {
     let explicit = std::env::var_os(DEBUG_POLICY_ENV)
         .map(|value| value.to_string_lossy().trim().to_string())
         .filter(|value| !value.is_empty());
-    let policy = match explicit.as_deref() {
+    let partial = std::env::var_os(DEV_DEBUG_ENV)
+        .map(|value| value.to_string_lossy().to_string())
+        .filter(|value| !value.trim().is_empty());
+    resolve_debug_policy_from(explicit.as_deref(), partial.as_deref())
+}
+
+/// Pure core of the policy resolution (matrix tests drive this directly —
+/// illegal values never enter the process env, where plain `cargo test`
+/// thread mode could leak them into other tests' spawned children).
+pub(crate) fn resolve_debug_policy_from(
+    explicit: Option<&str>,
+    partial: Option<&str>,
+) -> AutoResult<DebugPolicySelection> {
+    let policy = match explicit {
         None => DebugPolicy::ManagedC,
         Some("c") | Some("default") => DebugPolicy::ManagedC,
         Some("full") => DebugPolicy::Full,
@@ -108,10 +121,7 @@ pub fn resolve_debug_policy() -> AutoResult<DebugPolicySelection> {
             .into());
         }
     };
-    let partial = std::env::var_os(DEV_DEBUG_ENV)
-        .map(|value| value.to_string_lossy().to_string())
-        .filter(|value| !value.trim().is_empty());
-    if let (Some(set), Some(value)) = (&explicit, &partial) {
+    if let (Some(set), Some(value)) = (explicit, partial) {
         return Err(format!(
             "生成调试策略冲突: {DEBUG_POLICY_ENV}={set} 与 {DEV_DEBUG_ENV}={value} 并存\
              （显式策略不静默改形；完整调试请用 full 并移除 {DEV_DEBUG_ENV}，\
@@ -119,6 +129,7 @@ pub fn resolve_debug_policy() -> AutoResult<DebugPolicySelection> {
         )
         .into());
     }
+    let partial = partial.map(str::to_string);
     let is_explicit = explicit.is_some();
     let (label, source, user_partial) = match (policy, partial) {
         (DebugPolicy::ManagedC, None) => (
@@ -1585,23 +1596,14 @@ mod plan910_tests {
     /// PLAN-1003 V-01 controls: policy resolution matrix — default, explicit
     /// c/default aliases, full, unknown value (named error), explicit-policy
     /// vs cargo-native partial conflict (named error), and the kept+recorded
-    /// user partial under the unset (lowest-priority) default.
+    /// user partial under the unset (lowest-priority) default. Driven through
+    /// the pure core: illegal values never enter the process env (plain
+    /// `cargo test` thread mode could leak them into other tests' children).
     #[test]
     fn debug_policy_resolution_matrix() {
-        let _env_guard = ENV_MUTEX
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let saved: Vec<(&'static str, Option<std::ffi::OsString>)> =
-            [DEBUG_POLICY_ENV, DEV_DEBUG_ENV]
-                .iter()
-                .map(|k| (*k, std::env::var_os(k)))
-                .collect();
-        for (key, _) in &saved {
-            std::env::remove_var(key);
-        }
-        let resolve = || resolve_debug_policy();
+        let resolve = resolve_debug_policy_from;
         // Default: managed C, legacy-stable label, no identity key.
-        let default = resolve().unwrap();
+        let default = resolve(None, None).unwrap();
         assert_eq!(default.policy, DebugPolicy::ManagedC);
         assert_eq!(default.label, "c");
         assert_eq!(default.source, "managed-default");
@@ -1609,16 +1611,13 @@ mod plan910_tests {
         // Explicit aliases assert the same effective policy (same label, no
         // split: identical effective config must not fork the cache).
         for value in ["c", "default"] {
-            std::env::set_var(DEBUG_POLICY_ENV, value);
-            let explicit = resolve().unwrap();
+            let explicit = resolve(Some(value), None).unwrap();
             assert_eq!(explicit.label, "c");
             assert_eq!(explicit.source, DEBUG_POLICY_ENV);
             assert_eq!(explicit.context_key(), None);
         }
-        std::env::remove_var(DEBUG_POLICY_ENV);
         // Full recovery: no managed section, isolated identity.
-        std::env::set_var(DEBUG_POLICY_ENV, "full");
-        let full = resolve().unwrap();
+        let full = resolve(Some("full"), None).unwrap();
         assert_eq!(full.policy, DebugPolicy::Full);
         assert_eq!(full.label, "full");
         assert_eq!(full.context_key().as_deref(), Some("policy:full"));
@@ -1627,33 +1626,21 @@ mod plan910_tests {
         assert!(managed_profile_toml(DebugPolicy::ManagedC).contains("[profile.dev.package.\"*\"]"));
         assert!(!managed_profile_toml(DebugPolicy::ManagedC).contains("release"));
         // Unknown value: named diagnosis.
-        std::env::set_var(DEBUG_POLICY_ENV, "bogus");
-        let err = resolve().unwrap_err().to_string();
+        let err = resolve(Some("bogus"), None).unwrap_err().to_string();
         assert!(err.contains("AUTO_GENERATED_DEBUG_POLICY") && err.contains("bogus"), "{err}");
-        std::env::remove_var(DEBUG_POLICY_ENV);
         // User partial kept+recorded under the unset default, value-keyed.
-        std::env::set_var(DEV_DEBUG_ENV, "2");
-        let partial = resolve().unwrap();
+        let partial = resolve(None, Some("2")).unwrap();
         assert_eq!(partial.label, "c+user:CARGO_PROFILE_DEV_DEBUG");
         assert_eq!(partial.source, "user-env:CARGO_PROFILE_DEV_DEBUG");
         let key_two = partial.context_key().unwrap();
-        std::env::set_var(DEV_DEBUG_ENV, "1");
-        let key_one = resolve().unwrap().context_key().unwrap();
+        let key_one = resolve(None, Some("1")).unwrap().context_key().unwrap();
         assert_ne!(key_two, key_one, "differing partial values must not share a root");
         // Explicit policy + partial = named conflict (result would not be
         // the asserted policy; "*" has no env-override form).
-        std::env::set_var(DEBUG_POLICY_ENV, "c");
-        let err = resolve().unwrap_err().to_string();
+        let err = resolve(Some("c"), Some("2")).unwrap_err().to_string();
         assert!(err.contains("冲突") && err.contains("CARGO_PROFILE_DEV_DEBUG"), "{err}");
-        std::env::set_var(DEBUG_POLICY_ENV, "full");
-        let err = resolve().unwrap_err().to_string();
+        let err = resolve(Some("full"), Some("2")).unwrap_err().to_string();
         assert!(err.contains("冲突"), "{err}");
-        for (key, value) in saved {
-            match value {
-                Some(v) => std::env::set_var(key, v),
-                None => std::env::remove_var(key),
-            }
-        }
     }
 
     /// PLAN-1003 V-02 controls: identity layering — the default keeps the
