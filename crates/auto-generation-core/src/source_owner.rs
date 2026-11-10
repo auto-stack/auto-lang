@@ -583,6 +583,32 @@ pub fn validate_development_dependencies(source: &Path) -> AutoResult<()> {
     Ok(())
 }
 
+/// OS068 R-03 保守卫（纯函数，可单测）：auto-web 的 Cargo.toml 经
+/// `../../../auto-lang` 回链其兄弟 auto-lang。web_root 与 producer_root
+/// 不同组时，工作区将同时拉入两组 auto-lang crates → auto-web-contract
+/// 双副本链接冲突（066 组树构建实证）。返回具名错误，不静默混根。
+fn check_web_group_consistency(web_root: &Path, producer_root: &Path) -> AutoResult<()> {
+    let web_sibling_lang = web_root
+        .parent()
+        .ok_or("web 源根无父目录")?
+        .join("auto-lang");
+    let producer_canon = producer_root
+        .canonicalize()
+        .unwrap_or_else(|_| producer_root.to_path_buf());
+    let web_lang_canon = web_sibling_lang
+        .canonicalize()
+        .unwrap_or_else(|_| web_sibling_lang.clone());
+    if web_lang_canon != producer_canon {
+        return Err(format!(
+            "delivery: AUTO_WEB_SOURCE_ROOT 与语言 producer 不同组（web 兄弟 auto-lang={}，producer={}）——auto-web-contract 将双副本冲突；请指向同组兄弟树或清掉该 env",
+            web_sibling_lang.display(),
+            producer_root.display()
+        )
+        .into());
+    }
+    Ok(())
+}
+
 /// UI crates are selected from their UI owner or a receipt-validated
 /// installation. Web crates (PLAN-901 r2/§5.5 谱系；PLAN-906 起 auto-web-contract
 /// 单源迁语言仓、web 类别仅 auto-web) resolve from the web owner root
@@ -613,6 +639,12 @@ pub fn ui_crate_source(producer_root: &Path, name: &str) -> AutoResult<PathBuf> 
                 )
                 .into());
             }
+            // OS068 R-03 保守卫：auto-web 的 Cargo.toml 经 `../../../auto-lang`
+            // 回链其兄弟 auto-lang（auto-web-contract/auto-lang-core 单源）。
+            // 若 AUTO_WEB_SOURCE_ROOT 指向与 producer 不同组的树，工作区将同时
+            // 拉入两组 auto-lang crates → auto-web-contract 双副本链接冲突
+            // （066 组树构建实证）。此处具名拒绝，不静默混根。
+            check_web_group_consistency(&root, producer_root)?;
             if is_managed_sdk(&root) {
                 installed_crate_source(&root, name, None, "auto-web")?.ok_or_else(|| {
                     format!("delivery: 显式 AUTO_WEB_SOURCE_ROOT 安装清单缺少 crates/{name}")
@@ -813,6 +845,29 @@ version = \"0.1.0\"
         std::env::set_var("AUTO_WEB_SOURCE_ROOT", &empty);
         let err = ui_crate_source(&lang, "auto-web").unwrap_err().to_string();
         assert!(err.contains("AUTO_WEB_SOURCE_ROOT"), "{err}");
+    }
+
+    /// OS068 R-03 永久反例：AUTO_WEB_SOURCE_ROOT 指向与语言 producer 不同组的
+    /// 树（其兄弟 auto-lang ≠ producer）时，auto-web 的 `../../../auto-lang`
+    /// 回链将引入第二份 auto-web-contract → 工作区双副本链接冲突（066 组树
+    /// 构建实证）。保守卫必须具名拒绝，不静默混根（纯函数直测，不碰 env）。
+    #[test]
+    fn os068_web_root_foreign_group_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lang = tmp.path().join("auto-lang");
+        // 组内兄弟 web 在 tmp/auto-web（与 lang 同组）→ 通过。
+        let web = tmp.path().join("auto-web");
+        fs::create_dir_all(&web).unwrap();
+        check_web_group_consistency(&web, &lang).expect("同组兄弟必须通过");
+
+        // 异组显式根（foreign/web-alt，兄弟 auto-lang 在 foreign/ 下）→ 拒绝。
+        let alt = tmp.path().join("foreign").join("web-alt");
+        fs::create_dir_all(&alt).unwrap();
+        let err = check_web_group_consistency(&alt, &lang).unwrap_err().to_string();
+        assert!(
+            err.contains("双副本") || err.contains("AUTO_WEB_SOURCE_ROOT"),
+            "异组 web 根必须具名拒绝：{err}"
+        );
     }
 
     #[test]
