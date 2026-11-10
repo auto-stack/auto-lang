@@ -9,7 +9,7 @@ from ace_m1_legacy_data import CASES as DATA_CASES
 from ace_m1_legacy import CORPUS, INPUTS, REQUIRED_SHA256, frozen_ledger, typed_equal
 
 MAP = 'crates/auto-lang/test/cases/ace-m1-expanded/legacy-required-map.json'
-MAP_SHA = 'e1c0826480dde55a3923502f59deb0d15c16a5dc25b608f1d913bc153c56e5f8'
+MAP_SHA = '7c55b28d4c10e9a8963863911fcb5abea7ff0529c26c20b26dd9835b574c9fc2'
 SCENARIOS = 'docs/specs/auto-test-case/ace-m1-scenario-oracles.md'
 SCENARIOS_SHA = 'cb1796d84f23a3dcd8514583e9b29bd17b6ed740140eb6338f593233bce558b4'
 TARGETS = {'ac':'AC-native', 'av':'AV', 'avm':'legacy-AVM', 'a2r':'legacy-A2R'}

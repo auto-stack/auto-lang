@@ -87,6 +87,26 @@ case {
 ```test-case
 case {
   schema: "autolang.case/2"
+  id: "ace.m1.i02.ace"
+  tags: ["ace-m1", "scenario", "order-914", "incremental"]
+  links: ["PLAN-914"]
+  source: { file: "src/I09-ace.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "callee-body-edit", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", session: "ace_m1_i02_914" }, steps: [
+        { op: "run" },
+        { op: "edit-source", from: "return x * 2", to: "return x * 3" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 10 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
   id: "ace.m1.i09.ace"
   tags: ["ace-m1", "scenario", "order-914", "layout"]
   links: ["PLAN-914"]

@@ -6150,7 +6150,7 @@
  "expanded_contracts": {
   "legacy": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/legacy-required-map.json",
-   "sha256": "e1c0826480dde55a3923502f59deb0d15c16a5dc25b608f1d913bc153c56e5f8"
+   "sha256": "7c55b28d4c10e9a8963863911fcb5abea7ff0529c26c20b26dd9835b574c9fc2"
   },
   "q4": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/q4-source-contracts.tsv",
@@ -6270,7 +6270,7 @@
   },
   "legacy_arch": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/legacy-architecture-contract.json",
-   "sha256": "8701dda992bda8301e66e8f104708062a9ba73bb0ac53e243b09bdadea1ff341"
+   "sha256": "cd5a72fa89c0983e08cb3b3f73178a5bd64ac7fa47bdc2640ec8d84db7cc1400"
   }
  },
  "awaiting_d": [],

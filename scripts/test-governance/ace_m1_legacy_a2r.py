@@ -306,8 +306,8 @@ _CONTRACT_SHAS = {
     "legacy_base": "3f4f6da57b4dceaca74ae83ec13363f0bc53180516705bc7191d32665ac36a86",
     "legacy_base_probe": "3f4f6da57b4dceaca74ae83ec13363f0bc53180516705bc7191d32665ac36a86",
     "method_881": "7f89138bdac10eead48e82656361166b0056bdbdc2516205ec98df2fde647d98",
-    "order_layout_914": "223d958c3f9c6db0eb3ea2f7ef2bf6fb66c4ad666384e859973cd94c84cb7b09",
-    "order_layout_914_probe": "223d958c3f9c6db0eb3ea2f7ef2bf6fb66c4ad666384e859973cd94c84cb7b09",
+    "order_layout_914": "2e10961dd9092a9beb5e4c30f8cfcbdb63bae73f70400999ad5a73eb7e4e2a04",
+    "order_layout_914_probe": "2e10961dd9092a9beb5e4c30f8cfcbdb63bae73f70400999ad5a73eb7e4e2a04",
     "p823": "fa9f0c16ddc560ffe6f67b7c88747e0753055b52fcfc1d33636b5bec1fddd7ac",
     "p824": "81828390fa2242d22ef155060fa4658eecde90683d6690c06b7f043815879674",
     "p825": "712f6ceda41d40f13ebad85bb65ace4980ad255341364ef9076fd157a998ec65",
@@ -512,9 +512,20 @@ _PROBE_CHECK_CELLS = {
     # value; the 30-revision full spectrum stays the named gap) AND the I06
     # restart-state observation. Multi-cell mapping per the E03/B04 note.
     ('ace.m1.session.mn', 'edit-then-restart-run'): [('scenario', 'I06', 'ac'), ('scenario', 'I01', 'ac')],
+    # PLAN-1000 I02:ac — the callee-only body edit on the frozen multi-fn
+    # source: the judged exit follows the revision (7 -> 10) while the
+    # parent-enforced incremental contract (unaffected/whole/fallback == 0)
+    # proves the CALLER was not recompiled — exactly the I02 oracle.
+    ('ace.m1.i02.ace', 'callee-body-edit'): [('scenario', 'I02', 'ac')],
     ('ace.m1.i04.ace', 'declaration'): [('scenario', 'I04', 'ac')],
-    ('ace.m1.i09.ace', 'refused'): [('scenario', 'I09', 'ac')],
-    ('ace.m1.i09.ace', 'survives'): [('scenario', 'I09', 'ac')],
+    # PLAN-1000 I03:ac — the i09 refusal IS the I03 oracle: the callee's
+    # SIGNATURE change (fn f(x int) -> fn f(x int, y int)) is refused with
+    # the typed context-drift code ("实际依赖 caller 失效或明确拒绝" arm),
+    # and the survives leg shows the old successful version remains usable
+    # in the same session ("旧成功版可用" arm). Multi-cell mapping per the
+    # E03/B04/I01 precedent.
+    ('ace.m1.i09.ace', 'refused'): [('scenario', 'I09', 'ac'), ('scenario', 'I03', 'ac')],
+    ('ace.m1.i09.ace', 'survives'): [('scenario', 'I09', 'ac'), ('scenario', 'I03', 'ac')],
     ('ace.m1.i09.av', 'partial-rebuild-refused'): [('scenario', 'I09', 'av')],
     ('ace.m1.i04.av', 'unused-declaration-carry'): [('scenario', 'I04', 'av')],
     ('ace.m1.i04.av', 'layout-change-rebuild'): [('scenario', 'I04', 'av')],
