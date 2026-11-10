@@ -247,7 +247,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
     evidence = EvidenceScope(evidence_root, budget)
     bindings, bindings_sha = evidence.read_json(bindings_path)
     mandatory = {'inventories', 'copies', 'workers', 'certification', 'legacy'}
-    require(type(bindings) is dict and mandatory <= bindings.keys() <= mandatory | {'legacy_base_execution', 'legacy_execution', 'legacy_a2r_execution', 'legacy_probe_families', 'legacy_rust_tests', 'legacy_governance', 'phased_cert_observations', 'parent_contracts', 'legacy_typed_av', 'legacy_typed_native', 'source_cte_execution', 'text_certifications', 'source_cte_certifications', 'text_q4_execution', 'scalar_q4_execution', 'scalar_certifications', 'scalar_release_execution', 'record_text_execution', 'record_text_certifications', 'record_text_release_execution', 'collections_execution', 'collections_certifications', 'query_instances_execution', 'query_certifications', 'query_frontdoor_refusals', 'query_release_execution', 'source_supplement_execution', 'source_supplement_certifications', 'original_data_execution', 'original_data_certifications', 'original_data_diagnostics', 'ct_source_mechanisms', 'ct_child_mechanisms', 'ct_meta_mechanisms', 'ct_restore_mechanisms', 'sq_fact_mechanisms', 'syntax_mechanisms', 'legacy_architecture', 'incremental_restore_gates', 'incremental_restore_semantics', 'incremental_restore_comptime', 'incremental_restore_abi', 'incremental_restore_av', 'budget_time_gates', 'budget_time_optimized', 'acceptance_system_controls', 'policy_runtime_samples'},
+    require(type(bindings) is dict and mandatory <= bindings.keys() <= mandatory | {'legacy_base_execution', 'legacy_execution', 'legacy_a2r_execution', 'legacy_probe_families', 'legacy_rust_tests', 'legacy_governance', 'arch_entry_gates', 'phased_cert_observations', 'parent_contracts', 'legacy_typed_av', 'legacy_typed_native', 'source_cte_execution', 'text_certifications', 'source_cte_certifications', 'text_q4_execution', 'scalar_q4_execution', 'scalar_certifications', 'scalar_release_execution', 'record_text_execution', 'record_text_certifications', 'record_text_release_execution', 'collections_execution', 'collections_certifications', 'query_instances_execution', 'query_certifications', 'query_frontdoor_refusals', 'query_release_execution', 'source_supplement_execution', 'source_supplement_certifications', 'original_data_execution', 'original_data_certifications', 'original_data_diagnostics', 'ct_source_mechanisms', 'ct_child_mechanisms', 'ct_meta_mechanisms', 'ct_restore_mechanisms', 'sq_fact_mechanisms', 'syntax_mechanisms', 'legacy_architecture', 'incremental_restore_gates', 'incremental_restore_semantics', 'incremental_restore_comptime', 'incremental_restore_abi', 'incremental_restore_av', 'budget_time_gates', 'budget_time_optimized', 'acceptance_system_controls', 'policy_runtime_samples'},
             'unknown/missing preview parent bindings')
     exact_keys(bindings['workers'], ('av', 'native', 'syntax', 'bridge'), 'current preview workers')
     require('scalar_release_execution' not in bindings or 'scalar_certifications' in bindings,
@@ -603,15 +603,22 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         require(type(phased) is dict and phased, 'phased cert observations map')
         for section, ref in sorted(phased.items()):
             exact_keys(ref, ('path', 'sha256'), f'phased observations {section}')
-            evidence.sha256(ref['path'], ref['sha256'])
-            document, _ = evidence.read_json(ref['path'])
+            raw = evidence.read_bytes(ref['path'])
+            nodes = sum(raw.count(bytes([c])) for c in b'{}[],:')
+            transient = len(raw) + 1 + 7 * len(raw) + 256 * nodes + 4096
+            document, digest = evidence.decode_json(raw)
+            if digest != ref['sha256']:
+                raise ValueError(f'STALE artifact content: {ref["path"]}')
             typed_equal(document.get('schema'), 'ace.m1.phased-observations/1',
                         f'phased schema {section}')
+            # the extracted observation/section payload is tiny; release the
+            # raw/decoded transient so many phased docs stay under the cap
             if 'section' in document:
                 # A phased whole-section payload (e.g. the incremental-restore
                 # measurement document): injected verbatim under its name; the
                 # downstream gates consume its own shape.
                 result[section] = document['section'] | {'source': ref['path']}
+                evidence.budget.release_transient(transient)
                 continue
             observations = document.get('observations')
             require(type(observations) is dict and observations,
@@ -619,6 +626,24 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
             result[section] = {'schema': 'ace.m1.phased-certifications/1',
                                'observations': observations,
                                'source': ref['path']}
+            evidence.budget.release_transient(transient)
+    if 'arch_entry_gates' in bindings:
+        from ace_m1_arch_entry_gates import admit_arch_entry_gates
+        entry_gates = _compact_admission(inputs, lambda _: admit_arch_entry_gates(
+            inputs, evidence, bindings['arch_entry_gates']), 256 << 10)
+        # merge into the architecture execution observations (non-overlap with
+        # the dedicated mechanism families)
+        arch_obs = {k: (v if isinstance(v, str) else v.get('judgement'))
+                    for k, v in result.get('architecture_execution', {}).get('observations', {}).items()}
+        fresh = {k: v for k, v in entry_gates['observations'].items() if k not in arch_obs}
+        from ace_m1_arch_obligations import reduce_architecture
+        merged = arch_obs | fresh
+        result['architecture_execution'] = {
+            'schema': 'ace.m1.architecture-execution/1', 'observations': merged,
+            'sources': dict(result.get('architecture_execution', {}).get('sources', {})) | {
+                'entry_gates': entry_gates['admitted_entries']},
+            'gate': reduce_architecture(merged), 'can_claim_architecture_pass': False}
+        result['gates']['architecture_required'] = result['architecture_execution']['gate']['complete']
     if '_merged_obs' in legacy:
         from ace_m1_legacy_execution import execution_summary as _esf
         from ace_m1_legacy import frozen_ledger as _flf
