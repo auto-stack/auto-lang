@@ -104,8 +104,9 @@ pub fn resolve_debug_policy() -> AutoResult<DebugPolicySelection> {
 
 /// Pure core of the policy resolution (matrix tests drive this directly —
 /// illegal values never enter the process env, where plain `cargo test`
-/// thread mode could leak them into other tests' spawned children).
-pub(crate) fn resolve_debug_policy_from(
+/// thread mode could leak them into other tests' spawned children). Public
+/// so owner crates can build selections in their own tests without env.
+pub fn resolve_debug_policy_from(
     explicit: Option<&str>,
     partial: Option<&str>,
 ) -> AutoResult<DebugPolicySelection> {
@@ -158,7 +159,26 @@ pub(crate) fn resolve_debug_policy_from(
     })
 }
 
+impl DebugPolicy {
+    /// Static label of the policy itself — what a generated manifest
+    /// statically carries regardless of the generation-time environment
+    /// (delivery bundles record this, not the env-composed label).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DebugPolicy::ManagedC => "c",
+            DebugPolicy::Full => "full",
+        }
+    }
+}
+
 impl DebugPolicySelection {
+    /// Name of the cargo-native partial override this selection carries, if
+    /// any (audit only; delivery bundles do not inherit generation-time
+    /// environment overrides).
+    pub fn user_partial_env(&self) -> Option<&'static str> {
+        self.user_partial.as_ref().map(|(name, _)| *name)
+    }
+
     /// Context-identity key part. `None` for the plain managed default: the
     /// legacy id formula (schema+producer+flags) stays byte-identical, so
     /// existing cache roots and Web release closures survive the C
@@ -1223,9 +1243,11 @@ impl FrontReceipt {
 
     /// PLAN-1003: the receipt was built under the context's effective debug
     /// policy. `None` (legacy) or a differing label is stale — a policy
-    /// switch (or a forged label on a differently-built exe, which carries
-    /// a different context_id under non-default policies) must never reuse
-    /// the previously published artifact.
+    /// switch must never reuse the previously published artifact. This is a
+    /// necessary, not sufficient check: callers verifying artifact identity
+    /// (`discover_front_exe`, `front_needs_regeneration`) additionally
+    /// compare `context_id` — a label alone does not prove which context
+    /// built the exe (review R1, F-1003-R1-01).
     pub fn debug_policy_matches(&self, context: &GeneratedBuildContext) -> bool {
         self.debug_policy.as_deref() == Some(context.debug_policy.as_str())
     }
@@ -1252,6 +1274,14 @@ pub fn discover_front_exe(project_dir: &Path) -> Option<PathBuf> {
     )
     .ok()?;
     if !receipt.debug_policy_matches(&context) {
+        return None;
+    }
+    // PLAN-1003 review R1 (F-1003-R1-01): the receipt's context identity must
+    // equal the current context too — the label alone is forgeable by editing
+    // one JSON field, and a `full`-built exe must never be discovered under
+    // the default policy. This mirrors `front_needs_regeneration`'s identity
+    // rule, so discovery and build freshness can never disagree.
+    if receipt.context_id != context.context_id {
         return None;
     }
     match (&receipt.exe_sha256, file_sha256(&exe)) {
@@ -1829,6 +1859,31 @@ mod plan910_tests {
         assert_eq!(discover_front_exe(&project), Some(exe.clone()));
         fs::write(&exe, b"image-of-another-variant").unwrap();
         assert_eq!(discover_front_exe(&project), None);
+        // F-1003-R1-01 (review R1): a FORGED label alone — receipt built
+        // under the `full` context (its context_id), label edited to `c`,
+        // exe bytes matching the recorded hash — must not be discovered
+        // under the default policy. The label is not identity.
+        fs::write(&exe, b"image-built-under-full").unwrap();
+        let mut forged = receipt.clone();
+        forged.context_id = full_ctx.context_id.clone();
+        forged.target_root = full_ctx.target_root.to_string_lossy().to_string();
+        forged.exe = Some(exe.to_string_lossy().to_string());
+        forged.exe_sha256 = Some(file_sha256(&exe).unwrap());
+        forged.debug_policy = Some(full_ctx.debug_policy.clone());
+        forged.write(&member).unwrap();
+        // Control: under `full` the honest receipt is discoverable.
+        std::env::set_var(DEBUG_POLICY_ENV, "full");
+        assert_eq!(discover_front_exe(&project), Some(exe.clone()));
+        std::env::remove_var(DEBUG_POLICY_ENV);
+        // Forge ONLY the label to the current policy: identity (context_id)
+        // must refuse it.
+        forged.debug_policy = Some(ctx.debug_policy.clone());
+        forged.write(&member).unwrap();
+        assert_eq!(
+            discover_front_exe(&project),
+            None,
+            "forged label on a full-built exe must not be discovered"
+        );
         for (key, value) in saved {
             match value {
                 Some(v) => std::env::set_var(key, v),
