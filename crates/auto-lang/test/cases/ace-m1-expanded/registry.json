@@ -6140,7 +6140,7 @@
   "source_sha256": {
    "crates/auto-lang-core/src/test_cases/ac_av.rs": "dee61c503b3e509b697702a909d68e7660e7c7bf697752056b8280401e7c1945",
    "crates/auto-lang-core/src/test_cases/ac_av/contract_inventory.rs": "aadcdf7a59836860039fdc8def37013149eef09e66aad67da37b86d0aedf08c1",
-   "crates/auto-lang-core/src/test_cases/ac_mn.rs": "24a558af200d2df75b886926dbe82631410e7079747d8c50b8f1ca63d46bd2b9",
+   "crates/auto-lang-core/src/test_cases/ac_mn.rs": "92dd821667dc26c68b160b73588f20be03d0051ff9893e41a1cb3daad11169a7",
    "crates/auto-lang-core/src/test_cases/abi.rs": "dfa474a74d056054d383f13c470d6b8b6961d633bb7a56adc336771ffeab1920",
    "crates/auto-lang-core/src/test_cases/inventory.rs": "c8a8145a18da72a5fa6b5cfe8723a9f65d25f5905374a840483c7dde2a41d6c1",
    "crates/auto-lang/src/bin/auto-case.rs": "1d511041590106327fb6a1db2bc5c2828037ae33b060e226ad0963aa13af0b01",
@@ -6150,7 +6150,7 @@
  "expanded_contracts": {
   "legacy": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/legacy-required-map.json",
-   "sha256": "25df3c1ba7b1f9d716eb988ee79c611be0b8301037a16ba07fade25f469a8aa9"
+   "sha256": "1b1cdec400144c29c3dc1810ccea956ed20dc93fcce400aea9124ea90e315ff6"
   },
   "q4": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/q4-source-contracts.tsv",
@@ -6162,7 +6162,7 @@
   },
   "budget": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/original-budget-contracts.json",
-   "sha256": "101df1bdb387b3ba8843a3078fae8e9ee92b3e56e65309e8f511416f47b3c87b"
+   "sha256": "fd18a1c210b8d8702d805b774a44d6be903750ebcea2b6c81ceb702c2a1f000f"
   },
   "text_reference": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/text-reference-contracts.tsv",
@@ -6270,7 +6270,7 @@
   },
   "legacy_arch": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/legacy-architecture-contract.json",
-   "sha256": "89ad7ca95b9a10d8e58324e3de023361950e2353e0423757492b35ca44bf8d78"
+   "sha256": "398dc80059f3384106c366a852969924d12592fbe72b3f4e3728982ffbe30033"
   }
  },
  "awaiting_d": [],

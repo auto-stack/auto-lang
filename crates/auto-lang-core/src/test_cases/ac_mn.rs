@@ -3308,6 +3308,9 @@ fn run_incremental(
         history_mismatches.extend(judge_history_revisit(&step_records, spec));
     }
     mismatches.extend(history_mismatches);
+    if let Some(spec) = mn.turnaround.as_ref() {
+        mismatches.extend(judge_turnaround(&parent_windows_ms, spec));
+    }
     if let Some((code, message)) = &diag {
         let stage = if let Some(fact) = &source_fact {
             // PLAN-911 strict: the RAW producer stage decides.
@@ -3908,6 +3911,43 @@ mod source_diag_tests {
 /// against the declared oracle — the cold-frontend invalidations actually
 /// recorded, the object-producer unit bound, and the resident MIR/COFF
 /// identity carry-over of the units the case names as UNAFFECTED.
+/// PLAN-1000 (I11): judge the single-function edit turnaround oracle from
+/// the REAL parent-observed per-edit windows (F-818-R1-01: preparation ->
+/// IPC -> worker -> admission -> comparison). The P90 of those windows
+/// must hold the approved bound; fewer representative edits than declared
+/// is a verdict failure, never a silent pass.
+fn judge_turnaround(
+    parent_windows_ms: &[f64],
+    spec: &auto_test_case::contract::ProbeMnTurnaroundSpec,
+) -> Vec<Mismatch> {
+    let mut out = Vec::new();
+    if (parent_windows_ms.len() as u64) < spec.min_edits {
+        out.push(Mismatch {
+            observation: "edit_turnaround_windows".into(),
+            kind: "counter".into(),
+            expected: format!(">= {} representative edit windows", spec.min_edits),
+            actual: format!("{}", parent_windows_ms.len()),
+            first_diff: None,
+        });
+        return out;
+    }
+    let mut sorted = parent_windows_ms.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    // nearest-rank P90 (ceil(0.90 * n) - 1)
+    let rank = ((90 * sorted.len() + 99) / 100).saturating_sub(1);
+    let p90 = sorted[rank];
+    if p90 > spec.p90_max_ms as f64 {
+        out.push(Mismatch {
+            observation: "edit_turnaround_p90_ms".into(),
+            kind: "budget".into(),
+            expected: format!("<= {} ms (approved P90)", spec.p90_max_ms),
+            actual: format!("{p90:.1} ms"),
+            first_diff: None,
+        });
+    }
+    out
+}
+
 /// PLAN-1000 (I05): judge the content-revisit oracle from the session's
 /// REAL counters — the content-addressed COFF cache hits summed across all
 /// step records. An edit back to previous content that recompiled instead

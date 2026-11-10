@@ -109,6 +109,44 @@ case {
 ```test-case
 case {
   schema: "autolang.case/2"
+  id: "ace.m1.i11.ace"
+  tags: ["ace-m1", "scenario", "order-914", "incremental"]
+  links: ["PLAN-914"]
+  source: { file: "src/I09-ace.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "edit-turnaround-p90", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", session: "ace_m1_i11_914", turnaround: { p90_max_ms: 2000, min_edits: 10 } }, steps: [
+        { op: "run" },
+        { op: "edit-source", from: "return x * 2", to: "return x * 3" },
+        { op: "run" },
+        { op: "edit-source", from: "return x * 3", to: "return x * 4" },
+        { op: "run" },
+        { op: "edit-source", from: "return x * 4", to: "return x * 5" },
+        { op: "run" },
+        { op: "edit-source", from: "return x * 5", to: "return x * 6" },
+        { op: "run" },
+        { op: "edit-source", from: "return x * 6", to: "return x * 7" },
+        { op: "run" },
+        { op: "edit-source", from: "return x * 7", to: "return x * 8" },
+        { op: "run" },
+        { op: "edit-source", from: "return x * 8", to: "return x * 9" },
+        { op: "run" },
+        { op: "edit-source", from: "return x * 9", to: "return x * 10" },
+        { op: "run" },
+        { op: "edit-source", from: "return x * 10", to: "return x * 11" },
+        { op: "run" },
+        { op: "edit-source", from: "return x * 11", to: "return x * 12" },
+        { op: "run" }
+      ] },
+      expect: { completion: "success", exit: 37 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
   id: "ace.m1.i02.ace"
   tags: ["ace-m1", "scenario", "order-914", "incremental"]
   links: ["PLAN-914"]

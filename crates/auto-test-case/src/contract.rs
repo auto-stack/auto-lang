@@ -2451,6 +2451,7 @@ fn decode_options(
                         "declaration",
                         "resource",
                         "history",
+                        "turnaround",
                     ],
                 )?;
                 let entry = req_str(&mf, "entry")?;
@@ -2636,6 +2637,48 @@ fn decode_options(
                         Some(ProbeMnHistorySpec { min_cache_hit_coff })
                     }
                 };
+                // PLAN-1000 (I11): the turnaround oracle — the approved P90
+                // bound over the parent-observed per-edit windows. The
+                // bound cannot be declared below the approved 858 value.
+                let turnaround = match mf.sub("turnaround") {
+                    None => None,
+                    Some(v) => {
+                        if recipe != "ac/mir-native-scalar-v1" {
+                            return Err(err(
+                                &mf.path_of("turnaround"),
+                                "the turnaround oracle belongs to ac/mir-native-scalar-v1 only (the scalar incremental rounds own the per-edit windows)",
+                            ));
+                        }
+                        let tpath = mf.path_of("turnaround");
+                        let tpairs = as_obj(v, &tpath)?;
+                        let tf = Fields::new(&tpath, tpairs, &["p90_max_ms", "min_edits"])?;
+                        let p90_max_ms = match tf.sub("p90_max_ms") {
+                            None => 2000,
+                            Some(mv) => match mv {
+                                CVal::Int(n) if *n >= 2000 && *n <= 3_600_000 => *n as u64,
+                                _ => {
+                                    return Err(err(
+                                        &tf.path_of("p90_max_ms"),
+                                        "p90_max_ms must be an integer 2000..=3600000 (the approved P90 bound)",
+                                    ))
+                                }
+                            },
+                        };
+                        let min_edits = match tf.sub("min_edits") {
+                            None => 10,
+                            Some(mv) => match mv {
+                                CVal::Int(n) if *n >= 10 && *n <= 10_000 => *n as u64,
+                                _ => {
+                                    return Err(err(
+                                        &tf.path_of("min_edits"),
+                                        "min_edits must be an integer 10..=10000",
+                                    ))
+                                }
+                            },
+                        };
+                        Some(ProbeMnTurnaroundSpec { p90_max_ms, min_edits })
+                    }
+                };
                 // PLAN-919: the native lifecycle recipe's exit knobs
                 // (guest byte budget, cancellation after N work units,
                 // the Nth-allocation fault) — driven by the generated
@@ -2749,6 +2792,7 @@ fn decode_options(
                     declaration,
                     resource,
                     history,
+                    turnaround,
                 })
             }
         };
@@ -3137,6 +3181,22 @@ pub struct ProbeMnSpec {
     /// editing a body back to PREVIOUS session content must reuse the
     /// content-addressed store's history units instead of recompiling.
     pub history: Option<ProbeMnHistorySpec>,
+    /// PLAN-1000 (I11): the single-function edit turnaround oracle —
+    /// representative body edits after the first result must stay within
+    /// the approved P90 wall bound (858), judged from the parent-observed
+    /// per-edit windows.
+    pub turnaround: Option<ProbeMnTurnaroundSpec>,
+}
+
+/// PLAN-1000 (I11) turnaround oracle: judged parent-side from the REAL
+/// parent-observed per-edit windows (preparation -> IPC -> worker ->
+/// admission), never from worker-claimed walls alone.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeMnTurnaroundSpec {
+    /// The approved P90 bound in milliseconds (PLAN-858: 2000).
+    pub p90_max_ms: u64,
+    /// The minimum representative edits required.
+    pub min_edits: u64,
 }
 
 /// PLAN-1000 (I05) content-revisit oracle: judged parent-side from the
