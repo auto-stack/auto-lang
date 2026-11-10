@@ -2597,6 +2597,9 @@ fn run_incremental(
     // PLAN-914 (I04): declaration-oracle mismatches collected inside the
     // rounds window and merged into the final verdict after the loop.
     let mut decl_mismatches: Vec<Mismatch> = Vec::new();
+    // PLAN-1000 (I05): the content-revisit oracle, judged after the loop
+    // from the summed content-addressed cache hits.
+    let mut history_mismatches: Vec<Mismatch> = Vec::new();
     if case.spec.source.syntax != auto_test_case::contract::Syntax::Auto {
         return Err(format!(
             "{recipe} consumes .at sources; syntax {:?} is not accepted",
@@ -3301,6 +3304,10 @@ fn run_incremental(
     // path; the judged value is the LAST step's PE exit).
     let mut mismatches: Vec<Mismatch> = Vec::new();
     mismatches.extend(decl_mismatches);
+    if let Some(spec) = mn.history.as_ref() {
+        history_mismatches.extend(judge_history_revisit(&step_records, spec));
+    }
+    mismatches.extend(history_mismatches);
     if let Some((code, message)) = &diag {
         let stage = if let Some(fact) = &source_fact {
             // PLAN-911 strict: the RAW producer stage decides.
@@ -3901,6 +3908,38 @@ mod source_diag_tests {
 /// against the declared oracle — the cold-frontend invalidations actually
 /// recorded, the object-producer unit bound, and the resident MIR/COFF
 /// identity carry-over of the units the case names as UNAFFECTED.
+/// PLAN-1000 (I05): judge the content-revisit oracle from the session's
+/// REAL counters — the content-addressed COFF cache hits summed across all
+/// step records. An edit back to previous content that recompiled instead
+/// of reusing the history units fails here, never silently passes.
+fn judge_history_revisit(
+    step_records: &[serde_json::Value],
+    spec: &auto_test_case::contract::ProbeMnHistorySpec,
+) -> Vec<Mismatch> {
+    let hits: u64 = step_records
+        .iter()
+        .filter_map(|rec| {
+            rec.get("counters")
+                .and_then(|c| c.get("cache_hit_coff"))
+                .and_then(|v| v.as_u64())
+        })
+        .sum();
+    if hits < spec.min_cache_hit_coff {
+        vec![Mismatch {
+            observation: "cache_hit_coff".into(),
+            kind: "counter".into(),
+            expected: format!(
+                ">= {} (the revisit run reuses the content-addressed history units)",
+                spec.min_cache_hit_coff
+            ),
+            actual: format!("{hits}"),
+            first_diff: None,
+        }]
+    } else {
+        Vec::new()
+    }
+}
+
 fn judge_declaration_invalidation(
     ok: &serde_json::Value,
     spec: &auto_test_case::contract::ProbeMnDeclarationSpec,

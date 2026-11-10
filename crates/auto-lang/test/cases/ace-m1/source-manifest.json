@@ -442,9 +442,10 @@
   },
   "scenario_assets": {
     "dir": "order-layout-914",
-    "expected_count": 13,
+    "expected_count": 14,
     "files": {
-      "E01-E02.case.ad": "2186439e418089e30762513aaa153d4c133a31b15c85735ce3930f39aba8fb61",
+      "E01-E02.case.ad": "8a00300a5ceb6ab5749af6cf3474aa0e4cd55ba12d73b023a7200ea31adb5ed1",
+      "src/B09-914.at": "66cfe6d5ec89f26568ad16359e6564fe4ef2bc8edc53b0f4175e5c5962fad5b6",
       "oracle/m1_e01.rs": "7acd93d06e59ef3ba32a87c51d12f97724a764514b32effbfbf6993eabe31fa3",
       "oracle/m1_e02.rs": "ac4ae99cc81ba1481430d13b7490bd81910000faa2afbdef35e84d807029b4aa",
       "order-layout-914.suite.ad": "6cf8f0960ad31e3cc1fcb0330f2537395df970ffa6d7ccded8db818c2f33bbe4",

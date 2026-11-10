@@ -2450,6 +2450,7 @@ fn decode_options(
                         "diagnostics",
                         "declaration",
                         "resource",
+                        "history",
                     ],
                 )?;
                 let entry = req_str(&mf, "entry")?;
@@ -2605,6 +2606,36 @@ fn decode_options(
                         })
                     }
                 };
+                // PLAN-1000 (I05): the content-revisit oracle — belongs to
+                // the scalar recipe's incremental rounds; judged from the
+                // recorded content-addressed COFF cache hits.
+                let history = match mf.sub("history") {
+                    None => None,
+                    Some(v) => {
+                        if recipe != "ac/mir-native-scalar-v1" {
+                            return Err(err(
+                                &mf.path_of("history"),
+                                "the history oracle belongs to ac/mir-native-scalar-v1 only (the scalar incremental rounds have the content-addressed store)",
+                            ));
+                        }
+                        let hpath = mf.path_of("history");
+                        let hpairs = as_obj(v, &hpath)?;
+                        let hf = Fields::new(&hpath, hpairs, &["min_cache_hit_coff"])?;
+                        let min_cache_hit_coff = match hf.sub("min_cache_hit_coff") {
+                            None => 1,
+                            Some(mv) => match mv {
+                                CVal::Int(n) if *n >= 1 && *n <= 1024 => *n as u64,
+                                _ => {
+                                    return Err(err(
+                                        &hf.path_of("min_cache_hit_coff"),
+                                        "min_cache_hit_coff must be an integer 1..=1024",
+                                    ))
+                                }
+                            },
+                        };
+                        Some(ProbeMnHistorySpec { min_cache_hit_coff })
+                    }
+                };
                 // PLAN-919: the native lifecycle recipe's exit knobs
                 // (guest byte budget, cancellation after N work units,
                 // the Nth-allocation fault) — driven by the generated
@@ -2717,6 +2748,7 @@ fn decode_options(
                     diagnostics,
                     declaration,
                     resource,
+                    history,
                 })
             }
         };
@@ -3101,6 +3133,20 @@ pub struct ProbeMnSpec {
     pub declaration: Option<ProbeMnDeclarationSpec>,
     /// PLAN-919: the native lifecycle recipe's exit knobs.
     pub resource: Option<ProbeMnResourceSpec>,
+    /// PLAN-1000 (I05): the content-revisit oracle of the scalar recipe —
+    /// editing a body back to PREVIOUS session content must reuse the
+    /// content-addressed store's history units instead of recompiling.
+    pub history: Option<ProbeMnHistorySpec>,
+}
+
+/// PLAN-1000 (I05) content-revisit oracle: judged parent-side from the
+/// rounds' real counters (the content-addressed COFF cache hits), never
+/// from worker claims alone. Declared expectations never reach the worker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeMnHistorySpec {
+    /// The minimum total `cache_hit_coff` across the session's step
+    /// records (a revisit run reuses the earlier revision's objects).
+    pub min_cache_hit_coff: u64,
 }
 
 /// PLAN-919 ac/mir-native-resource-events-v1 binding: the R06 exit knobs

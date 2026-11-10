@@ -306,8 +306,8 @@ _CONTRACT_SHAS = {
     "legacy_base": "3f4f6da57b4dceaca74ae83ec13363f0bc53180516705bc7191d32665ac36a86",
     "legacy_base_probe": "3f4f6da57b4dceaca74ae83ec13363f0bc53180516705bc7191d32665ac36a86",
     "method_881": "7f89138bdac10eead48e82656361166b0056bdbdc2516205ec98df2fde647d98",
-    "order_layout_914": "2e10961dd9092a9beb5e4c30f8cfcbdb63bae73f70400999ad5a73eb7e4e2a04",
-    "order_layout_914_probe": "2e10961dd9092a9beb5e4c30f8cfcbdb63bae73f70400999ad5a73eb7e4e2a04",
+    "order_layout_914": "f03453415385ea890e8f50e8533e5ae0957f9eccbad17603d650bf4b0bedb21d",
+    "order_layout_914_probe": "f03453415385ea890e8f50e8533e5ae0957f9eccbad17603d650bf4b0bedb21d",
     "p823": "fa9f0c16ddc560ffe6f67b7c88747e0753055b52fcfc1d33636b5bec1fddd7ac",
     "p824": "81828390fa2242d22ef155060fa4658eecde90683d6690c06b7f043815879674",
     "p825": "712f6ceda41d40f13ebad85bb65ace4980ad255341364ef9076fd157a998ec65",
@@ -517,6 +517,12 @@ _PROBE_CHECK_CELLS = {
     # parent-enforced incremental contract (unaffected/whole/fallback == 0)
     # proves the CALLER was not recompiled — exactly the I02 oracle.
     ('ace.m1.i02.ace', 'callee-body-edit'): [('scenario', 'I02', 'ac')],
+    # PLAN-1000 I05:ac — the content revisit: edit forward then BACK to the
+    # original content; the judged runner oracle requires the content-
+    # addressed COFF cache hits (>= 1 cold) and the value follows the
+    # content back (120). Counterfactual-verified (min=99 FAILs with the
+    # real counter).
+    ('ace.m1.i05.ace', 'history-revisit-run'): [('scenario', 'I05', 'ac')],
     ('ace.m1.i04.ace', 'declaration'): [('scenario', 'I04', 'ac')],
     # PLAN-1000 I03:ac — the i09 refusal IS the I03 oracle: the callee's
     # SIGNATURE change (fn f(x int) -> fn f(x int, y int)) is refused with
