@@ -322,7 +322,7 @@ _CONTRACT_SHAS = {
     "p912": "285b032e3e805a68f1edb2001fa755d08d914b3d8fd5ab26c5922be063a213d0",
     "p913": "ed59394c341ee9d619c27130b1ac39f7cc8b6cbb587e0f1386ce2edc93abaa9a",
     "p915": "232fee99d683d9167f25f3133b596ee549101ca251424030ba6a52312d591023",
-    "p919": "0b854f06f964681d666263ae662f11cde3f0a89861eae5f9d0845b46ab821053",
+    "p919": "4f35d765e3930513baf3d2ca7cebc312d9f1a397dd919f2cf52b7ff77f339380",
     "p920": "463dd0868808bbcec5d690f74df352f517a320fc622dd70a2749a4f8cf206b35",
     "p923": "9cd4bec37499711623ee5389c375329948e9331836ad6ed9cdc2181df2745700",
     "p924": "188c5513d85bfbf5c5ac31f454fe634d3ba45b512a3ebb2c58070cbef50d6284",
@@ -536,6 +536,10 @@ _PROBE_CHECK_CELLS = {
     ('ace.m1.e02.ace', 'av-data'): [('scenario', 'E02', 'av')],
     ('ace.m1.e02.av', 'unused-declaration-carry'): [],
     ('ace.m1.t08', 'autovm'): [('corpus', 'T08', 'avm')],
+    # PLAN-1000 R06:avm — the legacy VM's own typed run-stage trap face for
+    # the R06 trap fixture (DivisionByZero with both frames owning live
+    # values; the budget/cancel arms are the av/mn specialized faces).
+    ('ace.m1.r06.avm', 'autovm'): [('scenario', 'R06', 'avm')],
     ('ace.m1.res-r01-av866', 'av-res-r01-continuity'): [('corpus', 'H01', 'av')],
     ('ace.m1.res-r02-av866', 'av-res-r02-online-swap'): [('corpus', 'H02', 'av'), ('scenario', 'I08', 'av')],
     ('ace.m1.res-r03-av866', 'av-res-r03-churn-two-swaps'): [('corpus', 'H03', 'av')],

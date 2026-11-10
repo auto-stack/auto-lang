@@ -491,7 +491,7 @@
     "expected_count": 7,
     "files": {
       "resource-events-919.suite.ad": "d63242b0cbc3b191fa7d0d7852536d6c9c4a3798fabd57a53808f1a649c422dc",
-      "resource-events.case.ad": "17f05dd2bee37dee256756c1cb65bb15d6975c0a51ee65d3c9aa7805c28ec192",
+      "resource-events.case.ad": "0ca6fdbd5fa0d9e32ad4514f4e3f4e8864bc32ad3f064f66e46b858736c01ae3",
       "src/R01-mn.at": "8717940e7dd16edc169228a26cb84c8caf1f5c83352785e422ce7e8fe06ebdd7",
       "src/R01-owned.at": "b34aabb67fa6d43700f1db60799202c82177bcd02153c64a16566be7f92fbe1c",
       "src/R04-919.at": "80b1d5639e6941b44d02135d6bacf3eae6cbd69b27bceda9d30e1d7ffa2fef2a",

@@ -141,6 +141,21 @@ case {
 ```test-case
 case {
   schema: "autolang.case/2"
+  id: "ace.m1.r06.avm"
+  tags: ["ace-m1", "scenario", "resource-events-919"]
+  links: ["PLAN-919"]
+  source: { file: "src/R06-trap.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: { stage: "run", code: "DivisionByZero" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
   id: "ace.m1.r06-trap.av"
   tags: ["ace-m1", "scenario", "resource-events-919"]
   links: ["PLAN-919"]
