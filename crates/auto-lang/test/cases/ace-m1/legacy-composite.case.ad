@@ -5,9 +5,6 @@
 # checks compare frozen golden bytes only — the composite emitter output
 # is NOT compilable Rust (List<int>.new() pseudo-syntax), so certified-
 # run rows for composites stay a registered gap (a2r lowering owner).
-# PLAN-1000 I12: the two control-red cases at the end (red.i12-avm /
-# red.i12-a2r) FAIL BY DESIGN with real mismatches (registered in
-# case-control-oracles.json) — the harness's own VM/A2R negative controls.
 
 ```test-case
 case {
@@ -257,37 +254,6 @@ case {
     { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_v07" },
       expect: { completion: "success", artifacts: [
         { path: "m1_v07.rs", file: "oracle/m1_v07.rs", compare: "bytes" } ] } }
-  ]
-}
-```
-
-```test-case
-case {
-  schema: "autolang.case/2"
-  id: "ace.m1.red.i12-avm"
-  tags: ["ace-m1", "legacy-only", "control-red"]
-  links: ["PLAN-852"]
-  source: { file: "src/B01.at", syntax: "auto", path: "main.at" }
-  entry: { mode: "program" }
-  checks: [
-    { id: "autovm-wrong-value", adapter: "avm", action: "run",
-      expect: { completion: "success", result: { format: "legacy-display", text: "15" } } },
-  ]
-}
-```
-
-```test-case
-case {
-  schema: "autolang.case/2"
-  id: "ace.m1.red.i12-a2r"
-  tags: ["ace-m1", "legacy-only", "control-red"]
-  links: ["PLAN-852"]
-  source: { file: "src/B01.at", syntax: "auto", path: "main.at" }
-  entry: { mode: "program" }
-  checks: [
-    { id: "a2r-wrong-golden", adapter: "a2r", action: "emit", options: { module_name: "m1_b01" },
-      expect: { completion: "success", artifacts: [
-        { path: "m1_b01.rs", file: "oracle/m1_k01.rs", compare: "bytes" } ] } },
   ]
 }
 ```

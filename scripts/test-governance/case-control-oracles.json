@@ -58,14 +58,14 @@
    "evidence": "PLAN-939: actual and independently compiled C reference each return 8; parent oracle 9 must mismatch both"
   },
   {
-   "suite": "ace-m1-base",
+   "suite": "ace-m1-native-diags-911",
    "case": "ace.m1.red.i12-avm",
    "check": "autovm-wrong-value",
    "expected_status": "FAIL",
    "evidence": "PLAN-1000 I12:avm — the harness's own VM negative control: the real B01 run yields 14; a wrong-value expectation must FAIL with a genuine result mismatch (admission only closes the cell on an actual FAIL with real mismatches)"
   },
   {
-   "suite": "ace-m1-base",
+   "suite": "ace-m1-native-diags-911",
    "case": "ace.m1.red.i12-a2r",
    "check": "a2r-wrong-golden",
    "expected_status": "FAIL",

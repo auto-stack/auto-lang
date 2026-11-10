@@ -287,6 +287,14 @@ def run_python(group, output, env, discover_only=False):
     argv = [*base]
     for name in active:
         argv += ['--case', name]
+    # Windows argv relief: hand the exact case list via a file when the
+    # inline form would cross the OS command-line limit (PLAN-1000: the
+    # arch acceptance suite outgrew the 32K ceiling).
+    import subprocess as _sp
+    if os.name == 'nt' and len(_sp.list2cmdline(argv).encode('utf-16-le')) > 30000:
+        case_file = output / 'python-cases.txt'
+        case_file.write_text(chr(10).join(active), encoding='utf-8')
+        argv = [*base, '--case-file', str(case_file)]
     result, execution = invoke(argv, ROOT, env, output, 'run')
     reports = [json.loads(line) for line in result.stdout.decode().splitlines() if line.startswith('{')]
     if len(reports) != 1 or reports[0].get('selected') != active or reports[0].get('executed') != len(active):

@@ -6150,7 +6150,7 @@
  "expanded_contracts": {
   "legacy": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/legacy-required-map.json",
-   "sha256": "8c4be38f04c1a26c5a876c7203b7a71c7ed60a7285c2fda7b12af7280efbf703"
+   "sha256": "62128f41c55c6797ce0506566028fd64dc8b9e8198e78238d51ba9bb57405bc5"
   },
   "q4": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/q4-source-contracts.tsv",
@@ -6162,7 +6162,7 @@
   },
   "budget": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/original-budget-contracts.json",
-   "sha256": "424808ea37d4fb92a42cdc4c0b35ede2109703d53cb6a27a21d427abb2e853dc"
+   "sha256": "a821bc6073ba495628e667e233dabe091d546646860a5cbd6529aa5243a4b23d"
   },
   "text_reference": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/text-reference-contracts.tsv",
@@ -6242,27 +6242,27 @@
   },
   "legacy_base": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/legacy-base-contract.json",
-   "sha256": "6f052ba15a1765625177df159ac5387b7c0efa8871a1406c2bdb961e2d41ccd7"
+   "sha256": "b66a4134f22e5526f3700e19cd74f5105baa7a199d36a51dff99a7538476e78e"
   },
   "ct_mechanisms": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-source-mechanisms-contract.json",
-   "sha256": "cc4c1a0a0009fb6e132a6a4ef44816f73e01941c1e1c50db7ec4ca1e9a53749b"
+   "sha256": "594c2e5fa1f739ec161ee454b0ea336b913bb4f71df35097c2beb0456d987419"
   },
   "ct_child": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-child-contract.json",
-   "sha256": "e4e001d9ae717e25d95c906fb71dd8ed91869a441124feddbeda21bd451cb35b"
+   "sha256": "ef2fb7b2d9399624b4daae185b9cc040a847785e19613a02b8c3f02b67504622"
   },
   "ct_meta": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-meta-contract.json",
-   "sha256": "a413de5ced8542ac0880cc623312e6d46330b9a1786049f805a9a0f2806d0e75"
+   "sha256": "565607b84715dd9dc38ca5abb479696ea41509cd0ad2fa5602c2a68b1b68c515"
   },
   "ct_restore": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-restore-contract.json",
-   "sha256": "2ae95c11b1215d7e55969c344b8f519f43d2f4c28ac14a40bf79a6c61a309794"
+   "sha256": "02ac2ff3eee309565a3ef98407c8ca17340db992c13e8c293bb57017579915ef"
   },
   "sq_facts": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/sq-fact-contract.json",
-   "sha256": "9e3c40cd51e0936b7e709ebf8c22f37acfd610a0c64ef045aac0bed990fdad8e"
+   "sha256": "4d8b32fbc5365570a92eafb2beccb6cde3e15caf2b63ceee016238c6d58acea9"
   },
   "syntax_arch": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/syntax-architecture-contract.json",
@@ -6270,7 +6270,7 @@
   },
   "legacy_arch": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/legacy-architecture-contract.json",
-   "sha256": "3fa789ee9268f632ab66e082e3891484b288159c8a376fed5e7cfe25b9800639"
+   "sha256": "f4947cd03862b73e625d919ced81e7c28e34fb1912bd1a0d8cef4f401b01af93"
   }
  },
  "awaiting_d": [],

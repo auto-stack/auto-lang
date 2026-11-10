@@ -15,7 +15,7 @@ DECISION = 'docs/plans/reports/ace-m1-scope-decision-2026-10-28.md'
 INPUTS = {
     CORPUS + 'binding.tsv': 'e12b4e782d17eeee1aea71e02f505977b8f2b47893dfe6e0bb765af8ad79b16a',
     CORPUS + 'applicability.json': '74c9109bbe7ec8596e6fa1bbc2ab9f4f5640725a748d0e63e53eb5e07ee275c0',
-    CORPUS + 'source-manifest.json': '71e98e70c01bac18fc59d4fe31ea18c349f957c26fdb084c85ba0c333b3c0248',
+    CORPUS + 'source-manifest.json': 'e592ccb4c05c73b3b40eb8a8012c59a9f3f2f0c7f8a781d78129264ff41303e5',
     DECISION: '874ccc1198bf23c284fa588a6dfcdee80eecc8f5a0e392b88b34ddd74db0875b',
 }
 REQUIRED_SHA256 = '35ad43aae27ffb2d2c9a162c3dd5b99f971e4cd7b2ed36f4fe747a5634bd770e'
