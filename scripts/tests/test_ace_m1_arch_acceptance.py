@@ -3562,6 +3562,59 @@ class QueryRefusalCommandTests(unittest.TestCase):
             with self.subTest(terminal=terminal),self.assertRaises(m.AdmissionError):
                 cert_evidence.admit_command(self.scope,'unit.command.json',request,producer,expected_exit=terminal)
 
+    def test_typed_frontdoor_channel_certifies_only_the_matching_oracle(self):
+        # PLAN-1000 F-1000-02 (GAP-941-A2X-DIAG-01 closure): the structured
+        # diagnostics carry the semantic authority; the rendered detail must
+        # re-derive from the causes verbatim.
+        source=b'fn main() int { return true + 1 }'
+        contract=dict(family='source-query',source_sha256=hashlib.sha256(source).hexdigest(),
+                      oracle_value='source.type-mismatch')
+        request=dict(op='daily-emit',profile='scalar',source_path='X:/src/neg.at')
+        def response(stage,code,*,detail=None,causes=1,span=(4,8)):
+            snap=dict(schema='a2x.source-diagnostic/1',mode='typed-negative/1',producer='a2x-worker',
+                      profile='scalar',path='X:/src/neg.at',
+                      source_sha256=contract['source_sha256'],source_len=len(source),
+                      causes=[dict(stage=stage if i==0 else 'bind',code=code if i==0 else 'other',
+                                   message=f'expected i32 {i}',span=dict(start=span[0],end=span[1]))
+                              for i in range(causes)],primary=0)
+            rendered='frontend diagnostics: '+'; '.join(
+                f"{c['code']}: {c['message']}" for c in snap['causes'])
+            return dict(status='error',detail=detail if detail is not None else rendered,diagnostics=snap)
+        # the matching oracle closes; extra causes keep the FIRST primary
+        value=query_evidence.typed_frontdoor_observation(response('verify','source.type-mismatch'),request,contract,source)
+        self.assertEqual(value['judgement'],'PASS');self.assertEqual(value['observed']['kind'],'typed-frontdoor-refusal')
+        self.assertEqual(query_evidence.typed_frontdoor_observation(
+            response('verify','source.type-mismatch',causes=3),request,contract,source)['judgement'],'PASS')
+        # wrong stage or code FAILs (never UNOBSERVED: the typed facts disagree)
+        self.assertEqual(query_evidence.typed_frontdoor_observation(
+            response('bind','source.type-mismatch'),request,contract,source)['judgement'],'FAIL')
+        self.assertEqual(query_evidence.typed_frontdoor_observation(
+            response('verify','type-mismatch'),request,contract,source)['judgement'],'FAIL')
+        # an instances-family oracle expects the bind stage
+        contract2=dict(family='source-instances',source_sha256=contract['source_sha256'],oracle_value='type-mismatch')
+        self.assertEqual(query_evidence.typed_frontdoor_observation(
+            response('bind','type-mismatch'),request,contract2,source)['judgement'],'PASS')
+        # free-text divergence between detail and causes refuses
+        for bad in (response('verify','source.type-mismatch',detail='frontend diagnostics: something else: x'),
+                    response('verify','source.type-mismatch',detail='a2x.compile: source.type-mismatch: expected i32 0')):
+            with self.assertRaises(m.AdmissionError):
+                query_evidence.typed_frontdoor_observation(bad,request,contract,source)
+        # malformed typed shapes refuse: bad span bounds, wrong source hash,
+        # non-zero primary, foreign schema, non-UTF-8 span boundary
+        bad_span=response('verify','source.type-mismatch',span=(len(source)+1,len(source)+2))
+        with self.assertRaises(m.AdmissionError):
+            query_evidence.typed_frontdoor_observation(bad_span,request,contract,source)
+        mutated=response('verify','source.type-mismatch')
+        mutated['diagnostics']['source_sha256']='0'*64
+        with self.assertRaises(m.AdmissionError):
+            query_evidence.typed_frontdoor_observation(mutated,request,contract,source)
+        mutated=response('verify','source.type-mismatch');mutated['diagnostics']['primary']=1
+        with self.assertRaises(m.AdmissionError):
+            query_evidence.typed_frontdoor_observation(mutated,request,contract,source)
+        mutated=response('verify','source.type-mismatch');mutated['diagnostics']['schema']='a2x.diagnostic/2'
+        with self.assertRaises(m.AdmissionError):
+            query_evidence.typed_frontdoor_observation(mutated,request,contract,source)
+
     def test_rendered_frontdoor_errors_never_supply_typed_semantic_authority(self):
         for detail in ('frontend diagnostics: source.type-mismatch: expected i32, found bool',
                        'a2x.compile: type-mismatch: expected bool, found i32','both wrong'):
