@@ -510,6 +510,11 @@ pub fn try_ensure_workspace_for(
     project_dir: &Path,
     requirements: WorkspaceRequirements,
 ) -> AutoResult<PathBuf> {
+    // PLAN-1003: resolve the managed debug policy before anything is
+    // written — an unknown or conflicting policy fails with a named
+    // diagnosis and leaves every managed file (manifest/config/receipts)
+    // untouched.
+    let debug_policy = crate::generated_build::resolve_debug_policy()?;
     // Stage B P-2: landing point by resolution order (env → in-framework
     // shared ws → project-local); the rel-path anchors below are computed
     // from this actual landing dir.
@@ -607,6 +612,14 @@ pub fn try_ensure_workspace_for(
         .collect::<Vec<_>>()
         .join(",\n");
 
+    // PLAN-1003: the managed root manifest carries the effective debug
+    // policy block (strategy C default; marker-only under `full`). Placed
+    // here — the workspace root manifest — so every cargo invocation
+    // resolving this workspace (managed spawn or manual run, any cwd) sees
+    // the same effective profile; a `.cargo/config.toml` placement would be
+    // cwd-discovery-dependent (F-910-R1-01/905 root-cause family).
+    let profile_block = crate::generated_build::managed_profile_toml(debug_policy.policy);
+
     let content = format!(
         r#"[workspace]
 members = [
@@ -634,7 +647,7 @@ hyper = {{ version = "1", features = ["http1", "server"] }}
 hyper-util = {{ version = "0.1", features = ["tokio", "server-auto", "service", "http1"] }}
 serde = {{ version = "1", features = ["derive"] }}
 tower-http = {{ version = "0.5", features = ["cors"] }}
-"#
+{profile_block}"#
     );
 
     // PLAN-910: never rewrite unchanged bytes — the manifest/config are part
@@ -1035,6 +1048,167 @@ mod plan842_tests {
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    /// PLAN-1003 V-01/V-02 controls (child-probe env isolation, same pattern
+    /// as the 842/910 probes): the default ensure writes strategy C into the
+    /// managed root manifest and is byte/mtime stable on re-ensure; `full`
+    /// omits the section (marker only) on an isolated context; an unknown
+    /// policy and an explicit-policy/partial conflict fail with a named
+    /// diagnosis before any managed file is overwritten; a user partial
+    /// under the unset default is kept, recorded and isolated.
+    #[test]
+    fn workspace_debug_policy_default_full_and_negative_controls() {
+        const CHILD: &str = "PLAN1003_DEBUG_POLICY_PROBE";
+        if let Ok(mode) = std::env::var(CHILD) {
+            let project = PathBuf::from(std::env::var_os("PLAN1003_PROJECT").unwrap());
+            let ws = resolve_rust_workspace_dir(&project);
+            let manifest_path = ws.join("Cargo.toml");
+            let result = try_ensure_workspace_for(&project, WorkspaceRequirements::Service);
+            match mode.as_str() {
+                "default" | "partial" => {
+                    result.unwrap();
+                    let manifest = fs::read_to_string(&manifest_path).unwrap();
+                    assert!(
+                        manifest.contains("[profile.dev]\ndebug = \"line-tables-only\""),
+                        "{manifest}"
+                    );
+                    assert!(
+                        manifest.contains("[profile.dev.package.\"*\"]\ndebug = false"),
+                        "{manifest}"
+                    );
+                    assert!(!manifest.contains("[profile.release"), "{manifest}");
+                    // Re-ensure: bytes and mtime stable (no spurious rebuild).
+                    let mtime = fs::metadata(&manifest_path).unwrap().modified().unwrap();
+                    std::thread::sleep(std::time::Duration::from_millis(30));
+                    try_ensure_workspace_for(&project, WorkspaceRequirements::Service).unwrap();
+                    assert_eq!(fs::read_to_string(&manifest_path).unwrap(), manifest);
+                    assert_eq!(
+                        fs::metadata(&manifest_path).unwrap().modified().unwrap(),
+                        mtime
+                    );
+                    let context = crate::generated_build::GeneratedBuildContext::resolve(
+                        &project,
+                        &ws,
+                        WorkspaceRequirements::Service,
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        context.debug_policy,
+                        if mode == "default" {
+                            "c"
+                        } else {
+                            "c+user:CARGO_PROFILE_DEV_DEBUG"
+                        }
+                    );
+                    println!("PLAN1003_CTX={}", context.context_id);
+                }
+                "full" => {
+                    result.unwrap();
+                    let manifest = fs::read_to_string(&manifest_path).unwrap();
+                    assert!(!manifest.contains("[profile.dev"), "{manifest}");
+                    assert!(
+                        manifest.contains("AUTO_GENERATED_DEBUG_POLICY=full"),
+                        "{manifest}"
+                    );
+                    let context = crate::generated_build::GeneratedBuildContext::resolve(
+                        &project,
+                        &ws,
+                        WorkspaceRequirements::Service,
+                    )
+                    .unwrap();
+                    assert_eq!(context.debug_policy, "full");
+                    println!("PLAN1003_CTX={}", context.context_id);
+                }
+                _ => {
+                    let error = result.unwrap_err().to_string();
+                    assert!(error.contains("AUTO_GENERATED_DEBUG_POLICY"), "{error}");
+                    assert_eq!(fs::read(&manifest_path).unwrap(), b"previous manifest");
+                }
+            }
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let lang = tmp.path().join("auto-lang");
+        fs::create_dir_all(&lang).unwrap();
+        fs::write(lang.join("Cargo.toml"), "[workspace]\n").unwrap();
+        for name in ["auto-lang", "auto-lang-core", "a2r-std", "auto-media-core"] {
+            let package = lang.join("crates").join(name);
+            fs::create_dir_all(package.join("src")).unwrap();
+            fs::write(
+                package.join("Cargo.toml"),
+                format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n"),
+            )
+            .unwrap();
+            fs::write(package.join("src/lib.rs"), "").unwrap();
+        }
+        let mut contexts = std::collections::BTreeMap::new();
+        for mode in ["default", "full", "partial", "unknown", "conflict"] {
+            let project = tmp.path().join(mode).join("project");
+            let ws = project.join("workspace");
+            // One generated member under the managed root.
+            let member = ws.join("app");
+            fs::create_dir_all(member.join("src")).unwrap();
+            fs::write(
+                member.join("Cargo.toml"),
+                "[package]\nname = \"app\"\nversion = \"0.1.0\"\n",
+            )
+            .unwrap();
+            fs::write(member.join("src/main.rs"), "fn main() {}").unwrap();
+            if matches!(mode, "unknown" | "conflict") {
+                fs::write(ws.join("Cargo.toml"), b"previous manifest").unwrap();
+            }
+            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            command
+                .args(["--exact", "rust_workspace::plan842_tests::workspace_debug_policy_default_full_and_negative_controls", "--nocapture"])
+                .env(CHILD, mode)
+                .env("PLAN1003_PROJECT", &project)
+                .env("AUTO_RUST_WORKSPACE", &ws)
+                .env("AUTO_LANG_ROOT", &lang)
+                .env_remove("AUTO_DELIVERY_SOURCE_ROOT")
+                .env_remove("AUTO_LANG_CRATE")
+                .env_remove("CARGO_TARGET_DIR")
+                .env_remove("RUSTFLAGS")
+                .env_remove("CARGO_ENCODED_RUSTFLAGS")
+                .env_remove(crate::generated_build::TARGET_ROOT_ENV)
+                .env_remove(crate::generated_build::DEBUG_POLICY_ENV)
+                .env_remove("CARGO_PROFILE_DEV_DEBUG");
+            match mode {
+                "full" => {
+                    command.env(crate::generated_build::DEBUG_POLICY_ENV, "full");
+                }
+                "partial" => {
+                    command.env("CARGO_PROFILE_DEV_DEBUG", "2");
+                }
+                "unknown" => {
+                    command.env(crate::generated_build::DEBUG_POLICY_ENV, "bogus");
+                }
+                "conflict" => {
+                    command
+                        .env(crate::generated_build::DEBUG_POLICY_ENV, "c")
+                        .env("CARGO_PROFILE_DEV_DEBUG", "2");
+                }
+                _ => {}
+            }
+            let output = command.output().unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            assert!(
+                output.status.success(),
+                "{mode}: {stdout} {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            if let Some(id) = stdout
+                .lines()
+                .find_map(|line| line.strip_prefix("PLAN1003_CTX="))
+            {
+                contexts.insert(mode, id.trim().to_string());
+            }
+        }
+        // Non-default effective policies never share the default's root.
+        assert_eq!(contexts.len(), 3, "{contexts:?}");
+        assert_ne!(contexts["default"], contexts["full"]);
+        assert_ne!(contexts["default"], contexts["partial"]);
+        assert_ne!(contexts["full"], contexts["partial"]);
     }
 
     #[test]

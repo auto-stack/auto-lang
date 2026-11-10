@@ -42,6 +42,140 @@ pub const CONTEXT_FILE: &str = "context.json";
 pub const MEMBER_FILE: &str = "member.json";
 pub const FRONT_RECEIPT_FILE: &str = "generation.json";
 pub const LEASE_DIR: &str = ".lease";
+
+// ---------------------------------------------------------------------------
+// Managed debug policy (PLAN-1003, strategy C production default)
+// ---------------------------------------------------------------------------
+
+/// Explicit override for the managed generated-consumer debug policy.
+/// Unset/empty = managed default (strategy C). Legal values: `c`/`default`
+/// (assert C explicitly) and `full` (complete debug recovery — the
+/// generator then writes no `[profile.dev]` section at all, so cargo's dev
+/// default applies to members AND dependencies; `"*"` has no env-override
+/// form, which is exactly why full recovery must come from the generator).
+pub const DEBUG_POLICY_ENV: &str = "AUTO_GENERATED_DEBUG_POLICY";
+/// The single cargo-native partial override that participates in the
+/// debug-policy identity (members-only effect). Boundary: every other
+/// `CARGO_PROFILE_DEV_*` key stays a cargo-owned fingerprint input.
+const DEV_DEBUG_ENV: &str = "CARGO_PROFILE_DEV_DEBUG";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DebugPolicy {
+    /// Strategy C (2026-11-10 user ruling): workspace members keep line
+    /// tables, every non-member package (incl. path dependencies) carries
+    /// no debug info; incremental compilation untouched.
+    ManagedC,
+    /// Complete debug recovery: no managed `[profile.dev]` section.
+    Full,
+}
+
+/// The effective debug policy for generated consumers: policy + stable
+/// identity label + audit origin + an optional cargo-native user partial
+/// override (kept and recorded, never overwritten).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DebugPolicySelection {
+    pub policy: DebugPolicy,
+    /// Stable label recorded in context.json/receipts: `c` | `full` |
+    /// `c+user:CARGO_PROFILE_DEV_DEBUG`. An override arm never carries the
+    /// plain `c` label.
+    pub label: String,
+    /// Audit origin: `managed-default` | `AUTO_GENERATED_DEBUG_POLICY` |
+    /// `user-env:CARGO_PROFILE_DEV_DEBUG`.
+    pub source: String,
+    /// Cargo-native partial override (name + raw value); hashed into the
+    /// context identity so differing values never share a cache root.
+    user_partial: Option<(&'static str, String)>,
+}
+
+/// Resolve the effective managed debug policy from the environment.
+/// Unset (managed default, lowest priority) tolerates the cargo-native
+/// partial override as a kept+recorded user override; an explicitly
+/// asserted policy refuses it as a named conflict (the result would no
+/// longer be the asserted policy). Unknown values are a named error.
+pub fn resolve_debug_policy() -> AutoResult<DebugPolicySelection> {
+    let explicit = std::env::var_os(DEBUG_POLICY_ENV)
+        .map(|value| value.to_string_lossy().trim().to_string())
+        .filter(|value| !value.is_empty());
+    let policy = match explicit.as_deref() {
+        None => DebugPolicy::ManagedC,
+        Some("c") | Some("default") => DebugPolicy::ManagedC,
+        Some("full") => DebugPolicy::Full,
+        Some(other) => {
+            return Err(format!(
+                "未知生成调试策略 {DEBUG_POLICY_ENV}={other}（合法值: c|full；\
+                 完整调试恢复用 full，缺省即受管 c）"
+            )
+            .into());
+        }
+    };
+    let partial = std::env::var_os(DEV_DEBUG_ENV)
+        .map(|value| value.to_string_lossy().to_string())
+        .filter(|value| !value.trim().is_empty());
+    if let (Some(set), Some(value)) = (&explicit, &partial) {
+        return Err(format!(
+            "生成调试策略冲突: {DEBUG_POLICY_ENV}={set} 与 {DEV_DEBUG_ENV}={value} 并存\
+             （显式策略不静默改形；完整调试请用 full 并移除 {DEV_DEBUG_ENV}，\
+             仅成员级临时调试请清空 {DEBUG_POLICY_ENV}）"
+        )
+        .into());
+    }
+    let is_explicit = explicit.is_some();
+    let (label, source, user_partial) = match (policy, partial) {
+        (DebugPolicy::ManagedC, None) => (
+            "c",
+            if is_explicit {
+                DEBUG_POLICY_ENV
+            } else {
+                "managed-default"
+            },
+            None,
+        ),
+        (DebugPolicy::Full, None) => ("full", DEBUG_POLICY_ENV, None),
+        (DebugPolicy::ManagedC, Some(value)) => (
+            "c+user:CARGO_PROFILE_DEV_DEBUG",
+            "user-env:CARGO_PROFILE_DEV_DEBUG",
+            Some((DEV_DEBUG_ENV, value)),
+        ),
+        // Unreachable: an explicit full with a partial is refused above.
+        (DebugPolicy::Full, Some(_)) => ("full", DEBUG_POLICY_ENV, None),
+    };
+    Ok(DebugPolicySelection {
+        policy,
+        label: label.to_string(),
+        source: source.to_string(),
+        user_partial,
+    })
+}
+
+impl DebugPolicySelection {
+    /// Context-identity key part. `None` for the plain managed default: the
+    /// legacy id formula (schema+producer+flags) stays byte-identical, so
+    /// existing cache roots and Web release closures survive the C
+    /// migration (dev units migrate in place via cargo fingerprints;
+    /// PLAN-1003 T-01 frozen decision). Every other effective policy —
+    /// explicit `full` or a user partial override — gets its own root.
+    pub fn context_key(&self) -> Option<String> {
+        match &self.user_partial {
+            None if self.policy == DebugPolicy::ManagedC => None,
+            None => Some("policy:full".to_string()),
+            Some((name, value)) => Some(format!("user:{name}:{}", sha256_hex(&[value]))),
+        }
+    }
+}
+
+/// Managed `[profile.dev]` block for generated workspace roots (dev only —
+/// release profiles are never written; PLAN-1003 probe: cargo 1.98 applies
+/// both tables from a virtual root manifest, members
+/// `debuginfo=line-tables-only`, non-members stripped, incremental kept).
+/// Single source consumed by the shared workspace root manifest AND the
+/// delivery root manifest; `Full` returns only a marker comment line so the
+/// effective policy stays observable in the manifest itself.
+pub fn managed_profile_toml(policy: DebugPolicy) -> String {
+    match policy {
+        DebugPolicy::ManagedC => "\n# PLAN-1003 受管生成消费者调试策略C（用户裁定 2026-11-10）：workspace 成员保留\n# 行号表，非成员依赖（含 path 依赖）不产调试信息；增量编译不变。完整调试恢复：\n# AUTO_GENERATED_DEBUG_POLICY=full（生成器届时省略本段，cargo 默认 dev 全量）。\n[profile.dev]\ndebug = \"line-tables-only\"\n\n[profile.dev.package.\"*\"]\ndebug = false\n".to_string(),
+        DebugPolicy::Full => "\n# PLAN-1003: AUTO_GENERATED_DEBUG_POLICY=full — 受管调试策略段省略（cargo 默认 dev 全量调试，成员+依赖）。\n".to_string(),
+    }
+}
 /// MSVC deep-view stack reserve kept for generated Windows UI apps (PLAN-039
 /// T-04; the language repo's own 32MiB applies to tooling only).
 const MANAGED_MSVC_STACK_FLAG: &str = "-C\u{1f}link-arg=/STACK:268435456";
@@ -94,6 +228,11 @@ pub struct GeneratedBuildContext {
     /// How the producer was selected (env var name, "安装 SDK", discovery
     /// arm, "编译期语言源"): audit record, not part of the context key.
     pub producer_origin: String,
+    /// Effective managed debug policy label (PLAN-1003): `c` | `full` |
+    /// `c+user:CARGO_PROFILE_DEV_DEBUG`.
+    pub debug_policy: String,
+    /// Audit origin of the effective policy.
+    pub debug_policy_source: String,
 }
 
 fn sha256_hex(parts: &[&str]) -> String {
@@ -311,7 +450,17 @@ impl GeneratedBuildContext {
             (None, None) => "managed:none".to_string(),
         };
         let producer_key = canonical_key(&producer_root);
-        let context_id = sha256_hex(&[CONTEXT_SCHEMA, &producer_key, &flags_key])[..8].to_string();
+        // PLAN-1003: the debug policy joins the identity only when it
+        // deviates from the managed default — the default keeps the legacy
+        // three-part hash input byte-identical (existing roots and Web
+        // release caches survive; non-default policies get isolated roots).
+        let debug = resolve_debug_policy()?;
+        let debug_key = debug.context_key();
+        let mut id_parts = vec![CONTEXT_SCHEMA, producer_key.as_str(), flags_key.as_str()];
+        if let Some(key) = debug_key.as_deref() {
+            id_parts.push(key);
+        }
+        let context_id = sha256_hex(&id_parts)[..8].to_string();
         let mode = if let Some(raw) = std::env::var_os(TARGET_ROOT_ENV) {
             let root = validate_explicit_root(
                 Path::new(&raw),
@@ -362,6 +511,8 @@ impl GeneratedBuildContext {
             user_flags_override: user_flags.map(|(name, _)| name.to_string()),
             toolchain: toolchain_summary(),
             producer_origin: origin,
+            debug_policy: debug.label,
+            debug_policy_source: debug.source,
         })
     }
 
@@ -417,6 +568,8 @@ impl GeneratedBuildContext {
             "user_flags_override": self.user_flags_override,
             "toolchain": self.toolchain,
             "producer_origin": origin,
+            "debug_policy": self.debug_policy,
+            "debug_policy_source": self.debug_policy_source,
         });
         write_if_changed(&path, format!("{record}\n").as_bytes()).map(|_| ())
     }
@@ -937,6 +1090,10 @@ pub struct FrontReceipt {
     /// cargo `[[bin]]` target name (`<bin_name>-<id8>`, unique in the root).
     pub cargo_bin: Option<String>,
     pub release: bool,
+    /// Effective managed debug policy at build time (PLAN-1003). `None` =
+    /// legacy pre-policy receipt — never fresh for a policy-carrying
+    /// context; a policy switch must never reuse the old artifact.
+    pub debug_policy: Option<String>,
 }
 
 impl FrontReceipt {
@@ -948,6 +1105,7 @@ impl FrontReceipt {
             "workspace_lock": self.workspace_lock,
             "context_id": self.context_id,
             "target_root": self.target_root,
+            "debug_policy": self.debug_policy,
             "artifact": {
                 "exe": self.exe,
                 "exe_sha256": self.exe_sha256,
@@ -999,6 +1157,10 @@ impl FrontReceipt {
                 .and_then(|t| t.as_str())
                 .unwrap_or("")
                 .to_string(),
+            debug_policy: value
+                .get("debug_policy")
+                .and_then(|p| p.as_str())
+                .map(str::to_string),
             exe: artifact
                 .get("exe")
                 .and_then(|e| e.as_str())
@@ -1032,17 +1194,44 @@ impl FrontReceipt {
     pub fn inputs_match(&self, _project_dir: &Path, current: &BTreeMap<String, String>) -> bool {
         !self.inputs.is_empty() && &self.inputs == current
     }
+
+    /// PLAN-1003: the receipt was built under the context's effective debug
+    /// policy. `None` (legacy) or a differing label is stale — a policy
+    /// switch (or a forged label on a differently-built exe, which carries
+    /// a different context_id under non-default policies) must never reuse
+    /// the previously published artifact.
+    pub fn debug_policy_matches(&self, context: &GeneratedBuildContext) -> bool {
+        self.debug_policy.as_deref() == Some(context.debug_policy.as_str())
+    }
 }
 
 /// Discover the published front exe for a project (receipt-first; the caller
 /// may keep convention probing as a legacy fallback). Returns None when no
-/// fresh receipt or the published exe is gone.
+/// fresh receipt or the published exe is gone. PLAN-1003: the receipt's
+/// debug policy must match the currently effective policy and the published
+/// bytes must match the recorded hash — a policy-stale or swapped same-name
+/// exe is never discovered (the build path republishes after rebuilding).
 pub fn discover_front_exe(project_dir: &Path) -> Option<PathBuf> {
     let ws_dir = crate::rust_workspace::resolve_rust_workspace_dir(project_dir);
     let member = ws_dir.join(member_dir_name(project_dir, MemberRole::Front));
     let receipt = FrontReceipt::read(&member)?;
-    let exe = PathBuf::from(receipt.exe?);
-    exe.is_file().then_some(exe)
+    let exe = PathBuf::from(receipt.exe.clone()?);
+    if !exe.is_file() {
+        return None;
+    }
+    let context = GeneratedBuildContext::resolve(
+        project_dir,
+        &ws_dir,
+        crate::rust_workspace::WorkspaceRequirements::Ui,
+    )
+    .ok()?;
+    if !receipt.debug_policy_matches(&context) {
+        return None;
+    }
+    match (&receipt.exe_sha256, file_sha256(&exe)) {
+        (Some(recorded), Ok(actual)) if recorded == &actual => Some(exe),
+        _ => None,
+    }
 }
 
 pub fn file_sha256(path: &Path) -> io::Result<String> {
@@ -1353,6 +1542,154 @@ mod plan910_tests {
         }
     }
 
+    /// PLAN-1003 V-01 controls: policy resolution matrix — default, explicit
+    /// c/default aliases, full, unknown value (named error), explicit-policy
+    /// vs cargo-native partial conflict (named error), and the kept+recorded
+    /// user partial under the unset (lowest-priority) default.
+    #[test]
+    fn debug_policy_resolution_matrix() {
+        let _env_guard = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let saved: Vec<(&'static str, Option<std::ffi::OsString>)> =
+            [DEBUG_POLICY_ENV, DEV_DEBUG_ENV]
+                .iter()
+                .map(|k| (*k, std::env::var_os(k)))
+                .collect();
+        for (key, _) in &saved {
+            std::env::remove_var(key);
+        }
+        let resolve = || resolve_debug_policy();
+        // Default: managed C, legacy-stable label, no identity key.
+        let default = resolve().unwrap();
+        assert_eq!(default.policy, DebugPolicy::ManagedC);
+        assert_eq!(default.label, "c");
+        assert_eq!(default.source, "managed-default");
+        assert_eq!(default.context_key(), None);
+        // Explicit aliases assert the same effective policy (same label, no
+        // split: identical effective config must not fork the cache).
+        for value in ["c", "default"] {
+            std::env::set_var(DEBUG_POLICY_ENV, value);
+            let explicit = resolve().unwrap();
+            assert_eq!(explicit.label, "c");
+            assert_eq!(explicit.source, DEBUG_POLICY_ENV);
+            assert_eq!(explicit.context_key(), None);
+        }
+        std::env::remove_var(DEBUG_POLICY_ENV);
+        // Full recovery: no managed section, isolated identity.
+        std::env::set_var(DEBUG_POLICY_ENV, "full");
+        let full = resolve().unwrap();
+        assert_eq!(full.policy, DebugPolicy::Full);
+        assert_eq!(full.label, "full");
+        assert_eq!(full.context_key().as_deref(), Some("policy:full"));
+        assert!(!managed_profile_toml(DebugPolicy::Full).contains("[profile.dev]"));
+        assert!(managed_profile_toml(DebugPolicy::ManagedC).contains("line-tables-only"));
+        assert!(managed_profile_toml(DebugPolicy::ManagedC).contains("[profile.dev.package.\"*\"]"));
+        assert!(!managed_profile_toml(DebugPolicy::ManagedC).contains("release"));
+        // Unknown value: named diagnosis.
+        std::env::set_var(DEBUG_POLICY_ENV, "bogus");
+        let err = resolve().unwrap_err().to_string();
+        assert!(err.contains("AUTO_GENERATED_DEBUG_POLICY") && err.contains("bogus"), "{err}");
+        std::env::remove_var(DEBUG_POLICY_ENV);
+        // User partial kept+recorded under the unset default, value-keyed.
+        std::env::set_var(DEV_DEBUG_ENV, "2");
+        let partial = resolve().unwrap();
+        assert_eq!(partial.label, "c+user:CARGO_PROFILE_DEV_DEBUG");
+        assert_eq!(partial.source, "user-env:CARGO_PROFILE_DEV_DEBUG");
+        let key_two = partial.context_key().unwrap();
+        std::env::set_var(DEV_DEBUG_ENV, "1");
+        let key_one = resolve().unwrap().context_key().unwrap();
+        assert_ne!(key_two, key_one, "differing partial values must not share a root");
+        // Explicit policy + partial = named conflict (result would not be
+        // the asserted policy; "*" has no env-override form).
+        std::env::set_var(DEBUG_POLICY_ENV, "c");
+        let err = resolve().unwrap_err().to_string();
+        assert!(err.contains("冲突") && err.contains("CARGO_PROFILE_DEV_DEBUG"), "{err}");
+        std::env::set_var(DEBUG_POLICY_ENV, "full");
+        let err = resolve().unwrap_err().to_string();
+        assert!(err.contains("冲突"), "{err}");
+        for (key, value) in saved {
+            match value {
+                Some(v) => std::env::set_var(key, v),
+                None => std::env::remove_var(key),
+            }
+        }
+    }
+
+    /// PLAN-1003 V-02 controls: identity layering — the default keeps the
+    /// legacy three-part context id byte-identical (existing roots and Web
+    /// release caches survive), while `full` and user partial overrides get
+    /// isolated roots; context.json records the effective policy.
+    #[test]
+    fn context_debug_policy_identity_layers() {
+        let _env_guard = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let saved: Vec<(&'static str, Option<std::ffi::OsString>)> = [
+            DEBUG_POLICY_ENV,
+            DEV_DEBUG_ENV,
+            "RUSTFLAGS",
+            "CARGO_ENCODED_RUSTFLAGS",
+            "CARGO_TARGET_DIR",
+            TARGET_ROOT_ENV,
+            "AUTO_LANG_ROOT",
+            "AUTO_DELIVERY_SOURCE_ROOT",
+            "AUTO_LANG_CRATE",
+            "AUTO_RUST_WORKSPACE",
+        ]
+        .iter()
+        .map(|k| (*k, std::env::var_os(k)))
+        .collect();
+        for (key, _) in &saved {
+            std::env::remove_var(key);
+        }
+        let producer = make_producer_fixture();
+        std::env::set_var("AUTO_LANG_ROOT", producer.to_string_lossy().to_string());
+        let project = producer.join("examples/ui/002-counter");
+        let ws = project.join("rust-workspace");
+        let ctx = GeneratedBuildContext::resolve(&project, &ws, WorkspaceRequirements::Ui).unwrap();
+        assert_eq!(ctx.debug_policy, "c");
+        assert_eq!(ctx.debug_policy_source, "managed-default");
+        // Legacy formula byte-identity for the default: the pre-PLAN-1003
+        // three-part hash input must produce the same context id.
+        let flags_key = if cfg!(all(windows, target_env = "msvc")) {
+            format!("managed:{}", sha256_hex(&[MANAGED_MSVC_STACK_FLAG]))
+        } else {
+            "managed:none".to_string()
+        };
+        let legacy_id =
+            sha256_hex(&[CONTEXT_SCHEMA, &canonical_key(&producer), &flags_key])[..8].to_string();
+        assert_eq!(ctx.context_id, legacy_id);
+        // Full recovery: isolated root (different id AND different dir).
+        std::env::set_var(DEBUG_POLICY_ENV, "full");
+        let full = GeneratedBuildContext::resolve(&project, &ws, WorkspaceRequirements::Ui).unwrap();
+        assert_eq!(full.debug_policy, "full");
+        assert_ne!(full.context_id, ctx.context_id);
+        assert_ne!(full.target_root, ctx.target_root);
+        // User partial override: kept, value-keyed isolation.
+        std::env::remove_var(DEBUG_POLICY_ENV);
+        std::env::set_var(DEV_DEBUG_ENV, "2");
+        let partial =
+            GeneratedBuildContext::resolve(&project, &ws, WorkspaceRequirements::Ui).unwrap();
+        assert_eq!(partial.debug_policy, "c+user:CARGO_PROFILE_DEV_DEBUG");
+        assert_ne!(partial.context_id, ctx.context_id);
+        assert_ne!(partial.target_root, full.target_root);
+        // context.json records the effective policy (additive fields).
+        ctx.write_context_file().unwrap();
+        let record: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(ctx.target_root.join(CONTEXT_FILE)).unwrap())
+                .unwrap();
+        assert_eq!(record["schema"], CONTEXT_SCHEMA);
+        assert_eq!(record["debug_policy"], "c");
+        assert_eq!(record["debug_policy_source"], "managed-default");
+        for (key, value) in saved {
+            match value {
+                Some(v) => std::env::set_var(key, v),
+                None => std::env::remove_var(key),
+            }
+        }
+    }
+
     #[test]
     fn front_receipt_roundtrip_and_input_freshness() {
         let dir = tmp();
@@ -1378,6 +1715,89 @@ mod plan910_tests {
         assert!(read.inputs_match(&dir, &current));
         current.insert("src/front/app.at".to_string(), "01ee".to_string());
         assert!(!read.inputs_match(&dir, &current));
+    }
+
+    /// PLAN-1003 V-02 negative controls: a policy-stale receipt (legacy
+    /// without the field, or a different policy label) and a swapped
+    /// same-name exe are never discovered as fresh; the matching receipt
+    /// is the accepted control.
+    #[test]
+    fn front_receipt_policy_gates_freshness_and_discovery() {
+        let _env_guard = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let saved: Vec<(&'static str, Option<std::ffi::OsString>)> = [
+            DEBUG_POLICY_ENV,
+            DEV_DEBUG_ENV,
+            "RUSTFLAGS",
+            "CARGO_ENCODED_RUSTFLAGS",
+            "CARGO_TARGET_DIR",
+            TARGET_ROOT_ENV,
+            "AUTO_LANG_ROOT",
+            "AUTO_DELIVERY_SOURCE_ROOT",
+            "AUTO_LANG_CRATE",
+            "AUTO_RUST_WORKSPACE",
+        ]
+        .iter()
+        .map(|k| (*k, std::env::var_os(k)))
+        .collect();
+        for (key, _) in &saved {
+            std::env::remove_var(key);
+        }
+        let producer = make_producer_fixture();
+        std::env::set_var("AUTO_LANG_ROOT", producer.to_string_lossy().to_string());
+        let project = producer.join("examples/ui/002-counter");
+        fs::create_dir_all(&project).unwrap();
+        let ws = tmp().join("ws");
+        std::env::set_var("AUTO_RUST_WORKSPACE", ws.to_string_lossy().to_string());
+        let member = claim_member_dir(&ws, &project, MemberRole::Front).unwrap();
+        let exe = member.join("bin").join("debug").join("app.exe");
+        fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        fs::write(&exe, b"image-built-under-c").unwrap();
+        let ctx = GeneratedBuildContext::resolve(&project, &ws, WorkspaceRequirements::Ui).unwrap();
+        let mut receipt = FrontReceipt {
+            generator: "test-gen".into(),
+            context_id: ctx.context_id.clone(),
+            target_root: ctx.target_root.to_string_lossy().to_string(),
+            exe: Some(exe.to_string_lossy().to_string()),
+            exe_sha256: Some(file_sha256(&exe).unwrap()),
+            debug_policy: Some(ctx.debug_policy.clone()),
+            ..Default::default()
+        };
+        receipt.inputs.insert("pac.at".into(), "00".into());
+        receipt.write(&member).unwrap();
+        // Accepted control: matching policy + recorded bytes.
+        assert!(receipt.debug_policy_matches(&ctx));
+        assert_eq!(discover_front_exe(&project), Some(exe.clone()));
+        assert_eq!(
+            FrontReceipt::read(&member).unwrap().debug_policy.as_deref(),
+            Some("c")
+        );
+        // Policy switch: the same receipt/exe is stale under `full`.
+        std::env::set_var(DEBUG_POLICY_ENV, "full");
+        let full_ctx =
+            GeneratedBuildContext::resolve(&project, &ws, WorkspaceRequirements::Ui).unwrap();
+        assert!(!receipt.debug_policy_matches(&full_ctx));
+        assert_eq!(discover_front_exe(&project), None);
+        std::env::remove_var(DEBUG_POLICY_ENV);
+        // Legacy receipt (pre-policy, no field) is never fresh.
+        let mut legacy = receipt.clone();
+        legacy.debug_policy = None;
+        legacy.write(&member).unwrap();
+        assert!(!legacy.debug_policy_matches(&ctx));
+        assert_eq!(discover_front_exe(&project), None);
+        // Same-name different image: the receipt claims the current policy
+        // but the published bytes are another variant.
+        receipt.write(&member).unwrap();
+        assert_eq!(discover_front_exe(&project), Some(exe.clone()));
+        fs::write(&exe, b"image-of-another-variant").unwrap();
+        assert_eq!(discover_front_exe(&project), None);
+        for (key, value) in saved {
+            match value {
+                Some(v) => std::env::set_var(key, v),
+                None => std::env::remove_var(key),
+            }
+        }
     }
 
     /// Minimal producer fixture: a fake language source tree that satisfies
