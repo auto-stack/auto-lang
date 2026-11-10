@@ -1,9 +1,11 @@
-### D-989-DESIGN-R1 — 联合交付核查r2已修订、待定向复审（2026-11-07，开放）
+### D-989-DESIGN-R1 — 联合交付核查r4已修订、待定向复审（2026-11-08，开放）
 
 - owner：PLAN-989规划/复审；来源：[989 §9草案复核](989-split-refactor-joint-delivery-and-tag-readiness.md#9-复审记录)，r1合同hash `23e165a2fb0d86662a302d90639faf319ee01042cae4ab10ab749cd27a23fbec`。
 - F-989-R1-01：942已正式交付conditional、未证明集中workspace增量收益；989仍按原预期生产后继及旧状态/路径描述。补决策分支与实际批准结果的D-WS绑定，不能把研究归档等同生产go，不能自行取消节省目标。
 - F-989-R1-02：UI/Web独立消费与必要升级/回退须映射实际渠道/owner/关闭合同；消费D-942-P1/P2适用性证据，区分OS063闭包与986/987的ACE升级发行责任，不把生产实现塞进只核查的989或以“必要”字样漏验。
 - r2修订覆盖：§2.1及V-11补研究结果决策门；§5.2.1～2、D-CLOSURE及V-12补渠道/owner/合同、P1/P2适用性与有限升级恢复；§5.2.3补同最终版本配对收益，§5.1补三类证据复用规则。路线/战略已同步v38；本项仍开放，未以修改文档代替定向复审通过。
+- r3追加：2026-11-08绑定UI073与最终M1遗留闭环（§2.2/V-13），UI063/OS063同步r4；原两项finding仍需按最新合同定向复核，不因修订自动CLOSED。
+- r4追加：UI077/OS066正式合同已绑定，§2.3/V-14明确完整Windows RQ与治理/渠道交付汇合后才进入989联验；仍待独立定向复核，不自行关闭finding。
 - 关闭条件：989升r2，§2/5～8及SD按两项修订，保原任务/验收义务与未决目标，定向设计复审通过。本轮drafting0/9不变、未实施，审查来自同起草上下文，不冒独立final review。债务登记不豁免任何必需验收，也不重开942或预分配workspace生产Plan。
 
 ### D-942-DESIGN-R1 — 共享生成workspace研究合同复审缺口【已关闭 2026-11-06，PLAN-942 交付】
@@ -4040,9 +4042,11 @@ UI036 archived10/10最终收据保留792-driver V04×2与V05a三项原红。静�
 D-941-1关闭补证：PLAN-951独立修复serializer，三schema/8组合真实JSON解析回归修前2红、修后2绿；实际Q4完整Rust/C认证及独立reference各42、严格reader与actual文件hash一致；冻结ace-a2x183/183通过，Spec已主线读回，归档清理6/6。951不改旧38格认证。详[归档951](archive/951-a2r-certificate-json-serialization.md) §9。
 
 
-### D-950-1 — 旧bare S934地址的重复发布revision冲突（未关闭，旧query-store owner）
+### D-950-1 — 旧bare S934地址的重复发布revision冲突（修复已交付PLAN-999，关闭待独立review）
 
 PLAN-950工作实证：同一源body第二次请求仅临时facts.revision改变，旧ManagedStoreSink::put在同不可变S934 key下写不同payload会key conflict；这是旧地址recipe的生命周期字段问题。950模块producer明确使用新版本sq-module-page/1地址（读签名/negative版本摘要，revision规范0），沿原事实codec，不重解释旧键，不代表旧路径已修。owner=source-query旧ManagedStoreSink::put；关闭条件=旧recipe独立重复发布反例+合法读取/恢复对照，保持旧缓存读取合同的版本化修复并review。证据摘要在PLAN-950 §9，原材料按merge全删，无需要持有的原始输出。
+
+PLAN-999（2026-11-09）按原关闭条件交付修复（commit `981c8ea85`，树codex/plan-999-dev）：公开`QueryHost<ManagedStoreSink>`同源连续prepare/commit修前反例实录（`plan-artifacts`证据折入999 §9）；sink现按完整键预读，facts除per-request revision外逐字段相等⇒幂等返回现存artifact id，真异内容仍走store硬Conflict；页codec v1字节不变、bare旧页原样可读、模块`sq-module-page/1`零触。永久回归=source-query `sq98/sq99`（重复发布幂等/同artifact/revision单调/跨进程重读/真Conflict保持；变异回退可复现原冲突串）。999关闭表见其§5.6材料②；**独立review通过前不记closed**。
 
 
 ### D-952-1 / F-952-01：共享子进程采集器owned-close竞态（2026-11-06，closed by PLAN-953）
@@ -4135,3 +4139,45 @@ owner=a2r 逃逸分析（Plan 419 §4.5 域）。事实：写捕获发生在**�
 
 owner=PLAN-917 域（a2r_std 发射条件变化 vs 917 T-05 冻结金样）。事实：`case-ace-m1-a2r-emit-917` 组内 `ace.m1.a2r917.t08.single` / `t08.project` / `nb_slice_ok` 三检查红——actual 带 `// a2r Standard Library (from crate)` + `use a2r_std;` 前导而金样无（byte 37 起）。PLAN-993 以 base emitter（`eef2f3f21` 的 `expr_emit.rs`）同参复跑**同三红**，证非 993 引入（993 前已在 master 红；PLAN-814 搬迁时代 a2r_std 发射条件演化）。同组另 8 检查绿。关闭条件：917 owner 重审 a2r_std 前导的合法域并重冻结三金样（走其 G04 等价审阅），或修发射条件回归。993 未触 917 写面。
 **关闭（2026-11-08，PLAN-994）**：根因实为 PLAN-956（764f454d1）将 `emit_str_slice_chars` 整体替换为 `a2r_std::str::str_slice` 字节域调用（设 a2r_std_used → 前导 + 发射体漂移）且未重冻 917 金样；994 恢复 917 冻结守卫块字符位形态（接收者 &绑定/双界各一次/越界 assert panic）后三检查回绿，917 金样字节未动（独立复审核验 closure 为真发射修复，见 docs/plans/archive/994-* §9 与 F-994-R1-03）。公共 a2r_std::str_slice 字节 API 对显式调用方不变。
+
+### D-1001-R1 — cargo t daily 在 HEAD 003fa8816 红：auto_lang_core --lib 含 81 个 ACE 前缀测试（2026-11-10，开放）
+
+- 候选/owner：PLAN-901 feature 拍平/941 落地后继（auto-lang 治理）。
+- 现象：PLAN-1001 T-04 重放实测，fixed-tests PLAN-901 legacy 域守卫正确拒绝（`ACE host tests leaked into a legacy group`）；清单在 plan-artifacts 归档前 t04/ntl-daily.json。源状态红，与缓存回收无关（源内测试名，构建缓存无法产生）。
+- 关闭条件：test_cases::ac*/abi::/sema::/ace_* 等归位 ACE 域组或守卫白名单更新；daily 复绿并留收据。
+
+### D-1001-R2 — ace-workspace 5 持续源域红（golden drift/CRLF 类×3、ABI 合同×1、AV 清单×1）（2026-11-10，开放）
+
+- 候选/owner：PLAN-1000（ACE M1 证据恢复）域。
+- 现象：PLAN-1001 T-04 干净补跑 2831/2838；隔离重放 2 个预算/并发类转绿（环境归因），5 个持续红：certify_dry_run_b01、a2r_hir_first_case_green（golden drift in a2x_runtime.rs）、a2r_hir_worker_credential_pin、abi_recipe_binding_exclusivity（unknown ABI leg "z"）、av_source_inventory_denominators_replayable（examples/ui/015-notes scan-error）。产物由未变源码确定性再生成+git 跟踪零改动→与缓存治理无关。
+- 关闭条件：随 PLAN-1000 的 M1 收口逐项闭红；或具名归档为 M1 已知未观测域。
+
+### D-1001-R3 — fixed-tests 执行租约在 guard 失败/崩溃路径不清理（2026-11-10，开放）
+
+- 候选/owner：auto-lang scripts/fixed-tests 维护者。
+- 现象：PLAN-1001 期间两次 `target/test-groups/active` 陈旧残留（owner pid 已死），人工核死后清除；守卫 ValueError 路径未走清理。
+- 关闭条件：runner 异常路径统一 finally 清租约+死 pid 自愈；补失败路径测试。
+
+### D-1001-R4 — retention registry 未登记用户持有 fix-cache-governance-20261110（2026-11-10，开放）
+
+- 候选/owner：治理收尾簿记（与 PLAN-1001 §4 陈述差异：registry 实无该条目，owner.json 内 status 仍 in-flight）。
+- 现象：目录在盘 4 份审计材料；`.retention/policy.json` 六 scope+holds 均未列。保护行为不受影响（未列≠可删，工具 fail-closed 只认 holds/scopes）。
+- 关闭条件：用户确认持有语义后补登记（path+owner+理由+关闭条件）或明确退役。
+
+### D-1001-R5 — PATH 工具陈旧：auto-man target/debug/auto.exe 为 2026-11-05 构建，晚于其后 auto-man/auto-ui-tools/auto-lang 源变更（2026-11-10，开放）
+
+- 候选/owner：auto-man/auto-ui 工具链刷新。
+- 现象：旧工具下 013-todo 生成前端 38 个编译错误（E0428/E0425）；当前源重建后绿——工具/源偏斜非生成器缺陷。PLAN-1001 已在 scope 重建冻结工具（auto 6757a12f/auto-ui-tool 1d455b2e）完成研究。
+- 关闭条件：PATH 工具按源刷新并回归 013-todo；或工具版本与源联动的刷新机制。
+
+### D-1001-R6 — 本机无任何调试器，V-08 断点/局部变量能力未验证（2026-11-10，开放）
+
+- 候选/owner：环境配置（cdb/windbg/lldb 任一）。
+- 现象：PLAN-1001 行号 oracle 以 dbghelp 完成（三臂成员 main.rs:379 均可解析）；断点/变量按计划记"未验证"。用户裁定采用 C 后，依赖帧调试本就让位，此项紧迫性降低。
+- 关闭条件：装任一调试器后对生成成员 exe 复测断点/变量并记录（或按裁定明确豁免）。
+
+### D-1001-R7 — 调试策略裁定"采用 C"待落地（2026-11-10 用户裁定，开放）
+
+- 候选/owner：后续独立计划（生成器/默认配置变更；跨 auto-ui-tools/auto-generation-core/仓级 config）。
+- 现象：PLAN-1001 研究实测 C=空间 −51.0%（11.71→5.13 GiB）、冷编 −31%、编辑 −52%、成员行号保留（oracle 证）、依赖帧无行号=裁定已知代价、Web 零差、迁移共存峰 17.01 GiB/回退 16.00 GiB。用户裁定采用 C；PLAN-1001 合同不含实施推广。
+- 关闭条件：落地计划交付（生成 ws 默认注入成员 line-tables-only+依赖 debug=false，含迁移/共存处置与回归），并复测 013/002/chat/db 四入口。
