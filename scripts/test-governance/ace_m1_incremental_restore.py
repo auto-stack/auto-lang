@@ -73,10 +73,21 @@ ROWS = (
                'ace-abi::conformance$scalar_bridge::bridge_restore_deep_verifies_without_producers',
                'ace-abi::conformance$scalar_bridge::bridge_restore_negative_controls',
                'ace-abi::conformance$source_foreign::source_foreign_provider_symbol_index_uses_shared_budget_before_rebind_and_repairs',
-               'ace-abi::conformance$cache_turnaround::abi_cache_foreign_toolchain_generation_not_served'),
+               'ace-abi::conformance$cache_turnaround::abi_cache_foreign_toolchain_generation_not_served',
+               'ace-abi::conformance$resource_recovery::abi_resource939_missing_or_corrupt_required_pages_refuse_restore_never_cold_start',
+               'ace-abi::conformance$resource_recovery::abi_resource939_restore_first_edit_fails_publishes_nothing_then_fix_and_recover',
+               'ace-abi::conformance$resource_recovery::abi_resource939_body_edit_reproduces_only_the_edited_function',
+               'ace-abi::conformance$resource_recovery::abi_resource939_over_budget_cancellation_preserves_root_and_cleans_without_quota',
+               'ace-abi::conformance$resource_recovery::abi_resource939_pointer_replace_failure_keeps_accepted_root',
+               'ace-abi::conformance$resource_recovery::abi_resource939_revision_churn_gc_convergence_and_lease',
+               'ace-abi::conformance$resource::abi_resource939_fault_sweep_allocation_domain',
+               'ace-abi::conformance$resource::abi_resource939_provider_generations_lease_and_gc'),
      'observations': ('ct_restore/ct/restore-missing-page-cold',
                       'ct_restore/ct/restore-first-good-edit'),
-     'partial_missing': ('939 opaque resource/callback pages (awaiting D)',)},
+     # PLAN-1000 T-07: the delivered D939 (dfe5a1002) recovery evidence —
+     # the real abi_resource939_* executions in the admitted ace-abi
+     # companion — replaces the awaiting-D placeholder (never a bare delete).
+     'partial_missing': ()},
     # Cross-project ownership discipline per page family: SQ fact pages
     # refuse foreign owners explicitly (restore_verify/bind, F-941-09); CT
     # pages are owner-scoped by construction (owner_logical enters the
