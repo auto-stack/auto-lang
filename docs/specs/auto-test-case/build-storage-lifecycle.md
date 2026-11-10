@@ -49,3 +49,17 @@ scripts/test-governance/build_storage.py <精确target路径>默认预览；--ap
 
 
 Windows drive-relative进程路径依赖不可确认的逐盘当前目录，清理器保守拒绝；不猜D:foo的归属。已经删除的缓存不为补新守卫正控而造空目录，真实V08临时负控库缓存的释放独立记控制字节，不计作迁移减量收益。
+
+PLAN-1001增量缓存生命周期：build_storage.py --incremental三段入口——`--inventory <登记owner根>`只读库存、
+`--preview --policy`产出policy_sha256/工具链/树摘要绑定的快照manifest（零删除）、`--apply-manifest --idle-confirmed`
+仅消费该显式快照。治理单元=profile级`<target>/<profile>/incremental`或`<triple>/<profile>/incremental`整子树
+（内部`<crate>-<hash>`会话名不解析、不按mtime猜过期）；分配量GetCompressedFileSizeW读不出标unknown降级保护，
+不拿逻辑长度冒充；跨单元硬链接file-ID全局去重、外链不计可回收。apply在维护窗口按固定序非阻塞持有profile级
+`.cargo-lock`（含build/artifact锁，T-02实测cargo 1.98锁在profile级且真实阻塞），锁被持有即整体拒绝零删除；
+删除前从当前树按同一policy重导出eligible集并复核摘要/文件数，manifest路径/篡改/前缀同名不得升级为准入；
+retention registry缺失或不可读拒绝（fail-closed），活lease/证据混入/reparse/源码/发布件/deps不动；部分失败
+退出码3并分列已删/未删收据，预估量与实际释放分记。foreign根须policy显式登记+父级真实Cargo.toml双证明；
+foreign生成根经登记工作区链+context.json三核（schema/context_id/producer，verbatim前缀须剥）准入；policy
+非foreign登记不构成任意路径钥匙。水位仅排序/告警：容量不足报protected-bytes与shortfall，不越保护、不自动
+关incremental；零候选合法，无持续净收益如实记（1001实测一次性回收41.5GiB、工作集恢复后净+15.05GiB、
+增量随编辑自然回长）。长期巡检只读；旧精确target CLI完全不变。水位初值依据与四根实测见归档PLAN-1001。
