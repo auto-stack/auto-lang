@@ -1255,11 +1255,27 @@ impl FrontReceipt {
 
 /// Discover the published front exe for a project (receipt-first; the caller
 /// may keep convention probing as a legacy fallback). Returns None when no
-/// fresh receipt or the published exe is gone. PLAN-1003: the receipt's
-/// debug policy must match the currently effective policy and the published
-/// bytes must match the recorded hash — a policy-stale or swapped same-name
-/// exe is never discovered (the build path republishes after rebuilding).
+/// fresh receipt or the published exe is gone. PLAN-1003: an artifact is
+/// discoverable only when the receipt's identity equals the current
+/// effective context (context_id AND debug-policy label) and the published
+/// bytes match the recorded hash — a policy-stale artifact, a forged label,
+/// or a swapped same-name exe is never returned for execution (the build
+/// path republishes after rebuilding).
 pub fn discover_front_exe(project_dir: &Path) -> Option<PathBuf> {
+    discover_front_exe_with(project_dir, true)
+}
+
+/// Identity-only discovery: same receipt/context/policy rule as
+/// [`discover_front_exe`] but WITHOUT reading the exe bytes. For
+/// classification only (e.g. registry scans deciding "is this app
+/// exe-backed?") — hashing every published image on every scan measured
+/// +81 ms per app (PLAN-1003 review R1, F-1003-R1-02). Anything about to
+/// execute or hand out the artifact must use [`discover_front_exe`].
+pub fn discover_front_exe_identity(project_dir: &Path) -> Option<PathBuf> {
+    discover_front_exe_with(project_dir, false)
+}
+
+fn discover_front_exe_with(project_dir: &Path, verify_bytes: bool) -> Option<PathBuf> {
     let ws_dir = crate::rust_workspace::resolve_rust_workspace_dir(project_dir);
     let member = ws_dir.join(member_dir_name(project_dir, MemberRole::Front));
     let receipt = FrontReceipt::read(&member)?;
@@ -1283,6 +1299,9 @@ pub fn discover_front_exe(project_dir: &Path) -> Option<PathBuf> {
     // rule, so discovery and build freshness can never disagree.
     if receipt.context_id != context.context_id {
         return None;
+    }
+    if !verify_bytes {
+        return Some(exe);
     }
     match (&receipt.exe_sha256, file_sha256(&exe)) {
         (Some(recorded), Ok(actual)) if recorded == &actual => Some(exe),
@@ -1859,6 +1878,10 @@ mod plan910_tests {
         assert_eq!(discover_front_exe(&project), Some(exe.clone()));
         fs::write(&exe, b"image-of-another-variant").unwrap();
         assert_eq!(discover_front_exe(&project), None);
+        // Identity-only discovery (classification, e.g. registry scans) does
+        // not read bytes: it still reports the identity-matching artifact,
+        // while execution-grade discovery above refuses the swapped image.
+        assert_eq!(discover_front_exe_identity(&project), Some(exe.clone()));
         // F-1003-R1-01 (review R1): a FORGED label alone — receipt built
         // under the `full` context (its context_id), label edited to `c`,
         // exe bytes matching the recorded hash — must not be discovered
@@ -1883,6 +1906,11 @@ mod plan910_tests {
             discover_front_exe(&project),
             None,
             "forged label on a full-built exe must not be discovered"
+        );
+        assert_eq!(
+            discover_front_exe_identity(&project),
+            None,
+            "identity-only discovery enforces the same context/label rule"
         );
         for (key, value) in saved {
             match value {
