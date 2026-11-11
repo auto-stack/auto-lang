@@ -268,6 +268,8 @@ stage: goal | plan_id: PLAN-1006 | plan_revision: r1 | round: 1 | from: work | t
 - 批量回归到期检查：receipt last_covered_plan_id=995（2026-11-08）；到期动因=PLAN-1000（11-11落地，%5=0）+>48h有合并——先于本计划即到期，非本计划引入；按 AGENTS「不成为每计划全局门」记录交接 auto-plan:regress（主检出单实例执行），不在本 merge 内跑。
 - 终态：8 work + 1 review + 2 merge 全 [✅]；AC-01..10 全闭；P2 债务关闭；归档完成。
 
+stage: goal | plan_id: PLAN-1006 | plan_revision: r1 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed, group lang-1006 clean) | commit: lang 7296df7d/web c3d126cd/man 8d1976d + docs 67abfc377 | next: done
+
 ## 10. 待澄清事项
 
 没有需要本轮用户补充才能立约的产品决定。T-01负责有界核定事务复用/新命令等价命名与真实Auto数据API签名；不允许以探索结果减掉旧包保全、真实状态/移根或产品任务。若实际机制不能满足，记录阻断并修订后再进入依赖任务。
