@@ -422,3 +422,20 @@ CT机制的父侧证据可消费原服务公开的计数与执行边界日志：
 - 恢复/预算/采样纪律：恢复首编辑与首错→修复→再恢复、required 页三轴拒、
   超限取消零配额清理、修订 churn+lease+GC、6×30 五暖门 P90≤2000ms——
   详见 [ace-ca-d-bridge-certification.md](ace-ca-d-bridge-certification.md)。
+
+
+## PLAN-1000 严格观察与正式签章入口（2026-11-11，SD-04 续）
+
+- 组合器实测修复两处（合并文档 arch 行丢失修复：entry-gate 行在机制族重建时并集
+  保留，机制行重叠优先；终合并门旗刷新：legacy_required_execution 随最终合并摘要
+  更新而非逐链陈旧值）。组合器预留额调优：终合并摘要窗 2 MiB（同一 48 MiB 活数据
+  帽内，非放宽）。
+- 正式准入入口 `--acceptance`：全八域/证据完整/零 blocker 才 exit0 可签；preview
+  恒不可签 exit1（T-13 在冻结证据上复证 V-14 隔离）；坏身份/格式 exit2 具名拒绝。
+- 签前审计合同：独立进程于冻结提交重建键宇宙/新鲜组合/U 集/身份轴，凭据绑定冻结
+  提交且不自引最终报告；唯一 review 行（ARCH-08/fresh-union-spec-review）的机械
+  claim 来自 entry-gates 准入（30 项单组绿门），review 以独立凭据先行验证后才签。
+  entry-gates 准入自带八条区分性反控（绿路径准入；翻转 outcome/失败事件/错组身份/
+  stale 凭据/外来 entry/多组文档/缺一门的行各拒绝或降级——常驻治理测试）。
+- 架构行守恒：49/49 ARCH 行终组合全 PASS（机制族 9 行 + entry-gates 40 行并集；
+  delivered provider foreign/foreign-resource 按 resident ace-abi 证据准入）。

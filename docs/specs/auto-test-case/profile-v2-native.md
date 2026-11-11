@@ -138,3 +138,19 @@ ace-m1 的收据（`ace.m1.cert/1`）、分母登记（`ace.m1.binding/1`）与 
 - 固定组：`case-ace-m1-native-diags-911`（套件 `native-diags-911.suite.ad`，17 case：B17–19 负例、
   NB17–19 近邻 2/2/0、同族变体、多因 primary、多字节注释、Text→parse / Bind→resolve 异族、warm rounds
   A→B→C 首失败停、3 个登记红控）。协议级反控为 `ac_mn::source_diag_tests` 单元控制（15）。
+
+
+## PLAN-1000 预算/恢复/采样实测收口（2026-11-11，SD-05 续）
+
+- 16 策略全部实测通过（终组合 budget_time 六行全 PASS）：5 门档型（fixed-case-suite/
+  nextest-default/ac-v2-check/legacy-inprocess/cte-original-service：243/243/113/231/149
+  真实测试窗）+ 10 命令型（各 10 真实运行收据：a2x-daily-parent/explicit-cert/
+  a2x-scalar/record-text/collections-formal/composer/av-worker/native-worker/
+  abi-worker-ipc/a2x-warm-management）+ abi-interop-runtime（14 窗 scalar_bridge
+  过滤门，max 56.9s < 70s total 预算）。P90/峰值/单窗/清理分列口径不变。
+- 恢复 8/8 PASS（incremental_restore_measurements 六行 + ct_restore）：
+  all-required-pages（含 939 真实恢复证据替占位）、historical-cross-project-
+  ownership（ARCH-02 机制观察）等全闭；机制族夹具（ct-source/ct-child/ct-meta/
+  sq-facts）在定树清洁窗口重捕（source_state=sha(commit+'[]')）。
+- 不可观测边界诚实记录：策略预算以收据/门档实测为据，声明（runtime_verdict:
+  UNOBSERVED）永不证明运行时。

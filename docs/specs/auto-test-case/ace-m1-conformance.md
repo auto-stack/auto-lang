@@ -431,3 +431,20 @@ avm/cert 各格与 corpus 行不变；cert 轴仍 `snapshot-only-cert-gap`，M1 
   ACE-A2R-HIR/ACE-A2C-HIR）；每对独立 oracle/reference，四端相等不构成通过。
 - 认证分轴：identity/toolchain+daily-emit+certify 为真实操作（292×3 于冻结提交全绿），
   旧脚本 exit0 或登记 ok 不代实际执行。（AC-01/03/09）
+
+
+## PLAN-1000 D1 执行收口（2026-11-11，SD-02 续）
+
+- 原 313 required 全部真实严格执行（终组合 observed=passed=313、0 遗漏）：legacy 211
+  格经 freeze10 单代捕获 + probe/a2r/Rust-test/治理五观察源逐族接线；probe 族 reader
+  扩展三处（avm/a2r 适配器 expect-fail 分支、标量 mn-runner 收据准入）关闭
+  I02/I05/I11/I12:ac/a2r/avm 五格——收据准入以 runner 自判的 mn-probe-record 为准
+  （toolchain pin 到族 native worker、终 exit 与 check 判定一致），红控仅真实
+  FAIL+真实 mismatch 闭格。
+- 认证执行/核算分轴维持：8 族认证（text 20/scalar 122/record_text 32/collections 40/
+  query 18/supplement 8/original_data 52（36 正+16 负腿）/cte 14 = 296 行）全部
+  identity+certify+daily 三腿真实执行于最终二进制世代；16 诊断负腿以 typed frontdoor
+  拒绝认证（exit2 + 首因 stage/code = 族诊断权威）；release 腿（scalar 8/RT 4/query 2）
+  经 release-scope 收据准入。
+- 坏轴/缺项拒绝保持：负行判别器=无 pin 行（原 'refusal' 键探针与 exact-keys 形态
+  永不匹配，已修）；tampered 判定/worker 身份篡改在 T-13 负控中 exit2 拒绝。

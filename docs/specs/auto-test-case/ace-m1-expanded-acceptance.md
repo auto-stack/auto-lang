@@ -30,3 +30,25 @@
   余七真实 blocker（legacy 执行 211 格、C-core/资源、Q4 oracle 认证、syntax 架构、精确
   增量 2 PARTIAL、budgets_time 14/16 窗、evidence_incomplete）全部为未执行产品义务，非
   验收系统缺陷。M1 里程碑未签。
+
+
+## PLAN-1000 最终收口（2026-11-11，r1@84bf5fce8 + 两轮 LF 修复合并 04f3b410b）
+
+- 45 个具名未闭键全部真实关闭（各关闭路径见归档计划 §9 round 43/44/47）：R05:avm
+  （move 闭包按值捕获，`Closure.is_move` 消费于 `compile_closure`）；R02:avm（分配故障
+  注入 seam：typed `VMError::AllocFault` + one-shot 旋钮 + avm `fail_alloc_at` 旋钮；
+  GenName 静态调用修复消除泛型列表幻影首元素）；I12:a2r/avm（911 套件内注册红控，
+  avm/a2r 适配器 expect-fail 准入）；I10:ac（mn store GC 观测面：软 root 化 + 有界
+  历史窗 32 + 超窗摘引用物理回收 + `mn_incremental_store_512_revisions_gc_bounded`
+  512 修订 churn+GC 判据测试）。
+- 单终代统一重捕（freeze10，54 组单 invocation）+ 逐文件重指纹（avm 选项字段改变
+  CheckSpec Debug 指纹：7 q4 合同、legacy-base、original-data×2、48 a2r 合同全部
+  再生成）+ 20 个分域 phased 观察文件（8 认证族+7 执行族+frontdoor+ct_restore/
+  incremental_restore/budget_time/architecture 四节 section 形态）。
+- **终组合 1006 PASS / 0 FAIL / 0 UNOBSERVED、八域门全真、`--acceptance` exit 0、
+  can_claim_expanded_m1=true、blockers=[]**。T-13 独立复审 PASS（签前凭据绑定冻结
+  提交、双篡改负控、来源抽查；ARCH-08/fresh-union-spec-review 由独立凭据先行验证）。
+- 941 的"系统交付而 M1 未绿亦可归档"完成例外**不再适用**：本包终验真实满足扩大 M1。
+- 跨检出身份：pins 绑 LF 内容 sha（CRLF 工件修复两轮：5b2d8a987 两键、1d02cd41f
+  53 文件规范化+级联；故意 CRLF fixture 不动）——master 与 plan worktree 读到逐字节
+  相同的合同/源码，pin 链两边同时成立。

@@ -68,3 +68,17 @@
   bridge_source_caller.c；typed=self|n2c|c2n 道 .obj；parse 级拒绝合法无 scratch）。
 - 交换帧/nonce/request_hash 不可观测即不冒认；typed 三腿与 source 腿不混同，937 不冒
   完整 FFI。（AC-08/09）
+
+
+## PLAN-1000 D938/D939 观测收口（2026-11-11，SD-06 续）
+
+- source/typed/resource/callback 恢复与 owner 边界全部实测（恢复 8/8 PASS 含
+  all-required-pages 与 historical-cross-project-ownership）；939 占位以九个真实
+  abi_resource939_* 执行证据替换（证据替换而非裸删字符串）。
+- 未观测轴仍不冒认证：认证主体（a2r/typed frontdoor）与执行观察分离；F-1000-02
+  的 6 个 query 负槽以 typed 前门拒绝（exit2+诊断 detail）保留为诚实事实；
+  16 诊断源负腿按各族 ORACLES 权威双目标拒绝认证。
+- mn store GC 观测面（I10:ac）：增量会话 unit 版本软 root 化 + 有界历史窗
+  （HISTORY_WINDOW=32）+ 超窗摘引用物理回收（run_gc receipt）；512 修订
+  churn+GC 判据测试覆盖 I10 四观察（活 root 保留/末引用后物理回收/水位有界
+  end≤mid+64KiB/用户哨兵逐 GC 后字节不变）。

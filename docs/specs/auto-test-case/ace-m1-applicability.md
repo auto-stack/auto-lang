@@ -88,3 +88,14 @@ SKIP、伪父报告均不授信 full（acceptance 拒假报告，选择不改判
 - 现行守卫沿 992..998 三域闭合后的诚实态：cert-gap=0、旧门 `can_claim_m1=true`（其自身
   313 门会计）。原 G-DEC 双轴独立记账签章的恢复须用户裁定，不预填为已批准。
 - 旧批准/分母/hash 全程守恒；blocked ledger 明列，不暗绕旧门。（AC-10/11）
+
+
+## PLAN-1000 守恒收口（2026-11-11，SD-03 续）
+
+- 原批准集全量守恒终验：1006 键宇宙与 313 required 在终组合逐键对账（registered
+  1006 PASS/0 FAIL/0 UNOBSERVED）；future 不冒 PASS（20 分域文件中所有 future 行保持
+  原适用性）。未观测→实测：45 具名键关闭全部以真实执行/认证/判据测试为据，无
+  NA/skip/accepted-diff 扩张。
+- 守恒对账负控：phased 判定单槽翻转与 worker 身份清零均在 T-13 以 exit2 拒绝；
+  注册红控行（expected_status=FAIL）从父报告 non_pass_rows 排除——正确失败的
+  控制是设计内结果，不是守恒破坏。
