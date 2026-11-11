@@ -490,6 +490,17 @@ pub fn provider_inputs(target: AssemblyTarget) -> Vec<ProviderInput> {
                 include_str!("../trans/rust/stmt_emit.rs"),
             ),
             ("trans/rust/ty.rs", include_str!("../trans/rust/ty.rs")),
+            // PLAN-1014 T-03（plan884 V-09 漏登记修复）：byte_lists.rs 与
+            // res_obs.rs 落库时未入 Vm provider 指纹闭包——域目录新增源码
+            // 必须同步登记，漏登=静默不入指纹（该红此前被 ACE 守卫红掩盖）。
+            (
+                "trans/rust/byte_lists.rs",
+                include_str!("../trans/rust/byte_lists.rs"),
+            ),
+            (
+                "trans/rust/res_obs.rs",
+                include_str!("../trans/rust/res_obs.rs"),
+            ),
         ],
         AssemblyTarget::Rust => &[
             ("a2r_std.rs", include_str!("../a2r_std.rs")),

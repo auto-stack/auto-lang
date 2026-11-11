@@ -2147,6 +2147,27 @@ impl AutoVM {
                     // LitPushTick +4040/40=100 实例+1 列表）。DROP:同款
                     // 纪律——堆按影子释放，字符串按内容释放。释放后对象
                     // 入 dying 宽限窗，本 opcode 内 heap 查找仍安全。
+                    // PLAN-1014 T-07（B-05，898-N5）：字符串长度必须先读后放。
+                    // GET_FIELD 等产出方对新串只入池一次（rc==1，栈顶即唯一
+                    // 份额）；先 rc_release 会让 pool_free_idx 清空槽位、随后
+                    // 读到空 Vec 得 len=0（`p0.name.len()`→0 实录，sys_natives
+                    // 红）。同族病灶（ADD 先放后读）已在下方 P419 修复并带
+                    // 回归测试，此处补齐同款纪律。
+                    let string_len = if auto_val::is_string(nv) {
+                        // String .len() fallback — JS .length 语义 = 字符数
+                        // （PLAN-055：此前按字节计，for-in over str 对 CJK
+                        // 逐字节迭代 ×3 且 GET_ELEM 索引越界——迭代面失真）。
+                        Some(
+                            self.strings
+                                .read()
+                                .unwrap()
+                                .get(auto_val::decode_string(nv) as usize)
+                                .map(|b| String::from_utf8_lossy(b).chars().count() as i32)
+                                .unwrap_or(0),
+                        )
+                    } else {
+                        None
+                    };
                     {
                         let stake = task.ram.take_stake_at(task.ram.sp);
                         if stake != 0 {
@@ -2156,17 +2177,7 @@ impl AutoVM {
                             self.rc_release(nv);
                         }
                     }
-                    if auto_val::is_string(nv) {
-                        // String .len() fallback — JS .length 语义 = 字符数
-                        // （PLAN-055：此前按字节计，for-in over str 对 CJK
-                        // 逐字节迭代 ×3 且 GET_ELEM 索引越界——迭代面失真）。
-                        let len = self
-                            .strings
-                            .read()
-                            .unwrap()
-                            .get(auto_val::decode_string(nv) as usize)
-                            .map(|b| String::from_utf8_lossy(b).chars().count() as i32)
-                            .unwrap_or(0);
+                    if let Some(len) = string_len {
                         task.ram.push_i32(len);
                     } else if auto_val::is_i32(nv) || auto_val::is_object(nv) {
                         // Plan 390 §15 H2: accept both raw i32 (legacy arrays)
@@ -3227,6 +3238,36 @@ mod tests_add_concat_rc {
         let h = vm.pool_health();
         assert_eq!(h.underflow_events, 0);
         assert_eq!(h.phantom_drops, 0);
+    }
+
+    /// PLAN-1014 T-07（B-05，898-N5）：ARRAY_LEN 对 rc==1 唯一份额字符串先放后读
+    /// → pool_free_idx 清槽后读到空 Vec 得 len=0。GET_FIELD 产出的字段串正是
+    /// 该形态（`p0.name.len()`→0，sys_natives_vm_tests 红）。回归钉死先读后放。
+    #[test]
+    fn test_array_len_rc1_string_reads_before_release() {
+        let vm = vm_with(vec![OpCode::ARRAY_LEN as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        let idx = vm.add_string("auto.exe".as_bytes().to_vec());
+        vm.rc_push_str_idx(&mut task, idx); // rc==1: the stack slot is the sole share
+        vm.run_one_instruction(&mut task).unwrap();
+        let len = task.ram.pop_nv();
+        assert!(auto_val::is_i32(len));
+        assert_eq!(auto_val::decode_i32(len), 8, "freshly interned rc==1 string length");
+        let h = vm.pool_health();
+        assert_eq!(h.underflow_events, 0);
+        assert_eq!(h.phantom_drops, 0);
+    }
+
+    /// CJK 字符数语义（PLAN-055）在先读后放下保持：`"自语言"` 的 len() == 3。
+    #[test]
+    fn test_array_len_rc1_string_counts_chars_not_bytes() {
+        let vm = vm_with(vec![OpCode::ARRAY_LEN as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        let idx = vm.add_string("自语言".as_bytes().to_vec());
+        vm.rc_push_str_idx(&mut task, idx);
+        vm.run_one_instruction(&mut task).unwrap();
+        let len = task.ram.pop_nv();
+        assert_eq!(auto_val::decode_i32(len), 3, "chars, not UTF-8 bytes");
     }
 }
 

@@ -1558,11 +1558,16 @@ mod tests {
         assert_eq!(shim_str_substr("hello".to_string(), 1, 3), "ell");
         assert_eq!(shim_str_substr("hello".to_string(), 2, 2), "ll");
         // Byte-walk inside a multi-byte char clamps instead of panicking.
-        // "送" occupies bytes 0..3; lo/hi inside one char → empty after clamp.
-        assert_eq!(shim_str_substr("送你".to_string(), 1, 2), "");
-        assert_eq!(shim_str_substr("送你".to_string(), 2, 2), "");
-        // Range spanning a char boundary clamps inward: lo→3, hi→3 → empty.
-        assert_eq!(shim_str_substr("送你".to_string(), 1, 4), "");
+        // PLAN-1014 契约修正：VM 侧为双向回退（boundary↓ 双侧，PLAN-995 H6
+        // h4 步进无损 oracle 所需）——范围回退后落在整字符上则返回该字符。
+        // 与 a2r_std 的对偶在边界对齐输入上严格同值；字节落在字符内部时
+        // a2r_std 按其自有 oracle 向内钳制（如 (1,8)→"😀"），VM 回退保整字，
+        // 此分叉为两 oracle 并存下的既定契约，本测试钉 VM 实际值。
+        assert_eq!(shim_str_substr("送你".to_string(), 1, 2), "送");
+        assert_eq!(shim_str_substr("送你".to_string(), 2, 2), "送");
+        assert_eq!(shim_str_substr("送你".to_string(), 1, 4), "送");
+        // Down-clamped edges can still collapse to empty: "a送b" 的 [1,3)
+        // 回退到 [1,1) → 空。
         assert_eq!(shim_str_substr("a送b".to_string(), 1, 2), "");
         // A range that fully contains a char keeps it.
         assert_eq!(shim_str_substr("送你".to_string(), 0, 6), "送你");

@@ -119,8 +119,20 @@ def inspect(path, retired_source=None):
         allowed = 'package' in historical or 'workspace' in historical
     if not allowed:
         raise ValueError('not an exact Cargo cache owned by this checkout: ' + str(target))
-    if (ROOT / 'target/test-groups/active').exists():
-        raise ValueError('fixed-test execution/measurement lease is active')
+    # PLAN-1014 T-05: a live fixed-test lease still refuses (its pid is checked,
+    # not mere existence); a dead-owner leftover is reported as stale and the
+    # read-only inspect proceeds — the next fixed-tests run reclaims it before
+    # executing (fixed-tests._reclaim_dead_lease owns recovery, never deletion here).
+    lease_dir = ROOT / 'target/test-groups/active'
+    if lease_dir.exists():
+        try:
+            lease_pid = int(json.loads(
+                (lease_dir / 'owner.json').read_text(encoding='utf-8'))['pid'])
+        except (ValueError, TypeError, KeyError, OSError) as error:
+            raise ValueError('fixed-test execution lease present but unreadable '
+                             '(fail closed): ' + str(lease_dir)) from error
+        if process_alive(lease_pid):
+            raise ValueError('fixed-test execution/measurement lease is active (pid %d)' % lease_pid)
     files = []
     for folder, dirs, names in os.walk(target, followlinks=False):
         for name in [*dirs, *names]:

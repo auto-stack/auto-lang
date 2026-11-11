@@ -163,6 +163,10 @@ test_temp.txt
 # PLAN-793：诊断投影冻结 golden（V02 重放期望，旧实现生成；*.json 母规则
 # 曾吞掉本件——R1 F-793-R1-01，fresh clone 重放必红）
 !crates/auto-diagnostics/tests/fixtures/v02-golden.json
+# PLAN-1014（B-06，PLAN-007 债收口）：媒体七 fixture 的 manifest 同为逐字节
+# 期望目标（fixture_manifest 读它），*.json 母规则吞掉本件正是迁移时
+# manifest 缺失、auto-media-core 长红的根因——fresh clone 必红，同上豁免。
+!crates/auto-media-core/tests/fixtures/manifest.json
 # PLAN-892：a2r-hir 首例四文件 golden 之一（manifest 是逐字节比较目标，*.json
 # 母规则会吞掉本件——fresh clone 复跑必红，同 F-793-R1-01 先例）
 !crates/auto-lang/test/cases/a2r-hir-892/golden-*/manifest.json

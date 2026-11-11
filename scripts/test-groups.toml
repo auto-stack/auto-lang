@@ -16,8 +16,13 @@ workspace = "."
 args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib"]
 # PLAN-901：测试 feature 拍平后，原靠 feature 缺席隐藏的转译/书稿/HTTP e2e/
 # ACE 桥接测试族常驻可见——静态边界钉住原日常范围（与 profile.default 的
-# default-filter 语义叠加；31 模块前缀=旧 test-cases-only 形态差集，实证零丢失）。
-expression = "not(test(/^(?:test_cases::ac_av::closures_judge_tests|test_cases::ac_av::closures_source_judge_tests|test_cases::ac_av::console_tests|test_cases::ac_av::judge_tests|test_cases::ac_av::test_batch::tests|test_cases::ac_av::worker_identity_tests|test_cases::ac_mn::collections::controls|test_cases::ace_certify::tests|tests::a2r_tests|tests::a2ts_tests|tests::book_listing_tests|tests::plan724_http_client_tests::e2e|tests::plan727_http_transfer_tests::e2e)::/))"
+# default-filter 语义叠加）。
+# PLAN-1014 T-03：原枚举式前缀清单漏掉 7 个后加模块（abi::source_protocol_tests、
+# ac_av::resource_915_tests/resource_events/worker_json_tests、ac_mn::refusal_tests/
+# resource_events/source_diag_tests 等 58 例），legacy 守卫持续红。改为族式排除
+# `test_cases::(ac|abi|sema|ace_)`——与 ace-adapters 的正向选择同构、与
+# run_rust 守卫前缀一致，新 ACE 模块自动划归显式 ACE 职责组，不再靠手工清单。
+expression = "not(test(/^(?:test_cases::ac|test_cases::abi::|test_cases::sema::|test_cases::ace_|tests::a2r_tests::|tests::a2ts_tests::|tests::book_listing_tests::|tests::plan724_http_client_tests::e2e::|tests::plan727_http_transfer_tests::e2e::)/))"
 tools = []
 domain = "legacy"
 all = false
@@ -163,7 +168,8 @@ title = "宿主与Core完整集成（显式广组）"
 runner = "nextest"
 workspace = "."
 args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--config-file", ".config/nextest-full.toml"]
-expression = "not(test(/^(?:test_cases::ac_av::closures_judge_tests|test_cases::ac_av::closures_source_judge_tests|test_cases::ac_av::console_tests|test_cases::ac_av::judge_tests|test_cases::ac_av::test_batch::tests|test_cases::ac_av::worker_identity_tests|test_cases::ac_mn::collections::controls|test_cases::ace_certify::tests|test_cases::ac_a2r_hir)::/))"
+# PLAN-1014 T-03：同 daily 的族式 ACE 排除（见 daily 组注释）。
+expression = "not(test(/^(?:test_cases::ac|test_cases::abi::|test_cases::sema::|test_cases::ace_)/))"
 tools = []
 domain = "legacy"
 all = false
@@ -284,7 +290,8 @@ title = "Cargo包 auto-lang-core"
 runner = "nextest"
 workspace = "."
 args = ["-p", "auto-lang-core", "--tests", "--lib", "--config-file", ".config/nextest-full.toml"]
-expression = "not(test(/^(?:test_cases::ac_av::closures_judge_tests|test_cases::ac_av::closures_source_judge_tests|test_cases::ac_av::console_tests|test_cases::ac_av::judge_tests|test_cases::ac_av::test_batch::tests|test_cases::ac_av::worker_identity_tests|test_cases::ac_mn::collections::controls|test_cases::ace_certify::tests|test_cases::ac_a2r_hir)::/))"
+# PLAN-1014 T-03：同 daily 的族式 ACE 排除（见 daily 组注释）。
+expression = "not(test(/^(?:test_cases::ac|test_cases::abi::|test_cases::sema::|test_cases::ace_)/))"
 tools = []
 domain = "legacy"
 all = true
@@ -388,17 +395,10 @@ tools = []
 domain = "legacy"
 all = true
 
-[[group]]
-name = "auto-lsp"
-title = "Cargo包 auto-lsp"
-runner = "nextest"
-workspace = "."
-args = ["-p", "auto-lsp", "--tests", "--lib"]
-expression = "all()"
-tools = []
-domain = "legacy"
-all = true
-
+# PLAN-1014 T-03（B-01，PLAN-900/901 债）：auto-lsp crate 已迁 auto-ui 仓
+# （D:/autostack/auto-ui/crates/auto-lsp，manifest 实核存在）；本仓 `-p auto-lsp`
+# 注册失效（包不存在，发现即败）。组注册退役=本仓不再自称运行 LSP 测试；
+# 其真实 owner 入口在 auto-ui 仓的既有测试装配，不因本组删除而消失。
 [[group]]
 name = "auto-val"
 title = "Cargo包 auto-val"
@@ -614,7 +614,7 @@ all = true
 
 [[group]]
 name = "infra-pilot-cli"
-title = "治理 scripts/tests/test_case_pilot_cli.py"
+title = "治理 scripts/tests/test_case_pilot_cli.py（纯Python回合核算，无ACE准备）"
 runner = "python"
 workspace = "."
 args = []
@@ -623,6 +623,23 @@ tools = []
 domain = "legacy"
 file = "scripts/tests/test_case_pilot_cli.py"
 all = true
+
+# PLAN-1014 T-04（B-03，PLAN-900/901 债）：真实 pilot CLI 检查显式 ACE 化——
+# 工具（case-parent 构 pilot exe、batch-av 供 group/combined 模式、av-regular
+# 供 default-off 原路径）由本组声明并 source-bound 准备，不再依赖环境残留
+# target 状态；缺工具=组失败，而非 skipUnless 静默丢覆盖。all=false：与
+# ace-host 等一致，仅显式选择（`cargo t infra-pilot-ace`），不进 cargo t all。
+[[group]]
+name = "infra-pilot-ace"
+title = "治理 scripts/tests/test_case_pilot_ace.py（真实pilot CLI，显式ACE工具准备）"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "batch-av", "av-regular"]
+domain = "ace"
+file = "scripts/tests/test_case_pilot_ace.py"
+all = false
 
 [[group]]
 name = "case-ac-av"

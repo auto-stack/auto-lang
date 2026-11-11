@@ -66,11 +66,15 @@ pub fn shim_str_char_at(s: String, index: i32) -> i32 {
 /// (possibly empty) slice instead of panicking when a byte index lands
 /// mid-char in multi-byte UTF-8 input.
 ///
-/// PLAN-995 T-01（H6）：start 的 clamp 方向改为**回退**（lo -= 1）。
-/// 原前跳（lo += 1）在步进读缝隙丢整字：跨块中文字符被上一块的 end 回退
-/// 排除、又被下一块的 start 前跳跳过——分块 substr 重建比原文短
-/// （h7-diag 实证 66354→66348，分歧点即 CJK）。双向回退后
-/// s[boundary↓(start)..boundary↓(start+len)] 使步进覆盖无损。
+/// PLAN-1014（substr 双 oracle 冲突收敛）：VM 侧保持 PLAN-995 T-01（H6）的
+/// **双向回退**（boundary↓(start)..boundary↓(start+len)）——h4 步进重建
+/// oracle（tests_json_hazards）钉住其步进无损性（h7-diag 66354→66348 实证
+/// 丢字修复）。a2r_std::str_substr 保持向内钳制（其自有测试
+/// partial_characters_negative_and_overflow_do_not_panic 钉值）。两后端在
+/// **边界对齐**输入上严格同值（对偶原则的有效域）；字节落在多字节字符
+/// 内部时两后端按各自 oracle 钳制——VM 回退保整字符（步进无损所需），
+/// 转译侧向内取空/后半（转译面切片本会硬 panic，钳制方向仅影响容错形
+/// 状）。stdlib.rs 的对偶测试已按此契约更新（该红长期被 ACE 守卫红掩盖）。
 #[auto_macros::rust_fn("Str.substr")]
 pub fn shim_str_substr(s: String, start: i32, len: i32) -> String {
     if start < 0 || len < 0 || start as usize > s.len() {

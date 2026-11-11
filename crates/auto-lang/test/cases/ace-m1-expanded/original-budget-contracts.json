@@ -257,7 +257,7 @@
     }
   },
   "source_pins": {
-    "scripts/fixed-tests.py": "1b3705113062a086a2c9a8dfb77a97e061dbfe1a9d6c8aba586f1347a71bf213",
+    "scripts/fixed-tests.py": "256474602f0b4669ef1e94cd0febfcd760e2abe27e6b8043c6ed0ecf32fa8e95",
     "scripts/test-governance/process_capture.py": "b3bfe935d72b3b41f4d47efcbc6a5f669bfc5a93b4aec49f09be97d3a5389c13",
     ".config/nextest-full.toml": "fc8d9c684826d0645afe80ffe7471355b10c18f0b1020cc030abbefd19eaf89d",
     "crates/auto-test-case/src/contract.rs": "e68742e04646c79bbc352fa5a9de400b282db275fb6179836e9989f60d6251cc",

@@ -366,13 +366,78 @@ def checkout_state():
 @contextlib.contextmanager
 def execution_lease():
     active = ROOT / 'target/test-groups/active'
-    active.mkdir(parents=True, exist_ok=False)
-    (active / 'owner.json').write_text(json.dumps({'pid': os.getpid(), 'root': str(ROOT)}))
+    # PLAN-1014 T-05（B-07，D-1001-R3）：获取=原子独占 mkdir；遇存量租约先验
+    # 证归属/身份，仅本树+确认死亡才在互斥重验下恢复；活/未知/外树一律拒绝。
+    while True:
+        try:
+            active.mkdir(parents=True, exist_ok=False)
+            break
+        except FileExistsError:
+            _reclaim_dead_lease(active)
+    try:
+        (active / 'owner.json').write_text(json.dumps({'pid': os.getpid(), 'root': str(ROOT)}))
+    except BaseException:
+        with contextlib.suppress(OSError):
+            active.rmdir()
+        raise
     try:
         yield
     finally:
-        (active / 'owner.json').unlink()
-        active.rmdir()
+        try:
+            (active / 'owner.json').unlink()
+            active.rmdir()
+        except OSError as error:
+            raise ValueError(f'fixed-test lease cleanup failed for {active}: {error}') from error
+
+
+def _lease_owner(path):
+    """Read a lease owner document; anything unreadable fails closed."""
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+        return int(data['pid']), str(data['root'])
+    except (ValueError, TypeError, KeyError, OSError) as error:
+        raise ValueError(
+            f'existing execution lease is unreadable/invalid (fail closed; verify no '
+            f'runner is active, then remove manually): {path}') from error
+
+
+def _reclaim_dead_lease(active):
+    """Validate an existing lease and recover it only when it belongs to this
+    tree and its owner pid is confirmed dead (mutual exclusion via the atomic
+    rename itself, re-validated inside the quarantine)."""
+    from build_storage import process_alive
+    pid, root = _lease_owner(active / 'owner.json')
+    if Path(root).resolve() != ROOT:
+        raise ValueError(
+            f'existing execution lease belongs to another tree ({root}); refusing to touch it')
+    if process_alive(pid):
+        raise ValueError(
+            f'fixed-test execution lease held by live pid {pid} (root {root}); not reclaiming')
+    entries = sorted(entry.name for entry in active.iterdir())
+    if entries != ['owner.json']:
+        raise ValueError(
+            f'existing execution lease carries unknown content {entries}; refusing to recover')
+    quarantine = active.with_name(f'active.dead-{pid}')
+    if quarantine.exists():
+        raise ValueError(
+            f'dead-lease quarantine already exists; inspect and remove manually: {quarantine}')
+    try:
+        os.rename(active, quarantine)
+    except FileNotFoundError:
+        return  # a concurrent session reclaimed it first; retry the mkdir
+    try:
+        # A racing new owner may have taken the directory between the read and
+        # the rename; restore it untouched and let the retry loop re-validate.
+        reclaimed_pid, reclaimed_root = _lease_owner(quarantine / 'owner.json')
+        if (reclaimed_pid, Path(reclaimed_root).resolve()) != (pid, ROOT):
+            os.rename(quarantine, active)
+            return
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.rename(quarantine, active)
+        raise
+    import shutil
+    shutil.rmtree(quarantine)
 
 
 def main(argv=None):

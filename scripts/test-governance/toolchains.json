@@ -32,6 +32,15 @@
    "target": "experimental/ace/target-batch",
    "env": "AC_AV_CASE_WORKER"
   },
+  "av-regular": {
+   "workspace": "experimental/ace",
+   "package": "ace-av",
+   "binaries": [
+    "av-worker"
+   ],
+   "profile": "release",
+   "target": "target/test-tools/regular"
+  },
   "ac": {
    "workspace": "experimental/ace",
    "package": "ace-case-worker",

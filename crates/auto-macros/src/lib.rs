@@ -702,7 +702,9 @@ fn handle_interpolated_value(input: TokenStream) -> TokenStream {
         use auto_val::ToAutoValue;
         let mut obj = Obj::new();
         #(#properties)*
-        auto_val::Value::Obj(obj)
+        // Plan 566 Phase B: Value::Obj 变体装箱为 Box<Obj>；插值对象走
+        // Value::obj 构造 helper，与 232 处调用点的当前构造契约一致。
+        auto_val::Value::obj(obj)
     }};
 
     expanded.into()
