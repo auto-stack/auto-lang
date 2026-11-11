@@ -3092,6 +3092,8 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 match self.hir_module.types.get(e.0 as usize).map(|t| &t.kind) {
                     Some(hir::TypeKind::Variant { .. }) => true,
                     Some(hir::TypeKind::Record(_)) => hir_record_reaches_str(self.hir_module, *e),
+                    // PLAN-962: a nested List element owns its arena buffer.
+                    Some(hir::TypeKind::List { .. }) => true,
                     _ => false,
                 }
             }
@@ -4803,12 +4805,39 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             }
             hir::ExprKind::ListGet { list, index } if self.collections() => {
                 if self.hir_elem_owned(*list)? {
-                    // verify guarantees this never happens (view-escape);
-                    // keep the lowering total for programmatic bundles.
-                    return Err(AdapterError::inv(
-                        "lower.list-get-owned",
-                        "list_get over an owned-element list has no value lowering".to_string(),
-                    ));
+                    // PLAN-962: on the aggregates surface a whole-element
+                    // read is a VIEW read — the resolver only produces it
+                    // tainted (ElemView, empty path) and rejects every
+                    // materializing use, so the alias temp below is never
+                    // free-scheduled (the owning list's free cascades).
+                    // Representation: the frozen 822 place machinery —
+                    // LIST_PLACE mints a retained element reference
+                    // (buffer identity + epoch revalidated at every use),
+                    // PLACE_GET reads through the borrow. Frozen-profile
+                    // bundles keep the controlled rejection below.
+                    let aggregates = self
+                        .out
+                        .capabilities
+                        .iter()
+                        .any(|c| c == "av.aggregates/1");
+                    if !aggregates {
+                        // verify guarantees this never happens (view-escape);
+                        // keep the lowering total for programmatic bundles.
+                        return Err(AdapterError::inv(
+                            "lower.list-get-owned",
+                            "list_get over an owned-element list has no value lowering"
+                                .to_string(),
+                        ));
+                    }
+                    let l = self.eval_expr(*list, depth + 1)?;
+                    let i = self.eval_expr(*index, depth + 1)?;
+                    let elem = self.elem_vt_of(*list)?;
+                    let place_ty = self.out.intern_type(MirType::Place(ace_av_core::mir::ListTypeRef { elem }));
+                    let place = self.temp_ty(place_ty)?;
+                    self.emit(MirInstr::ListPlace { dst: place, base: l, index: i }, sp)?;
+                    let dst = self.temp_ty(ty)?;
+                    self.emit(MirInstr::PlaceGet { dst, src: place }, sp)?;
+                    return Ok(dst);
                 }
                 let l = self.eval_expr(*list, depth + 1)?;
                 let i = self.eval_expr(*index, depth + 1)?;

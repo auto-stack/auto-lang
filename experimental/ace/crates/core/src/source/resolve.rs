@@ -5024,6 +5024,26 @@ impl<'a, 's> FnResolver<'a, 's> {
         self.lookup(name).is_none() && !self.sigs.contains_key(name)
     }
 
+    /// PLAN-962: a whole-element VIEW (ElemView with an empty projection
+    /// path) — a borrow of an owned element read out of its list. Legal as
+    /// a method receiver (read-through); every materializing use (let
+    /// binding, argument, return, store) is a view escape.
+    fn is_whole_elem_view(e: &ResolvedExpr) -> bool {
+        matches!(&e.kind, RExprKind::ElemView { path, .. } if path.is_empty())
+    }
+
+    fn reject_elem_view_use(&mut self, e: &ResolvedExpr, what: &str) {
+        if Self::is_whole_elem_view(e) {
+            self.bind_err(
+                "source.view-escape",
+                format!(
+                    "a whole owned element is a view, not a value; read through it (`{what}.get(i)`, field projection) or move it out (`remove`)"
+                ),
+                e.span,
+            );
+        }
+    }
+
     fn vt_is_coll_owned(&self, vt: VT) -> bool {
         match vt {
             VT::StrOwned | VT::List(_) | VT::Variant(_) | VT::Function(_) => true,
@@ -5392,10 +5412,24 @@ impl<'a, 's> FnResolver<'a, 's> {
             "get" if rargs.len() == 1 => {
                 let index = rargs.remove(0).value;
                 if self.vt_is_coll_owned(elem) {
-                    self.bind_err(
-                        "source.view-escape",
-                        "a whole owned element is not a value; project a field (`xs.get(i).f`) or use `xs.remove(i)`".to_string(),
-                        span,
+                    // PLAN-962: the aggregates surface reads a whole owned
+                    // element as a VIEW (borrow; materializing uses are
+                    // rejected at their sites by `reject_elem_view_use`).
+                    // Frozen profiles keep the 822 rejection.
+                    if !self.coll.aggregates_admission {
+                        self.bind_err(
+                            "source.view-escape",
+                            "a whole owned element is not a value; project a field (`xs.get(i).f`) or use `xs.remove(i)`".to_string(),
+                            span,
+                        );
+                    }
+                    return mk(
+                        elem,
+                        RExprKind::ElemView {
+                            list,
+                            index: Box::new(index),
+                            path: Vec::new(),
+                        },
                     );
                 }
                 mk(
@@ -5459,6 +5493,10 @@ impl<'a, 's> FnResolver<'a, 's> {
     /// move-source (`.move` local or a fresh rvalue); Copy elements pass
     /// by value.
     fn check_push_value(&mut self, elem: &VT, value: &mut ResolvedExpr, span: Span) {
+        let _ = span;
+        // PLAN-962: storing a whole-element view would alias an owned
+        // element into another container.
+        self.reject_elem_view_use(value, "the stored value");
         if !self.vt_is_coll_owned(*elem) {
             return;
         }
@@ -5665,6 +5703,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                         None => None,
                     };
                     let mut value = self.expr_with_expect(value, ann_vt);
+                    self.reject_elem_view_use(&value, "the bound value");
                     let rule = match ann_vt {
                         Some(v) => v,
                         None => value.vt,
@@ -5768,6 +5807,9 @@ impl<'a, 's> FnResolver<'a, 's> {
                     }
                     let expect = self.lookup(&target.base.name).map(|l| self.locals[l.0].vt);
                     let mut value = self.expr_with_expect(value, expect);
+                    // PLAN-962: storing a whole-element view into a local
+                    // is a view escape (the alias must not materialize).
+                    self.reject_elem_view_use(&value, "the assigned value");
                     if matches!(
                         &value.kind,
                         RExprKind::CreateClosure { captures, .. }
@@ -5870,6 +5912,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                 }
                 Stmt::Return { value, span } => {
                     let mut value = self.expr_with_expect(value, Some(self.fn_result));
+                    self.reject_elem_view_use(&value, "the returned value");
                     retag_literal(&mut value, self.fn_result);
                     if matches!(
                         &value.kind,
@@ -6524,6 +6567,30 @@ impl<'a, 's> FnResolver<'a, 's> {
                             ),
                             id.span,
                         );
+                    } else if let Some(vb) = self.lookup_view(&id.name) {
+                        // PLAN-962: reading a for-in element VIEW binding
+                        // yields the whole-element view (borrow) — legal as
+                        // a method receiver (read-through); materializing
+                        // uses reject at their sites.
+                        let xs_vt = self.locals[vb.list.0].vt;
+                        let vt = self.node_ty(e.span, vb.elem);
+                        return ResolvedExpr {
+                            span: e.span,
+                            vt,
+                            kind: RExprKind::ElemView {
+                                list: Box::new(ResolvedExpr {
+                                    span: e.span,
+                                    vt: xs_vt,
+                                    kind: RExprKind::ReadLocal(vb.list),
+                                }),
+                                index: Box::new(ResolvedExpr {
+                                    span: e.span,
+                                    vt: VT::I32,
+                                    kind: RExprKind::ReadLocal(vb.index),
+                                }),
+                                path: Vec::new(),
+                            },
+                        };
                     } else if self.declared_names.contains(&id.name) {
                         // Declared in a scope that ended before this use
                         // (N09/C10): point at the name itself — the token
@@ -9165,6 +9232,10 @@ impl<'a, 's> FnResolver<'a, 's> {
         args: &[ResolvedArg],
         call_span: Span,
     ) {
+        // PLAN-962: an argument may not materialize a whole-element view.
+        for a in args {
+            self.reject_elem_view_use(&a.value, "the argument");
+        }
         let named = args.iter().filter(|a| a.name.is_some()).count();
         if named > 0 && named < args.len() {
             // Mixed form: point at the first argument whose shape differs

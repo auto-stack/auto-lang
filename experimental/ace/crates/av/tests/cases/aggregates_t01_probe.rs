@@ -99,3 +99,58 @@ fn recursive_record_rejected_before_layout() {
         );
     }
 }
+
+/// PLAN-962 unit-2: whole-element VIEW reads — `xs.get(0)` over a nested
+/// list borrows the element (LIST_PLACE + PLACE_GET under the hood);
+/// read-through chains execute and the borrow never escapes.
+#[test]
+fn nested_element_view_read_runs() {
+    let src = "fn main() int {\n    var xs = List<List<int>>.new()\n    var inner = List<int>.new()\n    inner.push(38)\n    inner.push(4)\n    xs.push(inner.move)\n    return xs.get(0).get(0) + xs.get(0).get(1)\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("chained whole-element view read executes");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0);
+    assert_eq!(run.allocs, run.frees);
+}
+
+/// PLAN-962 unit-2: for-in element views of a nested list — the binding
+/// reads through as a view (`row.get(i)`); the list is not emptied.
+#[test]
+fn for_in_nested_list_view_binding_reads() {
+    let src = "fn main() int {\n    var xs = List<List<int>>.new()\n    var a = List<int>.new()\n    a.push(20)\n    a.push(1)\n    xs.push(a.move)\n    var b = List<int>.new()\n    b.push(21)\n    xs.push(b.move)\n    var s = 0\n    for row in xs {\n        s = s + row.get(0)\n    }\n    return s + 1\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("for-in view binding over a nested list executes");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0);
+    assert_eq!(run.allocs, run.frees);
+}
+
+/// PLAN-962 unit-2 negative controls: every materializing use of a
+/// whole-element view rejects with `source.view-escape`.
+#[test]
+fn element_view_materialization_rejects() {
+    let base = "fn main() int {\n    var xs = List<List<int>>.new()\n    var inner = List<int>.new()\n    inner.push(1)\n    xs.push(inner.move)\n    RETURN\n}";
+    for (name, ret) in [
+        ("let-bind", "let y = xs.get(0)\n    return y.get(0)"),
+        (
+            "assign",
+            "var y = List<List<int>>.new()\n    y = xs.get(0)\n    return 1",
+        ),
+    ] {
+        let src = base.replace("RETURN", ret);
+        let err = ace_core::source::compile_aggregates_source(src.as_str(), "p.at", &[])
+            .err()
+            .unwrap_or_else(|| panic!("{name} must reject"));
+        assert!(
+            err.iter().any(|d| d.code == "source.view-escape"),
+            "{name}: expected view-escape, got {:?}",
+            err.iter().map(|d| d.code.as_str()).collect::<Vec<_>>()
+        );
+    }
+    // Storing a view into another list rejects too.
+    let src = "fn main() int {\n    var xs = List<List<int>>.new()\n    var inner = List<int>.new()\n    inner.push(1)\n    xs.push(inner.move)\n    var ys = List<List<int>>.new()\n    ys.push(xs.get(0))\n    return 1\n}";
+    let err = ace_core::source::compile_aggregates_source(src, "p.at", &[])
+        .err()
+        .expect("pushing a view must reject");
+    assert!(err.iter().any(|d| d.code == "source.view-escape"));
+}

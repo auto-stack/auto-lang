@@ -3380,13 +3380,26 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     ));
                 }
                 if crate::ownership::type_is_owned(self.module, elem) {
-                    return Err(err(
-                                "mir.list-type",
-                                format!(
-                                    "place-get of owned element type {} (places read Copy elements; use LIST_REMOVE)",
-                                    elem
-                                ),
-                            ));
+                    // PLAN-962: the aggregates surface reads a whole owned
+                    // element through a place as a BORROW — admitted ONLY
+                    // when the destination is a compiler TEMP: temps are
+                    // never part of a facts free schedule, so the alias
+                    // cannot double-free; the place's epoch revalidation
+                    // traps any stale use. A named-local destination keeps
+                    // the frozen rejection (mutated-bundle safety).
+                    let dst_temp = f
+                        .slots
+                        .get(*dst as usize)
+                        .is_some_and(|s| s.kind == crate::mir::SlotKind::Temp);
+                    if !(self.aggregates_admission() && dst_temp) {
+                        return Err(err(
+                                    "mir.list-type",
+                                    format!(
+                                        "place-get of owned element type {} (places read Copy elements; use LIST_REMOVE)",
+                                        elem
+                                    ),
+                                ));
+                    }
                 }
             }
             MirInstr::PlaceSet { place, value } => {

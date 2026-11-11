@@ -709,8 +709,19 @@ fn check_expr(
                     mismatch(diags, VT::I32, index.vt, index.span);
                 }
                 check_field_path_vt(program, path, e.vt, e.span, diags);
-                if e.vt != VT::StrOwned {
-                    mismatch(diags, VT::StrOwned, e.vt, e.span);
+                // PLAN-962: a whole-element view's terminal type is the
+                // list's ELEMENT type — the 864-era whole-element views
+                // were Str-terminal only; the aggregates surface extends
+                // the same shape to every owned element kind.
+                if let VT::List(li) = list.vt {
+                    let elem = program.lists.get(li).copied().unwrap_or(VT::I32);
+                    if path.is_empty() {
+                        if e.vt != elem {
+                            mismatch(diags, elem, e.vt, e.span);
+                        }
+                    } else if e.vt != VT::StrOwned {
+                        mismatch(diags, VT::StrOwned, e.vt, e.span);
+                    }
                 }
             }
             RExprKind::VariantCtor {
