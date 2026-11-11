@@ -455,9 +455,9 @@ stage: merge | prepared: reviewed 基线 abb6baa7f+canonical ec8340820 | next: T
 
 **T-10 收尾补充**：跨检出 pin 身份修复（提交 05b7c9d7e，PLAN-1000 先例）：本包再生的工件以 CRLF 工作字节写入而仓 blob 为 LF——rebase 后两检出读 LF、CRLF 计算的 pin 断裂（master 9 红）。修复=工件 LF 规范化+模块 CONTRACT_SHA/RECIPES_SHA+registry expanded_contracts 重钉+机制夹具观察者源 pin 重绑；凭据 R 重绑（8fe85f8d）于 LF 基线；最终正式组合复核 **1006P/0F/0U exit 0**。**master 双侧治理 287 passed+1189 子测全绿**。
 
-**T-11 执行**：①最终摘要折入本计划（§0/§9 历轮收据 68P→1006P 全链+凭据链+LF 修复）；②SD-01..03 已随 ec8340820（rebase 后 05b7c9d7e 祖先）落 master 主线（architecture 47f19067/expanded-acceptance 7de0286c/evidence-admission aebb2260）；③`git mv` 归档 docs/plans/archive/ + status: archived；④wt-guard clean（两检）→worktree/分支移除；⑤plan-artifacts/plan-1005 整删（证据已折本计划；无具名 hold）；⑥retention 刷新。
+**T-11 执行**：①最终摘要折入本计划（§0/§9 历轮收据 68P→1006P 全链+凭据链+LF 修复）；②SD-01..03 已随 ec8340820（rebase 后 05b7c9d7e 祖先）落 master 主线（architecture 47f19067/expanded-acceptance 7de0286c/evidence-admission aebb2260）；③`git mv` 归档 docs/plans/archive/ + status: archived；④wt-guard clean（两检）→worktree/分支移除；⑤plan-artifacts/plan-1005 整删（40133 文件/1.49GB；证据已折本计划；无具名 hold）；⑥retention 刷新。
 
-**交付事实**：delivery commit `05b7c9d7e`（master ff-only，range-diff 等价全等）；10 提交链（ff27a1454→05b7c9d7e，rebase 映射 3a007e7fc 等 9 项+LF 修复）；正式报告 t08/final-report.json（已折摘要：1006P/0F/0U、八域全真、blockers=[]、exit0、凭据 8fe85f8d、峰值 47.98MiB）；**tag_ready=true**（TAG-01..06 全过；本地无 v0.6-ACE-M1；实际打/推 tag 为后续单独动作）；1000 保持归档不回写。
+**交付事实**：delivery commit `05b7c9d7e`（master ff-only，range-diff 等价全等）；10 提交链（ff27a1454→05b7c9d7e，rebase 映射 3a007e7fc 等 9 项+LF 修复）；正式报告 t08/final-report.json（sha 737e85d70dab…，已折摘要：1006P/0F/0U、八域全真、blockers=[]、exit0、凭据 8fe85f8dfbfd…、峰值 47.98MiB）；**tag_ready=true**（TAG-01..06 全过；本地无 v0.6-ACE-M1；实际打/推 tag 为后续单独动作）；1000 保持归档不回写。
 
 stage: goal | plan_id: PLAN-1005 | plan_revision: r1 | round: 18 | from: merge | to: done | status: archived | outcome: pass（delivered：1006P/0F/0U 八域真 exit0+tag_ready+SD 沉淀+归档+清理） | worktree: （已移除） | commit: 05b7c9d7e | next: done（批量回归门 due→regress 单列）
 
