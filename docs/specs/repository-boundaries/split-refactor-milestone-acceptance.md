@@ -64,8 +64,9 @@ applicability, no photon-endpoint claim).
   post-delivery receipt commits — both disclosed in §1; the language
   dependency differs by delivery-additive changes). The RC-RQ drill's old
   package group was rebuilt from a synthetic older alias mix
-  (auto-os@O-RQ + auto-ui@U-C + auto-lang@L-C + auto-man@M-BASE — each
-  repo's most recent formally usable pre-N source), not the recovery
+  (auto-os@O-RQ + auto-ui@U-C + auto-lang@L-C + auto-man@M-BASE — the
+  RC-UI old aliases reused with O-RQ added; a synthetic mix, not a
+  latest-formal selection), not the recovery
   contract's exact O-RQ/U-RQ/L-RQ combination; the upgrade semantics were
   therefore tested against a larger A-side delta (stricter, not weaker).
   No new >60Hz, photon-endpoint, byte-level transfer, replay-p95, or
