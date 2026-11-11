@@ -21,9 +21,10 @@ import hashlib
 import importlib.util
 import json
 import re
+import subprocess
 import tomllib
 
-from ace_m1_arch_acceptance import counter, exact_keys, hash_value
+from ace_m1_arch_acceptance import AdmissionError, counter, exact_keys, hash_value
 from ace_m1_arch_obligations import REQUIRED
 from ace_m1_case_evidence import require
 from ace_m1_legacy import typed_equal
@@ -51,6 +52,26 @@ def config_digest(inputs):
     return hashlib.sha256(inputs.read_bytes('scripts/test-groups.toml')).hexdigest()
 
 
+def _verify_commit_object(inputs, commit, frozen_anchors=()):
+    """R-02: the frozen producer commit must resolve to a real commit object
+    in the audited repository and belong to the frozen anchor closure.
+
+    Read-only metadata query (git rev-parse --verify), never a language or
+    test execution tool. A well-formed 40-hex string that names no object,
+    a commit from another repository, or a commit outside the frozen anchor
+    closure is refused before any row can be admitted (F-1013-01)."""
+    require(type(commit) is str and re.fullmatch('[0-9a-f]{40}', commit) is not None,
+            'frozen producer commit')
+    if frozen_anchors:
+        require(commit in frozen_anchors, 'frozen producer commit outside the frozen anchor closure')
+    try:
+        subprocess.run(['git', '-C', str(inputs.root), 'rev-parse', '--verify', commit + '^{commit}'],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except (subprocess.CalledProcessError, OSError):
+        raise AdmissionError(
+            f'commit is not a real commit object in the audited repository: {commit}')
+
+
 def _parent_parsers(inputs):
     """Reuse the fixed parent's pure selection/terminal parsers, never its runner."""
     spec = importlib.util.spec_from_file_location('arch_entry_parent', inputs.path('scripts/fixed-tests.py'))
@@ -66,7 +87,7 @@ def _group_config(inputs, name):
     return group
 
 
-def _admit_gate_root(inputs, evidence, root):
+def _admit_gate_root(inputs, evidence, root, frozen_anchors=()):
     """Admit one entry gate directory: identity + every pinned original byte."""
     from ace_m1_first_slice import _repo_relative
     document, _ = evidence.read_json(root + '/gate.json')
@@ -76,6 +97,9 @@ def _admit_gate_root(inputs, evidence, root):
     require(type(document['group']) is str and document['group'], 'entry gate group')
     commit = document['commit']
     require(type(commit) is str and re.fullmatch('[0-9a-f]{40}', commit) is not None, 'frozen producer commit')
+    if frozen_anchors:
+        require(commit in frozen_anchors, 'frozen producer commit outside the frozen anchor closure')
+    _verify_commit_object(inputs, commit, frozen_anchors)
     binaries = document['binaries']
     require(type(binaries) is dict, 'gate binary pins required')
     for name, digest in sorted(binaries.items()):
@@ -120,14 +144,15 @@ def _retain(evidence, value):
     evidence.reserve(_doc_transient(raw))
 
 
-def admit_native_gate(inputs, evidence, root, group_name, closure, keep_events=None):
+def admit_native_gate(inputs, evidence, root, group_name, closure, keep_events=None,
+                      frozen_anchors=()):
     """Full-group native admission: selection, terminals, receipts, identity.
 
     Returns {'commit', 'green', 'terminals', 'excluded', 'executed'}; every
     fact is re-derived from the pinned original bytes, never from a summary.
     """
     from ace_m1_first_slice import _repo_relative
-    gate = _admit_gate_root(inputs, evidence, root)
+    gate = _admit_gate_root(inputs, evidence, root, frozen_anchors)
     typed_equal(gate['kind'], 'native', 'native entry gate kind')
     group = _group_config(inputs, group_name)
     require(group['runner'] == 'nextest', 'native fixed group runner')
@@ -218,13 +243,14 @@ def admit_native_gate(inputs, evidence, root, group_name, closure, keep_events=N
             'terminals': rows, 'executed': executed}
 
 
-def admit_case_gate(inputs, evidence, root, group_name, closure, keep_checks=None):
+def admit_case_gate(inputs, evidence, root, group_name, closure, keep_checks=None,
+                    frozen_anchors=()):
     """Full-group Case admission: declared inventory, parent report, receipts.
 
     Returns {'commit', 'green', 'checks'} where checks maps (case, check) to
     the original parent report row with its identity pins."""
     from ace_m1_first_slice import _repo_relative
-    gate = _admit_gate_root(inputs, evidence, root)
+    gate = _admit_gate_root(inputs, evidence, root, frozen_anchors)
     typed_equal(gate['kind'], 'case', 'case entry gate kind')
     group = _group_config(inputs, group_name)
     require(group['runner'] == 'case', 'case fixed group runner')
@@ -336,11 +362,45 @@ def validate_recipes(document, entries):
     typed_equal(seen, set(REQUIRED) - {REVIEW_ROW}, 'recipe coverage is every non-review row')
 
 
-def admit_arch_entry_gates(inputs, evidence, binding):
-    """binding: {'entries': {entry-name: {'root': <gate dir>}}} — strict
-    envelope + per-row recipe admission; never emits the review row."""
-    exact_keys(binding, ('entries',), 'architecture entry-gate binding')
+def _entry_closure(inputs, name, declared, config):
+    """The frozen producer-window closure for one entry: the declared source/
+    config/oracle pins the raw reader re-verifies against the originals."""
+    if declared['kind'] == 'case-suite':
+        inputs.sha256(declared['suite_file'], declared['source_sha256'])
+        return {'scripts/test-groups.toml': config,
+                declared['suite_file']: declared['source_sha256'],
+                'scripts/test-governance/case-control-oracles.json':
+                    hashlib.sha256(inputs.read_bytes('scripts/test-governance/case-control-oracles.json')).hexdigest()}
+    if declared['kind'] == 'native-module':
+        inputs.sha256(declared['source_file'], declared['source_sha256'])
+        return {'scripts/test-groups.toml': config,
+                declared['source_file']: declared['source_sha256']}
+    owner, _resident, _modules = DELIVERED_PROVIDERS[name]
+    require(declared.get('owner') == owner, f'delivered provider owner {name}')
+    return {'scripts/test-groups.toml': config}
+
+
+def admit_arch_entry_gates(inputs, evidence, binding, frozen_anchors=()):
+    """binding: {'entries': {entry-name: {'root': <gate dir>} | {'facts': {...}, 'root': <gate dir>}}} —
+    strict envelope + per-row recipe admission; never emits the review row.
+
+    `frozen_anchors` (optional binding-level list of 40-hex commits) names the
+    audited frozen producer identity; every admitted gate commit must belong to
+    it (TAG-01/03 commitment). A phased facts reference must ALSO carry the
+    original gate root: the final composition re-derives every entry from the
+    pinned originals through the same strict raw reader and compares the facts
+    projection item by item — a self-reported facts document alone proves
+    nothing (F-1013-01)."""
+    require(type(binding) is dict and 'entries' in binding and set(binding) <= {'entries', 'frozen_anchors'},
+            'architecture entry-gate binding')
     require(type(binding['entries']) is dict and binding['entries'], 'entry gate map required')
+    if not frozen_anchors and 'frozen_anchors' in binding:
+        frozen_anchors = binding['frozen_anchors']
+    if frozen_anchors:
+        require(type(frozen_anchors) in (list, tuple) and all(
+            type(c) is str and re.fullmatch('[0-9a-f]{40}', c) for c in frozen_anchors),
+            'frozen anchors must be a list of 40-hex commits')
+        frozen_anchors = frozenset(frozen_anchors)
     document, _ = inputs.read_json(CONTRACT)
     require(document.get('schema') == 'ace.m1.arch-obligation-contract/1', 'architecture contract schema')
     entries = document['entries']
@@ -362,69 +422,88 @@ def admit_arch_entry_gates(inputs, evidence, binding):
     for name in sorted(binding['entries']):
         ref = binding['entries'][name]
         require(name in entries, f'foreign entry family {name}')
-        if 'facts' in ref:
-            # PLAN-1005 T-08 phased admission: the full strict gate admission
-            # ran in its own bounded phase (fresh live-data budget) and emitted
-            # this compact hash-pinned facts document; the final composition
-            # consumes only the per-row facts it needs. The phase is re-runnable
-            # against the same gate directory (its receipts stay in the scope).
-            exact_keys(ref, ('facts',), f'phased entry facts reference {name}')
-            facts_ref = ref['facts']
-            exact_keys(facts_ref, ('path', 'sha256'), f'phased entry facts {name}')
-            document, digest = evidence.read_json(facts_ref['path'])
-            if digest != facts_ref['sha256']:
-                raise ValueError(f'STALE artifact content: {facts_ref["path"]}')
-            exact_keys(document, ('schema', 'entry', 'group', 'kind', 'commit', 'green',
-                                  'executed', 'kept', 'gate_originals_sha256'),
-                       f'phased entry facts {name}')
-            typed_equal(document['schema'], 'ace.m1.arch-entry-facts/1', 'phased facts schema')
-            typed_equal(document['entry'], name, 'phased facts entry identity')
-            require(type(document['group']) is str and document['group'], 'phased facts group')
-            require(type(document['green']) is bool, 'phased facts gate status')
-            require(type(document['executed']) is int and document['executed'] > 0,
-                    'phased facts executed count')
-            require(type(document['kept']) is dict, 'phased facts rows required')
-            require(type(document['gate_originals_sha256']) is dict
-                    and document['gate_originals_sha256'], 'phased facts gate identity')
-            declared = entries[name]
-            expected_group = declared['group'] if declared['kind'] != 'provider-pending'                 else DELIVERED_PROVIDERS[name][1]
-            typed_equal(document['group'], expected_group, 'phased facts group identity')
-            expected_kind = 'case' if declared['kind'] == 'case-suite' else 'native'
-            typed_equal(document['kind'], expected_kind, 'phased facts gate kind')
-            if expected_kind == 'native':
-                kept = {key: {'event': row} if isinstance(row, str) else row
-                        for key, row in document['kept'].items()}
-            else:
-                kept = {tuple(key.split('|')): {'status': row} if isinstance(row, str) else row
-                        for key, row in document['kept'].items()}
-            gates[name] = {'commit': document['commit'], 'green': document['green'],
-                           'executed': document['executed'],
-                           'terminals': kept if expected_kind == 'native' else None,
-                           'checks': kept if expected_kind == 'case' else None}
-            continue
-        exact_keys(ref, ('root',), f'entry gate reference {name}')
         declared = entries[name]
         config = config_digest(inputs)
+        if 'facts' in ref:
+            # PLAN-1013 T-03: the phased facts document is a checked projection
+            # of a real gate directory, never a trusted summary. The reference
+            # must carry the original root; the final composition re-derives
+            # every fact from the pinned originals and compares item by item.
+            exact_keys(ref, ('facts', 'root'), f'phased entry facts reference {name}')
+            facts_ref = ref['facts']
+            exact_keys(facts_ref, ('path', 'sha256'), f'phased entry facts {name}')
+            facts_doc, digest = evidence.read_json(facts_ref['path'])
+            if digest != facts_ref['sha256']:
+                raise ValueError(f'STALE artifact content: {facts_ref["path"]}')
+            exact_keys(facts_doc, ('schema', 'entry', 'group', 'kind', 'commit', 'green',
+                                   'executed', 'kept', 'gate_originals_sha256'),
+                       f'phased entry facts {name}')
+            typed_equal(facts_doc['schema'], 'ace.m1.arch-entry-facts/1', 'phased facts schema')
+            typed_equal(facts_doc['entry'], name, 'phased facts entry identity')
+            require(type(facts_doc['group']) is str and facts_doc['group'], 'phased facts group')
+            require(type(facts_doc['green']) is bool, 'phased facts gate status')
+            require(type(facts_doc['executed']) is int and facts_doc['executed'] > 0,
+                    'phased facts executed count')
+            require(type(facts_doc['kept']) is dict, 'phased facts rows required')
+            require(type(facts_doc['gate_originals_sha256']) is dict
+                    and facts_doc['gate_originals_sha256'], 'phased facts gate identity')
+            expected_group = declared['group'] if declared['kind'] != 'provider-pending'                 else DELIVERED_PROVIDERS[name][1]
+            typed_equal(facts_doc['group'], expected_group, 'phased facts group identity')
+            expected_kind = 'case' if declared['kind'] == 'case-suite' else 'native'
+            typed_equal(facts_doc['kind'], expected_kind, 'phased facts gate kind')
+            closure = _entry_closure(inputs, name, declared, config)
+            if expected_kind == 'native':
+                resident = declared['group'] if declared['kind'] == 'native-module' else DELIVERED_PROVIDERS[name][1]
+                derived = admit_native_gate(inputs, evidence, ref['root'], resident, closure,
+                                            keep_events=keep.get(('native', name)),
+                                            frozen_anchors=frozen_anchors)
+                typed_equal(derived['commit'], facts_doc['commit'], 'phased facts commit drift')
+                typed_equal(derived['green'], facts_doc['green'], 'phased facts green drift')
+                typed_equal(derived['executed'], facts_doc['executed'], 'phased facts executed drift')
+                require(set(facts_doc['kept']) == set(derived['terminals']),
+                        'phased facts kept identity drift')
+                for key, row in facts_doc['kept'].items():
+                    event = row.get('event') if isinstance(row, dict) else row
+                    terminal = derived['terminals'][key]
+                    require(terminal.get('event') == event, f'phased facts kept drift {name}:{key}')
+                gates[name] = derived
+            else:
+                derived = admit_case_gate(inputs, evidence, ref['root'], expected_group, closure,
+                                          keep_checks=keep.get(('case', name)),
+                                          frozen_anchors=frozen_anchors)
+                typed_equal(derived['commit'], facts_doc['commit'], 'phased facts commit drift')
+                typed_equal(derived['green'], facts_doc['green'], 'phased facts green drift')
+                typed_equal(derived['executed'], facts_doc['executed'], 'phased facts executed drift')
+                require(set(facts_doc['kept']) == set('|'.join(key) for key in derived['checks']),
+                        'phased facts kept identity drift')
+                for key, row in facts_doc['kept'].items():
+                    status = row.get('status') if isinstance(row, dict) else row
+                    case, check = key.split('|')
+                    check_row = derived['checks'][(case, check)]
+                    require(check_row.get('status') == status, f'phased facts kept drift {name}:{key}')
+                gates[name] = derived
+            gate_env, _ = evidence.read_json(ref['root'] + '/gate.json')
+            require(gate_env.get('originals') == facts_doc['gate_originals_sha256'],
+                    'phased facts gate identity drift')
+            continue
+        exact_keys(ref, ('root',), f'entry gate reference {name}')
         if declared['kind'] == 'case-suite':
-            inputs.sha256(declared['suite_file'], declared['source_sha256'])
-            closure = {'scripts/test-groups.toml': config,
-                       declared['suite_file']: declared['source_sha256'],
-                       'scripts/test-governance/case-control-oracles.json':
-                           hashlib.sha256(inputs.read_bytes('scripts/test-governance/case-control-oracles.json')).hexdigest()}
+            closure = _entry_closure(inputs, name, declared, config)
             gates[name] = admit_case_gate(inputs, evidence, ref['root'], declared['group'], closure,
-                                          keep_checks=keep.get(('case', name)))
+                                          keep_checks=keep.get(('case', name)),
+                                          frozen_anchors=frozen_anchors)
         elif declared['kind'] == 'native-module':
-            inputs.sha256(declared['source_file'], declared['source_sha256'])
-            closure = {'scripts/test-groups.toml': config,
-                       declared['source_file']: declared['source_sha256']}
+            closure = _entry_closure(inputs, name, declared, config)
             gates[name] = admit_native_gate(inputs, evidence, ref['root'], declared['group'], closure,
-                                            keep_events=keep.get(('native', name)))
+                                            keep_events=keep.get(('native', name)),
+                                            frozen_anchors=frozen_anchors)
         else:
             owner, resident, _modules = DELIVERED_PROVIDERS[name]
             require(declared.get('owner') == owner, f'delivered provider owner {name}')
-            closure = {'scripts/test-groups.toml': config}
+            closure = _entry_closure(inputs, name, declared, config)
             gates[name] = admit_native_gate(inputs, evidence, ref['root'], resident, closure,
-                                            keep_events=keep.get(('native', name)))
+                                            keep_events=keep.get(('native', name)),
+                                            frozen_anchors=frozen_anchors)
 
     recipes = {recipe['row']: recipe for recipe in recipes_doc['recipes']}
     observations = {}
