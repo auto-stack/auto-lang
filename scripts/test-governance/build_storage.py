@@ -65,8 +65,9 @@ def generated_consumer_root(target):
     data = json.loads(record.read_text(encoding='utf-8'))
     if data.get('schema') != CONTEXT_SCHEMA:
         raise ValueError('generated-consumer root has an unknown context schema: ' + str(data.get('schema')))
-    producer = str(data.get('producer_root', '')).replace('\\', '/').rstrip('/').casefold()
-    if producer != str(ROOT.resolve()).replace('\\', '/').rstrip('/').casefold():
+    # Generator-written context.json records producer roots verbatim (\\?\); compare
+    # through the same canonical form the foreign-root path uses (normalize_root).
+    if normalize_root(data.get('producer_root', '')) != normalize_root(ROOT):
         raise ValueError('generated-consumer root belongs to another producer: ' + str(data.get('producer_root')))
     if data.get('context_id') != target.name:
         raise ValueError('generated-consumer root name does not match its context id')

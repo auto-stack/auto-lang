@@ -393,6 +393,29 @@ class CacheOwnership(unittest.TestCase):
                         build_storage.inspect(cache)
             self.assertEqual(original.read_bytes(), b'protected')
 
+    def test_generated_consumer_root_admits_verbatim_producer_record(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            ctx_root = root / 'target' / 'generated-consumers' / 'abcd1234'
+            ctx_root.mkdir(parents=True)
+            record = ctx_root / 'context.json'
+
+            def write(producer):
+                record.write_text(json.dumps({
+                    'schema': 'generated-build-context/v1', 'context_id': 'abcd1234',
+                    'producer_root': producer}), encoding='utf-8')
+
+            # The generator records this checkout's producer root verbatim.
+            write('\\\\?\\' + str(root))
+            with mock.patch.object(build_storage, 'ROOT', root):
+                self.assertIn('unique_file_bytes', build_storage.inspect(ctx_root))
+            # A genuinely foreign producer stays refused, verbatim or plain.
+            for producer in ('\\\\?\\' + str(root / 'other-checkout'), str(root / 'other-checkout')):
+                write(producer)
+                with mock.patch.object(build_storage, 'ROOT', root), \
+                        self.assertRaisesRegex(ValueError, 'belongs to another producer'):
+                    build_storage.inspect(ctx_root)
+
     def test_owned_preview_apply_and_protected_states(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
