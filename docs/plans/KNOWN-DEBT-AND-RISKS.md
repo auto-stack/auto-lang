@@ -1,4 +1,4 @@
-### D-989-DESIGN-R1 — 联合交付核查r4已修订、待定向复审（2026-11-08，开放）
+### D-989-DESIGN-R1 — 联合交付核查r8已修订、待定向独立复审（2026-11-11，开放）
 
 - owner：PLAN-989规划/复审；来源：[989 §9草案复核](989-split-refactor-joint-delivery-and-tag-readiness.md#9-复审记录)，r1合同hash `23e165a2fb0d86662a302d90639faf319ee01042cae4ab10ab749cd27a23fbec`。
 - F-989-R1-01：942已正式交付conditional、未证明集中workspace增量收益；989仍按原预期生产后继及旧状态/路径描述。补决策分支与实际批准结果的D-WS绑定，不能把研究归档等同生产go，不能自行取消节省目标。
@@ -6,7 +6,11 @@
 - r2修订覆盖：§2.1及V-11补研究结果决策门；§5.2.1～2、D-CLOSURE及V-12补渠道/owner/合同、P1/P2适用性与有限升级恢复；§5.2.3补同最终版本配对收益，§5.1补三类证据复用规则。路线/战略已同步v38；本项仍开放，未以修改文档代替定向复审通过。
 - r3追加：2026-11-08绑定UI073与最终M1遗留闭环（§2.2/V-13），UI063/OS063同步r4；原两项finding仍需按最新合同定向复核，不因修订自动CLOSED。
 - r4追加：UI077/OS066正式合同已绑定，§2.3/V-14明确完整Windows RQ与治理/渠道交付汇合后才进入989联验；仍待独立定向复核，不自行关闭finding。
-- 关闭条件：989升r2，§2/5～8及SD按两项修订，保原任务/验收义务与未决目标，定向设计复审通过。本轮drafting0/9不变、未实施，审查来自同起草上下文，不冒独立final review。债务登记不豁免任何必需验收，也不重开942或预分配workspace生产Plan。
+- 关闭条件：989最新r8的§2/5～8及SD按两项及后续正式交付/恢复合同修订，保原任务/验收义务与未决目标，定向设计复审通过。本轮drafting0/9不变、未实施，审查来自同起草上下文，不冒独立final review。债务登记不豁免任何必需验收，也不重开942或预分配workspace生产Plan。
+
+- r7追加（2026-11-11）：1003/OS068正式交付及明示修约已接收，P1/R7关闭；P2和C-05定义仍阻T-02。保C-01～05独立义务，区分生产前置与989后续验证，E-01～06/V-17/18覆盖修约不扩张与准入无循环。此项仍OPEN，旧finding未倒签独立关闭。
+
+- r8追加（2026-11-11）：用户仅授权立计划/恢复清单。1006 r1认领P2、尚未实施；RC-UI/SDK/RQ/WEB合同r1核定有限对象/旧源规则/支持配方与oracle，实际新源/命令/schema待生产交接及989 T-01/02绑定。E-03实际交付门仍阻，C-05未验；原finding仍OPEN。
 
 ### D-942-DESIGN-R1 — 共享生成workspace研究合同复审缺口【已关闭 2026-11-06，PLAN-942 交付】
 
@@ -26,13 +30,18 @@
 - **证据**：归档 PLAN-942 §9 T-04/T-06（原红日志 hash 摘要在案）。
 - **关闭记录（2026-11-11，PLAN-1003）**：交付闭包 vendored `experimental/ace/crates/semantics-contract`（DELIVERY_VENDOR_TREES）；并补该缺口的隐藏第二层——`stdlib/contracts/{operations,compatibility}.toml` 入 DELIVERY_ROOT_INPUTS（auto-lang-core 自 PLAN-943 起 include_str! 越界引用，此前被 metadata 101 挡住未露头）。792/930 driver 二轮 43 项全 PASS（V01 fresh+locked 构建、V02 移根 locked、导出链）。归档 PLAN-1003 §8 T-05。
 
-### D-942-P2 — Web 服务无生产交付导出入口，成员移根被 workspace 继承路径依赖阻断（2026-11-06 立项；开放）
+### D-942-P2 — Web 服务无生产交付导出入口，成员移根被 workspace 继承路径依赖阻断（2026-11-06 立项；**已关闭 2026-11-12，PLAN-1006 交付**）
 
 - **候选/owner**：auto-web / auto-generation-core。
 - **现象**：Web back 成员 `workspace=true` 继承的开发根 path 依赖使成员级移根无法独立 locked 构建；
   UI 有 PLAN-792 交付入口、Web 无对应物。
 - **关闭条件**：为 Web 定义交付入口（对齐 PLAN-792 UI 交付语义）并实证移根 locked 构建+运行。
 - **证据**：归档 PLAN-942 §9 T-04（export-B-web_auto-chat 原红摘要）。
+- **r7渠道复核（2026-11-11，仅只读）**：仍OPEN。Web `api_gen.rs`生成workspace继承成员，`rust_workspace.rs`仍指开发依赖根；Web SDK安装/verify及Man `auto service --server rust`不代独立成员包导出。未找到覆盖P2移根构建/HTTP读回的正式生产合同/交付。领域主责auto-web、中立支撑auto-generation-core、Man仅必要薄编排；989只验收，不实施。本项为989 E-03/T-02硬阻，不能以P1关闭或Video移交清账，本轮未取新生产Plan号。
+- **正式认领（2026-11-11，未关闭）**：[PLAN-1006 r1](1006-web-generated-member-independent-delivery-and-recovery.md) drafting0/11，Web领域主责、语言中立支撑、Man薄CLI。公开export-only、成员SDK/资源/锁闭包、仓外locked构建/HTTP/持久数据、首版A/B失败保全恢复及正式独立review/merge交付后才关闭P2；本轮仅立约。989 r8依赖已绑定，不能凭新号或恢复定义放行T-02。
+- **关闭记录（2026-11-12，PLAN-1006 交付）**：公开入口 `auto service-export`（Man 薄分派）+ `auto_web::delivery::export_rust_service`（Web 主责）+ auto-generation-core 中立 commit/闭包原语落地三仓 master（lang 7296df7d / web c3d126cd / man 8d1976d）。移根独立 locked 构建+真实HTTP+持久数据经 library 6/6 与外部 driver 30/30（receipt 3f72415b…）双证；首版A/B失败保全恢复闭合（RC-WEB-01）；独立终审 pass。规范沉淀 SD-01/02/03；989 交接包见归档计划 §8。P2 关闭；989 E-03/T-02 可凭实际交付与身份断言复用。
+
+
 
 
 > **2026-11-04规划复核纠偏（仍未关闭）**：931–933升r2。[复核证据与窗口](reports/ace-931-933-plan-review-and-m1-distance-2026-11-04.md)发现D-927-2历史归因与914批准存在判面冲突：有效typed策略拒绝是diagnostic verdict（按预期PASS/FAIL），不能一律ERROR；缺失/未知/矛盾typed才ERROR。932先重建合法body与故意签名两原输入，补有效性并最小纠正过时host/911旧句，不放宽签名或改case原success/exit预期。下列原始观察/59-of-60历史保留，不能据其断言914策略错误或合法body一定坏；最终按932 r2及真实重测关闭。931另核片段原modes/短路待清理责任，933逐字段独立来源；均未实施。
