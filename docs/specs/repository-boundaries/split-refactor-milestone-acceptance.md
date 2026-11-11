@@ -48,8 +48,10 @@ applicability, no photon-endpoint claim).
   package-group/data/bystander/recovery plane at N (10/10).
 - **Limited recovery objects (C-05)**: RC-SDK-01 (14/14 + full-profile
   install), RC-UI-01 (old/new pair generation→verify→locked build→relocate→
-  managed upgrade→fault preservation→real run), RC-WEB-01 (PLAN-1006 30/30
-  reuse), RC-RQ-01 (10/10) — see the archived plan §9 for receipts.
+  managed upgrade→fault preservation→real run; business oracle limitation
+  named above), RC-WEB-01 (PLAN-1006 30/30 reuse), RC-RQ-01 (10/10) — see
+  the archived plan §9 for receipts (RC-SDK delta legs: prepare/verify
+  fail-points, Full consumption, installed-SDK HTTP/shutdown/port-release).
 - **SDK installers**: fresh Core/Full/Web SDK installs at N are verified end
   to end after the fix-989-sdk-staging repairs (PLAN-944 closure mapping,
   PLAN-007 example relocation, PLAN-1003 compile inputs, verify-guard
@@ -57,9 +59,24 @@ applicability, no photon-endpoint claim).
 
 ## 3. Boundaries and named non-claims
 
-- Window-plane RQ drills reuse OS068 evidence (identical OS/UI sources);
-  the new drills cover service/data planes. No new >60Hz, photon-endpoint,
-  byte-level transfer, replay-p95, or native-input-latency claim is made.
+- Window-plane RQ evidence is reused from OS068 **for the N side only**
+  (auto-ui source is the exact OS068 delivery SHA; auto-os differs only by
+  post-delivery receipt commits — both disclosed in §1; the language
+  dependency differs by delivery-additive changes). The RC-RQ drill's old
+  package group was rebuilt from a synthetic older alias mix
+  (auto-os@O-RQ + auto-ui@U-C + auto-lang@L-C + auto-man@M-BASE — each
+  repo's most recent formally usable pre-N source), not the recovery
+  contract's exact O-RQ/U-RQ/L-RQ combination; the upgrade semantics were
+  therefore tested against a larger A-side delta (stricter, not weaker).
+  No new >60Hz, photon-endpoint, byte-level transfer, replay-p95, or
+  native-input-latency claim is made.
+- RC-UI business oracle limitation (named): the Counter/Todo interactive
+  business-value assertion of the recovery contract was NOT executed; what
+  ran is pair generation → per-bundle verify (SHA) → fresh locked builds →
+  relocation rebuild → managed in-place upgrade → broken-source fault
+  preservation (byte-identical) → old-bundle real window survival with
+  clean termination. The 930 driver's V06 legs verify window survival and
+  VM protocol lifecycles, not business values.
 - auto-video backend remains the B-06 named handoff (owner + closure
   condition; not delivered by this route).
 - RC pairs are first-version controlled pairs; no historical-release
