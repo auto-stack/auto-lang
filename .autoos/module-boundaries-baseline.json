@@ -1,5 +1,5 @@
 {
-  "base_revision": "b41c8393116f63675f06a43082f2bcfa741a2a42",
+  "base_revision": "d0dc40031cb8b40a978c77531e63c6d7cad6c1f1",
   "config_sha256": "75d76e912ff902638452d8a17ec4ce89b6e1b7fd47a42a7fea6ac9f6c790ca74",
   "declared_edges": [
     {
@@ -334,6 +334,15 @@
       "target": null,
       "to": "a2r-std",
       "to_scope": "member"
+    },
+    {
+      "dep_key": "ace-semantics-contract",
+      "from": "auto-lang-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "ace-semantics-contract",
+      "to_scope": "nonmember-in-root"
     },
     {
       "dep_key": "auto-ast",
