@@ -27,6 +27,12 @@ fn shift_type_ann(t: &mut TypeAnn, delta: i64) {
         // PLAN-935：类型变量引用同 ident 平移。
         TypeRef::TyVar(id) => shift_ident(id, delta),
         TypeRef::Optional(inner) => shift_type_ann(inner, delta),
+        // PLAN-962：tuple 类型界平移。
+        TypeRef::Tuple(args) => {
+            for a in args {
+                shift_type_ann(a, delta);
+            }
+        }
         TypeRef::Generic { name, args } => {
             shift_ident(name, delta);
             for a in args.iter_mut() {
@@ -78,6 +84,12 @@ fn shift_expr(e: &mut Expr, delta: i64) {
         }
         // PLAN-962：数组字面量元素/索引两端 span 平移。
         ExprKind::ArrayLit(elems) => {
+            for e in elems {
+                shift_expr(e, delta);
+            }
+        }
+        // PLAN-962：tuple 字面量元素 span 平移。
+        ExprKind::TupleLit(elems) => {
             for e in elems {
                 shift_expr(e, delta);
             }
@@ -166,6 +178,14 @@ fn shift_stmt(s: &mut Stmt, delta: i64) {
             shift_expr(&mut ia.index, delta);
             shift_expr(&mut ia.value, delta);
             shift_span(&mut ia.span, delta);
+        }
+        // PLAN-962：tuple 解构平移。
+        Stmt::LetDestruct { names, value, span } => {
+            for n in names {
+                shift_ident(n, delta);
+            }
+            shift_expr(value, delta);
+            shift_span(span, delta);
         }
         Stmt::ExprStmt { value, span } => {
             shift_expr(value, delta);

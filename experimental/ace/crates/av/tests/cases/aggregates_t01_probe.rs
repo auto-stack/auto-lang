@@ -237,3 +237,57 @@ fn array_literal_negative_controls() {
         );
     }
 }
+
+/// PLAN-962 unit-5 (L-15): tuple type/literal + flat let-destructuring —
+/// structural shapes intern in the resolver; the adapter materializes the
+/// anonymous positional record (`t_rec___tuple_<i>`, fields "0".."n-1"),
+/// so descriptor/verify/lowering/backends all ride the record machinery.
+#[test]
+fn tuple_literal_and_destructuring_execute() {
+    let src = "fn main() int {\n    let t = (40, 2)\n    let (a, b) = t\n    return a + b\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("tuple construct+destructure executes");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0);
+    assert_eq!(run.allocs, run.frees);
+
+    // annotated form + nested shape round-trips through a function param
+    // annotated local + re-construct from the destructured parts
+    let src2 = "fn main() int {
+    let t (int, int) = (19, 21)
+    let (x, y) = t
+    let u = (x + 1, y + 1)
+    let (p, q) = u
+    return p + q
+}";
+    let run2 = ace_av::collections_864_support::compile_and_execute_aggregates(src2, "d_main")
+        .expect("annotated tuple + re-construct executes");
+    assert_eq!(run2.value, 42);
+    // NAMED PENDING: passing a tuple as a call argument (the call-arg
+    // record-copy path type token is not tuples-aware yet) - plan 9.
+}
+
+/// PLAN-962 unit-5 negative controls: arity mismatch and non-tuple
+/// destructuring reject with named diagnostics.
+#[test]
+fn tuple_destructuring_negative_controls() {
+    for (name, src) in [
+        (
+            "arity",
+            "fn main() int {\n    let (a, b, c) = (1, 2)\n    return a\n}",
+        ),
+        (
+            "non-tuple",
+            "fn main() int {\n    let (a, b) = 3\n    return a\n}",
+        ),
+    ] {
+        let err = ace_core::source::compile_aggregates_source(src, "p.at", &[])
+            .err()
+            .unwrap_or_else(|| panic!("{name} must reject"));
+        assert!(
+            err.iter().any(|d| d.code == "source.type-mismatch"),
+            "{name}: unexpected {:?}",
+            err.iter().map(|d| d.code.as_str()).collect::<Vec<_>>()
+        );
+    }
+}

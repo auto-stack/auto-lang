@@ -63,6 +63,8 @@ pub enum VtDump {
     Unit,
     List(usize),
     Variant(usize),
+    /// PLAN-962: structural tuple shape (interned index).
+    Tuple(usize),
     Function(usize),
     /// PLAN-961 numeric kinds.
     I8,
@@ -289,6 +291,8 @@ fn pair(s: Span) -> (usize, usize) {
 fn vt_dump(v: VT) -> VtDump {
     match v {
         VT::I32 => VtDump::I32,
+        // PLAN-962：tuple 形状（内联索引）。
+        VT::Tuple(ti) => VtDump::Tuple(ti),
         VT::Bool => VtDump::Bool,
         VT::Str => VtDump::Str,
         VT::StrOwned => VtDump::StrOwned,
@@ -536,6 +540,8 @@ pub fn dump_context(front: &ClosuresFunctionFrontend) -> ContextDump {
 fn vt_in(d: VtDump) -> VT {
     match d {
         VtDump::I32 => VT::I32,
+        // PLAN-962：tuple 形状往返。
+        VtDump::Tuple(ti) => VT::Tuple(ti),
         VtDump::Bool => VT::Bool,
         VtDump::Str => VT::Str,
         VtDump::StrOwned => VT::StrOwned,
@@ -986,6 +992,7 @@ pub fn restore_context(
             fns,
             records,
             lists: dump.lists.iter().map(|v| vt_in(*v)).collect(),
+        tuples: Vec::new(),
             variants,
             function_types,
         },

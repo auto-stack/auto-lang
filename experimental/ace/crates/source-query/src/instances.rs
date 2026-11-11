@@ -141,6 +141,11 @@ fn spell_ty(t: &TypeRef) -> String {
         TypeRef::TyVar(id) => id.name.clone(),
         TypeRef::Record(id) => id.name.clone(),
         TypeRef::Optional(_) => "?..".into(),
+        // PLAN-962: tuple spelling (element spellings in order).
+        TypeRef::Tuple(args) => {
+            let parts: Vec<String> = args.iter().map(|a| spell_ty(&a.kind)).collect();
+            format!("({})", parts.join(","))
+        }
         TypeRef::Generic { .. } => "Name<..>".into(),
         TypeRef::Function { .. } => "fn(..)".into(),
     }

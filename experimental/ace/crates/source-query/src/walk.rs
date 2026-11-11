@@ -257,6 +257,13 @@ fn walk_stmt<'a>(
     stack: &mut Vec<Task<'a>>,
 ) -> Result<(), WalkError> {
     match s {
+        // PLAN-962: tuple destructuring — named-unsupported here.
+        Stmt::LetDestruct { span, .. } => {
+            return Err(WalkError::Unsupported {
+                what: "let-destructure-statement",
+                span: *span,
+            });
+        }
         Stmt::Let {
             name,
             ann,
@@ -405,6 +412,12 @@ fn walk_expr<'a>(
             });
         }
         // PLAN-962: aggregates-surface forms, named-unsupported here.
+        ExprKind::TupleLit(_) => {
+            return Err(WalkError::Unsupported {
+                what: "tuple-literal",
+                span: e.span,
+            });
+        }
         ExprKind::ArrayLit(_) => {
             return Err(WalkError::Unsupported {
                 what: "array-literal",

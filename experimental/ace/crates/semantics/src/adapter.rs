@@ -114,6 +114,8 @@ fn vt_name(v: &ace_core::source::resolve::VT) -> &'static str {
     use ace_core::source::resolve::VT;
     match v {
         VT::I32 => "i32",
+        // PLAN-962: the tuple surface is outside this inference profile.
+        VT::Tuple(_) => "tuple",
         // PLAN-961: the numeric surface is outside this inference
         // profile's value set — a distinct label, never a silent i32.
         VT::I8 | VT::U8 | VT::U32 | VT::I64 | VT::U64 | VT::F32 | VT::F64 => "numeric",
@@ -351,6 +353,8 @@ fn project_fn_scoped(f: &core_ast::FnItem, target: &str) -> Result<InputFn, Stri
 
 fn ann_of(a: &core_ast::TypeAnn) -> Result<Ann, String> {
     match &a.kind {
+        // PLAN-962: tuple types are outside the query surface (named).
+        core_ast::TypeRef::Tuple(_) => Err("tuple-type".to_string()),
         core_ast::TypeRef::Builtin(w) => Ok(match w {
             core_ast::TypeWord::Int | core_ast::TypeWord::I32 => Ann::I32,
             core_ast::TypeWord::Bool => Ann::Bool,
@@ -473,6 +477,10 @@ fn project_stmt(s: &core_ast::Stmt) -> Result<InputStmt, String> {
         core_ast::Stmt::IndexAssign(_) => {
             return Err("index-assign statement".to_string())
         }
+        // PLAN-962: tuple destructuring likewise.
+        core_ast::Stmt::LetDestruct { .. } => {
+            return Err("let-destructure statement".to_string())
+        }
         core_ast::Stmt::Return { value, span: sp } => InputStmt::Return {
             value: project_expr(&value),
             span: Span::new(sp.start as u32, sp.end as u32),
@@ -557,6 +565,9 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         // named-unsupported on the query surface.
         core_ast::ExprKind::ArrayLit(_) => InputExprKind::Unsupported {
             what: "array-literal",
+        },
+        core_ast::ExprKind::TupleLit(_) => InputExprKind::Unsupported {
+            what: "tuple-literal",
         },
         core_ast::ExprKind::Index { .. } => InputExprKind::Unsupported {
             what: "index-expression",

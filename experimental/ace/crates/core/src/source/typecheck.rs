@@ -244,6 +244,16 @@ fn check_expr(
     let mut stack: Vec<&ResolvedExpr> = vec![root];
     while let Some(e) = stack.pop() {
         match &e.kind {
+            // PLAN-962: tuple literal elements typecheck recursively (the
+            // tuple VT equals the interned shape by construction).
+            RExprKind::TupleLit { elems } => {
+                for el in elems {
+                    stack.push(el);
+                }
+            }
+            RExprKind::TupleGet { base, .. } => {
+                stack.push(base);
+            }
             RExprKind::IntLit(_)
             | RExprKind::BoolLit(_)
             | RExprKind::ReadLocal(_)

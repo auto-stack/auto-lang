@@ -45,6 +45,10 @@ pub enum VT {
     Variant(usize),
     /// PLAN-865: invariant function signature, interned in `CollTables`.
     Function(usize),
+    /// PLAN-962 (L-15): a structural tuple type by index into
+    /// [`CollTables::tuples`] (interned, deduplicated by shape; identity
+    /// = the element list).
+    Tuple(usize),
     /// PLAN-961 numeric surface (`byte`≡U8, `uint`≡U32, `float`≡F32,
     /// `double`≡`f64`≡F64).
     I8,
@@ -59,6 +63,7 @@ pub enum VT {
 impl VT {
     pub fn as_str(&self) -> &'static str {
         match self {
+            VT::Tuple(_) => "tuple",
             VT::I32 => "i32",
             VT::Bool => "bool",
             VT::Str => "str",
@@ -423,6 +428,16 @@ pub enum RExprKind {
     },
     // -- PLAN-864 collections surface ------------------------------------
     /// `List<T>.new()` — an empty list of the interned list type.
+    /// PLAN-962 (L-15): a tuple literal (positional elements; the
+    /// adapter materializes the anonymous positional record).
+    TupleLit {
+        elems: Vec<ResolvedExpr>,
+    },
+    /// PLAN-962 (L-15): positional element access (destructured reads).
+    TupleGet {
+        base: Box<ResolvedExpr>,
+        index: usize,
+    },
     ListNew {
         list: usize,
     },
@@ -531,6 +546,15 @@ impl Drop for ResolvedExpr {
             }
         }
         let detach = |node: &mut ResolvedExpr, stack: &mut Vec<ResolvedExpr>| match &mut node.kind {
+            // PLAN-962: tuple literal elements / tuple-get base detach.
+            RExprKind::TupleLit { elems } => {
+                for e in elems {
+                    stack.push(std::mem::replace(e, dummy()));
+                }
+            }
+            RExprKind::TupleGet { base, .. } => {
+                stack.push(std::mem::replace(base.as_mut(), dummy()));
+            }
             // PLAN-862: leaf, nothing to detach.
             RExprKind::Unit => {}
             // PLAN-936（T-04）：CT 需求/meta 查询在 closures 面不可达（语法
@@ -818,6 +842,9 @@ pub struct ResolvedProgram {
     /// PLAN-864: List element types (structural, deduplicated).
     /// `VT::List(i)` indexes here.
     pub lists: Vec<VT>,
+    /// PLAN-962 (L-15): structural tuple shapes (deduplicated);
+    /// `VT::Tuple(i)` indexes here.
+    pub tuples: Vec<Vec<VT>>,
     /// PLAN-864: nominal variant types (`?T`/`Result<T,E>`/declared
     /// `enum`s). `VT::Variant(i)` indexes here.
     pub variants: Vec<ResolvedVariant>,
@@ -853,6 +880,9 @@ pub struct CollTables {
     /// element kinds are legal. The frozen 822 one-layer element domain
     /// stays in force for every older profile.
     pub aggregates_admission: bool,
+    /// PLAN-962 (L-15): structural tuple shapes (element VT lists,
+    /// interned/deduplicated; `VT::Tuple(i)` indexes here).
+    pub tuples: Vec<Vec<VT>>,
 }
 
 impl CollTables {
@@ -862,6 +892,15 @@ impl CollTables {
         }
         self.function_types.push(signature);
         self.function_types.len() - 1
+    }
+
+    /// PLAN-962 (L-15): intern one tuple shape (deduplicated).
+    fn intern_tuple(&mut self, vts: Vec<VT>) -> usize {
+        if let Some(i) = self.tuples.iter().position(|t| *t == vts) {
+            return i;
+        }
+        self.tuples.push(vts);
+        self.tuples.len() - 1
     }
 
     fn intern_list(&mut self, elem: VT) -> usize {
@@ -1194,6 +1233,7 @@ pub fn resolve_closures_cached(
             fns,
             records,
             lists: coll.lists,
+        tuples: Vec::new(),
             variants: coll.variants,
             function_types: coll.function_types,
         },
@@ -1239,6 +1279,7 @@ pub(crate) fn resolve_closures_env(
                 fns,
                 records,
                 lists: coll.lists,
+        tuples: Vec::new(),
                 variants: coll.variants,
                 function_types: coll.function_types,
             },
@@ -1268,6 +1309,7 @@ pub fn resolve_with(
         fns,
         records,
         lists: coll.lists,
+        tuples: coll.tuples,
         variants: coll.variants,
         function_types: coll.function_types,
     })
@@ -1347,6 +1389,7 @@ pub fn resolve_text_record_with_foreign(
         fns,
         records,
         lists: coll.lists,
+        tuples: Vec::new(),
         variants: coll.variants,
         function_types: coll.function_types,
     })
@@ -1385,6 +1428,7 @@ pub fn resolve_with_supply(
         fns,
         records,
         lists: coll.lists,
+        tuples: Vec::new(),
         variants: coll.variants,
         function_types: coll.function_types,
     })
@@ -2690,6 +2734,7 @@ pub fn resolve_env_with_supply(
             fns,
             records,
             lists: coll.lists,
+        tuples: Vec::new(),
             variants: coll.variants,
             function_types: coll.function_types,
         },
@@ -3013,6 +3058,7 @@ pub(crate) fn recheck_swap_with_supply(
     coll.lists = env.program.lists.clone();
     coll.function_types = env.program.function_types.clone();
     coll.aggregates_admission = env.profile.is_aggregates();
+    coll.tuples = env.program.tuples.clone();
     let names: Vec<(String, usize)> = env
         .program
         .variants
@@ -3120,6 +3166,7 @@ pub(crate) fn resolve_lambda_in_context(
     coll.lists = env.program.lists.clone();
     coll.function_types = env.program.function_types.clone();
     coll.aggregates_admission = env.profile.is_aggregates();
+    coll.tuples = env.program.tuples.clone();
     let names: Vec<(String, usize)> = env
         .program
         .variants
@@ -3331,6 +3378,7 @@ pub(crate) fn resolve_owner_in_env(
     coll.lists = env.program.lists.clone();
     coll.function_types = env.program.function_types.clone();
     coll.aggregates_admission = env.profile.is_aggregates();
+    coll.tuples = env.program.tuples.clone();
     let names: Vec<(String, usize)> = env
         .program
         .variants
@@ -3722,6 +3770,17 @@ fn vt_of_ann(
 ) -> VT {
     match &ann.kind {
         ast::TypeRef::Builtin(w) => vt_of_word(*w),
+        // PLAN-962：tuple 类型只在聚合面的表感知路径解析；到达本（无表）
+        // 路径 = 具名拒。
+        ast::TypeRef::Tuple(_) => {
+            diags.push(Diagnostic::new(
+                Stage::Bind,
+                "source.unsupported",
+                "tuple types are part of the aggregates source profile".to_string(),
+                ann.span,
+            ));
+            VT::I32
+        }
         // PLAN-935：类型变量只能存在于模板内；到达 resolve = 模板未被实例
         // 化（防御面——实例层在 resolve 前已把模板替换为具体实例）。
         ast::TypeRef::TyVar(id) => {
@@ -3816,6 +3875,32 @@ fn vt_of_ann_coll(
         vt
     };
     match &ann.kind {
+        // PLAN-962 (L-15): tuple type `(T1, T2, ...)`. Structural VT;
+        // aggregates surface only (the grammar crops tuple-ty to it).
+        ast::TypeRef::Tuple(args) if coll.aggregates_admission => {
+            if args.len() < 2 {
+                reject(
+                    diags,
+                    VT::I32,
+                    "a tuple type needs at least two elements".to_string(),
+                    ann.span,
+                )
+            } else {
+                let vts: Vec<VT> = args
+                    .iter()
+                    .map(|a| vt_of_ann_coll(a, rec_index, coll, diags, TypePos::Local))
+                    .collect();
+                VT::Tuple(coll.intern_tuple(vts))
+            }
+        }
+        // PLAN-962: older profiles never parse the shape (grammar crop);
+        // a programmatic Tuple reaching this path is a named reject.
+        ast::TypeRef::Tuple(_) => reject(
+            diags,
+            VT::I32,
+            "tuple types are part of the aggregates source profile".to_string(),
+            ann.span,
+        ),
         ast::TypeRef::Builtin(w) => vt_of_word(*w),
         // PLAN-935：同 vt_of_ann——类型变量到达 bind = 未实例化模板的防御拒。
         ast::TypeRef::TyVar(id) => {
@@ -4499,6 +4584,8 @@ impl<'a, 's> FnResolver<'a, 's> {
             // exhaustiveness.
             ExprKind::ArrayLit(_) => VT::I32,
             ExprKind::Index { .. } => VT::I32,
+            // PLAN-962: tuples resolve through the statement walker.
+            ExprKind::TupleLit(_) => VT::I32,
             ExprKind::IntLit(_) => VT::I32,
             // PLAN-961: the typed literal carries its own type.
             ExprKind::TypedLit { ty, .. } => vt_of_word(*ty),
@@ -4574,6 +4661,22 @@ impl<'a, 's> FnResolver<'a, 's> {
                     Stmt::Return { value, .. } => return self.infer_closure_expr(value, &visible),
                     // PLAN-962: an index assign is an effect statement.
                     Stmt::IndexAssign(_) => {}
+                    // PLAN-962: tuple destructuring binds names.
+                    Stmt::LetDestruct { names, value, .. } => {
+                        let vt = self.infer_closure_expr(value, &visible);
+                        for (i, n) in names.iter().enumerate() {
+                            let evt = match vt {
+                                VT::Tuple(ti) => self
+                                    .coll
+                                    .tuples
+                                    .get(ti)
+                                    .and_then(|t| t.get(i).copied())
+                                    .unwrap_or(VT::I32),
+                                _ => VT::I32,
+                            };
+                            visible.insert(n.name.clone(), evt);
+                        }
+                    }
                     Stmt::Let {
                         name, ann, value, ..
                     } => {
@@ -5057,6 +5160,10 @@ impl<'a, 's> FnResolver<'a, 's> {
         match vt {
             VT::StrOwned | VT::List(_) | VT::Variant(_) | VT::Function(_) => true,
             VT::Rec(ri) => record_reaches_str(ri, self.records),
+            // PLAN-962: a tuple owns iff any element owns.
+            VT::Tuple(ti) => self.coll.tuples[ti]
+                .iter()
+                .any(|&v| self.vt_is_coll_owned(v)),
             _ => false,
         }
     }
@@ -5683,6 +5790,87 @@ impl<'a, 's> FnResolver<'a, 's> {
                 continue;
             };
             match s {
+                // PLAN-962 (L-15): `let (a, b, ...) = expr` — flat tuple
+                // destructuring: bind the value to a synthetic temp, then
+                // one positional read per binding name.
+                Stmt::LetDestruct { names, value, span } => {
+                    let val = self.expr_iterative(value);
+                    let VT::Tuple(ti) = val.vt else {
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!(
+                                "tuple destructuring requires a tuple value, found `{}`",
+                                val.vt.as_str()
+                            ),
+                            value.span,
+                        );
+                        continue;
+                    };
+                    let shape = self.coll.tuples[ti].clone();
+                    if names.len() != shape.len() {
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!(
+                                "tuple destructuring binds {} name(s) for a {}-element tuple",
+                                names.len(),
+                                shape.len()
+                            ),
+                            *span,
+                        );
+                        continue;
+                    }
+                    self.declared_names.insert("__tup".to_string());
+                    let temp = self.fresh_local("__tup", VT::Tuple(ti), false);
+                    stack
+                        .last_mut()
+                        .expect("resolve frame")
+                        .stmts
+                        .push(RStmt::Let {
+                            local: temp,
+                            value: val,
+                            span: *span,
+                        });
+                    for (i, n) in names.iter().enumerate() {
+                        if self.scopes.last().unwrap().names.contains_key(&n.name) {
+                            self.bind_err(
+                                "source.duplicate",
+                                format!(
+                                    "local `{}` is declared more than once in this block",
+                                    n.name
+                                ),
+                                n.span,
+                            );
+                        }
+                        let lref = self.fresh_local(&n.name, shape[i], false);
+                        self.scopes
+                            .last_mut()
+                            .unwrap()
+                            .names
+                            .insert(n.name.clone(), lref);
+                        self.declared_names.insert(n.name.clone());
+                        let get = ResolvedExpr {
+                            span: n.span,
+                            vt: shape[i],
+                            kind: RExprKind::TupleGet {
+                                base: Box::new(ResolvedExpr {
+                                    span: n.span,
+                                    vt: VT::Tuple(ti),
+                                    kind: RExprKind::ReadLocal(temp),
+                                }),
+                                index: i,
+                            },
+                        };
+                        stack
+                            .last_mut()
+                            .expect("resolve frame")
+                            .stmts
+                            .push(RStmt::Let {
+                                local: lref,
+                                value: get,
+                                span: n.span,
+                            });
+                    }
+                }
                 // PLAN-962 (L-48): `xs[i] = v` — element replacement via the
                 // index place (list-set semantics; the same op `.set(i, v)`
                 // lowers to). Base must be a List local.
@@ -6732,6 +6920,24 @@ impl<'a, 's> FnResolver<'a, 's> {
 
     fn expr(&mut self, e: &Expr) -> ResolvedExpr {
         match &e.kind {
+            // PLAN-962 (L-15): a tuple LITERAL resolves positionally —
+            // the elements' VTs intern the structural shape; materializ-
+            // ation (anonymous positional record) is the adapter's.
+            ExprKind::TupleLit(elems_ast) => {
+                let mut elems = Vec::with_capacity(elems_ast.len());
+                for e in elems_ast {
+                    // elements resolve through the iterative walker (they
+                    // may be operator chains).
+                    elems.push(self.expr_iterative(e));
+                }
+                let vts: Vec<VT> = elems.iter().map(|e| e.vt).collect();
+                let span = e.span;
+                ResolvedExpr {
+                    span,
+                    vt: VT::Tuple(self.coll.intern_tuple(vts)),
+                    kind: RExprKind::TupleLit { elems },
+                }
+            }
             // PLAN-962 (L-16): array literals desugar ONLY in the
             // let/var initializer position (the Let arm intercepts);
             // every other expression position is a named rejection.
@@ -6753,8 +6959,8 @@ impl<'a, 's> FnResolver<'a, 's> {
             // path `.get(i)` resolves through (value element = ListGet;
             // owned element = the tainted whole-element view).
             ExprKind::Index { base, index } => {
-                let recv = self.expr(base);
-                let idx = self.expr(index);
+                let recv = self.expr_iterative(base);
+                let idx = self.expr_iterative(index);
                 if idx.vt != VT::I32 {
                     self.bind_err(
                         "source.index-type",

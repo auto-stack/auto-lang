@@ -434,6 +434,11 @@ fn type_digest(t: &crate::source::ast::TypeRef) -> String {
         TypeRef::TyVar(id) => format!("tv:{}", id.name),
         TypeRef::Record(id) => format!("rec:{}", id.name),
         TypeRef::Optional(inner) => format!("opt:{}", type_digest(&inner.kind)),
+        // PLAN-962：tuple 类型摘要。
+        TypeRef::Tuple(args) => {
+            let parts: Vec<String> = args.iter().map(|a| type_digest(&a.kind)).collect();
+            format!("tup:{}", parts.join(","))
+        }
         TypeRef::Generic { name, args } => format!(
             "gen:{}<{}>",
             name.name,
@@ -491,6 +496,10 @@ fn references_name(f: &FnItem, name: &str) -> bool {
                     crate::source::ast::Stmt::IndexAssign(ia) => {
                         sub.push(WalkItem::Expr(&ia.index));
                         sub.push(WalkItem::Expr(&ia.value));
+                    }
+                    // PLAN-962：tuple 解构——value 入队。
+                    crate::source::ast::Stmt::LetDestruct { value, .. } => {
+                        sub.push(WalkItem::Expr(value));
                     }
                     crate::source::ast::Stmt::Let { ann: a, value, .. } => {
                         if let Some(ty) = a {
@@ -631,6 +640,10 @@ fn collect_lambdas(stmts: &[Stmt], out: &mut Vec<(Span, u64)>, src: &str) {
                     Stmt::IndexAssign(ia) => {
                         work.push(WalkItem::Expr(&ia.index));
                         work.push(WalkItem::Expr(&ia.value));
+                    }
+                    // PLAN-962：tuple 解构——value 入队。
+                    Stmt::LetDestruct { value, .. } => {
+                        work.push(WalkItem::Expr(value));
                     }
                     Stmt::Let { value, .. }
                     | Stmt::Assign { value, .. }
@@ -1968,6 +1981,10 @@ fn extract_lambda_body(f: &FnItem, ordinal: usize) -> Option<ClosureBody> {
                     Stmt::IndexAssign(ia) => {
                         work.push(WalkItem::Expr(&ia.index));
                         work.push(WalkItem::Expr(&ia.value));
+                    }
+                    // PLAN-962：tuple 解构——value 入队。
+                    Stmt::LetDestruct { value, .. } => {
+                        work.push(WalkItem::Expr(value));
                     }
                     Stmt::Let { value, .. }
                     | Stmt::Assign { value, .. }

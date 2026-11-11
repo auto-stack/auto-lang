@@ -998,6 +998,12 @@ fn shift_ann(ann: &mut TypeAnn, offset: usize) {
         TypeRef::Builtin(_) => {}
         TypeRef::TyVar(i) | TypeRef::Record(i) => sh(&mut i.span, offset),
         TypeRef::Optional(inner) => shift_ann(inner, offset),
+        // PLAN-962：tuple 类型界平移。
+        TypeRef::Tuple(args) => {
+            for a in args {
+                shift_ann(a, offset);
+            }
+        }
         TypeRef::Generic { name, args } => {
             sh(&mut name.span, offset);
             for a in args {
@@ -1054,6 +1060,14 @@ fn shift_stmt(s: &mut Stmt, offset: usize) {
             shift_expr(&mut ia.index, offset);
             shift_expr(&mut ia.value, offset);
             sh(&mut ia.span, offset);
+        }
+        // PLAN-962：tuple 解构平移。
+        Stmt::LetDestruct { names, value, span } => {
+            for n in names {
+                sh(&mut n.span, offset);
+            }
+            shift_expr(value, offset);
+            sh(span, offset);
         }
         Stmt::ExprStmt { value, span } | Stmt::Return { value, span } => {
             shift_expr(value, offset);
@@ -1155,6 +1169,12 @@ fn shift_expr(e: &mut Expr, offset: usize) {
         }
         // PLAN-962：数组字面量/索引同步平移。
         ExprKind::ArrayLit(elems) => {
+            for e in elems {
+                shift_expr(e, offset);
+            }
+        }
+        // PLAN-962：tuple 字面量同步平移。
+        ExprKind::TupleLit(elems) => {
             for e in elems {
                 shift_expr(e, offset);
             }
@@ -1314,6 +1334,13 @@ impl<'a> Walker<'a> {
 
     fn walk_ann(&mut self, ann: &mut TypeAnn) -> Result<(), PackageDiagnostic> {
         match &mut ann.kind {
+            // PLAN-962：tuple 类型界递归。
+            TypeRef::Tuple(args) => {
+                for a in args {
+                    self.walk_ann(a)?;
+                }
+                Ok(())
+            }
             TypeRef::Builtin(_) => Ok(()),
             TypeRef::Record(name) => {
                 let mangled = self.type_name(name)?;
@@ -1400,6 +1427,13 @@ impl<'a> Walker<'a> {
                 Stmt::IndexAssign(ia) => {
                     self.walk_expr(&mut ia.index, &locals)?;
                     self.walk_expr(&mut ia.value, &locals)?;
+                }
+                // PLAN-962：tuple 解构走读（新绑定名入后续局部集）。
+                Stmt::LetDestruct { names, value, .. } => {
+                    self.walk_expr(value, &locals)?;
+                    for n in names {
+                        next_locals.insert(n.name.clone());
+                    }
                 }
                 Stmt::Let {
                     name, ann, value, ..
@@ -1588,6 +1622,13 @@ impl<'a> Walker<'a> {
             }
             // PLAN-962：数组字面量/索引递归走读。
             ExprKind::ArrayLit(elems) => {
+                for e in elems {
+                    self.walk_expr_inner(e, locals)?;
+                }
+                Ok(())
+            }
+            // PLAN-962：tuple 字面量递归走读。
+            ExprKind::TupleLit(elems) => {
                 for e in elems {
                     self.walk_expr_inner(e, locals)?;
                 }
@@ -1933,6 +1974,8 @@ fn stmt_span(s: &Stmt) -> Span {
         | Stmt::ForIn { span, .. } => *span,
         // PLAN-962：索引赋值。
         Stmt::IndexAssign(ia) => ia.span,
+        // PLAN-962：tuple 解构。
+        Stmt::LetDestruct { span, .. } => *span,
     }
 }
 

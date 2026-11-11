@@ -486,6 +486,8 @@ fn walk_stmt(stmt: &Stmt, out: &mut Vec<String>) {
             walk_expr(&ia.index, out);
             walk_expr(&ia.value, out);
         }
+        // PLAN-962: tuple destructuring reads the value.
+        Stmt::LetDestruct { value, .. } => walk_expr(value, out),
         Stmt::Assign { value, .. } => walk_expr(value, out),
         Stmt::If {
             cond, then, els, ..

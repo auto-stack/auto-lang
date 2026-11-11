@@ -636,6 +636,7 @@ pub fn bind_with_facts(
                 fns: Vec::new(),
                 records: Vec::new(),
                 lists: Vec::new(),
+                tuples: Vec::new(),
                 variants: Vec::new(),
                 function_types: Vec::new(),
             },

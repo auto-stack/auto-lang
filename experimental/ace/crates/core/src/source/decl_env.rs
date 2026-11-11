@@ -98,6 +98,8 @@ fn vt_token(v: &super::resolve::VT) -> String {
     use super::resolve::VT;
     match v {
         VT::I32 => "i32".into(),
+        // PLAN-962：tuple 形状标识。
+        VT::Tuple(ti) => format!("tuple:{ti}"),
         VT::Bool => "bool".into(),
         VT::Str => "str".into(),
         VT::StrOwned => "Str".into(),
@@ -847,6 +849,7 @@ pub fn decl_env_restore_with_foreign(
         fns,
         records,
         lists,
+        tuples: Vec::new(),
         variants,
         function_types,
     };

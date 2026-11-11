@@ -95,6 +95,17 @@ pub fn owner_logical(package: &str, module: &str, name: &str) -> LogicalId {
 /// but different names are different types); positions never enter.
 pub fn type_canonical(t: &TypeAnn, out: &mut Vec<u8>) {
     match &t.kind {
+        // PLAN-962: tuple canonical = element canonicals in order.
+        TypeRef::Tuple(args) => {
+            out.extend_from_slice(b"tuple:[");
+            for (i, a) in args.iter().enumerate() {
+                if i > 0 {
+                    out.push(b',');
+                }
+                type_canonical(a, out);
+            }
+            out.push(b']');
+        }
         TypeRef::Builtin(w) => {
             out.extend_from_slice(b"builtin:");
             out.extend_from_slice(builtin_word(w));

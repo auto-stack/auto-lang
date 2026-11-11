@@ -282,6 +282,8 @@ fn substitute_all(p: &mut Program, served: &ServedRoot) {
                 repl(&mut ia.index, served);
                 repl(&mut ia.value, served);
             }
+            // PLAN-962：tuple 解构替换值表达式。
+            Stmt::LetDestruct { value, .. } => repl(value, served),
             Stmt::If {
                 cond, then, els, ..
             } => {

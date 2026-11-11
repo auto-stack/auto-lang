@@ -1518,6 +1518,11 @@ pub fn canonical_type_word(t: &ace_core::source::ast::TypeAnn) -> String {
             let p: Vec<String> = params.iter().map(canonical_type_word).collect();
             format!("fn({}) -> {}", p.join(", "), canonical_type_word(result))
         }
+        // PLAN-962: the tuple's canonical word (aggregates surface).
+        TypeRef::Tuple(args) => {
+            let a: Vec<String> = args.iter().map(canonical_type_word).collect();
+            format!("({})", a.join(", "))
+        }
     }
 }
 

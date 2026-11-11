@@ -86,6 +86,8 @@ pub enum TypeRef {
         name: Ident,
         args: Vec<TypeAnn>,
     },
+    /// PLAN-962 (L-15): a tuple type `(T1, T2, ...)`.
+    Tuple(Vec<TypeAnn>),
     /// PLAN-865: closure function type `fn(T0, T1) -> R`.
     Function {
         params: Vec<TypeAnn>,
@@ -314,6 +316,8 @@ pub enum ExprKind {
     /// Range-checked signed 32-bit literal (`-2147483648` and
     /// `- 2147483648` are one literal; see the parser).
     IntLit(i32),
+    /// PLAN-962 (L-15): a tuple literal `(e1, e2, ...)` (>= 2 elements).
+    TupleLit(Vec<Expr>),
     /// PLAN-962 (L-16): a non-empty array/List literal `[e1, e2, ...]`.
     /// The resolver desugars at the statement level (`List<T>.new()` +
     /// pushes); other positions reject with a named diagnostic.
@@ -498,6 +502,13 @@ pub enum Stmt {
     },
     /// PLAN-962 (L-48): `xs[i] = v`.
     IndexAssign(IndexAssign),
+    /// PLAN-962 (L-15): `let (a, b, ...) = expr` — flat tuple
+    /// destructuring (binding names map positionally to 0..n-1).
+    LetDestruct {
+        names: Vec<Ident>,
+        value: Expr,
+        span: Span,
+    },
     Return {
         value: Expr,
         /// `return` through the end of the value.

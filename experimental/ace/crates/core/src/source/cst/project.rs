@@ -3158,6 +3158,11 @@ enum Frame {
         name: Ident,
         span: Span,
     },
+    /// PLAN-962（L-15）：`let (a, b, ...) = e` 收尾帧。
+    LetDestructFinish {
+        names: Vec<Ident>,
+        span: Span,
+    },
     /// PLAN-928（T-03）：`is <局部> { 臂 }` 逐臂帧 + 汇总帧。
     IsArms(IsMatchCtx),
     IsArmBlock {
@@ -3702,6 +3707,39 @@ impl<'a> Engine<'a> {
     /// `pos`：Ret 位在 record 面收**任意** ident（含 str/Str/char——旧
     /// fn_item_tail 的名义分支）；param/field/let 注解位先做文本词拒绝。
     fn classify_word(&mut self, node: u32, ret_pos: bool) -> TypeAnn {
+        // PLAN-962（L-15）：tuple 类型（ann 位的 tuple-ty 子节点承载）。
+        if let Some(tt) = self.cx.field_child(node, "tuple") {
+            let span = self.cx.span_of(tt);
+            let mut args: Vec<TypeAnn> = Vec::new();
+            if let Some(head) = self.cx.field_child(tt, "head") {
+                let hw = self.cx.child_of_kind(head, self.cx.k.ann_ty).unwrap_or(head);
+                args.push(self.classify_word(hw, false));
+            }
+            // tail ann-ty children of tuple-ty-tail nodes, absolute order
+            let tail_kind = self.cx.k.tuple_ty_tail.unwrap_or(u32::MAX);
+            let mut tails: Vec<u32> = self
+                .cx
+                .children(tt)
+                .into_iter()
+                .filter(|&c| self.cx.tree.kind(c) == tail_kind)
+                .collect();
+            tails.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
+            for t in tails {
+                if let Some(a) = self
+                    .cx
+                    .children(t)
+                    .into_iter()
+                    .find(|&c| self.cx.tree.kind(c) == self.cx.k.ann_ty)
+                {
+                    args.push(self.classify_word(a, false));
+                }
+            }
+            let _ = ret_pos;
+            return TypeAnn {
+                kind: TypeRef::Tuple(args),
+                span,
+            };
+        }
         // PLAN-928：closures 面函数类型（ret/ann 位的 fn-type 子节点承载）。
         if let Some(ft) = self.cx.field_child(node, "fn") {
             return self.project_fn_type(ft);
@@ -4180,6 +4218,28 @@ impl<'a> Engine<'a> {
             let value_n = self.cx.field_child(inner, "value").expect("assign value");
             self.stack.push(Frame::AssignFinish { name, path });
             self.stack.push(Frame::ExprEnter(value_n));
+        } else if kind == self.cx.k.let_destr_stmt.unwrap_or(u32::MAX) {
+            // PLAN-962（L-15）：`let (a, b, ...) = expr`——绑定名列表 + 值。
+            let names_n = self.cx.field_child(inner, "names").expect("destr names");
+            let mut names: Vec<Ident> = Vec::new();
+            if let Some(h) = self.cx.field_child(names_n, "head") {
+                names.push(ident_of(&mut self.cx, h));
+            }
+            for t in self.cx.children(names_n) {
+                if let Some(id_leaf) = self.cx.field_child(t, "") {
+                    let _ = id_leaf;
+                }
+                // tail idents are field-less children of destr-name-tail
+                for c2 in self.cx.children(t) {
+                    if self.cx.tree.kind(c2) == self.cx.k.tok_ident {
+                        names.push(ident_of(&mut self.cx, c2));
+                    }
+                }
+            }
+            let value_n = self.cx.field_child(inner, "value").expect("destr value");
+            let span = self.cx.span_of(inner);
+            self.stack.push(Frame::LetDestructFinish { names, span });
+            self.stack.push(Frame::ExprEnter(value_n));
         } else if kind == self.cx.k.index_assign_stmt.unwrap_or(u32::MAX) {
             // PLAN-962 (L-48)：`xs[i] = v`——base 名、index/value 两表达式。
             let name_leaf = self.cx.field_child(inner, "name").expect("index assign name");
@@ -4539,6 +4599,42 @@ impl<'a> Engine<'a> {
                     }));
                     return;
                 }
+            }
+            // PLAN-962（L-15）：tuple 字面量原子 `(e1, e2, ...)`（元素
+            // 同步投影；≥2 元由语法保证）。
+            if ck == self.cx.k.tuple_lit_rule.unwrap_or(u32::MAX) {
+                let mut elems: Vec<Expr> = Vec::new();
+                let mut span = self.cx.span_of(c);
+                if let Some(head_n) = self.cx.field_child(c, "head") {
+                    let he = self.project_expr_sync(head_n);
+                    span = span.join(he.span);
+                    elems.push(he);
+                }
+                let tail_kind = self.cx.k.tuple_lit_tail.unwrap_or(u32::MAX);
+                let mut tails: Vec<u32> = self
+                    .cx
+                    .children(c)
+                    .into_iter()
+                    .filter(|&x| self.cx.tree.kind(x) == tail_kind)
+                    .collect();
+                tails.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
+                for t in tails {
+                    if let Some(en) = self
+                        .cx
+                        .children(t)
+                        .into_iter()
+                        .find(|&x| self.cx.tree.kind(x) != self.cx.k.tok_comma)
+                    {
+                        let e = self.project_expr_sync(en);
+                        span = span.join(e.span);
+                        elems.push(e);
+                    }
+                }
+                self.vals.push(Val::E(Expr {
+                    span,
+                    kind: ExprKind::TupleLit(elems),
+                }));
+                return;
             }
             // PLAN-962（L-16）：数组/List 字面量原子 `[e, ...]`（元素同步
             // 投影；空表由 resolve 具名拒）。
@@ -5876,6 +5972,14 @@ impl<'a> Engine<'a> {
                         },
                     },
                     body,
+                    span,
+                }));
+            }
+            Frame::LetDestructFinish { names, span } => {
+                let value = self.pop_e();
+                self.vals.push(Val::S(Stmt::LetDestruct {
+                    names,
+                    value,
                     span,
                 }));
             }

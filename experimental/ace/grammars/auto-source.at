@@ -354,6 +354,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [collections, closures, numeric, aggregates]) { optional-ty(field: "optional") }
             alt(profiles: [text, text-record, host-console, record, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, numeric, aggregates]) { ident(field: "word") }
             alt(profiles: [closures, numeric, aggregates]) { fn-type(field: "fn") }
+            // PLAN-962（L-15）：tuple 类型（聚合面，≥2 元）。
+            alt(profiles: [aggregates]) { tuple-ty(field: "tuple") }
         }
         // 参数/字段/let 注解类型（入口 void 由 entry 面的拼写分类处理）
         ann-ty {
@@ -375,6 +377,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [collections, closures, numeric, aggregates]) { optional-ty(field: "optional") }
             alt(profiles: [text, text-record, host-console, record, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, numeric, aggregates]) { ident(field: "word") }
             alt(profiles: [closures, numeric, aggregates]) { fn-type(field: "fn") }
+            // PLAN-962（L-15）：tuple 类型（聚合面，≥2 元）。
+            alt(profiles: [aggregates]) { tuple-ty(field: "tuple") }
         }
         // PLAN-961：数值类型词（`.as(T)`/`.to(T)` 后缀实参位）。
         num-ty-word(profiles: [numeric, aggregates]) {
@@ -448,6 +452,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-928：闭包函数类型 `fn(T0, ...) -> R`（`->` 可省 = K 语料
         // 相邻结果拼写兼容形，仅闭包面）。可嵌套（参数/结果位可再为 fn 型；
         // fn 型在词后备选，`fn` token 使词备选干净失败回退）。
+        // PLAN-962（L-15）：tuple 类型形——`(` 类型 `,` 类型 (`,` 类型)* `)`。
+        tuple-ty(profiles: [aggregates]) {
+            lparen() {}
+            ann-ty(field: "head")
+            many { tuple-ty-tail() {} }
+            rparen() {}
+        }
+        tuple-ty-tail(profiles: [aggregates]) {
+            comma() {}
+            ann-ty() {}
+        }
         fn-type(profiles: [closures, numeric, aggregates]) {
             fn(field: "kw")
             lparen() {}
@@ -523,6 +538,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         block { lbrace() {} list-nl { stmt() {} } rbrace() {} }
         stmt(recover: true) {
             alt { let-stmt() {} }
+            // PLAN-962（L-15）：`let (a, b, ...) = expr`（聚合面，扁平名）。
+            alt(profiles: [aggregates]) { let-destr-stmt() {} }
             alt { var-stmt() {} }
             alt { assign-stmt() {} }
             alt(profiles: [record, text-record, collections, closures, packages-modules, numeric, aggregates]) { path-assign-stmt() {} }
@@ -549,6 +566,23 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             opt { ann-ty(field: "ann") }
             assign() {}
             expr(field: "value")
+        }
+        // PLAN-962（L-15）：扁平 tuple 解构——绑定名逐位对应 0..n-1。
+        let-destr-stmt(profiles: [aggregates]) {
+            let(field: "kw")
+            lparen(same-line: true) {}
+            destr-names(field: "names")
+            rparen() {}
+            assign() {}
+            expr(field: "value")
+        }
+        destr-names(profiles: [aggregates]) {
+            ident(field: "head")
+            many { destr-name-tail() {} }
+        }
+        destr-name-tail(profiles: [aggregates]) {
+            comma() {}
+            ident() {}
         }
         var-stmt {
             var(field: "kw")
@@ -748,6 +782,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
             alt(profiles: [closures, aggregates]) { lambda-expr() {} }
+            // PLAN-962（L-15）：tuple 字面量 `(e1, e2, ...)`（≥2 元；先于
+            // 括号组——无 `=>` 且带逗号即 tuple，单元素组回退）。
+            alt(profiles: [aggregates]) { tuple-lit() {} }
             alt(profiles: [record, text-record, collections, aggregates]) { leading-dot() {} }
             alt { str-lit(field: "lit") }
             alt { char-lit(field: "lit") }
@@ -772,6 +809,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
             alt(profiles: [closures, numeric, aggregates]) { lambda-expr() {} }
+            // PLAN-962（L-15）：tuple 字面量 `(e1, e2, ...)`（≥2 元；先于
+            // 括号组——无 `=>` 且带逗号即 tuple，单元素组回退）。
+            alt(profiles: [aggregates]) { tuple-lit() {} }
             alt(profiles: [record, text-record, collections, packages-modules, aggregates]) { leading-dot() {} }
             alt { str-lit(field: "lit") }
             alt { char-lit(field: "lit") }
@@ -802,6 +842,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             many { array-elem-tail() {} }
         }
         array-elem-tail(profiles: [aggregates]) {
+            comma() {}
+            expr() {}
+        }
+        // PLAN-962（L-15）：tuple 字面量形。
+        tuple-lit(profiles: [aggregates]) {
+            lparen() {}
+            expr(field: "head")
+            many { tuple-lit-tail() {} }
+            rparen() {}
+        }
+        tuple-lit-tail(profiles: [aggregates]) {
             comma() {}
             expr() {}
         }

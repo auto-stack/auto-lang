@@ -1229,8 +1229,24 @@ fn ty_name(
     lists: &[VT],
     variants: &[crate::source::resolve::ResolvedVariant],
 ) -> String {
+    ty_name_t(vt, records, lists, &[], variants)
+}
+
+/// PLAN-962: the tuples-aware spelling of [`ty_name`] (the plain entry
+/// passes an empty table — tuples never occur on the older faces).
+fn ty_name_t(
+    vt: VT,
+    records: &[crate::source::resolve::ResolvedRecord],
+    lists: &[VT],
+    tuples: &[Vec<VT>],
+    variants: &[crate::source::resolve::ResolvedVariant],
+) -> String {
     match vt {
         VT::I32 => "t_i32".to_string(),
+        // PLAN-962 (L-15): a tuple's Atom identity is its materialized
+        // anonymous positional record (rendered after the declared
+        // records; fields "0".."n-1" in shape order).
+        VT::Tuple(ti) => format!("t_rec___tuple_{ti}"),
         // PLAN-961: named numeric type entries (mirroring the schema's
         // `type(id, kind: i8)` rows).
         VT::I8 => "t_i8".to_string(),
@@ -1351,6 +1367,12 @@ enum EKind {
         bindings: Vec<(u32, u32)>,
     },
     /// Field read through a flattened declaration-index path.
+    /// PLAN-962 (L-15): a tuple literal — positional construction of the
+    /// anonymous positional record `t_rec___tuple_<ti>`.
+    TupleCtor {
+        tuple: usize,
+        eval: Vec<usize>,
+    },
     FieldGet {
         base: usize,
         path: Vec<u32>,
@@ -2773,6 +2795,45 @@ impl PlanCtx<'_> {
             RExprKind::CallClosure { .. } => {
                 unreachable!("closure calls are planned by the iterative closure-call walk")
             }
+            RExprKind::TupleLit { elems } => {
+                // PLAN-962 (L-15): positional construction; eval order =
+                // source order; bindings are positional (i -> i).
+                let mut eval = Vec::new();
+                for el in elems {
+                    eval.push(self.plan_expr(plan, f, el));
+                }
+                // resolve guarantees the literal's VT is the interned
+                // shape; a non-tuple VT here is an internal contract break
+                // surfaced as a named diagnostic.
+                let VT::Tuple(ti) = e.vt else {
+                    plan.exprs.push(ENode {
+                        kind: EKind::Const(0),
+                        vt: VT::I32,
+                        span: e.span,
+                    });
+                    return plan.exprs.len() - 1;
+                };
+                plan.exprs.push(ENode {
+                    kind: EKind::TupleCtor { tuple: ti, eval },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::TupleGet { base, index } => {
+                // PLAN-962 (L-15): positional read — the anonymous record's
+                // field ids ARE the positions (fields "0".."n-1").
+                let b = self.plan_expr(plan, f, base);
+                plan.exprs.push(ENode {
+                    kind: EKind::FieldGet {
+                        base: b,
+                        path: vec![*index as u32],
+                    },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
             RExprKind::CtorPos { rec, args } => {
                 // positional: eval order = source order; binding i -> i
                 let mut eval = Vec::new();
@@ -3679,6 +3740,40 @@ impl<'p> Emitter<'p> {
                 nl!(12);
             }
         }
+        // PLAN-962 (L-15): anonymous positional tuple records (aggregates
+        // surface) — one `type t_rec___tuple_<i> record` per interned
+        // shape, fields "0".."n-1" in shape order.
+        if self.profile.is_aggregates() {
+            for (ti, shape) in self.program.tuples.iter().enumerate() {
+                let fields: Vec<String> = shape
+                    .iter()
+                    .enumerate()
+                    .map(|(fi, &fvt)| {
+                        format!(
+                            "{{ name: \"{}\", type: {} }}",
+                            fi,
+                            ty_name_t(
+                                fvt,
+                                &self.program.records,
+                                &self.program.lists,
+                                &self.program.tuples,
+                                &self.program.variants,
+                            )
+                        )
+                    })
+                    .collect();
+                frag!(
+                    &format!(
+                        "type t_rec___tuple_{} record {{ fields: [{}] }}",
+                        ti,
+                        fields.join(", ")
+                    ),
+                    program_span
+                );
+                spans.types.push(program_span);
+                nl!(12);
+            }
+        }
         // PLAN-864: List/Variant type-table entries (collections surface).
         if self.profile.is_collections() {
             for (_li, elem) in self.program.lists.iter().enumerate() {
@@ -4511,6 +4606,29 @@ impl<'p> Emitter<'p> {
                             format!(
                                 "expr e{} create_closure {{ type: {}; callee: {}; captures: [{}] }}",
                                 ei, ty, callee, capture_text
+                            )
+                        }
+                        EKind::TupleCtor { tuple, eval } => {
+                            // PLAN-962 (L-15): record_ctor over the
+                            // anonymous positional record.
+                            let eval_s: Vec<String> =
+                                eval.iter().map(|x| format!("e{}", x)).collect();
+                            let bind_s: Vec<String> = (0..eval.len() as u32)
+                                .map(|i| format!("{{ field: {i}u32, arg: {i}u32 }}"))
+                                .collect();
+                            format!(
+                                "expr e{} record_ctor {{ type: {}; record: t_rec___tuple_{}; field_args: [{}]; ctor_bindings: [{}] }}",
+                                ei,
+                                ty_name_t(
+                                    VT::Tuple(*tuple),
+                                    &self.program.records,
+                                    &self.program.lists,
+                                    &self.program.tuples,
+                                    &self.program.variants,
+                                ),
+                                tuple,
+                                eval_s.join(", "),
+                                bind_s.join(", ")
                             )
                         }
                         EKind::RecordCtor {

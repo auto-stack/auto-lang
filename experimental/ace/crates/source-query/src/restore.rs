@@ -143,6 +143,7 @@ pub fn restore_bind(
                 fns: Vec::new(),
                 records: Vec::new(),
                 lists: Vec::new(),
+                tuples: Vec::new(),
                 variants: Vec::new(),
                 function_types: Vec::new(),
             },
