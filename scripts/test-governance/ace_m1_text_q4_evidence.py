@@ -13,7 +13,7 @@ from ace_m1_scalar_evidence import _duration, _fnv1a64, _counts
 from ace_m1_text_evidence import text_contracts, ORACLES
 
 CONTRACT = 'crates/auto-lang/test/cases/ace-m1-expanded/text-q4-contract.json'
-CONTRACT_SHA  = '3326238f02437a2150075703191107ef4cba974e4bbe6c7a62152a4223637d71'
+CONTRACT_SHA  = '3be26be699c9fea0ac706cac00bdf7dc5801bef3dd9257bcfe9cb6c162edc0ec'
 SUITE = 'crates/auto-lang/test/cases/ace-m1-expanded/text-q4.suite.ad'
 DEPENDENCIES = ('experimental/ace/target/release/av-worker.exe',
  'experimental/ace/target/release/mn-worker.exe',

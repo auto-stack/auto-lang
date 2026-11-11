@@ -14,12 +14,20 @@ use crate::config::*;
 use crate::link_driver::{self, ObjectInput};
 use crate::source_diagnostics as sd;
 use crate::{emit, MnError};
-use ace_artifacts::store::ManagedStore;
+use ace_artifacts::store::{run_gc, GcConfig, GcReceipt, ManagedStore};
 use ace_av::session::{self, FunctionIncrementalSession};
 use ace_av_core::mir::OwnerScope;
 use ace_core::body_work::BodyWork;
 use std::collections::BTreeMap;
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
+
+/// PLAN-1000 (I10): per-unit superseded-edition retention window. Editions
+/// within the window stay soft-rooted (content-hit history reuse, F-818-R1-02);
+/// beyond it the last reference is REMOVED — the store GC physically
+/// reclaims them (bounded memory/disk watermark under churn). Mirrors the
+/// av closures session's bounded current+history roots discipline.
+pub const HISTORY_WINDOW: usize = 32;
 
 /// One unit's identity in the current revision.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -99,6 +107,20 @@ pub struct MnIncrementalSession {
     /// (F-818-R2-01): every link/run of this session links against it —
     /// `hir.test.mark_a` and friends resolve or the link fails loudly.
     tracelib: Option<PathBuf>,
+    /// PLAN-1000 (I10): the store project this session's unit editions are
+    /// soft-rooted under (live roots for the GC's liveness closure).
+    project: String,
+    /// PLAN-1000 (I10): current edition's artifact id per unit (the live
+    /// root that must survive every GC).
+    current_arts: BTreeMap<String, String>,
+    /// PLAN-1000 (I10): per-unit superseded-edition window (fp, artifact
+    /// id), bounded at [`HISTORY_WINDOW`]; evicted editions lose their last
+    /// reference (root removed + cv_map entry dropped) and are physically
+    /// reclaimed by [`Self::gc`].
+    history: BTreeMap<String, VecDeque<(String, String)>>,
+    /// PLAN-1000 (I10): editions whose last reference was removed (the
+    /// reclaim conservation counter: mints - live = reclaimed).
+    reclaimed_history: u64,
 }
 
 /// Session counter deltas for one edit: the stage work of functions OTHER
@@ -226,6 +248,7 @@ impl MnIncrementalSession {
             .join("mn-inc-work");
         std::fs::create_dir_all(&workdir_root)
             .map_err(|e| MnError::Infra(format!("workdir: {e}")))?;
+        let project = format!("mn-inc:{}", owner.module);
         let mut s = MnIncrementalSession {
             av,
             entry: entry.to_string(),
@@ -239,13 +262,18 @@ impl MnIncrementalSession {
             cv_map: BTreeMap::new(),
             caps: caps.to_vec(),
             tracelib: tracelib.map(|p| p.to_path_buf()),
+            project,
+            current_arts: BTreeMap::new(),
+            history: BTreeMap::new(),
+            reclaimed_history: 0,
         };
         for unit in &units {
             let name = unit.funcs[0].name.clone();
             let obj = emit::emit_unit_coff(unit)?;
             let fp = cache::unit_fp(unit);
             let meta = CoffMeta::for_unit(unit, fp.clone())?;
-            cache::put_unit_coff(&s.store, None, &meta, &obj.bytes)?;
+            let (art, _pages) = cache::put_unit_coff(&s.store, Some(&s.project), &meta, &obj.bytes)?;
+            s.current_arts.insert(name.clone(), art);
             // Seed the content-version map: the session's resident
             // content version of this function (by SOURCE name — the unit
             // key is the `d_`-prefixed def id) maps to its warm-up fp.
@@ -481,15 +509,59 @@ impl MnIncrementalSession {
                         }
                     };
                     let meta = self.meta_of(&changed_key, &fp);
-                    if let Err(e) = cache::put_unit_coff(&self.store, None, &meta, &obj.bytes) {
-                        return self.close_exit(
-                            &ctx,
-                            EditObservation {
-                                infra: Some(format!("put: {e}")),
-                                ..Default::default()
-                            },
-                        );
+                    let (new_art, _pages) =
+                        match cache::put_unit_coff(&self.store, Some(&self.project), &meta, &obj.bytes) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                return self.close_exit(
+                                    &ctx,
+                                    EditObservation {
+                                        infra: Some(format!("put: {e}")),
+                                        ..Default::default()
+                                    },
+                                );
+                            }
+                        };
+                    // PLAN-1000 (I10): the superseded edition joins the
+                    // bounded history window; the mint is now the unit's
+                    // current (live-rooted) edition. Beyond the window the
+                    // oldest edition's last reference is removed (soft root
+                    // + cv_map entry) — the GC physically reclaims it.
+                    if let Some(old_art) = self.current_arts.get(&changed_key).cloned() {
+                        if old_art != new_art {
+                            let old_fp = prev.fp.clone();
+                            let window = self.history.entry(changed_key.clone()).or_default();
+                            // A re-minted historical edition (idempotent
+                            // republication) must not linger as a stale
+                            // duplicate window entry now that it is current.
+                            window.retain(|(_, art)| art != &new_art);
+                            window.push_back((old_fp, old_art));
+                            let cur = self.current_arts.clone();
+                            while window.len() > HISTORY_WINDOW {
+                                let (evicted_fp, evicted_art) = window.pop_front().expect("bounded");
+                                // Never release the live current root
+                                // (a returned historical edition).
+                                if cur.get(&changed_key) == Some(&evicted_art) {
+                                    continue;
+                                }
+                                if let Err(e) =
+                                    self.store.remove_root(&self.project, "soft", &evicted_art)
+                                {
+                                    return self.close_exit(
+                                        &ctx,
+                                        EditObservation {
+                                            infra: Some(format!("history root release: {e}")),
+                                            ..Default::default()
+                                        },
+                                    );
+                                }
+                                self.cv_map
+                                    .retain(|(k, _), v| !(k == &changed_key && v == &evicted_fp));
+                                self.reclaimed_history += 1;
+                            }
+                        }
                     }
+                    self.current_arts.insert(changed_key.clone(), new_art);
                     codegen_units = 1;
                     self.units.insert(
                         changed_key.clone(),
@@ -822,6 +894,12 @@ impl MnIncrementalSession {
         &self.owner
     }
 
+    /// PLAN-1000 (I10): the admission meta for one unit edition (restore
+    /// probes in the churn/GC observations).
+    pub fn unit_meta(&self, name: &str, fp: &str) -> CoffMeta {
+        self.meta_of(name, fp)
+    }
+
     /// Current unit identities (fp, generation) — the structure oracle.
     pub fn units(&self) -> &BTreeMap<String, UnitEntry> {
         &self.units
@@ -838,6 +916,39 @@ impl MnIncrementalSession {
 
     pub fn session_revision(&self) -> u64 {
         self.av.revision()
+    }
+
+    /// PLAN-1000 (I10): the store project this session's editions are
+    /// soft-rooted under.
+    pub fn store_project(&self) -> &str {
+        &self.project
+    }
+
+    /// PLAN-1000 (I10): editions whose last reference was removed by the
+    /// bounded history window (the reclaim conservation counter).
+    pub fn reclaimed_history(&self) -> u64 {
+        self.reclaimed_history
+    }
+
+    /// PLAN-1000 (I10): live-edition watermark — current editions plus the
+    /// bounded per-unit history window (the store's live roots for this
+    /// project stay at or below units × (1 + HISTORY_WINDOW)).
+    pub fn live_edition_watermark(&self) -> usize {
+        self.current_arts.len()
+            + self
+                .history
+                .values()
+                .map(|w| w.len())
+                .sum::<usize>()
+    }
+
+    /// PLAN-1000 (I10): run the store GC (physical reclamation of
+    /// reference-dropped editions). The session's live roots — every
+    /// unit's current edition and the bounded history window — are the
+    /// GC's liveness seeds and survive.
+    pub fn gc(&self) -> Result<GcReceipt, MnError> {
+        run_gc(&self.store, GcConfig { high: 1, low: 0 })
+            .map_err(|e| MnError::Infra(format!("store gc: {e}")))
     }
 
     pub fn close(&mut self) {

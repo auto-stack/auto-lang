@@ -277,6 +277,11 @@ pub struct Options {
     pub probe_mn: Option<ProbeMnSpec>,
     /// probe only (PLAN-892): ac-a2r/hir-scalar-emit-v1 binding.
     pub probe_a2x_hir: Option<ProbeA2xHirSpec>,
+    /// avm only (PLAN-1000 R02:avm): 1-based allocation ordinal at which the
+    /// engine's fault seam aborts the run with the typed `AllocFault` code
+    /// (test-observation channel mirroring the mn `resource.fail_seam`
+    /// knob). Absent = off (production behavior).
+    pub avm_fail_alloc_at: Option<u64>,
 }
 
 impl Default for Options {
@@ -302,6 +307,7 @@ impl Default for Options {
             probe_cte: None,
             probe_mn: None,
             probe_a2x_hir: None,
+            avm_fail_alloc_at: None,
         }
     }
 }
@@ -1262,7 +1268,8 @@ fn decode_options(
 ) -> Result<Options, ContractError> {
     let pairs = as_obj(v, path)?;
     let known: &[&str] = match adapter {
-        Adapter::Avm => &[], // avm/run has no options (v1 and v2)
+        // PLAN-1000 R02:avm — the allocation-fault seam ordinal.
+        Adapter::Avm => &["fail_alloc_at"],
         Adapter::A2r => &["module_name", "int_profile", "resource_profile"],
         Adapter::Ac => &[
             "profile",
@@ -1324,6 +1331,21 @@ fn decode_options(
             ));
         }
     }
+    // PLAN-1000 R02:avm — allocation-fault seam ordinal (avm only): a
+    // positive integer literal; anything else is a contract error.
+    let avm_fail_alloc_at = match f.sub("fail_alloc_at") {
+        None => None,
+        Some(CVal::Int(n)) if *n >= 1 => Some(*n as u64),
+        Some(other) => {
+            return Err(err(
+                &f.path_of("fail_alloc_at"),
+                format!(
+                    "fail_alloc_at must be a positive integer allocation ordinal, got {}",
+                    other.type_name()
+                ),
+            ))
+        }
+    };
 
     let mut ac_profile = None;
     let mut ac_target = None;
@@ -2450,6 +2472,8 @@ fn decode_options(
                         "diagnostics",
                         "declaration",
                         "resource",
+                        "history",
+                        "turnaround",
                     ],
                 )?;
                 let entry = req_str(&mf, "entry")?;
@@ -2605,6 +2629,78 @@ fn decode_options(
                         })
                     }
                 };
+                // PLAN-1000 (I05): the content-revisit oracle — belongs to
+                // the scalar recipe's incremental rounds; judged from the
+                // recorded content-addressed COFF cache hits.
+                let history = match mf.sub("history") {
+                    None => None,
+                    Some(v) => {
+                        if recipe != "ac/mir-native-scalar-v1" {
+                            return Err(err(
+                                &mf.path_of("history"),
+                                "the history oracle belongs to ac/mir-native-scalar-v1 only (the scalar incremental rounds have the content-addressed store)",
+                            ));
+                        }
+                        let hpath = mf.path_of("history");
+                        let hpairs = as_obj(v, &hpath)?;
+                        let hf = Fields::new(&hpath, hpairs, &["min_cache_hit_coff"])?;
+                        let min_cache_hit_coff = match hf.sub("min_cache_hit_coff") {
+                            None => 1,
+                            Some(mv) => match mv {
+                                CVal::Int(n) if *n >= 1 && *n <= 1024 => *n as u64,
+                                _ => {
+                                    return Err(err(
+                                        &hf.path_of("min_cache_hit_coff"),
+                                        "min_cache_hit_coff must be an integer 1..=1024",
+                                    ))
+                                }
+                            },
+                        };
+                        Some(ProbeMnHistorySpec { min_cache_hit_coff })
+                    }
+                };
+                // PLAN-1000 (I11): the turnaround oracle — the approved P90
+                // bound over the parent-observed per-edit windows. The
+                // bound cannot be declared below the approved 858 value.
+                let turnaround = match mf.sub("turnaround") {
+                    None => None,
+                    Some(v) => {
+                        if recipe != "ac/mir-native-scalar-v1" {
+                            return Err(err(
+                                &mf.path_of("turnaround"),
+                                "the turnaround oracle belongs to ac/mir-native-scalar-v1 only (the scalar incremental rounds own the per-edit windows)",
+                            ));
+                        }
+                        let tpath = mf.path_of("turnaround");
+                        let tpairs = as_obj(v, &tpath)?;
+                        let tf = Fields::new(&tpath, tpairs, &["p90_max_ms", "min_edits"])?;
+                        let p90_max_ms = match tf.sub("p90_max_ms") {
+                            None => 2000,
+                            Some(mv) => match mv {
+                                CVal::Int(n) if *n >= 2000 && *n <= 3_600_000 => *n as u64,
+                                _ => {
+                                    return Err(err(
+                                        &tf.path_of("p90_max_ms"),
+                                        "p90_max_ms must be an integer 2000..=3600000 (the approved P90 bound)",
+                                    ))
+                                }
+                            },
+                        };
+                        let min_edits = match tf.sub("min_edits") {
+                            None => 10,
+                            Some(mv) => match mv {
+                                CVal::Int(n) if *n >= 10 && *n <= 10_000 => *n as u64,
+                                _ => {
+                                    return Err(err(
+                                        &tf.path_of("min_edits"),
+                                        "min_edits must be an integer 10..=10000",
+                                    ))
+                                }
+                            },
+                        };
+                        Some(ProbeMnTurnaroundSpec { p90_max_ms, min_edits })
+                    }
+                };
                 // PLAN-919: the native lifecycle recipe's exit knobs
                 // (guest byte budget, cancellation after N work units,
                 // the Nth-allocation fault) — driven by the generated
@@ -2717,6 +2813,8 @@ fn decode_options(
                     diagnostics,
                     declaration,
                     resource,
+                    history,
+                    turnaround,
                 })
             }
         };
@@ -2836,6 +2934,7 @@ fn decode_options(
         probe_cte,
         probe_mn,
         probe_a2x_hir,
+        avm_fail_alloc_at,
     })
 }
 
@@ -3101,6 +3200,36 @@ pub struct ProbeMnSpec {
     pub declaration: Option<ProbeMnDeclarationSpec>,
     /// PLAN-919: the native lifecycle recipe's exit knobs.
     pub resource: Option<ProbeMnResourceSpec>,
+    /// PLAN-1000 (I05): the content-revisit oracle of the scalar recipe —
+    /// editing a body back to PREVIOUS session content must reuse the
+    /// content-addressed store's history units instead of recompiling.
+    pub history: Option<ProbeMnHistorySpec>,
+    /// PLAN-1000 (I11): the single-function edit turnaround oracle —
+    /// representative body edits after the first result must stay within
+    /// the approved P90 wall bound (858), judged from the parent-observed
+    /// per-edit windows.
+    pub turnaround: Option<ProbeMnTurnaroundSpec>,
+}
+
+/// PLAN-1000 (I11) turnaround oracle: judged parent-side from the REAL
+/// parent-observed per-edit windows (preparation -> IPC -> worker ->
+/// admission), never from worker-claimed walls alone.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeMnTurnaroundSpec {
+    /// The approved P90 bound in milliseconds (PLAN-858: 2000).
+    pub p90_max_ms: u64,
+    /// The minimum representative edits required.
+    pub min_edits: u64,
+}
+
+/// PLAN-1000 (I05) content-revisit oracle: judged parent-side from the
+/// rounds' real counters (the content-addressed COFF cache hits), never
+/// from worker claims alone. Declared expectations never reach the worker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeMnHistorySpec {
+    /// The minimum total `cache_hit_coff` across the session's step
+    /// records (a revisit run reuses the earlier revision's objects).
+    pub min_cache_hit_coff: u64,
 }
 
 /// PLAN-919 ac/mir-native-resource-events-v1 binding: the R06 exit knobs

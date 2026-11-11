@@ -939,6 +939,27 @@ switch ($Scope) {
         }
         $maintenance = $baseRun.maintenance + $extRun.maintenance + $ext2Run.maintenance + $ext3Run.maintenance + $ext4Run.maintenance + $ext5Run.maintenance
         $identityProbes = $baseRun.identityProbes + $extRun.identityProbes + $ext2Run.identityProbes + $ext3Run.identityProbes + $ext4Run.identityProbes + $ext5Run.identityProbes
+        # PLAN-1000 (G02 closure): the structured spawn-watch — the SAME CIM
+        # ancestry-sampling facts the console line reports, persisted as a
+        # machine-readable snapshot artifact next to the report. The a2r
+        # governance reader claims G02 from THIS document, never from
+        # console text. Only reached on a green snapshot (violations gate
+        # above), and the document still reports every counter honestly.
+        $watchRuns = @($baseRun, $extRun, $ext2Run, $ext3Run, $ext4Run, $ext5Run) | ForEach-Object {
+            [pscustomobject]@{ label = $_.label; gate = [int]$_.gate; violations = @($_.violations);
+                               maintenance_spawns = [int]$_.maintenance; identity_probes = [int]$_.identityProbes }
+        }
+        $watchDoc = [pscustomobject]@{
+            schema = 'ace.m1.a2r-spawn-watch/1'
+            scope = 'snapshot'
+            observer = 'cim-ancestry-sampling'
+            sample_interval_ms = 300
+            watched = @('rustc.exe', 'cargo.exe', 'm1_*')
+            ancestry = 'descendant-of-runner'
+            runs = $watchRuns
+            violations_total = [int]$violations.Count
+        }
+        $watchDoc | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $OutDir 'spawn-watch.json') -Encoding utf8
         Write-Host "verify-ace-m1-852 [snapshot]: process instrumentation: 0 certification-face spawns (direct rustc / m1_* binaries; ancestry-checked, base + ext-992 + ext-994 + ext-996 + ext-997 + ext-998 suites); $maintenance engine-worker maintenance build process(es) observed (PLAN-818 memoized harness discipline, not corpus compilation); $identityProbes rustc identity query(/-ies) (`--print`, no compile axes — PLAN-814 ac stale-axes probe)."
 
         $r = Get-Content $report -Raw | ConvertFrom-Json

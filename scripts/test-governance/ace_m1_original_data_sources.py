@@ -5,7 +5,7 @@ from ace_m1_legacy import typed_equal
 from ace_m1_obligation_catalog import Q4_CATALOG,Q4_CATALOG_SHA,Q4_FIELDS,read_tsv,CASE_CATALOG,CASE_CATALOG_SHA
 from ace_m1_source_supplement import source_contracts as scalar_supplement
 CATALOG='crates/auto-lang/test/cases/ace-m1-expanded/original-data-source-contracts.tsv'
-CATALOG_SHA='a51d7b345013b063e5c04a146896bf509f2213bcab4fdcfe480e2c4bb4f4edf4'
+CATALOG_SHA='dbf34b87c819aa673027f3c9992220e687ed49a8c226112678ee516bd863ded5'
 FIELDS='family case profile caps source_file source_sha256 oracle_kind oracle_value origin_case_file origin_case_sha256 origin_case_id origin_group original_checks'.split()
 values={'M01':0,'M02':57,'M03':75,'M04':135,'M05':42,'M06':52,'M07':84,'M08':42,'R01':19,'R02':9,'R03':23,'R04':51,'R05':42,'R06':21,'T01':38,'T02':27,'T04':128512}
 negative={'M09':'method-called-as-static','M10':'immutable-write','M11':'alias-mut-self','M12':'reserved-owned-method','R09':'record-type-mismatch','R10':'use-after-move','T06':'borrow-escape','T07':'invalid-scalar'}
@@ -45,7 +45,7 @@ from ace_m1_case_evidence import CaseCopy,admit_case_bindings
 from ace_m1_text_q4_evidence import text_observation,DEPENDENCIES,AV_TRAPS
 from pathlib import PurePosixPath
 CONTRACT='crates/auto-lang/test/cases/ace-m1-expanded/original-data-q4-contract.json'
-CONTRACT_SHA = 'c19142b748fc69c1cfba68fc78a3451076ebb9e574da69fd9bd2727b63ff9e79'
+CONTRACT_SHA='1f9b03e0e3d8988404d26e8996d56b6da8b592346113d5f018152690be5ebf4e'
 SUITE='crates/auto-lang/test/cases/ace-m1-expanded/original-data-q4.suite.ad'
 # T08 binds a str view to a static literal, not an owning Str buffer.
 # hir_adapter StrLit preserves the borrowed destination; only the failed
@@ -147,9 +147,14 @@ def reference_contracts(inputs):
     return seen
 
 
-def certification_coverage(contracts,observations):
+def certification_coverage(contracts,observations,diagnostics=()):
     expected={'q4-source/'+row['family']+'/'+row['case']+'/'+target
               for row in contracts.values() for target in ('ACE-A2R-HIR','ACE-A2C-HIR')}
+    # PLAN-1000 16 diagnostic legs: the refused sources certify NEGATIVELY
+    # (typed frontdoor refusals on the same daily channel as the six query
+    # negatives); their slots join the same coverage contract.
+    expected|={'q4-source/'+row['family']+'/'+row['case']+'/'+target
+               for row in diagnostics for target in ('ACE-A2R-HIR','ACE-A2C-HIR')}
     require(type(observations) is dict and observations.keys()<=expected,'foreign original data certification')
     require(all(type(row) is dict and row.get('judgement') in ('PASS','FAIL') for row in observations.values()),'original data completed certification verdict')
     missing=sorted(expected-observations.keys())
@@ -169,8 +174,47 @@ def admit_certifications(inputs,evidence,binding_path):
     typed_equal(_repo_relative(inputs,producer['worker_path']),'experimental/ace/target/release/a2x-worker.exe','original data actual producer')
     typed_equal(producer['cwd'],str(inputs.root),'original data actual worktree')
     require(type(document['rows']) is list,'original data certification row list')
+    import os
+    from ace_m1_data_diagnostics import ORACLES
+    from ace_m1_query_evidence import typed_frontdoor_observation
+    from ace_m1_cert_evidence import admit_command,_relative
+    diagnostics=[row for row in source_contracts(inputs).values() if row['oracle_kind']=='diagnostic']
     observations={};seen=set()
     for row in document['rows']:
+        # PLAN-1000 negative rows carry the refusal capture shape (request +
+        # source pin, no certification pin); positives always carry 'pin'.
+        if 'pin' not in row:
+            # PLAN-1000 16 diagnostic legs: the negative certification — a
+            # typed frontdoor refusal of the diagnostic source on the daily
+            # channel (the exact F-1000-02 capture pattern), certified when
+            # the first cause's stage/code equals the family's own
+            # diagnostic authority (the same ORACLES table the AV/native
+            # diagnostic legs verify against).
+            exact_keys(row,('family','case','target','prefix','request','source_sha256'),'original data negative certification row')
+            case,target=row['case'],row['target']
+            contract=next((r for r in diagnostics if r['case']==case),None)
+            require(contract is not None and row['family']==contract['family'],'original data diagnostic source')
+            require(target in ('rust','c') and (case,target) not in seen,'duplicate/foreign original data negative target');seen.add((case,target))
+            request=row['request']
+            exact_keys(request,('op','source_path','profile','entry','caps','out_dir','nonce'),'original data negative request')
+            stage,code,profile=ORACLES[case]
+            for field,want in [('op','daily-emit' if target=='rust' else 'daily-emit-c'),('profile',profile),('entry','main'),('caps',json.loads(contract['caps']))]:
+                typed_equal(request[field],want,'original data negative request '+field)
+            typed_equal(_relative(inputs,request['source_path']),contract['source_file'],'original data negative source path')
+            typed_equal(row['source_sha256'],contract['source_sha256'],'independent negative source hash');inputs.sha256(contract['source_file'],row['source_sha256'])
+            prefix=row['prefix'];home=PurePosixPath(binding_path).parent
+            typed_equal(PurePosixPath(prefix),home/(contract['family']+'--'+case)/target,'negative original data owner')
+            require(type(request['out_dir']) is str and request['out_dir']==str(evidence.root.joinpath(*PurePosixPath(prefix).parts)),'negative original data output owner')
+            require(type(request['nonce']) is str and len(request['nonce'])==48 and all(c in '0123456789abcdef' for c in request['nonce']),'original data negative nonce')
+            require(not os.path.lexists(evidence.path(prefix+'.command.json').parent/target),'refused diagnostic produced an output entry')
+            def read_negative(_):
+                response,receipts=admit_command(evidence,prefix+'.command.json',request,producer,expected_exit=2)
+                record,_=evidence.read_json(prefix+'.command.json');typed_equal(record['meter']['job_processes'],2,'negative emit launcher and worker only')
+                source=inputs.read_bytes(contract['source_file'])
+                return dict(typed_frontdoor_observation(response,request,contract,source,stage=stage,code=code),
+                            source_sha256=contract['source_sha256'],**receipts)
+            observations['q4-source/'+contract['family']+'/'+case+'/'+('ACE-A2R-HIR' if target=='rust' else 'ACE-A2C-HIR')]=_compact_admission(inputs,read_negative,32<<10)
+            continue
         exact_keys(row,('family','case','prefix','pin'),'original data certification row')
         case,pin=row['case'],row['pin'];require(case in contracts and type(pin) is dict,'original data certified source')
         contract=contracts[case];typed_equal(row['family'],contract['family'],'original data certification family')
@@ -185,9 +229,11 @@ def admit_certifications(inputs,evidence,binding_path):
         value=_compact_admission(inputs,lambda _:certified_daily_emission(evidence,inputs,row['prefix'],pin,producer,
             record_text_certification(evidence,inputs,row['prefix'],pin,producer,contract)),128<<10)
         observations['q4-source/'+contract['family']+'/'+case+'/'+('ACE-A2R-HIR' if target=='rust' else 'ACE-A2C-HIR')]=value
-    supplied=len(observations);observations,missing=certification_coverage(contracts,observations)
-    return dict(schema='ace.m1.original-data-certifications/1',required=36,supplied=supplied,missing_certification_slots=missing,
+    supplied=len(observations);observations,missing=certification_coverage(contracts,observations,diagnostics)
+    return dict(schema='ace.m1.original-data-certifications/1',required=36+2*len(diagnostics),supplied=supplied,missing_certification_slots=missing,
                 observations=observations,contract_sha256=REFERENCE_SHA,bindings_sha256=digest,
                 certification_complete=not missing and all(v['judgement']=='PASS' for v in observations.values()),
-                daily_admission='UNOBSERVED' if missing else 'PASS' if all(v['daily_judgement']=='PASS' for v in observations.values()) else 'FAIL',
+                # PLAN-1000 negative rows carry refusal facts (no daily
+                # emission verdict by construction); only positive rows do.
+                daily_admission='UNOBSERVED' if missing else 'PASS' if all(v.get('daily_judgement')=='PASS' for v in observations.values()) else 'FAIL',
                 can_claim_expanded_m1=False)

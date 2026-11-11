@@ -217,12 +217,14 @@ mod source_diag {
     ];
     const SURFACE_FIELDS: &[&str] = &["profile", "codes"];
     const SPAN_FIELDS: &[&str] = &["start", "end"];
-    const PROFILES: &[&str] = &["scalar", "record", "text-record"];
+    /// PLAN-961 added the numeric source surface as a terminating rung of
+    /// the native escalation ladder; PLAN-1000 T-09 (911 red) admits it here.
+    const PROFILES: &[&str] = &["scalar", "record", "text-record", "numeric"];
     /// PLAN-999 (T-03) reception: the native ladder attempts a Core side face
     /// between the monotone rungs, so "core" may appear in `attempted`. It is
     /// never the terminating profile (side faces cannot terminate escalation)
     /// and never lists a surface rejection.
-    const ATTEMPTED_PROFILES: &[&str] = &["scalar", "record", "text-record", "core"];
+    const ATTEMPTED_PROFILES: &[&str] = &["scalar", "record", "text-record", "numeric", "core"];
     const OPERATIONS: &[&str] = &["cold", "warm-edit", "fallback-cold"];
     /// The raw stage vocabulary (Stage::as_str()); only these three can
     /// carry a language-rejection family — anything else is admitted as a
@@ -2595,6 +2597,9 @@ fn run_incremental(
     // PLAN-914 (I04): declaration-oracle mismatches collected inside the
     // rounds window and merged into the final verdict after the loop.
     let mut decl_mismatches: Vec<Mismatch> = Vec::new();
+    // PLAN-1000 (I05): the content-revisit oracle, judged after the loop
+    // from the summed content-addressed cache hits.
+    let mut history_mismatches: Vec<Mismatch> = Vec::new();
     if case.spec.source.syntax != auto_test_case::contract::Syntax::Auto {
         return Err(format!(
             "{recipe} consumes .at sources; syntax {:?} is not accepted",
@@ -3299,6 +3304,13 @@ fn run_incremental(
     // path; the judged value is the LAST step's PE exit).
     let mut mismatches: Vec<Mismatch> = Vec::new();
     mismatches.extend(decl_mismatches);
+    if let Some(spec) = mn.history.as_ref() {
+        history_mismatches.extend(judge_history_revisit(&step_records, spec));
+    }
+    mismatches.extend(history_mismatches);
+    if let Some(spec) = mn.turnaround.as_ref() {
+        mismatches.extend(judge_turnaround(&parent_windows_ms, spec));
+    }
     if let Some((code, message)) = &diag {
         let stage = if let Some(fact) = &source_fact {
             // PLAN-911 strict: the RAW producer stage decides.
@@ -3899,6 +3911,75 @@ mod source_diag_tests {
 /// against the declared oracle — the cold-frontend invalidations actually
 /// recorded, the object-producer unit bound, and the resident MIR/COFF
 /// identity carry-over of the units the case names as UNAFFECTED.
+/// PLAN-1000 (I11): judge the single-function edit turnaround oracle from
+/// the REAL parent-observed per-edit windows (F-818-R1-01: preparation ->
+/// IPC -> worker -> admission -> comparison). The P90 of those windows
+/// must hold the approved bound; fewer representative edits than declared
+/// is a verdict failure, never a silent pass.
+fn judge_turnaround(
+    parent_windows_ms: &[f64],
+    spec: &auto_test_case::contract::ProbeMnTurnaroundSpec,
+) -> Vec<Mismatch> {
+    let mut out = Vec::new();
+    if (parent_windows_ms.len() as u64) < spec.min_edits {
+        out.push(Mismatch {
+            observation: "edit_turnaround_windows".into(),
+            kind: "counter".into(),
+            expected: format!(">= {} representative edit windows", spec.min_edits),
+            actual: format!("{}", parent_windows_ms.len()),
+            first_diff: None,
+        });
+        return out;
+    }
+    let mut sorted = parent_windows_ms.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    // nearest-rank P90 (ceil(0.90 * n) - 1)
+    let rank = ((90 * sorted.len() + 99) / 100).saturating_sub(1);
+    let p90 = sorted[rank];
+    if p90 > spec.p90_max_ms as f64 {
+        out.push(Mismatch {
+            observation: "edit_turnaround_p90_ms".into(),
+            kind: "budget".into(),
+            expected: format!("<= {} ms (approved P90)", spec.p90_max_ms),
+            actual: format!("{p90:.1} ms"),
+            first_diff: None,
+        });
+    }
+    out
+}
+
+/// PLAN-1000 (I05): judge the content-revisit oracle from the session's
+/// REAL counters — the content-addressed COFF cache hits summed across all
+/// step records. An edit back to previous content that recompiled instead
+/// of reusing the history units fails here, never silently passes.
+fn judge_history_revisit(
+    step_records: &[serde_json::Value],
+    spec: &auto_test_case::contract::ProbeMnHistorySpec,
+) -> Vec<Mismatch> {
+    let hits: u64 = step_records
+        .iter()
+        .filter_map(|rec| {
+            rec.get("counters")
+                .and_then(|c| c.get("cache_hit_coff"))
+                .and_then(|v| v.as_u64())
+        })
+        .sum();
+    if hits < spec.min_cache_hit_coff {
+        vec![Mismatch {
+            observation: "cache_hit_coff".into(),
+            kind: "counter".into(),
+            expected: format!(
+                ">= {} (the revisit run reuses the content-addressed history units)",
+                spec.min_cache_hit_coff
+            ),
+            actual: format!("{hits}"),
+            first_diff: None,
+        }]
+    } else {
+        Vec::new()
+    }
+}
+
 fn judge_declaration_invalidation(
     ok: &serde_json::Value,
     spec: &auto_test_case::contract::ProbeMnDeclarationSpec,

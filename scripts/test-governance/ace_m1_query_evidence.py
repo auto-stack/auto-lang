@@ -10,7 +10,7 @@ from ace_m1_legacy import typed_equal
 from ace_m1_obligation_catalog import Q4_CATALOG,Q4_CATALOG_SHA,Q4_FIELDS,read_tsv
 from ace_m1_scalar_q4_evidence import scalar_q4_observation
 
-CONTRACTS = {'source-query': {'path': 'crates/auto-lang/test/cases/ace-m1-expanded/source-query-q4-contract.json', 'sha256': 'ebaeb34be0d3193174e0cdc57f0d9d5ad7057e60e3396139646369884a3691d7', 'suite': 'crates/auto-lang/test/cases/ace-m1/source-query-934/source-query-934.suite.ad', 'checks': 14}, 'source-instances': {'path': 'crates/auto-lang/test/cases/ace-m1-expanded/source-instances-q4-contract.json', 'sha256': 'ec5f37f2f6265d485f62222cac9551088e3f59781772386e484f1f1ce6864d64', 'suite': 'crates/auto-lang/test/cases/ace-m1/source-instances-935/source-instances-935.suite.ad', 'checks': 12}}
+CONTRACTS = {'source-query': {'path': 'crates/auto-lang/test/cases/ace-m1-expanded/source-query-q4-contract.json', 'sha256': '5e3e2fc50849036157fa61cef375db28ad86d307ab74e3dd83fa51250eda4632', 'suite': 'crates/auto-lang/test/cases/ace-m1/source-query-934/source-query-934.suite.ad', 'checks': 14}, 'source-instances': {'path': 'crates/auto-lang/test/cases/ace-m1-expanded/source-instances-q4-contract.json', 'sha256': '21dcb9bd869faba70df1ff9fc3f69453d403499051643fcc65ca4338770435aa', 'suite': 'crates/auto-lang/test/cases/ace-m1/source-instances-935/source-instances-935.suite.ad', 'checks': 12}}
 DEPENDENCIES = ('experimental/ace/target/release/av-worker.exe', 'experimental/ace/target/release/mn-worker.exe', 'experimental/ace/target/release/a2x-worker.exe', 'experimental/ace/target/runtime-dev/ace_trace_runtime.lib', 'experimental/ace/crates/av/src/driver.rs', 'experimental/ace/crates/native/src/driver.rs', 'experimental/ace/crates/a2x-store/src/lib.rs', 'experimental/ace/crates/source-query/src/consumer.rs', 'experimental/ace/crates/source-query/src/produce.rs', 'experimental/ace/crates/source-query/src/instances.rs', 'experimental/ace/crates/source-query/src/instance_host.rs', 'experimental/ace/crates/source-query/src/facts.rs', 'experimental/ace/crates/source-query/src/host.rs')
 PREFIX = {'source-query':'ace.m1.sq934.','source-instances':'ace.m1.inst935.'}
 ORACLES = {'source-query':{'leaf42':('value','42'),'leaf43':('value','43'),'named7':('value','7'),'trace-ab7':('value','7'),
@@ -228,6 +228,51 @@ def untyped_frontdoor_observation(response):
                 reason='A2X error/detail lacks typed diagnostic/source/operation identity; rendered message is not semantic authority')
 
 
+def typed_frontdoor_observation(response,request,contract,source,stage=None,code=None):
+    """PLAN-1000 F-1000-02 (GAP-941-A2X-DIAG-01 closure): the a2x worker's
+    refusal now carries the TYPED diagnostic channel — structured frontend
+    facts (stage/code/message/span per cause, source identity, primary
+    index). The FIRST cause's stage/code is the semantic authority; the
+    rendered `detail` string is only the legacy projection and must
+    re-derive from the causes exactly (no free-text parsing either way).
+    `stage`/`code` default to the query families' oracle mapping; callers
+    with their own diagnostic authority (the original-data families use
+    the same ORACLES table as their execution legs) pass it explicitly."""
+    exact_keys(response,('status','detail','diagnostics'),'typed A2X frontdoor refusal')
+    typed_equal(response['status'],'error','typed A2X refusal status')
+    snap=response['diagnostics']
+    exact_keys(snap,('schema','mode','producer','profile','path','source_sha256','source_len','causes','primary'),'typed A2X source fact')
+    for key,want in [('schema','a2x.source-diagnostic/1'),('mode','typed-negative/1'),('producer','a2x-worker'),('profile',request['profile'])]:
+        typed_equal(snap[key],want,'typed A2X diagnostic '+key)
+    typed_equal(snap['path'],request['source_path'],'typed A2X source path identity')
+    typed_equal(snap['source_sha256'],contract['source_sha256'],'typed A2X source bytes identity')
+    counter(snap['source_len'],'typed A2X source length')
+    typed_equal(snap['source_len'],len(source),'typed A2X source length equality')
+    require(type(snap['causes']) is list and 1<=len(snap['causes'])<=64,'typed A2X cause cap')
+    typed_equal(snap['primary'],0,'compiler first diagnostic is primary')
+    for cause in snap['causes']:
+        exact_keys(cause,('stage','code','message','span'),'typed A2X cause')
+        require(cause['stage'] in ('text','bind','verify','capability','backend','link','run'),'typed A2X diagnostic stage')
+        for key in ('code','message'):
+            require(type(cause[key]) is str and 0<len(cause[key].encode())<=4096,'typed A2X diagnostic text bound')
+        span=cause['span'];exact_keys(span,('start','end'),'typed A2X cause span')
+        require(counter(span['start'],'typed A2X span start')<=counter(span['end'],'typed A2X span end')<=len(source),'typed A2X span bounds')
+        try:source[:span['start']].decode('utf-8');source[:span['end']].decode('utf-8')
+        except UnicodeError as error:raise AdmissionError('typed A2X span is not a UTF-8 boundary') from error
+    # the legacy projection must re-derive from the typed causes verbatim
+    prefix='a2x.compile: ' if request['op'] in ('daily-emit-c','certify-c') else 'frontend diagnostics: '
+    rendered=prefix+'; '.join(f"{c['code']}: {c['message']}" for c in snap['causes'])
+    typed_equal(response['detail'],rendered,'typed A2X legacy projection linkage')
+    first=snap['causes'][0]
+    if stage is None:stage='verify' if contract['family']=='source-query' else 'bind'
+    if code is None:code=contract['oracle_value']
+    matches=first['stage']==stage and first['code']==code
+    return dict(observed=dict(kind='typed-frontdoor-refusal',stage=first['stage'],code=first['code'],
+                              source_sha256=contract['source_sha256'],primary=0,causes=len(snap['causes'])),
+                judgement='PASS' if matches else 'FAIL',
+                **({} if matches else {'reason':'typed A2X first cause does not match the independent oracle'}))
+
+
 def admit_frontdoor_refusals(inputs,evidence,binding_path):
     from ace_m1_first_slice import _compact_admission,_repo_relative
     from ace_m1_cert_evidence import admit_command,_relative
@@ -251,8 +296,18 @@ def admit_frontdoor_refusals(inputs,evidence,binding_path):
         def read_one(_):
             response,receipts=admit_command(evidence,prefix+'.command.json',request,producer,expected_exit=2)
             record,_=evidence.read_json(prefix+'.command.json');typed_equal(record['meter']['job_processes'],2,'negative emit launcher and worker only')
-            return dict(untyped_frontdoor_observation(response),source_sha256=contract['source_sha256'],**receipts)
+            # PLAN-1000 F-1000-02: the typed negative channel (when the
+            # worker reports it) supplies the semantic authority; the plain
+            # two-key refusal stays the honest UNOBSERVED observation.
+            if type(response) is dict and 'diagnostics' in response:
+                source=inputs.read_bytes(contract['source_file'])
+                observation=typed_frontdoor_observation(response,request,contract,source)
+            else:
+                observation=untyped_frontdoor_observation(response)
+            return dict(observation,source_sha256=contract['source_sha256'],**receipts)
         observations['q4-source/'+key[0]+'/'+key[1]+'/'+('ACE-A2R-HIR' if target=='rust' else 'ACE-A2C-HIR')]=_compact_admission(inputs,read_one,32<<10)
     typed_equal(seen,{(family,case,target) for (family,case),row in sources.items() if row['oracle_kind']=='diagnostic' for target in ('rust','c')},'all six original negative emit entries')
+    typed_complete=all(v['judgement']=='PASS' and v.get('observed',{}).get('kind')=='typed-frontdoor-refusal'
+                       for v in observations.values())
     return dict(schema='ace.m1.query-negative-frontdoor-observations/1',required=6,observations=observations,bindings_sha256=digest,
-                gap='GAP-941-A2X-DIAG-01',typed_diagnostic_evidence_complete=False,can_claim_expanded_m1=False)
+                gap='GAP-941-A2X-DIAG-01',typed_diagnostic_evidence_complete=typed_complete,can_claim_expanded_m1=False)

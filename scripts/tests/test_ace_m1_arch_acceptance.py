@@ -53,7 +53,7 @@ import ace_m1_legacy_arch as legacy_arch
 class LegacyArchitectureControls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        scratch = Path(os.environ.get('PLAN941_SCRATCH', 'D:/autostack/plan-artifacts/plan-941'))
+        scratch = Path(os.environ.get('PLAN941_SCRATCH', tempfile.gettempdir()))
         cls.temp = tempfile.TemporaryDirectory(prefix='legacy-architecture-controls-', dir=scratch)
         cls.addClassCleanup(cls.temp.cleanup)
         cls.root = Path(cls.temp.name)
@@ -149,7 +149,7 @@ class LegacyArchitectureControls(unittest.TestCase):
 
 class EvidenceAdmissionTests(unittest.TestCase):
     def setUp(self):
-        scratch = Path(os.environ.get('PLAN941_SCRATCH', 'D:/autostack/plan-artifacts/plan-941'))
+        scratch = Path(os.environ.get('PLAN941_SCRATCH', tempfile.gettempdir()))
         scratch.mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(prefix='admission-', dir=scratch)
         self.addCleanup(self.temp.cleanup)
@@ -280,7 +280,7 @@ class LegacyAccountingTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        scratch = Path(os.environ.get('PLAN941_SCRATCH', 'D:/autostack/plan-artifacts/plan-941'))
+        scratch = Path(os.environ.get('PLAN941_SCRATCH', tempfile.gettempdir()))
         scratch.mkdir(parents=True, exist_ok=True)
         cls.temp = tempfile.TemporaryDirectory(prefix='legacy-controls-', dir=scratch)
         cls.addClassCleanup(cls.temp.cleanup)
@@ -405,7 +405,7 @@ class LegacyAccountingTests(unittest.TestCase):
 class CaseCopyBindingTests(unittest.TestCase):
     """Schema/linkage unit controls; generated ERROR data supplies no M1 PASS."""
     def setUp(self):
-        scratch = Path(os.environ.get('PLAN941_SCRATCH', 'D:/autostack/plan-artifacts/plan-941'))
+        scratch = Path(os.environ.get('PLAN941_SCRATCH', tempfile.gettempdir()))
         self.temp = tempfile.TemporaryDirectory(prefix='case-binding-', dir=scratch)
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -2415,7 +2415,12 @@ class IncrementalRestoreMeasurementTests(unittest.TestCase):
         # companion, the row now reaches PASS.
         self.assertEqual(row['verdict'], 'PASS')
         self.assertEqual(row['missing'], [])
-        self.assertEqual(len(row['evidence']['tests']), len(historical['tests']))
+        # PLAN-1000: per-needle coverage, not exact matched-list length —
+        # the corrected cache_turnaround:: needle legitimately substring-
+        # matches the all-required-pages needle's event too.
+        for needle in historical['tests']:
+            self.assertTrue(any(needle in t for t in row['evidence']['tests']),
+                            'uncovered historical needle: ' + needle)
         for change in ('groups', 'outcome'):
             bad = json.loads(json.dumps(av_doc))
             if change == 'groups': bad['results'][0]['groups'] = ['ace-semantics']
@@ -2434,8 +2439,12 @@ class IncrementalRestoreMeasurementTests(unittest.TestCase):
         # PARTIAL, and the gate only closes when ALL rows are PASS.
         full = [row for row in incremental_restore.ROWS if not row['partial_missing']]
         self.assertEqual(sum(row['verdict'] == 'PASS' for row in section['rows']), len(full))
-        self.assertFalse(section['gate']['measurements_complete'])
-        self.assertTrue(all(row['missing'] for row in section['rows'] if row['verdict'] != 'PASS'))
+        # PLAN-1000 (delivered D939 mapping): every row's partial_missing is
+        # now empty, so full synthetic coverage closes the measurement gate;
+        # the isolated-control caveat still stands (this document is synthetic
+        # and never production evidence).
+        self.assertTrue(section['gate']['measurements_complete'])
+        self.assertTrue(all(row['verdict'] == 'PASS' for row in section['rows']))
 
     def test_dropping_a_mapped_test_degrades_only_its_row(self):
         needle = incremental_restore.ROWS[0]['tests'][0]
@@ -3118,6 +3127,62 @@ class ScalarQ4ObservationTests(unittest.TestCase):
         step['trap'] = 'av.trap.div-by-zero';wire['stdout'] = json.dumps(response).encode()
         self.assertEqual(self.judge(wire, check, contract)['judgement'], 'FAIL')
 
+    def test_native_trap_probe_names_close_exactly_the_expected_cell(self):
+        # PLAN-1000 F-1000-01 (owner option a): the response-side named trap
+        # (trap-probe observation build) closes ONLY the matching oracle.
+        closing = {'Overflow':'mn.trap.add-overflow','DivByZero':'mn.trap.div-zero',
+                   'DivOverflow':'mn.trap.div-overflow','RemOverflow':'mn.trap.div-overflow',
+                   'RemByZero':'mn.trap.div-zero'}
+        for oracle, native in closing.items():
+            with self.subTest(oracle=oracle):
+                wire, check, contract = self.sample('native', 70)
+                contract.update(oracle_kind='trap', oracle_value=oracle)
+                response = json.loads(wire['stdout'])
+                response['ok'].update(trap=native, trap_reason=1, trap_observation='trap-probe/1')
+                wire['stdout'] = json.dumps(response).encode()
+                self.assertEqual(self.judge(wire, check, contract)['judgement'], 'PASS')
+        # a machine-valid name that contradicts the oracle FAILS
+        wire, check, contract = self.sample('native', 70)
+        contract.update(oracle_kind='trap', oracle_value='DivByZero')
+        response = json.loads(wire['stdout'])
+        response['ok'].update(trap='mn.trap.div-overflow', trap_reason=2, trap_observation='trap-probe/1')
+        wire['stdout'] = json.dumps(response).encode()
+        self.assertEqual(self.judge(wire, check, contract)['judgement'], 'FAIL')
+        # the whole int-overflow family closes the shared Overflow oracle
+        for native in ('mn.trap.sub-overflow','mn.trap.mul-overflow','mn.trap.neg-overflow'):
+            with self.subTest(family=native):
+                wire, check, contract = self.sample('native', 70)
+                contract.update(oracle_kind='trap', oracle_value='Overflow')
+                response = json.loads(wire['stdout'])
+                response['ok'].update(trap=native, trap_reason=4, trap_observation='trap-probe/1')
+                wire['stdout'] = json.dumps(response).encode()
+                self.assertEqual(self.judge(wire, check, contract)['judgement'], 'PASS')
+
+    def test_native_trap_probe_fields_are_refused_when_malformed(self):
+        refusals = {
+            'unknown-name': dict(trap='mn.trap.sudden-death', trap_reason=1, trap_observation='trap-probe/1'),
+            'foreign-name': dict(trap='av.trap.int-overflow', trap_reason=3, trap_observation='trap-probe/1'),
+            'missing-mode': dict(trap='mn.trap.add-overflow', trap_reason=3),
+            'missing-reason': dict(trap='mn.trap.add-overflow', trap_observation='trap-probe/1'),
+            'null-trap': dict(trap=None, trap_reason=3, trap_observation='trap-probe/1'),
+            'bad-reason': dict(trap='mn.trap.add-overflow', trap_reason=9, trap_observation='trap-probe/1'),
+            'wrong-mode': dict(trap='mn.trap.add-overflow', trap_reason=3, trap_observation='guess/0'),
+        }
+        for label, fields in refusals.items():
+            with self.subTest(label=label), self.assertRaises(m.AdmissionError):
+                wire, check, contract = self.sample('native', 70)
+                contract.update(oracle_kind='trap', oracle_value='Overflow')
+                response = json.loads(wire['stdout'])
+                response['ok'].update(fields)
+                wire['stdout'] = json.dumps(response).encode()
+                self.judge(wire, check, contract)
+        # trap fields never rescue a VALUE oracle whose exit disagrees
+        wire, check, contract = self.sample('native', 70)
+        response = json.loads(wire['stdout'])
+        response['ok'].update(trap='mn.trap.add-overflow', trap_reason=3, trap_observation='trap-probe/1')
+        wire['stdout'] = json.dumps(response).encode()
+        self.assertEqual(self.judge(wire, check, contract)['judgement'], 'FAIL')
+
     def test_original_mark_order_and_short_circuit_are_required(self):
         for target in ('av', 'native'):
             wire, check, contract = self.sample(target, trace=True)
@@ -3497,6 +3562,59 @@ class QueryRefusalCommandTests(unittest.TestCase):
             with self.subTest(terminal=terminal),self.assertRaises(m.AdmissionError):
                 cert_evidence.admit_command(self.scope,'unit.command.json',request,producer,expected_exit=terminal)
 
+    def test_typed_frontdoor_channel_certifies_only_the_matching_oracle(self):
+        # PLAN-1000 F-1000-02 (GAP-941-A2X-DIAG-01 closure): the structured
+        # diagnostics carry the semantic authority; the rendered detail must
+        # re-derive from the causes verbatim.
+        source=b'fn main() int { return true + 1 }'
+        contract=dict(family='source-query',source_sha256=hashlib.sha256(source).hexdigest(),
+                      oracle_value='source.type-mismatch')
+        request=dict(op='daily-emit',profile='scalar',source_path='X:/src/neg.at')
+        def response(stage,code,*,detail=None,causes=1,span=(4,8)):
+            snap=dict(schema='a2x.source-diagnostic/1',mode='typed-negative/1',producer='a2x-worker',
+                      profile='scalar',path='X:/src/neg.at',
+                      source_sha256=contract['source_sha256'],source_len=len(source),
+                      causes=[dict(stage=stage if i==0 else 'bind',code=code if i==0 else 'other',
+                                   message=f'expected i32 {i}',span=dict(start=span[0],end=span[1]))
+                              for i in range(causes)],primary=0)
+            rendered='frontend diagnostics: '+'; '.join(
+                f"{c['code']}: {c['message']}" for c in snap['causes'])
+            return dict(status='error',detail=detail if detail is not None else rendered,diagnostics=snap)
+        # the matching oracle closes; extra causes keep the FIRST primary
+        value=query_evidence.typed_frontdoor_observation(response('verify','source.type-mismatch'),request,contract,source)
+        self.assertEqual(value['judgement'],'PASS');self.assertEqual(value['observed']['kind'],'typed-frontdoor-refusal')
+        self.assertEqual(query_evidence.typed_frontdoor_observation(
+            response('verify','source.type-mismatch',causes=3),request,contract,source)['judgement'],'PASS')
+        # wrong stage or code FAILs (never UNOBSERVED: the typed facts disagree)
+        self.assertEqual(query_evidence.typed_frontdoor_observation(
+            response('bind','source.type-mismatch'),request,contract,source)['judgement'],'FAIL')
+        self.assertEqual(query_evidence.typed_frontdoor_observation(
+            response('verify','type-mismatch'),request,contract,source)['judgement'],'FAIL')
+        # an instances-family oracle expects the bind stage
+        contract2=dict(family='source-instances',source_sha256=contract['source_sha256'],oracle_value='type-mismatch')
+        self.assertEqual(query_evidence.typed_frontdoor_observation(
+            response('bind','type-mismatch'),request,contract2,source)['judgement'],'PASS')
+        # free-text divergence between detail and causes refuses
+        for bad in (response('verify','source.type-mismatch',detail='frontend diagnostics: something else: x'),
+                    response('verify','source.type-mismatch',detail='a2x.compile: source.type-mismatch: expected i32 0')):
+            with self.assertRaises(m.AdmissionError):
+                query_evidence.typed_frontdoor_observation(bad,request,contract,source)
+        # malformed typed shapes refuse: bad span bounds, wrong source hash,
+        # non-zero primary, foreign schema, non-UTF-8 span boundary
+        bad_span=response('verify','source.type-mismatch',span=(len(source)+1,len(source)+2))
+        with self.assertRaises(m.AdmissionError):
+            query_evidence.typed_frontdoor_observation(bad_span,request,contract,source)
+        mutated=response('verify','source.type-mismatch')
+        mutated['diagnostics']['source_sha256']='0'*64
+        with self.assertRaises(m.AdmissionError):
+            query_evidence.typed_frontdoor_observation(mutated,request,contract,source)
+        mutated=response('verify','source.type-mismatch');mutated['diagnostics']['primary']=1
+        with self.assertRaises(m.AdmissionError):
+            query_evidence.typed_frontdoor_observation(mutated,request,contract,source)
+        mutated=response('verify','source.type-mismatch');mutated['diagnostics']['schema']='a2x.diagnostic/2'
+        with self.assertRaises(m.AdmissionError):
+            query_evidence.typed_frontdoor_observation(mutated,request,contract,source)
+
     def test_rendered_frontdoor_errors_never_supply_typed_semantic_authority(self):
         for detail in ('frontend diagnostics: source.type-mismatch: expected i32, found bool',
                        'a2x.compile: type-mismatch: expected bool, found i32','both wrong'):
@@ -3506,6 +3624,29 @@ class QueryRefusalCommandTests(unittest.TestCase):
                          {'status':'error','detail':False},{'status':'error','detail':'code','echoed_pass':True}):
             with self.subTest(response=response),self.assertRaises(m.AdmissionError):
                 query_evidence.untyped_frontdoor_observation(response)
+
+
+class OriginalDataNegativeCertificationTests(unittest.TestCase):
+    """PLAN-1000 16 diagnostic legs: negative certification coverage."""
+
+    def test_diagnostic_slots_join_coverage_and_missing_stay_unobserved(self):
+        import ace_m1_original_data_sources as ods
+        contracts={'M01':dict(family='original-method-881',case='M01')}
+        diagnostics=[dict(family='original-method-881',case='M09'),
+                     dict(family='original-record-text',case='R09')]
+        observations={'q4-source/original-method-881/M01/ACE-A2R-HIR':dict(judgement='PASS'),
+                      'q4-source/original-method-881/M01/ACE-A2C-HIR':dict(judgement='PASS')}
+        complete,missing=ods.certification_coverage(contracts,observations,diagnostics)
+        expected_diag={'q4-source/original-method-881/M09/ACE-A2R-HIR','q4-source/original-method-881/M09/ACE-A2C-HIR',
+                       'q4-source/original-record-text/R09/ACE-A2R-HIR','q4-source/original-record-text/R09/ACE-A2C-HIR'}
+        self.assertEqual(set(complete),set(observations)|expected_diag)
+        self.assertEqual(set(missing),expected_diag)
+        for key in expected_diag:
+            self.assertEqual(complete[key]['judgement'],'UNOBSERVED')
+        # supplied negative rows must carry completed verdicts
+        with self.assertRaises(m.AdmissionError):
+            ods.certification_coverage(contracts,{**observations,
+                'q4-source/original-method-881/M09/ACE-A2R-HIR':dict(judgement='UNOBSERVED')},diagnostics)
 
 
 class LegacyDataJoinTests(unittest.TestCase):
@@ -4148,3 +4289,113 @@ class FirstSliceFourTargetOracleTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ArchitectureEntryGateControls(unittest.TestCase):
+    """PLAN-1000 R-02: per-row differential controls for the entry-gates
+    admission (ace_m1_arch_entry_gates). The green path admits a row only
+    when EVERY declared entry has a green single-group gate; each mutation
+    below removes or corrupts one required fact and MUST reject the entry
+    or leave the row UNOBSERVED — a group PASS never survives on its own."""
+
+    @classmethod
+    def setUpClass(cls):
+        import ace_m1_arch_entry_gates as entry_gates
+        cls.entry_gates = entry_gates
+        scratch = Path(os.environ.get('PLAN941_SCRATCH', tempfile.gettempdir()))
+        cls.temp = tempfile.TemporaryDirectory(prefix='arch-entry-gate-controls-', dir=scratch)
+        cls.addClassCleanup(cls.temp.cleanup)
+        cls.ev_root = Path(cls.temp.name)
+        contract = json.loads((ROOT / entry_gates.CONTRACT).read_text(encoding='utf-8'))
+        cls.contract = contract
+        # A real two-entry row for the downgrade control.
+        cls.row_id = next(o['id'] for o in contract['obligations'] if len(o['entries']) >= 2)
+        cls.row_entries = next(o['entries'] for o in contract['obligations'] if o['id'] == cls.row_id)
+
+    def _scope(self):
+        return m.EvidenceScope(self.ev_root)
+
+    def _gate_doc(self, entry, outcome='PASS', group=None, events=None):
+        declared = self.contract['entries'][entry]
+        g = group if group is not None else (
+            declared.get('group') or self.entry_gates.DELIVERED_PROVIDERS[entry][1])
+        doc = {'schema': 'fixed-test-run/1', 'selected_groups': [g]}
+        if events is not None:
+            doc['results'] = events
+        else:
+            doc['outcome'] = outcome
+        return doc
+
+    def _binding_for(self, docs):
+        """Write gate docs into the scope; return the binding."""
+        entries = {}
+        for name, doc in docs.items():
+            rel = f'gate-{name}.json'
+            (self.ev_root / rel).write_text(json.dumps(doc), encoding='utf-8')
+            entries[name] = {'path': rel,
+                             'sha256': hashlib.sha256((self.ev_root / rel).read_bytes()).hexdigest()}
+        return {'entries': entries}
+
+    def _admit(self, docs):
+        binding = self._binding_for(docs)
+        inputs = m.EvidenceScope(ROOT)
+        evidence = self._scope()
+        return self.entry_gates.admit_arch_entry_gates(inputs, evidence, binding)
+
+    def test_green_gates_admit_the_row(self):
+        docs = {name: self._gate_doc(name) for name in self.row_entries}
+        out = self._admit(docs)
+        self.assertEqual(out['observations'].get(self.row_id), 'PASS')
+
+    def test_flipped_outcome_rejects(self):
+        docs = {name: self._gate_doc(name, outcome='FAIL') for name in self.row_entries}
+        with self.assertRaises(ValueError):
+            self._admit(docs)
+
+    def test_failed_event_is_not_green(self):
+        events = {'a::t1': {'event': 'ok'}, 'a::t2': {'event': 'failed'}}
+        docs = {name: self._gate_doc(name, events=events) for name in self.row_entries}
+        with self.assertRaises(ValueError):
+            self._admit(docs)
+
+    def test_wrong_group_identity_rejected(self):
+        first = self.row_entries[0]
+        docs = {name: self._gate_doc(name) for name in self.row_entries}
+        docs[first] = self._gate_doc(first, group='case-foreign-group')
+        with self.assertRaises(m.AdmissionError):
+            self._admit(docs)
+
+    def test_stale_credential_rejected(self):
+        docs = {name: self._gate_doc(name) for name in self.row_entries}
+        binding = self._binding_for(docs)
+        first = self.row_entries[0]
+        (self.ev_root / binding['entries'][first]['path']).write_text(
+            json.dumps(docs[first]) + ' ', encoding='utf-8')  # byte drift
+        with self.assertRaises(ValueError):
+            self.entry_gates.admit_arch_entry_gates(
+                m.EvidenceScope(ROOT), self._scope(), binding)
+
+    def test_foreign_entry_rejected(self):
+        docs = {name: self._gate_doc(name) for name in self.row_entries}
+        binding = self._binding_for(docs)
+        binding['entries']['not-in-the-contract'] = binding['entries'][self.row_entries[0]]
+        with self.assertRaises(Exception):
+            self.entry_gates.admit_arch_entry_gates(
+                m.EvidenceScope(ROOT), self._scope(), binding)
+
+    def test_multi_group_doc_rejected(self):
+        first = self.row_entries[0]
+        declared = self.contract['entries'][first]
+        docs = {name: self._gate_doc(name) for name in self.row_entries}
+        multi = self._gate_doc(first)
+        multi['selected_groups'] = [declared.get('group') or 'ace-abi', 'case-extra']
+        docs[first] = multi
+        with self.assertRaises(m.AdmissionError):
+            self._admit(docs)
+
+    def test_row_downgrades_when_one_entry_lacks_its_gate(self):
+        # Green gate for all but ONE declared entry: the row must stay
+        # UNOBSERVED (absent), never partially claimed.
+        docs = {name: self._gate_doc(name) for name in self.row_entries[:-1]}
+        out = self._admit(docs)
+        self.assertNotIn(self.row_id, out['observations'])

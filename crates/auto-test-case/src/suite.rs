@@ -670,6 +670,9 @@ pub fn apply_defaults(check: &CheckSpec, defaults: &Defaults) -> (CheckSpec, Vec
                     probe_cte: None,
                     probe_mn: None,
                     probe_a2x_hir: None,
+                    // PLAN-1000 R02:avm — fail_alloc_at is per-check only;
+                    // suite-level defaults never carry it.
+                    avm_fail_alloc_at: None,
                 };
                 // Preserve the DECLARED-vs-default distinction: only
                 // store what the merged object actually carries; the rest
@@ -723,6 +726,9 @@ pub fn apply_defaults(check: &CheckSpec, defaults: &Defaults) -> (CheckSpec, Vec
                     probe_cte: None,
                     probe_mn: None,
                     probe_a2x_hir: None,
+                    // PLAN-1000 R02:avm — fail_alloc_at is per-check only;
+                    // suite-level defaults never carry it.
+                    avm_fail_alloc_at: None,
                 };
             }
             if had_module {

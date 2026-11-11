@@ -12,7 +12,7 @@ from ace_m1_legacy import typed_equal
 from ace_m1_scalar_evidence import _counts, _duration, _fnv1a64
 
 CONTRACT = 'crates/auto-lang/test/cases/ace-m1-expanded/scalar-q4-contract.json'
-CONTRACT_SHA  = '66f5a66c4b4f0bc3f5846b82ca39f35d28f284b51d18eae6a06d553f8708bf84'
+CONTRACT_SHA = '599e9579e5cdc4c6121033554161bef04380b46eec71cfab0385c93138ab72e4'
 SUITE = 'crates/auto-lang/test/cases/ace-m1-expanded/scalar-q4.suite.ad'
 TRACE_CAP = 'hir.test.trace.v1'
 TRAPS = {'Overflow':'av.trap.int-overflow', 'DivByZero':'av.trap.div-by-zero',
@@ -20,6 +20,21 @@ TRAPS = {'Overflow':'av.trap.int-overflow', 'DivByZero':'av.trap.div-by-zero',
          'RemByZero':'av.trap.div-by-zero'}
 # The AV owner explicitly shares the division-zero trap for remainder by zero.
 # Native's unlabelled exit 70 has no corresponding semantic authority.
+# PLAN-1000 F-1000-01 (owner option a): the mn machine's own bounded trap
+# taxonomy (typed-runtime reasons, exposed response-side by the trap-probe
+# observation build — mn.trap.* names, never an AV-engine inference). The
+# oracle translation shares codes exactly like the AV owner does: rem-by-zero
+# is the division-zero trap, rem MIN/-1 the division-overflow trap; the
+# int-overflow family carries the four checked-arithmetic names.
+NATIVE_TRAPS = {'mn.trap.div-zero','mn.trap.div-overflow','mn.trap.add-overflow',
+                'mn.trap.sub-overflow','mn.trap.mul-overflow','mn.trap.neg-overflow'}
+EXPECTED_NATIVE_TRAPS = {
+    'Overflow': {'mn.trap.add-overflow','mn.trap.sub-overflow','mn.trap.mul-overflow','mn.trap.neg-overflow'},
+    'DivByZero': {'mn.trap.div-zero'},
+    'DivOverflow': {'mn.trap.div-overflow'},
+    'RemOverflow': {'mn.trap.div-overflow'},
+    'RemByZero': {'mn.trap.div-zero'},
+}
 
 
 def _hex(raw):
@@ -125,7 +140,14 @@ def scalar_q4_observation(scope, wire, check, contract, *, query_family=False, l
         common = {'recipe','worker_version','mn_abi','mn_target','counters','spans'}
         if typed_negative:common |= {'diagnostics_mode','diagnostics_schema'}
         diagnosed = 'diagnostic' in response
-        exact_keys(ok, common if diagnosed else common | {'manifest_fp','exit_code','stderr_hex','stdout_hex'}, 'native scalar Q4 ok')
+        # PLAN-1000 F-1000-01: a trapped production run may carry the exact
+        # trap-probe observation key set (trap/trap_reason/trap_observation)
+        # — everything else keeps the frozen key shape.
+        trap_keys = {'trap','trap_reason','trap_observation'}
+        ok_keys = common | ({'manifest_fp','exit_code','stderr_hex','stdout_hex'}
+                            | (trap_keys if not diagnosed and type(ok) is dict
+                               and ok.get('trap') is not None else set()))
+        exact_keys(ok, common if diagnosed else ok_keys, 'native scalar Q4 ok')
         for key,want in [('worker_version','mnworker/1.0'),('mn_abi','msvc-x64/priv-i32-bool-v1'),('mn_target','x86_64-pc-windows-msvc')]:
             typed_equal(ok[key],want,'native scalar Q4 '+key)
         _counts(ok['counters'],'native scalar Q4 counters');_counts(ok['spans'],'native scalar Q4 spans')
@@ -157,10 +179,25 @@ def scalar_q4_observation(scope, wire, check, contract, *, query_family=False, l
             require(type(ok['exit_code']) is int and -(1<<31)<=ok['exit_code']<(1<<31),'native scalar Q4 i32')
             stdout, stderr = _hex(ok['stdout_hex']), _hex(ok['stderr_hex'])
             observed = {'kind':'process-exit','value':ok['exit_code'],'stdout_hex':ok['stdout_hex'],'stderr_hex':ok['stderr_hex']}
+            # PLAN-1000 F-1000-01: an optional response-side NAMED trap
+            # (trap-probe observation build; production bytes unchanged).
+            # Present only as the exact three-field set, with the machine's
+            # own bounded taxonomy and a bounded reason code.
+            named_trap = ok.get('trap')
+            if named_trap is not None:
+                require(type(named_trap) is str and named_trap in NATIVE_TRAPS,'native scalar Q4 machine trap name')
+                require(type(ok.get('trap_reason')) is int and 1 <= ok['trap_reason'] <= 6,'native scalar Q4 bounded trap reason')
+                typed_equal(ok.get('trap_observation'),'trap-probe/1','native scalar Q4 trap observation mode')
+                observed = dict(observed,trap=named_trap,trap_reason=ok['trap_reason'])
             if expected['kind']=='value':
                 judgement = 'PASS' if ok['exit_code']==int(expected['value']) and stdout==b'' and stderr==''.join(marks).encode() else 'FAIL'
             elif ok['exit_code']==70 and stdout==stderr==b'':
-                judgement,reason='UNOBSERVED','native exit 70 lacks an independent named-trap observation'
+                if named_trap is None:
+                    judgement,reason='UNOBSERVED','native exit 70 lacks an independent named-trap observation'
+                elif expected['kind']!='trap' or named_trap not in EXPECTED_NATIVE_TRAPS.get(expected['value'],set()):
+                    judgement='FAIL'
+                else:
+                    judgement='PASS'
     typed_equal(ok['recipe'],recipe,'scalar Q4 response recipe')
     result = dict(schema='ace.m1.scalar-q4-observation/1',source_sha256=contract['source_sha256'],
                   request_sha256=hashlib.sha256(wire['request']).hexdigest(),response_sha256=hashlib.sha256(wire['stdout']).hexdigest(),

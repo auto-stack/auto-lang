@@ -81,8 +81,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "398e76984b84aea8f88c1e255ca5d8d830236791b12d9d2bcfad98432d31d4cc",
-          "check_sha256": "7b77922d65744fb760d8614541967dc07fb6704b996fbff0b408f859327a2189",
+          "contract_sha256": "ea426b3d600e15e78e94efb4265786b7500891beb246b9093d330ed5b9c65301",
+          "check_sha256": "81098e62d257fda3a36e576f26c4e986fbde1554459199339421b313fcbb2736",
           "completion": {
             "kind": "success"
           },
@@ -156,8 +156,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "398e76984b84aea8f88c1e255ca5d8d830236791b12d9d2bcfad98432d31d4cc",
-          "check_sha256": "5fb2def9745918edcae105a291f6a47b448d05190e5cb6f9c6a574c2092516c3",
+          "contract_sha256": "ea426b3d600e15e78e94efb4265786b7500891beb246b9093d330ed5b9c65301",
+          "check_sha256": "62b874b51c0cfdfcb73794b64366645fd426e3f69c9104061fb2bd3fde2af0f6",
           "completion": {
             "kind": "success"
           },
@@ -248,8 +248,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "398e76984b84aea8f88c1e255ca5d8d830236791b12d9d2bcfad98432d31d4cc",
-          "check_sha256": "8786a7019793fa6a81a7b2dc6e2aac6f24d295e32843af6cf708e09d07c66018",
+          "contract_sha256": "ea426b3d600e15e78e94efb4265786b7500891beb246b9093d330ed5b9c65301",
+          "check_sha256": "6c16e7d33953d51fc7fb61d929eb63d8404f17cf7b89d6c2187ca41e56fc1173",
           "completion": {
             "kind": "success"
           },
@@ -361,8 +361,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "398e76984b84aea8f88c1e255ca5d8d830236791b12d9d2bcfad98432d31d4cc",
-          "check_sha256": "417108c237c5773cef6054dd3e06b312a536ae595f962710355b2b27a7c69586",
+          "contract_sha256": "ea426b3d600e15e78e94efb4265786b7500891beb246b9093d330ed5b9c65301",
+          "check_sha256": "c4259e765369e66eab07bd7a6e7e0afea0f600b3d82839b9609d03be32d3cd83",
           "completion": {
             "kind": "success"
           },
@@ -458,8 +458,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "250b9a6da76f2de356251998090aff6a580cdf49ca49d9920db7fbfd5adbcd52",
-          "check_sha256": "0d29eee63da35d48eed8d31b703439499a7479d5fbe2192ec36c61b3a145da70",
+          "contract_sha256": "e09ac152a91b1d767ccb8412f623f00eb7d9db5a17841577f48d541bcc0b00da",
+          "check_sha256": "e5ecabe83e965208bd6f833e82de79631fc938d4a6202ddfe0d4534028dbcc2a",
           "completion": {
             "kind": "success"
           },
@@ -533,8 +533,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "04966b627b42a9109b5183b86b17ad7d294a7f2ae867638a22548ca6fd524090",
-          "check_sha256": "5c966443d177255ee9c6253618683343918039d08fde3c884108db5d54821696",
+          "contract_sha256": "e581c5ee5800bc06c7d6007b7982ad68e43399659ff8ad9930d082c28aa28acd",
+          "check_sha256": "5d90ea580c93fd704fdaf7ee24bf1af3f1fcca8f94420ba2f0311f78794cbb2c",
           "completion": {
             "kind": "success"
           },
@@ -608,8 +608,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "eaded4777058e559feaf5581a9a406fcfd3a4f2477f60880a40a3aca32c09e95",
-          "check_sha256": "8c447636064d4d222f64a759e00ec373cd31f56b97fc6d32512201ead1363d84",
+          "contract_sha256": "26529c055ef12c836137d3ec9c53727f1a0948517320ec0ca4fc24770c2f773d",
+          "check_sha256": "45309546974fc23e1b3f5638609596cbc009d049f65dcccfea0fb721f0f0090d",
           "completion": {
             "kind": "success"
           },
@@ -683,8 +683,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "137db89e9c0f4696418e0b777bb276f7e62fb4f30f05b540b348d1a30905da1c",
-          "check_sha256": "9f216659ad09ab67b0f19823cb19990bc63a435b5213524abcdce7612e1a26b4",
+          "contract_sha256": "a3c4a90c74e9fe5c869b5015fa4175ad14c1c3d8f434e9c1f639e4916a932305",
+          "check_sha256": "f50a28a238c864d4e44e5f50152164ef5fb4bfb248e37c73b16a25db234c2323",
           "completion": {
             "kind": "success"
           },
@@ -758,8 +758,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "1a217148379c1ee4b5c5805f1280202ca633acbe63b08adfedbfd279f2719429",
-          "check_sha256": "824485091570a8c27412d5d3f8d836419e9fc53a6b056c0df72c8c765ccdb8b4",
+          "contract_sha256": "399e7c738d610e7961baa9b983ce3f2db52384484183c5f72fe6c6c124475aa7",
+          "check_sha256": "6f7c60d47a30866132362a7948d84c5050eb18f808f18c074904dab08395a8f8",
           "completion": {
             "kind": "success"
           },
@@ -833,8 +833,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "244cce9495d008c9adb7aa47787d19c22016b822bd4930fc0fa0cd4dd67a7399",
-          "check_sha256": "0820a76d437d33fe1ac6acf03e330bba6d5439557fba15907fded1e45ddc0a18",
+          "contract_sha256": "dbebbc9c8e7d2badddefe14f448113c9ab6c03d9bf02e8606a24b67bac0f3234",
+          "check_sha256": "385e5bd2861b660e7f92fad0ace1a9b3687f97ca91279219c6f78231202d8084",
           "completion": {
             "kind": "success"
           },
@@ -908,8 +908,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "dad0b6b6df7d9642d953c380991dbf3329cd2e63ecaed7e91b34127b34c9a5ca",
-          "check_sha256": "af81c4e325a32cfec445c50c33c045c66dad635dbf4dac2c0e426a12631cbba7",
+          "contract_sha256": "a1987fb90a1873fe0e01d98770f2ba45ab5cab378bb9d4f9be659b8c267c25a2",
+          "check_sha256": "4ebee279604b54931e7912b1f9e598b00c11a54964a6d6992d5295ea3e920188",
           "completion": {
             "kind": "success"
           },
@@ -983,8 +983,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "109f1c091061376d90fcc766fc5daba0941ab12406d1ab1a2abae9696295b114",
-          "check_sha256": "5fb1db6e0cb0d73bb650623c47960ace43b22ca44660f23a2f1f976edb6c0e71",
+          "contract_sha256": "3e1908db217bfada7d34fb90dc0ed070a8886272388738460863791f3fc70126",
+          "check_sha256": "f8edff9ccd651f71270888495143e06f92820b741019f155659e63378a2fecf0",
           "completion": {
             "kind": "success"
           },
@@ -1058,8 +1058,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "c80926c93b2d1a4bf72ba1203acb37f7caf40c9becd48bf083ac272f2546f6df",
-          "check_sha256": "3a8cbbad41f1c5935ea344591ebaafab467b311a5a6c434f798fc1e478ff25db",
+          "contract_sha256": "8177ff67637c6effe4cd0aac3e22c79ed2849562b21db1b260c4c3b4277d6038",
+          "check_sha256": "6750ffa57da4d63f7c6b07addc83b746acd1cb6349de3bd1245a46ae8b5feb79",
           "completion": {
             "kind": "success"
           },
@@ -1127,8 +1127,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "83f780161d69337749379a9dbca9f147531a6f3d53591031ec071b1fc9af24e8",
-          "check_sha256": "0af51dc29883ce546878fc89974ad9ced6f8a804d60ef7cf1a2c57f98172bd61",
+          "contract_sha256": "192d6ea297dba43899dfc000be1a3f210dc3d9b0c3ae8e6289469c949d75a990",
+          "check_sha256": "f2616dc2e98e2f74d909da7c769d07e5855b60fcc6e20831e1471b475da82b75",
           "completion": {
             "kind": "error",
             "stage": "parse",
@@ -1204,8 +1204,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "b27e9330aa878740d45fdf851612797cbae225f0bda743ed142888cf50d51869",
-          "check_sha256": "7fb02729421469a271852af3ad25eb08716d87ab027bfb250909acfe9b2bc02d",
+          "contract_sha256": "17f6349ad7bbbecfb7ba7db6faceccbe78a1aabad94d0b29213b0befdf7cdcb9",
+          "check_sha256": "093d86112d7931a1444eb05391d0ba25202ae8a30e8eaa9cf394e1a3a2fd2438",
           "completion": {
             "kind": "success"
           },
@@ -1300,8 +1300,8 @@
           ],
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "15290a1bd11aa095e7b110495f08dd42e391c5612b5c2c0b22cf4fdb2e054005",
-          "check_sha256": "d5740d0b9ac53471d22d1d971b33e5526e355cf136b5c5fc6ed665bf8a357f65",
+          "contract_sha256": "e84f59ecd97e12b9d9364c5d61cf21281f01c48c6f5e7588011d372c82493bcc",
+          "check_sha256": "971cbc0e4418302b70219c82f31d235800bdea666bbfc0b9f342f5677320d0ad",
           "completion": {
             "kind": "success"
           },
@@ -1419,8 +1419,8 @@
           ],
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "00c0f5f9ac3a42cb28318264ce1df7d4a6406c4d4ebc5321d6206cfe3c92d227",
-          "check_sha256": "5f8624c8d21b8124d47e8fbddfc0ba39274fc09b82cd6d9cb547c6a5416c51b1",
+          "contract_sha256": "378dc629eceaa1b54d611a18b39537421c032046753ced06f3b7316d8608d9d9",
+          "check_sha256": "b7b62ca8731b2e36e5d4138773cdb0ffe556ba1809af23ecd8fab13a5e85876b",
           "completion": {
             "kind": "error",
             "stage": "run",
@@ -1539,8 +1539,8 @@
           ],
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "c58e12663f923d8c733aac0f189e7f93723ab78e55d95a51d89dbbe9422dc097",
-          "check_sha256": "370d91de5526b9b5730595f7b33d15b66b40b2e249400d656d6d7d21559cc52f",
+          "contract_sha256": "cf0e2fb614f315c48698967f9400fac25d8abbc3df155fc8b89c6dd040de9362",
+          "check_sha256": "31abe5591667d3488f8c3ecd3a41a6985b55d8a2e69b54a0a3e69c8379049ad6",
           "completion": {
             "kind": "success"
           },
@@ -1651,8 +1651,8 @@
           ],
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "ce678ddd43734b9bcce33b07184a7eaebe5fe3de9645fb69e406b8abc2f391b3",
-          "check_sha256": "8cc54559c09fd898e74364c2e83bea8a6cff184d2540bd7c589d79194bedfd9b",
+          "contract_sha256": "fae2fce6f345212201d56284371231f5a638e591ac1f118d98026976f54d425d",
+          "check_sha256": "aa2cd77125ae6c5d51039522e8c409ebeab574de695d5c33b817088aa77b1912",
           "completion": {
             "kind": "success"
           },
@@ -1763,8 +1763,8 @@
           ],
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "c34da012a639c1acdd81ba2b103ae50bd1876c98543158c960268134cb5475eb",
-          "check_sha256": "3cae223ec0a35e23ed528b4347b497a4899b0db48f2dd0b4a444b9a391acd940",
+          "contract_sha256": "4a05a182e04bf4641db93d851a02feb77b5e773e9e629509b82d24bd16b49508",
+          "check_sha256": "72804e3819d3dcefc3c1d7c3b4be0415836500c3db186bb8415c7b43597368a0",
           "completion": {
             "kind": "success"
           },
@@ -1870,8 +1870,8 @@
           ],
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "8d0507bbb7caa5bee2b13eae0885e24995fe06f24f961e4172a3995491b43941",
-          "check_sha256": "4fee648790fa250c69274fb8fd90466b289574eaae2eb8e3078c4c5b49fffff4",
+          "contract_sha256": "9878ddd17e692bcac5c708f90bf3fd5cd19172c7fe1c43536157ae168508c9a6",
+          "check_sha256": "5f3863fab1d78af7a0f76befa100bf901470af210ffe11e4af1dce251b91d941",
           "completion": {
             "kind": "error",
             "stage": "parse",
@@ -1976,8 +1976,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "75c7bcf1a4901e60080268add7c427938492aeac3780a40245b12d7b97e4532c",
-          "check_sha256": "c409c5fb4ba9ea6bb19a2ad63e58a59bc6644644cab1afa2e2c0dcc9987ed06c",
+          "contract_sha256": "7f79b6ca9855b15b1aa1dd12257b1a7961a3c61db4598721db19362248e32431",
+          "check_sha256": "8d9b7f27f87d07599c854a899f686571841da355c482eb2f2be0ebb87b4b4620",
           "completion": {
             "kind": "success"
           },
@@ -2050,8 +2050,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "75c7bcf1a4901e60080268add7c427938492aeac3780a40245b12d7b97e4532c",
-          "check_sha256": "db3558993b8d5b7c64de22c38043936e777cfb946fdd8a610a60933f87d17db5",
+          "contract_sha256": "7f79b6ca9855b15b1aa1dd12257b1a7961a3c61db4598721db19362248e32431",
+          "check_sha256": "4474c15873249c6d163949202d865627a5f1690582dbaa61003a1f6ae04c8d7e",
           "completion": {
             "kind": "success"
           },
@@ -2125,8 +2125,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "093480e8e182136eb72fbc46269060bec82d07aee27091870f289b36129c60e8",
-          "check_sha256": "c409c5fb4ba9ea6bb19a2ad63e58a59bc6644644cab1afa2e2c0dcc9987ed06c",
+          "contract_sha256": "169e1a132d3dce6beb78456e955e66453e1befd802c807bbce689c46aade2c81",
+          "check_sha256": "8d9b7f27f87d07599c854a899f686571841da355c482eb2f2be0ebb87b4b4620",
           "completion": {
             "kind": "success"
           },
@@ -2199,8 +2199,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "093480e8e182136eb72fbc46269060bec82d07aee27091870f289b36129c60e8",
-          "check_sha256": "db3558993b8d5b7c64de22c38043936e777cfb946fdd8a610a60933f87d17db5",
+          "contract_sha256": "169e1a132d3dce6beb78456e955e66453e1befd802c807bbce689c46aade2c81",
+          "check_sha256": "4474c15873249c6d163949202d865627a5f1690582dbaa61003a1f6ae04c8d7e",
           "completion": {
             "kind": "success"
           },
@@ -2280,8 +2280,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "09fe681e91873c8f2cbfe6c5d8c01b6be2d3527fb00c257580d7b67d9be4d7ba",
-          "check_sha256": "935ac8131703a4c1cf913bbd188475d5e50a0976f5596a569eeed99ad100b138",
+          "contract_sha256": "f59a5b0475a880798ba8352ab0284c2e588e4f120a942eed5542a27fcca39a5c",
+          "check_sha256": "8bfbc69180b250fd2fd194b424218b4b8eda206fd0e177bd53dcef1fade0341a",
           "completion": {
             "kind": "success"
           },
@@ -2354,8 +2354,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "60af93100ee261f76a2ddad5456e1653469beb6987f6937661ec1d3370895b50",
-          "check_sha256": "509b20b0a6b6c1d9e0009a1fed717c7f90a156e58147afe8998799714217b59e",
+          "contract_sha256": "f81e1aad17cbaa7948ed529040821af7c8fe2588103c90433fc02d7602483914",
+          "check_sha256": "6f3ca55174a344bf7b2eb826cd4b68894834e41ee9c3237f12ccd3032cdb0289",
           "completion": {
             "kind": "success"
           },
@@ -2428,8 +2428,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "0f817062eac4148f9a2fedbfeeedfb00229e1c6b651e8c063dbbe5911056d427",
-          "check_sha256": "22b393a18316ec2f2229f1ab17565bffa5d8ba9a92b636c8e8a2c1edcbc43c00",
+          "contract_sha256": "6c91316af9bdc2806933e197fb8d354cc3e8a48523ae79c4b7a61792d6c518ff",
+          "check_sha256": "a3ae1a8914760f65bf1de60d178bdadb183c63d9a1db76a39da98e79760888cf",
           "completion": {
             "kind": "error",
             "stage": "run",
@@ -2508,8 +2508,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "b732548c679f138ba71428d365de2d6255af756de726db31488569e53a40a16f",
-          "check_sha256": "3c58721c54c703b8c301ec849c2af5d38563d5a6c1dd8c5e97d6953c0c8893da",
+          "contract_sha256": "2a26316d8b6bafe21bc4c5c1aa9eda3a49d6aba754d75dcd51b17c8bf1b0e765",
+          "check_sha256": "297577921a63b5914d6405394b6b84f3a705d6080ad750adeec5009a4b9d7517",
           "completion": {
             "kind": "error",
             "stage": "run",
@@ -2588,8 +2588,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "412714dbb14cace8704960694544a721d9d8854656c199b5cbacc04a15f79e25",
-          "check_sha256": "dccad321d9ea38f5850cf3b5ca8aaff954b6aab6b8bfb1a55f522cd4a9fd7835",
+          "contract_sha256": "b07b11cd6fa58abee349e70320cbf83ef3118e9f69d07eaac36a5a93e038fd8b",
+          "check_sha256": "c53ec0893ae270c7dce420e61491aac0fd3bb1311ef54e1a6e2d9c83bcded00e",
           "completion": {
             "kind": "success"
           },
@@ -2665,8 +2665,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "b1d541e154bfa71cbab374315afb1a116dd83fd016b23ead12d5a11108b17bf6",
-          "check_sha256": "35a297c18aa3e8f18a32ed2afd2d30c3af9622f080ae52f9eb7f3371dbe4e40d",
+          "contract_sha256": "bf6c5590dce1928c4b4b5ba690bfd9fdef93e9e6e8f31318b6cae57a61a5b5ee",
+          "check_sha256": "833fdb62ef0f58657d4878c65142a43e3cdc938bc88f421e0964b235d70f268c",
           "completion": {
             "kind": "success"
           },
@@ -2737,8 +2737,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "32c5d9926b6e4c7e54c008c9882b921d01bf5f5878ecb7ac4734e98d1141b989",
-          "check_sha256": "de8ff9e3254b277aa98b1e2e9398cddd1ebbd4a7c8e1ef8fa805265674351510",
+          "contract_sha256": "8642d30be83548f8483a0135d3c573656f15e20c625e7bd98e3d195e3003b4d8",
+          "check_sha256": "4b4f5915194d33df1b0d2ca082eb9cb52cc3d9a6c9478597d7b03b7d23ae3ce4",
           "completion": {
             "kind": "success"
           },
@@ -2811,8 +2811,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "6639b7fb30c4072fdc3c1076381302012cadcb1ee6d52048b85e9da921109442",
-          "check_sha256": "6781bb2e426727ca06789fa8061dee433d6346c59636e8e39cac9b5229ac8724",
+          "contract_sha256": "637c19f7a1383cbd862caafafe438ef212e36a0ca4c08387bedc84194ad81f82",
+          "check_sha256": "efa459f8530103ff7a70cdd5d62ebef226e300f175a33a2331ce9a2b3a434e2f",
           "completion": {
             "kind": "success"
           },
@@ -2885,8 +2885,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "caf10f353868a5f34ec2f4bee7b113d08e77f09fb28981966032f3426f3724db",
-          "check_sha256": "cbb60f1cbb937908d6328feabacd9ccd02f3c33343d1eeed18b9719a770c121f",
+          "contract_sha256": "88a34e748dde052b21a89b456a0bd8b9d60681b904e2284e3b5f207d387e38ff",
+          "check_sha256": "69bd0508618a6f1c94b148f81b9c098e199edcb901deb14534203ea09db2927c",
           "completion": {
             "kind": "success"
           },
@@ -2959,8 +2959,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "caf10f353868a5f34ec2f4bee7b113d08e77f09fb28981966032f3426f3724db",
-          "check_sha256": "cb8d63242a00f5e5559dd2a4667a61d0be46db65268856ae9678381f8a2053fc",
+          "contract_sha256": "88a34e748dde052b21a89b456a0bd8b9d60681b904e2284e3b5f207d387e38ff",
+          "check_sha256": "233b964777493debebcc56e5249800c493d8daaac795c6331f434b9750e93758",
           "completion": {
             "kind": "success"
           },
@@ -3033,8 +3033,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "caf10f353868a5f34ec2f4bee7b113d08e77f09fb28981966032f3426f3724db",
-          "check_sha256": "4a8287e9254be644e7e66b2c950e0719b9a5041c630246b1d189cc27d1d3da37",
+          "contract_sha256": "88a34e748dde052b21a89b456a0bd8b9d60681b904e2284e3b5f207d387e38ff",
+          "check_sha256": "e8ec71ca87ff94c22e9ff4f3fae08ff786ebe5bce2d296513d8332ca6221ee89",
           "completion": {
             "kind": "success"
           },
@@ -3107,8 +3107,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "caf10f353868a5f34ec2f4bee7b113d08e77f09fb28981966032f3426f3724db",
-          "check_sha256": "c7f1771b9c0a5678fa709e9a2fdf14c192e317c3bba16c80b822dc88d24b350c",
+          "contract_sha256": "88a34e748dde052b21a89b456a0bd8b9d60681b904e2284e3b5f207d387e38ff",
+          "check_sha256": "d73b2656e94e8acc9f1e6f442f383f4815cf8cbd31747dcb65afa3094a664073",
           "completion": {
             "kind": "success"
           },
@@ -3181,8 +3181,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "caf10f353868a5f34ec2f4bee7b113d08e77f09fb28981966032f3426f3724db",
-          "check_sha256": "9715cc2b607213170dc7644ef19fb6d6b2069fd6d7bd20c5c7e0b5cf193ef352",
+          "contract_sha256": "88a34e748dde052b21a89b456a0bd8b9d60681b904e2284e3b5f207d387e38ff",
+          "check_sha256": "89b4ccdbf09e401ff403fc903ae861da8546fd59da26b0803d7e232cf188508b",
           "completion": {
             "kind": "success"
           },
@@ -3255,8 +3255,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "caf10f353868a5f34ec2f4bee7b113d08e77f09fb28981966032f3426f3724db",
-          "check_sha256": "992feb56fb45333da2a447227b1d1815906f0823a553c148c819f065ad2b8d58",
+          "contract_sha256": "88a34e748dde052b21a89b456a0bd8b9d60681b904e2284e3b5f207d387e38ff",
+          "check_sha256": "999256c17a75a73c06f06fda5c4b587a4bbcc5ed243127e1940f3fdf18fb9775",
           "completion": {
             "kind": "success"
           },
@@ -3329,8 +3329,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "caf10f353868a5f34ec2f4bee7b113d08e77f09fb28981966032f3426f3724db",
-          "check_sha256": "4f6d9907cdb2bf8c3ca4f19d0626c46600c583490b621b4a96991507340cf971",
+          "contract_sha256": "88a34e748dde052b21a89b456a0bd8b9d60681b904e2284e3b5f207d387e38ff",
+          "check_sha256": "f3b5f23982fd6b303444c2261be20752e0dfd49ca914ed0ca3d4a3ba5b623417",
           "completion": {
             "kind": "success"
           },
@@ -3403,8 +3403,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "caf10f353868a5f34ec2f4bee7b113d08e77f09fb28981966032f3426f3724db",
-          "check_sha256": "3954878621acbee7286520e867a2ed1980c85a775314d825c92f991de68e4e8d",
+          "contract_sha256": "88a34e748dde052b21a89b456a0bd8b9d60681b904e2284e3b5f207d387e38ff",
+          "check_sha256": "c116466fbc7afcb0557db4d239e35961e9d4be398ca0b0222057dc849ee79943",
           "completion": {
             "kind": "success"
           },
@@ -3477,8 +3477,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "7b96f5f5b707344ac50976cb1eafc52c21510a2a8fee0b2c016ffca6232b04f1",
-          "check_sha256": "ac6527de2cf1f70d5793182456e735157996c4d4208832c1e3f17cad35753a71",
+          "contract_sha256": "550df6ec66cb91857c43002e2e7cac36fe143018476f222e80b8bd4fd44d6771",
+          "check_sha256": "fa33e361312c03ff4946066475d8abf1d1f364b8d72450834314db4e7e7c2085",
           "completion": {
             "kind": "success"
           },
@@ -3549,8 +3549,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "7c9e3a77023c4accb931917cf2e21df22689286269b2ade395eacf8d1447aa38",
-          "check_sha256": "8bda30c95f0d30be965ad161ca51fc6ea1d30317d3c7ae8fb23cb8a285f35baf",
+          "contract_sha256": "427d77cc717d4a9dfdb5860613d9b8a59d3cee32d18fef852b2f327a7bf097ae",
+          "check_sha256": "0efc71a94813c84eb95bc304a21abc26ccb56e3bdad27d7e4f2090663e940cdd",
           "completion": {
             "kind": "success"
           },
@@ -3635,8 +3635,8 @@
             "bits": "8000000000000000"
           },
           "av_channel": null,
-          "contract_sha256": "902538c392850d856d4c4e0ea2d033de758397916d68fc29a6da499ac587f19e",
-          "check_sha256": "52c578d88d46d996f8121caed36742930944a854937f90062a8d00ffa0175604",
+          "contract_sha256": "c5bf433cbb3c6a541771eb25d1af69298e835d8812bed5ac2d1292f74e41bc44",
+          "check_sha256": "3b63a9343fe45bf5826baaf0bf9d0ed46642d03b4f0523a012f3217d3fb83d9e",
           "completion": {
             "kind": "success"
           },
@@ -3716,8 +3716,8 @@
             "bits": "ffffffffffffffff"
           },
           "av_channel": null,
-          "contract_sha256": "ab197bed73962878f3978f3dd726cea67469bc681864e97b56b6de9bb3104b08",
-          "check_sha256": "aa23944713cd83cb310e414ce70889cedd1c6f9e96fca3ab3791ea4a911625b0",
+          "contract_sha256": "dfe6d16a9b186b8b5a0de2eadc9e3c4256eb379699d53663997dbb2b6604bcd1",
+          "check_sha256": "0bccd680681ee318da6800329537d4d8cfdf59856dd583bc8c7ab7ab8c0ba2df",
           "completion": {
             "kind": "success"
           },
@@ -3797,8 +3797,8 @@
             "bits": "8000000000000000"
           },
           "av_channel": null,
-          "contract_sha256": "6d5a516b40d30e61004a3615fb0480619fc2b1d36b85ae4601bd52ac3a130d4d",
-          "check_sha256": "d79b20e1be9701d9d8a494c2effd0e9bca5b9769ee9c16a3647dd9148cf20de0",
+          "contract_sha256": "47ed274e9b0a4e5e8a8806f3ac1c43051b4328ba3e629d74ce1b0cbaa6feea5e",
+          "check_sha256": "7cf3cfa2fcd9b323df5b4507ffbc317fb8752bf9a8d41055b2aa05653443f566",
           "completion": {
             "kind": "success"
           },
@@ -3878,8 +3878,8 @@
             "bits": "fff80000deadbeef"
           },
           "av_channel": null,
-          "contract_sha256": "b66c5e9fdd59b914f041f1a274640118f010e43b416bdfa3be0481bb0938a86a",
-          "check_sha256": "742c9659352e7205023d9eb05c5bc425ab5fdf4d46bf5d811ac6510fe9e43f65",
+          "contract_sha256": "74d6a31bace2c26e69222bb61ac7a4ae73dbe58ebb7dc41e75004e1f788ba9e8",
+          "check_sha256": "41673f98e461f6b56f187909de506285e4f20668bf5420a5e809535b275b4a9b",
           "completion": {
             "kind": "success"
           },
@@ -3959,8 +3959,8 @@
             "bits": "7f80ad00"
           },
           "av_channel": null,
-          "contract_sha256": "d7c9fcae94e705303d02da29782f7ad94e2246278f62bb97a86902343b85fffa",
-          "check_sha256": "1b7c4644fbe8fd9ce1dbc6f63e72471e6df01c3f54f3e1052e4991c7216cb017",
+          "contract_sha256": "72a124b7309cf4d08b26ca83a09c9ba67172e5d5e9ee6c90c7f31f92d9450d84",
+          "check_sha256": "c579c23e364ea601e57fa80d002fa73fbb1959802b238c4cc77e216c939e1cb2",
           "completion": {
             "kind": "success"
           },
@@ -4040,8 +4040,8 @@
             "bits": "46"
           },
           "av_channel": null,
-          "contract_sha256": "d86e3ff9c6719858193953759ac21d4becbb60a10fb6d1ec611ec9ba13ce57ee",
-          "check_sha256": "ab8715d00406a620f96bf352daf19ac83544161bba6c78bb4750f286c5f5559b",
+          "contract_sha256": "c5a91890c377989cd83b46454c6315f15a74ff8054b4ab4b2e054cc4ea161604",
+          "check_sha256": "ca30b9cb3a401feb6c16187760ddd98f05a519d2230383afcd4677a0fff5b78d",
           "completion": {
             "kind": "success"
           },
@@ -4127,8 +4127,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "e42f5155da0fa49f3f315ee6f8afe45a6ef26ff089ff7899a140726db7a76f98",
-          "check_sha256": "8f6673599486711eecaf8e30b258136c1e0db4e38eb8b94472ccafe5054862b2",
+          "contract_sha256": "2ba4ac7e912b575a95059f16a070825368b9420ede504df9924a7557a3009ec8",
+          "check_sha256": "14df42f081e9328e837d4a318406b80e5bef564cff62f211158996920e8acf3b",
           "completion": {
             "kind": "error",
             "stage": "run",
@@ -4216,8 +4216,8 @@
             "bits": "0000000100000001"
           },
           "av_channel": null,
-          "contract_sha256": "36d8bbb5291abe47132fb26fa1512d45717403eb8ac78accb1ef2f2650e7cef2",
-          "check_sha256": "dbb16a5dfd77a264ecd0a96f025cc4bd820f7cca0b7d4e2b923fa9903ae46475",
+          "contract_sha256": "dbe0bad686b61eb5e08767deec4a30113456b425d21e7069f8474f8c9af53b54",
+          "check_sha256": "ab655ab85f184262272cec1afd7ab893e5a20434b7dabaf8574aa9963ff2a2b4",
           "completion": {
             "kind": "success"
           },
@@ -4322,8 +4322,8 @@
             "bits": "ffffffffffffffff"
           },
           "av_channel": null,
-          "contract_sha256": "256734c261bb7cb1a371d35e39098573d1063688f0c5c1bd4e3b91243d343913",
-          "check_sha256": "65d1dc1ce4cd7706ad817200535270e87a0a68d6e6c31bee97a6f01b3a53c230",
+          "contract_sha256": "a3080891f2bd1c6226b28305312ab88a5a636a6acc0da868dfc2c32891e15152",
+          "check_sha256": "45b5b804daf5fa7b6b53c45ad79f225462e70e0a740b8549068289b681498cb8",
           "completion": {
             "kind": "success"
           },
@@ -4408,8 +4408,8 @@
             "bits": "fff80000deadbeef"
           },
           "av_channel": null,
-          "contract_sha256": "e61d1965b046fb1c664ceda0a479705df5e64b1399b8dc3649fbb1be127b5a1a",
-          "check_sha256": "d96dcce4f2ff14cade956a4009b134b556bffc71e24e9f31423d9d8806938e53",
+          "contract_sha256": "f9f52fbcda1cb37158d0ab08345e159d0d3e4ca979a40198a9e3a28dab2d2957",
+          "check_sha256": "1497aafa8498ffe19ae8e9da794425a5e47453fecc22ea2d12f8d80de41bdc53",
           "completion": {
             "kind": "success"
           },
@@ -4494,8 +4494,8 @@
             "bits": "8000000000000000"
           },
           "av_channel": null,
-          "contract_sha256": "4fa2ea85014b08a32d5e61a039f62a2d4570280ad0e1bfe7bbf71214dd1c7c62",
-          "check_sha256": "04a6c32be0ea2c4b80d430a027cadc0f1ca51a69c277b6d1896c355a22888db2",
+          "contract_sha256": "0746256bf6c74ed08e1049e98e9da0bac4f8cc9ba33d82a957b504ebedaff307",
+          "check_sha256": "af9f8db0fbb806797ad8f03ad01c72ad3a198d45ec22f5587ecdb8f952bc7056",
           "completion": {
             "kind": "success"
           },
@@ -4580,8 +4580,8 @@
             "bits": "00000001"
           },
           "av_channel": null,
-          "contract_sha256": "41f8399b5853d4652d3b13d34f15381cd34813c4cde7d0cecd0d8110bd6838dd",
-          "check_sha256": "9d320438c4572ce8288618c041e4d80ebe2a6891e3b92775ce273aa257eb4ad1",
+          "contract_sha256": "39a7b9e69d3992e48686dddb47de0c914702b768e9e275d975b8dc380bf7b320",
+          "check_sha256": "e019b43ad5198f4767166c108f8c39828ab1c34fe1e4b06d8d8cce29f11dd8fa",
           "completion": {
             "kind": "success"
           },
@@ -4663,8 +4663,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "78f334dd2875b700f0497ba8e7d2e812ac72d6879d7970582603c05f004f0e28",
-          "check_sha256": "584ef57d0c1decf4efc1fc21a805a5b149a908b50c49dec876847acdd0878e50",
+          "contract_sha256": "d38a072d6ae6d970fe40a05686a3ba2a4ca19ae08b5c36d7056ef7b941a04148",
+          "check_sha256": "af3eac26fdb0a388ec8407c4b6c93c1cb84ca387bfcf295858412df4d044451e",
           "completion": {
             "kind": "success"
           },
@@ -4740,8 +4740,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "78f334dd2875b700f0497ba8e7d2e812ac72d6879d7970582603c05f004f0e28",
-          "check_sha256": "de9e5c562cd84e32ab3caa75f54848133587a783b9aa1451e3e280a599c99c76",
+          "contract_sha256": "d38a072d6ae6d970fe40a05686a3ba2a4ca19ae08b5c36d7056ef7b941a04148",
+          "check_sha256": "f57334e21e04972767c93249a95c55d6dfe07cf1479376c983870c5b095a2be6",
           "completion": {
             "kind": "success"
           },
@@ -4816,8 +4816,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "1ec5c4ed65798c1fbb88e40f1600367785d646bbbdba51fbb3536d549de75158",
-          "check_sha256": "b5251f37b2b1da1848c2d1d40a80227a4d75f4264efd196218565dcd63912123",
+          "contract_sha256": "9faad254687a502cf0cf7e551c56a4bcc043a5d23ed5585a799072693820d61e",
+          "check_sha256": "f095b799b06a62f28c8e224c8ebabad29f7916b2fcf1cb7bb0bb74def5d8a4b2",
           "completion": {
             "kind": "success"
           },
@@ -4893,8 +4893,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "1ec5c4ed65798c1fbb88e40f1600367785d646bbbdba51fbb3536d549de75158",
-          "check_sha256": "d18fe1da4304db9a72a9d71abe420de94929c15946d3452d940b436b9b698bf3",
+          "contract_sha256": "9faad254687a502cf0cf7e551c56a4bcc043a5d23ed5585a799072693820d61e",
+          "check_sha256": "24f6f84467764a73868e29121619c7d5a6da7a7ad9506904225c96d349831aa2",
           "completion": {
             "kind": "success"
           },
@@ -4969,8 +4969,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "6015a45f57d942d6ef825a6f2cbdd8eb09e77f48fd4b5a0eaafb3012da0ae456",
-          "check_sha256": "c6c433d6358d7bc333c7cf90b6f84dd819ad9b1ab1cf9dec5bb7df05f4ea5a38",
+          "contract_sha256": "8e2c09e68996c05ce56916bb52478540cdef29e77f4cb5a5787e7b0068705e48",
+          "check_sha256": "e14857319862d6de48fcb0940d9e6315fd6343cac6495fa73a7306b5f1b7c392",
           "completion": {
             "kind": "success"
           },
@@ -5046,8 +5046,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "6015a45f57d942d6ef825a6f2cbdd8eb09e77f48fd4b5a0eaafb3012da0ae456",
-          "check_sha256": "166922a786885353987bbf202962584afccb266c67be32fc8bb1bb20ef75bb95",
+          "contract_sha256": "8e2c09e68996c05ce56916bb52478540cdef29e77f4cb5a5787e7b0068705e48",
+          "check_sha256": "38906586fb630d65b05d18055e4b6c9bc27128abc92dca84f39fb35db8dd2a34",
           "completion": {
             "kind": "success"
           },
@@ -5123,8 +5123,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "e1823ba5411e14c090c1a97c87c6ae88928cafafde7fdd14eaa3529b17c723df",
-          "check_sha256": "52723627872a3358caf0a6e871eff3e04d8c11da1a5a229aaf50477f9e7f620e",
+          "contract_sha256": "18d207c5b01995d3ee1ab65fc862cbd1d83010e4afb1aab0f4ccb9905a5abc74",
+          "check_sha256": "637d0958a104fa65d37736b22f1ef12bba46f3f780092bb4733bc2315d9a6e24",
           "completion": {
             "kind": "success"
           },
@@ -5201,8 +5201,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "e1823ba5411e14c090c1a97c87c6ae88928cafafde7fdd14eaa3529b17c723df",
-          "check_sha256": "27d8d42f5b2befcad47647e496ade0a87c14d4642b93a313a0d8e440784c5657",
+          "contract_sha256": "18d207c5b01995d3ee1ab65fc862cbd1d83010e4afb1aab0f4ccb9905a5abc74",
+          "check_sha256": "56ca1c1dbff37a68e3877169d2b4357d2d741cfd2efe88eb78ca8074d280704e",
           "completion": {
             "kind": "success"
           },
@@ -5278,8 +5278,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "0050eda91cf3c1c167178c6e8534934e2984826fee59d4f270575f8670236f9b",
-          "check_sha256": "7738283ab9c75f7a0e9e72db70c3c70bf491be037ce1705d06c183f4bf4af702",
+          "contract_sha256": "65803d5fe5a7e23dc57db0f8ae0ad38dd83b4ad3c99e1541cb4ae9da528f0f18",
+          "check_sha256": "c796b261c411f88be54f0d4100cb500e4ed6d59836b0b62fe38f73d565c53917",
           "completion": {
             "kind": "success"
           },
@@ -5356,8 +5356,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "0050eda91cf3c1c167178c6e8534934e2984826fee59d4f270575f8670236f9b",
-          "check_sha256": "02c85b1a418b60c7dd288a42eed666ef6d44462d0374427291d2167ab265938f",
+          "contract_sha256": "65803d5fe5a7e23dc57db0f8ae0ad38dd83b4ad3c99e1541cb4ae9da528f0f18",
+          "check_sha256": "948e3ff2428214eac9215b45911e4edae8d69b7b3f2635b1e522907b2098e639",
           "completion": {
             "kind": "success"
           },
@@ -5433,8 +5433,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "e7e45527f3d32e935679a035f641d432a1e60b6e18065228b30196fca4adbacb",
-          "check_sha256": "f8d5308b2e1b4d167a1a0158f148f231c3e663c5ec85537b9595ae64a99aef7b",
+          "contract_sha256": "91208f2b286c67199a05c6b894792c7b72d2af19f87ceedffba8e4e74a110830",
+          "check_sha256": "5af850c942b819ba737f509805c223ded579ba0ba172ffb268091e2561890a31",
           "completion": {
             "kind": "success"
           },
@@ -5511,8 +5511,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "e7e45527f3d32e935679a035f641d432a1e60b6e18065228b30196fca4adbacb",
-          "check_sha256": "3bb348a03c0f6229c349ce197c9c1764fd33a30a63cfa609e6cdf18937699170",
+          "contract_sha256": "91208f2b286c67199a05c6b894792c7b72d2af19f87ceedffba8e4e74a110830",
+          "check_sha256": "f3649adb93625fa17d817b4deeaf017d2be7c9f34323c6cbd9a25fb980f59dcb",
           "completion": {
             "kind": "success"
           },
@@ -5588,8 +5588,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "fb1fb0dbdd8a47817157b8e89d148f3a20b4a2ae6f4c44783d135b524244c1e9",
-          "check_sha256": "92906154e6bf86028919369af7e429bb94601b91c311fa64bef12a6d77912705",
+          "contract_sha256": "245e17c55c5791e91225d46984b27dd6d84dd462737ac3d574a90a0ac3db1525",
+          "check_sha256": "ca709a4e222d8e8b276148d7aa7b5296e18d85612ca94aa9f3008feb03fe149b",
           "completion": {
             "kind": "success"
           },
@@ -5666,8 +5666,8 @@
           "resolved_probe_oracles": null,
           "typed_oracle": null,
           "av_channel": null,
-          "contract_sha256": "fb1fb0dbdd8a47817157b8e89d148f3a20b4a2ae6f4c44783d135b524244c1e9",
-          "check_sha256": "cfe97f61b7230cc8fa259c356019e94d9864b65ac1af4a1bd9c6c2e21ae3b8e9",
+          "contract_sha256": "245e17c55c5791e91225d46984b27dd6d84dd462737ac3d574a90a0ac3db1525",
+          "check_sha256": "37b8534899e3b7eeae2aabf1fdac97c42251df7ec8f18a92f2f7d38389cd68d3",
           "completion": {
             "kind": "success"
           },
@@ -6138,9 +6138,9 @@
       }
     },
     "source_sha256": {
-      "crates/auto-lang-core/src/test_cases/ac_av.rs": "6fb157529aa26fe61b713bc4fd4aacd3a7d8f69f2ee4bc8f6e71abb96efff39c",
+      "crates/auto-lang-core/src/test_cases/ac_av.rs": "dee61c503b3e509b697702a909d68e7660e7c7bf697752056b8280401e7c1945",
       "crates/auto-lang-core/src/test_cases/ac_av/contract_inventory.rs": "aadcdf7a59836860039fdc8def37013149eef09e66aad67da37b86d0aedf08c1",
-      "crates/auto-lang-core/src/test_cases/ac_mn.rs": "8284325bbab4f7fa3388f0b76b0272d0230169cf2a508ccd11e79a682ff6a224",
+      "crates/auto-lang-core/src/test_cases/ac_mn.rs": "92dd821667dc26c68b160b73588f20be03d0051ff9893e41a1cb3daad11169a7",
       "crates/auto-lang-core/src/test_cases/abi.rs": "dfa474a74d056054d383f13c470d6b8b6961d633bb7a56adc336771ffeab1920",
       "crates/auto-lang-core/src/test_cases/inventory.rs": "c8a8145a18da72a5fa6b5cfe8723a9f65d25f5905374a840483c7dde2a41d6c1",
       "crates/auto-lang/src/bin/auto-case.rs": "1d511041590106327fb6a1db2bc5c2828037ae33b060e226ad0963aa13af0b01",
@@ -6150,7 +6150,7 @@
   "expanded_contracts": {
     "legacy": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/legacy-required-map.json",
-      "sha256": "1cc8df6d143cfe75cebc06fe3a9c9f1711536786622b762ea699cc1a4ce802df"
+      "sha256": "62128f41c55c6797ce0506566028fd64dc8b9e8198e78238d51ba9bb57405bc5"
     },
     "q4": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/q4-source-contracts.tsv",
@@ -6162,7 +6162,7 @@
     },
     "budget": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/original-budget-contracts.json",
-      "sha256": "08365d6a1a5f5fcff5c32f94b036868cb76dc7cea1ef38e7f80c7c7632233212"
+      "sha256": "a821bc6073ba495628e667e233dabe091d546646860a5cbd6529aa5243a4b23d"
     },
     "text_reference": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/text-reference-contracts.tsv",
@@ -6174,11 +6174,11 @@
     },
     "text_q4": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/text-q4-contract.json",
-      "sha256": "3326238f02437a2150075703191107ef4cba974e4bbe6c7a62152a4223637d71"
+      "sha256": "3be26be699c9fea0ac706cac00bdf7dc5801bef3dd9257bcfe9cb6c162edc0ec"
     },
     "scalar_q4": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/scalar-q4-contract.json",
-      "sha256": "66f5a66c4b4f0bc3f5846b82ca39f35d28f284b51d18eae6a06d553f8708bf84"
+      "sha256": "599e9579e5cdc4c6121033554161bef04380b46eec71cfab0385c93138ab72e4"
     },
     "scalar_reference": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/scalar-reference-contracts.tsv",
@@ -6186,7 +6186,7 @@
     },
     "record_text_q4": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/record-text-q4-contract.json",
-      "sha256": "e540412e5920051ac8e998b713e8d59af74153d09463cfe4392bdf22f32c73fc"
+      "sha256": "b765ead131f474cd46932a62b092c60c7556889e54e4ac0df0f87d5a8ca500c6"
     },
     "record_text_reference": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/record-text-reference-contracts.tsv",
@@ -6194,7 +6194,7 @@
     },
     "collections_q4": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/collections-q4-contract.json",
-      "sha256": "8d327888606c0fd75f5d292aa7db1ee0187af479bde04aff5dc4dd65ff790c79"
+      "sha256": "b31cc462bc0b9c9be45a105569e2074ba710f02f6dabd42946efc5c2ee8d45ec"
     },
     "collections_reference": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/collections-reference-contracts.tsv",
@@ -6202,11 +6202,11 @@
     },
     "query_source_q4": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/source-query-q4-contract.json",
-      "sha256": "ebaeb34be0d3193174e0cdc57f0d9d5ad7057e60e3396139646369884a3691d7"
+      "sha256": "5e3e2fc50849036157fa61cef375db28ad86d307ab74e3dd83fa51250eda4632"
     },
     "instances_source_q4": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/source-instances-q4-contract.json",
-      "sha256": "ec5f37f2f6265d485f62222cac9551088e3f59781772386e484f1f1ce6864d64"
+      "sha256": "21dcb9bd869faba70df1ff9fc3f69453d403499051643fcc65ca4338770435aa"
     },
     "query_reference": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/query-reference-contracts.tsv",
@@ -6218,7 +6218,7 @@
     },
     "source_supplement_q4": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/source-supplement-q4-contract.json",
-      "sha256": "cc1f45c307dd2b1e6c2f393c21fff06e608fce894c8e7497ef7105522d7b18d4"
+      "sha256": "4e33debd92b12e6fd916b15c024e4d72c67b76e47f97b75966bc8f2c1dfdce6e"
     },
     "source_supplement_reference": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/source-supplement-reference-contracts.tsv",
@@ -6226,11 +6226,11 @@
     },
     "original_data_sources": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/original-data-source-contracts.tsv",
-      "sha256": "a51d7b345013b063e5c04a146896bf509f2213bcab4fdcfe480e2c4bb4f4edf4"
+      "sha256": "dbf34b87c819aa673027f3c9992220e687ed49a8c226112678ee516bd863ded5"
     },
     "original_data_q4": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/original-data-q4-contract.json",
-      "sha256": "c19142b748fc69c1cfba68fc78a3451076ebb9e574da69fd9bd2727b63ff9e79"
+      "sha256": "1f9b03e0e3d8988404d26e8996d56b6da8b592346113d5f018152690be5ebf4e"
     },
     "original_data_reference": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/original-data-reference-contracts.tsv",
@@ -6238,31 +6238,31 @@
     },
     "original_data_diagnostics": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/original-data-diagnostics-contract.json",
-      "sha256": "ab4ebfef1227b9ed9a446c9614cf984ec86d7c3967d56e1c682468c53ddc477e"
+      "sha256": "20e0542ee0ae63e0cb8f7b69f74e757fa029b068246557b1a166d15be4d56209"
     },
     "legacy_base": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/legacy-base-contract.json",
-      "sha256": "b66a4134f22e5526f3700e19cd74f5105baa7a199d36a51dff99a7538476e78e"
+      "sha256": "1d499e6973ed6e83e8a57c3fc528fe82ecea76c599ea9521a735e7dc8f237ef1"
     },
     "ct_mechanisms": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-source-mechanisms-contract.json",
-      "sha256": "86fe0294ab2b1169f3d6ca723f4079bb76debb2ba0e2887b2c3504e74856e834"
+      "sha256": "594c2e5fa1f739ec161ee454b0ea336b913bb4f71df35097c2beb0456d987419"
     },
     "ct_child": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-child-contract.json",
-      "sha256": "e4e001d9ae717e25d95c906fb71dd8ed91869a441124feddbeda21bd451cb35b"
+      "sha256": "ef2fb7b2d9399624b4daae185b9cc040a847785e19613a02b8c3f02b67504622"
     },
     "ct_meta": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-meta-contract.json",
-      "sha256": "a413de5ced8542ac0880cc623312e6d46330b9a1786049f805a9a0f2806d0e75"
+      "sha256": "565607b84715dd9dc38ca5abb479696ea41509cd0ad2fa5602c2a68b1b68c515"
     },
     "ct_restore": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-restore-contract.json",
-      "sha256": "2ae95c11b1215d7e55969c344b8f519f43d2f4c28ac14a40bf79a6c61a309794"
+      "sha256": "02ac2ff3eee309565a3ef98407c8ca17340db992c13e8c293bb57017579915ef"
     },
     "sq_facts": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/sq-fact-contract.json",
-      "sha256": "18a8ad875a187287dfef23c84fe38026cc03c1eb327e568f7fa4177e8dba8036"
+      "sha256": "4d8b32fbc5365570a92eafb2beccb6cde3e15caf2b63ceee016238c6d58acea9"
     },
     "syntax_arch": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/syntax-architecture-contract.json",
@@ -6270,7 +6270,7 @@
     },
     "legacy_arch": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/legacy-architecture-contract.json",
-      "sha256": "e3767e8680e0698ea2d10e8c435e439f2aebd9388cec6e61f9adb66175b5c501"
+      "sha256": "f4947cd03862b73e625d919ced81e7c28e34fb1912bd1a0d8cef4f401b01af93"
     }
   },
   "awaiting_d": [],

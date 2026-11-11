@@ -143,6 +143,50 @@ fn fail(detail: &str) -> ! {
     std::process::exit(2);
 }
 
+/// PLAN-1000 F-1000-02 (GAP-941-A2X-DIAG-01): a refused source compile
+/// ALSO reports the typed diagnostic channel — the structured frontend
+/// facts (stage/code/message/span per cause, source identity, first cause
+/// primary) instead of only the rendered detail string. The legacy
+/// `detail` rendering stays byte-identical for old consumers; the typed
+/// document is the semantic authority the negative readers certify from.
+/// Every other failure class keeps the plain two-key refusal shape.
+fn fail_source_diagnostics(
+    detail: &str,
+    path: &str,
+    src: &str,
+    source_sha256: &str,
+    profile: &str,
+    ds: &[ace_core::atom_text::Diagnostic],
+) -> ! {
+    let causes: Vec<serde_json::Value> = ds
+        .iter()
+        .map(|d| {
+            serde_json::json!({
+                "stage": d.stage.as_str(),
+                "code": d.code,
+                "message": d.message,
+                "span": { "start": d.span.start, "end": d.span.end },
+            })
+        })
+        .collect();
+    let diagnostics = serde_json::json!({
+        "schema": "a2x.source-diagnostic/1",
+        "mode": "typed-negative/1",
+        "producer": "a2x-worker",
+        "profile": profile,
+        "path": path,
+        "source_sha256": source_sha256,
+        "source_len": src.len(),
+        "causes": causes,
+        "primary": 0,
+    });
+    println!(
+        "{}",
+        serde_json::json!({ "status": "error", "detail": detail, "diagnostics": diagnostics })
+    );
+    std::process::exit(2);
+}
+
 fn ok_base(recipe: &str) -> serde_json::Value {
     serde_json::json!({
         "status": "ok",
@@ -253,7 +297,14 @@ fn emit(v: &serde_json::Value) -> EmitOutcome {
                 .map(|d| format!("{}: {}", d.code, d.message))
                 .collect::<Vec<_>>()
                 .join("; ");
-            fail(&format!("frontend diagnostics: {}", detail));
+            fail_source_diagnostics(
+                &format!("frontend diagnostics: {}", detail),
+                v["source_path"].as_str().unwrap_or(""),
+                &src,
+                &source_sha256,
+                &profile,
+                &ds,
+            );
         }
     };
     let view = match SemanticView::from_checked(&compiled.checked) {
@@ -429,7 +480,14 @@ fn emit_c(v: &serde_json::Value) -> EmitOutcome {
                 .map(|d| format!("{}: {}", d.code, d.message))
                 .collect::<Vec<_>>()
                 .join("; ");
-            fail(&format!("a2x.compile: {detail}"))
+            fail_source_diagnostics(
+                &format!("a2x.compile: {detail}"),
+                v["source_path"].as_str().unwrap_or(""),
+                &src,
+                &source_sha256,
+                &profile,
+                &ds,
+            );
         }
     };
     let view = match SemanticView::from_checked(&compiled.checked) {

@@ -60,6 +60,9 @@ impl AutoVM {
         // Plan 419: RC 不在此建条目 —— 对象出世时尚无 owned slot,
         // 首次 rc_push/rc_retain 建条目(计数语义见 rc.rs 模块注释)。
         self.rc_created_total.fetch_add(1, Ordering::Relaxed);
+        // PLAN-1000 R02:avm — allocation-fault seam ordinal (single heap
+        // birth choke point; off by default, see AutoVM::alloc_fault_at).
+        self.alloc_ordinal.fetch_add(1, Ordering::Relaxed);
         // PLAN-062: 任何堆对象出世都算状态面突变（列表/对象字面量、JSON
         // 解析中间体、桥接实参物化等）。
         self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);

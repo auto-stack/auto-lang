@@ -314,3 +314,34 @@ case {
   ]
 }
 ```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.red.i12-avm"
+  tags: ["ace-m1", "diagnostic", "native-diags-911", "control-red"]
+  links: ["PLAN-911"]
+  source: { file: "src/B01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm-wrong-value", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "15" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.red.i12-a2r"
+  tags: ["ace-m1", "diagnostic", "native-diags-911", "control-red"]
+  links: ["PLAN-911"]
+  source: { file: "src/B01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "a2r-wrong-golden", adapter: "a2r", action: "emit", options: { module_name: "m1_b01" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b01.rs", file: "oracle/m1_k01.rs", compare: "bytes" } ] } },
+  ]
+}
+```

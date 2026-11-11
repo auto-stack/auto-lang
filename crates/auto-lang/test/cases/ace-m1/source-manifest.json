@@ -353,7 +353,7 @@
       "nb-diags-908.case.ad": "dcf7401aa1cb0892d9eda86009b727e01ca1fabfb7e6d30a6e64cc0454d5cdfb",
       "resident-online-866.case.ad": "4c65887d4da9f4499f6b0e1b71878f236d0bee810882d305dfc47ed8eb2b144b",
       "session-lifecycle.case.ad": "786d105a339d03dd7e474b0c875b422ef6545e8b3994d256cdda694f9d9f3db5",
-      "t-r-native.case.ad": "a1f3a3f033b6d43ad8641f3e5d9877088e6915f2651f9f8a5569d4eccec3bf2a",
+      "t-r-native.case.ad": "80a532ee3890d37f0d3a7154e850b97f300a70e4a077925fd15d8cdc5b97f63f",
       "text-source-894.case.ad": "9bc45d99308c8f4f5ee8ccc0103b709d87c5fa7cbe227de307c2146a4b595851",
       "entry-862/entry-unit-862.suite.ad": "af0f77004930570714cb4a75111b69a9eb4db39fc1e381169812200f94851657",
       "entry-862/entry-unit-862.case.ad": "013240d15cfd3977268050abbdbaac29dda658aaa8500856716168cc2bdd1476",
@@ -398,8 +398,8 @@
       "console-863/src/O13.at": "49834a7ad8e1fd98749e0a1f7f504c3edc3b15d0bf9f0e234da23c95135684d5",
       "console-863/src/O14.at": "1646d2c8de2fcc26c1ba6abd0c9b02944a89eb713362378ae5e252dbae77da36",
       "console-863/src/O15.at": "31f4331fbfc8d334223a7858f156b84c89095aaeb34ecf37b1cbf0a07fb0a709",
-      "native-diags-911.suite.ad": "d07b0557b7ca00a2ec3a795c4bd9479ef0e6fdea98819f1106937969a49098af",
-      "native-diags-911.case.ad": "e31da4e17c0fc3c4fac2bf04d3e5155d31293fd3eca91fc12258b49239370d14",
+      "native-diags-911.suite.ad": "69646bf2ee2d22b160089c70aa295369bf0ecd10a8bf5ea843cde53e1b634844",
+      "native-diags-911.case.ad": "be01ca54fe6602a0f2a9ea00112d9fa3a206a24ac6a9b7371715ddfe23ae44dd",
       "nd911-src/B17V.at": "308b849a45877035868df3c97f4ef10d3a6fb9a0baded600c064d0149bb79cd3",
       "nd911-src/B18V.at": "67649ea7c54db8a8db52cfa8d7d69d950e30efe104450411704c319764be5e4e",
       "nd911-src/B19V.at": "6ec3bdcf3c21f149888882079ffea4ca5a73535a7e9dd7c090d3f54a0eb6ecdd",
@@ -442,9 +442,10 @@
   },
   "scenario_assets": {
     "dir": "order-layout-914",
-    "expected_count": 13,
+    "expected_count": 14,
     "files": {
-      "E01-E02.case.ad": "bcbca6ee625898f9e4e64bf7b3b14cde33ba9b58dae876fb88059c6372306cf2",
+      "E01-E02.case.ad": "67216c727df29313af754bd12c27d2f13956ad7fdf49b8f880106f8ff0acf7fb",
+      "src/B09-914.at": "66cfe6d5ec89f26568ad16359e6564fe4ef2bc8edc53b0f4175e5c5962fad5b6",
       "oracle/m1_e01.rs": "7acd93d06e59ef3ba32a87c51d12f97724a764514b32effbfbf6993eabe31fa3",
       "oracle/m1_e02.rs": "ac4ae99cc81ba1481430d13b7490bd81910000faa2afbdef35e84d807029b4aa",
       "order-layout-914.suite.ad": "6cf8f0960ad31e3cc1fcb0330f2537395df970ffa6d7ccded8db818c2f33bbe4",
@@ -467,7 +468,7 @@
     "dir": "resource-915",
     "expected_count": 9,
     "files": {
-      "resource-915.case.ad": "867111701c722e8a48323ed26ee089a1638d05071262bd628761ebfb75ca0c32",
+      "resource-915.case.ad": "4d9e43bebf0f5992463a1adf17259c6990d097fa3f5a250f531fd58db3d5f28a",
       "resource-915.suite.ad": "19c8e93a5fe9dfd691d18f82f3b93664ed83d4b87378c8676162b21606075bc8",
       "src/K02-915.at": "be2e36e09e0a6e3d4929aaa2d7f6ee84c00793db0c6f86e65797d33f6ee42376",
       "src/L04-915.at": "a79b03e53e6e82bda9000a1b6cd1bcfae695d4cc427928261e9d13bda19b0b99",
@@ -491,7 +492,7 @@
     "expected_count": 7,
     "files": {
       "resource-events-919.suite.ad": "d63242b0cbc3b191fa7d0d7852536d6c9c4a3798fabd57a53808f1a649c422dc",
-      "resource-events.case.ad": "17f05dd2bee37dee256756c1cb65bb15d6975c0a51ee65d3c9aa7805c28ec192",
+      "resource-events.case.ad": "0ca6fdbd5fa0d9e32ad4514f4e3f4e8864bc32ad3f064f66e46b858736c01ae3",
       "src/R01-mn.at": "8717940e7dd16edc169228a26cb84c8caf1f5c83352785e422ce7e8fe06ebdd7",
       "src/R01-owned.at": "b34aabb67fa6d43700f1db60799202c82177bcd02153c64a16566be7f92fbe1c",
       "src/R04-919.at": "80b1d5639e6941b44d02135d6bacf3eae6cbd69b27bceda9d30e1d7ffa2fef2a",
@@ -523,7 +524,7 @@
     "expected_count": 4,
     "files": {
       "native-closures-924.suite.ad": "e9400afdbddb9d5164832eeeedfde20c6ec6cfad1f8a6f0909ef0b1374e81f19",
-      "native-closures-924.case.ad": "7e6eb07e619de80cf948775d197721f16bfc5b28eff08c3032bbe01c660f3437",
+      "native-closures-924.case.ad": "7fc27081f57012ccb2eaae970f901ec618bad953172f063ec69815624058a815",
       "src/K02-924.at": "be2e36e09e0a6e3d4929aaa2d7f6ee84c00793db0c6f86e65797d33f6ee42376",
       "src/K05-924.at": "1e72b1adeff6d5a313c9f7602142189df9ec21ea6cf14e026fd921068d07e87e"
     }

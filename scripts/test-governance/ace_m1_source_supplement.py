@@ -11,7 +11,7 @@ CATALOG='crates/auto-lang/test/cases/ace-m1-expanded/source-supplement-contracts
 CATALOG_SHA='f0642c510f36ac682c71a1ad66228f4ca103162388f8dd3b7c124a2e5c66b6b6'
 FIELDS='family case profile caps source_file source_sha256 oracle_kind oracle_value marks trace origin_case_file origin_case_sha256 origin_case_id origin_check origin_group'.split()
 CONTRACT='crates/auto-lang/test/cases/ace-m1-expanded/source-supplement-q4-contract.json'
-CONTRACT_SHA = 'cc1f45c307dd2b1e6c2f393c21fff06e608fce894c8e7497ef7105522d7b18d4'
+CONTRACT_SHA = '4e33debd92b12e6fd916b15c024e4d72c67b76e47f97b75966bc8f2c1dfdce6e'
 SUITE='crates/auto-lang/test/cases/ace-m1-expanded/source-supplement.suite.ad'
 ORIGINALS={'c01':('921','C01','value','42'), 'c02':('921','C02','trap','DivOverflow'),
            'c03':('921','C03','value','61'), 'named-01':('892','NAMED-01','value','23')}

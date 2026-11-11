@@ -33,6 +33,8 @@ def main():
     parser.add_argument("--file", required=True, type=Path)
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--case", action="append", default=[])
+    parser.add_argument("--case-file", type=Path, default=None,
+                        help="one exact case id per line (Windows argv relief)")
     args = parser.parse_args()
     tests = load_tests(args.file)
     if args.list:
@@ -44,20 +46,25 @@ def main():
                 or getattr(getattr(t, t._testMethodName), "__unittest_skip__", False))}
             for t in tests]}))
         return 0
-    if not args.case or len(args.case) != len(set(args.case)):
-        raise ValueError("execution requires nonempty, distinct exact --case IDs")
+    # --case-file: Windows argv relief for large suites (one id per line),
+    # merged with any --case entries; order follows argv then file.
+    cases = list(args.case)
+    if args.case_file is not None:
+        cases += [line for line in args.case_file.read_text(encoding='utf-8').splitlines() if line.strip()]
+    if not cases or len(cases) != len(set(cases)):
+        raise ValueError("execution requires nonempty, distinct exact case IDs")
     known = {t.id(): t for t in tests}
-    if set(args.case) - known.keys():
-        raise ValueError("unknown unittest identity: " + str(sorted(set(args.case) - known.keys())))
-    suite = unittest.TestSuite(known[name] for name in args.case)
+    if set(cases) - known.keys():
+        raise ValueError("unknown unittest identity: " + str(sorted(set(cases) - known.keys())))
+    suite = unittest.TestSuite(known[name] for name in cases)
     with contextlib.redirect_stdout(sys.stderr):
         result = unittest.TextTestRunner(stream=sys.stderr, verbosity=2).run(suite)
-    report = {"schema": "python-unittest-result/1", "selected": args.case,
+    report = {"schema": "python-unittest-result/1", "selected": cases,
               "executed": result.testsRun, "skipped": [(t.id(), reason) for t, reason in result.skipped],
               "failures": [t.id() for t, _ in result.failures], "errors": [t.id() for t, _ in result.errors]}
     print(json.dumps(report))
     # A dynamic skip is evidence of an unmet condition, never a module pass.
-    return 0 if result.wasSuccessful() and not result.skipped and result.testsRun == len(args.case) else 1
+    return 0 if result.wasSuccessful() and not result.skipped and result.testsRun == len(cases) else 1
 
 
 if __name__ == "__main__":

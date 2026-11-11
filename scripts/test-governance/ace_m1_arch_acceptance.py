@@ -267,14 +267,21 @@ def reduce_acceptance(gates, accounting_valid, evidence_complete, cert_gaps, awa
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description='Read-only bounded M1 evidence preview; full acceptance remains incomplete')
-    parser.add_argument('--first-slice-preview', action='store_true')
+    parser = argparse.ArgumentParser(description='Bounded M1 evidence composition: preview (ineligible) or formal acceptance')
+    parser.add_argument('--first-slice-preview', action='store_true',
+                        help='read-only bounded preview; always ineligible, exit 1')
+    parser.add_argument('--acceptance', action='store_true',
+                        help='formal acceptance mode: exit 0 only when every domain gate, '
+                             'evidence completeness and zero blockers are all closed; '
+                             'composed-but-unsigned is exit 1; bad identity/format is exit 2')
     parser.add_argument('--repo')
     parser.add_argument('--evidence')
     parser.add_argument('--bindings')
     args = parser.parse_args()
-    if not args.first_slice_preview or not all((args.repo, args.evidence, args.bindings)):
-        parser.error('only --first-slice-preview with explicit --repo/--evidence/--bindings is available')
+    if bool(args.first_slice_preview) == bool(args.acceptance):
+        parser.error('exactly one of --first-slice-preview or --acceptance is required')
+    if not all((args.repo, args.evidence, args.bindings)):
+        parser.error('explicit --repo/--evidence/--bindings is required')
     try:
         from ace_m1_first_slice import compose_first_slice
         report = compose_first_slice(args.repo, args.evidence, args.bindings)
@@ -283,7 +290,18 @@ if __name__ == "__main__":
             raise ResourceError('preview report exceeds 4 MiB')
         sys.stdout.buffer.write(raw + b'\n')
     except (ValueError, OSError, KeyError, TypeError, RecursionError, MemoryError) as error:
-        print('PLAN-941 evidence refused: ' + str(error), file=sys.stderr)
+        print('PLAN-1000 evidence refused: ' + str(error), file=sys.stderr)
         raise SystemExit(2)
-    # Preview is always ineligible, including a fully green bounded first slice.
-    raise SystemExit(1)
+    if args.first_slice_preview:
+        # Preview is always ineligible, including a fully green bounded first slice.
+        raise SystemExit(1)
+    # PLAN-1000 T-10 formal mode: the total predicate alone decides. A
+    # composition whose acceptance block reports can_claim_expanded_m1=true
+    # (all eight domain gates, complete evidence, zero blockers) exits 0 and
+    # is signable; anything else exits 1 unsigned. Refusals above exit 2.
+    acceptance = report.get('acceptance') or {}
+    if acceptance.get('can_claim_expanded_m1') is not True:
+        blockers = acceptance.get('blockers') or ['unknown']
+        print('PLAN-1000 acceptance NOT signable: ' + ','.join(str(b) for b in blockers), file=sys.stderr)
+        raise SystemExit(1)
+    raise SystemExit(0)

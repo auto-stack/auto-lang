@@ -8,7 +8,7 @@ ARCH = 'ARCH-04/instance-child-ct-version'
 TRUE = 'crates/auto-lang/test/cases/ace-m1/source-cte-936/src/pick40.at'
 FALSE = 'crates/auto-lang/test/cases/ace-m1-expanded/ct-mechanisms/pick42.at'
 CONTRACT = 'crates/auto-lang/test/cases/ace-m1-expanded/ct-child-contract.json'
-CONTRACT_SHA = 'e4e001d9ae717e25d95c906fb71dd8ed91869a441124feddbeda21bd451cb35b'
+CONTRACT_SHA = 'ef2fb7b2d9399624b4daae185b9cc040a847785e19613a02b8c3f02b67504622'
 
 
 def validate_payload(document, source_true, source_false):

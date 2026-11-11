@@ -427,6 +427,7 @@ impl Codegen {
                 // runtime value — push a placeholder 0 (shouldn't happen in
                 // correct code; the method-call path intercepts it first).
                 let _ = name;
+
                 self.emit(OpCode::CONST_I32);
                 self.emit_i32(0);
             }

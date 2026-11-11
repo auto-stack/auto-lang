@@ -1,6 +1,8 @@
 # PLAN-911 native source-diagnostic suite — independent of the frozen 852
 # base suite (36 cases / 97 checks unchanged) and the 908 near-neighbor
-# suite (3 cases / 9 checks unchanged). 17 cases / 17 checks (14 green incl. one warm rounds strict leg + 3 registered red controls).
+# suite (3 cases / 9 checks unchanged). 19 cases / 19 checks (14 green
+# incl. one warm rounds strict leg + 5 registered red controls: the 911
+# trio + the PLAN-1000 I12 avm/a2r adapter-sibling legs).
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-native-diags-911", include: [

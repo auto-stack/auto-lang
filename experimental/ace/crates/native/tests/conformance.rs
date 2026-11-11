@@ -48,6 +48,8 @@ mod gap_closure;
 mod host_console_compat;
 #[path = "cases/incremental_tier.rs"]
 mod incremental_tier;
+#[path = "cases/incremental_churn_gc_1000.rs"]
+mod incremental_churn_gc_1000;
 #[path = "cases/numeric_codegen_tier.rs"]
 mod numeric_codegen_tier;
 #[path = "cases/parity_tier.rs"]

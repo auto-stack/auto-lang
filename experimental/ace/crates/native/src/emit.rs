@@ -261,14 +261,25 @@ pub struct UnitObject {
 
 /// Lower and emit one verified MIR unit to a relocatable COFF object.
 pub fn emit_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
-    emit_unit_coff_impl(unit, None, None).map(|(object, _)| object)
+    emit_unit_coff_impl(unit, None, None, lower::LowerMode::Numeric).map(|(object, _)| object)
+}
+
+/// PLAN-1000 F-1000-01 (owner option a): the trap-probe observation build
+/// of one unit — the production `Numeric` lowering with reason-carrying
+/// trap branches (`mn_typed_trap` import, resolved by the typed-entry
+/// runtime at the probe link). Probe objects are never cached, never
+/// published and never production artifacts; only `MnDriver::trap_probe`
+/// links and runs them.
+pub fn emit_unit_coff_trap_probe(unit: &MirModule) -> Result<UnitObject, MnError> {
+    emit_unit_coff_impl(unit, None, None, lower::LowerMode::TrapProbe).map(|(object, _)| object)
 }
 
 pub fn emit_foreign_unit_coff(
     unit: &MirModule,
     environment: &ace_foreign_contract::manual::AdmittedForeign,
 ) -> Result<UnitObject, MnError> {
-    emit_unit_coff_impl(unit, Some(environment), None).map(|(object, _)| object)
+    emit_unit_coff_impl(unit, Some(environment), None, lower::LowerMode::Numeric)
+        .map(|(object, _)| object)
 }
 
 /// Keep the exact output reservation through the caller's cache handoff.
@@ -277,7 +288,12 @@ pub fn emit_foreign_unit_coff_reserved(
     environment: &ace_foreign_contract::manual::AdmittedForeign,
     resources: &ace_source_query::resources::Resources,
 ) -> Result<(UnitObject, ace_source_query::resources::Reservation), MnError> {
-    let (object, reservation) = emit_unit_coff_impl(unit, Some(environment), Some(resources))?;
+    let (object, reservation) = emit_unit_coff_impl(
+        unit,
+        Some(environment),
+        Some(resources),
+        lower::LowerMode::Numeric,
+    )?;
     Ok((object, reservation.expect("host-backed COFF reservation")))
 }
 
@@ -306,6 +322,7 @@ fn emit_unit_coff_impl(
     unit: &MirModule,
     environment: Option<&ace_foreign_contract::manual::AdmittedForeign>,
     resources: Option<&ace_source_query::resources::Resources>,
+    mode: lower::LowerMode,
 ) -> Result<(UnitObject, Option<ace_source_query::resources::Reservation>), MnError> {
     if let Some(environment) = environment {
         admit_unit_shape(unit)?;
@@ -427,7 +444,11 @@ fn emit_unit_coff_impl(
         // PLAN-961: the source lane emits in Numeric mode (the Legacy
         // surface plus the numeric carriers/ops — identical objects for
         // numeric-free programs).
-        lower::LowerMode::Numeric,
+        // PLAN-961: the source lane emits in Numeric mode (the Legacy
+        // surface plus the numeric carriers/ops — identical objects for
+        // numeric-free programs). PLAN-1000: the trap probe passes
+        // `TrapProbe` — the same value surface, reason-carrying traps.
+        mode,
     )
     .map_err(|e| MnError::Backend(e))?;
     om.define_function(fid, &mut ctx)

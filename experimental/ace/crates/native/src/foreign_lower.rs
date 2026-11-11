@@ -125,7 +125,9 @@ pub fn signature(declaration: &SourceDecl) -> Result<Signature, String> {
 /// pointer whose ctx value is the SIGN-EXTENDED i32 seed param adjacent to
 /// it; handles cross as I64; the fallible form appends the trailing out
 /// pointer and returns the i32 status.
-pub fn resource_signature(res: &ace_foreign_contract::resource::ResourceSig) -> Result<Signature, String> {
+pub fn resource_signature(
+    res: &ace_foreign_contract::resource::ResourceSig,
+) -> Result<Signature, String> {
     use ace_foreign_contract::resource::{ResKind, ResOut, ResourceForm};
     res.validate()?;
     let mut signature = Signature::new(CallConv::WindowsFastcall);
