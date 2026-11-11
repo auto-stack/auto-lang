@@ -13,7 +13,7 @@ new_spec_components: [docs/specs/auto-test-case/fixed-regression-baseline-and-ow
 touched_goals: [GOAL-002]
 
 affects: [auto-test-case, auto-macros, auto-media-core, stdlib]
-current_step: 11
+current_step: 12
 total_steps: 12
 ---
 
@@ -216,7 +216,7 @@ A-01五项：`certify_dry_run_b01`、`a2r_hir_first_case_green`、`a2r_hir_worke
 | T-09 | work | T-01..08 | 冻结H/受影响完整组证据，七B债务闭账去重、A-01五项当前裁定/阻断及owner，准备SD与1013最终输入清单 | V-13/14/16，AC-08；七B未闭不进execution_done，九work齐才可交review | [x] |
 | T-10 | review | T-09，独立上下文 | 同树停写，从实际代码/原件核全部AC/适用V/SD、转移守恒/独立oracle、遗漏/健康与债务，绑定最终H | V-14，AC-09；merge未来项只审合同，不预勾已执行；needs_fix回work | [x] |
 | T-11 | merge | T-10 pass | 冻结完整职责组并集有效证据对账，落地C/沉淀SD-01..06；主检出单实例一次正式cargo t all，收据按真实结果更新，记录1013 config/runner/tool输入身份 | V-15/16，AC-10落地；all红不标完成，不重写历史covered1005收据冒当时全绿 | [x] |
-| T-12 | merge | T-11 | 折叠原件/反控/全量门摘要到Plan；归档、核所有实际输出/活动进程/链接/具名持有，wt-guard clean后清树/scope并刷新retention/终态 | V-16，AC-10实际清理；未知归属不盲删，真实12/12才delivered | [ ] |
+| T-12 | merge | T-11 | 折叠原件/反控/全量门摘要到Plan；归档、核所有实际输出/活动进程/链接/具名持有，wt-guard clean后清树/scope并刷新retention/终态 | V-16，AC-10实际清理；未知归属不盲删，真实12/12才delivered | [x] |
 
 下一依赖就绪任务T-01；本轮不启动。T-02为既有批准语义/预算内有界调查，不是重复许可；支持域/验收阈值/外仓写入需实质改变时才另行裁定。
 
@@ -317,6 +317,19 @@ stage: review | review_scope: final | reviewer_identity: 独立子代理上下�
 - 执行数 2917→4524 逐项解释：auto-lang-core 守卫修复解封 1602 例（本包 B-02 直接产出）+@1005 后各计划（1006..1013 落地窗）组内自然增长；3 原条件NA 不变（aavm/a2r-actor-tests/auto-vm）。六红全绿于本门（auto-lsp 退役、macros 13/13、sys 绿、core 1602 绿、media 54/54、pilot 拆分组绿）。零新回归归因于 1006..1014 落地窗。
 - 收据：`docs/plans/.last-batch-regression.json` 更新为 covered1014@82fc90f86、verdict=known-reds-only（单一分诊红=plan988 预算边界，含直跑功能绿证据与 owner 交接）；不重写 @1005 历史收据。批量收据提交＝receipt commit。
 - 1013 config/runner/tool 输入身份：C=82fc90f86；test-groups.toml/fixed-tests.py/toolchains.json 以该提交为冻结对象（1013 按其合同自取 hash 重采，见 §9.1 交接清单）。
+
+
+### T-12 清理与终态收据（2026-11-12）
+
+- archived：`docs/plans/archive/1014-fixed-regression-baseline-and-owned-execution-repair.md`（git mv 因源未跟踪改普通 move+add，提交 0d817f247；status=archived；docs 已入默认分支——非磁盘假归档）。
+- cleaned：wt-guard clean（无 reparse point）→ `git worktree remove D:/autostack/.wt/lang-1014/auto-lang` → `git branch -d codex/plan-1014-dev`（was 82fc90f86）→ 组目录 `D:/autostack/.wt/lang-1014` 已删；构建中间产物随树消亡未回收；`D:/autostack/plan-artifacts/plan-1014/` 整scope删除（探针/日志/差分摘录已折叠为 §9.1/T-11 摘要）；`.retention/policy.json` 刷新（deleted-at-merge，无具名持有——plan988 预算边界为 KNOWN-DEBT 在途条目 D-1014-P988-BUDGET+批量收据记录，非文件持有）。
+- 收尾路径对账：本计划命令实际输出的目录＝worktree target（随树删）、主检出 target（正常构建目录，批量收据 run-dey_vny4 在其 test-groups 下）、系统 TEMP 日志（/tmp/*.log，瞬态）、plan-artifacts scope（已删）。无第二证据目录、无其他盘符输出、无链接。主检出并行 WIP（1015/1006 簿记+design docs）原样保留未纳入本包提交。
+- 落地检查（stale-artifact 观察项）：语言仓无运行时服务/发行产物须随merge重建；PATH 工具（auto.exe 等）与主检出 target 内二进制由既有 D-1001-R5 工具刷新债跟踪，本次未新增部署面。批量门已在落地提交上真实执行（covered1014）。
+- 最终账：**12/12 delivered**（work9+review1+merge2）；六红全闭、七B全闭、A-01 1绿4红triage交1013、SD-01..06 沉淀于 82fc90f86。
+
+### merge 终收据
+
+stage: merge | plan_id: PLAN-1014 | plan_revision: r1 | outcome: **pass** | delivery_commit: 82fc90f86（ff-only 线性落地）| receipts: 批量收据 0b80224b1、归档 0d817f247 | canonical Spec paths: docs/specs/auto-test-case/fixed-regression-baseline-and-ownership.md（add, 088f23c34a3bf817）、build-storage-lifecycle.md（72b4ad7a82c630bb）、ace-test-policy.md（9b977b100b544f59）、auto-macros/project.md（de52daac152a0ff5）、auto-media-core/project.md（f29678e8ebe83a70）、stdlib/project.md（0390cd46e282c65d）| archive: docs/plans/archive/1014-*.md | cleanup: worktree/branch/group/scope 全清，registry 刷新 | pending merge-owned gates: 无（正式批量门已执行并出具 known-reds-only 收据，plan988 预算边界为具名债 D-1014-P988-BUDGET，非未决门）
 
 ## 10. 待澄清事项
 
