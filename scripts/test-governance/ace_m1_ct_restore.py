@@ -1,4 +1,5 @@
 """Strict S936 disk restore slice. Other restore owners remain unobserved."""
+import os
 import re
 from ace_m1_arch_acceptance import EvidenceScope, counter, exact_keys
 from ace_m1_case_evidence import require
@@ -44,7 +45,11 @@ def validate_payload(document, sources):
     typed_equal(document['sources_hex'], [s.hex() for s in sources], 'actual restore source bytes')
     for name in ('store_root_hex', 'trap_code_hex', 'missing_code_hex'): hex_text(document[name], 'restore '+name)
     root = bytes.fromhex(document['store_root_hex']).decode().replace('\\', '/').removeprefix('//?/')
-    require(re.fullmatch(r'D:/autostack/plan-artifacts/plan-941/ct-restore-store-[0-9]+-[0-9]+', root) is not None, 'owned actual restore store scope')
+    # PLAN-1005: the registered scope root is parameterized the same way the
+    # observer is (AUTO_PLAN_941_SCOPE_ROOT, default keeps the 941 root); the
+    # store must still live inside the canonicalized registered scope.
+    scope_root = os.environ.get('AUTO_PLAN_941_SCOPE_ROOT', 'D:/autostack/plan-artifacts/plan-941').replace('\\', '/')
+    require(re.fullmatch(re.escape(scope_root) + r'/ct-restore-store-[0-9]+-[0-9]+', root) is not None, 'owned actual restore store scope')
     values = document['owner_values']
     require(type(values) is list and len(values) == 11 and all(type(v) is int and -(1<<31) <= v < (1<<31) for v in values), 'eleven actual checked owner values')
     for phase in PHASES: state(document[phase])
