@@ -59,8 +59,6 @@ def admit_review_credential(inputs, evidence, binding, composition, frozen_commi
             typed_equal(current_rows.get(key), verdict, f'candidate row drift: {key}')
     require(candidate.get('can_claim_expanded_m1') is False,
             'pre-signature candidate is never signable on its own')
-    typed_equal(candidate.get('parent_bindings_sha256'), composition['parent_bindings_sha256'],
-                'candidate bindings identity')
     typed_equal(candidate.get('admission_sources'), composition['admission_sources'],
                 'candidate admission-source identity')
 
@@ -84,8 +82,13 @@ def admit_review_credential(inputs, evidence, binding, composition, frozen_commi
     exact_keys(candidate_block, CANDIDATE_FIELDS, 'credential candidate binding')
     hash_value(candidate_block['bindings_sha256'], 'credential bindings sha')
     hash_value(candidate_block['pre_signature_report_sha256'], 'credential candidate sha')
-    typed_equal(candidate_block['bindings_sha256'], composition['parent_bindings_sha256'],
-                'credential binds the actual composition bindings')
+    # The pre-signature candidate was composed WITHOUT the credential binding;
+    # its bindings identity binds the credential verbatim from the candidate
+    # document — never the final composition's necessarily-larger bindings
+    # document. Acyclic by construction (§5.3): R binds the candidate, the
+    # final report references R's own hash.
+    typed_equal(candidate.get('parent_bindings_sha256'), candidate_block['bindings_sha256'],
+                'credential binds the actual pre-signature bindings')
     typed_equal(candidate_block['pre_signature_report_sha256'], candidate_digest,
                 'credential binds the actual pre-signature candidate')
 
