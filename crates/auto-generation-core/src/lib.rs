@@ -1,5 +1,6 @@
 //! Restricted shared generation mechanisms, single-source HTTP/non-HTTP foundation.
 //! No server policy, HTTP template, UI/Man/Tauri dependency or facade back edge.
+pub mod commit;
 pub mod generated_build;
 pub mod rust_workspace;
 pub mod shared_generation;

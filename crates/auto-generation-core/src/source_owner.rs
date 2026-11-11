@@ -410,149 +410,162 @@ pub fn valid_source_crate(source: &Path, name: &str) -> bool {
     source.join(lib_path).is_file()
 }
 
-/// Validate local Cargo path dependencies for an unmanaged development
-/// source before generating a workspace. Cargo resolves local paths even when
-/// optional; registry dependencies and ordinary source edits remain allowed.
-pub fn validate_development_dependencies(source: &Path) -> AutoResult<()> {
-    use std::collections::{BTreeMap, BTreeSet};
-    fn workspace(dir: &Path, manifest: &toml::Value) -> Option<(PathBuf, toml::Value)> {
-        if let Some(relative) = manifest
-            .get("package")
-            .and_then(|p| p.get("workspace"))
-            .and_then(toml::Value::as_str)
-        {
-            let root = dir.join(relative);
-            let doc = fs::read_to_string(root.join("Cargo.toml"))
-                .ok()?
-                .parse::<toml::Value>()
-                .ok()?;
-            return doc.get("workspace").map(|_| (root.clone(), doc.clone()));
-        }
-        if manifest.get("workspace").is_some() {
-            return Some((dir.to_path_buf(), manifest.clone()));
-        }
-        for parent in dir.ancestors().skip(1) {
-            if let Ok(text) = fs::read_to_string(parent.join("Cargo.toml")) {
-                if let Ok(doc) = text.parse::<toml::Value>() {
-                    if doc.get("workspace").is_some() {
-                        return Some((parent.to_path_buf(), doc));
-                    }
+// ---- 本地 path 依赖图行走（校验与闭包枚举共用，PLAN-1006 T-02 抽出） ----
+use std::collections::{BTreeMap, BTreeSet};
+
+fn manifest_workspace(dir: &Path, manifest: &toml::Value) -> Option<(PathBuf, toml::Value)> {
+    if let Some(relative) = manifest
+        .get("package")
+        .and_then(|p| p.get("workspace"))
+        .and_then(toml::Value::as_str)
+    {
+        let root = dir.join(relative);
+        let doc = fs::read_to_string(root.join("Cargo.toml"))
+            .ok()?
+            .parse::<toml::Value>()
+            .ok()?;
+        return doc.get("workspace").map(|_| (root.clone(), doc.clone()));
+    }
+    if manifest.get("workspace").is_some() {
+        return Some((dir.to_path_buf(), manifest.clone()));
+    }
+    for parent in dir.ancestors().skip(1) {
+        if let Ok(text) = fs::read_to_string(parent.join("Cargo.toml")) {
+            if let Ok(doc) = text.parse::<toml::Value>() {
+                if doc.get("workspace").is_some() {
+                    return Some((parent.to_path_buf(), doc));
                 }
             }
         }
-        None
     }
-    fn read_package(dir: &Path) -> AutoResult<(PathBuf, toml::Value)> {
-        let canonical = fs::canonicalize(dir)
-            .map_err(|e| format!("producer 路径依赖缺失 {}: {e}", dir.display()))?;
-        let text = fs::read_to_string(canonical.join("Cargo.toml"))
-            .map_err(|e| format!("producer 路径依赖缺清单 {}: {e}", canonical.display()))?;
-        let doc: toml::Value = text
-            .parse()
-            .map_err(|e| format!("producer 路径依赖清单无效 {}: {e}", canonical.display()))?;
-        let name = doc
-            .get("package")
-            .and_then(|p| p.get("name"))
-            .and_then(toml::Value::as_str)
-            .ok_or_else(|| format!("producer 路径依赖缺包名: {}", canonical.display()))?;
-        if !valid_source_crate(&canonical, name) {
-            return Err(format!("producer 路径依赖缺库入口: {}", canonical.display()).into());
+    None
+}
+
+fn read_package(dir: &Path) -> AutoResult<(PathBuf, toml::Value)> {
+    let canonical = fs::canonicalize(dir)
+        .map_err(|e| format!("producer 路径依赖缺失 {}: {e}", dir.display()))?;
+    let text = fs::read_to_string(canonical.join("Cargo.toml"))
+        .map_err(|e| format!("producer 路径依赖缺清单 {}: {e}", canonical.display()))?;
+    let doc: toml::Value = text
+        .parse()
+        .map_err(|e| format!("producer 路径依赖清单无效 {}: {e}", canonical.display()))?;
+    let name = doc
+        .get("package")
+        .and_then(|p| p.get("name"))
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| format!("producer 路径依赖缺包名: {}", canonical.display()))?;
+    if !valid_source_crate(&canonical, name) {
+        return Err(format!("producer 路径依赖缺库入口: {}", canonical.display()).into());
+    }
+    Ok((canonical, doc))
+}
+
+fn package_version(dir: &Path, doc: &toml::Value) -> AutoResult<semver::Version> {
+    let value = doc.get("package").and_then(|p| p.get("version"));
+    let text = match value {
+        None => "0.0.0".to_owned(),
+        Some(value) if value.as_str().is_some() => value.as_str().unwrap().to_owned(),
+        Some(value) if value.get("workspace").and_then(toml::Value::as_bool) == Some(true) => {
+            let (_, ws) = manifest_workspace(dir, doc)
+                .ok_or_else(|| format!("producer 路径包版本缺工作区: {}", dir.display()))?;
+            ws.get("workspace")
+                .and_then(|w| w.get("package"))
+                .and_then(|p| p.get("version"))
+                .and_then(toml::Value::as_str)
+                .ok_or("producer 工作区包版本缺失")?
+                .to_owned()
         }
-        Ok((canonical, doc))
+        _ => return Err(format!("producer 路径包版本无效: {}", dir.display()).into()),
+    };
+    semver::Version::parse(&text)
+        .map_err(|e| format!("producer 路径包版本无效 {text}: {e}").into())
+}
+
+/// Walk the local path-dependency graph from `dir`. `include_dev=false`
+/// stops at dev-dependencies (delivery consumers never build them);
+/// validation still covers every visited package.
+fn walk_path_deps(
+    dir: &Path,
+    include_dev: bool,
+    graph: &mut BTreeMap<PathBuf, Vec<PathBuf>>,
+) -> AutoResult<()> {
+    let (canonical, doc) = read_package(dir)?;
+    // Cargo validates package versions even when every incoming edge is path-only.
+    package_version(&canonical, &doc)?;
+    if graph.contains_key(&canonical) {
+        return Ok(());
     }
-    fn package_version(dir: &Path, doc: &toml::Value) -> AutoResult<semver::Version> {
-        let value = doc.get("package").and_then(|p| p.get("version"));
-        let text = match value {
-            None => "0.0.0".to_owned(),
-            Some(value) if value.as_str().is_some() => value.as_str().unwrap().to_owned(),
-            Some(value) if value.get("workspace").and_then(toml::Value::as_bool) == Some(true) => {
-                let (_, ws) = workspace(dir, doc)
-                    .ok_or_else(|| format!("producer 路径包版本缺工作区: {}", dir.display()))?;
-                ws.get("workspace")
-                    .and_then(|w| w.get("package"))
-                    .and_then(|p| p.get("version"))
-                    .and_then(toml::Value::as_str)
-                    .ok_or("producer 工作区包版本缺失")?
-                    .to_owned()
+    let ws = manifest_workspace(&canonical, &doc);
+    let mut owners = vec![&doc];
+    if let Some(targets) = doc.get("target").and_then(toml::Value::as_table) {
+        owners.extend(targets.values());
+    }
+    let mut all = Vec::new();
+    let mut normal = Vec::new();
+    for owner in owners {
+        for section in ["dependencies", "dev-dependencies", "build-dependencies"] {
+            if section == "dev-dependencies" && !include_dev {
+                continue;
             }
-            _ => return Err(format!("producer 路径包版本无效: {}", dir.display()).into()),
-        };
-        semver::Version::parse(&text)
-            .map_err(|e| format!("producer 路径包版本无效 {text}: {e}").into())
-    }
-    fn walk(dir: &Path, graph: &mut BTreeMap<PathBuf, Vec<PathBuf>>) -> AutoResult<()> {
-        let (canonical, doc) = read_package(dir)?;
-        // Cargo validates package versions even when every incoming edge is path-only.
-        package_version(&canonical, &doc)?;
-        if graph.contains_key(&canonical) {
-            return Ok(());
-        }
-        let ws = workspace(&canonical, &doc);
-        let mut owners = vec![&doc];
-        if let Some(targets) = doc.get("target").and_then(toml::Value::as_table) {
-            owners.extend(targets.values());
-        }
-        let mut all = Vec::new();
-        let mut normal = Vec::new();
-        for owner in owners {
-            for section in ["dependencies", "dev-dependencies", "build-dependencies"] {
-                let Some(deps) = owner.get(section).and_then(toml::Value::as_table) else {
+            let Some(deps) = owner.get(section).and_then(toml::Value::as_table) else {
+                continue;
+            };
+            for (key, spec) in deps {
+                let (base, resolved) =
+                    if spec.get("workspace").and_then(toml::Value::as_bool) == Some(true) {
+                        let (root, ws_doc) = ws
+                            .as_ref()
+                            .ok_or_else(|| format!("producer 路径依赖缺工作区: {key}"))?;
+                        let value = ws_doc
+                            .get("workspace")
+                            .and_then(|w| w.get("dependencies"))
+                            .and_then(|d| d.get(key))
+                            .ok_or_else(|| format!("producer 工作区依赖缺声明: {key}"))?;
+                        (root.as_path(), value)
+                    } else {
+                        (canonical.as_path(), spec)
+                    };
+                let Some(path) = resolved.get("path").and_then(toml::Value::as_str) else {
                     continue;
                 };
-                for (key, spec) in deps {
-                    let (base, resolved) =
-                        if spec.get("workspace").and_then(toml::Value::as_bool) == Some(true) {
-                            let (root, ws_doc) = ws
-                                .as_ref()
-                                .ok_or_else(|| format!("producer 路径依赖缺工作区: {key}"))?;
-                            let value = ws_doc
-                                .get("workspace")
-                                .and_then(|w| w.get("dependencies"))
-                                .and_then(|d| d.get(key))
-                                .ok_or_else(|| format!("producer 工作区依赖缺声明: {key}"))?;
-                            (root.as_path(), value)
-                        } else {
-                            (canonical.as_path(), spec)
-                        };
-                    let Some(path) = resolved.get("path").and_then(toml::Value::as_str) else {
-                        continue;
-                    };
-                    let (target, target_doc) = read_package(&base.join(path))?;
-                    let actual = target_doc["package"]["name"].as_str().unwrap();
-                    let expected = resolved
-                        .get("package")
-                        .and_then(toml::Value::as_str)
-                        .unwrap_or(key);
-                    if actual != expected {
+                let (target, target_doc) = read_package(&base.join(path))?;
+                let actual = target_doc["package"]["name"].as_str().unwrap();
+                let expected = resolved
+                    .get("package")
+                    .and_then(toml::Value::as_str)
+                    .unwrap_or(key);
+                if actual != expected {
+                    return Err(format!(
+                        "producer 路径依赖 {key} 包身份不符：期望 {expected}，实际 {actual}"
+                    )
+                    .into());
+                }
+                if let Some(version) = resolved.get("version").and_then(toml::Value::as_str) {
+                    let req = semver::VersionReq::parse(version)
+                        .map_err(|e| format!("producer 依赖 {key} 版本约束无效: {e}"))?;
+                    let actual = package_version(&target, &target_doc)?;
+                    if !req.matches(&actual) {
                         return Err(format!(
-                            "producer 路径依赖 {key} 包身份不符：期望 {expected}，实际 {actual}"
+                            "producer 路径依赖 {key} 版本不符：{version} / {actual}"
                         )
                         .into());
                     }
-                    if let Some(version) = resolved.get("version").and_then(toml::Value::as_str) {
-                        let req = semver::VersionReq::parse(version)
-                            .map_err(|e| format!("producer 依赖 {key} 版本约束无效: {e}"))?;
-                        let actual = package_version(&target, &target_doc)?;
-                        if !req.matches(&actual) {
-                            return Err(format!(
-                                "producer 路径依赖 {key} 版本不符：{version} / {actual}"
-                            )
-                            .into());
-                        }
-                    }
-                    if section != "dev-dependencies" {
-                        normal.push(target.clone());
-                    }
-                    all.push(target);
                 }
+                if section != "dev-dependencies" {
+                    normal.push(target.clone());
+                }
+                all.push(target);
             }
         }
-        graph.insert(canonical, normal);
-        for target in all {
-            walk(&target, graph)?;
-        }
-        Ok(())
     }
+    graph.insert(canonical, normal);
+    for target in all {
+        walk_path_deps(&target, include_dev, graph)?;
+    }
+    Ok(())
+}
+
+fn assert_acyclic(graph: &BTreeMap<PathBuf, Vec<PathBuf>>) -> AutoResult<()> {
     fn visit(
         node: &PathBuf,
         graph: &BTreeMap<PathBuf, Vec<PathBuf>>,
@@ -574,13 +587,46 @@ pub fn validate_development_dependencies(source: &Path) -> AutoResult<()> {
         done.insert(node.clone());
         Ok(())
     }
-    let mut graph = BTreeMap::new();
-    walk(source, &mut graph)?;
     let mut done = BTreeSet::new();
     for node in graph.keys() {
-        visit(node, &graph, &mut BTreeSet::new(), &mut done)?;
+        visit(node, graph, &mut BTreeSet::new(), &mut done)?;
     }
     Ok(())
+}
+
+/// Validate local Cargo path dependencies for an unmanaged development
+/// source before generating a workspace. Cargo resolves local paths even when
+/// optional; registry dependencies and ordinary source edits remain allowed.
+pub fn validate_development_dependencies(source: &Path) -> AutoResult<()> {
+    let mut graph = BTreeMap::new();
+    walk_path_deps(source, true, &mut graph)?;
+    assert_acyclic(&graph)
+}
+
+/// PLAN-1006: enumerate the local build closure of the given producer
+/// crates — every reachable normal/build path dependency (workspace-aware,
+/// identity- and version-validated, cycle-checked). dev-dependencies are
+/// excluded: delivery consumers build the runtime graph only. Returns
+/// package name → canonical crate directory (deterministic, sorted).
+pub fn local_build_closure(roots: &[&Path]) -> AutoResult<BTreeMap<String, PathBuf>> {
+    let mut graph = BTreeMap::new();
+    for root in roots {
+        walk_path_deps(root, false, &mut graph)?;
+    }
+    assert_acyclic(&graph)?;
+    let mut closure = BTreeMap::new();
+    for dir in graph.keys() {
+        let (_, doc) = read_package(dir)?;
+        let name = doc
+            .get("package")
+            .and_then(|p| p.get("name"))
+            .and_then(toml::Value::as_str)
+            .ok_or_else(|| format!("producer 路径包缺包名: {}", dir.display()))?;
+        if closure.insert(name.to_string(), dir.clone()).is_some() {
+            return Err(format!("producer 闭包包名重复: {name}").into());
+        }
+    }
+    Ok(closure)
 }
 
 /// OS068 R-03 保守卫（纯函数，可单测）：auto-web 的 Cargo.toml 经
