@@ -133,6 +133,22 @@ unique=file-ID 去重（非 CoW 物理块）；NTFS 分配=unique（无压缩/�
   仍走 pac 分支（既有 CLI 缺陷，债务候选）。
 - 007 须重跑其 V-09/10 与受影响 fresh/locked（本页 V-01/02/03/08/09 为基线）。
 
+## 7b. 中立交付原语（PLAN-1006）
+
+`auto-generation-core` 拥有两个交付侧中立原语（无 Web/Man/UI 领域知识）：
+
+- `commit` 模块：staging 标记（schema `auto-staged-commit/1`，pid；仅同 pid 残留
+  被清扫，外来 staging 一律保留并具名报告）、拒未知非空根、prepare→verify→
+  backup/swap 提交事务（fail-point 注入、字节保全还原、`.auto-failed-*` 保留）、
+  洁净树拷贝（拒 junction/symlink，跳 target/.git/node_modules/__pycache__）与
+  确定性文件映射（sha256）。owner=auto-lang；消费方自带载荷构造与严格校验。
+- `source_owner::local_build_closure`：本地 path 依赖闭包枚举（normal/build 边，
+  workspace=true 解析，身份/版本校验+环检测；dev-dependency 不入闭包）。与
+  `validate_development_dependencies` 共用同一走法，开发模式行为不变。
+
+C/full 策略与开发生成路径不变；Web 成员交付（`auto service-export`）按
+[auto-web/docs/specs/generated-service-member-delivery.md] 消费这些原语。
+
 ## 8. 集中 workspace 研究附注（PLAN-942，2026-11-06）
 
 本节附研究事实；**910 默认（受管共享 target + 各应用独立生成 ws）保持不变**，
