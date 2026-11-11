@@ -30,7 +30,7 @@ from ace_m1_legacy import typed_equal
 
 CONTRACT = 'crates/auto-lang/test/cases/ace-m1-expanded/architecture-obligations.json'
 RECIPES = 'crates/auto-lang/test/cases/ace-m1-expanded/architecture-entry-recipes.json'
-RECIPES_SHA = '8f0e16b3492ad30951dfe6f6bf8b86ba1b79a412de46fe963fdf63c2f6dcc316'
+RECIPES_SHA = 'cab19420f86c756fc6145922b140970b2978ce4998f0020c994ee32baecd3f62'
 COMPOSER_FACTS = ('admission-peak-within-live-cap', 'document-byte-caps-enforced',
                   'denominator-and-honest-three-state', 'raw-terminal-bound-execution')
 REVIEW_ROW = 'ARCH-08/fresh-union-spec-review'
@@ -109,7 +109,18 @@ def _window_pins(evidence, root, closure):
     return before
 
 
-def admit_native_gate(inputs, evidence, root, group_name, closure):
+def _doc_transient(raw):
+    nodes = sum(raw.count(bytes([c])) for c in b'{}[],:')
+    return len(raw) + 1 + 7 * len(raw) + 256 * nodes + 4096
+
+
+def _retain(evidence, value):
+    """Reserve the compact bound of a small derived structure that stays live."""
+    raw = repr(value).encode('utf-8')
+    evidence.reserve(_doc_transient(raw))
+
+
+def admit_native_gate(inputs, evidence, root, group_name, closure, keep_events=None):
     """Full-group native admission: selection, terminals, receipts, identity.
 
     Returns {'commit', 'green', 'terminals', 'excluded', 'executed'}; every
@@ -123,7 +134,10 @@ def admit_native_gate(inputs, evidence, root, group_name, closure):
     window = _window_pins(evidence, root, closure)
     typed_equal(window['commit'], gate['commit'], 'native gate window commit')
     clean_state = hashlib.sha256(gate['commit'].encode() + b'[]').hexdigest()
-    summary = json.loads(evidence.read_bytes(root + '/results.json').decode('utf-8'))
+    summary_raw = evidence.read_bytes(root + '/results.json')
+    summary_transient = _doc_transient(summary_raw)
+    evidence.reserve(summary_transient - (len(summary_raw) + 1))
+    summary = json.loads(summary_raw.decode('utf-8'))
     require(type(summary) is dict, 'original parent summary required')
     typed_equal(summary.get('selected_groups'), [group_name], 'original single-group selection')
     typed_equal(summary.get('config_sha256'), config_digest(inputs), 'original group configuration')
@@ -134,7 +148,8 @@ def admit_native_gate(inputs, evidence, root, group_name, closure):
     result = summary['results'][0]
 
     listing_raw = evidence.read_bytes(root + '/discovery.stdout')
-    evidence.reserve(6 * len(listing_raw) + 4096)
+    listing_transient = _doc_transient(listing_raw)
+    evidence.reserve(listing_transient - (len(listing_raw) + 1))
     listing = json.loads(listing_raw.decode('utf-8'))
     binaries = {suite['binary-path'] for suite in listing['rust-suites'].values()
                 if suite.get('binary-path')}
@@ -158,16 +173,26 @@ def admit_native_gate(inputs, evidence, root, group_name, closure):
     selected, excluded = parent.enumerate_rust(listing, root=str(inputs.root))
     require(selected, 'native group selected zero actual tests')
     raw = evidence.read_bytes(root + '/run.stdout')
-    evidence.reserve(6 * len(raw) + 512 * len(selected) + 4096)
+    raw_transient = _doc_transient(raw) + 512 * len(selected)
+    evidence.reserve(raw_transient - (len(raw) + 1))
     text = raw.decode('utf-8', errors='strict')
     for line in text.splitlines():
         if line.startswith('{'):
+            before = evidence.reserved
             evidence.decode_json(line.encode('utf-8'))
+            # strict-JSON validation only: the decoded event dies immediately
+            frame = len(line.encode('utf-8')) + 1
+            evidence.budget.release_transient(evidence.reserved - before)
     known = {suite['package-name'] + '::' + suite['binary-name'] + '$' + name
              for suite in listing['rust-suites'].values() for name in suite.get('testcases', {})}
     terminals = parent.terminal_results(raw, selected, known - selected.keys())
     errors = terminals['errors']
     executed = len(terminals['results'])
+    # The raw listing/stream transients die here: only the compact per-row
+    # verdicts the recipes consume stay live for the rest of the composition.
+    evidence.budget.release_transient(listing_transient)
+    evidence.budget.release_transient(raw_transient)
+    del listing, listing_raw, raw, text, known
     command, _ = evidence.read_json(root + '/run.command.json')
     require(command['meter']['error'] is None and command['meter']['exit'] == command['exit'],
             'actual native process terminal')
@@ -184,11 +209,16 @@ def admit_native_gate(inputs, evidence, root, group_name, closure):
     require(all(row.get('ignored') is True for row in excluded), 'only ignored:true conditional exclusions')
     outcome = 'PASS' if command['exit'] == 0 and not errors else 'FAIL'
     typed_equal(result['outcome'], outcome, 'real native parent outcome')
+    rows = terminals['results']
+    if keep_events is not None:
+        rows = {name: row for name, row in rows.items() if name in keep_events}
+    evidence.budget.release_transient(summary_transient)
+    _retain(evidence, rows)
     return {'commit': gate['commit'], 'green': outcome == 'PASS',
-            'terminals': terminals['results'], 'excluded': excluded, 'executed': executed}
+            'terminals': rows, 'executed': executed}
 
 
-def admit_case_gate(inputs, evidence, root, group_name, closure):
+def admit_case_gate(inputs, evidence, root, group_name, closure, keep_checks=None):
     """Full-group Case admission: declared inventory, parent report, receipts.
 
     Returns {'commit', 'green', 'checks'} where checks maps (case, check) to
@@ -201,7 +231,10 @@ def admit_case_gate(inputs, evidence, root, group_name, closure):
     window = _window_pins(evidence, root, closure)
     typed_equal(window['commit'], gate['commit'], 'case gate window commit')
     clean_state = hashlib.sha256(gate['commit'].encode() + b'[]').hexdigest()
-    summary = json.loads(evidence.read_bytes(root + '/results.json').decode('utf-8'))
+    summary_raw = evidence.read_bytes(root + '/results.json')
+    summary_transient = _doc_transient(summary_raw)
+    evidence.reserve(summary_transient - (len(summary_raw) + 1))
+    summary = json.loads(summary_raw.decode('utf-8'))
     typed_equal(summary.get('selected_groups'), [group_name], 'original single-group selection')
     typed_equal(summary.get('config_sha256'), config_digest(inputs), 'original group configuration')
     typed_equal(summary.get('source_state'), clean_state, 'clean frozen producer window')
@@ -210,7 +243,8 @@ def admit_case_gate(inputs, evidence, root, group_name, closure):
             'one original case invocation')
 
     inventory_raw = evidence.read_bytes(root + '/inventory.stdout')
-    evidence.reserve(6 * len(inventory_raw) + 4096)
+    inventory_transient = _doc_transient(inventory_raw)
+    evidence.reserve(inventory_transient - (len(inventory_raw) + 1))
     inventory = json.loads(inventory_raw.decode('utf-8'))
     require(inventory.get('schema') == 'test-case-inventory/1', 'original TestCase inventory')
     checks = inventory['checks']
@@ -229,7 +263,10 @@ def admit_case_gate(inputs, evidence, root, group_name, closure):
     for row in overrides:
         if row['suite'] in suite_names and (row['case'], row['check']) in expectations:
             expectations[(row['case'], row['check'])] = row['expected_status']
-    report = json.loads(evidence.read_bytes(root + '/report.json').decode('utf-8'))
+    report_raw = evidence.read_bytes(root + '/report.json')
+    report_transient = _doc_transient(report_raw)
+    evidence.reserve(report_transient - (len(report_raw) + 1))
+    report = json.loads(report_raw.decode('utf-8'))
     require(type(report.get('results')) is list, 'original parent report rows')
     actual = {}
     for row in report['results']:
@@ -260,6 +297,12 @@ def admit_case_gate(inputs, evidence, root, group_name, closure):
     typed_equal(result['executed'], len(actual), 'case executed count matches the original report')
     outcome = 'PASS' if valid else 'FAIL'
     typed_equal(result['outcome'], outcome, 'real case parent outcome')
+    if keep_checks is not None:
+        actual = {key: row for key, row in actual.items() if key in keep_checks}
+    evidence.budget.release_transient(summary_transient)
+    evidence.budget.release_transient(inventory_transient)
+    evidence.budget.release_transient(report_transient)
+    _retain(evidence, actual)
     return {'commit': gate['commit'], 'green': outcome == 'PASS',
             'checks': actual, 'executed': len(actual)}
 
@@ -306,11 +349,56 @@ def admit_arch_entry_gates(inputs, evidence, binding):
     typed_equal(recipes_digest, RECIPES_SHA, 'frozen recipe contract identity')
     validate_recipes(recipes_doc, entries)
 
+    keep = {}
+    for recipe in recipes_doc['recipes']:
+        for fact in recipe['facts']:
+            entry = fact['entry']
+            if 'case_checks' in fact:
+                keep.setdefault(('case', entry), set()).update(
+                    (case, check) for case, check in fact['case_checks'])
+            else:
+                keep.setdefault(('native', entry), set()).update(fact['native_tests'])
     gates = {}
     for name in sorted(binding['entries']):
         ref = binding['entries'][name]
-        exact_keys(ref, ('root',), f'entry gate reference {name}')
         require(name in entries, f'foreign entry family {name}')
+        if 'facts' in ref:
+            # PLAN-1005 T-08 phased admission: the full strict gate admission
+            # ran in its own bounded phase (fresh live-data budget) and emitted
+            # this compact hash-pinned facts document; the final composition
+            # consumes only the per-row facts it needs. The phase is re-runnable
+            # against the same gate directory (its receipts stay in the scope).
+            exact_keys(ref, ('facts',), f'phased entry facts reference {name}')
+            facts_ref = ref['facts']
+            exact_keys(facts_ref, ('path', 'sha256'), f'phased entry facts {name}')
+            document, digest = evidence.read_json(facts_ref['path'])
+            if digest != facts_ref['sha256']:
+                raise ValueError(f'STALE artifact content: {facts_ref["path"]}')
+            exact_keys(document, ('schema', 'entry', 'group', 'kind', 'commit', 'green',
+                                  'executed', 'kept', 'gate_originals_sha256'),
+                       f'phased entry facts {name}')
+            typed_equal(document['schema'], 'ace.m1.arch-entry-facts/1', 'phased facts schema')
+            typed_equal(document['entry'], name, 'phased facts entry identity')
+            require(type(document['group']) is str and document['group'], 'phased facts group')
+            require(type(document['green']) is bool, 'phased facts gate status')
+            require(type(document['executed']) is int and document['executed'] > 0,
+                    'phased facts executed count')
+            require(type(document['kept']) is dict, 'phased facts rows required')
+            require(type(document['gate_originals_sha256']) is dict
+                    and document['gate_originals_sha256'], 'phased facts gate identity')
+            declared = entries[name]
+            expected_group = declared['group'] if declared['kind'] != 'provider-pending'                 else DELIVERED_PROVIDERS[name][1]
+            typed_equal(document['group'], expected_group, 'phased facts group identity')
+            expected_kind = 'case' if declared['kind'] == 'case-suite' else 'native'
+            typed_equal(document['kind'], expected_kind, 'phased facts gate kind')
+            kept = {key if isinstance(key, str) else tuple(key): row
+                    for key, row in document['kept'].items()}
+            gates[name] = {'commit': document['commit'], 'green': document['green'],
+                           'executed': document['executed'],
+                           'terminals': kept if expected_kind == 'native' else None,
+                           'checks': kept if expected_kind == 'case' else None}
+            continue
+        exact_keys(ref, ('root',), f'entry gate reference {name}')
         declared = entries[name]
         config = config_digest(inputs)
         if declared['kind'] == 'case-suite':
@@ -319,17 +407,20 @@ def admit_arch_entry_gates(inputs, evidence, binding):
                        declared['suite_file']: declared['source_sha256'],
                        'scripts/test-governance/case-control-oracles.json':
                            hashlib.sha256(inputs.read_bytes('scripts/test-governance/case-control-oracles.json')).hexdigest()}
-            gates[name] = admit_case_gate(inputs, evidence, ref['root'], declared['group'], closure)
+            gates[name] = admit_case_gate(inputs, evidence, ref['root'], declared['group'], closure,
+                                          keep_checks=keep.get(('case', name)))
         elif declared['kind'] == 'native-module':
             inputs.sha256(declared['source_file'], declared['source_sha256'])
             closure = {'scripts/test-groups.toml': config,
                        declared['source_file']: declared['source_sha256']}
-            gates[name] = admit_native_gate(inputs, evidence, ref['root'], declared['group'], closure)
+            gates[name] = admit_native_gate(inputs, evidence, ref['root'], declared['group'], closure,
+                                            keep_events=keep.get(('native', name)))
         else:
             owner, resident, _modules = DELIVERED_PROVIDERS[name]
             require(declared.get('owner') == owner, f'delivered provider owner {name}')
             closure = {'scripts/test-groups.toml': config}
-            gates[name] = admit_native_gate(inputs, evidence, ref['root'], resident, closure)
+            gates[name] = admit_native_gate(inputs, evidence, ref['root'], resident, closure,
+                                            keep_events=keep.get(('native', name)))
 
     recipes = {recipe['row']: recipe for recipe in recipes_doc['recipes']}
     observations = {}
