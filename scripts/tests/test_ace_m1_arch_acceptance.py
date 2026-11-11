@@ -4598,6 +4598,36 @@ class ArchitectureEntryGateStrictControls(unittest.TestCase):
         self.assertEqual(out['admitted_entries'], ['resident'])
         self.assertEqual(out['gate_commits'], [second])
 
+    def test_v02_missing_each_required_original_refused(self):
+        # R-01: deleting ANY pinned original (run/discovery output, receipts,
+        # inventory/report, window) must refuse — a non-empty hash table never
+        # proves the file exists (F-1013-01). Each deletion is re-admitted
+        # against the same gate with the facts reference present.
+        self.build_case_gate()
+        self.build_native_gate()
+        for root_name, rel in (('gate-resident', 'results.json'),
+                               ('gate-resident', 'inventory.stdout'),
+                               ('gate-resident', 'inventory.command.json'),
+                               ('gate-resident', 'run.command.json'),
+                               ('gate-resident', 'report.json'),
+                               ('gate-resident', 'source-pins-before.json'),
+                               ('gate-resident', 'source-pins-after.json'),
+                               ('gate-av-resident', 'results.json'),
+                               ('gate-av-resident', 'discovery.stdout'),
+                               ('gate-av-resident', 'discovery.command.json'),
+                               ('gate-av-resident', 'run.command.json'),
+                               ('gate-av-resident', 'run.stdout')):
+            with self.subTest(root=root_name, original=rel):
+                gate_root = self.ev / root_name
+                missing = gate_root / rel
+                saved = missing.read_bytes()
+                missing.unlink()
+                try:
+                    with self.assertRaises(m.AdmissionError):
+                        self.admit(self.both_entries())
+                finally:
+                    missing.write_bytes(saved)
+
     def test_v01_phased_facts_requires_root_and_rederives_originals(self):
         # F-1013-01: a facts document WITHOUT the original root (old schema)
         # is refused — no fallback to the self-reported branch.
