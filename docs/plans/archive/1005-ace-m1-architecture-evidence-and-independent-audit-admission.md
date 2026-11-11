@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-1005
-status: drafting
+status: archived
 feature_name: ACE M1架构行证据准入与独立审计凭据有界修复
 author: [Codex]
 created_at: 2026-11-11
-updated_at: 2026-11-11
+updated_at: 2026-11-12
 plan_revision: 1
 current_step: 11
 total_steps: 11
