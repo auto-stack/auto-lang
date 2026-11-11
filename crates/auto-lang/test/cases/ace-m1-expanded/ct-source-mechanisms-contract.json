@@ -529,7 +529,7 @@
   "experimental/ace/crates/source-cte/src/service.rs": "9b6eb85d126b6f4794e5017b697345ed89e38a01b2f319413958a9986ccbefe8",
   "experimental/ace/crates/source-cte/src/store.rs": "46698a45319694fe6727b827e7d61f0e61e514c59107c6e161fc51e872cb7f42",
   "experimental/ace/crates/source-cte/src/tests.rs": "b2552171b01c88289741ddf7a19f27278f45a05e26a18e95dabb343eb4f46a85",
-  "experimental/ace/crates/source-cte/tests/architecture_941.rs": "653fcccb7bd6aaa5420ff4a5a2d69ad0f7ae00d35da8c4f7410f066863b5d267",
+  "experimental/ace/crates/source-cte/tests/architecture_941.rs": "95cb9b5bd20fa53af8b259ab987657eaa1efba29ee45cfb6779cea985de526dd",
   "experimental/ace/crates/source-query/Cargo.toml": "d73996498a5e1bb0b51c737508f09acd28cc0344930df83d0df4aa5bae69b244",
   "experimental/ace/crates/source-query/src/apply.rs": "9db67bd642d0ceef76fc35f709e882becc4276935e202fe4e1d0aec867874305",
   "experimental/ace/crates/source-query/src/assembly.rs": "423b323034793cb62f6e4be50a502753de560c736807216667a228ae3c9840a3",
