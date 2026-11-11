@@ -477,8 +477,7 @@ fn package_version(dir: &Path, doc: &toml::Value) -> AutoResult<semver::Version>
         }
         _ => return Err(format!("producer 路径包版本无效: {}", dir.display()).into()),
     };
-    semver::Version::parse(&text)
-        .map_err(|e| format!("producer 路径包版本无效 {text}: {e}").into())
+    semver::Version::parse(&text).map_err(|e| format!("producer 路径包版本无效 {text}: {e}").into())
 }
 
 /// Walk the local path-dependency graph from `dir`. `include_dev=false`
@@ -706,9 +705,8 @@ pub fn ui_crate_source(producer_root: &Path, name: &str) -> AutoResult<PathBuf> 
             let source = parent.join("auto-web/crates").join(name);
             if source.is_dir() {
                 if valid_source_crate(&source, name) {
-                    validate_development_dependencies(&source).map_err(|err| {
-                        format!("delivery: producer 组内 web 包依赖无效: {err}")
-                    })?;
+                    validate_development_dependencies(&source)
+                        .map_err(|err| format!("delivery: producer 组内 web 包依赖无效: {err}"))?;
                     return Ok(source);
                 }
                 return Err(format!("delivery: producer 组内 web 包无效: crates/{name}").into());
@@ -909,7 +907,9 @@ version = \"0.1.0\"
         // 异组显式根（foreign/web-alt，兄弟 auto-lang 在 foreign/ 下）→ 拒绝。
         let alt = tmp.path().join("foreign").join("web-alt");
         fs::create_dir_all(&alt).unwrap();
-        let err = check_web_group_consistency(&alt, &lang).unwrap_err().to_string();
+        let err = check_web_group_consistency(&alt, &lang)
+            .unwrap_err()
+            .to_string();
         assert!(
             err.contains("双副本") || err.contains("AUTO_WEB_SOURCE_ROOT"),
             "异组 web 根必须具名拒绝：{err}"
@@ -1064,7 +1064,11 @@ version = \"0.1.0\"
             );
             add(&format!("{relative}/src/lib.rs"), b"// source\n");
             // PLAN-906：合同包 receipt owner=auto-lang（单源迁语言仓）。
-            let owner = if name == "auto-web" { "auto-web" } else { "auto-lang" };
+            let owner = if name == "auto-web" {
+                "auto-web"
+            } else {
+                "auto-lang"
+            };
             packages.push(serde_json::json!({"name":name,"source_repo":owner,"source_path":relative,"installed_path":relative}));
         }
         let receipt = tmp.path().join("install-manifest.json");

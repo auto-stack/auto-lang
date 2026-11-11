@@ -55,8 +55,8 @@ pub fn sha256_bytes(bytes: &[u8]) -> String {
 }
 
 fn reject_link(path: &Path) -> AutoResult<()> {
-    let meta = fs::symlink_metadata(path)
-        .map_err(|e| format!("stat 失败 {}: {e}", path.display()))?;
+    let meta =
+        fs::symlink_metadata(path).map_err(|e| format!("stat 失败 {}: {e}", path.display()))?;
     if meta.file_type().is_symlink() {
         return Err(format!("载荷树禁止 junction/symlink: {}", path.display()).into());
     }
@@ -95,8 +95,13 @@ fn copy_dir(source: &Path, destination: &Path) -> AutoResult<u64> {
         if path.is_dir() {
             copied += copy_dir(&path, &target)?;
         } else {
-            fs::copy(&path, &target)
-                .map_err(|e| format!("复制文件失败 {} -> {}: {e}", path.display(), target.display()))?;
+            fs::copy(&path, &target).map_err(|e| {
+                format!(
+                    "复制文件失败 {} -> {}: {e}",
+                    path.display(),
+                    target.display()
+                )
+            })?;
             copied += 1;
         }
     }
@@ -166,7 +171,9 @@ fn unique_sibling(root: &Path, kind: &str) -> PathBuf {
         .unwrap_or(0);
     root.with_file_name(format!(
         ".{}.auto-{kind}-{}-{nanos}",
-        root.file_name().and_then(|n| n.to_str()).unwrap_or("payload"),
+        root.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("payload"),
         std::process::id()
     ))
 }
@@ -187,7 +194,9 @@ fn marker_document(stage: &Path) -> Option<serde_json::Value> {
 pub fn sweep_own_staging(root: &Path) -> Vec<PathBuf> {
     let prefix = format!(
         ".{}.auto-staging-",
-        root.file_name().and_then(|n| n.to_str()).unwrap_or("payload")
+        root.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("payload")
     );
     let mut preserved = Vec::new();
     let Ok(parent) = fs::read_dir(root.parent().unwrap_or(Path::new("."))) else {
@@ -276,8 +285,7 @@ pub fn commit_managed_directory(
         }
     }
     let stage = staging_sibling(&root);
-    fs::create_dir(&stage)
-        .map_err(|e| format!("创建 staging 失败 {}: {e}", stage.display()))?;
+    fs::create_dir(&stage).map_err(|e| format!("创建 staging 失败 {}: {e}", stage.display()))?;
     fs::write(
         stage.join(STAGING_MARKER_FILE),
         format!(
@@ -396,7 +404,10 @@ mod tests {
         )
         .unwrap();
         assert!(outcome.backup_root.is_none());
-        assert_eq!(std::fs::read_to_string(root.join("payload.txt")).unwrap(), "v1");
+        assert_eq!(
+            std::fs::read_to_string(root.join("payload.txt")).unwrap(),
+            "v1"
+        );
         assert!(!root.join(STAGING_MARKER_FILE).exists());
     }
 
@@ -427,7 +438,10 @@ mod tests {
         .unwrap();
         let backup = outcome.backup_root.expect("backup exists");
         assert_eq!(file_map(&backup, &[]).unwrap(), old_map);
-        assert_eq!(std::fs::read_to_string(root.join("payload.txt")).unwrap(), "new");
+        assert_eq!(
+            std::fs::read_to_string(root.join("payload.txt")).unwrap(),
+            "new"
+        );
     }
 
     #[test]
@@ -463,9 +477,9 @@ mod tests {
                 "test",
                 &|_| Ok(()),
                 &|stage| {
-                write(&stage.join("payload.txt"), "new");
-                Ok(())
-            },
+                    write(&stage.join("payload.txt"), "new");
+                    Ok(())
+                },
                 &verify_payload,
                 Some(point),
             )
@@ -520,12 +534,13 @@ mod tests {
         assert!(error.to_string().contains("旧 payload 已还原"));
         assert!(error.to_string().contains("失败载荷保留于"));
         assert_eq!(file_map(&root, &[]).unwrap(), before);
-        assert!(
-            std::fs::read_dir(base.path())
-                .unwrap()
-                .flatten()
-                .any(|entry| entry.file_name().to_string_lossy().starts_with(".bundle.auto-failed-"))
-        );
+        assert!(std::fs::read_dir(base.path())
+            .unwrap()
+            .flatten()
+            .any(|entry| entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".bundle.auto-failed-")));
     }
 
     #[test]
