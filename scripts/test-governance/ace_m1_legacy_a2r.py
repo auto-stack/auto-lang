@@ -648,9 +648,19 @@ def admit_probe_families(inputs, evidence, bindings, registry):
         copy = CaseCopy(EvidenceScope(evidence.path(binding['copy'] + '/artifact-copy.json').parent,
                                       inputs.budget))
         admitted = admit_case_bindings(copy, inv)
+        # PLAN-1000 I12: FAIL-by-design control rows are REGISTERED
+        # expectations (case-control-oracles.json: expected_status FAIL), not
+        # parent anomalies — a correctly-failing control never fails the
+        # source-case-reports gate; any other non-PASS row still does.
+        _oracle_path = 'scripts/test-governance/case-control-oracles.json'
+        import json as _json_oracle
+        _oracle_rows = {(o['case'], o['check']) for o in _json_oracle.loads(
+            inputs.read_bytes(_oracle_path).decode('utf-8'))['overrides']
+            if o.get('expected_status') == 'FAIL'}
         suite_parent = {'report_sha256': admitted['report_sha256'], 'non_pass_rows': [
             {'case': c['case'], 'check': c['check'], 'status': row['status']}
-            for c, row in admitted['checks'] if row['status'] != 'PASS']}
+            for c, row in admitted['checks']
+            if row['status'] != 'PASS' and (c['case'], c['check']) not in _oracle_rows]}
         suite_cells = {}
         for check, row in admitted['checks']:
             if check.get('adapter') == 'avm':

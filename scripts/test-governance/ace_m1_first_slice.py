@@ -667,6 +667,9 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         legacy['execution_summary'] = _compact_admission(inputs, lambda _: _esf(
             _required, _slim_obs(_earlier) | _merged), 2 << 20)
         legacy['execution'] = legacy['execution_summary']['verdict']
+        # The terminal merged summary IS the legacy execution verdict — the
+        # gate flag written by the earlier per-chain blocks goes stale here.
+        result['gates']['legacy_required_execution'] = legacy['execution'] == 'PASS'
     from ace_m1_obligation_catalog import admit_catalogs
     from ace_m1_legacy_obligations import admit_legacy_obligations
     result['coverage_inventory'] = _compact_admission(inputs, admit_catalogs, 128 << 10)

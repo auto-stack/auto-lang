@@ -181,7 +181,9 @@ def admit_certifications(inputs,evidence,binding_path):
     diagnostics=[row for row in source_contracts(inputs).values() if row['oracle_kind']=='diagnostic']
     observations={};seen=set()
     for row in document['rows']:
-        if 'refusal' in row:
+        # PLAN-1000 negative rows carry the refusal capture shape (request +
+        # source pin, no certification pin); positives always carry 'pin'.
+        if 'pin' not in row:
             # PLAN-1000 16 diagnostic legs: the negative certification — a
             # typed frontdoor refusal of the diagnostic source on the daily
             # channel (the exact F-1000-02 capture pattern), certified when
@@ -231,5 +233,7 @@ def admit_certifications(inputs,evidence,binding_path):
     return dict(schema='ace.m1.original-data-certifications/1',required=36+2*len(diagnostics),supplied=supplied,missing_certification_slots=missing,
                 observations=observations,contract_sha256=REFERENCE_SHA,bindings_sha256=digest,
                 certification_complete=not missing and all(v['judgement']=='PASS' for v in observations.values()),
-                daily_admission='UNOBSERVED' if missing else 'PASS' if all(v['daily_judgement']=='PASS' for v in observations.values()) else 'FAIL',
+                # PLAN-1000 negative rows carry refusal facts (no daily
+                # emission verdict by construction); only positive rows do.
+                daily_admission='UNOBSERVED' if missing else 'PASS' if all(v.get('daily_judgement')=='PASS' for v in observations.values()) else 'FAIL',
                 can_claim_expanded_m1=False)
