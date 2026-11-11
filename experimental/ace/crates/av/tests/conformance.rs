@@ -37,6 +37,8 @@ mod av_collections_resources;
 mod av_collections_semantics;
 #[path = "cases/av_collections_session.rs"]
 mod av_collections_session;
+#[path = "cases/aggregates_t01_probe.rs"]
+mod aggregates_t01_probe;
 #[path = "cases/av_data.rs"]
 mod av_data;
 #[path = "cases/data_diagnostics_941.rs"]
