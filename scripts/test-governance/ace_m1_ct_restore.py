@@ -7,7 +7,7 @@ from ace_m1_ct_meta import hex_text, state as meta_state
 from ace_m1_legacy import typed_equal
 
 CONTRACT = 'crates/auto-lang/test/cases/ace-m1-expanded/ct-restore-contract.json'
-CONTRACT_SHA = '02ac2ff3eee309565a3ef98407c8ca17340db992c13e8c293bb57017579915ef'
+CONTRACT_SHA = '1ab582cfba940bd5025afd67a190e335404fbfc4e4bd76bedcb9e81930cf5e26'
 BINARY = 'ace-source-cte::architecture_restore_941'
 TEST = 'ordinary_source_disk_restore_first_edits_and_repair_941'
 SOURCES = ('crates/auto-lang/test/cases/ace-m1/source-cte-936/src/sum42.at',) + tuple(

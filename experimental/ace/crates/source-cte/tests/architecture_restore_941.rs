@@ -93,7 +93,9 @@ fn demand_error(error: CtProductError) -> (String, bool) {
 #[test]
 fn ordinary_source_disk_restore_first_edits_and_repair_941() {
     let mut owner_values = Vec::new();
-    let scope = Path::new("D:/autostack/plan-artifacts/plan-941")
+    let scope = (std::env::var_os("AUTO_PLAN_941_SCOPE_ROOT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| Path::new("D:/autostack/plan-artifacts/plan-941").to_path_buf()))
         .canonicalize()
         .unwrap();
     let root = scope.join(format!(

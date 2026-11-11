@@ -144,7 +144,9 @@ fn ordinary_source_cold_hit_and_callee_edit_observations_941() {
 
     if let Some(path) = std::env::var_os("AUTO_PLAN_941_CT_OBSERVATIONS") {
         let path = std::path::PathBuf::from(path);
-        let scope = std::path::Path::new("D:/autostack/plan-artifacts/plan-941")
+        let scope = (std::env::var_os("AUTO_PLAN_941_SCOPE_ROOT")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::Path::new("D:/autostack/plan-artifacts/plan-941").to_path_buf()))
             .canonicalize()
             .unwrap();
         let parent = path.parent().unwrap().canonicalize().unwrap();

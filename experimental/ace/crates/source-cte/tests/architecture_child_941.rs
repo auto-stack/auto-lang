@@ -128,7 +128,9 @@ fn ordinary_source_child_effective_versions_941() {
     }
     if let Some(path) = std::env::var_os("AUTO_PLAN_941_CT_CHILD_OBSERVATIONS") {
         let path = std::path::PathBuf::from(path);
-        let scope = std::path::Path::new("D:/autostack/plan-artifacts/plan-941")
+        let scope = (std::env::var_os("AUTO_PLAN_941_SCOPE_ROOT")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::Path::new("D:/autostack/plan-artifacts/plan-941").to_path_buf()))
             .canonicalize()
             .unwrap();
         assert!(path
