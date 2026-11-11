@@ -665,7 +665,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         _earlier = legacy.get('execution_summary', {}).get('observations', {})
         _required = sorted(':'.join((row['ns'], row['id'], row['path'])) for row in _flf(inputs) if row['required'])
         legacy['execution_summary'] = _compact_admission(inputs, lambda _: _esf(
-            _required, _slim_obs(_earlier) | _merged), 1 << 20)
+            _required, _slim_obs(_earlier) | _merged), 2 << 20)
         legacy['execution'] = legacy['execution_summary']['verdict']
     from ace_m1_obligation_catalog import admit_catalogs
     from ace_m1_legacy_obligations import admit_legacy_obligations
@@ -695,9 +695,18 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
             require(not arch_observations.keys() & admitted['observations'].keys(), 'duplicate actual architecture observation')
             arch_observations.update(admitted['observations'])
             arch_sources[label] = admitted['source_evidence']
+        # PLAN-1000 wave fix: entry-gate rows admitted earlier in this same
+        # composition must SURVIVE the mechanism rebuild (a combined doc with
+        # both arch_entry_gates and mechanism families previously lost the
+        # entry rows here — merged set is the union, mechanism rows keep
+        # precedence on overlap as the dedicated producers).
+        prior_obs = {k: (v if isinstance(v, str) else v.get('judgement'))
+                     for k, v in result.get('architecture_execution', {}).get('observations', {}).items()}
+        prior_sources = dict(result.get('architecture_execution', {}).get('sources', {}))
+        merged_obs = prior_obs | arch_observations
         result['architecture_execution'] = {
-            'schema':'ace.m1.architecture-execution/1', 'observations':arch_observations,
-            'sources':arch_sources, 'gate':reduce_architecture(arch_observations),
+            'schema':'ace.m1.architecture-execution/1', 'observations':merged_obs,
+            'sources':prior_sources | arch_sources, 'gate':reduce_architecture(merged_obs),
             'can_claim_architecture_pass':False}
     if result_restore is not None:
         result['ct_restore_execution'] = result_restore
