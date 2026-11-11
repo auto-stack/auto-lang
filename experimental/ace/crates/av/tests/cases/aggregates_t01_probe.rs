@@ -263,8 +263,19 @@ fn tuple_literal_and_destructuring_execute() {
     let run2 = ace_av::collections_864_support::compile_and_execute_aggregates(src2, "d_main")
         .expect("annotated tuple + re-construct executes");
     assert_eq!(run2.value, 42);
-    // NAMED PENDING: passing a tuple as a call argument (the call-arg
-    // record-copy path type token is not tuples-aware yet) - plan 9.
+    // tuple as a CALL ARGUMENT: record params arrive as views (771
+    // semantics); destructuring projects off the param directly (no
+    // view->owned materialization).
+    let src3 = "fn sum(t (int, int)) int {
+    let (x, y) = t
+    return x + y
+}
+fn main() int {
+    return sum((20, 22))
+}";
+    let run3 = ace_av::collections_864_support::compile_and_execute_aggregates(src3, "d_main")
+        .expect("tuple call-argument executes");
+    assert_eq!(run3.value, 42);
 }
 
 /// PLAN-962 unit-5 negative controls: arity mismatch and non-tuple
@@ -290,4 +301,29 @@ fn tuple_destructuring_negative_controls() {
             err.iter().map(|d| d.code.as_str()).collect::<Vec<_>>()
         );
     }
+}
+
+/// PLAN-962 unit-6: composite record fields — a record owning a List
+/// field constructs with an owned rvalue (`k.move`), the field read is a
+/// whole-element view path (`n.kids.get(i)` reads through), and the
+/// record's release cascades to the field's arena buffer.
+#[test]
+fn composite_record_list_field_executes() {
+    let src = "type Node { name Str; kids List<int> }\nfn main() int {\n    var k = [19, 23]\n    var n = Node(\"x\", k.move)\n    return n.kids.get(0) + n.kids.get(1)\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("composite record field chain executes");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0);
+    assert_eq!(run.allocs, run.frees);
+}
+
+/// PLAN-962 unit-6: named-constructor verification (R03, L-10) on the
+/// aggregates surface — out-of-order named fields construct correctly.
+#[test]
+fn named_ctor_out_of_order_constructs() {
+    let src = "type Pair { left int; right int }\nfn main() int {\n    let p = Pair { right: 2, left: 40 }\n    return p.left + p.right\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("named ctor executes");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0);
 }

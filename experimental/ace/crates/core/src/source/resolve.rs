@@ -5819,17 +5819,33 @@ impl<'a, 's> FnResolver<'a, 's> {
                         );
                         continue;
                     }
-                    self.declared_names.insert("__tup".to_string());
-                    let temp = self.fresh_local("__tup", VT::Tuple(ti), false);
-                    stack
-                        .last_mut()
-                        .expect("resolve frame")
-                        .stmts
-                        .push(RStmt::Let {
-                            local: temp,
-                            value: val,
-                            span: *span,
-                        });
+                    // PLAN-962: when the value is already a local read
+                    // (the common `let (x, y) = t` and param cases) the
+                    // positional reads project DIRECTLY off that local —
+                    // no synthetic temp. Record params arrive as views
+                    // (771 frozen semantics); materializing one into an
+                    // owned temp would cross view->owned.
+                    let base_local = match &val.kind {
+                        RExprKind::ReadLocal(l) => Some(*l),
+                        _ => None,
+                    };
+                    let temp = match base_local {
+                        Some(l) => l,
+                        None => {
+                            self.declared_names.insert("__tup".to_string());
+                            let t = self.fresh_local("__tup", VT::Tuple(ti), false);
+                            stack
+                                .last_mut()
+                                .expect("resolve frame")
+                                .stmts
+                                .push(RStmt::Let {
+                                    local: t,
+                                    value: val,
+                                    span: *span,
+                                });
+                            t
+                        }
+                    };
                     for (i, n) in names.iter().enumerate() {
                         if self.scopes.last().unwrap().names.contains_key(&n.name) {
                             self.bind_err(
