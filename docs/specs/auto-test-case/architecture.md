@@ -439,3 +439,27 @@ CT机制的父侧证据可消费原服务公开的计数与执行边界日志：
   stale 凭据/外来 entry/多组文档/缺一门的行各拒绝或降级——常驻治理测试）。
 - 架构行守恒：49/49 ARCH 行终组合全 PASS（机制族 9 行 + entry-gates 40 行并集；
   delivered provider foreign/foreign-resource 按 resident ace-abi 证据准入）。
+
+## PLAN-1005 架构行证据准入修正（2026-11-12，SD-01）
+
+- 旧 entry-gates 准入（SD-04 续）存在两项已实证准入缺陷，本包有界修复：
+  **F-1005-01**（组名+绿色布尔+`executed=0`/空结果即可供应架构行 PASS——1305 行波及面
+  在修前代码复现）；**F-1005-02**（无独立审计凭据仍可供应
+  `ARCH-08/fresh-union-spec-review` 的 PASS）。历史行为按当时合同记载保留，不回写
+  1000 归档结果。
+- **严格封套准入**（`ace_m1_arch_entry_gates` 重写）：entry 只从真实单组 fixed-test
+  运行目录准入——listing 枚举、raw 终端事件经父解析器重 derive、discovery/run 命令
+  收据逐 argv 复核、冻结窗口 source-pins、当前组配置、listing 二进制字节 pin、合同
+  source pin；`executed=0`/空结果一律拒绝，绿布尔与失败终端/executed 矛盾一律拒绝。
+- **逐行 recipe 准入**：49 行合同 `architecture-entry-recipes.json`（48 非 review 行，
+  SHA `cab19420…`）冻结 row→entry→具名 case/test→required observation 映射；行 PASS
+  仅当全部声明 entry 绿 **且** 全部具名事实在该 gate 内实际执行绿（事件名以 nextest
+  listing 为权威：lib 目标 `pkg::lib$tests::fn`、独立 tests 目标 `pkg::target$fn`）。
+  删任一具名事实→行 UNOBSERVED；红 gate→行 FAIL；假形态→拒绝。
+- **review 行凭据专属授权边**：唯一 review 行只能由
+  `ace_m1_review_evidence` 消费的签前审计凭据供应（绑定 frozen commit∈gate commits、
+  签前候选 bindings+报告双 sha、行规则/registry pin、AC/V/SD 全覆盖、findings 全
+  resolved、无最终报告自指字段）。缺凭据保持不可签（正式 exit1+具名 blocker）；机制
+  族/phased section/entry 循环/测量回灌均不能供应该行（合并边界拒绝重叠冲突与注入）。
+- phased 分域准入（`ace.m1.arch-entry-facts/1`）：每 entry 独立 48 MiB 预算跑完整
+  严格链后输出紧凑 hash 钉定 facts 文档（1000 认证族分域同范式）。
