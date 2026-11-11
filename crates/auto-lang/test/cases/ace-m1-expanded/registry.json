@@ -6138,7 +6138,7 @@
       }
     },
     "source_sha256": {
-      "crates/auto-lang-core/src/test_cases/ac_av.rs": "dee61c503b3e509b697702a909d68e7660e7c7bf697752056b8280401e7c1945",
+      "crates/auto-lang-core/src/test_cases/ac_av.rs": "a71da692f210dd5fb18d8adc4db1396c49b77544015fc04028c264835c0b1b9a",
       "crates/auto-lang-core/src/test_cases/ac_av/contract_inventory.rs": "aadcdf7a59836860039fdc8def37013149eef09e66aad67da37b86d0aedf08c1",
       "crates/auto-lang-core/src/test_cases/ac_mn.rs": "92dd821667dc26c68b160b73588f20be03d0051ff9893e41a1cb3daad11169a7",
       "crates/auto-lang-core/src/test_cases/abi.rs": "dfa474a74d056054d383f13c470d6b8b6961d633bb7a56adc336771ffeab1920",
@@ -6162,7 +6162,7 @@
     },
     "budget": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/original-budget-contracts.json",
-      "sha256": "a821bc6073ba495628e667e233dabe091d546646860a5cbd6529aa5243a4b23d"
+      "sha256": "70694c44cffac095bd4f3903830c5d1e728f25b5215f42fda2799ba1e8776405"
     },
     "text_reference": {
       "path": "crates/auto-lang/test/cases/ace-m1-expanded/text-reference-contracts.tsv",
