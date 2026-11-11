@@ -656,9 +656,27 @@ def admit_probe_families(inputs, evidence, bindings, registry):
             if check.get('adapter') == 'avm':
                 # In-process VM legs: the parent judged them; the retained
                 # products are re-verified against the pinned oracle bytes.
-                avm_cells = [c for c in _PROBE_CHECK_CELLS.get((check['case'], check['check']), ())
-                             if c in all_cells]
-                if not avm_cells or row['status'] != 'PASS':
+                avm_raw = _PROBE_CHECK_CELLS.get((check['case'], check['check']), ())
+                avm_cells = [tuple(r[:3]) for r in avm_raw if tuple(r[:3]) in all_cells]
+                if not avm_cells:
+                    continue
+                # PLAN-1000 I12:avm — the harness's own VM negative controls:
+                # an expect-fail row claims its cell only when the check
+                # REALLY failed with recorded mismatches (same discipline as
+                # the probe expect-fail legs below); a PASS on a wrong-value
+                # control never closes the cell.
+                avm_expect_fail = any(len(r) > 3 and r[3] == 'expect-fail' for r in avm_raw)
+                if avm_expect_fail:
+                    if row['status'] == 'FAIL' and row.get('mismatches'):
+                        for extra in avm_cells:
+                            suite_cells.setdefault(':'.join(extra), []).append(
+                                {'suite': key, 'case': check['case'], 'check': check['check'],
+                                 'verdict': 'PASS'})
+                            suite_cells.setdefault(':'.join(extra) + '#obs', []).append(
+                                {'judgement': 'PASS', 'oracle_source': 'harness-negative',
+                                 'parent_status': row['status']})
+                    continue
+                if row['status'] != 'PASS':
                     continue
                 artifacts_ok = True
                 base_rel = None
@@ -685,6 +703,24 @@ def admit_probe_families(inputs, evidence, bindings, registry):
                              'verdict': 'PASS', 'oracle_count': len(check.get('oracle_artifacts', ()))})
                         suite_cells.setdefault(':'.join(extra) + '#obs', []).append(
                             {'judgement': 'PASS', 'oracle_source': 'suite-contract', 'parent_status': row['status']})
+                continue
+            if check.get('adapter') == 'a2r':
+                # PLAN-1000 I12:a2r — the A2R golden-compare negative control:
+                # expect-fail rows claim only on a real FAIL with genuine
+                # bytes mismatches (a PASS on a wrong-golden control never
+                # closes the cell); non-expect-fail a2r legs stay unclaimed
+                # here (their chains are the dedicated a2r families above).
+                a2r_raw = _PROBE_CHECK_CELLS.get((check['case'], check['check']), ())
+                a2r_cells = [tuple(r[:3]) for r in a2r_raw if tuple(r[:3]) in all_cells]
+                if a2r_cells and any(len(r) > 3 and r[3] == 'expect-fail' for r in a2r_raw):
+                    if row['status'] == 'FAIL' and row.get('mismatches'):
+                        for extra in a2r_cells:
+                            suite_cells.setdefault(':'.join(extra), []).append(
+                                {'suite': key, 'case': check['case'], 'check': check['check'],
+                                 'verdict': 'PASS'})
+                            suite_cells.setdefault(':'.join(extra) + '#obs', []).append(
+                                {'judgement': 'PASS', 'oracle_source': 'harness-negative',
+                                 'parent_status': row['status']})
                 continue
             if check.get('adapter') != 'probe':
                 continue
@@ -726,6 +762,47 @@ def admit_probe_families(inputs, evidence, bindings, registry):
                     '/' + check['case'] + '/' + check['check'] + '/mn-probe-receipt.json')), None)
                 if (declaration is None or receipt_name is None
                         or recipe != 'ac/mir-native-collections-v1' or expect_fail):
+                    # PLAN-1000 I02/I05/I11:ac — the scalar mn RUNNER legs
+                    # (session rounds: callee-body-edit / history-revisit-run /
+                    # edit-turnaround-p90) also leave no wire exchange on this
+                    # path; their retained product is the mn PROBE RECEIPT the
+                    # runner itself judged. Admit it against the family's
+                    # native pin + the check's judged exit, and claim the
+                    # mapped cells from those real parent-judged facts. The
+                    # runner oracles (cache-hit floor / turnaround P90 /
+                    # unaffected==0) were judged INSIDE the run; the receipt
+                    # carries their verdict via the check's own PASS row.
+                    if (receipt_name is not None and not expect_fail
+                            and recipe == 'ac/mir-native-scalar-v1'
+                            and row['status'] == 'PASS'):
+                        native_pin = binding.get('native')
+                        if native_pin is None:
+                            continue
+                        receipt, _ = copy.json(receipt_name)
+                        # `incremental` may be True (edit rounds) or False
+                        # (warm-store revisit legs) — both are real runner
+                        # modes the receipt honestly records.
+                        require(type(receipt) is dict and receipt.get('recipe') == recipe
+                                and receipt.get('protocol') == 'mnworker/1'
+                                and type(receipt.get('incremental')) is bool,
+                                'scalar session receipt identity')
+                        toolchain = receipt.get('toolchain') or {}
+                        typed_equal(toolchain.get('recipe'), recipe,
+                                    'scalar receipt toolchain recipe')
+                        typed_equal(toolchain.get('mn-worker-exe-sha256'), native_pin['sha256'],
+                                    'scalar session producer identity')
+                        steps = receipt.get('steps')
+                        require(type(steps) is list and steps, 'scalar session steps')
+                        final = steps[-1]
+                        typed_equal(final.get('exit_code'), check.get('expected_exit'),
+                                    'scalar session judged exit')
+                        for extra in (table_cells or [cell] if cell else []):
+                            suite_cells.setdefault(':'.join(extra), []).append(
+                                {'suite': key, 'case': check['case'], 'check': check['check'],
+                                 'verdict': 'PASS'})
+                            suite_cells.setdefault(':'.join(extra) + '#obs', []).append(
+                                {'judgement': 'PASS', 'oracle_source': 'mn-probe-receipt',
+                                 'parent_status': row['status']})
                     continue  # avm-console or in-process legs: no wire exchange on this path
                 collections_pin = binding.get('collections')
                 require(collections_pin is not None
