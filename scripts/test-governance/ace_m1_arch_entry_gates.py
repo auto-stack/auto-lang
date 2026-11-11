@@ -391,8 +391,12 @@ def admit_arch_entry_gates(inputs, evidence, binding):
             typed_equal(document['group'], expected_group, 'phased facts group identity')
             expected_kind = 'case' if declared['kind'] == 'case-suite' else 'native'
             typed_equal(document['kind'], expected_kind, 'phased facts gate kind')
-            kept = {key if isinstance(key, str) else tuple(key): row
-                    for key, row in document['kept'].items()}
+            if expected_kind == 'native':
+                kept = {key: {'event': row} if isinstance(row, str) else row
+                        for key, row in document['kept'].items()}
+            else:
+                kept = {tuple(key.split('|')): {'status': row} if isinstance(row, str) else row
+                        for key, row in document['kept'].items()}
             gates[name] = {'commit': document['commit'], 'green': document['green'],
                            'executed': document['executed'],
                            'terminals': kept if expected_kind == 'native' else None,
