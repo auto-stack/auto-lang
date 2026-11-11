@@ -3153,6 +3153,11 @@ enum Frame {
         inclusive: bool,
         node: u32,
     },
+    /// PLAN-962（L-48）：`xs[i] = v` 收尾帧（vals 栈自底向上：index、value）。
+    IndexAssignFinish {
+        name: Ident,
+        span: Span,
+    },
     /// PLAN-928（T-03）：`is <局部> { 臂 }` 逐臂帧 + 汇总帧。
     IsArms(IsMatchCtx),
     IsArmBlock {
@@ -4175,6 +4180,16 @@ impl<'a> Engine<'a> {
             let value_n = self.cx.field_child(inner, "value").expect("assign value");
             self.stack.push(Frame::AssignFinish { name, path });
             self.stack.push(Frame::ExprEnter(value_n));
+        } else if kind == self.cx.k.index_assign_stmt.unwrap_or(u32::MAX) {
+            // PLAN-962 (L-48)：`xs[i] = v`——base 名、index/value 两表达式。
+            let name_leaf = self.cx.field_child(inner, "name").expect("index assign name");
+            let name = ident_of(&mut self.cx, name_leaf);
+            let index_n = self.cx.field_child(inner, "index").expect("index assign index");
+            let value_n = self.cx.field_child(inner, "value").expect("index assign value");
+            let span = self.cx.span_of(inner);
+            self.stack.push(Frame::IndexAssignFinish { name, span });
+            self.stack.push(Frame::ExprEnter(value_n));
+            self.stack.push(Frame::ExprEnter(index_n));
         } else if kind == self.cx.k.return_stmt {
             let kw = self
                 .cx
@@ -4364,6 +4379,33 @@ impl<'a> Engine<'a> {
 
     // ------------------------------------------------------------ exprs
 
+    /// PLAN-962: project ONE expression subtree synchronously (used by
+    /// the array-literal atom and the index postfix step, whose inner
+    /// expressions ride under rule nodes the frame walk reaches later).
+    /// Runs a bounded sub-walk of the same stepper; the sub-projection
+    /// pushes exactly one value.
+    fn project_expr_sync(&mut self, node: u32) -> Expr {
+        let depth_mark = self.stack.len();
+        let vals_mark = self.vals.len();
+        self.stack.push(Frame::ExprEnter(node));
+        while self.stack.len() > depth_mark {
+            let f = self.stack.pop().expect("sub-projection frame");
+            self.step(f);
+        }
+        match self.vals.pop() {
+            Some(Val::E(e)) => e,
+            _ => {
+                self.vals.truncate(vals_mark);
+                let span = self.cx.span_of(node);
+                self.cx.reject(span, || syntax_diag("expression", span));
+                Expr {
+                    span,
+                    kind: ExprKind::IntLit(0),
+                }
+            }
+        }
+    }
+
     fn enter_expr(&mut self, node: u32) {
         let kind = self.cx.expression_kind(node);
         if kind == self.cx.k.expr {
@@ -4497,6 +4539,43 @@ impl<'a> Engine<'a> {
                     }));
                     return;
                 }
+            }
+            // PLAN-962（L-16）：数组/List 字面量原子 `[e, ...]`（元素同步
+            // 投影；空表由 resolve 具名拒）。
+            if ck == self.cx.k.array_lit.unwrap_or(u32::MAX) {
+                let mut elems: Vec<Expr> = Vec::new();
+                let mut span = self.cx.span_of(c);
+                if let Some(elems_n) = self.cx.field_child(c, "elems") {
+                    // head 是 expr 孩子；尾部规则孩子（array-elem-tail）
+                    // 各携带一个无字段 expr 孩子——按绝对序收集。
+                    let mut expr_nodes: Vec<u32> = Vec::new();
+                    let head = self
+                        .cx
+                        .field_child(elems_n, "head")
+                        .expect("array head element");
+                    expr_nodes.push(head);
+                    for t in self.cx.children(elems_n) {
+                        if t == head {
+                            continue;
+                        }
+                        for ec in self.cx.children(t) {
+                            if self.cx.tree.kind(ec) != self.cx.k.tok_comma {
+                                expr_nodes.push(ec);
+                            }
+                        }
+                    }
+                    expr_nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
+                    for en in expr_nodes {
+                        let e = self.project_expr_sync(en);
+                        span = span.join(e.span);
+                        elems.push(e);
+                    }
+                }
+                self.vals.push(Val::E(Expr {
+                    span,
+                    kind: ExprKind::ArrayLit(elems),
+                }));
+                return;
             }
             // PLAN-928（T-03）：`List<T>.member` 接收原子。
             if ck == self.cx.k.generic_atom.unwrap_or(u32::MAX) {
@@ -5000,6 +5079,41 @@ impl<'a> Engine<'a> {
     }
 
     fn fold_one_postfix(&mut self, recv: Expr, step: u32, member: Option<u32>) -> Expr {
+        // PLAN-962 (L-48)：索引步 `[expr]`（member 为 None、步带 lbracket
+        // 孩子；内层 index 同步投影）。
+        let has_lbracket = self
+            .cx
+            .children(step)
+            .into_iter()
+            .any(|c| self.cx.tree.kind(c) == self.cx.k.tok_lbracket);
+        if has_lbracket {
+            let idx_node = self
+                .cx
+                .children(step)
+                .into_iter()
+                .find(|&c| self.cx.expression_kind(c) != u32::MAX)
+                .or_else(|| {
+                    self.cx
+                        .children(step)
+                        .into_iter()
+                        .find(|&c| self.cx.tree.child_count(c) > 0)
+                });
+            let Some(idx_node) = idx_node else {
+                let span = recv.span;
+                self.cx
+                    .reject(span, || syntax_diag("index expression", span));
+                return recv;
+            };
+            let index = self.project_expr_sync(idx_node);
+            let span = recv.span.join(index.span);
+            return Expr {
+                span,
+                kind: ExprKind::Index {
+                    base: Box::new(recv),
+                    index: Box::new(index),
+                },
+            };
+        }
         // `.to(...)`：步自带括号与词。
         let has_to = self
             .cx
@@ -5764,6 +5878,16 @@ impl<'a> Engine<'a> {
                     body,
                     span,
                 }));
+            }
+            Frame::IndexAssignFinish { name, span } => {
+                let value = self.pop_e();
+                let index = self.pop_e();
+                self.vals.push(Val::S(Stmt::IndexAssign(IndexAssign {
+                    base: name,
+                    index,
+                    value,
+                    span,
+                })));
             }
             Frame::IsArms(ctx) => {
                 if let Some(&arm_n) = ctx.remaining.first() {

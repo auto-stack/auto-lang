@@ -4494,6 +4494,11 @@ impl<'a, 's> FnResolver<'a, 's> {
             ExprKind::HashExpr { expr: inner } => self.infer_closure_expr(inner, locals),
             // PLAN-962: a range is only a for-in iterable, never a value.
             ExprKind::Range { .. } => VT::I32,
+            // PLAN-962: literals/indexes never reach closure inference
+            // (statement-level desugar owns them); totals for
+            // exhaustiveness.
+            ExprKind::ArrayLit(_) => VT::I32,
+            ExprKind::Index { .. } => VT::I32,
             ExprKind::IntLit(_) => VT::I32,
             // PLAN-961: the typed literal carries its own type.
             ExprKind::TypedLit { ty, .. } => vt_of_word(*ty),
@@ -4567,6 +4572,8 @@ impl<'a, 's> FnResolver<'a, 's> {
             for stmt in &block.stmts {
                 match stmt {
                     Stmt::Return { value, .. } => return self.infer_closure_expr(value, &visible),
+                    // PLAN-962: an index assign is an effect statement.
+                    Stmt::IndexAssign(_) => {}
                     Stmt::Let {
                         name, ann, value, ..
                     } => {
@@ -5676,6 +5683,93 @@ impl<'a, 's> FnResolver<'a, 's> {
                 continue;
             };
             match s {
+                // PLAN-962 (L-48): `xs[i] = v` — element replacement via the
+                // index place (list-set semantics; the same op `.set(i, v)`
+                // lowers to). Base must be a List local.
+                Stmt::IndexAssign(ia) => {
+                    let Some(xl) = self.lookup(&ia.base.name) else {
+                        self.bind_err(
+                            "source.undefined",
+                            format!("no local named `{}` in scope", ia.base.name),
+                            ia.base.span,
+                        );
+                        continue;
+                    };
+                    let VT::List(li) = self.locals[xl.0].vt else {
+                        self.bind_err(
+                            "source.index-base",
+                            format!(
+                                "index assignment requires a List local, found `{}`",
+                                self.locals[xl.0].vt.as_str()
+                            ),
+                            ia.base.span,
+                        );
+                        continue;
+                    };
+                    let elem = self.coll.lists[li];
+                    let index = self.expr_iterative(&ia.index);
+                    let mut value = self.expr_with_expect(&ia.value, Some(elem));
+                    if index.vt != VT::I32 {
+                        self.bind_err(
+                            "source.index-type",
+                            "an index must be i32 in this profile".to_string(),
+                            ia.index.span,
+                        );
+                    }
+                    // PLAN-962: the stored value may not materialize a
+                    // whole-element view (an alias into another list).
+                    self.reject_elem_view_use(&value, "the stored value");
+                    if value.vt != elem {
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!(
+                                "element type `{}` expected, found `{}`",
+                                elem.as_str(),
+                                value.vt.as_str()
+                            ),
+                            ia.value.span,
+                        );
+                    }
+                    // a fresh owned rvalue transfers at commit (same rule
+                    // as push); an owned local must move explicitly.
+                    self.check_push_value(&elem, &mut value, ia.base.span);
+                    // structural modification of an iterated list rejects
+                    // (same contract as `.set`).
+                    if let Some(hit) = self
+                        .iterate_targets
+                        .iter()
+                        .find(|(t, _, _)| *t == xl)
+                        .map(|(_, _, sp)| *sp)
+                    {
+                        self.bind_err(
+                            "source.iterate-mutate",
+                            "`xs[i] = v` structurally modifies the list being iterated (legal: element field writes)"
+                                .to_string(),
+                            ia.span.join(hit),
+                        );
+                    }
+                    let set = ResolvedExpr {
+                        span: ia.span,
+                        vt: VT::Unit,
+                        kind: RExprKind::ListSet {
+                            list: Box::new(ResolvedExpr {
+                                span: ia.base.span,
+                                vt: VT::List(li),
+                                kind: RExprKind::ReadLocal(xl),
+                            }),
+                            index: Box::new(index),
+                            value: Box::new(value),
+                        },
+                    };
+                    stack
+                        .last_mut()
+                        .expect("resolve frame")
+                        .stmts
+                        .push(RStmt::ExprStmt {
+                            value: set,
+                            span: ia.span,
+                        });
+                }
                 Stmt::Let {
                     name,
                     ann,
@@ -5684,6 +5778,99 @@ impl<'a, 's> FnResolver<'a, 's> {
                     span,
                     ..
                 } => {
+                    // PLAN-962 (L-16): a NON-EMPTY array literal in the
+                    // let/var initializer position desugars at the
+                    // statement level — bind the target to List<T>.new()
+                    // then push each element in source order. Literals in
+                    // other expression positions reject at `expr()` with
+                    // `source.array-lit-position`.
+                    if let ExprKind::ArrayLit(elems_ast) = &value.kind {
+                        if elems_ast.is_empty() {
+                            self.bind_err(
+                                "source.array-lit-empty",
+                                "an empty array literal has no element type; write List<T>.new() instead"
+                                    .to_string(),
+                                value.span,
+                            );
+                            continue;
+                        }
+                        let mut elems = Vec::with_capacity(elems_ast.len());
+                        for e in elems_ast {
+                            elems.push(self.expr_iterative(e));
+                        }
+                        let elem_vt = elems[0].vt;
+                        for (e, ast_e) in elems.iter().zip(elems_ast.iter()) {
+                            if e.vt != elem_vt {
+                                self.bind_err(
+                                    "source.type-mismatch",
+                                    format!(
+                                        "array literal elements must share one type; first is `{}`, found `{}`",
+                                        elem_vt.as_str(),
+                                        e.vt.as_str()
+                                    ),
+                                    ast_e.span,
+                                );
+                            }
+                            self.reject_elem_view_use(e, "the literal element");
+                        }
+                        let li = self.coll.intern_list(elem_vt);
+                        if self.scopes.last().unwrap().names.contains_key(&name.name) {
+                            self.bind_err(
+                                "source.duplicate",
+                                format!(
+                                    "local `{}` is declared more than once in this block",
+                                    name.name
+                                ),
+                                name.span.join(value.span),
+                            );
+                        }
+                        self.declared_names.insert(name.name.clone());
+                        let lref = self.fresh_local(&name.name, VT::List(li), *mutable);
+                        self.scopes
+                            .last_mut()
+                            .unwrap()
+                            .names
+                            .insert(name.name.clone(), lref);
+                        let new_expr = ResolvedExpr {
+                            span: value.span,
+                            vt: VT::List(li),
+                            kind: RExprKind::ListNew { list: li },
+                        };
+                        stack
+                            .last_mut()
+                            .expect("resolve frame")
+                            .stmts
+                            .push(RStmt::Let {
+                                local: lref,
+                                value: new_expr,
+                                span: *span,
+                            });
+                        for (e, ast_e) in elems.into_iter().zip(elems_ast.iter()) {
+                            let mut e = e;
+                            self.check_push_value(&elem_vt, &mut e, ast_e.span);
+                            let push = ResolvedExpr {
+                                span: ast_e.span,
+                                vt: VT::Unit,
+                                kind: RExprKind::ListPush {
+                                    list: Box::new(ResolvedExpr {
+                                        span: ast_e.span,
+                                        vt: VT::List(li),
+                                        kind: RExprKind::ReadLocal(lref),
+                                    }),
+                                    value: Box::new(e),
+                                },
+                            };
+                            stack
+                                .last_mut()
+                                .expect("resolve frame")
+                                .stmts
+                                .push(RStmt::ExprStmt {
+                                    value: push,
+                                    span: ast_e.span,
+                                });
+                        }
+                        continue;
+                    }
                     // RHS resolves in the pre-declaration environment. On
                     // the collections surface an annotation is also the
                     // bare-constructor context (`var r Result<int, Str> =
@@ -6545,6 +6732,84 @@ impl<'a, 's> FnResolver<'a, 's> {
 
     fn expr(&mut self, e: &Expr) -> ResolvedExpr {
         match &e.kind {
+            // PLAN-962 (L-16): array literals desugar ONLY in the
+            // let/var initializer position (the Let arm intercepts);
+            // every other expression position is a named rejection.
+            ExprKind::ArrayLit(elems) => {
+                let _ = elems;
+                self.bind_err(
+                    "source.array-lit-position",
+                    "an array literal is only a let/var initializer in this profile (bind it to a name, then use the list)"
+                        .to_string(),
+                    e.span,
+                );
+                ResolvedExpr {
+                    span: e.span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(0),
+                }
+            }
+            // PLAN-962 (L-48): an index READ `xs[i]` — the same element
+            // path `.get(i)` resolves through (value element = ListGet;
+            // owned element = the tainted whole-element view).
+            ExprKind::Index { base, index } => {
+                let recv = self.expr(base);
+                let idx = self.expr(index);
+                if idx.vt != VT::I32 {
+                    self.bind_err(
+                        "source.index-type",
+                        "an index must be i32 in this profile".to_string(),
+                        index.span,
+                    );
+                }
+                match recv.vt {
+                    VT::List(li) => {
+                        let elem = self.coll.lists[li];
+                        if self.vt_is_coll_owned(elem) {
+                            if !self.coll.aggregates_admission {
+                                self.bind_err(
+                                    "source.view-escape",
+                                    "a whole owned element is not a value; project a field (`xs[i].f`) or use `xs.remove(i)`".to_string(),
+                                    e.span,
+                                );
+                            }
+                            ResolvedExpr {
+                                span: e.span,
+                                vt: elem,
+                                kind: RExprKind::ElemView {
+                                    list: Box::new(recv),
+                                    index: Box::new(idx),
+                                    path: Vec::new(),
+                                },
+                            }
+                        } else {
+                            ResolvedExpr {
+                                span: e.span,
+                                vt: elem,
+                                kind: RExprKind::ListGet {
+                                    list: Box::new(recv),
+                                    index: Box::new(idx),
+                                },
+                            }
+                        }
+                    }
+                    other => {
+                        self.bind_err(
+                            "source.index-base",
+                            format!(
+                                "indexing requires a List receiver, found `{}`",
+                                other.as_str()
+                            ),
+                            base.span,
+                        );
+                        ResolvedExpr {
+                            span: e.span,
+                            vt: VT::I32,
+                            kind: RExprKind::IntLit(0),
+                        }
+                    }
+                }
+            }
             // PLAN-962 (L-19): a range is legal ONLY as the for-in
             // iterable (the ForIn arm consumes it before this walk); a
             // range value anywhere else is a named rejection.

@@ -1049,6 +1049,12 @@ fn shift_block(b: &mut Block, offset: usize) {
 }
 fn shift_stmt(s: &mut Stmt, offset: usize) {
     match s {
+        // PLAN-962：索引赋值 span/内部平移。
+        Stmt::IndexAssign(ia) => {
+            shift_expr(&mut ia.index, offset);
+            shift_expr(&mut ia.value, offset);
+            sh(&mut ia.span, offset);
+        }
         Stmt::ExprStmt { value, span } | Stmt::Return { value, span } => {
             shift_expr(value, offset);
             sh(span, offset);
@@ -1146,6 +1152,16 @@ fn shift_expr(e: &mut Expr, offset: usize) {
         ExprKind::Range { start, end, .. } => {
             shift_expr(start, offset);
             shift_expr(end, offset);
+        }
+        // PLAN-962：数组字面量/索引同步平移。
+        ExprKind::ArrayLit(elems) => {
+            for e in elems {
+                shift_expr(e, offset);
+            }
+        }
+        ExprKind::Index { base, index } => {
+            shift_expr(base, offset);
+            shift_expr(index, offset);
         }
         ExprKind::IntLit(_)
         | ExprKind::BoolLit(_)
@@ -1380,6 +1396,11 @@ impl<'a> Walker<'a> {
             self.budget(stmt_span(s))?;
             let mut next_locals = locals.clone();
             match s {
+                // PLAN-962：索引赋值走读（base 是既有局部）。
+                Stmt::IndexAssign(ia) => {
+                    self.walk_expr(&mut ia.index, &locals)?;
+                    self.walk_expr(&mut ia.value, &locals)?;
+                }
                 Stmt::Let {
                     name, ann, value, ..
                 } => {
@@ -1564,6 +1585,17 @@ impl<'a> Walker<'a> {
             ExprKind::Range { start, end, .. } => {
                 self.walk_expr_inner(start, locals)?;
                 self.walk_expr_inner(end, locals)
+            }
+            // PLAN-962：数组字面量/索引递归走读。
+            ExprKind::ArrayLit(elems) => {
+                for e in elems {
+                    self.walk_expr_inner(e, locals)?;
+                }
+                Ok(())
+            }
+            ExprKind::Index { base, index } => {
+                self.walk_expr_inner(base, locals)?;
+                self.walk_expr_inner(index, locals)
             }
             ExprKind::IntLit(_)
             | ExprKind::BoolLit(_)
@@ -1899,6 +1931,8 @@ fn stmt_span(s: &Stmt) -> Span {
         | Stmt::Continue { span }
         | Stmt::IsMatch { span, .. }
         | Stmt::ForIn { span, .. } => *span,
+        // PLAN-962：索引赋值。
+        Stmt::IndexAssign(ia) => ia.span,
     }
 }
 

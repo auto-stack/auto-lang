@@ -526,6 +526,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { var-stmt() {} }
             alt { assign-stmt() {} }
             alt(profiles: [record, text-record, collections, closures, packages-modules, numeric, aggregates]) { path-assign-stmt() {} }
+            // PLAN-962（L-48）：索引赋值 `xs[i] = v`（聚合面）。
+            alt(profiles: [aggregates]) { index-assign-stmt() {} }
             alt { return-stmt() {} }
             alt { if-stmt() {} }
             alt(profiles: [core]) { while-stmt() {} }
@@ -568,6 +570,16 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             expr(field: "value")
         }
         path-seg { dot() {} ident(field: "path") }
+        // PLAN-962（L-48）：`xs[i] = v`——元素替换（list-set 语义，等价
+        // `.set(i, v)`；旧引擎 SET_ELEM 同形）。
+        index-assign-stmt(profiles: [aggregates]) {
+            ident(field: "name")
+            lbracket(same-line: true) {}
+            expr(field: "index")
+            rbracket() {}
+            assign() {}
+            expr(field: "value")
+        }
         return-stmt {
             return(field: "kw")
             expr(field: "value")
@@ -724,6 +736,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         condition-atom(profiles: [record, text-record, collections, closures, aggregates]) {
             // HashExpr 原子先于其余原子形状（`#` 不与其余形状共享前缀）。
             alt(profiles: [scalar-ct]) { hash-expr() {} }
+            // PLAN-962（L-16）：数组/List 字面量（聚合面）。
+            alt(profiles: [aggregates]) { array-lit() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
             alt { condition-ctor() {} }
             // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
@@ -746,6 +760,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         atom-expr {
             // HashExpr 原子先于其余原子形状（`#` 不与其余形状共享前缀）。
             alt(profiles: [scalar-ct]) { hash-expr() {} }
+            // PLAN-962（L-16）：数组/List 字面量 `[e, ...]`（聚合面）。
+            alt(profiles: [aggregates]) { array-lit() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
             alt(profiles: [collections, closures, record, text-record, packages-modules, aggregates]) { ctor-expr() {} }
             // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
@@ -773,6 +789,21 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             gt() {}
             dot(same-line: true)
             ident(field: "member")
+        }
+        // PLAN-962（L-16）：`[e1, e2, ...]`——非空元素表（空字面量无元素类型，
+        // 由 resolve 具名拒）。语句位脱糖 List<T>.new()+push 链（见 resolve）。
+        array-lit(profiles: [aggregates]) {
+            lbracket() {}
+            array-elems(field: "elems")
+            rbracket() {}
+        }
+        array-elems(profiles: [aggregates]) {
+            expr(field: "head")
+            many { array-elem-tail() {} }
+        }
+        array-elem-tail(profiles: [aggregates]) {
+            comma() {}
+            expr() {}
         }
         // PLAN-928（T-02 最小面，T-04 冻结诊断差分）：lambda 表达式——
         // `move? ( 参数? ) => 块 | 表达式`。块体复用语句纪律（list-nl）；

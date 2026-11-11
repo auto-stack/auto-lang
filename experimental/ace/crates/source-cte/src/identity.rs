@@ -481,6 +481,11 @@ fn walk_stmt(stmt: &Stmt, out: &mut Vec<String>) {
         Stmt::Return { value, .. } => walk_expr(value, out),
         Stmt::ExprStmt { value, .. } => walk_expr(value, out),
         Stmt::Let { value, .. } => walk_expr(value, out),
+        // PLAN-962: index assign reads both inner expressions.
+        Stmt::IndexAssign(ia) => {
+            walk_expr(&ia.index, out);
+            walk_expr(&ia.value, out);
+        }
         Stmt::Assign { value, .. } => walk_expr(value, out),
         Stmt::If {
             cond, then, els, ..

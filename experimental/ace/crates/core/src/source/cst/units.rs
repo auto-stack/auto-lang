@@ -487,6 +487,11 @@ fn references_name(f: &FnItem, name: &str) -> bool {
             WalkItem::Stmt(s) => {
                 let mut sub: Vec<WalkItem> = Vec::new();
                 match s {
+                    // PLAN-962：索引赋值——index/value 入队。
+                    crate::source::ast::Stmt::IndexAssign(ia) => {
+                        sub.push(WalkItem::Expr(&ia.index));
+                        sub.push(WalkItem::Expr(&ia.value));
+                    }
                     crate::source::ast::Stmt::Let { ann: a, value, .. } => {
                         if let Some(ty) = a {
                             if ann(ty) {
@@ -622,6 +627,11 @@ fn collect_lambdas(stmts: &[Stmt], out: &mut Vec<(Span, u64)>, src: &str) {
             WalkItem::Stmt(s) => {
                 let mut sub: Vec<WalkItem<'_>> = Vec::new();
                 match s {
+                    // PLAN-962：索引赋值——index/value 入队。
+                    Stmt::IndexAssign(ia) => {
+                        work.push(WalkItem::Expr(&ia.index));
+                        work.push(WalkItem::Expr(&ia.value));
+                    }
                     Stmt::Let { value, .. }
                     | Stmt::Assign { value, .. }
                     | Stmt::Return { value, .. }
@@ -1954,6 +1964,11 @@ fn extract_lambda_body(f: &FnItem, ordinal: usize) -> Option<ClosureBody> {
             WalkItem::Stmt(s) => {
                 let mut sub: Vec<WalkItem<'_>> = Vec::new();
                 match s {
+                    // PLAN-962：索引赋值——index/value 入队。
+                    Stmt::IndexAssign(ia) => {
+                        work.push(WalkItem::Expr(&ia.index));
+                        work.push(WalkItem::Expr(&ia.value));
+                    }
                     Stmt::Let { value, .. }
                     | Stmt::Assign { value, .. }
                     | Stmt::Return { value, .. }

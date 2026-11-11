@@ -468,6 +468,11 @@ fn project_stmt(s: &core_ast::Stmt) -> Result<InputStmt, String> {
             value: project_expr(&value),
             span: Span::new(sp.start as u32, sp.end as u32),
         },
+        // PLAN-962: an index assign is an aggregates-surface effect —
+        // named-unsupported on the query surface.
+        core_ast::Stmt::IndexAssign(_) => {
+            return Err("index-assign statement".to_string())
+        }
         core_ast::Stmt::Return { value, span: sp } => InputStmt::Return {
             value: project_expr(&value),
             span: Span::new(sp.start as u32, sp.end as u32),
@@ -547,6 +552,14 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         // expression on the query surface (named rejection).
         core_ast::ExprKind::Range { .. } => InputExprKind::Unsupported {
             what: "range-expression",
+        },
+        // PLAN-962: literals/index reads are aggregates-surface forms,
+        // named-unsupported on the query surface.
+        core_ast::ExprKind::ArrayLit(_) => InputExprKind::Unsupported {
+            what: "array-literal",
+        },
+        core_ast::ExprKind::Index { .. } => InputExprKind::Unsupported {
+            what: "index-expression",
         },
         core_ast::ExprKind::BoolLit(v) => InputExprKind::BoolLit(*v),
         core_ast::ExprKind::Var(v) => InputExprKind::Var(v.name.clone()),

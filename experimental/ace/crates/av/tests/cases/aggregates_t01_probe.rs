@@ -180,3 +180,60 @@ fn range_for_in_counts_and_executes() {
             .any(|d| d.code == "source.syntax" || d.code == "source.range-position")
     );
 }
+
+/// PLAN-962 unit-4 (L-16/L-48): array literals bind through the
+/// statement-level desugar (List<T>.new() + pushes); index ASSIGN
+/// `xs[i] = v` replaces elements in place. Positional index READS
+/// (`xs[i]`) ride the `.get(i)` method form — the postfix-bracket shape
+/// is a named pending item (CST pratt machinery, see the plan §9).
+#[test]
+fn array_literal_and_index_assign_execute() {
+    let src = "fn main() int {
+    var xs = [20, 22]
+    xs[0] = 20
+    var ys = [10, 5, 3]
+    ys[1] = 0
+    return xs.get(0) + xs.get(1) + ys.get(1)
+}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("literal + index-assign chain executes");
+    assert_eq!(run.value, 42); // 20 + 22 + 0
+    assert_eq!(run.live_after, 0);
+    assert_eq!(run.allocs, run.frees);
+}
+
+/// PLAN-962 unit-4 negative controls: empty literals, mixed element
+/// types and non-List index bases reject with named diagnostics.
+#[test]
+fn array_literal_negative_controls() {
+    for (name, src) in [
+        (
+            "empty",
+            "fn main() int {\n    let a = []\n    return 1\n}",
+        ),
+        (
+            "mixed",
+            "fn main() int {\n    let a = [1, \"x\"]\n    return 1\n}",
+        ),
+        (
+            "position",
+            "fn main() int {\n    let a = [1, 2]\n    return [3].get(0)\n}",
+        ),
+    ] {
+        let err = ace_core::source::compile_aggregates_source(src, "p.at", &[])
+            .err()
+            .unwrap_or_else(|| panic!("{name} must reject"));
+        // `[]` rejects at the grammar layer (array-elems requires a
+        // head); the resolver's array-lit-empty is defense-in-depth.
+        assert!(
+            err.iter().any(|d| {
+                d.code == "source.array-lit-empty"
+                    || d.code == "source.type-mismatch"
+                    || d.code == "source.array-lit-position"
+                    || (name == "empty" && d.code == "source.syntax")
+            }),
+            "{name}: unexpected diagnostics {:?}",
+            err.iter().map(|d| d.code.as_str()).collect::<Vec<_>>()
+        );
+    }
+}

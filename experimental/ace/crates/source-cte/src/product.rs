@@ -277,6 +277,11 @@ fn substitute_all(p: &mut Program, served: &ServedRoot) {
             | Stmt::ExprStmt { value, .. }
             | Stmt::Let { value, .. }
             | Stmt::Assign { value, .. } => repl(value, served),
+            // PLAN-962：索引赋值替换两内部表达式。
+            Stmt::IndexAssign(ia) => {
+                repl(&mut ia.index, served);
+                repl(&mut ia.value, served);
+            }
             Stmt::If {
                 cond, then, els, ..
             } => {

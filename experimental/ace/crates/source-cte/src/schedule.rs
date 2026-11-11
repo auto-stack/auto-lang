@@ -454,6 +454,11 @@ fn collect_hashes_stmt(s: &Stmt, owner: &str, out: &mut Vec<(String, Span)>) {
             collect_hashes_expr(value, owner, out)
         }
         Stmt::Assign { value, .. } => collect_hashes_expr(value, owner, out),
+        // PLAN-962：索引赋值。
+        Stmt::IndexAssign(ia) => {
+            collect_hashes_expr(&ia.index, owner, out);
+            collect_hashes_expr(&ia.value, owner, out);
+        }
         Stmt::If {
             cond, then, els, ..
         } => {
@@ -579,6 +584,11 @@ fn callees_stmt(s: &Stmt, out: &mut Vec<String>) {
             callees_expr(value, out)
         }
         Stmt::Assign { value, .. } => callees_expr(value, out),
+        // PLAN-962：索引赋值。
+        Stmt::IndexAssign(ia) => {
+            callees_expr(&ia.index, out);
+            callees_expr(&ia.value, out);
+        }
         Stmt::If {
             cond, then, els, ..
         } => {
@@ -836,6 +846,11 @@ fn substitute_stmt(s: &mut Stmt, served: &ServedRoot, site: Span, site_expr: &Ex
         | Stmt::ExprStmt { value, .. }
         | Stmt::Let { value, .. }
         | Stmt::Assign { value, .. } => replace_at(value, served, site, site_expr),
+        // PLAN-962：索引赋值。
+        Stmt::IndexAssign(ia) => {
+            replace_at(&mut ia.index, served, site, site_expr);
+            replace_at(&mut ia.value, served, site, site_expr);
+        }
         Stmt::If {
             cond, then, els, ..
         } => {
@@ -992,6 +1007,11 @@ fn find_hash_stmt<'a>(s: &'a Stmt, span: Span, found: &mut Option<&'a Expr>) {
             find_hash_expr(value, span, found)
         }
         Stmt::Assign { value, .. } => find_hash_expr(value, span, found),
+        // PLAN-962：索引赋值。
+        Stmt::IndexAssign(ia) => {
+            find_hash_expr(&ia.index, span, found);
+            find_hash_expr(&ia.value, span, found);
+        }
         Stmt::If {
             cond, then, els, ..
         } => {

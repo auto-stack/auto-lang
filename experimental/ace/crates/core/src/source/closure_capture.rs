@@ -76,6 +76,16 @@ pub(crate) fn analyze_capture_uses(
                 visit_expr(start, outer_locals, scopes, uses, by_name);
                 visit_expr(end, outer_locals, scopes, uses, by_name);
             }
+            // PLAN-962: an array literal captures through its elements.
+            ExprKind::ArrayLit(elems) => {
+                for e in elems {
+                    visit_expr(e, outer_locals, scopes, uses, by_name);
+                }
+            }
+            ExprKind::Index { base, index } => {
+                visit_expr(base, outer_locals, scopes, uses, by_name);
+                visit_expr(index, outer_locals, scopes, uses, by_name);
+            }
             ExprKind::Var(id) => record(id, false, outer_locals, scopes, uses, by_name),
             ExprKind::Call { callee, args } => {
                 record(callee, false, outer_locals, scopes, uses, by_name);
@@ -163,6 +173,11 @@ pub(crate) fn analyze_capture_uses(
             match stmt {
                 Stmt::ExprStmt { value, .. } | Stmt::Return { value, .. } => {
                     visit_expr(value, outer_locals, scopes, uses, by_name)
+                }
+                // PLAN-962: an index assign reads base/index/value.
+                Stmt::IndexAssign(ia) => {
+                    visit_expr(&ia.index, outer_locals, scopes, uses, by_name);
+                    visit_expr(&ia.value, outer_locals, scopes, uses, by_name);
                 }
                 Stmt::Let { name, value, .. } => {
                     visit_expr(value, outer_locals, scopes, uses, by_name);
@@ -293,6 +308,16 @@ pub(crate) fn scan_shared_capture_cells(
                 visit_expr(start, scopes, shared);
                 visit_expr(end, scopes, shared);
             }
+            // PLAN-962: an array literal captures through its elements.
+            ExprKind::ArrayLit(elems) => {
+                for e in elems {
+                    visit_expr(e, scopes, shared);
+                }
+            }
+            ExprKind::Index { base, index } => {
+                visit_expr(base, scopes, shared);
+                visit_expr(index, scopes, shared);
+            }
             // PLAN-961: a typed literal captures nothing.
             ExprKind::TypedLit { .. } => {}
             ExprKind::Call { args, .. } => {
@@ -379,6 +404,11 @@ pub(crate) fn scan_shared_capture_cells(
             match stmt {
                 Stmt::ExprStmt { value, .. } | Stmt::Return { value, .. } => {
                     visit_expr(value, scopes, shared)
+                }
+                // PLAN-962: an index assign reads index/value.
+                Stmt::IndexAssign(ia) => {
+                    visit_expr(&ia.index, scopes, shared);
+                    visit_expr(&ia.value, scopes, shared);
                 }
                 Stmt::Let {
                     name,

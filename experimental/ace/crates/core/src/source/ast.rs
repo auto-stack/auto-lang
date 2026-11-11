@@ -314,6 +314,17 @@ pub enum ExprKind {
     /// Range-checked signed 32-bit literal (`-2147483648` and
     /// `- 2147483648` are one literal; see the parser).
     IntLit(i32),
+    /// PLAN-962 (L-16): a non-empty array/List literal `[e1, e2, ...]`.
+    /// The resolver desugars at the statement level (`List<T>.new()` +
+    /// pushes); other positions reject with a named diagnostic.
+    ArrayLit(Vec<Expr>),
+    /// PLAN-962 (L-48): an index suffix `base[index]` — reads desugar to
+    /// the element-get path (view for owned elements); index-assign
+    /// targets desugar to the list-set effect.
+    Index {
+        base: Box<Expr>,
+        index: Box<Expr>,
+    },
     /// PLAN-962 (L-19): a range `a..b` / `a..=b` — legal ONLY in the
     /// for-in iterable position (the resolver desugars to a counted
     /// i32 loop; a range in any other position is a named rejection).
@@ -449,6 +460,16 @@ pub struct AssignTarget {
     pub path: Vec<Ident>,
 }
 
+/// PLAN-962 (L-48): `xs[i] = v` — element replacement through the index
+/// place (list-set semantics; `.set(i, v)` spelled positionally).
+#[derive(Clone, Debug)]
+pub struct IndexAssign {
+    pub base: Ident,
+    pub index: Expr,
+    pub value: Expr,
+    pub span: Span,
+}
+
 #[derive(Clone, Debug)]
 pub enum Stmt {
     /// PLAN-862: an expression evaluated for its value only where the
@@ -475,6 +496,8 @@ pub enum Stmt {
         /// Name through the end of the value.
         span: Span,
     },
+    /// PLAN-962 (L-48): `xs[i] = v`.
+    IndexAssign(IndexAssign),
     Return {
         value: Expr,
         /// `return` through the end of the value.

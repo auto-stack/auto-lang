@@ -305,6 +305,14 @@ fn walk_stmt<'a>(
             stack.push(Task::Tok("end-assign"));
             stack.push(Task::Expr(value));
         }
+        // PLAN-962: an index assign is an aggregates-surface effect —
+        // named-unsupported on the query surface.
+        Stmt::IndexAssign(ia) => {
+            return Err(WalkError::Unsupported {
+                what: "index-assign-statement",
+                span: ia.span,
+            });
+        }
         Stmt::Return { value, span } => {
             push_node(nodes, canon, "stmt.return", *span);
             canon.extend_from_slice(b"return");
@@ -393,6 +401,19 @@ fn walk_expr<'a>(
         ExprKind::Range { .. } => {
             return Err(WalkError::Unsupported {
                 what: "range-expression",
+                span: e.span,
+            });
+        }
+        // PLAN-962: aggregates-surface forms, named-unsupported here.
+        ExprKind::ArrayLit(_) => {
+            return Err(WalkError::Unsupported {
+                what: "array-literal",
+                span: e.span,
+            });
+        }
+        ExprKind::Index { .. } => {
+            return Err(WalkError::Unsupported {
+                what: "index-expression",
                 span: e.span,
             });
         }
