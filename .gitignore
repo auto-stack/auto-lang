@@ -197,6 +197,9 @@ test_temp.txt
 # PLAN-1005：架构行 admission recipe 合同（严格封套逐行准入消费的长期
 # 测试合同数据；*.json 母规则吞掉致 fresh 检出治理必红——同 F-908-R1-01 缺陷类）
 !crates/auto-lang/test/cases/ace-m1-expanded/architecture-entry-recipes.json
+# PLAN-1005（F-1005-03 修复）：a2r/probe 族逐套件身份合同（ace_m1_legacy_a2r
+# 消费的长期跟踪数据；1000 落地时目录缺失——同 F-908-R1-01 类）
+!crates/auto-lang/test/cases/ace-m1-expanded/legacy-a2r-contracts/
 # PLAN-997：M1 trap域证书与声明式trap oracle（verify-ace-m1-852 snapshot/
 # receipts/acceptance 消费的长期测试合同数据；*.json 母规则吞掉致 fresh 检出
 # daily 必红——同 F-908-R1-01 缺陷类）
