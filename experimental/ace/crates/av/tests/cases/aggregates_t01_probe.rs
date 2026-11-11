@@ -154,3 +154,29 @@ fn element_view_materialization_rejects() {
         .expect("pushing a view must reject");
     assert!(err.iter().any(|d| d.code == "source.view-escape"));
 }
+
+/// PLAN-962 unit-3 (L-19): range for-in `for i in a .. b` / `a ..= b`
+/// desugars to a counted i32 loop. Bounds need spaces around `..` in
+/// this profile (the affix-num scanner takes `1..5` as one token —
+/// documented boundary, see the negative control below).
+#[test]
+fn range_for_in_counts_and_executes() {
+    let src = "fn main() int {\n    var s = 0\n    for i in 1 .. 5 {\n        s = s + i\n    }\n    for j in 1 ..= 3 {\n        s = s + j * 10\n    }\n    return s\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("range for-in executes");
+    assert_eq!(run.value, 10 + 60); // 1+2+3+4 + 10+20+30
+    assert_eq!(run.live_after, 0);
+
+    // Negative: a range outside the iterable position rejects; the
+    // compact unspaced form is a named affix rejection, not a pass.
+    let bad = "fn main() int {\n    let r = 1 .. 5\n    return 1\n}";
+    let err = ace_core::source::compile_aggregates_source(bad, "p.at", &[])
+        .err()
+        .expect("range-as-value must reject");
+    // `..` outside for-range rejects at the grammar layer; the resolver's
+    // source.range-position is defense-in-depth for programmatic ASTs.
+    assert!(
+        err.iter()
+            .any(|d| d.code == "source.syntax" || d.code == "source.range-position")
+    );
+}

@@ -314,6 +314,14 @@ pub enum ExprKind {
     /// Range-checked signed 32-bit literal (`-2147483648` and
     /// `- 2147483648` are one literal; see the parser).
     IntLit(i32),
+    /// PLAN-962 (L-19): a range `a..b` / `a..=b` — legal ONLY in the
+    /// for-in iterable position (the resolver desugars to a counted
+    /// i32 loop; a range in any other position is a named rejection).
+    Range {
+        start: Box<Expr>,
+        end: Box<Expr>,
+        inclusive: bool,
+    },
     /// PLAN-961: a typed numeric literal (`1i64`, `0x1Fu32`, `1.5f32`,
     /// `2.5d`, `3b`). Decoded at the projection: `bits` carries the
     /// payload in the type's own width (i8/u8/u32 low bits, i64/u64 full,

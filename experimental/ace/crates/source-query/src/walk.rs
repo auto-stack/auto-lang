@@ -387,6 +387,15 @@ fn walk_expr<'a>(
     stack: &mut Vec<Task<'a>>,
 ) -> Result<(), WalkError> {
     match &e.kind {
+        // PLAN-962: a range never reaches the query walk as a value (it
+        // is only the for-in iterable, consumed by the resolver); a
+        // structural walk of a retained program hits this named reject.
+        ExprKind::Range { .. } => {
+            return Err(WalkError::Unsupported {
+                what: "range-expression",
+                span: e.span,
+            });
+        }
         ExprKind::IntLit(v) => {
             push_node(nodes, canon, "expr.int", e.span);
             canon.extend_from_slice(b"int");

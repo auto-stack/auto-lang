@@ -114,6 +114,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         r-link { literal: "link" }
         r-mod { literal: "mod" }
         r-move { literal: "move" }
+        // PLAN-962：范围面（聚合）`..` / `..=`——仅迭代位（for-range）。
+        dotdoteq(profiles: [aggregates]) { literal: "..=" }
+        dotdot(profiles: [aggregates]) { literal: ".." }
         r-nil { literal: "nil" }
         r-null { literal: "null" }
         r-outlet { literal: "outlet" }
@@ -528,6 +531,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [core]) { while-stmt() {} }
             alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, scalar-modules, packages-modules]) { for-cond-stmt() {} }
             alt(profiles: [collections, closures, numeric, aggregates]) { for-in-stmt() {} }
+            // PLAN-962：`for i in a..b / a..=b { }`（i32 计数循环）。
+            alt(profiles: [aggregates]) { for-range-stmt() {} }
             alt(profiles: [collections, closures, numeric, aggregates]) { is-stmt() {} }
             alt { loop-stmt() {} }
             alt { break() {} }
@@ -594,6 +599,24 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             in(field: "in")
             ident(field: "iter")
             block(field: "body")
+        }
+        // PLAN-962：范围迭代（L-19）——`for i in a..b { }` / `a..=b`；解析
+        // 为 Range 迭代形，resolve 脱糖 i32 计数循环（步进 1）。
+        for-range-stmt(profiles: [aggregates]) {
+            for(field: "kw")
+            ident(field: "var")
+            in(field: "in")
+            range-iter(field: "iter")
+            block(field: "body")
+        }
+        range-iter(profiles: [aggregates]) {
+            expr(field: "start")
+            range-dots(field: "dots")
+            expr(field: "end")
+        }
+        range-dots(profiles: [aggregates]) {
+            alt { dotdoteq() {} }
+            alt { dotdot() {} }
         }
         // PLAN-928（T-03）：PLAN-864 `is <局部> { 臂 -> { .. } }`（穷尽分派；
         // 限定形式 `Enum.Name`；载荷绑定 `(v)`）。

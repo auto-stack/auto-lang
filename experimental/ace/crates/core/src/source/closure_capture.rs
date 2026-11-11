@@ -71,6 +71,11 @@ pub(crate) fn analyze_capture_uses(
             }
             // PLAN-961: a typed literal captures nothing.
             ExprKind::TypedLit { .. } => {}
+            // PLAN-962: a range captures through its bounds.
+            ExprKind::Range { start, end, .. } => {
+                visit_expr(start, outer_locals, scopes, uses, by_name);
+                visit_expr(end, outer_locals, scopes, uses, by_name);
+            }
             ExprKind::Var(id) => record(id, false, outer_locals, scopes, uses, by_name),
             ExprKind::Call { callee, args } => {
                 record(callee, false, outer_locals, scopes, uses, by_name);
@@ -283,6 +288,11 @@ pub(crate) fn scan_shared_capture_cells(
     ) {
         match &expr.kind {
             ExprKind::HashExpr { expr: inner } => visit_expr(inner, scopes, shared),
+            // PLAN-962: a range captures through its bounds.
+            ExprKind::Range { start, end, .. } => {
+                visit_expr(start, scopes, shared);
+                visit_expr(end, scopes, shared);
+            }
             // PLAN-961: a typed literal captures nothing.
             ExprKind::TypedLit { .. } => {}
             ExprKind::Call { args, .. } => {

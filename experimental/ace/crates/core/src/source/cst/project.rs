@@ -3146,6 +3146,13 @@ enum Frame {
         iter: Expr,
         node: u32,
     },
+    /// PLAN-962（L-19）：`for i in a..b { }` 收尾帧（vals 栈自底向上：
+    /// body、start、end）。
+    ForRangeBody {
+        var: Ident,
+        inclusive: bool,
+        node: u32,
+    },
     /// PLAN-928（T-03）：`is <局部> { 臂 }` 逐臂帧 + 汇总帧。
     IsArms(IsMatchCtx),
     IsArmBlock {
@@ -3383,6 +3390,25 @@ fn first_leaf_span(cx: &Cx, node: u32) -> Span {
         }
     }
     cx.span_of(n)
+}
+
+/// PLAN-962 (L-19): the (start, end, inclusive) parts of a range-iter
+/// rule node (`expr, dots token, expr`).
+fn range_parts(cx: &Cx, node: u32) -> (u32, u32, bool) {
+    let mut inclusive = false;
+    // the dots live under the range-dots rule node (a field child)
+    if let Some(dots) = cx.field_child(node, "dots") {
+        for c in cx.children(dots) {
+            if let Some(dde) = cx.k.tok_dotdoteq {
+                if cx.tree.kind(c) == dde {
+                    inclusive = true;
+                }
+            }
+        }
+    }
+    let start_n = cx.field_child(node, "start").expect("range start");
+    let end_n = cx.field_child(node, "end").expect("range end");
+    (start_n, end_n, inclusive)
 }
 
 fn ident_of(cx: &mut Cx, leaf: u32) -> Ident {
@@ -4221,6 +4247,22 @@ impl<'a> Engine<'a> {
                 iter,
                 node: inner,
             });
+            self.enter_block(body_n);
+        } else if kind == self.cx.k.for_range_stmt.unwrap_or(u32::MAX) {
+            // PLAN-962 (L-19): `for i in a..b/a..=b { }` — projects to a
+            // ForIn whose iter is a Range expr; the resolver desugars.
+            let var_leaf = self.cx.field_child(inner, "var").expect("for-range var");
+            let var = ident_of(&mut self.cx, var_leaf);
+            let iter_n = self.cx.field_child(inner, "iter").expect("range iter");
+            let (start_n, end_n, inclusive) = range_parts(&self.cx, iter_n);
+            let body_n = self.cx.field_child(inner, "body").expect("for-range body");
+            self.stack.push(Frame::ForRangeBody {
+                var,
+                inclusive,
+                node: inner,
+            });
+            self.stack.push(Frame::ExprEnter(end_n));
+            self.stack.push(Frame::ExprEnter(start_n));
             self.enter_block(body_n);
         } else if kind == self.cx.k.is_stmt.unwrap_or(u32::MAX) {
             let scrutinee_leaf = self
@@ -5691,6 +5733,34 @@ impl<'a> Engine<'a> {
                 self.vals.push(Val::S(Stmt::ForIn {
                     var,
                     iter,
+                    body,
+                    span,
+                }));
+            }
+            Frame::ForRangeBody {
+                var,
+                inclusive,
+                node,
+            } => {
+                let end = self.pop_e();
+                let start = self.pop_e();
+                let body = self.pop_b();
+                let kw = self
+                    .cx
+                    .child_of_kind(node, self.cx.k.tok_for)
+                    .map(|l| self.cx.span_of(l))
+                    .unwrap_or(Span { start: 0, end: 0 });
+                let span = kw.join(body.span);
+                self.vals.push(Val::S(Stmt::ForIn {
+                    var,
+                    iter: Expr {
+                        span: start.span.join(end.span),
+                        kind: ExprKind::Range {
+                            start: Box::new(start),
+                            end: Box::new(end),
+                            inclusive,
+                        },
+                    },
                     body,
                     span,
                 }));

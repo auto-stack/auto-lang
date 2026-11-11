@@ -543,6 +543,11 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         core_ast::ExprKind::TypedLit { .. } => InputExprKind::Unsupported {
             what: "typed-numeric-literal",
         },
+        // PLAN-962: a range is only a for-in iterable, never a value
+        // expression on the query surface (named rejection).
+        core_ast::ExprKind::Range { .. } => InputExprKind::Unsupported {
+            what: "range-expression",
+        },
         core_ast::ExprKind::BoolLit(v) => InputExprKind::BoolLit(*v),
         core_ast::ExprKind::Var(v) => InputExprKind::Var(v.name.clone()),
         core_ast::ExprKind::Call { callee, args } => InputExprKind::Call {

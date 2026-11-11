@@ -4492,6 +4492,8 @@ impl<'a, 's> FnResolver<'a, 's> {
             // PLAN-936（T-04）：HashExpr 的类型 = inner 的类型（closures 面
             // 不产 HashExpr；本臂仅为穷尽性——inner 递归即可）。
             ExprKind::HashExpr { expr: inner } => self.infer_closure_expr(inner, locals),
+            // PLAN-962: a range is only a for-in iterable, never a value.
+            ExprKind::Range { .. } => VT::I32,
             ExprKind::IntLit(_) => VT::I32,
             // PLAN-961: the typed literal carries its own type.
             ExprKind::TypedLit { ty, .. } => vt_of_word(*ty),
@@ -6208,6 +6210,137 @@ impl<'a, 's> FnResolver<'a, 's> {
                     body,
                     span,
                 } => {
+                    // PLAN-962 (L-19): `for i in a..b` / `a..=b` — desugar
+                    // to a counted i32 loop (step 1): lo/hi locals, then
+                    // the same Loop{If(i</<=hi){body; i=i+1}} shape the
+                    // list iteration builds.
+                    if let ast::ExprKind::Range {
+                        start,
+                        end,
+                        inclusive,
+                    } = &iter.kind
+                    {
+                        let lo = self.expr_iterative(start);
+                        let hi = self.expr_iterative(end);
+                        if lo.vt != VT::I32 || hi.vt != VT::I32 {
+                            self.bind_err(
+                                "source.range-bounds",
+                                "range bounds must be i32 in this profile".to_string(),
+                                iter.span,
+                            );
+                        }
+                        let lo_l = self.fresh_local("__range_lo", VT::I32, false);
+                        let hi_l = self.fresh_local("__range_hi", VT::I32, false);
+                        let i_l = self.fresh_local(&var.name, VT::I32, true);
+                        let target = LoopRef(self.loop_count);
+                        self.loop_count += 1;
+                        self.loop_stack.push(target);
+                        let prologue = vec![
+                            RStmt::Let {
+                                local: lo_l,
+                                value: lo,
+                                span: *span,
+                            },
+                            RStmt::Let {
+                                local: hi_l,
+                                value: hi,
+                                span: *span,
+                            },
+                            RStmt::Let {
+                                local: i_l,
+                                value: ResolvedExpr {
+                                    span: *span,
+                                    vt: VT::I32,
+                                    kind: RExprKind::ReadLocal(lo_l),
+                                },
+                                span: *span,
+                            },
+                        ];
+                        self.scopes.push(Scope {
+                            names: BTreeMap::new(),
+                            views: BTreeMap::new(),
+                        });
+                        self.scopes
+                            .last_mut()
+                            .unwrap()
+                            .names
+                            .insert(var.name.clone(), i_l);
+                        self.declared_names.insert(var.name.clone());
+                        let mut b = self.resolve_body(body);
+                        self.scopes.pop();
+                        self.loop_stack.pop();
+                        let read_i = |sp: Span| ResolvedExpr {
+                            span: sp,
+                            vt: VT::I32,
+                            kind: RExprKind::ReadLocal(i_l),
+                        };
+                        let incr = RStmt::Assign {
+                            local: i_l,
+                            path: Vec::new(),
+                            value: ResolvedExpr {
+                                span: *span,
+                                vt: VT::I32,
+                                kind: RExprKind::Binary {
+                                    op: ast::BinOp::Add,
+                                    lhs: Box::new(read_i(*span)),
+                                    rhs: Box::new(ResolvedExpr {
+                                        span: *span,
+                                        vt: VT::I32,
+                                        kind: RExprKind::IntLit(1),
+                                    }),
+                                },
+                            },
+                            span: *span,
+                        };
+                        b.stmts.push(incr);
+                        let cond = ResolvedExpr {
+                            span: *span,
+                            vt: VT::Bool,
+                            kind: RExprKind::Binary {
+                                op: if *inclusive {
+                                    ast::BinOp::Le
+                                } else {
+                                    ast::BinOp::Lt
+                                },
+                                lhs: Box::new(read_i(*span)),
+                                rhs: Box::new(ResolvedExpr {
+                                    span: *span,
+                                    vt: VT::I32,
+                                    kind: RExprKind::ReadLocal(hi_l),
+                                }),
+                            },
+                        };
+                        let if_stmt = RStmt::If {
+                            cond,
+                            then: RBlock {
+                                stmts: std::mem::take(&mut b.stmts),
+                                span: body.span,
+                            },
+                            els: Some(RBlock {
+                                stmts: vec![RStmt::Break {
+                                    target: Some(target),
+                                    span: *span,
+                                }],
+                                span: *span,
+                            }),
+                            span: *span,
+                        };
+                        let mut prologue = prologue;
+                        prologue.push(RStmt::Loop {
+                            target,
+                            body: RBlock {
+                                stmts: vec![if_stmt],
+                                span: body.span,
+                            },
+                            span: *span,
+                        });
+                        stack
+                            .last_mut()
+                            .expect("resolve frame")
+                            .stmts
+                            .extend(prologue);
+                        continue;
+                    }
                     let ast::ExprKind::Var(id) = &iter.kind else {
                         self.bind_err(
                             "source.iterate-scrutinee",
@@ -6412,6 +6545,22 @@ impl<'a, 's> FnResolver<'a, 's> {
 
     fn expr(&mut self, e: &Expr) -> ResolvedExpr {
         match &e.kind {
+            // PLAN-962 (L-19): a range is legal ONLY as the for-in
+            // iterable (the ForIn arm consumes it before this walk); a
+            // range value anywhere else is a named rejection.
+            ExprKind::Range { .. } => {
+                self.bind_err(
+                    "source.range-position",
+                    "a range (`a..b`) is only the iterable of a `for` loop in this profile"
+                        .to_string(),
+                    e.span,
+                );
+                ResolvedExpr {
+                    span: e.span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(0),
+                }
+            }
             // PLAN-936（T-04）：`#{ expr }` 是编译期需求，不是运行时表达式。
             // 绑定：CT 能力门（前门已按能力面解析；resolve 复核使携带
             // HashExpr 的 AST 不能在无能力车道绑定）→ inner 在 CT 上下文

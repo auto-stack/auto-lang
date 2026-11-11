@@ -1142,6 +1142,11 @@ fn shift_arg(a: &mut Arg, offset: usize) {
 fn shift_expr(e: &mut Expr, offset: usize) {
     sh(&mut e.span, offset);
     match &mut e.kind {
+        // PLAN-962：范围界同步平移。
+        ExprKind::Range { start, end, .. } => {
+            shift_expr(start, offset);
+            shift_expr(end, offset);
+        }
         ExprKind::IntLit(_)
         | ExprKind::BoolLit(_)
         | ExprKind::StrLit(_)
@@ -1555,6 +1560,11 @@ impl<'a> Walker<'a> {
     ) -> Result<(), PackageDiagnostic> {
         let span = e.span;
         match &mut e.kind {
+            // PLAN-962：范围界递归走读。
+            ExprKind::Range { start, end, .. } => {
+                self.walk_expr_inner(start, locals)?;
+                self.walk_expr_inner(end, locals)
+            }
             ExprKind::IntLit(_)
             | ExprKind::BoolLit(_)
             | ExprKind::StrLit(_)
