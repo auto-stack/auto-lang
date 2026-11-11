@@ -113,6 +113,7 @@ total + 41
 - **F-896-R4-01..04（独立阶段审查，合同内修复，非豁免）**：9464b7263 上输出域审查、5个活跃PS消费者、规范旧规则、同选面对照缺失；已在同树修补并补实跑/反例，b8e2396b0独立phase复核关闭F01..04；新增F05混合HTTP全局串行由4444ea6d4修复并经独立单项phase复核关闭。AC06/10/11剩余完整验收证据限制见两份复核报告，不视作全计划pass。r7新增范围尚待本会话授权核对，当前Plan不作完成或合入声明。见 attachments/896/review-r4.md 与 implementation-summary.md。
 
 - **D-896-BASELINE-01（待修复，owner=各 crate）**：显式固定组 `all` 的一次真实 Cargo 发现暴露四个原 7165 义务目录之外的编译红：`shim-metadata` lib tests 两处 E0061（8 参数接口传 7）；`auto-gen` 集成测试 `v02_compat_golden` / `v03_failure_semantics` E0433（缺 auto_lang 开发依赖）；`auto-macros` 的 `value_macro_tests` 四处 E0308；`auto-cache` lib tests E0063（ShimMethod 初始化缺 trait_name）。本计划未改这些测试/接口源码，不静默删组或豁免为通过；完整 `all` 目前不得声称绿色。原始 command/编译诊断在 896 本地迁移发现收据，范围/哈希见执行摘要。修复这些原有目标另行立项，不影响原受管义务迁移守恒结论。
+  - **PLAN-1014（2026-11-12）分项闭账**：`auto-macros` value_macro_tests 四处 E0308 已闭（`value!` 插值对象改走 `Value::obj` 装箱 helper，组 13/13 绿，eb278ca79）；同源 900-N3 就此闭。其余三分项（shim-metadata E0061、auto-gen E0433、auto-cache E0063）保持开放、owner 不变。
 
 ### Plan 863（2026-10-30，final review R1，84f1d2054）
 
@@ -3886,12 +3887,13 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 - **898-N3 (INFO)**：主检出存在未跟踪草稿 `docs/plans/893-ace-test-framework-and-slow-case-attribution.md`（未提交，worktree 不可见），其验证面引用已删的 cargo tm；后续若激活 893 须先重基底到 `cargo t` 固定组范式。
 - **898-N4 (INFO)**：`scripts/pre-split-universe/`、`split-closure.py`、`split-golden-ledger.py` 等 850/867 拆分账本工具随基线文件删除失去守恒对象，但属 867 归档证据链组成部分，保留不动；其语义记录在归档计划 867。
 - **898-N5 (FIX-FORWARD，2026-10-31 复审登记)**：合并门三角化确认的 master 预存红（898 零新增）——编译红：`shim-metadata` lib/bin 测试 E0061（emit_pack 改 8 参、测试调用点 7 参）、`auto-gen` v02/v03 集成测试 E0433（dev-dep 缺 auto_lang、建议改 auto_gen 路径或补 dev-dep）、`auto-macros` value_macro_tests E0308、`auto-cache` lib 测试 E0063（ShimMethod 漏 trait_name 字段）；运行红：plan872_binding_table_json_matches_regeneration、plan884_provider_input_coverage::domain_dir_sources_all_covered、auto-api-gen plan734_tauri_fixture_matches_generator；daily 不覆盖的集成红：vue_capabilities×11、ui_snapshots×3、sys_natives_vm_tests、gallery_vue_golden（UI 测试族与计划 A"auto-lang 去 UI"迁出高度相关，建议随 A 一并处置）、http_e2e_back_proxy（网络 flaky 族，主检出同组两次跑 17↔19 红波动）；python：acc_inventory Qa02 分类。前三编译红为两行级修复，走 L0。
+  - **PLAN-1014（2026-11-12）分项闭账**：`sys_natives_vm_tests` 红＝VM `ARRAY_LEN` 对 GET_FIELD 新入池 rc==1 字符串先放后读（清槽后读空→`p0.name.len()`=0），已修为先读后放+两例引擎回归（eb278ca79）；`plan884_provider_input_coverage` 红＝`trans/rust/{byte_lists,res_obs}.rs` 落库未入 Vm provider 指纹闭包，已补登记；`auto-macros` value_macro_tests E0308＝宏展开未随 `Value::Obj(Box<Obj>)` 装箱契约更新，已改走 `Value::obj`。其余分项（shim-metadata/auto-gen/auto-cache 编译红、plan872、auto-api-gen、UI 族、http flaky、acc_inventory）**不在 1014 触面，保持开放**。
 
 ## PLAN-900（2026-10-31 work 冻结时登记，非阻塞；均为 master 预存 parity 实证）
 
 - **900-N1 (MEDIUM)**：`cargo t vm`/`cargo t a2r` 单组运行经治理包装器读 `scripts/test-governance/legacy-wrapper-contract.json`——该文件已被 PLAN-898（fa2a8287e）删除但 wrapper_bindings.py:55 仍引用，单组运行即 Errno 红（master 同错实证；组等价 nextest 直跑 vm 905/905、a2r 386/386 绿）。修复归测试治理面（898 后续或专项）。
 - **900-N2 (MEDIUM)**：generated-ui-consumer 交付门（driver.py）在 master 与 plan-900 分支同点红：vendored auto-api-gen manifest 的 `../../../auto-web` 相对 path 越出交付根被显式拒绝（PLAN-890 后交付闭包检查收紧后暴露）。交付闭包 crate 的受管形态（path="../crates/<name>"）改造归交付/890 后续。
-- **900-N3 (MEDIUM)**：`crates/auto-macros/tests/value_macro_tests.rs` 4×E0308（value! 宏类型不匹配）——master 预存（`cargo check -p auto-macros --tests` 主检出同红），与 UI 迁移无关。owner：语言宏面。
+- **900-N3 (MEDIUM)——已关闭 2026-11-12，PLAN-1014（eb278ca79）**：根因＝宏展开仍生成 `Value::Obj(obj)` 而 Plan 566 Phase B 后变体要求 `Box<Obj>`；改走 `Value::obj` 构造 helper，auto-macros 全组 13/13 绿。
 - **900-N4 (LOW)**：`auto-man/crates/auto-man/examples/rust-workspace` 存量样例不可从检出位置构建（成员 015-notes-back/ 目录缺失 + path 形态为交付落位快照）——master 同状；生成工程真实门=generated-ui-consumer driver（见 900-N2）。
 - **900-N5 (INFO)**：UI 域已知红族随迁 auto-ui 侧登记：vue_capabilities×11、ui_snapshots×3（insta 快照内嵌 CARGO_MANIFEST_DIR 绝对路径——worktree 环境排除，源文件头注自证）、gallery_vue_golden（898-N5 基线原样）。auto-ui 侧 test 编档归该仓（计划 D 域）。
 - **900-N6 (INFO)**：UI-host 独立夹具的 inventory 链接保留在 MSVC linker GC 下不保证（clipboard-provider ui-host 臂首轮实证红）——canonical 宿主范式=显式 `auto_ui_runtime::install_ui_host_capabilities()` bootstrap（auto-man 同款）；夹具与 host-assembly 已改显式式，进程期自注册收集点保留为兜底语义（install 单点内同幂等）。
@@ -3971,8 +3973,8 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 ## PLAN-916 到期批量回归归因（2026-11-02，run-ffy4jmss）
 
 - **916自身（closed）**：`stream_next`被名称准入误拒，L0仅补`stream_next/stream_is_done/stream_close`，原失败测试与语义控制绿，落地`cf46948803034eefb205025fca23bcf0424c31cf`。
-- **PLAN-007（owner: auto-media-core/fix-forward）**：`fixture_manifest`读取的`crates/auto-media-core/tests/fixtures/manifest.json`不存在；七个fixture与PROVENANCE已在库，但清单缺失使read_to_string unwrap必败。关闭条件：补真实七项manifest及fixture_manifest单独通过。
-- **PLAN-900/901（owner: 测试分组/fix-forward）**：`auto-lsp`已迁出仓却仍在固定组；`auto-lang-core`被守门将ACE host tests判为legacy泄漏；`infra-pilot-cli` legacy组请求ACE worker（5失败+1错误）。关闭条件：按当前owner修正组归属/legacy准备路径并逐项复放，不把条件排除充PASS。
+- **PLAN-007（owner: auto-media-core/fix-forward）——已关闭 2026-11-12，PLAN-1014（eb278ca79）**：根因=根 `.gitignore` 的 `*.json` 母规则吞掉了迁移清单（F-793-R1-01/PLAN-892 金样同缺陷类）。补真实七项 manifest（与 auto-ui PLAN-007 源逐字节一致，SHA256 核验 b09a719c…）并加 `.gitignore` 豁免行；`fixture_manifest` 及 auto-media-core 全组 54/54 绿。
+- **PLAN-900/901（owner: 测试分组/fix-forward）——已关闭 2026-11-12，PLAN-1014（eb278ca79）**：`auto-lsp`失效注册退役（owner 入口=auto-ui `crates/auto-lsp`，实核存在）；`daily`/`integration`/`auto-lang-core` 三处枚举式 ACE 排除改为族式 `test_cases::(ac|abi::|sema::|ace_)`（与 ace-adapters 正向选择及 run_rust 守卫同构；@1005 收据只见 auto-lang-core 红、daily 因 all=false 未入批、integration 同未入批——1014 实证三处同漏，8 模块 61 例转移守恒：ace-adapters 发现 84 例全含、实跑 84/84 绿）；`infra-pilot-cli` 拆分为纯 Python legacy 组（2/2）+ 新显式 ACE 组 `infra-pilot-ace`（tools=case-parent/batch-av/av-regular source-bound 准备，8/8 零 skip，default-off regular worker 落 `target/test-tools/regular`）。auto-lang-core 1602/1602、infra-fixed 60/60、infra-ace-policy 11/11 复放收据在 PLAN-1014 §9。
 - **auto-macros（owner: macros/fix-forward）**：`value_macro_tests.rs`四处`Box<Obj>` vs `Obj`编译错误。关闭条件：修宏展开/调用形态后auto-macros组绿。
 - **sys_natives_vm（owner: sys natives/fix-forward）**：`test_sys_natives_vm`在第49行断言失败。关闭条件：定位实际native结果差异并恢复该测试；不归因916（非A2R路径）。
 - **D-910-1已知项**：`execution_ids`未定义仍属既有治理债，非本次新增；沿918既定owner。
@@ -4150,23 +4152,26 @@ owner=a2r 逃逸分析（Plan 419 §4.5 域）。事实：写捕获发生在**�
 owner=PLAN-917 域（a2r_std 发射条件变化 vs 917 T-05 冻结金样）。事实：`case-ace-m1-a2r-emit-917` 组内 `ace.m1.a2r917.t08.single` / `t08.project` / `nb_slice_ok` 三检查红——actual 带 `// a2r Standard Library (from crate)` + `use a2r_std;` 前导而金样无（byte 37 起）。PLAN-993 以 base emitter（`eef2f3f21` 的 `expr_emit.rs`）同参复跑**同三红**，证非 993 引入（993 前已在 master 红；PLAN-814 搬迁时代 a2r_std 发射条件演化）。同组另 8 检查绿。关闭条件：917 owner 重审 a2r_std 前导的合法域并重冻结三金样（走其 G04 等价审阅），或修发射条件回归。993 未触 917 写面。
 **关闭（2026-11-08，PLAN-994）**：根因实为 PLAN-956（764f454d1）将 `emit_str_slice_chars` 整体替换为 `a2r_std::str::str_slice` 字节域调用（设 a2r_std_used → 前导 + 发射体漂移）且未重冻 917 金样；994 恢复 917 冻结守卫块字符位形态（接收者 &绑定/双界各一次/越界 assert panic）后三检查回绿，917 金样字节未动（独立复审核验 closure 为真发射修复，见 docs/plans/archive/994-* §9 与 F-994-R1-03）。公共 a2r_std::str_slice 字节 API 对显式调用方不变。
 
-### D-1001-R1 — cargo t daily 在 HEAD 003fa8816 红：auto_lang_core --lib 含 81 个 ACE 前缀测试（2026-11-10，开放）
+### D-1001-R1 — cargo t daily 在 HEAD 003fa8816 红：auto_lang_core --lib 含 81 个 ACE 前缀测试（2026-11-10，**已关闭 2026-11-12，PLAN-1014**）
 
 - 候选/owner：PLAN-901 feature 拍平/941 落地后继（auto-lang 治理）。
 - 现象：PLAN-1001 T-04 重放实测，fixed-tests PLAN-901 legacy 域守卫正确拒绝（`ACE host tests leaked into a legacy group`）；清单在 plan-artifacts 归档前 t04/ntl-daily.json。源状态红，与缓存回收无关（源内测试名，构建缓存无法产生）。
 - 关闭条件：test_cases::ac*/abi::/sema::/ace_* 等归位 ACE 域组或守卫白名单更新；daily 复绿并留收据。
+- **关闭记录（2026-11-12）**：PLAN-1014 将 daily/integration/auto-lang-core 的枚举排除改为族式 `test_cases::(ac|abi::|sema::|ace_)`（守卫保持不弱化，V-03 注入复控仍拒）；转移义务经 ace-adapters 发现+实跑核守恒（84/84）；daily 在 1014 树复绿（2654 例，仅余 plan702 跨仓路径/plan707 负载时序两项环境归因，隔离重放绿，主检出正式门另行出收据）。收据：PLAN-1014 §9（eb278ca79）。
 
-### D-1001-R2 — ace-workspace 5 持续源域红（golden drift/CRLF 类×3、ABI 合同×1、AV 清单×1）（2026-11-10，开放）
+### D-1001-R2 — ace-workspace 5 持续源域红（golden drift/CRLF 类×3、ABI 合同×1、AV 清单×1）（2026-11-10，部分更新 2026-11-12：1 绿/4 红具名交接）
 
-- 候选/owner：PLAN-1000（ACE M1 证据恢复）域。
+- 候选/owner：PLAN-1000（ACE M1 证据恢复）域；当前承接=PLAN-1013（facts 来源修复/冻结采证）。
 - 现象：PLAN-1001 T-04 干净补跑 2831/2838；隔离重放 2 个预算/并发类转绿（环境归因），5 个持续红：certify_dry_run_b01、a2r_hir_first_case_green（golden drift in a2x_runtime.rs）、a2r_hir_worker_credential_pin、abi_recipe_binding_exclusivity（unknown ABI leg "z"）、av_source_inventory_denominators_replayable（examples/ui/015-notes scan-error）。产物由未变源码确定性再生成+git 跟踪零改动→与缓存治理无关。
 - 关闭条件：随 PLAN-1000 的 M1 收口逐项闭红；或具名归档为 M1 已知未观测域。
+- **PLAN-1014 T-01 复证更新（2026-11-12，HEAD 1169f1359 树内五项定向重放）**：`certify_dry_run_b01` **当前绿**（ace-a2x 具名复放 PASS——1000 归档后已修而未闭账的分项就此闭）。仍红四项各有当前形状：`a2r_hir_first_case_green`＝a2x-emit 产物字节差（a2x_runtime.rs first_diff@423 trap-enum/impl 区、manifest.json@477；多 case 同形）；`a2r_hir_worker_credential_pin`＝rust_lowering.rs:423 "matching pin passes" 断言失败；`abi_recipe_binding_exclusivity`＝ContractError unknown ABI leg "z" for abi/interop-v1（负例腿不被接受）；`av_source_inventory_denominators_replayable`＝AP-16 `examples/ui/015-notes/src/front/app.at` scan-err——该路径**仅存在于 auto-ui 仓**（两仓主检出+worktree 实核），语言单仓结构性不可能绿，属跨仓清单路径设计债。四项均 M1 required 关联、维持阻断，按 PLAN-1014 §5.4 交 1013（其 facts 准入/来源冻结范围）；1000 归档不代通过。
 
-### D-1001-R3 — fixed-tests 执行租约在 guard 失败/崩溃路径不清理（2026-11-10，开放）
+### D-1001-R3 — fixed-tests 执行租约在 guard 失败/崩溃路径不清理（2026-11-10，**已关闭 2026-11-12，PLAN-1014**）
 
 - 候选/owner：auto-lang scripts/fixed-tests 维护者。
 - 现象：PLAN-1001 期间两次 `target/test-groups/active` 陈旧残留（owner pid 已死），人工核死后清除；守卫 ValueError 路径未走清理。
 - 关闭条件：runner 异常路径统一 finally 清租约+死 pid 自愈；补失败路径测试。
+- **关闭记录（2026-11-12）**：PLAN-1014 重写 `execution_lease`：原子 mkdir 获取、owner 写入入 try 且失败回滚、finally 具名清理失败诊断；存量租约仅在本树归属+pid 确认死亡（tasklist 活性，复用 build_storage.process_alive）时经 rename 互斥+隔离区重验恢复，活/外树/不可读/未知内容一律保守拒绝。build_storage 消费者由"目录存在即拒"改验 pid 活性（死租约只读 inspect 放行）。7/7 生命周期探针（正常/死恢复/活拒/外树拒/不可读闭/未知拒/写失败回滚）+ 消费者活拒/死行探针全绿；收据 PLAN-1014 §9（eb278ca79）。
 
 ### D-1001-R4 — retention registry 未登记用户持有 fix-cache-governance-20261110（2026-11-10，开放）
 
