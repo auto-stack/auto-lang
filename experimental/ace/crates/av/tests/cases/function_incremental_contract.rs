@@ -542,6 +542,10 @@ fn verify_profile(
         // PLAN-961: the numeric profile verifies under the closures-
         // superset domain (its descriptor identity carries the surface).
         SourceProfile::Numeric => verify::verify_closures(b),
+        // PLAN-962: the aggregates profile verifies under the same
+        // collections-family domain (wider admission is keyed on the
+        // aggregates capability, not the verifier entry).
+        SourceProfile::Aggregates => verify::verify_closures(b),
         // PLAN-888 discovery: PLAN-865 added this source domain. Keep
         // this test adapter exhaustive by calling its landed verifier.
         SourceProfile::Closures => verify::verify_closures(b),

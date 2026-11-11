@@ -113,6 +113,26 @@ pub fn compile_numeric_source(
     })
 }
 
+/// PLAN-962: compile under the aggregates source profile (numeric
+/// superset + composite data structures). Same collections-family
+/// verifier entry; the wider admission (nested containers, composite
+/// fields) is keyed on the profile inside the resolver and, after
+/// lowering, on the MIR module profile string.
+pub fn compile_aggregates_source(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<CompiledSource, Vec<Diagnostic>> {
+    let parts = compile_parts_with(src, module_path, capabilities, SourceProfile::Aggregates)?;
+    let checked = crate::verify::verify_closures(parts.bundle)?;
+    Ok(CompiledSource {
+        profile: super::AGGREGATES_SOURCE_PROFILE,
+        input_hash: parts.input_hash,
+        atom_text: parts.atom_text,
+        checked,
+    })
+}
+
 pub fn compile_scalar_source(
     src: &str,
     module_path: &str,
@@ -3530,6 +3550,12 @@ impl<'p> Emitter<'p> {
         }
         if self.profile.is_text() && self.plans.iter().any(|p| p.has_text_ops) {
             requires.push(RUNTIME_TEXT_CAPABILITY);
+        }
+        // PLAN-962: the aggregates profile stamps its admission capability
+        // on every document — the MIR verifier keys the widened composite
+        // element domain on it (frozen profiles stay strict).
+        if self.profile.is_aggregates() {
+            requires.push(super::AGGREGATES_ADMISSION_CAP);
         }
         if !requires.is_empty() {
             let req_span = if use_intrinsics.is_empty() {

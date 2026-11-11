@@ -33,6 +33,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 字面量（affix-num 复用）、& | ^ 位算、as 转换、.shl/.shr/.as/.to
         // 方法形移位与转换）。
         profile(name: "numeric") { }
+        // PLAN-962：聚合面（numeric 全表面 + 组合数据结构：嵌套容器、
+        // tuple/array 字面量、命名 ctor、解构、索引 place、range、
+        // 模式扩面；union/tag/grid/Hold/Box 见 T-08 批）。冻结面裁剪
+        // 字节恒等。
+        profile(name: "aggregates") { }
         // PLAN-935（T-02）：标量有限模板面 —— scalar 全表面 + fn 类型参数
         // `<T>`（至多一个）+ 类型位裸 ident（= 声明类型变量）。仅当调用方
         // 携 `ac.source.instances.scalar/v1` 能力时由统一前门以本 profile
@@ -75,17 +80,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         bool { literal: "bool" }
         // PLAN-961：数值类型关键字（仅 numeric 面规则引用；其余面裁剪后
         // 为保留字——同 for/enum 先例）。
-        i8-kw(profiles: [numeric]) { literal: "i8" }
-        u8-kw(profiles: [numeric]) { literal: "u8" }
-        byte-kw(profiles: [numeric]) { literal: "byte" }
-        uint-kw(profiles: [numeric]) { literal: "uint" }
-        u32-kw(profiles: [numeric]) { literal: "u32" }
-        i64-kw(profiles: [numeric]) { literal: "i64" }
-        u64-kw(profiles: [numeric]) { literal: "u64" }
-        float-kw(profiles: [numeric]) { literal: "float" }
-        f32-kw(profiles: [numeric]) { literal: "f32" }
-        double-kw(profiles: [numeric]) { literal: "double" }
-        f64-kw(profiles: [numeric]) { literal: "f64" }
+        i8-kw(profiles: [numeric, aggregates]) { literal: "i8" }
+        u8-kw(profiles: [numeric, aggregates]) { literal: "u8" }
+        byte-kw(profiles: [numeric, aggregates]) { literal: "byte" }
+        uint-kw(profiles: [numeric, aggregates]) { literal: "uint" }
+        u32-kw(profiles: [numeric, aggregates]) { literal: "u32" }
+        i64-kw(profiles: [numeric, aggregates]) { literal: "i64" }
+        u64-kw(profiles: [numeric, aggregates]) { literal: "u64" }
+        float-kw(profiles: [numeric, aggregates]) { literal: "float" }
+        f32-kw(profiles: [numeric, aggregates]) { literal: "f32" }
+        double-kw(profiles: [numeric, aggregates]) { literal: "double" }
+        f64-kw(profiles: [numeric, aggregates]) { literal: "f64" }
         type-kw { literal: "type" }
         static { literal: "static" }
         mut { literal: "mut" }
@@ -157,9 +162,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         oror { literal: "||" }
         // PLAN-961：单字符位算符（最长匹配下 `&&`/`||` 不受影响；仅
         // numeric 面引用，其余面裁剪为保留）。
-        amp(profiles: [numeric]) { literal: "&" }
-        vbar(profiles: [numeric]) { literal: "|" }
-        caret(profiles: [numeric]) { literal: "^" }
+        amp(profiles: [numeric, aggregates]) { literal: "&" }
+        vbar(profiles: [numeric, aggregates]) { literal: "|" }
+        caret(profiles: [numeric, aggregates]) { literal: "^" }
         bang { literal: "!" }
         dot { literal: "." }
         question { literal: "?" }
@@ -194,7 +199,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [scalar-modules]) { public-fn() {} }
             alt { fn-item() {} }
             // PLAN-936（T-04）：scalar-ct 面的 type-item 仅字段形（member 规则中方法两 alt 仍门控在 record 族；元信息源声明，§5.2）。
-            alt(profiles: [record, text-record, collections, scalar-ct]) { type-item() {} }
+            alt(profiles: [record, text-record, collections, scalar-ct, aggregates]) { type-item() {} }
             alt(profiles: [scalar-modules]) { use-item() {} }
             // PLAN-960（T-02）：完整模块包面 items —— 单一 public-item 前缀
             //（fn/type/const/use 各自 token 开头，避免 recover 规则与前缀
@@ -203,9 +208,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [packages-modules]) { const-item() {} }
             alt(profiles: [packages-modules]) { var-item() {} }
             alt(profiles: [packages-modules]) { use-item-p() {} }
-            alt(profiles: [record, text-record, collections, packages-modules]) { type-item() {} }
-            alt(profiles: [collections]) { enum-item() {} }
-            alt(profiles: [entry-unit, host-console, closures, numeric]) { script-item() {} }
+            alt(profiles: [record, text-record, collections, packages-modules, aggregates]) { type-item() {} }
+            alt(profiles: [collections, aggregates]) { enum-item() {} }
+            alt(profiles: [entry-unit, host-console, closures, numeric, aggregates]) { script-item() {} }
         }
         // ---- 声明 ----
         fn-item(recover: true) {
@@ -331,45 +336,45 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
-            alt(profiles: [numeric]) { i8-kw(field: "word") }
-            alt(profiles: [numeric]) { u8-kw(field: "word") }
-            alt(profiles: [numeric]) { byte-kw(field: "word") }
-            alt(profiles: [numeric]) { uint-kw(field: "word") }
-            alt(profiles: [numeric]) { u32-kw(field: "word") }
-            alt(profiles: [numeric]) { i64-kw(field: "word") }
-            alt(profiles: [numeric]) { u64-kw(field: "word") }
-            alt(profiles: [numeric]) { float-kw(field: "word") }
-            alt(profiles: [numeric]) { f32-kw(field: "word") }
-            alt(profiles: [numeric]) { double-kw(field: "word") }
-            alt(profiles: [numeric]) { f64-kw(field: "word") }
-            alt(profiles: [collections, closures, numeric]) { generic-ty(field: "generic") }
-            alt(profiles: [collections, closures, numeric]) { optional-ty(field: "optional") }
-            alt(profiles: [text, text-record, host-console, record, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, numeric]) { ident(field: "word") }
-            alt(profiles: [closures, numeric]) { fn-type(field: "fn") }
+            alt(profiles: [numeric, aggregates]) { i8-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { u8-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { byte-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { uint-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { u32-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { i64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { u64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { float-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { f32-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { double-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { f64-kw(field: "word") }
+            alt(profiles: [collections, closures, numeric, aggregates]) { generic-ty(field: "generic") }
+            alt(profiles: [collections, closures, numeric, aggregates]) { optional-ty(field: "optional") }
+            alt(profiles: [text, text-record, host-console, record, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, numeric, aggregates]) { ident(field: "word") }
+            alt(profiles: [closures, numeric, aggregates]) { fn-type(field: "fn") }
         }
         // 参数/字段/let 注解类型（入口 void 由 entry 面的拼写分类处理）
         ann-ty {
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
-            alt(profiles: [numeric]) { i8-kw(field: "word") }
-            alt(profiles: [numeric]) { u8-kw(field: "word") }
-            alt(profiles: [numeric]) { byte-kw(field: "word") }
-            alt(profiles: [numeric]) { uint-kw(field: "word") }
-            alt(profiles: [numeric]) { u32-kw(field: "word") }
-            alt(profiles: [numeric]) { i64-kw(field: "word") }
-            alt(profiles: [numeric]) { u64-kw(field: "word") }
-            alt(profiles: [numeric]) { float-kw(field: "word") }
-            alt(profiles: [numeric]) { f32-kw(field: "word") }
-            alt(profiles: [numeric]) { double-kw(field: "word") }
-            alt(profiles: [numeric]) { f64-kw(field: "word") }
-            alt(profiles: [collections, closures, numeric]) { generic-ty(field: "generic") }
-            alt(profiles: [collections, closures, numeric]) { optional-ty(field: "optional") }
-            alt(profiles: [text, text-record, host-console, record, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, numeric]) { ident(field: "word") }
-            alt(profiles: [closures, numeric]) { fn-type(field: "fn") }
+            alt(profiles: [numeric, aggregates]) { i8-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { u8-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { byte-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { uint-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { u32-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { i64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { u64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { float-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { f32-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { double-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { f64-kw(field: "word") }
+            alt(profiles: [collections, closures, numeric, aggregates]) { generic-ty(field: "generic") }
+            alt(profiles: [collections, closures, numeric, aggregates]) { optional-ty(field: "optional") }
+            alt(profiles: [text, text-record, host-console, record, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, numeric, aggregates]) { ident(field: "word") }
+            alt(profiles: [closures, numeric, aggregates]) { fn-type(field: "fn") }
         }
         // PLAN-961：数值类型词（`.as(T)`/`.to(T)` 后缀实参位）。
-        num-ty-word(profiles: [numeric]) {
+        num-ty-word(profiles: [numeric, aggregates]) {
             alt { i8-kw(field: "word") }
             alt { u8-kw(field: "word") }
             alt { byte-kw(field: "word") }
@@ -387,60 +392,60 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-928（T-03）：参数化名义类型 `List<T>` / `Result<T, E>`（类型位；
         // 嵌套类型实参允许——`List<List<int>>` 域约束归 resolve）。
-        generic-ty(profiles: [collections, closures, numeric]) {
+        generic-ty(profiles: [collections, closures, numeric, aggregates]) {
             ident(field: "name")
             lt() {}
             type-args(field: "args")
             gt() {}
         }
-        type-args(profiles: [collections, closures, numeric]) { type-arg() {} many { type-arg-tail() {} } }
-        type-arg-tail(profiles: [collections, closures, numeric]) { comma() {} type-arg() {} }
-        type-arg(profiles: [collections, closures, numeric]) {
+        type-args(profiles: [collections, closures, numeric, aggregates]) { type-arg() {} many { type-arg-tail() {} } }
+        type-arg-tail(profiles: [collections, closures, numeric, aggregates]) { comma() {} type-arg() {} }
+        type-arg(profiles: [collections, closures, numeric, aggregates]) {
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
-            alt(profiles: [numeric]) { i8-kw(field: "word") }
-            alt(profiles: [numeric]) { u8-kw(field: "word") }
-            alt(profiles: [numeric]) { byte-kw(field: "word") }
-            alt(profiles: [numeric]) { uint-kw(field: "word") }
-            alt(profiles: [numeric]) { u32-kw(field: "word") }
-            alt(profiles: [numeric]) { i64-kw(field: "word") }
-            alt(profiles: [numeric]) { u64-kw(field: "word") }
-            alt(profiles: [numeric]) { float-kw(field: "word") }
-            alt(profiles: [numeric]) { f32-kw(field: "word") }
-            alt(profiles: [numeric]) { double-kw(field: "word") }
-            alt(profiles: [numeric]) { f64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { i8-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { u8-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { byte-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { uint-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { u32-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { i64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { u64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { float-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { f32-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { double-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { f64-kw(field: "word") }
             alt { generic-ty(field: "generic") }
             alt { optional-ty(field: "optional") }
             alt { ident(field: "word") }
         }
         // PLAN-928（T-03）：`?T` 可选糖（Option<T> 名义变体）。
-        optional-ty(profiles: [collections, closures, numeric]) {
+        optional-ty(profiles: [collections, closures, numeric, aggregates]) {
             question(field: "q")
             optional-inner(field: "inner")
         }
-        optional-inner(profiles: [collections, closures, numeric]) {
+        optional-inner(profiles: [collections, closures, numeric, aggregates]) {
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
-            alt(profiles: [numeric]) { i8-kw(field: "word") }
-            alt(profiles: [numeric]) { u8-kw(field: "word") }
-            alt(profiles: [numeric]) { byte-kw(field: "word") }
-            alt(profiles: [numeric]) { uint-kw(field: "word") }
-            alt(profiles: [numeric]) { u32-kw(field: "word") }
-            alt(profiles: [numeric]) { i64-kw(field: "word") }
-            alt(profiles: [numeric]) { u64-kw(field: "word") }
-            alt(profiles: [numeric]) { float-kw(field: "word") }
-            alt(profiles: [numeric]) { f32-kw(field: "word") }
-            alt(profiles: [numeric]) { double-kw(field: "word") }
-            alt(profiles: [numeric]) { f64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { i8-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { u8-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { byte-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { uint-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { u32-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { i64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { u64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { float-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { f32-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { double-kw(field: "word") }
+            alt(profiles: [numeric, aggregates]) { f64-kw(field: "word") }
             alt { generic-ty(field: "generic") }
             alt { ident(field: "word") }
         }
         // PLAN-928：闭包函数类型 `fn(T0, ...) -> R`（`->` 可省 = K 语料
         // 相邻结果拼写兼容形，仅闭包面）。可嵌套（参数/结果位可再为 fn 型；
         // fn 型在词后备选，`fn` token 使词备选干净失败回退）。
-        fn-type(profiles: [closures, numeric]) {
+        fn-type(profiles: [closures, numeric, aggregates]) {
             fn(field: "kw")
             lparen() {}
             fn-type-params(repeat: "opt", field: "params")
@@ -448,23 +453,23 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             opt { arrow(field: "arrow") }
             fn-type-result(field: "result")
         }
-        fn-type-result(profiles: [closures, numeric]) {
+        fn-type-result(profiles: [closures, numeric, aggregates]) {
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
             alt { ident(field: "word") }
             alt { fn-type(field: "fn") }
         }
-        fn-type-params(profiles: [closures, numeric]) { fn-type-param() {} many { fn-type-param-tail() {} } }
-        fn-type-param-tail(profiles: [closures, numeric]) { comma() {} fn-type-param() {} }
-        fn-type-param(profiles: [closures, numeric]) {
+        fn-type-params(profiles: [closures, numeric, aggregates]) { fn-type-param() {} many { fn-type-param-tail() {} } }
+        fn-type-param-tail(profiles: [closures, numeric, aggregates]) { comma() {} fn-type-param() {} }
+        fn-type-param(profiles: [closures, numeric, aggregates]) {
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
             alt { ident(field: "word") }
             alt { fn-type(field: "fn") }
         }
-        type-item(recover: true, profiles: [record, text-record, collections, scalar-ct, packages-modules]) {
+        type-item(recover: true, profiles: [record, text-record, collections, scalar-ct, packages-modules, aggregates]) {
             type-kw(field: "kw")
             ident(field: "name")
             lbrace() {}
@@ -473,21 +478,21 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-928（T-03）：PLAN-864 有限 enum——臂换行/`;` 分隔（list-nl 语义；
         // `,` 容忍由差分冻结），至多单载荷。
-        enum-item(recover: true, profiles: [collections]) {
+        enum-item(recover: true, profiles: [collections, aggregates]) {
             enum(field: "kw")
             ident(field: "name")
             lbrace() {}
             list { enum-arm() {} }
             rbrace() {}
         }
-        enum-arm(profiles: [collections]) {
+        enum-arm(profiles: [collections, aggregates]) {
             alt { ident(field: "name") lparen() {} ann-ty(field: "payload") rparen() {} }
             alt { ident(field: "name") }
         }
         member {
             alt { field-member() {} }
-            alt(profiles: [record, text-record, collections, packages-modules]) { static-method() {} }
-            alt(profiles: [record, text-record, collections, packages-modules]) { view-method() {} }
+            alt(profiles: [record, text-record, collections, packages-modules, aggregates]) { static-method() {} }
+            alt(profiles: [record, text-record, collections, packages-modules, aggregates]) { view-method() {} }
         }
         // 字段：`name` `:`? 类型（旧 parser 的可选冒号）
         field-member {
@@ -507,7 +512,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // ---- 脚本形态（entry-unit：顶层语句序列到 EOF；首语句必需——
         // 空/仅分隔符文件由投影按旧合同区分"expected fn"与 Ok(empty)；
         // 声明先行的 entry-order 检查在投影保真）----
-        script-item(profiles: [entry-unit, host-console, closures, numeric]) {
+        script-item(profiles: [entry-unit, host-console, closures, numeric, aggregates]) {
             stmt() {}
             list-nl { stmt() {} }
         }
@@ -517,13 +522,13 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { let-stmt() {} }
             alt { var-stmt() {} }
             alt { assign-stmt() {} }
-            alt(profiles: [record, text-record, collections, closures, packages-modules, numeric]) { path-assign-stmt() {} }
+            alt(profiles: [record, text-record, collections, closures, packages-modules, numeric, aggregates]) { path-assign-stmt() {} }
             alt { return-stmt() {} }
             alt { if-stmt() {} }
             alt(profiles: [core]) { while-stmt() {} }
             alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, scalar-modules, packages-modules]) { for-cond-stmt() {} }
-            alt(profiles: [collections, closures, numeric]) { for-in-stmt() {} }
-            alt(profiles: [collections, closures, numeric]) { is-stmt() {} }
+            alt(profiles: [collections, closures, numeric, aggregates]) { for-in-stmt() {} }
+            alt(profiles: [collections, closures, numeric, aggregates]) { is-stmt() {} }
             alt { loop-stmt() {} }
             alt { break() {} }
             alt { continue() {} }
@@ -564,8 +569,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         if-stmt {
             if(field: "kw")
-            condition-expr(profiles: [record, text-record, collections, closures], field: "cond")
-            expr(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-modules, numeric], field: "cond")
+            condition-expr(profiles: [record, text-record, collections, closures, aggregates], field: "cond")
+            expr(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-modules, numeric, aggregates], field: "cond")
             block(field: "then")
             else-block(repeat: "opt")
         }
@@ -578,12 +583,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 条件 for（wide 族；投影复用 While AST 形状）
         for-cond-stmt(profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, scalar-modules, packages-modules]) {
             for(field: "kw")
-            condition-expr(profiles: [record, text-record, collections, closures], field: "cond")
-            expr(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-modules, numeric], field: "cond")
+            condition-expr(profiles: [record, text-record, collections, closures, aggregates], field: "cond")
+            expr(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-modules, numeric, aggregates], field: "cond")
             block(field: "body")
         }
         // PLAN-928（T-03）：PLAN-864 `for x in <List 局部> { .. }`。
-        for-in-stmt(profiles: [collections, closures, numeric]) {
+        for-in-stmt(profiles: [collections, closures, numeric, aggregates]) {
             for(field: "kw")
             ident(field: "var")
             in(field: "in")
@@ -592,25 +597,25 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-928（T-03）：PLAN-864 `is <局部> { 臂 -> { .. } }`（穷尽分派；
         // 限定形式 `Enum.Name`；载荷绑定 `(v)`）。
-        is-stmt(profiles: [collections, closures, numeric]) {
+        is-stmt(profiles: [collections, closures, numeric, aggregates]) {
             is(field: "kw")
             ident(field: "scrutinee")
             lbrace() {}
             list { match-arm() {} }
             rbrace() {}
         }
-        match-arm(profiles: [collections, closures, numeric]) {
+        match-arm(profiles: [collections, closures, numeric, aggregates]) {
             opt { arm-qual(field: "qual") }
             ident(field: "pattern")
             opt { arm-payload(field: "payload") }
             arrow() {}
             block(field: "body")
         }
-        arm-qual(profiles: [collections, closures, numeric]) {
+        arm-qual(profiles: [collections, closures, numeric, aggregates]) {
             ident(field: "qual")
             dot() {}
         }
-        arm-payload(profiles: [collections, closures, numeric]) {
+        arm-payload(profiles: [collections, closures, numeric, aggregates]) {
             lparen() {}
             ident(field: "binding")
             rparen() {}
@@ -625,22 +630,22 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // ---- 表达式 ----
         expr {
             alt(profiles: [core]) { pratt(of: "core-ops") }
-            alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, collections, closures, scalar-modules, packages-modules]) { pratt(of: "wide-ops") }
-            alt(profiles: [numeric]) { pratt(of: "numeric-ops") }
+            alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, collections, closures, scalar-modules, packages-modules, aggregates]) { pratt(of: "wide-ops") }
+            alt(profiles: [numeric, aggregates]) { pratt(of: "numeric-ops") }
         }
         // 一元前缀（右结合）：字面量分支先行（`-5` 带符号折叠），`-x`/`!x`
         // 仅 wide 族；core 面经投影保真旧"仅字面量前一元减"拒绝
         unary-expr {
             alt { int-literal() {} }
             // 一元 -/! 操作数锚定同行（旧 anchored(Unary)；负号换行的 e19 拒绝）。
-            alt(profiles: [scalar, scalar-instances, scalar-ct, scalar-modules, text, record, text-record, entry-unit, host-console, collections, closures, numeric]) { minus() {} unary-expr(field: "operand", same-line: true) }
-            alt(profiles: [scalar, scalar-instances, scalar-ct, scalar-modules, text, record, text-record, entry-unit, host-console, collections, closures, numeric]) { bang() {} unary-expr(field: "operand", same-line: true) }
-            alt(profiles: [scalar, scalar-instances, scalar-modules, packages-modules, text, record, text-record, entry-unit, host-console, collections, closures, numeric]) { minus() {} unary-expr(field: "operand", same-line: true) }
-            alt(profiles: [scalar, scalar-instances, scalar-modules, packages-modules, text, record, text-record, entry-unit, host-console, collections, closures, numeric]) { bang() {} unary-expr(field: "operand", same-line: true) }
+            alt(profiles: [scalar, scalar-instances, scalar-ct, scalar-modules, text, record, text-record, entry-unit, host-console, collections, closures, numeric, aggregates]) { minus() {} unary-expr(field: "operand", same-line: true) }
+            alt(profiles: [scalar, scalar-instances, scalar-ct, scalar-modules, text, record, text-record, entry-unit, host-console, collections, closures, numeric, aggregates]) { bang() {} unary-expr(field: "operand", same-line: true) }
+            alt(profiles: [scalar, scalar-instances, scalar-modules, packages-modules, text, record, text-record, entry-unit, host-console, collections, closures, numeric, aggregates]) { minus() {} unary-expr(field: "operand", same-line: true) }
+            alt(profiles: [scalar, scalar-instances, scalar-modules, packages-modules, text, record, text-record, entry-unit, host-console, collections, closures, numeric, aggregates]) { bang() {} unary-expr(field: "operand", same-line: true) }
             alt { postfix-expr() {} }
         }
         postfix-expr {
-            alt(profiles: [record, text-record, text, host-console, collections, closures, packages-modules, numeric]) { atom-expr() {} many { postfix-step() {} } }
+            alt(profiles: [record, text-record, text, host-console, collections, closures, packages-modules, numeric, aggregates]) { atom-expr() {} many { postfix-step() {} } }
             alt { atom-expr() {} }
         }
         // 点后缀链。record 族：`.name`（字段；调用经 pratt call 收尾）、
@@ -648,20 +653,20 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // = `.name` 步 + pratt call）。token 区分自然实现旧 record 臂对
         // `to` 的 carve-out。core/scalar/entry 无点后缀（`.` 在这些面由
         // 投影按旧 unsupported/语法错误合同映射）。
-        postfix-step(profiles: [record, text-record, text, host-console, collections, closures, packages-modules, numeric]) {
-            alt(profiles: [record, text-record, text, host-console, closures, collections, packages-modules, numeric]) { dot(same-line: true) ident(field: "member") }
-            alt(profiles: [record, text-record, collections, packages-modules]) { dot(same-line: true) mut(field: "member") }
-            alt(profiles: [text, text-record, host-console, collections, closures, packages-modules, numeric]) { dot(same-line: true) r-move(same-line: true, field: "member") }
+        postfix-step(profiles: [record, text-record, text, host-console, collections, closures, packages-modules, numeric, aggregates]) {
+            alt(profiles: [record, text-record, text, host-console, closures, collections, packages-modules, numeric, aggregates]) { dot(same-line: true) ident(field: "member") }
+            alt(profiles: [record, text-record, collections, packages-modules, aggregates]) { dot(same-line: true) mut(field: "member") }
+            alt(profiles: [text, text-record, host-console, collections, closures, packages-modules, numeric, aggregates]) { dot(same-line: true) r-move(same-line: true, field: "member") }
             alt(profiles: [text, text-record, host-console, packages-modules]) { dot(same-line: true) r-to(same-line: true) lparen(same-line: true) ident(field: "word") rparen() {} }
             // PLAN-961：`.as(T)` 数值转换后缀（T 为数值类型词；`.to(T)`
             // 数值目标同形经 r-to + 类型词承载）。
-            alt(profiles: [numeric]) { dot(same-line: true) r-as(same-line: true, field: "member") lparen(same-line: true) num-ty-word(field: "word") rparen() {} }
-            alt(profiles: [numeric]) { dot(same-line: true) r-to(same-line: true, field: "member") lparen(same-line: true) num-ty-word(field: "word") rparen() {} }
+            alt(profiles: [numeric, aggregates]) { dot(same-line: true) r-as(same-line: true, field: "member") lparen(same-line: true) num-ty-word(field: "word") rparen() {} }
+            alt(profiles: [numeric, aggregates]) { dot(same-line: true) r-to(same-line: true, field: "member") lparen(same-line: true) num-ty-word(field: "word") rparen() {} }
         }
         // 调用收尾后的点后缀续读（pratt `postfix:` 引用）：`f().len()`、
         // `xs.get(0).name.len()`——primary 的 postfix-expr 只覆盖 atom 起始链，
         // 调用节点之后再接 `.name` 步由本规则承载（运行时包装 KIND_POSTFIX）。
-        postfix-tail(profiles: [record, text-record, text, host-console, collections, closures, packages-modules, numeric]) {
+        postfix-tail(profiles: [record, text-record, text, host-console, collections, closures, packages-modules, numeric, aggregates]) {
             many { postfix-step() {} }
         }
         // PLAN-936（T-04）：编译期表达式 `#{ expr }` —— 单表达式 CT 需求
@@ -675,25 +680,25 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-941 F04: a guard's body brace does not belong to its final
         // identifier. A ctor here must start actual fields; groups and call
         // arguments retain ordinary expression syntax and ctor diagnostics.
-        condition-expr(profiles: [record, text-record, collections, closures]) {
+        condition-expr(profiles: [record, text-record, collections, closures, aggregates]) {
             pratt(of: "condition-ops")
         }
-        condition-unary(profiles: [record, text-record, collections, closures]) {
+        condition-unary(profiles: [record, text-record, collections, closures, aggregates]) {
             alt { int-literal() {} }
             alt { minus() {} condition-unary(field: "operand", same-line: true) }
             alt { bang() {} condition-unary(field: "operand", same-line: true) }
             alt { condition-postfix() {} }
         }
-        condition-postfix(profiles: [record, text-record, collections, closures]) {
+        condition-postfix(profiles: [record, text-record, collections, closures, aggregates]) {
             condition-atom() {} many { postfix-step() {} }
         }
-        condition-ctor(profiles: [record, text-record, collections, closures]) {
+        condition-ctor(profiles: [record, text-record, collections, closures, aggregates]) {
             ident(field: "ty")
             lbrace(same-line: true) {}
             ctor-fields() {}
             rbrace() {}
         }
-        condition-atom(profiles: [record, text-record, collections, closures]) {
+        condition-atom(profiles: [record, text-record, collections, closures, aggregates]) {
             // HashExpr 原子先于其余原子形状（`#` 不与其余形状共享前缀）。
             alt(profiles: [scalar-ct]) { hash-expr() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
@@ -701,12 +706,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
             // 条件镜像旧 generic_scan_commits——平衡 `<...>` 后随 `.`；普通
             // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
-            alt(profiles: [collections, closures]) { generic-atom() {} }
+            alt(profiles: [collections, closures, aggregates]) { generic-atom() {} }
             // lambda 先于括号组备选：`( 参数 ) =>` 形状提交后不回退（ordered
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
-            alt(profiles: [closures]) { lambda-expr() {} }
-            alt(profiles: [record, text-record, collections]) { leading-dot() {} }
+            alt(profiles: [closures, aggregates]) { lambda-expr() {} }
+            alt(profiles: [record, text-record, collections, aggregates]) { leading-dot() {} }
             alt { str-lit(field: "lit") }
             alt { char-lit(field: "lit") }
             alt { affix-num(field: "lit") }
@@ -719,16 +724,16 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // HashExpr 原子先于其余原子形状（`#` 不与其余形状共享前缀）。
             alt(profiles: [scalar-ct]) { hash-expr() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
-            alt(profiles: [collections, closures, record, text-record, packages-modules]) { ctor-expr() {} }
+            alt(profiles: [collections, closures, record, text-record, packages-modules, aggregates]) { ctor-expr() {} }
             // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
             // 条件镜像旧 generic_scan_commits——平衡 `<...>` 后随 `.`；普通
             // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
-            alt(profiles: [collections, closures, numeric]) { generic-atom() {} }
+            alt(profiles: [collections, closures, numeric, aggregates]) { generic-atom() {} }
             // lambda 先于括号组备选：`( 参数 ) =>` 形状提交后不回退（ordered
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
-            alt(profiles: [closures, numeric]) { lambda-expr() {} }
-            alt(profiles: [record, text-record, collections, packages-modules]) { leading-dot() {} }
+            alt(profiles: [closures, numeric, aggregates]) { lambda-expr() {} }
+            alt(profiles: [record, text-record, collections, packages-modules, aggregates]) { leading-dot() {} }
             alt { str-lit(field: "lit") }
             alt { char-lit(field: "lit") }
             alt { affix-num(field: "lit") }
@@ -738,7 +743,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { lparen() {} expr() {} rparen() {} }
         }
         // PLAN-928（T-03）：`List<T>.member` 原子（GenericType 接收位）。
-        generic-atom(profiles: [collections, closures, numeric]) {
+        generic-atom(profiles: [collections, closures, numeric, aggregates]) {
             ident(field: "name")
             lt() {}
             type-args(field: "args")
@@ -749,7 +754,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-928（T-02 最小面，T-04 冻结诊断差分）：lambda 表达式——
         // `move? ( 参数? ) => 块 | 表达式`。块体复用语句纪律（list-nl）；
         // 参数无 mode 词（旧 closure_expr 合同：ident + 类型）。
-        lambda-expr(profiles: [closures, numeric]) {
+        lambda-expr(profiles: [closures, numeric, aggregates]) {
             opt { r-move(field: "mode") }
             lparen() {}
             lambda-params(repeat: "opt", field: "params")
@@ -757,18 +762,18 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             fat-arrow() {}
             lambda-body(field: "body")
         }
-        lambda-body(profiles: [closures, numeric]) {
+        lambda-body(profiles: [closures, numeric, aggregates]) {
             alt { block(field: "block-body") }
             alt { expr(field: "expr-body") }
         }
-        lambda-params(profiles: [closures, numeric]) { lambda-param() {} many { lambda-param-tail() {} } }
-        lambda-param-tail(profiles: [closures, numeric]) { comma() {} lambda-param() {} }
-        lambda-param(profiles: [closures, numeric]) {
+        lambda-params(profiles: [closures, numeric, aggregates]) { lambda-param() {} many { lambda-param-tail() {} } }
+        lambda-param-tail(profiles: [closures, numeric, aggregates]) { comma() {} lambda-param() {} }
+        lambda-param(profiles: [closures, numeric, aggregates]) {
             ident(field: "name")
             ann-ty(field: "ty")
         }
         // 隐式 self：`.name` / `.name(args)`（record 族）
-        leading-dot(profiles: [record, text-record, collections, packages-modules]) {
+        leading-dot(profiles: [record, text-record, collections, packages-modules, aggregates]) {
             dot() {}
             ident(field: "member")
         }
@@ -777,7 +782,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // `{` 是 cut 步：消费后 alt 失败不回退到后续备选——复刻旧 parser
         // 在普通表达式 `ident {` 的无回溯提交；条件另走 condition-expr，
         // 而裸 ident（`total + 1`）在 `{` 不匹配时照常回退为普通名字）。
-        ctor-expr(profiles: [record, text-record, collections, closures, packages-modules, numeric]) {
+        ctor-expr(profiles: [record, text-record, collections, closures, packages-modules, numeric, aggregates]) {
             ident(field: "ty")
             lbrace(same-line: true, cut: true) {}
             opt { ctor-fields() {} }
@@ -801,9 +806,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { minus() int-lit(field: "value", same-line: true) }
             // PLAN-961：负 typed 字面量在词法结构层折叠（-9223372036854775808i64
             // 的正数部分超出 i64 正域，只有带负号才可表示）。
-            alt(profiles: [numeric]) { minus() affix-num(field: "value", same-line: true) }
+            alt(profiles: [numeric, aggregates]) { minus() affix-num(field: "value", same-line: true) }
             alt { int-lit(field: "value") }
-            alt(profiles: [numeric]) { affix-num(field: "value") }
+            alt(profiles: [numeric, aggregates]) { affix-num(field: "value") }
         }
         args { arg(repeat: "opt") many { arg-tail() {} } }
         arg-tail { comma() {} arg() {} }
@@ -831,7 +836,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             nl-free: true
         }
     }
-    pratt(condition-ops, profiles: [record, text-record, collections, closures]) {
+    pratt(condition-ops, profiles: [record, text-record, collections, closures, aggregates]) {
         primary: "condition-unary"
         op(binding: 1, assoc: "left") { of: "||" }
         op(binding: 2, assoc: "left") { of: "&&" }
@@ -858,7 +863,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
 
     }
-    pratt(wide-ops, profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, collections, closures, scalar-modules, packages-modules]) {
+    pratt(wide-ops, profiles: [scalar, scalar-instances, scalar-ct, text, record, text-record, entry-unit, host-console, collections, closures, scalar-modules, packages-modules, aggregates]) {
         primary: "unary-expr"
         op(binding: 1, assoc: "left") { of: "||" }
         op(binding: 2, assoc: "left") { of: "&&" }
@@ -890,7 +895,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
     // 是表达式（类型词 RHS 不支持），移位双 token 算符不支持且 `>>` 与
     // 嵌套泛型闭合冲突——`.as(T)`/`.to(T)`/`.shl(n)`/`.shr(n)` 方法形
     // 承载（后缀步 r-as/r-to 已门控 numeric；中缀 `as` 具名延后）。
-    pratt(numeric-ops, profiles: [numeric]) {
+    pratt(numeric-ops, profiles: [numeric, aggregates]) {
         primary: "unary-expr"
         op(binding: 1, assoc: "left") { of: "||" }
         op(binding: 2, assoc: "left") { of: "&&" }

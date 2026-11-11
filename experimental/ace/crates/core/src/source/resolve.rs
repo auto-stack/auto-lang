@@ -848,6 +848,11 @@ pub struct CollTables {
     pub variants: Vec<ResolvedVariant>,
     pub function_types: Vec<ClosureFnType>,
     variant_names: BTreeMap<String, usize>,
+    /// PLAN-962: aggregates-profile admission — nested List, composite
+    /// record/variant field and payload positions, and the wide numeric
+    /// element kinds are legal. The frozen 822 one-layer element domain
+    /// stays in force for every older profile.
+    pub aggregates_admission: bool,
 }
 
 impl CollTables {
@@ -1526,6 +1531,8 @@ fn resolve_detailed(
     let ct_enabled = capabilities.iter().any(|c| c == super::cst::CT_CAPABILITY);
     let mut diags = Vec::new();
     let mut coll = CollTables::default();
+    // PLAN-962: the aggregates surface widens the collections admission.
+    coll.aggregates_admission = surface.is_aggregates();
     let is_coll = surface.is_collections();
 
     // Pass 0 (PLAN-771): record types pre-register FIRST — field types may
@@ -1646,15 +1653,17 @@ fn resolve_detailed(
                             )
                         });
                         if let Some(VT::List(_)) = payload {
-                            diags.push(Diagnostic::new(
-                                Stage::Bind,
-                                "source.list-value-context",
-                                "List-typed payloads are not part of the 822 element domain"
-                                    .to_string(),
-                                a.span,
-                            ));
-                            ok = false;
-                            continue;
+                            if !coll.aggregates_admission {
+                                diags.push(Diagnostic::new(
+                                    Stage::Bind,
+                                    "source.list-value-context",
+                                    "List-typed payloads are not part of the 822 element domain"
+                                        .to_string(),
+                                    a.span,
+                                ));
+                                ok = false;
+                                continue;
+                            }
                         }
                         if let Some(pt) = &a.payload {
                             if matches!(pt.kind, ast::TypeRef::Builtin(TypeWord::Void)) {
@@ -1839,7 +1848,6 @@ fn resolve_detailed(
         }
     }
 
-
     // PLAN-909 §5.5 warm seeding: cached owners reference the module's
     // closure-signature table by INDEX; seeding the fresh table with the
     // previous snapshot keeps every cached index valid (interning is
@@ -1898,9 +1906,7 @@ fn resolve_detailed(
             sigs.insert(
                 declaration.name.clone(),
                 FnSig {
-                    param_names: (0..sig.params.len())
-                        .map(|i| format!("arg{i}"))
-                        .collect(),
+                    param_names: (0..sig.params.len()).map(|i| format!("arg{i}")).collect(),
                     params: sig.params,
                     result: sig.result,
                     index: flat.len() + index,
@@ -2467,9 +2473,7 @@ impl ForeignContext {
             sigs.insert(
                 declaration.name.clone(),
                 FnSig {
-                    param_names: (0..sig.params.len())
-                        .map(|i| format!("arg{i}"))
-                        .collect(),
+                    param_names: (0..sig.params.len()).map(|i| format!("arg{i}")).collect(),
                     params: sig.params,
                     result: sig.result,
                     index: env.program.fns.len() + index,
@@ -2941,6 +2945,7 @@ pub(crate) fn recheck_swap_with_supply(
     let rebuilt = if env.profile.is_collections() {
         let mut c2 = CollTables::default();
         c2.lists = env.program.lists.clone();
+        c2.aggregates_admission = env.profile.is_aggregates();
         let names2: Vec<(String, usize)> = env
             .program
             .variants
@@ -2970,6 +2975,7 @@ pub(crate) fn recheck_swap_with_supply(
             &env.rec_index,
             &mut guard_diags,
             fn_index,
+            env.profile.is_aggregates(),
         )
     };
     let expected = &env.sigs[&sig_key];
@@ -3006,6 +3012,7 @@ pub(crate) fn recheck_swap_with_supply(
     let mut coll = CollTables::default();
     coll.lists = env.program.lists.clone();
     coll.function_types = env.program.function_types.clone();
+    coll.aggregates_admission = env.profile.is_aggregates();
     let names: Vec<(String, usize)> = env
         .program
         .variants
@@ -3112,6 +3119,7 @@ pub(crate) fn resolve_lambda_in_context(
     let mut coll = CollTables::default();
     coll.lists = env.program.lists.clone();
     coll.function_types = env.program.function_types.clone();
+    coll.aggregates_admission = env.profile.is_aggregates();
     let names: Vec<(String, usize)> = env
         .program
         .variants
@@ -3322,6 +3330,7 @@ pub(crate) fn resolve_owner_in_env(
     let mut coll = CollTables::default();
     coll.lists = env.program.lists.clone();
     coll.function_types = env.program.function_types.clone();
+    coll.aggregates_admission = env.profile.is_aggregates();
     let names: Vec<(String, usize)> = env
         .program
         .variants
@@ -3627,13 +3636,18 @@ fn fn_sig_of(
     rec_index: &BTreeMap<String, usize>,
     diags: &mut Vec<Diagnostic>,
     index: usize,
+    aggregates: bool,
 ) -> FnSig {
     fn_sig_of_coll(
         f,
         recv,
         owner_rec,
         rec_index,
-        &mut CollTables::default(),
+        &mut {
+            let mut t = CollTables::default();
+            t.aggregates_admission = aggregates;
+            t
+        },
         diags,
         index,
         false,
@@ -3819,7 +3833,7 @@ fn vt_of_ann_coll(
         ast::TypeRef::Record(id) => match rec_index.get(&id.name) {
             Some(&i) => VT::Rec(i),
             None if coll.variant_by_name(&id.name).is_some() => {
-                if matches!(pos, TypePos::Field | TypePos::Param) {
+                if matches!(pos, TypePos::Field | TypePos::Param) && !coll.aggregates_admission {
                     return reject(
                         diags,
                         VT::I32,
@@ -3850,7 +3864,7 @@ fn vt_of_ann_coll(
                 );
             }
             let inner_vt = vt_of_ann_coll(inner, rec_index, coll, diags, TypePos::ContainerPayload);
-            if matches!(inner_vt, VT::List(_)) {
+            if matches!(inner_vt, VT::List(_)) && !coll.aggregates_admission {
                 return reject(
                     diags,
                     VT::I32,
@@ -3870,7 +3884,9 @@ fn vt_of_ann_coll(
         }
         ast::TypeRef::Generic { name, args } => match (name.name.as_str(), args.len()) {
             ("List", 1) => {
-                if matches!(pos, TypePos::Field | TypePos::Param | TypePos::Result) {
+                if matches!(pos, TypePos::Field | TypePos::Param | TypePos::Result)
+                    && !coll.aggregates_admission
+                {
                     return reject(
                             diags,
                             VT::I32,
@@ -3880,6 +3896,10 @@ fn vt_of_ann_coll(
                 }
                 let elem = vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::Local);
                 match elem {
+                    // PLAN-962: the aggregates surface admits nested List
+                    // (the arena node graph is depth-free); the frozen 822
+                    // one-layer domain keeps rejecting for older profiles.
+                    VT::List(_) if coll.aggregates_admission => VT::List(coll.intern_list(elem)),
                     VT::List(_) => reject(
                         diags,
                         VT::I32,
@@ -3887,6 +3907,20 @@ fn vt_of_ann_coll(
                         args[0].span,
                     ),
                     VT::StrOwned | VT::I32 | VT::Bool | VT::Rec(_) | VT::Variant(_) => {
+                        VT::List(coll.intern_list(elem))
+                    }
+                    // PLAN-962: wide numerics and char ride the numeric
+                    // element closure the MIR verifier already admits.
+                    VT::Char
+                    | VT::I8
+                    | VT::U8
+                    | VT::U32
+                    | VT::I64
+                    | VT::U64
+                    | VT::F32
+                    | VT::F64
+                        if coll.aggregates_admission =>
+                    {
                         VT::List(coll.intern_list(elem))
                     }
                     _ => reject(
@@ -3936,7 +3970,9 @@ fn vt_of_ann_coll(
                         return VT::I32;
                     }
                 }
-                if matches!(ok_vt, VT::List(_)) || matches!(err_vt, VT::List(_)) {
+                if (matches!(ok_vt, VT::List(_)) || matches!(err_vt, VT::List(_)))
+                    && !coll.aggregates_admission
+                {
                     return reject(
                         diags,
                         VT::I32,
@@ -5045,6 +5081,11 @@ impl<'a, 's> FnResolver<'a, 's> {
             TypePos::Local,
         );
         match elem {
+            // PLAN-962: the aggregates admission widens the receiver
+            // element domain too (nested List constructors are legal).
+            VT::List(_) if self.coll.aggregates_admission => {
+                RecvClass::ListCtor(self.coll.intern_list(elem))
+            }
             VT::List(_) => {
                 self.bind_err(
                     "source.list-value-context",
@@ -6461,11 +6502,8 @@ impl<'a, 's> FnResolver<'a, 's> {
                                 params: sig.params.clone(),
                                 result: sig.result,
                             };
-                            if let Some(idx) = self
-                                .coll
-                                .function_types
-                                .iter()
-                                .position(|t| *t == want)
+                            if let Some(idx) =
+                                self.coll.function_types.iter().position(|t| *t == want)
                             {
                                 return ResolvedExpr {
                                     span: e.span,

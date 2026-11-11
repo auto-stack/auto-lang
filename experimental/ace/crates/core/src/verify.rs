@@ -156,9 +156,8 @@ pub struct CheckedFunction {
     /// PLAN-939 T-04: this body's per-call foreign resource credentials
     /// (§5.2 unique authority) — carried by the single-body credential so
     /// fragment views consume them without a module plan.
-    foreign_rows: Option<
-        std::collections::BTreeMap<u32, crate::foreign_resources::ForeignCallCredential>,
-    >,
+    foreign_rows:
+        Option<std::collections::BTreeMap<u32, crate::foreign_resources::ForeignCallCredential>>,
     /// PLAN-902 T-03: the pairwise parameter exclusivity constraints
     /// discovered for THIS body's own signature at its call sites (r4
     /// R4-05) — the facts a retained environment merges into its fixpoint
@@ -1948,8 +1947,7 @@ fn check_foreign_declarations(
                                     && f.params.iter().all(|p| {
                                         lane(p) == Some(ace_foreign_contract::LaneKind::I32)
                                     })
-                                    && lane(&f.result)
-                                        == Some(ace_foreign_contract::LaneKind::I32)
+                                    && lane(&f.result) == Some(ace_foreign_contract::LaneKind::I32)
                             }
                             _ => false,
                         })
@@ -3538,6 +3536,14 @@ impl Verifier {
         let type_map = Self::build_type_map(m);
         if matches!(self.domain, HirDomain::Record | HirDomain::TextRecord) {
             self.check_record_module(m, &type_map);
+        } else if matches!(self.domain, HirDomain::Collections | HirDomain::Closures) {
+            // PLAN-962 (V-04): the collection family now runs the record
+            // containment-cycle walk as well — an illegal infinitely-sized
+            // record must reject BEFORE any layout/lowering work (the T-01
+            // probe found this check missing for these domains). Full
+            // record-module typing stays with the record domains; the
+            // cycle gate is the pre-layout safety net.
+            self.check_record_containment_cycles(m);
         }
         // Derived resource classification (PLAN-782): a record owns buffers
         // iff a Str field is transitively reachable. Computed from the
@@ -3919,6 +3925,67 @@ impl Verifier {
     /// names, closed scalar/record field types), the type containment graph
     /// (acyclic — iterative worklist, PLAN-771 probe P1 shape; no recursion
     /// anywhere on this path), and method ownership/receiver contracts.
+    /// PLAN-962: the containment-cycle slice of `check_record_module`,
+    /// shared with the collection family (V-04's pre-layout rejection).
+    /// Box-typed containment edges do not count toward a cycle (explicit
+    /// indirection legalizes recursion) once the Box surface lands; today
+    /// every record->record field edge counts.
+    fn check_record_containment_cycles(&mut self, m: &hir::Module) {
+        let n = m.types.len();
+        let mut mark = vec![0u8; n]; // 0 new, 1 on stack, 2 done
+        for start in 0..n {
+            if mark[start] != 0 || Self::record_shape(m, start as u32).is_none() {
+                continue;
+            }
+            let mut stack: Vec<(usize, usize)> = vec![(start, 0)];
+            mark[start] = 1;
+            while let Some(&(node, fi)) = stack.last() {
+                let Some(shape) = Self::record_shape(m, node as u32) else {
+                    break;
+                };
+                if fi < shape.fields.len() {
+                    stack.last_mut().unwrap().1 += 1;
+                    if let hir::TypeUse::Ref(tid) = shape.fields[fi].ty {
+                        if Self::record_shape(m, tid.0).is_some() {
+                            match mark[tid.0 as usize] {
+                                0 => {
+                                    mark[tid.0 as usize] = 1;
+                                    stack.push((tid.0 as usize, 0));
+                                }
+                                1 => {
+                                    let pos = stack
+                                        .iter()
+                                        .position(|&(x, _)| x == tid.0 as usize)
+                                        .unwrap_or(0);
+                                    let chain: Vec<String> = stack[pos..]
+                                        .iter()
+                                        .map(|&(x, _)| m.types[x].id_text.clone())
+                                        .chain(std::iter::once(
+                                            m.types[tid.0 as usize].id_text.clone(),
+                                        ))
+                                        .collect();
+                                    self.error(
+                                        "verify.record-cycle",
+                                        format!(
+                                            "record containment graph has a cycle: {}",
+                                            chain.join(" -> ")
+                                        ),
+                                        m.types[tid.0 as usize].span,
+                                    );
+                                    // keep walking to collect further cycles
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                } else {
+                    mark[node] = 2;
+                    stack.pop();
+                }
+            }
+        }
+    }
+
     fn check_record_module(&mut self, m: &hir::Module, type_map: &BTreeMap<u32, ValueType>) {
         let n = m.types.len();
         // 1. per-record well-formedness

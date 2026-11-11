@@ -639,12 +639,15 @@ impl<'a, 'r> Verifier<'a, 'r> {
             }
             // PLAN-822: records stay container-free (a List/Variant field is
             // `mir.type.nested-container`, first-batch rejection).
+            // PLAN-962: the aggregates admission capability lifts this —
+            // composite record fields are legal on that surface only.
             if let MirType::Record(r) = t {
                 for f in &r.fields {
                     if matches!(
                         self.module.types.get(f.ty as usize),
                         Some(MirType::List(_)) | Some(MirType::Variant(_))
-                    ) {
+                    ) && !self.aggregates_admission()
+                    {
                         return Err(MirVerifyError::uns(
                             "mir.type.nested-container",
                             format!(
@@ -813,6 +816,9 @@ impl<'a, 'r> Verifier<'a, 'r> {
         // not a runtime grant (F798-R3-01).
         for c in &self.module.capabilities {
             let known = c == TRACE_CAPABILITY
+                // PLAN-962: the aggregates admission capability (keys the
+                // widened composite element domain in this verifier).
+                || c == "av.aggregates/1"
                 || c == ace_foreign_contract::manual::SOURCE_CAP
                 || self.module.funcs.iter().any(|f| f.blocks.iter().any(|b| b.instrs.iter().any(|i|
                     matches!(i, MirInstr::ForeignCall { declaration, .. } if declaration.capabilities.contains(c)))))
@@ -1233,16 +1239,30 @@ impl<'a, 'r> Verifier<'a, 'r> {
 
     /// Iterative three-color cycle check over the record type graph. A cycle
     /// means by-value recursion — rejected before any layout derivation.
+    /// PLAN-962: whether this module carries the aggregates admission
+    /// capability (`av.aggregates/1`, stamped by the aggregates source
+    /// profile) — the key that widens the frozen 822 element domain.
+    fn aggregates_admission(&self) -> bool {
+        self.module
+            .capabilities
+            .iter()
+            .any(|c| c == "av.aggregates/1")
+    }
+
     /// PLAN-822: the frozen admissible element/payload domain (contract-
     /// decision §2) — scalars (incl. wide + char), owned `Str`, records.
     /// Rejected: borrowed views/tokens, `Fn`, and containers (List-of-List
     /// / container payloads keep the first batch one layer deep).
+    /// PLAN-962: a module carrying `av.aggregates/1` admits the composite
+    /// closure (nested List, narrow numerics i8/u8/u32) — frozen-profile
+    /// documents keep the strict domain byte-for-byte.
     fn check_element_domain(
         &mut self,
         elem: TypeIdx,
         ti: usize,
         code: &'static str,
     ) -> Result<(), MirVerifyError> {
+        let aggregates = self.aggregates_admission();
         let ok = match self.module.types.get(elem as usize) {
             Some(
                 MirType::I32
@@ -1256,6 +1276,10 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 | MirType::Record(_)
                 | MirType::Variant(_),
             ) => true,
+            // PLAN-962 aggregates admission: the narrow numerics and the
+            // nested container itself join the element closure.
+            Some(MirType::I8 | MirType::U8 | MirType::U32) if aggregates => true,
+            Some(MirType::List(_)) if aggregates => true,
             _ => false,
         };
         if !ok {

@@ -137,6 +137,8 @@ pub fn profile_slug(profile: SourceProfile) -> &'static str {
         SourceProfile::Collections => "collections",
         // PLAN-961：数值面 slug。
         SourceProfile::Numeric => "numeric",
+        // PLAN-962：聚合面 slug。
+        SourceProfile::Aggregates => "aggregates",
     }
 }
 
@@ -178,7 +180,7 @@ impl CachedGrammar {
     }
 }
 
-static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 10]> = OnceLock::new();
+static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 11]> = OnceLock::new();
 
 /// PLAN-935（T-02）：`scalar-instances` 裁剪程序（scalar 全表面 + 有限模板
 /// 面）。独立缓存槽：plain profile 程序逐字节不变，grammar-id 自然隔离。
@@ -766,6 +768,8 @@ pub fn profile_grammar(profile: SourceProfile) -> Result<&'static CachedGrammar,
         SourceProfile::Collections => 8,
         // PLAN-961：数值面槽位。
         SourceProfile::Numeric => 9,
+        // PLAN-962：聚合面槽位。
+        SourceProfile::Aggregates => 10,
     };
     let slots = GRAMMARS.get_or_init(|| Default::default());
     // 先试读（快路径无锁竞争）；未命中再写入。

@@ -22,14 +22,45 @@ pub struct CollectionsRun {
 }
 
 pub fn compile_and_execute(src: &str, entry_name: &str) -> Result<CollectionsRun, String> {
-    let compiled = compile_collections_source(src, "probe.at", &[]).map_err(|ds| {
+    compile_and_execute_profile(src, entry_name, false)
+}
+
+/// PLAN-962: the aggregates-profile face of the same full-chain seam —
+/// compile under the aggregates source profile (wider composite
+/// admission; the frozen collections surface keeps rejecting through
+/// [`compile_and_execute`]).
+pub fn compile_and_execute_aggregates(
+    src: &str,
+    entry_name: &str,
+) -> Result<CollectionsRun, String> {
+    compile_and_execute_profile(src, entry_name, true)
+}
+
+fn compile_and_execute_profile(
+    src: &str,
+    entry_name: &str,
+    aggregates: bool,
+) -> Result<CollectionsRun, String> {
+    let compiled = if aggregates {
+        ace_core::source::compile_aggregates_source(src, "probe.at", &[])
+    } else {
+        compile_collections_source(src, "probe.at", &[])
+    }
+    .map_err(|ds| {
         ds.iter()
             .map(|d| d.render("probe.at", src))
             .collect::<Vec<_>>()
             .join("\n")
     })?;
-    let mir = lower_checked_collections(&compiled.checked, entry_name, 0)
-        .map_err(|e| format!("lower: {e:?}"))?;
+    let mir = if aggregates {
+        // PLAN-962: aggregates documents verify/lower through the
+        // closures-superset family entry (same as the numeric surface).
+        ace_lowering::lower_checked_closures(&compiled.checked, entry_name, 0)
+            .map_err(|e| format!("lower: {e:?}"))?
+    } else {
+        lower_checked_collections(&compiled.checked, entry_name, 0)
+            .map_err(|e| format!("lower: {e:?}"))?
+    };
     let _checked = verify_mir(&mir).map_err(|e| format!("verify_mir: {e:?}"))?;
     let abc = encode_abc(&mir).map_err(|e| format!("encode: {e:?}"))?;
     let flat = abc.to_flat();

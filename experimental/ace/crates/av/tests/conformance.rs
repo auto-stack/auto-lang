@@ -17,6 +17,8 @@ mod av_closures_resources;
 #[path = "cases/av_closures_semantics.rs"]
 mod av_closures_semantics;
 
+#[path = "cases/aggregates_t01_probe.rs"]
+mod aggregates_t01_probe;
 #[path = "cases/av_closures_source.rs"]
 mod av_closures_source;
 #[path = "cases/av_collections.rs"]
@@ -37,12 +39,8 @@ mod av_collections_resources;
 mod av_collections_semantics;
 #[path = "cases/av_collections_session.rs"]
 mod av_collections_session;
-#[path = "cases/aggregates_t01_probe.rs"]
-mod aggregates_t01_probe;
 #[path = "cases/av_data.rs"]
 mod av_data;
-#[path = "cases/data_diagnostics_941.rs"]
-mod data_diagnostics_941;
 #[path = "cases/av_data_cache_compat.rs"]
 mod av_data_cache_compat;
 #[path = "cases/av_data_incremental.rs"]
@@ -137,6 +135,8 @@ mod closures_fn_912_performance;
 mod closures_recovery_913;
 #[path = "cases/closures_recovery_913_performance.rs"]
 mod closures_recovery_913_performance;
+#[path = "cases/data_diagnostics_941.rs"]
+mod data_diagnostics_941;
 #[path = "cases/function_incremental.rs"]
 mod function_incremental;
 #[path = "cases/function_incremental_b1.rs"]

@@ -226,6 +226,10 @@ fn check_source(args: &SourceArgs) -> Result<String, (u8, Vec<ace_core::atom_tex
         SourceProfile::Numeric => {
             ace_core::source::compile_numeric_source(&src, &module_path, &args.capabilities)
         }
+        // PLAN-962: the aggregates surface's standalone entry.
+        SourceProfile::Aggregates => {
+            ace_core::source::compile_aggregates_source(&src, &module_path, &args.capabilities)
+        }
     };
     match compile {
         Ok(c) => Ok(format!(

@@ -32,14 +32,15 @@ pub mod resolve;
 pub mod typecheck;
 
 pub use adapter::{
-    compile_closures_source, compile_closures_source_incremental, compile_collections_source,
-    compile_entry_unit_source, compile_host_console_source, compile_numeric_source, compile_parts,
-    compile_parts_with, compile_program_parts, compile_record_source, compile_scalar_source,
-    compile_source, compile_text_record_source, compile_text_source,
-    emit_collections_function_batch, emit_function_body, emit_resolved_module_parts,
-    emit_resolved_packages_parts, emit_resolved_parts, prepare_candidate_document,
-    prepare_function_candidate, prepare_module_candidate, BodyEmitReceipt, ClosuresFrontendLedger,
-    CompiledSource, FnCandidate, SourceParts, RUNTIME_TEXT_CAPABILITY,
+    compile_aggregates_source, compile_closures_source, compile_closures_source_incremental,
+    compile_collections_source, compile_entry_unit_source, compile_host_console_source,
+    compile_numeric_source, compile_parts, compile_parts_with, compile_program_parts,
+    compile_record_source, compile_scalar_source, compile_source, compile_text_record_source,
+    compile_text_source, emit_collections_function_batch, emit_function_body,
+    emit_resolved_module_parts, emit_resolved_packages_parts, emit_resolved_parts,
+    prepare_candidate_document, prepare_function_candidate, prepare_module_candidate,
+    BodyEmitReceipt, ClosuresFrontendLedger, CompiledSource, FnCandidate, SourceParts,
+    RUNTIME_TEXT_CAPABILITY,
 };
 pub use parser::{parse_program, parse_program_with};
 // PLAN-929（T-10）：旧手写 parser 面（整源/三片段/词法）退役为差分 oracle——
@@ -103,6 +104,11 @@ pub const CLOSURES_SOURCE_PROFILE: &str = "auto.source.closures.draft";
 /// PLAN-961: the numeric surface (closures superset + wide/narrow integers,
 /// floats, typed literals, bit ops, shifts as methods, conversions).
 pub const NUMERIC_SOURCE_PROFILE: &str = "auto.source.numeric.draft";
+/// PLAN-962: the aggregates surface (numeric superset + composite data
+/// structures — nested containers, tuple/array literals, named ctors,
+/// destructuring, index places, ranges, wider patterns; the T-08 face
+/// adds union/tag/grid/Hold/Box).
+pub const AGGREGATES_SOURCE_PROFILE: &str = "auto.source.aggregates.draft";
 
 /// The explicitly selected source profile of a compilation. Never inferred
 /// from file extensions or content.
@@ -119,6 +125,8 @@ pub enum SourceProfile {
     Closures,
     /// PLAN-961: the numeric profile (closures surface + numerics).
     Numeric,
+    /// PLAN-962: the aggregates profile (numeric surface + composites).
+    Aggregates,
 }
 
 impl SourceProfile {
@@ -134,6 +142,7 @@ impl SourceProfile {
             SourceProfile::Collections => COLLECTIONS_SOURCE_PROFILE,
             SourceProfile::Closures => CLOSURES_SOURCE_PROFILE,
             SourceProfile::Numeric => NUMERIC_SOURCE_PROFILE,
+            SourceProfile::Aggregates => AGGREGATES_SOURCE_PROFILE,
         }
     }
 
@@ -152,6 +161,10 @@ impl SourceProfile {
             // PLAN-961: numeric documents verify under the closures-superset
             // domain (numeric typing rules live in the shared walks).
             SourceProfile::Numeric => crate::hir::HirDomain::Closures,
+            // PLAN-962: aggregates documents verify under the same
+            // collections-family domain (aggregate admission lives in the
+            // resolver and the MIR verifier, keyed by profile).
+            SourceProfile::Aggregates => crate::hir::HirDomain::Closures,
         }
     }
 
@@ -169,6 +182,7 @@ impl SourceProfile {
                 | SourceProfile::Collections
                 | SourceProfile::Closures
                 | SourceProfile::Numeric
+                | SourceProfile::Aggregates
         )
     }
 
@@ -179,20 +193,33 @@ impl SourceProfile {
     pub fn is_collections(&self) -> bool {
         matches!(
             self,
-            SourceProfile::Collections | SourceProfile::Closures | SourceProfile::Numeric
+            SourceProfile::Collections
+                | SourceProfile::Closures
+                | SourceProfile::Numeric
+                | SourceProfile::Aggregates
         )
     }
 
     /// PLAN-865: whether lambda expressions and closure indirect calls are
     /// accepted on this otherwise collection-compatible source surface.
     pub fn is_closures(&self) -> bool {
-        matches!(self, SourceProfile::Closures | SourceProfile::Numeric)
+        matches!(
+            self,
+            SourceProfile::Closures | SourceProfile::Numeric | SourceProfile::Aggregates
+        )
     }
 
     /// PLAN-961: whether the numeric surface is accepted — typed literals,
     /// numeric type words, bit ops, shift methods and conversions.
     pub fn is_numeric(&self) -> bool {
-        matches!(self, SourceProfile::Numeric)
+        matches!(self, SourceProfile::Numeric | SourceProfile::Aggregates)
+    }
+
+    /// PLAN-962: whether the aggregate surface is accepted — nested
+    /// containers, composite record/variant fields, tuples, index
+    /// places, ranges and the wider pattern set.
+    pub fn is_aggregates(&self) -> bool {
+        matches!(self, SourceProfile::Aggregates)
     }
 
     /// PLAN-864: whether string literals lex on this surface (the text
@@ -219,6 +246,7 @@ impl SourceProfile {
                 | SourceProfile::TextRecord
                 | SourceProfile::Collections
                 | SourceProfile::Closures
+                | SourceProfile::Aggregates
         )
     }
 
@@ -250,6 +278,8 @@ impl SourceProfile {
                 | SourceProfile::Closures
                 // PLAN-961: the numeric surface is a closures superset.
                 | SourceProfile::Numeric
+                // PLAN-962: the aggregates surface is a numeric superset.
+                | SourceProfile::Aggregates
         )
     }
 
@@ -265,6 +295,7 @@ impl SourceProfile {
             COLLECTIONS_SOURCE_PROFILE => Some(SourceProfile::Collections),
             CLOSURES_SOURCE_PROFILE => Some(SourceProfile::Closures),
             NUMERIC_SOURCE_PROFILE => Some(SourceProfile::Numeric),
+            AGGREGATES_SOURCE_PROFILE => Some(SourceProfile::Aggregates),
             _ => None,
         }
     }
@@ -272,6 +303,13 @@ impl SourceProfile {
 
 /// Capability that activates the closed set of test-only trace intrinsics.
 pub const TRACE_CAPABILITY: &str = "hir.test.trace.v1";
+
+/// PLAN-962: document-level capability every aggregates-profile document
+/// requires. It is the single admission key downstream verifiers use to
+/// widen the frozen 822 one-layer element domain (nested List, composite
+/// record/variant payloads): documents without it keep the strict
+/// collections/closures admission byte-for-byte.
+pub const AGGREGATES_ADMISSION_CAP: &str = "av.aggregates/1";
 
 /// Map a source-level callee name to its intrinsic symbol. These names
 /// resolve only when the caller provided [`TRACE_CAPABILITY`], and user

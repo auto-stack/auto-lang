@@ -135,7 +135,8 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
         | SourceProfile::HostConsole
         | SourceProfile::Collections
         | SourceProfile::Closures
-        | SourceProfile::Numeric => {
+        | SourceProfile::Numeric
+        | SourceProfile::Aggregates => {
             let program = super::cst::parse_program_via_cst(src, profile)?;
             // 计量保真：旧 parser 在每个 fn 体开parse时 note_parse——冷整源
             // 换链后按投影结果补记（不旁路 SyntaxWork 观察面）。
