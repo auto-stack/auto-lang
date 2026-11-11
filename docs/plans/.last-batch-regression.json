@@ -1,47 +1,55 @@
 {
-  "last_covered_plan_id": 995,
-  "timestamp": "2026-11-08T03:22:03.066528+08:00",
-  "covered_commit": "69da2dea83e58244374a56ba9579d5f1cb449d9a",
-  "command": "cargo t all (quiet-gated start 2026-11-08 03:05:32 after foreign build tier drained; HEAD at run time 69da2dea8)",
-  "legs": [
-    "language: all 37 original fixed groups; UI/Man keep their owner legs, not inferred PASS"
-  ],
-  "single_instance": true,
-  "completed_queue": true,
-  "gate_passed": false,
-  "wall_seconds": 861.7,
-  "group_outcomes": {
-    "PASS": 28,
-    "FAIL": 6,
-    "NOT_APPLICABLE": 3
+ "last_covered_plan_id": 1005,
+ "timestamp": "2026-11-11T20:52:01+00:00",
+ "covered_commit": "90e66211b057d2e159f5e32639347e2e56763893",
+ "command": "cargo t all",
+ "legs": [
+  "language: cargo t all (fixed-group union, 37 invocations, 2917 executed)"
+ ],
+ "execution_receipt": "plan-artifacts/batch-regression-1005-run/results.json (scope deleted after fold; per-group rows below)",
+ "preparation": "foreign auto-ui build tier + plan-989 measurement tier drained first (quiet-gated start)",
+ "groups": {
+  "total_invocations": 37,
+  "executed_tests": 2917,
+  "not_applicable": [
+   "aavm",
+   "a2r-actor-tests",
+   "auto-vm"
+  ]
+ },
+ "new_reds": [],
+ "known_reds_seen": [
+  {
+   "group": "auto-lang",
+   "test": "sys_natives_vm_tests$test_sys_natives_vm",
+   "debt": "898-N5 master pre-existing"
   },
-  "atomic_reds": [
-    "auto-media-core image_pipeline::tests::fixture_manifest (Os NotFound, 956-batch same family)",
-    "auto-lang sys_natives_vm_tests::test_sys_natives_vm (956-batch same family)",
-    "auto-lang plan872_builtin_binding_probes::plan872_binding_table_json_matches_regeneration (NEW vs 956)"
-  ],
-  "new_reds": [
-    {
-      "group": "auto-lang",
-      "test": "plan872_binding_table_json_matches_regeneration",
-      "classification": "binding-table registry_fingerprint drift after new native catalog entries",
-      "attribution": "commit 3920dd95a (multi-file dialog capability, 2026-11-06, PLAN-941 lane) added NATIVE_ID_ENTRIES without regenerating scripts/builtin-binding-table.json; verified NOT PLAN-995 (red reproduces on pristine b90c17dd1 predating 995 code; 995 diff touches no binding registration)",
-      "fix_forward": "owner PLAN-941 (in flight): regenerate table via AUTO_LANG_872_EMIT_TABLE=1 after its binding changes settle, or fix-forward note if 941 already closed its surface; recorded in KNOWN-DEBT-AND-RISKS.md"
-    }
-  ],
-  "known_reds_seen": [
-    "auto-media-core fixture_manifest Os NotFound (same family as 956 batch)",
-    "auto-lang sys_natives_vm line49 assertion (same family as 956 batch)",
-    "auto-lang-core blocked-before-execution shape (PLAN-901 owner red family, same as 956)",
-    "auto-macros discovery-failure shape (E0308 baseline family, same as 956)",
-    "auto-lsp package not in workspace (PLAN-900 owner red, same as 956)",
-    "infra-pilot-cli legacy ACE worker/domain family (same as 956)"
-  ],
-  "improvements_vs_956": [
-    "auto-api-gen PASS this run (956 rustc STATUS_ACCESS_VIOLATION did not recur; PLAN-957 crash evidence hold unchanged)",
-    "auto-lang plan707_spike_cancel timing red did NOT fire this run (documented D858 timing family)"
-  ],
-  "fix_forward": "No unmerge, no test disabling. plan872 routed to PLAN-941 owner; no product regressions confirmed.",
-  "results_path": "D:/autostack/auto-lang/target/test-groups/run-_mv_dzd4/results.json",
-  "raw_log": "D:\\autostack\\plan-artifacts\\batch-regression-995-run.log"
+  {
+   "group": "auto-macros",
+   "test": "(discovery/build failed: value_macro_tests E0308)",
+   "debt": "D-896-BASELINE-01 / 900-N3 master pre-existing"
+  },
+  {
+   "group": "auto-lsp",
+   "test": "(discovery/build failed: crate migrated out, group stale)",
+   "debt": "PLAN-900/901 known group-ownership debt"
+  },
+  {
+   "group": "auto-lang-core",
+   "test": "(ACE host tests leaked into legacy group guard)",
+   "debt": "PLAN-900/901 known guard/group-ownership debt (re-confirmed by PLAN-1001 T-04)"
+  },
+  {
+   "group": "auto-media-core",
+   "test": "image_pipeline::tests::fixture_manifest",
+   "debt": "PLAN-007 known: manifest.json missing while 7 fixtures tracked"
+  },
+  {
+   "group": "infra-pilot-cli",
+   "test": "3 failures + 1 error (incl. default_off prepared-tool env)",
+   "debt": "PLAN-900/901 known: legacy group requests ACE worker; default_off additionally depends on target/test-tools prepared state (env-dependent)"
+  }
+ ],
+ "triage": "All six red groups match documented master pre-existing debt (898-N5, D-896-BASELINE-01, 900-N3, PLAN-007, PLAN-900/901) with identical failure shapes; git log 69da2dea8..HEAD shows no landed change touching these surfaces (PLAN-1005 touched only governance/recipes/specs/docs + observer scope-root env; PLAN-989 measurement work lives in its own scope). Zero new regressions attributed to the merged window. pilot-cli isolated rerun: 9/10 pass, single default_off red reproduces (prepared-tool path absent in main checkout target state) — consistent with the 900/901 ownership/preparation debt, not a code regression.",
+ "verdict": "known-reds-only"
 }
