@@ -1,55 +1,21 @@
 {
- "last_covered_plan_id": 1005,
- "timestamp": "2026-11-11T20:52:01+00:00",
- "covered_commit": "90e66211b057d2e159f5e32639347e2e56763893",
+ "last_covered_plan_id": 1014,
+ "timestamp": "2026-11-12T07:29:40+08:00",
+ "covered_commit": "82fc90f86",
  "command": "cargo t all",
  "legs": [
-  "language: cargo t all (fixed-group union, 37 invocations, 2917 executed)"
+  "language: cargo t all (fixed-group union, 36 invocations, 4524 executed)"
  ],
- "execution_receipt": "plan-artifacts/batch-regression-1005-run/results.json (scope deleted after fold; per-group rows below)",
- "preparation": "foreign auto-ui build tier + plan-989 measurement tier drained first (quiet-gated start)",
- "groups": {
-  "total_invocations": 37,
-  "executed_tests": 2917,
-  "not_applicable": [
-   "aavm",
-   "a2r-actor-tests",
-   "auto-vm"
-  ]
- },
+ "execution_receipt": "target/test-groups/run-dey_vny4/results.json (main checkout, single instance; warm-cache rerun after run-nzdol092 triage)",
+ "preparation": "lease-free single instance verified (no cargo/nextest processes) before start",
  "new_reds": [],
  "known_reds_seen": [
   {
-   "group": "auto-lang",
-   "test": "sys_natives_vm_tests$test_sys_natives_vm",
-   "debt": "898-N5 master pre-existing"
-  },
-  {
-   "group": "auto-macros",
-   "test": "(discovery/build failed: value_macro_tests E0308)",
-   "debt": "D-896-BASELINE-01 / 900-N3 master pre-existing"
-  },
-  {
-   "group": "auto-lsp",
-   "test": "(discovery/build failed: crate migrated out, group stale)",
-   "debt": "PLAN-900/901 known group-ownership debt"
-  },
-  {
-   "group": "auto-lang-core",
-   "test": "(ACE host tests leaked into legacy group guard)",
-   "debt": "PLAN-900/901 known guard/group-ownership debt (re-confirmed by PLAN-1001 T-04)"
-  },
-  {
-   "group": "auto-media-core",
-   "test": "image_pipeline::tests::fixture_manifest",
-   "debt": "PLAN-007 known: manifest.json missing while 7 fixtures tracked"
-  },
-  {
-   "group": "infra-pilot-cli",
-   "test": "3 failures + 1 error (incl. default_off prepared-tool env)",
-   "debt": "PLAN-900/901 known: legacy group requests ACE worker; default_off additionally depends on target/test-tools prepared state (env-dependent)"
+   "group": "auto-generation-core",
+   "test": "plan988_byte_consumers plan988_source_bytes_compile_run_and_preserve_rejected_targets",
+   "debt": "budget boundary: nextest slow-timeout terminate >120s (121.3s) under gate load; functionally green in direct serial run (119.25s, all sub-case assertions PASS); pre-existing compile-farm test at the budget edge, untouched by PLAN-1014; named handoff D-1014-P988-BUDGET (owner: test-budget governance / auto-generation-core), closure = budget ruling or test split/optimization"
   }
  ],
- "triage": "All six red groups match documented master pre-existing debt (898-N5, D-896-BASELINE-01, 900-N3, PLAN-007, PLAN-900/901) with identical failure shapes; git log 69da2dea8..HEAD shows no landed change touching these surfaces (PLAN-1005 touched only governance/recipes/specs/docs + observer scope-root env; PLAN-989 measurement work lives in its own scope). Zero new regressions attributed to the merged window. pilot-cli isolated rerun: 9/10 pass, single default_off red reproduces (prepared-tool path absent in main checkout target state) — consistent with the 900/901 ownership/preparation debt, not a code regression.",
+ "triage": "PLAN-1014 closes the six @1005 known-red groups (all green in this gate: auto-lsp retired, auto-macros 13/13, sys_natives green, auto-lang-core 1602 executed green after family exclusion + two latent master reds fixed, auto-media-core 54/54, infra-pilot split 2/8+green). Execution count 2917->4524 explained: auto-lang-core's 1602 guard-blocked tests now execute (PLAN-1014 B-02 fix) plus group growth from plans landed after @1005. plan707_spike_cancel_gap flaked red in the first run (run-nzdol092) and is green in this rerun — load-sensitive timing test, isolated-green on landed commit (both prior isolated replays); not counted as known debt. 3 original conditional NAs unchanged (aavm, a2r-actor-tests, auto-vm). Zero new regressions attributed to the 1006..1014 landing window.",
  "verdict": "known-reds-only"
 }
