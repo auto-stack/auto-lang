@@ -375,7 +375,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
     if 'original_data_certifications' in bindings:
         from ace_m1_original_data_sources import admit_certifications
         original_data_certifications = _compact_admission(inputs, lambda _: admit_certifications(
-            inputs, evidence, bindings['original_data_certifications']), 512 << 10)
+            inputs, evidence, bindings['original_data_certifications']), 768 << 10)
     original_data = None
     if 'original_data_execution' in bindings:
         from ace_m1_original_data_sources import admit_source
