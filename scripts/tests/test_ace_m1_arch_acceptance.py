@@ -4291,111 +4291,532 @@ if __name__ == '__main__':
     unittest.main()
 
 
-class ArchitectureEntryGateControls(unittest.TestCase):
-    """PLAN-1000 R-02: per-row differential controls for the entry-gates
-    admission (ace_m1_arch_entry_gates). The green path admits a row only
-    when EVERY declared entry has a green single-group gate; each mutation
-    below removes or corrupts one required fact and MUST reject the entry
-    or leave the row UNOBSERVED — a group PASS never survives on its own."""
+class ArchitectureEntryGateStrictControls(unittest.TestCase):
+    """PLAN-1005 F-1005-01: the frozen counterexample and the strict envelope.
+
+    The three rows that passed on a green boolean with executed=0 and empty
+    results must now be refused or stay UNOBSERVED. Only a real single-group
+    run whose complete selection, raw terminal events, command receipts,
+    frozen producer window, current configuration and pinned source identity
+    all verify can admit entries — and a row then still needs every named
+    recipe fact actually executed green inside that gate (V-01..V-06)."""
 
     @classmethod
     def setUpClass(cls):
         import ace_m1_arch_entry_gates as entry_gates
         cls.entry_gates = entry_gates
         scratch = Path(os.environ.get('PLAN941_SCRATCH', tempfile.gettempdir()))
-        cls.temp = tempfile.TemporaryDirectory(prefix='arch-entry-gate-controls-', dir=scratch)
+        cls.temp = tempfile.TemporaryDirectory(prefix='arch-strict-gates-', dir=scratch)
         cls.addClassCleanup(cls.temp.cleanup)
-        cls.ev_root = Path(cls.temp.name)
-        contract = json.loads((ROOT / entry_gates.CONTRACT).read_text(encoding='utf-8'))
-        cls.contract = contract
-        # A real two-entry row for the downgrade control.
-        cls.row_id = next(o['id'] for o in contract['obligations'] if len(o['entries']) >= 2)
-        cls.row_entries = next(o['entries'] for o in contract['obligations'] if o['id'] == cls.row_id)
+        cls.home = Path(cls.temp.name)
+        cls.repo = cls.home / 'repo'
+        cls.ev = cls.home / 'evidence'
+        cls._build_synthetic_repo()
+        cls.contract = json.loads((cls.repo / entry_gates.CONTRACT).read_text(encoding='utf-8'))
 
-    def _scope(self):
-        return m.EvidenceScope(self.ev_root)
+    @classmethod
+    def _put(cls, root, name, value):
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(value if isinstance(value, bytes) else json.dumps(value).encode())
 
-    def _gate_doc(self, entry, outcome='PASS', group=None, events=None):
-        declared = self.contract['entries'][entry]
-        g = group if group is not None else (
-            declared.get('group') or self.entry_gates.DELIVERED_PROVIDERS[entry][1])
-        doc = {'schema': 'fixed-test-run/1', 'selected_groups': [g]}
-        if events is not None:
-            doc['results'] = events
-        else:
-            doc['outcome'] = outcome
-        return doc
+    @classmethod
+    def _build_synthetic_repo(cls):
+        import ace_m1_arch_entry_gates as entry_gates
+        repo = cls.repo
+        # A closed synthetic repository copy: only the tracked inputs the
+        # reader actually verifies, plus synthetic producer binaries.
+        for rel in ('scripts/test-groups.toml',
+                    'scripts/fixed-tests.py',
+                    'scripts/test-governance/case-control-oracles.json',
+                    entry_gates.CONTRACT,
+                    entry_gates.RECIPES,
+                    'crates/auto-lang/test/cases/ace-m1/resident-online-866.suite.ad',
+                    'crates/auto-lang/test/cases/ace-m1/resident-online-866.case.ad',
+                    'experimental/ace/crates/av/tests/cases/av_resident.rs'):
+            cls._put(repo, rel, (ROOT / rel).read_bytes())
+        cls._put(repo, 'target/debug/auto-case.exe', b'synthetic-case-parent-control')
+        binary = repo / 'experimental/ace/target/debug/deps/conformance-0123456789abcdef.exe'
+        cls._put(repo, binary.relative_to(repo), b'synthetic-av-test-binary-control')
+        cls.native_binary = binary
 
-    def _binding_for(self, docs):
-        """Write gate docs into the scope; return the binding."""
-        entries = {}
-        for name, doc in docs.items():
-            rel = f'gate-{name}.json'
-            (self.ev_root / rel).write_text(json.dumps(doc), encoding='utf-8')
-            entries[name] = {'path': rel,
-                             'sha256': hashlib.sha256((self.ev_root / rel).read_bytes()).hexdigest()}
-        return {'entries': entries}
+    def _digest(self, root, rel):
+        return hashlib.sha256((Path(root) / rel).read_bytes()).hexdigest()
 
-    def _admit(self, docs):
-        binding = self._binding_for(docs)
-        inputs = m.EvidenceScope(ROOT)
-        evidence = self._scope()
-        return self.entry_gates.admit_arch_entry_gates(inputs, evidence, binding)
+    # ---- gate builders ----------------------------------------------------
+    def build_case_gate(self, *, commit='1' * 40, report_rows=None,
+                        executed=None, outcome='PASS', inventory_checks=None):
+        """A complete, internally consistent Case gate for the resident entry."""
+        root = self.ev / 'gate-resident'
+        if root.exists():
+            shutil.rmtree(root)
+        repo = self.repo
+        group = 'case-ace-m1-resident-866'
+        suite = 'crates/auto-lang/test/cases/ace-m1/resident-online-866.suite.ad'
+        binary = str(repo / 'target/debug/auto-case.exe')
+        inventory_checks = inventory_checks if inventory_checks is not None else [
+            {'case': 'ace.m1.res-r01-av866', 'check': 'av-res-r01-continuity', 'suite': 'resident-online-866.suite.ad',
+             'state': 'RUN', 'adapter': 'probe', 'recipe': 'ac-av/resident-run-v1',
+             'source_sha256': 'a' * 64, 'oracle_sha256': 'b' * 64},
+            {'case': 'ace.m1.res-r02-av866', 'check': 'av-res-r02-online-swap', 'suite': 'resident-online-866.suite.ad',
+             'state': 'RUN', 'adapter': 'probe', 'recipe': 'ac-av/resident-run-v1',
+             'source_sha256': 'a' * 64, 'oracle_sha256': 'b' * 64},
+            {'case': 'ace.m1.res-r03-av866', 'check': 'av-res-r03-churn-two-swaps', 'suite': 'resident-online-866.suite.ad',
+             'state': 'RUN', 'adapter': 'probe', 'recipe': 'ac-av/resident-run-v1',
+             'source_sha256': 'a' * 64, 'oracle_sha256': 'b' * 64}]
+        inventory = {'schema': 'test-case-inventory/1', 'checks': inventory_checks}
+        rows = report_rows if report_rows is not None else [
+            {'case': c['case'], 'check': c['check'], 'status': 'PASS',
+             'identity': {'source': c['source_sha256'], 'oracle': c['oracle_sha256']}}
+            for c in inventory_checks if c['state'] == 'RUN']
+        report = {'schema': 'test-case-report/1', 'results': rows, 'load_errors': [], 'coverage_gaps': []}
+        executed = len(rows) if executed is None else executed
+        run_command = {'argv': [binary, 'run', '--suite', str(repo / suite), '--out', 'tmcase-control'],
+                       'cwd': str(repo), 'exit': 0, 'meter': {'exit': 0, 'error': None},
+                       'stdout': 'run.stdout', 'stderr': 'run.stderr'}
+        inventory_command = {'argv': [binary, 'inventory', '--suite', str(repo / suite)],
+                             'cwd': str(repo), 'exit': 0, 'meter': {'exit': 0, 'error': None},
+                             'stdout': 'inventory.stdout', 'stderr': 'inventory.stderr'}
+        summary = {'schema': 'fixed-test-run/1', 'selected_groups': [group],
+                   'config_sha256': self._digest(repo, 'scripts/test-groups.toml'),
+                   'source_state': hashlib.sha256(commit.encode() + b'[]').hexdigest(),
+                   'results': [{'outcome': outcome, 'executed': executed}], 'gate_passed': outcome == 'PASS'}
+        closure = {'scripts/test-groups.toml': summary['config_sha256'],
+                   suite: self._digest(repo, suite),
+                   'scripts/test-governance/case-control-oracles.json':
+                       self._digest(repo, 'scripts/test-governance/case-control-oracles.json')}
+        pins = {'commit': commit, 'source_pins': closure}
+        originals = {'results.json': summary, 'inventory.stdout': inventory,
+                     'inventory.command.json': inventory_command,
+                     'run.command.json': run_command, 'report.json': report}
+        gate = {'schema': 'ace.m1.arch-entry-gate/1', 'kind': 'case', 'group': group,
+                'commit': commit,
+                'binaries': {'target/debug/auto-case.exe': self._digest(repo, 'target/debug/auto-case.exe')},
+                'originals': {name: hashlib.sha256(json.dumps(value).encode()).hexdigest()
+                              for name, value in sorted(originals.items())}}
+        for name, value in sorted(originals.items()):
+            self._put(root, name, value)
+        self._put(root, 'gate.json', gate)
+        self._put(root, 'source-pins-before.json', pins)
+        self._put(root, 'source-pins-after.json', pins)
+        return root
 
-    def test_green_gates_admit_the_row(self):
-        docs = {name: self._gate_doc(name) for name in self.row_entries}
-        out = self._admit(docs)
-        self.assertEqual(out['observations'].get(self.row_id), 'PASS')
+    def av_tests(self, drop=()):
+        document = json.loads((self.repo / self.entry_gates.RECIPES).read_text(encoding='utf-8'))
+        recipe = next(r for r in document['recipes'] if r['row'] == 'ARCH-07/one-pid-one-entry')
+        events = [t for fact in recipe['facts'] if fact['entry'] == 'av-resident' for t in fact['native_tests']]
+        return [e for e in events if e.split('::')[-1] not in drop]
 
-    def test_flipped_outcome_rejects(self):
-        docs = {name: self._gate_doc(name, outcome='FAIL') for name in self.row_entries}
-        with self.assertRaises(ValueError):
-            self._admit(docs)
+    def build_native_gate(self, *, commit='1' * 40, events=None, failed=(), ignored=(),
+                          drop=(), result_override=None):
+        """A complete, internally consistent native gate for the av-resident entry."""
+        import importlib.util
+        import tomllib
+        root = self.ev / 'gate-av-resident'
+        if root.exists():
+            shutil.rmtree(root)
+        repo = self.repo
+        group_name = 'ace-av'
+        spec = importlib.util.spec_from_file_location('strict_parent', repo / 'scripts/fixed-tests.py')
+        parent = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(parent)
+        config = tomllib.loads((repo / 'scripts/test-groups.toml').read_text(encoding='utf-8'))
+        group = next(g for g in config['group'] if g['name'] == group_name)
+        events = self.av_tests(drop) if events is None else events
+        testcases = {}
+        selected, excluded = [], []
+        for event in events:
+            name = event.split('$', 1)[1]
+            bare = name.rsplit('::', 1)[-1]
+            if bare in ignored:
+                # the real listing keeps conditionally-ignored tests visible
+                testcases[name] = dict(kind='test', ignored=True, **{'filter-match': {'status': 'matches'}})
+                excluded.append({'binary': 'ace-av::conformance', 'test': name, 'ignored': True})
+            else:
+                selected.append({'binary': 'ace-av::conformance', 'test': name, 'ignored': False})
+                testcases[name] = dict(kind='test', ignored=False, **{'filter-match': {'status': 'matches'}})
+        listing = {'rust-suites': {'ace-av::conformance': {
+            'package-name': 'ace-av', 'binary-name': 'conformance',
+            'binary-path': str(self.native_binary), 'testcases': testcases}}}
+        terminals = {}
+        raw_lines = []
+        for row in selected:
+            name = row['test']
+            event_name = 'ace-av::conformance$' + name
+            terminal_event = 'failed' if name.rsplit('::', 1)[-1] in failed else 'ok'
+            terminals[event_name] = {'type': 'test', 'event': terminal_event, 'name': event_name, 'exec_time': 0.01}
+            raw_lines.append({'type': 'test', 'event': 'started', 'name': event_name})
+            raw_lines.append(terminals[event_name])
+        raw = ('\n'.join(json.dumps(line) for line in raw_lines) + '\n').encode()
+        errors = ['failed or unexpectedly skipped test'] if failed else []
+        outcome = 'FAIL' if failed else 'PASS'
+        exit_code = 1 if failed else 0
+        plan_group = parent.invocations([dict(group)])[0]
+        expected_argv = ['cargo', 'nextest', 'run', *parent.nextest_args(plan_group),
+                         '--no-fail-fast', '--no-tests', 'fail',
+                         '--message-format', 'libtest-json-plus', '--message-format-version', '0.1']
+        listing_command = {'argv': ['cargo', 'nextest', 'list', *parent.nextest_args(plan_group),
+                                    '--run-ignored', 'all', '--message-format', 'json'],
+                           'cwd': str(repo / 'experimental/ace'), 'exit': 0,
+                           'meter': {'exit': 0, 'error': None},
+                           'stdout': 'discovery.stdout', 'stderr': 'discovery.stderr'}
+        command = {'argv': expected_argv, 'cwd': str(repo / 'experimental/ace'), 'exit': exit_code,
+                   'meter': {'exit': exit_code, 'error': None}, 'stdout': 'run.stdout', 'stderr': 'run.stderr'}
+        result = {'outcome': outcome, 'executed': len(terminals), 'selected': selected,
+                  'excluded': excluded, 'results': terminals, 'not_run': [], 'errors': errors}
+        if result_override:
+            result = result | result_override
+        summary = {'schema': 'fixed-test-run/1', 'selected_groups': [group_name],
+                   'config_sha256': self._digest(repo, 'scripts/test-groups.toml'),
+                   'source_state': hashlib.sha256(commit.encode() + b'[]').hexdigest(),
+                   'results': [result], 'gate_passed': outcome == 'PASS'}
+        source_pin = 'experimental/ace/crates/av/tests/cases/av_resident.rs'
+        closure = {'scripts/test-groups.toml': summary['config_sha256'],
+                   source_pin: self._digest(repo, source_pin)}
+        pins = {'commit': commit, 'source_pins': closure}
+        binaries = {'experimental/ace/target/debug/deps/conformance-0123456789abcdef.exe':
+                    self._digest(repo, self.native_binary.relative_to(repo))}
+        originals = {'results.json': summary, 'discovery.stdout': listing,
+                     'run.command.json': command, 'discovery.command.json': listing_command}
+        gate = {'schema': 'ace.m1.arch-entry-gate/1', 'kind': 'native', 'group': group_name,
+                'commit': commit, 'binaries': binaries,
+                'originals': {name: hashlib.sha256(json.dumps(value).encode()).hexdigest()
+                              for name, value in sorted(originals.items())}}
+        for name, value in sorted(originals.items()):
+            self._put(root, name, value)
+        self._put(root, 'run.stdout', raw)
+        self._put(root, 'run.stderr', b'')
+        gate['originals']['run.stdout'] = self._digest(root, 'run.stdout')
+        gate['originals']['run.stderr'] = self._digest(root, 'run.stderr')
+        self._put(root, 'gate.json', gate)
+        self._put(root, 'source-pins-before.json', pins)
+        self._put(root, 'source-pins-after.json', pins)
+        return root
 
-    def test_failed_event_is_not_green(self):
-        events = {'a::t1': {'event': 'ok'}, 'a::t2': {'event': 'failed'}}
-        docs = {name: self._gate_doc(name, events=events) for name in self.row_entries}
-        with self.assertRaises(ValueError):
-            self._admit(docs)
+    def admit(self, entries):
+        inputs = m.EvidenceScope(self.repo)
+        evidence = m.EvidenceScope(self.ev)
+        return self.entry_gates.admit_arch_entry_gates(inputs, evidence, {'entries': entries})
 
-    def test_wrong_group_identity_rejected(self):
-        first = self.row_entries[0]
-        docs = {name: self._gate_doc(name) for name in self.row_entries}
-        docs[first] = self._gate_doc(first, group='case-foreign-group')
+    def both_entries(self):
+        return {'resident': {'root': 'gate-resident'},
+                'av-resident': {'root': 'gate-av-resident'}}
+
+    # ---- V-01: the frozen counterexample ----------------------------------
+    def test_v01_green_boolean_with_zero_execution_is_refused(self):
+        # The exact pre-fix counterexample payload: correct group, green
+        # boolean, executed=0, empty results. The strict envelope refuses the
+        # shape entirely (no such gate directory can verify).
+        fake_root = self.ev / 'gate-fake'
+        if fake_root.exists():
+            shutil.rmtree(fake_root)
+        fake_root.mkdir(parents=True)
+        for name, doc in (('resident.json', {'selected_groups': ['case-ace-m1-resident-866'],
+                                             'gate_passed': True, 'results': {}, 'executed': 0}),
+                          ('av-resident.json', {'selected_groups': ['ace-av'],
+                                                'gate_passed': True, 'results': {}, 'executed': 0})):
+            self._put(fake_root, name, doc)
         with self.assertRaises(m.AdmissionError):
-            self._admit(docs)
+            self.admit({'resident': {'root': 'gate-fake/resident'},
+                        'av-resident': {'root': 'gate-fake/av-resident'}})
 
-    def test_stale_credential_rejected(self):
-        docs = {name: self._gate_doc(name) for name in self.row_entries}
-        binding = self._binding_for(docs)
-        first = self.row_entries[0]
-        (self.ev_root / binding['entries'][first]['path']).write_text(
-            json.dumps(docs[first]) + ' ', encoding='utf-8')  # byte drift
-        with self.assertRaises(ValueError):
-            self.entry_gates.admit_arch_entry_gates(
-                m.EvidenceScope(ROOT), self._scope(), binding)
-
-    def test_foreign_entry_rejected(self):
-        docs = {name: self._gate_doc(name) for name in self.row_entries}
-        binding = self._binding_for(docs)
-        binding['entries']['not-in-the-contract'] = binding['entries'][self.row_entries[0]]
-        with self.assertRaises(Exception):
-            self.entry_gates.admit_arch_entry_gates(
-                m.EvidenceScope(ROOT), self._scope(), binding)
-
-    def test_multi_group_doc_rejected(self):
-        first = self.row_entries[0]
-        declared = self.contract['entries'][first]
-        docs = {name: self._gate_doc(name) for name in self.row_entries}
-        multi = self._gate_doc(first)
-        multi['selected_groups'] = [declared.get('group') or 'ace-abi', 'case-extra']
-        docs[first] = multi
+    def test_v01_wellformed_zero_selection_is_refused(self):
+        # Same-type well-formed control: a native gate selecting zero tests is
+        # refused outright; it can never be green.
+        self.build_case_gate()
+        self.build_native_gate(events=[])
         with self.assertRaises(m.AdmissionError):
-            self._admit(docs)
+            self.admit(self.both_entries())
 
-    def test_row_downgrades_when_one_entry_lacks_its_gate(self):
-        # Green gate for all but ONE declared entry: the row must stay
-        # UNOBSERVED (absent), never partially claimed.
-        docs = {name: self._gate_doc(name) for name in self.row_entries[:-1]}
-        out = self._admit(docs)
-        self.assertNotIn(self.row_id, out['observations'])
+    def test_legitimate_consistent_gates_admit_the_rows(self):
+        # The old legitimate behaviour is preserved and strengthened: a fully
+        # consistent real-shape gate pair admits the two ARCH-07 rows.
+        self.build_case_gate()
+        self.build_native_gate()
+        out = self.admit(self.both_entries())
+        self.assertEqual(out['observations'].get('ARCH-07/one-pid-one-entry'), 'PASS')
+        self.assertEqual(out['observations'].get('ARCH-07/last-owner-gc'), 'PASS')
+        self.assertNotIn('ARCH-08/fresh-union-spec-review', out['observations'])
+        self.assertNotIn('ARCH-07/original-churn-and-samples', out['observations'])
+
+    # ---- V-02..V-06 differential controls ---------------------------------
+    def test_v02_green_summary_with_failed_terminal_refused(self):
+        # gate_passed=true / outcome=PASS painted over a failed terminal event
+        # and a nonzero exit cannot verify: terminals are re-derived from the
+        # raw output and must equal the recorded selection.
+        self.build_case_gate()
+        root = self.build_native_gate(failed={'av_resident_restart_variant_is_red'})
+        summary = json.loads((root / 'results.json').read_text(encoding='utf-8'))
+        result = summary['results'][0]
+        result['outcome'] = 'PASS'
+        result['errors'] = []
+        result['results']['ace-av::conformance$av_resident::av_resident_restart_variant_is_red']['event'] = 'ok'
+        summary['gate_passed'] = True
+        self._put(root, 'results.json', summary)
+        gate = json.loads((root / 'gate.json').read_text(encoding='utf-8'))
+        gate['originals']['results.json'] = self._digest(root, 'results.json')
+        self._put(root, 'gate.json', gate)
+        with self.assertRaises(m.AdmissionError):
+            self.admit(self.both_entries())
+
+    def test_v02_executed_count_mismatch_refused(self):
+        self.build_case_gate()
+        self.build_native_gate(result_override={'executed': 999})
+        with self.assertRaises(m.AdmissionError):
+            self.admit(self.both_entries())
+
+    def test_v03_named_recipe_fact_deleted_row_not_pass(self):
+        # Group stays fully green; deleting ONE named semantic test (the
+        # restart negative control) from the consistent gate must drop the
+        # row to UNOBSERVED — the core F-1005-01 fix.
+        self.build_case_gate()
+        self.build_native_gate(drop={'av_resident_restart_variant_is_red'})
+        out = self.admit(self.both_entries())
+        self.assertNotIn('ARCH-07/one-pid-one-entry', out['observations'])
+        self.assertNotIn('ARCH-07/last-owner-gc', out['observations'])
+
+    def test_v03_named_recipe_fact_conditionally_excluded_row_not_pass(self):
+        self.build_case_gate()
+        self.build_native_gate(ignored={'av_resident_restart_variant_is_red'})
+        out = self.admit(self.both_entries())
+        self.assertNotIn('ARCH-07/one-pid-one-entry', out['observations'])
+
+    def test_v04_red_gate_marks_row_fail_not_unobserved(self):
+        self.build_case_gate()
+        self.build_native_gate(failed={'av_resident_slice_invariance_and_chain_continuity'})
+        out = self.admit(self.both_entries())
+        self.assertEqual(out['observations'].get('ARCH-07/one-pid-one-entry'), 'FAIL')
+
+    def test_v06_tampered_raw_output_with_rehashed_summary_refused(self):
+        # Re-hash every local file after mutating the raw terminal stream: the
+        # re-derived terminals no longer equal the recorded selection, so the
+        # internally-rehashed forgery is still refused.
+        self.build_case_gate()
+        root = self.build_native_gate()
+        raw = (root / 'run.stdout').read_bytes()
+        (root / 'run.stdout').write_bytes(raw.replace(b'"ok"', b'"failed"', 1))
+        gate = json.loads((root / 'gate.json').read_text(encoding='utf-8'))
+        gate['originals']['run.stdout'] = self._digest(root, 'run.stdout')
+        self._put(root, 'gate.json', gate)
+        with self.assertRaises(m.AdmissionError):
+            self.admit(self.both_entries())
+
+    def test_v06_stale_binary_bytes_refused(self):
+        self.build_case_gate()
+        self.build_native_gate()
+        self.native_binary.write_bytes(b'different synthetic producer bytes')
+        try:
+            with self.assertRaises(m.AdmissionError):
+                self.admit(self.both_entries())
+        finally:
+            self.native_binary.write_bytes(b'synthetic-av-test-binary-control')
+
+    def test_missing_entry_binding_leaves_row_unobserved(self):
+        self.build_case_gate()
+        self.build_native_gate()
+        out = self.admit({'resident': {'root': 'gate-resident'}})
+        self.assertNotIn('ARCH-07/one-pid-one-entry', out['observations'])
+
+    def test_wrong_kind_or_group_and_foreign_entry_refused(self):
+        self.build_case_gate()
+        self.build_native_gate()
+        with self.assertRaises(m.AdmissionError):
+            self.admit({'resident': {'root': 'gate-resident'},
+                        'av-resident': {'root': 'gate-resident'}})  # case kind, not native
+        with self.assertRaises(m.AdmissionError):
+            self.admit({'not-in-the-contract': {'root': 'gate-resident'}})
+
+
+class ReviewCredentialControls(unittest.TestCase):
+    """PLAN-1005 F-1005-02 (V-07..V-09): the review row is a credential input
+    gate. Group PASS, self-checks and reviewer strings never close it; a
+    structurally valid credential binds the frozen code, the pre-signature
+    candidate and the composition's own identities (acyclic: the final report
+    references the credential, never the reverse). These are SYNTHETIC
+    CONTROLS of the consumer's accept/reject rules, never production audit
+    evidence."""
+
+    @classmethod
+    def setUpClass(cls):
+        import ace_m1_review_evidence as review
+        import uuid
+        cls.uuid = uuid
+        cls.review = review
+        scratch = Path(os.environ.get('PLAN941_SCRATCH', tempfile.gettempdir()))
+        cls.temp = tempfile.TemporaryDirectory(prefix='arch-review-credential-', dir=scratch)
+        cls.addClassCleanup(cls.temp.cleanup)
+        cls.home = Path(cls.temp.name)
+
+    def _put(self, root, name, value):
+        (root / name).write_bytes(value if isinstance(value, bytes) else json.dumps(value).encode())
+
+    def _digest(self, root, name):
+        return hashlib.sha256((root / name).read_bytes()).hexdigest()
+
+    def sample(self, *, candidate=None, credential=None):
+        """A consistent credential + candidate + composition triple."""
+        from ace_m1_arch_obligations import REQUIRED
+        from ace_m1_arch_entry_gates import RECIPES_SHA
+        ev = self.home / ('ev-' + self.uuid.uuid4().hex[:8])
+        ev.mkdir(parents=True)
+        rows = [{'id': key, 'verdict': 'PASS' if key != self.review.REVIEW_ROW else 'UNOBSERVED'}
+                for key in REQUIRED]
+        composition = {'architecture_execution': {'gate': {'rows': [copy.deepcopy(r) for r in rows]}},
+                       'parent_bindings_sha256': 'c' * 64,
+                       'admission_sources': {'scripts/test-governance/ace_m1_first_slice.py': 'd' * 64}}
+        if candidate is None:
+            candidate = {'architecture_execution': {'gate': {'rows': [copy.deepcopy(r) for r in rows]}},
+                         'can_claim_expanded_m1': False,
+                         'parent_bindings_sha256': composition['parent_bindings_sha256'],
+                         'admission_sources': dict(composition['admission_sources'])}
+        base = {'schema': 'ace.m1.pre-signature-review-credential/1', 'plan': 'PLAN-1005',
+                'plan_revision': 1, 'frozen_commit': '1' * 40,
+                'candidate': {'bindings_sha256': composition['parent_bindings_sha256'],
+                              'pre_signature_report_sha256': None},
+                'row_rules_sha256': RECIPES_SHA,
+                'registry_sha256': hashlib.sha256(
+                    (ROOT / 'crates/auto-lang/test/cases/ace-m1-expanded/registry.json').read_bytes()).hexdigest(),
+                'audited': {'arch_rows': 48, 'registered_keys': 1006,
+                            'excluded_row': self.review.REVIEW_ROW},
+                'reviewer': {'role': 'independent-final-review',
+                             'context': 'synthetic-unit-control', 'method': 'counterexample replay'},
+                'coverage': {'acceptance_criteria': [f'AC-{i:02}' for i in range(1, 10)],
+                             'verifications': [f'V-{i:02}' for i in range(1, 14)],
+                             'spec_deltas': ['SD-01', 'SD-02', 'SD-03']},
+                'findings': [], 'verdict': 'pass'}
+        self._put(ev, 'candidate.json', candidate)
+        base['candidate']['pre_signature_report_sha256'] = self._digest(ev, 'candidate.json')
+        if credential is not None:
+            base = credential
+        self._put(ev, 'credential.json', base)
+        binding = {'credential': {'path': 'credential.json', 'sha256': self._digest(ev, 'credential.json')},
+                   'pre_signature_candidate': {'path': 'candidate.json',
+                                               'sha256': self._digest(ev, 'candidate.json')}}
+        return ev, binding, composition, frozenset({'1' * 40})
+
+    def admit(self, prepared):
+        ev, binding, composition, commits = prepared
+        return self.review.admit_review_credential(
+            m.EvidenceScope(ROOT), m.EvidenceScope(ev), binding, composition, commits)
+
+    def test_v09_valid_control_credential_supplies_exactly_the_review_row(self):
+        out = self.admit(self.sample())
+        self.assertEqual(out['observations'], {self.review.REVIEW_ROW: 'PASS'})
+        self.assertIn('credential_sha256', out)
+
+    def test_v08_wrong_bindings_sha_refused(self):
+        ev, binding, composition, commits = self.sample()
+        credential = json.loads((ev / 'credential.json').read_text(encoding='utf-8'))
+        credential['candidate']['bindings_sha256'] = 'e' * 64
+        self._put(ev, 'credential.json', credential)
+        binding['credential']['sha256'] = self._digest(ev, 'credential.json')
+        with self.assertRaises(m.AdmissionError):
+            self.review.admit_review_credential(m.EvidenceScope(ROOT), m.EvidenceScope(ev),
+                                                binding, composition, commits)
+
+    def test_v08_drifted_candidate_refused(self):
+        ev, binding, composition, commits = self.sample()
+        candidate = json.loads((ev / 'candidate.json').read_text(encoding='utf-8'))
+        candidate['architecture_execution']['gate']['rows'][0]['verdict'] = 'UNOBSERVED'
+        self._put(ev, 'candidate.json', candidate)
+        binding['pre_signature_candidate']['sha256'] = self._digest(ev, 'candidate.json')
+        with self.assertRaises(m.AdmissionError):
+            self.review.admit_review_credential(m.EvidenceScope(ROOT), m.EvidenceScope(ev),
+                                                binding, composition, commits)
+
+    def test_v08_candidate_must_leave_the_review_row_unobserved(self):
+        from ace_m1_arch_obligations import REQUIRED
+        rows = [{'id': key, 'verdict': 'PASS'} for key in REQUIRED]
+        candidate = {'architecture_execution': {'gate': {'rows': rows}},
+                     'can_claim_expanded_m1': False,
+                     'parent_bindings_sha256': 'c' * 64,
+                     'admission_sources': {'scripts/test-governance/ace_m1_first_slice.py': 'd' * 64}}
+        with self.assertRaises(m.AdmissionError):
+            self.admit(self.sample(candidate=candidate))
+
+    def test_v08_unresolved_finding_wrong_coverage_verdict_and_cycles_refused(self):
+        mutations = (
+            lambda c: c.__setitem__('findings', [{'id': 'F-1', 'disposition': 'open', 'note': 'x'}]),
+            lambda c: c['coverage'].__setitem__('spec_deltas', ['SD-01']),
+            lambda c: c.__setitem__('verdict', 'needs_fix'),
+            lambda c: c.__setitem__('frozen_commit', '2' * 40),
+            lambda c: c.__setitem__('final_report_sha256', 'f' * 64),
+            lambda c: c['audited'].__setitem__('excluded_row', 'ARCH-07/one-pid-one-entry'),
+        )
+        for mutate in mutations:
+            with self.subTest(name=getattr(mutate, '__name__', 'mutation')):
+                ev, binding, composition, commits = self.sample()
+                credential = json.loads((ev / 'credential.json').read_text(encoding='utf-8'))
+                mutate(credential)
+                self._put(ev, 'credential.json', credential)
+                binding['credential']['sha256'] = self._digest(ev, 'credential.json')
+                with self.assertRaises(m.AdmissionError):
+                    self.review.admit_review_credential(m.EvidenceScope(ROOT), m.EvidenceScope(ev),
+                                                        binding, composition, commits)
+
+    def test_v08_wrong_row_rules_sha_refused(self):
+        ev, binding, composition, commits = self.sample()
+        credential = json.loads((ev / 'credential.json').read_text(encoding='utf-8'))
+        credential['row_rules_sha256'] = '0' * 64
+        self._put(ev, 'credential.json', credential)
+        binding['credential']['sha256'] = self._digest(ev, 'credential.json')
+        with self.assertRaises(m.AdmissionError):
+            self.review.admit_review_credential(m.EvidenceScope(ROOT), m.EvidenceScope(ev),
+                                                binding, composition, commits)
+
+
+class ArchitectureMergeBoundaryControls(unittest.TestCase):
+    """PLAN-1005 T-06 (V-07/V-10): every architecture merge path shares one
+    trust boundary — the review row never rides entries, mechanisms, or
+    phased section injection, and conflicting verdicts are refused."""
+
+    ROW = 'ARCH-08/fresh-union-spec-review'
+
+    def test_v07_merge_refuses_the_review_row_from_any_family(self):
+        for label, incoming in (('entry gates', {'ARCH-07/one-pid-one-entry': 'PASS', self.ROW: 'PASS'}),
+                                ('mechanism families', {self.ROW: 'PASS'}),
+                                ('phased section', {self.ROW: 'UNOBSERVED'})):
+            with self.subTest(label=label):
+                with self.assertRaises(m.AdmissionError):
+                    first_slice.merge_architecture_observations({}, incoming, label)
+
+    def test_conflicting_verdicts_are_refused_not_overridden(self):
+        with self.assertRaises(m.AdmissionError):
+            first_slice.merge_architecture_observations(
+                {'ARCH-07/one-pid-one-entry': 'PASS'}, {'ARCH-07/one-pid-one-entry': 'FAIL'}, 'mechanism families')
+        merged = first_slice.merge_architecture_observations(
+            {'ARCH-07/one-pid-one-entry': 'PASS'}, {'ARCH-07/one-pid-one-entry': 'PASS'}, 'entry gates')
+        self.assertEqual(merged['ARCH-07/one-pid-one-entry'], 'PASS')
+
+    def test_v10_phased_sections_are_whitelisted_and_architecture_free(self):
+        home = Path(tempfile.mkdtemp(prefix='phased-boundary-',
+                                     dir=os.environ.get('PLAN941_SCRATCH', tempfile.gettempdir())))
+        self.addCleanup(shutil.rmtree, home, True)
+        evidence = m.EvidenceScope(home)
+        good = {'schema': 'ace.m1.phased-observations/1',
+                'observations': {'text/src-01': {'judgement': 'PASS'}}}
+        (home / 'good.json').write_text(json.dumps(good), encoding='utf-8')
+        result = {}
+        first_slice.admit_phased_observations(
+            evidence, {'text_certifications': {'path': 'good.json', 'sha256': self._digest(home, 'good.json')}}, result)
+        self.assertIn('text_certifications', result)
+        arch = {'schema': 'ace.m1.phased-observations/1',
+                'observations': {self.ROW: 'PASS'}}
+        (home / 'arch.json').write_text(json.dumps(arch), encoding='utf-8')
+        with self.assertRaises(m.AdmissionError):
+            first_slice.admit_phased_observations(
+                evidence, {'text_certifications': {'path': 'arch.json', 'sha256': self._digest(home, 'arch.json')}}, {})
+        section = {'schema': 'ace.m1.phased-observations/1',
+                   'section': {'schema': 'ace.m1.architecture-execution/1',
+                               'observations': {self.ROW: 'PASS'}, 'gate': {'complete': True}}}
+        (home / 'section.json').write_text(json.dumps(section), encoding='utf-8')
+        with self.assertRaises(m.AdmissionError):
+            first_slice.admit_phased_observations(
+                evidence, {'incremental_restore_measurements': {'path': 'section.json', 'sha256': self._digest(home, 'section.json')}}, {})
+
+    def _digest(self, root, name):
+        return hashlib.sha256((root / name).read_bytes()).hexdigest()
+
+
+if __name__ == '__main__':
+    unittest.main()

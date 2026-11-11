@@ -198,6 +198,8 @@ def compose_registered_inventory(inputs, registry, report, preview_required):
     # measurement id reaches the registered gate's foreign-observation
     # rejection below.
     for row in report.get('incremental_restore_measurements', {}).get('rows', []):
+        from ace_m1_arch_entry_gates import REVIEW_ROW as _REVIEW_ROW
+        require(row['id'] != _REVIEW_ROW, 'measurements cannot supply the review-owned row')
         key = 'architecture/' + row['id']
         verdict = 'PASS' if row['verdict'] == 'PASS' else 'UNOBSERVED'
         prior = observations.get(key)

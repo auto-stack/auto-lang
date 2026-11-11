@@ -43,6 +43,76 @@ WORKERS = {'av': 'av-worker.exe', 'native': 'mn-worker.exe',
            'syntax': 'ace-case-worker.exe', 'bridge': 'abi-worker.exe'}
 
 
+PHASED_SECTIONS = frozenset((
+    'text_certifications', 'scalar_certifications', 'record_text_certifications',
+    'collections_certifications', 'query_certifications', 'source_supplement_certifications',
+    'original_data_certifications', 'source_cte_certifications',
+    'budget_time_measurements', 'incremental_restore_measurements'))
+
+
+def admit_phased_observations(evidence, phased, result):
+    """PLAN-1005 T-06: phased files only carry the whitelisted certification
+    and measurement families; architecture verdicts and the review row can
+    never ride a section injection past the strict per-row admission."""
+    require(type(phased) is dict and phased, 'phased cert observations map')
+    for section, ref in sorted(phased.items()):
+        require(section in PHASED_SECTIONS, f'phased section not admitted: {section}')
+        exact_keys(ref, ('path', 'sha256'), f'phased observations {section}')
+        raw = evidence.read_bytes(ref['path'])
+        nodes = sum(raw.count(bytes([c])) for c in b'{}[],:')
+        transient = len(raw) + 1 + 7 * len(raw) + 256 * nodes + 4096
+        document, digest = evidence.decode_json(raw)
+        if digest != ref['sha256']:
+            raise ValueError(f'STALE artifact content: {ref["path"]}')
+        typed_equal(document.get('schema'), 'ace.m1.phased-observations/1',
+                    f'phased schema {section}')
+        # the extracted observation/section payload is tiny; release the
+        # raw/decoded transient so many phased docs stay under the cap
+        if 'section' in document:
+            # A phased whole-section payload (e.g. the incremental-restore
+            # measurement document): injected verbatim under its name; the
+            # downstream gates consume its own shape. Architecture-shaped
+            # payloads or the review row never ride this channel (T-06).
+            payload = document['section']
+            require(isinstance(payload, dict), 'phased section payload must be an object')
+            schema = payload.get('schema')
+            require(not (isinstance(schema, str) and schema.startswith('ace.m1.architecture')),
+                    'architecture sections cannot ride phased files')
+            require('architecture_execution' not in payload and 'architecture_obligations' not in payload,
+                    'architecture sections cannot ride phased files')
+            observations_payload = payload.get('observations')
+            require(not (isinstance(observations_payload, dict)
+                         and any(isinstance(key, str) and key.startswith('ARCH-')
+                                 for key in observations_payload)),
+                    'architecture verdicts cannot ride phased files')
+            result[section] = payload | {'source': ref['path']}
+            evidence.budget.release_transient(transient)
+            continue
+        observations = document.get('observations')
+        require(type(observations) is dict and observations,
+                f'phased observations {section} rows')
+        require(not any(key.startswith('ARCH-') for key in observations),
+                'architecture verdicts cannot ride phased observation files')
+        result[section] = {'schema': 'ace.m1.phased-certifications/1',
+                           'observations': observations,
+                           'source': ref['path']}
+        evidence.budget.release_transient(transient)
+
+
+def merge_architecture_observations(prior, incoming, label):
+    """PLAN-1005 T-06: the single trust boundary for architecture merges.
+
+    The review-owned row can never arrive from an evidence family, and an
+    overlap must agree — no source silently overrides another."""
+    from ace_m1_arch_entry_gates import REVIEW_ROW
+    require(type(prior) is dict and type(incoming) is dict, 'architecture observation maps required')
+    require(REVIEW_ROW not in incoming, f'{label} cannot supply the review row')
+    for key, verdict in incoming.items():
+        if key in prior:
+            require(prior[key] == verdict, f'conflicting architecture verdicts: {key}')
+    return prior | incoming
+
+
 def _compact_admission(inputs, reader, retained=512 << 10):
     """Owned bounded readers return compact observations/IDs, never raw documents.
 
@@ -247,7 +317,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
     evidence = EvidenceScope(evidence_root, budget)
     bindings, bindings_sha = evidence.read_json(bindings_path)
     mandatory = {'inventories', 'copies', 'workers', 'certification', 'legacy'}
-    require(type(bindings) is dict and mandatory <= bindings.keys() <= mandatory | {'legacy_base_execution', 'legacy_execution', 'legacy_a2r_execution', 'legacy_probe_families', 'legacy_rust_tests', 'legacy_rust_tests_mn', 'legacy_governance', 'arch_entry_gates', 'phased_cert_observations', 'parent_contracts', 'legacy_typed_av', 'legacy_typed_native', 'source_cte_execution', 'text_certifications', 'source_cte_certifications', 'text_q4_execution', 'scalar_q4_execution', 'scalar_certifications', 'scalar_release_execution', 'record_text_execution', 'record_text_certifications', 'record_text_release_execution', 'collections_execution', 'collections_certifications', 'query_instances_execution', 'query_certifications', 'query_frontdoor_refusals', 'query_release_execution', 'source_supplement_execution', 'source_supplement_certifications', 'original_data_execution', 'original_data_certifications', 'original_data_diagnostics', 'ct_source_mechanisms', 'ct_child_mechanisms', 'ct_meta_mechanisms', 'ct_restore_mechanisms', 'sq_fact_mechanisms', 'syntax_mechanisms', 'legacy_architecture', 'incremental_restore_gates', 'incremental_restore_semantics', 'incremental_restore_comptime', 'incremental_restore_abi', 'incremental_restore_av', 'budget_time_gates', 'budget_time_optimized', 'acceptance_system_controls', 'policy_runtime_samples'},
+    require(type(bindings) is dict and mandatory <= bindings.keys() <= mandatory | {'legacy_base_execution', 'legacy_execution', 'legacy_a2r_execution', 'legacy_probe_families', 'legacy_rust_tests', 'legacy_rust_tests_mn', 'legacy_governance', 'arch_entry_gates', 'phased_cert_observations', 'parent_contracts', 'legacy_typed_av', 'legacy_typed_native', 'source_cte_execution', 'text_certifications', 'source_cte_certifications', 'text_q4_execution', 'scalar_q4_execution', 'scalar_certifications', 'scalar_release_execution', 'record_text_execution', 'record_text_certifications', 'record_text_release_execution', 'collections_execution', 'collections_certifications', 'query_instances_execution', 'query_certifications', 'query_frontdoor_refusals', 'query_release_execution', 'source_supplement_execution', 'source_supplement_certifications', 'original_data_execution', 'original_data_certifications', 'original_data_diagnostics', 'ct_source_mechanisms', 'ct_child_mechanisms', 'ct_meta_mechanisms', 'ct_restore_mechanisms', 'sq_fact_mechanisms', 'syntax_mechanisms', 'legacy_architecture', 'incremental_restore_gates', 'incremental_restore_semantics', 'incremental_restore_comptime', 'incremental_restore_abi', 'incremental_restore_av', 'budget_time_gates', 'budget_time_optimized', 'acceptance_system_controls', 'policy_runtime_samples', 'review_credential'},
             'unknown/missing preview parent bindings')
     exact_keys(bindings['workers'], ('av', 'native', 'syntax', 'bridge'), 'current preview workers')
     require('scalar_release_execution' not in bindings or 'scalar_certifications' in bindings,
@@ -609,54 +679,27 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
             if isinstance(_obs, dict):
                 _section['observations'] = _slim_obs(_obs)
     if 'phased_cert_observations' in bindings:
-        # PLAN-1000 T-05 phased composition: slim per-family observation files
-        # produced by disjoint sub-compositions; the registered gate consumes
-        # judgements, so this admission is lossless for the final verdict while
-        # keeping the whole under the frozen composer live-data cap.
-        phased = bindings['phased_cert_observations']
-        require(type(phased) is dict and phased, 'phased cert observations map')
-        for section, ref in sorted(phased.items()):
-            exact_keys(ref, ('path', 'sha256'), f'phased observations {section}')
-            raw = evidence.read_bytes(ref['path'])
-            nodes = sum(raw.count(bytes([c])) for c in b'{}[],:')
-            transient = len(raw) + 1 + 7 * len(raw) + 256 * nodes + 4096
-            document, digest = evidence.decode_json(raw)
-            if digest != ref['sha256']:
-                raise ValueError(f'STALE artifact content: {ref["path"]}')
-            typed_equal(document.get('schema'), 'ace.m1.phased-observations/1',
-                        f'phased schema {section}')
-            # the extracted observation/section payload is tiny; release the
-            # raw/decoded transient so many phased docs stay under the cap
-            if 'section' in document:
-                # A phased whole-section payload (e.g. the incremental-restore
-                # measurement document): injected verbatim under its name; the
-                # downstream gates consume its own shape.
-                result[section] = document['section'] | {'source': ref['path']}
-                evidence.budget.release_transient(transient)
-                continue
-            observations = document.get('observations')
-            require(type(observations) is dict and observations,
-                    f'phased observations {section} rows')
-            result[section] = {'schema': 'ace.m1.phased-certifications/1',
-                               'observations': observations,
-                               'source': ref['path']}
-            evidence.budget.release_transient(transient)
+        # PLAN-1000 T-05 phased composition (bounded live data) under the
+        # PLAN-1005 T-06 whitelist: certification/measurement families only;
+        # architecture verdicts and the review row never ride phased files.
+        admit_phased_observations(evidence, bindings['phased_cert_observations'], result)
     if 'arch_entry_gates' in bindings:
+        # PLAN-1005 F-1005-01: strict envelope + per-row recipe admission.
+        # The entry reader never emits the review row, and overlaps with the
+        # dedicated mechanism families must agree — no silent precedence.
         from ace_m1_arch_entry_gates import admit_arch_entry_gates
         entry_gates = _compact_admission(inputs, lambda _: admit_arch_entry_gates(
-            inputs, evidence, bindings['arch_entry_gates']), 256 << 10)
-        # merge into the architecture execution observations (non-overlap with
-        # the dedicated mechanism families)
+            inputs, evidence, bindings['arch_entry_gates']), 512 << 10)
         arch_obs = {k: (v if isinstance(v, str) else v.get('judgement'))
                     for k, v in result.get('architecture_execution', {}).get('observations', {}).items()}
-        fresh = {k: v for k, v in entry_gates['observations'].items() if k not in arch_obs}
         from ace_m1_arch_obligations import reduce_architecture
-        merged = arch_obs | fresh
+        merged = merge_architecture_observations(arch_obs, entry_gates['observations'], 'entry gates')
         result['architecture_execution'] = {
             'schema': 'ace.m1.architecture-execution/1', 'observations': merged,
             'sources': dict(result.get('architecture_execution', {}).get('sources', {})) | {
                 'entry_gates': entry_gates['admitted_entries']},
             'gate': reduce_architecture(merged), 'can_claim_architecture_pass': False}
+        result['arch_entry_gate_commits'] = entry_gates['gate_commits']
         result['gates']['architecture_required'] = result['architecture_execution']['gate']['complete']
     if '_merged_obs' in legacy:
         from ace_m1_legacy_execution import execution_summary as _esf
@@ -691,28 +734,68 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
             inputs, evidence, bindings['legacy_architecture'], legacy), 128 << 10)
     if ct_mechanisms is not None or ct_child is not None or ct_meta is not None or sq_facts is not None or syntax_mechanisms is not None or legacy_architecture is not None:
         from ace_m1_arch_obligations import reduce_architecture
+        from ace_m1_arch_entry_gates import REVIEW_ROW as _REVIEW_ROW_M
         arch_observations, arch_sources = {}, {}
         for label, admitted in (('ct_source_mechanisms', ct_mechanisms), ('ct_child_mechanisms', ct_child), ('ct_meta_mechanisms', ct_meta), ('sq_fact_mechanisms', sq_facts), ('syntax_mechanisms', syntax_mechanisms), ('legacy_architecture', legacy_architecture)):
             if admitted is None:
                 continue
+            require(_REVIEW_ROW_M not in admitted['observations'],
+                    'mechanism families cannot supply the review row')
             require(not arch_observations.keys() & admitted['observations'].keys(), 'duplicate actual architecture observation')
             arch_observations.update(admitted['observations'])
             arch_sources[label] = admitted['source_evidence']
-        # PLAN-1000 wave fix: entry-gate rows admitted earlier in this same
-        # composition must SURVIVE the mechanism rebuild (a combined doc with
-        # both arch_entry_gates and mechanism families previously lost the
-        # entry rows here — merged set is the union, mechanism rows keep
-        # precedence on overlap as the dedicated producers).
+        # PLAN-1000 wave fix kept: entry-gate rows admitted earlier in this
+        # same composition SURVIVE the mechanism rebuild (union, not loss).
+        # PLAN-1005 T-06: an overlap must AGREE — a mechanism verdict can no
+        # longer silently override an entry-gate verdict (or vice versa).
         prior_obs = {k: (v if isinstance(v, str) else v.get('judgement'))
                      for k, v in result.get('architecture_execution', {}).get('observations', {}).items()}
         prior_sources = dict(result.get('architecture_execution', {}).get('sources', {}))
-        merged_obs = prior_obs | arch_observations
+        merged_obs = merge_architecture_observations(prior_obs, arch_observations, 'mechanism families')
         result['architecture_execution'] = {
             'schema':'ace.m1.architecture-execution/1', 'observations':merged_obs,
             'sources':prior_sources | arch_sources, 'gate':reduce_architecture(merged_obs),
             'can_claim_architecture_pass':False}
     if result_restore is not None:
         result['ct_restore_execution'] = result_restore
+    # PLAN-1005 F-1005-02: the single review-owned row is supplied ONLY by a
+    # verified pre-signature review credential — never by entry gates,
+    # mechanisms, or section injection. Without the credential the row stays
+    # UNOBSERVED and the formal composition stays unsigned (exit 1).
+    result['parent_bindings_sha256'] = bindings_sha
+    result['admission_sources'] = {
+        'scripts/test-governance/' + name + '.py': hashlib.sha256(
+            inputs.read_bytes('scripts/test-governance/' + name + '.py')).hexdigest()
+        for name in ('ace_m1_arch_acceptance', 'ace_m1_first_slice', 'ace_m1_case_evidence',
+                     'ace_m1_legacy', 'ace_m1_legacy_arch', 'ace_m1_scalar_evidence', 'ace_m1_cert_evidence',
+                     'ace_m1_syntax_evidence', 'ace_m1_syntax_arch', 'ace_m1_abi_evidence', 'ace_m1_obligation_catalog',
+                     'ace_m1_legacy_base', 'ace_m1_legacy_data', 'ace_m1_legacy_execution', 'ace_m1_parent_contracts', 'ace_m1_av_typed_evidence',
+                     'ace_m1_native_typed_evidence', 'ace_m1_legacy_obligations', 'ace_m1_budget_contracts',
+                     'ace_m1_arch_obligations', 'ace_m1_ct_mechanisms', 'ace_m1_ct_child', 'ace_m1_ct_meta', 'ace_m1_ct_restore', 'ace_m1_sq_facts', 'ace_m1_registry', 'ace_m1_cte_evidence', 'ace_m1_text_evidence',
+                     'ace_m1_data_diagnostics', 'ace_m1_original_data_sources', 'ace_m1_source_supplement', 'ace_m1_daily_evidence', 'ace_m1_text_q4_evidence', 'ace_m1_scalar_q4_evidence', 'ace_m1_scalar_cert_evidence', 'ace_m1_scalar_release_evidence', 'ace_m1_record_text_evidence', 'ace_m1_collections_evidence', 'ace_m1_query_evidence', 'ace_m1_incremental_restore', 'ace_m1_budget_time', 'ace_m1_system_controls', 'ace_m1_arch_entry_gates', 'ace_m1_review_evidence')}
+    review_credential_admission = None
+    if 'review_credential' in bindings:
+        from ace_m1_review_evidence import admit_review_credential
+        require(isinstance(result.get('architecture_execution'), dict),
+                'review credential requires the composed non-review architecture rows')
+        review_credential_admission = _compact_admission(inputs, lambda _: admit_review_credential(
+            inputs, evidence, bindings['review_credential'], result,
+            frozenset(result.get('arch_entry_gate_commits', ()))), 64 << 10)
+        result['review_credential_admission'] = review_credential_admission
+        from ace_m1_arch_obligations import reduce_architecture as _reduce_arch_r
+        merged_r = {k: (v if isinstance(v, str) else v.get('judgement'))
+                    for k, v in result['architecture_execution']['observations'].items()}
+        require(review_credential_admission['observations'].keys() == {'ARCH-08/fresh-union-spec-review'},
+                'credential supplies exactly the review row')
+        prior_review = merged_r.get('ARCH-08/fresh-union-spec-review')
+        require(prior_review in (None, 'UNOBSERVED'),
+                'review row already supplied by a non-credential source')
+        merged_r['ARCH-08/fresh-union-spec-review'] = 'PASS'
+        result['architecture_execution'] = {
+            'schema':'ace.m1.architecture-execution/1', 'observations':merged_r,
+            'sources':dict(result['architecture_execution'].get('sources', {})) | {
+                'review_credential': review_credential_admission['credential_sha256']},
+            'gate':_reduce_arch_r(merged_r), 'can_claim_architecture_pass':False}
     result['gates']['architecture_required'] = result.get('architecture_execution', result['architecture_obligations'])['gate']['complete']
     # PLAN-941 T-06: the incremental/restore measurement section — ARCH-05
     # row coverage composed from the admitted full-group gate document plus
@@ -803,6 +886,8 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
     missing_inputs = [] if isinstance(result.get('budget_time_measurements'), dict) else ['budget_time_measurements']
     if not isinstance(result.get('incremental_restore_measurements'), dict):
         missing_inputs.append('incremental_restore_measurements')
+    if review_credential_admission is None:
+        missing_inputs.append('review_credential(ARCH-08/fresh-union-spec-review)')
     system_delivered = (isinstance(system_controls, dict)
                         and system_controls['gate']['controls_complete'] is True)
     if not system_delivered:
@@ -819,17 +904,6 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
     result['acceptance_system_delivered'] = result['acceptance']['acceptance_system_delivered']
     result['can_claim_expanded_m1'] = result['acceptance']['can_claim_expanded_m1']
     result['blockers'] = [key for key, passed in result['gates'].items() if not passed]
-    result['parent_bindings_sha256'] = bindings_sha
-    result['admission_sources'] = {
-        'scripts/test-governance/' + name + '.py': hashlib.sha256(
-            inputs.read_bytes('scripts/test-governance/' + name + '.py')).hexdigest()
-        for name in ('ace_m1_arch_acceptance', 'ace_m1_first_slice', 'ace_m1_case_evidence',
-                     'ace_m1_legacy', 'ace_m1_legacy_arch', 'ace_m1_scalar_evidence', 'ace_m1_cert_evidence',
-                     'ace_m1_syntax_evidence', 'ace_m1_syntax_arch', 'ace_m1_abi_evidence', 'ace_m1_obligation_catalog',
-                     'ace_m1_legacy_base', 'ace_m1_legacy_data', 'ace_m1_legacy_execution', 'ace_m1_parent_contracts', 'ace_m1_av_typed_evidence',
-                     'ace_m1_native_typed_evidence', 'ace_m1_legacy_obligations', 'ace_m1_budget_contracts',
-                     'ace_m1_arch_obligations', 'ace_m1_ct_mechanisms', 'ace_m1_ct_child', 'ace_m1_ct_meta', 'ace_m1_ct_restore', 'ace_m1_sq_facts', 'ace_m1_registry', 'ace_m1_cte_evidence', 'ace_m1_text_evidence',
-                     'ace_m1_data_diagnostics', 'ace_m1_original_data_sources', 'ace_m1_source_supplement', 'ace_m1_daily_evidence', 'ace_m1_text_q4_evidence', 'ace_m1_scalar_q4_evidence', 'ace_m1_scalar_cert_evidence', 'ace_m1_scalar_release_evidence', 'ace_m1_record_text_evidence', 'ace_m1_collections_evidence', 'ace_m1_query_evidence', 'ace_m1_incremental_restore', 'ace_m1_budget_time', 'ace_m1_system_controls')}
     result['admission_reserved_bytes'] = budget.reserved
     result['admission_peak_reserved_bytes'] = budget.peak_reserved
     return result
