@@ -79,3 +79,13 @@ plan811_media_consumers`（Man 真实消费）+ 777 strict / 792 driver
 `src/photo_service.rs`接管原UI的中立照片扫描/索引机制及十项原测试，旧UI路径仅重导出。
 Web运行时和HTTP生成消费该单源；renderer/纹理留UI。原资源、ID/断言/条件不重置。
 来源：[四仓合同](../repository-boundaries/web-four-repository-delivery.md)（plan-890）。
+
+## 固定测试 fixture 清单（PLAN-1014 SD-05）
+
+`tests/fixtures/`（7 原件 + `manifest.json` + `PROVENANCE.md`）是**固定只读测试
+输入**：原件与 auto-ui PLAN-007 迁移源逐字节一致（SHA256 核验），manifest 记录
+7 条 file/kind（jpeg/png/webp/corrupt）/orientation/alpha，`fixture_manifest`
+按其断言条数/魔数/损坏检测/alpha 像素/orientation=6。清单由 `.gitignore` 豁免行
+显式入库（`*.json` 母规则会吞掉逐字节比较目标——迁移期曾被吞致长期红）；更新只
+能自 auto-ui 源重拷+哈希复核，不在测试时再生或镜像 UI live 输入（live 媒体走
+registry/会话通道，与固定 fixture 分离）。

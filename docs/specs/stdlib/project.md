@@ -12,6 +12,21 @@ Auto 标准库：auto/ 核心（多后端变体）、c/ C 绑定、aura/ UI 定�
 HTTP/网络模块的公共声明、目标文件、VM native、生成 Axum 服务与 AutoUI 消费路径彼此独立；
 装配合同与 manifest 见 [assembly-manifest](design/assembly-manifest.md)（PLAN-738）；当前装配与缺口见 [后台装配与覆盖](design/backend-assembly.md) 和 [HTTP Server Spec](design/http-server.md)；handler 异步等待/请求生命周期现状见 [http-handler-async-lifecycle](design/http-handler-async-lifecycle.md)（PLAN-705），外部流生命周期现状见 [http-stream-lifecycle](design/http-stream-lifecycle.md)（PLAN-707）。
 
+## str 原生与 VM 字符串池纪律（PLAN-1014 SD-06）
+
+- **`.len()` 链式接收者（VM ARRAY_LEN）**：`obj.field.len()` 类链式调用经
+  GET_FIELD 产出的字段串是**新入池 rc==1**（栈顶即唯一份额）；消费 opcode 必须
+  先读后放——先释放会令 pool_free 清槽、随后读到空串得 len=0（sys_natives
+  `p0.name.len()`→0 长红的根因，与 ADD 先放后读同族）。引擎回归
+  `test_array_len_rc1_string_*` 钉住该纪律；CJK 按字符数不按字节。
+- **`Str.substr` 双 oracle 分叉域**：(start, LEN) 语义下，**边界对齐输入两后端
+  （VM shim 与 a2r_std::str_substr）严格同值**；字节落在多字节字符内部时 VM
+  双向回退保整字符（h4 步进重建无损契约，PLAN-995 H6），a2r_std 向内钳制（其
+  自有 oracle `partial_characters_negative_and_overflow_do_not_panic` 钉值）。
+  分叉为两 oracle 并存下的既定契约；`.slice` 的 VM 侧同为双向回退，转译面是
+  原生 Rust 切片（非边界索引硬 panic）。步进消费者应使用字节对齐读取，不依赖
+  后端分叉兜底。
+
 ## 目标与范围
 
 - auto/：核心标准库（str/list/math/io/fs/env/time/json/http/test 等），同一 API 提供多后端变体：`.vm.at`（AutoVM）、`.rs.at`（a2r）、`.c.at`+`.c/.h`（C）。

@@ -35,3 +35,15 @@
 source；A2X日常emit/golden与显式两腿compile-run认证分轴，日常不隐式启动rustc。现有真实
 consumer（case-av-source-827 source轴、case-ace-m1-typed-native-891 typed轴、case-ac-av
 资源轴、a2r组892 emit日常轴）是约定的活检验，不新造runner。
+
+## pilot CLI 接入与工具形态（PLAN-1014 SD-03）
+
+本节只补语言侧 pilot 治理的接线导航，**不改变上文13项策略分母与守恒判定**。
+真实 pilot CLI 检查（原 test_case_pilot_cli.PilotCLI 8 例）由显式 ACE 域组
+`infra-pilot-ace` 承接：声明工具 case-parent（pilot exe，debug target）、
+batch-av（feature=test-case-batch，target-batch，供 group/combined）、
+av-regular（无 feature，target/test-tools/regular，供 default-off 原路径），
+source-bound 准备+运行分账。纯 Python 回合/干扰核算（2 例）留 legacy
+`infra-pilot-cli`（零 ACE 准备路径）。infra-pilot-ace 为 all=false 显式选择组
+（`cargo t all` 语义约束：语言 only），与 ace-host 同队。守卫/断言口径见
+[fixed-regression-baseline-and-ownership](fixed-regression-baseline-and-ownership.md)。

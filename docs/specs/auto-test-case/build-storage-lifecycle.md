@@ -80,3 +80,17 @@ foreign生成根经登记工作区链+context.json三核（schema/context_id/pro
 - 活 lease/活动编译/无法证明归属的编译进程在场时守卫拒绝并推迟（维护窗口
   语义）；禁止自动广扫/全局 `cargo clean`/清理共享用户缓存，不为收尾强迫用户
   即时清理。共存峰与残留如实入空间账，不得移出 scope 隐藏。
+
+## fixed-tests 执行租约生命周期（PLAN-1014 SD-02）
+
+- **获取**：`target/test-groups/active` 原子独占 mkdir；owner.json（pid+root）写入在
+  try 内，写失败回滚半获取状态（不留空 active 目录冒"已获取"）。
+- **释放**：正常/异常路径统一 finally 释放；清理失败=具名非零诊断退出，不留静默残留。
+- **存量租约处置**：仅当 owner.json 可读、root=本树、pid 经 tasklist 确认死亡
+  （unknown→alive 保守），才在 rename 原子互斥+隔离区内容重验下恢复（竞态替换→
+  原样放回重试）；活 pid/外树/不可读/目录含未知内容一律保守拒绝并给具名手工恢复
+  信息，绝不按名字杀进程、不删未知目录。PID 复用只会造成保守拒绝，不会误清新 owner。
+- **消费者语义**：缓存治理（build_storage inspect/reclaim）遇 fixed-test 租约验
+  pid 活性——活=拒绝进入删除/检查流程；死 owner 残留=报告 stale 后只读 inspect
+  放行（恢复责任在 fixed-tests 下一次运行，消费者不做删除）。仍拒绝 reparse/证据
+  混入等其余正交守卫。
