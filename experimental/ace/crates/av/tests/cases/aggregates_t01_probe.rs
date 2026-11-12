@@ -364,20 +364,19 @@ fn box_indirection_legalizes_recursion_and_frees() {
 fn main() int { return 1 }";
     ace_core::source::compile_aggregates_source(ok, "p.at", &[])
         .expect("Box recursion legalizes through verify");
-    // NAMED PENDING (plan 9): the LOWERING type interning still reads
-    // the cyclic type table (mir.type-cycle); the two-phase prototype
-    // executed but diverged deduped signature indices - needs canonical
-    // aliasing at patch time. A NON-RECURSIVE Box executes today:
-    let src = "type P { v int }
+    // The recursive chain now lowers: the module-level PRE-INTERNING
+    // pass gives cyclic-through-Box shapes canonical slots and the
+    // name-canonical lookup converges every walker onto them.
+    let src = "type Node { v int; next Box<Node> }
 fn main() int {
-    let p = P(41)
-    let cell = Box(p)
-    let q = P(1)
-    return cell.get(0).v + q.v
+    let tail = Node(41, List<Node>.new())
+    let cell = Box(tail)
+    let n = Node(1, cell.move)
+    return n.v + n.next.get(0).v
 }";
     let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
-        .expect("non-recursive Box cell executes");
-    assert_eq!(run.value, 42);
+        .expect("recursive Box chain executes");
+    assert_eq!(run.value, 42); // n.v(1) + tail.v(41)
     assert_eq!(run.live_after, 0);
     assert_eq!(run.allocs, run.frees);
 }

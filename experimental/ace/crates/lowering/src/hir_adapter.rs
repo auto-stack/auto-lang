@@ -199,6 +199,26 @@ pub fn lower_checked(
     };
     out.capabilities = checked.required_capabilities().to_vec();
 
+    // PLAN-962 (T-08): module-level PRE-INTERNING pass — every HIR
+    // type-table entry interns ONCE, up front, through the same walker
+    // (two-phase records + opaque List edges). Recursive-through-Box
+    // shapes get their canonical slots HERE; every later type walker
+    // (signatures, closure envs, bodies) converges onto them through the
+    // name-canonical lookup, so local memos can never diverge indices
+    // again (the round-8/9 dedup-divergence root cause).
+    {
+        let mut pre_memo = std::collections::BTreeMap::new();
+        for ti in 0..module.types.len() as u32 {
+            let _ = collections_type_idx_of(
+                &hir::TypeUse::Ref(hir::TypeId(ti)),
+                module,
+                &mut out,
+                &mut pre_memo,
+                &mut std::collections::BTreeSet::new(),
+            )?;
+        }
+    }
+
     // Pass 1: scan defs — intern imports and fix function indices before any
     // body lowers (calls may reference later defs).
     let mut def_map: BTreeMap<u32, CalleeRef> = BTreeMap::new();
@@ -2539,6 +2559,35 @@ fn collections_type_idx_of(
                     Ok(out.intern_type(MirType::Char))
                 }
                 hir::TypeKind::Record(shape) => {
+                    // PLAN-962 (T-08): NAME-CANONICAL convergence — HIR
+                    // type names are unique per module (duplicate decls
+                    // reject at resolve), so a completed Record entry with
+                    // this owner+name in the table IS this HIR type's
+                    // canonical MIR index regardless of which walker
+                    // interned it (the pre-interning pass seeds them all;
+                    // plain dedup made local-memo walkers converge before
+                    // and still does for non-recursive shapes).
+                    if let Some(found) = out.types.iter().position(|t| {
+                        matches!(t, MirType::Record(r)
+                            if r.owner_module == m.id_text && r.name == td.id_text && !r.fields.is_empty())
+                    }) {
+                        let found = found as TypeIdx;
+                        memo.insert(*tid, found);
+                        return Ok(found);
+                    }
+                    // Two-phase interning: reserve the slot and memoize the
+                    // HIR tid BEFORE the fields intern, so a field whose
+                    // type legitimately reaches back through an OPAQUE
+                    // (List/Box) edge resolves to this record without
+                    // infinite recursion; the slot is PATCHED with the full
+                    // field list once the walk completes.
+                    let reserved = out.types.len() as TypeIdx;
+                    out.types.push(MirType::Record(RecordTypeRef {
+                        owner_module: m.id_text.clone(),
+                        name: td.id_text.clone(),
+                        fields: Vec::new(),
+                    }));
+                    memo.insert(*tid, reserved);
                     let mut fields = Vec::with_capacity(shape.fields.len());
                     let mut err = None;
                     for f in &shape.fields {
@@ -2555,17 +2604,25 @@ fn collections_type_idx_of(
                     }
                     err.map_or_else(
                         || {
-                            Ok(out.intern_type(MirType::Record(RecordTypeRef {
+                            out.types[reserved as usize] = MirType::Record(RecordTypeRef {
                                 owner_module: m.id_text.clone(),
                                 name: td.id_text.clone(),
                                 fields,
-                            })))
+                            });
+                            Ok(reserved)
                         },
                         Err,
                     )
                 }
                 hir::TypeKind::List { elem } => {
-                    let e = collections_type_idx_of(elem, m, out, memo, visiting)?;
+                    // PLAN-962 (T-08, L-08): a List's layout is OPAQUE (an
+                    // arena handle — the element is never inlined), so the
+                    // element's interning does NOT extend the record layout
+                    // recursion: `Node { next List<Node> }` (and the Box
+                    // single-cell spelling) is the legal explicit
+                    // indirection. Fresh visiting scope per element.
+                    let mut elem_visiting = std::collections::BTreeSet::new();
+                    let e = collections_type_idx_of(elem, m, out, memo, &mut elem_visiting)?;
                     Ok(out.intern_type(MirType::List(ListTypeRef { elem: e })))
                 }
                 hir::TypeKind::Variant { arms } => {
