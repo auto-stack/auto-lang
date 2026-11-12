@@ -47,6 +47,28 @@ commit/binaries/originals 五键）+listing 枚举经父解析器重 derive+disc
   schema/错 H/漏审/未决发现/自指一律不可签。机械验证只担内容/身份/覆盖；独立性由
   同树独立上下文的复审流程担保并记真实身份（不建 PKI、不宣称 hash 证明人的独立性）。
 
+## 分域 facts 的原件重导与身份门（PLAN-1013，SD-01）
+
+F-1013-01 修复（自报 facts 绕过原件准入+虚构 commit 入审计链）后的事实合同：
+
+- entry facts 引用必须是 `{'facts': <紧凑投影文档>, 'root': <gate 目录>}` 双键形状；
+  旧 schema（无 root、仅自报 `gate_originals_sha256`）明确拒绝，无自动 fallback。
+- 消费时以 gate root 内**完整原始材料**复用 raw 准入（listing/discovery/command/
+  run/results/窗口 pins 逐项核验）重导投影，再与 facts 文档逐项比对
+  （commit/green/executed/kept/gate_originals_sha256）——摘要自带 hash 不构成可信
+  锚；篡改投影并重算全部局部 hash 不改变原件决定的判决（V-03 类）。
+- raw 与 facts 共用 `_verify_commit_object`：commit 须在正确仓解析为真实 commit 对象
+  （`git rev-parse --verify <c>^{commit}` 只读核查）且为冻结锚成员；40 位格式或
+  仓中存在均不足。`admit_arch_entry_gates` 接受 binding 级或参数级 `frozen_anchors`，
+  输出 `gate_commits` 仅含已核验身份。
+- 919 资源事件族注册出口词表（resource/cancelled）按冻结合同父判为准；ptr 类语料库
+  fixture 腿的证据归属为其语料库格（undotted id corpus-first），scenario 格由其专署
+  套件显式映射供应（producer token 为准）。
+- 同一 48MiB LiveBudget 计入分域与 raw 的原件解析/投影：组合链一次性文档解码按
+  release-after-extract 纪律释放估计（knife 1..3a），判决不变量 raw/phased 等价。
+- 凭据合同升级为 PLAN-1013/r1（AC-01..10/V-01..15/SD-01..03 全覆盖）；旧 PLAN-1005
+  R 或错误 revision/coverage 一律拒绝——旧 R 不冒新包已审。
+
 ## 拒绝语义与 TAG 门
 
 - 三态：缺事实 UNOBSERVED / oracle 不符 FAIL / 格式身份错拒绝（exit2 路径）。
