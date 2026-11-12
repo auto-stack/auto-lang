@@ -156,3 +156,28 @@ fn av_spec_override_executes_9() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// PLAN-963（T-03）：`<T has S>` 约束经单态化核验后仍真实执行
+// ---------------------------------------------------------------------------
+
+/// `Box<T has Summable>` 以遵从记录实例化：`Score { val: 5 }.total()` = 5。
+const BOUNDED_WRAPPER: &str = "\
+spec Summable { fn total() int }
+type Score as Summable { val int
+    fn total() int { return .val }
+}
+type Box<T has Summable> { inner T }
+fn main() int {
+    let b Box<Score> = Box { inner: Score { val: 5 } }
+    let s Score = b.inner
+    return s.total()
+}
+";
+
+/// 约束满足的 wrapper（真实 AV 执行）→ 5。
+#[test]
+fn av_bounded_wrapper_executes_5() {
+    assert_eq!(run_value(BOUNDED_WRAPPER), Value::I32(5), "bounded oracle");
+}
+
+

@@ -329,11 +329,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         type-param-tail(profiles: [scalar-instances, scalar-ct, packages-modules, record, aggregates]) { comma() {} type-param() {} }
         type-param(profiles: [scalar-instances, scalar-ct, packages-modules, record, aggregates]) {
-            alt { ident(field: "name") opt(profiles: [scalar-instances, scalar-ct]) { type-param-constraint(field: "constraint") } }
+            // PLAN-963（T-03）：record/aggregates 面的 `has S` 是用户泛型类型的
+            // 约束声明（`type Box<T has Summable>`），由语法期单态化按实参核验；
+            // scalar/packages 面仍交投影具名拒。
+            alt { ident(field: "name") opt(profiles: [scalar-instances, scalar-ct, packages-modules, record, aggregates]) { type-param-constraint(field: "constraint") } }
             // `<const N>`（r-const 保留词形状；投影具名拒）
             alt { r-const(field: "const_kw") {} ident(field: "name") }
         }
-        type-param-constraint(profiles: [scalar-instances, scalar-ct, packages-modules]) { r-has(field: "kw") {} ident(field: "bound") }
+        type-param-constraint(profiles: [scalar-instances, scalar-ct, packages-modules, record, aggregates]) { r-has(field: "kw") {} ident(field: "bound") }
         params { param() {} many { param-tail() {} } }
         param-tail { comma() {} param() {} }
         param {

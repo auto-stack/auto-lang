@@ -242,7 +242,7 @@ pub(crate) fn project_program_with_caps(
     // PLAN-963（T-02）：用户泛型记录类型的语法期单态化（每个使用位都显式
     // 携带类型实参，无需语义推理）。下游 resolve/HIR/布局/四端只见具体
     // 记录类型；模板本身从程序中移除。
-    for d in expand_user_generic_types(&mut items) {
+    for d in expand_user_generic_types(&mut items, &specs) {
         eng.cx.diags.push((d.span.start as u64, d));
     }
     // PLAN-963（T-03）：`type X as S` 遵从检查 + spec 默认方法注入。放在单态化
@@ -3683,6 +3683,50 @@ impl<'a> Engine<'a> {
         out
     }
 
+    /// PLAN-963（T-03）：用户泛型类型的参数声明（`<T>` / `<T has S>`）。
+    /// 只有 record/aggregates 面允许 `has`；`const N` 仍具名拒（值参数未在
+    /// 本分片实现）。
+    fn project_type_param_decls(&mut self, node: Option<u32>) -> Vec<TypeParamDecl> {
+        let mut out = Vec::new();
+        let Some(n) = node else { return out };
+        let Some(tp_kind) = self.cx.k.type_param else {
+            return out;
+        };
+        for tp in collect_seq(&self.cx, n, tp_kind, "type-param-tail") {
+            let leaf = self.cx.field_child(tp, "name").expect("type param name");
+            let name = ident_of(&mut self.cx, leaf);
+            if let Some(cst_n) = self.cx.field_child(tp, "const_kw") {
+                let span = self.cx.span_of(cst_n);
+                self.cx.reject(span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.instances-unsupported",
+                        "const (value) type parameters are not implemented yet",
+                        span,
+                    )
+                });
+            }
+            let bound = self
+                .cx
+                .field_child(tp, "constraint")
+                .and_then(|c| self.cx.field_child(c, "bound"))
+                .map(|b| ident_of(&mut self.cx, b));
+            if out.iter().any(|p: &TypeParamDecl| p.name.name == name.name) {
+                let span = name.span;
+                self.cx.reject(span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.duplicate",
+                        format!("duplicate type parameter `{}`", name.name),
+                        span,
+                    )
+                });
+            }
+            out.push(TypeParamDecl { name, bound });
+        }
+        out
+    }
+
     fn project_params(&mut self, params_node: Option<u32>) -> Vec<Param> {
         let mut out = Vec::new();
         let Some(pn) = params_node else { return out };
@@ -4040,12 +4084,14 @@ impl<'a> Engine<'a> {
         let name = ident_of(&mut self.cx, name_leaf);
         // PLAN-963（T-02）：声明序类型参数；成员注解投影期间这些名字按类型
         // 变量（`TypeRef::TyVar`）投影，随后由语法期单态化替换为具体类型。
-        let type_params = self.project_type_params(self.cx.field_child(node, "type_params"));
+        // PLAN-963（T-03）：参数可带 `has S` 约束——约束在单态化时按实参的
+        // 遵从列表核验（不在 resolve 里再造一套 bound 求解）。
+        let type_params = self.project_type_param_decls(self.cx.field_child(node, "type_params"));
         // PLAN-963（T-03）：`as Spec` 遵从列表（投影期消化；记录本身保持普通
         // TypeItem，下游只见方法）。
         let conforms = self.project_specs(self.cx.field_child(node, "specs"));
         let saved_ty_params = std::mem::take(&mut self.cx.ty_params);
-        self.cx.ty_params = type_params.iter().map(|t| t.name.clone()).collect();
+        self.cx.ty_params = type_params.iter().map(|t| t.name.name.clone()).collect();
         let mut fields: Vec<FieldDecl> = Vec::new();
         let mut methods: Vec<FnItem> = Vec::new();
         let mut seen: Vec<String> = Vec::new();
@@ -7058,7 +7104,16 @@ fn apply_spec_conformance(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diag
 // ---------------------------------------------------------------------------
 
 /// 单态化用户泛型记录；无泛型声明时零行为改动。
-fn expand_user_generic_types(items: &mut Vec<Item>) -> Vec<Diagnostic> {
+fn expand_user_generic_types(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diagnostic> {
+    // PLAN-963（T-03）：`<T has S>` 的核验面——bound 名必须是已声明 spec，
+    // 实参必须是遵从该 spec 的记录（合成实例的遵从列表随模板复制）。
+    let spec_names: BTreeSet<String> = specs.iter().map(|s| s.name.name.clone()).collect();
+    let mut record_specs: BTreeMap<String, Vec<Ident>> = BTreeMap::new();
+    for item in items.iter() {
+        if let Item::Type(t) = item {
+            record_specs.insert(t.name.name.clone(), t.conforms.clone());
+        }
+    }
     let mut templates: BTreeMap<String, TypeItem> = BTreeMap::new();
     for item in items.iter() {
         if let Item::Type(t) = item {
@@ -7078,6 +7133,8 @@ fn expand_user_generic_types(items: &mut Vec<Item>) -> Vec<Diagnostic> {
             made: Vec::new(),
             diags: Vec::new(),
             depth: 0,
+            spec_names,
+            record_specs,
         };
         for it in items.iter_mut() {
             gt.resolve_typed_ctors_in_item(it);
@@ -7099,6 +7156,8 @@ fn expand_user_generic_types(items: &mut Vec<Item>) -> Vec<Diagnostic> {
         made: Vec::new(),
         diags: Vec::new(),
         depth: 0,
+        spec_names,
+        record_specs,
     };
     gt.rewrite_program(items);
     // PLAN-963（T-02）：显式类型实参构造（`Point<int> { .. }`）覆盖注解
@@ -7140,6 +7199,10 @@ struct GenericExpand {
     made: Vec<TypeItem>,
     diags: Vec<Diagnostic>,
     depth: usize,
+    /// PLAN-963（T-03）：已声明 spec 名（`<T has S>` 的 bound 必须在此集合内）。
+    spec_names: BTreeSet<String>,
+    /// 记录名 → 遵从列表（含模板与已合成实例；bound 核验的实参侧事实）。
+    record_specs: BTreeMap<String, Vec<Ident>>,
 }
 
 impl GenericExpand {
@@ -7505,6 +7568,47 @@ impl GenericExpand {
             }
         }
         let key = format!("{}<{}>", name.name, spellings.join(","));
+        // PLAN-963（T-03）：`<T has S>` 约束——语法期按实参的遵从列表核验。
+        // 不满足即具名拒，不合成“无约束”的实例（那会让 wrapper 静默丢失
+        // 约束，正是 V-G03 的反控项）。
+        for (param, concrete_ann) in tpl.type_params.iter().zip(concrete.iter()) {
+            let Some(bound) = &param.bound else { continue };
+            if !self.spec_names.contains(&bound.name) {
+                let sp = bound.span;
+                let (b, t) = (bound.name.clone(), name.name.clone());
+                self.diags.push(Diagnostic::new(
+                    Stage::Text,
+                    "source.unsupported",
+                    format!("unknown spec `{b}` in the bound of `{t}`'s type parameter"),
+                    sp,
+                ));
+                continue;
+            }
+            let satisfies = match &concrete_ann.kind {
+                TypeRef::Record(id) => self
+                    .record_specs
+                    .get(&id.name)
+                    .is_some_and(|cs| cs.iter().any(|s| s.name == bound.name)),
+                _ => false,
+            };
+            if !satisfies {
+                let sp = concrete_ann.span;
+                let (b, t, p) = (
+                    bound.name.clone(),
+                    name.name.clone(),
+                    param.name.name.clone(),
+                );
+                let arg = type_spelling(concrete_ann).unwrap_or_else(|| "that type".into());
+                self.diags.push(Diagnostic::new(
+                    Stage::Text,
+                    "source.unsupported",
+                    format!(
+                        "type argument `{arg}` does not satisfy `{b}` (bound of `{p}` in `{t}`)"
+                    ),
+                    sp,
+                ));
+            }
+        }
         let mangled = match self.by_key.get(&key) {
             Some(m) => m.clone(),
             None => {
@@ -7533,11 +7637,15 @@ impl GenericExpand {
                 self.taken.insert(candidate.clone());
                 self.by_key.insert(key, candidate.clone());
                 self.origin.insert(candidate.clone(), name.name.clone());
+                // PLAN-963（T-03）：合成实例的遵从列表随模板复制，登记后供
+                // 外层 `Box<Pair<int>>` 之类嵌套实参的 bound 核验使用。
+                self.record_specs
+                    .insert(candidate.clone(), tpl.conforms.clone());
                 let subst: BTreeMap<String, TypeAnn> = tpl
                     .type_params
                     .iter()
                     .zip(concrete.iter())
-                    .map(|(p, t)| (p.name.clone(), t.clone()))
+                    .map(|(p, t)| (p.name.name.clone(), t.clone()))
                     .collect();
                 self.depth += 1;
                 let mut fields = Vec::with_capacity(tpl.fields.len());

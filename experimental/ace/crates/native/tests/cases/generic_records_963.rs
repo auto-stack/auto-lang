@@ -129,3 +129,24 @@ fn native_spec_override_exit_9() {
     assert_eq!(run_native(SPEC_OVERRIDE, "s3"), 9);
 }
 
+/// `Box<T has Summable>` 以遵从记录实例化：`Score { val: 5 }.total()` = 5。
+const BOUNDED_WRAPPER: &str = "\
+spec Summable { fn total() int }
+type Score as Summable { val int
+    fn total() int { return .val }
+}
+type Box<T has Summable> { inner T }
+fn main() int {
+    let b Box<Score> = Box { inner: Score { val: 5 } }
+    let s Score = b.inner
+    return s.total()
+}
+";
+
+/// 约束满足的 wrapper（native 真实构建运行）→ exit=5。
+#[test]
+fn native_bounded_wrapper_exit_5() {
+    assert_eq!(run_native(BOUNDED_WRAPPER, "b1"), 5);
+}
+
+

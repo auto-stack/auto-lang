@@ -165,6 +165,15 @@ pub struct FieldDecl {
     pub span: Span,
 }
 
+/// PLAN-963 (T-03): one declared type parameter of a user generic type.
+/// A bound (`<T has S>`) is checked at monomorphization: the substituted
+/// type must be a record whose conformance list names `S`.
+#[derive(Clone, Debug)]
+pub struct TypeParamDecl {
+    pub name: Ident,
+    pub bound: Option<Ident>,
+}
+
 /// A `type Name { fields; methods }` item (record profile only).
 #[derive(Clone, Debug)]
 pub struct TypeItem {
@@ -173,7 +182,7 @@ pub struct TypeItem {
     /// record** (`type Point<T>`). Empty for ordinary records. Templates are
     /// monomorphized at projection time (explicit type arguments at every
     /// use), so no synthesized `TypeItem` reaching resolve carries these.
-    pub type_params: Vec<Ident>,
+    pub type_params: Vec<TypeParamDecl>,
     /// PLAN-963 (T-03): specs claimed by `type X as A[, B]`, in written order.
     /// Consumed at projection time (conformance validation + default method
     /// injection); resolve and the four backends see only concrete methods.

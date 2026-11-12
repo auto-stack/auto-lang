@@ -418,3 +418,105 @@ fn main() int {
     );
 }
 
+// ---------------------------------------------------------------------------
+// PLAN-963（T-03）：`<T has S>` 类型参数约束（单态化时按遵从列表核验）
+// ---------------------------------------------------------------------------
+
+const BOUND_OK: &str = "\
+spec Summable { fn total() int }
+type Score as Summable { val int
+    fn total() int { return .val }
+}
+type Box<T has Summable> { inner T }
+fn main() int {
+    let b Box<Score> = Box { inner: Score { val: 5 } }
+    let s Score = b.inner
+    return s.total()
+}
+";
+
+/// O-963-20：实参记录遵从 bound → 实例合成并编译（约束随实例保留）。
+#[test]
+fn bound_satisfied_963() {
+    compile(BOUND_OK).expect("conforming type argument satisfies the bound");
+}
+
+/// O-963-21：标量实参不满足 bound → 具名拒（不合成无约束实例）。
+#[test]
+fn bound_scalar_rejected_963() {
+    let src = "\
+spec Summable { fn total() int }
+type Box<T has Summable> { inner T }
+fn main() int {
+    let b Box<int> = Box { inner: 1 }
+    return b.inner
+}
+";
+    let err = compile(src).expect_err("a scalar cannot satisfy a spec bound");
+    assert!(
+        err.iter().any(|d| d.code == "source.unsupported"
+            && d.message.contains("does not satisfy")
+            && d.message.contains("Summable")),
+        "expected named bound rejection, got {err:?}"
+    );
+}
+
+/// O-963-22：记录实参但未声明遵从 → 同样具名拒。
+#[test]
+fn bound_non_conforming_record_rejected_963() {
+    let src = "\
+spec Summable { fn total() int }
+type Plain { val int }
+type Box<T has Summable> { inner T }
+fn main() int {
+    let b Box<Plain> = Box { inner: Plain { val: 1 } }
+    return b.inner.val
+}
+";
+    let err = compile(src).expect_err("a non-conforming record violates the bound");
+    assert!(
+        err.iter().any(|d| d.code == "source.unsupported"
+            && d.message.contains("does not satisfy")
+            && d.message.contains("Plain")),
+        "expected named bound rejection for the record, got {err:?}"
+    );
+}
+
+/// O-963-23：bound 名不是已声明 spec → 具名拒（不静默当成无约束）。
+#[test]
+fn bound_unknown_spec_rejected_963() {
+    let src = "\
+type Box<T has Missing> { inner T }
+fn main() int {
+    let b Box<int> = Box { inner: 1 }
+    return b.inner
+}
+";
+    let err = compile(src).expect_err("unknown spec in a bound must be rejected");
+    assert!(
+        err.iter().any(|d| d.code == "source.unsupported"
+            && d.message.contains("unknown spec")
+            && d.message.contains("Missing")),
+        "expected named unknown-bound rejection, got {err:?}"
+    );
+}
+
+/// O-963-24：约束经嵌套实参传递（`Box<Pair<int>>` 里 `Pair<int>` 的遵从
+/// 列表随模板复制到合成实例，故外层 bound 仍成立）。
+#[test]
+fn bound_through_nested_instance_963() {
+    let src = "\
+spec Summable { fn total() int }
+type Pair<T> as Summable { a T
+    fn total() int { return 1 }
+}
+type Box<T has Summable> { inner T }
+fn main() int {
+    let b Box<Pair<int>> = Box { inner: Pair { a: 1 } }
+    let p Pair<int> = b.inner
+    return p.total()
+}
+";
+    compile(src).expect("synthesized instance keeps its conformance list");
+}
+

@@ -255,3 +255,25 @@ fn a2x_spec_override_value_9() {
     run_c_plain(SPEC_OVERRIDE, 9, "s3");
 }
 
+/// `Box<T has Summable>` 以遵从记录实例化：`Score { val: 5 }.total()` = 5。
+const BOUNDED_WRAPPER: &str = "\
+spec Summable { fn total() int }
+type Score as Summable { val int
+    fn total() int { return .val }
+}
+type Box<T has Summable> { inner T }
+fn main() int {
+    let b Box<Score> = Box { inner: Score { val: 5 } }
+    let s Score = b.inner
+    return s.total()
+}
+";
+
+/// 约束满足的 wrapper（A2R + A2C 双端）→ value:5。
+#[test]
+fn a2x_bounded_wrapper_value_5() {
+    run_rust_plain(BOUNDED_WRAPPER, 5, "b1");
+    run_c_plain(BOUNDED_WRAPPER, 5, "b1");
+}
+
+
