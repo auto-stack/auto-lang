@@ -87,10 +87,31 @@ def _group_config(inputs, name):
     return group
 
 
-def _admit_gate_root(inputs, evidence, root, frozen_anchors=()):
+def _read_json_tracked(evidence, relative, transients):
+    """Read one envelope document whose bytes/decoded form die with the gate."""
+    raw = evidence.read_bytes(relative)
+    value, sha = evidence.decode_json(raw)
+    transients.append(raw)
+    return value, sha
+
+
+def _release_gate_transients(evidence, transients):
+    """PLAN-1013 T-07: per-entry whole-path release. Every envelope document
+    (gate envelope, window pins, command receipts, phased facts projection)
+    served its verification inside this gate and is dead by return; only the
+    verified compact projection stays live for row evaluation."""
+    for raw in transients:
+        nodes = sum(raw.count(bytes([c])) for c in b'{}[],:')
+        evidence.budget.release_transient((len(raw) + 1) + (7 * len(raw) + 256 * nodes + 4096))
+
+
+def _admit_gate_root(inputs, evidence, root, frozen_anchors=(), transients=None):
     """Admit one entry gate directory: identity + every pinned original byte."""
     from ace_m1_first_slice import _repo_relative
-    document, _ = evidence.read_json(root + '/gate.json')
+    if transients is None:
+        document, _ = evidence.read_json(root + '/gate.json')
+    else:
+        document, _ = _read_json_tracked(evidence, root + '/gate.json', transients)
     exact_keys(document, _GATE_FIELDS, 'architecture entry gate envelope')
     typed_equal(document['schema'], 'ace.m1.arch-entry-gate/1', 'entry gate schema')
     require(document['kind'] in ('native', 'case'), 'entry gate kind')
@@ -118,10 +139,14 @@ def _admit_gate_root(inputs, evidence, root, frozen_anchors=()):
     return document
 
 
-def _window_pins(evidence, root, closure):
+def _window_pins(evidence, root, closure, transients=None):
     """Frozen producer window: identical before/after snapshots inside the closure."""
-    before, _ = evidence.read_json(root + '/source-pins-before.json')
-    after, _ = evidence.read_json(root + '/source-pins-after.json')
+    if transients is None:
+        before, _ = evidence.read_json(root + '/source-pins-before.json')
+        after, _ = evidence.read_json(root + '/source-pins-after.json')
+    else:
+        before, _ = _read_json_tracked(evidence, root + '/source-pins-before.json', transients)
+        after, _ = _read_json_tracked(evidence, root + '/source-pins-after.json', transients)
     exact_keys(before, ('commit', 'source_pins'), 'entry before input snapshot')
     exact_keys(after, ('commit', 'source_pins'), 'entry after input snapshot')
     typed_equal(before, after, 'entry window source input stability')
@@ -144,6 +169,30 @@ def _retain(evidence, value):
     evidence.reserve(_doc_transient(raw))
 
 
+def _verified_compact(evidence, derived):
+    """PLAN-1013 T-07: retain the VERIFIED compact projection per gate.
+
+    The identity-pinned derived rows served their whole-path role inside the
+    per-gate admission (re-derivation from pinned originals, item-by-item
+    facts comparison, commit authenticity gate) and die here — exactly the
+    plan §2 default of reading originals per entry and releasing transients.
+    Row evaluation only consumes commit/green/executed and per-fact verdicts,
+    so the projection carries the same verdicts raw admission would; it is
+    derived, never read back from a self-reported summary (F-1013-01)."""
+    rows = derived.get('terminals') if 'terminals' in derived else derived.get('checks') or {}
+    evidence.budget.release_transient(_doc_transient(repr(rows).encode('utf-8')))
+    compact = {'commit': derived['commit'], 'green': derived['green'],
+               'executed': derived['executed']}
+    if 'terminals' in derived:
+        compact['terminals'] = {name: {'event': row.get('event')}
+                                for name, row in derived['terminals'].items()}
+    else:
+        compact['checks'] = {key: {'status': row.get('status')}
+                             for key, row in derived['checks'].items()}
+    _retain(evidence, compact)
+    return compact
+
+
 def admit_native_gate(inputs, evidence, root, group_name, closure, keep_events=None,
                       frozen_anchors=()):
     """Full-group native admission: selection, terminals, receipts, identity.
@@ -152,11 +201,12 @@ def admit_native_gate(inputs, evidence, root, group_name, closure, keep_events=N
     fact is re-derived from the pinned original bytes, never from a summary.
     """
     from ace_m1_first_slice import _repo_relative
-    gate = _admit_gate_root(inputs, evidence, root, frozen_anchors)
+    transients = []
+    gate = _admit_gate_root(inputs, evidence, root, frozen_anchors, transients)
     typed_equal(gate['kind'], 'native', 'native entry gate kind')
     group = _group_config(inputs, group_name)
     require(group['runner'] == 'nextest', 'native fixed group runner')
-    window = _window_pins(evidence, root, closure)
+    window = _window_pins(evidence, root, closure, transients)
     typed_equal(window['commit'], gate['commit'], 'native gate window commit')
     clean_state = hashlib.sha256(gate['commit'].encode() + b'[]').hexdigest()
     summary_raw = evidence.read_bytes(root + '/results.json')
@@ -187,7 +237,7 @@ def admit_native_gate(inputs, evidence, root, group_name, closure, keep_events=N
     # The original complete runner invocation, derived through the parent's
     # own plan/argument builders against this repository's configuration.
     plan_group = parent.invocations([dict(group)])[0]
-    listing_command, _ = evidence.read_json(root + '/discovery.command.json')
+    listing_command, _ = _read_json_tracked(evidence, root + '/discovery.command.json', transients)
     typed_equal(listing_command['argv'],
                 ['cargo', 'nextest', 'list', *parent.nextest_args(plan_group),
                  '--run-ignored', 'all', '--message-format', 'json'],
@@ -218,7 +268,7 @@ def admit_native_gate(inputs, evidence, root, group_name, closure, keep_events=N
     evidence.budget.release_transient(listing_transient)
     evidence.budget.release_transient(raw_transient)
     del listing, listing_raw, raw, text, known
-    command, _ = evidence.read_json(root + '/run.command.json')
+    command, _ = _read_json_tracked(evidence, root + '/run.command.json', transients)
     require(command['meter']['error'] is None and command['meter']['exit'] == command['exit'],
             'actual native process terminal')
     typed_equal(command['stdout'], 'run.stdout', 'raw stdout reference')
@@ -239,6 +289,7 @@ def admit_native_gate(inputs, evidence, root, group_name, closure, keep_events=N
         rows = {name: row for name, row in rows.items() if name in keep_events}
     evidence.budget.release_transient(summary_transient)
     _retain(evidence, rows)
+    _release_gate_transients(evidence, transients)
     return {'commit': gate['commit'], 'green': outcome == 'PASS',
             'terminals': rows, 'executed': executed}
 
@@ -250,11 +301,12 @@ def admit_case_gate(inputs, evidence, root, group_name, closure, keep_checks=Non
     Returns {'commit', 'green', 'checks'} where checks maps (case, check) to
     the original parent report row with its identity pins."""
     from ace_m1_first_slice import _repo_relative
-    gate = _admit_gate_root(inputs, evidence, root, frozen_anchors)
+    transients = []
+    gate = _admit_gate_root(inputs, evidence, root, frozen_anchors, transients)
     typed_equal(gate['kind'], 'case', 'case entry gate kind')
     group = _group_config(inputs, group_name)
     require(group['runner'] == 'case', 'case fixed group runner')
-    window = _window_pins(evidence, root, closure)
+    window = _window_pins(evidence, root, closure, transients)
     typed_equal(window['commit'], gate['commit'], 'case gate window commit')
     clean_state = hashlib.sha256(gate['commit'].encode() + b'[]').hexdigest()
     summary_raw = evidence.read_bytes(root + '/results.json')
@@ -276,7 +328,7 @@ def admit_case_gate(inputs, evidence, root, group_name, closure, keep_checks=Non
     checks = inventory['checks']
     require(type(checks) is list and bool(checks), 'inventory checks required')
     binary = None
-    inventory_command, _ = evidence.read_json(root + '/inventory.command.json')
+    inventory_command, _ = _read_json_tracked(evidence, root + '/inventory.command.json', transients)
     require(inventory_command['argv'][1:] == ['inventory', '--suite', str(inputs.root / group['suite'])],
             'original inventory invocation')
     binary = inventory_command['argv'][0]
@@ -310,7 +362,7 @@ def admit_case_gate(inputs, evidence, root, group_name, closure, keep_checks=Non
         valid &= row.get('status') == status and (status != 'FAIL' or bool(row.get('mismatches')))
         valid &= row.get('identity', {}).get('source') == original['source_sha256']
         valid &= row.get('identity', {}).get('oracle') == original['oracle_sha256']
-    run_command, _ = evidence.read_json(root + '/run.command.json')
+    run_command, _ = _read_json_tracked(evidence, root + '/run.command.json', transients)
     require(run_command['meter']['error'] is None and run_command['meter']['exit'] == run_command['exit'],
             'actual case process terminal')
     expected_exit = 1 if 'FAIL' in expectations.values() else 0
@@ -329,6 +381,7 @@ def admit_case_gate(inputs, evidence, root, group_name, closure, keep_checks=Non
     evidence.budget.release_transient(inventory_transient)
     evidence.budget.release_transient(report_transient)
     _retain(evidence, actual)
+    _release_gate_transients(evidence, transients)
     return {'commit': gate['commit'], 'green': outcome == 'PASS',
             'checks': actual, 'executed': len(actual)}
 
@@ -432,7 +485,8 @@ def admit_arch_entry_gates(inputs, evidence, binding, frozen_anchors=()):
             exact_keys(ref, ('facts', 'root'), f'phased entry facts reference {name}')
             facts_ref = ref['facts']
             exact_keys(facts_ref, ('path', 'sha256'), f'phased entry facts {name}')
-            facts_doc, digest = evidence.read_json(facts_ref['path'])
+            phased_transients = []
+            facts_doc, digest = _read_json_tracked(evidence, facts_ref['path'], phased_transients)
             if digest != facts_ref['sha256']:
                 raise ValueError(f'STALE artifact content: {facts_ref["path"]}')
             exact_keys(facts_doc, ('schema', 'entry', 'group', 'kind', 'commit', 'green',
@@ -466,7 +520,7 @@ def admit_arch_entry_gates(inputs, evidence, binding, frozen_anchors=()):
                     event = row.get('event') if isinstance(row, dict) else row
                     terminal = derived['terminals'][key]
                     require(terminal.get('event') == event, f'phased facts kept drift {name}:{key}')
-                gates[name] = derived
+                gates[name] = _verified_compact(evidence, derived)
             else:
                 derived = admit_case_gate(inputs, evidence, ref['root'], expected_group, closure,
                                           keep_checks=keep.get(('case', name)),
@@ -481,29 +535,30 @@ def admit_arch_entry_gates(inputs, evidence, binding, frozen_anchors=()):
                     case, check = key.split('|')
                     check_row = derived['checks'][(case, check)]
                     require(check_row.get('status') == status, f'phased facts kept drift {name}:{key}')
-                gates[name] = derived
-            gate_env, _ = evidence.read_json(ref['root'] + '/gate.json')
+                gates[name] = _verified_compact(evidence, derived)
+            gate_env, _ = _read_json_tracked(evidence, ref['root'] + '/gate.json', phased_transients)
             require(gate_env.get('originals') == facts_doc['gate_originals_sha256'],
                     'phased facts gate identity drift')
+            _release_gate_transients(evidence, phased_transients)
             continue
         exact_keys(ref, ('root',), f'entry gate reference {name}')
         if declared['kind'] == 'case-suite':
             closure = _entry_closure(inputs, name, declared, config)
-            gates[name] = admit_case_gate(inputs, evidence, ref['root'], declared['group'], closure,
-                                          keep_checks=keep.get(('case', name)),
-                                          frozen_anchors=frozen_anchors)
+            gates[name] = _verified_compact(evidence, admit_case_gate(
+                inputs, evidence, ref['root'], declared['group'], closure,
+                keep_checks=keep.get(('case', name)), frozen_anchors=frozen_anchors))
         elif declared['kind'] == 'native-module':
             closure = _entry_closure(inputs, name, declared, config)
-            gates[name] = admit_native_gate(inputs, evidence, ref['root'], declared['group'], closure,
-                                            keep_events=keep.get(('native', name)),
-                                            frozen_anchors=frozen_anchors)
+            gates[name] = _verified_compact(evidence, admit_native_gate(
+                inputs, evidence, ref['root'], declared['group'], closure,
+                keep_events=keep.get(('native', name)), frozen_anchors=frozen_anchors))
         else:
             owner, resident, _modules = DELIVERED_PROVIDERS[name]
             require(declared.get('owner') == owner, f'delivered provider owner {name}')
             closure = _entry_closure(inputs, name, declared, config)
-            gates[name] = admit_native_gate(inputs, evidence, ref['root'], resident, closure,
-                                            keep_events=keep.get(('native', name)),
-                                            frozen_anchors=frozen_anchors)
+            gates[name] = _verified_compact(evidence, admit_native_gate(
+                inputs, evidence, ref['root'], resident, closure,
+                keep_events=keep.get(('native', name)), frozen_anchors=frozen_anchors))
 
     recipes = {recipe['row']: recipe for recipe in recipes_doc['recipes']}
     observations = {}

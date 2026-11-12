@@ -3836,7 +3836,10 @@ class CtSourceMechanismTests(unittest.TestCase):
                    'binary-path':str(binary),'testcases':{self.ct.TEST:dict(kind='test',ignored=False,**{'filter-match':{'status':'matches'}})}}}}
         import tomllib
         group = next(g for g in tomllib.loads((repo/'scripts/test-groups.toml').read_text())['group'] if g['name']=='ace-comptime')
-        expression = '(((all())) and not test(=tests::aavm2_t3::test_aavm2_t3_tower_milestone)) and test('+self.ct.TEST+')'
+        # Mirror the reader's derivation from the CURRENT group expression
+        # (PLAN-1016 PERF separation changed it; never hardcode the shape).
+        expression = '((' + group['expression'] + ')) and not test(=tests::aavm2_t3::test_aavm2_t3_tower_milestone)'
+        expression = '(' + expression + ') and test(' + self.ct.TEST + ')'
         command = dict(argv=['cargo','nextest','run',*group['args'],'--ignore-default-filter','-E',expression,
                        '--target-dir',str(repo/'experimental/ace/target'),'--no-fail-fast','--no-tests','fail',
                        '--message-format','libtest-json-plus','--message-format-version','0.1'],
