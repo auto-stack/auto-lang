@@ -341,6 +341,90 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+2026-11-12 stage:work（T-03 两分片已提交，仍无终裁）/ PLAN-963 r5：第五片 `c44d80ad6`
+（spec 声明 + `as` 遵从，投影期擦除；测试补片 `9bfad9593`）与第六片 `2ef9f3874`
+（`<T has S>` 类型参数约束）落唯一树 `D:/autostack/.wt/lang-963/auto-lang`，两片均先跑
+固定组再提交。
+
+- 语法（`experimental/ace/grammars/auto-source.at`，均为 record/aggregates 面新增）：
+  `spec-item` + `spec-member`（`spec Name { fn m(..) R [body] }`，复用既有保留字 `r-spec`）；
+  `type-item` 在 `type-params` 后新增 `opt(as-spec-list)`（`as A[, B]*`）与 `as-spec-tail`；
+  `type-param` 的 `has S` 约束从 scalar/packages 面扩到 record/aggregates（`type-param-constraint`
+  同步），`const N` 形状保持可解析、投影具名拒。
+- AST：`TypeItem.conforms: Vec<Ident>`（书写序）、`TypeItem.type_params: Vec<TypeParamDecl>`
+  （`TypeParamDecl { name, bound: Option<Ident> }`）；`parser.rs` 旧面 `conforms` 恒空。
+- 投影（`cst/project.rs`）：`SpecDecl`/`SpecMethodDecl` 侧表，**spec 不产生 `Item` 变体**、不进
+  resolve/四端；`apply_spec_conformance` 在 `expand_user_generic_types` 之后运行，未知 spec /
+  缺抽象方法 / 签名不符（参数位与返回位按 `TypeRef` kind 比较）/ 重复声明 / 遵从列表重复
+  均为 `source.unsupported`/`source.duplicate` 具名拒；spec 默认体作为 View 方法注入实现者
+  （显式实现优先）→ 方法调用仍是既有静态解析，零后端改动。
+- `<T has S>`：`GenericExpand` 持 `spec_names` + `record_specs`（记录名→遵从列表，含已合成实例），
+  合成前按实参记录核验 bound；未知 bound 名/标量实参/未遵从记录均具名拒，不合成“无约束”实例。
+- 证据：core `source_generics_963.rs` O-963-10..24（含 spec 擦除断言、`Pair<T> as Summable`
+  实例级核验、`Box<Pair<int>>` 嵌套传递）；av/native/a2x-worker `generic_records_963.rs`
+  追加 spec 显式 37 / 默认体 7 / 覆盖 9 与 `Box<Score>.total()`=5（A2R rustc + A2C cl 双端）。
+  命令与结果：`cargo t ace-source ace-syntax ace-semantics ace-av ace-native ace-a2x` → 前五组 PASS
+  （run-ruayk7_a 之后 23:20 轮 run-ar94p7vb：ace-source 458/ace-syntax 132/ace-semantics 237/
+  ace-av 1071/ace-native 225 全绿）；同轮 `ace-a2x` 单项
+  `a2c_rt_view_method_body_warm_edit_phases` 红，隔离单测重放绿、单独 `cargo t ace-a2x` 整组
+  PASS（run-ddwo256h）——按环境归因（该组并行 rustc/cl 重负载时瞬时红），不作为代码失败。
+  分片测试 `cargo test -p ace-core --test conformance source_generics_963` 24 passed、
+  av/native/a2x `generic_records_963` 各 7 passed。
+- **T-03 具名未闭**：泛型 spec（`spec S<T>`）、关联类型、super-spec、ext/alias/`with` 未实现；
+  fn 级 bound（`fn max_of<T has Comparable>`）仍在 `crates/source-query/src/instances.rs` 被
+  `source.instances-unsupported` 拒——其放行需先放宽实例车道类型域（本轮复核：`crates/semantics/
+  src/infer.rs` 的 `Ty` 仅 I32/Bool/Var，`input.rs` 把记录构造/字段/方法表达式投影为 `Unsupported`，
+  故放宽面含求解器 Ty/输入投影/统一、`TypeDesc` 映射、`PortableTy`（`facts.rs`）与
+  `instance_host` 页 schema/codec，属 T-02 剩余核心，未在本片范围）。
+
+2026-11-12 stage:work（T-02 分片进行中，仍无终裁）/ PLAN-963 r5：本会话在唯一树
+`D:/autostack/.wt/lang-963/auto-lang`（`plan-963-dev`，基面 `990d27fcc`）落三片，均先跑固定组再提交：
+`ea0d6a82`（935 实例车道多类型参数：`InstanceArg`/`InstanceRecord.args`、页 codec v2、四端多参）、
+`b447112bc`（用户泛型记录语法期单态化：`type Point<T>`→`Point_int`/`Point_bool`，四端 300/301/双实例，
+`core/tests/cases/source_generics_963.rs` O-963-1..9）、`6b06003f7`（显式类型实参构造
+`Point<int> { .. }` 独立原子规则 + 全表达式构造点换名 + 无模板时仍具名拒，四端同三例）。
+证据目录 `D:/autostack/plan-artifacts/plan-963/`（不入库）。验证：`cargo t ace-source ace-syntax
+ace-semantics ace-av ace-native ace-a2x` 六组绿；`differential_corpus_all_profiles` 因 record 面新开
+泛型类型应用，V02/V03 在 Record 面两侧仍拒绝（旧=语法错、新=profile 具名拒），已加具名白名单
+`PROFILE_EXTENSION_DIFFS` 并在注释登记为本包既有口径变更；`sema_boundary_core_tree_has_no_product_backends`
+首次红系本机 `CARGO_TERM_COLOR=always` 污染 `cargo tree` 解析，`CARGO_TERM_COLOR=never` 重放绿（环境归因）。
+
+2026-11-12 stage:work（T-02 值域放宽片已提交，仍无终裁）/ PLAN-963 r5：第七片 `33ebeafcc`
+（实例车道值域扩到文本/记录 + 约束见证，26 文件）。要点：
+
+- 语法（`grammars/auto-source.at`）：新增两个**能力裁剪面** `record-instances` /
+  `text-record-instances` —— record / text-record 全表面 + fn 类型参数；门控按 profile 追加，
+  既有 profile 的过滤后程序不变（grammar identity 不动）。
+- 声明形状：`FnItem.type_params` 由 `Vec<Ident>` 统一为 `Vec<TypeParamDecl>`，fn 模板与 type
+  模板共用 `<T has S>`；`source_duplicate` 统一重名诊断（原 fn 面为 `source.instances-unsupported`）。
+- 推理（`semantics`）：`Ty` 加 `Text`/`Record(name)`；`Ann` 加 `Text`；`InputExprKind` 加
+  `StrLit`/`Ctor`/`Field`/`MethodCall`（原四类 `Unsupported` 拒绝删除）；字段/方法检查改为
+  **延迟约束**（`FieldRead`/`MethodCallCheck`）在 `finish` 前有界不动点解出，覆盖
+  `pick(a,b).val` 这类接收者类型晚于使用点可知的后序场景。
+- 实例（`source-query/instances.rs`）：`InstanceTy{I32,Bool,Text,Record(String)}`（`PortableTy`
+  保持 934 冻结面不扩）；模板 `bounds` 按实参记录的 `conforms` 核验，不满足 → 新诊断码
+  `source.instances-bound`（点名模板与 spec）；`INSTANCES_ALGO` → `ac935/instances-discovery/3`。
+- 页（`instance_host.rs`）：codec v3（类型码 + 记录名）；v1/v2 页按版本 MISS 自然重产，信封不变。
+- 产品面：新增 `compile_record_product`（record profile 自有车道，无 foreign 环境），
+  `walk.rs` 把文本/记录表达式改为结构化节点（原先按表达式种类整体拒）。
+- 证据：`source-query/tests/instances_value_domain_963.rs`（10 例，V-G01 标量/文本/记录替换
+  身份、同替换共享、异替换不串、错类型 dispatch 前拒；V-G03 满足生成/不满足具名拒/缺成员拒/
+  字段与方法绑定/构造字段负控）；`instances_multi_963` 迁 v3；935 面用例按统一 `TypeParamDecl`
+  与约束合法化更新。命令（`experimental/ace` 下，`CARGO_TERM_COLOR=never`）：
+  `cargo test -p ace-core -p ace-semantics -p ace-semantics-store -p ace-source-query` 全绿
+  （core 含 conformance 15 个 test-result 块，source-query 91+1+13+5+3+10+4+2+2）。
+  两例 `::performance::` 内存预算用例在并行构建负载下红（`infer_body_memory_stays_bounded`
+  等），按 PLAN-1016 不属日常组，未纳入本轮判定，留 T-04 单实例复核。
+- **T-02 具名未闭**：V-G02（用户泛型记录字段/嵌套/方法参数面）、V-G04（const 值参数）、
+  V-G05（generic spec/关联类型/ext/alias/`with`/默认或命名实参）、V-G06（两包同名模板与
+  owned 跨参借用）、V-G08（四端真实运行 oracle）与 §5.3 永久源目录
+  `crates/auto-lang/test/cases/ace-m2/generics/` 尚未创建；均在本包 T-02/T-03/T-08 范围。
+
+**具名未闭缺口（T-03 前置）**：`source-query` 的泛型函数实例车道仍以 `PortableTy`（Unit/I32/Bool）
+为解空间，`spec/conform/ext` 见证与 V-G03（`max_of` over 用户记录）需先把实例实参放宽到
+记录/文本（`TypeDesc`→`PortableTy`→页 schema 同步），该放宽是 T-02 剩余核心，尚未开工；
+`spec`/`as` 关键字与 `Item` 变体在 ACE 语法/AST 中目前完全不存在。
+
 2026-11-12 stage:work（进行中，无终裁）/ PLAN-963 r5：goal 授权整链（work→review→bounded repair→merge）已记录；实现树 `D:/autostack/.wt/lang-963/auto-lang`、分支 `plan-963-dev`、基面 `990d27f`；材料 scope `D:/autostack/plan-artifacts/plan-963/`。主检出开工前核：代码路径零 WIP（仅他会话 docs WIP，未触碰）。本轮只交 T-01 冻结（§5.5，全部结论带 path:line），未建 fixture、未跑 ACE/旧 VM、未改代码；T-01 尚未闭合（三探针待实现）。
 
 2026-11-12 stage:new / PLAN-963 r5：按用户指出的语法/设计/测试缺失补订。保8任务/原AC与V/依赖、drafting 0/8；新增既有Auto具体源/独立预期、旧实现证据差异、ACE拟类型/模块/实例设计、旧新义务映射及V-G01..08。只读源码与原用例，没有实现、fixture生成、旧VM/ACE运行、独立产品复审、建树、派agent或提交；本次修正文档缺口，不将依赖就绪包装为产品支持。
