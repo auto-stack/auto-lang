@@ -469,19 +469,36 @@ def admit_arch_entry_gates(inputs, evidence, binding, frozen_anchors=()):
     require(document.get('schema') == 'ace.m1.arch-obligation-contract/1', 'architecture contract schema')
     entries = document['entries']
     obligations = document['obligations']
-    recipes_doc, recipes_digest = inputs.read_json(RECIPES)
+    # PLAN-1013 A-1013-01: the recipe document is a FUNCTION-LEVEL transient.
+    # After validation, keep-building and the per-row fact projection below,
+    # its full-document reservation is released; row evaluation consumes the
+    # compact projection (copied per-row check lists — rows that share an
+    # entry carry different lists, so the keep union can never replace it).
+    # Same data, same verification path, same verdicts — only the retention
+    # policy follows the plan §2 read-per-entry/release-transients default.
+    recipes_raw = inputs.read_bytes(RECIPES)
+    recipes_doc, recipes_digest = inputs.decode_json(recipes_raw)
     typed_equal(recipes_digest, RECIPES_SHA, 'frozen recipe contract identity')
     validate_recipes(recipes_doc, entries)
 
     keep = {}
+    row_facts = {}
     for recipe in recipes_doc['recipes']:
+        facts = []
         for fact in recipe['facts']:
             entry = fact['entry']
             if 'case_checks' in fact:
-                keep.setdefault(('case', entry), set()).update(
-                    (case, check) for case, check in fact['case_checks'])
+                pairs = [tuple(pair) for pair in fact['case_checks']]
+                keep.setdefault(('case', entry), set()).update(pairs)
+                facts.append({'entry': entry, 'case_checks': pairs})
             else:
-                keep.setdefault(('native', entry), set()).update(fact['native_tests'])
+                events = list(fact['native_tests'])
+                keep.setdefault(('native', entry), set()).update(events)
+                facts.append({'entry': entry, 'native_tests': events})
+        row_facts[recipe['row']] = facts
+    _release_gate_transients(inputs, [recipes_raw])
+    del recipes_doc, recipes_raw
+    _retain(inputs, row_facts)
     gates = {}
     for name in sorted(binding['entries']):
         ref = binding['entries'][name]
@@ -571,7 +588,6 @@ def admit_arch_entry_gates(inputs, evidence, binding, frozen_anchors=()):
                 inputs, evidence, ref['root'], resident, closure,
                 keep_events=keep.get(('native', name)), frozen_anchors=frozen_anchors))
 
-    recipes = {recipe['row']: recipe for recipe in recipes_doc['recipes']}
     observations = {}
     admission_facts = {}
     for obligation in obligations:
@@ -581,13 +597,13 @@ def admit_arch_entry_gates(inputs, evidence, binding, frozen_anchors=()):
         needed = obligation['entries']
         if [n for n in needed if n not in gates]:
             continue  # row stays UNOBSERVED; never partially claimed
-        recipe = recipes[row]
-        red = [fact['entry'] for fact in recipe['facts'] if not gates[fact['entry']]['green']]
+        facts = row_facts[row]
+        red = [fact['entry'] for fact in facts if not gates[fact['entry']]['green']]
         if red:
             observations[row] = 'FAIL'  # a really red referenced entry is a real failure
             continue
         facts_green = True
-        for fact in recipe['facts']:
+        for fact in facts:
             gate = gates[fact['entry']]
             if 'case_checks' in fact:
                 for case, check in fact['case_checks']:
@@ -601,7 +617,7 @@ def admit_arch_entry_gates(inputs, evidence, binding, frozen_anchors=()):
                         facts_green = False
         if facts_green:
             admission_facts[row] = sum(len(f.get('case_checks', f.get('native_tests', [])))
-                                       for f in recipe['facts'])
+                                       for f in facts)
             observations[row] = 'PASS'
         # else: required named facts absent while the group is green -> UNOBSERVED
     return {'schema': 'ace.m1.arch-entry-gates/2', 'observations': observations,
