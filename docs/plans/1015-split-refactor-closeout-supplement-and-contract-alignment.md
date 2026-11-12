@@ -203,6 +203,14 @@ Counter与013 Todo分别导出A、B，校验包/资源/lock，独立目录fresh 
 
 stage: goal | plan_id: PLAN-1015 | plan_revision: r1 | round: 1 | from: work | to: review | status: execution_done | outcome: pass（work 六项 T-01..T-06 全完成；Counter/RQ 两债真实证据齐，013 AddTodo 按用户裁定回 owner 修复后消费、具名 owner 剩余；SD-01/恢复清单/债务关闭记录已备，worktree 提交 0ef4412a3 + 主检出簿记 149b4e9；无 tag/部署） | worktree: D:/autostack/.wt/lang-1015/auto-lang | commit: 0ef4412a3 | next: review（T-07 独立上下文同树逐 AC/V/SD 核验当前完成面与 013 AddTodo 具名剩余）
 
+2026-11-12，stage:review，review_scope:final，reviewer:general 子代理（独立上下文，无实施记忆），PLAN-1015 r1，outcome:needs_fix（F1..F4），随即 work 定向修复（提交 `67d5040d7`）：
+- **F1（中，AC-01/04/06）RQ 组合 UI 腿声明-实物不一致**：SD-01/债务写 U-RQ=69104765，实物 rc1015-old/auto-ui 钉 U-C=393ea17c。修复=声明改为 UI 腿 same-source 复用（U-RQ=N 同源，RQ drill 执行路径只触 auto 服务 CLI+auto-todo 产品、不触 UI 工具；组树 auto-ui 为 UI 侧 U-C 钉，披露可追），SD-01 §3/债务/恢复清单已同步。
+- **F2（中，AC-01/06）旧 auto.exe 双身份未分清**：同树两用途重建——UI A 侧 L-C 构建 74C06864（固化于 T-03 收据）、RQ 侧 L-RQ 构建 0007114C（当前树）。修复=manifest 拆 old_ui/old_rq 两套 + history_hashes，driver identity 对 old 工具改记录式（当前+历史并列，不把工具树当前态判红），重跑 controls/ui 全绿验证。
+- **F3（中，AC-04/06）"两 Host 16/16"表述过度**：drill 只实测服务 Host，窗口面为 OS068 同源复用。修复=恢复清单/SD-01 改述"服务 Host 演练 18/18 + 窗口面身份绑定复用"，不宣称重验桌面窗口。
+- **F4（低，AC-04/06）收据增强**：rq_drill 补 exe-identity-old/new 映像 SHA-256 核验、N 阶段 AUTO_OS_ROOT 钉 N-os 树、成功跑日志留档（logs/*.out 现保留）。重跑 RQ 演练 18/18 PASS（含两映像核验）、driver ui 全绿。
+- 013 AddTodo 具名 owner 剩余（§10.5）按复审裁定不阻 final pass（用户已裁定回 owner 修复后消费）。
+- next: review（T-07 定向重核 F1..F4 修复与整体 final pass）。
+
 
 
 起草静态自检：11章、9T/8AC/14V/1SD，任务全未勾选，drafting0/9；96条当前本地链接有效，正式硬依赖闭包89份唯一无环；24条路线记录=22归档+1015/关联OS062两草案。5份关键Spec/生产或原测试源码内容hash未变；1013为联合签章领域门而非本包work硬依赖。语义SHA256=`c2f1f611062b32f2a7076386797c224b49b6850c0f44e9417a77367f052cfc78`（UTF-8/LF，§0～8及§10，排除§9）。仅文档/来源自检，未运行V、项目构建/GUI/安装/恢复或独立终审；两债未关闭。
