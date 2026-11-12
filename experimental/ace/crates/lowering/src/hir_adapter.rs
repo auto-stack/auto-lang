@@ -2539,20 +2539,6 @@ fn collections_type_idx_of(
                     Ok(out.intern_type(MirType::Char))
                 }
                 hir::TypeKind::Record(shape) => {
-                    // PLAN-962 (T-08, L-08): two-phase record interning —
-                    // RESERVE the slot (placeholder) and memoize the HIR
-                    // tid BEFORE the fields intern, so a field whose type
-                    // legitimately reaches back through an OPAQUE edge
-                    // (List/Box cell) resolves to this record without
-                    // infinite recursion; the slot is PATCHED with the
-                    // full field list once the walk completes.
-                    let reserved = out.types.len() as TypeIdx;
-                    out.types.push(MirType::Record(RecordTypeRef {
-                        owner_module: m.id_text.clone(),
-                        name: td.id_text.clone(),
-                        fields: Vec::new(),
-                    }));
-                    memo.insert(*tid, reserved);
                     let mut fields = Vec::with_capacity(shape.fields.len());
                     let mut err = None;
                     for f in &shape.fields {
@@ -2567,31 +2553,19 @@ fn collections_type_idx_of(
                             }
                         }
                     }
-                    // the placeholder leaves the visiting set duty to the
-                    // caller (the Ref arm removes on exit below)
                     err.map_or_else(
                         || {
-                            out.types[reserved as usize] = MirType::Record(RecordTypeRef {
+                            Ok(out.intern_type(MirType::Record(RecordTypeRef {
                                 owner_module: m.id_text.clone(),
                                 name: td.id_text.clone(),
                                 fields,
-                            });
-                            Ok(reserved)
+                            })))
                         },
                         Err,
                     )
                 }
                 hir::TypeKind::List { elem } => {
-                    // PLAN-962 (T-08, L-08): a List's layout is OPAQUE
-                    // (an arena handle — the element is never inlined), so
-                    // the element's interning does NOT extend the record
-                    // layout recursion: `Node { next List<Node> }` (and
-                    // the Box single-cell spelling) is the legal explicit
-                    // indirection. Intern the element with a FRESH
-                    // visiting scope so the enclosing record chain does
-                    // not read as a layout cycle.
-                    let mut elem_visiting = std::collections::BTreeSet::new();
-                    let e = collections_type_idx_of(elem, m, out, memo, &mut elem_visiting)?;
+                    let e = collections_type_idx_of(elem, m, out, memo, visiting)?;
                     Ok(out.intern_type(MirType::List(ListTypeRef { elem: e })))
                 }
                 hir::TypeKind::Variant { arms } => {
