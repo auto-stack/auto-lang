@@ -71,7 +71,7 @@ applicability, no photon-endpoint claim).
   PLAN-989; the A→N→fault→restore drill (A real Todo task → quiescent
   backup → N reads A data and continues → broken-source fault rejection
   with A byte-preserved → restore A + independent SQLite read-back) plus a
-  bystander independent instance surviving the fault/switch passed 16/16
+  bystander independent instance surviving the fault/switch passed 18/18
   (PLAN-1015 receipts). **UI-leg note**: auto-ui `69104765` is identical
   to the N frozen UI SHA — per the recovery contract's same-source rule the
   UI leg is reused, not rebuilt, in the RQ combo; the drill executes the
