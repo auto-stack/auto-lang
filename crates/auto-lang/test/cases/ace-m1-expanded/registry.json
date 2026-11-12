@@ -6140,7 +6140,7 @@
   "source_sha256": {
    "crates/auto-lang-core/src/test_cases/ac_av.rs": "a71da692f210dd5fb18d8adc4db1396c49b77544015fc04028c264835c0b1b9a",
    "crates/auto-lang-core/src/test_cases/ac_av/contract_inventory.rs": "aadcdf7a59836860039fdc8def37013149eef09e66aad67da37b86d0aedf08c1",
-   "crates/auto-lang-core/src/test_cases/ac_mn.rs": "92dd821667dc26c68b160b73588f20be03d0051ff9893e41a1cb3daad11169a7",
+   "crates/auto-lang-core/src/test_cases/ac_mn.rs": "e3c7564cd77fa547d3c9154ce9a006362987fce3dd6f94a405262bce837558df",
    "crates/auto-lang-core/src/test_cases/abi.rs": "dfa474a74d056054d383f13c470d6b8b6961d633bb7a56adc336771ffeab1920",
    "crates/auto-lang-core/src/test_cases/inventory.rs": "c8a8145a18da72a5fa6b5cfe8723a9f65d25f5905374a840483c7dde2a41d6c1",
    "crates/auto-lang/src/bin/auto-case.rs": "1d511041590106327fb6a1db2bc5c2828037ae33b060e226ad0963aa13af0b01",
@@ -6162,7 +6162,7 @@
   },
   "budget": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/original-budget-contracts.json",
-   "sha256": "241e360b95fda75f449c98613470fb19f3a33d66b4b357eb597f54beb06a9e90"
+   "sha256": "6b1a09178b7e9e1bfb945b413a4cb85a785b8c8278530f06fdd48cd7263d4f41"
   },
   "text_reference": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/text-reference-contracts.tsv",

@@ -274,7 +274,7 @@
   "scripts/test-governance/ace_m1_cert_evidence.py": "4e65f5d8c94e7c05c84c673308f8dc7f03d889a13e6243bdac9e5db7f60e1469",
   "scripts/test-governance/ace_m1_arch_acceptance.py": "ae0172f5668077b6e59c49d2755b8f9718b91446d9b257bfade5ee7058893497",
   "crates/auto-lang-core/src/test_cases/ac_av.rs": "a71da692f210dd5fb18d8adc4db1396c49b77544015fc04028c264835c0b1b9a",
-  "crates/auto-lang-core/src/test_cases/ac_mn.rs": "92dd821667dc26c68b160b73588f20be03d0051ff9893e41a1cb3daad11169a7",
+  "crates/auto-lang-core/src/test_cases/ac_mn.rs": "e3c7564cd77fa547d3c9154ce9a006362987fce3dd6f94a405262bce837558df",
   "crates/auto-lang-core/src/test_cases/abi.rs": "dfa474a74d056054d383f13c470d6b8b6961d633bb7a56adc336771ffeab1920",
   "experimental/ace/crates/a2x-worker/src/bin/a2x-formal.rs": "749fb39307dcae13db14c1f0b752cddc6a43f15b6f6ed699ccefc4d45392b06c",
   "experimental/ace/crates/a2x-worker/src/bin/a2c-formal.rs": "aa90b3898385a16abbacc3d9697624613dea64c94b5b1c0a8324582217a38c1d",
