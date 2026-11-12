@@ -186,7 +186,7 @@
       "binary": "ace-av::conformance",
       "module": "av_resident",
       "source_file": "experimental/ace/crates/av/tests/cases/av_resident.rs",
-      "source_sha256": "204b26c92304843b87abb56c19653e3347bd42db786194908073c693c4fecfa9"
+      "source_sha256": "3a3180eaf42a849c100665604dcb8b898efa019ff142f8d1d03ce659e0c9c0ad"
     },
     "ct": {
       "kind": "case-suite",
@@ -210,7 +210,7 @@
       "binary": "ace-source-cte",
       "module": "tests",
       "source_file": "experimental/ace/crates/source-cte/src/tests.rs",
-      "source_sha256": "b2552171b01c88289741ddf7a19f27278f45a05e26a18e95dabb343eb4f46a85"
+      "source_sha256": "e761f6861edc409453d035673f022d075bd9360684c3726b0bac69b1f8adb357"
     }
   },
   "obligations": [

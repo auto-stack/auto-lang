@@ -6158,11 +6158,11 @@
   },
   "architecture": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/architecture-obligations.json",
-   "sha256": "74cf43974e51420f9afbf3f688f0807294a1bac865ed98fb688d19fdff44754a"
+   "sha256": "e4449a5ab684fb175a763b1479415a6b15043f530d109b1d7aa5527d6f975afd"
   },
   "budget": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/original-budget-contracts.json",
-   "sha256": "7b7b5b7c67e0c2a3893d84b615555ced997651a4e742b726e6b266cf2fce7431"
+   "sha256": "241e360b95fda75f449c98613470fb19f3a33d66b4b357eb597f54beb06a9e90"
   },
   "text_reference": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/text-reference-contracts.tsv",
@@ -6246,23 +6246,23 @@
   },
   "ct_mechanisms": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-source-mechanisms-contract.json",
-   "sha256": "3398164009ba6c3e91d4adc74477dc75a52e0035320c26aedf1419acc4b97794"
+   "sha256": "9515d070b61d09aea110a3ac313f3dfa479b66690bdd54342dcd9cd18512ae75"
   },
   "ct_child": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-child-contract.json",
-   "sha256": "0604ef25d1019eb38b7cc8921104c7282066d7447295bb3f4881b90c184f105e"
+   "sha256": "c5965e3a83e4eacc9ed288844c714aa272fe643f4cd61506d0247ab8f348aed6"
   },
   "ct_meta": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-meta-contract.json",
-   "sha256": "d162e21d55105d8392712d3c8617c6c5c795f1535988fada1ed4dc25cb66c059"
+   "sha256": "b6947a13fbb39e94de7578f508f1f718213465d0adeef474bd93b266714bfc3a"
   },
   "ct_restore": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-restore-contract.json",
-   "sha256": "5715262b41d9a4559824a3582cc7bd1e29d4471f830263f24083bbb299deb5d9"
+   "sha256": "13e87a8d4e8289601f1a6086e761a821f8d3c568c94a9e2cc99ddb1b46341779"
   },
   "sq_facts": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/sq-fact-contract.json",
-   "sha256": "db1b3de5515f7820e547ca808f4b7d6d55fb0a89b56e943e60b96928fa4d1111"
+   "sha256": "af93847d9a25b4bfec812c5a639bc62d6621bf2d59b75ed8ce22e130120720cc"
   },
   "syntax_arch": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/syntax-architecture-contract.json",

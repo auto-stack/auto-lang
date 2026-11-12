@@ -4932,14 +4932,17 @@ class ReviewCredentialControls(unittest.TestCase):
                                                         binding, composition, commits)
 
     def test_v08_old_plan1005_credential_or_wrong_revision_or_coverage_refused(self):
-        # F-1013-01 (plan 5.3): a legacy PLAN-1005 credential, a wrong
-        # plan_revision, or a partial/foreign coverage set can never claim
-        # this fix's fresh review — even with correct frozen_commit/candidate.
+        # F-1013-01/F-1025-02: a legacy PLAN-1005 or PLAN-1013 credential, a
+        # wrong plan_revision, or a partial/foreign coverage set can never
+        # claim this closure's fresh review — even with correct
+        # frozen_commit/candidate. (PLAN-1025 coverage is AC-01..08/V-01..10;
+        # the 1013-era AC-01..10 shape is now the refused foreign set.)
         for mutate in (
             lambda c: c.__setitem__('plan', 'PLAN-1005'),
+            lambda c: c.__setitem__('plan', 'PLAN-1013'),
             lambda c: c.__setitem__('plan_revision', 2),
             lambda c: c['coverage'].__setitem__('acceptance_criteria',
-                                                [f'AC-{i:02}' for i in range(1, 9)]),
+                                                [f'AC-{i:02}' for i in range(1, 11)]),
             lambda c: c['coverage'].__setitem__('verifications',
                                                 [f'V-{i:02}' for i in range(1, 14)]),
             lambda c: c['audited'].__setitem__('registered_keys', 1005),
