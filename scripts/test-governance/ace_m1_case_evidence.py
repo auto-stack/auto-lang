@@ -19,7 +19,12 @@ class CaseCopy:
     """Map old absolute *names* into the authorized copy; never open old paths."""
     def __init__(self, scope, manifest='artifact-copy.json'):
         self.scope = scope
-        record, self.manifest_sha256 = scope.read_json(manifest)
+        # PLAN-1013 A-1013-02 knife 3a: the manifest is a one-shot input —
+        # release its conservative decode estimate once the index is built
+        # (self.files stays live; the estimate over-reserves the dict).
+        raw = scope.read_bytes(manifest)
+        nodes = sum(raw.count(bytes([c])) for c in b'{}[],:')
+        record, self.manifest_sha256 = scope.decode_json(raw)
         exact_keys(record, ('schema', 'original_runtime_root', 'files',
                             'runtime_cleanup_complete', 'note'), 'artifact copy')
         require(record['schema'] == 'test-case-artifact-copy/1', 'unknown artifact copy schema')
@@ -39,6 +44,7 @@ class CaseCopy:
             counter(ref['bytes'], 'copied file bytes')
             hash_value(ref['sha256'], 'copied file hash')
             self.files[relative] = ref
+        scope.budget.release_transient(len(raw) + 1 + 7 * len(raw) + 256 * nodes + 4096)
 
     def path_from_original(self, old):
         require(type(old) is str, 'stored artifact must be a path string')
@@ -85,7 +91,12 @@ def admit_case_bindings(copy, expected):
     require(expected.get('executed') == 0 and type(expected.get('executed')) is int,
             'inventory must not claim execution')
     require(type(expected.get('checks')) is list, 'inventory checks must be a list')
-    report, report_sha256 = copy.json('report.json')
+    # PLAN-1013 A-1013-02 knife 3a: the report is a one-shot input — release
+    # its decode estimate once the admitted rows are extracted.
+    copy.verify('report.json')
+    raw = copy.scope.read_bytes('report.json')
+    nodes = sum(raw.count(bytes([c])) for c in b'{}[],:')
+    report, report_sha256 = copy.scope.decode_json(raw)
     exact_keys(report, ('schema', 'suite', 'suite_sha256', 'required_adapters', 'summary',
                         'toolchain', 'coverage_gaps', 'load_errors', 'results'), 'Case report')
     require(report['schema'] == 'autolang.test-report/2', 'unknown Case report schema')
@@ -141,6 +152,7 @@ def admit_case_bindings(copy, expected):
         admitted.append((check, row))
     require(seen == wanted.keys(), 'Case report omits required checks')
     typed_equal(report['summary'], {'total': len(seen), **statuses}, 'Case summary')
+    copy.scope.budget.release_transient(len(raw) + 1 + 7 * len(raw) + 256 * nodes + 4096)
     return {'schema': 'ace.m1.case-bindings/1', 'report_sha256': report_sha256,
             'checks': admitted, 'execution_judgement': 'UNOBSERVED'}
 

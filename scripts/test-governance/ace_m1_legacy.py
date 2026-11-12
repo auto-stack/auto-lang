@@ -65,9 +65,19 @@ def frozen_ledger(repo):
     # Paths and approval hashes are parent-owned, never taken from a report.
     for relative, expected in INPUTS.items():
         repo.sha256(relative, expected)
-    app, _ = repo.read_json(CORPUS + 'applicability.json')
-    rows = [line.split('\t') for line in repo.read_bytes(CORPUS + 'binding.tsv').decode('utf-8').splitlines()
+    # PLAN-1013 A-1013-02 knife 3a: the ledger tables are one-shot inputs —
+    # release each document's conservative decode estimate once the rows are
+    # extracted (the row objects stay live; the estimate over-reserves).
+    transient = 0
+    raw = repo.read_bytes(CORPUS + 'applicability.json')
+    nodes = sum(raw.count(bytes([c])) for c in b'{}[],:')
+    app, _ = repo.decode_json(raw)
+    transient += len(raw) + 1 + 7 * len(raw) + 256 * nodes + 4096
+    raw = repo.read_bytes(CORPUS + 'binding.tsv')
+    rows = [line.split('\t') for line in raw.decode('utf-8').splitlines()
             if line.strip() and not line.startswith('#')]
+    transient += len(raw) + 1
+    repo.budget.release_transient(transient)
     if len(rows) != 131 or any(len(row) != 12 for row in rows):
         raise AdmissionError('frozen binding shape changed')
     claims = {}
