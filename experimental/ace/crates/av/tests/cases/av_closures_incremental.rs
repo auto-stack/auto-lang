@@ -748,38 +748,65 @@ fn av_closures_incremental_dropped_session_releases_roots() {
 }
 
 // Explicit formal benchmark or sustained scale/stress contract.
-mod performance {
-    use super::*;
-
-    /// I10: 512 real body revisions exercise the session and cleanup gates.
-    /// I11 is measured separately with the user-approved 10-sample P90 gate.
-    #[test]
-    fn av_closures_incremental_churn_512() {
-        let mut s = ClosuresUpdateSession::new(None, "main");
-        s.apply_revision(&[("main", main_unit()), ("body", body_unit(1))])
-            .expect("install");
-        for i in 0..512 {
-            let f = (i % 7) as i32 + 2; // bodies f=2..8 — real content churn vs current
-            let out = s
-                .apply_revision(&[("body", body_unit(f))])
-                .unwrap_or_else(|e| panic!("revision {i}: {e}"));
-            assert_eq!(
-                out.gate.unchanged_degraded, 0,
-                "rev {i}: honest revisions only"
-            );
-            assert_eq!(out.live_after_release, 0, "rev {i}: ledger drains");
-        }
-        // I10: bounded churn — 512 revisions, all gates green, session usable.
+/// I10: 512 real body revisions exercise the session and cleanup gates.
+/// I11 is measured separately with the user-approved 10-sample P90 gate.
+#[test]
+fn av_closures_incremental_churn_512() {
+    let mut s = ClosuresUpdateSession::new(None, "main");
+    s.apply_revision(&[("main", main_unit()), ("body", body_unit(1))])
+        .expect("install");
+    for i in 0..512 {
+        let f = (i % 7) as i32 + 2; // bodies f=2..8 — real content churn vs current
         let out = s
-            .apply_revision(&[("body", body_unit(1))])
-            .expect("post-churn");
+            .apply_revision(&[("body", body_unit(f))])
+            .unwrap_or_else(|e| panic!("revision {i}: {e}"));
         assert_eq!(
-            out.gate.rebuilt_units, 0,
-            "post-churn returns to retained historical content"
+            out.gate.unchanged_degraded, 0,
+            "rev {i}: honest revisions only"
         );
-        assert_eq!(out.value, Some(5));
+        assert_eq!(out.live_after_release, 0, "rev {i}: ledger drains");
+    }
+    // I10: bounded churn — 512 revisions, all gates green, session usable.
+    let out = s
+        .apply_revision(&[("body", body_unit(1))])
+        .expect("post-churn");
+    assert_eq!(
+        out.gate.rebuilt_units, 0,
+        "post-churn returns to retained historical content"
+    );
+    assert_eq!(out.value, Some(5));
+    assert!(out.gate.pass());
+}
+#[test]
+fn av_closures_incremental_warm_edit_p90() {
+    let mut session = ClosuresUpdateSession::new(None, "main");
+    session
+        .apply_revision(&[("main", main_unit()), ("body", body_unit(1))])
+        .expect("warm-up");
+    let mut times = Vec::new();
+    for factor in 2..=11 {
+        let start = std::time::Instant::now();
+        let out = session
+            .apply_revision(&[("body", body_unit(factor))])
+            .expect("body edit");
+        times.push(start.elapsed().as_secs_f64() * 1000.0);
+        assert_eq!(out.value, Some(4 + factor * factor));
+        assert_eq!(out.live_after_release, 0);
         assert!(out.gate.pass());
     }
+    let mut sorted = times.clone();
+    sorted.sort_by(f64::total_cmp);
+    println!(
+        "closures warm-edit: samples={times:?}, P90={:.3}ms, limit=2000ms",
+        sorted[8]
+    );
+    assert!(
+        p90_gate_10(&times),
+        "at least 9/10 samples must be <= 2000ms: {times:?}"
+    );
+}
+mod performance {
+    use super::*;
 
     #[test]
     fn av_closures_incremental_store_512_revisions_gc_bounded() {
@@ -927,35 +954,6 @@ mod performance {
         println!(
             "source formal: samples={times:?}, P90={:.3}ms, limit=2000ms",
             sorted.get(8).copied().unwrap_or(f64::NAN)
-        );
-        assert!(
-            p90_gate_10(&times),
-            "at least 9/10 samples must be <= 2000ms: {times:?}"
-        );
-    }
-
-    #[test]
-    fn av_closures_incremental_warm_edit_p90() {
-        let mut session = ClosuresUpdateSession::new(None, "main");
-        session
-            .apply_revision(&[("main", main_unit()), ("body", body_unit(1))])
-            .expect("warm-up");
-        let mut times = Vec::new();
-        for factor in 2..=11 {
-            let start = std::time::Instant::now();
-            let out = session
-                .apply_revision(&[("body", body_unit(factor))])
-                .expect("body edit");
-            times.push(start.elapsed().as_secs_f64() * 1000.0);
-            assert_eq!(out.value, Some(4 + factor * factor));
-            assert_eq!(out.live_after_release, 0);
-            assert!(out.gate.pass());
-        }
-        let mut sorted = times.clone();
-        sorted.sort_by(f64::total_cmp);
-        println!(
-            "closures warm-edit: samples={times:?}, P90={:.3}ms, limit=2000ms",
-            sorted[8]
         );
         assert!(
             p90_gate_10(&times),
