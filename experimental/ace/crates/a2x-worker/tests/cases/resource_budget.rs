@@ -17,69 +17,73 @@ use std::process::Command;
 
 const MANAGEMENT_BUDGET_BYTES: u64 = 48 * 1024 * 1024;
 
-#[test]
-fn warm_steady_state_within_48mib() {
-    let bin = env!("CARGO_BIN_EXE_a2x-mem");
-    let out = Command::new(bin).output().expect("spawn a2x-mem");
-    assert!(
-        out.status.success(),
-        "a2x-mem failed: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let text = String::from_utf8_lossy(&out.stdout);
-    let mut fields = std::collections::BTreeMap::new();
-    for line in text.lines() {
-        if let Some((k, v)) = line.split_once('=') {
-            fields.insert(k.trim().to_string(), v.trim().to_string());
-        }
-    }
-    let warm = fields["warm_max_current_working_set_bytes"]
-        .parse::<u64>()
-        .expect("warm number");
-    let source_bytes: u64 = fields["source_bytes"].parse().expect("source size");
-    let cold_peak: u64 = fields["cold_peak_working_set_bytes"]
-        .parse()
-        .expect("cold peak");
-    assert!(
-        source_bytes >= 273_575,
-        "measurement must run at the frozen load256 scale (got {}B)",
-        source_bytes
-    );
-    assert!(
-        warm <= MANAGEMENT_BUDGET_BYTES,
-        "A2X warm management set {}B exceeds the 48MiB budget",
-        warm
-    );
-    // informational: the upstream cold-compile transient (never asserted —
-    // it is ac-core's cost, recorded here for the plan's resource table)
-    println!(
-        "source={}B cold_peak(upstream)={}B warm_max_current={}B budget={}B",
-        source_bytes, cold_peak, warm, MANAGEMENT_BUDGET_BYTES
-    );
-}
+mod performance {
+    use super::*;
 
-/// PLAN-921: the MIXED-TARGET management budget — Rust and C residents in
-/// ONE session/store together stay within the 48 MiB warm budget (the
-/// combined-WS reading of §5.4; load256 scale preserved).
-#[test]
-fn mixed_target_warm_within_48mib() {
-    let bin = env!("CARGO_BIN_EXE_a2x-mem");
-    let out = Command::new(bin).output().expect("spawn a2x-mem");
-    assert!(
-        out.status.success(),
-        "a2x-mem failed: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let text = String::from_utf8_lossy(&out.stdout);
-    let mixed: u64 = text
-        .lines()
-        .find_map(|l| l.strip_prefix("mixed_target_warm_max_current_working_set_bytes="))
-        .and_then(|v| v.parse().ok())
-        .expect("mixed budget line");
-    assert!(
-        mixed <= MANAGEMENT_BUDGET_BYTES,
-        "mixed-target warm working set {}B exceeds the {}B budget",
-        mixed,
-        MANAGEMENT_BUDGET_BYTES
-    );
+    #[test]
+    fn warm_steady_state_within_48mib() {
+        let bin = env!("CARGO_BIN_EXE_a2x-mem");
+        let out = Command::new(bin).output().expect("spawn a2x-mem");
+        assert!(
+            out.status.success(),
+            "a2x-mem failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let text = String::from_utf8_lossy(&out.stdout);
+        let mut fields = std::collections::BTreeMap::new();
+        for line in text.lines() {
+            if let Some((k, v)) = line.split_once('=') {
+                fields.insert(k.trim().to_string(), v.trim().to_string());
+            }
+        }
+        let warm = fields["warm_max_current_working_set_bytes"]
+            .parse::<u64>()
+            .expect("warm number");
+        let source_bytes: u64 = fields["source_bytes"].parse().expect("source size");
+        let cold_peak: u64 = fields["cold_peak_working_set_bytes"]
+            .parse()
+            .expect("cold peak");
+        assert!(
+            source_bytes >= 273_575,
+            "measurement must run at the frozen load256 scale (got {}B)",
+            source_bytes
+        );
+        assert!(
+            warm <= MANAGEMENT_BUDGET_BYTES,
+            "A2X warm management set {}B exceeds the 48MiB budget",
+            warm
+        );
+        // informational: the upstream cold-compile transient (never asserted —
+        // it is ac-core's cost, recorded here for the plan's resource table)
+        println!(
+            "source={}B cold_peak(upstream)={}B warm_max_current={}B budget={}B",
+            source_bytes, cold_peak, warm, MANAGEMENT_BUDGET_BYTES
+        );
+    }
+
+    /// PLAN-921: the MIXED-TARGET management budget — Rust and C residents in
+    /// ONE session/store together stay within the 48 MiB warm budget (the
+    /// combined-WS reading of §5.4; load256 scale preserved).
+    #[test]
+    fn mixed_target_warm_within_48mib() {
+        let bin = env!("CARGO_BIN_EXE_a2x-mem");
+        let out = Command::new(bin).output().expect("spawn a2x-mem");
+        assert!(
+            out.status.success(),
+            "a2x-mem failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let text = String::from_utf8_lossy(&out.stdout);
+        let mixed: u64 = text
+            .lines()
+            .find_map(|l| l.strip_prefix("mixed_target_warm_max_current_working_set_bytes="))
+            .and_then(|v| v.parse().ok())
+            .expect("mixed budget line");
+        assert!(
+            mixed <= MANAGEMENT_BUDGET_BYTES,
+            "mixed-target warm working set {}B exceeds the {}B budget",
+            mixed,
+            MANAGEMENT_BUDGET_BYTES
+        );
+    }
 }

@@ -27,7 +27,7 @@ ffi-dual = { max-threads = 1 }
 # ACE formal measurements run without overlapping other tests in this invocation.
 # https://nexte.st/docs/configuration/threads-required/
 [[profile.default.overrides]]
-filter = "test(/::performance::/)"
+filter = "test(/(^|::)performance::/)"
 threads-required = "num-test-threads"
 
 [[profile.default.overrides]]
@@ -91,3 +91,10 @@ threads-required = "num-test-threads"
 [[profile.default.overrides]]
 filter = "test(abi_resource939_six_scenarios_30_samples)"
 threads-required = "num-test-threads"
+
+
+# PLAN-1016: explicitly selected formal pressure suite prioritizes stable
+# measurements over throughput. Concurrency inside a test's own protocol
+# witness is preserved; independent test cases never overlap.
+[profile.ace-perf]
+test-threads = 1

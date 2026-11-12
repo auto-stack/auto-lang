@@ -752,43 +752,6 @@ fn restore_readmits_and_miss_falls_back() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// T-07 / V-07: 512 real edits — every sampled revision correct, content
-/// history bounded, and a snapshot pinned at revision 0 stays usable the
-/// whole way (liveness), then is dropped (reclamation).
-#[test]
-fn case_512_revision_soak_bounded_history_pinned_old_snapshot() {
-    let mut s = warmup(SRC, "d_main", &[]).expect("warm-up");
-    let cancel = CancelFlag::new(false);
-    let pinned = s.current();
-    let star3 = SRC.find("x * 3").expect("target");
-    let pos = (star3 + 4) as u64;
-    let digit = |k: u32| char::from(b'0' + (k % 10) as u8);
-
-    for k in 3u32..(3 + 512) {
-        let out = s
-            .edit(pos, pos + 1, digit(k).to_string().into_bytes())
-            .expect("edit");
-        assert!(out.ok, "revision {k}: {:?}", out.non_fast_path_reason);
-        assert_eq!(s.revision(), (k - 2) as u64);
-        if k % 64 == 0 {
-            let want = 5 * (k % 10) as i32 + 7 + 1;
-            let (r, _) = s.run(&ExecLimits::default(), &cancel);
-            assert_i32(&r, want, "revision {k} result");
-        }
-    }
-    assert_eq!(s.revision(), 512);
-    // History stays bounded (2 functions × HISTORY_CAP).
-    assert!(
-        s.history_len() <= 2 * ace_av::session::HISTORY_CAP,
-        "history {} unbounded",
-        s.history_len()
-    );
-    // The pinned revision-0 snapshot stayed ALIVE the whole soak.
-    let (r, _) = execute_program(&pinned, &ExecLimits::default(), &cancel);
-    assert_i32(&r, 23, "pinned snapshot still usable");
-    drop(pinned); // reclaimed; nothing to assert beyond drop semantics.
-}
-
 /// T-07 / V-02 (span axis): a trap's span maps through the accepted
 /// source's line/col index, and an edit that shifts the trapping
 /// expression moves the mapping with it.
@@ -1364,5 +1327,42 @@ mod performance {
             assert_eq!(loaded.payload, sentinel_payload);
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// T-07 / V-07: 512 real edits — every sampled revision correct, content
+    /// history bounded, and a snapshot pinned at revision 0 stays usable the
+    /// whole way (liveness), then is dropped (reclamation).
+    #[test]
+    fn case_512_revision_soak_bounded_history_pinned_old_snapshot() {
+        let mut s = warmup(SRC, "d_main", &[]).expect("warm-up");
+        let cancel = CancelFlag::new(false);
+        let pinned = s.current();
+        let star3 = SRC.find("x * 3").expect("target");
+        let pos = (star3 + 4) as u64;
+        let digit = |k: u32| char::from(b'0' + (k % 10) as u8);
+
+        for k in 3u32..(3 + 512) {
+            let out = s
+                .edit(pos, pos + 1, digit(k).to_string().into_bytes())
+                .expect("edit");
+            assert!(out.ok, "revision {k}: {:?}", out.non_fast_path_reason);
+            assert_eq!(s.revision(), (k - 2) as u64);
+            if k % 64 == 0 {
+                let want = 5 * (k % 10) as i32 + 7 + 1;
+                let (r, _) = s.run(&ExecLimits::default(), &cancel);
+                assert_i32(&r, want, "revision {k} result");
+            }
+        }
+        assert_eq!(s.revision(), 512);
+        // History stays bounded (2 functions × HISTORY_CAP).
+        assert!(
+            s.history_len() <= 2 * ace_av::session::HISTORY_CAP,
+            "history {} unbounded",
+            s.history_len()
+        );
+        // The pinned revision-0 snapshot stayed ALIVE the whole soak.
+        let (r, _) = execute_program(&pinned, &ExecLimits::default(), &cancel);
+        assert_i32(&r, 23, "pinned snapshot still usable");
+        drop(pinned); // reclaimed; nothing to assert beyond drop semantics.
     }
 }

@@ -3,8 +3,8 @@
   "plan": "PLAN-893",
   "views": {
     "affected": "plan authors and review name the affected complete responsibility groups and necessary consumer groups; no --changes auto graph",
-    "slow": "this items[] list: current native navigation + single-item replay via the fixed driver; overlap dedupes by same-config OR in one invocation",
-    "formal": "formal capability gates stay with the explicit ace-performance group and the original scripts/conditions; a slow-list single round is not a formal P90"
+    "slow": "13 original slow obligations retain native identities and owners; replay explicitly through ace-perf, outside ordinary package groups",
+    "formal": "formal capability gates stay with the explicit ace-perf group and the original scripts/conditions; a slow-list single round is not a formal P90"
   },
   "items": [
     {
@@ -22,10 +22,10 @@
       },
       "groups": {
         "responsibility": "ace-av",
-        "formal": "ace-performance",
-        "formal_note": "selected by ace-performance via ::performance:: namespace"
+        "formal": "ace-perf",
+        "formal_note": "selected by ace-perf via ::performance:: namespace"
       },
-      "replay": "cargo t ace-av --test-name v07_512_revisions_bounded_history_stable_watermark --out <fresh-dir>",
+      "replay": "cargo t ace-perf --test-name function_incremental::performance::v07_512_revisions_bounded_history_stable_watermark --out <fresh-dir>",
       "conditions": {
         "ignored": false,
         "windows_only": false
@@ -47,10 +47,10 @@
       },
       "groups": {
         "responsibility": "ace-av",
-        "formal": "ace-performance",
-        "formal_note": "selected by ace-performance via ::performance:: namespace"
+        "formal": "ace-perf",
+        "formal_note": "selected by ace-perf via ::performance:: namespace"
       },
-      "replay": "cargo t ace-av --test-name v07_full_storage_axis_512_edits_gc_restart_sentinel --out <fresh-dir>",
+      "replay": "cargo t ace-perf --test-name function_incremental::performance::v07_full_storage_axis_512_edits_gc_restart_sentinel --out <fresh-dir>",
       "conditions": {
         "ignored": false,
         "windows_only": false
@@ -72,10 +72,10 @@
       },
       "groups": {
         "responsibility": "ace-comptime",
-        "formal": "ace-performance",
-        "formal_note": "selected by ace-performance via ::performance:: namespace"
+        "formal": "ace-perf",
+        "formal_note": "selected by ace-perf via ::performance:: namespace"
       },
-      "replay": "cargo t ace-comptime --test-name resources_real_watermark_gc_physical_delete_and_converge --out <fresh-dir>",
+      "replay": "cargo t ace-perf --test-name cte_resources_tests::performance::resources_real_watermark_gc_physical_delete_and_converge --out <fresh-dir>",
       "conditions": {
         "ignored": false,
         "windows_only": false
@@ -97,10 +97,10 @@
       },
       "groups": {
         "responsibility": "ace-comptime",
-        "formal": "ace-performance",
-        "formal_note": "selected by ace-performance via ::performance:: namespace"
+        "formal": "ace-perf",
+        "formal_note": "selected by ace-perf via ::performance:: namespace"
       },
-      "replay": "cargo t ace-comptime --test-name resources_thirty_two_mib_pages_and_512_distinct_revisions --out <fresh-dir>",
+      "replay": "cargo t ace-perf --test-name cte_resources_tests::performance::resources_thirty_two_mib_pages_and_512_distinct_revisions --out <fresh-dir>",
       "conditions": {
         "ignored": false,
         "windows_only": false
@@ -122,10 +122,10 @@
       },
       "groups": {
         "responsibility": "ace-comptime",
-        "formal": "ace-performance",
-        "formal_note": "selected by ace-performance via ::performance:: namespace"
+        "formal": "ace-perf",
+        "formal_note": "selected by ace-perf via ::performance:: namespace"
       },
-      "replay": "cargo t ace-comptime --test-name cte_turnaround_injected_spike_control_is_red --out <fresh-dir>",
+      "replay": "cargo t ace-perf --test-name cte_turnaround_tests::performance::cte_turnaround_injected_spike_control_is_red --out <fresh-dir>",
       "conditions": {
         "ignored": false,
         "windows_only": false
@@ -147,10 +147,10 @@
       },
       "groups": {
         "responsibility": "ace-comptime",
-        "formal": "ace-performance",
-        "formal_note": "selected by ace-performance via ::performance:: namespace"
+        "formal": "ace-perf",
+        "formal_note": "selected by ace-perf via ::performance:: namespace"
       },
-      "replay": "cargo t ace-comptime --test-name cte_turnaround_resident_degrade_gate_and_control --out <fresh-dir>",
+      "replay": "cargo t ace-perf --test-name cte_turnaround_tests::performance::cte_turnaround_resident_degrade_gate_and_control --out <fresh-dir>",
       "conditions": {
         "ignored": false,
         "windows_only": false
@@ -172,10 +172,10 @@
       },
       "groups": {
         "responsibility": "ace-native",
-        "formal": "ace-performance",
-        "formal_note": "selected by ace-performance via ::performance:: namespace"
+        "formal": "ace-perf",
+        "formal_note": "selected by ace-perf via ::performance:: namespace"
       },
-      "replay": "cargo t ace-native --test-name mir_native_resources_cold_set_churn_gc_convergence --out <fresh-dir>",
+      "replay": "cargo t ace-perf --test-name resources_tier::performance::mir_native_resources_cold_set_churn_gc_convergence --out <fresh-dir>",
       "conditions": {
         "ignored": false,
         "windows_only": true
@@ -197,10 +197,10 @@
       },
       "groups": {
         "responsibility": "ace-semantics",
-        "formal": "ace-performance",
-        "formal_note": "selected by ace-performance via ::performance:: namespace"
+        "formal": "ace-perf",
+        "formal_note": "selected by ace-perf via ::performance:: namespace"
       },
-      "replay": "cargo t ace-semantics --test-name sema_budget_deep_chain_4096_full_path --out <fresh-dir>",
+      "replay": "cargo t ace-perf --test-name sema_budget_pressure::performance::sema_budget_deep_chain_4096_full_path --out <fresh-dir>",
       "conditions": {
         "ignored": false,
         "windows_only": false
@@ -222,10 +222,10 @@
       },
       "groups": {
         "responsibility": "ace-syntax",
-        "formal": "ace-performance",
-        "formal_note": "selected by ace-performance via ::performance:: namespace"
+        "formal": "ace-perf",
+        "formal_note": "selected by ace-perf via ::performance:: namespace"
       },
-      "replay": "cargo t ace-syntax --test-name syntax_budget_64mib_streaming_small_queries --out <fresh-dir>",
+      "replay": "cargo t ace-perf --test-name syntax_budget::performance::syntax_budget_64mib_streaming_small_queries --out <fresh-dir>",
       "conditions": {
         "ignored": false,
         "windows_only": false
@@ -247,10 +247,10 @@
       },
       "groups": {
         "responsibility": "ace-host",
-        "formal": "ace-performance",
-        "formal_note": "selected by ace-performance via ::performance:: namespace"
+        "formal": "ace-perf",
+        "formal_note": "selected by ace-perf via ::performance:: namespace"
       },
-      "replay": "cargo t ace-host --test-name ac_av_probe_formal_turnaround_gates --out <fresh-dir>",
+      "replay": "cargo t ace-perf --test-name tests::av_protocol::performance::ac_av_probe_formal_turnaround_gates --out <fresh-dir>",
       "conditions": {
         "ignored": false,
         "windows_only": false
@@ -272,10 +272,10 @@
       },
       "groups": {
         "responsibility": "ace-host",
-        "formal": "ace-performance",
-        "formal_note": "selected by ace-performance via ::performance:: namespace"
+        "formal": "ace-perf",
+        "formal_note": "selected by ace-perf via ::performance:: namespace"
       },
-      "replay": "cargo t ace-host --test-name mir_native_turnaround_body_edit_gate --out <fresh-dir>",
+      "replay": "cargo t ace-perf --test-name tests::mir_native_protocol::performance::mir_native_turnaround_body_edit_gate --out <fresh-dir>",
       "conditions": {
         "ignored": false,
         "windows_only": true
@@ -297,10 +297,10 @@
       },
       "groups": {
         "responsibility": "ace-av",
-        "formal": "ace-performance",
-        "formal_note": "selected by ace-performance via ::performance:: namespace"
+        "formal": "ace-perf",
+        "formal_note": "selected by ace-perf via ::performance:: namespace"
       },
-      "replay": "cargo t ace-av --test-name av_resources_32mib_product_random_read_and_churn --out <fresh-dir>",
+      "replay": "cargo t ace-perf --test-name resources_tier::performance::av_resources_32mib_product_random_read_and_churn --out <fresh-dir>",
       "conditions": {
         "ignored": false,
         "windows_only": false
@@ -322,10 +322,10 @@
       },
       "groups": {
         "responsibility": "ace-host",
-        "formal": "ace-performance",
-        "formal_note": "selected by ace-performance via ::performance:: namespace"
+        "formal": "ace-perf",
+        "formal_note": "selected by ace-perf via ::performance:: namespace"
       },
-      "replay": "cargo t ace-host --test-name mir_native_turnaround_signature_rebuild_gate --out <fresh-dir>",
+      "replay": "cargo t ace-perf --test-name tests::mir_native_protocol::performance::mir_native_turnaround_signature_rebuild_gate --out <fresh-dir>",
       "conditions": {
         "ignored": false,
         "windows_only": true

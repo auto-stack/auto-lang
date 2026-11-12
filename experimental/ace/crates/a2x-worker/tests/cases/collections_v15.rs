@@ -241,15 +241,18 @@ fn v15_deep_clone_rollback_and_cleanup() {
     );
 }
 
-/// RV-2 (final review r1): the frozen resource-side witness — a chain of
-/// 3072+ nesting levels constructed, cloned and freed ENTIRELY inside a
-/// 256KiB-stack thread (the iterative work-loop cleanup never multiplies
-/// the host stack; a shallow control proves the mechanism, not the depth).
-#[test]
-fn v15_deep_3072_small_stack_witness() {
-    let exe = compile_probe(
-        "deep-small-stack",
-        r#"
+mod performance {
+    use super::*;
+
+    /// RV-2 (final review r1): the frozen resource-side witness — a chain of
+    /// 3072+ nesting levels constructed, cloned and freed ENTIRELY inside a
+    /// 256KiB-stack thread (the iterative work-loop cleanup never multiplies
+    /// the host stack; a shallow control proves the mechanism, not the depth).
+    #[test]
+    fn v15_deep_3072_small_stack_witness() {
+        let exe = compile_probe(
+            "deep-small-stack",
+            r#"
 mod a2x_runtime;
 use a2x_runtime::*;
 
@@ -283,13 +286,14 @@ fn main() {
     }
 }
 "#,
-    );
-    let (out, _) = run_with(&exe, &[]);
-    // 3072-deep chain built, cloned, both freed under the small stack,
-    // live accounting back to zero
-    assert!(out.contains("value:6144"), "3072 + clone 3072: {out}");
-    assert!(
-        out.contains("str_bytes:0"),
-        "both chains fully reclaimed: {out}"
-    );
+        );
+        let (out, _) = run_with(&exe, &[]);
+        // 3072-deep chain built, cloned, both freed under the small stack,
+        // live accounting back to zero
+        assert!(out.contains("value:6144"), "3072 + clone 3072: {out}");
+        assert!(
+            out.contains("str_bytes:0"),
+            "both chains fully reclaimed: {out}"
+        );
+    }
 }

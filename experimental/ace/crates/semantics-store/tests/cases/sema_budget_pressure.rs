@@ -64,120 +64,6 @@ fn filler_page(i: usize, fields: usize) -> SemaPage {
     }
 }
 
-/// V-06: ≥32 MiB of real semantic pages, generated and published
-/// STREAMED (one page live at a time), with the in-process managed
-/// ledger never exceeding 16 MiB and the private-bytes increment
-/// staying within the 64 MiB target.
-#[test]
-fn sema_budget_streamed_32mib_under_managed_budget() {
-    let root = scratch("budget-32mib");
-    let store = open_store(&root.join("store")).unwrap();
-    let mut meter = SessionMeter::new();
-
-    // 256 pages × ~3000 fields ≈ 140 KiB payload each → ≥32 MiB total
-    let fields = 3000;
-    let pages = (0..256).map(|i| filler_page(i, fields));
-    let mem_before = ace_artifacts::sysinfo::imp::current_process_memory().private_bytes;
-
-    // F-796-R6-05: sample the OS private bytes DURING the publish window
-    // (a thread at ~2ms), not just before/after — the peak is what the
-    // 64MiB target constrains, and the streamed page must be charged to
-    // the SAME meter that the flow consumes.
-    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let peak = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
-    let sampler = {
-        let stop = stop.clone();
-        let peak = peak.clone();
-        std::thread::spawn(move || {
-            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
-                let now = ace_artifacts::sysinfo::imp::current_process_memory().private_bytes;
-                peak.fetch_max(now, std::sync::atomic::Ordering::Relaxed);
-                std::thread::sleep(std::time::Duration::from_millis(2));
-            }
-        })
-    };
-
-    let (count, total_bytes) = publish_streamed(
-        &store,
-        pages,
-        |p| {
-            let name = match &p.body {
-                ace_semantics_contract::PageBody::RecordMeta(m) => m.shape.decl.name.clone(),
-                _ => "x".into(),
-            };
-            (
-                ace_semantics_store::SEMA_LAYER,
-                QueryKey {
-                    layer: ace_semantics_store::SEMA_LAYER,
-                    components: vec![("page".into(), name)],
-                },
-            )
-        },
-        None,
-        Some(&mut meter),
-    )
-    .unwrap();
-    stop.store(true, std::sync::atomic::Ordering::Relaxed);
-    sampler.join().unwrap();
-
-    assert!(
-        total_bytes >= 32 * 1024 * 1024,
-        "streamed pages must reach ≥32MiB, got {}",
-        total_bytes
-    );
-    assert_eq!(count, 256);
-    assert!(
-        meter.managed_bytes() <= MANAGED_BUDGET,
-        "managed ledger must stay ≤16MiB, got {}",
-        meter.managed_bytes()
-    );
-    assert!(
-        meter.scratch_peak() >= 100 * 1024,
-        "the streamed page must actually be charged (peak {} bytes)",
-        meter.scratch_peak()
-    );
-    let peak_private = peak.load(std::sync::atomic::Ordering::Relaxed);
-    let delta = peak_private.saturating_sub(mem_before);
-    assert!(
-        delta <= 64 * 1024 * 1024,
-        "private-bytes PEAK increment must stay ≤64MiB, got {}",
-        delta
-    );
-    // pages really are on disk
-    assert!(store.space().blocks >= 32 * 1024 * 1024);
-}
-
-/// Hot LRU honors its 8 MiB cap (evictions) and the scratch ledger
-/// returns bytes on drop; over-budget asks are controlled rejections.
-#[test]
-fn sema_budget_hot_lru_and_scratch_ledgers() {
-    let mut meter = SessionMeter::new();
-    // insert pages until well past 8 MiB — the LRU must evict
-    let mut i = 0usize;
-    while meter.hot.evictions() == 0 && i < 4096 {
-        let page = filler_page(i, 1500); // ~130 KiB estimated live each
-        meter.hot.insert(format!("p{i}"), page).unwrap();
-        i += 1;
-    }
-    assert!(meter.hot.evictions() > 0, "LRU must have evicted by now");
-    assert!(meter.hot.bytes() <= HOT_BUDGET, "hot ledger capped at 8MiB");
-
-    // scratch: reserved and returned (RAII)
-    {
-        let _g = meter.scratch(1024 * 1024).unwrap();
-    }
-    assert_eq!(meter.scratch_peak(), 1024 * 1024);
-    assert_eq!(
-        meter.managed_bytes(),
-        meter.hot.bytes(),
-        "scratch returned on drop"
-    );
-    // a page bigger than the whole budget is a controlled rejection
-    let mut strict = HotPages::new(1024);
-    let big = filler_page(0, 5000);
-    assert!(strict.insert("big".into(), big).is_err());
-}
-
 /// The 512 KiB page-payload cap is enforced at encode: big-but-legal
 /// passes, oversized is a controlled rejection (never an OOM write).
 #[test]
@@ -484,6 +370,89 @@ fn sema_budget_target_name_is_part_of_the_page_budget() {
 mod performance {
     use super::*;
 
+    /// V-06: ≥32 MiB of real semantic pages, generated and published
+    /// STREAMED (one page live at a time), with the in-process managed
+    /// ledger never exceeding 16 MiB and the private-bytes increment
+    /// staying within the 64 MiB target.
+    #[test]
+    fn sema_budget_streamed_32mib_under_managed_budget() {
+        let root = scratch("budget-32mib");
+        let store = open_store(&root.join("store")).unwrap();
+        let mut meter = SessionMeter::new();
+
+        // 256 pages × ~3000 fields ≈ 140 KiB payload each → ≥32 MiB total
+        let fields = 3000;
+        let pages = (0..256).map(|i| filler_page(i, fields));
+        let mem_before = ace_artifacts::sysinfo::imp::current_process_memory().private_bytes;
+
+        // F-796-R6-05: sample the OS private bytes DURING the publish window
+        // (a thread at ~2ms), not just before/after — the peak is what the
+        // 64MiB target constrains, and the streamed page must be charged to
+        // the SAME meter that the flow consumes.
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let peak = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let sampler = {
+            let stop = stop.clone();
+            let peak = peak.clone();
+            std::thread::spawn(move || {
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    let now = ace_artifacts::sysinfo::imp::current_process_memory().private_bytes;
+                    peak.fetch_max(now, std::sync::atomic::Ordering::Relaxed);
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+            })
+        };
+
+        let (count, total_bytes) = publish_streamed(
+            &store,
+            pages,
+            |p| {
+                let name = match &p.body {
+                    ace_semantics_contract::PageBody::RecordMeta(m) => m.shape.decl.name.clone(),
+                    _ => "x".into(),
+                };
+                (
+                    ace_semantics_store::SEMA_LAYER,
+                    QueryKey {
+                        layer: ace_semantics_store::SEMA_LAYER,
+                        components: vec![("page".into(), name)],
+                    },
+                )
+            },
+            None,
+            Some(&mut meter),
+        )
+        .unwrap();
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        sampler.join().unwrap();
+
+        assert!(
+            total_bytes >= 32 * 1024 * 1024,
+            "streamed pages must reach ≥32MiB, got {}",
+            total_bytes
+        );
+        assert_eq!(count, 256);
+        assert!(
+            meter.managed_bytes() <= MANAGED_BUDGET,
+            "managed ledger must stay ≤16MiB, got {}",
+            meter.managed_bytes()
+        );
+        assert!(
+            meter.scratch_peak() >= 100 * 1024,
+            "the streamed page must actually be charged (peak {} bytes)",
+            meter.scratch_peak()
+        );
+        let peak_private = peak.load(std::sync::atomic::Ordering::Relaxed);
+        let delta = peak_private.saturating_sub(mem_before);
+        assert!(
+            delta <= 64 * 1024 * 1024,
+            "private-bytes PEAK increment must stay ≤64MiB, got {}",
+            delta
+        );
+        // pages really are on disk
+        assert!(store.space().blocks >= 32 * 1024 * 1024);
+    }
+
     /// V-06 deep chains: a 4096-term operator spine AND a 4096-deep record
     /// reference chain go parse → project → infer → canonical → publish →
     /// read-back with no native-recursion failure anywhere on the path.
@@ -624,4 +593,52 @@ mod performance {
         assert!(store.lease_live(&lease.lease_id).unwrap());
         lease.release();
     }
+
+    /// Hot LRU honors its 8 MiB cap (evictions) and the scratch ledger
+    /// returns bytes on drop; over-budget asks are controlled rejections.
+    #[test]
+    fn sema_budget_hot_lru_and_scratch_ledgers() {
+        let mut meter = SessionMeter::new();
+        // insert pages until well past 8 MiB — the LRU must evict
+        let mut i = 0usize;
+        while meter.hot.evictions() == 0 && i < 4096 {
+            let page = filler_page(i, 1500); // ~130 KiB estimated live each
+            meter.hot.insert(format!("p{i}"), page).unwrap();
+            i += 1;
+        }
+        assert!(meter.hot.evictions() > 0, "LRU must have evicted by now");
+        assert!(meter.hot.bytes() <= HOT_BUDGET, "hot ledger capped at 8MiB");
+
+        // scratch: reserved and returned (RAII)
+        {
+            let _g = meter.scratch(1024 * 1024).unwrap();
+        }
+        assert_eq!(meter.scratch_peak(), 1024 * 1024);
+        assert_eq!(
+            meter.managed_bytes(),
+            meter.hot.bytes(),
+            "scratch returned on drop"
+        );
+        // a page bigger than the whole budget is a controlled rejection
+        let mut strict = HotPages::new(1024);
+        let big = filler_page(0, 5000);
+        assert!(strict.insert("big".into(), big).is_err());
+    }
+}
+
+#[test]
+fn sema_budget_small_lru_eviction_and_scratch_release() {
+    let mut hot = HotPages::new(4096);
+    for i in 0..8 {
+        hot.insert(format!("small-{i}"), filler_page(i, 8)).unwrap();
+    }
+    assert!(hot.evictions() > 0);
+    assert!(hot.bytes() <= 4096);
+    let mut meter = SessionMeter::new();
+    {
+        let _guard = meter.scratch(1024).unwrap();
+    }
+    assert_eq!(meter.scratch_peak(), 1024);
+    assert_eq!(meter.managed_bytes(), meter.hot.bytes());
+    assert!(meter.scratch(SCRATCH_BUDGET + 1).is_err());
 }

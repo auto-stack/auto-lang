@@ -11,7 +11,8 @@
 - `cargo t`：原固定日常范围，保原适用条件，ACE宿主改为显式组。
 - `cargo t parser`、`cargo t parser vm`：完整命名空间子树及配置内明确的集成测试。
 - `cargo t ace`：独立ACE workspace常规自动测试与必要SDK私有桥接；不叠加语言日常包。
-- `cargo t ace-performance`：明确保留的原正式计量/资源campaign，原样本、阈值、ignore及平台条件保持；占用当前nextest全池，避免同轮其他测试干扰。
+- ACE模块组（`ace-syntax`、`ace-semantics`、`ace-comptime`等）：完整常规正确性集合，排除`::performance::`正式性能/压力。
+- `cargo t ace-perf`：显式专项套件（原ace-performance改名），平时及普通Plan收尾不执行；明确保留原正式计量/资源campaign，原样本、阈值、ignore及平台条件保持；占用当前nextest全池，避免同轮其他测试干扰。
 - `cargo t all`：显式语言仓全部固定组，不含UI/Man外仓批次，仍保ignore/平台/里程碑条件。
 - `cargo t --list`：只读配置组名，不触发Cargo元数据、发现或构建。
 - `cargo t <组> --select-only [--out <新目录>]`：只输出固定调用计划，不认证实际发现/通过。Case组静态预览只输出stdout，不支持--out，以免绕过需真实owner工具的输出域审查。
@@ -106,3 +107,46 @@ Windows受计量命令禁用RUSTC_WRAPPER/RUSTC_WORKSPACE_WRAPPER，保原rustc�
 - `scripts/test-governance/ace_cost_report.py` 是**只读**归因：输入=既有`cargo t --out`产物
   （results.json/命令meter/libtest终态/TestCase收据），不启动测试/Job/编译，不覆写旧报告；
   治理测试=固定组`infra-ace-cost-report`。两者均不建第二目录/第二runner/影响图。
+
+
+## 正式性能/压力与常规组分离（PLAN-1016，2026-11-12 用户裁定）
+
+既有 `::performance::` 是正式计量/持续规模压力的语义标签，ACE包组与ace集合均显式排除，
+`ace-perf`正向选择同一命名空间，all=false；不新增另一份逐例执行目录，不删除/ignore原测试，
+也不改变样本数、水位、阈值及平台条件。`--test-name`只在所选组内导航，不能从普通组绕过排除；
+单项正式重放使用 `cargo t ace-perf --test-name <完整原生测试名>`。
+
+常规组绿只证明常规选择内的正确性，不能冒充正式性能/压力通过；消费正式义务的架构证据采集
+须显式运行PERF并单独记录，未执行=NOT_RUN，不能把常规entry收据改成原正式事实。
+性能修改专项、里程碑或用户明确要求时运行PERF；普通Plan不隐式附加。其他目录中用途不明的慢测试
+继续审查，不能按耗时一刀切。
+
+本次核实的漏标正式负载：语义32MiB流式页、1MiB参考负载/30样本阶段与报告/周转硬门，
+以及CTE的115fn/256KiB/30修订P90基准，已迁入performance，原体/规模/断言保留。
+CTE常规小修订使用8fn/3修订验证相同值、居民generation与未修改函数全阶段零工作；无P90门。
+
+
+### 串行稳定运行
+
+`ace-perf`使用独立nextest profile：`.config/nextest-full.toml`中的
+`[profile.ace-perf] test-threads = 1`。该profile同时用于真实发现与执行；
+不同测试之间不重叠，普通组的并行设置保持。测试自身用于验证并发安全、同时存活进程树或
+竞态窗口的必要并发保留，不能改串行来绕过这些断言。显式PERF与普通组组合时保持不同profile的
+独立调用，驱动顺序执行。
+
+正式串行campaign的父驱动截止独立为14400秒；普通组仍1800秒，原nextest每测试900秒警告/
+1800秒终止、资源预算和失败判定不变。截止属于调用身份，配置不同的调用不合并。
+这不是日常新增的长门，也不自动重试。原ignored/平台条件保留，例如512次native链接压力仍需
+`cargo t ace-perf --ignored --test-name mn_incremental_store_512_revisions_gc_bounded`明确重放；
+忽略项不充PASS。
+
+全ACE源码审查另将32项漏标的资源负载/规模见证/持续修订/P90测量归入performance，包括每布局
+128MiB、512修订、64/96MiB瞬态采样、load256管理预算和原规模CT需求。保留原测试体、夹具
+字节及门限；为布局校验/范围拒绝和LRU/暂存释放补了单页/4KiB日常控制。
+不将小输入的错误准入、固定资源边界、有限生命周期/弱引用/整数宽度回归按名字批量迁走。
+
+
+选择表达式使用 `test(/(^|::)performance::/)`，同时覆盖根级 `performance::`
+与嵌套 `...::performance::`。只匹配中间双冒号会漏掉native typed-entry的
+`performance::typed_v10_four_state_20_samples_p90_gate`；该正式20样本门也属于ace-perf，
+不再落入ace-native常规组。

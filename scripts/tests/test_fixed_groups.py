@@ -199,6 +199,83 @@ class FixedGroups(unittest.TestCase):
             self.assertTrue(any(row.get('test-group') == 'fixed-http' and 'http' in row['filter']
                                 for row in value['profile']['default']['overrides']))
 
+    def test_ace_module_groups_exclude_formal_performance(self):
+        regular = [g for g in self.groups.values()
+                   if g['runner'] == 'nextest' and g['workspace'] == 'experimental/ace'
+                   and g['name'] != 'ace-perf']
+        self.assertTrue(regular)
+        for group in regular:
+            with self.subTest(group=group['name']):
+                self.assertTrue(group['expression'].endswith('and not test(/(^|::)performance::/)'),
+                                group['expression'])
+
+    def test_ace_formal_suite_is_explicit_and_keeps_original_conditions(self):
+        formal = self.groups['ace-perf']
+        self.assertEqual(formal['expression'], 'test(/(^|::)performance::/)')
+        self.assertFalse(formal['all'])
+        for selection in ([], ['all'], ['ace']):
+            self.assertNotIn('ace-perf', [g['name'] for g in fixed.select(selection, self.value, self.groups)])
+        self.assertIn('--tests', formal['args'])
+        self.assertIn('ace-comptime', formal['args'])
+        self.assertIn('ace-syntax-artifacts', formal['args'])
+
+    def test_ace_perf_uses_a_serial_profile_and_its_own_parent_deadline(self):
+        import tomllib
+        formal = self.groups['ace-perf']
+        self.assertEqual('ace-perf', formal['args'][formal['args'].index('--profile') + 1])
+        config = tomllib.loads((ROOT / '.config/nextest-full.toml').read_text(encoding='utf-8'))
+        self.assertEqual(1, config['profile']['ace-perf']['test-threads'])
+        self.assertEqual(14400, formal['timeout_seconds'])
+        self.assertNotIn('timeout_seconds', self.groups['ace-comptime'])
+
+    def test_invalid_parent_deadline_is_rejected_at_configuration(self):
+        raw = (ROOT / 'scripts/test-groups.toml').read_text(encoding='utf-8')
+        for invalid in ('0', '-1', 'true', '\"120\"'):
+            with self.subTest(invalid=invalid), tempfile.TemporaryDirectory() as temp:
+                config = Path(temp) / 'groups.toml'
+                config.write_text(raw.replace('timeout_seconds = 14400', 'timeout_seconds = ' + invalid), encoding='utf-8')
+                with self.assertRaisesRegex(ValueError, 'invalid fixed group timeout_seconds'):
+                    fixed.configuration(config)
+
+    def test_different_parent_deadlines_never_merge_into_one_invocation(self):
+        group = self.groups['ace-comptime']
+        other = dict(group, name='other', timeout_seconds=60)
+        self.assertEqual(2, len(fixed.invocations([group, other])))
+
+    def test_ace_perf_replaces_the_old_cli_name(self):
+        with self.assertRaisesRegex(ValueError, 'unknown fixed group'):
+            fixed.select(['ace-performance'], self.value, self.groups)
+        self.assertEqual(['ace-perf'], [g['name'] for g in fixed.select(['ace-perf'], self.value, self.groups)])
+
+    def test_formal_suite_covers_packages_with_explicit_performance_modules(self):
+        import re
+        import tomllib
+        args = self.groups['ace-perf']['args']
+        packages = {args[i + 1] for i, arg in enumerate(args[:-1]) if arg == '-p'}
+        owners = set()
+        for relative in subprocess.check_output(['git', 'ls-files', 'experimental/ace/**/*.rs'], cwd=ROOT, text=True).splitlines():
+            source = ROOT / relative
+            # Only tracked source; never descend build outputs for ownership.
+            if 'target' in source.relative_to(ROOT).parts or 'target-batch' in source.relative_to(ROOT).parts:
+                continue
+            if not re.search(r'\bmod\s+performance\s*\{', source.read_text(encoding='utf-8')):
+                continue
+            owner = source.parent
+            while owner != ROOT and not (owner / 'Cargo.toml').is_file():
+                owner = owner.parent
+            manifest = tomllib.loads((owner / 'Cargo.toml').read_text(encoding='utf-8'))
+            owners.add(manifest['package']['name'])
+        self.assertTrue(owners)
+        self.assertFalse(owners - packages, 'formal suite misses: ' + str(owners - packages))
+
+    def test_named_performance_replay_does_not_override_module_exclusion(self):
+        name = 'cte_resources_tests::performance::resources_real_watermark_gc_physical_delete_and_converge'
+        regular = fixed.invocations([self.groups['ace-comptime']], name)[0]
+        formal = fixed.invocations([self.groups['ace-perf']], name)[0]
+        self.assertIn('and not test(/(^|::)performance::/)', regular['expression'])
+        self.assertIn('and test(' + name + ')', formal['expression'])
+        self.assertNotIn('not test(/(^|::)performance::/)', formal['expression'])
+
     def test_ace_set_is_explicit_and_separate_from_daily(self):
         selected = fixed.select(['ace'], self.value, self.groups)
         self.assertEqual([g['name'] for g in selected], ['ace-workspace', 'ace-adapters', 'ace-batch'])

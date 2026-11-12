@@ -420,177 +420,6 @@ fn scale_source() -> String {
     src
 }
 
-#[test]
-fn warm_session_formal_scale_precise_codegen_identity_and_routes() {
-    assert!(common::tools_available());
-    let source = scale_source();
-    // Independent hand model: f0(20)=30, f1(3)=3+3, f2(5)=10, f3(4)=6,
-    // sum(2)=6+3+12+1=22, h0(1)=1, h61(1)=62 → 137.
-    let dir = std::env::temp_dir().join(format!("plan924-scale-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    let (mut session, cold) =
-        ace_native::closures_incremental::ClosuresNativeSession::new(&source, "main", &dir, None)
-            .expect("cold scale session");
-    assert_eq!(
-        cold.exit_code,
-        Some(137),
-        "cold: {}",
-        String::from_utf8_lossy(&cold.stderr)
-    );
-    assert_eq!(
-        cold.work.codegen_units.len(),
-        72,
-        "the scale corpus has 72 units"
-    );
-    let cold_hashes = session.object_hashes();
-    assert_eq!(cold_hashes.len(), 72);
-
-    // Hit: zero production over the installed PE.
-    let hit = session.apply_source(&source).expect("hit");
-    assert_eq!(hit.exit_code, Some(137));
-    assert!(
-        hit.work.codegen_units.is_empty(),
-        "hit codegen: {:?}",
-        hit.work.codegen_units
-    );
-    assert_eq!(hit.work.route, "hit");
-
-    // FIRST lambda body edit (main's f0): base + n -> base + n + 1 (137→138).
-    let edited = source.replace("return base + n }", "return base + n + 1 }");
-    let warm = session.apply_source(&edited).expect("f0 edit");
-    assert_eq!(
-        warm.exit_code,
-        Some(138),
-        "f0: {}",
-        String::from_utf8_lossy(&warm.stderr)
-    );
-    assert_eq!(
-        warm.work.codegen_units,
-        vec!["d___closure_main_0".to_string()],
-        "f0 route: {}",
-        warm.work.route
-    );
-    let after_f0 = session.object_hashes();
-    for unrelated in ["d_h0", "d_h33", "d_h61", "d_sum", "d___closure_make_0"] {
-        assert_eq!(
-            after_f0.get(unrelated),
-            cold_hashes.get(unrelated),
-            "{unrelated} object changed on an unrelated edit"
-        );
-    }
-    assert_ne!(
-        after_f0.get("d___closure_main_0"),
-        cold_hashes.get("d___closure_main_0"),
-        "the edited body's object must change"
-    );
-
-    // MIDDLE lambda edit (main's f2): n * 2 -> n * 3 (138→143).
-    let edited = edited.replace("return n * 2 }", "return n * 3 }");
-    let warm = session.apply_source(&edited).expect("f2 edit");
-    assert_eq!(
-        warm.exit_code,
-        Some(143),
-        "f2: {}",
-        String::from_utf8_lossy(&warm.stderr)
-    );
-    assert_eq!(
-        warm.work.codegen_units,
-        vec!["d___closure_main_1".to_string()]
-    );
-
-    // LAST lambda edit (main's f3): base - n -> base - n - 1 (143→142).
-    let edited = edited.replace("return base - n }", "return base - n - 1 }");
-    let warm = session.apply_source(&edited).expect("f3 edit");
-    assert_eq!(
-        warm.exit_code,
-        Some(142),
-        "f3: {}",
-        String::from_utf8_lossy(&warm.stderr)
-    );
-    assert_eq!(
-        warm.work.codegen_units,
-        vec!["d___closure_main_2".to_string()]
-    );
-
-    // OWNER body edit (V-07): `let base int = 10` -> 11 changes the
-    // owner's own body BETWEEN its creation sites — the owner batch
-    // re-codegens EXACTLY d_main; every sibling lambda body keeps its
-    // linked object (precise invalidation, honest reuse).
-    let edited = edited.replace("let base int = 10", "let base int = 11");
-    let before_owner = session.object_hashes();
-    let owner = session.apply_source(&edited).expect("owner edit");
-    // f0(20)=11+20+1=32, f1(3)=6, f2(5)=15, f3(4)=11-4-1=6 → 144.
-    assert_eq!(
-        owner.exit_code,
-        Some(144),
-        "owner: {}",
-        String::from_utf8_lossy(&owner.stderr)
-    );
-    assert_eq!(
-        owner.work.codegen_units,
-        vec!["d_main".to_string()],
-        "owner route: {}",
-        owner.work.route
-    );
-    assert!(
-        owner.work.route.starts_with("fast-owner"),
-        "route: {}",
-        owner.work.route
-    );
-    let after_owner = session.object_hashes();
-    for sibling in [
-        "d___closure_main_0",
-        "d___closure_main_1",
-        "d___closure_main_2",
-    ] {
-        assert_eq!(
-            after_owner.get(sibling),
-            before_owner.get(sibling),
-            "{sibling} sibling object changed on the owner edit"
-        );
-    }
-
-    // Topology changes are the honest NON-FAST faces: a NEW sibling lambda
-    // (owner topology) and a new top-level function (crosses units) each
-    // rebuild the frontend whole and stay correct.
-    let edited = edited.replace(
-        "return f0(20) + f1(3) + f2(5) + f3(4) + sum(2) + h0(1) + h61(1)",
-        "let f4 = (n int) => { return base + 100 + n }\n    \
-         return f0(20) + f1(3) + f2(5) + f3(4) + f4(1) + sum(2) + h0(1) + h61(1)",
-    );
-    let whole = session.apply_source(&edited).expect("owner topology edit");
-    assert_eq!(
-        whole.exit_code,
-        Some(256), // 144 + (100 + 11 + 1)
-        "owner topology: {}",
-        String::from_utf8_lossy(&whole.stderr)
-    );
-    assert!(
-        whole
-            .work
-            .route
-            .starts_with("nonfast:owner-topology-changed"),
-        "owner topology route: {}",
-        whole.work.route
-    );
-    let edited = edited + "\nfn extra(n int) int { return n + 500 }\n";
-    let whole = session.apply_source(&edited).expect("topology edit");
-    assert_eq!(
-        whole.exit_code,
-        Some(256),
-        "topology: {}",
-        String::from_utf8_lossy(&whole.stderr)
-    );
-    assert!(
-        whole.work.route.starts_with("nonfast:"),
-        "topology route: {}",
-        whole.work.route
-    );
-
-    session.close().expect("close");
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
 // ---- V-12: a trap INSIDE a pinned call sweeps the parked environment -----
 
 #[test]
@@ -679,5 +508,181 @@ fn k02_full_seam_sweep_every_injection_traps_clean_or_completes() {
                 );
             }
         }
+    }
+}
+
+mod performance {
+    use super::*;
+
+    #[test]
+    fn warm_session_formal_scale_precise_codegen_identity_and_routes() {
+        assert!(common::tools_available());
+        let source = scale_source();
+        // Independent hand model: f0(20)=30, f1(3)=3+3, f2(5)=10, f3(4)=6,
+        // sum(2)=6+3+12+1=22, h0(1)=1, h61(1)=62 → 137.
+        let dir = std::env::temp_dir().join(format!("plan924-scale-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (mut session, cold) = ace_native::closures_incremental::ClosuresNativeSession::new(
+            &source, "main", &dir, None,
+        )
+        .expect("cold scale session");
+        assert_eq!(
+            cold.exit_code,
+            Some(137),
+            "cold: {}",
+            String::from_utf8_lossy(&cold.stderr)
+        );
+        assert_eq!(
+            cold.work.codegen_units.len(),
+            72,
+            "the scale corpus has 72 units"
+        );
+        let cold_hashes = session.object_hashes();
+        assert_eq!(cold_hashes.len(), 72);
+
+        // Hit: zero production over the installed PE.
+        let hit = session.apply_source(&source).expect("hit");
+        assert_eq!(hit.exit_code, Some(137));
+        assert!(
+            hit.work.codegen_units.is_empty(),
+            "hit codegen: {:?}",
+            hit.work.codegen_units
+        );
+        assert_eq!(hit.work.route, "hit");
+
+        // FIRST lambda body edit (main's f0): base + n -> base + n + 1 (137→138).
+        let edited = source.replace("return base + n }", "return base + n + 1 }");
+        let warm = session.apply_source(&edited).expect("f0 edit");
+        assert_eq!(
+            warm.exit_code,
+            Some(138),
+            "f0: {}",
+            String::from_utf8_lossy(&warm.stderr)
+        );
+        assert_eq!(
+            warm.work.codegen_units,
+            vec!["d___closure_main_0".to_string()],
+            "f0 route: {}",
+            warm.work.route
+        );
+        let after_f0 = session.object_hashes();
+        for unrelated in ["d_h0", "d_h33", "d_h61", "d_sum", "d___closure_make_0"] {
+            assert_eq!(
+                after_f0.get(unrelated),
+                cold_hashes.get(unrelated),
+                "{unrelated} object changed on an unrelated edit"
+            );
+        }
+        assert_ne!(
+            after_f0.get("d___closure_main_0"),
+            cold_hashes.get("d___closure_main_0"),
+            "the edited body's object must change"
+        );
+
+        // MIDDLE lambda edit (main's f2): n * 2 -> n * 3 (138→143).
+        let edited = edited.replace("return n * 2 }", "return n * 3 }");
+        let warm = session.apply_source(&edited).expect("f2 edit");
+        assert_eq!(
+            warm.exit_code,
+            Some(143),
+            "f2: {}",
+            String::from_utf8_lossy(&warm.stderr)
+        );
+        assert_eq!(
+            warm.work.codegen_units,
+            vec!["d___closure_main_1".to_string()]
+        );
+
+        // LAST lambda edit (main's f3): base - n -> base - n - 1 (143→142).
+        let edited = edited.replace("return base - n }", "return base - n - 1 }");
+        let warm = session.apply_source(&edited).expect("f3 edit");
+        assert_eq!(
+            warm.exit_code,
+            Some(142),
+            "f3: {}",
+            String::from_utf8_lossy(&warm.stderr)
+        );
+        assert_eq!(
+            warm.work.codegen_units,
+            vec!["d___closure_main_2".to_string()]
+        );
+
+        // OWNER body edit (V-07): `let base int = 10` -> 11 changes the
+        // owner's own body BETWEEN its creation sites — the owner batch
+        // re-codegens EXACTLY d_main; every sibling lambda body keeps its
+        // linked object (precise invalidation, honest reuse).
+        let edited = edited.replace("let base int = 10", "let base int = 11");
+        let before_owner = session.object_hashes();
+        let owner = session.apply_source(&edited).expect("owner edit");
+        // f0(20)=11+20+1=32, f1(3)=6, f2(5)=15, f3(4)=11-4-1=6 → 144.
+        assert_eq!(
+            owner.exit_code,
+            Some(144),
+            "owner: {}",
+            String::from_utf8_lossy(&owner.stderr)
+        );
+        assert_eq!(
+            owner.work.codegen_units,
+            vec!["d_main".to_string()],
+            "owner route: {}",
+            owner.work.route
+        );
+        assert!(
+            owner.work.route.starts_with("fast-owner"),
+            "route: {}",
+            owner.work.route
+        );
+        let after_owner = session.object_hashes();
+        for sibling in [
+            "d___closure_main_0",
+            "d___closure_main_1",
+            "d___closure_main_2",
+        ] {
+            assert_eq!(
+                after_owner.get(sibling),
+                before_owner.get(sibling),
+                "{sibling} sibling object changed on the owner edit"
+            );
+        }
+
+        // Topology changes are the honest NON-FAST faces: a NEW sibling lambda
+        // (owner topology) and a new top-level function (crosses units) each
+        // rebuild the frontend whole and stay correct.
+        let edited = edited.replace(
+            "return f0(20) + f1(3) + f2(5) + f3(4) + sum(2) + h0(1) + h61(1)",
+            "let f4 = (n int) => { return base + 100 + n }\n    \
+         return f0(20) + f1(3) + f2(5) + f3(4) + f4(1) + sum(2) + h0(1) + h61(1)",
+        );
+        let whole = session.apply_source(&edited).expect("owner topology edit");
+        assert_eq!(
+            whole.exit_code,
+            Some(256), // 144 + (100 + 11 + 1)
+            "owner topology: {}",
+            String::from_utf8_lossy(&whole.stderr)
+        );
+        assert!(
+            whole
+                .work
+                .route
+                .starts_with("nonfast:owner-topology-changed"),
+            "owner topology route: {}",
+            whole.work.route
+        );
+        let edited = edited + "\nfn extra(n int) int { return n + 500 }\n";
+        let whole = session.apply_source(&edited).expect("topology edit");
+        assert_eq!(
+            whole.exit_code,
+            Some(256),
+            "topology: {}",
+            String::from_utf8_lossy(&whole.stderr)
+        );
+        assert!(
+            whole.work.route.starts_with("nonfast:"),
+            "topology route: {}",
+            whole.work.route
+        );
+
+        session.close().expect("close");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

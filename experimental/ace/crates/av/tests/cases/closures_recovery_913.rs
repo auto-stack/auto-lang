@@ -1168,103 +1168,6 @@ fn av_closures_recovery_913_bounded_by_id_read_enforces_the_budget() {
 }
 
 #[test]
-fn av_closures_recovery_913_churn_and_gc_keep_the_namespace_bounded() {
-    // V-12 / T-04: 512 real revisions (each changing a unit's content) with a
-    // publication per revision. The CURRENT root must still restore with zero
-    // production, GC must be able to reclaim superseded manifests, and the
-    // store must stay far below the 128 MiB namespace budget.
-    // The full 512-revision leg is the formal churn evidence
-    // (AUTO_LANG_CHURN_512=1); the daily gate runs a 128-revision slice of the
-    // same shape so one group run stays bounded.
-    let revisions: usize = if std::env::var("AUTO_LANG_CHURN_512").is_ok() {
-        512
-    } else {
-        128
-    };
-    const NAMESPACE_CAP: u64 = 128 * 1024 * 1024;
-    let store = temp_store("churn");
-    let mut session = ClosuresFunctionSession::new(&store, "main.at");
-    session.apply_source(SRC).expect("cold");
-    let mut ticket = session
-        .publish_source_recovery("ac913-churn")
-        .expect("publish 0");
-    for i in 2..=revisions {
-        // A REAL content change per revision (helper's constant): the value
-        // oracle moves with it, so a stale root cannot masquerade.
-        let src = SRC.replace("return n + 1", &format!("return n + {i}"));
-        let run = session.apply_source(&src).expect("revision");
-        assert_eq!(run.value, 50 + i as i32, "revision {i}");
-        assert!(
-            run.submitted_units >= 1,
-            "revision {i}: the edited unit is submitted"
-        );
-        ticket = session
-            .publish_source_recovery("ac913-churn")
-            .expect("publish");
-    }
-    let final_source = SRC.replace("return n + 1", &format!("return n + {revisions}"));
-    let final_path = write_source(&store, "final.at", &final_source);
-    // The current root restores with ZERO production.
-    let store_arg = store.to_string_lossy().to_string();
-    let final_arg = final_path.to_string_lossy().to_string();
-    let probe = run_probe(&[
-        &store_arg,
-        &ticket.manifest_artifact,
-        &ticket.manifest_digest,
-        &final_arg,
-        "main.at",
-        "d_main",
-        ace_core::source::CLOSURES_SOURCE_PROFILE,
-    ]);
-    assert!(probe.ok, "the final root must restore: {}", probe.line);
-    assert_eq!(probe.json["restore_value"], 50 + revisions as i64);
-    assert_eq!(probe.json["p_axis_attempts"], 0);
-    // GC: superseded manifests are unrooted and collectable; the current
-    // root's required closure survives and the store stays bounded.
-    let handle = ace_artifacts::store::ManagedStore::open(&store).expect("store");
-    let before = ace_artifacts::store::gc::run_gc(
-        &handle,
-        ace_artifacts::store::gc::GcConfig { high: 0, low: 0 },
-    )
-    .expect("gc before");
-    assert!(
-        before.total_after <= NAMESPACE_CAP,
-        "namespace {} bytes exceeds the 128 MiB budget",
-        before.total_after
-    );
-    let count_before = ace_artifacts::store::gc::artifact_count(&handle).expect("count");
-    let receipt = ace_artifacts::store::gc::run_gc(
-        &handle,
-        ace_artifacts::store::gc::GcConfig { high: 0, low: 0 },
-    )
-    .expect("gc");
-    let count_after = ace_artifacts::store::gc::artifact_count(&handle).expect("count");
-    assert!(
-        count_after <= count_before,
-        "GC never grows the artifact set"
-    );
-    assert!(
-        receipt.total_after <= NAMESPACE_CAP,
-        "post-GC namespace {} bytes",
-        receipt.total_after
-    );
-    drop(handle);
-    // ...and the current root still restores after GC.
-    let probe = run_probe(&[
-        &store_arg,
-        &ticket.manifest_artifact,
-        &ticket.manifest_digest,
-        &final_arg,
-        "main.at",
-        "d_main",
-        ace_core::source::CLOSURES_SOURCE_PROFILE,
-    ]);
-    assert!(probe.ok, "the root must survive GC: {}", probe.line);
-    assert_eq!(probe.json["restore_value"], 50 + revisions as i64);
-    session.close().expect("close");
-}
-
-#[test]
 fn av_closures_recovery_913_concurrent_reader_survives_gc() {
     // T-04: a reader restoring the ROOTED accepted state concurrently with
     // GC must never see a torn/vanished closure — the root protects its
@@ -1609,4 +1512,105 @@ fn av_closures_recovery_913_session_entry_matches_probe() {
     let mut session = restored.session;
     assert_eq!(session.unit_names().len(), p.units);
     session.close().expect("close");
+}
+
+mod performance {
+    use super::*;
+
+    #[test]
+    fn av_closures_recovery_913_churn_and_gc_keep_the_namespace_bounded() {
+        // V-12 / T-04: 512 real revisions (each changing a unit's content) with a
+        // publication per revision. The CURRENT root must still restore with zero
+        // production, GC must be able to reclaim superseded manifests, and the
+        // store must stay far below the 128 MiB namespace budget.
+        // The full 512-revision leg is the formal churn evidence
+        // (AUTO_LANG_CHURN_512=1); the daily gate runs a 128-revision slice of the
+        // same shape so one group run stays bounded.
+        let revisions: usize = if std::env::var("AUTO_LANG_CHURN_512").is_ok() {
+            512
+        } else {
+            128
+        };
+        const NAMESPACE_CAP: u64 = 128 * 1024 * 1024;
+        let store = temp_store("churn");
+        let mut session = ClosuresFunctionSession::new(&store, "main.at");
+        session.apply_source(SRC).expect("cold");
+        let mut ticket = session
+            .publish_source_recovery("ac913-churn")
+            .expect("publish 0");
+        for i in 2..=revisions {
+            // A REAL content change per revision (helper's constant): the value
+            // oracle moves with it, so a stale root cannot masquerade.
+            let src = SRC.replace("return n + 1", &format!("return n + {i}"));
+            let run = session.apply_source(&src).expect("revision");
+            assert_eq!(run.value, 50 + i as i32, "revision {i}");
+            assert!(
+                run.submitted_units >= 1,
+                "revision {i}: the edited unit is submitted"
+            );
+            ticket = session
+                .publish_source_recovery("ac913-churn")
+                .expect("publish");
+        }
+        let final_source = SRC.replace("return n + 1", &format!("return n + {revisions}"));
+        let final_path = write_source(&store, "final.at", &final_source);
+        // The current root restores with ZERO production.
+        let store_arg = store.to_string_lossy().to_string();
+        let final_arg = final_path.to_string_lossy().to_string();
+        let probe = run_probe(&[
+            &store_arg,
+            &ticket.manifest_artifact,
+            &ticket.manifest_digest,
+            &final_arg,
+            "main.at",
+            "d_main",
+            ace_core::source::CLOSURES_SOURCE_PROFILE,
+        ]);
+        assert!(probe.ok, "the final root must restore: {}", probe.line);
+        assert_eq!(probe.json["restore_value"], 50 + revisions as i64);
+        assert_eq!(probe.json["p_axis_attempts"], 0);
+        // GC: superseded manifests are unrooted and collectable; the current
+        // root's required closure survives and the store stays bounded.
+        let handle = ace_artifacts::store::ManagedStore::open(&store).expect("store");
+        let before = ace_artifacts::store::gc::run_gc(
+            &handle,
+            ace_artifacts::store::gc::GcConfig { high: 0, low: 0 },
+        )
+        .expect("gc before");
+        assert!(
+            before.total_after <= NAMESPACE_CAP,
+            "namespace {} bytes exceeds the 128 MiB budget",
+            before.total_after
+        );
+        let count_before = ace_artifacts::store::gc::artifact_count(&handle).expect("count");
+        let receipt = ace_artifacts::store::gc::run_gc(
+            &handle,
+            ace_artifacts::store::gc::GcConfig { high: 0, low: 0 },
+        )
+        .expect("gc");
+        let count_after = ace_artifacts::store::gc::artifact_count(&handle).expect("count");
+        assert!(
+            count_after <= count_before,
+            "GC never grows the artifact set"
+        );
+        assert!(
+            receipt.total_after <= NAMESPACE_CAP,
+            "post-GC namespace {} bytes",
+            receipt.total_after
+        );
+        drop(handle);
+        // ...and the current root still restores after GC.
+        let probe = run_probe(&[
+            &store_arg,
+            &ticket.manifest_artifact,
+            &ticket.manifest_digest,
+            &final_arg,
+            "main.at",
+            "d_main",
+            ace_core::source::CLOSURES_SOURCE_PROFILE,
+        ]);
+        assert!(probe.ok, "the root must survive GC: {}", probe.line);
+        assert_eq!(probe.json["restore_value"], 50 + revisions as i64);
+        session.close().expect("close");
+    }
 }

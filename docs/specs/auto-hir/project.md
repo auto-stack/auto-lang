@@ -1,6 +1,6 @@
 # auto-hir
 
-> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。Checked HIR仍由experimental/ace/crates/core的ace-core提供；不因目录调整改变IR及验证边界。普通语言cargo t不构建ACE；cargo t ace选择常规集合，完整包/all及ace-performance保原专项和适用条件。
+> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。Checked HIR仍由experimental/ace/crates/core的ace-core提供；不因目录调整改变IR及验证边界。普通语言cargo t不构建ACE；cargo t ace选择常规集合，模块常规组排除`::performance::`，显式ace-perf保原专项和适用条件。
 
 > **Status**: experimental
 > 路径：`experimental/ace/crates/core`（ACE workspace成员，package `ace-core`） | 技术栈：Rust（cranelift 0.126 栈消费方见 auto-ac）

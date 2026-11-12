@@ -6,7 +6,7 @@
 //! deep-verification axes, the post-restore warm edit's identity counters and
 //! the required-data byte budget.
 //!
-//! Runs under the `ace-performance` fixed group (`test(/::performance::/)`).
+//! Runs under the `ace-perf` fixed group (`test(/::performance::/)`).
 
 pub mod performance {
     use ace_av::closures_fn_session::{ClosuresFunctionSession, RouteReport};

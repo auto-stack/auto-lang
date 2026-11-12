@@ -870,40 +870,44 @@ fn av_data_worker_memory_envelope_b_line() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
-/// F820-R1-02 counter-control: the parent-side sampler must capture a
-/// TRANSIENT staging peak that end-state observation cannot (the child
-/// frees the buffer and exits — there is no end state to sample). A ~64
-/// MiB allocate/touch/hold/free cycle must raise the observed peak by at
-/// least 48 MiB over the same binary's idle baseline.
-#[test]
-fn av_data_worker_peak_sampler_catches_transient() {
-    use ace_av::mempeek::ChildPeakSampler;
-    let worker = env!("CARGO_BIN_EXE_av-worker");
+mod performance {
+    use super::*;
 
-    let mut child = std::process::Command::new(worker)
-        .args(["data-mem-envelope", "--rounds", "0", "--hold-ms", "400"])
-        .spawn()
-        .expect("spawn idle worker");
-    let sampler = ChildPeakSampler::start(child.id(), 2).expect("idle sampler");
-    assert!(child.wait().expect("idle exits").success());
-    let (peak_idle, _) = sampler.stop();
+    /// F820-R1-02 counter-control: the parent-side sampler must capture a
+    /// TRANSIENT staging peak that end-state observation cannot (the child
+    /// frees the buffer and exits — there is no end state to sample). A ~64
+    /// MiB allocate/touch/hold/free cycle must raise the observed peak by at
+    /// least 48 MiB over the same binary's idle baseline.
+    #[test]
+    fn av_data_worker_peak_sampler_catches_transient() {
+        use ace_av::mempeek::ChildPeakSampler;
+        let worker = env!("CARGO_BIN_EXE_av-worker");
 
-    let mut child = std::process::Command::new(worker)
-        .args(["data-mem-envelope", "--transient", "64", "--hold-ms", "50"])
-        .spawn()
-        .expect("spawn transient worker");
-    let sampler = ChildPeakSampler::start(child.id(), 2).expect("transient sampler");
-    assert!(child.wait().expect("transient exits").success());
-    let (peak_transient, samples) = sampler.stop();
-    assert!(samples > 0, "the transient worker was sampled mid-life");
+        let mut child = std::process::Command::new(worker)
+            .args(["data-mem-envelope", "--rounds", "0", "--hold-ms", "400"])
+            .spawn()
+            .expect("spawn idle worker");
+        let sampler = ChildPeakSampler::start(child.id(), 2).expect("idle sampler");
+        assert!(child.wait().expect("idle exits").success());
+        let (peak_idle, _) = sampler.stop();
 
-    let delta = peak_transient.saturating_sub(peak_idle);
-    println!(
+        let mut child = std::process::Command::new(worker)
+            .args(["data-mem-envelope", "--transient", "64", "--hold-ms", "50"])
+            .spawn()
+            .expect("spawn transient worker");
+        let sampler = ChildPeakSampler::start(child.id(), 2).expect("transient sampler");
+        assert!(child.wait().expect("transient exits").success());
+        let (peak_transient, samples) = sampler.stop();
+        assert!(samples > 0, "the transient worker was sampled mid-life");
+
+        let delta = peak_transient.saturating_sub(peak_idle);
+        println!(
         "av820 transient capture: idle={peak_idle} transient-peak={peak_transient} delta={delta} ({:.1} MiB), samples={samples}",
         delta as f64 / (1024.0 * 1024.0)
     );
-    assert!(
+        assert!(
         delta >= 48 * 1024 * 1024,
         "a ~64 MiB mid-life staging peak was NOT captured (delta {delta} bytes) — the sampler cannot prove transient budget compliance"
     );
+    }
 }

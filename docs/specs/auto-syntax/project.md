@@ -1,6 +1,6 @@
 # auto-syntax — Atom 语法驱动的增量词法与无损 CST
 
-> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。ace-syntax-runtime、ace-syntax-grammar、ace-syntax-core与ace-syntax-artifacts位于crates/syntax-*；语法资产位于grammars。普通语言cargo t不构建ACE；cargo t ace选择常规集合，完整包/all及ace-performance保原专项和适用条件。
+> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。ace-syntax-runtime、ace-syntax-grammar、ace-syntax-core与ace-syntax-artifacts位于crates/syntax-*；语法资产位于grammars。普通语言cargo t不构建ACE；cargo t ace选择常规集合，模块常规组排除`::performance::`，显式ace-perf保原专项和适用条件。
 
 > **Status**: experimental（PLAN-787/828已交付有限语法机制；PLAN-927 起七 profile 统一源码前门已接入；scalar常驻AV暖编辑已有真实消费，尚未统一所有源码入口）
 > 路径：`experimental/ace/`（独立 Cargo workspace：runtime/grammar/双 adapter）

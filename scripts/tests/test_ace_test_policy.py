@@ -101,13 +101,13 @@ def validate(document, groups=None):
         if formal:
             if formal not in groups:
                 problems.append('%s: formal group not registered: %s' % (kid, formal))
-            if formal == 'ace-performance' and '::performance::' not in (native.get('test') or ''):
-                problems.append('%s: formal=ace-performance but native test is outside ::performance::' % kid)
+            if formal == 'ace-perf' and '::performance::' not in (native.get('test') or ''):
+                problems.append('%s: formal=ace-perf but native test is outside ::performance::' % kid)
         elif '::performance::' in (native.get('test') or ''):
             problems.append('%s: native test in ::performance:: but no formal group recorded' % kid)
         replay = item.get('replay', '')
-        if groups_field.get('responsibility') and groups_field['responsibility'] not in replay:
-            problems.append('%s: replay does not use its responsibility group' % kid)
+        if replay.split()[0:3] != ['cargo', 't', 'ace-perf']:
+            problems.append('%s: replay must explicitly use ace-perf' % kid)
         if native.get('fn') and native['fn'] not in replay:
             problems.append('%s: replay does not navigate to the frozen fn' % kid)
         if native.get('fn') in KNOWN_T07_NAMES:
@@ -200,11 +200,17 @@ class AceTestPolicyTests(unittest.TestCase):
                 break
         self.assertTrue(any('no formal group recorded' in p for p in validate(document)))
 
+    def test_ordinary_group_cannot_replay_formal_case(self):
+        document = load()
+        item = document['items'][2]
+        item['replay'] = item['replay'].replace('ace-perf', item['groups']['responsibility'])
+        self.assertTrue(any('replay must explicitly use ace-perf' in p for p in validate(document)))
+
     def test_replay_command_matches_frozen_name(self):
         document = load()
         for item in document['items']:
             self.assertIn(item['native']['fn'], item['replay'])
-            self.assertIn(item['groups']['responsibility'], item['replay'])
+            self.assertEqual(['cargo', 't', 'ace-perf'], item['replay'].split()[:3])
 
 
 if __name__ == '__main__':

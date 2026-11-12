@@ -79,8 +79,8 @@ producer与公开收据consumer共用原baseline/retirement/migration/floor，�
 
 - 13项慢例（syntax1/sema1/AV4/native3/CTE4）的当前身份登记在
   [ace-test-policy.md](ace-test-policy.md)所述策略数据：旧888叶ID仅历史对照，改名须治理owner
-  提供一一映射证据；13项全部处于`::performance::`命名空间、formal轴=`cargo t ace-performance`，
-  单项重放经职责组`--test-name`导航（不替代最终完整职责组门）。
+  提供一一映射证据；13项全部处于`::performance::`命名空间、formal轴=`cargo t ace-perf`，
+  单项重放经显式`ace-perf --test-name`导航；模块组常规收尾不运行正式压力。
 - 成本登记=只读报告（[ace-cost-attribution.md](ace-cost-attribution.md)）：真实终态+命令meter+
   逐测试exec_time关联；父侧判定/persist-GC/copy/cleanup在命令粒度UNOBSERVED有界，不填0；
   旧成本跨树/配置漂移标STALE不得复用。不新增执行目录、不改触发/频率/预算。

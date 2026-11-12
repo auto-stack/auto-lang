@@ -500,95 +500,6 @@ fn total_budget_exhaustion_is_a_named_rejection() {
     assert!(e.to_string().contains("budget exhausted"), "{e}");
 }
 
-/// 512-revision churn on the bridge layer with GC convergence, rooted +
-/// leased survival, and lease release flipping liveness (mirrors the 797
-/// 512-revision discipline on the NEW layer).
-#[test]
-fn bridge_512_revision_churn_gc_convergence() {
-    use ace_artifacts::codec::ChunkKind;
-    use ace_artifacts::store::{run_gc, GcConfig, PutRequest};
-    let (store, _root) = store_at("churn");
-    let mut last_art = String::new();
-    let mut leased_art = String::new();
-    for i in 0..512 {
-        let key = bridge::library_fileset_key(&format!("rev-{i:04}"), "rt", "ex");
-        let mut p = format!("revision {i}").into_bytes();
-        p.push((i % 251) as u8);
-        let art = store
-            .put_artifact(PutRequest {
-                layer: bridge::LAYER_BRIDGE_V01.id,
-                key,
-                kind: ChunkKind::LayoutData,
-                payload: p,
-                edges: vec![],
-                project: None,
-            })
-            .expect("put revision");
-        if i == 511 {
-            last_art = art.clone();
-        }
-        if i == 100 {
-            leased_art = art;
-        }
-    }
-    store
-        .register_root("bridge-937-churn", &last_art, "newest")
-        .expect("root newest");
-    let lease = store
-        .acquire_lease("bridge-937-churn", 60, Some(&leased_art))
-        .expect("lease old revision");
-    assert!(store.lease_live(&lease.lease_id).expect("lease live"));
-
-    let space0 = store.space();
-    let floor = space0.db_main + space0.locks + space0.logs;
-    assert!(space0.total > floor);
-    let cfg = GcConfig {
-        high: space0.total - 1,
-        low: floor + 64 * 1024,
-    };
-    let receipt = run_gc(&store, cfg).expect("gc");
-    assert!(
-        receipt.ran,
-        "GC must run over the watermark: {}",
-        receipt.reason
-    );
-    assert!(
-        receipt.deleted_chunks >= 500,
-        "churn bulk reclaimed: {receipt:?}"
-    );
-
-    // rooted newest + leased revision survive
-    assert!(store
-        .get_artifact(
-            bridge::LAYER_BRIDGE_V01.id,
-            &bridge::library_fileset_key("rev-0511", "rt", "ex")
-        )
-        .expect("read newest")
-        .is_some());
-    assert!(store
-        .get_artifact(
-            bridge::LAYER_BRIDGE_V01.id,
-            &bridge::library_fileset_key("rev-0100", "rt", "ex")
-        )
-        .expect("read leased")
-        .is_some());
-
-    // convergence: managed live bytes collapse to the live set
-    let space1 = store.space();
-    let floor1 = space1.db_main + space1.locks + space1.logs;
-    let managed_live = space1.total.saturating_sub(floor1);
-    assert!(
-        managed_live <= 128 * 1024,
-        "block layer converges, got {managed_live}B"
-    );
-    assert!(space1.total < space0.total);
-
-    // release flips liveness
-    let lease_id = lease.lease_id.clone();
-    lease.release();
-    assert!(!store.lease_live(&lease_id).expect("lease liveness check"));
-}
-
 /// The single-artifact cap (64 MiB) rejects an over-sized producer with
 /// a NAMED error (resource, never a silent pass).
 #[test]
@@ -654,171 +565,266 @@ fn p90(mut xs: Vec<u128>) -> u128 {
     xs[(xs.len() * 90 / 100).min(xs.len() - 1)]
 }
 
-#[test]
-fn bridge_turnaround_six_scenarios_30_samples() {
-    use ace_abi::typed_decl::typed_decls as frozen_typed_decls;
-    use ace_foreign_contract::PhysicalPlan;
+mod performance {
+    use super::*;
 
-    let root = std::env::temp_dir().join(format!("t937-turnaround-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    let store = ManagedStore::open(&root.join("store")).expect("store");
-    let scratch = root.join("scratch");
-    let out_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../target/bridge-937/turnaround");
-    std::fs::create_dir_all(&out_dir).expect("out dir");
-    let mut jsonl = std::fs::File::create(out_dir.join("turnaround.jsonl")).expect("jsonl");
+    /// 512-revision churn on the bridge layer with GC convergence, rooted +
+    /// leased survival, and lease release flipping liveness (mirrors the 797
+    /// 512-revision discipline on the NEW layer).
+    #[test]
+    fn bridge_512_revision_churn_gc_convergence() {
+        use ace_artifacts::codec::ChunkKind;
+        use ace_artifacts::store::{run_gc, GcConfig, PutRequest};
+        let (store, _root) = store_at("churn");
+        let mut last_art = String::new();
+        let mut leased_art = String::new();
+        for i in 0..512 {
+            let key = bridge::library_fileset_key(&format!("rev-{i:04}"), "rt", "ex");
+            let mut p = format!("revision {i}").into_bytes();
+            p.push((i % 251) as u8);
+            let art = store
+                .put_artifact(PutRequest {
+                    layer: bridge::LAYER_BRIDGE_V01.id,
+                    key,
+                    kind: ChunkKind::LayoutData,
+                    payload: p,
+                    edges: vec![],
+                    project: None,
+                })
+                .expect("put revision");
+            if i == 511 {
+                last_art = art.clone();
+            }
+            if i == 100 {
+                leased_art = art;
+            }
+        }
+        store
+            .register_root("bridge-937-churn", &last_art, "newest")
+            .expect("root newest");
+        let lease = store
+            .acquire_lease("bridge-937-churn", 60, Some(&leased_art))
+            .expect("lease old revision");
+        assert!(store.lease_live(&lease.lease_id).expect("lease live"));
 
-    let mut rows: Vec<(&str, u128)> = Vec::new();
-    let base = source_export_first_case();
-
-    // 1) fresh (uniform cold: distinct module per sample)
-    for i in 0..30 {
-        let counters = BridgeCounters::new();
-        let req = bridge::SourceExportRequest {
-            module: format!("m{i:02}"),
-            ..base.clone()
+        let space0 = store.space();
+        let floor = space0.db_main + space0.locks + space0.logs;
+        assert!(space0.total > floor);
+        let cfg = GcConfig {
+            high: space0.total - 1,
+            low: floor + 64 * 1024,
         };
-        let t = std::time::Instant::now();
-        run_source_export(&store, &counters, &scratch, &req, BRIDGE_TOTAL_DEADLINE).expect("fresh");
-        rows.push(("fresh", t.elapsed().as_millis() as u128));
-    }
-    // 2) library-hot (identical re-run — all-hit). One warm-up run for
-    // the BASE module identity (scenario 1 used distinct modules), then
-    // every sampled re-run must be a pure hit.
-    {
-        let warm = BridgeCounters::new();
-        run_source_export(&store, &warm, &scratch, &base, BRIDGE_TOTAL_DEADLINE).expect("warm");
-    }
-    for _ in 0..30 {
-        let counters = BridgeCounters::new();
-        let t = std::time::Instant::now();
-        let out = run_source_export(&store, &counters, &scratch, &base, BRIDGE_TOTAL_DEADLINE)
-            .expect("hot");
-        assert_eq!(
-            counters.total_producer_calls(),
-            0,
-            "hot sample must be all-hit"
+        let receipt = run_gc(&store, cfg).expect("gc");
+        assert!(
+            receipt.ran,
+            "GC must run over the watermark: {}",
+            receipt.reason
         );
-        let _ = out;
-        rows.push(("library-hot", t.elapsed().as_millis() as u128));
+        assert!(
+            receipt.deleted_chunks >= 500,
+            "churn bulk reclaimed: {receipt:?}"
+        );
+
+        // rooted newest + leased revision survive
+        assert!(store
+            .get_artifact(
+                bridge::LAYER_BRIDGE_V01.id,
+                &bridge::library_fileset_key("rev-0511", "rt", "ex")
+            )
+            .expect("read newest")
+            .is_some());
+        assert!(store
+            .get_artifact(
+                bridge::LAYER_BRIDGE_V01.id,
+                &bridge::library_fileset_key("rev-0100", "rt", "ex")
+            )
+            .expect("read leased")
+            .is_some());
+
+        // convergence: managed live bytes collapse to the live set
+        let space1 = store.space();
+        let floor1 = space1.db_main + space1.locks + space1.logs;
+        let managed_live = space1.total.saturating_sub(floor1);
+        assert!(
+            managed_live <= 128 * 1024,
+            "block layer converges, got {managed_live}B"
+        );
+        assert!(space1.total < space0.total);
+
+        // release flips liveness
+        let lease_id = lease.lease_id.clone();
+        lease.release();
+        assert!(!store.lease_live(&lease_id).expect("lease liveness check"));
     }
-    // 3) typed-object-hot (warm-up: the typed artifacts enter this store
-    // here, then every sampled re-run must be a pure hit)
-    {
-        let warm = BridgeCounters::new();
-        run_typed_chain(
-            &store,
-            &warm,
-            &scratch,
-            &[TypedLeg::SelfCheck],
-            BRIDGE_TOTAL_DEADLINE,
-        )
-        .expect("typed warm");
-    }
-    for _ in 0..30 {
-        let counters = BridgeCounters::new();
-        let t = std::time::Instant::now();
-        run_typed_chain(
-            &store,
-            &counters,
-            &scratch,
-            &[TypedLeg::SelfCheck],
-            BRIDGE_TOTAL_DEADLINE,
-        )
-        .expect("typed hot");
-        assert_eq!(counters.total_producer_calls(), 0);
-        rows.push(("typed-object-hot", t.elapsed().as_millis() as u128));
-    }
-    // 4) restart-disk-hot: fresh counters + deep RESTORE then re-run
-    for _ in 0..30 {
-        let counters = BridgeCounters::new();
-        let t = std::time::Instant::now();
-        let out = run_source_export(&store, &counters, &scratch, &base, BRIDGE_TOTAL_DEADLINE)
-            .expect("restart run");
-        let rc = BridgeCounters::new();
-        let restored = restore_bridge(&store, &rc, &out.handle).expect("restore");
-        assert_eq!(restored.producers_ran, 0);
-        rows.push(("restart-disk-hot", t.elapsed().as_millis() as u128));
-    }
-    // 5) body-edit (distinct body per sample — uniform cold, HARD GATE)
-    let mut edit_ms = Vec::new();
-    for i in 0..30u64 {
-        let counters = BridgeCounters::new();
-        let src = format!(
+
+    #[test]
+    fn bridge_turnaround_six_scenarios_30_samples() {
+        use ace_abi::typed_decl::typed_decls as frozen_typed_decls;
+        use ace_foreign_contract::PhysicalPlan;
+
+        let root = std::env::temp_dir().join(format!("t937-turnaround-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let store = ManagedStore::open(&root.join("store")).expect("store");
+        let scratch = root.join("scratch");
+        let out_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../target/bridge-937/turnaround");
+        std::fs::create_dir_all(&out_dir).expect("out dir");
+        let mut jsonl = std::fs::File::create(out_dir.join("turnaround.jsonl")).expect("jsonl");
+
+        let mut rows: Vec<(&str, u128)> = Vec::new();
+        let base = source_export_first_case();
+
+        // 1) fresh (uniform cold: distinct module per sample)
+        for i in 0..30 {
+            let counters = BridgeCounters::new();
+            let req = bridge::SourceExportRequest {
+                module: format!("m{i:02}"),
+                ..base.clone()
+            };
+            let t = std::time::Instant::now();
+            run_source_export(&store, &counters, &scratch, &req, BRIDGE_TOTAL_DEADLINE)
+                .expect("fresh");
+            rows.push(("fresh", t.elapsed().as_millis() as u128));
+        }
+        // 2) library-hot (identical re-run — all-hit). One warm-up run for
+        // the BASE module identity (scenario 1 used distinct modules), then
+        // every sampled re-run must be a pure hit.
+        {
+            let warm = BridgeCounters::new();
+            run_source_export(&store, &warm, &scratch, &base, BRIDGE_TOTAL_DEADLINE).expect("warm");
+        }
+        for _ in 0..30 {
+            let counters = BridgeCounters::new();
+            let t = std::time::Instant::now();
+            let out = run_source_export(&store, &counters, &scratch, &base, BRIDGE_TOTAL_DEADLINE)
+                .expect("hot");
+            assert_eq!(
+                counters.total_producer_calls(),
+                0,
+                "hot sample must be all-hit"
+            );
+            let _ = out;
+            rows.push(("library-hot", t.elapsed().as_millis() as u128));
+        }
+        // 3) typed-object-hot (warm-up: the typed artifacts enter this store
+        // here, then every sampled re-run must be a pure hit)
+        {
+            let warm = BridgeCounters::new();
+            run_typed_chain(
+                &store,
+                &warm,
+                &scratch,
+                &[TypedLeg::SelfCheck],
+                BRIDGE_TOTAL_DEADLINE,
+            )
+            .expect("typed warm");
+        }
+        for _ in 0..30 {
+            let counters = BridgeCounters::new();
+            let t = std::time::Instant::now();
+            run_typed_chain(
+                &store,
+                &counters,
+                &scratch,
+                &[TypedLeg::SelfCheck],
+                BRIDGE_TOTAL_DEADLINE,
+            )
+            .expect("typed hot");
+            assert_eq!(counters.total_producer_calls(), 0);
+            rows.push(("typed-object-hot", t.elapsed().as_millis() as u128));
+        }
+        // 4) restart-disk-hot: fresh counters + deep RESTORE then re-run
+        for _ in 0..30 {
+            let counters = BridgeCounters::new();
+            let t = std::time::Instant::now();
+            let out = run_source_export(&store, &counters, &scratch, &base, BRIDGE_TOTAL_DEADLINE)
+                .expect("restart run");
+            let rc = BridgeCounters::new();
+            let restored = restore_bridge(&store, &rc, &out.handle).expect("restore");
+            assert_eq!(restored.producers_ran, 0);
+            rows.push(("restart-disk-hot", t.elapsed().as_millis() as u128));
+        }
+        // 5) body-edit (distinct body per sample — uniform cold, HARD GATE)
+        let mut edit_ms = Vec::new();
+        for i in 0..30u64 {
+            let counters = BridgeCounters::new();
+            let src = format!(
             "fn sum(a int, b int) int {{ return a + b + {i} }}\nfn div(n int, d int) int {{ return n / d }}\nfn main() int {{ return 0 }}\n"
         );
-        let req = bridge::SourceExportRequest {
-            src,
-            ..base.clone()
-        };
-        let t = std::time::Instant::now();
-        run_source_export(&store, &counters, &scratch, &req, BRIDGE_TOTAL_DEADLINE)
-            .expect("body edit");
-        let ms = t.elapsed().as_millis() as u128;
-        edit_ms.push(ms);
-        rows.push(("body-edit", ms));
-    }
-    // 6) admission-reject (mutated expectation, PRE-CALL, HARD GATE)
-    let decls = frozen_typed_decls();
-    let facts = decls.validate().expect("facts");
-    let plan = PhysicalPlan::project(&facts).expect("plan");
-    let descriptor = bridge::descriptor_from_plan(&facts, &plan).expect("descriptor");
-    let mut reject_ms = Vec::new();
-    for i in 0..30 {
-        let mut e = bridge::typed_expectation(bridge::interface_binding_hash(&facts).expect("sem"));
-        // rotate the mutated dimension per sample (target/packing/semref)
-        match i % 3 {
-            0 => e.target = format!("bad-target-{i}"),
-            1 => e.packing = format!("bad-packing-{i}"),
-            _ => e.semref_hash = format!("{i:064}"),
+            let req = bridge::SourceExportRequest {
+                src,
+                ..base.clone()
+            };
+            let t = std::time::Instant::now();
+            run_source_export(&store, &counters, &scratch, &req, BRIDGE_TOTAL_DEADLINE)
+                .expect("body edit");
+            let ms = t.elapsed().as_millis() as u128;
+            edit_ms.push(ms);
+            rows.push(("body-edit", ms));
         }
-        let t = std::time::Instant::now();
-        let rej = admit_descriptor(&descriptor, &e).expect_err("must reject");
-        let ms = t.elapsed().as_millis() as u128;
-        assert!(
-            format!("{rej:?}").contains("Wrong")
-                || format!("{rej:?}").contains("SemRef")
-                || format!("{rej:?}").contains("Packing")
-        );
-        reject_ms.push(ms);
-        rows.push(("descriptor-reject", ms));
-    }
+        // 6) admission-reject (mutated expectation, PRE-CALL, HARD GATE)
+        let decls = frozen_typed_decls();
+        let facts = decls.validate().expect("facts");
+        let plan = PhysicalPlan::project(&facts).expect("plan");
+        let descriptor = bridge::descriptor_from_plan(&facts, &plan).expect("descriptor");
+        let mut reject_ms = Vec::new();
+        for i in 0..30 {
+            let mut e =
+                bridge::typed_expectation(bridge::interface_binding_hash(&facts).expect("sem"));
+            // rotate the mutated dimension per sample (target/packing/semref)
+            match i % 3 {
+                0 => e.target = format!("bad-target-{i}"),
+                1 => e.packing = format!("bad-packing-{i}"),
+                _ => e.semref_hash = format!("{i:064}"),
+            }
+            let t = std::time::Instant::now();
+            let rej = admit_descriptor(&descriptor, &e).expect_err("must reject");
+            let ms = t.elapsed().as_millis() as u128;
+            assert!(
+                format!("{rej:?}").contains("Wrong")
+                    || format!("{rej:?}").contains("SemRef")
+                    || format!("{rej:?}").contains("Packing")
+            );
+            reject_ms.push(ms);
+            rows.push(("descriptor-reject", ms));
+        }
 
-    let mut summary = String::new();
-    for (name, _) in [
-        ("fresh", 0u128),
-        ("library-hot", 0),
-        ("typed-object-hot", 0),
-        ("restart-disk-hot", 0),
-        ("body-edit", 0),
-        ("descriptor-reject", 0),
-    ] {
-        let xs: Vec<u128> = rows
-            .iter()
-            .filter(|(n, _)| *n == name)
-            .map(|(_, v)| *v)
-            .collect();
-        let p0 = xs.iter().min().copied().unwrap_or(0);
-        let p5 = p90(xs.clone()); // reuse ordering helper for a mid band
-        let _ = p5;
-        let p9 = p90(xs.clone());
+        let mut summary = String::new();
+        for (name, _) in [
+            ("fresh", 0u128),
+            ("library-hot", 0),
+            ("typed-object-hot", 0),
+            ("restart-disk-hot", 0),
+            ("body-edit", 0),
+            ("descriptor-reject", 0),
+        ] {
+            let xs: Vec<u128> = rows
+                .iter()
+                .filter(|(n, _)| *n == name)
+                .map(|(_, v)| *v)
+                .collect();
+            let p0 = xs.iter().min().copied().unwrap_or(0);
+            let p5 = p90(xs.clone()); // reuse ordering helper for a mid band
+            let _ = p5;
+            let p9 = p90(xs.clone());
+            summary.push_str(&format!(
+                "{name}: n={} min={}ms p90={}ms max={}ms\n",
+                xs.len(),
+                p0,
+                p9,
+                xs.iter().max().copied().unwrap_or(0)
+            ));
+        }
+        for (name, ms) in &rows {
+            let _ = writeln!(jsonl, "{{\"scenario\":\"{name}\",\"ms\":{ms}}}");
+        }
+        let gate_edit = p90(edit_ms);
+        let gate_rej = p90(reject_ms);
         summary.push_str(&format!(
-            "{name}: n={} min={}ms p90={}ms max={}ms\n",
-            xs.len(),
-            p0,
-            p9,
-            xs.iter().max().copied().unwrap_or(0)
-        ));
-    }
-    for (name, ms) in &rows {
-        let _ = writeln!(jsonl, "{{\"scenario\":\"{name}\",\"ms\":{ms}}}");
-    }
-    let gate_edit = p90(edit_ms);
-    let gate_rej = p90(reject_ms);
-    summary.push_str(&format!(
         "HARD GATES: body-edit P90 {gate_edit}ms (<=2000), descriptor-reject P90 {gate_rej}ms (<=2000)\n"
     ));
-    std::fs::write(out_dir.join("summary.txt"), &summary).expect("summary");
-    assert!(gate_edit <= 2000, "body-edit P90 gate: {summary}");
-    assert!(gate_rej <= 2000, "descriptor-reject P90 gate: {summary}");
+        std::fs::write(out_dir.join("summary.txt"), &summary).expect("summary");
+        assert!(gate_edit <= 2000, "body-edit P90 gate: {summary}");
+        assert!(gate_rej <= 2000, "descriptor-reject P90 gate: {summary}");
+    }
 }

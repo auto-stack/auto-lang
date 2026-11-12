@@ -1,6 +1,6 @@
 # auto-semantics 项目卡（AC 语义元信息与类型推导探针）
 
-> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。ace-semantics-contract、ace-semantics与ace-semantics-store位于crates/semantics-*，仍为实验实现。普通语言cargo t不构建ACE；cargo t ace选择常规集合，完整包/all及ace-performance保原专项和适用条件。
+> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。ace-semantics-contract、ace-semantics与ace-semantics-store位于crates/semantics-*，仍为实验实现。普通语言cargo t不构建ACE；cargo t ace选择常规集合，模块常规组排除`::performance::`，显式ace-perf保原专项和适用条件。
 
 > **Status**: experimental（PLAN-796 探针冻结契约；实现面=独立探针 workspace，非生产）
 > 来源：PLAN-796（[归档计划](../../plans/archive/796-ac-semantic-metadata-inference-probe.md)）;

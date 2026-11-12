@@ -1,6 +1,6 @@
 # auto-av
 
-> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。库ace-av-core与驱动/worker包ace-av位于crates/av-core、crates/av；AV仍为实验实现，不替代现行语言默认VM。普通语言cargo t不构建ACE；cargo t ace选择常规集合，完整包/all及ace-performance保原专项和适用条件。
+> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。库ace-av-core与驱动/worker包ace-av位于crates/av-core、crates/av；AV仍为实验实现，不替代现行语言默认VM。普通语言cargo t不构建ACE；cargo t ace选择常规集合，模块常规组排除`::performance::`，显式ace-perf保原专项和适用条件。
 
 > **Status**: experimental
 

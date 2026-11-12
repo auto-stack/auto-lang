@@ -104,7 +104,8 @@ All AI coding assistants working in this repository must strictly adhere to the 
 - 正式入口：`cargo t <组名> [组名 ...]`；例如`cargo t parser`、`cargo t parser vm`。
   分组写死于`scripts/test-groups.toml`，直接对应Cargo package/target及Rust模块namespace，
   不先发现全仓测试，不建叶目录/分片新鲜度系统，不自动展开消费者图。`cargo t --list`只读固定组名。
-- `cargo t ace`显式运行独立`experimental/ace` workspace的常规测试及语言侧私有协议桥接；正式计量/压力以`cargo t ace-performance`运行，保原样本、规模、ignore和平台条件。ACE内部同树target复用，四个no_std静态运行时保panic-abort专用profile；普通语言测试不构建ACE。
+- `cargo t ace`显式运行独立`experimental/ace` workspace的常规测试及语言侧私有协议桥接；正式计量/压力以`cargo t ace-perf`运行，保原样本、规模、ignore和平台条件。ACE内部同树target复用，四个no_std静态运行时保panic-abort专用profile；普通语言测试不构建ACE。
+- **2026-11-12 用户裁定（PLAN-1016）**：ACE模块组（含ace-syntax/ace-semantics/ace-comptime等）为常规正确性集合，统一排除`::performance::`；正式性能/规模压力仅显式`cargo t ace-perf`，不成为每Plan日常/收尾门。原样本/规模/阈值/平台/ignore保持，漏标正式campaign须迁入该命名空间；不能仅因普通正确性测试慢就批量停用。旧入口ace-performance改名为ace-perf。
 - 无参数`cargo t`保固定日常范围；`cargo t all`显式运行语言仓全部固定组。两者不能混为一谈。
   全部组仍保ignored/平台/里程碑条件，不含外仓UI/Man所有权腿。模块过滤不保证同crate独立编译。
 - 计划按真实修改明确选择完整职责组及必要集成/消费者组，review核选择理由；共享AST/语义/IR变更
@@ -188,3 +189,12 @@ Before merging or archiving, the agent **must explicitly execute an independent 
    # 组内已无兄弟 worktree 时删除组目录：rmdir D:/autostack/.wt/lang-<NNN>
    ```
 3. Summarize the completed work.
+
+
+### ACE压力套件串行裁定（2026-11-12，PLAN-1016）
+
+所有已识别的ACE正式性能/持续压力/冻结规模资源用例归入`::performance::`，
+普通ACE模块组排除，显式`cargo t ace-perf`独立运行。套件profile test-threads=1，
+测试之间串行求稳；内部并发语义见证保持。正式suite父截止14400秒，普通组1800秒及原单测
+警告/截止保持。不改原样本、输入规模、预算、平台/ignore条件，不把正式套件附加到每Plan日常收尾。
+小规模错误准入、资源边界和生命周期回归仍属日常正确性，不按名称/耗时批量停用。

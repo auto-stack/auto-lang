@@ -6,7 +6,7 @@
 > 父侧三态分判」的规范正文）。语料：`crates/auto-lang/test/cases/ace-m1/native-warm-admission-932/`，
 > 固定组 `case-ace-native-warm-admission-932`；原 115 函数 t11 负载腿在
 > `experimental/ace/tests/conformance/tests/host/mir_native_protocol.rs::performance::mir_native_incremental_formal_runner_gate`
-> （ace-host 与 ace-performance 两入口）；父侧 typed 事实负控 = `auto-lang-core` `ac_mn::refusal_tests`（8）。
+> （正式门经显式ace-perf入口，ace-host保常规正确性）；父侧 typed 事实负控 = `auto-lang-core` `ac_mn::refusal_tests`（8）。
 
 ## 1. 准入比较（真接口事实，非文本/位置代理）
 
@@ -59,4 +59,4 @@
 - D-911-3（syntax-not-converged 无自然样本）按原 owner 保留；本文件不开放
   signature/语言/resource 的 fallback（唯一允许 fallback 的种类仍是 syntax-not-converged）。
 - 正式 P90≤2000ms/原样本/115fn 负载与平台条件不变（`::performance::` 档，单实例）；
-  t11 宿主门在 ace-host 与 ace-performance 双入口同一测试函数。
+  t11 正式宿主门仅在 ace-perf 入口；ace-host常规组排除performance。

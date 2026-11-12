@@ -642,58 +642,6 @@ fn av_resident_churn_retired_generations_release() {
     );
 }
 
-/// V-06: reload visibility by the TestCase v2 calibre — development-time
-/// effective samples, P90 <= 2000ms hard gate, P95/P99 diagnostics only,
-/// sample count never shrunk (30 planned, 30 recorded).
-#[test]
-fn av_resident_reload_visibility_v2_calibre() {
-    const SAMPLES: usize = 30;
-    let session = warmup(CALLS, "d_main", &[]).expect("warmup");
-    let mut r = ResidentRunner::start(
-        session,
-        ResidentConfig {
-            slice_steps: 128,
-            ..ResidentConfig::default()
-        },
-    );
-    assert_eq!(r.slice().state, ResidentState::Running);
-    let mut samples: Vec<u128> = Vec::with_capacity(SAMPLES);
-    for k in 0..SAMPLES as u32 {
-        let from = (7 + 2 * k).to_string();
-        let to = (7 + 2 * (k + 1)).to_string();
-        let cur = r.session().src().to_string();
-        let needle = format!("return {from}");
-        let at = cur.find(&needle).expect("current helper body") + "return ".len();
-        let (s, e) = (at as u64, (at + from.len()) as u64);
-        assert!(matches!(r.submit_edit(s, e, to.into_bytes()), Ok(Ok(()))));
-        let sp = r.apply_pending_at_safety_point();
-        assert!(
-            sp.armed && sp.reached_boundary && sp.edit.ok,
-            "sample {k} swap"
-        );
-        samples.push(sp.visibility.expect("visibility sample").as_micros());
-        if r.state() == ResidentState::Running {
-            let _ = r.slice();
-        }
-    }
-    assert_eq!(samples.len(), SAMPLES, "sample count never shrinks");
-    samples.sort_unstable();
-    let at = |q: f64| samples[(((SAMPLES as f64) * q).ceil() as usize).min(SAMPLES - 1)];
-    let p90 = at(0.90);
-    let p95 = at(0.95);
-    let p99 = at(0.99);
-    // Development-time hard gate (TestCase v2): P90 <= 2000ms.
-    assert!(
-        p90 <= 2_000_000,
-        "P90 reload visibility {p90}us exceeds the 2000ms hard gate"
-    );
-    // Diagnostics only (not gates): P95/P99 recorded with the sample.
-    eprintln!(
-        "av_resident_866 reload visibility: n={} p90={}us p95={}us p99={}us",
-        SAMPLES, p90, p95, p99
-    );
-}
-
 /// F-866-R1/R3 negative control (frozen contract §2.3): an edit whose
 /// changed function is ITSELF executing on the in-flight chain (here:
 /// main, the resident ancestor) must NOT install at the safety point —
@@ -816,4 +764,60 @@ fn av_resident_inflight_layout_change_never_panics() {
         &ace_av_core::av::CancelFlag::new(false),
     );
     assert_eq!(success_value(&next), 300 * 7 + 300);
+}
+
+mod performance {
+    use super::*;
+
+    /// V-06: reload visibility by the TestCase v2 calibre — development-time
+    /// effective samples, P90 <= 2000ms hard gate, P95/P99 diagnostics only,
+    /// sample count never shrunk (30 planned, 30 recorded).
+    #[test]
+    fn av_resident_reload_visibility_v2_calibre() {
+        const SAMPLES: usize = 30;
+        let session = warmup(CALLS, "d_main", &[]).expect("warmup");
+        let mut r = ResidentRunner::start(
+            session,
+            ResidentConfig {
+                slice_steps: 128,
+                ..ResidentConfig::default()
+            },
+        );
+        assert_eq!(r.slice().state, ResidentState::Running);
+        let mut samples: Vec<u128> = Vec::with_capacity(SAMPLES);
+        for k in 0..SAMPLES as u32 {
+            let from = (7 + 2 * k).to_string();
+            let to = (7 + 2 * (k + 1)).to_string();
+            let cur = r.session().src().to_string();
+            let needle = format!("return {from}");
+            let at = cur.find(&needle).expect("current helper body") + "return ".len();
+            let (s, e) = (at as u64, (at + from.len()) as u64);
+            assert!(matches!(r.submit_edit(s, e, to.into_bytes()), Ok(Ok(()))));
+            let sp = r.apply_pending_at_safety_point();
+            assert!(
+                sp.armed && sp.reached_boundary && sp.edit.ok,
+                "sample {k} swap"
+            );
+            samples.push(sp.visibility.expect("visibility sample").as_micros());
+            if r.state() == ResidentState::Running {
+                let _ = r.slice();
+            }
+        }
+        assert_eq!(samples.len(), SAMPLES, "sample count never shrinks");
+        samples.sort_unstable();
+        let at = |q: f64| samples[(((SAMPLES as f64) * q).ceil() as usize).min(SAMPLES - 1)];
+        let p90 = at(0.90);
+        let p95 = at(0.95);
+        let p99 = at(0.99);
+        // Development-time hard gate (TestCase v2): P90 <= 2000ms.
+        assert!(
+            p90 <= 2_000_000,
+            "P90 reload visibility {p90}us exceeds the 2000ms hard gate"
+        );
+        // Diagnostics only (not gates): P95/P99 recorded with the sample.
+        eprintln!(
+            "av_resident_866 reload visibility: n={} p90={}us p95={}us p99={}us",
+            SAMPLES, p90, p95, p99
+        );
+    }
 }

@@ -104,3 +104,12 @@
 DirEntry枚举元数据，避免Windows逐文件重复打开；原blob符号链接分支、managed目录
 不跟随链接、临时残留配额、命名空间锁覆盖及物理计量规则保持。
 文件枚举随存量增长仍有成本，未引入跨进程缓存计数或改写预算协议。
+
+
+## 日常测试选择（PLAN-1016 r4）
+
+`cargo t ace-comptime`排除正式性能/压力；原32MiB/512修订、两轮64MiB GC、周转campaign以及
+`cte_snapshot_tests::performance::cte_snapshot_resident_lane_baseline_30_revisions`
+仅通过显式`cargo t ace-perf`运行。原采样数/水位/门限不变。
+日常保留`cte_snapshot_tests::cte_snapshot_resident_lane_small_revisions`，
+以8函数/3次真实修订检查值、generation与未改函数全阶段零工作，不承担正式P90验收。

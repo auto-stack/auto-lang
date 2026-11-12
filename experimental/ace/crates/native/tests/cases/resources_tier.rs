@@ -37,159 +37,6 @@ const MIB: u64 = 1024 * 1024;
 /// lands under the spike window). Serialize the two.
 static HEAVY_LEGS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// V-08 / §5.5 frozen reference workload (golden.md §2): ≥256 KiB source,
-/// closed-form mirror expectation, first-request compile, all-hits second
-/// request, the frozen body-edit bit (fn_041 A0 + 1 → exactly one unit
-/// recompiles), and the frozen signature-conflict edit (frontend diagnosis).
-/// Memory gates: managed partitions ≤16/24/8 MiB (total ≤48), worker
-/// private peak ≤512 MiB, request-tree peak ≤768 MiB, raw samples nonzero.
-#[test]
-#[cfg(windows)]
-fn mir_native_resources_reference_workload_mirror_and_budgets() {
-    if !common::tools_available() {
-        eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");
-        return;
-    }
-    let wl = ace_native::workload::generate(0);
-    assert!(
-        wl.src.len() >= ace_native::workload::MIN_SOURCE_BYTES,
-        "reference workload source is {} bytes, below the frozen ≥256 KiB scale duty",
-        wl.src.len()
-    );
-    // §2.4 hand-audit record (constants + stepwise acc + final value) for
-    // fn_000 and fn_099 — archived in the T-05 receipt.
-    eprintln!("--- T-05 audit fn_000 ---");
-    for l in wl.audit_lines(0) {
-        eprintln!("{l}");
-    }
-    eprintln!("--- T-05 audit fn_099 ---");
-    for l in wl.audit_lines(99) {
-        eprintln!("{l}");
-    }
-    eprintln!("mirror expected total = {}", wl.expected);
-
-    let root = temp_root("workload");
-    let mut d = MnDriver::with_store(&root, "wl").expect("store");
-    let sampler = TreePeakSampler::start(5);
-    let t0 = std::time::Instant::now();
-
-    // First request: every one of the 115 units compiles through the NEW
-    // backend and the real PE result equals the independent mirror.
-    let r1 = d.request(&wl.src, "d_main", &[], &root.join("w1"), None);
-    let request_ms = t0.elapsed().as_secs_f64() * 1000.0;
-    assert!(r1.ok, "workload request failed: {:?}", r1.error);
-    assert_eq!(
-        r1.exit_code,
-        Some(wl.expected as i32),
-        "PE result == closed-form mirror (never a backend self-check)"
-    );
-    assert_eq!(
-        *r1.obs.counters.get("codegen_emit_units").unwrap_or(&0),
-        115,
-        "fresh store compiles all 100 callers + 14 leaves + main"
-    );
-
-    // Second request: everything hits — codegen FORBIDDEN as the hard
-    // control; the closure still really links and runs.
-    d.forbid_codegen = true;
-    let r2 = d.request(&wl.src, "d_main", &[], &root.join("w2"), None);
-    assert!(r2.ok, "all-hits request failed: {:?}", r2.error);
-    assert_eq!(r2.exit_code, Some(wl.expected as i32));
-    assert_eq!(*r2.obs.counters.get("codegen_emit_units").unwrap_or(&0), 0);
-    assert_eq!(*r2.obs.counters.get("cache_hit_coff").unwrap_or(&0), 115);
-
-    // Frozen body edit (fn_041's A0 += n). Hand-audit finding (T-05
-    // receipt / golden r1.1 note): the closed-form mirror is authoritative,
-    // but the terminal VALUE has plateaus — n=1 converges back to the same
-    // trajectory at block 05 (value stays 28), while n=2 moves it (15).
-    // BOTH revisions must re-key exactly fn_041; only n=2 moves the total.
-    d.forbid_codegen = false;
-    let wl1 = ace_native::workload::generate(1);
-    assert_eq!(wl1.expected, wl.expected, "n=1 mirror plateau (documented)");
-    let r3 = d.request(&wl1.src, "d_main", &[], &root.join("w3"), None);
-    assert!(r3.ok, "body edit (n=1) failed: {:?}", r3.error);
-    assert_eq!(r3.exit_code, Some(wl1.expected as i32));
-    assert_eq!(
-        *r3.obs.counters.get("codegen_emit_units").unwrap_or(&0),
-        1,
-        "n=1 still re-keys exactly fn_041 (fp moves even when the value plateaus)"
-    );
-    assert_eq!(*r3.obs.counters.get("cache_hit_coff").unwrap_or(&0), 114);
-    let wl2 = ace_native::workload::generate(2);
-    assert_ne!(wl2.expected, wl.expected, "n=2 moves the oracle");
-    let r3b = d.request(&wl2.src, "d_main", &[], &root.join("w3b"), None);
-    assert!(r3b.ok, "body edit (n=2) failed: {:?}", r3b.error);
-    assert_eq!(r3b.exit_code, Some(wl2.expected as i32));
-    assert_eq!(
-        *r3b.obs.counters.get("codegen_emit_units").unwrap_or(&0),
-        1,
-        "only fn_041 recompiles"
-    );
-    assert_eq!(*r3b.obs.counters.get("cache_hit_coff").unwrap_or(&0), 114);
-
-    // Frozen signature-conflict edit: fn_leaf_2 gains a parameter — the
-    // correct outcome is a FRONTEND diagnosis (call sites break), with
-    // codegen never invoked.
-    let r4 = d.request(
-        &ace_native::workload::signature_conflict_source(),
-        "d_main",
-        &[],
-        &root.join("w4"),
-        None,
-    );
-    assert!(!r4.ok, "the signature conflict must be diagnosed");
-    match &r4.error {
-        // PLAN-911: a real frontend rejection is now carried as the typed
-        // `Source` snapshot; its code/message are the exact legacy
-        // projection, so both variants are the same diagnosis here.
-        Some(e @ (MnError::Unsupported("frontend", _) | MnError::Source(_))) => {
-            assert_eq!(e.code(), "mn.unsupported.frontend");
-            let msg = e.message();
-            assert!(
-                msg.contains("fn_leaf_2") || msg.to_lowercase().contains("arg"),
-                "diagnosis points at the broken leaf/arity: {msg}"
-            );
-        }
-        other => panic!("expected frontend diagnosis, got {other:?}"),
-    }
-    assert_eq!(*r4.obs.counters.get("codegen_emit_units").unwrap_or(&0), 0);
-
-    let tp = sampler.stop();
-    // Managed partitions (§11): every share and the ≤48 MiB total.
-    assert!(
-        r1.obs.ledger.violations().is_empty(),
-        "managed-data partitions: {:?}",
-        r1.obs.ledger.violations()
-    );
-    let peaks = r1.obs.ledger.peaks();
-    assert!(peaks[0] > 0, "MIR/symbol partition really charged");
-    for (i, cap) in PARTITION_CAPS.iter().enumerate() {
-        assert!(peaks[i] <= *cap, "partition {i}: {} > {cap}", peaks[i]);
-    }
-    assert!(r1.obs.ledger.peak_total() <= MANAGED_TOTAL_CAP);
-    // Worker private peak and request-tree peak hard gates.
-    assert!(tp.own_peak > 0, "sampler produced real samples");
-    assert!(
-        tp.own_peak <= 512 * MIB,
-        "worker private peak {} > 512 MiB",
-        tp.own_peak / MIB
-    );
-    assert!(tp.tree_peak >= tp.own_peak);
-    assert!(
-        tp.tree_peak <= 768 * MIB,
-        "request tree peak {} > 768 MiB",
-        tp.tree_peak / MIB
-    );
-    // Raw admissibility: real nonzero samples pass the gate...
-    let codegen_ms = *r1.obs.spans.get("codegen").unwrap_or(&0) as f64;
-    let raw = vec![
-        RawSample::measured("workload_request_ms", request_ms, tp.own_peak),
-        RawSample::measured("workload_codegen_ms", codegen_ms + 0.5, peaks[1]),
-    ];
-    assert!(raw_gate(&raw).is_empty(), "{:?}", raw_gate(&raw));
-    let _ = std::fs::remove_dir_all(&root);
-}
-
 /// One fill function: `cf_{k}` with S genuinely-distinct add statements
 /// (constants vary with k AND i; the symbol name differs by construction)
 /// plus its `main`. Returns (source, unit-name-fragment).
@@ -688,5 +535,158 @@ mod performance {
             "a failed sample never passes"
         );
         assert!(!raw_gate(&[]).is_empty(), "missing raw never passes");
+    }
+
+    /// V-08 / §5.5 frozen reference workload (golden.md §2): ≥256 KiB source,
+    /// closed-form mirror expectation, first-request compile, all-hits second
+    /// request, the frozen body-edit bit (fn_041 A0 + 1 → exactly one unit
+    /// recompiles), and the frozen signature-conflict edit (frontend diagnosis).
+    /// Memory gates: managed partitions ≤16/24/8 MiB (total ≤48), worker
+    /// private peak ≤512 MiB, request-tree peak ≤768 MiB, raw samples nonzero.
+    #[test]
+    #[cfg(windows)]
+    fn mir_native_resources_reference_workload_mirror_and_budgets() {
+        if !common::tools_available() {
+            eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");
+            return;
+        }
+        let wl = ace_native::workload::generate(0);
+        assert!(
+            wl.src.len() >= ace_native::workload::MIN_SOURCE_BYTES,
+            "reference workload source is {} bytes, below the frozen ≥256 KiB scale duty",
+            wl.src.len()
+        );
+        // §2.4 hand-audit record (constants + stepwise acc + final value) for
+        // fn_000 and fn_099 — archived in the T-05 receipt.
+        eprintln!("--- T-05 audit fn_000 ---");
+        for l in wl.audit_lines(0) {
+            eprintln!("{l}");
+        }
+        eprintln!("--- T-05 audit fn_099 ---");
+        for l in wl.audit_lines(99) {
+            eprintln!("{l}");
+        }
+        eprintln!("mirror expected total = {}", wl.expected);
+
+        let root = temp_root("workload");
+        let mut d = MnDriver::with_store(&root, "wl").expect("store");
+        let sampler = TreePeakSampler::start(5);
+        let t0 = std::time::Instant::now();
+
+        // First request: every one of the 115 units compiles through the NEW
+        // backend and the real PE result equals the independent mirror.
+        let r1 = d.request(&wl.src, "d_main", &[], &root.join("w1"), None);
+        let request_ms = t0.elapsed().as_secs_f64() * 1000.0;
+        assert!(r1.ok, "workload request failed: {:?}", r1.error);
+        assert_eq!(
+            r1.exit_code,
+            Some(wl.expected as i32),
+            "PE result == closed-form mirror (never a backend self-check)"
+        );
+        assert_eq!(
+            *r1.obs.counters.get("codegen_emit_units").unwrap_or(&0),
+            115,
+            "fresh store compiles all 100 callers + 14 leaves + main"
+        );
+
+        // Second request: everything hits — codegen FORBIDDEN as the hard
+        // control; the closure still really links and runs.
+        d.forbid_codegen = true;
+        let r2 = d.request(&wl.src, "d_main", &[], &root.join("w2"), None);
+        assert!(r2.ok, "all-hits request failed: {:?}", r2.error);
+        assert_eq!(r2.exit_code, Some(wl.expected as i32));
+        assert_eq!(*r2.obs.counters.get("codegen_emit_units").unwrap_or(&0), 0);
+        assert_eq!(*r2.obs.counters.get("cache_hit_coff").unwrap_or(&0), 115);
+
+        // Frozen body edit (fn_041's A0 += n). Hand-audit finding (T-05
+        // receipt / golden r1.1 note): the closed-form mirror is authoritative,
+        // but the terminal VALUE has plateaus — n=1 converges back to the same
+        // trajectory at block 05 (value stays 28), while n=2 moves it (15).
+        // BOTH revisions must re-key exactly fn_041; only n=2 moves the total.
+        d.forbid_codegen = false;
+        let wl1 = ace_native::workload::generate(1);
+        assert_eq!(wl1.expected, wl.expected, "n=1 mirror plateau (documented)");
+        let r3 = d.request(&wl1.src, "d_main", &[], &root.join("w3"), None);
+        assert!(r3.ok, "body edit (n=1) failed: {:?}", r3.error);
+        assert_eq!(r3.exit_code, Some(wl1.expected as i32));
+        assert_eq!(
+            *r3.obs.counters.get("codegen_emit_units").unwrap_or(&0),
+            1,
+            "n=1 still re-keys exactly fn_041 (fp moves even when the value plateaus)"
+        );
+        assert_eq!(*r3.obs.counters.get("cache_hit_coff").unwrap_or(&0), 114);
+        let wl2 = ace_native::workload::generate(2);
+        assert_ne!(wl2.expected, wl.expected, "n=2 moves the oracle");
+        let r3b = d.request(&wl2.src, "d_main", &[], &root.join("w3b"), None);
+        assert!(r3b.ok, "body edit (n=2) failed: {:?}", r3b.error);
+        assert_eq!(r3b.exit_code, Some(wl2.expected as i32));
+        assert_eq!(
+            *r3b.obs.counters.get("codegen_emit_units").unwrap_or(&0),
+            1,
+            "only fn_041 recompiles"
+        );
+        assert_eq!(*r3b.obs.counters.get("cache_hit_coff").unwrap_or(&0), 114);
+
+        // Frozen signature-conflict edit: fn_leaf_2 gains a parameter — the
+        // correct outcome is a FRONTEND diagnosis (call sites break), with
+        // codegen never invoked.
+        let r4 = d.request(
+            &ace_native::workload::signature_conflict_source(),
+            "d_main",
+            &[],
+            &root.join("w4"),
+            None,
+        );
+        assert!(!r4.ok, "the signature conflict must be diagnosed");
+        match &r4.error {
+            // PLAN-911: a real frontend rejection is now carried as the typed
+            // `Source` snapshot; its code/message are the exact legacy
+            // projection, so both variants are the same diagnosis here.
+            Some(e @ (MnError::Unsupported("frontend", _) | MnError::Source(_))) => {
+                assert_eq!(e.code(), "mn.unsupported.frontend");
+                let msg = e.message();
+                assert!(
+                    msg.contains("fn_leaf_2") || msg.to_lowercase().contains("arg"),
+                    "diagnosis points at the broken leaf/arity: {msg}"
+                );
+            }
+            other => panic!("expected frontend diagnosis, got {other:?}"),
+        }
+        assert_eq!(*r4.obs.counters.get("codegen_emit_units").unwrap_or(&0), 0);
+
+        let tp = sampler.stop();
+        // Managed partitions (§11): every share and the ≤48 MiB total.
+        assert!(
+            r1.obs.ledger.violations().is_empty(),
+            "managed-data partitions: {:?}",
+            r1.obs.ledger.violations()
+        );
+        let peaks = r1.obs.ledger.peaks();
+        assert!(peaks[0] > 0, "MIR/symbol partition really charged");
+        for (i, cap) in PARTITION_CAPS.iter().enumerate() {
+            assert!(peaks[i] <= *cap, "partition {i}: {} > {cap}", peaks[i]);
+        }
+        assert!(r1.obs.ledger.peak_total() <= MANAGED_TOTAL_CAP);
+        // Worker private peak and request-tree peak hard gates.
+        assert!(tp.own_peak > 0, "sampler produced real samples");
+        assert!(
+            tp.own_peak <= 512 * MIB,
+            "worker private peak {} > 512 MiB",
+            tp.own_peak / MIB
+        );
+        assert!(tp.tree_peak >= tp.own_peak);
+        assert!(
+            tp.tree_peak <= 768 * MIB,
+            "request tree peak {} > 768 MiB",
+            tp.tree_peak / MIB
+        );
+        // Raw admissibility: real nonzero samples pass the gate...
+        let codegen_ms = *r1.obs.spans.get("codegen").unwrap_or(&0) as f64;
+        let raw = vec![
+            RawSample::measured("workload_request_ms", request_ms, tp.own_peak),
+            RawSample::measured("workload_codegen_ms", codegen_ms + 0.5, peaks[1]),
+        ];
+        assert!(raw_gate(&raw).is_empty(), "{:?}", raw_gate(&raw));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

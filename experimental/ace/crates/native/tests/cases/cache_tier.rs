@@ -28,70 +28,6 @@ fn workdir_of(root: &std::path::Path, round: &str) -> std::path::PathBuf {
     root.join(format!("w-{round}"))
 }
 
-/// V-04: body-only edits across 30 DIFFERENT revisions recompile exactly
-/// the edited unit; every unchanged unit (and only those) hits; every
-/// round still REALLY links and runs; the cached result equals the
-/// no-cache result for sampled revisions.
-#[test]
-#[cfg(windows)]
-fn mir_native_cache_body_edit_30_revisions_reuse_and_oracle() {
-    if !common::tools_available() {
-        eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");
-        return;
-    }
-    let root = temp_root("body30");
-    let mut d = MnDriver::with_store(&root, "body30").expect("store");
-    let gen = |k: i32| {
-        (
-            format!(
-                "fn bump(x int) int {{\n    return x + {k}\n}}\n\nfn main() int {{\n    let a = bump(10)\n    let b = bump(20)\n    return a + b\n}}\n"
-            ),
-            30 + 2 * k, // independent closed form: (10+k)+(20+k)
-        )
-    };
-    for k in 0..30 {
-        let (src, want) = gen(k);
-        let r = d.request(
-            &src,
-            "d_main",
-            &[],
-            &workdir_of(&root, &format!("r{k}")),
-            None,
-        );
-        assert!(r.ok, "rev {k} failed: {:?}", r.error);
-        assert_eq!(r.exit_code, Some(want), "rev {k} independent oracle");
-        let emitted = *r.obs.counters.get("codegen_emit_units").unwrap_or(&0);
-        let hits = *r.obs.counters.get("cache_hit_coff").unwrap_or(&0);
-        if k == 0 {
-            assert_eq!(emitted, 2, "fresh store compiles both units");
-            assert_eq!(hits, 0);
-        } else {
-            assert_eq!(
-                emitted, 1,
-                "rev {k}: ONLY the edited unit recompiles (symbol scheme keeps the caller reusable)"
-            );
-            assert_eq!(hits, 1, "rev {k}: the unchanged unit hits");
-        }
-        assert!(
-            *r.obs.counters.get("link_invocations").unwrap_or(&0) >= 1
-                && *r.obs.counters.get("run_invocations").unwrap_or(&0) >= 1,
-            "rev {k}: a hit STILL links and runs (never a cached PASS)"
-        );
-        // Sampled no-cache oracle: the same revision through the
-        // ephemeral (no-store) path must agree.
-        if k % 10 == 7 {
-            let (src2, _) = gen(k);
-            let mut e = MnDriver::ephemeral();
-            let w = root.join(format!("ephemeral-{k}"));
-            let r2 = e.request(&src2, "d_main", &[], &w, None);
-            assert!(r2.ok, "ephemeral rev {k}: {:?}", r2.error);
-            assert_eq!(r2.exit_code, Some(want), "rev {k}: cache == no-cache");
-            let _ = std::fs::remove_dir_all(&w);
-        }
-    }
-    let _ = std::fs::remove_dir_all(&root);
-}
-
 /// V-05: a callee SIGNATURE change invalidates the callee AND every
 /// caller (the caller's fp embeds the callee's structural signature);
 /// the new closure links and runs correctly.
@@ -519,4 +455,72 @@ fn mir_native_cache_streamed_tool_identity_matches_full_bytes() {
     }
     assert!(ace_native::link_driver::file_identity(&root.join("missing.bin")).is_err());
     std::fs::remove_dir_all(root).unwrap();
+}
+
+mod performance {
+    use super::*;
+
+    /// V-04: body-only edits across 30 DIFFERENT revisions recompile exactly
+    /// the edited unit; every unchanged unit (and only those) hits; every
+    /// round still REALLY links and runs; the cached result equals the
+    /// no-cache result for sampled revisions.
+    #[test]
+    #[cfg(windows)]
+    fn mir_native_cache_body_edit_30_revisions_reuse_and_oracle() {
+        if !common::tools_available() {
+            eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");
+            return;
+        }
+        let root = temp_root("body30");
+        let mut d = MnDriver::with_store(&root, "body30").expect("store");
+        let gen = |k: i32| {
+            (
+            format!(
+                "fn bump(x int) int {{\n    return x + {k}\n}}\n\nfn main() int {{\n    let a = bump(10)\n    let b = bump(20)\n    return a + b\n}}\n"
+            ),
+            30 + 2 * k, // independent closed form: (10+k)+(20+k)
+        )
+        };
+        for k in 0..30 {
+            let (src, want) = gen(k);
+            let r = d.request(
+                &src,
+                "d_main",
+                &[],
+                &workdir_of(&root, &format!("r{k}")),
+                None,
+            );
+            assert!(r.ok, "rev {k} failed: {:?}", r.error);
+            assert_eq!(r.exit_code, Some(want), "rev {k} independent oracle");
+            let emitted = *r.obs.counters.get("codegen_emit_units").unwrap_or(&0);
+            let hits = *r.obs.counters.get("cache_hit_coff").unwrap_or(&0);
+            if k == 0 {
+                assert_eq!(emitted, 2, "fresh store compiles both units");
+                assert_eq!(hits, 0);
+            } else {
+                assert_eq!(
+                emitted, 1,
+                "rev {k}: ONLY the edited unit recompiles (symbol scheme keeps the caller reusable)"
+            );
+                assert_eq!(hits, 1, "rev {k}: the unchanged unit hits");
+            }
+            assert!(
+                *r.obs.counters.get("link_invocations").unwrap_or(&0) >= 1
+                    && *r.obs.counters.get("run_invocations").unwrap_or(&0) >= 1,
+                "rev {k}: a hit STILL links and runs (never a cached PASS)"
+            );
+            // Sampled no-cache oracle: the same revision through the
+            // ephemeral (no-store) path must agree.
+            if k % 10 == 7 {
+                let (src2, _) = gen(k);
+                let mut e = MnDriver::ephemeral();
+                let w = root.join(format!("ephemeral-{k}"));
+                let r2 = e.request(&src2, "d_main", &[], &w, None);
+                assert!(r2.ok, "ephemeral rev {k}: {:?}", r2.error);
+                assert_eq!(r2.exit_code, Some(want), "rev {k}: cache == no-cache");
+                let _ = std::fs::remove_dir_all(&w);
+            }
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

@@ -308,69 +308,6 @@ fn resources_deep_input_bound() {
     assert_eq!(out.ct_execute, 0);
 }
 
-// ---------------------------------------------------------------------------
-// ≥32 MiB real pages + 512 distinct-input revisions (V-08)
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// REAL-watermark GC: physical deletion, convergence, lease, sentinel
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// worker / tree memory hard gates (V-08)
-// ---------------------------------------------------------------------------
-
-#[test]
-fn resources_worker_peak_under_hard_gates() {
-    use base64::Engine as _;
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-    let deck = big_deck(9000, 40);
-    let req = serde_json::json!({
-        "recipe": "cte/scalar-query-v1",
-        "nonce": "peak",
-        "deck_b64": base64::engine::general_purpose::STANDARD.encode(deck),
-        "store_root": std::env::temp_dir().join("cte817-peak-gate").display().to_string().replace('/', "\\"),
-        "session": "peak",
-        "steps": [ { "op": "query" } ],
-        "request_hash": "h",
-    });
-    let parent_sampler = ace_av::mempeek::PeakSampler::start(1);
-    let mut child = Command::new(env!("CARGO_BIN_EXE_ace-comptime-worker"))
-        .arg("case-serve")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("worker spawns");
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(req.to_string().as_bytes())
-        .unwrap();
-    let out = child.wait_with_output().expect("worker completes");
-    let parent_peak = parent_sampler.stop();
-    assert!(out.status.success());
-    let v: serde_json::Value =
-        serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
-    assert!(v["ok"].is_object(), "worker ok: {}", v);
-    let worker_peak = v["ok"]["worker_private_bytes_peak"].as_u64().unwrap_or(0);
-    assert!(worker_peak > 0, "the worker reported a real sampled peak");
-    assert!(
-        worker_peak <= 384 * 1024 * 1024,
-        "worker private-bytes hard gate: {worker_peak}"
-    );
-    let tree_estimate = worker_peak.max(parent_peak);
-    assert!(
-        tree_estimate <= 512 * 1024 * 1024,
-        "process-tree hard gate (single report): {tree_estimate} (worker {worker_peak}, parent {parent_peak})"
-    );
-    // Every managed partition figure the ledger reports held.
-    let step = &v["ok"]["steps"][0];
-    let _ = step;
-}
-
 // Silence unused warnings for conditionally-used partitions import.
 #[allow(dead_code)]
 fn _keep(_p: Partition) {}
@@ -1921,6 +1858,69 @@ bind main.ct = q1 expect i32 placeholder 0
             .get_artifact_by_id(&sent_id)
             .unwrap()
             .is_some());
+    }
+
+    // ---------------------------------------------------------------------------
+    // ≥32 MiB real pages + 512 distinct-input revisions (V-08)
+    // ---------------------------------------------------------------------------
+
+    // ---------------------------------------------------------------------------
+    // REAL-watermark GC: physical deletion, convergence, lease, sentinel
+    // ---------------------------------------------------------------------------
+
+    // ---------------------------------------------------------------------------
+    // worker / tree memory hard gates (V-08)
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn resources_worker_peak_under_hard_gates() {
+        use base64::Engine as _;
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+        let deck = big_deck(9000, 40);
+        let req = serde_json::json!({
+            "recipe": "cte/scalar-query-v1",
+            "nonce": "peak",
+            "deck_b64": base64::engine::general_purpose::STANDARD.encode(deck),
+            "store_root": std::env::temp_dir().join("cte817-peak-gate").display().to_string().replace('/', "\\"),
+            "session": "peak",
+            "steps": [ { "op": "query" } ],
+            "request_hash": "h",
+        });
+        let parent_sampler = ace_av::mempeek::PeakSampler::start(1);
+        let mut child = Command::new(env!("CARGO_BIN_EXE_ace-comptime-worker"))
+            .arg("case-serve")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("worker spawns");
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(req.to_string().as_bytes())
+            .unwrap();
+        let out = child.wait_with_output().expect("worker completes");
+        let parent_peak = parent_sampler.stop();
+        assert!(out.status.success());
+        let v: serde_json::Value =
+            serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+        assert!(v["ok"].is_object(), "worker ok: {}", v);
+        let worker_peak = v["ok"]["worker_private_bytes_peak"].as_u64().unwrap_or(0);
+        assert!(worker_peak > 0, "the worker reported a real sampled peak");
+        assert!(
+            worker_peak <= 384 * 1024 * 1024,
+            "worker private-bytes hard gate: {worker_peak}"
+        );
+        let tree_estimate = worker_peak.max(parent_peak);
+        assert!(
+        tree_estimate <= 512 * 1024 * 1024,
+        "process-tree hard gate (single report): {tree_estimate} (worker {worker_peak}, parent {parent_peak})"
+    );
+        // Every managed partition figure the ledger reports held.
+        let step = &v["ok"]["steps"][0];
+        let _ = step;
     }
 }
 

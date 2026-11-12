@@ -330,32 +330,6 @@ fn sema_cache_r4_budget_ledger_wired_into_real_queries() {
     }
 }
 
-/// F-796-R4-08: OS private-bytes sampled DURING the pressure loop (not
-/// just before/after) — the in-window peak stays within the target.
-#[test]
-fn sema_cache_r4_os_peak_sampled_during_pressure() {
-    let root = scratch("r4-ospeak");
-    let store = open_store(&root.join("store")).unwrap();
-    let before = ace_artifacts::sysinfo::imp::current_process_memory().private_bytes;
-    let mut peak = before;
-    for i in 0..64 {
-        let src = format!("fn f{i}(x int) int {{ let y = x * {i}\nreturn y + {i} }}");
-        let input = core_input(&src, "m");
-        let q = QueryKind::InferBody {
-            fn_name: format!("f{i}"),
-        };
-        let _ = run_query_flow(&store, &input, &q, None, None).unwrap();
-        let now = ace_artifacts::sysinfo::imp::current_process_memory().private_bytes;
-        peak = peak.max(now);
-    }
-    let delta = peak.saturating_sub(before);
-    assert!(
-        delta <= 64 * 1024 * 1024,
-        "in-window private-bytes peak increment must stay ≤64MiB, got {}",
-        delta
-    );
-}
-
 /// F-796-R4-10 cancel: a cancelled inference is a typed `cancelled`
 /// disposition and NOTHING is published (the store gains no artifact).
 #[test]
@@ -2008,5 +1982,35 @@ fn sema_cache_r14_fnsig_key_version_isolates_old_semantics() {
     match lookup_only(&store2, &v1, &query).unwrap() {
         FetchOutcome::Hit { .. } => {}
         other => panic!("the fresh-store control must hit: {other:?}"),
+    }
+}
+
+mod performance {
+    use super::*;
+
+    /// F-796-R4-08: OS private-bytes sampled DURING the pressure loop (not
+    /// just before/after) — the in-window peak stays within the target.
+    #[test]
+    fn sema_cache_r4_os_peak_sampled_during_pressure() {
+        let root = scratch("r4-ospeak");
+        let store = open_store(&root.join("store")).unwrap();
+        let before = ace_artifacts::sysinfo::imp::current_process_memory().private_bytes;
+        let mut peak = before;
+        for i in 0..64 {
+            let src = format!("fn f{i}(x int) int {{ let y = x * {i}\nreturn y + {i} }}");
+            let input = core_input(&src, "m");
+            let q = QueryKind::InferBody {
+                fn_name: format!("f{i}"),
+            };
+            let _ = run_query_flow(&store, &input, &q, None, None).unwrap();
+            let now = ace_artifacts::sysinfo::imp::current_process_memory().private_bytes;
+            peak = peak.max(now);
+        }
+        let delta = peak.saturating_sub(before);
+        assert!(
+            delta <= 64 * 1024 * 1024,
+            "in-window private-bytes peak increment must stay ≤64MiB, got {}",
+            delta
+        );
     }
 }

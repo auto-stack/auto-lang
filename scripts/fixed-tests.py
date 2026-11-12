@@ -48,6 +48,8 @@ def configuration(path=None):
     for g in groups:
         if g['runner'] not in ('nextest', 'python', 'case') or g['domain'] not in ('legacy', 'ace'):
             raise ValueError('unknown fixed runner/domain')
+        if 'timeout_seconds' in g and (type(g['timeout_seconds']) is not int or g['timeout_seconds'] <= 0):
+            raise ValueError('invalid fixed group timeout_seconds')
         workspace = (ROOT / g['workspace']).resolve()
         if not workspace.is_relative_to(ROOT):
             raise ValueError('workspace escapes repository')
@@ -75,7 +77,7 @@ def invocations(groups, test_name=None):
     merged = {}
     for g in groups:
         key = (g['runner'], g['workspace'], tuple(g['args']), g['domain'], tuple(g['tools']),
-               g.get('file'), g.get('suite'), bool(g.get('respect_default_filter')))
+               g.get('file'), g.get('suite'), bool(g.get('respect_default_filter')), g.get('timeout_seconds'))
         if key not in merged:
             merged[key] = {**g, 'groups': [], 'expressions': []}
         merged[key]['groups'].append(g['name'])
@@ -255,7 +257,7 @@ def run_rust(group, output, env, ignored=False, discover_only=False):
     argv = ['cargo', 'nextest', 'run', *args, '--no-fail-fast', '--no-tests', 'fail',
             '--message-format', 'libtest-json-plus', '--message-format-version', '0.1']
     # Native resources/nextest isolation remain in the original configuration.
-    result, execution = invoke(argv, cwd, env, output, 'run', timeout=14400 if os.environ.get('T3_MILESTONE') == '1' else 1800)
+    result, execution = invoke(argv, cwd, env, output, 'run', timeout=group.get('timeout_seconds', 14400 if os.environ.get('T3_MILESTONE') == '1' else 1800))
     known = {suite['package-name'] + '::' + suite['binary-name'] + '$' + name
              for suite in document['rust-suites'].values() for name in suite.get('testcases', {})}
     terminals = terminal_results(result.stdout, expected, known - expected.keys())

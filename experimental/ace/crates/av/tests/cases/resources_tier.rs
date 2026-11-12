@@ -31,103 +31,6 @@ fn owner() -> OwnerScope {
     }
 }
 
-/// V-09: a 4096-block straight chain + a mixed CFG (branches AND a legal
-/// loop) traverse/verify inside the frozen work-step/wall budgets.
-#[test]
-fn av_resources_4096_block_chain_within_budget() {
-    let mut m = MirModule::new(owner());
-    let ti = m.intern_type(MirType::I32);
-    let tb = m.intern_type(MirType::Bool);
-    let sig = m.intern_type(MirType::Fn(FnSig {
-        params: vec![],
-        result: ti,
-    }));
-    let c0 = m.intern_const(MirConst::I32(0));
-    const N: u32 = 4096;
-    // Chain: block i assigns r (slot 0) and jumps to i+1; last returns r.
-    let mut blocks = Vec::with_capacity(N as usize + 1);
-    for i in 0..N {
-        blocks.push(MirBlock {
-            instrs: vec![MirInstr::Const { dst: 0, value: c0 }],
-            term: Terminator::Jump { target: i + 1 },
-        });
-    }
-    blocks.push(MirBlock {
-        instrs: vec![],
-        term: Terminator::Return { value: 0 },
-    });
-    // Mixed: a diamond + a loop appended at the end of the chain. The
-    // branch condition is a bool temp initialized in the last chain block.
-    let c_true = m.intern_const(MirConst::Bool(true));
-    blocks[N as usize].instrs.push(MirInstr::Const {
-        dst: 1,
-        value: c_true,
-    });
-    blocks[N as usize].term = Terminator::Branch {
-        cond: 1,
-        then: N + 1,
-        else_: N + 2,
-    };
-    blocks.push(MirBlock {
-        instrs: vec![],
-        term: Terminator::Jump { target: N + 3 },
-    });
-    blocks.push(MirBlock {
-        instrs: vec![],
-        term: Terminator::Jump { target: N + 3 },
-    });
-    // loop header N+3 → body N+4 → back to N+3; exit N+5.
-    blocks.push(MirBlock {
-        instrs: vec![],
-        term: Terminator::Jump { target: N + 4 },
-    });
-    blocks.push(MirBlock {
-        instrs: vec![],
-        term: Terminator::Branch {
-            cond: 1,
-            then: N + 3,
-            else_: N + 5,
-        },
-    });
-    blocks.push(MirBlock {
-        instrs: vec![],
-        term: Terminator::Return { value: 0 },
-    });
-    m.funcs.push(MirFunction {
-        owner: m.owner.clone(),
-        name: "d_main".into(),
-        sig,
-        slots: vec![
-            MirSlot {
-                kind: SlotKind::Local,
-                ty: ti,
-                name: Some("r".into()),
-            },
-            MirSlot {
-                kind: SlotKind::Temp,
-                ty: tb,
-                name: None,
-            },
-        ],
-        blocks,
-        entry: 0,
-        source_snapshot: 0,
-        spans: vec![],
-        env: None,
-    });
-    m.entry = 0;
-    assert!(m.table_entries() <= MAX_TABLE_ENTRIES);
-    let started = Instant::now();
-    let checked = verify_mir_with_deadline(&m, started + Duration::from_secs(5))
-        .expect("4096 chain + diamond + loop verifies");
-    let elapsed = started.elapsed();
-    assert!(elapsed < Duration::from_secs(5), "verify wall {elapsed:?}");
-    assert!(
-        checked.stats().work_steps <= 2_000_000,
-        "within the frozen step budget"
-    );
-}
-
 /// V-09: the same shape OVER the table budget is a resource rejection
 /// (never an illegal-syntax classification), checked before deep analysis.
 #[test]
@@ -807,35 +710,6 @@ fn av_resources_atom_front_door_rejects_before_recursive_parser() {
     let _ = MAX_FRONTEND_NESTING;
 }
 
-/// F798-R2-02 counter-control: the peak sampler must observe a transient
-/// memory spike that the endpoint delta cannot see (endpoint low, process
-/// peak high). A ~96 MiB spike is allocated mid-scope and freed before the
-/// end; the sampler's peak must catch it while mem_end - mem_start stays
-/// low. This is the discriminating oracle for peak-vs-delta evidence.
-#[test]
-#[cfg(windows)]
-fn av_resources_peak_sampler_distinguishes_transient_spike() {
-    use ace_av::mempeek::{sample_private_bytes, PeakSampler};
-    let m0 = sample_private_bytes();
-    let sampler = PeakSampler::start(5);
-    let spike: Vec<Vec<u8>> = (0..96).map(|_| vec![7u8; 1024 * 1024]).collect();
-    // Hold the spike long enough for at least one poll.
-    std::thread::sleep(std::time::Duration::from_millis(120));
-    let _ = spike.len();
-    drop(spike);
-    let peak = sampler.stop();
-    let delta = sample_private_bytes().saturating_sub(m0);
-    assert!(
-        peak >= 64 * 1024 * 1024,
-        "sampler must catch the transient spike (peak {} bytes)",
-        peak
-    );
-    assert!(
-        delta < 32 * 1024 * 1024,
-        "endpoint delta must stay low ({delta} bytes) while the peak was {peak}"
-    );
-}
-
 /// r5 §5.9 (F798-R12-04 closure): the worker memory budget is TWO
 /// attributed HARD-gated lines — Line A the ac-core-owned frontend
 /// transient (isolated peak ≤224 MiB), Line B the probe-owned residual
@@ -1273,5 +1147,131 @@ fn main() int {
         );
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&work_root);
+    }
+
+    /// V-09: a 4096-block straight chain + a mixed CFG (branches AND a legal
+    /// loop) traverse/verify inside the frozen work-step/wall budgets.
+    #[test]
+    fn av_resources_4096_block_chain_within_budget() {
+        let mut m = MirModule::new(owner());
+        let ti = m.intern_type(MirType::I32);
+        let tb = m.intern_type(MirType::Bool);
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        let c0 = m.intern_const(MirConst::I32(0));
+        const N: u32 = 4096;
+        // Chain: block i assigns r (slot 0) and jumps to i+1; last returns r.
+        let mut blocks = Vec::with_capacity(N as usize + 1);
+        for i in 0..N {
+            blocks.push(MirBlock {
+                instrs: vec![MirInstr::Const { dst: 0, value: c0 }],
+                term: Terminator::Jump { target: i + 1 },
+            });
+        }
+        blocks.push(MirBlock {
+            instrs: vec![],
+            term: Terminator::Return { value: 0 },
+        });
+        // Mixed: a diamond + a loop appended at the end of the chain. The
+        // branch condition is a bool temp initialized in the last chain block.
+        let c_true = m.intern_const(MirConst::Bool(true));
+        blocks[N as usize].instrs.push(MirInstr::Const {
+            dst: 1,
+            value: c_true,
+        });
+        blocks[N as usize].term = Terminator::Branch {
+            cond: 1,
+            then: N + 1,
+            else_: N + 2,
+        };
+        blocks.push(MirBlock {
+            instrs: vec![],
+            term: Terminator::Jump { target: N + 3 },
+        });
+        blocks.push(MirBlock {
+            instrs: vec![],
+            term: Terminator::Jump { target: N + 3 },
+        });
+        // loop header N+3 → body N+4 → back to N+3; exit N+5.
+        blocks.push(MirBlock {
+            instrs: vec![],
+            term: Terminator::Jump { target: N + 4 },
+        });
+        blocks.push(MirBlock {
+            instrs: vec![],
+            term: Terminator::Branch {
+                cond: 1,
+                then: N + 3,
+                else_: N + 5,
+            },
+        });
+        blocks.push(MirBlock {
+            instrs: vec![],
+            term: Terminator::Return { value: 0 },
+        });
+        m.funcs.push(MirFunction {
+            owner: m.owner.clone(),
+            name: "d_main".into(),
+            sig,
+            slots: vec![
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: ti,
+                    name: Some("r".into()),
+                },
+                MirSlot {
+                    kind: SlotKind::Temp,
+                    ty: tb,
+                    name: None,
+                },
+            ],
+            blocks,
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+            env: None,
+        });
+        m.entry = 0;
+        assert!(m.table_entries() <= MAX_TABLE_ENTRIES);
+        let started = Instant::now();
+        let checked = verify_mir_with_deadline(&m, started + Duration::from_secs(5))
+            .expect("4096 chain + diamond + loop verifies");
+        let elapsed = started.elapsed();
+        assert!(elapsed < Duration::from_secs(5), "verify wall {elapsed:?}");
+        assert!(
+            checked.stats().work_steps <= 2_000_000,
+            "within the frozen step budget"
+        );
+    }
+
+    /// F798-R2-02 counter-control: the peak sampler must observe a transient
+    /// memory spike that the endpoint delta cannot see (endpoint low, process
+    /// peak high). A ~96 MiB spike is allocated mid-scope and freed before the
+    /// end; the sampler's peak must catch it while mem_end - mem_start stays
+    /// low. This is the discriminating oracle for peak-vs-delta evidence.
+    #[test]
+    #[cfg(windows)]
+    fn av_resources_peak_sampler_distinguishes_transient_spike() {
+        use ace_av::mempeek::{sample_private_bytes, PeakSampler};
+        let m0 = sample_private_bytes();
+        let sampler = PeakSampler::start(5);
+        let spike: Vec<Vec<u8>> = (0..96).map(|_| vec![7u8; 1024 * 1024]).collect();
+        // Hold the spike long enough for at least one poll.
+        std::thread::sleep(std::time::Duration::from_millis(120));
+        let _ = spike.len();
+        drop(spike);
+        let peak = sampler.stop();
+        let delta = sample_private_bytes().saturating_sub(m0);
+        assert!(
+            peak >= 64 * 1024 * 1024,
+            "sampler must catch the transient spike (peak {} bytes)",
+            peak
+        );
+        assert!(
+            delta < 32 * 1024 * 1024,
+            "endpoint delta must stay low ({delta} bytes) while the peak was {peak}"
+        );
     }
 }

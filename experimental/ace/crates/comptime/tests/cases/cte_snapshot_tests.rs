@@ -35,74 +35,6 @@ fn deck(src: &str, exec: &str) -> String {
     )
 }
 
-/// V-12 (1) 生产观测: real execution through the session; retargeting
-/// the arguments recompiles ONLY the wrapper — the helper and the
-/// unrelated function keep compile-count 0 and IDENTICAL generations.
-#[test]
-fn cte_snapshot_production_observation_incremental() {
-    let src = src_with(0);
-    let _input = input_for(&src);
-    let cancel = CancelFlag::new(false);
-    let mut lane = SnapshotLane::warm(
-        &src,
-        "cte_sum",
-        &[CteValue::I32(20), CteValue::I32(22)],
-        false,
-    )
-    .unwrap();
-    let g_sum_before = lane.generation_of("cte_sum");
-    let g_other_before = lane.generation_of("other");
-    assert!(g_sum_before.is_some(), "units are resident");
-    let r = lane
-        .run(false, &cancel, ace_comptime::av_driver::MAX_CALL_WALL)
-        .unwrap();
-    assert_eq!(r.value.render(), "i32:42", "hand-computed 20+22+0");
-    assert!(r.steps > 0, "real AV execution");
-
-    // 30 argument revisions through ONE session (V-12 source30修订):
-    // each retarget recompiles only the wrapper.
-    for k in 1..=30i64 {
-        lane.retarget(
-            "cte_sum",
-            &[CteValue::I32(20), CteValue::I32(22 + k as i32)],
-            false,
-        )
-        .unwrap();
-        let r = lane
-            .run(false, &cancel, ace_comptime::av_driver::MAX_CALL_WALL)
-            .unwrap();
-        assert_eq!(r.value.render(), format!("i32:{}", 42 + k), "rev {k}");
-    }
-    assert_eq!(
-        lane.compile_count("cte_sum"),
-        0,
-        "the helper never recompiled"
-    );
-    assert_eq!(
-        lane.compile_count("other"),
-        0,
-        "the unrelated function never recompiled"
-    );
-    assert!(
-        lane.compile_count("cte817_call") > 0,
-        "the wrapper did recompile"
-    );
-    assert_eq!(
-        lane.generation_of("cte_sum"),
-        g_sum_before,
-        "unchanged object keeps its generation"
-    );
-    assert_eq!(lane.generation_of("other"), g_other_before);
-    // Purity: the ONLY whole-module event is the warm-up itself — 30
-    // revisions add no degrade, and every revision was incremental.
-    assert_eq!(
-        lane.whole_module_count(),
-        1,
-        "30 revisions stay function-incremental (warm-up is the only whole-module event)"
-    );
-    assert_eq!(lane.incremental_edit_count(), 30);
-}
-
 /// V-12 (2) 身份: the exec lane is a cache-key axis — closure and
 /// snapshot requests never share frozen entries, and each lane hits its
 /// own entry afterwards.
@@ -408,13 +340,11 @@ fn baseline_deck(fns: usize, rev: i64) -> String {
     )
 }
 
-#[test]
-fn cte_snapshot_resident_lane_baseline_30_revisions() {
-    const FNS: usize = 115;
+fn check_resident_lane_revisions(fns: usize, revisions: u64, formal: bool) {
     // Sanity: the baseline is the specified scale.
-    let base_src = baseline_source(FNS, 0);
+    let base_src = baseline_source(fns, 0);
     assert!(
-        base_src.len() >= 256 * 1024,
+        !formal || base_src.len() >= 256 * 1024,
         "baseline >= 256KiB: {} bytes",
         base_src.len()
     );
@@ -422,7 +352,7 @@ fn cte_snapshot_resident_lane_baseline_30_revisions() {
     let mut d = CteDriver::ephemeral();
     // Warm on revision 0; capture the reference value and EVERY
     // function's generation for independent comparison later.
-    let first = d.query_step(&baseline_deck(FNS, 0), None);
+    let first = d.query_step(&baseline_deck(fns, 0), None);
     assert_eq!(first.status, StepStatus::Ok, "{:?}", first.message);
     assert_eq!(d.snapshot_rewarms(), 0);
     let base_value = first
@@ -435,8 +365,8 @@ fn cte_snapshot_resident_lane_baseline_30_revisions() {
         })
         .expect("reference value");
     let lane = d.snapshot_lane().expect("resident lane");
-    let revised_fn = format!("h{}", FNS / 2);
-    let gens_before: Vec<(String, Option<u64>)> = (0..FNS)
+    let revised_fn = format!("h{}", fns / 2);
+    let gens_before: Vec<(String, Option<u64>)> = (0..fns)
         .map(|k| (format!("h{k}"), lane.lane.generation_of(&format!("h{k}"))))
         .chain(std::iter::once((
             "cte_sum".to_string(),
@@ -453,8 +383,8 @@ fn cte_snapshot_resident_lane_baseline_30_revisions() {
     // execution); only the touched helpers recompile; every other
     // function keeps compile-count 0 and its generation; P90 <= 2000ms.
     let mut walls: Vec<f64> = Vec::new();
-    for k in 1..=30i64 {
-        let deck = baseline_deck(FNS, k);
+    for k in 1..=revisions as i64 {
+        let deck = baseline_deck(fns, k);
         let t = std::time::Instant::now();
         let out = d.query_step(&deck, None);
         walls.push(t.elapsed().as_secs_f64() * 1000.0);
@@ -477,22 +407,24 @@ fn cte_snapshot_resident_lane_baseline_30_revisions() {
     }
     walls.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let p90 = walls[walls.len() - walls.len() / 10 - 1];
-    assert!(
-        if cfg!(debug_assertions) {
-            // Debug is smoke-only (the 798 discipline): correctness
-            // asserted, the 2000ms gate is a RELEASE measurement.
-            p90 <= 5000.0
-        } else {
-            p90 <= 2000.0
-        },
-        "resident-lane revision P90 <= 2000ms (debug smoke <=5s): {p90:.0}ms"
-    );
+    if formal {
+        assert!(
+            if cfg!(debug_assertions) {
+                // Debug is smoke-only (the 798 discipline): correctness
+                // asserted, the 2000ms gate is a RELEASE measurement.
+                p90 <= 5000.0
+            } else {
+                p90 <= 2000.0
+            },
+            "resident-lane revision P90 <= 2000ms (debug smoke <=5s): {p90:.0}ms"
+        );
+    }
 
     let lane = d.snapshot_lane().expect("resident lane");
     assert_eq!(
         d.snapshot_rewarms(),
         0,
-        "no whole-module re-warm across 30 revisions"
+        "no whole-module re-warm across revisions"
     );
     assert_eq!(
         lane.lane.whole_module_count(),
@@ -524,19 +456,103 @@ fn cte_snapshot_resident_lane_baseline_30_revisions() {
             );
         }
     }
-    assert_eq!(lane.lane.compile_count(&revised_fn), 30);
+    assert_eq!(lane.lane.compile_count(&revised_fn), revisions);
     // Full-stage observation for one unchanged function: EVERY pipeline
     // stage stayed at 0 across all 30 revisions.
     let stages = lane.lane.stages_of("h0");
     assert!(
         stages.values().all(|c| *c == 0),
-        "h0 all-stage-zero across 30 revisions: {stages:?}"
+        "h0 all-stage-zero across revisions: {stages:?}"
     );
     assert_eq!(
         lane.lane.phase_io_of("h0").unwrap_or(0),
         0,
-        "h0 artifact IO == 0 across 30 revisions"
+        "h0 artifact IO == 0 across revisions"
     );
+}
+
+#[test]
+fn cte_snapshot_resident_lane_small_revisions() {
+    // Daily correctness: same value/generation/all-stage-zero assertions,
+    // without the formal 115-function/256KiB/30-sample timing campaign.
+    check_resident_lane_revisions(8, 3, false);
+}
+
+mod performance {
+    use super::*;
+
+    #[test]
+    fn cte_snapshot_resident_lane_baseline_30_revisions() {
+        check_resident_lane_revisions(115, 30, true);
+    }
+
+    /// V-12 (1) 生产观测: real execution through the session; retargeting
+    /// the arguments recompiles ONLY the wrapper — the helper and the
+    /// unrelated function keep compile-count 0 and IDENTICAL generations.
+    #[test]
+    fn cte_snapshot_production_observation_incremental() {
+        let src = src_with(0);
+        let _input = input_for(&src);
+        let cancel = CancelFlag::new(false);
+        let mut lane = SnapshotLane::warm(
+            &src,
+            "cte_sum",
+            &[CteValue::I32(20), CteValue::I32(22)],
+            false,
+        )
+        .unwrap();
+        let g_sum_before = lane.generation_of("cte_sum");
+        let g_other_before = lane.generation_of("other");
+        assert!(g_sum_before.is_some(), "units are resident");
+        let r = lane
+            .run(false, &cancel, ace_comptime::av_driver::MAX_CALL_WALL)
+            .unwrap();
+        assert_eq!(r.value.render(), "i32:42", "hand-computed 20+22+0");
+        assert!(r.steps > 0, "real AV execution");
+
+        // 30 argument revisions through ONE session (V-12 source30修订):
+        // each retarget recompiles only the wrapper.
+        for k in 1..=30i64 {
+            lane.retarget(
+                "cte_sum",
+                &[CteValue::I32(20), CteValue::I32(22 + k as i32)],
+                false,
+            )
+            .unwrap();
+            let r = lane
+                .run(false, &cancel, ace_comptime::av_driver::MAX_CALL_WALL)
+                .unwrap();
+            assert_eq!(r.value.render(), format!("i32:{}", 42 + k), "rev {k}");
+        }
+        assert_eq!(
+            lane.compile_count("cte_sum"),
+            0,
+            "the helper never recompiled"
+        );
+        assert_eq!(
+            lane.compile_count("other"),
+            0,
+            "the unrelated function never recompiled"
+        );
+        assert!(
+            lane.compile_count("cte817_call") > 0,
+            "the wrapper did recompile"
+        );
+        assert_eq!(
+            lane.generation_of("cte_sum"),
+            g_sum_before,
+            "unchanged object keeps its generation"
+        );
+        assert_eq!(lane.generation_of("other"), g_other_before);
+        // Purity: the ONLY whole-module event is the warm-up itself — 30
+        // revisions add no degrade, and every revision was incremental.
+        assert_eq!(
+            lane.whole_module_count(),
+            1,
+            "30 revisions stay function-incremental (warm-up is the only whole-module event)"
+        );
+        assert_eq!(lane.incremental_edit_count(), 30);
+    }
 }
 
 #[test]

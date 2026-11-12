@@ -636,7 +636,7 @@ fn mn_sd911_worker_incremental_warmup_reject_shapes() {
 // ---------------------------------------------------------------------------
 // PLAN-911 T-05 V-13: the formal four-state leg in `source-v1` mode through
 // the REAL worker over the frozen reference workload (115 functions) —
-// registered under `::performance::` for `cargo t ace-performance`.
+// registered under `::performance::` for `cargo t ace-perf`.
 // ---------------------------------------------------------------------------
 mod performance {
     use super::*;

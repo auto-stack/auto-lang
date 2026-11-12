@@ -4,7 +4,7 @@
 //! functions, ≥3 sibling lambdas per tested owner — with P90 wall gates,
 //! a 512-distinct-revision churn leg, the budget/cancel refusal faces and
 //! the stable-edit zero-rustc/cargo invariant. Runs under the
-//! `ace-performance` fixed group (`test(/::performance::/)`).
+//! `ace-perf` fixed group (`test(/::performance::/)`).
 
 pub mod performance {
     use ace_native::collections_lower::WrapperKnobs;

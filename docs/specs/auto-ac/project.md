@@ -1,6 +1,6 @@
 # auto-ac
 
-> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。实现包ace-core（前端/Checked HIR/verify/链接），native包ace-native，共享lowering包ace-lowering；CLI auto-ac-prototype的实际新二进制名以Cargo manifest为准。普通语言cargo t不构建ACE；cargo t ace选择常规集合，完整包/all及ace-performance保原专项和适用条件。
+> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。实现包ace-core（前端/Checked HIR/verify/链接），native包ace-native，共享lowering包ace-lowering；CLI auto-ac-prototype的实际新二进制名以Cargo manifest为准。普通语言cargo t不构建ACE；cargo t ace选择常规集合，模块常规组排除`::performance::`，显式ace-perf保原专项和适用条件。
 
 > **Status**: experimental
 > 路径：`experimental/ace/crates/core`（ACE workspace成员，bin `ace-core`，"ac-probe" 为历史文档名；**前端/Checked HIR/verify/链接**层，无 lowering） | 技术栈：Rust + rust-lld；native lowering 在 `experimental/ace/crates/native`（`ac-mn`，Cranelift 0.126.2）

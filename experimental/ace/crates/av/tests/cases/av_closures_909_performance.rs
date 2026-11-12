@@ -1,7 +1,7 @@
 //! PLAN-909 V-15 formal performance leg: 30 original-scale samples across
 //! the four incremental states (fresh / hit / restart / body-edit) with
 //! P50/P90/P95/P99 wall times, plus a 512-revision churn run against the
-//! frozen per-unit history caps. Runs under the `ace-performance` fixed
+//! frozen per-unit history caps. Runs under the `ace-perf` fixed
 //! group (`test(/::performance::/)`).
 
 pub mod performance {

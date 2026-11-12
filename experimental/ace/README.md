@@ -3,7 +3,7 @@
 ACE implementations live in this independent Cargo workspace. Member crates keep their existing responsibilities and dependency directions; the language workspace has no implicit ACE test build.
 
 - From the repository root, `cargo t ace` runs the regular ACE collection and the language SDK's private protocol controls.
-- `cargo t ace-performance` explicitly selects the original formal timing, sustained scale/GC and measurement controls. Samples, sizes, assertions, ignored and platform conditions remain intact.
+- `cargo t ace-perf` explicitly selects formal timing, sustained scale/GC and measurement controls using the serial `ace-perf` nextest profile (`test-threads = 1`). Ordinary package groups exclude `::performance::`. Samples, sizes, assertions, ignored and platform conditions remain intact.
 - The language `cargo t all` covers the language fixed groups only; every ACE group here is excluded from `all` (opt-in `all: false`) and is entered explicitly through the `ace`/`ace-*` groups above. `all` also excludes external UI/Man ownership.
 - `cargo t --list` reads the fixed group configuration without discovery or building.
 

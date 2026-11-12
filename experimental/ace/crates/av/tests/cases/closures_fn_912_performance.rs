@@ -4,7 +4,7 @@
 //! lambdas per tested owner, entry-reachable, first/middle/last lambda
 //! edits — with P90 wall gates, the retained-frontend pool gate, a
 //! 512-revision churn leg and the parent working-set delta. Runs under the
-//! `ace-performance` fixed group (`test(/::performance::/)`).
+//! `ace-perf` fixed group (`test(/::performance::/)`).
 
 pub mod performance {
     use ace_av::closures_fn_session::{ClosuresFunctionSession, RouteReport};

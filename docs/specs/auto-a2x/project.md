@@ -1,6 +1,6 @@
 # auto-a2x
 
-> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。ace-a2x-core、ace-a2x-rust、ace-a2x-store、ace-a2x-worker位于crates/a2x-*，原Checked HIR→Rust依赖方向保持。普通语言cargo t不构建ACE；cargo t ace选择常规集合，完整包/all及ace-performance保原专项和适用条件。
+> PLAN-896当前组织：上述ACE相关实现统一属于`experimental/ace/Cargo.toml`独立workspace（单Cargo.lock/同树target），各子目录为成员包，不再是独立workspace。ace-a2x-core、ace-a2x-rust、ace-a2x-store、ace-a2x-worker位于crates/a2x-*，原Checked HIR→Rust依赖方向保持。普通语言cargo t不构建ACE；cargo t ace选择常规集合，模块常规组排除`::performance::`，显式ace-perf保原专项和适用条件。
 
 > **Status**: experimental
 > 路径：`experimental/ace`（独立 Cargo workspace：`a2x-core` / `a2x-rust` / `a2x-store` / `a2x-probe`） | 依据：Design 51（AX-A，PLAN-892 交付）
