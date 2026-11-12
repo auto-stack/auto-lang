@@ -200,10 +200,25 @@ pub fn project(prog: &core_ast::Program, package: &str, module: &str) -> Result<
 }
 
 fn project_fn(f: &core_ast::FnItem) -> Result<InputFn, String> {
-    let tps: Vec<String> = f.type_params.iter().map(|t| t.name.name.clone()).collect();
+    let tps: Vec<String> = f
+        .type_params
+        .iter()
+        .filter(|t| t.kind == core_ast::TypeParamKind::Type)
+        .map(|t| t.name.name.clone())
+        .collect();
+    // PLAN-963（T-04）：值参数只带名字（声明类型 u32 已在投影核验）。
+    let cps: Vec<crate::input::ConstParam> = f
+        .type_params
+        .iter()
+        .filter(|t| t.kind == core_ast::TypeParamKind::Const)
+        .map(|t| crate::input::ConstParam {
+            name: t.name.name.clone(),
+        })
+        .collect();
     Ok(InputFn {
         name: f.name.name.clone(),
         type_params: tps.clone(),
+        const_params: cps,
         params: f
             .params
             .iter()
@@ -313,6 +328,7 @@ pub fn project_body_scoped_with_caps(
                 params: Vec::new(),
                 ret: Ann::I32,
                 type_params: Vec::new(),
+                const_params: Vec::new(),
                 body: InputBlock { stmts: Vec::new() },
             });
         }
@@ -329,14 +345,29 @@ pub fn project_body_scoped_with_caps(
 
 #[cfg(feature = "core-ast")]
 fn project_fn_scoped(f: &core_ast::FnItem, target: &str) -> Result<InputFn, String> {
-    let tps: Vec<String> = f.type_params.iter().map(|t| t.name.name.clone()).collect();
+    let tps: Vec<String> = f
+        .type_params
+        .iter()
+        .filter(|t| t.kind == core_ast::TypeParamKind::Type)
+        .map(|t| t.name.name.clone())
+        .collect();
+    let cps: Vec<crate::input::ConstParam> = f
+        .type_params
+        .iter()
+        .filter(|t| t.kind == core_ast::TypeParamKind::Const)
+        .map(|t| crate::input::ConstParam {
+            name: t.name.name.clone(),
+        })
+        .collect();
     // PLAN-935 (T-04): a TEMPLATE contributes its signature (with
     // `Ann::TyParam` positions) and never a body — a template body is only
     // ever checked as one of its concrete instances (plan §5.1).
-    let is_template = !tps.is_empty();
+    // PLAN-963（T-04）：只要带声明参数（类型或值）就是模板。
+    let is_template = !tps.is_empty() || !cps.is_empty();
     Ok(InputFn {
         name: f.name.name.clone(),
         type_params: tps.clone(),
+        const_params: cps,
         params: f
             .params
             .iter()
@@ -474,13 +505,9 @@ fn project_stmt(s: &core_ast::Stmt) -> Result<InputStmt, String> {
         },
         // PLAN-962: an index assign is an aggregates-surface effect —
         // named-unsupported on the query surface.
-        core_ast::Stmt::IndexAssign(_) => {
-            return Err("index-assign statement".to_string())
-        }
+        core_ast::Stmt::IndexAssign(_) => return Err("index-assign statement".to_string()),
         // PLAN-962: tuple destructuring likewise.
-        core_ast::Stmt::LetDestruct { .. } => {
-            return Err("let-destructure statement".to_string())
-        }
+        core_ast::Stmt::LetDestruct { .. } => return Err("let-destructure statement".to_string()),
         // PLAN-962 (T-08): hold — aggregates-surface form.
         core_ast::Stmt::Hold { .. } => return Err("hold statement".to_string()),
         core_ast::Stmt::Return { value, span: sp } => InputStmt::Return {
@@ -582,6 +609,16 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         core_ast::ExprKind::Var(v) => InputExprKind::Var(v.name.clone()),
         core_ast::ExprKind::Call { callee, args } => InputExprKind::Call {
             callee: callee.name.clone(),
+            args: args.iter().filter_map(project_arg).collect(),
+        },
+        // PLAN-963（T-04）：值实参调用——值按声明序进需求（进实例身份）。
+        core_ast::ExprKind::ConstCall {
+            callee,
+            consts,
+            args,
+        } => InputExprKind::ConstCall {
+            callee: callee.name.clone(),
+            consts: consts.iter().map(|c| c.value as u32).collect(),
             args: args.iter().filter_map(project_arg).collect(),
         },
         // PLAN-865: preserve indirect calls as unsupported instead of treating them as named calls.

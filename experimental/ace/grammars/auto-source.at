@@ -343,8 +343,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 约束声明（`type Box<T has Summable>`），由语法期单态化按实参核验；
             // scalar/packages 面仍交投影具名拒。
             alt { ident(field: "name") opt(profiles: [scalar-instances, scalar-ct, packages-modules, record, record-instances, text-record-instances, aggregates]) { type-param-constraint(field: "constraint") } }
-            // `<const N>`（r-const 保留词形状；投影具名拒）
-            alt { r-const(field: "const_kw") {} ident(field: "name") }
+            // `<const N>` / `<const N u32>`（PLAN-963 T-04：值参数；声明类型
+            // 缺省 u32，其他拼写由投影具名拒）。声明类型按词全域识别（关键字
+            // 类型词 + ident），保证 `<const N bool>` 这类错拼在投影期得
+            // `source.instances-unsupported` 而不是语法错。
+            alt { r-const(field: "const_kw") {} ident(field: "name") opt(profiles: [scalar-instances, scalar-ct, packages-modules, record, record-instances, text-record-instances, aggregates]) { const-param-ty(field: "ty") } }
+        }
+        const-param-ty(profiles: [scalar-instances, scalar-ct, packages-modules, record, record-instances, text-record-instances, aggregates]) {
+            alt { int-kw(field: "word") }
+            alt { i32(field: "word") }
+            alt { bool(field: "word") }
+            alt { ident(field: "word") }
         }
         type-param-constraint(profiles: [scalar-instances, scalar-ct, packages-modules, record, record-instances, text-record-instances, aggregates]) { r-has(field: "kw") {} ident(field: "bound") }
         params { param() {} many { param-tail() {} } }
@@ -875,6 +884,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 条件镜像旧 generic_scan_commits——平衡 `<...>` 后随 `.`；普通
             // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
             alt(profiles: [collections, closures, aggregates]) { generic-atom() {} }
+            // PLAN-963（T-04）：显式值实参调用 `rep<2>(21)`（实例面）。
+            alt(profiles: [scalar-instances, record-instances, text-record-instances]) { generic-call() {} }
             // lambda 先于括号组备选：`( 参数 ) =>` 形状提交后不回退（ordered
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
@@ -907,6 +918,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 条件镜像旧 generic_scan_commits——平衡 `<...>` 后随 `.`；普通
             // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
             alt(profiles: [collections, closures, numeric, aggregates]) { generic-atom() {} }
+            // PLAN-963（T-04）：显式值实参调用 `rep<2>(21)`（实例面）。
+            alt(profiles: [scalar-instances, record-instances, text-record-instances]) { generic-call() {} }
             // lambda 先于括号组备选：`( 参数 ) =>` 形状提交后不回退（ordered
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
@@ -926,6 +939,21 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { ident() {} }
             alt { lparen() {} expr() {} rparen() {} }
         }
+        // PLAN-963（T-04）：`rep<2>(21)` —— 显式值实参调用原子。提交条件镜像
+        // generic-atom：平衡 `<...>`（值实参只认十进制整数字面量）后紧随 `(`；
+        // 其他形（如 `a < b > (c)`）在原子备选干净失败后回退 ident + 比较算子。
+        generic-call(profiles: [scalar-instances, record-instances, text-record-instances]) {
+            ident(field: "name")
+            lt() {}
+            const-args(field: "cargs")
+            gt() {}
+            lparen() {}
+            args(field: "args")
+            rparen() {}
+        }
+        const-args(profiles: [scalar-instances, record-instances, text-record-instances]) { const-arg() {} many { const-arg-tail() {} } }
+        const-arg-tail(profiles: [scalar-instances, record-instances, text-record-instances]) { comma() {} const-arg() {} }
+        const-arg(profiles: [scalar-instances, record-instances, text-record-instances]) { int-lit(field: "lit") }
         // PLAN-928（T-03）：`List<T>.member` 原子（GenericType 接收位）。
         generic-atom(profiles: [collections, closures, numeric, aggregates]) {
             ident(field: "name")

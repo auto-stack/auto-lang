@@ -108,6 +108,14 @@ pub(crate) fn analyze_capture_uses(
                     visit_arg(arg, outer_locals, scopes, uses, by_name);
                 }
             }
+            // PLAN-963（T-04）：值实参调用——值实参是字面量（不捕获），实参按
+            // 普通调用捕获。
+            ExprKind::ConstCall { callee, args, .. } => {
+                record(callee, false, outer_locals, scopes, uses, by_name);
+                for arg in args {
+                    visit_arg(arg, outer_locals, scopes, uses, by_name);
+                }
+            }
             ExprKind::CallValue { callee, args } => {
                 visit_expr(callee, outer_locals, scopes, uses, by_name);
                 for arg in args {
@@ -365,7 +373,7 @@ pub(crate) fn scan_shared_capture_cells(
             }
             // PLAN-961: a typed literal captures nothing.
             ExprKind::TypedLit { .. } => {}
-            ExprKind::Call { args, .. } => {
+            ExprKind::Call { args, .. } | ExprKind::ConstCall { args, .. } => {
                 for arg in args {
                     visit_arg(arg, scopes, shared);
                 }

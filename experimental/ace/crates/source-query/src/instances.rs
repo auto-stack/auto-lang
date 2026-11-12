@@ -35,7 +35,7 @@ use crate::walk::walk_body;
 use ace_core::atom_text::{Diagnostic, Span, Stage};
 use ace_core::source::ast::{
     Arg, Block, ClosureBody, Expr, ExprKind, FnItem, Ident, Item, Param, Program, Stmt, TypeAnn,
-    TypeRef, TypeWord,
+    TypeParamDecl, TypeParamKind, TypeRef, TypeWord,
 };
 use ace_semantics::adapter::project_body_scoped_with_caps;
 use ace_semantics::{InferOutcome, InferSession};
@@ -78,6 +78,13 @@ pub struct InstanceArg {
     pub ty: InstanceTy,
 }
 
+/// 一个已解出的值实参（PLAN-963 T-04：声明序 `(参数名, 值)`；声明类型 u32）。
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct InstanceConstArg {
+    pub param: String,
+    pub value: u32,
+}
+
 /// 一个已生产实例的调度记录（T-02 进程内；T-05 持久化为实例页）。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct InstanceRecord {
@@ -86,8 +93,10 @@ pub struct InstanceRecord {
     /// 完整实现键 canonical（`INSTANCES_KEY_DOMAIN`）。
     pub key: String,
     pub template: String,
-    /// 规范 substitution（声明序；int/i32 已并 I32）。
+    /// 规范 substitution（类型参数，声明序；int/i32 已并 I32）。
     pub args: Vec<InstanceArg>,
+    /// PLAN-963（T-04）：值实参（声明序）。与 `args` 一起构成声明序身份。
+    pub consts: Vec<InstanceConstArg>,
     /// 脱糖程序中的具体函数名（装配拼写，非身份）。
     pub concrete_name: String,
     /// 模板签名轴版本（变化 → 调用者重验 + 实例键变化）。
@@ -199,16 +208,6 @@ fn ty_order(ty: &InstanceTy) -> (u8, &str) {
     }
 }
 
-/// 一组 substitution 的规范序键（声明序逐位；单参 = 旧 `ty_order`）。
-fn args_order(args: &[InstanceTy]) -> Vec<String> {
-    args.iter()
-        .map(|t| {
-            let (k, n) = ty_order(t);
-            format!("{k}:{n}")
-        })
-        .collect()
-}
-
 /// 实例具体函数名的装配拼写（**不是身份**；身份在 [`InstanceRecord::key`]）。
 ///
 /// 拼写 = `{模板名}_{类型尾...}`（`choose_i32`/`pick_i32_bool`；单参仍是
@@ -217,11 +216,29 @@ fn args_order(args: &[InstanceTy]) -> Vec<String> {
 /// 性探测**避让同名用户声明（同源同探测序；探测不进入身份）。碰撞时后接
 /// `__2`/`__3`…（调用点重绑与实例落位共用 by_template 表中的最终名，不重
 /// 算拼写）。
-fn concrete_name(template: &str, args: &[InstanceTy], taken: &mut BTreeSet<String>) -> String {
+fn concrete_name(
+    template: &str,
+    decls: &[TypeParamDecl],
+    tys: &[InstanceTy],
+    consts: &[u32],
+    taken: &mut BTreeSet<String>,
+) -> String {
     let mut base = template.to_string();
-    for ty in args {
-        base.push('_');
-        base.push_str(ty_suffix(ty));
+    let mut ti = 0usize;
+    let mut ci = 0usize;
+    for d in decls {
+        match d.kind {
+            TypeParamKind::Type => {
+                base.push('_');
+                base.push_str(tys.get(ti).map(ty_suffix).unwrap_or("unknown"));
+                ti += 1;
+            }
+            // PLAN-963（T-04）：值位拼写 `_u32_<十进制值>`（`rep_u32_2`）。
+            TypeParamKind::Const => {
+                base.push_str(&format!("_u32_{}", consts.get(ci).copied().unwrap_or(0)));
+                ci += 1;
+            }
+        }
     }
     if taken.insert(base.clone()) {
         return base;
@@ -278,15 +295,44 @@ fn bounds_satisfied(
 /// 模板条目（形状预解 + 源项引用）。
 struct TemplateEntryFull<'a> {
     name: String,
-    /// 声明序类型参数名。
+    /// 声明序类型参数名（**只含类型参数**；值参数在 `const_params`）。
     ty_params: Vec<String>,
-    /// PLAN-963：声明序约束（`<T has S>`；无约束 = None）。
+    /// PLAN-963：声明序约束（`<T has S>`；无约束 = None），与 `ty_params` 对齐。
     bounds: Vec<Option<String>>,
+    /// PLAN-963（T-04）：声明序值参数名（`<const N>`，声明类型 u32）。
+    const_params: Vec<String>,
     #[allow(dead_code)]
     params: Vec<SlotTy>,
     #[allow(dead_code)]
     ret: SlotTy,
     item: &'a FnItem,
+}
+
+/// 一组已解出的实例实参（PLAN-963 T-04：类型与值分列，各自声明序）。
+///
+/// 类型/值分别保序 = 身份在声明序上的忠实投影：值参数不进类型 substitution，
+/// 类型参数也不进值代入。
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Default)]
+struct SolvedArgs {
+    tys: Vec<InstanceTy>,
+    consts: Vec<u32>,
+}
+
+/// 需求的内部去重序键（同一模板内单射；类型位沿用 935 序表，值位尾随
+/// `9:u32-<hex>`——纯类型模板与旧键完全一致）。
+fn order_of(a: &SolvedArgs) -> Vec<String> {
+    let mut out: Vec<String> = a
+        .tys
+        .iter()
+        .map(|t| {
+            let (k, n) = ty_order(t);
+            format!("{k}:{n}")
+        })
+        .collect();
+    for v in &a.consts {
+        out.push(format!("9:u32-{v:08x}"));
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -296,6 +342,7 @@ struct TemplateEntryFull<'a> {
 fn concretize(
     template: &FnItem,
     args: &[InstanceArg],
+    consts: &[InstanceConstArg],
     name: &str,
     span_map: Option<&BTreeMap<(String, u32, u32), (String, String)>>,
 ) -> FnItem {
@@ -303,10 +350,12 @@ fn concretize(
     let concrete_self = name.to_string();
     let subst_ann = |a: &TypeAnn| -> TypeAnn { subst_ann_declared(a, args) };
     let subst_block = |b: &Block| -> Block { subst_block_anns(b, &subst_ann) };
-    // 体：注解位替换 + 同实例自调用重绑（同-ty 幂等）+ 跨模板调用按
-    // 需求表重绑（fixpoint 轮发现的具体体内模板调用——None = fixpoint
-    // 工作程序（模板 stub 仍在，供再发现）；Some = 最终脱糖（模板移除））。
+    // 体：注解位替换 + 值参数代入（`N` → 字面量）+ 同实例自调用重绑（同-ty
+    // 幂等）+ 跨模板调用按需求表重绑（fixpoint 轮发现的具体体内模板调用——
+    // None = fixpoint 工作程序（模板 stub 仍在，供再发现）；Some = 最终脱糖
+    // （模板移除））。
     let mut body = subst_block(&template.body);
+    subst_block_consts(&mut body, consts);
     rebind_self_calls(&mut body, self_name, &concrete_self);
     if let Some(map) = span_map {
         rebind_callsites_owned(&mut body, &concrete_self, map);
@@ -383,6 +432,25 @@ fn subst_ann_declared(a: &TypeAnn, args: &[InstanceArg]) -> TypeAnn {
         },
         _ => a.clone(),
     }
+}
+
+/// PLAN-963（T-04）：值参数在模板体内的代入——名字引用换成整数字面量
+/// （值参数不是运行时形参；`rep<2>(21)` 的体 `N * x` 变成 `2 * x`）。
+///
+/// 只替换**值参数名**；同名的局部变量/函数不受影响（语言把值参数名当模板
+/// 常量，遮蔽规则与类型参数一致——模板体内不声明同名局部，重名由投影期的
+/// 重复声明诊断拒绝）。
+fn subst_block_consts(b: &mut Block, consts: &[InstanceConstArg]) {
+    if consts.is_empty() {
+        return;
+    }
+    for_each_block_mut(b, &mut |e| {
+        if let ExprKind::Var(id) = &e.kind {
+            if let Some(c) = consts.iter().find(|x| x.param == id.name) {
+                e.kind = ExprKind::IntLit(c.value as i32);
+            }
+        }
+    });
 }
 
 fn subst_block_anns(b: &Block, f: &impl Fn(&TypeAnn) -> TypeAnn) -> Block {
@@ -476,7 +544,7 @@ fn for_each_expr_mut(e: &mut Expr, f: &mut impl FnMut(&mut Expr)) {
                 for_each_expr_mut(arg_value_mut(a), f);
             }
         }
-        ExprKind::Call { args, .. } => {
+        ExprKind::Call { args, .. } | ExprKind::ConstCall { args, .. } => {
             for a in args.iter_mut() {
                 for_each_expr_mut(arg_value_mut(a), f);
             }
@@ -571,12 +639,12 @@ fn rebind_self_calls(b: &mut Block, self_name: &str, concrete: &str) {
 
 #[derive(Default)]
 struct RoundDemands {
-    /// 模板名 → (规范序键 → (声明序 substitution, 调用点数))。
-    per_template: BTreeMap<String, BTreeMap<Vec<String>, (Vec<InstanceTy>, usize)>>,
-    /// (owner fn, 调用点 span) → (模板名, 声明序 substitution)。owner 必须
+    /// 模板名 → (规范序键 → (声明序实参, 调用点数))。
+    per_template: BTreeMap<String, BTreeMap<Vec<String>, (SolvedArgs, usize)>>,
+    /// (owner fn, 调用点 span) → (模板名, 声明序实参)。owner 必须
     /// 入键：同一模板的两个实例体**共享源 span**（concretize 保 span），仅
     /// 按 span 键会把 wrap_bool 的解覆盖到 wrap_i32 的调用点上。
-    callsites: BTreeMap<(String, u32, u32), (String, Vec<InstanceTy>)>,
+    callsites: BTreeMap<(String, u32, u32), (String, SolvedArgs)>,
 }
 
 /// 求解器类型 → 实例值域（PLAN-963：标量 + 文本 + 记录；未解变元 = None）。
@@ -652,7 +720,7 @@ fn discover_round(
                 )])
             }
         }
-        for (callee, tys, span) in session.take_instance_demands() {
+        for (callee, tys, consts, span) in session.take_instance_demands() {
             // 每个声明参数都必须解出具体标量；任一未解（Var/None）即不
             // 准入本轮需求（求解器诊断已是最终裁决）。
             let mut subst = Vec::with_capacity(tys.len());
@@ -669,11 +737,18 @@ fn discover_round(
             if !solved {
                 continue;
             }
+            // PLAN-963（T-04）：值实参随需求进入身份；声明序仍需模板条目
+            // 才能交错，此处只按序存值（类型/值各自声明序）。
+            let solved_args = SolvedArgs {
+                tys: subst.clone(),
+                consts,
+            };
+            let entry_key = order_of(&solved_args);
             let m = out.per_template.entry(callee.clone()).or_default();
-            let ent = m.entry(args_order(&subst)).or_insert((subst.clone(), 0));
+            let ent = m.entry(entry_key).or_insert((solved_args.clone(), 0));
             ent.1 += 1;
             out.callsites
-                .insert((f.name.name.clone(), span.0, span.1), (callee, subst));
+                .insert((f.name.name.clone(), span.0, span.1), (callee, solved_args));
         }
     }
     if !diags.is_empty() {
@@ -685,6 +760,23 @@ fn discover_round(
 // ---------------------------------------------------------------------------
 // 主流程：fixpoint 物化 + 脱糖组装
 // ---------------------------------------------------------------------------
+
+/// 程序里是否写了值实参调用（`f<..>(..)`）。只用于决定"无模板时是否仍需
+/// 跑一轮发现"：有值实参调用就必须让求解器给出具名 arity 诊断。
+fn program_has_value_call(prog: &Program) -> bool {
+    let mut probe = prog.clone();
+    let mut found = false;
+    for item in probe.items.iter_mut() {
+        if let Item::Fn(f) = item {
+            for_each_block_mut(&mut f.body, &mut |e| {
+                if matches!(e.kind, ExprKind::ConstCall { .. }) {
+                    found = true;
+                }
+            });
+        }
+    }
+    found
+}
 
 /// 实例化一个（可能含模板的）程序。无模板时恒等返回（plain 模块经实例
 /// lane 与 plain 面逐字节同产物）。
@@ -723,11 +815,17 @@ pub fn instantiate_program_limited(
         }
     }
     if templates.is_empty() {
-        return Ok(InstantiateOutcome {
-            program: prog.clone(),
-            instances: Vec::new(),
-            rebinding_count: 0,
-        });
+        // PLAN-963（T-04）：没有模板但写了值实参调用（`id<2>(1)`）时不能
+        // 恒等放行——否则 resolve 只会给出「须先实例化」的笼统拒绝。跑一轮
+        // 发现让求解器给出具名的值 arity 诊断（无值实参调用的 plain 程序
+        // 仍在零推理下恒等返回，产物逐字节不变）。
+        if !program_has_value_call(prog) {
+            return Ok(InstantiateOutcome {
+                program: prog.clone(),
+                instances: Vec::new(),
+                rebinding_count: 0,
+            });
+        }
     }
     for t in &templates {
         let n = &t.name.name;
@@ -741,10 +839,21 @@ pub fn instantiate_program_limited(
             ));
         }
     }
-    // 2. 签名形状（T/int/i32/bool 越界面具名拒——求解器之外的第二道面）。
+    // 2. 签名形状（T/int/i32/bool/文本/记录越界面具名拒——求解器之外的第二道面）。
     let mut entries: Vec<TemplateEntryFull> = Vec::new();
     for t in &templates {
-        let ty_params: Vec<String> = t.type_params.iter().map(|p| p.name.name.clone()).collect();
+        let ty_params: Vec<String> = t
+            .type_params
+            .iter()
+            .filter(|p| p.kind == TypeParamKind::Type)
+            .map(|p| p.name.name.clone())
+            .collect();
+        let const_params: Vec<String> = t
+            .type_params
+            .iter()
+            .filter(|p| p.kind == TypeParamKind::Const)
+            .map(|p| p.name.name.clone())
+            .collect();
         let mut params = Vec::new();
         for p in &t.params {
             params.push(slot_of(&p.ty, &ty_params, &mut diags));
@@ -753,12 +862,14 @@ pub fn instantiate_program_limited(
         let bounds: Vec<Option<String>> = t
             .type_params
             .iter()
+            .filter(|p| p.kind == TypeParamKind::Type)
             .map(|p| p.bound.as_ref().map(|b| b.name.clone()))
             .collect();
         entries.push(TemplateEntryFull {
             name: t.name.name.clone(),
             ty_params,
             bounds,
+            const_params,
             params,
             ret,
             item: t,
@@ -773,26 +884,18 @@ pub fn instantiate_program_limited(
     //    板至多 |{I32,Bool}|^参数数 个实例）。
     let mut materialized: BTreeSet<(String, Vec<String>)> = BTreeSet::new();
     let mut instances: Vec<InstanceRecord> = Vec::new();
-    let mut by_template: BTreeMap<String, Vec<(Vec<InstanceTy>, String)>> = BTreeMap::new();
-    let mut all_callsites: BTreeMap<(String, u32, u32), (String, Vec<InstanceTy>)> =
-        BTreeMap::new();
+    let mut by_template: BTreeMap<String, Vec<(SolvedArgs, String)>> = BTreeMap::new();
+    let mut all_callsites: BTreeMap<(String, u32, u32), (String, SolvedArgs)> = BTreeMap::new();
     let mut rounds_left = templates.len() * 2 + 2;
     loop {
         // 当前工作程序：原始项 + 已物化实例项（模板保留，供后续轮发现）。
         let mut work_items: Vec<Item> = prog.items.clone();
         for (tpl, list) in &by_template {
-            for (subst, name) in list {
+            for (solved, name) in list {
                 let entry = entries.iter().find(|e| &e.name == tpl).expect("same set");
-                let args: Vec<InstanceArg> = entry
-                    .ty_params
-                    .iter()
-                    .zip(subst.iter())
-                    .map(|(p, t)| InstanceArg {
-                        param: p.clone(),
-                        ty: t.clone(),
-                    })
-                    .collect();
-                let concrete = concretize(entry.item, &args, name, None);
+                let args = instance_args(entry, solved);
+                let consts = instance_consts(entry, solved);
+                let concrete = concretize(entry.item, &args, &consts, name, None);
                 work_items.push(Item::Fn(concrete));
             }
         }
@@ -803,38 +906,52 @@ pub fn instantiate_program_limited(
         }
         let mut fresh = false;
         for (tpl, tys) in &round.per_template {
-            for (order, (subst, _count)) in tys {
+            for (order, (solved, _count)) in tys {
                 if !materialized.insert((tpl.clone(), order.clone())) {
                     continue;
                 }
                 fresh = true;
                 let entry = entries.iter().find(|e| &e.name == tpl).expect("same set");
-                if subst.len() != entry.ty_params.len() {
+                if solved.tys.len() != entry.ty_params.len() {
                     diags.push(Diagnostic::new(
                         Stage::Text,
                         "source.instances-unsupported",
                         format!(
                             "template `{tpl}` declares {} type parameter(s) but a call site solved {}",
                             entry.ty_params.len(),
-                            subst.len()
+                            solved.tys.len()
                         ),
                         entry.item.span,
                     ));
                     continue;
                 }
-                let args: Vec<InstanceArg> = entry
-                    .ty_params
-                    .iter()
-                    .zip(subst.iter())
-                    .map(|(p, t)| InstanceArg {
-                        param: p.clone(),
-                        ty: t.clone(),
-                    })
-                    .collect();
-                if !bounds_satisfied(&work, entry, subst, &mut diags) {
+                // PLAN-963（T-04）：值实参数量必须与声明一致（求解器已核，
+                // 这里再核一次——实例身份不接受未对齐的值序列）。
+                if solved.consts.len() != entry.const_params.len() {
+                    diags.push(Diagnostic::new(
+                        Stage::Text,
+                        "source.instances-unsupported",
+                        format!(
+                            "template `{tpl}` declares {} value parameter(s) but a call site wrote {}",
+                            entry.const_params.len(),
+                            solved.consts.len()
+                        ),
+                        entry.item.span,
+                    ));
                     continue;
                 }
-                let name = concrete_name(tpl, subst, &mut taken);
+                let args = instance_args(entry, solved);
+                let consts = instance_consts(entry, solved);
+                if !bounds_satisfied(&work, entry, &solved.tys, &mut diags) {
+                    continue;
+                }
+                let name = concrete_name(
+                    tpl,
+                    &entry.item.type_params,
+                    &solved.tys,
+                    &solved.consts,
+                    &mut taken,
+                );
                 let logical = sq_hash(
                     INSTANCES_LOGICAL_DOMAIN,
                     &[
@@ -859,9 +976,19 @@ pub fn instantiate_program_limited(
                 };
                 instances.push(InstanceRecord {
                     logical,
-                    key: instance_key(tpl, package, module, &sig_version, &body_version, &args),
+                    key: instance_key(
+                        tpl,
+                        package,
+                        module,
+                        &sig_version,
+                        &body_version,
+                        &entry.item.type_params,
+                        &args,
+                        &consts,
+                    ),
                     template: tpl.clone(),
                     args,
+                    consts,
                     concrete_name: name.clone(),
                     sig_version,
                     body_version,
@@ -870,7 +997,7 @@ pub fn instantiate_program_limited(
                 by_template
                     .entry(tpl.clone())
                     .or_default()
-                    .push((subst.clone(), name));
+                    .push((solved.clone(), name));
             }
         }
         if !diags.is_empty() {
@@ -892,14 +1019,15 @@ pub fn instantiate_program_limited(
     }
     // 需求计数按最终累计的调用点（跨轮同 span 去重）。
     let mut count_by: BTreeMap<(String, Vec<String>), usize> = BTreeMap::new();
-    for (_span, (tpl, subst)) in &all_callsites {
-        *count_by
-            .entry((tpl.clone(), args_order(subst)))
-            .or_insert(0) += 1;
+    for (_span, (tpl, solved)) in &all_callsites {
+        *count_by.entry((tpl.clone(), order_of(solved))).or_insert(0) += 1;
     }
     for inst in instances.iter_mut() {
-        let subst: Vec<InstanceTy> = inst.args.iter().map(|a| a.ty.clone()).collect();
-        if let Some(c) = count_by.get(&(inst.template.clone(), args_order(&subst))) {
+        let solved = SolvedArgs {
+            tys: inst.args.iter().map(|a| a.ty.clone()).collect(),
+            consts: inst.consts.iter().map(|c| c.value).collect(),
+        };
+        if let Some(c) = count_by.get(&(inst.template.clone(), order_of(&solved))) {
             inst.demands = *c;
         }
     }
@@ -907,9 +1035,9 @@ pub fn instantiate_program_limited(
     // 4. 脱糖组装：模板位换成其需求实例（规范序）；非模板体调用点按
     //    span→名表重绑；未需求模板移除（不无限实例化）。
     let mut span_to_name: BTreeMap<(String, u32, u32), (String, String)> = BTreeMap::new();
-    for ((owner, s0, s1), (tpl, subst)) in &all_callsites {
+    for ((owner, s0, s1), (tpl, solved)) in &all_callsites {
         if let Some(list) = by_template.get(tpl) {
-            if let Some((_, name)) = list.iter().find(|(t, _)| t == subst) {
+            if let Some((_, name)) = list.iter().find(|(t, _)| t == solved) {
                 span_to_name.insert((owner.clone(), *s0, *s1), (tpl.clone(), name.clone()));
             }
         }
@@ -920,17 +1048,34 @@ pub fn instantiate_program_limited(
         match item {
             Item::Fn(f) if !f.type_params.is_empty() => {
                 if let Some(list) = by_template.get(&f.name.name) {
-                    for (subst, name) in list {
+                    for (solved, name) in list {
                         let args: Vec<InstanceArg> = f
                             .type_params
                             .iter()
-                            .zip(subst.iter())
+                            .filter(|p| p.kind == TypeParamKind::Type)
+                            .zip(solved.tys.iter())
                             .map(|(p, t)| InstanceArg {
                                 param: p.name.name.clone(),
                                 ty: t.clone(),
                             })
                             .collect();
-                        items.push(Item::Fn(concretize(f, &args, name, Some(&span_to_name))));
+                        let consts: Vec<InstanceConstArg> = f
+                            .type_params
+                            .iter()
+                            .filter(|p| p.kind == TypeParamKind::Const)
+                            .zip(solved.consts.iter())
+                            .map(|(p, v)| InstanceConstArg {
+                                param: p.name.name.clone(),
+                                value: *v,
+                            })
+                            .collect();
+                        items.push(Item::Fn(concretize(
+                            f,
+                            &args,
+                            &consts,
+                            name,
+                            Some(&span_to_name),
+                        )));
                     }
                 }
                 // 未需求模板：移除。
@@ -961,7 +1106,9 @@ fn instance_key(
     module: &str,
     sig_version: &str,
     body_version: &str,
+    decls: &[TypeParamDecl],
     args: &[InstanceArg],
+    consts: &[InstanceConstArg],
 ) -> String {
     let logical = sq_hash(
         INSTANCES_LOGICAL_DOMAIN,
@@ -972,20 +1119,66 @@ fn instance_key(
             template.as_bytes(),
         ],
     );
-    let mut parts: Vec<&[u8]> = vec![
-        logical.as_bytes(),
-        b"sig",
-        sig_version.as_bytes(),
-        b"body",
-        body_version.as_bytes(),
+    let mut parts: Vec<String> = vec![
+        logical,
+        "sig".to_string(),
+        sig_version.to_string(),
+        "body".to_string(),
+        body_version.to_string(),
     ];
-    for arg in args {
-        parts.push(arg.param.as_bytes());
-        parts.push(ty_suffix(&arg.ty).as_bytes());
+    // PLAN-963（T-04）：按**声明序**交错类型/值实参——纯类型实例的字节序与
+    // 935 完全一致（`param,ty` 逐位），值位追加 `param,u32,<8 位 hex>`。
+    let mut ti = 0usize;
+    let mut ci = 0usize;
+    for d in decls {
+        match d.kind {
+            TypeParamKind::Type => {
+                if let Some(a) = args.get(ti) {
+                    parts.push(a.param.clone());
+                    parts.push(ty_suffix(&a.ty).to_string());
+                }
+                ti += 1;
+            }
+            TypeParamKind::Const => {
+                if let Some(c) = consts.get(ci) {
+                    parts.push(c.param.clone());
+                    parts.push("u32".to_string());
+                    parts.push(format!("{:08x}", c.value));
+                }
+                ci += 1;
+            }
+        }
     }
-    parts.push(INSTANCES_ALGO.as_bytes());
-    parts.push(INSTANCES_SCHEMA.as_bytes());
-    sq_hash(INSTANCES_KEY_DOMAIN, &parts)
+    parts.push(INSTANCES_ALGO.to_string());
+    parts.push(INSTANCES_SCHEMA.to_string());
+    let refs: Vec<&[u8]> = parts.iter().map(|s| s.as_bytes()).collect();
+    sq_hash(INSTANCES_KEY_DOMAIN, &refs)
+}
+
+/// 声明序类型实参（`ty_params` 与已解类型按位对齐）。
+fn instance_args(entry: &TemplateEntryFull, solved: &SolvedArgs) -> Vec<InstanceArg> {
+    entry
+        .ty_params
+        .iter()
+        .zip(solved.tys.iter())
+        .map(|(p, t)| InstanceArg {
+            param: p.clone(),
+            ty: t.clone(),
+        })
+        .collect()
+}
+
+/// 声明序值实参（`const_params` 与已解值按位对齐）。
+fn instance_consts(entry: &TemplateEntryFull, solved: &SolvedArgs) -> Vec<InstanceConstArg> {
+    entry
+        .const_params
+        .iter()
+        .zip(solved.consts.iter())
+        .map(|(p, v)| InstanceConstArg {
+            param: p.clone(),
+            value: *v,
+        })
+        .collect()
 }
 
 /// 非模板体调用点重绑：span 命中需求表 → 具体实例名（与发现/落位同一
@@ -1019,6 +1212,21 @@ fn rebind_callsites_owned(
                 if let Some((tpl, name)) = span_to_name.get(&key) {
                     if &callee.name == tpl {
                         callee.name = name.clone();
+                        n += 1;
+                    }
+                }
+            }
+            // PLAN-963（T-04）：值实参调用点重绑——值已进需求/身份，脱糖后
+            // 就是具体实例的普通调用（`rep<2>(21)` → `rep_u32_2(21)`）。
+            ExprKind::ConstCall { callee, args, .. } => {
+                if let Some((tpl, name)) = span_to_name.get(&key) {
+                    if &callee.name == tpl {
+                        let mut callee = callee.clone();
+                        callee.name = name.clone();
+                        e.kind = ExprKind::Call {
+                            callee,
+                            args: std::mem::take(args),
+                        };
                         n += 1;
                     }
                 }

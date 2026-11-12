@@ -12,6 +12,13 @@ const DECLARED: &[&str] = &[
     "scalar",
     "text",
     "record",
+    // PLAN-963（T-02）：记录有限模板面（record 全表面 + fn `<T>`/`<T has S>`），
+    // 声明序紧接 record；961/962 合入时同款漏更新，963 接收侧按
+    // auto-source.at 已声明现实刷新（合同语义不变）。
+    "record-instances",
+    // PLAN-963（T-02）：文本+记录有限模板面，声明序在 record-instances 之后、
+    // text-record 之前。
+    "text-record-instances",
     "text-record",
     "entry-unit",
     "host-console",

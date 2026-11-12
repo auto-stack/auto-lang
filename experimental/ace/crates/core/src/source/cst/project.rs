@@ -32,7 +32,7 @@ pub(crate) fn project_program(
     snap: &Snapshot,
     profile: SourceProfile,
 ) -> Result<Program, Vec<Diagnostic>> {
-    project_program_with_caps(p, k, tree, snap, profile, false)
+    project_program_with_caps(p, k, tree, snap, profile, false, false)
 }
 
 /// PLAN-935/963（T-02）：能力感知投影。类型位裸 ident 只在拼写命中**当前
@@ -47,6 +47,7 @@ pub(crate) fn project_program_with_caps(
     snap: &Snapshot,
     profile: SourceProfile,
     ct_face: bool,
+    instances_face: bool,
 ) -> Result<Program, Vec<Diagnostic>> {
     // 词法层先行（旧 tokenize 全文件先行的首事实序）。
     // PLAN-936（T-04）：ct 面上字符串 token 仅作为 meta 字段选择子进入词法事实（值位置由
@@ -54,7 +55,7 @@ pub(crate) fn project_program_with_caps(
     if let Some(d) = lex::first_lex_fact_ct(tree, snap, k, profile, ct_face) {
         return Err(vec![d]);
     }
-    let mut eng = Engine::new(p, k, tree, snap, profile, ct_face);
+    let mut eng = Engine::new(p, k, tree, snap, profile, ct_face, instances_face);
     let tree_has_errors = tree.has_error_nodes();
     // PLAN-960（T-02）：const/var 模块项 kind（仅 packages-modules 裁剪存在；
     // 其余面无此二规则 = 保持原分派行为）。
@@ -3304,6 +3305,10 @@ pub(crate) struct Cx<'a> {
     /// PLAN-936（T-04）：ct 能力面激活（scalar-ct 裁剪）——字符串字面量仅作为
     /// meta 字段选择子进入 AST；值位置由 resolve 受控拒。
     ct_face: bool,
+    /// PLAN-963（T-04）：实例能力面激活——`<const N>` 值参数与
+    /// `generic-call`（`rep<2>(21)`）只在这一面成立；plain 面沿用 935 的
+    /// 具名拒（`source.instances-unsupported`）。
+    instances_face: bool,
     /// PLAN-935：当前投影中函数声明的类型参数名（fn 投影期间有效——
     /// 引擎栈在 run_fn_item 内驱完，无跨函数交错）。
     ty_params: Vec<String>,
@@ -3478,6 +3483,7 @@ impl<'a> Engine<'a> {
         snap: &'a Snapshot,
         profile: SourceProfile,
         ct_face: bool,
+        instances_face: bool,
     ) -> Self {
         Engine {
             cx: Cx {
@@ -3487,6 +3493,7 @@ impl<'a> Engine<'a> {
                 snap,
                 profile,
                 ct_face,
+                instances_face,
                 ty_params: Vec::new(),
                 visited: 0,
                 diags: Vec::new(),
@@ -3657,16 +3664,39 @@ impl<'a> Engine<'a> {
         for tp in collect_seq(&self.cx, n, tp_kind, "type-param-tail") {
             let leaf = self.cx.field_child(tp, "name").expect("type param name");
             let name = ident_of(&mut self.cx, leaf);
+            // PLAN-963（T-04）：值参数。唯一接受形 `<const N>` / `<const N u32>`
+            // （声明类型缺省 u32）；其他声明类型与非实例面具名拒。
+            let mut kind = TypeParamKind::Type;
             if let Some(cst_n) = self.cx.field_child(tp, "const_kw") {
                 let span = self.cx.span_of(cst_n);
-                self.cx.reject(span, || {
-                    Diagnostic::new(
-                        Stage::Text,
-                        "source.instances-unsupported",
-                        "const (value) type parameters are not implemented yet",
-                        span,
-                    )
-                });
+                if !self.cx.instances_face {
+                    self.cx.reject(span, || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.instances-unsupported",
+                            "const (value) type parameters require the instances capability",
+                            span,
+                        )
+                    });
+                } else if let Some(ty_node) = self.cx.field_child(tp, "ty") {
+                    let leaf = self.cx.field_child(ty_node, "word").unwrap_or(ty_node);
+                    let spelled = self.cx.spelling(leaf);
+                    if spelled != "u32" {
+                        let tsp = self.cx.span_of(leaf);
+                        self.cx.reject(tsp, || {
+                            Diagnostic::new(
+                                Stage::Text,
+                                "source.instances-unsupported",
+                                format!(
+                                    "const parameter `{}` declares type `{}`; only `u32` is supported",
+                                    name.name, spelled
+                                ),
+                                tsp,
+                            )
+                        });
+                    }
+                }
+                kind = TypeParamKind::Const;
             }
             let bound = self
                 .cx
@@ -3684,7 +3714,7 @@ impl<'a> Engine<'a> {
                     )
                 });
             }
-            out.push(TypeParamDecl { name, bound });
+            out.push(TypeParamDecl { name, bound, kind });
         }
         out
     }
@@ -4164,7 +4194,10 @@ impl<'a> Engine<'a> {
                 Some(b) => mname.span.join(b.span),
                 None => mname.span.join(ret.span),
             };
-            if methods.iter().any(|m: &SpecMethodDecl| m.name.name == mname.name) {
+            if methods
+                .iter()
+                .any(|m: &SpecMethodDecl| m.name.name == mname.name)
+            {
                 let sp = mname.span;
                 let n = mname.name.clone();
                 self.cx.reject(sp, move || {
@@ -4921,6 +4954,92 @@ impl<'a> Engine<'a> {
                 self.vals.push(Val::E(Expr {
                     span,
                     kind: ExprKind::ArrayLit(elems),
+                }));
+                return;
+            }
+            // PLAN-963（T-04）：`rep<2>(21)` 值实参调用原子（实例面）。
+            if ck == self.cx.k.generic_call.unwrap_or(u32::MAX) {
+                let name_leaf = self.cx.field_child(c, "name").expect("generic call name");
+                let name = ident_of(&mut self.cx, name_leaf);
+                let mut consts: Vec<ConstArgUse> = Vec::new();
+                if let Some(cn) = self.cx.field_child(c, "cargs") {
+                    let ca_kind = self.cx.k.const_arg.unwrap_or(u32::MAX);
+                    for item in collect_seq(&self.cx, cn, ca_kind, "const-arg-tail") {
+                        let (value, span) = match self.cx.field_child(item, "lit") {
+                            Some(l) => {
+                                let span = self.cx.span_of(l);
+                                let text = self.cx.spelling(l);
+                                match text.parse::<u64>() {
+                                    // 身份域是 u32，但值最终要代进 ACE `int`
+                                    // （i32）表达式；超出 i32 的值无处表达，
+                                    // 具名拒而不是静默截断（PLAN-963 T-04 §9）。
+                                    Ok(v) if v <= i32::MAX as u64 => (v, span),
+                                    Ok(v) if v <= u32::MAX as u64 => {
+                                        self.cx.reject(span, move || {
+                                            Diagnostic::new(
+                                                Stage::Text,
+                                                "source.literal-range",
+                                                format!(
+                                                    "value argument `{}` exceeds the i32 body domain",
+                                                    v
+                                                ),
+                                                span,
+                                            )
+                                        });
+                                        (0, span)
+                                    }
+                                    _ => {
+                                        let shown = text.clone();
+                                        self.cx.reject(span, move || {
+                                            Diagnostic::new(
+                                                Stage::Text,
+                                                "source.literal-range",
+                                                format!(
+                                                    "value argument `{}` is outside the u32 domain",
+                                                    shown
+                                                ),
+                                                span,
+                                            )
+                                        });
+                                        (0, span)
+                                    }
+                                }
+                            }
+                            // `<const N>` 之外的形（如 `<N u32>` 位置的值实参）由
+                            // 语法拒绝；此处只作防御占位。
+                            None => (0, self.cx.span_of(item)),
+                        };
+                        consts.push(ConstArgUse { value, span });
+                    }
+                }
+                let mut args: Vec<Arg> = Vec::new();
+                if let Some(an) = self.cx.field_child(c, "args") {
+                    for a in collect_seq(&self.cx, an, self.cx.k.arg, "arg-tail") {
+                        if let Some(named) = self.cx.child_of_kind(a, self.cx.k.named_arg) {
+                            let label_leaf =
+                                self.cx.field_child(named, "label").expect("arg label");
+                            let label = ident_of(&mut self.cx, label_leaf);
+                            let value_n = self.cx.field_child(named, "value").expect("arg value");
+                            let vspan = self.cx.span_of(value_n);
+                            let value = self.project_expr_sync(value_n);
+                            args.push(Arg::Named {
+                                name: label,
+                                value,
+                                span: vspan,
+                            });
+                        } else if let Some(value_n) = self.cx.child_of_kind(a, self.cx.k.expr) {
+                            args.push(Arg::Pos(self.project_expr_sync(value_n)));
+                        }
+                    }
+                }
+                let span = self.cx.span_of(c);
+                self.vals.push(Val::E(Expr {
+                    span,
+                    kind: ExprKind::ConstCall {
+                        callee: name,
+                        consts,
+                        args,
+                    },
                 }));
                 return;
             }
@@ -7214,40 +7333,23 @@ impl GenericExpand {
         }
         f.ret = self.ann(&f.ret);
         let ret = f.ret.clone();
-        rename_ctor_in_block_returns(
-            &mut f.body,
-            &ret,
-            &self.templates,
-            &self.made,
-            &self.origin,
-        );
+        rename_ctor_in_block_returns(&mut f.body, &ret, &self.templates, &self.made, &self.origin);
         self.rewrite_block(&mut f.body);
     }
 
     fn rewrite_block(&mut self, b: &mut Block) {
         for s in b.stmts.iter_mut() {
             match s {
-                Stmt::Let {
-                    ann, value, ..
-                } => {
+                Stmt::Let { ann, value, .. } => {
                     if let Some(a) = ann {
                         let na = self.ann(a);
                         *a = na;
                         let ty = a.clone();
-                        rename_ctor_for_ann(
-                            value,
-                            &ty,
-                            &self.templates,
-                            &self.made,
-                            &self.origin,
-                        );
+                        rename_ctor_for_ann(value, &ty, &self.templates, &self.made, &self.origin);
                     }
                 }
                 Stmt::If {
-                    cond: _,
-                    then,
-                    els,
-                    ..
+                    cond: _, then, els, ..
                 } => {
                     self.rewrite_block(then);
                     if let Some(e) = els {
@@ -7309,10 +7411,7 @@ impl GenericExpand {
             Some(_) => {}
         }
         let resolved = self.ann(&TypeAnn {
-            kind: TypeRef::Generic {
-                name,
-                args: taken,
-            },
+            kind: TypeRef::Generic { name, args: taken },
             span,
         });
         let TypeRef::Record(id) = resolved.kind else {
@@ -7347,8 +7446,7 @@ impl GenericExpand {
                 self.resolve_typed_ctors_in_expr(start);
                 self.resolve_typed_ctors_in_expr(end);
             }
-            ExprKind::Method { recv, args, .. }
-            | ExprKind::MethodCall { recv, args, .. } => {
+            ExprKind::Method { recv, args, .. } | ExprKind::MethodCall { recv, args, .. } => {
                 self.resolve_typed_ctors_in_expr(recv);
                 for a in args.iter_mut() {
                     self.resolve_typed_ctors_in_arg(a);
@@ -7788,9 +7886,7 @@ fn rename_ctor_in_block_returns(
 ) {
     for s in b.stmts.iter_mut() {
         match s {
-            Stmt::Return { value, .. } => {
-                rename_ctor_for_ann(value, ret, templates, made, origin)
-            }
+            Stmt::Return { value, .. } => rename_ctor_for_ann(value, ret, templates, made, origin),
             Stmt::If { then, els, .. } => {
                 rename_ctor_in_block_returns(then, ret, templates, made, origin);
                 if let Some(e) = els {
@@ -7818,4 +7914,3 @@ fn rename_ctor_in_block_returns(
         }
     }
 }
-

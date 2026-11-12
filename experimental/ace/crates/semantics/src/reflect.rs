@@ -461,6 +461,7 @@ mod tests {
             fns: vec![InputFn {
                 name: "f".into(),
                 type_params: Vec::new(),
+                const_params: Vec::new(),
                 params: vec![("a".into(), Ann::I32)],
                 ret: Ann::Bool,
                 body: crate::input::InputBlock { stmts: vec![] },

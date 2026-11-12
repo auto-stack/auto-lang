@@ -477,6 +477,27 @@ fn walk_expr<'a>(
                 stack.push(Task::Arg(a));
             }
         }
+        // PLAN-963（T-04）：值实参调用是结构节点——值实参（声明序）进结构
+        // 身份/体版本，实参照常递归（否则仅值不同的两个模板体同版本）。
+        ExprKind::ConstCall {
+            callee,
+            consts,
+            args,
+        } => {
+            push_node(nodes, canon, "expr.const-call", e.span);
+            canon.extend_from_slice(b"const-call");
+            canon.push(0);
+            canon.extend_from_slice(callee.name.as_bytes());
+            canon.push(0);
+            canon.extend_from_slice(&(consts.len() as u32).to_le_bytes());
+            for c in consts.iter() {
+                canon.extend_from_slice(&c.value.to_le_bytes());
+            }
+            canon.extend_from_slice(&(args.len() as u32).to_le_bytes());
+            for a in args.iter().rev() {
+                stack.push(Task::Arg(a));
+            }
+        }
         ExprKind::Binary { op, lhs, rhs } => {
             push_node(nodes, canon, "expr.binary", e.span);
             canon.extend_from_slice(b"bin");

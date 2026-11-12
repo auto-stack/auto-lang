@@ -4611,6 +4611,9 @@ impl<'a, 's> FnResolver<'a, 's> {
             // (statement-level desugar owns them); totals for
             // exhaustiveness.
             ExprKind::ArrayLit(_) => VT::I32,
+            // PLAN-963（T-04）：值实参调用由实例层重绑；closures 面不产
+            // ConstCall，本臂仅为穷尽性。
+            ExprKind::ConstCall { .. } => VT::I32,
             ExprKind::Index { .. } => VT::I32,
             // PLAN-962 (T-08): a grid never reaches closure inference.
             ExprKind::GridLit { .. } => VT::I32,
@@ -7332,6 +7335,23 @@ impl<'a, 's> FnResolver<'a, 's> {
                     "source.array-lit-position",
                     "an array literal is only a let/var initializer in this profile (bind it to a name, then use the list)"
                         .to_string(),
+                    e.span,
+                );
+                ResolvedExpr {
+                    span: e.span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(0),
+                }
+            }
+            // PLAN-963（T-04）：`rep<2>(21)` 必经实例层重绑成具体实例的普通
+            // 调用；到达 resolve = 模板未被实例化（具名拒，不猜）。
+            ExprKind::ConstCall { callee, .. } => {
+                self.bind_err(
+                    "source.instances-unsupported",
+                    format!(
+                        "value-argument call `{}<...>(..)` must be instantiated before resolve",
+                        callee.name
+                    ),
                     e.span,
                 );
                 ResolvedExpr {

@@ -161,11 +161,11 @@ fn main() int { return 0 }
     assert!(matches!(pick.ret.kind, TypeRef::TyVar(_)));
 }
 
-/// PLAN-935（T-03）+ PLAN-963（T-02）：`<T has Bound>` 与 `<const N>` 都是
-/// 语法形状（词法 ident+ident），不能当普通 token 跳过。PLAN-963 起约束
-/// 是 fn 模板的合法声明（投影到 `TypeParamDecl.bound`，由单态化按实参
-/// 核验），const 值参数仍具名拒（T-03 落地前不静默接受）；无能力时同一
-/// 形状仍是原语法拒绝。
+/// PLAN-935（T-03）+ PLAN-963（T-02/T-04）：`<T has Bound>` 与 `<const N>`
+/// 都是语法形状（词法 ident+ident），不能当普通 token 跳过。PLAN-963 起两者
+/// 都是 fn 模板的合法声明：约束投影到 `TypeParamDecl.bound`，值参数投影到
+/// `TypeParamKind::Const`；只有**非 u32 声明类型**在投影期具名拒。无能力时
+/// 同一形状仍是原语法拒绝。
 #[test]
 fn constraint_and_const_shapes_named_rejections() {
     // 约束：合法（投影出 bound，不丢位序）。
@@ -183,16 +183,31 @@ fn main() int { return 0 }";
         "约束投影到声明（不丢、不错位）"
     );
 
-    // const：仍具名拒。
+    // 值参数：PLAN-963（T-04）起是合法声明（kind=Const，缺省 u32）。
     let const_src = "fn log2<const N>(n int) int { return n }
 fn main() int { return 0 }";
-    match with_caps(const_src) {
+    let FrontOutcome::Ok(ok) = with_caps(const_src) else {
+        panic!("`<const N>` must be a legal value-parameter declaration (PLAN-963 T-04)");
+    };
+    let log2 = fn_of(&ok.program, "log2");
+    assert_eq!(log2.type_params.len(), 1);
+    assert_eq!(log2.type_params[0].name.name, "N");
+    assert_eq!(
+        log2.type_params[0].kind,
+        ace_core::source::ast::TypeParamKind::Const,
+        "值参数按 kind 区分（不与类型参数混位）"
+    );
+
+    // 非 u32 声明类型：仍然是具名拒（不静默当 u32）。
+    let bad_ty_src = "fn log2<const N bool>(n int) int { return n }
+fn main() int { return 0 }";
+    match with_caps(bad_ty_src) {
         FrontOutcome::Diag(ds) => assert!(
-            ds.iter().any(|d| d.code == "source.instances-unsupported"
-                && d.message.contains("const (value) type parameters")),
-            "{const_src}: expected the const named rejection, got {ds:?}"
+            ds.iter()
+                .any(|d| d.code == "source.instances-unsupported" && d.message.contains("u32")),
+            "{bad_ty_src}: expected the non-u32 named rejection, got {ds:?}"
         ),
-        other => panic!("{const_src}: expected rejection, got {other:?}"),
+        other => panic!("{bad_ty_src}: expected rejection, got {other:?}"),
     }
 
     // 无能力：两者都是原语法拒绝（parse 面）。

@@ -1225,6 +1225,20 @@ fn shift_expr(e: &mut Expr, offset: usize) {
                 shift_arg(a, offset);
             }
         }
+        // PLAN-963（T-04）：值实参调用（值实参 span 同步平移）。
+        ExprKind::ConstCall {
+            callee,
+            consts,
+            args,
+        } => {
+            sh(&mut callee.span, offset);
+            for c in consts.iter_mut() {
+                sh(&mut c.span, offset);
+            }
+            for a in args {
+                shift_arg(a, offset);
+            }
+        }
         ExprKind::CallValue { callee, args } => {
             shift_expr(callee, offset);
             for a in args {
@@ -1785,6 +1799,13 @@ impl<'a> Walker<'a> {
                 self.key,
                 "source.module-surface",
                 "indirect calls belong to the closures surface (PLAN-964)",
+                span,
+            )),
+            // PLAN-963（T-04）：值实参调用只属实例面（本面语法不产出）。
+            ExprKind::ConstCall { .. } => Err(fail(
+                self.key,
+                "source.module-surface",
+                "value-argument calls belong to the instances surface (PLAN-963)",
                 span,
             )),
             ExprKind::Binary { lhs, rhs, .. } => {

@@ -57,7 +57,18 @@ pub struct InputFn {
     /// discovery pass admits its SIGNATURE only (body stays a stub — type
     /// errors of a template body are checked per concrete instance).
     pub type_params: Vec<String>,
+    /// PLAN-963（T-04）：声明的值参数（`<const N>`）。值参数不是运行时形参：
+    /// 调用点必须写 `<..>` 值实参（`rep<2>(21)`），每个具体实例把自己的值
+    /// 代入模板体。
+    pub const_params: Vec<ConstParam>,
     pub body: InputBlock,
+}
+
+/// PLAN-963（T-04）：一个值参数声明。声明类型只是合法性域（当前唯一 `u32`），
+/// 由投影层核验；求解器只用名字（缺值实参 = 具名拒）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConstParam {
+    pub name: String,
 }
 
 /// PLAN-938: an external callable has a signature and nominal contract identity,
@@ -74,6 +85,7 @@ pub struct ExternalSignature {
 pub struct SignatureView<'a> {
     pub name: &'a str,
     pub type_params: &'a [String],
+    pub const_params: &'a [ConstParam],
     pub params: &'a [(String, Ann)],
     pub ret: Ann,
     pub external_contract: Option<&'a str>,
@@ -111,6 +123,7 @@ impl SemaInput {
             .map(|f| SignatureView {
                 name: &f.name,
                 type_params: &f.type_params,
+                const_params: &f.const_params,
                 params: &f.params,
                 ret: f.ret,
                 external_contract: None,
@@ -118,6 +131,7 @@ impl SemaInput {
             .chain(self.external_signatures.iter().map(|f| SignatureView {
                 name: &f.name,
                 type_params: &[],
+                const_params: &[],
                 params: &f.params,
                 ret: f.ret,
                 external_contract: Some(&f.contract),
@@ -323,6 +337,13 @@ pub enum InputExprKind {
         /// bound to a parameter by name.
         args: Vec<InputArg>,
     },
+    /// PLAN-963（T-04）：显式值实参调用 `rep<2>(21)`——值按声明序进入实例
+    /// 身份，普通实参照常求解（类型参数仍由实参推断）。
+    ConstCall {
+        callee: String,
+        consts: Vec<u32>,
+        args: Vec<InputArg>,
+    },
     Binary {
         op: BinOpKind,
         lhs: Box<InputExpr>,
@@ -400,7 +421,7 @@ impl Drop for InputExpr {
                     stack.push(std::mem::replace(&mut a.value, dummy()));
                 }
             }
-            InputExprKind::Call { args, .. } => {
+            InputExprKind::Call { args, .. } | InputExprKind::ConstCall { args, .. } => {
                 for a in args.iter_mut() {
                     stack.push(std::mem::replace(&mut a.value, dummy()));
                 }

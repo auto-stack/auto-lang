@@ -117,6 +117,9 @@ impl<'b> Frames<'b> {
 pub struct TplDemand {
     pub callee: String,
     pub vars: Vec<Ty>,
+    /// PLAN-963（T-04）：调用点写下的值实参（声明序）；无值实参的普通
+    /// 模板调用为空。实例身份 = (类型代入, 值代入)。
+    pub consts: Vec<u32>,
     /// The call-site span (source bytes) — the desugar layer's rebinding
     /// key. Spans identify call sites uniquely within one source.
     pub span: (u32, u32),
@@ -204,7 +207,9 @@ impl<'a> InferSession<'a> {
     /// the final union-find. An unresolved var yields `None` for its slot
     /// (the run's diagnostics already carry the definitive unsolved
     /// verdict; the demand is not admitted).
-    pub fn take_instance_demands(&mut self) -> Vec<(String, Vec<Option<Ty>>, (u32, u32))> {
+    pub fn take_instance_demands(
+        &mut self,
+    ) -> Vec<(String, Vec<Option<Ty>>, Vec<u32>, (u32, u32))> {
         std::mem::take(&mut self.tpl_demands)
             .into_iter()
             .map(|d| {
@@ -218,7 +223,8 @@ impl<'a> InferSession<'a> {
                         Ty::Var(_) => None,
                     })
                     .collect();
-                (d.callee, tys, d.span)
+                // PLAN-963（T-04）：值实参随需求透出（声明序）。
+                (d.callee, tys, d.consts, d.span)
             })
             .collect()
     }
@@ -612,7 +618,18 @@ impl<'a> InferSession<'a> {
                     }
                     None => self.record_negative_at("local", name, e.span),
                 },
-                InputExprKind::Call { callee, args } => {
+                InputExprKind::Call { .. } | InputExprKind::ConstCall { .. } => {
+                    // PLAN-963（T-04）：值实参调用与普通直调共用同一求解路径；
+                    // 唯一差别是值实参的准入与需求里的值。
+                    let (callee, consts, args) = match &e.kind {
+                        InputExprKind::Call { callee, args } => (callee, None, args),
+                        InputExprKind::ConstCall {
+                            callee,
+                            consts,
+                            args,
+                        } => (callee, Some(consts), args),
+                        _ => unreachable!("call-shaped expression"),
+                    };
                     let input: &'a SemaInput = self.input;
                     let cands: Vec<_> = input.signatures().filter(|f| f.name == *callee).collect();
                     match cands.len() {
@@ -620,6 +637,32 @@ impl<'a> InferSession<'a> {
                         1 => {
                             let f = cands[0];
                             self.read_sig(callee);
+                            // PLAN-963（T-04）：值实参准入——数量与声明一致；
+                            // 声明了值参数的模板必须写 `<..>`，否则具名拒。
+                            let decl_consts = f.const_params.len();
+                            let const_ok = match consts {
+                                Some(vals) => vals.len() == decl_consts,
+                                None => decl_consts == 0,
+                            };
+                            if !const_ok {
+                                match consts {
+                                    Some(vals) => self.diag(
+                                        "value-arity-mismatch",
+                                        e.span,
+                                        format!(
+                                            "`{callee}` expects {decl_consts} value argument(s), found {}",
+                                            vals.len()
+                                        ),
+                                    ),
+                                    None => self.diag(
+                                        "value-argument-required",
+                                        e.span,
+                                        format!(
+                                            "`{callee}` has {decl_consts} value parameter(s); call it as `{callee}<..>(..)`"
+                                        ),
+                                    ),
+                                }
+                            }
                             // PLAN-935 (T-04): a TEMPLATE call mints one
                             // shared var per declared type parameter, sub-
                             // stitutes them through the signature, and
@@ -716,10 +759,13 @@ impl<'a> InferSession<'a> {
                             }
                             // PLAN-935 (T-04): record the instance demand for
                             // this call site (resolved after the fn solve).
-                            if !tvars.is_empty() {
+                            // PLAN-963（T-04）：声明了值参数的模板即使没有类型参数
+                            // 也是模板——需求同样成立（值进身份）。
+                            if (!tvars.is_empty() || decl_consts > 0) && const_ok {
                                 self.tpl_demands.push(TplDemand {
                                     callee: f.name.to_string(),
                                     vars: tvars,
+                                    consts: consts.cloned().unwrap_or_default(),
                                     span: (e.span.start, e.span.end),
                                 });
                             }
@@ -1194,6 +1240,7 @@ mod tests {
         InputFn {
             name: name.into(),
             type_params: Vec::new(),
+            const_params: Vec::new(),
             params: params
                 .into_iter()
                 .map(|(n, a)| (n.to_string(), a))

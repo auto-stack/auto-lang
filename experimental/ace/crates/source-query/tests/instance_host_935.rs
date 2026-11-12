@@ -39,6 +39,12 @@ fn main() int {
 const PKG: &str = "plan935";
 const MOD: &str = "choose.at";
 
+/// PLAN-963 T-04：值参数实例（页 v4 必带 `(param, value)`，往返等值）。
+const REP: &str = "\
+fn rep<const N>(x int) int { return N * x }
+fn main() int { return rep<2>(21) + rep<3>(21) }
+";
+
 fn caps() -> Vec<String> {
     vec![INSTANCES_CAPABILITY.to_string()]
 }
@@ -94,6 +100,26 @@ fn page_codec_roundtrip_and_envelope_refusals() {
     assert_eq!(INSTANCES_PRODUCER, "plan935/source-instances");
     assert_eq!(INSTANCES_SCHEMA, "ac935/instances/v1");
     assert_eq!(INSTANCES_ALGO, "ac935/instances-discovery/3");
+}
+
+/// PLAN-963 T-04（V-G04 / 页 v4）：值实参 `(param, value)` 必须随页往返，
+/// 两个不同值是两个实例；页不携带值时身份的装配名/键就对不上。
+#[test]
+fn page_codec_v4_carries_value_arguments() {
+    let mut host = InstanceHost::new(MemoryInstanceSink::default());
+    let cand = host
+        .prepare_set(&parse(REP), PKG, MOD, &caps())
+        .expect("prepare");
+    assert_eq!(cand.instances.len(), 2);
+    for inst in &cand.instances {
+        assert_eq!(inst.consts.len(), 1, "{:?}", inst.consts);
+        assert_eq!(inst.consts[0].param, "N");
+        let page = InstancePage::from(inst);
+        assert_eq!(page.consts, vec![("N".to_string(), inst.consts[0].value)]);
+        let bytes = ace_source_query::encode_instance_page(&page).expect("encode");
+        let back = ace_source_query::decode_instance_page(&bytes).expect("decode");
+        assert_eq!(back, page, "value args must survive the v4 page");
+    }
 }
 
 /// V-03：同键单飞——两个调用点/两次请求同一实例，productions=1；

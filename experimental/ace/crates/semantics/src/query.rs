@@ -93,6 +93,7 @@ pub fn fn_sig_canonical(f: &crate::input::InputFn) -> Vec<u8> {
     signature_canonical(crate::input::SignatureView {
         name: &f.name,
         type_params: &f.type_params,
+        const_params: &f.const_params,
         params: &f.params,
         ret: f.ret,
         external_contract: None,
@@ -103,6 +104,12 @@ pub fn signature_canonical(f: crate::input::SignatureView<'_>) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(f.name.as_bytes());
     out.push(0);
+    // PLAN-963（T-04）：值参数名字进入签名内容（声明序）——无值参数的签名
+    // 逐字节不变。
+    for c in f.const_params {
+        out.extend_from_slice(b"\0value-param\0");
+        out.extend_from_slice(c.name.as_bytes());
+    }
     for (n, a) in f.params {
         out.extend_from_slice(n.as_bytes());
         out.push(b':');
@@ -150,6 +157,35 @@ pub fn fn_body_canonical(f: &crate::input::InputFn) -> Vec<u8> {
                     // content (named vs positional binding of the same
                     // operand is a different program), written in source
                     // order before the operands are walked.
+                    for a in args.iter() {
+                        match &a.name {
+                            Some(n) => {
+                                out.push(b'N');
+                                out.extend_from_slice(n.as_bytes());
+                            }
+                            None => out.push(b'P'),
+                        }
+                        out.push(0);
+                    }
+                    for a in args.iter().rev() {
+                        stack.push(&a.value);
+                    }
+                }
+                // PLAN-963（T-04）：值实参调用 `rep<2>(21)` —— 值按声明序进入
+                // 内容编码（值与类型参数一样是语义身份的一部分）。
+                InputExprKind::ConstCall {
+                    callee,
+                    consts,
+                    args,
+                } => {
+                    out.push(b'G');
+                    out.extend_from_slice(callee.as_bytes());
+                    out.push(0);
+                    out.extend_from_slice(&(consts.len() as u32).to_le_bytes());
+                    for v in consts.iter() {
+                        out.extend_from_slice(&v.to_le_bytes());
+                    }
+                    out.extend_from_slice(&(args.len() as u32).to_le_bytes());
                     for a in args.iter() {
                         match &a.name {
                             Some(n) => {

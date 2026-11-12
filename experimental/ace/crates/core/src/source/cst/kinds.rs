@@ -109,6 +109,10 @@ pub struct SourceKinds {
     pub generic_ty: Option<u32>,
     pub optional_ty: Option<u32>,
     pub generic_atom: Option<u32>,
+    /// PLAN-963（T-04）：`rep<2>(21)` 值实参调用原子（仅实例面裁剪存在）。
+    pub generic_call: Option<u32>,
+    /// PLAN-963（T-04）：值实参项（`const-arg`，仅实例面裁剪存在）。
+    pub const_arg: Option<u32>,
     pub type_arg: Option<u32>,
     pub int_literal: u32,
     pub args: u32,
@@ -405,6 +409,8 @@ impl SourceKinds {
             generic_ty: rk_opt(p, "generic-ty"),
             optional_ty: rk_opt(p, "optional-ty"),
             generic_atom: rk_opt(p, "generic-atom"),
+            generic_call: rk_opt(p, "generic-call"),
+            const_arg: rk_opt(p, "const-arg"),
             type_arg: rk_opt(p, "type-arg"),
             int_literal: rk("int-literal"),
             args: rk("args"),

@@ -933,6 +933,9 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
         &snap,
         profile,
         ct,
+        // PLAN-963（T-04）：实例面（scalar/record/text-record + 能力）是
+        // `<const N>` 与 `generic-call` 的唯一成立面。
+        instances || record_instances || text_record_instances,
     ) {
         Ok(program) => FrontOutcome::Ok(FrontOk {
             program,

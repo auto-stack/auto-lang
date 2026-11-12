@@ -35,10 +35,11 @@ pub const INSTANCE_CARRIER: ChunkKind = ChunkKind::SnapshotRecord;
 /// 实例页 magic + codec 版本（新版本必须 MISS，绝不重释旧字节）。
 ///
 /// PLAN-963：v2 = `argc + 每实参 (name, ty)`（通用多类型参数）；v3 = 值域扩
-/// 到文本/记录（类型码 + 记录名）。v1/v2 页按既有「版本不符即 MISS」语义
-/// 自然失效重产；magic 与 producer/schema/algo 信封不变。
+/// 到文本/记录（类型码 + 记录名）；v4 = 值实参位 `(name, u32)`（T-04
+/// `<const N>`）。v1..v3 页按既有「版本不符即 MISS」语义自然失效重产；
+/// magic 与 producer/schema/algo 信封不变。
 pub const INSTANCE_PAGE_MAGIC: &[u8; 6] = b"IN935P";
-pub const INSTANCE_PAGE_CODEC_VERSION: u8 = 3;
+pub const INSTANCE_PAGE_CODEC_VERSION: u8 = 4;
 /// 单页字节上限（沿 512KiB 页锚）。
 pub const INSTANCE_MAX_PAGE_BYTES: usize = 512 * 1024;
 
@@ -54,6 +55,8 @@ pub struct InstancePage {
     /// 声明序 `(类型参数名, 具体类型)`（v3 值域：i32/bool/text/记录；单参
     /// i32/bool 与 935 面同字节）。
     pub args: Vec<(String, InstanceTy)>,
+    /// PLAN-963（T-04）：声明序值实参 `(值参数名, 值)`（声明类型恒 u32）。
+    pub consts: Vec<(String, u32)>,
     pub concrete_name: String,
     pub sig_version: String,
     pub body_version: String,
@@ -73,6 +76,11 @@ impl From<&InstanceRecord> for InstancePage {
                 .args
                 .iter()
                 .map(|a| (a.param.clone(), a.ty.clone()))
+                .collect(),
+            consts: r
+                .consts
+                .iter()
+                .map(|c| (c.param.clone(), c.value))
                 .collect(),
             concrete_name: r.concrete_name.clone(),
             sig_version: r.sig_version.clone(),
@@ -168,6 +176,12 @@ pub fn encode_instance_page(p: &InstancePage) -> Result<Vec<u8>, InstancePageErr
             put_str(&mut out, r);
         }
     }
+    // PLAN-963（T-04）：值实参位（v4）——声明序数 + 每项 `(name, u32)`。
+    out.extend_from_slice(&(p.consts.len() as u32).to_le_bytes());
+    for (name, value) in &p.consts {
+        put_str(&mut out, name);
+        out.extend_from_slice(&value.to_le_bytes());
+    }
     put_str(&mut out, &p.concrete_name);
     put_str(&mut out, &p.sig_version);
     put_str(&mut out, &p.body_version);
@@ -231,6 +245,25 @@ pub fn decode_instance_page(b: &[u8]) -> Result<InstancePage, InstancePageError>
         };
         args.push((name, ty));
     }
+    // PLAN-963（T-04）：值实参位（v4）。
+    if pos + 4 > b.len() {
+        return Err(InstancePageError::Truncated);
+    }
+    let constc = u32::from_le_bytes([b[pos], b[pos + 1], b[pos + 2], b[pos + 3]]) as usize;
+    pos += 4;
+    if constc > 64 {
+        return Err(InstancePageError::Truncated);
+    }
+    let mut consts = Vec::with_capacity(constc);
+    for _ in 0..constc {
+        let name = get_str(b, &mut pos)?;
+        if pos + 4 > b.len() {
+            return Err(InstancePageError::Truncated);
+        }
+        let value = u32::from_le_bytes([b[pos], b[pos + 1], b[pos + 2], b[pos + 3]]);
+        pos += 4;
+        consts.push((name, value));
+    }
     let concrete_name = get_str(b, &mut pos)?;
     let sig_version = get_str(b, &mut pos)?;
     let body_version = get_str(b, &mut pos)?;
@@ -255,6 +288,7 @@ pub fn decode_instance_page(b: &[u8]) -> Result<InstancePage, InstancePageError>
         logical,
         template,
         args,
+        consts,
         concrete_name,
         sig_version,
         body_version,

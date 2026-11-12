@@ -44,6 +44,8 @@ mod cert_rt_902;
 mod choose_instances_935;
 #[path = "cases/generic_records_963.rs"]
 mod generic_records_963;
+#[path = "cases/const_instances_963.rs"]
+mod const_instances_963;
 #[path = "cases/coll_manifest_oracle_933.rs"]
 mod coll_manifest_oracle_933;
 #[path = "cases/collections_904.rs"]

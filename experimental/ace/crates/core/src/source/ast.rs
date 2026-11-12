@@ -171,6 +171,32 @@ pub struct FieldDecl {
 pub struct TypeParamDecl {
     pub name: Ident,
     pub bound: Option<Ident>,
+    /// PLAN-963 (T-04): value parameter (`<const N>` / `<const N u32>`).
+    pub kind: TypeParamKind,
+}
+
+/// PLAN-963 (T-04): the two declaration kinds of a generic parameter.
+///
+/// The only accepted value spelling is `<const N>` (declared type defaults to
+/// `u32`) and its explicit twin `<const N u32>`; any other declared type is a
+/// named projection rejection. A value parameter is substituted by a compile
+/// time integer at instantiation and is therefore usable inside the template
+/// body (it is never a runtime function argument).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TypeParamKind {
+    Type,
+    Const,
+}
+
+/// PLAN-963 (T-04): one explicit value argument at a call site
+/// (`rep<2>(21)` — the `2`). The value domain is the declared type of the
+/// parameter (`u32`, so `0..=4294967295`); projection already rejected
+/// anything outside it, and the instance lane re-checks against the
+/// declaration before minting an identity.
+#[derive(Clone, Debug)]
+pub struct ConstArgUse {
+    pub value: u64,
+    pub span: Span,
 }
 
 /// A `type Name { fields; methods }` item (record profile only).
@@ -394,6 +420,18 @@ pub enum ExprKind {
     TypeWordArg(TypeWord),
     Call {
         callee: Ident,
+        args: Vec<Arg>,
+    },
+    /// PLAN-963 (T-04): explicit value arguments — `rep<2>(21)`.
+    ///
+    /// Only the `generic-call` atom of the instance faces produces this shape.
+    /// The instance lane rewrites it into a plain [`ExprKind::Call`] naming the
+    /// concrete instance (the values are consumed by the instance identity and
+    /// the body substitution), so resolve / HIR / the four backends never see
+    /// it — a `ConstCall` reaching resolve is a named rejection.
+    ConstCall {
+        callee: Ident,
+        consts: Vec<ConstArgUse>,
         args: Vec<Arg>,
     },
     /// An indirect call through a function-typed expression.
@@ -660,6 +698,15 @@ impl Drop for Expr {
                     }
                 }
                 ExprKind::Call { args, .. } => {
+                    for a in args.iter_mut() {
+                        let e = match a {
+                            Arg::Pos(e) | Arg::MovePos(e) => std::mem::replace(e, dummy()),
+                            Arg::Named { value, .. } => std::mem::replace(value, dummy()),
+                        };
+                        stack.push(e);
+                    }
+                }
+                ExprKind::ConstCall { args, .. } => {
                     for a in args.iter_mut() {
                         let e = match a {
                             Arg::Pos(e) | Arg::MovePos(e) => std::mem::replace(e, dummy()),

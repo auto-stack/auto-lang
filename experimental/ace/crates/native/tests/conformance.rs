@@ -6,6 +6,8 @@ mod cache_tier;
 mod choose_instances_935;
 #[path = "cases/generic_records_963.rs"]
 mod generic_records_963;
+#[path = "cases/const_instances_963.rs"]
+mod const_instances_963;
 #[path = "cases/cli.rs"]
 mod cli;
 #[path = "cases/closures_compat.rs"]
