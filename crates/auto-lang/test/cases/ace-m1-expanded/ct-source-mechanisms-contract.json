@@ -604,7 +604,7 @@
   "experimental/ace/crates/syntax-runtime/src/recovery/mod.rs": "15ecca9f2b8e6014ce456d3b94d2ef4a59dacc0ad5c91aa1637b0250d86ce8c3",
   "experimental/ace/crates/syntax-runtime/src/snapshot.rs": "afea6439df0633acc68528e28f4861525f21ef461fc902ec369298a711d919f3",
   "experimental/ace/crates/syntax-runtime/src/testkit.rs": "c1c4dcd74d4ab02f36ad527c225acfae3b60e77d9448cde99fe4b4ba0473deb2",
-  "scripts/fixed-tests.py": "1b3705113062a086a2c9a8dfb77a97e061dbfe1a9d6c8aba586f1347a71bf213",
+  "scripts/fixed-tests.py": "075888cf4613ef1642582b423f64e4de1da047d960d0bf12991bbd0b06306ad4",
   "scripts/test-groups.toml": "3a51d3c3a0723957ea158b4d9b346ff87d5bd0ac27ee2b328f7d887516e63252"
  },
  "scope": "Actual ordinary-source cold AV, forbidden-AV hit and callee edit only; no managed restore, meta, instances, resource or four-target HIR closure claim.",

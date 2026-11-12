@@ -189,7 +189,7 @@ def native_facts(inputs, scope, source_pins, validate_payload, *, binary_name=BI
 
 
 CONTRACT = 'crates/auto-lang/test/cases/ace-m1-expanded/ct-source-mechanisms-contract.json'
-CONTRACT_SHA = '52f833e271c4a96656c46234ccd12a141837210eaacd9b216b99b8a36a597ed2'
+CONTRACT_SHA = '3398164009ba6c3e91d4adc74477dc75a52e0035320c26aedf1419acc4b97794'
 
 
 def admit(inputs, evidence, binding):

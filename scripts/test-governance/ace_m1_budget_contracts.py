@@ -4,7 +4,7 @@ from ace_m1_case_evidence import require
 from ace_m1_legacy import typed_equal
 
 CONTRACT = 'crates/auto-lang/test/cases/ace-m1-expanded/original-budget-contracts.json'
-CONTRACT_SHA = 'd0f48415ffd0f90201b617ccdc34d64d5cc87a686fe0198ad5ce1bff0cc73c72'
+CONTRACT_SHA = '7b7b5b7c67e0c2a3893d84b615555ced997651a4e742b726e6b266cf2fce7431'
 POLICIES = ('fixed-case-suite', 'nextest-default', 'ac-v2-check', 'legacy-inprocess',
             'a2x-daily-parent', 'abi-interop-runtime', 'cte-original-service',
             'a2x-warm-management', 'explicit-cert-941-capture', 'composer',

@@ -6162,7 +6162,7 @@
   },
   "budget": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/original-budget-contracts.json",
-   "sha256": "d0f48415ffd0f90201b617ccdc34d64d5cc87a686fe0198ad5ce1bff0cc73c72"
+   "sha256": "7b7b5b7c67e0c2a3893d84b615555ced997651a4e742b726e6b266cf2fce7431"
   },
   "text_reference": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/text-reference-contracts.tsv",
@@ -6246,23 +6246,23 @@
   },
   "ct_mechanisms": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-source-mechanisms-contract.json",
-   "sha256": "52f833e271c4a96656c46234ccd12a141837210eaacd9b216b99b8a36a597ed2"
+   "sha256": "3398164009ba6c3e91d4adc74477dc75a52e0035320c26aedf1419acc4b97794"
   },
   "ct_child": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-child-contract.json",
-   "sha256": "3b0d14b73f964b82997e9e8e58f5898acb6959f92044808aa30b15ba6c899555"
+   "sha256": "0604ef25d1019eb38b7cc8921104c7282066d7447295bb3f4881b90c184f105e"
   },
   "ct_meta": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-meta-contract.json",
-   "sha256": "3fd9060e0adf69aab89b49c6c7785c5833c212955b052ed5189ed7f12d215a9b"
+   "sha256": "d162e21d55105d8392712d3c8617c6c5c795f1535988fada1ed4dc25cb66c059"
   },
   "ct_restore": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-restore-contract.json",
-   "sha256": "303cf54627385ff00bea3e5e39547c595a234751d6936ec29c27401a2dc241d1"
+   "sha256": "5715262b41d9a4559824a3582cc7bd1e29d4471f830263f24083bbb299deb5d9"
   },
   "sq_facts": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/sq-fact-contract.json",
-   "sha256": "6d00031290e2a7893e7199d6d8bab19735bb1897f57fd464470033d8d569c3c7"
+   "sha256": "db1b3de5515f7820e547ca808f4b7d6d55fb0a89b56e943e60b96928fa4d1111"
   },
   "syntax_arch": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/syntax-architecture-contract.json",
