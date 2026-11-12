@@ -4689,6 +4689,13 @@ impl<'a, 's> FnResolver<'a, 's> {
                     Stmt::Return { value, .. } => return self.infer_closure_expr(value, &visible),
                     // PLAN-962: an index assign is an effect statement.
                     Stmt::IndexAssign(_) => {}
+                    // PLAN-962 (T-08): hold — alias names the held local
+                    // inside the body scope only.
+                    Stmt::Hold { name, bind, body, .. } => {
+                        let held = visible.get(&name.name).copied().unwrap_or(VT::I32);
+                        visible.insert(bind.name.clone(), held);
+                        blocks.push((body, visible.clone()));
+                    }
                     // PLAN-962: tuple destructuring binds names.
                     Stmt::LetDestruct { names, value, .. } => {
                         let vt = self.infer_closure_expr(value, &visible);
@@ -5818,6 +5825,52 @@ impl<'a, 's> FnResolver<'a, 's> {
                 continue;
             };
             match s {
+                // PLAN-962 (T-08, L-07): `let hold x as v { }` — the
+                // whole-local hold. v is a NAME ALIAS of the held local
+                // inside the block (>= the old engine's MVP semantics —
+                // its own source notes Hold carried no borrow discipline);
+                // the binding dies with the block. Path forms and
+                // non-record bases are named rejections.
+                Stmt::Hold { name, bind, body, span } => {
+                    let Some(xl) = self.lookup(&name.name) else {
+                        self.bind_err(
+                            "source.undefined",
+                            format!("no local named `{}` in scope", name.name),
+                            name.span,
+                        );
+                        continue;
+                    };
+                    let vt = self.locals[xl.0].vt;
+                    if !matches!(vt, VT::Rec(_)) {
+                        self.bind_err(
+                            "source.hold-base",
+                            format!(
+                                "hold borrows a record local in this profile, found `{}`",
+                                vt.as_str()
+                            ),
+                            name.span,
+                        );
+                        continue;
+                    }
+                    self.declared_names.insert(bind.name.clone());
+                    self.scopes.push(Scope {
+                        names: BTreeMap::new(),
+                        views: BTreeMap::new(),
+                    });
+                    self.scopes
+                        .last_mut()
+                        .unwrap()
+                        .names
+                        .insert(bind.name.clone(), xl);
+                    let mut b = self.resolve_body(body);
+                    self.scopes.pop();
+                    stack
+                        .last_mut()
+                        .expect("resolve frame")
+                        .stmts
+                        .extend(std::mem::take(&mut b.stmts));
+                    let _ = span;
+                }
                 // PLAN-962 (L-15): `let (a, b, ...) = expr` — flat tuple
                 // destructuring: bind the value to a synthetic temp, then
                 // one positional read per binding name.

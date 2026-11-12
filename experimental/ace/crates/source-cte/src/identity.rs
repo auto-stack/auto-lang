@@ -488,6 +488,16 @@ fn walk_stmt(stmt: &Stmt, out: &mut Vec<String>) {
         }
         // PLAN-962: tuple destructuring reads the value.
         Stmt::LetDestruct { value, .. } => walk_expr(value, out),
+        // PLAN-962 (T-08): hold — body expression statements.
+        Stmt::Hold { body, .. } => {
+            for st in &body.stmts {
+                if let ace_core::source::ast::Stmt::ExprStmt { value, .. }
+                | ace_core::source::ast::Stmt::Return { value, .. } = st
+                {
+                    walk_expr(value, out);
+                }
+            }
+        }
         Stmt::Assign { value, .. } => walk_expr(value, out),
         Stmt::If {
             cond, then, els, ..

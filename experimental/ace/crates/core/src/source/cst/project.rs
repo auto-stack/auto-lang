@@ -3172,6 +3172,12 @@ enum Frame {
         names: Vec<Ident>,
         span: Span,
     },
+    /// PLAN-962（T-08，L-07）：hold 收尾帧。
+    HoldFinish {
+        name: Ident,
+        bind: Ident,
+        span: Span,
+    },
     /// PLAN-928（T-03）：`is <局部> { 臂 }` 逐臂帧 + 汇总帧。
     IsArms(IsMatchCtx),
     IsArmBlock {
@@ -4227,6 +4233,16 @@ impl<'a> Engine<'a> {
             let value_n = self.cx.field_child(inner, "value").expect("assign value");
             self.stack.push(Frame::AssignFinish { name, path });
             self.stack.push(Frame::ExprEnter(value_n));
+        } else if kind == self.cx.k.let_hold_stmt.unwrap_or(u32::MAX) {
+            // PLAN-962（T-08，L-07）：`let hold x as v { }`——整局部 hold。
+            let name_leaf = self.cx.field_child(inner, "name").expect("hold name");
+            let name = ident_of(&mut self.cx, name_leaf);
+            let bind_leaf = self.cx.field_child(inner, "bind").expect("hold bind");
+            let bind = ident_of(&mut self.cx, bind_leaf);
+            let body_n = self.cx.field_child(inner, "body").expect("hold body");
+            let span = self.cx.span_of(inner);
+            self.stack.push(Frame::HoldFinish { name, bind, span });
+            self.enter_block(body_n);
         } else if kind == self.cx.k.let_destr_stmt.unwrap_or(u32::MAX) {
             // PLAN-962（L-15）：`let (a, b, ...) = expr`——绑定名列表 + 值。
             let names_n = self.cx.field_child(inner, "names").expect("destr names");
@@ -6008,6 +6024,15 @@ impl<'a> Engine<'a> {
                 self.vals.push(Val::S(Stmt::LetDestruct {
                     names,
                     value,
+                    span,
+                }));
+            }
+            Frame::HoldFinish { name, bind, span } => {
+                let body = self.pop_b();
+                self.vals.push(Val::S(Stmt::Hold {
+                    name,
+                    bind,
+                    body,
                     span,
                 }));
             }

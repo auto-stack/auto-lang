@@ -380,3 +380,27 @@ fn main() int {
     assert_eq!(run.live_after, 0);
     assert_eq!(run.allocs, run.frees);
 }
+
+/// PLAN-962 unit-10 (T-08, L-07): `let hold x as v { }` — the whole-local
+/// hold. The binder aliases the held local for the block (>= the old
+/// engine's MVP semantics — its own source notes Hold carried no borrow
+/// discipline); the binding dies with the block. The bare `hold` spelling
+/// is a named pending item (the stmt list dispatch commits alternatives
+/// by FIRST set — see the plan §9 round-13 investigation).
+#[test]
+fn hold_whole_local_executes() {
+    let src = "type P { v int }\nfn main() int {\n    var p = P(40)\n    let hold p as q {\n        p = P(q.v + 2)\n    }\n    return p.v\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("hold alias block executes");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0);
+
+    // the binding dies with the block (out-of-scope use rejects)
+    let bad = "fn main() int {\n    let a = 1\n    return a\n}";
+    let _ = bad;
+    let bad2 = "type P { v int }\nfn main() int {\n    var p = P(1)\n    let hold p as q {\n        p = P(2)\n    }\n    return q.v\n}";
+    let err = ace_core::source::compile_aggregates_source(bad2, "p.at", &[])
+        .err()
+        .expect("alias escape must reject");
+    assert!(err.iter().any(|d| d.code == "source.undefined"));
+}

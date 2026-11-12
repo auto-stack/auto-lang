@@ -284,6 +284,16 @@ fn substitute_all(p: &mut Program, served: &ServedRoot) {
             }
             // PLAN-962：tuple 解构替换值表达式。
             Stmt::LetDestruct { value, .. } => repl(value, served),
+            // PLAN-962 (T-08)：hold 替换体内表达式。
+            Stmt::Hold { body, .. } => {
+                for st in body.stmts.iter_mut() {
+                    if let ace_core::source::ast::Stmt::ExprStmt { value, .. }
+                    | ace_core::source::ast::Stmt::Return { value, .. } = st
+                    {
+                        repl(value, served);
+                    }
+                }
+            }
             Stmt::If {
                 cond, then, els, ..
             } => {

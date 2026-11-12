@@ -561,6 +561,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { let-stmt() {} }
             // PLAN-962（L-15）：`let (a, b, ...) = expr`（聚合面，扁平名）。
             alt(profiles: [aggregates]) { let-destr-stmt() {} }
+            // PLAN-962（T-08，L-07）：`let hold x as v { }`——hold 整局部形
+            //（`let` 头拼写：stmt 列表分派按 FIRST 集提交，新头 token 的
+            // 语句备选机制未定；裸 `hold` 拼写见 SD-01 待办）。
+            alt(profiles: [aggregates]) { let-hold-stmt() {} }
             alt { var-stmt() {} }
             alt { assign-stmt() {} }
             alt(profiles: [record, text-record, collections, closures, packages-modules, numeric, aggregates]) { path-assign-stmt() {} }
@@ -587,6 +591,16 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             opt { ann-ty(field: "ann") }
             assign() {}
             expr(field: "value")
+        }
+        // PLAN-962（T-08，L-07）：`let hold x as v { }`（别名绑定，块末
+        // 失效；≥旧引擎 MVP 等义——L-07 自注"无借用纪律"）。
+        let-hold-stmt(profiles: [aggregates]) {
+            let(field: "kw")
+            r-hold(same-line: true) {}
+            ident(field: "name")
+            r-as(same-line: true) {}
+            ident(field: "bind")
+            block(field: "body")
         }
         // PLAN-962（L-15）：扁平 tuple 解构——绑定名逐位对应 0..n-1。
         let-destr-stmt(profiles: [aggregates]) {

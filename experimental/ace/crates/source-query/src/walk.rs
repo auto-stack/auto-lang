@@ -264,6 +264,13 @@ fn walk_stmt<'a>(
                 span: *span,
             });
         }
+        // PLAN-962 (T-08): hold — named-unsupported here.
+        Stmt::Hold { span, .. } => {
+            return Err(WalkError::Unsupported {
+                what: "hold-statement",
+                span: *span,
+            });
+        }
         Stmt::Let {
             name,
             ann,

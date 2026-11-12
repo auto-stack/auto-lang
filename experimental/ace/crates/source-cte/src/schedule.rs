@@ -461,6 +461,16 @@ fn collect_hashes_stmt(s: &Stmt, owner: &str, out: &mut Vec<(String, Span)>) {
         }
         // PLAN-962：tuple 解构。
         Stmt::LetDestruct { value, .. } => collect_hashes_expr(value, owner, out),
+        // PLAN-962 (T-08)：hold。
+        Stmt::Hold { body, .. } => {
+            for st in &body.stmts {
+                if let ace_core::source::ast::Stmt::ExprStmt { value, .. }
+                | ace_core::source::ast::Stmt::Return { value, .. } = st
+                {
+                    collect_hashes_expr(value, owner, out);
+                }
+            }
+        }
         Stmt::If {
             cond, then, els, ..
         } => {
@@ -593,6 +603,16 @@ fn callees_stmt(s: &Stmt, out: &mut Vec<String>) {
         }
         // PLAN-962：tuple 解构。
         Stmt::LetDestruct { value, .. } => callees_expr(value, out),
+        // PLAN-962 (T-08)：hold。
+        Stmt::Hold { body, .. } => {
+            for st in &body.stmts {
+                if let ace_core::source::ast::Stmt::ExprStmt { value, .. }
+                | ace_core::source::ast::Stmt::Return { value, .. } = st
+                {
+                    callees_expr(value, out);
+                }
+            }
+        }
         Stmt::If {
             cond, then, els, ..
         } => {
@@ -857,6 +877,16 @@ fn substitute_stmt(s: &mut Stmt, served: &ServedRoot, site: Span, site_expr: &Ex
         }
         // PLAN-962：tuple 解构。
         Stmt::LetDestruct { value, .. } => replace_at(value, served, site, site_expr),
+        // PLAN-962 (T-08)：hold。
+        Stmt::Hold { body, .. } => {
+            for st in body.stmts.iter_mut() {
+                if let ace_core::source::ast::Stmt::ExprStmt { value, .. }
+                | ace_core::source::ast::Stmt::Return { value, .. } = st
+                {
+                    replace_at(value, served, site, site_expr);
+                }
+            }
+        }
         Stmt::If {
             cond, then, els, ..
         } => {
@@ -1020,6 +1050,16 @@ fn find_hash_stmt<'a>(s: &'a Stmt, span: Span, found: &mut Option<&'a Expr>) {
         }
         // PLAN-962：tuple 解构。
         Stmt::LetDestruct { value, .. } => find_hash_expr(value, span, found),
+        // PLAN-962 (T-08)：hold。
+        Stmt::Hold { body, .. } => {
+            for st in &body.stmts {
+                if let ace_core::source::ast::Stmt::ExprStmt { value, .. }
+                | ace_core::source::ast::Stmt::Return { value, .. } = st
+                {
+                    find_hash_expr(value, span, found);
+                }
+            }
+        }
         Stmt::If {
             cond, then, els, ..
         } => {

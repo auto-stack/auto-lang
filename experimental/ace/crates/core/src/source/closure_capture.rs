@@ -76,6 +76,7 @@ pub(crate) fn analyze_capture_uses(
                 visit_expr(start, outer_locals, scopes, uses, by_name);
                 visit_expr(end, outer_locals, scopes, uses, by_name);
             }
+
             // PLAN-962: an array literal captures through its elements.
             ExprKind::ArrayLit(elems) => {
                 for e in elems {
@@ -188,6 +189,17 @@ pub(crate) fn analyze_capture_uses(
                 // PLAN-962: tuple destructuring reads the value.
                 Stmt::LetDestruct { value, .. } => {
                     visit_expr(value, outer_locals, scopes, uses, by_name);
+                }
+                // PLAN-962 (T-08): hold — the body's expression statements
+                // capture through the aliased local (name alias).
+                Stmt::Hold { bind, body, .. } => {
+                    scopes.push([bind.name.clone()].into_iter().collect());
+                    for st in &body.stmts {
+                        if let Stmt::ExprStmt { value, .. } | Stmt::Return { value, .. } = st {
+                            visit_expr(value, outer_locals, scopes, uses, by_name);
+                        }
+                    }
+                    scopes.pop();
                 }
                 Stmt::Let { name, value, .. } => {
                     visit_expr(value, outer_locals, scopes, uses, by_name);
@@ -428,6 +440,14 @@ pub(crate) fn scan_shared_capture_cells(
                 }
                 // PLAN-962: tuple destructuring reads the value.
                 Stmt::LetDestruct { value, .. } => visit_expr(value, scopes, shared),
+                // PLAN-962 (T-08): hold — body expression statements only.
+                Stmt::Hold { body, .. } => {
+                    for st in &body.stmts {
+                        if let Stmt::ExprStmt { value, .. } | Stmt::Return { value, .. } = st {
+                            visit_expr(value, scopes, shared);
+                        }
+                    }
+                }
                 Stmt::Let {
                     name,
                     value,

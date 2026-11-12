@@ -481,6 +481,8 @@ fn project_stmt(s: &core_ast::Stmt) -> Result<InputStmt, String> {
         core_ast::Stmt::LetDestruct { .. } => {
             return Err("let-destructure statement".to_string())
         }
+        // PLAN-962 (T-08): hold — aggregates-surface form.
+        core_ast::Stmt::Hold { .. } => return Err("hold statement".to_string()),
         core_ast::Stmt::Return { value, span: sp } => InputStmt::Return {
             value: project_expr(&value),
             span: Span::new(sp.start as u32, sp.end as u32),

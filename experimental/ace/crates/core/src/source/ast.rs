@@ -509,6 +509,16 @@ pub enum Stmt {
         value: Expr,
         span: Span,
     },
+    /// PLAN-962 (T-08, L-07): `let hold x as v { }` — whole-local hold.
+    /// The binder aliases the held local for the block; the binding dies
+    /// with the block (>= the old engine's MVP semantics — its own
+    /// source notes Hold carried no borrow discipline).
+    Hold {
+        name: Ident,
+        bind: Ident,
+        body: Block,
+        span: Span,
+    },
     Return {
         value: Expr,
         /// `return` through the end of the value.

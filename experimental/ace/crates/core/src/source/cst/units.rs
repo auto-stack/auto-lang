@@ -501,6 +501,10 @@ fn references_name(f: &FnItem, name: &str) -> bool {
                     crate::source::ast::Stmt::LetDestruct { value, .. } => {
                         sub.push(WalkItem::Expr(value));
                     }
+                    // PLAN-962 (T-08)：hold——体语句入队。
+                    crate::source::ast::Stmt::Hold { body, .. } => {
+                        sub.extend(body.stmts.iter().map(WalkItem::Stmt));
+                    }
                     crate::source::ast::Stmt::Let { ann: a, value, .. } => {
                         if let Some(ty) = a {
                             if ann(ty) {
@@ -644,6 +648,12 @@ fn collect_lambdas(stmts: &[Stmt], out: &mut Vec<(Span, u64)>, src: &str) {
                     // PLAN-962：tuple 解构——value 入队。
                     Stmt::LetDestruct { value, .. } => {
                         work.push(WalkItem::Expr(value));
+                    }
+                    // PLAN-962 (T-08)：hold——体语句入队。
+                    Stmt::Hold { body, .. } => {
+                        for st in body.stmts.iter() {
+                            work.push(WalkItem::Stmt(st));
+                        }
                     }
                     Stmt::Let { value, .. }
                     | Stmt::Assign { value, .. }
@@ -1985,6 +1995,12 @@ fn extract_lambda_body(f: &FnItem, ordinal: usize) -> Option<ClosureBody> {
                     // PLAN-962：tuple 解构——value 入队。
                     Stmt::LetDestruct { value, .. } => {
                         work.push(WalkItem::Expr(value));
+                    }
+                    // PLAN-962 (T-08)：hold——体语句入队。
+                    Stmt::Hold { body, .. } => {
+                        for st in body.stmts.iter() {
+                            work.push(WalkItem::Stmt(st));
+                        }
                     }
                     Stmt::Let { value, .. }
                     | Stmt::Assign { value, .. }

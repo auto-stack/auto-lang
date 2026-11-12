@@ -1069,6 +1069,13 @@ fn shift_stmt(s: &mut Stmt, offset: usize) {
             shift_expr(value, offset);
             sh(span, offset);
         }
+        // PLAN-962 (T-08)：hold 平移。
+        Stmt::Hold { name, bind, body, span } => {
+            sh(&mut name.span, offset);
+            sh(&mut bind.span, offset);
+            shift_block(body, offset);
+            sh(span, offset);
+        }
         Stmt::ExprStmt { value, span } | Stmt::Return { value, span } => {
             shift_expr(value, offset);
             sh(span, offset);
@@ -1434,6 +1441,11 @@ impl<'a> Walker<'a> {
                     for n in names {
                         next_locals.insert(n.name.clone());
                     }
+                }
+                // PLAN-962 (T-08)：hold——体内走读（绑定名块内可见；体由
+                // 外层帧栈继续走读，别名在此仅记账）。
+                Stmt::Hold { bind, .. } => {
+                    next_locals.insert(bind.name.clone());
                 }
                 Stmt::Let {
                     name, ann, value, ..
@@ -1961,6 +1973,8 @@ impl<'a> Walker<'a> {
 
 fn stmt_span(s: &Stmt) -> Span {
     match s {
+        // PLAN-962 (T-08)：hold。
+        Stmt::Hold { span, .. } => *span,
         Stmt::ExprStmt { span, .. }
         | Stmt::Let { span, .. }
         | Stmt::Assign { span, .. }
