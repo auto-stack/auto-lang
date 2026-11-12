@@ -69,6 +69,10 @@ pub(crate) fn project_program_with_caps(
         .position(|r| r.name == "var-item")
         .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
     let mut items = Vec::new();
+    // PLAN-963（T-03）：`spec` 声明在投影期擦除——收集到投影侧表，遵从检查
+    // 与默认方法注入在语法期单态化之后统一完成（spec 不进入 AST/downstream，
+    // 也不存在供后端猜测的解释路径）。
+    let mut specs: Vec<SpecDecl> = Vec::new();
     let mut saw_script = false;
     // F-941-12（r9）：前一个非产物顶层 item 是否含错误子树（恢复产物 script
     // 区判定用）。
@@ -177,6 +181,7 @@ pub(crate) fn project_program_with_caps(
             || kind == k.union_item.unwrap_or(u32::MAX)
             || Some(kind) == const_item_kind
             || Some(kind) == var_item_kind
+            || Some(kind) == k.spec_item
         {
             if saw_script {
                 let span = first_leaf_span(&eng.cx, node);
@@ -204,6 +209,9 @@ pub(crate) fn project_program_with_caps(
                 // PLAN-960（T-02）：packages-modules 面的 const/var 模块项
                 // （kind 精确匹配；use/pub-use 项仍走元数据跳过路径）。
                 items.push(eng.run_global_item(node, Some(kind) == var_item_kind));
+            } else if Some(kind) == k.spec_item {
+                // PLAN-963（T-03）：spec 声明——只进投影侧表，不产出 Item。
+                specs.push(eng.run_spec_item(node));
             } else {
                 items.push(Item::Type(eng.run_type_item(node)));
             }
@@ -235,6 +243,11 @@ pub(crate) fn project_program_with_caps(
     // 携带类型实参，无需语义推理）。下游 resolve/HIR/布局/四端只见具体
     // 记录类型；模板本身从程序中移除。
     for d in expand_user_generic_types(&mut items) {
+        eng.cx.diags.push((d.span.start as u64, d));
+    }
+    // PLAN-963（T-03）：`type X as S` 遵从检查 + spec 默认方法注入。放在单态化
+    // 之后：合成实例同样按具体方法签名核验，注入的默认体随实例一起进入 resolve。
+    for d in apply_spec_conformance(&mut items, &specs) {
         eng.cx.diags.push((d.span.start as u64, d));
     }
     if let Some(first) = eng.cx.first_diag() {
@@ -4028,6 +4041,9 @@ impl<'a> Engine<'a> {
         // PLAN-963（T-02）：声明序类型参数；成员注解投影期间这些名字按类型
         // 变量（`TypeRef::TyVar`）投影，随后由语法期单态化替换为具体类型。
         let type_params = self.project_type_params(self.cx.field_child(node, "type_params"));
+        // PLAN-963（T-03）：`as Spec` 遵从列表（投影期消化；记录本身保持普通
+        // TypeItem，下游只见方法）。
+        let conforms = self.project_specs(self.cx.field_child(node, "specs"));
         let saved_ty_params = std::mem::take(&mut self.cx.ty_params);
         self.cx.ty_params = type_params.iter().map(|t| t.name.clone()).collect();
         let mut fields: Vec<FieldDecl> = Vec::new();
@@ -4101,9 +4117,84 @@ impl<'a> Engine<'a> {
             span: self.cx.span_of(node),
             name,
             type_params,
+            conforms,
             fields,
             methods,
         }
+    }
+
+    /// PLAN-963（T-03）：`spec Name { .. }` → 投影侧 `SpecDecl`（无 AST 变体）。
+    fn run_spec_item(&mut self, node: u32) -> SpecDecl {
+        let name_leaf = self.cx.field_child(node, "name").expect("spec name");
+        let name = ident_of(&mut self.cx, name_leaf);
+        let member_kind = self.cx.k.spec_member.unwrap_or(u32::MAX);
+        let mut methods: Vec<SpecMethodDecl> = Vec::new();
+        for c in self.cx.children(node) {
+            if self.cx.tree.kind(c) != member_kind {
+                continue;
+            }
+            let mname_leaf = self.cx.field_child(c, "name").expect("spec method name");
+            let mname = ident_of(&mut self.cx, mname_leaf);
+            let params = self.project_params(self.cx.field_child(c, "params"));
+            for prm in &params {
+                if prm.name.name == "self" {
+                    let span = prm.name.span;
+                    self.cx.reject(span, || self_param(span));
+                }
+            }
+            let ret = self.classify_word(self.cx.field_child(c, "ty").expect("spec ret"), true);
+            // 默认体（`fn m(..) R { .. }`）按普通块投影；签名（无体）= 抽象方法。
+            let body = match self.cx.field_child(c, "body") {
+                Some(b) => {
+                    self.enter_block(b);
+                    self.drive();
+                    Some(self.pop_b())
+                }
+                None => None,
+            };
+            let span = match &body {
+                Some(b) => mname.span.join(b.span),
+                None => mname.span.join(ret.span),
+            };
+            if methods.iter().any(|m: &SpecMethodDecl| m.name.name == mname.name) {
+                let sp = mname.span;
+                let n = mname.name.clone();
+                self.cx.reject(sp, move || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.duplicate",
+                        format!("spec method `{n}` is declared more than once"),
+                        sp,
+                    )
+                });
+            }
+            methods.push(SpecMethodDecl {
+                name: mname,
+                params,
+                ret,
+                body,
+                span,
+            });
+        }
+        SpecDecl { name, methods }
+    }
+
+    /// PLAN-963（T-03）：`as A, B` 遵从列表（书写序；空=无遵从声明）。
+    fn project_specs(&mut self, node: Option<u32>) -> Vec<Ident> {
+        let mut out = Vec::new();
+        let Some(n) = node else { return out };
+        if let Some(head) = self.cx.field_child(n, "spec") {
+            out.push(ident_of(&mut self.cx, head));
+        }
+        let tail_kind = self.cx.k.as_spec_tail.unwrap_or(u32::MAX);
+        for c in self.cx.children(n) {
+            if self.cx.tree.kind(c) == tail_kind {
+                if let Some(leaf) = self.cx.field_child(c, "spec") {
+                    out.push(ident_of(&mut self.cx, leaf));
+                }
+            }
+        }
+        out
     }
 
     fn run_script_item(&mut self, node: u32) -> FnItem {
@@ -6810,6 +6901,154 @@ fn self_param(span: Span) -> Diagnostic {
 }
 
 // ---------------------------------------------------------------------------
+// PLAN-963（T-03）：spec 声明与 `as` 遵从（投影期擦除）
+//
+// spec 不是运行期对象：投影期把 `spec` 声明收进侧表，`type X as S` 在此核验
+// 并注入默认方法，随后 spec 与遵从列表对下游不可见。方法调用仍走既有的静态
+// 方法解析——不需要 witness/dyn 表示，也不引入第二套语义。
+// ---------------------------------------------------------------------------
+
+/// 投影侧 `spec Name { .. }`（不进入 AST；下游看不到 spec）。
+struct SpecDecl {
+    name: Ident,
+    methods: Vec<SpecMethodDecl>,
+}
+
+/// spec 方法签名：抽象（无体）或默认（有体，可被实现者的显式方法覆盖）。
+struct SpecMethodDecl {
+    name: Ident,
+    params: Vec<Param>,
+    ret: TypeAnn,
+    body: Option<Block>,
+    span: Span,
+}
+
+/// PLAN-963（T-03）：核验每个声明遵从的类型，并把默认方法注入到**具体**
+/// 记录（单态化之后，故合成实例同样被核验）。返回具名诊断，不静默通过。
+fn apply_spec_conformance(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diagnostic> {
+    let any_conform = items
+        .iter()
+        .any(|i| matches!(i, Item::Type(t) if !t.conforms.is_empty()));
+    if specs.is_empty() && !any_conform {
+        return Vec::new();
+    }
+    let mut diags: Vec<Diagnostic> = Vec::new();
+    let mut by_name: BTreeMap<&str, &SpecDecl> = BTreeMap::new();
+    for s in specs {
+        if by_name.contains_key(s.name.name.as_str()) {
+            let sp = s.name.span;
+            let n = s.name.name.clone();
+            diags.push(Diagnostic::new(
+                Stage::Text,
+                "source.duplicate",
+                format!("spec `{n}` is declared more than once"),
+                sp,
+            ));
+            continue;
+        }
+        by_name.insert(s.name.name.as_str(), s);
+    }
+    for item in items.iter_mut() {
+        let Item::Type(t) = item else { continue };
+        if t.conforms.is_empty() {
+            continue;
+        }
+        let owner = t.name.name.clone();
+        let owner_span = t.name.span;
+        let mut seen: Vec<String> = Vec::new();
+        let mut injected: Vec<FnItem> = Vec::new();
+        for spec_ident in t.conforms.iter() {
+            if seen.contains(&spec_ident.name) {
+                let sp = spec_ident.span;
+                let n = spec_ident.name.clone();
+                diags.push(Diagnostic::new(
+                    Stage::Text,
+                    "source.duplicate",
+                    format!("spec `{n}` is listed more than once for type `{owner}`"),
+                    sp,
+                ));
+                continue;
+            }
+            seen.push(spec_ident.name.clone());
+            let Some(spec) = by_name.get(spec_ident.name.as_str()) else {
+                let sp = spec_ident.span;
+                let n = spec_ident.name.clone();
+                diags.push(Diagnostic::new(
+                    Stage::Text,
+                    "source.unsupported",
+                    format!("unknown spec `{n}`"),
+                    sp,
+                ));
+                continue;
+            };
+            for m in &spec.methods {
+                let existing = t
+                    .methods
+                    .iter()
+                    .chain(injected.iter())
+                    .find(|f| f.name.name == m.name.name && f.receiver == Receiver::View);
+                if let Some(f) = existing {
+                    // 显式实现优先于默认体；签名必须与 spec 一致（按类型
+                    // kind 比较，span 不参与语义身份）。
+                    let same = f.params.len() == m.params.len()
+                        && f.ret.kind == m.ret.kind
+                        && f.params
+                            .iter()
+                            .zip(m.params.iter())
+                            .all(|(a, b)| a.ty.kind == b.ty.kind);
+                    if !same {
+                        let sp = m.name.span;
+                        let mn = m.name.name.clone();
+                        let sn = spec.name.name.clone();
+                        diags.push(Diagnostic::new(
+                            Stage::Text,
+                            "source.unsupported",
+                            format!(
+                                "`fn {mn}` in type `{owner}` does not match the signature \
+                                 required by spec `{sn}`"
+                            ),
+                            sp,
+                        ));
+                    }
+                    continue;
+                }
+                match &m.body {
+                    Some(body) => injected.push(FnItem {
+                        name: m.name.clone(),
+                        type_params: Vec::new(),
+                        params: m.params.clone(),
+                        ret: m.ret.clone(),
+                        body: body.clone(),
+                        span: m.span,
+                        receiver: Receiver::View,
+                        owner: Some(Ident {
+                            name: owner.clone(),
+                            span: owner_span,
+                        }),
+                        script: false,
+                    }),
+                    None => {
+                        let sp = m.name.span;
+                        let mn = m.name.name.clone();
+                        let sn = spec.name.name.clone();
+                        diags.push(Diagnostic::new(
+                            Stage::Text,
+                            "source.unsupported",
+                            format!(
+                                "type `{owner}` does not implement `fn {mn}` required by spec `{sn}`"
+                            ),
+                            sp,
+                        ));
+                    }
+                }
+            }
+        }
+        t.methods.extend(injected);
+    }
+    diags
+}
+
+// ---------------------------------------------------------------------------
 // PLAN-963（T-02）：用户泛型记录类型的语法期单态化
 //
 // 每个使用位都显式写出类型实参（`Point<int>`），因此不需要语义推理：按
@@ -7331,6 +7570,7 @@ impl GenericExpand {
                         span,
                     },
                     type_params: Vec::new(),
+                    conforms: tpl.conforms.clone(),
                     fields,
                     methods,
                     span: tpl.span,

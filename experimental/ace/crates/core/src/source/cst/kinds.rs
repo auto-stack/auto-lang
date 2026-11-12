@@ -13,6 +13,12 @@ pub struct SourceKinds {
     pub fn_item: u32,
     pub type_item: Option<u32>,
     pub script_item: Option<u32>,
+    /// PLAN-963 (T-03): `spec Name { .. }` declaration (record/aggregates
+    /// profiles only; erased at projection — never an `Item`).
+    pub spec_item: Option<u32>,
+    pub spec_member: Option<u32>,
+    /// PLAN-963 (T-03): `as A, B` conformance tail (`type X as A, B`).
+    pub as_spec_tail: Option<u32>,
     // members
     pub member: u32,
     pub field_member: u32,
@@ -323,6 +329,9 @@ impl SourceKinds {
             fn_item: rk("fn-item"),
             type_item: rk_opt(p, "type-item"),
             script_item: rk_opt(p, "script-item"),
+            spec_item: rk_opt(p, "spec-item"),
+            spec_member: rk_opt(p, "spec-member"),
+            as_spec_tail: rk_opt(p, "as-spec-tail"),
             member: rk("member"),
             field_member: rk("field-member"),
             static_method: rk("static-method"),

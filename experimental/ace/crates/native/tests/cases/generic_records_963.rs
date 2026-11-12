@@ -71,3 +71,61 @@ fn native_generic_record_body_change_exit_301() {
 fn native_generic_record_two_instances_exit_300() {
     assert_eq!(run_native(POINT963_TWO_INSTANCES, "p1d"), 300);
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-963（T-03）：spec 声明 + `as` 遵从（投影期擦除 + 默认方法注入）
+// ---------------------------------------------------------------------------
+
+/// 显式实现：`Score { val: 40 }.compare(3)` = 37。
+const SPEC_EXPLICIT: &str = "\
+spec Comparable { fn compare(other int) int }
+type Score as Comparable {
+    val int
+    fn compare(other int) int { return .val - other }
+}
+fn main() int {
+    let s Score = Score { val: 40 }
+    return s.compare(3)
+}
+";
+
+/// 默认体注入：实现者未声明 `greet` → 7。
+const SPEC_DEFAULT: &str = "\
+spec Greeter { fn greet() int { return 7 } }
+type Thing as Greeter { v int }
+fn main() int {
+    let t Thing = Thing { v: 1 }
+    return t.greet()
+}
+";
+
+/// 显式覆盖默认体 → 9。
+const SPEC_OVERRIDE: &str = "\
+spec Greeter { fn greet() int { return 7 } }
+type Thing as Greeter { v int
+    fn greet() int { return .v + 8 }
+}
+fn main() int {
+    let t Thing = Thing { v: 1 }
+    return t.greet()
+}
+";
+
+/// 显式实现（native 真实构建+运行）→ exit=37。
+#[test]
+fn native_spec_explicit_impl_exit_37() {
+    assert_eq!(run_native(SPEC_EXPLICIT, "s1"), 37);
+}
+
+/// 默认方法注入（native）→ exit=7。
+#[test]
+fn native_spec_default_body_exit_7() {
+    assert_eq!(run_native(SPEC_DEFAULT, "s2"), 7);
+}
+
+/// 显式覆盖默认体（native）→ exit=9。
+#[test]
+fn native_spec_override_exit_9() {
+    assert_eq!(run_native(SPEC_OVERRIDE, "s3"), 9);
+}
+

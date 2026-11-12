@@ -1017,6 +1017,9 @@ impl<'s> Parser<'s> {
             // PLAN-963：旧 parser 面不解析记录类型参数（`type Point<T>` 由
             // CST 投影 + 语法期单态化承载）。
             type_params: Vec::new(),
+            // PLAN-963（T-03）：`as Spec` 遵从列表由 CST 投影 + spec 擦除
+            // pass 承载（旧 parser 面不解析）。
+            conforms: Vec::new(),
             fields,
             methods,
         })

@@ -174,6 +174,10 @@ pub struct TypeItem {
     /// monomorphized at projection time (explicit type arguments at every
     /// use), so no synthesized `TypeItem` reaching resolve carries these.
     pub type_params: Vec<Ident>,
+    /// PLAN-963 (T-03): specs claimed by `type X as A[, B]`, in written order.
+    /// Consumed at projection time (conformance validation + default method
+    /// injection); resolve and the four backends see only concrete methods.
+    pub conforms: Vec<Ident>,
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<FnItem>,
     /// `type` keyword through the closing brace.

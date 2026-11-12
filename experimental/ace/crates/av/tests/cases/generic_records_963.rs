@@ -94,3 +94,65 @@ fn av_generic_record_two_instances_execute_300() {
         "two-instantiation oracle"
     );
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-963（T-03）：spec 声明 + `as` 遵从（投影期擦除 + 默认方法注入）
+// ---------------------------------------------------------------------------
+
+/// 显式实现：`Score { val: 40 }.compare(3)` = 37（AV 真实执行）。
+const SPEC_EXPLICIT: &str = "\
+spec Comparable { fn compare(other int) int }
+type Score as Comparable {
+    val int
+    fn compare(other int) int { return .val - other }
+}
+fn main() int {
+    let s Score = Score { val: 40 }
+    return s.compare(3)
+}
+";
+
+/// 默认体注入：实现者未声明 `greet`，调用命中 spec 默认体 → 7。
+const SPEC_DEFAULT: &str = "\
+spec Greeter { fn greet() int { return 7 } }
+type Thing as Greeter { v int }
+fn main() int {
+    let t Thing = Thing { v: 1 }
+    return t.greet()
+}
+";
+
+/// 显式覆盖默认体：`greet` = `.v + 8` → 9（与默认体 7 不同，证明覆盖生效）。
+const SPEC_OVERRIDE: &str = "\
+spec Greeter { fn greet() int { return 7 } }
+type Thing as Greeter { v int
+    fn greet() int { return .v + 8 }
+}
+fn main() int {
+    let t Thing = Thing { v: 1 }
+    return t.greet()
+}
+";
+
+/// 显式实现经真实 AV 执行 → 37。
+#[test]
+fn av_spec_explicit_impl_executes_37() {
+    assert_eq!(run_value(SPEC_EXPLICIT), Value::I32(37), "spec oracle");
+}
+
+/// 默认方法注入经真实 AV 执行 → 7。
+#[test]
+fn av_spec_default_body_executes_7() {
+    assert_eq!(run_value(SPEC_DEFAULT), Value::I32(7), "default-body oracle");
+}
+
+/// 显式覆盖默认体 → 9（不是默认体的 7）。
+#[test]
+fn av_spec_override_executes_9() {
+    assert_eq!(
+        run_value(SPEC_OVERRIDE),
+        Value::I32(9),
+        "override oracle (not the default body)"
+    );
+}
+

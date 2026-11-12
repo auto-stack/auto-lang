@@ -206,6 +206,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { fn-item() {} }
             // PLAN-936（T-04）：scalar-ct 面的 type-item 仅字段形（member 规则中方法两 alt 仍门控在 record 族；元信息源声明，§5.2）。
             alt(profiles: [record, text-record, collections, scalar-ct, aggregates]) { type-item() {} }
+            // PLAN-963（T-03）：`spec Name { fn m(..) R [body] }` 声明。投影期
+            // 擦除（不产出 Item 变体）：遵从检查与默认方法注入都在投影层完成，
+            // 下游 resolve/四端只见具体记录与其方法。
+            alt(profiles: [record, aggregates]) { spec-item() {} }
             alt(profiles: [scalar-modules]) { use-item() {} }
             // PLAN-960（T-02）：完整模块包面 items —— 单一 public-item 前缀
             //（fn/type/const/use 各自 token 开头，避免 recover 规则与前缀
@@ -506,9 +510,40 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // （仅 record/aggregates 面；投影按声明序投影参数表，随后语法期
             // 单态化为具体记录类型）。
             opt(profiles: [record, aggregates]) { type-params(field: "type_params") }
+            // PLAN-963（T-03）：`type Score as Comparable, Printable { .. }`——
+            // 遵从列表由投影层消化（spec 已擦除），记录本身仍投影为普通类型。
+            opt(profiles: [record, aggregates]) { as-spec-list(field: "specs") }
             lbrace() {}
             list-nl { member() {} }
             rbrace() {}
+        }
+        // PLAN-963（T-03）：spec 声明与方法签名（`fn m(..) R`），可选默认体
+        // （`fn m(..) R { .. }`）；spec 本身不在 AST 中，投影侧表承载。
+        spec-item(recover: true, profiles: [record, aggregates]) {
+            r-spec(field: "kw")
+            ident(field: "name")
+            lbrace() {}
+            list-nl { spec-member() {} }
+            rbrace() {}
+        }
+        spec-member(profiles: [record, aggregates]) {
+            fn(field: "kw")
+            ident(field: "name")
+            lparen() {}
+            params(repeat: "opt", field: "params")
+            rparen() {}
+            ret-ty(field: "ty")
+            opt(profiles: [record, aggregates]) { block(field: "body") }
+        }
+        // PLAN-963（T-03）：遵从列表 `as A[, B]*`（首个 `as` 是必需前缀）。
+        as-spec-list(profiles: [record, aggregates]) {
+            r-as(field: "kw") {}
+            ident(field: "spec")
+            many { as-spec-tail() {} }
+        }
+        as-spec-tail(profiles: [record, aggregates]) {
+            comma() {}
+            ident(field: "spec")
         }
         // PLAN-928（T-03）：PLAN-864 有限 enum——臂换行/`;` 分隔（list-nl 语义；
         // `,` 容忍由差分冻结），至多单载荷。

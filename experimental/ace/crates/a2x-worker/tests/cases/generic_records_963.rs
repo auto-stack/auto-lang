@@ -57,6 +57,15 @@ fn rustc() -> String {
 
 /// Rust 端（真实 rustc 编译 + 运行）；生成面含合成记录，无模板残留。
 fn run_rust(src: &str, want: i32, tag: &str) {
+    run_rust_impl(src, want, tag, true)
+}
+
+/// T-03 的 spec 源不含用户泛型记录：只做真实编译运行 oracle。
+fn run_rust_plain(src: &str, want: i32, tag: &str) {
+    run_rust_impl(src, want, tag, false)
+}
+
+fn run_rust_impl(src: &str, want: i32, tag: &str, generic_record: bool) {
     let compiled = ace_core::source::compile_record_source(src, "p963.at", &[])
         .expect("generic record source compiles");
     let checked = compiled.checked;
@@ -69,14 +78,16 @@ fn run_rust(src: &str, want: i32, tag: &str) {
         .map(|(_, c)| c.clone())
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(
-        joined.contains("Point_int"),
-        "Rust file set misses the synthesized record"
-    );
-    assert!(
-        !joined.contains("Point<T>"),
-        "no template residue in the Rust file set"
-    );
+    if generic_record {
+        assert!(
+            joined.contains("Point_int"),
+            "Rust file set misses the synthesized record"
+        );
+        assert!(
+            !joined.contains("Point<T>"),
+            "no template residue in the Rust file set"
+        );
+    }
 
     let dir = out_root().join(format!("rust-{tag}"));
     let _ = std::fs::remove_dir_all(&dir);
@@ -118,6 +129,15 @@ fn run_rust(src: &str, want: i32, tag: &str) {
 
 /// C 端（A2xSession + C provider → 真实 MSVC cl + 运行）。
 fn run_c(src: &str, want: i32, tag: &str) {
+    run_c_impl(src, want, tag, true)
+}
+
+/// T-03 的 spec 源不含用户泛型记录：只做真实编译运行 oracle。
+fn run_c_plain(src: &str, want: i32, tag: &str) {
+    run_c_impl(src, want, tag, false)
+}
+
+fn run_c_impl(src: &str, want: i32, tag: &str, generic_record: bool) {
     let root = out_root().join(format!("store-c-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let mut s = A2xSession::open(&root, "a2c-963", "probe", 128 << 20, CTargetProvider::v1())
@@ -131,14 +151,16 @@ fn run_c(src: &str, want: i32, tag: &str) {
         .map(|(_, c)| c.clone())
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(
-        joined.contains("Point_int"),
-        "C file set misses the synthesized record"
-    );
-    assert!(
-        !joined.contains("Point<T>"),
-        "no template residue in the C file set"
-    );
+    if generic_record {
+        assert!(
+            joined.contains("Point_int"),
+            "C file set misses the synthesized record"
+        );
+        assert!(
+            !joined.contains("Point<T>"),
+            "no template residue in the C file set"
+        );
+    }
 
     let dir = out_root().join(format!("c-{tag}"));
     let _ = std::fs::remove_dir_all(&dir);
@@ -172,3 +194,64 @@ fn a2x_generic_record_two_instances_value_300() {
     run_rust(POINT963_TWO_INSTANCES, 300, "p1d");
     run_c(POINT963_TWO_INSTANCES, 300, "p1d");
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-963（T-03）：spec 声明 + `as` 遵从（投影期擦除 + 默认方法注入）
+// ---------------------------------------------------------------------------
+
+/// 显式实现：`Score { val: 40 }.compare(3)` = 37。
+const SPEC_EXPLICIT: &str = "\
+spec Comparable { fn compare(other int) int }
+type Score as Comparable {
+    val int
+    fn compare(other int) int { return .val - other }
+}
+fn main() int {
+    let s Score = Score { val: 40 }
+    return s.compare(3)
+}
+";
+
+/// 默认体注入：实现者未声明 `greet` → 7。
+const SPEC_DEFAULT: &str = "\
+spec Greeter { fn greet() int { return 7 } }
+type Thing as Greeter { v int }
+fn main() int {
+    let t Thing = Thing { v: 1 }
+    return t.greet()
+}
+";
+
+/// 显式覆盖默认体 → 9。
+const SPEC_OVERRIDE: &str = "\
+spec Greeter { fn greet() int { return 7 } }
+type Thing as Greeter { v int
+    fn greet() int { return .v + 8 }
+}
+fn main() int {
+    let t Thing = Thing { v: 1 }
+    return t.greet()
+}
+";
+
+/// 显式实现（A2R + A2C 双端真实编译运行）→ value:37。
+#[test]
+fn a2x_spec_explicit_impl_value_37() {
+    run_rust_plain(SPEC_EXPLICIT, 37, "s1");
+    run_c_plain(SPEC_EXPLICIT, 37, "s1");
+}
+
+/// 默认方法注入（双端）→ value:7。
+#[test]
+fn a2x_spec_default_body_value_7() {
+    run_rust_plain(SPEC_DEFAULT, 7, "s2");
+    run_c_plain(SPEC_DEFAULT, 7, "s2");
+}
+
+/// 显式覆盖默认体（双端）→ value:9。
+#[test]
+fn a2x_spec_override_value_9() {
+    run_rust_plain(SPEC_OVERRIDE, 9, "s3");
+    run_c_plain(SPEC_OVERRIDE, 9, "s3");
+}
+

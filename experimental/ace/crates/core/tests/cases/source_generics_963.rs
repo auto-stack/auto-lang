@@ -197,3 +197,184 @@ fn main() int {
         "expected named rejection, got {err:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-963（T-03）：`spec` 声明 + `type X as S` 遵从（投影期擦除）
+// ---------------------------------------------------------------------------
+
+const SPEC_EXPLICIT: &str = "\
+spec Comparable { fn compare(other int) int }
+type Score as Comparable {
+    val int
+    fn compare(other int) int { return .val - other }
+}
+fn main() int {
+    let s Score = Score { val: 40 }
+    return s.compare(3)
+}
+";
+
+/// O-963-10：显式实现满足 spec 抽象方法 → 编译通过；spec 本身不进下游
+/// （无 spec 声明残留，调用按普通记录方法解析）。
+#[test]
+fn spec_explicit_impl_compiles_963() {
+    let c = compile(SPEC_EXPLICIT).expect("spec conformance compiles");
+    assert!(
+        !c.atom_text.contains("Comparable"),
+        "spec declaration leaked into the atom text:\n{}",
+        c.atom_text
+    );
+}
+
+/// O-963-11：spec 默认体在实现者未声明同名方法时注入（调用 `t.greet()` 由
+/// 注入的方法解析；无注入时 resolve 会以未知方法拒绝）。
+#[test]
+fn spec_default_body_injected_963() {
+    let src = "\
+spec Greeter { fn greet() int { return 7 } }
+type Thing as Greeter { v int }
+fn main() int {
+    let t Thing = Thing { v: 1 }
+    return t.greet()
+}
+";
+    let c = compile(src).expect("default spec method is injected");
+    assert!(
+        c.atom_text.contains("greet"),
+        "injected default method missing from the checked module:\n{}",
+        c.atom_text
+    );
+}
+
+/// O-963-12：显式实现优先于默认体（两者都合法，不产生重复方法）。
+#[test]
+fn spec_explicit_overrides_default_963() {
+    let src = "\
+spec Greeter { fn greet() int { return 7 } }
+type Thing as Greeter { v int
+    fn greet() int { return 9 }
+}
+fn main() int {
+    let t Thing = Thing { v: 1 }
+    return t.greet()
+}
+";
+    compile(src).expect("explicit implementation overrides the default");
+}
+
+/// O-963-13：多 spec 遵从列表 `as A, B` 各自核验。
+#[test]
+fn spec_multiple_conformance_963() {
+    let src = "\
+spec First { fn first() int }
+spec Second { fn second() int }
+type Both as First, Second { v int
+    fn first() int { return .v }
+    fn second() int { return .v + 1 }
+}
+fn main() int {
+    let b Both = Both { v: 1 }
+    return b.first() + b.second()
+}
+";
+    compile(src).expect("multiple conformance list compiles");
+}
+
+/// O-963-14：缺抽象方法 → 具名拒（dispatch=0：投影期即拒）。
+#[test]
+fn spec_missing_method_rejected_963() {
+    let src = "\
+spec Comparable { fn compare(other int) int }
+type Score as Comparable { val int }
+fn main() int {
+    let s Score = Score { val: 1 }
+    return s.val
+}
+";
+    let err = compile(src).expect_err("missing spec method must be rejected");
+    assert!(
+        err.iter().any(|d| d.code == "source.unsupported"
+            && d.message.contains("does not implement")
+            && d.message.contains("compare")),
+        "expected named missing-method rejection, got {err:?}"
+    );
+}
+
+/// O-963-15：未知 spec 名 → 具名拒（不按名字静默跳过遵从检查）。
+#[test]
+fn spec_unknown_name_rejected_963() {
+    let src = "\
+type Score as Missing { val int }
+fn main() int {
+    let s Score = Score { val: 1 }
+    return s.val
+}
+";
+    let err = compile(src).expect_err("unknown spec must be rejected");
+    assert!(
+        err.iter()
+            .any(|d| d.code == "source.unsupported" && d.message.contains("unknown spec")),
+        "expected named unknown-spec rejection, got {err:?}"
+    );
+}
+
+/// O-963-16：实现方法签名与 spec 不符 → 具名拒（不静默接受名义遵从）。
+#[test]
+fn spec_signature_mismatch_rejected_963() {
+    let src = "\
+spec Comparable { fn compare(other int) int }
+type Score as Comparable {
+    val int
+    fn compare(other bool) int { return .val }
+}
+fn main() int {
+    let s Score = Score { val: 1 }
+    return s.compare(0)
+}
+";
+    let err = compile(src).expect_err("signature mismatch must be rejected");
+    assert!(
+        err.iter()
+            .any(|d| d.code == "source.unsupported" && d.message.contains("does not match")),
+        "expected named signature rejection, got {err:?}"
+    );
+}
+
+/// O-963-17：重复 spec 声明 / 遵从列表重复项 → 具名拒。
+#[test]
+fn spec_duplicates_rejected_963() {
+    let dup_decl = "\
+spec S { fn m() int }
+spec S { fn m() int }
+type T as S { v int
+    fn m() int { return .v }
+}
+fn main() int {
+    let t T = T { v: 1 }
+    return t.m()
+}
+";
+    let err = compile(dup_decl).expect_err("duplicate spec declaration must be rejected");
+    assert!(
+        err.iter()
+            .any(|d| d.code == "source.duplicate" && d.message.contains("more than once")),
+        "expected duplicate-spec rejection, got {err:?}"
+    );
+    let dup_list = "\
+spec S { fn m() int }
+type T as S, S { v int
+    fn m() int { return .v }
+}
+fn main() int {
+    let t T = T { v: 1 }
+    return t.m()
+}
+";
+    let err = compile(dup_list).expect_err("duplicate conformance entry must be rejected");
+    assert!(
+        err.iter()
+            .any(|d| d.code == "source.duplicate" && d.message.contains("listed more than once")),
+        "expected duplicate-entry rejection, got {err:?}"
+    );
+}
+
