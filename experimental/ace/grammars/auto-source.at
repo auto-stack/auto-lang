@@ -760,6 +760,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         postfix-step(profiles: [record, text-record, text, host-console, collections, closures, packages-modules, numeric, aggregates]) {
             alt(profiles: [record, text-record, text, host-console, closures, collections, packages-modules, numeric, aggregates]) { dot(same-line: true) ident(field: "member") }
             alt(profiles: [record, text-record, collections, packages-modules, aggregates]) { dot(same-line: true) mut(field: "member") }
+            // PLAN-962（T-08，L-06）：`.view` 只读借用实参后缀（聚合面）。
+            alt(profiles: [aggregates]) { dot(same-line: true) r-view(same-line: true, field: "member") }
             alt(profiles: [text, text-record, host-console, collections, closures, packages-modules, numeric, aggregates]) { dot(same-line: true) r-move(same-line: true, field: "member") }
             alt(profiles: [text, text-record, host-console, packages-modules]) { dot(same-line: true) r-to(same-line: true) lparen(same-line: true) ident(field: "word") rparen() {} }
             // PLAN-961：`.as(T)` 数值转换后缀（T 为数值类型词；`.to(T)`

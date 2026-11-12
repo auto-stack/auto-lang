@@ -407,6 +407,11 @@ pub enum ExprKind {
         args: Vec<Arg>,
     },
     /// `p.mut` — the explicit mut-borrow argument form (record profile).
+    /// PLAN-962 (T-08, L-06): `x.view` — immutable borrow argument
+    /// (the readonly twin of [`ExprKind::MutArg`]).
+    ViewArg {
+        name: Ident,
+    },
     MutArg {
         name: Ident,
     },

@@ -512,6 +512,8 @@ fn walk_expr<'a>(
         ExprKind::Field { .. } => unsupported("field-read", e.span)?,
         ExprKind::MethodCall { .. } => unsupported("record-method-call", e.span)?,
         ExprKind::MutArg { .. } => unsupported("mut-arg", e.span)?,
+        // PLAN-962 (T-08): the view marker.
+        ExprKind::ViewArg { .. } => unsupported("view-arg", e.span)?,
         ExprKind::GenericType { .. } => unsupported("generic-type-receiver", e.span)?,
         ExprKind::Closure { .. } => unsupported("closure-expression", e.span)?,
     }

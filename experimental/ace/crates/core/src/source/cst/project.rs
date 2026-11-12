@@ -5214,7 +5214,11 @@ impl<'a> Engine<'a> {
     fn step_member(&self, step: u32) -> Option<u32> {
         self.cx.children(step).into_iter().find(|&m| {
             let mk = self.cx.tree.kind(m);
-            mk == self.cx.k.tok_ident || mk == self.cx.k.tok_mut || mk == self.cx.k.tok_r_move
+            mk == self.cx.k.tok_ident
+                || mk == self.cx.k.tok_mut
+                || mk == self.cx.k.tok_r_move
+                // PLAN-962 (T-08): `.view` member leaf.
+                || mk == self.cx.k.tok_r_view
         })
     }
 
@@ -5380,6 +5384,33 @@ impl<'a> Engine<'a> {
             return recv;
         };
         let mk = self.cx.tree.kind(member);
+        // PLAN-962 (T-08, L-06): `.view` — readonly borrow argument.
+        if mk == self.cx.k.tok_r_view {
+            let mspan = self.cx.span_of(member);
+            let name = match &recv.kind {
+                ExprKind::Var(id) => id.clone(),
+                _ => {
+                    let span = recv.span.join(mspan);
+                    self.cx.reject(span, || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.unsupported",
+                            "`.view` applies to a local variable".to_string(),
+                            span,
+                        )
+                    });
+                    Ident {
+                        name: String::new(),
+                        span: mspan,
+                    }
+                }
+            };
+            let span = name.span.join(mspan);
+            return Expr {
+                kind: ExprKind::ViewArg { name },
+                span,
+            };
+        }
         if mk == self.cx.k.tok_mut {
             let mspan = self.cx.span_of(member);
             let name = match &recv.kind {

@@ -4671,7 +4671,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                 .map(|ri| VT::Rec(*ri))
                 .unwrap_or(VT::I32),
             ExprKind::TypeWordArg(word) => vt_of_word(*word),
-            ExprKind::Closure { .. } | ExprKind::MutArg { .. } | ExprKind::GenericType { .. } => {
+            ExprKind::Closure { .. } | ExprKind::MutArg { .. } | ExprKind::ViewArg { .. } | ExprKind::GenericType { .. } => {
                 VT::I32
             }
         }
@@ -7459,6 +7459,45 @@ impl<'a, 's> FnResolver<'a, 's> {
             ExprKind::CtorNamed { .. } => {
                 unreachable!("named ctors resolve through the iterative walk")
             }
+            // PLAN-962 (T-08, L-06): `x.view` — the readonly borrow
+            // argument marker. A plain record parameter ALREADY borrows
+            // (771 frozen semantics; the adapter wraps BorrowView by the
+            // callee's param mode), so the marker resolves as the local
+            // read with a record-type check — the intent is documented,
+            // the semantics are the default view pass.
+            ExprKind::ViewArg { name } => match self.lookup(&name.name) {
+                Some(l) => {
+                    let vt = self.locals[l.0].vt;
+                    if !matches!(vt, VT::Rec(_)) {
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!(
+                                "`.view` requires a record-typed local, `{}` is `{}`",
+                                name.name,
+                                vt.as_str()
+                            ),
+                            e.span,
+                        );
+                    }
+                    ResolvedExpr {
+                        span: e.span,
+                        vt,
+                        kind: RExprKind::ReadLocal(l),
+                    }
+                }
+                None => {
+                    self.bind_err(
+                        "source.undefined",
+                        format!("no local named `{}` in scope", name.name),
+                        name.span,
+                    );
+                    ResolvedExpr {
+                        span: e.span,
+                        vt: VT::I32,
+                        kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
+                    }
+                }
+            },
             ExprKind::MutArg { name } => match self.lookup(&name.name) {
                 Some(l) => {
                     let vt = self.locals[l.0].vt;

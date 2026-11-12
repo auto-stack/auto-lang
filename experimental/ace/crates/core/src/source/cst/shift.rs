@@ -141,6 +141,8 @@ fn shift_expr(e: &mut Expr, delta: i64) {
             shift_ident(name, delta);
         }
         ExprKind::MutArg { name } => shift_ident(name, delta),
+        // PLAN-962 (T-08)：`.view` 实参。
+        ExprKind::ViewArg { name } => shift_ident(name, delta),
         ExprKind::GenericType { name, args } => {
             shift_ident(name, delta);
             for a in args.iter_mut() {

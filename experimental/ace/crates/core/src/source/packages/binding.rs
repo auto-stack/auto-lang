@@ -1197,7 +1197,9 @@ fn shift_expr(e: &mut Expr, offset: usize) {
         | ExprKind::TypeWordArg(_)
         // PLAN-961: a typed literal is a leaf.
         | ExprKind::TypedLit { .. } => {}
-        ExprKind::Var(i) | ExprKind::MutArg { name: i } => sh(&mut i.span, offset),
+        ExprKind::Var(i) | ExprKind::MutArg { name: i } | ExprKind::ViewArg { name: i } => {
+            sh(&mut i.span, offset)
+        }
         ExprKind::Call { callee, args } => {
             sh(&mut callee.span, offset);
             for a in args {
@@ -1818,7 +1820,7 @@ impl<'a> Walker<'a> {
                 }
                 Ok(())
             }
-            ExprKind::MutArg { .. } => Err(fail(
+            ExprKind::MutArg { .. } | ExprKind::ViewArg { .. } => Err(fail(
                 self.key,
                 "source.module-surface",
                 "`.mut` arguments are outside the packages surface (PLAN-962)",

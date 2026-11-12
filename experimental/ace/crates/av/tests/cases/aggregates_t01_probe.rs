@@ -404,3 +404,26 @@ fn hold_whole_local_executes() {
         .expect("alias escape must reject");
     assert!(err.iter().any(|d| d.code == "source.undefined"));
 }
+
+/// PLAN-962 unit-11 (T-08, L-06): the `.view` readonly-borrow argument
+/// marker — a plain record parameter already borrows (771 frozen
+/// semantics), so the marker documents intent and the semantics are the
+/// default view pass (with a record-type check).
+#[test]
+fn view_marker_argument_executes() {
+    let src = "type Pair { left int; right int }\nfn getv(p Pair) int { return p.left }\nfn main() int {\n    let p = Pair(20, 22)\n    return getv(p.view) + p.right\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect(".view marker argument executes");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0);
+    // non-record base rejects with the named diagnostic
+    let bad = "fn f(x int) int { return x }
+fn main() int {
+    let b = true
+    return f(b.view)
+}";
+    let err = ace_core::source::compile_aggregates_source(bad, "p.at", &[])
+        .err()
+        .expect("non-record .view must reject");
+    assert!(err.iter().any(|d| d.code == "source.type-mismatch"));
+}

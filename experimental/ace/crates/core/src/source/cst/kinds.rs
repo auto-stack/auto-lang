@@ -144,6 +144,7 @@ pub struct SourceKinds {
     pub tok_arrow: u32,
     pub tok_fat_arrow: u32,
     pub tok_r_move: u32,
+    pub tok_r_view: u32,
     pub tok_r_to: u32,
     // 算子 token（二元）
     pub op_plus: u32,
@@ -431,6 +432,7 @@ impl SourceKinds {
             tok_arrow: tk("arrow"),
             tok_fat_arrow: tk("fat-arrow"),
             tok_r_move: tk("r-move"),
+            tok_r_view: tk("r-view"),
             tok_dotdot: token_kind(p, "dotdot"),
             tok_dotdoteq: token_kind(p, "dotdoteq"),
             tok_lbracket: tk("lbracket"),

@@ -635,6 +635,8 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
             what: "record-method-call",
         },
         core_ast::ExprKind::MutArg { .. } => InputExprKind::Unsupported { what: "mut-arg" },
+        // PLAN-962 (T-08): the view marker.
+        core_ast::ExprKind::ViewArg { .. } => InputExprKind::Unsupported { what: "view-arg" },
         // PLAN-864: a generic type receiver (List<T>.new()) is outside the
         // limited inference surface.
         // PLAN-865: lambda values are outside the adapter limited semantic profile.

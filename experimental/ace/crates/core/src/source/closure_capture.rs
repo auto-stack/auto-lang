@@ -136,6 +136,7 @@ pub(crate) fn analyze_capture_uses(
             | ExprKind::CharLit(_)
             | ExprKind::TypeWordArg(_)
             | ExprKind::MutArg { .. }
+            | ExprKind::ViewArg { .. }
             | ExprKind::GenericType { .. } => {}
         }
     }
@@ -407,6 +408,7 @@ pub(crate) fn scan_shared_capture_cells(
             | ExprKind::CharLit(_)
             | ExprKind::TypeWordArg(_)
             | ExprKind::MutArg { .. }
+            | ExprKind::ViewArg { .. }
             | ExprKind::GenericType { .. } => {}
         }
     }
