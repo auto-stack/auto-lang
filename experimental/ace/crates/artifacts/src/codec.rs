@@ -1547,7 +1547,7 @@ pub fn build_decl_summary(program: &ace_core::source::ast::Program, module: &str
                         Receiver::View => "view",
                     }
                     .into(),
-                    type_params: f.type_params.iter().map(|t| t.name.clone()).collect(),
+                    type_params: f.type_params.iter().map(|t| t.name.name.clone()).collect(),
                     params: f
                         .params
                         .iter()

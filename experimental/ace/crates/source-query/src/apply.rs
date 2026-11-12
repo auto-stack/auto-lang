@@ -618,6 +618,20 @@ pub fn bind_with_facts(
             .map_err(BindFactsError::Resolve)?;
         return Ok((resolved, Vec::new(), supply));
     }
+    // PLAN-963（T-02）：RECORD 面同样没有求解器事实（934 推理面是标量/核心
+    // 域，记录表达式不在其可移植类型面内）——脱糖后的具体程序按记录域自身
+    // 规则完整 resolve，事实供给为空。实例 lane 之前的模板面不进入这里。
+    if profile == ace_core::source::SourceProfile::Record {
+        if session.foreign().is_some() {
+            return Err(BindFactsError::Profile(
+                "the record instance lane does not carry a foreign environment",
+            ));
+        }
+        let supply = BodyTypeSupply::new();
+        let resolved = ace_core::source::resolve::resolve_with(program, capabilities, profile)
+            .map_err(BindFactsError::Resolve)?;
+        return Ok((resolved, Vec::new(), supply));
+    }
     let mut names: Vec<String> = Vec::new();
     for item in &program.items {
         match item {

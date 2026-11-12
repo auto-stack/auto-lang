@@ -644,7 +644,7 @@ pub fn bind_package_syntax(
                             key,
                             "source.module-templates",
                             "template functions in package modules close in PLAN-963",
-                            tp.span,
+                            tp.name.span,
                         ));
                     }
                     let owner = fn_symbol(pkg, module, &original.name.name, entry);
@@ -672,7 +672,7 @@ pub fn bind_package_syntax(
                                 key,
                                 "source.module-templates",
                                 "template methods in package modules close in PLAN-963",
-                                tp.span,
+                                tp.name.span,
                             ));
                         }
                         let m_owner = format!("{owner}.{}", m.name.name);
@@ -1022,7 +1022,10 @@ pub(crate) fn shift_fn(f: &mut FnItem, offset: usize) {
     sh(&mut f.name.span, offset);
     sh(&mut f.span, offset);
     for tp in &mut f.type_params {
-        sh(&mut tp.span, offset);
+        sh(&mut tp.name.span, offset);
+        if let Some(b) = &mut tp.bound {
+            sh(&mut b.span, offset);
+        }
     }
     for p in &mut f.params {
         sh(&mut p.name.span, offset);

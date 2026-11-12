@@ -306,15 +306,29 @@ fn sq09_outside_the_finite_surface_is_a_controlled_rejection() {
         Err(ProduceError::UnknownFn { .. })
     ));
 
-    // A text-profile body (string literal) is outside this layer's finite
-    // surface: the structural walk refuses it instead of skipping it.
+    // A text-profile body used to be outside this layer's finite surface.
+    // PLAN-963（T-02）brought text and records into the instance lane's value
+    // domain, so a str literal is now a structured node — while constructs
+    // still outside the surface keep the controlled rejection.
     let t = parse_program_with("fn f() str { return \"x\" }\n", SourceProfile::Text)
         .expect("text profile parse");
-    let err = walk_body(body_of(&t, "f")).expect_err("str literal is unsupported");
+    let w = walk_body(body_of(&t, "f")).expect("str literal is a structured node now");
+    assert!(
+        w.nodes.iter().any(|n| n.kind == "expr.str"),
+        "str literal must be registered, not skipped: {:?}",
+        w.nodes
+    );
+
+    let m = parse_program_with(
+        "fn g() int { let c Char = 'x'\nreturn 1 }\n",
+        SourceProfile::TextRecord,
+    )
+    .expect("text-record profile parse");
+    let err = walk_body(body_of(&m, "g")).expect_err("char literal is unsupported");
     assert!(matches!(
         err,
         WalkError::Unsupported {
-            what: "str-literal",
+            what: "char-literal",
             ..
         }
     ));

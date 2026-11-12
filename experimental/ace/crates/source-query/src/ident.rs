@@ -192,7 +192,7 @@ pub fn signature_version(f: &FnItem) -> ContentVersion {
     if !f.type_params.is_empty() {
         c.extend_from_slice(b"tp<");
         for tp in &f.type_params {
-            c.extend_from_slice(tp.name.as_bytes());
+            c.extend_from_slice(tp.name.name.as_bytes());
             c.push(b',');
         }
         c.push(b'>');

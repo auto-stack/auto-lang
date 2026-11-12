@@ -1428,6 +1428,10 @@ fn shape_of(
         let ty = match a {
             ace_semantics::Ann::I32 => TypeDesc::I32,
             ace_semantics::Ann::Bool => TypeDesc::Bool,
+            // PLAN-963（T-02）：文本字段（记录域/文本记录域）。
+            ace_semantics::Ann::Text => TypeDesc::Opaque {
+                name: "text".into(),
+            },
             ace_semantics::Ann::Record(rec) => match input.lookup_record(rec) {
                 Some(dep) => TypeDesc::Record {
                     decl: ace_semantics_contract::DeclRef::new(
@@ -1659,6 +1663,10 @@ fn plain_desc(a: &ace_semantics::Ann) -> TypeDesc {
     match a {
         ace_semantics::Ann::I32 => TypeDesc::I32,
         ace_semantics::Ann::Bool => TypeDesc::Bool,
+        // PLAN-963（T-02）：文本（记录域/文本记录域的值面）。
+        ace_semantics::Ann::Text => TypeDesc::Opaque {
+            name: "text".into(),
+        },
         ace_semantics::Ann::Record(r) => TypeDesc::Opaque {
             name: format!("record:{r}"),
         },

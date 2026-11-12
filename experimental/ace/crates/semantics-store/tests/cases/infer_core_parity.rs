@@ -10,6 +10,7 @@
 use ace_core::source::SourceProfile;
 use ace_semantics::adapter::{old_pipeline_verdict, parse_into_input};
 use ace_semantics::{InferOutcome, InferSession};
+use ace_semantics_contract::TypeDesc;
 
 fn profile() -> SourceProfile {
     SourceProfile::Core
@@ -232,24 +233,30 @@ fn infer_core_parity_expected_type_span() {
     }
 }
 
-/// Out-of-surface constructs (text profile) project to explicit
-/// unsupported nodes — never a silent mistype — while the old pipeline
-/// (which owns the text surface) accepts them; the limited profile
-/// reports unsupported instead of claiming parity it cannot check.
+/// Text constructs used to be out of the limited profile's surface and
+/// projected to explicit unsupported nodes. PLAN-963（T-02）put text (and
+/// records) into the instance lane's value domain, so the literal now types
+/// as text — neither a silent mistype nor a stale unsupported claim.
 #[test]
-fn infer_core_parity_text_constructs_unsupported_not_mistyped() {
+fn infer_core_parity_text_literal_types_as_text() {
     let src = "fn main() int { let s = \"hello\"\nreturn 1 }";
     let input = parse_into_input(src, "diff", "text", SourceProfile::TextRecord).unwrap();
     match InferSession::new(&input).infer_function("main") {
-        InferOutcome::Diags(sum) => {
+        InferOutcome::Ok(sum) => {
+            assert!(
+                sum.facts.diagnostics.is_empty(),
+                "text literal must infer clean: {:?}",
+                sum.facts.diagnostics
+            );
             assert!(
                 sum.facts
-                    .diagnostics
+                    .bindings
                     .iter()
-                    .any(|d| d.code == "unsupported-construct"),
-                "str literal must surface as unsupported-construct"
+                    .any(|(n, t)| n == "s" && matches!(t, TypeDesc::Opaque { name } if name == "text")),
+                "`s` must type as text (the value domain is real, not opaque-by-refusal): {:?}",
+                sum.facts.bindings
             );
         }
-        other => panic!("expected diags with unsupported-construct, got {other:?}"),
+        other => panic!("expected a clean text inference, got {other:?}"),
     }
 }

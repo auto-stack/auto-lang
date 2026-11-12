@@ -132,12 +132,11 @@ pub enum Receiver {
 #[derive(Clone, Debug)]
 pub struct FnItem {
     pub name: Ident,
-    /// PLAN-935: declared type parameters (`<T>`) in written order. Only
-    /// non-empty under the instances capability face; a fn carrying them is
-    /// a TEMPLATE — a semantic description, never a checked unit on its own
-    /// (the instances layer drops templates from the concretized program and
-    /// replaces them with their demanded concrete instances).
-    pub type_params: Vec<Ident>,
+    /// PLAN-935: declared type parameters (`<T>`) in written order. PLAN-963
+    /// （T-02）把形状统一到 [`TypeParamDecl`]（可携带 `<T has S>` 约束）。
+    /// 仅非空于实例能力面；带类型参数的 fn 是**模板**——语义描述，永不是
+    /// 独立检查单元（实例层把模板从脱糖程序移除，换成按需的具体实例）。
+    pub type_params: Vec<TypeParamDecl>,
     pub params: Vec<Param>,
     pub ret: TypeAnn,
     pub body: Block,

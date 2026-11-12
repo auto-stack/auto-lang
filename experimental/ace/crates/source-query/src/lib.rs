@@ -65,7 +65,8 @@ pub use apply::{
 
 pub use catalog::SignatureCatalog;
 pub use consumer::{
-    compile_core_product, compile_scalar_product, compile_text_record_product, compile_via_facts,
+    compile_core_product, compile_record_product, compile_scalar_product, compile_text_record_product,
+    compile_via_facts,
     CompileLane, ConsumerError, FactCompiled, ProductCompile,
 };
 pub use facts::{
@@ -86,7 +87,7 @@ pub use instance_host::{
     InstanceSink, ManagedInstanceSink, MemoryInstanceSink, INSTANCE_LAYER, INSTANCE_ROOT_KIND,
 };
 pub use instances::{
-    instantiate_program, instantiate_program_limited, InstanceArg, InstanceRecord,
+    instantiate_program, instantiate_program_limited, InstanceArg, InstanceRecord, InstanceTy,
     InstantiateOutcome, INSTANCES_ALGO, INSTANCES_KEY_DOMAIN, INSTANCES_LOGICAL_DOMAIN,
     INSTANCES_PRODUCER, INSTANCES_SCHEMA,
 };

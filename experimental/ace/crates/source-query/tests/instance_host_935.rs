@@ -93,7 +93,7 @@ fn page_codec_roundtrip_and_envelope_refusals() {
     ));
     assert_eq!(INSTANCES_PRODUCER, "plan935/source-instances");
     assert_eq!(INSTANCES_SCHEMA, "ac935/instances/v1");
-    assert_eq!(INSTANCES_ALGO, "ac935/instances-discovery/2");
+    assert_eq!(INSTANCES_ALGO, "ac935/instances-discovery/3");
 }
 
 /// V-03：同键单飞——两个调用点/两次请求同一实例，productions=1；

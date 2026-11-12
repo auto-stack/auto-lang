@@ -17,7 +17,7 @@
 
 use crate::ident::sq_hash;
 use crate::instances::{
-    instantiate_program_limited, InstanceRecord, InstantiateOutcome, INSTANCES_ALGO,
+    instantiate_program_limited, InstanceRecord, InstanceTy, InstantiateOutcome, INSTANCES_ALGO,
     INSTANCES_PRODUCER, INSTANCES_SCHEMA,
 };
 use crate::produce::ProduceLimits;
@@ -34,11 +34,11 @@ pub const INSTANCE_ROOT_KIND: &str = "source-instances";
 pub const INSTANCE_CARRIER: ChunkKind = ChunkKind::SnapshotRecord;
 /// 实例页 magic + codec 版本（新版本必须 MISS，绝不重释旧字节）。
 ///
-/// PLAN-963：v2 = `argc + 每实参 (name, ty)`（通用多类型参数）。v1 页按
-/// 既有「版本不符即 MISS」语义自然失效重产；magic 与 producer/schema/algo
-/// 信封不变。
+/// PLAN-963：v2 = `argc + 每实参 (name, ty)`（通用多类型参数）；v3 = 值域扩
+/// 到文本/记录（类型码 + 记录名）。v1/v2 页按既有「版本不符即 MISS」语义
+/// 自然失效重产；magic 与 producer/schema/algo 信封不变。
 pub const INSTANCE_PAGE_MAGIC: &[u8; 6] = b"IN935P";
-pub const INSTANCE_PAGE_CODEC_VERSION: u8 = 2;
+pub const INSTANCE_PAGE_CODEC_VERSION: u8 = 3;
 /// 单页字节上限（沿 512KiB 页锚）。
 pub const INSTANCE_MAX_PAGE_BYTES: usize = 512 * 1024;
 
@@ -51,8 +51,9 @@ pub struct InstancePage {
     pub key: String,
     pub logical: String,
     pub template: String,
-    /// 声明序 `(类型参数名, 类型码)`（0=I32, 1=Bool, 2=Unit；单参即 935 面）。
-    pub args: Vec<(String, u8)>,
+    /// 声明序 `(类型参数名, 具体类型)`（v3 值域：i32/bool/text/记录；单参
+    /// i32/bool 与 935 面同字节）。
+    pub args: Vec<(String, InstanceTy)>,
     pub concrete_name: String,
     pub sig_version: String,
     pub body_version: String,
@@ -71,7 +72,7 @@ impl From<&InstanceRecord> for InstancePage {
             args: r
                 .args
                 .iter()
-                .map(|a| (a.param.clone(), ty_code(a.ty)))
+                .map(|a| (a.param.clone(), a.ty.clone()))
                 .collect(),
             concrete_name: r.concrete_name.clone(),
             sig_version: r.sig_version.clone(),
@@ -81,12 +82,13 @@ impl From<&InstanceRecord> for InstancePage {
     }
 }
 
-/// substitution 类型码（页编码面；与 [`crate::facts::PortableTy`] 一一对应）。
-fn ty_code(ty: crate::facts::PortableTy) -> u8 {
+/// substitution 类型码（页编码面）：0=I32, 1=Bool, 2=Text, 3=Record(名随行)。
+fn ty_code(ty: &InstanceTy) -> u8 {
     match ty {
-        crate::facts::PortableTy::I32 => 0,
-        crate::facts::PortableTy::Bool => 1,
-        crate::facts::PortableTy::Unit => 2,
+        InstanceTy::I32 => 0,
+        InstanceTy::Bool => 1,
+        InstanceTy::Text => 2,
+        InstanceTy::Record(_) => 3,
     }
 }
 
@@ -159,9 +161,12 @@ pub fn encode_instance_page(p: &InstancePage) -> Result<Vec<u8>, InstancePageErr
     put_str(&mut out, &p.logical);
     put_str(&mut out, &p.template);
     out.extend_from_slice(&(p.args.len() as u32).to_le_bytes());
-    for (name, code) in &p.args {
+    for (name, ty) in &p.args {
         put_str(&mut out, name);
-        out.push(*code);
+        out.push(ty_code(ty));
+        if let InstanceTy::Record(r) = ty {
+            put_str(&mut out, r);
+        }
     }
     put_str(&mut out, &p.concrete_name);
     put_str(&mut out, &p.sig_version);
@@ -216,7 +221,15 @@ pub fn decode_instance_page(b: &[u8]) -> Result<InstancePage, InstancePageError>
         }
         let code = b[pos];
         pos += 1;
-        args.push((name, code));
+        let ty = match code {
+            0 => InstanceTy::I32,
+            1 => InstanceTy::Bool,
+            2 => InstanceTy::Text,
+            3 => InstanceTy::Record(get_str(b, &mut pos)?),
+            // 未知类型码：页面损坏（不猜测重释）。
+            _ => return Err(InstancePageError::Truncated),
+        };
+        args.push((name, ty));
     }
     let concrete_name = get_str(b, &mut pos)?;
     let sig_version = get_str(b, &mut pos)?;

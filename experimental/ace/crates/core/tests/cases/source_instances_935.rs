@@ -63,7 +63,7 @@ fn parse_choose_template_with_capability() {
         choose
             .type_params
             .iter()
-            .map(|t| t.name.as_str())
+            .map(|t| t.name.name.as_str())
             .collect::<Vec<_>>(),
         vec!["T"],
         "type params project in declaration order"
@@ -101,26 +101,29 @@ fn without_capability_still_rejected() {
 /// 有限形态具名拒：重名类型参数、模板入口。
 ///
 /// PLAN-963：`<T, U>` 不再拒绝——多类型参数是通用实例面的合法声明（见
-/// `parse_multi_type_params_963`）；其余有限面拒绝保持不变。
+/// `parse_multi_type_params_963`）；其余有限面拒绝保持不变。重名走 fn/type
+/// 统一的 `source.duplicate`（PLAN-963 把两者投影到同一 `TypeParamDecl`
+/// 形状，诊断码随之统一）。
 #[test]
 fn finite_surface_named_rejections() {
-    let cases: [(&str, &str); 2] = [
+    let cases: [(&str, &str, &str); 2] = [
         (
             "fn pick<T, T>(a T, b T) T { return a }\nfn main() int { return 0 }",
+            "source.duplicate",
             "duplicate type parameter",
         ),
         (
             "fn main<T>() int { return 0 }",
+            "source.instances-unsupported",
             "entry function cannot be a template",
         ),
     ];
-    for (src, needle) in cases {
+    for (src, code, needle) in cases {
         match with_caps(src) {
             FrontOutcome::Diag(ds) => {
                 assert!(
                     ds.iter()
-                        .any(|d| d.code == "source.instances-unsupported"
-                            && d.message.contains(needle)),
+                        .any(|d| d.code == code && d.message.contains(needle)),
                     "{src}: expected named rejection `{needle}`, got {ds:?}"
                 );
             }
@@ -147,7 +150,7 @@ fn main() int { return 0 }
     assert_eq!(
         pick.type_params
             .iter()
-            .map(|t| t.name.as_str())
+            .map(|t| t.name.name.as_str())
             .collect::<Vec<_>>(),
         vec!["T", "U"],
         "type params project in declaration order"
@@ -158,27 +161,42 @@ fn main() int { return 0 }
     assert!(matches!(pick.ret.kind, TypeRef::TyVar(_)));
 }
 
-/// PLAN-935（T-03）：约束/const 形状（`<T has Bound>` / `<const N>`——词法
-/// ident+ident）语法可识别、投影具名拒——不能当普通 token 跳过；无能力
-/// 时同一形状仍是原语法拒绝。
+/// PLAN-935（T-03）+ PLAN-963（T-02）：`<T has Bound>` 与 `<const N>` 都是
+/// 语法形状（词法 ident+ident），不能当普通 token 跳过。PLAN-963 起约束
+/// 是 fn 模板的合法声明（投影到 `TypeParamDecl.bound`，由单态化按实参
+/// 核验），const 值参数仍具名拒（T-03 落地前不静默接受）；无能力时同一
+/// 形状仍是原语法拒绝。
 #[test]
 fn constraint_and_const_shapes_named_rejections() {
-    let cases: [&str; 2] = [
-        "fn sort<T has Comparable>(a T) T { return a }
-fn main() int { return 0 }",
-        "fn log2<const N>(n int) int { return n }
-fn main() int { return 0 }",
-    ];
-    for src in cases {
-        match with_caps(src) {
-            FrontOutcome::Diag(ds) => assert!(
-                ds.iter().any(|d| d.code == "source.instances-unsupported"
-                    && d.message.contains("constraints")),
-                "{src}: expected the constraint named rejection, got {ds:?}"
-            ),
-            other => panic!("{src}: expected rejection, got {other:?}"),
-        }
-        // 无能力：原语法拒绝（parse 面）。
+    // 约束：合法（投影出 bound，不丢位序）。
+    let bound_src = "fn sort<T has Comparable>(a T) T { return a }
+fn main() int { return 0 }";
+    let FrontOutcome::Ok(ok) = with_caps(bound_src) else {
+        panic!("`<T has S>` must be a legal fn template declaration (PLAN-963)");
+    };
+    let sort = fn_of(&ok.program, "sort");
+    assert_eq!(sort.type_params.len(), 1);
+    assert_eq!(sort.type_params[0].name.name, "T");
+    assert_eq!(
+        sort.type_params[0].bound.as_ref().map(|b| b.name.as_str()),
+        Some("Comparable"),
+        "约束投影到声明（不丢、不错位）"
+    );
+
+    // const：仍具名拒。
+    let const_src = "fn log2<const N>(n int) int { return n }
+fn main() int { return 0 }";
+    match with_caps(const_src) {
+        FrontOutcome::Diag(ds) => assert!(
+            ds.iter().any(|d| d.code == "source.instances-unsupported"
+                && d.message.contains("const (value) type parameters")),
+            "{const_src}: expected the const named rejection, got {ds:?}"
+        ),
+        other => panic!("{const_src}: expected rejection, got {other:?}"),
+    }
+
+    // 无能力：两者都是原语法拒绝（parse 面）。
+    for src in [bound_src, const_src] {
         assert!(
             matches!(parse_front(req(src)), FrontOutcome::Diag(_)),
             "{src}: no-cap must stay rejected"

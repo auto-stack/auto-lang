@@ -101,6 +101,9 @@ pub fn list_candidates(input: &SemaInput, domain: &str) -> Vec<String> {
     match domain {
         "fn" => input.fn_candidates(),
         "type" => input.record_candidates(),
+        // PLAN-963（T-02）：字段/方法名域与求解器同源。
+        "field" => input.field_candidates(),
+        "method" => input.method_candidates(),
         _ => Vec::new(),
     }
 }
@@ -109,6 +112,10 @@ fn ann_desc(a: &Ann) -> TypeDesc {
     match a {
         Ann::I32 => TypeDesc::I32,
         Ann::Bool => TypeDesc::Bool,
+        // PLAN-963（T-02）：文本面按 opaque 现值发布（934 事实页不承载文本）。
+        Ann::Text => TypeDesc::Opaque {
+            name: "text".into(),
+        },
         // Record annotations describe nominal types by name here; the
         // probe-level publication upgrades them to full DeclRefs.
         Ann::Record(r) => TypeDesc::Opaque {

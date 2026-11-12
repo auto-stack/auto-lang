@@ -503,14 +503,60 @@ fn walk_expr<'a>(
             canon.push(0);
             stack.push(Task::Expr(inner));
         }
-        ExprKind::StrLit(_) => unsupported("str-literal", e.span)?,
+        // PLAN-963（T-02）：文本字面量 / 记录构造 / 字段读取 / 方法调用是
+        // 记录域的值形——结构身份在此登记（事实页的类型供给仍由
+        // `PortableTy` 的可移植面决定：标量事实 lane 对记录/文本类型给出
+        // 受控拒绝，而不是在这里按表达式种类拒绝）。
+        ExprKind::StrLit(v) => {
+            push_node(nodes, canon, "expr.str", e.span);
+            canon.extend_from_slice(b"str:");
+            canon.push(0);
+            canon.extend_from_slice(v.as_bytes());
+            canon.push(0);
+        }
+        ExprKind::CtorNamed { ty, fields, .. } => {
+            push_node(nodes, canon, "expr.ctor", e.span);
+            canon.extend_from_slice(b"ctor:");
+            canon.push(0);
+            canon.extend_from_slice(ty.name.as_bytes());
+            canon.push(0);
+            canon.extend_from_slice(&(fields.len() as u32).to_le_bytes());
+            for f in fields.iter() {
+                canon.extend_from_slice(f.name.name.as_bytes());
+                canon.push(0);
+            }
+            for f in fields.iter().rev() {
+                stack.push(Task::Expr(&f.value));
+            }
+        }
+        ExprKind::Field { base, name } => {
+            push_node(nodes, canon, "expr.field", e.span);
+            canon.extend_from_slice(b"field:");
+            canon.push(0);
+            canon.extend_from_slice(name.name.as_bytes());
+            canon.push(0);
+            stack.push(Task::Expr(base));
+        }
+        ExprKind::MethodCall { recv, name, args } => {
+            push_node(nodes, canon, "expr.method-call", e.span);
+            canon.extend_from_slice(b"method:");
+            canon.push(0);
+            canon.extend_from_slice(name.name.as_bytes());
+            canon.push(0);
+            canon.extend_from_slice(&(args.len() as u32).to_le_bytes());
+            for a in args.iter().rev() {
+                let value = match a {
+                    Arg::Pos(e) | Arg::MovePos(e) => e,
+                    Arg::Named { value, .. } => value,
+                };
+                stack.push(Task::Expr(value));
+            }
+            stack.push(Task::Expr(recv));
+        }
         ExprKind::CharLit(_) => unsupported("char-literal", e.span)?,
         ExprKind::Method { .. } => unsupported("text-method", e.span)?,
         ExprKind::TypeWordArg(_) => unsupported("type-word-arg", e.span)?,
         ExprKind::CallValue { .. } => unsupported("closure-call", e.span)?,
-        ExprKind::CtorNamed { .. } => unsupported("record-construction", e.span)?,
-        ExprKind::Field { .. } => unsupported("field-read", e.span)?,
-        ExprKind::MethodCall { .. } => unsupported("record-method-call", e.span)?,
         ExprKind::MutArg { .. } => unsupported("mut-arg", e.span)?,
         // PLAN-962 (T-08): the view marker.
         ExprKind::ViewArg { .. } => unsupported("view-arg", e.span)?,

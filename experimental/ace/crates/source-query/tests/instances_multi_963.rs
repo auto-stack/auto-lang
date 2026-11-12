@@ -2,13 +2,13 @@
 //!
 //! 覆盖：声明序 substitution、同键去重（不因参数个数退化成调用点计数）、
 //! 排列不同即不同实例（T/U 不混淆）、身份键可复算（单参字节兼容由 935
-//! `choose_chain_935` 继续钉住）、实例页 codec v2（多实参往返 + v1 字节
+//! `choose_chain_935` 继续钉住）、实例页 codec v3（多实参往返 + v1/v2 字节
 //! 按版本 MISS 不重释）。
 
 use ace_core::source::cst::INSTANCES_CAPABILITY;
 use ace_source_query::{
     compile_scalar_product, decode_instance_page, encode_instance_page, sq_hash, CompileLane,
-    InstancePage, InstancePageError, InstanceRecord, PortableTy, SourceQuerySession,
+    InstancePage, InstancePageError, InstanceRecord, InstanceTy, SourceQuerySession,
     INSTANCES_ALGO, INSTANCES_KEY_DOMAIN, INSTANCES_LOGICAL_DOMAIN, INSTANCES_SCHEMA,
 };
 
@@ -66,18 +66,18 @@ fn multi_param_instances_keep_declaration_order() {
         vec![
             ace_source_query::InstanceArg {
                 param: "T".into(),
-                ty: PortableTy::I32
+                ty: InstanceTy::I32
             },
             ace_source_query::InstanceArg {
                 param: "U".into(),
-                ty: PortableTy::Bool
+                ty: InstanceTy::Bool
             },
         ],
         "substitution 按声明序落位"
     );
     let b = by_name(&p.instances, "pick_bool_i32");
-    assert_eq!(b.args[0].ty, PortableTy::Bool);
-    assert_eq!(b.args[1].ty, PortableTy::I32);
+    assert_eq!(b.args[0].ty, InstanceTy::Bool);
+    assert_eq!(b.args[1].ty, InstanceTy::I32);
     assert_ne!(a.key, b.key, "排列不同即不同实现身份");
     assert_eq!(a.logical, b.logical, "逻辑实例只按声明 owner 取 id");
     // 键可复算（顺序契约：logical,sig,body,(param,ty)*,algo,schema）。
@@ -115,29 +115,35 @@ fn multi_param_dedup_counts_call_sites() {
     assert_eq!(only.demands, 2);
 }
 
-/// O-963-C：实例页 codec v2——多实参往返逐位保序；v1 页字节按版本拒
+/// O-963-C：实例页 codec v3——多实参往返逐位保序；v1/v2 页字节按版本拒
 /// （不重释旧页），magic/信封不变。
 #[test]
-fn multi_param_page_codec_v2() {
+fn multi_param_page_codec_v3() {
     let p = compile(PICK);
     for inst in &p.instances {
         let page = InstancePage::from(inst);
         assert_eq!(page.args.len(), 2);
-        let bytes = encode_instance_page(&page).expect("encode v2");
-        let back = decode_instance_page(&bytes).expect("decode v2");
+        let bytes = encode_instance_page(&page).expect("encode v3");
+        let back = decode_instance_page(&bytes).expect("decode v3");
         assert_eq!(back, page);
     }
     let page = InstancePage::from(&p.instances[0]);
     let bytes = encode_instance_page(&page).expect("encode");
-    let mut v1 = bytes.clone();
-    v1[6] = 1;
-    assert_eq!(
-        decode_instance_page(&v1),
-        Err(InstancePageError::BadVersion { found: 1 }),
-        "v1 页不得按 v2 解释"
-    );
-    // 实参个数截断（防御性上限内仍须按截断拒）。
+    for stale in [1u8, 2u8] {
+        let mut old = bytes.clone();
+        old[6] = stale;
+        assert_eq!(
+            decode_instance_page(&old),
+            Err(InstancePageError::BadVersion { found: stale }),
+            "v{stale} 页不得按 v3 解释"
+        );
+    }
+    // 尾部截断（demands 不足 8 字节）仍须按截断拒。
     let mut truncated = bytes.clone();
-    truncated.truncate(7 + 3 * 8);
+    truncated.truncate(bytes.len() - 4);
     assert!(decode_instance_page(&truncated).is_err());
+    // 实参中部截断（记录名读取越界）同样不得重释。
+    let mut mid = bytes.clone();
+    mid.truncate(bytes.len() - 12);
+    assert!(decode_instance_page(&mid).is_err());
 }

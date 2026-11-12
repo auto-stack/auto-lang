@@ -229,6 +229,30 @@ pub fn compile_text_record_product(
     )
 }
 
+/// PLAN-963（T-02）：RECORD 面的实例 lane 产品入口——记录域语法面 + 有限
+/// 模板面（`record-instances` 裁剪），模板按调用点实参实例化后由记录域自身
+/// 的 resolve/verify 完整检查（该域没有求解器事实页，供给为空）。记录域
+/// 承载泛型函数所需的字段/constructor/方法/文本面，是「记录与文本实参的
+/// 泛型函数」在四端可达的唯一入口。
+pub fn compile_record_product(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    package: &str,
+    module: &str,
+    session: &mut crate::session::SourceQuerySession,
+) -> Result<ProductCompile, Vec<Diagnostic>> {
+    compile_profile_product(
+        src,
+        module_path,
+        capabilities,
+        package,
+        module,
+        session,
+        SourceProfile::Record,
+    )
+}
+
 fn compile_profile_product(
     src: &str,
     module_path: &str,
@@ -326,6 +350,9 @@ fn compile_profile_product(
                     ace_core::verify::verify_foreign_text_record(bundle, environment)
                 }
                 (SourceProfile::TextRecord, None) => ace_core::verify::verify_text_record(bundle),
+                // PLAN-963（T-02）：record 实例 lane 经记录域自己的 verifier
+                // （与 `compile_record_source` 同一入口）。
+                (SourceProfile::Record, None) => ace_core::verify::verify_record(bundle),
                 (_, _) => {
                     return Err(vec![Diagnostic::new(
                         Stage::Text,

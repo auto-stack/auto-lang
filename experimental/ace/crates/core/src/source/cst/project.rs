@@ -3165,7 +3165,7 @@ enum Frame {
     FnBodyFinish {
         node: u32,
         name: Ident,
-        type_params: Vec<Ident>,
+        type_params: Vec<TypeParamDecl>,
         params: Vec<Param>,
         ret: TypeAnn,
         receiver: Receiver,
@@ -3557,7 +3557,7 @@ impl<'a> Engine<'a> {
         // 具名拒（T-01 冻结的独立切片），模板方法与模板入口仍拒。
         let type_params = self.project_type_params(self.cx.field_child(tail, "type_params"));
         if !type_params.is_empty() {
-            let tp_span = type_params[0].span;
+            let tp_span = type_params[0].name.span;
             if receiver != Receiver::Free || owner.is_some() {
                 self.cx.reject(tp_span, || {
                     Diagnostic::new(
@@ -3586,7 +3586,7 @@ impl<'a> Engine<'a> {
         self.cx.ty_params = saved_ty_params
             .iter()
             .cloned()
-            .chain(type_params.iter().map(|t| t.name.clone()))
+            .chain(type_params.iter().map(|t| t.name.name.clone()))
             .collect();
         let params = self.project_params(self.cx.field_child(tail, "params"));
         if receiver == Receiver::View {
@@ -3638,49 +3638,11 @@ impl<'a> Engine<'a> {
     }
 
     /// PLAN-935（T-02）：fn-tail `<T>` → `Vec<Ident>`（声明序；重名具名拒）。
-    fn project_type_params(&mut self, node: Option<u32>) -> Vec<Ident> {
-        let mut out = Vec::new();
-        let Some(n) = node else { return out };
-        let Some(tp_kind) = self.cx.k.type_param else {
-            return out;
-        };
-        let direct = collect_seq(&self.cx, n, tp_kind, "type-param-tail");
-        for tp in direct {
-            let leaf = self.cx.field_child(tp, "name").expect("type param name");
-            let id = ident_of(&mut self.cx, leaf);
-            // PLAN-935（T-03）：约束/const 形状（`<T has Bound>` / `<const N>`
-            // ——r-has/r-const 保留词形状）语法可识别、此处具名拒（覆盖边
-            // 界，不当 token 跳过）。
-            let boundary = self
-                .cx
-                .field_child(tp, "constraint")
-                .or_else(|| self.cx.field_child(tp, "const_kw"));
-            if let Some(cst_n) = boundary {
-                let span = self.cx.span_of(cst_n);
-                self.cx.reject(span, || {
-                    Diagnostic::new(
-                        Stage::Text,
-                        "source.instances-unsupported",
-                        "type parameter constraints (and const parameters) are not part of \
-                         the finite instances surface",
-                        span,
-                    )
-                });
-            }
-            if out.iter().any(|p: &Ident| p.name == id.name) {
-                let span = id.span;
-                self.cx.reject(span, || {
-                    Diagnostic::new(
-                        Stage::Text,
-                        "source.instances-unsupported",
-                        format!("duplicate type parameter `{}`", id.name),
-                        span,
-                    )
-                });
-            }
-            out.push(id);
-        }
-        out
+    /// PLAN-935（T-02）/PLAN-963（T-02）：fn 模板的类型参数声明。
+    /// `scalar-instances` 面只投影 `<T>`；`record-instances` 面另有
+    /// `<T has S>`（约束随声明携带）。`const N` 值参数仍具名拒（独立切片）。
+    fn project_type_params(&mut self, node: Option<u32>) -> Vec<TypeParamDecl> {
+        self.project_type_param_decls(node)
     }
 
     /// PLAN-963（T-03）：用户泛型类型的参数声明（`<T>` / `<T has S>`）。

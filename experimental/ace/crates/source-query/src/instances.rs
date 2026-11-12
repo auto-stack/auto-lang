@@ -29,7 +29,6 @@
 //! unsolved-variable/arity-mismatch/unknown-parameter…，span 指向原源），
 //! 以 Stage::Bind 原码透出；不再使用 T-02 车辆的合成码。
 
-use crate::facts::PortableTy;
 use crate::ident::{signature_version, sq_hash};
 use crate::produce::ProduceLimits;
 use crate::walk::walk_body;
@@ -50,8 +49,24 @@ pub const INSTANCES_KEY_DOMAIN: &str = "ac935/instance-key/v1";
 /// 逻辑实例域（package+module+模板声明名）。
 pub const INSTANCES_LOGICAL_DOMAIN: &str = "ac935/instance-logical/v1";
 /// 实例化发现算法身份（T-04：796 求解器 mint_var+unify 替换 T-02 受限推导
-/// ——算法换面必须换键，防旧键伪命中）。
-pub const INSTANCES_ALGO: &str = "ac935/instances-discovery/2";
+/// ——算法换面必须换键，防旧键伪命中）。PLAN-963（T-02）把值域从标量扩到
+/// 文本与记录，故算法面换代（`/3`）。
+pub const INSTANCES_ALGO: &str = "ac935/instances-discovery/3";
+
+/// 泛型实参的具体类型（PLAN-963：标量 + 文本 + 记录名）。
+///
+/// 与 934 事实可移植类型（[`crate::facts::PortableTy`]）**刻意分离**：事实
+/// 页只承载标量/Unit 的可移植面（NodeFact 为 `Copy` 且 schema 冻结），实例
+/// 值域是脱糖期的装配事实——记录/文本不需要进事实页。`I32`/`Bool` 的规范
+/// 拼写与 935 一致（单参实例键字节不变）。
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum InstanceTy {
+    I32,
+    Bool,
+    Text,
+    /// 声明记录（名义名；脱糖时还原为 `TypeRef::Record`）。
+    Record(String),
+}
 
 /// 一个已解出的泛型实参（PLAN-963：声明序 `(参数名, 规范类型)`）。
 ///
@@ -60,7 +75,7 @@ pub const INSTANCES_ALGO: &str = "ac935/instances-discovery/2";
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct InstanceArg {
     pub param: String,
-    pub ty: PortableTy,
+    pub ty: InstanceTy,
 }
 
 /// 一个已生产实例的调度记录（T-02 进程内；T-05 持久化为实例页）。
@@ -92,19 +107,21 @@ pub struct InstantiateOutcome {
 }
 
 /// 模板签名里一个参数位/返回位的类型形状。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum SlotTy {
     /// 该位是类型参数 T。
     Var,
     /// 该位是具体类型。
-    Concrete(PortableTy),
+    Concrete(InstanceTy),
 }
 
-/// 非类型参数注解位的具体类型（int/i32 并 I32）；其他注解 = None。
-fn concrete_of(ann: &TypeAnn) -> Option<PortableTy> {
+/// 非类型参数注解位的具体类型（int/i32 并 I32；文本与记录同样具体）。
+fn concrete_of(ann: &TypeAnn) -> Option<InstanceTy> {
     match &ann.kind {
-        TypeRef::Builtin(TypeWord::Int | TypeWord::I32) => Some(PortableTy::I32),
-        TypeRef::Builtin(TypeWord::Bool) => Some(PortableTy::Bool),
+        TypeRef::Builtin(TypeWord::Int | TypeWord::I32) => Some(InstanceTy::I32),
+        TypeRef::Builtin(TypeWord::Bool) => Some(InstanceTy::Bool),
+        TypeRef::Builtin(TypeWord::Str | TypeWord::StrOwned) => Some(InstanceTy::Text),
+        TypeRef::Record(id) => Some(InstanceTy::Record(id.name.clone())),
         _ => None,
     }
 }
@@ -125,7 +142,7 @@ fn slot_of(ann: &TypeAnn, ty_params: &[String], diags: &mut Vec<Diagnostic>) -> 
                 ),
                 id.span,
             ));
-            SlotTy::Concrete(PortableTy::I32)
+            SlotTy::Concrete(InstanceTy::I32)
         }
         _ => match concrete_of(ann) {
             Some(t) => SlotTy::Concrete(t),
@@ -134,12 +151,12 @@ fn slot_of(ann: &TypeAnn, ty_params: &[String], diags: &mut Vec<Diagnostic>) -> 
                     Stage::Text,
                     "source.instances-unsupported",
                     format!(
-                        "template type `{}` is outside the finite instances surface (T/int/i32/bool)",
+                        "template type `{}` is outside the finite instances surface (T/int/i32/bool/str/record)",
                         spell_ty(&ann.kind)
                     ),
                     ann.span,
                 ));
-                SlotTy::Concrete(PortableTy::I32)
+                SlotTy::Concrete(InstanceTy::I32)
             }
         },
     }
@@ -162,35 +179,34 @@ fn spell_ty(t: &TypeRef) -> String {
     }
 }
 
-fn ty_word(ty: PortableTy) -> TypeWord {
+/// substitution 值的规范拼写（身份字节拼写；单参 i32/bool 与 935 一致）。
+fn ty_suffix(ty: &InstanceTy) -> &str {
     match ty {
-        PortableTy::I32 => TypeWord::Int,
-        PortableTy::Bool => TypeWord::Bool,
-        // Unit 不在实例 substitution 值域（无值级 Unit）。
-        PortableTy::Unit => TypeWord::Void,
-    }
-}
-
-fn ty_suffix(ty: PortableTy) -> &'static str {
-    match ty {
-        PortableTy::I32 => "i32",
-        PortableTy::Bool => "bool",
-        PortableTy::Unit => "unit",
+        InstanceTy::I32 => "i32",
+        InstanceTy::Bool => "bool",
+        InstanceTy::Text => "text",
+        InstanceTy::Record(name) => name,
     }
 }
 
 /// substitution 值的规范序（实例落位/键序确定性的单一来源）。
-fn ty_order(ty: &PortableTy) -> u8 {
+fn ty_order(ty: &InstanceTy) -> (u8, &str) {
     match ty {
-        PortableTy::I32 => 0,
-        PortableTy::Bool => 1,
-        PortableTy::Unit => 2,
+        InstanceTy::I32 => (0, ""),
+        InstanceTy::Bool => (1, ""),
+        InstanceTy::Text => (2, ""),
+        InstanceTy::Record(name) => (3, name),
     }
 }
 
 /// 一组 substitution 的规范序键（声明序逐位；单参 = 旧 `ty_order`）。
-fn args_order(args: &[PortableTy]) -> Vec<u8> {
-    args.iter().map(ty_order).collect()
+fn args_order(args: &[InstanceTy]) -> Vec<String> {
+    args.iter()
+        .map(|t| {
+            let (k, n) = ty_order(t);
+            format!("{k}:{n}")
+        })
+        .collect()
 }
 
 /// 实例具体函数名的装配拼写（**不是身份**；身份在 [`InstanceRecord::key`]）。
@@ -201,11 +217,11 @@ fn args_order(args: &[PortableTy]) -> Vec<u8> {
 /// 性探测**避让同名用户声明（同源同探测序；探测不进入身份）。碰撞时后接
 /// `__2`/`__3`…（调用点重绑与实例落位共用 by_template 表中的最终名，不重
 /// 算拼写）。
-fn concrete_name(template: &str, args: &[PortableTy], taken: &mut BTreeSet<String>) -> String {
+fn concrete_name(template: &str, args: &[InstanceTy], taken: &mut BTreeSet<String>) -> String {
     let mut base = template.to_string();
     for ty in args {
         base.push('_');
-        base.push_str(ty_suffix(*ty));
+        base.push_str(ty_suffix(ty));
     }
     if taken.insert(base.clone()) {
         return base;
@@ -220,11 +236,52 @@ fn concrete_name(template: &str, args: &[PortableTy], taken: &mut BTreeSet<Strin
     }
 }
 
+/// PLAN-963（T-02）：`<T has S>` 约束见证。类型遵从列表来自投影期的
+/// `type X as S`（记录声明面），spec 本体在投影期擦除，故遵从列表是此处
+/// 唯一见证：实参必须是记录名且其遵从列表含该 spec。标量/文本或未遵从的
+/// 记录具名拒（不静默放行，也不把约束折叠成注释）。
+fn bounds_satisfied(
+    prog: &Program,
+    entry: &TemplateEntryFull<'_>,
+    subst: &[InstanceTy],
+    diags: &mut Vec<Diagnostic>,
+) -> bool {
+    let mut ok = true;
+    for (i, bound) in entry.bounds.iter().enumerate() {
+        let Some(spec) = bound else { continue };
+        let Some(ty) = subst.get(i) else { continue };
+        let satisfied = match ty {
+            InstanceTy::Record(name) => prog.items.iter().any(|it| match it {
+                Item::Type(t) => t.name.name == *name && t.conforms.iter().any(|c| c.name == *spec),
+                _ => false,
+            }),
+            _ => false,
+        };
+        if !satisfied {
+            ok = false;
+            diags.push(Diagnostic::new(
+                Stage::Text,
+                "source.instances-bound",
+                format!(
+                    "type argument `{}` does not satisfy `{spec}` (bound of `{}` in `{}`)",
+                    ty_suffix(ty),
+                    entry.ty_params[i],
+                    entry.name
+                ),
+                entry.item.span,
+            ));
+        }
+    }
+    ok
+}
+
 /// 模板条目（形状预解 + 源项引用）。
 struct TemplateEntryFull<'a> {
     name: String,
     /// 声明序类型参数名。
     ty_params: Vec<String>,
+    /// PLAN-963：声明序约束（`<T has S>`；无约束 = None）。
+    bounds: Vec<Option<String>>,
     #[allow(dead_code)]
     params: Vec<SlotTy>,
     #[allow(dead_code)]
@@ -279,12 +336,25 @@ fn concretize(
     }
 }
 
+/// substitution 值 → 具体类型位（脱糖拼写；记录用声明名还原 `TypeRef::Record`）。
+fn ty_ref_of(ty: &InstanceTy, span: Span) -> TypeRef {
+    match ty {
+        InstanceTy::I32 => TypeRef::Builtin(TypeWord::Int),
+        InstanceTy::Bool => TypeRef::Builtin(TypeWord::Bool),
+        InstanceTy::Text => TypeRef::Builtin(TypeWord::Str),
+        InstanceTy::Record(name) => TypeRef::Record(Ident {
+            name: name.clone(),
+            span,
+        }),
+    }
+}
+
 /// 声明序替换：已声明类型参数 → 具体类型词；嵌套类型形状递归。
 fn subst_ann_declared(a: &TypeAnn, args: &[InstanceArg]) -> TypeAnn {
     match &a.kind {
         TypeRef::TyVar(id) => match args.iter().find(|x| x.param == id.name) {
             Some(arg) => TypeAnn {
-                kind: TypeRef::Builtin(ty_word(arg.ty)),
+                kind: ty_ref_of(&arg.ty, a.span),
                 span: a.span,
             },
             None => a.clone(),
@@ -502,17 +572,20 @@ fn rebind_self_calls(b: &mut Block, self_name: &str, concrete: &str) {
 #[derive(Default)]
 struct RoundDemands {
     /// 模板名 → (规范序键 → (声明序 substitution, 调用点数))。
-    per_template: BTreeMap<String, BTreeMap<Vec<u8>, (Vec<PortableTy>, usize)>>,
+    per_template: BTreeMap<String, BTreeMap<Vec<String>, (Vec<InstanceTy>, usize)>>,
     /// (owner fn, 调用点 span) → (模板名, 声明序 substitution)。owner 必须
     /// 入键：同一模板的两个实例体**共享源 span**（concretize 保 span），仅
     /// 按 span 键会把 wrap_bool 的解覆盖到 wrap_i32 的调用点上。
-    callsites: BTreeMap<(String, u32, u32), (String, Vec<PortableTy>)>,
+    callsites: BTreeMap<(String, u32, u32), (String, Vec<InstanceTy>)>,
 }
 
-fn portable_of(ty: ace_semantics::Ty) -> Option<PortableTy> {
+/// 求解器类型 → 实例值域（PLAN-963：标量 + 文本 + 记录；未解变元 = None）。
+fn instance_ty_of(ty: ace_semantics::Ty) -> Option<InstanceTy> {
     match ty {
-        ace_semantics::Ty::I32 => Some(PortableTy::I32),
-        ace_semantics::Ty::Bool => Some(PortableTy::Bool),
+        ace_semantics::Ty::I32 => Some(InstanceTy::I32),
+        ace_semantics::Ty::Bool => Some(InstanceTy::Bool),
+        ace_semantics::Ty::Text => Some(InstanceTy::Text),
+        ace_semantics::Ty::Record(name) => Some(InstanceTy::Record(name.to_string())),
         ace_semantics::Ty::Var(_) => None,
     }
 }
@@ -585,7 +658,7 @@ fn discover_round(
             let mut subst = Vec::with_capacity(tys.len());
             let mut solved = true;
             for ty in tys {
-                match ty.and_then(portable_of) {
+                match ty.and_then(instance_ty_of) {
                     Some(t) => subst.push(t),
                     None => {
                         solved = false;
@@ -671,15 +744,21 @@ pub fn instantiate_program_limited(
     // 2. 签名形状（T/int/i32/bool 越界面具名拒——求解器之外的第二道面）。
     let mut entries: Vec<TemplateEntryFull> = Vec::new();
     for t in &templates {
-        let ty_params: Vec<String> = t.type_params.iter().map(|p| p.name.clone()).collect();
+        let ty_params: Vec<String> = t.type_params.iter().map(|p| p.name.name.clone()).collect();
         let mut params = Vec::new();
         for p in &t.params {
             params.push(slot_of(&p.ty, &ty_params, &mut diags));
         }
         let ret = slot_of(&t.ret, &ty_params, &mut diags);
+        let bounds: Vec<Option<String>> = t
+            .type_params
+            .iter()
+            .map(|p| p.bound.as_ref().map(|b| b.name.clone()))
+            .collect();
         entries.push(TemplateEntryFull {
             name: t.name.name.clone(),
             ty_params,
+            bounds,
             params,
             ret,
             item: t,
@@ -692,10 +771,10 @@ pub fn instantiate_program_limited(
     // 3. fixpoint 物化：每轮真推理发现需求；新需求的具体体入列再发现其
     //    体内的模板调用（跨模板/嵌套模板）；无新需求即收敛（有界：每模
     //    板至多 |{I32,Bool}|^参数数 个实例）。
-    let mut materialized: BTreeSet<(String, Vec<u8>)> = BTreeSet::new();
+    let mut materialized: BTreeSet<(String, Vec<String>)> = BTreeSet::new();
     let mut instances: Vec<InstanceRecord> = Vec::new();
-    let mut by_template: BTreeMap<String, Vec<(Vec<PortableTy>, String)>> = BTreeMap::new();
-    let mut all_callsites: BTreeMap<(String, u32, u32), (String, Vec<PortableTy>)> =
+    let mut by_template: BTreeMap<String, Vec<(Vec<InstanceTy>, String)>> = BTreeMap::new();
+    let mut all_callsites: BTreeMap<(String, u32, u32), (String, Vec<InstanceTy>)> =
         BTreeMap::new();
     let mut rounds_left = templates.len() * 2 + 2;
     loop {
@@ -710,7 +789,7 @@ pub fn instantiate_program_limited(
                     .zip(subst.iter())
                     .map(|(p, t)| InstanceArg {
                         param: p.clone(),
-                        ty: *t,
+                        ty: t.clone(),
                     })
                     .collect();
                 let concrete = concretize(entry.item, &args, name, None);
@@ -749,9 +828,12 @@ pub fn instantiate_program_limited(
                     .zip(subst.iter())
                     .map(|(p, t)| InstanceArg {
                         param: p.clone(),
-                        ty: *t,
+                        ty: t.clone(),
                     })
                     .collect();
+                if !bounds_satisfied(&work, entry, subst, &mut diags) {
+                    continue;
+                }
                 let name = concrete_name(tpl, subst, &mut taken);
                 let logical = sq_hash(
                     INSTANCES_LOGICAL_DOMAIN,
@@ -809,14 +891,14 @@ pub fn instantiate_program_limited(
         }
     }
     // 需求计数按最终累计的调用点（跨轮同 span 去重）。
-    let mut count_by: BTreeMap<(String, Vec<u8>), usize> = BTreeMap::new();
+    let mut count_by: BTreeMap<(String, Vec<String>), usize> = BTreeMap::new();
     for (_span, (tpl, subst)) in &all_callsites {
         *count_by
             .entry((tpl.clone(), args_order(subst)))
             .or_insert(0) += 1;
     }
     for inst in instances.iter_mut() {
-        let subst: Vec<PortableTy> = inst.args.iter().map(|a| a.ty).collect();
+        let subst: Vec<InstanceTy> = inst.args.iter().map(|a| a.ty.clone()).collect();
         if let Some(c) = count_by.get(&(inst.template.clone(), args_order(&subst))) {
             inst.demands = *c;
         }
@@ -844,8 +926,8 @@ pub fn instantiate_program_limited(
                             .iter()
                             .zip(subst.iter())
                             .map(|(p, t)| InstanceArg {
-                                param: p.name.clone(),
-                                ty: *t,
+                                param: p.name.name.clone(),
+                                ty: t.clone(),
                             })
                             .collect();
                         items.push(Item::Fn(concretize(f, &args, name, Some(&span_to_name))));
@@ -899,7 +981,7 @@ fn instance_key(
     ];
     for arg in args {
         parts.push(arg.param.as_bytes());
-        parts.push(ty_suffix(arg.ty).as_bytes());
+        parts.push(ty_suffix(&arg.ty).as_bytes());
     }
     parts.push(INSTANCES_ALGO.as_bytes());
     parts.push(INSTANCES_SCHEMA.as_bytes());

@@ -232,6 +232,23 @@ pub fn instances_grammar() -> Result<&'static CachedGrammar, String> {
     capability_grammar(&INSTANCES_GRAMMAR, "scalar-instances")
 }
 
+/// PLAN-963（T-02）：`record-instances` 裁剪程序（record 全表面 + 有限模板
+/// 面）。独立缓存槽：plain record 程序逐字节不变，grammar-id 自然隔离。
+static RECORD_INSTANCES_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
+
+/// record-instances 裁剪编译并缓存（进程内一次）。
+pub fn record_instances_grammar() -> Result<&'static CachedGrammar, String> {
+    capability_grammar(&RECORD_INSTANCES_GRAMMAR, "record-instances")
+}
+
+/// PLAN-963（T-02）：`text-record-instances`（文本+记录+模板面）独立缓存槽。
+static TEXT_RECORD_INSTANCES_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
+
+/// text-record-instances 裁剪编译并缓存（进程内一次）。
+pub fn text_record_instances_grammar() -> Result<&'static CachedGrammar, String> {
+    capability_grammar(&TEXT_RECORD_INSTANCES_GRAMMAR, "text-record-instances")
+}
+
 static MODULES_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
 pub(crate) fn module_grammar() -> Result<&'static CachedGrammar, String> {
     capability_grammar(&MODULES_GRAMMAR, "scalar-modules")
@@ -841,9 +858,11 @@ pub fn parse_front(req: FrontRequest) -> FrontOutcome {
 /// PLAN-935（T-02）：能力感知统一入口。capabilities 携带
 /// [`INSTANCES_CAPABILITY`] 且 profile 为 Scalar 时以 `scalar-instances`
 /// 裁剪解析（fn `<T>` + 类型位裸 ident 合法，投影产出
-/// `FnItem::type_params`/`TypeRef::TyVar`）；其余组合与 [`parse_front`]
-/// 逐字节同面（无能力仍原拒绝）。片段 kind 在 instances 面不支持（增量
-/// 片段合同仍走 plain 面——模板函数编辑的增量路径由 T-07 冻结）。
+/// `FnItem::type_params`/`TypeRef::TyVar`）；PLAN-963（T-02）同一能力在
+/// Record 面上以 `record-instances` 裁剪（record 全表面 + 模板面）；其余
+/// 组合与 [`parse_front`] 逐字节同面（无能力仍原拒绝）。片段 kind 在
+/// instances 面不支持（增量片段合同仍走 plain 面——模板函数编辑的增量
+/// 路径由 T-07 冻结）。
 pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> FrontOutcome {
     // PLAN-936（T-04）：CT 能力优先——scalar-ct 面包含 scalar-instances 全
     // 表面（CT 可作用于模板实例），不与 instances 面叠加选择。
@@ -852,7 +871,19 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
     let instances = !ct
         && capabilities.iter().any(|c| c == INSTANCES_CAPABILITY)
         && req.profile == SourceProfile::Scalar;
-    if !instances && !ct {
+    // PLAN-963（T-02）：同一实例能力在 Record 面上以 `record-instances`
+    // 裁剪解析（record 全表面 + fn `<T>`）；其他 profile 组合维持原面。
+    let record_instances = !ct
+        && !instances
+        && capabilities.iter().any(|c| c == INSTANCES_CAPABILITY)
+        && req.profile == SourceProfile::Record;
+    // PLAN-963（T-02）：文本+记录面上的同一实例能力（文本实参的泛型函数）。
+    let text_record_instances = !ct
+        && !instances
+        && !record_instances
+        && capabilities.iter().any(|c| c == INSTANCES_CAPABILITY)
+        && req.profile == SourceProfile::TextRecord;
+    if !instances && !ct && !record_instances && !text_record_instances {
         return parse_front(req);
     }
     if !matches!(req.kind, FrontKind::WholeModule) {
@@ -866,6 +897,10 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
     } = req;
     let cached = match if ct {
         ct_grammar()
+    } else if record_instances {
+        record_instances_grammar()
+    } else if text_record_instances {
+        text_record_instances_grammar()
     } else {
         instances_grammar()
     } {

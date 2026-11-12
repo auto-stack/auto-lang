@@ -66,6 +66,8 @@ fn write_ann(out: &mut Vec<u8>, a: &Ann) {
     match a {
         Ann::I32 => out.extend_from_slice(b"i32"),
         Ann::Bool => out.extend_from_slice(b"bool"),
+        // PLAN-963（T-02）：文本注解是独立类型（不与记录名/unsupported 合流）。
+        Ann::Text => out.extend_from_slice(b"text"),
         Ann::Record(r) => {
             out.extend_from_slice(b"rec:");
             out.extend_from_slice(r.as_bytes());
@@ -173,6 +175,58 @@ pub fn fn_body_canonical(f: &crate::input::InputFn) -> Vec<u8> {
                     out.push(*neg as u8);
                     stack.push(operand);
                 }
+                // PLAN-963（T-02）：文本字面量 / 记录构造 / 字段读取 / 方法
+                // 调用进入内容编码（各自的标签与既有形式不重叠）。
+                InputExprKind::StrLit(v) => {
+                    out.push(b'S');
+                    out.extend_from_slice(v.as_bytes());
+                    out.push(0);
+                }
+                InputExprKind::Ctor { name, fields } => {
+                    out.push(b'K');
+                    out.extend_from_slice(name.as_bytes());
+                    out.push(0);
+                    out.extend_from_slice(&(fields.len() as u32).to_le_bytes());
+                    for f in fields.iter() {
+                        match &f.name {
+                            Some(n) => {
+                                out.push(b'N');
+                                out.extend_from_slice(n.as_bytes());
+                            }
+                            None => out.push(b'P'),
+                        }
+                        out.push(0);
+                    }
+                    for f in fields.iter().rev() {
+                        stack.push(&f.value);
+                    }
+                }
+                InputExprKind::Field { base, name } => {
+                    out.push(b'F');
+                    out.extend_from_slice(name.as_bytes());
+                    out.push(0);
+                    stack.push(base);
+                }
+                InputExprKind::MethodCall { recv, name, args } => {
+                    out.push(b'M');
+                    out.extend_from_slice(name.as_bytes());
+                    out.push(0);
+                    out.extend_from_slice(&(args.len() as u32).to_le_bytes());
+                    for a in args.iter() {
+                        match &a.name {
+                            Some(n) => {
+                                out.push(b'N');
+                                out.extend_from_slice(n.as_bytes());
+                            }
+                            None => out.push(b'P'),
+                        }
+                        out.push(0);
+                    }
+                    for a in args.iter().rev() {
+                        stack.push(&a.value);
+                    }
+                    stack.push(recv);
+                }
                 InputExprKind::Unsupported { what } => {
                     out.push(b'X');
                     out.extend_from_slice(what.as_bytes());
@@ -197,6 +251,7 @@ pub fn fn_body_canonical(f: &crate::input::InputFn) -> Vec<u8> {
                 let tag = match ann {
                     Ann::I32 => b'i',
                     Ann::Bool => b'b',
+                    Ann::Text => b's',
                     Ann::Record(_) => b'r',
                     Ann::Inferred => b'?',
                     Ann::Unsupported(_) => b'x',

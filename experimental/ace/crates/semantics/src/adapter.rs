@@ -200,7 +200,7 @@ pub fn project(prog: &core_ast::Program, package: &str, module: &str) -> Result<
 }
 
 fn project_fn(f: &core_ast::FnItem) -> Result<InputFn, String> {
-    let tps: Vec<String> = f.type_params.iter().map(|t| t.name.clone()).collect();
+    let tps: Vec<String> = f.type_params.iter().map(|t| t.name.name.clone()).collect();
     Ok(InputFn {
         name: f.name.name.clone(),
         type_params: tps.clone(),
@@ -329,7 +329,7 @@ pub fn project_body_scoped_with_caps(
 
 #[cfg(feature = "core-ast")]
 fn project_fn_scoped(f: &core_ast::FnItem, target: &str) -> Result<InputFn, String> {
-    let tps: Vec<String> = f.type_params.iter().map(|t| t.name.clone()).collect();
+    let tps: Vec<String> = f.type_params.iter().map(|t| t.name.name.clone()).collect();
     // PLAN-935 (T-04): a TEMPLATE contributes its signature (with
     // `Ann::TyParam` positions) and never a body — a template body is only
     // ever checked as one of its concrete instances (plan §5.1).
@@ -371,9 +371,9 @@ fn ann_of(a: &core_ast::TypeAnn) -> Result<Ann, String> {
             | core_ast::TypeWord::Float
             | core_ast::TypeWord::Double
             | core_ast::TypeWord::F64 => Ann::Unsupported("numeric-annotation"),
-            core_ast::TypeWord::Str | core_ast::TypeWord::StrOwned | core_ast::TypeWord::Char => {
-                Ann::Unsupported("text-annotation")
-            }
+            core_ast::TypeWord::Str | core_ast::TypeWord::StrOwned => Ann::Text,
+            // PLAN-963（T-02）：char 仍是文本面之外的字符面（具名拒）。
+            core_ast::TypeWord::Char => Ann::Unsupported("text-annotation"),
             // PLAN-862: the Unit result word is outside this adapter's
             // annotation model (it is a RESULT type, not a value type).
             core_ast::TypeWord::Void => Ann::Unsupported("unit-annotation"),
@@ -619,9 +619,9 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
             let inner = project_expr(expr);
             inner.kind.clone()
         }
-        core_ast::ExprKind::StrLit(_) => InputExprKind::Unsupported {
-            what: "str-literal",
-        },
+        // PLAN-963（T-02）：文本字面量/字段读取/方法调用/记录构造是记录域的
+        // 值形——泛型实参可为文本与聚合，故它们进入推理输入（此前具名拒）。
+        core_ast::ExprKind::StrLit(v) => InputExprKind::StrLit(v.clone()),
         core_ast::ExprKind::CharLit(_) => InputExprKind::Unsupported {
             what: "char-literal",
         },
@@ -631,12 +631,27 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         core_ast::ExprKind::TypeWordArg(_) => InputExprKind::Unsupported {
             what: "type-word-arg",
         },
-        core_ast::ExprKind::CtorNamed { .. } => InputExprKind::Unsupported {
-            what: "record-construction",
+        core_ast::ExprKind::CtorNamed { ty, fields, .. } => match record_static(&ty.name) {
+            Ok(name) => InputExprKind::Ctor {
+                name,
+                fields: fields
+                    .iter()
+                    .map(|f| InputArg::named(f.name.name.clone(), project_expr(&f.value)))
+                    .collect(),
+            },
+            // 具名拒（登记表满）：构造名无法化为求解域键。
+            Err(_) => InputExprKind::Unsupported {
+                what: "record-name-registry",
+            },
         },
-        core_ast::ExprKind::Field { .. } => InputExprKind::Unsupported { what: "field-read" },
-        core_ast::ExprKind::MethodCall { .. } => InputExprKind::Unsupported {
-            what: "record-method-call",
+        core_ast::ExprKind::Field { base, name } => InputExprKind::Field {
+            base: Box::new(project_expr(base)),
+            name: name.name.clone(),
+        },
+        core_ast::ExprKind::MethodCall { recv, name, args } => InputExprKind::MethodCall {
+            recv: Box::new(project_expr(recv)),
+            name: name.name.clone(),
+            args: args.iter().filter_map(project_arg).collect(),
         },
         core_ast::ExprKind::MutArg { .. } => InputExprKind::Unsupported { what: "mut-arg" },
         // PLAN-962 (T-08): the view marker.

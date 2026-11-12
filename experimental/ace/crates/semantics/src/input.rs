@@ -29,6 +29,9 @@ pub enum Ann {
     /// Nominal record reference by declared name (resolved against the
     /// module's records).
     Record(&'static str),
+    /// PLAN-963（T-02）：文本值（`str`/`Str`）——记录域的既有标量面类型，
+    /// 作为泛型实参时与 i32/bool 同等参与求解。
+    Text,
     /// No annotation: the binding's type is the initializer's type.
     Inferred,
     /// An annotation outside the limited i32/bool profile (text/char
@@ -141,6 +144,30 @@ impl SemaInput {
     pub fn record_candidates(&self) -> Vec<String> {
         let mut v: Vec<String> = self.records.iter().map(|r| r.name.clone()).collect();
         v.sort();
+        v
+    }
+    /// PLAN-963（T-02）：字段名全域候选（负依赖指纹输入；跨记录去重排序）。
+    pub fn field_candidates(&self) -> Vec<String> {
+        let mut v: Vec<String> = Vec::new();
+        for r in &self.records {
+            for (n, _) in &r.fields {
+                v.push(n.clone());
+            }
+        }
+        v.sort();
+        v.dedup();
+        v
+    }
+    /// PLAN-963（T-02）：方法名全域候选（负依赖指纹输入）。
+    pub fn method_candidates(&self) -> Vec<String> {
+        let mut v: Vec<String> = Vec::new();
+        for r in &self.records {
+            for m in &r.methods {
+                v.push(m.name.clone());
+            }
+        }
+        v.sort();
+        v.dedup();
         v
     }
 }
@@ -267,7 +294,29 @@ impl BinOpKind {
 pub enum InputExprKind {
     IntLit(i32),
     BoolLit(bool),
+    /// PLAN-963（T-02）：文本字面量（记录域 `str` 面）。
+    StrLit(String),
     Var(String),
+    /// PLAN-963（T-02）：记录构造 `Name { field: e, ... }`——结果类型是
+    /// 声明记录名，字段值按声明字段注解核对。
+    Ctor {
+        /// Interned declared record name (the solver's `Ty::Record` key).
+        name: &'static str,
+        /// Source-ordered field values (each bound to a field by name when
+        /// written in named form).
+        fields: Vec<InputArg>,
+    },
+    /// PLAN-963（T-02）：字段读取 `base.field`。
+    Field {
+        base: Box<InputExpr>,
+        name: String,
+    },
+    /// PLAN-963（T-02）：方法调用 `recv.name(args)`（接收位是记录值）。
+    MethodCall {
+        recv: Box<InputExpr>,
+        name: String,
+        args: Vec<InputArg>,
+    },
     Call {
         callee: String,
         /// Source-ordered arguments (evaluation order), each optionally
@@ -334,6 +383,22 @@ impl Drop for InputExpr {
             InputExprKind::Unary { operand, .. } => {
                 let o = std::mem::replace(operand.as_mut(), dummy());
                 stack.push(o);
+            }
+            InputExprKind::Field { base, .. } => {
+                let b = std::mem::replace(base.as_mut(), dummy());
+                stack.push(b);
+            }
+            InputExprKind::MethodCall { recv, args, .. } => {
+                let r = std::mem::replace(recv.as_mut(), dummy());
+                stack.push(r);
+                for a in args.iter_mut() {
+                    stack.push(std::mem::replace(&mut a.value, dummy()));
+                }
+            }
+            InputExprKind::Ctor { fields, .. } => {
+                for a in fields.iter_mut() {
+                    stack.push(std::mem::replace(&mut a.value, dummy()));
+                }
             }
             InputExprKind::Call { args, .. } => {
                 for a in args.iter_mut() {

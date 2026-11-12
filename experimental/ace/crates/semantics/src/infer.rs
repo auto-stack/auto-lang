@@ -35,6 +35,10 @@ use std::time::Duration;
 pub enum Ty {
     I32,
     Bool,
+    /// PLAN-963（T-02）：文本值（记录域 `str`/`Str` 面）。
+    Text,
+    /// PLAN-963（T-02）：声明记录（按名义名；字段/方法按记录表解析）。
+    Record(&'static str),
     Var(u32),
 }
 
@@ -118,6 +122,34 @@ pub struct TplDemand {
     pub span: (u32, u32),
 }
 
+/// PLAN-963（T-02）：字段读取的延迟约束。接收者的类型要等本体的类型表
+/// 完整后才可知（例如 `pick(a, b).val`——模板调用的结果类型只在求解后
+/// 确定），故在 `finish` 的阶段按已记录类型解析。
+struct FieldRead {
+    base: Span,
+    field: String,
+    site: Span,
+    out_ty: Ty,
+}
+
+/// PLAN-963（T-02）：方法调用的延迟约束（同上——接收者类型延迟可知）。
+struct MethodCallCheck {
+    /// 接收者类型的直接来源：`Left` = 已走过表达式的类型（按 span 查表），
+    /// `Right` = 静态调用（`Score.new(...)`，接收者是记录名本身）。
+    recv: MethodRecv,
+    name: String,
+    /// 参数的（源序下标、名字、span）——类型按 span 查表。
+    args: Vec<(usize, Option<String>, Span)>,
+    site: Span,
+    out_ty: Ty,
+}
+
+enum MethodRecv {
+    Value(Span),
+    /// 静态调用：接收者是记录名本身（`Score.new(...)`）。
+    Record(String),
+}
+
 pub struct InferSession<'a> {
     input: &'a SemaInput,
     budget: Budget,
@@ -128,6 +160,9 @@ pub struct InferSession<'a> {
     diags: Vec<FactDiag>,
     reads: Reads,
     eq_pairs: Vec<(Span, Span, Span)>,
+    // PLAN-963（T-02）：记录字段读取 / 方法调用的延迟约束。
+    field_reads: Vec<FieldRead>,
+    method_calls: Vec<MethodCallCheck>,
     // -- facts being recorded --
     bindings: Vec<(String, Ty)>,
     expr_types: Vec<(u32, u32, Ty)>,
@@ -146,6 +181,8 @@ impl<'a> InferSession<'a> {
             diags: Vec::new(),
             reads: Reads::default(),
             eq_pairs: Vec::new(),
+            field_reads: Vec::new(),
+            method_calls: Vec::new(),
             bindings: Vec::new(),
             expr_types: Vec::new(),
             tpl_demands: Vec::new(),
@@ -175,7 +212,9 @@ impl<'a> InferSession<'a> {
                     .vars
                     .into_iter()
                     .map(|v| match self.resolve(v) {
-                        t @ (Ty::I32 | Ty::Bool) => Some(t),
+                        // PLAN-963（T-02）：记录与文本实参同样是可实例化的
+                        // 具体类型（聚合/文本面的泛型调用）。
+                        t @ (Ty::I32 | Ty::Bool | Ty::Text | Ty::Record(_)) => Some(t),
                         Ty::Var(_) => None,
                     })
                     .collect();
@@ -237,18 +276,20 @@ impl<'a> InferSession<'a> {
         Ty::Var(self.vars.len() as u32 - 1)
     }
 
-    /// Annotation → solver type. Record and out-of-profile annotations
-    /// inside a BODY are outside the limited i32/bool profile: they
-    /// surface as unsupported-construct (never silently widened).
+    /// Annotation → solver type. Out-of-profile annotations inside a BODY
+    /// surface as unsupported-construct (never silently widened); PLAN-963
+    /// （T-02）把记录与文本纳入求解域——泛型函数的实参可为聚合与文本。
     fn ann_ty(&mut self, ann: Ann, span: Span) -> Ty {
         match ann {
             Ann::I32 => Ty::I32,
             Ann::Bool => Ty::Bool,
-            Ann::Record(_) | Ann::Unsupported(_) => {
+            Ann::Text => Ty::Text,
+            Ann::Record(name) => Ty::Record(name),
+            Ann::Unsupported(_) => {
                 self.diag(
                     "unsupported-construct",
                     span,
-                    "record/out-of-profile annotations are outside the limited i32/bool inference profile".into(),
+                    "out-of-profile annotations are outside the inference profile".into(),
                 );
                 self.mint_var()
             }
@@ -266,6 +307,20 @@ impl<'a> InferSession<'a> {
         match self.resolve(t) {
             Ty::I32 => TypeDesc::I32,
             Ty::Bool => TypeDesc::Bool,
+            // PLAN-963（T-02）：文本按字符面 opaqueness 记录（934 事实页
+            // 不承载文本值类型，见 PortableTy 的可移植面）。
+            Ty::Text => TypeDesc::Opaque {
+                name: "text".into(),
+            },
+            Ty::Record(name) => TypeDesc::Record {
+                decl: ace_semantics_contract::DeclRef::new(
+                    &ace_semantics_contract::PackageId::new(&self.input.package),
+                    &self.input.module,
+                    ace_semantics_contract::DeclKind::Record,
+                    name,
+                    ace_semantics_contract::ContentVersion::of_canonical(name.as_bytes()),
+                ),
+            },
             Ty::Var(_) => TypeDesc::Opaque {
                 name: "?unsolved".into(),
             },
@@ -309,6 +364,9 @@ impl<'a> InferSession<'a> {
         let set = match domain {
             "fn" => self.input.fn_candidates(),
             "type" => self.input.record_candidates(),
+            // PLAN-963（T-02）：记录字段/方法名域（负依赖指纹）。
+            "field" => self.input.field_candidates(),
+            "method" => self.input.method_candidates(),
             _ => Vec::new(),
         };
         let joined = set.join("\u{1}");
@@ -703,6 +761,108 @@ impl<'a> InferSession<'a> {
                     self.record_expr(e, t, expected);
                     stack.push(Task::Check(operand, t));
                 }
+                // PLAN-963（T-02）：文本字面量是文本面值。
+                InputExprKind::StrLit(_) => {
+                    self.record_expr(e, Ty::Text, expected);
+                }
+                // PLAN-963（T-02）：记录构造——结果是声明记录名，字段值按
+                // 声明字段注解逐项核对（具名形；缺字段/未知名具名拒）。
+                InputExprKind::Ctor { name, fields } => {
+                    let input: &'a SemaInput = self.input;
+                    match input.lookup_record(name) {
+                        None => self.record_negative_at("type", name, e.span),
+                        Some(rec) => {
+                            self.record_expr(e, Ty::Record(name), expected);
+                            let mut bound: Vec<bool> = vec![false; rec.fields.len()];
+                            for f in fields {
+                                match &f.name {
+                                    Some(n) => {
+                                        match rec.fields.iter().position(|(pn, _)| pn == n) {
+                                            Some(p) => {
+                                                bound[p] = true;
+                                                let t = self.ann_ty(rec.fields[p].1, f.value.span);
+                                                stack.push(Task::Check(&f.value, t));
+                                            }
+                                            None => self.diag(
+                                                "unknown-field",
+                                                f.value.span,
+                                                format!("record `{name}` has no field `{n}`"),
+                                            ),
+                                        }
+                                    }
+                                    None => self.diag(
+                                        "unknown-field",
+                                        f.value.span,
+                                        format!(
+                                            "record construction `{name}` requires named field values"
+                                        ),
+                                    ),
+                                }
+                            }
+                            for (i, (fname, _)) in rec.fields.iter().enumerate() {
+                                if !bound[i] {
+                                    self.diag(
+                                        "missing-field",
+                                        e.span,
+                                        format!(
+                                            "record construction `{name}` is missing field `{fname}`"
+                                        ),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                // PLAN-963（T-02）：字段读取——结果类型取决于接收者类型，
+                // 接收者的类型表项在 LIFO 次序上晚于本节点，故把约束延到
+                // `finish`（那时本体的类型表已完整、联合查找已收敛）。
+                InputExprKind::Field { base, name } => {
+                    let out = self.mint_var();
+                    self.field_reads.push(FieldRead {
+                        base: base.span,
+                        field: name.clone(),
+                        site: e.span,
+                        out_ty: out,
+                    });
+                    self.record_expr(e, out, expected);
+                    stack.push(Task::Synth(base));
+                }
+                // PLAN-963（T-02）：方法调用——同上延迟；形参类型/返回类型
+                // 由接收者记录的声明方法给出。`Recv.m(...)` 且 `Recv` 不是
+                // 局部变量时按静态调用（接收者是记录名本身）。
+                InputExprKind::MethodCall { recv, name, args } => {
+                    let out = self.mint_var();
+                    self.record_expr(e, out, expected);
+                    let mut recv_task = true;
+                    let recv_src = match &recv.kind {
+                        InputExprKind::Var(n) if frames.lookup(n).is_none() => {
+                            if self.input.lookup_record(n).is_some() {
+                                recv_task = false;
+                                MethodRecv::Record(n.clone())
+                            } else {
+                                MethodRecv::Value(recv.span)
+                            }
+                        }
+                        _ => MethodRecv::Value(recv.span),
+                    };
+                    self.method_calls.push(MethodCallCheck {
+                        recv: recv_src,
+                        name: name.clone(),
+                        args: args
+                            .iter()
+                            .enumerate()
+                            .map(|(i, a)| (i, a.name.clone(), a.value.span))
+                            .collect(),
+                        site: e.span,
+                        out_ty: out,
+                    });
+                    for a in args.iter().rev() {
+                        stack.push(Task::Synth(&a.value));
+                    }
+                    if recv_task {
+                        stack.push(Task::Synth(recv));
+                    }
+                }
                 InputExprKind::Unsupported { what } => {
                     self.diag(
                         "unsupported-construct",
@@ -732,7 +892,202 @@ impl<'a> InferSession<'a> {
         )
     }
 
+    /// The recorded type of the expression at `span` (last write wins — a
+    /// span belongs to exactly one expression in a well-formed body).
+    fn expr_ty_at(&self, span: Span) -> Option<Ty> {
+        self.expr_types
+            .iter()
+            .rev()
+            .find(|(s, e, _)| *s == span.start && *e == span.end)
+            .map(|(_, _, t)| *t)
+    }
+
+    /// PLAN-963（T-02）：解析延迟记录约束。接收者类型在 LIFO 次序上晚于
+    /// 使用点可知，故约束在此统一求解；链式读取（`a.b.c`）需要多轮—
+    /// 每轮只解出接收者已定的项，有界迭代至不动点。接收者仍是变元的项
+    /// 保持未解（unsolved-variable 诊断已覆盖该判定），不虚报类型错误。
+    fn resolve_deferred_record_ops(&mut self) {
+        let mut fields: Vec<FieldRead> = std::mem::take(&mut self.field_reads);
+        let mut calls: Vec<MethodCallCheck> = std::mem::take(&mut self.method_calls);
+        let rounds = fields.len() + calls.len() + 1;
+        for _ in 0..rounds {
+            let mut moved = false;
+            let mut next_fields: Vec<FieldRead> = Vec::new();
+            for fr in fields.drain(..) {
+                let base = match self.expr_ty_at(fr.base) {
+                    Some(t) => self.resolve(t),
+                    None => {
+                        // 未被走到的接收者表达式：没有类型证据，具名拒。
+                        self.diag(
+                            "unsupported-construct",
+                            fr.site,
+                            format!("no recorded receiver type for field `{}`", fr.field),
+                        );
+                        moved = true;
+                        continue;
+                    }
+                };
+                match base {
+                    Ty::Var(_) => next_fields.push(fr),
+                    Ty::Record(rec_name) => {
+                        moved = true;
+                        let input: &'a SemaInput = self.input;
+                        match input.lookup_record(rec_name) {
+                            None => self.record_negative_at("type", rec_name, fr.site),
+                            Some(rec) => match rec.fields.iter().find(|(n, _)| *n == fr.field) {
+                                Some((_, ann)) => {
+                                    let t = self.ann_ty(*ann, fr.site);
+                                    self.unify(fr.out_ty, t, fr.site, "field");
+                                }
+                                None => {
+                                    self.record_negative_at("field", &fr.field, fr.site);
+                                }
+                            },
+                        }
+                    }
+                    other => {
+                        moved = true;
+                        self.diag(
+                            "type-mismatch",
+                            fr.site,
+                            format!(
+                                "field read `{}` on non-record type {}",
+                                fr.field,
+                                self.name_of(other)
+                            ),
+                        );
+                    }
+                }
+            }
+            fields = next_fields;
+            let mut next_calls: Vec<MethodCallCheck> = Vec::new();
+            for call in calls.drain(..) {
+                let rec_name: Option<String> = match &call.recv {
+                    MethodRecv::Record(n) => Some(n.clone()),
+                    MethodRecv::Value(span) => match self.expr_ty_at(*span) {
+                        Some(t) => match self.resolve(t) {
+                            Ty::Record(n) => Some(n.to_string()),
+                            Ty::Var(_) => None,
+                            other => {
+                                moved = true;
+                                self.diag(
+                                    "type-mismatch",
+                                    call.site,
+                                    format!(
+                                        "method call `{}` on non-record type {}",
+                                        call.name,
+                                        self.name_of(other)
+                                    ),
+                                );
+                                continue;
+                            }
+                        },
+                        None => {
+                            moved = true;
+                            self.diag(
+                                "unsupported-construct",
+                                call.site,
+                                format!("no recorded receiver type for method `{}`", call.name),
+                            );
+                            continue;
+                        }
+                    },
+                };
+                let Some(rec_name) = rec_name else {
+                    next_calls.push(call);
+                    continue;
+                };
+                moved = true;
+                let input: &'a SemaInput = self.input;
+                let Some(rec) = input.lookup_record(&rec_name) else {
+                    self.record_negative_at("type", &rec_name, call.site);
+                    continue;
+                };
+                let Some(m) = rec.methods.iter().find(|m| m.name == call.name) else {
+                    self.record_negative_at("method", &call.name, call.site);
+                    continue;
+                };
+                if !m.type_params.is_empty() {
+                    self.diag(
+                        "unsupported-construct",
+                        call.site,
+                        format!(
+                            "generic method `{}` on `{rec_name}` is outside the inference profile",
+                            call.name
+                        ),
+                    );
+                    continue;
+                }
+                // 形参绑定：具名按名、否则按位；源序即求值序。
+                let mut plan: Vec<Option<usize>> = vec![None; m.params.len()];
+                for (i, wname, span) in &call.args {
+                    let pos = match wname {
+                        None => Some(*i),
+                        Some(n) => match m.params.iter().position(|(pn, _)| pn == n) {
+                            Some(p) => Some(p),
+                            None => {
+                                self.diag(
+                                    "unknown-parameter",
+                                    *span,
+                                    format!("`{}` has no parameter `{n}`", call.name),
+                                );
+                                None
+                            }
+                        },
+                    };
+                    if let Some(p) = pos {
+                        if p < plan.len() {
+                            match plan[p] {
+                                Some(prev) => self.diag(
+                                    "duplicate-argument",
+                                    *span,
+                                    format!(
+                                        "`{}` binds parameter `{}` more than once (also argument {prev})",
+                                        call.name, m.params[p].0
+                                    ),
+                                ),
+                                None => plan[p] = Some(*i),
+                            }
+                        }
+                    }
+                }
+                if call.args.len() != m.params.len() || plan.iter().any(|p| p.is_none()) {
+                    self.diag(
+                        "arity-mismatch",
+                        call.site,
+                        format!(
+                            "`{}` expects {} argument(s), found {}",
+                            call.name,
+                            m.params.len(),
+                            call.args.len()
+                        ),
+                    );
+                }
+                for (p, argi) in plan.iter().enumerate() {
+                    let Some(argi) = *argi else { continue };
+                    let (_, _, span) = call.args[argi];
+                    if let Some(at) = self.expr_ty_at(span) {
+                        let want = self.ann_ty(m.params[p].1, span);
+                        self.unify(at, want, span, "check");
+                    }
+                }
+                let ret = self.ann_ty(m.ret, call.site);
+                self.unify(call.out_ty, ret, call.site, "call");
+            }
+            calls = next_calls;
+            if !moved {
+                break;
+            }
+        }
+        // 未收敛的残余约束：接收者仍是变元（unsolved-variable 已报）。
+        self.field_reads = fields;
+        self.method_calls = calls;
+    }
+
     fn finish(&mut self, fn_name: &str) -> InferSummary {
+        // PLAN-963（T-02）：先解析延迟的记录操作约束（字段读取/方法调用）
+        // ——它们可能解出变元，必须先于 unsolved 判定。
+        self.resolve_deferred_record_ops();
         // unsolved variables are definitive diagnostics — never Any
         for (i, slot) in self.vars.iter().enumerate() {
             if slot.is_none() {
@@ -806,6 +1161,8 @@ impl<'a> InferSession<'a> {
         match t {
             Ty::I32 => "i32",
             Ty::Bool => "bool",
+            Ty::Text => "text",
+            Ty::Record(name) => name,
             Ty::Var(_) => "unsolved",
         }
     }
