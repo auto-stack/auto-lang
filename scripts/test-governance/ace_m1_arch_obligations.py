@@ -7,7 +7,7 @@ from ace_m1_case_evidence import require
 from ace_m1_legacy import typed_equal
 
 CONTRACT = 'crates/auto-lang/test/cases/ace-m1-expanded/architecture-obligations.json'
-CONTRACT_SHA = 'e4449a5ab684fb175a763b1479415a6b15043f530d109b1d7aa5527d6f975afd'
+CONTRACT_SHA = 'c8f4e1025fcbef3637d2cbb34a2b9b4de3f8b2a6198bdb09cdcc0eb6f46521fd'
 SUFFIXES = (
     'all-grammars single-frontdoor nested-body-reuse source-position-freshness public-first-edit',
     'solver-authority facts-before-hir positive-negative-deps real-instances effective-implementation required-instance-pages',
