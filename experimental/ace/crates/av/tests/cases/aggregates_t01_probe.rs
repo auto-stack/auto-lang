@@ -348,3 +348,19 @@ fn tag_union_and_take_execute() {
     assert_eq!(run2.live_after, 0);
     assert_eq!(run2.allocs, run2.frees);
 }
+
+/// PLAN-962 unit-8 (T-08, L-08): Box<T> explicit indirection — a
+/// single-element List cell (t01-freeze D9). `type Node { next Box<Node> }`
+/// is the LEGAL recursion form (the record-cycle walk does not follow the
+/// list-typed field edge; a direct `next Node` still rejects — see
+/// recursive_record_rejected_before_layout); the chain's last owner frees
+/// every cell (V-08 Box destruct slice).
+#[test]
+fn box_indirection_legalizes_recursion_and_frees() {
+    let src = "type Node { v int; next Box<Node> }\nfn main() int {\n    let tail = Node(41, List<Node>.new())\n    let cell = Box(tail)\n    let n = Node(1, cell.move)\n    return n.v + n.next.get(0).v\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("Box chain constructs and reads through");
+    assert_eq!(run.value, 42); // n.v(1) + tail.v(41)
+    assert_eq!(run.live_after, 0);
+    assert_eq!(run.allocs, run.frees);
+}

@@ -3968,6 +3968,34 @@ fn vt_of_ann_coll(
             VT::Variant(vi)
         }
         ast::TypeRef::Generic { name, args } => match (name.name.as_str(), args.len()) {
+            // PLAN-962 (T-08, L-08): `Box<T>` — explicit single-value
+            // indirection. Representation: the single-element List cell
+            // (t01-freeze D9 — the closure-cell precedent); a Box-typed
+            // field is therefore a LIST-typed field: fixed-size handle,
+            // and the record containment cycle walk does not follow it
+            // (legal recursion: `type Node { next Box<Node> }`).
+            ("Box", 1) if coll.aggregates_admission => {
+                let elem = vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::Local);
+                match elem {
+                    VT::StrOwned | VT::I32 | VT::Bool | VT::Char | VT::I8 | VT::U8 | VT::U32
+                    | VT::I64 | VT::U64 | VT::F32 | VT::F64 | VT::Rec(_) | VT::Variant(_) => {
+                        VT::List(coll.intern_list(elem))
+                    }
+                    VT::List(_) => reject(
+                        diags,
+                        VT::I32,
+                        "Box does not wrap a List (wrap the element type; a Box is already one cell)"
+                            .to_string(),
+                        args[0].span,
+                    ),
+                    _ => reject(
+                        diags,
+                        VT::I32,
+                        format!("Box element type `{}` is not admitted", elem.as_str()),
+                        args[0].span,
+                    ),
+                }
+            }
             ("List", 1) => {
                 if matches!(pos, TypePos::Field | TypePos::Param | TypePos::Result)
                     && !coll.aggregates_admission
@@ -5988,6 +6016,77 @@ impl<'a, 's> FnResolver<'a, 's> {
                     // then push each element in source order. Literals in
                     // other expression positions reject at `expr()` with
                     // `source.array-lit-position`.
+                    // PLAN-962 (T-08, L-08): `let b = Box(v)` — the single
+                    // cell constructs as List<T>.new() + one push (element
+                    // type from the operand; Box in non-let positions is a
+                    // named rejection at resolve_call).
+                    if let ExprKind::Call { callee, args } = &value.kind {
+                        if callee.name == "Box"
+                            && !self.sigs.contains_key("Box")
+                            && args.len() == 1
+                            && matches!(&args[0], ast::Arg::Pos(_) | ast::Arg::MovePos(_))
+                        {
+                            let inner_ast = match &args[0] {
+                                ast::Arg::Pos(e) | ast::Arg::MovePos(e) => e,
+                                _ => unreachable!("checked shape"),
+                            };
+                            let mut inner = self.expr_iterative(inner_ast);
+                            let elem_vt = inner.vt;
+                            let li = self.coll.intern_list(elem_vt);
+                            if self.scopes.last().unwrap().names.contains_key(&name.name) {
+                                self.bind_err(
+                                    "source.duplicate",
+                                    format!(
+                                        "local `{}` is declared more than once in this block",
+                                        name.name
+                                    ),
+                                    name.span.join(value.span),
+                                );
+                            }
+                            self.declared_names.insert(name.name.clone());
+                            let lref = self.fresh_local(&name.name, VT::List(li), *mutable);
+                            self.scopes
+                                .last_mut()
+                                .unwrap()
+                                .names
+                                .insert(name.name.clone(), lref);
+                            stack
+                                .last_mut()
+                                .expect("resolve frame")
+                                .stmts
+                                .push(RStmt::Let {
+                                    local: lref,
+                                    value: ResolvedExpr {
+                                        span: value.span,
+                                        vt: VT::List(li),
+                                        kind: RExprKind::ListNew { list: li },
+                                    },
+                                    span: *span,
+                                });
+                            self.check_push_value(&elem_vt, &mut inner, inner_ast.span);
+                            let push = ResolvedExpr {
+                                span: inner_ast.span,
+                                vt: VT::Unit,
+                                kind: RExprKind::ListPush {
+                                    list: Box::new(ResolvedExpr {
+                                        span: inner_ast.span,
+                                        vt: VT::List(li),
+                                        kind: RExprKind::ReadLocal(lref),
+                                    }),
+                                    value: Box::new(inner),
+                                },
+                            };
+                            stack
+                                .last_mut()
+                                .expect("resolve frame")
+                                .stmts
+                                .push(RStmt::ExprStmt {
+                                    value: push,
+                                    span: inner_ast.span,
+                                });
+                            continue;
+                        }
+                    }
                     if let ExprKind::ArrayLit(elems_ast) = &value.kind {
                         if elems_ast.is_empty() {
                             self.bind_err(
