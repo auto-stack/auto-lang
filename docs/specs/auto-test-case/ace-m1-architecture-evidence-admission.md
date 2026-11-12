@@ -75,3 +75,18 @@ F-1013-01 修复（自报 facts 绕过原件准入+虚构 commit 入审计链）
   父 FAIL 不因子/组 PASS 晋绿。
 - TAG-01..06（候选/终验/凭据/负控/落地复验/标签范围）为打 tag 前强制复核；tag
   创建与推送是复核后的单独动作（计划只交付 tag_ready）。
+
+## 主线身份物化边界与凭据适用版本（PLAN-1025，SD-01/SD-03，2026-11-13）
+
+- **受控文本 LF 物化（SD-01）**：`.gitattributes` 将测试用例语料整体划 `-text`
+  （字节身份），准入链受控文本（expanded 根 json/tsv、governance .py、fixed-tests.py、
+  test-groups.toml、.cargo/.config toml、pinned docs、parent/native-module 源码、
+  588 项 producer 闭包）钉 `text eol=lf`——Git 对象与 core.autocrlf=input/true 检出
+  字节一致（验证 1424/1424 相同）。故意 CRLF fixture（scalar-src 两个）由 `-text`
+  保留原始字节。1013 的 CRLF 工作树写入（7 处陈旧 pin）即此边界缺口。
+- **当前凭据适用版本（SD-01 续）**：`ace_m1_review_evidence.py` 现绑 PLAN-1025/r1
+  （AC-01..08/V-01..10/SD-01..03）；旧 PLAN-1005/PLAN-1013 凭据不可覆盖本包，凭据
+  绑当前 registry 字节——registry 漂移即废（F-1025-02 持久控制验证）。
+- **C 读回先于删原件（SD-03）**：正式验收通过后、任何原件删除前，须在实际合入提交 C
+  的检出上重跑正式 CLI（本包 C=b923362f4 exit 0，报告与 H 逐字节相同
+  efd1822a…）；主线合同红不可记债豁免；删除后仅摘要不冒重新准入。

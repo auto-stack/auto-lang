@@ -85,3 +85,15 @@
 - A-1013-02（组合预算墙）由 knife 1..3a 在原批准 48MiB 内闭合（base 峰值
   47.69→41.2、30 gate 单验 40.03→28.01、V-12 全族 47.7），预算阈值未提高。
 - tag_ready 复核记录见计划 §9/TAG 门；实际创建/推送 tag 为复核后的单独动作。
+
+## PLAN-1025 主线身份收口与最终签章（SD-02，2026-11-13，r1@40b51f80/C=b923362f4）
+
+- 1013 历史 H（ee10b45fe）通过保留为历史收据；其 C=990d27fcc 后 registry/六机制
+  合同源码 pin 漂移（受审树 CRLF 写入 + 后续主线演进），不能直接证明漂移后的主线。
+- 本包在实际主线提交 **C=b923362f4** 完成重采全链证据并正式读回：registered
+  **1006P/0F/0U**、ARCH **49/49**、八域门全真、accounting/evidence/system 真、
+  cert-gaps=0、awaiting_d=0、峰值 47.61MiB<48、`can_claim_expanded_m1=true`、
+  exit 0；R=9ffa9bc2c3b8…（绑 PLAN-1025/r1 全覆盖）被 C 接受；preview 恒 exit 1。
+- 期间有界接收五个 962/1016 落地缺口（F-1025-04..06：962 aggregates profile、
+  host profile 表、六个被 perf 分离误降的 M1 命名 oracle 恢复日常命名空间），
+  各有冻结 recipe/binding-note 权威背书并单独验证绿。
