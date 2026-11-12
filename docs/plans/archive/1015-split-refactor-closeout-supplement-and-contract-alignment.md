@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1015
-status: reviewed
+status: archived
 feature_name: 拆分重构收口补验与合同对齐
 author: [Codex]
 created_at: 2026-11-12
 updated_at: 2026-11-12
 plan_revision: 1
-current_step: 7
+current_step: 9
 total_steps: 9
 depends_on: [PLAN-989, PLAN-1006, auto-os/PLAN-068]
 supersedes_spec_components: [docs/specs/repository-boundaries/split-refactor-milestone-acceptance.md]
@@ -212,6 +212,10 @@ stage: goal | plan_id: PLAN-1015 | plan_revision: r1 | round: 1 | from: work | t
 - next: review（T-07 定向重核 F1..F4 修复与整体 final pass）。
 
 2026-11-12，stage:review，review_scope:final，reviewer:general 子代理（独立上下文，第二轮），PLAN-1015 r1，outcome:**pass**：F1/F2/F4 完全修复、F3 主体修复（R1/R2 两条 Low 不阻，merge 收敛——R1 计数 16/16→18/18 已同步、R2 恢复清单 F3 改述随 T-08 一并提交）。逐 AC：AC-01..07 pass（来源/投影/通道、Counter 0→1→Reset 全链+移根、013 勾选/过滤+AddTodo 缺口如实回 owner、verify/fault 保全、RQ 服务 Host 18/18+窗口面身份复用、SQLite 独立读回、旁观隔离、SD-01 §3 如实+§4 签章未动、1013 联合门独立未预签、无 tag）；AC-08 属 merge 阶段未执行。reviewed_commit=67d5040d7。status→reviewed。next: merge（T-08 落地/归档、T-09 清理）。
+
+2026-11-12，stage:merge，PLAN-1015 r1，**T-08 落地完成**（outcome:pass）：rebase 6 提交到 master（range-diff 6/6 全等，无冲突消解），master `git merge --ff-only codex/plan-1015-dev` → **delivery commit `8abc862f4`**（线性，无 merge commit）。**canonical_verified**：`docs/specs/repository-boundaries/split-refactor-milestone-acceptance.md` 在 landed commit 内（master 上 hash `D9A257E6F274F4369ADAC55DED5FBC1C405B599A442E7D7504E0EF13DE5843C2`），SD-01 增量（§3 两处差额替换+UI-leg same-source 披露+投影注记）与冻结 delta 一致，§4 签章未动；主检出簿记（计划文件/KNOWN-DEBT D-989-CLOSE-01/02 关闭记录/恢复清单 §3）已随 7002207a6 落主。测试代码 `test/fixtures/modularity/recovery-closeout/{driver.py,rq_drill.py}` 随 landed。next:merge（T-09 归档收尾/清理）。
+
+2026-11-12，stage:merge，PLAN-1015 r1，**T-09 清理收尾（进行中→归档）**：本文件 git mv 至 docs/plans/archive/ + status: archived + current_step 9/9；正式源码/测试/SD-01/恢复清单/债务与被测身份一致（landed 8abc862f4），两债（D-989-CLOSE-01/02）真实关闭记录已落库，1006/989 历史未改，无 tag/部署。**清理对账**：worktree 组 .wt/lang-1015/（lang/man/ui/os/web/down）+ rc1015-old 组（五仓旧树）；plan-artifacts scope plan-1015/（cohort-ui 含 bundle 与投影副本、cohort-rq 含数据/备份/日志/收据、receipts/）；retention 登记刷新。next:merge（guard 清理与 scope 删除）。
 
 
 
