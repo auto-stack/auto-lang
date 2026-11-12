@@ -213,6 +213,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [packages-modules]) { use-item-p() {} }
             alt(profiles: [record, text-record, collections, packages-modules, aggregates]) { type-item() {} }
             alt(profiles: [collections, aggregates]) { enum-item() {} }
+            // PLAN-962（T-08，L-13/L-12）：`tag N { ... }` = enum 声明别名
+            //（旧 statements.rs:662 同义）；`union N { f T; ... }` = tagged
+            // 安全联合（一字段一臂，语义新定——读非活动臂 = guard 失败）。
+            alt(profiles: [aggregates]) { tag-item() {} }
+            alt(profiles: [aggregates]) { union-item() {} }
             alt(profiles: [entry-unit, host-console, closures, numeric, aggregates]) { script-item() {} }
         }
         // ---- 声明 ----
@@ -503,6 +508,22 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             list { enum-arm() {} }
             rbrace() {}
         }
+        // PLAN-962（T-08）：tag/union 声明形（与 enum-item 同构；投影复用
+        // Enum AST——union 语义=tagged 变体由 resolve 面定义）。
+        tag-item(recover: true, profiles: [aggregates]) {
+            r-tag(field: "kw")
+            ident(field: "name")
+            lbrace() {}
+            list { enum-arm() {} }
+            rbrace() {}
+        }
+        union-item(recover: true, profiles: [aggregates]) {
+            r-union(field: "kw")
+            ident(field: "name")
+            lbrace() {}
+            list { enum-arm() {} }
+            rbrace() {}
+        }
         enum-arm(profiles: [collections, aggregates]) {
             alt { ident(field: "name") lparen() {} ann-ty(field: "payload") rparen() {} }
             alt { ident(field: "name") }
@@ -782,6 +803,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
             alt(profiles: [closures, aggregates]) { lambda-expr() {} }
+            // PLAN-962（T-08，L-09）：`take(x)` = Move 弃用别名（保留词
+            // r-take 专用原子形）。
+            alt(profiles: [aggregates]) { take-atom() {} }
             // PLAN-962（L-15）：tuple 字面量 `(e1, e2, ...)`（≥2 元；先于
             // 括号组——无 `=>` 且带逗号即 tuple，单元素组回退）。
             alt(profiles: [aggregates]) { tuple-lit() {} }
@@ -809,6 +833,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
             alt(profiles: [closures, numeric, aggregates]) { lambda-expr() {} }
+            // PLAN-962（T-08，L-09）：`take(x)` = Move 弃用别名（保留词
+            // r-take 专用原子形）。
+            alt(profiles: [aggregates]) { take-atom() {} }
             // PLAN-962（L-15）：tuple 字面量 `(e1, e2, ...)`（≥2 元；先于
             // 括号组——无 `=>` 且带逗号即 tuple，单元素组回退）。
             alt(profiles: [aggregates]) { tuple-lit() {} }
@@ -844,6 +871,13 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         array-elem-tail(profiles: [aggregates]) {
             comma() {}
             expr() {}
+        }
+        // PLAN-962（T-08，L-09）：take 原子形（弃用 Move 别名）。
+        take-atom(profiles: [aggregates]) {
+            r-take(same-line: true) {}
+            lparen(same-line: true) {}
+            expr(field: "value")
+            rparen() {}
         }
         // PLAN-962（L-15）：tuple 字面量形。
         tuple-lit(profiles: [aggregates]) {

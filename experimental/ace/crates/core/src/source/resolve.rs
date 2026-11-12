@@ -9435,7 +9435,7 @@ impl<'a, 's> FnResolver<'a, 's> {
     }
 
     fn call(&mut self, callee: &ast::Ident, args: &[Arg], call_span: Span) -> ResolvedExpr {
-        // PLAN-936（T-04）：meta 查询内在在此拦截——selector 实参绝不进入
+                // PLAN-936（T-04）：meta 查询内在在此拦截——selector 实参绝不进入
         // 值解析（裸 record 名/字符串字面量不是值位置合法形状）。
         // A grant protects the names. Without it, declared user functions
         // remain ordinary; an undeclared selector inside CT gets the named
@@ -9495,6 +9495,23 @@ impl<'a, 's> FnResolver<'a, 's> {
         mut rargs: Vec<ResolvedArg>,
         call_span: Span,
     ) -> ResolvedExpr {
+        // PLAN-962（T-08，L-09）：`take(x)` = Move 弃用别名（用户同名 fn 优先）。
+        if callee.name == "take"
+            && !self.sigs.contains_key("take")
+            && rargs.len() == 1
+            && rargs[0].name.is_none()
+        {
+            let inner = rargs.remove(0).value;
+            let vt = inner.vt;
+            let span = callee.span.join(inner.span);
+            return ResolvedExpr {
+                span,
+                vt,
+                kind: RExprKind::Move {
+                    inner: Box::new(inner),
+                },
+            };
+        }
         for arg in &rargs {
             if matches!(
                 &arg.value.kind,

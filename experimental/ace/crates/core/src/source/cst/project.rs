@@ -170,6 +170,9 @@ pub(crate) fn project_program_with_caps(
         if kind == k.fn_item
             || kind == k.type_item.unwrap_or(u32::MAX)
             || kind == k.enum_item.unwrap_or(u32::MAX)
+            // PLAN-962（T-08）：tag/union 声明同走声明项门。
+            || kind == k.tag_item.unwrap_or(u32::MAX)
+            || kind == k.union_item.unwrap_or(u32::MAX)
             || Some(kind) == const_item_kind
             || Some(kind) == var_item_kind
         {
@@ -187,7 +190,13 @@ pub(crate) fn project_program_with_caps(
             }
             if kind == k.fn_item {
                 items.push(Item::Fn(eng.run_fn_item(node, None, Receiver::Free)));
-            } else if kind == k.enum_item.unwrap_or(u32::MAX) {
+            } else if kind == k.enum_item.unwrap_or(u32::MAX)
+                || kind == k.tag_item.unwrap_or(u32::MAX)
+                || kind == k.union_item.unwrap_or(u32::MAX)
+            {
+                // PLAN-962（T-08）：tag = enum 别名；union = tagged 安全联合
+                // ——同构投影到 Enum AST（union 的读语义由变体 guard 承载：
+                // 非活动臂 is-分支不匹配）。
                 items.push(Item::Enum(eng.run_enum_item(node)));
             } else if Some(kind) == const_item_kind || Some(kind) == var_item_kind {
                 // PLAN-960（T-02）：packages-modules 面的 const/var 模块项
@@ -4599,6 +4608,25 @@ impl<'a> Engine<'a> {
                     }));
                     return;
                 }
+            }
+            // PLAN-962（T-08，L-09）：`take(x)` 原子（弃用 Move 别名；
+            // 投影为 take 调用形，由 resolve 拦截为 Move）。
+            if ck == self.cx.k.take_atom.unwrap_or(u32::MAX) {
+                let v_n = self.cx.field_child(c, "value").expect("take operand");
+                let v = self.project_expr_sync(v_n);
+                let kw = self.cx.span_of(c);
+                let span = kw.join(v.span);
+                self.vals.push(Val::E(Expr {
+                    span,
+                    kind: ExprKind::Call {
+                        callee: Ident {
+                            name: "take".to_string(),
+                            span: kw,
+                        },
+                        args: vec![Arg::Pos(v)],
+                    },
+                }));
+                return;
             }
             // PLAN-962（L-15）：tuple 字面量原子 `(e1, e2, ...)`（元素
             // 同步投影；≥2 元由语法保证）。

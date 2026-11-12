@@ -327,3 +327,24 @@ fn named_ctor_out_of_order_constructs() {
     assert_eq!(run.value, 42);
     assert_eq!(run.live_after, 0);
 }
+
+/// PLAN-962 unit-7 (T-08, L-13/L-12/L-09): `tag N {...}` aliases an enum
+/// declaration; `union N {...}` declares a tagged safe union (one arm per
+/// field — reading an inactive arm simply fails the is-guard); `take(x)`
+/// is the deprecated Move alias.
+#[test]
+fn tag_union_and_take_execute() {
+    let src = "tag Mark { Hit(int); Miss(int) }\nunion Val { Num(int); Flag(int) }\nfn main() int {\n    let m = Mark.Hit(20)\n    let v = Val.Num(22)\n    is m {\n        Mark.Hit(a) -> {\n            is v {\n                Val.Num(b) -> { return a + b }\n                Val.Flag(b) -> { return b }\n            }\n        }\n        Mark.Miss(a) -> { return a }\n    }\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("tag/union/take chain executes");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0);
+
+    // take() transfers ownership like .move
+    let src2 = "fn main() int {\n    var k = [20, 22]\n    let n = take(k)\n    return n.get(0) + n.get(1)\n}";
+    let run2 = ace_av::collections_864_support::compile_and_execute_aggregates(src2, "d_main")
+        .expect("take alias executes");
+    assert_eq!(run2.value, 42);
+    assert_eq!(run2.live_after, 0);
+    assert_eq!(run2.allocs, run2.frees);
+}
