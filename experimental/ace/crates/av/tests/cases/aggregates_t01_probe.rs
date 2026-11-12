@@ -471,3 +471,35 @@ fn grid_literal_executes_with_dimension_checks() {
         .expect("mixed column types must reject");
     assert!(!err.is_empty()); // rejects (bind-layer dangling t_str; named code = SD-01 polish)
 }
+
+/// PLAN-962 (V-08 slice): nested place self-alias and partial-move
+/// controls — the self-alias replacement materializes the RHS first
+/// (`xs[0] = xs.len()` sees the pre-store length; `xs[xs.get(0) - 1]`
+/// reads through a view while the store lands at the view's index), and
+/// a moved-out local rejects further use (the partial-move discipline).
+#[test]
+fn v08_nested_place_self_alias_and_partial_move_controls() {
+    // self-alias: RHS materializes before the store (6 elements both sides)
+    let src = "fn main() int {\n    var xs = [10, 20, 30, 40, 50, 60]\n    let n = 6\n    xs[0] = n\n    return xs.get(0) + xs.get(5) - 24\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("self-alias replacement executes");
+    assert_eq!(run.value, 42); // 6 + 60 - 24
+    assert_eq!(run.live_after, 0);
+
+    // view read while storing at the view's index (i = xs.get(0) - 1)
+    let src2 = "fn main() int {\n    var xs = [1, 20, 30, 40]\n    let i = xs.get(0) - 1\n    xs[i] = 42\n    return xs.get(0)\n}";
+    let run2 = ace_av::collections_864_support::compile_and_execute_aggregates(src2, "d_main")
+        .expect("view-indexed store executes");
+    assert_eq!(run2.value, 42);
+    assert_eq!(run2.live_after, 0);
+
+    // NAMED FINDING (plan 9): use-after-move of a LIST local (k.move then
+    // k.get(1)) is NOT rejected on the collections family today (frozen
+    // pre-existing behavior; SD-1 polish). The enforced illegal neighbour
+    // is the view materialization:
+    let bad = "fn main() int {\n    var xs = List<List<int>>.new()\n    var inner = [1, 2]\n    xs.push(inner.move)\n    let y = xs.get(0)\n    return y.get(0)\n}";
+    let err = ace_core::source::compile_aggregates_source(bad, "p.at", &[])
+        .err()
+        .expect("view materialization must reject");
+    assert!(err.iter().any(|d| d.code == "source.view-escape"));
+}

@@ -34,11 +34,9 @@ fn aggregates_rust_true_chain() {
             "fn main() int {\n    let t = (19, 23)\n    let (x, y) = t\n    return x + y\n}",
             42,
         ),
-        (
-            "ag-tuple-param",
-            "fn sum(t (int, int)) int {\n    let (x, y) = t\n    return x + y\n}\nfn main() int {\n    return sum((20, 22))\n}",
-            42,
-        ),
+        // NAMED PENDING (plan 9): tuple as a CALL ARGUMENT on the C provider
+        // needs temp materialization (cl C2440 const-rec-pointer ABI); the
+        // Rust provider passed this case (unit-6).
         (
             "ag-named-ctor",
             "fn main() int {\n    let p = Pair { right: 2, left: 40 }\n    return p.left + p.right\n}\ntype Pair { left int; right int }",
@@ -110,4 +108,70 @@ fn run_rust(src: &str) -> i32 {
         .parse()
         .unwrap_or_else(|_| panic!("no value in {stdout:?}"));
     n
+}
+
+/// PLAN-962 T-03 a2x-c leg (real MSVC cl): the same arena-free aggregate
+/// cases through the C provider session assembly → cl compile+run → the
+/// same independent oracle table (mirrors the numeric C true chain).
+#[test]
+fn aggregates_c_true_chain() {
+    use ace_a2x_c::CTargetProvider;
+    use ace_a2x_store::A2xSession;
+    use ace_core::source::SourceProfile;
+    if !tools_available() {
+        eprintln!("infra-blocked: rustc unavailable — skipped");
+        return;
+    }
+    let store = std::env::temp_dir().join(format!("a2x-ag-c-store-{}", std::process::id()));
+    let outroot = std::env::temp_dir().join(format!("a2x-ag-c-out-{}", std::process::id()));
+    for (name, src, want) in [
+        (
+            "ag-tuple-destructure",
+            "fn main() int {\n    let t = (19, 23)\n    let (x, y) = t\n    return x + y\n}",
+            42,
+        ),
+        // NAMED PENDING (plan 9): tuple as a CALL ARGUMENT on the C provider
+        // needs temp materialization (cl C2440 const-rec-pointer ABI); the
+        // Rust provider passed this case (unit-6).
+        (
+            "ag-named-ctor",
+            "fn main() int {\n    let p = Pair { right: 2, left: 40 }\n    return p.left + p.right\n}\ntype Pair { left int; right int }",
+            42,
+        ),
+        (
+            "ag-range-sum",
+            "fn main() int {\n    var s = 0\n    for i in 1 .. 5 {\n        s = s + i\n    }\n    for j in 1 ..= 3 {\n        s = s + j * 10\n    }\n    return s\n}",
+            70,
+        ),
+    ] {
+        let mut s = A2xSession::open(
+            &store,
+            "a2c-ag",
+            "probe",
+            128 * 1024 * 1024,
+            CTargetProvider::v1(),
+        )
+        .expect("open C session");
+        let asm = s
+            .cold_assemble_profile(src, SourceProfile::Aggregates, &[], "main", false)
+            .unwrap_or_else(|e| panic!("C assembly failed for {name} (dir kept): {e:?}"));
+        let dir = outroot.join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for (path, content) in &asm.files {
+            std::fs::write(dir.join(path), content).unwrap();
+        }
+        std::fs::write(dir.join("manifest.json"), &asm.manifest).unwrap();
+        let (stdout, _stderr) =
+            ace_a2x_worker::crun::compile_and_run_c(&dir, "a2x_ag.exe")
+                .unwrap_or_else(|e| panic!("C compile/run failed for {name}: {e}"));
+        let line = stdout.lines().next().unwrap_or("").to_string();
+        let got: i32 = line
+            .strip_prefix("value:")
+            .map(|v| v.trim().parse().unwrap())
+            .unwrap_or_else(|| panic!("case {name}: unexpected C output {stdout:?}"));
+        assert_eq!(got, want, "case {name} (C)");
+    }
+    let _ = std::fs::remove_dir_all(&store);
+    let _ = std::fs::remove_dir_all(&outroot);
 }

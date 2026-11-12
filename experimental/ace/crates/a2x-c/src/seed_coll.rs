@@ -259,7 +259,11 @@ pub fn decode_seed_coll(text: &str) -> Result<SeedColl, A2xReject> {
                 let fline = rest[i];
                 i += 1;
                 let fparts: Vec<&str> = fline.split(' ').collect();
-                if fparts.len() != 3 || fparts[0] != "F" || !valid_name(fparts[1]) {
+                // PLAN-962 (L-15): positional tuple fields are digit-named.
+                let valid_field = valid_name(fparts[1])
+                    || (!fparts[1].is_empty()
+                        && fparts[1].chars().all(|c| c.is_ascii_digit()));
+                if fparts.len() != 3 || fparts[0] != "F" || !valid_field {
                     return Err(A2xReject::new(
                         "a2x.seed",
                         format!("malformed field line: {:?}", fline),
