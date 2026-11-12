@@ -62,33 +62,51 @@ applicability, no photon-endpoint claim).
 - Window-plane RQ evidence is reused from OS068 **for the N side only**
   (auto-ui source is the exact OS068 delivery SHA; auto-os differs only by
   post-delivery receipt commits — both disclosed in §1; the language
-  dependency differs by delivery-additive changes). The RC-RQ drill's old
-  package group was rebuilt from a synthetic older alias mix
-  (auto-os@O-RQ + auto-ui@U-C + auto-lang@L-C + auto-man@M-BASE — the
-  RC-UI old aliases reused with O-RQ added; a synthetic mix, not a
-  latest-formal selection), not the recovery
-  contract's exact O-RQ/U-RQ/L-RQ combination; the upgrade semantics were
-  therefore tested against a larger A-side delta (stricter, not weaker).
+  dependency differs by delivery-additive changes).
+- **RC-RQ old-group exactness (PLAN-1015 supplement)**: the RC-RQ drill
+  old package group was rebuilt from the recovery contract's exact
+  **O-RQ/U-RQ/L-RQ/M-BASE** combination (auto-os `3ea7ead…`, auto-ui
+  `69104765…`, auto-lang `f29f6facc…`, auto-man `347c29f…`), replacing the
+  earlier synthetic alias mix (O-RQ + U-C/L-C + M-BASE) recorded by
+  PLAN-989; the A→N→fault→restore drill (A real Todo task → quiescent
+  backup → N reads A data and continues → broken-source fault rejection
+  with A byte-preserved → restore A + independent SQLite read-back) plus a
+  bystander independent instance surviving the fault/switch passed 16/16
+  (PLAN-1015 receipts). The window plane remains reused from OS068 as
+  above; the drill adds the package-group/data/bystander/recovery plane at
+  the exact contract group.
   No new >60Hz, photon-endpoint, byte-level transfer, replay-p95, or
   native-input-latency claim is made.
-- RC-UI business oracle limitation (named): the Counter/Todo interactive
-  business-value assertion of the recovery contract was NOT executed; what
-  ran is pair generation → per-bundle verify (SHA) → fresh locked builds →
-  relocation rebuild → managed in-place upgrade → broken-source fault
-  preservation (byte-identical) → old-bundle real window survival with
-  clean termination. The 930 driver's V06 legs verify window survival and
-  VM protocol lifecycles, not business values.
+- **RC-UI business oracle (PLAN-1015 supplement)**: the Counter and
+  013-Todo interactive business-value assertions of the recovery contract
+  are now executed on the generated Rust delivery forms via the AutoUI MCP
+  channel (real user events + visible-value read-back): Counter A/B/恢复A
+  each run initial 0 → press "+" → `count: 0 -> 1` state change and
+  visible `Counter: 1` → Reset to 0; 013-Todo A/B render seeds, per-item
+  toggle (active_count 3→4→3), and Active filtering with visible text are
+  verified, plus resource verify/fresh-locked builds/relocation rebuild/
+  broken-source fault preservation (A files byte-identical)/restore-A
+  business. **Named limitation (owner lane)**: 013-Todo's AddTodo (type
+  marker → submit → list grows) is NOT reachable on the static-generation
+  form — the generated Rust app splits `App.input` from `TodoStore.input`
+  (source `.at` relies on the VM shared-state heap for that sync); this is
+  routed back to the auto-ui rust generator owner for a bounded fix before
+  the AddTodo assertion is closed (PLAN-1015 T-01 finding; the in-scope
+  fix-direction probe — wiring oninput to `store.SetInput` — restores the
+  add path). The Vue-track codegen shows the same field split (not
+  interactively tested; outside this route's delivery surface).
 - auto-video backend remains the B-06 named handoff (owner + closure
   condition; not delivered by this route).
 - RC pairs are first-version controlled pairs; no historical-release
   cross-schema upgrade, dual-machine zero-downtime, Linux, or offline-build
-  claim. UI pairs use the rust-backend delivery form (002-counter's own
-  pac.at is vue-render; the canonical rust-render fixture project carries
-  the pair — recorded adjustment).
+  claim. UI pairs use the rust-backend delivery form via minimal pac
+  projection (`render: vue→rust` + theme-dep relocation; business sources
+  byte-identical to the formal UI tree — PLAN-1015 T-01 hash table).
 - Known environment attributions: plan988 slow integration test flaps under
   20-way parallel group runs (isolated replay green — governance owner);
   crates-io mirror gaps worked around offline-first; jet/ark UI legs remain
-  user-ruled environment gates.
+  user-ruled environment gates; Windows TCP 9300–9399 exclusion range
+  observed (AutoUI MCP binds must avoid it).
 
 ## 4. Readiness verdicts (PLAN-989 T-06)
 
