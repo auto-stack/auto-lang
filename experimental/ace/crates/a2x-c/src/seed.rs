@@ -166,8 +166,12 @@ pub fn decode_seed(text: &str) -> Result<Vec<SeedRecord>, A2xReject> {
             let fparts: Vec<&str> = fline.split(' ').collect();
             // PLAN-962 (L-15): tuple fields are POSITIONAL ("0".."n-1" —
             // digit-leading by design); a pure-digit field name is valid.
-            let valid_field = valid_name(fparts[1])
-                || (!fparts[1].is_empty() && fparts[1].chars().all(|c| c.is_ascii_digit()));
+            // (Length checked BEFORE the name reads — the strictness
+            // matrix feeds one-part lines here.)
+            let valid_field = fparts.len() == 3
+                && (valid_name(fparts[1])
+                    || (!fparts[1].is_empty()
+                        && fparts[1].chars().all(|c| c.is_ascii_digit())));
             if fparts.len() != 3 || fparts[0] != "F" || !valid_field {
                 return Err(A2xReject::new(
                     "a2x.seed",
