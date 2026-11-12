@@ -1,0 +1,15 @@
+tag Mark { Hit(int); Miss(int) }
+union Val { Num(int); Flag(int) }
+fn main() int {
+    let m = Mark.Hit(20)
+    let v = Val.Num(22)
+    is m {
+        Mark.Hit(a) -> {
+            is v {
+                Val.Num(b) -> { return a + b }
+                Val.Flag(b) -> { return b }
+            }
+        }
+        Mark.Miss(a) -> { return a }
+    }
+}

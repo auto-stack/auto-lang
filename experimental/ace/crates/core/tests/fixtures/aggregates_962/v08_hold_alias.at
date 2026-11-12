@@ -1,0 +1,8 @@
+type P { v int }
+fn main() int {
+    var p = P(40)
+    let hold p as q {
+        p = P(q.v + 2)
+    }
+    return p.v
+}

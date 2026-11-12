@@ -1,0 +1,6 @@
+fn main() int {
+    var xs = [10, 20, 30, 40, 50, 60]
+    let n = 6
+    xs[0] = n
+    return xs.get(0) + xs.get(5) - 24
+}

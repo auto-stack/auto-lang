@@ -1,0 +1,13 @@
+type Item { name Str; code int }
+fn main() int {
+    var a = List<Item>.new()
+    a.push(Item("x", 19))
+    a.push(Item("y", 23))
+    var b = List<List<Item>>.new()
+    b.push(a.move)
+    var c = List<Item>.new()
+    c.push(Item("z", 0))
+    b.push(c.move)
+    let row = b.remove(0)
+    return row.get(0).code + row.get(1).code
+}

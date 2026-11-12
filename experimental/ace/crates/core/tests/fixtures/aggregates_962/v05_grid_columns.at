@@ -1,0 +1,5 @@
+fn main() int {
+    let g = grid (a, b) { [40, 20]; [0, 2] }
+    let (ca, cb) = g
+    return ca.get(0) + ca.get(1) + cb.get(0) + cb.get(1)
+}

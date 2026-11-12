@@ -1,0 +1,10 @@
+fn build(seed int) int {
+    var xs = [1, 2, 3]
+    xs.push(seed)
+    return xs.get(3)
+}
+fn main() int {
+    var a = build(40)
+    var b = build(2)
+    return a + b
+}
