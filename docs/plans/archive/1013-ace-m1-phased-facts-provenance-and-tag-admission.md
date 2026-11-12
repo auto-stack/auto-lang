@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1013
-status: drafting
+status: archived
 feature_name: ACE M1分域facts来源链与签章准入有界修复
 author: [Codex]
 created_at: 2026-11-12
@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: [GOAL-002]
 
 affects: [auto-test-case]
-current_step: 6
+current_step: 10
 total_steps: 10
 ---
 
@@ -225,8 +225,8 @@ merge删除材料前，将命令/退出码/数字/指纹/反控/审阅/签前核
 | T-06 | work | T-03..05 | 永久正负例接原loader，修前或受控变异证明敏感性，完整职责组/必要consumer，定稿SD提案 | V-01..11；`cargo t infra-ace-m1-arch infra-ace-m1 infra-ace-policy`与触面并集；AC-02..07 | [x] |
 | T-07 | work | T-01..06 | 冻结H，证据复用/重采清单，缺raw真实重采，严格组合非review候选并记录来源/预算 | V-12，1005P/0F/1U/exit1；AC-06/07/09候选；七work齐才execution_done | [x] 2026-11-12：九族采集+V-12 达成（1005P/0F/1U、ARCH 48+1review、峰值 47.7、正式 exit1）；T-08 首轮 needs_fix（FR-T08-03 cte 策略 7<10 窗）已修复重组合 |
 | T-08 | review | T-07，独立上下文 | 实现停写，同树从原件核AC-01..10/V-01..15/SD-01..03适用阶段，遗漏/债务/健康，实际新R→正式终验→最终裁决 | V-11/13/14、AC-08/09；merge未来项审可交接合同不预勾完成；needs_fix回work | [x] 2026-11-12：两轮独立复审（第一轮 needs_fix FR-T08-03 已修复；第二轮 pass）；R2 消费、终验 exit0 1006P/0F/0U、ARCH 49/49、八域全真、preview 恒 exit1 |
-| T-09 | merge | T-08 pass | 核冻结职责组/consumer有效证据，代码落C、SD-01..03沉淀，raw仍在时完成TAG六门/必要正式读回，写tag_ready | V-14/15，AC-10落地部分；身份未变证据复用，变则按影响重采重审 | [ ] |
-| T-10 | merge | T-09 | 摘要折叠Plan/归档；核所有实际输出路径/链接/活动进程/具名持有，wt-guard clean后清树/scope、刷新retention与计数 | V-15，AC-10实际清理；无具名未决持有则scope整删，未知归属不盲删；真实10/10才delivered | [ ] |
+| T-09 | merge | T-08 pass | 核冻结职责组/consumer有效证据，代码落C、SD-01..03沉淀，raw仍在时完成TAG六门/必要正式读回，写tag_ready | V-14/15，AC-10落地部分；身份未变证据复用，变则按影响重采重审 | [x] 2026-11-12：C=990d27fcc、SD-01..03 沉淀、TAG 六门闭、H 读回 exit0、tag_ready=true |
+| T-10 | merge | T-09 | 摘要折叠Plan/归档；核所有实际输出路径/链接/活动进程/具名持有，wt-guard clean后清树/scope、刷新retention与计数 | V-15，AC-10实际清理；无具名未决持有则scope整删，未知归属不盲删；真实10/10才delivered | [x] 2026-11-12：摘要折叠、归档、wt-guard clean 后清理 worktree/scope、retention 刷新 |
 
 下一就绪任务T-01；1005已闭，本包修复/验证未开始。T-02是原预算内机制决策，不是追加许可流程。本轮授权止于规划，后续实施待实际指令，不自动续接。
 
@@ -277,7 +277,7 @@ T-07 待执行：冻结 H、证据复用/重采清单、严格组合非 review �
 
 **续采执行手册（2026-11-12 完成，`t07/RESUME-RUNBOOK.md`）**：从当前状态到 V-12 候选的一键路径文档——恢复前置（唯一决策点：用户给出 plan-1016 定稿 test-groups.toml + 路径 A/B 选择）、架构域 gate 采集、全量 9 类证据族重采、V-12 组合、T-07 收口、T-08/T-09/T-10 顺序与关键文件索引。用户回来后按手册执行即可，无需重新推导。
 
-stage: goal | plan_id: PLAN-1013 | plan_revision: r1 | round: k | from: work | to: work | status: drafting | outcome: waiting（用户暂停重采，转 plan-1016 处理 PERF 分离；明确选择"等我从 plan-1016 回来再续采"） | worktree: D:/autostack/.wt/lang-1013/auto-lang | commit: cdea5e038 | next: user（回来确认定稿 test-groups.toml + 路径 A/B 后按 RESUME-RUNBOOK 续采）
+stage: goal | plan_id: PLAN-1013 | plan_revision: r1 | round: k | from: work | to: work | status: archived | outcome: waiting（用户暂停重采，转 plan-1016 处理 PERF 分离；明确选择"等我从 plan-1016 回来再续采"） | worktree: D:/autostack/.wt/lang-1013/auto-lang | commit: cdea5e038 | next: user（回来确认定稿 test-groups.toml + 路径 A/B 后按 RESUME-RUNBOOK 续采）
 
 2026-11-12 stage: work（T-07 架构域重采完成，E-1013-01 解除）plan_id: PLAN-1013 plan_revision: r1 outcome: progress（架构 30/30 entry 经生产 reader 准入；V-12 其余 8 类证据族重采 pending）worktree: `D:/autostack/.wt/lang-1013/auto-lang` branch: `codex/plan-1013-dev` code_commit: `848c4b9b7`（配置+recipe 修订提交）next: work（V-12 全量 9 类证据族重采，按 RESUME-RUNBOOK §2）。
 
@@ -374,3 +374,11 @@ stage: goal | plan_id: PLAN-1013 | plan_revision: r1 | round: k | from: work | t
 无阻塞规划的用户决定。work的T-02以真实小探针确定分域迁移接口/冻结身份交接，在既定行为和预算内决定后实现；不成立则具名记录具体阻断及需修订合同，不降门交付。review实际人选/上下文在交接时核实，本轮不创建/接管其他会话。
 
 **2026-11-12 等待用户决策（T-07 续采前置）——已解除**：用户从 plan-1016 回来后选定**路径 A 全量重采**，PERF 分离配置（`3a51d3c3…`）已落地 worktree 并完成 30/30 架构 entry 重采与准入（见 §9 当日 work 记录）。V-12 其余证据族重采无待用户决策项，按 `t07/RESUME-RUNBOOK.md` §2 顺序执行。
+
+
+2026-11-12 stage: merge（T-10：收尾）plan_id: PLAN-1013 plan_revision: r1 outcome: delivered（**10/10**）。
+
+**交付摘要**（详录见 §9 各 stage 记录）：F-1013-01 分域 facts 绕过修复（{facts,root} 原件重导+真实 commit 对象门+冻结锚，raw/facts 共边界）；R2 独立凭据合同（PLAN-1013/r1，AC-01..10/V-01..15/SD-01..03）；legacy 313/313 诚实配对；九类证据族全量重采+验证；A-1013-02 组合预算墙三刀闭合（48MiB 内全族组合）；**终验 exit0：1006=1006P/0F/0U、ARCH 49/49、八域真、can_claim_expanded_m1=true、峰值 47.696MiB**；C=990d27fcc；tag_ready=true（六门）。
+**关键收据**：实现链 240808812→cdea5e038→848c4b9b7→f7e3a413c→0d134a005→2ef3f0cf6→f14fc0d1f→c501f4076→b5dfa4905→e3ebaf510→ee10b45fe；merge 639198b22+990d27fcc；R2=73bc558462315400af705bc1e20b9cf40320c507fdf4b92b332e3eb0a65d83e1；候选 bindings 91eaced4…/report 52786204…（修复后）；终验报告 06e0e6e4…。
+**具名债移交**：D-1013-M1（主检出 LF vs worktree CRLF 物化分歧致主检出单测套红——先在债，合并前 15 红实测；canonical 化需改绑定语义+全量重审，超出本包授权）。
+**清理**：plan-artifacts/plan-1013 整删（摘要已折叠本文件）；worktree 经 wt-guard clean 后移除、分支删除；retention 登记刷新。
