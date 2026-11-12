@@ -122,6 +122,43 @@ fn page_codec_v4_carries_value_arguments() {
     }
 }
 
+/// V-01（PLAN-963 T-04）：同名模板/同名实参在两个包里**不串**——logical
+/// 含包与模块身份，键互异；宿主按 revision 单集合安装（跨包旧候选按 late
+/// 拒，不会静默混装）。
+#[test]
+fn same_name_templates_in_two_packages_stay_distinct() {
+    let mut host = InstanceHost::new(MemoryInstanceSink::default());
+    let prog = parse(REP);
+    let a = host
+        .prepare_set(&prog, "pkg-a", "choice.at", &caps())
+        .expect("prepare a");
+    let b = host
+        .prepare_set(&prog, "pkg-b", "choice.at", &caps())
+        .expect("prepare b");
+    assert_eq!(a.instances.len(), 2);
+    assert_eq!(b.instances.len(), 2);
+    for x in &a.instances {
+        for y in &b.instances {
+            assert_ne!(x.key, y.key, "package identity is part of the key");
+            assert_ne!(x.logical, y.logical, "package identity is part of logical");
+        }
+    }
+    host.commit(a, &prog, "pkg-a", "choice.at", &caps(), None)
+        .expect("commit a");
+    let late = host.commit(b, &prog, "pkg-b", "choice.at", &caps(), None);
+    assert!(
+        matches!(
+            late,
+            Err(ace_source_query::InstanceCommitError::LateResult { .. })
+        ),
+        "single set per revision: cross-package stale candidate must be late-rejected"
+    );
+    let installed = host.current().expect("installed");
+    assert_eq!(installed.instances.len(), 2, "no silent cross-package mixing");
+    assert_eq!(host.productions(), 2);
+}
+
+
 /// V-03：同键单飞——两个调用点/两次请求同一实例，productions=1；
 /// 异键隔离——另一实例独立计数。commit 原子安装整个集合。
 #[test]
