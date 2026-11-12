@@ -72,7 +72,13 @@ applicability, no photon-endpoint claim).
   backup → N reads A data and continues → broken-source fault rejection
   with A byte-preserved → restore A + independent SQLite read-back) plus a
   bystander independent instance surviving the fault/switch passed 16/16
-  (PLAN-1015 receipts). The window plane remains reused from OS068 as
+  (PLAN-1015 receipts). **UI-leg note**: auto-ui `69104765` is identical
+  to the N frozen UI SHA — per the recovery contract's same-source rule the
+  UI leg is reused, not rebuilt, in the RQ combo; the drill executes the
+  `auto` service CLI and the auto-todo product, not the UI tool, so the
+  UI-leg identity does not enter the run path (the group tree's auto-ui is
+  the U-C `393ea17c` delivery pin used for the UI-pair side; disclosed for
+  traceability). The window plane remains reused from OS068 as
   above; the drill adds the package-group/data/bystander/recovery plane at
   the exact contract group.
   No new >60Hz, photon-endpoint, byte-level transfer, replay-p95, or

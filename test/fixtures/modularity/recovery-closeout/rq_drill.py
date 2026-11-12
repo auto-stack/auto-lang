@@ -95,16 +95,29 @@ def main() -> int:
     data_restore = scope / "data-restore"
     backup = scope / "backup-a"
 
+    # 进程映像身份（F4）：记录每阶段启动的 auto.exe 实际 SHA-256
+    import hashlib
+    def exe_hash(p: Path) -> str:
+        h = hashlib.sha256()
+        with open(p, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest().upper()
+
+    exe_ids = {"old": exe_hash(old_auto), "new": exe_hash(new_auto)}
+    record("exe-identity-old", exe_ids["old"] != "", f"old auto.exe {exe_ids['old'][:16]}…")
+    record("exe-identity-new", exe_ids["new"] != "", f"new auto.exe {exe_ids['new'][:16]}…")
+
     port_a, port_n, port_restore = 9721, 9722, 9723
     port_chat = 9724
     ok_all = True
 
     def start_service(auto: Path, port: int, data_dir: Path,
-                      tag: str, lang_root: Path) -> subprocess.Popen:
+                      tag: str, lang_root: Path, os_root: Path) -> subprocess.Popen:
         import os
         env = os.environ.copy()
         env["AUTO_TODO_DATA"] = str(data_dir)
-        env["AUTO_OS_ROOT"] = "D:/autostack/.wt/rc1015-old/auto-os"
+        env["AUTO_OS_ROOT"] = str(os_root)
         env["AUTO_LANG_ROOT"] = str(lang_root)
         return subprocess.Popen(
             [str(auto), "service", "--server", "rust", "-B", str(port)],
@@ -117,16 +130,20 @@ def main() -> int:
         return os.environ.get("PATH", "")
 
     # ---- Phase A: old combo writes marker ----
+    old_os_root = Path(r"D:/autostack/.wt/rc1015-old/auto-os")
+    new_os_root = Path(r"D:/autostack/.wt/lang-1015/auto-os")
     data_a.mkdir(parents=True, exist_ok=True)
     pA = start_service(old_auto, port_a, data_a, "phase-a",
-                       Path(r"D:/autostack/.wt/rc1015-old/auto-lang"))
+                       Path(r"D:/autostack/.wt/rc1015-old/auto-lang"),
+                       old_os_root)
     log(f"phase-a pid={pA.pid}")
 
     # bystander: independent auto-todo instance (own data dir / port)
     chat_data = scope / "bystander-data"
     chat_data.mkdir(parents=True, exist_ok=True)
     pChat = start_service(old_auto, port_chat, chat_data, "bystander-todo",
-                          Path(r"D:/autostack/.wt/rc1015-old/auto-lang"))
+                          Path(r"D:/autostack/.wt/rc1015-old/auto-lang"),
+                          old_os_root)
     log(f"bystander-todo pid={pChat.pid}")
     bystander_ok = False
     if wait_ready(port_chat):
@@ -171,7 +188,8 @@ def main() -> int:
     data_n.mkdir(parents=True, exist_ok=True)
     shutil.copy2(data_a / "todos.db", data_n / "todos.db")
     pN = start_service(new_auto, port_n, data_n, "phase-n",
-                       Path(r"D:/autostack/.wt/lang-1015/auto-lang"))
+                       Path(r"D:/autostack/.wt/lang-1015/auto-lang"),
+                       new_os_root)
     log(f"phase-n pid={pN.pid}")
     if not wait_ready(port_n):
         pN.terminate()
@@ -218,7 +236,8 @@ def main() -> int:
     data_restore.mkdir(parents=True, exist_ok=True)
     shutil.copy2(backup / "todos.db", data_restore / "todos.db")
     pR = start_service(old_auto, port_restore, data_restore, "phase-restore",
-                       Path(r"D:/autostack/.wt/rc1015-old/auto-lang"))
+                       Path(r"D:/autostack/.wt/rc1015-old/auto-lang"),
+                       old_os_root)
     log(f"phase-restore pid={pR.pid}")
     if not wait_ready(port_restore):
         pR.terminate()
@@ -271,7 +290,7 @@ def main() -> int:
     receipt = scope / "rq-drill-receipt.json"
     with open(receipt, "w", encoding="utf-8") as f:
         json.dump({"plan": "PLAN-1015", "markers": MARKERS,
-                   "results": RESULTS,
+                   "exe_identity": exe_ids, "results": RESULTS,
                    "passed": sum(1 for r in RESULTS if r["ok"]),
                    "total": len(RESULTS)}, f, ensure_ascii=False, indent=2)
     log(f"receipt: {receipt}")

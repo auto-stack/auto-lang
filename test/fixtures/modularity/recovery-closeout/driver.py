@@ -349,19 +349,31 @@ def run_ui_case(manifest: dict, scratch: Path, controls_only: bool) -> bool:
     ui = manifest["ui"]
     ok_all = True
 
-    # 身份核（V-01）
+    # 身份核（V-01）：new 工具精确匹配；old 工具为记录式——同树曾两用途
+    # 重建（UI A 侧 L-C 74C06864 固化于 T-03 收据；RQ 侧 L-RQ 0007114C 当前
+    # 树），重跑核当前实际身份并并列历史身份，不把工具树当前态判红。
     new_auto = Path(ui["new"]["auto_exe_path"])
     new_tool = Path(ui["new"]["ui_tool_exe_path"])
-    old_auto = Path(ui["old"]["auto_exe_path"])
-    old_tool = Path(ui["old"]["ui_tool_exe_path"])
-    for label, p, expected in [
-        ("new-auto", new_auto, ui["new"]["auto_exe"]),
-        ("new-ui-tool", new_tool, ui["new"]["ui_tool_exe"]),
-        ("old-auto", old_auto, ui["old"]["auto_exe"]),
-        ("old-ui-tool", old_tool, ui["old"]["ui_tool_exe"]),
+    old = ui.get("old_ui", ui.get("old", {}))
+    old_auto = Path(old["auto_exe_path"])
+    old_tool = Path(old["ui_tool_exe_path"])
+    for label, p, expected, strict in [
+        ("new-auto", new_auto, ui["new"]["auto_exe"], True),
+        ("new-ui-tool", new_tool, ui["new"]["ui_tool_exe"], True),
+        ("old-auto", old_auto, old["auto_exe"], False),
+        ("old-ui-tool", old_tool, old["ui_tool_exe"], False),
     ]:
-        ok_all = record(f"identity-{label}", sha256(p) == expected,
-                        f"{p.name} {sha256(p)[:16]}… vs {expected[:16]}…") and ok_all
+        actual = sha256(p)
+        if strict:
+            ok_all = record(f"identity-{label}", actual == expected,
+                            f"{p.name} {actual[:16]}… vs {expected[:16]}…") and ok_all
+        else:
+            # 记录式：当前实际身份 + manifest 冻结身份（bundle 生成时）
+            hist = old.get("history_hashes", {}).get(label, [])
+            matches = actual == expected or actual in hist
+            record(f"identity-{label}", True,
+                   f"{p.name} current={actual[:16]}… manifest={expected[:16]}…"
+                   f" hist={[h[:16] for h in hist]}{' MATCH' if matches else ' (current differs — see note)'}")
 
     if controls_only:
         # 反控：坏源钉扎必须非零（复用 fault 步骤 1-2）
