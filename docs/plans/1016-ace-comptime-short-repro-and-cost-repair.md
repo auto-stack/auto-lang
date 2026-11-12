@@ -5,10 +5,10 @@ feature_name: ACE comptime short reproduction and measured cost repair
 author: [Codex]
 created_at: 2026-11-12
 updated_at: 2026-11-12
-plan_revision: 2
-current_step: 4
-total_steps: 5
-supersedes_spec_components: [docs/specs/auto-cte/frozen-cache.md]
+plan_revision: 5
+current_step: 6
+total_steps: 7
+supersedes_spec_components: ["docs/specs/auto-a2x/project.md", "docs/specs/auto-abi/project.md", "docs/specs/auto-ac/project.md", "docs/specs/auto-av/project.md", "docs/specs/auto-cte/frozen-cache.md", "docs/specs/auto-cte/project.md", "docs/specs/auto-hir/project.md", "docs/specs/auto-mir/project.md", "docs/specs/auto-semantics/project.md", "docs/specs/auto-syntax/project.md", "docs/specs/auto-test-case/ace-test-policy.md", "docs/specs/auto-test-case/governance-and-inventory.md", "docs/specs/auto-test-case/module-selection.md", "docs/specs/auto-test-case/native-warm-edit-admission.md", "docs/specs/auto-test-case/project.md"]
 new_spec_components: []
 touched_goals: []
 ---
@@ -19,7 +19,7 @@ touched_goals: []
 定位1201秒测试，用短实验区分编译/AV执行/发布/GC成本，依据证据优化，不循环重跑1800秒全组。
 
 ## 1. 目标
-保持闭包执行、冻结准入、预算与GC合同；新增几十秒内可复现同一成本路径的探针，对主耗时进行可测优化。原32MiB/512修订/两轮64MiB水位、正式样本与门限全部保留。
+保持闭包执行、冻结准入、预算与GC合同；新增几十秒内可复现同一成本路径的探针，对主耗时进行可测优化。原32MiB/512修订/两轮64MiB水位、正式样本与门限全部保留；按用户新裁定，正式性能/压力从普通模块组隔离至显式ace-perf，常规Plan收尾不再隐式执行。
 
 ## 2. 架构方案
 先测量后选择等价优化；不换执行lane，不删除预算/残留检查，不用缩小用例替代正式验收。排除不必要的共享存储协议重构。
@@ -28,10 +28,10 @@ touched_goals: []
 Rust，existing comptime conformance harness/Obs，ManagedStore，Cargo/nextest，Python有界进程运行。
 
 ## 4. 需求分析与背景调查
-用户2026-11-12已明确授权定位、建计划、独立worktree、短复现、分阶段测量后优化，无需再次请求相同范围确认。
+用户2026-11-12已明确授权定位、建计划、独立worktree、短复现、分阶段测量后优化；最新明确裁定将此类正式性能/压力隔离到显式套件，日常不跑。r3继承并扩展授权到ACE固定组选择/重放导航/规范与治理测试；不因其他用例耗时长就擅自改用途。
 来源：AGENTS.md；docs/specs/overview.md、auto-cte/{project,frozen-cache}.md、auto-test-case/ace-test-policy.md；comptime/tests/cases/cte_resources_tests.rs、comptime/src/{driver,av_driver}.rs、artifacts/src/store/mod.rs、auto-cache/src/storage.rs。
 直接证据：D:/autostack/plan-artifacts/plan-1013/t07/capture-log.json failed[group=ace-comptime].stderr：resources_real_watermark_gc_physical_delete_and_converge SLOW>900s，PASS 1201.821s (52/149)，随后父进程deadline exit124 wall_ms=1800009.09。因此1201秒为通过的GC单测时间，1800秒为整个组的父截止，非该单测nextest超时。
-观察：GC测试两次填充64MiB，每批50 calls/300 helpers；Closure lane每call重新前端编译；put_inner每次扫描CAS临时残留并space遍历。主导占比待T-02测量，不预判。
+观察：GC测试两次填充64MiB，每批50 calls/300 helpers；Closure lane每call重新前端编译；put_inner每次扫描CAS临时残留并space遍历。T-02已分阶段实测，结果见r2 work记录；r5已将正式压力从普通组隔离。
 实现树：D:/autostack/.wt/lang-1016/auto-lang，branch codex/plan-1016-dev；主树仅计划簿记，当前其他文档WIP不纳入提交。
 材料：D:/autostack/plan-artifacts/plan-1016/，owner PLAN-1016，in-flight，探针日志/临时存储/测量与构建缓存；merge时按规清除。
 
@@ -41,7 +41,11 @@ Rust，existing comptime conformance harness/Obs，ManagedStore，Cargo/nextest�
 ### 规范增量
 | delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | modify | docs/specs/auto-cte/frozen-cache.md | 补充成本探针入口及实测等价优化；原资源/性能门不变 | 可快速定位回归 | AC-02..04 |
+| SD-01 | modify | docs/specs/auto-cte/frozen-cache.md | 补充成本探针入口及实测等价优化；原样本/断言不变，日常与显式正式轴分离 | 可快速定位回归 | AC-02..04 |
+| SD-02 | modify | docs/specs/auto-test-case/{module-selection,ace-test-policy,governance-and-inventory,native-warm-edit-admission}.md 及各ACE项目卡 | 模块日常排除performance，正式统一显式ace-perf；旧双入口规则被取代，owner与原样本断言保留 | 防止每Plan长测 | AC-06 |
+
+### r5 执行选择合同
+`scripts/test-groups.toml`中experimental/ace常规nextest组统一排除performance语义命名空间（表达式覆盖根级`performance::`与嵌套`::performance::`）；`ace-perf`作为唯一显式正式套件完整保留原配置/package/样本/门限/串行条件，all=false。不新建重复PERF/SLOW目录或第二份逐例清单。原13项慢例policy保留owner/native/原条件，只把replay导航改至正式组；正式ace-perf使用test-threads=1独立profile，测试间串行（内部必要并发见证保持），独立父截止14400秒，普通组/原单测截止不变；`--test-name`不能绕过常规组排除。核查发现语义32MiB流式页、1MiB负载准备/30样本阶段与报告/硬门共5项漏标，整体迁入原performance子模块且函数体不变；CTE30修订基准归入performance并保8fn/3修订的日常正确性兄弟例。普通模块组完成不等于正式性能已通过；架构采集若消费原正式义务须显式收集，旧组green不能充原事实。原快速freeze/lease/sentinel/预算反例继续在常规组。
 
 ## 6. 测试设计
 | case | invariant | entry/oracle | boundary |
@@ -49,7 +53,7 @@ Rust，existing comptime conformance harness/Obs，ManagedStore，Cargo/nextest�
 | V-01 | 同一真实编译/落盘路径 | 原gc_deck的固定短批次，逐值闭式结果、ct_execute/cold miss、实际存储增长、分阶段ms | 不冒充64MiB正式验收 |
 | V-02 | 优化语义等价 | 优化前后同输入，值/manifest/engine不变，warm hit无执行；相关既有负控 | 不改变lane/预算 |
 | V-03 | 改善主导成本 | 同形状基线与修后阶段记录；次数/结构计数辅助，不以严格毫秒断言抗噪 | 冷编译单列 |
-最终完整职责并集为 cargo t auto-cache ace-artifacts ace-comptime（auto-cache目录计量、artifacts真实space/残留扫描、comptime及source-cte被动观测）；不按依赖机械扩大。work只运行当前finding的定向反例和检查。冻结完整组/必要原压力验收为后续review/merge所有，不因调试反复跑。用户明确禁止反复1800秒全组；原规模验证仅在短探针已证优化后安排一次，未执行明确pending。
+最终完整职责并集为 cargo t auto-cache ace-artifacts ace-comptime（auto-cache目录计量、artifacts真实space/残留扫描、comptime及source-cte被动观测）；不按依赖机械扩大。work只运行当前finding的定向反例和检查。冻结完整组/必要原压力验收为后续review/merge所有，不因调试反复跑。用户明确禁止反复1800秒全组；r3裁定：本计划普通收尾不要求执行原规模正式门；该门作为独立显式套件，相关性能修改专项/里程碑手工选择，未执行明确pending。真实选择验证用nextest list核定常规与正式互斥且并集守恒，不执行长测。
 实现与内部检查本agent顺序执行；独立复审按仓流程另行进行，不创建未授权子agent。
 
 ## 7. 验收标准
@@ -57,20 +61,24 @@ Rust，existing comptime conformance harness/Obs，ManagedStore，Cargo/nextest�
 - [x] AC-02 (work) 保留同一路径的短探针，运行<=60秒，测编译/执行/发布/GC阶段，逐值oracle。
 - [x] AC-03 (work) 有优化前后同输入证据，主导成本下降且原语义、预算和资源合同不变；相关定向检查通过。
 - [x] AC-04 (work) 短探针永久可运行，原重测规模/断言不减；交付提交与未跑门清晰记录。
-- [ ] AC-05 (review/merge) 独立审查及冻结职责并集、原规模证据，规范沉淀后清理；未执行不充PASS。
+- [ ] AC-05 (review/merge) 独立审查及冻结常规职责并集，规范沉淀后清理；正式PERF独立记录，不作为每Plan常规门。
+- [x] AC-07 (work) 核查整个ACE测试源码中的正式规模/持续压力负载并隔离，保留小规模生命周期/边界正确性；ace-perf独立profile测试线程为1，短PERF控制实跑证实串行配置。
+- [x] AC-06 (work) ACE常规组不选performance；显式ace-perf保完整原义务，原13重放有效，真实nextest发现互斥/守恒且普通正确性保留；治理反控通过。
 
 ## 8. 执行步骤
 - [x] T-01 (work, AC-01) 追溯capture-log，记录测试/父截止身份。
 - [x] T-02 (work, AC-02, depends T-01) 独立树新增短探针与阶段观测，采基线，冻结瓶颈选择。
 - [x] T-03 (work, AC-03, depends T-02) 依据测量等价优化及必要正负控，不扩大合同。
 - [x] T-04 (work, AC-04, depends T-03) 定向验证、格式/告警检查、提交实现，规范增量及交接。
-- [ ] T-05 (review/merge, AC-05, depends T-04) 独立复审、原规模/冻结并集，沉淀收尾。
+- [ ] T-05 (review/merge, AC-05, depends T-04/T-06/T-07) 独立复审、冻结常规并集，正式门独立，沉淀收尾。
+- [x] T-07 (work, AC-07, depends T-06) 全ACE压力用途审查/漏标归类，配置独立串行profile并跑短控制，不启动长PERF。
+- [x] T-06 (work, AC-06, depends T-04) 明确隔离ACE性能/规模压力选择；更新13慢例重放与反控；真实list核对并运行常规ace-comptime（不执行正式长测）。
 
 ## 9. 复审记录
 2026-11-12 stage:new outcome:pass next:work；用户范围授权覆盖本计划；T-01完成。没有运行长测，没有修改其他会话实现。
 
 ## 10. 待澄清事项
-无范围决策阻塞。完整压力/职责并集及独立复审由T-05接手，仍未运行，不充PASS。源编译重复工作仍存在、枚举仍随存量线性增长，未承诺原全组已在1800秒内。
+无范围决策阻塞。独立复审/常规职责并集由T-05接手。r3正式压力套件不作日常合入门；旧r2要求单次原规模验收被用户最新测试分层裁定取代。r4追加明确命令名ace-perf（不保旧alias）以及syntax/semantics/comptime三组专项核查。源编译重复工作仍存在、枚举仍随存量线性增长，未承诺原全组已在1800秒内。
 
 
 ### Work r2：实测与等价优化交接（2026-11-12）
@@ -106,3 +114,53 @@ Rust，existing comptime conformance harness/Obs，ManagedStore，Cargo/nextest�
 - D:\autostack\plan-artifacts\plan-1016\run_probe.py: SHA256 86174659f9e46f1889ff435fc6c5f89625aa18060a02e65126f5b9bab3367179
 - 取材基线 docs/specs/auto-cte/frozen-cache.md: SHA256 ed4144c8a45a2bbf175740308bd6a796a0cf4b7af82e765e5de88f690d7fb8e0
 - 取材基线 docs/specs/auto-test-case/ace-test-policy.md: SHA256 9b977b100b544f59ea3c2d73e45957647d42c98dacccf6dae2952148dadbf762
+
+
+### New r3 handoff (2026-11-12)
+用户明确授权隔离正式性能/压力。stage:new outcome:pass next:work T-06；旧r2长测收尾要求历史保留但不再是当前合同；仍使用原worktree/branch，9821b62a0代码不重做。选择义务变化使旧选择证据失效，原算法/存储定向证据按身份复用。
+
+
+### New r4 handoff (2026-11-12)
+用户明确命名ace-perf、要求核查syntax/semantics/comptime。范围授权已具备；新命令替代旧ace-performance，无兼容alias。保留21个常规ACE组（20个新补排除、ace-workspace原有排除）；正式套件参数/条件不变，13历史义务owner不变，仅更新formal/replay导航。5项语义测试仅移动模块（去空白函数体逐项比对恒等），CTE基准仍115fn/30次/256KiB/P90原门。新增日常小修订8fn/3次，0.33s PASS。
+真实nextest list（不执行用例）核实：syntax全132=常规131+PERF1；semantics全243=常规235+PERF8；comptime全150=常规135+PERF15（为非ignored有效发现计数；driver另列ignored诊断，执行计数另记）。三组集合互斥且并集守恒；1201s用例、64MiB语法流式、4096深链/512churn/32MiB语义流式均在PERF。未执行正式suite，不用新常规收据冒旧架构事实。
+
+
+### New r5 handoff (2026-11-12)
+用户明确要求所有ACE压力隔离至ace-perf，套件从并发求快改为串行求稳。新增T-07/AC-07，scope扩为全ACE源码用途核查（非全仓按耗时批量关测）。测试间串行；专门验证并发安全/进程树语义的测试内部并发保持。原ignored/平台条件保留，显式ignored重放入口改为ace-perf。普通三组已实际131/235/135全部PASS，执行11.684/5.807/12.219秒，准备13.781/2.020/17.115秒，未执行长PERF。
+
+
+### Work r5 completion / sequential review handoff (2026-11-12)
+
+最终交付：`edc73bdf7`（在`9821b62a0`之上），同一D:/autostack/.wt/lang-1016/auto-lang / codex/plan-1016-dev，工作树clean。work-owned T-01..04/T-06/T-07 与 AC-01..04/06/07已完成；T-05/AC-05独立复审、冻结常规并集及merge仍pending；未合入master、未归档、未清理在途材料。
+
+- **真实隔离**：21个ACE常规nextest组均排除performance（其中20个新补，ace-workspace已有排除）。显式组改名为ace-perf，不留旧CLI别名；原13项历史慢例的owner/native/条件保留，replay转显式新入口。ace-source-cte显式补入正式suite的包清单。
+- **选择边界补漏**：使用`test(/(^|::)performance::/)`同时匹配根级/嵌套。真实发现证实原根级`performance::typed_v10_four_state_20_samples_p90_gate`此前被旧中间双冒号regex漏掉；修后PERF匹配、普通native匹配拒绝。没有把根级漏项静默留下。
+- **源码审查**：扫描737个已跟踪ACE Rust文件、3157个#[test]函数。63项用途候选逐项登记：26项迁入PERF，37项保留普通API/准入/类型宽度/生命周期正负控；另沿同一重夹具补迁6项，共r5新增32项（r4另有6项）。暂存审查表不参与运行选择，不新建第二逐例目录。
+- **r5迁移范围**：A2X load256两项管理内存与3072深链见证；artifacts六项每布局128MiB夹具；ABI 512churn、6×30桥接、source P90与25轮资源churn；AV P90/512soak/128-512恢复churn/4096块资源/30样本可见性/64与96MiB瞬态采样；native 30次链接修订、72单元正式负载、集合冻结负载两项、115函数资源与原ignored 512链接churn；语义OS64轮压力与8MiB LRU；源CT原115函数见证、CTE30参数修订与40调用worker内存门。
+- **不削弱原义务**：32项函数体逐项核对，去格式/尾逗号后语句一致且所有字符串字节完全一致（防止移动模块缩进改变内嵌源码）。ignore/平台条件保留；唯一原ignored native512项通过ace-perf的具名--ignored重放，不充PASS。r4语义五项同样只移模块；CTE旧115fn/256KiB/30/P90原门保留，日常8fn/3次共享正确性逻辑。
+- **日常控制保留**：布局新增单页损坏/范围拒绝（0.015s），LRU新增4KiB淘汰/暂存RAII与超额拒绝（0.018s）；原无限额/活引用/门判定的有限反例保留，不因名字含pressure/budget而批量关掉。source-query64KiB单编辑拒绝/恢复、AV8次交换弱引用释放、snapshot两页一页预算反例、纯构造报告门反控、单类型图/栈与整数宽度正确性明确保留。原持续压力/OS采样原规模不减。
+- **串行机制**：独立`[profile.ace-perf] test-threads=1`；g.args同时为list/run带该profile。正常模块并发不变。保原单测900秒警告/1800秒终止；正式全campaign父截止14400秒、普通1800秒，避免串行总和误撞日常30分钟；配置截止纳入调用合并身份且非法值拒绝。不添加自动重试。
+- **串行短PERF控制真跑**：malformed-inputs、sampling-unavailable、wire-mutation三项依次PASS 0.201/2.896/33.820s，合36.918s，nextest明确使用ace-perf profile。未运行长正式campaign，不能据此声称全PERF绿。
+- **实际注册真核对**：8个真实改动包以正式profile和原features/条件进行nextest list；当前87项=86 active+1原ignored。全部32迁移项真实存在且在PERF，原ignored状态相符，根级typed20样本门也在其中。其余既有正式包由配置源所有权守卫覆盖，未伪称全宿主全套已构建或执行。
+- **最终普通组真执行**（迁移32项之后）：ace-artifacts **43/43 PASS，5.422s**（准备2.658s，ignored诊断1）；ace-semantics **234/234 PASS，4.134s**（准备2.117s）；ace-comptime **132/132 PASS，13.032s**（准备2.491s，ignored诊断1）。逐selected核对无performance，原真实终态/child validation均PASS。r4未改的ace-syntax 131/131 PASS、11.684s（准备13.781s）保持有效。最终root regex修正只改变native typed根级门，对这些三包选择无变化。
+- **治理验证**：80个固定组/策略/负控全部PASS（4.415s）；含旧名拒绝、20模块排除、explicit suite/all/daily分离、正式重放拒绝回普通组、目标包覆盖、命名导航不能绕过排除、profile线程1、独立截止/不同截止不合并/非法截止拒绝。修改Rust文件rustfmt --check与diff --check通过。
+- **首次红/中断保留**：r3先加分离反例，在原配置真实失败20个模块组后修正；曾有联合父采集在语义阶段无终态中断，不认证，原生命令235绿后单组包装235绿（5.807s）。r5首次广泛正式list冷准备带入宿主大依赖，主动按确认的父子PID停止，未执行任何测试体；随后改用真实改动8包，首次编译指出resource_recovery移模块缺pointer_bytes导入，补`super::pointer_bytes`后真实list绿，未靠反复长测定位。当前正常组门已如上全绿。
+- **告警与剩余门**：编译原有av-core/av/source-query unused/unreachable及native测试close()未消费Result、ABI旧current未使用告警具名保留，非新增算法行为（相关原测试体恒等）。全正式PERF与未涉及包的冻结最终常规并集由T-05具名安排/复用，不把条件排除或未测改PASS。正式压力不再附加到每Plan默认收尾。
+- **产物与输出**：本轮probe/审查/注册清单/原始输出全部scope；正常构建在本专属worktree的experimental/ace/target，广泛准备产生的中间物也仅此处，未来随worktree删除。TMP/TEMP显式scope/test-tmp。r2旧系统TEMP回溯仍属merge路径对账项，不声称已清理。未创建仓内链接，未写legacy specs.json，未触其他会话主树代码。
+
+stage:work | PLAN-1016 r5 | outcome:pass | code:edc73bdf7 | clean tree | AC-01..04/06/07 PASS | no work blocker | next:independent review T-05。最终规范增量均在实现树中等待复审沉淀。
+
+### r5 evidence pins (local scratch, delete at merge after summary folding)
+
+- D:\autostack\plan-artifacts\plan-1016\r5-moves.json SHA256 78a5d765fa69e62f8f45b6f60e41dbbd0502ad9f8fc8551f22819929e77fafe3
+- D:\autostack\plan-artifacts\plan-1016\r5-audit-decisions.json SHA256 0abb7f846be7eafc8306d01cfb2911fdc8de3404213a6079a0b1eaf319cb6a1b
+- D:\autostack\plan-artifacts\plan-1016\r5-governance-root-boundary.log SHA256 6052184856bc062b87bdb5884d3f3c7ad7d9c50404bea326f1ec07fc31557783
+- D:\autostack\plan-artifacts\plan-1016\r5-serial-controls.log SHA256 0cc5a3fc22a045c7d1edb4337500c3c0d822769329fb78b72544710ab742b7b8
+- D:\autostack\plan-artifacts\plan-1016\r5-small-controls.log SHA256 de9351b1a43b5b75dbf11c79dbbb540834de9961de219a32933994f0fea59370
+- D:\autostack\plan-artifacts\plan-1016\r5-affected-discovery-root-boundary.log SHA256 3a57b1158ff129e143aa79e06ed026431766ba3377d13f7e1e464301166d650d
+- D:\autostack\plan-artifacts\plan-1016\r5-affected-formal-list.json SHA256 be6c0c44a24fab3055aba8c84eb47438f0b6c6c5a87de638f7c24f3c38826a48
+- D:\autostack\plan-artifacts\plan-1016\r5-root-regular-list.json SHA256 6ee23104195e5d80b9e91c15b3dbf35d7e29a94314eba0b0fbbc04bd35ab7b6a
+- D:\autostack\plan-artifacts\plan-1016\r5-normal-final\results.json SHA256 680e0ca95d8be192c99abadfd948581fd4b1b04dbc515f4bd9af87568bed0fd6
+- D:\autostack\plan-artifacts\plan-1016\r5-normal-final\0\result.json SHA256 6eb6ca8066cd653adf35d3867f333b1fa6327a8672c4f1cf2c54e5dae1a50c35
+- D:\autostack\plan-artifacts\plan-1016\r5-normal-final\1\result.json SHA256 c230a90cae353697ffabce51947ffcdd61f7860965fe3406436b68bedecfbcbd
+- D:\autostack\plan-artifacts\plan-1016\r5-normal-final\2\result.json SHA256 f2a9a7c452935ff2575c291f09fc57f45e5ab1af1d4b2ebea36f691cee93da95
