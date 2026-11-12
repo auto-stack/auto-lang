@@ -4932,14 +4932,17 @@ class ReviewCredentialControls(unittest.TestCase):
                                                         binding, composition, commits)
 
     def test_v08_old_plan1005_credential_or_wrong_revision_or_coverage_refused(self):
-        # F-1013-01 (plan 5.3): a legacy PLAN-1005 credential, a wrong
-        # plan_revision, or a partial/foreign coverage set can never claim
-        # this fix's fresh review — even with correct frozen_commit/candidate.
+        # F-1013-01/F-1025-02: a legacy PLAN-1005 or PLAN-1013 credential, a
+        # wrong plan_revision, or a partial/foreign coverage set can never
+        # claim this closure's fresh review — even with correct
+        # frozen_commit/candidate. (PLAN-1025 coverage is AC-01..08/V-01..10;
+        # the 1013-era AC-01..10 shape is now the refused foreign set.)
         for mutate in (
             lambda c: c.__setitem__('plan', 'PLAN-1005'),
+            lambda c: c.__setitem__('plan', 'PLAN-1013'),
             lambda c: c.__setitem__('plan_revision', 2),
             lambda c: c['coverage'].__setitem__('acceptance_criteria',
-                                                [f'AC-{i:02}' for i in range(1, 9)]),
+                                                [f'AC-{i:02}' for i in range(1, 11)]),
             lambda c: c['coverage'].__setitem__('verifications',
                                                 [f'V-{i:02}' for i in range(1, 14)]),
             lambda c: c['audited'].__setitem__('registered_keys', 1005),
@@ -4958,6 +4961,143 @@ class ReviewCredentialControls(unittest.TestCase):
         ev, binding, composition, commits = self.sample()
         credential = json.loads((ev / 'credential.json').read_text(encoding='utf-8'))
         credential['row_rules_sha256'] = '0' * 64
+        self._put(ev, 'credential.json', credential)
+        binding['credential']['sha256'] = self._digest(ev, 'credential.json')
+        with self.assertRaises(m.AdmissionError):
+            self.review.admit_review_credential(m.EvidenceScope(ROOT), m.EvidenceScope(ev),
+                                                binding, composition, commits)
+
+
+class MainlineIdentityMaterializationControls(ReviewCredentialControls):
+    """PLAN-1025 (F-1025-01/02, V-01/V-02/V-07): mainline content identity is
+    checkout-invariant. Every path the admission chain pins carries an
+    explicit materialization rule (-text byte identity or eol=lf controlled
+    text) so core.autocrlf=input and =true materialize identical bytes; the
+    Git object equals the audited worktree bytes; a CRLF-materialized pin of
+    LF content is stale on every LF checkout (the exact 1013 failure shape)
+    while the same reader stays byte-strict in both directions; and the
+    credential's registry binding dies with any post-candidate registry
+    drift (no H-pass rides a moved mainline)."""
+
+    # ---- closure enumeration ------------------------------------------------
+    @staticmethod
+    def _pinned_closure():
+        paths = set()
+        for ref in expanded_registry.CONTRACTS.values():
+            paths.add(ref['path'])
+        paths.add(first_slice.REGISTRY)
+        paths.add('scripts/test-groups.toml')
+        paths.add('scripts/test-governance/case-control-oracles.json')
+        for module_name in ('ct-child-contract.json', 'ct-meta-contract.json',
+                            'ct-restore-contract.json', 'ct-source-mechanisms-contract.json',
+                            'sq-fact-contract.json', 'original-budget-contracts.json'):
+            doc = json.loads((ROOT / 'crates/auto-lang/test/cases/ace-m1-expanded' / module_name)
+                             .read_text(encoding='utf-8'))
+            paths.update(doc.get('source_pins', {}))
+        arch = json.loads((ROOT / arch_obligations.CONTRACT).read_text(encoding='utf-8'))
+        for entry in arch['entries'].values():
+            source = entry.get('source_file') or entry.get('suite_file')
+            if source:
+                paths.add(source)
+        return sorted(p for p in paths if (ROOT / p).is_file())
+
+    def test_v01_every_pinned_path_carries_an_explicit_materialization_rule(self):
+        closure = self._pinned_closure()
+        out = subprocess.run(['git', '-C', str(ROOT), 'check-attr', 'text', 'eol',
+                              '--stdin', '-z'], input='\0'.join(closure),
+                             capture_output=True, text=True, check=True).stdout
+        fields = out.split('\0')
+        # -z --stdin emits one (path, name, value) triple per attribute
+        attrs = {}
+        for i in range(0, len(fields) - 3, 3):
+            attrs.setdefault(fields[i], {})[fields[i + 1]] = fields[i + 2]
+        text_attr = {p: a.get('text', 'unspecified') for p, a in attrs.items()}
+        eol_attr = {p: a.get('eol', 'unspecified') for p, a in attrs.items()}
+        self.assertTrue(closure and len(text_attr) == len(closure) == len(eol_attr))
+        unruled = [p for p in closure
+                   if text_attr[p] == 'unspecified' and eol_attr[p] == 'unspecified']
+        self.assertEqual(unruled, [],
+                         'pinned paths without an explicit -text/eol rule would '
+                         'materialize differently under core.autocrlf=true')
+        # the deliberate CRLF fixtures stay byte identities (TSV-pinned, so
+        # they sit outside the contract-level closure enumerated above)
+        fixture = 'crates/auto-lang/test/cases/ace-m1-expanded/scalar-src/sc-crlf.at'
+        single = subprocess.run(['git', '-C', str(ROOT), 'check-attr', 'text',
+                                 '--', fixture], capture_output=True, text=True,
+                                check=True).stdout
+        self.assertIn(': text: unset', single)
+        self.assertIn(b'\r\n', (ROOT / fixture).read_bytes())
+
+    def test_v01_git_blob_bytes_equal_worktree_bytes_for_the_closure(self):
+        closure = self._pinned_closure()
+        # HEAD:<path> is a valid rev spec per line, so one batch call covers
+        # the whole closure without argument-length or stdin-pathspec limits.
+        batch = subprocess.run(['git', '-C', str(ROOT), 'cat-file', '--batch'],
+                               input=('\n'.join('HEAD:' + p for p in closure) + '\n').encode(),
+                               capture_output=True, check=True).stdout
+        pos = 0
+        for path in closure:
+            nl = batch.index(b'\n', pos)
+            _oid, kind, size = batch[pos:nl].decode().split()
+            self.assertEqual(kind, 'blob', path)
+            blob = batch[nl + 1:nl + 1 + int(size)]
+            pos = nl + 1 + int(size) + 1
+            self.assertEqual(hashlib.sha256(blob).hexdigest(),
+                             hashlib.sha256((ROOT / path).read_bytes()).hexdigest(),
+                             f'worktree bytes differ from the Git object: {path}')
+
+    def test_v01_crlf_pin_of_lf_content_is_stale_on_every_lf_checkout(self):
+        # F-1025-01's durable shape: the same contract content pinned from a
+        # CRLF-materialized tree is refused wherever the bytes are LF, and the
+        # reader never normalizes — the pin is byte-strict in both directions.
+        with tempfile.TemporaryDirectory(prefix='mainline-crlf-pin-') as tmp:
+            home = Path(tmp)
+            raw = (ROOT / budget_contracts.CONTRACT).read_bytes()
+            self.assertNotIn(b'\r', raw)
+            crlf = raw.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+            (home / 'lf.json').write_bytes(raw)
+            (home / 'crlf.json').write_bytes(crlf)
+            scope = m.EvidenceScope(home)
+            lf_pin, crlf_pin = (hashlib.sha256(b).hexdigest() for b in (raw, crlf))
+            scope.sha256('lf.json', lf_pin)
+            scope.sha256('crlf.json', crlf_pin)
+            for name, wrong in (('lf.json', crlf_pin), ('crlf.json', lf_pin)):
+                with self.assertRaises(m.AdmissionError):
+                    scope.sha256(name, wrong)
+
+    def test_v02_deleted_or_mutated_pinned_original_is_refused(self):
+        # one TSV-pinned original: deleting the file refuses the path read;
+        # flipping a single body byte (content change, still well-formed
+        # text) refuses the identity while the untouched neighbor admits.
+        with tempfile.TemporaryDirectory(prefix='mainline-fixture-') as tmp:
+            home = Path(tmp)
+            rows = obligation_catalog.read_tsv(m.EvidenceScope(ROOT),
+                                               obligation_catalog.Q4_CATALOG,
+                                               obligation_catalog.Q4_FIELDS)
+            row = next(r for r in rows if r['case'] == 'sc-crlf')
+            source = row['source_file']
+            (home / 'fixture').write_bytes((ROOT / source).read_bytes())
+            scope = m.EvidenceScope(home)
+            scope.sha256('fixture', row['source_sha256'])
+            raw = (ROOT / source).read_bytes()
+            (home / 'fixture').write_bytes(raw.replace(b'\n', b'\r\n', 1))
+            with self.assertRaises(m.AdmissionError):
+                scope.sha256('fixture', row['source_sha256'])
+            (home / 'fixture').unlink()
+            with self.assertRaises(m.AdmissionError):
+                scope.path('fixture')
+
+    def test_v07_registry_drift_retires_the_credential(self):
+        # F-1025-02: the credential binds the exact current registry bytes;
+        # a post-candidate registry change (the 1013 C-cascade shape) makes
+        # the once-valid credential inadmissible — the H pass cannot ride a
+        # moved mainline, and only a fresh review closes the row again.
+        ev, binding, composition, commits = self.sample()
+        drifted = (ROOT / first_slice.REGISTRY).read_bytes() + b'\n'
+        credential = json.loads((ev / 'credential.json').read_text(encoding='utf-8'))
+        self.assertNotEqual(credential['registry_sha256'],
+                            hashlib.sha256(drifted).hexdigest())
+        credential['registry_sha256'] = hashlib.sha256(drifted).hexdigest()
         self._put(ev, 'credential.json', credential)
         binding['credential']['sha256'] = self._digest(ev, 'credential.json')
         with self.assertRaises(m.AdmissionError):

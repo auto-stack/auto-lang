@@ -150,7 +150,7 @@ REFERENCE = 'crates/auto-lang/test/cases/ace-m1-expanded/query-reference-contrac
 REFERENCE_SHA = '469274867db24637eaa1b6b8a1eb086ec0514b59fdb06d0335ed9b5e9c90ba6b'
 REFERENCE_FIELDS = 'family case profile caps source_file source_sha256 oracle_kind oracle_value marks rust_reference rust_reference_sha256 c_reference c_reference_sha256 rust_runs rust_release_runs rust_release_flags c_runs execution'.split()
 RELEASE_SOURCE = 'experimental/ace/crates/a2x-worker/tests/cases/choose_instances_935.rs'
-RELEASE_SOURCE_SHA = '9b9d28847d96f87ccf82eb81f6b4d396a7c9f2182670bbc539fd9d648f37b77b'
+RELEASE_SOURCE_SHA = '2375d27350cb8df638049b1964c7a038231296d1fdf1e627ea4c952c40b8a209'
 
 
 def reference_contracts(inputs):

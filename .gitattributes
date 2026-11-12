@@ -24,3 +24,74 @@ crates/auto-lang/test/cases/ace-m1-expanded/text-reference/*.c -text
 crates/auto-lang/test/cases/ace-m1-expanded/text-reference/*.rs -text
 crates/auto-lang/test/cases/ace-m1-expanded/cte-reference/*.c -text
 crates/auto-lang/test/cases/ace-m1-expanded/cte-reference/*.rs -text
+
+# PLAN-1025 (F-1025-01): the whole frozen test-case corpus binds byte
+# identities in every materialization (core.autocrlf=input or true). No EOL
+# conversion in either direction; intentional CRLF fixtures keep their bytes.
+crates/auto-lang/test/cases/** -text
+
+# PLAN-1025: admission-chain controlled text is LF in the Git objects and in
+# every checkout; the strict readers hash exactly these bytes. The root-level
+# contracts/tables/registry of the expanded suite (no nested .json/.tsv
+# exists below it), the governance oracle table, the fixed-group config, the
+# frozen scenario-oracle spec, and every pinned compiled evidence parent.
+crates/auto-lang/test/cases/ace-m1-expanded/*.json text eol=lf
+crates/auto-lang/test/cases/ace-m1-expanded/*.tsv text eol=lf
+scripts/test-governance/case-control-oracles.json text eol=lf
+scripts/test-groups.toml text eol=lf
+docs/specs/auto-test-case/ace-m1-scenario-oracles.md text eol=lf
+crates/auto-lang-core/src/test_cases/ac_av.rs text eol=lf
+crates/auto-lang-core/src/test_cases/ac_av/contract_inventory.rs text eol=lf
+crates/auto-lang-core/src/test_cases/ac_mn.rs text eol=lf
+crates/auto-lang-core/src/test_cases/abi.rs text eol=lf
+crates/auto-lang-core/src/test_cases/inventory.rs text eol=lf
+crates/auto-lang-core/src/test_cases/inventory_probe.rs text eol=lf
+crates/auto-lang/src/bin/auto-case.rs text eol=lf
+experimental/ace/crates/syntax-core/tests/cases/*.rs text eol=lf
+experimental/ace/crates/source-query/src/tests.rs text eol=lf
+experimental/ace/crates/source-query/tests/*.rs text eol=lf
+experimental/ace/crates/source-cte/src/tests.rs text eol=lf
+experimental/ace/crates/source-cte/tests/*.rs text eol=lf
+experimental/ace/crates/a2x-worker/tests/cases/*.rs text eol=lf
+experimental/ace/crates/abi/tests/cases/*.rs text eol=lf
+experimental/ace/crates/av/tests/cases/*.rs text eol=lf
+experimental/ace/crates/artifacts/tests/cases/*.rs text eol=lf
+# the six ct/sq/budget contracts pin the ACE workspace producer sources
+experimental/ace/crates/*/src/**/*.rs text eol=lf
+crates/auto-cache/src/storage.rs text eol=lf
+crates/auto-test-case/src/contract.rs text eol=lf
+crates/auto-lang-core/src/test_cases/*.rs text eol=lf
+scripts/test-governance/*.py text eol=lf
+scripts/fixed-tests.py text eol=lf
+# pinned run/config documents of the producer window
+.config/nextest.toml text eol=lf
+.config/nextest-full.toml text eol=lf
+.cargo/config.toml text eol=lf
+docs/specs/auto-abi/windows-x64-v01.md text eol=lf
+docs/specs/auto-cte/frozen-cache.md text eol=lf
+docs/specs/auto-cte/scalar-query-profile.md text eol=lf
+docs/specs/auto-test-case/a2c-hir-collections-certification.md text eol=lf
+# the ct/sq contracts pin a 588-entry producer closure spanning the dependency
+# crates and the ACE workspace (sources, manifests, schemas, test modules);
+# extension-scoped so fixture types (.at/.ad/.bin/.json, fixtures/**) keep the
+# byte-identity rules above.
+crates/auto-atom/**/*.rs text eol=lf
+crates/auto-atom/Cargo.toml text eol=lf
+crates/auto-cache/**/*.rs text eol=lf
+crates/auto-cache/Cargo.toml text eol=lf
+crates/auto-tool-execution/**/*.rs text eol=lf
+crates/auto-tool-execution/Cargo.toml text eol=lf
+crates/auto-val/**/*.rs text eol=lf
+crates/auto-val/Cargo.toml text eol=lf
+crates/shim-metadata/**/*.rs text eol=lf
+crates/shim-metadata/Cargo.toml text eol=lf
+experimental/ace/Cargo.toml text eol=lf
+experimental/ace/Cargo.lock text eol=lf
+experimental/ace/crates/*/Cargo.toml text eol=lf
+experimental/ace/crates/*/README.md text eol=lf
+experimental/ace/crates/*/.gitignore text eol=lf
+experimental/ace/crates/*/schema/*.atom text eol=lf
+experimental/ace/crates/*/tests/*.rs text eol=lf
+experimental/ace/crates/*/tests/**/*.rs text eol=lf
+experimental/ace/crates/syntax-grammar/src_lib_placeholder.txt text eol=lf
+
