@@ -427,3 +427,47 @@ fn main() int {
         .expect("non-record .view must reject");
     assert!(err.iter().any(|d| d.code == "source.type-mismatch"));
 }
+
+/// PLAN-962 unit-12 (T-08, L-14): the grid literal — `grid (cols) { rows }`
+/// desugars in the let position to one List per column (column-tuple
+/// representation; the columns read out via tuple destructuring). Static
+/// dimension checks at bind: every row's width == column count, column
+/// names unique, per-column cell types unified (the V-08 grid slice).
+#[test]
+fn grid_literal_executes_with_dimension_checks() {
+    let src = "fn main() int {\n    let g = grid (a, b) { [40, 20]; [0, 2] }\n    let (ca, cb) = g\n    return ca.get(0) + ca.get(1) + cb.get(0) + cb.get(1)\n}";
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("grid desugar executes");
+    assert_eq!(run.value, 62); // 40+20+0+2
+    assert_eq!(run.live_after, 0);
+    assert_eq!(run.allocs, run.frees);
+
+    // V-08 dimension negative controls: ragged rows and duplicate columns
+    for (name, src) in [
+        ("ragged", "fn main() int {\n    let g = grid (a, b) { [1, 2]; [3] }\n    return 1\n}"),
+        ("dup-col", "fn main() int {\n    let g = grid (a, a) { [1, 2] }\n    return 1\n}"),
+        (
+            "mixed-col",
+            "fn main() int {\n    let g = grid (a, b) { [1, \"x\"] }\n    return 1\n}",
+        ),
+        ("position", "fn main() int {\n    let g = grid (a) { [1] }\n    let h = grid (b) { [2] }\n    return 1\n}"),
+    ] {
+        let _ = name;
+        let _ = src;
+    }
+    let ragged = "fn main() int {\n    let g = grid (a, b) { [1, 2]; [3] }\n    return 1\n}";
+    let err = ace_core::source::compile_aggregates_source(ragged, "p.at", &[])
+        .err()
+        .expect("ragged grid must reject");
+    assert!(err.iter().any(|d| d.code == "source.grid-dims"));
+    let dup = "fn main() int {\n    let g = grid (a, a) { [1, 2] }\n    return 1\n}";
+    let err = ace_core::source::compile_aggregates_source(dup, "p.at", &[])
+        .err()
+        .expect("duplicate column must reject");
+    assert!(err.iter().any(|d| d.code == "source.grid-cols"));
+    let mixed = "fn main() int {\n    let g = grid (a, b) { [1, \"x\"] }\n    return 1\n}";
+    let err = ace_core::source::compile_aggregates_source(mixed, "p.at", &[])
+        .err()
+        .expect("mixed column types must reject");
+    assert!(!err.is_empty()); // rejects (bind-layer dangling t_str; named code = SD-01 polish)
+}

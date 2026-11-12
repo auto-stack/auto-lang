@@ -318,6 +318,14 @@ pub enum ExprKind {
     IntLit(i32),
     /// PLAN-962 (L-15): a tuple literal `(e1, e2, ...)` (>= 2 elements).
     TupleLit(Vec<Expr>),
+    /// PLAN-962 (T-08, L-14): a grid literal `grid (c1, c2) { [r..], ... }`
+    /// — column names plus rows; the resolver desugars at the statement
+    /// level into one List per column (column-tuple representation) with
+    /// static row-length dimension checks.
+    GridLit {
+        cols: Vec<Ident>,
+        rows: Vec<Vec<Expr>>,
+    },
     /// PLAN-962 (L-16): a non-empty array/List literal `[e1, e2, ...]`.
     /// The resolver desugars at the statement level (`List<T>.new()` +
     /// pushes); other positions reject with a named diagnostic.

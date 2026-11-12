@@ -116,6 +116,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         r-move { literal: "move" }
         // PLAN-962：范围面（聚合）`..` / `..=`——仅迭代位（for-range）。
         dotdoteq(profiles: [aggregates]) { literal: "..=" }
+        // PLAN-962（T-08，L-14）：grid 上下文关键字（聚合面——非聚合面 `grid`
+        // 仍是普通标识符）。
+        grid-kw(profiles: [aggregates]) { literal: "grid" }
         dotdot(profiles: [aggregates]) { literal: ".." }
         r-nil { literal: "nil" }
         r-null { literal: "null" }
@@ -808,6 +811,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // HashExpr 原子先于其余原子形状（`#` 不与其余形状共享前缀）。
             alt(profiles: [scalar-ct]) { hash-expr() {} }
             // PLAN-962（L-16）：数组/List 字面量（聚合面）。
+            alt(profiles: [aggregates]) { grid-atom() {} }
             alt(profiles: [aggregates]) { array-lit() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
             alt { condition-ctor() {} }
@@ -838,6 +842,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // HashExpr 原子先于其余原子形状（`#` 不与其余形状共享前缀）。
             alt(profiles: [scalar-ct]) { hash-expr() {} }
             // PLAN-962（L-16）：数组/List 字面量 `[e, ...]`（聚合面）。
+            alt(profiles: [aggregates]) { grid-atom() {} }
             alt(profiles: [aggregates]) { array-lit() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
             alt(profiles: [collections, closures, record, text-record, packages-modules, aggregates]) { ctor-expr() {} }
@@ -872,6 +877,20 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             gt() {}
             dot(same-line: true)
             ident(field: "member")
+        }
+        // PLAN-962（T-08，L-14）：grid 原子形 `grid (列名, ...) { [行]; ... }`
+        // ——列名表 + 等长行；let 位脱糖为每列一个 List 的值（列元组表示）。
+        grid-atom(profiles: [aggregates]) {
+            grid-kw(same-line: true) {}
+            args(field: "cols")
+            lbrace(same-line: true) {}
+            list-nl { grid-row() {} }
+            rbrace() {}
+        }
+        grid-row(profiles: [aggregates]) {
+            lbracket(same-line: true) {}
+            array-elems(field: "cells")
+            rbracket() {}
         }
         // PLAN-962（L-16）：`[e1, e2, ...]`——非空元素表（空字面量无元素类型，
         // 由 resolve 具名拒）。语句位脱糖 List<T>.new()+push 链（见 resolve）。

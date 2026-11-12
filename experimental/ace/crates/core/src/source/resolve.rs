@@ -4612,6 +4612,8 @@ impl<'a, 's> FnResolver<'a, 's> {
             // exhaustiveness.
             ExprKind::ArrayLit(_) => VT::I32,
             ExprKind::Index { .. } => VT::I32,
+            // PLAN-962 (T-08): a grid never reaches closure inference.
+            ExprKind::GridLit { .. } => VT::I32,
             // PLAN-962: tuples resolve through the statement walker.
             ExprKind::TupleLit(_) => VT::I32,
             ExprKind::IntLit(_) => VT::I32,
@@ -6140,6 +6142,199 @@ impl<'a, 's> FnResolver<'a, 's> {
                             continue;
                         }
                     }
+                    // PLAN-962 (T-08, L-14): a grid literal in the
+                    // let/var initializer position desugars to ONE LIST
+                    // PER COLUMN (column-tuple representation): static
+                    // dimension checks at bind — every row's cell count
+                    // must equal the column count, column names unique.
+                    if let ExprKind::GridLit { cols, rows } = &value.kind {
+                        if cols.is_empty() {
+                            self.bind_err(
+                                "source.grid-cols",
+                                "a grid needs at least one column".to_string(),
+                                value.span,
+                            );
+                            continue;
+                        }
+                        let mut seen_cols = std::collections::BTreeSet::new();
+                        for c in cols {
+                            if !seen_cols.insert(c.name.clone()) {
+                                self.bind_err(
+                                    "source.grid-cols",
+                                    format!("grid column `{}` is declared more than once", c.name),
+                                    c.span,
+                                );
+                            }
+                        }
+                        for (ri, row) in rows.iter().enumerate() {
+                            if row.len() != cols.len() {
+                                self.bind_err(
+                                    "source.grid-dims",
+                                    format!(
+                                        "grid row {} has {} cell(s) for {} column(s)",
+                                        ri + 1,
+                                        row.len(),
+                                        cols.len()
+                                    ),
+                                    value.span,
+                                );
+                            }
+                        }
+                        // resolve cells; unify per column
+                        let ncols = cols.len();
+                        let mut cell_exprs: Vec<Vec<ResolvedExpr>> = Vec::with_capacity(rows.len());
+                        for row in rows {
+                            let mut cells = Vec::with_capacity(ncols);
+                            for cell in row {
+                                cells.push(self.expr_iterative(cell));
+                            }
+                            cell_exprs.push(cells);
+                        }
+                        let mut col_vts = Vec::with_capacity(ncols);
+                        for j in 0..ncols {
+                            let first = cell_exprs
+                                .iter()
+                                .filter(|r| r.len() == ncols)
+                                .find_map(|r| r.get(j).map(|e| e.vt));
+                            let Some(elem_vt) = first else {
+                                self.bind_err(
+                                    "source.grid-dims",
+                                    "a grid needs at least one row of the declared width"
+                                        .to_string(),
+                                    value.span,
+                                );
+                                continue;
+                            };
+                            for (ri, r) in cell_exprs.iter().enumerate() {
+                                if let Some(c) = r.get(j) {
+                                    if c.vt != elem_vt {
+                                        self.bind_err(
+                                            "source.type-mismatch",
+                                            format!(
+                                                "grid column `{}` cells must share one type; first is `{}`, row {} has `{}`",
+                                                cols[j].name,
+                                                elem_vt.as_str(),
+                                                ri + 1,
+                                                c.vt.as_str()
+                                            ),
+                                            cols[j].span,
+                                        );
+                                    }
+                                }
+                            }
+                            col_vts.push(elem_vt);
+                        }
+                        // per-column list temps + pushes
+                        let mut col_temps = Vec::with_capacity(ncols);
+                        let mut col_list_vts = Vec::with_capacity(ncols);
+                        for (j, &elem_vt) in col_vts.iter().enumerate() {
+                            let li = self.coll.intern_list(elem_vt);
+                            col_list_vts.push(VT::List(li));
+                            let tref = self.fresh_local(
+                                &format!("__gridc_{}", cols[j].name),
+                                VT::List(li),
+                                false,
+                            );
+                            self.declared_names.insert(format!("__gridc_{}", cols[j].name));
+                            col_temps.push(tref);
+                            stack
+                                .last_mut()
+                                .expect("resolve frame")
+                                .stmts
+                                .push(RStmt::Let {
+                                    local: tref,
+                                    value: ResolvedExpr {
+                                        span: value.span,
+                                        vt: VT::List(li),
+                                        kind: RExprKind::ListNew { list: li },
+                                    },
+                                    span: *span,
+                                });
+                            for (ri, r) in cell_exprs.iter_mut().enumerate() {
+                                if r.len() == ncols {
+                                    let mut cell = std::mem::replace(
+                                        &mut r[j],
+                                        ResolvedExpr {
+                                            span: *span,
+                                            vt: VT::I32,
+                                            kind: RExprKind::IntLit(0),
+                                        },
+                                    );
+                                    let cell_span = cell.span;
+                                    self.check_push_value(&elem_vt, &mut cell, cell_span);
+                                    let push = ResolvedExpr {
+                                        span: cell_span,
+                                        vt: VT::Unit,
+                                        kind: RExprKind::ListPush {
+                                            list: Box::new(ResolvedExpr {
+                                                span: cell_span,
+                                                vt: VT::List(li),
+                                                kind: RExprKind::ReadLocal(tref),
+                                            }),
+                                            value: Box::new(cell),
+                                        },
+                                    };
+                                    let _ = ri;
+                                    stack
+                                        .last_mut()
+                                        .expect("resolve frame")
+                                        .stmts
+                                        .push(RStmt::ExprStmt {
+                                            value: push,
+                                            span: cell_span,
+                                        });
+                                }
+                            }
+                        }
+                        // the bound local: tuple of column lists
+                        let ti = self.coll.intern_tuple(col_list_vts.clone());
+                        if self.scopes.last().unwrap().names.contains_key(&name.name) {
+                            self.bind_err(
+                                "source.duplicate",
+                                format!(
+                                    "local `{}` is declared more than once in this block",
+                                    name.name
+                                ),
+                                name.span.join(value.span),
+                            );
+                        }
+                        self.declared_names.insert(name.name.clone());
+                        let lref = self.fresh_local(&name.name, VT::Tuple(ti), *mutable);
+                        self.scopes
+                            .last_mut()
+                            .unwrap()
+                            .names
+                            .insert(name.name.clone(), lref);
+                        let elems: Vec<ResolvedExpr> = col_temps
+                            .iter()
+                            .zip(col_list_vts.iter())
+                            .map(|(&t, &vt)| ResolvedExpr {
+                                span: *span,
+                                vt,
+                                kind: RExprKind::Move {
+                                    inner: Box::new(ResolvedExpr {
+                                        span: *span,
+                                        vt,
+                                        kind: RExprKind::ReadLocal(t),
+                                    }),
+                                },
+                            })
+                            .collect();
+                        stack
+                            .last_mut()
+                            .expect("resolve frame")
+                            .stmts
+                            .push(RStmt::Let {
+                                local: lref,
+                                value: ResolvedExpr {
+                                    span: value.span,
+                                    vt: VT::Tuple(ti),
+                                    kind: RExprKind::TupleLit { elems },
+                                },
+                                span: *span,
+                            });
+                        continue;
+                    }
                     if let ExprKind::ArrayLit(elems_ast) = &value.kind {
                         if elems_ast.is_empty() {
                             self.bind_err(
@@ -7104,6 +7299,21 @@ impl<'a, 's> FnResolver<'a, 's> {
                     span,
                     vt: VT::Tuple(self.coll.intern_tuple(vts)),
                     kind: RExprKind::TupleLit { elems },
+                }
+            }
+            // PLAN-962 (T-08, L-14): a grid literal desugars ONLY in
+            // the let/var initializer position (the Let arm intercepts).
+            ExprKind::GridLit { .. } => {
+                self.bind_err(
+                    "source.grid-position",
+                    "a grid literal is only a let/var initializer in this profile (bind it to a name, then read the columns)"
+                        .to_string(),
+                    e.span,
+                );
+                ResolvedExpr {
+                    span: e.span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(0),
                 }
             }
             // PLAN-962 (L-16): array literals desugar ONLY in the

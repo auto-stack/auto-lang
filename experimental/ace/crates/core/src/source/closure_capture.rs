@@ -83,6 +83,14 @@ pub(crate) fn analyze_capture_uses(
                     visit_expr(e, outer_locals, scopes, uses, by_name);
                 }
             }
+            // PLAN-962 (T-08): a grid captures through its cells.
+            ExprKind::GridLit { rows, .. } => {
+                for row in rows {
+                    for e in row {
+                        visit_expr(e, outer_locals, scopes, uses, by_name);
+                    }
+                }
+            }
             // PLAN-962: a tuple literal captures through its elements.
             ExprKind::TupleLit(elems) => {
                 for e in elems {
@@ -335,6 +343,14 @@ pub(crate) fn scan_shared_capture_cells(
             ExprKind::ArrayLit(elems) => {
                 for e in elems {
                     visit_expr(e, scopes, shared);
+                }
+            }
+            // PLAN-962 (T-08): a grid captures through its cells.
+            ExprKind::GridLit { rows, .. } => {
+                for row in rows {
+                    for e in row {
+                        visit_expr(e, scopes, shared);
+                    }
                 }
             }
             // PLAN-962: a tuple literal captures through its elements.

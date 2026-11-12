@@ -514,6 +514,8 @@ fn walk_expr<'a>(
         ExprKind::MutArg { .. } => unsupported("mut-arg", e.span)?,
         // PLAN-962 (T-08): the view marker.
         ExprKind::ViewArg { .. } => unsupported("view-arg", e.span)?,
+        // PLAN-962 (T-08): the grid literal.
+        ExprKind::GridLit { .. } => unsupported("grid-literal", e.span)?,
         ExprKind::GenericType { .. } => unsupported("generic-type-receiver", e.span)?,
         ExprKind::Closure { .. } => unsupported("closure-expression", e.span)?,
     }

@@ -88,6 +88,17 @@ fn shift_expr(e: &mut Expr, delta: i64) {
                 shift_expr(e, delta);
             }
         }
+        // PLAN-962 (T-08)：grid 单元 span 平移。
+        ExprKind::GridLit { cols, rows } => {
+            for c in cols {
+                shift_ident(c, delta);
+            }
+            for row in rows {
+                for e in row {
+                    shift_expr(e, delta);
+                }
+            }
+        }
         // PLAN-962：tuple 字面量元素 span 平移。
         ExprKind::TupleLit(elems) => {
             for e in elems {

@@ -568,6 +568,10 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         core_ast::ExprKind::ArrayLit(_) => InputExprKind::Unsupported {
             what: "array-literal",
         },
+        // PLAN-962 (T-08): the grid literal.
+        core_ast::ExprKind::GridLit { .. } => InputExprKind::Unsupported {
+            what: "grid-literal",
+        },
         core_ast::ExprKind::TupleLit(_) => InputExprKind::Unsupported {
             what: "tuple-literal",
         },

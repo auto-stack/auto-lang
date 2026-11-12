@@ -1186,6 +1186,17 @@ fn shift_expr(e: &mut Expr, offset: usize) {
                 shift_expr(e, offset);
             }
         }
+        // PLAN-962 (T-08)：grid 单元平移。
+        ExprKind::GridLit { cols, rows } => {
+            for c in cols {
+                sh(&mut c.span, offset);
+            }
+            for row in rows {
+                for e in row {
+                    shift_expr(e, offset);
+                }
+            }
+        }
         ExprKind::Index { base, index } => {
             shift_expr(base, offset);
             shift_expr(index, offset);
@@ -1645,6 +1656,15 @@ impl<'a> Walker<'a> {
             ExprKind::TupleLit(elems) => {
                 for e in elems {
                     self.walk_expr_inner(e, locals)?;
+                }
+                Ok(())
+            }
+            // PLAN-962 (T-08)：grid 单元递归走读。
+            ExprKind::GridLit { rows, .. } => {
+                for row in rows {
+                    for e in row {
+                        self.walk_expr_inner(e, locals)?;
+                    }
                 }
                 Ok(())
             }

@@ -4644,6 +4644,82 @@ impl<'a> Engine<'a> {
                 }));
                 return;
             }
+            // PLAN-962（T-08，L-14）：grid 原子 `grid (cols) { [行]; ... }`。
+            if ck == self.cx.k.grid_atom.unwrap_or(u32::MAX) {
+                // 列名：args 子节点的 ident 叶（按位序）。
+                let mut cols: Vec<Ident> = Vec::new();
+                if let Some(cols_n) = self.cx.field_child(c, "cols") {
+                    // args→arg→ident 嵌套：子树内全部 ident 叶（位序）。
+                    let mut stack = vec![cols_n];
+                    let mut id_leaves: Vec<u32> = Vec::new();
+                    while let Some(n) = stack.pop() {
+                        for ch in self.cx.children(n) {
+                            if self.cx.tree.kind(ch) == self.cx.k.tok_ident {
+                                id_leaves.push(ch);
+                            } else {
+                                stack.push(ch);
+                            }
+                        }
+                    }
+                    id_leaves.sort_by_key(|&x| self.cx.tree.abs_range(x).0);
+                    for l in id_leaves {
+                        cols.push(ident_of(&mut self.cx, l));
+                    }
+                }
+                // 行：grid-row 子节点，每行 array-elems 的表达式孩子。
+                let row_kind = self.cx.k.grid_row.unwrap_or(u32::MAX);
+                let mut row_nodes: Vec<u32> = self
+                    .cx
+                    .children(c)
+                    .into_iter()
+                    .filter(|&x| self.cx.tree.kind(x) == row_kind)
+                    .collect();
+                row_nodes.sort_by_key(|&x| self.cx.tree.abs_range(x).0);
+                let mut rows: Vec<Vec<Expr>> = Vec::new();
+                let mut span = self.cx.span_of(c);
+                for rn in row_nodes {
+                    let mut cells: Vec<Expr> = Vec::new();
+                    if let Some(cells_n) = self.cx.field_child(rn, "cells") {
+                        let mut expr_nodes: Vec<u32> = Vec::new();
+                        let mut head_id = None;
+                        if let Some(head) = self.cx.field_child(cells_n, "head") {
+                            expr_nodes.push(head);
+                            head_id = Some(head);
+                        }
+                        for t in self.cx.children(cells_n) {
+                            if Some(t) == head_id {
+                                continue;
+                            }
+                            let tk = self.cx.tree.kind(t);
+                            if tk == self.cx.k.tok_comma || tk == self.cx.k.tok_lbracket || tk == self.cx.k.tok_rbracket {
+                                continue;
+                            }
+                            // tail expr children (field-less)
+                            for ec in self.cx.children(t) {
+                                let ek = self.cx.tree.kind(ec);
+                                if ek != self.cx.k.tok_comma
+                                    && ek != self.cx.k.tok_lbracket
+                                    && ek != self.cx.k.tok_rbracket
+                                {
+                                    expr_nodes.push(ec);
+                                }
+                            }
+                        }
+                        expr_nodes.sort_by_key(|&x| self.cx.tree.abs_range(x).0);
+                        for en in expr_nodes {
+                            let e = self.project_expr_sync(en);
+                            span = span.join(e.span);
+                            cells.push(e);
+                        }
+                    }
+                    rows.push(cells);
+                }
+                self.vals.push(Val::E(Expr {
+                    span,
+                    kind: ExprKind::GridLit { cols, rows },
+                }));
+                return;
+            }
             // PLAN-962（L-15）：tuple 字面量原子 `(e1, e2, ...)`（元素
             // 同步投影；≥2 元由语法保证）。
             if ck == self.cx.k.tuple_lit_rule.unwrap_or(u32::MAX) {
