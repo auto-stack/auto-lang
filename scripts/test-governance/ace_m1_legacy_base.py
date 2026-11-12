@@ -204,15 +204,22 @@ def admit(inputs,evidence,binding,workers,previous=None):
     inputs.sha256(CONTRACT,CONTRACT_SHA);frozen,_=inputs.read_json(CONTRACT)
     snapshots=[]
     for field,label in [('dependencies_before','before-execution'),('dependencies_after','after-execution')]:
-        d,_=evidence.read_json(binding[field]);exact_keys(d,('schema','snapshot','source_pins'),'BASE dependency snapshot')
+        # knife 3a: one-shot snapshot docs — release the decode estimate
+        raw=evidence.read_bytes(binding[field]);nodes=sum(raw.count(bytes([c])) for c in b'{}[],:')
+        d,_=evidence.decode_json(raw);exact_keys(d,('schema','snapshot','source_pins'),'BASE dependency snapshot')
         typed_equal(d['schema'],'ace.m1.legacy-base-dependencies/1','BASE dependency schema');typed_equal(d['snapshot'],label,'BASE dependency phase')
         exact_keys(d['source_pins'],DEPENDENCIES,'BASE dependency set')
         for name,digest in d['source_pins'].items():inputs.sha256(name,digest)
         snapshots.append(d['source_pins'])
+        evidence.budget.release_transient(len(raw)+1+7*len(raw)+256*nodes+4096)
     typed_equal(*snapshots,'stable BASE dependencies')
     for key,name in [('av',DEPENDENCIES[0]),('native',DEPENDENCIES[1])]:typed_equal(workers[key],snapshots[0][name],'original BASE worker')
     exact_keys(binding['tool_capture'],('path','sha256'),'BASE formal capture')
-    evidence.sha256(binding['tool_capture']['path'],binding['tool_capture']['sha256']);parent,_=evidence.read_json(binding['tool_capture']['path'])
+    evidence.sha256(binding['tool_capture']['path'],binding['tool_capture']['sha256'])
+    # knife 3a: the tool-capture parent is one-shot — release after the
+    # prepared-tool extraction (groups/executed/tools fields only).
+    raw=evidence.read_bytes(binding['tool_capture']['path']);nodes=sum(raw.count(bytes([c])) for c in b'{}[],:')
+    parent,_=evidence.decode_json(raw)
     typed_equal(parent.get('groups'),['case-ace-m1-base'],'BASE fixed group');typed_equal(parent.get('executed'),97,'original BASE full checks')
     prepared={}
     require(type(parent.get('tools')) is list,'BASE preparation metadata')
@@ -220,6 +227,7 @@ def admit(inputs,evidence,binding,workers,previous=None):
         if 'path' in tool and tool.get('tool') in ('av','mn','case-parent'):
             path=_repo_relative(inputs,tool['path']);require(path in DEPENDENCIES,'foreign BASE prepared path')
             typed_equal(tool['sha256'],snapshots[0][path],'BASE prepared binary');prepared[path]=tool['sha256']
+    evidence.budget.release_transient(len(raw)+1+7*len(raw)+256*nodes+4096)
     typed_equal(set(prepared),set(DEPENDENCIES),'all original BASE prepared tools')
     inv=_inventory_for_suite(inputs,evidence,binding['inventory'],SUITE,frozen)
     copy=CaseCopy(EvidenceScope(evidence.path(binding['copy']+'/artifact-copy.json').parent,inputs.budget))

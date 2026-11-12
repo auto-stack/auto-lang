@@ -3836,7 +3836,10 @@ class CtSourceMechanismTests(unittest.TestCase):
                    'binary-path':str(binary),'testcases':{self.ct.TEST:dict(kind='test',ignored=False,**{'filter-match':{'status':'matches'}})}}}}
         import tomllib
         group = next(g for g in tomllib.loads((repo/'scripts/test-groups.toml').read_text())['group'] if g['name']=='ace-comptime')
-        expression = '(((all())) and not test(=tests::aavm2_t3::test_aavm2_t3_tower_milestone)) and test('+self.ct.TEST+')'
+        # Mirror the reader's derivation from the CURRENT group expression
+        # (PLAN-1016 PERF separation changed it; never hardcode the shape).
+        expression = '((' + group['expression'] + ')) and not test(=tests::aavm2_t3::test_aavm2_t3_tower_milestone)'
+        expression = '(' + expression + ') and test(' + self.ct.TEST + ')'
         command = dict(argv=['cargo','nextest','run',*group['args'],'--ignore-default-filter','-E',expression,
                        '--target-dir',str(repo/'experimental/ace/target'),'--no-fail-fast','--no-tests','fail',
                        '--message-format','libtest-json-plus','--message-format-version','0.1'],
@@ -4325,7 +4328,10 @@ class ArchitectureEntryGateStrictControls(unittest.TestCase):
         import ace_m1_arch_entry_gates as entry_gates
         repo = cls.repo
         # A closed synthetic repository copy: only the tracked inputs the
-        # reader actually verifies, plus synthetic producer binaries.
+        # reader actually verifies, plus synthetic producer binaries. The repo
+        # is a REAL git repository so the F-1013-01 commit-authenticity gate
+        # (R-02) can distinguish a genuine frozen object from a well-formed
+        # 40-hex fiction (V-04/V-05).
         for rel in ('scripts/test-groups.toml',
                     'scripts/fixed-tests.py',
                     'scripts/test-governance/case-control-oracles.json',
@@ -4339,14 +4345,22 @@ class ArchitectureEntryGateStrictControls(unittest.TestCase):
         binary = repo / 'experimental/ace/target/debug/deps/conformance-0123456789abcdef.exe'
         cls._put(repo, binary.relative_to(repo), b'synthetic-av-test-binary-control')
         cls.native_binary = binary
+        subprocess.run(['git', '-C', str(repo), 'init', '-q'], check=True)
+        subprocess.run(['git', '-C', str(repo), 'add', '-A'], check=True)
+        subprocess.run(['git', '-C', str(repo), '-c', 'user.name=probe',
+                        '-c', 'user.email=probe@local',
+                        'commit', '-q', '-m', 'synthetic audit base'], check=True)
+        cls.synthetic_commit = subprocess.check_output(
+            ['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
 
     def _digest(self, root, rel):
         return hashlib.sha256((Path(root) / rel).read_bytes()).hexdigest()
 
     # ---- gate builders ----------------------------------------------------
-    def build_case_gate(self, *, commit='1' * 40, report_rows=None,
+    def build_case_gate(self, *, commit=None, report_rows=None,
                         executed=None, outcome='PASS', inventory_checks=None):
         """A complete, internally consistent Case gate for the resident entry."""
+        commit = self.synthetic_commit if commit is None else commit
         root = self.ev / 'gate-resident'
         if root.exists():
             shutil.rmtree(root)
@@ -4407,9 +4421,10 @@ class ArchitectureEntryGateStrictControls(unittest.TestCase):
         events = [t for fact in recipe['facts'] if fact['entry'] == 'av-resident' for t in fact['native_tests']]
         return [e for e in events if e.split('::')[-1] not in drop]
 
-    def build_native_gate(self, *, commit='1' * 40, events=None, failed=(), ignored=(),
+    def build_native_gate(self, *, commit=None, events=None, failed=(), ignored=(),
                           drop=(), result_override=None):
         """A complete, internally consistent native gate for the av-resident entry."""
+        commit = self.synthetic_commit if commit is None else commit
         import importlib.util
         import tomllib
         root = self.ev / 'gate-av-resident'
@@ -4493,14 +4508,176 @@ class ArchitectureEntryGateStrictControls(unittest.TestCase):
         self._put(root, 'source-pins-after.json', pins)
         return root
 
-    def admit(self, entries):
+    def admit(self, entries, frozen_anchors=()):
         inputs = m.EvidenceScope(self.repo)
         evidence = m.EvidenceScope(self.ev)
-        return self.entry_gates.admit_arch_entry_gates(inputs, evidence, {'entries': entries})
+        return self.entry_gates.admit_arch_entry_gates(
+            inputs, evidence, {'entries': entries}, frozen_anchors=frozen_anchors)
 
     def both_entries(self):
         return {'resident': {'root': 'gate-resident'},
                 'av-resident': {'root': 'gate-av-resident'}}
+
+    # ---- PLAN-1013 T-03 facts re-derivation helpers ------------------------
+    def build_facts_doc(self, gate_root, entry, kind, group):
+        """Project a gate's admitted result into the phased facts shape."""
+        gate = json.loads((gate_root / 'gate.json').read_text(encoding='utf-8'))
+        if kind == 'native':
+            root = self.ev / gate_root
+            kept = {}
+            for line in (root / 'run.stdout').read_bytes().decode('utf-8').splitlines():
+                if line.startswith('{'):
+                    row = json.loads(line)
+                    if row.get('type') == 'test' and row.get('event') == 'ok':
+                        kept[row['name']] = 'ok'
+        else:
+            report = json.loads((gate_root / 'report.json').read_text(encoding='utf-8'))
+            kept = {f"{row['case']}|{row['check']}": 'PASS'
+                    for row in report['results'] if row['status'] == 'PASS'}
+        return {'schema': 'ace.m1.arch-entry-facts/1', 'entry': entry, 'group': group,
+                'kind': kind, 'commit': gate['commit'], 'green': True,
+                'executed': len(kept), 'kept': kept,
+                'gate_originals_sha256': gate['originals']}
+
+    def put_facts(self, doc, name):
+        root = self.ev / name
+        root.parent.mkdir(parents=True, exist_ok=True)
+        root.write_bytes(json.dumps(doc, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+        return name, hashlib.sha256(root.read_bytes()).hexdigest()
+
+    def test_v04_fake_commit_with_complete_originals_refused(self):
+        # F-1013-01 R-02: a well-formed 40-hex commit that resolves to NO
+        # object in the audited repository is refused even when every
+        # original, receipt and window is complete and rehashed — the
+        # authenticity gate must be what trips, not a missing raw file.
+        root = self.build_case_gate(commit='f' * 40)
+        pins = {'commit': 'f' * 40, 'source_pins': json.loads(
+            (root / 'source-pins-before.json').read_text(encoding='utf-8'))['source_pins']}
+        for name in ('source-pins-before.json', 'source-pins-after.json'):
+            self._put(root, name, pins)
+        summary = json.loads((root / 'results.json').read_text(encoding='utf-8'))
+        summary['source_state'] = hashlib.sha256(b'f' * 40 + b'[]').hexdigest()
+        self._put(root, 'results.json', summary)
+        gate = json.loads((root / 'gate.json').read_text(encoding='utf-8'))
+        gate['originals']['results.json'] = self._digest(root, 'results.json')
+        self._put(root, 'gate.json', gate)
+        with self.assertRaisesRegex(m.AdmissionError, 'not a real commit object'):
+            self.admit({'resident': {'root': 'gate-resident'}})
+
+    def test_v05_real_but_inapplicable_commit_and_anchor_gap_refused(self):
+        # R-02: a real commit from the WRONG tree (another repository
+        # identity) fails the audited-repo object check; a real commit inside
+        # this repository but OUTSIDE the frozen anchor closure fails the
+        # anchor membership gate — neither can unlock rows.
+        self.build_case_gate()
+        # A second real commit in the audited synthetic repo: it exists as an
+        # object, but it is not the audited frozen producer identity.
+        (self.repo / 'second-marker').write_bytes(b'second producer state')
+        subprocess.run(['git', '-C', str(self.repo), 'add', '-A'], check=True)
+        subprocess.run(['git', '-C', str(self.repo), '-c', 'user.name=probe',
+                        '-c', 'user.email=probe@local', 'commit', '-q', '-m', 'second'], check=True)
+        second = subprocess.check_output(['git', '-C', str(self.repo), 'rev-parse', 'HEAD'],
+                                         text=True).strip()
+        root = self.ev / 'gate-resident'
+        pins = {'commit': second, 'source_pins': json.loads(
+            (root / 'source-pins-before.json').read_text(encoding='utf-8'))['source_pins']}
+        for name in ('source-pins-before.json', 'source-pins-after.json'):
+            self._put(root, name, pins)
+        summary = json.loads((root / 'results.json').read_text(encoding='utf-8'))
+        summary['source_state'] = hashlib.sha256(second.encode() + b'[]').hexdigest()
+        self._put(root, 'results.json', summary)
+        gate = json.loads((root / 'gate.json').read_text(encoding='utf-8'))
+        gate['commit'] = second
+        gate['originals']['results.json'] = self._digest(root, 'results.json')
+        self._put(root, 'gate.json', gate)
+        # Real object in the correct repo, but outside the frozen anchors.
+        with self.assertRaisesRegex(m.AdmissionError, 'outside the frozen anchor closure'):
+            self.admit({'resident': {'root': 'gate-resident'}},
+                       frozen_anchors=(self.synthetic_commit,))
+        # With the anchor closed to the actual producer commit the same gate
+        # admits (positive control for the same authentic material).
+        out = self.admit({'resident': {'root': 'gate-resident'}},
+                         frozen_anchors=(second,))
+        self.assertEqual(out['admitted_entries'], ['resident'])
+        self.assertEqual(out['gate_commits'], [second])
+
+    def test_v02_missing_each_required_original_refused(self):
+        # R-01: deleting ANY pinned original (run/discovery output, receipts,
+        # inventory/report, window) must refuse — a non-empty hash table never
+        # proves the file exists (F-1013-01). Each deletion is re-admitted
+        # against the same gate with the facts reference present.
+        self.build_case_gate()
+        self.build_native_gate()
+        for root_name, rel in (('gate-resident', 'results.json'),
+                               ('gate-resident', 'inventory.stdout'),
+                               ('gate-resident', 'inventory.command.json'),
+                               ('gate-resident', 'run.command.json'),
+                               ('gate-resident', 'report.json'),
+                               ('gate-resident', 'source-pins-before.json'),
+                               ('gate-resident', 'source-pins-after.json'),
+                               ('gate-av-resident', 'results.json'),
+                               ('gate-av-resident', 'discovery.stdout'),
+                               ('gate-av-resident', 'discovery.command.json'),
+                               ('gate-av-resident', 'run.command.json'),
+                               ('gate-av-resident', 'run.stdout')):
+            with self.subTest(root=root_name, original=rel):
+                gate_root = self.ev / root_name
+                missing = gate_root / rel
+                saved = missing.read_bytes()
+                missing.unlink()
+                try:
+                    with self.assertRaises(m.AdmissionError):
+                        self.admit(self.both_entries())
+                finally:
+                    missing.write_bytes(saved)
+
+    def test_v01_phased_facts_requires_root_and_rederives_originals(self):
+        # F-1013-01: a facts document WITHOUT the original root (old schema)
+        # is refused — no fallback to the self-reported branch.
+        self.build_case_gate()
+        self.build_native_gate()
+        facts = self.build_facts_doc(self.ev / 'gate-av-resident', 'av-resident', 'native', 'ace-av')
+        name, sha = self.put_facts(facts, 'av-resident.facts.json')
+        with self.assertRaises(m.AdmissionError):
+            self.admit({'av-resident': {'facts': {'path': name, 'sha256': sha}}})
+        # With the root present, the reader re-derives and compares.
+        out = self.admit({'av-resident': {'facts': {'path': name, 'sha256': sha},
+                                          'root': 'gate-av-resident'}})
+        self.assertEqual(out['admitted_entries'], ['av-resident'])
+
+    def test_v03_phased_facts_tampered_projection_rehashed_refused(self):
+        # R-01/R-03: flipping one kept row and rehashing every local hash must
+        # not change the verdict — the re-derived original decides.
+        self.build_case_gate()
+        self.build_native_gate()
+        facts = self.build_facts_doc(self.ev / 'gate-av-resident', 'av-resident', 'native', 'ace-av')
+        facts['kept'] = dict(facts['kept'])
+        key = sorted(facts['kept'])[0]
+        facts['kept'][key] = 'failed' if facts['kept'][key] == 'ok' else 'ok'
+        name, sha = self.put_facts(facts, 'av-resident.facts-tampered.json')
+        with self.assertRaisesRegex(m.AdmissionError, 'kept drift'):
+            self.admit({'av-resident': {'facts': {'path': name, 'sha256': sha},
+                                        'root': 'gate-av-resident'}})
+
+    def test_v04_phased_facts_fake_commit_refused(self):
+        # R-02: the facts projection may name a fake commit; the original root
+        # carries a REAL commit — the drift is caught at re-derivation.
+        self.build_case_gate()
+        self.build_native_gate()
+        facts = self.build_facts_doc(self.ev / 'gate-av-resident', 'av-resident', 'native', 'ace-av')
+        facts['commit'] = 'f' * 40
+        name, sha = self.put_facts(facts, 'av-resident.facts-fake-commit.json')
+        with self.assertRaisesRegex(m.AdmissionError, 'commit drift'):
+            self.admit({'av-resident': {'facts': {'path': name, 'sha256': sha},
+                                        'root': 'gate-av-resident'}})
+        # The facts document may also omit the originals identity entirely.
+        facts2 = dict(facts)
+        facts2['commit'] = self.synthetic_commit
+        facts2['gate_originals_sha256'] = {'missing': '0' * 64}
+        name2, sha2 = self.put_facts(facts2, 'av-resident.facts-bad-originals.json')
+        with self.assertRaises(m.AdmissionError):
+            self.admit({'av-resident': {'facts': {'path': name2, 'sha256': sha2},
+                                        'root': 'gate-av-resident'}})
 
     # ---- V-01: the frozen counterexample ----------------------------------
     def test_v01_green_boolean_with_zero_execution_is_refused(self):
@@ -4669,8 +4846,8 @@ class ReviewCredentialControls(unittest.TestCase):
                          'can_claim_expanded_m1': False,
                          'parent_bindings_sha256': composition['parent_bindings_sha256'],
                          'admission_sources': dict(composition['admission_sources'])}
-        base = {'schema': 'ace.m1.pre-signature-review-credential/1', 'plan': 'PLAN-1005',
-                'plan_revision': 1, 'frozen_commit': '1' * 40,
+        base = {'schema': 'ace.m1.pre-signature-review-credential/1', 'plan': self.review.PLAN,
+                'plan_revision': self.review.REVISION, 'frozen_commit': '1' * 40,
                 'candidate': {'bindings_sha256': composition['parent_bindings_sha256'],
                               'pre_signature_report_sha256': None},
                 'row_rules_sha256': RECIPES_SHA,
@@ -4680,9 +4857,9 @@ class ReviewCredentialControls(unittest.TestCase):
                             'excluded_row': self.review.REVIEW_ROW},
                 'reviewer': {'role': 'independent-final-review',
                              'context': 'synthetic-unit-control', 'method': 'counterexample replay'},
-                'coverage': {'acceptance_criteria': [f'AC-{i:02}' for i in range(1, 10)],
-                             'verifications': [f'V-{i:02}' for i in range(1, 14)],
-                             'spec_deltas': ['SD-01', 'SD-02', 'SD-03']},
+                'coverage': {'acceptance_criteria': self.review.AC_IDS,
+                             'verifications': self.review.V_IDS,
+                             'spec_deltas': self.review.SD_IDS},
                 'findings': [], 'verdict': 'pass'}
         self._put(ev, 'candidate.json', candidate)
         base['candidate']['pre_signature_report_sha256'] = self._digest(ev, 'candidate.json')
@@ -4744,6 +4921,29 @@ class ReviewCredentialControls(unittest.TestCase):
             lambda c: c['audited'].__setitem__('excluded_row', 'ARCH-07/one-pid-one-entry'),
         )
         for mutate in mutations:
+            with self.subTest(name=getattr(mutate, '__name__', 'mutation')):
+                ev, binding, composition, commits = self.sample()
+                credential = json.loads((ev / 'credential.json').read_text(encoding='utf-8'))
+                mutate(credential)
+                self._put(ev, 'credential.json', credential)
+                binding['credential']['sha256'] = self._digest(ev, 'credential.json')
+                with self.assertRaises(m.AdmissionError):
+                    self.review.admit_review_credential(m.EvidenceScope(ROOT), m.EvidenceScope(ev),
+                                                        binding, composition, commits)
+
+    def test_v08_old_plan1005_credential_or_wrong_revision_or_coverage_refused(self):
+        # F-1013-01 (plan 5.3): a legacy PLAN-1005 credential, a wrong
+        # plan_revision, or a partial/foreign coverage set can never claim
+        # this fix's fresh review — even with correct frozen_commit/candidate.
+        for mutate in (
+            lambda c: c.__setitem__('plan', 'PLAN-1005'),
+            lambda c: c.__setitem__('plan_revision', 2),
+            lambda c: c['coverage'].__setitem__('acceptance_criteria',
+                                                [f'AC-{i:02}' for i in range(1, 9)]),
+            lambda c: c['coverage'].__setitem__('verifications',
+                                                [f'V-{i:02}' for i in range(1, 14)]),
+            lambda c: c['audited'].__setitem__('registered_keys', 1005),
+        ):
             with self.subTest(name=getattr(mutate, '__name__', 'mutation')):
                 ev, binding, composition, commits = self.sample()
                 credential = json.loads((ev / 'credential.json').read_text(encoding='utf-8'))

@@ -164,7 +164,13 @@ def _inventory(inputs, evidence, ref, key, frozen):
 def _inventory_for_suite(inputs, evidence, ref, suite, frozen):
     exact_keys(ref, ('path', 'sha256'), 'current parent inventory reference')
     evidence.sha256(ref['path'], ref['sha256'])
-    inventory, _ = evidence.read_json(ref['path'])
+    # PLAN-1013 A-1013-02 knife 3a: the inventory document is a one-shot
+    # input — release its conservative decode estimate after the contract
+    # check (the checks list stays live; the estimate over-reserves it).
+    raw = evidence.read_bytes(ref['path'])
+    nodes = sum(raw.count(bytes([c])) for c in b'{}[],:')
+    inventory, _ = evidence.decode_json(raw)
+    inventory_transient = len(raw) + 1 + 7 * len(raw) + 256 * nodes + 4096
     require(inventory.get('schema') == 'test-case-inventory/2', 'formal identity inventory required')
     typed_equal(_repo_relative(inputs, inventory['suite_path']), suite, 'frozen suite identity')
     typed_equal(inventory_contract(inputs, inventory), frozen, 'tracked independent typed contract')
@@ -183,6 +189,7 @@ def _inventory_for_suite(inputs, evidence, ref, suite, frozen):
         for artifact in check['oracle_artifacts']:
             name = str(PureWindowsPath(inventory['fixture_base']) / artifact['file'])
             inputs.sha256(_repo_relative(inputs, name), artifact['sha256'])
+    evidence.budget.release_transient(inventory_transient)
     return inventory
 
 
@@ -522,7 +529,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         from ace_m1_legacy import frozen_ledger as _fl3
         earlier3 = legacy.get('execution_summary', {}).get('observations', {})
         rust['observations'] = {k: {'judgement': v['judgement'], 'oracle_source': v.get('oracle_source'),
-                                    'test': v.get('test')}
+                                    'tests': v.get('tests')}
                                 for k, v in rust['observations'].items() if k not in earlier3}
         rust['claimed_cells'] = len(rust['observations'])
         legacy.setdefault('_merged_obs', {}).update(rust['observations'])
@@ -536,7 +543,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
             inputs, evidence, bindings['legacy_rust_tests_mn'], registry), 512 << 10)
         earlier3b = legacy.get('execution_summary', {}).get('observations', {})
         rustmn['observations'] = {k: {'judgement': v['judgement'], 'oracle_source': v.get('oracle_source'),
-                                      'test': v.get('test')}
+                                      'tests': v.get('tests')}
                                   for k, v in rustmn['observations'].items() if k not in earlier3b}
         rustmn['claimed_cells'] = len(rustmn['observations'])
         legacy.setdefault('_merged_obs', {}).update(rustmn['observations'])

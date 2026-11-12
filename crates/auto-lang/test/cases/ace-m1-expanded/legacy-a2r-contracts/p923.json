@@ -1,0 +1,775 @@
+{
+ "schema": "test-case-inventory/2",
+ "suite": "ace-m1-native-resource-923",
+ "suite_sha256": "f5c17dd21c05bc08d5944c8fb5a3473776c66915af5a15fab90d7c9dba760be3",
+ "checks": [
+  {
+   "suite": "ace-m1-native-resource-923",
+   "case": "ace.m1.r03.l04",
+   "check": "base",
+   "case_file_sha256": "bd0f8f8a915714e702b4b8e3acd1ca5a3c925f9ce3070f783e7e156a4752587e",
+   "source_sha256": "f4f27ee5ce2401353cc9a69fc446ca26baf153361c03b31a22645eeca2878f97",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "a79b03e53e6e82bda9000a1b6cd1bcfae695d4cc427928261e9d13bda19b0b99"
+    }
+   ],
+   "source_ref": "File(\"src/L04-923.at\")",
+   "oracle_sha256": "0117d480f24ca5dabc28ae11da69c504be652bedcae80b2eb167347116d1d879",
+   "oracle_artifacts": [],
+   "expected_exit": 42,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-resource-guards-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": null,
+      "fail_text_nth": null,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "d236d304f4a51faf88e8b778d8a7d69591b215954e1678417bd3bb1375cfb1ef",
+   "check_sha256": "1982137e4dda25903063cd9cb9466f7d865357749f94f2c3d97143096d05401a",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-resource-923/native-resource-923.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-resource-923/src/L04-923.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-resource-923",
+   "case": "ace.m1.r03.l04",
+   "check": "fault-s1",
+   "case_file_sha256": "bd0f8f8a915714e702b4b8e3acd1ca5a3c925f9ce3070f783e7e156a4752587e",
+   "source_sha256": "f4f27ee5ce2401353cc9a69fc446ca26baf153361c03b31a22645eeca2878f97",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "a79b03e53e6e82bda9000a1b6cd1bcfae695d4cc427928261e9d13bda19b0b99"
+    }
+   ],
+   "source_ref": "File(\"src/L04-923.at\")",
+   "oracle_sha256": "381eaca1f42ece868e919543848f33c7307e32b5c17585f6a29dcc8fd9ed502a",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-resource-guards-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": [
+       1,
+       1
+      ],
+      "fail_text_nth": null,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "d236d304f4a51faf88e8b778d8a7d69591b215954e1678417bd3bb1375cfb1ef",
+   "check_sha256": "45f8eb85eacd72f59b77f1f7628a70d6b6255f4320ab4d0b742c94f4920bab7b",
+   "completion": {
+    "kind": "error",
+    "stage": "run",
+    "code": "mn.resource.allocation-injected",
+    "message": null
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-resource-923/native-resource-923.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-resource-923/src/L04-923.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-resource-923",
+   "case": "ace.m1.r03.l04",
+   "check": "fault-s2",
+   "case_file_sha256": "bd0f8f8a915714e702b4b8e3acd1ca5a3c925f9ce3070f783e7e156a4752587e",
+   "source_sha256": "f4f27ee5ce2401353cc9a69fc446ca26baf153361c03b31a22645eeca2878f97",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "a79b03e53e6e82bda9000a1b6cd1bcfae695d4cc427928261e9d13bda19b0b99"
+    }
+   ],
+   "source_ref": "File(\"src/L04-923.at\")",
+   "oracle_sha256": "381eaca1f42ece868e919543848f33c7307e32b5c17585f6a29dcc8fd9ed502a",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-resource-guards-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": [
+       2,
+       1
+      ],
+      "fail_text_nth": null,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "d236d304f4a51faf88e8b778d8a7d69591b215954e1678417bd3bb1375cfb1ef",
+   "check_sha256": "e8fc9280923e1ffec36e7f8e6cf19f84ce9ece2cd39f66145089324a1ac1ea7d",
+   "completion": {
+    "kind": "error",
+    "stage": "run",
+    "code": "mn.resource.allocation-injected",
+    "message": null
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-resource-923/native-resource-923.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-resource-923/src/L04-923.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-resource-923",
+   "case": "ace.m1.r03.l04",
+   "check": "fault-s4",
+   "case_file_sha256": "bd0f8f8a915714e702b4b8e3acd1ca5a3c925f9ce3070f783e7e156a4752587e",
+   "source_sha256": "f4f27ee5ce2401353cc9a69fc446ca26baf153361c03b31a22645eeca2878f97",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "a79b03e53e6e82bda9000a1b6cd1bcfae695d4cc427928261e9d13bda19b0b99"
+    }
+   ],
+   "source_ref": "File(\"src/L04-923.at\")",
+   "oracle_sha256": "e508d8d4a839e02239be7921153071549eaaa1a8c43e755a9391b9c7a9b21a52",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-resource-guards-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": [
+       4,
+       1
+      ],
+      "fail_text_nth": null,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "d236d304f4a51faf88e8b778d8a7d69591b215954e1678417bd3bb1375cfb1ef",
+   "check_sha256": "c828db2984494cf4906d401497a70ca9f858a24faddcc025da3f6a979dd452b9",
+   "completion": {
+    "kind": "error",
+    "stage": "run",
+    "code": "mn.resource.execution-budget",
+    "message": null
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-resource-923/native-resource-923.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-resource-923/src/L04-923.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-resource-923",
+   "case": "ace.m1.r03.grow",
+   "check": "base",
+   "case_file_sha256": "bd0f8f8a915714e702b4b8e3acd1ca5a3c925f9ce3070f783e7e156a4752587e",
+   "source_sha256": "882a9e3643610168df7098c897fc5fb5da0f43aabb27d0c7d6bfe1740cbb857c",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "a7f995d31097d873df0c5c3766abf472cf82abdd73e1b9b759ce943d52ebaae7"
+    }
+   ],
+   "source_ref": "File(\"src/grow-923.at\")",
+   "oracle_sha256": "c48dad60a7d4eb11872cb92dde11a5aa4675b9362f91c531353bbd355b9afc62",
+   "oracle_artifacts": [],
+   "expected_exit": 24,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-resource-guards-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": null,
+      "fail_text_nth": null,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "a2dc3a58236fcc425dfced1483493f3842e58a4c1551de81572dcdaf9efaf8aa",
+   "check_sha256": "5efa8ee273ad3edbb40f4eb917e6cf33275e9e4c34935c5a1daaf90f50bfcfcc",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-resource-923/native-resource-923.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-resource-923/src/grow-923.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-resource-923",
+   "case": "ace.m1.r03.grow",
+   "check": "fault-s3",
+   "case_file_sha256": "bd0f8f8a915714e702b4b8e3acd1ca5a3c925f9ce3070f783e7e156a4752587e",
+   "source_sha256": "882a9e3643610168df7098c897fc5fb5da0f43aabb27d0c7d6bfe1740cbb857c",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "a7f995d31097d873df0c5c3766abf472cf82abdd73e1b9b759ce943d52ebaae7"
+    }
+   ],
+   "source_ref": "File(\"src/grow-923.at\")",
+   "oracle_sha256": "381eaca1f42ece868e919543848f33c7307e32b5c17585f6a29dcc8fd9ed502a",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-resource-guards-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": [
+       3,
+       1
+      ],
+      "fail_text_nth": null,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "a2dc3a58236fcc425dfced1483493f3842e58a4c1551de81572dcdaf9efaf8aa",
+   "check_sha256": "00d16ff0c91cb5bb8ce1d845ea0c4de3cdb58227ff729689e8962614f5969ccf",
+   "completion": {
+    "kind": "error",
+    "stage": "run",
+    "code": "mn.resource.allocation-injected",
+    "message": null
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-resource-923/native-resource-923.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-resource-923/src/grow-923.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-resource-923",
+   "case": "ace.m1.r03.lstr",
+   "check": "base",
+   "case_file_sha256": "bd0f8f8a915714e702b4b8e3acd1ca5a3c925f9ce3070f783e7e156a4752587e",
+   "source_sha256": "971fae38abe80696af6f3bf2298b2d533545351bfcfeaeff9e93b07ad4a11ffd",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "f36e92cfa92d4bc4240995c75e312fa84076e7bb7d983b75141dadb7e70524ff"
+    }
+   ],
+   "source_ref": "File(\"src/LSTR-923.at\")",
+   "oracle_sha256": "926e688154ce13705c94bc78b532e93913be8daa416ad114775a83f487858371",
+   "oracle_artifacts": [],
+   "expected_exit": 51,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-resource-guards-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": null,
+      "fail_text_nth": null,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "181eb23a1a91650efec16fba8e655d26d3601379c04568caeadfd53fdbfacaaf",
+   "check_sha256": "6434c88dd869ae36588e6a8bd1a6809a776c35f5f7ca6d82f43dde92c7c1cc9f",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-resource-923/native-resource-923.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-resource-923/src/LSTR-923.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-resource-923",
+   "case": "ace.m1.r03.lstr",
+   "check": "fault-s6",
+   "case_file_sha256": "bd0f8f8a915714e702b4b8e3acd1ca5a3c925f9ce3070f783e7e156a4752587e",
+   "source_sha256": "971fae38abe80696af6f3bf2298b2d533545351bfcfeaeff9e93b07ad4a11ffd",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "f36e92cfa92d4bc4240995c75e312fa84076e7bb7d983b75141dadb7e70524ff"
+    }
+   ],
+   "source_ref": "File(\"src/LSTR-923.at\")",
+   "oracle_sha256": "e508d8d4a839e02239be7921153071549eaaa1a8c43e755a9391b9c7a9b21a52",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-resource-guards-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": null,
+      "fail_text_nth": 1,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "181eb23a1a91650efec16fba8e655d26d3601379c04568caeadfd53fdbfacaaf",
+   "check_sha256": "4651e6c2aa0a0c7e31a4146b027080dde00e513829b10fd3a67ca5130bd93408",
+   "completion": {
+    "kind": "error",
+    "stage": "run",
+    "code": "mn.resource.execution-budget",
+    "message": null
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-resource-923/native-resource-923.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-resource-923/src/LSTR-923.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-resource-923",
+   "case": "ace.m1.r03.lstr",
+   "check": "fault-s7",
+   "case_file_sha256": "bd0f8f8a915714e702b4b8e3acd1ca5a3c925f9ce3070f783e7e156a4752587e",
+   "source_sha256": "971fae38abe80696af6f3bf2298b2d533545351bfcfeaeff9e93b07ad4a11ffd",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "f36e92cfa92d4bc4240995c75e312fa84076e7bb7d983b75141dadb7e70524ff"
+    }
+   ],
+   "source_ref": "File(\"src/LSTR-923.at\")",
+   "oracle_sha256": "e508d8d4a839e02239be7921153071549eaaa1a8c43e755a9391b9c7a9b21a52",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-resource-guards-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": null,
+      "fail_text_nth": null,
+      "fail_ledger_nth": 1
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "181eb23a1a91650efec16fba8e655d26d3601379c04568caeadfd53fdbfacaaf",
+   "check_sha256": "8d1db13cb03b48bfb971475967bf8a1dff78bb0396d902e397d74179dcd2a847",
+   "completion": {
+    "kind": "error",
+    "stage": "run",
+    "code": "mn.resource.execution-budget",
+    "message": null
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-resource-923/native-resource-923.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-resource-923/src/LSTR-923.at"
+   ]
+  }
+ ]
+}

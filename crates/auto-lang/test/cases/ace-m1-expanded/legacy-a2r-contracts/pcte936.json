@@ -1,0 +1,1086 @@
+{
+ "schema": "test-case-inventory/2",
+ "suite": "ace-m1-source-cte-936",
+ "suite_sha256": "636be13658126c53b54304ac3c91c9eac07abd5d860a6030901cf6cfe438a0e6",
+ "checks": [
+  {
+   "suite": "ace-m1-source-cte-936",
+   "case": "ace.m1.cte936.sum42",
+   "check": "av",
+   "case_file_sha256": "068afa3fb4bca2c80ff5a08cd7b7564572b0c090c8f744ca3da0c8f4509a5ea7",
+   "source_sha256": "f8a7c9b6bf730faaee228cb492fd3ceec84740e795a39fd6d6a1ff4e1137135e",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "97d6cc23e97c6c349a5b5ffe55ea2aa24a6e4af6c1b8f9bb4a9676a04f90a6d4"
+    }
+   ],
+   "source_ref": "File(\"src/sum42.at\")",
+   "oracle_sha256": "0117d480f24ca5dabc28ae11da69c504be652bedcae80b2eb167347116d1d879",
+   "oracle_artifacts": [],
+   "expected_exit": 42,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-av/core-run-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": {
+     "entry": "d_main",
+     "caps": [
+      "ac.source.cte.scalar/v1"
+     ],
+     "session": null,
+     "profile": null,
+     "resource": null,
+     "invalidation": null
+    },
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "d38a072d6ae6d970fe40a05686a3ba2a4ca19ae08b5c36d7056ef7b941a04148",
+   "check_sha256": "af3eac26fdb0a388ec8407c4b6c93c1cb84ca387bfcf295858412df4d044451e",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/source-cte-936/src/sum42.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-source-cte-936",
+   "case": "ace.m1.cte936.sum42",
+   "check": "ac-native",
+   "case_file_sha256": "068afa3fb4bca2c80ff5a08cd7b7564572b0c090c8f744ca3da0c8f4509a5ea7",
+   "source_sha256": "f8a7c9b6bf730faaee228cb492fd3ceec84740e795a39fd6d6a1ff4e1137135e",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "97d6cc23e97c6c349a5b5ffe55ea2aa24a6e4af6c1b8f9bb4a9676a04f90a6d4"
+    }
+   ],
+   "source_ref": "File(\"src/sum42.at\")",
+   "oracle_sha256": "0117d480f24ca5dabc28ae11da69c504be652bedcae80b2eb167347116d1d879",
+   "oracle_artifacts": [],
+   "expected_exit": 42,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-scalar-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [
+      "ac.source.cte.scalar/v1"
+     ],
+     "session": null,
+     "diagnostics": null,
+     "resource": null,
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "d38a072d6ae6d970fe40a05686a3ba2a4ca19ae08b5c36d7056ef7b941a04148",
+   "check_sha256": "f57334e21e04972767c93249a95c55d6dfe07cf1479376c983870c5b095a2be6",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/source-cte-936/src/sum42.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-source-cte-936",
+   "case": "ace.m1.cte936.sum43",
+   "check": "av",
+   "case_file_sha256": "068afa3fb4bca2c80ff5a08cd7b7564572b0c090c8f744ca3da0c8f4509a5ea7",
+   "source_sha256": "7250146ccd8303c7179457b34aad55a348d63205b2c6e61f2b1c7e26e9f868f7",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "9864bc9e5fbdc420df8912b65b4b0229ff6642077b00c6790d15515136ae9f92"
+    }
+   ],
+   "source_ref": "File(\"src/sum43.at\")",
+   "oracle_sha256": "9c09e359a15a847974212fe03d36c06633ab0dbd48d208ab262f6a43027397f6",
+   "oracle_artifacts": [],
+   "expected_exit": 43,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-av/core-run-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": {
+     "entry": "d_main",
+     "caps": [
+      "ac.source.cte.scalar/v1"
+     ],
+     "session": null,
+     "profile": null,
+     "resource": null,
+     "invalidation": null
+    },
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "9faad254687a502cf0cf7e551c56a4bcc043a5d23ed5585a799072693820d61e",
+   "check_sha256": "f095b799b06a62f28c8e224c8ebabad29f7916b2fcf1cb7bb0bb74def5d8a4b2",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/source-cte-936/src/sum43.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-source-cte-936",
+   "case": "ace.m1.cte936.sum43",
+   "check": "ac-native",
+   "case_file_sha256": "068afa3fb4bca2c80ff5a08cd7b7564572b0c090c8f744ca3da0c8f4509a5ea7",
+   "source_sha256": "7250146ccd8303c7179457b34aad55a348d63205b2c6e61f2b1c7e26e9f868f7",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "9864bc9e5fbdc420df8912b65b4b0229ff6642077b00c6790d15515136ae9f92"
+    }
+   ],
+   "source_ref": "File(\"src/sum43.at\")",
+   "oracle_sha256": "9c09e359a15a847974212fe03d36c06633ab0dbd48d208ab262f6a43027397f6",
+   "oracle_artifacts": [],
+   "expected_exit": 43,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-scalar-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [
+      "ac.source.cte.scalar/v1"
+     ],
+     "session": null,
+     "diagnostics": null,
+     "resource": null,
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "9faad254687a502cf0cf7e551c56a4bcc043a5d23ed5585a799072693820d61e",
+   "check_sha256": "24f6f84467764a73868e29121619c7d5a6da7a7ad9506904225c96d349831aa2",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/source-cte-936/src/sum43.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-source-cte-936",
+   "case": "ace.m1.cte936.boollit",
+   "check": "av",
+   "case_file_sha256": "068afa3fb4bca2c80ff5a08cd7b7564572b0c090c8f744ca3da0c8f4509a5ea7",
+   "source_sha256": "1e4da798f2eae44a408c3092f8db21fe6ddbb77324eed315091a703f23eb33ad",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "799da4a2a4ac5104e08ea433b57eaeb600f7374b752ea50cf56f34a7a7ff652f"
+    }
+   ],
+   "source_ref": "File(\"src/boollit.at\")",
+   "oracle_sha256": "54b796f1815d15498e78daff21693499030b7ea51a607625c34c95ced915b15c",
+   "oracle_artifacts": [],
+   "expected_exit": 7,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-av/core-run-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": {
+     "entry": "d_main",
+     "caps": [
+      "ac.source.cte.scalar/v1"
+     ],
+     "session": null,
+     "profile": null,
+     "resource": null,
+     "invalidation": null
+    },
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "8e2c09e68996c05ce56916bb52478540cdef29e77f4cb5a5787e7b0068705e48",
+   "check_sha256": "e14857319862d6de48fcb0940d9e6315fd6343cac6495fa73a7306b5f1b7c392",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/source-cte-936/src/boollit.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-source-cte-936",
+   "case": "ace.m1.cte936.boollit",
+   "check": "ac-native",
+   "case_file_sha256": "068afa3fb4bca2c80ff5a08cd7b7564572b0c090c8f744ca3da0c8f4509a5ea7",
+   "source_sha256": "1e4da798f2eae44a408c3092f8db21fe6ddbb77324eed315091a703f23eb33ad",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "799da4a2a4ac5104e08ea433b57eaeb600f7374b752ea50cf56f34a7a7ff652f"
+    }
+   ],
+   "source_ref": "File(\"src/boollit.at\")",
+   "oracle_sha256": "54b796f1815d15498e78daff21693499030b7ea51a607625c34c95ced915b15c",
+   "oracle_artifacts": [],
+   "expected_exit": 7,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-scalar-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [
+      "ac.source.cte.scalar/v1"
+     ],
+     "session": null,
+     "diagnostics": null,
+     "resource": null,
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "8e2c09e68996c05ce56916bb52478540cdef29e77f4cb5a5787e7b0068705e48",
+   "check_sha256": "38906586fb630d65b05d18055e4b6c9bc27128abc92dca84f39fb35db8dd2a34",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/source-cte-936/src/boollit.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-source-cte-936",
+   "case": "ace.m1.cte936.meta2",
+   "check": "av",
+   "case_file_sha256": "068afa3fb4bca2c80ff5a08cd7b7564572b0c090c8f744ca3da0c8f4509a5ea7",
+   "source_sha256": "8225ff2a2be7064c57d34c395ccec90cd86963678629614968b8495b2ef09c04",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "0485f6ed33a0c20b0e3576bc11e9a58957d1784354ce04c2aaed1f92ba323adf"
+    }
+   ],
+   "source_ref": "File(\"src/meta2.at\")",
+   "oracle_sha256": "0117d480f24ca5dabc28ae11da69c504be652bedcae80b2eb167347116d1d879",
+   "oracle_artifacts": [],
+   "expected_exit": 42,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-av/core-run-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": {
+     "entry": "d_main",
+     "caps": [
+      "ac.source.cte.scalar/v1",
+      "cte.meta.fields/v1"
+     ],
+     "session": null,
+     "profile": null,
+     "resource": null,
+     "invalidation": null
+    },
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "18d207c5b01995d3ee1ab65fc862cbd1d83010e4afb1aab0f4ccb9905a5abc74",
+   "check_sha256": "637d0958a104fa65d37736b22f1ef12bba46f3f780092bb4733bc2315d9a6e24",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/source-cte-936/src/meta2.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-source-cte-936",
+   "case": "ace.m1.cte936.meta2",
+   "check": "ac-native",
+   "case_file_sha256": "068afa3fb4bca2c80ff5a08cd7b7564572b0c090c8f744ca3da0c8f4509a5ea7",
+   "source_sha256": "8225ff2a2be7064c57d34c395ccec90cd86963678629614968b8495b2ef09c04",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "0485f6ed33a0c20b0e3576bc11e9a58957d1784354ce04c2aaed1f92ba323adf"
+    }
+   ],
+   "source_ref": "File(\"src/meta2.at\")",
+   "oracle_sha256": "0117d480f24ca5dabc28ae11da69c504be652bedcae80b2eb167347116d1d879",
+   "oracle_artifacts": [],
+   "expected_exit": 42,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-scalar-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [
+      "ac.source.cte.scalar/v1",
+      "cte.meta.fields/v1"
+     ],
+     "session": null,
+     "diagnostics": null,
+     "resource": null,
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "18d207c5b01995d3ee1ab65fc862cbd1d83010e4afb1aab0f4ccb9905a5abc74",
+   "check_sha256": "56ca1c1dbff37a68e3877169d2b4357d2d741cfd2efe88eb78ca8074d280704e",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/source-cte-936/src/meta2.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-source-cte-936",
+   "case": "ace.m1.cte936.meta3",
+   "check": "av",
+   "case_file_sha256": "068afa3fb4bca2c80ff5a08cd7b7564572b0c090c8f744ca3da0c8f4509a5ea7",
+   "source_sha256": "60af7d5dade32de1cabb045b35bc053a6206d6a589f581168343c5e4b69216f6",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "257a85a7583606441e0dc85515a90c0b93d1cf9352c8d93b24d10ae76a6f9010"
+    }
+   ],
+   "source_ref": "File(\"src/meta3.at\")",
+   "oracle_sha256": "9c09e359a15a847974212fe03d36c06633ab0dbd48d208ab262f6a43027397f6",
+   "oracle_artifacts": [],
+   "expected_exit": 43,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-av/core-run-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": {
+     "entry": "d_main",
+     "caps": [
+      "ac.source.cte.scalar/v1",
+      "cte.meta.fields/v1"
+     ],
+     "session": null,
+     "profile": null,
+     "resource": null,
+     "invalidation": null
+    },
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "65803d5fe5a7e23dc57db0f8ae0ad38dd83b4ad3c99e1541cb4ae9da528f0f18",
+   "check_sha256": "c796b261c411f88be54f0d4100cb500e4ed6d59836b0b62fe38f73d565c53917",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/source-cte-936/src/meta3.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-source-cte-936",
+   "case": "ace.m1.cte936.meta3",
+   "check": "ac-native",
+   "case_file_sha256": "068afa3fb4bca2c80ff5a08cd7b7564572b0c090c8f744ca3da0c8f4509a5ea7",
+   "source_sha256": "60af7d5dade32de1cabb045b35bc053a6206d6a589f581168343c5e4b69216f6",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "257a85a7583606441e0dc85515a90c0b93d1cf9352c8d93b24d10ae76a6f9010"
+    }
+   ],
+   "source_ref": "File(\"src/meta3.at\")",
+   "oracle_sha256": "9c09e359a15a847974212fe03d36c06633ab0dbd48d208ab262f6a43027397f6",
+   "oracle_artifacts": [],
+   "expected_exit": 43,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-scalar-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [
+      "ac.source.cte.scalar/v1",
+      "cte.meta.fields/v1"
+     ],
+     "session": null,
+     "diagnostics": null,
+     "resource": null,
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "65803d5fe5a7e23dc57db0f8ae0ad38dd83b4ad3c99e1541cb4ae9da528f0f18",
+   "check_sha256": "948e3ff2428214eac9215b45911e4edae8d69b7b3f2635b1e522907b2098e639",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/source-cte-936/src/meta3.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-source-cte-936",
+   "case": "ace.m1.cte936.choose42",
+   "check": "av",
+   "case_file_sha256": "068afa3fb4bca2c80ff5a08cd7b7564572b0c090c8f744ca3da0c8f4509a5ea7",
+   "source_sha256": "3850f0daa5af90a4c2146e31ea0104577253e69d2618afc0d7abb796d6e55298",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "ad48036cd25b00947da60879ec90bd1cc6a70605f5a48f6fbec728b876b587f4"
+    }
+   ],
+   "source_ref": "File(\"src/choose42.at\")",
+   "oracle_sha256": "0117d480f24ca5dabc28ae11da69c504be652bedcae80b2eb167347116d1d879",
+   "oracle_artifacts": [],
+   "expected_exit": 42,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-av/core-run-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": {
+     "entry": "d_main",
+     "caps": [
+      "ac.source.cte.scalar/v1",
+      "ac.source.instances.scalar/v1"
+     ],
+     "session": null,
+     "profile": null,
+     "resource": null,
+     "invalidation": null
+    },
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "91208f2b286c67199a05c6b894792c7b72d2af19f87ceedffba8e4e74a110830",
+   "check_sha256": "5af850c942b819ba737f509805c223ded579ba0ba172ffb268091e2561890a31",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/source-cte-936/src/choose42.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-source-cte-936",
+   "case": "ace.m1.cte936.choose42",
+   "check": "ac-native",
+   "case_file_sha256": "068afa3fb4bca2c80ff5a08cd7b7564572b0c090c8f744ca3da0c8f4509a5ea7",
+   "source_sha256": "3850f0daa5af90a4c2146e31ea0104577253e69d2618afc0d7abb796d6e55298",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "ad48036cd25b00947da60879ec90bd1cc6a70605f5a48f6fbec728b876b587f4"
+    }
+   ],
+   "source_ref": "File(\"src/choose42.at\")",
+   "oracle_sha256": "0117d480f24ca5dabc28ae11da69c504be652bedcae80b2eb167347116d1d879",
+   "oracle_artifacts": [],
+   "expected_exit": 42,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-scalar-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [
+      "ac.source.cte.scalar/v1",
+      "ac.source.instances.scalar/v1"
+     ],
+     "session": null,
+     "diagnostics": null,
+     "resource": null,
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "91208f2b286c67199a05c6b894792c7b72d2af19f87ceedffba8e4e74a110830",
+   "check_sha256": "f3649adb93625fa17d817b4deeaf017d2be7c9f34323c6cbd9a25fb980f59dcb",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/source-cte-936/src/choose42.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-source-cte-936",
+   "case": "ace.m1.cte936.pick40",
+   "check": "av",
+   "case_file_sha256": "068afa3fb4bca2c80ff5a08cd7b7564572b0c090c8f744ca3da0c8f4509a5ea7",
+   "source_sha256": "03f48764a48d599ba13fd944081ac5a3d1866657bec1c8703aed41672b42dfec",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "7e4cc347a7d62c10758caf0de161ceecd614d6c97a957df6f826b17540b5742d"
+    }
+   ],
+   "source_ref": "File(\"src/pick40.at\")",
+   "oracle_sha256": "6e932653366a8d0b61e44338545118d170fd6910fb69ce2b1395ca96aa9e7006",
+   "oracle_artifacts": [],
+   "expected_exit": 40,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-av/core-run-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": {
+     "entry": "d_main",
+     "caps": [
+      "ac.source.cte.scalar/v1",
+      "ac.source.instances.scalar/v1"
+     ],
+     "session": null,
+     "profile": null,
+     "resource": null,
+     "invalidation": null
+    },
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "245e17c55c5791e91225d46984b27dd6d84dd462737ac3d574a90a0ac3db1525",
+   "check_sha256": "ca709a4e222d8e8b276148d7aa7b5296e18d85612ca94aa9f3008feb03fe149b",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/source-cte-936/src/pick40.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-source-cte-936",
+   "case": "ace.m1.cte936.pick40",
+   "check": "ac-native",
+   "case_file_sha256": "068afa3fb4bca2c80ff5a08cd7b7564572b0c090c8f744ca3da0c8f4509a5ea7",
+   "source_sha256": "03f48764a48d599ba13fd944081ac5a3d1866657bec1c8703aed41672b42dfec",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "7e4cc347a7d62c10758caf0de161ceecd614d6c97a957df6f826b17540b5742d"
+    }
+   ],
+   "source_ref": "File(\"src/pick40.at\")",
+   "oracle_sha256": "6e932653366a8d0b61e44338545118d170fd6910fb69ce2b1395ca96aa9e7006",
+   "oracle_artifacts": [],
+   "expected_exit": 40,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-scalar-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [
+      "ac.source.cte.scalar/v1",
+      "ac.source.instances.scalar/v1"
+     ],
+     "session": null,
+     "diagnostics": null,
+     "resource": null,
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "245e17c55c5791e91225d46984b27dd6d84dd462737ac3d574a90a0ac3db1525",
+   "check_sha256": "37b8534899e3b7eeae2aabf1fdac97c42251df7ec8f18a92f2f7d38389cd68d3",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/source-cte-936/source-cte-936.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/source-cte-936/src/pick40.at"
+   ]
+  }
+ ]
+}

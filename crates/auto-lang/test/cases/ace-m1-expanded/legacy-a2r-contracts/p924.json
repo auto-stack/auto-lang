@@ -1,0 +1,844 @@
+{
+ "schema": "test-case-inventory/2",
+ "suite": "ace-m1-native-closures-924",
+ "suite_sha256": "e9400afdbddb9d5164832eeeedfde20c6ec6cfad1f8a6f0909ef0b1374e81f19",
+ "checks": [
+  {
+   "suite": "ace-m1-native-closures-924",
+   "case": "ace.m1.r02r05.k02",
+   "check": "base",
+   "case_file_sha256": "7fc27081f57012ccb2eaae970f901ec618bad953172f063ec69815624058a815",
+   "source_sha256": "11218c51b3a1aeba2dd9b1fa25164a34c1d0f25087925050b2f9d8e4006f5c1a",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "be2e36e09e0a6e3d4929aaa2d7f6ee84c00793db0c6f86e65797d33f6ee42376"
+    }
+   ],
+   "source_ref": "File(\"src/K02-924.at\")",
+   "oracle_sha256": "0117d480f24ca5dabc28ae11da69c504be652bedcae80b2eb167347116d1d879",
+   "oracle_artifacts": [],
+   "expected_exit": 42,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-closures-resource-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": null,
+      "fail_text_nth": null,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "8d0fe8a91bc54bda35b659bf58e5a2ebea9c668b8a74b283bcb6a0ed5e5cb59b",
+   "check_sha256": "f9701d23237d1b9342ba4d7a2d7f21561ac0a063a94ff2e70f762a4f0d36240e",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-closures-924/native-closures-924.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-closures-924/src/K02-924.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-closures-924",
+   "case": "ace.m1.r02r05.k02",
+   "check": "fault-s9",
+   "case_file_sha256": "7fc27081f57012ccb2eaae970f901ec618bad953172f063ec69815624058a815",
+   "source_sha256": "11218c51b3a1aeba2dd9b1fa25164a34c1d0f25087925050b2f9d8e4006f5c1a",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "be2e36e09e0a6e3d4929aaa2d7f6ee84c00793db0c6f86e65797d33f6ee42376"
+    }
+   ],
+   "source_ref": "File(\"src/K02-924.at\")",
+   "oracle_sha256": "381eaca1f42ece868e919543848f33c7307e32b5c17585f6a29dcc8fd9ed502a",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-closures-resource-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": [
+       9,
+       1
+      ],
+      "fail_text_nth": null,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "8d0fe8a91bc54bda35b659bf58e5a2ebea9c668b8a74b283bcb6a0ed5e5cb59b",
+   "check_sha256": "f884b70ad163e27523e7773ef2795ea9da0d7956b8a990ebb3699433ec576823",
+   "completion": {
+    "kind": "error",
+    "stage": "run",
+    "code": "mn.resource.allocation-injected",
+    "message": null
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-closures-924/native-closures-924.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-closures-924/src/K02-924.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-closures-924",
+   "case": "ace.m1.r02r05.k02",
+   "check": "fault-s9-n2",
+   "case_file_sha256": "7fc27081f57012ccb2eaae970f901ec618bad953172f063ec69815624058a815",
+   "source_sha256": "11218c51b3a1aeba2dd9b1fa25164a34c1d0f25087925050b2f9d8e4006f5c1a",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "be2e36e09e0a6e3d4929aaa2d7f6ee84c00793db0c6f86e65797d33f6ee42376"
+    }
+   ],
+   "source_ref": "File(\"src/K02-924.at\")",
+   "oracle_sha256": "0117d480f24ca5dabc28ae11da69c504be652bedcae80b2eb167347116d1d879",
+   "oracle_artifacts": [],
+   "expected_exit": 42,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-closures-resource-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": [
+       9,
+       2
+      ],
+      "fail_text_nth": null,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "8d0fe8a91bc54bda35b659bf58e5a2ebea9c668b8a74b283bcb6a0ed5e5cb59b",
+   "check_sha256": "40f0ccde3b79ac1033c54a05d44b9bb62208852cf1d50b284088387baa0270e7",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-closures-924/native-closures-924.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-closures-924/src/K02-924.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-closures-924",
+   "case": "ace.m1.r02r05.k02",
+   "check": "fault-s1",
+   "case_file_sha256": "7fc27081f57012ccb2eaae970f901ec618bad953172f063ec69815624058a815",
+   "source_sha256": "11218c51b3a1aeba2dd9b1fa25164a34c1d0f25087925050b2f9d8e4006f5c1a",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "be2e36e09e0a6e3d4929aaa2d7f6ee84c00793db0c6f86e65797d33f6ee42376"
+    }
+   ],
+   "source_ref": "File(\"src/K02-924.at\")",
+   "oracle_sha256": "381eaca1f42ece868e919543848f33c7307e32b5c17585f6a29dcc8fd9ed502a",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-closures-resource-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": [
+       1,
+       1
+      ],
+      "fail_text_nth": null,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "8d0fe8a91bc54bda35b659bf58e5a2ebea9c668b8a74b283bcb6a0ed5e5cb59b",
+   "check_sha256": "2c38c5d6c40d3b83f01ca95cc63920a675466df7b3a699cbe284eb112f043320",
+   "completion": {
+    "kind": "error",
+    "stage": "run",
+    "code": "mn.resource.allocation-injected",
+    "message": null
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-closures-924/native-closures-924.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-closures-924/src/K02-924.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-closures-924",
+   "case": "ace.m1.r02r05.k02",
+   "check": "fault-s4",
+   "case_file_sha256": "7fc27081f57012ccb2eaae970f901ec618bad953172f063ec69815624058a815",
+   "source_sha256": "11218c51b3a1aeba2dd9b1fa25164a34c1d0f25087925050b2f9d8e4006f5c1a",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "be2e36e09e0a6e3d4929aaa2d7f6ee84c00793db0c6f86e65797d33f6ee42376"
+    }
+   ],
+   "source_ref": "File(\"src/K02-924.at\")",
+   "oracle_sha256": "e508d8d4a839e02239be7921153071549eaaa1a8c43e755a9391b9c7a9b21a52",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-closures-resource-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": [
+       4,
+       1
+      ],
+      "fail_text_nth": null,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "8d0fe8a91bc54bda35b659bf58e5a2ebea9c668b8a74b283bcb6a0ed5e5cb59b",
+   "check_sha256": "d240860a192aceabdb9048a6ce3b10f0f872f5223ca7617e4a3be1ffcb609306",
+   "completion": {
+    "kind": "error",
+    "stage": "run",
+    "code": "mn.resource.execution-budget",
+    "message": null
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-closures-924/native-closures-924.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-closures-924/src/K02-924.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-closures-924",
+   "case": "ace.m1.r02r05.k05",
+   "check": "base",
+   "case_file_sha256": "7fc27081f57012ccb2eaae970f901ec618bad953172f063ec69815624058a815",
+   "source_sha256": "6fe5880599cf32cd27ac5b73f4959468f1221a3c988984f5d74e64acd9cfc4c5",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "1e72b1adeff6d5a313c9f7602142189df9ec21ea6cf14e026fd921068d07e87e"
+    }
+   ],
+   "source_ref": "File(\"src/K05-924.at\")",
+   "oracle_sha256": "0117d480f24ca5dabc28ae11da69c504be652bedcae80b2eb167347116d1d879",
+   "oracle_artifacts": [],
+   "expected_exit": 42,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-closures-resource-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": null,
+      "fail_text_nth": null,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "7102c2fd345e642d47a2d355bfbe1c0ee939c275d29f4504c963e84edb437608",
+   "check_sha256": "f9701d23237d1b9342ba4d7a2d7f21561ac0a063a94ff2e70f762a4f0d36240e",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-closures-924/native-closures-924.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-closures-924/src/K05-924.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-closures-924",
+   "case": "ace.m1.r02r05.k05",
+   "check": "fault-s9a",
+   "case_file_sha256": "7fc27081f57012ccb2eaae970f901ec618bad953172f063ec69815624058a815",
+   "source_sha256": "6fe5880599cf32cd27ac5b73f4959468f1221a3c988984f5d74e64acd9cfc4c5",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "1e72b1adeff6d5a313c9f7602142189df9ec21ea6cf14e026fd921068d07e87e"
+    }
+   ],
+   "source_ref": "File(\"src/K05-924.at\")",
+   "oracle_sha256": "381eaca1f42ece868e919543848f33c7307e32b5c17585f6a29dcc8fd9ed502a",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-closures-resource-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": [
+       9,
+       1
+      ],
+      "fail_text_nth": null,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "7102c2fd345e642d47a2d355bfbe1c0ee939c275d29f4504c963e84edb437608",
+   "check_sha256": "a0bb10fa54ca5515db9ee9830fefdcc1af2418eaf0d035b1b39f6482f5431a32",
+   "completion": {
+    "kind": "error",
+    "stage": "run",
+    "code": "mn.resource.allocation-injected",
+    "message": null
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-closures-924/native-closures-924.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-closures-924/src/K05-924.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-closures-924",
+   "case": "ace.m1.r02r05.k05",
+   "check": "fault-s9b",
+   "case_file_sha256": "7fc27081f57012ccb2eaae970f901ec618bad953172f063ec69815624058a815",
+   "source_sha256": "6fe5880599cf32cd27ac5b73f4959468f1221a3c988984f5d74e64acd9cfc4c5",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "1e72b1adeff6d5a313c9f7602142189df9ec21ea6cf14e026fd921068d07e87e"
+    }
+   ],
+   "source_ref": "File(\"src/K05-924.at\")",
+   "oracle_sha256": "381eaca1f42ece868e919543848f33c7307e32b5c17585f6a29dcc8fd9ed502a",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-closures-resource-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": [
+       9,
+       2
+      ],
+      "fail_text_nth": null,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "7102c2fd345e642d47a2d355bfbe1c0ee939c275d29f4504c963e84edb437608",
+   "check_sha256": "781e16394f847bd7a9e82c2eb13f794bdfdd9963eabc7793eafad882be480b0c",
+   "completion": {
+    "kind": "error",
+    "stage": "run",
+    "code": "mn.resource.allocation-injected",
+    "message": null
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-closures-924/native-closures-924.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-closures-924/src/K05-924.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-closures-924",
+   "case": "ace.m1.r02r05.k05",
+   "check": "fault-s9-n3",
+   "case_file_sha256": "7fc27081f57012ccb2eaae970f901ec618bad953172f063ec69815624058a815",
+   "source_sha256": "6fe5880599cf32cd27ac5b73f4959468f1221a3c988984f5d74e64acd9cfc4c5",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "1e72b1adeff6d5a313c9f7602142189df9ec21ea6cf14e026fd921068d07e87e"
+    }
+   ],
+   "source_ref": "File(\"src/K05-924.at\")",
+   "oracle_sha256": "0117d480f24ca5dabc28ae11da69c504be652bedcae80b2eb167347116d1d879",
+   "oracle_artifacts": [],
+   "expected_exit": 42,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac/mir-native-closures-resource-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "diagnostics": null,
+     "resource": {
+      "budget_bytes": null,
+      "cancel_after_work": null,
+      "fail_nth": null,
+      "fail_seam": [
+       9,
+       3
+      ],
+      "fail_text_nth": null,
+      "fail_ledger_nth": null
+     },
+     "declaration": null,
+     "typed": null
+    },
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "7102c2fd345e642d47a2d355bfbe1c0ee939c275d29f4504c963e84edb437608",
+   "check_sha256": "8378b1854634af9303625023ffdbf86ec0f2007094daa4d056f9fe61681466fc",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-closures-924/native-closures-924.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-closures-924/src/K05-924.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-native-closures-924",
+   "case": "ace.m1.r05.avm",
+   "check": "autovm",
+   "case_file_sha256": "7fc27081f57012ccb2eaae970f901ec618bad953172f063ec69815624058a815",
+   "source_sha256": "11218c51b3a1aeba2dd9b1fa25164a34c1d0f25087925050b2f9d8e4006f5c1a",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "be2e36e09e0a6e3d4929aaa2d7f6ee84c00793db0c6f86e65797d33f6ee42376"
+    }
+   ],
+   "source_ref": "File(\"src/K02-924.at\")",
+   "oracle_sha256": "59586f1b82abdd3d896b78ac03fbb6520c54786a66e3203f9cf45ce6e2264e12",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "avm",
+   "action": "run",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "198738b5fbdc2dfba045a360553b60da66f55248765a4f807d50c5ca04ad573f",
+   "check_sha256": "8cfc40177853e82f8fffb69b58d7c22d17ec48a496a2ea428a10c0d7795b27cd",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/native-closures-924/native-closures-924.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/native-closures-924/src/K02-924.at"
+   ]
+  }
+ ]
+}

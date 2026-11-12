@@ -25,8 +25,15 @@ CREDENTIAL_FIELDS = ('schema', 'plan', 'plan_revision', 'frozen_commit', 'candid
                      'coverage', 'findings', 'verdict')
 CANDIDATE_FIELDS = ('bindings_sha256', 'pre_signature_report_sha256')
 COVERAGE_FIELDS = ('acceptance_criteria', 'verifications', 'spec_deltas')
-PLAN = 'PLAN-1005'
+# PLAN-1013: this bounded fix owns its own pre-signature review contract. The
+# credential MUST bind this plan/revision and the expanded AC-01..10/V-01..15/
+# SD-01..03 coverage; a legacy PLAN-1005 credential cannot claim this fix's
+# coverage by editing commit fields or rehashing (F-1013-01, plan 5.3).
+PLAN = 'PLAN-1013'
 REVISION = 1
+AC_IDS = [f'AC-{index:02}' for index in range(1, 11)]
+V_IDS = [f'V-{index:02}' for index in range(1, 16)]
+SD_IDS = ['SD-01', 'SD-02', 'SD-03']
 
 
 def admit_review_credential(inputs, evidence, binding, composition, frozen_commits=()):
@@ -116,11 +123,11 @@ def admit_review_credential(inputs, evidence, binding, composition, frozen_commi
 
     coverage = credential['coverage']
     exact_keys(coverage, COVERAGE_FIELDS, 'credential coverage record')
-    typed_equal(coverage['acceptance_criteria'], [f'AC-{index:02}' for index in range(1, 10)],
+    typed_equal(coverage['acceptance_criteria'], AC_IDS,
                 'credential covers every acceptance criterion')
-    typed_equal(coverage['verifications'], [f'V-{index:02}' for index in range(1, 14)],
+    typed_equal(coverage['verifications'], V_IDS,
                 'credential covers every verification case')
-    typed_equal(coverage['spec_deltas'], ['SD-01', 'SD-02', 'SD-03'], 'credential covers every spec delta')
+    typed_equal(coverage['spec_deltas'], SD_IDS, 'credential covers every spec delta')
 
     findings = credential['findings']
     require(type(findings) is list, 'credential findings required')

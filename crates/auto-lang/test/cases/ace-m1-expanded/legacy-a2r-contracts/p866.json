@@ -1,0 +1,269 @@
+{
+ "schema": "test-case-inventory/2",
+ "suite": "ace-m1-resident-866",
+ "suite_sha256": "f4d8ebb9c439102110ba6190b4a7cf56f70be784d45a698357337e18a3e59bb4",
+ "checks": [
+  {
+   "suite": "ace-m1-resident-866",
+   "case": "ace.m1.res-r01-av866",
+   "check": "av-res-r01-continuity",
+   "case_file_sha256": "4c65887d4da9f4499f6b0e1b71878f236d0bee810882d305dfc47ed8eb2b144b",
+   "source_sha256": "fab164aa38170493d9fcf630f1cdf14502fa60ad35b4085073f1664248ab00da",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "90b091903cff54aaf620544d1df3a4a181104a570be0ca86942f291b55018094"
+    }
+   ],
+   "source_ref": "File(\"src/RES866A.at\")",
+   "oracle_sha256": "3cbfebfe5febb69e14d7ad275ea1a254fa05adcc80e6a886843a85821b19cccf",
+   "oracle_artifacts": [],
+   "expected_exit": 2100,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-av/resident-run-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "profile": null,
+     "resource": null,
+     "invalidation": null
+    },
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "resident-slice",
+     "slices": 5
+    },
+    {
+     "op": "resident-finish"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "2d42fe04bad4a80eda63e24e08ad712947c0e40497e8103cfd548708357adca1",
+   "check_sha256": "730ae2fe7b891261286329f952b95dd0bb9f4c796887210bd0f5b8d0a2c99349",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/resident-online-866.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/src/RES866A.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-resident-866",
+   "case": "ace.m1.res-r02-av866",
+   "check": "av-res-r02-online-swap",
+   "case_file_sha256": "4c65887d4da9f4499f6b0e1b71878f236d0bee810882d305dfc47ed8eb2b144b",
+   "source_sha256": "fab164aa38170493d9fcf630f1cdf14502fa60ad35b4085073f1664248ab00da",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "90b091903cff54aaf620544d1df3a4a181104a570be0ca86942f291b55018094"
+    }
+   ],
+   "source_ref": "File(\"src/RES866A.at\")",
+   "oracle_sha256": "59e1c5c3c8116cf0b34b0f57076050e5adec1e17bc1a7db23ee2f748bb5064f4",
+   "oracle_artifacts": [],
+   "expected_exit": 2608,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-av/resident-run-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "profile": null,
+     "resource": null,
+     "invalidation": null
+    },
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "resident-slice",
+     "slices": 10
+    },
+    {
+     "op": "edit-source",
+     "from": "return 7",
+     "to": "return 9"
+    },
+    {
+     "op": "resident-apply"
+    },
+    {
+     "op": "resident-finish"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "550f92400463b26447eec2c84bc33ecd52bdac310a01f54b4231de529854280a",
+   "check_sha256": "4ca3260f35f634d30b73097a5ceb2348125108ef516688b5576df5fd650d3a7b",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/resident-online-866.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/src/RES866A.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-resident-866",
+   "case": "ace.m1.res-r03-av866",
+   "check": "av-res-r03-churn-two-swaps",
+   "case_file_sha256": "4c65887d4da9f4499f6b0e1b71878f236d0bee810882d305dfc47ed8eb2b144b",
+   "source_sha256": "fab164aa38170493d9fcf630f1cdf14502fa60ad35b4085073f1664248ab00da",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "90b091903cff54aaf620544d1df3a4a181104a570be0ca86942f291b55018094"
+    }
+   ],
+   "source_ref": "File(\"src/RES866A.at\")",
+   "oracle_sha256": "b64d7d565769c438479335894aaf345ef57df3a22e241eb208eaf8d618197d3b",
+   "oracle_artifacts": [],
+   "expected_exit": 3070,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-av/resident-run-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": {
+     "entry": "d_main",
+     "caps": [],
+     "session": null,
+     "profile": null,
+     "resource": null,
+     "invalidation": null
+    },
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "resident-slice",
+     "slices": 10
+    },
+    {
+     "op": "edit-source",
+     "from": "return 7",
+     "to": "return 9"
+    },
+    {
+     "op": "resident-apply"
+    },
+    {
+     "op": "resident-slice",
+     "slices": 5
+    },
+    {
+     "op": "edit-source",
+     "from": "return 9",
+     "to": "return 11"
+    },
+    {
+     "op": "resident-apply"
+    },
+    {
+     "op": "resident-finish"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "1279b6d56202f52bcb8b9323ecb1fd433e2d1bd2e61b9bb0e511526b0386c89f",
+   "check_sha256": "14e53094956f4a1df685062f4175a2f735e8347f60a6073916508444b0e0b205",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/resident-online-866.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/src/RES866A.at"
+   ]
+  }
+ ]
+}

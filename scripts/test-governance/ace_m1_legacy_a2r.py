@@ -393,7 +393,15 @@ def _probe_cell(case_id, check_name, required_cells):
                 else 'avm' if check_name == 'autovm'
                 else 'av' if check_name.startswith('av') else None)
         if path is not None:
-            hit = scenario_ids.get((plain, path))
+            # PLAN-1013 T-07 honest pairing: undotted T*/R* ids are the ptr
+            # suite's CORPUS fixtures (t-r-native runs the frozen corpus
+            # sources against the corpus value oracle), so they evidence
+            # their corpus cells. The scenario R01-R06 cells are owned by
+            # their dedicated scenario suites (919/923/924/915/823 legs,
+            # bound via _PROBE_CHECK_CELLS below per the binding.tsv
+            # producer tokens); a corpus value run never closes a
+            # fault-injection/events scenario cell.
+            hit = corpus_ids.get((plain, path)) or scenario_ids.get((plain, path))
             if hit is not None:
                 return hit
     token = case_id[len('ace.m1.'):] if case_id.startswith('ace.m1.') else None
@@ -493,7 +501,14 @@ def _probe_family_observation(scope, wire, check, table_row, recipe=None, table_
     if step.get('outcome') != 'success':
         # approved negative: trap/diagnostic outcomes stay PASS only when the
         # suite-contract expectation itself is the rejection (parent judged).
-        require(step.get('outcome') in ('trap', 'diag', 'success'), 'probe-family unknown outcome')
+        # PLAN-1013 T-07: the 919 resource-event faces register two more
+        # parent-judged exit vocabularies in the frozen contract — the av
+        # fuel/steps budget exit ('resource', av.resource.instr-steps) and
+        # the cooperative cancel ('cancelled', av.cancelled). Both are the
+        # REGISTERED expectation of their checks (resource-events.case.ad),
+        # not worker self-reports.
+        require(step.get('outcome') in ('trap', 'diag', 'success', 'resource', 'cancelled'),
+                'probe-family unknown outcome')
     return {'judgement': 'PASS', 'outcome': step.get('outcome'),
             'value': step.get('value'), 'trap': step.get('trap'),
             'oracle_source': oracle_source}
@@ -608,6 +623,45 @@ _PROBE_CHECK_CELLS = {
     ('ace.m1.b16', 'av'): [('corpus', 'B16', 'av'), ('scenario', 'E03', 'av')],
     ('ace.m1.b16', 'ac-native'): [('corpus', 'B16', 'ac'), ('scenario', 'E03', 'ac')],
     ('ace.m1.b16', 'autovm'): [('corpus', 'B16', 'avm'), ('scenario', 'E03', 'avm')],
+    # PLAN-1013 T-07 honest pairing — the scenario R02-R06 cells are owned by
+    # their dedicated scenario suites (binding.tsv producer tokens
+    # ok:P924-closures / ok:P923-guards / ok:P919-events / ok:av-closures-823),
+    # never by the ptr corpus fixtures. The 924 fault legs (S1/S4/S9 seams
+    # with N+1 controls on the K02 factory-move/K05 deep-clone sources) are
+    # the R02 closure-domain injection evidence; its base legs freeze the
+    # R05 creator-exit lifecycle shape (env owned in the creator frame,
+    # released at the final sweep).
+    ('ace.m1.r02r05.k02', 'fault-s1'): [('scenario', 'R02', 'ac')],
+    ('ace.m1.r02r05.k02', 'fault-s4'): [('scenario', 'R02', 'ac')],
+    ('ace.m1.r02r05.k02', 'fault-s9'): [('scenario', 'R02', 'ac')],
+    ('ace.m1.r02r05.k02', 'fault-s9-n2'): [('scenario', 'R02', 'ac')],
+    ('ace.m1.r02r05.k05', 'fault-s9a'): [('scenario', 'R02', 'ac')],
+    ('ace.m1.r02r05.k05', 'fault-s9b'): [('scenario', 'R02', 'ac')],
+    ('ace.m1.r02r05.k05', 'fault-s9-n3'): [('scenario', 'R02', 'ac')],
+    # k02 base only: the creator-exit indirect call (env owned in the
+    # creator frame). k05 base is the deep-clone face — its fault legs
+    # carry R02, it is not creator-exit evidence.
+    ('ace.m1.r02r05.k02', 'base'): [('scenario', 'R05', 'ac')],
+    # 923 guards: per-seam allocation-failure injections (S1 node/S2 data/
+    # S3 grow/S4 frame/S6/S7 text backing) are the R03 fault-injection face.
+    ('ace.m1.r03.l04', 'fault-s1'): [('scenario', 'R03', 'ac')],
+    ('ace.m1.r03.l04', 'fault-s2'): [('scenario', 'R03', 'ac')],
+    ('ace.m1.r03.l04', 'fault-s4'): [('scenario', 'R03', 'ac')],
+    ('ace.m1.r03.grow', 'fault-s3'): [('scenario', 'R03', 'ac')],
+    ('ace.m1.r03.lstr', 'fault-s6'): [('scenario', 'R03', 'ac')],
+    ('ace.m1.r03.lstr', 'fault-s7'): [('scenario', 'R03', 'ac')],
+    # 919 events: the budget/cancel/trap exit faces on both engines are the
+    # R06 cell (av fuel/cancel-flag; mn wrapper-driven set_budget/
+    # cancel_after_work).
+    ('ace.m1.r06-budget.mn', 'ac-native'): [('scenario', 'R06', 'ac')],
+    ('ace.m1.r06-cancel.mn', 'ac-native'): [('scenario', 'R06', 'ac')],
+    ('ace.m1.r06-trap.mn', 'ac-native'): [('scenario', 'R06', 'ac')],
+    ('ace.m1.r06-budget.av', 'av'): [('scenario', 'R06', 'av')],
+    ('ace.m1.r06-cancel.av', 'av'): [('scenario', 'R06', 'av')],
+    ('ace.m1.r06-trap.av', 'av'): [('scenario', 'R06', 'av')],
+    # 823 first case: the typed closures fixture (pairs corpus K02 —
+    # creator-exit events + store rebuild-restore) is the R05 av face.
+    ('av.closures.first', 'run-closures-fixture'): [('scenario', 'R05', 'av')],
 }
 
 def admit_probe_families(inputs, evidence, bindings, registry):
@@ -934,16 +988,27 @@ def admit_rust_test_cells(inputs, evidence, binding, registry):
         cells = binding['cells']
         require(type(cells) is dict and cells, 'rust test cell map')
         observations = {}
-        for cell_key, test_name in sorted(cells.items()):
+        for cell_key, cell_tests in sorted(cells.items()):
             require(cell_key in required_set, 'rust test cell outside the required set')
-            hits = [k for k in results if k.endswith(test_name)]
-            require(len(hits) == 1, f'rust test name not unique: {test_name}')
-            event = results[hits[0]]
-            require(type(event) is dict and event.get('event') == 'ok',
-                    f'rust test not ok: {test_name}')
+            # PLAN-1013 T-07: a cell's binding-note may name SEVERAL test
+            # faces (e.g. D05's five type-gate rejections + the closed
+            # whitelist). Accept one name (str) or the full list; every
+            # named test must be uniquely hit and `ok` — the note's whole
+            # evidence family closes the cell, not one cherry-picked leg.
+            test_names = [cell_tests] if isinstance(cell_tests, str) else list(cell_tests)
+            require(test_names and all(isinstance(n, str) for n in test_names),
+                    'rust test cell map values must be test names or lists of them')
+            named_hits = []
+            for test_name in test_names:
+                hits = [k for k in results if k.endswith(test_name)]
+                require(len(hits) == 1, f'rust test name not unique: {test_name}')
+                event = results[hits[0]]
+                require(type(event) is dict and event.get('event') == 'ok',
+                        f'rust test not ok: {test_name}')
+                named_hits.append(hits[0])
             observations[cell_key] = {
                 'judgement': 'PASS', 'oracle_source': 'rust-test',
-                'test': hits[0], 'group': binding['group']}
+                'tests': named_hits, 'group': binding['group']}
         return observations
 
     observations = _compact_admission(inputs, read, 256 << 10)

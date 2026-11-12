@@ -2454,8 +2454,7 @@
       "ace-abi::conformance$resource_recovery::abi_resource939_over_budget_cancellation_preserves_root_and_cleans_without_quota",
       "ace-abi::conformance$resource_recovery::abi_resource939_pointer_replace_failure_keeps_accepted_root",
       "ace-abi::conformance$resource_recovery::abi_resource939_restore_first_edit_fails_publishes_nothing_then_fix_and_recover",
-      "ace-abi::conformance$resource_recovery::abi_resource939_revision_churn_gc_convergence_and_lease",
-      "ace-abi::conformance$resource_recovery::performance::abi_resource939_six_scenarios_30_samples"
+      "ace-abi::conformance$resource_recovery::abi_resource939_revision_churn_gc_convergence_and_lease"
      ]
     }
    ],
@@ -2714,8 +2713,7 @@
       "ace-abi::conformance$resource_recovery::abi_resource939_over_budget_cancellation_preserves_root_and_cleans_without_quota",
       "ace-abi::conformance$resource_recovery::abi_resource939_pointer_replace_failure_keeps_accepted_root",
       "ace-abi::conformance$resource_recovery::abi_resource939_restore_first_edit_fails_publishes_nothing_then_fix_and_recover",
-      "ace-abi::conformance$resource_recovery::abi_resource939_revision_churn_gc_convergence_and_lease",
-      "ace-abi::conformance$resource_recovery::performance::abi_resource939_six_scenarios_30_samples"
+      "ace-abi::conformance$resource_recovery::abi_resource939_revision_churn_gc_convergence_and_lease"
      ]
     }
    ],
@@ -2971,8 +2969,7 @@
       "ace-abi::conformance$resource_recovery::abi_resource939_over_budget_cancellation_preserves_root_and_cleans_without_quota",
       "ace-abi::conformance$resource_recovery::abi_resource939_pointer_replace_failure_keeps_accepted_root",
       "ace-abi::conformance$resource_recovery::abi_resource939_restore_first_edit_fails_publishes_nothing_then_fix_and_recover",
-      "ace-abi::conformance$resource_recovery::abi_resource939_revision_churn_gc_convergence_and_lease",
-      "ace-abi::conformance$resource_recovery::performance::abi_resource939_six_scenarios_30_samples"
+      "ace-abi::conformance$resource_recovery::abi_resource939_revision_churn_gc_convergence_and_lease"
      ]
     }
    ],
@@ -3228,8 +3225,7 @@
       "ace-abi::conformance$resource_recovery::abi_resource939_over_budget_cancellation_preserves_root_and_cleans_without_quota",
       "ace-abi::conformance$resource_recovery::abi_resource939_pointer_replace_failure_keeps_accepted_root",
       "ace-abi::conformance$resource_recovery::abi_resource939_restore_first_edit_fails_publishes_nothing_then_fix_and_recover",
-      "ace-abi::conformance$resource_recovery::abi_resource939_revision_churn_gc_convergence_and_lease",
-      "ace-abi::conformance$resource_recovery::performance::abi_resource939_six_scenarios_30_samples"
+      "ace-abi::conformance$resource_recovery::abi_resource939_revision_churn_gc_convergence_and_lease"
      ]
     }
    ],
@@ -3881,8 +3877,7 @@
       "ace-abi::conformance$resource_recovery::abi_resource939_over_budget_cancellation_preserves_root_and_cleans_without_quota",
       "ace-abi::conformance$resource_recovery::abi_resource939_pointer_replace_failure_keeps_accepted_root",
       "ace-abi::conformance$resource_recovery::abi_resource939_restore_first_edit_fails_publishes_nothing_then_fix_and_recover",
-      "ace-abi::conformance$resource_recovery::abi_resource939_revision_churn_gc_convergence_and_lease",
-      "ace-abi::conformance$resource_recovery::performance::abi_resource939_six_scenarios_30_samples"
+      "ace-abi::conformance$resource_recovery::abi_resource939_revision_churn_gc_convergence_and_lease"
      ]
     }
    ],
@@ -4333,8 +4328,7 @@
       "ace-abi::conformance$resource_recovery::abi_resource939_over_budget_cancellation_preserves_root_and_cleans_without_quota",
       "ace-abi::conformance$resource_recovery::abi_resource939_pointer_replace_failure_keeps_accepted_root",
       "ace-abi::conformance$resource_recovery::abi_resource939_restore_first_edit_fails_publishes_nothing_then_fix_and_recover",
-      "ace-abi::conformance$resource_recovery::abi_resource939_revision_churn_gc_convergence_and_lease",
-      "ace-abi::conformance$resource_recovery::performance::abi_resource939_six_scenarios_30_samples"
+      "ace-abi::conformance$resource_recovery::abi_resource939_revision_churn_gc_convergence_and_lease"
      ]
     }
    ],
@@ -4508,9 +4502,7 @@
       "ace-abi::conformance$cache_turnaround::abi_cache_transitive_subpath_shadow_invalidates",
       "ace-abi::conformance$cache_turnaround::abi_cache_unused_nearby_file_legal_recompile",
       "ace-abi::conformance$cache_turnaround::abi_cache_v3_same_materials_upgrade_publishes",
-      "ace-abi::conformance$cache_turnaround::ace_latency::nearest_rank_boundaries",
-      "ace-abi::conformance$cache_turnaround::performance::abi_cache_512_revision_churn_gc_convergence",
-      "ace-abi::conformance$cache_turnaround::performance::abi_turnaround_six_scenarios_30_samples"
+      "ace-abi::conformance$cache_turnaround::ace_latency::nearest_rank_boundaries"
      ]
     }
    ],
