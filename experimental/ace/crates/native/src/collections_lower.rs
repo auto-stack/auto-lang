@@ -87,7 +87,13 @@ pub fn admit_unit(m: &MirModule) -> Result<(), MnError> {
 pub(crate) fn admit_layouts(
     m: &MirModule,
 ) -> Result<Vec<crate::collections_layout::Descriptor>, MnError> {
-    if m.profile != ace_av_core::contract::AV_COLLECTIONS_PROFILE {
+    if m.profile != ace_av_core::contract::AV_COLLECTIONS_PROFILE
+        // PLAN-962: aggregates documents lower through the closures-family
+        // entry (profile av.closures/1) — the av.aggregates/1 capability
+        // is the admission key (mir_verify's precedent).
+        && !(m.profile == ace_av_core::contract::AV_CLOSURES_PROFILE
+            && m.capabilities.iter().any(|c| c == "av.aggregates/1"))
+    {
         return Err(unsupported(
             "profile",
             "collections emitter requires av.collections/1",
@@ -115,7 +121,15 @@ pub(crate) fn admit_layouts(
             // record read-only views stay out of the native place surface
             // (named rejection, never silent widening).
             MirType::Place(p) => {
-                if !matches!(m.types[p.elem as usize], MirType::I32 | MirType::Bool) {
+                // PLAN-962: the aggregates surface reads whole owned
+                // elements through places (the LIST_PLACE+PLACE_GET
+                // lowering; the alias temp is never free-scheduled — the
+                // mir_verify admission holds Temp-dst only). Native
+                // widening keyed on the same capability.
+                let aggregates = m.capabilities.iter().any(|c| c == "av.aggregates/1");
+                if !matches!(m.types[p.elem as usize], MirType::I32 | MirType::Bool)
+                    && !aggregates
+                {
                     return Err(unsupported(
                         "place",
                         "place element must be Copy (i32/bool)",

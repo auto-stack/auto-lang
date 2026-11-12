@@ -36,6 +36,10 @@ enum Domain {
     Owned(ace_core::source::CompiledSource),
     /// PLAN-961: the numeric source surface (closures-family lowering).
     Numeric(ace_core::source::CompiledSource),
+    /// PLAN-962: the aggregates surface (numeric superset + composites;
+    // rides the same closures-family arm — the plan added ZERO new MIR
+    // instructions).
+    Aggregates(ace_core::source::CompiledSource),
 }
 
 /// A profile-surface rejection (`source.unsupported` out of the Text
@@ -55,6 +59,21 @@ fn is_surface_rejection(ds: &[ace_core::atom_text::Diagnostic]) -> bool {
                 && (d.message.contains("`&`")
                     || d.message.contains("`|`")
                     || d.message.contains("`^`"))
+                || {
+                // PLAN-962: the aggregates-owned token spellings (`[`,
+                // `..`, `..=`) surface as narrow-face syntax errors —
+                // climb to the widest rung exactly like the numeric-only
+                // operator characters (961 precedent).
+                d.code == "source.syntax"
+                    && (d.message.contains("found `[`")
+                        || d.message.contains("found `..`")
+                        // PLAN-962: the tuple literal (comma inside the
+                        // paren group) and the named ctor (ident followed
+                        // by `{ field: v }`) are aggregates-owned shapes.
+                        || d.message.contains("expected operator, found `,`")
+                        || d.message
+                            .contains("expected `;`, newline or `}`, found `{`"))
+            }
         }
     })
 }
@@ -135,10 +154,29 @@ fn compile_escalating(
     // PLAN-961: the numeric surface attempts LAST (a strict superset of the
     // closures vocabulary; earlier profiles keep their frozen precedence).
     attempted.push(sd::SourceProfile::Numeric);
-    ace_core::source::compile_numeric_source(src, "mn.at", caps)
-        .map(Domain::Numeric)
-        .map_err(|ds| sd::CompileFailure {
+    match ace_core::source::compile_numeric_source(src, "mn.at", caps) {
+        Ok(c) => return Ok(Domain::Numeric(c)),
+        Err(ds) if is_surface_rejection(&ds) => surface.push(sd::SurfaceRejection {
             profile: sd::SourceProfile::Numeric,
+            codes: ds.iter().map(|d| d.code.clone()).collect(),
+        }),
+        Err(ds) => {
+            return Err(sd::CompileFailure {
+                profile: sd::SourceProfile::Numeric,
+                attempted,
+                surface_rejections: surface,
+                diagnostics: ds,
+            });
+        }
+    }
+    // PLAN-962: the aggregates surface attempts truly LAST (numeric
+    // superset + composites; the escalation ladder keeps every frozen
+    // profile's precedence).
+    attempted.push(sd::SourceProfile::Aggregates);
+    ace_core::source::compile_aggregates_source(src, "mn.at", caps)
+        .map(Domain::Aggregates)
+        .map_err(|ds| sd::CompileFailure {
+            profile: sd::SourceProfile::Aggregates,
             attempted,
             surface_rejections: surface,
             diagnostics: ds,
@@ -157,6 +195,8 @@ impl Domain {
             // PLAN-961: numeric compiles ride the closures-family arm
             // regardless of the binder-stamped domain.
             Domain::Numeric(_) => Arm::Numeric,
+            // PLAN-962: aggregates likewise (zero new MIR instructions).
+            Domain::Aggregates(_) => Arm::Numeric,
         }
     }
     fn checked(&self) -> &ace_core::verify::CheckedModule {
@@ -165,7 +205,8 @@ impl Domain {
             | Domain::Core(c)
             | Domain::Data(c)
             | Domain::Owned(c)
-            | Domain::Numeric(c) => &c.checked,
+            | Domain::Numeric(c)
+            | Domain::Aggregates(c) => &c.checked,
         }
     }
 }

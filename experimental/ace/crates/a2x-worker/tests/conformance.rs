@@ -1,3 +1,5 @@
+#[path = "cases/aggregates_semantics.rs"]
+mod aggregates_semantics;
 #[path = "cases/a2c_cert.rs"]
 mod a2c_cert;
 #[path = "cases/a2c_coll.rs"]

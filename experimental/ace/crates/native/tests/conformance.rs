@@ -1,3 +1,5 @@
+#[path = "cases/aggregates_codegen_tier.rs"]
+mod aggregates_codegen_tier;
 #[path = "cases/cache_tier.rs"]
 mod cache_tier;
 #[path = "cases/choose_instances_935.rs"]

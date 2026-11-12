@@ -256,7 +256,18 @@ impl<'a> SemanticView<'a> {
     /// verifier — a view can only be built over genuinely verified content.
     pub fn from_checked(checked: &'a CheckedModule) -> Result<Self, A2xReject> {
         let domain = checked.domain();
-        let profile = profile_of(domain)?;
+        // PLAN-962: the aggregates surface binds under the closures domain
+        // — the document capability distinguishes it from numeric.
+        let profile = if domain == hir::HirDomain::Closures
+            && checked
+                .required_capabilities()
+                .iter()
+                .any(|c| c == "av.aggregates/1")
+        {
+            "auto.source.aggregates.draft"
+        } else {
+            profile_of(domain)?
+        };
         let bundle = checked.bundle();
         let module = single_module(bundle)?;
         let functions = collect_functions(module, None)?;
@@ -845,7 +856,13 @@ impl<'a> SemanticView<'a> {
                         self.profile
                     )));
                 }
-                if self.domain == hir::HirDomain::Collections {
+                // PLAN-962: the aggregates surface (closures domain + the
+                // av.aggregates/1 capability) admits the FULL collections
+                // family (records + collections kinds — tuples ride
+                // records, Box/grid ride lists).
+                if self.domain == hir::HirDomain::Collections
+                    || self.profile == "auto.source.aggregates.draft"
+                {
                     if kind_in_family(other, Family::Collections) {
                         return Ok(());
                     }

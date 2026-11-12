@@ -692,6 +692,9 @@ impl A2xSession {
                 Family::RecordText
             }
             SourceProfile::Collections => Family::Collections,
+            // PLAN-962: aggregates rides the collections family (the
+            // CollectionsBodyFacts free schedule).
+            SourceProfile::Aggregates => Family::Collections,
             _ => Family::Scalar,
         }
     }
@@ -987,6 +990,12 @@ impl A2xSession {
             // profile (closures-superset domain).
             SourceProfile::Numeric => {
                 ace_core::source::compile_numeric_source(src, "a2x", caps)
+            }
+            // PLAN-962: the aggregates surface compiles through its own
+            // profile (closures-superset domain + the aggregates
+            // capability).
+            SourceProfile::Aggregates => {
+                ace_core::source::compile_aggregates_source(src, "a2x", caps)
             }
             other => {
                 return Err(A2xRejectOrResource::Reject(A2xReject::domain(format!(
@@ -1793,6 +1802,9 @@ impl A2xSession {
                 Family::RecordText
             }
             SourceProfile::Collections => Family::Collections,
+            // PLAN-962: aggregates rides the collections family (the
+            // CollectionsBodyFacts free schedule).
+            SourceProfile::Aggregates => Family::Collections,
             _ => Family::Scalar,
         };
         // PLAN-925: the record-text family restores purely on the C target

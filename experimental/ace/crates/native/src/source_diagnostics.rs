@@ -41,6 +41,9 @@ pub enum SourceProfile {
     TextRecord,
     /// PLAN-961: the numeric source surface (attempted last).
     Numeric,
+    /// PLAN-962: the aggregates source surface (numeric superset +
+    /// composites; attempted truly last).
+    Aggregates,
 }
 
 impl SourceProfile {
@@ -51,6 +54,7 @@ impl SourceProfile {
             SourceProfile::Record => "record",
             SourceProfile::TextRecord => "text-record",
             SourceProfile::Numeric => "numeric",
+            SourceProfile::Aggregates => "aggregates",
         }
     }
 }
