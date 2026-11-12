@@ -177,6 +177,10 @@ TAG沿原六门：01明确C/H完整commit与来源闭包；02正式终验；03�
 
 2026-11-13 stage: goal/work 进度八（T-06..T-08 完成，交付收据）。C=b923362f47bc8861407e9a470d63ddfdb505982b（--no-ff，master 零代码漂移）；C 正式读回 exit 0（t04/c-readback.json，报告 sha efd1822aa12a 与 H 相同；worktree checkout C 执行——主检出 target 二进制含构建路径嵌入与 worktree 构建不符，内容层 C≡H 已由 registry 6000227758b8 与源码 diff 证实）；TAG 六门闭合 tag_ready=true（标签创建/推送待用户单独授权）。SD-01..03 沉淀 docs/specs/auto-test-case/{ace-m1-architecture-evidence-admission,ace-m1-expanded-acceptance}.md。关键身份汇总：H=40b51f809d…、K=pre-signature-candidate 4d531a1cbdd2…（1005P/0F/1U）、R=9ffa9bc2c3b8…、bindings-final=3b71b25ed367…、H 终验报告=C 读回报告=efd1822aa12a…、registry=6000227758b8…、8 任务 8/8 完成。
 
+2026-11-13 stage: goal | plan_id: PLAN-1025 | plan_revision: r1 | round: 2 | from: merge | to: done | status: archived | outcome: pass | commit: b923362f4 (C) / 3654f89e8 (docs) | next: done
+
+交付完成：T-01..T-08 8/8；H=40b51f80 正式终验 exit0；C=b923362f4 实际读回 exit0（报告 efd1822aa12a 两读相同）；R=9ffa9bc2 被 C 接受；SD-01..03 已沉淀；worktree/分支/plan-artifacts(1.2GB) 已清理；归档于 docs/plans/archive/。
+
 ## 10. 待澄清事项
 
 无阻碍规划交接的产品决定。T-01核全部同源失配、当前原件与真实采集量，属于有界调查，不要求用户猜技术方案。执行/独立复审角色未指派，本轮不启动会话。实际tag创建/推送按收口后当时授权单独办理，本包不自动发布。
