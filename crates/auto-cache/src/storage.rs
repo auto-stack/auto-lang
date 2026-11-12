@@ -9,8 +9,8 @@
 // - Automatic directory creation
 
 use std::fs;
-use std::path::{Path, PathBuf};
 use std::io;
+use std::path::{Path, PathBuf};
 
 /// BlobStore-specific result type
 pub type Result<T> = std::result::Result<T, Error>;
@@ -67,10 +67,7 @@ impl BlobStore {
     /// Hash "f9e8d7c6..." -> "root/blobs/f9/f9e8d7c6..."
     fn hash_to_path(&self, hash: &str) -> PathBuf {
         let prefix = &hash[0..2.min(hash.len())];
-        self.root
-            .join("blobs")
-            .join(prefix)
-            .join(hash)
+        self.root.join("blobs").join(prefix).join(hash)
     }
 
     /// Store blob from source file
@@ -153,7 +150,11 @@ impl BlobStore {
         // Try hard link first (zero-copy)
         match fs::hard_link(&source, target) {
             Ok(_) => {
-                log::debug!("Created hard link: {} -> {}", source.display(), target.display());
+                log::debug!(
+                    "Created hard link: {} -> {}",
+                    source.display(),
+                    target.display()
+                );
                 Ok(())
             }
             Err(e) => {
@@ -192,8 +193,18 @@ impl BlobStore {
                 let blob_entry = blob_entry?;
                 let blob_path = blob_entry.path();
 
-                // Only count files, not directories
-                if blob_path.is_file() {
+                // DirEntry caches enumeration metadata on Windows. Avoid
+                // reopening every regular blob just to ask its type. Keep
+                // the existing follow-target behavior for symbolic links.
+                let kind = match blob_entry.file_type() {
+                    Ok(kind) => kind,
+                    Err(_) => continue,
+                };
+                if kind.is_symlink() {
+                    if blob_path.is_file() {
+                        total += blob_entry.metadata()?.len();
+                    }
+                } else if kind.is_file() {
                     total += blob_entry.metadata()?.len();
                 }
             }
@@ -222,7 +233,11 @@ impl BlobStore {
 
             for blob_entry in fs::read_dir(path)? {
                 let blob_entry = blob_entry?;
-                if blob_entry.path().is_file() {
+                let kind = match blob_entry.file_type() {
+                    Ok(kind) => kind,
+                    Err(_) => continue,
+                };
+                if kind.is_file() || (kind.is_symlink() && blob_entry.path().is_file()) {
                     count += 1;
                 }
             }
@@ -250,6 +265,19 @@ mod tests {
     use super::*;
     use std::fs::File;
     use std::io::Write;
+
+    #[test]
+    fn inventory_counts_regular_and_tmp_files_but_not_nested_directories() {
+        let root = tempfile::tempdir().unwrap();
+        let shard = root.path().join("blobs/aa");
+        std::fs::create_dir_all(shard.join("nested")).unwrap();
+        std::fs::write(shard.join("regular"), b"abc").unwrap();
+        std::fs::write(shard.join("residue.tmp"), b"12345").unwrap();
+        std::fs::write(shard.join("nested/ignored"), b"not a blob").unwrap();
+        let store = BlobStore::new(root.path().to_path_buf());
+        assert_eq!(store.total_size().unwrap(), 8);
+        assert_eq!(store.count().unwrap(), 2);
+    }
 
     #[test]
     fn test_hash_to_path() {

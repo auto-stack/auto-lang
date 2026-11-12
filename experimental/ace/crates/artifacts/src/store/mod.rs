@@ -553,13 +553,15 @@ impl ManagedStore {
         let Ok(rd) = fs::read_dir(p) else { return 0 };
         let mut t = 0;
         for e in rd.flatten() {
-            let path = e.path();
-            if is_reparse(&path) {
+            // Use the entry's no-follow enumeration type, rather than
+            // reopening every lock/staging file three times for metadata.
+            let Ok(kind) = e.file_type() else { continue };
+            if kind.is_symlink() {
                 continue; // never traverse out of the managed tree
             }
-            if path.is_dir() {
-                t += Self::dir_size(&path);
-            } else if path.is_file() {
+            if kind.is_dir() {
+                t += Self::dir_size(&e.path());
+            } else if kind.is_file() {
                 t += e.metadata().map(|m| m.len()).unwrap_or(0);
             }
         }
@@ -1965,12 +1967,16 @@ impl ManagedStore {
                 continue;
             };
             for f in files.flatten() {
-                if is_reparse(&f.path()) {
+                // Most entries are committed blobs. Filter names before
+                // querying link metadata; enumeration already provides the
+                // no-follow type on Windows. Residue remains fully charged.
+                if !f.file_name().to_string_lossy().ends_with(".tmp") {
                     continue;
                 }
-                if f.file_name().to_string_lossy().ends_with(".tmp") {
-                    total += f.metadata().map(|m| m.len()).unwrap_or(0);
+                if f.file_type().map(|t| t.is_symlink()).unwrap_or(false) {
+                    continue;
                 }
+                total += f.metadata().map(|m| m.len()).unwrap_or(0);
             }
         }
         total
@@ -1986,5 +1992,47 @@ impl ManagedStore {
             let tmp = dest.with_extension("tmp");
             let _ = remove_with_retry(&tmp);
         }
+    }
+}
+
+#[cfg(test)]
+mod cost_probe {
+    use super::*;
+    #[test]
+    #[ignore = "explicit bounded filesystem-cost diagnostic"]
+    fn short_store_scan_cost() {
+        let parent = std::env::var("CTE_COST_PROBE_ROOT").expect("explicit scratch root required");
+        let root = Path::new(&parent).join(format!("scan-{}", std::process::id()));
+        fs::create_dir(&root).unwrap();
+        let store = ManagedStore::open(&root).unwrap();
+        let shard = root.join("blocks/blobs/aa");
+        fs::create_dir_all(&shard).unwrap();
+        let mut previous = 0;
+        for count in [128usize, 512, 2048] {
+            for i in previous..count {
+                fs::write(shard.join(format!("blob{i:08}")), [0u8; 16]).unwrap();
+                fs::write(root.join("locks").join(format!("probe{i}.lock")), [0u8; 7]).unwrap();
+            }
+            previous = count;
+            fs::write(shard.join("residue.tmp"), [0u8; 37]).unwrap();
+            let start = std::time::Instant::now();
+            for _ in 0..3 {
+                let report = store.space();
+                assert_eq!(report.blocks, (count * 16 + 37) as u64);
+                assert_eq!(report.blocks_count, (count + 1) as u64);
+                assert_eq!(report.locks, (count * 7) as u64);
+            }
+            let space_ms = start.elapsed().as_secs_f64() * 1000.0;
+            let start = std::time::Instant::now();
+            for _ in 0..3 {
+                assert_eq!(store.cas_tmp_bytes(), 37);
+            }
+            println!(
+                "SCAN count={count} space_3_ms={space_ms:.3} residue_3_ms={:.3}",
+                start.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+        drop(store);
+        fs::remove_dir_all(&root).unwrap();
     }
 }

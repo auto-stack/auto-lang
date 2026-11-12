@@ -780,7 +780,9 @@ impl CteDriver {
                         return dl.diag(cache_verdict, obs);
                     }
                     let env = self.mint_envelope(&req, &identity, &exec, manifest);
-                    if let Err(e) = self.publish_env(&env, budget, dl) {
+                    if let Err(e) =
+                        obs.span("freeze_publish", |_| self.publish_env(&env, budget, dl))
+                    {
                         return CteStepOutcome::diag(&e, cache_verdict, obs);
                     }
                     exec.value
@@ -811,7 +813,7 @@ impl CteDriver {
                     return dl.diag(cache_verdict, obs);
                 }
                 let env = self.mint_envelope(&req, &identity, &exec, manifest);
-                if let Err(e) = self.publish_env(&env, budget, dl) {
+                if let Err(e) = obs.span("freeze_publish", |_| self.publish_env(&env, budget, dl)) {
                     return CteStepOutcome::diag(&e, cache_verdict, obs);
                 }
                 exec.value
@@ -1003,7 +1005,7 @@ impl CteDriver {
             }
         } else {
             let cancel = self.cancel.clone();
-            av_driver::execute_call(
+            av_driver::execute_call_observed(
                 &req.source,
                 &req.module,
                 input,
@@ -1012,6 +1014,7 @@ impl CteDriver {
                 self.forbid_av,
                 &cancel,
                 wall_budget,
+                obs,
             )
         };
         obs.record_span("av_execute", exec_started.elapsed().as_secs_f64() * 1000.0);
@@ -1052,8 +1055,8 @@ impl CteDriver {
     ) -> Result<AvExecResult, CteStepOutcome> {
         let forbid = self.forbid_av;
         let cancel = self.cancel.clone();
-        let out = obs.span("av_execute", |_| {
-            av_driver::execute_call(
+        let out = obs.span("av_execute", |obs| {
+            av_driver::execute_call_observed(
                 &req.source,
                 &req.module,
                 input,
@@ -1062,6 +1065,7 @@ impl CteDriver {
                 forbid,
                 &cancel,
                 wall_budget,
+                obs,
             )
         });
         match out {

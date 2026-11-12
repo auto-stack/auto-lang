@@ -10,7 +10,44 @@ use ace_av_core::contract::{
     ExecOutcome, Value, ABC_SCHEMA, ABC_SEMANTICS, AV_PROFILE, AV_SEMANTICS, MAX_AV_WALL,
     MIR_SCHEMA, MIR_SEMANTICS,
 };
-use ace_core::source::compile_scalar_source;
+use ace_core::source::adapter::{compile_parts_with_observer, SourceObserver, SourceStage};
+use ace_core::source::{CompiledSource, SourceProfile};
+
+struct FrontendClock<'a> {
+    obs: &'a mut crate::observe::Obs,
+    last: std::time::Instant,
+}
+impl SourceObserver for FrontendClock<'_> {
+    fn stage(&mut self, stage: SourceStage, _: &[ace_core::atom_text::Diagnostic]) {
+        let now = std::time::Instant::now();
+        self.obs.record_span(
+            &format!("av_frontend_{}", stage.as_str()),
+            now.duration_since(self.last).as_secs_f64() * 1000.0,
+        );
+        self.last = now;
+    }
+}
+
+fn compile_observed(
+    src: &str,
+    module: &str,
+    obs: &mut crate::observe::Obs,
+) -> Result<CompiledSource, Vec<ace_core::atom_text::Diagnostic>> {
+    let mut clock = FrontendClock {
+        obs,
+        last: std::time::Instant::now(),
+    };
+    let parts = compile_parts_with_observer(src, module, &[], SourceProfile::Scalar, &mut clock)?;
+    let checked = clock.obs.span("av_frontend_verify", |_| {
+        ace_core::verify::verify_scalar(parts.bundle)
+    })?;
+    Ok(CompiledSource {
+        profile: ace_core::source::SCALAR_SOURCE_PROFILE,
+        input_hash: parts.input_hash,
+        atom_text: parts.atom_text,
+        checked,
+    })
+}
 
 /// The D-798 per-call AV wall cap — an upper bound the request deadline
 /// narrows per call (F-817-R6-01: the 10s REQUEST total dominates; the
@@ -368,6 +405,30 @@ pub fn execute_call(
     cancel: &CancelFlag,
     wall_budget: std::time::Duration,
 ) -> Result<AvExecResult, CteAdmissionError> {
+    execute_call_observed(
+        source,
+        module_path,
+        input,
+        callee,
+        args,
+        forbid_av,
+        cancel,
+        wall_budget,
+        &mut crate::observe::Obs::new(),
+    )
+}
+
+pub(crate) fn execute_call_observed(
+    source: &str,
+    module_path: &str,
+    input: &ace_semantics::SemaInput,
+    callee: &str,
+    args: &[CteValue],
+    forbid_av: bool,
+    cancel: &CancelFlag,
+    wall_budget: std::time::Duration,
+    obs: &mut crate::observe::Obs,
+) -> Result<AvExecResult, CteAdmissionError> {
     if forbid_av {
         return Err(CteAdmissionError::new(
             CteCode::Infra("av-forbidden".into()),
@@ -386,7 +447,7 @@ pub fn execute_call(
 
     // Frontend with NO granted capabilities — the CTE closure must
     // require none (trace/text are refused here, before any AV call).
-    let compiled = compile_scalar_source(&src, module_path, &[]).map_err(|ds| {
+    let compiled = obs.span("av_frontend", |obs| compile_observed(&src, module_path, obs)).map_err(|ds| {
         let d = ds.first().cloned();
         let (code, msg) = match d {
             Some(x) => (x.code, x.message),
@@ -430,17 +491,21 @@ pub fn execute_call(
     // (`CtExecutor`'s cold implementation); this probe keeps only its
     // frozen wrapper synthesis, frontend admission and its own value
     // fold. There is no second executor and no copied tail here.
-    let (value, facts) = ace_source_cte::executor::run_entry_on_av(
-        checked,
-        CTE_CALL_ENTRY_ID,
-        snapshot,
-        &ExecLimits {
-            wall: wall_budget,
-            ..Default::default()
-        },
-        cancel,
-    )
-    .map_err(|e| shared_tail_error(e, callee, args))?;
+    let (value, facts) = obs
+        .span("av_lower_verify_run", |obs| {
+            ace_source_cte::executor::run_entry_on_av_observed(
+                checked,
+                CTE_CALL_ENTRY_ID,
+                snapshot,
+                &ExecLimits {
+                    wall: wall_budget,
+                    ..Default::default()
+                },
+                cancel,
+                &mut |name, elapsed| obs.record_span(name, elapsed.as_secs_f64() * 1000.0),
+            )
+        })
+        .map_err(|e| shared_tail_error(e, callee, args))?;
     let cv = cte_value_of(&value, is_bool)?;
     Ok(AvExecResult {
         value: cv,

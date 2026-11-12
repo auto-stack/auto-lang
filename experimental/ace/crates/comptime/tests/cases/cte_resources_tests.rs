@@ -134,7 +134,10 @@ fn big_deck(start_b: i32, q: usize) -> String {
 }
 
 fn gc_deck(start_b: i32, q: usize) -> (String, i64) {
-    let n = 300;
+    gc_deck_n(start_b, q, 300)
+}
+
+fn gc_deck_n(start_b: i32, q: usize, n: usize) -> (String, i64) {
     let sigma = (0..n as i64).sum::<i64>();
     let mut main = String::new();
     let mut queries = String::new();
@@ -1919,4 +1922,81 @@ bind main.ct = q1 expect i32 placeholder 0
             .unwrap()
             .is_some());
     }
+}
+
+/// Diagnostic scale of the formal GC input: identical closure lane, helper
+/// graph, unique arguments, real frozen store and GC. Does not replace the
+/// original two 64MiB passes. Run explicitly with --ignored --nocapture.
+#[test]
+#[ignore = "bounded cost attribution; explicit diagnostic entry"]
+fn resources_short_cost_probe() {
+    use std::time::{Duration, Instant};
+    let root = std::env::var("CTE_COST_PROBE_ROOT").expect("explicit plan-artifacts root required");
+    let helpers: usize = std::env::var("CTE_COST_HELPERS")
+        .unwrap_or("300".into())
+        .parse()
+        .unwrap();
+    let calls: usize = std::env::var("CTE_COST_CALLS")
+        .unwrap_or("2".into())
+        .parse()
+        .unwrap();
+    let batches: usize = std::env::var("CTE_COST_BATCHES")
+        .unwrap_or("2".into())
+        .parse()
+        .unwrap();
+    assert!(helpers > 0 && calls > 0 && batches > 0);
+    let tmp = tempfile::tempdir_in(root).unwrap();
+    let mut d = CteDriver::with_store(tmp.path(), "cost-probe").unwrap();
+    d.set_request_wall_limit(Duration::from_secs(30));
+    let all = Instant::now();
+    for batch in 0..batches {
+        assert!(
+            all.elapsed() < Duration::from_secs(50),
+            "probe budget exhausted"
+        );
+        let start = 1 + (batch * calls) as i32;
+        let (deck, sigma) = gc_deck_n(start, calls, helpers);
+        let out = d.query_step(&deck, None);
+        assert_eq!(out.status, StepStatus::Ok, "{:?}", out.message);
+        assert_eq!(out.ct_execute, calls as u64);
+        assert_eq!(out.cache, Some("miss"));
+        assert!(out.managed_target_met);
+        for i in 0..calls {
+            assert_eq!(
+                out.values[&format!("main.c{i}")].render(),
+                format!("i32:{}", 20 + start as i64 + i as i64 + sigma)
+            );
+        }
+        println!(
+            "COST {}",
+            serde_json::json!({"batch":batch,"helpers":helpers,"calls":calls,"wall_ms":out.wall_ms,"spans_ms":out.spans,"bytes":d.store().unwrap().raw().space().total})
+        );
+        // A real warm hit must neither compile nor execute.
+        d.set_forbid_av(true);
+        let hit = d.query_step(&deck, None);
+        assert_eq!(hit.status, StepStatus::Ok, "{:?}", hit.message);
+        assert_eq!(hit.ct_execute, 0);
+        assert_eq!(hit.cache, Some("hit"));
+        assert_eq!(hit.values, out.values);
+        d.set_forbid_av(false);
+    }
+    let st = d.store().unwrap().raw();
+    st.remove_project_roots("cost-probe").unwrap();
+    let gc_started = Instant::now();
+    // Diagnostic thresholds force the SAME collector on the small real
+    // products. Formal high/low constants and their tests are untouched.
+    let space = st.space();
+    let receipt = ace_artifacts::store::run_gc(
+        st,
+        GcConfig {
+            high: 1,
+            low: space.db_main + space.locks + space.logs + 1,
+        },
+    )
+    .unwrap();
+    assert!(receipt.ran && receipt.deleted_chunks > 0 && receipt.freed_bytes > 0);
+    println!(
+        "COST {}",
+        serde_json::json!({"gc_ms":gc_started.elapsed().as_secs_f64()*1000.0,"deleted":receipt.deleted_chunks,"freed":receipt.freed_bytes,"total_ms":all.elapsed().as_secs_f64()*1000.0})
+    );
 }

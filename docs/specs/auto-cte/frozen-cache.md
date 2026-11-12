@@ -71,3 +71,36 @@
 - 共享预算：单根累计 10s、单 AV min(2s,remaining) 不重置、查询环按 (owner,span)
   节点身份具名拒、普通递归非环（AV fuel）；envelope 页界 512KiB、单串界 64KiB
   （完整闭包 canonical）。原 817 层/预算/生命周期规则不变。
+
+
+## 有界成本诊断（PLAN-1016）
+
+`ace-comptime::conformance` 的显式 ignored 测试
+`cte_resources_tests::resources_short_cost_probe` 复用原 `gc_deck` 生成器：
+默认保留300个helper、Closure lane、真实AV/冻结/发布与逐值闭式oracle，
+仅缩至2 calls × 2 batches。每批还在 forbid_av 下验证同输入hit且ct_execute=0。
+小规模GC调用同一collector，诊断水位设置为当前DB/locks/logs底板之上，
+验证物理删除；不声称覆盖正式64MiB水位收敛、lease和sentinel全合同。
+原32MiB/512修订与两轮64MiB测试规模、断言及正式性能门保持。
+
+运行前显式设置 `CTE_COST_PROBE_ROOT` 到本计划的 plan-artifacts 目录；
+可选 `CTE_COST_HELPERS`/`CTE_COST_CALLS`/`CTE_COST_BATCHES` 调整单一维度。
+先用 `cargo test --manifest-path experimental/ace/Cargo.toml -p ace-comptime
+--test conformance --no-run` 完成构建，构建时间单列；再仅执行上述完整测试名
+（`--exact --ignored --nocapture`），诊断外层进程上限60秒，超界先查阶段日志/减工作量。
+默认探针约1秒；300 helpers × 50 calls × 4 batches 的本机修后样本约16秒，
+这些是观测值，不是跨机器承诺或正式门替代。
+
+观测 `av_frontend_{parse,resolve,typecheck,emit,bind,verify}`、
+`av_lower_verify`、`av_vm_run`、`freeze_publish` 与单独GC时间；父级span包含子级，
+不得把嵌套span相加充总时间。绑定span包含源码位置映射。共享执行尾的
+`run_entry_on_av_observed` 是原准入/执行路径上的被动阶段回调；原入口仍委托同一实现。
+源编译/Closure每调用冷编译依然存在，不把文件系统优化描述成编译复用。
+
+存储分离诊断：`ace-artifacts` lib ignored
+`store::cost_probe::short_store_scan_cost`，同样要求显式scratch根。
+固定128/512/2048个blob与锁文件、37字节临时残留，分别测space与残留扫描，
+并断言字节/文件数。`BlobStore`普通文件类型及managed目录/残留类型读取使用
+DirEntry枚举元数据，避免Windows逐文件重复打开；原blob符号链接分支、managed目录
+不跟随链接、临时残留配额、命名空间锁覆盖及物理计量规则保持。
+文件枚举随存量增长仍有成本，未引入跨进程缓存计数或改写预算协议。

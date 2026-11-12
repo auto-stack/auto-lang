@@ -189,6 +189,20 @@ pub fn run_entry_on_av(
     limits: &ExecLimits,
     cancel: &CancelFlag,
 ) -> Result<(Value, AvExecFacts), CtExecError> {
+    run_entry_on_av_observed(checked, entry_id, snapshot, limits, cancel, &mut |_, _| {})
+}
+
+/// Same shared tail with passive stage timing. Observations never affect
+/// admission, execution limits, value folding or the measured AV facts.
+pub fn run_entry_on_av_observed(
+    checked: &CheckedModule,
+    entry_id: &str,
+    snapshot: u64,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    observe: &mut dyn FnMut(&'static str, std::time::Duration),
+) -> Result<(Value, AvExecFacts), CtExecError> {
+    let preparation = std::time::Instant::now();
     let mir = lower_checked(checked, entry_id, snapshot)
         .map_err(|e| CtExecError::pre("cte.infra/mir-lower", format!("lowering failed: {e:?}")))?;
     let _ = verify_mir(&mir).map_err(|e| {
@@ -213,9 +227,12 @@ pub fn run_entry_on_av(
             format!("ABC admission failed: {e:?}"),
         )
     })?;
+    observe("av_lower_verify", preparation.elapsed());
     let started = std::time::Instant::now();
     let (outcome, trace) = execute(&loaded, limits, cancel);
-    let wall_ms = started.elapsed().as_millis() as u64;
+    let elapsed = started.elapsed();
+    let wall_ms = elapsed.as_millis() as u64;
+    observe("av_vm_run", elapsed);
     match outcome {
         ExecOutcome::Success { value, steps } => Ok((
             value,
