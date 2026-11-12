@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1015
-status: execution_done
+status: reviewed
 feature_name: 拆分重构收口补验与合同对齐
 author: [Codex]
 created_at: 2026-11-12
 updated_at: 2026-11-12
 plan_revision: 1
-current_step: 6
+current_step: 7
 total_steps: 9
 depends_on: [PLAN-989, PLAN-1006, auto-os/PLAN-068]
 supersedes_spec_components: [docs/specs/repository-boundaries/split-refactor-milestone-acceptance.md]
@@ -210,6 +210,8 @@ stage: goal | plan_id: PLAN-1015 | plan_revision: r1 | round: 1 | from: work | t
 - **F4（低，AC-04/06）收据增强**：rq_drill 补 exe-identity-old/new 映像 SHA-256 核验、N 阶段 AUTO_OS_ROOT 钉 N-os 树、成功跑日志留档（logs/*.out 现保留）。重跑 RQ 演练 18/18 PASS（含两映像核验）、driver ui 全绿。
 - 013 AddTodo 具名 owner 剩余（§10.5）按复审裁定不阻 final pass（用户已裁定回 owner 修复后消费）。
 - next: review（T-07 定向重核 F1..F4 修复与整体 final pass）。
+
+2026-11-12，stage:review，review_scope:final，reviewer:general 子代理（独立上下文，第二轮），PLAN-1015 r1，outcome:**pass**：F1/F2/F4 完全修复、F3 主体修复（R1/R2 两条 Low 不阻，merge 收敛——R1 计数 16/16→18/18 已同步、R2 恢复清单 F3 改述随 T-08 一并提交）。逐 AC：AC-01..07 pass（来源/投影/通道、Counter 0→1→Reset 全链+移根、013 勾选/过滤+AddTodo 缺口如实回 owner、verify/fault 保全、RQ 服务 Host 18/18+窗口面身份复用、SQLite 独立读回、旁观隔离、SD-01 §3 如实+§4 签章未动、1013 联合门独立未预签、无 tag）；AC-08 属 merge 阶段未执行。reviewed_commit=67d5040d7。status→reviewed。next: merge（T-08 落地/归档、T-09 清理）。
 
 
 
