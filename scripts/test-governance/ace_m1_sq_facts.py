@@ -5,7 +5,7 @@ from ace_m1_ct_mechanisms import native_facts
 from ace_m1_legacy import typed_equal
 
 CONTRACT = 'crates/auto-lang/test/cases/ace-m1-expanded/sq-fact-contract.json'
-CONTRACT_SHA = 'af93847d9a25b4bfec812c5a639bc62d6621bf2d59b75ed8ce22e130120720cc'
+CONTRACT_SHA = '6a300f2054bd8caaaced065cffbcf0a66e05216d5122176dcc2b4eca62f95199'
 SOURCE = 'crates/auto-lang/test/cases/ace-m1-expanded/query-instances/fact-authority.at'
 BINARY = 'ace-source-query::architecture_facts_941'
 TEST = 'ordinary_source_fact_authority_and_restore_identity_941'

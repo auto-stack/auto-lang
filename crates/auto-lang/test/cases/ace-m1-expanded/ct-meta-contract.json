@@ -580,7 +580,7 @@
   "experimental/ace/crates/syntax-grammar/tests/cases/grammar.rs": "1e874352de816a7743344fb2ad8337526a499ebf8f786dbb35a33b4f1427dde8",
   "experimental/ace/crates/syntax-grammar/tests/cases/grammar_reject.rs": "273bdba066d6443bf843be5c8ac13713283f4706b9447d6ea4a4cdd3314e69f3",
   "experimental/ace/crates/syntax-grammar/tests/cases/lossless.rs": "1c8cb4cad38e2cb5ca9b8b52eb813cad1aa54537ed381641d8fb7cb79aeb51c3",
-  "experimental/ace/crates/syntax-grammar/tests/cases/profiles_927.rs": "12b6c8df4d11f6dc6ea9f1baa28ad1222a8dab98cde958858714f2f18dfef395",
+  "experimental/ace/crates/syntax-grammar/tests/cases/profiles_927.rs": "a75da9079ace06c06d9c187ae7aa7bb99a923d955dbb8429327951604b418c80",
   "experimental/ace/crates/syntax-grammar/tests/cases/recovery.rs": "66d36cddb14defbb453a32345e8eea62b86485d594d86b51bc00032762be9dc5",
   "experimental/ace/crates/syntax-grammar/tests/conformance.rs": "ab6db4aa6d6be7755d466b395507430d98d5d7f2ab1bdbb3a9c4140f127359cb",
   "experimental/ace/crates/syntax-runtime/Cargo.toml": "fdf1797d5da92eb586536fff3de356e2cfec356b102f466c92298a389fddf67d",
