@@ -1,0 +1,331 @@
+{
+ "schema": "test-case-inventory/2",
+ "suite": "ace-m1-immutable-avm-920",
+ "suite_sha256": "be2909add47887fb2a5880daeb29a2fe6c7c7f76088994519781c047f74b1374",
+ "checks": [
+  {
+   "suite": "ace-m1-immutable-avm-920",
+   "case": "ace.m1.ia920.b18",
+   "check": "autovm",
+   "case_file_sha256": "96ef60067b3c1dbab1580ffa2cdb5d0433221011ca0d4ca0207b588f787e1e42",
+   "source_sha256": "28f3cd22052664270d5884102c90ee8e87e39757c41f8ec7293ff9328d026cc0",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "cf9358d904e6fa3b11a731a86f8cfb536fb25042c1c40348cdcafee8bf3b89df"
+    }
+   ],
+   "source_ref": "File(\"src/B18.at\")",
+   "oracle_sha256": "bead61ee584c938a894528e04c6bd48e4dc3f8b5d603c5537ae886837f924045",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "avm",
+   "action": "run",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "8a13b560d1bfd094bcb020933b39c6ca729245e439a04e347afb30bfd0c6f0a5",
+   "check_sha256": "1aa6d429988434e9de469cef35b66c5492c3ae1b11a03af4c1b68da2933ba85a",
+   "completion": {
+    "kind": "error",
+    "stage": "type",
+    "code": "auto_name_E0203",
+    "message": null
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/immutable-avm-920.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/src/B18.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-immutable-avm-920",
+   "case": "ace.m1.ia920.b18c",
+   "check": "autovm",
+   "case_file_sha256": "96ef60067b3c1dbab1580ffa2cdb5d0433221011ca0d4ca0207b588f787e1e42",
+   "source_sha256": "a8b4d3bf0a7e39ca66782fab4b64991af21c25bd075da26f4ab02fd813745e92",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "104e46a2e63a0c6167ff2f7a18660dd6e2d395180c744e066ec398872d22babd"
+    }
+   ],
+   "source_ref": "File(\"immutable-avm-920/B18C.at\")",
+   "oracle_sha256": "bead61ee584c938a894528e04c6bd48e4dc3f8b5d603c5537ae886837f924045",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "avm",
+   "action": "run",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "017ad5f6459f24a6c1a581a715a503da14c328bafe7af5fca6aead3c62d3ecc0",
+   "check_sha256": "1aa6d429988434e9de469cef35b66c5492c3ae1b11a03af4c1b68da2933ba85a",
+   "completion": {
+    "kind": "error",
+    "stage": "type",
+    "code": "auto_name_E0203",
+    "message": null
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/immutable-avm-920.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/immutable-avm-920/B18C.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-immutable-avm-920",
+   "case": "ace.m1.ia920.top",
+   "check": "autovm",
+   "case_file_sha256": "96ef60067b3c1dbab1580ffa2cdb5d0433221011ca0d4ca0207b588f787e1e42",
+   "source_sha256": "57782f8a2ac858c88e9c9ef3b68759328e3807f7d05703e384b03ad7ae11ec08",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "8d26487ebc42749556d2bee81e61fa93f94a5781c6e4c2536c8583147b50e472"
+    }
+   ],
+   "source_ref": "File(\"immutable-avm-920/TOP.at\")",
+   "oracle_sha256": "bead61ee584c938a894528e04c6bd48e4dc3f8b5d603c5537ae886837f924045",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "avm",
+   "action": "run",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "beb75829558b5fca39f2f6f758efb27f256ea3ec3c194d4034d974f3b6051dcf",
+   "check_sha256": "1aa6d429988434e9de469cef35b66c5492c3ae1b11a03af4c1b68da2933ba85a",
+   "completion": {
+    "kind": "error",
+    "stage": "type",
+    "code": "auto_name_E0203",
+    "message": null
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/immutable-avm-920.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/immutable-avm-920/TOP.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-immutable-avm-920",
+   "case": "ace.m1.ia920.nb18",
+   "check": "autovm",
+   "case_file_sha256": "96ef60067b3c1dbab1580ffa2cdb5d0433221011ca0d4ca0207b588f787e1e42",
+   "source_sha256": "084d0c470ba5bfd7698909a06db5c4762db80c0a19a593a755f0c5ed75fef5d1",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "f339c2a4194ec99d89d30a666f14f490e69f6de68147bf338aaa3dd1eb99c2c0"
+    }
+   ],
+   "source_ref": "File(\"src/NB18.at\")",
+   "oracle_sha256": "3c4aa58ae4d2bbb04b694308184a74690ea4b22943ddd1a8c104dee7e3888eb0",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "avm",
+   "action": "run",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "132a0b0b68c868a3ee596892fcc954bb0350fab53bef62d8d8c671f7a56de0b6",
+   "check_sha256": "9a648cc18f01928f7e62278862df57d62148ebadcb718cab075821c172dcc795",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/immutable-avm-920.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/src/NB18.at"
+   ]
+  },
+  {
+   "suite": "ace-m1-immutable-avm-920",
+   "case": "ace.m1.ia920.nb18s",
+   "check": "autovm",
+   "case_file_sha256": "96ef60067b3c1dbab1580ffa2cdb5d0433221011ca0d4ca0207b588f787e1e42",
+   "source_sha256": "54534ad3676e7c960936524a2d99952e243cb203a32262c7b536d29f237a92a0",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "3c0841d9b5d59007a1c09b7dd2d2bfab0d6b5d514cabbd6470dbdbe1f078d61a"
+    }
+   ],
+   "source_ref": "File(\"immutable-avm-920/NB18S.at\")",
+   "oracle_sha256": "6871cc2e9fa7bea40df6d6b2c3d8a387978ccf2620c460dc6bb108c54d6c48ff",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "avm",
+   "action": "run",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "f31d94383c6e2fd0ef8792116c2956fc5d8f8a3cad1dac2bb037b470ca085376",
+   "check_sha256": "c62d724c2d913002103668163cce6efad6b7d31a02802d19641c2c1c209cc3aa",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/immutable-avm-920.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/immutable-avm-920/NB18S.at"
+   ]
+  }
+ ]
+}

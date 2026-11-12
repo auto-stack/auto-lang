@@ -1,0 +1,155 @@
+{
+ "schema": "test-case-inventory/2",
+ "suite": "av-data-824",
+ "suite_sha256": "2bb64d54ca2e7b382741eb41a60eba8d46dad9e0c888c8f6205b27d6f0f22864",
+ "checks": [
+  {
+   "suite": "av-data-824",
+   "case": "av.dynamic.first",
+   "check": "run-dynamic-fixture",
+   "case_file_sha256": "85f946cf1ac995fc56a065d129794ca96a7cd22154040d60923af9cea65ce47d",
+   "source_sha256": "94f38c2179596153a861fd589806f69e897fe33d3d6cb22a1436f8541bb1a7de",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "7f916adb2a5841be5659b95b564510e4b3c9de146e85ec6fc5cc5d4d9c38e02c"
+    }
+   ],
+   "source_ref": "File(\"src/first-case.at\")",
+   "oracle_sha256": "96e0a5e26370c991a39f41446cf0749a7a881036cd889c070a8eba0750bd80f2",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-av/dynamic-run-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": {
+     "entry": "dynamic:first-case",
+     "caps": [],
+     "session": null,
+     "profile": null,
+     "resource": null,
+     "invalidation": null
+    },
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "45a4e54bc60277532855108f0761cb721d6268a8b807b631cd196cd4abb756d6",
+   "check_sha256": "1c274471c2eae04f9001cac09244f2ec668e8b3c07504ec0f3025ebc0f61f84d",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/av-data/824/av-dynamic-first-case.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/av-data/824/src/first-case.at"
+   ]
+  },
+  {
+   "suite": "av-data-824",
+   "case": "av.dynamic.take_probe",
+   "check": "run-dynamic-take-probe",
+   "case_file_sha256": "5323cfd3acb4eb2c797e995a880498699043f76958998ef999bd18eda5c039a0",
+   "source_sha256": "94f38c2179596153a861fd589806f69e897fe33d3d6cb22a1436f8541bb1a7de",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "7f916adb2a5841be5659b95b564510e4b3c9de146e85ec6fc5cc5d4d9c38e02c"
+    }
+   ],
+   "source_ref": "File(\"src/first-case.at\")",
+   "oracle_sha256": "96e0a5e26370c991a39f41446cf0749a7a881036cd889c070a8eba0750bd80f2",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-av/dynamic-run-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": {
+     "entry": "dynamic:take-probe",
+     "caps": [],
+     "session": null,
+     "profile": null,
+     "resource": null,
+     "invalidation": null
+    },
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "fe161f57b57b4f65846f63d94caead945b4b72d8100f0bb95a27a691798eda9a",
+   "check_sha256": "04bac8f31e3808ac4c91dd21e489393ad3b1c05450991674566a85f47750a326",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/av-data/824/av-dynamic-take-probe.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/av-data/824/src/first-case.at"
+   ]
+  }
+ ]
+}

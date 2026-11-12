@@ -1,0 +1,907 @@
+{
+ "schema": "test-case-inventory/2",
+ "suite": "legacy-a2r-resources-998",
+ "suite_sha256": "2caf6b332c34ae0d875258bb77372b547f72599ba64514cedca7aef995779e9e",
+ "checks": [
+  {
+   "suite": "legacy-a2r-resources-998",
+   "case": "ace.m1.a2rscene.r01",
+   "check": "a2r-scene-emit",
+   "case_file_sha256": "ad9f0a06cbe77755af7e842e6116e37fb04f1f627fade7024154b515737296d7",
+   "source_sha256": "cc367c3514064f0e9141ae7a56b08934c77ac8892bbcb5bd6cde4b29da0e5bcb",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "05efbc08c800c95de70fcb0a1caf6d2629999bc0de3409162e5cbea5a02630be"
+    }
+   ],
+   "source_ref": "File(\"legacy-a2r-resources-998/src/R01.at\")",
+   "oracle_sha256": "dce5a441e2a37617bff426a80ade17f035076dc40df29f374e48422b96104ebc",
+   "oracle_artifacts": [
+    {
+     "path": "m1_r01.rs",
+     "file": "oracle/scenario/m1_r01.rs",
+     "sha256": "6e36768127d15ea751f53850510012f7adb51dcf3364bd7fef7a7aa37f10798a"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "a2r",
+   "action": "emit",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "7b12c6646d45850752e1d528cb9c9fe95b8a518fa056ba25dd0bcb52040470f3",
+   "check_sha256": "1dbad96a5d2d3533bae61765ca1858fede68f0f2c1b11741634ad32a82bc4c80",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "m1_r01.rs",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998/src/R01.at",
+    "crates/auto-lang/test/cases/ace-m1/oracle/scenario/m1_r01.rs"
+   ]
+  },
+  {
+   "suite": "legacy-a2r-resources-998",
+   "case": "ace.m1.a2rscene.r02_l04",
+   "check": "a2r-scene-emit",
+   "case_file_sha256": "ad9f0a06cbe77755af7e842e6116e37fb04f1f627fade7024154b515737296d7",
+   "source_sha256": "f4f27ee5ce2401353cc9a69fc446ca26baf153361c03b31a22645eeca2878f97",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "a79b03e53e6e82bda9000a1b6cd1bcfae695d4cc427928261e9d13bda19b0b99"
+    }
+   ],
+   "source_ref": "File(\"legacy-a2r-resources-998/src/R02-L04.at\")",
+   "oracle_sha256": "6db87c5103b425b411cbd21e0831e95bb5abc75e1457358df8d3e486ed39ede5",
+   "oracle_artifacts": [
+    {
+     "path": "m1_r02_l04.rs",
+     "file": "oracle/scenario/m1_r02_l04.rs",
+     "sha256": "f1b3ae8daded024551dcfb5503c16cab6866894bf5b567419e596ada51b3173e"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "a2r",
+   "action": "emit",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "572c090ec37c90dd7713ad850749287df7d690733817e4a7077a5fd43dd1499c",
+   "check_sha256": "68073adfb081192f28b4b3c2908213563ffa84d3d65927d1ede53a9bf063cacf",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "m1_r02_l04.rs",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998/src/R02-L04.at",
+    "crates/auto-lang/test/cases/ace-m1/oracle/scenario/m1_r02_l04.rs"
+   ]
+  },
+  {
+   "suite": "legacy-a2r-resources-998",
+   "case": "ace.m1.a2rscene.r02_l05",
+   "check": "a2r-scene-emit",
+   "case_file_sha256": "ad9f0a06cbe77755af7e842e6116e37fb04f1f627fade7024154b515737296d7",
+   "source_sha256": "5d48215241c6debb3ec8121dacda9706ed1cc383d549e3b7927b72eb4212dc11",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "3c55fc65f45724c072aaf7a772cfdc7d52da0d4f117ec6f23841795551629149"
+    }
+   ],
+   "source_ref": "File(\"legacy-a2r-resources-998/src/R02-L05.at\")",
+   "oracle_sha256": "fd9bda36720e47a1af2daf9826622acd7ba8f79c4127947b59a9f4f3c654c382",
+   "oracle_artifacts": [
+    {
+     "path": "m1_r02_l05.rs",
+     "file": "oracle/scenario/m1_r02_l05.rs",
+     "sha256": "8026e0a7a1f57833487981805c2edc9d69b7e0d607910f8219544ee636229674"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "a2r",
+   "action": "emit",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "82ece24165f8b730092691127a0fdaf34a7b5b2218708410d44d61b74225aac3",
+   "check_sha256": "3c52965e6e3e4905e774fdf9742deb66df1ed6528019af84418552aac4b985b2",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "m1_r02_l05.rs",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998/src/R02-L05.at",
+    "crates/auto-lang/test/cases/ace-m1/oracle/scenario/m1_r02_l05.rs"
+   ]
+  },
+  {
+   "suite": "legacy-a2r-resources-998",
+   "case": "ace.m1.a2rscene.r02_v05",
+   "check": "a2r-scene-emit",
+   "case_file_sha256": "ad9f0a06cbe77755af7e842e6116e37fb04f1f627fade7024154b515737296d7",
+   "source_sha256": "d3a29b69a26181aa5c4868b4598ff47cd03ad177f209a63a0f35d3df9d41a3d1",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "734c211d1ea0e62d52f14617369a77c975c0a23c915e3ed9dff91fa1f4c7c0c3"
+    }
+   ],
+   "source_ref": "File(\"legacy-a2r-resources-998/src/R02-V05.at\")",
+   "oracle_sha256": "70c738c882c2f4aa49529752d46186895770138fb0a0efb8ae472b5d20fdc532",
+   "oracle_artifacts": [
+    {
+     "path": "m1_r02_v05.rs",
+     "file": "oracle/scenario/m1_r02_v05.rs",
+     "sha256": "ba918ec0503e45d44beb588b41b76ebf23ad59703b576fe8004dcc9a230747f2"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "a2r",
+   "action": "emit",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "942a21f93a8836648287f242fc2f7efe9decdc417f8fc6d1361f5e209f414d0f",
+   "check_sha256": "cd39256527e2e0b868d7c05e6c27c5e58e1152cf8606399d4ba10d440721676c",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "m1_r02_v05.rs",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998/src/R02-V05.at",
+    "crates/auto-lang/test/cases/ace-m1/oracle/scenario/m1_r02_v05.rs"
+   ]
+  },
+  {
+   "suite": "legacy-a2r-resources-998",
+   "case": "ace.m1.a2rscene.r02_lstr",
+   "check": "a2r-scene-emit",
+   "case_file_sha256": "ad9f0a06cbe77755af7e842e6116e37fb04f1f627fade7024154b515737296d7",
+   "source_sha256": "971fae38abe80696af6f3bf2298b2d533545351bfcfeaeff9e93b07ad4a11ffd",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "f36e92cfa92d4bc4240995c75e312fa84076e7bb7d983b75141dadb7e70524ff"
+    }
+   ],
+   "source_ref": "File(\"legacy-a2r-resources-998/src/R02-LSTR.at\")",
+   "oracle_sha256": "06485c47b1ab868f3d27714f2ad4e7fd3b82151432c92c237fe601270f5afe5e",
+   "oracle_artifacts": [
+    {
+     "path": "m1_r02_lstr.rs",
+     "file": "oracle/scenario/m1_r02_lstr.rs",
+     "sha256": "ec9c6f1cc5c18777c865bf02ed81d3c772cc75741d36714d23f83d75434d5f7a"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "a2r",
+   "action": "emit",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "59a0dd46ba067082cac9dc6e20efb885add351d48f280402da1399020355d543",
+   "check_sha256": "6c77cb00e2c6bd7184b9d4d39637bbc85b08c126180cfa74ff609c6048138091",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "m1_r02_lstr.rs",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998/src/R02-LSTR.at",
+    "crates/auto-lang/test/cases/ace-m1/oracle/scenario/m1_r02_lstr.rs"
+   ]
+  },
+  {
+   "suite": "legacy-a2r-resources-998",
+   "case": "ace.m1.a2rscene.r02_k02",
+   "check": "a2r-scene-emit",
+   "case_file_sha256": "ad9f0a06cbe77755af7e842e6116e37fb04f1f627fade7024154b515737296d7",
+   "source_sha256": "11218c51b3a1aeba2dd9b1fa25164a34c1d0f25087925050b2f9d8e4006f5c1a",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "be2e36e09e0a6e3d4929aaa2d7f6ee84c00793db0c6f86e65797d33f6ee42376"
+    }
+   ],
+   "source_ref": "File(\"legacy-a2r-resources-998/src/R02-K02.at\")",
+   "oracle_sha256": "cbc7444ad82b544b159949f3f9db1c0d3279521ff00665966b05f7d1e8c1b215",
+   "oracle_artifacts": [
+    {
+     "path": "m1_r02_k02.rs",
+     "file": "oracle/scenario/m1_r02_k02.rs",
+     "sha256": "1a4546afb54a5d0b1d8d10178c5eff987811cc8b6671d84bbec4a51cebb6d667"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "a2r",
+   "action": "emit",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "285178f4d8093c1cf4e2296ad79c04ae3b1d99f107cebe62e39b42a9e6937333",
+   "check_sha256": "5b085708f6709a02c4c48920b23e033ef653b6b89685c99809525c1db2ed7ac4",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "m1_r02_k02.rs",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998/src/R02-K02.at",
+    "crates/auto-lang/test/cases/ace-m1/oracle/scenario/m1_r02_k02.rs"
+   ]
+  },
+  {
+   "suite": "legacy-a2r-resources-998",
+   "case": "ace.m1.a2rscene.r03_legal",
+   "check": "a2r-scene-emit",
+   "case_file_sha256": "ad9f0a06cbe77755af7e842e6116e37fb04f1f627fade7024154b515737296d7",
+   "source_sha256": "8a6df4cbfcd688a0c8b798b690df476004815afc3b6e3309f190039cb6f797ba",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "afebd81b5eb6e3462f7cea29578429fceaa65d44d5deb570db02e3a6499b8bb5"
+    }
+   ],
+   "source_ref": "File(\"legacy-a2r-resources-998/src/R03-legal.at\")",
+   "oracle_sha256": "93c245e1421493813c5471f18bbd166f42a5db947783c437ad54ee35cf8a6808",
+   "oracle_artifacts": [
+    {
+     "path": "m1_r03_legal.rs",
+     "file": "oracle/scenario/m1_r03_legal.rs",
+     "sha256": "0813a2c93e964c58c3ba230b762cd6932f2bcb93b36d23f6a51d0a500d2f9900"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "a2r",
+   "action": "emit",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "b474dd578cb51254e337b36a989609eeaf4ce9e7b005ee8dc47357a1e510e182",
+   "check_sha256": "99fedfca48d6c693be128d29632d906b0c9b988d57560ed69be05b848f7356d3",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "m1_r03_legal.rs",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998/src/R03-legal.at",
+    "crates/auto-lang/test/cases/ace-m1/oracle/scenario/m1_r03_legal.rs"
+   ]
+  },
+  {
+   "suite": "legacy-a2r-resources-998",
+   "case": "ace.m1.a2rscene.r03_static",
+   "check": "a2r-scene-emit",
+   "case_file_sha256": "ad9f0a06cbe77755af7e842e6116e37fb04f1f627fade7024154b515737296d7",
+   "source_sha256": "72ddd2fedf331feb54b5d76c499fcc6aa0156d8725c84ca2fafe57f658b28a44",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "2d17a68d39fe3e437a7ecd7ba35ec0e0e0a4b7f2e26a275317d736466f03736b"
+    }
+   ],
+   "source_ref": "File(\"legacy-a2r-resources-998/src/R03-static.at\")",
+   "oracle_sha256": "471af70fb5d5cf3d3da3df0a3e2361418035b33976ff844f849c6b469948dee6",
+   "oracle_artifacts": [
+    {
+     "path": "m1_r03_static.rs",
+     "file": "oracle/scenario/m1_r03_static.rs",
+     "sha256": "cce2654b6934701b85933ec9598b256a395b316ce9cfd5a8c63fbad9ce4ae192"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "a2r",
+   "action": "emit",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "948b6d0b4c5d4fba2d36a42cb6cad951f408c2c44e5d15e9b92a0fe6d58f4c8b",
+   "check_sha256": "5788fe7937188a15a83b1d48fc2fd714a90f9d75a48dfc399474e40cec69ac1f",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "m1_r03_static.rs",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998/src/R03-static.at",
+    "crates/auto-lang/test/cases/ace-m1/oracle/scenario/m1_r03_static.rs"
+   ]
+  },
+  {
+   "suite": "legacy-a2r-resources-998",
+   "case": "ace.m1.a2rscene.r04",
+   "check": "a2r-scene-emit",
+   "case_file_sha256": "ad9f0a06cbe77755af7e842e6116e37fb04f1f627fade7024154b515737296d7",
+   "source_sha256": "1505aee2d7149ba48ef9c172e2032048f3f0832febfe2061bbfe2fc8c2316864",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "7145928b2c570c848f6ca7746545d1ca3d31790045855080d05db4c3d4112383"
+    }
+   ],
+   "source_ref": "File(\"legacy-a2r-resources-998/src/R04.at\")",
+   "oracle_sha256": "7fb38b74beafd1599ad78c9f89e1fb209a73caf78d9044b156c503d6b6a1269e",
+   "oracle_artifacts": [
+    {
+     "path": "m1_r04.rs",
+     "file": "oracle/scenario/m1_r04.rs",
+     "sha256": "17f8cd513a183e28508d97e93b318c0947c82af5070f9d5d0ef863b49e2e1c81"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "a2r",
+   "action": "emit",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "1a21402f521ca6420bb24a7eb9597c417db03e2b2b980475c2552f5b447545e3",
+   "check_sha256": "c731aec08dc66c002d53696175b9ddb2e39542f9f9e9de68a190b5a7d24e81f3",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "m1_r04.rs",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998/src/R04.at",
+    "crates/auto-lang/test/cases/ace-m1/oracle/scenario/m1_r04.rs"
+   ]
+  },
+  {
+   "suite": "legacy-a2r-resources-998",
+   "case": "ace.m1.a2rscene.r05",
+   "check": "a2r-scene-emit",
+   "case_file_sha256": "ad9f0a06cbe77755af7e842e6116e37fb04f1f627fade7024154b515737296d7",
+   "source_sha256": "11218c51b3a1aeba2dd9b1fa25164a34c1d0f25087925050b2f9d8e4006f5c1a",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "be2e36e09e0a6e3d4929aaa2d7f6ee84c00793db0c6f86e65797d33f6ee42376"
+    }
+   ],
+   "source_ref": "File(\"legacy-a2r-resources-998/src/R05.at\")",
+   "oracle_sha256": "c0718ec7d676cdb865549cadcc94e680fce71e636f77d1b82c6ad44d7c180725",
+   "oracle_artifacts": [
+    {
+     "path": "m1_r05.rs",
+     "file": "oracle/scenario/m1_r05.rs",
+     "sha256": "1a4546afb54a5d0b1d8d10178c5eff987811cc8b6671d84bbec4a51cebb6d667"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "a2r",
+   "action": "emit",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "08cacb97237b734c3d951f319c675c2a74aa23071a937456557bf64bce540f93",
+   "check_sha256": "c1c042717eb1163e60593b8e4feab230669ab657ef40bfe20313aaba9e28e5a9",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "m1_r05.rs",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998/src/R05.at",
+    "crates/auto-lang/test/cases/ace-m1/oracle/scenario/m1_r05.rs"
+   ]
+  },
+  {
+   "suite": "legacy-a2r-resources-998",
+   "case": "ace.m1.a2rscene.r06_deep",
+   "check": "a2r-scene-emit",
+   "case_file_sha256": "ad9f0a06cbe77755af7e842e6116e37fb04f1f627fade7024154b515737296d7",
+   "source_sha256": "ea9701a4684c9018e5ba836f0e875f0522b63682992eacc80cce8868363c86cb",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "71a220b4963cb72355ab8d75835b738387e720fa0618a13a91fca62a551372e7"
+    }
+   ],
+   "source_ref": "File(\"legacy-a2r-resources-998/src/R06-deep.at\")",
+   "oracle_sha256": "b682b50e7e8e513726607c84179c7098d6e43234825bc4472b06375a5539c07c",
+   "oracle_artifacts": [
+    {
+     "path": "m1_r06_deep.rs",
+     "file": "oracle/scenario/m1_r06_deep.rs",
+     "sha256": "cb82758ece34056433e25b30f3996db73d2829e6dacdfd87d44ea4963f974b67"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "a2r",
+   "action": "emit",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "1e1c4da893cab2be254c8a92b0945063e9a452cba395dad69c1a92113d2f39b8",
+   "check_sha256": "8816a2dc41418505952abe78d6562be0d117033d92af2f9ba05b40574e4bea8b",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "m1_r06_deep.rs",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998/src/R06-deep.at",
+    "crates/auto-lang/test/cases/ace-m1/oracle/scenario/m1_r06_deep.rs"
+   ]
+  },
+  {
+   "suite": "legacy-a2r-resources-998",
+   "case": "ace.m1.a2rscene.r06_trap",
+   "check": "a2r-scene-emit",
+   "case_file_sha256": "ad9f0a06cbe77755af7e842e6116e37fb04f1f627fade7024154b515737296d7",
+   "source_sha256": "470a91024762aeee811ba1e7d6dbffbc56902b960d9482db3b6ac7d51cea62d0",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "706f843292a5709c592ad26d3437497579b707fdf0b55f54116075aadf8ff110"
+    }
+   ],
+   "source_ref": "File(\"legacy-a2r-resources-998/src/R06-trap.at\")",
+   "oracle_sha256": "545961f4df17d43fc6b14aa7f770812f190391fa15a58fa558a63b8196a91abb",
+   "oracle_artifacts": [
+    {
+     "path": "m1_r06_trap.rs",
+     "file": "oracle/scenario/m1_r06_trap.rs",
+     "sha256": "0f7ee59f277b0dc22df5c55f569b4be51d62f80bb32ea545af7857df491f2b30"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "a2r",
+   "action": "emit",
+   "recipe": null,
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": null,
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "00c969024dbeb42d94d8c3784ec0865e3ca803cb02a2b29ab4b57ee06692ea8c",
+   "check_sha256": "18ab858314961564a05f1969e406b1424972a97fd688c5f5459bf72d9b77285d",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "m1_r06_trap.rs",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/ace-m1/legacy-a2r-resources-998/src/R06-trap.at",
+    "crates/auto-lang/test/cases/ace-m1/oracle/scenario/m1_r06_trap.rs"
+   ]
+  }
+ ]
+}

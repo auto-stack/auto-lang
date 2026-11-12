@@ -1,0 +1,81 @@
+{
+ "schema": "test-case-inventory/2",
+ "suite": "av-data-823",
+ "suite_sha256": "73b516ee1e0cfa42c22e1892dbf423ca4fbbb14b2c6136e56ecdaf88cccc4696",
+ "checks": [
+  {
+   "suite": "av-data-823",
+   "case": "av.closures.first",
+   "check": "run-closures-fixture",
+   "case_file_sha256": "8bfa9109189cf00eb8265343a59d45664ae218c28688948cbcc519aee7b0e2be",
+   "source_sha256": "94f38c2179596153a861fd589806f69e897fe33d3d6cb22a1436f8541bb1a7de",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "7f916adb2a5841be5659b95b564510e4b3c9de146e85ec6fc5cc5d4d9c38e02c"
+    }
+   ],
+   "source_ref": "File(\"src/first-case.at\")",
+   "oracle_sha256": "96e0a5e26370c991a39f41446cf0749a7a881036cd889c070a8eba0750bd80f2",
+   "oracle_artifacts": [],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-av/closures-run-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": {
+     "entry": "closures:first-case",
+     "caps": [],
+     "session": null,
+     "profile": null,
+     "resource": null,
+     "invalidation": null
+    },
+    "native": null,
+    "a2x_hir": null,
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "0d973f5bcb07f07e717f06590583b443d8e62e717761d716727aceb62c59c97c",
+   "check_sha256": "688d447179a8b2bf56cde49a59c85822e914989023b505205bda675aa4f2cd98",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [],
+   "case_file": "crates/auto-lang/test/cases/av-data/823/av-closures-first-case.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/av-data/823/src/first-case.at"
+   ]
+  }
+ ]
+}

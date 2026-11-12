@@ -1,0 +1,2267 @@
+{
+ "schema": "test-case-inventory/2",
+ "suite": "a2c-hir-collections-926",
+ "suite_sha256": "eeee0720fe818067fc143dd2b8c012ff50a72013cf0205e9e52f4fd6872fa5fc",
+ "checks": [
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.l01",
+   "check": "a2x-emit",
+   "case_file_sha256": "188ce77bc54f173781a2758ed07d50420ac14acf6b49b194997c9a2a0802adff",
+   "source_sha256": "ef7e1d5b9144863923a6f3d3df934b241524962a3adad58c4f0f1dcf6c907482",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "8247b7e7688e1931a36bc09eb4ec2cc789a3b099237d20d5dc8095a71e76a4f5"
+    }
+   ],
+   "source_ref": "File(\"src/L01.at\")",
+   "oracle_sha256": "11e622a9f29ef259b515aa72566dd0ae98ff371f6368b21f8fd141c9b167e863",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-L01/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-L01/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-L01/generated.c",
+     "sha256": "c0b0d387c8c3d12bc27d623ed84b247613b007a525bf39e751107483f2ab8e56"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-L01/manifest.json",
+     "sha256": "12915b66340030a57c4a4c7abcd167755904688d33a10f64cc8dc99b362daa45"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "8e4b8107c1c3de40d1624e5a7a50f18d949936bae343a9673333b597f86b0e3c",
+   "check_sha256": "2a07168621794a91ab3092dc3ded325bff051f6dc25588f8e2bdb56d84d662a2",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/L01.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/L01.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L01/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L01/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L01/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L01/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.l02",
+   "check": "a2x-emit",
+   "case_file_sha256": "aa275d719e893ae971923c6feb08b37da768786f629f98b311ecd7dcf1f279b6",
+   "source_sha256": "3660bb84506947ab955f98e9d57dca2f4ed469c14858e27ed81da7864c828ca6",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "8276953bd3fe700fe44593092117d2b93b691aff0747bfb0f1099cc2008432e2"
+    }
+   ],
+   "source_ref": "File(\"src/L02.at\")",
+   "oracle_sha256": "fd6da9845dc99c313cf90c94d74a4bc4245507da258d23a823315a203ad5ceac",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-L02/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-L02/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-L02/generated.c",
+     "sha256": "1433654d3aad9ba71374db54e64117951f0b8d5428a1cb9fb98b3b082294c78b"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-L02/manifest.json",
+     "sha256": "afec7824bbaaee5e999104e080090fe63231a818188e9444cd051e857985e8c5"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "495ee5c8315a5f6fca35e89879720922271e98117e9fbe87b31babbf34c73f92",
+   "check_sha256": "3c5c7e852ced0d0b89350262cffe87999d1bacc7f80ebd9431a5d0024fe7faa6",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/L02.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/L02.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L02/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L02/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L02/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L02/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.l03",
+   "check": "a2x-emit",
+   "case_file_sha256": "56b2e9d6932b032f8c6d5af3ff6efde9efa8a399ed6a8da6efa1f5cb32f6c697",
+   "source_sha256": "a027594739605a6f8e496f41fe8a4e119573bc5674a812b25e3281df8f2eedde",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "299034a89f81f97a0ab9ffa71f278d05262db5747a77ec5a460dbdbfce070339"
+    }
+   ],
+   "source_ref": "File(\"src/L03.at\")",
+   "oracle_sha256": "467ab5e3c54f2e71d1857e253e3b7f927e2f7483b0216ed06e1b354e52e00e86",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-L03/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-L03/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-L03/generated.c",
+     "sha256": "d85b7a2b2b6d512e78ac7cae1d058b73d6689a70941f3dee8c7f210091d2e187"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-L03/manifest.json",
+     "sha256": "ac23d3efb9034e196a597450ec5ef3f21322f4a2ec251e90382f090af80b5555"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "15d456069d55e81ac66f01770959bf17d9f25eb27c1f6f8b8584c10a2e9080b6",
+   "check_sha256": "ecc40bdf7da3a46b4c16fbce457860da5a3b8370540fc5ba125ffdc8c8f1c298",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/L03.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/L03.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L03/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L03/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L03/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L03/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.l04",
+   "check": "a2x-emit",
+   "case_file_sha256": "d3065b50d38cfb13293b15be5fbb041ddd77a5ee861937257fe9571d29267031",
+   "source_sha256": "f4f27ee5ce2401353cc9a69fc446ca26baf153361c03b31a22645eeca2878f97",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "a79b03e53e6e82bda9000a1b6cd1bcfae695d4cc427928261e9d13bda19b0b99"
+    }
+   ],
+   "source_ref": "File(\"src/L04.at\")",
+   "oracle_sha256": "227661113477c5497c601307c76104f608f7d4f1e96cbb11e82bec9e7dc91835",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-L04/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-L04/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-L04/generated.c",
+     "sha256": "d9ef7a104995df0a600b363e5b04321449de4863361a80d846a3de593d660a3d"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-L04/manifest.json",
+     "sha256": "144a4e3acc898fac376ad953b4d35e5d38c72925a3a98448d01fab3f3c1b68b7"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "da805457e13ad1e6c765f41d2ca2db079158e37ae7bbb349157450236ea2b60b",
+   "check_sha256": "5beb3933d179c8257529e7ce97540bbeb842427487c1f93722a881b960548356",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/L04.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/L04.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L04/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L04/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L04/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L04/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.l05",
+   "check": "a2x-emit",
+   "case_file_sha256": "83a33990443c1f6f7d8719d06b0d7ad32952a86decbff129f15afc0fb59f17c9",
+   "source_sha256": "5d48215241c6debb3ec8121dacda9706ed1cc383d549e3b7927b72eb4212dc11",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "3c55fc65f45724c072aaf7a772cfdc7d52da0d4f117ec6f23841795551629149"
+    }
+   ],
+   "source_ref": "File(\"src/L05.at\")",
+   "oracle_sha256": "e8ae5ebfa5e67c6a88e59459370a3b56b4904d7c3a26e405bcdb1ae2818a4587",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-L05/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-L05/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-L05/generated.c",
+     "sha256": "e2a5d92d276ff2cb542f18d3b93a85a7f865274d713f269332f6cea3f4958ea0"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-L05/manifest.json",
+     "sha256": "1fef3b5a81a2ce32fec6d74c5a110497c34ae49c9a992535a22815e94673a472"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "8d0e69e88a33f02837b6206a4be5fe68b2f1ff78865102ffd849557328991e4c",
+   "check_sha256": "07e0bfff5c4051ad7b00c3b78083b4c8c45bac3fc112e795692c36b4059d1c83",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/L05.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/L05.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L05/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L05/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L05/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L05/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.l06",
+   "check": "a2x-emit",
+   "case_file_sha256": "7acc1c622ec1ab7cc0df34b16a9036870f6b7ed08426bed683d8782ce42a6dfd",
+   "source_sha256": "de3a85627019b586ef8b9ccb377e60ef57a0686f15076d57e93910f366b5a884",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "9b4aaa8834835283629077af431d7864d9c88a732060cebbd50fe24921c21be8"
+    }
+   ],
+   "source_ref": "File(\"src/L06.at\")",
+   "oracle_sha256": "970903cf307abdd5a911ec45428499149865c2f92f176a4f63ea2986c60b7efb",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-L06/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-L06/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-L06/generated.c",
+     "sha256": "93d96bf65192cd099a8a0d225a026f80832283bec723a3bf95c64bf3b37bf281"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-L06/manifest.json",
+     "sha256": "776fcc734e148d11da14d16da2217a41e324171f0f7e220a4a813697a6ebaf73"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "2ebc58b223fdabdadfae7599cc2c079021da144b141578365567eb81be545378",
+   "check_sha256": "69d4312ab413ed0ec77b331d97f37e3cc0136127e0453312466366a16c3220cd",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/L06.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/L06.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L06/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L06/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L06/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L06/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.l07",
+   "check": "a2x-emit",
+   "case_file_sha256": "48652d79d7ea1148feeb8493fcbbf3d1612234b25eb1782cc88a2d7face0d5f6",
+   "source_sha256": "067bf2968f2f550565501995f03a4d85ae2903d7c5b1810c7e3ab8da38c634a2",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "8aa9b61d53b3f0ce715a98d3c6ff1b0a7fd5f75ede2ea1dc132c650e97577aec"
+    }
+   ],
+   "source_ref": "File(\"src/L07.at\")",
+   "oracle_sha256": "25e5c6790ca63a1d0103253f0ceb197c90a31956b200276df63604c669a9901c",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-L07/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-L07/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-L07/generated.c",
+     "sha256": "52a5b3b2330bd193330ec0b0a280ab564c7be67219d35e87df88f4c0549263b3"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-L07/manifest.json",
+     "sha256": "cec52a7c94545a809035a793184cc7a89356e51be7923ff518f56f4d50f63ad3"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "b8ff27b6c1d73f87003f49ef45b47abe915b6b1037f1307d09de638dbf122152",
+   "check_sha256": "34d245badf336d14dc88889fef4905e93187e8d20bd60517ebcf9314b4dc95e5",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/L07.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/L07.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L07/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L07/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L07/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-L07/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.v01",
+   "check": "a2x-emit",
+   "case_file_sha256": "ceeed0518500f9aa22e41869b3770e38578d41d1351e8c3eb0ad505c7fb9569e",
+   "source_sha256": "bbcf44eb65ebe52b7b584878e552d019ad621b19d7adaa451647addeb460d1a7",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "900acc88f43f9505b91fa6c4096642589fa7e3ca770833106bd552c481857dee"
+    }
+   ],
+   "source_ref": "File(\"src/V01.at\")",
+   "oracle_sha256": "213acb45eef8131b21339375c9cf7c1d7c5887389120b1559ea7de610d8b114e",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-V01/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-V01/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-V01/generated.c",
+     "sha256": "ab35665769c1535670ce94fa28bdeb46b77969b98c4bc51bec4334131900c0d5"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-V01/manifest.json",
+     "sha256": "87cfbdf18548cf408681d55d55c46e3e02aacb0eefe7829ebf792ac3d2d20ea8"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "2623bde77b437ebadff73f4780977e11e3e3d5a94f8f33f738b7320eb9595b11",
+   "check_sha256": "06909cd80d2be1561a5a79ae63c63636d3b2268f5aff698925c0fc07d5352450",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/V01.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/V01.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V01/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V01/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V01/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V01/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.v02",
+   "check": "a2x-emit",
+   "case_file_sha256": "352c7d2b9197c3fa72114a31beaeb3e7542553e17fa674b41cfd3be5bbc85169",
+   "source_sha256": "3deaff075b327d89167bc97b34ff5a9db95ed29d197253b9ed93565ab4f4eb11",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "281396b1a3d5ea129a5c4e34672287975bac87ed7b543af7fbc828ce7869259f"
+    }
+   ],
+   "source_ref": "File(\"src/V02.at\")",
+   "oracle_sha256": "9f8b26d73d71d66a6fc1b59b2c72c763d83c0bf1464e0d0b9dd8ec7b9e1c32ea",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-V02/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-V02/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-V02/generated.c",
+     "sha256": "e743c9f4401fd495895d5cd88b297252c37e849e29223e32c639871a08ba0a12"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-V02/manifest.json",
+     "sha256": "6245b267f0e4cdae709864d481e4e940d819efb26406716b972663fa66da1eae"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "8c8a4a36477721ff4f6813e8f26798462d4428d27666f673ab52d2c2948b3890",
+   "check_sha256": "3e30ede540f56948680e35d293886e3a644fc4068e69761d52001dd97bc5cc1a",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/V02.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/V02.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V02/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V02/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V02/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V02/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.v03",
+   "check": "a2x-emit",
+   "case_file_sha256": "ef5764ed75dc2da120c7ed846fbc507983801713b9b7aa05e45145f7a1cfcacc",
+   "source_sha256": "41767e7e7046efc75d06d790e6392a4da4260baa6b95e8e244964f1883383f97",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "99bc231454ba7426c61828525e58dfd2514c6be54249ccbcab43d9c1e0ebf532"
+    }
+   ],
+   "source_ref": "File(\"src/V03.at\")",
+   "oracle_sha256": "51ca81d91b53df71f436731e40eb266a0b355c8932bda7842d19c05d65b31e34",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-V03/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-V03/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-V03/generated.c",
+     "sha256": "4ccdfb9480bf32c192021bfcef818dbbe2479d1673ffe1d1c314bca4ccf1d3dc"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-V03/manifest.json",
+     "sha256": "f6e4c83f4d125f5dc317303419756c52326f1ed1adcd94b486c35c414970a764"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "222d5a6fa449026523e55c89f00caab05feebfc2a9541f20602272962866376b",
+   "check_sha256": "e0fcd4f93c425e9cafffd796c5700aada5865f430e7240ba86bb45dd8e798ef8",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/V03.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/V03.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V03/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V03/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V03/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V03/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.v04",
+   "check": "a2x-emit",
+   "case_file_sha256": "74417b4ee0d42591df4d65c06c170154efb097019aa9e59f80182ec4df8796e3",
+   "source_sha256": "f56d74ae8ff290bf6251fbb08a7ac8aa799bd2db4b41bc975c5f8a84e8f21a6c",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "c9303cad597133e0a517b70d5f0693a8a4961199a3148b82abffe039e22839cc"
+    }
+   ],
+   "source_ref": "File(\"src/V04.at\")",
+   "oracle_sha256": "cb7dbcabd3394b01b0a08f171a2add139173624e23958b5e5be613f19422e4b5",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-V04/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-V04/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-V04/generated.c",
+     "sha256": "9fc02b2df3cb9a10c43a0a2a7d398b90c7b0846dc5092a8e043bebf5cc010500"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-V04/manifest.json",
+     "sha256": "6d5ebe1cc845a024b6fa391135554e023a98a391642ef1c2646b04732a144a39"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "f04ada08cd9e6e1d18222fb060ed87280932b4a330fb0772ae4d9c06f4d927e0",
+   "check_sha256": "e11e4ffe2a07b73325bcc6afd1645b7279f2e647e230cb7c63d23a1749771078",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/V04.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/V04.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V04/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V04/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V04/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V04/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.v05",
+   "check": "a2x-emit",
+   "case_file_sha256": "1c913c13d8a76912f5da09aa92b1866482112876cf3dff921e4a1224f68d4359",
+   "source_sha256": "d3a29b69a26181aa5c4868b4598ff47cd03ad177f209a63a0f35d3df9d41a3d1",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "734c211d1ea0e62d52f14617369a77c975c0a23c915e3ed9dff91fa1f4c7c0c3"
+    }
+   ],
+   "source_ref": "File(\"src/V05.at\")",
+   "oracle_sha256": "a46d40ee1412f37ad8fd17679b452131c34e93d214a435d243cfb1c5cbf2f16c",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-V05/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-V05/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-V05/generated.c",
+     "sha256": "00713b7283f13c4d8797f927dfdb11c7885d4de30f6cb7acadacc73d62af319d"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-V05/manifest.json",
+     "sha256": "1bbb2f5a31f427782b3c096bfd1e301f5b4a045626fc7a5b8f5cc42bfdfe34d3"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "fb395595f42d03b3bf4191c0381750f624e56facc14091d6d6542166717d1d15",
+   "check_sha256": "6c8b16a7021d10669eb0c1e432f7b72955dec1f776a51717512ce120a303618e",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/V05.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/V05.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V05/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V05/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V05/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V05/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.v06",
+   "check": "a2x-emit",
+   "case_file_sha256": "de972d9de44ad9f21b6d2e1cf6fc803c467f68857f7f92955bd0d47c46f3f8a5",
+   "source_sha256": "1505aee2d7149ba48ef9c172e2032048f3f0832febfe2061bbfe2fc8c2316864",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "7145928b2c570c848f6ca7746545d1ca3d31790045855080d05db4c3d4112383"
+    }
+   ],
+   "source_ref": "File(\"src/V06.at\")",
+   "oracle_sha256": "dc4382bfeb3545fbb0ef7d6cc629611c6d5712ed8091d434c54fd6f33963d090",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-V06/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-V06/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-V06/generated.c",
+     "sha256": "93d648a9fc43772a4841ca28f17197e587121987eb4206704074c330d3f2844d"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-V06/manifest.json",
+     "sha256": "534add6f66c8a5af33784292167e618bf5fd2a7b6c2dc8b1f633c78d21ba6790"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "eb9696bf0df9aa1e5e7bb3977f80ce4ade005d61cd9780721c3a6c64d41c978e",
+   "check_sha256": "51325c1ff759ccf9ef7c7bb3dedf325c9d5be6e351a2bcd323887e24bf8e2be9",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/V06.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/V06.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V06/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V06/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V06/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V06/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.v07",
+   "check": "a2x-emit",
+   "case_file_sha256": "08d8cc9805a8b893630c083a494456ce8d5ea689c499da00b13fe25ef67d5b62",
+   "source_sha256": "9c60982a8827f6ddd11db4c75a4778bfb86c825261d86277c920bc31cb55e168",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "04844f208d458a043dd6ef2d2202a8ffb09789010d750d075cc164ee59135478"
+    }
+   ],
+   "source_ref": "File(\"src/V07.at\")",
+   "oracle_sha256": "b34bcdd2028be4a8e4446e00a0ce0ff57989feaff125a09feed12addedda7fde",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-V07/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-V07/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-V07/generated.c",
+     "sha256": "2a23a11a47d40e1a2938b4e40b288774fc7f2e30012056c5f8c56f8208b093a7"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-V07/manifest.json",
+     "sha256": "9ce5520f1f711743aea938202b314302e6d4c89f35949f1c35fde99558bf10eb"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "18234b7ea10cc198c980e74e8777fe044221886c2bbf11f50ea603cab7701436",
+   "check_sha256": "5d7c0c12a7d7b39dfeaf0c47732f820682e86889fa6bb89baf64e64bd5e07a65",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/V07.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/V07.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V07/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V07/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V07/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-V07/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.lstr864",
+   "check": "a2x-emit",
+   "case_file_sha256": "a189795c16200a10af9149e04c5dc66c46dbe89b392030c624235f7c76d3fa38",
+   "source_sha256": "971fae38abe80696af6f3bf2298b2d533545351bfcfeaeff9e93b07ad4a11ffd",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "f36e92cfa92d4bc4240995c75e312fa84076e7bb7d983b75141dadb7e70524ff"
+    }
+   ],
+   "source_ref": "File(\"src/LSTR864.at\")",
+   "oracle_sha256": "b36a2449577f164272602402ee286f1afe7443fcd89f4af86ea027b8bfc2394a",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-LSTR864/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-LSTR864/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-LSTR864/generated.c",
+     "sha256": "84300eda954ad2ba7578793cf6747eb3a6f31a02088c74d535e6a6d638660592"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-LSTR864/manifest.json",
+     "sha256": "184be57be9bcb4b697421ec07317e65610ac0511aae8170349bb1aa3ac45a36d"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "988a7b83e0fa0ae7a2aed595183b45177755da4908736f2b31a05b3dcfc5263a",
+   "check_sha256": "72b2610e17a73f364146a0bc5f3524d8b3f4828251ab40d6449854033cfa2b7f",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/LSTR864.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/LSTR864.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-LSTR864/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-LSTR864/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-LSTR864/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-LSTR864/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.fin864a",
+   "check": "a2x-emit",
+   "case_file_sha256": "2ecddc564bd77621396090dc082bdae2fe356744177f215f3ecb0e807a6dd9fe",
+   "source_sha256": "cb7d63e1356a05909eaf9a32b069192ce0fa5590da6c34f07b872475ef8474f4",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "39524c0208966b1aca826afbc1b6c3898526f9373275fb62d7e8dd13662ceb81"
+    }
+   ],
+   "source_ref": "File(\"src/FIN864A.at\")",
+   "oracle_sha256": "8200086660fed9ac2037cc02b696d0eb7600359dd5351be26e3e51f95576fd80",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-FIN864A/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-FIN864A/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-FIN864A/generated.c",
+     "sha256": "f781dd4acbf196f50ba0c21185ceff8123393f9c44f5a9506b4ef4492cd3687a"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-FIN864A/manifest.json",
+     "sha256": "6db1f0682e6991ca5d7e6d38f2de0a124234489eb5614825dff559e7c11e51f0"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "140949c52766c34379a36ad61acdb3b7527613d481fe08532619d49c6903fa09",
+   "check_sha256": "af5c9d20e7de7a46b016952bbb1233adadd879c44d333d93ed111f775abf4c3a",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/FIN864A.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/FIN864A.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-FIN864A/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-FIN864A/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-FIN864A/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-FIN864A/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.fin864b",
+   "check": "a2x-emit",
+   "case_file_sha256": "392e0af07ab463ff65ed117cb4de35c00b89fc3ff987ca5970b944c0dcd3dfaf",
+   "source_sha256": "6dc3d3af1778bb4f228ed354202756fc65a9aec8fbc1bce06c015e33f5b2be97",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "d0ce9a71534a37a289eea7ff22307d05414042420548263b3d1a4b4c431286b1"
+    }
+   ],
+   "source_ref": "File(\"src/FIN864B.at\")",
+   "oracle_sha256": "accbad26e2b712b1054212df445c63f4b7d4fabe432cc041f12133a578d4eaa3",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-FIN864B/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-FIN864B/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-FIN864B/generated.c",
+     "sha256": "41633495bebdc48d9703fa842630dd471f91b21b903c2021a5f13c1e985303df"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-FIN864B/manifest.json",
+     "sha256": "f7972b0431d5408b6d0ed6e2aacf14b7ac8753263a98e51e34fe2bb37c75de1d"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "7997c8b6cef9c0df7a73d93f1951a5f237327c9d8583443c2fc343ddbd3519cd",
+   "check_sha256": "b78d2e28e52cb74edd2b664deb67084943f60405fb5d6034cf6d44c962c08a59",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/FIN864B.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/FIN864B.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-FIN864B/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-FIN864B/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-FIN864B/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-FIN864B/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.n889-list-variant",
+   "check": "a2x-emit",
+   "case_file_sha256": "71175f3639720c689a0c8747cc9450df8aabdbd658bc87eb2f79cda56a309183",
+   "source_sha256": "6f3db730b45eb6535914a3d7de9dfe7d9fc5ac7ca022889e37fd57b4eb810192",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "b90d64918e20ea8bb7a702871067cf177064adab604cad4af1205a3f6fb33a7e"
+    }
+   ],
+   "source_ref": "File(\"src/N889-list-variant.at\")",
+   "oracle_sha256": "18db73e5176d02255c9329e4e47f50ebf8b58be0ba7036843f2e4472ebf3ccaa",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-N889-list-variant/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-N889-list-variant/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-N889-list-variant/generated.c",
+     "sha256": "9171fc6f82a762a072536cb30227db17c6434a26ecac9475a7f36ee9ef7f573e"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-N889-list-variant/manifest.json",
+     "sha256": "ca781a80bcb33a6bef2863cdf502dcfd0d4dead4e9587e446234a7653a7e175c"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "3987109ff1c699c1fa9f1a24daec4d19d7b32f709bedb325a88342e92be86905",
+   "check_sha256": "006f1f6accea0c7c0c74920fdeff821a44ec8ba95151e6b3b501d3025bebe435",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/N889-list-variant.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/N889-list-variant.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-N889-list-variant/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-N889-list-variant/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-N889-list-variant/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-N889-list-variant/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.n889-nested-variant",
+   "check": "a2x-emit",
+   "case_file_sha256": "7966564d0878dee1622a39c3a1adbf96a480bb78d34ba9cc0f0ea4054d46f748",
+   "source_sha256": "47389d8fd49b7317503b021b10d9158062cb61f0e6f1c7d0f8de1774fa4a7851",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "4b6433b03528d986ef67edf9d7420409f8e7d64ebccafceadf9fc4d23da6e61f"
+    }
+   ],
+   "source_ref": "File(\"src/N889-nested-variant.at\")",
+   "oracle_sha256": "277e09c938b054989f0a17de41ca032d93e648b0cb56057ab2e5f532fa4a1fd5",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-N889-nested-variant/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-N889-nested-variant/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-N889-nested-variant/generated.c",
+     "sha256": "b2437f95671cf826fcd425635c217204f8032935bc8d01ee4a572dbf73958159"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-N889-nested-variant/manifest.json",
+     "sha256": "15e128837f6cbfe6b3301a74a01852cf6cf3b1d8593d3cfb33ba53125cd00768"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "618eaa905edf5a084abbc81a9ba5c542192817158354838f49fead4830643db5",
+   "check_sha256": "85ecd2f30bf8ba8dd92ed92a5b753ab7837cecc993a608bc3e96f1590d3d41f5",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/N889-nested-variant.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/N889-nested-variant.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-N889-nested-variant/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-N889-nested-variant/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-N889-nested-variant/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-N889-nested-variant/manifest.json"
+   ]
+  },
+  {
+   "suite": "a2c-hir-collections-926",
+   "case": "a2c-hir-collections-926.n889-optional-variant",
+   "check": "a2x-emit",
+   "case_file_sha256": "15002212df625067bf5967779c84e5c17c074ede659ae8c8ef53ac968c16392c",
+   "source_sha256": "357cdbe78fee58152ef74221bfbb5493f78b6ea1e7e7194538640d71b807574e",
+   "source_files": [
+    {
+     "virtual_path": "main.at",
+     "sha256": "e800cab21196d7e848e3ad19bc7af5903f8534e55d52d064695ab38c5c781b84"
+    }
+   ],
+   "source_ref": "File(\"src/N889-optional-variant.at\")",
+   "oracle_sha256": "c5f3f30fa9218edc77bf3582c4853c7adcea00c1e44b6a1735a1854bcd409eb1",
+   "oracle_artifacts": [
+    {
+     "path": "main.c",
+     "file": "golden-N889-optional-variant/main.c",
+     "sha256": "4a97c8457bb333ffc15001ddf3447bb67dc104e1d4181a7939fb75f86d4be6b9"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "file": "golden-N889-optional-variant/a2x_c_coll_runtime.h",
+     "sha256": "51ee94d7e77c242a1dee674625df81c1282d4684c1fe660142fc1728189dfab8"
+    },
+    {
+     "path": "generated.c",
+     "file": "golden-N889-optional-variant/generated.c",
+     "sha256": "601a2276a0169f616036dd8014c9fecdfba3ffef70cb8bf09ff72731df2c44f9"
+    },
+    {
+     "path": "manifest.json",
+     "file": "golden-N889-optional-variant/manifest.json",
+     "sha256": "d1f28e2573debf69ae6d99f92fcd9b1e65b65527d2370335a64fb52312ff03dc"
+    }
+   ],
+   "expected_exit": null,
+   "adapter": "probe",
+   "action": "run",
+   "recipe": "ac-a2c/hir-collections-emit-v1",
+   "profile": null,
+   "tier": null,
+   "product_from": null,
+   "state": "RUN",
+   "skip_reason": null,
+   "skip_owner": null,
+   "source_origin": {
+    "kind": "file"
+   },
+   "probe_bindings": {
+    "av": null,
+    "native": null,
+    "a2x_hir": {
+     "profile": "collections",
+     "entry": "main",
+     "caps": []
+    },
+    "cte": null,
+    "abi": null,
+    "sema": null
+   },
+   "declared_probe_steps": [
+    {
+     "op": "run"
+    }
+   ],
+   "resolved_probe_oracles": null,
+   "typed_oracle": null,
+   "av_channel": null,
+   "contract_sha256": "860ee5466605d85f19f4bfa1b7ff50aca6e79a5b243fdb2145a6c741041c34b5",
+   "check_sha256": "28fb0793722d3c0c464997ad7ec0f251de5273fab23897cd851362132e5e2161",
+   "completion": {
+    "kind": "success"
+   },
+   "ac_options": {
+    "profile": "core",
+    "entry": "main",
+    "cache": "reuse",
+    "grammar": null,
+    "capabilities": [],
+    "budget": {
+     "build_ms": null,
+     "run_ms": null,
+     "total_ms": null
+    }
+   },
+   "artifact_modes": [
+    {
+     "path": "main.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "a2x_c_coll_runtime.h",
+     "compare": "bytes"
+    },
+    {
+     "path": "generated.c",
+     "compare": "bytes"
+    },
+    {
+     "path": "manifest.json",
+     "compare": "bytes"
+    }
+   ],
+   "case_file": "crates/auto-lang/test/cases/a2c-hir-collections-926/N889-optional-variant.case.ad",
+   "input_paths": [
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/src/N889-optional-variant.at",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-N889-optional-variant/main.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-N889-optional-variant/a2x_c_coll_runtime.h",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-N889-optional-variant/generated.c",
+    "crates/auto-lang/test/cases/a2c-hir-collections-926/golden-N889-optional-variant/manifest.json"
+   ]
+  }
+ ]
+}
