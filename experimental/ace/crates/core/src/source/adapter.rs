@@ -1238,7 +1238,7 @@ fn ty_name_t(
     vt: VT,
     records: &[crate::source::resolve::ResolvedRecord],
     lists: &[VT],
-    tuples: &[Vec<VT>],
+    _tuples: &[Vec<VT>],
     variants: &[crate::source::resolve::ResolvedVariant],
 ) -> String {
     match vt {
