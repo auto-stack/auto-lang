@@ -31,7 +31,7 @@ from ace_m1_legacy import typed_equal
 
 CONTRACT = 'crates/auto-lang/test/cases/ace-m1-expanded/architecture-obligations.json'
 RECIPES = 'crates/auto-lang/test/cases/ace-m1-expanded/architecture-entry-recipes.json'
-RECIPES_SHA = '0f224ad5e14b1f3f34b946206d93aba6c3c6392256a4fb0025f76dd335af9fc1'
+RECIPES_SHA = '78e44b2e06cc76ab81aa61f6c6bbcce17e1ca71fbecd58780ce78aeadb467baa'
 COMPOSER_FACTS = ('admission-peak-within-live-cap', 'document-byte-caps-enforced',
                   'denominator-and-honest-three-state', 'raw-terminal-bound-execution')
 REVIEW_ROW = 'ARCH-08/fresh-union-spec-review'

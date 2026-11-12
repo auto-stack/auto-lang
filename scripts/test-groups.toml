@@ -1,4 +1,7 @@
 # PLAN-896: fixed Cargo packages/Rust mod subtrees; no per-test or leaf catalog.
+# PLAN-1016 / 2026-11-12 user ruling: ordinary ACE package groups exclude
+# formal performance/scale campaigns; run those explicitly via ace-perf.
+# Their original samples, assertions, ignore/platform and resource rules remain.
 schema = 1
 default = ["daily"]
 
@@ -16,8 +19,13 @@ workspace = "."
 args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib"]
 # PLAN-901：测试 feature 拍平后，原靠 feature 缺席隐藏的转译/书稿/HTTP e2e/
 # ACE 桥接测试族常驻可见——静态边界钉住原日常范围（与 profile.default 的
-# default-filter 语义叠加；31 模块前缀=旧 test-cases-only 形态差集，实证零丢失）。
-expression = "not(test(/^(?:test_cases::ac_av::closures_judge_tests|test_cases::ac_av::closures_source_judge_tests|test_cases::ac_av::console_tests|test_cases::ac_av::judge_tests|test_cases::ac_av::test_batch::tests|test_cases::ac_av::worker_identity_tests|test_cases::ac_mn::collections::controls|test_cases::ace_certify::tests|tests::a2r_tests|tests::a2ts_tests|tests::book_listing_tests|tests::plan724_http_client_tests::e2e|tests::plan727_http_transfer_tests::e2e)::/))"
+# default-filter 语义叠加）。
+# PLAN-1014 T-03：原枚举式前缀清单漏掉 7 个后加模块（abi::source_protocol_tests、
+# ac_av::resource_915_tests/resource_events/worker_json_tests、ac_mn::refusal_tests/
+# resource_events/source_diag_tests 等 58 例），legacy 守卫持续红。改为族式排除
+# `test_cases::(ac|abi|sema|ace_)`——与 ace-adapters 的正向选择同构、与
+# run_rust 守卫前缀一致，新 ACE 模块自动划归显式 ACE 职责组，不再靠手工清单。
+expression = "not(test(/^(?:test_cases::ac|test_cases::abi::|test_cases::sema::|test_cases::ace_|tests::a2r_tests::|tests::a2ts_tests::|tests::book_listing_tests::|tests::plan724_http_client_tests::e2e::|tests::plan727_http_transfer_tests::e2e::)/))"
 tools = []
 domain = "legacy"
 all = false
@@ -163,7 +171,8 @@ title = "宿主与Core完整集成（显式广组）"
 runner = "nextest"
 workspace = "."
 args = ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--config-file", ".config/nextest-full.toml"]
-expression = "not(test(/^(?:test_cases::ac_av::closures_judge_tests|test_cases::ac_av::closures_source_judge_tests|test_cases::ac_av::console_tests|test_cases::ac_av::judge_tests|test_cases::ac_av::test_batch::tests|test_cases::ac_av::worker_identity_tests|test_cases::ac_mn::collections::controls|test_cases::ace_certify::tests|test_cases::ac_a2r_hir)::/))"
+# PLAN-1014 T-03：同 daily 的族式 ACE 排除（见 daily 组注释）。
+expression = "not(test(/^(?:test_cases::ac|test_cases::abi::|test_cases::sema::|test_cases::ace_)/))"
 tools = []
 domain = "legacy"
 all = false
@@ -284,7 +293,8 @@ title = "Cargo包 auto-lang-core"
 runner = "nextest"
 workspace = "."
 args = ["-p", "auto-lang-core", "--tests", "--lib", "--config-file", ".config/nextest-full.toml"]
-expression = "not(test(/^(?:test_cases::ac_av::closures_judge_tests|test_cases::ac_av::closures_source_judge_tests|test_cases::ac_av::console_tests|test_cases::ac_av::judge_tests|test_cases::ac_av::test_batch::tests|test_cases::ac_av::worker_identity_tests|test_cases::ac_mn::collections::controls|test_cases::ace_certify::tests|test_cases::ac_a2r_hir)::/))"
+# PLAN-1014 T-03：同 daily 的族式 ACE 排除（见 daily 组注释）。
+expression = "not(test(/^(?:test_cases::ac|test_cases::abi::|test_cases::sema::|test_cases::ace_)/))"
 tools = []
 domain = "legacy"
 all = true
@@ -388,17 +398,10 @@ tools = []
 domain = "legacy"
 all = true
 
-[[group]]
-name = "auto-lsp"
-title = "Cargo包 auto-lsp"
-runner = "nextest"
-workspace = "."
-args = ["-p", "auto-lsp", "--tests", "--lib"]
-expression = "all()"
-tools = []
-domain = "legacy"
-all = true
-
+# PLAN-1014 T-03（B-01，PLAN-900/901 债）：auto-lsp crate 已迁 auto-ui 仓
+# （D:/autostack/auto-ui/crates/auto-lsp，manifest 实核存在）；本仓 `-p auto-lsp`
+# 注册失效（包不存在，发现即败）。组注册退役=本仓不再自称运行 LSP 测试；
+# 其真实 owner 入口在 auto-ui 仓的既有测试装配，不因本组删除而消失。
 [[group]]
 name = "auto-val"
 title = "Cargo包 auto-val"
@@ -482,7 +485,7 @@ title = "PLAN-927 统一源码语法差分/oracle（七 profile × 冻结语料+
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-core", "--test", "conformance", "source_cst_927::"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = []
 domain = "ace"
 all = false
@@ -493,7 +496,7 @@ title = "ACE包 experimental/ace/crates/core"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-core", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
 all = false
@@ -504,7 +507,7 @@ title = "ACE包 experimental/ace"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-syntax-runtime", "-p", "ace-syntax-grammar", "-p", "ace-syntax-core", "-p", "ace-syntax-artifacts", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = []
 domain = "ace"
 all = false
@@ -515,7 +518,7 @@ title = "ACE包 experimental/ace"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-semantics-contract", "-p", "ace-semantics", "-p", "ace-semantics-store", "-p", "ace-source-query", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = []
 domain = "ace"
 all = false
@@ -526,7 +529,7 @@ title = "ACE包 experimental/ace/crates/artifacts"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-artifacts", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = ["execution-fixture"]
 domain = "ace"
 all = false
@@ -537,7 +540,7 @@ title = "ACE包 experimental/ace"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-av-core", "-p", "ace-av", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
 all = false
@@ -548,7 +551,7 @@ title = "ACE包 experimental/ace/crates/case-worker"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-case-worker", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
 all = false
@@ -559,7 +562,7 @@ title = "ACE包 experimental/ace/crates/native"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-native", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
 all = false
@@ -570,7 +573,7 @@ title = "ACE包 experimental/ace/crates/abi"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-abi", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
 all = false
@@ -584,7 +587,7 @@ workspace = "experimental/ace"
 # 单元与集成职责显式纳入本固定清单——被 comptime 依赖编译不等于其测试
 # 已执行。
 args = ["-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-comptime", "-p", "ace-source-cte", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = []
 domain = "ace"
 all = false
@@ -595,7 +598,7 @@ title = "ACE包 experimental/ace/crates/lowering"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-lowering", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = []
 domain = "ace"
 all = false
@@ -614,7 +617,7 @@ all = true
 
 [[group]]
 name = "infra-pilot-cli"
-title = "治理 scripts/tests/test_case_pilot_cli.py"
+title = "治理 scripts/tests/test_case_pilot_cli.py（纯Python回合核算，无ACE准备）"
 runner = "python"
 workspace = "."
 args = []
@@ -623,6 +626,23 @@ tools = []
 domain = "legacy"
 file = "scripts/tests/test_case_pilot_cli.py"
 all = true
+
+# PLAN-1014 T-04（B-03，PLAN-900/901 债）：真实 pilot CLI 检查显式 ACE 化——
+# 工具（case-parent 构 pilot exe、batch-av 供 group/combined 模式、av-regular
+# 供 default-off 原路径）由本组声明并 source-bound 准备，不再依赖环境残留
+# target 状态；缺工具=组失败，而非 skipUnless 静默丢覆盖。all=false：与
+# ace-host 等一致，仅显式选择（`cargo t infra-pilot-ace`），不进 cargo t all。
+[[group]]
+name = "infra-pilot-ace"
+title = "治理 scripts/tests/test_case_pilot_ace.py（真实pilot CLI，显式ACE工具准备）"
+runner = "python"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "batch-av", "av-regular"]
+domain = "ace"
+file = "scripts/tests/test_case_pilot_ace.py"
+all = false
 
 [[group]]
 name = "case-ac-av"
@@ -1074,7 +1094,7 @@ title = "Cargo包 ace-foreign-contract（PLAN-937 CA-D1 中立接口事实/物�
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-foreign-contract", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = []
 domain = "ace"
 all = false
@@ -1085,7 +1105,7 @@ title = "Cargo包 ace-a2x-c ABI 标量导出面（PLAN-937 CA-D1 abi_scalar）"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-a2x-c", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = []
 domain = "ace"
 all = false
@@ -1288,7 +1308,7 @@ title = "语言宿主ACE完整组"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
 all = false
@@ -1299,7 +1319,7 @@ title = "ACE batch协议集成"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml", "--features", "test-case-batch"]
-expression = "test(/^batch::/)"
+expression = "(test(/^batch::/)) and not test(/(^|::)performance::/)"
 tools = ["case-parent", "batch-av"]
 domain = "ace"
 all = false
@@ -1310,7 +1330,7 @@ title = "ACE控制台真实宿主"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
-expression = "test(/^console::/)"
+expression = "(test(/^console::/)) and not test(/(^|::)performance::/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
 all = false
@@ -1369,7 +1389,7 @@ title = "ACE A2X共享表示与Rust输出"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = []
 domain = "ace"
 all = false
@@ -1391,7 +1411,7 @@ title = "SDK标准操作证明与ACE装配双端集成"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-stdlib-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = []
 domain = "ace"
 all = false
@@ -1490,7 +1510,7 @@ title = "ACE独立workspace常规自动测试"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-stdlib-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
-expression = "all() and not test(/::performance::/)"
+expression = "all() and not test(/(^|::)performance::/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "execution-fixture"]
 domain = "ace"
 all = false
@@ -1512,21 +1532,23 @@ title = "ACE原生ABI运行时完整验证"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-text-conformance", "-p", "ace-data-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
-expression = "all()"
+expression = "(all()) and not test(/(^|::)performance::/)"
 tools = ["trace-runtime", "text-runtime", "data-runtime"]
 domain = "ace"
 all = false
 
 [[group]]
-name = "ace-performance"
-title = "ACE原正式收益与资源专项"
+name = "ace-perf"
+title = "ACE性能与压力（串行）"
 runner = "nextest"
 workspace = "experimental/ace"
-args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-stdlib-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
-expression = "test(/::performance::/)"
+args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-stdlib-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "-p", "ace-source-cte", "--lib", "--tests", "--profile", "ace-perf", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
+expression = "test(/(^|::)performance::/)"
 tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "execution-fixture"]
 domain = "ace"
 all = false
+# Serial full campaigns have their own parent budget; ordinary groups stay 1800s.
+timeout_seconds = 14400
 
 [[group]]
 name = "case-ace-unified-source-929"
@@ -1689,7 +1711,7 @@ title = "ACE已迁移Rust lowering宿主完整命名空间"
 runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
-expression = "test(tests::rust_lowering::)"
+expression = "(test(tests::rust_lowering::)) and not test(/(^|::)performance::/)"
 tools = ["a2x"]
 domain = "ace"
 all = false
