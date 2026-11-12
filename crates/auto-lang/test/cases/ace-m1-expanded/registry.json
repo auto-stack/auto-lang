@@ -6246,23 +6246,23 @@
   },
   "ct_mechanisms": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-source-mechanisms-contract.json",
-   "sha256": "8c56e3e1660f165056375fa7697e26f9506cdf31763214eaa22de8aaf953bf36"
+   "sha256": "52f833e271c4a96656c46234ccd12a141837210eaacd9b216b99b8a36a597ed2"
   },
   "ct_child": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-child-contract.json",
-   "sha256": "e704a26c5ffbde90ec13a68813580fe58b5f8d889598b7086d64bcd80bfa5ba5"
+   "sha256": "3b0d14b73f964b82997e9e8e58f5898acb6959f92044808aa30b15ba6c899555"
   },
   "ct_meta": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-meta-contract.json",
-   "sha256": "9902e99f04a79ae7799cd2b04ad2268504d10b659ad8a23a3c690635e39f54c4"
+   "sha256": "3fd9060e0adf69aab89b49c6c7785c5833c212955b052ed5189ed7f12d215a9b"
   },
   "ct_restore": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/ct-restore-contract.json",
-   "sha256": "8131ae35ffecebe7e04bc0e77edbd23e7f0befc6c7b3f8744d526bb08b9de4f2"
+   "sha256": "303cf54627385ff00bea3e5e39547c595a234751d6936ec29c27401a2dc241d1"
   },
   "sq_facts": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/sq-fact-contract.json",
-   "sha256": "3ef31192eb000157acbaf39f00d7597831eabb0934b8ffa9cb245392fc604e50"
+   "sha256": "6d00031290e2a7893e7199d6d8bab19735bb1897f57fd464470033d8d569c3c7"
   },
   "syntax_arch": {
    "path": "crates/auto-lang/test/cases/ace-m1-expanded/syntax-architecture-contract.json",

@@ -7,7 +7,7 @@ from ace_m1_ct_mechanisms import COUNTERS, LOG_FIELDS, META_BINARY, META_TEST, n
 
 ARCH = 'ARCH-04/meta-args-and-negative'
 CONTRACT = 'crates/auto-lang/test/cases/ace-m1-expanded/ct-meta-contract.json'
-CONTRACT_SHA = '9902e99f04a79ae7799cd2b04ad2268504d10b659ad8a23a3c690635e39f54c4'
+CONTRACT_SHA = '3fd9060e0adf69aab89b49c6c7785c5833c212955b052ed5189ed7f12d215a9b'
 SOURCES = ('crates/auto-lang/test/cases/ace-m1/source-cte-936/src/meta2.at',
            'crates/auto-lang/test/cases/ace-m1/source-cte-936/src/meta3.at',
            'crates/auto-lang/test/cases/ace-m1-expanded/ct-mechanisms/has-absent.at',
