@@ -99,3 +99,20 @@ examples 计数均不构成覆盖证明。跨仓不可读/owner 未明/未发布
   owner）**：semantics 查询通道数值注解具名拒绝 `numeric-annotation`（query 后继）；CTE 值面
   维持 I32/Bool、comptime admission 未扩（具名）；聚合/泛型/动态/控制效应组合面归 962–966。
   以上缺口在台账中保持 required/unknown 原状，不因 961 交付而消失。
+
+## SD-06 组合数据结构面 producer 挂接（PLAN-962 SD-02）
+
+- 分母台账 L-06..L-19/L-48（view/mut/move、Hold、Box、take、R 行、enum/union/tag、grid、tuple、
+  array/List 字面量、Option/Result、模式、range、索引 place）的 ACE 侧**已验证 producer** 为
+  [m2-aggregates.md](m2-aggregates.md)：`SourceProfile::Aggregates` 显式源码 profile（numeric 全表面
+  超集，冻结面字节恒等），准入键=文档级 capability `av.aggregates/1`（mir_verify/native/a2x 同键放宽，
+  旧面 822 一层元素域逐字节保持）；tuple=结构内联+匿名位置 record（零 schema/MIR 新指令）、Box=单元素
+  List 胞+不透明边递归合法化、grid=列元组+静态维检查、整元素读=PLACE 视图（物化全拒）——四端一致落地：
+  AV（真全链+资源账 8 fixture+21 探针腿）、native（真 PE 执行+collections COFF 发射）、a2x-rust（真实
+  rustc 4 案例）、a2x-c（真实 MSVC cl 3 案例），全部真实 dispatch 无 legacy fallback；六职责组零代码红。
+  本节只挂接来源，不改 SD-01 分类口径，也不把台账行标为 implemented；状态提升仍只引用 962 归档收据。
+- **具名差异（对 legacy）**：位置式索引读以 `.get(i)` 为正式读形（`xs[i]=v` 写位已交付；裸读拼写=
+  CST 机制待办 D-962-C1）；range 界需空格分隔（affix-num 词法）；union/grid 语义为新定（旧引擎
+  parser-only/panic）。**未闭缺口（具名，带 owner）**：递归 Box 的 collections-unit 车道（D-962-C2）、
+  C 侧 tuple 调用实参临时物化（D-962-C3）、List use-after-move 不拒（D-962-C4，冻结既有）、杂项诊断
+  拼写（D-962-C5）；StructCover 嵌套模式/is 表达式→965；Map/Set 归 964/946-972（963 实例）。
