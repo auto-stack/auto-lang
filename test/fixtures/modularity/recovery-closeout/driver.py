@@ -417,6 +417,27 @@ def run_ui_case(manifest: dict, scratch: Path, controls_only: bool) -> bool:
         finally:
             cleanup_spawned()
 
+    # 移根（V-03 位置无关）：剥离 target 拷贝到独立目录 → locked 重建 → 业务
+    reloc = scratch / "relocated-counter"
+    if reloc.exists():
+        shutil.rmtree(reloc)
+    src_bundle = Path(ui["old"]["bundle_002"])
+    shutil.copytree(src_bundle, reloc,
+                    ignore=shutil.ignore_patterns("target"))
+    if build_locked(reloc) != 0:
+        ok_all = record("reloc-rebuild", False, "locked 重建失败") and ok_all
+    else:
+        mport = free_port()
+        launch(reloc / "target" / "debug" / "counter.exe", scratch, mport)
+        try:
+            if not wait_port(mport):
+                ok_all = record("reloc-launch", False, "MCP 未起") and ok_all
+            else:
+                mcp = McpClient(mport)
+                ok_all = verify_counter_business(mport, mcp, "reloc") and ok_all
+        finally:
+            cleanup_spawned()
+
     # 故障保全 + 恢复 A（V-05）
     ok_all = verify_fault_preserve_and_restore(
         manifest, scratch, ui["old"], ui["new"],
