@@ -522,7 +522,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
         from ace_m1_legacy import frozen_ledger as _fl3
         earlier3 = legacy.get('execution_summary', {}).get('observations', {})
         rust['observations'] = {k: {'judgement': v['judgement'], 'oracle_source': v.get('oracle_source'),
-                                    'test': v.get('test')}
+                                    'tests': v.get('tests')}
                                 for k, v in rust['observations'].items() if k not in earlier3}
         rust['claimed_cells'] = len(rust['observations'])
         legacy.setdefault('_merged_obs', {}).update(rust['observations'])
@@ -536,7 +536,7 @@ def compose_first_slice(repository_root, evidence_root, bindings_path):
             inputs, evidence, bindings['legacy_rust_tests_mn'], registry), 512 << 10)
         earlier3b = legacy.get('execution_summary', {}).get('observations', {})
         rustmn['observations'] = {k: {'judgement': v['judgement'], 'oracle_source': v.get('oracle_source'),
-                                      'test': v.get('test')}
+                                      'tests': v.get('tests')}
                                   for k, v in rustmn['observations'].items() if k not in earlier3b}
         rustmn['claimed_cells'] = len(rustmn['observations'])
         legacy.setdefault('_merged_obs', {}).update(rustmn['observations'])
