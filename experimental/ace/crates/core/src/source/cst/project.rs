@@ -3530,8 +3530,9 @@ impl<'a> Engine<'a> {
             self.cx.reject(span, || self_method_name(span));
         }
         // PLAN-935（T-02）：`<T>` 类型参数投影（scalar-instances 面才有
-        // 该字段；plain 面无此步 = 无字段）。有限形态门：至多一个类型参
-        // 数、不重名、模板方法与模板入口具名拒（覆盖边界，不当 token 跳过）。
+        // 该字段；plain 面无此步 = 无字段）。PLAN-963：多类型参数
+        // `<T, U>` 为通用实例面的一部分（声明序保住）；约束/const 形状仍
+        // 具名拒（T-01 冻结的独立切片），模板方法与模板入口仍拒。
         let type_params = self.project_type_params(self.cx.field_child(tail, "type_params"));
         if !type_params.is_empty() {
             let tp_span = type_params[0].span;
@@ -3542,16 +3543,6 @@ impl<'a> Engine<'a> {
                         "source.instances-unsupported",
                         "template methods are not part of the finite instances surface",
                         tp_span,
-                    )
-                });
-            } else if type_params.len() > 1 {
-                let last = type_params[type_params.len() - 1].span;
-                self.cx.reject(last, || {
-                    Diagnostic::new(
-                        Stage::Text,
-                        "source.instances-unsupported",
-                        "at most one type parameter is supported (`<T>`)",
-                        last,
                     )
                 });
             } else if name.name == "main" {

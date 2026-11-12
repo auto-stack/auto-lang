@@ -875,6 +875,26 @@ pub(crate) fn lower_foreign_fn_c(
     // LOUDLY at compile time (C4715 under /W4 /WX) instead of silently
     // producing a value.
     lowering.lower_block(hir::BlockId(0))?;
+    // /W4 /WX：泛型具体化后可能留下幻影形参（只由类型参数占位、具体体
+    // 未读取）。显式 `(void)` 消费，与既有 free-nothing 处的处理一致；
+    // 不放宽告警门，也不改变可观察行为。
+    let decl_count = lowering.out.len();
+    let mut voids = Vec::new();
+    {
+        let text = lowering.out.join("\n");
+        for (_ty, name) in &params {
+            if !crate::lower_rt::uses_c_ident(&text, name) {
+                voids.push(format!(
+                    "    (void){name}; /* /W4: parameter unused after instantiation */"
+                ));
+            }
+        }
+    }
+    if !voids.is_empty() {
+        let mut tail = lowering.out.split_off(decl_count);
+        lowering.out.extend(voids);
+        lowering.out.append(&mut tail);
+    }
 
     Ok(CFn {
         name: c_name_of(facts),

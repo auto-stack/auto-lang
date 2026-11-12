@@ -33,6 +33,20 @@ fn main() int {
 }
 ";
 
+/// PLAN-963 T-02：多类型参数 `<T, U>` 实例在 AV 端真实执行。
+/// `pick(true, 7, false)` 解 T=bool/U=int → true；`pick(42, true, false)`
+/// 解 T=int/U=bool → 42；main 闭式结果 42。
+const PICK963: &str = "\
+fn pick<T, U>(a T, b U, flag bool) T {
+    if flag { return a }
+    return a
+}
+fn main() int {
+    if pick(true, 7, false) { return pick(42, true, false) }
+    return 0
+}
+";
+
 fn compile_checked(src: &str) -> CheckedModule {
     let mut session = SourceQuerySession::new("plan935", "choose.at");
     let p = compile_scalar_product(
@@ -75,4 +89,11 @@ fn av_choose_original_executes_42() {
 fn av_choose_swapped_executes_0() {
     let v = run_value(&compile_checked(CHOOSE_SWAPPED));
     assert_eq!(v, Value::I32(0), "swapped-branch oracle");
+}
+
+/// O-963：多类型参数实例（两种排列）在 AV 端真实执行 → 42。
+#[test]
+fn av_multi_param_instances_execute_42() {
+    let v = run_value(&compile_checked(PICK963));
+    assert_eq!(v, Value::I32(42), "T/U 两排列实例闭式 42");
 }

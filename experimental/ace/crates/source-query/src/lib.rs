@@ -59,14 +59,14 @@ mod foreign_tests;
 mod tests;
 
 pub use apply::{
-    AppliedFn, ApplyError, ApplyReport, BindFactsError, BodyTypeSupply, FactsApplyError,
-    apply_body_facts, apply_facts_to_resolved, apply_fn_sig, bind_with_facts,
+    apply_body_facts, apply_facts_to_resolved, apply_fn_sig, bind_with_facts, AppliedFn,
+    ApplyError, ApplyReport, BindFactsError, BodyTypeSupply, FactsApplyError,
 };
 
 pub use catalog::SignatureCatalog;
 pub use consumer::{
-    CompileLane, ConsumerError, FactCompiled, ProductCompile, compile_core_product,
-    compile_scalar_product, compile_text_record_product, compile_via_facts,
+    compile_core_product, compile_scalar_product, compile_text_record_product, compile_via_facts,
+    CompileLane, ConsumerError, FactCompiled, ProductCompile,
 };
 pub use facts::{
     BindingFact, FactsError, FnSigFacts, InferBodyFacts, NegativeDep, NodeFact, PortableDiag,
@@ -77,25 +77,25 @@ pub use host::{
     TargetHandle,
 };
 pub use ident::{
-    SQ_ALGO, SQ_PRODUCER, SQ_PROFILE, SQ_SCHEMA, content_version, owner_logical, signature_version,
-    sq_hash,
+    content_version, owner_logical, signature_version, sq_hash, SQ_ALGO, SQ_PRODUCER, SQ_PROFILE,
+    SQ_SCHEMA,
 };
 pub use instance_host::{
-    CurrentInstanceSet, INSTANCE_LAYER, INSTANCE_ROOT_KIND, InstanceCommitError, InstanceHost,
-    InstancePage, InstancePageError, InstanceSetCandidate, InstanceSink, ManagedInstanceSink,
-    MemoryInstanceSink, decode_instance_page, encode_instance_page, set_fingerprint,
+    decode_instance_page, encode_instance_page, set_fingerprint, CurrentInstanceSet,
+    InstanceCommitError, InstanceHost, InstancePage, InstancePageError, InstanceSetCandidate,
+    InstanceSink, ManagedInstanceSink, MemoryInstanceSink, INSTANCE_LAYER, INSTANCE_ROOT_KIND,
 };
 pub use instances::{
-    INSTANCES_ALGO, INSTANCES_KEY_DOMAIN, INSTANCES_LOGICAL_DOMAIN, INSTANCES_PRODUCER,
-    INSTANCES_SCHEMA, InstanceRecord, InstantiateOutcome, instantiate_program,
-    instantiate_program_limited,
+    instantiate_program, instantiate_program_limited, InstanceArg, InstanceRecord,
+    InstantiateOutcome, INSTANCES_ALGO, INSTANCES_KEY_DOMAIN, INSTANCES_LOGICAL_DOMAIN,
+    INSTANCES_PRODUCER, INSTANCES_SCHEMA,
 };
 pub use keys::{QueryKey, QueryKind, TARGET_SEMANTICS};
-pub use produce::{ProduceError, ProduceLimits, produce_fn_sig, produce_infer_body};
-pub use restore::{RestoreError, restore_bind, restore_verify};
+pub use produce::{produce_fn_sig, produce_infer_body, ProduceError, ProduceLimits};
+pub use restore::{restore_bind, restore_verify, RestoreError};
 pub use session::{Counters, PageAudit, QueryError, QueryOutcome, SourceQuerySession};
-pub use store::{ManagedStoreSink, PageReadError, decode_page, encode_page, store_key};
-pub use walk::{BodyWalk, LetDecl, NodeId, NodeInfo, WalkError, walk_body};
+pub use store::{decode_page, encode_page, store_key, ManagedStoreSink, PageReadError};
+pub use walk::{walk_body, BodyWalk, LetDecl, NodeId, NodeInfo, WalkError};
 
 // PLAN-950 metadata-preserving finite modules, shared by real consumers.
 pub mod modules;

@@ -64,28 +64,26 @@ fn rustc() -> String {
 }
 
 /// Rust 端（真实 rustc 编译 + 运行）。
-fn run_rust(src: &str, want: i32, tag: &str) {
+fn run_rust(src: &str, want: i32, tag: &str, syms: &[&str], tpl_residue: &str) {
     let p = compile_instances(src);
     let view = SemanticView::from_checked(&p.compiled.checked).expect("view admission");
     let program = lower_program(&view, "main").expect("lowering");
     let fs = assemble_file_set(&view, &program, &p.compiled.input_hash, "main");
-    // 目标端只见具体函数：生成面含两个实例符号，无模板符号。
+    // 目标端只见具体函数：生成面含需求实例符号，无模板符号。
     let joined = fs
         .files
         .iter()
         .map(|(_, c)| c.clone())
         .collect::<Vec<_>>()
         .join("\n");
+    for sym in syms {
+        assert!(
+            joined.contains(sym),
+            "Rust file set misses the `{sym}` instance"
+        );
+    }
     assert!(
-        joined.contains("choose_i32"),
-        "Rust file set misses the int instance"
-    );
-    assert!(
-        joined.contains("choose_bool"),
-        "Rust file set misses the bool instance"
-    );
-    assert!(
-        !joined.contains("choose<T>"),
+        !joined.contains(tpl_residue),
         "no template residue in the Rust file set"
     );
 
@@ -128,7 +126,7 @@ fn run_rust(src: &str, want: i32, tag: &str) {
 }
 
 /// C 端（A2xSession + C provider → 真实 MSVC cl + 运行）。
-fn run_c(src: &str, want: i32, tag: &str) {
+fn run_c(src: &str, want: i32, tag: &str, syms: &[&str], tpl_residue: &str) {
     let root = out_root().join(format!("store-c-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let mut s = A2xSession::open(&root, "a2c-935", "probe", 128 << 20, CTargetProvider::v1())
@@ -142,16 +140,14 @@ fn run_c(src: &str, want: i32, tag: &str) {
         .map(|(_, c)| c.clone())
         .collect::<Vec<_>>()
         .join("\n");
+    for sym in syms {
+        assert!(
+            joined.contains(sym),
+            "C file set misses the `{sym}` instance"
+        );
+    }
     assert!(
-        joined.contains("choose_i32"),
-        "C file set misses the int instance"
-    );
-    assert!(
-        joined.contains("choose_bool"),
-        "C file set misses the bool instance"
-    );
-    assert!(
-        !joined.contains("choose<T>"),
+        !joined.contains(tpl_residue),
         "no template residue in the C file set"
     );
 
@@ -170,13 +166,35 @@ fn run_c(src: &str, want: i32, tag: &str) {
 /// O-3（A2R + A2C 双端）：value:42。
 #[test]
 fn a2x_choose_original_value_42() {
-    run_rust(CHOOSE, 42, "orig");
-    run_c(CHOOSE, 42, "orig");
+    let syms = ["choose_i32", "choose_bool"];
+    run_rust(CHOOSE, 42, "orig", &syms, "choose<T>");
+    run_c(CHOOSE, 42, "orig", &syms, "choose<T>");
 }
 
 /// O-4（A2R + A2C 双端）：交换模板分支 → value:0。
 #[test]
 fn a2x_choose_swapped_value_0() {
-    run_rust(CHOOSE_SWAPPED, 0, "swap");
-    run_c(CHOOSE_SWAPPED, 0, "swap");
+    let syms = ["choose_i32", "choose_bool"];
+    run_rust(CHOOSE_SWAPPED, 0, "swap", &syms, "choose<T>");
+    run_c(CHOOSE_SWAPPED, 0, "swap", &syms, "choose<T>");
+}
+
+/// PLAN-963 T-02（A2R + A2C 双端）：多类型参数两排列实例 → value:42；
+/// 生成面只有具体实例符号，无模板残留。
+const PICK963: &str = "\
+fn pick<T, U>(a T, b U, flag bool) T {
+    if flag { return a }
+    return a
+}
+fn main() int {
+    if pick(true, 7, false) { return pick(42, true, false) }
+    return 0
+}
+";
+
+#[test]
+fn a2x_multi_param_instances_value_42() {
+    let syms = ["pick_i32_bool", "pick_bool_i32"];
+    run_rust(PICK963, 42, "multi963", &syms, "pick<T");
+    run_c(PICK963, 42, "multi963", &syms, "pick<T");
 }

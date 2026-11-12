@@ -33,8 +33,12 @@ pub const INSTANCE_ROOT_KIND: &str = "source-instances";
 /// 实例页载体（不可变记录页，沿 S934 的 SnapshotRecord 载体纪律）。
 pub const INSTANCE_CARRIER: ChunkKind = ChunkKind::SnapshotRecord;
 /// 实例页 magic + codec 版本（新版本必须 MISS，绝不重释旧字节）。
+///
+/// PLAN-963：v2 = `argc + 每实参 (name, ty)`（通用多类型参数）。v1 页按
+/// 既有「版本不符即 MISS」语义自然失效重产；magic 与 producer/schema/algo
+/// 信封不变。
 pub const INSTANCE_PAGE_MAGIC: &[u8; 6] = b"IN935P";
-pub const INSTANCE_PAGE_CODEC_VERSION: u8 = 1;
+pub const INSTANCE_PAGE_CODEC_VERSION: u8 = 2;
 /// 单页字节上限（沿 512KiB 页锚）。
 pub const INSTANCE_MAX_PAGE_BYTES: usize = 512 * 1024;
 
@@ -47,8 +51,8 @@ pub struct InstancePage {
     pub key: String,
     pub logical: String,
     pub template: String,
-    pub ty_param: String,
-    pub ty: u8,
+    /// 声明序 `(类型参数名, 类型码)`（0=I32, 1=Bool, 2=Unit；单参即 935 面）。
+    pub args: Vec<(String, u8)>,
     pub concrete_name: String,
     pub sig_version: String,
     pub body_version: String,
@@ -64,17 +68,25 @@ impl From<&InstanceRecord> for InstancePage {
             key: r.key.clone(),
             logical: r.logical.clone(),
             template: r.template.clone(),
-            ty_param: r.ty_param.clone(),
-            ty: match r.ty {
-                crate::facts::PortableTy::I32 => 0,
-                crate::facts::PortableTy::Bool => 1,
-                crate::facts::PortableTy::Unit => 2,
-            },
+            args: r
+                .args
+                .iter()
+                .map(|a| (a.param.clone(), ty_code(a.ty)))
+                .collect(),
             concrete_name: r.concrete_name.clone(),
             sig_version: r.sig_version.clone(),
             body_version: r.body_version.clone(),
             demands: r.demands as u64,
         }
+    }
+}
+
+/// substitution 类型码（页编码面；与 [`crate::facts::PortableTy`] 一一对应）。
+fn ty_code(ty: crate::facts::PortableTy) -> u8 {
+    match ty {
+        crate::facts::PortableTy::I32 => 0,
+        crate::facts::PortableTy::Bool => 1,
+        crate::facts::PortableTy::Unit => 2,
     }
 }
 
@@ -146,8 +158,11 @@ pub fn encode_instance_page(p: &InstancePage) -> Result<Vec<u8>, InstancePageErr
     put_str(&mut out, &p.key);
     put_str(&mut out, &p.logical);
     put_str(&mut out, &p.template);
-    put_str(&mut out, &p.ty_param);
-    out.push(p.ty);
+    out.extend_from_slice(&(p.args.len() as u32).to_le_bytes());
+    for (name, code) in &p.args {
+        put_str(&mut out, name);
+        out.push(*code);
+    }
     put_str(&mut out, &p.concrete_name);
     put_str(&mut out, &p.sig_version);
     put_str(&mut out, &p.body_version);
@@ -184,12 +199,25 @@ pub fn decode_instance_page(b: &[u8]) -> Result<InstancePage, InstancePageError>
     let key = get_str(b, &mut pos)?;
     let logical = get_str(b, &mut pos)?;
     let template = get_str(b, &mut pos)?;
-    let ty_param = get_str(b, &mut pos)?;
-    if pos >= b.len() {
+    if pos + 4 > b.len() {
         return Err(InstancePageError::Truncated);
     }
-    let ty = b[pos];
-    pos += 1;
+    let argc = u32::from_le_bytes([b[pos], b[pos + 1], b[pos + 2], b[pos + 3]]) as usize;
+    pos += 4;
+    // 防御性上限：单页内实参个数不可能超过 64（声明序位数；越界即截断/损坏）。
+    if argc > 64 {
+        return Err(InstancePageError::Truncated);
+    }
+    let mut args = Vec::with_capacity(argc);
+    for _ in 0..argc {
+        let name = get_str(b, &mut pos)?;
+        if pos >= b.len() {
+            return Err(InstancePageError::Truncated);
+        }
+        let code = b[pos];
+        pos += 1;
+        args.push((name, code));
+    }
     let concrete_name = get_str(b, &mut pos)?;
     let sig_version = get_str(b, &mut pos)?;
     let body_version = get_str(b, &mut pos)?;
@@ -213,8 +241,7 @@ pub fn decode_instance_page(b: &[u8]) -> Result<InstancePage, InstancePageError>
         key,
         logical,
         template,
-        ty_param,
-        ty,
+        args,
         concrete_name,
         sig_version,
         body_version,

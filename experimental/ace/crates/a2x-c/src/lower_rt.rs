@@ -1680,6 +1680,32 @@ fn clone_map(m: &HashMap<u32, String>) -> HashMap<u32, String> {
     m.iter().map(|(k, v)| (*k, v.clone())).collect()
 }
 
+/// 生成 C 文本中 `name` 是否作为**完整标识符**出现（避免 `l1_b` 命中
+/// `l1_b2`）。用于判定具体化后是否留有幻影形参。
+pub(crate) fn uses_c_ident(text: &str, name: &str) -> bool {
+    let bytes = text.as_bytes();
+    let nb = name.as_bytes();
+    if nb.is_empty() {
+        return false;
+    }
+    let mut start = 0usize;
+    while let Some(pos) = text[start..].find(name) {
+        let at = start + pos;
+        let before_ok = at == 0 || !is_c_ident_byte(bytes[at - 1]);
+        let end = at + nb.len();
+        let after_ok = end >= bytes.len() || !is_c_ident_byte(bytes[end]);
+        if before_ok && after_ok {
+            return true;
+        }
+        start = at + nb.len();
+    }
+    false
+}
+
+fn is_c_ident_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
 /// Lower ONE record-text function of the view to its [`CFnRt`].
 pub fn lower_fn_rt(view: &SemanticView<'_>, facts: &FnFacts<'_>) -> Result<CFnRt, A2xReject> {
     let mut local_names = HashMap::new();
@@ -1769,6 +1795,29 @@ pub fn lower_fn_rt(view: &SemanticView<'_>, facts: &FnFacts<'_>) -> Result<CFnRt
             .push(format!("{} {};", cty, lowering.local_names[&(idx as u32)]));
     }
     lowering.lower_block(hir::BlockId(0))?;
+    // /W4 /WX：泛型具体化后可能留下**幻影参数**（只由类型参数 U 占位的
+    // 形参在具体体里未被读取）。生成 C 必须显式消费形参，否则 cl 以
+    // C4100 视为错误——与既有 `(void)r; /* /W4: ... */` 同一处理方式，
+    // 不改用户可观察行为，也不放宽告警门。
+    let decl_count = lowering.out.len();
+    let mut voids = Vec::new();
+    {
+        let mut text = lowering.out.join("\n");
+        text.push('\n');
+        text.push_str(&lowering.preface.join("\n"));
+        for (_cty, name) in &params {
+            if !uses_c_ident(&text, name) {
+                voids.push(format!(
+                    "    (void){name}; /* /W4: parameter unused after instantiation */"
+                ));
+            }
+        }
+    }
+    if !voids.is_empty() {
+        let tail = lowering.out.split_off(decl_count);
+        lowering.out.extend(voids);
+        lowering.out.extend(tail);
+    }
     Ok(CFnRt {
         name: c_name_of(facts),
         ret,

@@ -1,8 +1,8 @@
 //! PLAN-935（T-02）：有限模板语法面前门事实。
 //!
 //! 覆盖：能力门控（无能力仍原拒绝）、`<T>` 投影、类型位裸 ident=类型变量、
-//! 有限形态具名拒（>1 类型参数/重名/模板入口）、未匹配 ident 不猜类型、
-//! plain 面比较算子不受 fn-tail `<` 歧义影响。
+//! 有限形态具名拒（重名/模板入口；`<T, U>` 由 PLAN-963 放开为合法声明）、
+//! 未匹配 ident 不猜类型、plain 面比较算子不受 fn-tail `<` 歧义影响。
 
 use ace_core::source::ast::{Item, TypeRef};
 use ace_core::source::cst::{
@@ -98,14 +98,13 @@ fn without_capability_still_rejected() {
     assert!(matches!(other, FrontOutcome::Diag(_)));
 }
 
-/// 有限形态具名拒：>1 类型参数、重名类型参数、模板入口。
+/// 有限形态具名拒：重名类型参数、模板入口。
+///
+/// PLAN-963：`<T, U>` 不再拒绝——多类型参数是通用实例面的合法声明（见
+/// `parse_multi_type_params_963`）；其余有限面拒绝保持不变。
 #[test]
 fn finite_surface_named_rejections() {
-    let cases: [(&str, &str); 3] = [
-        (
-            "fn pick<T, U>(a T, b U) T { return a }\nfn main() int { return 0 }",
-            "at most one type parameter",
-        ),
+    let cases: [(&str, &str); 2] = [
         (
             "fn pick<T, T>(a T, b T) T { return a }\nfn main() int { return 0 }",
             "duplicate type parameter",
@@ -128,6 +127,35 @@ fn finite_surface_named_rejections() {
             other => panic!("{src}: expected rejection, got {other:?}"),
         }
     }
+}
+
+/// PLAN-963：多类型参数 `<T, U>` 投影为声明序 `["T","U"]`，各类型位
+/// 裸 ident 仍是类型变量（不因放开数量而丢位序/混淆参数名）。
+#[test]
+fn parse_multi_type_params_963() {
+    let src = "\
+fn pick<T, U>(a T, b U, flag bool) T {
+    if flag { return a }
+    return a
+}
+fn main() int { return 0 }
+";
+    let FrontOutcome::Ok(ok) = with_caps(src) else {
+        panic!("multi type parameters must parse under the instances capability");
+    };
+    let pick = fn_of(&ok.program, "pick");
+    assert_eq!(
+        pick.type_params
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["T", "U"],
+        "type params project in declaration order"
+    );
+    assert!(matches!(pick.params[0].ty.kind, TypeRef::TyVar(_)));
+    assert!(matches!(pick.params[1].ty.kind, TypeRef::TyVar(_)));
+    assert!(matches!(pick.params[2].ty.kind, TypeRef::Builtin(_)));
+    assert!(matches!(pick.ret.kind, TypeRef::TyVar(_)));
 }
 
 /// PLAN-935（T-03）：约束/const 形状（`<T has Bound>` / `<const N>`——词法

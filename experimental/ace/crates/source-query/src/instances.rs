@@ -35,8 +35,8 @@ use crate::produce::ProduceLimits;
 use crate::walk::walk_body;
 use ace_core::atom_text::{Diagnostic, Span, Stage};
 use ace_core::source::ast::{
-    Arg, Block, Expr, ExprKind, FnItem, Ident, Item, Param, Program, Stmt, TypeAnn, TypeRef,
-    TypeWord,
+    Arg, Block, ClosureBody, Expr, ExprKind, FnItem, Ident, Item, Param, Program, Stmt, TypeAnn,
+    TypeRef, TypeWord,
 };
 use ace_semantics::adapter::project_body_scoped_with_caps;
 use ace_semantics::{InferOutcome, InferSession};
@@ -53,6 +53,16 @@ pub const INSTANCES_LOGICAL_DOMAIN: &str = "ac935/instance-logical/v1";
 /// ——算法换面必须换键，防旧键伪命中）。
 pub const INSTANCES_ALGO: &str = "ac935/instances-discovery/2";
 
+/// 一个已解出的泛型实参（PLAN-963：声明序 `(参数名, 规范类型)`）。
+///
+/// 单参实例的身份字节与 935 完全一致（见 [`instance_key`]）：多参数只是把
+/// 同一 `(name, ty)` 序列延长，不改变 N=1 的历史键。
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct InstanceArg {
+    pub param: String,
+    pub ty: PortableTy,
+}
+
 /// 一个已生产实例的调度记录（T-02 进程内；T-05 持久化为实例页）。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct InstanceRecord {
@@ -61,9 +71,8 @@ pub struct InstanceRecord {
     /// 完整实现键 canonical（`INSTANCES_KEY_DOMAIN`）。
     pub key: String,
     pub template: String,
-    pub ty_param: String,
-    /// 规范 substitution（单条：T→ty；int/i32 已并 I32）。
-    pub ty: PortableTy,
+    /// 规范 substitution（声明序；int/i32 已并 I32）。
+    pub args: Vec<InstanceArg>,
     /// 脱糖程序中的具体函数名（装配拼写，非身份）。
     pub concrete_name: String,
     /// 模板签名轴版本（变化 → 调用者重验 + 实例键变化）。
@@ -100,17 +109,19 @@ fn concrete_of(ann: &TypeAnn) -> Option<PortableTy> {
     }
 }
 
-/// 从模板 FnItem 提取一位的形状；T 匹配声明名，具体位取值；越界面具名拒。
-fn slot_of(ann: &TypeAnn, ty_param: &str, diags: &mut Vec<Diagnostic>) -> SlotTy {
+/// 从模板 FnItem 提取一位的形状；任一已声明类型参数匹配；具体位取值；
+/// 越界面具名拒。
+fn slot_of(ann: &TypeAnn, ty_params: &[String], diags: &mut Vec<Diagnostic>) -> SlotTy {
     match &ann.kind {
-        TypeRef::TyVar(id) if id.name == ty_param => SlotTy::Var,
+        TypeRef::TyVar(id) if ty_params.iter().any(|p| *p == id.name) => SlotTy::Var,
         TypeRef::TyVar(id) => {
             diags.push(Diagnostic::new(
                 Stage::Text,
                 "source.instances-unsupported",
                 format!(
-                    "type parameter `{}` is not declared by this template (declared: `{ty_param}`)",
-                    id.name
+                    "type parameter `{}` is not declared by this template (declared: `{}`)",
+                    id.name,
+                    ty_params.join("`, `")
                 ),
                 id.span,
             ));
@@ -177,15 +188,25 @@ fn ty_order(ty: &PortableTy) -> u8 {
     }
 }
 
+/// 一组 substitution 的规范序键（声明序逐位；单参 = 旧 `ty_order`）。
+fn args_order(args: &[PortableTy]) -> Vec<u8> {
+    args.iter().map(ty_order).collect()
+}
+
 /// 实例具体函数名的装配拼写（**不是身份**；身份在 [`InstanceRecord::key`]）。
 ///
-/// 拼写 = `{模板名}_{类型尾}`（`choose_i32`/`choose_bool`）。Atom/HIR 标识
-/// 符域是 `[A-Za-z0-9_]`（`$` 等分隔符过不了 binder），而源 ident 域允许
-/// 任何该形状拼写——装配名必须**确定性探测**避让同名用户声明（同源同探
-/// 测序；探测不进入身份）。碰撞时后接 `__2`/`__3`…（调用点重绑与实例落
-/// 位共用 by_template 表中的最终名，不重算拼写）。
-fn concrete_name(template: &str, ty: PortableTy, taken: &mut BTreeSet<String>) -> String {
-    let base = format!("{}_{}", template, ty_suffix(ty));
+/// 拼写 = `{模板名}_{类型尾...}`（`choose_i32`/`pick_i32_bool`；单参仍是
+/// 935 的 `{模板}_{尾}`）。Atom/HIR 标识符域是 `[A-Za-z0-9_]`（`$` 等分隔
+/// 符过不了 binder），而源 ident 域允许任何该形状拼写——装配名必须**确定
+/// 性探测**避让同名用户声明（同源同探测序；探测不进入身份）。碰撞时后接
+/// `__2`/`__3`…（调用点重绑与实例落位共用 by_template 表中的最终名，不重
+/// 算拼写）。
+fn concrete_name(template: &str, args: &[PortableTy], taken: &mut BTreeSet<String>) -> String {
+    let mut base = template.to_string();
+    for ty in args {
+        base.push('_');
+        base.push_str(ty_suffix(*ty));
+    }
     if taken.insert(base.clone()) {
         return base;
     }
@@ -202,7 +223,8 @@ fn concrete_name(template: &str, ty: PortableTy, taken: &mut BTreeSet<String>) -
 /// 模板条目（形状预解 + 源项引用）。
 struct TemplateEntryFull<'a> {
     name: String,
-    ty_param: String,
+    /// 声明序类型参数名。
+    ty_params: Vec<String>,
     #[allow(dead_code)]
     params: Vec<SlotTy>,
     #[allow(dead_code)]
@@ -216,24 +238,13 @@ struct TemplateEntryFull<'a> {
 
 fn concretize(
     template: &FnItem,
-    ty_param: &str,
-    ty: PortableTy,
+    args: &[InstanceArg],
     name: &str,
     span_map: Option<&BTreeMap<(String, u32, u32), (String, String)>>,
 ) -> FnItem {
     let self_name = &template.name.name;
     let concrete_self = name.to_string();
-    let subst_ann = |a: &TypeAnn| -> TypeAnn {
-        if let TypeRef::TyVar(id) = &a.kind {
-            if id.name == ty_param {
-                return TypeAnn {
-                    kind: TypeRef::Builtin(ty_word(ty)),
-                    span: a.span,
-                };
-            }
-        }
-        a.clone()
-    };
+    let subst_ann = |a: &TypeAnn| -> TypeAnn { subst_ann_declared(a, args) };
     let subst_block = |b: &Block| -> Block { subst_block_anns(b, &subst_ann) };
     // 体：注解位替换 + 同实例自调用重绑（同-ty 幂等）+ 跨模板调用按
     // 需求表重绑（fixpoint 轮发现的具体体内模板调用——None = fixpoint
@@ -265,6 +276,42 @@ fn concretize(
         receiver: template.receiver,
         owner: template.owner.clone(),
         script: false,
+    }
+}
+
+/// 声明序替换：已声明类型参数 → 具体类型词；嵌套类型形状递归。
+fn subst_ann_declared(a: &TypeAnn, args: &[InstanceArg]) -> TypeAnn {
+    match &a.kind {
+        TypeRef::TyVar(id) => match args.iter().find(|x| x.param == id.name) {
+            Some(arg) => TypeAnn {
+                kind: TypeRef::Builtin(ty_word(arg.ty)),
+                span: a.span,
+            },
+            None => a.clone(),
+        },
+        TypeRef::Optional(inner) => TypeAnn {
+            kind: TypeRef::Optional(Box::new(subst_ann_declared(inner, args))),
+            span: a.span,
+        },
+        TypeRef::Generic { name, args: targs } => TypeAnn {
+            kind: TypeRef::Generic {
+                name: name.clone(),
+                args: targs.iter().map(|t| subst_ann_declared(t, args)).collect(),
+            },
+            span: a.span,
+        },
+        TypeRef::Tuple(elems) => TypeAnn {
+            kind: TypeRef::Tuple(elems.iter().map(|t| subst_ann_declared(t, args)).collect()),
+            span: a.span,
+        },
+        TypeRef::Function { params, result } => TypeAnn {
+            kind: TypeRef::Function {
+                params: params.iter().map(|t| subst_ann_declared(t, args)).collect(),
+                result: Box::new(subst_ann_declared(result, args)),
+            },
+            span: a.span,
+        },
+        _ => a.clone(),
     }
 }
 
@@ -316,60 +363,135 @@ fn subst_stmt_anns(s: &Stmt, f: &impl Fn(&TypeAnn) -> TypeAnn) -> Stmt {
     }
 }
 
-/// 模板体（已替换注解）内的**自调用**重绑到同实例具体名。
-fn rebind_self_calls(b: &mut Block, self_name: &str, concrete: &str) {
-    for s in b.stmts.iter_mut() {
-        rebind_self_stmt(s, self_name, concrete);
+// ---------------------------------------------------------------------------
+// 表达式/语句全形状遍历（PLAN-963：重绑与自调用替换不得只走 Call/Binary/
+// Unary 白名单——`Index`/`TupleLit`/`MethodCall`/`CtorNamed`/`Closure` 等
+// 位置里的模板调用同样必须命中，D-962-C1）
+// ---------------------------------------------------------------------------
+
+fn arg_value_mut(a: &mut Arg) -> &mut Expr {
+    match a {
+        Arg::Pos(e) | Arg::MovePos(e) => e,
+        Arg::Named { value, .. } => value,
     }
 }
 
-fn rebind_self_stmt(s: &mut Stmt, self_name: &str, concrete: &str) {
-    match s {
-        Stmt::Let { value, .. }
-        | Stmt::Assign { value, .. }
-        | Stmt::Return { value, .. }
-        | Stmt::ExprStmt { value, .. } => rebind_self_expr(value, self_name, concrete),
-        Stmt::If {
-            cond, then, els, ..
-        } => {
-            rebind_self_expr(cond, self_name, concrete);
-            rebind_self_calls(then, self_name, concrete);
-            if let Some(e) = els {
-                rebind_self_calls(e, self_name, concrete);
-            }
-        }
-        Stmt::While { cond, body, .. } => {
-            rebind_self_expr(cond, self_name, concrete);
-            rebind_self_calls(body, self_name, concrete);
-        }
-        Stmt::Loop { body, .. } => rebind_self_calls(body, self_name, concrete),
-        _ => {}
-    }
-}
-
-fn rebind_self_expr(e: &mut Expr, self_name: &str, concrete: &str) {
+/// 先序遍历表达式树（覆盖全部携带子表达式的 `ExprKind` 变体）。
+fn for_each_expr_mut(e: &mut Expr, f: &mut impl FnMut(&mut Expr)) {
+    f(e);
     match &mut e.kind {
-        // PLAN-936（T-08）：CT 需求原子内的模板调用同样重绑到具体实例。
-        ExprKind::HashExpr { expr: inner } => rebind_self_expr(inner, self_name, concrete),
-        ExprKind::Call { callee, args } => {
-            if callee.name == self_name {
-                callee.name = concrete.to_string();
+        ExprKind::TupleLit(items) | ExprKind::ArrayLit(items) => {
+            for x in items.iter_mut() {
+                for_each_expr_mut(x, f);
             }
+        }
+        ExprKind::GridLit { rows, .. } => {
+            for row in rows.iter_mut() {
+                for x in row.iter_mut() {
+                    for_each_expr_mut(x, f);
+                }
+            }
+        }
+        ExprKind::Index { base, index } => {
+            for_each_expr_mut(base, f);
+            for_each_expr_mut(index, f);
+        }
+        ExprKind::Range { start, end, .. } => {
+            for_each_expr_mut(start, f);
+            for_each_expr_mut(end, f);
+        }
+        ExprKind::Method { recv, args, .. } | ExprKind::MethodCall { recv, args, .. } => {
+            for_each_expr_mut(recv, f);
             for a in args.iter_mut() {
-                let v = match a {
-                    Arg::Pos(e) | Arg::MovePos(e) => e,
-                    Arg::Named { value, .. } => value,
-                };
-                rebind_self_expr(v, self_name, concrete);
+                for_each_expr_mut(arg_value_mut(a), f);
+            }
+        }
+        ExprKind::Call { args, .. } => {
+            for a in args.iter_mut() {
+                for_each_expr_mut(arg_value_mut(a), f);
+            }
+        }
+        ExprKind::CallValue { callee, args } => {
+            for_each_expr_mut(callee, f);
+            for a in args.iter_mut() {
+                for_each_expr_mut(arg_value_mut(a), f);
             }
         }
         ExprKind::Binary { lhs, rhs, .. } => {
-            rebind_self_expr(lhs, self_name, concrete);
-            rebind_self_expr(rhs, self_name, concrete);
+            for_each_expr_mut(lhs, f);
+            for_each_expr_mut(rhs, f);
         }
-        ExprKind::Unary { operand, .. } => rebind_self_expr(operand, self_name, concrete),
+        ExprKind::Unary { operand, .. } | ExprKind::HashExpr { expr: operand } => {
+            for_each_expr_mut(operand, f)
+        }
+        ExprKind::CtorNamed { fields, .. } => {
+            for fd in fields.iter_mut() {
+                for_each_expr_mut(&mut fd.value, f);
+            }
+        }
+        ExprKind::Field { base, .. } => for_each_expr_mut(base, f),
+        ExprKind::Closure { body, .. } => match body.as_mut() {
+            ClosureBody::Expr(x) => for_each_expr_mut(x, f),
+            ClosureBody::Block(b) => for_each_block_mut(b, f),
+        },
         _ => {}
     }
+}
+
+fn for_each_block_mut(b: &mut Block, f: &mut impl FnMut(&mut Expr)) {
+    for s in b.stmts.iter_mut() {
+        for_each_stmt_mut(s, f);
+    }
+}
+
+fn for_each_stmt_mut(s: &mut Stmt, f: &mut impl FnMut(&mut Expr)) {
+    match s {
+        Stmt::ExprStmt { value, .. }
+        | Stmt::Let { value, .. }
+        | Stmt::Assign { value, .. }
+        | Stmt::LetDestruct { value, .. }
+        | Stmt::Return { value, .. } => for_each_expr_mut(value, f),
+        Stmt::IndexAssign(ix) => {
+            for_each_expr_mut(&mut ix.index, f);
+            for_each_expr_mut(&mut ix.value, f);
+        }
+        Stmt::Hold { body, .. } => for_each_block_mut(body, f),
+        Stmt::If {
+            cond, then, els, ..
+        } => {
+            for_each_expr_mut(cond, f);
+            for_each_block_mut(then, f);
+            if let Some(e) = els {
+                for_each_block_mut(e, f);
+            }
+        }
+        Stmt::While { cond, body, .. } => {
+            for_each_expr_mut(cond, f);
+            for_each_block_mut(body, f);
+        }
+        Stmt::Loop { body, .. } => for_each_block_mut(body, f),
+        Stmt::IsMatch { arms, .. } => {
+            for arm in arms.iter_mut() {
+                for_each_block_mut(&mut arm.body, f);
+            }
+        }
+        Stmt::ForIn { iter, body, .. } => {
+            for_each_expr_mut(iter, f);
+            for_each_block_mut(body, f);
+        }
+        _ => {}
+    }
+}
+
+/// 模板体（已替换注解）内的**自调用**重绑到同实例具体名。
+fn rebind_self_calls(b: &mut Block, self_name: &str, concrete: &str) {
+    for_each_block_mut(b, &mut |e| {
+        if let ExprKind::Call { callee, .. } = &mut e.kind {
+            if callee.name == self_name {
+                callee.name = concrete.to_string();
+            }
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -379,12 +501,20 @@ fn rebind_self_expr(e: &mut Expr, self_name: &str, concrete: &str) {
 
 #[derive(Default)]
 struct RoundDemands {
-    /// 模板名 → (ty_order → (ty, 调用点数))。
-    per_template: BTreeMap<String, BTreeMap<u8, (PortableTy, usize)>>,
-    /// (owner fn, 调用点 span) → (模板名, 解出的 T)。owner 必须入键：同
-    /// 一模板的两个实例体**共享源 span**（concretize 保 span），仅按 span
-    /// 键会把 wrap_bool 的解覆盖到 wrap_i32 的调用点上。
-    callsites: BTreeMap<(String, u32, u32), (String, PortableTy)>,
+    /// 模板名 → (规范序键 → (声明序 substitution, 调用点数))。
+    per_template: BTreeMap<String, BTreeMap<Vec<u8>, (Vec<PortableTy>, usize)>>,
+    /// (owner fn, 调用点 span) → (模板名, 声明序 substitution)。owner 必须
+    /// 入键：同一模板的两个实例体**共享源 span**（concretize 保 span），仅
+    /// 按 span 键会把 wrap_bool 的解覆盖到 wrap_i32 的调用点上。
+    callsites: BTreeMap<(String, u32, u32), (String, Vec<PortableTy>)>,
+}
+
+fn portable_of(ty: ace_semantics::Ty) -> Option<PortableTy> {
+    match ty {
+        ace_semantics::Ty::I32 => Some(PortableTy::I32),
+        ace_semantics::Ty::Bool => Some(PortableTy::Bool),
+        ace_semantics::Ty::Var(_) => None,
+    }
 }
 
 /// 一轮发现：对 `prog` 的每个非模板函数跑一次真推理，收集模板调用需求。
@@ -450,20 +580,27 @@ fn discover_round(
             }
         }
         for (callee, tys, span) in session.take_instance_demands() {
-            // 有限面：单类型参数（投影已拒 >1）。
-            let Some(Some(ty)) = tys.first().copied() else {
+            // 每个声明参数都必须解出具体标量；任一未解（Var/None）即不
+            // 准入本轮需求（求解器诊断已是最终裁决）。
+            let mut subst = Vec::with_capacity(tys.len());
+            let mut solved = true;
+            for ty in tys {
+                match ty.and_then(portable_of) {
+                    Some(t) => subst.push(t),
+                    None => {
+                        solved = false;
+                        break;
+                    }
+                }
+            }
+            if !solved {
                 continue;
-            };
-            let ty = match ty {
-                ace_semantics::Ty::I32 => PortableTy::I32,
-                ace_semantics::Ty::Bool => PortableTy::Bool,
-                ace_semantics::Ty::Var(_) => continue,
-            };
+            }
             let m = out.per_template.entry(callee.clone()).or_default();
-            let ent = m.entry(ty_order(&ty)).or_insert((ty, 0));
+            let ent = m.entry(args_order(&subst)).or_insert((subst.clone(), 0));
             ent.1 += 1;
             out.callsites
-                .insert((f.name.name.clone(), span.0, span.1), (callee, ty));
+                .insert((f.name.name.clone(), span.0, span.1), (callee, subst));
         }
     }
     if !diags.is_empty() {
@@ -534,15 +671,15 @@ pub fn instantiate_program_limited(
     // 2. 签名形状（T/int/i32/bool 越界面具名拒——求解器之外的第二道面）。
     let mut entries: Vec<TemplateEntryFull> = Vec::new();
     for t in &templates {
-        let ty_param = t.type_params[0].name.clone();
+        let ty_params: Vec<String> = t.type_params.iter().map(|p| p.name.clone()).collect();
         let mut params = Vec::new();
         for p in &t.params {
-            params.push(slot_of(&p.ty, &ty_param, &mut diags));
+            params.push(slot_of(&p.ty, &ty_params, &mut diags));
         }
-        let ret = slot_of(&t.ret, &ty_param, &mut diags);
+        let ret = slot_of(&t.ret, &ty_params, &mut diags);
         entries.push(TemplateEntryFull {
             name: t.name.name.clone(),
-            ty_param,
+            ty_params,
             params,
             ret,
             item: t,
@@ -554,19 +691,29 @@ pub fn instantiate_program_limited(
 
     // 3. fixpoint 物化：每轮真推理发现需求；新需求的具体体入列再发现其
     //    体内的模板调用（跨模板/嵌套模板）；无新需求即收敛（有界：每模
-    //    板至多 |{I32,Bool}| 个实例）。
-    let mut materialized: BTreeSet<(String, u8)> = BTreeSet::new();
+    //    板至多 |{I32,Bool}|^参数数 个实例）。
+    let mut materialized: BTreeSet<(String, Vec<u8>)> = BTreeSet::new();
     let mut instances: Vec<InstanceRecord> = Vec::new();
-    let mut by_template: BTreeMap<String, Vec<(PortableTy, String)>> = BTreeMap::new();
-    let mut all_callsites: BTreeMap<(String, u32, u32), (String, PortableTy)> = BTreeMap::new();
+    let mut by_template: BTreeMap<String, Vec<(Vec<PortableTy>, String)>> = BTreeMap::new();
+    let mut all_callsites: BTreeMap<(String, u32, u32), (String, Vec<PortableTy>)> =
+        BTreeMap::new();
     let mut rounds_left = templates.len() * 2 + 2;
     loop {
         // 当前工作程序：原始项 + 已物化实例项（模板保留，供后续轮发现）。
         let mut work_items: Vec<Item> = prog.items.clone();
         for (tpl, list) in &by_template {
-            for (ty, name) in list {
+            for (subst, name) in list {
                 let entry = entries.iter().find(|e| &e.name == tpl).expect("same set");
-                let concrete = concretize(entry.item, &entry.ty_param, *ty, name, None);
+                let args: Vec<InstanceArg> = entry
+                    .ty_params
+                    .iter()
+                    .zip(subst.iter())
+                    .map(|(p, t)| InstanceArg {
+                        param: p.clone(),
+                        ty: *t,
+                    })
+                    .collect();
+                let concrete = concretize(entry.item, &args, name, None);
                 work_items.push(Item::Fn(concrete));
             }
         }
@@ -577,13 +724,35 @@ pub fn instantiate_program_limited(
         }
         let mut fresh = false;
         for (tpl, tys) in &round.per_template {
-            for (order, (ty, _count)) in tys {
-                if !materialized.insert((tpl.clone(), *order)) {
+            for (order, (subst, _count)) in tys {
+                if !materialized.insert((tpl.clone(), order.clone())) {
                     continue;
                 }
                 fresh = true;
                 let entry = entries.iter().find(|e| &e.name == tpl).expect("same set");
-                let name = concrete_name(tpl, *ty, &mut taken);
+                if subst.len() != entry.ty_params.len() {
+                    diags.push(Diagnostic::new(
+                        Stage::Text,
+                        "source.instances-unsupported",
+                        format!(
+                            "template `{tpl}` declares {} type parameter(s) but a call site solved {}",
+                            entry.ty_params.len(),
+                            subst.len()
+                        ),
+                        entry.item.span,
+                    ));
+                    continue;
+                }
+                let args: Vec<InstanceArg> = entry
+                    .ty_params
+                    .iter()
+                    .zip(subst.iter())
+                    .map(|(p, t)| InstanceArg {
+                        param: p.clone(),
+                        ty: *t,
+                    })
+                    .collect();
+                let name = concrete_name(tpl, subst, &mut taken);
                 let logical = sq_hash(
                     INSTANCES_LOGICAL_DOMAIN,
                     &[
@@ -608,18 +777,9 @@ pub fn instantiate_program_limited(
                 };
                 instances.push(InstanceRecord {
                     logical,
-                    key: instance_key(
-                        tpl,
-                        package,
-                        module,
-                        &sig_version,
-                        &body_version,
-                        &entry.ty_param,
-                        *ty,
-                    ),
+                    key: instance_key(tpl, package, module, &sig_version, &body_version, &args),
                     template: tpl.clone(),
-                    ty_param: entry.ty_param.clone(),
-                    ty: *ty,
+                    args,
                     concrete_name: name.clone(),
                     sig_version,
                     body_version,
@@ -628,7 +788,7 @@ pub fn instantiate_program_limited(
                 by_template
                     .entry(tpl.clone())
                     .or_default()
-                    .push((*ty, name));
+                    .push((subst.clone(), name));
             }
         }
         if !diags.is_empty() {
@@ -649,12 +809,15 @@ pub fn instantiate_program_limited(
         }
     }
     // 需求计数按最终累计的调用点（跨轮同 span 去重）。
-    let mut count_by: BTreeMap<(String, u8), usize> = BTreeMap::new();
-    for (_span, (tpl, ty)) in &all_callsites {
-        *count_by.entry((tpl.clone(), ty_order(ty))).or_insert(0) += 1;
+    let mut count_by: BTreeMap<(String, Vec<u8>), usize> = BTreeMap::new();
+    for (_span, (tpl, subst)) in &all_callsites {
+        *count_by
+            .entry((tpl.clone(), args_order(subst)))
+            .or_insert(0) += 1;
     }
     for inst in instances.iter_mut() {
-        if let Some(c) = count_by.get(&(inst.template.clone(), ty_order(&inst.ty))) {
+        let subst: Vec<PortableTy> = inst.args.iter().map(|a| a.ty).collect();
+        if let Some(c) = count_by.get(&(inst.template.clone(), args_order(&subst))) {
             inst.demands = *c;
         }
     }
@@ -662,9 +825,9 @@ pub fn instantiate_program_limited(
     // 4. 脱糖组装：模板位换成其需求实例（规范序）；非模板体调用点按
     //    span→名表重绑；未需求模板移除（不无限实例化）。
     let mut span_to_name: BTreeMap<(String, u32, u32), (String, String)> = BTreeMap::new();
-    for ((owner, s0, s1), (tpl, ty)) in &all_callsites {
+    for ((owner, s0, s1), (tpl, subst)) in &all_callsites {
         if let Some(list) = by_template.get(tpl) {
-            if let Some((_, name)) = list.iter().find(|(t, _)| t == ty) {
+            if let Some((_, name)) = list.iter().find(|(t, _)| t == subst) {
                 span_to_name.insert((owner.clone(), *s0, *s1), (tpl.clone(), name.clone()));
             }
         }
@@ -675,18 +838,17 @@ pub fn instantiate_program_limited(
         match item {
             Item::Fn(f) if !f.type_params.is_empty() => {
                 if let Some(list) = by_template.get(&f.name.name) {
-                    let entry = entries
-                        .iter()
-                        .find(|e| e.item.name.name == f.name.name)
-                        .expect("same set");
-                    for (ty, name) in list {
-                        items.push(Item::Fn(concretize(
-                            f,
-                            &entry.ty_param,
-                            *ty,
-                            name,
-                            Some(&span_to_name),
-                        )));
+                    for (subst, name) in list {
+                        let args: Vec<InstanceArg> = f
+                            .type_params
+                            .iter()
+                            .zip(subst.iter())
+                            .map(|(p, t)| InstanceArg {
+                                param: p.name.clone(),
+                                ty: *t,
+                            })
+                            .collect();
+                        items.push(Item::Fn(concretize(f, &args, name, Some(&span_to_name))));
                     }
                 }
                 // 未需求模板：移除。
@@ -706,15 +868,18 @@ pub fn instantiate_program_limited(
     })
 }
 
-/// 完整实例键：逻辑实例 + 模板签名/体版本 + substitution + 算法/schema。
+/// 完整实例键：逻辑实例 + 模板签名/体版本 + 逐位 substitution + 算法/schema。
+///
+/// **单参字节兼容**（PLAN-963 §5.5-3）：N=1 时的成分序与 935 完全一致
+/// （`logical,sig,body,param,ty,algo,schema`），故历史键/页语义不漂移；
+/// 多参只把 `(param,ty)` 序列按声明序延长。
 fn instance_key(
     template: &str,
     package: &str,
     module: &str,
     sig_version: &str,
     body_version: &str,
-    ty_param: &str,
-    ty: PortableTy,
+    args: &[InstanceArg],
 ) -> String {
     let logical = sq_hash(
         INSTANCES_LOGICAL_DOMAIN,
@@ -725,116 +890,59 @@ fn instance_key(
             template.as_bytes(),
         ],
     );
-    sq_hash(
-        INSTANCES_KEY_DOMAIN,
-        &[
-            logical.as_bytes(),
-            b"sig",
-            sig_version.as_bytes(),
-            b"body",
-            body_version.as_bytes(),
-            ty_param.as_bytes(),
-            ty_suffix(ty).as_bytes(),
-            INSTANCES_ALGO.as_bytes(),
-            INSTANCES_SCHEMA.as_bytes(),
-        ],
-    )
+    let mut parts: Vec<&[u8]> = vec![
+        logical.as_bytes(),
+        b"sig",
+        sig_version.as_bytes(),
+        b"body",
+        body_version.as_bytes(),
+    ];
+    for arg in args {
+        parts.push(arg.param.as_bytes());
+        parts.push(ty_suffix(arg.ty).as_bytes());
+    }
+    parts.push(INSTANCES_ALGO.as_bytes());
+    parts.push(INSTANCES_SCHEMA.as_bytes());
+    sq_hash(INSTANCES_KEY_DOMAIN, &parts)
 }
 
 /// 非模板体调用点重绑：span 命中需求表 → 具体实例名（与发现/落位同一
 /// 来源——绑定缺口不靠重算所有 caller 掩盖：重绑只发生在真实模板调用点）。
+///
+/// 遍历覆盖全部子表达式形状（PLAN-963：旧白名单漏 `Index`/`TupleLit`/
+/// `MethodCall` 等，藏在其中的模板调用不会重绑——D-962-C1）。
 fn rebind_callsites_owned(
     b: &mut Block,
     owner: &str,
     span_to_name: &BTreeMap<(String, u32, u32), (String, String)>,
 ) -> usize {
     let mut n = 0;
-    for s in b.stmts.iter_mut() {
-        n += rebind_stmt_callsites_owned(s, owner, span_to_name);
-    }
-    n
-}
-
-fn rebind_stmt_callsites_owned(
-    s: &mut Stmt,
-    owner: &str,
-    span_to_name: &BTreeMap<(String, u32, u32), (String, String)>,
-) -> usize {
-    let mut n = 0;
-    match s {
-        Stmt::Let { value, .. } | Stmt::Assign { value, .. } | Stmt::Return { value, .. } => {
-            n += rebind_expr_callsites_owned(value, owner, span_to_name);
-        }
-        Stmt::If {
-            cond, then, els, ..
-        } => {
-            n += rebind_expr_callsites_owned(cond, owner, span_to_name);
-            n += rebind_callsites_owned(then, owner, span_to_name);
-            if let Some(e) = els {
-                n += rebind_callsites_owned(e, owner, span_to_name);
+    for_each_block_mut(b, &mut |e| {
+        let key = (owner.to_string(), e.span.start as u32, e.span.end as u32);
+        match &mut e.kind {
+            // PLAN-936（T-08）：CT 需求原子内的模板调用点同样重绑。hash 对
+            // 推理透明（其投影=inner 的形状挂在 hash 的 span 上），故需求
+            // 调用点以 hash span 为键——命中则重绑 inner 的直接调用。
+            ExprKind::HashExpr { expr: inner } => {
+                if let Some((tpl, name)) = span_to_name.get(&key) {
+                    if let ExprKind::Call { callee, .. } = &mut inner.kind {
+                        if &callee.name == tpl {
+                            callee.name = name.clone();
+                            n += 1;
+                        }
+                    }
+                }
             }
-        }
-        Stmt::While { cond, body, .. } => {
-            n += rebind_expr_callsites_owned(cond, owner, span_to_name);
-            n += rebind_callsites_owned(body, owner, span_to_name);
-        }
-        Stmt::Loop { body, .. } => n += rebind_callsites_owned(body, owner, span_to_name),
-        Stmt::ExprStmt { value, .. } => {
-            n += rebind_expr_callsites_owned(value, owner, span_to_name)
-        }
-        _ => {}
-    }
-    n
-}
-
-fn rebind_expr_callsites_owned(
-    e: &mut Expr,
-    owner: &str,
-    span_to_name: &BTreeMap<(String, u32, u32), (String, String)>,
-) -> usize {
-    let mut n = 0;
-    match &mut e.kind {
-        // PLAN-936（T-08）：CT 需求原子内的模板调用点同样重绑。hash 对
-        // 推理透明（其投影=inner 的形状挂在 hash 的 span 上），故需求
-        // 调用点以 hash span 为键——命中则重绑 inner 的直接调用。
-        ExprKind::HashExpr { expr: inner } => {
-            let key = (owner.to_string(), e.span.start as u32, e.span.end as u32);
-            if let Some((tpl, name)) = span_to_name.get(&key) {
-                if let ExprKind::Call { callee, .. } = &mut inner.kind {
+            ExprKind::Call { callee, .. } => {
+                if let Some((tpl, name)) = span_to_name.get(&key) {
                     if &callee.name == tpl {
                         callee.name = name.clone();
                         n += 1;
                     }
                 }
             }
-            n += rebind_expr_callsites_owned(inner, owner, span_to_name);
+            _ => {}
         }
-        ExprKind::Call { callee, args } => {
-            let key = (owner.to_string(), e.span.start as u32, e.span.end as u32);
-            if let Some((tpl, name)) = span_to_name.get(&key) {
-                debug_assert_eq!(
-                    &callee.name, tpl,
-                    "callsite span must name its template (discovery/rebind same source)"
-                );
-                callee.name = name.clone();
-                n += 1;
-            }
-            for a in args.iter_mut() {
-                let v = match a {
-                    Arg::Pos(e) | Arg::MovePos(e) => e,
-                    Arg::Named { value, .. } => value,
-                };
-                n += rebind_expr_callsites_owned(v, owner, span_to_name);
-            }
-        }
-        ExprKind::Binary { lhs, rhs, .. } => {
-            n += rebind_expr_callsites_owned(lhs, owner, span_to_name);
-            n += rebind_expr_callsites_owned(rhs, owner, span_to_name);
-        }
-        ExprKind::Unary { operand, .. } => {
-            n += rebind_expr_callsites_owned(operand, owner, span_to_name)
-        }
-        _ => {}
-    }
+    });
     n
 }

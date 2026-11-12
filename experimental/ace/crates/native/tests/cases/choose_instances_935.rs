@@ -57,3 +57,20 @@ fn native_choose_original_exit_42() {
 fn native_choose_swapped_exit_0() {
     assert_eq!(run_native(CHOOSE_SWAPPED, "swap"), 0);
 }
+
+/// PLAN-963 T-02（native 端）：多类型参数两排列实例 → exit=42。
+const PICK963: &str = "\
+fn pick<T, U>(a T, b U, flag bool) T {
+    if flag { return a }
+    return a
+}
+fn main() int {
+    if pick(true, 7, false) { return pick(42, true, false) }
+    return 0
+}
+";
+
+#[test]
+fn native_multi_param_instances_exit_42() {
+    assert_eq!(run_native(PICK963, "multi963"), 42);
+}
