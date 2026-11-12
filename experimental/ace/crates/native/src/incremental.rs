@@ -272,7 +272,8 @@ impl MnIncrementalSession {
             let obj = emit::emit_unit_coff(unit)?;
             let fp = cache::unit_fp(unit);
             let meta = CoffMeta::for_unit(unit, fp.clone())?;
-            let (art, _pages) = cache::put_unit_coff(&s.store, Some(&s.project), &meta, &obj.bytes)?;
+            let (art, _pages) =
+                cache::put_unit_coff(&s.store, Some(&s.project), &meta, &obj.bytes)?;
             s.current_arts.insert(name.clone(), art);
             // Seed the content-version map: the session's resident
             // content version of this function (by SOURCE name — the unit
@@ -509,19 +510,23 @@ impl MnIncrementalSession {
                         }
                     };
                     let meta = self.meta_of(&changed_key, &fp);
-                    let (new_art, _pages) =
-                        match cache::put_unit_coff(&self.store, Some(&self.project), &meta, &obj.bytes) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                return self.close_exit(
-                                    &ctx,
-                                    EditObservation {
-                                        infra: Some(format!("put: {e}")),
-                                        ..Default::default()
-                                    },
-                                );
-                            }
-                        };
+                    let (new_art, _pages) = match cache::put_unit_coff(
+                        &self.store,
+                        Some(&self.project),
+                        &meta,
+                        &obj.bytes,
+                    ) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            return self.close_exit(
+                                &ctx,
+                                EditObservation {
+                                    infra: Some(format!("put: {e}")),
+                                    ..Default::default()
+                                },
+                            );
+                        }
+                    };
                     // PLAN-1000 (I10): the superseded edition joins the
                     // bounded history window; the mint is now the unit's
                     // current (live-rooted) edition. Beyond the window the
@@ -538,7 +543,8 @@ impl MnIncrementalSession {
                             window.push_back((old_fp, old_art));
                             let cur = self.current_arts.clone();
                             while window.len() > HISTORY_WINDOW {
-                                let (evicted_fp, evicted_art) = window.pop_front().expect("bounded");
+                                let (evicted_fp, evicted_art) =
+                                    window.pop_front().expect("bounded");
                                 // Never release the live current root
                                 // (a returned historical edition).
                                 if cur.get(&changed_key) == Some(&evicted_art) {
@@ -934,12 +940,7 @@ impl MnIncrementalSession {
     /// bounded per-unit history window (the store's live roots for this
     /// project stay at or below units × (1 + HISTORY_WINDOW)).
     pub fn live_edition_watermark(&self) -> usize {
-        self.current_arts.len()
-            + self
-                .history
-                .values()
-                .map(|w| w.len())
-                .sum::<usize>()
+        self.current_arts.len() + self.history.values().map(|w| w.len()).sum::<usize>()
     }
 
     /// PLAN-1000 (I10): run the store GC (physical reclamation of

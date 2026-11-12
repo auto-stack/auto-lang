@@ -36,11 +36,8 @@
 /// matches its admitted charge (retain/adopt accounting stays consistent
 /// through publication). The plain entry keeps a no-op admission.
 pub fn record_text_runtime_source(marks: &[&'static str]) -> String {
-    crate::admitted_text::render_admitted(
-        |out| write_record_text_runtime(marks, out),
-        |_| Ok(()),
-    )
-    .expect("no-op admission cannot fail and the renderer is stateless")
+    crate::admitted_text::render_admitted(|out| write_record_text_runtime(marks, out), |_| Ok(()))
+        .expect("no-op admission cannot fail and the renderer is stateless")
 }
 /// The record-text runtime with the exact byte size admitted by `admit`
 /// between the counting and rendering passes (PLAN-938 pattern).

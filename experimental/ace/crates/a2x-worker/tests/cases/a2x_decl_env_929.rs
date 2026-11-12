@@ -30,7 +30,10 @@ fn open_c(root: &Path) -> A2xSession {
 }
 
 fn root(tag: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/a2x-out-c-rt/declenv-{tag}-{}", std::process::id()))
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
+        "../../target/a2x-out-c-rt/declenv-{tag}-{}",
+        std::process::id()
+    ))
 }
 
 /// V-04/V-12：restore(P0) → **无预热首个真实方法编辑**——whole 轴 0、
@@ -57,7 +60,11 @@ fn decl_env_first_edit_after_restore_zero_whole_parse() {
             .expect("first edit after restore")
     });
     let after = r.stats().clone();
-    assert_eq!(attempts.whole_total(), 0, "恢复后首编辑：整源 parse = 0（V-12）");
+    assert_eq!(
+        attempts.whole_total(),
+        0,
+        "恢复后首编辑：整源 parse = 0（V-12）"
+    );
     // stats.parse 计入片段身份/候选解析（合法 P），但**不含**整源路径——
     // 旧 ensure_env 路径此值为 +2（整源 parse+resolve 各一）；新路径只有
     // 片段面。
@@ -67,7 +74,11 @@ fn decl_env_first_edit_after_restore_zero_whole_parse() {
         before.parse,
         after.parse
     );
-    assert_eq!(after.env_rebuilds, before.env_rebuilds + 1, "声明面装配如实计数（R 轴）");
+    assert_eq!(
+        after.env_rebuilds,
+        before.env_rebuilds + 1,
+        "声明面装配如实计数（R 轴）"
+    );
     assert_eq!(after.lower, before.lower + 1, "恰目标 lower");
     // 产物正确（与 925 冷编辑链同值：value:23）。写盘→MSVC 编译运行。
     let out_dir = root.join("edit");
@@ -100,7 +111,15 @@ fn decl_env_absent_dump_named_rejection() {
     let end = start + old_span.len();
     let new_span = "fn span() int { return 1 }";
     let err = r
-        .warm_edit_ranged_method("Wrap", "span", &mutated, (start, end), new_span, "main", false)
+        .warm_edit_ranged_method(
+            "Wrap",
+            "span",
+            &mutated,
+            (start, end),
+            new_span,
+            "main",
+            false,
+        )
         .expect_err("stale base must reject");
     match err {
         ace_a2x_store::A2xRejectOrResource::Reject(rr) => {

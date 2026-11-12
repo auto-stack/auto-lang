@@ -85,7 +85,9 @@ fn v05_grid_column_ledger_closes() {
     // the collections face keeps rejecting the same nested shape (frozen
     // 822 one-layer domain — the aggregates capability is the divider)
     let nested = "fn main() int {\n    var xs = List<List<int>>.new()\n    return 1\n}";
-    let err = compile_and_execute(nested, "d_main").err().expect("frozen face rejects");
+    let err = compile_and_execute(nested, "d_main")
+        .err()
+        .expect("frozen face rejects");
     assert!(err.contains("source.list-value-context") || err.contains("822"));
 }
 

@@ -12,8 +12,8 @@
 //! True signature surfaces (param type / mode / return type / param name /
 //! nested nominal argument) must STILL fire the event.
 
-use ace_core::source::SourceProfile;
 use ace_core::source::cst::units;
+use ace_core::source::SourceProfile;
 
 const BUDGET: ace_core::source::cst::FrontBudget =
     ace_core::source::cst::FrontBudget::WORK_OWNED_64MIB;

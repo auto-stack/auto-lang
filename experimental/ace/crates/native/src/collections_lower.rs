@@ -127,8 +127,7 @@ pub(crate) fn admit_layouts(
                 // mir_verify admission holds Temp-dst only). Native
                 // widening keyed on the same capability.
                 let aggregates = m.capabilities.iter().any(|c| c == "av.aggregates/1");
-                if !matches!(m.types[p.elem as usize], MirType::I32 | MirType::Bool)
-                    && !aggregates
+                if !matches!(m.types[p.elem as usize], MirType::I32 | MirType::Bool) && !aggregates
                 {
                     return Err(unsupported(
                         "place",

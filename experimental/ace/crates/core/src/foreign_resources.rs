@@ -191,10 +191,7 @@ pub fn source_sig(
 /// the core authority instead of re-deriving).
 pub fn lane_is_callback(decl: &SourceDecl, lane: usize) -> bool {
     decl.resource()
-        .map(|r| {
-            lane < r.params.len()
-                && matches!(r.params[lane], ResKind::Callback { .. })
-        })
+        .map(|r| lane < r.params.len() && matches!(r.params[lane], ResKind::Callback { .. }))
         .unwrap_or(false)
 }
 
@@ -337,7 +334,10 @@ pub struct ForeignCallCredential {
 /// for text-record bundles that actually contain resource foreign calls.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ForeignResourcePlan {
-    pub bodies: std::collections::BTreeMap<(usize, u32), std::collections::BTreeMap<u32, ForeignCallCredential>>,
+    pub bodies: std::collections::BTreeMap<
+        (usize, u32),
+        std::collections::BTreeMap<u32, ForeignCallCredential>,
+    >,
 }
 
 impl ForeignResourcePlan {
@@ -365,11 +365,17 @@ fn view_owner(body: &hir::Body, arg: u32) -> Option<u32> {
 /// FOREIGN def with a resource sig produce rows; scalar foreign calls
 /// (938) and ordinary calls produce nothing (their facts live on the 938
 /// scalar chain / the ordinary verifier).
-pub fn body_foreign_plan(m: &hir::Module, body: &hir::Body) -> std::collections::BTreeMap<u32, ForeignCallCredential> {
+pub fn body_foreign_plan(
+    m: &hir::Module,
+    body: &hir::Body,
+) -> std::collections::BTreeMap<u32, ForeignCallCredential> {
     use ace_foreign_contract::resource::ResourceForm;
     let mut out = std::collections::BTreeMap::new();
     for (ei, e) in body.exprs.iter().enumerate() {
-        let hir::ExprKind::Call { callee, bindings, .. } = &e.kind else {
+        let hir::ExprKind::Call {
+            callee, bindings, ..
+        } = &e.kind
+        else {
             continue;
         };
         let Some(hir::DefKind::Foreign { declaration, .. }) =
@@ -418,9 +424,7 @@ pub fn body_foreign_plan(m: &hir::Module, body: &hir::Body) -> std::collections:
                 }
                 ResKind::Callback { .. } => {
                     if let Some(a) = arg_of(lane as usize) {
-                        if let hir::ExprKind::CallbackRef { def } =
-                            &body.exprs[a as usize].kind
-                        {
+                        if let hir::ExprKind::CallbackRef { def } = &body.exprs[a as usize].kind {
                             cred.callbacks.push((lane, def.0));
                         }
                     }
@@ -635,7 +639,11 @@ mod tests {
             eval_args: eval.into_iter().map(hir::ExprId).collect(),
             bindings: bindings
                 .into_iter()
-                .map(|(param, arg)| hir::CallBinding { param, arg, moved: false })
+                .map(|(param, arg)| hir::CallBinding {
+                    param,
+                    arg,
+                    moved: false,
+                })
                 .collect(),
         })
     }
@@ -651,23 +659,41 @@ mod tests {
         // def 0: two MUT Counter lanes (atomic) — the S03 shape
         let pair = decl(
             vec![
-                ResKind::Rec { rec: "Counter".into(), fields: fields.clone(), role: ViewRole::Mut },
-                ResKind::Rec { rec: "Counter".into(), fields, role: ViewRole::Mut },
+                ResKind::Rec {
+                    rec: "Counter".into(),
+                    fields: fields.clone(),
+                    role: ViewRole::Mut,
+                },
+                ResKind::Rec {
+                    rec: "Counter".into(),
+                    fields,
+                    role: ViewRole::Mut,
+                },
             ],
-            ResourceForm::Fallible { ctx: None, out: Some(ResOut::I32) },
+            ResourceForm::Fallible {
+                ctx: None,
+                out: Some(ResOut::I32),
+            },
             true,
             false,
         );
         // def 1: the named callback target (an ordinary fn def)
         let cb_def = || hir::Def {
             id_text: "cb".into(),
-            kind: hir::DefKind::Function { name: "cb".into(), ty: hir::TypeId(0), body: hir::BodyId(0) },
+            kind: hir::DefKind::Function {
+                name: "cb".into(),
+                ty: hir::TypeId(0),
+                body: hir::BodyId(0),
+            },
             span: Span { start: 0, end: 0 },
         };
         // def 2: callback + ctx seed
         let fold = decl(
             vec![ResKind::Callback { ctx: true }, ResKind::I32],
-            ResourceForm::Fallible { ctx: None, out: Some(ResOut::I32) },
+            ResourceForm::Fallible {
+                ctx: None,
+                out: Some(ResOut::I32),
+            },
             false,
             true,
         );
@@ -681,14 +707,23 @@ mod tests {
         // def 4: handle create (pure handle return)
         let create = decl(
             vec![ResKind::I32],
-            ResourceForm::Pure { ret: ResOut::Handle { provider: "r939".into() } },
+            ResourceForm::Pure {
+                ret: ResOut::Handle {
+                    provider: "r939".into(),
+                },
+            },
             false,
             false,
         );
         // def 5: handle get (handle in)
         let get = decl(
-            vec![ResKind::Handle { provider: "r939".into() }],
-            ResourceForm::Fallible { ctx: None, out: Some(ResOut::I32) },
+            vec![ResKind::Handle {
+                provider: "r939".into(),
+            }],
+            ResourceForm::Fallible {
+                ctx: None,
+                out: Some(ResOut::I32),
+            },
             false,
             false,
         );
@@ -716,9 +751,15 @@ mod tests {
         //  8 Call create{size: arg4}
         //  9 Call get{handle: arg4}
         let mut exprs = vec![
-            plan_expr(hir::ExprKind::ReadLocal { local: hir::LocalId(0) }),
-            plan_expr(hir::ExprKind::BorrowMut { local: hir::LocalId(1) }),
-            plan_expr(hir::ExprKind::BorrowMut { local: hir::LocalId(2) }),
+            plan_expr(hir::ExprKind::ReadLocal {
+                local: hir::LocalId(0),
+            }),
+            plan_expr(hir::ExprKind::BorrowMut {
+                local: hir::LocalId(1),
+            }),
+            plan_expr(hir::ExprKind::BorrowMut {
+                local: hir::LocalId(2),
+            }),
             plan_expr(hir::ExprKind::CallbackRef { def: hir::DefId(1) }),
             plan_expr(hir::ExprKind::Constant { value: 7 }),
             call(3, vec![(0, 0)], vec![0]),

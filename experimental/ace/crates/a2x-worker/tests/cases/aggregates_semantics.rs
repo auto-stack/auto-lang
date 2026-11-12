@@ -8,13 +8,11 @@
 use ace_a2x_rust::{assemble_file_set, lower_program};
 
 fn tools_available() -> bool {
-    std::process::Command::new(
-        std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()),
-    )
-    .arg("--version")
-    .output()
-    .map(|o| o.status.success())
-    .unwrap_or(false)
+    std::process::Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()))
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 /// The Rust true chain over the arena-free aggregate shapes (tuple +
@@ -78,9 +76,8 @@ fn run_rust(src: &str) -> i32 {
     std::fs::write(dir.join("manifest.json"), &fs.manifest).unwrap();
 
     let exe = dir.join("out.exe");
-    let mut compiler = std::process::Command::new(
-        std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()),
-    );
+    let mut compiler =
+        std::process::Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()));
     compiler
         .arg("--edition")
         .arg("2021")

@@ -2,8 +2,8 @@
 //! legs) + the turnaround smoke (full six-scenario release bench runs via
 //! scripts/verify-ac-av-798.ps1 -Scope turnaround).
 
-use ace_av::driver::{Driver, front_door_admit, front_door_admit_atom};
-use ace_av_core::contract::{MAX_FRONTEND_NESTING, MAX_TABLE_ENTRIES, ResourceKind};
+use ace_av::driver::{front_door_admit, front_door_admit_atom, Driver};
+use ace_av_core::contract::{ResourceKind, MAX_FRONTEND_NESTING, MAX_TABLE_ENTRIES};
 
 /// PLAN-999 (T-04): deep-expression tests run on an explicitly sized stack.
 /// The lowering's declared construction ceiling (512) is a REAL budget the
@@ -815,7 +815,7 @@ fn av_resources_atom_front_door_rejects_before_recursive_parser() {
 #[test]
 #[cfg(windows)]
 fn av_resources_peak_sampler_distinguishes_transient_spike() {
-    use ace_av::mempeek::{PeakSampler, sample_private_bytes};
+    use ace_av::mempeek::{sample_private_bytes, PeakSampler};
     let m0 = sample_private_bytes();
     let sampler = PeakSampler::start(5);
     let spike: Vec<Vec<u8>> = (0..96).map(|_| vec![7u8; 1024 * 1024]).collect();
@@ -843,7 +843,7 @@ fn av_resources_peak_sampler_distinguishes_transient_spike() {
 /// charges the whole peak). Neither line is advisory.
 #[test]
 fn av_turnaround_two_line_memory_gate() {
-    use ace_av::bench::{BenchSummary, SCENARIOS, SampleRow, validate_and_gate};
+    use ace_av::bench::{validate_and_gate, BenchSummary, SampleRow, SCENARIOS};
     // Supply valid raw windows so only the memory lines can fail.
     let rows: Vec<SampleRow> = SCENARIOS
         .iter()

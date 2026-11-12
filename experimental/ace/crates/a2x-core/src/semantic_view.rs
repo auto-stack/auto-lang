@@ -734,20 +734,22 @@ impl<'a> SemanticView<'a> {
             // (the numeric source profile binds under it): the legacy i32
             // set plus every typed Num op — semantic legality (float bit
             // ops) was rejected by the HIR verifier before this point.
-            hir::HirDomain::Closures => matches!(
-                op,
-                hir::BinOp::AddI32
-                    | hir::BinOp::SubI32
-                    | hir::BinOp::MulI32
-                    | hir::BinOp::DivI32
-                    | hir::BinOp::RemI32
-                    | hir::BinOp::LtI32
-                    | hir::BinOp::LeI32
-                    | hir::BinOp::GtI32
-                    | hir::BinOp::GeI32
-                    | hir::BinOp::Eq
-                    | hir::BinOp::Ne
-            ) || matches!(op, hir::BinOp::Num { .. }),
+            hir::HirDomain::Closures => {
+                matches!(
+                    op,
+                    hir::BinOp::AddI32
+                        | hir::BinOp::SubI32
+                        | hir::BinOp::MulI32
+                        | hir::BinOp::DivI32
+                        | hir::BinOp::RemI32
+                        | hir::BinOp::LtI32
+                        | hir::BinOp::LeI32
+                        | hir::BinOp::GtI32
+                        | hir::BinOp::GeI32
+                        | hir::BinOp::Eq
+                        | hir::BinOp::Ne
+                ) || matches!(op, hir::BinOp::Num { .. })
+            }
             _ => false,
         }
     }

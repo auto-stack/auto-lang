@@ -42,8 +42,15 @@ fn caps() -> Vec<String> {
 
 fn compile_instances(src: &str) -> ace_source_query::ProductCompile {
     let mut session = SourceQuerySession::new("plan935", "choose.at");
-    let p = compile_scalar_product(src, "choose.at", &caps(), "plan935", "choose.at", &mut session)
-        .expect("instances-lane compile");
+    let p = compile_scalar_product(
+        src,
+        "choose.at",
+        &caps(),
+        "plan935",
+        "choose.at",
+        &mut session,
+    )
+    .expect("instances-lane compile");
     assert_eq!(p.lane, CompileLane::Instances);
     p
 }
@@ -69,9 +76,18 @@ fn run_rust(src: &str, want: i32, tag: &str) {
         .map(|(_, c)| c.clone())
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(joined.contains("choose_i32"), "Rust file set misses the int instance");
-    assert!(joined.contains("choose_bool"), "Rust file set misses the bool instance");
-    assert!(!joined.contains("choose<T>"), "no template residue in the Rust file set");
+    assert!(
+        joined.contains("choose_i32"),
+        "Rust file set misses the int instance"
+    );
+    assert!(
+        joined.contains("choose_bool"),
+        "Rust file set misses the bool instance"
+    );
+    assert!(
+        !joined.contains("choose<T>"),
+        "no template residue in the Rust file set"
+    );
 
     let dir = out_root().join(format!("rust-{tag}"));
     let _ = std::fs::remove_dir_all(&dir);
@@ -95,7 +111,10 @@ fn run_rust(src: &str, want: i32, tag: &str) {
         "rustc failed:\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let run = Command::new(&exe).current_dir(&dir).output().expect("run exe");
+    let run = Command::new(&exe)
+        .current_dir(&dir)
+        .output()
+        .expect("run exe");
     assert!(
         run.status.success(),
         "program failed: {}",
@@ -123,9 +142,18 @@ fn run_c(src: &str, want: i32, tag: &str) {
         .map(|(_, c)| c.clone())
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(joined.contains("choose_i32"), "C file set misses the int instance");
-    assert!(joined.contains("choose_bool"), "C file set misses the bool instance");
-    assert!(!joined.contains("choose<T>"), "no template residue in the C file set");
+    assert!(
+        joined.contains("choose_i32"),
+        "C file set misses the int instance"
+    );
+    assert!(
+        joined.contains("choose_bool"),
+        "C file set misses the bool instance"
+    );
+    assert!(
+        !joined.contains("choose<T>"),
+        "no template residue in the C file set"
+    );
 
     let dir = out_root().join(format!("c-{tag}"));
     let _ = std::fs::remove_dir_all(&dir);
@@ -133,8 +161,8 @@ fn run_c(src: &str, want: i32, tag: &str) {
     for (path, content) in &asm.files {
         std::fs::write(dir.join(path), content).unwrap();
     }
-    let (stdout, _stderr) = ace_a2x_worker::crun::compile_and_run_c(&dir, "choose935_c.exe")
-        .expect("C compile/run");
+    let (stdout, _stderr) =
+        ace_a2x_worker::crun::compile_and_run_c(&dir, "choose935_c.exe").expect("C compile/run");
     assert_eq!(stdout, format!("value:{want}\n"), "c leg oracle");
     let _ = std::fs::remove_dir_all(&root);
 }

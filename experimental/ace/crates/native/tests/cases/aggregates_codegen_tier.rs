@@ -32,7 +32,6 @@ type Pair { left int; right int }",
         42,
         "ag-tuple-named-ctor",
     );
-
 }
 
 /// PLAN-962 T-03 native collections lane: arena-carrying aggregates

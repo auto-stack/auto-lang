@@ -60,12 +60,12 @@ fn is_surface_rejection(ds: &[ace_core::atom_text::Diagnostic]) -> bool {
                     || d.message.contains("`|`")
                     || d.message.contains("`^`"))
                 || {
-                // PLAN-962: the aggregates-owned token spellings (`[`,
-                // `..`, `..=`) surface as narrow-face syntax errors —
-                // climb to the widest rung exactly like the numeric-only
-                // operator characters (961 precedent).
-                d.code == "source.syntax"
-                    && (d.message.contains("found `[`")
+                    // PLAN-962: the aggregates-owned token spellings (`[`,
+                    // `..`, `..=`) surface as narrow-face syntax errors —
+                    // climb to the widest rung exactly like the numeric-only
+                    // operator characters (961 precedent).
+                    d.code == "source.syntax"
+                        && (d.message.contains("found `[`")
                         || d.message.contains("found `..`")
                         // PLAN-962: the tuple literal (comma inside the
                         // paren group) and the named ctor (ident followed
@@ -73,7 +73,7 @@ fn is_surface_rejection(ds: &[ace_core::atom_text::Diagnostic]) -> bool {
                         || d.message.contains("expected operator, found `,`")
                         || d.message
                             .contains("expected `;`, newline or `}`, found `{`"))
-            }
+                }
         }
     })
 }

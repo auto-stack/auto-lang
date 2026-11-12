@@ -3727,7 +3727,10 @@ impl<'a> Engine<'a> {
             let span = self.cx.span_of(tt);
             let mut args: Vec<TypeAnn> = Vec::new();
             if let Some(head) = self.cx.field_child(tt, "head") {
-                let hw = self.cx.child_of_kind(head, self.cx.k.ann_ty).unwrap_or(head);
+                let hw = self
+                    .cx
+                    .child_of_kind(head, self.cx.k.ann_ty)
+                    .unwrap_or(head);
                 args.push(self.classify_word(hw, false));
             }
             // tail ann-ty children of tuple-ty-tail nodes, absolute order
@@ -4267,10 +4270,19 @@ impl<'a> Engine<'a> {
             self.stack.push(Frame::ExprEnter(value_n));
         } else if kind == self.cx.k.index_assign_stmt.unwrap_or(u32::MAX) {
             // PLAN-962 (L-48)：`xs[i] = v`——base 名、index/value 两表达式。
-            let name_leaf = self.cx.field_child(inner, "name").expect("index assign name");
+            let name_leaf = self
+                .cx
+                .field_child(inner, "name")
+                .expect("index assign name");
             let name = ident_of(&mut self.cx, name_leaf);
-            let index_n = self.cx.field_child(inner, "index").expect("index assign index");
-            let value_n = self.cx.field_child(inner, "value").expect("index assign value");
+            let index_n = self
+                .cx
+                .field_child(inner, "index")
+                .expect("index assign index");
+            let value_n = self
+                .cx
+                .field_child(inner, "value")
+                .expect("index assign value");
             let span = self.cx.span_of(inner);
             self.stack.push(Frame::IndexAssignFinish { name, span });
             self.stack.push(Frame::ExprEnter(value_n));
@@ -4691,7 +4703,10 @@ impl<'a> Engine<'a> {
                                 continue;
                             }
                             let tk = self.cx.tree.kind(t);
-                            if tk == self.cx.k.tok_comma || tk == self.cx.k.tok_lbracket || tk == self.cx.k.tok_rbracket {
+                            if tk == self.cx.k.tok_comma
+                                || tk == self.cx.k.tok_lbracket
+                                || tk == self.cx.k.tok_rbracket
+                            {
                                 continue;
                             }
                             // tail expr children (field-less)
@@ -6128,11 +6143,8 @@ impl<'a> Engine<'a> {
             }
             Frame::LetDestructFinish { names, span } => {
                 let value = self.pop_e();
-                self.vals.push(Val::S(Stmt::LetDestruct {
-                    names,
-                    value,
-                    span,
-                }));
+                self.vals
+                    .push(Val::S(Stmt::LetDestruct { names, value, span }));
             }
             Frame::HoldFinish { name, bind, span } => {
                 let body = self.pop_b();

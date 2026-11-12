@@ -1,5 +1,3 @@
-#[path = "cases/aggregates_semantics.rs"]
-mod aggregates_semantics;
 #[path = "cases/a2c_cert.rs"]
 mod a2c_cert;
 #[path = "cases/a2c_coll.rs"]
@@ -26,6 +24,8 @@ mod a2c_scalar_semantics;
 mod a2r_owned_temporaries_931;
 #[path = "cases/a2x_decl_env_929.rs"]
 mod a2x_decl_env_929;
+#[path = "cases/aggregates_semantics.rs"]
+mod aggregates_semantics;
 #[path = "cases/boundaries.rs"]
 mod boundaries;
 #[path = "cases/bridge_flags.rs"]
@@ -58,6 +58,8 @@ mod hir_shape;
 mod incremental_cache;
 #[path = "cases/inventory_941.rs"]
 mod inventory_941;
+#[path = "cases/numeric_semantics.rs"]
+mod numeric_semantics;
 #[path = "cases/query_release_941.rs"]
 mod query_release_941;
 #[path = "cases/record_text_902.rs"]
@@ -76,8 +78,6 @@ mod rt_common;
 mod scalar_release_941;
 #[path = "cases/scalar_semantics.rs"]
 mod scalar_semantics;
-#[path = "cases/numeric_semantics.rs"]
-mod numeric_semantics;
 #[path = "cases/store_cache.rs"]
 mod store_cache;
 #[path = "cases/store_coll_904.rs"]

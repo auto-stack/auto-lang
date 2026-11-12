@@ -992,7 +992,7 @@ pub fn restore_context(
             fns,
             records,
             lists: dump.lists.iter().map(|v| vt_in(*v)).collect(),
-        tuples: Vec::new(),
+            tuples: Vec::new(),
             variants,
             function_types,
         },

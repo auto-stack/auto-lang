@@ -3835,7 +3835,8 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                             let arg_expr = &self.body.exprs[binding.arg as usize];
                             if let hir::ExprKind::CallbackRef { def } = &arg_expr.kind {
                                 if !ace_core::foreign_resources::lane_is_callback(
-                                    &declaration, param,
+                                    &declaration,
+                                    param,
                                 ) {
                                     return Err(AdapterError::inv(
                                         "mir.foreign-callback",
@@ -3849,7 +3850,8 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                 callbacks.push((param as u16, name));
                             } else {
                                 if ace_core::foreign_resources::lane_is_callback(
-                                    &declaration, param,
+                                    &declaration,
+                                    param,
                                 ) {
                                     return Err(AdapterError::inv(
                                         "mir.foreign-callback",
@@ -3890,9 +3892,21 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                 .expect("filtered by mut_borrow_actuals");
                             let temp_ty_id = self.slot_ty_all(temp);
                             if ace_av_core::ownership::type_is_owned(self.out, temp_ty_id) {
-                                self.emit(MirInstr::Move { dst: target, src: temp }, sp)?;
+                                self.emit(
+                                    MirInstr::Move {
+                                        dst: target,
+                                        src: temp,
+                                    },
+                                    sp,
+                                )?;
                             } else {
-                                self.emit(MirInstr::Copy { dst: target, src: temp }, sp)?;
+                                self.emit(
+                                    MirInstr::Copy {
+                                        dst: target,
+                                        src: temp,
+                                    },
+                                    sp,
+                                )?;
                             }
                         }
                         return Ok(dst);
@@ -4943,26 +4957,30 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     // (buffer identity + epoch revalidated at every use),
                     // PLACE_GET reads through the borrow. Frozen-profile
                     // bundles keep the controlled rejection below.
-                    let aggregates = self
-                        .out
-                        .capabilities
-                        .iter()
-                        .any(|c| c == "av.aggregates/1");
+                    let aggregates = self.out.capabilities.iter().any(|c| c == "av.aggregates/1");
                     if !aggregates {
                         // verify guarantees this never happens (view-escape);
                         // keep the lowering total for programmatic bundles.
                         return Err(AdapterError::inv(
                             "lower.list-get-owned",
-                            "list_get over an owned-element list has no value lowering"
-                                .to_string(),
+                            "list_get over an owned-element list has no value lowering".to_string(),
                         ));
                     }
                     let l = self.eval_expr(*list, depth + 1)?;
                     let i = self.eval_expr(*index, depth + 1)?;
                     let elem = self.elem_vt_of(*list)?;
-                    let place_ty = self.out.intern_type(MirType::Place(ace_av_core::mir::ListTypeRef { elem }));
+                    let place_ty = self
+                        .out
+                        .intern_type(MirType::Place(ace_av_core::mir::ListTypeRef { elem }));
                     let place = self.temp_ty(place_ty)?;
-                    self.emit(MirInstr::ListPlace { dst: place, base: l, index: i }, sp)?;
+                    self.emit(
+                        MirInstr::ListPlace {
+                            dst: place,
+                            base: l,
+                            index: i,
+                        },
+                        sp,
+                    )?;
                     let dst = self.temp_ty(ty)?;
                     self.emit(MirInstr::PlaceGet { dst, src: place }, sp)?;
                     return Ok(dst);

@@ -187,7 +187,12 @@ fn shift_match_arm(a: &mut MatchArm, delta: i64) {
 fn shift_stmt(s: &mut Stmt, delta: i64) {
     match s {
         // PLAN-962 (T-08)：hold 平移。
-        Stmt::Hold { name, bind, body, span } => {
+        Stmt::Hold {
+            name,
+            bind,
+            body,
+            span,
+        } => {
             shift_ident(name, delta);
             shift_ident(bind, delta);
             for st in body.stmts.iter_mut() {

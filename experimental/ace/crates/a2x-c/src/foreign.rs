@@ -99,10 +99,7 @@ pub fn resource_prototype(declaration: &SourceDecl) -> String {
         },
         ResourceForm::Fallible { .. } => "int32_t".to_string(),
     };
-    out.push_str(&format!(
-        "extern {ret_c} {}(",
-        declaration.function.symbol
-    ));
+    out.push_str(&format!("extern {ret_c} {}(", declaration.function.symbol));
     let mut first = true;
     let mut push = |out: &mut String, text: &str| {
         if first {
@@ -557,23 +554,23 @@ impl ForeignTargetProvider {
         // seed (cold capture or restore anchor) or the live view; the
         // scalar family needs none.
         let record_table = if req.family == Family::RecordText {
-            let seed_text = match (req.prelude_seed, req.view) {
-                (Some(s), _) => s.to_string(),
-                (None, Some(v)) => crate::seed::encode_seed(v)?,
-                (None, None) => {
-                    return Err(A2xReject::new(
+            let seed_text =
+                match (req.prelude_seed, req.view) {
+                    (Some(s), _) => s.to_string(),
+                    (None, Some(v)) => crate::seed::encode_seed(v)?,
+                    (None, None) => return Err(A2xReject::new(
                         "a2c.foreign-resource",
                         "record-text fileset needs the record table (prelude seed or live view)",
-                    ))
-                }
-            };
+                    )),
+                };
             let recs = crate::seed::decode_seed(&seed_text)?;
             Some(crate::provider::record_table_block(&recs)?)
         } else {
             None
         };
-        let generated_size =
-            crate::admitted_text::text_len(|out| write_generated(fragments, record_table.as_deref(), out));
+        let generated_size = crate::admitted_text::text_len(|out| {
+            write_generated(fragments, record_table.as_deref(), out)
+        });
         let imports_size = crate::admitted_text::text_len(|out| write_imports(declarations, out));
         let string_header = std::mem::size_of::<String>();
         let live_texts = generated_size

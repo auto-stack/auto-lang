@@ -170,8 +170,7 @@ pub fn decode_seed(text: &str) -> Result<Vec<SeedRecord>, A2xReject> {
             // matrix feeds one-part lines here.)
             let valid_field = fparts.len() == 3
                 && (valid_name(fparts[1])
-                    || (!fparts[1].is_empty()
-                        && fparts[1].chars().all(|c| c.is_ascii_digit())));
+                    || (!fparts[1].is_empty() && fparts[1].chars().all(|c| c.is_ascii_digit())));
             if fparts.len() != 3 || fparts[0] != "F" || !valid_field {
                 return Err(A2xReject::new(
                     "a2x.seed",

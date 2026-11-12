@@ -627,7 +627,14 @@ impl A2xSession {
             .map_err(A2xRejectOrResource::Reject)?;
         let fingerprint = ace_a2x_core::prepare::semantic_fingerprint(view, f)
             .map_err(A2xRejectOrResource::Reject)?;
-        self.produce_fragment_observed(view, f, &fingerprint, runtime_sha, read_only, Some((ledger, work)))
+        self.produce_fragment_observed(
+            view,
+            f,
+            &fingerprint,
+            runtime_sha,
+            read_only,
+            Some((ledger, work)),
+        )
     }
     /// Open a session on a (new or existing) store root with an explicit
     /// emit target provider (PLAN-921: the Rust provider is
@@ -988,9 +995,7 @@ impl A2xSession {
             SourceProfile::Collections => compile_collections_source(src, "a2x", caps),
             // PLAN-961: the numeric surface compiles through its own
             // profile (closures-superset domain).
-            SourceProfile::Numeric => {
-                ace_core::source::compile_numeric_source(src, "a2x", caps)
-            }
+            SourceProfile::Numeric => ace_core::source::compile_numeric_source(src, "a2x", caps),
             // PLAN-962: the aggregates surface compiles through its own
             // profile (closures-superset domain + the aggregates
             // capability).

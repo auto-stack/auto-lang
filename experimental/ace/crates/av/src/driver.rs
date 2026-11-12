@@ -10,20 +10,20 @@
 //! hit STILL executes AV — nothing here caches PASS or run results.
 
 use crate::cache::{
-    Counters, EnvelopeIdentity, ModuleManifest, SemaRefSer, UnitLink, abc_unit_key_with_codec,
-    assemble_closure, caps_fingerprint, decode_sidecar, encode_sidecar, manifest_key, merge_spans,
-    open_store, payload_fingerprint, put_enveloped, sidecar_key, split_units,
+    abc_unit_key_with_codec, assemble_closure, caps_fingerprint, decode_sidecar, encode_sidecar,
+    manifest_key, merge_spans, open_store, payload_fingerprint, put_enveloped, sidecar_key,
+    split_units, Counters, EnvelopeIdentity, ModuleManifest, SemaRefSer, UnitLink,
 };
 use crate::observations::{Obs, SpanRec};
 use ace_av_core::contract::{
-    ExecOutcome, MAX_FRONTEND_NESTING, MAX_INPUT_BYTES, ResourceKind, SpanInfo, Value, fnv1a64,
+    fnv1a64, ExecOutcome, ResourceKind, SpanInfo, Value, MAX_FRONTEND_NESTING, MAX_INPUT_BYTES,
 };
 use ace_av_core::mir::{MirModule, OwnerScope, TraceEvent};
 use ace_av_core::{
-    CancelFlag, ExecLimits, LoadedModule, decode_abc, encode_abc, execute, verify_mir,
+    decode_abc, encode_abc, execute, verify_mir, CancelFlag, ExecLimits, LoadedModule,
 };
 use ace_core::verify::CheckedModule;
-use ace_lowering::{AdapterError, lower_checked};
+use ace_lowering::{lower_checked, AdapterError};
 use serde::{Deserialize, Serialize};
 
 /// One diagnosed pipeline failure: stage + code + message.

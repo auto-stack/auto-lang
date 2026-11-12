@@ -1070,7 +1070,12 @@ fn shift_stmt(s: &mut Stmt, offset: usize) {
             sh(span, offset);
         }
         // PLAN-962 (T-08)：hold 平移。
-        Stmt::Hold { name, bind, body, span } => {
+        Stmt::Hold {
+            name,
+            bind,
+            body,
+            span,
+        } => {
             sh(&mut name.span, offset);
             sh(&mut bind.span, offset);
             shift_block(body, offset);

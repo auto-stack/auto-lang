@@ -175,10 +175,9 @@ fn range_for_in_counts_and_executes() {
         .expect("range-as-value must reject");
     // `..` outside for-range rejects at the grammar layer; the resolver's
     // source.range-position is defense-in-depth for programmatic ASTs.
-    assert!(
-        err.iter()
-            .any(|d| d.code == "source.syntax" || d.code == "source.range-position")
-    );
+    assert!(err
+        .iter()
+        .any(|d| d.code == "source.syntax" || d.code == "source.range-position"));
 }
 
 /// PLAN-962 unit-4 (L-16/L-48): array literals bind through the
@@ -207,10 +206,7 @@ fn array_literal_and_index_assign_execute() {
 #[test]
 fn array_literal_negative_controls() {
     for (name, src) in [
-        (
-            "empty",
-            "fn main() int {\n    let a = []\n    return 1\n}",
-        ),
+        ("empty", "fn main() int {\n    let a = []\n    return 1\n}"),
         (
             "mixed",
             "fn main() int {\n    let a = [1, \"x\"]\n    return 1\n}",

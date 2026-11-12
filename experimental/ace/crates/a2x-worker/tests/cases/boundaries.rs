@@ -43,7 +43,8 @@ fn manifest_face_only_sanctioned_dependencies() {
         // binds). Consumer-side only: source-cte never depends on any a2x
         // crate (its manifest whitelists core/lowering/av-core/artifacts/
         // semantics-contract/source-query).
-        "ace-source-cte",        "auto-tool-execution", // neutral std-only lifecycle: formal compiler tool and test consumers
+        "ace-source-cte",
+        "auto-tool-execution", // neutral std-only lifecycle: formal compiler tool and test consumers
         "windows-sys",         // probe-only, cfg(windows): process memory counters
         "serde",               // PLAN-950: data-only module root/fragment codec derive;
         // no backend, frontend or executor dependency

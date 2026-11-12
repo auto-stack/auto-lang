@@ -98,7 +98,10 @@ fn layered_session_lifecycle() {
     // PLAN-921: +1 for the source-bound anchor (the scalar channel's
     // restore commit point) — semantic+fragment per function, one anchor;
     // PLAN-929 T-08: +1 for the decl-env dump (restore->first-edit commit face)
-    assert_eq!(st.persist, 6, "semantic+fragment per function + anchor + decl-env dump");
+    assert_eq!(
+        st.persist, 6,
+        "semantic+fragment per function + anchor + decl-env dump"
+    );
     assert_eq!(run_assembly(&cold, "cold"), "value:41", "helper(20)*2+1");
 
     let cold_generated = generated_of(&cold).to_string();

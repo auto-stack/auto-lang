@@ -3850,7 +3850,10 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         hir::ExprKind::Unit => {}
         // PLAN-939 S06: the named callback target's def reference.
         hir::ExprKind::CallbackRef { def } => {
-            body_fields.push(format!("callee: {}", quote(&m.defs[def.0 as usize].id_text)));
+            body_fields.push(format!(
+                "callee: {}",
+                quote(&m.defs[def.0 as usize].id_text)
+            ));
         }
         hir::ExprKind::StrLit { value } => {
             body_fields.push(format!("text: {}", quote(value)));

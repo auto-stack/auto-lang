@@ -165,10 +165,7 @@ fn semantic_edit(src: &str, case: &str) -> (String, (usize, usize), String, Stri
         None => {
             // V03: no digits anywhere; extend the first string literal
             let q0 = src.find('"').expect("{case}: a quote exists");
-            assert!(
-                src[q0 + 1..].contains('"'),
-                "{case}: closing quote exists"
-            );
+            assert!(src[q0 + 1..].contains('"'), "{case}: closing quote exists");
             (q0, b'x') // marker: insert inside the literal below
         }
     };

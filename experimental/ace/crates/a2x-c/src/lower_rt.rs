@@ -636,10 +636,7 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
             let cred = plan_rows;
             for (lane, def) in &cred.callbacks {
                 let lane_u = *lane as usize;
-                if !matches!(
-                    res.params.get(lane_u),
-                    Some(ResKind::Callback { .. })
-                ) {
+                if !matches!(res.params.get(lane_u), Some(ResKind::Callback { .. })) {
                     return Err(A2xReject::new(
                         "a2c.foreign-callback",
                         "the verifier plan names a callback lane the sig does not",
@@ -673,20 +670,16 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
         // resource call); the lane's marshaling emits the static
         // trampoline from the fragment preface.
         for arg in eval_args {
-            if let hir::ExprKind::CallbackRef { .. } = self.facts.body.exprs[arg.0 as usize].kind
-            {
+            if let hir::ExprKind::CallbackRef { .. } = self.facts.body.exprs[arg.0 as usize].kind {
                 {
                     let cred = plan_rows;
                     // consistency (defense in depth): every CallbackRef
                     // argument is covered by the verifier plan's rows.
-                    let covered = bindings
-                        .iter()
-                        .find(|b| b.arg == arg.0)
-                        .is_some_and(|b| {
-                            cred.callbacks
-                                .iter()
-                                .any(|(pl, _)| *pl as usize == b.param as usize)
-                        });
+                    let covered = bindings.iter().find(|b| b.arg == arg.0).is_some_and(|b| {
+                        cred.callbacks
+                            .iter()
+                            .any(|(pl, _)| *pl as usize == b.param as usize)
+                    });
                     if !covered {
                         return Err(A2xReject::new(
                             "a2c.internal",
@@ -703,7 +696,10 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
         let mut placed: Vec<Option<(String, Ty)>> = vec![None; res.params.len()];
         for b in bindings {
             let arg = evaluated.get(b.arg as usize).cloned().ok_or_else(|| {
-                A2xReject::new("a2c.foreign-binding", "foreign argument binding out of range")
+                A2xReject::new(
+                    "a2c.foreign-binding",
+                    "foreign argument binding out of range",
+                )
             })?;
             if let Some(slot) = placed.get_mut(b.param as usize) {
                 *slot = Some(arg);
@@ -725,7 +721,10 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
         let mut shadows: Vec<RecShadow> = Vec::new();
         for (i, p) in res.params.iter().enumerate() {
             let Some((value, vty)) = placed[i].clone() else {
-                return Err(A2xReject::new("a2c.foreign-binding", "missing foreign argument"));
+                return Err(A2xReject::new(
+                    "a2c.foreign-binding",
+                    "missing foreign argument",
+                ));
             };
             match p {
                 ResKind::I32 => {
@@ -760,13 +759,13 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                             "record view lane requires a record argument",
                         ));
                     };
-                    let a2x_name = self
-                        .view
-                        .record(ri)
-                        .map(|r| r.name.clone())
-                        .ok_or_else(|| {
-                            A2xReject::new("a2x.internal", "unknown record type index")
-                        })?;
+                    let a2x_name =
+                        self.view
+                            .record(ri)
+                            .map(|r| r.name.clone())
+                            .ok_or_else(|| {
+                                A2xReject::new("a2x.internal", "unknown record type index")
+                            })?;
                     let a2x_cty = c_record_name(&a2x_name);
                     let pt = rec.clone();
                     match role {
@@ -781,9 +780,8 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                                 // `value` is the `.mut` borrow pointer
                                 self.out.push(format!("{shadow} = *({value});"));
                             } else {
-                                self.out.push(format!(
-                                    "memset(&{shadow}, 0, sizeof({shadow}));"
-                                ));
+                                self.out
+                                    .push(format!("memset(&{shadow}, 0, sizeof({shadow}));"));
                             }
                             arguments.push(format!("({pt} *)&{shadow}"));
                             shadows.push(RecShadow {
@@ -813,15 +811,16 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     // module's own fragment fn; a trapped body routes the
                     // `callback.trap` transport −2147483644 (a callback
                     // failure NEVER becomes a success sentinel).
-                    let (_, name) = callback_targets
-                        .iter()
-                        .find(|(l, _)| *l == i)
-                        .ok_or_else(|| {
-                            A2xReject::new(
-                                "a2c.foreign-callback",
-                                "callback lane has no named target",
-                            )
-                        })?;
+                    let (_, name) =
+                        callback_targets
+                            .iter()
+                            .find(|(l, _)| *l == i)
+                            .ok_or_else(|| {
+                                A2xReject::new(
+                                    "a2c.foreign-callback",
+                                    "callback lane has no named target",
+                                )
+                            })?;
                     let tramp = format!("a2x_cb_tramp_{}", crate::lower::sanitize(name));
                     let callee = c_fn_name(name);
                     if !self.preface.iter().any(|l| l.contains(&tramp)) {
@@ -856,45 +855,43 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
             format!("(int32_t)({temp})")
         };
         let narrow = match &res.form {
-            ResourceForm::Pure { ret } => {
-                match ret {
-                    ResOut::I32 => {
-                        self.out.push(format!(
-                            "int32_t {result} = {}({});",
-                            declaration.function.symbol,
-                            arguments.join(", ")
-                        ));
-                        None
-                    }
-                    ResOut::Bool => {
-                        self.out.push(format!(
-                            "uint8_t {result} = {}({});",
-                            declaration.function.symbol,
-                            arguments.join(", ")
-                        ));
-                        self.out.push(format!(
-                            "if ((uint32_t)({result}) > 1u) ace_foreign_fail(INT32_MIN + 1);"
-                        ));
-                        None
-                    }
-                    ResOut::I64 | ResOut::Handle { .. } => {
-                        self.out.push(format!(
-                            "long long {result} = {}({});",
-                            declaration.function.symbol,
-                            arguments.join(", ")
-                        ));
-                        Some((result.clone(), false))
-                    }
-                    ResOut::U64 => {
-                        self.out.push(format!(
-                            "unsigned long long {result} = {}({});",
-                            declaration.function.symbol,
-                            arguments.join(", ")
-                        ));
-                        Some((result.clone(), true))
-                    }
+            ResourceForm::Pure { ret } => match ret {
+                ResOut::I32 => {
+                    self.out.push(format!(
+                        "int32_t {result} = {}({});",
+                        declaration.function.symbol,
+                        arguments.join(", ")
+                    ));
+                    None
                 }
-            }
+                ResOut::Bool => {
+                    self.out.push(format!(
+                        "uint8_t {result} = {}({});",
+                        declaration.function.symbol,
+                        arguments.join(", ")
+                    ));
+                    self.out.push(format!(
+                        "if ((uint32_t)({result}) > 1u) ace_foreign_fail(INT32_MIN + 1);"
+                    ));
+                    None
+                }
+                ResOut::I64 | ResOut::Handle { .. } => {
+                    self.out.push(format!(
+                        "long long {result} = {}({});",
+                        declaration.function.symbol,
+                        arguments.join(", ")
+                    ));
+                    Some((result.clone(), false))
+                }
+                ResOut::U64 => {
+                    self.out.push(format!(
+                        "unsigned long long {result} = {}({});",
+                        declaration.function.symbol,
+                        arguments.join(", ")
+                    ));
+                    Some((result.clone(), true))
+                }
+            },
             ResourceForm::Fallible { out: lane, .. } => {
                 let Some(lane) = lane else {
                     return Err(A2xReject::new(
@@ -920,7 +917,8 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                 self.out
                     .push(format!("if ({status} != 0) ace_foreign_fail({status});"));
                 for sh in &shadows {
-                    self.out.push(format!("*({}) = {};", sh.orig_ptr, sh.shadow));
+                    self.out
+                        .push(format!("*({}) = {};", sh.orig_ptr, sh.shadow));
                 }
                 match lane {
                     ResOut::I32 => None,
@@ -937,9 +935,7 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
         };
         match narrow {
             None => Ok((result, Ty::I32)),
-            Some((temp, unsigned)) => {
-                Ok((wide_narrow(&mut self.out, &temp, unsigned), Ty::I32))
-            }
+            Some((temp, unsigned)) => Ok((wide_narrow(&mut self.out, &temp, unsigned), Ty::I32)),
         }
     }
 

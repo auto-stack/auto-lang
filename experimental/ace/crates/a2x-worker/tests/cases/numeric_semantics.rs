@@ -6,13 +6,11 @@
 use ace_a2x_rust::{assemble_file_set, lower_program};
 
 fn tools_available() -> bool {
-    std::process::Command::new(
-        std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()),
-    )
-    .arg("--version")
-    .output()
-    .map(|o| o.status.success())
-    .unwrap_or(false)
+    std::process::Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()))
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 #[derive(Debug)]
@@ -132,8 +130,7 @@ fn run_rust(case: &Case) -> Result<i32, String> {
     let caps: Vec<String> = vec![];
     let compiled = ace_core::source::compile_numeric_source(&case.src, "probe", &caps)
         .map_err(|d| format!("compile: {}", d[0].message))?;
-    let view = SemanticView::from_checked(&compiled.checked)
-        .map_err(|r| format!("view: {r:?}"))?;
+    let view = SemanticView::from_checked(&compiled.checked).map_err(|r| format!("view: {r:?}"))?;
     let program = lower_program(&view, "main").map_err(|r| format!("lower: {r:?}"))?;
     let fs = assemble_file_set(&view, &program, &compiled.input_hash, "main");
 
@@ -148,9 +145,8 @@ fn run_rust(case: &Case) -> Result<i32, String> {
     std::fs::write(dir.join("manifest.json"), &fs.manifest).unwrap();
 
     let exe = dir.join("out.exe");
-    let mut compiler = std::process::Command::new(
-        std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()),
-    );
+    let mut compiler =
+        std::process::Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()));
     compiler
         .arg("--edition")
         .arg("2021")
@@ -205,8 +201,7 @@ fn numeric_c_true_chain() {
         .expect("open C session");
         let asm = s
             .cold_assemble_profile(&case.src, SourceProfile::Numeric, &[], "main", false)
-            .unwrap_or_else(|e| panic!("C assembly failed for {} (dir kept): {:?}",
-                case.name, e));
+            .unwrap_or_else(|e| panic!("C assembly failed for {} (dir kept): {:?}", case.name, e));
         let dir = outroot.join(&case.name);
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();

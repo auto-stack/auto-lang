@@ -41,7 +41,9 @@ const GC_EVERY: i64 = 64;
 #[ignore = "PLAN-1000 I10 churn+GC stress leg: explicit single-test replay (see comment)"]
 #[test]
 fn mn_incremental_store_512_revisions_gc_bounded() {
-    let _lock = crate::incremental_tier::T11_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let _lock = crate::incremental_tier::T11_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
     if !common::tools_available() {
         eprintln!("infra-blocked: skipped");
         return;
@@ -69,14 +71,21 @@ fn mn_incremental_store_512_revisions_gc_bounded() {
     for factor in 1..=REVISIONS {
         let cur = s.source();
         let site = cur.find("x * 2 + ").expect("churn site") + "x * 2 + ".len();
-        let end = cur[site..].find('\n').map(|i| site + i).unwrap_or(cur.len());
-        let obs = s.edit(
-            site as u64,
-            end as u64,
-            format!("{factor}").into_bytes(),
+        let end = cur[site..]
+            .find('\n')
+            .map(|i| site + i)
+            .unwrap_or(cur.len());
+        let obs = s.edit(site as u64, end as u64, format!("{factor}").into_bytes());
+        assert!(
+            obs.ok,
+            "rev {factor}: {:?}",
+            obs.infra.or(obs.refused_reason)
         );
-        assert!(obs.ok, "rev {factor}: {:?}", obs.infra.or(obs.refused_reason));
-        assert_eq!(obs.exit_code, Some((12 + factor) as i32), "rev {factor} value");
+        assert_eq!(
+            obs.exit_code,
+            Some((12 + factor) as i32),
+            "rev {factor} value"
+        );
         assert_eq!(obs.codegen_units, 1, "bounded unit emission");
         assert_eq!(obs.fallback_whole_lower, 0, "no degenerate fallback");
         assert_eq!(obs.unaffected_stage_delta, 0, "main untouched");
@@ -96,16 +105,15 @@ fn mn_incremental_store_512_revisions_gc_bounded() {
             // still restores from the store after GC.
             for (name, entry) in s.units() {
                 let meta = s.unit_meta(name, &entry.fp);
-                let restored = ace_native::cache::get_unit_coff(&store, &meta)
-                    .expect("restore probe");
+                let restored =
+                    ace_native::cache::get_unit_coff(&store, &meta).expect("restore probe");
                 assert!(restored.is_some(), "current edition {name} lost after GC");
             }
             // Observation 2 (once the window overflowed): the warm-up
             // edition is PHYSICALLY gone — restore by its meta misses.
             if factor as usize > HISTORY_WINDOW {
                 let meta = s.unit_meta("d_helper", &warm_fp);
-                let gone = ace_native::cache::get_unit_coff(&store, &meta)
-                    .expect("restore probe");
+                let gone = ace_native::cache::get_unit_coff(&store, &meta).expect("restore probe");
                 assert!(gone.is_none(), "evicted warm-up edition still on disk");
                 evicted_seen = true;
             }
@@ -126,7 +134,11 @@ fn mn_incremental_store_512_revisions_gc_bounded() {
         "physical reclaim must actually free bytes"
     );
     // Observation 3: the settled watermark is bounded (av face's bound).
-    assert_eq!(gc_watermarks.len(), 8, "periodic GC checkpoints must execute");
+    assert_eq!(
+        gc_watermarks.len(),
+        8,
+        "periodic GC checkpoints must execute"
+    );
     let middle = gc_watermarks[3];
     let end = gc_watermarks[7];
     eprintln!("mn store GC settled bytes: {gc_watermarks:?}");
@@ -137,9 +149,16 @@ fn mn_incremental_store_512_revisions_gc_bounded() {
     // The session remains usable after the churn.
     let cur = s.source();
     let site = cur.find("x * 2 + ").expect("churn site") + "x * 2 + ".len();
-    let end_site = cur[site..].find('\n').map(|i| site + i).unwrap_or(cur.len());
+    let end_site = cur[site..]
+        .find('\n')
+        .map(|i| site + i)
+        .unwrap_or(cur.len());
     let obs = s.edit(site as u64, end_site as u64, b"1000".to_vec());
-    assert!(obs.ok, "post-churn edit: {:?}", obs.infra.or(obs.refused_reason));
+    assert!(
+        obs.ok,
+        "post-churn edit: {:?}",
+        obs.infra.or(obs.refused_reason)
+    );
     assert_eq!(obs.exit_code, Some(1012i32));
     s.close();
     drop(store);

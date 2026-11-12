@@ -1233,7 +1233,7 @@ pub fn resolve_closures_cached(
             fns,
             records,
             lists: coll.lists,
-        tuples: Vec::new(),
+            tuples: Vec::new(),
             variants: coll.variants,
             function_types: coll.function_types,
         },
@@ -1279,7 +1279,7 @@ pub(crate) fn resolve_closures_env(
                 fns,
                 records,
                 lists: coll.lists,
-        tuples: Vec::new(),
+                tuples: Vec::new(),
                 variants: coll.variants,
                 function_types: coll.function_types,
             },
@@ -2734,7 +2734,7 @@ pub fn resolve_env_with_supply(
             fns,
             records,
             lists: coll.lists,
-        tuples: Vec::new(),
+            tuples: Vec::new(),
             variants: coll.variants,
             function_types: coll.function_types,
         },
@@ -4673,9 +4673,10 @@ impl<'a, 's> FnResolver<'a, 's> {
                 .map(|ri| VT::Rec(*ri))
                 .unwrap_or(VT::I32),
             ExprKind::TypeWordArg(word) => vt_of_word(*word),
-            ExprKind::Closure { .. } | ExprKind::MutArg { .. } | ExprKind::ViewArg { .. } | ExprKind::GenericType { .. } => {
-                VT::I32
-            }
+            ExprKind::Closure { .. }
+            | ExprKind::MutArg { .. }
+            | ExprKind::ViewArg { .. }
+            | ExprKind::GenericType { .. } => VT::I32,
         }
     }
 
@@ -4693,7 +4694,9 @@ impl<'a, 's> FnResolver<'a, 's> {
                     Stmt::IndexAssign(_) => {}
                     // PLAN-962 (T-08): hold — alias names the held local
                     // inside the body scope only.
-                    Stmt::Hold { name, bind, body, .. } => {
+                    Stmt::Hold {
+                        name, bind, body, ..
+                    } => {
                         let held = visible.get(&name.name).copied().unwrap_or(VT::I32);
                         visible.insert(bind.name.clone(), held);
                         blocks.push((body, visible.clone()));
@@ -5833,7 +5836,12 @@ impl<'a, 's> FnResolver<'a, 's> {
                 // its own source notes Hold carried no borrow discipline);
                 // the binding dies with the block. Path forms and
                 // non-record bases are named rejections.
-                Stmt::Hold { name, bind, body, span } => {
+                Stmt::Hold {
+                    name,
+                    bind,
+                    body,
+                    span,
+                } => {
                     let Some(xl) = self.lookup(&name.name) else {
                         self.bind_err(
                             "source.undefined",
@@ -6235,7 +6243,8 @@ impl<'a, 's> FnResolver<'a, 's> {
                                 VT::List(li),
                                 false,
                             );
-                            self.declared_names.insert(format!("__gridc_{}", cols[j].name));
+                            self.declared_names
+                                .insert(format!("__gridc_{}", cols[j].name));
                             col_temps.push(tref);
                             stack
                                 .last_mut()
@@ -6275,14 +6284,12 @@ impl<'a, 's> FnResolver<'a, 's> {
                                         },
                                     };
                                     let _ = ri;
-                                    stack
-                                        .last_mut()
-                                        .expect("resolve frame")
-                                        .stmts
-                                        .push(RStmt::ExprStmt {
+                                    stack.last_mut().expect("resolve frame").stmts.push(
+                                        RStmt::ExprStmt {
                                             value: push,
                                             span: cell_span,
-                                        });
+                                        },
+                                    );
                                 }
                             }
                         }
@@ -9836,7 +9843,7 @@ impl<'a, 's> FnResolver<'a, 's> {
     }
 
     fn call(&mut self, callee: &ast::Ident, args: &[Arg], call_span: Span) -> ResolvedExpr {
-                // PLAN-936（T-04）：meta 查询内在在此拦截——selector 实参绝不进入
+        // PLAN-936（T-04）：meta 查询内在在此拦截——selector 实参绝不进入
         // 值解析（裸 record 名/字符串字面量不是值位置合法形状）。
         // A grant protects the names. Without it, declared user functions
         // remain ordinary; an undeclared selector inside CT gets the named

@@ -18,7 +18,7 @@ use ace_core::atom_text::{Diagnostic, Stage};
 use ace_core::source::CompiledSource;
 use ace_core::verify::CheckedModule;
 use ace_source_query::{
-    CompileLane, ProductCompile, SourceQuerySession, compile_core_product, compile_scalar_product,
+    compile_core_product, compile_scalar_product, CompileLane, ProductCompile, SourceQuerySession,
 };
 
 /// Compile one ordinary scalar source for a product consumer.

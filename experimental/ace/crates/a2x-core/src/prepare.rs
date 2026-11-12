@@ -671,9 +671,7 @@ fn ser_expr(
         hir::ExprKind::Constant { value } => out.push_str(&format!("c{}", value)),
         // PLAN-961: numeric const serializes (kind, ty, bits); the cast
         // wraps its operand with the destination.
-        hir::ExprKind::NumericConst { ty, bits } => {
-            out.push_str(&format!("nc:{:?}:{bits}", ty))
-        }
+        hir::ExprKind::NumericConst { ty, bits } => out.push_str(&format!("nc:{:?}:{bits}", ty)),
         hir::ExprKind::Cast { operand, to } => {
             out.push_str(&format!("cast:{:?}(", to));
             ser_expr(view, f, *operand, canon, next, out, depth + 1)?;
