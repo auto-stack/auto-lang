@@ -8955,7 +8955,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                             node: operand,
                             slot: oslot,
                         });
-                    } else if let ExprKind::CtorNamed { ty, fields } = &node.kind {
+                    } else if let ExprKind::CtorNamed { ty, fields, .. } = &node.kind {
                         // every field value is its own subtask: the outer
                         // ctor's frame returns before inner ctors resolve
                         let mut arg_slots = Vec::with_capacity(fields.len());

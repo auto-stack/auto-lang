@@ -55,6 +55,9 @@ pub struct SourceKinds {
     pub atom_expr: u32,
     pub leading_dot: Option<u32>,
     pub ctor_expr: Option<u32>,
+    /// PLAN-963（T-02）：显式类型实参构造 `Point<int> { .. }`（record 族
+    /// 独立原子形；其余 profile 无此规则）。
+    pub typed_ctor_expr: Option<u32>,
     pub ctor_fields: Option<u32>,
     pub ctor_field: Option<u32>,
     /// PLAN-928：lambda 表达式（closures 面原子；其余 profile 无此规则）。
@@ -358,6 +361,7 @@ impl SourceKinds {
             atom_expr: rk("atom-expr"),
             leading_dot: rk_opt(p, "leading-dot"),
             ctor_expr: rk_opt(p, "ctor-expr"),
+            typed_ctor_expr: rk_opt(p, "typed-ctor-expr"),
             ctor_fields: rk_opt(p, "ctor-fields"),
             ctor_field: rk_opt(p, "ctor-field"),
             lambda_expr: rk_opt(p, "lambda-expr"),

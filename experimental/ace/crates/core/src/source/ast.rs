@@ -405,6 +405,10 @@ pub enum ExprKind {
     /// routes it to construction when the name is a record — F-771-R1-02.)
     CtorNamed {
         ty: Ident,
+        /// PLAN-963（T-02）：显式类型实参形 `Point<int> { .. }` 的实参表
+        /// （空 = 旧写法的普通具名构造）。投影期单态化把它解析为具体记录
+        /// 并清空，resolve 之后的一切只见具体 nominal 构造。
+        args: Vec<TypeAnn>,
         fields: Vec<NamedCtorField>,
     },
     /// Field read `base.name` (rvalue; a copy for record fields).

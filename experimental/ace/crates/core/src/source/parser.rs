@@ -2992,6 +2992,9 @@ impl<'s> Parser<'s> {
                                     span: ty.span.join(close.span),
                                     kind: ExprKind::CtorNamed {
                                         ty,
+                                        // PLAN-963：旧 parser 不产出显式类型
+                                        // 实参构造（迁移面只保持既有写法）。
+                                        args: Vec::new(),
                                         fields: Vec::new(),
                                     },
                                 });
@@ -3523,6 +3526,8 @@ impl<'s> Parser<'s> {
                                     span: cf.ty.span.join(tok.span),
                                     kind: ExprKind::CtorNamed {
                                         ty: cf.ty,
+                                        // PLAN-963：旧 parser 无显式类型实参构造。
+                                        args: Vec::new(),
                                         fields: cf.fields,
                                     },
                                 });

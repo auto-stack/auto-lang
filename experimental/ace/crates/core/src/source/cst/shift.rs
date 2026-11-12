@@ -141,7 +141,7 @@ fn shift_expr(e: &mut Expr, delta: i64) {
             shift_expr(rhs, delta);
         }
         ExprKind::Unary { operand, .. } => shift_expr(operand, delta),
-        ExprKind::CtorNamed { ty, fields } => {
+        ExprKind::CtorNamed { ty, fields, .. } => {
             shift_ident(ty, delta);
             for f in fields.iter_mut() {
                 shift_named_ctor_field(f, delta);

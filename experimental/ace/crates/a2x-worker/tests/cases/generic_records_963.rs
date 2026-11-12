@@ -3,7 +3,8 @@
 //! rustc / MSVC cl 编译 → 真实运行 → "value:N"）。目标后端不做模板替换，
 //! 只见合成记录 `Point_int` 及其方法。
 //!
-//! oracle：`Point.both(150)` → value:300；换模板体（调用点不动）→ value:301。
+//! oracle：`Point<int> { x: 100, y: 200 }` 的 `sum()` → value:300；换模板方法体
+//! （`+ 1`，构造点不动）→ value:301。
 
 use ace_a2x_c::CTargetProvider;
 use ace_a2x_core::SemanticView;
@@ -15,23 +16,34 @@ use std::process::Command;
 
 const POINT963: &str = "\
 type Point<T> { x T; y T
-    static fn both(v T) Point<T> { return Point { x: v, y: v } }
-    fn first() T { return .x }
+    fn sum() T { return .x + .y }
 }
 fn main() int {
-    let p Point<int> = Point.both(150)
-    return p.first() + p.y
+    let p = Point<int> { x: 100, y: 200 }
+    return p.sum()
 }
 ";
 
 const POINT963_SHIFTED: &str = "\
 type Point<T> { x T; y T
-    static fn both(v T) Point<T> { return Point { x: v, y: v + 1 } }
+    fn sum() T { return .x + .y + 1 }
+}
+fn main() int {
+    let p = Point<int> { x: 100, y: 200 }
+    return p.sum()
+}
+";
+
+/// 两个实参各自单态化（`Point<int>` + `Point<bool>`）+ 模板静态构造 → 300。
+const POINT963_TWO_INSTANCES: &str = "\
+type Point<T> { x T; y T
+    static fn both(v T) Point<T> { return Point { x: v, y: v } }
     fn first() T { return .x }
 }
 fn main() int {
     let p Point<int> = Point.both(150)
-    return p.first() + p.y
+    let q = Point<bool> { x: true, y: false }
+    if q.first() { return p.first() + p.y } else { return 0 }
 }
 ";
 
@@ -147,9 +159,16 @@ fn a2x_generic_record_value_300() {
     run_c(POINT963, 300, "p1");
 }
 
-/// 对照（A2R + A2C 双端）：模板体改动（调用点不动）→ value:301。
+/// 对照（A2R + A2C 双端）：模板方法体改动（构造点不动）→ value:301。
 #[test]
 fn a2x_generic_record_body_change_value_301() {
     run_rust(POINT963_SHIFTED, 301, "p1s");
     run_c(POINT963_SHIFTED, 301, "p1s");
+}
+
+/// 同一模板的 int/bool 两个实参各自合成（A2R + A2C 双端）→ value:300。
+#[test]
+fn a2x_generic_record_two_instances_value_300() {
+    run_rust(POINT963_TWO_INSTANCES, 300, "p1d");
+    run_c(POINT963_TWO_INSTANCES, 300, "p1d");
 }

@@ -130,3 +130,70 @@ fn main() int {
     );
     assert!(!atom.contains("Point<T>"), "template residue in atom text");
 }
+
+/// O-963-7：显式类型实参构造 `Point<int> { .. }`（旧 VM 拼写）无需注解即可
+/// 单态化；同一模板的第二个实参也各自合成（`Point<int>` + `Point<bool>`）。
+#[test]
+fn generic_record_typed_ctor_963() {
+    let src = "\
+type Point<T> { x T; y T
+    fn first() T { return .x }
+}
+fn main() int {
+    let p = Point<int> { x: 100, y: 200 }
+    let q = Point<bool> { x: true, y: false }
+    if q.first() { return p.first() + p.y } else { return 0 }
+}
+";
+    let c = compile(src).expect("typed constructors compile");
+    assert!(c.atom_text.contains("Point_int"), "int instance missing");
+    assert!(c.atom_text.contains("Point_bool"), "bool instance missing");
+}
+
+/// O-963-8：显式类型实参构造的字段类型不符 / 实参个数不符 → 编译期拒
+/// （dispatch=0：拒绝发生在 resolve 之前，任何后端都不会启动）。
+#[test]
+fn generic_record_typed_ctor_rejections_963() {
+    let mismatch = "\
+type Point<T> { x T; y T }
+fn main() int {
+    let p = Point<int> { x: true, y: 200 }
+    return p.x
+}
+";
+    assert!(
+        compile(mismatch).is_err(),
+        "bool initializer for a substituted int field must be rejected"
+    );
+    let arity = "\
+type Point<T> { x T; y T }
+fn main() int {
+    let p = Point<int, bool> { x: 1, y: 2 }
+    return 0
+}
+";
+    let err = compile(arity).expect_err("arity mismatch must be rejected");
+    assert!(
+        err.iter().any(|d| d.code == "source.unsupported"
+            && d.message.contains("type argument")),
+        "expected named arity rejection, got {err:?}"
+    );
+}
+
+/// O-963-9：非泛型类型的显式类型实参 → 具名拒（不把 `Plain<int>` 当模板）。
+#[test]
+fn generic_record_typed_ctor_on_plain_type_rejected_963() {
+    let src = "\
+type Plain { v int }
+fn main() int {
+    let p = Plain<int> { v: 1 }
+    return p.v
+}
+";
+    let err = compile(src).expect_err("type arguments on a plain record must be rejected");
+    assert!(
+        err.iter()
+            .any(|d| d.code == "source.unsupported" && d.message.contains("type argument")),
+        "expected named rejection, got {err:?}"
+    );
+}

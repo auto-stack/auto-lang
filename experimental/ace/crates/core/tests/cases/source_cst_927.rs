@@ -146,6 +146,32 @@ fn probe_typed_budget_outcome() {
 // ---------------------------------------------------------------- V-01 差分
 
 /// 冻结语料 × 七 profile 全量差分（ace-m1/src 语料 + 边界用例）。
+///
+/// PLAN-963（T-02）接受的口径变更：record 面新开**显式泛型类型应用**
+/// （`Point<int>` 的使用位/构造位），于是语料里的 `Result<int, Str>` 在
+/// record 面不再止于"语法不认识 `<`"，而是走到 profile 准入并报具名拒绝。
+/// 两侧**仍然都拒绝**（旧=语法错，新=profile 拒绝），差异只在诊断码/位置，
+/// 逐条列在此白名单里；任何一侧变成接受、或码/消息不符即算差分失败。
+const PROFILE_EXTENSION_DIFFS: &[(&str, &str)] = &[
+    // PLAN-963：record 面泛型类型应用。
+    ("V02.at", "Record"),
+    ("V03.at", "Record"),
+];
+
+fn profile_extension_diff(name: &str, profile: &str, old: &Result<String, String>, new: &Result<String, String>) -> bool {
+    let listed = PROFILE_EXTENSION_DIFFS
+        .iter()
+        .any(|(f, p)| *f == name && *p == profile);
+    if !listed {
+        return false;
+    }
+    matches!((old, new),
+        (Err(o), Err(n))
+            if o.starts_with("source.syntax:")
+                && n.starts_with("source.unsupported:")
+                && n.contains("is not part of this source profile"))
+}
+
 #[test]
 fn differential_corpus_all_profiles() {
     let corpus_dir = concat!(
@@ -172,11 +198,17 @@ fn differential_corpus_all_profiles() {
             let agree = match (&old, &new) {
                 (Ok(a), Ok(b)) => format!("{a:?}") == format!("{b:?}"),
                 (Err(d), Err(e)) => {
-                    d.stage.as_str() == e.stage.as_str()
+                    (d.stage.as_str() == e.stage.as_str()
                         && d.code == e.code
                         && d.message == e.message
                         && d.span.start == e.span.start
-                        && d.span.end == e.span.end
+                        && d.span.end == e.span.end)
+                        || profile_extension_diff(
+                            &name,
+                            &format!("{profile:?}"),
+                            &Err(format!("{}: {}", d.code, d.message)),
+                            &Err(format!("{}: {}", e.code, e.message)),
+                        )
                 }
                 _ => false,
             };

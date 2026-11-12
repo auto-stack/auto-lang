@@ -3237,6 +3237,8 @@ enum Frame {
     CtorFinish {
         node: u32,
         ty: Ident,
+        /// PLAN-963（T-02）：显式类型实参（空 = 旧具名构造写法）。
+        args: Vec<TypeAnn>,
         count: usize,
     },
 }
@@ -4931,9 +4933,23 @@ impl<'a> Engine<'a> {
                 }));
                 return;
             }
-            if ck == self.cx.k.ctor_expr.unwrap_or(u32::MAX) {
+            if ck == self.cx.k.ctor_expr.unwrap_or(u32::MAX)
+                || ck == self.cx.k.typed_ctor_expr.unwrap_or(u32::MAX)
+            {
                 let ty_leaf = self.cx.field_child(c, "ty").expect("ctor type");
                 let ty = ident_of(&mut self.cx, ty_leaf);
+                // PLAN-963（T-02）：`Point<int> { .. }` 的显式类型实参。
+                let mut args = Vec::new();
+                if let Some(an) = self.cx.field_child(c, "args") {
+                    for a in collect_seq(
+                        &self.cx,
+                        an,
+                        self.cx.k.type_arg.unwrap_or(u32::MAX),
+                        "type-arg-tail",
+                    ) {
+                        args.push(self.classify_ty_arg(a));
+                    }
+                }
                 let field_nodes: Vec<u32> = self
                     .cx
                     .child_of_kind(c, self.cx.k.ctor_fields.unwrap_or(u32::MAX))
@@ -4951,7 +4967,12 @@ impl<'a> Engine<'a> {
                     // 旧怪癖：空 ctor `Ty { }` 重入 primary（同 leading-dot 空调用）。
                     self.empty_value_quirk(self.cx.span_of(c).end);
                 }
-                self.stack.push(Frame::CtorFinish { node: c, ty, count });
+                self.stack.push(Frame::CtorFinish {
+                    node: c,
+                    ty,
+                    args,
+                    count,
+                });
                 for f in field_nodes.into_iter().rev() {
                     let label_leaf = self.cx.field_child(f, "label").expect("ctor label");
                     let label = ident_of(&mut self.cx, label_leaf);
@@ -6541,7 +6562,12 @@ impl<'a> Engine<'a> {
                     span,
                 }));
             }
-            Frame::CtorFinish { node, ty, count } => {
+            Frame::CtorFinish {
+                node,
+                ty,
+                args,
+                count,
+            } => {
                 let mut fields = Vec::with_capacity(count);
                 for _ in 0..count {
                     match self.vals.pop() {
@@ -6553,7 +6579,7 @@ impl<'a> Engine<'a> {
                 let span = self.cx.span_of(node);
                 self.vals.push(Val::E(Expr {
                     span,
-                    kind: ExprKind::CtorNamed { ty, fields },
+                    kind: ExprKind::CtorNamed { ty, args, fields },
                 }));
             }
         }
@@ -6803,7 +6829,21 @@ fn expand_user_generic_types(items: &mut Vec<Item>) -> Vec<Diagnostic> {
         }
     }
     if templates.is_empty() {
-        return Vec::new();
+        // 没有泛型模板仍要拒绝显式类型实参构造（`Plain<int> { .. }`）——不
+        // 静默丢实参；重写遍为空，只跑构造检查。
+        let mut gt = GenericExpand {
+            templates,
+            taken: BTreeSet::new(),
+            by_key: BTreeMap::new(),
+            origin: BTreeMap::new(),
+            made: Vec::new(),
+            diags: Vec::new(),
+            depth: 0,
+        };
+        for it in items.iter_mut() {
+            gt.resolve_typed_ctors_in_item(it);
+        }
+        return gt.diags;
     }
     let taken: BTreeSet<String> = items
         .iter()
@@ -6822,6 +6862,24 @@ fn expand_user_generic_types(items: &mut Vec<Item>) -> Vec<Diagnostic> {
         depth: 0,
     };
     gt.rewrite_program(items);
+    // PLAN-963（T-02）：显式类型实参构造（`Point<int> { .. }`）覆盖注解
+    // 换不到的位置；本遍可能合成新实例（其方法体同样要过这一遍），按批
+    // 循环直到没有新增。
+    for it in items.iter_mut() {
+        gt.resolve_typed_ctors_in_item(it);
+    }
+    let mut made: Vec<TypeItem> = std::mem::take(&mut gt.made);
+    let mut done: Vec<TypeItem> = Vec::new();
+    while !made.is_empty() {
+        for mut t in made.drain(..) {
+            for m in t.methods.iter_mut() {
+                gt.resolve_typed_ctors_in_block(&mut m.body);
+            }
+            done.push(t);
+        }
+        made = std::mem::take(&mut gt.made);
+    }
+    gt.made = done;
     let made = std::mem::take(&mut gt.made);
     items.retain(|i| match i {
         Item::Type(t) => t.type_params.is_empty(),
@@ -6943,6 +7001,185 @@ impl GenericExpand {
                 }
                 _ => {}
             }
+        }
+    }
+
+    /// PLAN-963（T-02）：把显式类型实参构造 `Point<int> { .. }` 解析为具体
+    /// 记录名（并登记/合成实例）。注解驱动的换名只覆盖带注解的位置，本遍
+    /// 覆盖任意表达式位置（调用实参、字段值、返回、条件……）。
+    fn resolve_typed_ctor(&mut self, e: &mut Expr) {
+        let ExprKind::CtorNamed { ty, args, .. } = &mut e.kind else {
+            return;
+        };
+        if args.is_empty() {
+            return;
+        }
+        let span = e.span;
+        let name = ty.clone();
+        let taken = std::mem::take(args);
+        // 非泛型/实参个数不符：具名拒（不静默丢实参）。
+        match self.templates.get(&name.name) {
+            None => {
+                self.diags.push(Diagnostic::new(
+                    Stage::Text,
+                    "source.unsupported",
+                    format!("type `{}` takes no type arguments", name.name),
+                    span,
+                ));
+                return;
+            }
+            Some(tpl) if tpl.type_params.len() != taken.len() => {
+                self.diags.push(Diagnostic::new(
+                    Stage::Text,
+                    "source.unsupported",
+                    format!(
+                        "generic type `{}` takes {} type argument(s), got {}",
+                        name.name,
+                        tpl.type_params.len(),
+                        taken.len()
+                    ),
+                    span,
+                ));
+                return;
+            }
+            Some(_) => {}
+        }
+        let resolved = self.ann(&TypeAnn {
+            kind: TypeRef::Generic {
+                name,
+                args: taken,
+            },
+            span,
+        });
+        let TypeRef::Record(id) = resolved.kind else {
+            return;
+        };
+        if let ExprKind::CtorNamed { ty, .. } = &mut e.kind {
+            ty.name = id.name;
+            ty.span = id.span;
+        }
+    }
+
+    fn resolve_typed_ctors_in_expr(&mut self, e: &mut Expr) {
+        self.resolve_typed_ctor(e);
+        match &mut e.kind {
+            ExprKind::TupleLit(xs) | ExprKind::ArrayLit(xs) => {
+                for x in xs.iter_mut() {
+                    self.resolve_typed_ctors_in_expr(x);
+                }
+            }
+            ExprKind::GridLit { rows, .. } => {
+                for row in rows.iter_mut() {
+                    for x in row.iter_mut() {
+                        self.resolve_typed_ctors_in_expr(x);
+                    }
+                }
+            }
+            ExprKind::Index { base, index } => {
+                self.resolve_typed_ctors_in_expr(base);
+                self.resolve_typed_ctors_in_expr(index);
+            }
+            ExprKind::Range { start, end, .. } => {
+                self.resolve_typed_ctors_in_expr(start);
+                self.resolve_typed_ctors_in_expr(end);
+            }
+            ExprKind::Method { recv, args, .. }
+            | ExprKind::MethodCall { recv, args, .. } => {
+                self.resolve_typed_ctors_in_expr(recv);
+                for a in args.iter_mut() {
+                    self.resolve_typed_ctors_in_arg(a);
+                }
+            }
+            ExprKind::Call { args, .. } => {
+                for a in args.iter_mut() {
+                    self.resolve_typed_ctors_in_arg(a);
+                }
+            }
+            ExprKind::CallValue { callee, args } => {
+                self.resolve_typed_ctors_in_expr(callee);
+                for a in args.iter_mut() {
+                    self.resolve_typed_ctors_in_arg(a);
+                }
+            }
+            ExprKind::Binary { lhs, rhs, .. } => {
+                self.resolve_typed_ctors_in_expr(lhs);
+                self.resolve_typed_ctors_in_expr(rhs);
+            }
+            ExprKind::Unary { operand, .. } => self.resolve_typed_ctors_in_expr(operand),
+            ExprKind::CtorNamed { fields, .. } => {
+                for f in fields.iter_mut() {
+                    self.resolve_typed_ctors_in_expr(&mut f.value);
+                }
+            }
+            ExprKind::Field { base, .. } => self.resolve_typed_ctors_in_expr(base),
+            ExprKind::HashExpr { expr } => self.resolve_typed_ctors_in_expr(expr),
+            ExprKind::Closure { body, .. } => match body.as_mut() {
+                ClosureBody::Expr(x) => self.resolve_typed_ctors_in_expr(x),
+                ClosureBody::Block(b) => self.resolve_typed_ctors_in_block(b),
+            },
+            _ => {}
+        }
+    }
+
+    fn resolve_typed_ctors_in_arg(&mut self, a: &mut Arg) {
+        match a {
+            Arg::Pos(x) | Arg::MovePos(x) => self.resolve_typed_ctors_in_expr(x),
+            Arg::Named { value, .. } => self.resolve_typed_ctors_in_expr(value),
+        }
+    }
+
+    fn resolve_typed_ctors_in_block(&mut self, b: &mut Block) {
+        for s in b.stmts.iter_mut() {
+            match s {
+                Stmt::ExprStmt { value, .. }
+                | Stmt::Let { value, .. }
+                | Stmt::Assign { value, .. }
+                | Stmt::LetDestruct { value, .. }
+                | Stmt::Return { value, .. } => self.resolve_typed_ctors_in_expr(value),
+                Stmt::IndexAssign(ia) => {
+                    self.resolve_typed_ctors_in_expr(&mut ia.index);
+                    self.resolve_typed_ctors_in_expr(&mut ia.value);
+                }
+                Stmt::Hold { body, .. } => self.resolve_typed_ctors_in_block(body),
+                Stmt::If {
+                    cond, then, els, ..
+                } => {
+                    self.resolve_typed_ctors_in_expr(cond);
+                    self.resolve_typed_ctors_in_block(then);
+                    if let Some(e) = els {
+                        self.resolve_typed_ctors_in_block(e);
+                    }
+                }
+                Stmt::While { cond, body, .. } => {
+                    self.resolve_typed_ctors_in_expr(cond);
+                    self.resolve_typed_ctors_in_block(body);
+                }
+                Stmt::Loop { body, .. } => self.resolve_typed_ctors_in_block(body),
+                Stmt::IsMatch { arms, .. } => {
+                    for arm in arms.iter_mut() {
+                        self.resolve_typed_ctors_in_block(&mut arm.body);
+                    }
+                }
+                Stmt::ForIn { iter, body, .. } => {
+                    self.resolve_typed_ctors_in_expr(iter);
+                    self.resolve_typed_ctors_in_block(body);
+                }
+                Stmt::Break { .. } | Stmt::Continue { .. } => {}
+            }
+        }
+    }
+
+    fn resolve_typed_ctors_in_item(&mut self, it: &mut Item) {
+        match it {
+            Item::Fn(f) => self.resolve_typed_ctors_in_block(&mut f.body),
+            Item::Const(c) => self.resolve_typed_ctors_in_expr(&mut c.value),
+            Item::Store(s) => self.resolve_typed_ctors_in_expr(&mut s.value),
+            Item::Type(t) => {
+                for m in t.methods.iter_mut() {
+                    self.resolve_typed_ctors_in_block(&mut m.body);
+                }
+            }
+            Item::Enum(_) => {}
         }
     }
 
@@ -7197,7 +7434,7 @@ fn rename_ctor_for_ann(
         return;
     };
     match &mut value.kind {
-        ExprKind::CtorNamed { ty, fields } => {
+        ExprKind::CtorNamed { ty, fields, .. } => {
             if templates.contains_key(&ty.name) {
                 ty.name = id.name.clone();
                 ty.span = id.span;

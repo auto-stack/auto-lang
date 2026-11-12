@@ -853,6 +853,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [aggregates]) { grid-atom() {} }
             alt(profiles: [aggregates]) { array-lit() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
+            alt(profiles: [record, aggregates]) { typed-ctor-expr() {} }
             alt(profiles: [collections, closures, record, text-record, packages-modules, aggregates]) { ctor-expr() {} }
             // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
             // 条件镜像旧 generic_scan_commits——平衡 `<...>` 后随 `.`；普通
@@ -966,6 +967,19 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 而裸 ident（`total + 1`）在 `{` 不匹配时照常回退为普通名字）。
         ctor-expr(profiles: [record, text-record, collections, closures, packages-modules, numeric, aggregates]) {
             ident(field: "ty")
+            lbrace(same-line: true, cut: true) {}
+            opt { ctor-fields() {} }
+            rbrace() {}
+        }
+        // PLAN-963（T-02）：显式类型实参构造 `Point<int> { .. }`（旧 VM 拼写）。
+        // 作为**独立备选**排在 ctor-expr 之前：两者共享 `ident` 前缀，写成
+        // ctor-expr 内的 opt 会被前缀分派抢先当普通名字（实测 `Point<int>`
+        // 被解析为比较）。`<...>` 平衡后必须跟 `{`，否则回退普通名字/比较。
+        typed-ctor-expr(profiles: [record, aggregates]) {
+            ident(field: "ty")
+            lt() {}
+            type-args(field: "args")
+            gt() {}
             lbrace(same-line: true, cut: true) {}
             opt { ctor-fields() {} }
             rbrace() {}

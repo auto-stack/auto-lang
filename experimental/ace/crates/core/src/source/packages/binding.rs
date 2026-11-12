@@ -1244,7 +1244,7 @@ fn shift_expr(e: &mut Expr, offset: usize) {
             shift_expr(base, offset);
             sh(&mut name.span, offset);
         }
-        ExprKind::CtorNamed { ty, fields } => {
+        ExprKind::CtorNamed { ty, fields, .. } => {
             sh(&mut ty.span, offset);
             for f in fields {
                 sh(&mut f.name.span, offset);
@@ -1837,7 +1837,7 @@ impl<'a> Walker<'a> {
                 }
                 self.walk_expr(base, locals)
             }
-            ExprKind::CtorNamed { ty, fields } => {
+            ExprKind::CtorNamed { ty, fields, .. } => {
                 let mangled = self.type_name(ty)?;
                 ty.name = mangled;
                 for f in fields {
