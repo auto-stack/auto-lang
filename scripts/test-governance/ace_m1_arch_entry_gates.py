@@ -426,15 +426,20 @@ def validate_recipes(document, entries):
     typed_equal(seen, set(REQUIRED) - {REVIEW_ROW}, 'recipe coverage is every non-review row')
 
 
-def _entry_closure(inputs, name, declared, config):
+def _entry_closure(inputs, name, declared, config, oracles_sha=None):
     """The frozen producer-window closure for one entry: the declared source/
-    config/oracle pins the raw reader re-verifies against the originals."""
+    config/oracle pins the raw reader re-verifies against the originals.
+    `oracles_sha` (A-1013-01 knife 2) lets one admission read the frozen
+    oracle table once instead of once per case entry; content identity is
+    unchanged (same bytes, same hash)."""
     if declared['kind'] == 'case-suite':
         inputs.sha256(declared['suite_file'], declared['source_sha256'])
+        if oracles_sha is None:
+            oracles_sha = hashlib.sha256(
+                inputs.read_bytes('scripts/test-governance/case-control-oracles.json')).hexdigest()
         return {'scripts/test-groups.toml': config,
                 declared['suite_file']: declared['source_sha256'],
-                'scripts/test-governance/case-control-oracles.json':
-                    hashlib.sha256(inputs.read_bytes('scripts/test-governance/case-control-oracles.json')).hexdigest()}
+                'scripts/test-governance/case-control-oracles.json': oracles_sha}
     if declared['kind'] == 'native-module':
         inputs.sha256(declared['source_file'], declared['source_sha256'])
         return {'scripts/test-groups.toml': config,
@@ -465,10 +470,16 @@ def admit_arch_entry_gates(inputs, evidence, binding, frozen_anchors=()):
             type(c) is str and re.fullmatch('[0-9a-f]{40}', c) for c in frozen_anchors),
             'frozen anchors must be a list of 40-hex commits')
         frozen_anchors = frozenset(frozen_anchors)
-    document, _ = inputs.read_json(CONTRACT)
+    # A-1013-01 knife 2: the contract document is also a function-level
+    # transient — validate, copy the per-entry declarations and the small
+    # obligations list, release the whole-document reservation.
+    contract_raw = inputs.read_bytes(CONTRACT)
+    document, _ = inputs.decode_json(contract_raw)
     require(document.get('schema') == 'ace.m1.arch-obligation-contract/1', 'architecture contract schema')
-    entries = document['entries']
-    obligations = document['obligations']
+    entries = {name: dict(declared) for name, declared in document['entries'].items()}
+    obligations = [dict(obligation) for obligation in document['obligations']]
+    _release_gate_transients(inputs, [contract_raw])
+    del document, contract_raw
     # PLAN-1013 A-1013-01: the recipe document is a FUNCTION-LEVEL transient.
     # After validation, keep-building and the per-row fact projection below,
     # its full-document reservation is released; row evaluation consumes the
@@ -481,6 +492,10 @@ def admit_arch_entry_gates(inputs, evidence, binding, frozen_anchors=()):
     typed_equal(recipes_digest, RECIPES_SHA, 'frozen recipe contract identity')
     validate_recipes(recipes_doc, entries)
 
+    oracles_sha = None
+    if any(e['kind'] == 'case-suite' for e in entries.values()):
+        oracles_sha = hashlib.sha256(
+            inputs.read_bytes('scripts/test-governance/case-control-oracles.json')).hexdigest()
     keep = {}
     row_facts = {}
     for recipe in recipes_doc['recipes']:
@@ -533,7 +548,7 @@ def admit_arch_entry_gates(inputs, evidence, binding, frozen_anchors=()):
             typed_equal(facts_doc['group'], expected_group, 'phased facts group identity')
             expected_kind = 'case' if declared['kind'] == 'case-suite' else 'native'
             typed_equal(facts_doc['kind'], expected_kind, 'phased facts gate kind')
-            closure = _entry_closure(inputs, name, declared, config)
+            closure = _entry_closure(inputs, name, declared, config, oracles_sha)
             if expected_kind == 'native':
                 resident = declared['group'] if declared['kind'] == 'native-module' else DELIVERED_PROVIDERS[name][1]
                 derived = admit_native_gate(inputs, evidence, ref['root'], resident, closure,
@@ -571,19 +586,19 @@ def admit_arch_entry_gates(inputs, evidence, binding, frozen_anchors=()):
             continue
         exact_keys(ref, ('root',), f'entry gate reference {name}')
         if declared['kind'] == 'case-suite':
-            closure = _entry_closure(inputs, name, declared, config)
+            closure = _entry_closure(inputs, name, declared, config, oracles_sha)
             gates[name] = _verified_compact(evidence, admit_case_gate(
                 inputs, evidence, ref['root'], declared['group'], closure,
                 keep_checks=keep.get(('case', name)), frozen_anchors=frozen_anchors))
         elif declared['kind'] == 'native-module':
-            closure = _entry_closure(inputs, name, declared, config)
+            closure = _entry_closure(inputs, name, declared, config, oracles_sha)
             gates[name] = _verified_compact(evidence, admit_native_gate(
                 inputs, evidence, ref['root'], declared['group'], closure,
                 keep_events=keep.get(('native', name)), frozen_anchors=frozen_anchors))
         else:
             owner, resident, _modules = DELIVERED_PROVIDERS[name]
             require(declared.get('owner') == owner, f'delivered provider owner {name}')
-            closure = _entry_closure(inputs, name, declared, config)
+            closure = _entry_closure(inputs, name, declared, config, oracles_sha)
             gates[name] = _verified_compact(evidence, admit_native_gate(
                 inputs, evidence, ref['root'], resident, closure,
                 keep_events=keep.get(('native', name)), frozen_anchors=frozen_anchors))
