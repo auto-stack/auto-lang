@@ -341,6 +341,67 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+2026-11-13 stage:work（T-04 const 值参数分片已提交，V-G04 闭合；仍无终裁）/ PLAN-963 r5：
+本片两提交落唯一树 `D:/autostack/.wt/lang-963/auto-lang`（`plan-963-dev`）：
+`d761ad7c5`（const 值参数全链路：语法→投影→语义输入→求解需求→身份/去重→体代入→脱糖重绑
+→页 codec v4；28 文件）与 `55492a50c`（V-01 跨包同名模板身份 + late 拒测试）。
+
+- 语法（`experimental/ace/grammars/auto-source.at`，仅实例面 `scalar-instances` /
+  `record-instances` / `text-record-instances`）：`type-param` 第三 alt `const N`（可选声明类型经
+  新 `const-param-ty`，仅引用该 profile 内既有词 `int-kw`/`i32`/`bool`/`ident`）；新
+  `generic-call`（**括号属原子自身**：`ident < const-args > ( args )`）、`const-args` /
+  `const-arg-tail` / `const-arg` 列表；`condition-atom` 与 `atom-expr` 在 `ident()` 前插
+  `alt(profiles:[...]) { generic-call() }`。plain profile 过滤后程序不变。
+- AST/投影：`TypeParamDecl.kind` + `TypeParamKind::{Type,Const}`、`ConstArgUse{value,span}`、
+  `ExprKind::ConstCall{callee,consts,args}`；`project_type_param_decls` 合法化 const 声明，
+  非实例面/非 `u32` 声明类型具名拒（`source.instances-unsupported`）；`enter_atom` 读
+  `const-arg` 的 `lit` 拼写，`> i32::MAX` → `source.literal-range`（i32 体域），`> u32::MAX`
+  → `source.literal-range`（u32 域）。`closure_capture`/`shift`/`packages::binding` 穷尽性臂；
+  `resolve` 具名拒"must be instantiated before resolve"。
+- 语义/实例：`InputFn.const_params`、`SignatureView.const_params`、`InputExprKind::ConstCall`；
+  `TplDemand.consts: Vec<u32>` 与 Call/ConstCall 共用路径，值实参 arity 准入
+  `value-arity-mismatch`/`value-argument-required`；`InstanceRecord.consts`、身份 `instance_key`
+  按**声明序交错** `(type|value)` 项，装配名 `_u32_<十进制>` 只作拼写；`subst_block_consts`
+  把模板体 `Var(值参数名)` 代成 `IntLit`；`rebind_callsites_owned` ConstCall→Call；
+  新增 `program_has_value_call`：模板为空但存在值实参调用时不再恒等返回，使 `id<2>(1)`
+  得具名 arity 诊断而非笼统 resolve 拒。`signature_canonical` 写 `\0value-param\0`+name
+  （无值参数签名逐字节不变），表达式编码新增标签 `G`。
+- 页（`instance_host.rs`）：`INSTANCE_PAGE_CODEC_VERSION = 4`，`InstancePage.consts:
+  Vec<(String,u32)>`，编解码新增 `constc` 字段；v1..v3 页按版本不符 MISS 重产，信封不变。
+- 测试：`source-query/tests/instances_const_963.rs`（新建 12 例）正例
+  `const_param_instance_is_produced`/`distinct_values_are_distinct_instances`（logical 相同、
+  key 不同）/`same_value_is_normalized_to_one_instance`/`explicit_u32_declaration_is_accepted`/
+  `mixed_value_and_type_params`（`wrap_u32_7_i32`）/`value_is_substituted_in_the_template_body`；
+  负例 `missing_value_argument_is_rejected`/`extra_value_arguments_are_rejected`/
+  `value_argument_to_plain_fn_is_rejected`/`out_of_domain_value_is_rejected`（含 i32 体域）/
+  `non_u32_declared_type_is_rejected`/`without_capability_value_params_are_rejected`。
+  四端真实运行 oracle：`rep<2>(21)`→42、`rep<3>(21)`→63、两者相加→105（2 实例），
+  分别在 `crates/av/tests/cases/const_instances_963.rs`（`Value::I32`）、
+  `crates/native/tests/cases/const_instances_963.rs`（exit code = main 结果）、
+  `crates/a2x-worker/tests/cases/const_instances_963.rs`（A2R rustc `assemble_file_set` +
+  A2C cl `cold_assemble`/`compile_and_run_c`，断言装配名 `rep_u32_2`/`rep_u32_3` 且无
+  `rep<const` 残留、stdout `value:42/63/105`）。页 v4 往返与跨包身份：
+  `source-query/tests/instance_host_935.rs::page_codec_v4_carries_value_arguments`、
+  `same_name_templates_in_two_packages_stay_distinct`（跨包 key/logical 互异；第二次 commit 按
+  `LateResult` 拒，produced=2，不混装）。935 面用例
+  `core/tests/cases/source_instances_935.rs::constraint_and_const_shapes_named_rejections` 迁为
+  "`<T has S>`/`<const N>` 合法 + kind 断言；`<const N bool>` 具名拒；无能力仍 parse 拒"；
+  `syntax-grammar/tests/cases/profiles_927.rs` 的 `DECLARED` 补 `record-instances` /
+  `text-record-instances`（与 `auto-source.at` 声明序对齐）。
+- 验证命令与结果（`experimental/ace` 下，`CARGO_TERM_COLOR=never`）：
+  `cargo t ace-source ace-semantics ace-av ace-native` → run-vmk8psje 458/262/1074/228 全 PASS，
+  `gate_passed=True`，wall 1102s；`cargo t ace-syntax` → run-xt7yfrow 132 PASS；
+  `cargo t ace-a2x` → run-_h_zh1sd `executed=226 outcome=PASS`（日志 `PASS: ace-a2x`），
+  `gate_passed=False` 仅因 `[process-tree infrastructure] descendants live after workload exit`
+  （`vctip.exe` 残留）与 `discovery_complete=False`，按环境归因，非代码失败。
+- **本轮具名未闭**：V-G05（泛型 spec `spec S<T>` / 关联类型 / super-spec / ext / alias / `with` /
+  默认或命名实参——grammar 中完全不存在，属大特性）、V-G06（跨模块/两包同名模板调用受
+  `packages/binding.rs` 的 `source.module-templates` 与单模块 `instantiate_program` 限制；
+  owned 跨参借用未验）、V-02/V-G07（约束或实现变化使实例失效、冷编一致、未读 body 零生产）、
+  §5.3 永久 fixture 目录 `crates/auto-lang/test/cases/ace-m2/generics/`（`.case.ad`/`.suite.ad`/
+  `src`/oracle/`binding.tsv` 与 certify 接线）、T-08 剩余（默认/可变实参、ext 优先级、函数值
+  签名、返回推导）。按用户裁定，本轮不做 T-06/T-07（merge/归档/清树）。
+
 2026-11-12 stage:work（T-03 两分片已提交，仍无终裁）/ PLAN-963 r5：第五片 `c44d80ad6`
 （spec 声明 + `as` 遵从，投影期擦除；测试补片 `9bfad9593`）与第六片 `2ef9f3874`
 （`<T has S>` 类型参数约束）落唯一树 `D:/autostack/.wt/lang-963/auto-lang`，两片均先跑
