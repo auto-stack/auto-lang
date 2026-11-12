@@ -556,6 +556,116 @@ fn abi_resource939_pointer_replace_failure_keeps_accepted_root() {
     assert_ne!(pointer_bytes(&store_root), root_after_q0);
 }
 
+/// T-10 (V-10, AC-06): a REAL revision churn through the full
+/// certification path converges under forced GC — unreferenced revisions
+/// are reclaimed, a live lease pins an OLD root against collection until
+/// its last release, and the current root keeps delivering. The
+/// 512-scale store-level churn anchor is the 797-lane
+/// `abi_cache_512_revision_churn_gc_convergence` (same group, green);
+/// this test adds the resource-lane root churn over the real worker
+/// entry (each revision = a full restore→prepare→publish cycle).
+#[test]
+fn abi_resource939_revision_churn_gc_convergence_and_lease() {
+    let dir = ace_abi::run::scratch("abi_r939_churn_gc");
+    let store_root = dir.join("store");
+    let base = deck("record-mut");
+    let seeded = |seed: i32| {
+        let mut deck = base.clone();
+        deck["source"] = serde_json::json!(format!(
+            "type Counter {{ value int }}\nfn main() int {{\n    var x Counter = Counter(20)\n    let now int = t939_bump(x.mut, {seed})\n    return now + x.value\n}}"
+        ));
+        deck
+    };
+
+    // q0: establish the first root and PIN it with a real lease (an old
+    // reader that still owns the generation-A closure).
+    let q0 = expect_query("t10d-q0", &seeded(1), &store_root, "native");
+    assert_eq!(report_of(&q0).actual_exit, Some(42));
+    let pointer: serde_json::Value = serde_json::from_slice(&pointer_bytes(&store_root)).unwrap();
+    let first_artifact = pointer["stored"]["artifact_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let store = ace_artifacts::store::ManagedStore::open(&store_root).unwrap();
+    let lease = store
+        .acquire_lease("t10-old-generation-pin", 3600, Some(&first_artifact))
+        .expect("the lease grants over the first revision");
+
+    // The churn: 24 DISTINCT revisions (seed 2..=25 -> exit 44..90), each
+    // a full worker certification cycle publishing a new root.
+    let mut mid_reclaims: usize = 0;
+    for seed in 2..=25i32 {
+        let out = match query(
+            &format!("t10d-s{seed}"),
+            &seeded(seed),
+            &store_root,
+            "native",
+        ) {
+            Ok(out) => out,
+            Err(e) => panic!("seed {seed} failed: {e:?}"),
+        };
+        assert_eq!(
+            report_of(&out).actual_exit,
+            Some(40 + 2 * seed),
+            "revision {seed} delivers its own oracle"
+        );
+        // Periodic forced GC: the intermediate (unreferenced) revisions
+        // are reclaimed while the LEASED first revision and the CURRENT
+        // root survive.
+        if seed % 8 == 0 {
+            let receipt = ace_artifacts::store::gc::run_gc(
+                &store,
+                ace_artifacts::store::gc::GcConfig { high: 0, low: 0 },
+            )
+            .unwrap();
+            if receipt.deleted_chunks > 0 {
+                mid_reclaims += receipt.deleted_chunks;
+            }
+            assert!(
+                store.get_artifact_by_id(&first_artifact).unwrap().is_some(),
+                "the leased first revision survives every forced GC"
+            );
+        }
+    }
+    assert!(
+        mid_reclaims > 0,
+        "the forced GC reclaimed unreferenced revisions (reclaimed={mid_reclaims})"
+    );
+    assert!(
+        store.get_artifact_by_id(&first_artifact).unwrap().is_some(),
+        "the lease still pins the first revision"
+    );
+
+    // The current root is warm (P0 production) and delivers.
+    let warm = expect_query("t10d-warm", &seeded(25), &store_root, "native");
+    assert_eq!(report_of(&warm).actual_exit, Some(90));
+    assert_eq!(
+        warm.steps[0].compute_calls, 0,
+        "the current root is a warm hit"
+    );
+
+    // Last release: dropping the pin makes the first revision unreachable
+    // — the NEXT forced GC really reclaims it (convergence, no leak).
+    drop(lease);
+    let receipt = ace_artifacts::store::gc::run_gc(
+        &store,
+        ace_artifacts::store::gc::GcConfig { high: 0, low: 0 },
+    )
+    .unwrap();
+    assert!(
+        receipt.deleted_chunks > 0,
+        "the released first revision is reclaimed: {receipt:?}"
+    );
+    assert!(
+        store.get_artifact_by_id(&first_artifact).unwrap().is_none(),
+        "the old generation is gone after its last release"
+    );
+    // The CURRENT root still delivers after the reclaim.
+    let after = expect_query("t10d-after", &seeded(25), &store_root, "native");
+    assert_eq!(report_of(&after).actual_exit, Some(90));
+}
+
 /// Explicit formal benchmark or sustained scale/stress contract.
 ///
 /// PLAN-939 T-12 (V-10/V-16, AC-06): the resource lane's formal sampling
@@ -801,116 +911,5 @@ mod performance {
         // The raw summary is scratch evidence (plan-artifacts discipline);
         // the durable numbers land in the plan §9 receipt.
         eprintln!("{summary}");
-    }
-
-    /// T-10 (V-10, AC-06): a REAL revision churn through the full
-    /// certification path converges under forced GC — unreferenced revisions
-    /// are reclaimed, a live lease pins an OLD root against collection until
-    /// its last release, and the current root keeps delivering. The
-    /// 512-scale store-level churn anchor is the 797-lane
-    /// `abi_cache_512_revision_churn_gc_convergence` (same group, green);
-    /// this test adds the resource-lane root churn over the real worker
-    /// entry (each revision = a full restore→prepare→publish cycle).
-    #[test]
-    fn abi_resource939_revision_churn_gc_convergence_and_lease() {
-        let dir = ace_abi::run::scratch("abi_r939_churn_gc");
-        let store_root = dir.join("store");
-        let base = deck("record-mut");
-        let seeded = |seed: i32| {
-            let mut deck = base.clone();
-            deck["source"] = serde_json::json!(format!(
-            "type Counter {{ value int }}\nfn main() int {{\n    var x Counter = Counter(20)\n    let now int = t939_bump(x.mut, {seed})\n    return now + x.value\n}}"
-        ));
-            deck
-        };
-
-        // q0: establish the first root and PIN it with a real lease (an old
-        // reader that still owns the generation-A closure).
-        let q0 = expect_query("t10d-q0", &seeded(1), &store_root, "native");
-        assert_eq!(report_of(&q0).actual_exit, Some(42));
-        let pointer: serde_json::Value =
-            serde_json::from_slice(&pointer_bytes(&store_root)).unwrap();
-        let first_artifact = pointer["stored"]["artifact_id"]
-            .as_str()
-            .unwrap()
-            .to_string();
-
-        let store = ace_artifacts::store::ManagedStore::open(&store_root).unwrap();
-        let lease = store
-            .acquire_lease("t10-old-generation-pin", 3600, Some(&first_artifact))
-            .expect("the lease grants over the first revision");
-
-        // The churn: 24 DISTINCT revisions (seed 2..=25 -> exit 44..90), each
-        // a full worker certification cycle publishing a new root.
-        let mut mid_reclaims: usize = 0;
-        for seed in 2..=25i32 {
-            let out = match query(
-                &format!("t10d-s{seed}"),
-                &seeded(seed),
-                &store_root,
-                "native",
-            ) {
-                Ok(out) => out,
-                Err(e) => panic!("seed {seed} failed: {e:?}"),
-            };
-            assert_eq!(
-                report_of(&out).actual_exit,
-                Some(40 + 2 * seed),
-                "revision {seed} delivers its own oracle"
-            );
-            // Periodic forced GC: the intermediate (unreferenced) revisions
-            // are reclaimed while the LEASED first revision and the CURRENT
-            // root survive.
-            if seed % 8 == 0 {
-                let receipt = ace_artifacts::store::gc::run_gc(
-                    &store,
-                    ace_artifacts::store::gc::GcConfig { high: 0, low: 0 },
-                )
-                .unwrap();
-                if receipt.deleted_chunks > 0 {
-                    mid_reclaims += receipt.deleted_chunks;
-                }
-                assert!(
-                    store.get_artifact_by_id(&first_artifact).unwrap().is_some(),
-                    "the leased first revision survives every forced GC"
-                );
-            }
-        }
-        assert!(
-            mid_reclaims > 0,
-            "the forced GC reclaimed unreferenced revisions (reclaimed={mid_reclaims})"
-        );
-        assert!(
-            store.get_artifact_by_id(&first_artifact).unwrap().is_some(),
-            "the lease still pins the first revision"
-        );
-
-        // The current root is warm (P0 production) and delivers.
-        let warm = expect_query("t10d-warm", &seeded(25), &store_root, "native");
-        assert_eq!(report_of(&warm).actual_exit, Some(90));
-        assert_eq!(
-            warm.steps[0].compute_calls, 0,
-            "the current root is a warm hit"
-        );
-
-        // Last release: dropping the pin makes the first revision unreachable
-        // — the NEXT forced GC really reclaims it (convergence, no leak).
-        drop(lease);
-        let receipt = ace_artifacts::store::gc::run_gc(
-            &store,
-            ace_artifacts::store::gc::GcConfig { high: 0, low: 0 },
-        )
-        .unwrap();
-        assert!(
-            receipt.deleted_chunks > 0,
-            "the released first revision is reclaimed: {receipt:?}"
-        );
-        assert!(
-            store.get_artifact_by_id(&first_artifact).unwrap().is_none(),
-            "the old generation is gone after its last release"
-        );
-        // The CURRENT root still delivers after the reclaim.
-        let after = expect_query("t10d-after", &seeded(25), &store_root, "native");
-        assert_eq!(report_of(&after).actual_exit, Some(90));
     }
 }
