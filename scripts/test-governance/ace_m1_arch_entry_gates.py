@@ -223,7 +223,11 @@ def admit_native_gate(inputs, evidence, root, group_name, closure, keep_events=N
     result = summary['results'][0]
 
     listing_raw = evidence.read_bytes(root + '/discovery.stdout')
-    listing_transient = _doc_transient(listing_raw)
+    # Component bound for the listing parse (PLAN-1013 T-07): decoded text
+    # (<=4x), json.loads tree + the parent's selected/excluded indexes built
+    # from it (<=5x for this dense per-test shape), iteration slack. Same
+    # never-understate rule as the run-stream bound above.
+    listing_transient = 10 * len(listing_raw) + (1 << 16)
     evidence.reserve(listing_transient - (len(listing_raw) + 1))
     listing = json.loads(listing_raw.decode('utf-8'))
     binaries = {suite['binary-path'] for suite in listing['rust-suites'].values()
@@ -248,7 +252,14 @@ def admit_native_gate(inputs, evidence, root, group_name, closure, keep_events=N
     selected, excluded = parent.enumerate_rust(listing, root=str(inputs.root))
     require(selected, 'native group selected zero actual tests')
     raw = evidence.read_bytes(root + '/run.stdout')
-    raw_transient = _doc_transient(raw) + 512 * len(selected)
+    # Per-component transient bound for the raw stream parse (PLAN-1013 T-07):
+    # the decoded text (<=4x raw), the parent parser's internal re-decode plus
+    # splitlines list (<=5x raw), and its per-test result index (512x selected,
+    # the unchanged component bound). Per-line strict decodes in the loop below
+    # reserve and release their own exact bound, so they need no headroom here.
+    # This never understates the live set while removing the whole-document
+    # node-count overestimate that priced a ~1 MiB libtest stream at ~26 MiB.
+    raw_transient = 10 * len(raw) + 512 * len(selected) + (1 << 16)
     evidence.reserve(raw_transient - (len(raw) + 1))
     text = raw.decode('utf-8', errors='strict')
     for line in text.splitlines():
