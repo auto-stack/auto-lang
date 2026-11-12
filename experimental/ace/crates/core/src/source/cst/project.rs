@@ -9,6 +9,8 @@
 //!   语法 unsupported）。帧协议：需要 N 个子值的帧先压"汇总帧"，再逆序
 //!   压子任务——子值按文档序留在 Val 栈上，汇总帧弹出组装。
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use super::kinds::SourceKinds;
 use super::lex;
 use crate::atom_text::{Diagnostic, Span, Stage};
@@ -30,20 +32,20 @@ pub(crate) fn project_program(
     snap: &Snapshot,
     profile: SourceProfile,
 ) -> Result<Program, Vec<Diagnostic>> {
-    project_program_with_caps(p, k, tree, snap, profile, false, false)
+    project_program_with_caps(p, k, tree, snap, profile, false)
 }
 
-/// PLAN-935（T-02）：能力感知投影。`instances = true`（统一前门以
-/// `scalar-instances` 裁剪解析时）类型位裸 ident 按声明类型变量投影为
-/// `TypeRef::TyVar`；fn-tail 的 `<T>` 投影为 `FnItem::type_params`。plain
-/// 面与旧路径逐字节同形。
+/// PLAN-935/963（T-02）：能力感知投影。类型位裸 ident 只在拼写命中**当前
+/// 声明**的类型参数表时投影为 `TypeRef::TyVar`（instances 面的 fn 模板与
+/// PLAN-963 的泛型记录成员同一规则）；fn-tail 的 `<T>` 投影为
+/// `FnItem::type_params`，`type Name<T>` 投影为 `TypeItem::type_params`。
+/// plain 面与旧路径逐字节同形。
 pub(crate) fn project_program_with_caps(
     p: &GrammarProgram,
     k: &SourceKinds,
     tree: &CstTree,
     snap: &Snapshot,
     profile: SourceProfile,
-    instances: bool,
     ct_face: bool,
 ) -> Result<Program, Vec<Diagnostic>> {
     // 词法层先行（旧 tokenize 全文件先行的首事实序）。
@@ -52,7 +54,7 @@ pub(crate) fn project_program_with_caps(
     if let Some(d) = lex::first_lex_fact_ct(tree, snap, k, profile, ct_face) {
         return Err(vec![d]);
     }
-    let mut eng = Engine::new(p, k, tree, snap, profile, instances, ct_face);
+    let mut eng = Engine::new(p, k, tree, snap, profile, ct_face);
     let tree_has_errors = tree.has_error_nodes();
     // PLAN-960（T-02）：const/var 模块项 kind（仅 packages-modules 裁剪存在；
     // 其余面无此二规则 = 保持原分派行为）。
@@ -229,9 +231,18 @@ pub(crate) fn project_program_with_caps(
     if let Some(first) = eng.cx.first_diag() {
         return Err(vec![first]);
     }
-    // 空程序区分（旧合同）：无任何非 trivia token → "expected `fn`, found end
-    // of file"（span=EOF）；只有分隔符 token → Ok(empty)。
+    // PLAN-963（T-02）：用户泛型记录类型的语法期单态化（每个使用位都显式
+    // 携带类型实参，无需语义推理）。下游 resolve/HIR/布局/四端只见具体
+    // 记录类型；模板本身从程序中移除。
+    for d in expand_user_generic_types(&mut items) {
+        eng.cx.diags.push((d.span.start as u64, d));
+    }
+    if let Some(first) = eng.cx.first_diag() {
+        return Err(vec![first]);
+    }
     if items.is_empty() {
+        // 空程序区分（旧合同）：无任何非 trivia token → "expected `fn`, found end
+        // of file"（span=EOF）；只有分隔符 token → Ok(empty)。
         let leaves = lex::collect_leaves(tree);
         if leaves.is_empty() {
             let end = snap.len() as usize;
@@ -3275,8 +3286,6 @@ pub(crate) struct Cx<'a> {
     tree: &'a CstTree,
     snap: &'a Snapshot,
     profile: SourceProfile,
-    /// PLAN-935：instances 能力面激活（scalar-instances 裁剪）。
-    instances: bool,
     /// PLAN-936（T-04）：ct 能力面激活（scalar-ct 裁剪）——字符串字面量仅作为
     /// meta 字段选择子进入 AST；值位置由 resolve 受控拒。
     ct_face: bool,
@@ -3453,7 +3462,6 @@ impl<'a> Engine<'a> {
         tree: &'a CstTree,
         snap: &'a Snapshot,
         profile: SourceProfile,
-        instances: bool,
         ct_face: bool,
     ) -> Self {
         Engine {
@@ -3463,7 +3471,6 @@ impl<'a> Engine<'a> {
                 tree,
                 snap,
                 profile,
-                instances,
                 ct_face,
                 ty_params: Vec::new(),
                 visited: 0,
@@ -3557,7 +3564,15 @@ impl<'a> Engine<'a> {
             }
         }
         // fn 投影期间类型变量可见（参数/返回/体内注解位）。
-        self.cx.ty_params = type_params.iter().map(|t| t.name.clone()).collect();
+        // fn 投影期间类型变量可见（参数/返回/体内注解位）。PLAN-963：泛型
+        // 记录的成员方法继承外层声明的类型参数（`Point<T>` 的方法里 `T` 仍
+        // 是类型变量），故与当前作用域取并集而非覆盖。
+        let saved_ty_params = std::mem::take(&mut self.cx.ty_params);
+        self.cx.ty_params = saved_ty_params
+            .iter()
+            .cloned()
+            .chain(type_params.iter().map(|t| t.name.clone()))
+            .collect();
         let params = self.project_params(self.cx.field_child(tail, "params"));
         if receiver == Receiver::View {
             for prm in &params {
@@ -3581,7 +3596,7 @@ impl<'a> Engine<'a> {
         });
         self.enter_block(body_n);
         self.drive();
-        self.cx.ty_params.clear();
+        self.cx.ty_params = saved_ty_params;
         match self.vals.pop() {
             Some(Val::F(f)) => f,
             _ => FnItem {
@@ -3812,10 +3827,11 @@ impl<'a> Engine<'a> {
             _ => {}
         }
         let word = self.cx.spelling(word_leaf);
-        // PLAN-935（T-02）：instances 面类型位裸 ident = 声明类型变量（仅
-        // 当拼写匹配当前函数声明的 `<T>`；同名 record/局部不误绑——scalar
-        // 面无 record，未匹配的 ident 走下方具名拒绝，不猜默认类型）。
-        if self.cx.instances && self.cx.ty_params.iter().any(|t| t == &word) {
+        // PLAN-935（T-02）：instances 面类型位裸 ident = 声明类型变量；PLAN-963
+        // 把同一规则扩到「当前声明带类型参数」的任意面（generic record 的字段/
+        // 方法注解）。仍只在拼写匹配当前声明参数表时成立——同名 record/局部不
+        // 误绑，未匹配的 ident 走下方具名拒绝，不猜默认类型）。
+        if self.cx.ty_params.iter().any(|t| t == &word) {
             return TypeAnn {
                 kind: TypeRef::TyVar(Ident { name: word, span }),
                 span,
@@ -4007,6 +4023,11 @@ impl<'a> Engine<'a> {
     fn run_type_item(&mut self, node: u32) -> TypeItem {
         let name_leaf = self.cx.field_child(node, "name").expect("type name");
         let name = ident_of(&mut self.cx, name_leaf);
+        // PLAN-963（T-02）：声明序类型参数；成员注解投影期间这些名字按类型
+        // 变量（`TypeRef::TyVar`）投影，随后由语法期单态化替换为具体类型。
+        let type_params = self.project_type_params(self.cx.field_child(node, "type_params"));
+        let saved_ty_params = std::mem::take(&mut self.cx.ty_params);
+        self.cx.ty_params = type_params.iter().map(|t| t.name.clone()).collect();
         let mut fields: Vec<FieldDecl> = Vec::new();
         let mut methods: Vec<FnItem> = Vec::new();
         let mut seen: Vec<String> = Vec::new();
@@ -4073,9 +4094,11 @@ impl<'a> Engine<'a> {
                 )
             });
         }
+        self.cx.ty_params = saved_ty_params;
         TypeItem {
             span: self.cx.span_of(node),
             name,
+            type_params,
             fields,
             methods,
         }
@@ -6759,3 +6782,493 @@ fn self_param(span: Span) -> Diagnostic {
         span,
     )
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-963（T-02）：用户泛型记录类型的语法期单态化
+//
+// 每个使用位都显式写出类型实参（`Point<int>`），因此不需要语义推理：按
+// 声明序替换字段/方法注解，合成具体 `TypeItem`（`Point_int`），并移除模板。
+// 下游 resolve/HIR/布局/四端只见具体 nominal 记录——不引入第二套类型系统，
+// 也不让模板 TyVar 抵达 resolve（那会是具名拒绝而非静默回退）。
+// ---------------------------------------------------------------------------
+
+/// 单态化用户泛型记录；无泛型声明时零行为改动。
+fn expand_user_generic_types(items: &mut Vec<Item>) -> Vec<Diagnostic> {
+    let mut templates: BTreeMap<String, TypeItem> = BTreeMap::new();
+    for item in items.iter() {
+        if let Item::Type(t) = item {
+            if !t.type_params.is_empty() {
+                templates.insert(t.name.name.clone(), t.clone());
+            }
+        }
+    }
+    if templates.is_empty() {
+        return Vec::new();
+    }
+    let taken: BTreeSet<String> = items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Type(t) => Some(t.name.name.clone()),
+            _ => None,
+        })
+        .collect();
+    let mut gt = GenericExpand {
+        templates,
+        taken,
+        by_key: BTreeMap::new(),
+        origin: BTreeMap::new(),
+        made: Vec::new(),
+        diags: Vec::new(),
+        depth: 0,
+    };
+    gt.rewrite_program(items);
+    let made = std::mem::take(&mut gt.made);
+    items.retain(|i| match i {
+        Item::Type(t) => t.type_params.is_empty(),
+        _ => true,
+    });
+    for t in made {
+        items.push(Item::Type(t));
+    }
+    gt.diags
+}
+
+struct GenericExpand {
+    templates: BTreeMap<String, TypeItem>,
+    taken: BTreeSet<String>,
+    by_key: BTreeMap<String, String>,
+    /// 合成记录名 → 来源模板名（静态方法接收者换名时校验归属，避免把
+    /// 别的模板的静态调用换成不相干实例）。
+    origin: BTreeMap<String, String>,
+    made: Vec<TypeItem>,
+    diags: Vec<Diagnostic>,
+    depth: usize,
+}
+
+impl GenericExpand {
+    fn rewrite_program(&mut self, items: &mut Vec<Item>) {
+        for item in items.iter_mut() {
+            match item {
+                Item::Fn(f) => self.rewrite_fn(f, false),
+                Item::Type(t) if t.type_params.is_empty() => {
+                    for field in t.fields.iter_mut() {
+                        field.ty = self.ann(&field.ty);
+                    }
+                    for m in t.methods.iter_mut() {
+                        self.rewrite_fn(m, true);
+                    }
+                }
+                Item::Const(c) => {
+                    c.ty = self.ann(&c.ty);
+                    let ty = c.ty.clone();
+                    rename_ctor_for_ann(
+                        &mut c.value,
+                        &ty,
+                        &self.templates,
+                        &self.made,
+                        &self.origin,
+                    );
+                }
+                Item::Store(s) => {
+                    s.ty = self.ann(&s.ty);
+                    let ty = s.ty.clone();
+                    rename_ctor_for_ann(
+                        &mut s.value,
+                        &ty,
+                        &self.templates,
+                        &self.made,
+                        &self.origin,
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn rewrite_fn(&mut self, f: &mut FnItem, method: bool) {
+        let _ = method;
+        for p in f.params.iter_mut() {
+            p.ty = self.ann(&p.ty);
+        }
+        f.ret = self.ann(&f.ret);
+        let ret = f.ret.clone();
+        rename_ctor_in_block_returns(
+            &mut f.body,
+            &ret,
+            &self.templates,
+            &self.made,
+            &self.origin,
+        );
+        self.rewrite_block(&mut f.body);
+    }
+
+    fn rewrite_block(&mut self, b: &mut Block) {
+        for s in b.stmts.iter_mut() {
+            match s {
+                Stmt::Let {
+                    ann, value, ..
+                } => {
+                    if let Some(a) = ann {
+                        let na = self.ann(a);
+                        *a = na;
+                        let ty = a.clone();
+                        rename_ctor_for_ann(
+                            value,
+                            &ty,
+                            &self.templates,
+                            &self.made,
+                            &self.origin,
+                        );
+                    }
+                }
+                Stmt::If {
+                    cond: _,
+                    then,
+                    els,
+                    ..
+                } => {
+                    self.rewrite_block(then);
+                    if let Some(e) = els {
+                        self.rewrite_block(e);
+                    }
+                }
+                Stmt::While { cond: _, body, .. } => self.rewrite_block(body),
+                Stmt::Loop { body, .. } => self.rewrite_block(body),
+                Stmt::ForIn { iter: _, body, .. } => self.rewrite_block(body),
+                Stmt::Hold { body, .. } => self.rewrite_block(body),
+                Stmt::IsMatch { arms, .. } => {
+                    for arm in arms.iter_mut() {
+                        self.rewrite_block(&mut arm.body);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// 重写注解：用户泛型引用 → 具体记录名；内建泛型只递归其参数位。
+    fn ann(&mut self, a: &TypeAnn) -> TypeAnn {
+        match &a.kind {
+            TypeRef::Generic { name, args } => {
+                if self.templates.contains_key(&name.name) {
+                    self.instance(name, args, a.span)
+                } else {
+                    TypeAnn {
+                        kind: TypeRef::Generic {
+                            name: name.clone(),
+                            args: args.iter().map(|x| self.ann(x)).collect(),
+                        },
+                        span: a.span,
+                    }
+                }
+            }
+            TypeRef::Optional(inner) => TypeAnn {
+                kind: TypeRef::Optional(Box::new(self.ann(inner))),
+                span: a.span,
+            },
+            TypeRef::Tuple(elems) => TypeAnn {
+                kind: TypeRef::Tuple(elems.iter().map(|x| self.ann(x)).collect()),
+                span: a.span,
+            },
+            TypeRef::Function { params, result } => TypeAnn {
+                kind: TypeRef::Function {
+                    params: params.iter().map(|x| self.ann(x)).collect(),
+                    result: Box::new(self.ann(result)),
+                },
+                span: a.span,
+            },
+            _ => a.clone(),
+        }
+    }
+
+    fn instance(&mut self, name: &Ident, args: &[TypeAnn], span: Span) -> TypeAnn {
+        let Some(tpl) = self.templates.get(&name.name).cloned() else {
+            return TypeAnn {
+                kind: TypeRef::Record(name.clone()),
+                span,
+            };
+        };
+        if tpl.type_params.len() != args.len() {
+            self.diags.push(Diagnostic::new(
+                Stage::Text,
+                "source.unsupported",
+                format!(
+                    "generic type `{}` takes {} type argument(s), got {}",
+                    name.name,
+                    tpl.type_params.len(),
+                    args.len()
+                ),
+                span,
+            ));
+            return TypeAnn {
+                kind: TypeRef::Record(name.clone()),
+                span,
+            };
+        }
+        let mut concrete = Vec::with_capacity(args.len());
+        let mut spellings = Vec::with_capacity(args.len());
+        for a in args {
+            let c = self.ann(a);
+            match type_spelling(&c) {
+                Some(s) => {
+                    spellings.push(s);
+                    concrete.push(c);
+                }
+                None => {
+                    self.diags.push(Diagnostic::new(
+                        Stage::Text,
+                        "source.unsupported",
+                        "generic type arguments must be `int`/`i32`, `bool` or a declared record type",
+                        a.span,
+                    ));
+                    return TypeAnn {
+                        kind: TypeRef::Record(name.clone()),
+                        span,
+                    };
+                }
+            }
+        }
+        let key = format!("{}<{}>", name.name, spellings.join(","));
+        let mangled = match self.by_key.get(&key) {
+            Some(m) => m.clone(),
+            None => {
+                if self.depth > 8 {
+                    self.diags.push(Diagnostic::new(
+                        Stage::Text,
+                        "source.unsupported",
+                        format!(
+                            "recursive generic type expansion for `{}` exceeds its bound",
+                            name.name
+                        ),
+                        span,
+                    ));
+                    return TypeAnn {
+                        kind: TypeRef::Record(name.clone()),
+                        span,
+                    };
+                }
+                let base = format!("{}_{}", name.name, spellings.join("_"));
+                let mut candidate = base.clone();
+                let mut n = 2usize;
+                while self.taken.contains(&candidate) {
+                    candidate = format!("{base}__{n}");
+                    n += 1;
+                }
+                self.taken.insert(candidate.clone());
+                self.by_key.insert(key, candidate.clone());
+                self.origin.insert(candidate.clone(), name.name.clone());
+                let subst: BTreeMap<String, TypeAnn> = tpl
+                    .type_params
+                    .iter()
+                    .zip(concrete.iter())
+                    .map(|(p, t)| (p.name.clone(), t.clone()))
+                    .collect();
+                self.depth += 1;
+                let mut fields = Vec::with_capacity(tpl.fields.len());
+                for f in &tpl.fields {
+                    let sub = subst_ty(&f.ty, &subst);
+                    fields.push(FieldDecl {
+                        name: f.name.clone(),
+                        ty: self.ann(&sub),
+                        span: f.span,
+                    });
+                }
+                let mut methods = Vec::with_capacity(tpl.methods.len());
+                for m in &tpl.methods {
+                    let mut g = m.clone();
+                    // 先按声明序替换（参数/返回/局部注解），再走与普通函数
+                    // 相同的注解解析+构造换名：方法体内的 `Point { .. }`
+                    // （返回类型已具体化）同样必须换成合成实例名。
+                    for p in g.params.iter_mut() {
+                        p.ty = subst_ty(&p.ty, &subst);
+                    }
+                    g.ret = subst_ty(&g.ret, &subst);
+                    subst_block_lets(&mut g.body, &subst);
+                    self.rewrite_fn(&mut g, true);
+                    methods.push(g);
+                }
+                self.depth -= 1;
+                self.made.push(TypeItem {
+                    name: Ident {
+                        name: candidate.clone(),
+                        span,
+                    },
+                    type_params: Vec::new(),
+                    fields,
+                    methods,
+                    span: tpl.span,
+                });
+                candidate
+            }
+        };
+        TypeAnn {
+            kind: TypeRef::Record(Ident {
+                name: mangled,
+                span,
+            }),
+            span,
+        }
+    }
+}
+
+fn type_spelling(a: &TypeAnn) -> Option<String> {
+    match &a.kind {
+        TypeRef::Builtin(TypeWord::Int) | TypeRef::Builtin(TypeWord::I32) => Some("int".into()),
+        TypeRef::Builtin(TypeWord::Bool) => Some("bool".into()),
+        TypeRef::Record(id) => Some(id.name.clone()),
+        _ => None,
+    }
+}
+
+/// 声明序替换：类型参数名 → 具体类型（递归全部类型形状）。
+fn subst_ty(a: &TypeAnn, subst: &BTreeMap<String, TypeAnn>) -> TypeAnn {
+    match &a.kind {
+        TypeRef::TyVar(id) => match subst.get(&id.name) {
+            Some(t) => t.clone(),
+            None => a.clone(),
+        },
+        TypeRef::Optional(inner) => TypeAnn {
+            kind: TypeRef::Optional(Box::new(subst_ty(inner, subst))),
+            span: a.span,
+        },
+        TypeRef::Generic { name, args } => TypeAnn {
+            kind: TypeRef::Generic {
+                name: name.clone(),
+                args: args.iter().map(|x| subst_ty(x, subst)).collect(),
+            },
+            span: a.span,
+        },
+        TypeRef::Tuple(elems) => TypeAnn {
+            kind: TypeRef::Tuple(elems.iter().map(|x| subst_ty(x, subst)).collect()),
+            span: a.span,
+        },
+        TypeRef::Function { params, result } => TypeAnn {
+            kind: TypeRef::Function {
+                params: params.iter().map(|x| subst_ty(x, subst)).collect(),
+                result: Box::new(subst_ty(result, subst)),
+            },
+            span: a.span,
+        },
+        _ => a.clone(),
+    }
+}
+
+fn subst_block_lets(b: &mut Block, subst: &BTreeMap<String, TypeAnn>) {
+    for s in b.stmts.iter_mut() {
+        match s {
+            Stmt::Let { ann, .. } => {
+                if let Some(a) = ann {
+                    *a = subst_ty(a, subst);
+                }
+            }
+            Stmt::If { then, els, .. } => {
+                subst_block_lets(then, subst);
+                if let Some(e) = els {
+                    subst_block_lets(e, subst);
+                }
+            }
+            Stmt::While { body, .. } => subst_block_lets(body, subst),
+            Stmt::Loop { body, .. } => subst_block_lets(body, subst),
+            Stmt::ForIn { body, .. } => subst_block_lets(body, subst),
+            Stmt::Hold { body, .. } => subst_block_lets(body, subst),
+            Stmt::IsMatch { arms, .. } => {
+                for arm in arms.iter_mut() {
+                    subst_block_lets(&mut arm.body, subst);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// 注解已具体化为 `Record` 时，把该位置的直接构造 `Point { .. }` 重命名为
+/// 具体实例名（模板名在单态化后不存在）；`Point.mk(..)` 这类模板**静态方法**
+/// 接收者同样按注解换成同一实例（仅当该实例确由该模板合成）。字段值再按
+/// 具体记录声明的字段类型递归处理（`Pair { a: 1, b: Box { .. } }` 的内层
+/// 构造同样要换名）。
+fn rename_ctor_for_ann(
+    value: &mut Expr,
+    ann: &TypeAnn,
+    templates: &BTreeMap<String, TypeItem>,
+    made: &[TypeItem],
+    origin: &BTreeMap<String, String>,
+) {
+    let TypeRef::Record(id) = &ann.kind else {
+        return;
+    };
+    match &mut value.kind {
+        ExprKind::CtorNamed { ty, fields } => {
+            if templates.contains_key(&ty.name) {
+                ty.name = id.name.clone();
+                ty.span = id.span;
+            }
+            if ty.name != id.name {
+                return;
+            }
+            let Some(item) = made.iter().find(|t| t.name.name == id.name) else {
+                return;
+            };
+            for init in fields.iter_mut() {
+                if let Some(decl) = item.fields.iter().find(|f| f.name.name == init.name.name) {
+                    let decl_ty = decl.ty.clone();
+                    rename_ctor_for_ann(&mut init.value, &decl_ty, templates, made, origin);
+                }
+            }
+        }
+        ExprKind::Method { recv, .. } | ExprKind::MethodCall { recv, .. } => {
+            let ExprKind::Var(v) = &mut recv.kind else {
+                return;
+            };
+            if !templates.contains_key(&v.name) {
+                return;
+            }
+            if origin.get(&id.name).map(String::as_str) != Some(v.name.as_str()) {
+                return;
+            }
+            v.name = id.name.clone();
+            v.span = id.span;
+        }
+        _ => {}
+    }
+}
+
+fn rename_ctor_in_block_returns(
+    b: &mut Block,
+    ret: &TypeAnn,
+    templates: &BTreeMap<String, TypeItem>,
+    made: &[TypeItem],
+    origin: &BTreeMap<String, String>,
+) {
+    for s in b.stmts.iter_mut() {
+        match s {
+            Stmt::Return { value, .. } => {
+                rename_ctor_for_ann(value, ret, templates, made, origin)
+            }
+            Stmt::If { then, els, .. } => {
+                rename_ctor_in_block_returns(then, ret, templates, made, origin);
+                if let Some(e) = els {
+                    rename_ctor_in_block_returns(e, ret, templates, made, origin);
+                }
+            }
+            Stmt::While { body, .. } => {
+                rename_ctor_in_block_returns(body, ret, templates, made, origin)
+            }
+            Stmt::Loop { body, .. } => {
+                rename_ctor_in_block_returns(body, ret, templates, made, origin)
+            }
+            Stmt::ForIn { body, .. } => {
+                rename_ctor_in_block_returns(body, ret, templates, made, origin)
+            }
+            Stmt::Hold { body, .. } => {
+                rename_ctor_in_block_returns(body, ret, templates, made, origin)
+            }
+            Stmt::IsMatch { arms, .. } => {
+                for arm in arms.iter_mut() {
+                    rename_ctor_in_block_returns(&mut arm.body, ret, templates, made, origin);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+

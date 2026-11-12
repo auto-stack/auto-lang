@@ -68,6 +68,8 @@ mod source_cst_927;
 mod source_ct_936;
 #[path = "cases/source_dependency_edits_941.rs"]
 mod source_dependency_edits_941;
+#[path = "cases/source_generics_963.rs"]
+mod source_generics_963;
 #[path = "cases/source_instances_935.rs"]
 mod source_instances_935;
 #[path = "cases/source_positions_941.rs"]

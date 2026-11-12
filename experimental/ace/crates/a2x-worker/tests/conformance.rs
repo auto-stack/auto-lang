@@ -42,6 +42,8 @@ mod cert_json_951;
 mod cert_rt_902;
 #[path = "cases/choose_instances_935.rs"]
 mod choose_instances_935;
+#[path = "cases/generic_records_963.rs"]
+mod generic_records_963;
 #[path = "cases/coll_manifest_oracle_933.rs"]
 mod coll_manifest_oracle_933;
 #[path = "cases/collections_904.rs"]

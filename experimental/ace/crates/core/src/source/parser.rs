@@ -1014,6 +1014,9 @@ impl<'s> Parser<'s> {
         Ok(TypeItem {
             span: kw.join(rb),
             name,
+            // PLAN-963：旧 parser 面不解析记录类型参数（`type Point<T>` 由
+            // CST 投影 + 语法期单态化承载）。
+            type_params: Vec::new(),
             fields,
             methods,
         })

@@ -317,14 +317,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-935（T-03）：约束/const 形状（`<T has Bound>` / `<const N>`
         // ——词法上都是 ident ident）语法可识别、投影具名拒——不能当普通
         // token 跳过。
-        type-params(profiles: [scalar-instances, scalar-ct, packages-modules]) {
+        type-params(profiles: [scalar-instances, scalar-ct, packages-modules, record, aggregates]) {
             lt() {}
             type-param() {}
             many { type-param-tail() {} }
             gt() {}
         }
-        type-param-tail(profiles: [scalar-instances, scalar-ct, packages-modules]) { comma() {} type-param() {} }
-        type-param(profiles: [scalar-instances, scalar-ct, packages-modules]) {
+        type-param-tail(profiles: [scalar-instances, scalar-ct, packages-modules, record, aggregates]) { comma() {} type-param() {} }
+        type-param(profiles: [scalar-instances, scalar-ct, packages-modules, record, aggregates]) {
             alt { ident(field: "name") opt(profiles: [scalar-instances, scalar-ct]) { type-param-constraint(field: "constraint") } }
             // `<const N>`（r-const 保留词形状；投影具名拒）
             alt { r-const(field: "const_kw") {} ident(field: "name") }
@@ -358,7 +358,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [numeric, aggregates]) { f32-kw(field: "word") }
             alt(profiles: [numeric, aggregates]) { double-kw(field: "word") }
             alt(profiles: [numeric, aggregates]) { f64-kw(field: "word") }
-            alt(profiles: [collections, closures, numeric, aggregates]) { generic-ty(field: "generic") }
+            alt(profiles: [record, collections, closures, numeric, aggregates]) { generic-ty(field: "generic") }
             alt(profiles: [collections, closures, numeric, aggregates]) { optional-ty(field: "optional") }
             alt(profiles: [text, text-record, host-console, record, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, numeric, aggregates]) { ident(field: "word") }
             alt(profiles: [closures, numeric, aggregates]) { fn-type(field: "fn") }
@@ -381,7 +381,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [numeric, aggregates]) { f32-kw(field: "word") }
             alt(profiles: [numeric, aggregates]) { double-kw(field: "word") }
             alt(profiles: [numeric, aggregates]) { f64-kw(field: "word") }
-            alt(profiles: [collections, closures, numeric, aggregates]) { generic-ty(field: "generic") }
+            alt(profiles: [record, collections, closures, numeric, aggregates]) { generic-ty(field: "generic") }
             alt(profiles: [collections, closures, numeric, aggregates]) { optional-ty(field: "optional") }
             alt(profiles: [text, text-record, host-console, record, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, numeric, aggregates]) { ident(field: "word") }
             alt(profiles: [closures, numeric, aggregates]) { fn-type(field: "fn") }
@@ -407,15 +407,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-928（T-03）：参数化名义类型 `List<T>` / `Result<T, E>`（类型位；
         // 嵌套类型实参允许——`List<List<int>>` 域约束归 resolve）。
-        generic-ty(profiles: [collections, closures, numeric, aggregates]) {
+        // PLAN-963（T-02）：record 面加入该形状——用户泛型记录 `Point<int>`
+        // 的每个使用位都显式写类型实参，由语法期单态化替换为具体记录。
+        generic-ty(profiles: [record, collections, closures, numeric, aggregates]) {
             ident(field: "name")
             lt() {}
             type-args(field: "args")
             gt() {}
         }
-        type-args(profiles: [collections, closures, numeric, aggregates]) { type-arg() {} many { type-arg-tail() {} } }
-        type-arg-tail(profiles: [collections, closures, numeric, aggregates]) { comma() {} type-arg() {} }
-        type-arg(profiles: [collections, closures, numeric, aggregates]) {
+        type-args(profiles: [record, collections, closures, numeric, aggregates]) { type-arg() {} many { type-arg-tail() {} } }
+        type-arg-tail(profiles: [record, collections, closures, numeric, aggregates]) { comma() {} type-arg() {} }
+        type-arg(profiles: [record, collections, closures, numeric, aggregates]) {
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
@@ -431,7 +433,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [numeric, aggregates]) { double-kw(field: "word") }
             alt(profiles: [numeric, aggregates]) { f64-kw(field: "word") }
             alt { generic-ty(field: "generic") }
-            alt { optional-ty(field: "optional") }
+            // PLAN-963（T-02）：`?T` 仍只在集合族面（record 面只放开泛型
+            // 类型应用——用户泛型记录的唯一新形状）。
+            alt(profiles: [collections, closures, numeric, aggregates]) { optional-ty(field: "optional") }
             alt { ident(field: "word") }
         }
         // PLAN-928（T-03）：`?T` 可选糖（Option<T> 名义变体）。
@@ -498,6 +502,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         type-item(recover: true, profiles: [record, text-record, collections, scalar-ct, packages-modules, aggregates]) {
             type-kw(field: "kw")
             ident(field: "name")
+            // PLAN-963（T-02）：用户泛型记录 `type Point<T> { x T; y T }`
+            // （仅 record/aggregates 面；投影按声明序投影参数表，随后语法期
+            // 单态化为具体记录类型）。
+            opt(profiles: [record, aggregates]) { type-params(field: "type_params") }
             lbrace() {}
             list-nl { member() {} }
             rbrace() {}

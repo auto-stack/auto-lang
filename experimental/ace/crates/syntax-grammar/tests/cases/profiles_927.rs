@@ -7,7 +7,7 @@ use ace_syntax_grammar::{compile, compile_profile, declared_profiles};
 
 const SOURCE: &str = include_str!("../../../../grammars/auto-source.at");
 
-const NINE: &[&str] = &[
+const DECLARED: &[&str] = &[
     "core",
     "scalar",
     "text",
@@ -42,13 +42,13 @@ const NINE: &[&str] = &[
 #[test]
 fn profiles_declared_set_is_exact() {
     let names = declared_profiles(SOURCE).expect("declared profiles");
-    assert_eq!(names, NINE);
+    assert_eq!(names, DECLARED);
 }
 
 #[test]
 fn profiles_compile_all_and_ids_isolate() {
     let mut ids = Vec::new();
-    for p in NINE {
+    for p in DECLARED {
         let prog = compile_profile(SOURCE, p).expect(p);
         assert_eq!(prog.name, format!("auto-source/{p}"), "{p} program name");
         assert!(!prog.rules.is_empty(), "{p} rules");
@@ -58,7 +58,7 @@ fn profiles_compile_all_and_ids_isolate() {
     let mut sorted = ids.clone();
     sorted.sort();
     sorted.dedup();
-    assert_eq!(sorted.len(), NINE.len(), "grammar ids must be distinct");
+    assert_eq!(sorted.len(), DECLARED.len(), "grammar ids must be distinct");
 }
 
 #[test]
@@ -88,6 +88,25 @@ fn profiles_trim_core_wide_ops_and_while_swap() {
     let entry_rules: Vec<&str> = entry.rules.iter().map(|r| r.name.as_str()).collect();
     assert!(entry_rules.contains(&"script-item"));
     assert!(!record_rules.contains(&"script-item"));
+}
+
+/// PLAN-963（T-02）：record 面新开泛型类型应用（`Point<int>` 使用位），
+/// 但 `?T` 仍只在集合族面——新形状只到"显式类型实参"为止。
+#[test]
+fn profiles_record_opens_generic_ty_only() {
+    let record = compile_profile(SOURCE, "record").expect("record");
+    let record_rules: Vec<&str> = record.rules.iter().map(|r| r.name.as_str()).collect();
+    assert!(record_rules.contains(&"generic-ty"));
+    assert!(record_rules.contains(&"type-args"));
+    assert!(record_rules.contains(&"type-arg"));
+    assert!(!record_rules.contains(&"optional-ty"));
+    let collections = compile_profile(SOURCE, "collections").expect("collections");
+    let collections_rules: Vec<&str> = collections
+        .rules
+        .iter()
+        .map(|r| r.name.as_str())
+        .collect();
+    assert!(collections_rules.contains(&"optional-ty"));
 }
 
 #[test]

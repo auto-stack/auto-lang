@@ -184,6 +184,8 @@ mod resource_events_919;
 mod assembly_944;
 #[path = "cases/choose_instances_935.rs"]
 mod choose_instances_935;
+#[path = "cases/generic_records_963.rs"]
+mod generic_records_963;
 #[path = "cases/module_packages_960.rs"]
 mod module_packages_960;
 #[path = "cases/module_sources_950.rs"]

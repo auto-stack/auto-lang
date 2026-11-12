@@ -4,6 +4,8 @@ mod aggregates_codegen_tier;
 mod cache_tier;
 #[path = "cases/choose_instances_935.rs"]
 mod choose_instances_935;
+#[path = "cases/generic_records_963.rs"]
+mod generic_records_963;
 #[path = "cases/cli.rs"]
 mod cli;
 #[path = "cases/closures_compat.rs"]

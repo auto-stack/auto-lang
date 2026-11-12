@@ -169,6 +169,11 @@ pub struct FieldDecl {
 #[derive(Clone, Debug)]
 pub struct TypeItem {
     pub name: Ident,
+    /// PLAN-963 (T-02): declaration-order type parameters of a **generic user
+    /// record** (`type Point<T>`). Empty for ordinary records. Templates are
+    /// monomorphized at projection time (explicit type arguments at every
+    /// use), so no synthesized `TypeItem` reaching resolve carries these.
+    pub type_params: Vec<Ident>,
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<FnItem>,
     /// `type` keyword through the closing brace.

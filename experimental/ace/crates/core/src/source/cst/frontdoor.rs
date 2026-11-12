@@ -897,7 +897,6 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
         &tree,
         &snap,
         profile,
-        true,
         ct,
     ) {
         Ok(program) => FrontOutcome::Ok(FrontOk {
