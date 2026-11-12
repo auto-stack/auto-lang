@@ -1,6 +1,17 @@
+### D-1015-UI-ADD — 013静态生成AddTodo输入未同步（2026-11-12，M2 AutoUI修复项，开放）
+
+- owner：auto-ui源/生成器域；依据[1015归档§10.5](archive/1015-split-refactor-closeout-supplement-and-contract-alignment.md#10-待澄清事项)所记用户裁定“回owner修复后消费”。1015有限完成/两债关闭不等该生产能力实现。
+- 阶段裁定（2026-11-12）：用户同意在不影响M1的前提下移至M2。按1015已接受的具名交付边界，本项**不阻拆分重构M1收口，也不单独阻联合v0.6-M1标签**；M1支持清单明确013静态生成AddTodo未交付，其他领域签章/来源门保持。
+- M1收口交接：用户已据上述M2安排确认进入本路线M1收尾；范围/正式源/实际验收/限制与联合待办见[M1收口记录](reports/split-refactor-m1-closeout-2026-11-12.md)。此记录不把本缺口改为已实现，也不新增实施Plan。
+- 排期：列入v0.6 M2阶段的AutoUI有界生产修复待办；尚无正式实施Plan，本轮不取号、不施工，不默认交给某个ACE/AGE计划。M2交付前须按下述条件真实关闭，或由用户另行明确裁定，不能仅持续转交owner。
+- 现象：生成Rust中的App.input与TodoStore.input分离，真实type→submit不能使列表增长；scope oninput→store.SetInput方向探针可恢复，但未正式落地。Vue同形分离只是静态观察，未冒交互测试结论。
+- 下一步（M2）：先核源显式绑定/生成语义责任，再认领有限生产合同；不得按同名字段擅作全局共享或破坏组件/Store隔离。当前UI在途计划未找到已认领此缺口的正式合同，本轮不取号/实施。
+- 关闭条件：正式修复交付与源/工具身份可核，013 Rust交付A/B/恢复A各真实添加唯一marker→列表+1→勾选/可见状态读回；共享触面才选对应VM/Vue验证。代码方向探针/已写债务不代正式交付。
+- 边界：按1015记录与本轮阶段裁定，本路线M1不等该修复；M2或其他候选若声明完整AddTodo，先满足上述关闭条件。1006/989/1015归档不重开，不自行扩大标签支持。
+
 ### D-989-CLOSE-01 — UI恢复业务/013对象漏验（2026-11-12，本轮复核待闭；**已关闭 2026-11-12，PLAN-1015**）
 
-- owner：[PLAN-1015 r1](1015-split-refactor-closeout-supplement-and-contract-alignment.md)（drafting0/9）/ 路线交付核查协调者 / auto-ui delivery。
+- owner：[PLAN-1015 r1](archive/1015-split-refactor-closeout-supplement-and-contract-alignment.md)（archived9/9）/ 路线交付核查协调者 / auto-ui delivery。
 - 来源：[状态复核F-989-CLOSE-01](reports/split-refactor-closeout-status-audit-2026-11-12.md#f-989-close-01ui恢复业务断言及013对象缺证)、归档989最终review/merge、RC-UI-01原合同。1006/989已正式归档，989已签ready；本项不回退终态。
 - 事实：Counter业务值断言未执行、013-todo包对未跑；930窗口/VM协议与Rust uiminimal包对不能代全部原业务断言。已披露限制但本轮未找到对应用户免除/补验关闭证据。
 - 关闭合同：1015 AC-01/02/03/06，T-01～03/06及V-01～05/10～13；两对象各旧/新/恢复业务/资源必须齐。当前仅立约，不算关闭。
@@ -9,7 +20,7 @@
 
 ### D-989-CLOSE-02 — RQ恢复旧包来源与合同不同（2026-11-12，待确认；**已关闭 2026-11-12，PLAN-1015**）
 
-- owner：[PLAN-1015 r1](1015-split-refactor-closeout-supplement-and-contract-alignment.md)（drafting0/9）/ OS装配 / 路线交付核查协调者，UI/语言提供协议与版本适用性。
+- owner：[PLAN-1015 r1](archive/1015-split-refactor-closeout-supplement-and-contract-alignment.md)（archived9/9）/ OS装配 / 路线交付核查协调者，UI/语言提供协议与版本适用性。
 - 来源：[状态复核F-989-CLOSE-02](reports/split-refactor-closeout-status-audit-2026-11-12.md#f-989-close-02rq旧包来源与冻结合同不同需闭合来源适用性)、989最终Spec与RC-RQ-01合同。
 - 事实：演练为O-RQ/U-C/L-C/M-BASE合成旧组→N，合同要求O-RQ/U-RQ/L-RQ/M-BASE。已有10/10是真实该组合证据；“差异更大”不能自动证明指定组合已验。
 - 关闭合同：1015 AC-01/04/05/06、T-04/05/06及V-01/06～14，优先实测指定旧组→N两Host。当前仅立约，不算关闭。
@@ -4199,6 +4210,16 @@ owner=PLAN-917 域（a2r_std 发射条件变化 vs 917 T-05 冻结金样）。�
 - 候选/owner：测试预算治理 / auto-generation-core。
 - 现象：PLAN-1014 正式 `cargo t all`（@82fc90f86，4524 例）中 `auto-generation-core::plan988_byte_consumers::plan988_source_bytes_compile_run_and_preserve_rejected_targets` 于 121.3s 被 slow-timeout（60s 警告/120s 终止）终结；**功能绿**——直跑串行 119.25s 全部子例断言 PASS。@1005 门内同预算下曾通过；本门总负载随 auto-lang-core 1602 例解封而增大，该编译农场测试天然贴预算边。
 - 关闭条件：预算裁定（该具名测试的 slow-timeout override 或整体预算审议——属门配置变更，须 owner/用户裁定，不随单计划顺手改）或测试拆分/瘦身（auto-generation-core owner）。PLAN-1014 未改该测试与预算配置。
+- **阶段裁定（2026-11-12，用户确认移至M2）**：列入M2公共测试成本/预算治理，owner仍为auto-generation-core/测试预算维护者。目前不是ACE M1/1013前置，不给1013新增修复phase；此项验证旧VM与Rust生成字节消费者，整项120秒测试超时不等同ACE M1自身周转预算失败。若后续证据显示共享路径影响M1 required，按实际影响恢复阻断；M1原required/独立审计/签前来源门不减少。
+- **最新复测**：主线`d1ee64099`原配置正式`cargo t all`执行4524项，本测试120.1504676秒被time limit exceeded终止；收据提交`8a0d2101d`，见[回归收据](.last-batch-regression.json)。本轮未单跑、未调超时或改源码；历史119.25秒直跑功能绿不替代本次全量失败。状态仍OPEN，M2须保原样本/字节及拒绝后文件保全断言，以有界成本修复或明确预算裁定闭合，不能以skip/ignore/无依据NA消红。
+
+### D-1014-P707-CANCEL — 旧VM HTTP managed job取消断言间歇失败（2026-11-12，M2待修，开放）
+
+- owner：语言旧VM `async_http`取消/测试维护者。关联新引擎迁移时968/974的取消核验，但本轮不自动扩既有Plan任务/验收，也不以未来ACE替换代替旧producer实际关闭证据。
+- 事实：`auto-lang::auto_lang$tests::plan707_spike_tests::plan707_spike_cancel_gap_active_job_future_not_stopped`在主线`d1ee64099`全量复测中2.1243835秒失败，`plan707_spike_tests.rs:66`报告cancel后job future仍被gate唤醒推进；与1014首轮`run-nzdol092`的同名测试/断言/消息一致。858及916批量历史已记录同族现象；历史全绿或“时序族”不豁免本轮红，生产取消竞态与测试时序责任尚未最终判根因。
+- **阶段裁定（用户确认）**：列为M2旧VM兼容遗留修复，不单独阻ACE M1/1013。这是旧VM HTTP managed job链，不替代M1的ACE查询/编译候选/资源取消义务，后者仍由1013按原required验收；若共享故障路径实际影响M1，按证据恢复对应阻断。
+- 关闭条件：先对齐取消合同和真实entered/cancel/gate/abort/late-result顺序，给区分性正反控；支持域内取消后不再推进、迟到结果丢弃、资源收敛成立，相关完整职责组与正式门验证有效。不得以增加sleep、删断言或忽略测试充修复。M2收口前有界修复交付或另有明确裁定；本轮仅记排期，未新建实施Plan/施工。
+- 来源/保留：两项最新结果、源/配置/终态和具名材料持有均在[回归收据](.last-batch-regression.json)及`D:/autostack/plan-artifacts/batch-regression-1014-recheck-20261112-122027/`。全仓结果继续为`known-reds-only / gate_passed=false`，不改PASS/NA，也不改写1014原全绿验收尚未满足的历史。
 
 ### D-1001-R4 — retention registry 未登记用户持有 fix-cache-governance-20261110（2026-11-10，开放）
 
@@ -4236,3 +4257,11 @@ owner=PLAN-917 域（a2r_std 发射条件变化 vs 917 T-05 冻结金样）。�
 - **D-1003-C6 — 交付有效调试值无永久控制**：移根包内成员/非成员实际 debuginfo 值仅有 1003 手工 `cargo build -v` 证据；`scripts/tests/test_generated_delivery_controls.py` 未扩展。owner：generated-delivery 控制。
 - **D-1003-C7 — 安装 SDK producer 形态未随 1003 实测**：策略块写入与 producer 形态无关（同一 ensure），但 InstalledSdk 上下文（`<ws>/target`）未做真实构建取证。
 - **D-1003-C8 — auto-man `Cargo.lock` 相对 auto-lang master 漂移**：组内构建会改写其锁（+38 行），表明主分支锁未随语言仓新增依赖更新。owner：auto-man。
+
+### PLAN-962 复审登记的候选债（2026-11-12；962 交付内具名未闭项，非静默延后）
+
+- **D-962-C1 — 位置式索引读 `xs[i]`（表达式位）**：CST stmt/postfix 列表分派按 FIRST 集提交备选，新头 token 的备选提交机制未定（裸 `hold` 同根因）。读面由 `.get(i)` 全覆盖（具名裁定）；写位 `xs[i] = v` 已交付。owner：后续 ACE 语法机制计划。关闭：FIRST 提交机制定位后补裸拼写（hold/索引读同修）。
+- **D-962-C2 — 递归 Box 的 collections-unit 车道**：环类型表无法经 unit-split 不动点局部化（`unresolved type closure`）；AV 端执行 ✓、lowering（名称规范化+不透明门控两阶段）✓；native collections 发射车道需环形单元表示。owner：ACE native collections 单元分裂。关闭：unit-local 环表示（或按类型表整体驻留）落地并 emit 验证。
+- **D-962-C3 — C provider 的 tuple 调用实参**：cl C2440（record ABI 传 const-rec 指针；ctor 临时需取址）。Rust provider 已过（单元⑥）。owner：a2x-c lower 临时物化。关闭：`sum((20,22))` 形经 cl 执行 42。
+- **D-962-C4 — List 局部 use-after-move 不拒**：`k.move` 后 `k.get(1)` 在 collections 族编译通过（冻结既有行为，collections 面逐字节同态）；V-08 非法邻改用视图物化拒（执法中）。owner：collections resolve 所有权失效。关闭：`source.use-after-move`（或等价）落地且冻结面同步裁定。
+- **D-962-C5 — 杂项诊断拼写**：grid 混列拒在 bind 层（dangling t_str）而非 `source.type-mismatch`；空数组字面量语法层拒（resolve 检查为纵深）；range 界需空格（affix-num 最长匹配）。owner：SD-01 后继 polish。
