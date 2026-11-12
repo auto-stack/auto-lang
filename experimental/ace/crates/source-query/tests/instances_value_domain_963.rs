@@ -9,8 +9,8 @@
 
 use ace_core::source::cst::INSTANCES_CAPABILITY;
 use ace_source_query::{
-    compile_record_product, compile_text_record_product, CompileLane, InstanceRecord, InstanceTy,
-    ProductCompile, SourceQuerySession,
+    compile_record_product, compile_text_record_product, decode_instance_page, encode_instance_page,
+    CompileLane, InstancePage, InstanceRecord, InstanceTy, ProductCompile, SourceQuerySession,
 };
 
 const PKG: &str = "plan963vd";
@@ -324,4 +324,37 @@ fn main() int {
             .any(|d| d.contains("missing: b") || d.contains("`b`")),
         "拒绝须点名缺失字段: {ds:#?}"
     );
+}
+
+/// V-G01：实例页 codec v3 往返保留文本/记录实参（类型码 + 记录名），且
+/// 记录名被截断时按截断拒——不把旧长度当新布局重释。
+#[test]
+fn vg01_page_codec_v3_carries_text_and_record_args() {
+    let rec = ok(RECORD_ARG);
+    let page = InstancePage::from(&rec.instances[0]);
+    let bytes = encode_instance_page(&page).expect("encode v3 record arg");
+    assert_eq!(
+        decode_instance_page(&bytes).expect("decode v3 record arg"),
+        page,
+        "记录实参往返（含记录名）"
+    );
+    // 记录名块截断：不得解出别的记录或静默补齐。
+    for cut in 1..=3 {
+        let mut bad = bytes.clone();
+        bad.truncate(bytes.len() - cut);
+        assert!(
+            decode_instance_page(&bad).is_err(),
+            "记录名截断 {cut} 字节必须拒，不得重释"
+        );
+    }
+
+    let text = text_record(TEXT_ARG).expect("text instance");
+    let tpage = InstancePage::from(&text.instances[0]);
+    let tbytes = encode_instance_page(&tpage).expect("encode v3 text arg");
+    assert_eq!(
+        decode_instance_page(&tbytes).expect("decode v3 text arg"),
+        tpage,
+        "文本实参往返"
+    );
+    assert_eq!(tpage.args[0].1, InstanceTy::Text);
 }
