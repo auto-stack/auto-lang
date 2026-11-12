@@ -378,3 +378,43 @@ fn main() int {
     );
 }
 
+/// O-963-18：泛型记录 × spec 组合——遵从列表随单态化复制到每个合成实例，
+/// 抽象方法按替换后的具体签名核验（T-02 × T-03 交叉面）。
+#[test]
+fn spec_on_generic_record_963() {
+    let src = "\
+spec Summable { fn total() int }
+type Pair<T> as Summable { a T
+    b T
+    fn total() int { return .a + .b }
+}
+fn main() int {
+    let p Pair<int> = Pair { a: 1, b: 2 }
+    return p.total()
+}
+";
+    compile(src).expect("generic record conformance compiles per instance");
+}
+
+/// O-963-19：泛型实例缺抽象方法 → 同一条具名拒（遵从检查不因模板而放宽）。
+#[test]
+fn spec_on_generic_record_missing_method_963() {
+    let src = "\
+spec Summable { fn total() int }
+type Pair<T> as Summable { a T
+    b T
+}
+fn main() int {
+    let p Pair<int> = Pair { a: 1, b: 2 }
+    return p.a
+}
+";
+    let err = compile(src).expect_err("synthesized instance must satisfy the spec");
+    assert!(
+        err.iter().any(|d| d.code == "source.unsupported"
+            && d.message.contains("does not implement")
+            && d.message.contains("total")),
+        "expected named missing-method rejection on the synthesized instance, got {err:?}"
+    );
+}
+
