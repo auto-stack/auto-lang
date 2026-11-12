@@ -1,0 +1,362 @@
+---
+plan_id: PLAN-963
+status: executing
+feature_name: 通用泛型spec与方法实例化
+author: [Codex]
+created_at: 2026-11-06
+updated_at: 2026-11-12
+plan_revision: 5
+current_step: 0
+total_steps: 8
+depends_on: [PLAN-960, PLAN-962, PLAN-935]
+supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
+new_spec_components: [docs/specs/ace-migration/m2-generics.md]
+touched_goals: [GOAL-002]
+---
+
+# [PLAN-963] 通用泛型spec与方法实例化
+
+## 0. 变更摘要
+
+2026-11-12 r5：补齐原稿缺少的具体Auto语法/正反例、类型与模块设计、旧VM/A2R用例到新四端检查的映射。保原8任务/全部原AC与V/依赖及drafting零进度。T-01冻结下列具名未决项，不再把全部设计推给实施者临场发明。本轮只改计划，不实现/建树/生成fixture/运行测试。
+
+历史修订：2026-11-10 r4当前执行版：M2-A。本轮把阶段安排落实到本Plan的开工前置、执行顺序和A/B交接；原任务/AC/范围保留，所有任务仍未执行。以§5的最小接口和§8的分阶段清单为准，不按后文历史轮次的旧总顺序施工。
+
+历史修订：2026-11-09 r3当前：用户正式拆M2为A语言/新库完善、B全产品替换；本包归属**M2-A**，以§5阶段合同为当前启动/验收边界。旧日期范围/义务不删，所有任务仍未执行；仅规划，不授权施工。
+
+从935有限标量模板扩到真实类型/值参数、约束spec、ext、alias、方法接收者、跨模块实例与重载规则；共享实例图承载语义身份，目标缓存独立，递归实例检测与预算不冒语法限制。
+
+设计与路线：[Design55](../design/55-ace-m2-complete-language-and-product-replacement.md)、[M2执行路线](../design/strategy/ace-m2-delivery-roadmap.md)。本包是拟议执行合同，非已实现声明。
+
+## 1. 目标
+
+交付上节完整职责面并保留原源、原已支持行为与真实消费者；禁止用窄profile、typed fixture、emit-only或旧实现fallback冒充产品支持。
+非目标：本包之外的新语言设想、AACE自举、任意新平台、无边界全生态桥接。其他包的责任不作为本包完成声明。
+
+## 2. 架构方案
+
+整包最终依赖以frontmatter为准；局部A的启动只核§5已列的最小能力/PROOF接口及正式来源，不等待本Plan或其他产品的B整包。B实现先核985/A的M2A-08已合入收据，再核本批原前置。WIP或分支reviewed不替正式来源。
+数据流：原源码/工程输入→统一Schema/CST→共享绑定/query/Checked HIR→AV/AC共享MIR或新A2X provider→中立runtime/领域consumer→实际可观察输出。领域IR不旁路行为verify；缓存不储存信任和宿主授权。
+
+## 3. 技术栈
+
+现有Rust ACE workspace、Auto公共源、共享语法/查询/工件系统及真实目标工具链。跨仓使用同组兄弟worktree与显式SDK身份，不创建junction/symlink。
+
+## 4. 需求分析与背景调查
+
+本次授权只含设计、路线与相关Plan修订，未含源码/测试实现、生成fixture/SDK、构建、产品运行或merge。阶段依据为用户本轮正式决定；取材当前959冻结分母、TestCase/固定组/ACE源码重放规范及现存owner入口，旧overview的物理路径/别名不覆盖当前Cargo。
+
+用户2026-11-06授权详细调研并重制M2设计/计划，范围包括完整Auto、AutoUI/AGE、标准库、AutoOS及各应用替换；本轮仅规划，不推定实现/部署授权，未指定工期或模型预算。
+读取语言HEAD `de2b606aed298df0f0b342c72d209af990d6d4e2`；共享检出存在其他会话文档WIP。现状证据/哈希见Design55，语义来源按Specs优先，代码差额具名，不改canonical Specs伪造现状。引用会话已通过read_thread读取，其936/944旧状态已由当前归档纠正。
+
+实际入口/文件：
+- `experimental/ace/crates/source-query`（本轮确认存在；开工重核符号/版本）。
+- `experimental/ace/crates/core/src/source`（本轮确认存在；开工重核符号/版本）。
+- `crates/auto-lang-core/src/trait_checker.rs`（本轮确认存在；开工重核符号/版本）。
+
+外仓路径仅只读调研；跨仓实施前T-01须读取当地AGENTS并由owner确认同组实施路径与实际门禁。工具真实实现归属须按当前模块Spec与源码核定；LSP已由971确认在auto-ui，不能从语言仓残留固定组名推断package归属。
+
+### 2026-11-12 复核：语言来源、旧测试与ACE现状
+
+用户指出963缺少具体语法和类型/代码设计，询问与AutoVM及旧用例的关系；本轮延续规划授权，只修订合同。主线读取`f9fb3854beb3886338156cfa61d16f7f84893cc9`，962已8/8归档并落地主线；935/960亦已归档。前置齐不等于r4正文细度已充分。
+
+依据为当前已裁定语言/模块Spec、[语言说明Generics](../language/specification.md#generics)、959分母L-39/40/42与既有公开行为。旧VM/旧A2R提供兼容源码、断言与实现调研，不是新ACE的最终语义裁判或fallback。旧bug、规范冲突、仅parse/emit成功与真正运行需分开登记，不随意重写expected。旧[VM泛型/堆设计](../specs/auto-lang/vm/design/generics-heap.md)的早期限制须结合417等后续测试核，不能照旧快照缩范围。
+
+已核实际来源：
+
+- 旧AST `crates/auto-ast/src/ast/types.rs::{GenericParam,TypeParam,ConstParam,GenericInstance}`；parser在`crates/auto-lang-core/src/parser/{type_syntax,decls,expressions}.rs`，约束检查在`trait_checker.rs`。参考语法/行为，不接旧Parser或VM执行结构。
+- [935当前实例合同](../specs/auto-semantics/source-scalar-instances.md)：单T、i32/bool，复用共享求解器，需求实例化为具体程序，再经唯一verify/四端；不具备通用spec/const/nominal参数。
+- ACE `experimental/ace/crates/core/src/source/ast.rs`：FnItem.type_params仍为Vec<Ident>，TypeItem无通用泛型参数，Item无通用spec/ext/alias；`source-query/src/instances.rs::InstanceRecord`只有单ty_param/PortableTy，`instance_host.rs::InstancePage`类型码亦有限。放宽parser或拼函数名不能完成963。
+- [960模块](../specs/ace-migration/m2-modules.md)与[962聚合](../specs/ace-migration/m2-aggregates.md)是正式底座；D-962-C1..C5尤其List move、递归Box和C tuple实参必须核对，不因归档假定所有组合无缺口。
+
+源码读取SHA256前16：`experimental/ace/crates/core/src/source/ast.rs` `69b38593cf3c72a3`；`experimental/ace/crates/source-query/src/instances.rs` `d2d4c532065622cf`；`experimental/ace/crates/source-query/src/instance_host.rs` `860b295538178504`；`crates/auto-lang/src/tests/trait_vm_tests.rs` `a1f3924261667a1c`。本轮只读，没有重跑旧VM或ACE；后文均为待执行验证合同。
+
+## 5. 详细设计
+
+### M2阶段执行合同（当前优先）
+
+依据[Design55两阶段合同](../design/55-ace-m2-complete-language-and-product-replacement.md#16-m2两阶段正式合同与验证方法2026-11-09当前)；本包=M2-A。本包完整能力与其永久测试均在A；原review/merge/清理亦在A，正式交付后由985/A消费。
+
+| 阶段 | 当前任务归属（保原ID/义务） |
+|---|---|
+| M2-A | T-01, T-02, T-03, T-04, T-05, T-06, T-07, T-08 |
+
+本表中的A是完整能力或具名RG-A验证，不是所有产品迁完；B实现须在M2A-08真实通过后开始，T-01仅准备不越过B门。frontmatter仍是整Plan最终依赖并集，局部A按本节/各批最小接口前置启动，不把985全Plan或B消费者整包置为A前置。原每个AC保完整范围，A只关闭其A切片，不能因B未完提前勾整包review/归档。
+
+跨阶段同Plan按已有phase fold规约先独立复核并正式合入A切片，记录repo/SHA/接口与实际测试来源后供985/A消费；同一唯一tree保留/resync至B完成，不能用分支reviewed/WIP当D。公共文件单写；最终归档/清树仍按全包原门执行。本轮未做fold/merge或建树。
+
+语言/库相关case继承旧公开行为义务并补规范/组合/边界/负控，每条按当前规范与独立expected验证，M1有限豁免不自动继承；产品专有全量用例归B，未执行/缺环境不PASS。详见Design55 §16.5，TestCase/固定原生组沿用，不另建tm/全仓调度。AC自举独立后续、非本包或M2硬门。
+
+
+从935有限标量模板扩到真实类型/值参数、约束spec、ext、alias、方法接收者、跨模块实例与重载规则；共享实例图承载语义身份，目标缓存独立，递归实例检测与预算不冒语法限制。
+
+支持集继承959分母与Design55的完整语言定义；若本包先于分母完成，仅允许静态准备。T-01冻结到符号/语法/consumer，不能把不支持项从范围删掉。新IR节点、provider、领域接面与测试fixture均为拟新增，位置由已核owner下确定，不声称当前存在。
+
+T-01有界前探：用一个最小真实正例、同类型非法近邻和一次失败后恢复串起本包最长producer→consumer路径；先比较最相关的可行实现策略，形成决定与资源/平台适用表后进入实现。不以任意日历或固定语法深度削范围；探针不能闭合则列具体阻塞/修订，不能只交设计宣布完成。
+资源所有者：编译session持候选，发布后当前generation持产物；运行/宿主pin保在途，最后owner释放。取消/错误/late结果不得覆盖当前已发布版本。现行预算保持，新增域的计量单位/上限/超限分类在T-01冻结并有边界反例；改变承诺须显式修订。
+
+
+### 本次复核补充：完整函数调用与实例边界（r2）
+
+补默认/命名/可变实参、方法与扩展优先级、函数值签名、返回推导及现用运算符/约束；实例生成须接962布局与资源事实。
+
+本节由T-08实施并以AC-06/V-08验收，属本包完成条件。既有任务/验收不被替代；需要的新接口由T-01先冻结，T-08依赖T-01及相关T-02/03结果，必须先于最终work验证与独立review完成。
+
+### 5.1 要实施的具体源码与语义
+
+963沿用既有Auto语言，不新造一套Rust/C++泛型语法。以下是既有拼写或其最小验证输入，尚未在新963运行；代表例不代完整支持集。
+
+**泛型函数与用户泛型类型**：
+
+```auto
+fn identity<T>(x T) T { return x }
+fn main() int { return identity(42) }
+```
+
+结果应为42；另验bool、文本、聚合/owned实参、多类型参数与跨模块方法实例，不能只做935已有两标量。
+
+```auto
+type Point<T> { x T; y T }
+var p = Point<int> { x: 100, y: 200 }
+p.x + p.y
+```
+
+源自旧VM `10_types/003_generic_instantiation`，M2须有实际执行300及字段类型/布局的独立正例。近邻`Point<int> { x: true, y: 200 }`应在类型检查拒绝、业务dispatch=0。旧目录只附空`generic_instantiation.expected.error`，不是旧VM运行成功证明；T-01先核原loader判据，新M2正例另有来源与expected，不篡改旧错误期望。
+
+**spec约束与实现**（现有417测试形态）：
+
+```auto
+spec Comparable { fn compare(other int) int }
+fn max_of<T has Comparable>(a T, b T) T {
+    if a.compare(0) >= b.compare(0) { a } else { b }
+}
+type Score as Comparable {
+    val int
+    fn compare(other int) int { return self.val - other }
+}
+fn main() {
+    var x Score = Score { val: 3 }
+    var y Score = Score { val: 9 }
+    print(max_of(x, y).val)
+}
+```
+
+stdout应为9；另验缺抽象方法/约束不满足的拒绝、wrapper向下传约束、多实现者与默认方法继承/显式覆盖。参考`trait_vm_tests.rs`公开断言，ACE不必复制旧CALL_SPEC/堆tag实现；统一实例/见证选择可产生相同公开行为。完整dyn对象归964，不反置为本包静态泛型的前置。
+
+**值参数、别名与注解形**：
+
+```auto
+// 语言说明中的类型/值参数形；完整运行构造/初始化由T-01先证冻结。
+type Inline<T, N u32> { data [N]T }
+
+// 现有旧A2R用例只声明，未实际调用，不能作为值参数执行证明。
+fn test_fn_with_const_param<T, N uint>(capacity N) int { return 0 }
+
+// 现有旧别名与with约束形，也需纳入差额表。
+type List<T> = List<T, Heap>;
+#[with(T as Clone)]
+fn duplicate(x T) T { return x }
+```
+
+T-01逐形核当前规范/parser/原检查，值参数必须补实际影响类型、布局或结果的输入：N=2/N=3的不同实例、同值规范化复用、错类型/错值/错arity拒绝。不能以未调用声明或生成Rust文本通过值泛型。
+
+泛型spec、关联类型、super-spec、ext/方法接收者与显式类型实参沿现有AST/parser和旧用例逐项纳入；不从别的语言猜拼写。T-08原默认/命名/可变实参、函数值签名和返回推导义务保留，实参按源码序求值、默认值每次调用一次，方法/扩展候选在共享绑定层决议；不能为避未来组合依赖删掉963负责的部分。
+
+### 5.2 ACE类型、实例与模块设计（拟实现）
+
+普通源→泛型声明与参数环境→共享绑定/约束候选→规范替换/实例需求→具体类型布局/函数体→唯一verify→AV/AC/A2R/A2C。沿935/960/962机制扩展，四端消费同一已解语义，不把泛型原样交Rust后端替ACE求解。
+
+下列为语义字段草案，名字不是现存Rust API、没有编译；T-01核复用/等价实现并冻结准确类型与接口：
+
+```rust
+// Proposed shapes, not existing API.
+enum GenericArg { Type(CanonicalTypeRef), Const(TypedConstValue) }
+struct LogicalInstanceKey {
+    owner: DeclIdentity,       // package + module + declaration owner
+    args: Vec<GenericArg>,     // declaration order, canonical identities
+}
+// Implementation recipe additionally binds effective signature/body,
+// selected impl/constraint dependencies, algorithm/profile and their versions.
+```
+
+| 对象 | 实际owner/拟改面 | 必须关闭的设计不变量 |
+|---|---|---|
+| 声明/参数环境 | ACE core `source/ast.rs`、`source/cst/project.rs`与`grammars/auto-source.at` | 类型/值参数、约束、泛型type/spec/ext/alias带原span；T按声明owner/位置绑定，不当全局名字；同步所有构造器/reader，旧capability版本隔离 |
+| 替换/布局 | core source resolve/type事实＋960模块声明身份＋962聚合/容器 | nominal与结构类型区分，值参数有声明类型和值，alias正规化保依赖；替换后仍核borrow/move/有限大小，不Any擦除 |
+| 约束与见证 | 共享语义/绑定层，扩spec/关联类型/impl/默认体/ext候选 | 缺实现/同优先级歧义拒绝；候选正负读取入依赖图；不复制trait_checker或VM成第二套语义 |
+| 实例发现/身份 | `source-query/src/instances.rs`扩单T与PortableTy，沿原共享求解与需求不动点 | logical key不含span/callsite/body版本；implementation key含有效body/约束/类型依赖；同实例去重，不同包/类型/值不混，装配名非身份 |
+| 页/增量/恢复 | `instance_host.rs`及既有query/module/store | 新schema/producer或明确升级；不重释旧S935页；错误/取消不半发布；恢复重验而非持久化Checked；body改不让无关caller重推导 |
+| 四端消费 | Checked/MIR、现有AV/native/A2X适用入口 | 值/效果/资源分别有独立oracle；新A2R/A2C真实编译运行，无legacy fallback，emit-only不完成 |
+
+通用实例不能把935有限的“每模板两种标量”当新上限。沿现行solver步数/截止、受管预算与发布事务，T-01给合法规模/超界分类和预算账；不能临场加任意泛型深度/实例数语言限制或提高预算。合法同实例递归与无限增长需求分别核准入/资源拒绝，不无限展开字符串类型。
+
+### 5.3 旧用例复用与新验证映射
+
+直接复用旧Auto源码和公开行为断言；保旧expected/原检查身份。旧VM opcode/对象注册表、旧A2R生成Rust全文金样属旧实现检查，不能直接当新四端语义oracle；已知旧差异具名裁定，不把所有旧行为自动升级为新规范。
+
+| 已核旧来源 | 原义务与新侧必须补足的证据 |
+|---|---|
+| VM `10_types/003_generic_instantiation,004_generic_field_x,005_generic_field_y,010_ext_method`＋`vm_file_tests.rs` | 用户泛型type/字段/方法；分清错误期望/编译检查与执行，补字段读写、参数返回与错误类型近邻 |
+| VM `24_generics`（3个.at） | List用户类型/to_array/filter；内建List<T>不证明用户泛型，打印ok不证明过滤算法；963实例义务与库/闭包组合owner分别登记 |
+| `crates/auto-lang/src/tests/trait_vm_tests.rs` | 默认方法、抽象方法拒绝、bound/unbounded方法调用、多实现者、违例与wrapper；逐test名保原source/断言，补ACE运行与约束拒绝 |
+| A2R `08_generics`（8个.at） | alias/const/字段/指针字段/with/Map/显式形/has；const未调用、字段例未构造，要补真实调用/构造，不以.expected.rs替执行；保ACE已定i32，不照抄旧生成i64 |
+| A2R `11_methods`（10个.at）、`12_specs`（13个.at） | ext/static/receiver/默认体/参数/关联类型/generic spec/super-spec；逐条登记963静态语义、964动态/闭包及组合consumer，不能整目录绿充完整覆盖 |
+| 935 `core/tests/cases/source_instances_935.rs`与source-query实例测试/既有TestCase | 原capability、实例身份、单飞/增量/恢复不变量继续；新通用参数/资源/值/约束候选另有新case |
+
+除标明的Rust路径，旧目录前缀为`crates/auto-lang/test/`；ACE短路径前缀`experimental/ace/crates/`。.at库存不是测试数/通过数，T-01继续扫描相关inline/parser/调用用例，不以种子表封顶或重复计original.at。
+
+T-01在本Plan内冻结“旧case/test/check ID、source路径/hash、原断言/expected种类→规范结论→新case/后端/独立oracle→能力/组合owner”。未知项具名阻相关验收，不默认NA；963负责泛型部分，不能把自身义务都丢给985，也不要求在963迁完整旧产品。
+
+新永久源拟`crates/auto-lang/test/cases/ace-m2/generics/`（T-02/T-08未来创建），沿现TestCase/ACE worker；core/source-query命名case沿原owner补充。inline Rust源可按明确provenance形成新consumer输入，旧测试不改；复用1002试点的已交能力，不因格式试点未交新增硬依赖，不另造runner/checker。
+
+### 5.4 T-01具名未决与进入T-02的条件
+
+T-01先交语法/旧新义务表、类型/实例/约束模块图和三个全链小样：泛型type字段真执行、spec有约束调用、值参数实际影响；各配同类拒绝和修复恢复。未来探针只在专属树/scope建立，本轮不生成。
+
+须关闭：①值参数完整源形/调用/初始化与合法域；②关联类型/约束/ext选择优先级及规范冲突；③类型/实例/页升级方案不破935；④D-962-C1..C5对新泛型/四端的实际影响，尤其move后使用/递归Box/C tuple实参；⑤四端真实target/命令、资源与独立oracle。影响公共语义/预算的变化具名修订，不由实现者猜或删原义务。未决只阻对应依赖实现，不可用“以后T-01再定”把全部设计留空。
+
+### 5.5 T-01 冻结记录（2026-11-12，基面 990d27f，只读核对）
+
+现状闸门（实读，`E/`=`experimental/ace/`）：
+
+| 事实 | 证据 |
+|---|---|
+| 语法已能识别 `<T>`/`<T,U>`/`<T has B>`/`<const N>`，但仅 fn 尾部 | `E/grammars/auto-source.at:304-332` |
+| `type` 声明无类型参数位 | `auto-source.at:498-504`；投影 `E/crates/core/src/source/cst/project.rs:4015-4090` |
+| `spec/ext/impl/alias/with` 只有保留字，零规则零投影 | `auto-source.at:102,109,113,131,145`；`ast.rs:178-192` |
+| 调用点无显式类型/值实参位 | `auto-source.at:1005-1008`；`ast.rs:378-381` |
+| `TypeRef` 无 const 引用、无定长数组 | `ast.rs:67-96`；`auto-source.at:369-390` |
+| 用户泛型类型名在 resolve 全拒（仅内建集合按 arity 匹配） | `E/crates/core/src/source/resolve.rs:3819-3826,3970+` |
+| 实例层硬门=单 T + I32/Bool | `project.rs:3546-3555`；`E/crates/source-query/src/instances.rs:87-101,537` |
+| 语义侧已多参数就绪（`Ann::TyParam(u16)`、每参数 mint var、demand 返 Vec） | `E/crates/semantics/src/input.rs:42`；`infer.rs:170-185,574-578` |
+| 候选选择「1 个才绑，>1 即歧义拒」 | `infer.rs:557-561,669-677` |
+| 935 常量被测试逐字钉死；页 magic `IN935P`/codec v1 | `E/crates/source-query/tests/instance_host_935.rs:94-96`；`instance_host.rs:30-37` |
+| 重绑遍历白名单只递归 Call/Hash/Binary/Unary | `instances.rs:790-839` |
+
+五项具名未决的冻结结论：
+
+1. **值参数**：唯一接受形 `<const N>` / `<const N u32>`（缺省 u32）；计划 §5.1 的 `<N u32>`、`<N uint>` 现状**不可解析**，按此形修订。调用点拟 `rep<2>(21)`，需新 `generic-call`（提交条件照 `generic-atom` `auto-source.at:872-880`）。**布局效应无载体**：ACE 无定长数组类型，`[N]T` 不可表达，故 V-G04 只兑现「值/身份/规范化」半边（原文即"改变布局或值"，不构成范围缩减）；布局形另立 owner。合法域=声明整数型范围；同值规范化=（声明类型 tag, 宽度内 bits）→ 小写 hex 入键。
+2. **spec/ext/优先级**：ACE 无 spec/conform/ext 机制（零先例）。表面冻结为 `Item::Spec{name,methods}`、`TypeItem.conforms: Vec<Ident>`、`Item::Ext{target,methods}`；候选层级 `自有方法 > bound spec > ext`，层内 >1 即复用 `ambiguous-candidates` 拒；`ext` 与自有方法同名拒。决策点：`resolve.rs` 方法/字段查找点（现 `:5157` 附近）建 spec/conform/ext 表 → `adapter.rs:202-228` 投影（`input.rs:82-86` 扩 conform）→ `infer.rs:557-561` 负依赖/歧义。诊断码 `source.spec-{unimplemented,unsatisfied,ambiguous}`，全部 dispatch 前。关联类型零先例，仅列最小新缝，不承诺本切片。
+3. **类型/实例/页升级**：单参身份**保持字节不变**（logical/key 生成顺序对 N=1 等价），故 `INSTANCES_*` 常量不动、935 键/页语义不动；页 codec 升 v2 表示 `argc + 每 arg(name,ty)`，旧 v1 页按既有「新版本必须 MISS，绝不重释」语义自然 MISS 重产。结构改 `InstanceRecord.ty_param+ty` → `args: Vec<InstanceArg>`、`InstancePage` 同步；`PortableTy`/934 事实页不扩。
+4. **D-962-C1..C5**：C1 真风险=重绑遍历白名单漏 `Index/TupleLit/Method`（模板调用藏在其中不重绑）；C2 决定探针不得用递归 Box（native 车道未闭）；C3 决定探针不用 tuple 实参（与 C 端临时取址冲突）；C4 泛型放大 use-after-move（`concretize` 只换注解不算所有权）；C5 新诊断不得沿用错层拼写。跨模块模板由 `E/crates/core/src/source/packages/binding.rs:645-648,673-676` 以 `source.module-templates`（"close in PLAN-963"）拒，关它须在 SD-02 具名。
+5. **四端与 oracle**：组 `cargo t ace-source ace-semantics ace-av ace-native ace-a2x`；P1 泛型 type 字段执行 oracle=300、P2 spec 约束调用 oracle=9、P3 值参数 oracle=42/63（21×2/21×3 手算闭式）；四端各自独立断言，emit-only/零选择/工具缺失/超时不计 PASS。
+
+仍属 T-01 未完部分（须在实现可用后补）：三个全链小样未建立（依赖 T-02/T-03 的 generic type、spec、const 参数落地）；`ProduceLimits` 步数/截止数值与新增域预算账未读定。
+
+### 规范增量
+
+| delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-01 | add | `docs/specs/ace-migration/m2-generics.md`（拟新增；可在review归并真实模块Spec，必须保持可追溯） | 未交付/有限切片→本包实际已验证支持、接口、拒绝及资源边界 | 防计划代现状 | AC-01..03/AC-06 |
+| SD-02 | modify | `docs/specs/ace-migration/replacement-scope-and-evidence.md` | 仅口径→关联本包已验证新producer及未闭缺口；不改旧义务 | 替换追踪 | AC-03/05 |
+| SD-PHASE | add | `docs/specs/ace-migration/m2-generics.md`（沿原owner；仅实际交付后沉淀） | 单一M2口径→已验A/B能力/consumer及来源与旧新义务映射；未交B保持pending | 阶段不减原范围 | AC-PHASE |
+| SD-GENERICS | add | `docs/specs/ace-migration/m2-generics.md`（沿本包owner） | 仅范围→实际已验语法/类型值参数/约束见证/实例身份/旧新case映射及限制 | 可按源码/独立oracle复核 | AC-01/AC-02/AC-03/AC-06 |
+
+## 6. 测试设计
+
+### 阶段适用验证（新增合同、未执行）
+
+| Case | AC | 入口 | 独立判据 |
+|---|---|---|---|
+| V-PHASE | AC-PHASE | T-04及本包原固定组/真实owner入口，按§5阶段表选取 | 该阶段原required义务与新check逐行可追溯；普通源/独立expected、适用后端/平台/错误/资源真实执行；A仅RG指定产品，B全范围。删行/错producer/零选择/缺工具不能过；B-pending不改NA。 |
+
+
+以下全部未执行；T-01落实具体源码与调用符号，T-02/03创建永久fixture，T-04闭合。原源与独立expected/现行语义裁定为oracle；旧引擎仅作为有版本的调查对照，不能以四端相等掩盖共同bug。
+
+| Case ID | AC/invariant | 输入/区分性断言 | 真实入口与证据 | owner/边界 |
+|---|---|---|---|---|
+| V-01 | AC-02/03 | 同名不同包实例不串 | T-01将本行落实为真实源码/操作序列；T-04运行真实producer/consumer，记录值、trace、资源和诊断，错误路径配合法近邻 | work；本包支持矩阵 |
+| V-02 | AC-02/03 | 改变被读取的约束/实现使实例失效 | T-01将本行落实为真实源码/操作序列；T-04运行真实producer/consumer，记录值、trace、资源和诊断，错误路径配合法近邻 | work；本包支持矩阵 |
+| V-03 | AC-02/03 | 未读方法body改动不重产 | T-01将本行落实为真实源码/操作序列；T-04运行真实producer/consumer，记录值、trace、资源和诊断，错误路径配合法近邻 | work；本包支持矩阵 |
+| V-04 | AC-02/03 | 歧义/不满足约束在dispatch前拒绝 | T-01将本行落实为真实源码/操作序列；T-04运行真实producer/consumer，记录值、trace、资源和诊断，错误路径配合法近邻 | work；本包支持矩阵 |
+| V-05 | AC-02/03 | 恢复后首实例编辑与冷编结果一致 | T-01将本行落实为真实源码/操作序列；T-04运行真实producer/consumer，记录值、trace、资源和诊断，错误路径配合法近邻 | work；本包支持矩阵 |
+
+完整职责组拟定：`cargo t ace-source ace-semantics ace-artifacts ace-av ace-native ace-a2x`（组名已静态核test-groups.toml，未运行）。新包/用例必须由T-04注册进完整职责组；共享IR/语义修改加真实下游四端组，不能只跑前端。外仓产品在T-01记录当地已存在命令与必需环境，未冻结命令前T-02不得开始；不能以语言仓cargo替代UI/Man/OS真实产品验证。AGE按受影响文件/命名case与原单进程条件，全量AG留里程碑。
+发现/执行/条件排除、准备/运行/清理/总时分列；零选择/缺工具/timeout/编译失败不是PASS。正式性能与窗口操作错峰，周期全量不变成每计划门。最终提交职责并集沿有效证据核验，不重复全仓。
+独立review在同一worktree、实施停写后进行；本轮未派agent、未执行独立产品复审。
+
+### 补充验证
+
+| Case | AC | 区分性输入与预期 | 入口/证据 | owner/边界 |
+|---|---|---|---|---|
+| V-08 | AC-06 | 默认实参只求值一次，命名实参源序求值；同名ext歧义拒绝；资源泛型跨模块参数返回正确；MIX-01实例腿交给985。 | 实际公开入口/独立oracle；T-08创建永久fixture并记真实命令，适用四端/产品分别观测 | work/T-08；不扩未批准平台 |
+
+### 963具体补充验证（未来建立，当前未执行）
+
+| Case ID | AC / work owner | 普通源输入与独立关闭oracle | 边界与负控 |
+|---|---|---|---|
+| V-G01 | AC-02/03；T-02/03/04 | identity/choose多次同类型调用及int/bool/文本/聚合，42/true/文本/字段值准确；同实例共享、不同替换不串 | 不限935两标量；错误类型dispatch前拒 |
+| V-G02 | AC-02/03；T-02/03/04 | §5.1 Point实际结果300；用户generic字段/嵌套/方法参数返回正确 | Point<int>填bool拒；List例不替用户泛型type |
+| V-G03 | AC-02/06；T-02/08/04 | max_of Score(3/9)得9，两个Labeler产生各自文本，wrapper保约束，默认继承/覆盖各命中 | 缺抽象方法/不满足bound/歧义拒，不测旧堆布局代语义 |
+| V-G04 | AC-01/02；T-01/02/03/04 | 冻结合法值参数源实际调用/构造，N=2/3改变布局或值并有不同身份，同值规范化复用 | 错类型/值域/arity拒；未调用声明/emit不关行 |
+| V-G05 | AC-02/06；T-02/08/03/04 | generic spec/关联类型、with/alias/ext/static/receiver逐源有独立值/选择断言；默认/命名/可变参数精确trace和一次求值 | 候选负依赖变化重选；同优先级歧义/alias递归拒，多算漏算反控 |
+| V-G06 | AC-02/03；T-02/03/04 | 两包同名模板/类型与跨模块实例值、类型身份各对expected；owned跨参数/返回保借用/转移/释放账 | owner/值替换不误hit；move后使用/视图逃逸/非法递归拒，962缺口不冻结成新M2合法行为 |
+| V-G07 | AC-03；T-03/04 | 模板body/签名/所读impl/关联类型/值参数变化后与冷编oracle一致；无关body未读实例生产0 | 恢复不信旧Checked；错页/身份拒，失败保旧、精确修复恢复 |
+| V-G08 | AC-02/03；T-02/03/04 | 同源AV/native/A2R/A2C各对独立值/效果/诊断/资源，合法递归/超界分态，取消/late无半发布 | 禁legacy provider仍执行；emit-only/零选择/工具故障不能冒运行或语言负例PASS |
+
+原V-01..05/V-08/V-PHASE全保留。新行细化其源与断言，不替旧门；T-01冻结实际永久case/check名字、入口/target/命令。新fixture尚未建立，拟路径不写成已运行。职责并集仍为`cargo t ace-source ace-semantics ace-artifacts ace-av ace-native ace-a2x`；实际改legacy/parser/根接线才补相应完整组，不因调查旧用例无条件全跑旧VM。最终核真实终态、原条件排除、首次红/重放与缺证，不能以四端互等作唯一oracle。
+
+## 7. 验收标准
+
+| ID | owner_stage | 标准 | 核验 |
+|---|---|---|---|
+| AC-01 | work | §5.1源码/旧新义务、§5.2类型/模块图、§5.4具名决定与真实命令/资源冻结，unknown有owner且不能漏计 | T-01逐行映射Design55/分母与实际源码 |
+| AC-02 | work | §5能力经真实源码/工程入口执行，§6所有正反例满足独立值/效果/资源oracle | T-02..04；每个V行记录真实命令/输入/结果 |
+| AC-03 | work | 生产consumer实际接线，无legacy fallback；变化/失败/恢复/权限与旧支持格保持 | T-03/04；源与producer身份及真实dispatch证据 |
+| AC-04 | review | 独立核全部AC/V/规范增量、遗漏/延后/workaround、fmt/warning/debug，结论绑定revision/SHA | T-05复审；未闭项不得pass |
+| AC-05 | merge | 已验证知识落模块Spec，来源/依赖一致，归档与所有输出路径清理完成 | T-06/07真实收据，不把正确性留到merge |
+| AC-06 | work | 完整函数调用与实例边界的全部义务完成，V-08有真实结果，无缺项或循环交付 | T-08及最终work验证；原review任务同时审核 |
+| AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-04；原独立review复核 |
+
+## 8. 执行步骤
+
+当前共8任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
+
+### M2-A：能力与必要真实验证
+
+- [ ] **T-01｜M2-A｜work｜AC-01/AC-PHASE**：核935/960/962正式来源，按§5.1..5.4交逐语法正反源/旧新case-check表、类型与实例模块图、三个全链小样及资源/真实四端命令，闭具名未决再进入对应实现；空expected/旧VM或emit不当新侧通过。
+
+- [ ] **T-02｜M2-A｜work｜AC-02**：按§5.2实际owner扩声明/替换/约束见证与实例页，创建§5.3永久源及V-G01..06/08正反例，保935能力面；先共同事实/类型/资源，不复制旧VM语义引擎。
+
+- [ ] **T-03｜M2-A｜work｜AC-02/03**：将同一已解实例接四端真实consumer，完成装配/资源/增量/恢复；补V-G06..08及旧义务组合，C/Rust真实编译运行，各对独立oracle，不以生成全文代运行。
+
+- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：补默认/命名/可变实参、方法与扩展优先级、函数值签名、返回推导及现用运算符/约束；实例生成须接962布局与资源事实。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+
+- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 同时逐项运行V-G01..08与§5.3旧新义务映射，列真实发现/执行/原条件排除和缺项。
+
+- [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
+
+- [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
+
+- [ ] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
+
+A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
+
+### 工作位置与材料
+
+预定唯一实施树 `D:/autostack/.wt/lang-963/auto-lang`，分支 `plan-963-dev`（沿仓规），尚未创建。跨仓同组每仓唯一树。计划簿记留主检出；实现和构建测试只在专属树。
+
+T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06→07串行。外仓owner交付可按稳定接口提前准备，但最终不得拿未交付接口背书。
+材料唯一目录 `D:/autostack/plan-artifacts/plan-963/`，开工登记owner/用途/在途；本轮未创建。不可另建attachments/证据仓目录，不留第二套target/SDK副本。
+
+## 9. 复审记录
+
+2026-11-12 stage:work（进行中，无终裁）/ PLAN-963 r5：goal 授权整链（work→review→bounded repair→merge）已记录；实现树 `D:/autostack/.wt/lang-963/auto-lang`、分支 `plan-963-dev`、基面 `990d27f`；材料 scope `D:/autostack/plan-artifacts/plan-963/`。主检出开工前核：代码路径零 WIP（仅他会话 docs WIP，未触碰）。本轮只交 T-01 冻结（§5.5，全部结论带 path:line），未建 fixture、未跑 ACE/旧 VM、未改代码；T-01 尚未闭合（三探针待实现）。
+
+2026-11-12 stage:new / PLAN-963 r5：按用户指出的语法/设计/测试缺失补订。保8任务/原AC与V/依赖、drafting 0/8；新增既有Auto具体源/独立预期、旧实现证据差异、ACE拟类型/模块/实例设计、旧新义务映射及V-G01..08。只读源码与原用例，没有实现、fixture生成、旧VM/ACE运行、独立产品复审、建树、派agent或提交；本次修正文档缺口，不将依赖就绪包装为产品支持。
+
+2026-11-12 r5文档静态预检：0–10章节完整；原8任务/7AC/全部旧V及SD保留，现15验证行/4条SD，阶段/任务与AC引用一致；8处本地链接/锚点、6个拟职责组名、9个具名源码SHA均核过；counter与本轮起点相同。未运行产品或旧VM/新ACE用例，此记录只证明规划结构与来源核对，非实现/独立产品review PASS。
+
+2026-11-10 stage=new / r4：直接整理§2与§8当前执行合同，A/B清单分组、最小前置与阶段交接明示，消除旧单阶段总顺序/旧批次数量的冲突。保全部8个原任务ID/原AC、drafting与0进度；未新增实现任务/用例/编号。仅文档核对，未施工/运行产品/独立实现review/阶段fold或归档。
+
+2026-11-09 stage=new / r3：正式按M2-A拆任务归属、补AC-PHASE/V-PHASE/SD-PHASE，当前0/8；原AC/T及历史记录保留。只做文档静态预检，未施工/跑测试/独立实现review/合入或签阶段。
+
+2026-11-06第二轮计划复核：r2，新增T-08/AC-06/V-08并修依赖/阶段边界；0/8，未实施。此前0/7记录为历史。stage=new；方案修订已写入，implementation仍待正式前置/有界决定与实施指令；非独立产品复审PASS。
+
+
+2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
+
+## 10. 待澄清事项
+
+T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
+本包涉及批量产品/目标时，T-01按独立可验证consumer拆执行批次；若需要多个中等Plan承载，必须在本Plan修订中逐AC迁移到正式后继，保持本包终验责任和分母，不能以一份盘点替全部交付。
