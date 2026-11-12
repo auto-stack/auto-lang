@@ -2472,6 +2472,63 @@ fn hir_record_reaches_str(m: &hir::Module, root: hir::TypeId) -> bool {
 /// plus List/Variant type-table entries (HIR TypeKind::List/Variant map to
 /// `MirType::List(ListTypeRef)` / `MirType::Variant(VariantTypeRef)` with
 /// nominal owner+name identity, exactly the 822 fixture shapes).
+/// PLAN-962 (T-08): whether record `tid` transitively reaches ITSELF
+/// through at least one OPAQUE edge (a List/Box element hop) — the legal
+/// explicit-indirection recursion. Direct record-record field cycles
+/// return false (they keep the historical mir.type-cycle rejection).
+fn record_reaches_self_through_opaque(m: &hir::Module, tid: hir::TypeId) -> bool {
+    fn reach(
+        m: &hir::Module,
+        from: hir::TypeId,
+        target: hir::TypeId,
+        through_opaque: bool,
+        seen: &mut std::collections::BTreeSet<hir::TypeId>,
+    ) -> bool {
+        if from == target && through_opaque {
+            return true;
+        }
+        if !seen.insert(from) {
+            return false;
+        }
+        let Some(td) = m.types.get(from.0 as usize) else {
+            return false;
+        };
+        match &td.kind {
+            hir::TypeKind::Record(shape) => {
+                for f in &shape.fields {
+                    if let hir::TypeUse::Ref(fid) = &f.ty {
+                        if reach(m, *fid, target, through_opaque, seen) {
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+            hir::TypeKind::List { elem } => match elem {
+                hir::TypeUse::Ref(eid) => reach(m, *eid, target, true, seen),
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    seen.insert(tid);
+    let Some(td) = m.types.get(tid.0 as usize) else {
+        return false;
+    };
+    let hir::TypeKind::Record(shape) = &td.kind else {
+        return false;
+    };
+    for f in &shape.fields {
+        if let hir::TypeUse::Ref(fid) = &f.ty {
+            if reach(m, *fid, tid, false, &mut seen) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn collections_type_idx_of(
     u: &hir::TypeUse,
     m: &hir::Module,
@@ -2539,6 +2596,77 @@ fn collections_type_idx_of(
                     Ok(out.intern_type(MirType::Char))
                 }
                 hir::TypeKind::Record(shape) => {
+                    // PLAN-962 (T-08): NAME-CANONICAL convergence — HIR
+                    // type names are unique per module, so a COMPLETED
+                    // Record entry with this owner+name is this HIR type's
+                    // canonical MIR index regardless of which walker
+                    // interned it first (for every walker the plain dedup
+                    // path returns that same entry, so this lookup changes
+                    // nothing for existing programs).
+                    if let Some(found) = out.types.iter().position(|t| {
+                        matches!(t, MirType::Record(r)
+                            if r.owner_module == m.id_text
+                                && r.name == td.id_text
+                                && !r.fields.is_empty())
+                    }) {
+                        let found = found as TypeIdx;
+                        memo.insert(*tid, found);
+                        return Ok(found);
+                    }
+                    // PLAN-962 (T-08): the OPAQUE-RECURSIVE shape (a record
+                    // reaching itself only through a List/Box edge — the
+                    // legal explicit indirection) takes a two-phase path:
+                    // reserve the slot and memoize the tid BEFORE the fields
+                    // intern, then walk the fields with a visiting scope
+                    // from which only THIS record was removed (the opaque
+                    // edge cannot recurse into our inline layout, so seeing
+                    // ourselves through it resolves via the memo). Every
+                    // other shape keeps the ORIGINAL path byte-for-byte —
+                    // the MIR type-table order of all non-recursive modules
+                    // is unchanged.
+                    if record_reaches_self_through_opaque(m, *tid) {
+                        let reserved = out.types.len() as TypeIdx;
+                        out.types.push(MirType::Record(RecordTypeRef {
+                            owner_module: m.id_text.clone(),
+                            name: td.id_text.clone(),
+                            fields: Vec::new(),
+                        }));
+                        memo.insert(*tid, reserved);
+                        let mut fields_visiting = visiting.clone();
+                        fields_visiting.remove(tid);
+                        let mut fields = Vec::with_capacity(shape.fields.len());
+                        let mut err = None;
+                        for f in &shape.fields {
+                            match collections_type_idx_of(
+                                &f.ty,
+                                m,
+                                out,
+                                memo,
+                                &mut fields_visiting,
+                            ) {
+                                Ok(t) => fields.push(MirFieldDef {
+                                    name: f.name.clone(),
+                                    ty: t,
+                                }),
+                                Err(e) => {
+                                    err = Some(e);
+                                    break;
+                                }
+                            }
+                        }
+                        return err.map_or_else(
+                            || {
+                                out.types[reserved as usize] =
+                                    MirType::Record(RecordTypeRef {
+                                        owner_module: m.id_text.clone(),
+                                        name: td.id_text.clone(),
+                                        fields,
+                                    });
+                                Ok(reserved)
+                            },
+                            Err,
+                        );
+                    }
                     let mut fields = Vec::with_capacity(shape.fields.len());
                     let mut err = None;
                     for f in &shape.fields {
