@@ -7,6 +7,8 @@
 > 2026-10-24版本裁定：AACE已明确列为v0.7目标，不再是无版次候选；Rust版ACE全示例成熟度及既有AutoVM/A2X迁移属v0.6主线。详细任务仍按滚动规划冻结，其他候选不自动进入v0.7。
 > 2026-10-26图形排期：851已交付为ag-v0.6-m1；下一轮目标已确定为[M2](design/strategy/autographics-m2-v06.md)，先优化，再补网格视口与公共接口2D/3D独立游戏。截至2026-10-27，853–856与858交付、857复审修复，860/861运行草案已建立，其余滚动细化；AutoUI融合/图形归仓及ACE集成等ACE开发完成后再讨论，详[Design45 §12](design/45-autographics-wgpu-engine-and-game-prototypes.md#autographics-stage-851)。下表其余长期能力不自动续建计划。
 
+> 2026-11-12：用户将面向实际工作的[Auto ROS2 SDK](design/57-auto-ros2-sdk.md)纳入v0.6专项，见[六阶段路线](design/strategy/ros2-sdk-delivery-roadmap.md)。SDK核心不再属于本文“待选择”；ROS扩面、系统adapter与机器人新算法仍按各自范围后续选择。本轮只规划，未实施。
+
 ## 1. 如何使用
 
 当前版收尾前 1–2 周，结合实际交付、用户反馈、成熟前置、最小成果、风险和容量，从这里选择下一版目标。届时建立 `roadmap-v0.7.md`；本文行序不是执行顺序，也不预排 v0.8/v0.9。
@@ -41,7 +43,7 @@
 | 候选 | 后续选择的成果边界 | 依赖、来源与约束 |
 |---|---|---|
 | 系统级 Package / Install | 应用、工程、知识包和用户数据的统一身份/生命周期；CLI 与 Launcher 共用安装升级卸载及恢复 | [统一安装设计](design/strategy/unified-package-install-strategy.md)；原“本版必做”不再生效，v0.6 Linux/工程所需最小交付仍要验收，不能另造弱安装器 |
-| 应用通信与 ROS2 兼容 | 按 F0–F2 选择 typed call、任务/取消/回执、事件/流与失败恢复，再明确 ROS2 Topic/Service/Action 支持集 | [系统基础设计](design/strategy/system-foundations-v06.md)、[ROS2 战略](design/strategy/ros2-ecosystem-strategy.md)；AutoOS 自身通信先于具体机器人算法，有限 bridge 不代表完整兼容 |
+| 应用通信与 ROS2 扩面 | AutoOS F0–F2及系统adapter、多版本/RMW/设备、空间工具等继续按需选择；SDK的R06-01..12已纳入v0.6，不留在本池 | [系统基础设计](design/strategy/system-foundations-v06.md)、[SDK设计](design/57-auto-ros2-sdk.md)；直接节点不等待整套系统通信，新机器人算法仍另议，bridge不代SDK完成 |
 | AutoAI 与 Agent profile | 普通 client、Agent/MCP bridge 共用真实能力与任务合同 | [系统基础设计](design/strategy/system-foundations-v06.md)；复用现有 daemon/client，明确取消、结果、资源与可观察性 |
 | 系统级 DevTools / AutoLens | 系统 Inspector、真实树/布局/像素比较、两 backend 共同能力、第三方样板与采集来源 | [F3–F5 设计](design/strategy/system-foundations-v06.md)；v0.6 Forge 局部对象检查可先交，不能推称整个系统能力已完成 |
 | Linux 扩面与产品化 | 扩大发行版、硬件、会话、系统集成与应用矩阵，逐步完成原四大 app/28-demo 等目标 | [平台专项](design/strategy/platforms-v06.md)；先复用 v0.6 首发证据，按支持矩阵扩展，不重复冒领首次发行 |

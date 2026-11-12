@@ -1,3 +1,72 @@
+# 模块拆分与重构：收口战略
+
+更新：2026-11-12，v56。当前事实见[路线v56](../../plans/reports/v06-extraction-execution-roadmap.md)及[1015归档](../../plans/archive/1015-split-refactor-closeout-supplement-and-contract-alignment.md)。1006/989/1015均已正式交付；本路线M1按1015所记用户裁定的有限边界收口，013 AddTodo已按本轮用户裁定列M2 AutoUI修复项，不阻M1。不是全部能力无遗留，联合标签不自动就绪。用户本轮确认进入M1收尾；[M1收口确认与联合交接](../../plans/reports/split-refactor-m1-closeout-2026-11-12.md)已完成工作区整理，本轮不施工或打tag。
+
+## 1. 已交付与具名边界
+
+1003 C生产、OS068 Windows RQ修约交付、1006 Web独立成员交付、989联合核查及1015有限补验均已落地；P1/P2/R7和D-989-CLOSE-01/02有关闭记录。保910共享target/942集中workspace conditional，不重做旧计划。
+
+1015已archived9/9，主线8abc862f4、独立终审pass、规范/材料清理齐。Counter A/B/恢复A真业务与013勾选/过滤等已有证据；RQ服务/数据/隔离18/18，窗口面按068/989身份复用，不能写成1015新跑两Host窗口。
+
+## 2. M2 AutoUI有限生产修复
+
+013 AddTodo静态生成路径尚有App.input与TodoStore.input分离问题，归档记录用户裁定回owner修复后消费。scope桥接探针不是正式交付。先由AutoUI确认是显式源绑定还是生成语义责任，建立/认领有限生产修复合同后实施，保持真实Store/API/组件隔离，修复后A/B/恢复A添加marker/列表增/勾选读回；共享触面再定向补VM/Vue，不暗中按同名字段全局共享。
+
+阶段裁定（2026-11-12）：用户同意不影响M1时移至M2。按1015已接受边界，本项不阻本路线M1收口/联合M1标签；M1保留013静态生成AddTodo未交付限制，联合其他领域门不变。M2由AutoUI认领有限生产合同后真实修复、按关闭条件补验，完成后才纳完整能力声明；具体计划号待立约，不默认塞入ACE/AGE现有Plan。1006/989/1015保持归档，本轮仅排期文档，无实施授权。
+
+## 3. 联合标签与后续路线
+
+本路线交付/定向验收及M2边界已核，收口文档已整理；联合v0.6-M1仍独立核当前ACE/AGE正式签章及跨仓组合。1013未正式交付、1016为execution_done6/7，已观察原ACE侧测试活动；由原会话推进，不用旧暂停记录推断无进展，不在此接管或代签。
+
+周期批门最新只覆盖1014（known-reds-only，余plan988预算边界），不含1015；1015为5倍数使批门到期。当前其他cargo/nextest在跑，依独占规则暂不另起全量；在独占窗口跑一轮并读真实结果，不能拿旧收据充新覆盖。这是联合出口交接条件，不重开已交付计划。
+
+最终联合冻结把本路线收口说明/限制/M2移交纳正式提交，核全仓可消费源/工件/锁/资源与实际差额后，再按用户明确指令打标/推送。OS062是Linux支线，非Windows M1前置；正式v0.6按版本现行ACE/AGE M2、Linux/App及新增专项门。当前不改canonical/归档，不自动发布。
+
+<details>
+<summary>v51战略快照（交付前状态，已由v52取代）</summary>
+
+# 模块拆分与重构：收口战略
+
+更新：2026-11-11，v51。唯一当前调度/边界/标签门见[总路线v51](../../plans/reports/v06-extraction-execution-roadmap.md)。本轮仅立1006/恢复合同并同步989 r8，不实施；旧历史段不作当前执行指令。
+
+## 1. 两上游已经交付
+
+[1003](../../plans/archive/1003-generated-debug-policy-c-production.md)正式交付生产C、full恢复/身份、四入口/delivery及净益/迁移证据；lang11e1f1fd5/UI393ea17c，P1和D-1001-R7关闭。研究942 conditional不改签，910共享target保留；不外推有限工作集收益到所有产品，不要求重做C落地。历史同实施上下文复审与未重启旧进程限制保留。
+
+[OS068](../../../../auto-os/docs/plans/archive/068-windows-rq-remaining-fixes-and-full-acceptance.md)按用户修约正式交付，OS3ea7ead/UI69104765/lang落地f29f6facc；旧Demo/解析/chat/N8缺陷修复及8/8实证可复用。接收≤60Hz、DWM呈现节奏、M-04机制、P-03异语义配对、M-01 MCP协议、Video demo机制/后端owner移交；不冒严格光子/高刷/原生≤100ms/字节计数/replay p95/完整Video桌面业务。041/GPU等未明示修约义务的适用性与缺证仍由989按原合同核，不能新增豁免。
+
+## 2. 当前真正卡点与责任
+
+[989 r8](../../plans/989-split-refactor-joint-delivery-and-tag-readiness.md)仍drafting0/9。当前Windows活动合同为1006→989；1006只是草案，不能由编号推断生产前置已闭：
+
+- C-01：P1已由1003正式关闭，当前候选fresh/locked/移根/反控按身份有效性复用或定向验；不是新生产修复。
+- **C-02/P2：由[1006 r1](../../plans/1006-web-generated-member-independent-delivery-and-recovery.md)正式立约，仍OPEN、未实施/交付。** auto-web主责、auto-generation-core中立支撑、Man必要时薄CLI编排。Web SDK安装/服务生成/HTTP成功和chat links修复不代独立成员包移根；不默认交全部ACE983/978。1006交公开export-only、成员闭包/移根HTTP与状态、首版A/B失败恢复；本轮不实施。
+- C-03：OS068有限支持域已有任务/移根/故障证据，当前同源组合待核。Video按明确裁定移交auto-video owner（真实媒体扫描/流服务back实现并正式交付才关），不能说已实现、不能类推豁免别的产品。
+- C-04：SDK/Man/Web正式基础来源可消费，L1/L2及各实际形态/错源控制由989核；语言controls不冒外仓全绿。
+- **C-05：[四类恢复对象合同r1](../../plans/reports/split-refactor-recovery-objects.md)已核定。** 旧正式源/N选择规则、数据/备份/成功失败恢复oracle已有定义；实际新源/生产命令/schema待1006交接及989 T-01绑定，再冻结/执行真实替换恢复；配置full回退、冷启动、Todo冷重开均不自动关闭整个渠道。
+
+不将生产实现倒灌989，不新增通用安装器或全部历史债清零。P2由1006主责，正式交付后核实际源/AC/Spec才能过门，光有owner/编号不够。
+
+## 3. T-02与证据复用
+
+未来用户启动后可先T-01准备；T-02须989 E-01～06全齐：上游真实源、支持/修约逐项、渠道生产能力（含P2实际交付）、有限恢复对象/配方定义、候选配置/工具/支持分母与证据/红处置。当前P2生产未交、C-05实际候选绑定未齐，不能冻结。T-02不要求提前跑完后续T-03～05；定义/生产能力就绪后才在隔离scope实际验运行结果，避免循环。
+
+只补新耦合/变更失效及缺证，不机械重跑两上游所有矩阵，原材料已删不要求复活；只有标题/计数/路径不算证据。源码落地不推定当前桌面已部署，验收进程绑定实际重建工件hash，不借旧PATH或用户安装。known-red/包装器FAIL与单测绿分别记，未修约in-scope失败不自动免责。
+
+## 4. 联合里程碑与本轮边界
+
+1000/AG026现均已归档，正式签章/清理与不同SDK的共同组合仍由989按真实收据核，不根据头部滞后计数或归档名预签联合ready。分别报告本路线ready与联合v0.6-M1；P2等本路线硬门未过时两者不能随上游归档自动变绿。实际创建/推送标签另待用户指令。
+
+正式v0.6另等ACE M2、AGE M2、Linux发行版与App强化按批准合同完成及版本验收；OS062只交应用准入，不代表发行版全线，不是989当前Windows前置。两个M2按真实接口并行，不等联合tag才准备。未来接管归978/980/981等实际owner，不拿旧VM/iced证据冒ACE/AGE已切换。
+
+本轮只立1006/恢复合同、订正989及路线：中央号源已到1007；未建实施树/材料、运行项目门/GUI/设备/安装/恢复/清理、改canonical/归档、提交/tag或创建代理/新聊天。新合同待定向独立设计复核，自检不代独立关闭。
+
+
+</details>
+
+<details>
+<summary>v25及更早战略历史（当前调度和出口以上述v36为准）</summary>
+
 # 模块拆分与重构：当前战略及接续边界
 
 > 当前战略v25，2026-11-04。唯一调度表见[路线v25](../../plans/reports/v06-extraction-execution-roadmap.md)；下方2026-10-30正文折叠保留为历史，不再按旧waiting/测试入口/证据留存执行。本轮仅核查、Plan立约及文档刷新，暂不实施。
@@ -118,5 +187,7 @@ AutoOS/桌面产品计划与债已按 876 在 auto-os 默认分支管理，auto-
 原始日志、探针输出、截图、gate/ledger 转储均本地保留；attachments 只允许提交 Markdown 摘要，含命令/退出码/数字/本地路径+hash。不为交接做证据历史过滤、force push、分支更名或缓存清理。主检出现有其他路线 WIP 必须保留。
 
 新会话先读[当前路线](../../plans/reports/v06-extraction-execution-roadmap.md)、[交接prompt](../../plans/reports/extraction-refactoring-next-session-prompt-2026-10-28.md)、890及实际上游收据，以最新更新覆盖旧快照。维护总体规划与启动门；不要从777重新调研、自动执行后续治理包或认领其他会话实施。
+
+</details>
 
 </details>

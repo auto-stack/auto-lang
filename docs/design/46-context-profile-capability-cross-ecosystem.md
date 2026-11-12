@@ -261,3 +261,7 @@ C1–C3 的实施时可按最小消费者切片调整粒度，但不绕过 A/B �
 待实施 Plan 确定：注解/manifest/CLI 正式语法、首批 capability registry 与 effect 参数域、公开摘要兼容策略、profile 组合与诊断 schema、设备特性探测、CAP pass API及缓存扩展、首个平台/语言子集/资源预算、A/B 实际完成收据。首版只用有限集合与参数约束，复杂 SAT/SMT 求解、运行时多变体调度和自动跨设备划分按证据再选。
 
 参考（外部事实与 Auto 提案分开）：[Slang capability 用户文档](https://docs.shader-slang.org/en/stable/external/slang/docs/user-guide/05-capabilities.html)展示能力推导与平台约束的已有实践；Auto 采用共享语义/effect 与场景约束组合，是本稿建议，不表示复制其 overload 或平台实现。其余外部对比与命名依据见[战略 §2](strategy/cross-ecosystem-programming-strategy.md#2-命名比较与建议)。讨论来源为[《3D引擎方案比较》](https://chatgpt.com/c/6ac4a7c2-1250-83ea-9cdb-bb66f1062eed)。
+
+## 与 Design54 的近期标准库准备边界（2026-11-05，target-state）
+
+[Design54](54-stdlib-semantics-and-ace-integration.md)把本章 §7 的弹性标准库分层连接到现有标准库装配及 ACE 接入。其 PLAN-943..948 仅规划：近期只可登记显式有限需求/既有 profile 准入，不提前实现完整 effect 推导、profile 求解、自动 provider 选择或跨设备裁剪；不得用另一套 registry 长期替代 CAP。完整 CAP 继续遵守本章 §10 的 A/B 进入门和 C1–C3 顺序，当前语义 profile 不冒称 CAP 场景 profile。标准库准备不自动证明 ACE/基础 AutoGraphics 完成，也不新加它们的发布门。

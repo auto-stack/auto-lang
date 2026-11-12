@@ -1,3 +1,233 @@
+# v0.6 拆分与重构路线：当前状态与下一批
+
+更新：2026-11-12；**当前路线v56，M1收口整理完成**。用户已确认按现有支持边界进入本路线收尾，已核1006/989/1015正式交付/验收与M2移交，见[本路线M1收口确认与联合交接](split-refactor-m1-closeout-2026-11-12.md)。013静态生成AddTodo保留未交付说明并列M2，不阻本路线M1。联合v0.6-M1仍需当前领域签章、到期批门与最终跨仓清单，不因本路线收口自动创建tag。本轮只整理文档与交接，不施工或接管其他会话。
+
+## 生成工程的调试策略
+
+| 要查的问题 | 阅读入口 |
+|---|---|
+| 为什么选 C，生产配置要达到什么目标？ | 生成工程的 dev 构建要保留成员代码的调用点行号，同时减少非成员依赖的调试信息。成员按 Cargo 的实际 workspace 成员表判定。[Design 53 §9](../../design/53-independent-build-and-generated-cargo-governance.md#9-调试策略c生产落地target-state2026-11-10) 定义目标和回退要求，[1001 的研究与采用决定](../../specs/repository-boundaries/generated-debug-policy-study.md#1-问题与裁定) 说明取舍。 |
+| 主线生成器今天写入哪种默认值？ | [1003生产Spec](../../specs/repository-boundaries/generated-debug-policy-production.md)已生效：受管根manifest默认C，full恢复及有效覆盖/context/发布身份可核；dev成员行号、非成员依赖无debug，release不受dev块影响。源码落地不推定当前旧进程已重启。 |
+| 1001 已经验证了什么？ | 归档记录给出同一组 UI 样例切换策略前后的冷编、编辑重编和磁盘占用，以及 Web release 对照结果。数字的适用范围见 [1001 的 T-07 对照记录](../archive/1001-incremental-cache-lifecycle-and-generated-debug-policy-validation.md#t-07-回填2026-11-10-对照执行原件-t07comparisonjson)。 |
+| 谁负责把 C 变成生产默认？ | [1003归档](../archive/1003-generated-debug-policy-c-production.md)已正式交付，lang11e1f1fd5/UI393ea17c；生产实测及迁移/回退/P1关闭可供989复用。OS068已在C基线上交付，989 r8已归档，实际候选/渠道/有限验收以其最终收据和本轮收口复核为准。 |
+
+## 1. 已交付与当前差额
+
+原仓界/结构831/832、841–844、867/869/872/873、876/884、887/888/895/896/898、890、899、900/901、905/906/910/918均为已归档有限交付；不重开旧拆仓，不外推全部产品/平台绿。UI007/014/018、031/033/036/037/038、041/042、045/046/047已归档。教学主题B3十二例全部迁完，canonical累计34例；保各批既有红/平台/复审来源边界，研究042不等多文件Reload实现。
+
+语言930已archived9/9：driver41/41、固定controls15/15、独立来源及生成器投影修复正式落地/清理。UI050/051已交付Vue冷启动/生成与实例派发接缝；UI052现在archived5/5，rust-ui应用生成器交付64aef780，清理在案。OS053/054/055/056/057/058/059/060已归档；OS054已完成八产品正式组合pin及实际双profile验收，源码落地仍不等主检出桌面制品已重建/部署。
+
+头部未同步最终收据的UI037(7/11)、041(6/10)、047(6/9)、OS058(6/9)按最终delivered收据记已交付，保留簿记差额不由本轮改归档文件。OS055已archived11/11：Clock origin/main 3495671、OS交付38ae038，真实OS事件窗口执行并恢复原值1/1，真outproc载体及053两项具名债关闭、独立复审/正式pin/canonical/清理有收据；保复审证据精度与环境观察，不扩大平台支持。
+
+## 2. 当前跟踪合同与正式交付
+
+| 主责/计划 | 本轮状态 | 实际剩余与启动关系 |
+|---|---|---|
+| [OS054八应用正式组合](../../../../auto-os/docs/plans/archive/054-basic-apps-unified-assembly.md) | archived r3，10/10 | eba6fd34已落主线；独立终审、三项canonical、终局八产品pin与双profile汇总门各8/8、guard清理有收据。SDK195原生侧含六Rust native及Paint/Charts VM，不外推完整RQ六格；主检出桌面制品未为归档重建 |
+| [OS061五外部工作区产品](../../../../auto-os/docs/plans/archive/061-external-workspaces-theme-adoption.md) | archived r1，9/9 | 五产品主题接入、正式产品来源/必要OS pin、canonical、复审/清理均有收据；OS交付ddfe5a5在当前主线。预存Term测试进程退出异常按基线同败保留，不冒全部原门无红 |
+| [UI053宿主多API与栈修复](../../../../auto-ui/docs/plans/archived/053-desktop-host-multi-api-surface-and-stack-fix.md) | archived r2，6/6 | UI 9a94d568 / lang 61207576b已正式落地，最终复审/canonical/归档/清理收据齐；可供后继消费，其Vue门不抵RQ完整运行 |
+| [语言940坏源恢复](../archive/940-parser-progress-and-malformed-source-recovery.md) | archived r1，7/7 | lang ec4fb9368 / UI eff9ece3已落主线，规范与清理有收据；修复实际归UI方言EOF循环，语言生产零差额。复审注明同实施上下文，不冒独立final review证明 |
+| [UI056原子多文件Reload](../../../../auto-ui/docs/plans/archived/056-atomic-multifile-reload-and-schema-lifecycle.md) | archived r1；头登记5/8未同步最终收据 | 118eef7d在主线，独立review/merge/canonical/清理有最终done记录；按已交付跟踪，不冒头部已8/8。056自身未测Vue，后继057已交相关浏览器义务，保HMR剩余边界；desktop发行制品/Vue bundle未随本包重建 |
+| [UI057 Vue真实隔离](../../../../auto-ui/docs/plans/archived/057-vue-app-store-isolation-and-owner-lifecycle.md) | archived r1；头4/7未同步最终收据 | 28fe202a已在主线，最终review/落地/清理记录齐；Vue真实owner退出与056相关移交已对账。存活SSE重连O-01、基线红及未重建发行制品限制保留，不冒全部能力无债 |
+| [UI060原生索引、outproc输入与真实API链接](../../../../auto-ui/docs/plans/archived/060-a2r-index-vm-semantics-and-desktop-outproc-input.md) | archived r8，6/6 | 头部步数已补齐；84d5b7be在主线，独立最终review、冻结compiler4/runtime7/tools6、六项Spec、归档/guard清理有收据。SDK195有限任务交付不等完整RQ六格 |
+| [语言942共享生成workspace研究](../archive/942-generated-workspace-incremental-sharing.md) | archived r2；头5/7未同步最终收据 | e97d5016439144dac6386fbec666b977640fb1bb已正式交付，最终审查/规范/归档/清理有收据。conditional：集中workspace额外收益未证，910共享target保留；P1现由1003关闭，P2现由1006正式关闭。C生产已正式交付，不改签集中workspace go |
+| [UI061 RQ保真合同与可行性](../../../../auto-ui/docs/plans/archived/061-rq-fidelity-contract-and-feasibility.md) | archived r3，6/6 | 交付3efe4538、归档6d9ad9a3，canonical rq-fidelity-contract及独立复审/清理齐；研究原型/模型与生产缺口分列，真实present/完整产品等仍由后继关闭 |
+| [UI062 RQ无损绘制与资源](../../../../auto-ui/docs/plans/archived/062-rq-lossless-rendering-and-resource-parity.md) | archived r5，7/7 | cae1632e/a1cdfaa7正式交付/规范/归档/清理；r5局部p50门与残差/静态媒体支持保持，不重开。上轮r4 waiting已是历史；四旧红/连续媒体/非exact/重排负控分别按后继关闭 |
+| [UI063 RQ运行与输入](../../../../auto-ui/docs/plans/archived/063-rq-vm-rust-runtime-and-input-parity.md) | archived r4，7/7 | UI 96236725 + Man 347c29f已落各自主线；独立终审、canonical、归档/guard清理有收据。协议滤程290/0、四旧红闭环；P-04部分机制与代理测量不抵真实上屏/1、4、8规模。release制品未重建 |
+| [UI073 M1媒体/保真/资源收口](../../../../auto-ui/docs/plans/archived/073-rq-m1-media-fidelity-and-resource-closure.md) | archived r1；头7/8，最终收据8/8 | 82b61084已落主线，三项canonical/归档/清理有收据；复审明确来自同实施上下文，独立性局限保留，不能外推独立final review。F-1 scale持有由OS063记录关闭；媒体/绘制机制不抵完整产品/物理上屏通过 |
+| [UI074 桌面broker外部客户端接入](../../../../auto-ui/docs/plans/archived/074-rq-desktop-broker-attach-closure.md) | archived r1，5/5 | 5d8056f3正式落地，DG-1修复/独立review/规范/归档齐；真实3/3 attach Active+compose，输入点击仍归OS063。材料已删，os-063组UI树具名持有至OS063收尾，不误报整组已删 |
+| [UI075 broker attach预算配置](../../../../auto-ui/docs/plans/archived/075-rq-broker-attach-budget-tiering.md) | archived r2，5/5 | 128cef27已交，默认/非法/零值仍5000ms，具名可配；Todo/Video最终失败归投影coverage，不由加大attach预算关闭。review同实施上下文局限保留 |
+| [UI077 Windows投影与公开选路修复](../../../../auto-ui/docs/plans/archived/077-windows-rq-product-coverage-closure.md) | archived r1，7/7 | fa006603正式交付；Todo queue的list-none精确覆盖，Video走remote，旧queue的视频tag等仍拒绝；真实全产品任务、同源工具重建与最终六格归OS066 |
+| [OS066 WindowsRQ有限实证](../../../../auto-os/docs/plans/archive/066-windows-rq-final-parity-and-performance.md) | archived r1，9/9 | b0bcd95正式交付，但AC-02 partial；7Demo/041/chat/N8三项/业务深测/release与真实物理/GPU/高刷原门未闭，OS068承接全部余项；不以归档抵完整目标 |
+| [OS062 Linux原生RQHost准入](../../../../auto-os/docs/plans/062-linux-native-rqhost-admission.md) | drafting r2，0/13；Linux发行支线 | 明确VMware NixOS+COSMIC正式环境、WSL可选开发、E-01～04与实际Linux执行/发行源门；下一步先另行尝试环境。不是Windows M1/989硬前置，不因环境未知拖Windows收尾；仍须保实际共享改动的Windows回归 |
+| [OS063 RQ双Host完整装配](../../../../auto-os/docs/plans/archive/063-rq-dual-host-assembly-and-parity.md) | archived r4；头3/7，末收据记work/review/merge完成 | 0e6f065交付/canonical/归档/清理有记录，复审为同实施上下文；实测6/8嵌入，Todo/Video覆盖仍缺，M-02亚秒/物理上屏/GPU/高刷新未测。按有限边界记交付，不追认完整分母或原预算全过，M1差额另核 |
+| [语言1001缓存治理与调试策略研究](../archive/1001-incremental-cache-lifecycle-and-generated-debug-policy-validation.md) | archived r1；头8/9、最终merge/清理已交 | delivery762941d5b/簿记130977239；A增量治理+B研究已交，用户采用C，默认已由1003正式推广，D-1001-R7关闭，其他R1..R6不自动关闭 |
+| [语言1003 C生产落地](../archive/1003-generated-debug-policy-c-production.md) | archived r1；头7/10，末正式落地/清理已交 | lang11e1f1fd5/UI393ea17c；C/full/身份/四入口/delivery/净收益已交，P1与D-1001-R7关闭；历史同上下文审查限制保留，989核其实际复用面 |
+| [OS068 WindowsRQ修约交付](../../../../auto-os/docs/plans/archive/068-windows-rq-remaining-fixes-and-full-acceptance.md) | archived r1，13/13 | OS3ea7ead/UI69104765/lang落地f29f6facc；原缺陷/8App已adopt，按用户裁定交60Hz DWM/机制-协议-配对及Video机制面；未测严格指标与Video后端移交不冒已实现，989 B-01～08精确接收 |
+| [Web主责1006成员独立交付](../archive/1006-web-generated-member-independent-delivery-and-recovery.md) | archived r1，11/11 | 三仓正式交付/独立终审/规范与清理齐；公开service-export、成员闭包/移根locked、HTTP与持久数据、首版A/B失败恢复已交，library6/6、driver30/30；P2已关闭 |
+| [语言989联合交付核查与tag准备](../archive/989-split-refactor-joint-delivery-and-tag-readiness.md) | archived r8，9/9 | 正式落地28803252…、独立终审pass、规范/清理齐；收据签split_refactor_ready与joint_m1_ready=true，未建tag。本轮发现RC-UI业务/013缺证与RQ旧包来源差额，按§3待有限闭合，不以归档掩盖 |
+| [语言1015收口补验与合同对齐](../archive/1015-split-refactor-closeout-supplement-and-contract-alignment.md) | archived r1，9/9 | 独立终审pass、正式落地/Spec/清理齐；Counter A/B/恢复A真交互、013勾选/过滤等，UI20/20+controls；AddTodo按用户裁定移交owner。RQ服务/数据18/18，窗口面身份复用，不冒新跑两Host窗口 |
+
+本表24份：**23归档、1 drafting（关联Linux OS062）**。本路线当前无未归档正式实施合同；1015不是再等待T-01的草案。013 AddTodo仍缺正式生产关闭交付，不因两债已闭而写成功能实现。
+
+## 3. 本路线M1收口与后继
+
+1. **本路线交付/定向验收已闭**：1003/OS068生产、1006独立Web交付、989核查、1015有限补验均正式交付；按用户裁定收口。不重开归档合同，不追加新能力或整套重验。Counter与013已测面、RQ服务18/18和窗口身份复用按原断言声明。
+2. **M2移交已明确**：D-1015-UI-ADD为AutoUI有限修复待办，尚未立实施Plan。M1明确013静态生成AddTodo不可用；M2正式修复和A/B/恢复A添加/勾选等关闭条件保持，不把方向探针算交付。
+3. **当前联合出口仍分开**：1013未正式交付，1016为execution_done6/7，原ACE会话当前有测试在运行；以其最新正式来源/采集/终审交付为准，不再沿旧暂停记录推断无进展，本会话不接管或代签。
+4. **交接包已整理**：范围/来源/有效复用与限制、M2 owner/关闭条件、周期门、联合标签缺项和材料清理集中于[收口确认](split-refactor-m1-closeout-2026-11-12.md)。该记录为本轮工作区整理，最终标签须纳正式提交，不以未提交WIP或可变HEAD作为发布锚。
+
+## 4. 已完成面的边界
+
+- 构建：910共享target保留；942集中workspace研究仍conditional，1001治理/研究与1003 C生产已交。净收益仅采1003同源工作集11.64～11.70GiB→约5.08GiB，不外推全生态、不回算清理量。
+- RQ：按OS068明示修约和989当前有限支持声明交付；≤60Hz/DWM、机制/协议证据不扩大为高刷/光子/字节级/replay-p95/原生输入延迟。Video后端仍是B-06具名产品owner移交，不冒已实现。
+- 独立交付：P1关闭、P2由1006正式关闭；SDK安装暂存缺口在989过程中由owner-lane修复并正式消费。源落地不等用户当前安装已更新；不擅改部署/PATH/持有缓存。
+- OS062仍drafting r2/0-13，属于Linux发行应用准入，不是本Windows M1收尾硬前置。ACE/AGE后继和Linux/其他正式版义务按版本路线，不从原“未来M4”拖延现行M2责任。
+
+## 5. 周期批回归与来源有效性
+
+最新收据covered_plan=1014，时间2026-11-12 07:29:40+08:00、commit82fc90f86；36次组调用/4524执行，known-reds-only/new_reds=[]，剩plan988超时预算边界具名；此前六红组已由1014修复。本次核该commit不含1015落地8abc862f4，不能写已覆盖1015。
+
+1015为5倍数且已正式落地，周期门到期。当前检测到ACE侧cargo/nextest等测试运行，依单实例/独占重门规则不另起全量，不停止他人任务；待独占条件满足时用现行批回归入口跑一轮、分诊并更新收据。此项与本路线已交付的定向证据分开，不把待跑填PASS，也不在此修组或重开1015。
+
+收口运行基准沿989冻结N+1015增量，当前UI主线相较N仅081计划文档变化已核；其他未来源/工具/锁/资源/配置变化仍按触面判失效。足够摘要可复用，原材料删除不要求复活scope，当前未重新验证整个主检出组合。
+
+## 6. 联合标签交接与正式版出口
+
+| 门 | 本轮状态 | 后续职责 |
+|---|---|---|
+| 本路线M1 | 范围/正式来源/验收与M2移交已核，收口文档整理完成 | 联合冻结时把收口说明/限制纳正式提交 |
+| ACE当前签章 | 1013未正式交付；当前测试活动可见，1016结果/配置依原会话确认 | 原ACE会话完成有效来源/证据/终审与主线交付，不用旧1000/989 ready代签 |
+| AGE签章/组合 | AG026已archived11/11，领域标签不代联合 | 核实际AGE源/SDK与跨仓同一可消费组合 |
+| 周期批门 | 1015触发到期；当前并发测试不满足单实例条件 | 独占窗口跑现行批门，保真实红/排除/归因并更新收据 |
+| 联合v0.6-M1 | 只有989历史模板，本轮未创建/查询远端 | 前述当前证据齐→冻结全仓源/工件/锁/资源清单→必要差额核→用户明确打标/推送指令 |
+
+正式v0.6继续按[版本总路线](../../roadmap-v0.6.md)的ACE M2、AGE M2、Linux发行/App强化及当前新增专项与联合门；M1收口不代表正式版或全平台完成。OS062仍是相关Linux支线，不阻本Windows M1。
+
+## 7. 本轮工作
+
+完成[本路线M1收口确认](split-refactor-m1-closeout-2026-11-12.md)的工作区整理，读回关键Git祖先/规范身份/材料清理与周期门，固定M2移交并同步战略/版本/RQ路线。不建新Plan/实施树，不改生产/canonical/归档，不跑新GUI/安装/恢复或并发全量，不终止/恢复其他会话，不提交或打tag。新的独立终审/正式文档提交及联合tag收据不由这次静态文档核对替代。
+
+<details>
+<summary>v51状态快照（1006/989交付前，已由v52取代）</summary>
+
+# v0.6 拆分与重构路线：当前状态与下一批
+
+更新：2026-11-11；**当前路线v51**。1003及OS068均已正式归档；989修订r8/0-9，接收C生产和OS068修约交付，逐渠道/范围分层核验。P1/R7已闭，P2由1006 r1认领但尚未实施，四类恢复对象合同r1已立；实际生产交付/候选绑定未齐，T-02仍不能放行。本轮只立1006、恢复清单并同步989/路线，不实施。
+
+## 生成工程的调试策略
+
+| 要查的问题 | 阅读入口 |
+|---|---|
+| 为什么选 C，生产配置要达到什么目标？ | 生成工程的 dev 构建要保留成员代码的调用点行号，同时减少非成员依赖的调试信息。成员按 Cargo 的实际 workspace 成员表判定。[Design 53 §9](../../design/53-independent-build-and-generated-cargo-governance.md#9-调试策略c生产落地target-state2026-11-10) 定义目标和回退要求，[1001 的研究与采用决定](../../specs/repository-boundaries/generated-debug-policy-study.md#1-问题与裁定) 说明取舍。 |
+| 主线生成器今天写入哪种默认值？ | [1003生产Spec](../../specs/repository-boundaries/generated-debug-policy-production.md)已生效：受管根manifest默认C，full恢复及有效覆盖/context/发布身份可核；dev成员行号、非成员依赖无debug，release不受dev块影响。源码落地不推定当前旧进程已重启。 |
+| 1001 已经验证了什么？ | 归档记录给出同一组 UI 样例切换策略前后的冷编、编辑重编和磁盘占用，以及 Web release 对照结果。数字的适用范围见 [1001 的 T-07 对照记录](../archive/1001-incremental-cache-lifecycle-and-generated-debug-policy-validation.md#t-07-回填2026-11-10-对照执行原件-t07comparisonjson)。 |
+| 谁负责把 C 变成生产默认？ | [1003归档](../archive/1003-generated-debug-policy-c-production.md)已正式交付，lang11e1f1fd5/UI393ea17c；生产实测及迁移/回退/P1关闭可供989复用。OS068已在C基线上交付，989 r8核当前组合、渠道与修约声明，不重复实施。 |
+
+## 1. 已交付与当前差额
+
+原仓界/结构831/832、841–844、867/869/872/873、876/884、887/888/895/896/898、890、899、900/901、905/906/910/918均为已归档有限交付；不重开旧拆仓，不外推全部产品/平台绿。UI007/014/018、031/033/036/037/038、041/042、045/046/047已归档。教学主题B3十二例全部迁完，canonical累计34例；保各批既有红/平台/复审来源边界，研究042不等多文件Reload实现。
+
+语言930已archived9/9：driver41/41、固定controls15/15、独立来源及生成器投影修复正式落地/清理。UI050/051已交付Vue冷启动/生成与实例派发接缝；UI052现在archived5/5，rust-ui应用生成器交付64aef780，清理在案。OS053/054/055/056/057/058/059/060已归档；OS054已完成八产品正式组合pin及实际双profile验收，源码落地仍不等主检出桌面制品已重建/部署。
+
+头部未同步最终收据的UI037(7/11)、041(6/10)、047(6/9)、OS058(6/9)按最终delivered收据记已交付，保留簿记差额不由本轮改归档文件。OS055已archived11/11：Clock origin/main 3495671、OS交付38ae038，真实OS事件窗口执行并恢复原值1/1，真outproc载体及053两项具名债关闭、独立复审/正式pin/canonical/清理有收据；保复审证据精度与环境观察，不扩大平台支持。
+
+## 2. 当前跟踪合同与最近交付
+
+| 主责/计划 | 本轮状态 | 实际剩余与启动关系 |
+|---|---|---|
+| [OS054八应用正式组合](../../../../auto-os/docs/plans/archive/054-basic-apps-unified-assembly.md) | archived r3，10/10 | eba6fd34已落主线；独立终审、三项canonical、终局八产品pin与双profile汇总门各8/8、guard清理有收据。SDK195原生侧含六Rust native及Paint/Charts VM，不外推完整RQ六格；主检出桌面制品未为归档重建 |
+| [OS061五外部工作区产品](../../../../auto-os/docs/plans/archive/061-external-workspaces-theme-adoption.md) | archived r1，9/9 | 五产品主题接入、正式产品来源/必要OS pin、canonical、复审/清理均有收据；OS交付ddfe5a5在当前主线。预存Term测试进程退出异常按基线同败保留，不冒全部原门无红 |
+| [UI053宿主多API与栈修复](../../../../auto-ui/docs/plans/archived/053-desktop-host-multi-api-surface-and-stack-fix.md) | archived r2，6/6 | UI 9a94d568 / lang 61207576b已正式落地，最终复审/canonical/归档/清理收据齐；可供后继消费，其Vue门不抵RQ完整运行 |
+| [语言940坏源恢复](../archive/940-parser-progress-and-malformed-source-recovery.md) | archived r1，7/7 | lang ec4fb9368 / UI eff9ece3已落主线，规范与清理有收据；修复实际归UI方言EOF循环，语言生产零差额。复审注明同实施上下文，不冒独立final review证明 |
+| [UI056原子多文件Reload](../../../../auto-ui/docs/plans/archived/056-atomic-multifile-reload-and-schema-lifecycle.md) | archived r1；头登记5/8未同步最终收据 | 118eef7d在主线，独立review/merge/canonical/清理有最终done记录；按已交付跟踪，不冒头部已8/8。056自身未测Vue，后继057已交相关浏览器义务，保HMR剩余边界；desktop发行制品/Vue bundle未随本包重建 |
+| [UI057 Vue真实隔离](../../../../auto-ui/docs/plans/archived/057-vue-app-store-isolation-and-owner-lifecycle.md) | archived r1；头4/7未同步最终收据 | 28fe202a已在主线，最终review/落地/清理记录齐；Vue真实owner退出与056相关移交已对账。存活SSE重连O-01、基线红及未重建发行制品限制保留，不冒全部能力无债 |
+| [UI060原生索引、outproc输入与真实API链接](../../../../auto-ui/docs/plans/archived/060-a2r-index-vm-semantics-and-desktop-outproc-input.md) | archived r8，6/6 | 头部步数已补齐；84d5b7be在主线，独立最终review、冻结compiler4/runtime7/tools6、六项Spec、归档/guard清理有收据。SDK195有限任务交付不等完整RQ六格 |
+| [语言942共享生成workspace研究](../archive/942-generated-workspace-incremental-sharing.md) | archived r2；头5/7未同步最终收据 | e97d5016439144dac6386fbec666b977640fb1bb已正式交付，最终审查/规范/归档/清理有收据。conditional：集中workspace额外收益未证，910共享target保留；P1现由1003关闭，P2由1006认领仍OPEN。C生产已正式交付，不改签集中workspace go |
+| [UI061 RQ保真合同与可行性](../../../../auto-ui/docs/plans/archived/061-rq-fidelity-contract-and-feasibility.md) | archived r3，6/6 | 交付3efe4538、归档6d9ad9a3，canonical rq-fidelity-contract及独立复审/清理齐；研究原型/模型与生产缺口分列，真实present/完整产品等仍由后继关闭 |
+| [UI062 RQ无损绘制与资源](../../../../auto-ui/docs/plans/archived/062-rq-lossless-rendering-and-resource-parity.md) | archived r5，7/7 | cae1632e/a1cdfaa7正式交付/规范/归档/清理；r5局部p50门与残差/静态媒体支持保持，不重开。上轮r4 waiting已是历史；四旧红/连续媒体/非exact/重排负控分别按后继关闭 |
+| [UI063 RQ运行与输入](../../../../auto-ui/docs/plans/archived/063-rq-vm-rust-runtime-and-input-parity.md) | archived r4，7/7 | UI 96236725 + Man 347c29f已落各自主线；独立终审、canonical、归档/guard清理有收据。协议滤程290/0、四旧红闭环；P-04部分机制与代理测量不抵真实上屏/1、4、8规模。release制品未重建 |
+| [UI073 M1媒体/保真/资源收口](../../../../auto-ui/docs/plans/archived/073-rq-m1-media-fidelity-and-resource-closure.md) | archived r1；头7/8，最终收据8/8 | 82b61084已落主线，三项canonical/归档/清理有收据；复审明确来自同实施上下文，独立性局限保留，不能外推独立final review。F-1 scale持有由OS063记录关闭；媒体/绘制机制不抵完整产品/物理上屏通过 |
+| [UI074 桌面broker外部客户端接入](../../../../auto-ui/docs/plans/archived/074-rq-desktop-broker-attach-closure.md) | archived r1，5/5 | 5d8056f3正式落地，DG-1修复/独立review/规范/归档齐；真实3/3 attach Active+compose，输入点击仍归OS063。材料已删，os-063组UI树具名持有至OS063收尾，不误报整组已删 |
+| [UI075 broker attach预算配置](../../../../auto-ui/docs/plans/archived/075-rq-broker-attach-budget-tiering.md) | archived r2，5/5 | 128cef27已交，默认/非法/零值仍5000ms，具名可配；Todo/Video最终失败归投影coverage，不由加大attach预算关闭。review同实施上下文局限保留 |
+| [UI077 Windows投影与公开选路修复](../../../../auto-ui/docs/plans/archived/077-windows-rq-product-coverage-closure.md) | archived r1，7/7 | fa006603正式交付；Todo queue的list-none精确覆盖，Video走remote，旧queue的视频tag等仍拒绝；真实全产品任务、同源工具重建与最终六格归OS066 |
+| [OS066 WindowsRQ有限实证](../../../../auto-os/docs/plans/archive/066-windows-rq-final-parity-and-performance.md) | archived r1，9/9 | b0bcd95正式交付，但AC-02 partial；7Demo/041/chat/N8三项/业务深测/release与真实物理/GPU/高刷原门未闭，OS068承接全部余项；不以归档抵完整目标 |
+| [OS062 Linux原生RQHost准入](../../../../auto-os/docs/plans/062-linux-native-rqhost-admission.md) | drafting r2，0/13；Linux发行支线 | 明确VMware NixOS+COSMIC正式环境、WSL可选开发、E-01～04与实际Linux执行/发行源门；下一步先另行尝试环境。不是Windows M1/989硬前置，不因环境未知拖Windows收尾；仍须保实际共享改动的Windows回归 |
+| [OS063 RQ双Host完整装配](../../../../auto-os/docs/plans/archive/063-rq-dual-host-assembly-and-parity.md) | archived r4；头3/7，末收据记work/review/merge完成 | 0e6f065交付/canonical/归档/清理有记录，复审为同实施上下文；实测6/8嵌入，Todo/Video覆盖仍缺，M-02亚秒/物理上屏/GPU/高刷新未测。按有限边界记交付，不追认完整分母或原预算全过，M1差额另核 |
+| [语言1001缓存治理与调试策略研究](../archive/1001-incremental-cache-lifecycle-and-generated-debug-policy-validation.md) | archived r1；头8/9、最终merge/清理已交 | delivery762941d5b/簿记130977239；A增量治理+B研究已交，用户采用C，默认已由1003正式推广，D-1001-R7关闭，其他R1..R6不自动关闭 |
+| [语言1003 C生产落地](../archive/1003-generated-debug-policy-c-production.md) | archived r1；头7/10，末正式落地/清理已交 | lang11e1f1fd5/UI393ea17c；C/full/身份/四入口/delivery/净收益已交，P1与D-1001-R7关闭；历史同上下文审查限制保留，989核其实际复用面 |
+| [OS068 WindowsRQ修约交付](../../../../auto-os/docs/plans/archive/068-windows-rq-remaining-fixes-and-full-acceptance.md) | archived r1，13/13 | OS3ea7ead/UI69104765/lang落地f29f6facc；原缺陷/8App已adopt，按用户裁定交60Hz DWM/机制-协议-配对及Video机制面；未测严格指标与Video后端移交不冒已实现，989 B-01～08精确接收 |
+| [Web主责1006成员独立交付](../1006-web-generated-member-independent-delivery-and-recovery.md) | drafting r1，0/11 | 中央登记、Web生产owner；公开成员导出/SDK资源闭包/仓外locked HTTP与状态、首版A/B失败恢复；不等989/ACE M2。只有正式交付才关P2/E-03，当前暂不实施 |
+| [语言989联合交付核查与tag准备](../989-split-refactor-joint-delivery-and-tag-readiness.md) | drafting r8，0/9；待独立设计复核 | 两上游生产等待解除，C-01/03/04已有结果待候选核验；P2/C-02由1006立约未交；恢复对象r1已核定，实际生产命令/最终源/schema待交接及T-01绑定。未来授权可T-01准备，T-02须E-01～06全齐，不把后续T-03～05结果当启动前置 |
+
+本表23份：20归档、3 drafting（1006、989、关联Linux OS062）。本路线Windows活动合同为1006→989；1006目前只有草案，P2仍开放，不能由编号推定渠道/候选或tag已就绪。
+
+本次读1003/OS068归档和canonical、Web生成/SDK交付及Man入口源码、P1/P2债表，接明示修约并核责任；未重跑上游/运行验收，不改canonical或归档，不将新revision当独立审查通过。
+
+收口支援记录：[语言949](../archive/949-vm-handler-async-parking-and-store-api-await.md) archived r2/4-4（VM handler异步与JSON值闭合）；[语言990/Web实现](../archive/990-web-db-import-source-context.md) archived r2（头3/4，Web本地交付2d698413、规范落地，父054记录已统一guard清理所持树）。两者已被054正式收口消费；990是db导入上下文修复，不等D-942-P2独立导出入口已交付。本轮不重开这些合同。
+
+## 3. 执行顺序与并行边界
+
+1. 产品组合：**UI060→OS054均已正式交付**，不再列为待启动或在途。它们对UI063和OS063的相应正式来源门已解除；下一RQ合同仍须按自身进入门消费这些实际交付及新Spec，不把SDK195有限产品组合当全公共能力RQ六格PASS。
+2. 宿主主题：**OS055、OS061均已正式交付**；OS061五个实际产品、组合来源与清理已闭，不再列在途或等待。
+3. 新框架：**940、UI056、UI057均已落地**。UI057的28fe202a为当前UI主线祖先，Vue真实双App/Store与owner退出证据及056移交对账有最终收据；头4/7簿记差额、既有红/O-01与未重建制品分别保留，不称所有能力/发行无缺口。
+4. 当前不再启动UI057。989 T-01/06将056/057原移交与存活SSE重连O-01逐项对应候选承诺，若命中必需能力则交owner有限修复；不因历史归档自动清债，也不重开归档Plan。
+5. **C生产已正式交付**：1003读回默认/full/身份/四入口/移根/收益，P1/R7已闭；942仍是集中workspace研究conditional，不改签go、不再等C实施。当前组合适用性/新耦合由989核。
+
+6. **OS068已按用户修约交付**：既有生产修复/8/8与有限任务证据可复用，支持≤60Hz DWM呈现与已批机制/协议口径；高刷/光学/原生100ms/字节计数/replay p95、完整Video业务不得冒已证。989按B矩阵而非旧严格词句验收。
+
+**下一步**：先按[1006 r1](../1006-web-generated-member-independent-delivery-and-recovery.md)准备后续实施；本轮暂不实施。以后获启动，1006实际生产交付后989才可能过E-03；989 T-01可与1006并行准备，按[恢复对象合同r1](split-refactor-recovery-objects.md)绑定实际源/命令/schema及其余E门。T-02全齐才冻结，再跑T-03～05；不要求预跑、不等两个M2/Linux。1006/989草案自检不代独立设计复核。
+
+本轮授权仅先立P2计划与恢复清单、修订989和同步路线；未尝试Linux环境或接管任何执行。Windows RQ有限交付不等本路线M1全部就绪；本M1不同于Linux发行版M1、AGE M1、ACE M2或v0.6正式版。
+
+RQ性能职责：UI061先冻结测量/原direct基线及候选前预算；UI062实现批量异步/驻留资源/有界队列；UI063闭合输入与present调度、公平性；OS063验实际两Host多App总成本。四Plan均新增AC-07、V-05～08，不新增号/任务数。M-01～08含响应分位与帧节奏、CPU/GPU、带宽/重复上传、内存/队列、启动恢复及公平性；无预算/缺测不签PASS，不预填收益或承诺比X11/direct更快。详[设计§7](../../../../auto-ui/docs/design/autoui/renderqueue-complete-fidelity.md)。UI061正式Spec及062 r5局部门可消费；062 p95只记录不免除最终真实尾延迟/截止预算。标签不隔离机器，实际负载/环境污染、提交与present终点、完整样本必须可核。本轮未运行功能或性能验收。
+
+## 4. 未立项、债务与程序门
+
+- 完整Feature/命令/Service、Tauri R-6、Vue新发行渠道、Web预期执行ID schema/源暂存/vendor/锁、Man D-910-2派发，仍各归实际owner；本轮没有足够实测归因，不虚构统一实施包或称已关闭。
+- UI042截断坏源的具名问题已由940交付关闭（实际修复在UI方言）；UI041浏览器隔离验证差额已有057交付，保O-01等具名边界。058媒体生成、025后端生成、019 TS1005等具名holds仍需按实际owner/当前源码复核，不因930/052标题相似自动关闭。
+- 上轮读取的批量回归收据covered=953，2026-11-06 04:24（北京时间），verdict=known_reds_and_fixture_observations、gate_passed=false，执行2828/条件排除1014；本轮未刷新该批门，不能称当前全绿或替代UI/Man owner门。940自身收尾回归是历史绑定证据，不覆盖其后全部变化。
+- UI073已正式交付连续媒体/绘制/资源机制，媒体类预算按用户裁定独立计量、UI内容8MiB/s保持；最终全产品/性能与完整画面仍按OS063具名holds及原承诺核差额。阶段像素/结构或代理结果不得自动外推完整M1。
+- ACE/SQ/CA与AGE M2/M3（包括UI054/055）另线，不纳本表或全局前置；同仓号务必带仓名，OS055和UI055不是同一计划。
+
+## 5. 收口范围与补充事项（2026-11-07）
+
+用户本轮裁定：现有计划收口后，以共享workspace减少编译产物、RQ完整模式两大事项作为本路线最后的主要工作。既有已交付仓界不重开，不为结束路线追加完整Feature框架、进一步拆crate、全部历史债清零或新平台/新引擎重构。路线完成是以下有限合同与实际结果成立，不按剩余Plan数量判断。
+
+| 收口面 | 已有责任/覆盖 | 仍须补充及完成判据 |
+|---|---|---|
+| 现有框架与产品收口 | UI060→OS054、UI056/057均已归档交付 | 原框架/八产品组合收口完成；后继消费真实提交/工具及既有支持限制。056/057原移交和历史债按989候选承诺判适用性，不因本次交付泛化全部生态无债 |
+| 构建产物治理 | 942/1001研究治理已交，1003 C生产正式交付 | 复用实际净益/成本、C/full/身份/迁移证据，当前组合变更定向判失效；不外推全产品56%或回算旧清理量 |
+| RQ本里程碑支持面 | OS068正式交付，明示修约已由989 r8 B-01～08接收 | 修复/8App/已证任务与机制等按实证层级采信；≤60Hz/DWM和MCP等口径不扩大为高刷/光子/原生输入/replay/全Video业务。未修约required缺证仍具名处理 |
+| 两项结果联合消费 | 989 r8，既定上游已交 | C-01～05独立判，P1已闭/P2仍开放，C-05对象合同r1已定、实际绑定待齐；只读准备可先，T-02暂阻；正式候选验证未执行，联合ready不随归档自动变化 |
+| 发布支持面与旧债 | 路线§4、各仓债表、各owner正式收据 | 区分必需阻断、有效关闭、支持面外具名移交。942的P1 UI vendor闭包/P2 Web独立导出为冻结来源观察；核实际候选适用性/关闭证据，命中则owner有限修复，不能默认交D-WS/OS063/986。App后端运行不替Web成员独立导出；其他既有债沿原支持面判定 |
+| 版本/证据一致 | 各Plan review/merge、canonical与清理记录 | 解决UI056等计数与最终收据差额，保留940审查上下文局限；最后由独立审查核本里程碑相关行为与证据，不伪造历史独立review或重开归档Plan。文档草案/未跟踪文件不能作为最终tag唯一内容 |
+
+**治理当前事实**：1003已正式交付生产C，G2仍核当前组合真实净收益/成本；无需重做采用决定或集中workspace研究。历史审查/未部署限制保留，复用只核足够身份和断言，缺证定向补。
+
+**已交上游与989 r8的剩余准入**：
+
+1. [1003归档](../archive/1003-generated-debug-policy-c-production.md)及[OS068归档](../../../../auto-os/docs/plans/archive/068-windows-rq-remaining-fixes-and-full-acceptance.md)均已交，正式源/修约/证据可消费，不重开。
+2. 989 r8核C-01～05：P1闭合；P2由auto-web主责的1006 r1认领，auto-generation-core中立支撑，尚无实际交付；C-05采用恢复合同r1，989与包owner在T-01/02绑定实际候选/命令/schema。两个上游不自动全包承接。
+
+**验收证据复用**：989§5.1将证据分为“身份/输入与oracle仍适用的摘要复用、已失效项定向重验、新联合路径新增验证”。归档Plan内可追溯摘要足够时，不因原始日志按政策已删强制重跑；只有标题/状态/计数、缺实际来源/执行ID/oracle或性能口径预算的记录不能充PASS。
+
+### 5.1 Linux与ACE/AGE交接
+
+- 当前必需RQ出口沿既有合同为**Windows RQ-W**。2026-11-10已明确OS062 r2归Linux发行版M1→M2的两Rust应用/Nix准入，在此仅关联观察/协调共享接口，**不是本拆分重构Windows M1、989或tag-ready的硬前置**；若tag声明包含该Linux支持，则其四格/Nix安装与新协议兼容必须另有正式证据。Linux全能力、自己的Wayland compositor不纳本次结束条件，OS062未完成不得冒Linux已支持。
+- ACE替换与AGE演进是其他路线的实施责任，不追加为本路线里程碑前置，但**ACE已是v0.6正式版前置**。RQ子战略中“未来M4”的ACE排期文字早于现行M2替换裁定，不能据它延期正式版责任。与[978](../978-ace-m2-build.md)、[980 AutoUI接管](../980-ace-m2-autoui.md)、[981 AGE/RQ消费者](../981-ace-m2-age.md)交接实际producer/Host协议、模式/能力ID、资源/输入/性能oracle与版本；当前VM/Rust是现有执行形态验收，不强迫未来发行继续携带旧AutoVM。
+- 若ACE接管先于本路线最终候选，按实际交付实现更新受影响消费矩阵并重新核验；若后于本里程碑，保存原冻结基面，由ACE owner证明后继等价与新预算。不能把旧VM候选的PASS直接挪给ACE。当前iced/wgpu保真交付也不等AGE已替换AutoUI，更不等自有compositor完成。
+
+## 6. 什么时候可以打tag
+
+区分三个节点：开发工作完成（代码/Plan已交付）、本路线里程碑就绪（下面TAG-01～07全闭）、v0.6正式版就绪（再叠加全版本发布门）。分支上有实现或计划归档数量足够，都不能代替后两者。
+
+| 门 | 本路线里程碑tag所需证据 | 当前判断 |
+|---|---|---|
+| TAG-01 范围与来源冻结 | 固定本路线能力/模式/平台/Demo/产品ID与全部必需Plan；语言/UI/Man/Web/OS及实际产品/依赖每仓完整SHA、锁、工具链、SDK、协议/资源版本和恢复入口成一份可提交清单；34例/28产品只是现观察，增减逐项解释 | 未冻结 |
+| TAG-02 实际交付 | 基础交付及1003/OS068正式来源按明示范围成立，必需渠道生产能力正式交付；研究/机制/移交不冒更强结果 | 两包已交；P2/C-02仍缺生产关闭交付，其他当前渠道定义/验证待989 |
+| TAG-03 同组合功能与性能 | 当前候选独立边界、C净益/成本及OS068修约适用口径成立，未修约义务不减；有效复用/失效定向重验/新耦合取证 | 989未执行；严格未测指标不假标全绿 |
+| TAG-04 可重建/渠道/恢复 | C-01～05的公开生产入口及有限旧→新/数据/失败恢复独立oracle齐；真移根构建/HTTP/运行闭包，不借开发根，不新增通用安装器 | P1已关闭可复用，P2仍OPEN阻T-02；C-05四类对象/配方已有合同r1，实际候选绑定与运行验收均待完成 |
+| TAG-05 必需红与债务结清 | 新增回归和承诺面阻断=0；已知红逐项绑定本组合与支持面，范围外限制写owner/理由/后继/关闭条件。非零门不能改标全绿，缺测/环境缺失不能冲抵必需项 | 既有路线记录批门gate_passed=false，不能据此签就绪；本轮未重跑/刷新批门 |
+| TAG-06 独立终验与文档 | 独立上下文核上述证据、遗漏/延后/绕行；正确Specs、启动/生成/部署/恢复说明、限制和本里程碑说明与冻结组合一致；Plan头与收据差额明确，实际输出/材料清理依现行规则完成 | 尚无路线级最终收据 |
+| TAG-07 tag可追溯 | 最终候选源码/锁/清单/收尾摘要均已提交，tag精确绑定最终提交。跨仓用同一清单指向各SHA/可选对应tag，不要求版本号相同；被引用来源可取回，若公开发布则接收方实际可获取。候选后源码/锁/资源/工具变化须核失效范围，不能移动旧tag掩盖变化 | 尚未准备/创建 |
+
+**2026-11-10联合M1标签决定（989 r8已绑定准备职责）**：本路线M1、ACE M1、AGE M1分别正式交付并独立终审后，汇合为`v0.6-M1`。1000负责ACE签章、AG026负责AGE签章，989负责本路线验收及有限收据汇总/跨仓清单准备，不能代领域全量测试。分别记录本路线ready与联合ready；缺外部收据可先完成本路线，但联合必须pending。若989已归档后收据才齐，由路线协调者补齐清单/独立组合核验，不重开归档989。不同SDK/引擎来源须说明可消费组合及必要交叉证据，不拼异版PASS；不创建/推送tag。
+
+**正式v0.6的完成条件（2026-11-10用户裁定）**：在本路线M1交付基础上，须等ACE M2、AGE M2和Linux发行版路线按各自批准合同全部完成，再通过最终版本联合验收。现行[ACE发布门](ace-v06-m2-release-gate-2026-11-02.md)的全场景/目标接管、实际安装发行及旧实现disable继续有效，[986候选发行](../986-ace-m2-release.md)仍接[987退役](../987-ace-m2-retirement.md)；AGE按[当前M2合同](../../../../auto-ui/docs/design/autographics/age-three-milestones-and-ace-m2.md)验收。Linux OS062仅是发行版应用准入支线，不能代整条路线收口，也不因此成为本Windows M1/989的新增前置。三路按具体接口并行，不互等总标签；本次不擅定Linux阶段终点、不削减其他有效发布门。总入口见[版本路线](../../roadmap-v0.6.md)。
+
+**时间判据**：1003/OS068已按各自范围正式交付；当前1006 P2生产交付、有限恢复对象实际绑定和989最终组合验收尚未完成，不据此承诺发布日期。前置齐后按冻结→联合核验→独立审查→tag准备收口，不能仅按剩余计划数量推断可打标。
+
+## 7. 本轮更新纪律
+
+本次仅中央立1006 r1（号源1007）、核定恢复对象合同r1、修989 r8，并同步路线/战略v51、RQ子路线v8和债务责任指针。无实施树/材料、项目构建测试/GUI/安装/恢复演练/清理/提交/tag或新聊天/代理；静态合同自检不等执行、独立final review或任何ready PASS。
+
+
+</details>
+
+<details>
+<summary>v25历史快照（不作为当前调度）</summary>
+
 # v0.6 拆分与重构总路线图：按完整模块交付
 
 更新：2026-11-04；**当前路线v25**。本节为当前调度；下方v20/v9全文保留为折叠历史，旧waiting/入口/证据政策不再是执行指令。状态以各唯一合同及最终收据为准；本轮只核查/规划/刷新文档，暂不实施、不建树或运行项目门。
@@ -381,6 +611,8 @@ work先完成全部实现/修复及相关定向反例、模块测试、必要che
 - [BLOG-004](../../../../auto-blog/docs/plans/004-dual-runtime-acceptance.md)、[语言885](../885-blog-generated-rust-backend-parity.md)及[auto-ui/003](../../../../auto-ui/docs/plans/003-blog-native-vm-run-and-acceptance.md)按其已有运行/验收与最小缺陷修复合同继续，不新增auto-web或整个结构里程碑的全局等待；涉及884等共享路径时按实际交集协调写入/交付顺序。
 
 本轮只记录排程决定，并与[AutoOS应用总表](../../../../auto-os/docs/plans/b-apps-basic-capabilities.md)同步；不修改任何在途Plan的合同/任务/验收，不创建仓库、Plan、worktree或agent，不改变产品代码、canonical Spec或ledger，不运行构建/GUI/功能测试。
+
+</details>
 
 </details>
 

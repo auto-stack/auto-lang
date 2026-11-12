@@ -155,6 +155,12 @@ Tasks communicate through ownership transfer (move semantics) by default, ensuri
 
 For embedded targets with constrained memory, the compiler analyzes the call graph of each task to compute the maximum stack depth. Stack space is reserved at compile time, eliminating runtime stack overflow risk.
 
+## 内存分配专题：Storage 与资源实例
+
+[Storage 与内存分配资源](memory/storage-and-allocation.md)（2026-11-09，设计方向 r1）补充本章：以 `List<T, S>`/Storage 为用户层主模型，prelude 提供默认政策，Storage 实例保存实际内存来源；按需在底层抽取共享分配接口，不预先要求 Zig 式处处传 allocator。容器布局、分配资源与 view/mut/move/析构分别承担职责。
+
+固定容量不等于固定在栈上，也不等于所有操作不会失败；无 libc、无通用堆和严格无运行期分配分别定义。具体接口、实例构造、ABI 与验证范围等 M2 标准库阶段再讨论冻结，本次不施工，也不改变本章 current/partial 状态。
+
 ## Open Questions
 
 - Whether lifetime annotations (e.g., `@Scope`, `@Task`) should be explicit syntax or purely inferred.

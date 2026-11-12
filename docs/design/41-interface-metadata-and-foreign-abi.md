@@ -2,11 +2,15 @@
 status: proposed
 describes: target-state
 created_at: 2026-10-15
-updated_at: 2026-11-03
+updated_at: 2026-11-05
 implemented_by_plans: []
 ---
 
 # Design 41：统一接口元数据、Foreign Interface IR 与跨 ABI 架构
+
+> **2026-11-05 CA-E接续**：[941最终组合验收](../plans/941-ace-m1-expanded-and-architecture-acceptance.md)已正式规划，设计见[Design51 §16](51-shared-a2x-and-hir-to-rust.md#16-ca-earch最终组合验收2026-11-05target-state)。937已交付不代938/939；总门分别验证typed/source方向、布局/调用/资源/独立认证与恢复依赖，缺项不签M1。下方CA-D初订及“CA-E未立项”为历史，不改797 candidate/descriptor3。
+
+> **2026-11-05 当前正式规划**：CA-D已拆[937共享事实/标量底座](../plans/937-shared-foreign-interface-and-scalar-abi-bridge.md)→[938受检源码foreign调用](../plans/938-checked-source-foreign-scalar-calls.md)→[939资源/句柄/同步回调](../plans/939-foreign-resource-handle-and-callback-bridge.md)，均drafting r1，仅规划；当前合同见§12与[基线/排期](../plans/reports/ace-ca-d-baseline-and-schedule-2026-11-05.md)。937可独立于929/934主体交付，公共H/正式采样分窗；后两包接稳定source/query事实。下方旧“CA-D未取号/921在途”等为当时快照，797 candidate/descriptor3/原限额与M1/M2硬门不变。
 
 > **2026-11-02 M2全场景替换约束**：[M2合同r2](../plans/reports/ace-replacement-first-m2-contract-2026-11-02.md)要求AutoUI/AutoMan及全部现有应用所用host/FFI在M2真实接通，并完成产品切换/旧实现disable；不能归类未来M3/M4而免验。优先明确typed import/有限已验shim/预编译库，不为未使用的新通用生态扩容；未来M3/M4暂不规划。M1有限797/C桥保持，不扩大在途ABI合同或假称桥接已实现。
 
@@ -224,3 +228,23 @@ CA-D所需A/B接口包括：TargetDescriptor/provider/完整fileset身份与sour
 ### 11.5 与M2产品替换的顺序
 
 922已明确M2-EXEC/HOST/SESSION/TEST、UI/Man/Web迁移和TS provider等尚需正式包。M2-HOST可复用有限typed import与已验证手工shim接现有Rust库，原源码/库/ABI变化才低频构建；不等通用header importer/Rust自动shim平台全部完成才迁已有应用，也不能因其属host而免验。通用FFI扩展按真实缺口分包，无消费者的新生态不抢M2关键路径；CA-D/Q4不替全部产品/所有A2X目标和旧实现disable。
+
+## 12. CA-D正式拆包与可独立交付边界（2026-11-05，target-state）
+
+本轮用户授权正式立项、仅规划。当前797的descriptor/layout/validate/emit已有真实三腿，但emit的业务体仍是有限BodyKind声明IR；native私有ABI的bool为I32、Str为ptr+I32长度，891宽typed ABI又用整数位载体，均不能直接别名为公开AutoABI。A2C的a2x_result/record/Str也为私有表示。CA-D正式拆[937底座](../plans/937-shared-foreign-interface-and-scalar-abi-bridge.md)→[938源码调用](../plans/938-checked-source-foreign-scalar-calls.md)→[939资源桥](../plans/939-foreign-resource-handle-and-callback-bridge.md)三个中等包，以实际生产者/消费者关闭，不交无人消费的统一trait，不把typed/probe支持冒普通源FFI。
+
+| 包 | 可审查交付 | 真正前置与独立性 |
+|---|---|---|
+| CA-D1 共享接口事实与标量桥底座 | 无后端依赖的逻辑接口/物理计划及797兼容投影；797真实native ABI发射/准入与新A2C标量导出wrapper两实际消费者；Auto源码经既有C provider生成业务体后供独立C caller调用；current797三腿重验 | 797、921已交付，可在不改core/source、共享lowering、a2x-core/store/session及929恢复协议的边界独立实施。native消费者在此仍是797声明IR，不冒mn源码公共导出；不含源foreign call |
+| CA-D2 受检有限foreign标量调用与源码接线 | 有来源及人工契约的typed foreign declaration注入源环境，普通源码调用经受检事实→共享MIR/native直接机器调用，或HIR/A2C薄调用；禁止在外层wrapper偷调用C冒源码闭环；连真实source恢复/首编辑 | D1；公共S窗口取929稳定交付/释放接口，若934已接管query事实则消费其权威端口。无模板/CT读依赖的本域不强等935/936整包，但其新事实已存在时不能绕开 |
+| CA-D3 资源、句柄与同步回调桥 | 在D2真实调用面关闭UTF-8/bytes/i64元素view、record const/mut/out、多out原子提交、opaque原方destroy及同步per-call callback+ctx；native imports与A2C imports/exports真实消费，共同资源事实、lease/失败清理/恢复 | D1+D2，925资源/924闭包底座已交付；私有header/oracle可并行，资源事实/HIR/两后端窗口按实际SHA释放 |
+
+D1完成不是完整CA-D/M1完成；D2也不核销D3。D3不得用797旧probe资源PASS代新源码桥。所有既有797公开形态都由D1..3的显式支持矩阵覆盖：typed宽标量与i64数组view可经受检typed adapter入口，不冒当前只覆盖i32/bool的普通Auto源运算；任意use.c/header importer、f32公开ABI、按值聚合、跨线程/保存callback、unwind/动态loader不扩。
+
+中立模型拟置于ACE内backend-free窄crate（具体路径由D1有界可行性冻结），仅依赖必要semantics-contract/编码；abi的Cranelift发射/工具调度留原处。提取descriptor/3兼容类型可re-export，但原canonical字节、strict reader与未知版本拒绝须回归；确需改wire先needs_replan并迁全部读者，不能默改。A2C不依赖ace-abi/Cranelift，provider继续无process/store副作用；binding、认证和lease在host组合根。
+
+D2从显式typed declaration manifest注入受限source环境，不在统一CST外再造parser，不把ExternalFn兄弟签名或console HostCall复用成任意foreign。逻辑contract必须先验证来源/名义类型、模式、effects/error、capability与物理plan，地址/Checked/SafeCallable/PASS不持久化；unknown ownership只能raw候选，不能进安全source调用。AV/A2R foreign支持在新矩阵单列：本轮必须关闭native+A2C的有限方向及四端普通业务oracle，不以这两腿推断四端FFI等价；若既定M1登记另有AV/A2R required foreign行，该行继续阻塞，不能临时转NA。
+
+各包首例即文件化TestCase+独立C头/调用者/被调用者及手算oracle，实际调用有callee计数；错误domain/target/packing/签名/权限/provider在调用前拒且计数0，不以UB作负控。元数据提取/adapter/目标函数/tool生产分别计P，非读者P及其payload I/O均0；R只深验既有页，不隐藏求解或编译。D1typed/checked输入恢复与D2/3 source恢复分别验收，不相互冒认；后两包含restart后无预热首编辑、首错误→修复→再恢复。
+
+全部包沿Design40 ManagedStore/lease和797原更严限额、六场景×30及P90≤2000ms，source域继承自身原样本/预算；daily emit/admit不隐式spawn，显式ABI认证需实际compile/link/run。资源包有界收敛及真实最后owner pin，不宣称进程重启/重跑为HMR。929、934–936的source/query/实例/CT页各有owner，公共H与正式采样单写/单实例，写面顺序不新增无关语义依赖。完整CA-D交付后最终CA-E/ARCH组合签章仍需另立，不预占号；M2当前所有应用host接管/旧实现disable依然是v0.6硬门。

@@ -1,3 +1,5 @@
+> 2026-11-05后继：041/042已归档；正式下一批为[语言940与UI056/057目标设计](../../../auto-ui/docs/design/autoui/atomic-reload-and-live-isolation-stage-two.md)。原子Reload/真实Vue实例验收尚未实施，完整Feature/Service不因前两包归档完成。以下保留历史设计。
+
 # 47 — AutoUI 应用架构：状态、热重载、设计体系与功能复用
 
 > 2026-11-04独立仓后继：主题/正式包031/033/036已有限交付；[现源码接续设计](../../../auto-ui/docs/design/autoui/instance-state-and-reload-stage-one.md)将组件/Store实例收口立为UI041、Reload/schema/effect有界核验立为UI042，均仅规划。完整Feature/命令/Service未自动实施；本文旧语言仓源码路径为历史观察，真实UI owner已在auto-ui。

@@ -130,6 +130,8 @@ Auto supports dynamic lists with pluggable storage strategies via `List<T, S>`.
 
 **Storage spec**: Any storage strategy implements `Storage<T>` with `data()`, `capacity()`, and `try_grow()` methods. This allows custom storage backends (arena, pool, memory-mapped) without changing list logic.
 
+**2026-11-09 设计补充**：[Storage 与内存分配资源](memory/storage-and-allocation.md)细化上述早期描述。Heap 不强制依赖 libc malloc；Inline/Fixed 表达布局和容量，随所属对象存在，不保证位于栈上，容量耗尽也须明确处理。当前 VM 的 InlineInt64Storage 仍用 Vec，不能据其名字或此处“zero heap”愿景认定已实现无堆。默认 prelude 注入、资源实例、释放/失败及泛型支持面待 M2 核实后冻结，不在本次改实现。
+
 ## Open Questions
 
 - Whether the Atom query syntax should be a dedicated DSL or embedded in Auto language.

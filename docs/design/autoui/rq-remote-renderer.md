@@ -1,3 +1,5 @@
+> 2026-11-05核查更新：本页保留683/690等有限历史交付。当前源码仍有mesh/SVG/raw text省略及shadow/transform近似，不能继续将下文“构造上不可能漂移”“iced全集”当完整保真事实。最新目标、源码证据与计划见[AutoUI完整RQ设计](../../../../auto-ui/docs/design/autoui/renderqueue-complete-fidelity.md)及[子路线](../../../../auto-ui/docs/design/autoui/renderqueue-refactoring-roadmap.md)；当前实现以源码/各合同证据为准，历史正文不改写。
+
 # RQ 远程 Renderer 架构（方案 2：Iced 组件照常渲染，RenderQueue 转手一道）
 
 > **状态**：已实施（PLAN-683 T-00..T-05，2026-09-22）——方案 2 全链落地：

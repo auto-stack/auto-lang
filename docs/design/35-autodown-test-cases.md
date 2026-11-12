@@ -1,5 +1,7 @@
 # Design 35：AutoDown 统一文件用例与多后端验证协议
 
+> 2026-11-10 确认的作者格式见[文档式用例](testing/autodown-document-cases.md)与[双用例全文](testing/examples/printing.case.ad)。下文的显式合同记录已有协议背景；文档式入口排入 M2-A，先以四个真实 ACE 用例对跑验收。
+
 > **2026-10-28续接基线**：788/852已交付有限文件化测试/四路径语料基础；a2r日常比较真实转译产物与金样，编译运行认证是独立过程，不在每个日常用例重编Rust。完整语言/消费者覆盖按各能力Plan推进，不能沿用初稿“runner未实施”判断当前支持。 统一进度快照与未完工作见[ACE续接基线](strategy/ace-implementation-handoff.md)，后续按current Spec/Plan及merge收据重核；本注不扩大原Plan验收。
 
 > **PLAN-858 口径更新（2026-10-27）**：本文历史 ACE P95<1s 目标在开发初期由用户调整为 P90≤2000ms；原正式样本和正确性、结构、资源约束保持，架构基本成形后以实测另定长期目标。其他 P95 数值作为历史或诊断保留，不再作为 ACE 开发期交付硬门。当前规则见 [TestCase v2 周转口径](../specs/auto-test-case/profile-v2-native.md)。

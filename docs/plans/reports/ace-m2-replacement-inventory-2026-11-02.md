@@ -116,7 +116,7 @@
 | F-08 | auto-launcher | 无 crate 依赖；README `auto run`/`-r vm`/`build -r rust`；tests/drive_vm.py | CLI 级消费 | M2-REL 验证 |
 | F-09 | auto-coder / auto-ai | 仅 a2r-std prelude（coder/rust Cargo.toml:8；ai 各 rust/ 子 crate）——生成物运行时，无引擎 API | **中立保留**（A-12） | M2-RETIRE 分类 |
 | F-10 | book | harness.rs:27/60/101/142/190/200（trans rust/c/python/ts + run/run_with_capture）+ build.rs:107-140 注册 | 测试 harness（REP-11 测试迁移） | M2-TEST-MIG |
-| F-11 | ag-examples | 外部 AutoGraphics 引擎二进制显式传入（gallery.py --engine；engine-lock.json 钉 autographics-dev 分支 8b12632d） | 独立引擎线（非旧 AutoVM 消费者）；观测登记 | 不迁（边界行） |
+| F-11 | ag-examples / AGE | 经auto-ui图形driver与冷包间接消费旧AutoVM；2026-11-06 AG021交付9afe257固定UI064 9c13cca4/SDK681。driver Session持AutoVM并调用create_vm_from_source；Node生成器仍依赖旧Parser | 旧引擎间接消费者，必须纳REP-01/06/08/10/11；原“不迁”分类由本轮源码核查纠正，未宣称迁移实现 | auto-ui负责作者/宿主链，ag-examples负责内容/包；语言统筹接口与退役，正式合同待立 |
 | F-12 | 安装器/启动器 | auto-musk/launch-vm.cmd:27 硬编码 `auto.exe run --render vm`、vm-first-run.mjs:50、start-all.cmd 族（cargo run/npm）、auto-os regen.sh、vscode build-lsp | REP-08 全入口安装图 | M2-REL |
 
 ### G. 旧实现退役分类（T-03/V-04；顺序见 §5 退役表）

@@ -5,7 +5,7 @@ feature_name: M2 ace-perf串行套件成本与压力负载优化
 author: [Codex]
 created_at: 2026-11-12
 updated_at: 2026-11-12
-plan_revision: 1
+plan_revision: 2
 phase: M2-A
 current_step: 0
 total_steps: 9
@@ -18,6 +18,8 @@ touched_goals: [GOAL-002]
 # [PLAN-1017] M2 ace-perf串行套件成本与压力负载优化
 
 ## 0. 变更摘要
+
+2026-11-12 r2：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
 承接1016完成的普通组/PERF隔离与串行机制，在M2专门优化ace-perf的真实执行成本。
 核心目标是同一冻结义务集、相同输入规模/样本/断言下，串行端到端成本降低至少一个数量级。
@@ -83,6 +85,18 @@ comptime资源/周转测试、语义压力测试、语法64MiB流式、artifacts
 当前尚未创建。开工材料唯一D:/autostack/plan-artifacts/plan-1017/，登记owner/用途/在途状态；
 正常构建在该实施树内。当前纯规划不建材料目录。
 
+### 2026-11-12 本轮规划取材与授权
+
+用户要求细化其余ACE M2计划，复用已有研究/合同，仍只规划；本轮不创建实施树/集成分支、不执行T-01探针或产品/正式性能测试、不提交/合入/tag/发布、不改canonical Specs或legacy索引。945–948原M1-TAG及各A/B正式来源门均不因本次文档静态取材放行；既有实施证据/暂停/等待由原owner维护。
+
+取材语言主线读取基面 `f9fb3854beb3886338156cfa61d16f7f84893cc9`（不是所有外仓同SHA；各源hash如下，开工重核正式来源）；本包焦点：ACE正式性能套件十倍成本治理。已读当前规范入口：[docs/specs/auto-test-case/module-selection.md](../specs/auto-test-case/module-selection.md)。下列是已核路径/结构的规划取材，不宣称逐符号全审或运行通过；旧函数同名/目录存在/历史组绿都不等于新ACE支持。
+
+- [scripts/test-groups.toml](../../scripts/test-groups.toml)：显式ace-perf/串行选测原契约；读取SHA256前16 `9169834afc9a7a02`
+
+- [experimental/ace/crates/artifacts/src](../../experimental/ace/crates/artifacts/src)：真实CAS/GC/扫描成本机制；目录职责已核，确切符号/闭包开工再核
+
+- [experimental/ace/crates/source-query/src](../../experimental/ace/crates/source-query/src)：真实producer/缓存/前端成本，不用假页替义务；目录职责已核，确切符号/闭包开工再核
+
 ## 5. 详细设计
 
 ### 5.1 成本口径与十倍目标
@@ -129,6 +143,49 @@ M2新增用例组成增量集S_new，单列覆盖和成本；最终同时报告�
 一次全套B0与一次最终完整串行门为常规安排；开发期间只跑同机制短例/实际受影响原规模具名例。
 新失败先诊断；只有输入/修复/已证环境变化才允许重放，不循环跑1800秒组。完整suite失败不靠移除红项过门。
 
+### 具体输入、类型/代码设计与旧用例映射（2026-11-12，r2当前）
+
+**具体输入与期望。** 原件[crates/auto-lang/test/cases/ace-m1/src/B01.at](../../crates/auto-lang/test/cases/ace-m1/src/B01.at)（下列节选L1–L1；完整源/模块/资源闭包仍是验收输入，不把截断程序当可运行fixture）：
+
+```auto
+fn main() int { return 2 + 3 * 4 }
+```
+
+本包所需独立结果：B01仅示例语义守恒14，不是压力负载替代；真实S0完整原样本/规模/断言下T_new≤0.1*T_B0，S_new另报全当前suite，不筛快例凑比例。 本轮未运行；这些断言是实施目标，不是已观察PASS。
+
+**类型/代码设计。** 现固定组/1016隔离契约→60秒同机制短复现→可信完整B0→测量选局部优化→一次完整原规模验收/独立比值。沿已有owner扩展，不因下面的名字另建平行模型/执行器。字段草图为拟设计，不是现存API或可编译声明；等价复用当前类型允许在原有界决定任务冻结，不能改变字段所表达的不变量：
+
+```rust
+// Proposed semantic fields; not existing/compiled API.
+struct WorkloadIdentity { tests: TestSet, generators: SourceHashSet, sizes: SizeSet, samples: SampleSet, conditions: ConditionSet }
+struct CostLedger { preparation: Duration, execution: Duration, admission: Duration, cleanup: Duration, originals: EvidenceRefs }
+```
+
+| 实际代码owner | 本包具体职责与改面 |
+|---|---|
+| [scripts/test-groups.toml](../../scripts/test-groups.toml) | 显式ace-perf/串行选测原契约 |
+| [experimental/ace/crates/artifacts/src](../../experimental/ace/crates/artifacts/src) | 真实CAS/GC/扫描成本机制 |
+| [experimental/ace/crates/source-query/src](../../experimental/ace/crates/source-query/src) | 真实producer/缓存/前端成本，不用假页替义务 |
+
+**状态、错误与资源。** 减少输入/样本、移动准备到计时外、假producer/删慢项/改变平台ignore/失败早退时间均使可比性拒绝；无B0不报倍数。 原串行/预算/Job/截止保持，冷Cargo独列，warm准备/清理仍计入；短复现仅归因，完整压力/资源/性能一项不减。 沿原数值宽度/长度字符串/平台适用性/受管预算，不从Rust/C默认行为猜Auto语义，不以timeout/缺工具冒语言反例。
+
+**旧输入到新检查的映射。**
+
+| 原源码/测试/研究来源 | 保留的公开义务与新ACE验证 | 原期望/证据形态与读取身份 | 新ACE检查映射与原owner任务 |
+|---|---|---|---|
+| [scripts/test-groups.toml](../../scripts/test-groups.toml) | 原完整测试身份/条件/原规模冻结S0 | 旧合同/研究/协议来源；不当实际运行PASS；SHA256前16 `9169834afc9a7a02` | 沿S0原test/workload身份：V-DETAIL-01/02/04；B01不计正式压力覆盖；原任务 T-01/T-02/T-03/T-04/T-05/T-06/T-07 |
+| [docs/plans/archive/1016-ace-comptime-short-repro-and-cost-repair.md](archive/1016-ace-comptime-short-repro-and-cost-repair.md) | 复用1016探针/局部优化证据，开工重核归档路径 | 旧合同/研究/协议来源；不当实际运行PASS；SHA256前16 `0c58377ab25f90a3` | 沿S0原test/workload身份：V-DETAIL-01/02/04；B01不计正式压力覆盖；原任务 T-01/T-02/T-03/T-04/T-05/T-06/T-07 |
+| [docs/plans/archive/935-source-scalar-template-instances.md](archive/935-source-scalar-template-instances.md) | 既有实例/性能/恢复原oracle，不以仅parser计时取代 | 旧合同/研究/协议来源；不当实际运行PASS；SHA256前16 `4b504dcda57e589a` | 沿S0原test/workload身份：V-DETAIL-01/02/04；B01不计正式压力覆盖；原任务 T-01/T-02/T-03/T-04/T-05/T-06/T-07 |
+| [crates/auto-lang/test/cases/ace-m1/src/B01.at](../../crates/auto-lang/test/cases/ace-m1/src/B01.at) | 语义合法邻例，不宣称对应原压力总量 | 无邻接expected；沿原loader/合同核，不补假绿；SHA256前16 `b7e5f25e46902be2` | 沿S0原test/workload身份：V-DETAIL-01/02/04；B01不计正式压力覆盖；原任务 T-01/T-02/T-03/T-04/T-05/T-06/T-07 |
+
+上表拟ID为可追踪规划键，尚未注册/执行；已有同义case/check优先复用并绑定，不重复累计；原支持域外的新语义先具名裁定。直接复用旧源码/公开行为断言与有效独立expected；旧VM opcode/对象布局、旧A2R生成全文金样保留给旧实现，不照搬为新后端唯一语义oracle。错误期望、空expected、仅parse/emit、句柄/内部显示编码分别登记；已知旧bug与规范冲突具名裁定，不能静默改expected或将全旧行为当新规范。表中hash为本轮读取快照（同轮修订的Plan按最终revision再核），不是永久固定接口；表为已核代表/已有研究入口，不是覆盖上限；沿原完整分母逐条映射，不以几份例子关闭本包全部原义务。
+
+旧AutoVM/A2R无本专项十倍成本指标的等价用例；映射的是原ACE formal workload/test身份/断言/规模，不凭空新造旧用例。短例只能定位同机制，不能替原S0完整验收；不为本轮复查执行任何list/编译/压力。
+
+**原任务内的决定和交接。** 真实S0发现/每条语义oracle/冷热边界、不可压缩成本与具体优化触面先由T-01..03冻结；无瓶颈不强改代码，未达十倍按原规则replan。 必须补齐旧case/test/check ID＋source/hash＋原断言/期望种类→新case/后端/独立oracle→原任务/AC/组合owner；已定部分按本节执行，只有具名未决交原有界决定任务，不再把全部设计留空。不存在等价旧用例的目标/安装/可信来源/性能不变量明确标“无旧同形”，复用现机制并补区分性正反控，不伪造旧覆盖。
+
+本节由原`T-01`冻结来源/未决，`T-01`、`T-02`、`T-03`、`T-04`、`T-05`、`T-06`、`T-07`按各自原owner_stage接实现/验证（纯分析包只审计），对应AC-01/AC-02/AC-03/AC-04/AC-05/AC-06；原review/merge任务分别核结论与正式落地，不能用规划检查提前勾选。范围外能力回原owner，真实新增依赖须改DAG，不补假的整包反向等待。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
@@ -137,6 +194,8 @@ M2新增用例组成增量集S_new，单列覆盖和成本；最终同时报告�
 | SD-02 | modify | docs/specs/auto-test-case/module-selection.md, ace-test-policy.md | 保1016显式串行隔离，补优化/原规模验收职责与成本证据；不成为每Plan门 | 防止退回日常长测 | AC-04..07 |
 | SD-03 | modify | docs/specs/auto-cte/frozen-cache.md | 随实际优化补复用/存储计量规则和反控；预算与身份不减 | 记录真实闭环知识 | AC-03..06 |
 
+
+| SD-DETAIL | add | `docs/specs/auto-test-case/ace-perf-cost-and-reproduction.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-04/AC-05/AC-06 |
 ## 6. 测试设计
 
 | ID | AC / invariant | 实际入口/输入 | 独立oracle与预期 | 覆盖边界 |
@@ -156,6 +215,17 @@ work按真实修改选相关短反例和职责组，涉及共享AST/IR补必要�
 
 实施/内查/独立最终review顺序分工，同一唯一树；未来具体reviewer由开工流程确认，不擅自新建聊天/子agent。
 所有V均为待实施验证，本轮没有运行。
+
+### 本轮细化的可区分验证（拟实施；纯分析包只核推理/来源）
+
+| Case ID | AC/原任务 | 输入→入口→独立关闭oracle | 边界/错误近邻 |
+|---|---|---|---|
+| V-DETAIL-01 | AC-01/AC-02/AC-03/AC-04/AC-05/AC-06；T-01/T-02/T-03/T-04/T-05/T-06/T-07 | B01仅示例语义守恒14，不是压力负载替代；真实S0完整原样本/规模/断言下T_new≤0.1*T_B0，S_new另报全当前suite，不筛快例凑比例。 | 按上述原完整输入/真实consumer验证；原旧检查继续保留，未运行不PASS |
+| V-DETAIL-02 | AC-01/AC-02/AC-03/AC-04/AC-05/AC-06；T-01/T-02/T-03/T-04/T-05/T-06/T-07 | 减少输入/样本、移动准备到计时外、假producer/删慢项/改变平台ignore/失败早退时间均使可比性拒绝；无B0不报倍数。 | 配合法相邻输入；infra/timeout/缺工具不充语言负例 |
+| V-DETAIL-03 | AC-01/AC-02/AC-03/AC-04/AC-05/AC-06；T-01/T-02/T-03/T-04/T-05/T-06/T-07 | 原串行/预算/Job/截止保持，冷Cargo独列，warm准备/清理仍计入；短复现仅归因，完整压力/资源/性能一项不减。 | 源/ABI/target/配置变化按实际读取失效；失败与修复/关闭各观察，不自报布尔 |
+| V-DETAIL-04 | AC-01/AC-02/AC-03/AC-04/AC-05/AC-06；T-01/T-02/T-03/T-04/T-05/T-06/T-07 | 按本节旧新表逐原case/check与完整分母对账；新后端/新不变量有独立oracle及原件/来源 | 删必需检查、错candidate/source或仅emit时必须被发现；该包非运行职责不得冒产品PASS |
+
+真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
 ## 7. 验收标准
 
@@ -184,7 +254,14 @@ work按真实修改选相关短反例和职责组，涉及共享AST/IR补必要�
 
 T-04/T-05是测量选路，不要求无瓶颈也改代码；某一路无须改动须以T-03证据明确关闭，不凭标题豁免真正必要的下游。
 
+
+本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-01/T-02/T-03/T-04/T-05/T-06/T-07分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
+
 ## 9. 复审记录
+
+2026-11-12 stage:new / PLAN-1017 r2：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原9任务/全部AC与V/依赖/阶段/预算和drafting 0/9；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
+
+2026-11-12 本轮规划静态核验：32份合同原505任务ID/顺序/进度、全部旧AC/V/Spec-delta及原依赖/阶段/预算保留；新增128条V-DETAIL待实施验证，未生成任何测试源码。505处本地引用/围栏/0–10章节/原任务映射核对通过，跨四仓可达222份Plan的显式依赖无缺失/环。只证明规划结构与取材来源，不是旧VM/新ACE运行或独立产品review PASS；959–962归档和963r5未改。
 
 2026-11-12 stage:new | PLAN-1017 r1 | outcome:pass | next:work（未来M2阶段授权后） | 0/9。
 当前合同已绑定1016依赖、短探针→有界基线→优化→单次原规模验收；十倍为待验证硬目标，尚无达标结论。

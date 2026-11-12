@@ -322,3 +322,28 @@ CA-D有限ABI桥仍未取号：A/B正式target/资源/模式/来源接缝稳定�
 927合入→928→929继续；931私有Rust lowering与语法规则主体可并行，a2x-store/worker/cache版本与H注册按稳定SHA单写。一般来源恢复后首编辑去整源重建仍归929。CA-D资源前置已具备，待独立typed foreign/ABI原型与资源包设计；本轮不把兄弟ExternalFn或内部C布局冒公开FFI，不自动规划完整生态。详[本波调查](../plans/reports/ace-next-wave-correctness-and-admission-2026-11-04.md)。
 
 931 r2将责任落实到真实RStmt求值/派生view的底层owner、短路右支隔离及cold/片段external原modes（不默认View）；rt目前无累计存活字节配额，早清理以独立event峰值/释放顺序/调用身份反控证明，不虚构runtime预算。933逐字段独立补manifest并先释放稳定材料；无预热恢复首编辑接929稳定接口，尚无则931最终AC pending，私有修复不等整包才可开工。927已交付，928在途，929按用户裁定等D928；最新排期与M1三条未立项机制线见[r2复核](../plans/reports/ace-931-933-plan-review-and-m1-distance-2026-11-04.md)。
+
+## 16. CA-E／ARCH最终组合验收（2026-11-05，target-state）
+
+本轮用户授权仅正式规划。CA-E正式为[PLAN-941](../plans/941-ace-m1-expanded-and-architecture-acceptance.md)，drafting r1、0/15，做一个验收集成Plan：已有编译/运行/资源/缓存能力由各原owner交付，总验收只补独立登记、证据适配、严格父侧组合与跨包真实复核，不再实现一套编译器/runner/meter，也不接走934–936、938/939延期功能。登记/验证器与独立oracle可先推进，最终组合取全部实际D与释放接口；写面先后不增加无关整波语义依赖。
+
+| 验收层 | 权威与新增责任 | 不能互相替代 |
+|---|---|---|
+| 原M1 | 原131行/524格/313 required（285+28）、134 NA、32 accepted-diff、45 future与现行acceptance/2/批准hash原样继承；required格与真实执行证据逐项映射 | 表中ok/脚本exit0不等实际执行或新M1；旧AVM/旧A2R不能充新HIR目标 |
+| 新Q4/C | 新独立target ledger从892/902/904与921/925/926已承诺域、934/935/936有限新source逐项固定AC-native/AV/ACE-A2R-HIR/ACE-A2C-HIR身份，各对独立oracle，含负例/trace/trap/资源 | 不机械扩原binding第五列，不按当前支持动态求交集，不把C未支持项转旧NA |
+| SYN/ARCH | ARCH-01..08逐项映射原owner/输入/计数/预算/真实收据：语法、SQ/实例、IR四端、真实AV CT、cache工作集、资源ABI、在线更新、父准入 | 929只交SYN，937只交D1；CT模型/typed宽入口不冒普通源，重启不冒在线HMR |
+| 独立认证 | daily emit/金样/证书核查与显式native/AV/Rust/C实际执行分轴；Rust/C完整actual及手写reference各对oracle，C/ABI完整实际方向与原797三腿 | 四端相等不证明正确；缓存PASS/guest旧值/只有编译成功不算当前真实执行 |
+
+新报告拟`ace.m1.acceptance/3`，旧/2不覆写，target ledger拟`ace.m1.expanded-registry/1`。要求严格字段/类型/枚举/唯一性/完整required集合、当前producer/源/配置/工具/授权/依赖/输入profile/来源与实际终态，完整报出缺失/未执行/infra/resource/cancel/stale，缺字段不得默认0。报告只引用实际输入闭包与受管原始收据，组合器自己不spawn编译/执行、不二次计量；所有子项来自现固定组/正式worker，补可审计映射。旧脚本只核算，exit0不铸绿；旧与新namespace、source/typed、preview/正式签章严格互拒。
+
+关键现状差异必须公开：本次静态重算原required313格无非绿能力token，仍有38个旧A2R cert-gap；G-DEC双轴文档将其独立列账，但924已在脚本和当前gap Spec加cert-gap=0守卫。CA-E默认**不撤销该现行守卫、不把旧claim false改成true**，同时保留批准双轴和差异来源。登记为显式阻塞：已有真证据仅未接线可补映射，旧A2R复合lowering/认证能力缺失由原owner后继包关闭；若要恢复原批准的独立记账签章口径，须另有明确裁定后修订，不借CA-E暗改规则。验收器正确报red可作为验收系统交付，M1里程碑只能在所有真实必需门满足后签章，二者报告分开。
+
+增量从实际parse/project/resolve/solve/instance/CT/resource/lower/encode/target/tool入口取P/attempt/discarded，未改函数/实例/绑定生产及其payload额外IO=0，整体link/assembly/R重验单列。source/签名/layout/meta/实例/CT/cap/provider依赖未变才命中；restore后无预热首编辑、首错误→修复→再次恢复，缺required页拒P0恢复，不能偷偷cold或复算藏R/M。正式样本按原规模/平台条件保留、P90≤2000ms；原各域资源帽AND，不引统一小样本/较宽帽覆盖ABI60/5/70及8MiB+8MiB。独立oracle、原source/expected/NA/分母不为签章修改。
+
+组合器有界逐件读取：单registry/子报告/输出UTF-8字节上限4MiB，组合器自有活数据≤48MiB、父private峰值增量≤128MiB，hash大产物用有界流并沿原产物域帽；若与A2X共进程计入原48MiB合计。原source/native/A2X/CT/ABI更严限额和cleanup/lease/GC必须保持，不把不可观察量填0。合法小深图/缺页/异常/取消/迟到/超限/零选择/旧报告/篡改路径及公共四端同错都有正反控制；预算不合先修订计划，不缩原语料。
+
+公共H（case/contract/SDK/worker/固定组/报告reader）逐文件稳定SHA单写；S/N/X与query/instance/CT/foreign页仍由934–936、938/939拥有，CA-E只消费或请原owner交所缺事实。旧readonly verifier可先独立做，最终四端/ABI/恢复/资源联合验收在实际D就绪后排单实例正式窗口。M1通过不宣称M2旧引擎替换已完成，v0.6的M1+M2发布目标保持。
+
+## 与 Design54 的标准库 provider 接入（2026-11-05，target-state）
+
+[Design54](54-stdlib-semantics-and-ace-integration.md)承接 §5 的 runtime 原则：A2R/A2C 继续消费 Checked HIR/共享资源事实，AV/native 继续消费唯一 MIR；公共操作共享语义，表示和必要 helper 各自合法化。PLAN-943..948 仅 drafting，不改本章在途实现合同。旧 a2r-std 按符号核宽度、文本单位、错误/异步/资源语义及真实依赖后才可复用；公开 math 的 i64 不能冒源码 i32 支持，typed wide 不代宽源码。manifest 必须区别新 HIR producer 与旧 AST emitter，emit-only 不代实际编译/执行或认证；领域宿主接管仍由各 owner 另立合同。

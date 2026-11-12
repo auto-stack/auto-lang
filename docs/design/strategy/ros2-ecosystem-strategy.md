@@ -1,4 +1,18 @@
-# ROS2 生态兼容：通信先行与 v0.6 阶段边界
+# ROS2 生态：Auto SDK 当前方向与历史方案
+
+## 当前方向（2026-11-12）
+
+数据路径增补：按[Design57 §12](../57-auto-ros2-sdk.md#12-ros2传感器数据的专门适配与低复制合同2026-11-12仅规划)，ROS传感器的连续buffer/元数据、借用与owner、低复制/无多余重编码及实际计量是v0.6基础义务；RMW loan/shared-memory仍需按实际消息和部署证实。本轮仅修合同，未运行新探针。
+
+官方首组已纳入路线：[1018官方基础示例](../../plans/1018-ros2-sdk-official-examples-conformance.md)→[1019 turtlesim完整Auto教程](../../plans/1019-ros2-sdk-turtlesim-tutorial-and-interoperability.md)→1011真实传感器工作流。原生预验证复用1007，不另建探针计划；正式示例必须经同一公共SDK/类型生成与AV/A2R，不作为生产传感器/Autonix验收替代。
+
+执行增补：PLAN-1007已修订r4，用户授权A批在独立worktree提前验证原生ROS2/provider/ROSIDL与部署研究，暂不合并、不改ACE核心、不绕M1-TAG；B、1008–1012及1018/1019未实施。下面“仅规划/均drafting”描述初稿，实际进度以1007当前合同为准。
+
+用户要求v0.6交付“能用于实际工作的Auto ROS2 SDK”，本轮仅专项设计和分阶段规划，不实施。权威目标与验收见[Design57](../57-auto-ros2-sdk.md)，执行拆包见[SDK交付路线](ros2-sdk-delivery-roadmap.md)与PLAN-1007..1012（均drafting）。普通Auto程序直接作为ROS2节点，消费ACE通用FFI/调度/构建；AutoOS系统通信adapter为另一入口，不再作为所有SDK工作的总前置。机器人新算法仍另议。
+
+v0.6必做包括类型生成、Topic/Service/Action、参数/QoS/时间、AV开发/A2R发布、ROS工程工具、真实任务与AutoUI、Autonix安装运行和质量验收。AGE增强为可选消费者；Linux实际底座为NixOS＋COSMIC，不能用Ubuntu跑通代发行验收。未冻结设备/版本/provider/预算由1007承接，不宣称已有SDK。
+
+以下2026-10-16及更早内容为历史讨论；“通信框架→有限bridge”不再限定新版SDK的全部范围/开工顺序，“C轨暂缓期间不正式投入”不覆盖本轮新目标。其他系统通信与算法边界仍按各自有效合同执行。
 
 ## 当前方向与阶段合同（2026-10-16）
 

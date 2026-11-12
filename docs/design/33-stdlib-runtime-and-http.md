@@ -204,3 +204,7 @@ schema4 区分共同装配 fingerprint 与具体 consumer_fingerprint；生成�
 1. 705 已确定单 owner、段串行、跨 await 非事务语义。E2 应用实测选择 CPU 预算与阻塞 native 隔离，不在本次预设多 VM/多 owner 或 actor 重构。
 2. 736 已选择 loopback/受单可信代理参考部署。是否扩到直接公网与内置 TLS 是后续能力选择，不是当前计划前置问题。
 3. Builder 与 `#[api]` 的统一程度、Request 注入及全后台等价按 actual executed 矩阵定范围；不能从通用声明和签名证明推定全支持。
+
+## 与 Design54 的标准库接入边界（2026-11-05，target-state）
+
+[Design54：Auto 标准库语义与 ACE 接入合同](54-stdlib-semantics-and-ace-integration.md)承接本章的公共 API/后台分层、实际装配与宿主拓扑，为 ACE 增补操作语义/兼容映射、producer/profile 身份、资源与恢复合同。PLAN-943..948 仅 drafting：不改本章或现行 Specs 已交付行为，不把公共声明/签名证明等同四端语义一致，不在 Core 重建 HTTP/Web 领域实现。当前 provider 覆盖仍以[后台装配 Spec](../specs/stdlib/design/backend-assembly.md)为准。

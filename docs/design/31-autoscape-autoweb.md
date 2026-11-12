@@ -1,5 +1,9 @@
 # 31 — AutoScape / AutoWeb：Auto 原生浏览器与统一应用寻址运行时
 
+> 2026-11-12 ASE 命名/首批规划：**Auto Scape Engine（ASE）** 为包括前后台技术的整体框架，AutoScape 保留为浏览器产品名；共享应用运行时归 ASE，AutoWeb 网络体系及 auto-web 服务仓职责保留。新增 [ASE M0 路线](strategy/ase-m0-delivery-roadmap.md)与 PLAN-1020–1023：基线→无窗口AV→文字嵌入→交互会话，按 ACE/AGE 最小正式接口进入，不等整个 M2，也不先实现完整旧引擎版。本轮仅规划，未施工。
+
+> 2026-11-12 本地原型设计补充：[基于 ACE / AGE 的原生 UI Gallery](strategy/autoscape-native-gallery.md)。用户确认以 v0.6 调研与有限原型为方向：独立制品/会话、逻辑服务本地绑定、AutoFrame 与 AGE 可见性调度；本文旧执行器对照及历史排期保留，实际接口按 ACE/AGE 当前交付核验。本次仅补设计，不启动实施或提前承诺完整浏览器产品化。
+
 > 2026-10-21 版本范围更新：AutoScape/AutoWeb 的调研、原型与产品化统一进入[远期 TODO](../roadmap-future.md)，待下一轮选择；下文旧版次为历史排期，不是当前 v0.6 门槛。技术与网络激活安全合同保留，已有 Plan 不自动改约。
 
 > 2026-10-29 命名/首期仓界补充：[Design50](50-autoweb-service-framework-and-repo-boundaries.md)规划auto-web独立服务框架仓，首期承接现有HTTP合同、生成与运行链；这是本生态的服务端子域，不提前启动本文浏览器、Realm/沙箱、分发或远程运行。当前仅设计，实施排在884、887后，885及应用原合同不增加迁仓前置。
@@ -72,8 +76,9 @@ URI scheme；不再通过 Host 合并子 App 源码/合并后端实现嵌入。
 | 名称 | 角色 | 说明 |
 |---|---|---|
 | AutoScape | 浏览器产品 | AutoOS 的原生 AutoWeb Browser Shell（薄壳，§8） |
+| Auto Scape Engine（ASE） | 前后台整体框架（2026-11-12 命名扩展） | 应用解析/装载、会话/嵌入、服务绑定与生命周期；复用 ACE/AGE/通信/安装，首期见 M0 路线 |
 | AutoWeb | 网络生态/平台 | AutoUI/AutoDown 的分布式网络应用体系 |
-| AutoWeb Runtime | 共享运行时 | URI、Origin/Realm、Sandbox、Storage、Network、ServiceBinding、BrowsingContext |
+| AutoWeb Runtime | 共享运行时（归 ASE 的职责层，保留历史称谓） | URI、Origin/Realm、Sandbox、Storage、Network、ServiceBinding、BrowsingContext；不将整个 ASE 缩为网络运行时 |
 | AutoFrame | 嵌入式运行容器 | 类似 iframe，但承载独立 AppRealm/AppSession（§7） |
 | AppResolver | 解析与路由 | 把 Intent/URI 解析到具体 Handler、AppProvider 与 Session |
 | AppRealm | 安全与身份域 | 应用身份、权限、存储、服务绑定等隔离边界 |
