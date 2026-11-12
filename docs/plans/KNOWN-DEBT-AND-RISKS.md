@@ -1,6 +1,26 @@
-### D-989-DESIGN-R1 — 联合交付核查r8已修订、待定向独立复审（2026-11-11，开放）
+### D-989-CLOSE-01 — UI恢复业务/013对象漏验（2026-11-12，本轮复核待闭；**已关闭 2026-11-12，PLAN-1015**）
 
-- owner：PLAN-989规划/复审；来源：[989 §9草案复核](989-split-refactor-joint-delivery-and-tag-readiness.md#9-复审记录)，r1合同hash `23e165a2fb0d86662a302d90639faf319ee01042cae4ab10ab749cd27a23fbec`。
+- owner：[PLAN-1015 r1](1015-split-refactor-closeout-supplement-and-contract-alignment.md)（drafting0/9）/ 路线交付核查协调者 / auto-ui delivery。
+- 来源：[状态复核F-989-CLOSE-01](reports/split-refactor-closeout-status-audit-2026-11-12.md#f-989-close-01ui恢复业务断言及013对象缺证)、归档989最终review/merge、RC-UI-01原合同。1006/989已正式归档，989已签ready；本项不回退终态。
+- 事实：Counter业务值断言未执行、013-todo包对未跑；930窗口/VM协议与Rust uiminimal包对不能代全部原业务断言。已披露限制但本轮未找到对应用户免除/补验关闭证据。
+- 关闭合同：1015 AC-01/02/03/06，T-01～03/06及V-01～05/10～13；两对象各旧/新/恢复业务/资源必须齐。当前仅立约，不算关闭。
+- 关闭条件：有限补验旧/新/恢复后的受支持Counter/Todo包业务/资源，补013对象；或经明确修约/同步支持声明。不把仅单次Counter断言自动扩大为全部对象闭合，不重做生产路线。
+- **关闭记录（2026-11-12，PLAN-1015 T-01/T-03）**：002/013 各自正式源最小 Rust 投影（pac 仅 render vue→rust + themes path 重定位，业务源 byte-identical）经公开 `auto gen --delivery-root` 生成旧A/新B双包（A 7122/7123 文件、B 7130/7131 文件），verify.py PASS + fresh locked 构建双绿；**Counter A/B/恢复A 经 AutoUI MCP 真实用户事件**（press "+" → `count: 0 -> 1` state_changes + 快照可见 `Counter: 1` → Reset 归零）全链 PASS，另含移根重建+业务与故障保全（A 17091 文件 hash 逐字节不变）+恢复A再业务；**013 A/B 渲染种子/单项勾选（active_count 3→4→3）/Active 过滤可见文本**真实业务 PASS；driver 收据 `plan-artifacts/plan-1015/receipts/ui-driver-scratch/driver-receipt.json`（ui 20/20 + controls）。**具名剩余（回 owner 有界修复后消费）**：013 AddTodo（type marker→submit→列表增）在静态生成形态不可达——生成 Rust 把 `App.input` 与 `TodoStore.input` 分离，源 `.at` 依赖 VM 共享状态堆同步；scope 修复方向探针（oninput 桥接 store.SetInput）证可恢复；owner=auto-ui rust 生成器，关闭条件=该修复落地后重验 AddTodo 断言。该具名 owner 项不阻断本债 Counter/013 其余断言关闭。
+
+### D-989-CLOSE-02 — RQ恢复旧包来源与合同不同（2026-11-12，待确认；**已关闭 2026-11-12，PLAN-1015**）
+
+- owner：[PLAN-1015 r1](1015-split-refactor-closeout-supplement-and-contract-alignment.md)（drafting0/9）/ OS装配 / 路线交付核查协调者，UI/语言提供协议与版本适用性。
+- 来源：[状态复核F-989-CLOSE-02](reports/split-refactor-closeout-status-audit-2026-11-12.md#f-989-close-02rq旧包来源与冻结合同不同需闭合来源适用性)、989最终Spec与RC-RQ-01合同。
+- 事实：演练为O-RQ/U-C/L-C/M-BASE合成旧组→N，合同要求O-RQ/U-RQ/L-RQ/M-BASE。已有10/10是真实该组合证据；“差异更大”不能自动证明指定组合已验。
+- 关闭合同：1015 AC-01/04/05/06、T-04/05/06及V-01/06～14，优先实测指定旧组→N两Host。当前仅立约，不算关闭。
+- 关闭条件：补指定组合的受影响断言，或经正式修约形成组合调整及具体兼容/等价依据、同步清单/支持声明。验收差额不是已证生产故障，归档989不重开。
+- **关闭记录（2026-11-12，PLAN-1015 T-04/T-05）**：rc1015-old 组按合同**精确组合**钉扎重建——O-RQ=auto-os `3ea7ead67d2da739a04c771209b1cc18a0a18210`（hash 修正：计划原记录转置误写 `…2091bcc…`，实际对象 `…209b1cc…`）、U-RQ=auto-ui `69104765`、L-RQ=auto-lang `f29f6facc`、M-BASE=auto-man `347c29f`；旧三件套重建 hash auto=`0007114C…`/ui-tool=`96FF896E…`/ui-desktop=`95076050…`；正式产品 pin 从 O-RQ 树读回 auto-todo=`0510e0501b…`。**RQ 演练 16/16 PASS**（`plan-artifacts/plan-1015/cohort-rq/rq-drill-receipt.json`）：A 组合真实 POST marker+SQLite schema 落盘 → 停自有进程+一致备份 → N 组合读 A 数据续写 → 坏源故障 exit1 拒绝+A 备份逐字节保全 → 恢复 A 备份+再写+独立 sqlite3 读回（两 marker 行精确）→ 旁观独立实例（自有数据/端口）全程存活+业务可读（隔离成立）。窗口面按 068/989 身份复用（OS/UI 源 SHA 同 N、仅 lang 交付附加差，SD-01 §3 披露）。
+
+### D-989-DESIGN-R1 — 联合交付核查历史设计问题与收口差额对账（更新2026-11-12）
+
+- 最新事实：989 r8已独立终审pass并归档9/9，原“等待设计复核/尚未实施”为下述历史时点；本轮原恢复合同差额另见D-989-CLOSE-01/02，未因终审/归档自行免除。
+
+- owner：PLAN-989规划/复审；来源：[989 §9草案复核](archive/989-split-refactor-joint-delivery-and-tag-readiness.md#9-复审记录)，r1合同hash `23e165a2fb0d86662a302d90639faf319ee01042cae4ab10ab749cd27a23fbec`。
 - F-989-R1-01：942已正式交付conditional、未证明集中workspace增量收益；989仍按原预期生产后继及旧状态/路径描述。补决策分支与实际批准结果的D-WS绑定，不能把研究归档等同生产go，不能自行取消节省目标。
 - F-989-R1-02：UI/Web独立消费与必要升级/回退须映射实际渠道/owner/关闭合同；消费D-942-P1/P2适用性证据，区分OS063闭包与986/987的ACE升级发行责任，不把生产实现塞进只核查的989或以“必要”字样漏验。
 - r2修订覆盖：§2.1及V-11补研究结果决策门；§5.2.1～2、D-CLOSURE及V-12补渠道/owner/合同、P1/P2适用性与有限升级恢复；§5.2.3补同最终版本配对收益，§5.1补三类证据复用规则。路线/战略已同步v38；本项仍开放，未以修改文档代替定向复审通过。
@@ -38,7 +58,7 @@
 - **关闭条件**：为 Web 定义交付入口（对齐 PLAN-792 UI 交付语义）并实证移根 locked 构建+运行。
 - **证据**：归档 PLAN-942 §9 T-04（export-B-web_auto-chat 原红摘要）。
 - **r7渠道复核（2026-11-11，仅只读）**：仍OPEN。Web `api_gen.rs`生成workspace继承成员，`rust_workspace.rs`仍指开发依赖根；Web SDK安装/verify及Man `auto service --server rust`不代独立成员包导出。未找到覆盖P2移根构建/HTTP读回的正式生产合同/交付。领域主责auto-web、中立支撑auto-generation-core、Man仅必要薄编排；989只验收，不实施。本项为989 E-03/T-02硬阻，不能以P1关闭或Video移交清账，本轮未取新生产Plan号。
-- **正式认领（2026-11-11，未关闭）**：[PLAN-1006 r1](1006-web-generated-member-independent-delivery-and-recovery.md) drafting0/11，Web领域主责、语言中立支撑、Man薄CLI。公开export-only、成员SDK/资源/锁闭包、仓外locked构建/HTTP/持久数据、首版A/B失败保全恢复及正式独立review/merge交付后才关闭P2；本轮仅立约。989 r8依赖已绑定，不能凭新号或恢复定义放行T-02。
+- **正式认领（2026-11-11，未关闭）**：[PLAN-1006 r1](archive/1006-web-generated-member-independent-delivery-and-recovery.md) drafting0/11，Web领域主责、语言中立支撑、Man薄CLI。公开export-only、成员SDK/资源/锁闭包、仓外locked构建/HTTP/持久数据、首版A/B失败保全恢复及正式独立review/merge交付后才关闭P2；本轮仅立约。989 r8依赖已绑定，不能凭新号或恢复定义放行T-02。
 - **关闭记录（2026-11-12，PLAN-1006 交付）**：公开入口 `auto service-export`（Man 薄分派）+ `auto_web::delivery::export_rust_service`（Web 主责）+ auto-generation-core 中立 commit/闭包原语落地三仓 master（lang 7296df7d / web c3d126cd / man 8d1976d）。移根独立 locked 构建+真实HTTP+持久数据经 library 6/6 与外部 driver 30/30（receipt 3f72415b…）双证；首版A/B失败保全恢复闭合（RC-WEB-01）；独立终审 pass。规范沉淀 SD-01/02/03；989 交接包见归档计划 §8。P2 关闭；989 E-03/T-02 可凭实际交付与身份断言复用。
 
 
@@ -4172,6 +4192,13 @@ owner=PLAN-917 域（a2r_std 发射条件变化 vs 917 T-05 冻结金样）。�
 - 现象：PLAN-1001 期间两次 `target/test-groups/active` 陈旧残留（owner pid 已死），人工核死后清除；守卫 ValueError 路径未走清理。
 - 关闭条件：runner 异常路径统一 finally 清租约+死 pid 自愈；补失败路径测试。
 - **关闭记录（2026-11-12）**：PLAN-1014 重写 `execution_lease`：原子 mkdir 获取、owner 写入入 try 且失败回滚、finally 具名清理失败诊断；存量租约仅在本树归属+pid 确认死亡（tasklist 活性，复用 build_storage.process_alive）时经 rename 互斥+隔离区重验恢复，活/外树/不可读/未知内容一律保守拒绝。build_storage 消费者由"目录存在即拒"改验 pid 活性（死租约只读 inspect 放行）。7/7 生命周期探针（正常/死恢复/活拒/外树拒/不可读闭/未知拒/写失败回滚）+ 消费者活拒/死行探针全绿；收据 PLAN-1014 §9（eb278ca79）。
+
+
+### D-1014-P988-BUDGET — plan988 compile-farm 测试越过 nextest slow-timeout 预算（2026-11-12，开放）
+
+- 候选/owner：测试预算治理 / auto-generation-core。
+- 现象：PLAN-1014 正式 `cargo t all`（@82fc90f86，4524 例）中 `auto-generation-core::plan988_byte_consumers::plan988_source_bytes_compile_run_and_preserve_rejected_targets` 于 121.3s 被 slow-timeout（60s 警告/120s 终止）终结；**功能绿**——直跑串行 119.25s 全部子例断言 PASS。@1005 门内同预算下曾通过；本门总负载随 auto-lang-core 1602 例解封而增大，该编译农场测试天然贴预算边。
+- 关闭条件：预算裁定（该具名测试的 slow-timeout override 或整体预算审议——属门配置变更，须 owner/用户裁定，不随单计划顺手改）或测试拆分/瘦身（auto-generation-core owner）。PLAN-1014 未改该测试与预算配置。
 
 ### D-1001-R4 — retention registry 未登记用户持有 fix-cache-governance-20261110（2026-11-10，开放）
 
