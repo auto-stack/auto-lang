@@ -1136,6 +1136,7 @@ impl<'s> Parser<'s> {
                     name: pname,
                     ty,
                     mode,
+                    default: None,
                 });
                 match self.peek().map(|t| t.tok.clone()) {
                     Some(Tok::Punct(P::Comma)) => {
@@ -2560,6 +2561,7 @@ impl<'s> Parser<'s> {
                     name,
                     ty,
                     mode: ParamMode::Default,
+                    default: None,
                     span,
                 });
                 match self.peek().map(|t| &t.tok) {

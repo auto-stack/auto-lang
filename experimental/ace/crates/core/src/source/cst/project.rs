@@ -3816,6 +3816,13 @@ impl<'a> Engine<'a> {
             };
             let ty =
                 self.classify_word(self.cx.field_child(param_n, "ty").expect("param ty"), false);
+            // PLAN-963（T-08，L-24）：`n int = 42` 的默认值。默认值在**调用位**
+            // 按调用者作用域求值，缺席实参时每个调用只求值一次。
+            let default = self
+                .cx
+                .field_child(param_n, "default")
+                .and_then(|d| self.cx.field_child(d, "value"))
+                .map(|v| Box::new(self.project_expr_sync(v)));
             let span = match mode_leaf {
                 Some(m) => self.cx.span_of(m).join(ty.span),
                 None => name.span.join(ty.span),
@@ -3825,6 +3832,7 @@ impl<'a> Engine<'a> {
                 name,
                 ty,
                 mode,
+                default,
             });
         }
         out
@@ -5628,6 +5636,7 @@ impl<'a> Engine<'a> {
                     name,
                     ty,
                     mode: ParamMode::Default,
+                    default: None,
                 });
             }
         }

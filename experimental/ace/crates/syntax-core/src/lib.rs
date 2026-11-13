@@ -368,6 +368,9 @@ fn project_param(p: &GrammarProgram, cx: &Cx, node: u32) -> PResult<Param> {
         },
         ty,
         mode: ParamMode::Default,
+        // 本投影器目前不投影声明位默认值（`param-default`）；正式入口是
+        // ace-core 的 cst/project.rs（PLAN-963 T-08）。
+        default: None,
         span: span_of(cx.tree, node),
     })
 }

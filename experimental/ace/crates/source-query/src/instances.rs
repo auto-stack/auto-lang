@@ -376,6 +376,7 @@ fn concretize(
                 name: p.name.clone(),
                 ty: subst_ann(&p.ty),
                 mode: p.mode,
+                default: p.default.clone(),
             })
             .collect(),
         ret: subst_ann(&template.ret),

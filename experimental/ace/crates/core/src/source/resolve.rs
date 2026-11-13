@@ -1002,6 +1002,10 @@ pub fn param_position(idx: usize, arg: &ResolvedArg, callee: &ResolvedFn) -> Opt
 pub(crate) struct FnSig {
     param_names: Vec<String>,
     params: Vec<VT>,
+    /// PLAN-963（T-08，L-24）：与 `param_names` 逐位对齐的声明位默认值
+    /// （`self` 位与外来回调位恒 `None`）。只存 AST 形状；调用位缺实参时
+    /// 才在**调用者**作用域解析一次，故不进入任何语义身份/缓存键。
+    defaults: Vec<Option<Box<ast::Expr>>>,
     result: VT,
     index: usize,
 }
@@ -1011,6 +1015,7 @@ impl Clone for FnSig {
         FnSig {
             param_names: self.param_names.clone(),
             params: self.params.clone(),
+            defaults: self.defaults.clone(),
             result: self.result,
             index: self.index,
         }
@@ -1036,9 +1041,11 @@ pub(crate) fn fn_sig_from_parts(
     result: VT,
     index: usize,
 ) -> FnSig {
+    let default_slots = param_names.len();
     FnSig {
         param_names,
         params,
+        defaults: vec![None; default_slots],
         result,
         index,
     }
@@ -1790,6 +1797,7 @@ fn resolve_detailed(
                     FnSig {
                         param_names: Vec::new(),
                         params: Vec::new(),
+                        defaults: Vec::new(),
                         result: vt,
                         index: usize::MAX,
                     },
@@ -1799,6 +1807,7 @@ fn resolve_detailed(
                     FnSig {
                         param_names: vec!["value".into()],
                         params: vec![vt],
+                        defaults: vec![None],
                         // the write yields 0 so a `let` binds it in every domain
                         result: VT::I32,
                         index: usize::MAX,
@@ -1947,11 +1956,13 @@ fn resolve_detailed(
                     continue;
                 }
             };
+            let foreign_slots = sig.params.len();
             sigs.insert(
                 declaration.name.clone(),
                 FnSig {
                     param_names: (0..sig.params.len()).map(|i| format!("arg{i}")).collect(),
                     params: sig.params,
+                    defaults: vec![None; foreign_slots],
                     result: sig.result,
                     index: flat.len() + index,
                 },
@@ -2514,11 +2525,13 @@ impl ForeignContext {
                     )]);
                 }
             };
+            let foreign_slots = sig.params.len();
             sigs.insert(
                 declaration.name.clone(),
                 FnSig {
                     param_names: (0..sig.params.len()).map(|i| format!("arg{i}")).collect(),
                     params: sig.params,
+                    defaults: vec![None; foreign_slots],
                     result: sig.result,
                     index: env.program.fns.len() + index,
                 },
@@ -3747,14 +3760,22 @@ fn fn_sig_of_coll(
             vt_of_ann(&p.ty, rec_index, diags)
         });
     }
+    // PLAN-963（T-08，L-24）：默认值与 param_names 逐位对齐（隐含 self 位恒 None）。
+    let mut defaults: Vec<Option<Box<ast::Expr>>> =
+        vec![None; usize::from(recv == ast::Receiver::View)];
+    for p in &f.params {
+        defaults.push(p.default.clone());
+    }
     let result = if is_coll {
         vt_of_ann_coll(&f.ret, rec_index, coll, diags, TypePos::Result)
     } else {
         vt_of_ann(&f.ret, rec_index, diags)
     };
+    debug_assert_eq!(defaults.len(), param_names.len());
     FnSig {
         param_names,
         params,
+        defaults,
         result,
         index,
     }
@@ -8030,20 +8051,24 @@ impl<'a, 's> FnResolver<'a, 's> {
                 .iter()
                 .find(|m| m.name == name.name && m.is_static)
             {
-                let sig_params = self.method_sig_params(m.fn_index, 0);
-                self.retag_method_args(&mut rargs, m.fn_index, 0);
+                let fn_index = m.fn_index;
+                let sig_params = self.method_sig_params(fn_index, 0);
+                let sig_names = self.method_sig_names(fn_index, 0);
+                let sig_defaults = self.method_sig_defaults(fn_index, 0);
+                self.fill_default_args(&sig_names, &sig_params, &sig_defaults, &mut rargs, span);
+                self.retag_method_args(&mut rargs, fn_index, 0);
                 self.check_args(
                     &name.name,
-                    &self.method_sig_names(m.fn_index, 0),
+                    &self.method_sig_names(fn_index, 0),
                     &sig_params,
                     &rargs,
                     span,
                 );
                 return ResolvedExpr {
                     span,
-                    vt: self.method_sig_result(m.fn_index),
+                    vt: self.method_sig_result(fn_index),
                     kind: RExprKind::MethodCall {
-                        fn_index: m.fn_index,
+                        fn_index,
                         recv: None,
                         args: rargs,
                     },
@@ -8239,6 +8264,9 @@ impl<'a, 's> FnResolver<'a, 's> {
             Some(m) if !m.is_static => {
                 // receiver occupies param 0; visible args bind from param 1
                 let sig_params = self.method_sig_params(m.fn_index, 1);
+                let sig_names = self.method_sig_names(m.fn_index, 1);
+                let sig_defaults = self.method_sig_defaults(m.fn_index, 1);
+                self.fill_default_args(&sig_names, &sig_params, &sig_defaults, &mut rargs, span);
                 self.retag_method_args(&mut rargs, m.fn_index, 1);
                 self.check_args(
                     &name.name,
@@ -8356,6 +8384,86 @@ impl<'a, 's> FnResolver<'a, 's> {
             }
         }
         VT::I32
+    }
+
+    /// PLAN-963（T-08，L-24）：该方法的默认值切片（`from` 之后，与
+    /// `method_sig_names/params` 逐位对齐）。
+    fn method_sig_defaults(&self, fn_index: usize, from: usize) -> Vec<Option<Box<Expr>>> {
+        for sig in self.sigs.values() {
+            if sig.index == fn_index {
+                return sig.defaults.iter().skip(from).cloned().collect();
+            }
+        }
+        Vec::new()
+    }
+
+    /// PLAN-963（T-08，L-24）：按声明位把缺席实参补成默认值。
+    ///
+    /// 语义（V-08）：默认值只在**实参缺席**时求值，每个调用恰好求值一次，
+    /// 且一律在**调用者**作用域解析——用一个空局部作用域解析，任何参数名/
+    /// 局部名都按"未定义"拒绝（fail-closed），不会静默绑到调用者的同名局部。
+    /// 位置式调用只能补齐末尾缺席位（中段缺席仍由 `check_args` 报 arity）；
+    /// 命名式调用补齐任意缺席位并以参数名标注。
+    fn fill_default_args(
+        &mut self,
+        names: &[String],
+        params: &[VT],
+        defaults: &[Option<Box<Expr>>],
+        rargs: &mut Vec<ResolvedArg>,
+        call_span: Span,
+    ) {
+        if defaults.iter().all(|d| d.is_none()) || rargs.len() >= params.len() {
+            return;
+        }
+        let all_named = !rargs.is_empty() && rargs.iter().all(|a| a.name.is_some());
+        if !all_named && rargs.iter().any(|a| a.name.is_some()) {
+            // 混合形式：由 check_args 报同一诊断，不在此处再报一次。
+            return;
+        }
+        let mut covered = vec![false; params.len()];
+        for (i, a) in rargs.iter().enumerate() {
+            let pos = match &a.name {
+                Some(n) => names.iter().position(|p| p == &n.name),
+                None => Some(i),
+            };
+            if let Some(slot) = pos.and_then(|p| covered.get_mut(p)) {
+                *slot = true;
+            }
+        }
+        for idx in 0..names.len() {
+            if covered.get(idx).copied().unwrap_or(true) {
+                continue;
+            }
+            let Some(Some(default)) = defaults.get(idx) else {
+                continue;
+            };
+            let saved = std::mem::replace(
+                &mut self.scopes,
+                vec![Scope {
+                    names: BTreeMap::new(),
+                    views: BTreeMap::new(),
+                }],
+            );
+            let mut value = self.expr(default);
+            self.scopes = saved;
+            if let Some(vt) = params.get(idx) {
+                retag_literal(&mut value, *vt);
+            }
+            let span = default.span;
+            rargs.push(ResolvedArg {
+                value,
+                name: if all_named {
+                    Some(ast::Ident {
+                        name: names[idx].clone(),
+                        span,
+                    })
+                } else {
+                    None
+                },
+                moved: false,
+                span: if all_named { span } else { call_span },
+            });
+        }
     }
 
     /// Resolve an expression tree with an explicit work stack (R3-QA-02):
@@ -10113,6 +10221,14 @@ impl<'a, 's> FnResolver<'a, 's> {
         }
 
         if let Some(sig) = self.sigs.get(&callee.name).cloned() {
+            // PLAN-963（T-08，L-24）：缺席实参在调用者作用域补默认值（每调用一次）。
+            self.fill_default_args(
+                &sig.param_names,
+                &sig.params,
+                &sig.defaults,
+                &mut rargs,
+                call_span,
+            );
             // contextual literal typing: a string literal adapts to a text
             // formal (D-03 promotion) so the missing-`.move` rejection
             // lands in the verifier, not as a type mismatch here

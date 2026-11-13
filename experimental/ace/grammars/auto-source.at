@@ -367,6 +367,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             opt { mut(field: "mode") }
             ident(field: "name")
             ann-ty(field: "ty")
+            // PLAN-963（T-08，L-24）：声明位默认值 `n int = 42`。
+            opt { param-default(field: "default") }
+        }
+        param-default {
+            assign() {}
+            expr(field: "value")
         }
         // 结果类型：int/i32/bool 全域；ident 面 = 文本词/记录名/void（投影
         // 按拼写+profile 分类与拒绝）；closures 面的 fn 型后备选（词备选在

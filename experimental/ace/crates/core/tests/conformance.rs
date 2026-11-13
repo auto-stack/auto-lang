@@ -66,6 +66,8 @@ mod retirement_gate_929;
 mod source_cst_927;
 #[path = "cases/source_alias_963.rs"]
 mod source_alias_963;
+#[path = "cases/source_default_args_963.rs"]
+mod source_default_args_963;
 #[path = "cases/source_ext_963.rs"]
 mod source_ext_963;
 #[path = "cases/source_ct_936.rs"]

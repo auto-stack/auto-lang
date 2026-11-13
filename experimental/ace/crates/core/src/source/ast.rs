@@ -114,6 +114,13 @@ pub struct Param {
     pub name: Ident,
     pub ty: TypeAnn,
     pub mode: ParamMode,
+    /// PLAN-963 (T-08, L-24): the declared default value (`n int = 42`).
+    /// Defaults are resolved at each CALL SITE in the caller's scope (never
+    /// in the callee's), so an expression that names a parameter or local is
+    /// a bind-level error rather than a silent rebinding; the value is
+    /// evaluated exactly once, at the call, and only when the argument is
+    /// omitted.
+    pub default: Option<Box<Expr>>,
     /// Mode word (when present) through the type token: the span used by
     /// duplicate-param diagnostics.
     pub span: Span,

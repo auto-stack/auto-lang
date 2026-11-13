@@ -186,6 +186,8 @@ mod assembly_944;
 mod choose_instances_935;
 #[path = "cases/generic_records_963.rs"]
 mod generic_records_963;
+#[path = "cases/default_args_963.rs"]
+mod default_args_963;
 #[path = "cases/const_instances_963.rs"]
 mod const_instances_963;
 #[path = "cases/module_packages_960.rs"]
