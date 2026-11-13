@@ -73,3 +73,13 @@ case {
     expect: { completion: { stage: "run", code: "resource.console-output" }, stdout: { text: "", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
 }
 ```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p947.say-revoked-av", tags: ["ace-m2", "console", "grants"], links: ["PLAN-947"],
+  source: { file: "src/S01.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "parse", code: "host.unauthorized" }, stdout: { text: "", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
+}
+```

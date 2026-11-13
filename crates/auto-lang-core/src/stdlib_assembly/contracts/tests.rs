@@ -18,6 +18,23 @@ fn real_inventory_consumes_contracts_and_preserves_denominators() {
     assert!(errors.is_empty(), "{errors:#?}");
     assert_eq!(inv.contracts.operations.len(), 17);
     assert_eq!(inv.contracts.compatibility.len(), 17);
+    // PLAN-947 T-08: the console/1 four-end ledger for the public say
+    // binding is machine-pinned — AV and native are real supported lanes
+    // (corpus ace-m2/p947-console on both recipes); Rust/C hosts stay
+    // missing_capability with the 973 four-end owner, never silently
+    // widened.
+    let say = inv
+        .contracts
+        .compatibility
+        .iter()
+        .find(|c| c.operation == "console.say")
+        .expect("console.say compatibility entry");
+    assert_eq!(say.ace_av, "supported");
+    assert_eq!(say.ace_native, "supported");
+    assert_eq!(say.hir_rust, "missing_capability");
+    assert_eq!(say.hir_c, "missing_capability");
+    assert_eq!(say.owner, "PLAN-947");
+    assert!(say.gap.contains("973"));
     assert_eq!(
         inv.files_total,
         inv.modules.iter().map(|m| m.layers.len()).sum::<usize>()
@@ -372,14 +389,31 @@ fn wide_math_private_helpers_and_legacy_dispatches_are_not_reclassified() {
         .map(|o| (&o.dispatch, &o.unit))
         .collect();
     assert_eq!(units.len(), 2);
-    assert!(inv
+    // PLAN-947: console.say is the first honestly-delivered wiring (AV +
+    // native real dispatch, corpus evidence); everything else keeps the
+    // 943-era all-gap invariant — wide math/private helpers in particular
+    // must never be silently reclassified.
+    assert!(inv.contracts.compatibility.iter().all(|c| {
+        c.operation == "console.say"
+            || (c.ace_av != "supported"
+                && c.ace_native != "supported"
+                && c.hir_rust != "supported"
+                && c.hir_c != "supported")
+    }));
+    let say = inv
         .contracts
         .compatibility
         .iter()
-        .all(|c| c.ace_av != "supported"
-            && c.ace_native != "supported"
-            && c.hir_rust != "supported"
-            && c.hir_c != "supported"));
+        .find(|c| c.operation == "console.say")
+        .unwrap();
+    assert_eq!(
+        (say.ace_av.as_str(), say.ace_native.as_str()),
+        ("supported", "supported")
+    );
+    assert_eq!(
+        (say.hir_rust.as_str(), say.hir_c.as_str()),
+        ("missing_capability", "missing_capability")
+    );
 }
 
 #[test]

@@ -17,7 +17,7 @@ fn p947_console_corpus_both_lanes_pass() {
     let suite = corpus();
     let report = run_suite(&suite, &temp.join("out"), &Limits::defaults()).unwrap();
     assert!(report.load_errors.is_empty(), "{:?}", report.load_errors);
-    assert_eq!(report.results.len(), 7, "{:?}", report.load_errors);
+    assert_eq!(report.results.len(), 8, "{:?}", report.load_errors);
     for row in &report.results {
         assert_eq!(
             row.status,
@@ -31,7 +31,7 @@ fn p947_console_corpus_both_lanes_pass() {
     // Freshness: every row's stored identity matches the current run.
     let json: serde_json::Value = serde_json::from_str(&report.to_json()).unwrap();
     let fresh = stale::check(&suite, &json).unwrap();
-    assert_eq!(fresh.len(), 7);
+    assert_eq!(fresh.len(), 8);
     assert!(
         fresh
             .iter()
