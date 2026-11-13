@@ -279,6 +279,15 @@ pub struct MnDriver {
     /// the manifest `required` edges, so watermark GC can reclaim stale
     /// revisions without touching the current closure.
     last_publication: std::collections::HashMap<(String, String, String), String>,
+    /// PLAN-1017: the pending A17 memo context for the request currently
+    /// in flight (src sha256 + caps) — set by `request()`, consumed by
+    /// `build_arm` at the manifest-persist site, cleared on every exit.
+    pending_source_memo: Option<(String, Vec<String>)>,
+    /// PLAN-1017: ordered publication for memos — the previous memo of the
+    /// same (project, module, entry) axis loses its soft root the moment
+    /// the new one is registered, so superseded memo→manifest→unit chains
+    /// stay GC-collectable exactly like bare manifests.
+    last_source_memo: std::collections::HashMap<(String, String, String), String>,
 }
 
 pub struct MnRequest {
@@ -339,6 +348,8 @@ impl MnDriver {
             last_closures_run: None,
             cache_mode: CacheMode::Reuse,
             last_publication: std::collections::HashMap::new(),
+            pending_source_memo: None,
+            last_source_memo: std::collections::HashMap::new(),
         }
     }
 
@@ -355,6 +366,8 @@ impl MnDriver {
             last_closures_run: None,
             cache_mode: CacheMode::Reuse,
             last_publication: std::collections::HashMap::new(),
+            pending_source_memo: None,
+            last_source_memo: std::collections::HashMap::new(),
         })
     }
 
@@ -372,6 +385,8 @@ impl MnDriver {
             last_closures_run: None,
             cache_mode: CacheMode::Reuse,
             last_publication: std::collections::HashMap::new(),
+            pending_source_memo: None,
+            last_source_memo: std::collections::HashMap::new(),
         }
     }
 
@@ -414,6 +429,16 @@ impl MnDriver {
                             )
                         })
                     });
+                    // PLAN-1017: arm the A17 memo context — build_arm
+                    // persists source→manifest at its manifest-publication
+                    // site (with the same ordered-supersede discipline).
+                    // Read-only stores nothing; the pending slot is always
+                    // cleared afterwards so a failed build can never leak a
+                    // stale context into the next request.
+                    if let (Some(_), true) = (self.store.as_ref(), self.cache_mode != CacheMode::ReadOnly) {
+                        self.pending_source_memo =
+                            Some((sha256_hex(src.as_bytes()), caps.to_vec()));
+                    }
                     let ran = compiled.and_then(|compiled| {
                         let snapshot = ace_av_core::contract::fnv1a64(src.as_bytes());
                         self.run_arm(
@@ -426,36 +451,7 @@ impl MnDriver {
                             &mut obs,
                         )
                     });
-                    // PLAN-1017: remember source→manifest for future hot
-                    // rounds (content-addressed; a repeated request is
-                    // byte-identical by construction). The memo is a pure
-                    // accelerator: a persist failure is OBSERVED (counter),
-                    // never fails the already-successful request.
-                    if ran.is_ok() {
-                        if let (Some(store), true, Some(man_id)) = (
-                            self.store.as_ref(),
-                            self.cache_mode != CacheMode::ReadOnly,
-                            ran.as_ref().unwrap().4.clone(),
-                        ) {
-                            match obs.span("source_memo_persist", |_| {
-                                cache::put_source_memo(
-                                    store,
-                                    self.project.as_deref(),
-                                    &sha256_hex(src.as_bytes()),
-                                    entry,
-                                    caps,
-                                    &man_id,
-                                )
-                            }) {
-                                Ok(_) => {
-                                    obs.counter("store_puts", 1);
-                                }
-                                Err(_) => {
-                                    obs.counter("source_memo_persist_failures", 1);
-                                }
-                            }
-                        }
-                    }
+                    self.pending_source_memo = None;
                     ran
                 }
                 Err(e) => Err(e),
@@ -1004,7 +1000,48 @@ impl MnDriver {
                     let _ = store.remove_root(project, "soft", &prev);
                 }
             }
-            manifest_artifact_id = Some(id);
+            manifest_artifact_id = Some(id.clone());
+            // PLAN-1017 A17: remember source→manifest for future hot rounds
+            // (content-addressed; a repeated request is byte-identical by
+            // construction). The memo rides the manifest's ordered
+            // publication: the previous memo of the same (project, module,
+            // entry) axis drops its soft root now, so superseded
+            // memo→manifest→unit chains stay GC-collectable exactly like
+            // bare manifests. A persist failure is OBSERVED (counter) and
+            // never fails the already-committed build.
+            if let Some((src_sha, caps)) = self.pending_source_memo.take() {
+                match obs.span("source_memo_persist", |_| {
+                    cache::put_source_memo(
+                        store,
+                        self.project.as_deref(),
+                        &src_sha,
+                        entry,
+                        &caps,
+                        &id,
+                    )
+                }) {
+                    Ok(memo_id) => {
+                        obs.counter("store_puts", 1);
+                        if let Some(project) = self.project.as_deref() {
+                            let mkey = (
+                                project.to_string(),
+                                manifest.owner.module.clone(),
+                                manifest.entry.clone(),
+                            );
+                            if let Some(prev) = self.last_source_memo.insert(mkey, memo_id) {
+                                let _ = store.remove_root(project, "soft", &prev);
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        obs.counter("source_memo_persist_failures", 1);
+                    }
+                }
+            }
+        } else {
+            // Nothing will be memoized for this build — drop any stale
+            // context so it can never leak into a later one.
+            self.pending_source_memo = None;
         }
 
         // ---- wrapper + real multi-object link -----------------------------
