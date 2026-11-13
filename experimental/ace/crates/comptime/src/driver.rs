@@ -1165,14 +1165,9 @@ impl CteDriver {
         }
     }
 
-    fn publish_env(
-        &mut self,
-        env: &CteExecutedV1,
-        budget: &mut crate::observe::ManagedBudget,
-        dl: &RequestDeadline,
-    ) -> Result<(), CteAdmissionError> {
-        self.publish_env_batch(std::slice::from_ref(env), budget, dl, false)
-    }
+    // (PLAN-1017: the former per-envelope `publish_env` wrapper folded
+    // into `publish_env_batch` — every publish site now goes through the
+    // batch seam with `force` chosen per call site.)
 
     /// PLAN-1017: stage each envelope (reserve-before-encode, F-817-R6-02)
     /// and publish ALL of one request's pending envelopes in ONE store
