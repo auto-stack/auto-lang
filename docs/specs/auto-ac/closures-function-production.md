@@ -114,3 +114,16 @@
   `UnitCatalog`（928）为目录/候选/pin 的语法事实层，929 增
   `from_restored` 零生产惰性恢复（身份-only headless 单元 + 字节级
   深验 + `RestoreError` 使用前拒）。
+
+## 观察窗口恢复边界（PLAN-1028 / F02）
+
+- `ace_core::body_work::{capture_body_work, capture_stage_attempts}` 与
+  `ace_core::type_synth::capture` 统一采用 RAII `Drop` 恢复与内层隔离语义
+  （与 `source::parser::capture_syntax_work` 一致）：同类窗口嵌套时内层仅捕获
+  自身事件，外层保留嵌套前计数并在内层退出后继续累积；`Result::Err` 正常返回、
+  `panic` unwind 与无外层场景均恢复先验状态（无外层恢复为 `None`，无窗口调用
+  不产生幽灵记录），且原始 `panic` 照常传播、不被吞并。
+- 回归入口：`ace-core` `observation_scope_1028`（`OBS-01` 同类/异类嵌套与零幽灵、
+  `OBS-02` `catch_unwind` + `Result::Err` 三入口）及 `ace-native`
+  `observation_scope_1028`（真实 `ClosuresNativeSession::new` 冷启动嵌套与 panic
+  后恢复消费者）。

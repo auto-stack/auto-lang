@@ -11,6 +11,32 @@
 pub mod atom_text;
 pub mod collections_facts;
 
+/// Run `f` with thread-local `slot` temporarily holding `Some(S::default())`,
+/// restoring the previous value via RAII `Drop` on normal return and panic unwind.
+pub(crate) fn capture_scoped<S: Default + 'static, T>(
+    slot: &'static std::thread::LocalKey<std::cell::RefCell<Option<S>>>,
+    f: impl FnOnce() -> T,
+) -> (T, S) {
+    struct Restore<S: 'static>(
+        &'static std::thread::LocalKey<std::cell::RefCell<Option<S>>>,
+        Option<S>,
+    );
+    impl<S: 'static> Drop for Restore<S> {
+        fn drop(&mut self) {
+            let prev = self.1.take();
+            let _ = self.0.try_with(|cell| *cell.borrow_mut() = prev);
+        }
+    }
+    let previous = slot.with(|cell| cell.borrow_mut().replace(S::default()));
+    let restore = Restore(slot, previous);
+    let out = f();
+    let captured = slot
+        .with(|cell| cell.borrow_mut().take())
+        .unwrap_or_default();
+    drop(restore);
+    (out, captured)
+}
+
 /// Package version of this ac-core build (PLAN-788 toolchain identity:
 /// cache keys and worker reports bind against the compiler that ran, not a
 /// caller-supplied constant).
@@ -122,13 +148,11 @@ pub mod body_work {
         record(3, name);
     }
 
-    /// Run `f` inside a body-work observation window and return its
-    /// result plus the producer-recorded per-function counts.
+    /// Run `f` inside an isolated body-work observation window and return its
+    /// result plus the producer-recorded per-function counts. Restores any
+    /// outer window (or `None`) on normal return, `Result::Err`, and panic unwind.
     pub fn capture_body_work<T>(f: impl FnOnce() -> T) -> (T, BTreeMap<String, BodyWork>) {
-        COUNTS.with(|c| *c.borrow_mut() = Some(BTreeMap::new()));
-        let out = f();
-        let m = COUNTS.with(|c| c.borrow_mut().take()).unwrap_or_default();
-        (out, m)
+        crate::capture_scoped(&COUNTS, f)
     }
 
     /// PLAN-912 §5.4: a production stage attempt, recorded at the REAL
@@ -278,14 +302,11 @@ pub mod body_work {
         record_attempt(stage, "*");
     }
 
-    /// Run `f` inside a stage-attempt window. Nests with
-    /// [`capture_body_work`] (independent thread-locals).
+    /// Run `f` inside an isolated stage-attempt window. Nests with
+    /// [`capture_body_work`] (independent thread-locals) and restores any
+    /// outer window (or `None`) on normal return, `Result::Err`, and panic unwind.
     pub fn capture_stage_attempts<T>(f: impl FnOnce() -> T) -> (T, StageAttempts) {
-        let previous = STAGES.with(|c| c.borrow_mut().replace(StageAttempts::default()));
-        let out = f();
-        let s = STAGES.with(|c| c.borrow_mut().take()).unwrap_or_default();
-        STAGES.with(|c| *c.borrow_mut() = previous);
-        (out, s)
+        crate::capture_scoped(&STAGES, f)
     }
 }
 
@@ -334,13 +355,11 @@ pub mod type_synth {
         bump(name, |w| w.fact_missing += 1);
     }
 
-    /// Run `f` inside a type-work window (nests with the other meters).
+    /// Run `f` inside an isolated type-work window (nests with the other
+    /// meters) and restores any outer window (or `None`) on normal return,
+    /// `Result::Err`, and panic unwind.
     pub fn capture<T>(f: impl FnOnce() -> T) -> (T, BTreeMap<String, TypeWork>) {
-        let previous = COUNTS.with(|c| c.borrow_mut().replace(BTreeMap::new()));
-        let out = f();
-        let m = COUNTS.with(|c| c.borrow_mut().take()).unwrap_or_default();
-        COUNTS.with(|c| *c.borrow_mut() = previous);
-        (out, m)
+        crate::capture_scoped(&COUNTS, f)
     }
 }
 

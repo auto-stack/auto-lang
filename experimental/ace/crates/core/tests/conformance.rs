@@ -92,3 +92,5 @@ mod source_units_928;
 mod source_units_928_t09;
 #[path = "cases/text_replacement.rs"]
 mod text_replacement;
+#[path = "cases/observation_scope_1028.rs"]
+mod observation_scope_1028;
