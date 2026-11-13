@@ -61,3 +61,14 @@ source-bound 准备+运行分账。纯 Python 回合/干扰核算（2 例）留 
 `ace-perf`统一使用串行profile（test-threads=1），父截止4小时与原单测截止分离。
 13项历史清单保持13项，并非所有PERF的白名单；新增归类的正式压力通过命名空间自动纳入。
 源CT服务包ace-source-cte已显式加入正式套件Cargo目标，防止只依赖编译而漏跑其原规模CT见证。
+
+
+## 成本验收与优化边界（PLAN-1017 r5）
+
+正式套件按 r5 用户裁定验收：全量串行执行段 ≤3000s（进取 2400s）＋逐模块预算
+（syntax-artifacts ≤120 / ace-av ≤240 / semantics-store ≤80 / comptime ≤550 /
+conformance ≤800 / native ≤1300 / abi ≤320 / artifacts ≤60 / a2x-worker ≤45，
+空闲窗口口径，超支须具名归因）。守恒口径=效果守恒（逐例记录覆盖不变；冻结字节规模与
+统计有效样本数不缩），取代原十倍目标。主耗时机制须有常驻 ignored 短探针；优化不改变
+普通组/正式组互斥、串行 profile、平台/ignore/预算合同。成本合同与已交付修复面详见
+[ace-perf-cost-and-reproduction](ace-perf-cost-and-reproduction.md)。

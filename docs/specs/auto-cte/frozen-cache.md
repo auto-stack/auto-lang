@@ -113,3 +113,14 @@ DirEntry枚举元数据，避免Windows逐文件重复打开；原blob符号链�
 仅通过显式`cargo t ace-perf`运行。原采样数/水位/门限不变。
 日常保留`cte_snapshot_tests::cte_snapshot_resident_lane_small_revisions`，
 以8函数/3次真实修订检查值、generation与未改函数全阶段零工作，不承担正式P90验收。
+
+
+## 按请求批发布与计量（PLAN-1017）
+
+冻结产品按请求批发布：`publish_frozen_payload_batch` 复用 `put_artifact_batch`——一批
+一次 staging 预留、一次命名空间真实计量（排他锁下一次 `space()`）、一次 SQLite 提交；
+逐产品键/层/项目不变，逐 chunk CAS/跨进程锁/僵尸清理/required-edge 活性保留。调用循环
+任何失败先 flush 已成功产品再传播（逐调用 publish-on-success 契约）；正常路径 flush 受
+deadline 门（迟到不发布），错误路径 force 跳过。封套字节在批提交前保持台账预留；
+staging 目录提交后即清（a6172c3fd）。副牌形状（helpers 数）是夹具实现细节而非冻结义务，
+按效果守恒调整须有同机制探针数据支撑（PLAN-1017 实测 30-helpers 批化后无增益，回滚）。
