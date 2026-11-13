@@ -393,6 +393,29 @@ fn packages_960_isolation_rejections_and_repair() {
 }
 
 #[test]
+fn packages_963_owned_generic_parameters_and_returns_cross_modules() {
+    // PLAN-963（T-08，V-08「资源泛型跨模块参数/返回」）：模板 `Holder<T>`
+    // 声明在 lib、以 **owned 文本**实参在 app 实例化；参数与返回都跨模块。
+    // 手算 oracle：wrap("m2") 得到的 Holder<str> 其 get() 仍是同一文本 → len = 2。
+    let inputs = vec![
+        input(
+            "lib",
+            "std",
+            "pub type Holder<T> { item T\n fn use_it() int { return .item.len() } }\npub fn wrap(move v Str) Holder<Str> { return Holder { item: v.move } }",
+        ),
+        input(
+            "app",
+            "main",
+            "use lib.std.wrap\nuse lib.std.Holder\nfn main() int { let s Str = \"m2\"\n let h Holder<Str> = wrap(s.move)\n return h.use_it() }",
+        ),
+    ];
+    let product = compile(&inputs).expect("owned generic instance across modules");
+    let av_dir = scratch("av-963-owned");
+    let av = PackageAvTarget::cold(&av_dir, &product).expect("AV cold admission");
+    assert_eq!(av.run_value(), Ok(Value::I32(2)), "closed-form oracle");
+}
+
+#[test]
 fn packages_960_assembly_whitelist_admits_native_and_c_producers() {
     use ace_semantics_contract::assembly::{
         Consumer, Manifest, SemanticAssembly, C_PRODUCER, NATIVE_PRODUCER,

@@ -103,6 +103,27 @@ fn main() int { return 0 }
     );
 }
 
+/// O-963-E6（V-08「同名 ext 歧义拒绝」）：**两个不同 ext 块**声明同名方法 →
+/// `source.duplicate`（不是静默取其一）。
+#[test]
+fn two_ext_blocks_with_the_same_method_are_rejected() {
+    let src = "\
+type Heap { ptr int }
+ext Heap {
+    fn get() int { return .ptr }
+}
+ext Heap {
+    fn get() int { return .ptr + 1 }
+}
+fn main() int { return 0 }
+";
+    let err = compile(src).expect_err("same-name ext in two blocks must be rejected");
+    assert!(
+        codes(&err).iter().any(|c| c == "source.duplicate"),
+        "{err:#?}"
+    );
+}
+
 /// O-963-E5：ext 里声明字段被具名拒（布局只能在声明处固定）。
 #[test]
 fn ext_field_is_rejected() {

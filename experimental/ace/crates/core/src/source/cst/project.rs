@@ -8356,7 +8356,7 @@ impl GenericExpand {
                     self.diags.push(Diagnostic::new(
                         Stage::Text,
                         "source.unsupported",
-                        "generic type arguments must be `int`/`i32`, `bool` or a declared record type",
+                        "generic type arguments must be `int`/`i32`, `bool`, `str`/`Str` or a declared record type",
                         a.span,
                     ));
                     return TypeAnn {
@@ -8499,6 +8499,10 @@ fn type_spelling(a: &TypeAnn) -> Option<String> {
     match &a.kind {
         TypeRef::Builtin(TypeWord::Int) | TypeRef::Builtin(TypeWord::I32) => Some("int".into()),
         TypeRef::Builtin(TypeWord::Bool) => Some("bool".into()),
+        // PLAN-963（T-08，V-08）：资源（文本）实参也参与模板实例身份；
+        // `str` 是借用视图、`Str` 是 owned，两者拼写不同即不同实例。
+        TypeRef::Builtin(TypeWord::Str) => Some("str".into()),
+        TypeRef::Builtin(TypeWord::StrOwned) => Some("Str".into()),
         TypeRef::Record(id) => Some(id.name.clone()),
         _ => None,
     }
