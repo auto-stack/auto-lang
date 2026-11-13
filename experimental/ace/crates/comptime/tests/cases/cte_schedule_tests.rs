@@ -332,6 +332,7 @@ fn input() -> SemaInput {
         source_fp: String::new(),
         fns: vec![InputFn {
             type_params: vec![],
+            const_params: vec![],
             name: "main".into(),
             params: vec![],
             ret: Ann::I32,
