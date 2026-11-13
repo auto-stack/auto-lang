@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-963
-status: reviewed
+status: archived
 feature_name: 通用泛型spec与方法实例化
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-13
 plan_revision: 5
-current_step: 6
+current_step: 7
 total_steps: 8
 depends_on: [PLAN-960, PLAN-962, PLAN-935]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -310,7 +310,7 @@ T-01先交语法/旧新义务表、类型/实例/约束模块图和三个全链�
 
 ## 8. 执行步骤
 
-当前 6/8 完成（T-01..T-05、T-08 已闭；T-06/T-07 按用户指令本轮不执行）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
+当前 7/8 完成（T-01..T-05、T-08、T-06 已闭；T-07 清树/证据折叠进行中）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### M2-A：能力与必要真实验证
 
@@ -326,7 +326,7 @@ T-01先交语法/旧新义务表、类型/实例/约束模块图和三个全链�
 
 - [x] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
-- [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
+- [x] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。 已完成：规范增量落盘（m2-generics.md + SD-07）→ rebase → `--ff-only` 合回 master=`e609c00b1` → merge 门禁 run-75rc7n2x 全绿（见 §9 merge receipt）。
 
 - [ ] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
 
@@ -340,6 +340,33 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 材料唯一目录 `D:/autostack/plan-artifacts/plan-963/`，开工登记owner/用途/在途；本轮未创建。不可另建attachments/证据仓目录，不留第二套target/SDK副本。
 
 ## 9. 复审记录
+
+2026-11-13 stage:merge·T-06/T-07 收尾（PLAN-963 r5 merge receipt；`completion_kind: delivered`）:
+
+- **prepared**：复审基线 = 终树 `f1d63cdf0`（绑定 `run-2v_8abue`，§9 上条）；规范增量按 §5
+  表逐行落盘：新建 `docs/specs/ace-migration/m2-generics.md`（SD-01/SD-GENERICS/SD-PHASE 合并，
+  125 行，SHA256 `91E902AA5BFABB0F06E7976DA64E6F9E72FFC484C57515A8937E145A9085E235`）、
+  `docs/specs/ace-migration/replacement-scope-and-evidence.md` 追加 SD-07 节（SD-02，18 行增量，
+  SHA256 `63775008DAC67503AA6251BAEE23681CDB155526E0B6EC94EC13CFDD78DED976`）。
+- **landed**：worktree `D:/autostack/.wt/lang-963/auto-lang` rebase 到 master（`dabe13319`），
+  21 个提交；`git range-diff 990d27fcc...f1d63cdf0 master...plan-963-dev`：19/21 完全等价，
+  `b447112bc→61d05eb54` 仅注释级差异（`profiles_927.rs` 保留 master 1025 的 962 收口注释，
+  声明行一致），+1 规范增量提交；终树 `f1d63cdf0→90e62c1f9` 补丁等价。主检出
+  `git merge --ff-only plan-963-dev` → master tip = delivery commit **`e609c00b1`**
+  （`docs(specs): deposit PLAN-963 SD-01/02 generics producer and phase scope (Plan 963)`），
+  无 merge commit，线性历史保持。
+- **canonical_verified**：master 上 `docs/specs/ace-migration/m2-generics.md` 与
+  `replacement-scope-and-evidence.md`（含 SD-07）均已落，哈希如上，来源 = delivery commit。
+- **merge 门禁（rebase 后最终交付身份，master `e609c00b1` 单实例）**：
+  `$env:CARGO_TERM_COLOR='never'; cargo t ace-syntax ace-source case-ace-m2-generics-963`
+  → `target/test-groups/run-75rc7n2x`，`gate_passed=true`、error 空、wall **799.9s**、
+  `source_state=de67768a3903864015d291e59def0fabf1db6fc3cdff40a4c65694dc0a1237a3`：
+  ace-syntax **132** PASS、ace-source **497** PASS、case-ace-m2-generics-963 **10/10**
+  check PASS（`g01.choose42`/`g02.point300`/`g03.bounded5`/`g05.picker42` 双端 exit
+  42/300/5/42 + `point-negative`/`bound-missing` 负控 diag）。覆盖 rebase 触碰的
+  `profiles_927.rs`（profiles_declared_set_is_exact 等在 132 内）与 963 语料四端接线；
+  `discovery_complete=False` 为发现面标记，不影响执行终态。
+- **archived/cleaned**：见本文件归档记录与 §9 末条。
 
 2026-11-13 stage:review·T-05 独立复审（同树自审，未派 agent；结论绑定终树提交 `f1d63cdf0` + 终树并集 `run-2v_8abue`；早期 `03b5a30f8`/`run-ghf902pr` 的证据面已被其后的补强提交覆盖，按"过程观察不计"处理）/ PLAN-963 r5：
 
