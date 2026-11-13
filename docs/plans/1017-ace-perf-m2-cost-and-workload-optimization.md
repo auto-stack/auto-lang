@@ -312,6 +312,24 @@ big_source 从 100 helpers 降到 30（sigma 常量 4950→435 同步改），�
 native cold_set 填充形状（2000 语句单函数）同法待测。深水区（sd911/closures_native/
 turnaround 的 emit/link/binder 每样本链）为 r5 预算内剩余主项。
 
+**r5 续作实施（2026-11-13 晚，提交 `dea374c98`+契约修复提交）**：
+- **CTE 冻结产品按请求批发布**：`publish_frozen_payload_batch`（复用 put_artifact_batch，
+  逐产品键/层/项目不变；封套字节在批提交前保持台账预留）；driver 的调用循环改为闭包，
+  **任何失败先 flush 已成功产品再传播**（恢复逐调用 publish-on-success 契约——
+  cte_snapshot_failing_call_leaves_no_bad_publication 首红暴露该语义，85/85 普通组复绿）；
+  正常路径 flush 仍受 deadline 门（迟到不发布），错误路径 force 跳过（完成于中止前的
+  产品照发，与被替换的逐调用发布一致）。
+- 实测（空闲）：resources_real_watermark_gc **345.7→305.2s**、thirty_two_mib
+  **216.4→147.8s**。副牌形状实验：30-helpers 批化后无增益（封套字节小→副牌数×3 抵消），
+  已回滚保持 100 helpers。
+- **开放问题（记档待续）**：两 resource 测试残余 ~150-300s 中，span 仅解释 ~1.9s/副牌
+  （frontend 15ms/调用 + 批发布 150-300ms/副牌），墙钟 ~2s/副牌与 span 相符但总时长
+  4-8× 于 span 和——疑点=512 小修订循环在大库上的每请求 store 往返（批大小=1）+
+  每副牌 space() 之外的未计量开销；需专用剖析窗口定位。
+- 契约面验证：comptime 普通组 85/85（含 failing-call/lease/sentinel/GC 契约）；
+  ace-core 433/433；syntax 30/30；artifacts 27/28（r3_f01 基线同 flaky）；
+  native cold_set/typed_v10 重放绿；conformance 唯一持久红=D-932-1。
+
 2026-11-12 stage:new / PLAN-1017 r2：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原9任务/全部AC与V/依赖/阶段/预算和drafting 0/9；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
 2026-11-12 本轮规划静态核验：32份合同原505任务ID/顺序/进度、全部旧AC/V/Spec-delta及原依赖/阶段/预算保留；新增128条V-DETAIL待实施验证，未生成任何测试源码。505处本地引用/围栏/0–10章节/原任务映射核对通过，跨四仓可达222份Plan的显式依赖无缺失/环。只证明规划结构与取材来源，不是旧VM/新ACE运行或独立产品review PASS；959–962归档和963r5未改。
