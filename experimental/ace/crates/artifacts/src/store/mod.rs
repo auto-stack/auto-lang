@@ -657,6 +657,297 @@ impl ManagedStore {
         Ok((id, lease))
     }
 
+    /// PLAN-1017 batched publication: N artifacts in ONE staging txn, ONE
+    /// temp-space reservation, ONE namespace admission (one real `space()`
+    /// measurement under the exclusive namespace lock) and ONE SQLite
+    /// commit. Every per-artifact semantic of `put_inner` is preserved:
+    /// content-addressed chunk ids and idempotent CAS placement, per-chunk
+    /// cross-process locks (same-key producers still serialize), zombie-row
+    /// cleanup, required-edge liveness at commit, roots, and the txns
+    /// journal. Lock order is unchanged (liveness → budget → namespace →
+    /// chunk → sqlite).
+    ///
+    /// Failure semantics differ from a sequence of `put_artifact` calls in
+    /// exactly one way: the batch is ALL-OR-NOTHING. Any conflict or error
+    /// rolls the metadata transaction back, removes the staging directory
+    /// and reclaims chunk blobs that THIS batch newly placed (a chunk whose
+    /// content was already live is left untouched — republication never
+    /// deletes shared content). The per-put conflict path that commits the
+    /// loser's chunk row does not apply: batch callers publish under
+    /// caller-owned unique keys.
+    pub fn put_artifact_batch(&self, reqs: Vec<PutRequest>) -> Result<Vec<String>, StoreError> {
+        if reqs.is_empty() {
+            return Ok(Vec::new());
+        }
+        let seq = STAGING_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let txn = format!("t{}-{}-{}", now_ms(), crate::sysinfo::current_pid(), seq);
+        let staging_dir = self.root.join("staging").join(&txn);
+        let result = self.put_batch_inner(&reqs, &staging_dir);
+        if result.is_err() {
+            // A failed publish never leaves staging behind (R1 F-08).
+            let _ = fs::remove_dir_all(&staging_dir);
+        }
+        result
+    }
+
+    fn put_batch_inner(
+        &self,
+        reqs: &[PutRequest],
+        staging_dir: &Path,
+    ) -> Result<Vec<String>, StoreError> {
+        use std::collections::HashSet;
+        let framed_lens: Vec<u64> = reqs
+            .iter()
+            .map(|r| {
+                r.payload
+                    .len()
+                    .checked_add(crate::codec::CHUNK_HEADER_LEN)
+                    .and_then(|n| u64::try_from(n).ok())
+                    .ok_or_else(|| StoreError::ResourceExhausted("framed size overflow".into()))
+            })
+            .collect::<Result<_, _>>()?;
+        let total_framed: u64 = framed_lens
+            .iter()
+            .try_fold(0u64, |a, &b| a.checked_add(b))
+            .ok_or_else(|| StoreError::ResourceExhausted("batch size overflow".into()))?;
+
+        // ONE critical section (R2-01/03): same liveness guarantee as the
+        // single put — GC/recovery can never observe half-published payloads.
+        let _live = self.liveness_shared()?;
+        // ATOMIC TEMP-SPACE BUDGET: one reservation for the whole batch —
+        // every staged file AND every CAS tmp copy the batch will create,
+        // plus the measured leftovers, exactly as the single-put path.
+        let _budget =
+            FileGuard::lock_timeout(&self.lock_path("staging-budget"), true, CHUNK_LOCK_WAIT)?
+                .ok_or_else(|| StoreError::Busy("staging budget lock".into()))?;
+        let staging_now = Self::dir_size(&self.root.join("staging"));
+        let tmp_residue = self.cas_tmp_bytes();
+        let reserved_total = total_framed
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(staging_now))
+            .and_then(|n| n.checked_add(tmp_residue))
+            .ok_or_else(|| StoreError::ResourceExhausted("staging size overflow".into()))?;
+        if reserved_total > Self::STAGING_BUDGET {
+            return Err(StoreError::ResourceExhausted(format!(
+                "batch transient (staging {staging_now} + leftover CAS tmp {tmp_residue} + staged {} + CAS tmp {}) exceeds budget {}",
+                total_framed,
+                total_framed,
+                Self::STAGING_BUDGET
+            )));
+        }
+        PEAK_TRANSIENT.fetch_max(reserved_total, std::sync::atomic::Ordering::Relaxed);
+
+        // WHOLE-NAMESPACE ADMISSION: one real `space()` measurement under
+        // the exclusive namespace lock, projecting the batch's permanent
+        // growth (all blocks) plus the ONE-commit metadata allowance.
+        let _namespace =
+            FileGuard::lock_timeout(&self.lock_path("namespace-budget"), true, CHUNK_LOCK_WAIT)?
+                .ok_or_else(|| StoreError::Busy("namespace budget lock".into()))?;
+        let report_now = self.space();
+        let namespace_now = report_now.total - (report_now.db - report_now.db_main);
+        const META_ALLOWANCE: u64 = 48 * 1024;
+        let projected = namespace_now
+            .checked_add(total_framed)
+            .and_then(|n| n.checked_add(META_ALLOWANCE))
+            .ok_or_else(|| StoreError::ResourceExhausted("namespace size overflow".into()))?;
+        if projected > self.namespace_budget {
+            let breakdown = self.space();
+            return Err(StoreError::ResourceExhausted(format!(
+                "namespace (current {namespace_now} + blocks {total_framed} + metadata allowance {META_ALLOWANCE}) exceeds budget {} [blocks {} + db_main {} + wal/shm {} + staging {} + trash {} + locks {} + logs {}]",
+                self.namespace_budget,
+                breakdown.blocks,
+                breakdown.db_main,
+                breakdown.db - breakdown.db_main,
+                breakdown.staging,
+                breakdown.trash,
+                breakdown.locks,
+                breakdown.logs
+            )));
+        }
+
+        // Frames and identities (after admission — same no-allocation-before-
+        // refusal discipline as the single put).
+        let frames: Vec<(Vec<u8>, String, String)> = reqs
+            .iter()
+            .map(|req| {
+                let framed = frame_chunk(req.kind, &req.payload);
+                let chunk_id = ChunkId::from_parts(&[framed.as_slice()]).0;
+                let art_id = Self::artifact_id(req, &chunk_id);
+                (framed, chunk_id, art_id)
+            })
+            .collect();
+
+        // Stage every distinct chunk ONCE (in-batch dedup shares content the
+        // same way cross-batch republication does), then place under per-
+        // chunk locks. `placed_new` remembers the blobs THIS batch created
+        // so a later failure can reclaim them without ever touching content
+        // that was already live.
+        let mut placed_new: Vec<String> = Vec::new();
+        let mut staged: HashSet<String> = HashSet::new();
+        fs::create_dir_all(staging_dir)?;
+        for (framed, chunk_id, _) in &frames {
+            if !staged.insert(chunk_id.clone()) {
+                continue; // identical content appears once per batch
+            }
+            let staged_file = staging_dir.join(format!("payload-{chunk_id}"));
+            write_with_retry(&staged_file, framed)?;
+        }
+        fault("after-staging");
+        // Drop the temp-space reservation as soon as placements finish; held
+        // through the last CAS move exactly like the single put (R4-02).
+        for (chunk_id, _) in staged.iter().map(|c| (c, ())) {
+            let _chunk_lock = FileGuard::lock_timeout(
+                &self.lock_path(&format!("chunk-{chunk_id}")),
+                true,
+                CHUNK_LOCK_WAIT,
+            )?
+            .ok_or_else(|| {
+                StoreError::Busy(format!("chunk lock for {chunk_id} (holder active)"))
+            })?;
+            let existed = self.blobs.get(chunk_id).is_some();
+            let mut placed = false;
+            let mut last_err: Option<StoreError> = None;
+            for attempt in 0..8 {
+                match self
+                    .blobs
+                    .put(chunk_id, &staging_dir.join(format!("payload-{chunk_id}")))
+                {
+                    Ok(_) => {
+                        placed = true;
+                        break;
+                    }
+                    Err(e) => {
+                        let transient = matches!(
+                            &e,
+                            auto_cache::storage::Error::Io(io)
+                                if io.raw_os_error() == Some(32) || io.raw_os_error() == Some(5)
+                        );
+                        last_err = Some(StoreError::from(e));
+                        if !transient {
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(40 * (attempt + 1)));
+                    }
+                }
+            }
+            if !placed {
+                self.discard_own_cas_tmp(chunk_id);
+                return Err(
+                    last_err.unwrap_or_else(|| StoreError::Internal("CAS placement failed".into()))
+                );
+            }
+            if !existed {
+                placed_new.push(chunk_id.clone());
+            }
+        }
+        drop(_budget);
+        fault("after-chunk-move");
+
+        // ONE metadata transaction for every artifact: the same per-artifact
+        // decisions as put_inner (chunks upsert, zombie cleanup, conflict
+        // detection, required-edge liveness, roots, txns journal). The
+        // transaction lives inside a closure so its borrow of the connection
+        // guard ends before the guard itself drops; any error drops the
+        // transaction un-committed (= rollback) before the caller reclaims.
+        let commit = (|| -> Result<(), StoreError> {
+            let db = self.db.lock().unwrap();
+            let tx = db.unchecked_transaction()?;
+            for (i, req) in reqs.iter().enumerate() {
+                let (_, chunk_id, art_id) = &frames[i];
+                tx.execute(
+                    "INSERT INTO chunks(chunk_id, kind, size, state, created_epoch) VALUES (?1, ?2, ?3, 'live', ?4)
+                     ON CONFLICT(chunk_id) DO UPDATE SET state='live' WHERE state != 'live'",
+                    params![chunk_id, req.kind as u8, framed_lens[i], now_secs()],
+                )?;
+                let existing: Option<(String, String)> = tx
+                    .query_row(
+                        "SELECT artifact_id, payload_chunk FROM artifacts WHERE layer=?1 AND key_hash=?2",
+                        params![req.layer, req.key.hash()],
+                        |r| Ok((r.get(0)?, r.get(1)?)),
+                    )
+                    .optional()?;
+                let existing_is_dead = existing.as_ref().is_some_and(|(_, cid)| {
+                    let state: Option<String> = tx
+                        .query_row(
+                            "SELECT state FROM chunks WHERE chunk_id=?1",
+                            params![cid],
+                            |r| r.get(0),
+                        )
+                        .optional()
+                        .unwrap_or(None);
+                    !matches!(state.as_deref(), Some("live"))
+                });
+                let existing = if existing_is_dead {
+                    tx.execute(
+                        "DELETE FROM edges WHERE src IN (SELECT artifact_id FROM artifacts WHERE layer=?1 AND key_hash=?2)",
+                        params![req.layer, req.key.hash()],
+                    )?;
+                    tx.execute(
+                        "DELETE FROM artifacts WHERE layer=?1 AND key_hash=?2",
+                        params![req.layer, req.key.hash()],
+                    )?;
+                    None
+                } else {
+                    existing
+                };
+                match &existing {
+                    None => {
+                        for (dst, kind) in &req.edges {
+                            if *kind == RefKind::RequiredData && !row_chunk_live(&tx, dst)? {
+                                return Err(StoreError::TargetMissing(format!(
+                                    "required edge target {dst} is not live"
+                                )));
+                            }
+                        }
+                        tx.execute(
+                            "INSERT INTO artifacts(artifact_id, layer, key_hash, key_canonical, payload_chunk, created_epoch) VALUES (?1,?2,?3,?4,?5,?6)",
+                            params![art_id, req.layer, req.key.hash(), req.key.canonical(), chunk_id, now_secs()],
+                        )?;
+                        for (dst, kind) in &req.edges {
+                            tx.execute(
+                                "INSERT OR IGNORE INTO edges(src, dst, kind) VALUES (?1, ?2, ?3)",
+                                params![art_id, dst, kind.as_str()],
+                            )?;
+                        }
+                        if let Some(p) = &req.project {
+                            tx.execute(
+                                "INSERT OR IGNORE INTO roots(project, artifact, kind) VALUES (?1, ?2, 'soft')",
+                                params![p, art_id],
+                            )?;
+                        }
+                    }
+                    Some((id, cid)) if id == art_id && cid == chunk_id => {
+                        // Idempotent republication of identical content.
+                    }
+                    Some((id, _)) => {
+                        // Different content under one key: all-or-nothing —
+                        // roll back and report the first conflict.
+                        return Err(StoreError::Conflict {
+                            layer: req.layer.into(),
+                            key: req.key.canonical(),
+                            existing: id.clone(),
+                            attempted: art_id.clone(),
+                        });
+                    }
+                }
+            }
+            tx.execute(
+                "INSERT OR REPLACE INTO txns(txn_id, phase, detail, epoch) VALUES (?1, 'committed', 'batch', ?2)",
+                params![staging_dir.file_name().unwrap().to_string_lossy(), now_secs()],
+            )?;
+            tx.commit()?;
+            Ok(())
+        })();
+        if let Err(e) = commit {
+            for cid in &placed_new {
+                let _ = self.blob_remove(cid);
+            }
+            return Err(e);
+        }
+        drop(_live);
+        Ok(frames.into_iter().map(|(_, _, a)| a).collect())
+    }
+
     fn put_inner(&self, req: &PutRequest, staging_dir: &Path) -> Result<String, StoreError> {
         let framed_len = req
             .payload

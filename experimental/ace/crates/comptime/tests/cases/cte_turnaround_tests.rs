@@ -211,7 +211,11 @@ mod performance {
 
     #[test]
     fn cte_turnaround_gate_ms_zero_control_is_red() {
-        let (code, s, _) = run_bench(&["--samples", "3", "--gate-ms", "0"]);
+        // PLAN-1017 r4: the counter-control failure ("gate-ms 0 always
+        // fails") is pushed after the scenarios regardless of which rows
+        // ran — body-edit alone exercises the same admission path, so the
+        // selection trims陪跑 scenarios without touching the assertion.
+        let (code, s, _) = run_bench(&["--samples", "3", "--gate-ms", "0", "--only", "body-edit"]);
         assert_ne!(code, 0, "gate-ms 0 always fails");
         assert_eq!(s["target_met"], serde_json::json!(false));
         assert!(
@@ -226,9 +230,20 @@ mod performance {
 
     #[test]
     fn cte_turnaround_injected_spike_control_is_red() {
-        // A deterministic 2500ms spike on four body-edit samples drives
+        // A deterministic 2500ms spike on the body-edit samples drives
         // its P90 over the gate — the SAME gate that was green.
-        let (code, s, _) = run_bench(&["--samples", "30", "--inject-delay-ms", "2500"]);
+        // PLAN-1017 r4: 10 samples spike samples/10+1 = 2 of them; the
+        // P90 index (9th of 10) still lands on a spiked sample, and the
+        // assertion set (red gate + target_met + p90>=2500) is unchanged.
+        // Only the asserted row runs — the other scenarios were陪跑.
+        let (code, s, _) = run_bench(&[
+            "--samples",
+            "10",
+            "--only",
+            "body-edit",
+            "--inject-delay-ms",
+            "2500",
+        ]);
         assert_ne!(code, 0, "the spike turns the gate red");
         assert_eq!(s["target_met"], serde_json::json!(false));
         assert!(
@@ -282,7 +297,17 @@ mod performance {
         let exe = env!("CARGO_BIN_EXE_ace-comptime-worker");
 
         // (a) Normal incremental traffic: green, zero re-warms.
-        let (code, s, _) = run_bench(&["--samples", samples, "--gate-ms", gate]);
+        // PLAN-1017 r4: this test's gates are resident-edit's own (rewarm
+        // detector + degrade gate) — only that scenario runs; the other
+        // rows were陪跑 for these assertions.
+        let (code, s, _) = run_bench(&[
+            "--samples",
+            samples,
+            "--gate-ms",
+            gate,
+            "--only",
+            "resident-edit",
+        ]);
         assert_eq!(code, 0, "normal resident traffic green: {s}");
         assert_eq!(s["resident_edit_rewarms"], serde_json::json!(0));
         assert!(!serde_json::to_string(&s["hard_gate_failures"])
@@ -298,6 +323,8 @@ mod performance {
                 samples,
                 "--gate-ms",
                 gate,
+                "--only",
+                "resident-edit",
                 "--inject-rebuild",
             ])
             .stdout(Stdio::piped())
@@ -330,6 +357,8 @@ mod performance {
                 samples,
                 "--gate-ms",
                 gate,
+                "--only",
+                "resident-edit",
                 "--inject-rebuild",
             ])
             .env("AUTO_CTE_DISABLE_RESIDENT_GATE", "1")

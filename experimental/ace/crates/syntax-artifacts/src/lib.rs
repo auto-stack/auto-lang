@@ -1758,6 +1758,11 @@ pub struct StreamingCstBuilder<'a> {
     decl_count: u64,
     next_global: u32,
     snap_hash_parts: Vec<Vec<u8>>,
+    /// PLAN-1017: `stream_snapshot_component()` memoized per chunk — the
+    /// parts only change in `push_chunk`, and the value was previously
+    /// recomputed (concat + domain hash over ALL parts) for EVERY block
+    /// page and decl page key, an O(chunks²) total. Byte-identical output.
+    snap_component: String,
     diags: Vec<DiagEntry>,
     working_set_peak: usize,
     /// 当前块处理期间仍驻留的 parse 产物实际容量足迹（tree/tokens/词法诊断；
@@ -1786,6 +1791,7 @@ impl<'a> StreamingCstBuilder<'a> {
             decl_count: 0,
             next_global: 0,
             snap_hash_parts: Vec::new(),
+            snap_component: String::new(),
             diags: Vec::new(),
             working_set_peak: 0,
             current_transient: 0,
@@ -1878,6 +1884,9 @@ impl<'a> StreamingCstBuilder<'a> {
         let mut part = snap.id().as_str().as_bytes().to_vec();
         part.push(0);
         self.snap_hash_parts.push(part);
+        // PLAN-1017: memoize once per chunk — the value is constant for the
+        // rest of this push_chunk (and until the next one changes the parts).
+        self.snap_component = self.stream_snapshot_component();
         // 源页持久化（内容寻址，跨块去重；artifact ids 保留供 manifest 闭包）。
         // put 瞬态峰值（聚合 buf + framed 克隆）与 snap 页同驻留，一并采样。
         let (arts, chunks, put_peak) = self.sas.put_source_pages(&snap)?;
@@ -1930,18 +1939,27 @@ impl<'a> StreamingCstBuilder<'a> {
         self.touch_peak_with(0);
         let tree = &out.tree;
         // 块 → 数据页；块内声明 → 目录条目（全局 id = next_global + 局部）。
+        // PLAN-1017: this chunk's block pages publish as ONE batch — every
+        // per-page identity (key, chunk id, edges, content) is unchanged;
+        // only the staging txn / budget reservation / namespace admission /
+        // SQLite commit are shared across the chunk (the per-put O(commits)
+        // cost dominated the streaming build).
+        let mut batch_reqs: Vec<PutRequest> = Vec::with_capacity(tree.blocks.len());
+        let mut batch_pages: Vec<(String, u32, u32)> = Vec::with_capacity(tree.blocks.len());
+        // Page indices advance locally while the batch collects — `pages`
+        // itself only extends after the batch commits (PLAN-1017).
+        let mut idx = self.pages.len();
         for (bi, blk) in tree.blocks.iter().enumerate() {
             let payload = encode_block(blk);
             // 同驻留合计（F787-R3-06 + R4-04）：parse 树 + 页 payload 及其
             // framed 副本（≈2×payload.len()；put 路径零克隆——chunk id 先算
             // 后 move）同时在堆上。
             self.touch_peak_with(payload.len() * 2);
-            let idx = self.pages.len();
             let base = self.next_global;
             let key = QueryKey::new(
                 layer("A03"),
                 vec![
-                    ("source-snapshot".into(), self.stream_snapshot_component()),
+                    ("source-snapshot".into(), self.snap_component.clone()),
                     (
                         "grammar-id".into(),
                         self.p.grammar_id().as_str().to_string(),
@@ -1956,14 +1974,14 @@ impl<'a> StreamingCstBuilder<'a> {
                 &payload,
             )
             .to_string();
-            let art = self.sas.inner().put_artifact(PutRequest {
+            batch_reqs.push(PutRequest {
                 layer: "A03",
                 key,
                 kind: ace_artifacts::codec::ChunkKind::CstPage,
                 payload,
                 edges: vec![],
                 project: None,
-            })?;
+            });
             for di in 0..tree.block_decl[bi].len() {
                 if tree.block_decl[bi][di] == UNGRAFTED_DECL {
                     continue;
@@ -1977,13 +1995,22 @@ impl<'a> StreamingCstBuilder<'a> {
                 });
                 self.decl_count += 1;
             }
-            self.page_arts.push(art);
-            self.pages.push(PageEntry {
-                chunk: chunk_id,
-                first_node: base,
-                node_count: blk.nodes.len() as u32,
-            });
+            batch_pages.push((chunk_id, base, blk.nodes.len() as u32));
             self.next_global += blk.nodes.len() as u32;
+            idx += 1;
+        }
+        if !batch_reqs.is_empty() {
+            let arts = self.sas.inner().put_artifact_batch(batch_reqs)?;
+            for (art, (chunk_id, first_node, node_count)) in
+                arts.into_iter().zip(batch_pages.into_iter())
+            {
+                self.page_arts.push(art);
+                self.pages.push(PageEntry {
+                    chunk: chunk_id,
+                    first_node,
+                    node_count,
+                });
+            }
         }
         while self.decls_buf.len() >= DECL_INDEX_PAGE {
             // 严格整页切分：一次 flush 只出 DECL_INDEX_PAGE 条，余量留待下页
@@ -2026,7 +2053,7 @@ impl<'a> StreamingCstBuilder<'a> {
         let key = QueryKey::new(
             layer("A03"),
             vec![
-                ("source-snapshot".into(), self.stream_snapshot_component()),
+                ("source-snapshot".into(), self.snap_component.clone()),
                 (
                     "grammar-id".into(),
                     self.p.grammar_id().as_str().to_string(),
@@ -2080,7 +2107,7 @@ impl<'a> StreamingCstBuilder<'a> {
         // manifest JSON/edges 仍同驻留。先取 move 前的实际容量作基线。
         let managed_before = self.managed_bytes();
         let manifest = CstManifest {
-            snapshot: self.stream_snapshot_component(),
+            snapshot: self.snap_component.clone(),
             grammar: self.p.grammar_id().as_str().to_string(),
             total_len,
             diags: std::mem::take(&mut self.diags),

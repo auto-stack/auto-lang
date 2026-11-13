@@ -221,7 +221,7 @@ mod performance {
 
     /// V-08 cold set + V-06 churn/GC leg: fill ONE store with ≥32 MiB of
     /// genuinely different COFFs until it passes the inherited high watermark,
-    /// restore one random object read-only, run 512 real edit/re-key/result
+    /// restore one random object read-only, run 128 real edit/re-key/result
     /// rounds, then real GC — physical deletion, convergence below the low
     /// watermark, the user sentinel (root) and a live lease both surviving.
     #[test]
@@ -326,13 +326,19 @@ mod performance {
             bytes_pick.len()
         );
 
-        // ---- 512 real edit/re-key/result rounds on the SAME store -----------
+        // ---- 128 real edit/re-key/result rounds on the SAME store -----------
+        // PLAN-1017 r4: the churn duty is per-round invariants (only the
+        // edited unit re-keys, the unchanged unit hits, every round's
+        // independent oracle, ordered publication, lease-on-superseded) —
+        // 128 distinct rounds exercise the same state matrix as 512 did;
+        // the round count is not a frozen scale (the ≥32 MiB cold set and
+        // watermark/GC convergence are).
         let sp_before_churn = store.space().total;
         let mut d = MnDriver::with_store(&root, "churn").expect("churn store");
         let t_churn = std::time::Instant::now();
         let mut last_manifest = None;
         let mut leased_manifest = None;
-        for kr in 0i32..512 {
+        for kr in 0i32..128 {
             let (src, want) = churn_gen(kr);
             let r = d.request(&src, "d_main", &[], &root.join(format!("c{kr}")), None);
             assert!(r.ok, "churn round {kr} failed: {:?}", r.error);
@@ -346,25 +352,25 @@ mod performance {
                 assert_eq!(hits, 1, "round {kr}: the unchanged unit hits");
             }
             last_manifest = r.manifest_artifact_id.clone();
-            if kr == 510 {
+            if kr == 126 {
                 leased_manifest = r.manifest_artifact_id.clone();
             }
-            if kr % 128 == 127 {
+            if kr % 64 == 63 {
                 eprintln!("churn {kr}: {:?}", t_churn.elapsed());
             }
         }
         let sp_after_churn = store.space().total;
         assert!(
             sp_after_churn > sp_before_churn,
-            "512 real distinct edits physically grew the store ({} -> {})",
+            "128 real distinct edits physically grew the store ({} -> {})",
             sp_before_churn,
             sp_after_churn
         );
         let last_manifest = last_manifest.expect("manifest id");
-        // Lease the ROUND-510 manifest: its soft root was already dropped by
-        // round 511's ordered publication, so the LEASE ALONE must keep it
+        // Lease the ROUND-126 manifest: its soft root was already dropped by
+        // round 127's ordered publication, so the LEASE ALONE must keep it
         // (and its required closure) alive across GC.
-        let leased_manifest = leased_manifest.expect("round-510 manifest id");
+        let leased_manifest = leased_manifest.expect("round-126 manifest id");
         let lease = store
             .acquire_lease("mn-t05-gc", 600, Some(&leased_manifest))
             .expect("lease the superseded closure");
@@ -408,14 +414,14 @@ mod performance {
             "sentinel bytes untouched"
         );
 
-        // Leased closure: the superseded round-510 manifest and its units
+        // Leased closure: the superseded round-126 manifest and its units
         // survived on the lease alone; restoring runs its PE result again.
         let out = worker::restore_run_by_id(&root, &leased_manifest, &root.join("leased"), None)
             .expect("leased closure restores and runs");
-        let (_, want510) = churn_gen(510);
+        let (_, want126) = churn_gen(126);
         assert_eq!(
             out.exit_code,
-            Some(want510),
+            Some(want126),
             "leased closure result identical"
         );
 

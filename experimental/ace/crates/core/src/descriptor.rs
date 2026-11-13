@@ -489,36 +489,47 @@ pub fn bind(desc: &Descriptor, source: &str) -> Result<hir::Bundle, Vec<Diagnost
 }
 
 /// A field set merged from head + body with duplicate detection.
+/// PLAN-1017: the backing store is a name-SORTED Vec — the previous
+/// BTreeMap allocated a node per field on every bind; iteration order
+/// (sorted by name) and every diagnostic (duplicate "previous at byte"
+/// keeps the FIRST occurrence) are byte-identical.
 struct FieldSet<'a> {
-    by_name: BTreeMap<&'a str, &'a NamedValue>,
+    sorted: Vec<(&'a str, &'a NamedValue)>,
 }
 
 impl<'a> FieldSet<'a> {
     fn build(node: &'a SyntaxNode, b: &mut Binder) -> FieldSet<'a> {
-        let mut by_name: BTreeMap<&'a str, &'a NamedValue> = BTreeMap::new();
+        let mut sorted: Vec<(&'a str, &'a NamedValue)> = Vec::new();
         for f in node.all_fields() {
-            if let Some(prev) = by_name.get(f.name.as_str()) {
-                b.error(
-                    "bind.duplicate-field",
-                    format!(
-                        "field `{}` declared more than once (previous at byte {})",
-                        f.name, prev.name_span.start
-                    ),
-                    f.name_span,
-                );
-            } else {
-                by_name.insert(f.name.as_str(), f);
+            let pos = sorted.partition_point(|(n, _)| (*n) < f.name.as_str());
+            if let Some((_, prev)) = sorted.get(pos) {
+                if *prev.name.as_str() == *f.name.as_str() {
+                    b.error(
+                        "bind.duplicate-field",
+                        format!(
+                            "field `{}` declared more than once (previous at byte {})",
+                            f.name, prev.name_span.start
+                        ),
+                        f.name_span,
+                    );
+                    continue;
+                }
             }
+            sorted.insert(pos, (f.name.as_str(), f));
         }
-        FieldSet { by_name }
+        FieldSet { sorted }
     }
 
     fn get(&self, name: &str) -> Option<&NamedValue> {
-        self.by_name.get(name).copied()
+        let pos = self.sorted.partition_point(|(n, _)| (*n) < name);
+        self.sorted
+            .get(pos)
+            .filter(|(n, _)| *n == name)
+            .map(|(_, v)| *v)
     }
 
     fn names(&self) -> impl Iterator<Item = &str> {
-        self.by_name.keys().copied()
+        self.sorted.iter().map(|(n, _)| *n)
     }
 }
 
