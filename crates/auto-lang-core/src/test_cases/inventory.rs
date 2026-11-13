@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use auto_test_case::admission::Limits;
-use auto_test_case::discovery::{CASE_FENCE_LANGUAGE, CaseFileFormat, load_suite};
+use auto_test_case::discovery::{load_suite, CaseFileFormat, CASE_FENCE_LANGUAGE};
 use auto_test_case::ir::{resolve_case, resolve_oracle};
 use auto_test_case::suite::apply_defaults;
 

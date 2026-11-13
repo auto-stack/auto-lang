@@ -4,13 +4,13 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::admission::{Limits, check_limit, read_bounded};
+use crate::admission::{check_limit, read_bounded, Limits};
 use crate::atom;
 use crate::author;
-use crate::contract::{CaseSpec, decode_case};
+use crate::contract::{decode_case, CaseSpec};
 use crate::document::CaseDocument;
 use crate::sha256::{hex, sha256};
-use crate::suite::{SuiteSpec, decode_suite, selected_files};
+use crate::suite::{decode_suite, selected_files, SuiteSpec};
 
 pub const CASE_FENCE_LANGUAGE: &str = "test-case";
 pub const SUITE_FENCE_LANGUAGE: &str = "test-suite";

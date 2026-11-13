@@ -23,8 +23,8 @@ use std::path::Path;
 use auto_test_case::admission::Limits;
 use auto_test_case::compare::unified_diff_hunk;
 use auto_test_case::contract::{ArtifactExpect, ArtifactPayload, CheckSpec};
-use auto_test_case::discovery::{LoadedSuite, load_suite};
-use auto_test_case::ir::{ResolvedCase, resolve_case, resolve_oracle};
+use auto_test_case::discovery::{load_suite, LoadedSuite};
+use auto_test_case::ir::{resolve_case, resolve_oracle, ResolvedCase};
 use auto_test_case::report::{CheckOutcome, RunReport, Status};
 
 /// Write the case's virtual project into `dir` (creating parents).

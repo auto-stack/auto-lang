@@ -6,9 +6,9 @@
 use std::path::Path;
 
 use auto_test_case::admission::Limits;
-use auto_test_case::author::{AuthorError, decode_document, is_document_case};
+use auto_test_case::author::{decode_document, is_document_case, AuthorError};
 use auto_test_case::contract::{Adapter, Completion, PayloadSpec, Stage};
-use auto_test_case::discovery::{CaseFileFormat, load_suite};
+use auto_test_case::discovery::{load_suite, CaseFileFormat};
 use auto_test_case::document::CaseDocument;
 
 const ROOT: &str = env!("CARGO_MANIFEST_DIR");

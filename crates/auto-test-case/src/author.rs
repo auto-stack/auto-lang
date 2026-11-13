@@ -19,9 +19,9 @@
 use crate::admission::Limits;
 use crate::atom::{self, CVal};
 use crate::contract::{
-    Action, Adapter, ArtifactExpect, ArtifactPayload, CaseSpec, CheckSpec, Compare, Completion,
-    EntryMode, ExpectSpec, Options, PayloadSpec, ProbeAvSpec, ProbeMnSpec, ProbeStep, ResultExpect,
-    SourceSpec, Stage, StreamExpect, Syntax, valid_case_id, valid_check_id,
+    valid_case_id, valid_check_id, Action, Adapter, ArtifactExpect, ArtifactPayload, CaseSpec,
+    CheckSpec, Compare, Completion, EntryMode, ExpectSpec, Options, PayloadSpec, ProbeAvSpec,
+    ProbeMnSpec, ProbeStep, ResultExpect, SourceSpec, Stage, StreamExpect, Syntax,
 };
 use crate::document::{CaseDocument, DocumentFence};
 use crate::raw_ranges::line_table;
@@ -397,11 +397,7 @@ fn collect_attrs(
 }
 
 /// Fences whose opening line sits in `(after_line, before_line)`.
-fn direct_fences(
-    doc: &CaseDocument,
-    after_line: usize,
-    before_line: usize,
-) -> Vec<&DocumentFence> {
+fn direct_fences(doc: &CaseDocument, after_line: usize, before_line: usize) -> Vec<&DocumentFence> {
     doc.fences()
         .iter()
         .filter(|f| f.open_line > after_line && f.open_line < before_line)

@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use crate::admission::{AdmissionError, Limits, check_limit, read_bounded};
+use crate::admission::{check_limit, read_bounded, AdmissionError, Limits};
 use crate::contract::{
     ArtifactPayload, CaseSpec, CheckSpec, Compare, Completion, PayloadSpec, StreamExpect,
 };
@@ -396,8 +396,8 @@ pub fn resolve_oracle(
 mod tests {
     use super::*;
     use crate::contract::{
-        CheckSpec, Completion, EntryMode, ExpectSpec, Options, PayloadSpec, SourceSpec, Syntax,
-        decode_case,
+        decode_case, CheckSpec, Completion, EntryMode, ExpectSpec, Options, PayloadSpec,
+        SourceSpec, Syntax,
     };
 
     fn spec_with_files(paths: &[&str]) -> CaseSpec {

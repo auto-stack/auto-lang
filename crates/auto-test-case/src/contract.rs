@@ -17,7 +17,7 @@
 //! merges (D-787); until then executing it is an admission ERROR, never a
 //! SKIP and never silently green.
 
-use crate::admission::{Limits, check_limit, validate_virtual_path};
+use crate::admission::{check_limit, validate_virtual_path, Limits};
 use crate::atom::CVal;
 
 pub const CASE_SCHEMA: &str = "autolang.case/1";

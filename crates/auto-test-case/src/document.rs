@@ -14,10 +14,10 @@
 
 use std::ops::Range;
 
-use autodown_test_parser::block_model::{BlockNode, BlockType, Value, attrGet, blockText};
+use autodown_test_parser::block_model::{attrGet, blockText, BlockNode, BlockType, Value};
 use autodown_test_parser::markdown_parser::parse_blocks;
 
-use crate::admission::{AdmissionError, Limits, check_limit};
+use crate::admission::{check_limit, AdmissionError, Limits};
 use crate::raw_ranges::{locate_fences, locate_headings};
 
 /// Fingerprint of the vendored parser snapshot actually compiled in (Plan
