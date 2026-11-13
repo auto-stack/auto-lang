@@ -25,16 +25,22 @@
 
 ## r5 验收目标（用户裁定 2026-11-13，取代十倍目标）
 
-全量 `cargo t ace-perf` 串行执行段 **≤3000s**（进取 2400s）＋逐模块预算（空闲窗口口径，
-超支须具名归因）：syntax-artifacts ≤120 / ace-av ≤240 / semantics-store ≤80 /
-comptime ≤550 / conformance ≤800 / native ≤1300 / abi ≤320 / artifacts ≤60 /
-a2x-worker ≤45（预算合计 ≈3515s>3000 为刻意的头部压力）。
+全量 `cargo t ace-perf` 串行执行段 **≤3600s（负载上限，r6 用户裁定 2026-11-14）**，
+验收口径=**逐模块分跑求和**（同 ace-perf profile/特征/串行；污染腿按各自干净实测校正并
+透明记录原值）＋逐模块预算（空闲窗口口径，超支须具名归因）：syntax-artifacts ≤120 /
+ace-av ≤240 / semantics-store ≤80 / comptime ≤550 / conformance ≤800 / native ≤1300 /
+abi ≤320 / artifacts ≤60 / a2x-worker ≤45。历程：r5 曾修订为 ≤3000s（进取 2400s），
+Pass D/E/F 实测（3618.9/3840.9 负载、逐模块分跑 3671.3 负载、≈3345 干净校正）证明
+本机常态负载下不可达，r6 修订为 3600s；首验交付值=逐模块分跑干净校正 **≈3345s**。
 
 已证不可压缩地板（具名归因候选）：注入延迟（release_gate ~33s）、真实 GC/物理删除、
 30 样本 P90 统计义务、冻结字节规模（32/64MiB 水位）、debug 档每样本真实编译/emit/link
 （cold_set 填充段 emit ≈3.5s/MiB 实测、250–2000 语句/源每字节成本平坦——源形状重整
 不省，PLAN-1017 探针证伪）、closure lane 每调用全源重编译语义（r4 裁定复用=产品契约
 变更，留后续设计）。
+**后继优化包（用户裁定 2026-11-14：ACE M2 完成后再做）**：cranelift emit 提速
+（cold_set/sd911 fresh ~200s 量级）、closure-lane 每调用复用（comptime 填充 ~100s）、
+binder 快路径（atom 文本重解析）、av 探针周转基础设施。
 
 ## 短复现（≤60s 有界探针）
 

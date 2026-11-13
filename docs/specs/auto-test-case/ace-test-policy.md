@@ -65,10 +65,12 @@ source-bound 准备+运行分账。纯 Python 回合/干扰核算（2 例）留 
 
 ## 成本验收与优化边界（PLAN-1017 r5）
 
-正式套件按 r5 用户裁定验收：全量串行执行段 ≤3000s（进取 2400s）＋逐模块预算
-（syntax-artifacts ≤120 / ace-av ≤240 / semantics-store ≤80 / comptime ≤550 /
-conformance ≤800 / native ≤1300 / abi ≤320 / artifacts ≤60 / a2x-worker ≤45，
-空闲窗口口径，超支须具名归因）。守恒口径=效果守恒（逐例记录覆盖不变；冻结字节规模与
+正式套件按 r6 用户裁定（2026-11-14）验收：全量串行执行段 ≤3600s（负载上限；r5 曾设
+3000s，实测在本机常态负载下不可达后修订），验收口径=逐模块分跑求和（污染腿按干净实测
+校正并透明记录原值）；逐模块预算（syntax-artifacts ≤120 / ace-av ≤240 /
+semantics-store ≤80 / comptime ≤550 / conformance ≤800 / native ≤1300 / abi ≤320 /
+artifacts ≤60 / a2x-worker ≤45，空闲窗口口径，超支须具名归因）；剩余优化延后至
+ACE M2 完成后的后继包。守恒口径=效果守恒（逐例记录覆盖不变；冻结字节规模与
 统计有效样本数不缩），取代原十倍目标。主耗时机制须有常驻 ignored 短探针；优化不改变
 普通组/正式组互斥、串行 profile、平台/ignore/预算合同。成本合同与已交付修复面详见
 [ace-perf-cost-and-reproduction](ace-perf-cost-and-reproduction.md)。
