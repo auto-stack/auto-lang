@@ -8,6 +8,8 @@ Formatting is exact: i32 decimal ASCII without plus/leading zeros, MIN `-2147483
 
 `print` and `eprint` cannot be rebound as functions, locals or parameters in this domain (`source.console-reserved`). Other profiles keep their name-resolution rules and cannot acquire host intrinsics by changing a symbol. HIR declares exact typed intrinsic references and required capabilities; lowering converts them to the independent host table/call, never a guest import or trace instruction. Backend/native/default product routing does not change.
 
+PLAN-947 adds the 943-frozen public spelling `say(msg str)`: str-only (str or owned `Str`), stdout lane, mapping to `auto.console.print.str.v1` — byte-identical to the frozen old `io.say` (io.vm.at `say→print` → `auto.print_str` whose writer appends exactly one LF). `say` joins the reserved names; a wrong-type argument is `source.console-argument`. Four-end support: AV and native (mn) really dispatch (corpus `crates/auto-lang/test/cases/ace-m2/p947-console/` runs both recipes with independent byte oracles; the native lane's Unit-result entry is a named mn ABI boundary, the AV lane executes the Unit channel); the Rust and C host lanes are capability-missing (owner PLAN-973). See `../stdlib/design/ace-host-services.md` for the full contract.
+
 Reference: `../auto-av/host-import-and-console.md`. Implementation: `experimental/ace/crates/core/src/source/console.rs`, host-console descriptor, shared `experimental/ace/crates/lowering/src/hir_adapter.rs`.
 
-来源：[PLAN-863](../../plans/archive/863-av-console-host-import-and-print.md)。
+来源：[PLAN-863](../../plans/archive/863-av-console-host-import-and-print.md)；say 公共绑定与四端分账：[PLAN-947](../../plans/947-ace-stdlib-console-and-resource-host-contract.md)。

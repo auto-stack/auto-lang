@@ -109,3 +109,14 @@ callee——必须在 `NativeInterface::production()` 最终身份声明（注�
 - resolved-but-unbound 符号（公共名解析到 registry id 但接口无绑定）属
   shim 缺口，走 PROVIDER_CLAIM_NO_CALLEE 分诊，不在契约侧补（无 producer
   可证）。
+
+## Schema 5：四轴选择收据（PLAN-947，2026-11-13）
+
+`AssemblyManifest::freeze_with_selection` 把 PLAN-947 的四轴 provider 选择
+记录（operation/module/symbol/layer/target/provider/abi，仅身份事实）作为
+schema 5 增量节写入收据，参与共同与消费者双指纹。兼容规则：schema 4 旧线
+型（无选择节）逐字节兼容且照常可读；交叉形态（schema 4 携带选择节 /
+schema 5 空选择节）拒绝；篡改选择记录破坏指纹即拒。选择合同的具名拒绝
+与 grant 前置检查见 [ace-binding-and-assembly.md](ace-binding-and-assembly.md)
+四轴节；收据永不携带授权或 provider 地址——恢复重授权由选择合同的
+`assembly.missing-grant` 在 dispatch 前承担。

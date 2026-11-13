@@ -90,3 +90,22 @@ unused `io.read_line` 的审计证据不会成为源码可调用项或 stdin gra
 
 完整职责组冻结并集为 `stdlib ace-source ace-semantics ace-artifacts
 ace-av ace-a2x ace-stdlib`；不是每次迭代全跑，也不替代到期的独立批回归。
+
+## 四轴 provider 选择合同（PLAN-947，2026-11-13）
+
+标准库公共声明的装配选择按四轴分别建模（`crates/auto-lang-core/src/
+stdlib_assembly/provider_selection.rs`）：**执行后端**（AV/native）×**宿主
+平台**×**目标平台**×**provider 来源**（自有 Auto/薄 OS 适配/显式外库）。
+选择只看**目标平台**（宿主 Windows 而目标 Linux 时选 Linux 的 provider，
+V-09 钉）；默认序=自有 Auto→OS 适配，外库必须点名（唯一外库候选未点名=
+`assembly.auto-foreign-fallback` 拒，永不自动 libc 回落）；公共边界的
+AutoABI 与平台 ABI 分开（平台 ABI 冒充 AutoABI=审计反例
+`assembly.platform-abi-as-auto-abi`）；无 provider/同轴重复/混 ABI/删
+operation proof/缺本轮 grant 一律具名拒绝（`assembly.no-provider`/
+`ambiguous-provider`/`mixed-target-abi`/`unknown-operation`/
+`missing-grant`，后两者在 dispatch 前拒——恢复的旧授权永不入场）。
+core/alloc/host/domain 分层随选择记录入账；Storage/allocator 接口仍待
+M2 内存专题（不冻结签名/ABI）。`#if`/`#is` 目标条件语义与 sys/OS 迁移表
+见 [ace-host-services.md](ace-host-services.md) §5——源码级 CTE 归 966，
+本合同不另造。File/Task/Stream 资源面前探分账同文件 §3（capability-missing
+不冒 PASS）。

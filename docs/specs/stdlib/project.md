@@ -140,3 +140,19 @@ error-reply ×10（server_dispatch/argbind/scope 的 `ApiReply::Full` 错误形�
 helper（收益≈0 且触碰契约面）；`nv_to_value` 双签名（native.rs 无 vm 版
 vs interop.rs 持 vm 版）按消费面并存（collections 写入 vs obj_* 字段写入）。
 
+## ACE console/1 公共输出与四端分账（PLAN-947，2026-11-13）
+
+公共 `io.say(msg str)` 已接 ACE console/1（stdout，UTF-8 原字节+恰一个 LF；
+冻结合同与证据见 [design/ace-host-services.md](design/ace-host-services.md)
+与 [auto-ac/source-console-output.md](../auto-ac/source-console-output.md)）。
+四端分账（机器账 `stdlib/contracts/compatibility.toml` `console.say`，钉扎
+测试在 `stdlib_assembly::contracts`）：AV=native=**supported**（双 lane 语料
+`crates/auto-lang/test/cases/ace-m2/p947-console/`，每轮授权/原预算 65536/
+1048576/原子提交/恢复重授权）；A2R(Rust)/A2C(C)=**capability-missing**
+（owner PLAN-973 四端补齐；native Unit-result 入口=命名 mn ABI 边界）。
+
+来源链（M1-TAG 门记录）：正式 tag `v0.6-ACE-M1`（commit b923362f4，tag
+object acc3eb5b7）为 2026-11-13 基面祖先；M1 最终验收 PLAN-1025（H 正式
+exit0 1006P/0F/0U，C 读回 exit0，TAG 六门闭合）；本包实施授权=用户
+/goal；tag→基面零代码漂移实测。943 操作合同（`console.say` v1，
+followup=PLAN-947）已按本包交付闭合；943/944/960 历史不重写。
