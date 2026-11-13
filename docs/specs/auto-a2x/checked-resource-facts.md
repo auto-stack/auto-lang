@@ -89,3 +89,17 @@
   拒（绿色=每个 CI 腿资源调用可证消费计划）；callback 目标计划驱动+逐实参
   覆盖一致性核。native 侧以 MIR callbacks+TextResourcePlan 为所有权权威。
 - 后端不复制 ownership 推导；中立 facts 只是投影。
+
+## PLAN-945 增量：公共 std 包四端资源事实（基础数学与文本切片）
+
+HIR→Rust/HIR→C 对冻结 `std` 包（`stdlib/ace/std/*.at`）的真实资源行为：
+`std.text.owned`（视图 clone）在两端 exe 的分配故障钩子 `A2X_RT_FAULT_ALLOC`
+下为类型化 `trap:Resource`（rust `rt_alloc` 故障序 / C `a2x_rt_cfg_fault`），非
+panic；`std.math.square/cube` checked i32 溢出=`trap:Overflow`（stdout 协议
+`value:<i32>`/`trap:<Name>`）；`byte_len`/`equal` 无分配。AV arena seam 扫描：每
+次注入=typed abort+零存活缓冲。manifest 准入：真实 stdlib 声明（六 Declaration）
+经 packages profile SemanticAssembly 在 AV/Rust/Native/C 四 producer
+freeze/validate/admit，篡改声明 `assembly.stale-identity` 拒。证据
+`experimental/ace/crates/av/tests/cases/stdlib_core_945.rs` 与
+`experimental/ace/tests/stdlib/tests/conformance.rs`；详见
+[../../stdlib/design/ace-core-and-text.md](../../stdlib/design/ace-core-and-text.md)。

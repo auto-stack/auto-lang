@@ -120,3 +120,15 @@ print/File/process、公开 ABI 或 ACC Gen1。
   `gap_closure_871` 承接；联合门禁 `scripts/verify-ac-text-770.ps1`（步骤见脚本，
   含 741/745/767/771 旧门与 per-plan scope 归因）。收据见
   [../../reports/770-text/verification.md](../../reports/770-text/verification.md)。
+
+## PLAN-945 增量：公共 std 包的文本面（packages 通道）
+
+packages 前门（`ac.source.modules.packages/v1`，TextRecord profile）新增冻结公共
+`std` 包身份（`stdlib/ace/std/*.at`，`stdlib_inputs()` 装载，包名保留
+`ace.stdlib-reserved` 冷/恢复双拒绝）。文本公开面：`std.text.byte_len`（UTF-8
+字节，`s.len_bytes()` 同义公共包装）、`std.text.equal`（语言算子 `==`，逐字节、
+NUL 非终结符）、`std.text.owned`（视图 clone → 独立拥有 `Str`；分配失败保输入）。
+i64 `math.abs/min/max` 在 `std.math` 上 `ace.stdlib-unwired` 具名拒绝（先于调用，
+无窄化适配）。四端执行与故障/恢复证据见
+[../../stdlib/design/ace-core-and-text.md](../../stdlib/design/ace-core-and-text.md)；
+语法边界：条件以 ident 收尾接 `{` 需括号（record 构造歧义，面内既有特性）。

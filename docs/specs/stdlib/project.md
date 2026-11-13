@@ -156,3 +156,19 @@ object acc3eb5b7）为 2026-11-13 基面祖先；M1 最终验收 PLAN-1025（H �
 exit0 1006P/0F/0U，C 读回 exit0，TAG 六门闭合）；本包实施授权=用户
 /goal；tag→基面零代码漂移实测。943 操作合同（`console.say` v1，
 followup=PLAN-947）已按本包交付闭合；943/944/960 历史不重写。
+
+## ACE 基础数学与文本切片四端分账（PLAN-945，2026-11-13）
+
+冻结公共 `std` 包（`stdlib/ace/std/{math,text}.at`，包名保留 `ace.stdlib-reserved`）
+交付 `std.math.square/cube`（checked i32，溢出 trap）与 `std.text.byte_len/equal/
+owned`（UTF-8 字节/逐字节相等/独立拥有克隆），全部经统一 packages 前门在 AV、
+native(mn)、HIR→Rust、HIR→C 四端真实执行（独立 oracle：8/181703/3927/溢出
+trap；证据 `experimental/ace/crates/av/tests/cases/stdlib_core_945.rs`）。i64 公共
+族 `math.abs/min/max` 具名未支持：绑定层 `ace.stdlib-unwired` 先于调用拒绝，无
+窄化适配，合同行保持 `missing_capability`（948 交接）。详细合同见
+[design/ace-core-and-text.md](design/ace-core-and-text.md)；机器账
+`stdlib/contracts/compatibility.toml`（text.byte_length/equal/clone、
+math.private_square/cube 四端 supported）由 `stdlib_assembly::contracts` 钉扎。
+旧 a2r-std 只读核对：`str_byte_len` UTF-8 字节但 i64 宿主宽，与 ACE i32 域并列
+保留，不统一。来源链（M1-TAG 门）：tag `v0.6-ACE-M1`（commit b923362f4）为基面
+祖先，依赖 943/944/947/960 archived，实施授权=/goal（PLAN-945 §5 T-01 收据）。
