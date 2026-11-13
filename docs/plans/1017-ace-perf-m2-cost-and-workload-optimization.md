@@ -5,7 +5,7 @@ feature_name: M2 ace-perf串行套件成本与压力负载优化
 author: [Codex]
 created_at: 2026-11-12
 updated_at: 2026-11-13
-plan_revision: 4
+plan_revision: 5
 phase: M2-A
 current_step: 0
 total_steps: 9
@@ -30,6 +30,19 @@ touched_goals: [GOAL-002]
 状态矩阵）；冻结字节规模义务（如 64MiB 流式下限）与统计有效样本数（P90 百分位语义）不缩。
 B0/T_new 比较基准相应改为：逐用例基线与模块套件基线（Pass B/C 实测），全量比较以最终一次
 全量跑对照 932/1016 历史档案与逐模块实测之和；不再要求先行一次全量 B0。
+
+**2026-11-13 r5 用户裁定（目标修订，选项 a）**：AC-05 的总十倍目标在现合同下实测不可达
+（Pass C 全量 94 例串行 ≈3845s；同集 1.6×；不可压缩地板见 §9）。目标修订为
+"**合理总时长 + 逐模块预算**"：全量 `cargo t ace-perf` 串行执行段**≤3000s（50 分钟）**，
+进取线 2400s；逐模块预算（空闲窗口口径，超支须具名归因）：
+syntax-artifacts ≤120s / ace-av ≤240s / semantics-store ≤80s / comptime ≤550s /
+conformance ≤800s / native ≤1300s / abi ≤320s / artifacts ≤60s / a2x-worker ≤45s
+（预算合计 ≈3515s>3000 为刻意的头部压力，要求 top 模块在预算内再挤出总量）。
+守恒口径不变（r4 效果守恒）；合同不变（debug 档、closure lane 语义、样本统计义务、
+冻结字节规模）。当前残余 top 优化对象：cold_set 填充段（~450s，源形状重整候选——
+前端成本对源规模次线性，同字节目标下更大更少源可省总量，须实测验证后定）、
+comptime 双 resource（~430s，同前）、sd911/turnaround 每样本链（emit/link 主项）、
+closures_native（296s）。
 
 承接1016完成的普通组/PERF隔离与串行机制，在M2专门优化ace-perf的真实执行成本。
 核心目标是同一冻结义务集、相同输入规模/样本/断言下，串行端到端成本降低至少一个数量级。
@@ -243,7 +256,9 @@ work按真实修改选相关短反例和职责组，涉及共享AST/IR补必要�
 - [ ] AC-02 (work) 主耗时均有≤60秒有界同机制探针、合法控制与可辨退化/失败反例，阶段成本足以说明优化依据。
 - [ ] AC-03 (work) 完成已证主耗时的有界优化及必要同源路径修复，关键身份/预算/生命周期正负控通过。
 - [ ] AC-04 (work) 原输入规模/状态/分布/样本/断言/资源门/平台ignore守恒，所有外移准备与清理回计，串行不变。
-- [ ] AC-05 (work) 同S0可信B0与最终完整串行门可比，端到端T_new≤0.1T_B0；不成立则needs_replan，不假报达标。
+- [ ] AC-05 (work, r5 修订) 全量 `cargo t ace-perf` 串行执行段 ≤3000s（进取 2400s）且逐模块预算
+  达标或具名归因；效果守恒口径（r4）与合同不变。原"十倍"目标经 Pass C 实测不可达，已由用户
+  2026-11-13 裁定修订（§0 r5）；对比基线=932/1016 历史档案+本包 Pass B/C 实测台账。
 - [ ] AC-06 (work) 完整当前suite的真实终态、成本/峰值/准备运行清理分账与M2新增集报告齐全，原规模正确性通过。
 - [ ] AC-07 (review) 独立核AC-01..06与遗漏/绕路/延后、规范增量及证据身份；普通/PERF分离和必要固定并集核实。
 - [ ] AC-08 (merge) canonical规范落主、M2路线交接可追溯，计划归档与唯一scope/实施树守卫清理完成。
@@ -285,6 +300,10 @@ next_responsible_role:new（r5 有界修订）——用户裁定 (a)/(b)/(c) 后
 2026-11-13 stage:goal | PLAN-1017 r4 | round:1 | from:work | to:new(user decision) |
 status:executing | outcome:needs_replan | worktree:`D:/autostack/.wt/lang-1017/auto-lang` |
 commit:`6ab6d9ce9` | next:user decision on target revision (§10), then new r5。
+
+2026-11-13 stage:new | PLAN-1017 r5 | outcome:pass | 用户裁定选项(a)直录：AC-05 改
+"全量串行 ≤3000s（进取 2400s）+ 逐模块预算"（§0 r5 数值）；守恒与合同不变；
+残余优化对象与预算表同步更新。next:work（继续 T-04/T-05 在 r5 目标下推进）。
 
 2026-11-12 stage:new / PLAN-1017 r2：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原9任务/全部AC与V/依赖/阶段/预算和drafting 0/9；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
