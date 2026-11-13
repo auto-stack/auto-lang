@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-11-13
 updated_at: 2026-11-13
 plan_revision: 1
-current_step: 5
+current_step: 6
 total_steps: 6
 depends_on: [PLAN-1024]
 supersedes_spec_components: [docs/specs/auto-ac/closures-function-production.md]
@@ -117,7 +117,7 @@ T-03 冻结五组并集实测结果（`cargo t ace-source ace-native ace-av ace-
 - [x] AC-03 / work：消费者、原测试、恢复/重试/失败责任保持，完成适用门、Spec准备及1002依赖分流，未闭不冒PASS。
 - [x] AC-04 / review：逐AC/Case/代码/Spec独立核验、遗漏/延后/workaround及健康/来源检查通过，结论绑定revision/冻结提交。
 - [x] AC-05 / merge：review后冻结并集门/正式合入、规范沉淀及归档真实完成。
-- [ ] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
+- [x] AC-06 / merge：所有输出路径对账，摘要折Plan，scope删除或具名持有，guard clean后清树/分支。
 
 ## 8. 执行步骤
 
@@ -128,7 +128,7 @@ T-03 冻结五组并集实测结果（`cargo t ace-source ace-native ace-av ace-
 | T-03 / work | [x] T-02 | `rustfmt --check` 零告警、无新增编译告警；五固定组并集 2336/2336 PASS；`SD-01` Spec 已于 worktree 准备并提交 `be7f1554d`；AC-02/03 |
 | T-04 / review | [x] T-01..03完成、冻结提交 | 独立核AC-01..03、§6/SD/漂移、遗漏延后绕行及债务；绑定 `be7f1554d` 与五组并集 PASS；AC-04 |
 | T-05 / merge | [x] T-04 pass | 已 rebase 至 `9a7674009`（`range-diff` 1:1 等价）、重跑 `ace-core`/`ace-native` `observation_scope_1028` 2+1 PASS、ff-only 合入 `7880f2a42`、核验 `closures-function-production.md` SHA256 `6ef4305d...` 并归档；AC-05 |
-| T-06 / merge | [ ] T-05 | 所有实际输出对账、摘要/删除/持有登记；wt-guard clean后清树/分支；AC-06 |
+| T-06 / merge | [x] T-05 | 所有输出路径核查、摘要已折入并全删 `plan-artifacts/plan-1028`（`.retention/policy.json` 已更新，`holds: []`）与 `%TEMP%\plan1028-*`；`wt-guard.sh` clean 后已移除 `{auto-lang,auto-down}` 工作树、`plan-1028-dev` 分支及组目录；AC-06 |
 
 同文件串行；跨计划调度见1024分配表。
 
@@ -148,6 +148,8 @@ T-03 冻结五组并集实测结果（`cargo t ace-source ace-native ace-av ace-
   - `cargo-t-union-results.json` (`1692640` B, SHA256 `611A781805AB1B5AF71F9CE072C1C7D9662529C6DAE7858E52745920199BFA2E`) — 五固定组 2336/2336 PASS 完整结果
   - worktree 构建缓存 `D:/autostack/.wt/lang-1028/auto-lang/experimental/ace/target/`：不回收、随 worktree 移除销毁；外部生产产物核查：本计划仅修改 `experimental/ace/crates/core`、conformance 测试与 `docs/specs/auto-ac/`，未触及 `crates/auto-lang`、`auto-down`、`auto-ui`、`target/release/auto.exe` 或 web bundle；残留临时目录 `$env:TEMP\plan1028-nested-35156-1794574520545226500`（修前红 panic 遗留）待 T-06 一并清除。
 - 2026-11-13 `stage: merge (archive checkpoint) | plan_id: PLAN-1028 | plan_revision: r1 | delivery_commit: 7880f2a425b535a9aee2ab97c43106c604de5842 | rebased_from: be7f1554d785f6a9a2ea5d9901fa8a344f1dcf17 | range_diff: 1:1_equal | master_delta_checked: c2760324d..9a7674009 (docs-only, zero_ace_code_change) | rebased_replay: ace-core observation_scope_1028 2/2 PASS + ace-native observation_scope_1028 1/1 PASS | canonical_spec: docs/specs/auto-ac/closures-function-production.md@6ef4305d2f2f80ec5dec50eb3408751f36bab9e843f845d8dff392c3e9be4bab | archive_path: docs/plans/archive/1028-ace-scoped-observation-restoration.md | pending: T-06 worktree/artifacts cleanup and batch regression due check`
+- 2026-11-13 `stage: merge | plan_id: PLAN-1028 | plan_revision: r1 | outcome: pass | checkpoint: cleaned (6/6, AC-01..06 PASS) | delivery_commit: 7880f2a425b535a9aee2ab97c43106c604de5842 | canonical_spec: docs/specs/auto-ac/closures-function-production.md@6ef4305d2f2f80ec5dec50eb3408751f36bab9e843f845d8dff392c3e9be4bab | archive_path: docs/plans/archive/1028-ace-scoped-observation-restoration.md | cleanup_state: wt-guard clean on {auto-lang,auto-down}; worktrees, branch plan-1028-dev, group dir .wt/lang-1028, plan-artifacts/plan-1028 (6 files / 1,710,044 B), and %TEMP%/plan1028-* deleted; .retention/policy.json updated (scope-deleted-at-merge, holds=[]) | production_artifacts: scope limited to experimental/ace tests/core + docs/specs/auto-ac (target/release/auto.exe not present/unaffected) | batch_regression_due_check: due=true (PLAN-1025 landed after last_covered_plan_id=1015 @d1ee64099; receipt age <48h); execution_deferred_to_exclusive_window (concurrent cargo/cargo-nextest PIDs 14764/5936/20228/39332/53276/57668/59020 running on machine + concurrent dirty docs on master; run /auto-plan:regress when idle)`
+- 2026-11-13 `stage: goal | plan_id: PLAN-1028 | plan_revision: r1 | round: 3 | from: merge | to: done | status: archived | completion_kind: delivered | outcome: pass | delivery_commit: 7880f2a425b535a9aee2ab97c43106c604de5842 | archive_path: docs/plans/archive/1028-ace-scoped-observation-restoration.md | next: done`
 
 ## 10. 待澄清事项
 
