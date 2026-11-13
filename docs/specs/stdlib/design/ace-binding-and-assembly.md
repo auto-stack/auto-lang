@@ -124,3 +124,12 @@ packages store 根 `/2` 携实现层/上下文/候选存在集；未选 body 不
 （`.at.at`/`.py.at`→属主模块 Other 层）行为不变；`io.at.at` 永不冒公共
 模块。AV 的 c/rs 配置执行受检 Auto 适配源，真实外库 dispatch 仍归 967；
 A2PY 执行经 PLAN-1042 producer（拒绝旧 AST emitter）。
+
+## platform.io/1 与 platform.mem/1 目标选择及恢复身份（PLAN-1039，2026-11-14）
+
+- **目标装配选择**：`crates/auto-lang-core/src/stdlib_assembly/provider_selection.rs` 新增
+  `platform_io_providers()`、`platform_io_requests()` 与 `select_platform_io()`；按四轴合同为 Windows 目标在 `Alloc`/`Host` 层分别选择
+  `OwnAuto` 或 `PlatformAdapter`（`PlatformAbi`），拒绝未声明 grant（`assembly.missing-grant`）、缺失/非 Windows 目标或显式 `LibcCompat` 回落（`assembly.no-provider`）。
+- **调用边界与持久化恢复**：所有 `PlatformCall` 参数/返回值受限于 `I32`/`StrView` 并绑定 1-based 带代际句柄（区分 `StdStream` 与 `OsMemRegion` 来源），
+  每轮运行前经 `av-core/src/host.rs` 检查 `platform.io.{stdout,stderr,write}` 与 `platform.mem` 权限；
+  `persist`/`restore` 不序列化任何旧 grant、OS 指针或句柄槽位，恢复后的产物在无当前授权时于 dispatch 前以 `host.unauthorized` 拒绝，并在重新授予以当前上下文恢复可执行。详细规格见 [native-platform-io.md](native-platform-io.md)。

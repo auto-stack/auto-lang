@@ -88,6 +88,19 @@ PLAN-966，本包不另造。
 
 ## 来源
 
-- 冻结合同与证据：[PLAN-947](../../../plans/947-ace-stdlib-console-and-resource-host-contract.md)（§5 T-01 冻结记录、§9 验证记录）
+- 冻结合同与证据：[PLAN-947](../../../plans/947-ace-stdlib-console-and-resource-host-contract.md)（§5 T-01 冻结记录、§9 验证记录）、[PLAN-1039](../../../plans/archive/1039-ace-platform-io-primitives.md)（受检 `platform.io/1` 与 `platform.mem/1` 交付）
 - console/1 合同规范：[auto-ac/source-console-output.md](../../auto-ac/source-console-output.md)、[auto-av/host-import-and-console.md](../../auto-av/host-import-and-console.md)
+- 平台原语与 OS 内存合同：[native-platform-io.md](native-platform-io.md)
 - 939 资源形态：`experimental/ace/crates/foreign-contract/src/resource.rs`
+
+## 7. platform.io/1 与 platform.mem/1 分账（PLAN-1039，2026-11-14）
+
+在保留第 1–2 节 `console/1` 合同与 `p947-console` 不变的前提下，ACE `HostConsole`/`AVHC` 经独立指令 `MirInstr::PlatformCall`
+（`OP_PLATFORM_CALL = 0x3C`）交付 Windows x64 受检平台 I/O（`io_stdout`/`io_stderr`/`io_write_some`/`io_write_some_slice`/`io_last_error`）
+与 checked OS 虚拟内存（`mem_page_size`/`mem_alloc_granularity`/`mem_alloc`/`mem_free`/`mem_logical_len`/`mem_mapped_len`/`mem_borrow`/`mem_unborrow`/`mem_write_u8`/`mem_read_u8`）：
+
+| 端 | 状态 | 证据/边界 | 后继 |
+|---|---|---|---|
+| AV | implemented（Windows） | `av-core/src/platform_io.rs` + `Win32PlatformIo`；`ace-av::conformance platform_io_1039`（5 用例，含 `persist`/`restore` 授权重放与 `stdlib/ace/internal/platform_mem.at`） | — |
+| native (AC/mn) | implemented（Windows x64） | `native/src/platform_io.rs`（`mn-platform-shim` 纯 `KERNEL32.dll` + `audit_pe_imports`）；`ace-native::conformance platform_io_1039`（6 用例，含匿名管道 `ERROR_NO_DATA`=232、`VirtualFree` 失败保原 owner 与 PE 白名单负控） | Linux ELF 归 PLAN-1040 |
+| A2R / A2C | capability-missing | 未新增 Rust/C 公共 `platform.*` provider；公开 `Storage` API 与 `compatibility.toml` 未冻结/未改动 | PLAN-972/973 |
