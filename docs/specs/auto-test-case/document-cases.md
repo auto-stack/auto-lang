@@ -55,6 +55,8 @@
   （4 例 7 检查，B01/O03/B18/NB18 与旧 suite 同 ID 对照）；固定组
   `case-ace-document-pilot-1002`（`runner = "case"`、`domain = "ace"`、
   `all = false`）。
+- 零检查用例在加载期 fail-close（定位到 `## Case:` 行），不产出可运行的
+  空报告——比"六行清单点名缺行"更早拒绝（复审 F1 建议记录）。
 
 ## 未验证面（下一批选例依据）
 
