@@ -84,6 +84,25 @@ fn main() int {
     );
 }
 
+/// O-963-D16（V-G05「可变参数」边界）：AutoLang 无用户声明位可变参数拼写
+/// （legacy `Param`/AST 无 rest/variadic 字段，唯一「varargs」用例是 builtin
+/// `List.new(1,2,3)`）；ACE 侧同样不可表达，`...` 形参数在语法层具名拒，
+/// 不静默接受成普通参数。
+#[test]
+fn variadic_parameter_form_is_rejected_963() {
+    let src = "\
+fn sum(xs ...) int { return 0 }
+fn main() int {
+    return sum(1, 2)
+}
+";
+    let err = compile(src).expect_err("a variadic parameter form is not part of the surface");
+    assert!(
+        err.iter().any(|d| d.code == "source.syntax"),
+        "expected a syntax-stage rejection, got {err:?}"
+    );
+}
+
 /// O-963-D6：实参过多仍是 arity 拒；默认值不改变声明的可见元数上限。
 #[test]
 fn too_many_arguments_still_rejected_963() {
