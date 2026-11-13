@@ -109,3 +109,18 @@ M2 内存专题（不冻结签名/ABI）。`#if`/`#is` 目标条件语义与 sys
 见 [ace-host-services.md](ace-host-services.md) §5——源码级 CTE 归 966，
 本合同不另造。File/Task/Stream 资源面前探分账同文件 §3（capability-missing
 不冒 PASS）。
+
+## 平铺 provider 来源装配（PLAN-1043，2026-11-13）
+
+在上述四轴记录合同之上，实际来源装配落位于 packages 面（设计见
+[context-source-assembly.md](context-source-assembly.md)）：公共 `.at` +
+`.at.at`/`.c.at`/`.rs.at`/`.py.at` 平铺候选经 `packages-ct` 裁剪
+（`ac.source.cte.in/v1` 能力）逐文件 parse/语义合并；三轴（backend×
+provider×target）显式上下文选择，Auto 默认=纯 Auto、缺则具名拒不回落；
+`pub spec fn` bodyless 需求由所选实现同签名 fn 填充，重复/漂移/缺实现
+调用前拒；`#in sys` 最小平台臂按目标轴选择导入（未选分支仅语法检查）。
+packages store 根 `/2` 携实现层/上下文/候选存在集；未选 body 不入身份；
+`/1` 根互不相认。旧 `.vm.at/.rs.at/.c.at` 目标层配方与 legacy inventory
+（`.at.at`/`.py.at`→属主模块 Other 层）行为不变；`io.at.at` 永不冒公共
+模块。AV 的 c/rs 配置执行受检 Auto 适配源，真实外库 dispatch 仍归 967；
+A2PY 执行经 PLAN-1042 producer（拒绝旧 AST emitter）。

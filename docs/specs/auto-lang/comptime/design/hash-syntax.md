@@ -49,4 +49,18 @@ comptime 的语法表面（四种 `#` 构造）、lexer/parser 落点、AST 数�
 - 不做编译期类型反射：`type_of(val).fields` 之类属设计 Phase 4 的 `std.meta` 规划，未实现。
 - `#{ }` 设计为多语句求值块（"最后一行为返回值"），实现只支持单表达式。
 
+## `#in` 编译期命名空间（PLAN-1043；新 ACE 前门，非本旧 parser 面）
+
+legacy 四构造不变；`#in` 落在新 ACE packages 前 door（`packages-ct`
+裁剪 + `ac.source.cte.in/v1` 能力）——语义（设计§9）：`#in sys is
+current { Arm -> use ... }` / 块式 `#in sys { is/if/for ... }` 给紧随
+结构或块建立编译期命名空间上下文，内部 `is`/`if`/`for` 继承编译期属性
+（不重复 `#`）；臂体=单行 `use path[: syms]` 或块声明，选中者按原 Emit
+规则落回本模块，未选分支只保 Text 阶段语法检查。`sys` 事实由显式 target
+供给（current=目标、host 另名、Windows/Linux/Mac=同域 i32 常量），求值
+为绑定期静态事实折叠（非 VM/解释器）；未知命名空间/成员、非 bool 条件、
+等值重复臂具名拒。限定形 `is sys.current { sys.Windows -> }` 合法；裸
+`in` 与运行时对象不构成 CT 命名空间。完整合同与证据见
+[stdlib context 装配](../../../stdlib/design/context-source-assembly.md)。
+
 > 来源: docs/design/raw/compile-time-execution.md、docs/plans/archive/095-compile-time-execution-engine.md、crates/auto-lang/src/ast/comptime.rs、crates/auto-lang/src/parser.rs、crates/auto-lang/src/lexer.rs

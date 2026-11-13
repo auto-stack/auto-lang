@@ -4208,6 +4208,52 @@ pub fn chosen() int { return 6 }";
     }
 
     #[test]
+    fn asm06_impl_body_error_locates_into_the_implementation_file() {
+        // 实现文件体内的语义错误（类型错用）经扁平坐标 locate 归位到
+        // 实现文件段——span 落在实现源内、模块键正确。
+        use crate::source::packages::provider_sources::PackageAssemblyContext;
+        let c = ctx(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+        let impl_src = "fn provider_id() int { return \"x\" }";
+        let inputs = vec![
+            input("main", "fn main() int { return 0 }", None),
+            input(
+                "demo",
+                DEMO_PUBLIC,
+                Some(PackageImplLayer {
+                    kind: ProviderKind::At,
+                    source: impl_src.into(),
+                }),
+            ),
+        ];
+        // 绑定本身成功（类型错在 resolve 段）；用 locate 直接验证实现段归位：
+        let bound = bind_ok(inputs, &c);
+        let flat = bound
+            .program
+            .items
+            .iter()
+            .find_map(|i| match i {
+                Item::Fn(f) if f.name.name.ends_with("provider_id") => Some(f.body.span),
+                _ => None,
+            })
+            .expect("impl fn in flat program");
+        let d = crate::atom_text::Diagnostic::new(
+            crate::atom_text::Stage::Verify,
+            "probe",
+            "impl-body probe",
+            flat,
+        );
+        let located = bound.locate(d);
+        assert_eq!(located.module, "app::demo");
+        // locate() 已归位到实现文件的局部坐标。
+        let local = located.diagnostic.span.start;
+        assert!(
+            local <= impl_src.len(),
+            "span must land inside the implementation file, local={local} impl_len={}",
+            impl_src.len()
+        );
+    }
+
+    #[test]
     fn asm06_diagnostics_locate_in_the_owning_file() {
         let c = ctx(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
         // 实现文件签名漂移：模块键正确、span 落在公共文件需求声明处。
