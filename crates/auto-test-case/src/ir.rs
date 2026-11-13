@@ -7,8 +7,10 @@
 
 use std::path::Path;
 
-use crate::admission::{check_limit, read_bounded, AdmissionError, Limits};
-use crate::contract::{CaseSpec, CheckSpec, Compare, Completion, PayloadSpec, StreamExpect};
+use crate::admission::{AdmissionError, Limits, check_limit, read_bounded};
+use crate::contract::{
+    ArtifactPayload, CaseSpec, CheckSpec, Compare, Completion, PayloadSpec, StreamExpect,
+};
 use crate::document::CaseDocument;
 use crate::sha256::{hex, sha256};
 
@@ -162,14 +164,20 @@ pub fn resolve_case(
     })
 }
 
-/// One expected-artifact sidecar resolved to actual bytes (Plan 773 F-06:
-/// oracle identity is over CONTENT, not just the declared reference).
+/// One expected artifact resolved to actual bytes (Plan 773 F-06: oracle
+/// identity is over CONTENT, not just the declared reference). PLAN-1002:
+/// `file` is `None` for document-inline payloads — the bytes ride the case
+/// document and `origin` carries the fence position instead.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedArtifact {
     /// Logical output path (e.g. "main.rs").
     pub path: String,
-    /// Sidecar reference exactly as declared (relative to the fixture base).
-    pub file: String,
+    /// Sidecar reference exactly as declared (relative to the fixture base);
+    /// `None` when the expectation is a document-inline payload.
+    pub file: Option<String>,
+    /// Inline payload origin: the fence's `(open_line, close_line)` in the
+    /// case document; `None` for sidecar expectations.
+    pub origin: Option<(usize, Option<usize>)>,
     pub compare: Compare,
     pub bytes: Vec<u8>,
     pub sha256: String,
@@ -240,18 +248,44 @@ pub fn resolve_oracle(
 
     let mut artifacts = Vec::new();
     for want in &expect.artifacts {
-        let full = ref_base.join(want.file.replace('/', std::path::MAIN_SEPARATOR_STR));
-        let bytes =
-            read_bounded(&full, "max_sidecar_bytes", limits.max_sidecar_bytes).map_err(|e| {
-                fail(format!(
-                    "expected artifact {} (check {:?}): {}",
-                    want.file, check.id, e
-                ))
-            })?;
+        let (file, origin, bytes) = match &want.payload {
+            ArtifactPayload::File(rel) => {
+                let full = ref_base.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
+                let bytes = read_bounded(&full, "max_sidecar_bytes", limits.max_sidecar_bytes)
+                    .map_err(|e| {
+                        fail(format!(
+                            "expected artifact {} (check {:?}): {}",
+                            rel, check.id, e
+                        ))
+                    })?;
+                (Some(rel.clone()), None, bytes)
+            }
+            ArtifactPayload::Inline {
+                bytes,
+                open_line,
+                close_line,
+            } => {
+                // Inline bytes are already in memory (single document read);
+                // only the shared inline-payload bound applies.
+                check_limit(
+                    "max_inline_payload_bytes",
+                    bytes.len(),
+                    limits.max_inline_payload_bytes,
+                )
+                .map_err(|e| {
+                    fail(format!(
+                        "inline artifact {} (check {:?}): {}",
+                        want.path, check.id, e
+                    ))
+                })?;
+                (None, Some((*open_line, *close_line)), bytes.clone())
+            }
+        };
         let digest = hex(&sha256(&bytes));
         artifacts.push(ResolvedArtifact {
             path: want.path.clone(),
-            file: want.file.clone(),
+            file,
+            origin,
             compare: want.compare,
             bytes,
             sha256: digest,
@@ -317,9 +351,17 @@ pub fn resolve_oracle(
         }
     }
     for a in &artifacts {
+        // PLAN-1002: the File arm keeps the historical formula byte-identical
+        // (existing PASS evidence stays fresh); inline payloads hash their
+        // document origin marker — content rides `sha256` either way.
+        let origin = match (&a.file, &a.origin) {
+            (Some(f), _) => f.clone(),
+            (None, Some((open, _))) => format!("inline@{}", open),
+            (None, None) => "inline".to_string(),
+        };
         combined.push_str(&format!(
             "artifact\0{}\0{}\0{:?}\0{}\0",
-            a.path, a.file, a.compare, a.sha256
+            a.path, origin, a.compare, a.sha256
         ));
     }
     if let Some(steps) = &probe {
@@ -354,8 +396,8 @@ pub fn resolve_oracle(
 mod tests {
     use super::*;
     use crate::contract::{
-        decode_case, CheckSpec, Completion, EntryMode, ExpectSpec, Options, PayloadSpec,
-        SourceSpec, Syntax,
+        CheckSpec, Completion, EntryMode, ExpectSpec, Options, PayloadSpec, SourceSpec, Syntax,
+        decode_case,
     };
 
     fn spec_with_files(paths: &[&str]) -> CaseSpec {

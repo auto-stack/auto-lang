@@ -18,6 +18,7 @@
 
 pub mod admission;
 pub mod atom;
+pub mod author;
 pub mod compare;
 pub mod contract;
 pub mod discovery;

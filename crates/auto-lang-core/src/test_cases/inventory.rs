@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use auto_test_case::admission::Limits;
-use auto_test_case::discovery::{load_suite, CASE_FENCE_LANGUAGE};
+use auto_test_case::discovery::{CASE_FENCE_LANGUAGE, CaseFileFormat, load_suite};
 use auto_test_case::ir::{resolve_case, resolve_oracle};
 use auto_test_case::suite::apply_defaults;
 
@@ -114,16 +114,46 @@ fn suite_inventory_impl(
     }
     let mut checks = Vec::new();
     for file in &loaded.cases {
-        let fences: Vec<_> = file
-            .doc
-            .fences()
-            .iter()
-            .filter(|f| f.language == CASE_FENCE_LANGUAGE)
-            .collect();
-        if fences.len() != file.specs.len() {
-            return Err(format!("case fence/spec mismatch: {}", file.path.display()));
+        // PLAN-1002: legacy files pair specs with `test-case` fences;
+        // document-format files carry heading spans instead. One span per
+        // spec in both shapes.
+        let spans: Vec<(usize, Option<usize>)> = match file.format {
+            CaseFileFormat::LegacyFences => {
+                let fences: Vec<_> = file
+                    .doc
+                    .fences()
+                    .iter()
+                    .filter(|f| f.language == CASE_FENCE_LANGUAGE)
+                    .collect();
+                if fences.len() != file.specs.len() {
+                    return Err(format!("case fence/spec mismatch: {}", file.path.display()));
+                }
+                fences.iter().map(|f| (f.open_line, f.close_line)).collect()
+            }
+            CaseFileFormat::Document => file
+                .doc_spans
+                .iter()
+                .map(|s| (s.heading_line, None))
+                .collect(),
+        };
+        if spans.len() != file.specs.len() {
+            return Err(format!("case span/spec mismatch: {}", file.path.display()));
         }
-        for (spec, fence) in file.specs.iter().zip(fences) {
+        for (spec, (open_line, close_line)) in file.specs.iter().zip(spans) {
+            let check_sections: std::collections::BTreeMap<&str, usize> = match file.format {
+                CaseFileFormat::Document => file
+                    .doc_spans
+                    .iter()
+                    .find(|s| s.heading_line == open_line)
+                    .map(|s| {
+                        s.check_spans
+                            .iter()
+                            .map(|c| (c.id.as_str(), c.section_line))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                CaseFileFormat::LegacyFences => std::collections::BTreeMap::new(),
+            };
             let case = resolve_case(spec.clone(), &file.doc, &loaded.fixture_base, limits)
                 .map_err(|e| e.to_string())?;
             let files: Vec<_> = case
@@ -144,7 +174,11 @@ fn suite_inventory_impl(
                     .iter()
                     .map(|a| {
                         serde_json::json!({
-                            "path": a.path, "file": a.file, "sha256": a.sha256,
+                            "path": a.path, "file": a.file,
+                            "inline": a.origin.map(|(open, close)| serde_json::json!({
+                                "open_line": open, "close_line": close,
+                            })),
+                            "sha256": a.sha256,
                         })
                     })
                     .collect();
@@ -161,13 +195,17 @@ fn suite_inventory_impl(
                     "suite": loaded.suite.id,
                     "case": spec.id, "check": effective.id,
                     "case_file": file.path, "case_file_sha256": file.sha256,
-                    "span": {"open_line": fence.open_line, "close_line": fence.close_line,
-                             "payload_start": fence.payload.start, "payload_end": fence.payload.end},
+                    "format": match file.format {
+                        CaseFileFormat::LegacyFences => "fences",
+                        CaseFileFormat::Document => "document",
+                    },
+                    "span": {"open_line": open_line, "close_line": close_line},
+                    "doc_section_line": check_sections.get(effective.id.as_str()).copied(),
                     "source_sha256": case.source_sha256, "source_files": files,
                     "source_ref": format!("{:?}", spec.source.payload),
                     "input_paths": std::iter::once(&spec.source.payload).chain(spec.files.iter().map(|f| &f.payload))
                         .filter_map(|p|match p {auto_test_case::contract::PayloadSpec::File(rel)=>Some(loaded.fixture_base.join(rel)),_=>None})
-                        .chain(oracle.artifacts.iter().map(|a|loaded.fixture_base.join(&a.file))).collect::<Vec<_>>(),
+                        .chain(oracle.artifacts.iter().filter_map(|a|a.file.as_ref().map(|f|loaded.fixture_base.join(f)))).collect::<Vec<_>>(),
                     "oracle_sha256": oracle.oracle_sha256, "oracle_artifacts": artifacts,
                     "expected_exit": oracle.exit,
                     "adapter": effective.adapter.as_str(), "action": effective.action.as_str(),
@@ -226,7 +264,7 @@ fn suite_inventory_impl(
                                     serde_json::json!({"op":"edit-source", "from":from, "to":to})
                                 }
                                 _ => {
-                                    return Err("unsupported ABI step in identity inventory".into())
+                                    return Err("unsupported ABI step in identity inventory".into());
                                 }
                             });
                         }

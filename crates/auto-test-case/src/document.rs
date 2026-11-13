@@ -14,11 +14,11 @@
 
 use std::ops::Range;
 
-use autodown_test_parser::block_model::{attrGet, blockText, BlockNode, BlockType, Value};
+use autodown_test_parser::block_model::{BlockNode, BlockType, Value, attrGet, blockText};
 use autodown_test_parser::markdown_parser::parse_blocks;
 
-use crate::admission::{check_limit, AdmissionError, Limits};
-use crate::raw_ranges::locate_fences;
+use crate::admission::{AdmissionError, Limits, check_limit};
+use crate::raw_ranges::{locate_fences, locate_headings};
 
 /// Fingerprint of the vendored parser snapshot actually compiled in (Plan
 /// 773 F-06 toolchain identity): one SHA-256 over the three pinned source
@@ -73,6 +73,8 @@ pub struct CaseDocument {
     original: Vec<u8>,
     fences: Vec<DocumentFence>,
     headings: Vec<HeadingInfo>,
+    /// 1-based line of each heading (raw-side pairing, PLAN-1002).
+    heading_lines: Vec<usize>,
     top: Vec<TopBlock>,
 }
 
@@ -270,10 +272,30 @@ impl CaseDocument {
             }
         }
 
+        // PLAN-1002: pair every tree heading with its raw heading line by
+        // ORDER and LEVEL. Text equality is NOT enforced: the tree strips
+        // inline marks (`` ` ``, `*`) from heading text, so legacy
+        // prose-headings legitimately differ between the two views. When
+        // the pairing cannot be established (different heading sets, e.g.
+        // setext headings only the tree sees), positions stay empty — only
+        // the authoring decode (which needs positions) rejects that.
+        let raw_heads = locate_headings(bytes, &raw);
+        let mut heading_lines = Vec::new();
+        if raw_heads.len() == headings.len() {
+            let paired = headings
+                .iter()
+                .zip(raw_heads.iter())
+                .all(|(h, rh)| h.level == rh.level);
+            if paired {
+                heading_lines = raw_heads.iter().map(|rh| rh.line).collect();
+            }
+        }
+
         Ok(CaseDocument {
             original: bytes.to_vec(),
             fences,
             headings,
+            heading_lines,
             top,
         })
     }
@@ -286,6 +308,24 @@ impl CaseDocument {
     /// All top-level headings, in document order.
     pub fn headings(&self) -> &[HeadingInfo] {
         &self.headings
+    }
+
+    /// Number of headings with a paired raw line (PLAN-1002). When the
+    /// raw/tree heading sets disagree, this is 0 (or otherwise shorter
+    /// than `headings()`); only the authoring decode requires full pairing.
+    pub fn heading_lines(&self) -> usize {
+        self.heading_lines.len()
+    }
+
+    /// 1-based source line of `headings()[index]` (raw-paired; PLAN-1002).
+    /// Only valid when [`Self::heading_lines`] equals `headings().len()`.
+    pub fn heading_line(&self, index: usize) -> usize {
+        self.heading_lines[index]
+    }
+
+    /// The original document bytes (positions in fences/headings index here).
+    pub fn original(&self) -> &[u8] {
+        &self.original
     }
 
     /// Raw payload bytes of a fence (original EOLs, trailing newline before

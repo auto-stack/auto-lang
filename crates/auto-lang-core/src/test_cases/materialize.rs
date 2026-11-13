@@ -22,9 +22,9 @@ use std::path::Path;
 
 use auto_test_case::admission::Limits;
 use auto_test_case::compare::unified_diff_hunk;
-use auto_test_case::contract::{ArtifactExpect, CheckSpec};
-use auto_test_case::discovery::{load_suite, LoadedSuite};
-use auto_test_case::ir::{resolve_case, resolve_oracle, ResolvedCase};
+use auto_test_case::contract::{ArtifactExpect, ArtifactPayload, CheckSpec};
+use auto_test_case::discovery::{LoadedSuite, load_suite};
+use auto_test_case::ir::{ResolvedCase, resolve_case, resolve_oracle};
 use auto_test_case::report::{CheckOutcome, RunReport, Status};
 
 /// Write the case's virtual project into `dir` (creating parents).
@@ -124,7 +124,18 @@ pub fn collect_proposals(
                     a.stored_path, r.case_id, r.check_id, e
                 )
             })?;
-            // Shared consumers: every OTHER check declaring the same sidecar.
+            // PLAN-1002: inline payloads name their document position (no
+            // sidecar exists); shared consumers match by payload identity —
+            // the same sidecar FILE, or the same document fence origin.
+            let (oracle_ref, shared_key) = match &want.payload {
+                ArtifactPayload::File(f) => (f.clone(), f.clone()),
+                ArtifactPayload::Inline { open_line, .. } => (
+                    format!("inline:{}@{}", want.path, open_line),
+                    format!("{}#{}", r.case_id, want.path),
+                ),
+            };
+            // Shared consumers: every OTHER check declaring the same oracle
+            // payload reference.
             let mut shared = Vec::new();
             for file in &loaded.cases {
                 for spec in &file.specs {
@@ -132,7 +143,17 @@ pub fn collect_proposals(
                         if spec.id == r.case_id && other.id == r.check_id {
                             continue;
                         }
-                        if other.expect.artifacts.iter().any(|w| w.file == want.file) {
+                        if other.expect.artifacts.iter().any(|w| match &w.payload {
+                            ArtifactPayload::File(f) => f == &shared_key,
+                            ArtifactPayload::Inline { open_line, .. } => {
+                                // Inline "sharing" = the same case re-declaring
+                                // the same logical artifact at the same fence.
+                                spec.id == r.case_id
+                                    && w.path == want.path
+                                    && *open_line
+                                        == resolved_art.origin.map(|(o, _)| o).unwrap_or(0)
+                            }
+                        }) {
                             shared.push(format!("{}:{}", spec.id, other.id));
                         }
                     }
@@ -144,7 +165,7 @@ pub fn collect_proposals(
                 logical_path: a.logical_path.clone(),
                 candidate_bytes,
                 candidate_sha256: a.sha256.clone(),
-                oracle_file: want.file.clone(),
+                oracle_file: oracle_ref,
                 old_bytes: resolved_art.bytes.clone(),
                 old_sha256: resolved_art.sha256.clone(),
                 shared_consumers: shared,

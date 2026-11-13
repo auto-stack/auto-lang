@@ -17,7 +17,7 @@
 //! merges (D-787); until then executing it is an admission ERROR, never a
 //! SKIP and never silently green.
 
-use crate::admission::{check_limit, validate_virtual_path, Limits};
+use crate::admission::{Limits, check_limit, validate_virtual_path};
 use crate::atom::CVal;
 
 pub const CASE_SCHEMA: &str = "autolang.case/1";
@@ -474,9 +474,25 @@ pub struct ResultExpect {
 pub struct ArtifactExpect {
     /// Logical output path (e.g. "main.rs").
     pub path: String,
-    /// Sidecar file with the expected bytes, relative to the case file.
-    pub file: String,
+    /// Expected bytes: legacy sidecar reference or document-inline payload
+    /// (PLAN-1002 authoring format — bytes ride the fence, origin included
+    /// so diffs/staleness point at the document position).
+    pub payload: ArtifactPayload,
     pub compare: Compare,
+}
+
+/// Where an expected artifact's bytes come from.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArtifactPayload {
+    /// Sidecar file, relative to the fixture base (legacy contracts).
+    File(String),
+    /// Inline bytes from a case-document fence, with the fence's 1-based
+    /// open/close lines for locating reports back at the authoring source.
+    Inline {
+        bytes: Vec<u8>,
+        open_line: usize,
+        close_line: Option<usize>,
+    },
 }
 
 /// Optional performance assertion face (v2 ac). Absent fields are
@@ -692,7 +708,8 @@ fn opt_str_list(fields: &Fields, key: &str) -> Result<Vec<String>, ContractError
     }
 }
 
-fn valid_case_id(id: &str) -> bool {
+/// Case-id shape (shared with the PLAN-1002 document decoder).
+pub fn valid_case_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 128
         && id.chars().next().unwrap().is_ascii_lowercase()
@@ -701,7 +718,8 @@ fn valid_case_id(id: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-'))
 }
 
-fn valid_check_id(id: &str) -> bool {
+/// Check-id shape (shared with the PLAN-1002 document decoder).
+pub fn valid_check_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 64
         && id.chars().next().unwrap().is_ascii_lowercase()
@@ -746,7 +764,10 @@ pub fn decode_case(v: &CVal, limits: &Limits) -> Result<CaseSpec, ContractError>
 
     let id = req_str(&f, "id")?;
     if !valid_case_id(&id) {
-        return Err(err("case.id", "invalid case id (lowercase alphanumerics, '.', '_', '-'; must start lowercase letter/digit)"));
+        return Err(err(
+            "case.id",
+            "invalid case id (lowercase alphanumerics, '.', '_', '-'; must start lowercase letter/digit)",
+        ));
     }
 
     let status_skip = if let Some(status) = f.sub("status") {
@@ -789,7 +810,7 @@ pub fn decode_case(v: &CVal, limits: &Limits) -> Result<CaseSpec, ContractError>
                     "unknown entry mode {:?} (supported: script, expression, program, module)",
                     other
                 ),
-            ))
+            ));
         }
     };
     if entry == EntryMode::Module && files.is_empty() {
@@ -857,13 +878,13 @@ pub fn decode_case(v: &CVal, limits: &Limits) -> Result<CaseSpec, ContractError>
                     return Err(err(
                         &format!("case.checks[{}].product_from", i),
                         format!("must reference an earlier check (cycle), got {:?}", up),
-                    ))
+                    ));
                 }
                 None => {
                     return Err(err(
                         &format!("case.checks[{}].product_from", i),
                         format!("references unknown check {:?}", up),
-                    ))
+                    ));
                 }
             }
         }
@@ -951,7 +972,7 @@ fn decode_source(
                         ContractVersion::V2 => "auto, auto-script, hir-atom, atom-data",
                     }
                 ),
-            ))
+            ));
         }
     };
     let path_v = req_str(&f, "path")?;
@@ -1032,7 +1053,23 @@ fn decode_check(
         "syntax" if version == ContractVersion::V2 => Adapter::Syntax,
         "probe" if version == ContractVersion::V2 => Adapter::Probe,
         other => {
-            return Err(err(&f.path_of("adapter"), format!("adapter {:?} is not available ({} implements avm, a2r{}; native/ac/acc and others belong to Design 35 phase B)", other, if version == ContractVersion::V2 { "v2" } else { "v1" }, if version == ContractVersion::V2 { ", ac, syntax" } else { "" })))
+            return Err(err(
+                &f.path_of("adapter"),
+                format!(
+                    "adapter {:?} is not available ({} implements avm, a2r{}; native/ac/acc and others belong to Design 35 phase B)",
+                    other,
+                    if version == ContractVersion::V2 {
+                        "v2"
+                    } else {
+                        "v1"
+                    },
+                    if version == ContractVersion::V2 {
+                        ", ac, syntax"
+                    } else {
+                        ""
+                    }
+                ),
+            ));
         }
     };
     let action = match req_str(&f, "action")?.as_str() {
@@ -1054,7 +1091,7 @@ fn decode_check(
                         ""
                     }
                 ),
-            ))
+            ));
         }
     };
     match (adapter, action) {
@@ -1074,7 +1111,7 @@ fn decode_check(
                     a.as_str(),
                     act.as_str()
                 ),
-            ))
+            ));
         }
     }
 
@@ -1372,7 +1409,7 @@ fn decode_options(
                     "fail_alloc_at must be a positive integer allocation ordinal, got {}",
                     other.type_name()
                 ),
-            ))
+            ));
         }
     };
 
@@ -1398,13 +1435,13 @@ fn decode_options(
                         "profile {:?} is not imported in this batch (supported: core, scalar; text/record/text-record remain guarded by the legacy gates)",
                         s
                     ),
-                ))
+                ));
             }
             Some(other) => {
                 return Err(err(
                     &f.path_of("profile"),
                     format!("expected string, got {}", other.type_name()),
-                ))
+                ));
             }
         };
         ac_target = match f.sub("target") {
@@ -1417,13 +1454,13 @@ fn decode_options(
                         "target {:?} is not supported (this batch imports {} only)",
                         s, AC_TARGET
                     ),
-                ))
+                ));
             }
             Some(other) => {
                 return Err(err(
                     &f.path_of("target"),
                     format!("expected string, got {}", other.type_name()),
-                ))
+                ));
             }
         };
         ac_entry = match f.sub("entry") {
@@ -1444,7 +1481,7 @@ fn decode_options(
                 return Err(err(
                     &f.path_of("entry"),
                     format!("expected string, got {}", other.type_name()),
-                ))
+                ));
             }
         };
         ac_cache = match f.sub("cache") {
@@ -1459,13 +1496,13 @@ fn decode_options(
                         "unknown cache mode {:?} (supported: fresh, reuse, read-only)",
                         s
                     ),
-                ))
+                ));
             }
             Some(other) => {
                 return Err(err(
                     &f.path_of("cache"),
                     format!("expected string, got {}", other.type_name()),
-                ))
+                ));
             }
         };
         ac_capabilities = match f.sub("capabilities") {
@@ -1508,13 +1545,13 @@ fn decode_options(
                         "unknown support library {:?} (this batch names only \"trace-marks\" — the PLAN-741 trace-marks runtime)",
                         s
                     ),
-                ))
+                ));
             }
             Some(other) => {
                 return Err(err(
                     &f.path_of("support_lib"),
                     format!("expected string, got {}", other.type_name()),
-                ))
+                ));
             }
         };
         ac_budget = match f.sub("budget") {
@@ -1562,8 +1599,15 @@ fn decode_options(
                     || (s.starts_with("auto-source@")
                         && matches!(
                             &s["auto-source@".len()..],
-                            "core" | "scalar" | "text" | "record" | "text-record"
-                                | "entry-unit" | "host-console" | "collections" | "closures"
+                            "core"
+                                | "scalar"
+                                | "text"
+                                | "record"
+                                | "text-record"
+                                | "entry-unit"
+                                | "host-console"
+                                | "collections"
+                                | "closures"
                         )) =>
             {
                 Some(s.clone())
@@ -1575,13 +1619,13 @@ fn decode_options(
                         "unknown grammar {:?} (supported: auto-core, interface-mini-v1, auto-source@<profile>)",
                         s
                     ),
-                ))
+                ));
             }
             Some(other) => {
                 return Err(err(
                     &f.path_of("grammar"),
                     format!("expected string, got {}", other.type_name()),
-                ))
+                ));
             }
         };
         let e = match f.sub("edits") {
@@ -1670,7 +1714,7 @@ fn decode_options(
                 return Err(err(
                     &f.path_of("steps"),
                     "probe/run requires a non-empty step sequence",
-                ))
+                ));
             }
             Some(v) => {
                 let list = as_list(v, &f.path_of("steps"))?;
@@ -1709,7 +1753,10 @@ fn decode_options(
                     if !known_op {
                         return Err(err(
                             &sf.path_of("op"),
-                            format!("unknown probe op {:?} (supported: query, edit-source, declaration-invalidate, restart, run, resident-slice, resident-apply, resident-finish)", op),
+                            format!(
+                                "unknown probe op {:?} (supported: query, edit-source, declaration-invalidate, restart, run, resident-slice, resident-apply, resident-finish)",
+                                op
+                            ),
                         ));
                     }
                     let allowed = match recipe.as_str() {
@@ -1860,7 +1907,7 @@ fn decode_options(
                                     return Err(err(
                                         &sf.path_of("slices"),
                                         "resident-slice needs an integer 1..=65536",
-                                    ))
+                                    ));
                                 }
                             };
                             ProbeStep::ResidentSlice { slices }
@@ -1897,7 +1944,7 @@ fn decode_options(
                                     return Err(err(
                                         &sf.path_of("defs"),
                                         "partial-rebuild needs the non-empty `defs` list (the controlled rebuild set)",
-                                    ))
+                                    ));
                                 }
                                 Some(lv) => {
                                     let list = as_list(lv, &sf.path_of("defs"))?;
@@ -1944,10 +1991,10 @@ fn decode_options(
                             return Err(err(
                                 &sf.path_of("op"),
                                 format!(
-                                "unknown probe op {:?} (supported: query, edit-source, restart)",
-                                other
-                            ),
-                            ))
+                                    "unknown probe op {:?} (supported: query, edit-source, restart)",
+                                    other
+                                ),
+                            ));
                         }
                     };
                     out.push(step);
@@ -1994,9 +2041,9 @@ fn decode_options(
                     && !matches!(out.last(), Some(ProbeStep::ResidentFinish))
                 {
                     return Err(err(
-                            &f.path_of("steps"),
-                            "ac-av/resident-run-v1 step sequences must end with a resident-finish step (the judged step)",
-                        ));
+                        &f.path_of("steps"),
+                        "ac-av/resident-run-v1 step sequences must end with a resident-finish step (the judged step)",
+                    ));
                 }
                 if (recipe == "cte/scalar-query-v1"
                     || recipe == "abi/source-foreign-certify-v1"
@@ -2020,9 +2067,9 @@ fn decode_options(
                     // step is the sequence's LAST run.
                     if !matches!(out.last(), Some(ProbeStep::Run)) {
                         return Err(err(
-                                &f.path_of("steps"),
-                                "ac/mir-native-scalar-v1 step sequences must end with a run step (the judged step)",
-                            ));
+                            &f.path_of("steps"),
+                            "ac/mir-native-scalar-v1 step sequences must end with a run step (the judged step)",
+                        ));
                     }
                     if out.is_empty() {
                         return Err(err(&f.path_of("steps"), "steps must not be empty"));
@@ -2225,19 +2272,19 @@ fn decode_options(
                         let p = as_str(pv, &sf.path_of("profile"))?.to_string();
                         if p != "entry-unit" {
                             return Err(err(
-                                    &sf.path_of("profile"),
-                                    format!(
-                                        "unknown av profile {p:?} (supported: entry-unit; omit for the default scalar profile)"
-                                    ),
-                                ));
+                                &sf.path_of("profile"),
+                                format!(
+                                    "unknown av profile {p:?} (supported: entry-unit; omit for the default scalar profile)"
+                                ),
+                            ));
                         }
                         if recipe != "ac-av/core-run-v1" {
                             return Err(err(
-                                    &sf.path_of("profile"),
-                                    format!(
-                                        "the entry-unit source profile belongs to ac-av/core-run-v1, not {recipe:?}"
-                                    ),
-                                ));
+                                &sf.path_of("profile"),
+                                format!(
+                                    "the entry-unit source profile belongs to ac-av/core-run-v1, not {recipe:?}"
+                                ),
+                            ));
                         }
                         Some(p)
                     }
@@ -2375,7 +2422,9 @@ fn decode_options(
                                     CVal::Int(n) if *n >= 1 => Ok(Some(*n as u64)),
                                     _ => Err(err(
                                         &rf.path_of(k),
-                                        format!("{k} must be an integer >= 1 (a zero budget judges nothing)"),
+                                        format!(
+                                            "{k} must be an integer >= 1 (a zero budget judges nothing)"
+                                        ),
                                     )),
                                 },
                             }
@@ -2413,12 +2462,12 @@ fn decode_options(
             Some(v) => {
                 if recipe != "cte/scalar-query-v1" {
                     return Err(err(
-                            &f.path_of("cte"),
-                            format!(
-                                "the cte binding belongs to cte/scalar-query-v1; it is not valid for recipe {:?}",
-                                recipe
-                            ),
-                        ));
+                        &f.path_of("cte"),
+                        format!(
+                            "the cte binding belongs to cte/scalar-query-v1; it is not valid for recipe {:?}",
+                            recipe
+                        ),
+                    ));
                 }
                 let cpath = f.path_of("cte");
                 let pairs = as_obj(v, &cpath)?;
@@ -2491,12 +2540,12 @@ fn decode_options(
                         | "ac/mn/console-run-v1"
                 ) {
                     return Err(err(
-                            &f.path_of("mn"),
-                            format!(
-                                "the mn binding belongs to ac/mir-native-scalar-v1; it is not valid for recipe {:?}",
-                                recipe
-                            ),
-                        ));
+                        &f.path_of("mn"),
+                        format!(
+                            "the mn binding belongs to ac/mir-native-scalar-v1; it is not valid for recipe {:?}",
+                            recipe
+                        ),
+                    ));
                 }
                 let mpath = f.path_of("mn");
                 let pairs = as_obj(v, &mpath)?;
@@ -2626,7 +2675,7 @@ fn decode_options(
                                     return Err(err(
                                         &df.path_of("min_frontend_invalidations"),
                                         "min_frontend_invalidations must be an integer 1..=64",
-                                    ))
+                                    ));
                                 }
                             },
                         };
@@ -2638,7 +2687,7 @@ fn decode_options(
                                     return Err(err(
                                         &df.path_of("max_codegen_units"),
                                         "max_codegen_units must be an integer 0..=1024",
-                                    ))
+                                    ));
                                 }
                             },
                         };
@@ -2691,7 +2740,7 @@ fn decode_options(
                                     return Err(err(
                                         &hf.path_of("min_cache_hit_coff"),
                                         "min_cache_hit_coff must be an integer 1..=1024",
-                                    ))
+                                    ));
                                 }
                             },
                         };
@@ -2721,7 +2770,7 @@ fn decode_options(
                                     return Err(err(
                                         &tf.path_of("p90_max_ms"),
                                         "p90_max_ms must be an integer 2000..=3600000 (the approved P90 bound)",
-                                    ))
+                                    ));
                                 }
                             },
                         };
@@ -2733,7 +2782,7 @@ fn decode_options(
                                     return Err(err(
                                         &tf.path_of("min_edits"),
                                         "min_edits must be an integer 10..=10000",
-                                    ))
+                                    ));
                                 }
                             },
                         };
@@ -2798,7 +2847,9 @@ fn decode_options(
                                     CVal::Int(n) if *n >= 1 => Ok(Some(*n as u64)),
                                     _ => Err(err(
                                         &rf.path_of(k),
-                                        format!("{k} must be an integer >= 1 (a zero budget judges nothing)"),
+                                        format!(
+                                            "{k} must be an integer >= 1 (a zero budget judges nothing)"
+                                        ),
                                     )),
                                 },
                             }
@@ -2831,7 +2882,7 @@ fn decode_options(
                                         return Err(err(
                                             &rf.path_of("fail_seam"),
                                             "fail_seam is [seam 1..=8, nth >= 1] (1..=9 for the closures recipe)",
-                                        ))
+                                        ));
                                     }
                                 };
                                 Ok(Some((seam, nth)))
@@ -2892,12 +2943,12 @@ fn decode_options(
             Some(v) => {
                 if !is_a2x_recipe {
                     return Err(err(
-                            &f.path_of("a2x_hir"),
-                            format!(
-                                "the a2x_hir binding belongs to the a2x emit recipes; it is not valid for recipe {:?}",
-                                recipe
-                            ),
-                        ));
+                        &f.path_of("a2x_hir"),
+                        format!(
+                            "the a2x_hir binding belongs to the a2x emit recipes; it is not valid for recipe {:?}",
+                            recipe
+                        ),
+                    ));
                 }
                 let hpath = f.path_of("a2x_hir");
                 let pairs = as_obj(v, &hpath)?;
@@ -3549,7 +3600,7 @@ fn decode_expect(
                             adapter.as_str(),
                             Stage::supported_for(adapter).join(", ")
                         ),
-                    ))
+                    ));
                 }
             };
             let code = opt_str(&cf, "code")?;
@@ -3573,13 +3624,19 @@ fn decode_expect(
                     if has_exact {
                         let s = req_str(&mf, "exact")?;
                         if s.is_empty() {
-                            return Err(err(&mp, "exact: \"\" matches every message — a strong oracle needs discriminating text"));
+                            return Err(err(
+                                &mp,
+                                "exact: \"\" matches every message — a strong oracle needs discriminating text",
+                            ));
                         }
                         Some(MessageMatcher::Exact(s))
                     } else {
                         let s = req_str(&mf, "contains")?;
                         if s.is_empty() {
-                            return Err(err(&mp, "contains: \"\" matches every message — a strong oracle needs discriminating text"));
+                            return Err(err(
+                                &mp,
+                                "contains: \"\" matches every message — a strong oracle needs discriminating text",
+                            ));
                         }
                         Some(MessageMatcher::Contains(s))
                     }
@@ -3604,7 +3661,7 @@ fn decode_expect(
                     "expected \"success\" or an error object, got {}",
                     other.type_name()
                 ),
-            ))
+            ));
         }
     };
 
@@ -3658,7 +3715,10 @@ fn decode_expect(
                 if matches!(completion, Completion::Error { .. }) && !console_recipe {
                     return Err(err(
                         &sp,
-                        format!("`{}` expectations require completion \"success\" (error completions expose no streams in this pilot)", key),
+                        format!(
+                            "`{}` expectations require completion \"success\" (error completions expose no streams in this pilot)",
+                            key
+                        ),
                     ));
                 }
                 let compare = decode_compare(sf.sub("compare"), &format!("{}.compare", sp))?;
@@ -3739,13 +3799,13 @@ fn decode_expect(
             return Err(err(
                 &f.path_of("exit"),
                 format!("exit code {} is outside the i32 native exit-code range", n),
-            ))
+            ));
         }
         Some(other) => {
             return Err(err(
                 &f.path_of("exit"),
                 format!("expected integer, got {}", other.type_name()),
-            ))
+            ));
         }
     };
 
@@ -3807,13 +3867,13 @@ fn decode_expect(
                     return Err(err(
                         &pf.path_of("total_ms_max"),
                         format!("total_ms_max must be > 0 (got {})", n),
-                    ))
+                    ));
                 }
                 Some(other) => {
                     return Err(err(
                         &pf.path_of("total_ms_max"),
                         format!("expected integer, got {}", other.type_name()),
-                    ))
+                    ));
                 }
             };
             Some(PerfExpect { total_ms_max })
@@ -3859,7 +3919,7 @@ fn decode_expect(
             let compare = decode_compare(af.sub("compare"), &format!("{}.compare", ipath))?;
             artifacts.push(ArtifactExpect {
                 path: p,
-                file,
+                payload: ArtifactPayload::File(file),
                 compare,
             });
         }
@@ -3916,7 +3976,7 @@ fn decode_expect(
                                     "cache must be one of hit/miss/stale/published, got {}",
                                     other.type_name()
                                 ),
-                            ))
+                            ));
                         }
                     };
                     let compute_calls = match pf.sub("compute_calls") {
@@ -3929,7 +3989,7 @@ fn decode_expect(
                                     "compute_calls must be a small non-negative integer, got {}",
                                     other.type_name()
                                 ),
-                            ))
+                            ));
                         }
                     };
                     let bindings_file = match pf.sub("bindings_file") {
@@ -3947,7 +4007,7 @@ fn decode_expect(
                             return Err(err(
                                 &pf.path_of("bindings_file"),
                                 format!("expected string, got {}", other.type_name()),
-                            ))
+                            ));
                         }
                     };
                     let stages_include = match pf.sub("stages_include") {
@@ -3965,7 +4025,7 @@ fn decode_expect(
                                                 "expected non-empty stage name, got {}",
                                                 other.type_name()
                                             ),
-                                        ))
+                                        ));
                                     }
                                 }
                             }
@@ -3982,7 +4042,7 @@ fn decode_expect(
                                     "pe_exit must be a small non-negative integer, got {}",
                                     other.type_name()
                                 ),
-                            ))
+                            ));
                         }
                     };
                     out.push(ProbeStepExpect {

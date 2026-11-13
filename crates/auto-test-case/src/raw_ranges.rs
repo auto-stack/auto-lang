@@ -49,7 +49,8 @@ pub fn indent_width(line: &str) -> usize {
 
 /// Line table over raw bytes: entries are (content_start, content_end) with
 /// content_end excluding the `\r` of a `\r\n` EOL and the `\n` itself.
-fn line_table(bytes: &[u8]) -> Vec<(usize, usize)> {
+/// Shared by the fence and heading locators (PLAN-1002).
+pub(crate) fn line_table(bytes: &[u8]) -> Vec<(usize, usize)> {
     let mut lines = Vec::new();
     let mut start = 0usize;
     for (i, b) in bytes.iter().enumerate() {
@@ -155,4 +156,78 @@ mod tests {
         assert!(locate_fences(b"").is_empty());
         assert!(locate_fences(b"plain text\r\nno fences\n").is_empty());
     }
+
+    #[test]
+    fn headings_outside_fences_only() {
+        let bytes = b"# T\n\n```text\n## inside\n```\n\n## Real ^a\n".to_vec();
+        let fences = locate_fences(&bytes);
+        let heads = locate_headings(&bytes, &fences);
+        assert_eq!(heads.len(), 2);
+        assert_eq!(
+            (heads[0].level, heads[0].text.as_str(), heads[0].line),
+            (1, "T", 1)
+        );
+        assert_eq!(
+            (heads[1].level, heads[1].text.as_str(), heads[1].line),
+            (2, "Real ^a", 7)
+        );
+    }
+
+    #[test]
+    fn heading_shaped_payload_lines_are_not_headings() {
+        let bytes = b"#### x\n\n````md\n#### not a heading\n````\n".to_vec();
+        let fences = locate_fences(&bytes);
+        assert_eq!(locate_headings(&bytes, &fences).len(), 1);
+    }
+}
+
+/// One raw ATX heading line found OUTSIDE every fence (PLAN-1002 authoring
+/// decode): level, trimmed text (anchor token still attached — the tree
+/// view strips it, pairing happens in [`crate::document`]) and the 1-based
+/// line number.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawHeading {
+    pub level: usize,
+    pub text: String,
+    pub line: usize,
+}
+
+/// Locate every ATX heading line outside fences, in source order.
+///
+/// A heading line has indent < 4 and starts (after trim) with 1..=6 `#`
+/// followed by a space or end of line; everything after that run is the
+/// text (trimmed). Lines inside fence payloads are payload, never
+/// headings — the caller supplies the already-located fences.
+pub fn locate_headings(bytes: &[u8], fences: &[RawFence]) -> Vec<RawHeading> {
+    let lines = line_table(bytes);
+    let mut out = Vec::new();
+    for (li, &(s, e)) in lines.iter().enumerate() {
+        let line = String::from_utf8_lossy(&bytes[s..e]).to_string();
+        if indent_width(&line) >= 4 {
+            continue;
+        }
+        // Inside a fence payload? (open line < payload < close line.)
+        let pos = s;
+        if fences
+            .iter()
+            .any(|f| f.payload.start <= pos && pos < f.payload.end)
+        {
+            continue;
+        }
+        let t = line.trim();
+        let markers = t.chars().take_while(|ch| *ch == '#').count();
+        if markers == 0 || markers > 6 {
+            continue;
+        }
+        let rest: String = t.chars().skip(markers).collect();
+        if !rest.is_empty() && !rest.starts_with(' ') && !rest.starts_with('\t') {
+            continue; // `#tag` style text is not a heading
+        }
+        out.push(RawHeading {
+            level: markers,
+            text: rest.trim().to_string(),
+            line: li + 1,
+        });
+    }
+    out
 }

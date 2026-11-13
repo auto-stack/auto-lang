@@ -47,7 +47,7 @@ fn real_main() -> Result<i32, String> {
 use std::path::{Path, PathBuf};
 
 use auto_test_case::admission::{
-    check_no_reparse_ancestors, validate_output_domain, validate_output_file, Limits,
+    Limits, check_no_reparse_ancestors, validate_output_domain, validate_output_file,
 };
 use auto_test_case::discovery::load_suite;
 use auto_test_case::suite::apply_defaults;
@@ -191,11 +191,7 @@ fn lint(suite: &std::path::Path) -> Result<i32, String> {
     for e in &errors {
         println!("ERROR {}", e);
     }
-    if errors.is_empty() {
-        Ok(0)
-    } else {
-        Ok(2)
-    }
+    if errors.is_empty() { Ok(0) } else { Ok(2) }
 }
 
 fn list(suite: &std::path::Path, format: Option<&str>) -> Result<i32, String> {
@@ -296,7 +292,14 @@ fn inspect(suite: &std::path::Path, case_id: &str) -> Result<i32, String> {
                     fmt_completion(&effective.expect.completion)
                 );
                 for a in &effective.expect.artifacts {
-                    println!("    artifact {} <- {} ({:?})", a.path, a.file, a.compare);
+                    // PLAN-1002: artifacts may be inline document payloads.
+                    let origin = match &a.payload {
+                        auto_test_case::contract::ArtifactPayload::File(f) => f.clone(),
+                        auto_test_case::contract::ArtifactPayload::Inline { open_line, .. } => {
+                            format!("inline@line {}", open_line)
+                        }
+                    };
+                    println!("    artifact {} <- {} ({:?})", a.path, origin, a.compare);
                 }
             }
             for e in &errors {
@@ -418,7 +421,7 @@ fn module_case_cmd(suite: &Path, args: &[String]) -> Result<i32, String> {
         _ => {
             return Err(
                 "module-case requires --suite, --case, --out and optional --artifact-out".into(),
-            )
+            );
         }
     };
     let supplied: std::collections::BTreeSet<_> = args[1..]
@@ -540,11 +543,7 @@ fn stale_cmd(suite: &std::path::Path, report_path: &str) -> Result<i32, String> 
         verdicts.len(),
         stale_count
     );
-    if stale_count == 0 {
-        Ok(0)
-    } else {
-        Ok(1)
-    }
+    if stale_count == 0 { Ok(0) } else { Ok(1) }
 }
 
 fn jstr(s: &str) -> String {

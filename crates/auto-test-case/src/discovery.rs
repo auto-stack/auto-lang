@@ -4,15 +4,39 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::admission::{check_limit, read_bounded, Limits};
+use crate::admission::{Limits, check_limit, read_bounded};
 use crate::atom;
-use crate::contract::{decode_case, CaseSpec};
+use crate::author;
+use crate::contract::{CaseSpec, decode_case};
 use crate::document::CaseDocument;
 use crate::sha256::{hex, sha256};
-use crate::suite::{decode_suite, selected_files, SuiteSpec};
+use crate::suite::{SuiteSpec, decode_suite, selected_files};
 
 pub const CASE_FENCE_LANGUAGE: &str = "test-case";
 pub const SUITE_FENCE_LANGUAGE: &str = "test-suite";
+
+/// Which authoring format a case file decoded under (PLAN-1002: the
+/// document format is dispatched per file, never mixed).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaseFileFormat {
+    /// Legacy `test-case` fence contracts.
+    LegacyFences,
+    /// `## Case:` document-style authoring.
+    Document,
+}
+
+/// Document-side span of one document-format case (PLAN-1002): locating
+/// reports/inventories back at the authoring source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocCaseSpan {
+    pub key: String,
+    /// 1-based `## Case:` heading line.
+    pub heading_line: usize,
+    /// 1-based line that ends the case (next case heading or EOF+1).
+    pub end_line: usize,
+    /// Per-check section positions, declaration order.
+    pub check_spans: Vec<author::DocCheckSpan>,
+}
 
 #[derive(Debug, Clone)]
 pub struct CaseFile {
@@ -20,6 +44,11 @@ pub struct CaseFile {
     pub sha256: String,
     pub doc: CaseDocument,
     pub specs: Vec<CaseSpec>,
+    /// Decode format of this file (PLAN-1002).
+    pub format: CaseFileFormat,
+    /// Parallel to `specs` for `CaseFileFormat::Document` files; empty for
+    /// legacy files (their spans are the `test-case` fences).
+    pub doc_spans: Vec<DocCaseSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,34 +169,73 @@ pub fn load_suite(suite_path: &Path, limits: &Limits) -> Result<LoadedSuite, Loa
                 Ok(case_doc) => {
                     let sha = hex(&sha256(&case_bytes));
                     let mut specs = Vec::new();
+                    let mut format = CaseFileFormat::LegacyFences;
+                    let mut doc_spans = Vec::new();
                     let contract_fences: Vec<&crate::document::DocumentFence> = case_doc
                         .fences()
                         .iter()
                         .filter(|f| f.language == CASE_FENCE_LANGUAGE)
                         .collect();
-                    if contract_fences.is_empty() {
+                    let is_document = author::is_document_case(&case_doc);
+                    if is_document && !contract_fences.is_empty() {
                         errors.push(LoadError {
-                            file: case_path,
+                            file: case_path.clone(),
                             detail: format!(
-                                "no `{}` fence — nothing to import",
+                                "mixed formats: {} `{}` fence(s) and document-style `## Case:` \
+                                 headings in one file — pick one format per file",
+                                contract_fences.len(),
                                 CASE_FENCE_LANGUAGE
                             ),
                         });
                         continue;
                     }
-                    for fence in contract_fences {
-                        let payload = case_doc.payload_bytes(fence);
-                        match contract_from_fence(payload, CASE_FENCE_LANGUAGE)
-                            .and_then(|v| decode_case(&v, limits).map_err(|e| e.to_string()))
-                        {
-                            Ok(spec) => specs.push(spec),
-                            Err(detail) => errors.push(LoadError {
-                                file: case_path.clone(),
-                                detail: format!(
-                                    "case fence at line {}: {}",
-                                    fence.open_line, detail
-                                ),
-                            }),
+                    if is_document {
+                        format = CaseFileFormat::Document;
+                        let rel_display = rel.replace('\\', "/");
+                        match author::decode_document(&case_doc, &rel_display, limits) {
+                            Ok(decoded) => {
+                                for ac in decoded {
+                                    doc_spans.push(DocCaseSpan {
+                                        key: ac.key,
+                                        heading_line: ac.heading_line,
+                                        end_line: ac.end_line,
+                                        check_spans: ac.check_spans,
+                                    });
+                                    specs.push(ac.spec);
+                                }
+                            }
+                            Err(e) => {
+                                errors.push(LoadError {
+                                    file: case_path.clone(),
+                                    detail: format!("document case: {}", e),
+                                });
+                                continue;
+                            }
+                        }
+                    } else if contract_fences.is_empty() {
+                        errors.push(LoadError {
+                            file: case_path,
+                            detail: format!(
+                                "no `{}` fence and no `## Case:` heading — nothing to import",
+                                CASE_FENCE_LANGUAGE
+                            ),
+                        });
+                        continue;
+                    } else {
+                        for fence in contract_fences {
+                            let payload = case_doc.payload_bytes(fence);
+                            match contract_from_fence(payload, CASE_FENCE_LANGUAGE)
+                                .and_then(|v| decode_case(&v, limits).map_err(|e| e.to_string()))
+                            {
+                                Ok(spec) => specs.push(spec),
+                                Err(detail) => errors.push(LoadError {
+                                    file: case_path.clone(),
+                                    detail: format!(
+                                        "case fence at line {}: {}",
+                                        fence.open_line, detail
+                                    ),
+                                }),
+                            }
                         }
                     }
                     if let Err(e) =
@@ -197,6 +265,8 @@ pub fn load_suite(suite_path: &Path, limits: &Limits) -> Result<LoadedSuite, Loa
                         sha256: sha,
                         doc: case_doc,
                         specs,
+                        format,
+                        doc_spans,
                     });
                 }
             },
