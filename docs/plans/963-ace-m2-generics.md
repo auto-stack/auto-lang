@@ -4,7 +4,7 @@ status: executing
 feature_name: 通用泛型spec与方法实例化
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
+updated_at: 2026-11-13
 plan_revision: 5
 current_step: 0
 total_steps: 8
@@ -340,6 +340,45 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 材料唯一目录 `D:/autostack/plan-artifacts/plan-963/`，开工登记owner/用途/在途；本轮未创建。不可另建attachments/证据仓目录，不留第二套target/SDK副本。
 
 ## 9. 复审记录
+
+2026-11-13 stage:work（T-03 别名/ext/通用 spec 分片已提交；仍无终裁）/ PLAN-963 r5：
+本片落唯一树 `D:/autostack/.wt/lang-963/auto-lang`（`plan-963-dev`）提交 `443a4e9f9`
+（13 文件 +1033/−29），固定组六组一次全绿（run-76q2bqzs，见下）；V-G05 的 alias / ext /
+通用 spec 子项闭合，`with` / 关联类型 / super-spec 留具名未闭（拼写已从旧用例取得）。
+
+- 语法（`experimental/ace/grammars/auto-source.at`，record / record-instances / aggregates 面）：
+  `type-item` 末尾改由独立 `type-tail` 按首 token 分派——`=` 别名形 `type N = T` vs `as`/`{`
+  记录体形（本 CST 引擎的 `alt` 只作用于整条规则、不能中途分支）；`spec-item` 增
+  `type-params`（`spec Storage<T>`）与 `spec-args`（`as Storage<int>`）；新 `ext-item`
+  （`ext Type { members }`，首 token `ext` 独立分派）。
+- AST：`ConformRef { name, args }`（`TypeItem.conforms: Vec<ConformRef>`，书写序；
+  `parser.rs` 旧面 `conforms` 恒空）、`SpecDecl.type_params`；`kinds.rs` 增 `ext_item` /
+  `spec_args`。`instances.rs:272` 同步取 `c.name.name`。
+- 投影（`cst/project.rs`）：`run_spec_item` 对 `const` 参数具名拒（spec 只收类型参数）；
+  `project_conform_ref`；`instantiate_spec_method`（签名与默认体一起替换）；
+  `apply_spec_conformance` 增 arity 校验 / 替换 / 注入；`record_specs` 改
+  `BTreeMap<String, Vec<ConformRef>>`。遍序：别名展开 → ext 合入 → 泛型记录单态化 →
+  遵从检查与注入 → **再展开一次别名**（spec 默认体注入的别名首遍覆盖不到）。
+- 测试：core `source_alias_963.rs`(5)、`source_ext_963.rs`(5)、
+  `source_specs_generic_963.rs`(6：O-963-S1 int/bool 两实例各自具体化、S2 少给实参拒、
+  S3 多给实参拒、S4 非通用 spec 给实参拒、S5 `<const N int>` 具名拒、S6 默认体别名注入后展开)；
+  native `alias_963.rs`(1，exit=102)、`ext_963.rs`(1，exit=42)、`spec_generic_963.rs`(1，exit=42)，
+  均经 mn 管线真实构建+运行、oracle 闭式手算。分片验证：`cargo test -p ace-core --test
+  conformance` 440 passed、`cargo test -p ace-source-query` 全绿、`cargo test -p ace-native
+  --test conformance -- alias_963 ext_963 spec_generic_963` 3 passed；触碰文件 rustfmt `--check` clean。
+- 固定组：`cargo t ace-source ace-syntax ace-semantics ace-av ace-native ace-a2x`
+  → run-76q2bqzs（09:32 起跑，wall 1353.7s）六组逐项 PASS：executed 474 / 132 / 267 / 1074 /
+  231 / 226；`gate_passed=True`、`discovery_complete=False`（发现面标记，未影响六组执行终态；
+  与 T-04 记录中 `ace-a2x` 的 process-tree 环境残留不同，本轮 a2x 亦 PASS）。
+- **本片具名未闭（下一轮实施，拼写不猜）**：
+  1. `with` 旧拼写 `#[with(T)]` / `#[with(T as Clone)]`（Plan 061 注解形，见
+     `crates/auto-lang/test/a2c/08_generics/004_with_constraint`、`a2r/16_interop/019_multi_bound`）——
+     ACE 无语言属性语法：`semantics-contract/src/metadata.rs` 的 `visibility.attributes` 仍是
+     `MetaSupport::SchemaOnly`、`future_owner: "language attribute grammar plan"`，属性语法属他计划
+     owner，本包不新造；规范形为 `fn f<T>` / `fn f<T has S>`，故按**具名迁移拒**处理（不静默忽略）。
+  2. 关联类型 `spec Container { type Item }` + `as Container<Item=int>`（旧 case
+     `a2r/12_specs/011_associated_types`、`012_generic_spec_assoc`）。
+  3. super-spec `spec Tool: Send + Sync { .. }`（旧 case `a2r/12_specs/010_spec_supertrait`）。
 
 2026-11-13 stage:work（T-04 const 值参数分片已提交，V-G04 闭合；仍无终裁）/ PLAN-963 r5：
 本片两提交落唯一树 `D:/autostack/.wt/lang-963/auto-lang`（`plan-963-dev`）：
