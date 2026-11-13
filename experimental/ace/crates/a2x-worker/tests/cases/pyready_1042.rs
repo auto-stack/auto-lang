@@ -57,6 +57,7 @@ fn pyready_01_two_module_stdlib_and_scalar_execution() {
         id: "helper".into(),
         source: "use std.math.square\npub fn combined(x int) int { return square(x) + 10 }\n"
             .into(),
+        provider: None,
     });
     inputs.push(PackageModuleInput {
         package: "app".into(),
@@ -72,6 +73,7 @@ fn pyready_01_two_module_stdlib_and_scalar_execution() {
             "}\n",
         )
         .into(),
+        provider: None,
     });
     let product = compile_package_product(
         &inputs,
