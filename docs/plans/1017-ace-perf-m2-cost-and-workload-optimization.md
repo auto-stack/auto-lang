@@ -305,6 +305,13 @@ commit:`6ab6d9ce9` | next:user decision on target revision (§10), then new r5�
 "全量串行 ≤3000s（进取 2400s）+ 逐模块预算"（§0 r5 数值）；守恒与合同不变；
 残余优化对象与预算表同步更新。next:work（继续 T-04/T-05 在 r5 目标下推进）。
 
+**r5 续作数据（副牌形状速率曲线，resources_short_cost_probe 测试形状 100 调用/副牌）**：
+helpers=30→**3.67MB/s** / 50→2.77 / 100→1.94 / 300→0.70（每字节效率随源规模单调下降，
+封套固定字节主导小副牌）→ comptime 双 resource 的填充段可按 r4 效果守恒把夹具
+big_source 从 100 helpers 降到 30（sigma 常量 4950→435 同步改），预计填充段 ~1.9×；
+native cold_set 填充形状（2000 语句单函数）同法待测。深水区（sd911/closures_native/
+turnaround 的 emit/link/binder 每样本链）为 r5 预算内剩余主项。
+
 2026-11-12 stage:new / PLAN-1017 r2：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原9任务/全部AC与V/依赖/阶段/预算和drafting 0/9；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
 2026-11-12 本轮规划静态核验：32份合同原505任务ID/顺序/进度、全部旧AC/V/Spec-delta及原依赖/阶段/预算保留；新增128条V-DETAIL待实施验证，未生成任何测试源码。505处本地引用/围栏/0–10章节/原任务映射核对通过，跨四仓可达222份Plan的显式依赖无缺失/环。只证明规划结构与取材来源，不是旧VM/新ACE运行或独立产品review PASS；959–962归档和963r5未改。
