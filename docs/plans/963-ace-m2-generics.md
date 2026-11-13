@@ -341,6 +341,64 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+2026-11-13 stage:work（T-03 关联类型 / super-spec 分片已提交；仍无终裁）/ PLAN-963 r5：
+提交 `c8bbeace1`（8 文件 +736/−70）落唯一树 `D:/autostack/.wt/lang-963/auto-lang`
+（`plan-963-dev`）；闭合上一片具名未闭的第 2、3 项（关联类型、super-spec），
+`#[with(T)]` 按具名迁移拒落地负控。
+
+- 语法（record / record-instances / aggregates 面）：`spec-item` 增 super-spec 列表
+  （`spec S: A + B`；新 `super-specs` / `super-spec-tail`）；`spec-member` 两 alt
+  （`fn` 方法 / `type ident` 关联类型）；`spec-args` 改 `spec-arg-list`——位置实参 +
+  `Item=int` 命名绑定靠 `=` 后缀区分，不靠首 token 分派（同名首 token 变体不能并存的引擎约束）。
+- AST / 投影：`ConformRef.assoc: Vec<(Ident, TypeAnn)>`（书写序，投影期消化，不进 AST 之外）；
+  `SpecDecl { type_params, supers, assoc, methods }`；`apply_spec_conformance` 改 claim 模型
+  （每条遵从 → spec 方法义务闭包 + 具体化替换表），命名绑定左值必须裸名、重复名
+  `source.duplicate`、未绑定关联类型 / 未知绑定名 / 未知 super-spec / super-spec 成环 /
+  通用 super-spec 一律具名拒（`source.unsupported`，不静默当无约束）；`binding_ok` 保证
+  绑定错误时不再报"签名不符"掩盖真错（`first_diag()` 只回 span 最小一条）。
+- 测试：core `source_spec_super_assoc_963.rs`（SA1..SA11：实例化替换、未绑定/未知/重复绑定、
+  通用+命名混用、super-spec 义务传递、缺方法、未知、成环、通用 super-spec 拒、
+  `#[with(T)]` 具名迁移拒）；native `spec_assoc_963.rs`（关联类型方法 exit=42、
+  super-spec 默认体 exit=42，mn 真实构建+运行）。
+- 验证：`cargo test -p ace-core`（lib 38 + conformance 451）全绿；`cargo test -p ace-semantics
+  -p ace-source-query` 全绿。固定组 run-djwtkgdd（10:05 起，wall 1336.5s）五组 PASS，
+  `ace-a2x` 单例 `worker_ct_941_ordinary_same_names_four_operations` 红
+  （`CToolError("cl -? spawn: Deadline")` 56.7s），隔离重放 ok 19.41s → 环境归因
+  （该组并行 C 工具链负载），本片不改该面代码。
+
+2026-11-13 stage:work（V-G06 跨包记录模板片已提交；仍无终裁）/ PLAN-963 r5：
+提交 `4f0967829`（6 文件 +380/−33）在包模块面闭合 V-G06 的「两包同名模板/类型 +
+跨模块实例身份」。
+
+- 语法（packages-modules 面）：`type-item` 的 `type-params` 与 `ty-word` / `ann-ty` 的
+  `generic-ty` 追加 packages-modules 门——此前 `pub type Point<T>` 声明与 `Point<int>` 注解
+  在该面均报拼写不符；补门后其余 profile 的过滤后程序不变。
+- 绑定（`packages/binding.rs`）：`Walker.tyvars`（当前记录模板的类型参数名）——模板内
+  `TyVar` 放行、模板外仍具名拒；新增 `TypeRef::Generic` 分支（基名按符号 mangle、实参递归
+  mangle）；`CtorNamed` 的显式类型实参一并 walk（此前 `..` 丢弃）；模板方法/模板函数仍具名拒。
+- 单态化（`cst/project.rs` / `frontdoor.rs`）：新增 `project_program_deferring_templates`
+  （包模块投影跳过模块内单态化）与 `monomorphize_package_program`（仅程序级）；
+  `bind_packages` 在扁平程序拼装完成后统一实例化——实例符号由已 mangle 的模板符号派生
+  （`t3_libm3_geo_Point_int`），两包同名模板天然不串、跨模块同一实参共享同一实例；
+  模板项随单态化移除，故实例方法 `owner` 重指实例、`type_origins` / `origins` 补登记
+  （否则 owner 悬空）；诊断经 `locate_flat` 归回模块源坐标；`initializers` 改存符号、
+  值体从扁平程序取，避免克隆漏改与二次平移。
+- 测试：`packages::binding` 三例（跨模块模板 + 实例身份/成员归属/源位置、两包同名模板不串、
+  错 arity 归模块具名拒 `source.unsupported`）+ 一例非模板 `T` 具名拒
+  （`source.module-symbol`：unknown type `T`）；`source-query` 一例端到端
+  `package_generic_record_templates_reach_checked_hir_963`（atom text 只见实例名、模板不抵达
+  checked HIR）。
+- 验证：`cargo test -p ace-core`（lib 38 + conformance 451）全绿；`cargo test -p ace-semantics
+  -p ace-source-query` 全绿；固定组 run-1w1lnge5（wall 1310.7s）五组 PASS（executed
+  489 / 132 / 268 / 1074 / 233），`ace-a2x` 仍是同一单例
+  `worker_ct_941_ordinary_same_names_four_operations` 红
+  （`CToolError("cl -? spawn: Deadline")` 106.2s；两次连红同一例），本轮隔离重放
+  ok 10.20s → 与上一片同因环境归因（并行 C 工具链负载），非本片触面。
+- **本片具名未闭**：记录类型的模块全局（`pub const ORIGIN Point<int> = Point { x: 40 }`）
+  在 verify 被 `record param 0 requires a borrow argument` 拒——`module.global.set:` 伪签名
+  只有借用形，owned 跨参转移（`.move` 实参 + MoveOwn 形参）属 V-G06 的 owned 账，未在本片
+  实现；现为具名拒（不静默通过），下一轮连同 `.move` 转移补齐。
+
 2026-11-13 stage:work（T-03 别名/ext/通用 spec 分片已提交；仍无终裁）/ PLAN-963 r5：
 本片落唯一树 `D:/autostack/.wt/lang-963/auto-lang`（`plan-963-dev`）提交 `443a4e9f9`
 （13 文件 +1033/−29），固定组六组一次全绿（run-76q2bqzs，见下）；V-G05 的 alias / ext /
