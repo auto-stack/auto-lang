@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-947
-status: drafting
+status: executing
 feature_name: ACE 控制台接入、标准库分层与装配合同
 author: [Codex]
 created_at: 2026-11-05
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/stdlib/design/ace-host-services.md]
 touched_goals: [GOAL-002]
 affects: [stdlib, ace]
 depends_on: [PLAN-943, PLAN-944, PLAN-960]
-current_step: 0
+current_step: 3
 total_steps: 10
 ---
 
@@ -213,6 +213,20 @@ struct LibraryBinding { declaration: SigRef, layer: LayerKind, target: TargetAbi
 
 本节由原`T-01`冻结来源/未决，`T-02`、`T-03`、`T-08`、`T-09`、`T-10`、`T-04`按各自原owner_stage接实现/验证（纯分析包只审计），对应AC-01/AC-02/AC-03/AC-06/AC-PHASE；原review/merge任务分别核结论与正式落地，不能用规划检查提前勾选。范围外能力回原owner，真实新增依赖须改DAG，不补假的整包反向等待。
 
+### T-01 冻结记录（2026-11-13，M1-TAG 后开工基线）
+
+**基线重建**：tag `v0.6-ACE-M1`（commit b923362f4=C）→ 当前 master HEAD 84c575a54 全部 diff 仅为 docs/**（0 个非 docs 文件）——M1 验收身份与当前基面零代码漂移。依赖 D943（operations.toml `console.say` v1）/D944（AssemblyManifest schema4 + semantics-contract `ace-stdlib-assembly/1` 四 producer 白名单）/D960（packages profile + NATIVE/C producer 加入）按归档合同消费，6 个 r9 取材 SHA 逐一重算一致（§4.1）。
+
+**公共输出冻结**（逐字依据，非推断）：
+- 公共 `say(msg str)`（io.at:21 声明；io.vm.at:51 `say→print`；VM codegen expr_calls.rs:1398 `("io","say")→auto.print_str`；natives_io.rs:5-9 `vm_print` 在字符串后**恰追加一个 `\n`**）→ **say ≡ console/1 `auto.console.print.str.v1`（stdout，UTF-8 原字节+恰一个 0a，参数仅 str/Str）**——不是 eprint、无第二换行、非任意类型。
+- host-console 源域 `print`/`eprint` 四类型 lane（i32/bool/str/char）与格式化（i32 十进制无正号/前导零、MIN 负号、bool true/false、char UTF-8 标量、每调用恰一个 0a）按 863 spec + av.rs:7006 `with_console_input` 保持不变。
+- **预算**：MAX_CALL_BYTES=65536（含追加 LF 的长度）、MAX_RUN_BYTES=1048576、每模块 ≤8 console overload、两次 cancel poll 间原子提交、ProviderScope 无 guest 重入（av-core/host.rs:5-9, av.rs:5338-5420）。
+- **AV 入口**：front_door_admit → compile_host_console_source → lower_checked_console → verify_mir → encode_abc → execute_console（每轮 authorize(grants) 先于任何 dispatch）。恢复产物不含授权/地址（console_host.rs envelope/key 均身份事实）。
+- **native 现状与目标**：mn 四点 fail-closed 拒绝 host-console（emit.rs:145-186 profile 白名单、lower.rs:2666 HostCall、fingerprint.rs:123、typed_entry.rs:299）；本包 T-02 经专用 console 发射入口给 mn 真实 console 通道（机器码直调 OS write，admission 侧共享 av-core authorize 每轮授权，guest 侧 per-call 预算，shim 侧累计预算），不改普通 mn 单一函数准入面。
+- **Storage/内存待定边界**（M2 讨论确认项，本包不冻结 allocator API）：默认政策、具体实例、失败与释放职责保留；实际函数签名/ABI 布局留待内存专题（Design56 §0.2），不预设 Zig 式处处 allocator，也不以 libc/Rust std 间接委托为默认（AC-NATIVE 分账在 T-09/T-10 落实）。
+
+**T-09 先于依赖**：四轴装配/公共API分层合同（T-09）先于依赖它的 T-10 实现；不重复造线程/执行器。
+
 ### 规范增量
 
 以下是**拟议**delta，review按实际范围定稿，merge才写canonical Specs；本轮不写current Spec。
@@ -317,11 +331,11 @@ struct LibraryBinding { declaration: SigRef, layer: LayerKind, target: TargetAbi
 
 本组包括调研/前探在内均须先核M1-TAG正式收据与本包实施授权；该门未闭不建树或运行探针。
 
-- [ ] **T-01｜M2-A｜owner_stage: work｜AC-01/AC-10**：先核M1-TAG及本包实施授权，消费D943/D944/D960并对tag/当前主线重建适用基线；在M2讨论确认Storage/内存资源待定边界，冻结公共输出拼写、换行、AV/native入口及原预算；T-09合同先于依赖它的实现，不重复造线程/执行器。
+- [x] **T-01｜M2-A｜owner_stage: work｜AC-01/AC-10**：先核M1-TAG及本包实施授权，消费D943/D944/D960并对tag/当前主线重建适用基线；在M2讨论确认Storage/内存资源待定边界，冻结公共输出拼写、换行、AV/native入口及原预算；T-09合同先于依赖它的实现，不重复造线程/执行器。 [✅ 2026-11-13：M1-TAG 四要件实测闭合（§4.1：tag v0.6-ACE-M1→b923362f4=HEAD祖先、1025 H/C 双 exit0、/goal 即实施授权、943/944/960/941/999 归档）；基线零代码漂移（tag→HEAD 全 docs）；say≡print.str.v1 逐字冻结（io.at:21/io.vm.at:51/expr_calls.rs:1398/natives_io.rs:5-9 四链证据）；预算/入口/Storage待定边界冻结于 §5 T-01 记录。]
 
-- [ ] **T-02｜M2-A｜owner_stage: work｜AC-02**：实现公共输出绑定和每轮宿主注入，复用console/1导入/签名/capability及既有执行路径，保不支持host的明确诊断。
+- [x] **T-02｜M2-A｜owner_stage: work｜AC-02**：实现公共输出绑定和每轮宿主注入，复用console/1导入/签名/capability及既有执行路径，保不支持host的明确诊断。 [✅ 2026-11-13：say(str) 接入 console 源域（core/source/console.rs 拼写映射+三处保留名统一真源 is_reserved_name）；native(mn) 通道落地：split_units 搬运 host 声明（av/src/cache.rs）、专用 admit_console_unit 门（863 兼容不放松）、LowerMode::Console 发射（guest 侧精确格式化+65536 per-call 预算+单次 shim 原子分发）、shim 对象（累计 1MiB+WriteFile 原子）、每轮 av-core authorize 共享（未授权→不发射不执行 dispatch=0）；commit f81f9f4*（"feat(ace-console): public say binding..."）+ console_lane 9 测试绿。不支持 host 的明确诊断：Unit-entry 在 mn=命名能力边界（mn ABI 冻结零参 i32），Rust/C host 无能力单列（T-08 分账）。]
 
-- [ ] **T-03｜M2-A｜owner_stage: work｜AC-03**：接装配/持久恢复/重新授权、预算和真实取消poll边界；不缓存provider地址，不扩权，不承诺尚未到达poll时即时终止。
+- [x] **T-03｜M2-A｜owner_stage: work｜AC-03**：接装配/持久恢复/重新授权、预算和真实取消poll边界；不缓存provider地址，不扩权，不承诺尚未到达poll时即时终止。 [✅ 2026-11-13：AV 侧 persist/restore/重新授权既有（console_host.rs，快照身份测试在案）；mn 通道 worker recipe ac/mn/console-run-v1 内建 persist→restore 重接纳→本轮 caps 授权（不持久化任何授权/地址）；预算：AV 侧既有 65536/65537/1MiB 测试 + mn 侧 per-call（guest guard）与 cumulative（shim 计数器）双层、65537 拒绝原子性与 1MiB 边界前输出保留均有永久测试（console_lane 9 例 + 语料 7 行双 lane + 3 个期望面反例控制）；取消：AV 进程内双 poll 点既有语义保持，native=deadline 杀灭的受控运行（每次调用原子提交可观察），不承诺未到 poll 点即时终止。]
 
 - [ ] **T-08｜M2-A｜owner_stage: work｜AC-07**：先消费960的公共宿主声明/装配；分别记录AV、AC、Rust、C的console支持，不把Rust/C缺口移交后无人承接：973负责四端补齐；File/Task/Stream仅前探，967/968/973接真实服务。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
 
@@ -349,6 +363,17 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-13 stage: work 进度一（M1-TAG 开工 + T-01/T-02/T-03 交付，executing 3/10，非交接完成）。
+- **门**：M1-TAG 四要件实测闭合（§4.1：tag v0.6-ACE-M1→b923362f4=HEAD 祖先、1025 H/C 双 exit0、941/999/943/944/960 归档、/goal 即整链授权）；tag C→HEAD 零代码漂移；6 个 r9 SHA 一致。实施树 `D:/autostack/.wt/lang-947/auto-lang` @ plan-947-dev（base 84c575a54）；scope `D:/autostack/plan-artifacts/plan-947/`（OWNER.md 登记）。
+- **T-01 ✅**：say≡auto.console.print.str.v1 逐字冻结（io.at:21/io.vm.at:51/expr_calls.rs:1398/natives_io.rs:5-9 四链证据：旧 say 输出后恰一个 \n）；预算/入口/Storage 待定边界记入 §5 T-01 冻结记录。
+- **T-02 ✅**：say 拼写接入 console 源域（映射+保留名+专用 str-only 诊断）；**native(mn) console/1 通道**——split_units 搬运 host 声明、admit_console_unit 专用门（普通 lane 863 fail-closed 不变，compat 测试在案）、LowerMode::Console guest 侧格式化（i32 十进制含 MIN/bool/char UTF-8 至 4 字节/str 原字节+恰一 LF）+per-call 65536 预算+单 shim 分发、shim（累计 1MiB+kernel32 GetStdHandle/WriteFile 每调用原子）、每轮共享 av-core authorize（未授权→不发射/不链接/不执行）；发现并修复 4 个实现期缺陷（guard 条件反转、正数取补码、bool LF 偏移、64KiB 栈槽跳守卫页→BSS 暂存）。commit "feat(ace-console): public say binding and the native console/1 lane"。
+- **T-03 ✅**：AV persist/restore/重授权既有+保持；mn recipe（ac/mn/console-run-v1，mn-worker 内 persist→restore 重接纳→本轮 caps）落地；TestCase 全链接入（合同解码注册 recipe/mn 绑定、ac_mn/console.rs 父侧判定含 stage 归一/双流字节精确/工具链轴+专用 stale 族）；永久语料 `crates/auto-lang/test/cases/ace-m2/p947-console/`（7 行双 lane：O03 双流、say、错型拒、未授权 dispatch=0、65537 预算拒）+一致性测试（含 3 个期望面变异反例控制：错字节 stdout/stderr、授权对照）。commit "feat(ace-console): ac/mn/console-run-v1 recipe, p947 corpus and TestCase wiring"。
+- **测试证据**：ace-native conformance console_lane 9/9 绿；ace-conformance console_p947 2/2 绿（语料 7 行全 Pass+Freshness Fresh）；ace-av say 冻结 lane 测试绿。组并集 `cargo t stdlib ace-console ace-source ace-av ace-native`（+ace-host 全 conformance 下行）本轮运行中/下轮补记。
+- **剩余**：T-08（四端分账表：AV/native=implemented、Rust/C=capability-missing 单列、V-08 已有主体证据）、T-09/T-10（四轴装配合同+stdlib_assembly/packages 落实+V-09/V-10/V-NATIVE）、T-04（File/Task/Stream 前探，939 Handle/Callback 契约为基）、T-05（冻结提交完整组复验）、T-06 review、T-07 merge。
+- 注意：master 主检出存在其他 Plan 的 3 个文档 WIP（roadmap/1002/1017），非本包文件未动。
+
+2026-11-13 stage: goal | plan_id: PLAN-947 | plan_revision: r9 | round: 1 | from: work | to: work | status: executing | outcome: pass-so-far（T-01..T-03 完成、组并集运行中） | worktree: D:/autostack/.wt/lang-947/auto-lang | commit: 2 实现提交（say+mn console lane；recipe+corpus+wiring） | next: work（T-08→T-09→T-10→T-04→T-05；组并集结果在 D:/autostack/plan-artifacts/plan-947/ 登记后补记 §9）
 
 2026-11-12 stage:new / PLAN-947 r9：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原10任务/全部AC与V/依赖/阶段/预算和drafting 0/10；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
@@ -379,7 +404,19 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 
 实际文档预检：Design54及六份Plan的本地链接、现存源码路径、0–10章节、七任务/六AC、Spec delta映射、drafting/0-of-7及943–948编号唯一性通过；`.next-id=949`。已核所列固定组名；相关跟踪文档`git diff --check`通过。该检查不证明任何拟议功能、产品测试或独立final review已通过。
 
+## 4.1 实施授权与 M1-TAG 门核验（2026-11-13，T-01 开工记录）
+
+用户 `/goal 完成计划947`（auto-plan-goal 链）为本包 work/review/有界修复/merge 整链授权；据 auto-plan-goal 技能，该目标即实施授权（M1-TAG 门第4条）。门核验（Design55 §1.1 四要件，全部实测非推断）：
+
+1. **M1最终组合验收核齐**：PLAN-941、PLAN-999、PLAN-1025 均已归档（docs/plans/archive/ 下实测存在）；1025 为 M1 最终收口——H=40b51f809 正式 `--acceptance` exit0（1006P/0F/0U，ARCH 49/49），C=b923362f47bc8861407e9a470d63ddfdb505982b 实际正式读回 exit0（报告 sha efd1822aa12a 与 H 相同），TAG 六门闭合 tag_ready=true（1025 §8 T-07 收据）。
+2. **已合入主线**：C=b923362f4 于 2026-11-13 经 `--no-ff` 合入 master（master 历史实测含 b923362f4、3654f89e8、84c575a54）。
+3. **正式 tag 存在**：`v0.6-ACE-M1` 为 annotated tag（tag object acc3eb5b7f50cc043194fb21d993b1a206b3c091，tagger 2026-11-13 08:36:22 +0800，subject "ACE M1 milestone v0.6-ACE-M1"），解析 commit=b923362f47bc8861407e9a470d63ddfdb505982b；`git merge-base --is-ancestor v0.6-ACE-M1 HEAD` 实测通过（当前工作基面 84c575a54 的祖先）。
+4. **实施授权 + 本包依赖**：本 /goal 即授权；PLAN-943/944/960 均已归档（实测）。
+
+r9 记录的 6 个取材 SHA256 前16 在当前 master HEAD=84c575a54 逐一重算比对全部一致（model.rs `95fbc7911a149d36`、manifest.rs `ef380114d6a21eb0`、console_host.rs `ce2788ea93e54a1e`、O03.at `cfdd28a727189e42`、ext_policy.at `374a6f4a7ec012ca`、ace-binding-and-assembly.md `6c8c8b068a3c235c`）——r9 规划基线零漂移。实施树：`git worktree add D:/autostack/.wt/lang-947/auto-lang -b plan-947-dev`（base=84c575a54）；材料 scope：`D:/autostack/plan-artifacts/plan-947/`（OWNER.md 已登记）。主检出另有 3 个其他 Plan 的文档 WIP（ace-m2-delivery-roadmap.md/1002/1017），非代码路径、非本包文件，按仓规保留不动。
+
 ## 10. 待澄清事项
+
 
 正式M1 tag名/commit与最终验收合并收据由实际交付填写；本轮未核门、未打tag。具体Storage/分配服务接口在M2实施阶段讨论，不因prelude愿景预定allocator API。
 
