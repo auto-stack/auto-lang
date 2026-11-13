@@ -7,7 +7,7 @@ created_at: 2026-11-13
 updated_at: 2026-11-13
 plan_revision: 1
 phase: M2-A
-current_step: 7
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-936, PLAN-958, PLAN-944, PLAN-947, PLAN-960, PLAN-1042]
 supersedes_spec_components: [docs/specs/stdlib/design/ace-binding-and-assembly.md, docs/specs/auto-lang/comptime/design/hash-syntax.md]
@@ -123,6 +123,7 @@ stage: goal | plan_id: PLAN-1043 | plan_revision: r1 | round: 2 | from: user | t
 2026-11-14 stage:merge / cleaned | wt-guard clean → worktree `D:/autostack/.wt/lang-1043/auto-lang` 与分支 `plan-1043-dev` 及组目录已删；plan-artifacts scope `plan-1043/` 全删（23 files/181420 bytes，无具名持有），`.retention/policy.json` 已刷新（deleted-at-merge）。输出路径对账：全部命令输出仅落 worktree 内 `target/`（随树删除）与已删 scope；无盘符外散落目录。最终状态：master tip 0ed7c4f85（delivery c6af4845b + 归档簿记），主检出仅余其他会话 docs WIP（非本包）。
 
 2026-11-14 stage:merge / r1 consolidated | plan_id: PLAN-1043 | plan_revision: 1 | outcome: pass | checkpoints: prepared(reviewed d1b38449c→rebase 全等) → landed(master ff-only = c6af4845b；rebase 旧→新映射 05ed31a2c→a9a3e8781/a55773462→2839b2af1/8ad1a30f8→1db781f39/7ef7f9919→83a170a84/d1b38449c→c6af4845b，`git range-diff` 五提交全 `=`) → canonical_verified(SD-01 docs/specs/stdlib/design/context-source-assembly.md sha256 2d8b6358…；SD-02 ace-binding-and-assembly.md 7c245a45…含 PLAN-1043 节；SD-03 auto-lang/comptime/design/hash-syntax.md 5e98a192…含 #in 节) → gate(冻结并集于交付提交：run-5w75ws9n，ace-source 518/ace-syntax 132/ace-semantics 275/ace-stdlib 2/stdlib 170/ace-a2x 235/ace-av 1091 = 2423 executed 全 PASS 0 ignore) → archived(本文件 docs/plans/archive/)。落地检查观察项：auto-lang 无部署产物消费本变更（编译器仓，release 二进制/web bundle 不随本包重建——如需发布另起任务）。批回归到期检查：last_covered=1015@2026-11-12T13:22，其后落地的 1017/1027/1042/1043 均非 5 倍数且收据 <48h → 不到期。consumers: 966（完整CTE消费本包最小#in）、967/946/972-975/1041（按覆盖合同消费装配/端口）、948（分母追加）。
+stage: goal | plan_id: PLAN-1043 | plan_revision: r1 | round: final | from: merge | to: done | status: archived | outcome: pass | worktree: (removed, guard clean) | commit: c6af4845b delivery + d80456052 closeout | next: done
 ## 10. 待澄清事项
 
 **[2026-11-13 work blocker]** T-05 的 A2PY 执行腿与 T-06 对应 ASM-05 py 行在 PLAN-1042（drafting 0/8，无 ACE Python producer；旧 `trans/python.rs` 是 ASM-05 负控不可替代）交付前无法完成。用户三选一：(a) 授权下一目标交付 1042 后回来关闭 1043；(b) 等其他会话交付 1042；(c) 修约把 A2PY 腿移出本包。**2026-11-13 用户裁定：选 (b)——暂停等待 1042 交付**；**同日 1042 已交付归档（master ab1199386，`a2x-python` crate/`PythonTargetProvider`/pyrun 落地），用户指示恢复**：worktree 同步 master（eb745b1bd），T-05 A2PY 腿改为真执行并提交（a55773462），阻塞解除。
