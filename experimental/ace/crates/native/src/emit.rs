@@ -163,6 +163,59 @@ fn has_foreign(unit: &MirModule) -> bool {
     })
 }
 
+/// PLAN-947: the console-lane admission door. Admits ONLY the host-console
+/// profile, single-function shape, no foreign calls, and every live
+/// `HostCall` must index a declared console/1 import whose symbol the
+/// shared `av-core` host contract knows. The ordinary lanes
+/// (`admit_unit`) keep rejecting the host-console profile unchanged —
+/// PLAN-863's fail-closed compat contract is not relaxed.
+pub fn admit_console_unit(unit: &MirModule) -> Result<(), MnError> {
+    if !unit.is_host_console_profile() {
+        return Err(MnError::Unsupported(
+            "profile",
+            format!(
+                "the console lane admits only the host-console profile, not `{}`",
+                unit.profile
+            ),
+        ));
+    }
+    if !unit.is_unit || unit.funcs.len() != 1 {
+        return Err(MnError::Unsupported(
+            "unit-shape",
+            "console codegen consumes single-function units only".to_string(),
+        ));
+    }
+    if has_foreign(unit) {
+        return Err(MnError::Unsupported(
+            "foreign.authority",
+            "console units cannot carry foreign calls".into(),
+        ));
+    }
+    let f = &unit.funcs[0];
+    for b in &f.blocks {
+        for i in &b.instrs {
+            if let ace_av_core::mir::MirInstr::HostCall { host, .. } = i {
+                let Some(h) = unit.host_imports.get(*host as usize) else {
+                    return Err(MnError::Unsupported(
+                        "host-console",
+                        format!("host declaration {host} is missing in the unit"),
+                    ));
+                };
+                if ace_av_core::host::signature(&h.symbol).is_none() {
+                    return Err(MnError::Unsupported(
+                        "host-console",
+                        format!("host symbol `{}` is not a console/1 symbol", h.symbol),
+                    ));
+                }
+            }
+        }
+    }
+    for imp in &unit.imports {
+        symbols::import_symbol(&unit.owner, &imp.symbol)?;
+    }
+    Ok(())
+}
+
 fn admit_unit_shape(unit: &MirModule) -> Result<(), MnError> {
     // PLAN-961: the closures profile (the numeric source surface's MIR
     // family) joins the admitted set — its numeric emission rides the
@@ -261,7 +314,17 @@ pub struct UnitObject {
 
 /// Lower and emit one verified MIR unit to a relocatable COFF object.
 pub fn emit_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
-    emit_unit_coff_impl(unit, None, None, lower::LowerMode::Numeric).map(|(object, _)| object)
+    emit_unit_coff_impl(unit, None, None, lower::LowerMode::Numeric, false)
+        .map(|(object, _)| object)
+}
+
+/// PLAN-947: lower and emit one host-console unit. Console admission is a
+/// dedicated door — the ordinary single-function lanes keep rejecting the
+/// host-console profile (the PLAN-863 compat contract is unchanged); this
+/// entry admits ONLY the host-console profile and emits console/1 host
+/// calls against the console shim import.
+pub fn emit_console_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
+    emit_unit_coff_impl(unit, None, None, lower::LowerMode::Console, true).map(|(object, _)| object)
 }
 
 /// PLAN-1000 F-1000-01 (owner option a): the trap-probe observation build
@@ -271,15 +334,22 @@ pub fn emit_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
 /// published and never production artifacts; only `MnDriver::trap_probe`
 /// links and runs them.
 pub fn emit_unit_coff_trap_probe(unit: &MirModule) -> Result<UnitObject, MnError> {
-    emit_unit_coff_impl(unit, None, None, lower::LowerMode::TrapProbe).map(|(object, _)| object)
+    emit_unit_coff_impl(unit, None, None, lower::LowerMode::TrapProbe, false)
+        .map(|(object, _)| object)
 }
 
 pub fn emit_foreign_unit_coff(
     unit: &MirModule,
     environment: &ace_foreign_contract::manual::AdmittedForeign,
 ) -> Result<UnitObject, MnError> {
-    emit_unit_coff_impl(unit, Some(environment), None, lower::LowerMode::Numeric)
-        .map(|(object, _)| object)
+    emit_unit_coff_impl(
+        unit,
+        Some(environment),
+        None,
+        lower::LowerMode::Numeric,
+        false,
+    )
+    .map(|(object, _)| object)
 }
 
 /// Keep the exact output reservation through the caller's cache handoff.
@@ -293,6 +363,7 @@ pub fn emit_foreign_unit_coff_reserved(
         Some(environment),
         Some(resources),
         lower::LowerMode::Numeric,
+        false,
     )?;
     Ok((object, reservation.expect("host-backed COFF reservation")))
 }
@@ -323,8 +394,11 @@ fn emit_unit_coff_impl(
     environment: Option<&ace_foreign_contract::manual::AdmittedForeign>,
     resources: Option<&ace_source_query::resources::Resources>,
     mode: lower::LowerMode,
+    console: bool,
 ) -> Result<(UnitObject, Option<ace_source_query::resources::Reservation>), MnError> {
-    if let Some(environment) = environment {
+    if console {
+        admit_console_unit(unit)?;
+    } else if let Some(environment) = environment {
         admit_unit_shape(unit)?;
         if let Some(resources) = resources {
             crate::foreign_lower::admit_reserved(unit, environment, resources)?;
@@ -431,6 +505,40 @@ fn emit_unit_coff_impl(
         .declare_function(&symbol, Linkage::Export, &fn_sig)
         .map_err(|e| MnError::Backend(format!("declare {symbol}: {e}")))?;
 
+    // PLAN-947: console units with a live host call target the console
+    // shim import (resolved by the shim object at the console link).
+    let console_write = if console {
+        let uses_host = f.blocks.iter().any(|b| {
+            b.instrs
+                .iter()
+                .any(|i| matches!(i, ace_av_core::mir::MirInstr::HostCall { .. }))
+        });
+        if uses_host {
+            let sig = Signature {
+                call_conv: WINCALL,
+                params: vec![
+                    AbiParam::new(cranelift_codegen::ir::types::I32),
+                    AbiParam::new(cranelift_codegen::ir::types::I64),
+                    AbiParam::new(cranelift_codegen::ir::types::I64),
+                ],
+                returns: vec![AbiParam::new(cranelift_codegen::ir::types::I32)],
+            };
+            let id = om
+                .declare_function(crate::config::CONSOLE_WRITE_SYMBOL, Linkage::Import, &sig)
+                .map_err(|e| {
+                    MnError::Backend(format!(
+                        "declare {}: {e}",
+                        crate::config::CONSOLE_WRITE_SYMBOL
+                    ))
+                })?;
+            Some(id)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let mut ctx = om.make_context();
     ctx.func.signature = fn_sig;
     lower::emit_function(
@@ -443,12 +551,11 @@ fn emit_unit_coff_impl(
         &mut ctx,
         // PLAN-961: the source lane emits in Numeric mode (the Legacy
         // surface plus the numeric carriers/ops — identical objects for
-        // numeric-free programs).
-        // PLAN-961: the source lane emits in Numeric mode (the Legacy
-        // surface plus the numeric carriers/ops — identical objects for
         // numeric-free programs). PLAN-1000: the trap probe passes
         // `TrapProbe` — the same value surface, reason-carrying traps.
+        // PLAN-947: the console lane passes `Console` with the shim ref.
         mode,
+        console_write,
     )
     .map_err(|e| MnError::Backend(e))?;
     om.define_function(fid, &mut ctx)

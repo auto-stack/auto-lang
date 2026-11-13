@@ -148,6 +148,67 @@ fn av_console_exact_source_bytes_and_result() {
 }
 
 #[test]
+fn av_console_public_say_is_frozen_stdout_str_lane() {
+    // PLAN-947: the 943-frozen public spelling `say(msg str)` routes to the
+    // console/1 stdout str lane — UTF-8 bytes plus exactly one LF (old
+    // io.vm.at say → print → auto.print_str appended exactly one '\n').
+    // str-only, stdout-only; re-binding the name is source.console-reserved.
+    let program = compile(
+        "fn main() int {\n say(\"A中😀\")\n let text Str = \"世界\"\n say(text)\n return 0\n}\n",
+        "d_main",
+    )
+    .map_err(|e| e.message)
+    .unwrap();
+    let mut cap = ConsoleCapture::default();
+    let (out, _) = program
+        .run(
+            &grants(),
+            &ExecLimits::default(),
+            &CancelFlag::new(false),
+            &mut cap,
+        )
+        .unwrap();
+    assert!(matches!(
+        out,
+        ExecOutcome::Success {
+            value: Value::I32(0),
+            ..
+        }
+    ));
+    assert_eq!(cap.stdout, "A中😀\n世界\n".as_bytes());
+    assert_eq!(cap.stderr, b"");
+    assert_eq!(cap.dispatches, 2);
+    // The stdout grant alone is enough: say never touches stderr.
+    let mut cap = ConsoleCapture::default();
+    program
+        .run(
+            &["console.stdout".to_string()],
+            &ExecLimits::default(),
+            &CancelFlag::new(false),
+            &mut cap,
+        )
+        .unwrap();
+    assert_eq!(cap.stdout, "A中😀\n世界\n".as_bytes());
+    // Wrong-type and re-binding rejections are named, not silent.
+    for (src, code) in [
+        (
+            "fn main() int { say(1); return 0 }",
+            "source.console-argument",
+        ),
+        (
+            "fn main() int { let say = 1; return say }",
+            "source.console-reserved",
+        ),
+    ] {
+        let err = match compile(src, "d_main") {
+            Err(error) => error.code,
+            Ok(_) => panic!("expected rejection: {src}"),
+        };
+        assert_eq!(err, code, "{src}");
+    }
+}
+
+#[test]
 fn av_console_provider_cannot_reenter_guest_and_scope_clears() {
     use ace_av_core::host::{ConsoleHost, HostError, Stream};
     let old = ace_core::source::compile_scalar_source("fn main() int { return 99 }", "old.at", &[])

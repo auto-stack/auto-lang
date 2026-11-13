@@ -270,9 +270,10 @@ const TOPLEVEL_IDENT_WORDS: &[&str] = &[
 
 /// 结构层首错映射：文档序最早的 error/missing 位置 → 旧诊断（首切上下文
 /// 分类：item 位 / stmt 位 / expr 位；profile 特定消息由能力事实驱动）。
-/// 旧 expect_ident 的 host-console 保留名拒绝（print/eprint）。
+/// 旧 expect_ident 的 host-console 保留名拒绝（print/eprint/say）。
 fn console_name_check(cx: &mut Cx, name: &Ident) {
-    if cx.profile == SourceProfile::HostConsole && matches!(name.name.as_str(), "print" | "eprint")
+    if cx.profile == SourceProfile::HostConsole
+        && crate::source::console::is_reserved_name(&name.name)
     {
         let span = name.span;
         cx.reject(span, move || {
@@ -3355,7 +3356,7 @@ impl<'a> Cx<'a> {
     }
     fn check_name(&mut self, id: &Ident) {
         if self.profile == SourceProfile::HostConsole
-            && matches!(id.name.as_str(), "print" | "eprint")
+            && crate::source::console::is_reserved_name(&id.name)
         {
             let span = id.span;
             self.reject(span, || {

@@ -10012,7 +10012,7 @@ impl<'a, 's> FnResolver<'a, 's> {
         }
 
         if self.profile == SourceProfile::HostConsole
-            && matches!(callee.name.as_str(), "print" | "eprint")
+            && matches!(callee.name.as_str(), "print" | "eprint" | "say")
         {
             if rargs.len() != 1 || rargs.iter().any(|a| a.name.is_some()) {
                 self.bind_err(
@@ -10030,7 +10030,12 @@ impl<'a, 's> FnResolver<'a, 's> {
             let Some(symbol) = super::console::symbol(&callee.name, arg.vt) else {
                 self.bind_err(
                     "source.console-argument",
-                    "console argument must be int, bool, str, Str or char",
+                    if callee.name.as_str() == "say" {
+                        // PLAN-947: the public spelling is frozen str-only.
+                        "say requires a str (or owned Str) argument"
+                    } else {
+                        "console argument must be int, bool, str, Str or char"
+                    },
                     call_span,
                 );
                 return ResolvedExpr {

@@ -30,6 +30,23 @@ pub const TRAP_EXIT_CODE: i32 = 70;
 /// Startup wrapper symbol (landed experiment contract).
 pub const START_SYMBOL: &str = "ac_start";
 
+// ---- PLAN-947 console lane (console/1 on the native backend) -----------
+
+/// Exit code of the console-lane resource rejection (per-call or
+/// cumulative console/1 budget exceeded, or provider write failure).
+/// Distinct from the frozen trap exit 70; console corpus entry results
+/// keep away from both codes by contract.
+pub const CONSOLE_REJECT_EXIT_CODE: i32 = 71;
+/// The console shim symbol every console unit's HostCall emission
+/// targets; defined once per console link by the shim object (kernel32
+/// GetStdHandle/WriteFile + the cumulative run-byte counter).
+pub const CONSOLE_WRITE_SYMBOL: &str = "mn_console_write";
+/// Cumulative console output counter (writable data symbol in the shim).
+pub const CONSOLE_RUN_BYTES_SYMBOL: &str = "mn_console_run_bytes";
+/// Unit-local console staging scratch (fill→dispatch window holds no
+/// guest call; one private copy per emitted console unit).
+pub const CONSOLE_SCRATCH_SYMBOL: &str = "mn_console_scratch";
+
 // ---- PLAN-891 typed-data ABI / transport identities (freeze T-02) -------
 //
 // An INDEPENDENT, versioned mn-private typed ABI — deliberately NOT the

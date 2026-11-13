@@ -61,6 +61,14 @@ pub enum LowerMode {
     /// production pipeline still lowers `Numeric` and its objects keep
     /// their frozen bytes.
     TrapProbe,
+    /// PLAN-947: the console lane — the `Legacy` value surface plus the
+    /// console/1 `HostCall` emission. A host call formats its single
+    /// argument guest-side (decimal/bool/UTF-8/bytes plus exactly one LF),
+    /// enforces the per-call console/1 byte budget, and dispatches to the
+    /// shim (`mn_console_write`), which keeps the cumulative run budget
+    /// and performs one atomic OS write per call. Non-zero shim status
+    /// exits with the console reject code; nothing half-commits.
+    Console,
 }
 
 impl LowerMode {
@@ -100,6 +108,7 @@ pub fn emit_function(
     exit_id: cranelift_module::FuncId,
     ctx: &mut cranelift_codegen::Context,
     mode: LowerMode,
+    console_write: Option<cranelift_module::FuncId>,
 ) -> Result<(), String> {
     let f = &unit.funcs[0];
 
@@ -269,9 +278,13 @@ pub fn emit_function(
         outlen_slot: None,
         trap_block: None,
         typed_trap_block: None,
+        console_write: None,
+        console_scratch: None,
+        console_reject_block: None,
         blocks,
     };
     fx.sweep_live = !fx.sweep.is_empty();
+    fx.console_write = console_write.map(|id| fx.om.declare_func_in_func(id, fx.fb.func));
     let _ = AV_DATA_PROFILE; // profile intent documented above; admission lives in emit.rs
 
     // Function refs for imports.
@@ -443,6 +456,23 @@ pub fn emit_function(
             .ins()
             .trap(TrapCode::user(1).expect("valid user trap code"));
     }
+    // PLAN-947 console reject block: the console/1 resource budget was
+    // exceeded (per-call guard or shim status). Mirrors AV's resource
+    // outcome — no guest sweep, the process exits with the reject code.
+    if let Some(blk) = fx.console_reject_block.take() {
+        fx.fb.switch_to_block(blk);
+        fx.fb.seal_block(blk);
+        let code = fx
+            .fb
+            .ins()
+            .iconst(types::I32, crate::config::CONSOLE_REJECT_EXIT_CODE as i64);
+        let exit_ref = fx.om.declare_func_in_func(fx.exit_id, fx.fb.func);
+        fx.fb.ins().call(exit_ref, &[code]);
+        // never reached (ExitProcess); any trap code suffices
+        fx.fb
+            .ins()
+            .trap(TrapCode::user(1).expect("valid user trap code"));
+    }
     drop(fx);
     fb.finalize();
     Ok(())
@@ -563,6 +593,12 @@ struct FnLowerer<'a, 'b> {
     trap_block: Option<cranelift_codegen::ir::Block>,
     /// Typed trap block (one i32 param = bounded reason; typed mode only).
     typed_trap_block: Option<(cranelift_codegen::ir::Block, FuncRef)>,
+    /// PLAN-947: console shim call ref (console mode only).
+    console_write: Option<FuncRef>,
+    /// PLAN-947: unit-local console staging scratch (declared+defined once).
+    console_scratch: Option<cranelift_module::DataId>,
+    /// PLAN-947: console resource-reject exit block (console mode only).
+    console_reject_block: Option<cranelift_codegen::ir::Block>,
     blocks: Vec<cranelift_codegen::ir::Block>,
 }
 
@@ -784,7 +820,372 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             .get_or_insert_with(|| self.fb.create_block())
     }
 
-    /// The all-exit sweep (freeze §2), emitted at every trap branch and
+    /// PLAN-947: the console resource-reject exit (per-call budget, shim
+    /// status). AV aborts a resource outcome without guest cleanup; the
+    /// native mirror exits with [`crate::config::CONSOLE_REJECT_EXIT_CODE`]
+    /// and no buffer sweep — the process dies with its memory either way.
+    fn ensure_console_reject_block(&mut self) -> cranelift_codegen::ir::Block {
+        *self
+            .console_reject_block
+            .get_or_insert_with(|| self.fb.create_block())
+    }
+
+    /// `brif(cond → reject, else cont)`; the continuation is sealed and
+    /// becomes the current block (single-predecessor shape).
+    fn console_guard(&mut self, cond: cranelift_codegen::ir::Value) -> Result<(), String> {
+        let reject = self.ensure_console_reject_block();
+        let cont = self.fb.create_block();
+        self.fb.ins().brif(cond, reject, &[], cont, &[]);
+        self.fb.switch_to_block(cont);
+        self.fb.seal_block(cont);
+        Ok(())
+    }
+
+    fn console_write_ref(&mut self) -> Result<FuncRef, String> {
+        if let Some(r) = self.console_write {
+            return Ok(r);
+        }
+        Err("console host call emitted without the console shim import".into())
+    }
+
+    /// Store one byte constant at `base + offset` (I64 byte pointer).
+    fn console_putc(
+        &mut self,
+        base: cranelift_codegen::ir::Value,
+        offset: cranelift_codegen::ir::Value,
+        byte: i64,
+    ) {
+        let b = self.fb.ins().iconst(types::I8, byte);
+        let addr = self.fb.ins().iadd(base, offset);
+        self.fb
+            .ins()
+            .store(cranelift_codegen::ir::MemFlags::trusted(), b, addr, 0);
+    }
+
+    /// PLAN-947 console/1 host-call emission. Mirrors the AV interpreter
+    /// arm exactly: guest-side formatting (bytes + exactly one LF), the
+    /// per-call budget (formatted length including the LF <= 65536), then
+    /// ONE shim dispatch that atomically writes and keeps the cumulative
+    /// run budget. A rejected call exits with the console reject code and
+    /// performs no partial write.
+    fn emit_console_host_call(&mut self, host: u32, arg: u32) -> Result<(), String> {
+        use cranelift_codegen::ir::condcodes::IntCC;
+        let flags = MemFlags::trusted();
+        let Some(h) = self.unit.host_imports.get(host as usize) else {
+            return Err(format!("console host declaration {host} is missing"));
+        };
+        let Some((_, stream)) = ace_av_core::host::signature(&h.symbol) else {
+            return Err(format!(
+                "host symbol `{}` is not a console/1 symbol",
+                h.symbol
+            ));
+        };
+        let stream_id = match stream {
+            ace_av_core::host::Stream::Stdout => 0i64,
+            ace_av_core::host::Stream::Stderr => 1,
+        };
+        // Formatting happens in a unit-local scratch data object (the
+        // fill→dispatch window contains no guest call, so a shared scratch
+        // is safe even under recursion; a 64 KiB stack slot would skip the
+        // stack guard page on win-x64 without probe support).
+        let buf = match self.console_scratch {
+            Some(id) => id,
+            None => {
+                let id = self
+                    .om
+                    .declare_data(
+                        crate::config::CONSOLE_SCRATCH_SYMBOL,
+                        Linkage::Local,
+                        true,
+                        false,
+                    )
+                    .map_err(|e| format!("declare console scratch: {e}"))?;
+                let mut init = cranelift_module::DataDescription::new();
+                init.define_zeroinit(ace_av_core::host::MAX_CALL_BYTES);
+                self.om
+                    .define_data(id, &init)
+                    .map_err(|e| format!("define console scratch: {e}"))?;
+                self.console_scratch = Some(id);
+                id
+            }
+        };
+        let buf_in_func = self.om.declare_data_in_func(buf, self.fb.func);
+        let buf_base = self.fb.ins().symbol_value(types::I64, buf_in_func);
+        let arg_ty = self
+            .unit
+            .types
+            .get(self.slot_ty(arg) as usize)
+            .cloned()
+            .ok_or_else(|| format!("console argument slot {arg} type missing"))?;
+        // (addr, total): the start address and total length (bytes + LF).
+        let (addr, total): (Value, Value) = match arg_ty {
+            MirType::I32 => {
+                // Decimal ASCII without plus/leading zeros; MIN keeps its
+                // sign via the unsigned magnitude of two's complement
+                // (0 - MIN wraps to 2147483648u32 exactly).
+                let v = self.fb.use_var(self.v_scalar(arg)?);
+                let zero = self.fb.ins().iconst(types::I32, 0);
+                let neg = self.fb.ins().icmp(IntCC::SignedLessThan, v, zero);
+                let neg = self.fb.ins().uextend(types::I32, neg);
+                let negated = self.fb.ins().isub(zero, v);
+                let mag0 = self.fb.ins().select(neg, negated, v);
+                let ten = self.fb.ins().iconst(types::I32, 10);
+                let loop_blk = self.fb.create_block();
+                let done_blk = self.fb.create_block();
+                self.fb.append_block_param(loop_blk, types::I64); // cursor
+                self.fb.append_block_param(loop_blk, types::I32); // magnitude
+                self.fb.append_block_param(done_blk, types::I32); // neg
+                let start11 = self.fb.ins().iconst(types::I64, 11);
+                self.fb.ins().jump(loop_blk, &[start11.into(), mag0.into()]);
+                self.fb.switch_to_block(loop_blk);
+                let cursor0 = self.fb.block_params(loop_blk)[0];
+                let mag = self.fb.block_params(loop_blk)[1];
+                let one64 = self.fb.ins().iconst(types::I64, 1);
+                let cursor = self.fb.ins().isub(cursor0, one64);
+                let digit = self.fb.ins().urem(mag, ten);
+                let bias = self.fb.ins().iconst(types::I32, b'0' as i64);
+                let ascii = self.fb.ins().iadd(digit, bias);
+                let byte = self.fb.ins().ireduce(types::I8, ascii);
+                let slot_addr = self.fb.ins().iadd(buf_base, cursor);
+                self.fb.ins().store(flags, byte, slot_addr, 0);
+                let next_mag = self.fb.ins().udiv(mag, ten);
+                let more = self.fb.ins().icmp(IntCC::NotEqual, next_mag, zero);
+                self.fb.ins().brif(
+                    more,
+                    loop_blk,
+                    &[cursor.into(), next_mag.into()],
+                    done_blk,
+                    &[neg.into()],
+                );
+                self.fb.seal_block(loop_blk);
+                self.fb.switch_to_block(done_blk);
+                self.fb.seal_block(done_blk);
+                let neg = self.fb.block_params(done_blk)[0];
+                // Always reserve/emit the sign cell: outside the reported
+                // range when positive (cursor stays >= 1 after <=10 digits).
+                let sign_at = self.fb.ins().isub(cursor, one64);
+                let sign_addr = self.fb.ins().iadd(buf_base, sign_at);
+                let minus = self.fb.ins().iconst(types::I8, b'-' as i64);
+                self.fb.ins().store(flags, minus, sign_addr, 0);
+                let start = self.fb.ins().select(neg, sign_at, cursor);
+                let at11 = self.fb.ins().iconst(types::I64, 11);
+                self.console_putc(buf_base, at11, b'\n' as i64);
+                // digits occupy [start ..= 10], LF at 11
+                let digits = self.fb.ins().isub(at11, start);
+                let total = self.fb.ins().iadd(digits, one64);
+                let addr = self.fb.ins().iadd(buf_base, start);
+                (addr, total)
+            }
+            MirType::Bool => {
+                // `true`/`false` exactly; bytes 0..5 via per-byte selects so
+                // no dead-store ordering can leak the wrong spelling.
+                let v = self.fb.use_var(self.v_scalar(arg)?);
+                let one = self.fb.ins().iconst(types::I32, 1);
+                let is_true = self.fb.ins().icmp(IntCC::Equal, v, one);
+                let pairs = [
+                    (b't' as i64, b'f' as i64),
+                    (b'r' as i64, b'a' as i64),
+                    (b'u' as i64, b'l' as i64),
+                    (b'e' as i64, b's' as i64),
+                    (-1i64, b'e' as i64), // unused when true (len = 4)
+                ];
+                for (i, (t, f)) in pairs.into_iter().enumerate() {
+                    let tv = self.fb.ins().iconst(types::I8, t);
+                    let fv = self.fb.ins().iconst(types::I8, f);
+                    let sel = self.fb.ins().select(is_true, tv, fv);
+                    let off = self.fb.ins().iconst(types::I64, i as i64);
+                    let at = self.fb.ins().iadd(buf_base, off);
+                    self.fb.ins().store(flags, sel, at, 0);
+                }
+                let len4 = self.fb.ins().iconst(types::I64, 4);
+                let len5 = self.fb.ins().iconst(types::I64, 5);
+                let len = self.fb.ins().select(is_true, len4, len5);
+                self.console_putc(buf_base, len, b'\n' as i64);
+                let one64 = self.fb.ins().iconst(types::I64, 1);
+                let total = self.fb.ins().iadd(len, one64);
+                (buf_base, total)
+            }
+            MirType::Char => {
+                // UTF-8 of the Unicode scalar (verify excluded surrogates);
+                // branch chain over the encoding width.
+                let c = self.fb.use_var(self.v_scalar(arg)?);
+                let c64 = self.fb.ins().uextend(types::I64, c);
+                let shift6 = self.fb.ins().iconst(types::I64, 6);
+                let shift12 = self.fb.ins().iconst(types::I64, 12);
+                let shift18 = self.fb.ins().iconst(types::I64, 18);
+                let shift0 = self.fb.ins().iconst(types::I64, 0);
+                let mask6 = self.fb.ins().iconst(types::I64, 0x3F);
+                let lead80 = self.fb.ins().iconst(types::I64, 0x80);
+                let b1 = self.fb.create_block();
+                let b2chk = self.fb.create_block();
+                let b2 = self.fb.create_block();
+                let b3chk = self.fb.create_block();
+                let b3 = self.fb.create_block();
+                let b4 = self.fb.create_block();
+                let cont = self.fb.create_block();
+                self.fb.append_block_param(cont, types::I32); // length
+                let cond1 = self.fb.ins().icmp_imm(IntCC::UnsignedLessThan, c, 0x80);
+                self.fb.ins().brif(cond1, b1, &[], b2chk, &[]);
+                self.fb.seal_block(b1);
+                self.fb.seal_block(b2chk);
+                self.fb.switch_to_block(b1);
+                {
+                    let byte = self.fb.ins().ireduce(types::I8, c);
+                    self.fb.ins().store(flags, byte, buf_base, 0);
+                    let len1 = self.fb.ins().iconst(types::I32, 1);
+                    self.fb.ins().jump(cont, &[len1.into()]);
+                }
+                self.fb.switch_to_block(b2chk);
+                let cond2 = self.fb.ins().icmp_imm(IntCC::UnsignedLessThan, c, 0x800);
+                self.fb.ins().brif(cond2, b2, &[], b3chk, &[]);
+                self.fb.seal_block(b2);
+                self.fb.seal_block(b3chk);
+                self.fb.switch_to_block(b2);
+                {
+                    let lead = self.fb.ins().ushr(c64, shift6);
+                    let tagc0 = self.fb.ins().iconst(types::I64, 0xC0);
+                    let l2 = self.fb.ins().bor(tagc0, lead);
+                    let b0 = self.fb.ins().ireduce(types::I8, l2);
+                    self.fb.ins().store(flags, b0, buf_base, 0);
+                    let shifted = self.fb.ins().ushr(c64, shift0);
+                    let low6 = self.fb.ins().band(shifted, mask6);
+                    let tail = self.fb.ins().bor(lead80, low6);
+                    let tb = self.fb.ins().ireduce(types::I8, tail);
+                    let off1 = self.fb.ins().iconst(types::I64, 1);
+                    let at1 = self.fb.ins().iadd(buf_base, off1);
+                    self.fb.ins().store(flags, tb, at1, 0);
+                    let len2 = self.fb.ins().iconst(types::I32, 2);
+                    self.fb.ins().jump(cont, &[len2.into()]);
+                }
+                self.fb.switch_to_block(b3chk);
+                let cond3 = self.fb.ins().icmp_imm(IntCC::UnsignedLessThan, c, 0x10000);
+                self.fb.ins().brif(cond3, b3, &[], b4, &[]);
+                self.fb.seal_block(b3);
+                self.fb.seal_block(b4);
+                self.fb.switch_to_block(b3);
+                {
+                    let lead = self.fb.ins().ushr(c64, shift12);
+                    let tage0 = self.fb.ins().iconst(types::I64, 0xE0);
+                    let l3 = self.fb.ins().bor(tage0, lead);
+                    let b0 = self.fb.ins().ireduce(types::I8, l3);
+                    self.fb.ins().store(flags, b0, buf_base, 0);
+                    let s1 = self.fb.ins().ushr(c64, shift6);
+                    let low1 = self.fb.ins().band(s1, mask6);
+                    let m1 = self.fb.ins().bor(lead80, low1);
+                    let mb1 = self.fb.ins().ireduce(types::I8, m1);
+                    let off1 = self.fb.ins().iconst(types::I64, 1);
+                    let at1 = self.fb.ins().iadd(buf_base, off1);
+                    self.fb.ins().store(flags, mb1, at1, 0);
+                    let s2 = self.fb.ins().ushr(c64, shift0);
+                    let low2 = self.fb.ins().band(s2, mask6);
+                    let m2 = self.fb.ins().bor(lead80, low2);
+                    let mb2 = self.fb.ins().ireduce(types::I8, m2);
+                    let off2 = self.fb.ins().iconst(types::I64, 2);
+                    let at2 = self.fb.ins().iadd(buf_base, off2);
+                    self.fb.ins().store(flags, mb2, at2, 0);
+                    let len3 = self.fb.ins().iconst(types::I32, 3);
+                    self.fb.ins().jump(cont, &[len3.into()]);
+                }
+                self.fb.switch_to_block(b4);
+                {
+                    let lead = self.fb.ins().ushr(c64, shift18);
+                    let tagf0 = self.fb.ins().iconst(types::I64, 0xF0);
+                    let l4 = self.fb.ins().bor(tagf0, lead);
+                    let b0 = self.fb.ins().ireduce(types::I8, l4);
+                    self.fb.ins().store(flags, b0, buf_base, 0);
+                    let s1 = self.fb.ins().ushr(c64, shift12);
+                    let low1 = self.fb.ins().band(s1, mask6);
+                    let m1 = self.fb.ins().bor(lead80, low1);
+                    let mb1 = self.fb.ins().ireduce(types::I8, m1);
+                    let off1 = self.fb.ins().iconst(types::I64, 1);
+                    let at1 = self.fb.ins().iadd(buf_base, off1);
+                    self.fb.ins().store(flags, mb1, at1, 0);
+                    let s2 = self.fb.ins().ushr(c64, shift6);
+                    let low2 = self.fb.ins().band(s2, mask6);
+                    let m2 = self.fb.ins().bor(lead80, low2);
+                    let mb2 = self.fb.ins().ireduce(types::I8, m2);
+                    let off2 = self.fb.ins().iconst(types::I64, 2);
+                    let at2 = self.fb.ins().iadd(buf_base, off2);
+                    self.fb.ins().store(flags, mb2, at2, 0);
+                    let s3 = self.fb.ins().ushr(c64, shift0);
+                    let low3 = self.fb.ins().band(s3, mask6);
+                    let m3 = self.fb.ins().bor(lead80, low3);
+                    let mb3 = self.fb.ins().ireduce(types::I8, m3);
+                    let off3 = self.fb.ins().iconst(types::I64, 3);
+                    let at3 = self.fb.ins().iadd(buf_base, off3);
+                    self.fb.ins().store(flags, mb3, at3, 0);
+                    let len4 = self.fb.ins().iconst(types::I32, 4);
+                    self.fb.ins().jump(cont, &[len4.into()]);
+                }
+                self.fb.switch_to_block(cont);
+                self.fb.seal_block(cont);
+                let len = self.fb.block_params(cont)[0];
+                let len64 = self.fb.ins().uextend(types::I64, len);
+                self.console_putc(buf_base, len64, b'\n' as i64);
+                let one64 = self.fb.ins().iconst(types::I64, 1);
+                let total = self.fb.ins().iadd(len64, one64);
+                (buf_base, total)
+            }
+            MirType::Str | MirType::StrView => {
+                // Raw UTF-8 bytes (embedded NUL/newlines preserved), then LF.
+                let ptr = self.use_ptr(arg)?;
+                let len32 = self.use_len(arg)?;
+                let len = self.fb.ins().uextend(types::I64, len32);
+                let loop_blk = self.fb.create_block();
+                let done_blk = self.fb.create_block();
+                self.fb.append_block_param(loop_blk, types::I64); // i
+                let i0 = self.fb.ins().iconst(types::I64, 0);
+                self.fb.ins().jump(loop_blk, &[i0.into()]);
+                self.fb.switch_to_block(loop_blk);
+                let i = self.fb.block_params(loop_blk)[0];
+                let more = self.fb.ins().icmp(IntCC::UnsignedLessThan, i, len);
+                let body = self.fb.create_block();
+                self.fb.ins().brif(more, body, &[], done_blk, &[]);
+                self.fb.seal_block(body);
+                self.fb.switch_to_block(body);
+                {
+                    let src = self.fb.ins().iadd(ptr, i);
+                    let byte = self.fb.ins().load(types::I8, flags, src, 0);
+                    let dst = self.fb.ins().iadd(buf_base, i);
+                    self.fb.ins().store(flags, byte, dst, 0);
+                    let one64 = self.fb.ins().iconst(types::I64, 1);
+                    let next = self.fb.ins().iadd(i, one64);
+                    self.fb.ins().jump(loop_blk, &[next.into()]);
+                }
+                self.fb.seal_block(loop_blk);
+                self.fb.seal_block(done_blk);
+                self.fb.switch_to_block(done_blk);
+                self.console_putc(buf_base, len, b'\n' as i64);
+                let one64 = self.fb.ins().iconst(types::I64, 1);
+                let total = self.fb.ins().iadd(len, one64);
+                (buf_base, total)
+            }
+            other => {
+                return Err(format!(
+                    "console argument type {other:?} is outside the console/1 lanes"
+                ))
+            }
+        };
+        // Per-call budget (AV: len incl. LF > MAX_CALL_BYTES rejects before
+        // any dispatch - dispatch count zero, nothing half-committed).
+        let limit = self
+            .fb
+            .ins()
+            .iconst(types::I64, ace_av_core::host::MAX_CALL_BYTES as i64);
+        let over = self.fb.ins().icmp(IntCC::UnsignedGreaterThan, total, limit);
+        self.console_guard(over)?;
+        // Single atomic shim dispatch: the shim keeps the cumulative run
+        // budget and performs one OS write for the whole line.
+        let shim = self.console_write_ref()?;
+        let stream_v = self.fb.ins().iconst(types::I32, stream_id);
+        let call = self.fb.ins().call(shim, &[stream_v, addr, total]);
+        let status = self.fb.inst_results(call)[0];
+        let zero32 = self.fb.ins().iconst(types::I32, 0);
+        let failed = self.fb.ins().icmp(IntCC::NotEqual, status, zero32);
+        self.console_guard(failed)?;
+        Ok(())
+    }
+
     /// at Return (minus the escaping result slot). Null pointers are
     /// no-op frees at the runtime boundary; scalar-only functions emit
     /// nothing.
@@ -933,6 +1334,8 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         self.branch_to_trap_on(cond, 0);
     }
 
+    /// Range-check an I64-domain value against the int type's bounds and
+    /// reduce to the carrier (checked narrowing / arithmetic result).
     /// Range-check an I64-domain value against the int type's bounds and
     /// reduce to the carrier (checked narrowing / arithmetic result).
     fn checked_reduce(
@@ -2662,6 +3065,9 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 return Err(
                     "av.closures/1 instructions are outside the mn scalar surface".to_string(),
                 );
+            }
+            MirInstr::HostCall { host, arg } if self.mode == LowerMode::Console => {
+                self.emit_console_host_call(*host, *arg)?;
             }
             MirInstr::HostCall { .. } => {
                 return Err("av.host-console/1 calls are outside the native surface".into())

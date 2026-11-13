@@ -25,6 +25,7 @@ pub mod collections_observe;
 pub mod collections_runtime;
 pub mod collections_workload;
 pub mod config;
+pub mod console;
 pub mod driver;
 pub mod emit;
 pub mod entry;

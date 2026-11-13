@@ -1186,6 +1186,12 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
             return Err(format!("unit `{}`: unresolved type closure", f.name));
         }
 
+        // PLAN-947: console host declarations travel with the units that
+        // reference them (index-remapped, deduplicated) so the native
+        // per-function split carries the same console/1 admission facts
+        // the whole module was verified against.
+        let mut host_map: std::collections::BTreeMap<u32, u32> = std::collections::BTreeMap::new();
+
         // Rewrite instructions into unit-local indices.
         let mut blocks = f.blocks.clone();
         for b in blocks.iter_mut() {
@@ -1255,6 +1261,15 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
                             *callee = CalleeRef::Import(idx);
                         }
                     },
+                    MirInstr::HostCall { host, .. } => {
+                        let next = unit.host_imports.len() as u32;
+                        let local = *host_map.entry(*host).or_insert(next);
+                        if unit.host_imports.len() == local as usize {
+                            unit.host_imports
+                                .push(m.host_imports[*host as usize].clone());
+                        }
+                        *host = local;
+                    }
                     _ => {}
                 }
             }

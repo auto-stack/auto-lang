@@ -40,6 +40,8 @@ mod collections_source_tier;
 mod collections_typed_tier;
 #[path = "cases/collections_workload_tier.rs"]
 mod collections_workload_tier;
+#[path = "cases/console_lane.rs"]
+mod console_lane;
 #[path = "cases/data_owned_tier.rs"]
 mod data_owned_tier;
 #[path = "cases/first_case.rs"]

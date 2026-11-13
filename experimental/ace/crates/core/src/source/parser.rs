@@ -659,7 +659,7 @@ impl<'s> Parser<'s> {
                 self.pos += 1;
                 self.last_line = line;
                 if self.surface == SourceProfile::HostConsole
-                    && matches!(name.as_str(), "print" | "eprint")
+                    && super::console::is_reserved_name(&name)
                 {
                     return Err(Diagnostic::new(
                         Stage::Text,
