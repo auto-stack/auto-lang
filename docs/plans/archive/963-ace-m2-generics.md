@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-13
 plan_revision: 5
-current_step: 7
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-960, PLAN-962, PLAN-935]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -310,7 +310,7 @@ T-01先交语法/旧新义务表、类型/实例/约束模块图和三个全链�
 
 ## 8. 执行步骤
 
-当前 7/8 完成（T-01..T-05、T-08、T-06 已闭；T-07 清树/证据折叠进行中）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
+当前 8/8 完成，已归档（终态）。T-01..T-08 全闭；B（全产品替换）为 985/A 后续义务，保持 pending，不因 A 归档改 NA。
 
 ### M2-A：能力与必要真实验证
 
@@ -328,7 +328,7 @@ T-01先交语法/旧新义务表、类型/实例/约束模块图和三个全链�
 
 - [x] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。 已完成：规范增量落盘（m2-generics.md + SD-07）→ rebase → `--ff-only` 合回 master=`e609c00b1` → merge 门禁 run-75rc7n2x 全绿（见 §9 merge receipt）。
 
-- [ ] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
+- [x] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。 已完成：merge receipt/cleaned 收据入 §9；plan-artifacts/plan-963 全删（18 文件/266KB）；retention 刷新无持有；wt-guard clean 后 worktree/分支/组目录（含 auto-down 兄弟）清除（见 §9 merge receipt）。
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
@@ -366,7 +366,19 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
   42/300/5/42 + `point-negative`/`bound-missing` 负控 diag）。覆盖 rebase 触碰的
   `profiles_927.rs`（profiles_declared_set_is_exact 等在 132 内）与 963 语料四端接线；
   `discovery_complete=False` 为发现面标记，不影响执行终态。
-- **archived/cleaned**：见本文件归档记录与 §9 末条。
+- **archived**：计划文件 `git mv` → `docs/plans/archive/963-ace-m2-generics.md`，
+  `status: archived`，簿记提交 `ef3f9d2f6`（`docs(plan): archive PLAN-963 ...`，master tip），
+  文档/计划簿记均已在默认分支入库。
+- **cleaned**：worktree `D:/autostack/.wt/lang-963/auto-lang` 复检 clean、`master..HEAD=0`；
+  `wt-guard.sh` 输出 **clean**（`/mnt/d/autostack/wt-guard.sh /mnt/d/autostack/.wt/lang-963/auto-lang`）
+  → `git worktree remove` + `git branch -d plan-963-dev`（was `e609c00b1`）；
+  auto-down 兄弟 worktree `.wt/lang-963/auto-down` 从 auto-down 仓库 `worktree remove`（detached
+  `58ea33f` 同 master，prunable，零改动）→ 组目录删除。`plan-artifacts/plan-963/` 整个 scope
+  删除（18 文件 / 266KB：commit-msg 草稿、run 日志、`t01-design-freeze.md`，摘要已折叠入本文件
+  §5.5/§9）；`.retention/policy.json` 刷新（`plans` 新增 deleted-at-merge 记录、
+  `merge_closeouts`/`last_merge_closeout`/`last_merge_cleanup` = PLAN-963，无具名持有）。
+- **batch regression due check**：不 due——963 % 5 ≠ 0 且 `.last-batch-regression.json`
+  收据（2026-11-12T13:22+08:00，last_covered 1015）距今 <48h。
 
 2026-11-13 stage:review·T-05 独立复审（同树自审，未派 agent；结论绑定终树提交 `f1d63cdf0` + 终树并集 `run-2v_8abue`；早期 `03b5a30f8`/`run-ghf902pr` 的证据面已被其后的补强提交覆盖，按"过程观察不计"处理）/ PLAN-963 r5：
 
