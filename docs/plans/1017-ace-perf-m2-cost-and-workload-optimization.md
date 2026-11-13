@@ -329,9 +329,9 @@ put_artifact 每发布全库 space() 扫描（O(n²) 候选）、语法流式 st
   owned_text 35.3；layout 六例全 ≤8.5s（128MiB 直写本就快）；a2x 三例 ≤14.2s。
 - **全套 94 例实测总和 ≈3803s（负载上限，扣除 av 测试内冷构建 231.6s 假象后 ≈3571s；
   空闲估计 ~3000-3300s）**。Top 残余：cold_set 514（填充段编译Bound ~450s）、
-  sd911 382、**abi_recipe_formal_turnaround 314.1（932 期同测试 29.4s，测试文件自 896 未改——
-  10× 差异待归因：被消费 TestCase/case-parent 路径回归 vs 当日负载下步进截止重试放大；
-  需空闲窗口单例复测或基线对照，具名待核）**、closures_native 274、comptime 双 resource 
+  sd911 382、**abi_recipe_formal_turnaround 314.1 负载值 → 空闲单例复测 52.97s（已归因：
+  当日负载下步进截止/重试放大 ~6×，非回归非本包引入；与 932 期 29.4s 的 ~1.8× 差为
+  被消费路径自然漂移+冷缓存）**、closures_native 274、comptime 双 resource 
   277+155（每调用整编译Bound）、abi_resource939 175、turnaround_tier 三例 310、
   body_edit_gate 109、ac_av_probe 107。
 - **十倍可行性初判（待 T-03 正式冻结）**：已落地修复+裁剪合计约 -1200s（syntax -553、
