@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1017
-status: execution_done
+status: reviewed
 feature_name: M2 ace-perf串行套件成本与压力负载优化
 author: [Codex]
 created_at: 2026-11-12
@@ -435,6 +435,26 @@ passf-modules-dedup.json，同 ace-perf profile/特征/串行配置）**：
   本机常态负载下不可达，缺口 ~300s 对应后继包产品项（cranelift emit ~200s、
   closure-lane 每调用复用 ~100s）。总门值需用户裁定（§10）。
 
+2026-11-14 stage:review | review_scope:**final** | reviewer:同会话复审（auto-plan-goal 授权链；
+独立性受限已声明——结论自工件重建：diff 清单/冻结收据/运行产物 JSON 重读核验，非采信执行者摘要）|
+plan_id:PLAN-1017 | plan_revision:r6 | outcome:**pass** |
+worktree:`D:/autostack/.wt/lang-1017/auto-lang` branch `codex/plan-1017-dev` |
+reviewed_commit:HEAD（code=`d71b6a19b`，spec=`020220ac6`+F-R1 两修复提交）| base_commit:`42874419a` |
+dependency_revisions:无跨仓 | spec_inputs:module-selection/ace-test-policy/frozen-cache 现版+r6 对齐后草案 |
+acceptance_results:AC-01✅(S0 冻结 94 项+身份，t01-s0-freeze.json selected=94)/AC-02✅(4 常驻 ignored
+探针≤60s 带预算断言)/AC-03✅(批发布+批冻结发布+A17 memo+supersede+流式记忆化+FieldSet+四项裁剪，
+实测收益台账)/AC-04✅(逐裁剪断言族保持；串行/平台/ignore/预算不变)/AC-05✅(r6 口径：逐模块分跑
+干净校正 ≈3345s≤3600s；原始值透明)/AC-06✅(Pass D/E/F 真实终态+红项归属：D-932-1 既有债、
+6 项 master 基线红经主检出复跑归属、争用红隔离重放绿) |
+pending_closeout_gates:merge 冻结并集核对（受影响组已在最终代码提交上绿：ace-native/
+worker/case-ac-mn ✓、ace-host 155/161（6 红=master 基线）、ace-comptime ✓（清理提交后复跑）；
+文档变更无门）|
+findings:**F-R1**（规范增量 r5→r6 过期+SD-02 声明的 module-selection 未触及——needs_fix，
+本轮已修：三份规范对齐 r6 裁定并提交；纯文档修复，代码判决不受影响）|
+evidence:§0 r5/r6+§9 Pass B/C/D/E/F 内联台账；plan-artifacts/plan-1017/{t01-s0-freeze.json,
+passb-*.log,passC-full-aceperf.log,passD-*.json,passf/passf-modules-dedup.json}；
+diff 17 文件 +1766/−326 核验；src 无新增调试输出；ace-av/av-core 警告为基线既有（diff 未触）|
+next:merge（T-09）。
 2026-11-14 stage:new | PLAN-1017 r6 | outcome:pass | 用户裁定直录：AC-05 总门修订
 ≤3600s（负载上限），验收=逐模块分跑口径（Pass F 干净校正 ≈3345s 达标）；不再重跑；
 剩余优化延后至 ACE M2 完成后。next:work 收口。
