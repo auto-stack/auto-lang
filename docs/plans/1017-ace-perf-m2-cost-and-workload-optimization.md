@@ -341,6 +341,22 @@ put_artifact 每发布全库 space() 扫描（O(n²) 候选）、语法流式 st
   release 化或 lane 复用语义修订）或修订目标——按 §5.1 走 needs_replan 明确修订，
   不静默降标。
 
+**Pass C 全量正式跑（2026-11-13 14:57-16:01，空闲窗口起跑，官方 `cargo t ace-perf`，run-uch9be9z）**：
+- 94 例串行执行墙钟 **≈3845s（64 分钟）**，驱动总墙钟 4373.8s（含工具准备/冷构建）；
+  932 期 61 例 ≈4900s → 同集 60 例现值 ≈3000s（**同集约 1.6×**），且套件从 61 例长到 94 例。
+- 结果：89 绿 + 5 红 → **4 红隔离重放全绿**（release_gate_2000 29.7s、body_edit_gate 111.4s、
+  closures_native 295.6s、owned_text 34.8s；归因=64 分钟持续串行负载下墙钟门/P90 门/exe Deadline
+  膨胀，非代码失败，按环境归因记录）；唯一持久红=`turnaround_native_six_scenarios_p95_gates`
+  =**D-932-1 既有基座债**（932 期已具名，独立 owner，非本包引入）。
+- **工作阶段结论（needs_replan 依据）**：AC-05 总十倍目标在现合同（debug 档、closure lane
+  逐调用整编译语义、30 样本统计义务、冻结字节规模）下不可达；已交付：syntax 8.4×、
+  injected_spike 19.6×、resident_degrade 6.4×、churn 段 -190s、发布路径 O(n²)→批量、
+  以及完整成本台账（94 例逐例实测+归因）。候选后续（需用户裁定）：
+  (a) 修订目标为模块级/总时长合理值（如全量 ≤1800-2400s + 逐模块预算）；
+  (b) 合同级：PERF 档 release 化（需 B0 重基线+合同修订）；
+  (c) 深水产品优化续包：cranelift emit 提速、atom binder 快路径、cold_set 填充段、
+      sd911/turnaround 每样本链。
+
 ## 10. 待澄清事项
 
 - 无阻塞本轮建计划的问题。1016 落地主身份已核。实施时 T-01 记录此次实际采用的源与工具。
