@@ -628,6 +628,37 @@ pub fn publish_frozen_payload(
         })
 }
 
+/// PLAN-1017: publish a request's PRE-SERIALIZED envelopes as ONE store
+/// batch — per-artifact key/kind/layer/project identical to
+/// [`publish_frozen_payload`]; only the staging txn, budget reservation,
+/// namespace admission and SQLite commit are shared (the per-product
+/// publish path was O(requests × products) store round-trips). Returns
+/// the artifact ids in input order.
+pub fn publish_frozen_payload_batch(
+    st: &CteStore,
+    items: Vec<(CteExecutedV1, Vec<u8>)>,
+) -> Result<Vec<String>, CteAdmissionError> {
+    let reqs = items
+        .into_iter()
+        .map(|(env, payload)| PutRequest {
+            layer: CTE_FROZEN_LAYER,
+            key: envelope_key(&env.request_identity),
+            kind: ChunkKind::LayoutData,
+            payload,
+            edges: Vec::new(),
+            project: Some(st.project.clone()),
+        })
+        .collect();
+    st.store
+        .put_artifact_batch(reqs)
+        .map_err(|e| {
+            CteAdmissionError::new(
+                CteCode::Infra("store".into()),
+                format!("frozen batch publish failed: {e}"),
+            )
+        })
+}
+
 /// Freshness: the envelope's dependency manifest must still describe the
 /// CURRENT input (helper bodies/signatures, candidate sets, caps).
 pub fn frozen_is_fresh(

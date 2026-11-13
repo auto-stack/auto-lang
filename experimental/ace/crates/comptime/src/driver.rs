@@ -544,6 +544,12 @@ impl CteDriver {
         // store's own `chunks.size` metadata gates `get_artifact`.
         const FROZEN_PAYLOAD_BOUND: u64 = 1024 * 1024;
 
+        // PLAN-1017: this request's minted envelopes publish as ONE batch
+        // after the loop (per-product semantics unchanged; see
+        // publish_env_batch). Mid-request aborts abandon the pending set —
+        // a late completion never publishes, and nothing half-published
+        // rides a failed request.
+        let mut pending_envs: Vec<CteExecutedV1> = Vec::new();
         for call in &plan.av_calls {
             if dl.exceeded() {
                 return dl.diag(cache_verdict, obs);
@@ -780,11 +786,7 @@ impl CteDriver {
                         return dl.diag(cache_verdict, obs);
                     }
                     let env = self.mint_envelope(&req, &identity, &exec, manifest);
-                    if let Err(e) =
-                        obs.span("freeze_publish", |_| self.publish_env(&env, budget, dl))
-                    {
-                        return CteStepOutcome::diag(&e, cache_verdict, obs);
-                    }
+                    pending_envs.push(env);
                     exec.value
                 }
             } else {
@@ -813,9 +815,7 @@ impl CteDriver {
                     return dl.diag(cache_verdict, obs);
                 }
                 let env = self.mint_envelope(&req, &identity, &exec, manifest);
-                if let Err(e) = obs.span("freeze_publish", |_| self.publish_env(&env, budget, dl)) {
-                    return CteStepOutcome::diag(&e, cache_verdict, obs);
-                }
+                pending_envs.push(env);
                 exec.value
             };
             // The restored envelope is consumed — return its Hot bytes.
@@ -824,6 +824,13 @@ impl CteDriver {
             }
             for qid in &call.query_ids {
                 values_by_query.insert(qid.clone(), value);
+            }
+        }
+        if !pending_envs.is_empty() {
+            if let Err(e) =
+                obs.span("freeze_publish", |_| self.publish_env_batch(&pending_envs, budget, dl))
+            {
+                return CteStepOutcome::diag(&e, cache_verdict, obs);
             }
         }
 
@@ -1123,27 +1130,47 @@ impl CteDriver {
         budget: &mut crate::observe::ManagedBudget,
         dl: &RequestDeadline,
     ) -> Result<(), CteAdmissionError> {
-        let Some(st) = self.store.as_ref() else {
+        self.publish_env_batch(std::slice::from_ref(env), budget, dl)
+    }
+
+    /// PLAN-1017: stage each envelope (reserve-before-encode, F-817-R6-02)
+    /// and publish ALL of one request's pending envelopes in ONE store
+    /// batch — identical per-product keys/kinds/layers; the staging bytes
+    /// stay ledger-reserved until the batch commits. A late completion
+    /// past the deadline never publishes (checked at flush; the whole
+    /// request's pending set is then abandoned — never partially late).
+    fn publish_env_batch(
+        &mut self,
+        envs: &[CteExecutedV1],
+        budget: &mut crate::observe::ManagedBudget,
+        dl: &RequestDeadline,
+    ) -> Result<(), CteAdmissionError> {
+        if envs.is_empty() {
             return Ok(());
-        };
-        // F-817-R6-02: reserve BEFORE the encode allocation — count the
-        // bytes WITHOUT allocating, reserve the exact count, then
-        // serialize; the payload MOVES into the store (no second
-        // unreserved copy). A late completion past the deadline never
-        // publishes.
+        }
         if dl.exceeded() {
             return Err(CteAdmissionError::new(
                 CteCode::Resource("request-deadline".into()),
                 "request deadline reached before publish (nothing published)".to_string(),
             ));
         }
-        let payload = store::serialize_envelope_reserved(env, budget)?;
-        self.last_envelope_bytes = Some(payload.len() as u64);
-        let n = payload.len() as u64;
-        let out = store::publish_frozen_payload(st, env, payload).map(|id| {
-            self.last_publish = Some(id);
-        });
-        budget.release(crate::observe::Partition::Staging, n);
+        let mut items: Vec<(CteExecutedV1, Vec<u8>)> = Vec::with_capacity(envs.len());
+        let mut total = 0u64;
+        for env in envs {
+            let payload = store::serialize_envelope_reserved(env, budget)?;
+            total += payload.len() as u64;
+            items.push((env.clone(), payload));
+        }
+        self.last_envelope_bytes = items.last().map(|(_, p)| p.len() as u64);
+        let out = match self.store.as_ref() {
+            Some(st) => store::publish_frozen_payload_batch(st, items).map(|ids| {
+                if let Some(id) = ids.last() {
+                    self.last_publish = Some(id.clone());
+                }
+            }),
+            None => Ok(()),
+        };
+        budget.release(crate::observe::Partition::Staging, total);
         out
     }
 }

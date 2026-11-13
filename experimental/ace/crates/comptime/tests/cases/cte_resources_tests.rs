@@ -106,7 +106,6 @@ fn big_source_n(n: usize) -> String {
     s
 }
 
-/// The default generator (100 helpers).
 fn big_source() -> String {
     big_source_n(100)
 }
