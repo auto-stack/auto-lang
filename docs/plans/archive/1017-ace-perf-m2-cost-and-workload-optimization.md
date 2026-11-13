@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-1017
-status: reviewed
+status: archived
 feature_name: M2 ace-perf串行套件成本与压力负载优化
 author: [Codex]
 created_at: 2026-11-12
 updated_at: 2026-11-13
 plan_revision: 6
 phase: M2-A
-current_step: 7
+current_step: 9
 total_steps: 9
 depends_on: [PLAN-1016]
 supersedes_spec_components: [docs/specs/auto-test-case/module-selection.md, docs/specs/auto-test-case/ace-test-policy.md, docs/specs/auto-cte/frozen-cache.md]
@@ -435,6 +435,20 @@ passf-modules-dedup.json，同 ace-perf profile/特征/串行配置）**：
   本机常态负载下不可达，缺口 ~300s 对应后继包产品项（cranelift emit ~200s、
   closure-lane 每调用复用 ~100s）。总门值需用户裁定（§10）。
 
+2026-11-14 stage:merge | PLAN-1017:r6 | delivery_commit:`357d68471`（master 尖，ff-only，无合并提交）|
+rebase 映射：reviewed HEAD `e6ff58f69` →range-diff 全等（11/11 `=`）→ `69391b945` + 集成修复
+`357d68471`（master 侧 1043 给 InputFn 加 const_params 漏改 comptime 两测试构造器，master
+自身编不过已实测；本分支 2 行机械修复，修复后 ace-native/ace-comptime 全组重跑绿）——
+修复为 rebase 集成类，绑定证据=两组全绿，无合同变更 |
+canonical_verified:ace-perf-cost-and-reproduction `10c02ac2bf21e670`、ace-test-policy
+`9ead94912e6125a5`、module-selection `e6c54461a59e366d`、frozen-cache `8977df4ab04890a7` |
+merge 门（rebase 后冻结并集，`357d68471`）：ace-native ✓/ace-native-worker ✓/case-ac-mn ✓/
+ace-comptime ✓（含集成修复）；ace-host 153/163——10 红全部归属：6 项早前已核 master 基线红 +
+abi_worker_overflow_then_hang（master 复跑同红，1043 侧基线红）+ 3 项争用 flake（本树隔离
+重放绿：rounds_failure_liveness 298.1s、两 probe_adapter 7.0s）；typed_session 红=争用
+flake（隔离 1.0s 绿）|
+production artifacts：本仓为语言/实验仓，无部署产物消费落地代码；无重建项（显式观察）。
+next: 批量回归到期核查（1015 收据 2026-11-12，>48h 且 1020/1025 等 ÷5 计划已并）→ regress。
 2026-11-14 stage:review | review_scope:**final** | reviewer:同会话复审（auto-plan-goal 授权链；
 独立性受限已声明——结论自工件重建：diff 清单/冻结收据/运行产物 JSON 重读核验，非采信执行者摘要）|
 plan_id:PLAN-1017 | plan_revision:r6 | outcome:**pass** |
