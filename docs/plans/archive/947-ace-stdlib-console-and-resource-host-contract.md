@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-947
-status: reviewed
+status: archived
 feature_name: ACE 控制台接入、标准库分层与装配合同
 author: [Codex]
 created_at: 2026-11-05
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/stdlib/design/ace-host-services.md]
 touched_goals: [GOAL-002]
 affects: [stdlib, ace]
 depends_on: [PLAN-943, PLAN-944, PLAN-960]
-current_step: 9
+current_step: 10
 total_steps: 10
 ---
 
@@ -349,7 +349,7 @@ struct LibraryBinding { declaration: SigRef, layer: LayerKind, target: TargetAbi
 
 - [x] **T-06｜M2-A｜owner_stage: review｜AC-05**：在同一实施树以独立上下文执行 `/auto-plan:review`，逐AC/反例与真实diff核验，具名记录债务候选；实际通过才进入reviewed。 [✅ 2026-11-13：独立 fresh-context agent 三轮复审（第1轮 9ad4d7011 全 AC 核验→needs_fix F-947-R1 四警告；第2轮 09ebc243f→needs_fix F-947-R2 一处错位修复；第3轮 743822e4→**pass 终判**）。全部 AC pass；oracle 独立性/M1-TAG 四要件/不变量放宽最小性/rustfmt 27 文件零偏差/警告集合差分归零（auto-lang-core 151=151、ace 三包 9=9）均由 reviewer 亲验；非阻塞观察 F-02/03/04 记 KNOWN-DEBT 候选（merge 后随手）；F-05 环境既有红归周期回归。收据全文见 §9 终判记录。]
 
-- [ ] **T-07｜M2-A｜owner_stage: merge｜AC-06**：按 `/auto-plan:merge` 核来源/落Spec/归档；证据摘要折入Plan，逐命令实际输出路径对账，删统一scope（具名持有除外），刷新retention；`wt-guard` clean后移除树/分支，实际完成后记账。
+- [x] **T-07｜M2-A｜owner_stage: merge｜AC-06**：按 `/auto-plan:merge` 核来源/落Spec/归档；证据摘要折入Plan，逐命令实际输出路径对账，删统一scope（具名持有除外），刷新retention；`wt-guard` clean后移除树/分支，实际完成后记账。
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
@@ -378,6 +378,14 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 2026-11-13 stage: review | review_scope: final（第 3 轮终判；第 1/2 轮 needs_fix 记录在前） | reviewer_identity/limitations: 独立 fresh-context agent（与实施/修复会话无关，三轮全程只读） | plan_id: PLAN-947 | plan_revision: r9 | outcome: pass（终判） | worktree_path: D:/autostack/.wt/lang-947/auto-lang | branch: plan-947-dev | reviewed_commit: 743822e48e8708bb7a596962d952b86a0513eb81（实现链 9ad4d7011→09ebc243f→743822e4，base 84c575a54） | dependency_revisions: M1-TAG v0.6-ACE-M1=b923362f4（祖先/归档/tag→base 零代码漂移亲验） | spec_inputs: docs/specs/auto-ac/source-console-output.md；docs/specs/stdlib/design/ace-host-services.md（worktree 预备稿，路径/引用/边界核验过）；stdlib/contracts/{operations,compatibility}.toml | acceptance_results: AC-01..04、AC-05、AC-07..10、AC-NATIVE、AC-PHASE 全 pass（证据映射见第 1 轮记录+本轮复验：console_lane 10/10、console_p947 2/2、provider_selection 8/8、manifest 7/7、contracts 8/8；say 冻结四链实测；oracle 期望全手写） | pending_closeout_gates: merge 冻结受影响模块并集 stdlib ace-console ace-source ace-av ace-native（已有两轮全 PASS 证据 1891/0+run-yfs_ag9x，merge 时在同一基线可复用；ace-host 2 例 master 既有红已分诊非本包） | findings: F-947-R1 已闭（09ebc243f+#3 于 743822e4）；F-947-R2 已闭（743822e4）；F-02/03/04 非阻塞观察→KNOWN-DEBT 候选；F-05 环境既有红归周期回归 | evidence: 三轮收据内命令/计数全绑定对应 commit；两笔修复 diff 不触及任何 AC 语义面 | next: merge（T-07）
 
 2026-11-13 stage: review | review_scope: final | reviewer_identity/limitations: 独立 fresh-context agent（与实施会话无关，全程只读；结论由工件重构） | plan_id: PLAN-947 | plan_revision: r9 | outcome: needs_fix（单点 F-01；其余全部核过） | worktree_path: D:/autostack/.wt/lang-947/auto-lang | branch: plan-947-dev | reviewed_commit: 9ad4d7011be12055e9b6a7489797635ed5169045 | base_commit: 84c575a54 | dependency_revisions: M1-TAG v0.6-ACE-M1=b923362f4（祖先实测）；941/943/944/960/999/1025 归档实测 | spec_inputs: docs/specs/auto-ac/source-console-output.md、docs/specs/stdlib/design/ace-host-services.md（worktree 预备稿）、stdlib/contracts/{operations,compatibility}.toml | acceptance_results: AC-01 pass（console_lane 10/10、console_p947 2/2 亲跑；oracle 独立手写）；AC-02 pass（未授权=具名拒+空流 dispatch=0+重授权通过）；AC-03 pass（65536/65537/累计 1MiB 不半提交亲跑；AV 既有保持）；AC-04 pass（前探表逐行代码依据+t04 oracle）；AC-07/V-08 pass（contracts 8/8；三腿齐）；AC-08 pass（provider_selection 8/8 亲跑；target 轴；不造 CTE）；AC-09 pass（manifest 7/7；schema4 兼容/交叉拒/删 proof/旧授权拒）；AC-10 pass（tag/祖先/归档/tag→base 零代码漂移亲验）；AC-PHASE pass（A 切片无提前终态）；AC-NATIVE pass | pending_closeout_gates: merge 冻结受影响模块并集（stdlib ace-console ace-source ace-av ace-native；ace-host 已知 2 例 master 既有红另行分诊） | findings: F-947-R1(低, in-scope, AC-05 健康门): diff 新增 4 编译警告——native/console.rs:81 T_I8 未用、:147 多余 mut；provider_selection.rs:244 Some(name) 未用 name；console_p947.rs:6 unused import load_suite——对照主检出逐条 diff 判定新增，修后重跑 provider_selection/console_lane/console_p947 三组定向即可翻转 pass；F-947-R2(非阻塞): native owned-Str say 用例建议后续补；F-947-R3(非阻塞): freeze_opt 内部不校验 schema/selection 一致性（decode 侧已防）；F-947-R4(非阻塞): resolve.rs 保留名手写未复用 is_reserved_name；F-947-R5(环境): ace-host 2 红主检出复现+diff 零 examples/ui 零 a2r 触面——分诊成立 | evidence: 本记录内命令/计数；复审全程绑定 9ad4d7011，运行前后 HEAD 一致 | next: work（修 F-947-R1 四处一行级警告，重跑三组定向测试后同 reviewer 有界重审）
+
+2026-11-13 stage: merge | plan_id: PLAN-947 | plan_revision: r9 | outcome: pass | checkpoints:
+- prepared: reviewed 基线 743822e48e（终判 pass）+ SD-01..06 定稿提交 a42986d2b（纯文档后代，非 docs 文件数=0 实测）→ 交付候选；
+- landed: worktree rebase onto master（9 提交，range-diff 9/9 全等=`安全改写证明`；哈希映射 b9d19d73f→5346638a4、c60e55613→46585c218、a33e0ac35→bd8a0ef90、5e1bc19e8→882203fdf、03792817b→dadc623e0、9ad4d7011→3a207e2b9、09ebc243f→a1366d394、743822e48→70aa97cd4、a42986d2b→03a1a9d93）→ 主检出 `git merge --ff-only plan-947-dev` 成功，master tip=**03a1a9d937aaf0875833354b4062c19d2450c159**（交付提交），无 merge commit，线性历史；
+- canonical_verified: docs/specs/auto-ac/source-console-output.md（say 段+四端）、docs/specs/stdlib/project.md（console 分账+M1-TAG 来源链）、docs/specs/stdlib/design/ace-host-services.md（sha256 前16 64aaf698c23cf01b，新建）、ace-binding-and-assembly.md（四轴节）、assembly-manifest.md（schema5 节）全部在交付提交内；legacy ledger 零写入；
+- 冻结组门（merge 所有）：stdlib ace-console ace-source ace-av ace-native 于交付候选 a42986d2b（内容=03a1a9d93，range-diff 全等）全 PASS（run-tkz6uczn）；此前同并集 run-676lsnlw 1891/0、run-yfs_ag9x 全 PASS；主检出落地烟测 provider_selection 8/8 绿；ace-host 2 例 master 既有红（F-947-R5，双树复现+零触面）显式记录非本包债；
+- landing 观察：本仓无 daemon/vue 发行产物消费本包代码；测试构建中间产物随 worktree 删除不回收。主检出存在其他会话未跟踪规划文档（58/1026-1029）与其他 Plan 文档 WIP，非本包文件未动。
+- next: cleaned（树/分支/scope 清理）
 
 2026-11-13 stage: goal | plan_id: PLAN-947 | plan_revision: r9 | round: 3 | from: review | to: merge | status: reviewed | outcome: pass | commit: 743822e48e（终判绑定） | next: merge
 
