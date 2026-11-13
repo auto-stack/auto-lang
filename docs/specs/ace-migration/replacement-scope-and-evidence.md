@@ -116,3 +116,21 @@ examples 计数均不构成覆盖证明。跨仓不可读/owner 未明/未发布
   parser-only/panic）。**未闭缺口（具名，带 owner）**：递归 Box 的 collections-unit 车道（D-962-C2）、
   C 侧 tuple 调用实参临时物化（D-962-C3）、List use-after-move 不拒（D-962-C4，冻结既有）、杂项诊断
   拼写（D-962-C5）；StructCover 嵌套模式/is 表达式→965；Map/Set 归 964/946-972（963 实例）。
+
+## SD-07 泛型/约束见证/方法实例化 producer 挂接（PLAN-963 SD-02）
+
+- 分母台账 L-24（默认/命名实参）、L-38（alias）、L-39（spec/约束/关联类型）、L-40（ext/
+  方法接收者）、L-42（泛型 type/const 参数与跨模块实例）与 L-47（调用语义的函数值面）的
+  ACE 侧**已验证 producer** 为 [m2-generics.md](m2-generics.md)：三个能力裁剪 profile
+  （`scalar-instances` / `record-instances` / `text-record-instances`）+ `generic-call` 原子；
+  935 单参身份字节不变、页 codec v4（值参数 `constc`），旧页按版本 MISS 重产；四端
+  （AV / ac-native / a2x-rust / a2x-c）真实运行收据见该文件 V 行具名入口与
+  `run-2v_8abue`（2453 Rust 用例 + 10 case check，七组 PASS）。本节只挂接来源，不改 SD-01
+  的分类口径，也不把任何行标为 implemented；状态提升仍只引用 963 归档收据。
+- **未闭缺口（具名，带 owner）**：管道算子 `|>`（D-963-C1，963 T-08 后续/965）、可变实参
+  无用户声明位拼写（D-963-C2，962 collections 裁定）、`#[with(T)]` 属性形迁移拒
+  （D-963-C3，language attribute grammar plan）、记录类型模块全局 `.move` 转移
+  （D-963-C4，960 模块面）、默认实参求值作用域边界（D-963-C5，963 T-08 后续）、ACE
+  workspace rustfmt 门禁（D-963-C6，ACE 治理）、泛型局部注解诊断质量（D-963-C7，ACE
+  语法/投影诊断面）。以上缺口在台账中保持 required/unknown 原状，不因 963 交付而消失；
+  963 自身覆盖行（L-38/39/40/42 全、L-24/47 部分）不因 B 未交付改 NA。
