@@ -1100,7 +1100,12 @@ fn decode_check(
         }
     };
 
-    let console_recipe = options.probe_recipe.as_deref() == Some("ac-av/console-run-v1");
+    // PLAN-947: the console recipes (AV + native lane) share the console
+    // oracle shape — byte-exact dual streams, named rejections, one run.
+    let console_recipe = matches!(
+        options.probe_recipe.as_deref(),
+        Some("ac-av/console-run-v1") | Some("ac/mn/console-run-v1")
+    );
     // PLAN-892/902: the a2x emit recipes judge the four-file ACTUAL SET as
     // byte goldens — the only probe recipes with an artifacts channel.
     let a2x_recipe = matches!(
@@ -1213,17 +1218,34 @@ fn decode_check(
                 &expect.completion,
             )
             .map_err(|m| err(&f.path_of("expect"), m))?;
-            let av = options.probe_av.as_ref().ok_or_else(|| {
-                err(
-                    &f.path_of("options"),
-                    "console recipe requires an av binding",
-                )
-            })?;
-            if av.entry != "d_main" || av.session.is_some() || av.profile.is_some() {
-                return Err(err(
-                    &f.path_of("options"),
-                    "console-run-v1 requires d_main and no session/profile override",
-                ));
+            // PLAN-947: the AV console recipe binds `av`; the native
+            // console lane binds `mn` (entry d_main, one run step).
+            if options.probe_recipe.as_deref() == Some("ac/mn/console-run-v1") {
+                let mn = options.probe_mn.as_ref().ok_or_else(|| {
+                    err(
+                        &f.path_of("options"),
+                        "the mn console recipe requires an mn binding",
+                    )
+                })?;
+                if mn.entry != "d_main" || mn.session.is_some() {
+                    return Err(err(
+                        &f.path_of("options"),
+                        "ac/mn/console-run-v1 requires d_main and no session override",
+                    ));
+                }
+            } else {
+                let av = options.probe_av.as_ref().ok_or_else(|| {
+                    err(
+                        &f.path_of("options"),
+                        "console recipe requires an av binding",
+                    )
+                })?;
+                if av.entry != "d_main" || av.session.is_some() || av.profile.is_some() {
+                    return Err(err(
+                        &f.path_of("options"),
+                        "console-run-v1 requires d_main and no session/profile override",
+                    ));
+                }
             }
             if !matches!(options.probe_steps.as_deref(), Some([ProbeStep::Run])) {
                 return Err(err(
@@ -1687,6 +1709,9 @@ fn decode_options(
                         // T-07 edit-session: runs + discriminating edits.
                         "ac-av/core-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
                         "ac-av/console-run-v1" => op == "run",
+                        // PLAN-947: the native console lane takes exactly
+                        // one run step (same shape as the AV console).
+                        "ac/mn/console-run-v1" => op == "run",
                         // PLAN-820: the data recipe shares the core recipe's
                         // step vocabulary (runs + discriminating edits).
                         "ac-av/data-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
@@ -2450,6 +2475,7 @@ fn decode_options(
                         | "ac/mir-native-resource-events-v1"
                         | "ac/mir-native-resource-guards-v1"
                         | "ac/mir-native-closures-resource-v1"
+                        | "ac/mn/console-run-v1"
                 ) {
                     return Err(err(
                             &f.path_of("mn"),
@@ -2698,7 +2724,10 @@ fn decode_options(
                                 }
                             },
                         };
-                        Some(ProbeMnTurnaroundSpec { p90_max_ms, min_edits })
+                        Some(ProbeMnTurnaroundSpec {
+                            p90_max_ms,
+                            min_edits,
+                        })
                     }
                 };
                 // PLAN-919: the native lifecycle recipe's exit knobs
@@ -3036,6 +3065,10 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // PLAN-891: the native typed-entry recipe — file-ized typed fixtures
     // through the real PE bitwise frame channel, parent-side judgement.
     "ac/mir-native-typed-v1",
+    // PLAN-947: the console/1 native lane recipe — the shared console
+    // front door, persist→restore re-admission, per-run grants and real
+    // PE console writes; parent-side byte-exact judgement.
+    "ac/mn/console-run-v1",
     // PLAN-915: the R02 allocation-fault sweep / R03 stale-Place scenario
     // recipe — frozen corpus sources and typed place witnesses through the
     // real AV executor; the parent judges the frozen attempt counts.

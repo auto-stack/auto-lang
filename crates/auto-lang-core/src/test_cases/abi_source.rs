@@ -226,80 +226,79 @@ impl SourceReport {
         {
             return Err("invalid resource outcome or exit on a refusal".into());
         }
-        let (expected_events, expected_status): (&[&str], &[&str]) = match reference
-            .ok_or("resource-import request without a reviewed reference")?
-        {
-            "utf8-bytes" => (&["t939_byte_length"], &[]),
-            // V-02 owned temp -> view: the owned Str local feeds both
-            // views; owner outlives both consumers.
-            "utf8-owned" => (&["t939_byte_length", "t939_scalar_count"], &[]),
-            // T-08 (V-07): a limited LEGAL reentrant call — the callback
-            // itself makes a foreign view call per item (nested foreign
-            // call during a foreign call; no stored callback).
-            "callback-reentrant" => (
-                &[
-                    "t939_fold",
-                    "t939_byte_length",
-                    "t939_byte_length",
-                    "t939_byte_length",
-                ],
-                &[],
-            ),
-            // T-07 (V-04): the THREE-out transaction commits all slots
-            // once; both handles are gotten and destroyed exactly once.
-            "txn3-commit" => (
-                &[
-                    "t939_txn3",
-                    "t939_get",
-                    "t939_get",
-                    "t939_destroy",
-                    "t939_destroy",
-                    "t939_live",
-                ],
-                &[],
-            ),
-            // T-07 (V-04): the contracted last-step failure — the caller
-            // bytes survive byte-identical (failure transport).
-            "txn3-lastfail" => (&["t939_txn3"], &["-3"]),
-            // V-03: the DECLARED clone hook — two owners each destroy once.
-            "clone-owners" => (
-                &[
-                    "t939_create",
-                    "t939_clone",
-                    "t939_get",
-                    "t939_get",
-                    "t939_destroy",
-                    "t939_destroy",
-                    "t939_live",
-                ],
-                &[],
-            ),
-            // V-06: a forged (never-allocated) handle rejects with zero
-            // provider state change (failure transport).
-            "forged-handle" => (&["t939_get"], &["-1"]),
-            // V-14: after a real fold the noescape observable reads 0.
-            "stored-cb" => (&["t939_fold", "t939_stored_cb"], &[]),
-            // V-02 ctor-temp const view lane: the temp dies with the call.
-            "pairv-temp" => (&["t939_pairv"], &[]),
-            "utf8-scalars" => (&["t939_scalar_count"], &[]),
-            "record-mut" => (&["t939_bump"], &[]),
-            "record-mut-fail" => (&["t939_bump"], &["-2"]),
-            "handle-lifecycle" => (
-                &["t939_create", "t939_get", "t939_destroy", "t939_live"],
-                &[],
-            ),
-            "handle-stale" => (&["t939_create", "t939_destroy", "t939_get"], &["-1"]),
-            "txn-commit" => (&["t939_txn"], &[]),
-            "txn-seed-fail" => (&["t939_txn"], &["-2"]),
-            "txn-laststep-fail" => (&["t939_txn"], &["-3"]),
-            "callback" => (&["t939_fold"], &[]),
-            "callback-fail" => (&["t939_fold"], &["-7"]),
-            "alias-pair-ok" => (&["t939_pair"], &[]),
-            "alias-pairv-ok" => (&["t939_pairv"], &[]),
-            "alias-pair-reject" => (&["t939_pair"], &[]),
-            "alias-pairv-reject" => (&["t939_pairv"], &[]),
-            _ => return Err("resource reference is outside independent review".into()),
-        };
+        let (expected_events, expected_status): (&[&str], &[&str]) =
+            match reference.ok_or("resource-import request without a reviewed reference")? {
+                "utf8-bytes" => (&["t939_byte_length"], &[]),
+                // V-02 owned temp -> view: the owned Str local feeds both
+                // views; owner outlives both consumers.
+                "utf8-owned" => (&["t939_byte_length", "t939_scalar_count"], &[]),
+                // T-08 (V-07): a limited LEGAL reentrant call — the callback
+                // itself makes a foreign view call per item (nested foreign
+                // call during a foreign call; no stored callback).
+                "callback-reentrant" => (
+                    &[
+                        "t939_fold",
+                        "t939_byte_length",
+                        "t939_byte_length",
+                        "t939_byte_length",
+                    ],
+                    &[],
+                ),
+                // T-07 (V-04): the THREE-out transaction commits all slots
+                // once; both handles are gotten and destroyed exactly once.
+                "txn3-commit" => (
+                    &[
+                        "t939_txn3",
+                        "t939_get",
+                        "t939_get",
+                        "t939_destroy",
+                        "t939_destroy",
+                        "t939_live",
+                    ],
+                    &[],
+                ),
+                // T-07 (V-04): the contracted last-step failure — the caller
+                // bytes survive byte-identical (failure transport).
+                "txn3-lastfail" => (&["t939_txn3"], &["-3"]),
+                // V-03: the DECLARED clone hook — two owners each destroy once.
+                "clone-owners" => (
+                    &[
+                        "t939_create",
+                        "t939_clone",
+                        "t939_get",
+                        "t939_get",
+                        "t939_destroy",
+                        "t939_destroy",
+                        "t939_live",
+                    ],
+                    &[],
+                ),
+                // V-06: a forged (never-allocated) handle rejects with zero
+                // provider state change (failure transport).
+                "forged-handle" => (&["t939_get"], &["-1"]),
+                // V-14: after a real fold the noescape observable reads 0.
+                "stored-cb" => (&["t939_fold", "t939_stored_cb"], &[]),
+                // V-02 ctor-temp const view lane: the temp dies with the call.
+                "pairv-temp" => (&["t939_pairv"], &[]),
+                "utf8-scalars" => (&["t939_scalar_count"], &[]),
+                "record-mut" => (&["t939_bump"], &[]),
+                "record-mut-fail" => (&["t939_bump"], &["-2"]),
+                "handle-lifecycle" => (
+                    &["t939_create", "t939_get", "t939_destroy", "t939_live"],
+                    &[],
+                ),
+                "handle-stale" => (&["t939_create", "t939_destroy", "t939_get"], &["-1"]),
+                "txn-commit" => (&["t939_txn"], &[]),
+                "txn-seed-fail" => (&["t939_txn"], &["-2"]),
+                "txn-laststep-fail" => (&["t939_txn"], &["-3"]),
+                "callback" => (&["t939_fold"], &[]),
+                "callback-fail" => (&["t939_fold"], &["-7"]),
+                "alias-pair-ok" => (&["t939_pair"], &[]),
+                "alias-pairv-ok" => (&["t939_pairv"], &[]),
+                "alias-pair-reject" => (&["t939_pair"], &[]),
+                "alias-pairv-reject" => (&["t939_pairv"], &[]),
+                _ => return Err("resource reference is outside independent review".into()),
+            };
         let digest = |s: &str| {
             s.len() == 64
                 && s.bytes()

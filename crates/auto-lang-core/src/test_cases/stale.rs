@@ -184,6 +184,7 @@ pub fn check_with_families(
     let mut current_probe_abi_source: Option<std::collections::BTreeMap<String, String>> = None;
     let mut current_probe_av: Option<BTreeMap<String, String>> = None;
     let mut current_probe_console: Option<BTreeMap<String, String>> = None;
+    let mut current_probe_mn_console: Option<BTreeMap<String, String>> = None;
     let mut current_probe_collections: Option<BTreeMap<String, String>> = None;
     let mut current_probe_typed: Option<BTreeMap<String, String>> = None;
     let mut current_probe_cte: Option<BTreeMap<String, String>> = None;
@@ -283,6 +284,17 @@ pub fn check_with_families(
             let is_probe = r.get("adapter").and_then(|a| a.as_str()) == Some("probe");
             // PLAN-797 T-06: probe current identity is RECIPE-SPECIFIC —
             // an ABI row recomputes against the abi worker's axes.
+            let mn_console_probe_row = is_probe
+                && r.get("native")
+                    .and_then(|n| n.get("toolchain"))
+                    .and_then(|t| t.as_array())
+                    .is_some_and(|axes| {
+                        axes.iter().any(|p| {
+                            p[0].as_str() == Some("recipe")
+                                && p[1].as_str()
+                                    == Some(crate::test_cases::ac_mn::MN_CONSOLE_RECIPE)
+                        })
+                    });
             let av_probe_row = is_probe
                 && r.get("native")
                     .and_then(|n| n.get("toolchain"))
@@ -378,6 +390,10 @@ pub fn check_with_families(
                 current_probe_console.get_or_insert_with(
                     crate::test_cases::ac_av::current_console_toolchain_identity,
                 )
+            } else if mn_console_probe_row {
+                current_probe_mn_console.get_or_insert_with(
+                    crate::test_cases::ac_mn::current_mn_console_toolchain_identity,
+                )
             } else if av_probe_row {
                 current_probe_av
                     .get_or_insert_with(crate::test_cases::ac_av::current_toolchain_identity)
@@ -472,6 +488,15 @@ pub fn check_with_families(
                             "av-profile",
                             "av-source-profile",
                             "av-wire-codec",
+                        ],
+                        Some(false) if mn_console_probe_row => vec![
+                            // PLAN-947: the native console lane binds the
+                            // mn worker identity + the shared lowering
+                            // contract (the front door is AV's console
+                            // pipeline).
+                            "mn-worker-exe-sha256",
+                            "recipe",
+                            "mir-lowering",
                         ],
                         Some(false) if av_probe_row => vec![
                             "av-worker-exe-sha256",

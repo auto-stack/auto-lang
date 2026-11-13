@@ -1,0 +1,75 @@
+# PLAN-947 console/1 public binding corpus. The same sources run on BOTH
+# real lanes — AV (recipe ac-av/console-run-v1) and native mn (recipe
+# ac/mn/console-run-v1) — with independent hand-computed byte oracles.
+# say is the 943-frozen public spelling (stdout, UTF-8 bytes + exactly one
+# LF per call). Unauthorized runs and console budgets are named rejections.
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p947.o03-mn", tags: ["ace-m2", "console", "utf8-newline"], links: ["PLAN-947"],
+  source: { file: "src/O03.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "mn-console", adapter: "probe", action: "run",
+    options: { recipe: "ac/mn/console-run-v1", mn: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: "success", stdout: { text: "你好\n\n", compare: "bytes" }, stderr: { text: "é\n", compare: "bytes" }, exit: 0 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p947.o03-av", tags: ["ace-m2", "console", "utf8-newline"], links: ["PLAN-947"],
+  source: { file: "src/O03.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: "success", stdout: { text: "你好\n\n", compare: "bytes" }, stderr: { text: "é\n", compare: "bytes" }, exit: 0 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p947.say-mn", tags: ["ace-m2", "console", "public-say"], links: ["PLAN-947"],
+  source: { file: "src/S01.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "mn-console", adapter: "probe", action: "run",
+    options: { recipe: "ac/mn/console-run-v1", mn: { entry: "d_main", caps: ["console.stdout"] }, steps: [{ op: "run" }] },
+    expect: { completion: "success", stdout: { text: "A中😀\n世界\n", compare: "bytes" }, stderr: { text: "", compare: "bytes" }, exit: 0 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p947.say-av", tags: ["ace-m2", "console", "public-say"], links: ["PLAN-947"],
+  source: { file: "src/S01.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout"] }, steps: [{ op: "run" }] },
+    expect: { completion: "success", stdout: { text: "A中😀\n世界\n", compare: "bytes" }, stderr: { text: "", compare: "bytes" }, exit: 0 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p947.say-wrong-type-reject", tags: ["ace-m2", "console", "negative"], links: ["PLAN-947"],
+  source: { file: "src/S04.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-console", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/console-run-v1", av: { entry: "d_main", caps: ["console.stdout"] }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "resolve", code: "source.console-argument" }, stdout: { text: "", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p947.unauthorized-mn", tags: ["ace-m2", "console", "grants"], links: ["PLAN-947"],
+  source: { file: "src/S02.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "mn-console", adapter: "probe", action: "run",
+    options: { recipe: "ac/mn/console-run-v1", mn: { entry: "d_main", caps: [] }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "parse", code: "host.unauthorized" }, stdout: { text: "", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p947.per-call-budget-mn", tags: ["ace-m2", "console", "budget"], links: ["PLAN-947"],
+  source: { file: "src/S03.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "mn-console", adapter: "probe", action: "run",
+    options: { recipe: "ac/mn/console-run-v1", mn: { entry: "d_main", caps: ["console.stdout", "console.stderr"] }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "run", code: "resource.console-output" }, stdout: { text: "", compare: "bytes" }, stderr: { text: "", compare: "bytes" } } }]
+}
+```

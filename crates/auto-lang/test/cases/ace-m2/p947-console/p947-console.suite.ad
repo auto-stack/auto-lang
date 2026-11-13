@@ -1,0 +1,4 @@
+# PLAN-947: every required row must actually PASS; SKIP/NOT_RUN are not green.
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m2-p947-console", include: ["p947-console.case.ad"] }
+```

@@ -1077,6 +1077,7 @@ fn dispatch_check(
             if matches!(
                 check.options.probe_recipe.as_deref(),
                 Some(ac_mn::MN_RECIPE)
+                    | Some(ac_mn::MN_CONSOLE_RECIPE)
                     | Some(ac_mn::COLLECTIONS_RECIPE)
                     | Some(ac_mn::TYPED_RECIPE)
                     | Some(ac_mn::RESOURCE_EVENTS_RECIPE)

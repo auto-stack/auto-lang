@@ -16,6 +16,216 @@ use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+mod console_case_run {
+    //! PLAN-947: the `ac/mn/console-run-v1` recipe — the console/1 native
+    //! lane behind the same one-request/one-response contract. The worker
+    //! never sees expected outcomes; the parent judges.
+    //!
+    //! One run = the shared AV console front door (compile + ABC identity
+    //! admission), a persist→restore round through the request's store
+    //! (re-admission, exactly like the AV console recipe), per-run
+    //! authorization with the request caps, per-function console emission,
+    //! a real multi-object link and one contained real PE run.
+    use super::case_run::MN_WORKER_VERSION;
+    use super::*;
+    use ace_native::console::{console_authorize, console_native_run, ConsoleDiag};
+
+    fn hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    fn as_diag(d: ace_av::driver::StageDiag) -> ConsoleDiag {
+        ConsoleDiag {
+            stage: d.stage,
+            code: d.code,
+            message: d.message,
+        }
+    }
+
+    pub const RECIPE: &str = "ac/mn/console-run-v1";
+
+    fn fail(echo: serde_json::Value, code: &str, message: String) -> ExitCode {
+        let mut r = echo.clone();
+        r["error"] = serde_json::json!({"code": code, "message": message});
+        println!("{r}");
+        ExitCode::FAILURE
+    }
+
+    pub fn serve_console(req: &serde_json::Value, echo: serde_json::Value) -> ExitCode {
+        use base64::Engine as _;
+        let allowed = [
+            "recipe",
+            "nonce",
+            "request_hash",
+            "source_b64",
+            "entry",
+            "caps",
+            "store_root",
+            "steps",
+        ];
+        if req
+            .as_object()
+            .map(|o| o.keys().any(|k| !allowed.contains(&k.as_str())))
+            == Some(true)
+        {
+            return fail(
+                echo,
+                "mn.worker.request",
+                "unknown console request field".into(),
+            );
+        }
+        let Some(steps) = req.get("steps").and_then(|v| v.as_array()) else {
+            return fail(echo, "mn.worker.request", "missing console steps".into());
+        };
+        if steps.len() != 1 || steps[0] != serde_json::json!({"op": "run"}) {
+            return fail(
+                echo,
+                "mn.worker.request",
+                "console requires exactly one run step".into(),
+            );
+        }
+        let Some(source_b64) = req.get("source_b64").and_then(|v| v.as_str()) else {
+            return fail(echo, "mn.worker.request", "missing source_b64".into());
+        };
+        let Ok(source) = base64::engine::general_purpose::STANDARD.decode(source_b64) else {
+            return fail(
+                echo,
+                "mn.worker.request",
+                "source_b64 is not valid base64".into(),
+            );
+        };
+        let Ok(source) = String::from_utf8(source) else {
+            return fail(echo, "mn.worker.request", "source is not UTF-8".into());
+        };
+        let entry = req
+            .get("entry")
+            .and_then(|v| v.as_str())
+            .unwrap_or("d_main");
+        if entry != "d_main" {
+            return fail(
+                echo,
+                "mn.worker.request",
+                "console recipe requires d_main".into(),
+            );
+        }
+        let caps: Vec<String> = req
+            .get("caps")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|c| c.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let Some(nonce) = req.get("nonce").and_then(|v| v.as_str()) else {
+            return fail(echo, "mn.worker.request", "missing nonce".into());
+        };
+        let store_root = req.get("store_root").and_then(|v| v.as_str()).unwrap_or("");
+        if store_root.is_empty() {
+            return fail(echo, "mn.worker.request", "missing store_root".into());
+        }
+        let started = std::time::Instant::now();
+        let mut step = serde_json::json!({
+            "op": "run", "outcome": "infra", "exit_code": null,
+            "stdout_hex": "", "stderr_hex": "", "diag": null,
+            "source_hash": format!("{:016x}", ace_av_core::contract::fnv1a64(source.as_bytes())),
+            "wall_ms": 0.0_f64,
+        });
+        let run_lane = |mir: &ace_av_core::mir::MirModule,
+                        step: &mut serde_json::Value|
+         -> Result<(), String> {
+            let dir = std::env::temp_dir().join(format!("mn-console-run-{nonce}"));
+            let _ = std::fs::remove_dir_all(&dir);
+            let result = console_native_run(mir, entry, &dir);
+            let _ = std::fs::remove_dir_all(&dir);
+            match result {
+                Err(e) => Err(format!("mn console run: {e:?}")),
+                Ok(run) => {
+                    step["exit_code"] = serde_json::json!(run.exit_code);
+                    step["stdout_hex"] = serde_json::json!(hex(&run.stdout));
+                    step["stderr_hex"] = serde_json::json!(hex(&run.stderr));
+                    // Exit taxonomy: the entry result is success; the frozen
+                    // mn trap is 70; the console reject code is the shared
+                    // resource.console-output outcome.
+                    if run.exit_code == Some(ace_native::config::CONSOLE_REJECT_EXIT_CODE) {
+                        step["outcome"] = serde_json::json!("resource");
+                        step["diag"] = serde_json::json!({
+                            "stage": "run",
+                            "code": "resource.console-output",
+                            "message": "console output byte budget exceeded",
+                        });
+                    } else if run.exit_code == Some(ace_native::config::TRAP_EXIT_CODE) {
+                        step["outcome"] = serde_json::json!("trap");
+                    } else {
+                        step["outcome"] = serde_json::json!("success");
+                    }
+                    Ok(())
+                }
+            }
+        };
+        let diag_step = |d: &ConsoleDiag, step: &mut serde_json::Value| {
+            let frontend = ["source.", "verify.", "bind.", "lower.", "admission."];
+            step["outcome"] = serde_json::json!(if d.code == "host.unauthorized"
+                || frontend.iter().any(|p| d.code.starts_with(p))
+            {
+                "diag"
+            } else {
+                "infra"
+            });
+            step["diag"] =
+                serde_json::json!({"stage": d.stage, "code": d.code, "message": d.message});
+        };
+        match ace_av::console_host::compile(&source, entry) {
+            Err(d) => diag_step(&as_diag(d), &mut step),
+            Ok(program) => {
+                // The persist→restore round: the store carries the whole-
+                // module artifact; restore re-admits it, then THIS run's
+                // grants decide (no address or grant ever persisted).
+                let store = Path::new(store_root).join(format!("console-{nonce}"));
+                match program
+                    .persist(&store, "formal-mn-console")
+                    .map_err(as_diag)
+                {
+                    Err(d) => diag_step(&d, &mut step),
+                    Ok(_receipt) => {
+                        let reference = program.reference.clone();
+                        drop(program);
+                        match ace_av::console_host::restore(&store, &reference) {
+                            Err(d) => diag_step(&as_diag(d), &mut step),
+                            Ok(restored) => {
+                                let mir = restored.load().unwrap().module().clone();
+                                match console_authorize(&mir, &caps) {
+                                    Err(d) => diag_step(&d, &mut step),
+                                    Ok(()) => {
+                                        if let Err(e) = run_lane(&mir, &mut step) {
+                                            step["diag"] = serde_json::json!({
+                                                "stage": "run",
+                                                "code": "mn.console.infra",
+                                                "message": e,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        step["wall_ms"] = serde_json::json!(started.elapsed().as_secs_f64() * 1000.0);
+        let mut ok = echo.clone();
+        ok["ok"] = serde_json::json!({
+            "recipe": RECIPE,
+            "worker_version": MN_WORKER_VERSION,
+            "mn_abi": ace_native::config::MN_ABI,
+            "mn_target": ace_native::config::MN_TARGET,
+            "steps": [step],
+        });
+        println!("{ok}");
+        ExitCode::SUCCESS
+    }
+}
+
 mod case_run {
     use super::*;
     use ace_native::source_diagnostics as sd;
@@ -1239,6 +1449,10 @@ mod case_run {
         if recipe == "ac/mir-native-typed-v1" {
             return typed_case_run::serve_typed(req, echo);
         }
+        if recipe == "ac/mn/console-run-v1" {
+            return console_case_run::serve_console(&req, echo);
+        }
+
         if recipe != "ac/mir-native-scalar-v1" {
             return fail(
                 echo,
@@ -1618,6 +1832,7 @@ fn main() -> ExitCode {
 // error frame). Expected values never enter the request; judgement is
 // entirely parent-side.
 mod typed_case_run {
+
     use super::case_run::{MN_WORKER_PROTOCOL, MN_WORKER_VERSION};
 
     fn hex(bytes: &[u8]) -> String {

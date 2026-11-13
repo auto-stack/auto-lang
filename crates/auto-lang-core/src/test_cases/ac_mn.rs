@@ -82,6 +82,9 @@ fn hex_stream(raw: &str) -> Result<Vec<u8>, String> {
 }
 
 pub const MN_RECIPE: &str = "ac/mir-native-scalar-v1";
+/// PLAN-947: the console/1 native lane recipe (shared front door,
+/// persist→restore re-admission, per-run grants, real PE console writes).
+pub const MN_CONSOLE_RECIPE: &str = "ac/mn/console-run-v1";
 pub const COLLECTIONS_RECIPE: &str = "ac/mir-native-collections-v1";
 /// PLAN-891: the native typed-entry recipe (real PE bitwise frame channel).
 
@@ -163,6 +166,7 @@ pub const RESOURCE_GUARDS_RECIPE: &str = "ac/mir-native-resource-guards-v1";
 /// with the env-node seam (S9) added to the injection domain.
 pub const CLOSURES_RESOURCE_RECIPE: &str = "ac/mir-native-closures-resource-v1";
 mod collections;
+mod console;
 mod native_closures;
 mod resource_events;
 mod resource_guards;
@@ -228,8 +232,14 @@ mod source_diag {
     /// between the monotone rungs, so "core" may appear in `attempted`. It is
     /// never the terminating profile (side faces cannot terminate escalation)
     /// and never lists a surface rejection.
-    const ATTEMPTED_PROFILES: &[&str] = &["scalar", "record", "text-record", "numeric",
-                                          "aggregates", "core"];
+    const ATTEMPTED_PROFILES: &[&str] = &[
+        "scalar",
+        "record",
+        "text-record",
+        "numeric",
+        "aggregates",
+        "core",
+    ];
     const OPERATIONS: &[&str] = &["cold", "warm-edit", "fallback-cold"];
     /// The raw stage vocabulary (Stage::as_str()); only these three can
     /// carry a language-rejection family — anything else is admitted as a
@@ -871,6 +881,23 @@ fn bound_worker_sha(recipe: &str) -> Result<String, String> {
         worker_file_sha256(&binary)
     }
 }
+/// PLAN-947: the native console lane's current toolchain identity axes
+/// (report staleness binds these per row).
+pub fn current_mn_console_toolchain_identity() -> std::collections::BTreeMap<String, String> {
+    let mut m = std::collections::BTreeMap::new();
+    if let Ok(binary) = worker_binary() {
+        if let Ok(sha) = worker_file_sha256(&binary) {
+            m.insert("mn-worker-exe-sha256".to_string(), sha);
+        }
+    }
+    m.insert("recipe".to_string(), MN_CONSOLE_RECIPE.to_string());
+    m.insert(
+        "mir-lowering".to_string(),
+        super::ac_cte::EXPECTED_MIR_LOWERING_VERSION.to_string(),
+    );
+    m
+}
+
 /// PLAN-891: the typed recipe's current toolchain identity axes (report
 /// staleness binds these per row).
 pub fn current_typed_toolchain_identity() -> std::collections::BTreeMap<String, String> {
@@ -1701,6 +1728,9 @@ pub fn run_check(
         .probe_recipe
         .as_deref()
         .ok_or("missing native recipe")?;
+    if recipe == MN_CONSOLE_RECIPE {
+        return console::run_check_console(case, check, oracle, artifact_dir);
+    }
     if recipe == TYPED_RECIPE {
         // PLAN-891: the typed recipe consumes the file-ized fixture
         // (mn-typed-fixture/1), not .at source text.
