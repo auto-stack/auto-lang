@@ -165,3 +165,32 @@ pub const TYPED_WRAPPER_LAYER: LayerSpec = LayerSpec {
     regeneration: Regeneration::FromUpstreamRecipe,
     coverage: LayerCoverage::Codec,
 };
+
+/// PLAN-1017: the source-memo schema — a content-addressed
+/// source→link-manifest pointer keyed by the FULL compile-request identity
+/// (source sha256 + entry + capabilities + the pipeline identity axes).
+pub const SOURCE_MEMO_SCHEMA: &str = "ac818/a17-source-memo/v1";
+
+/// PLAN-1017: the A17 source memo. A hit does NOT recompile the source:
+/// it restores the recorded link manifest and re-admits every unit from
+/// its bytes through the SAME admission discipline the worker restore
+/// uses (identity axes + sha/len binding), then re-links and runs. The
+/// memo never re-trusts a "verified" flag and never bypasses admission;
+/// a missing unit, toolchain drift (manifest link axes vs the current
+/// identities) or a foreign/corrupt carrier is a clean miss back to the
+/// full pipeline. The pipeline identity axes in the key mean a semantic
+/// frontend/lowering change MUST bump one of the axes constants — the
+/// same re-keying discipline the CTE engine identity carries.
+pub const SOURCE_MEMO_LAYER: LayerSpec = LayerSpec {
+    id: "A17",
+    name: "source-memo (plan1017 source→manifest pointer)",
+    schema_id: SOURCE_MEMO_SCHEMA,
+    producer: PRODUCER_ID,
+    consumers: &["plan1017 mn driver hot path", "plan818 mn-worker case-run"],
+    key_inputs: &["producer", "schema", "src-sha256", "entry", "caps", "pipeline"],
+    ref_kinds: &["required-data"],
+    storage: "one memo per compile-request identity (LayoutData carrier)",
+    residency: "memo binds one link-manifest artifact id; restore admits before link",
+    regeneration: Regeneration::FromUpstreamRecipe,
+    coverage: LayerCoverage::Codec,
+};

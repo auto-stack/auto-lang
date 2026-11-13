@@ -524,3 +524,190 @@ mod performance {
         let _ = std::fs::remove_dir_all(&root);
     }
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-1017 A17: the source→manifest memo (hot-round frontend skip)
+// ---------------------------------------------------------------------------
+
+/// V-11 (PLAN-1017): a fully-hot request — identical source/entry/caps on
+/// a store that already holds the closure — serves from the A17 source
+/// memo: no frontend span, no unit emission, every unit a re-admitted
+/// cache hit, and the closure STILL really links and really runs with the
+/// same value. A different entry on the same source is a different key
+/// (clean miss back to the full pipeline).
+#[test]
+fn mir_native_source_memo_hot_round_skips_frontend_and_stays_correct() {
+    if !common::tools_available() {
+        eprintln!("infra-blocked: skipped");
+        return;
+    }
+    let root = temp_root("memo");
+    let src = "fn helper(v int) int {\n    return v * 3\n}\n\nfn main() int {\n    return helper(14)\n}\n";
+    let mut d = MnDriver::with_store(&root, "memo").expect("store");
+    let warm = d.request(src, "d_main", &[], &workdir_of(&root, "w0"), None);
+    assert!(warm.ok, "{:?}", warm.error);
+    assert_eq!(warm.exit_code, Some(42));
+    assert_eq!(*warm.obs.counters.get("codegen_emit_units").unwrap_or(&0), 2);
+    assert_eq!(*warm.obs.counters.get("source_memo_hits").unwrap_or(&0), 0);
+
+    let hot = d.request(src, "d_main", &[], &workdir_of(&root, "w1"), None);
+    assert!(hot.ok, "{:?}", hot.error);
+    assert_eq!(hot.exit_code, Some(42), "memo round: same value");
+    assert_eq!(
+        *hot.obs.counters.get("source_memo_hits").unwrap_or(&0),
+        1,
+        "the memo served the hot round"
+    );
+    assert_eq!(
+        *hot.obs.counters.get("codegen_emit_units").unwrap_or(&0),
+        0,
+        "no unit is re-emitted"
+    );
+    assert_eq!(
+        *hot.obs.counters.get("cache_hit_coff").unwrap_or(&0),
+        2,
+        "every unit still re-admits from the store"
+    );
+    assert!(
+        !hot.obs.spans.contains_key("frontend"),
+        "the whole-source frontend did not run on the memo round"
+    );
+    assert!(
+        *hot.obs.counters.get("link_invocations").unwrap_or(&0) >= 1
+            && *hot.obs.counters.get("run_invocations").unwrap_or(&0) >= 1,
+        "a memo hit STILL links and runs (never a cached PASS)"
+    );
+    // Same source, different entry: a different memo key — the full
+    // pipeline compiles it (2 fresh units, no memo hit).
+    let src2 = "fn a() int {\n    return 11\n}\n\nfn main() int {\n    return a()\n}\n";
+    let r2 = d.request(src2, "d_a", &[], &workdir_of(&root, "w2"), None);
+    assert!(r2.ok, "{:?}", r2.error);
+    assert_eq!(r2.exit_code, Some(11));
+    assert_eq!(*r2.obs.counters.get("codegen_emit_units").unwrap_or(&0), 2);
+    assert_eq!(*r2.obs.counters.get("source_memo_hits").unwrap_or(&0), 0);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// V-11 negative controls: a memo pointing at a MISSING manifest is a
+/// clean miss (full pipeline, correct result); `fresh` cache mode never
+/// READS the memo; read-only consumes the memo but persists nothing new.
+#[test]
+fn mir_native_source_memo_foreign_pointer_and_mode_discipline() {
+    if !common::tools_available() {
+        eprintln!("infra-blocked: skipped");
+        return;
+    }
+    let root = temp_root("memoneg");
+    let store = ManagedStore::open(&root).expect("store");
+    // A FOREIGN memo whose manifest target does not exist. The public put
+    // refuses dangling required edges (the store admission itself), so a
+    // foreign writer is simulated the only way it can exist: a
+    // hand-rendered carrier with NO edge, straight into the layer.
+    let ghost = "fn main() int {\n    return 7\n}\n";
+    let sha_txt = {
+        use sha2::{Digest, Sha256};
+        let mut h = Sha256::new();
+        h.update(ghost.as_bytes());
+        let out: [u8; 32] = h.finalize().into();
+        hex_of(out)
+    };
+    let payload = format!(
+        "mn-source-memo 1\nschema {}\nproducer {}\nsrc-sha256 {}\nentry d_main\ncaps \npipeline {}\nmanifest no-such-manifest-artifact\n",
+        ace_native::config::SOURCE_MEMO_SCHEMA,
+        ace_native::config::PRODUCER_ID,
+        sha_txt,
+        ace_native::cache::source_memo_pipeline_id()
+    );
+    store
+        .put_artifact(PutRequest {
+            layer: ace_native::config::SOURCE_MEMO_LAYER.id,
+            key: ace_native::cache::source_memo_key(&sha_txt, "d_main", &[]),
+            kind: ChunkKind::LayoutData,
+            payload: payload.into_bytes(),
+            edges: vec![],
+            project: None,
+        })
+        .expect("plant foreign memo");
+    drop(store);
+    let mut d = MnDriver::with_store(&root, "memoneg").expect("store");
+    let r = d.request(ghost, "d_main", &[], &workdir_of(&root, "w"), None);
+    assert!(r.ok, "ghost memo falls back to the full pipeline: {:?}", r.error);
+    assert_eq!(r.exit_code, Some(7));
+    assert_eq!(*r.obs.counters.get("source_memo_hits").unwrap_or(&0), 0);
+    assert_eq!(*r.obs.counters.get("codegen_emit_units").unwrap_or(&0), 1);
+    // The foreign carrier OCCUPIES the memo key: the legit memo persist
+    // conflicts (different payload under the same key) and is OBSERVED —
+    // never a failed request, never a silent overwrite.
+    assert!(
+        *r.obs.counters.get("source_memo_persist_failures").unwrap_or(&0) >= 1,
+        "the blocked memo persist is counted"
+    );
+
+    // `fresh` mode: never READS old state — a full recompile serves the
+    // round even where a legit memo would exist.
+    let mut fresh = MnDriver::with_store(&root, "memoneg2").expect("store");
+    fresh.cache_mode = ace_native::driver::CacheMode::Fresh;
+    let rf = fresh.request(ghost, "d_main", &[], &workdir_of(&root, "wf"), None);
+    assert!(rf.ok, "{:?}", rf.error);
+    assert_eq!(rf.exit_code, Some(7));
+    assert_eq!(*rf.obs.counters.get("source_memo_hits").unwrap_or(&0), 0);
+    assert_eq!(*rf.obs.counters.get("codegen_emit_units").unwrap_or(&0), 1);
+
+    // read-only on a CLEAN store: consumes the memo (hit) and persists
+    // nothing (the manifest re-publish is skipped entirely).
+    let clean = temp_root("memoro");
+    let mut w = MnDriver::with_store(&clean, "memo-ro-warm").expect("store");
+    let warm = w.request(ghost, "d_main", &[], &workdir_of(&clean, "w0"), None);
+    assert!(warm.ok, "{:?}", warm.error);
+    drop(w);
+    let mut ro = MnDriver::with_managed_store(
+        ManagedStore::open(&clean).expect("store ro"),
+        "memo-ro",
+    );
+    ro.cache_mode = ace_native::driver::CacheMode::ReadOnly;
+    let rr = ro.request(ghost, "d_main", &[], &workdir_of(&clean, "wr"), None);
+    assert!(rr.ok, "{:?}", rr.error);
+    assert_eq!(rr.exit_code, Some(7));
+    assert_eq!(*rr.obs.counters.get("source_memo_hits").unwrap_or(&0), 1);
+    assert_eq!(*rr.obs.counters.get("store_puts").unwrap_or(&0), 0);
+    let _ = std::fs::remove_dir_all(&clean);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// V-11 liveness: the memo's required edge keeps the pointed manifest
+/// (and transitively its units) alive through a FULL reclaim pass — after
+/// GC the memo still serves and still runs the same value.
+#[test]
+fn mir_native_source_memo_chain_survives_full_reclaim() {
+    if !common::tools_available() {
+        eprintln!("infra-blocked: skipped");
+        return;
+    }
+    let root = temp_root("memogc");
+    let src = "fn helper(v int) int {\n    return v + 5\n}\n\nfn main() int {\n    return helper(37)\n}\n";
+    let mut d = MnDriver::with_store(&root, "memogc").expect("store");
+    let warm = d.request(src, "d_main", &[], &workdir_of(&root, "w0"), None);
+    assert!(warm.ok, "{:?}", warm.error);
+    assert_eq!(warm.exit_code, Some(42));
+    drop(d);
+    let store = ManagedStore::open(&root).expect("store gc");
+    let rc = ace_artifacts::store::run_gc(
+        &store,
+        ace_artifacts::store::GcConfig { high: 0, low: 0 },
+    )
+    .expect("full reclaim pass");
+    assert!(rc.ran, "the pass ran");
+    drop(store);
+    let mut d2 = MnDriver::with_store(&root, "memogc2").expect("store again");
+    let hot = d2.request(src, "d_main", &[], &workdir_of(&root, "w1"), None);
+    assert!(hot.ok, "memo chain survived GC: {:?}", hot.error);
+    assert_eq!(hot.exit_code, Some(42));
+    assert_eq!(*hot.obs.counters.get("source_memo_hits").unwrap_or(&0), 1);
+    assert_eq!(*hot.obs.counters.get("cache_hit_coff").unwrap_or(&0), 2);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+fn hex_of(bytes: impl Into<[u8; 32]>) -> String {
+    let bytes: [u8; 32] = bytes.into();
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}

@@ -1999,3 +1999,166 @@ fn resources_short_cost_probe() {
         serde_json::json!({"gc_ms":gc_started.elapsed().as_secs_f64()*1000.0,"deleted":receipt.deleted_chunks,"freed":receipt.freed_bytes,"total_ms":all.elapsed().as_secs_f64()*1000.0})
     );
 }
+
+/// PLAN-1017 r5 ①: attribute the dual-resource residual — the wall-clock
+/// gap between per-deck spans and the whole-test duration. Fills a REAL
+/// store with the production deck shape, then times, on the same store:
+/// (a) per-deck fill walls, (b) `space()` on the filled store, (c) DIRECT
+/// single-item `put_artifact_batch` round-trips (the batch=1 revision
+/// shape), (d) full small-deck revisions through `query_step` with wall vs
+/// span-sum vs freeze-publish-span decomposition, and (e) the store's
+/// on-disk file population (blobs/locks/staging) the walks enumerate.
+/// Diagnostic only; does not replace the formal 32MiB/64MiB obligations.
+/// Run explicitly with --ignored --nocapture.
+#[test]
+#[ignore = "bounded cost attribution; explicit diagnostic entry"]
+fn resources_revision_cost_probe() {
+    use std::time::{Duration, Instant};
+    let root = std::env::var("CTE_PROBE_ROOT").expect("explicit plan-artifacts root required");
+    let envn = |k: &str, d: usize| {
+        std::env::var(k).unwrap_or_else(|_| d.to_string()).parse::<usize>().unwrap()
+    };
+    let helpers = envn("CTE_PROBE_HELPERS", 100);
+    let fill_mb = envn("CTE_PROBE_FILL_MB", 8);
+    let revisions = envn("CTE_PROBE_REVISIONS", 10);
+    let direct_puts = envn("CTE_PROBE_DIRECT_PUTS", 5);
+    assert!(helpers > 0 && fill_mb > 0 && revisions > 0 && direct_puts > 0);
+    let all = Instant::now();
+
+    let tmp = tempfile::tempdir_in(&root).unwrap();
+    let store_root = tmp.path().join("store");
+    let mut d = CteDriver::with_store(&store_root, "pages").unwrap();
+    d.set_request_wall_limit(Duration::from_secs(120));
+
+    // (a) fill with the production deck shape (q=100 distinct-arg calls).
+    let mut start_b = 1i32;
+    let mut decks = 0usize;
+    let fill_started = Instant::now();
+    while d.store().unwrap().raw().space().total < (fill_mb * 1024 * 1024) as u64 {
+        assert!(all.elapsed() < Duration::from_secs(50), "probe budget exhausted");
+        let (deck, sigma) = gc_deck_n(start_b, 100, helpers);
+        let t = Instant::now();
+        let out = d.query_step(&deck, None);
+        let wall = t.elapsed();
+        assert_eq!(out.status, StepStatus::Ok, "{:?}", out.message);
+        assert_eq!(out.ct_execute, 100);
+        assert_eq!(
+            out.values.get("main.c0").map(|v| v.render()),
+            Some(format!("i32:{}", 20 + start_b as i64 + sigma))
+        );
+        decks += 1;
+        start_b += 100;
+        let spans = if decks % 5 == 1 {
+            serde_json::json!(out.spans)
+        } else {
+            serde_json::json!(null)
+        };
+        println!(
+            "REVP {}",
+            serde_json::json!({"phase":"fill","deck":decks,"wall_ms":wall.as_secs_f64()*1000.0,"spans":spans})
+        );
+    }
+    let fill_ms = fill_started.elapsed().as_secs_f64() * 1000.0;
+    let total_bytes = d.store().unwrap().raw().space().total;
+
+    // (e) the on-disk population the store walks enumerate.
+    fn count_files(dir: &std::path::Path) -> (usize, u64) {
+        let (mut n, mut b) = (0usize, 0u64);
+        if let Ok(rd) = std::fs::read_dir(dir) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    let (dn, db) = count_files(&p);
+                    n += dn;
+                    b += db;
+                } else if let Ok(m) = e.metadata() {
+                    n += 1;
+                    b += m.len();
+                }
+            }
+        }
+        (n, b)
+    }
+    let (blobs_n, _) = count_files(&store_root.join("blocks").join("blobs"));
+    let (locks_n, _) = count_files(&store_root.join("locks"));
+
+    // (b) space() on the filled store (the walk the admission runs per put).
+    let st = d.store().unwrap();
+    let raw = st.raw();
+    let mut space_ms = Vec::new();
+    for _ in 0..5 {
+        let t = Instant::now();
+        let _ = raw.space();
+        space_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+
+    // (c) DIRECT single-item batch puts — the batch=1 revision store shape
+    // without any driver/frontend on top.
+    use ace_artifacts::codec::ChunkKind;
+    use ace_artifacts::identity::QueryKey;
+    use ace_artifacts::store::PutRequest;
+    let mut put_ms = Vec::new();
+    for i in 0..direct_puts {
+        let key = QueryKey::new(
+            &ace_comptime::store::CTE_LAYER_SPEC,
+            vec![
+                ("producer".into(), "probe".into()),
+                ("owner".into(), "rev".into()),
+                ("callee".into(), "s".into()),
+                ("args".into(), format!("i32:{i}")),
+                ("algo".into(), "probe".into()),
+                ("caps".into(), "".into()),
+                ("engine".into(), "probe".into()),
+                ("manifest-fp".into(), "probe".into()),
+            ],
+        );
+        let t = Instant::now();
+        raw.put_artifact_batch(vec![PutRequest {
+            layer: ace_comptime_contract::CTE_FROZEN_LAYER,
+            key,
+            kind: ChunkKind::LayoutData,
+            payload: format!("probe-revision-{i}").into_bytes(),
+            edges: vec![],
+            project: Some("probe-direct".into()),
+        }])
+        .unwrap();
+        put_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+
+    // (d) full revisions through the driver — the real 512-loop shape.
+    let base = deck_with(
+        SMALL_SRC,
+        "query q1 = call cte_sum(7, 0)\nbind main.ct = q1 expect i32 placeholder 0\n",
+    );
+    let mut rev_rows: Vec<serde_json::Value> = Vec::new();
+    for i in 1..=revisions {
+        assert!(all.elapsed() < Duration::from_secs(55), "probe budget exhausted");
+        let deck = base.replace("call cte_sum(7, 0)", &format!("call cte_sum(7, {i})"));
+        let t = Instant::now();
+        let out = d.query_step(&deck, None);
+        let wall_ms = t.elapsed().as_secs_f64() * 1000.0;
+        assert_eq!(out.status, StepStatus::Ok, "{:?}", out.message);
+        assert_eq!(out.cache, Some("miss"), "rev {i} is a distinct key");
+        assert_eq!(
+            out.values.get("main.ct").map(|v| v.render()),
+            Some(format!("i32:{}", 7 + i))
+        );
+        let span_sum: f64 = out.spans.values().sum();
+        let publish = out.spans.get("freeze_publish").cloned().unwrap_or(0.0);
+        rev_rows.push(serde_json::json!({
+            "rev": i, "wall_ms": wall_ms, "span_sum_ms": span_sum,
+            "freeze_publish_ms": publish,
+        }));
+    }
+    println!(
+        "REVP {}",
+        serde_json::json!({
+            "phase":"summary",
+            "helpers": helpers, "decks": decks, "fill_ms": fill_ms,
+            "total_bytes": total_bytes, "blobs_n": blobs_n, "locks_n": locks_n,
+            "space_ms": space_ms, "direct_put_ms": put_ms,
+            "revisions": rev_rows,
+            "total_ms": all.elapsed().as_secs_f64()*1000.0,
+        })
+    );
+}

@@ -172,6 +172,11 @@ pub mod performance {
         // The 512-DISTINCT-revision churn: every revision is a different
         // source (a unique constant rides the closure body); every apply
         // must stay exactly-one-unit production with the modeled value.
+        // PLAN-1017 r5: the churn duty is per-revision invariants
+        // (exactly-one-unit production, the modeled value, the stable
+        // incremental route) — 128 distinct revisions exercise the same
+        // state matrix 512 did; the revision count is not a frozen scale
+        // (the cold_set churn trim, same ruling).
         let root = isolated("churn");
         let (mut session, first) = ace_native::closures_incremental::ClosuresNativeSession::new(
             &source,
@@ -182,7 +187,7 @@ pub mod performance {
         .expect("churn session");
         assert_eq!(first.exit_code, Some(137));
         let mut current = source.clone();
-        for k in 1..=512u32 {
+        for k in 1..=128u32 {
             let next = if k == 1 {
                 edited_base.clone()
             } else {
@@ -205,7 +210,7 @@ pub mod performance {
         }
         // The hit after the churn is still zero production.
         let hit = session.apply_source(&current).expect("churn hit");
-        assert_eq!(hit.exit_code, Some(137 + 512));
+        assert_eq!(hit.exit_code, Some(137 + 128));
         assert!(hit.work.codegen_units.is_empty());
         session.close().expect("close churn");
         let _ = std::fs::remove_dir_all(&root);

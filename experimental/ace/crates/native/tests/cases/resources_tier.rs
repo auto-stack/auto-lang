@@ -695,4 +695,60 @@ mod performance {
         assert!(raw_gate(&raw).is_empty(), "{:?}", raw_gate(&raw));
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    /// PLAN-1017 r5 ③: the cold-fill SOURCE-SHAPE probe — the fill segment's
+    /// cost is the per-source frontend compile, and frontend cost is
+    /// sublinear in source size, so the same frozen byte duty (≥32 MiB
+    /// genuinely-distinct COFFs, store past GC_HIGH) can be filled with
+    /// FEWER, LARGER sources. Measures compile/emit walls and produced COFF
+    /// bytes per shape so the reshape rests on data, not assumption.
+    /// Diagnostic only — the formal test keeps its own frozen duties.
+    /// Run explicitly with --ignored --nocapture.
+    #[test]
+    #[ignore = "bounded shape probe; explicit diagnostic entry"]
+    #[cfg(windows)]
+    fn cold_fill_shape_probe() {
+        let shapes: Vec<usize> = std::env::var("COLD_SHAPE_STMTS")
+            .map(|s| s.split(',').map(|x| x.parse().unwrap()).collect())
+            .unwrap_or_else(|_| vec![2000, 8000, 16000]);
+        let reps: usize = std::env::var("COLD_SHAPE_REPS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(2);
+        assert!(!shapes.is_empty() && reps > 0);
+        let all = std::time::Instant::now();
+        for (si, &stmts) in shapes.iter().enumerate() {
+            let mut compile_ms = 0.0f64;
+            let mut emit_ms = 0.0f64;
+            let mut bytes: u64 = 0;
+            let mut units_n = 0usize;
+            for k in 0..reps {
+                assert!(
+                    all.elapsed() < std::time::Duration::from_secs(50),
+                    "probe budget exhausted at shape {stmts}"
+                );
+                let src = fill_gen(10_000 * (si + 1) + k, stmts);
+                let t = std::time::Instant::now();
+                let units = fill_units(&src);
+                compile_ms += t.elapsed().as_secs_f64() * 1000.0;
+                for unit in units {
+                    let t2 = std::time::Instant::now();
+                    let obj = emit::emit_unit_coff(&unit).expect("emit probe unit");
+                    emit_ms += t2.elapsed().as_secs_f64() * 1000.0;
+                    bytes += obj.bytes.len() as u64;
+                    units_n += 1;
+                }
+            }
+            println!(
+                "COLDSHAPE {}",
+                serde_json::json!({
+                    "stmts": stmts, "reps": reps, "units_per_rep": units_n / reps,
+                    "compile_ms_per_src": compile_ms / reps as f64,
+                    "emit_ms_per_src": emit_ms / reps as f64,
+                    "coff_bytes_per_src": bytes / reps as u64,
+                    "ms_per_mib": (compile_ms + emit_ms) / (bytes as f64 / MIB as f64),
+                })
+            );
+        }
+    }
 }

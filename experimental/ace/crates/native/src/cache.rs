@@ -952,3 +952,151 @@ pub fn parse_link_manifest(bytes: &[u8]) -> Result<LinkManifest, MnError> {
 pub fn unit_fp(unit: &MirModule) -> String {
     fingerprint::unit_fingerprint(unit).expect("verified unit renders")
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-1017 A17: the source→manifest memo
+// ---------------------------------------------------------------------------
+
+/// The pipeline identity the memo keys on: every axis that can change
+/// what a source compiles to (or lowers/emits to) without changing the
+/// source bytes themselves. A semantic pipeline change bumps one of these
+/// constants and re-keys the memo layer wholesale (the CTE engine
+/// identity's re-keying discipline).
+pub fn source_memo_pipeline_id() -> String {
+    format!(
+        "{MN_ABI}|{MN_TARGET}|{MN_FLAGS}|{MN_BACKEND_TAG}|{MIR_SCHEMA_AXIS}|{MIR_SEMANTICS_AXIS}"
+    )
+}
+
+/// Unambiguous caps join (length-prefixed) — a capability name can never
+/// inject a separator collision.
+fn caps_key(caps: &[String]) -> String {
+    caps.iter()
+        .map(|c| format!("{}:{}", c.len(), c))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+pub fn source_memo_key(src_sha: &str, entry: &str, caps: &[String]) -> QueryKey {
+    QueryKey::new(
+        &SOURCE_MEMO_LAYER,
+        vec![
+            ("producer".into(), PRODUCER_ID.into()),
+            ("schema".into(), SOURCE_MEMO_SCHEMA.into()),
+            ("src-sha256".into(), src_sha.to_string()),
+            ("entry".into(), esc(entry)),
+            ("caps".into(), esc(&caps_key(caps))),
+            ("pipeline".into(), esc(&source_memo_pipeline_id())),
+        ],
+    )
+}
+
+/// Persist one memo. The required edge keeps the pointed manifest (and,
+/// transitively, its units) live under the memo — GC cannot collect the
+/// memo's target out from under it.
+pub fn put_source_memo(
+    store: &ManagedStore,
+    project: Option<&str>,
+    src_sha: &str,
+    entry: &str,
+    caps: &[String],
+    manifest_artifact_id: &str,
+) -> Result<String, MnError> {
+    let payload = format!(
+        "mn-source-memo 1\nschema {}\nproducer {}\nsrc-sha256 {}\nentry {}\ncaps {}\npipeline {}\nmanifest {}\n",
+        SOURCE_MEMO_SCHEMA,
+        PRODUCER_ID,
+        src_sha,
+        esc(entry),
+        esc(&caps_key(caps)),
+        esc(&source_memo_pipeline_id()),
+        esc(manifest_artifact_id),
+    );
+    if payload.len() > METADATA_CAP {
+        return Err(MnError::Resource(
+            "metadata-size",
+            format!("source memo render is {} bytes", payload.len()),
+        ));
+    }
+    store
+        .put_artifact(PutRequest {
+            layer: SOURCE_MEMO_LAYER.id,
+            key: source_memo_key(src_sha, entry, caps),
+            kind: ChunkKind::LayoutData,
+            payload: payload.into_bytes(),
+            edges: vec![(
+                manifest_artifact_id.to_string(),
+                ace_artifacts::identity::RefKind::RequiredData,
+            )],
+            project: project.map(|s| s.to_string()),
+        })
+        .map_err(|e| MnError::Infra(format!("store put source memo: {e}")))
+}
+
+/// Fetch the memo for this exact compile-request identity. `None` on a
+/// clean miss; a present-but-foreign/corrupt carrier (wrong axes, bad
+/// shape) is also reported as `None` — the caller falls back to the full
+/// pipeline, which is always correct on its own.
+pub fn get_source_memo(
+    store: &ManagedStore,
+    src_sha: &str,
+    entry: &str,
+    caps: &[String],
+) -> Result<Option<String>, MnError> {
+    let Some(art) = store
+        .get_artifact(SOURCE_MEMO_LAYER.id, &source_memo_key(src_sha, entry, caps))
+        .map_err(|e| MnError::Infra(format!("store get source memo: {e}")))?
+    else {
+        return Ok(None);
+    };
+    let text = match std::str::from_utf8(&art.payload) {
+        Ok(t) => t,
+        Err(_) => return Ok(None),
+    };
+    let mut lines = text.lines();
+    if lines.next() != Some("mn-source-memo 1") {
+        return Ok(None);
+    }
+    let mut manifest = None;
+    for line in lines {
+        let Some((k, v)) = line.split_once(' ') else {
+            return Ok(None);
+        };
+        let matches = |want: &str| unesc(v) == want;
+        match k {
+            "schema" => {
+                if !matches(SOURCE_MEMO_SCHEMA) {
+                    return Ok(None);
+                }
+            }
+            "producer" => {
+                if !matches(PRODUCER_ID) {
+                    return Ok(None);
+                }
+            }
+            "src-sha256" => {
+                if !matches(src_sha) {
+                    return Ok(None);
+                }
+            }
+            "entry" => {
+                if !matches(entry) {
+                    return Ok(None);
+                }
+            }
+            "caps" => {
+                if !matches(&caps_key(caps)) {
+                    return Ok(None);
+                }
+            }
+            "pipeline" => {
+                if !matches(&source_memo_pipeline_id()) {
+                    return Ok(None);
+                }
+            }
+            "manifest" => manifest = Some(unesc(v)),
+            _ => return Ok(None),
+        }
+    }
+    Ok(manifest)
+}

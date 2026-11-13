@@ -392,33 +392,255 @@ impl MnDriver {
                 format!("source is {} bytes, above the frozen input cap", src.len()),
             ))
         } else {
-            let compiled = obs.span("frontend", |o| {
-                compile_escalating(src, caps).map_err(|failure| {
-                    o.counter("frontend_reject", 1);
-                    // PLAN-911: the operation's own typed snapshot rides the
-                    // error; `code()`/`message()` stay the legacy projection.
-                    sd::mn_error_from_compile_failure(
-                        src,
-                        "mn.at",
-                        failure,
-                        sd::Operation::cold(src),
-                    )
-                })
-            });
-            compiled.and_then(|compiled| {
-                let snapshot = ace_av_core::contract::fnv1a64(src.as_bytes());
-                self.run_arm(
-                    compiled.arm(),
-                    compiled.checked(),
-                    entry,
-                    workdir,
-                    trace_lib,
-                    snapshot,
-                    &mut obs,
-                )
-            })
+            // PLAN-1017: the A17 source memo first — a fully-hot request
+            // (identical source/entry/caps under the current pipeline axes)
+            // rebuilds from the recorded manifest instead of re-running the
+            // whole-source frontend. `None` is a clean miss: the full
+            // pipeline below is the only authority on a miss.
+            match self.try_source_memo(src, entry, caps, workdir, trace_lib, &mut obs) {
+                Ok(Some(hit)) => Ok(hit),
+                Ok(None) => {
+                    let compiled = obs.span("frontend", |o| {
+                        compile_escalating(src, caps).map_err(|failure| {
+                            o.counter("frontend_reject", 1);
+                            // PLAN-911: the operation's own typed snapshot
+                            // rides the error; `code()`/`message()` stay the
+                            // legacy projection.
+                            sd::mn_error_from_compile_failure(
+                                src,
+                                "mn.at",
+                                failure,
+                                sd::Operation::cold(src),
+                            )
+                        })
+                    });
+                    let ran = compiled.and_then(|compiled| {
+                        let snapshot = ace_av_core::contract::fnv1a64(src.as_bytes());
+                        self.run_arm(
+                            compiled.arm(),
+                            compiled.checked(),
+                            entry,
+                            workdir,
+                            trace_lib,
+                            snapshot,
+                            &mut obs,
+                        )
+                    });
+                    // PLAN-1017: remember source→manifest for future hot
+                    // rounds (content-addressed; a repeated request is
+                    // byte-identical by construction). The memo is a pure
+                    // accelerator: a persist failure is OBSERVED (counter),
+                    // never fails the already-successful request.
+                    if ran.is_ok() {
+                        if let (Some(store), true, Some(man_id)) = (
+                            self.store.as_ref(),
+                            self.cache_mode != CacheMode::ReadOnly,
+                            ran.as_ref().unwrap().4.clone(),
+                        ) {
+                            match obs.span("source_memo_persist", |_| {
+                                cache::put_source_memo(
+                                    store,
+                                    self.project.as_deref(),
+                                    &sha256_hex(src.as_bytes()),
+                                    entry,
+                                    caps,
+                                    &man_id,
+                                )
+                            }) {
+                                Ok(_) => {
+                                    obs.counter("store_puts", 1);
+                                }
+                                Err(_) => {
+                                    obs.counter("source_memo_persist_failures", 1);
+                                }
+                            }
+                        }
+                    }
+                    ran
+                }
+                Err(e) => Err(e),
+            }
         };
         MnRequest::of(result, obs, workdir)
+    }
+
+    /// PLAN-1017: serve one request from the A17 source memo. On a hit the
+    /// whole-source frontend (the measured dominant cost of fully-hot
+    /// turnaround legs — ~1.9s of a ~3.6s hit request) is skipped; the
+    /// recorded link manifest is restored and every unit re-admits from
+    /// its bytes through the worker-restore discipline (symbol recompute,
+    /// sha/len binding, envelope admission), then the wrapper is re-emitted
+    /// and the closure really links and really runs. Any miss signal — no
+    /// memo, foreign carrier, toolchain drift (manifest link axes vs the
+    /// current identities), missing/foreign unit — returns `Ok(None)` and
+    /// the caller runs the full pipeline, which is always correct.
+    #[allow(clippy::too_many_arguments)]
+    fn try_source_memo(
+        &mut self,
+        src: &str,
+        entry: &str,
+        caps: &[String],
+        workdir: &Path,
+        trace_lib: Option<&Path>,
+        obs: &mut Obs,
+    ) -> Result<Option<(Option<i32>, Vec<u8>, Vec<u8>, String, Option<String>)>, MnError> {
+        let Some(store) = self.store.as_ref() else {
+            return Ok(None);
+        };
+        if self.cache_mode == CacheMode::Fresh {
+            // `fresh` never READS old state — the memo included.
+            return Ok(None);
+        }
+        let src_sha = sha256_hex(src.as_bytes());
+        let Some(manifest_id) = cache::get_source_memo(store, &src_sha, entry, caps)? else {
+            return Ok(None);
+        };
+        let Some(art) = store
+            .get_artifact_by_id(&manifest_id)
+            .map_err(|e| MnError::Infra(format!("memo manifest get: {e}")))?
+        else {
+            return Ok(None);
+        };
+        let manifest = match cache::parse_link_manifest(&art.payload) {
+            Ok(m) => m,
+            Err(_) => return Ok(None),
+        };
+        if manifest.abi != MN_ABI || manifest.target != MN_TARGET {
+            return Ok(None);
+        }
+        // Toolchain drift: the manifest's link axes must equal the CURRENT
+        // identities — a memo from another toolchain is a miss, not a serve.
+        let (lld_sha, sdk_tag, k32_sha) =
+            obs.span("link_identity", |_| link_driver::link_identities())?;
+        if manifest.lld_sha != lld_sha || manifest.sdk_tag != sdk_tag || manifest.kernel32_sha != k32_sha
+        {
+            obs.counter("source_memo_drift", 1);
+            return Ok(None);
+        }
+        let trace_lib_sha = match trace_lib {
+            Some(p) => Some(link_driver::file_identity(p)?),
+            None => None,
+        };
+        if manifest.trace_lib_sha != trace_lib_sha {
+            return Ok(None);
+        }
+        let needs_text_runtime = manifest.text_lib_sha.is_some();
+        let text_lib: Option<std::path::PathBuf> = if needs_text_runtime {
+            Some(ace_av::text_runtime::text_runtime_lib().map_err(MnError::Infra)?)
+        } else {
+            None
+        };
+        let text_lib_sha = match &text_lib {
+            Some(p) => Some(link_driver::file_identity(p)?),
+            None => None,
+        };
+        if manifest.text_lib_sha != text_lib_sha {
+            return Ok(None);
+        }
+
+        // Re-admit every unit from its bytes (the worker-restore
+        // discipline). Any admission failure is a miss back to the full
+        // pipeline — a memo hit never bypasses admission.
+        let mut objects: Vec<ObjectInput> = Vec::with_capacity(manifest.units.len());
+        for u in &manifest.units {
+            let want = crate::symbols::function_symbol(&u.meta.owner, &u.meta.unit);
+            if want != u.meta.symbol {
+                return Ok(None);
+            }
+            let bytes = match cache::get_unit_coff_by_id(store, &u.meta, &u.artifact_id) {
+                Ok(b) => b,
+                Err(_) => return Ok(None),
+            };
+            if cache::content_hash(&bytes) != u.sha256 || bytes.len() != u.len {
+                return Ok(None);
+            }
+            obs.counter("cache_hit_coff", 1);
+            obs.ledger.charge(Partition::Io, bytes.len() as u64);
+            objects.push(ObjectInput {
+                name: u.meta.unit.clone(),
+                bytes,
+            });
+        }
+
+        // Re-publish the manifest idempotently + the ordered-publication
+        // bookkeeping, mirroring build_arm exactly (same key → same
+        // artifact id; a repeat request keeps the same publication state).
+        let persist = self.cache_mode != CacheMode::ReadOnly;
+        let mut manifest_artifact_id = None;
+        if persist {
+            obs.ledger
+                .charge(Partition::Staging, manifest.render().len() as u64);
+            let id = obs.span("manifest_persist", |o| {
+                o.counter("link_manifests_persisted", 1);
+                o.counter("store_puts", 1);
+                cache::put_link_manifest(store, self.project.as_deref(), &manifest)
+            })?;
+            if let Some(project) = self.project.as_deref() {
+                let key = (
+                    project.to_string(),
+                    manifest.owner.module.clone(),
+                    manifest.entry.clone(),
+                );
+                if let Some(prev) = self.last_publication.insert(key.clone(), id.clone()) {
+                    let _ = store.remove_root(project, "soft", &prev);
+                }
+            }
+            manifest_artifact_id = Some(id);
+        }
+        let fp = manifest.fingerprint();
+
+        // Wrapper + real link (every memo hit really links and really runs —
+        // a cached PASS is never a substitute for execution, §9.4).
+        let wrapper = obs.span("codegen", |o| {
+            o.counter("codegen_emit_wrappers", 1);
+            emit::emit_wrapper_coff(&manifest.entry_symbol)
+        })?;
+        obs.ledger.charge(Partition::Staging, wrapper.len() as u64);
+        let mut support_libs: Vec<std::path::PathBuf> = Vec::new();
+        if let Some(t) = trace_lib {
+            support_libs.push(t.to_path_buf());
+        }
+        if let Some(t) = &text_lib {
+            support_libs.push(t.clone());
+        }
+        let linked = obs.span("link", |o| {
+            o.counter("link_invocations", 1);
+            link_driver::link_only(
+                &objects,
+                &wrapper,
+                START_SYMBOL,
+                workdir,
+                &support_libs,
+                &format!("manifest-fp {fp}\nunits {}\n", manifest.units.len()),
+            )
+        })?;
+        // Ledger peaks enter the observable trace (mirrors build_arm).
+        let peaks = obs.ledger.peaks();
+        let peak_total = obs.ledger.peak_total();
+        for (i, name) in crate::resources::PARTITION_NAMES.iter().enumerate() {
+            obs.counter(&format!("ledger_peak_{name}"), peaks[i] as u64);
+        }
+        obs.counter("ledger_peak_total", peak_total as u64);
+        let run = obs.span("run", |o| {
+            o.counter("run_invocations", 1);
+            link_driver::run_pe(
+                &linked.exe_path,
+                RUN_BUDGET,
+                CaptureCaps {
+                    stdout_max: STREAM_CAP,
+                    stderr_max: STREAM_CAP,
+                },
+            )
+        })?;
+        obs.counter("mn_runs", 1);
+        obs.counter("source_memo_hits", 1);
+        Ok(Some((
+            run.exit_code,
+            run.stdout,
+            run.stderr,
+            fp,
+            manifest_artifact_id,
+        )))
     }
 
     /// PLAN-911: the frontend gate of a whole-request candidate — the SAME

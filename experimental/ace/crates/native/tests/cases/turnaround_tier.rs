@@ -213,4 +213,43 @@ mod performance {
         assert_eq!(rl.exit_code, Some(wl_last.expected as i32));
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    /// PLAN-1017 r5 ②: per-phase decomposition of one FULLY-HOT request
+    /// (every unit a cache hit) — where the per-sample chain actually goes
+    /// (frontend recompile / restore / link / run). Diagnostic only.
+    /// Run explicitly with --ignored --nocapture.
+    #[test]
+    #[ignore = "bounded phase probe; explicit diagnostic entry"]
+    #[cfg(windows)]
+    fn turnaround_hot_phase_probe() {
+        if !common::tools_available() {
+            eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");
+            return;
+        }
+        let wl = ace_native::workload::generate(0);
+        let root = temp_root("phaseprobe");
+        let mut d = MnDriver::with_store(&root, "phase").expect("store");
+        let t0 = std::time::Instant::now();
+        let warm = d.request(&wl.src, "d_main", &[], &root.join("w0"), None);
+        assert!(warm.ok, "warm: {:?}", warm.error);
+        eprintln!(
+            "HOTPHASE {}",
+            serde_json::json!({"phase":"warm","wall_ms":t0.elapsed().as_secs_f64()*1000.0,
+                "spans":warm.obs.spans,"counters":warm.obs.counters})
+        );
+        let t1 = std::time::Instant::now();
+        let hit = d.request(&wl.src, "d_main", &[], &root.join("w1"), None);
+        assert!(hit.ok, "hit: {:?}", hit.error);
+        assert_eq!(
+            *hit.obs.counters.get("codegen_emit_units").unwrap_or(&0),
+            0,
+            "fully hot"
+        );
+        eprintln!(
+            "HOTPHASE {}",
+            serde_json::json!({"phase":"hit","wall_ms":t1.elapsed().as_secs_f64()*1000.0,
+                "spans":hit.obs.spans,"counters":hit.obs.counters})
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
