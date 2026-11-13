@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1002
-status: drafting
+status: archived
 feature_name: autodown-document-cases
 author: [Codex]
 created_at: 2026-11-10
-updated_at: 2026-11-13
-plan_revision: 7
-current_step: 0
+updated_at: 2026-11-14
+plan_revision: 8
+current_step: 3
 total_steps: 4
 depends_on: [PLAN-1000]
 supersedes_spec_components: []
@@ -18,6 +18,9 @@ affects: [auto-test-case]
 # [PLAN-1002] ACE M2 测试框架：AutoDown 文档式用例四例对照试点
 
 ## 0. 变更摘要
+
+2026-11-14 work 执行中：T-01 旧侧基线（master 二进制 4 次 module-case 全绿、七行实测入账）、T-02 实现（`auto-test-case::author` 文档式解码 + 内联产物 `ArtifactPayload` + 试点语料/固定组 + 格式单测）、T-03a/b/c 对跑与负控与 V-04 计量已完成；证据在 `D:/autostack/plan-artifacts/plan-1002/pair-01|pair-02`。旧 suite 身份兼容实测：console-863 / immutable-avm-920 四身份轴逐字节不变；ace-m1-base 仅携带 file 产物的 24 check 行 contract/check 表示轴漂移（`file:`→`payload:` 结构体表示变化），source/oracle 内容轴不变。
+
 
 2026-11-12 r6：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
@@ -51,13 +54,17 @@ Rust。读取链 `crates/auto-test-case/src/{discovery,document,raw_ranges,contr
 
 - [crates/auto-lang-core/src/test_cases](../../crates/auto-lang-core/src/test_cases)：原执行与比较，不增第二runner；目录职责已核，确切符号/闭包开工再核
 
+### 2026-11-14 目标授权（/auto-plan-goal）
+
+用户以 `/goal 完成计划1002` 授权整链执行：在计划专属 worktree（含创建）内实施 T-01..T-03、独立复审、批准合同范围内的有界修复与 merge（Specs 沉淀、归档、worktree 清理、落核）。不改目标/验收/阈值/兼容承诺/仓库与预算范围；merge 需绑定当前 plan_revision 与复审提交的最终 pass。worktree `D:/autostack/.wt/lang-1002/auto-lang`（分支 `plan-1002-dev`，基面 master@89ab88269），材料目录 `D:/autostack/plan-artifacts/plan-1002/`。
+
 ### 2026-11-13 M1 标签后的源码复核
 
 主检出 `84c575a54` 包含标签提交；从标签到本次复核，试点源码和测试驱动无代码差异。自 r6 的 `f9fb3854b` 之后，native 父端增加了 aggregates 诊断准入，固定测试驱动增加了分组截止，正式压力已分组。四例源文件、旧合同、B01 Rust 金样及三个旧 suite 均可原位对照。旧证据绑定具体构建，T-03 以同一冻结构建重跑两种写法。
 
-[PLAN-1016](archive/1016-ace-comptime-short-repro-and-cost-repair.md) 已交付正式压力隔离。[PLAN-1017](1017-ace-perf-m2-cost-and-workload-optimization.md) 负责按标签后的真实 nextest 发现冻结正式用例集合 S0，再测同一集合的优化前串行总成本 B0。1025 将六项 M1 必测检查恢复到常规命名空间，1016 时的局部计数只作历史参考。1002 的四例属于 `runner = "case"` 的文档正确性试点；`ace-perf` 在 ACE workspace 用 nextest 选择根级/嵌套的 `performance::`，使用单测试线程、14400 秒父截止。
+[PLAN-1016](archive/1016-ace-comptime-short-repro-and-cost-repair.md) 已交付正式压力隔离。[PLAN-1017](archive/1017-ace-perf-m2-cost-and-workload-optimization.md) 已按 r6 裁定完成并归档，交付提交为 `357d68471`，当前主线 `89ab88269` 已含交付和清理收据。正式性能现行合同见 [ace-perf 成本规范](../specs/auto-test-case/ace-perf-cost-and-reproduction.md)，采用逐模块分跑口径，干净校正约 3345 秒，满足 3600 秒上限。1025 将六项 M1 必测检查恢复到常规命名空间，1016 时的局部计数只作历史参考。1002 的四例属于 `runner = "case"` 的文档正确性试点；`ace-perf` 在 ACE workspace 用 nextest 选择根级/嵌套的 `performance::`，使用单测试线程、14400 秒父截止。
 
-两条路径有实际交点。[turnaround.rs](../../experimental/ace/tests/conformance/tests/host/turnaround.rs) 的正式 IPC 检查生成旧格式合同，以 1 MiB 输入运行 30 个样本，每个样本在 `run_suite` 前启动整段计时；另有一次采样的常规正确性检查复用该路径。建议 1017 先在注明的提交冻结 S0、用短探针定位并在独占时窗取得 B0，再落地 1002 的读取器。若 1002 先行开发，1017 仍可在固定的改动前构建采基线；共享执行路径若跨版本，用同负载短探针区分格式改动的成本。两个计划无整包依赖；下一批语料迁移仍以本计划四例对照通过为前提。
+两条路径有实际交点。[turnaround.rs](../../experimental/ace/tests/conformance/tests/host/turnaround.rs) 的正式 IPC 检查生成旧格式合同，以 1 MiB 输入运行 30 个样本，每个样本在 `run_suite` 前启动整段计时；另有一次采样的常规正确性检查复用该路径。1017 已交付的版本和台账可作为后续比较依据。1002 从当前主线执行 T-01，在冻结构建上获取四例旧侧观测，再实现新入口并对跑。共享执行路径的加载成本变化通过 V-04 和普通宿主单样本对照核验；正式性能后继优化按 1017 的交付裁定排到 ACE M2 完成后。下一批语料迁移以本计划四例对照通过为前提。
 
 ## 5. 详细设计
 
@@ -306,6 +313,13 @@ struct DocumentCase { identity: CaseId, source: SourcePayload, checks: CheckSet,
 
 
 | SD-DETAIL | add | `docs/specs/auto-test-case/document-cases.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-04 |
+
+### 1024派生修复的格式依赖边界（2026-11-13，联络记录）
+
+1024的静态保留账与逐发现承接见其当前分配表；1027–1037的正确性回归可沿原Rust/旧case入口推进，不以本四例试点为前置，本试点也不等待全部修复。只有把对应测试改写为本作者格式、或重构document/IR/adapter接线，才消费G1002：本Plan T-03的四例七检查及负控通过、T-04独立复审且接口正式合入并绑定SHA。全量迁移/固定组职责由985及各owner承接；1038只研究复用候选，1017成本基线沿原冻结身份协调。
+
+本段仅明确其他Plan如何消费原交付，不扩本包四例/七检查，不改原AC/任务/阶段/预算，不为全部F项加实现责任，revision仍7、drafting 0/4。若某真实修复使七行原基线变化，按受影响构建重跑原独立预期，不抹真实红或自动降低负控。
+
 ## 6. 测试设计
 
 **对照方法。** 在同一冻结构建、后端二进制、平台和配置下执行新旧两份输入。旧侧分别通过原 suite 的 `auto-case module-case --suite <旧suite> --case <完整ID> --out <old/ID>` 读取 `module-case.json` 中的 selected_report；不把同 suite 其他未选行计为失败或成功。新侧通过 `auto-case run --suite <新suite> --out <new>` 一次运行全部四例。仅对准七个选中行，另核新 suite 完整 gate。试点可单独选测，禁止将两个同 ID 的 suite 合并后重复计入覆盖。
@@ -371,15 +385,15 @@ if ($LASTEXITCODE -ne 0) { throw "新 suite 失败，见 $out/new" }
 
 T-02/T-03 对试点固定组核 `runner = "case"`、`all = false`，以 `cargo t --select-only case-ace-document-pilot-1002` 核对选择，再实跑该组。T-03 在原定四个完整组及新组之外，用 `cargo t infra-fixed` 核固定组配置。共享读取/报告入口的普通宿主消费者通过 `cargo t ace-host` 核验，其中包括 BASE 的 97 行、B01 错退出码反控及单样本 IPC 对照。保留原 M1 suite 的物理输入路径与旧 inventory 输出语义：M1 证据 reader 会核 `input_paths`，AV 的运行和 wire 基准也以 `include_str!` 直接读取 B01.at。新文档的内联位置单独表达。后续推广前逐个迁移这些消费者。
 
-V-04 记录每次加载选中文档和载荷的打开次数，另列工具准备、发现、执行、清理及整命令时间；区分 inventory 和 run 两次独立进程。四例加载数据只用于比较作者格式。正式串行全套、同工作量十倍目标及新增负载另账归 1017。
+V-04 记录每次加载选中文档和载荷的打开次数，另列工具准备、发现、执行、清理及整命令时间；区分 inventory 和 run 两次独立进程。四例加载数据用于比较作者格式。正式性能采用已交付的 1017 r6 合同，必要的具名性能重放由实际改动及证据决定。
 
 ## 7. 验收标准
 
-- [ ] AC-01（work）四例在一个可独立阅读的文档内；V-01 的正反例和源位置符合设计。
-- [ ] AC-02（work）旧、新各自七行均通过 V-02；新增或漏掉行、SKIP、NOT_RUN、工具错误或实际观测不同均无法过关。
-- [ ] AC-03（work）通过 V-03，证明新写法能区分错字节、错换行、错诊断与缺项。
-- [ ] AC-04（work）旧 suite 与旧基准完整保留，试点作为单独显式入口，V-04 留下加载与可读性对照记录。
-- [ ] AC-05（review）独立审查四例七行和故意改错产生的真实失败，核对已支持子集与 SD-01；形成“可按批推广”或列明未通过项的结论。
+- [x] AC-01（work）四例在一个可独立阅读的文档内；V-01 的正反例和源位置符合设计。〔2026-11-14：`crates/auto-lang/test/cases/ace-m2/document-pilot-1002/pilot.case.ad` 单文档四例；正反例集 `crates/auto-test-case/tests/author_document.rs` 9 测（大小写标题、未接通标题、错围栏语言、重名 case/check、未知属性、属性后置、console 缺流/错 entry、未接 recipe、CRLF、载荷内标题形状），错误均带行号；源位置=heading 行号配对（document.rs 按层级+顺序软配对，author.rs 全配对要求）。〕
+- [x] AC-02（work）旧、新各自七行均通过 V-02；新增或漏掉行、SKIP、NOT_RUN、工具错误或实际观测不同均无法过关。〔2026-11-14：冻结构建（plan-1002-dev@40d93e0a2）旧侧 4 次 module-case selected_gate_exit=0、新侧 run exit=0 且 load_errors/coverage_gaps 空；七行 (case,check) 集合严格相等、无 SKIP/NOT_RUN；实际观测逐行一致（exit 14/14/0、result.txt `14`/`2` 字节、failure.json、金样 80B 逐字节、stdout 8B/stderr 3B）；唯一身份差异=a2r oracle 来源表示（sidecar 引用 vs inline@40 标记，内容 sha 相同），单列于 pair-02/T-03-pair.md。〕
+- [x] AC-03（work）通过 V-03，证明新写法能区分错字节、错换行、错诊断与缺项。〔2026-11-14：四负控各自只红目标行且报告定位到字节/行（金样改一字节→byte 75；stdout 删末 LF→byte 7；诊断码改→completion.code 期望/实际；删 `### Probe av`→6 行全绿但对账点出缺 (ace.m1.b01, av)）；另证 inline 金样改动使旧报告 STALE（oracle 轴 775b776c→a386f9cd）。〕
+- [x] AC-04（work）旧 suite 与旧基准完整保留，试点作为单独显式入口，V-04 留下加载与可读性对照记录。〔2026-11-14：三旧 suite 文件零改动；身份兼容实测 console-863/immutable-avm-920 四轴逐字节不变，ace-m1-base 仅 24 个带 file 产物的 check 行 contract/check 表示轴随 `file:`→`payload:` 漂移（source/oracle 内容轴不变，保守失效方向）；固定组 case-ace-m1-base(97 行)/console-863/immutable-avm-920/auto-test-case/infra-fixed 全绿。V-04：新 suite input_paths=0（旧 immutable 每行 1）、sandbox 无 corpus 文件仍全绿、inventory 16-17ms、run 1.9-2.1s、作者负担 4 例各 1 文件（旧 2-3 文件）。〕
+- [ ] AC-05（review）独立审查四例七行和故意改错产生的真实失败，核对已支持子集与 SD-01；形成"可按批推广"或列明未通过项的结论。
 
 ## 8. 执行步骤
 
@@ -408,6 +422,27 @@ r4（2026-11-10）按用户决定，将试点及其通过后的推广排入 M2�
 r5（2026-11-12）补入四例可复制全文、suite、零元数据 hello 和新旧对跑命令。依据当前主检出 `f9fb3854b` 重核旧声明、源码、Rust 金样、清单与报告的读取入口。细化 T-01..04 和 AC-01..05 的取证方法。样例核验属于静态检查，V-01..04 须在实施树实跑。PLAN-1000 的功能成果已归档，M1 正式收口口径参见 M2 路线图 §15。
 
 r7（2026-11-13）核实 M1 标签、1016/1025 归档与 1017 成本口径，更新 T-01/T-03 和 V-04。四例七检查、AC-01..05 与实施进度保持原记录。此次仅核源码、配置与样本。
+
+r8（2026-11-14）核实 1017 已归档、交付落主和清理收据，更新归档链接与实际性能验收口径。1002 可接续执行 T-01；四例七检查及原 AC/T/V 保持。当前主线对合同和父执行路径的新改动在 T-01 重核。此次交接核查未创建实施树或运行试点。
+
+stage: work | PLAN-1002 | r8 | 2026-11-14 | outcome: pass | worktree: D:/autostack/.wt/lang-1002/auto-lang | branch: plan-1002-dev | base: 89ab88269 | code: 40d93e0a2 | deps: auto-down detached@58ea33f（组内未改）；worker av/mn release 构建于本树 experimental/ace（receipts pair-01/tools/receipts.json） | tasks: T-01/T-02/T-03 完成（T-04 属 review/merge） | evidence: T-01=pair-01/T-01-baseline.md（master 二进制 4×module-case 全绿七行实测）；T-02=author.rs+ArtifactPayload+试点语料+固定组+author_document.rs 9 测，cargo t auto-test-case PASS；T-03=pair-02/T-03-pair.md（七行对跑全 PASS、观测逐字节一致、a2r oracle 来源表示差异单列）+ negatives/（四负控精确定位）+ v04/（sandbox 零外部读取、input_paths=0、计时/负担）；冻结提交 gates：case-ace-document-pilot-1002/case-ace-m1-base/console-863/immutable-avm-920/auto-test-case/infra-fixed 全 PASS（run-n2xvkv7q），ace-host 158/163=4 个基线复现红（a2r 金样 worker 漂移+abi leg 断言+库存分母，非本 diff）+1 并发环境瞬时红（mir_native_rounds 隔离重放绿，双侧一致） | blockers: 无 | next: review
+
+已知边界（review 复核点）：①ace-m1-base 24 个带 file 产物 check 行的 contract/check 表示轴随结构体表示漂移（`file:`→`payload:`，保守失效方向，source/oracle 内容轴不变）；②auto-case stale 对 ac/mir-native-scalar-v1 行的 worker 家族解析落入 sema 桶（既有缺口，1024 线）；③ace-host 4 个预存红的归属与 triage 在批量回归道（1017 遗留 due）。
+
+stage: goal | PLAN-1002 | r8 | round 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1002/auto-lang | commit: 40d93e0a2 | next: review
+
+stage: review | final | reviewer: 独立子代理上下文（agent_64118cb5，与执行上下文隔离，同树复核；未另建检出） | PLAN-1002 | r8 | 2026-11-14 | outcome: pass | worktree: D:/autostack/.wt/lang-1002/auto-lang | branch: plan-1002-dev | reviewed_commit: 40d93e0a2 | base: 89ab88269 | deps: auto-down@58ea33f 未改 | spec_inputs: docs/specs/auto-test-case/document-cases.md（worktree 内 SD-01 草案）| acceptance: AC-01 PASS / AC-02 PASS / AC-03 PASS / AC-04 PASS（reviewer 自行派生七行、自做五个未复用突变、自重建二进制复跑冻结对照、逐字节核源/金样/双流；详见 review/review.md） | findings: F1(info)=零检查用例加载期 fail-close 建议 spec 记一句（已采纳补入 SD-01）；F2(low)=1002 触及文件 fmt 漂移（已修复，提交 bda236bac，仅 import 排序，14 测全绿）；F3-F5(info)=§5.3 的 mod.rs/stale.rs 行为由 materialize/身份机制等位交付、inspect 不回显 probe entry——边界如实，无需改码 | evidence: D:/autostack/plan-artifacts/plan-1002/review/review.md（命令/退出码/输出/独立突变样本） | pending_closeout_gates: merge 在最终 HEAD=bda236bac 重跑受影响固定组并集（case-ace-document-pilot-1002/case-ace-m1-base/console-863/immutable-avm-920/auto-test-case/infra-fixed；ace-host 预存红归批量回归道）；40d93e0a2 上同并集已全 PASS（run-n2xvkv7q），bda236bac 仅 fmt | next: merge
+
+stage: goal | PLAN-1002 | r8 | round 2 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1002/auto-lang | commit: 40d93e0a2（review 绑定）+ bda236bac（fmt 跟进） | next: merge
+
+PLAN-1002:r8 merge 收据（2026-11-14）：
+- prepared：reviewed 基线 40d93e0a2（final pass 绑定）+ bda236bac（F2 fmt 跟进，仅 import 排序）+ 84217bfb9（SD-01 草案补 F1 句，docs-only 后代）；canonical 目标 docs/specs/auto-test-case/document-cases.md。
+- 冻结门禁：受影响固定组并集（case-ace-document-pilot-1002 / case-ace-m1-base / case-ace-m1-console-863 / case-ace-m1-immutable-avm-920 / auto-test-case / infra-fixed）在 84217bfb9 全 PASS（run-btpxus__）。
+- landed：rebase 到 master@3e2501a5b（PLAN-1039 已先进主，experimental/ace 面有变）；range-diff 三提交全 `=`（补丁等价，无冲突）；old→new 映射 40d93e0a2→ef8274658、bda236bac→cc8acf459、84217bfb9→70a680dba；`git merge --ff-only plan-1002-dev` 于主检出执行，master tip=70a680dba（无 merge commit）。rebase 面变化（1039 动 experimental/ace）后同并集在交付 tip 70a680dba 重跑全 PASS（run-co16ooic）——证据绑定最终交付提交。
+- canonical_verified：master 上 docs/specs/auto-test-case/document-cases.md sha256 前16=c2d174d12050a186，含 F1 句；landing 提交含全部 SD-01 内容；无 legacy ledger 写。
+- archived：本文件 git mv 至 docs/plans/archive/，status: archived，completion_kind: delivered；随本收据提交。
+- ace-host 备注：158/163；4 红（a2r 金样 worker 漂移×2、abi leg 断言、库存分母）在 base 树同位复现=预存、非本包 diff；1 红（mir_native_rounds）并发瞬时、隔离重放双侧绿——按环境归因，triage 归批量回归道。
+- 批量回归：due（receipt last_covered_plan_id=1015 之后合入了 1025/945 等 %5==0 计划）→ 归 auto-plan-regress 在主检出单实例执行。
 
 ## 10. 待澄清事项
 
