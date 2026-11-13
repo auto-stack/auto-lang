@@ -649,14 +649,12 @@ pub fn publish_frozen_payload_batch(
             project: Some(st.project.clone()),
         })
         .collect();
-    st.store
-        .put_artifact_batch(reqs)
-        .map_err(|e| {
-            CteAdmissionError::new(
-                CteCode::Infra("store".into()),
-                format!("frozen batch publish failed: {e}"),
-            )
-        })
+    st.store.put_artifact_batch(reqs).map_err(|e| {
+        CteAdmissionError::new(
+            CteCode::Infra("store".into()),
+            format!("frozen batch publish failed: {e}"),
+        )
+    })
 }
 
 /// Freshness: the envelope's dependency manifest must still describe the

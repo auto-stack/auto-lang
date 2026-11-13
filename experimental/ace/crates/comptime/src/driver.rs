@@ -545,230 +545,289 @@ impl CteDriver {
         const FROZEN_PAYLOAD_BOUND: u64 = 1024 * 1024;
 
         // PLAN-1017: this request's minted envelopes publish as ONE batch
-        // after the loop (per-product semantics unchanged; see
-        // publish_env_batch). Mid-request aborts abandon the pending set —
-        // a late completion never publishes, and nothing half-published
-        // rides a failed request.
+        // (per-product keys/kinds unchanged; see publish_env_batch). The
+        // loop runs inside a closure so EVERY early exit funnels through a
+        // single flush point: everything that SUCCEEDED before a failure
+        // still publishes (the per-call publish-on-success contract — a
+        // later call's failure must never retract earlier products), then
+        // the failure propagates.
         let mut pending_envs: Vec<CteExecutedV1> = Vec::new();
-        for call in &plan.av_calls {
-            if dl.exceeded() {
-                return dl.diag(cache_verdict, obs);
-            }
-            // RAW args concretize NOW — every earlier call's value is
-            // present by execution order (legal DAG deps).
-            let mut concrete: Vec<CteValue> = Vec::with_capacity(call.args.len());
-            for a in &call.args {
-                match ace_comptime_core::schedule::concretize(a, &values_by_query, &call.callee) {
-                    Ok(v) => concrete.push(v),
-                    Err(e) => return CteStepOutcome::diag(&e, cache_verdict, obs),
+        let loop_out: Result<(), CteStepOutcome> = (|| {
+            for call in &plan.av_calls {
+                if dl.exceeded() {
+                    return Err(dl.diag(cache_verdict, obs));
                 }
-            }
-            let manifest = match build_manifest(
-                &input,
-                &call.callee,
-                &req.caps,
-                &plan.meta_records,
-                &plan.meta_probes,
-            ) {
-                Ok(m) => m,
-                Err(m) => {
-                    let e = CteAdmissionError::new(
-                        CteCode::UnknownQueryRef,
-                        format!("callee manifest: {m}"),
-                    );
-                    return CteStepOutcome::diag(&e, cache_verdict, obs);
+                // RAW args concretize NOW — every earlier call's value is
+                // present by execution order (legal DAG deps).
+                let mut concrete: Vec<CteValue> = Vec::with_capacity(call.args.len());
+                for a in &call.args {
+                    match ace_comptime_core::schedule::concretize(a, &values_by_query, &call.callee)
+                    {
+                        Ok(v) => concrete.push(v),
+                        Err(e) => return Err(CteStepOutcome::diag(&e, cache_verdict, obs)),
+                    }
                 }
-            };
-            let mfp = manifest_fp(&manifest);
-            let identity = CteRequestIdentityV1 {
-                module: req.module.clone(),
-                package: CTE_SEMA_PACKAGE.into(),
-                callee: call.callee.clone(),
-                args_canonical: store::args_canonical(&concrete),
-                query_algo: CTE_QUERY_ALGO_ID.into(),
-                caps: req.caps.clone(),
-                engine: engine.clone(),
-                manifest_fp: mfp,
-            };
-            // Cache lookup first — a hit must never touch the AV. The
-            // restore is bounded IN ORDER with SEPARATE grants
-            // (F-817-R9-01: the hard read cap and the coexisting
-            // copies never share one budget):
-            //   0. a ZERO-ALLOCATION size probe (the store's own
-            //      `chunks.size` metadata) — an oversized/foreign
-            //      carrier is rejected BEFORE any reassembly happens;
-            //   1. the frame read grant: the loader's content buffer is
-            //      EXACT-capacity (one allocation == the verified file
-            //      length <= this grant);
-            //   2. the payload copy grant: `get_artifact_bounded`'s
-            //      unframed `to_vec` runs while the frame is still
-            //      alive — a SEPARATE grant of frame-48 covers the
-            //      coexisting peak (frame + copy <= 2*frame-48);
-            //   3. the loaded length must equal the probe (chunks are
-            //      content-addressed; a drift is a foreign-write
-            //      window — controlled infra rejection);
-            //   4. the decode reserves Hot at the STRUCTURAL AUDIT
-            //      amount (F-817-R10-01/R11-01): owned strings + the
-            //      ONE shared serde scratch Vec (escapes AND long
-            //      number literals are scratch tokens) + container
-            //      slots — see store::audit_envelope_budget.
-            let (cached, held_hot): (Option<CteExecutedV1>, u64) = match self.store.as_ref() {
-                Some(st) => {
-                    let probed = match obs.span("cache_size_probe", |_| {
-                        store::probe_frozen_size(st, &identity)
-                    }) {
-                        Ok(p) => p,
-                        Err(e) => return CteStepOutcome::diag(&e, cache_verdict, obs),
-                    };
-                    obs.counter("frozen_probes", 1);
-                    match probed {
-                        // Clean miss: NO reservation, NO allocation.
-                        None => (None, 0u64),
-                        Some((framed_len, payload_len)) => {
-                            if payload_len > FROZEN_PAYLOAD_BOUND {
-                                let e = CteAdmissionError::new(
+                let manifest = match build_manifest(
+                    &input,
+                    &call.callee,
+                    &req.caps,
+                    &plan.meta_records,
+                    &plan.meta_probes,
+                ) {
+                    Ok(m) => m,
+                    Err(m) => {
+                        let e = CteAdmissionError::new(
+                            CteCode::UnknownQueryRef,
+                            format!("callee manifest: {m}"),
+                        );
+                        return Err(CteStepOutcome::diag(&e, cache_verdict, obs));
+                    }
+                };
+                let mfp = manifest_fp(&manifest);
+                let identity = CteRequestIdentityV1 {
+                    module: req.module.clone(),
+                    package: CTE_SEMA_PACKAGE.into(),
+                    callee: call.callee.clone(),
+                    args_canonical: store::args_canonical(&concrete),
+                    query_algo: CTE_QUERY_ALGO_ID.into(),
+                    caps: req.caps.clone(),
+                    engine: engine.clone(),
+                    manifest_fp: mfp,
+                };
+                // Cache lookup first — a hit must never touch the AV. The
+                // restore is bounded IN ORDER with SEPARATE grants
+                // (F-817-R9-01: the hard read cap and the coexisting
+                // copies never share one budget):
+                //   0. a ZERO-ALLOCATION size probe (the store's own
+                //      `chunks.size` metadata) — an oversized/foreign
+                //      carrier is rejected BEFORE any reassembly happens;
+                //   1. the frame read grant: the loader's content buffer is
+                //      EXACT-capacity (one allocation == the verified file
+                //      length <= this grant);
+                //   2. the payload copy grant: `get_artifact_bounded`'s
+                //      unframed `to_vec` runs while the frame is still
+                //      alive — a SEPARATE grant of frame-48 covers the
+                //      coexisting peak (frame + copy <= 2*frame-48);
+                //   3. the loaded length must equal the probe (chunks are
+                //      content-addressed; a drift is a foreign-write
+                //      window — controlled infra rejection);
+                //   4. the decode reserves Hot at the STRUCTURAL AUDIT
+                //      amount (F-817-R10-01/R11-01): owned strings + the
+                //      ONE shared serde scratch Vec (escapes AND long
+                //      number literals are scratch tokens) + container
+                //      slots — see store::audit_envelope_budget.
+                let (cached, held_hot): (Option<CteExecutedV1>, u64) = match self.store.as_ref() {
+                    Some(st) => {
+                        let probed = match obs.span("cache_size_probe", |_| {
+                            store::probe_frozen_size(st, &identity)
+                        }) {
+                            Ok(p) => p,
+                            Err(e) => return Err(CteStepOutcome::diag(&e, cache_verdict, obs)),
+                        };
+                        obs.counter("frozen_probes", 1);
+                        match probed {
+                            // Clean miss: NO reservation, NO allocation.
+                            None => (None, 0u64),
+                            Some((framed_len, payload_len)) => {
+                                if payload_len > FROZEN_PAYLOAD_BOUND {
+                                    let e = CteAdmissionError::new(
                                     CteCode::Infra("store".into()),
                                     format!(
                                         "frozen artifact payload {payload_len}B exceeds the {FROZEN_PAYLOAD_BOUND}B reassembly bound — rejected at the read bound BEFORE load (foreign/corrupt carrier)"
                                     ),
                                 );
-                                return CteStepOutcome::diag(&e, cache_verdict, obs);
-                            }
-                            // SEPARATE grants (F-817-R9-01): the frame read
-                            // cap is `framed_len` (NOT the total) — a file
-                            // even slightly larger than the probed frame
-                            // size is rejected at the read bound — and the
-                            // coexisting payload copy gets its own
-                            // frame-48 grant.
-                            if let Err(m) = budget.reserve(
-                                crate::observe::Partition::Staging,
-                                framed_len,
-                                "frozen frame read",
-                            ) {
-                                let e = CteAdmissionError::new(
-                                    CteCode::Resource("managed-staging".into()),
-                                    m,
-                                );
-                                return CteStepOutcome::diag(&e, cache_verdict, obs);
-                            }
-                            if let Err(m) = budget.reserve(
-                                crate::observe::Partition::Staging,
-                                framed_len
-                                    .saturating_sub(ace_artifacts::codec::CHUNK_HEADER_LEN as u64),
-                                "frozen payload copy",
-                            ) {
-                                let e = CteAdmissionError::new(
-                                    CteCode::Resource("managed-staging".into()),
-                                    m,
-                                );
-                                return CteStepOutcome::diag(&e, cache_verdict, obs);
-                            }
-                            obs.counter("frozen_load_attempts", 1);
-                            // The loader is HARD-BOUNDED by the frame
-                            // grant (F-817-R8/R9): exact-capacity read,
-                            // coexisting copy separately granted.
-                            match obs.span("cache_lookup", |_| {
-                                store::load_frozen_payload_bounded(st, &identity, framed_len)
-                            }) {
-                                Ok(Some(payload)) => {
-                                    if (payload.len() as u64) != payload_len {
-                                        let e = CteAdmissionError::new(
+                                    return Err(CteStepOutcome::diag(&e, cache_verdict, obs));
+                                }
+                                // SEPARATE grants (F-817-R9-01): the frame read
+                                // cap is `framed_len` (NOT the total) — a file
+                                // even slightly larger than the probed frame
+                                // size is rejected at the read bound — and the
+                                // coexisting payload copy gets its own
+                                // frame-48 grant.
+                                if let Err(m) = budget.reserve(
+                                    crate::observe::Partition::Staging,
+                                    framed_len,
+                                    "frozen frame read",
+                                ) {
+                                    let e = CteAdmissionError::new(
+                                        CteCode::Resource("managed-staging".into()),
+                                        m,
+                                    );
+                                    return Err(CteStepOutcome::diag(&e, cache_verdict, obs));
+                                }
+                                if let Err(m) = budget.reserve(
+                                    crate::observe::Partition::Staging,
+                                    framed_len.saturating_sub(
+                                        ace_artifacts::codec::CHUNK_HEADER_LEN as u64,
+                                    ),
+                                    "frozen payload copy",
+                                ) {
+                                    let e = CteAdmissionError::new(
+                                        CteCode::Resource("managed-staging".into()),
+                                        m,
+                                    );
+                                    return Err(CteStepOutcome::diag(&e, cache_verdict, obs));
+                                }
+                                obs.counter("frozen_load_attempts", 1);
+                                // The loader is HARD-BOUNDED by the frame
+                                // grant (F-817-R8/R9): exact-capacity read,
+                                // coexisting copy separately granted.
+                                match obs.span("cache_lookup", |_| {
+                                    store::load_frozen_payload_bounded(st, &identity, framed_len)
+                                }) {
+                                    Ok(Some(payload)) => {
+                                        if (payload.len() as u64) != payload_len {
+                                            let e = CteAdmissionError::new(
                                             CteCode::Infra("store".into()),
                                             format!(
                                                 "frozen artifact length drifted from the probed size ({}B vs {payload_len}B) — content-addressed chunks make this a foreign-write window",
                                                 payload.len()
                                             ),
                                         );
-                                        return CteStepOutcome::diag(&e, cache_verdict, obs);
-                                    }
-                                    budget.record_alloc("frozen-frame", payload.len() as u64 + 48);
-                                    budget.record_alloc("frozen-payload", payload.len() as u64);
-                                    // F-817-R10-01: the decode grant comes
-                                    // from the ZERO-ALLOCATION structural
-                                    // audit (the real container population),
-                                    // NOT a multiple of the payload — serde's
-                                    // container growth is unanchored by
-                                    // payload length (a short-string array
-                                    // decoded to a 12MiB single allocation
-                                    // against a 2x grant). Malformed or
-                                    // over-deep JSON is rejected HERE,
-                                    // before from_slice runs.
-                                    let audited = match store::audit_envelope_budget(&payload) {
-                                        Ok(v) => v,
-                                        Err(e) => {
-                                            return CteStepOutcome::diag(&e, cache_verdict, obs)
+                                            return Err(CteStepOutcome::diag(
+                                                &e,
+                                                cache_verdict,
+                                                obs,
+                                            ));
                                         }
-                                    };
-                                    if let Err(m) = budget.reserve(
-                                        crate::observe::Partition::Hot,
-                                        audited,
-                                        "restored envelope decode",
-                                    ) {
-                                        let e = CteAdmissionError::new(
-                                            CteCode::Resource("managed-hot".into()),
-                                            m,
+                                        budget.record_alloc(
+                                            "frozen-frame",
+                                            payload.len() as u64 + 48,
                                         );
-                                        return CteStepOutcome::diag(&e, cache_verdict, obs);
+                                        budget.record_alloc("frozen-payload", payload.len() as u64);
+                                        // F-817-R10-01: the decode grant comes
+                                        // from the ZERO-ALLOCATION structural
+                                        // audit (the real container population),
+                                        // NOT a multiple of the payload — serde's
+                                        // container growth is unanchored by
+                                        // payload length (a short-string array
+                                        // decoded to a 12MiB single allocation
+                                        // against a 2x grant). Malformed or
+                                        // over-deep JSON is rejected HERE,
+                                        // before from_slice runs.
+                                        let audited = match store::audit_envelope_budget(&payload) {
+                                            Ok(v) => v,
+                                            Err(e) => {
+                                                return Err(CteStepOutcome::diag(
+                                                    &e,
+                                                    cache_verdict,
+                                                    obs,
+                                                ))
+                                            }
+                                        };
+                                        if let Err(m) = budget.reserve(
+                                            crate::observe::Partition::Hot,
+                                            audited,
+                                            "restored envelope decode",
+                                        ) {
+                                            let e = CteAdmissionError::new(
+                                                CteCode::Resource("managed-hot".into()),
+                                                m,
+                                            );
+                                            return Err(CteStepOutcome::diag(
+                                                &e,
+                                                cache_verdict,
+                                                obs,
+                                            ));
+                                        }
+                                        match obs.span("cache_restore_decode", |_| {
+                                            store::decode_envelope(&payload, &identity)
+                                        }) {
+                                            Ok(env) => {
+                                                budget.record_alloc("restore-decode", audited);
+                                                budget.release(
+                                                    crate::observe::Partition::Staging,
+                                                    framed_len,
+                                                );
+                                                budget.release(
+                                                    crate::observe::Partition::Staging,
+                                                    framed_len.saturating_sub(
+                                                        ace_artifacts::codec::CHUNK_HEADER_LEN
+                                                            as u64,
+                                                    ),
+                                                );
+                                                (Some(env), audited)
+                                            }
+                                            Err(e) => {
+                                                return Err(CteStepOutcome::diag(
+                                                    &e,
+                                                    cache_verdict,
+                                                    obs,
+                                                ))
+                                            }
+                                        }
                                     }
-                                    match obs.span("cache_restore_decode", |_| {
-                                        store::decode_envelope(&payload, &identity)
-                                    }) {
-                                        Ok(env) => {
-                                            budget.record_alloc("restore-decode", audited);
-                                            budget.release(
-                                                crate::observe::Partition::Staging,
-                                                framed_len,
-                                            );
-                                            budget.release(
-                                                crate::observe::Partition::Staging,
-                                                framed_len.saturating_sub(
-                                                    ace_artifacts::codec::CHUNK_HEADER_LEN as u64,
-                                                ),
-                                            );
-                                            (Some(env), audited)
-                                        }
-                                        Err(e) => {
-                                            return CteStepOutcome::diag(&e, cache_verdict, obs)
-                                        }
+                                    Ok(None) => {
+                                        budget.release(
+                                            crate::observe::Partition::Staging,
+                                            framed_len,
+                                        );
+                                        budget.release(
+                                            crate::observe::Partition::Staging,
+                                            framed_len.saturating_sub(
+                                                ace_artifacts::codec::CHUNK_HEADER_LEN as u64,
+                                            ),
+                                        );
+                                        (None, 0)
+                                    }
+                                    Err(e) => {
+                                        return Err(CteStepOutcome::diag(&e, cache_verdict, obs))
                                     }
                                 }
-                                Ok(None) => {
-                                    budget.release(crate::observe::Partition::Staging, framed_len);
-                                    budget.release(
-                                        crate::observe::Partition::Staging,
-                                        framed_len.saturating_sub(
-                                            ace_artifacts::codec::CHUNK_HEADER_LEN as u64,
-                                        ),
-                                    );
-                                    (None, 0)
-                                }
-                                Err(e) => return CteStepOutcome::diag(&e, cache_verdict, obs),
                             }
                         }
                     }
-                }
-                None => (None, 0),
-            };
-            let restored_held = held_hot;
-            let value = if let Some(env) = cached {
-                let fresh = obs.span("freshness", |_| {
-                    store::frozen_is_fresh(&env, &input, &req.caps)
-                });
-                if fresh {
-                    obs.counter("cache_hits", 1);
-                    if cache_verdict.is_none() {
-                        cache_verdict = Some("hit");
+                    None => (None, 0),
+                };
+                let restored_held = held_hot;
+                let value = if let Some(env) = cached {
+                    let fresh = obs.span("freshness", |_| {
+                        store::frozen_is_fresh(&env, &input, &req.caps)
+                    });
+                    if fresh {
+                        obs.counter("cache_hits", 1);
+                        if cache_verdict.is_none() {
+                            cache_verdict = Some("hit");
+                        }
+                        env.value
+                    } else {
+                        // Invalidated entry: recompute. The new manifest fp
+                        // re-keys the next publish; the old row survives
+                        // untouched (no in-place rebuild).
+                        if cache_verdict.is_none() {
+                            cache_verdict = Some("stale");
+                        }
+                        let wall = dl.av_wall_budget();
+                        let exec = match self.execute_call(
+                            obs,
+                            &req,
+                            &input,
+                            call,
+                            &concrete,
+                            cache_verdict,
+                            wall,
+                            dl,
+                        ) {
+                            Ok(x) => x,
+                            Err(out) => return Err(out),
+                        };
+                        budget.settle(crate::observe::Partition::AvSlots, exec.peak_slot_bytes);
+                        if dl.exceeded() {
+                            return Err(dl.diag(cache_verdict, obs));
+                        }
+                        let env = self.mint_envelope(&req, &identity, &exec, manifest);
+                        pending_envs.push(env);
+                        exec.value
                     }
-                    env.value
                 } else {
-                    // Invalidated entry: recompute. The new manifest fp
-                    // re-keys the next publish; the old row survives
-                    // untouched (no in-place rebuild).
                     if cache_verdict.is_none() {
-                        cache_verdict = Some("stale");
+                        cache_verdict = Some("miss");
                     }
                     let wall = dl.av_wall_budget();
-                    let exec = match self.execute_call(
+                    if wall.is_zero() {
+                        return Err(dl.diag(cache_verdict, obs));
+                    }
+                    let exec = match self.perform_execution(
                         obs,
                         &req,
                         &input,
@@ -779,59 +838,41 @@ impl CteDriver {
                         dl,
                     ) {
                         Ok(x) => x,
-                        Err(out) => return out,
+                        Err(out) => return Err(out),
                     };
                     budget.settle(crate::observe::Partition::AvSlots, exec.peak_slot_bytes);
                     if dl.exceeded() {
-                        return dl.diag(cache_verdict, obs);
+                        return Err(dl.diag(cache_verdict, obs));
                     }
                     let env = self.mint_envelope(&req, &identity, &exec, manifest);
                     pending_envs.push(env);
                     exec.value
-                }
-            } else {
-                if cache_verdict.is_none() {
-                    cache_verdict = Some("miss");
-                }
-                let wall = dl.av_wall_budget();
-                if wall.is_zero() {
-                    return dl.diag(cache_verdict, obs);
-                }
-                let exec = match self.perform_execution(
-                    obs,
-                    &req,
-                    &input,
-                    call,
-                    &concrete,
-                    cache_verdict,
-                    wall,
-                    dl,
-                ) {
-                    Ok(x) => x,
-                    Err(out) => return out,
                 };
-                budget.settle(crate::observe::Partition::AvSlots, exec.peak_slot_bytes);
-                if dl.exceeded() {
-                    return dl.diag(cache_verdict, obs);
+                // The restored envelope is consumed — return its Hot bytes.
+                if restored_held > 0 {
+                    budget.release(crate::observe::Partition::Hot, restored_held);
                 }
-                let env = self.mint_envelope(&req, &identity, &exec, manifest);
-                pending_envs.push(env);
-                exec.value
-            };
-            // The restored envelope is consumed — return its Hot bytes.
-            if restored_held > 0 {
-                budget.release(crate::observe::Partition::Hot, restored_held);
+                for qid in &call.query_ids {
+                    values_by_query.insert(qid.clone(), value);
+                }
             }
-            for qid in &call.query_ids {
-                values_by_query.insert(qid.clone(), value);
-            }
-        }
+            Ok(())
+        })();
+        // Flush BEFORE propagating any failure. On the error path the
+        // deadline check is skipped: these envelopes completed before the
+        // abort, exactly like the per-call publishes they replace; on the
+        // normal path the deadline still gates the whole batch (a late
+        // completion never publishes).
         if !pending_envs.is_empty() {
-            if let Err(e) =
-                obs.span("freeze_publish", |_| self.publish_env_batch(&pending_envs, budget, dl))
-            {
+            let force = loop_out.is_err();
+            if let Err(e) = obs.span("freeze_publish", |_| {
+                self.publish_env_batch(&pending_envs, budget, dl, force)
+            }) {
                 return CteStepOutcome::diag(&e, cache_verdict, obs);
             }
+        }
+        if let Err(out) = loop_out {
+            return out;
         }
 
         // ---- binding values + expected-type checks ----------------------
@@ -1130,7 +1171,7 @@ impl CteDriver {
         budget: &mut crate::observe::ManagedBudget,
         dl: &RequestDeadline,
     ) -> Result<(), CteAdmissionError> {
-        self.publish_env_batch(std::slice::from_ref(env), budget, dl)
+        self.publish_env_batch(std::slice::from_ref(env), budget, dl, false)
     }
 
     /// PLAN-1017: stage each envelope (reserve-before-encode, F-817-R6-02)
@@ -1144,11 +1185,12 @@ impl CteDriver {
         envs: &[CteExecutedV1],
         budget: &mut crate::observe::ManagedBudget,
         dl: &RequestDeadline,
+        force: bool,
     ) -> Result<(), CteAdmissionError> {
         if envs.is_empty() {
             return Ok(());
         }
-        if dl.exceeded() {
+        if !force && dl.exceeded() {
             return Err(CteAdmissionError::new(
                 CteCode::Resource("request-deadline".into()),
                 "request deadline reached before publish (nothing published)".to_string(),
