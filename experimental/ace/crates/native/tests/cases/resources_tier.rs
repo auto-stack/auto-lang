@@ -458,12 +458,12 @@ mod performance {
             other => panic!("released closure must be gone: {other:?}"),
         }
 
-        // The CURRENT publication (round 511) stayed root-protected through
+        // The CURRENT publication (round 127) stayed root-protected through
         // both GC passes and still restores.
-        let (_, want511) = churn_gen(511);
-        let out511 = worker::restore_run_by_id(&root, &last_manifest, &root.join("current"), None)
+        let (_, want127) = churn_gen(127);
+        let out127 = worker::restore_run_by_id(&root, &last_manifest, &root.join("current"), None)
             .expect("current publication survives GC");
-        assert_eq!(out511.exit_code, Some(want511));
+        assert_eq!(out127.exit_code, Some(want127));
 
         // Post-GC correctness: after the full reclaim every cache entry is
         // gone — a fresh request recompiles cleanly from scratch.
