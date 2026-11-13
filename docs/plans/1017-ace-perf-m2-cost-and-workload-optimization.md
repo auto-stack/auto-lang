@@ -269,6 +269,23 @@ T-04/T-05是测量选路，不要求无瓶颈也改代码；某一路无须改�
 
 ## 9. 复审记录
 
+2026-11-13 stage:work | PLAN-1017 r4 | outcome:**needs_replan**（AC-05 十倍在现合同下实测不可达，
+修订目标需用户裁定——§10 决策点；已交付范围内的修复/裁剪全部落地且验证绿） |
+worktree:`D:/autostack/.wt/lang-1017/auto-lang` branch `codex/plan-1017-dev` |
+base_commit:`42874419a` | code_commit:`6ab6d9ce9`（3 实现+2 修复提交，树净） |
+dependency_revisions:无跨仓 | task_ids:T-01✅（S0 94项冻结+身份）/T-02✅（探针+机制归因）/
+T-03✅数据（逐例 94/94 实测+全量 3845s；十倍判定=不成立待修订）/T-04 部分（批量发布+记忆化+
+FieldSet）/T-05 部分（closure lane 复用经合同审被否决留续包；emit/binder 深水未开）/
+T-06 部分（已落地范围回归绿：core 433、syntax 30、artifacts 27/28 基线同 flaky、comptime 17、
+av 21、sema 10、native 30+2 重放绿）/T-07 一次全量已执行（89绿+4环境归因重放绿+D-932-1既有红）|
+evidence:plan-artifacts/plan-1017/{t01-s0-freeze.json,t02-findings.md,passb-*.log,
+passC-full-aceperf.log}+§4/§9 内联摘要 | blockers:目标修订需用户裁定（§10）|
+next_responsible_role:new（r5 有界修订）——用户裁定 (a)/(b)/(c) 后继续。
+
+2026-11-13 stage:goal | PLAN-1017 r4 | round:1 | from:work | to:new(user decision) |
+status:executing | outcome:needs_replan | worktree:`D:/autostack/.wt/lang-1017/auto-lang` |
+commit:`6ab6d9ce9` | next:user decision on target revision (§10), then new r5。
+
 2026-11-12 stage:new / PLAN-1017 r2：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原9任务/全部AC与V/依赖/阶段/预算和drafting 0/9；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
 2026-11-12 本轮规划静态核验：32份合同原505任务ID/顺序/进度、全部旧AC/V/Spec-delta及原依赖/阶段/预算保留；新增128条V-DETAIL待实施验证，未生成任何测试源码。505处本地引用/围栏/0–10章节/原任务映射核对通过，跨四仓可达222份Plan的显式依赖无缺失/环。只证明规划结构与取材来源，不是旧VM/新ACE运行或独立产品review PASS；959–962归档和963r5未改。
@@ -362,6 +379,14 @@ put_artifact 每发布全库 space() 扫描（O(n²) 候选）、语法流式 st
 - 无阻塞本轮建计划的问题。1016 落地主身份已核。实施时 T-01 记录此次实际采用的源与工具。
 - 当前完整suite的B0、不可压缩持续时长与10倍可行性未知，由T-01..03负责，不预填测量数或默认放宽目标。
 - M1 签章与标签已有 1025 主线收口记录。正式性能套件的覆盖和成本由本计划单独验收。
+
+**【2026-11-13 work→needs_replan 用户决策点】** AC-05 总十倍目标在现合同下实测不可达
+（同集约 1.6×、套件 61→94 例、全量串行 ≈3845s；不可压缩地板=注入延迟/统计样本义务/
+冻结字节规模/debug 档每样本真实编译emitlink）。请裁定后续之一：
+(a) 修订目标为合理总时长+模块预算（如全量 ≤1800-2400s）；(b) 合同级 PERF 档 release 化
+（需 B0 重基线）；(c) 深水续包（cranelift emit、atom binder 快路径、cold_set 填充段、
+turnaround 每样本链）。已交付修复/裁剪/台账见 §9 Pass B/C 记录；实施树
+`codex/plan-1017-dev` @ `6ab6d9ce9`（3 实现+2 修复提交，树净）。
 
 ### 本轮取材身份
 
