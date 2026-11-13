@@ -704,6 +704,8 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
             .clone();
         match &e.kind {
             hir::ExprKind::ReadLocal { local } => Ok(self.local_name(local.0)?.to_string()),
+            hir::ExprKind::Unit => Ok("None".to_string()),
+            hir::ExprKind::CharLit { scalar } => Ok(format!("{scalar}")),
             hir::ExprKind::Constant { value } => {
                 let ety = self.view.resolve_use_ty(e.ty).unwrap_or(Ty::I32);
                 Ok(match ety {
@@ -764,8 +766,28 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                     hir::BinOp::LeI32 => self.emit_line(&format!("{t} = ({l} <= {r})")),
                     hir::BinOp::GtI32 => self.emit_line(&format!("{t} = ({l} > {r})")),
                     hir::BinOp::GeI32 => self.emit_line(&format!("{t} = ({l} >= {r})")),
-                    hir::BinOp::Eq => self.emit_line(&format!("{t} = ({l} == {r})")),
-                    hir::BinOp::Ne => self.emit_line(&format!("{t} = ({l} != {r})")),
+                    hir::BinOp::Eq => {
+                        let is_text = self
+                            .expr_ty(*lhs)
+                            .map(|ty| matches!(ty, Ty::Str | Ty::StrOwned))
+                            .unwrap_or(false);
+                        if is_text {
+                            self.emit_line(&format!("{t} = a2x_str_eq({l}, {r})"));
+                        } else {
+                            self.emit_line(&format!("{t} = ({l} == {r})"));
+                        }
+                    }
+                    hir::BinOp::Ne => {
+                        let is_text = self
+                            .expr_ty(*lhs)
+                            .map(|ty| matches!(ty, Ty::Str | Ty::StrOwned))
+                            .unwrap_or(false);
+                        if is_text {
+                            self.emit_line(&format!("{t} = a2x_str_ne({l}, {r})"));
+                        } else {
+                            self.emit_line(&format!("{t} = ({l} != {r})"));
+                        }
+                    }
                     hir::BinOp::Num { op: nop, ty } => {
                         let expr = self.lower_num_bin(*nop, *ty, &l, &r)?;
                         self.emit_line(&format!("{t} = {expr}"));
@@ -827,10 +849,53 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 self.emit_line(&format!("{t} = a2x_str_len({s})"));
                 Ok(t)
             }
+            hir::ExprKind::TextLenBytes { operand } => {
+                let s = self.lower_expr(*operand)?;
+                let t = self.fresh_temp();
+                self.emit_line(&format!("{t} = a2x_str_len_bytes({s})"));
+                Ok(t)
+            }
+            hir::ExprKind::TextCharAt { operand, index } => {
+                let s = self.lower_expr(*operand)?;
+                let i = self.lower_expr(*index)?;
+                let t = self.fresh_temp();
+                self.emit_line(&format!("{t} = a2x_str_char_at({s}, {i})"));
+                Ok(t)
+            }
+            hir::ExprKind::TextSlice {
+                operand,
+                start,
+                end,
+            } => {
+                let s = self.lower_expr(*operand)?;
+                let st = self.lower_expr(*start)?;
+                let en = self.lower_expr(*end)?;
+                let t = self.fresh_temp();
+                self.emit_line(&format!("{t} = a2x_str_slice({s}, {st}, {en})"));
+                Ok(t)
+            }
             hir::ExprKind::TextClone { operand } | hir::ExprKind::TextToOwned { operand } => {
                 let o = self.lower_expr(*operand)?;
                 let t = self.fresh_temp();
                 self.emit_line(&format!("{t} = a2x_str_clone({o})"));
+                Ok(t)
+            }
+            hir::ExprKind::TextToBorrowed { operand } => {
+                let o = self.lower_expr(*operand)?;
+                let t = self.fresh_temp();
+                self.emit_line(&format!("{t} = a2x_str_to_borrowed({o})"));
+                Ok(t)
+            }
+            hir::ExprKind::CharToCodepoint { operand } => {
+                let o = self.lower_expr(*operand)?;
+                let t = self.fresh_temp();
+                self.emit_line(&format!("{t} = a2x_char_to_codepoint({o})"));
+                Ok(t)
+            }
+            hir::ExprKind::CharFromCodepoint { operand } => {
+                let o = self.lower_expr(*operand)?;
+                let t = self.fresh_temp();
+                self.emit_line(&format!("{t} = a2x_char_from_codepoint({o})"));
                 Ok(t)
             }
             hir::ExprKind::TextConcat { lhs, rhs } => {
@@ -990,8 +1055,7 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 Ok(t)
             }
             other => Err(A2xReject::unsupported_expr(format!(
-                "Python lowering does not serve expression `{:?}` in {:?}",
-                std::mem::discriminant(other),
+                "Python lowering does not serve expression `{other:?}` in {:?}",
                 self.family
             ))),
         }
@@ -1085,11 +1149,32 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
         }
 
         if let Some(port_id) = self.resolve_stdlib_port_id(target_id) {
+            let catalog = default_stdlib_port_catalog(PY_RUNTIME_VERSION);
+            let spec = catalog
+                .ports
+                .iter()
+                .find(|p| p.operation_id == port_id)
+                .ok_or_else(|| A2xReject::new("a2py.port", format!("missing port `{port_id}`")))?;
+            let modes: Vec<String> = spec
+                .params
+                .iter()
+                .map(|p| format!("'{}'", p.direction.as_str()))
+                .collect();
+            let modes_tuple = if modes.len() == 1 {
+                format!("({},)", modes[0])
+            } else {
+                format!("({})", modes.join(", "))
+            };
             let arg_list = place_args(&slots, bindings, slots.len())?;
+            let extra = if arg_list.is_empty() {
+                String::new()
+            } else {
+                format!(", {}", arg_list.join(", "))
+            };
             let t = self.fresh_temp();
             self.emit_line(&format!(
-                "{t} = a2x_port_call('{port_id}', [{}])",
-                arg_list.join(", ")
+                "{t} = a2x_port_call('{port_id}', {}, {modes_tuple}, f'{{A2X_PY_RUNTIME_VERSION}}@{{A2X_PY_RUNTIME_BODY_SHA256}}'{extra})",
+                spec.semantic_version
             ));
             return Ok(t);
         }

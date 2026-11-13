@@ -44,7 +44,7 @@ pub use ports::{
 pub use print::{print_program_py, SourceMapEntry, PY_PRINT_VERSION};
 pub use provider::{
     PythonTargetProvider, PY_BACKEND, PY_BACKEND_VERSION, PY_COLL_FILESET_SCHEMA,
-    PY_COLL_RECIPE, PY_FILESET_SCHEMA, PY_RECIPE, PY_RT_FILESET_SCHEMA, PY_RT_RECIPE,
-    PY_STANDARD,
+    PY_COLL_RECIPE, PY_FILESET_SCHEMA, PY_PRODUCER, PY_RECIPE, PY_RT_FILESET_SCHEMA,
+    PY_RT_RECIPE, PY_STANDARD,
 };
-pub use runtime::{python_runtime_source, PY_RUNTIME_VERSION};
+pub use runtime::{python_runtime_source, runtime_body_sha256, PY_RUNTIME_VERSION};

@@ -618,19 +618,19 @@ pub fn render_coll_seed_helpers(coll: &SeedColl) -> String {
         match elem {
             SeedCollTy::StrOwned => {
                 out.push_str(
-                    "    for item in lst.items:\n        a2x_str_free(item)\n    a2x_list_clear(lst)\n\n",
+                    "    for item in lst.elems:\n        a2x_str_free(item)\n    a2x_list_clear(lst)\n\n",
                 );
             }
             SeedCollTy::Record(inner) => {
                 let ir = sanitize_ident(inner);
                 out.push_str(&format!(
-                    "    for item in lst.items:\n        a2x_py_rec_free_{ir}(item)\n    a2x_list_clear(lst)\n\n"
+                    "    for item in lst.elems:\n        a2x_py_rec_free_{ir}(item)\n    a2x_list_clear(lst)\n\n"
                 ));
             }
             SeedCollTy::Variant(inner) => {
                 let iv = sanitize_ident(inner);
                 out.push_str(&format!(
-                    "    for item in lst.items:\n        a2x_py_var_free_{iv}(item)\n    a2x_list_clear(lst)\n\n"
+                    "    for item in lst.elems:\n        a2x_py_var_free_{iv}(item)\n    a2x_list_clear(lst)\n\n"
                 ));
             }
             _ => {
@@ -638,25 +638,25 @@ pub fn render_coll_seed_helpers(coll: &SeedColl) -> String {
             }
         }
         out.push_str(&format!("def a2x_py_list_clone_{tag}(src):\n"));
-        out.push_str("    out = A2xList([])\n    try:\n");
+        out.push_str(&format!("    out = A2xList('{tag}')\n    try:\n"));
         match elem {
             SeedCollTy::StrOwned => {
-                out.push_str("        for item in src.items:\n            out.items.append(a2x_str_clone(item))\n");
+                out.push_str("        for item in src.elems:\n            out.elems.append(a2x_str_clone(item))\n");
             }
             SeedCollTy::Record(inner) => {
                 let ir = sanitize_ident(inner);
                 out.push_str(&format!(
-                    "        for item in src.items:\n            out.items.append(a2x_py_rec_clone_{ir}(item))\n"
+                    "        for item in src.elems:\n            out.elems.append(a2x_py_rec_clone_{ir}(item))\n"
                 ));
             }
             SeedCollTy::Variant(inner) => {
                 let iv = sanitize_ident(inner);
                 out.push_str(&format!(
-                    "        for item in src.items:\n            out.items.append(a2x_py_var_clone_{iv}(item))\n"
+                    "        for item in src.elems:\n            out.elems.append(a2x_py_var_clone_{iv}(item))\n"
                 ));
             }
             _ => {
-                out.push_str("        for item in src.items:\n            out.items.append(item)\n");
+                out.push_str("        for item in src.elems:\n            out.elems.append(item)\n");
             }
         }
         out.push_str(&format!(

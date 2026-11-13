@@ -97,3 +97,5 @@ mod worker_ct_frontdoor_958;
 
 #[path = "cases/record_field_writes_941.rs"]
 mod record_field_writes_941;
+#[path = "cases/pyready_1042.rs"]
+mod pyready_1042;

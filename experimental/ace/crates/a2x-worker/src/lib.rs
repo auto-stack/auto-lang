@@ -7,6 +7,7 @@ pub mod load256;
 /// certification and worker ops share it).
 pub mod coll_formal_load;
 pub mod crun;
+pub mod pyrun;
 
 #[cfg(test)]
 mod tests {
