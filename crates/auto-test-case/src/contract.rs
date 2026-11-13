@@ -1116,6 +1116,10 @@ fn decode_check(
             | Some("ac-a2c/hir-scalar-emit-v1")
             | Some("ac-a2c/hir-record-text-emit-v1")
             | Some("ac-a2c/hir-collections-emit-v1")
+            | Some("ac-a2py/hir-scalar-emit-v1")
+            | Some("ac-a2py/hir-record-text-emit-v1")
+            | Some("ac-a2py/hir-collections-emit-v1")
+            | Some("ac-a2py/hir-stdlib-run-v1")
     );
     // PLAN-914: the AV recipes are the only probe recipes whose run steps
     // report `step.trace`; the mark-trace oracle is admitted there only.
@@ -1132,6 +1136,10 @@ fn decode_check(
         .as_deref()
         .map(|r| r.starts_with("ac/mir-native-"))
         .unwrap_or(false);
+    // PLAN-1042: `ac-a2py/hir-stdlib-run-v1` runs generated Python via real OS
+    // Python and captures stdout/stderr bytes for parent-side oracle comparison.
+    let py_run_recipe =
+        options.probe_recipe.as_deref() == Some("ac-a2py/hir-stdlib-run-v1");
     let expect = decode_expect(
         f.req("expect")?,
         &f.path_of("expect"),
@@ -1253,19 +1261,19 @@ fn decode_check(
                     "console-run-v1 requires exactly one run step",
                 ));
             }
-        } else if expect.stderr.is_some() && !mn_recipe {
+        } else if expect.stderr.is_some() && !mn_recipe && !py_run_recipe {
             // PLAN-914: the MIR-native recipes capture the produced PE's
             // real streams; `stderr` is admitted there so a scenario can
             // observe the executed mark bytes. stdout stays console-only
             // until a consumer actually needs it (no silent widening).
             return Err(err(
                 &f.path_of("expect"),
-                "probe stderr is observable only with ac-av/console-run-v1 or an ac/mir-native-* recipe",
+                "probe stderr is observable only with ac-av/console-run-v1, ac/mir-native-*, or ac-a2py/hir-stdlib-run-v1",
             ));
-        } else if expect.stdout.is_some() {
+        } else if expect.stdout.is_some() && !py_run_recipe {
             return Err(err(
                 &f.path_of("expect"),
-                "probe streams are observable only with ac-av/console-run-v1",
+                "probe streams are observable only with ac-av/console-run-v1 or ac-a2py/hir-stdlib-run-v1",
             ));
         }
     }
@@ -1823,6 +1831,12 @@ fn decode_options(
                         // PLAN-926: the C collections emit recipe takes
                         // exactly one judged run step (the daily emit).
                         "ac-a2c/hir-collections-emit-v1" => matches!(op.as_str(), "run"),
+                        // PLAN-1042: Python emit and real execution recipes take
+                        // exactly one judged run step.
+                        "ac-a2py/hir-scalar-emit-v1"
+                        | "ac-a2py/hir-record-text-emit-v1"
+                        | "ac-a2py/hir-collections-emit-v1"
+                        | "ac-a2py/hir-stdlib-run-v1" => matches!(op.as_str(), "run"),
                         _ => op != "run",
                     };
                     if !allowed {
@@ -2861,6 +2875,10 @@ fn decode_options(
                 | "ac-a2c/hir-scalar-emit-v1"
                 | "ac-a2c/hir-record-text-emit-v1"
                 | "ac-a2c/hir-collections-emit-v1"
+                | "ac-a2py/hir-scalar-emit-v1"
+                | "ac-a2py/hir-record-text-emit-v1"
+                | "ac-a2py/hir-collections-emit-v1"
+                | "ac-a2py/hir-stdlib-run-v1"
         );
         let a2x_hir = match f.sub("a2x_hir") {
             None => {
@@ -2905,6 +2923,22 @@ fn decode_options(
                     // collections profile only.
                     "ac-a2c/hir-collections-emit-v1" => {
                         matches!(profile.as_str(), "collections")
+                    }
+                    // PLAN-1042: Python TargetProvider channels.
+                    "ac-a2py/hir-scalar-emit-v1" => {
+                        matches!(profile.as_str(), "core" | "scalar")
+                    }
+                    "ac-a2py/hir-record-text-emit-v1" => {
+                        matches!(profile.as_str(), "record" | "text" | "text-record")
+                    }
+                    "ac-a2py/hir-collections-emit-v1" => {
+                        matches!(profile.as_str(), "collections")
+                    }
+                    "ac-a2py/hir-stdlib-run-v1" => {
+                        matches!(
+                            profile.as_str(),
+                            "core" | "scalar" | "record" | "text" | "text-record" | "collections"
+                        )
                     }
                     _ => matches!(profile.as_str(), "record" | "text" | "text-record"),
                 };
@@ -3024,6 +3058,12 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // nominal type table + manifest.json sidecar; strictly disjoint from
     // every other recipe/fileset/cert identity).
     "ac-a2c/hir-collections-emit-v1",
+    // PLAN-1042: the Python A2X emit and stdlib execution recipes
+    // (Served by `daily-emit-py` / `run-py` on the shared `a2x-worker` binary).
+    "ac-a2py/hir-scalar-emit-v1",
+    "ac-a2py/hir-record-text-emit-v1",
+    "ac-a2py/hir-collections-emit-v1",
+    "ac-a2py/hir-stdlib-run-v1",
     // PLAN-820: the av.data/1 data recipe, same seam contract.
     "ac-av/data-run-v1",
     // PLAN-821: the av.owned/1 owned recipe, same seam contract.

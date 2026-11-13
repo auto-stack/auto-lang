@@ -110,6 +110,11 @@ const C_RT_RECIPE: &str = ace_a2x_c::C_RT_RECIPE;
 /// mutually untrusted with every recipe above; dispatched by the same
 /// `daily-emit-c`/`certify-c` ops through the source profile.
 const C_COLL_RECIPE: &str = ace_a2x_c::C_COLL_RECIPE;
+/// PLAN-1042: minimal Python TargetProvider channels (`daily-emit-py` / `run-py`).
+const PY_RECIPE: &str = "ac-a2py/hir-scalar-emit-v1";
+const PY_RT_RECIPE: &str = "ac-a2py/hir-record-text-emit-v1";
+const PY_COLL_RECIPE: &str = "ac-a2py/hir-collections-emit-v1";
+const PY_STDLIB_RUN_RECIPE: &str = "ac-a2py/hir-stdlib-run-v1";
 
 fn main() {
     let mut req = String::new();
@@ -130,6 +135,8 @@ fn main() {
         "certify" => certify(&v),
         "daily-emit-c" => daily_emit_c(&v),
         "certify-c" => certify_c(&v),
+        "daily-emit-py" => daily_emit_py(&v),
+        "run-py" => run_py(&v),
         other => fail(&format!("unknown op `{}`", other)),
     };
     println!("{}", serde_json::to_string_pretty(&out).unwrap());
@@ -203,13 +210,15 @@ fn identity(v: &serde_json::Value) -> serde_json::Value {
         "tool": "a2x-worker",
         "protocol": PROTOCOL,
         "recipe": RECIPE,
-        "recipes": [RECIPE, RT_RECIPE, COLL_RECIPE, C_RECIPE, C_RT_RECIPE],
+        "recipes": [RECIPE, RT_RECIPE, COLL_RECIPE, C_RECIPE, C_RT_RECIPE, PY_RECIPE, PY_RT_RECIPE, PY_COLL_RECIPE, PY_STDLIB_RUN_RECIPE],
         "backend": t.backend,
         "backend_version": t.backend_version,
         "edition": t.edition,
-        "targets": ["rust", "c"],
+        "targets": ["rust", "c", "python"],
         "c_backend": "auto-a2x-c",
         "c_standard": ace_a2x_c::C_STANDARD,
+        "python_backend": "auto-a2x-python",
+        "python_producer": ace_a2x_python::PY_PRODUCER,
     });
     // Explicit certification preparation only. Ordinary identity/daily calls
     // keep their original spawn-zero behavior. The composer never calls this.
@@ -229,7 +238,19 @@ fn identity(v: &serde_json::Value) -> serde_json::Value {
                     "version_sha256": tc.cl_hash, "vcvars_sha256": tc.vcvars_sha256,
                     "flags": tc.flags })
             }
-            _ => fail("certification_target must be rust or c"),
+            Some("python") => {
+                let rt_sha = ace_a2x_python::runtime_body_sha256();
+                let py = ace_a2x_worker::pyrun::resolve_python(&rt_sha)
+                    .unwrap_or_else(|e| fail(&format!("python identity: {e}")));
+                serde_json::json!({
+                    "kind": "python",
+                    "exe": py.identity.executable,
+                    "version": py.identity.version,
+                    "version_sha256": py.identity.executable_sha256,
+                    "os": py.identity.target_triple,
+                })
+            }
+            _ => fail("certification_target must be rust, c, or python"),
         };
     }
     identity
@@ -941,6 +962,248 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
     r["actual_wall_ms"] = actual_wall_ms.into();
     r["reference_wall_ms"] = reference_wall_ms.into();
     r["files"] = file_records(&out.files).into();
+    r
+}
+
+fn check_py_admission(v: &serde_json::Value) {
+    if v["use_legacy_python_trans"].as_bool() == Some(true) {
+        fail("admission.legacy_python_trans: legacy PythonTrans AST emitter is forbidden on ace-a2x-python");
+    }
+    if v["use_vm"].as_bool() == Some(true) {
+        fail("admission.avm_fallback: AutoVM fallback is forbidden on ace-a2x-python");
+    }
+    if v.get("expected").is_some() {
+        fail("admission.self_oracle: expected value must be verified parent-side, never supplied to worker");
+    }
+}
+
+fn bytes_hex(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        use std::fmt::Write;
+        let _ = write!(s, "{:02x}", b);
+    }
+    s
+}
+
+fn emit_py(v: &serde_json::Value) -> (EmitOutcome, ace_a2x_core::FileSet) {
+    use ace_a2x_core::target::{Family, FilesetRequest, FragmentText, TargetProvider};
+    check_py_admission(v);
+    let (src, source_sha256) = read_source(v);
+    let profile = v["profile"].as_str().unwrap_or("core").to_string();
+    let entry = v["entry"].as_str().unwrap_or("main").to_string();
+    let caps: Vec<String> = v["caps"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|c| c.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+    let compiled = match profile.as_str() {
+        "core" => compile_source(&src, "a2x-worker", &caps),
+        "scalar" => compile_scalar_product_934(&src, &caps),
+        "record" => compile_record_source(&src, "a2x-worker", &caps),
+        "text" => compile_text_source(&src, "a2x-worker", &caps),
+        "text-record" => compile_text_record_source(&src, "a2x-worker", &caps),
+        "collections" => compile_collections_source(&src, "a2x-worker", &caps),
+        other => fail(&format!(
+            "a2x.domain: the Python channel serves core/scalar/record/text/text-record/collections, not `{}`",
+            other
+        )),
+    };
+    let compiled = match compiled {
+        Ok(c) => c,
+        Err(ds) => {
+            let detail = ds
+                .iter()
+                .map(|d| format!("{}: {}", d.code, d.message))
+                .collect::<Vec<_>>()
+                .join("; ");
+            fail_source_diagnostics(
+                &format!("a2x.compile: {detail}"),
+                v["source_path"].as_str().unwrap_or(""),
+                &src,
+                &source_sha256,
+                &profile,
+                &ds,
+            );
+        }
+    };
+    let view = match SemanticView::from_checked(&compiled.checked) {
+        Ok(v) => v,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    let provider = ace_a2x_python::PythonTargetProvider;
+    let family = match profile.as_str() {
+        "record" | "text" | "text-record" => Family::RecordText,
+        "collections" => Family::Collections,
+        _ => Family::Scalar,
+    };
+    let expected_schema = match family {
+        Family::Scalar => ace_a2x_python::PY_FILESET_SCHEMA,
+        Family::RecordText => ace_a2x_python::PY_RT_FILESET_SCHEMA,
+        Family::Collections => ace_a2x_python::PY_COLL_FILESET_SCHEMA,
+    };
+    let recipe = match v["recipe"].as_str() {
+        Some(r)
+            if r == PY_RECIPE
+                || r == PY_RT_RECIPE
+                || r == PY_COLL_RECIPE
+                || r == PY_STDLIB_RUN_RECIPE =>
+        {
+            r
+        }
+        Some(other) => fail(&format!("unregistered python recipe `{other}`")),
+        None => match family {
+            Family::RecordText => PY_RT_RECIPE,
+            Family::Collections => PY_COLL_RECIPE,
+            Family::Scalar => PY_RECIPE,
+        },
+    };
+    let runtime = match provider.runtime_source(&view, family) {
+        Ok(r) => r,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    let fns: Vec<&ace_a2x_core::FnFacts<'_>> = view.functions().iter().collect();
+    let texts = match provider.produce_fragments(&view, &fns, family) {
+        Ok(t) => t,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    let mut sem_fps = Vec::with_capacity(fns.len());
+    for f in &fns {
+        match ace_a2x_core::semantic_fingerprint(&view, f) {
+            Ok(fp) => sem_fps.push(fp),
+            Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+        }
+    }
+    let frags: Vec<FragmentText<'_>> = fns
+        .iter()
+        .zip(texts.iter())
+        .zip(sem_fps.iter())
+        .map(|((f, text), fp)| FragmentText {
+            def_index: f.def_index,
+            source_name: f.source_name,
+            sem_fp: fp.as_str(),
+            text: text.as_str(),
+        })
+        .collect();
+    let prelude_seed = match provider.capture_prelude_seed(&view, family) {
+        Ok(s) => s,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    let fileset = match provider.assemble_fileset(FilesetRequest {
+        entry: &entry,
+        input_hash: &compiled.input_hash,
+        family,
+        fragments: &frags,
+        view: Some(&view),
+        runtime: &runtime,
+        prelude_seed: prelude_seed.as_deref(),
+        origins: None,
+        source_sha256: Some(&source_sha256),
+    }) {
+        Ok(fs) => fs,
+        Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
+    };
+    if let Err(reason) = ace_a2x_python::verify_python_fileset_manifest(
+        &fileset.manifest,
+        &fileset.files,
+        ace_a2x_python::PY_PRODUCER,
+        expected_schema,
+    ) {
+        fail(&format!("a2py.manifest: {reason}"));
+    }
+    let outcome = EmitOutcome {
+        files: fileset.files.clone(),
+        manifest: fileset.manifest.clone(),
+        input_hash: compiled.input_hash.clone(),
+        entry_fn: ace_a2x_python::py_fn_name(&entry),
+        profile,
+        source_sha256,
+        recipe: recipe.to_string(),
+        hir_domain: compiled.checked.bundle().domain.as_str().to_string(),
+    };
+    (outcome, fileset)
+}
+
+/// PLAN-1042: spawn-zero Python fileset emit (`execution_claimed == false`).
+fn daily_emit_py(v: &serde_json::Value) -> serde_json::Value {
+    let out_dir = v["out_dir"]
+        .as_str()
+        .unwrap_or_else(|| fail("out_dir required"));
+    let nonce = v["nonce"].as_str().unwrap_or("");
+    let (out, _fs) = emit_py(v);
+    write_out_dir(out_dir, &out);
+    let mut r = ok_base(&out.recipe);
+    r["mode"] = "daily-emit-py".into();
+    r["target"] = "python".into();
+    r["producer"] = ace_a2x_python::PY_PRODUCER.into();
+    r["runtime_sha256"] = ace_a2x_python::runtime_body_sha256().into();
+    r["nonce"] = nonce.into();
+    r["profile"] = out.profile.clone().into();
+    r["input_hash"] = out.input_hash.clone().into();
+    r["source_sha256"] = out.source_sha256.clone().into();
+    r["entry_fn"] = out.entry_fn.clone().into();
+    r["manifest_sha256"] = sha256_hex(out.manifest.as_bytes()).into();
+    r["files"] = file_records(&out.files).into();
+    r["spawned_python"] = 0.into();
+    r["spawned_rustc"] = 0.into();
+    r["spawned_cl"] = 0.into();
+    r["execution_claimed"] = false.into();
+    r
+}
+
+/// PLAN-1042: real OS Python execution of files emitted by `PythonTargetProvider`.
+fn run_py(v: &serde_json::Value) -> serde_json::Value {
+    if v["emit_only"].as_bool() == Some(true) {
+        fail("admission.emit_only: emit_only cannot claim Python execution");
+    }
+    let out_dir = v["out_dir"]
+        .as_str()
+        .unwrap_or_else(|| fail("out_dir required"));
+    let nonce = v["nonce"].as_str().unwrap_or("");
+    let rt_sha = ace_a2x_python::runtime_body_sha256();
+    let py = match ace_a2x_worker::pyrun::resolve_python(&rt_sha) {
+        Ok(p) => p,
+        Err(e) => fail(&format!("python.missing: {e}")),
+    };
+    let (out, _fileset) = emit_py(v);
+    write_out_dir(out_dir, &out);
+    let exec = match ace_a2x_worker::pyrun::run_py_fileset(&py, Path::new(out_dir), &[]) {
+        Ok(e) => e,
+        Err(e) => fail(&format!("python.exec: {e}")),
+    };
+    let mut r = ok_base(&out.recipe);
+    r["mode"] = "run-py".into();
+    r["target"] = "python".into();
+    r["producer"] = ace_a2x_python::PY_PRODUCER.into();
+    r["runtime_sha256"] = rt_sha.into();
+    r["nonce"] = nonce.into();
+    r["profile"] = out.profile.clone().into();
+    r["input_hash"] = out.input_hash.clone().into();
+    r["source_sha256"] = out.source_sha256.clone().into();
+    r["entry_fn"] = out.entry_fn.clone().into();
+    r["manifest_sha256"] = sha256_hex(out.manifest.as_bytes()).into();
+    r["files"] = file_records(&out.files).into();
+    r["spawned_python"] = 1.into();
+    r["spawned_rustc"] = 0.into();
+    r["spawned_cl"] = 0.into();
+    r["execution_claimed"] = true.into();
+    r["python_identity"] = serde_json::json!({
+        "exe": py.identity.executable,
+        "version": py.identity.version,
+        "version_sha256": py.identity.executable_sha256,
+        "os": py.identity.target_triple,
+    });
+    r["stdout"] = String::from_utf8_lossy(&exec.stdout).to_string().into();
+    r["stderr"] = String::from_utf8_lossy(&exec.stderr).to_string().into();
+    r["stdout_hex"] = bytes_hex(&exec.stdout).into();
+    r["stderr_hex"] = bytes_hex(&exec.stderr).into();
+    r["exit_code"] = exec
+        .exit_code
+        .map(serde_json::Value::from)
+        .unwrap_or(serde_json::Value::Null);
     r
 }
 

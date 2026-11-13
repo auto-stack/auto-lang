@@ -43,6 +43,7 @@ pub mod abi;
 mod abi_source;
 pub mod ac;
 pub mod ac_a2c_hir;
+pub mod ac_a2py_hir;
 pub mod ac_a2r_hir;
 pub mod ac_av;
 pub mod ac_cte;
@@ -814,6 +815,23 @@ fn dispatch_check(
                     == Some(ac_a2c_hir::A2C_COLL_HIR_RECIPE) =>
         {
             ac_a2c_hir::run_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
+        // PLAN-1042: A2X Checked-HIR -> Python target (`daily-emit-py` / `run-py`).
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check
+                .options
+                .probe_recipe
+                .as_deref()
+                .is_some_and(ac_a2py_hir::is_a2py_recipe) =>
+        {
+            ac_a2py_hir::run_check(
                 resolved,
                 check,
                 oracle,
