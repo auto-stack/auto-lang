@@ -8,6 +8,12 @@ mod choose_instances_935;
 mod generic_records_963;
 #[path = "cases/const_instances_963.rs"]
 mod const_instances_963;
+#[path = "cases/alias_963.rs"]
+mod alias_963;
+#[path = "cases/ext_963.rs"]
+mod ext_963;
+#[path = "cases/spec_generic_963.rs"]
+mod spec_generic_963;
 #[path = "cases/cli.rs"]
 mod cli;
 #[path = "cases/closures_compat.rs"]

@@ -269,7 +269,9 @@ fn bounds_satisfied(
         let Some(ty) = subst.get(i) else { continue };
         let satisfied = match ty {
             InstanceTy::Record(name) => prog.items.iter().any(|it| match it {
-                Item::Type(t) => t.name.name == *name && t.conforms.iter().any(|c| c.name == *spec),
+                Item::Type(t) => {
+                    t.name.name == *name && t.conforms.iter().any(|c| c.name.name == *spec)
+                }
                 _ => false,
             }),
             _ => false,

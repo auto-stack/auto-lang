@@ -17,6 +17,11 @@ pub struct SourceKinds {
     /// profiles only; erased at projection — never an `Item`).
     pub spec_item: Option<u32>,
     pub spec_member: Option<u32>,
+    /// PLAN-963 (T-03): `ext Type { members }` block (merged into the existing
+    /// `TypeItem` at projection — never an `Item`).
+    pub ext_item: Option<u32>,
+    /// PLAN-963 (T-03): `<args>` of one `as Spec<int>` conformance claim.
+    pub spec_args: Option<u32>,
     /// PLAN-963 (T-03): `as A, B` conformance tail (`type X as A, B`).
     pub as_spec_tail: Option<u32>,
     // members
@@ -335,6 +340,8 @@ impl SourceKinds {
             script_item: rk_opt(p, "script-item"),
             spec_item: rk_opt(p, "spec-item"),
             spec_member: rk_opt(p, "spec-member"),
+            ext_item: rk_opt(p, "ext-item"),
+            spec_args: rk_opt(p, "spec-args"),
             as_spec_tail: rk_opt(p, "as-spec-tail"),
             member: rk("member"),
             field_member: rk("field-member"),

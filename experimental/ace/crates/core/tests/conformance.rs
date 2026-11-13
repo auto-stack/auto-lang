@@ -64,12 +64,18 @@ mod recovered_script_first_diag_941;
 mod retirement_gate_929;
 #[path = "cases/source_cst_927.rs"]
 mod source_cst_927;
+#[path = "cases/source_alias_963.rs"]
+mod source_alias_963;
+#[path = "cases/source_ext_963.rs"]
+mod source_ext_963;
 #[path = "cases/source_ct_936.rs"]
 mod source_ct_936;
 #[path = "cases/source_dependency_edits_941.rs"]
 mod source_dependency_edits_941;
 #[path = "cases/source_generics_963.rs"]
 mod source_generics_963;
+#[path = "cases/source_specs_generic_963.rs"]
+mod source_specs_generic_963;
 #[path = "cases/source_instances_935.rs"]
 mod source_instances_935;
 #[path = "cases/source_positions_941.rs"]

@@ -74,6 +74,12 @@ pub(crate) fn project_program_with_caps(
     // 与默认方法注入在语法期单态化之后统一完成（spec 不进入 AST/downstream，
     // 也不存在供后端猜测的解释路径）。
     let mut specs: Vec<SpecDecl> = Vec::new();
+    // PLAN-963（T-03）：`type Name = T` 别名同样在投影期消化——先收集，再在
+    // 单态化之前把每个类型位置的别名引用展开成目标（含泛型实参位）。
+    let mut aliases: Vec<TypeAliasDecl> = Vec::new();
+    // PLAN-963（T-03）：`ext Type { .. }` 扩展块同属投影期消化（合入类型的
+    // methods，先于 `as Spec` 遵从检查）。
+    let mut exts: Vec<ExtDecl> = Vec::new();
     let mut saw_script = false;
     // F-941-12（r9）：前一个非产物顶层 item 是否含错误子树（恢复产物 script
     // 区判定用）。
@@ -183,6 +189,8 @@ pub(crate) fn project_program_with_caps(
             || Some(kind) == const_item_kind
             || Some(kind) == var_item_kind
             || Some(kind) == k.spec_item
+            // PLAN-963（T-03）：`ext` 块也是声明项（须在 script 前）。
+            || Some(kind) == k.ext_item
         {
             if saw_script {
                 let span = first_leaf_span(&eng.cx, node);
@@ -213,6 +221,13 @@ pub(crate) fn project_program_with_caps(
             } else if Some(kind) == k.spec_item {
                 // PLAN-963（T-03）：spec 声明——只进投影侧表，不产出 Item。
                 specs.push(eng.run_spec_item(node));
+            } else if Some(kind) == k.ext_item {
+                // PLAN-963（T-03）：`ext Type { .. }`——投影侧表，随后合入该
+                // 类型的 methods（必须在遵从检查之前：ext 可满足 spec 方法）。
+                exts.push(eng.run_ext_item(node));
+            } else if eng.is_type_alias(node) {
+                // PLAN-963（T-03）：类型别名——只进投影侧表，不产出 Item。
+                aliases.push(eng.run_type_alias_item(node));
             } else {
                 items.push(Item::Type(eng.run_type_item(node)));
             }
@@ -240,6 +255,22 @@ pub(crate) fn project_program_with_caps(
     if let Some(first) = eng.cx.first_diag() {
         return Err(vec![first]);
     }
+    // PLAN-963（T-03）：类型别名展开（先于泛型记录单态化：别名目标里的
+    // `Point<int>` 在展开后落在使用位，再由单态化遍换名）。
+    for d in expand_type_aliases(&mut items, &aliases) {
+        eng.cx.diags.push((d.span.start as u64, d));
+    }
+    if let Some(first) = eng.cx.first_diag() {
+        return Err(vec![first]);
+    }
+    // PLAN-963（T-03）：`ext Type { .. }` 的方法合入已有类型（先于单态化：
+    // 扩展方法随模板/具体记录一起参与下游；也先于遵从检查：ext 可满足 spec 方法）。
+    for d in merge_ext_blocks(&mut items, &exts) {
+        eng.cx.diags.push((d.span.start as u64, d));
+    }
+    if let Some(first) = eng.cx.first_diag() {
+        return Err(vec![first]);
+    }
     // PLAN-963（T-02）：用户泛型记录类型的语法期单态化（每个使用位都显式
     // 携带类型实参，无需语义推理）。下游 resolve/HIR/布局/四端只见具体
     // 记录类型；模板本身从程序中移除。
@@ -249,6 +280,11 @@ pub(crate) fn project_program_with_caps(
     // PLAN-963（T-03）：`type X as S` 遵从检查 + spec 默认方法注入。放在单态化
     // 之后：合成实例同样按具体方法签名核验，注入的默认体随实例一起进入 resolve。
     for d in apply_spec_conformance(&mut items, &specs) {
+        eng.cx.diags.push((d.span.start as u64, d));
+    }
+    // PLAN-963（T-03）：spec 默认体注入的类型注解未经过首遍展开（spec 声明不在
+    // `items` 里），这里再展开一遍——只影响刚注入的方法，普通类型第二遍为空转。
+    for d in expand_type_aliases(&mut items, &aliases) {
         eng.cx.diags.push((d.span.start as u64, d));
     }
     if let Some(first) = eng.cx.first_diag() {
@@ -4078,16 +4114,20 @@ impl<'a> Engine<'a> {
         // 变量（`TypeRef::TyVar`）投影，随后由语法期单态化替换为具体类型。
         // PLAN-963（T-03）：参数可带 `has S` 约束——约束在单态化时按实参的
         // 遵从列表核验（不在 resolve 里再造一套 bound 求解）。
+        // PLAN-963（T-03）：`type` 的尾部（类型参数/遵从列表/记录体）由
+        // `type-tail` 子规则承载（与 `fn-item`+`fn-tail` 同形，别名形是其
+        // 另一 alt）；投影统一从 tail 节点读。
+        let tail = self.cx.field_child(node, "tail").unwrap_or(node);
         let type_params = self.project_type_param_decls(self.cx.field_child(node, "type_params"));
         // PLAN-963（T-03）：`as Spec` 遵从列表（投影期消化；记录本身保持普通
         // TypeItem，下游只见方法）。
-        let conforms = self.project_specs(self.cx.field_child(node, "specs"));
+        let conforms = self.project_specs(self.cx.field_child(tail, "specs"));
         let saved_ty_params = std::mem::take(&mut self.cx.ty_params);
         self.cx.ty_params = type_params.iter().map(|t| t.name.name.clone()).collect();
         let mut fields: Vec<FieldDecl> = Vec::new();
         let mut methods: Vec<FnItem> = Vec::new();
         let mut seen: Vec<String> = Vec::new();
-        for c_raw in self.cx.children(node) {
+        for c_raw in self.cx.children(tail) {
             // member 是分派节点：取首个非 trivia 孩子（field/static/view）。
             let c = self
                 .cx
@@ -4161,10 +4201,87 @@ impl<'a> Engine<'a> {
         }
     }
 
-    /// PLAN-963（T-03）：`spec Name { .. }` → 投影侧 `SpecDecl`（无 AST 变体）。
+    /// PLAN-963（T-03）：`type Name = T` → 投影侧别名声明（不进 AST）。
+    /// 目标按普通类型位置投影（`ann-ty`），展开由 `expand_type_aliases` 做。
+    fn is_type_alias(&mut self, node: u32) -> bool {
+        self.cx
+            .field_child(node, "tail")
+            .and_then(|t| self.cx.field_child(t, "alias"))
+            .is_some()
+    }
+
+    fn run_type_alias_item(&mut self, node: u32) -> TypeAliasDecl {
+        let name_leaf = self.cx.field_child(node, "name").expect("alias name");
+        let name = ident_of(&mut self.cx, name_leaf);
+        let target_node = self
+            .cx
+            .field_child(node, "tail")
+            .and_then(|t| self.cx.field_child(t, "alias"))
+            .expect("alias target");
+        let target = self.classify_word(target_node, false);
+        TypeAliasDecl { name, target }
+    }
+
+    /// PLAN-963（T-03）：`ext Type { members }` → 投影侧扩展块。只收方法
+    /// （记录布局只能在声明处固定；字段出现在 ext 里具名拒）。
+    fn run_ext_item(&mut self, node: u32) -> ExtDecl {
+        let ty_leaf = self.cx.field_child(node, "ty").expect("ext type");
+        let ty = ident_of(&mut self.cx, ty_leaf);
+        let mut methods: Vec<FnItem> = Vec::new();
+        for c_raw in self.cx.children(node) {
+            let c = self
+                .cx
+                .children(c_raw)
+                .into_iter()
+                .find(|&x| self.cx.tree.node(x).flags & FLAG_TRIVIA == 0)
+                .unwrap_or(c_raw);
+            let kind = self.cx.tree.kind(c);
+            if kind == self.cx.k.field_member {
+                let span = self.cx.span_of(c);
+                self.cx.reject(span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.unsupported",
+                        "`ext` blocks declare methods only; a record's layout is fixed at its declaration",
+                        span,
+                    )
+                });
+            } else if kind == self.cx.k.static_method || kind == self.cx.k.view_method {
+                let receiver = if kind == self.cx.k.static_method {
+                    Receiver::Static
+                } else {
+                    Receiver::View
+                };
+                methods.push(self.run_fn_item(c, Some(ty.clone()), receiver));
+            }
+        }
+        ExtDecl { ty, methods }
+    }
+
     fn run_spec_item(&mut self, node: u32) -> SpecDecl {
         let name_leaf = self.cx.field_child(node, "name").expect("spec name");
         let name = ident_of(&mut self.cx, name_leaf);
+        // PLAN-963（T-03）：通用 spec `spec Storage<T>` 的类型参数。只在
+        // `as Storage<int>` 的实例化中有意义；值参数在 spec 里没有可实例化
+        // 语义，具名拒（不静默忽略）。
+        let decls = self.project_type_param_decls(self.cx.field_child(node, "type_params"));
+        let mut type_params: Vec<Ident> = Vec::new();
+        for p in decls {
+            match p.kind {
+                TypeParamKind::Type => type_params.push(p.name),
+                TypeParamKind::Const => {
+                    let span = p.name.span;
+                    self.cx.reject(span, || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.unsupported",
+                            "`spec` declarations accept type parameters only",
+                            span,
+                        )
+                    });
+                }
+            }
+        }
         let member_kind = self.cx.k.spec_member.unwrap_or(u32::MAX);
         let mut methods: Vec<SpecMethodDecl> = Vec::new();
         for c in self.cx.children(node) {
@@ -4217,25 +4334,52 @@ impl<'a> Engine<'a> {
                 span,
             });
         }
-        SpecDecl { name, methods }
+        SpecDecl {
+            name,
+            type_params,
+            methods,
+        }
     }
 
     /// PLAN-963（T-03）：`as A, B` 遵从列表（书写序；空=无遵从声明）。
-    fn project_specs(&mut self, node: Option<u32>) -> Vec<Ident> {
+    fn project_specs(&mut self, node: Option<u32>) -> Vec<ConformRef> {
         let mut out = Vec::new();
         let Some(n) = node else { return out };
-        if let Some(head) = self.cx.field_child(n, "spec") {
-            out.push(ident_of(&mut self.cx, head));
+        if let Some(head) = self.cx.field_child(n, "head") {
+            out.push(self.project_conform_ref(head));
         }
         let tail_kind = self.cx.k.as_spec_tail.unwrap_or(u32::MAX);
         for c in self.cx.children(n) {
             if self.cx.tree.kind(c) == tail_kind {
-                if let Some(leaf) = self.cx.field_child(c, "spec") {
-                    out.push(ident_of(&mut self.cx, leaf));
+                if let Some(leaf) = self.cx.field_child(c, "head") {
+                    out.push(self.project_conform_ref(leaf));
                 }
             }
         }
         out
+    }
+
+    /// PLAN-963（T-03）：一条 `as S` / `as S<int>` 遵从声明。
+    fn project_conform_ref(&mut self, node: u32) -> ConformRef {
+        let spec_node = self.cx.field_child(node, "spec").expect("spec name");
+        let name = ident_of(&mut self.cx, spec_node);
+        let mut args: Vec<TypeAnn> = Vec::new();
+        let spec_args_kind = self.cx.k.spec_args.unwrap_or(u32::MAX);
+        let args_node = self
+            .cx
+            .child_of_kind(node, spec_args_kind)
+            .and_then(|sa| self.cx.field_child(sa, "args"));
+        if let Some(an) = args_node {
+            for a in collect_seq(
+                &self.cx,
+                an,
+                self.cx.k.type_arg.unwrap_or(u32::MAX),
+                "type-arg-tail",
+            ) {
+                args.push(self.classify_ty_arg(a));
+            }
+        }
+        ConformRef { name, args }
     }
 
     fn run_script_item(&mut self, node: u32) -> FnItem {
@@ -7038,7 +7182,62 @@ fn self_param(span: Span) -> Diagnostic {
 /// 投影侧 `spec Name { .. }`（不进入 AST；下游看不到 spec）。
 struct SpecDecl {
     name: Ident,
+    /// PLAN-963（T-03）：通用 spec 的类型参数（`spec Storage<T>`）；实例化
+    /// 发生在 `as Storage<int>` 处，注入方法已是具体签名。
+    type_params: Vec<Ident>,
     methods: Vec<SpecMethodDecl>,
+}
+
+/// 投影侧 `ext Type { .. }`（不进 AST；方法在单态化/遵从检查前合入该类型）。
+struct ExtDecl {
+    ty: Ident,
+    methods: Vec<FnItem>,
+}
+
+/// PLAN-963（T-03）：把扩展块的方法合入已有类型；未知类型/重复方法具名拒。
+fn merge_ext_blocks(items: &mut Vec<Item>, exts: &[ExtDecl]) -> Vec<Diagnostic> {
+    if exts.is_empty() {
+        return Vec::new();
+    }
+    let mut diags: Vec<Diagnostic> = Vec::new();
+    for ext in exts {
+        let idx = items
+            .iter()
+            .position(|i| matches!(i, Item::Type(t) if t.name.name == ext.ty.name));
+        let Some(idx) = idx else {
+            let sp = ext.ty.span;
+            let n = ext.ty.name.clone();
+            diags.push(Diagnostic::new(
+                Stage::Text,
+                "source.unsupported",
+                format!("unknown type `{n}` in an `ext` block"),
+                sp,
+            ));
+            continue;
+        };
+        let Item::Type(t) = &mut items[idx] else {
+            continue;
+        };
+        let owner = t.name.name.clone();
+        for m in &ext.methods {
+            if t.methods
+                .iter()
+                .any(|f| f.name.name == m.name.name && f.receiver == m.receiver)
+            {
+                let sp = m.name.span;
+                let mn = m.name.name.clone();
+                diags.push(Diagnostic::new(
+                    Stage::Text,
+                    "source.duplicate",
+                    format!("`fn {mn}` is declared more than once for type `{owner}`"),
+                    sp,
+                ));
+                continue;
+            }
+            t.methods.push(m.clone());
+        }
+    }
+    diags
 }
 
 /// spec 方法签名：抽象（无体）或默认（有体，可被实现者的显式方法覆盖）。
@@ -7052,6 +7251,36 @@ struct SpecMethodDecl {
 
 /// PLAN-963（T-03）：核验每个声明遵从的类型，并把默认方法注入到**具体**
 /// 记录（单态化之后，故合成实例同样被核验）。返回具名诊断，不静默通过。
+/// PLAN-963（T-03）：把 spec 方法的签名/默认体里的类型参数替换为实参。
+/// `subst` 为空（普通 spec）时原样返回——零行为改动。
+fn instantiate_spec_method(
+    m: &SpecMethodDecl,
+    subst: &BTreeMap<String, TypeAnn>,
+    diags: &mut Vec<Diagnostic>,
+) -> (Vec<Param>, TypeAnn, Option<Block>) {
+    if subst.is_empty() {
+        return (m.params.clone(), m.ret.clone(), m.body.clone());
+    }
+    let mut st = TypeSubst {
+        map: subst.clone(),
+        diags: Vec::new(),
+        depth: 0,
+        cycle_code: "source.unsupported",
+        cycle_msg: "instantiating this spec does not terminate",
+    };
+    let mut params = m.params.clone();
+    for p in params.iter_mut() {
+        p.ty = st.ann(&p.ty);
+    }
+    let ret = st.ann(&m.ret);
+    let mut body = m.body.clone();
+    if let Some(b) = body.as_mut() {
+        st.rewrite_block(b);
+    }
+    diags.append(&mut st.diags);
+    (params, ret, body)
+}
+
 fn apply_spec_conformance(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diagnostic> {
     let any_conform = items
         .iter()
@@ -7084,7 +7313,8 @@ fn apply_spec_conformance(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diag
         let owner_span = t.name.span;
         let mut seen: Vec<String> = Vec::new();
         let mut injected: Vec<FnItem> = Vec::new();
-        for spec_ident in t.conforms.iter() {
+        for conform in t.conforms.iter() {
+            let spec_ident = &conform.name;
             if seen.contains(&spec_ident.name) {
                 let sp = spec_ident.span;
                 let n = spec_ident.name.clone();
@@ -7108,7 +7338,31 @@ fn apply_spec_conformance(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diag
                 ));
                 continue;
             };
+            // PLAN-963（T-03）：通用 spec 实例化——实参 arity 必须与声明一致；
+            // 随后把 spec 方法的类型参数替换成实参（默认体与签名一起具体化）。
+            if spec.type_params.len() != conform.args.len() {
+                let sp = spec_ident.span;
+                let n = spec_ident.name.clone();
+                diags.push(Diagnostic::new(
+                    Stage::Text,
+                    "source.unsupported",
+                    format!(
+                        "spec `{n}` expects {} type argument(s), found {}",
+                        spec.type_params.len(),
+                        conform.args.len()
+                    ),
+                    sp,
+                ));
+                continue;
+            }
+            let subst: BTreeMap<String, TypeAnn> = spec
+                .type_params
+                .iter()
+                .zip(conform.args.iter())
+                .map(|(p, a)| (p.name.clone(), a.clone()))
+                .collect();
             for m in &spec.methods {
+                let (m_params, m_ret, m_body) = instantiate_spec_method(m, &subst, &mut diags);
                 let existing = t
                     .methods
                     .iter()
@@ -7117,11 +7371,11 @@ fn apply_spec_conformance(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diag
                 if let Some(f) = existing {
                     // 显式实现优先于默认体；签名必须与 spec 一致（按类型
                     // kind 比较，span 不参与语义身份）。
-                    let same = f.params.len() == m.params.len()
-                        && f.ret.kind == m.ret.kind
+                    let same = f.params.len() == m_params.len()
+                        && f.ret.kind == m_ret.kind
                         && f.params
                             .iter()
-                            .zip(m.params.iter())
+                            .zip(m_params.iter())
                             .all(|(a, b)| a.ty.kind == b.ty.kind);
                     if !same {
                         let sp = m.name.span;
@@ -7139,13 +7393,13 @@ fn apply_spec_conformance(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diag
                     }
                     continue;
                 }
-                match &m.body {
+                match m_body {
                     Some(body) => injected.push(FnItem {
                         name: m.name.clone(),
                         type_params: Vec::new(),
-                        params: m.params.clone(),
-                        ret: m.ret.clone(),
-                        body: body.clone(),
+                        params: m_params,
+                        ret: m_ret,
+                        body,
                         span: m.span,
                         receiver: Receiver::View,
                         owner: Some(Ident {
@@ -7189,7 +7443,7 @@ fn expand_user_generic_types(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<D
     // PLAN-963（T-03）：`<T has S>` 的核验面——bound 名必须是已声明 spec，
     // 实参必须是遵从该 spec 的记录（合成实例的遵从列表随模板复制）。
     let spec_names: BTreeSet<String> = specs.iter().map(|s| s.name.name.clone()).collect();
-    let mut record_specs: BTreeMap<String, Vec<Ident>> = BTreeMap::new();
+    let mut record_specs: BTreeMap<String, Vec<ConformRef>> = BTreeMap::new();
     for item in items.iter() {
         if let Item::Type(t) = item {
             record_specs.insert(t.name.name.clone(), t.conforms.clone());
@@ -7270,6 +7524,192 @@ fn expand_user_generic_types(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<D
     gt.diags
 }
 
+// ---------------------------------------------------------------------------
+// PLAN-963（T-03）：类型别名（`type Name = T`，投影期展开）
+//
+// 别名不是运行期对象：投影期收进侧表，随后把**每个类型位置**的别名引用替换为
+// 目标（字段/参数/返回/局部注解/常量与 store 注解；目标内部的类型实参位同样
+// 递归）。别名可在使用点之后声明；展开先于泛型记录单态化，故别名目标里的
+// `Point<int>` 落在使用位后再被换名。重复名与环具名拒，不静默取其一。
+// ---------------------------------------------------------------------------
+
+/// 投影侧 `type Name = T`（不进 AST；展开后程序里只剩具体类型）。
+struct TypeAliasDecl {
+    name: Ident,
+    target: TypeAnn,
+}
+
+fn expand_type_aliases(items: &mut Vec<Item>, aliases: &[TypeAliasDecl]) -> Vec<Diagnostic> {
+    if aliases.is_empty() {
+        return Vec::new();
+    }
+    let mut diags: Vec<Diagnostic> = Vec::new();
+    let declared_types: BTreeSet<String> = items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Type(t) => Some(t.name.name.clone()),
+            _ => None,
+        })
+        .collect();
+    let mut map: BTreeMap<String, TypeAnn> = BTreeMap::new();
+    for a in aliases {
+        let taken = declared_types.contains(&a.name.name) || map.contains_key(&a.name.name);
+        let span = a.name.span;
+        let name = a.name.name.clone();
+        if taken {
+            diags.push(Diagnostic::new(
+                Stage::Text,
+                "source.duplicate",
+                format!("`{name}` is declared more than once"),
+                span,
+            ));
+            continue;
+        }
+        map.insert(name, a.target.clone());
+    }
+    if !diags.is_empty() {
+        return diags;
+    }
+    let mut ex = TypeSubst {
+        map,
+        diags: Vec::new(),
+        depth: 0,
+        cycle_code: "source.alias-cycle",
+        cycle_msg: "type alias cycle: expanding the alias chain does not terminate",
+    };
+    ex.rewrite_program(items);
+    diags.append(&mut ex.diags);
+    diags
+}
+
+struct TypeSubst {
+    map: BTreeMap<String, TypeAnn>,
+    diags: Vec<Diagnostic>,
+    depth: usize,
+    /// 环诊断（别名展开与通用 spec 实例化共用这一个替换器）。
+    cycle_code: &'static str,
+    cycle_msg: &'static str,
+}
+
+impl TypeSubst {
+    /// 把一处注解里的名字引用展开成目标（递归；链与目标内部实参都覆盖）。
+    fn ann(&mut self, a: &TypeAnn) -> TypeAnn {
+        if self.depth > 32 {
+            // 替换链过深（成环）：具名拒，不无限展开。
+            self.diags.push(Diagnostic::new(
+                Stage::Text,
+                self.cycle_code,
+                self.cycle_msg,
+                a.span,
+            ));
+            return a.clone();
+        }
+        match &a.kind {
+            TypeRef::Record(id) => match self.map.get(&id.name).cloned() {
+                Some(target) => {
+                    self.depth += 1;
+                    let out = self.ann(&target);
+                    self.depth -= 1;
+                    // 使用位保留自己的 span（诊断指向使用处而不是别名声明）。
+                    TypeAnn {
+                        kind: out.kind,
+                        span: a.span,
+                    }
+                }
+                None => a.clone(),
+            },
+            TypeRef::Optional(inner) => {
+                let inner = self.ann(inner);
+                TypeAnn {
+                    kind: TypeRef::Optional(Box::new(inner)),
+                    span: a.span,
+                }
+            }
+            TypeRef::Tuple(xs) => {
+                let xs = xs.iter().map(|x| self.ann(x)).collect();
+                TypeAnn {
+                    kind: TypeRef::Tuple(xs),
+                    span: a.span,
+                }
+            }
+            TypeRef::Generic { name, args } => {
+                let args = args.iter().map(|x| self.ann(x)).collect();
+                TypeAnn {
+                    kind: TypeRef::Generic {
+                        name: name.clone(),
+                        args,
+                    },
+                    span: a.span,
+                }
+            }
+            TypeRef::Function { params, result } => {
+                let params = params.iter().map(|x| self.ann(x)).collect();
+                let result = Box::new(self.ann(result));
+                TypeAnn {
+                    kind: TypeRef::Function { params, result },
+                    span: a.span,
+                }
+            }
+            TypeRef::Builtin(_) | TypeRef::TyVar(_) => a.clone(),
+        }
+    }
+
+    fn rewrite_program(&mut self, items: &mut Vec<Item>) {
+        for item in items.iter_mut() {
+            match item {
+                Item::Fn(f) => self.rewrite_fn(f),
+                Item::Type(t) => {
+                    for field in t.fields.iter_mut() {
+                        field.ty = self.ann(&field.ty);
+                    }
+                    for m in t.methods.iter_mut() {
+                        self.rewrite_fn(m);
+                    }
+                }
+                Item::Const(c) => c.ty = self.ann(&c.ty),
+                Item::Store(s) => s.ty = self.ann(&s.ty),
+                _ => {}
+            }
+        }
+    }
+
+    fn rewrite_fn(&mut self, f: &mut FnItem) {
+        for p in f.params.iter_mut() {
+            p.ty = self.ann(&p.ty);
+        }
+        f.ret = self.ann(&f.ret);
+        self.rewrite_block(&mut f.body);
+    }
+
+    fn rewrite_block(&mut self, b: &mut Block) {
+        for s in b.stmts.iter_mut() {
+            match s {
+                Stmt::Let { ann, .. } => {
+                    if let Some(a) = ann {
+                        *a = self.ann(a);
+                    }
+                }
+                Stmt::If { then, els, .. } => {
+                    self.rewrite_block(then);
+                    if let Some(e) = els {
+                        self.rewrite_block(e);
+                    }
+                }
+                Stmt::While { body, .. }
+                | Stmt::Loop { body, .. }
+                | Stmt::ForIn { body, .. }
+                | Stmt::Hold { body, .. } => self.rewrite_block(body),
+                Stmt::IsMatch { arms, .. } => {
+                    for arm in arms.iter_mut() {
+                        self.rewrite_block(&mut arm.body);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 struct GenericExpand {
     templates: BTreeMap<String, TypeItem>,
     taken: BTreeSet<String>,
@@ -7283,7 +7723,7 @@ struct GenericExpand {
     /// PLAN-963（T-03）：已声明 spec 名（`<T has S>` 的 bound 必须在此集合内）。
     spec_names: BTreeSet<String>,
     /// 记录名 → 遵从列表（含模板与已合成实例；bound 核验的实参侧事实）。
-    record_specs: BTreeMap<String, Vec<Ident>>,
+    record_specs: BTreeMap<String, Vec<ConformRef>>,
 }
 
 impl GenericExpand {
@@ -7648,7 +8088,7 @@ impl GenericExpand {
                 TypeRef::Record(id) => self
                     .record_specs
                     .get(&id.name)
-                    .is_some_and(|cs| cs.iter().any(|s| s.name == bound.name)),
+                    .is_some_and(|cs| cs.iter().any(|s| s.name.name == bound.name)),
                 _ => false,
             };
             if !satisfies {

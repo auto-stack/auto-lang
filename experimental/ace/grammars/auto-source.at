@@ -219,6 +219,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 擦除（不产出 Item 变体）：遵从检查与默认方法注入都在投影层完成，
             // 下游 resolve/四端只见具体记录与其方法。
             alt(profiles: [record, record-instances, aggregates]) { spec-item() {} }
+            // PLAN-963（T-03）：`ext Type { members }` 扩展块（投影期合入）。
+            alt(profiles: [record, record-instances, text-record, text-record-instances, collections, aggregates]) { ext-item() {} }
             alt(profiles: [scalar-modules]) { use-item() {} }
             // PLAN-960（T-02）：完整模块包面 items —— 单一 public-item 前缀
             //（fn/type/const/use 各自 token 开头，避免 recover 规则与前缀
@@ -532,18 +534,37 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // （仅 record/aggregates 面；投影按声明序投影参数表，随后语法期
             // 单态化为具体记录类型）。
             opt(profiles: [record, record-instances, aggregates]) { type-params(field: "type_params") }
-            // PLAN-963（T-03）：`type Score as Comparable, Printable { .. }`——
-            // 遵从列表由投影层消化（spec 已擦除），记录本身仍投影为普通类型。
-            opt(profiles: [record, record-instances, aggregates]) { as-spec-list(field: "specs") }
-            lbrace() {}
-            list-nl { member() {} }
-            rbrace() {}
+            // PLAN-963（T-03）：`type Age = int` 别名形与记录体形共用同一
+            // `type` 前缀——尾部由独立 `type-tail` 规则按首 token（`=` vs
+            // `{`）分派（本引擎的 alt 只作用于整条规则，不能中途分支）。
+            type-tail(field: "tail") {}
+        }
+        // PLAN-963（T-03）：`type` 的尾部两种形——
+        //   * 别名 `= <ann-ty>`（无体；投影期展开，无 AST 变体）；
+        //   * 记录体 `[as Spec,..] { members }`。
+        // 两者首 token 互异（`=` vs `as`/`{`），由本规则的 alt 分派。
+        type-tail(profiles: [record, record-instances, text-record, text-record-instances, collections, scalar-ct, aggregates, packages-modules]) {
+            alt(profiles: [record, record-instances, text-record, text-record-instances, collections, aggregates]) {
+                assign() {}
+                ann-ty(field: "alias")
+            }
+            alt {
+                // PLAN-963（T-03）：`type Score as Comparable, Printable { .. }`——
+                // 遵从列表由投影层消化（spec 已擦除），记录本身仍投影为普通类型。
+                opt(profiles: [record, record-instances, aggregates]) { as-spec-list(field: "specs") }
+                lbrace() {}
+                list-nl { member() {} }
+                rbrace() {}
+            }
         }
         // PLAN-963（T-03）：spec 声明与方法签名（`fn m(..) R`），可选默认体
         // （`fn m(..) R { .. }`）；spec 本身不在 AST 中，投影侧表承载。
         spec-item(recover: true, profiles: [record, record-instances, aggregates]) {
             r-spec(field: "kw")
             ident(field: "name")
+            // PLAN-963（T-03）：通用 spec `spec Storage<T> { .. }`——类型参数
+            // 只在投影期为 `as Storage<int>` 的实例化服务（spec 随后被擦除）。
+            opt(profiles: [record, record-instances, aggregates]) { type-params(field: "type_params") }
             lbrace() {}
             list-nl { spec-member() {} }
             rbrace() {}
@@ -557,15 +578,35 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             ret-ty(field: "ty")
             opt(profiles: [record, record-instances, aggregates]) { block(field: "body") }
         }
+        // PLAN-963（T-03）：扩展块 `ext Type { members }`——把方法挂到**已有**
+        // 类型（投影期合入该 TypeItem；不存在即具名拒）。首 token `ext` 与其它
+        // 项互异，可独立分派。
+        ext-item(recover: true, profiles: [record, record-instances, text-record, text-record-instances, collections, aggregates]) {
+            r-ext(field: "kw")
+            ident(field: "ty")
+            lbrace() {}
+            list-nl { member() {} }
+            rbrace() {}
+        }
         // PLAN-963（T-03）：遵从列表 `as A[, B]*`（首个 `as` 是必需前缀）。
         as-spec-list(profiles: [record, record-instances, aggregates]) {
             r-as(field: "kw") {}
-            ident(field: "spec")
+            spec-ref(field: "head") {}
             many { as-spec-tail() {} }
         }
         as-spec-tail(profiles: [record, record-instances, aggregates]) {
             comma() {}
+            spec-ref(field: "head") {}
+        }
+        // PLAN-963（T-03）：一个遵从声明 `S` / `S<int>`（通用 spec 的实参）。
+        spec-ref(profiles: [record, record-instances, aggregates]) {
             ident(field: "spec")
+            opt(profiles: [record, record-instances, aggregates]) { spec-args() {} }
+        }
+        spec-args(profiles: [record, record-instances, aggregates]) {
+            lt() {}
+            type-args(field: "args")
+            gt() {}
         }
         // PLAN-928（T-03）：PLAN-864 有限 enum——臂换行/`;` 分隔（list-nl 语义；
         // `,` 容忍由差分冻结），至多单载荷。

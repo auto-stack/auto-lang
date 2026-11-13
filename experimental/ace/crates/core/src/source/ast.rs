@@ -211,11 +211,21 @@ pub struct TypeItem {
     /// PLAN-963 (T-03): specs claimed by `type X as A[, B]`, in written order.
     /// Consumed at projection time (conformance validation + default method
     /// injection); resolve and the four backends see only concrete methods.
-    pub conforms: Vec<Ident>,
+    pub conforms: Vec<ConformRef>,
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<FnItem>,
     /// `type` keyword through the closing brace.
     pub span: Span,
+}
+
+/// One conformance claim of `type X as S` / `as S<int>` (PLAN-963 T-03).
+/// `args` carries the written type arguments of a **generic spec**; they are
+/// consumed at projection time (instantiated into the injected methods), so no
+/// downstream stage ever sees an unsubstituted spec parameter.
+#[derive(Clone, Debug)]
+pub struct ConformRef {
+    pub name: Ident,
+    pub args: Vec<TypeAnn>,
 }
 
 #[derive(Clone, Debug)]
