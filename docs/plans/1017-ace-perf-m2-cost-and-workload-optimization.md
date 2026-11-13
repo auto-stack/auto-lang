@@ -330,6 +330,64 @@ turnaround 的 emit/link/binder 每样本链）为 r5 预算内剩余主项。
   ace-core 433/433；syntax 30/30；artifacts 27/28（r3_f01 基线同 flaky）；
   native cold_set/typed_v10 重放绿；conformance 唯一持久红=D-932-1。
 
+**r5 续作 ②（2026-11-13 深夜，goal 会话第二轮）**：
+- **① 开放问题已解（resources_revision_cost_probe，新常驻 ignored 探针）**：
+  填库到 8.7MB 后实测——修订循环（512 形状）**~21ms/次**（spans 11.5ms 其中
+  freeze_publish 5.8ms；直连单件 put ~5ms；space()@700blob ~2ms）→ **512 循环 ≈11s，
+  store 往返不是残余**。填充副牌 wall 的 **80-88% = av_frontend**（300h 每调用
+  bind 3.8s/副牌占 54%、parse 1.7s；100h bind ~1s/副牌），publish 仅 97-339ms/副牌。
+  r5 疑点（512 修订 store 往返）排除；双 resource 残余主项 = **每调用 wrapper 全源
+  重编译**（closure lane 语义，r4 已裁复用属产品契约变更留续包）。
+- **cold_set 填充源形状重整：实测证伪**（cold_fill_shape_probe，新常驻 ignored 探针）：
+  stmts=250/500/1000/2000 每字节成本平坦（3622/3510/3450/3557 ms/MiB），8000 超线性
+  崩坏（6971）——r5"次线性"假设不成立；2000 已近最优。填充段地板=**debug 档
+  cranelift COFF emit ~3.5s/MiB**（emit 522ms vs compile 119ms@2000stmts）——
+  cranelift emit 提速属合同级/续包（r5 候选 c），本包具名归因不改。
+- **A17 source-memo 缓存（本包新交付，"每样本链"主项修复）**：全热请求剖析
+  （turnaround_hot_phase_probe，新常驻 ignored 探针）= frontend 重编译 1915ms +
+  115 次 by-key cache_lookup 803ms + link 207ms + run 381ms（共 3605ms）——
+  **identical-source 热腿的每请求全源重编译**是 sd911/turnaround 每样本链主项。
+  新增 A17 层（`SOURCE_MEMO_LAYER`，config.rs）：内容寻址 source-sha×entry×caps×
+  pipeline 轴 → link-manifest 指针（cache.rs put/get_source_memo，required edge
+  保 manifest+units 活性）；`MnDriver::request` 命中路径镜像 worker-restore 纪律
+  （逐 unit 按 id 重接纳：symbol 重算+sha/len 绑定+封套准入），重发 wrapper、
+  真链接真运行；任何 miss 信号（无 memo/异载/工具链漂移/单件缺失/异 manifest）
+  回落全管线。Fresh 不读、ReadOnly 不写、persist 失败计数不失败请求。
+  **实测全热请求 3605→1325ms（2.7×）**。回归测试 3 例（cache_tier.rs，V-11）：
+  热轮跳前端/计数契约/不同 entry 为 miss；异载体 miss+持久失败可观察+Fresh/ReadOnly
+  纪律；全量回收后 memo 链存活仍服务。store 自身拒绝悬挂 required edge（实测确认）。
+- **closures_native churn 512→128**（cold_set r4 同裁定：逐轮不变量非冻结规模），
+  尾轮 oracle 137+512→137+128。
+- **gc_deck 300→100 helpers：实测后放弃**——批发布后 300h vs 100h 填充率仅 1.19×
+  （0.263 vs 0.315 MB/s，同窗口），预计省 ~30s 不值得动夹具形状；comptime 模块
+  现值 ~505s 已在 550 预算内。
+- 验证：mir_native_source_memo 3/3；受影响组 ace-native/ace-native-worker/case-ac-mn
+  运行中（见下 Receipt）。
+
+**r5 续作 ② 补充（supersede 修复 + 实测收益，提交 `567f9a81a`+`bd53e8135`）**：
+- **首红（真回归，concurrent_gc 抓获）**：memo 的 required edge 把每轮历史修订
+  （memo→manifest→units）全部钉活，终局全量回收"dead edit revisions collectable"红。
+  修复：memo 持久化移入 build_arm 清单发布点，携带自己的有序 supersede 表
+  （同 (project,module,entry) 轴旧 memo 软根在新 memo 注册后即落）——被取代链
+  与裸清单同语义可回收；pending 上下文请求前置、失败路径必清。修复后该腿
+  **9/9 绿**（其中修复后首跑曾有 1 次未捕获断言细节的红，无细节可归因，
+  机制上 racer 全程 0 回收+终局回收确定性；若终验复现即停并深挖）。
+- **实测（当前窗口，中等负载）**：closures_native 273.7→**143.8s**（churn 裁剪）、
+  sd911 382.2→**284.0s**（memo 跨进程，restart-warm 腿）、turnaround
+  same_process 131.7→**21.6s** / cross_project 75.5→**20.3s**（memo）、
+  concurrent_gc 103.2→**~54-69s**。五腿合计 −430s 量级；native 模块估算回到
+  1300 预算内。
+- store 层附加确认：公共 API 拒绝悬挂 required edge（put 目标必须 live）——
+  V-11 异载体负控只能以无边手工载体模拟，行为=清洁 miss 回全管线。
+- **修复轮验证（最终修订 `bd53e8135`）**：ace-native ✓、ace-native-worker ✓、
+  case-ac-mn ✓（supersede 修复后复跑）；ace-host 155/161，6 红经主检出
+  （master@fbfc7a3e7）复跑确认**全部为 master 既有基线红**（abi_recipe_binding_
+  exclusivity / av_source_inventory_denominators_replayable / a2r_hir_first_case_
+  green / a2r_hir_worker_credential_pin / ace_m1_closures_source_suite_green /
+  ace_m1_tr_native_suite_green——其他在途计划所有，非本包引入，具名记录不改）；
+  t06-restart（跨进程 memo 面）与 ac_native_suite_full_run_and_ledger_reconcile
+  在 155 绿内。受影响 PERF 五腿全绿（上表）。
+
 2026-11-12 stage:new / PLAN-1017 r2：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原9任务/全部AC与V/依赖/阶段/预算和drafting 0/9；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
 2026-11-12 本轮规划静态核验：32份合同原505任务ID/顺序/进度、全部旧AC/V/Spec-delta及原依赖/阶段/预算保留；新增128条V-DETAIL待实施验证，未生成任何测试源码。505处本地引用/围栏/0–10章节/原任务映射核对通过，跨四仓可达222份Plan的显式依赖无缺失/环。只证明规划结构与取材来源，不是旧VM/新ACE运行或独立产品review PASS；959–962归档和963r5未改。
