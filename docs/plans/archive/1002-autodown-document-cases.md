@@ -443,6 +443,11 @@ PLAN-1002:r8 merge 收据（2026-11-14）：
 - archived：本文件 git mv 至 docs/plans/archive/，status: archived，completion_kind: delivered；随本收据提交。
 - ace-host 备注：158/163；4 红（a2r 金样 worker 漂移×2、abi leg 断言、库存分母）在 base 树同位复现=预存、非本包 diff；1 红（mir_native_rounds）并发瞬时、隔离重放双侧绿——按环境归因，triage 归批量回归道。
 - 批量回归：due（receipt last_covered_plan_id=1015 之后合入了 1025/945 等 %5==0 计划）→ 归 auto-plan-regress 在主检出单实例执行。
+- cleaned：wt-guard 双树 clean 后移除 D:/autostack/.wt/lang-1002/{auto-lang,auto-down}、分支 plan-1002-dev（=70a680dba 已落主）、组目录；plan-artifacts/plan-1002 整目录删除（793 文件 3,890,060B；关键数字已折叠进本文件 §0/§7/§9）；登记表 .retention/policy.json 刷新（delivered、无持有）。构建中间产物随 worktree 删除，未回收。落地产物观察：本仓无运行中的生产消费进程；主检出 debug/release 二进制非本包交付面，批量回归道（cargo t all 主检出单实例）覆盖合入后的全量核验。
+
+stage: merge | PLAN-1002 | r8 | 2026-11-14 | outcome: pass | delivery_commit: 70a680dba（master ff-only，archive 收据 5c5d748b3） | canonical: docs/specs/auto-test-case/document-cases.md（sha256 前16 c2d174d12050a186） | archive: docs/plans/archive/1002-autodown-document-cases.md | cleanup: 完成（worktree/分支/组目录/plan-artifacts scope 全清，无持有） | pending: 批量回归 due（归 auto-plan-regress）
+
+stage: goal | PLAN-1002 | r8 | round 3 | from: merge | to: done | status: archived | outcome: pass | worktree: （已移除） | commit: 70a680dba | next: done
 
 ## 10. 待澄清事项
 
