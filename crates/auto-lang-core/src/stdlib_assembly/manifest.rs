@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use super::model::{fnv1a64, AssemblyContext, AssemblyTarget, Environment, LayerSelection};
+use super::provider_selection::{SelectionRecord, SELECTION_SCHEMA_VERSION};
 use super::reference::ReferenceProof;
 include!(concat!(env!("OUT_DIR"), "/assembly_build_inputs.rs"));
 
@@ -32,6 +33,10 @@ struct Payload {
     sources: Vec<SourceInput>,
     providers: Vec<ProviderInput>,
     references: Vec<ReferenceProof>,
+    /// PLAN-947：四轴 provider 选择收据（schema 5 增量节；空=旧 schema 4
+    /// 线型逐字节不变）。只携带身份事实，永不携带授权/地址。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    selection: Vec<SelectionRecord>,
 }
 
 /// 不可变装配收据（schema 4）。双重身份（PLAN-738 rv3 §5.8.3/T-12）：
@@ -58,8 +63,16 @@ impl AssemblyManifest {
         }
         let manifest: Self = serde_json::from_slice(bytes)
             .map_err(|e| format!("STDASSEMBLY.MANIFEST_CODEC: {e}"))?;
-        if manifest.schema_version() != 4 {
-            return Err("STDASSEMBLY.MANIFEST_SCHEMA".into());
+        // PLAN-947 兼容规则：schema 4 = 无选择节（旧线型）；schema 5 =
+        // 携带四轴选择收据（selection 非空且版本匹配）。交叉形态拒绝。
+        match (
+            manifest.schema_version(),
+            manifest.payload.selection.is_empty(),
+        ) {
+            (4, true) => {}
+            (5, false) if !manifest.payload.selection.is_empty() => {}
+            (4, _) | (5, _) => return Err("STDASSEMBLY.MANIFEST_SCHEMA".into()),
+            _ => return Err("STDASSEMBLY.MANIFEST_SCHEMA".into()),
         }
         if manifest.fingerprint != assembly_identity(&manifest.payload)
             || manifest.consumer_fingerprint
@@ -79,6 +92,52 @@ impl AssemblyManifest {
         stdlib_root: &Path,
         selections: &[LayerSelection],
         references: Vec<ReferenceProof>,
+    ) -> Self {
+        Self::freeze_opt(
+            context,
+            consumer,
+            project_root,
+            stdlib_root,
+            selections,
+            references,
+            Vec::new(),
+            4,
+        )
+    }
+
+    /// PLAN-947：携带四轴 provider 选择收据的装配冻结（schema 5）。选择
+    /// 记录参与共同/消费者双指纹；恢复重授权由选择合同的 grant 前置
+    /// 检查承担（收据本身不带授权）。
+    pub fn freeze_with_selection(
+        context: AssemblyContext,
+        consumer: &str,
+        project_root: &Path,
+        stdlib_root: &Path,
+        selections: &[LayerSelection],
+        references: Vec<ReferenceProof>,
+        selection: Vec<SelectionRecord>,
+    ) -> Self {
+        Self::freeze_opt(
+            context,
+            consumer,
+            project_root,
+            stdlib_root,
+            selections,
+            references,
+            selection,
+            5,
+        )
+    }
+
+    fn freeze_opt(
+        context: AssemblyContext,
+        consumer: &str,
+        project_root: &Path,
+        stdlib_root: &Path,
+        selections: &[LayerSelection],
+        references: Vec<ReferenceProof>,
+        selection: Vec<SelectionRecord>,
+        schema_version: u32,
     ) -> Self {
         let mut sources = Vec::new();
         for selected in selections {
@@ -139,8 +198,14 @@ impl AssemblyManifest {
                 && a.callee == b.callee
                 && a.producer == b.producer
         });
+        let mut selection = selection;
+        selection.sort_by(|a, b| {
+            (&a.operation, &a.module, &a.symbol).cmp(&(&b.operation, &b.module, &b.symbol))
+        });
+        selection.dedup_by(|a, b| a.operation == b.operation);
         let payload = Payload {
-            schema_version: 4,
+            schema_version,
+            selection,
             target: context.target,
             environment: context.environment,
             platform: env!("AUTO_ASSEMBLY_TARGET").into(),
@@ -197,6 +262,18 @@ impl AssemblyManifest {
     }
     pub fn sources(&self) -> &[SourceInput] {
         &self.payload.sources
+    }
+    /// PLAN-947：四轴选择收据（schema 4 = 空）。
+    pub fn selection(&self) -> &[SelectionRecord] {
+        &self.payload.selection
+    }
+    /// 选择节合同版本（无选择节=0；有=SELECTION_SCHEMA_VERSION）。
+    pub fn selection_schema(&self) -> u32 {
+        if self.payload.selection.is_empty() {
+            0
+        } else {
+            SELECTION_SCHEMA_VERSION
+        }
     }
     pub fn references(&self) -> &[ReferenceProof] {
         &self.payload.references
@@ -754,6 +831,79 @@ mod plan738_manifest {
             );
         }
     }
+    /// PLAN-947 T-10/V-10：schema 5 选择收据——合法冻结可读回、选择参与
+    /// 双指纹（篡改拒）、schema 4 旧线型逐字节兼容、交叉形态拒绝。
+    #[test]
+    fn plan947_selection_receipt_schema5_and_legacy_compat() {
+        use super::super::provider_selection::{
+            select, AssemblyAxes, Backend, BindingRequest, Os, Platform, ProviderAbi, ProviderDecl,
+            ProviderOrigin, StdlibLayer,
+        };
+        let providers = vec![ProviderDecl {
+            provider: "auto".into(),
+            module: "io".into(),
+            origin: ProviderOrigin::OwnAuto,
+            abi: ProviderAbi::AutoAbi,
+            platforms: vec![Platform { os: Os::Windows }],
+        }];
+        let request = BindingRequest {
+            operation: "console.say".into(),
+            module: "io".into(),
+            symbol: "say".into(),
+            layer: StdlibLayer::Host,
+            required_grants: vec!["console".into()],
+            explicit_provider: None,
+        };
+        let axes = AssemblyAxes {
+            backend: Backend::Av,
+            host: Platform { os: Os::Windows },
+            target: Platform { os: Os::Windows },
+        };
+        let selection = select(&providers, axes, &[request], &["console".into()]).unwrap();
+        let manifest = AssemblyManifest::freeze_with_selection(
+            Default::default(),
+            "plan947",
+            Path::new("."),
+            Path::new("stdlib"),
+            &[],
+            vec![],
+            selection,
+        );
+        assert_eq!(manifest.schema_version(), 5);
+        assert_eq!(manifest.selection_schema(), 1);
+        assert_eq!(manifest.selection().len(), 1);
+        assert_eq!(manifest.selection()[0].provider, "auto");
+        let bytes = serde_json::to_vec(&manifest).unwrap();
+        let read = AssemblyManifest::decode_v4(&bytes).unwrap();
+        assert_eq!(serde_json::to_vec(&read).unwrap(), bytes);
+        // 篡改选择记录破坏双指纹（防伪造/漂移）。
+        let mut forged: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        forged["selection"][0]["provider"] = serde_json::json!("libc");
+        assert!(AssemblyManifest::decode_v4(&serde_json::to_vec(&forged).unwrap()).is_err());
+        // schema 4 旧线型（无选择节）逐字节兼容且 selection 为空。
+        let legacy = AssemblyManifest::freeze(
+            Default::default(),
+            "legacy947",
+            Path::new("."),
+            Path::new("stdlib"),
+            &[],
+            vec![],
+        );
+        assert_eq!(legacy.schema_version(), 4);
+        assert!(legacy.selection().is_empty());
+        let legacy_bytes = serde_json::to_vec(&legacy).unwrap();
+        let legacy_read = AssemblyManifest::decode_v4(&legacy_bytes).unwrap();
+        assert_eq!(serde_json::to_vec(&legacy_read).unwrap(), legacy_bytes);
+        // 交叉形态拒绝：schema 4 携带选择节 / schema 5 无选择节。
+        let mut v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        v["schema_version"] = serde_json::json!(4);
+        assert!(AssemblyManifest::decode_v4(&serde_json::to_vec(&v).unwrap()).is_err());
+        let mut no_selection: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        no_selection["selection"] = serde_json::json!([]);
+        // 空选择节 + schema 5：指纹不再匹配，同样拒绝。
+        assert!(AssemblyManifest::decode_v4(&serde_json::to_vec(&no_selection).unwrap()).is_err());
+    }
+
     #[test]
     fn captured_sources_are_immutable_and_portable() {
         let root = tempfile::tempdir().unwrap();

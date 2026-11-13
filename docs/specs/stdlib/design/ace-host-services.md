@@ -50,6 +50,36 @@ move/close/cancel/退出/恢复）、依赖事实（939 是否已交）、缺口
 选择。缺默认 provider 或自动回落 libc 必须拒绝；合法自有 provider 可装配。
 Storage/allocator 接口保持 M2 内存专题待定（本包不冻结签名/ABI 布局）。
 
+## 5. 目标条件语义与 sys/OS 迁移表（交 966 实施；本包冻结合同）
+
+`#if`/`#is` 按**目标平台**（非宿主）求值——本包四轴选择合同
+（`stdlib_assembly::provider_selection`）是其装配层判据：宿主 Windows 而
+目标 Linux 时 provider 集取 Linux（V-09 已钉）；未选分支仅做语法检查不
+进入装配；导入提升到所在模块；无/歧义 provider 具名失败
+（`assembly.no-provider`/`assembly.ambiguous-provider`）。源码级 CTE 归
+PLAN-966，本包不另造。
+
+现行 sys/OS 公共名字迁移表（基线：`stdlib/auto/sys.at` 仅 `getpid() int`，
+实现位于 `crates/auto-lang/src/libs/sys.rs`；按现行 `#` 语法——HashIf/HashIs
+语句级构造——迁移，不新增关键字）：
+
+| 现行公共名 | 目标条件映射（966 实施面） | 装配层 provider（本包合同） |
+|---|---|---|
+| `sys.getpid()` | `#if TARGET_OS == windows` → Win32 `GetCurrentProcessId`；`linux` → `getpid` | `OwnAuto`/`PlatformAdapter`（`PlatformAbi` 如实标注；平台差由薄 OS 适配吸收） |
+
+新增 sys/OS 名字=合同修订（新行须同步本表与选择注册面）；不在本表的名字
+不因 `#if` 分支存在而自动成为公共 API。
+
+## 6. 装配收据与源码/运行加载边界（T-10）
+
+四轴选择以 schema 5 增量节进入 `AssemblyManifest`（`freeze_with_selection`）：
+选择记录只携带身份事实（operation/module/symbol/layer/target/provider/abi），
+参与共同与消费者双指纹；schema 4 旧线型逐字节兼容（空选择节），交叉形态
+（schema 4 带选择节 / schema 5 无选择节）拒绝。源码装载（编译期装配/选择）
+与运行装载（每轮 grant 注入、dispatch 前检查）边界固定：收据永不携带授权
+或 provider 地址；恢复产物重新入场必须本轮重新授权
+（`assembly.missing-grant`，V-10）。
+
 ## 来源
 
 - 冻结合同与证据：[PLAN-947](../../../plans/947-ace-stdlib-console-and-resource-host-contract.md)（§5 T-01 冻结记录、§9 验证记录）
