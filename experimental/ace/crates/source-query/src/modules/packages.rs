@@ -153,4 +153,39 @@ mod tests {
             "{ds:?}"
         );
     }
+
+    #[test]
+    fn package_generic_record_templates_reach_checked_hir_963() {
+        // PLAN-963（V-G06）：记录模板在 lib 声明、实例在 app 与 lib 两侧使用，
+        // 扁平程序级单态化后四端只见具体记录（模板不再抵达 resolve/HIR）。
+        let inputs = [
+            input(
+                "lib",
+                "geo",
+                "pub type Point<T> { x T\n fn get() T { return .x } }\npub fn mk(v int) Point<int> { return Point { x: v } }",
+            ),
+            input(
+                "app",
+                "main",
+                "use lib.geo.Point\nuse lib.geo.mk\nfn main() int { let q Point<int> = Point { x: 2 }\n let r Point<int> = mk(40)\n return q.get() + r.get() }",
+            ),
+        ];
+        let product = compile_package_product(
+            &inputs,
+            "app::main",
+            &[PACKAGES_CAPABILITY.into()],
+            FrontBudget::WORK_OWNED_64MIB,
+        )
+        .unwrap();
+        let text = &product.compiled.atom_text;
+        assert!(text.contains("t3_libm3_geo_Point_int"), "instance missing");
+        assert!(!text.contains("Point<T>"), "template residue in atom text");
+        assert!(product
+            .compiled
+            .checked
+            .bundle()
+            .modules
+            .iter()
+            .any(|m| m.defs.iter().any(|d| d.id_text == "d_main")));
+    }
 }

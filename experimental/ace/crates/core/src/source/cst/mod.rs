@@ -22,6 +22,9 @@ mod project;
 mod shift;
 pub mod units;
 
+// PLAN-963（V-G06）：包模块扁平程序的记录模板单态化由绑定层在收尾调用。
+pub(crate) use project::monomorphize_package_program;
+
 pub use frontdoor::{
     ct_grammar, instances_grammar, parse_closure_fragment_via_cst, parse_fragment_front,
     parse_front, parse_front_with_caps, parse_function_fragment_via_cst,

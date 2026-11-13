@@ -32,7 +32,21 @@ pub(crate) fn project_program(
     snap: &Snapshot,
     profile: SourceProfile,
 ) -> Result<Program, Vec<Diagnostic>> {
-    project_program_with_caps(p, k, tree, snap, profile, false, false)
+    project_program_with_caps(p, k, tree, snap, profile, false, false, false)
+}
+
+/// PLAN-963（V-G06）：包模块的投影入口——记录模板**推迟**到扁平程序（全部模块
+/// 拼接、符号已按包/模块 mangle）后统单态化。模块内就地单态化只能看到本模块
+/// 模板，跨模块使用点会失败，且各模块各自合成会破坏类型身份（同一
+/// `(声明模块, 模板, 实参)` 必须只有一个类型符号）。
+pub(crate) fn project_program_deferring_templates(
+    p: &GrammarProgram,
+    k: &SourceKinds,
+    tree: &CstTree,
+    snap: &Snapshot,
+    profile: SourceProfile,
+) -> Result<Program, Vec<Diagnostic>> {
+    project_program_with_caps(p, k, tree, snap, profile, false, false, true)
 }
 
 /// PLAN-935/963（T-02）：能力感知投影。类型位裸 ident 只在拼写命中**当前
@@ -48,6 +62,7 @@ pub(crate) fn project_program_with_caps(
     profile: SourceProfile,
     ct_face: bool,
     instances_face: bool,
+    defer_templates: bool,
 ) -> Result<Program, Vec<Diagnostic>> {
     // 词法层先行（旧 tokenize 全文件先行的首事实序）。
     // PLAN-936（T-04）：ct 面上字符串 token 仅作为 meta 字段选择子进入词法事实（值位置由
@@ -273,9 +288,12 @@ pub(crate) fn project_program_with_caps(
     }
     // PLAN-963（T-02）：用户泛型记录类型的语法期单态化（每个使用位都显式
     // 携带类型实参，无需语义推理）。下游 resolve/HIR/布局/四端只见具体
-    // 记录类型；模板本身从程序中移除。
-    for d in expand_user_generic_types(&mut items, &specs) {
-        eng.cx.diags.push((d.span.start as u64, d));
+    // 记录类型；模板本身从程序中移除。包模块面推迟到扁平程序后统一做
+    // （V-G06：跨模块使用点共享实例身份）。
+    if !defer_templates {
+        for d in expand_user_generic_types(&mut items, &specs) {
+            eng.cx.diags.push((d.span.start as u64, d));
+        }
     }
     // PLAN-963（T-03）：`type X as S` 遵从检查 + spec 默认方法注入。放在单态化
     // 之后：合成实例同样按具体方法签名核验，注入的默认体随实例一起进入 resolve。
@@ -7695,6 +7713,23 @@ fn spec_obligations<'a>(
 
 /// 单态化用户泛型记录；无泛型声明时零行为改动。
 fn expand_user_generic_types(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diagnostic> {
+    expand_user_generic_types_with_origins(items, specs).0
+}
+
+/// PLAN-963（V-G06）：包模块扁平程序的记录模板单态化入口。返回（诊断、
+/// 实例符号 → 模板符号），后者供绑定层补 `type_origins` 并把诊断归到模块。
+pub(crate) fn monomorphize_package_program(
+    items: &mut Vec<Item>,
+) -> (Vec<Diagnostic>, BTreeMap<String, String>) {
+    // 包模块面无 spec（`spec` 不在 packages-modules 裁剪内），遵从核验空转。
+    let specs: Vec<SpecDecl> = Vec::new();
+    expand_user_generic_types_with_origins(items, &specs)
+}
+
+fn expand_user_generic_types_with_origins(
+    items: &mut Vec<Item>,
+    specs: &[SpecDecl],
+) -> (Vec<Diagnostic>, BTreeMap<String, String>) {
     // PLAN-963（T-03）：`<T has S>` 的核验面——bound 名必须是已声明 spec，
     // 实参必须是遵从该 spec 的记录（合成实例的遵从列表随模板复制）。
     let spec_names: BTreeSet<String> = specs.iter().map(|s| s.name.name.clone()).collect();
@@ -7729,7 +7764,7 @@ fn expand_user_generic_types(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<D
         for it in items.iter_mut() {
             gt.resolve_typed_ctors_in_item(it);
         }
-        return gt.diags;
+        return (gt.diags, gt.origin);
     }
     let taken: BTreeSet<String> = items
         .iter()
@@ -7776,7 +7811,7 @@ fn expand_user_generic_types(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<D
     for t in made {
         items.push(Item::Type(t));
     }
-    gt.diags
+    (gt.diags, gt.origin)
 }
 
 // ---------------------------------------------------------------------------

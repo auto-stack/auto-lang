@@ -386,7 +386,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [numeric, aggregates]) { f32-kw(field: "word") }
             alt(profiles: [numeric, aggregates]) { double-kw(field: "word") }
             alt(profiles: [numeric, aggregates]) { f64-kw(field: "word") }
-            alt(profiles: [record, record-instances, collections, closures, numeric, aggregates]) { generic-ty(field: "generic") }
+            alt(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules]) { generic-ty(field: "generic") }
             alt(profiles: [collections, closures, numeric, aggregates]) { optional-ty(field: "optional") }
             alt(profiles: [text, text-record, text-record-instances, host-console, record, record-instances, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, numeric, aggregates]) { ident(field: "word") }
             alt(profiles: [closures, numeric, aggregates]) { fn-type(field: "fn") }
@@ -409,7 +409,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [numeric, aggregates]) { f32-kw(field: "word") }
             alt(profiles: [numeric, aggregates]) { double-kw(field: "word") }
             alt(profiles: [numeric, aggregates]) { f64-kw(field: "word") }
-            alt(profiles: [record, record-instances, collections, closures, numeric, aggregates]) { generic-ty(field: "generic") }
+            alt(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules]) { generic-ty(field: "generic") }
             alt(profiles: [collections, closures, numeric, aggregates]) { optional-ty(field: "optional") }
             alt(profiles: [text, text-record, text-record-instances, host-console, record, record-instances, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, numeric, aggregates]) { ident(field: "word") }
             alt(profiles: [closures, numeric, aggregates]) { fn-type(field: "fn") }
@@ -437,15 +437,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 嵌套类型实参允许——`List<List<int>>` 域约束归 resolve）。
         // PLAN-963（T-02）：record 面加入该形状——用户泛型记录 `Point<int>`
         // 的每个使用位都显式写类型实参，由语法期单态化替换为具体记录。
-        generic-ty(profiles: [record, record-instances, collections, closures, numeric, aggregates]) {
+        // PLAN-963（V-G06）：包模块面同样放开泛型类型应用——模块内模板声明与
+        // 跨模块使用点都由扁平程序的单态化统一实例化（包/模块身份已在符号里）。
+        generic-ty(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules]) {
             ident(field: "name")
             lt() {}
             type-args(field: "args")
             gt() {}
         }
-        type-args(profiles: [record, record-instances, collections, closures, numeric, aggregates]) { type-arg() {} many { type-arg-tail() {} } }
-        type-arg-tail(profiles: [record, record-instances, collections, closures, numeric, aggregates]) { comma() {} type-arg() {} }
-        type-arg(profiles: [record, record-instances, collections, closures, numeric, aggregates]) {
+        type-args(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules]) { type-arg() {} many { type-arg-tail() {} } }
+        type-arg-tail(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules]) { comma() {} type-arg() {} }
+        type-arg(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules]) {
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
@@ -533,7 +535,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-963（T-02）：用户泛型记录 `type Point<T> { x T; y T }`
             // （仅 record/aggregates 面；投影按声明序投影参数表，随后语法期
             // 单态化为具体记录类型）。
-            opt(profiles: [record, record-instances, aggregates]) { type-params(field: "type_params") }
+            // PLAN-963（V-G06）：包模块面同样启用——模板由扁平程序级单态化
+            // 统一实例化（跨模块共享实例身份）。
+            opt(profiles: [record, record-instances, aggregates, packages-modules]) { type-params(field: "type_params") }
             // PLAN-963（T-03）：`type Age = int` 别名形与记录体形共用同一
             // `type` 前缀——尾部由独立 `type-tail` 规则按首 token（`=` vs
             // `{`）分派（本引擎的 alt 只作用于整条规则，不能中途分支）。
@@ -989,7 +993,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [aggregates]) { grid-atom() {} }
             alt(profiles: [aggregates]) { array-lit() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
-            alt(profiles: [record, record-instances, aggregates]) { typed-ctor-expr() {} }
+            alt(profiles: [record, record-instances, aggregates, packages-modules]) { typed-ctor-expr() {} }
             alt(profiles: [collections, closures, record, record-instances, text-record, text-record-instances, packages-modules, aggregates]) { ctor-expr() {} }
             // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
             // 条件镜像旧 generic_scan_commits——平衡 `<...>` 后随 `.`；普通
@@ -1128,7 +1132,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 作为**独立备选**排在 ctor-expr 之前：两者共享 `ident` 前缀，写成
         // ctor-expr 内的 opt 会被前缀分派抢先当普通名字（实测 `Point<int>`
         // 被解析为比较）。`<...>` 平衡后必须跟 `{`，否则回退普通名字/比较。
-        typed-ctor-expr(profiles: [record, record-instances, aggregates]) {
+        typed-ctor-expr(profiles: [record, record-instances, aggregates, packages-modules]) {
             ident(field: "ty")
             lt() {}
             type-args(field: "args")

@@ -129,6 +129,22 @@ fn valid_id(id: &str) -> bool {
     matches!(b.next(), Some(b'a'..=b'z' | b'A'..=b'Z' | b'_'))
         && b.all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
+
+/// 扁平坐标诊断归位到所属模块（用于尚未构造 `BoundPackages` 的收尾遍）。
+fn locate_flat(segments: &[PackageSegment], mut d: Diagnostic) -> PackageDiagnostic {
+    let seg = segments.iter().rev().find(|s| d.span.start >= s.start);
+    let module = seg
+        .map(|s| unit_key(&s.package, &s.module))
+        .unwrap_or_default();
+    if let Some(s) = seg {
+        d.span.start = d.span.start.saturating_sub(s.start);
+        d.span.end = d.span.end.saturating_sub(s.start);
+    }
+    PackageDiagnostic {
+        module,
+        diagnostic: d,
+    }
+}
 fn valid_package(pkg: &str) -> bool {
     let mut b = pkg.bytes();
     matches!(b.next(), Some(b'a'..=b'z'))
@@ -603,8 +619,10 @@ pub fn bind_package_syntax(
     let mut references: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut global_reads: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut binding_walks: BTreeSet<String> = BTreeSet::new();
-    // 已改写的初始化表达式（按模块、声明序）。
-    let mut initializers: BTreeMap<String, Vec<(String, Expr)>> = BTreeMap::new();
+    // 模块内需初始化的全局符号（按声明序）。值体直接从扁平程序的 const/store
+    // 项取——记录模板单态化会改写这些值（`Point<int> { .. }` 换实例名），
+    // 早先克隆的副本会漏改。
+    let mut initializers: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut offset = 0usize;
     let mut identity = format!("{PACKAGES_BINDING_VERSION}:{}:{entry}\n", entry.len());
     let mut result_grammar_id = String::new();
@@ -634,8 +652,9 @@ pub fn bind_package_syntax(
             work: 0,
             depth: 0,
             set_counter: 0,
+            tyvars: BTreeSet::new(),
         };
-        let mut inits: Vec<(String, Expr)> = Vec::new();
+        let mut inits: Vec<String> = Vec::new();
         for item in &unit.program.items {
             match item {
                 Item::Fn(original) => {
@@ -663,6 +682,10 @@ pub fn bind_package_syntax(
                 Item::Type(original) => {
                     let owner = type_symbol(pkg, module, &original.name.name);
                     let mut t = original.clone();
+                    // PLAN-963（V-G06）：记录模板（`pub type Point<T>`）保留到扁平
+                    // 程序级单态化；成员里的 `T` 只在本模板范围内是合法类型变量。
+                    let saved_tyvars = std::mem::take(&mut walker.tyvars);
+                    walker.tyvars = t.type_params.iter().map(|p| p.name.name.clone()).collect();
                     for fd in &mut t.fields {
                         walker.walk_ann(&mut fd.ty)?;
                     }
@@ -692,6 +715,7 @@ pub fn bind_package_syntax(
                             span: t.name.span,
                         });
                     }
+                    walker.tyvars = saved_tyvars;
                     type_origins.insert(
                         owner.clone(),
                         (pkg.into(), module.into(), t.name.name.clone()),
@@ -706,7 +730,7 @@ pub fn bind_package_syntax(
                     walker.current_owner = sym.clone();
                     walker.walk_ann(&mut item.ty)?;
                     walker.walk_expr(&mut item.value, &BTreeSet::new())?;
-                    inits.push((sym.clone(), item.value.clone()));
+                    inits.push(sym.clone());
                     // 声明项保留在扁平程序中：resolve 据其注册
                     // `module.global.get/set:` 伪签名（值体不在该层解析——
                     // 初始化已移入 init 函数）。
@@ -723,7 +747,7 @@ pub fn bind_package_syntax(
                     walker.current_owner = sym.clone();
                     walker.walk_ann(&mut item.ty)?;
                     walker.walk_expr(&mut item.value, &BTreeSet::new())?;
-                    inits.push((sym.clone(), item.value.clone()));
+                    inits.push(sym.clone());
                     item.name.name = sym;
                     shift_ann(&mut item.ty, offset);
                     shift_expr(&mut item.value, offset);
@@ -745,6 +769,60 @@ pub fn bind_package_syntax(
             start: offset,
         });
         offset += sources[key].len() + 1;
+    }
+
+    // ---- PLAN-963（V-G06）：扁平程序级记录模板单态化 ----
+    // 记录模板（`pub type Point<T>`）跨模块共用：各模块绑定期已把使用点的
+    // `Point<int>` mangle 成「模板符号 + 实参」，此处按模板合成具体实例（实例
+    // 符号由已 mangle 的模板符号派生，天然区分两包同名模板），并把实例成员
+    // 归属与源位置补登记。const/store 的值体与注解同在本程序内，一并改写。
+    let (mono_diags, mono_origins) =
+        crate::source::cst::monomorphize_package_program(&mut program_items);
+    if let Some(d) = mono_diags
+        .into_iter()
+        .min_by_key(|d| (d.span.start, d.span.end))
+    {
+        return Err(locate_flat(&segments, d));
+    }
+    // 模板项已随单态化移除：成员归属改指向实例（否则方法 owner 悬空），
+    // 源位置按模板源名登记；模板自己的 type_origins 条目随后清理。
+    for item in program_items.iter_mut() {
+        let Item::Type(t) = item else { continue };
+        let Some(template) = mono_origins.get(&t.name.name).cloned() else {
+            continue;
+        };
+        let Some((pkg, module, tpl_name)) = type_origins.get(&template).cloned() else {
+            continue;
+        };
+        let inst = t.name.name.clone();
+        type_origins.insert(
+            inst.clone(),
+            (pkg.clone(), module.clone(), tpl_name.clone()),
+        );
+        for m in t.methods.iter_mut() {
+            m.owner = Some(Ident {
+                name: inst.clone(),
+                span: t.name.span,
+            });
+            origins.insert(
+                format!("{inst}.{}", m.name.name),
+                (
+                    pkg.clone(),
+                    module.clone(),
+                    format!("{tpl_name}.{}", m.name.name),
+                ),
+            );
+        }
+    }
+    {
+        let live: BTreeSet<String> = program_items
+            .iter()
+            .filter_map(|i| match i {
+                Item::Type(t) => Some(t.name.name.clone()),
+                _ => None,
+            })
+            .collect();
+        type_origins.retain(|k, _| live.contains(k));
     }
 
     // ---- 值初始化图：g 依赖 h 当 g 的初始化（经被调函数传递）读 h ----
@@ -877,6 +955,15 @@ pub fn bind_package_syntax(
         }
     }
     let mut module_init_fns: BTreeMap<String, String> = BTreeMap::new();
+    // 值体取自扁平程序的 const/store 项（已随段平移、已过记录模板单态化）。
+    let init_values: BTreeMap<String, Expr> = program_items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Const(c) => Some((c.name.name.clone(), c.value.clone())),
+            Item::Store(v) => Some((v.name.name.clone(), v.value.clone())),
+            _ => None,
+        })
+        .collect();
     for key in &module_init_order {
         let (pkg, module) = split_key(key);
         let Some(inits) = initializers.remove(key) else {
@@ -888,11 +975,14 @@ pub fn bind_package_syntax(
             .map(|s| s.start)
             .unwrap_or(0);
         let owner = init_symbol(pkg, module);
-        let mut by_sym: BTreeMap<String, Expr> = inits.into_iter().collect();
+        let mut by_sym: BTreeMap<String, Expr> = inits
+            .into_iter()
+            .filter_map(|s| init_values.get(&s).cloned().map(|v| (s, v)))
+            .collect();
         let mut stmts: Vec<Stmt> = Vec::new();
         let mut init_span: Option<Span> = None;
         for g in &init_order {
-            let Some(mut value) = by_sym.remove(g) else {
+            let Some(value) = by_sym.remove(g) else {
                 continue;
             };
             let decl = &globals[g];
@@ -901,7 +991,7 @@ pub fn bind_package_syntax(
                 end: decl.span.end + start,
             };
             init_span = Some(init_span.map_or(span, |s| s.join(span)));
-            shift_expr(&mut value, start);
+            // 值体已随扁平段平移，这里不再二次平移。
             stmts.push(Stmt::Let {
                 kw: span,
                 name: Ident {
@@ -1308,6 +1398,9 @@ struct Walker<'a> {
     depth: usize,
     /// 合成 `let __setN` 名计数（每模块单调）。
     set_counter: usize,
+    /// PLAN-963（V-G06）：当前正在改写的记录模板的类型参数名——只有这些裸
+    /// ident 在模板成员里投影为 `TyVar` 并被允许通过绑定层。
+    tyvars: BTreeSet<String>,
 }
 
 const WALK_WORK_BUDGET: usize = 1 << 22;
@@ -1389,16 +1482,38 @@ impl<'a> Walker<'a> {
                 name.name = mangled;
                 Ok(())
             }
-            TypeRef::TyVar(_) => Err(fail(
-                self.key,
-                "source.module-templates",
-                "type variables in package modules close in PLAN-963",
-                ann.span,
-            )),
-            TypeRef::Optional(_) | TypeRef::Generic { .. } | TypeRef::Function { .. } => Err(fail(
+            // PLAN-963（V-G06）：记录模板成员里的类型变量只在声明自己的模板内
+            // 合法；实例化（替换 + 去模板）由扁平程序的单态化完成。裸模块里
+            // 未声明的 `T` 仍具名拒，不当未知类型静默放过。
+            TypeRef::TyVar(name) => {
+                if self.tyvars.contains(&name.name) {
+                    Ok(())
+                } else {
+                    Err(fail(
+                        self.key,
+                        "source.module-templates",
+                        format!(
+                            "type variable `{}` is not declared by the enclosing template",
+                            name.name
+                        ),
+                        ann.span,
+                    ))
+                }
+            }
+            // PLAN-963（V-G06）：泛型类型应用 `Point<int>`——基名按符号 mangle，
+            // 实参递归 mangle；实例化在扁平程序级单态化里完成（跨模块共享身份）。
+            TypeRef::Generic { name, args } => {
+                let mangled = self.type_name(name)?;
+                name.name = mangled;
+                for a in args.iter_mut() {
+                    self.walk_ann(a)?;
+                }
+                Ok(())
+            }
+            TypeRef::Optional(_) | TypeRef::Function { .. } => Err(fail(
                 self.key,
                 "source.module-surface",
-                "optional/generic/function types belong to later packages (PLAN-962..965)",
+                "optional/function types belong to later packages (PLAN-962..965)",
                 ann.span,
             )),
         }
@@ -1861,9 +1976,19 @@ impl<'a> Walker<'a> {
                 }
                 self.walk_expr(base, locals)
             }
-            ExprKind::CtorNamed { ty, fields, .. } => {
+            ExprKind::CtorNamed {
+                ty,
+                args,
+                fields,
+            } => {
+                // PLAN-963（V-G06）：显式类型实参构造 `Point<int> { .. }`——
+                // 基名按符号 mangle，实参递归 mangle；实例解析（模板登记 +
+                // 实例合成 + 换名）由扁平程序级单态化完成。
                 let mangled = self.type_name(ty)?;
                 ty.name = mangled;
+                for a in args.iter_mut() {
+                    self.walk_ann(a)?;
+                }
                 for f in fields {
                     self.walk_expr(&mut f.value, locals)?;
                 }
@@ -2145,6 +2270,147 @@ mod tests {
         )
         .unwrap();
         assert_ne!(b.input_hash, b3.input_hash);
+    }
+
+    #[test]
+    fn packages_monomorphize_record_templates_across_modules_963() {
+        // V-G06：模板声明在 lib、实例化在 app（跨模块）；同一实参只合成一个
+        // 实例（模板符号派生），实例方法归属实例而非已移除的模板。
+        let b = bind(
+            &[
+                input(
+                    "lib",
+                    "geo",
+                    "pub type Point<T> { x T\n fn get() T { return .x } }\npub fn mk(v int) Point<int> { return Point { x: v } }",
+                ),
+                input(
+                    "app",
+                    "main",
+                    "use lib.geo.Point\nuse lib.geo.mk\nfn main() int { let q Point<int> = Point { x: 2 }\n let r Point<int> = mk(40)\n return q.get() + r.get() }",
+                ),
+            ],
+            "app::main",
+        )
+        .unwrap();
+        let types: Vec<&String> = b
+            .program
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                Item::Type(t) => Some(&t.name.name),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(types, vec!["t3_libm3_geo_Point_int"], "{types:?}");
+        let inst = b
+            .program
+            .items
+            .iter()
+            .find_map(|i| match i {
+                Item::Type(t) => Some(t),
+                _ => None,
+            })
+            .unwrap();
+        assert!(inst.type_params.is_empty());
+        assert_eq!(inst.fields.len(), 1);
+        assert_eq!(
+            inst.methods[0].owner.as_ref().map(|o| o.name.as_str()),
+            Some("t3_libm3_geo_Point_int")
+        );
+        assert_eq!(
+            b.type_origins["t3_libm3_geo_Point_int"].2,
+            "Point".to_string()
+        );
+        assert!(b.origins.contains_key("t3_libm3_geo_Point_int.get"));
+    }
+
+    #[test]
+    fn packages_keep_same_named_templates_of_different_packages_apart_963() {
+        // V-G06：两个包各有 `Point<T>`，实例符号由各自模板符号派生，不串。
+        let b = bind(
+            &[
+                input("lib", "geo", "pub type Point<T> { x T }\npub fn origin() int { let p Point<int> = Point { x: 40 }\n return p.x }"),
+                input("alt", "geo", "pub type Point<T> { y T }\npub fn other() int { let p Point<int> = Point { y: 2 }\n return p.y }"),
+                input("app", "main", "use lib.geo.origin\nuse alt.geo.other\nfn main() int { return origin() + other() }"),
+            ],
+            "app::main",
+        )
+        .unwrap();
+        let mut types: Vec<String> = b
+            .program
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                Item::Type(t) => Some(t.name.name.clone()),
+                _ => None,
+            })
+            .collect();
+        types.sort();
+        assert_eq!(
+            types,
+            vec![
+                "t3_altm3_geo_Point_int".to_string(),
+                "t3_libm3_geo_Point_int".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn packages_reject_wrong_template_arguments_by_module_963() {
+        // V-G06：实参个数不符 → 具名拒，且诊断归到出错模块的源坐标。
+        let e = bind(
+            &[
+                input(
+                    "lib",
+                    "geo",
+                    "pub type Point<T> { x T }",
+                ),
+                input(
+                    "app",
+                    "main",
+                    "use lib.geo.Point\nfn main() int { let p Point<int, bool> = Point { x: 1 }\n return p.x }",
+                ),
+            ],
+            "app::main",
+        )
+        .unwrap_err();
+        assert_eq!(e.module, "app::main", "{e:?}");
+        assert_eq!(e.diagnostic.code, "source.unsupported");
+        assert!(
+            e.diagnostic.message.contains("type argument"),
+            "{}",
+            e.diagnostic.message
+        );
+    }
+
+    #[test]
+    fn packages_reject_undeclared_type_variables_in_modules_963() {
+        // V-G06：非模板里的 `T` 不静默当未知类型放过（具名拒）。
+        let e = bind(
+            &[input(
+                "app",
+                "main",
+                "pub fn f(x T) int { return 1 }\nfn main() int { return 0 }",
+            )],
+            "app::main",
+        )
+        .unwrap_err();
+        assert_eq!(e.diagnostic.code, "source.module-symbol", "{e:?}");
+        assert!(
+            e.diagnostic.message.contains("unknown type `T`"),
+            "{}",
+            e.diagnostic.message
+        );
+        // 模板内声明过的类型变量则放行（由包内单态化替换）。
+        let b = bind(
+            &[input(
+                "app",
+                "main",
+                "pub type Point<T> { x T }\nfn main() int { let p Point<int> = Point { x: 1 }\n return p.x }",
+            )],
+            "app::main",
+        );
+        assert!(b.is_ok(), "{b:?}");
     }
 
     #[test]

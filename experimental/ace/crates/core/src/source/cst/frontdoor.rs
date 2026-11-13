@@ -602,7 +602,9 @@ pub(crate) fn project_packages_front(
         }
     };
     for tree in &trees {
-        let program = project::project_program(
+        // PLAN-963（V-G06）：模块级记录模板推迟到扁平程序后统单态化——跨模块
+        // 使用点必须命中同一实例符号（包/模块身份已进符号）。
+        let program = project::project_program_deferring_templates(
             &cached.program,
             &cached.kinds,
             tree,
@@ -936,6 +938,8 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
         // PLAN-963（T-04）：实例面（scalar/record/text-record + 能力）是
         // `<const N>` 与 `generic-call` 的唯一成立面。
         instances || record_instances || text_record_instances,
+        // PLAN-963（V-G06）：记录面就地单态化（模块/包面走上面的推迟入口）。
+        false,
     ) {
         Ok(program) => FrontOutcome::Ok(FrontOk {
             program,
