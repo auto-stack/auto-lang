@@ -256,3 +256,195 @@ fn closures_restore_rejects_forged_and_tampered_and_stays_readonly() {
     let _ = recovered.close();
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// PLAN-1027 (UTF-01): real native session + restore UTF-8 single-region edit
+/// fidelity across shared leading/trailing multi-byte codepoints, comments,
+/// independent fresh PE controls, same-B zero-production hits, and controlled
+/// non-ASCII identifier / out-of-domain rejections.
+#[test]
+fn audit1027_utf_01() {
+    assert!(
+        common::tools_available(),
+        "native tools are required; no skip pass"
+    );
+
+    // 1. Scalar-count distinguishing PE exit-code oracle:
+    // A (`s.len()` = 1, `f(41)` -> 42) -> B (`s.len()` = 2, `f(40)` -> 42)
+    // Wait: keep `f(40)` fixed so only the string literal edits (1 -> 2 scalars,
+    // A=41 cold -> B=42 warm & fresh). Pre-fix U+FFFD corruption produced 43+ or
+    // span UTF-8 boundary failure.
+    for (tag, a_ch, b_ch) in [
+        ("e_ae", "é", "äé"),
+        ("zh_chuanzh", "中", "串中"),
+        ("emoji2", "😀", "😁😀"),
+    ] {
+        let src_a = format!(
+            "fn main() int {{\n    let f = (x int) => {{\n        let s Str = \"{a_ch}\"\n        return s.len() + x\n    }}\n    return f(40)\n}}"
+        );
+        let src_b = src_a.replace(&format!("\"{a_ch}\""), &format!("\"{b_ch}\""));
+        let dir_warm = scratch(&format!("utf01-warm-{tag}"));
+        let (mut session, cold) =
+            ace_native::closures_incremental::ClosuresNativeSession::new(
+                &src_a,
+                "main",
+                &dir_warm,
+                None,
+            )
+            .expect("cold start");
+        assert_eq!(cold.exit_code, Some(41));
+        let cold_hashes = session.object_hashes();
+
+        let warm = session.apply_source(&src_b).expect("warm UTF-8 edit");
+        assert_eq!(
+            warm.exit_code,
+            Some(42),
+            "{tag}: stderr={}",
+            String::from_utf8_lossy(&warm.stderr)
+        );
+        assert_eq!(
+            warm.work.codegen_units,
+            vec!["d___closure_main_0".to_string()],
+            "{tag}: route={}",
+            warm.work.route
+        );
+        assert!(
+            warm.work.route.starts_with("fast-unit:"),
+            "{tag}: route={}",
+            warm.work.route
+        );
+        assert_eq!(
+            session.object_hashes().get("d_main"),
+            cold_hashes.get("d_main"),
+            "{tag}: d_main object changed on lambda literal edit"
+        );
+
+        // Same-B hit: proves accepted source is byte-identical to B.
+        let hit = session.apply_source(&src_b).expect("same-B hit");
+        assert_eq!(hit.exit_code, Some(42));
+        assert_eq!(hit.work.route, "hit");
+        assert!(hit.work.codegen_units.is_empty());
+
+        // Independent fresh session on B matches warm exit code.
+        let dir_fresh = scratch(&format!("utf01-fresh-{tag}"));
+        let (mut fresh_b, fresh_run) =
+            ace_native::closures_incremental::ClosuresNativeSession::new(
+                &src_b,
+                "main",
+                &dir_fresh,
+                None,
+            )
+            .expect("fresh B");
+        assert_eq!(fresh_run.exit_code, Some(42));
+        let _ = fresh_b.close();
+        let _ = session.close();
+        let _ = std::fs::remove_dir_all(&dir_warm);
+        let _ = std::fs::remove_dir_all(&dir_fresh);
+    }
+
+    // 2. Same-scalar-count literals (`é->ê`, `中->串`, `😀->😁`) and UTF-8 comment:
+    // same-B hit proves accepted source == B (U+FFFD corruption missed `hit` pre-fix).
+    for (tag, a_ch, b_ch) in [
+        ("e_e", "é", "ê"),
+        ("zh_chuan", "中", "串"),
+        ("emoji", "😀", "😁"),
+    ] {
+        let src_a = format!(
+            "fn main() int {{\n    // 注释 {a_ch}\n    let f = (x int) => {{\n        let s Str = \"{a_ch}\"\n        return s.len() + x\n    }}\n    return f(41)\n}}"
+        );
+        // Single-region literal edit first (`é` -> `ê`), then comment edit.
+        let src_b = src_a.replacen(&format!("\"{a_ch}\""), &format!("\"{b_ch}\""), 1);
+        let src_c = src_b.replacen(&format!("注释 {a_ch}"), &format!("注释 {b_ch}"), 1);
+        let dir = scratch(&format!("utf01-same-{tag}"));
+        let (mut session, cold) =
+            ace_native::closures_incremental::ClosuresNativeSession::new(&src_a, "main", &dir, None)
+                .expect("cold");
+        assert_eq!(cold.exit_code, Some(42));
+
+        let warm_b = session.apply_source(&src_b).expect("warm literal");
+        assert_eq!(warm_b.exit_code, Some(42));
+        assert_eq!(warm_b.work.codegen_units, vec!["d___closure_main_0".to_string()]);
+        let hit_b = session.apply_source(&src_b).expect("hit literal");
+        assert_eq!(hit_b.work.route, "hit");
+        assert!(hit_b.work.codegen_units.is_empty());
+
+        let warm_c = session.apply_source(&src_c).expect("warm comment");
+        assert_eq!(warm_c.exit_code, Some(42));
+        let hit_c = session.apply_source(&src_c).expect("hit comment");
+        assert_eq!(hit_c.work.route, "hit");
+        assert!(hit_c.work.codegen_units.is_empty());
+
+        let dir_fresh = scratch(&format!("utf01-fresh-same-{tag}"));
+        let (mut fresh_c, fresh_run) =
+            ace_native::closures_incremental::ClosuresNativeSession::new(
+                &src_c,
+                "main",
+                &dir_fresh,
+                None,
+            )
+            .expect("fresh C");
+        assert_eq!(fresh_run.exit_code, Some(42));
+        let _ = fresh_c.close();
+        let _ = session.close();
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&dir_fresh);
+    }
+
+    // 3. Restored closures session takes a UTF-8 literal warm edit and subsequent hit cleanly.
+    {
+        let dir = scratch("utf01-restore");
+        let cache = dir.join("store");
+        let src_a = "fn main() int {\n    let f = (x int) => {\n        let s Str = \"é\"\n        return s.len() + x\n    }\n    return f(41)\n}";
+        let src_b = src_a.replace("\"é\"", "\"ê\"");
+        let mut publisher = MnDriver::with_store(&cache, "mn-closures-utf8").unwrap();
+        let build = publisher
+            .build_closures(src_a, "main", &dir.join("publish-out"), None)
+            .expect("publish UTF-8 closures");
+        let manifest = build.manifest_artifact_id.clone().unwrap();
+
+        let mut fresh = MnDriver::with_store(&cache, "mn-closures-utf8-restore").unwrap();
+        fresh.forbid_codegen = true;
+        let (mut session, run) = fresh
+            .restore_closures_session(&manifest, &dir.join("restored-out"), None)
+            .expect("restore UTF-8 session");
+        assert_eq!(run.exit_code, Some(42));
+        assert!(run.work.codegen_units.is_empty());
+
+        let warm = session.apply_source(&src_b).expect("warm edit after restore");
+        assert_eq!(warm.exit_code, Some(42));
+        assert_eq!(
+            warm.work.codegen_units,
+            vec!["d___closure_main_0".to_string()]
+        );
+        let hit = session.apply_source(&src_b).expect("hit after restore");
+        assert_eq!(hit.work.route, "hit");
+        assert!(hit.work.codegen_units.is_empty());
+
+        let _ = session.close();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // 4. Domain-boundary controls: non-ASCII identifier & out-of-profile text methods stay rejected.
+    {
+        let dir = scratch("utf01-controls");
+        let err_ident = ace_native::closures_incremental::ClosuresNativeSession::new(
+            "fn main() int {\n    let café int = 1\n    return café\n}",
+            "main",
+            &dir.join("ident"),
+            None,
+        )
+        .err()
+        .expect("non-ASCII identifier must reject");
+        assert_eq!(err_ident.code(), "mn.unsupported.frontend");
+
+        let err_len_bytes = ace_native::closures_incremental::ClosuresNativeSession::new(
+            "fn main() int {\n    let f = (x int) => {\n        let s Str = \"é\"\n        return s.len_bytes() + x\n    }\n    return f(40)\n}",
+            "main",
+            &dir.join("lenbytes"),
+            None,
+        )
+        .err()
+        .expect("s.len_bytes() stays outside av.closures descriptor");
+        assert_eq!(err_len_bytes.code(), "mn.unsupported.frontend");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

@@ -897,6 +897,35 @@ fn splice(source: &str, range: &Range<usize>, replacement: &str) -> (String, i64
     (out, delta)
 }
 
+/// Prefix/suffix single-region diff: the maximal common prefix and suffix;
+/// the middle is one replacement range. Both endpoints are clamped to UTF-8
+/// char boundaries of both `old` and `new`, so splicing `replacement` into
+/// `old` at `range` reconstructs `new` byte-for-byte for any valid UTF-8 inputs.
+pub fn diff_single_region(old: &str, new: &str) -> (Range<usize>, String) {
+    let ob = old.as_bytes();
+    let nb = new.as_bytes();
+    let max_prefix = ob.iter().zip(nb.iter()).take_while(|(a, b)| a == b).count();
+    let mut prefix = max_prefix;
+    while prefix > 0 && (!old.is_char_boundary(prefix) || !new.is_char_boundary(prefix)) {
+        prefix -= 1;
+    }
+    let max_suffix = ob[prefix..]
+        .iter()
+        .rev()
+        .zip(nb[prefix..].iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let mut suffix = max_suffix;
+    while suffix > 0
+        && (!old.is_char_boundary(old.len() - suffix) || !new.is_char_boundary(new.len() - suffix))
+    {
+        suffix -= 1;
+    }
+    let range = prefix..old.len() - suffix;
+    let replacement = new[prefix..new.len() - suffix].to_string();
+    (range, replacement)
+}
+
 /// Shift a catalog span across an edit at `edit_end` by `delta`: spans that
 /// start at/after the edit point move whole; spans that contain the edit
 /// point grow/shrink at their end; spans before it are untouched.

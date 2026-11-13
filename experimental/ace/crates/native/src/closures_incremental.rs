@@ -16,7 +16,9 @@ use crate::observe::Obs;
 use crate::MnError;
 use ace_av_core::mir::MirModule;
 use ace_core::link::CaptureCaps;
-use ace_core::source::closures_fn::{ClosuresFnCandidate, ClosuresFunctionFrontend, NonFastReason};
+use ace_core::source::closures_fn::{
+    diff_single_region, ClosuresFnCandidate, ClosuresFunctionFrontend, NonFastReason,
+};
 use ace_core::verify::verify_closures_function;
 use ace_core::{body_work, hir::DefKind};
 use ace_lowering::lower_function_closures_unit_checked;
@@ -642,38 +644,6 @@ impl ClosuresNativeSession {
     }
 }
 
-/// The single-region literal diff (M axis: metered as source_hash +
-/// fragment_diff in the frontend ledger).
-fn diff_single_region(old: &str, new: &str) -> (std::ops::Range<usize>, String) {
-    let a = old.as_bytes();
-    let b = new.as_bytes();
-    let mut start = 0;
-    while start < a.len() && start < b.len() && a[start] == b[start] {
-        start += 1;
-    }
-    let mut end_a = a.len();
-    let mut end_b = b.len();
-    while end_a > start && end_b > start && a[end_a - 1] == b[end_b - 1] {
-        end_a -= 1;
-        end_b -= 1;
-    }
-    let range = std::ops::Range {
-        start: char_boundary(old, start),
-        end: char_boundary(old, end_a),
-    };
-    let replacement = String::from_utf8_lossy(&b[start..end_b]).into_owned();
-    (range, replacement)
-}
-fn char_boundary(s: &str, mut i: usize) -> usize {
-    if i > s.len() {
-        i = s.len();
-    }
-    while i > 0 && !s.is_char_boundary(i) {
-        i -= 1;
-    }
-    i
-}
-
 fn non_fast_text(reason: &NonFastReason) -> String {
     match reason {
         NonFastReason::OwnerSignatureChanged => "owner-signature-changed".into(),
@@ -683,5 +653,145 @@ fn non_fast_text(reason: &NonFastReason) -> String {
         NonFastReason::LambdaSiteChanged(inner) => format!("lambda-site-changed:{inner:?}"),
         NonFastReason::LambdaNested => "lambda-nested".into(),
         NonFastReason::RestoredContext => "restored-context".into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn splice(old: &str, range: &std::ops::Range<usize>, replacement: &str) -> String {
+        let mut out =
+            String::with_capacity(old.len() - (range.end - range.start) + replacement.len());
+        out.push_str(&old[..range.start]);
+        out.push_str(replacement);
+        out.push_str(&old[range.end..]);
+        out
+    }
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "plan1027-unit-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn audit1027_utf_02() {
+        let cases = [
+            // ASCII & boundary cases
+            ("fn main() int { return 42 }", "fn main() int { return 43 }"),
+            ("", "é"),
+            ("é", ""),
+            ("same", "same"),
+            ("", ""),
+            // Shared UTF-8 leading bytes
+            ("let s Str = \"é\"", "let s Str = \"ê\""),
+            ("let s Str = \"中\"", "let s Str = \"串\""),
+            ("let s Str = \"😀\"", "let s Str = \"😁\""),
+            // Shared UTF-8 leading AND trailing bytes
+            ("let s Str = \"é\"", "let s Str = \"äé\""),
+            ("let s Str = \"中\"", "let s Str = \"串中\""),
+            ("let s Str = \"😀\"", "let s Str = \"😁😀\""),
+            ("let s Str = \"😀\"", "let s Str = \"𐀀\""),
+            ("a😀b", "a𐀀b"),
+            // Multi-byte whole insert/delete with common suffix
+            (
+                "fn main() int {\n    // 前缀\n    return 42\n}",
+                "fn main() int {\n    // 前缀与新增中文\n    return 42\n}",
+            ),
+            (
+                "fn main() int {\n    // 前缀与新增中文\n    return 42\n}",
+                "fn main() int {\n    // 前缀\n    return 42\n}",
+            ),
+        ];
+        for (old, new) in cases {
+            let (range, replacement) = diff_single_region(old, new);
+            assert!(
+                old.is_char_boundary(range.start),
+                "range.start not char boundary for {old:?} -> {new:?}: {range:?}"
+            );
+            assert!(
+                old.is_char_boundary(range.end),
+                "range.end not char boundary for {old:?} -> {new:?}: {range:?}"
+            );
+            let rebuilt = splice(old, &range, &replacement);
+            assert_eq!(
+                rebuilt.as_bytes(),
+                new.as_bytes(),
+                "byte mismatch for {old:?} -> {new:?}: range={range:?}, replacement={replacement:?}, rebuilt={rebuilt:?}"
+            );
+        }
+
+        // Accepted source state check inside the private module (no public accessor added),
+        // plus controlled rejection for non-ASCII identifier and nonfast crosses-units routing.
+        assert!(
+            ace_core::link::find_rust_lld().is_ok() && ace_core::link::find_sdk_um_dir().is_ok(),
+            "native tools (rust-lld + Windows SDK um) required for audit1027_utf_02"
+        );
+        {
+            for (tag, a_ch, b_ch) in [
+                ("e_e", "é", "ê"),
+                ("zh_chuan", "中", "串"),
+                ("emoji", "😀", "😁"),
+            ] {
+                let src_a = format!(
+                    "fn main() int {{\n    let f = (x int) => {{\n        let s Str = \"{a_ch}\"\n        return s.len() + x\n    }}\n    return f(41)\n}}"
+                );
+                let src_b = src_a.replace(&format!("\"{a_ch}\""), &format!("\"{b_ch}\""));
+                let dir = temp_dir(tag);
+                let (mut session, cold) =
+                    ClosuresNativeSession::new(&src_a, "main", &dir, None).expect("cold");
+                assert_eq!(cold.exit_code, Some(42));
+                let warm = session.apply_source(&src_b).expect("warm edit");
+                assert_eq!(warm.exit_code, Some(42));
+                assert_eq!(
+                    session.frontend.as_ref().unwrap().source().as_bytes(),
+                    src_b.as_bytes(),
+                    "accepted source bytes mismatch for {tag}"
+                );
+                let hit = session.apply_source(&src_b).expect("hit");
+                assert_eq!(hit.work.route, "hit");
+                assert!(hit.work.codegen_units.is_empty());
+                let _ = session.close();
+                let _ = std::fs::remove_dir_all(&dir);
+            }
+
+            // Outside-owner edit (after trailing newline) preserves nonfast:crosses-units routing.
+            let dir_cross = temp_dir("cross");
+            let src_a = "fn main() int {\n    let f = (x int) => {\n        let s Str = \"é\"\n        return s.len() + x\n    }\n    return f(41)\n}\n";
+            let src_cross = format!("{src_a}fn extra() int {{ return 1 }}\n");
+            let (mut session, _) =
+                ClosuresNativeSession::new(src_a, "main", &dir_cross, None).expect("cold");
+            let nonfast = session.apply_source(&src_cross).expect("cross-units");
+            assert_eq!(nonfast.exit_code, Some(42));
+            assert_eq!(nonfast.work.route, "nonfast:crosses-units");
+            assert_eq!(
+                session.frontend.as_ref().unwrap().source().as_bytes(),
+                src_cross.as_bytes()
+            );
+            let _ = session.close();
+            let _ = std::fs::remove_dir_all(&dir_cross);
+
+            // Controlled rejection neighbor: non-ASCII identifier stays unsupported.
+            let dir_bad = temp_dir("bad_ident");
+            let err = ClosuresNativeSession::new(
+                "fn main() int {\n    let café int = 1\n    return café\n}",
+                "main",
+                &dir_bad,
+                None,
+            )
+            .err()
+            .expect("non-ASCII identifier must be rejected");
+            assert_eq!(err.code(), "mn.unsupported.frontend");
+            let _ = std::fs::remove_dir_all(&dir_bad);
+        }
     }
 }

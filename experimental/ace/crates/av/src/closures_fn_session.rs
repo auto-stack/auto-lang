@@ -22,7 +22,8 @@ use ace_av_core::mir::MirModule;
 use ace_core::body_work::{self, BodyWork, Stage, StageAttempts};
 use ace_core::hir::DefKind;
 use ace_core::source::closures_fn::{
-    ClosuresFnCandidate, ClosuresFunctionFrontend, NonFastReason, UnitCommitFacts, UnitKind,
+    diff_single_region, ClosuresFnCandidate, ClosuresFunctionFrontend, NonFastReason,
+    UnitCommitFacts, UnitKind,
 };
 use ace_core::verify::verify_closures_function;
 use ace_lowering::{lower_function_closures_unit, lower_function_closures_unit_checked};
@@ -830,36 +831,6 @@ fn non_fast_text(reason: &NonFastReason) -> String {
         NonFastReason::LambdaNested => "lambda-nested".to_string(),
         NonFastReason::RestoredContext => "restored-context".to_string(),
     }
-}
-
-/// Prefix/suffix single-region diff: the maximal common prefix and suffix;
-/// the middle is one replacement range. Any edit expressible as a single
-/// contiguous replacement is found exactly; anything else spans multiple
-/// units and is classified out by the edit classifier.
-fn diff_single_region(old: &str, new: &str) -> (std::ops::Range<usize>, String) {
-    let ob = old.as_bytes();
-    let nb = new.as_bytes();
-    let max_prefix = ob.iter().zip(nb.iter()).take_while(|(a, b)| a == b).count();
-    let mut prefix = max_prefix;
-    // keep the cut on char boundaries
-    while prefix > 0 && (!old.is_char_boundary(prefix) || !new.is_char_boundary(prefix)) {
-        prefix -= 1;
-    }
-    let max_suffix = ob[prefix..]
-        .iter()
-        .rev()
-        .zip(nb[prefix..].iter().rev())
-        .take_while(|(a, b)| a == b)
-        .count();
-    let mut suffix = max_suffix;
-    while suffix > 0
-        && (!old.is_char_boundary(old.len() - suffix) || !new.is_char_boundary(new.len() - suffix))
-    {
-        suffix -= 1;
-    }
-    let range = prefix..old.len() - suffix;
-    let replacement = new[prefix..new.len() - suffix].to_string();
-    (range, replacement)
 }
 
 /// Compute the fast/zero-hit route's structural gate from the captured
