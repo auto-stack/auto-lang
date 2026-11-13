@@ -2959,6 +2959,23 @@ struct CtLanded {
     requires: Vec<PackageRequire>,
 }
 
+/// 绑定名重复诊断（首个重复对；无重复 → None）。
+fn duplicate_import_diag(key: &str, imports: &[PackageImport]) -> Option<PackageDiagnostic> {
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for i in imports {
+        let name = i.bound_name();
+        if !seen.insert(name) {
+            return Some(fail(
+                key,
+                "source.module-duplicate-import",
+                format!("duplicate imported name `{name}`"),
+                i.span,
+            ));
+        }
+    }
+    None
+}
+
 /// 一个模块的语义装配：#in 求值（公共/实现两文件的 ct_ins）→ 公共 bodyless
 /// 需求由实现同签名 fn 填充 → 实现私有 helper 保留 → 导入/导出/声明面更新。
 /// 每文件 span/CST 独立保留；实现项按实现段偏移预平移（walk 的统一模块
@@ -3028,6 +3045,11 @@ fn assemble_unit(
         imports.splice(imp_at..imp_at, landed.imports.clone());
         landed_requires.extend(landed.requires);
     }
+    // R1（复审修复）：#in 落位 use 与公共/其他落位 use 的绑定名全局去重
+    // ——含公共 use 位于 #in 之后的对撞（投影期只查 plain-vs-plain）。
+    if let Some(d) = duplicate_import_diag(key, &imports) {
+        return Err(d);
+    }
     let mut all_requires = public.requires.clone();
     all_requires.extend(landed_requires);
 
@@ -3047,6 +3069,9 @@ fn assemble_unit(
             iextra += n;
             let imp_at = ct_in.import_slot.min(iimports.len());
             iimports.splice(imp_at..imp_at, landed.imports.clone());
+            if let Some(d) = duplicate_import_diag(key, &iimports) {
+                return Err(d);
+            }
             if !landed.requires.is_empty() {
                 return Err(fail(
                     key,
@@ -4250,6 +4275,58 @@ pub fn chosen() int { return 6 }";
             local <= impl_src.len(),
             "span must land inside the implementation file, local={local} impl_len={}",
             impl_src.len()
+        );
+    }
+
+    #[test]
+    fn r1_repro_landed_use_must_not_silently_shadow_a_plain_import() {
+        let c = ctx(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+        // `plat` 同时被公共 use 与 #in 选中 use 绑定 —— 必须具名拒（无声覆盖=反例）。
+        let src = "use winio.plat
+#in sys is current {
+    Windows -> use lnxio.plat
+    Linux -> use lnxio.plat
+}
+fn main() int { return plat() }";
+        match bind_packages_assembled(
+            &[
+                input("main", src, None),
+                input("winio", WINIO, None),
+                input("lnxio", LNXIO, None),
+            ],
+            "app::main",
+            &caps(),
+            FrontBudget::WORK_OWNED_64MIB,
+            &c,
+        ) {
+            Ok(_) => panic!("landed use must not silently shadow a plain import"),
+            Err(e) => {
+                assert_eq!(e.diagnostic.code, "source.module-duplicate-import", "{e:?}");
+            }
+        }
+        // 反向变体：公共 use 位于 #in 之后（投影期 plain-only 检查的盲区）。
+        let src2 = "#in sys is current {
+    Windows -> use lnxio.plat
+    Linux -> use lnxio.plat
+}
+use winio.plat
+fn main() int { return plat() }";
+        // 注：含 use 的 #in 须在声明区前，但 plain use 在其后仍属导入区。
+        let e2 = bind_packages_assembled(
+            &[
+                input("main", src2, None),
+                input("winio", WINIO, None),
+                input("lnxio", LNXIO, None),
+            ],
+            "app::main",
+            &caps(),
+            FrontBudget::WORK_OWNED_64MIB,
+            &c,
+        )
+        .expect_err("plain-after-#in collision must be named too");
+        assert_eq!(
+            e2.diagnostic.code, "source.module-duplicate-import",
+            "{e2:?}"
         );
     }
 
