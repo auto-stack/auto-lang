@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/stdlib/design/ace-host-services.md]
 touched_goals: [GOAL-002]
 affects: [stdlib, ace]
 depends_on: [PLAN-943, PLAN-944, PLAN-960]
-current_step: 3
+current_step: 6
 total_steps: 10
 ---
 
@@ -337,11 +337,11 @@ struct LibraryBinding { declaration: SigRef, layer: LayerKind, target: TargetAbi
 
 - [x] **T-03｜M2-A｜owner_stage: work｜AC-03**：接装配/持久恢复/重新授权、预算和真实取消poll边界；不缓存provider地址，不扩权，不承诺尚未到达poll时即时终止。 [✅ 2026-11-13：AV 侧 persist/restore/重新授权既有（console_host.rs，快照身份测试在案）；mn 通道 worker recipe ac/mn/console-run-v1 内建 persist→restore 重接纳→本轮 caps 授权（不持久化任何授权/地址）；预算：AV 侧既有 65536/65537/1MiB 测试 + mn 侧 per-call（guest guard）与 cumulative（shim 计数器）双层、65537 拒绝原子性与 1MiB 边界前输出保留均有永久测试（console_lane 9 例 + 语料 7 行双 lane + 3 个期望面反例控制）；取消：AV 进程内双 poll 点既有语义保持，native=deadline 杀灭的受控运行（每次调用原子提交可观察），不承诺未到 poll 点即时终止。]
 
-- [ ] **T-08｜M2-A｜owner_stage: work｜AC-07**：先消费960的公共宿主声明/装配；分别记录AV、AC、Rust、C的console支持，不把Rust/C缺口移交后无人承接：973负责四端补齐；File/Task/Stream仅前探，967/968/973接真实服务。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+- [x] **T-08｜M2-A｜owner_stage: work｜AC-07**：先消费960的公共宿主声明/装配；分别记录AV、AC、Rust、C的console支持，不把Rust/C缺口移交后无人承接：973负责四端补齐；File/Task/Stream仅前探，967/968/973接真实服务。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。 [✅ 2026-11-13：四端机器账 compatibility.toml console.say（AV/native=supported 双 lane 语料证据、Rust/C=missing_capability→973、native Unit-entry 命名边界）+contracts 钉扎测试+全 gap 不变量精确放宽（math 不重分类保持）；V-08 三腿齐：say/print 分别冻结字节断言（语料 print/eprint 与 say 行双 lane）、撤权限恢复产物 dispatch=0（新增 say-revoked-av 行+unauthorized-mn 行+O12）、capability-missing 不冒 PASS（hir_rust/hir_c 钉扎）；SD-03 规范稿 docs/specs/stdlib/design/ace-host-services.md 落 worktree。]
 
-- [ ] **T-09｜M2-A｜owner_stage: work｜AC-08/AC-NATIVE**：冻结四轴装配、单一公共API和core/alloc/host/domain分层；按现行#语法核sys/OS名字，形成明确目标条件/模块导入语义与迁移表，交966实施而不在此另造CTE。 验证V-09，证据汇入原最终work验证。 新增V-NATIVE：明确默认core/alloc/基础系统库由Auto自有实现和薄OS适配承担，不以libc或Rust std间接委托作为默认；公共AutoABI与OS/外部ABI分开，Rust/C/provider依赖显式选择。Storage/allocator接口仍待原有M2讨论，不能提前冻结。
+- [x] **T-09｜M2-A｜owner_stage: work｜AC-08/AC-NATIVE**：冻结四轴装配、单一公共API和core/alloc/host/domain分层；按现行#语法核sys/OS名字，形成明确目标条件/模块导入语义与迁移表，交966实施而不在此另造CTE。 验证V-09，证据汇入原最终work验证。 新增V-NATIVE：明确默认core/alloc/基础系统库由Auto自有实现和薄OS适配承担，不以libc或Rust std间接委托作为默认；公共AutoABI与OS/外部ABI分开，Rust/C/provider依赖显式选择。Storage/allocator接口仍待原有M2讨论，不能提前冻结。 [✅ 2026-11-13：provider_selection.rs 四轴合同（backend×host×target×provider 来源；target 轴决定候选、宿主 Windows/目标 Linux 选 Linux=V-09 钉）；StdlibLayer core/alloc/host/domain 分层入选择记录；#if/#is 目标条件语义+sys.getpid 迁移表冻结于规范稿 §5（966 交接，不造 CTE）；V-09/V-NATIVE 7 测试绿（无/歧义 provider、平台 ABI 冒 AutoABI 审计反例、默认自有装配、显式外库、缺默认拒、自动 libc 回落拒）；Storage/allocator 未冻结（无签名/ABI 落地）。]
 
-- [ ] **T-10｜M2-A｜owner_stage: work｜AC-09/AC-NATIVE**：在现有装配model/manifest/contracts/loader及包查询中落实公共声明、默认Auto实现、host/platform/foreign和生成产物分工、schema版本/兼容规则、源码与运行加载边界；保944proof、943操作ID及恢复重授权。 验证V-10，证据汇入原最终work验证。 新增V-NATIVE：明确默认core/alloc/基础系统库由Auto自有实现和薄OS适配承担，不以libc或Rust std间接委托作为默认；公共AutoABI与OS/外部ABI分开，Rust/C/provider依赖显式选择。Storage/allocator接口仍待原有M2讨论，不能提前冻结。
+- [x] **T-10｜M2-A｜owner_stage: work｜AC-09/AC-NATIVE**：在现有装配model/manifest/contracts/loader及包查询中落实公共声明、默认Auto实现、host/platform/foreign和生成产物分工、schema版本/兼容规则、源码与运行加载边界；保944proof、943操作ID及恢复重授权。 验证V-10，证据汇入原最终work验证。 新增V-NATIVE：明确默认core/alloc/基础系统库由Auto自有实现和薄OS适配承担，不以libc或Rust std间接委托作为默认；公共AutoABI与OS/外部ABI分开，Rust/C/provider依赖显式选择。Storage/allocator接口仍待原有M2讨论，不能提前冻结。 [✅ 2026-11-13：AssemblyManifest schema 5 选择收据节（freeze_with_selection，身份事实入双指纹；schema 4 旧线型逐字节兼容、交叉形态拒=schema/兼容规则）；943 操作 ID 由 BindingRequest.operation 消费（UnknownOperation=删 proof 腿）；恢复旧授权→MissingGrant dispatch 前拒（V-10）；无第二 loader、选择合同为唯一接口来源；manifest schema-5 测试腿+stdlib 组 PASS。]
 
 - [ ] **T-04｜M2-A｜owner_stage: work｜AC-04**：在scope做File/Task/Stream有限资源合同前探，列实际producer/consumer与成功、失败、close、取消、最后owner状态；核939正式可用性，缺口逐项归owner/后继，绝不宣称资源已交付。
 
