@@ -351,6 +351,16 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 
 `wt-guard` clean 后 `git merge --ff-only plan-945-dev`：master=8d4f89e1909a8a9a8d42f95303d9aeb5c766dce9（无 merge commit；旧链 e59f9f484/b1a027382→44d5f38ad/8d4f89e19 映射如上）。canonical 核验（master==delivery，diff 空）：docs/specs/stdlib/design/ace-core-and-text.md blob=b10f757ed38bd9e6c7f1bb46aa0b0d4ee3873c4f、stdlib/project.md=845b2e27a62929723d892c287b48b72227b0b07f、auto-ac/source-text.md=8614dd05b92443f3c42f41f82f3c5024fdad9b0d、auto-a2x/checked-resource-facts.md=8ef05ddfe45bf027b7ac6137f4f6f5a8b8fc68a2、stdlib/ace/std/math.at=f1349a58cc615005285d5f10f9069aa090b7f8db、text.at=aba442b332b74a534198bd010bebfc638af7c2b6、compatibility.toml=202f60a045af9d88a2c76c142e4db11ecac82d5f。未写任何 legacy ledger/索引。
 
+2026-11-13 cleaned / delivered：两实施树移除前 guard 均 clean；auto-lang 树随 `git worktree remove` 删除（构建中间产物不回收、随树消亡），组内 auto-down 兄弟树经其属主仓移除，`plan-945-dev` 已 `git branch -d`（=8d4f89e19），空组目录 `D:/autostack/.wt/lang-945` 已删；`git worktree list` 无 lang-945 残留。统一 scope `D:/autostack/plan-artifacts/plan-945/`（13MB：README + work-final + merge-gate 两份 results.json）在收据哈希折入本 §9 后整体删除，实测不存在；登记表 `.retention/policy.json` 刷新为 deleted-at-merge（无具名持有）。路径对账：本计划全部命令输出仅该 scope 与实施树 target/（随树删除）；未发现其他盘符/第二证据目录/外部安装副本。
+
+部署观察：PATH 上 `auto` 为 auto-man 产物（早于本交付，未重编译——本包为源码/合同/测试交付，无 auto-lang release/exe/web bundle 发布任务，陈旧观察记录在案不构成部署声明）。批量 due 核验：945%5==0 → due，交接 auto-plan-regress（主检出单实例）。
+
+AC-01..08 最终全部闭合，T-01..T-08=8/8；F-945-R7-01/03 已修（收据改写+干净门重跑），F-945-R7-02 为 P3 覆盖备注（op 层既有覆盖，wrapper 邻例留后继可选）。主检出本 Plan 范围干净；其他会话 docs WIP 原样保留未混入。
+
+`stage: merge | plan_id: PLAN-945 | plan_revision: 7 | outcome: pass | completion_kind: delivered | delivery_commit: 8d4f89e1909a8a9a8d42f95303d9aeb5c766dce9 | archive_path: docs/plans/archive/945-ace-stdlib-core-math-and-text.md | canonical_verified: SD-01..05（blob 见上） | cleanup: tree/branch/group/scope removed; registry refreshed | pending_merge_gates: none（批量 cargo t all due → auto-plan-regress 接力）`
+
+`stage: goal | plan_id: PLAN-945 | plan_revision: 7 | round: 4 | from: merge | to: done | status: archived | outcome: pass | worktree: removed | commit: 8d4f89e19 | next: done`
+
 2026-11-12 stage:new / PLAN-945 r7：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原8任务/全部AC与V/依赖/阶段/预算和drafting 0/8；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
 2026-11-12 本轮规划静态核验：32份合同原505任务ID/顺序/进度、全部旧AC/V/Spec-delta及原依赖/阶段/预算保留；新增128条V-DETAIL待实施验证，未生成任何测试源码。505处本地引用/围栏/0–10章节/原任务映射核对通过，跨四仓可达222份Plan的显式依赖无缺失/环。只证明规划结构与取材来源，不是旧VM/新ACE运行或独立产品review PASS；959–962归档和963r5未改。
