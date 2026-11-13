@@ -449,6 +449,14 @@ abi_worker_overflow_then_hang（master 复跑同红，1043 侧基线红）+ 3 �
 flake（隔离 1.0s 绿）|
 production artifacts：本仓为语言/实验仓，无部署产物消费落地代码；无重建项（显式观察）。
 next: 批量回归到期核查（1015 收据 2026-11-12，>48h 且 1020/1025 等 ÷5 计划已并）→ regress。
+cleaned（2026-11-14）：wt-guard clean → worktree `D:/autostack/.wt/lang-1017/auto-lang` 与分支
+`codex/plan-1017-dev` 移除；组内只读 auto-down 兄弟树移除，组目录删除；plan-artifacts/plan-1017
+整目录删除（无具名持有——耐久证据已折 §9 Pass B/C/D/E/F 台账）；登记表已刷新。
+production artifacts 观察项：本仓无部署产物消费（实验仓+语言仓，无 daemon/web bundle）。
+
+2026-11-14 stage:goal | PLAN-1017:r6 | round:2 | from:merge | to:done | status:archived |
+outcome:pass | delivery:`357d68471` | 归档:`docs/plans/archive/1017-ace-perf-m2-cost-and-
+workload-optimization.md` | 清理完成 | next:批量回归到期（regress）。
 2026-11-14 stage:review | review_scope:**final** | reviewer:同会话复审（auto-plan-goal 授权链；
 独立性受限已声明——结论自工件重建：diff 清单/冻结收据/运行产物 JSON 重读核验，非采信执行者摘要）|
 plan_id:PLAN-1017 | plan_revision:r6 | outcome:**pass** |
