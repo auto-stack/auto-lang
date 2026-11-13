@@ -228,7 +228,7 @@ pub fn select(
             });
         }
         let chosen: Vec<&&ProviderDecl> = match &req.explicit_provider {
-            Some(name) => candidates.iter().filter(|p| &p.provider == name).collect(),
+            Some(name) => candidates.iter().filter(|p| p.provider == *name).collect(),
             None => candidates
                 .iter()
                 .filter(|p| {

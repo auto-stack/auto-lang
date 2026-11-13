@@ -3,7 +3,7 @@
 //! row must actually PASS; the wrong-implementation sensitivity controls
 //! mutate one expectation face at a time and must FAIL independently.
 use auto_lang_core::test_cases::{run_suite, stale};
-use auto_test_case::{admission::Limits, discovery::load_suite, report::Status};
+use auto_test_case::{admission::Limits, report::Status};
 use std::path::{Path, PathBuf};
 
 fn corpus() -> PathBuf {

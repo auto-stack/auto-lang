@@ -78,7 +78,6 @@ pub fn console_authorize(mir: &MirModule, grants: &[String]) -> Result<(), Conso
 
 const T_I32: cranelift_codegen::ir::types::Type = cranelift_codegen::ir::types::I32;
 const T_I64: cranelift_codegen::ir::types::Type = cranelift_codegen::ir::types::I64;
-const T_I8: cranelift_codegen::ir::types::Type = cranelift_codegen::ir::types::I8;
 
 /// Emit the console shim object: defines [`CONSOLE_WRITE_SYMBOL`] and the
 /// cumulative run-byte counter. The shim performs one kernel32 `WriteFile`
@@ -144,7 +143,7 @@ pub fn emit_console_shim_coff() -> Result<Vec<u8>, MnError> {
         let stream = fb.block_params(blk)[0];
         let ptr = fb.block_params(blk)[1];
         let len = fb.block_params(blk)[2];
-        let mut ret = |fb: &mut FunctionBuilder, code: i64| {
+        let ret = |fb: &mut FunctionBuilder, code: i64| {
             let v = fb.ins().iconst(T_I32, code);
             fb.ins().return_(&[v]);
         };
