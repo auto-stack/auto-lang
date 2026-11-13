@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-947
-status: executing
+status: execution_done
 feature_name: ACE 控制台接入、标准库分层与装配合同
 author: [Codex]
 created_at: 2026-11-05
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/stdlib/design/ace-host-services.md]
 touched_goals: [GOAL-002]
 affects: [stdlib, ace]
 depends_on: [PLAN-943, PLAN-944, PLAN-960]
-current_step: 6
+current_step: 8
 total_steps: 10
 ---
 
@@ -343,9 +343,9 @@ struct LibraryBinding { declaration: SigRef, layer: LayerKind, target: TargetAbi
 
 - [x] **T-10｜M2-A｜owner_stage: work｜AC-09/AC-NATIVE**：在现有装配model/manifest/contracts/loader及包查询中落实公共声明、默认Auto实现、host/platform/foreign和生成产物分工、schema版本/兼容规则、源码与运行加载边界；保944proof、943操作ID及恢复重授权。 验证V-10，证据汇入原最终work验证。 新增V-NATIVE：明确默认core/alloc/基础系统库由Auto自有实现和薄OS适配承担，不以libc或Rust std间接委托作为默认；公共AutoABI与OS/外部ABI分开，Rust/C/provider依赖显式选择。Storage/allocator接口仍待原有M2讨论，不能提前冻结。 [✅ 2026-11-13：AssemblyManifest schema 5 选择收据节（freeze_with_selection，身份事实入双指纹；schema 4 旧线型逐字节兼容、交叉形态拒=schema/兼容规则）；943 操作 ID 由 BindingRequest.operation 消费（UnknownOperation=删 proof 腿）；恢复旧授权→MissingGrant dispatch 前拒（V-10）；无第二 loader、选择合同为唯一接口来源；manifest schema-5 测试腿+stdlib 组 PASS。]
 
-- [ ] **T-04｜M2-A｜owner_stage: work｜AC-04**：在scope做File/Task/Stream有限资源合同前探，列实际producer/consumer与成功、失败、close、取消、最后owner状态；核939正式可用性，缺口逐项归owner/后继，绝不宣称资源已交付。
+- [x] **T-04｜M2-A｜owner_stage: work｜AC-04**：在scope做File/Task/Stream有限资源合同前探，列实际producer/consumer与成功、失败、close、取消、最后owner状态；核939正式可用性，缺口逐项归owner/后继，绝不宣称资源已交付。 [✅ 2026-11-13：前探分账表落规范稿 §3（File=旧VM io.at type File ext 绑定/Task=async.at chan-spawn 族/Stream=旧HTTP流；939 已归档交付 Handle/Callback/ViewText 契约形态但无 Auto 源 foreign import 模型、资源端口未接；缺口归 967 异步端口/968 调度/973 系统服务）；永久 oracle t04_file_task_stream_probe_outputs_capability_missing_never_pass 钉 capability-missing 形状（默认+显式点名均具名 no-provider，绝不冒 PASS）。]
 
-- [ ] **T-05｜M2-A｜owner_stage: work｜AC-04**：补授权/错签名/跨会话资源/预算/NUL/取消和恢复近邻，AV/native分别真调用；折叠前探结论并跑完整职责组。
+- [x] **T-05｜M2-A｜owner_stage: work｜AC-04**：补授权/错签名/跨会话资源/预算/NUL/取消和恢复近邻，AV/native分别真调用；折叠前探结论并跑完整职责组。 [✅ 2026-11-13：近邻清单逐项——授权（say-revoked-av+unauthorized-mn 语料行+console_lane 测试+选择合同 MissingGrant）、错签名（console-863 O11/O13+says 错型行）、跨会话（mn worker 每请求 persist→restore 重接纳）、预算（65537 per-call/1MiB cumulative 双端测试）、NUL（av exact-bytes 既有+mn NUL/双换行字节保留新测试）、取消（AV 双 poll 既有+mn 受控杀灭原子性可观察）、恢复（av 快照身份测试+mn restore）；前探结论折入规范稿 §3；冻结提交组并集 stdlib ace-console ace-source ace-av ace-native 全 PASS（run-yfs_ag9x；round1 同并集 run-676lsnlw 1891/0；ace-host 161/163，2 例 master 既有红已分诊）。]
 
 - [ ] **T-06｜M2-A｜owner_stage: review｜AC-05**：在同一实施树以独立上下文执行 `/auto-plan:review`，逐AC/反例与真实diff核验，具名记录债务候选；实际通过才进入reviewed。
 
@@ -372,6 +372,10 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 - **测试证据**：ace-native conformance console_lane 9/9 绿；ace-conformance console_p947 2/2 绿（语料 7 行全 Pass+Freshness Fresh）；ace-av say 冻结 lane 测试绿。组并集 `cargo t stdlib ace-console ace-source ace-av ace-native` exit0：stdlib 160/ace-console 5/ace-source 433/ace-av 1067/ace-native 226，合计 executed 1891/failed 0（run-676lsnlw，收据 D:/autostack/plan-artifacts/plan-947/t02-t03-groups.md）。ace-host 全 conformance：163 例中 2 例红——`source::av_source_inventory_denominators_replayable`（examples/ui/015-notes app.at scan-error）与 `rust_lowering::a2r_hir_worker_credential_pin`（pin 不匹配）——**两例均在主检出 master（无本包改动）复现一致，系既有红、与本包 diff 无关**（本包未触 examples/ui 与 a2r worker 面），交周期回归分诊；其余 161 例绿。
 - **剩余**：T-08（四端分账表：AV/native=implemented、Rust/C=capability-missing 单列、V-08 已有主体证据）、T-09/T-10（四轴装配合同+stdlib_assembly/packages 落实+V-09/V-10/V-NATIVE）、T-04（File/Task/Stream 前探，939 Handle/Callback 契约为基）、T-05（冻结提交完整组复验）、T-06 review、T-07 merge。
 - 注意：master 主检出存在其他 Plan 的 3 个文档 WIP（roadmap/1002/1017），非本包文件未动。
+
+2026-11-13 stage: work | plan_id: PLAN-947 | plan_revision: r9 | outcome: pass（全部 work 所属任务完成；ready for review） | worktree_path: D:/autostack/.wt/lang-947/auto-lang | branch: plan-947-dev | base_commit: 84c575a54 | code_commit: HEAD（6 实现提交：say+mn console lane / recipe+corpus+wiring / four-end ledger+V-08 / provider_selection 四轴合同 / schema-5 选择收据 / T-04 前探 oracle + NUL 近邻） | dependency_revisions: M1-TAG v0.6-ACE-M1(=b923362f4 祖先)；943/944/960/941/999/1025 归档 | task_ids: T-01,T-02,T-03,T-08,T-09,T-10,T-04,T-05（8/8 work 任务；T-06 review、T-07 merge 未执行） | evidence: console_lane 10/10、console_p947 2/2（语料 8 行双 lane Pass+Fresh、3 反例控制独立 FAIL）、contracts pin 8/8、provider_selection 8/8、manifest schema-5 腿绿；组并集 stdlib/ace-console/ace-source/ace-av/ace-native 两轮全 PASS（run-676lsnlw 1891/0、run-yfs_ag9x）；ace-host 161/163（2 例 master 既有红，双树复现，已分诊，非本包 diff）；规范稿 docs/specs/stdlib/design/ace-host-services.md 在 worktree 待 merge 沉淀；SD-01/02/04/05/06 的 review 定稿点=四端账/前探结论已入台账与规范稿 | blockers: 无 | next_responsible_role: review（T-06，独立上下文同一树）
+
+2026-11-13 stage: goal | plan_id: PLAN-947 | plan_revision: r9 | round: 2 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-947/auto-lang | commit: worktree 6 实现提交（HEAD） | next: review
 
 2026-11-13 stage: goal | plan_id: PLAN-947 | plan_revision: r9 | round: 1 | from: work | to: work | status: executing | outcome: pass-so-far（T-01..T-03 完成、组并集运行中） | worktree: D:/autostack/.wt/lang-947/auto-lang | commit: 2 实现提交（say+mn console lane；recipe+corpus+wiring） | next: work（T-08→T-09→T-10→T-04→T-05；组并集结果在 D:/autostack/plan-artifacts/plan-947/ 登记后补记 §9）
 
