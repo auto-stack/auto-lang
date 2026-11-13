@@ -4,13 +4,14 @@
 //! arm, assembled with an EXPLICIT backend/provider/target context and
 //! executed on the real ends with independent hand-set oracles:
 //!   AV (in-process value), AC/native (mn exe exit), A2R (rustc exe stdout),
-//!   A2C (cl exe stdout). The A2PY execution leg stays PENDING PLAN-1042
-//! (no ACE Python producer exists yet; only selection/binding is asserted
-//! there — never a fake run). Pure public bodies (`common`) are shared
+//!   A2C (cl exe stdout) and A2PY (real OS Python via the PLAN-1042
+//!   `PythonTargetProvider` + `pyrun` — the new producer, never the legacy
+//!   AST emitter). Pure public bodies (`common`) are shared
 //! single-source across every provider (+101 on all legs).
 #![cfg(all(windows, target_arch = "x86_64"))]
 
 use ace_a2x_c::CTargetProvider;
+use ace_a2x_python::PythonTargetProvider;
 use ace_a2x_rust::RustTargetProvider;
 use ace_a2x_store::modules::packages::PackageA2xTarget;
 use ace_av::modules::packages::PackageAvTarget;
@@ -277,22 +278,86 @@ fn stdlib_assembly_1043_selection_runs_on_av_native_rust_and_c() {
         "value:123"
     );
 
-    // ---- A2PY：选择/绑定真实成立，执行腿 PENDING PLAN-1042（诚实缺口：
-    // 本仓无 ACE Python producer；绝不以旧 emitter 或标签冒跑）----
-    let (_, _, a2py) = assemble(
+    // ---- A2PY（PLAN-1042 新 producer：共享 Checked HIR/A2X→Python 工程，
+    // 真实 OS Python 执行；py 来源体=4 → 4+101+10=115 / Linux 4+101+20=125）----
+    let store = scratch("a2py-store");
+    let (_, _, a2py_win) = assemble(
         &dir,
         AssemblyBackend::A2Py,
         ProviderChoice::Kind(ProviderKind::Py),
         TargetOs::Windows,
     );
+    let mut py = PackageA2xTarget::cold(
+        &store,
+        "pkg1043py",
+        "app",
+        16 << 20,
+        PythonTargetProvider,
+        &a2py_win,
+    )
+    .unwrap();
+    let py_dir = scratch("a2py-build");
+    for (path, content) in &py.current.files {
+        std::fs::write(py_dir.join(path), content).unwrap();
+    }
+    let generated = std::fs::read_to_string(py_dir.join("generated.py")).unwrap();
+    assert!(generated.contains("a2x_fn_"), "new producer output");
     assert!(
-        a2py.compiled
-            .checked
-            .bundle()
-            .modules
-            .iter()
-            .any(|m| m.defs.iter().any(|d| d.id_text == "d_main")),
-        "a2py binding reaches checked HIR (execution leg pending PLAN-1042)"
+        !generated.contains("PythonTrans"),
+        "legacy AST emitter must stay out"
+    );
+    let rt = ace_a2x_python::python_runtime_source(&[]);
+    let rt_hash = ace_core::runtime_contract::sha256_hex(rt.as_bytes());
+    let tool = ace_a2x_worker::pyrun::resolve_python(&rt_hash)
+        .expect("OS Python interpreter required (missing Python cannot PASS)");
+    let run = ace_a2x_worker::pyrun::run_py_fileset(&tool, &py_dir, &[]).unwrap();
+    assert_eq!(
+        run.exit_code,
+        Some(0),
+        "stderr={}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        run.stdout,
+        b"value:115
+",
+        "stderr={:?}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+
+    // Linux 目标轴在同一 Python 腿成立（lnxio=20 → 4+101+20=125）。
+    let (_, _, a2py_lnx) = assemble(
+        &dir,
+        AssemblyBackend::A2Py,
+        ProviderChoice::Kind(ProviderKind::Py),
+        TargetOs::Linux,
+    );
+    let mut py2 = PackageA2xTarget::cold(
+        &scratch("a2py-store2"),
+        "pkg1043py",
+        "app",
+        16 << 20,
+        PythonTargetProvider,
+        &a2py_lnx,
+    )
+    .unwrap();
+    let py_dir2 = scratch("a2py-build2");
+    for (path, content) in &py2.current.files {
+        std::fs::write(py_dir2.join(path), content).unwrap();
+    }
+    let run2 = ace_a2x_worker::pyrun::run_py_fileset(&tool, &py_dir2, &[]).unwrap();
+    assert_eq!(
+        run2.exit_code,
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&run2.stderr)
+    );
+    assert_eq!(
+        run2.stdout,
+        b"value:125
+",
+        "{:?}",
+        String::from_utf8_lossy(&run2.stderr)
     );
 }
 

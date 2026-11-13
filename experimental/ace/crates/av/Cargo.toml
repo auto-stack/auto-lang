@@ -49,6 +49,7 @@ ace-a2x-store = { path = "../a2x-store" }
 # PLAN-960 four-end packages conformance (dev-only): the C provider, the
 # cl.exe runner and the native mn driver.
 ace-a2x-c = { path = "../a2x-c" }
+ace-a2x-python = { path = "../a2x-python" }
 ace-a2x-worker = { path = "../a2x-worker" }
 ace-native = { path = "../native" }
 # PLAN-934 T-02: the bounded fact-driven source chain runs in this
