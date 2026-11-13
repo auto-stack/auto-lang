@@ -42,9 +42,14 @@ const DECLARED: &[&str] = &[
     // text/record + const/var items + use aliases/re-exports); declared
     // right after scalar-modules.
     "packages-modules",
+    // PLAN-1043（T-03）：packages-ct 面（packages-modules 全表面 + `#in`
+    // 编译期命名空间上下文 + 单行 use 符号表 + `pub spec fn` 需求声明）；
+    // 仅 IN 能力前门使用；声明序紧随 packages-modules。
+    "packages-ct",
     // PLAN-936（T-04）：有限 CT 表达式面（scalar-instances 全表面 +
     // #{ expr } 原子；仅 CT 能力前门使用；声明序在模板面之后）。
-    "scalar-ct",];
+    "scalar-ct",
+];
 
 #[test]
 fn profiles_declared_set_is_exact() {
@@ -108,11 +113,7 @@ fn profiles_record_opens_generic_ty_only() {
     assert!(record_rules.contains(&"type-arg"));
     assert!(!record_rules.contains(&"optional-ty"));
     let collections = compile_profile(SOURCE, "collections").expect("collections");
-    let collections_rules: Vec<&str> = collections
-        .rules
-        .iter()
-        .map(|r| r.name.as_str())
-        .collect();
+    let collections_rules: Vec<&str> = collections.rules.iter().map(|r| r.name.as_str()).collect();
     assert!(collections_rules.contains(&"optional-ty"));
 }
 

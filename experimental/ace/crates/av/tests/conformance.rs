@@ -184,16 +184,21 @@ mod resource_events_919;
 mod assembly_944;
 #[path = "cases/choose_instances_935.rs"]
 mod choose_instances_935;
-#[path = "cases/generic_records_963.rs"]
-mod generic_records_963;
-#[path = "cases/default_args_963.rs"]
-mod default_args_963;
-#[path = "cases/named_args_963.rs"]
-mod named_args_963;
 #[path = "cases/const_instances_963.rs"]
 mod const_instances_963;
+#[path = "cases/default_args_963.rs"]
+mod default_args_963;
+#[path = "cases/generic_records_963.rs"]
+mod generic_records_963;
+#[path = "cases/named_args_963.rs"]
+mod named_args_963;
 #[path = "cases/stdlib_core_945.rs"]
 mod stdlib_core_945;
+
+// PLAN-1043：ACE 标准库 context 装配（provider 后缀选择 + 最小 `#in` 平台臂）
+// 四端真跑（A2PY 执行腿 pending PLAN-1042）。
+#[path = "cases/stdlib_assembly_1043.rs"]
+mod stdlib_assembly_1043;
 
 #[path = "cases/module_packages_960.rs"]
 mod module_packages_960;

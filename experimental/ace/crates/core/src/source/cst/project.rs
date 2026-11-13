@@ -3706,6 +3706,18 @@ impl<'a> Engine<'a> {
         self.project_type_param_decls(node)
     }
 
+    /// PLAN-1043（T-02）：`pub spec fn name(params) Ret`（fn-require-p 节点，
+    /// packages-ct 面）→ 需求签名（bodyless；params/ret 复用 fn-tail 同一
+    /// 投影机器）。无类型参数（语法面即无）。
+    fn run_require_item(&mut self, node: u32) -> (Ident, Vec<Param>, TypeAnn) {
+        let name_leaf = self.cx.field_child(node, "name").expect("require name");
+        let name = ident_of(&mut self.cx, name_leaf);
+        let params = self.project_params(self.cx.field_child(node, "params"));
+        let ret = self.classify_word(self.cx.field_child(node, "ty").expect("require ret"), true);
+        self.drive();
+        (name, params, ret)
+    }
+
     /// PLAN-963（T-03）：用户泛型类型的参数声明（`<T>` / `<T has S>`）。
     /// 只有 record/aggregates 面允许 `has`；`const N` 仍具名拒（值参数未在
     /// 本分片实现）。
@@ -8655,5 +8667,51 @@ fn rename_ctor_in_block_returns(
             }
             _ => {}
         }
+    }
+}
+
+/// PLAN-1043（T-03）：packages-ct 面 `#in` 块内声明的子树投影入口。
+///
+/// 与顶层投影同一引擎/预算/诊断纪律（不建第二投影器）；只服务 in-stmt 的
+/// fn/type/const/var 项与 `pub spec fn` 需求（pub 壳由 packages 投影剥开
+/// 后传入内层节点）。产物由 packages 投影按选中结果落位，未选分支的
+/// 声明不进任何 items。
+pub(crate) struct InDeclProjector<'a> {
+    eng: Engine<'a>,
+}
+
+pub(crate) fn in_decl_projector<'a>(
+    p: &'a GrammarProgram,
+    k: &'a SourceKinds,
+    tree: &'a CstTree,
+    snap: &'a Snapshot,
+    profile: SourceProfile,
+) -> InDeclProjector<'a> {
+    InDeclProjector {
+        eng: Engine::new(p, k, tree, snap, profile, false, false),
+    }
+}
+
+impl<'a> InDeclProjector<'a> {
+    pub fn fn_item(&mut self, node: u32) -> FnItem {
+        self.eng.run_fn_item(node, None, Receiver::Free)
+    }
+    pub fn type_item(&mut self, node: u32) -> TypeItem {
+        self.eng.run_type_item(node)
+    }
+    pub fn global_item(&mut self, node: u32, mutable: bool) -> Item {
+        self.eng.run_global_item(node, mutable)
+    }
+    /// `pub spec fn` 需求签名（name/params/ret）。
+    pub fn require(&mut self, node: u32) -> (Ident, Vec<Param>, TypeAnn) {
+        self.eng.run_require_item(node)
+    }
+    /// type 别名形（`type X = T`）在 #in 内不支持（本轮面）；调用方具名拒。
+    pub fn is_type_alias(&mut self, node: u32) -> bool {
+        self.eng.is_type_alias(node)
+    }
+    /// 首个投影诊断（有则调用方整体失败——与顶层首事实序一致）。
+    pub fn first_diag(&self) -> Option<Diagnostic> {
+        self.eng.cx.first_diag()
     }
 }

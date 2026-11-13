@@ -77,6 +77,7 @@ mod tests {
             version: "1.0.0".into(),
             id: id.into(),
             source: source.into(),
+            provider: None,
         }
     }
 
@@ -192,4 +193,171 @@ mod tests {
             .iter()
             .any(|m| m.defs.iter().any(|d| d.id_text == "d_main")));
     }
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-1043（T-04）：装配 lane——候选发现（宿主扫描）、按上下文组装输入、
+// 显式装配编译入口。选择模型/绑定/求值都在 ace-core packages owner；本层
+// 只做盘上候选闭包与入口编排，不建第二 loader/binder。
+// ---------------------------------------------------------------------------
+
+use ace_core::source::packages::{
+    classify_provider_file_name, select_provider_source, PackageAssemblyContext,
+    PackageDiagnostic as AsmPackageDiagnostic, PackageImplLayer, PackageModuleInput as AsmInput,
+    ProviderFileKind, ProviderKind, ProviderSourceError, IN_CAPABILITY, PACKAGES_CAPABILITY,
+};
+use std::collections::{BTreeMap, BTreeSet};
+
+/// 装配 lane 的能力集（packages 面 + `#in` 编译期命名空间）。
+pub fn assembled_caps() -> Vec<String> {
+    vec![PACKAGES_CAPABILITY.to_string(), IN_CAPABILITY.to_string()]
+}
+
+/// 扫描一个平铺候选目录 → (文件名, 内容) 闭包（按名排序；非本合同文件
+/// 与旧 `.vm.at` 目标层被分类器忽略）。无递归、无搜索路径猜测。
+pub fn discover_provider_sources(dir: &std::path::Path) -> Result<Vec<(String, String)>, String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .map_err(|e| format!("scan {}: {e}", dir.display()))?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| classify_provider_file_name(n).is_some())
+        .collect();
+    names.sort();
+    let mut out = Vec::with_capacity(names.len());
+    for n in names {
+        let content =
+            std::fs::read_to_string(dir.join(&n)).map_err(|e| format!("read {}: {e}", n))?;
+        out.push((n, content));
+    }
+    Ok(out)
+}
+
+/// 由文件闭包 + 显式上下文组装包输入：公共 `.at` 成模块，实现候选按
+/// backend/provider/target 选择挂到对应模块（选择错误具名上抛）。
+/// `available` 读集同步进 ctx（增删候选即失效身份）。
+pub fn assemble_package_inputs(
+    files: &[(String, String)],
+    entry: &str,
+    ctx: &mut PackageAssemblyContext,
+) -> Result<Vec<AsmInput>, String> {
+    let mut publics: BTreeMap<String, String> = BTreeMap::new();
+    let mut candidates: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+    for (name, content) in files {
+        match classify_provider_file_name(name) {
+            Some((ProviderFileKind::Public, base)) => {
+                if publics.insert(base.clone(), content.clone()).is_some() {
+                    return Err(format!("duplicate public module file for `{base}`"));
+                }
+            }
+            Some((ProviderFileKind::Provider(kind), base)) => {
+                let slot = candidates.entry(base.clone()).or_default();
+                let label = kind.label().to_string();
+                if slot.insert(label, content.clone()).is_some() {
+                    return Err(format!(
+                        "duplicate `{}` provider candidate for `{base}`",
+                        kind.label()
+                    ));
+                }
+            }
+            None => {}
+        }
+    }
+    // 候选存在性读集（进 ctx 身份）。
+    ctx.available = candidates
+        .iter()
+        .map(|(base, kinds)| {
+            (
+                base.clone(),
+                kinds
+                    .keys()
+                    .filter_map(|l| match l.as_str() {
+                        "at" => Some(ProviderKind::At),
+                        "c" => Some(ProviderKind::C),
+                        "rs" => Some(ProviderKind::Rs),
+                        "py" => Some(ProviderKind::Py),
+                        _ => None,
+                    })
+                    .collect::<BTreeSet<ProviderKind>>(),
+            )
+        })
+        .collect();
+    let entry_module = entry.rsplit("::").next().unwrap_or(entry);
+    if !publics.contains_key(entry_module) {
+        return Err(format!(
+            "entry module `{entry_module}` has no public source"
+        ));
+    }
+    let mut inputs = Vec::new();
+    for (base, source) in &publics {
+        let provider = match candidates.get(base) {
+            None => None,
+            Some(kinds) => {
+                let set: BTreeSet<ProviderKind> = kinds
+                    .keys()
+                    .filter_map(|l| match l.as_str() {
+                        "at" => Some(ProviderKind::At),
+                        "c" => Some(ProviderKind::C),
+                        "rs" => Some(ProviderKind::Rs),
+                        "py" => Some(ProviderKind::Py),
+                        _ => None,
+                    })
+                    .collect();
+                let sel = select_provider_source(base, &set, ctx.backend, ctx.provider, ctx.target)
+                    .map_err(|e: ProviderSourceError| format!("{}: {}", e.code(), e.message()))?;
+                sel.provider.map(|kind| PackageImplLayer {
+                    kind,
+                    source: kinds.get(kind.label()).cloned().unwrap_or_default(),
+                })
+            }
+        };
+        inputs.push(AsmInput {
+            package: entry.split("::").next().unwrap_or(entry).to_string(),
+            version: "1.0.0".to_string(),
+            id: base.clone(),
+            source: source.clone(),
+            provider,
+        });
+    }
+    Ok(inputs)
+}
+
+/// PLAN-1043：显式装配编译入口（文件闭包 → 组装 → 绑定 → 既有管线）。
+/// 调用方保留组装后的 inputs 与 ctx（进 store 身份/恢复）。
+pub fn compile_assembled_package(
+    files: &[(String, String)],
+    entry: &str,
+    budget: FrontBudget,
+    ctx: &mut PackageAssemblyContext,
+) -> Result<PackageProduct, Vec<PackageDiagnostic>> {
+    let inputs = assemble_package_inputs(files, entry, ctx).map_err(|e| {
+        vec![PackageDiagnostic {
+            module: entry.to_string(),
+            diagnostic: Diagnostic::new(
+                ace_core::atom_text::Stage::Bind,
+                "assembly.discovery",
+                e,
+                ace_core::atom_text::Span { start: 0, end: 0 },
+            ),
+        }]
+    })?;
+    compile_assembled_inputs(&inputs, entry, budget, ctx)
+}
+
+/// 已组装输入的装配编译（恢复/再编译共用）。
+pub fn compile_assembled_inputs(
+    inputs: &[AsmInput],
+    entry: &str,
+    budget: FrontBudget,
+    ctx: &PackageAssemblyContext,
+) -> Result<PackageProduct, Vec<PackageDiagnostic>> {
+    let caps = assembled_caps();
+    let bound =
+        ace_core::source::packages::bind_packages_assembled(inputs, entry, &caps, budget, ctx)
+            .map_err(|e| vec![convert_asm_diag(e)])?;
+    compile_bound_packages(bound, &caps)
+}
+
+fn convert_asm_diag(d: AsmPackageDiagnostic) -> PackageDiagnostic {
+    d
 }

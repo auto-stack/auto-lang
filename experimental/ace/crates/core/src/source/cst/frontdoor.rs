@@ -261,6 +261,16 @@ pub fn packages_grammar() -> Result<&'static CachedGrammar, String> {
     capability_grammar(&PACKAGES_GRAMMAR, "packages-modules")
 }
 
+/// PLAN-1043（T-03）：`packages-ct` 裁剪程序（packages-modules 全表面 +
+/// `#in`/`pub spec fn`/单行 use 符号表）。独立缓存槽：plain
+/// packages-modules 程序逐字节不变，grammar-id 自然隔离。
+static PACKAGES_CT_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
+
+/// packages-ct 裁剪编译并缓存（进程内一次）。
+pub fn packages_ct_grammar() -> Result<&'static CachedGrammar, String> {
+    capability_grammar(&PACKAGES_CT_GRAMMAR, "packages-ct")
+}
+
 fn capability_grammar(
     cell: &'static OnceLock<OnceLock<CachedGrammar>>,
     slug: &str,
@@ -304,10 +314,41 @@ pub(crate) fn parse_packages_front(
     src: &str,
     budget: FrontBudget,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
+    parse_packages_with(false, src, budget)
+}
+
+/// PLAN-1043（T-03）：packages-ct 前门（`ac.source.cte.in/v1` 能力线；
+/// `#in`/`pub spec fn` 面的同一严格投影）。
+pub(crate) fn parse_packages_front_ct(
+    src: &str,
+    budget: FrontBudget,
+) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
+    parse_packages_with(true, src, budget)
+}
+
+fn infra_err(e: String) -> Vec<Diagnostic> {
+    vec![Diagnostic::new(
+        crate::atom_text::Stage::Text,
+        "source.infra",
+        e,
+        crate::atom_text::Span { start: 0, end: 0 },
+    )]
+}
+
+fn parse_packages_with(
+    ct_face: bool,
+    src: &str,
+    budget: FrontBudget,
+) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
     use crate::atom_text::{Span, Stage};
     let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
     let zero = Span { start: 0, end: 0 };
-    let cached = packages_grammar().map_err(|e| err("source.infra", e, zero))?;
+    let cached = if ct_face {
+        packages_ct_grammar()
+    } else {
+        packages_grammar()
+    }
+    .map_err(infra_err)?;
     crate::source::parser::note_tokenize(Span {
         start: 0,
         end: src.len(),
@@ -329,7 +370,7 @@ pub(crate) fn parse_packages_front(
         ),
         other => err("source.infra", format!("parse: {other}"), zero),
     })?;
-    project_packages_front(src, vec![parsed.tree], Some(parsed.tokens))
+    project_packages_front(src, vec![parsed.tree], Some(parsed.tokens), ct_face)
 }
 fn parse_module_syntax_range(
     src: &str,
@@ -527,16 +568,25 @@ pub(crate) fn project_module_front(
 /// PLAN-960（T-02）：packages-module 元数据投影——items 以 TextRecord 域
 /// 走统一投影器（type/fn/const/var 项 + str/ctor/方法表达式），导入/重导出/
 /// 可见性事实从 CST 字段读取，绝不靠剥 token 或拼源重建。
+/// PLAN-1043（T-03）：`ct_face` = packages-ct 裁剪（`ac.source.cte.in/v1`
+/// 能力线）——额外投影 `#in` 编译期命名空间上下文（结构保持到绑定期按
+/// 事实求值）与 `pub spec fn` 需求声明；plain 面 `ct_face=false` 时这些
+/// 规则不在裁剪内，行为逐字节不变。
 pub(crate) fn project_packages_front(
     src: &str,
     trees: Vec<CstTree>,
     tokens: Option<Vec<ace_syntax_runtime::lexer::Token>>,
+    ct_face: bool,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
     use crate::atom_text::{Span, Stage};
     use crate::source::packages::{PackageImport, PackageSyntax};
     let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
-    let cached =
-        packages_grammar().map_err(|e| err("source.infra", e, Span { start: 0, end: 0 }))?;
+    let cached = if ct_face {
+        packages_ct_grammar()
+    } else {
+        packages_grammar()
+    }
+    .map_err(|e| err("source.infra", e, Span { start: 0, end: 0 }))?;
     let pages = std::rc::Rc::new(PageStore::new());
     let snap = Snapshot::from_text(&pages, src);
     let rule = |name: &str| {
@@ -563,6 +613,11 @@ pub(crate) fn project_packages_front(
     let public_item = rule("public-item");
     let const_item = rule("const-item");
     let var_item = rule("var-item");
+    // PLAN-1043（T-03）：#in/需求规则 id（仅 packages-ct 裁剪存在；plain 面
+    // 全 None → 分支不可达，行为不变）。
+    let fn_require_p = rule("fn-require-p");
+    let in_item = rule("in-item");
+    let in_use_rule = rule("in-use");
     // public-item 的 `body` 字段指向 public-body 分派节点；实体是其首个非 trivia 孩子。
     let public_body = |tree: &CstTree, node: u32| -> Option<u32> {
         field(tree, node, "body").and_then(|b| {
@@ -592,6 +647,8 @@ pub(crate) fn project_packages_front(
     let mut type_exports = std::collections::BTreeSet::new();
     let mut const_exports = std::collections::BTreeSet::new();
     let mut imports = Vec::new();
+    let mut requires = Vec::new();
+    let mut ct_ins = Vec::new();
     let mut saw_decl = false;
     let mut items = Vec::new();
     let node_span = |tree: &CstTree, n| {
@@ -612,6 +669,19 @@ pub(crate) fn project_packages_front(
             SourceProfile::TextRecord,
         )?;
         items.extend(program.items);
+        // PLAN-1043（T-03）：#in 结构投影器（共享同一声明子树投影引擎）。
+        let mut in_face = ct_face.then(|| InFace {
+            cached,
+            snap: &snap,
+            tree,
+            proj: project::in_decl_projector(
+                &cached.program,
+                &cached.kinds,
+                tree,
+                &snap,
+                SourceProfile::TextRecord,
+            ),
+        });
         for d in &tree.decls {
             let node = if tree.kind(d.node) == cached.kinds.item {
                 tree.children(d.node)
@@ -622,6 +692,38 @@ pub(crate) fn project_packages_front(
                 d.node
             };
             let kind = tree.kind(node);
+            // PLAN-1043（T-03）：`#in` 项——结构保持进 ct_ins；含任何 use 的
+            // #in 属导入位（须在声明区前），只含声明的 #in 视作声明项。
+            if Some(kind) == in_item {
+                let span = node_span(tree, node);
+                let has_use = subtree_has_kind(tree, node, in_use_rule);
+                if has_use && saw_decl {
+                    return Err(err(
+                        "source.module-import-order",
+                        "imports must precede declarations".into(),
+                        span,
+                    ));
+                }
+                if !has_use {
+                    saw_decl = true;
+                }
+                let Some(face) = in_face.as_mut() else {
+                    return Err(err(
+                        "source.infra",
+                        "`#in` requires the packages-ct face".into(),
+                        span,
+                    ));
+                };
+                let (namespace, tail) = face.in_item(node).map_err(|d| vec![d])?;
+                ct_ins.push(crate::source::packages::PackageCtIn {
+                    namespace,
+                    span,
+                    tail,
+                    decl_slot: items.len(),
+                    import_slot: imports.len(),
+                });
+                continue;
+            }
             // use 项（含 public-item 内的 use 尾）——路径/别名字段读取。
             let use_node = if Some(kind) == use_item_p {
                 Some(node)
@@ -683,6 +785,20 @@ pub(crate) fn project_packages_front(
                 saw_decl = true;
                 let body = public_body(tree, node).expect("public body");
                 let bkind = tree.kind(body);
+                // PLAN-1043（T-02）：`pub spec fn` 需求声明（bodyless；只记
+                // requires 清单，不进 items——body 由所选 provider 实现填充）。
+                if Some(bkind) == fn_require_p {
+                    let Some(face) = in_face.as_mut() else {
+                        return Err(err(
+                            "source.infra",
+                            "`pub spec fn` requires the packages-ct face".into(),
+                            node_span(tree, node),
+                        ));
+                    };
+                    let require = face.require(body).map_err(|d| vec![d])?;
+                    requires.push(require);
+                    continue;
+                }
                 let (name, name_field) = if bkind == cached.kinds.fn_item {
                     let tail = tree
                         .children(body)
@@ -751,7 +867,11 @@ pub(crate) fn project_packages_front(
                     .iter()
                     .enumerate()
                     .map(|(index, d)| {
-                        let span = node_span(&tree, d.node);
+                        let (start, end) = tree.abs_range(d.node);
+                        let span = Span {
+                            start: start as usize,
+                            end: end as usize,
+                        };
                         crate::source::modules::DeclarationPlacement {
                             index,
                             mint: span,
@@ -769,7 +889,538 @@ pub(crate) fn project_packages_front(
             })
             .collect(),
         declarations,
+        requires,
+        ct_ins,
     })
+}
+
+/// 子树内是否存在指定 rule kind 的节点（迭代）。
+fn subtree_has_kind(tree: &CstTree, node: u32, kind: Option<u32>) -> bool {
+    let Some(kind) = kind else {
+        return false;
+    };
+    let mut stack = vec![node];
+    while let Some(n) = stack.pop() {
+        if tree.kind(n) == kind {
+            return true;
+        }
+        for c in tree.children(n).into_iter().rev() {
+            stack.push(c);
+        }
+    }
+    false
+}
+
+/// PLAN-1043（T-03）：`#in` 结构投影面（packages-ct）——按 CST 字段读取
+/// namespace/is/if/for/use 与声明子树（声明复用统一投影引擎），结构保持
+/// 进 [`crate::source::packages::PackageCtIn`]；求值归绑定。
+struct InFace<'a> {
+    cached: &'a CachedGrammar,
+    snap: &'a Snapshot,
+    tree: &'a CstTree,
+    proj: project::InDeclProjector<'a>,
+}
+
+impl<'a> InFace<'a> {
+    fn rule(&self, name: &str) -> Option<u32> {
+        self.cached
+            .program
+            .rules
+            .iter()
+            .position(|r| r.name == name)
+            .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+    }
+    fn field(&self, n: u32, name: &str) -> Option<u32> {
+        self.cached
+            .program
+            .field_id(name)
+            .and_then(|f| self.tree.field_child(n, f))
+    }
+    fn text(&self, n: u32) -> String {
+        let (a, b) = self.tree.abs_range(n);
+        self.snap.read_str(a, b).expect("CST source range")
+    }
+    fn span_of(&self, n: u32) -> crate::atom_text::Span {
+        let (start, end) = self.tree.abs_range(n);
+        crate::atom_text::Span {
+            start: start as usize,
+            end: end as usize,
+        }
+    }
+    fn nontrivia(&self, n: u32) -> Vec<u32> {
+        self.tree
+            .children(n)
+            .into_iter()
+            .filter(|&c| self.tree.node(c).flags & ace_syntax_runtime::cst::FLAG_TRIVIA == 0)
+            .collect()
+    }
+
+    fn diag(&self, code: &'static str, msg: String, span: crate::atom_text::Span) -> Diagnostic {
+        Diagnostic::new(crate::atom_text::Stage::Text, code, msg, span)
+    }
+
+    /// `pub spec fn` 需求签名（fn-require-p 节点）。
+    fn require(
+        &mut self,
+        node: u32,
+    ) -> Result<crate::source::packages::PackageRequire, Diagnostic> {
+        let (name, params, ret) = self.proj.require(node);
+        if let Some(d) = self.proj.first_diag() {
+            return Err(d);
+        }
+        Ok(crate::source::packages::PackageRequire {
+            name: name.name.clone(),
+            params,
+            ret,
+            span: name.span,
+        })
+    }
+
+    /// 一个 `#in` 项（in-item 节点）→ 结构（槽位由调用方回填）。
+    fn in_item(
+        &mut self,
+        node: u32,
+    ) -> Result<(String, crate::source::packages::CtInTail), Diagnostic> {
+        let namespace = self.text(self.field(node, "namespace").expect("#in namespace"));
+        let tail_node = self.field(node, "tail").expect("#in tail");
+        let inner = self
+            .nontrivia(tail_node)
+            .into_iter()
+            .find(|&c| self.tree.child_count(c) > 0)
+            .expect("in-tail dispatch");
+        let in_is = self.rule("in-is").expect("packages-ct carries in-is");
+        let tail = if self.tree.kind(inner) == in_is {
+            let scrutinee = self.ct_expr_field(inner, "scrutinee")?;
+            let in_arm = self.rule("in-arm").expect("in-arm");
+            let mut arms = Vec::new();
+            for a in self
+                .nontrivia(inner)
+                .into_iter()
+                .filter(|&c| self.tree.kind(c) == in_arm)
+            {
+                arms.push(self.arm(a)?);
+            }
+            crate::source::packages::CtInTail::Is { scrutinee, arms }
+        } else {
+            crate::source::packages::CtInTail::Block(self.block(inner)?)
+        };
+        Ok((namespace, tail))
+    }
+
+    fn arm(&mut self, node: u32) -> Result<crate::source::packages::CtInArm, Diagnostic> {
+        let pattern = self.text(self.field(node, "pattern").expect("arm pattern"));
+        let qual = self
+            .nontrivia(node)
+            .into_iter()
+            .find(|&c| Some(self.tree.kind(c)) == self.rule("in-arm-qual"))
+            .and_then(|q| self.field(q, "qual"))
+            .map(|q| self.text(q));
+        let body_node = self.field(node, "body").expect("arm body");
+        let inner = self
+            .nontrivia(body_node)
+            .into_iter()
+            .find(|&c| self.tree.child_count(c) > 0)
+            .expect("arm body dispatch");
+        let body = if Some(self.tree.kind(inner)) == self.rule("in-use") {
+            crate::source::packages::CtArmBody::Use(self.ct_use(inner, false)?)
+        } else {
+            crate::source::packages::CtArmBody::Block(self.block(inner)?)
+        };
+        Ok(crate::source::packages::CtInArm {
+            qual,
+            pattern,
+            span: self.span_of(node),
+            body,
+        })
+    }
+
+    /// in-block 节点 → 语句列表（list-nl 源序）。
+    fn block(&mut self, node: u32) -> Result<Vec<crate::source::packages::CtInStmt>, Diagnostic> {
+        let in_stmt = self.rule("in-stmt").expect("in-stmt");
+        let mut out = Vec::new();
+        for c in self.nontrivia(node) {
+            if self.tree.kind(c) == in_stmt {
+                // in-stmt 的分派实体是其首个非 trivia 孩子。
+                let inner = self
+                    .nontrivia(c)
+                    .into_iter()
+                    .find(|&g| self.tree.child_count(g) > 0)
+                    .unwrap_or(c);
+                out.push(self.stmt(inner)?);
+            }
+        }
+        Ok(out)
+    }
+
+    fn ct_expr_field(
+        &mut self,
+        node: u32,
+        field: &str,
+    ) -> Result<crate::source::packages::CtExpr, Diagnostic> {
+        let n = self
+            .field(node, field)
+            .unwrap_or_else(|| panic!("field `{field}` on node kind {}", node));
+        self.ct_expr(n)
+    }
+
+    /// in-ct-expr 规则节点 → pratt 结果 → CtExpr。
+    fn ct_expr(&mut self, node: u32) -> Result<crate::source::packages::CtExpr, Diagnostic> {
+        let inner = self
+            .nontrivia(node)
+            .into_iter()
+            .find(|&c| self.tree.child_count(c) > 0)
+            .unwrap_or(node);
+        self.ct_expr_node(inner)
+    }
+
+    fn ct_expr_node(&mut self, node: u32) -> Result<crate::source::packages::CtExpr, Diagnostic> {
+        use crate::source::packages::{CtBinOp, CtExpr};
+        let kind = self.tree.kind(node);
+        let k = &self.cached.kinds;
+        let op = if kind == k.op_eq {
+            Some(CtBinOp::Eq)
+        } else if kind == k.op_ne {
+            Some(CtBinOp::Ne)
+        } else if kind == k.op_lt {
+            Some(CtBinOp::Lt)
+        } else if kind == k.op_le {
+            Some(CtBinOp::Le)
+        } else if kind == k.op_gt {
+            Some(CtBinOp::Gt)
+        } else if kind == k.op_ge {
+            Some(CtBinOp::Ge)
+        } else if kind == k.op_andand {
+            Some(CtBinOp::And)
+        } else if kind == k.op_oror {
+            Some(CtBinOp::Or)
+        } else {
+            None
+        };
+        if let Some(op) = op {
+            let kids = self.nontrivia(node);
+            if kids.len() < 2 {
+                return Err(self.diag(
+                    "source.cte.in-expr",
+                    "a compile-time comparison needs exactly two operands".into(),
+                    self.span_of(node),
+                ));
+            }
+            // 操作数取首/末孩子（算子叶可居中——与通用表达式投影同形）。
+            let lhs = self.ct_expr_node(kids[0])?;
+            let rhs = self.ct_expr_node(kids[kids.len() - 1])?;
+            let span = lhs.span().join(rhs.span());
+            return Ok(CtExpr::Bin {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+                span,
+            });
+        }
+        // primary：in-ct-unary 包 int-literal/true/false/ns-ref。
+        let inner = if Some(kind) == self.rule("in-ct-unary") {
+            self.nontrivia(node)
+                .into_iter()
+                .find(|&c| self.tree.child_count(c) > 0)
+                .ok_or_else(|| {
+                    self.diag(
+                        "source.cte.in-expr",
+                        "expected a compile-time expression".into(),
+                        self.span_of(node),
+                    )
+                })?
+        } else {
+            node
+        };
+        let ik = self.tree.kind(inner);
+        if ik == self.cached.kinds.int_literal {
+            let mut value = String::new();
+            let mut stack = vec![inner];
+            while let Some(c) = stack.pop() {
+                if self.tree.kind(c) == self.cached.kinds.tok_minus {
+                    value.push('-');
+                }
+                if self.tree.kind(c) == self.cached.kinds.tok_int_lit {
+                    value.push_str(&self.text(c));
+                }
+                for g in self.nontrivia(c).into_iter().rev() {
+                    stack.push(g);
+                }
+            }
+            let v: i32 = value.parse().map_err(|_| {
+                self.diag(
+                    "source.cte.in-domain",
+                    format!("`{value}` is outside the i32 compile-time domain"),
+                    self.span_of(inner),
+                )
+            })?;
+            return Ok(CtExpr::Int(v));
+        }
+        if ik == self.cached.kinds.tok_true {
+            return Ok(CtExpr::Bool(true));
+        }
+        if ik == self.cached.kinds.tok_false {
+            return Ok(CtExpr::Bool(false));
+        }
+        if Some(ik) == self.rule("ns-ref") {
+            let head = self.field(inner, "head").expect("ns head");
+            let member = self.field(inner, "member");
+            return Ok(CtExpr::Ref {
+                head: self.text(head),
+                member: member.map(|m| self.text(m)),
+                span: self.span_of(inner),
+            });
+        }
+        Err(self.diag(
+            "source.cte.in-expr",
+            "compile-time expressions accept int/bool literals and namespace names only".into(),
+            self.span_of(inner),
+        ))
+    }
+
+    /// in-range 界限：分解形（start/end 字段）或融合单 token（`0..3` 被
+    /// affix-num 连续字符集吞成一个词——按 `..` 拆分；负界与复杂表达式用
+    /// 分解形书写）。
+    fn range_bounds(
+        &mut self,
+        iter: u32,
+    ) -> Result<
+        (
+            crate::source::packages::CtExpr,
+            crate::source::packages::CtExpr,
+        ),
+        Diagnostic,
+    > {
+        use crate::source::packages::CtExpr;
+        if let Some(both) = self.field(iter, "both") {
+            let lit = self.field(both, "lit").expect("range lit");
+            let text = self.text(lit);
+            let span = self.span_of(lit);
+            let (a, b) = text.split_once("..").ok_or_else(|| {
+                self.diag(
+                    "source.cte.in-expr",
+                    format!("`{text}` is not a compile-time range"),
+                    span,
+                )
+            })?;
+            if a.is_empty() || b.is_empty() || b.contains("..") {
+                return Err(self.diag(
+                    "source.cte.in-expr",
+                    format!("`{text}` is not a compile-time range"),
+                    span,
+                ));
+            }
+            let atom = |t: &str, off: usize| -> CtExpr {
+                match t.parse::<i32>() {
+                    Ok(v) => CtExpr::Int(v),
+                    Err(_) => CtExpr::Ref {
+                        head: t.to_string(),
+                        member: None,
+                        span: crate::atom_text::Span {
+                            start: span.start + off,
+                            end: span.start + off + t.len(),
+                        },
+                    },
+                }
+            };
+            return Ok((atom(a, 0), atom(b, a.len() + 2)));
+        }
+        let start = self.ct_expr_field(iter, "start")?;
+        let end = self.ct_expr_field(iter, "end")?;
+        Ok((start, end))
+    }
+
+    /// 单行/块内 use（in-use 节点；reexport = `pub use` 形）。
+    fn ct_use(
+        &mut self,
+        node: u32,
+        reexport: bool,
+    ) -> Result<crate::source::packages::CtUse, Diagnostic> {
+        let path_node = self.field(node, "path").expect("use path");
+        let path = self.ident_seq(path_node);
+        if path.len() < 2 {
+            return Err(self.diag(
+                "source.module-path",
+                "module paths need at least `module.item`".into(),
+                self.span_of(node),
+            ));
+        }
+        let syms = self
+            .nontrivia(node)
+            .into_iter()
+            .find(|&c| Some(self.tree.kind(c)) == self.rule("in-use-syms"))
+            .map(|s| self.ident_seq(s));
+        let alias = self
+            .nontrivia(node)
+            .into_iter()
+            .find(|&c| Some(self.tree.kind(c)) == self.rule("use-alias"))
+            .and_then(|a| self.field(a, "alias"))
+            .map(|a| self.text(a));
+        if syms.is_some() && alias.is_some() {
+            return Err(self.diag(
+                "source.module-import-form",
+                "a symbol-list import cannot also carry an `as` alias".into(),
+                self.span_of(node),
+            ));
+        }
+        Ok(crate::source::packages::CtUse {
+            path,
+            syms,
+            alias,
+            reexport,
+            span: self.span_of(node),
+        })
+    }
+
+    /// 子树内按源序收集全部 ident 叶。
+    fn ident_seq(&self, node: u32) -> Vec<String> {
+        let mut idents: Vec<(u64, String)> = Vec::new();
+        let mut stack = vec![node];
+        while let Some(n) = stack.pop() {
+            if self.tree.kind(n) == self.cached.kinds.tok_ident {
+                let (a, _) = self.tree.abs_range(n);
+                idents.push((a, self.text(n)));
+            }
+            for c in self.nontrivia(n).into_iter().rev() {
+                stack.push(c);
+            }
+        }
+        idents.sort_by(|a, b| a.0.cmp(&b.0));
+        idents.into_iter().map(|(_, s)| s).collect()
+    }
+
+    /// 一条 in-stmt（分派实体节点）。
+    fn stmt(&mut self, node: u32) -> Result<crate::source::packages::CtInStmt, Diagnostic> {
+        use crate::source::packages::CtInStmt;
+        let kind = self.tree.kind(node);
+        if Some(kind) == self.rule("in-is") {
+            let scrutinee = self.ct_expr_field(node, "scrutinee")?;
+            let in_arm = self.rule("in-arm").expect("in-arm");
+            let mut arms = Vec::new();
+            for a in self
+                .nontrivia(node)
+                .into_iter()
+                .filter(|&c| self.tree.kind(c) == in_arm)
+            {
+                arms.push(self.arm(a)?);
+            }
+            return Ok(CtInStmt::Is {
+                scrutinee,
+                arms,
+                span: self.span_of(node),
+            });
+        }
+        if Some(kind) == self.rule("in-if") {
+            let cond = self.ct_expr_field(node, "cond")?;
+            let then = self.block(self.field(node, "then").expect("then block"))?;
+            let els = self
+                .nontrivia(node)
+                .into_iter()
+                .find(|&c| Some(self.tree.kind(c)) == self.rule("in-else"))
+                .and_then(|e| self.field(e, "body"))
+                .map(|b| self.block(b))
+                .transpose()?;
+            return Ok(CtInStmt::If {
+                cond,
+                then,
+                els,
+                span: self.span_of(node),
+            });
+        }
+        if Some(kind) == self.rule("in-for") {
+            let var = self.text(self.field(node, "var").expect("for var"));
+            let iter = self.field(node, "iter").expect("for iter");
+            let (start, end) = self.range_bounds(iter)?;
+            let body = self.block(self.field(node, "body").expect("for body"))?;
+            return Ok(CtInStmt::For {
+                var,
+                start,
+                end,
+                body,
+                span: self.span_of(node),
+            });
+        }
+        if Some(kind) == self.rule("in-use") {
+            return Ok(CtInStmt::Use(self.ct_use(node, false)?));
+        }
+        // 声明：fn/type/const/var 直书或 pub 壳。
+        let (decl_node, public) = self.decl_target(node)?;
+        let dk = self.tree.kind(decl_node);
+        let item = if dk == self.cached.kinds.fn_item {
+            crate::source::ast::Item::Fn(self.proj.fn_item(decl_node))
+        } else if Some(dk) == self.cached.kinds.type_item {
+            if self.proj.is_type_alias(decl_node) {
+                return Err(self.diag(
+                    "source.cte.in-decl",
+                    "type aliases inside `#in` are not part of this surface".into(),
+                    self.span_of(decl_node),
+                ));
+            }
+            crate::source::ast::Item::Type(self.proj.type_item(decl_node))
+        } else if Some(dk) == self.rule("const-item") {
+            self.proj.global_item(decl_node, false)
+        } else if Some(dk) == self.rule("var-item") {
+            self.proj.global_item(decl_node, true)
+        } else if Some(dk) == self.rule("fn-require-p") {
+            return Ok(CtInStmt::Require(self.require(decl_node)?));
+        } else if Some(dk) == self.rule("use-tail-p") {
+            return Ok(CtInStmt::Use(self.ct_use(decl_node, true)?));
+        } else {
+            return Err(self.diag(
+                "source.cte.in-stmt",
+                "only `is`/`if`/`for`/`use`/declarations may appear inside `#in`".into(),
+                self.span_of(node),
+            ));
+        };
+        if let Some(d) = self.proj.first_diag() {
+            return Err(d);
+        }
+        Ok(CtInStmt::Decl { item, public })
+    }
+
+    /// 声明分派：直书项 → 自身；public-item 壳 → 内层实体 + public=true。
+    fn decl_target(&mut self, node: u32) -> Result<(u32, bool), Diagnostic> {
+        let kind = self.tree.kind(node);
+        if kind == self.cached.kinds.fn_item
+            || Some(kind) == self.cached.kinds.type_item
+            || Some(kind) == self.rule("const-item")
+            || Some(kind) == self.rule("var-item")
+        {
+            return Ok((node, false));
+        }
+        if Some(kind) == self.rule("public-item") {
+            let body = self.field(node, "body").expect("public body field");
+            let inner = self
+                .nontrivia(body)
+                .into_iter()
+                .find(|&c| self.tree.child_count(c) > 0)
+                .ok_or_else(|| {
+                    self.diag(
+                        "source.cte.in-stmt",
+                        "unsupported public item inside `#in`".into(),
+                        self.span_of(node),
+                    )
+                })?;
+            let ik = self.tree.kind(inner);
+            if ik == self.cached.kinds.fn_item
+                || Some(ik) == self.cached.kinds.type_item
+                || Some(ik) == self.rule("const-item")
+                || Some(ik) == self.rule("fn-require-p")
+                || Some(ik) == self.rule("use-tail-p")
+            {
+                return Ok((inner, true));
+            }
+            return Err(self.diag(
+                "source.cte.in-stmt",
+                "unsupported public item inside `#in`".into(),
+                self.span_of(node),
+            ));
+        }
+        Err(self.diag(
+            "source.cte.in-stmt",
+            "only `is`/`if`/`for`/`use`/declarations may appear inside `#in`".into(),
+            self.span_of(node),
+        ))
+    }
 }
 
 /// 裁剪编译并缓存 profile 专属语法程序（每 profile 一次；进程内复用，

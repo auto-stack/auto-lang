@@ -27,6 +27,7 @@ fn input(package: &str, id: &str, source: &str) -> PackageModuleInput {
         version: "1.0.0".into(),
         id: id.into(),
         source: source.into(),
+        provider: None,
     }
 }
 fn caps() -> Vec<String> {
@@ -250,7 +251,7 @@ fn packages_960_four_ends_run_public_str_and_recover() {
     assert_eq!(av2.run_value(), Ok(Value::I32(42)));
     let payload =
         String::from_utf8(PackageStore::root_payload(&root_dir, &receipt).unwrap()).unwrap();
-    assert!(payload.contains("source-packages-root/1"));
+    assert!(payload.contains("source-packages-root/2"));
     for forbidden in ["\"cells\"", "\"globals\"", "addr"] {
         assert!(
             !payload.contains(forbidden),

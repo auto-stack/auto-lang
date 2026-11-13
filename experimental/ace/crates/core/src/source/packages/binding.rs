@@ -9,11 +9,23 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// 包闭包的一个输入单元：包名、版本（锁身份）、模块 id 与独立源文本。
 /// 包发现由宿主（Man 包锁）提供闭包；本层不搜盘。
+/// PLAN-1043（T-02）：`provider` = 所选实现来源层（`io.c.at` 等平铺候选中
+/// 被选中的那份；与公共源组成同一逻辑模块——每文件独立 parse/CST/span，
+/// 语义装配绝不拼文本）。仅 `bind_packages_assembled` 消费；旧入口对
+/// 携带层的输入具名拒。
 #[derive(Clone, Debug)]
 pub struct PackageModuleInput {
     pub package: String,
     pub version: String,
     pub id: String,
+    pub source: String,
+    pub provider: Option<PackageImplLayer>,
+}
+
+/// PLAN-1043（T-02）：所选 provider 实现层（kind + 独立源文本）。
+#[derive(Clone, Debug)]
+pub struct PackageImplLayer {
+    pub kind: super::provider_sources::ProviderKind,
     pub source: String,
 }
 
@@ -247,6 +259,15 @@ pub fn bind_packages(
     let mut units = BTreeMap::new();
     let mut total = 0usize;
     for input in inputs {
+        // PLAN-1043：provider 层只走装配入口（显式上下文/选择/身份）。
+        if input.provider.is_some() {
+            return Err(fail(
+                &unit_key(&input.package, &input.id),
+                "source.assembly.context",
+                "a provider implementation layer requires bind_packages_assembled (explicit backend/provider/target context)",
+                zero,
+            ));
+        }
         let key = unit_key(&input.package, &input.id);
         total = total
             .checked_add(input.source.len())
@@ -294,12 +315,45 @@ pub fn bind_packages(
 }
 
 /// 冷/恢复共用的绑定：源/语法/能力身份先重验，再绑名字。
+/// PLAN-1043：无装配上下文的旧面（provider/#in/spec 需求在装配入口拒绝）。
 pub fn bind_package_syntax(
     inputs: &[PackageModuleInput],
     entry: &str,
     caps: &[String],
     budget: FrontBudget,
     units: BTreeMap<String, PackageSyntax>,
+) -> Result<BoundPackages, PackageDiagnostic> {
+    bind_package_syntax_inner(inputs, entry, caps, budget, units, BTreeMap::new(), None)
+}
+
+/// PLAN-1043（T-04）：装配绑定入口（公共+所选实现+#in 求值）；冷/恢复共用。
+pub fn bind_package_syntax_assembled(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+    units: BTreeMap<String, PackageSyntax>,
+    impls: BTreeMap<String, PackageImplSyntax>,
+    ctx: &super::provider_sources::PackageAssemblyContext,
+) -> Result<BoundPackages, PackageDiagnostic> {
+    bind_package_syntax_inner(inputs, entry, caps, budget, units, impls, Some(ctx))
+}
+
+/// 一个模块的已解析实现层（kind + 源 + 语法）。
+#[derive(Clone, Debug)]
+pub struct PackageImplSyntax {
+    pub layer: PackageImplLayer,
+    pub syntax: PackageSyntax,
+}
+
+fn bind_package_syntax_inner(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+    mut units: BTreeMap<String, PackageSyntax>,
+    impls: BTreeMap<String, PackageImplSyntax>,
+    ctx: Option<&super::provider_sources::PackageAssemblyContext>,
 ) -> Result<BoundPackages, PackageDiagnostic> {
     let zero = Span { start: 0, end: 0 };
     if !caps.iter().any(|c| c == PACKAGES_CAPABILITY)
@@ -314,7 +368,14 @@ pub fn bind_package_syntax(
             zero,
         ));
     }
-    let grammar = packages_grammar().map_err(|e| fail(entry, "source.infra", e, zero))?;
+    // PLAN-1043：IN 能力线用 packages-ct 裁剪（grammar-id 与 plain 分域）。
+    let in_face = caps.iter().any(|c| c == super::IN_CAPABILITY);
+    let grammar = if in_face {
+        super::packages_ct_grammar()
+    } else {
+        packages_grammar()
+    }
+    .map_err(|e| fail(entry, "source.infra", e, zero))?;
     let grammar_id = format!("{}", grammar.program().identity.grammar_id.0);
     let mut sources = BTreeMap::new();
     let mut versions = BTreeMap::new();
@@ -368,6 +429,37 @@ pub fn bind_package_syntax(
                 zero,
             ));
         }
+        // PLAN-1043：实现层身份重验（kind/源字节/语法哈希；std 冻结面不带层）。
+        if let Some(layer) = &input.provider {
+            let is = impls.get(&key).ok_or_else(|| {
+                fail(
+                    &key,
+                    "source.module-missing",
+                    "provider layer syntax absent",
+                    zero,
+                )
+            })?;
+            if is.layer.kind != layer.kind
+                || is.layer.source != layer.source
+                || is.syntax.source_hash
+                    != crate::runtime_contract::sha256_hex(layer.source.as_bytes())
+            {
+                return Err(fail(
+                    &key,
+                    "source.module-stale",
+                    "provider layer identity mismatch",
+                    zero,
+                ));
+            }
+            if input.package == super::stdlib::STDLIB_PACKAGE {
+                return Err(fail(
+                    &key,
+                    super::stdlib::STDLIB_RESERVED,
+                    "the frozen stdlib slice carries no provider layers",
+                    zero,
+                ));
+            }
+        }
         sources.insert(key.clone(), input.source.clone());
         versions.insert(key, input.version.clone());
     }
@@ -386,6 +478,25 @@ pub fn bind_package_syntax(
             "entry module absent",
             zero,
         ));
+    }
+
+    // ---- PLAN-1043（T-04）：装配——#in 求值 + 公共/所选实现语义合并 ----
+    // （每文件独立 CST/span；impl 项按 impl 段偏移预平移，walk 的统一模块
+    // 偏移随后落在正确的扁平坐标上。）
+    let mut impl_sources: BTreeMap<String, PackageImplLayer> = BTreeMap::new();
+    {
+        let mut merged_units: BTreeMap<String, PackageSyntax> = BTreeMap::new();
+        let keys: Vec<String> = units.keys().cloned().collect();
+        for key in keys {
+            let unit = units.get(&key).expect("unit key").clone();
+            let impl_syntax = impls.get(&key).cloned();
+            if let Some(is) = &impl_syntax {
+                impl_sources.insert(key.clone(), is.layer.clone());
+            }
+            let assembled = assemble_unit(&key, unit, impl_syntax, ctx, entry)?;
+            merged_units.insert(key, assembled);
+        }
+        units = merged_units;
     }
 
     // ---- 声明清单与重名拒绝（fn/type/const/store 共享模块命名空间）----
@@ -666,6 +777,30 @@ pub fn bind_package_syntax(
             module,
             crate::runtime_contract::sha256_hex(sources[key].as_bytes())
         ));
+        // PLAN-1043：装配身份进模块行（实现层 kind+sha、候选存在集、ctx）。
+        if let Some(layer) = impl_sources.get(key) {
+            identity.push_str(&format!(
+                "impl:{}:{}\n",
+                layer.kind.label(),
+                crate::runtime_contract::sha256_hex(layer.source.as_bytes())
+            ));
+        }
+        if let Some(ctx) = ctx {
+            identity.push_str(&format!(
+                "ctx:{}:{}\n",
+                super::provider_sources::PROVIDER_SOURCE_SCHEMA,
+                ctx.identity()
+            ));
+            identity.push_str(&format!(
+                "sys:{}:{}\n",
+                super::SYS_FACTS_SCHEMA,
+                ctx.sys_facts()
+                    .iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ));
+        }
         let mut walker = Walker {
             key,
             entry,
@@ -796,6 +931,16 @@ pub fn bind_package_syntax(
             start: offset,
         });
         offset += sources[key].len() + 1;
+        // PLAN-1043：实现层独立段（locate 按 pos 反查归位到实现文件坐标）。
+        if let Some(layer) = impl_sources.get(key) {
+            segments.push(PackageSegment {
+                package: pkg.into(),
+                module: module.into(),
+                source: layer.source.clone(),
+                start: offset,
+            });
+            offset += layer.source.len() + 1;
+        }
     }
 
     // ---- PLAN-963（V-G06）：扁平程序级记录模板单态化 ----
@@ -2214,6 +2359,7 @@ mod tests {
             version: "1.0.0".into(),
             id: id.into(),
             source: source.into(),
+            provider: None,
         }
     }
     fn bind(
@@ -2704,5 +2850,1386 @@ fn main() int { return 1 }",
         ));
         let e = bind(&full, "app::main").unwrap_err();
         assert_eq!(e.diagnostic.code, "source.module-symbol");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-1043（T-02/T-03/T-04）：provider 装配入口 + `#in` 求值 + 语义合并
+// ---------------------------------------------------------------------------
+
+/// PLAN-1043（T-04）：装配绑定冷入口——公共源 + 所选实现层 + 显式上下文。
+/// 选择/相容/存在性由宿主经 [`select_provider_source`] 完成后以
+/// `input.provider` 传入；此处重验选择与 ctx 一致（不信任手工拼装）。
+#[allow(clippy::too_many_arguments)]
+pub fn bind_packages_assembled(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+    ctx: &super::provider_sources::PackageAssemblyContext,
+) -> Result<BoundPackages, PackageDiagnostic> {
+    let zero = Span { start: 0, end: 0 };
+    if !caps.iter().any(|c| c == super::IN_CAPABILITY) {
+        return Err(fail(
+            entry,
+            "source.assembly.context",
+            "assembled packages require the ac.source.cte.in/v1 capability",
+            zero,
+        ));
+    }
+    let mut units = BTreeMap::new();
+    let mut impls: BTreeMap<String, PackageImplSyntax> = BTreeMap::new();
+    let mut total = 0usize;
+    for input in inputs {
+        let key = unit_key(&input.package, &input.id);
+        let layer_len = input.provider.as_ref().map(|l| l.source.len()).unwrap_or(0);
+        total = total
+            .checked_add(input.source.len() + layer_len)
+            .ok_or_else(|| fail(&key, "source.resource", "module input byte budget", zero))?;
+        if total > budget.work_bytes {
+            return Err(fail(
+                &key,
+                "source.resource",
+                "module input byte budget",
+                zero,
+            ));
+        }
+        if !valid_package(&input.package)
+            || !valid_version(&input.version)
+            || !valid_id(&input.id)
+            || units.contains_key(&key)
+        {
+            return Err(fail(
+                &key,
+                "source.module-identity",
+                "invalid or duplicate package/module identity",
+                zero,
+            ));
+        }
+        // PLAN-945：包名 `std` 保留给冻结公共标准库切片（冻结面不带层）。
+        if input.package == super::stdlib::STDLIB_PACKAGE
+            && (!super::stdlib::is_frozen_std_module(&input.id, &input.version, &input.source)
+                || input.provider.is_some())
+        {
+            return Err(fail(
+                &key,
+                super::stdlib::STDLIB_RESERVED,
+                "package name `std` is reserved for the frozen ACE stdlib slice (PLAN-945)",
+                zero,
+            ));
+        }
+        let syntax = parse_package_source(&input.source, caps, budget).map_err(|mut ds| {
+            PackageDiagnostic {
+                module: key.clone(),
+                diagnostic: ds.remove(0),
+            }
+        })?;
+        if let Some(layer) = &input.provider {
+            let isyntax = parse_package_source(&layer.source, caps, budget).map_err(|mut ds| {
+                PackageDiagnostic {
+                    module: key.clone(),
+                    diagnostic: ds.remove(0),
+                }
+            })?;
+            impls.insert(
+                key.clone(),
+                PackageImplSyntax {
+                    layer: layer.clone(),
+                    syntax: isyntax,
+                },
+            );
+        }
+        units.insert(key, syntax);
+    }
+    bind_package_syntax_assembled(inputs, entry, caps, budget, units, impls, ctx)
+}
+
+/// 编译期标量值（与 source-cte `CtValue` 同域：i32/bool）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum CtVal {
+    I32(i32),
+    Bool(bool),
+}
+
+/// `#in` 求值的落位产物（按源序收集；槽位由调用方回插）。
+#[derive(Default)]
+struct CtLanded {
+    imports: Vec<PackageImport>,
+    decls: Vec<(Item, bool)>,
+    requires: Vec<PackageRequire>,
+}
+
+/// 一个模块的语义装配：#in 求值（公共/实现两文件的 ct_ins）→ 公共 bodyless
+/// 需求由实现同签名 fn 填充 → 实现私有 helper 保留 → 导入/导出/声明面更新。
+/// 每文件 span/CST 独立保留；实现项按实现段偏移预平移（walk 的统一模块
+/// 偏移随后正确落位）。重复实现/签名不符/缺实现/未选臂错误均在此具名拒。
+#[allow(clippy::too_many_lines)]
+fn assemble_unit(
+    key: &str,
+    public: PackageSyntax,
+    impl_syntax: Option<PackageImplSyntax>,
+    ctx: Option<&super::provider_sources::PackageAssemblyContext>,
+    _entry: &str,
+) -> Result<PackageSyntax, PackageDiagnostic> {
+    let zero = Span { start: 0, end: 0 };
+    let needs_ctx = !public.requires.is_empty()
+        || !public.ct_ins.is_empty()
+        || impl_syntax
+            .as_ref()
+            .is_some_and(|i| !i.syntax.requires.is_empty() || !i.syntax.ct_ins.is_empty())
+        || impl_syntax.is_some();
+    if needs_ctx && ctx.is_none() {
+        return Err(fail(
+            key,
+            "source.assembly.context",
+            "`#in`/`pub spec fn`/provider layers require an explicit assembly context (backend/provider/target)",
+            zero,
+        ));
+    }
+    // 选择一致性重验（impl 层必须在 ctx 的选择下唯一可推导）。
+    if let (Some(is), Some(ctx)) = (&impl_syntax, ctx) {
+        let module = split_key(key).1;
+        let empty = BTreeSet::new();
+        let candidates = ctx.available.get(module).unwrap_or(&empty);
+        let sel = super::provider_sources::select_provider_source(
+            module,
+            candidates,
+            ctx.backend,
+            ctx.provider,
+            ctx.target,
+        )
+        .map_err(|e| fail(key, e.code(), e.message(), zero))?;
+        if sel.provider != Some(is.layer.kind) {
+            return Err(fail(
+                key,
+                "assembly.provider-selection-mismatch",
+                format!(
+                    "the selected implementation layer `{}` does not match the context selection for this module",
+                    is.layer.kind.label()
+                ),
+                zero,
+            ));
+        }
+    }
+
+    let facts = ctx.map(|c| c.sys_facts()).unwrap_or_default();
+    // 公共文件 #in 求值 + 槽位回插。
+    let mut items = public.program.items;
+    let mut imports = public.imports.clone();
+    let mut landed_requires = Vec::new();
+    let mut extra = 0usize;
+    for ct_in in &public.ct_ins {
+        let landed = eval_ct_in(key, ct_in, &facts, &BTreeMap::new())?;
+        let at = (ct_in.decl_slot + extra).min(items.len());
+        let n = landed.decls.len();
+        items.splice(at..at, landed.decls.into_iter().map(|(i, _)| i));
+        extra += n;
+        let imp_at = ct_in.import_slot.min(imports.len());
+        imports.splice(imp_at..imp_at, landed.imports.clone());
+        landed_requires.extend(landed.requires);
+    }
+    let mut all_requires = public.requires.clone();
+    all_requires.extend(landed_requires);
+
+    // 实现文件：#in 求值（同事实）+ 项/导入提取 + 段偏移预平移。
+    let mut impl_items: Vec<Item> = Vec::new();
+    let mut impl_imports: Vec<PackageImport> = Vec::new();
+    if let Some(is) = &impl_syntax {
+        let delta = public.pieces.first().map(|p| p.source.len()).unwrap_or(0) + 1;
+        let mut iitems = is.syntax.program.items.clone();
+        let mut iimports = is.syntax.imports.clone();
+        let mut iextra = 0usize;
+        for ct_in in &is.syntax.ct_ins {
+            let landed = eval_ct_in(key, ct_in, &facts, &BTreeMap::new())?;
+            let at = (ct_in.decl_slot + iextra).min(iitems.len());
+            let n = landed.decls.len();
+            iitems.splice(at..at, landed.decls.into_iter().map(|(i, _)| i));
+            iextra += n;
+            let imp_at = ct_in.import_slot.min(iimports.len());
+            iimports.splice(imp_at..imp_at, landed.imports.clone());
+            if !landed.requires.is_empty() {
+                return Err(fail(
+                    key,
+                    "source.assembly.impl-item",
+                    "implementation layers cannot declare further `pub spec fn` requirements",
+                    landed.requires[0].span,
+                ));
+            }
+        }
+        if !is.syntax.requires.is_empty() {
+            return Err(fail(
+                key,
+                "source.assembly.impl-item",
+                "implementation layers cannot declare `pub spec fn` requirements",
+                is.syntax.requires[0].span,
+            ));
+        }
+        for item in iitems {
+            impl_items.push(shift_item(item, delta));
+        }
+        impl_imports = iimports;
+    }
+
+    // ---- 需求填充/重复实现/私有 helper ----
+    let mut unfilled: BTreeMap<String, PackageRequire> = all_requires
+        .iter()
+        .map(|r| (r.name.clone(), r.clone()))
+        .collect();
+    let public_fn_names: BTreeSet<String> = items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Fn(f) => Some(f.name.name.clone()),
+            _ => None,
+        })
+        .collect();
+    let mut exports = public.exports.clone();
+    let mut type_exports = public.type_exports.clone();
+    let mut const_exports = public.const_exports.clone();
+    let mut declarations = public.declarations.clone();
+    for item in impl_items.iter() {
+        match item {
+            Item::Fn(f) => {
+                let name = f.name.name.clone();
+                if let Some(req) = unfilled.remove(&name) {
+                    if !require_signature_matches(&req, f) {
+                        return Err(fail(
+                            key,
+                            "source.assembly.signature",
+                            format!(
+                                "implementation of `{name}` does not match the public declaration (arity/param types/modes/return)"
+                            ),
+                            req.span,
+                        ));
+                    }
+                    exports.insert(name.clone());
+                    declarations.insert(name, f.name.span);
+                } else if public_fn_names.contains(&name) {
+                    return Err(fail(
+                        key,
+                        "source.assembly.duplicate-implementation",
+                        format!("`{name}` already has a body in the public source; the implementation layer cannot provide a second one"),
+                        f.name.span,
+                    ));
+                }
+                // 其余 = 模块私有 helper（模块内可见，不入导出面）。
+            }
+            Item::Type(_) | Item::Const(_) | Item::Store(_) => {
+                return Err(fail(
+                    key,
+                    "source.assembly.impl-item",
+                    "implementation layers carry function bodies and private helpers only (types/constants stay in the public source)",
+                    zero,
+                ));
+            }
+            Item::Enum(_) => unreachable!("enum rejected in packages binding"),
+        }
+    }
+    if !unfilled.is_empty() {
+        let (name, req) = unfilled
+            .iter()
+            .next()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .expect("non-empty unfilled set");
+        let provider_note = match (&impl_syntax, ctx) {
+            (Some(is), _) => format!(
+                "the selected `{}` source provides no matching body",
+                is.layer.kind.label()
+            ),
+            (None, Some(c)) => format!(
+                "no provider implementation layer was selected (context: backend {}, provider {})",
+                c.backend.label(),
+                c.provider.label()
+            ),
+            (None, None) => "no provider implementation layer was selected".to_string(),
+        };
+        return Err(fail(
+            key,
+            "source.assembly.missing-implementation",
+            format!("public operation `{name}` has no implementation: {provider_note}"),
+            req.span,
+        ));
+    }
+
+    // ---- #in 公共声明导出面回填（需求填充之外：#in 落位的 pub fn/type/const）。
+    {
+        // 重放公共 ct_ins 落位声明（求值已做过；此处只需导出面/声明表登记，
+        // 走同一求值保持一致性）。
+        for ct_in in &public.ct_ins {
+            if let Ok(landed) = eval_ct_in(key, ct_in, &facts, &BTreeMap::new()) {
+                for (item, is_pub) in landed.decls {
+                    if !is_pub {
+                        continue;
+                    }
+                    match &item {
+                        Item::Fn(f) => {
+                            exports.insert(f.name.name.clone());
+                            declarations.insert(f.name.name.clone(), f.name.span);
+                        }
+                        Item::Type(t) => {
+                            exports.insert(t.name.name.clone());
+                            type_exports.insert(t.name.name.clone());
+                            declarations.insert(t.name.name.clone(), t.name.span);
+                        }
+                        Item::Const(c) => {
+                            exports.insert(c.name.name.clone());
+                            const_exports.insert(c.name.name.clone());
+                            declarations.insert(c.name.name.clone(), c.name.span);
+                        }
+                        _ => {}
+                    }
+                }
+                for imp in landed.imports {
+                    if imp.reexport {
+                        exports.insert(imp.bound_name().to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- 导入合并（#in 落位已在 imports；实现层导入追加 + 重名拒）。
+    let mut bound_names: BTreeSet<String> =
+        imports.iter().map(|i| i.bound_name().to_string()).collect();
+    for imp in &impl_imports {
+        let bound = imp.bound_name().to_string();
+        if !bound_names.insert(bound.clone()) {
+            return Err(fail(
+                key,
+                "source.module-duplicate-import",
+                format!("duplicate imported name `{bound}`"),
+                imp.span,
+            ));
+        }
+        if imp.reexport {
+            exports.insert(bound);
+        }
+        imports.push(imp.clone());
+    }
+
+    // 实现项追加到模块项集合（已按段偏移预平移；walk 统一再加模块偏移）。
+    items.extend(impl_items);
+
+    let mut pieces = public.pieces.clone();
+    let mut source_hash = public.source_hash.clone();
+    if let Some(is) = &impl_syntax {
+        pieces.extend(is.syntax.pieces.clone());
+        source_hash = crate::runtime_contract::sha256_hex(
+            format!(
+                "{}|{}|{}",
+                public.source_hash,
+                is.layer.kind.label(),
+                is.syntax.source_hash
+            )
+            .as_bytes(),
+        );
+    }
+    Ok(PackageSyntax {
+        program: Program { items },
+        exports,
+        type_exports,
+        const_exports,
+        imports,
+        grammar_id: public.grammar_id.clone(),
+        source_hash,
+        pieces,
+        declarations,
+        requires: all_requires,
+        ct_ins: public.ct_ins.clone(),
+    })
+}
+
+/// 需求签名域（T-01 冻结）：参数个数 + 逐位类型 + mode + 返回类型。
+/// 参数名不入合同（实现可用不同参数名）。
+fn require_signature_matches(req: &PackageRequire, f: &FnItem) -> bool {
+    req.params.len() == f.params.len()
+        && req
+            .params
+            .iter()
+            .zip(&f.params)
+            .all(|(a, b)| a.mode == b.mode && a.ty.kind == b.ty.kind)
+        && req.ret.kind == f.ret.kind
+}
+
+/// 一个 `#in` 项的绑定期求值：namespace 检查 → 表达式折叠（i32/bool 事实）
+/// → 臂选择（等值重复诊断/首匹配）→ 声明/use/需求落位。未选分支不落任何
+/// 内容（其语法检查在投影期已完成）。
+fn eval_ct_in(
+    key: &str,
+    ct_in: &PackageCtIn,
+    facts: &BTreeMap<String, i32>,
+    env: &BTreeMap<String, i32>,
+) -> Result<CtLanded, PackageDiagnostic> {
+    if ct_in.namespace != super::SYS_NAMESPACE {
+        return Err(fail(
+            key,
+            "source.cte.in-namespace",
+            format!(
+                "unknown compile-time namespace `{}` (registered: `{}`)",
+                ct_in.namespace,
+                super::SYS_NAMESPACE
+            ),
+            ct_in.span,
+        ));
+    }
+    let mut landed = CtLanded::default();
+    match &ct_in.tail {
+        CtInTail::Is { scrutinee, arms } => {
+            eval_is(
+                key,
+                scrutinee,
+                arms,
+                super::SYS_NAMESPACE,
+                facts,
+                env,
+                &mut landed,
+            )?;
+        }
+        CtInTail::Block(stmts) => {
+            eval_stmts(key, stmts, super::SYS_NAMESPACE, facts, env, &mut landed)?;
+        }
+    }
+    Ok(landed)
+}
+
+fn eval_stmts(
+    key: &str,
+    stmts: &[CtInStmt],
+    namespace: &str,
+    facts: &BTreeMap<String, i32>,
+    env: &BTreeMap<String, i32>,
+    landed: &mut CtLanded,
+) -> Result<(), PackageDiagnostic> {
+    for stmt in stmts {
+        eval_stmt(key, stmt, namespace, facts, env, landed)?;
+    }
+    Ok(())
+}
+
+fn eval_stmt(
+    key: &str,
+    stmt: &CtInStmt,
+    namespace: &str,
+    facts: &BTreeMap<String, i32>,
+    env: &BTreeMap<String, i32>,
+    landed: &mut CtLanded,
+) -> Result<(), PackageDiagnostic> {
+    match stmt {
+        CtInStmt::Is {
+            scrutinee, arms, ..
+        } => eval_is(key, scrutinee, arms, namespace, facts, env, landed),
+        CtInStmt::If {
+            cond, then, els, ..
+        } => {
+            let v = eval_ct_expr(key, cond, namespace, facts, env)?;
+            match v {
+                CtVal::Bool(true) => eval_stmts(key, then, namespace, facts, env, landed),
+                CtVal::Bool(false) => match els {
+                    Some(e) => eval_stmts(key, e, namespace, facts, env, landed),
+                    None => Ok(()),
+                },
+                CtVal::I32(_) => Err(fail(
+                    key,
+                    "source.cte.in-type",
+                    "an `#in` condition must be a compile-time bool",
+                    cond.span(),
+                )),
+            }
+        }
+        CtInStmt::For {
+            var,
+            start,
+            end,
+            body,
+            span,
+        } => {
+            let s = expect_i32(
+                key,
+                &eval_ct_expr(key, start, namespace, facts, env)?,
+                start,
+            )?;
+            let e = expect_i32(key, &eval_ct_expr(key, end, namespace, facts, env)?, end)?;
+            let count = e.saturating_sub(s).max(0);
+            const MAX_ITER: i64 = 1024;
+            if count as i64 > MAX_ITER {
+                return Err(fail(
+                    key,
+                    "source.cte.in-budget",
+                    format!("a compile-time `for` is bounded to {MAX_ITER} iterations here"),
+                    *span,
+                ));
+            }
+            for i in s..e {
+                let mut inner = env.clone();
+                inner.insert(var.clone(), i);
+                eval_stmts(key, body, namespace, facts, &inner, landed)?;
+            }
+            Ok(())
+        }
+        CtInStmt::Use(u) => {
+            landed.imports.extend(expand_ct_use(u));
+            Ok(())
+        }
+        CtInStmt::Decl { item, public } => {
+            landed.decls.push((item.clone(), *public));
+            Ok(())
+        }
+        CtInStmt::Require(r) => {
+            landed.requires.push(r.clone());
+            Ok(())
+        }
+    }
+}
+
+/// 符号表形 use 展开为逐符号导入（`use m: a, b` ≡ `use m.a` + `use m.b`）。
+fn expand_ct_use(u: &CtUse) -> Vec<PackageImport> {
+    match &u.syms {
+        None => vec![PackageImport {
+            path: u.path.clone(),
+            alias: u.alias.clone(),
+            reexport: u.reexport,
+            span: u.span,
+        }],
+        Some(syms) => syms
+            .iter()
+            .map(|s| {
+                let mut path = u.path.clone();
+                path.push(s.clone());
+                PackageImport {
+                    path,
+                    alias: None,
+                    reexport: u.reexport,
+                    span: u.span,
+                }
+            })
+            .collect(),
+    }
+}
+
+fn eval_is(
+    key: &str,
+    scrutinee: &CtExpr,
+    arms: &[CtInArm],
+    namespace: &str,
+    facts: &BTreeMap<String, i32>,
+    env: &BTreeMap<String, i32>,
+    landed: &mut CtLanded,
+) -> Result<(), PackageDiagnostic> {
+    let value = eval_ct_expr(key, scrutinee, namespace, facts, env)?;
+    let expected = expect_i32(key, &value, scrutinee)?;
+    // 等值重复臂诊断（平台选择表两臂同值 → 具名拒，先于选择）。
+    let mut seen: BTreeMap<i32, String> = BTreeMap::new();
+    for arm in arms {
+        if let Some(q) = &arm.qual {
+            if q != namespace {
+                return Err(fail(
+                    key,
+                    "source.cte.in-namespace",
+                    format!("arm qualifier `{q}` does not match the `#in {namespace}` namespace"),
+                    arm.span,
+                ));
+            }
+        }
+        let v = *facts.get(&arm.pattern).ok_or_else(|| {
+            fail(
+                key,
+                "source.cte.in-name",
+                format!("unknown namespace constant `{}.{}`", namespace, arm.pattern),
+                arm.span,
+            )
+        })?;
+        if let Some(prev) = seen.insert(v, arm.pattern.clone()) {
+            return Err(fail(
+                key,
+                "source.cte.duplicate-arm",
+                format!(
+                    "arms `{prev}` and `{}` resolve to the same value ({v}); equal-value arms are ambiguous",
+                    arm.pattern
+                ),
+                arm.span,
+            ));
+        }
+    }
+    for arm in arms {
+        let v = facts[&arm.pattern];
+        if v == expected {
+            return match &arm.body {
+                CtArmBody::Use(u) => {
+                    landed.imports.extend(expand_ct_use(u));
+                    Ok(())
+                }
+                CtArmBody::Block(stmts) => eval_stmts(key, stmts, namespace, facts, env, landed),
+            };
+        }
+    }
+    Ok(())
+}
+
+fn expect_i32(key: &str, v: &CtVal, at: &CtExpr) -> Result<i32, PackageDiagnostic> {
+    match v {
+        CtVal::I32(x) => Ok(*x),
+        CtVal::Bool(_) => Err(fail(
+            key,
+            "source.cte.in-type",
+            "compile-time `is` matching uses the i32 platform-discriminant domain",
+            at.span(),
+        )),
+    }
+}
+
+fn eval_ct_expr(
+    key: &str,
+    e: &CtExpr,
+    namespace: &str,
+    facts: &BTreeMap<String, i32>,
+    env: &BTreeMap<String, i32>,
+) -> Result<CtVal, PackageDiagnostic> {
+    match e {
+        CtExpr::Int(v) => Ok(CtVal::I32(*v)),
+        CtExpr::Bool(b) => Ok(CtVal::Bool(*b)),
+        CtExpr::Ref { head, member, span } => match member {
+            None => {
+                if let Some(v) = env.get(head) {
+                    return Ok(CtVal::I32(*v));
+                }
+                facts.get(head).map(|v| CtVal::I32(*v)).ok_or_else(|| {
+                    fail(
+                        key,
+                        "source.cte.in-name",
+                        format!("unknown namespace member `{head}` in `{namespace}`"),
+                        *span,
+                    )
+                })
+            }
+            Some(m) => {
+                if head != namespace {
+                    return Err(fail(
+                            key,
+                            "source.cte.in-namespace",
+                            format!("qualified name `{head}.{m}` does not match the `#in {namespace}` namespace"),
+                            *span,
+                        ));
+                }
+                facts.get(m).map(|v| CtVal::I32(*v)).ok_or_else(|| {
+                    fail(
+                        key,
+                        "source.cte.in-name",
+                        format!("unknown namespace member `{namespace}.{m}`"),
+                        *span,
+                    )
+                })
+            }
+        },
+        CtExpr::Bin { op, lhs, rhs, span } => {
+            let l = eval_ct_expr(key, lhs, namespace, facts, env)?;
+            let r = eval_ct_expr(key, rhs, namespace, facts, env)?;
+            use crate::source::packages::CtBinOp as O;
+            let type_err = || {
+                fail(
+                    key,
+                    "source.cte.in-type",
+                    "compile-time operators need i32 operands for comparisons and bool operands for `&&`/`||`",
+                    *span,
+                )
+            };
+            Ok(match op {
+                O::And => match (l, r) {
+                    (CtVal::Bool(a), CtVal::Bool(b)) => CtVal::Bool(a && b),
+                    _ => return Err(type_err()),
+                },
+                O::Or => match (l, r) {
+                    (CtVal::Bool(a), CtVal::Bool(b)) => CtVal::Bool(a || b),
+                    _ => return Err(type_err()),
+                },
+                O::Eq | O::Ne => {
+                    let b = match (l, r) {
+                        (CtVal::I32(a), CtVal::I32(b2)) => a == b2,
+                        (CtVal::Bool(a), CtVal::Bool(b2)) => a == b2,
+                        _ => return Err(type_err()),
+                    };
+                    CtVal::Bool(if matches!(op, O::Eq) { b } else { !b })
+                }
+                O::Lt | O::Le | O::Gt | O::Ge => match (l, r) {
+                    (CtVal::I32(a), CtVal::I32(b2)) => CtVal::Bool(match op {
+                        O::Lt => a < b2,
+                        O::Le => a <= b2,
+                        O::Gt => a > b2,
+                        O::Ge => a >= b2,
+                        _ => unreachable!(),
+                    }),
+                    _ => return Err(type_err()),
+                },
+            })
+        }
+    }
+}
+
+/// 项级 span 平移（实现项按实现段偏移预平移；复用既有 per-kind 平移）。
+fn shift_item(item: Item, offset: usize) -> Item {
+    match item {
+        Item::Fn(mut f) => {
+            shift_fn(&mut f, offset);
+            Item::Fn(f)
+        }
+        Item::Type(mut t) => {
+            shift_type(&mut t, offset);
+            Item::Type(t)
+        }
+        Item::Const(mut c) => {
+            shift_ann(&mut c.ty, offset);
+            shift_expr(&mut c.value, offset);
+            c.span.start += offset;
+            c.span.end += offset;
+            Item::Const(c)
+        }
+        Item::Store(mut v) => {
+            shift_ann(&mut v.ty, offset);
+            shift_expr(&mut v.value, offset);
+            v.span.start += offset;
+            v.span.end += offset;
+            Item::Store(v)
+        }
+        Item::Enum(e) => Item::Enum(e),
+    }
+}
+
+#[cfg(test)]
+mod plan1043_tests {
+    use super::*;
+    use crate::source::packages::provider_sources::{
+        AssemblyBackend, PackageAssemblyContext, ProviderChoice, ProviderKind, TargetOs,
+    };
+    use crate::source::packages::{IN_CAPABILITY, PACKAGES_CAPABILITY};
+
+    fn caps() -> Vec<String> {
+        vec![PACKAGES_CAPABILITY.to_string(), IN_CAPABILITY.to_string()]
+    }
+
+    const DEMO_PUBLIC: &str =
+        "pub spec fn provider_id() int\npub fn common(x int) int { return x + 100 }";
+    const DEMO_AT: &str = "fn provider_id() int { return 1 }";
+    const DEMO_C: &str = "fn provider_id() int { return 2 }";
+    const DEMO_RS: &str = "fn provider_id() int { return 3 }";
+    const WINIO: &str = "pub fn plat() int { return 10 }";
+    const LNXIO: &str = "pub fn plat() int { return 20 }";
+    const DEMO_LATE: &str = "pub fn late() int { return 5 }
+pub fn chosen() int { return 6 }";
+
+    fn app_with_in(platform_src: &str) -> String {
+        format!(
+            "use demo.provider_id\nuse demo.common\nuse demo.late\n#in sys is current {{\n    Windows -> {platform_src}\n    Linux -> use lnxio.plat\n}}\nfn main() int {{ return provider_id() + common(1) + plat() + late() }}"
+        )
+    }
+
+    const APP_MAIN: &str = "use demo.provider_id\nuse demo.common\nuse demo.late\n#in sys is current {\n    Windows -> use winio.plat\n    Linux -> use lnxio.plat\n}\n#in sys {\n    is current {\n        Windows -> { pub fn bonus() int { return 7 } }\n        Linux -> { pub fn bonus() int { return 8 } }\n    }\n    if current == Linux {\n        pub fn extra() int { return 50 }\n    } else {\n        pub fn extra() int { return 60 }\n    }\n    for i in 0..3 {\n        if i == 2 {\n            use demo.chosen\n        }\n    }\n}\nfn main() int { return provider_id() + common(1) + plat() + late() + bonus() + extra() }";
+
+    fn input(id: &str, source: &str, provider: Option<PackageImplLayer>) -> PackageModuleInput {
+        PackageModuleInput {
+            package: "app".into(),
+            version: "1.0.0".into(),
+            id: id.into(),
+            source: source.into(),
+            provider,
+        }
+    }
+
+    fn ctx(
+        backend: AssemblyBackend,
+        provider: ProviderChoice,
+        target: TargetOs,
+    ) -> PackageAssemblyContext {
+        let mut c = PackageAssemblyContext::new(backend, provider, target);
+        let mut kinds = std::collections::BTreeSet::new();
+        kinds.insert(ProviderKind::At);
+        kinds.insert(ProviderKind::C);
+        kinds.insert(ProviderKind::Rs);
+        kinds.insert(ProviderKind::Py);
+        c.available.insert("demo".into(), kinds);
+        c
+    }
+
+    fn bind_ok(inputs: Vec<PackageModuleInput>, c: &PackageAssemblyContext) -> BoundPackages {
+        bind_packages_assembled(
+            &inputs,
+            "app::main",
+            &caps(),
+            FrontBudget::WORK_OWNED_64MIB,
+            c,
+        )
+        .expect("assembled bind")
+    }
+
+    fn bind_err(inputs: Vec<PackageModuleInput>, c: &PackageAssemblyContext) -> PackageDiagnostic {
+        bind_packages_assembled(
+            &inputs,
+            "app::main",
+            &caps(),
+            FrontBudget::WORK_OWNED_64MIB,
+            c,
+        )
+        .expect_err("expected named rejection")
+    }
+
+    #[test]
+    fn asm01_provider_selection_fills_the_unique_body_and_exports_it() {
+        // AV × Auto → at 层（唯一 body；公共 API 不变）。
+        let c = ctx(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+        let bound = bind_ok(
+            vec![
+                input(
+                    "main",
+                    "use demo.provider_id\nfn main() int { return provider_id() }",
+                    None,
+                ),
+                input(
+                    "demo",
+                    DEMO_PUBLIC,
+                    Some(PackageImplLayer {
+                        kind: ProviderKind::At,
+                        source: DEMO_AT.into(),
+                    }),
+                ),
+            ],
+            &c,
+        );
+        let demo = &bound.units["app::demo"];
+        assert!(
+            demo.exports.contains("provider_id"),
+            "filled op exported: {:?}",
+            demo.exports
+        );
+        assert!(demo.exports.contains("common"));
+        assert!(
+            demo.declarations.contains_key("provider_id"),
+            "filled op registered for diagnostics"
+        );
+        let owner = fn_symbol("app", "demo", "provider_id", "app::main");
+        assert!(bound
+            .program
+            .items
+            .iter()
+            .any(|i| matches!(i, Item::Fn(f) if f.name.name == owner)));
+
+        // AV × 显式 c → c 层。
+        let c = ctx(
+            AssemblyBackend::Av,
+            ProviderChoice::Kind(ProviderKind::C),
+            TargetOs::Windows,
+        );
+        bind_ok(
+            vec![
+                input(
+                    "main",
+                    "use demo.provider_id\nfn main() int { return provider_id() }",
+                    None,
+                ),
+                input(
+                    "demo",
+                    DEMO_PUBLIC,
+                    Some(PackageImplLayer {
+                        kind: ProviderKind::C,
+                        source: DEMO_C.into(),
+                    }),
+                ),
+            ],
+            &c,
+        );
+        // A2C × c 合法；A2R × c 拒（相容表）。
+        let c = ctx(
+            AssemblyBackend::A2C,
+            ProviderChoice::Kind(ProviderKind::C),
+            TargetOs::Linux,
+        );
+        bind_ok(
+            vec![
+                input(
+                    "main",
+                    "use demo.provider_id\nfn main() int { return provider_id() }",
+                    None,
+                ),
+                input(
+                    "demo",
+                    DEMO_PUBLIC,
+                    Some(PackageImplLayer {
+                        kind: ProviderKind::C,
+                        source: DEMO_C.into(),
+                    }),
+                ),
+            ],
+            &c,
+        );
+        let c = ctx(
+            AssemblyBackend::A2R,
+            ProviderChoice::Kind(ProviderKind::C),
+            TargetOs::Linux,
+        );
+        let e = bind_err(
+            vec![
+                input(
+                    "main",
+                    "use demo.provider_id\nfn main() int { return provider_id() }",
+                    None,
+                ),
+                input(
+                    "demo",
+                    DEMO_PUBLIC,
+                    Some(PackageImplLayer {
+                        kind: ProviderKind::C,
+                        source: DEMO_C.into(),
+                    }),
+                ),
+            ],
+            &c,
+        );
+        assert_eq!(e.diagnostic.code, "assembly.provider-backend", "{e:?}");
+
+        // 层与 ctx 选择不一致（手拼输入不可绕过）。
+        let c = ctx(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+        let e = bind_err(
+            vec![
+                input(
+                    "main",
+                    "use demo.provider_id\nfn main() int { return provider_id() }",
+                    None,
+                ),
+                input(
+                    "demo",
+                    DEMO_PUBLIC,
+                    Some(PackageImplLayer {
+                        kind: ProviderKind::Rs,
+                        source: DEMO_RS.into(),
+                    }),
+                ),
+            ],
+            &c,
+        );
+        assert_eq!(
+            e.diagnostic.code, "assembly.provider-selection-mismatch",
+            "{e:?}"
+        );
+    }
+
+    #[test]
+    fn asm01_duplicate_implementation_and_signature_drift_reject_before_any_call() {
+        let c = ctx(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+        // 公共 bodied + 实现同名 → 重复实现。
+        let e = bind_err(
+            vec![
+                input("main", "fn main() int { return 0 }", None),
+                input(
+                    "demo",
+                    "pub fn op() int { return 1 }",
+                    Some(PackageImplLayer {
+                        kind: ProviderKind::At,
+                        source: "fn op() int { return 2 }".into(),
+                    }),
+                ),
+            ],
+            &c,
+        );
+        assert_eq!(
+            e.diagnostic.code, "source.assembly.duplicate-implementation",
+            "{e:?}"
+        );
+        // 签名漂移（参数类型不符）。
+        let e = bind_err(
+            vec![
+                input("main", "fn main() int { return 0 }", None),
+                input(
+                    "demo",
+                    "pub spec fn op(x int) int",
+                    Some(PackageImplLayer {
+                        kind: ProviderKind::At,
+                        source: "fn op(x bool) int { return 2 }".into(),
+                    }),
+                ),
+            ],
+            &c,
+        );
+        assert_eq!(e.diagnostic.code, "source.assembly.signature", "{e:?}");
+        // 实现层私有 helper 合法；实现层声明 type 拒。
+        bind_ok(
+            vec![
+                input(
+                    "main",
+                    "use demo.provider_id\nfn main() int { return provider_id() }",
+                    None,
+                ),
+                input(
+                    "demo",
+                    DEMO_PUBLIC,
+                    Some(PackageImplLayer {
+                        kind: ProviderKind::At,
+                        source: "fn provider_id() int { return helper() }\nfn helper() int { return 11 }"
+                            .into(),
+                    }),
+                ),
+            ],
+            &c,
+        );
+        let e = bind_err(
+            vec![
+                input("main", "fn main() int { return 0 }", None),
+                input(
+                    "demo",
+                    DEMO_PUBLIC,
+                    Some(PackageImplLayer {
+                        kind: ProviderKind::At,
+                        source: "fn provider_id() int { return 1 }\ntype T { x int }".into(),
+                    }),
+                ),
+            ],
+            &c,
+        );
+        assert_eq!(e.diagnostic.code, "source.assembly.impl-item", "{e:?}");
+    }
+
+    #[test]
+    fn asm01_missing_implementation_is_named_per_selected_source() {
+        let c = ctx(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+        // 无层 + 有需求 → 具名拒（缺实现）。
+        let e = bind_err(
+            vec![
+                input("main", "fn main() int { return 0 }", None),
+                input("demo", DEMO_PUBLIC, None),
+            ],
+            &c,
+        );
+        assert_eq!(
+            e.diagnostic.code, "source.assembly.missing-implementation",
+            "{e:?}"
+        );
+        assert!(e.diagnostic.message.contains("provider_id"), "{e:?}");
+        // 纯公共体（无需求）无层合法。
+        bind_ok(
+            vec![
+                input(
+                    "main",
+                    "use demo.common\nfn main() int { return common(1) }",
+                    None,
+                ),
+                input("demo", "pub fn common(x int) int { return x }", None),
+            ],
+            &c,
+        );
+    }
+
+    #[test]
+    fn asm02_in_single_and_block_forms_land_uses_and_decls() {
+        let c = ctx(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+        let bound = bind_ok(
+            vec![
+                input("main", APP_MAIN, None),
+                input(
+                    "demo",
+                    &format!("{DEMO_PUBLIC}\n{DEMO_LATE}"),
+                    Some(PackageImplLayer {
+                        kind: ProviderKind::At,
+                        source: DEMO_AT.into(),
+                    }),
+                ),
+                input("winio", WINIO, None),
+            ],
+            &c,
+        );
+        let main = &bound.units["app::main"];
+        // 选中 Windows 臂：winio.plat 导入、lnxio 未绑定（未选模块不在闭包）。
+        assert!(
+            main.imports
+                .iter()
+                .any(|i| i.path == vec!["winio".to_string(), "plat".into()]),
+            "{:?}",
+            main.imports
+        );
+        assert!(!main
+            .imports
+            .iter()
+            .any(|i| i.path.first().map(|s| s.as_str()) == Some("lnxio")));
+        // #in 落位公共声明（bonus/extra）与 for-condition 命中的 use（demo.picked）。
+        assert!(
+            main.exports.contains("bonus") && main.exports.contains("extra"),
+            "{:?}",
+            main.exports
+        );
+        assert!(
+            main.imports
+                .iter()
+                .any(|i| i.path.last().map(|s| s.as_str()) == Some("chosen")),
+            "{:?}",
+            main.imports
+        );
+        // 落位声明进入扁平程序。
+        for name in ["bonus", "extra"] {
+            let sym = fn_symbol("app", "main", name, "app::main");
+            assert!(
+                bound
+                    .program
+                    .items
+                    .iter()
+                    .any(|i| matches!(i, Item::Fn(f) if f.name.name == sym)),
+                "{name} landed"
+            );
+        }
+        assert!(bound
+            .origins
+            .contains_key(&fn_symbol("app", "main", "main", "app::main")));
+    }
+
+    #[test]
+    fn asm02_qualified_namespace_and_boolean_forms_stay_in_domain() {
+        let c = ctx(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+        // 完整限定形 `is sys.current { sys.Windows -> ... }`。
+        let src = "#in sys is sys.current {\n    sys.Windows -> use winio.plat\n    sys.Linux -> use lnxio.plat\n}\nfn main() int { return plat() }";
+        let bound = bind_ok(
+            vec![input("main", src, None), input("winio", WINIO, None)],
+            &c,
+        );
+        assert!(bound.units["app::main"]
+            .imports
+            .iter()
+            .any(|i| i.path.last().map(|s| s.as_str()) == Some("plat")));
+        // 域外：非 bool 条件 / 未知成员 / 未知 namespace。
+        let e = bind_err(
+            vec![
+                input(
+                    "main",
+                    "#in sys {\n    if current {\n        use winio.plat\n    }\n}\nfn main() int { return plat() }",
+                    None,
+                ),
+                input("winio", WINIO, None),
+            ],
+            &c,
+        );
+        assert_eq!(e.diagnostic.code, "source.cte.in-type", "{e:?}");
+        let e = bind_err(
+            vec![
+                input(
+                    "main",
+                    "#in sys is mystery {\n    Windows -> use winio.plat\n}\nfn main() int { return plat() }",
+                    None,
+                ),
+                input("winio", WINIO, None),
+            ],
+            &c,
+        );
+        assert_eq!(e.diagnostic.code, "source.cte.in-name", "{e:?}");
+        let e = bind_err(
+            vec![input(
+                "main",
+                "#in other is current {\n    Windows -> use winio.plat\n}\nfn main() int { return 0 }",
+                None,
+            )],
+            &c,
+        );
+        assert_eq!(e.diagnostic.code, "source.cte.in-namespace", "{e:?}");
+        // 限定名前缀与 namespace 不一致。
+        let e = bind_err(
+            vec![input(
+                "main",
+                "#in sys is current {\n    other.Windows -> use winio.plat\n}\nfn main() int { return 0 }",
+                None,
+            )],
+            &c,
+        );
+        assert_eq!(e.diagnostic.code, "source.cte.in-namespace", "{e:?}");
+    }
+
+    #[test]
+    fn asm03_target_axis_selects_and_unselected_sdk_stays_unbound() {
+        // Windows 宿主编 Linux 目标：必须选 Linux 臂（V-09 目标轴）。
+        let c = ctx(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Linux);
+        let app = app_with_in("use winio.plat");
+        // 只有 winio（Linux 臂的 lnxio 缺席）→ 选中 lnxio → 具名拒。
+        let demo = input(
+            "demo",
+            &format!("{DEMO_PUBLIC}\n{DEMO_LATE}"),
+            Some(PackageImplLayer {
+                kind: ProviderKind::At,
+                source: DEMO_AT.into(),
+            }),
+        );
+        let e = bind_err(
+            vec![
+                input("main", &app, None),
+                demo.clone(),
+                input("winio", WINIO, None),
+            ],
+            &c,
+        );
+        assert_eq!(e.diagnostic.code, "source.module-missing", "{e:?}");
+        // 只有 lnxio：Linux 目标成功、winio（未选）从未绑定。
+        let bound = bind_ok(
+            vec![
+                input("main", &app, None),
+                demo.clone(),
+                input("lnxio", LNXIO, None),
+            ],
+            &c,
+        );
+        let imports = &bound.units["app::main"].imports;
+        assert!(
+            imports
+                .iter()
+                .any(|i| i.path.first().map(|s| s.as_str()) == Some("lnxio")),
+            "{imports:?}"
+        );
+        assert!(!imports
+            .iter()
+            .any(|i| i.path.first().map(|s| s.as_str()) == Some("winio")));
+        // 同一源在 Windows 目标下选 Windows 臂（未选 lnxio 不绑定）。
+        let c2 = ctx(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+        let bound = bind_ok(
+            vec![input("main", &app, None), demo, input("winio", WINIO, None)],
+            &c2,
+        );
+        assert!(bound.units["app::main"].imports.iter().any(|i| i
+            .path
+            .first()
+            .map(|s| s.as_str())
+            == Some("winio")));
+        // target 变化即身份变化（ASM-04 在 store 面细测）。
+        let files = |demo: PackageModuleInput| {
+            vec![
+                input("main", &app, None),
+                demo,
+                input("winio", WINIO, None),
+                input("lnxio", LNXIO, None),
+            ]
+        };
+        let demo2 = input(
+            "demo",
+            &format!("{DEMO_PUBLIC}\n{DEMO_LATE}"),
+            Some(PackageImplLayer {
+                kind: ProviderKind::At,
+                source: DEMO_AT.into(),
+            }),
+        );
+        let h1 = bind_ok(files(demo2.clone()), &c).input_hash;
+        let h2 = bind_ok(files(demo2), &c2).input_hash;
+        assert_ne!(h1, h2, "target participates in the assembly identity");
+    }
+
+    #[test]
+    fn asm03_platform_table_negatives() {
+        let c = ctx(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+        // 等值重复臂。
+        let e = bind_err(
+            vec![
+                input(
+                    "main",
+                    "#in sys is current {\n    Windows -> use winio.plat\n    Windows -> use lnxio.plat\n}\nfn main() int { return plat() }",
+                    None,
+                ),
+                input("winio", WINIO, None),
+                input("lnxio", LNXIO, None),
+            ],
+            &c,
+        );
+        assert_eq!(e.diagnostic.code, "source.cte.duplicate-arm", "{e:?}");
+        // 无匹配且该操作是必需实现 → 装配具名拒（不改一般 #is 空展开规则）。
+        let e = bind_err(
+            vec![
+                input(
+                    "main",
+                    "use demo.provider_id\n#in sys is current {\n    Mac -> use winio.plat\n}\nfn main() int { return provider_id() }",
+                    None,
+                ),
+                input("demo", DEMO_PUBLIC, None),
+            ],
+            &c,
+        );
+        assert_eq!(
+            e.diagnostic.code, "source.assembly.missing-implementation",
+            "{e:?}"
+        );
+        // 无匹配但无必需缺口 → 合法（空展开维持一般规则）。
+        bind_ok(
+            vec![input(
+                "main",
+                "#in sys is current {\n    Mac -> use winio.plat\n}\nfn main() int { return 0 }",
+                None,
+            )],
+            &c,
+        );
+        // 未选分支的坏语义不进绑定（absent 模块缺席但未被选中）。
+        bind_ok(
+            vec![
+                input(
+                    "main",
+                    "#in sys is current {\n    Windows -> use winio.plat\n    Linux -> use absent_never_bound.plat\n}\nfn main() int { return plat() }",
+                    None,
+                ),
+                input("winio", WINIO, None),
+            ],
+            &c,
+        );
+        // 选中分支缺模块 → 具名拒。
+        let e = bind_err(
+            vec![input(
+                "main",
+                "#in sys is current {\n    Windows -> use absent.plat\n    Linux -> use lnxio.plat\n}\nfn main() int { return 0 }",
+                None,
+            )],
+            &c,
+        );
+        assert_eq!(e.diagnostic.code, "source.module-missing", "{e:?}");
+    }
+
+    #[test]
+    fn asm03_runtime_object_or_plain_in_is_not_a_ct_namespace() {
+        let c = ctx(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+        // `#in` 后跟运行时调用形 scrutinee → 语法面拒（ct 表达式无调用形）。
+        let parse = parse_package_source(
+            "#in sys is main() { Windows -> use winio.plat }\nfn main() int { return 0 }",
+            &caps(),
+            FrontBudget::WORK_OWNED_64MIB,
+        );
+        assert!(
+            parse.is_err(),
+            "call-shaped scrutinee must stay outside the CT grammar"
+        );
+        // 裸 `in`（无 #）不构成命名空间上下文。
+        let parse = parse_package_source(
+            "in sys is current { Windows -> use winio.plat }\nfn main() int { return 0 }",
+            &caps(),
+            FrontBudget::WORK_OWNED_64MIB,
+        );
+        assert!(parse.is_err(), "bare `in` is not a compile-time namespace");
+        // 无 IN 能力：`#` 保持原拒绝面（plain packages 裁剪）。
+        let parse = parse_package_source(
+            "#in sys is current { Windows -> use winio.plat }",
+            &[PACKAGES_CAPABILITY.to_string()],
+            FrontBudget::WORK_OWNED_64MIB,
+        );
+        assert!(parse.is_err(), "plain packages face keeps rejecting `#`");
+        // host 事实另名存在（不参与选择）。
+        let src = "#in sys {\n    if host == current {\n        pub fn on_host_target() int { return 1 }\n    }\n}\nfn main() int { return on_host_target() }";
+        let bound = bind_ok(vec![input("main", src, None)], &c);
+        assert!(bound.units["app::main"].exports.contains("on_host_target"));
+    }
+
+    #[test]
+    fn asm06_diagnostics_locate_in_the_owning_file() {
+        let c = ctx(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+        // 实现文件签名漂移：模块键正确、span 落在公共文件需求声明处。
+        let e = bind_err(
+            vec![
+                input("main", "fn main() int { return 0 }", None),
+                input(
+                    "demo",
+                    DEMO_PUBLIC,
+                    Some(PackageImplLayer {
+                        kind: ProviderKind::At,
+                        source: "fn provider_id() bool { return true }".into(),
+                    }),
+                ),
+            ],
+            &c,
+        );
+        assert_eq!(e.module, "app::demo", "{e:?}");
+        // #in 臂错误的 span 归属本模块源内。
+        let src = "#in sys is current {\n    Windows -> use winio.plat\n    Windows -> use winio.plat\n}\nfn main() int { return 0 }";
+        let e = bind_err(vec![input("main", src, None)], &c);
+        assert_eq!(e.module, "app::main", "{e:?}");
+        assert!(e.diagnostic.span.start <= src.len());
     }
 }

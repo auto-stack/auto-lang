@@ -80,6 +80,10 @@ pub enum VerificationLevel {
 }
 
 /// 目标层类别。`Other` 保留给未来后缀（当前 .at/.vm.at/.rs.at/.c.at）。
+/// PLAN-1043（T-02）：新合同平铺 provider 后缀 `.at.at`/`.py.at` 在旧
+/// inventory 侧也归 `Other`（最长保留后缀剥离，模块基名不变）——绝不把
+/// `io.at.at` 误列成独立公共模块 `io.at`；`.c.at`/`.rs.at` 在旧配方里的
+/// 目标层语义与旧路径完全不变，新旧合同互不混用（退役归 986/987）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LayerKind {
@@ -92,13 +96,18 @@ pub enum LayerKind {
 
 impl LayerKind {
     pub fn from_file_name(name: &str) -> Option<(LayerKind, String)> {
-        // 返回 (层类别, 剥层后的基名)；非 .at 结尾 → None
-        let (kind, base) = if let Some(b) = name.strip_suffix(".vm.at") {
+        // 返回 (层类别, 剥层后的基名)；非 .at 结尾 → None。顺序即最长
+        // 保留后缀优先（PLAN-1043：`.at.at`/`.py.at` 先于裸 `.at`）。
+        let (kind, base) = if let Some(b) = name.strip_suffix(".at.at") {
+            (LayerKind::Other, b)
+        } else if let Some(b) = name.strip_suffix(".vm.at") {
             (LayerKind::Vm, b)
         } else if let Some(b) = name.strip_suffix(".rs.at") {
             (LayerKind::Rust, b)
         } else if let Some(b) = name.strip_suffix(".c.at") {
             (LayerKind::C, b)
+        } else if let Some(b) = name.strip_suffix(".py.at") {
+            (LayerKind::Other, b)
         } else if let Some(b) = name.strip_suffix(".at") {
             (LayerKind::Public, b)
         } else {

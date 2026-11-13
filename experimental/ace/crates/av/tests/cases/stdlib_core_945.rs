@@ -30,6 +30,7 @@ fn app(source: &str) -> Vec<PackageModuleInput> {
         version: "1.0.0".into(),
         id: "main".into(),
         source: source.into(),
+        provider: None,
     });
     inputs
 }
@@ -409,12 +410,14 @@ fn stdlib_core_945_i64_family_named_unwired_and_std_reserved() {
         version: "1.0.0".into(),
         id: "math".into(),
         source: "pub fn min(a int, b int) int { return a }".into(),
+        provider: None,
     }];
     spoof.push(PackageModuleInput {
         package: "app".into(),
         version: "1.0.0".into(),
         id: "main".into(),
         source: "fn main() int { return 1 }".into(),
+        provider: None,
     });
     let e = err(&spoof);
     assert!(e.contains("ace.stdlib-reserved"), "{e}");

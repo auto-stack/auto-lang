@@ -21,12 +21,14 @@ pub fn stdlib_inputs() -> Vec<PackageModuleInput> {
             version: STDLIB_VERSION.into(),
             id: "math".into(),
             source: MATH_SOURCE.into(),
+            provider: None,
         },
         PackageModuleInput {
             package: STDLIB_PACKAGE.into(),
             version: STDLIB_VERSION.into(),
             id: "text".into(),
             source: TEXT_SOURCE.into(),
+            provider: None,
         },
     ]
 }

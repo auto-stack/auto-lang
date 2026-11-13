@@ -126,6 +126,7 @@ mod tests {
             version: "1.0.0".into(),
             id: id.into(),
             source: source.into(),
+            provider: None,
         }
     }
     fn tmp(tag: &str) -> std::path::PathBuf {

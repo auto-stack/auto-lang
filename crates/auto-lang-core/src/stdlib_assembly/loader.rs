@@ -643,6 +643,44 @@ pub(crate) fn source_has_body(content: &str, span: Option<(usize, usize)>) -> bo
 
 #[cfg(test)]
 mod selection_tests {
+    /// PLAN-1043（T-10/ASM-06）：新合同平铺后缀在旧 inventory 侧的最长
+    /// 保留语义——`io.at.at`/`io.py.at` 归模块 `io` 的 Other 层，绝不冒充
+    /// 独立公共模块 `io.at`；旧目标层语义（.vm.at/.rs.at/.c.at）不变。
+    #[test]
+    fn plan1043_provider_suffixes_map_into_the_module_not_new_public_modules() {
+        use std::fs;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("auto");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("io.at"),
+            "type File { pub static fn open(path str) File; pub fn read_text() str }",
+        )
+        .unwrap();
+        fs::write(root.join("io.at.at"), "fn io_impl_probe() int { return 1 }").unwrap();
+        fs::write(root.join("io.py.at"), "fn py_impl_probe() int { return 4 }").unwrap();
+        fs::write(root.join("io.c.at"), "ext File { }").unwrap();
+        let inventory = super::scan_inventory(&root);
+        inventory.assert_sorted();
+        let io = inventory.module("io").expect("module io");
+        let kinds: Vec<_> = io.layers.iter().map(|l| l.kind).collect();
+        use crate::stdlib_assembly::model::LayerKind;
+        assert!(kinds.contains(&LayerKind::Public), "{kinds:?}");
+        assert!(
+            kinds.contains(&LayerKind::C),
+            "old target layer unchanged: {kinds:?}"
+        );
+        assert!(
+            kinds.contains(&LayerKind::Other),
+            "at/py provider layers land as Other: {kinds:?}"
+        );
+        assert!(
+            inventory.module("io.at").is_none(),
+            "`io.at.at` must never be listed as an independent public module"
+        );
+        assert_eq!(inventory.files_total, 4);
+    }
+
     #[test]
     fn selected_sdk_stdlib_is_authoritative() {
         use std::{fs, path::PathBuf, process::Command};

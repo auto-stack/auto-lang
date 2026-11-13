@@ -332,6 +332,7 @@ fn plan945_stdlib_packages_assembly_admits_all_four_producers() {
 use std.text.byte_len
 fn main() int { return square(3) * 10 + byte_len(\"A中😀\") }"
             .into(),
+        provider: None,
     });
     let product =
         compile_package_product(&inputs, "app::main", &[PACKAGES_CAPABILITY.into()], B).unwrap();
