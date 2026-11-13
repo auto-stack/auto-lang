@@ -388,6 +388,23 @@ turnaround 的 emit/link/binder 每样本链）为 r5 预算内剩余主项。
   t06-restart（跨进程 memo 面）与 ac_native_suite_full_run_and_ledger_reconcile
   在 155 绿内。受影响 PERF 五腿全绿（上表）。
 
+**Pass D 全量诊断跑（2026-11-14 凌晨，负载窗口，run-w2uncqgg，冻结 `bd53e8135`+规范草案）**：
+- 94 例串行执行段 **3618.9s（60.3 分）**，90 绿 + 4 红。负载证据：sema 107.7（空闲 48）、
+  av 229.7（168）、syntax 102.8（75）、closures 205.8（同夜隔离 143.8）——IO/门敏感例
+  膨胀 1.35-2.2×。
+- **模块分账**：native **1235.8 ≤1300 ✓**（memo 生效：1618→1236；restart_warm_30
+  90→25.6s）；abi 317.0 ✓、av 229.7 ✓、syntax 102.8 ✓、artifacts 50.3 ✓、a2x 29.1 ✓；
+  conformance 924.8（超 125，负载项 body_edit 230.8 vs 空闲 ~110）；comptime 621.6
+  （超 72，同窗口膨胀）；sema 107.7（超 28，纯负载）。
+- **4 红归属**：turnaround_native_six_scenarios_p95_gates=**D-932-1 既有债**（具名）；
+  ac_av_probe_formal_turnaround_gates 与 mir_native_incremental_series_formal
+  **隔离重放绿**（套件持续负载门膨胀，环境归因）；transient_spike_sampler 0.1s 红=
+  采样线程被当前机器负载饿死（4<5 ticks，Pass C 同类），待安静窗口重放。
+- Top 残余（全部 debug 档合同地板）：cold_set 416.7（emit ~3.5s/MiB）、sd911 301.5、
+  watermark_gc 285.7（每调用全源前端）、body_edit_gate 230.8（编辑样本真实编译）、
+  closures 205.8、av_probe 195.5。
+- 空闲窗口全量估算 ≈3200-3250s；正式 ≤3000s 终验待安静窗口执行（下一轮）。
+
 2026-11-12 stage:new / PLAN-1017 r2：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原9任务/全部AC与V/依赖/阶段/预算和drafting 0/9；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
 2026-11-12 本轮规划静态核验：32份合同原505任务ID/顺序/进度、全部旧AC/V/Spec-delta及原依赖/阶段/预算保留；新增128条V-DETAIL待实施验证，未生成任何测试源码。505处本地引用/围栏/0–10章节/原任务映射核对通过，跨四仓可达222份Plan的显式依赖无缺失/环。只证明规划结构与取材来源，不是旧VM/新ACE运行或独立产品review PASS；959–962归档和963r5未改。
