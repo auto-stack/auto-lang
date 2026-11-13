@@ -241,7 +241,8 @@ pub fn select(
         };
         if chosen.is_empty() {
             match &req.explicit_provider {
-                Some(name) => {
+                // 点名 provider 在目标平台无候选：与无 provider 同码拒绝。
+                Some(_) => {
                     return Err(SelectionError::NoProvider {
                         operation: req.operation.clone(),
                         target: axes.target,
