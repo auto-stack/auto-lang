@@ -192,6 +192,9 @@ mod default_args_963;
 mod named_args_963;
 #[path = "cases/const_instances_963.rs"]
 mod const_instances_963;
+#[path = "cases/stdlib_core_945.rs"]
+mod stdlib_core_945;
+
 #[path = "cases/module_packages_960.rs"]
 mod module_packages_960;
 #[path = "cases/module_sources_950.rs"]

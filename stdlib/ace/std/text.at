@@ -1,0 +1,7 @@
+// ACE finite stdlib text slice (PLAN-945): the 943-frozen public text
+// bindings over the shared TextRecord surface — UTF-8 byte_len, byte-exact
+// equality (NUL is content, never a terminator), and the explicit owned
+// clone (an independent owner; allocation failure preserves the input).
+pub fn byte_len(s str) int { return s.len_bytes() }
+pub fn equal(a str, b str) bool { return a == b }
+pub fn owned(s str) Str { return s.clone() }

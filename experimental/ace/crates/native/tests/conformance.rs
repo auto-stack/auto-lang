@@ -85,6 +85,9 @@ mod transaction_tier;
 #[path = "cases/turnaround_tier.rs"]
 mod turnaround_tier;
 
+#[path = "cases/text_clone_fault_945.rs"]
+mod text_clone_fault_945;
+
 #[path = "cases/owned_text_incremental.rs"]
 mod owned_text_incremental;
 

@@ -1,0 +1,6 @@
+// ACE finite stdlib math slice (PLAN-945): the public pure int algorithms
+// mirroring stdlib/auto/math.at square/cube (checked i32, trap on overflow).
+// The i64 public abs/min/max family stays named-unsupported in the ACE i32
+// profile (ace.stdlib-unwired) — no lossy narrowing adapter is provided.
+pub fn square(x int) int { return x * x }
+pub fn cube(x int) int { return x * x * x }

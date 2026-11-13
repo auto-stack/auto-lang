@@ -12,6 +12,7 @@ ace-semantics-contract = { path = "../../crates/semantics-contract" }
 ace-source-query = { path = "../../crates/source-query" }
 ace-core = { path = "../../crates/core" }
 ace-av = { path = "../../crates/av" }
+ace-av-core = { path = "../../crates/av-core" }
 ace-a2x-rust = { path = "../../crates/a2x-rust" }
 ace-a2x-store = { path = "../../crates/a2x-store" }
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }

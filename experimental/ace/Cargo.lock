@@ -378,6 +378,7 @@ dependencies = [
  "ace-a2x-rust",
  "ace-a2x-store",
  "ace-av",
+ "ace-av-core",
  "ace-core",
  "ace-semantics-contract",
  "ace-source-query",

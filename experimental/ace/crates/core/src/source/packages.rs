@@ -118,6 +118,11 @@ pub use binding::{
     unit_key, BoundPackages, GlobalDecl, PackageDiagnostic, PackageModuleInput, PackageSegment,
     GLOBAL_GET_PREFIX, GLOBAL_SET_PREFIX,
 };
+mod stdlib;
+pub use stdlib::{
+    is_frozen_std_module, stdlib_inputs, unwired_reason, STDLIB_PACKAGE, STDLIB_RESERVED,
+    STDLIB_UNWIRED, STDLIB_VERSION,
+};
 
 #[cfg(test)]
 mod tests {

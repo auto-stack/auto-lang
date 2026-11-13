@@ -24,6 +24,10 @@ pub struct PackageProduct {
     pub bound: BoundPackages,
 }
 
+/// PLAN-945：冻结 ACE 公共标准库包输入（std.math/std.text），由持有其
+/// 身份的前门（`ace_core::source::packages`）再导出。
+pub use ace_core::source::packages::stdlib_inputs;
+
 fn locate_all(bound: &BoundPackages, ds: Vec<Diagnostic>) -> Vec<PackageDiagnostic> {
     ds.into_iter().map(|d| bound.locate(d)).collect()
 }

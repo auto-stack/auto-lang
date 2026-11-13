@@ -368,7 +368,13 @@ fn wide_math_private_helpers_and_legacy_dispatches_are_not_reclassified() {
             .iter()
             .find(|p| p.operation == name)
             .unwrap();
+        // PLAN-945: the i64 public family stays missing_capability on every
+        // end — the packages lane rejects it by name, no narrowing adapter.
         assert_eq!(policy.ace_av, "missing_capability");
+        assert_eq!(policy.ace_native, "missing_capability");
+        assert_eq!(policy.hir_rust, "missing_capability");
+        assert_eq!(policy.hir_c, "missing_capability");
+        assert!(policy.gap.contains("ace.stdlib-unwired"), "{}", policy.gap);
     }
     for name in ["math.private_square", "math.private_cube"] {
         assert_eq!(
@@ -389,12 +395,21 @@ fn wide_math_private_helpers_and_legacy_dispatches_are_not_reclassified() {
         .map(|o| (&o.dispatch, &o.unit))
         .collect();
     assert_eq!(units.len(), 2);
-    // PLAN-947: console.say is the first honestly-delivered wiring (AV +
-    // native real dispatch, corpus evidence); everything else keeps the
-    // 943-era all-gap invariant — wide math/private helpers in particular
-    // must never be silently reclassified.
+    // PLAN-947/PLAN-945 honestly-delivered wirings only: console.say (AV +
+    // native, corpus evidence) and the 945 stdlib slice (byte_len/equal/
+    // clone/square/cube via stdlib/ace/std + the four-end conformance).
+    // Everything else keeps the 943-era all-gap invariant — wide math in
+    // particular must never be silently reclassified.
+    let wired_945 = [
+        "text.byte_length",
+        "text.equal",
+        "text.clone",
+        "math.private_square",
+        "math.private_cube",
+    ];
     assert!(inv.contracts.compatibility.iter().all(|c| {
         c.operation == "console.say"
+            || wired_945.contains(&c.operation.as_str())
             || (c.ace_av != "supported"
                 && c.ace_native != "supported"
                 && c.hir_rust != "supported"

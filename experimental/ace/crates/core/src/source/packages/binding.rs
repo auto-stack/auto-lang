@@ -271,6 +271,17 @@ pub fn bind_packages(
                 zero,
             ));
         }
+        // PLAN-945：包名 `std` 保留给冻结公共标准库切片。
+        if input.package == super::stdlib::STDLIB_PACKAGE
+            && !super::stdlib::is_frozen_std_module(&input.id, &input.version, &input.source)
+        {
+            return Err(fail(
+                &key,
+                super::stdlib::STDLIB_RESERVED,
+                "package name `std` is reserved for the frozen ACE stdlib slice (PLAN-945)",
+                zero,
+            ));
+        }
         let syntax = parse_package_source(&input.source, caps, budget).map_err(|mut ds| {
             PackageDiagnostic {
                 module: key.clone(),
@@ -330,6 +341,17 @@ pub fn bind_package_syntax(
                 &key,
                 "source.module-identity",
                 "invalid or duplicate package/module identity",
+                zero,
+            ));
+        }
+        // PLAN-945：恢复路径同守 `std` 冻结身份（与冷路径同一拒绝）。
+        if input.package == super::stdlib::STDLIB_PACKAGE
+            && !super::stdlib::is_frozen_std_module(&input.id, &input.version, &input.source)
+        {
+            return Err(fail(
+                &key,
+                super::stdlib::STDLIB_RESERVED,
+                "package name `std` is reserved for the frozen ACE stdlib slice (PLAN-945)",
                 zero,
             ));
         }
@@ -515,6 +537,11 @@ pub fn bind_package_syntax(
             {
                 cursor = resolve_path(&cursor.0, &re.path, re.span)?;
                 continue;
+            }
+            // PLAN-945：`std.math` 的 i64 公共族具名未支持（先于调用拒绝，
+            // 无窄化适配）；`std` 身份保留保证未命中即冻结模块真实缺该导出。
+            if let Some(reason) = super::stdlib::unwired_reason(&cursor.0, &cursor.1) {
+                return Err(fail(owner, super::stdlib::STDLIB_UNWIRED, reason, span));
             }
             return Err(fail(
                 owner,
@@ -2103,6 +2130,10 @@ impl<'a> Walker<'a> {
                 span,
             ));
         }
+        // PLAN-945：`std.math` i64 公共族的具名未支持（限定调用同样先拒）。
+        if let Some(reason) = super::stdlib::unwired_reason(target, item) {
+            return Err(fail(self.key, super::stdlib::STDLIB_UNWIRED, reason, span));
+        }
         Err(fail(
             self.key,
             "source.module-symbol",
@@ -2137,6 +2168,10 @@ impl<'a> Walker<'a> {
                 format!("module store `{target}.{item}` is private"),
                 span,
             ));
+        }
+        // PLAN-945：`std.math` i64 公共族限定值引用同样具名未支持。
+        if let Some(reason) = super::stdlib::unwired_reason(target, item) {
+            return Err(fail(self.key, super::stdlib::STDLIB_UNWIRED, reason, span));
         }
         Err(fail(
             self.key,
@@ -2580,5 +2615,94 @@ mod tests {
             b.references["p3_twom1_m_get"],
             BTreeSet::from(["p3_twom1_m_helper".to_string()])
         );
+    }
+
+    /// PLAN-945：冻结 stdlib 包的身份保留与 i64 公共族具名未支持。
+    #[test]
+    fn std_package_identity_is_reserved_and_i64_family_is_named_unwired() {
+        // 合法：真实冻结切片 + 消费者正常绑定。
+        let mut inputs = super::super::stdlib::stdlib_inputs();
+        inputs.push(input(
+            "app",
+            "main",
+            "use std.math.square
+use std.text.byte_len
+fn main() int { return square(3) + byte_len(\"A中😀\") }",
+        ));
+        let b = bind(&inputs, "app::main").unwrap();
+        assert!(b.origins.contains_key("p3_stdm4_math_square"));
+        assert!(b.origins.contains_key("p3_stdm4_text_byte_len"));
+
+        // V-03 负控：`use std.math.min` 先于调用具名拒绝（i64 公共 API）。
+        // （先给完整冻结切片，再触具名未支持；部分/伪造 `std` 输入在下面
+        // 的身份保留腿单独覆盖。）
+        let mut full = super::super::stdlib::stdlib_inputs();
+        full.push(input(
+            "app",
+            "main",
+            "use std.math.min
+fn main() int { return min(1, 2) }",
+        ));
+        let e = bind(&full, "app::main").unwrap_err();
+        assert_eq!(
+            e.diagnostic.code, "ace.stdlib-unwired",
+            "{}",
+            e.diagnostic.message
+        );
+        assert!(
+            e.diagnostic.message.contains("i64"),
+            "{}",
+            e.diagnostic.message
+        );
+
+        // 限定调用同样具名拒绝（无需 use）。
+        let mut full = super::super::stdlib::stdlib_inputs();
+        full.push(input(
+            "app",
+            "main",
+            "fn main() int { return std.math.abs(-5) }",
+        ));
+        let e = bind(&full, "app::main").unwrap_err();
+        assert_eq!(e.diagnostic.code, "ace.stdlib-unwired");
+
+        // 身份保留：非逐字节同源的 `std` 输入直接拒绝。
+        let e = bind(
+            &[
+                input(
+                    "std",
+                    "math",
+                    "pub fn square(x int) int { return x * x + 1 }",
+                ),
+                input("app", "main", "fn main() int { return 1 }"),
+            ],
+            "app::main",
+        )
+        .unwrap_err();
+        assert_eq!(e.diagnostic.code, "ace.stdlib-reserved");
+
+        // 用户自有 min 不受影响（自有包名/自有签名）。
+        let b = bind(
+            &[input(
+                "app",
+                "main",
+                "fn min(a int, b int) int { if (a < b) { return a }
+ return b }
+fn main() int { return min(3, 5) }",
+            )],
+            "app::main",
+        )
+        .unwrap();
+        assert!(b.origins.contains_key("p3_appm4_main_min"));
+
+        // 普通拼写错误仍走 source.module-symbol（非 i64 族不冒具名）。
+        let mut full = super::super::stdlib::stdlib_inputs();
+        full.push(input(
+            "app",
+            "main",
+            "use std.math.squre
+fn main() int { return 1 }",
+        ));
+        let e = bind(&full, "app::main").unwrap_err();
+        assert_eq!(e.diagnostic.code, "source.module-symbol");
     }
 }

@@ -306,3 +306,150 @@ fn actual_standard_reference_enters_both_real_consumer_manifests_without_claimin
             .contains("unknown variant"));
     }
 }
+
+/// PLAN-945 D7: the frozen public stdlib slice (`stdlib/ace/std/*.at` via
+/// `stdlib_inputs()`) carries REAL semantic declarations into a
+/// packages-profile assembly; all FOUR producers freeze/validate/admit it,
+/// a tampered declaration never re-admits, and the product actually runs
+/// on the AV and Rust ends (mn/cl execution lives in the av conformance
+/// suite `stdlib_core_945`). The packages lane's manifest-coupled cold
+/// assembly remains the 960-named follow-up; admission and execution are
+/// asserted separately here, never conflated.
+#[test]
+fn plan945_stdlib_packages_assembly_admits_all_four_producers() {
+    use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
+    use ace_semantics_contract::assembly::{
+        Consumer, Declaration, Manifest, SemanticAssembly, Signature, AV_PRODUCER, C_PRODUCER,
+        NATIVE_PRODUCER, PACKAGE_MODULES, RUST_PRODUCER,
+    };
+    use ace_source_query::modules::packages::{compile_package_product, stdlib_inputs};
+    let mut inputs = stdlib_inputs();
+    inputs.push(PackageModuleInput {
+        package: "app".into(),
+        version: "1.0.0".into(),
+        id: "main".into(),
+        source: "use std.math.square
+use std.text.byte_len
+fn main() int { return square(3) * 10 + byte_len(\"A中😀\") }"
+            .into(),
+    });
+    let product =
+        compile_package_product(&inputs, "app::main", &[PACKAGES_CAPABILITY.into()], B).unwrap();
+    let declarations: Vec<Declaration> = [
+        ("std.math", "square", vec!["int"], vec!["View"], "int"),
+        ("std.math", "cube", vec!["int"], vec!["View"], "int"),
+        ("std.text", "byte_len", vec!["str"], vec!["View"], "int"),
+        (
+            "std.text",
+            "equal",
+            vec!["str", "str"],
+            vec!["View", "View"],
+            "bool",
+        ),
+        ("std.text", "owned", vec!["str"], vec!["View"], "Str"),
+        ("app.main", "main", vec![], vec![], "int"),
+    ]
+    .into_iter()
+    .map(|(module, symbol, parameters, modes, returns)| Declaration {
+        module: module.into(),
+        symbol: symbol.into(),
+        semantic_version: 1,
+        signature: Signature {
+            parameters: parameters.into_iter().map(str::to_string).collect(),
+            modes: modes.into_iter().map(str::to_string).collect(),
+            returns: returns.into(),
+        },
+        requirements: vec![],
+    })
+    .collect();
+    let semantic = || SemanticAssembly {
+        profile: PACKAGE_MODULES.into(),
+        host: ASSEMBLY_HOST.into(),
+        platform: ASSEMBLY_PLATFORM.into(),
+        declarations: declarations.clone(),
+        references: vec![],
+        sources: vec![],
+    };
+    let consumer = |producer: &str| Consumer {
+        producer: producer.into(),
+        abi: "abi/1".into(),
+        runtime: "rt/1".into(),
+        toolchain: "tc/1".into(),
+        providers: Vec::new(),
+    };
+    // all four producers freeze and validate the SAME real declarations
+    let mut fingerprints = Vec::new();
+    for producer in [AV_PRODUCER, RUST_PRODUCER, NATIVE_PRODUCER, C_PRODUCER] {
+        let m = Manifest::freeze(semantic(), consumer(producer)).expect("freeze");
+        m.validate().expect("validate");
+        fingerprints.push((
+            m.fingerprint().to_string(),
+            m.consumer_fingerprint().to_string(),
+        ));
+        // a tampered declaration never re-admits against the current manifest
+        let mut tampered = semantic();
+        tampered.declarations.pop();
+        let bad = Manifest::freeze(tampered, consumer(producer)).unwrap();
+        assert!(Manifest::admit(&bad.encode().unwrap(), &m).is_err());
+        // a wrong producer id is rejected at validation
+        let wrong = Manifest::freeze(semantic(), consumer("unknown/producer")).unwrap_err();
+        assert!(wrong.contains("assembly.producer"), "{wrong}");
+    }
+    // portable common identity across producers; distinct consumer identities
+    assert!(fingerprints.iter().all(|f| f.0 == fingerprints[0].0));
+    let consumer_ids: std::collections::BTreeSet<_> =
+        fingerprints.iter().map(|f| f.1.clone()).collect();
+    assert_eq!(consumer_ids.len(), 4);
+
+    // the product really runs: AV value + Rust exe (98 = square(3)*10 + 8)
+    let temp = Temp::new();
+    let av =
+        ace_av::modules::packages::PackageAvTarget::cold(&temp.0.join("av"), &product).unwrap();
+    assert_eq!(av.run_value(), Ok(ace_av_core::contract::Value::I32(98)));
+    let mut rust = ace_a2x_store::modules::packages::PackageA2xTarget::cold(
+        &temp.0.join("store"),
+        "stdlib945",
+        "app",
+        16 << 20,
+        ace_a2x_rust::RustTargetProvider::v1(),
+        &product,
+    )
+    .unwrap();
+    // rustc the packages fileset directly (the module-lane `rust_value`
+    // helper takes an `Assembly`, a different target type)
+    let dir = temp.0.join("rust");
+    std::fs::create_dir_all(&dir).unwrap();
+    for (path, content) in &rust.current.files {
+        std::fs::write(dir.join(path), content).unwrap();
+    }
+    let exe = dir.join("stdlib945.exe");
+    let mut cmd =
+        std::process::Command::new(std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()));
+    cmd.args(["--edition", "2021", "main.rs", "-o"])
+        .arg(&exe)
+        .current_dir(&dir);
+    let compile = auto_tool_execution::run_command_capture(
+        cmd,
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        compile.kind,
+        auto_tool_execution::ExitKind::Success,
+        "{}",
+        String::from_utf8_lossy(compile.stderr.as_deref().unwrap_or(&[]))
+    );
+    let mut run_cmd = std::process::Command::new(&exe);
+    run_cmd.current_dir(&dir);
+    let run = auto_tool_execution::run_command_capture(
+        run_cmd,
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(run.stdout.as_deref().unwrap_or(&[])).trim(),
+        "value:98"
+    );
+}
