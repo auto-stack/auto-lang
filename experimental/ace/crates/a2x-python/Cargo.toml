@@ -1,0 +1,10 @@
+[package]
+name = "ace-a2x-python"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-1042 Python A2X target provider & stdlib/runtime port readiness (Checked HIR -> Python 3)"
+publish = false
+
+[dependencies]
+ace-a2x-core = { path = "../a2x-core" }
+ace-core = { path = "../core" }

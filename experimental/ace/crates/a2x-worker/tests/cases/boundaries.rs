@@ -27,6 +27,7 @@ fn manifest_face_only_sanctioned_dependencies() {
         "ace-abi", // PLAN-921: the frozen PLAN-797 cl locator (ctool) reuse —
         // no second MSVC discovery path
         "ace-a2x-core",
+        "ace-a2x-python",       // PLAN-1042: Python target provider (a2x-core + core HIR)
         "ace-a2x-rust",
         "ace-a2x-store",
         "ace-core",
@@ -54,6 +55,7 @@ fn manifest_face_only_sanctioned_dependencies() {
     let members = [
         "crates/a2x-c",
         "crates/a2x-core",
+        "crates/a2x-python",
         "crates/a2x-rust",
         "crates/a2x-store",
         "crates/a2x-worker",
@@ -109,6 +111,7 @@ fn source_face_no_forbidden_references() {
     let dirs = [
         "crates/a2x-c/src",
         "crates/a2x-core/src",
+        "crates/a2x-python/src",
         "crates/a2x-rust/src",
         "crates/a2x-store/src",
         "crates/a2x-worker/src",
@@ -179,6 +182,13 @@ fn two_target_identities_and_neutral_store_seam() {
     // with the Rust layers (AXR1/2/3)
     assert_eq!(c.fragment_layer_id(Family::RecordText).unwrap(), "AXC2");
     assert_eq!(c.fragment_layer_id(Family::Collections).unwrap(), "AXC3");
+    let py = ace_a2x_python::PythonTargetProvider;
+    let pyd = py.descriptor();
+    assert_eq!(pyd.lang, "python");
+    assert_eq!(pyd.backend, "auto-a2x-python");
+    assert_eq!(py.fragment_layer_id(Family::Scalar).unwrap(), "AXPY1");
+    assert_eq!(py.fragment_layer_id(Family::RecordText).unwrap(), "AXPY2");
+    assert_eq!(py.fragment_layer_id(Family::Collections).unwrap(), "AXPY3");
     // the shared session layer is target-neutral: a2x-store carries no
     // target-crate dependency
     let store_manifest =
@@ -190,5 +200,9 @@ fn two_target_identities_and_neutral_store_seam() {
     assert!(
         !store_manifest.contains("ace-a2x-c ="),
         "a2x-store must not depend on the C target crate (PLAN-921 seam; the `ace-a2x-core` prefix is a different crate)"
+    );
+    assert!(
+        !store_manifest.contains("ace-a2x-python ="),
+        "a2x-store must not depend on the Python target crate (PLAN-1042 seam)"
     );
 }

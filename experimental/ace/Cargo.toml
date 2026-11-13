@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates/a2x-c",
   "crates/a2x-core",
+  "crates/a2x-python",
   "crates/a2x-rust",
   "crates/a2x-store",
   "crates/a2x-worker",

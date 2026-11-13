@@ -58,7 +58,7 @@ pub const LAYER_SEMANTIC: LayerSpec = LayerSpec {
     producer: "auto-a2x-core prepare",
     // PLAN-921: the C target consumes the SAME semantic facts (keys and
     // bytes unchanged; additive consumer registration only).
-    consumers: &["auto-a2x-rust", "auto-a2x-c"],
+    consumers: &["auto-a2x-rust", "auto-a2x-c", "auto-a2x-python"],
     key_inputs: &[
         "owner",
         "decl",
@@ -134,7 +134,7 @@ pub const LAYER_SEMANTIC_RT: LayerSpec = LayerSpec {
     name: "a2x-rt-function-semantic",
     schema_id: "a2902/axs-rt-sem/v1",
     producer: "auto-a2x-core prepare",
-    consumers: &["auto-a2x-rust"],
+    consumers: &["auto-a2x-rust", "auto-a2x-c", "auto-a2x-python"],
     key_inputs: &[
         "owner",
         "decl",
@@ -187,7 +187,7 @@ pub const LAYER_SEMANTIC_COLL: LayerSpec = LayerSpec {
     name: "a2x-collections-function-semantic",
     schema_id: "a2904/axs-coll-sem/v1",
     producer: "auto-a2x-core prepare",
-    consumers: &["auto-a2x-rust"],
+    consumers: &["auto-a2x-rust", "auto-a2x-c", "auto-a2x-python"],
     key_inputs: &[
         "owner",
         "decl",
@@ -339,6 +339,50 @@ pub const LAYER_FRAGMENT_C_COLL: LayerSpec = LayerSpec {
     residency: "resident fragments are the warm reuse unit; store hits re-verify by content hash",
     regeneration: ace_artifacts::schema::Regeneration::FromUpstreamRecipe,
     coverage: ace_artifacts::schema::LayerCoverage::Codec,
+};
+
+/// PLAN-1042: Python scalar fragment layer (`AXPY1`), isolated from Rust/C fragments.
+pub const LAYER_FRAGMENT_PY: LayerSpec = LayerSpec {
+    id: "AXPY1",
+    name: "a2x-py-fragment",
+    schema_id: "a21042/axpy-fn/v1",
+    producer: "auto-a2x-python",
+    consumers: &["a2x session assembly"],
+    key_inputs: &[
+        "owner",
+        "decl",
+        "sem_fp",
+        "lang",
+        "standard",
+        "backend",
+        "backend_version",
+        "runtime_sha256",
+        "print_version",
+        "stdlib_port_catalog",
+    ],
+    ref_kinds: &["provenance"],
+    storage: "one printed Python scalar fragment artifact per function",
+    residency: "resident fragments are the warm reuse unit; store hits re-verify by content hash",
+    regeneration: ace_artifacts::schema::Regeneration::FromUpstreamRecipe,
+    coverage: ace_artifacts::schema::LayerCoverage::Codec,
+};
+
+/// PLAN-1042: Python RecordText fragment layer (`AXPY2`).
+pub const LAYER_FRAGMENT_PY_RT: LayerSpec = LayerSpec {
+    id: "AXPY2",
+    name: "a2x-py-rt-fragment",
+    schema_id: "a21042/axpy-rt-fn/v1",
+    producer: "auto-a2x-python",
+    ..LAYER_FRAGMENT_PY
+};
+
+/// PLAN-1042: Python Collections fragment layer (`AXPY3`).
+pub const LAYER_FRAGMENT_PY_COLL: LayerSpec = LayerSpec {
+    id: "AXPY3",
+    name: "a2x-py-coll-fragment",
+    schema_id: "a21042/axpy-coll-fn/v1",
+    producer: "auto-a2x-python",
+    ..LAYER_FRAGMENT_PY
 };
 
 /// PLAN-921 T-06: the source-bound anchor layer — the per-function source
@@ -728,6 +772,9 @@ impl A2xSession {
             Ok("AXCFR1") => &LAYER_FRAGMENT_C_FOREIGN_RT,
             Ok("AXC2") => &LAYER_FRAGMENT_C_RT,
             Ok("AXC3") => &LAYER_FRAGMENT_C_COLL,
+            Ok("AXPY1") => &LAYER_FRAGMENT_PY,
+            Ok("AXPY2") => &LAYER_FRAGMENT_PY_RT,
+            Ok("AXPY3") => &LAYER_FRAGMENT_PY_COLL,
             other => panic!("provider returned unregistered fragment layer {:?}", other),
         }
     }
@@ -759,6 +806,9 @@ impl A2xSession {
             Ok("AXCFR1") => &LAYER_FRAGMENT_C_FOREIGN_RT,
             Ok("AXC2") => &LAYER_FRAGMENT_C_RT,
             Ok("AXC3") => &LAYER_FRAGMENT_C_COLL,
+            Ok("AXPY1") => &LAYER_FRAGMENT_PY,
+            Ok("AXPY2") => &LAYER_FRAGMENT_PY_RT,
+            Ok("AXPY3") => &LAYER_FRAGMENT_PY_COLL,
             other => panic!("provider returned unregistered fragment layer {:?}", other),
         }
     }
@@ -771,11 +821,16 @@ impl A2xSession {
     fn anchors_family(&self, family: Family) -> bool {
         match family {
             Family::Scalar => true,
-            Family::RecordText => self.current_backend() == "auto-a2x-c",
-            // PLAN-926: the C target's collections channel anchors (its
-            // seed-carrying anchor re-assembles blind); the Rust
-            // collections target keeps its frozen no-anchor behavior
-            Family::Collections => self.current_backend() == "auto-a2x-c",
+            Family::RecordText => {
+                self.current_backend() == "auto-a2x-c"
+                    || self.current_backend() == "auto-a2x-python"
+            }
+            // PLAN-926 / PLAN-1042: C and Python collections channels anchor
+            // (their seed-carrying anchors re-assemble blind); Rust keeps frozen no-anchor.
+            Family::Collections => {
+                self.current_backend() == "auto-a2x-c"
+                    || self.current_backend() == "auto-a2x-python"
+            }
         }
     }
     fn anchor_schema_for(family: Family) -> &'static str {
@@ -2738,6 +2793,9 @@ fn static_layer(id: &str) -> &'static str {
         "AXC2" => LAYER_FRAGMENT_C_RT.id,
         "AXCFR1" => LAYER_FRAGMENT_C_FOREIGN_RT.id,
         "AXC3" => LAYER_FRAGMENT_C_COLL.id,
+        "AXPY1" => LAYER_FRAGMENT_PY.id,
+        "AXPY2" => LAYER_FRAGMENT_PY_RT.id,
+        "AXPY3" => LAYER_FRAGMENT_PY_COLL.id,
         "AXP1" => LAYER_SOURCE_ANCHOR.id,
         "AXP2" => LAYER_SOURCE_ANCHOR_RT.id,
         "AXP3" => LAYER_SOURCE_ANCHOR_COLL.id,

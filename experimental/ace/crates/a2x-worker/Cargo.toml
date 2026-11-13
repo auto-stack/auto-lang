@@ -10,6 +10,7 @@ publish = false
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 ace-a2x-c = { path = "../a2x-c" }
 ace-a2x-core = { path = "../a2x-core" }
+ace-a2x-python = { path = "../a2x-python" }
 ace-abi = { path = "../abi" }
 ace-artifacts = { path = "../artifacts" }
 ace-a2x-rust = { path = "../a2x-rust" }
