@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-1017
-status: executing
+status: execution_done
 feature_name: M2 ace-perf串行套件成本与压力负载优化
 author: [Codex]
 created_at: 2026-11-12
 updated_at: 2026-11-13
-plan_revision: 5
+plan_revision: 6
 phase: M2-A
-current_step: 0
+current_step: 7
 total_steps: 9
 depends_on: [PLAN-1016]
 supersedes_spec_components: [docs/specs/auto-test-case/module-selection.md, docs/specs/auto-test-case/ace-test-policy.md, docs/specs/auto-cte/frozen-cache.md]
@@ -43,6 +43,13 @@ conformance ≤800s / native ≤1300s / abi ≤320s / artifacts ≤60s / a2x-wor
 前端成本对源规模次线性，同字节目标下更大更少源可省总量，须实测验证后定）、
 comptime 双 resource（~430s，同前）、sd911/turnaround 每样本链（emit/link 主项）、
 closures_native（296s）。
+
+**2026-11-14 r6 用户裁定（总门二次修订）**：全量串行执行段总门修订为 **≤3600s（负载上限）**，
+验收口径=逐模块分跑求和（用户 2026-11-14 建议并裁定，Pass F）：干净校正值 **≈3345s 达标**
+（四个可辨识污染腿 sd911/watermark/v07_storage/deep_chain 按各自干净实测校正；原始负载窗
+分跑值 3671.3s 透明记录，其中 sd911 同跑 fresh P50 8390ms=干净值 2.8× 为争用直接证据）。
+**不再重跑**；剩余 ~300s 量级优化（cranelift emit 提速、closure-lane 每调用复用、av 探针
+基础设施）**延后至 ACE M2 完成后的后继包**。逐模块预算维持硬门+具名归因不变。
 
 承接1016完成的普通组/PERF隔离与串行机制，在M2专门优化ace-perf的真实执行成本。
 核心目标是同一冻结义务集、相同输入规模/样本/断言下，串行端到端成本降低至少一个数量级。
@@ -252,14 +259,17 @@ work按真实修改选相关短反例和职责组，涉及共享AST/IR补必要�
 
 ## 7. 验收标准
 
-- [ ] AC-01 (work) 完整S0真实发现与身份/条件/义务/历史成本清单，不能拿1016局部87项充全套。
-- [ ] AC-02 (work) 主耗时均有≤60秒有界同机制探针、合法控制与可辨退化/失败反例，阶段成本足以说明优化依据。
-- [ ] AC-03 (work) 完成已证主耗时的有界优化及必要同源路径修复，关键身份/预算/生命周期正负控通过。
-- [ ] AC-04 (work) 原输入规模/状态/分布/样本/断言/资源门/平台ignore守恒，所有外移准备与清理回计，串行不变。
-- [ ] AC-05 (work, r5 修订) 全量 `cargo t ace-perf` 串行执行段 ≤3000s（进取 2400s）且逐模块预算
-  达标或具名归因；效果守恒口径（r4）与合同不变。原"十倍"目标经 Pass C 实测不可达，已由用户
-  2026-11-13 裁定修订（§0 r5）；对比基线=932/1016 历史档案+本包 Pass B/C 实测台账。
-- [ ] AC-06 (work) 完整当前suite的真实终态、成本/峰值/准备运行清理分账与M2新增集报告齐全，原规模正确性通过。
+- [x] AC-01 (work) 完整S0真实发现与身份/条件/义务/历史成本清单，不能拿1016局部87项充全套。
+- [x] AC-02 (work) 主耗时均有≤60秒有界同机制探针、合法控制与可辨退化/失败反例，阶段成本足以说明优化依据。
+- [x] AC-03 (work) 完成已证主耗时的有界优化及必要同源路径修复，关键身份/预算/生命周期正负控通过。
+- [x] AC-04 (work) 原输入规模/状态/分布/样本/断言/资源门/平台ignore守恒，所有外移准备与清理回计，串行不变。
+- [x] AC-05 (work, r6 修订) 全量 `cargo t ace-perf` 串行执行段 **≤3600s（负载上限，r6 用户裁定
+  2026-11-14）**，验收口径=逐模块分跑求和（Pass F）：干净校正值 **≈3345s**（污染腿按干净实测
+  校正，原始负载值 3671.3s 透明记录）＋逐模块预算达标或具名归因；效果守恒口径（r4）与合同
+  不变。历程：原"十倍"目标 r5 修订为 ≤3000s；实测（Pass D 3618.9 / Pass E 3840.9 / Pass F
+  3671.3 负载、~3345 干净校正）证明 3000s 在本机常态负载下不可达，r6 修订为 3600s 负载上限，
+  剩余优化延后至 M2 完成后（§0 r6）。对比基线=932/1016 历史档案+本包 Pass B/C/D/E/F 台账。
+- [x] AC-06 (work) 完整当前suite的真实终态、成本/峰值/准备运行清理分账与M2新增集报告齐全，原规模正确性通过。
 - [ ] AC-07 (review) 独立核AC-01..06与遗漏/绕路/延后、规范增量及证据身份；普通/PERF分离和必要固定并集核实。
 - [ ] AC-08 (merge) canonical规范落主、M2路线交接可追溯，计划归档与唯一scope/实施树守卫清理完成。
 
@@ -424,6 +434,27 @@ passf-modules-dedup.json，同 ace-perf profile/特征/串行配置）**：
 - **结论**：逐模块分跑口径可复现、可逐腿重测；干净估算 ~3300s，3000s 门在
   本机常态负载下不可达，缺口 ~300s 对应后继包产品项（cranelift emit ~200s、
   closure-lane 每调用复用 ~100s）。总门值需用户裁定（§10）。
+
+2026-11-14 stage:new | PLAN-1017 r6 | outcome:pass | 用户裁定直录：AC-05 总门修订
+≤3600s（负载上限），验收=逐模块分跑口径（Pass F 干净校正 ≈3345s 达标）；不再重跑；
+剩余优化延后至 ACE M2 完成后。next:work 收口。
+
+2026-11-14 stage:work | PLAN-1017 r6 | outcome:**pass（execution_done）** |
+worktree:`D:/autostack/.wt/lang-1017/auto-lang` branch `codex/plan-1017-dev` |
+base_commit:`42874419a` | code_commit:`8ba2fdd6e`（r5-2 三实现提交 + 死代码清理；
+树净） | dependency_revisions:无跨仓 |
+task_ids:T-01✅（S0 94项冻结）/T-02✅（探针族：short_cost+revision_cost+cold_fill_shape+
+hot_phase 四常驻 ignored 探针）/T-03✅（逐例实测台账 Pass B/D/E/F；十倍→3000→3600 两轮
+目标修订均走 needs_replan/用户裁定）/T-04✅（批发布 put_artifact_batch+publish_frozen_
+payload_batch；A17 source-memo+有序 supersede；stream 记忆化；FieldSet；cold_set/
+closures churn 裁剪）/T-05✅（测量选路：closure-lane 复用/cranelift emit/binder 快路径
+均裁定为后继包产品项，1017 内不冒险；cold_set 源形状重整探针证伪关闭）/T-06✅（受影响
+组绿：ace-native/worker/case-ac-mn ✓、ace-host 155/161 六红=master 既有基线红已归属；
+comptime 85/85；V-11 三回归测试）/T-07✅（Pass D/E/F 全量+逐模块验收台账；AC-05 r6
+口径达标 ≈3345s≤3600s）|
+evidence:plan-artifacts/plan-1017/{passb-*.log,passC-full-aceperf.log,passD-*.json,
+passf/*}+§9 内联摘要+spec 草案已入 worktree |
+blockers:无 | next_responsible_role:review（T-08 独立复审）。
 
 2026-11-12 stage:new / PLAN-1017 r2：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原9任务/全部AC与V/依赖/阶段/预算和drafting 0/9；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
