@@ -945,6 +945,10 @@ impl ManagedStore {
             return Err(e);
         }
         drop(_live);
+        // Committed: the staged copies are consumed (CAS moves are done) —
+        // remove the staging directory exactly like the single-put path so
+        // the temp-space budget does not accumulate staged residue.
+        let _ = fs::remove_dir_all(staging_dir);
         Ok(frames.into_iter().map(|(_, _, a)| a).collect())
     }
 
