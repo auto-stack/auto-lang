@@ -1,0 +1,8 @@
+type Point<T> { x T; y T
+    fn sum() T { return .x + .y }
+}
+
+fn main() int {
+    let p = Point<int> { x: true, y: 200 }
+    return p.sum()
+}

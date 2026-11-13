@@ -1,0 +1,130 @@
+# PLAN-963 T-03 — permanent M2 generics corpus (four-end value rows).
+#
+# Every value row runs the SAME hand-written source on BOTH real consumers we
+# can drive from the TestCase runner — the ac-native (mn) leg and the AV leg —
+# against a hand-computed closed-form exit code:
+#
+# * g01.choose42: `<T>` scalar template instances (int + bool) through the
+#   instances lane (SAME concrete Checked HIR downstream) -> 42;
+# * g02.point300:  user generic record `type Point<T>` monomorphized per
+#   explicit type argument, template method body really executed -> 300;
+# * g03.bounded5:  `<T has Summable>` bound satisfied by a conforming record
+#   -> 5;
+# * g05.picker42:  generic spec `spec Picker<T>` instantiated at `int`, the
+#   record implements it explicitly -> pick(41,7)=41, +v=42.
+#
+# Negative rows pin a NAMED rejection on the shared frontend (never a silent
+# fallback): a record constructor whose field type contradicts the explicit
+# type argument, and a bound with no conformance.
+#
+# A2R/A2C are NOT routed through emit-only recipes here: their real
+# compile-and-run obligations are carried by `cargo t ace-a2x` case
+# `generic_records_963` / `const_instances_963` (see the plan §7 evidence).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.g01.choose42"
+  tags: ["ace-m2", "generics", "value-domain", "plan-963"]
+  links: ["PLAN-963"]
+  source: { file: "src/choose42.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", caps: ["ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main", caps: ["ac.source.instances.scalar/v1"] }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.g02.point300"
+  tags: ["ace-m2", "generics", "generic-record", "plan-963"]
+  links: ["PLAN-963"]
+  source: { file: "src/point300.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 300 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 300 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.g03.bounded5"
+  tags: ["ace-m2", "generics", "spec-bound", "plan-963"]
+  links: ["PLAN-963"]
+  source: { file: "src/bounded5.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 5 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 5 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.g05.picker42"
+  tags: ["ace-m2", "generics", "generic-spec", "plan-963"]
+  links: ["PLAN-963"]
+  source: { file: "src/picker42.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.g02.point-negative"
+  tags: ["ace-m2", "generics", "negative", "generic-record", "plan-963"]
+  links: ["PLAN-963"]
+  source: { file: "src/point-negative.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "parse", code: "source.type-mismatch" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m2.g03.bound-missing"
+  tags: ["ace-m2", "generics", "negative", "spec-bound", "plan-963"]
+  links: ["PLAN-963"]
+  source: { file: "src/bound-missing.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "d_main" }, steps: [ { op: "run" } ] },
+      expect: { completion: { stage: "parse", code: "source.unsupported" } } }
+  ]
+}
+```

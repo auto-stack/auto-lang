@@ -1,0 +1,8 @@
+# PLAN-963 T-03 — permanent M2 generics corpus suite (value rows real-run on
+# AV + ac-native; negative rows pinned to a named frontend rejection).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m2-generics-963", include: [
+  "generics.case.ad",
+] }
+```

@@ -1,0 +1,6 @@
+spec Picker<T> { fn pick(a T, b T) T { return a } }
+type AsInt as Picker<int> { v int }
+fn main() int {
+    let x AsInt = AsInt { v: 1 }
+    return x.pick(41, 7) + x.v
+}

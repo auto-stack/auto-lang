@@ -1,0 +1,7 @@
+spec Summable { fn total() int }
+type Plain { val int }
+type Box<T has Summable> { inner T }
+fn main() int {
+    let b Box<Plain> = Box { inner: Plain { val: 1 } }
+    return b.inner.val
+}
