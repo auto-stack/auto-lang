@@ -54,6 +54,17 @@
   清理不变量 live=0/bytes=0/invalid=0 保持；creator frame 退出不杀已返回
   closure 的 env（R05 核心）。
 
+## 单区域 UTF-8 增量编辑保真（PLAN-1027 / F01）
+
+- `ClosuresNativeSession::apply_source` 与 AV 单函数前端共享
+  `ace_core::source::closures_fn::diff_single_region(old, new)`：公共前缀与
+  公共后缀同时在 `old` 与 `new` 的 UTF-8 `is_char_boundary` 上收束，保证对
+  任意合法单区域编辑 `splice(old, range, replacement)` 逐字节等于请求源码
+  `new`（不再出现单端对齐后的 `from_utf8_lossy` / `U+FFFD` 替换或越界 span）。
+- 接受源码 `frontend.source()` 与请求源码字节一致，同源复用命中 `hit`，原有
+  warm / non-fast 路由及域外拒绝边界（含非 ASCII 标识符 `source.unsupported`）
+  保持不变；不新增 `native -> AV` 宿主依赖，也不扩闭包/文本 profile 支持。
+
 ## 函数生产/恢复/资源（§5.5 摘要，详见 mir/native-closures-resource-abi）
 
 - 暖生产复用 912 单函数前端与凭证；native 会话身份/依赖边/恢复按

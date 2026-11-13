@@ -127,3 +127,16 @@
   `OBS-02` `catch_unwind` + `Result::Err` 三入口）及 `ace-native`
   `observation_scope_1028`（真实 `ClosuresNativeSession::new` 冷启动嵌套与 panic
   后恢复消费者）。
+
+## 单区域 UTF-8 编辑保真边界（PLAN-1027 / F01）
+
+- AV 与 native 闭包前端通过纯函数
+  `ace_core::source::closures_fn::diff_single_region(old, new)` 共享双端
+  UTF-8 字符边界切分逻辑；编辑后的 `splice` 重建字节与请求源码严格一致，
+  保持原单函数 fragment、warm/hit/non-fast 路由及独立 PE/restore 执行语义。
+- 本修复仅保证已支持 UTF-8 字符字面量（如 `Str` + `s.len()`）与注释的双端
+  字节保真，**不承诺**新增非 ASCII Unicode 标识符或 `av.closures` descriptor
+  未接纳的文本方法（如 `s.len_bytes()`、`s.char_at()`）。
+- 回归入口：`ace-native` 单元测试 `closures_incremental::tests::audit1027_utf_02`
+  与集成测试 `closures_restore_tier::audit1027_utf_01`（由 `ace-source`、
+  `ace-av`、`ace-native` 固定测试组覆盖）。
