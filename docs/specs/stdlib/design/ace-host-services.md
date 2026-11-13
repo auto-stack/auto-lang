@@ -34,14 +34,20 @@
 （ace_av/ace_native=supported、hir_rust/hir_c=missing_capability、owner=PLAN-947），
 由 `stdlib_assembly::contracts` 审计词汇表与 `contracts/tests.rs` 钉扎测试双锁定。
 
-## 3. 有界资源前探端口（File/Task/Stream；本包仅前探，不交付服务）
+## 3. 有界资源前探分账（File/Task/Stream；本包仅前探，已交付=无）
 
-依据 939 foreign-resource 契约（`Handle{provider}`/`Callback{ctx}`/`ViewText` 等
-形态，`RESOURCE_CAP="foreign.resource"`），本包只为 File/Task/Stream 冻结**有限状态
-端口**与分账格式：每项记录 实际 producer/consumer、状态集合（创建/失败/borrow/
-move/close/cancel/退出/恢复）、依赖事实（939 是否已交）、缺口归属（967 异步端口/
-968 调度/973 系统服务）。未实现状态必须输出 `capability-missing`，绝不冒充 PASS。
-详细逐项前探结论见 PLAN-947 §9 T-04 记录（merge 时折叠入本节）。
+前探结论（2026-11-13，基线 HEAD 见 PLAN-947 §4.1；每行有实际代码依据）：
+
+| 资源面 | 现状（实际 producer/consumer） | 状态集合覆盖 | 939 依赖事实 | 缺口归属 |
+|---|---|---|---|---|
+| File | 旧 VM 专属：`stdlib/auto/io.at` `type File`（open/read_text/read_line/read_char/read_buf/write_line/flush/close）经 `io.vm.at` ext 绑定到 `crates/auto-lang-core` VM native（assembly `validate.rs` File.* 登记）；ACE 侧无任何 host 端口 | 旧 VM 有创建/读/写/flush/close；失败/close 后使用/跨会话恢复无合同。ACE：全部状态 capability-missing | 939 已归档交付 Handle/Callback/ViewText **契约形态**（`foreign-contract/src/resource.rs`，`RESOURCE_CAP="foreign.resource"`）；无 Auto 源 foreign import 模型（938 范围），File 端口未接 | 系统服务：PLAN-973；异步端口组合：PLAN-967 |
+| Task | 旧 VM 专属：`async.at`/`async.vm.at` chan/spawn/sleep/task 族（#[vm] native）；ACE 无任务端口，无执行器（本包不造） | 创建/join/取消仅旧 VM 行为；ACE：capability-missing | 939 无任务语义；调度器非本包/非 939 | 异步端口：PLAN-967；调度：PLAN-968 |
+| Stream | 旧 VM HTTP 流（`http.vm.at` 流方法 + a2r-std 有限客户端）；ACE data/collections lane 无流端口 | 旧 VM/旧 Rust 发射有有限流；ACE 统一流端口：capability-missing | 939 无流形态 | 系统服务/分发：PLAN-973/978 |
+
+**capability-missing 输出形状（V-08 第三腿的合同化）**：上述三面在任何装配
+请求下必须得到具名拒绝（`assembly.no-provider`），绝不允许以"选择成功"或
+空收据冒充支持——`provider_selection::plan947_tests` 的 File/Task/Stream
+前探 oracle 钉住该形状。
 
 ## 4. 默认自有实现与 FFI 边界（AC-NATIVE 分账基线）
 

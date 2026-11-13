@@ -517,6 +517,38 @@ mod plan947_tests {
         assert_eq!(r[0].provider, "libc");
     }
 
+    /// T-04/V-08：File/Task/Stream 有限资源前探——当前注册面无任何
+    /// provider，全部状态必须输出 capability-missing（具名 no-provider），
+    /// 绝不以选择成功或空收据冒充支持。
+    #[test]
+    fn t04_file_task_stream_probe_outputs_capability_missing_never_pass() {
+        // 现行注册面（无 File/Task/Stream host provider——与分账一致）。
+        let providers = vec![own("io", Os::Windows)];
+        let grants: Vec<String> = vec![];
+        let win = axes(Platform::windows(), Platform::windows());
+        for (module, symbol) in [("file", "open"), ("task", "spawn"), ("stream", "read")] {
+            let request = BindingRequest {
+                operation: format!("{module}.{symbol}"),
+                module: module.into(),
+                symbol: symbol.into(),
+                layer: StdlibLayer::Host,
+                required_grants: vec![],
+                explicit_provider: None,
+            };
+            // 显式点名也不得绕过（无该 provider 即 no-provider）。
+            let mut explicit = request.clone();
+            explicit.explicit_provider = Some("libc".into());
+            for req in [request, explicit] {
+                let err = select(&providers, win, &[req], &grants).unwrap_err();
+                assert_eq!(
+                    err.code(),
+                    "assembly.no-provider",
+                    "{module} must stay capability-missing"
+                );
+            }
+        }
+    }
+
     /// 分层事实入账：Host 层的 console 服务携带 layer/target/provider
     /// 完整身份（供装配收据与 #if 目标条件消费；966 实施源级 CTE）。
     #[test]
