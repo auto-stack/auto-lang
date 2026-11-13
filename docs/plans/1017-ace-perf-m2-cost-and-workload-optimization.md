@@ -441,7 +441,7 @@ passf-modules-dedup.json，同 ace-perf profile/特征/串行配置）**：
 
 2026-11-14 stage:work | PLAN-1017 r6 | outcome:**pass（execution_done）** |
 worktree:`D:/autostack/.wt/lang-1017/auto-lang` branch `codex/plan-1017-dev` |
-base_commit:`42874419a` | code_commit:`8ba2fdd6e`（r5-2 三实现提交 + 死代码清理；
+base_commit:`42874419a` | code_commit:`d71b6a19b`（r5-2 两实现提交 + supersede 修复 + 死代码清理；
 树净） | dependency_revisions:无跨仓 |
 task_ids:T-01✅（S0 94项冻结）/T-02✅（探针族：short_cost+revision_cost+cold_fill_shape+
 hot_phase 四常驻 ignored 探针）/T-03✅（逐例实测台账 Pass B/D/E/F；十倍→3000→3600 两轮
