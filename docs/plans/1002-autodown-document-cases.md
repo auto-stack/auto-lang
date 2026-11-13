@@ -4,8 +4,8 @@ status: drafting
 feature_name: autodown-document-cases
 author: [Codex]
 created_at: 2026-11-10
-updated_at: 2026-11-12
-plan_revision: 6
+updated_at: 2026-11-13
+plan_revision: 7
 current_step: 0
 total_steps: 4
 depends_on: [PLAN-1000]
@@ -21,7 +21,7 @@ affects: [auto-test-case]
 
 2026-11-12 r6：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
-本计划排入 [ACE M2 路线图](../design/strategy/ace-m2-delivery-roadmap.md)的 A 阶段测试工作。PLAN-1000 完成 M1 收尾后，再启动 T-01。M1 按现有 suite 和签章标准验收。已确认的[作者格式](../design/testing/autodown-document-cases.md)用于此次试点。实现一条贯通现有执行器的文档读取路径，把四个真实 ACE 用例的源码和预期写进一份可读的 AutoDown 文件，按原有七项检查逐行对照。以[双例 hello 范例](../design/testing/examples/printing.case.ad)作为编写参考。试点期间旧 suite 继续作为正式入口，新 suite 单独显式运行。
+本计划排入 [ACE M2 路线图](../design/strategy/ace-m2-delivery-roadmap.md)的 A 阶段测试工作。M1 进入条件已满足。本地正式标签 `v0.6-ACE-M1` 指向 `b923362f4`，主线最终验收见 [PLAN-1025](archive/1025-ace-m1-mainline-identity-and-final-signoff.md)。已确认的[作者格式](../design/testing/autodown-document-cases.md)用于此次试点。实现一条贯通现有执行器的文档读取路径，把四个真实 ACE 用例的源码和预期写进一份可读的 AutoDown 文件，按原有七项检查逐行对照。以[双例 hello 范例](../design/testing/examples/printing.case.ad)作为编写参考。试点期间旧 suite 继续作为正式入口，新 suite 单独显式运行。
 
 ## 1. 目标
 
@@ -50,6 +50,14 @@ Rust。读取链 `crates/auto-test-case/src/{discovery,document,raw_ranges,contr
 - [crates/auto-test-case/src/ir.rs](../../crates/auto-test-case/src/ir.rs)：复用resolved载荷/产物/oracle模型；读取SHA256前16 `1e256f0cf852be7a`
 
 - [crates/auto-lang-core/src/test_cases](../../crates/auto-lang-core/src/test_cases)：原执行与比较，不增第二runner；目录职责已核，确切符号/闭包开工再核
+
+### 2026-11-13 M1 标签后的源码复核
+
+主检出 `84c575a54` 包含标签提交；从标签到本次复核，试点源码和测试驱动无代码差异。自 r6 的 `f9fb3854b` 之后，native 父端增加了 aggregates 诊断准入，固定测试驱动增加了分组截止，正式压力已分组。四例源文件、旧合同、B01 Rust 金样及三个旧 suite 均可原位对照。旧证据绑定具体构建，T-03 以同一冻结构建重跑两种写法。
+
+[PLAN-1016](archive/1016-ace-comptime-short-repro-and-cost-repair.md) 已交付正式压力隔离。[PLAN-1017](1017-ace-perf-m2-cost-and-workload-optimization.md) 负责按标签后的真实 nextest 发现冻结正式用例集合 S0，再测同一集合的优化前串行总成本 B0。1025 将六项 M1 必测检查恢复到常规命名空间，1016 时的局部计数只作历史参考。1002 的四例属于 `runner = "case"` 的文档正确性试点；`ace-perf` 在 ACE workspace 用 nextest 选择根级/嵌套的 `performance::`，使用单测试线程、14400 秒父截止。
+
+两条路径有实际交点。[turnaround.rs](../../experimental/ace/tests/conformance/tests/host/turnaround.rs) 的正式 IPC 检查生成旧格式合同，以 1 MiB 输入运行 30 个样本，每个样本在 `run_suite` 前启动整段计时；另有一次采样的常规正确性检查复用该路径。建议 1017 先在注明的提交冻结 S0、用短探针定位并在独占时窗取得 B0，再落地 1002 的读取器。若 1002 先行开发，1017 仍可在固定的改动前构建采基线；共享执行路径若跨版本，用同负载短探针区分格式改动的成本。两个计划无整包依赖；下一批语料迁移仍以本计划四例对照通过为前提。
 
 ## 5. 详细设计
 
@@ -359,6 +367,12 @@ if ($LASTEXITCODE -ne 0) { throw "新 suite 失败，见 $out/new" }
 
 真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
+### 当前固定组和旧消费者验收
+
+T-02/T-03 对试点固定组核 `runner = "case"`、`all = false`，以 `cargo t --select-only case-ace-document-pilot-1002` 核对选择，再实跑该组。T-03 在原定四个完整组及新组之外，用 `cargo t infra-fixed` 核固定组配置。共享读取/报告入口的普通宿主消费者通过 `cargo t ace-host` 核验，其中包括 BASE 的 97 行、B01 错退出码反控及单样本 IPC 对照。保留原 M1 suite 的物理输入路径与旧 inventory 输出语义：M1 证据 reader 会核 `input_paths`，AV 的运行和 wire 基准也以 `include_str!` 直接读取 B01.at。新文档的内联位置单独表达。后续推广前逐个迁移这些消费者。
+
+V-04 记录每次加载选中文档和载荷的打开次数，另列工具准备、发现、执行、清理及整命令时间；区分 inventory 和 run 两次独立进程。四例加载数据只用于比较作者格式。正式串行全套、同工作量十倍目标及新增负载另账归 1017。
+
 ## 7. 验收标准
 
 - [ ] AC-01（work）四例在一个可独立阅读的文档内；V-01 的正反例和源位置符合设计。
@@ -371,9 +385,9 @@ if ($LASTEXITCODE -ne 0) { throw "新 suite 失败，见 $out/new" }
 
 | 任务 / owner_stage | 依赖 | 实施与验证入口 | 交付物与结束条件 |
 |---|---|---|---|
-| T-01 / work | PLAN-1000 完成 M1 收尾，进入 M2-A | 建专属 worktree 与材料登记。按 §5 静态清单和旧 module-case 真实基线记七行、源码/预期 SHA-256、后端配置。旧基线异常先定位并保留原结果。 | 在材料目录记录源码提交、工具身份、三个旧 suite 路径、四份旧报告、§5 原始文件摘要及七行预期。基线有红项时记录真实错误和重放结果，再决定可比较的构建。 |
+| T-01 / work | M2-A，M1 标签已核 | 建专属 worktree 与材料登记。按 §5 静态清单和旧 module-case 真实基线记七行、源码/预期 SHA-256、后端配置。旧基线异常先定位并保留原结果。 | 在材料目录记录源码提交、工具身份、三个旧 suite 路径、四份旧报告、§5 原始文件摘要及七行预期。基线有红项时记录真实错误和重放结果，再决定可比较的构建。 |
 | T-02 / work | T-01 | 接入 §2 两条作者入口和内联产物，完成 lint/list/inspect/run 使用的共同解码，写四例新文档、独立 suite 及显式固定组（拟名 `case-ace-document-pilot-1002`）。执行 V-01 与 `cargo t auto-test-case`。 | 先以 `document_fences.rs`、`discovery_suite.rs` 和合同测试锁住标题/围栏边界、pair 作用域、无尾 LF 和旧格式拒绝集。再实现 §5.3 的执行链，交付 §5.1/5.2 两个文件及固定组。用新 suite 的 lint、list、inspect 和 inventory 确认可发现、可定位、可准备工具。 |
-| T-03 / work | T-02 | 按 V-02..04 对跑、收集差异、负控和加载数据，记命令、退出码、行数与样本。受影响完整组含 `auto-test-case`、`case-ace-m1-base`、`case-ace-m1-console-863`、`case-ace-m1-immutable-avm-920` 及新增组；实际修改后端执行代码时补相应职责组。 | 给 §6.2 的七行对照编写可重放的校验，按期望集合检测缺项、重复、状态和实际值差异。在冻结构建完成新旧对照、四个独立负控以及 §6 V-04 的读取计量。验证新增固定组从正常入口跑到结束，归集“4 个 case、7 项检查、4 个负控”的逐项结果。 |
+| T-03 / work | T-02 | 按 V-02..04 对跑、收集差异、负控和加载数据，记命令、退出码、行数与样本。固定组与旧消费者按 §6 验证。受影响完整组含 `auto-test-case`、`case-ace-m1-base`、`case-ace-m1-console-863`、`case-ace-m1-immutable-avm-920` 及新增组；实际修改后端执行代码时补相应职责组。 | 给 §6.2 的七行对照编写可重放的校验，按期望集合检测缺项、重复、状态和实际值差异。在冻结构建完成新旧对照、四个独立负控以及 §6 V-04 的读取计量。验证新增固定组从正常入口跑到结束，归集“4 个 case、7 项检查、4 个负控”的逐项结果。 |
 | T-04 / review、merge | T-03 | 独立复审和冻结提交定向复验，复用身份一致的证据；核 SD-01、归档并清理。保留可重新执行的试点入口，结论写进计划。 | 复审从旧声明独立推导七行，逐项核对新文档的范围、实际运行观测和负控结果。把已交付标题与 recipe 写入 SD-01，记录首批仍需外置的特殊资产或尚未验证的能力，作为下一批选例依据。 |
 
 **推广条件与顺序。** 五项验收均满足后，以已注册 ACE suite 和实际 case/check 身份建立迁移总表，列出每一项现有验证及其消费者。先推广已验证的单文件值、输出、诊断、Rust 快照，再按新增能力处理多产物（含 C/Python）、资源探针 R03、多步会话等。每批独立新旧对跑，差异清零再切换其正式 suite；确认全部引用已转移后再移除旧副本。发现差异就保留该批旧入口，修复后重比；总表所有项有去向、原有必测项全部可执行时才报告全量迁移完成。
@@ -393,6 +407,8 @@ r4（2026-11-10）按用户决定，将试点及其通过后的推广排入 M2�
 
 r5（2026-11-12）补入四例可复制全文、suite、零元数据 hello 和新旧对跑命令。依据当前主检出 `f9fb3854b` 重核旧声明、源码、Rust 金样、清单与报告的读取入口。细化 T-01..04 和 AC-01..05 的取证方法。样例核验属于静态检查，V-01..04 须在实施树实跑。PLAN-1000 的功能成果已归档，M1 正式收口口径参见 M2 路线图 §15。
 
+r7（2026-11-13）核实 M1 标签、1016/1025 归档与 1017 成本口径，更新 T-01/T-03 和 V-04。四例七检查、AC-01..05 与实施进度保持原记录。此次仅核源码、配置与样本。
+
 ## 10. 待澄清事项
 
-试点样本和成功条件已具体列出，未决事项为实际对跑结论。进入 M2-A 后，在专属 worktree 执行 T-01。
+试点样本和成功条件已具体列出，未决事项为实际对跑结论。试点可从专属 worktree 的 T-01 起步。
