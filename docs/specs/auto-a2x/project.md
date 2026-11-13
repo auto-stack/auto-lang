@@ -69,3 +69,8 @@ List/Variant 通道合同见 [collections-hir-backend](../auto-a2r/collections-h
 - **边界控制更新**：boundaries 白名单/members/dirs 精确扩
   `ace-a2x-c`；"单目标钉住"测试改双目标真实断言（层隔离+非标量族
   命名拒绝+store 无目标 crate 依赖）。
+
+## PLAN-1042 增补（Python 标准库最小目标与运行端口）
+
+- **Python Provider 接入**（详见 [python-stdlib-readiness](python-stdlib-readiness.md)）：
+  `ace-a2x-python` 通过 `TargetProvider` 接入共享 A2X（`AXPY1..3`、`PYTHON_PRODUCER = "ace-a2x-python/modules/1"`、`auto-a2x-python`），`a2x-store` 保持零目标依赖隔离；`a2x-worker`（`daily-emit-py` / `run-py`）与 `ac_a2py_hir` / `auto-test-case`（`ac-a2py/*`）提供受版本与端口合同约束的真实 OS Python（`python -I -B`）执行通路，严禁旧 `PythonTrans` / AutoVM 兜底。完整 Python 语料扩面仍归 `PLAN-977/PY`。

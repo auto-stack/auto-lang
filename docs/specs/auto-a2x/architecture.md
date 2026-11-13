@@ -116,3 +116,9 @@ a2x-probe  → 以上全部（+windows-sys 仅 cfg(windows) 内存计数、serde
   （`Arc<Mutex<dyn PageProduction+Send>>`）——fragment/runtime/fileset 文本按
   精确输出尺寸准入后才分配；fileset manifest 用借字段 struct 保持历史 json!
   插入序字节。restore 命中零生产。
+
+## PLAN-1042 增量：Python 目标 provider、helper 端口与真实执行接缝
+
+- `ace-a2x-python` 实现共享 `TargetProvider`（`AXPY1` Scalar / `AXPY2` RecordText / `AXPY3` Collections），消费 `a2x-core::SemanticView` 与标准操作端口目录（`ports.rs`）产出 `a2x_py_runtime.py`、`generated.py`、`a2x_main.py`、`source_map.json` 与 `manifest.json`。
+- `boundaries` 静态约束扩列 `ace-a2x-python` 为独立目标 crate（仅依赖 `ace-a2x-core` 与 `ace-core`；`a2x-store` 不依赖任何目标 crate）。
+- Worker（`daily-emit-py` / `run-py`）与 `ac_a2py_hir` 通过内容哈希与 `python_identity` 严格区分零生成 spawn-zero emit 与真实 OS Python 执行；细节契约与边界见 [python-stdlib-readiness](python-stdlib-readiness.md)。
