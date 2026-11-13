@@ -1,3 +1,45 @@
+### D-1024-AUDIT — ACE静态审计发现承接（2026-11-13，后继风险未修）
+
+来源：[1024当前逐项分配](1024-ace-m2-code-quality-and-refactoring-audit.md)，r2、源码81d8fc03f10f4a7d179b0bc3a917602406ed7b91；只读审计复审通过不等于产品修复/运行通过。以下35项各有主owner/具名关闭case；confirmed只确认所述静态机制，candidate/收益unknown及正向实践单列。F12不计缺陷，F14静态映射部分已闭，F20保原正式验收与分档。各承接Plan按case取得真实反例/邻例、修复及独立review后更新，登记不批准延期或豁免。
+
+| 发现 | 优先级 | 证据分类/边界 | 主owner Plan | 关闭case | 当前状态 |
+|---|---|---|---|---|---|
+| F01 | P1 | 算法保真缺口；真实PE后果未测 | [1027](1027-ace-native-utf8-edit-fidelity.md) | UTF-01/02 | 技术未知/修复未闭 |
+| F02 | P1 | 同类嵌套/unwind恢复缺口 | [1028](1028-ace-scoped-observation-restoration.md) | OBS-01/02 | 技术未知/修复未闭 |
+| F03 | P2 | 文案耦合确认；替代方案候选 | [969](969-ace-m2-facade.md) | AUDIT-03 | 技术未知/修复未闭 |
+| F04 | P2 | 52行机制重复；复用候选 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-01 | 技术未知/修复未闭 |
+| F05 | P2 | 职责分散；不可整套删除 | [970](970-ace-m2-sessions.md) | AUDIT-05 | 技术未知/修复未闭 |
+| F06 | P1 | 条件性重试缺口；仅历史测试consumer | [1030](1030-ace-av-864-failed-edit-transaction.md) | AVTX-01/02 | 技术未知/修复未闭 |
+| F07 | P2 | 转换事实；收益未知 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-02 | 技术未知/修复未闭 |
+| F08 | P2 | profile权威差额；无成功fallback证据 | [969](969-ace-m2-facade.md) | AUDIT-08 | 技术未知/修复未闭 |
+| F09 | P2 | 依赖/宿主混合事实；成本未知 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-02 | 技术未知/修复未闭 |
+| F10 | P2 | reader有界且差异确认；协议后果待核 | [1034](1034-ace-worker-source-and-parent-bounds.md) | IPC-02 | 技术未知/修复未闭 |
+| F11 | P2 | 同源不等同合同；共享候选 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-02 | 技术未知/修复未闭 |
+| F12 | 保留约束 | 正向复用基础；非缺陷 | [978](978-ace-m2-build.md) | AUDIT-12 | 非缺陷，长期保留约束 |
+| F13 | P2 | 维护热点；拆分候选 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-03 | 技术未知/修复未闭 |
+| F14 | P2 | 静态保留账已闭；迁移/运行覆盖待认证 | [985](985-ace-m2-certification.md) | AUDIT-14 | 静态映射已闭；迁移/认证后继 |
+| F15 | P3 | 陈旧注释；非依赖违规 | [1038](1038-ace-reuse-candidates-and-cost-decisions.md) | REUSE-03 | 技术未知/修复未闭 |
+| F16 | P1 | 内部计数先预留；真实allocator后果未测 | [1029](1029-ace-restored-input-and-lease-bounds.md) | ADM-01 | 技术未知/修复未闭 |
+| F17 | P2 | 零租约索引增长；非整树泄漏 | [1029](1029-ace-restored-input-and-lease-bounds.md) | ADM-05 | 技术未知/修复未闭 |
+| F18 | P1 | 源与SHA两读；未证明父侧误PASS | [1034](1034-ace-worker-source-and-parent-bounds.md) | IPC-01 | 技术未知/修复未闭 |
+| F19 | P2 | 预读无cap事实；合法上限需决定 | [1034](1034-ace-worker-source-and-parent-bounds.md) | IPC-02 | 技术未知/修复未闭 |
+| F20 | P2 | 固定选择差额；不否定M1原验收 | [985](985-ace-m2-certification.md) | AUDIT-20 | 技术未知/修复未闭 |
+| F21 | P1 | Pratt引用未验；panic未运行 | [1029](1029-ace-restored-input-and-lease-bounds.md) | ADM-02 | 技术未知/修复未闭 |
+| F22 | P1 | commit缺负依赖；错误target未执行 | [1031](1031-ace-query-negative-dependency-commit.md) | NEG-01/02 | 技术未知/修复未闭 |
+| F23 | P2 | size/tag/EOF缺口；上层仍可能拒 | [1029](1029-ace-restored-input-and-lease-bounds.md) | ADM-03 | 技术未知/修复未闭 |
+| F24 | P1 | typed接受态部分改写；未运行 | [1032](1032-ace-native-typed-batch-atomicity.md) | NTX-01/02 | 技术未知/修复未闭 |
+| F25 | P1 | resident/SHA/anchor缺单一接受点 | [1033](1033-ace-a2x-late-publication-atomicity.md) | AXTX-01/02 | 技术未知/修复未闭 |
+| F26 | P2 | AV到达字段错误；非语言假PASS | [1037](1037-ace-cte-named-walk-and-attempt-facts.md) | CT-02 | 技术未知/修复未闭 |
+| F27 | P1 | 局部父等待无界；进程树后果未测 | [1034](1034-ace-worker-source-and-parent-bounds.md) | IPC-03 | 技术未知/修复未闭 |
+| F28 | P1 | continue绕隐式推进；有限模型区分 | [1036](1036-ace-loop-latch-and-cooperative-poll.md) | LOOP-01 | 技术未知/修复未闭 |
+| F29 | P1 | 闭区间MAX后多加一；未运行 | [1036](1036-ace-loop-latch-and-cooperative-poll.md) | LOOP-02 | 技术未知/修复未闭 |
+| F30 | P2 | 正常例冒故障标题；真实fault未测 | [1035](1035-ace-aggregate-resource-classification.md) | RES-03 | 技术未知/修复未闭 |
+| F31 | P1 | paged条目/跨度准入缺口 | [1029](1029-ace-restored-input-and-lease-bounds.md) | ADM-04 | 技术未知/修复未闭 |
+| F32 | P1 | Named CT子树遗漏；真入口未运行 | [1037](1037-ace-cte-named-walk-and-attempt-facts.md) | CT-01 | 技术未知/修复未闭 |
+| F33 | P1 | Named字段融合有panic分支；未运行 | [1035](1035-ace-aggregate-resource-classification.md) | RES-02 | 技术未知/修复未闭 |
+| F34 | P1 | 资源分类差额；不强求各表示owned相同 | [1035](1035-ace-aggregate-resource-classification.md) | RES-01 | 技术未知/修复未闭 |
+| F35 | P1 | continue绕回边poll；运行影响待量化 | [1036](1036-ace-loop-latch-and-cooperative-poll.md) | LOOP-03 | 技术未知/修复未闭 |
+
 ### D-1015-UI-ADD — 013静态生成AddTodo输入未同步（2026-11-12，M2 AutoUI修复项，开放）
 
 - owner：auto-ui源/生成器域；依据[1015归档§10.5](archive/1015-split-refactor-closeout-supplement-and-contract-alignment.md#10-待澄清事项)所记用户裁定“回owner修复后消费”。1015有限完成/两债关闭不等该生产能力实现。
@@ -4265,3 +4307,13 @@ owner=PLAN-917 域（a2r_std 发射条件变化 vs 917 T-05 冻结金样）。�
 - **D-962-C3 — C provider 的 tuple 调用实参**：cl C2440（record ABI 传 const-rec 指针；ctor 临时需取址）。Rust provider 已过（单元⑥）。owner：a2x-c lower 临时物化。关闭：`sum((20,22))` 形经 cl 执行 42。
 - **D-962-C4 — List 局部 use-after-move 不拒**：`k.move` 后 `k.get(1)` 在 collections 族编译通过（冻结既有行为，collections 面逐字节同态）；V-08 非法邻改用视图物化拒（执法中）。owner：collections resolve 所有权失效。关闭：`source.use-after-move`（或等价）落地且冻结面同步裁定。
 - **D-962-C5 — 杂项诊断拼写**：grid 混列拒在 bind 层（dangling t_str）而非 `source.type-mismatch`；空数组字面量语法层拒（resolve 检查为纵深）；range 界需空格（affix-num 最长匹配）。owner：SD-01 后继 polish。
+
+### PLAN-963 复审登记的候选债（2026-11-13；963 内具名未闭项，非静默延后）
+
+- **D-963-C1 — 管道算子 `|>` 未实现（L-47「调用语义」含此形态）**：legacy 在 parser 期脱糖（`crates/auto-lang-core/src/parser/expressions.rs:562-590`：`expr |> .m(args)` → `expr.m(args)`、`expr |> .f` → `expr.f`，左结合，优先级在赋值之上比较之下，行首形态为显式续行，语义裁见 `docs/design/pipe-operator.md`）；ACE `grammars/auto-source.at` 与全部 crate 无 `PipeGt`/pipe（全库 grep 零命中）。owner：PLAN-963 T-08 后续（或 965 运算符面接管）。关闭：`x |> .m(y)` 与 `x |> .f` 两形态经四端真实运行各 1 正例 + 1 负控（`|>` 后非 `.` 具名拒）。
+- **D-963-C2 — 「可变实参」在 AutoLang 无用户声明位拼写**：L-24 后继列写「默认/命名/可变实参」，但分母无对应行、legacy AST/parser 无 rest/variadic 参数，legacy 唯一「varargs」用例是 builtin `List.new(1,2,3,4,5)`（`crates/auto-lang/test/vm/13_collections/032_list_varargs`、`033_list_varargs_empty`，无类型参数）。ACE collections 的支持矩阵是显式 `List<T>.new()` + `push`（962 交付），故 963 侧无可实现面；963 只交付默认实参 + 命名实参（有真实四端证据）。owner：PLAN-962 collections 支持矩阵裁定者。关闭：962 owner 对 `List.new(a,b,c)` 形给出「支持」或「具名拒」的显式裁定并落控制。
+- **D-963-C3 — `#[with(T)]` / `#[with(T as Clone)]` 遵从注解形**：Plan 061 旧拼写；ACE 无语言属性语法（`semantics-contract/src/metadata.rs` 的 `visibility.attributes` 仍 `MetaSupport::SchemaOnly`、`future_owner: "language attribute grammar plan"`），故 963 以 `source.unsupported` **具名迁移拒**落地负控，规范形为 `fn f<T>` / `fn f<T has S>` / `type N as Spec`。owner：language attribute grammar plan。关闭：属性语法落地后把迁移拒改为支持或维持具名拒并同步 docs/specs。
+- **D-963-C4 — 记录类型模块全局的 `.move` 转移**：`pub const ORIGIN Point<int> = Point { x: 40 }` 在 verify 被 `record param 0 requires a borrow argument` 拒——`module.global.set:<sym>` 伪签名只有借用形，owned 跨参转移（`.move` 实参与 MoveOwn 形参）未实现；native mn 亦不支持 module globals。owner：PLAN-960 模块面 follow-up。关闭：owned 记录常量声明与跨模块读取经 AV/mn 各 1 真实运行。
+- **D-963-C5 — 默认实参的求值作用域边界（963 自定，legacy 无义务）**：默认值在**空局部作用域**解析（fail-closed 成 `source.undefined`），因此 `fn f(a int, b int = a)` 与引用模块全局的默认值不被接受；补位实参恒 `moved: false`，故 `move` 形参不能靠默认值满足（`parameter N of ... declares move but the argument is not marked .move`，`text_resources.rs:1434`）。legacy 的默认参数是 parser-only（VM 按全元数调用、从不填充），无行为 oracle 可继承。owner：963 T-08 后续（如语言需要前向可见参数默认值，须先定求值序规范）。关闭：规范给出默认值可见集（仅字面量/常量/全局）并补正反例；维持现状则需在 docs/specs 明写该边界。
+- **D-963-C6 — ACE workspace 无 rustfmt 门禁，本计划 20 个触碰文件非 fmt-clean**：`cargo fmt --all --check`（`experimental/ace`）在 master 基线上已对 6 个未触碰文件报差异（如 `crates/a2r-actor-tests/tests/actor_parity.rs`、`a2r-std/src/sse.rs`），本计划新增/修改的 20 个文件（含 5 个新增测试文件）同样非 clean；本轮未统一格式化（格式改动会触发四组重跑且 ACE 无 fmt 门禁）。owner：ACE workspace 治理。关闭：`cargo fmt --all --check` 在 `experimental/ace` 全绿并加入组门禁。
+- **D-963-C7 — 泛型局部类型注解与跨 profile 类型的诊断质量**（2026-11-13 复审实测）：instances lane 接受 `let p = Point<int> { x: 100, y: 200 }`（`crates/auto-lang/test/cases/ace-m2/generics/src/point300.at`），但**带类型实参的局部注解** `let b Box<int> = …` / `var xs List<int> = …` 退化为 `source.unsupported: locals must be initialized at declaration in this source profile`（文案与病因无关）；同一 lane 直接写内置 `List<int>.new()` 得 `source.syntax: expected expression, found 'int'`（`List` 非本 lane 模板，语料以 `source.syntax` 负控钉住）。owner：ACE 语法/投影诊断面。关闭：未知/跨 profile 泛型类型名给出专名诊断（如 `source.unknown-type` / `source.profile-type`），且局部泛型注解给出与病因一致的文案。

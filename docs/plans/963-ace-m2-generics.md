@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-963
-status: executing
+status: reviewed
 feature_name: 通用泛型spec与方法实例化
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-13
 plan_revision: 5
-current_step: 0
+current_step: 6
 total_steps: 8
 depends_on: [PLAN-960, PLAN-962, PLAN-935]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -310,21 +310,21 @@ T-01先交语法/旧新义务表、类型/实例/约束模块图和三个全链�
 
 ## 8. 执行步骤
 
-当前共8任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
+当前 6/8 完成（T-01..T-05、T-08 已闭；T-06/T-07 按用户指令本轮不执行）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
 ### M2-A：能力与必要真实验证
 
-- [ ] **T-01｜M2-A｜work｜AC-01/AC-PHASE**：核935/960/962正式来源，按§5.1..5.4交逐语法正反源/旧新case-check表、类型与实例模块图、三个全链小样及资源/真实四端命令，闭具名未决再进入对应实现；空expected/旧VM或emit不当新侧通过。
+- [x] **T-01｜M2-A｜work｜AC-01/AC-PHASE**：核935/960/962正式来源，按§5.1..5.4交逐语法正反源/旧新case-check表、类型与实例模块图、三个全链小样及资源/真实四端命令，闭具名未决再进入对应实现；空expected/旧VM或emit不当新侧通过。
 
-- [ ] **T-02｜M2-A｜work｜AC-02**：按§5.2实际owner扩声明/替换/约束见证与实例页，创建§5.3永久源及V-G01..06/08正反例，保935能力面；先共同事实/类型/资源，不复制旧VM语义引擎。
+- [x] **T-02｜M2-A｜work｜AC-02**：按§5.2实际owner扩声明/替换/约束见证与实例页，创建§5.3永久源及V-G01..06/08正反例，保935能力面；先共同事实/类型/资源，不复制旧VM语义引擎。
 
-- [ ] **T-03｜M2-A｜work｜AC-02/03**：将同一已解实例接四端真实consumer，完成装配/资源/增量/恢复；补V-G06..08及旧义务组合，C/Rust真实编译运行，各对独立oracle，不以生成全文代运行。
+- [x] **T-03｜M2-A｜work｜AC-02/03**：将同一已解实例接四端真实consumer，完成装配/资源/增量/恢复；补V-G06..08及旧义务组合，C/Rust真实编译运行，各对独立oracle，不以生成全文代运行。
 
-- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：补默认/命名/可变实参、方法与扩展优先级、函数值签名、返回推导及现用运算符/约束；实例生成须接962布局与资源事实。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+- [x] **T-08｜M2-A｜owner_stage: work｜AC-06**：补默认/命名/可变实参、方法与扩展优先级、函数值签名、返回推导及现用运算符/约束；实例生成须接962布局与资源事实。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
 
-- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 同时逐项运行V-G01..08与§5.3旧新义务映射，列真实发现/执行/原条件排除和缺项。
+- [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 同时逐项运行V-G01..08与§5.3旧新义务映射，列真实发现/执行/原条件排除和缺项。
 
-- [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
+- [x] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
 - [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
 
@@ -334,12 +334,117 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 
 ### 工作位置与材料
 
-预定唯一实施树 `D:/autostack/.wt/lang-963/auto-lang`，分支 `plan-963-dev`（沿仓规），尚未创建。跨仓同组每仓唯一树。计划簿记留主检出；实现和构建测试只在专属树。
+预定唯一实施树 `D:/autostack/.wt/lang-963/auto-lang`，分支 `plan-963-dev`（已创建，终树提交 `03b5a30f8`），按仓规。跨仓同组每仓唯一树。计划簿记留主检出；实现和构建测试只在专属树。
 
 T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06→07串行。外仓owner交付可按稳定接口提前准备，但最终不得拿未交付接口背书。
 材料唯一目录 `D:/autostack/plan-artifacts/plan-963/`，开工登记owner/用途/在途；本轮未创建。不可另建attachments/证据仓目录，不留第二套target/SDK副本。
 
 ## 9. 复审记录
+
+2026-11-13 stage:review·T-05 独立复审（同树自审，未派 agent；结论绑定提交 `03b5a30f8` + 终树并集 run-ghf902pr）/ PLAN-963 r5：
+
+**AC 逐项（证据 → 结论）**
+
+- **AC-01 pass**：§5.1/5.2/5.4 的 path:line 冻结在 T-01 记录（2026-11-12 条目，含 `crates/auto-lang-core/src/parser/expressions.rs`、`crates/auto-lang/src/tests/vm_types_tests.rs` 的 `spec`/`with` 源、`semantics-contract/src/metadata.rs` 的属性面）。unknown 项均在 §9 具名登记，无漏计。
+- **AC-02 pass**：§6 每行 V 都有终树具名入口与独立 oracle（映射见下条 T-04），正反例各含负控；oracle 为原源期望值/诊断码或独立 expected，不以四端互等作唯一 oracle。
+- **AC-03 pass**：AV（`ace-av-core` 执行）、ac-native（`MnDriver` exit code）、A2R（真实 rustc）、A2C（真实 cl）四条生产 consumer 全部走 ACE MIR 产物；case 语料值行同时带 `ac-av/core-run-v1` 与 `ac/mir-native-scalar-v1` 双腿，无 legacy fallback、无 emit-only 冒充运行。
+- **AC-04 pass（in-scope）**：本条目即 T-05。规范增量按 §5「规范增量」表逐行核过「after 规则 ↔ 实际证据」一致性（SD-01/SD-GENERICS 的语法、类型/值参数、约束见证、实例身份、旧新映射与限制均有具名证据；SD-02 的新 producer 身份由四端真实运行支撑；SD-PHASE 的 B 仍 pending 不被写成已交）。遗漏/延后/workaround 扫描见下；7 条**超范围/边界/质量**项已具名登记 `docs/plans/KNOWN-DEBT-AND-RISKS.md` §「PLAN-963 复审登记的候选债」（D-963-C1..C7），不属 §6 任何 V 行的未闭项。
+- **AC-06 pass**：V-08 四项逐条有具名证据——默认实参一次求值（`av_default_argument_evaluates_exactly_once_963`：MIR 里默认值 callee 恰 1 次 + 值 42）、命名实参源序（`av_named_arguments_evaluate_in_source_order_963`：MIR 指令序 `d_five` 先于 `d_twenty`）、同优先级 ext 歧义拒（`two_ext_blocks_with_the_same_method_are_rejected`）、资源泛型跨模块（`packages_963_owned_generic_parameters_and_returns_cross_modules`）；MIX-01 实例腿按 §6 该行既有裁定交 985。V-G05 的「可变参数」以负控 `variadic_parameter_form_is_rejected_963`（`source.syntax`）落地边界——AutoLang 无用户声明位可变参数拼写（legacy 亦无，唯一「varargs」是 builtin `List.new(a,b,c)`）；V-G02 的「List 例不替用户泛型 type」以 `builtin_list_does_not_replace_user_generic_type_963` 钉住（用户模板集是唯一泛型面，`List` 不产实例页、其拼写在 instances lane 语法层拒）。
+- **AC-PHASE pass**：§5 阶段表 → §8 任务 → §6 V 行逐行可追溯；A 组 required 全闭，无 scope 缩减；B 全产品替换仍 pending，未改 NA。
+- **AC-05 未执行**：按用户指令本轮禁止 T-06/T-07（不 merge、不归档、不清树），规范增量 `docs/specs/ace-migration/m2-generics.md` 仍未落盘。
+
+**遗漏/延后/workaround 扫描（全部具名，无静默）**
+
+- 管道算子 `|>`：ACE 语法/AST 零命中（`grammars/auto-source.at`、全 crate grep），legacy 脱糖语义在 `crates/auto-lang-core/src/parser/expressions.rs:562-590` + `docs/design/pipe-operator.md`；不属 §6 任何 V 行 → D-963-C1（owner 963 T-08 后续/965）。
+- `#[with(T)]` 属性形：963 以 `source.unsupported` 具名迁移拒（规范形 `type N as Spec`），owner 为 language attribute grammar plan → D-963-C3。
+- 记录类型模块全局 `.move`：`module.global.set:<sym>` 伪签名只有借用形，属 960 模块面 → D-963-C4。
+- 默认实参求值作用域（空作用域、`moved:false`）是 963 自定边界且 legacy 无 oracle → D-963-C5（须在 Spec 明写）。
+- 格式：ACE workspace 无 fmt 门禁，master 基线即非 clean；本计划 20 个触碰文件同状，未统一格式化（避免无门禁面的纯格式翻动） → D-963-C6。
+- workaround 检查：改动源零 `dbg!/todo!/unimplemented!/FIXME`、零新增 `#[allow]`/`#[ignore]`；新增 `unwrap()` 仅出现在测试夹具的 `create_dir_all`/`write`。`fill_default_args` 对混合 named/positional 提前返回是交 `check_args` 的既有分工，不是绕过。
+
+**未闭但不属本包 AC 的具名残余**（供 merge 决策）：T-06/T-07（merge/归档/清树）、规范增量**落盘**（表内容已复审，仅未写入 `docs/specs`）、D-963-C1..C7 七条。
+
+2026-11-13 stage:work·T-04 证据闭合（终树 `f1d63cdf0`，工作树 clean）/ PLAN-963 r5：
+
+固定组并集在**终树**上单实例跑通，父 gate 自证：`$env:CARGO_TERM_COLOR='never'; cargo t ace-source ace-syntax ace-semantics ace-av ace-native ace-a2x case-ace-m2-generics-963`
+→ `target/test-groups/run-2v_8abue`，`gate_passed=true`、`error=空`、`source_state=a46c4996369d133c42d6e9d834d8461a09fbce3aee9b88a4f8a5c5869ebf85b5`、`config_sha256=e8b55f0eeecc01bb4eb2c5d672a11c2113ee00a39aae8842d81b3f650f6c7f2f`、wall=**608.3s**、退出码 0。
+各组 PASS 与执行数：ace-source **497**、ace-syntax **132**、ace-semantics **269**、ace-av **1080**、ace-native **236**、ace-a2x **229**、case-ace-m2-generics-963 **10 checks**（含 2 负控）——合计 **2453** 个 Rust 用例 + 10 个 case check，零忽略、零条件排除。
+- 期间另两次并集：`run-ghf902pr`（`03b5a30f8`，七组 PASS 但随后我又加证据，作过程观察不计）；`run-7yo3z078` 七组亦 PASS，因我在该运行期间编辑测试，父 gate 判 `error: "code/config/inputs changed during execution"` → 明确**作废不计**。三次 a2x 全绿（229）说明上一轮 `run-1w1lnge5` 的唯一红 `worker_ct_frontdoor_958::worker_ct_941_ordinary_same_names_four_operations`（`CToolError("cl -? spawn: Deadline")`）是同机工具时限的环境归因，非 lane 缺陷。
+- V 行 → 终树具名入口：V-01/V-05 `source-query/tests/instances_multi_963.rs` + `instance_host_935.rs`（跨包同名模板身份、恢复后首实例）；V-02/V-03/V-G07 `instances_invalidation_963.rs`（约束/实现变化失效、未读 body 零生产、`av_generic_record_body_change_executes_301`）；V-04/V-G03 core `source_generics_963.rs` + `source_specs_generic_963.rs` + `source_spec_super_assoc_963.rs`（bound 满足/不满足具名拒、缺抽象方法拒、默认继承/覆盖、`max_of` 函数级 bound 真实族）；V-G01/V-G04 `instances_const_963.rs`、`instances_value_domain_963.rs`（含新增 `builtin_list_does_not_replace_user_generic_type_963`）；V-G02 av/native/a2x `generic_records_963.rs`（300）；V-G05 core `source_alias_963.rs`/`source_ext_963.rs`/`source_default_args_963.rs`（含 `variadic_parameter_form_is_rejected_963`）与 native `alias_963.rs`/`ext_963.rs`/`spec_assoc_963.rs`/`spec_generic_963.rs`；V-G06 `module_packages_960.rs`（新增 owned 记录跨模块方案例）；V-G08 av/native/a2x 三份 `const_instances_963.rs`+`default_args_963.rs`+`generic_records_963.rs`（真实 rustc/cl、exit code 42/70/42 与 AV 值域），另 `av_default_argument_evaluates_exactly_once_963` 提供 V-08「只求值一次」的 MIR 见证（默认值 callee 恰 1 次）；V-PHASE 即本次并集；§5.3 永久语料 `crates/auto-lang/test/cases/ace-m2/generics/generics.{case,suite}.ad` 经 `cargo t case-ace-m2-generics-963` 实跑 10/10。
+- 发现/执行/条件排除：7 组零发现失败、零条件排除；准备（编译/装配）与运行、清理分列在该 run 的 invocations 中；无 timeout、无缺工具。
+
+2026-11-13 stage:work（V-08 三项已闭；T-04/T-05 未做）/ PLAN-963 r5：
+提交 `47cb29273`（5 文件 +129/−1）补齐 V-08 余下三项，均有具名证据：
+
+- **命名实参源序求值**：绑定层 `eval` 按源序保留、`bindings` 再 permute 到参数位
+  （adapter 的 Call 构建），故逆序命名调用也按源序求值。新证 `ace-av`
+  `named_args_963::O-963-N1`：`sub(b: five(), a: twenty())` 的 Typed MIR 里
+  `d_five` 调用严格先于 `d_twenty`（block-major 指令序），且 AV 执行 = 20−5 = **15**
+  （按名字绑定，非按位置）。
+- **同名 ext 歧义拒绝**：新增 `source_ext_963::O-963-E6`——**两个不同 ext 块**对同一
+  类型声明同名方法 → `source.duplicate`（不静默取其一），6/6 全绿。
+- **资源泛型跨模块参数/返回**：把 `type_spelling` 从 int/bool/record 扩到
+  `str`/`Str`（`str` 借用视图与 `Str` owned 拼写不同即不同实例身份），诊断文案同步；
+  新证 `ace-av` `module_packages_960::packages_963_owned_generic_parameters_and_returns_cross_modules`：
+  lib 声明 `Holder<T>`、app 以 **owned `Str`** 实例化，`wrap(move v Str)` 跨模块接收
+  owned 资源并 `v.move` 转移进字段、返回 `Holder<Str>`，`use_it()` = len("m2") = **2**。
+  途中三条既有 profile 规则（记录字段必须 owned 文本、构造器隐式转移拒、`move` 参数
+  必须配 `.move` 实参）按原样满足，未放宽。
+- 回归：`cargo test -p ace-core -p ace-source-query` 全绿（lib 38 + 各 conformance 套件）。
+- **仍具名未闭**：记录类型模块全局的 `.move` 转移（前条 §9）；T-04 全 V 行证据与
+  六固定组并集、T-05 独立复审未做。
+
+2026-11-13 stage:work（T-08 默认实参片已提交；仍无终裁）/ PLAN-963 r5：
+提交 `80bdaced4`（15 文件）实现 §5.1/T-08 的**声明位默认实参** `fn f(n int = 42)`，
+四端真实运行全绿，非 emit 快照。
+
+- 语义（V-08「默认实参只求值一次」）：默认值只存 AST 形状（`ast::Param.default`，
+  `FnSig.defaults` 与 `param_names` 逐位对齐），**不进任何语义身份/缓存键**；
+  仅在调用位实参缺席时补一位，按**调用者**作用域解析一次（`fill_default_args`
+  以空局部作用域解析，任何参数/局部名 fail-closed 为 `source.undefined`），
+  补位后即普通实参 → verify/MIR/四后端零改动。位置式只补末尾缺席位、中段缺席
+  仍由 `check_args` 报 `source.argument`；命名式可补任意缺席位并以参数名标注。
+- 语法/投影：`auto-source.at` 新增 `param-default`（`param` 末尾 `opt`），
+  CST 投影读 `default`；手工 parser 与 `syntax-core` 通用投影器恒 `None`
+  （后者当前无消费者，已注明正式入口在 ace-core `cst/project.rs`）；
+  `source-query` 单态化替换显式携带 `default`（模板方法默认值不丢）。
+- 四端证据（全部手算闭式 oracle）：
+  core `source_default_args_963` 6/6（补位、显式覆盖、命名补洞、命名参数默认值具名拒、
+  缺无默认参数仍 arity 拒、超元数仍拒）；
+  AV `default_args_963` 3/3 → `42 / 70 / 42`；ac-native 3/3 → `exit 42 / 70 / 42`；
+  A2R(真实 rustc) + A2C(真实 MSVC cl) 3/3 → `value:42 / 70 / 42`。
+- 回归：`cargo test -p ace-core`（lib 38 + conformance 457）全绿；
+  `cargo test -p ace-semantics -p ace-source-query -p ace-syntax-core` 全绿。
+- **V-08 仍余三项未施工**：命名实参求值序、同名 ext 歧义拒、资源泛型跨模块参数/返回。
+
+2026-11-13 stage:work（T-03 永久语料目录已提交；仍无终裁）/ PLAN-963 r5：
+提交 `8c9fb58e5`（9 文件 +约 190 行）在唯一树 `D:/autostack/.wt/lang-963/auto-lang`
+（`plan-963-dev`）建成 §5.3 的永久 TestCase 语料 `crates/auto-lang/test/cases/ace-m2/generics/`
+并在 `scripts/test-groups.toml` 注册固定组 `case-ace-m2-generics-963`（`runner = "case"`）。
+
+- 语料（6 case / 10 check，全部真实运行，非 emit 快照）：
+  `g01.choose42`（`<T>` 标量模板 int+bool 经实例车道 → 42）、
+  `g02.point300`（`type Point<T>` 显式类型实参单态化 + 模板方法体执行 → 300）、
+  `g03.bounded5`（`<T has Summable>` 遵从记录 → 5）、
+  `g05.picker42`（`spec Picker<T>` 在 int 实例化 + 记录显式遵从 → 41+1=42）四行各带
+  AV（`ac-av/core-run-v1` + `ac.source.instances.scalar/v1`；记录面 `ac-av/data-run-v1`）
+  与 ac-native（`ac/mir-native-scalar-v1`）两腿；两条负控行
+  `g02.point-negative`（`Point<int>{ x: true }` → `source.type-mismatch`，stage parse）、
+  `g03.bound-missing`（无遵从记录 → `source.unsupported`，stage parse）为 AV 腿具名拒。
+- A2R/A2C 不走 emit-only 快照充运行：其真实编译+运行义务由 `cargo t ace-a2x` 的
+  `generic_records_963` / `const_instances_963` 承载（本轮已单例重放全绿），语料注释内写明该分账。
+- 验证：`cargo t case-ace-m2-generics-963` → **PASS**（run-ff01yaf4；10/10 check PASS）。
+  首次跑 `run-ol2w8tdg` 仅 `point-negative` 期望码写窄（写 `type-mismatch`，实为
+  `source.type-mismatch`），按**实际诊断码**校正期望后复跑全绿——未放宽为"任意诊断通过"。
+  退出码/身份证据：AV 腿 `exit 42/300/5/42`，mn 腿 `exit 42/300/5/42`，
+  suite 身份 `83638d62…`，各 case 源 SHA 见 results.json。
+- 同片复核（本窗口全绿）：`cargo test -p ace-source-query --test instances_const_963`（12/12）、
+  `cargo test -p ace-av --test conformance -- const_instances_963`、
+  `cargo test -p ace-native --test conformance -- const_instances_963`、
+  `cargo test -p ace-a2x-worker --test conformance -- const_instances_963` ——
+  V-G04 值参数（`rep<2>(21)`=42 / `rep<3>(21)`=63、身份/规范化去重/拒）四端真实执行已闭。
+- **仍具名未闭**：记录类型模块全局的 `.move` 转移（见上一条 §9）；
+  T-08 的默认/命名/可变实参、方法·扩展优先级、函数值签名、返回推导尚未施工。
 
 2026-11-13 stage:work（T-03 关联类型 / super-spec 分片已提交；仍无终裁）/ PLAN-963 r5：
 提交 `c8bbeace1`（8 文件 +736/−70）落唯一树 `D:/autostack/.wt/lang-963/auto-lang`
