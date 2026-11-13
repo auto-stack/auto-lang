@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-1017
-status: drafting
+status: executing
 feature_name: M2 ace-perf串行套件成本与压力负载优化
 author: [Codex]
 created_at: 2026-11-12
 updated_at: 2026-11-13
-plan_revision: 3
+plan_revision: 4
 phase: M2-A
 current_step: 0
 total_steps: 9
@@ -20,6 +20,16 @@ touched_goals: [GOAL-002]
 ## 0. 变更摘要
 
 2026-11-12 r2：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
+
+**2026-11-13 r4 用户裁定（执行策略修订）**：不先跑全量 ace-perf（当前约2小时，正是本计划要优化的对象）。
+改为**最细粒度逐用例推进**：第一步以代码阅读逐用例优化——在**不影响测试效果**的前提下缩减
+冗余循环/样本/迭代规模（例：10000 次循环若 1000 次即足以证明同样效果则减为 1000），并修产品
+代码已证瓶颈；第二步逐用例实跑计时再优化；全部用例完成后按模块做套件级计时；各模块总时长进入
+合理范围后，最后才做一次全量 ace-perf 总时长测试。守恒口径由"原规模字节守恒"改为
+"**测试效果守恒**"：每例缩减须逐例记录其所证明的机制/门/状态覆盖不变（覆盖同一断言族与
+状态矩阵）；冻结字节规模义务（如 64MiB 流式下限）与统计有效样本数（P90 百分位语义）不缩。
+B0/T_new 比较基准相应改为：逐用例基线与模块套件基线（Pass B/C 实测），全量比较以最终一次
+全量跑对照 932/1016 历史档案与逐模块实测之和；不再要求先行一次全量 B0。
 
 承接1016完成的普通组/PERF隔离与串行机制，在M2专门优化ace-perf的真实执行成本。
 核心目标是同一冻结义务集、相同输入规模/样本/断言下，串行端到端成本降低至少一个数量级。
@@ -58,6 +68,10 @@ Python固定驱动与原生进程树计量、nextest ace-perf profile。按现�
 
 **授权**：用户2026-11-12明确要求建立ace-perf优化专项并纳入M2路线。本轮授权为规划/路线更新，
 不推定当前实施、长测、合并/发布或创建其他会话授权。用户未给出工期/模型/令牌预算。
+2026-11-13 用户以 `/goal 完成计划1017`（auto-plan-goal）授予全链授权：在本计划专属 worktree
+（含创建）内实施 T-01..T-07、独立复审、合同内有界返修与 merge（规范沉淀/归档/清理/落地检查）；
+不改目标/验收/阈值/范围/预算。实施树 `D:/autostack/.wt/lang-1017/auto-lang` @ `codex/plan-1017-dev`
+（基面 master@`42874419a`）已建；材料目录 `D:/autostack/plan-artifacts/plan-1017/` 已登记。
 
 **来源**：docs/specs/overview.md、auto-test-case/{module-selection,ace-test-policy}.md；
 Design55 §16.2 M2A-07、M2执行路线；1016 r5及其实现提交edc73bdf7；历史932性能台账；
@@ -264,6 +278,68 @@ T-04/T-05是测量选路，不要求无瓶颈也改代码；某一路无须改�
 本轮仅规划和路线挂接、静态文档核查；没有实施/测试/正式性能复审/merge/tag。
 
 r3（2026-11-13）以已落主的 1016 和 ACE M1 标签校准 T-01 的发现基面，补与 1002 共用执行路径的采样交接。未运行正式套件。
+
+r4（2026-11-13）用户裁定改逐用例优化阶梯（代码阅读缩冗余规模→逐例实测→模块套件→最后全量）；
+守恒口径改"测试效果守恒"（逐例记录覆盖不变；冻结字节规模与统计有效样本数不缩）；不再先行全量 B0。
+同日 work 阶段已开：实施树 lang-1017 已建，T-01 S0 冻结（94 项 active/0 ignored，身份齐全），
+T-02 探针已证 1016 扫描优化在基线、前端每调用 ~100ms（bind=Atom 重解析 ~50ms）、
+put_artifact 每发布全库 space() 扫描（O(n²) 候选）、语法流式 stream_snapshot_component 逐块重算（O(n²) 候选）。
+
+**Work r4 进行中（首个实现单元已提交 worktree `461ad08df`）**：
+- 产品修复：`put_artifact_batch`（一批一次 staging/预算/命名空间真实计量/SQLite 提交；chunk 锁、
+  CAS 幂等、僵尸/冲突/required-edge 活性语义保留；全批原子回滚只回收本批新放 blob）；
+  语法流式 builder 每 chunk 批发布 + `stream_snapshot_component` 每 chunk 记忆化（字节恒等）；
+  core `FieldSet` 排序 Vec 替换逐节点 BTreeMap（迭代序与诊断逐字节恒等）。
+- 逐例裁剪（效果守恒）：injected_spike 30→10 样本+仅 body-edit 行（P90≥2500 门不变，实测 17.5s
+  含 gate_ms_zero 双绿，历史两测合计 357.8s）；gate_ms_zero/resident_degrade 三腿 --only 断言行
+  （counter-control/degrade 语义不变，resident_degrade 49.5s 绿）；native cold_set churn 512→128 轮
+  （逐轮不变量与 lease 索引同步改 510→126）。
+- 机制归因（探针实测）：300-helper deck 每调用 wall ~141ms，frontend ~100ms（parse 29/bind 49-53/
+  verify 10/emit 6），VM 1.8ms；bind=Atom 文本（293KB=17× 源）重解析 10-16 + bind_root 21-23；
+  GC 4chunk 507ms。被杀 64MiB 语法测试残 store：**9470 次 put 去重后仅 1505 chunk（84% 重复内容）**，
+  每发布=排他锁下 space() 全扫+staging mkdir/rm+SQLite WAL 提交——O(n²) 主因确认。
+- closure lane 复用 828 会话被否决：两 lane 错误分类学逐字面不同（V-10 trap 消息形状），
+  复用即改产品契约——留作后续设计问题，不在本包内冒险。
+- 验证：ace-syntax-artifacts 30/30 普通；ace-core 433/433 普通（descriptor 恒等）；ace-artifacts
+  27/28（唯一红=r3_f01 并发 flaky，**基线同红**、隔离绿，环境归因）；三裁剪测试绿。
+- 既有环境注记：core 普通组含 343s 深闭结构反例（非 PERF 命名空间，1017 范围外，记录备查）。
+
+**Pass B 模块级逐例实测（2026-11-13，外来负载下上限值；对比 932 历史）**：
+- ace-syntax-artifacts PERF：**74.95s**（历史 628.1s，**8.4×**；批发布+记忆化生效，全部预算断言绿）
+- ace-av PERF：21/21 绿 397.1s 总，其中 231.6s=测试内 release 构建（正式入口由驱动工具准备预建，
+  932 期同测 0.97s）→ **真实 ≈168s**（v07_full_storage_axis 55.4、v07_512_revisions 34.0、
+  32mib churn 14.2 为前三）
+- ace-semantics-store PERF：10/10 绿 **48.1s**（历史 455.6s；SCC 修复已把深链 404.6→25.9s）
+- ace-comptime PERF：17/17 绿 **614.6s**（历史同子集 ~1040s）；分项：resources_real_watermark_gc
+  276.9（345.7）、resources_32mib 154.7（216.4）、six_scenarios 48.0、release_gate_2000 28.9
+  （注入延迟 ~33s 不可压缩）、wire_mutations 28.4、injected_spike **16.7（327.7，19.6×）**、
+  resident_degrade 21.8（138.9，6.4×）、gate_ms_zero 4.5（30.1）、snapshot 20.5+0.05
+- ace-conformance PERF：`turnaround_native_six_scenarios_p95_gates` 红=**D-932-1 基座既有债**
+  （hit vs lowered，932 期已在基线 84c894b92 证实非本包引入，独立 owner；本包按具名既有红记录，
+  不在其上过门）；其余 12 例 --no-fail-fast 重跑计时中
+- 待测：ace-native（16 例，含 cold_set 704s 历史）、ace-abi（7）、ace-artifacts（6）、
+  a2x-worker（3）
+
+**Pass B 完成（2026-11-13，94/94 全实测，外来负载上限值）**：
+- native+abi+artifacts+a2x：32 例 1983.9s，30 绿 2 红→**双红重放双绿**：
+  `cold_set_churn_gc` **514.2s PASS**（裁剪 512→128 生效并修复漏改的末轮 oracle 索引 511→127，
+  历史 704.5s）；`typed_v10` 33.1s PASS（首红=deadline 环境负载归因，隔离重放绿）。
+  其余大头：sd911 382.2、closures_native_924 273.7、turnaround_tier 131.7/103.2/75.5、
+  **abi_resource939 174.6（新）**、bridge_turnaround 54.2、abi_six_scenarios 49.8、
+  owned_text 35.3；layout 六例全 ≤8.5s（128MiB 直写本就快）；a2x 三例 ≤14.2s。
+- **全套 94 例实测总和 ≈3803s（负载上限，扣除 av 测试内冷构建 231.6s 假象后 ≈3571s；
+  空闲估计 ~3000-3300s）**。Top 残余：cold_set 514（填充段编译Bound ~450s）、
+  sd911 382、**abi_recipe_formal_turnaround 314.1（932 期同测试 29.4s，测试文件自 896 未改——
+  10× 差异待归因：被消费 TestCase/case-parent 路径回归 vs 当日负载下步进截止重试放大；
+  需空闲窗口单例复测或基线对照，具名待核）**、closures_native 274、comptime 双 resource 
+  277+155（每调用整编译Bound）、abi_resource939 175、turnaround_tier 三例 310、
+  body_edit_gate 109、ac_av_probe 107。
+- **十倍可行性初判（待 T-03 正式冻结）**：已落地修复+裁剪合计约 -1200s（syntax -553、
+  turnaround 裁剪 -470、churn -190）；剩余大头全部为每样本真实编译/emit/link/进程开销
+  （debug 档），不可压缩地板：注入延迟 ~33s、真实 GC/物理删除、30/20 样本统计义务、
+  冻结字节规模。**纯算法/裁剪路线下总十倍（≤~500s）不可达**；需合同级手段（PERF 档
+  release 化或 lane 复用语义修订）或修订目标——按 §5.1 走 needs_replan 明确修订，
+  不静默降标。
 
 ## 10. 待澄清事项
 
