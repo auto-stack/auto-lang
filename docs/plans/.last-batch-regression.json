@@ -1,131 +1,16 @@
 {
-  "last_covered_plan_id": 1015,
-  "timestamp": "2026-11-12T13:22:41.317357+08:00",
-  "covered_commit": "d1ee64099ba1877f85a005da96d282c02e00617a",
+  "last_covered_plan_id": 1043,
+  "timestamp": "2026-11-13T19:30:42Z",
+  "covered_commit": "08a9e4d0476bd829f27fbcae96a91c497444dedd",
   "command": "cargo t all",
-  "actual_argv": [
-    "cargo",
-    "t",
-    "all",
-    "--out",
-    "D:\\autostack\\plan-artifacts\\batch-regression-1014-recheck-20261112-122027\\gate"
-  ],
-  "trigger": "Explicit user rerun after PLAN-1014; user chose to wait for an exclusive start window",
   "legs": [
-    "language: cargo t all (fixed-group union, 36 invocations, 4524 executed)"
+    "language-fixed-groups"
   ],
-  "owner_legs": {
-    "auto-ui": "not run; separate owner gate not implied by language results",
-    "auto-man": "not run; separate owner gate not implied by language results"
-  },
-  "execution_receipt": "D:/autostack/plan-artifacts/batch-regression-1014-recheck-20261112-122027/gate/results.json",
-  "raw_evidence_scope": "D:/autostack/plan-artifacts/batch-regression-1014-recheck-20261112-122027",
-  "raw_evidence_retention": {
-    "status": "held-open-issues",
-    "owner": "async_http cancellation / auto-generation-core budget owners",
-    "issues": [
-      "plan707_spike_cancel_gap_active_job_future_not_stopped",
-      "D-1014-P988-BUDGET"
-    ],
-    "closing_condition": "Owners finish bounded triage/repair and replacement verification; fold conclusions before releasing this named hold"
-  },
-  "preparation": "Waited for prior worktree queues; two consecutive empty workload samples, then held AutoLangBatchRegression and AutoLangFormalPerformance machine gates. Original test conditions/budgets retained.",
-  "groups": {
-    "total_invocations": 36,
-    "completed_invocations": 36,
-    "pass_invocations": 31,
-    "fail_invocations": 2,
-    "executed_tests": 4524,
-    "failed_test_events": 2,
-    "not_applicable": [
-      "aavm",
-      "a2r-actor-tests",
-      "auto-vm"
-    ]
-  },
-  "timings": {
-    "wait_seconds": 3255.040054299985,
-    "wrapper_total_seconds": 478.9603535999777,
-    "fixed_queue_seconds": 477.9220841000788,
-    "discovery_preparation_seconds": 42.858260499779135,
-    "native_and_python_run_seconds": 421.4772665000055,
-    "driver_accounting_and_other_seconds": 8.079562000348233,
-    "explicit_tool_build_seconds": 5.506995099945925
-  },
-  "identity": {
-    "branch": "master",
-    "head_after": "d1ee64099ba1877f85a005da96d282c02e00617a",
-    "config_sha256": "f2ebfd42b672a455839eebf93368e0914362d1af0f95cd9813df15863ad45ecb",
-    "fixed_driver_sha256": "256474602f0b4669ef1e94cd0febfcd760e2abe27e6b8043c6ed0ecf32fa8e95",
-    "source_state": "0fec60f935c07065c8f14203ca1009f685346b7a9892b7e25d8c6b3af50d53bd",
-    "gate_report_sha256": "53ad6baa696ab14894a842542f3792cf161a51c6164a5a64cf8f9eb425cf694b",
-    "actual_driver_exit_code": 1
-  },
-  "workload_observation": {
-    "start_window_confirmed": true,
-    "unattributed_during_run_samples": 9,
-    "interpretation": "Parent-PID filtering flagged compiler/nested-Cargo processes which may belong to this batch via breakaway/cache helpers. No other fixed/formal runner command was identified in these samples. These observations do not establish zero outside load throughout the run and do not determine the cause of either failure."
-  },
   "new_reds": [],
   "known_reds_seen": [
-    {
-      "group": "auto-lang",
-      "test": "auto-lang::auto_lang$tests::plan707_spike_tests::plan707_spike_cancel_gap_active_job_future_not_stopped",
-      "event": "failed",
-      "exec_seconds": 2.1243835,
-      "failure": "Assertion at plan707_spike_tests.rs:66: cancelled job future still advances after its gate opens",
-      "baseline": "Identical test/assertion/message in run-nzdol092 and PLAN-1014 receipt history; intermittent family previously observed, not waived",
-      "owner": "async_http managed cancellation / VM test owner",
-      "next_action": "Determine cancellation/abort scheduling versus oracle contract; retain entered/gate/late-result assertions; do not dismiss this observation as environment-only or increase sleep to conceal it"
-    },
-    {
-      "group": "auto-generation-core",
-      "test": "auto-generation-core::plan988_byte_consumers$plan988_source_bytes_compile_run_and_preserve_rejected_targets",
-      "event": "failed",
-      "exec_seconds": 120.1504676,
-      "failure": "Original nextest slow-timeout terminated the test",
-      "debt": "D-1014-P988-BUDGET",
-      "baseline": "Same exact test/time-limit failure in covered1014 receipt; previous standalone pass is historical, not rerun or substituted here",
-      "owner": "test-budget governance / auto-generation-core",
-      "next_action": "Bounded owner repair or explicit budget decision; this run did not change timeout, concurrency or tests"
-    }
+    "auto-generation-core: plan988_source_bytes_compile_run_and_preserve_rejected_targets TIMEOUT at nextest slow-timeout 120s = KNOWN-DEBT-AND-RISKS D-1014-P988-BUDGET (open since 2026-11-12, owner 测试预算治理/auto-generation-core); no other red"
   ],
-  "triage": "Two exact historical failure shapes reproduced; source/config paths have no changes from previous covered82fc90f86 to run commit. No source edits, individual test reruns, timeout overrides or additional full rounds were performed. Complete formal gate remains false; historical isolated-green results and known-red classification do not waive either failure. Highest landed Plan1015 is docs/closeout bookkeeping; this receipt certifies only the language leg.",
-  "gate_passed": false,
+  "run_dir": "target/test-groups/run-lfr_s6c5",
   "verdict": "known-reds-only",
-  "resources": {
-    "measured_descendant_cpu_ms": 1756578.125,
-    "runner_cpu_ms": 9437.5,
-    "total_cpu_ms": 1766015.625,
-    "meter_cpu_ms": 7000.0,
-    "peak_job_bytes": 3791228928,
-    "scope": "distinct sequential native workloads plus runner CPU (meter CPU already inside runner, not added twice); peak is max Job peak and excludes Python runner memory"
-  },
-  "artifact_sha256": {
-    "run-identity.json": "91c336e939f0eba8e65246b7da034d8f779e56b7ab30f29c763274c6f57d7418",
-    "terminal.json": "e374ae3b95d3fab498f0f9d39b27a9fec850dee41bee4b513795536a7935ed77",
-    "gate/results.json": "53ad6baa696ab14894a842542f3792cf161a51c6164a5a64cf8f9eb425cf694b",
-    "gate/9/result.json": "82970900fdfde1047b4866c4c0c4180cc233eff837468b67b4dda08a87c1eb31",
-    "gate/33/result.json": "1cc1238d3bd05c14c4f5def3d161dd81a57c6a8d1e54dece0cb38724e9272c46",
-    "driver.log": "36220f978bdd6af004a15acd08a0406839261a72df3aad8f37c1fdea5235c836",
-    "quiet-observations.json": "34fc8229056ae5cc021ec95b6593f555e72750679acb18f3e0c16ecc19bd54eb",
-    "during-run-interference.json": "c185d0163bd6896ff63322b4c4509d92091a0c84568150357fdaed1280d17ff8",
-    "admission-relocation.json": "47865300722af797aa4c8652cc9b93d209df0dbdd13eee9c08a6555cdd429d49"
-  },
-  "output_reconciliation": {
-    "admission_diagnostics_relocated": {
-      "original_path": "C:\\Users\\zhaop\\AppData\\Local\\Temp\\fixed-admission-f5gvf0h8",
-      "retained_path": "D:\\autostack\\plan-artifacts\\batch-regression-1014-recheck-20261112-122027\\admission-diagnostics",
-      "files": 5,
-      "bytes": 56429.0,
-      "all_file_sha256_matched": true,
-      "manifest": "D:/autostack/plan-artifacts/batch-regression-1014-recheck-20261112-122027/admission-relocation.json"
-    },
-    "original_gate_report_unchanged": true,
-    "normal_cache_paths_preserved": [
-      "D:/autostack/auto-lang/target",
-      "C:/Users/zhaop/.auto/sandbox/builds"
-    ],
-    "cache_note": "Existing main target and product-managed sandbox build caches were not purged. This batch did not create a second raw-evidence store; the driver-created temporary admission diagnostics were adopted into the single registered scope."
-  }
+  "notes": "36 groups selected (language fixed union): 32 PASS, 3 NOT_APPLICABLE (aavm/a2r-actor-tests/auto-vm conditional), 1 FAIL as known red. Merged window since prior receipt (d1ee6409): plans 945,947,962,963,1002,1013,1016,1017,1025,1027,1028,1039,1042,1043 — 1002's own surfaces green (auto-test-case, case-pilot, auto-lang, auto-lang-core, infra-*). ace case groups (incl. ace-host) are not part of `cargo t all`; ace-host's 4 pre-existing worker-golden reds + 1 concurrency flake were triaged in Plan 1002's merge receipt and remain owned by the batch/1024 lane when that group is next run explicitly."
 }
