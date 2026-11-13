@@ -12,7 +12,7 @@
 - `cargo t parser`、`cargo t parser vm`：完整命名空间子树及配置内明确的集成测试。
 - `cargo t ace`：独立ACE workspace常规自动测试与必要SDK私有桥接；不叠加语言日常包。
 - ACE模块组（`ace-syntax`、`ace-semantics`、`ace-comptime`等）：完整常规正确性集合，排除`::performance::`正式性能/压力。
-- `cargo t ace-perf`：显式专项套件（原ace-performance改名），平时及普通Plan收尾不执行；明确保留原正式计量/资源campaign，原样本、阈值、ignore及平台条件保持；占用当前nextest全池，避免同轮其他测试干扰。
+- `cargo t ace-perf`：显式专项套件（原ace-performance改名），平时及普通Plan收尾不执行；明确保留原正式计量/资源campaign，原样本、阈值、ignore及平台条件保持；占用当前nextest全池，避免同轮其他测试干扰。 成本验收合同（≤3600s 负载上限、逐模块分跑口径与预算，PLAN-1017 r6）见 [ace-perf-cost-and-reproduction](ace-perf-cost-and-reproduction.md)。
 - `cargo t all`：显式语言仓全部固定组，不含UI/Man外仓批次，仍保ignore/平台/里程碑条件。
 - `cargo t --list`：只读配置组名，不触发Cargo元数据、发现或构建。
 - `cargo t <组> --select-only [--out <新目录>]`：只输出固定调用计划，不认证实际发现/通过。Case组静态预览只输出stdout，不支持--out，以免绕过需真实owner工具的输出域审查。
