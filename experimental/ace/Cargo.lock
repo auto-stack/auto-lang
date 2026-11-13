@@ -39,6 +39,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ace-a2x-python"
+version = "0.1.0"
+dependencies = [
+ "ace-a2x-core",
+ "ace-core",
+]
+
+[[package]]
 name = "ace-a2x-rust"
 version = "0.1.0"
 dependencies = [
@@ -66,6 +74,7 @@ version = "0.1.0"
 dependencies = [
  "ace-a2x-c",
  "ace-a2x-core",
+ "ace-a2x-python",
  "ace-a2x-rust",
  "ace-a2x-store",
  "ace-abi",

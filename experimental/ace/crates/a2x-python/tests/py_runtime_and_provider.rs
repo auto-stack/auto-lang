@@ -34,7 +34,12 @@ fn scratch_dir(name: &str) -> PathBuf {
     d
 }
 
-fn run_py_snippet(dir: &PathBuf, runtime: &str, body: &str, envs: &[(&str, &str)]) -> (i32, Vec<u8>, Vec<u8>) {
+fn run_py_snippet(
+    dir: &PathBuf,
+    runtime: &str,
+    body: &str,
+    envs: &[(&str, &str)],
+) -> (i32, Vec<u8>, Vec<u8>) {
     std::fs::write(dir.join("a2x_py_runtime.py"), runtime).unwrap();
     std::fs::write(dir.join("driver.py"), body).unwrap();
     let py = find_python();
@@ -44,11 +49,7 @@ fn run_py_snippet(dir: &PathBuf, runtime: &str, body: &str, envs: &[(&str, &str)
         cmd.env(k, v);
     }
     let out = cmd.output().expect("spawn python");
-    (
-        out.status.code().unwrap_or(-1),
-        out.stdout,
-        out.stderr,
-    )
+    (out.status.code().unwrap_or(-1), out.stdout, out.stderr)
 }
 
 #[test]
@@ -215,20 +216,10 @@ fn port_catalog_and_manifest_reject_wrong_producer_or_tamper() {
     let cat = default_stdlib_port_catalog(&rt);
     let rt_hash = sha256_hex(rt.as_bytes());
     assert!(cat
-        .verify_call(
-            "io.close_handle",
-            1,
-            &[ParamDirection::Move],
-            &rt_hash
-        )
+        .verify_call("io.close_handle", 1, &[ParamDirection::Move], &rt_hash)
         .is_ok());
     assert!(cat
-        .verify_call(
-            "io.close_handle",
-            1,
-            &[ParamDirection::View],
-            &rt_hash
-        )
+        .verify_call("io.close_handle", 1, &[ParamDirection::View], &rt_hash)
         .is_err());
 
     let p = PythonTargetProvider;
@@ -236,7 +227,10 @@ fn port_catalog_and_manifest_reject_wrong_producer_or_tamper() {
     let key_inputs = p.fragment_key_inputs(&rt_hash);
     assert!(key_inputs.iter().any(|(k, _)| k == "stdlib_port_catalog"));
 
-    let files = vec![("generated.py".to_string(), "def f():\n    return 1\n".to_string())];
+    let files = vec![(
+        "generated.py".to_string(),
+        "def f():\n    return 1\n".to_string(),
+    )];
     let digest = sha256_hex(files[0].1.as_bytes());
     let valid_manifest = format!(
         "{{\n  \"schema\": \"{PY_FILESET_SCHEMA}\",\n  \"producer\": \"{PY_PRODUCER}\",\n  \"files\": [ {{ \"path\": \"generated.py\", \"sha256\": \"{digest}\" }} ]\n}}"
@@ -255,12 +249,9 @@ fn port_catalog_and_manifest_reject_wrong_producer_or_tamper() {
         PY_FILESET_SCHEMA
     )
     .is_err());
-    assert!(verify_python_fileset_manifest(
-        &valid_manifest,
-        &files,
-        PY_PRODUCER,
-        PY_CERT_SCHEMA
-    )
-    .is_err());
+    assert!(
+        verify_python_fileset_manifest(&valid_manifest, &files, PY_PRODUCER, PY_CERT_SCHEMA)
+            .is_err()
+    );
     assert_eq!(cat.runtime_version, PY_RUNTIME_VERSION);
 }

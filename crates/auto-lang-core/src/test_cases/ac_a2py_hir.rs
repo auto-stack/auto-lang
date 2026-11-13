@@ -24,7 +24,7 @@ use auto_test_case::report::{ArtifactRef, Status};
 use auto_test_case::sha256::{hex, sha256};
 
 pub use super::ac_a2c_hir::{
-    worker_binary, path_domain_problems, A2X_WORKER_PROTOCOL, A2X_WORKER_SHA_ENV,
+    path_domain_problems, worker_binary, A2X_WORKER_PROTOCOL, A2X_WORKER_SHA_ENV,
 };
 use super::avm::Verdict;
 
@@ -76,9 +76,7 @@ pub fn validate_worker_response(
             resp["protocol"], resp["recipe"]
         ));
     }
-    if resp["target"].as_str() != Some("python")
-        || resp["producer"].as_str() != Some(PY_PRODUCER)
-    {
+    if resp["target"].as_str() != Some("python") || resp["producer"].as_str() != Some(PY_PRODUCER) {
         return Err(format!(
             "python producer mismatch: target={:?} producer={:?}",
             resp["target"], resp["producer"]
@@ -100,7 +98,9 @@ pub fn validate_worker_response(
         let py = resp.get("python_identity").and_then(|v| v.as_object());
         let has_identity = py
             .map(|o| {
-                o.get("exe").and_then(|x| x.as_str()).is_some_and(|s| !s.is_empty())
+                o.get("exe")
+                    .and_then(|x| x.as_str())
+                    .is_some_and(|s| !s.is_empty())
                     && o.get("version")
                         .and_then(|x| x.as_str())
                         .is_some_and(|s| !s.is_empty())
@@ -329,7 +329,8 @@ pub fn run_check(
                     mismatches.push(Mismatch {
                         observation: "artifact paths".into(),
                         kind: "path-domain",
-                        expected: "relative normalized unique paths within the output domain".into(),
+                        expected: "relative normalized unique paths within the output domain"
+                            .into(),
                         actual: problem,
                         first_diff: None,
                     });

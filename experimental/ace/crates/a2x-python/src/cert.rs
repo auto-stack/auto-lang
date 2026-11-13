@@ -85,7 +85,9 @@ pub fn verify_python_fileset_manifest(
             "manifest missing expected producer `{expected_producer}`"
         ));
     }
-    if manifest.contains("PythonTrans") || manifest.contains("crates/auto-lang-core/src/trans/python") {
+    if manifest.contains("PythonTrans")
+        || manifest.contains("crates/auto-lang-core/src/trans/python")
+    {
         return Err("legacy PythonTrans origin forbidden in ACE Python manifest".to_string());
     }
     for (path, content) in files {

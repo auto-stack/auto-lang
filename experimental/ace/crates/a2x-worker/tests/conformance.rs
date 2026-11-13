@@ -42,12 +42,6 @@ mod cert_json_951;
 mod cert_rt_902;
 #[path = "cases/choose_instances_935.rs"]
 mod choose_instances_935;
-#[path = "cases/generic_records_963.rs"]
-mod generic_records_963;
-#[path = "cases/default_args_963.rs"]
-mod default_args_963;
-#[path = "cases/const_instances_963.rs"]
-mod const_instances_963;
 #[path = "cases/coll_manifest_oracle_933.rs"]
 mod coll_manifest_oracle_933;
 #[path = "cases/collections_904.rs"]
@@ -56,8 +50,14 @@ mod collections_904;
 mod collections_face;
 #[path = "cases/collections_v15.rs"]
 mod collections_v15;
+#[path = "cases/const_instances_963.rs"]
+mod const_instances_963;
 #[path = "cases/contract_certification.rs"]
 mod contract_certification;
+#[path = "cases/default_args_963.rs"]
+mod default_args_963;
+#[path = "cases/generic_records_963.rs"]
+mod generic_records_963;
 #[path = "cases/hir_shape.rs"]
 mod hir_shape;
 #[path = "cases/incremental_cache.rs"]
@@ -95,7 +95,7 @@ mod store_rt_902;
 #[path = "cases/worker_ct_frontdoor_958.rs"]
 mod worker_ct_frontdoor_958;
 
-#[path = "cases/record_field_writes_941.rs"]
-mod record_field_writes_941;
 #[path = "cases/pyready_1042.rs"]
 mod pyready_1042;
+#[path = "cases/record_field_writes_941.rs"]
+mod record_field_writes_941;

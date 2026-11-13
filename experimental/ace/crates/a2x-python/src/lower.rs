@@ -331,7 +331,8 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
         if self.indent == 0 {
             self.out.push(line.to_string());
         } else {
-            self.out.push(format!("{}{}", "    ".repeat(self.indent), line));
+            self.out
+                .push(format!("{}{}", "    ".repeat(self.indent), line));
         }
     }
 
@@ -445,7 +446,11 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
             .map_err(|_| A2xReject::unsupported_type("unresolvable expr type"))
     }
 
-    fn promote_if_owned_lit(&mut self, id: hir::ExprId, target_ty: Ty) -> Result<String, A2xReject> {
+    fn promote_if_owned_lit(
+        &mut self,
+        id: hir::ExprId,
+        target_ty: Ty,
+    ) -> Result<String, A2xReject> {
         let e = self
             .facts
             .body
@@ -927,10 +932,9 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 let t = self.fresh_temp();
                 self.emit_line(&format!("{t} = {{}}"));
                 for b in bindings {
-                    let fdef = rec
-                        .fields
-                        .get(b.field as usize)
-                        .ok_or_else(|| A2xReject::new("a2x.internal", "field index out of range"))?;
+                    let fdef = rec.fields.get(b.field as usize).ok_or_else(|| {
+                        A2xReject::new("a2x.internal", "field index out of range")
+                    })?;
                     let val = arg_vals
                         .get(b.arg as usize)
                         .cloned()
@@ -965,10 +969,9 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                         .view
                         .record(rec_idx)
                         .ok_or_else(|| A2xReject::new("a2x.internal", "unknown record index"))?;
-                    let fdef = rec
-                        .fields
-                        .get(fid.0 as usize)
-                        .ok_or_else(|| A2xReject::new("a2x.internal", "field index out of range"))?;
+                    let fdef = rec.fields.get(fid.0 as usize).ok_or_else(|| {
+                        A2xReject::new("a2x.internal", "field index out of range")
+                    })?;
                     expr = format!("{expr}['{}']", sanitize(&fdef.name));
                     cur_ty = fdef.ty;
                 }
@@ -1117,7 +1120,9 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
         };
         let fn_name = if left { "a2x_shl" } else { "a2x_shr" };
         let (lo, hi) = int_bounds(ty)?;
-        Ok(format!("a2x_check_range({fn_name}({l}, {r}, {width}), {lo}, {hi})"))
+        Ok(format!(
+            "a2x_check_range({fn_name}({l}, {r}, {width}), {lo}, {hi})"
+        ))
     }
 
     fn lower_call(

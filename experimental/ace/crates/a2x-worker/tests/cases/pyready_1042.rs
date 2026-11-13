@@ -12,8 +12,8 @@ use ace_a2x_store::modules::packages::PackageA2xTarget;
 use ace_a2x_store::A2xSession;
 use ace_a2x_worker::pyrun::{resolve_python, run_py_fileset, ResolvedPython};
 use ace_core::runtime_contract::sha256_hex;
-use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
 use ace_core::source::cst::FrontBudget;
+use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
 use ace_core::source::{SourceProfile, TRACE_CAPABILITY};
 use ace_source_query::modules::packages::{compile_package_product, stdlib_inputs};
 
@@ -55,7 +55,8 @@ fn pyready_01_two_module_stdlib_and_scalar_execution() {
         package: "app".into(),
         version: "1.0.0".into(),
         id: "helper".into(),
-        source: "use std.math.square\npub fn combined(x int) int { return square(x) + 10 }\n".into(),
+        source: "use std.math.square\npub fn combined(x int) int { return square(x) + 10 }\n"
+            .into(),
     });
     inputs.push(PackageModuleInput {
         package: "app".into(),
@@ -67,7 +68,7 @@ fn pyready_01_two_module_stdlib_and_scalar_execution() {
             "fn main() int {\n",
             "    let a = combined(3)\n", // square(3) = 3*3 = 9 -> +10 = 19
             "    let n = byte_len(\"A中😀\")\n", // 8 UTF-8 bytes
-            "    return a + n\n", // 19 + 8 = 27
+            "    return a + n\n",        // 19 + 8 = 27
             "}\n",
         )
         .into(),
@@ -115,7 +116,12 @@ fn pyready_01_two_module_stdlib_and_scalar_execution() {
         String::from_utf8_lossy(&run.stderr),
         std::fs::read_to_string(run_dir.join("generated.py")).unwrap_or_default()
     );
-    assert_eq!(run.stdout, b"value:27\n", "stderr={:?}", String::from_utf8_lossy(&run.stderr));
+    assert_eq!(
+        run.stdout,
+        b"value:27\n",
+        "stderr={:?}",
+        String::from_utf8_lossy(&run.stderr)
+    );
 
     // 2) Scalar cases: C-truncation div/rem, overflow trap, short-circuit trace marks + effect count
     let cases: &[(&str, &str, bool, &[u8], &[&str])] = &[
@@ -223,10 +229,21 @@ fn pyready_02_utf8_record_text_explicit_cleanup() {
         std::fs::read_to_string(rdir.join("generated.py")).unwrap_or_default()
     );
     // a = "A中😀xy" (5 scalars) + c = "e\u{0301}" (2 scalars) + o = "A中😀" (3 scalars) -> 10
-    assert_eq!(run.stdout, b"value:10\n", "stderr={:?}", String::from_utf8_lossy(&run.stderr));
+    assert_eq!(
+        run.stdout,
+        b"value:10\n",
+        "stderr={:?}",
+        String::from_utf8_lossy(&run.stderr)
+    );
     let trace = std::fs::read_to_string(&trace_path).unwrap();
-    assert!(trace.contains("\"live_strs\": []"), "expected zero leaked Str after explicit free: {trace}");
-    assert!(!trace.contains("\"alloc_count\": 0"), "expected tracked allocation: {trace}");
+    assert!(
+        trace.contains("\"live_strs\": []"),
+        "expected zero leaked Str after explicit free: {trace}"
+    );
+    assert!(
+        !trace.contains("\"alloc_count\": 0"),
+        "expected tracked allocation: {trace}"
+    );
 }
 
 #[test]
@@ -240,7 +257,14 @@ fn pyready_03_invalidation_and_failed_publish_isolation() {
     let pub_dir = out_root("pyready03_publish");
 
     // Step 1: cold v1
-    let mut s1 = A2xSession::open(&sdir, "pyready03", "probe", 64 * 1024 * 1024, PythonTargetProvider).unwrap();
+    let mut s1 = A2xSession::open(
+        &sdir,
+        "pyready03",
+        "probe",
+        64 * 1024 * 1024,
+        PythonTargetProvider,
+    )
+    .unwrap();
     let asm1 = s1.cold_assemble(v1_src, true, &[], "main", false).unwrap();
     write_and_verify(&pub_dir, &asm1.files, &asm1.manifest, PY_FILESET_SCHEMA);
     let r1 = run_py_fileset(&py, &pub_dir, &[]).unwrap();
@@ -256,21 +280,50 @@ fn pyready_03_invalidation_and_failed_publish_isolation() {
     let orig_manifest = asm1.manifest.clone();
 
     // Step 2: unchanged reopen restores cleanly via fragments
-    let mut s_warm = A2xSession::open(&sdir, "pyready03", "probe", 64 * 1024 * 1024, PythonTargetProvider).unwrap();
-    let asm_warm = s_warm.cold_assemble(v1_src, true, &[], "main", false).unwrap();
+    let mut s_warm = A2xSession::open(
+        &sdir,
+        "pyready03",
+        "probe",
+        64 * 1024 * 1024,
+        PythonTargetProvider,
+    )
+    .unwrap();
+    let asm_warm = s_warm
+        .cold_assemble(v1_src, true, &[], "main", false)
+        .unwrap();
     assert_eq!(asm_warm.manifest, orig_manifest);
 
     // Step 3: failing build MUST NOT overwrite existing published fileset
-    let mut s_bad = A2xSession::open(&sdir, "pyready03", "probe", 64 * 1024 * 1024, PythonTargetProvider).unwrap();
+    let mut s_bad = A2xSession::open(
+        &sdir,
+        "pyready03",
+        "probe",
+        64 * 1024 * 1024,
+        PythonTargetProvider,
+    )
+    .unwrap();
     let err = s_bad.cold_assemble(bad_src, true, &[], "main", false);
-    assert!(err.is_err(), "invalid source must reject instead of emitting broken artifacts");
+    assert!(
+        err.is_err(),
+        "invalid source must reject instead of emitting broken artifacts"
+    );
     let on_disk_manifest = std::fs::read_to_string(pub_dir.join("manifest.json")).unwrap();
-    assert_eq!(on_disk_manifest, orig_manifest, "failed build must leave old manifest untouched");
+    assert_eq!(
+        on_disk_manifest, orig_manifest,
+        "failed build must leave old manifest untouched"
+    );
     let r_old = run_py_fileset(&py, &pub_dir, &[]).unwrap();
     assert_eq!(r_old.stdout, b"value:42\n");
 
     // Step 4: repaired source invalidates fragments and emits/executes new output
-    let mut s2 = A2xSession::open(&sdir, "pyready03", "probe", 64 * 1024 * 1024, PythonTargetProvider).unwrap();
+    let mut s2 = A2xSession::open(
+        &sdir,
+        "pyready03",
+        "probe",
+        64 * 1024 * 1024,
+        PythonTargetProvider,
+    )
+    .unwrap();
     let asm2 = s2.cold_assemble(v2_src, true, &[], "main", false).unwrap();
     assert_ne!(asm2.manifest, orig_manifest);
     write_and_verify(&pub_dir, &asm2.files, &asm2.manifest, PY_FILESET_SCHEMA);
@@ -293,7 +346,14 @@ fn pyready_03_invalidation_and_failed_publish_isolation() {
 fn pyready_04_admission_negative_controls() {
     let py = py_tool();
     let sdir = out_root("pyready04_store");
-    let mut s = A2xSession::open(&sdir, "pyready04", "probe", 64 * 1024 * 1024, PythonTargetProvider).unwrap();
+    let mut s = A2xSession::open(
+        &sdir,
+        "pyready04",
+        "probe",
+        64 * 1024 * 1024,
+        PythonTargetProvider,
+    )
+    .unwrap();
     let asm = s
         .cold_assemble("fn main() i32 { return 19 + 23 }", true, &[], "main", false)
         .unwrap();
@@ -338,14 +398,20 @@ fn pyready_04_admission_negative_controls() {
     // 4) Missing Python interpreter fails loudly (cannot PASS or fake)
     let orig_env = std::env::var("A2PY_PYTHON").ok();
     unsafe {
-        std::env::set_var("A2PY_PYTHON", "Z:/nonexistent_python_binary_1042/python.exe");
+        std::env::set_var(
+            "A2PY_PYTHON",
+            "Z:/nonexistent_python_binary_1042/python.exe",
+        );
     }
     let missing_res = resolve_python("abc");
     match orig_env {
         Some(v) => unsafe { std::env::set_var("A2PY_PYTHON", v) },
         None => unsafe { std::env::remove_var("A2PY_PYTHON") },
     }
-    assert!(missing_res.is_err(), "missing Python interpreter must fail cleanly");
+    assert!(
+        missing_res.is_err(),
+        "missing Python interpreter must fail cleanly"
+    );
 
     // 5) Legal new-producer run accepted cleanly
     let rdir = out_root("pyready04_legal");

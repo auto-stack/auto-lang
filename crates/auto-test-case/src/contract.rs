@@ -1138,8 +1138,7 @@ fn decode_check(
         .unwrap_or(false);
     // PLAN-1042: `ac-a2py/hir-stdlib-run-v1` runs generated Python via real OS
     // Python and captures stdout/stderr bytes for parent-side oracle comparison.
-    let py_run_recipe =
-        options.probe_recipe.as_deref() == Some("ac-a2py/hir-stdlib-run-v1");
+    let py_run_recipe = options.probe_recipe.as_deref() == Some("ac-a2py/hir-stdlib-run-v1");
     let expect = decode_expect(
         f.req("expect")?,
         &f.path_of("expect"),

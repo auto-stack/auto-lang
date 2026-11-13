@@ -76,7 +76,10 @@ impl TargetProvider for PythonTargetProvider {
     fn fragment_key_inputs(&self, runtime_sha256: &str) -> Vec<(String, String)> {
         let catalog = default_stdlib_port_catalog(PY_RUNTIME_VERSION);
         vec![
-            ("runtime_version".to_string(), PY_RUNTIME_VERSION.to_string()),
+            (
+                "runtime_version".to_string(),
+                PY_RUNTIME_VERSION.to_string(),
+            ),
             ("runtime_sha256".to_string(), runtime_sha256.to_string()),
             ("print_version".to_string(), PY_PRINT_VERSION.to_string()),
             (
@@ -203,8 +206,12 @@ impl TargetProvider for PythonTargetProvider {
         manifest.push_str(&format!("  \"schema\": \"{schema}\",\n"));
         manifest.push_str(&format!("  \"producer\": \"{PY_PRODUCER}\",\n"));
         manifest.push_str(&format!("  \"backend\": \"{PY_BACKEND}\",\n"));
-        manifest.push_str(&format!("  \"backend_version\": \"{PY_BACKEND_VERSION}\",\n"));
-        manifest.push_str(&format!("  \"runtime_version\": \"{PY_RUNTIME_VERSION}\",\n"));
+        manifest.push_str(&format!(
+            "  \"backend_version\": \"{PY_BACKEND_VERSION}\",\n"
+        ));
+        manifest.push_str(&format!(
+            "  \"runtime_version\": \"{PY_RUNTIME_VERSION}\",\n"
+        ));
         manifest.push_str(&format!("  \"print_version\": \"{PY_PRINT_VERSION}\",\n"));
         manifest.push_str(&format!(
             "  \"stdlib_port_catalog\": \"{}\",\n",

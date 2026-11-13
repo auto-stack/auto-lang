@@ -27,7 +27,7 @@ fn manifest_face_only_sanctioned_dependencies() {
         "ace-abi", // PLAN-921: the frozen PLAN-797 cl locator (ctool) reuse —
         // no second MSVC discovery path
         "ace-a2x-core",
-        "ace-a2x-python",       // PLAN-1042: Python target provider (a2x-core + core HIR)
+        "ace-a2x-python", // PLAN-1042: Python target provider (a2x-core + core HIR)
         "ace-a2x-rust",
         "ace-a2x-store",
         "ace-core",

@@ -260,9 +260,9 @@ pub fn decode_rt_seed(text: &str) -> Result<Vec<SeedRecord>, A2xReject> {
                 ));
             }
         };
-        let nfields: usize = parts[3]
-            .parse()
-            .map_err(|_| A2xReject::new("a2py.seed", format!("invalid field count `{}`", parts[3])))?;
+        let nfields: usize = parts[3].parse().map_err(|_| {
+            A2xReject::new("a2py.seed", format!("invalid field count `{}`", parts[3]))
+        })?;
         let mut fields = Vec::with_capacity(nfields);
         for _ in 0..nfields {
             let fl = lines
@@ -349,7 +349,10 @@ pub fn decode_coll_seed(text: &str) -> Result<SeedColl, A2xReject> {
         match parts.first().copied() {
             Some("R") => {
                 if parts.len() != 4 {
-                    return Err(A2xReject::new("a2py.seed", format!("malformed R line `{line}`")));
+                    return Err(A2xReject::new(
+                        "a2py.seed",
+                        format!("malformed R line `{line}`"),
+                    ));
                 }
                 validate_ident_token(parts[1], "record name")?;
                 let resource = match parts[2] {
@@ -372,7 +375,10 @@ pub fn decode_coll_seed(text: &str) -> Result<SeedColl, A2xReject> {
                         .ok_or_else(|| A2xReject::new("a2py.seed", "truncated F line"))?;
                     let fp: Vec<&str> = fl.split(' ').collect();
                     if fp.len() != 3 || fp[0] != "F" {
-                        return Err(A2xReject::new("a2py.seed", format!("malformed F line `{fl}`")));
+                        return Err(A2xReject::new(
+                            "a2py.seed",
+                            format!("malformed F line `{fl}`"),
+                        ));
                     }
                     validate_ident_token(fp[1], "field name")?;
                     fields.push((fp[1].to_string(), SeedCollTy::parse_token(fp[2])?));
@@ -385,7 +391,10 @@ pub fn decode_coll_seed(text: &str) -> Result<SeedColl, A2xReject> {
             }
             Some("V") => {
                 if parts.len() != 3 {
-                    return Err(A2xReject::new("a2py.seed", format!("malformed V line `{line}`")));
+                    return Err(A2xReject::new(
+                        "a2py.seed",
+                        format!("malformed V line `{line}`"),
+                    ));
                 }
                 validate_ident_token(parts[1], "variant name")?;
                 let narms: usize = parts[2]
@@ -398,7 +407,10 @@ pub fn decode_coll_seed(text: &str) -> Result<SeedColl, A2xReject> {
                         .ok_or_else(|| A2xReject::new("a2py.seed", "truncated A line"))?;
                     let ap: Vec<&str> = al.split(' ').collect();
                     if ap.len() != 3 || ap[0] != "A" {
-                        return Err(A2xReject::new("a2py.seed", format!("malformed A line `{al}`")));
+                        return Err(A2xReject::new(
+                            "a2py.seed",
+                            format!("malformed A line `{al}`"),
+                        ));
                     }
                     validate_ident_token(ap[1], "arm name")?;
                     let payload = if ap[2] == "-" {
@@ -415,12 +427,18 @@ pub fn decode_coll_seed(text: &str) -> Result<SeedColl, A2xReject> {
             }
             Some("L") => {
                 if parts.len() != 2 {
-                    return Err(A2xReject::new("a2py.seed", format!("malformed L line `{line}`")));
+                    return Err(A2xReject::new(
+                        "a2py.seed",
+                        format!("malformed L line `{line}`"),
+                    ));
                 }
                 seed.lists.push(SeedCollTy::parse_token(parts[1])?);
             }
             _ => {
-                return Err(A2xReject::new("a2py.seed", format!("unknown seed line `{line}`")));
+                return Err(A2xReject::new(
+                    "a2py.seed",
+                    format!("unknown seed line `{line}`"),
+                ));
             }
         }
     }
@@ -656,7 +674,9 @@ pub fn render_coll_seed_helpers(coll: &SeedColl) -> String {
                 ));
             }
             _ => {
-                out.push_str("        for item in src.elems:\n            out.elems.append(item)\n");
+                out.push_str(
+                    "        for item in src.elems:\n            out.elems.append(item)\n",
+                );
             }
         }
         out.push_str(&format!(
