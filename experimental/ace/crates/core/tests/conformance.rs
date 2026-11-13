@@ -76,6 +76,8 @@ mod source_dependency_edits_941;
 mod source_generics_963;
 #[path = "cases/source_specs_generic_963.rs"]
 mod source_specs_generic_963;
+#[path = "cases/source_spec_super_assoc_963.rs"]
+mod source_spec_super_assoc_963;
 #[path = "cases/source_instances_935.rs"]
 mod source_instances_935;
 #[path = "cases/source_positions_941.rs"]

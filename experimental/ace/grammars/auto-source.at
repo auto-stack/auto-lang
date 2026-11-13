@@ -565,18 +565,40 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-963（T-03）：通用 spec `spec Storage<T> { .. }`——类型参数
             // 只在投影期为 `as Storage<int>` 的实例化服务（spec 随后被擦除）。
             opt(profiles: [record, record-instances, aggregates]) { type-params(field: "type_params") }
+            // PLAN-963（T-05）：super-spec `spec Tool: Send + Sync { .. }`——旧
+            // 用例拼写（`a2r/12_specs/010_spec_supertrait`）只写裸名，无类型实参；
+            // `:` 与 `{` 首 token 互异，可直接用 opt。
+            opt(profiles: [record, record-instances, aggregates]) { super-specs(field: "supers") }
             lbrace() {}
             list-nl { spec-member() {} }
             rbrace() {}
         }
+        // PLAN-963（T-05）：super-spec 列表 `: A + B`（首个 `:` 必需，`+` 连接）。
+        super-specs(profiles: [record, record-instances, aggregates]) {
+            colon() {}
+            ident(field: "head")
+            many { super-spec-tail() {} }
+        }
+        super-spec-tail(profiles: [record, record-instances, aggregates]) {
+            plus() {}
+            ident(field: "head")
+        }
+        // PLAN-963（T-05）：spec 成员两形——方法签名/默认体（`fn`）与关联类型
+        // 声明（`type Item`）。首 token 互异，规则级 alt 可分派。
         spec-member(profiles: [record, record-instances, aggregates]) {
-            fn(field: "kw")
-            ident(field: "name")
-            lparen() {}
-            params(repeat: "opt", field: "params")
-            rparen() {}
-            ret-ty(field: "ty")
-            opt(profiles: [record, record-instances, aggregates]) { block(field: "body") }
+            alt {
+                fn(field: "kw")
+                ident(field: "name")
+                lparen() {}
+                params(repeat: "opt", field: "params")
+                rparen() {}
+                ret-ty(field: "ty")
+                opt(profiles: [record, record-instances, aggregates]) { block(field: "body") }
+            }
+            alt {
+                type-kw(field: "kw")
+                ident(field: "assoc")
+            }
         }
         // PLAN-963（T-03）：扩展块 `ext Type { members }`——把方法挂到**已有**
         // 类型（投影期合入该 TypeItem；不存在即具名拒）。首 token `ext` 与其它
@@ -605,8 +627,22 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         spec-args(profiles: [record, record-instances, aggregates]) {
             lt() {}
-            type-args(field: "args")
+            spec-arg-list(field: "args")
             gt() {}
+        }
+        // PLAN-963（T-05）：spec 实参项——位置实参 `<int>` 与命名关联类型绑定
+        // `<Item=int>`（旧拼写见 `a2r/12_specs/011_associated_types`）。两者都以
+        // `type-arg` 起始（`Item` 亦是合法裸名注解），`=` 后缀才是绑定，故按
+        // 可选尾巴区分，不靠首 token 分派。
+        spec-arg-list(profiles: [record, record-instances, aggregates]) { spec-arg() {} many { spec-arg-tail() {} } }
+        spec-arg-tail(profiles: [record, record-instances, aggregates]) { comma() {} spec-arg() {} }
+        spec-arg(profiles: [record, record-instances, aggregates]) {
+            type-arg(field: "ty")
+            opt(profiles: [record, record-instances, aggregates]) { spec-assoc-arg(field: "assoc") }
+        }
+        spec-assoc-arg(profiles: [record, record-instances, aggregates]) {
+            assign() {}
+            type-arg(field: "ty")
         }
         // PLAN-928（T-03）：PLAN-864 有限 enum——臂换行/`;` 分隔（list-nl 语义；
         // `,` 容忍由差分冻结），至多单载荷。

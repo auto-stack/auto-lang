@@ -4282,10 +4282,46 @@ impl<'a> Engine<'a> {
                 }
             }
         }
+        // PLAN-963（T-05）：super-spec `spec Tool: Send + Sync`（书写序）。
+        let mut supers: Vec<Ident> = Vec::new();
+        if let Some(sn) = self.cx.field_child(node, "supers") {
+            if let Some(head) = self.cx.field_child(sn, "head") {
+                supers.push(ident_of(&mut self.cx, head));
+            }
+            let tail_kind = self.cx.k.super_spec_tail.unwrap_or(u32::MAX);
+            for c in self.cx.children(sn) {
+                if self.cx.tree.kind(c) != tail_kind {
+                    continue;
+                }
+                if let Some(leaf) = self.cx.field_child(c, "head") {
+                    supers.push(ident_of(&mut self.cx, leaf));
+                }
+            }
+        }
         let member_kind = self.cx.k.spec_member.unwrap_or(u32::MAX);
         let mut methods: Vec<SpecMethodDecl> = Vec::new();
+        let mut assoc: Vec<Ident> = Vec::new();
         for c in self.cx.children(node) {
             if self.cx.tree.kind(c) != member_kind {
+                continue;
+            }
+            // PLAN-963（T-05）：关联类型声明 `type Item`（无方法形状）。
+            if let Some(leaf) = self.cx.field_child(c, "assoc") {
+                let aname = ident_of(&mut self.cx, leaf);
+                if assoc.iter().any(|a| a.name == aname.name) {
+                    let sp = aname.span;
+                    let n = aname.name.clone();
+                    self.cx.reject(sp, move || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.duplicate",
+                            format!("associated type `{n}` is declared more than once"),
+                            sp,
+                        )
+                    });
+                    continue;
+                }
+                assoc.push(aname);
                 continue;
             }
             let mname_leaf = self.cx.field_child(c, "name").expect("spec method name");
@@ -4337,6 +4373,8 @@ impl<'a> Engine<'a> {
         SpecDecl {
             name,
             type_params,
+            supers,
+            assoc,
             methods,
         }
     }
@@ -4359,11 +4397,12 @@ impl<'a> Engine<'a> {
         out
     }
 
-    /// PLAN-963（T-03）：一条 `as S` / `as S<int>` 遵从声明。
+    /// PLAN-963（T-03/T-05）：一条 `as S` / `as S<int>` / `as S<int, Item=str>`。
     fn project_conform_ref(&mut self, node: u32) -> ConformRef {
         let spec_node = self.cx.field_child(node, "spec").expect("spec name");
         let name = ident_of(&mut self.cx, spec_node);
         let mut args: Vec<TypeAnn> = Vec::new();
+        let mut assoc: Vec<(Ident, TypeAnn)> = Vec::new();
         let spec_args_kind = self.cx.k.spec_args.unwrap_or(u32::MAX);
         let args_node = self
             .cx
@@ -4373,13 +4412,35 @@ impl<'a> Engine<'a> {
             for a in collect_seq(
                 &self.cx,
                 an,
-                self.cx.k.type_arg.unwrap_or(u32::MAX),
-                "type-arg-tail",
+                self.cx.k.spec_arg.unwrap_or(u32::MAX),
+                "spec-arg-tail",
             ) {
-                args.push(self.classify_ty_arg(a));
+                let ty_node = self.cx.field_child(a, "ty").expect("spec argument");
+                let ty = self.classify_ty_arg(ty_node);
+                let Some(bind) = self.cx.field_child(a, "assoc") else {
+                    args.push(ty);
+                    continue;
+                };
+                // PLAN-963（T-05）：命名绑定 `Item=str`——`=` 左侧必须是裸名，
+                // 右侧是绑定类型；其它左值（`int=x` 等）具名拒，不静默当位置实参。
+                let TypeRef::Record(key) = ty.kind else {
+                    let sp = ty.span;
+                    self.cx.reject(sp, move || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.unsupported",
+                            "an associated-type binding requires a bare name on the left of `=`",
+                            sp,
+                        )
+                    });
+                    continue;
+                };
+                let bound_node = self.cx.field_child(bind, "ty").expect("assoc binding type");
+                let bound = self.classify_ty_arg(bound_node);
+                assoc.push((key, bound));
             }
         }
-        ConformRef { name, args }
+        ConformRef { name, args, assoc }
     }
 
     fn run_script_item(&mut self, node: u32) -> FnItem {
@@ -7185,6 +7246,12 @@ struct SpecDecl {
     /// PLAN-963（T-03）：通用 spec 的类型参数（`spec Storage<T>`）；实例化
     /// 发生在 `as Storage<int>` 处，注入方法已是具体签名。
     type_params: Vec<Ident>,
+    /// PLAN-963（T-05）：`spec Tool: Send + Sync` 的 super-spec（书写序）。
+    /// 遵从 `Tool` 即须同时满足其 super-spec 的方法义务（传递闭包）。
+    supers: Vec<Ident>,
+    /// PLAN-963（T-05）：关联类型名（`type Item`）——实现者须在遵从列表
+    /// 以命名实参 `as Container<Item=int>` 绑定。
+    assoc: Vec<Ident>,
     methods: Vec<SpecMethodDecl>,
 }
 
@@ -7312,7 +7379,10 @@ fn apply_spec_conformance(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diag
         let owner = t.name.name.clone();
         let owner_span = t.name.span;
         let mut seen: Vec<String> = Vec::new();
-        let mut injected: Vec<FnItem> = Vec::new();
+        // 每条遵从声明 →（被遵从 spec、方法义务闭包、具体化替换表）。
+        let mut claims: Vec<(&SpecDecl, Vec<&SpecDecl>, BTreeMap<String, TypeAnn>)> = Vec::new();
+        // 关联类型名 → 绑定类型（跨 spec 汇总；实现者方法/字段里的 assoc 名按此替换）。
+        let mut assoc_bound: BTreeMap<String, TypeAnn> = BTreeMap::new();
         for conform in t.conforms.iter() {
             let spec_ident = &conform.name;
             if seen.contains(&spec_ident.name) {
@@ -7327,7 +7397,7 @@ fn apply_spec_conformance(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diag
                 continue;
             }
             seen.push(spec_ident.name.clone());
-            let Some(spec) = by_name.get(spec_ident.name.as_str()) else {
+            let Some(spec) = by_name.get(spec_ident.name.as_str()).copied() else {
                 let sp = spec_ident.span;
                 let n = spec_ident.name.clone();
                 diags.push(Diagnostic::new(
@@ -7355,71 +7425,186 @@ fn apply_spec_conformance(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diag
                 ));
                 continue;
             }
-            let subst: BTreeMap<String, TypeAnn> = spec
+            // PLAN-963（T-05）：方法义务 = 自身 + super-spec 传递闭包。
+            let closure = spec_obligations(spec, &by_name, &mut diags);
+            // 关联类型名（闭包内去重，声明序）。
+            let mut assoc_names: Vec<Ident> = Vec::new();
+            for s in &closure {
+                for a in &s.assoc {
+                    if !assoc_names.iter().any(|x| x.name == a.name) {
+                        assoc_names.push(a.clone());
+                    }
+                }
+            }
+            let spec_name = spec.name.name.clone();
+            let mut bound: BTreeMap<String, TypeAnn> = BTreeMap::new();
+            // 绑定本身不合法时不再做该方法义务核验：否则会以未替换的 `Item`
+            // 签名报“签名不符”，把真正的绑定错误挤掉（first_diag 只回一条）。
+            let mut binding_ok = true;
+            for (k, v) in conform.assoc.iter() {
+                if !assoc_names.iter().any(|a| a.name == k.name) {
+                    binding_ok = false;
+                    let sp = k.span;
+                    let kn = k.name.clone();
+                    let sn = spec_name.clone();
+                    diags.push(Diagnostic::new(
+                        Stage::Text,
+                        "source.unsupported",
+                        format!("spec `{sn}` has no associated type `{kn}`"),
+                        sp,
+                    ));
+                    continue;
+                }
+                if bound.contains_key(&k.name) {
+                    binding_ok = false;
+                    let sp = k.span;
+                    let kn = k.name.clone();
+                    let sn = spec_name.clone();
+                    diags.push(Diagnostic::new(
+                        Stage::Text,
+                        "source.duplicate",
+                        format!("associated type `{kn}` is bound more than once for spec `{sn}`"),
+                        sp,
+                    ));
+                    continue;
+                }
+                bound.insert(k.name.clone(), v.clone());
+            }
+            for a in &assoc_names {
+                if !bound.contains_key(&a.name) {
+                    binding_ok = false;
+                    let sp = spec_ident.span;
+                    let an = a.name.clone();
+                    let sn = spec_name.clone();
+                    diags.push(Diagnostic::new(
+                        Stage::Text,
+                        "source.unsupported",
+                        format!(
+                            "type `{owner}` does not bind associated type `{an}` required by spec `{sn}`"
+                        ),
+                        sp,
+                    ));
+                }
+            }
+            for (k, v) in bound.iter() {
+                match assoc_bound.get(k) {
+                    Some(prev) if prev.kind != v.kind => {
+                        diags.push(Diagnostic::new(
+                            Stage::Text,
+                            "source.unsupported",
+                            format!(
+                                "associated type `{k}` is bound to different types by the declared \
+                                 specs of type `{owner}`"
+                            ),
+                            v.span,
+                        ));
+                    }
+                    Some(_) => {}
+                    None => {
+                        assoc_bound.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+            let mut subst: BTreeMap<String, TypeAnn> = spec
                 .type_params
                 .iter()
                 .zip(conform.args.iter())
                 .map(|(p, a)| (p.name.clone(), a.clone()))
                 .collect();
-            for m in &spec.methods {
-                let (m_params, m_ret, m_body) = instantiate_spec_method(m, &subst, &mut diags);
-                let existing = t
-                    .methods
-                    .iter()
-                    .chain(injected.iter())
-                    .find(|f| f.name.name == m.name.name && f.receiver == Receiver::View);
-                if let Some(f) = existing {
-                    // 显式实现优先于默认体；签名必须与 spec 一致（按类型
-                    // kind 比较，span 不参与语义身份）。
-                    let same = f.params.len() == m_params.len()
-                        && f.ret.kind == m_ret.kind
-                        && f.params
-                            .iter()
-                            .zip(m_params.iter())
-                            .all(|(a, b)| a.ty.kind == b.ty.kind);
-                    if !same {
-                        let sp = m.name.span;
-                        let mn = m.name.name.clone();
-                        let sn = spec.name.name.clone();
-                        diags.push(Diagnostic::new(
-                            Stage::Text,
-                            "source.unsupported",
-                            format!(
-                                "`fn {mn}` in type `{owner}` does not match the signature \
-                                 required by spec `{sn}`"
-                            ),
-                            sp,
-                        ));
-                    }
+            for (k, v) in bound {
+                subst.insert(k, v);
+            }
+            if binding_ok {
+                claims.push((spec, closure, subst));
+            }
+        }
+        // PLAN-963（T-05）：实现者自身的签名/体/字段里保留关联类型名时（旧 F1
+        // 行为），按绑定替换成具体类型；无关联类型绑定时零行为改动。
+        if !assoc_bound.is_empty() {
+            let mut st = TypeSubst {
+                map: assoc_bound.clone(),
+                diags: Vec::new(),
+                depth: 0,
+                cycle_code: "source.unsupported",
+                cycle_msg: "expanding an associated type does not terminate",
+            };
+            for f in t.fields.iter_mut() {
+                f.ty = st.ann(&f.ty);
+            }
+            for f in t.methods.iter_mut() {
+                st.rewrite_fn(f);
+            }
+            diags.append(&mut st.diags);
+        }
+        let mut injected: Vec<FnItem> = Vec::new();
+        // 同一 spec 的方法义务只处理一次（直接遵从与经 super-spec 到达同一 spec）。
+        let mut done: Vec<String> = Vec::new();
+        for (_, closure, subst) in claims {
+            for spec in closure {
+                if done.iter().any(|d| d == &spec.name.name) {
                     continue;
                 }
-                match m_body {
-                    Some(body) => injected.push(FnItem {
-                        name: m.name.clone(),
-                        type_params: Vec::new(),
-                        params: m_params,
-                        ret: m_ret,
-                        body,
-                        span: m.span,
-                        receiver: Receiver::View,
-                        owner: Some(Ident {
-                            name: owner.clone(),
-                            span: owner_span,
+                done.push(spec.name.name.clone());
+                for m in &spec.methods {
+                    let (m_params, m_ret, m_body) = instantiate_spec_method(m, &subst, &mut diags);
+                    let existing = t
+                        .methods
+                        .iter()
+                        .chain(injected.iter())
+                        .find(|f| f.name.name == m.name.name && f.receiver == Receiver::View);
+                    if let Some(f) = existing {
+                        // 显式实现优先于默认体；签名必须与 spec 一致（按类型
+                        // kind 比较，span 不参与语义身份）。
+                        let same = f.params.len() == m_params.len()
+                            && f.ret.kind == m_ret.kind
+                            && f.params
+                                .iter()
+                                .zip(m_params.iter())
+                                .all(|(a, b)| a.ty.kind == b.ty.kind);
+                        if !same {
+                            let sp = m.name.span;
+                            let mn = m.name.name.clone();
+                            let sn = spec.name.name.clone();
+                            diags.push(Diagnostic::new(
+                                Stage::Text,
+                                "source.unsupported",
+                                format!(
+                                    "`fn {mn}` in type `{owner}` does not match the signature \
+                                     required by spec `{sn}`"
+                                ),
+                                sp,
+                            ));
+                        }
+                        continue;
+                    }
+                    match m_body {
+                        Some(body) => injected.push(FnItem {
+                            name: m.name.clone(),
+                            type_params: Vec::new(),
+                            params: m_params,
+                            ret: m_ret,
+                            body,
+                            span: m.span,
+                            receiver: Receiver::View,
+                            owner: Some(Ident {
+                                name: owner.clone(),
+                                span: owner_span,
+                            }),
+                            script: false,
                         }),
-                        script: false,
-                    }),
-                    None => {
-                        let sp = m.name.span;
-                        let mn = m.name.name.clone();
-                        let sn = spec.name.name.clone();
-                        diags.push(Diagnostic::new(
-                            Stage::Text,
-                            "source.unsupported",
-                            format!(
-                                "type `{owner}` does not implement `fn {mn}` required by spec `{sn}`"
-                            ),
-                            sp,
-                        ));
+                        None => {
+                            let sp = m.name.span;
+                            let mn = m.name.name.clone();
+                            let sn = spec.name.name.clone();
+                            diags.push(Diagnostic::new(
+                                Stage::Text,
+                                "source.unsupported",
+                                format!(
+                                    "type `{owner}` does not implement `fn {mn}` required by spec `{sn}`"
+                                ),
+                                sp,
+                            ));
+                        }
                     }
                 }
             }
@@ -7427,6 +7612,76 @@ fn apply_spec_conformance(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diag
         t.methods.extend(injected);
     }
     diags
+}
+
+/// PLAN-963（T-05）：spec 及其 super-spec 的方法义务闭包（自身在前，随后按
+/// 书写序深度优先，重复名去重）。未知 super-spec / 通用 super-spec / 成环均
+/// 具名拒——不把未知 bound 当“无约束”静默放行。
+fn spec_obligations<'a>(
+    spec: &'a SpecDecl,
+    by_name: &BTreeMap<&str, &'a SpecDecl>,
+    diags: &mut Vec<Diagnostic>,
+) -> Vec<&'a SpecDecl> {
+    fn walk<'a>(
+        s: &'a SpecDecl,
+        by_name: &BTreeMap<&str, &'a SpecDecl>,
+        out: &mut Vec<&'a SpecDecl>,
+        path: &mut Vec<String>,
+        diags: &mut Vec<Diagnostic>,
+    ) {
+        if out.iter().any(|o| o.name.name == s.name.name) {
+            return;
+        }
+        out.push(s);
+        path.push(s.name.name.clone());
+        for sup in &s.supers {
+            if path.iter().any(|p| p == &sup.name) {
+                let sp = sup.span;
+                let a = sup.name.clone();
+                let b = s.name.name.clone();
+                diags.push(Diagnostic::new(
+                    Stage::Text,
+                    "source.unsupported",
+                    format!("super-spec cycle: `{b}` requires `{a}`"),
+                    sp,
+                ));
+                continue;
+            }
+            let Some(next) = by_name.get(sup.name.as_str()).copied() else {
+                let sp = sup.span;
+                let a = sup.name.clone();
+                let b = s.name.name.clone();
+                diags.push(Diagnostic::new(
+                    Stage::Text,
+                    "source.unsupported",
+                    format!("unknown super-spec `{a}` of spec `{b}`"),
+                    sp,
+                ));
+                continue;
+            };
+            if !next.type_params.is_empty() {
+                let sp = sup.span;
+                let a = sup.name.clone();
+                let b = s.name.name.clone();
+                diags.push(Diagnostic::new(
+                    Stage::Text,
+                    "source.unsupported",
+                    format!(
+                        "super-spec `{a}` of spec `{b}` is generic; super-spec bounds take no \
+                         type arguments"
+                    ),
+                    sp,
+                ));
+                continue;
+            }
+            walk(next, by_name, out, path, diags);
+        }
+        path.pop();
+    }
+    let mut out: Vec<&SpecDecl> = Vec::new();
+    let mut path: Vec<String> = Vec::new();
+    walk(spec, by_name, &mut out, &mut path, diags);
+    out
 }
 
 // ---------------------------------------------------------------------------

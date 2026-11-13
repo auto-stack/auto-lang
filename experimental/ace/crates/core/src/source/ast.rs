@@ -222,10 +222,15 @@ pub struct TypeItem {
 /// `args` carries the written type arguments of a **generic spec**; they are
 /// consumed at projection time (instantiated into the injected methods), so no
 /// downstream stage ever sees an unsubstituted spec parameter.
+///
+/// PLAN-963 (T-05): `assoc` carries the named associated-type bindings of
+/// `as S<Item=int>` (written order, name left of `=`). Also consumed at
+/// projection time — specs are erased before resolve.
 #[derive(Clone, Debug)]
 pub struct ConformRef {
     pub name: Ident,
     pub args: Vec<TypeAnn>,
+    pub assoc: Vec<(Ident, TypeAnn)>,
 }
 
 #[derive(Clone, Debug)]

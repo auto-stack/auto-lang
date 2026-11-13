@@ -22,6 +22,14 @@ pub struct SourceKinds {
     pub ext_item: Option<u32>,
     /// PLAN-963 (T-03): `<args>` of one `as Spec<int>` conformance claim.
     pub spec_args: Option<u32>,
+    /// PLAN-963 (T-05): one speculative argument of `as Spec<..>` — positional
+    /// (`int`) or named associated-type binding (`Item=int`).
+    pub spec_arg: Option<u32>,
+    /// PLAN-963 (T-05): the `= T` half of a named association binding.
+    pub spec_assoc_arg: Option<u32>,
+    /// PLAN-963 (T-05): `spec Name: A + B` super-spec list and its `+` tails.
+    pub super_specs: Option<u32>,
+    pub super_spec_tail: Option<u32>,
     /// PLAN-963 (T-03): `as A, B` conformance tail (`type X as A, B`).
     pub as_spec_tail: Option<u32>,
     // members
@@ -342,6 +350,10 @@ impl SourceKinds {
             spec_member: rk_opt(p, "spec-member"),
             ext_item: rk_opt(p, "ext-item"),
             spec_args: rk_opt(p, "spec-args"),
+            spec_arg: rk_opt(p, "spec-arg"),
+            spec_assoc_arg: rk_opt(p, "spec-assoc-arg"),
+            super_specs: rk_opt(p, "super-specs"),
+            super_spec_tail: rk_opt(p, "super-spec-tail"),
             as_spec_tail: rk_opt(p, "as-spec-tail"),
             member: rk("member"),
             field_member: rk("field-member"),

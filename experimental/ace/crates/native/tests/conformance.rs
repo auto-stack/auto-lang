@@ -14,6 +14,8 @@ mod alias_963;
 mod ext_963;
 #[path = "cases/spec_generic_963.rs"]
 mod spec_generic_963;
+#[path = "cases/spec_assoc_963.rs"]
+mod spec_assoc_963;
 #[path = "cases/cli.rs"]
 mod cli;
 #[path = "cases/closures_compat.rs"]
