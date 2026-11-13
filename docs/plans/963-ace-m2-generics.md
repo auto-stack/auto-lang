@@ -334,14 +334,14 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 
 ### 工作位置与材料
 
-预定唯一实施树 `D:/autostack/.wt/lang-963/auto-lang`，分支 `plan-963-dev`（已创建，终树提交 `03b5a30f8`），按仓规。跨仓同组每仓唯一树。计划簿记留主检出；实现和构建测试只在专属树。
+预定唯一实施树 `D:/autostack/.wt/lang-963/auto-lang`，分支 `plan-963-dev`（已创建，终树提交 `f1d63cdf0`；早期证据绑定 `03b5a30f8` 已被其后的证据补强提交覆盖），按仓规。跨仓同组每仓唯一树。计划簿记留主检出；实现和构建测试只在专属树。
 
 T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06→07串行。外仓owner交付可按稳定接口提前准备，但最终不得拿未交付接口背书。
 材料唯一目录 `D:/autostack/plan-artifacts/plan-963/`，开工登记owner/用途/在途；本轮未创建。不可另建attachments/证据仓目录，不留第二套target/SDK副本。
 
 ## 9. 复审记录
 
-2026-11-13 stage:review·T-05 独立复审（同树自审，未派 agent；结论绑定提交 `03b5a30f8` + 终树并集 run-ghf902pr）/ PLAN-963 r5：
+2026-11-13 stage:review·T-05 独立复审（同树自审，未派 agent；结论绑定终树提交 `f1d63cdf0` + 终树并集 `run-2v_8abue`；早期 `03b5a30f8`/`run-ghf902pr` 的证据面已被其后的补强提交覆盖，按"过程观察不计"处理）/ PLAN-963 r5：
 
 **AC 逐项（证据 → 结论）**
 
@@ -368,10 +368,11 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 固定组并集在**终树**上单实例跑通，父 gate 自证：`$env:CARGO_TERM_COLOR='never'; cargo t ace-source ace-syntax ace-semantics ace-av ace-native ace-a2x case-ace-m2-generics-963`
 → `target/test-groups/run-2v_8abue`，`gate_passed=true`、`error=空`、`source_state=a46c4996369d133c42d6e9d834d8461a09fbce3aee9b88a4f8a5c5869ebf85b5`、`config_sha256=e8b55f0eeecc01bb4eb2c5d672a11c2113ee00a39aae8842d81b3f650f6c7f2f`、wall=**608.3s**、退出码 0。
-各组 PASS 与执行数：ace-source **497**、ace-syntax **132**、ace-semantics **269**、ace-av **1080**、ace-native **236**、ace-a2x **229**、case-ace-m2-generics-963 **10 checks**（含 2 负控）——合计 **2453** 个 Rust 用例 + 10 个 case check，零忽略、零条件排除。
+各组 PASS 与执行数：ace-source **497**、ace-syntax **132**、ace-semantics **269**、ace-av **1080**、ace-native **236**、ace-a2x **229**、case-ace-m2-generics-963 **10 checks**（含 2 负控）——合计 **2453** 个 Rust 用例 + 10 个 case check，`errors=0`、`not_run=0`。
+- **条件排除（如实列出，不充 PASS）**：`excluded` 共 3 条，均为**既有 `#[ignore]`**、非本计划引入（`git diff master..HEAD` 对 `core/src/link.rs` 与 `a2x-worker/tests/conformance.rs` 的既有忽略行零改动）：`ace-core link::tests::run_exe_60s_deadline_bounds_descendant_pipe_hold`（`#[ignore = "60s acceptance evidence for AC-17; run explicitly"]`）、`ace-a2x-worker inventory_941::read_scalar_contract_inventory_941`、`inventory_941::read_composite_contract_inventory_941`（均 `ignored: true`）。本计划新增用例零 `#[ignore]`、零平台/feature 条件排除；`discovery_complete=False` 是发现面标记，未影响七组执行终态。
 - 期间另两次并集：`run-ghf902pr`（`03b5a30f8`，七组 PASS 但随后我又加证据，作过程观察不计）；`run-7yo3z078` 七组亦 PASS，因我在该运行期间编辑测试，父 gate 判 `error: "code/config/inputs changed during execution"` → 明确**作废不计**。三次 a2x 全绿（229）说明上一轮 `run-1w1lnge5` 的唯一红 `worker_ct_frontdoor_958::worker_ct_941_ordinary_same_names_four_operations`（`CToolError("cl -? spawn: Deadline")`）是同机工具时限的环境归因，非 lane 缺陷。
 - V 行 → 终树具名入口：V-01/V-05 `source-query/tests/instances_multi_963.rs` + `instance_host_935.rs`（跨包同名模板身份、恢复后首实例）；V-02/V-03/V-G07 `instances_invalidation_963.rs`（约束/实现变化失效、未读 body 零生产、`av_generic_record_body_change_executes_301`）；V-04/V-G03 core `source_generics_963.rs` + `source_specs_generic_963.rs` + `source_spec_super_assoc_963.rs`（bound 满足/不满足具名拒、缺抽象方法拒、默认继承/覆盖、`max_of` 函数级 bound 真实族）；V-G01/V-G04 `instances_const_963.rs`、`instances_value_domain_963.rs`（含新增 `builtin_list_does_not_replace_user_generic_type_963`）；V-G02 av/native/a2x `generic_records_963.rs`（300）；V-G05 core `source_alias_963.rs`/`source_ext_963.rs`/`source_default_args_963.rs`（含 `variadic_parameter_form_is_rejected_963`）与 native `alias_963.rs`/`ext_963.rs`/`spec_assoc_963.rs`/`spec_generic_963.rs`；V-G06 `module_packages_960.rs`（新增 owned 记录跨模块方案例）；V-G08 av/native/a2x 三份 `const_instances_963.rs`+`default_args_963.rs`+`generic_records_963.rs`（真实 rustc/cl、exit code 42/70/42 与 AV 值域），另 `av_default_argument_evaluates_exactly_once_963` 提供 V-08「只求值一次」的 MIR 见证（默认值 callee 恰 1 次）；V-PHASE 即本次并集；§5.3 永久语料 `crates/auto-lang/test/cases/ace-m2/generics/generics.{case,suite}.ad` 经 `cargo t case-ace-m2-generics-963` 实跑 10/10。
-- 发现/执行/条件排除：7 组零发现失败、零条件排除；准备（编译/装配）与运行、清理分列在该 run 的 invocations 中；无 timeout、无缺工具。
+- 发现/执行/条件排除：7 组 `outcome=PASS`、`errors=0`、`not_run=0`；3 条排除均为既有 `#[ignore]`（上条具名，非本计划引入），本计划新增用例零忽略、零平台/feature 排除；准备（编译/装配）与运行、清理分列在该 run 的 invocations 中；无 timeout、无缺工具。
 
 2026-11-13 stage:work（V-08 三项已闭；T-04/T-05 未做）/ PLAN-963 r5：
 提交 `47cb29273`（5 文件 +129/−1）补齐 V-08 余下三项，均有具名证据：
