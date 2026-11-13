@@ -11,6 +11,7 @@
 use ace_av_core::abc::{decode_abc, encode_abc};
 use ace_av_core::av::{execute, CancelFlag, ExecLimits};
 use ace_av_core::contract::{ExecOutcome, Value, AV_DATA_PROFILE};
+use ace_av_core::mir::{CalleeRef, MirInstr};
 use ace_av_core::{abc_verify, mir_verify};
 use ace_core::source::compile_record_source;
 use ace_core::verify::CheckedModule;
@@ -76,4 +77,49 @@ fn av_default_argument_explicit_override_executes_70() {
 #[test]
 fn av_default_argument_named_hole_executes_42() {
     assert_eq!(run_value(NAMED_HOLE), Value::I32(42), "closed-form oracle");
+}
+
+const DEFAULT_BY_CALL: &str = "\
+fn seven() int { return 7 }
+fn twice(x int, n int = seven()) int { return x * n }
+fn main() int {
+    return twice(6)
+}
+";
+
+/// O-963-D17（V-08「默认实参只求值一次」）：补位后的默认实参是一次普通实参
+/// 求值——`d_main` 的 block-major 指令序里 `d_seven` 调用恰出现 **1** 次
+/// （既不重复求值，也不把求值搬进被调方），且 AV 执行 = 6*7 = 42。
+#[test]
+fn av_default_argument_evaluates_exactly_once_963() {
+    let checked = checked(DEFAULT_BY_CALL);
+    let mir = ace_lowering::lower_checked_data(&checked, "d_main", 963)
+        .expect("record-domain lowering");
+    mir_verify::verify_mir(&mir).expect("MIR verifies");
+    let entry = mir
+        .funcs
+        .iter()
+        .find(|f| f.name == "d_main")
+        .expect("entry function present in MIR");
+    let default_calls = entry
+        .blocks
+        .iter()
+        .flat_map(|b| b.instrs.iter())
+        .filter(|i| match i {
+            MirInstr::Call {
+                callee: CalleeRef::Func(idx),
+                ..
+            } => mir
+                .funcs
+                .get(*idx as usize)
+                .map(|f| f.name == "d_seven")
+                .unwrap_or(false),
+            _ => false,
+        })
+        .count();
+    assert_eq!(
+        default_calls, 1,
+        "the default expression must be evaluated exactly once per call, got {default_calls}"
+    );
+    assert_eq!(run_value(DEFAULT_BY_CALL), Value::I32(42), "6 * 7");
 }
