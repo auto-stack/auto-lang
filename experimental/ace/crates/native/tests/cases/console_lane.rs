@@ -167,6 +167,41 @@ fn native_console_cumulative_run_budget_keeps_prior_output() {
 }
 
 #[test]
+fn native_console_nul_and_newline_bytes_are_preserved() {
+    // PLAN-947 T-05: the NUL/newline neighbor — embedded NUL and a second
+    // newline inside the str payload cross as raw bytes (one LF is still
+    // appended per call, exactly like AV).
+    let mir = console_compile(
+        "fn main() int {
+ print(\"a\0b\n\nc\")
+ return 0
+}
+",
+        "d_main",
+    )
+    .expect("console compile");
+    console_authorize(&mir, &caps()).expect("authorized");
+    let dir = std::env::temp_dir().join(format!(
+        "mn-console-nul-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    let run = console_native_run(&mir, "d_main", &dir).expect("console run");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(run.exit_code, Some(0));
+    assert_eq!(
+        run.stdout,
+        b"a\0b
+
+c
+"
+    );
+}
+
+#[test]
 fn native_console_helper_functions_and_guest_order() {
     let mir = console_compile(
         "fn helper() int { eprint(8); return 2 }\nfn main() int {\n print(9)\n print(helper())\n return 0\n}\n",
