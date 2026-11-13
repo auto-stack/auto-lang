@@ -358,3 +358,45 @@ fn vg01_page_codec_v3_carries_text_and_record_args() {
     );
     assert_eq!(tpage.args[0].1, InstanceTy::Text);
 }
+
+const USER_GENERIC_TYPE_OFFER: &str = "\
+type Box<T> { item T
+    fn get() T { return .item }
+}
+fn make_box() Box<int> { return Box { item: 7 } }
+fn id<T>(v T) T { return v }
+fn main() int {
+    return make_box().get() + id(1)
+}
+";
+
+const BUILTIN_LIST_IN_INSTANCES_LANE: &str = "\
+fn id<T>(v T) T { return v }
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(id(1))
+    return xs.get(0)
+}
+";
+
+/// V-G02 边界：内置 `List<T>` 不顶替用户泛型——(1) 用户泛型实例页里只有用户
+/// 声明解出的身份（`id_i32`），`Box<int>` 的成员归用户记录类型，没有任何
+/// `List` 模板/实例；(2) 反过来，在 instances lane 直接写内置 `List<int>`
+/// 也不会被悄悄当成用户泛型（具名拒，交 collections 前门）。
+#[test]
+fn builtin_list_does_not_replace_user_generic_type_963() {
+    let p = ok(USER_GENERIC_TYPE_OFFER);
+    assert_eq!(p.lane, CompileLane::Instances);
+    let id = by_name(&p, "id_i32");
+    assert_eq!(id.args[0].ty, InstanceTy::I32, "用户泛型的实参身份不被内置替换");
+    for inst in &p.instances {
+        assert_ne!(inst.template, "List", "内置 List 不得作为用户模板: {inst:?}");
+        assert_ne!(inst.concrete_name, "List", "内置 List 不产实例页: {inst:?}");
+    }
+
+    let ds = rejected(BUILTIN_LIST_IN_INSTANCES_LANE, "内置 List 属 collections 前门");
+    assert!(
+        ds.iter().any(|d| d.starts_with("source.syntax")),
+        "内置 `List<T>` 在 instances lane 只能被语法层拒（不是用户模板）: {ds:?}"
+    );
+}
