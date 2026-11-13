@@ -1258,8 +1258,12 @@ pub fn lower_checked_owned(
                 if checked.domain() == hir::HirDomain::HostConsole =>
             {
                 let sig = owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
-                let h = ace_av_core::host::declaration(symbol, sig)
-                    .map_err(|e| AdapterError::inv(e.code, e.message))?;
+                let h = if ace_av_core::platform_io::is_platform_symbol(symbol) {
+                    ace_av_core::platform_io::declaration(symbol, sig)
+                } else {
+                    ace_av_core::host::declaration(symbol, sig)
+                }
+                .map_err(|e| AdapterError::inv(e.code, e.message))?;
                 out.host_imports.push(h);
             }
             // PLAN-960: module global accessors are logical imports (symbol +
@@ -3926,6 +3930,18 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                         "host declaration missing".into(),
                                     )
                                 })? as u32;
+                            if ace_av_core::platform_io::is_platform_symbol(symbol) {
+                                let dst = self.temp_ty(self.t_i32)?;
+                                self.emit(
+                                    MirInstr::PlatformCall {
+                                        dst,
+                                        host,
+                                        args: arg_slots.clone(),
+                                    },
+                                    sp,
+                                )?;
+                                return Ok(dst);
+                            }
                             if arg_slots.len() != 1 {
                                 return Err(AdapterError::inv(
                                     "host.signature",

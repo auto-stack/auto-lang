@@ -21,6 +21,7 @@ pub(crate) mod closure_capture;
 pub mod closures_context;
 pub mod closures_fn;
 pub mod console;
+pub mod platform_io;
 pub mod cst;
 pub mod decl_env;
 #[cfg(any(test, feature = "legacy-syntax-oracle"))]

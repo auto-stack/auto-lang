@@ -273,6 +273,7 @@ pub fn emit_function(
         rt_refs: BTreeMap::new(),
         typed_refs: BTreeMap::new(),
         fmod_refs: BTreeMap::new(),
+        platform_refs: BTreeMap::new(),
         slots: &f.slots,
         lit_ids: BTreeMap::new(),
         outlen_slot: None,
@@ -584,6 +585,8 @@ struct FnLowerer<'a, 'b> {
     typed_refs: BTreeMap<&'static str, FuncRef>,
     /// PLAN-961: CRT fmod/fmodf import refs (float remainder).
     fmod_refs: BTreeMap<&'static str, FuncRef>,
+    /// PLAN-1039: platform.* shim import refs (console mode only).
+    platform_refs: BTreeMap<&'static str, FuncRef>,
     /// PLAN-961: the lowered function's slot table (type lookup).
     slots: &'a [MirSlot],
     /// Static literal data objects per Str const index.
@@ -1183,6 +1186,88 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         let zero32 = self.fb.ins().iconst(types::I32, 0);
         let failed = self.fb.ins().icmp(IntCC::NotEqual, status, zero32);
         self.console_guard(failed)?;
+        Ok(())
+    }
+
+    /// PLAN-1039: emit one checked `platform.io/1` / `platform.mem/1` shim call.
+    fn emit_console_platform_call(
+        &mut self,
+        dst: u32,
+        host: u32,
+        args: &[u32],
+    ) -> Result<(), String> {
+        use ace_av_core::platform_io::{lookup_symbol, PlatformOpKind};
+        let Some(h) = self.unit.host_imports.get(host as usize) else {
+            return Err(format!("platform host declaration {host} is missing"));
+        };
+        let Some(spec) = lookup_symbol(&h.symbol) else {
+            return Err(format!(
+                "host symbol `{}` is not a platform.* symbol",
+                h.symbol
+            ));
+        };
+        if args.len() != spec.params.len() {
+            return Err(format!(
+                "platform op `{}` expected {} args, got {}",
+                h.symbol,
+                spec.params.len(),
+                args.len()
+            ));
+        }
+        let shim_name = crate::platform_io::shim_symbol_for(spec.kind);
+        let callee = if let Some(&fref) = self.platform_refs.get(shim_name) {
+            fref
+        } else {
+            let sig = crate::platform_io::cranelift_shim_sig(spec.kind);
+            let id = self
+                .om
+                .declare_function(shim_name, Linkage::Import, &sig)
+                .map_err(|e| format!("declare {shim_name}: {e}"))?;
+            let fref = self.om.declare_func_in_func(id, self.fb.func);
+            self.platform_refs.insert(shim_name, fref);
+            fref
+        };
+
+        let mut clif_args: Vec<Value> = Vec::with_capacity(args.len() + 1);
+        match spec.kind {
+            PlatformOpKind::IoStdout
+            | PlatformOpKind::IoStderr
+            | PlatformOpKind::IoLastError
+            | PlatformOpKind::MemPageSize
+            | PlatformOpKind::MemAllocGranularity => {}
+            PlatformOpKind::IoWriteSome => {
+                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                clif_args.push(self.use_ptr(args[1])?);
+                clif_args.push(self.use_len(args[1])?);
+            }
+            PlatformOpKind::IoWriteSomeSlice => {
+                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                clif_args.push(self.use_ptr(args[1])?);
+                clif_args.push(self.use_len(args[1])?);
+                clif_args.push(self.fb.use_var(self.v_scalar(args[2])?));
+                clif_args.push(self.fb.use_var(self.v_scalar(args[3])?));
+            }
+            PlatformOpKind::MemAlloc
+            | PlatformOpKind::MemFree
+            | PlatformOpKind::MemLogicalLen
+            | PlatformOpKind::MemMappedLen
+            | PlatformOpKind::MemBorrow
+            | PlatformOpKind::MemUnborrow => {
+                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+            }
+            PlatformOpKind::MemReadU8 => {
+                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                clif_args.push(self.fb.use_var(self.v_scalar(args[1])?));
+            }
+            PlatformOpKind::MemWriteU8 => {
+                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                clif_args.push(self.fb.use_var(self.v_scalar(args[1])?));
+                clif_args.push(self.fb.use_var(self.v_scalar(args[2])?));
+            }
+        }
+        let call = self.fb.ins().call(callee, &clif_args);
+        let res = self.fb.inst_results(call)[0];
+        self.def_scalar(dst, res)?;
         Ok(())
     }
 
@@ -3069,7 +3154,10 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             MirInstr::HostCall { host, arg } if self.mode == LowerMode::Console => {
                 self.emit_console_host_call(*host, *arg)?;
             }
-            MirInstr::HostCall { .. } => {
+            MirInstr::PlatformCall { dst, host, args } if self.mode == LowerMode::Console => {
+                self.emit_console_platform_call(*dst, *host, args)?;
+            }
+            MirInstr::HostCall { .. } | MirInstr::PlatformCall { .. } => {
                 return Err("av.host-console/1 calls are outside the native surface".into())
             }
             MirInstr::GlobalGet { .. } | MirInstr::GlobalSet { .. } => {

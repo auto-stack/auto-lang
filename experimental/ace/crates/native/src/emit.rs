@@ -194,19 +194,54 @@ pub fn admit_console_unit(unit: &MirModule) -> Result<(), MnError> {
     let f = &unit.funcs[0];
     for b in &f.blocks {
         for i in &b.instrs {
-            if let ace_av_core::mir::MirInstr::HostCall { host, .. } = i {
-                let Some(h) = unit.host_imports.get(*host as usize) else {
-                    return Err(MnError::Unsupported(
-                        "host-console",
-                        format!("host declaration {host} is missing in the unit"),
-                    ));
-                };
-                if ace_av_core::host::signature(&h.symbol).is_none() {
-                    return Err(MnError::Unsupported(
-                        "host-console",
-                        format!("host symbol `{}` is not a console/1 symbol", h.symbol),
-                    ));
+            match i {
+                ace_av_core::mir::MirInstr::HostCall { host, .. } => {
+                    let Some(h) = unit.host_imports.get(*host as usize) else {
+                        return Err(MnError::Unsupported(
+                            "host-console",
+                            format!("host declaration {host} is missing in the unit"),
+                        ));
+                    };
+                    if ace_av_core::host::signature(&h.symbol).is_none() {
+                        return Err(MnError::Unsupported(
+                            "host-console",
+                            format!("host symbol `{}` is not a console/1 symbol", h.symbol),
+                        ));
+                    }
                 }
+                ace_av_core::mir::MirInstr::PlatformCall { host, args, .. } => {
+                    let Some(h) = unit.host_imports.get(*host as usize) else {
+                        return Err(MnError::Unsupported(
+                            "host-console",
+                            format!("host declaration {host} is missing in the unit"),
+                        ));
+                    };
+                    let Some(spec) = ace_av_core::platform_io::lookup_symbol(&h.symbol) else {
+                        return Err(MnError::Unsupported(
+                            "host-console",
+                            format!("host symbol `{}` is not a supported platform.* symbol", h.symbol),
+                        ));
+                    };
+                    if let Err(err) = ace_av_core::platform_io::validate_import(unit, h, spec) {
+                        return Err(MnError::Unsupported(
+                            "host-console",
+                            format!("{}: {}", err.code, err.message),
+                        ));
+                    }
+                    if args.len() != spec.params.len() {
+                        return Err(MnError::Unsupported(
+                            "host-console",
+                            format!("platform symbol `{}` arity mismatch", h.symbol),
+                        ));
+                    }
+                    if !unit.capabilities.iter().any(|c| c == spec.capability) {
+                        return Err(MnError::Unsupported(
+                            "host-console",
+                            format!("missing capability `{}` for `{}`", spec.capability, h.symbol),
+                        ));
+                    }
+                }
+                _ => {}
             }
         }
     }

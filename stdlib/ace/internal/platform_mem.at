@@ -1,0 +1,49 @@
+// PLAN-1039 internal ACE checked platform-I/O & OS virtual-memory helpers.
+// Explicitly INTERNAL (non-public API): public `Storage` traits and
+// `stdlib/contracts/compatibility.toml` remain unfrozen (AC-MEM).
+
+fn io_write_all(handle int, s str) int {
+    var off = 0
+    var rem = s.len_bytes()
+    for rem > 0 {
+        let w = io_write_some_slice(handle, s, off, rem)
+        if w <= 0 {
+            return w
+        }
+        off = off + w
+        rem = rem - w
+    }
+    return off
+}
+
+fn mem_region_alloc(byte_len int) int {
+    return mem_alloc(byte_len)
+}
+
+fn mem_region_free(handle int) int {
+    return mem_free(handle)
+}
+
+fn mem_region_logical_len(handle int) int {
+    return mem_logical_len(handle)
+}
+
+fn mem_region_mapped_len(handle int) int {
+    return mem_mapped_len(handle)
+}
+
+fn mem_region_borrow(handle int) int {
+    return mem_borrow(handle)
+}
+
+fn mem_region_unborrow(handle int) int {
+    return mem_unborrow(handle)
+}
+
+fn mem_region_write_byte(handle int, offset int, byte_val int) int {
+    return mem_write_u8(handle, offset, byte_val)
+}
+
+fn mem_region_read_byte(handle int, offset int) int {
+    return mem_read_u8(handle, offset)
+}

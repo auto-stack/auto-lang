@@ -298,7 +298,17 @@ fn execute_module_impl(
     arena: crate::owned_text::StrArena,
     optimize: bool,
 ) -> (ExecOutcome, ExecTrace) {
-    execute_module_impl_with_host(module, limits, cancel, args, arena, optimize, None, None)
+    execute_module_impl_with_host(
+        module,
+        limits,
+        cancel,
+        args,
+        arena,
+        optimize,
+        None,
+        None,
+        None,
+    )
 }
 
 /// PLAN-919: execute the zero-arg entry with the per-owner lifecycle
@@ -321,9 +331,22 @@ pub fn execute_observed(
         crate::owned_text::StrArena::new(),
         true,
         None,
+        None,
         Some(log),
     )
 }
+
+/// PLAN-1039: session observation summary after checked platform I/O / OS memory execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlatformSessionSummary {
+    pub session_id: u64,
+    pub last_os_error: u32,
+    pub written_total_bytes: usize,
+    pub leaked_regions_cleaned: usize,
+    pub live_mapped_at_exit: usize,
+}
+
+static NEXT_PLATFORM_SESSION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// PLAN-863: structural credentials carry no authority; current grants are checked per run.
 pub fn execute_console(
@@ -343,7 +366,45 @@ pub fn execute_console(
         false,
         Some(provider),
         None,
+        None,
     ))
+}
+
+/// PLAN-1039: execute an AVHC module with per-run grants, fresh session resource ledger, and
+/// Win32 platform I/O / OS memory provider (plus optional ConsoleHost if console/1 ops are mixed).
+pub fn execute_platform(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    grants: &[String],
+    console: Option<&mut dyn crate::host::ConsoleHost>,
+    backend: &mut dyn crate::platform_io::PlatformIoBackend,
+) -> Result<(ExecOutcome, ExecTrace, PlatformSessionSummary), crate::host::AdmissionError> {
+    crate::host::authorize(module.module(), grants)?;
+    let session_id = NEXT_PLATFORM_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut ledger = crate::platform_io::PlatformResourceLedger::new(session_id, grants);
+    let (outcome, trace) = execute_module_impl_with_host(
+        module,
+        limits,
+        cancel,
+        &[],
+        crate::owned_text::StrArena::new(),
+        false,
+        console,
+        Some((&mut ledger, backend)),
+        None,
+    );
+    let leaked_regions_cleaned = ledger.active_regions();
+    let live_mapped_at_exit = ledger.live_mapped_bytes;
+    let summary = PlatformSessionSummary {
+        session_id,
+        last_os_error: ledger.last_os_error,
+        written_total_bytes: ledger.written_total_bytes,
+        leaked_regions_cleaned,
+        live_mapped_at_exit,
+    };
+    ledger.cleanup(backend);
+    Ok((outcome, trace, summary))
 }
 
 /// PLAN-915: fold the loop-state observation facts into the returned trace.
@@ -368,13 +429,33 @@ fn execute_module_impl_with_host(
     arena: crate::owned_text::StrArena,
     optimize: bool,
     host: Option<&mut dyn crate::host::ConsoleHost>,
+    platform: Option<(
+        &mut crate::platform_io::PlatformResourceLedger,
+        &mut dyn crate::platform_io::PlatformIoBackend,
+    )>,
     observed: Option<crate::lifecycle::LifecycleLog>,
 ) -> (ExecOutcome, ExecTrace) {
     let m = module.module();
-    if !m.host_imports.is_empty() && host.is_none() {
+    let needs_console = m
+        .host_imports
+        .iter()
+        .any(|h| !crate::platform_io::is_platform_symbol(&h.symbol));
+    let needs_platform = m
+        .host_imports
+        .iter()
+        .any(|h| crate::platform_io::is_platform_symbol(&h.symbol));
+    if needs_console && host.is_none() {
         return (
             ExecOutcome::Infra(
                 "host.unauthorized: explicit console execution/provider required".into(),
+            ),
+            ExecTrace::default(),
+        );
+    }
+    if needs_platform && platform.is_none() {
+        return (
+            ExecOutcome::Infra(
+                "host.unauthorized: explicit platform provider required".into(),
             ),
             ExecTrace::default(),
         );
@@ -472,6 +553,7 @@ fn execute_module_impl_with_host(
             None,
             false,
             host,
+            platform,
         )
     } else {
         dispatch_with_host(
@@ -483,6 +565,7 @@ fn execute_module_impl_with_host(
             None,
             false,
             host,
+            platform,
         )
     }
     .expect("no budget: the loop always terminates with an outcome");
@@ -2496,7 +2579,17 @@ fn dispatch<V: ModuleView>(
     budget: Option<u64>,
     stop_before_call: bool,
 ) -> Option<ExecOutcome> {
-    dispatch_with_host(v, limits, cancel, args, st, budget, stop_before_call, None)
+    dispatch_with_host(
+        v,
+        limits,
+        cancel,
+        args,
+        st,
+        budget,
+        stop_before_call,
+        None,
+        None,
+    )
 }
 
 fn dispatch_with_host<V: ModuleView>(
@@ -2508,15 +2601,32 @@ fn dispatch_with_host<V: ModuleView>(
     budget: Option<u64>,
     stop_before_call: bool,
     mut host: Option<&mut dyn crate::host::ConsoleHost>,
+    mut platform: Option<(
+        &mut crate::platform_io::PlatformResourceLedger,
+        &mut dyn crate::platform_io::PlatformIoBackend,
+    )>,
 ) -> Option<ExecOutcome> {
     if crate::host::inside_provider() {
         return Some(ExecOutcome::Infra(
             "host.reentry: guest execution from a host call is forbidden".into(),
         ));
     }
-    if !v.host_imports().is_empty() && host.is_none() {
+    let needs_console = v
+        .host_imports()
+        .iter()
+        .any(|h| !crate::platform_io::is_platform_symbol(&h.symbol));
+    let needs_platform = v
+        .host_imports()
+        .iter()
+        .any(|h| crate::platform_io::is_platform_symbol(&h.symbol));
+    if needs_console && host.is_none() {
         return Some(ExecOutcome::Infra(
             "host.unauthorized: no console provider".into(),
+        ));
+    }
+    if needs_platform && platform.is_none() {
+        return Some(ExecOutcome::Infra(
+            "host.unauthorized: no platform provider".into(),
         ));
     }
     let started = Instant::now();
@@ -5440,6 +5550,58 @@ fn dispatch_with_host<V: ModuleView>(
                     });
                     if let Err(out) = result {
                         return Some(out);
+                    }
+                }
+                MirInstr::PlatformCall { dst, host: index, args } => {
+                    let Some(h) = v.host_imports().get(*index as usize) else {
+                        return Some(ExecOutcome::Infra(
+                            "host.reference: missing platform declaration".into(),
+                        ));
+                    };
+                    let Some(spec) = crate::platform_io::lookup_symbol(&h.symbol) else {
+                        return Some(ExecOutcome::Infra("host.unknown-symbol".into()));
+                    };
+                    if st.frames.len() >= limits.max_frames {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::Frames,
+                            message: "platform call exceeds call depth".into(),
+                        });
+                    }
+                    if CancelCheck::poll(cancel) {
+                        return Some(ExecOutcome::Cancelled);
+                    }
+                    let arg_vals: Vec<Value> = {
+                        let fr = st.frames.last().expect("frame");
+                        args.iter().map(|s| fr.slots[*s as usize].clone()).collect()
+                    };
+                    let Some((ref mut ledger, ref mut backend)) = platform else {
+                        return Some(ExecOutcome::Infra(
+                            "host.unauthorized: no platform provider".into(),
+                        ));
+                    };
+                    match ledger.dispatch(*backend, spec, &arg_vals, cancel) {
+                        Ok(code) => {
+                            let fr = st.frames.last_mut().expect("frame");
+                            fr.slots[*dst as usize] = Value::I32(code);
+                        }
+                        Err(crate::host::HostError::Cancelled) => {
+                            return Some(ExecOutcome::Cancelled);
+                        }
+                        Err(crate::host::HostError::Resource) => {
+                            return Some(ExecOutcome::Resource {
+                                kind: ResourceKind::ConsoleOutput,
+                                message: "platform operation resource budget exceeded".into(),
+                            });
+                        }
+                        Err(crate::host::HostError::Io(message)) => {
+                            return Some(ExecOutcome::Infra(format!("host.io: {message}")));
+                        }
+                    }
+                    if started.elapsed() > limits.wall {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::ExecutionWall,
+                            message: "platform call exceeded wall budget".into(),
+                        });
                     }
                 }
                 MirInstr::Trace { event } => {

@@ -206,3 +206,5 @@ mod module_packages_960;
 mod module_sources_950;
 #[path = "cases/sq_source_facts_934.rs"]
 mod sq_source_facts_934;
+#[path = "cases/platform_io_1039.rs"]
+mod platform_io_1039;

@@ -659,7 +659,8 @@ impl<'s> Parser<'s> {
                 self.pos += 1;
                 self.last_line = line;
                 if self.surface == SourceProfile::HostConsole
-                    && super::console::is_reserved_name(&name)
+                    && (super::console::is_reserved_name(&name)
+                        || super::platform_io::is_reserved_name(&name))
                 {
                     return Err(Diagnostic::new(
                         Stage::Text,

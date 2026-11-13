@@ -829,7 +829,15 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 // fn); the grant was admitted with the environment.
                 || (self.is_owned && c == ace_foreign_contract::resource::RESOURCE_CAP)
                 || (self.module.is_host_console_profile()
-                    && matches!(c.as_str(), crate::host::STDOUT | crate::host::STDERR));
+                    && matches!(
+                        c.as_str(),
+                        crate::host::STDOUT
+                            | crate::host::STDERR
+                            | crate::platform_io::CAP_STDOUT
+                            | crate::platform_io::CAP_STDERR
+                            | crate::platform_io::CAP_WRITE
+                            | crate::platform_io::CAP_MEM
+                    ));
             if !known {
                 return Err(MirVerifyError::uns(
                     "mir.capability-unknown",
@@ -2614,6 +2622,45 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 let at = slot_ty_of(f, *arg, sp, "host arg")?;
                 if !self.ty_equiv(at, sig.params[0]) {
                     return Err(err("host.signature", "host operand type mismatch".into()));
+                }
+            }
+            MirInstr::PlatformCall { dst, host, args } => {
+                if !self.module.is_host_console_profile() {
+                    return Err(err(
+                        "host.profile",
+                        "platform call requires host-console profile".into(),
+                    ));
+                }
+                let h = self
+                    .module
+                    .host_imports
+                    .get(*host as usize)
+                    .ok_or_else(|| err("host.reference", "platform index out of range".into()))?;
+                if !crate::platform_io::is_platform_symbol(&h.symbol) {
+                    return Err(err(
+                        "host.category",
+                        "PlatformCall must target a platform operation".into(),
+                    ));
+                }
+                let sig = self
+                    .module
+                    .sig_of(h.sig)
+                    .ok_or_else(|| err("host.signature", "invalid platform signature".into()))?;
+                if args.len() != sig.params.len() {
+                    return Err(err(
+                        "host.signature",
+                        "platform operand count mismatch".into(),
+                    ));
+                }
+                for (arg, param_ty) in args.iter().zip(sig.params.iter()) {
+                    let at = slot_ty_of(f, *arg, sp, "platform arg")?;
+                    if !self.ty_equiv(at, *param_ty) {
+                        return Err(err("host.signature", "platform operand type mismatch".into()));
+                    }
+                }
+                let dt = slot_ty_of(f, *dst, sp, "platform dst")?;
+                if !self.ty_equiv(dt, sig.result) {
+                    return Err(err("host.signature", "platform result type mismatch".into()));
                 }
             }
             MirInstr::Trace { .. } => {}
@@ -4549,7 +4596,8 @@ impl MirInstr {
             // PLAN-823: closure-surface value producers define their dst.
             MirInstr::CreateClosure { dst, .. }
             | MirInstr::CallClosure { dst, .. }
-            | MirInstr::EnvGet { dst, .. } => Some(*dst),
+            | MirInstr::EnvGet { dst, .. }
+            | MirInstr::PlatformCall { dst, .. } => Some(*dst),
             MirInstr::HostCall { .. }
             | MirInstr::Trace { .. }
             | MirInstr::BorrowEnd { .. }
@@ -4599,6 +4647,7 @@ impl MirInstr {
                 out
             }
             MirInstr::HostCall { arg, .. } => vec![*arg],
+            MirInstr::PlatformCall { args, .. } => args.clone(),
             MirInstr::GlobalGet { .. } => vec![],
             MirInstr::GlobalSet { src, .. } => vec![*src],
             MirInstr::FieldGet { base, .. } => vec![*base],

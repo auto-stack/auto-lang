@@ -972,8 +972,10 @@ fn av_data_instruction_contract_round_trip_all_opcodes() {
     // PLAN-938: + FOREIGN_CALL (0x36, foreign-native profile; AV admission
     // rejects, never executes) = 54.
     // PLAN-961: + CONV (0x3A, the numeric conversion matrix) = 55.
-    assert_eq!(all_mnemonics.len(), 55);
+    // PLAN-1039: + PLATFORM_CALL (0x3C, Win32 platform I/O & checked OS virtual memory) = 56.
+    assert_eq!(all_mnemonics.len(), 56);
     assert!(all_mnemonics.contains(&"CONV"));
     assert!(all_mnemonics.contains(&"HOST_CALL"));
     assert!(all_mnemonics.contains(&"FOREIGN_CALL"));
+    assert!(all_mnemonics.contains(&"PLATFORM_CALL"));
 }

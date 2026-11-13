@@ -10182,6 +10182,50 @@ impl<'a, 's> FnResolver<'a, 's> {
                 },
             };
         }
+        if self.profile == SourceProfile::HostConsole {
+            if let Some(op) = super::platform_io::lookup_callee(&callee.name) {
+                if rargs.len() != op.params.len() || rargs.iter().any(|a| a.name.is_some()) {
+                    self.bind_err(
+                        "source.platform-argument",
+                        format!(
+                            "platform operation `{}` requires {} positional argument(s)",
+                            op.callee,
+                            op.params.len()
+                        ),
+                        call_span,
+                    );
+                    return ResolvedExpr {
+                        span: call_span,
+                        vt: op.result,
+                        kind: RExprKind::Unit,
+                    };
+                }
+                let mut args = Vec::with_capacity(rargs.len());
+                for (arg, expected) in rargs.into_iter().zip(op.params.iter()) {
+                    let ok = match expected {
+                        VT::Str => matches!(arg.value.vt, VT::Str | VT::StrOwned),
+                        _ => arg.value.vt == *expected,
+                    };
+                    if !ok {
+                        self.bind_err(
+                            "source.platform-argument",
+                            format!("platform operation `{}` argument type mismatch", op.callee),
+                            arg.value.span,
+                        );
+                    }
+                    args.push(arg.value);
+                }
+                self.used_intrinsics.insert(op.symbol);
+                return ResolvedExpr {
+                    span: call_span,
+                    vt: op.result,
+                    kind: RExprKind::CallIntrinsic {
+                        symbol: op.symbol,
+                        args,
+                    },
+                };
+            }
+        }
         // Locals shadow functions and intrinsics in callee position.
         if let Some(local) = self.lookup(&callee.name) {
             if matches!(self.locals[local.0].vt, VT::Function(_)) {

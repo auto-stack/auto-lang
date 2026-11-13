@@ -3471,7 +3471,7 @@ impl Verifier {
     fn check_module(&mut self, m: &hir::Module) {
         if self.domain != HirDomain::HostConsole {
             for d in &m.defs {
-                if matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. } if symbol.starts_with("auto.console."))
+                if matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. } if symbol.starts_with("auto.console.") || symbol.starts_with("auto.platform."))
                 {
                     self.error(
                         "host.profile",
@@ -7933,15 +7933,32 @@ pub fn verify_host_console(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Dia
             if matches!(symbol.as_str(), "hir.test.mark_a" | "hir.test.mark_b") {
                 continue;
             }
-            let Some((input, cap)) = crate::source::console::signature(symbol) else {
-                diags.push(Diagnostic::new(
-                    Stage::Verify,
-                    "host.unknown-symbol",
-                    "unknown host-console declaration",
-                    d.span,
-                ));
-                continue;
+            let vt_map = |vt: crate::source::resolve::VT| match vt {
+                crate::source::resolve::VT::I32 => ValueType::I32,
+                crate::source::resolve::VT::Bool => ValueType::Bool,
+                crate::source::resolve::VT::Str => ValueType::Str,
+                crate::source::resolve::VT::Char => ValueType::Char,
+                _ => unreachable!(),
             };
+            let (expected_params, expected_result, cap): (Vec<ValueType>, ValueType, &'static str) =
+                if let Some((input, cap)) = crate::source::console::signature(symbol) {
+                    (vec![vt_map(input)], ValueType::Unit, cap)
+                } else if let Some((params, res, cap)) = crate::source::platform_io::signature(symbol)
+                {
+                    let res_vt = match res {
+                        crate::source::resolve::VT::I32 => ValueType::I32,
+                        _ => ValueType::Unit,
+                    };
+                    (params.iter().copied().map(vt_map).collect(), res_vt, cap)
+                } else {
+                    diags.push(Diagnostic::new(
+                        Stage::Verify,
+                        "host.unknown-symbol",
+                        "unknown host-console declaration",
+                        d.span,
+                    ));
+                    continue;
+                };
             if !seen.insert(symbol) {
                 diags.push(Diagnostic::new(
                     Stage::Verify,
@@ -7950,13 +7967,6 @@ pub fn verify_host_console(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Dia
                     d.span,
                 ));
             }
-            let expected = match input {
-                crate::source::resolve::VT::I32 => ValueType::I32,
-                crate::source::resolve::VT::Bool => ValueType::Bool,
-                crate::source::resolve::VT::Str => ValueType::Str,
-                crate::source::resolve::VT::Char => ValueType::Char,
-                _ => unreachable!(),
-            };
             let sig_ok = match m.types.get(ty.0 as usize).map(|t| &t.kind) {
                 Some(hir::TypeKind::Function(sig)) => {
                     let v = Verifier {
@@ -7965,9 +7975,13 @@ pub fn verify_host_console(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Dia
                         closures_ctx: None,
                         domain: HirDomain::HostConsole,
                     };
-                    sig.params.len() == 1
-                        && v.value_of(&sig.params[0], &types) == expected
-                        && v.value_of(&sig.result, &types) == ValueType::Unit
+                    sig.params.len() == expected_params.len()
+                        && sig
+                            .params
+                            .iter()
+                            .zip(expected_params.iter())
+                            .all(|(p, exp)| v.value_of(p, &types) == *exp)
+                        && v.value_of(&sig.result, &types) == expected_result
                 }
                 _ => false,
             };

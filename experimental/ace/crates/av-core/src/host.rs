@@ -74,16 +74,16 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
             "host imports require the host-console profile",
         ));
     }
-    if module.host_imports.len() > 8 {
+    if module.host_imports.len() > crate::platform_io::MAX_TOTAL_HOST_IMPORTS {
         return Err(err(
             "host.duplicate",
-            "at most eight console overloads can be declared",
+            "too many host declarations in one module",
         ));
     }
     if module
         .imports
         .iter()
-        .any(|i| i.symbol.starts_with("auto.console."))
+        .any(|i| i.symbol.starts_with("auto.console.") || i.symbol.starts_with("auto.platform."))
     {
         return Err(err(
             "host.category",
@@ -91,9 +91,32 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
         ));
     }
     let mut seen = std::collections::BTreeSet::new();
+    let mut console_count = 0usize;
+    let mut platform_count = 0usize;
     for h in &module.host_imports {
         if !seen.insert(&h.symbol) {
             return Err(err("host.duplicate", "duplicate host declaration"));
+        }
+        if crate::platform_io::is_platform_symbol(&h.symbol) {
+            platform_count += 1;
+            if platform_count > crate::platform_io::MAX_PLATFORM_IMPORTS {
+                return Err(err(
+                    "host.duplicate",
+                    "at most sixteen platform operations can be declared",
+                ));
+            }
+            let spec = crate::platform_io::lookup_symbol(&h.symbol).ok_or_else(|| {
+                err("host.unknown-symbol", "unknown platform operation symbol")
+            })?;
+            crate::platform_io::validate_import(module, h, spec)?;
+            continue;
+        }
+        console_count += 1;
+        if console_count > 8 {
+            return Err(err(
+                "host.duplicate",
+                "at most eight console overloads can be declared",
+            ));
         }
         let (input, stream) = signature(&h.symbol)
             .ok_or_else(|| err("host.unknown-symbol", "unknown console symbol"))?;

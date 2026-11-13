@@ -237,7 +237,7 @@ pub fn emit_console_shim_coff() -> Result<Vec<u8>, MnError> {
 /// forwards its i32 result to ExitProcess (a Unit entry exits 0). The
 /// wrapper mirrors `emit_wrapper_coff` but admits the Unit result channel
 /// the console profile allows.
-fn emit_console_wrapper_coff(entry_symbol: &str, unit_result: bool) -> Result<Vec<u8>, MnError> {
+pub fn emit_console_wrapper_coff(entry_symbol: &str, unit_result: bool) -> Result<Vec<u8>, MnError> {
     let isa = emit::make_isa()?;
     let builder = ObjectBuilder::new(isa, "mn-console-start", default_libcall_names())
         .map_err(|e| MnError::Backend(format!("object builder: {e}")))?;
@@ -301,15 +301,13 @@ fn emit_console_wrapper_coff(entry_symbol: &str, unit_result: bool) -> Result<Ve
         .map_err(|e| MnError::Backend(format!("emit console wrapper: {e}")))
 }
 
-/// The console/1 native lane: authorize per run → split → emit → link →
-/// one contained real PE run. Exit codes: the entry result (success), 70
-/// (the frozen mn trap), [`CONSOLE_REJECT_EXIT_CODE`] (console resource
-/// rejection). Output capture is byte-exact.
-pub fn console_native_run(
+/// PLAN-1039: compile + link a verified `av.host-console/1` module without
+/// executing yet, so callers can inspect PE imports or run under custom pipes.
+pub fn console_native_build(
     mir: &MirModule,
     entry: &str,
     workdir: &Path,
-) -> Result<ConsoleNativeRun, MnError> {
+) -> Result<link_driver::PeLink, MnError> {
     // Entry identity: the module entry names the exported unit symbol.
     let entry_unit = mir
         .funcs
@@ -329,9 +327,16 @@ pub fn console_native_run(
         ),
         None => false,
     };
+    let has_platform = mir.funcs.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.instrs
+                .iter()
+                .any(|i| matches!(i, ace_av_core::mir::MirInstr::PlatformCall { .. }))
+        })
+    });
     let units = ace_av::cache::split_units(mir)
         .map_err(|e| MnError::Backend(format!("console split: {e}")))?;
-    let mut objects = Vec::with_capacity(units.len() + 2);
+    let mut objects = Vec::with_capacity(units.len() + 3);
     for (i, unit) in units.iter().enumerate() {
         let object = emit::emit_console_unit_coff(unit)?;
         objects.push(ObjectInput {
@@ -343,15 +348,33 @@ pub fn console_native_run(
         name: "mn-console-shim".into(),
         bytes: emit_console_shim_coff()?,
     });
+    if has_platform {
+        objects.push(ObjectInput {
+            name: "mn-platform-shim".into(),
+            bytes: crate::platform_io::emit_platform_shim_coff()?,
+        });
+    }
     let wrapper = emit_console_wrapper_coff(&entry_symbol, unit_result)?;
-    let linked = link_driver::link_only(
+    link_driver::link_only(
         &objects,
         &wrapper,
         START_SYMBOL,
         workdir,
         &[],
         "plan947-console-lane",
-    )?;
+    )
+}
+
+/// The console/1 native lane: authorize per run → split → emit → link →
+/// one contained real PE run. Exit codes: the entry result (success), 70
+/// (the frozen mn trap), [`CONSOLE_REJECT_EXIT_CODE`] (console resource
+/// rejection). Output capture is byte-exact.
+pub fn console_native_run(
+    mir: &MirModule,
+    entry: &str,
+    workdir: &Path,
+) -> Result<ConsoleNativeRun, MnError> {
+    let linked = console_native_build(mir, entry, workdir)?;
     let run = link_driver::run_pe(
         &linked.exe_path,
         RUN_BUDGET,

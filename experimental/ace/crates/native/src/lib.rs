@@ -37,6 +37,7 @@ pub mod link_driver;
 pub mod lower;
 pub mod observe;
 pub mod owned_source_incremental;
+pub mod platform_io;
 pub mod resources;
 pub mod source_diagnostics;
 pub mod symbols;

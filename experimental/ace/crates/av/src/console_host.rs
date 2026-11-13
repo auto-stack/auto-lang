@@ -253,6 +253,19 @@ impl ConsoleProgram {
             .map_err(|e| diag("admission", e.code, e.message))
     }
 
+    pub fn run_platform(
+        &self,
+        grants: &[String],
+        limits: &ExecLimits,
+        cancel: &CancelFlag,
+        console: Option<&mut dyn ConsoleHost>,
+        backend: &mut dyn ace_av_core::platform_io::PlatformIoBackend,
+    ) -> Result<(ExecOutcome, ExecTrace, ace_av_core::PlatformSessionSummary), StageDiag> {
+        let loaded = self.load()?;
+        ace_av_core::execute_platform(&loaded, limits, cancel, grants, console, backend)
+            .map_err(|e| diag("admission", e.code, e.message))
+    }
+
     pub fn persist(&self, root: &Path, project: &str) -> Result<String, StageDiag> {
         self.load()?;
         let store = ManagedStore::open(root).map_err(|e| diag("infra", "host.store", e))?;

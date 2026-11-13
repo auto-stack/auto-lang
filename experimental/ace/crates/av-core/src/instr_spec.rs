@@ -45,6 +45,7 @@ pub struct InstructionSpec {
 pub const SPECS: &[InstructionSpec] = &[
     InstructionSpec { opcode: 0x36, name: "FOREIGN_CALL", family: "instr", operands: &[("args", "R"), ("dst", "W")], type_rule: "exact admitted i32/bool contract; native binding requalified; AV admission rejects", traps: true, fuel: 1, profiles: &["foreign-native"], ownership: "scalar Copy; no addresses persisted" },
     InstructionSpec { opcode: 0x35, name: "HOST_CALL", family: "instr", operands: &[("host", "R"), ("arg", "R")], type_rule: "host table exact signature; current capability admission precedes execution", traps: false, fuel: 1, profiles: &["host-console"], ownership: "readonly borrow; bounded output; no guest reentry" },
+    InstructionSpec { opcode: 0x3C, name: "PLATFORM_CALL", family: "instr", operands: &[("dst", "W"), ("host", "R"), ("args", "R")], type_rule: "platform host table exact signature; current capability + pre-OS ledger checks precede execution", traps: false, fuel: 1, profiles: &["host-console"], ownership: "borrowed view / opaque generation handle; no guest reentry" },
     InstructionSpec {
         opcode: 0x01,
         name: "CONST",
@@ -670,6 +671,7 @@ pub fn coverage_check() -> Result<(), String> {
         "CALL",
         "TRACE",
         "HOST_CALL",
+        "PLATFORM_CALL",
         "FOREIGN_CALL",
         "FIELD_GET",
         "FIELD_SET",
@@ -738,6 +740,7 @@ pub fn coverage_check() -> Result<(), String> {
 pub fn mnemonic_of_instr(i: &MirInstr) -> &'static str {
     match i {
         MirInstr::HostCall { .. } => "HOST_CALL",
+        MirInstr::PlatformCall { .. } => "PLATFORM_CALL",
         MirInstr::GlobalGet { .. } => "GLOBAL_GET",
         MirInstr::GlobalSet { .. } => "GLOBAL_SET",
         MirInstr::Const { .. } => "CONST",

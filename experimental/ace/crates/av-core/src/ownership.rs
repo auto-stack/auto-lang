@@ -694,6 +694,12 @@ fn verify_owned_function_impl(
                 MirInstr::HostCall { arg, .. } => {
                     check_read!(arg, "console input");
                 }
+                MirInstr::PlatformCall { dst, args, .. } => {
+                    for arg in args {
+                        check_read!(arg, "platform input");
+                    }
+                    st.define_slot(*dst as usize);
+                }
                 // PLAN-961: a numeric conversion reads its source and
                 // defines its destination (pure value flow, Copy scalars).
                 MirInstr::Conv { dst, src } => {

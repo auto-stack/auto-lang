@@ -99,3 +99,5 @@ mod owned_text_performance;
 mod collections_resource_events_919;
 #[path = "cases/observation_scope_1028.rs"]
 mod observation_scope_1028;
+#[path = "cases/platform_io_1039.rs"]
+mod platform_io_1039;

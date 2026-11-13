@@ -323,6 +323,91 @@ pub fn select(
     Ok(records)
 }
 
+/// PLAN-1039: Checked Windows x64 platform I/O & OS virtual memory providers
+/// across AV and Native backends. Neither module declares a `libc`/`LibcCompat`
+/// default fallback: on Windows x64, default selection picks thin `os-win32`
+/// (`PlatformAdapter`, `PlatformAbi`), while Auto-side checked wrappers keep
+/// `OwnAuto` in `"platform.mem.wrapper"`.
+pub fn platform_io_providers() -> Vec<ProviderDecl> {
+    vec![
+        ProviderDecl {
+            provider: "os-win32".into(),
+            module: "platform.io".into(),
+            origin: ProviderOrigin::PlatformAdapter,
+            abi: ProviderAbi::PlatformAbi,
+            platforms: vec![Platform::windows()],
+        },
+        ProviderDecl {
+            provider: "os-win32".into(),
+            module: "platform.mem".into(),
+            origin: ProviderOrigin::PlatformAdapter,
+            abi: ProviderAbi::PlatformAbi,
+            platforms: vec![Platform::windows()],
+        },
+        ProviderDecl {
+            provider: "auto".into(),
+            module: "platform.mem.wrapper".into(),
+            origin: ProviderOrigin::OwnAuto,
+            abi: ProviderAbi::AutoAbi,
+            platforms: vec![Platform::windows()],
+        },
+    ]
+}
+
+/// Binding requests for PLAN-1039 `platform.io` + `platform.mem` operations.
+pub fn platform_io_requests() -> Vec<BindingRequest> {
+    vec![
+        BindingRequest {
+            operation: "platform.io.stdout".into(),
+            module: "platform.io".into(),
+            symbol: "io_stdout".into(),
+            layer: StdlibLayer::Host,
+            required_grants: vec!["platform.io.stdout".into()],
+            explicit_provider: None,
+        },
+        BindingRequest {
+            operation: "platform.io.stderr".into(),
+            module: "platform.io".into(),
+            symbol: "io_stderr".into(),
+            layer: StdlibLayer::Host,
+            required_grants: vec!["platform.io.stderr".into()],
+            explicit_provider: None,
+        },
+        BindingRequest {
+            operation: "platform.io.write_some".into(),
+            module: "platform.io".into(),
+            symbol: "io_write_some".into(),
+            layer: StdlibLayer::Host,
+            required_grants: vec!["platform.io.write".into()],
+            explicit_provider: None,
+        },
+        BindingRequest {
+            operation: "platform.mem.alloc".into(),
+            module: "platform.mem".into(),
+            symbol: "mem_alloc".into(),
+            layer: StdlibLayer::Host,
+            required_grants: vec!["platform.mem".into()],
+            explicit_provider: None,
+        },
+        BindingRequest {
+            operation: "platform.mem.region".into(),
+            module: "platform.mem.wrapper".into(),
+            symbol: "PlatformMemRegion".into(),
+            layer: StdlibLayer::Alloc,
+            required_grants: Vec::new(),
+            explicit_provider: None,
+        },
+    ]
+}
+
+/// Select Win64 platform I/O + OS memory providers under the 4-axis model.
+pub fn select_platform_io(
+    axes: AssemblyAxes,
+    granted: &[String],
+) -> Result<Vec<SelectionRecord>, SelectionError> {
+    select(&platform_io_providers(), axes, &platform_io_requests(), granted)
+}
+
 #[cfg(test)]
 mod plan947_tests {
     //! V-09 / V-NATIVE / V-10 的永久关闭 oracle（stdlib 固定组）。
@@ -568,5 +653,62 @@ mod plan947_tests {
         assert_eq!(r[0].layer, StdlibLayer::Host);
         assert_eq!(r[0].abi, ProviderAbi::PlatformAbi);
         assert_eq!(r[0].provider, "os-win32");
+    }
+
+    #[test]
+    fn plan1039_platform_io_selects_win32_without_libc_fallback() {
+        let grants: Vec<String> = vec![
+            "platform.io.stdout".into(),
+            "platform.io.stderr".into(),
+            "platform.io.write".into(),
+            "platform.mem".into(),
+        ];
+        for backend in [Backend::Av, Backend::Native] {
+            let recs = select_platform_io(
+                AssemblyAxes {
+                    backend,
+                    host: Platform::windows(),
+                    target: Platform::windows(),
+                },
+                &grants,
+            )
+            .unwrap();
+            assert_eq!(recs.len(), 5);
+            assert_eq!(recs[0].provider, "os-win32");
+            assert_eq!(recs[0].abi, ProviderAbi::PlatformAbi);
+            assert_eq!(recs[3].provider, "os-win32");
+            assert_eq!(recs[4].provider, "auto");
+            assert_eq!(recs[4].abi, ProviderAbi::AutoAbi);
+            assert_eq!(recs[4].layer, StdlibLayer::Alloc);
+        }
+
+        // Missing grant rejects unauthorized operations.
+        let err = select_platform_io(
+            axes(Platform::windows(), Platform::windows()),
+            &["platform.io.stdout".into()],
+        )
+        .unwrap_err();
+        assert_eq!(err.code(), "assembly.missing-grant");
+
+        // Unsupported target or explicit libcCompat request fails closed.
+        let err_linux = select_platform_io(
+            axes(Platform::windows(), Platform::linux()),
+            &grants,
+        )
+        .unwrap_err();
+        assert_eq!(err_linux.code(), "assembly.no-provider");
+
+        let mut providers = platform_io_providers();
+        providers.push(foreign("platform.io", Os::Windows, "libc"));
+        let mut reqs = platform_io_requests();
+        reqs[2].explicit_provider = Some("LibcCompat".into());
+        let err_libc = select(
+            &providers,
+            axes(Platform::windows(), Platform::windows()),
+            &reqs,
+            &grants,
+        )
+        .unwrap_err();
+        assert_eq!(err_libc.code(), "assembly.no-provider");
     }
 }

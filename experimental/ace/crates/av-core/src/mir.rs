@@ -395,6 +395,12 @@ pub enum MirInstr {
         host: u32,
         arg: SlotId,
     },
+    /// PLAN-1039: multi-arg checked platform I/O & OS memory host call returning an i32 handle/status.
+    PlatformCall {
+        dst: SlotId,
+        host: u32,
+        args: Vec<SlotId>,
+    },
     /// PLAN-960: read a module global cell into `dst`.
     GlobalGet {
         dst: SlotId,
@@ -1392,7 +1398,8 @@ impl MirModule {
                             b += std::mem::size_of::<ace_foreign_contract::manual::SourceDecl>()
                                 + declaration.heap_bytes();
                         }
-                        MirInstr::Call { args, .. } => {
+                        MirInstr::Call { args, .. }
+                        | MirInstr::PlatformCall { args, .. } => {
                             b += args.len() * std::mem::size_of::<SlotId>() + VEC
                         }
                         MirInstr::Aggregate { operands, .. } => {

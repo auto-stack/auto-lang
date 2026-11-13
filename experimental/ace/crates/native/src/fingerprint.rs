@@ -251,11 +251,29 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
                 )
             }
         },
-        MirInstr::HostCall { .. } => {
-            return Err(MnError::Unsupported(
-                "host-console",
-                "host calls are outside the native profile".into(),
-            ))
+        MirInstr::HostCall { host, arg } => {
+            let h = m
+                .host_imports
+                .get(*host as usize)
+                .map(|hi| format!("{}:{}", escape(&hi.category), escape(&hi.symbol)))
+                .unwrap_or_else(|| format!("host#{host}"));
+            format!("host_call {} {}", h, arg)
+        }
+        MirInstr::PlatformCall { dst, host, args } => {
+            let h = m
+                .host_imports
+                .get(*host as usize)
+                .map(|hi| format!("{}:{}:{}", escape(&hi.category), escape(&hi.symbol), escape(&hi.capability)))
+                .unwrap_or_else(|| format!("host#{host}"));
+            format!(
+                "platform_call {} <- {} ({})",
+                dst,
+                h,
+                args.iter()
+                    .map(|a| a.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
         }
         MirInstr::Trace { event } => format!("trace {event:?}"),
         // PLAN-820 shared-core widening: the data-profile instructions are

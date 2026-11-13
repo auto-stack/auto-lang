@@ -3604,6 +3604,7 @@ impl<'p> Emitter<'p> {
         for sym in &use_intrinsics {
             let cap = super::console::signature(sym)
                 .map(|(_, cap)| cap)
+                .or_else(|| super::platform_io::signature(sym).map(|(_, _, cap)| cap))
                 .unwrap_or(TRACE_CAPABILITY);
             if !requires.contains(&cap) {
                 requires.push(cap);
@@ -3942,18 +3943,21 @@ impl<'p> Emitter<'p> {
         }
         for sym in &use_intrinsics {
             let span = self.intrinsic_first_use[*sym];
+            let (param_str, result_str) =
+                if let Some((ty, _)) = super::console::signature(sym) {
+                    (self.ty_use_ref(ty), "unit".to_string())
+                } else if let Some((params, res, _)) = super::platform_io::signature(sym) {
+                    let ps: Vec<String> = params.iter().map(|t| self.ty_use_ref(*t)).collect();
+                    (ps.join(", "), self.ty_use_ref(res))
+                } else {
+                    (String::new(), "\"t_i32\"".to_string())
+                };
             frag!(
                 &format!(
                     "type {} function {{ params: [{}]; result: {} }}",
                     intrinsic_type_id(sym),
-                    super::console::signature(sym)
-                        .map(|(ty, _)| self.ty_use_ref(ty))
-                        .unwrap_or_default(),
-                    if super::console::signature(sym).is_some() {
-                        "unit"
-                    } else {
-                        "\"t_i32\""
-                    }
+                    param_str,
+                    result_str
                 ),
                 span
             );
@@ -5004,7 +5008,7 @@ fn global_type_id(sym: &str) -> String {
     format!("t_{}", global_id_suffix(sym))
 }
 fn intrinsic_id_suffix(sym: &str) -> String {
-    if sym.starts_with("auto.console.") {
+    if sym.starts_with("auto.console.") || sym.starts_with("auto.platform.") {
         sym.replace('.', "_")
     } else {
         sym.rsplit('.').next().unwrap_or("x").to_string()

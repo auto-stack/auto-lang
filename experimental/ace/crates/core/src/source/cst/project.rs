@@ -352,7 +352,8 @@ const TOPLEVEL_IDENT_WORDS: &[&str] = &[
 /// 旧 expect_ident 的 host-console 保留名拒绝（print/eprint/say）。
 fn console_name_check(cx: &mut Cx, name: &Ident) {
     if cx.profile == SourceProfile::HostConsole
-        && crate::source::console::is_reserved_name(&name.name)
+        && (crate::source::console::is_reserved_name(&name.name)
+            || crate::source::platform_io::is_reserved_name(&name.name))
     {
         let span = name.span;
         cx.reject(span, move || {
@@ -3439,7 +3440,8 @@ impl<'a> Cx<'a> {
     }
     fn check_name(&mut self, id: &Ident) {
         if self.profile == SourceProfile::HostConsole
-            && crate::source::console::is_reserved_name(&id.name)
+            && (crate::source::console::is_reserved_name(&id.name)
+                || crate::source::platform_io::is_reserved_name(&id.name))
         {
             let span = id.span;
             self.reject(span, || {

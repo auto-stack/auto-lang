@@ -48,6 +48,8 @@ pub const OP_CALL: u8 = 0x05;
 pub const OP_TRACE: u8 = 0x06;
 /// PLAN-863: not admitted by any earlier wire family.
 pub const OP_HOST_CALL: u8 = 0x35;
+/// PLAN-1039: multi-arg value-returning platform I/O / memory call inside AVHC.
+pub const OP_PLATFORM_CALL: u8 = 0x3C;
 pub const OP_FOREIGN_CALL: u8 = 0x36;
 /// PLAN-939 S06: FOREIGN_CALL + named callback targets (same payload with
 /// the callback table between the argument slots and the declaration
@@ -808,11 +810,12 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
             ))
         }
     };
-    if (!m.host_imports.is_empty() && family != WireFamily::HostConsole) || m.host_imports.len() > 8
+    if (!m.host_imports.is_empty() && family != WireFamily::HostConsole)
+        || m.host_imports.len() > crate::platform_io::MAX_TOTAL_HOST_IMPORTS
     {
         return Err(AbcDecodeError::fmt_err(
             "abc.encode.host-section",
-            "host imports require AVHC and at most eight declarations".into(),
+            "host imports require AVHC and bounded declarations".into(),
         ));
     }
     let mut w = PageWriter::new(expected)?;
@@ -1449,6 +1452,21 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u8(&mut w, OP_HOST_CALL);
                         put_u32(&mut w, *host);
                         put_u32(&mut w, *arg);
+                    }
+                    MirInstr::PlatformCall { dst, host, args } => {
+                        if family != WireFamily::HostConsole || args.len() > 8 {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "platform call requires AVHC and bounded arity".into(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_PLATFORM_CALL);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *host);
+                        put_u8(&mut w, args.len() as u8);
+                        for a in args {
+                            put_u32(&mut w, *a);
+                        }
                     }
                     MirInstr::GlobalGet { dst, global } => {
                         put_u8(&mut w, OP_GLOBAL_GET);
@@ -2524,7 +2542,7 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
             ));
         }
         let n = c.u16()? as usize;
-        if n > 8 {
+        if n > crate::platform_io::MAX_TOTAL_HOST_IMPORTS {
             return Err(AbcDecodeError::fmt_err(
                 "abc.decode.host-section",
                 "too many host imports".into(),
@@ -3296,15 +3314,28 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                             arg: c.u32()?,
                         }
                     }
-                    OP_GLOBAL_GET => MirInstr::GlobalGet {
-                        dst: c.u32()?,
-                        global: c.u32()?,
-                    },
-                    OP_GLOBAL_SET => MirInstr::GlobalSet {
-                        dst: c.u32()?,
-                        global: c.u32()?,
-                        src: c.u32()?,
-                    },
+                    OP_PLATFORM_CALL => {
+                        if family != WireFamily::HostConsole {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.decode.profile",
+                                "platform opcode in a legacy family".into(),
+                            ));
+                        }
+                        let dst = c.u32()?;
+                        let host = c.u32()?;
+                        let argc = c.u8()? as usize;
+                        if argc > 8 {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.decode.platform-arity",
+                                "platform call arity exceeds wire limit".into(),
+                            ));
+                        }
+                        let mut args = Vec::with_capacity(argc);
+                        for _ in 0..argc {
+                            args.push(c.u32()?);
+                        }
+                        MirInstr::PlatformCall { dst, host, args }
+                    }
                     OP_TRACE => {
                         let ev = c.u8()?;
                         let event = match ev {
