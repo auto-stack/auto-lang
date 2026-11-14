@@ -1,16 +1,16 @@
 {
-  "last_covered_plan_id": 1043,
-  "timestamp": "2026-11-13T19:30:42Z",
-  "covered_commit": "08a9e4d0476bd829f27fbcae96a91c497444dedd",
+  "last_covered_plan_id": 1057,
+  "timestamp": "2026-11-14T14:54:02Z",
+  "covered_commit": "eb76560bf",
   "command": "cargo t all",
   "legs": [
     "language-fixed-groups"
   ],
   "new_reds": [],
   "known_reds_seen": [
-    "auto-generation-core: plan988_source_bytes_compile_run_and_preserve_rejected_targets TIMEOUT at nextest slow-timeout 120s = KNOWN-DEBT-AND-RISKS D-1014-P988-BUDGET (open since 2026-11-12, owner 测试预算治理/auto-generation-core); no other red"
+    "auto-generation-core: plan988_source_bytes_compile_run_and_preserve_rejected_targets TIMEOUT at nextest slow-timeout 120s (45/46 passed; identical shape to the prior receipt) = KNOWN-DEBT-AND-RISKS D-1014-P988-BUDGET (open since 2026-11-12, owner 测试预算治理/auto-generation-core); no other red"
   ],
-  "run_dir": "target/test-groups/run-lfr_s6c5",
+  "run_dir": "target/test-groups/run-y15625yx",
   "verdict": "known-reds-only",
-  "notes": "36 groups selected (language fixed union): 32 PASS, 3 NOT_APPLICABLE (aavm/a2r-actor-tests/auto-vm conditional), 1 FAIL as known red. Merged window since prior receipt (d1ee6409): plans 945,947,962,963,1002,1013,1016,1017,1025,1027,1028,1039,1042,1043 — 1002's own surfaces green (auto-test-case, case-pilot, auto-lang, auto-lang-core, infra-*). ace case groups (incl. ace-host) are not part of `cargo t all`; ace-host's 4 pre-existing worker-golden reds + 1 concurrency flake were triaged in Plan 1002's merge receipt and remain owned by the batch/1024 lane when that group is next run explicitly."
+  "notes": "36 groups selected (language fixed union): 32 PASS, 3 NOT_APPLICABLE (aavm/a2r-actor-tests/auto-vm conditional), 1 FAIL as the single known red. Due trigger: plan 965 (%5) landed after the prior receipt (covered 1043); merged window 08a9e4d04..eb76560bf includes 940/946/950/955/960/965/1002/1015/1017/1020/1021/1025/1027/1028/1039/1040/1041/1042/1043/1057 and L0 fixes. ace crate groups (incl. ace-native) are not part of cargo t all, so the 2026-11-14 Windows/Linux-WSL ruling exclusion has no case in this queue; it applies to explicit ace-set runs (linux_elf_1040 legs ledger as 裁定排除 there). Ran in a quiet window after the concurrent 967 session released its builds; single instance on main."
 }
