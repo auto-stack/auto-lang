@@ -3157,7 +3157,6 @@ impl<'a, 'r> Verifier<'a, 'r> {
             message: msg,
             span: sp,
         };
-        let _module = self.module;
         match instr {
             MirInstr::ListRemove { dst, root, index } => {
                 if !self.collections_surface() {
@@ -4238,21 +4237,14 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 self.tick(1)?;
                 let flat = bases[bi] + ii as u32;
                 let sp = self.span_of(f, flat);
-                let _err = |code: &str, msg: String| MirVerifyError::Invalid {
-                    code: code.to_string(),
-                    message: msg,
-                    span: sp,
-                };
-                match instr {
-                    _ => {
-                        // F-941-15: the 51-arm typing union split into two
-                        // cold half-walks — the debug frame unions halve; the
-                        // deep chain's 256 KiB contract no longer pays for
-                        // unreachable arms (PLAN-961 regression fix).
-                        self.check_instr_typing_a(f, instr, sp)?;
-                        self.check_instr_typing_b(f, instr, sp)?;
-                    }
-                }
+                // F-941-15: the 51-arm typing union split into two cold
+                // half-walks — the debug frame unions halve; the deep chain's
+                // 256 KiB contract no longer pays for unreachable arms
+                // (PLAN-961 regression fix). PLAN-965 F-965-R1-09: the old
+                // `match instr { _ => .. }` wrapper and its unused `_err`
+                // closure were dead code.
+                self.check_instr_typing_a(f, instr, sp)?;
+                self.check_instr_typing_b(f, instr, sp)?;
             }
             // terminator
             self.tick(1)?;
