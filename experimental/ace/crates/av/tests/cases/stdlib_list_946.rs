@@ -571,6 +571,86 @@ fn main() int {
     assert_eq!(code, 1504, "native inline oracle");
 }
 
+/// T-08 / V-08: a REAL cross-module public List call returning OWNED text
+/// — the app's `strings` module takes the caller's list, moves the first
+/// element out, and returns the owned Str; the caller RELEASES the list
+/// (drop) and the surviving owned text still reads (5 for "hello").
+#[test]
+fn stdlib_list_946_cross_module_owned_text_survives_release_av() {
+    let mut inputs = stdlib_aggregates_inputs();
+    inputs.push(PackageModuleInput {
+        package: "app".into(),
+        version: "1.0.0".into(),
+        id: "strings".into(),
+        source: "pub fn take_first(xs List<Str>) Str {
+    return xs.remove(0)
+}".into(),
+        provider: None,
+    });
+    inputs.push(PackageModuleInput {
+        package: "app".into(),
+        version: "1.0.0".into(),
+        id: "main".into(),
+        source: r#"
+use app.strings.take_first
+fn main() int {
+    var xs = List<Str>.new()
+    xs.push("hello")
+    xs.push("world")
+    let first Str = take_first(xs)
+    xs.clear()
+    return first.len()
+}
+"#
+        .into(),
+        provider: None,
+    });
+    let product = compile(&inputs).expect("cross-module owned-text product");
+    let dir = std::env::temp_dir().join(format!("pkg946-xmod-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let av = PackageAvTarget::cold(&dir, &product).unwrap_or_else(|e| panic!("av: {e}"));
+    let out = av.run_value().unwrap_or_else(|e| panic!("run: {e}"));
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(out, ace_av_core::contract::Value::I32(5));
+}
+
+/// T-08 / V-08 negative: a public function trying to RETURN a borrowed
+/// element view rejects BEFORE any backend (`source.view-escape` — the
+/// 962 frozen materialization rule).
+#[test]
+fn stdlib_list_946_cross_module_view_escape_rejected() {
+    let mut inputs = stdlib_aggregates_inputs();
+    inputs.push(PackageModuleInput {
+        package: "app".into(),
+        version: "1.0.0".into(),
+        id: "strings".into(),
+        source: "pub fn peek(xs List<Str>) Str {
+    return xs.get(0)
+}".into(),
+        provider: None,
+    });
+    inputs.push(PackageModuleInput {
+        package: "app".into(),
+        version: "1.0.0".into(),
+        id: "main".into(),
+        source: "use app.strings.peek
+fn main() int { return 0 }".into(),
+        provider: None,
+    });
+    let err = match compile(&inputs) {
+        Ok(_) => panic!("view-escaping public return must reject"),
+        Err(ds) => ds,
+    };
+    assert!(
+        err.iter().any(|d| d.diagnostic.code.contains("view-escape")),
+        "expected the view-escape rejection, got: {:?}",
+        err.iter()
+            .map(|d| (d.module.as_str(), d.diagnostic.code.as_str()))
+            .collect::<Vec<_>>()
+    );
+}
+
 /// Grammar face (packages-aggregates): the admitted constructs parse —
 /// List<int>/List<Str> params, for-in bodies, `?int` returns, the pop
 /// body, if-inside-for with a PARENTHESIZED comparison — and the whole
