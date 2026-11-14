@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/stdlib/design/ace-collections.md]
 touched_goals: [GOAL-002]
 affects: [stdlib, ace]
 depends_on: [PLAN-943, PLAN-944, PLAN-945, PLAN-962, PLAN-1039, PLAN-1040, PLAN-967, PLAN-1042, PLAN-1043]
-current_step: 3
+current_step: 4
 total_steps: 8
 ---
 
@@ -393,6 +393,8 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: work / T-08 | plan_id: PLAN-946 | plan_revision: 10 | outcome: pass（T-08 完成，executing 4/8） | worktree: D:/autostack/.wt/lang-946/auto-lang | branch: plan-946-dev | base_commit: bd181cc39 | code_commit: b9cabe364（V-08 两腿：跨模块 owned 文本返回源释放后可读 5、公共函数返回元素视图 view-escape 调用前拒；套件 24/24） | task_ids: T-08 | evidence: §8 T-08 行 + stdlib_list_946 24/24（跨模块公共调用自 ends 测试即真包链接） | blockers: none | next_responsible_role: work（T-04 接口/元素型变更失效与恢复首编辑）
 
 2026-11-14 stage: work / T-03 | plan_id: PLAN-946 | plan_revision: 10 | outcome: pass（T-03 完成，executing 3/8） | worktree: D:/autostack/.wt/lang-946/auto-lang | branch: plan-946-dev | base_commit: 0f056f295 | code_commit: bd181cc39（四端 producer：a2x Rust/C `cold_aggregates`＋`&'a mut`/可变指针共享实参、native I64 句柄 ABI＋collections 路由＋`build_collections_checked` 桥＋889 序幕容器 SHARE；lane 携带 av.aggregates/1；14 文件 +602/−52） | task_ids: T-03 | evidence: stdlib_list_946 22/22（三端真工具链：rustc/cl/mn 机器码，pop 3002 证明被调可变对调用者可见）；定向回归 945 4/4、1043 3/3、av_collections 124/124、909perf 1/1、aggregates_v_rows 8/8、a2x 三 crate 单测绿；预存基线红 mn-collections-worker allocation_controls（stash 复核非本包引入） | blockers: none（fault 注入环境旋钮腿按 §6 归 T-05；A2PY/AV-provider 六路径汇总归 T-05/COVERAGE） | next_responsible_role: work（T-08 V-08 剩余腿：跨模块 owned 文本返回/借用逃逸负控）
 
