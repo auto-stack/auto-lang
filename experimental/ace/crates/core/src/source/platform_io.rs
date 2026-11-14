@@ -65,9 +65,9 @@ pub const PLATFORM_SOURCE_OPS: &[PlatformSourceOp] = &[
         result: VT::I32,
         capability: CAP_WRITE,
     },
-    /// PLAN-1041: classify a std stream — 1 = Windows text console, 2 =
-    /// byte sink (file/pipe/Linux stream); negative error on real
-    /// classification failures.
+    // PLAN-1041: classify a std stream — 1 = Windows text console, 2 =
+    // byte sink (file/pipe/Linux stream); negative error on real
+    // classification failures.
     PlatformSourceOp {
         callee: "io_console_kind",
         symbol: "auto.platform.io.console_kind.v1",
@@ -75,9 +75,9 @@ pub const PLATFORM_SOURCE_OPS: &[PlatformSourceOp] = &[
         result: VT::I32,
         capability: CAP_WRITE,
     },
-    /// PLAN-1041: write UTF-16LE code units from an OS memory region to a
-    /// Windows text console (`WriteConsoleW`); params (stream handle,
-    /// region handle, unit offset, unit count); returns units written.
+    // PLAN-1041: write UTF-16LE code units from an OS memory region to a
+    // Windows text console (`WriteConsoleW`); params (stream handle,
+    // region handle, unit offset, unit count); returns units written.
     PlatformSourceOp {
         callee: "io_console_write16",
         symbol: "auto.platform.io.console_write16.v1",
