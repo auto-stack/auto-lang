@@ -71,8 +71,17 @@ threads-required = "num-test-threads"
 # PLAN-938: source foreign publication/restart controls exercise real cl/link
 # and retain the original short discovery/IPC deadlines. Reserve this invocation
 # while each control runs; do not overlap its nested processes with this pool.
+# PLAN-1060 T-05 (measured): the blanket `^source_foreign::` reservation made all
+# 86 source-foreign tests run one-at-a-time (effective concurrency 1.86, module
+# wall 213.5 s / 184.4 s across runs). Their bodies assert functional outcomes;
+# the only wall-clock assertion in the file is the warm-edit P90 gate, which now
+# lives in `::performance::` and stays reserved by the performance override
+# above. Three consecutive full-module runs without the blanket reservation were
+# green (48.5 s / 53.2 s / 47.2 s, 285/285 executed, effective concurrency 9.5)
+# on a machine already running other plans' builds. The language-side protocol
+# tests keep the pool reservation, which is what PLAN-938's own evidence names.
 [[profile.default.overrides]]
-filter = "test(/^source_foreign::/) or test(/^test_cases::abi::source_protocol_tests::/)"
+filter = "test(/^test_cases::abi::source_protocol_tests::/)"
 threads-required = "num-test-threads"
 
 # PLAN-939 T-10: the resource over-budget cancellation control sets the
