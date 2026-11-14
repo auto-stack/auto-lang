@@ -204,6 +204,8 @@ write_some返回真实进度，write_all有界循环；部分输出后错误/取
 
 2026-11-13 stage:new / COVERAGE | outcome: pass（规划静态核验，非产品或独立实现review） | 19份设计/计划519处本地链接存在；14计划共150任务，含新1042八项，其余142任务ID/勾选/状态/进度及原AC/V保留；0–10节/围栏/任务数一致。可达148个语言计划依赖无缺失/环，1042不反依完整库/977，967不反依968；原早期F0/B0范围不扩。历史5份非UTF8归档只按可解读frontmatter只读扫依赖，未修改。新增能力六路径尚未实施/实跑，不计产品PASS。
 
+stage: goal | plan_id: PLAN-1041 | plan_revision: r3 | round: 4b | from: merge | to: done | status: archived | outcome: pass | goal done receipt: delivery 0ea841b34 (ff-only, linear), specs native-stdio.md(35bd2849…)/ace-host-services(f909749…) landed, archive docs/plans/archive/1041-*, cleaned (tree/branch/group/plan-artifacts deleted, registry 77 rows no holds), batch regression not due, no pending merge-owned gates | next: done
+
 stage: goal | plan_id: PLAN-1041 | plan_revision: r3 | round: 4 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: 0ea841b34 (delivery) / a5fd3dc86 (archive receipt) | next: done
 
 stage: goal | plan_id: PLAN-1041 | plan_revision: r3 | round: 3 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1041/auto-lang | commit: f9f9f5a5a | next: merge
