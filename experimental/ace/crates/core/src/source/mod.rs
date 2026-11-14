@@ -120,6 +120,10 @@ pub const AGGREGATES_SOURCE_PROFILE: &str = "auto.source.aggregates.draft";
 /// 避免领域声明被静默丢弃。
 pub const AGE_H0_SOURCE_PROFILE: &str = "auto.source.age-h0.draft";
 
+/// PLAN-979 T-03：AGE 组件面 profile（`node { model … on … view … }`）。与 `age-h0`
+/// 同源不同裁剪：H0 合同不变，组件语义只在本面出现。
+pub const AGE_COMPONENT_SOURCE_PROFILE: &str = "auto.source.age-component.draft";
+
 /// The explicitly selected source profile of a compilation. Never inferred
 /// from file extensions or content.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -140,6 +144,9 @@ pub enum SourceProfile {
     /// PLAN-979: the AGE H0 domain profile (text-record surface + AGE node
     /// declarations). Only the AGE domain front door consumes it.
     AgeH0,
+    /// PLAN-979 T-03: the AGE component profile (`node { model … on … view … }`).
+    /// Same source grammar, different trim; generic entries refuse it.
+    AgeComponent,
 }
 
 impl SourceProfile {
@@ -157,6 +164,7 @@ impl SourceProfile {
             SourceProfile::Numeric => NUMERIC_SOURCE_PROFILE,
             SourceProfile::Aggregates => AGGREGATES_SOURCE_PROFILE,
             SourceProfile::AgeH0 => AGE_H0_SOURCE_PROFILE,
+            SourceProfile::AgeComponent => AGE_COMPONENT_SOURCE_PROFILE,
         }
     }
 
@@ -183,6 +191,7 @@ impl SourceProfile {
             // domain description is verified inside that same domain, never a
             // second checker.
             SourceProfile::AgeH0 => crate::hir::HirDomain::TextRecord,
+            SourceProfile::AgeComponent => crate::hir::HirDomain::TextRecord,
         }
     }
 
@@ -203,6 +212,7 @@ impl SourceProfile {
                 | SourceProfile::Aggregates
                 // PLAN-979: the AGE domain face keeps the text-record surface.
                 | SourceProfile::AgeH0
+                | SourceProfile::AgeComponent
         )
     }
 
@@ -257,6 +267,7 @@ impl SourceProfile {
                 | SourceProfile::TextRecord
                 | SourceProfile::HostConsole
                 | SourceProfile::AgeH0
+                | SourceProfile::AgeComponent
         )
     }
 
@@ -271,6 +282,7 @@ impl SourceProfile {
                 | SourceProfile::Closures
                 | SourceProfile::Aggregates
                 | SourceProfile::AgeH0
+                | SourceProfile::AgeComponent
         )
     }
 
@@ -306,6 +318,7 @@ impl SourceProfile {
                 | SourceProfile::Aggregates
                 // PLAN-979: the AGE domain face is a text-record superset.
                 | SourceProfile::AgeH0
+                | SourceProfile::AgeComponent
         )
     }
 
@@ -323,6 +336,7 @@ impl SourceProfile {
             NUMERIC_SOURCE_PROFILE => Some(SourceProfile::Numeric),
             AGGREGATES_SOURCE_PROFILE => Some(SourceProfile::Aggregates),
             AGE_H0_SOURCE_PROFILE => Some(SourceProfile::AgeH0),
+            AGE_COMPONENT_SOURCE_PROFILE => Some(SourceProfile::AgeComponent),
             _ => None,
         }
     }

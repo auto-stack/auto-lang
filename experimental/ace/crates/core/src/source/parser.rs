@@ -169,11 +169,10 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
         }
         // PLAN-979：AGE 领域声明只经领域前门（`source::age_h0`）消费——通用
         // 解析入口在此显式拒绝，绝不返回一个把领域声明静默丢掉的 Program。
-        SourceProfile::AgeH0 => Err(super::age_h0::domain_profile_refusal(
-            SourceProfile::AgeH0,
-            src.len(),
-        )
-        .expect("age-h0 profile refusal")),
+        SourceProfile::AgeH0 | SourceProfile::AgeComponent => Err(
+            super::age_h0::domain_profile_refusal(SourceProfile::AgeH0, src.len())
+                .expect("age-h0 profile refusal"),
+        ),
     }
 }
 

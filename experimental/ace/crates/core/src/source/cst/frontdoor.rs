@@ -147,6 +147,8 @@ pub fn profile_slug(profile: SourceProfile) -> &'static str {
         SourceProfile::Record => "record",
         SourceProfile::TextRecord => "text-record",
         SourceProfile::EntryUnit => "entry-unit",
+        // PLAN-979 T-03：组件面（age-h0 的同源异裁剪）。
+        SourceProfile::AgeComponent => "age-component",
         SourceProfile::HostConsole => "host-console",
         // PLAN-928 T-02/T-03：闭包/集合两面经统一前门（差分全集与冷入口
         // 切换由 T-04/T-07 冻结）。
@@ -201,7 +203,7 @@ impl CachedGrammar {
     }
 }
 
-static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 12]> = OnceLock::new();
+static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 13]> = OnceLock::new();
 
 /// PLAN-935（T-02）：`scalar-instances` 裁剪程序（scalar 全表面 + 有限模板
 /// 面）。独立缓存槽：plain profile 程序逐字节不变，grammar-id 自然隔离。
@@ -1581,6 +1583,8 @@ pub fn profile_grammar(profile: SourceProfile) -> Result<&'static CachedGrammar,
         SourceProfile::Aggregates => 10,
         // PLAN-979：AGE 领域面槽位。
         SourceProfile::AgeH0 => 11,
+        // PLAN-979 T-03：组件面槽位。
+        SourceProfile::AgeComponent => 12,
     };
     let slots = GRAMMARS.get_or_init(|| Default::default());
     // 先试读（快路径无锁竞争）；未命中再写入。
@@ -1631,7 +1635,7 @@ pub fn parse_front(req: FrontRequest) -> FrontOutcome {
     } = req;
     // PLAN-979 F2：AGE 领域 profile 只经 `source::age_h0` 的整模块入口消费；
     // 通用入口（含片段入口，它们没有槽位拼写的事实源）一律具名拒绝。
-    if profile == SourceProfile::AgeH0 {
+    if matches!(profile, SourceProfile::AgeH0 | SourceProfile::AgeComponent) {
         if let Some(d) = crate::source::age_h0::domain_profile_refusal(profile, src.len()) {
             return FrontOutcome::Diag(vec![d]);
         }
@@ -1759,7 +1763,10 @@ pub(crate) fn parse_domain_whole_module(
     profile: SourceProfile,
     budget: FrontBudget,
 ) -> FrontOutcome {
-    debug_assert_eq!(profile, SourceProfile::AgeH0);
+    debug_assert!(matches!(
+        profile,
+        SourceProfile::AgeH0 | SourceProfile::AgeComponent
+    ));
     parse_whole_module(src, profile, budget)
 }
 
@@ -1922,7 +1929,7 @@ pub fn parse_fragment_front(
     use crate::atom_text::Stage;
     // PLAN-979（评审 F2 观察）：片段入口同样拒绝领域 profile——片段不承载领域
     // 声明，且没有槽位拼写的字节事实源；只经领域前门消费整模块。
-    if profile == SourceProfile::AgeH0 {
+    if matches!(profile, SourceProfile::AgeH0 | SourceProfile::AgeComponent) {
         if let Some(d) = crate::source::age_h0::domain_profile_refusal(profile, src.len()) {
             return FrontOutcome::Diag(vec![d]);
         }

@@ -232,6 +232,19 @@ fn check_source(args: &SourceArgs) -> Result<String, (u8, Vec<ace_core::atom_tex
         }
         // PLAN-979: the AGE H0 domain profile is consumed by its own domain
         // front door (never the generic compile entries).
+        // PLAN-979 T-03: the AGE component profile is consumed by its own
+        // domain front door; the projection lands with the component runtime.
+        SourceProfile::AgeComponent => {
+            return Err((
+                EXIT_PIPELINE,
+                vec![ace_core::atom_text::Diagnostic::new(
+                    ace_core::atom_text::Stage::Text,
+                    "source.domain-frontend",
+                    "the age-component profile is consumed by its domain front door, not this binary",
+                    ace_core::atom_text::Span { start: 0, end: 0 },
+                )],
+            ));
+        }
         SourceProfile::AgeH0 => {
             return match ace_core::source::age_h0::compile_age_h0(
                 &src,

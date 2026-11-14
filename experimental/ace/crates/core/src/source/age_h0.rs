@@ -164,7 +164,8 @@ pub struct AgeH0Compilation {
 /// 领域 profile 的通用入口拒绝（PLAN-979 F2）：领域声明不得被共享管线
 /// 静默丢弃——通用解析/编译入口一律具名拒绝，只经本模块入口消费。
 pub fn domain_profile_refusal(profile: SourceProfile, src_len: usize) -> Option<Diagnostic> {
-    if profile != SourceProfile::AgeH0 {
+    // 领域 profile（H0 与 T-03 组件面）都只能经各自领域前门消费。
+    if !matches!(profile, SourceProfile::AgeH0 | SourceProfile::AgeComponent) {
         return None;
     }
     Some(text_diag(
