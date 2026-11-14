@@ -1,16 +1,16 @@
 ---
 plan_id: PLAN-1057
-status: executing
+status: execution_done
 feature_name: AutoDown文档式用例首批推广
 author: [Codex]
 created_at: 2026-11-14
 updated_at: 2026-11-14
-plan_revision: 2
+plan_revision: 3
 phase: M2-A
-current_step: 5
+current_step: 6
 total_steps: 8
 depends_on: [PLAN-1002]
-supersedes_spec_components: [docs/specs/auto-test-case/document-cases.md]
+supersedes_spec_components: [docs/specs/auto-test-case/document-cases.md, docs/specs/auto-test-case/module-selection.md, docs/specs/auto-test-case/ace-m1-conformance.md, docs/specs/auto-test-case/legacy-immutable-diagnostic.md]
 new_spec_components: []
 touched_goals: []
 affects: [auto-test-case]
@@ -375,8 +375,12 @@ schema与字段有错误定位，规范化测试以独立手写的B02、TOP、O0
 | delta_id | 变更 | canonical目标 | 当前 → 交付后 | 理由 | AC |
 |---|---|---|---|---|---|
 | SD-01 | modify | docs/specs/auto-test-case/document-cases.md | 四例试点 → 三类30/60及entry-mode/channel/错误双流 | 完整迁移语义 | AC-01..04 |
-| SD-02 | modify | docs/specs/auto-test-case/module-selection.md | 旧三套件日常入口 → 活跃文档式suite+旧回放方法 | 调用者可找当前作者源 | AC-05/06 |
+| SD-02 | modify | docs/specs/auto-test-case/module-selection.md | 无固定组↔作者格式规则 → 固定case组跟随活跃作者格式（文档式活跃suite；旧suite仅冻结历史回放） | 调用者可找当前作者源；r3 改正 r2 的失实"当前"（该文件原本不含旧三套件条目，复审 F-1057-R1-01） | AC-05/06 |
 | SD-03 | modify | docs/specs/auto-test-case/document-cases.md | pilot来源说明 → 内容/表示身份对账、migration-inventory投影、actual索引及消费者去向 | 可追溯性 | AC-04..07 |
+| SD-04 | modify | docs/specs/auto-test-case/ace-m1-conformance.md | 底座/console/immutable 语料入口写成 `ace-m1-base.suite.ad`、`console-863/console-863.suite.ad`、`immutable-avm-920` → 日常入口=`ace-document-base`/`ace-document-console`/`ace-document-immutable`文档式suite（同36例97检查/15/5检查），旧suite保留为冻结历史与M1身份来源 | 交付后规范与已切换的固定组接线一致（r3，复审 F-1057-R1-01） | AC-05/06 |
+| SD-05 | modify | docs/specs/auto-test-case/legacy-immutable-diagnostic.md | 语料套件行=旧 `ace-m1-immutable-avm-920` suite → 日常入口=`ace-document-immutable`（同5检查），旧suite保留为冻结历史 | 同上 | AC-05/06 |
+
+`touched_goals` 为空的无影响说明（r3）：本包只改语料作者格式、固定组入口与相应规范条目，不改变 GOAL-016（构建/测试基础设施）或 GOAL-018（开发范式与知识账本）的既有承诺、分母或达成状态；无目标状态需要由 merge 更新。
 
 ## 6. 测试设计
 
@@ -473,9 +477,9 @@ AV/native的receipt目前有部分未列在报告artifacts中。对照器的run�
 
 ## 7. 验收标准
 
-- [x] AC-01（work）独立清单完整30case/60check、原字段/源/金样/双流/元数据，§5.8规范化接口及V-01/08/13检出缺失、重复和字段漂移。证据=§9 work 收据（c5383100e）：`migration-inventory` 40 文档行 `origin.input_paths=[]`，V-01/08 与治理 5 例通过。
+- [x] AC-01（work）独立清单完整30case/60check、原字段/源/金样/双流/元数据，§5.8规范化接口及V-01/08/13检出缺失、重复和字段漂移。证据=§9 work 收据（r3 @4cbb3f610）：`migration-inventory` 40 文档行 `origin.input_paths=[]`（复审独立重建，117 行 0 语义差异），V-01/08 与治理 5 例通过。
 - [x] AC-02（work）entry-mode、channel、stage/code按原类型接通，TOP script不会被默认program覆盖，V-01/05准入与定位正确。证据=§9 work 收据：V-01（TOP→program、O12 caps）与 V-05（unit+exit、bogus channel、缺 stage/code、缺 stderr）均加载期 exit 2 并带行号；`author_document` 12 例全绿。
-- [x] AC-03（work）同一冻结构建新旧60行全部PASS且actual逐项等价，BASE额外57行完整，三个组总计117行，V-02/04/06/07。证据=§9 work 收据：c5383100e 上 pair 三次 exit 0（scalar 97/40、console 15/15、immutable 5/5）。
+- [x] AC-03（work）同一冻结构建新旧60行全部PASS且actual逐项等价，BASE额外57行完整，三个组总计117行，V-02/04/06/07。证据=§9 r3 work 收据：4cbb3f610 上 pair 三次 exit 0（scalar 97/40、console 15/15、immutable 5/5）。
 - [x] AC-04（work）V-03..08/11/13各隔离负控精确失败，合法邻例通过，能指出全绿子集的缺项与缺证。证据=§9 work 收据：`controls-resync` 36/36 ok，V-03/04/06/07 逐变体只红目标行并指出字节/行。
 - [x] AC-05（work）三个固定组实际切换新文档，CLI/宿主/console/stale/试点/batch真实入口核验，三项具名BASE宿主测试及V-09/10通过。证据=§9 work 收据：固定组并集 127/97/15/5/7/68/24 全 PASS，ace-batch 12 PASS，八个具名宿主/console 入口 ok。
 - [x] AC-06（work）M1及仍依赖原文件的消费者逐件登记，migrated源/expected外部读取0；内容/表示身份差异、原红/重放及成本分列，§6.4真实record与V-10/11/13可复验。证据=§9 work 收据：consumers 12 条入 `t01-baseline.json`，ACE 6 红与主线既有记录逐项对齐、无新增红。
@@ -491,7 +495,7 @@ AV/native的receipt目前有部分未列在报告artifacts中。对照器的run�
 | T-03 / work ✅ | T-02 | scalar文档内联10份源码与10份原Rust，生成新BASE混合suite；对照脚本按§5.8接pair/verify与固定40项，按§6.4取actual | AC-03/04，V-02/03，40项对应及BASE97项；57项原件仍可解码 |
 | T-04 / work ✅ | T-02 | console文档完整15例及新suite，逐项填原completion/caps/channel/双流/exit | AC-03/04，V-04/05/06，真实15项和每个独立变体终态 |
 | T-05 / work ✅ | T-02 | immutable文档5例及新suite，TOP显式script，两个合法邻例按原值；完成对照脚本5项字段 | AC-03/04，V-07，三错两对；删例、错码可检 |
-| T-06 / work | T-03/04/05 | 同构建对跑及负控完成后改test-groups三入口；改host/console/governance日常消费者；完成controls及V-13治理反控，保存输入闭包和run记录；迁移三项具名BASE宿主测试；记录M1/batch/include_str原件去向 | AC-01..06，V-08..11/13；§6.3完整并集、CLI、新旧30/60与三组117项、读取计量 |
+| T-06 / work ✅ | T-03/04/05 | 同构建对跑及负控完成后改test-groups三入口；改host/console/governance日常消费者；完成controls及V-13治理反控，保存输入闭包和run记录；迁移三项具名BASE宿主测试；记录M1/batch/include_str原件去向 | AC-01..06，V-08..11/13；§6.3完整并集、CLI、新旧30/60与三组117项、读取计量 |
 | T-07 / review | T-06、冻结提交 | 同树独立复审逐旧case/actual/反控，扫漏项/延期/替代，核SD-01..03、fmt/warnings/调试输出；失败交原owner修复 | AC-07，V-12，revision-bound判决与必要复验并集 |
 | T-08 / merge | T-07 pass | 冻结并集核门后合主线，沉淀规范/路线并归档，折摘要、核所有输出路径、guard后清理树/分支/scope；登记原件保留项 | AC-08，主线来源/规范hash/归档与清理收据，具名持有按规则登记 |
 
@@ -571,6 +575,26 @@ AC 证据锚（c5383100e）：
 其他观察（merge 归账，不阻断）：workspace 既有 fmt 漂移在 `crates/auto-lang-core/src/test_cases/abi.rs`、`crates/a2r-actor-tests/tests/actor_parity.rs`（非本包改动）；旧 suite 回放入口=§5.7 consumers 表与 `t01-baseline.json`，merge 折叠时保留。
 
 2026-11-14 stage: goal | plan_id: PLAN-1057 | plan_revision: r2 | round: 2 | from: execution_done | to: executing | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1057/auto-lang | commit: c5383100e | next: work
+
+### 2026-11-14 work 收据 r3（F-1057-R1-01/02 修复）
+
+2026-11-14 stage: work | plan_id: PLAN-1057 | plan_revision: r3 | outcome: pass | worktree: D:/autostack/.wt/lang-1057/auto-lang | branch: plan-1057-dev | base_commit: 918426a24 | code_commit: 4cbb3f610（aeab8dfe4 实现 + master 二次同步） | dependency_revisions: 组内 auto-down 58ea33f6（只读） | task_ids: T-06（重开并复闭） | blockers: none | next_responsible_role: review
+
+修复映射：
+- F-1057-R1-01（spec delta）：SD-02 改为"无固定组↔作者格式规则 → 固定 case 组跟随活跃作者格式（文档式活跃 suite；旧 suite 仅冻结历史回放）"；新增 SD-04（`ace-m1-conformance.md`：底座/console/immutable 语料入口切文档式 suite，旧 suite 保留冻结历史与 M1 身份）与 SD-05（`legacy-immutable-diagnostic.md` 的语料套件行）；frontmatter `supersedes_spec_components` 列全四个目标；补 `touched_goals: []` 的无影响说明。语义契约、验收与任务范围未变，只改正目标清单与失实"当前"。
+- F-1057-R1-02（基面漂移）：`git merge master`（918426a24）干净合入得 4cbb3f610，重建后在该合并提交上重跑受影响并集。
+
+| 门 | 命令 | 结果 | 证据（scope 内路径 + SHA-256） |
+|---|---|---|---|
+| 固定七组 | `python scripts/fixed-tests.py auto-test-case case-ace-m1-base case-ace-m1-console-863 case-ace-m1-immutable-avm-920 case-ace-document-pilot-1002 infra-fixed infra-ace-m1 --out …/fixed-r3` | gate_passed=true，382.3s；127/97/15/5/7/68/24 全 PASS | `fixed-r3/results.json` 0480e770…（source_state d24edfb1…） |
+| 新旧对照 | `document_case_migration.py pair`（scalar/console/immutable） | 三次 exit 0：scalar 97 对/40 迁移、console 15/15、immutable 5/5 | `pair-r3/{scalar,console,immutable}/new-record.json` 9e3467cc…/c466f02d…/5c51fc6d… |
+| 具名负控 | `document_case_migration.py controls --out …/controls-r3` | 36/36 ok，exit 0 | `controls-r3/controls-summary.json` 2fb69729… |
+| ACE 三组 | `python scripts/fixed-tests.py ace-host ace-console ace-batch --out …/ace-r3` | ace-batch 12 PASS；ace-host+console 164 例 158 PASS / 同样 6 个既有主线红（405.8s；`console::` 7 例全绿） | `ace-r3/results.json` |
+| 新增单测 | `cargo test -p auto-lang-core --lib migration_inventory_projects`；`cargo test -p ace-core --lib fstr_preserves_utf8` | 各 1 passed | 同树 4cbb3f610 |
+
+边界：6 红与 r2 及主线既有记录逐名一致（archive/1017、archive/1039、KNOWN-DEBT D-1001-R2/D-932-2），本包未改这些测试或其面，无新增红。master 在本次重跑后仍前进（967 T-11/T-12、1021 归档），其改动面含 `experimental/ace/**` 与 `auto-bindgen`；本收据只绑定 4cbb3f610，最终交付基面的并集复跑归 merge。
+
+2026-11-14 stage: goal | plan_id: PLAN-1057 | plan_revision: r3 | round: 3 | from: executing | to: execution_done | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1057/auto-lang | commit: 4cbb3f610 | next: review
 
 ## 10. 待澄清事项
 
