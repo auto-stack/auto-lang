@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-1057
-status: execution_done
+status: executing
 feature_name: AutoDown文档式用例首批推广
 author: [Codex]
 created_at: 2026-11-14
 updated_at: 2026-11-14
 plan_revision: 2
 phase: M2-A
-current_step: 6
+current_step: 5
 total_steps: 8
 depends_on: [PLAN-1002]
 supersedes_spec_components: [docs/specs/auto-test-case/document-cases.md]
@@ -491,7 +491,7 @@ AV/native的receipt目前有部分未列在报告artifacts中。对照器的run�
 | T-03 / work ✅ | T-02 | scalar文档内联10份源码与10份原Rust，生成新BASE混合suite；对照脚本按§5.8接pair/verify与固定40项，按§6.4取actual | AC-03/04，V-02/03，40项对应及BASE97项；57项原件仍可解码 |
 | T-04 / work ✅ | T-02 | console文档完整15例及新suite，逐项填原completion/caps/channel/双流/exit | AC-03/04，V-04/05/06，真实15项和每个独立变体终态 |
 | T-05 / work ✅ | T-02 | immutable文档5例及新suite，TOP显式script，两个合法邻例按原值；完成对照脚本5项字段 | AC-03/04，V-07，三错两对；删例、错码可检 |
-| T-06 / work ✅ | T-03/04/05 | 同构建对跑及负控完成后改test-groups三入口；改host/console/governance日常消费者；完成controls及V-13治理反控，保存输入闭包和run记录；迁移三项具名BASE宿主测试；记录M1/batch/include_str原件去向 | AC-01..06，V-08..11/13；§6.3完整并集、CLI、新旧30/60与三组117项、读取计量 |
+| T-06 / work | T-03/04/05 | 同构建对跑及负控完成后改test-groups三入口；改host/console/governance日常消费者；完成controls及V-13治理反控，保存输入闭包和run记录；迁移三项具名BASE宿主测试；记录M1/batch/include_str原件去向 | AC-01..06，V-08..11/13；§6.3完整并集、CLI、新旧30/60与三组117项、读取计量 |
 | T-07 / review | T-06、冻结提交 | 同树独立复审逐旧case/actual/反控，扫漏项/延期/替代，核SD-01..03、fmt/warnings/调试输出；失败交原owner修复 | AC-07，V-12，revision-bound判决与必要复验并集 |
 | T-08 / merge | T-07 pass | 冻结并集核门后合主线，沉淀规范/路线并归档，折摘要、核所有输出路径、guard后清理树/分支/scope；登记原件保留项 | AC-08，主线来源/规范hash/归档与清理收据，具名持有按规则登记 |
 
@@ -544,6 +544,33 @@ AC 证据锚（c5383100e）：
 材料：原始证据全部在 `D:/autostack/plan-artifacts/plan-1057/`（old/new/pair-01/pair-resync/controls-final/controls-resync/fixed-resync/ace-resync/t01-*.json），merge 收尾折摘要并整目录删除。
 
 2026-11-14 stage: goal | plan_id: PLAN-1057 | plan_revision: r2 | round: 1 | from: executing | to: execution_done | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1057/auto-lang | commit: c5383100e | next: review
+
+### 2026-11-14 review 收据（final，r2）→ needs_fix
+
+2026-11-14 stage: review | review_scope: final | reviewer_identity: 同一 root agent 会话（无独立 reviewer 模型/上下文，按限制声明）；判决由重建证据得出，未采信 work 收据的自述 | plan_id: PLAN-1057 | plan_revision: r2 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-1057/auto-lang | branch: plan-1057-dev | reviewed_commit: c5383100e（tree clean，diff base 76431e6b9） | dependency_revisions: 组内 auto-down 58ea33f6（只读） | spec_inputs: document-cases.md c2d174d1…、module-selection.md e6c54461…、ace-m1-conformance.md 66849b09…、legacy-immutable-diagnostic.md dc1d1195… | pending_closeout_gates: 受影响并集在同步后的交付基面复跑（见 F-1057-R1-02） | findings: F-1057-R1-01、F-1057-R1-02 | next: work（r3 有界修订 + 基面同步与复跑）
+
+验收映射（独立方法 → 判定）：
+- AC-01 pass：自行用 CLI `migration-inventory` 导出六份投影（`review-inv/`），按 Plan §5 表硬编码 30 例/60 项集合比对（未用计划方 pair 工具结论）：scalar 97、console 15、immutable 5 行 `semantic` 深浅比较 **0 差异**；文档行 40/15/5，`origin.input_paths` 全空；标量四检查次序与 §5.1 一致。
+- AC-02 pass：TOP `entry_mode=script`；O07/O09/O15 `channel=unit` 且无 exit；O08 `value`+exit42；O10..O14 `completion=error` 且 stage/code 齐全、无 exit；O12 `caps=[]` 未被补授权。`author_document` 12 例、`located_rejection_battery` 全绿（127 例组内）。
+- AC-03 pass：该提交上三组实跑 97/15/5 全 PASS（`fixed-resync/`）；pair 重跑 117 项等价（scalar 97/40、console 15/15、immutable 5/5，exit 0）；新 suite `lint`/`inventory`/`identity-inventory` 独立复跑 exit 0（36/15/5 例、97 行）。
+- AC-04 pass：`controls-resync` 36/36 ok；V-03/V-04/V-06/V-07 每变体只红目标行并给字节/行；V-11 oracle 内容轴 Fresh→Stale；V-13 治理 5 例覆盖缺行/重复/TOP 入口/O08 通道/links 移除/skip 漂移/换回执/篡改 actual（exit 2）。
+- AC-05 pass：三组入口已切；`document_base_cli_list_and_migration_inventory_complete`、`reuse_obligations_run_green_via_original_suites`、`first_wave_suite_runs_green_with_d_values`、三个 BASE 宿主测试、console stale 与三轴反控均 ok；ace-batch 12 PASS。
+- AC-06 pass：consumers 12 条登记于 `t01-baseline.json`；旧件未被改动（`git diff 76431e6b9..HEAD -- crates/auto-lang/test/cases/ace-m1` 为空）；ACE 6 红与主线既有记录逐名一致（`language_conformance::ace_m1_closures_source_suite_green`、`ace_m1_tr_native_suite_green`、`semantics_protocol::abi_recipe_binding_exclusivity`、`rust_lowering::a2r_hir_first_case_green`、`a2r_hir_worker_credential_pin`、`source::av_source_inventory_denominators_replayable`；见 archive/1017 §9、archive/1039、KNOWN-DEBT D-1001-R2/D-932-2），非新增红。
+- 健康检查 pass：改动文件 rustfmt 干净、无 `dbg!`/`todo!`/调试输出、无 specs.json 写入、无告警指向改动文件；新增两单测（`migration_inventory_projects_exact_legacy_scalar_console_and_immutable_rows`、`fstr_preserves_utf8_chars_and_char_literals`）独立复跑 ok。
+- 范围观察（非 finding）：`experimental/ace/crates/core/src/source/fstr.rs` 的 UTF-8 修复不在 §5 列表，但为 O03/O04 非 ASCII 源码在 AV worker 侧可用的前提（T-01 基线 O04=ERROR），ASCII 路径不变且有单测与 ACE 组回归；按"必要接线"接受，merge 摘要须保留该范围说明。
+
+**F-1057-R1-01（P2，spec delta 目标与基线失实；AC-07 未过）**
+- 事实：SD-02 称 `docs/specs/auto-test-case/module-selection.md` 现记录"旧三套件日常入口"，该文件全文无 `case-ace-m1-*` 或三个 suite 名（rg 0 命中）。真正写底座/控制台/赋值语料的是 `ace-m1-conformance.md`（"## 底座套件（ace-m1-base.suite.ad）"、"### PLAN-863: O01–O15 console source rows"）与 `legacy-immutable-diagnostic.md`（"语料套件：`ace-m1-immutable-avm-920`"）。两者不在 SD 列表，交付后会继续把旧 suite 写成日常语料入口，与已切换的固定组接线矛盾；frontmatter `supersedes_spec_components` 也漏 `module-selection.md` 与这两个文件。
+- 修法（有界，不改行为/验收）：SD-02 重述为通用规则（固定 case 组跟随活跃作者格式；旧 suite 仅作冻结历史回放）或删除；新增 SD-04（改 `ace-m1-conformance.md`：BASE/console 活跃入口=文档式 suite，旧 suite 标注冻结历史与 M1 身份）与 SD-05（改 `legacy-immutable-diagnostic.md` 的语料套件行）；`supersedes_spec_components` 列全；`touched_goals: []` 补书面无影响理由（语料作者格式切换不改变 GOAL-016/018 的达成面）。
+- 复审复跑范围：只重核 SD 表、frontmatter 与上述文件的当前→交付后陈述，不重跑测试门。
+
+**F-1057-R1-02（P2，审查基面漂移使受影响证据失效）**
+- 事实：审查期间 master 自 `cd5f2e568` 前进 9 个提交，含 967 T-10 两片代码（`experimental/ace/crates/core/src/source/{parser,resolve,ast,cst/project}.rs`、abi cside/ctool、`crates/auto-bindgen/src/c_import.rs`、ace conformance 用例）。本包受影响面恰含 AV/console 用例组与 `ace-host`，其 worker/parser 输入已变，故 `fixed-resync/`、`ace-resync/`、`pair-resync/`、`controls-resync/` 只能证明 `c5383100e`，不能作为交付基面证据；与分支无文件重叠（合并应无冲突）。
+- 修法：work 阶段再次 `git merge master`，重建工具后在合并提交上重跑 §6.3 并集（fixed 七组 + pair + controls + ace-host/console/batch），收据绑定新提交；review 再核该提交（实现未变时只复用新一次并集，不叠跑）。
+
+其他观察（merge 归账，不阻断）：workspace 既有 fmt 漂移在 `crates/auto-lang-core/src/test_cases/abi.rs`、`crates/a2r-actor-tests/tests/actor_parity.rs`（非本包改动）；旧 suite 回放入口=§5.7 consumers 表与 `t01-baseline.json`，merge 折叠时保留。
+
+2026-11-14 stage: goal | plan_id: PLAN-1057 | plan_revision: r2 | round: 2 | from: execution_done | to: executing | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1057/auto-lang | commit: c5383100e | next: work
 
 ## 10. 待澄清事项
 
