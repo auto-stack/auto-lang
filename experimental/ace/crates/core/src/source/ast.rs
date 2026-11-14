@@ -93,6 +93,10 @@ pub enum TypeRef {
         params: Vec<TypeAnn>,
         result: Box<TypeAnn>,
     },
+    /// PLAN-965 (M2-A): `!T` result-with-str-error sugar (`Result<T, Str>`).
+    ResultBang(Box<TypeAnn>),
+    /// PLAN-965 (M2-A): `~Iter<T>` generator stream type.
+    Stream(Box<TypeAnn>),
 }
 
 /// Parameter ownership mode word (PLAN-770; old-language convention: the
@@ -336,6 +340,8 @@ pub enum BinOp {
     BitAnd,
     BitOr,
     BitXor,
+    /// PLAN-965 (M2-A): lazy null-coalescing `lhs ?? rhs`.
+    NullCoalesce,
 }
 
 impl BinOp {
@@ -358,6 +364,7 @@ impl BinOp {
             BinOp::BitAnd => "&",
             BinOp::BitOr => "|",
             BinOp::BitXor => "^",
+            BinOp::NullCoalesce => "??",
         }
     }
 }
@@ -551,6 +558,20 @@ pub enum ExprKind {
         params: Vec<Param>,
         body: Box<ClosureBody>,
     },
+    /// PLAN-965 (M2-A): `expr.?` propagation postfix step.
+    Propagate {
+        inner: Box<Expr>,
+    },
+    /// PLAN-965 (M2-A): `expr.?(fallback)` lazy unwrap-or postfix step.
+    UnwrapOr {
+        inner: Box<Expr>,
+        fallback: Box<Expr>,
+    },
+    /// PLAN-965 (M2-A): `is expr { arms... }` expression form.
+    IsExpr {
+        scrutinee: Box<Expr>,
+        arms: Vec<AggMatchArm>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -693,6 +714,56 @@ pub enum Stmt {
         body: Block,
         span: Span,
     },
+    /// PLAN-965 (M2-A): aggregates `is <expr> { arms... }` statement form.
+    AggIsMatch {
+        scrutinee: Expr,
+        arms: Vec<AggMatchArm>,
+        span: Span,
+    },
+    /// PLAN-965 (M2-A): `try { .. } [catch [(e)|e] { .. }] [finally { .. }]`.
+    Try {
+        body: Block,
+        catch: Option<CatchClause>,
+        finally: Option<Block>,
+        span: Span,
+    },
+    /// PLAN-965 (M2-A): `yield expr` inside a `~Iter<T>` generator body.
+    Yield {
+        value: Expr,
+        span: Span,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub struct CatchClause {
+    pub bind: Option<Ident>,
+    pub body: Block,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub enum MatchPattern {
+    Variant {
+        qual: Option<Ident>,
+        name: Ident,
+        binding: Option<Ident>,
+    },
+    IntLit(i32),
+    BoolLit(bool),
+    Else,
+}
+
+#[derive(Clone, Debug)]
+pub enum AggArmBody {
+    Block(Block),
+    Expr(Expr),
+}
+
+#[derive(Clone, Debug)]
+pub struct AggMatchArm {
+    pub pat: MatchPattern,
+    pub body: AggArmBody,
+    pub span: Span,
 }
 
 /// One `is` arm: `Name -> { .. }`, `Enum.Name -> { .. }` or with a
@@ -810,6 +881,26 @@ impl Drop for Expr {
                         stack.push(e);
                     }
                 }
+                ExprKind::Propagate { inner } => {
+                    let e = std::mem::replace(inner.as_mut(), dummy());
+                    stack.push(e);
+                }
+                ExprKind::UnwrapOr { inner, fallback } => {
+                    let i = std::mem::replace(inner.as_mut(), dummy());
+                    let f = std::mem::replace(fallback.as_mut(), dummy());
+                    stack.push(i);
+                    stack.push(f);
+                }
+                ExprKind::IsExpr { scrutinee, arms } => {
+                    let s = std::mem::replace(scrutinee.as_mut(), dummy());
+                    stack.push(s);
+                    for a in arms.iter_mut() {
+                        if let AggArmBody::Expr(expr) = &mut a.body {
+                            let e = std::mem::replace(expr, dummy());
+                            stack.push(e);
+                        }
+                    }
+                }
                 _ => {}
             }
         };
@@ -855,6 +946,27 @@ impl Drop for Block {
                     }
                     Stmt::ForIn { body, .. } => {
                         stack.push(std::mem::replace(body, dummy()));
+                    }
+                    Stmt::AggIsMatch { arms, .. } => {
+                        for a in arms.iter_mut() {
+                            if let AggArmBody::Block(block) = &mut a.body {
+                                stack.push(std::mem::replace(block, dummy()));
+                            }
+                        }
+                    }
+                    Stmt::Try {
+                        body,
+                        catch,
+                        finally,
+                        ..
+                    } => {
+                        stack.push(std::mem::replace(body, dummy()));
+                        if let Some(c) = catch {
+                            stack.push(std::mem::replace(&mut c.body, dummy()));
+                        }
+                        if let Some(f) = finally {
+                            stack.push(std::mem::replace(f, dummy()));
+                        }
                     }
                     _ => {}
                 }

@@ -1132,6 +1132,12 @@ pub enum ExecOutcome {
         message: String,
     },
     Cancelled,
+    /// Language-level uncaught error (`fail(msg)` / uncaught `.?` / `rethrow`),
+    /// distinct from low-level runtime `Trap` / `Resource` / `Cancelled` / `Infra`.
+    Error {
+        message: String,
+        span: Option<SpanInfo>,
+    },
     /// Executor-internal failure (budget bookkeeping etc.) — never used to
     /// absorb a language trap or a resource classification.
     Infra(String),

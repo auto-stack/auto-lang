@@ -243,6 +243,10 @@ pub fn run_entry_on_av_observed(
                 peak_slot_bytes: trace.peak_slot_bytes,
             },
         )),
+        ExecOutcome::Error { message, .. } => Err(CtExecError::at_av(
+            "cte.error",
+            format!("compiletime-executed entry failed: {message}"),
+        )),
         ExecOutcome::Trap { kind, .. } => Err(CtExecError::at_av(
             &format!("cte.trap/{}", kind.code()),
             format!("compiletime-executed entry trapped: {}", kind.code()),

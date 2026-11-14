@@ -1139,24 +1139,58 @@ fn collections_fn_sig_for_def(
                 .collect()
         })
         .unwrap_or_default();
+    let mut param_mir_tys = Vec::with_capacity(sig.params.len());
     for (index, p) in sig.params.iter().enumerate() {
-        let ty = collections_type_idx_of(p, m, out, &mut memo, &mut visiting)?;
+        let base = collections_type_idx_of(p, m, out, &mut memo, &mut visiting)?;
+        param_mir_tys.push(base);
         // Match lower_function's existing param slot mapping. A plain
         // record parameter borrows, on both whole and per-function entries.
         let ty = match (
             modes.get(index).copied().unwrap_or(hir::ParamMode::View),
-            out.types.get(ty as usize),
+            out.types.get(base as usize),
         ) {
             (hir::ParamMode::View, Some(MirType::Record(record))) => {
                 out.intern_type(MirType::RecordView(record.clone()))
             }
-            _ => ty,
+            _ => base,
         };
         params.push(ty);
     }
     let result = collections_type_idx_of(&sig.result, m, out, &mut memo, &mut visiting)?;
-    let sig_ty = out.intern_type(MirType::Fn(FnSig { params, result }));
-    Ok(sig_ty)
+    let mut fields = vec![MirFieldDef {
+        name: "f0".into(),
+        ty: result,
+    }];
+    let mut has_mut_record = false;
+    for (m_mode, base_ty) in modes.iter().zip(param_mir_tys.iter()) {
+        if *m_mode != hir::ParamMode::MutBorrow {
+            continue;
+        }
+        if matches!(out.types.get(*base_ty as usize), Some(MirType::Record(_))) {
+            has_mut_record = true;
+            fields.push(MirFieldDef {
+                name: format!("wb{}", fields.len()),
+                ty: *base_ty,
+            });
+        }
+    }
+    if !has_mut_record {
+        return Ok(out.intern_type(MirType::Fn(FnSig { params, result })));
+    }
+    let wrapper = out.intern_type(MirType::Record(RecordTypeRef {
+        owner_module: m.id_text.clone(),
+        name: format!(
+            "t_MutRet_{}",
+            mir_name_of_def(m, def_index as usize)
+                .map(|n| n.strip_prefix("d_").unwrap_or(&n).to_string())
+                .unwrap_or_else(|_| "fn".into())
+        ),
+        fields,
+    }));
+    Ok(out.intern_type(MirType::Fn(FnSig {
+        params,
+        result: wrapper,
+    })))
 }
 
 /// PLAN-960: the global cell index for `name` in `out` (registered on first
@@ -4177,10 +4211,21 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                                 // profile has its own type walker (Variants/lists are
                                 // outside av.owned/1), so it keeps the table answer.
                                 if already_wrapped
-                                    || self.collections()
-                                    || !(self.owned || self.data)
+                                    || !(self.owned || self.data || self.collections())
                                 {
                                     table
+                                } else if self.collections() {
+                                    if table.is_some() {
+                                        table
+                                    } else {
+                                        let derived = collections_fn_sig_for_def(
+                                            self.hir_module,
+                                            callee_def.0,
+                                            hir_ty,
+                                            self.out,
+                                        )?;
+                                        self.out.types.get(derived as usize).cloned()
+                                    }
                                 } else {
                                     let overrides = self.sig_mode_overrides.clone();
                                     let derived = if self.owned {
@@ -6349,6 +6394,12 @@ fn lower_function_with_emission(
                     // transfers are verify-rejected at the source.
                     let _ = lower.eval_expr(*value, 0)?;
                     lower.end_stmt_temp_views()?;
+                }
+                hir::Stmt::Fail { value } => {
+                    let msg = lower.eval_expr(*value, 0)?;
+                    lower.end_stmt_temp_views()?;
+                    lower.set_term(Terminator::LangFail { message: msg });
+                    break;
                 }
             }
         }

@@ -1,0 +1,12 @@
+// PLAN-965 T-08 negative: a borrowed (`mut`) generator parameter cannot cross
+// a `yield`; the state record stores values, so the write-back would vanish.
+type Flag {
+    closed int
+}
+fn guarded(mut f Flag) ~Iter<int> {
+    yield 1
+    f.closed = f.closed + 1
+}
+fn main() int {
+    return 0
+}

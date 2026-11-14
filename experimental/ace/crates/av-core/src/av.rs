@@ -641,6 +641,13 @@ fn lifecycle_end_info(out: &ExecOutcome, steps: u64) -> crate::lifecycle::EndInf
             resource: None,
             steps,
         },
+        ExecOutcome::Error { message, .. } => EndInfo {
+            outcome: "error",
+            value: None,
+            trap: Some(message.clone()),
+            resource: None,
+            steps,
+        },
         ExecOutcome::Infra(_) => EndInfo {
             outcome: "infra",
             value: None,
@@ -6278,6 +6285,29 @@ fn dispatch_with_host<V: ModuleView>(
                         })
                     }
                 }
+            }
+            Terminator::LangFail { message } => {
+                let msg_val = {
+                    let fr = st.frames.last().expect("frame present");
+                    fr.slots[*message as usize].clone()
+                };
+                let msg_text = match resolve_view_bytes(v, func_idx, &msg_val) {
+                    Ok((bytes, _)) => String::from_utf8_lossy(&bytes).into_owned(),
+                    Err(_) => match &msg_val {
+                        Value::I32(code) => format!("error code {code}"),
+                        other => format!("{}", other.type_name()),
+                    },
+                };
+                let sp = ip
+                    .checked_sub(1)
+                    .and_then(|last_ip| v.logical_pc(func_idx, block_idx, last_ip))
+                    .and_then(|(_, fl)| span_of(func, fl))
+                    .map(|s| v.map_span(func_idx, s));
+                cleanup_owned_frames(st);
+                return Some(ExecOutcome::Error {
+                    message: msg_text,
+                    span: sp,
+                });
             }
         }
     }

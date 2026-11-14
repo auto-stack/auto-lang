@@ -542,6 +542,42 @@ fn walk_stmt(stmt: &Stmt, out: &mut Vec<String>) {
                 walk_stmt(s, out);
             }
         }
+        Stmt::AggIsMatch {
+            scrutinee, arms, ..
+        } => {
+            walk_expr(scrutinee, out);
+            for a in arms {
+                match &a.body {
+                    ace_core::source::ast::AggArmBody::Expr(e) => walk_expr(e, out),
+                    ace_core::source::ast::AggArmBody::Block(b) => {
+                        for s in &b.stmts {
+                            walk_stmt(s, out);
+                        }
+                    }
+                }
+            }
+        }
+        Stmt::Try {
+            body,
+            catch,
+            finally,
+            ..
+        } => {
+            for s in &body.stmts {
+                walk_stmt(s, out);
+            }
+            if let Some(c) = catch {
+                for s in &c.body.stmts {
+                    walk_stmt(s, out);
+                }
+            }
+            if let Some(f) = finally {
+                for s in &f.stmts {
+                    walk_stmt(s, out);
+                }
+            }
+        }
+        Stmt::Yield { value, .. } => walk_expr(value, out),
     }
 }
 

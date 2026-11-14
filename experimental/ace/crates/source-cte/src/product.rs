@@ -332,6 +332,42 @@ fn substitute_all(p: &mut Program, served: &ServedRoot) {
                 }
             }
             Stmt::Break { .. } | Stmt::Continue { .. } => {}
+            Stmt::AggIsMatch {
+                scrutinee, arms, ..
+            } => {
+                repl(scrutinee, served);
+                for a in arms.iter_mut() {
+                    match &mut a.body {
+                        ace_core::source::ast::AggArmBody::Expr(e) => repl(e, served),
+                        ace_core::source::ast::AggArmBody::Block(b) => {
+                            for st in b.stmts.iter_mut() {
+                                substitute_stmt_all(st, served);
+                            }
+                        }
+                    }
+                }
+            }
+            Stmt::Try {
+                body,
+                catch,
+                finally,
+                ..
+            } => {
+                for st in body.stmts.iter_mut() {
+                    substitute_stmt_all(st, served);
+                }
+                if let Some(c) = catch {
+                    for st in c.body.stmts.iter_mut() {
+                        substitute_stmt_all(st, served);
+                    }
+                }
+                if let Some(f) = finally {
+                    for st in f.stmts.iter_mut() {
+                        substitute_stmt_all(st, served);
+                    }
+                }
+            }
+            Stmt::Yield { value, .. } => repl(value, served),
         }
     }
 }

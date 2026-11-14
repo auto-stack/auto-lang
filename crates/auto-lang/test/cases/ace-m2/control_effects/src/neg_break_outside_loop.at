@@ -1,0 +1,11 @@
+// PLAN-965 V-DETAIL-02 / F-965-R1-07: `break` with no enclosing user loop is a
+// named source rejection (`source.break-outside-loop`). A `try` frame does not
+// count as a loop for jump targets.
+fn main() int {
+    try {
+        break
+    } catch e {
+        return 0
+    }
+    return 1
+}

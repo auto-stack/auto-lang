@@ -136,11 +136,11 @@ pub(crate) fn admit_layouts(
                 }
             }
             MirType::Fn(sig) => {
-                if sig
-                    .params
-                    .iter()
-                    .any(|p| matches!(m.types[*p as usize], MirType::List(_) | MirType::Variant(_)))
-                {
+                let aggregates = m.capabilities.iter().any(|c| c == "av.aggregates/1");
+                if sig.params.iter().any(|p| {
+                    matches!(m.types[*p as usize], MirType::List(_))
+                        || (!aggregates && matches!(m.types[*p as usize], MirType::Variant(_)))
+                }) {
                     return Err(unsupported(
                         "param",
                         "container parameters are outside the source ABI",
@@ -184,6 +184,8 @@ pub(crate) fn admit_layouts(
                     | MirInstr::Call { .. }
                     | MirInstr::Aggregate { .. }
                     | MirInstr::FieldGet { .. }
+                    | MirInstr::FieldMove { .. }
+                    | MirInstr::FieldSet { .. }
                     | MirInstr::Clone { .. }
                     | MirInstr::Move { .. }
                     | MirInstr::View { .. }
@@ -397,6 +399,13 @@ fn emit_admitted(
                     }
                     lower.fb.ins().return_(&[]);
                 }
+                Terminator::LangFail { .. } => {
+                    if !TEST_OMIT_FRAME_FREE.with(|flag| flag.get()) {
+                        lower.checked("mn_coll_frame_leave", &[(frame, types::I64)])?;
+                    }
+                    let err = lower.fb.ins().iconst(types::I32, 9);
+                    lower.fb.ins().jump(trap, &[err.into()]);
+                }
             }
         }
         lower.fb.switch_to_block(trap);
@@ -579,7 +588,8 @@ impl Lower<'_, '_> {
             BorrowEnd { .. } => vec![],
             Drop { slot } => vec![*slot],
             StrLen { view, .. } => vec![*view],
-            FieldGet { base, .. } => vec![*base],
+            FieldGet { base, .. } | FieldMove { root: base, .. } => vec![*base],
+            FieldSet { root, value, .. } => vec![*root, *value],
             Aggregate { operands, .. } | Call { args: operands, .. } => operands.clone(),
             ListPush { root, value }
             | ListInsert { root, value, .. }
@@ -603,6 +613,7 @@ impl Lower<'_, '_> {
             | View { dst, .. }
             | Aggregate { dst, .. }
             | FieldGet { dst, .. }
+            | FieldMove { dst, .. }
             | ListNew { dst, .. }
             | ListGet { dst, .. }
             | ListRemove { dst, .. }
@@ -717,8 +728,48 @@ impl Lower<'_, '_> {
                     )?;
                 }
             }
-            FieldGet { dst, base, path } => {
-                self.field(*dst, *base, self.m.funcs[0].slots[*base as usize].ty, path)?
+            FieldGet { dst, base, path }
+            | FieldMove {
+                dst,
+                root: base,
+                path,
+            } => self.field(*dst, *base, self.m.funcs[0].slots[*base as usize].ty, path)?,
+            FieldSet { root, path, value } => {
+                if path.is_empty() {
+                    return Err(unsupported("field", "empty field-set path"));
+                }
+                let val_ptr = self.transfer_arg(*value)?;
+                let mut ty = self.m.funcs[0].slots[*root as usize].ty;
+                let mut bits = self.bits(*root);
+                let last = path.len() - 1;
+                let temp = self.addr(self.scratch);
+                for &index in &path[..last] {
+                    self.check_bits(bits, ty, false)?;
+                    let r = match &self.m.types[ty as usize] {
+                        MirType::Record(r) | MirType::RecordView(r) => r,
+                        _ => return Err(unsupported("field", "non-record field path")),
+                    };
+                    ty = r.fields[index as usize].ty;
+                    let idx = self.i64(index as i64);
+                    self.checked(
+                        "mn_coll_field_get",
+                        &[(temp, types::I64), (bits, types::I64), (idx, types::I64)],
+                    )?;
+                    bits = self.bits(self.scratch);
+                }
+                self.check_bits(bits, ty, false)?;
+                let last_idx = self.i64(path[last] as i64);
+                self.checked(
+                    "mn_coll_record_put",
+                    &[
+                        (bits, types::I64),
+                        (last_idx, types::I64),
+                        (val_ptr, types::I64),
+                    ],
+                )?;
+                if last > 0 {
+                    self.call("mn_coll_drop", &[(temp, types::I64)], None)?;
+                }
             }
             ListNew { dst, cap, .. } => {
                 let dst = self.addr(*dst);

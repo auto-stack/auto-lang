@@ -433,6 +433,7 @@ fn render_term(t: &Terminator) -> Result<String, MnError> {
         Terminator::Jump { target } => format!("jump {target}"),
         Terminator::Branch { cond, then, else_ } => format!("branch {cond} {then} {else_}"),
         Terminator::Return { value } => format!("return {value}"),
+        Terminator::LangFail { message } => format!("lang-fail {message}"),
     })
 }
 

@@ -1,0 +1,17 @@
+// PLAN-965 T-08 (V-08): a language `fail` raised by a generator's `finally`
+// when the iterator drains must surface as an uncaught language error (run
+// stage), never as a silent success.
+fn guarded() ~Iter<int> {
+    try {
+        yield 10
+    } finally {
+        fail("closed965")
+    }
+}
+fn main() int {
+    var part = 0
+    for x in guarded() {
+        part = part + x
+    }
+    return part
+}

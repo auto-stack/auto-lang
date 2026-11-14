@@ -81,14 +81,15 @@ const COLL_CORE: &str = r#"typedef enum {
     A2X_TRAP_LIST_INDEX,
     A2X_TRAP_VARIANT_BRANCH,
     A2X_TRAP_BUDGET,
-    A2X_TRAP_CANCELLED
+    A2X_TRAP_CANCELLED,
+    A2X_TRAP_LANG_ERROR
 } a2x_trap_code;
 
 static const char* a2x_trap_name(a2x_trap_code t) {
-    static const char* const names[13] = {
+    static const char* const names[14] = {
         "None", "Overflow", "DivByZero", "DivOverflow", "RemByZero",
         "RemOverflow", "InvalidScalar", "TextIndex", "Resource",
-        "ListIndex", "VariantBranch", "Budget", "Cancelled"
+        "ListIndex", "VariantBranch", "Budget", "Cancelled", "LangError"
     };
     return names[(int)t];
 }

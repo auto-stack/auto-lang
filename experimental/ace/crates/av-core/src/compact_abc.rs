@@ -29,6 +29,8 @@ const OP_TRACE: u8 = 0x06;
 const TERM_JUMP: u8 = 0x10;
 const TERM_BRANCH: u8 = 0x11;
 const TERM_RETURN: u8 = 0x12;
+/// PLAN-965: language-level error unwind; `0x40` stays outside the instruction space.
+const TERM_LANG_FAIL: u8 = 0x40;
 
 #[derive(Debug)]
 pub struct DecodedCompactAbc {
@@ -220,6 +222,10 @@ fn encode_terminator(out: &mut Vec<u8>, term: &Terminator) {
         Terminator::Return { value } => {
             out.push(TERM_RETURN);
             put_uleb(out, *value);
+        }
+        Terminator::LangFail { message } => {
+            out.push(TERM_LANG_FAIL);
+            put_uleb(out, *message);
         }
     }
 }
@@ -940,6 +946,7 @@ fn decode_function(
                 else_: c.uleb()?,
             },
             TERM_RETURN => Terminator::Return { value: c.uleb()? },
+            TERM_LANG_FAIL => Terminator::LangFail { message: c.uleb()? },
             other => {
                 return Err(format_err(
                     "compact.decode.terminator",

@@ -1,0 +1,7 @@
+// PLAN-965 T-08 negative: .? in non-!T function outside catch is rejected cleanly.
+fn bad() !int {
+    Err("bad")
+}
+fn main() int {
+    return bad().?
+}

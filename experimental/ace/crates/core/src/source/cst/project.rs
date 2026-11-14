@@ -877,6 +877,15 @@ fn walk_fn_item_ex(
         return (i, Some(eof_expected(cx, "function name")));
     }
     {
+        if cx.profile.is_aggregates()
+            && i < leaves.len()
+            && matches!(leaves[i].2.as_str(), "?" | "!" | "~")
+        {
+            i += 1;
+            if i >= leaves.len() {
+                return (i, Some(eof_expected(cx, "return type")));
+            }
+        }
         let (sp, g, text) = at(i);
         if g != k.tok_ident {
             if g == k.tok_affix_num
@@ -925,6 +934,15 @@ fn walk_fn_item_ex(
         return (i, Some(eof_expected(cx, "`(`")));
     }
     {
+        if cx.profile.is_aggregates()
+            && i < leaves.len()
+            && matches!(leaves[i].2.as_str(), "?" | "!" | "~")
+        {
+            i += 1;
+            if i >= leaves.len() {
+                return (i, Some(eof_expected(cx, "return type")));
+            }
+        }
         let (sp, g, text) = at(i);
         if text != "(" {
             return (
@@ -1147,6 +1165,15 @@ fn walk_fn_item_ex(
         return (i, Some(eof_expected(cx, "return type")));
     }
     {
+        if cx.profile.is_aggregates()
+            && i < leaves.len()
+            && matches!(leaves[i].2.as_str(), "?" | "!" | "~")
+        {
+            i += 1;
+            if i >= leaves.len() {
+                return (i, Some(eof_expected(cx, "return type")));
+            }
+        }
         let (sp, g, text) = at(i);
         // PLAN-928：closures 面 ret 位 fn 型（`fn(T0, ...) [->] R`，可嵌套）。
         if cx.profile.is_closures() && text == "fn" {
@@ -1208,6 +1235,21 @@ fn walk_fn_item_ex(
                 );
             }
             i += 1;
+            if cx.profile.is_aggregates() && i < leaves.len() && leaves[i].2 == "<" {
+                let mut depth = 0usize;
+                while i < leaves.len() {
+                    if leaves[i].2 == "<" {
+                        depth += 1;
+                    } else if leaves[i].2 == ">" {
+                        depth = depth.saturating_sub(1);
+                        if depth == 0 {
+                            i += 1;
+                            break;
+                        }
+                    }
+                    i += 1;
+                }
+            }
         }
     }
     // 6) `{`（体）→ 语句序列游走。
@@ -1215,6 +1257,15 @@ fn walk_fn_item_ex(
         return (i, Some(eof_expected(cx, "`{`")));
     }
     {
+        if cx.profile.is_aggregates()
+            && i < leaves.len()
+            && matches!(leaves[i].2.as_str(), "?" | "!" | "~")
+        {
+            i += 1;
+            if i >= leaves.len() {
+                return (i, Some(eof_expected(cx, "return type")));
+            }
+        }
         let (sp, g, text) = at(i);
         if text != "{" {
             return (
@@ -3383,6 +3434,11 @@ enum Frame {
         iter: Expr,
         node: u32,
     },
+    /// PLAN-965（M2-A）：`for x in <expr> { .. }` 体收尾帧（vals 栈：body、iter）。
+    ForInExprBody {
+        var: Ident,
+        node: u32,
+    },
     /// PLAN-962（L-19）：`for i in a..b { }` 收尾帧（vals 栈自底向上：
     /// body、start、end）。
     ForRangeBody {
@@ -3414,6 +3470,24 @@ enum Frame {
         pattern: Ident,
         binding: Option<Ident>,
         kw: Span,
+    },
+    /// PLAN-965 (M2-A): aggregates `is` (stmt & expr), `try/catch/finally`, `yield`.
+    AggIsArms(AggIsMatchCtx),
+    AggIsArmRhs {
+        ctx: Box<AggIsMatchCtx>,
+        pat: MatchPattern,
+        arm_start: Span,
+        is_block: bool,
+    },
+    TryFinish {
+        has_catch: bool,
+        catch_bind: Option<Ident>,
+        catch_span: Span,
+        has_finally: bool,
+        kw_span: Span,
+    },
+    YieldFinish {
+        kw_span: Span,
     },
     // -- 表达式 --
     ExprEnter(u32),
@@ -3485,6 +3559,14 @@ enum CalleePlan {
 struct IsMatchCtx {
     scrutinee: Ident,
     arms: Vec<MatchArm>,
+    remaining: Vec<u32>,
+    node: u32,
+}
+
+struct AggIsMatchCtx {
+    is_expr: bool,
+    scrutinee: Option<Expr>,
+    arms: Vec<AggMatchArm>,
     remaining: Vec<u32>,
     node: u32,
 }
@@ -4044,6 +4126,12 @@ impl<'a> Engine<'a> {
             return self.project_fn_type(ft);
         }
         // PLAN-928（T-03）：collections/closures 类型位参数化/可选糖。
+        if let Some(t) = self.cx.field_child(node, "tilde") {
+            return self.project_tilde_ty(t);
+        }
+        if let Some(e) = self.cx.field_child(node, "err") {
+            return self.project_err_ty(e);
+        }
         if let Some(g) = self.cx.field_child(node, "generic") {
             return self.project_generic_ty(g);
         }
@@ -4227,6 +4315,34 @@ impl<'a> Engine<'a> {
         TypeAnn {
             span: self.cx.span_of(node),
             kind: TypeRef::Optional(Box::new(inner)),
+        }
+    }
+
+    /// PLAN-965 (M2-A): `~Iter<T>` generator stream type -> `TypeRef::Stream`.
+    fn project_tilde_ty(&mut self, node: u32) -> TypeAnn {
+        let g = self.cx.field_child(node, "generic").expect("tilde generic");
+        let inner = match self.project_generic_ty(g) {
+            TypeAnn {
+                kind: TypeRef::Generic { name, mut args },
+                ..
+            } if name.name == "Iter" && args.len() == 1 => args.remove(0),
+            other => other,
+        };
+        TypeAnn {
+            span: self.cx.span_of(node),
+            kind: TypeRef::Stream(Box::new(inner)),
+        }
+    }
+
+    /// PLAN-965 (M2-A): `!T` error type sugar -> `TypeRef::ResultBang`.
+    fn project_err_ty(&mut self, node: u32) -> TypeAnn {
+        let inner = match self.cx.field_child(node, "inner") {
+            Some(i) => self.classify_word(i, false),
+            None => self.classify_word(node, false),
+        };
+        TypeAnn {
+            span: self.cx.span_of(node),
+            kind: TypeRef::ResultBang(Box::new(inner)),
         }
     }
 
@@ -4885,22 +5001,28 @@ impl<'a> Engine<'a> {
         } else if kind == self.cx.k.for_in_stmt.unwrap_or(u32::MAX) {
             let var_leaf = self.cx.field_child(inner, "var").expect("for-in var");
             let var = ident_of(&mut self.cx, var_leaf);
-            // 合同 C7：迭代器是裸 List 局部名（ident，非表达式——体块 `{`
-            // 不得被误读为具名 ctor）。
-            let iter_leaf = self.cx.field_child(inner, "iter").expect("for-in iter");
-            let iter_ident = ident_of(&mut self.cx, iter_leaf);
-            let iter_span = iter_ident.span;
-            let iter = Expr {
-                span: iter_span,
-                kind: ExprKind::Var(iter_ident),
-            };
+            let iter_n = self.cx.field_child(inner, "iter").expect("for-in iter");
             let body_n = self.cx.field_child(inner, "body").expect("for-in body");
-            self.stack.push(Frame::ForInBody {
-                var,
-                iter,
-                node: inner,
-            });
-            self.enter_block(body_n);
+            if self.cx.tree.kind(iter_n) == self.cx.k.tok_ident {
+                // 合同 C7：迭代器是裸 List 局部名（ident，非表达式——体块 `{`
+                // 不得被误读为具名 ctor）。
+                let iter_ident = ident_of(&mut self.cx, iter_n);
+                let iter_span = iter_ident.span;
+                let iter = Expr {
+                    span: iter_span,
+                    kind: ExprKind::Var(iter_ident),
+                };
+                self.stack.push(Frame::ForInBody {
+                    var,
+                    iter,
+                    node: inner,
+                });
+                self.enter_block(body_n);
+            } else {
+                self.stack.push(Frame::ForInExprBody { var, node: inner });
+                self.stack.push(Frame::ExprEnter(iter_n));
+                self.enter_block(body_n);
+            }
         } else if kind == self.cx.k.for_range_stmt.unwrap_or(u32::MAX) {
             // PLAN-962 (L-19): `for i in a..b/a..=b { }` — projects to a
             // ForIn whose iter is a Range expr; the resolver desugars.
@@ -4937,6 +5059,65 @@ impl<'a> Engine<'a> {
                 remaining: arm_nodes,
                 node: inner,
             }));
+        } else if kind == self.cx.k.agg_is_stmt.unwrap_or(u32::MAX) {
+            self.enter_agg_is(inner, false);
+        } else if kind == self.cx.k.try_stmt.unwrap_or(u32::MAX) {
+            let kw = self
+                .cx
+                .field_child(inner, "kw")
+                .map(|k| self.cx.span_of(k))
+                .unwrap_or_else(|| self.cx.span_of(inner));
+            let body_n = self.cx.field_child(inner, "body").expect("try body");
+            let catch_n = self.cx.field_child(inner, "catch");
+            let finally_n = self.cx.field_child(inner, "finally");
+            if catch_n.is_none() && finally_n.is_none() {
+                let sp = self.cx.span_of(inner);
+                self.cx.reject(sp, || {
+                    syntax_diag("`catch` or `finally` clause after `try`", sp)
+                });
+            }
+            let (has_catch, catch_bind, catch_span, catch_body_n) = match catch_n {
+                Some(cn) => {
+                    let bind = self
+                        .cx
+                        .field_child(cn, "bind")
+                        .and_then(|b| self.cx.field_child(b, "name"))
+                        .map(|n| ident_of(&mut self.cx, n));
+                    let cb = self.cx.field_child(cn, "body").expect("catch body");
+                    (true, bind, self.cx.span_of(cn), Some(cb))
+                }
+                None => (false, None, kw, None),
+            };
+            let (has_finally, finally_body_n) = match finally_n {
+                Some(fn_) => (
+                    true,
+                    Some(self.cx.field_child(fn_, "body").expect("finally body")),
+                ),
+                None => (false, None),
+            };
+            self.stack.push(Frame::TryFinish {
+                has_catch,
+                catch_bind,
+                catch_span,
+                has_finally,
+                kw_span: kw,
+            });
+            if let Some(fb) = finally_body_n {
+                self.enter_block(fb);
+            }
+            if let Some(cb) = catch_body_n {
+                self.enter_block(cb);
+            }
+            self.enter_block(body_n);
+        } else if kind == self.cx.k.yield_stmt.unwrap_or(u32::MAX) {
+            let kw_span = self
+                .cx
+                .field_child(inner, "kw")
+                .map(|k| self.cx.span_of(k))
+                .unwrap_or_else(|| self.cx.span_of(inner));
+            let value_n = self.cx.field_child(inner, "value").expect("yield value");
+            self.stack.push(Frame::YieldFinish { kw_span });
+            self.stack.push(Frame::ExprEnter(value_n));
         } else if kind == self.cx.k.loop_stmt {
             let body_n = self.cx.field_child(inner, "body").expect("loop body");
             self.stack.push(Frame::LoopBody { node: inner });
@@ -5553,6 +5734,11 @@ impl<'a> Engine<'a> {
                 }
                 return;
             }
+            // PLAN-965 (M2-A): `is` expression atom (aggregates only).
+            if ck == self.cx.k.is_expr.unwrap_or(u32::MAX) {
+                self.enter_agg_is(c, true);
+                return;
+            }
             // PLAN-928：lambda 原子（closures 面）——先于其余原子形状。
             if ck == self.cx.k.lambda_expr.unwrap_or(u32::MAX) {
                 self.enter_lambda(c);
@@ -6010,6 +6196,8 @@ impl<'a> Engine<'a> {
                 || mk == self.cx.k.tok_r_move
                 // PLAN-962 (T-08): `.view` member leaf.
                 || mk == self.cx.k.tok_r_view
+                // PLAN-965 (M2-A): `May.nil` member leaf.
+                || self.cx.k.tok_r_nil.is_some_and(|n| mk == n)
         })
     }
 
@@ -6022,7 +6210,37 @@ impl<'a> Engine<'a> {
             .any(|c| self.cx.tree.kind(c) == self.cx.k.tok_lbracket)
     }
 
+    /// PLAN-965: whether a postfix step is `.?` or `.?(fallback)`.
+    fn step_is_dotquestion(&self, step: u32) -> bool {
+        self.cx.k.tok_dotquestion.is_some_and(|dq| {
+            self.cx
+                .children(step)
+                .into_iter()
+                .any(|c| self.cx.tree.kind(c) == dq)
+        })
+    }
+
     fn fold_one_postfix(&mut self, recv: Expr, step: u32, member: Option<u32>) -> Expr {
+        // PLAN-965: `.?` and `.?(fallback)` steps (aggregates only).
+        if self.step_is_dotquestion(step) {
+            let span = recv.span.join(self.cx.span_of(step));
+            if let Some(fallback_n) = self.cx.field_child(step, "fallback") {
+                let fallback = self.project_expr_sync(fallback_n);
+                return Expr {
+                    span,
+                    kind: ExprKind::UnwrapOr {
+                        inner: Box::new(recv),
+                        fallback: Box::new(fallback),
+                    },
+                };
+            }
+            return Expr {
+                span,
+                kind: ExprKind::Propagate {
+                    inner: Box::new(recv),
+                },
+            };
+        }
         // PLAN-962 (L-48)：索引步 `[expr]`（member 为 None、步带 lbracket
         // 孩子；内层 index 同步投影）。
         let has_lbracket = self
@@ -6452,7 +6670,7 @@ impl<'a> Engine<'a> {
                 } else {
                     match steps.split_last() {
                         Some((last, mids)) => {
-                            if self.step_is_index(*last) {
+                            if self.step_is_index(*last) || self.step_is_dotquestion(*last) {
                                 // PLAN-964: the call applies to the folded
                                 // Index node (`fns["twice"](3)`) — the index
                                 // step is NOT a member name; project the whole
@@ -6776,6 +6994,8 @@ impl<'a> Engine<'a> {
             || self.cx.k.op_amp == Some(kind)
             || self.cx.k.op_vbar == Some(kind)
             || self.cx.k.op_caret == Some(kind)
+            // PLAN-965: null-coalescing `??` (aggregates only).
+            || self.cx.k.op_questionquestion == Some(kind)
     }
 
     fn op_of_token(&self, kind: u32) -> BinOp {
@@ -6811,6 +7031,8 @@ impl<'a> Engine<'a> {
             BinOp::BitOr
         } else if self.cx.k.op_caret == Some(kind) {
             BinOp::BitXor
+        } else if self.cx.k.op_questionquestion == Some(kind) {
+            BinOp::NullCoalesce
         } else {
             BinOp::Or
         }
@@ -6818,10 +7040,117 @@ impl<'a> Engine<'a> {
 
     // ------------------------------------------------------------ step
 
+    fn enter_agg_is(&mut self, node: u32, is_expr: bool) {
+        let scrutinee_n = self
+            .cx
+            .field_child(node, "scrutinee")
+            .expect("agg is scrutinee");
+        let arm_kind = self.cx.k.agg_match_arm.unwrap_or(u32::MAX);
+        let mut arm_nodes: Vec<u32> = self
+            .cx
+            .children(node)
+            .into_iter()
+            .filter(|&c| self.cx.tree.kind(c) == arm_kind)
+            .collect();
+        arm_nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
+        self.stack.push(Frame::AggIsArms(AggIsMatchCtx {
+            is_expr,
+            scrutinee: None,
+            arms: Vec::new(),
+            remaining: arm_nodes,
+            node,
+        }));
+        self.stack.push(Frame::ExprEnter(scrutinee_n));
+    }
+
+    fn project_agg_pat(&mut self, pat_n: u32) -> MatchPattern {
+        let k = &self.cx.k;
+        for c in self.cx.children(pat_n) {
+            let ck = self.cx.tree.kind(c);
+            if ck == k.tok_else {
+                return MatchPattern::Else;
+            }
+            if ck == k.tok_true {
+                return MatchPattern::BoolLit(true);
+            }
+            if ck == k.tok_false {
+                return MatchPattern::BoolLit(false);
+            }
+        }
+        if let Some(lit_leaf) = self.cx.field_child(pat_n, "lit") {
+            let neg = self.cx.child_of_kind(pat_n, k.tok_minus).is_some();
+            let digits = self.cx.spelling(lit_leaf);
+            let mag: u128 = digits.parse().unwrap_or(u128::MAX);
+            let span = self.cx.span_of(pat_n);
+            if neg {
+                if mag > I32_MIN_MAG {
+                    let d2 = digits.clone();
+                    self.cx.reject(span, move || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.literal-range",
+                            format!("integer pattern `-{}` exceeds signed 32-bit range", d2),
+                            span,
+                        )
+                    });
+                }
+                return MatchPattern::IntLit((mag as i128 * -1) as i32);
+            }
+            if mag > I32_MAX {
+                let d2 = digits.clone();
+                self.cx.reject(span, move || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.literal-range",
+                        format!("integer pattern `{}` exceeds signed 32-bit range", d2),
+                        span,
+                    )
+                });
+            }
+            return MatchPattern::IntLit(mag as i32);
+        }
+        let qual = self
+            .cx
+            .field_child(pat_n, "qual")
+            .and_then(|q| self.cx.field_child(q, "qual"))
+            .map(|q| ident_of(&mut self.cx, q));
+        let pat_leaf = self
+            .cx
+            .field_child(pat_n, "pattern")
+            .expect("agg arm pattern");
+        let name = ident_of(&mut self.cx, pat_leaf);
+        let binding = self
+            .cx
+            .field_child(pat_n, "payload")
+            .and_then(|b| self.cx.field_child(b, "binding"))
+            .map(|b| ident_of(&mut self.cx, b));
+        MatchPattern::Variant {
+            qual,
+            name,
+            binding,
+        }
+    }
+
     fn step(&mut self, frame: Frame) {
         match frame {
             Frame::Block(bf) => self.step_block(bf),
             Frame::ForInBody { var, iter, node } => {
+                let body = self.pop_b();
+                let kw = self
+                    .cx
+                    .child_of_kind(node, self.cx.k.tok_for)
+                    .map(|l| self.cx.span_of(l))
+                    .unwrap_or(Span { start: 0, end: 0 });
+                let span = kw.join(body.span);
+                self.vals.push(Val::S(Stmt::ForIn {
+                    var,
+                    iter,
+                    body,
+                    span,
+                }));
+            }
+            Frame::ForInExprBody { var, node } => {
+                let iter = self.pop_e();
                 let body = self.pop_b();
                 let kw = self
                     .cx
@@ -6945,6 +7274,126 @@ impl<'a> Engine<'a> {
                     span,
                 });
                 self.stack.push(Frame::IsArms(ctx));
+            }
+            Frame::AggIsArms(mut ctx) => {
+                if ctx.scrutinee.is_none() {
+                    ctx.scrutinee = Some(self.pop_e());
+                }
+                if let Some(&arm_n) = ctx.remaining.first() {
+                    let mut rest = ctx.remaining.clone();
+                    rest.remove(0);
+                    let pat_n = self.cx.field_child(arm_n, "pat").expect("agg arm pat");
+                    let pat = self.project_agg_pat(pat_n);
+                    let rhs_n = self.cx.field_child(arm_n, "rhs").expect("agg arm rhs");
+                    let arm_start = self.cx.span_of(pat_n);
+                    if let Some(body_n) = self.cx.field_child(rhs_n, "body") {
+                        self.stack.push(Frame::AggIsArmRhs {
+                            ctx: Box::new(AggIsMatchCtx {
+                                remaining: rest,
+                                ..ctx
+                            }),
+                            pat,
+                            arm_start,
+                            is_block: true,
+                        });
+                        self.enter_block(body_n);
+                    } else {
+                        let expr_n = self.cx.field_child(rhs_n, "expr").expect("agg arm expr");
+                        self.stack.push(Frame::AggIsArmRhs {
+                            ctx: Box::new(AggIsMatchCtx {
+                                remaining: rest,
+                                ..ctx
+                            }),
+                            pat,
+                            arm_start,
+                            is_block: false,
+                        });
+                        self.stack.push(Frame::ExprEnter(expr_n));
+                    }
+                } else {
+                    let scrutinee = ctx.scrutinee.expect("agg is scrutinee");
+                    let span = self.cx.span_of(ctx.node);
+                    if ctx.is_expr {
+                        self.vals.push(Val::E(Expr {
+                            span,
+                            kind: ExprKind::IsExpr {
+                                scrutinee: Box::new(scrutinee),
+                                arms: ctx.arms,
+                            },
+                        }));
+                    } else {
+                        self.vals.push(Val::S(Stmt::AggIsMatch {
+                            scrutinee,
+                            arms: ctx.arms,
+                            span,
+                        }));
+                    }
+                }
+            }
+            Frame::AggIsArmRhs {
+                ctx,
+                pat,
+                arm_start,
+                is_block,
+            } => {
+                let (body, end_span) = if is_block {
+                    let b = self.pop_b();
+                    let s = b.span;
+                    (AggArmBody::Block(b), s)
+                } else {
+                    let e = self.pop_e();
+                    let s = e.span;
+                    (AggArmBody::Expr(e), s)
+                };
+                let mut ctx = *ctx;
+                ctx.arms.push(AggMatchArm {
+                    pat,
+                    body,
+                    span: arm_start.join(end_span),
+                });
+                self.stack.push(Frame::AggIsArms(ctx));
+            }
+            Frame::TryFinish {
+                has_catch,
+                catch_bind,
+                catch_span,
+                has_finally,
+                kw_span,
+            } => {
+                let finally = if has_finally {
+                    Some(self.pop_b())
+                } else {
+                    None
+                };
+                let catch = if has_catch {
+                    let body = self.pop_b();
+                    Some(CatchClause {
+                        span: catch_span.join(body.span),
+                        bind: catch_bind,
+                        body,
+                    })
+                } else {
+                    None
+                };
+                let body = self.pop_b();
+                let mut end_span = body.span;
+                if let Some(c) = &catch {
+                    end_span = c.span;
+                }
+                if let Some(f) = &finally {
+                    end_span = f.span;
+                }
+                self.vals.push(Val::S(Stmt::Try {
+                    body,
+                    catch,
+                    finally,
+                    span: kw_span.join(end_span),
+                }));
+            }
+            Frame::YieldFinish { kw_span } => {
+                let value = self.pop_e();
+                let span = kw_span.join(value.span);
+                self.vals.push(Val::S(Stmt::Yield { value, span }));
             }
             Frame::LambdaBlockBody {
                 move_capture,
@@ -8161,6 +8610,20 @@ impl TypeSubst {
                     span: a.span,
                 }
             }
+            TypeRef::ResultBang(inner) => {
+                let inner = self.ann(inner);
+                TypeAnn {
+                    kind: TypeRef::ResultBang(Box::new(inner)),
+                    span: a.span,
+                }
+            }
+            TypeRef::Stream(inner) => {
+                let inner = self.ann(inner);
+                TypeAnn {
+                    kind: TypeRef::Stream(Box::new(inner)),
+                    span: a.span,
+                }
+            }
             TypeRef::Tuple(xs) => {
                 let xs = xs.iter().map(|x| self.ann(x)).collect();
                 TypeAnn {
@@ -8503,6 +8966,32 @@ impl GenericExpand {
                     self.resolve_typed_ctors_in_block(body);
                 }
                 Stmt::Break { .. } | Stmt::Continue { .. } => {}
+                Stmt::Yield { value, .. } => self.resolve_typed_ctors_in_expr(value),
+                Stmt::AggIsMatch {
+                    scrutinee, arms, ..
+                } => {
+                    self.resolve_typed_ctors_in_expr(scrutinee);
+                    for arm in arms.iter_mut() {
+                        match &mut arm.body {
+                            AggArmBody::Block(b) => self.resolve_typed_ctors_in_block(b),
+                            AggArmBody::Expr(e) => self.resolve_typed_ctors_in_expr(e),
+                        }
+                    }
+                }
+                Stmt::Try {
+                    body,
+                    catch,
+                    finally,
+                    ..
+                } => {
+                    self.resolve_typed_ctors_in_block(body);
+                    if let Some(c) = catch {
+                        self.resolve_typed_ctors_in_block(&mut c.body);
+                    }
+                    if let Some(f) = finally {
+                        self.resolve_typed_ctors_in_block(f);
+                    }
+                }
             }
         }
     }

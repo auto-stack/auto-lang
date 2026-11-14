@@ -151,7 +151,7 @@ pub fn emit_function(
                     remaining[*else_ as usize] += 1;
                 }
             }
-            Terminator::Return { .. } => {}
+            Terminator::Return { .. } | Terminator::LangFail { .. } => {}
         }
     }
     let mut sealed = vec![false; n_blocks];
@@ -439,7 +439,7 @@ pub fn emit_function(
                     touch(&mut fx, *else_, &mut sealed, &mut remaining);
                 }
             }
-            Terminator::Return { .. } => {}
+            Terminator::Return { .. } | Terminator::LangFail { .. } => {}
         }
     }
     // Defensive: every block's predecessors are declared by now (all
@@ -3715,6 +3715,11 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                         ))
                     }
                 }
+            }
+            Terminator::LangFail { .. } => {
+                self.emit_exit_sweep(None)?;
+                let trap = self.ensure_trap_block();
+                self.fb.ins().jump(trap, &[]);
             }
         }
         Ok(())

@@ -323,6 +323,33 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
         self.view.resolve_use_ty(l.ty)
     }
 
+    /// Resolve a field path into C member names (`f_<name>`) and the final field type.
+    fn resolve_field_names(
+        &self,
+        mut base_ty: Ty,
+        path: &[hir::FieldId],
+    ) -> Result<(Vec<String>, Ty), A2xReject> {
+        let mut names = Vec::with_capacity(path.len());
+        for fid in path {
+            let Ty::Record(rid) = base_ty else {
+                return Err(A2xReject::unsupported_type(
+                    "field path through a non-record",
+                ));
+            };
+            let rec = self
+                .view
+                .record(rid)
+                .ok_or_else(|| A2xReject::new("a2x.internal", "record out of range"))?;
+            let fld = rec
+                .fields
+                .get(fid.0 as usize)
+                .ok_or_else(|| A2xReject::new("a2x.internal", "field index out of range"))?;
+            names.push(format!("f_{}", sanitize(&fld.name)));
+            base_ty = fld.ty;
+        }
+        Ok((names, base_ty))
+    }
+
     /// The reading expression of a local (pointer params deref).
     fn local_read(&self, id: u32) -> String {
         let name = self.local_name_of(hir::LocalId(id));
@@ -495,6 +522,7 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
         let terminated = matches!(
             stmts.last(),
             Some(hir::Stmt::Return { .. })
+                | Some(hir::Stmt::Fail { .. })
                 | Some(hir::Stmt::Break { .. })
                 | Some(hir::Stmt::Continue { .. })
         );
@@ -521,6 +549,21 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 };
                 let name = self.local_name_of(*local);
                 self.out.push(format!("{} {} = {};", cty, name, v));
+                let referenced = self.f.body.exprs.iter().any(|e| {
+                    matches!(
+                        e.kind,
+                        hir::ExprKind::ReadLocal { local: l }
+                            | hir::ExprKind::BorrowMut { local: l }
+                            if l == *local
+                    )
+                }) || self.facts.exit_frees.values().any(|fs| {
+                    fs.iter()
+                        .any(|r| matches!(r, FreeRef::Local(l) if *l == local.0))
+                });
+                if !referenced {
+                    self.out
+                        .push(format!("(void){}; /* /W4: unused binding */", name));
+                }
                 Ok(())
             }
             hir::Stmt::Return { value } => {
@@ -544,31 +587,46 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
             }
             hir::Stmt::Assign { place, value } => {
                 let p = &self.f.body.places[place.0 as usize];
-                if !matches!(p.kind, hir::PlaceKind::Local) {
-                    return Err(A2xReject::unsupported_place(
-                        "collections field-path assignment is outside the surface",
-                    ));
-                }
-                let ty = self.local_ty(p.local)?;
-                let owned_place = matches!(ty, Ty::StrOwned);
+                let local_ty = self.local_ty(p.local)?;
+                let (field_names, target_ty) = match &p.kind {
+                    hir::PlaceKind::Local => (Vec::new(), local_ty),
+                    hir::PlaceKind::FieldPath(path) => self.resolve_field_names(local_ty, path)?,
+                };
+                let owned_place = matches!(target_ty, Ty::StrOwned);
                 let v = if is_lit(self.f.body, *value) && owned_place {
                     self.owned_or_plain_child(*value)?
                 } else {
                     self.expr(*value)?
                 };
-                // the OLD value frees at commit — after the RHS fully
-                // materialized (the replace_frees schedule)
-                if self.facts.replace_frees.contains_key(&(block, si)) {
-                    if let Some(kind) = self.owned_kind_of_ty(ty) {
+                if field_names.is_empty() {
+                    // the OLD value frees at commit — after the RHS fully
+                    // materialized (the replace_frees schedule)
+                    if self.facts.replace_frees.contains_key(&(block, si)) {
+                        if let Some(kind) = self.owned_kind_of_ty(local_ty) {
+                            self.out.push(format!(
+                                "{}(&{});",
+                                self.free_call(kind, Some(local_ty)),
+                                self.local_name_of(p.local)
+                            ));
+                        }
+                    }
+                    self.out
+                        .push(format!("{} = {};", self.local_name_of(p.local), v));
+                } else {
+                    let mut target = self.local_read(p.local.0);
+                    for name in &field_names {
+                        target.push('.');
+                        target.push_str(name);
+                    }
+                    if let Some(kind) = self.owned_kind_of_ty(target_ty) {
                         self.out.push(format!(
                             "{}(&{});",
-                            self.free_call(kind, Some(ty)),
-                            self.local_name_of(p.local)
+                            self.free_call(kind, Some(target_ty)),
+                            target
                         ));
                     }
+                    self.out.push(format!("{} = {};", target, v));
                 }
-                self.out
-                    .push(format!("{} = {};", self.local_name_of(p.local), v));
                 Ok(())
             }
             hir::Stmt::If { cond, then, els } => {
@@ -590,35 +648,37 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 // poll's error path re-lists them plus the loop
                 // survivors (idempotent frees make the overlap safe —
                 // the T-02 freeze)
-                let mut poll_frees: Vec<String> = Vec::new();
-                if let Some(frees) = self.facts.exit_frees.get(&(lb.0, None)) {
-                    poll_frees.extend(self.free_stmts(frees));
-                }
-                if let Some(surv) = self.facts.loop_survivors.get(&lb.0) {
-                    for l in surv {
-                        if let Ok(ty) = self.local_ty(hir::LocalId(*l)) {
-                            if let Some(kind) = self.owned_kind_of_ty(ty) {
-                                poll_frees.push(format!(
-                                    "{}(&{});",
-                                    self.free_call(kind, Some(ty)),
-                                    self.local_name_of(hir::LocalId(*l))
-                                ));
+                if !ace_a2x_core::semantic_view::block_always_terminates(self.f.body, *lb) {
+                    let mut poll_frees: Vec<String> = Vec::new();
+                    if let Some(frees) = self.facts.exit_frees.get(&(lb.0, None)) {
+                        poll_frees.extend(self.free_stmts(frees));
+                    }
+                    if let Some(surv) = self.facts.loop_survivors.get(&lb.0) {
+                        for l in surv {
+                            if let Ok(ty) = self.local_ty(hir::LocalId(*l)) {
+                                if let Some(kind) = self.owned_kind_of_ty(ty) {
+                                    poll_frees.push(format!(
+                                        "{}(&{});",
+                                        self.free_call(kind, Some(ty)),
+                                        self.local_name_of(hir::LocalId(*l))
+                                    ));
+                                }
                             }
                         }
                     }
+                    let t = self.fresh_temp();
+                    let frees = if poll_frees.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {}", poll_frees.join(" "))
+                    };
+                    self.out.push(format!(
+                        "{{ a2x_trap_code {t} = a2x_coll_poll(); if ({t} != A2X_TRAP_NONE) {{{frees} return {fwd}({t}); }} }}",
+                        t = t,
+                        frees = frees,
+                        fwd = self.ret_fwd
+                    ));
                 }
-                let t = self.fresh_temp();
-                let frees = if poll_frees.is_empty() {
-                    String::new()
-                } else {
-                    format!(" {}", poll_frees.join(" "))
-                };
-                self.out.push(format!(
-                    "{{ a2x_trap_code {t} = a2x_coll_poll(); if ({t} != A2X_TRAP_NONE) {{{frees} return {fwd}({t}); }} }}",
-                    t = t,
-                    frees = frees,
-                    fwd = self.ret_fwd
-                ));
                 self.out.push("}".to_string());
                 Ok(())
             }
@@ -644,6 +704,18 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 // side statements and trap checks already emitted inside
                 // the lowering; the value (if any) is dropped
                 self.expr(*value)?;
+                Ok(())
+            }
+            hir::Stmt::Fail { value } => {
+                let msg = self.expr(*value)?;
+                let _ = msg;
+                if let Some(frees) = self.facts.exit_frees.get(&(block, Some(si))) {
+                    for line in self.free_stmts(frees) {
+                        self.out.push(line);
+                    }
+                }
+                self.out
+                    .push(format!("return {}(A2X_TRAP_LANG_ERROR);", self.ret_fwd));
                 Ok(())
             }
             hir::Stmt::Drop { .. } => Err(A2xReject::unsupported_stmt(
@@ -979,26 +1051,14 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 } else {
                     b
                 };
-                let mut base_ty = self
+                let base_ty = self
                     .view
                     .resolve_use_ty(self.f.body.exprs[base.0 as usize].ty)?;
+                let (names, _) = self.resolve_field_names(base_ty, &path)?;
                 let mut place = b;
-                for fid in &path {
-                    let Ty::Record(rid) = base_ty else {
-                        return Err(A2xReject::unsupported_type(
-                            "field path through a non-record",
-                        ));
-                    };
-                    let rec = self
-                        .view
-                        .record(rid)
-                        .ok_or_else(|| A2xReject::new("a2x.internal", "record out of range"))?;
-                    let fld = rec.fields.get(fid.0 as usize).ok_or_else(|| {
-                        A2xReject::new("a2x.internal", "field index out of range")
-                    })?;
+                for name in names {
                     place.push('.');
-                    place.push_str(&format!("f_{}", sanitize(&fld.name)));
-                    base_ty = fld.ty;
+                    place.push_str(&name);
                 }
                 Ok(place)
             }

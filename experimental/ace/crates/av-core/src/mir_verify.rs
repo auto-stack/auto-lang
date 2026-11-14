@@ -1737,6 +1737,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 crate::mir::Terminator::Return { value } => vec![*value],
                 crate::mir::Terminator::Branch { cond, .. } => vec![*cond],
                 crate::mir::Terminator::Jump { .. } => vec![],
+                crate::mir::Terminator::LangFail { message } => vec![*message],
             };
             for (slot, _) in aliases.iter() {
                 if term_uses.contains(slot) {
@@ -1888,7 +1889,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 Terminator::Jump { target } => vec![target],
                 Terminator::Branch { then, else_, .. } if then != else_ => vec![then, else_],
                 Terminator::Branch { then, .. } => vec![then],
-                Terminator::Return { .. } => Vec::new(),
+                Terminator::Return { .. } | Terminator::LangFail { .. } => Vec::new(),
             };
             if targets.iter().any(|target| *target as usize >= blocks) {
                 return Err(MirVerifyError::inv(
@@ -3156,7 +3157,6 @@ impl<'a, 'r> Verifier<'a, 'r> {
             message: msg,
             span: sp,
         };
-        let module = self.module;
         match instr {
             MirInstr::ListRemove { dst, root, index } => {
                 if !self.collections_surface() {
@@ -4237,21 +4237,14 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 self.tick(1)?;
                 let flat = bases[bi] + ii as u32;
                 let sp = self.span_of(f, flat);
-                let err = |code: &str, msg: String| MirVerifyError::Invalid {
-                    code: code.to_string(),
-                    message: msg,
-                    span: sp,
-                };
-                match instr {
-                    _ => {
-                        // F-941-15: the 51-arm typing union split into two
-                        // cold half-walks — the debug frame unions halve; the
-                        // deep chain's 256 KiB contract no longer pays for
-                        // unreachable arms (PLAN-961 regression fix).
-                        self.check_instr_typing_a(f, instr, sp)?;
-                        self.check_instr_typing_b(f, instr, sp)?;
-                    }
-                }
+                // F-941-15: the 51-arm typing union split into two cold
+                // half-walks — the debug frame unions halve; the deep chain's
+                // 256 KiB contract no longer pays for unreachable arms
+                // (PLAN-961 regression fix). PLAN-965 F-965-R1-09: the old
+                // `match instr { _ => .. }` wrapper and its unused `_err`
+                // closure were dead code.
+                self.check_instr_typing_a(f, instr, sp)?;
+                self.check_instr_typing_b(f, instr, sp)?;
             }
             // terminator
             self.tick(1)?;
@@ -4298,6 +4291,9 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             ),
                         ));
                     }
+                }
+                Terminator::LangFail { message } => {
+                    let _ = slot_ty_of(f, *message, sp, "lang fail message")?;
                 }
             }
         }
@@ -4365,7 +4361,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         vec![*then, *else_]
                     }
                 }
-                Terminator::Return { .. } => vec![],
+                Terminator::Return { .. } | Terminator::LangFail { .. } => vec![],
             })
             .collect();
         // Predecessors (reachable ones only, computed on the fly below).
@@ -4424,6 +4420,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 match &b.term {
                     Terminator::Branch { cond, .. } => Some((*cond, flat)),
                     Terminator::Return { value } => Some((*value, flat)),
+                    Terminator::LangFail { message } => Some((*message, flat)),
                     Terminator::Jump { .. } => None,
                 }
             })

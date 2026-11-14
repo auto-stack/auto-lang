@@ -127,6 +127,10 @@ pub fn serve(request: &Json) -> Result<Json, String> {
                         step["outcome"] = json!("cancelled");
                         step["diag"] = json!({"stage":"run","code":"cancelled","message":"execution cancelled"});
                     }
+                    ExecOutcome::Error { message, .. } => {
+                        step["outcome"] = json!("error");
+                        step["diag"] = json!({"stage":"run","code":"lang.error","message":message});
+                    }
                     ExecOutcome::Infra(message) => {
                         step["outcome"] = json!("infra");
                         step["diag"] = json!({"stage":"run","code":"host.infra","message":message});

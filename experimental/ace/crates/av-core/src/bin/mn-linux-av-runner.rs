@@ -196,6 +196,8 @@ fn main() {
         ExecOutcome::Trap { .. } => "trap",
         ExecOutcome::Resource { .. } => "resource",
         ExecOutcome::Cancelled => "cancelled",
+        // PLAN-965: language error (`fail`/uncaught `.?`) is its own class.
+        ExecOutcome::Error { .. } => "error",
         ExecOutcome::Infra(_) => "infra",
     };
     write_summary(

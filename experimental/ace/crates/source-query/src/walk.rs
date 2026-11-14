@@ -392,9 +392,12 @@ fn walk_stmt<'a>(
                 span: *span,
             })
         }
-        Stmt::ForIn { span, .. } => {
+        Stmt::ForIn { span, .. }
+        | Stmt::AggIsMatch { span, .. }
+        | Stmt::Try { span, .. }
+        | Stmt::Yield { span, .. } => {
             return Err(WalkError::Unsupported {
-                what: "for-in",
+                what: "aggregates-control",
                 span: *span,
             })
         }
@@ -589,6 +592,9 @@ fn walk_expr<'a>(
         ExprKind::ObjectLit { .. } => unsupported("object-literal", e.span)?,
         ExprKind::NilLit => unsupported("nil-literal", e.span)?,
         ExprKind::TextDisplay(_) => unsupported("text-display", e.span)?,
+        ExprKind::Propagate { .. } => unsupported("propagate", e.span)?,
+        ExprKind::UnwrapOr { .. } => unsupported("unwrap-or", e.span)?,
+        ExprKind::IsExpr { .. } => unsupported("is-expr", e.span)?,
     }
     Ok(())
 }
@@ -635,6 +641,7 @@ fn bin_tag(op: BinOp) -> &'static str {
         BinOp::Ne => "!=",
         BinOp::And => "&&",
         BinOp::Or => "||",
+        BinOp::NullCoalesce => "??",
     }
 }
 

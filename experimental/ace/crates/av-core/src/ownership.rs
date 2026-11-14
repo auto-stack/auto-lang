@@ -354,7 +354,7 @@ fn verify_owned_function_impl(
                     vec![*then, *else_]
                 }
             }
-            Terminator::Return { .. } => vec![],
+            Terminator::Return { .. } | Terminator::LangFail { .. } => vec![],
         })
         .collect();
     let mut preds: Vec<Vec<u32>> = vec![Vec::new(); blocks];
@@ -1817,6 +1817,22 @@ fn verify_owned_function_impl(
                                 flat,
                             ));
                         }
+                    }
+                }
+                Terminator::LangFail { message } => {
+                    let vs = *message as usize;
+                    if !st.init.get(vs) {
+                        fail = Some(err(
+                            "mir.uninitialized-read",
+                            format!("lang fail on uninitialized slot `{}`", slot_name(f, vs)),
+                            flat,
+                        ));
+                    } else if st.moved.get(vs) || st.dropped.get(vs) {
+                        fail = Some(err(
+                            "mir.use-after-move",
+                            format!("lang fail on consumed slot `{}`", slot_name(f, vs)),
+                            flat,
+                        ));
                     }
                 }
             }

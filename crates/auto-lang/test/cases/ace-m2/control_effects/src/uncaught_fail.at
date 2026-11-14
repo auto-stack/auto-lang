@@ -1,0 +1,4 @@
+// PLAN-965 T-08 (V-04): uncaught fail triggers runtime error rather than silent 0 exit.
+fn main() int {
+    fail("boom965")
+}

@@ -1,0 +1,6 @@
+// PLAN-965 V-DETAIL-02 / F-965-R1-07: `continue` with no enclosing user loop is
+// a named source rejection (`source.continue-outside-loop`).
+fn main() int {
+    continue
+    return 1
+}

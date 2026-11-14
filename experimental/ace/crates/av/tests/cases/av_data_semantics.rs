@@ -973,9 +973,13 @@ fn av_data_instruction_contract_round_trip_all_opcodes() {
     // rejects, never executes) = 54.
     // PLAN-961: + CONV (0x3A, the numeric conversion matrix) = 55.
     // PLAN-1039: + PLATFORM_CALL (0x3C, Win32 platform I/O & checked OS virtual memory) = 56.
-    assert_eq!(all_mnemonics.len(), 56);
+    // PLAN-965: + LANG_FAIL (0x40, aggregates-only language-error terminator;
+    // outside the instruction space so the 0x3D..0x3F `m2-dynamic` rows stay
+    // unambiguous) = 57.
+    assert_eq!(all_mnemonics.len(), 57);
     assert!(all_mnemonics.contains(&"CONV"));
     assert!(all_mnemonics.contains(&"HOST_CALL"));
     assert!(all_mnemonics.contains(&"FOREIGN_CALL"));
     assert!(all_mnemonics.contains(&"PLATFORM_CALL"));
+    assert!(all_mnemonics.contains(&"LANG_FAIL"));
 }

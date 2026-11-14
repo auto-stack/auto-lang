@@ -605,6 +605,11 @@ fn encode_stmt(w: &mut Writer, s: &Stmt) -> Result<(), CodecError> {
                 "eval statement (collections surface)",
             ))
         }
+        Stmt::Fail { .. } => {
+            return Err(CodecError::UnsupportedFeature(
+                "fail statement (aggregates surface)",
+            ))
+        }
     }
     Ok(())
 }
@@ -1263,7 +1268,7 @@ fn validate_bundle(b: &Bundle) -> Result<(), CodecError> {
                         // PLAN-864: unit-effect statements value-check like
                         // returns (the artifact codec never sees them under
                         // its core/scalar identity, but bounds stay total).
-                        Stmt::Eval { value } => check_e(value)?,
+                        Stmt::Eval { value } | Stmt::Fail { value } => check_e(value)?,
                         Stmt::Assign { place, value } => {
                             check_e(value)?;
                             if place.0 as u64 >= n_places {
@@ -1527,6 +1532,8 @@ pub fn canonical_type_word(t: &ace_core::source::ast::TypeAnn) -> String {
             let a: Vec<String> = args.iter().map(canonical_type_word).collect();
             format!("({})", a.join(", "))
         }
+        TypeRef::ResultBang(inner) => format!("!{}", canonical_type_word(inner)),
+        TypeRef::Stream(inner) => format!("~Iter<{}>", canonical_type_word(inner)),
     }
 }
 

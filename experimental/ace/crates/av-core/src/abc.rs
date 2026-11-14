@@ -226,6 +226,9 @@ pub const OP_GLOBAL_SET: u8 = 0x39;
 pub const TERM_JUMP: u8 = 0x10;
 pub const TERM_BRANCH: u8 = 0x11;
 pub const TERM_RETURN: u8 = 0x12;
+/// PLAN-965: language-level error unwind (`fail`/uncaught `.?`). `0x40` is the
+/// next byte after the instruction space (`m2-dynamic` froze `0x3D`/`0x3E`/`0x3F`).
+pub const TERM_LANG_FAIL: u8 = 0x40;
 
 // sub-ops
 pub const BIN_ADD: u8 = 1;
@@ -2292,6 +2295,10 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                     put_u8(&mut w, TERM_RETURN);
                     put_u32(&mut w, *value);
                 }
+                Terminator::LangFail { message } => {
+                    put_u8(&mut w, TERM_LANG_FAIL);
+                    put_u32(&mut w, *message);
+                }
             }
         }
         // r8 env contract: each function record closes with its declared
@@ -3897,6 +3904,7 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                     Terminator::Branch { cond, then, else_ }
                 }
                 TERM_RETURN => Terminator::Return { value: c.u32()? },
+                TERM_LANG_FAIL => Terminator::LangFail { message: c.u32()? },
                 other => {
                     return Err(AbcDecodeError::fmt_err(
                         "abc.decode.term-opcode",
