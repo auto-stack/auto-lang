@@ -219,12 +219,12 @@ struct GeneratedDecl { candidate: UntrustedDecl, origin: SourceMap, dependencies
 |---|---|---|
 | V-01 | `p966_macro_call_projects_to_same_named_function_call`（宏落卫生局部 `__ace_macro_<源位置>`，按函数名解析）＋`p966_macro_call_unknown_and_named_args_are_named`（同名局部遮蔽不暗中改绑、未知宏具名拒） | PASS |
 | V-02 | 936 `cte_schedule_meta_argument_invalidates_precisely`（字段 2→3 重算为 300、缺字段 zzz 出现使 HasField 翻 true、原 deck 仍 hit）＋`cte_schedule_meta_block_negatives`（无能力 `cte.capability.meta` 先于 AV） | PASS（复用，输入/代码未变） |
-| V-03 | CT 值域仅 i32/bool：非 bool 条件 `source.cte.in-type`、越域 `source.cte.in-domain`、无句柄/地址面；936 `unserved_hash_binds_then_rejects_at_typecheck` 保证未服务 CT 不冒运行期 | PASS |
+| V-03 | CT 值域仅 i32/bool（**bool 字面量经 RV-02 修复后可用**）：非 bool 条件 `source.cte.in-type`、越域 `source.cte.in-domain`（`p966_ct_domain_and_fact_boundaries_are_named`）、无句柄/地址面；936 `unserved_hash_binds_then_rejects_at_typecheck` 保证未服务 CT 不冒运行期 | PASS |
 | V-04 | `p966_statement_ct_for_unrolls_and_budget_rejects`＋`p966_ct_for_item_expands_with_loop_var_and_budget`（2000 次越界 `source.cte.in-budget`，修正源后恢复） | PASS |
-| V-05 | 装配期折叠、未折叠残余在 bind/resolve/semantics 三处具名拒（`source.cte.unfolded`）；四端产品腿证明无运行期求值路径 | PASS |
+| V-05 | 装配期折叠（`expand_ct_statements` 在 `assemble_unit` 末、resolve 前）；bind/resolve/semantics 三处 `source.cte.unfolded` 是**防御性残留拒**（正常路径不可达）；四端产品腿证明无运行期求值路径 | PASS（防御性守卫已说明） |
 | V-08 | `plan966_ct_product`（CT 生成声明改变 AV/native/Rust/C/Py 结果）＋958 公共 worker 前门（ace-a2x 238/238）＋936 能力/未服务负控 | PASS |
 | V-09 | `p966_v09_unselected_branch_rules`＋`p966_ct_if_item_selects_imports_by_target`＋产品腿 Windows/Linux 双向 | PASS |
-| V-10 | `p966_ct_target_switch_*`/`p966_ct_unselected_*`/`p966_ct_failure_*`＋`p966_ct_generated_types_and_consts_by_target`＋四端独立 expected | PASS |
+| V-10 | `p966_ct_target_switch_*`/`p966_ct_identical_inputs_reuse_and_selected_change_invalidates`/`p966_ct_failure_*`＋`p966_ct_generated_types_and_consts_by_target`＋四端独立 expected。**粒度口径（RV-01 修复）**：同输入身份稳定＋选中臂/provider 层失效＋失败保旧/恢复成立；未选平台**模块**是普通编译单元，其源改动按相关失效（读取集型身份为具名债务，owner 1043/978） | PASS（含具名粒度限制） |
 | V-DETAIL-01..04 | 01=目标选择/声明生成（V-09/V-10 正例）；02=非法近邻（非 bool/未知成员/未知 namespace/等值重复臂/命名实参）；03=预算/失效/失败保旧/恢复；04=旧新映射对账（§5 旧新表 + 1043/936 复用证据具名） | PASS（映射可追溯） |
 | V-PLATFORM-IS | `p966_ct_if_item_selects_imports_by_target`＋`p966_v09_unselected_branch_rules`＋产品腿（未选缺库不阻、选中缺库具名拒、外层可见、目标切换失效） | PASS |
 | V-IN | 1043 正式来源（`#in` 单结构/块式、继承 is/if/for）经本包同一 `eval_ct_item` 路径消费；1043 测试与 AV 装配 3 例在 ace-av/ace-a2x 并集内复跑 | PASS |
@@ -252,6 +252,9 @@ struct GeneratedDecl { candidate: UntrustedDecl, origin: SourceMap, dependencies
 | delta_id | add/modify | docs/specs target | before/after | rationale | AC |
 |---|---|---|---|---|---|
 | SD-IN | modify | docs/specs/auto-lang/comptime/design/hash-syntax.md；docs/specs/ace-migration/m2-metaprogramming.md | 1043最小#in来源→本包已验完整CTE/宏/metadata阶段继承与目标依赖，不重复签未交能力 | 用户#in决定/生产分工 | AC-IN |
+| SD-DENOM | modify | `docs/specs/ace-migration/m2-denominator.md` | L-36「平台条件**未决**（无独立语法规范）…**裁定前不得宣称支持**」→「已裁定 `#if/#is` 目标条件 + sys OS 事实域（Windows/Linux/Mac + current/host）；arch/env/ABI 无输入即具名拒，来源 978/967/979」；L-35 metadata 行标注本包已交面与 `#[attr]` 分账 owner | 分母与已验合同对齐，防 Spec 互相矛盾（RV-08） | AC-07/AC-08/AC-IN |
+
+**SD 落地锚点（RV-08 复审要求，merge 时按此写）**：SD-03/SD-PLATFORM-IS → `hash-syntax.md` §「四种构造」表（现文写 `#is expr { pat => { } else => { } }`，属陈旧示例——须改为 `->` 并注明 `=>` 亦接受、补 ACE 项位/语句位形与「未选分支只 Text 检查」）＋§「`#in` 编译期命名空间」（引 1043 正式来源）；SD-02 → `replacement-scope-and-evidence.md:84/100`（「模块+CT 组合归 966」「维持 I32/Bool…」两行按已验事实改写并标明未闭缺口）；SD-04 → `scalar-query-profile.md`（本包无新增标量域时显式写「无变更，消费 1043/936 合同」）；SD-01/SD-PHASE/SD-DETAIL → 新建 `m2-metaprogramming.md`（支持面/谓词域/预算/诊断码/事实边界/阶段分账）。
 
 ## 6. 测试设计
 
@@ -287,7 +290,7 @@ struct GeneratedDecl { candidate: UntrustedDecl, origin: SourceMap, dependencies
 | Case | AC | 输入与区分性断言 | 入口/证据 | owner/阶段 |
 |---|---|---|---|---|
 | V-09 | AC-07 | Windows宿主目标Linux与反向目标分别选择正确分支；未选分支平台库缺失不阻绑定，语法坏仍报；选中缺库/重复符号/无匹配平台分别具名失败，外层函数可引用选中导入。 | 本包§4真实owner下新增永久fixture，公共source/worker/实际产品或仓外安装入口；独立expected、资源trace、命令/子终态、身份分别记录 | work/T-09；最终验证汇总 |
-| V-10 | AC-08 | 先Windows再Linux切换不得复用错误库；修改被读条件/选中provider应失效，未选平台实现body变化不重编本目标；失败后旧版本可用、修复后新发布正确；四端按独立expected运行。 | 本包§4真实owner下新增永久fixture，公共source/worker/实际产品或仓外安装入口；独立expected、资源trace、命令/子终态、身份分别记录 | work/T-10；最终验证汇总 |
+| V-10 | AC-08 | 先Windows再Linux切换不得复用错误库；修改被读条件/选中provider应失效；未选平台实现 **provider 层** body 变化不重编本目标（1043 ASM-04 语义），未选平台**模块**源改动按相关失效（模块是普通编译单元，读取集型身份为具名债务）；失败后旧版本可用、修复后新发布正确；四端按独立expected运行。 | 本包§4真实owner下新增永久fixture，公共source/worker/实际产品或仓外安装入口；独立expected、资源trace、命令/子终态、身份分别记录 | work/T-10；最终验证汇总 |
 
 新增触面职责组：`cargo t ace-syntax ace-source ace-semantics ace-comptime ace-artifacts ace-av ace-native ace-a2x`，与原§6组按实际修改取必要并集；T-01核真实参数，新增用例接固定组，不减原平台/ignore/压力条件。948若仅文档审计则只做目标静态检查，真实探针沿原指定组；安装/外库工具和外仓产品必须另核真实命令，语言组不替代它们。零选择/未执行/缺环境不充PASS；本轮没有运行这些测试。
 
@@ -324,11 +327,11 @@ struct GeneratedDecl { candidate: UntrustedDecl, origin: SourceMap, dependencies
 | AC-04 | review | 独立核全部AC/V/规范增量、遗漏/延后/workaround、fmt/warning/debug，结论绑定revision/SHA | T-05复审；未闭项不得pass |
 | AC-05 | merge | 已验证知识落模块Spec，来源/依赖一致，归档与所有输出路径清理完成 | T-06/07真实收据，不把正确性留到merge |
 | AC-06 | work | 实际worker CT前门的全部义务完成，V-08有真实结果，无缺项或循环交付 | T-08及最终work验证；原review任务同时审核 |
-| AC-07 | work | LIB-M2-03源码选择语义从公共worker/source入口闭合，无旧VM执行#、无独立平台parser/装配旁路。 | T-09/V-09；原最终work验证和独立review同时核本项 |
+| AC-07 | work | LIB-M2-03源码选择语义从公共worker/source入口闭合，无旧VM执行#、无独立平台parser/装配旁路；**目标事实来源**：OS（current/host/Windows/Linux/Mac）来自显式装配目标并进身份；arch/env/ABI 当前无显式目标输入→未注册成员按 `source.cte.in-name` 具名拒（不静默默认/不读宿主环境），正式来源分账 978（target triple/SDK）、967（FFI/ABI）、979（配置面）。 | T-09/V-09；原最终work验证和独立review同时核本项 |
 | AC-08 | work | LIB-M2-03缓存与四端实际消费均有证据；不能用仅AST或仅生成片段代执行，平台环境排除单列。 | T-10/V-10；原最终work验证和独立review同时核本项 |
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-04；原独立review复核 |
 
-- [ ] **AC-IN / work**：1043最小层正式来源及V-IN本包完整扩面关闭，#in阶段/namespace/导入/资源依赖统一，无重复实现、无将未交1043当已支持；T-09/T-10和原独立review核验。
+- [x] **AC-IN / work**：1043最小层正式来源及V-IN本包完整扩面关闭，#in阶段/namespace/导入/资源依赖统一，无重复实现、无将未交1043当已支持；T-09/T-10和原独立review核验。**证据**：`p966_in_namespace_combines_with_macro`（#in 选中导入与同模块宏共存、两目标分支切换）、`p966_ct_namespace_members_do_not_leak_into_the_module`（`current` 在普通值位具名失败，namespace 不物化）、代码单一选择器（`eval_ct_in` 仅由 `eval_ct_item` 调用，`#in` 尾部走 `eval_stmts→eval_if/eval_for/eval_is`），1043 三例在并集内复跑。
 
 ## 8. 执行步骤
 
@@ -376,6 +379,11 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
+
+## 9. 复审记录
+
+2026-11-14 stage: work / T-05 findings 修复（RV-01..RV-10） | plan_id: PLAN-966 | plan_revision: 8 | outcome: fixed（待复审第二轮 + 冻结并集复跑） | worktree: D:/autostack/.wt/lang-966/auto-lang | branch: plan-966-dev | code_commit: ca3201da1 | findings_closed: RV-01＝用例改名 `p966_ct_identical_inputs_reuse_and_selected_change_invalidates`＋V-10/§9 粒度口径改写＋KNOWN-DEBT 具名（读取集型身份，owner 1043/978）；RV-02＝CT 谓词叶子节点修复（project.rs/frontdoor.rs 同修；bool 字面量在语句位/项位/`#in` 内及 `#is` bool 模式真可用）；RV-03/04/05＝抽出共享 `ct_condition`/`ct_for_bounds`/`choose_ct_arm`（单一 `CT_FOR_MAX_ITER`、等值重复臂与 else 末位统一规则、预算诊断用语句/项位 span）；RV-06＝新增文件 unused_mut 清零；RV-07＝AC-07 措辞改写＋`sys.arch`/`sys.env` 具名拒负控；RV-08＝SD-DENOM 行＋SD 落地锚点（merge 执行）；RV-09＝`source.cte.in-domain` 负控、V-05 措辞改防御性残留拒、V-09 收紧到 `source.module-missing`、产品腿宏口径改"可投影/发射/运行"（AC v1 不支持模块全局，不用全局计数观测）；RV-10＝`p966_in_namespace_combines_with_macro`＋`p966_ct_namespace_members_do_not_leak_into_the_module`，AC-IN 勾选 | evidence: `cargo test -p ace-core --lib plan966` 15/15（0.04s）、`-p ace-source-query --lib plan966` 4/4（0.10s）、`-p ace-av --features ace-av/test-case-batch --test conformance p966` 2/2（3.12s）；fmt（core/av 本包文件）clean；本包新增文件零告警（core 存量 unused-import、source-query 存量 unused_mut 为基线） | pending: 复审第二轮（独立上下文）＋冻结并集复跑 | next: review（T-05 第二轮）
+stage: goal | plan_id: PLAN-966 | plan_revision: r8 | round: 8 | from: review | to: work | status: executing | outcome: fixed | worktree: D:/autostack/.wt/lang-966/auto-lang | commit: ca3201da1 | next: review
 
 2026-11-14 stage: review | review_scope: final | reviewer_identity: 独立 subagent 会话 `reviewer-966`（未参与实现；限制＝只读、未重跑 work 冻结并集与 Linux/WSL 腿、未跑 ace-semantics/ace-comptime 整组，结论从 `9dc8d42fd` 工件重建） | plan_id: PLAN-966 | plan_revision: 8 | outcome: **needs_fix** | worktree: D:/autostack/.wt/lang-966/auto-lang | branch: plan-966-dev | reviewed_commit: 9dc8d42fd | base_commit: 4d6915ed2 | dependency_revisions: 936/958/1043 archived（1043=c6af4845b）；967/971/978/979/980/982 为分账 owner 未审 | spec_inputs: `docs/specs/ace-migration/{replacement-scope-and-evidence.md,m2-denominator.md,replacement-scope-and-evidence.md}`、`docs/specs/auto-lang/comptime/design/hash-syntax.md`、`docs/specs/auto-cte/scalar-query-profile.md`（m2-metaprogramming.md 待 merge 新建） | acceptance_results: AC-01 partial（RV-02 bool 字面量不可达，冻结文本与实现不符）；AC-02 partial（同上＋RV-03/04/05/09）；AC-03 pass（四端产品腿真跑）；AC-06 pass（958 前门 10/10、936 unserved 1/1 独立复跑）；AC-07 partial（RV-07 arch/env/ABI 来源未记账、无 `sys.arch` 负控）；AC-08 **fail**（RV-01 V-10 未选平台 body 断言不成立）；AC-PHASE pass（A 片）；AC-IN open（RV-10）；AC-04 由本复审承担（needs_fix）；AC-05 归 merge | pending_closeout_gates: 修复后重跑受影响组（ace-source/ace-semantics/ace-av）+ 冻结并集 + Spec 落地（RV-08）；linux_elf_1040 按裁定排除；ace-a2x wrapper 环境归因口径沿用 | findings: RV-01..RV-10（见上表；2 MAJOR + 8 MINOR） | evidence: 复审抽跑与独立核对见上；MAX_ITEM 双份、`in-domain`/`unfolded` 无测试、宏腿不可观测等均给出最小复现 | next: work（按 RV-06→RV-02→RV-01→RV-03/04/05→RV-07/08/09/10 顺序修复；受影响任务 T-02/T-03/T-04/T-09/T-10 重新打开）
 
