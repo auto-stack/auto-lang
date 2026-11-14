@@ -18,6 +18,8 @@ mod f0_av_c;
 mod f0_axr;
 #[path = "cases/f0_rich.rs"]
 mod f0_rich;
+#[path = "cases/f0_t13.rs"]
+mod f0_t13;
 #[path = "cases/feasibility.rs"]
 mod feasibility;
 #[path = "cases/resource.rs"]

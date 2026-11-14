@@ -635,6 +635,21 @@ impl CompletionPorts {
         self.generation += 1;
     }
 
+    /// PLAN-967 T-13: FUTURE-PORT WIRING — bind the port registry to a
+    /// ForeignSession's generation so a session teardown/rebind kills
+    /// every in-flight port (the late-completion drop) and a provider
+    /// rebind starts from a fresh generation. The consumer (968's await)
+    /// drives register/complete/cancel; the SESSION owns the generation
+    /// axis.
+    pub fn bind_session_generation(&mut self, session_generation: u64) {
+        self.generation = session_generation;
+    }
+
+    /// PLAN-967 T-13: the current binding generation (the session's).
+    pub fn session_generation(&self) -> u64 {
+        self.generation
+    }
+
     pub fn generation(&self) -> u64 {
         self.generation
     }

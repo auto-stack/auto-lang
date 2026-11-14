@@ -78,6 +78,29 @@ pub fn compile_source_units(
     };
     ace_av_core::mir_verify::verify_mir(&mir).map_err(|e| format!("shared MIR: {e:?}"))?;
     let units = ace_av::cache::split_units(&mir)?;
+    // F-967-COFF-CB disposition (PLAN-967 T-13): the whole-module split
+    // path is the delivered SCALAR (938) entrance. A resource manifest
+    // carrying a CALLBACK lane on this path lowers a trampoline whose
+    // cross-unit linkage the split does not produce (differential probe:
+    // garbage where the per-function session lane is green) — fail
+    // CLOSED with a named rejection pointing at the delivered entrance
+    // instead of emitting a broken caller.
+    if resource_manifest {
+        let callback_lane = units.iter().any(|u| {
+            u.funcs.iter().any(|f| {
+                f.blocks.iter().any(|b| {
+                    b.instrs.iter().any(|i| {
+                        matches!(i, ace_av_core::mir::MirInstr::ForeignCall { callbacks, .. } if !callbacks.is_empty())
+                    })
+                })
+            })
+        });
+        if callback_lane {
+            return Err(
+                "foreign.callback-lane: callback-carrying resource manifests run on the per-function session lane (the delivered 939 entrance), not the whole-module split path".into(),
+            );
+        }
+    }
     for unit in &units {
         admit(unit, environment)?;
     }
