@@ -116,6 +116,10 @@ pub(crate) fn admit_layouts(
             | MirType::RecordView(_)
             | MirType::List(_)
             | MirType::Variant(_) => {}
+            // PLAN-972 (T-03): the Unicode scalar rides the i32 carrier
+            // (layout Shape::I32) — the assembled stdlib text/char modules
+            // carry char locals/constants/codepoint ops.
+            MirType::Char => {}
             // PLAN-923: the checked place is a Copy element witness over a
             // List — frozen to i32/bool this revision; List<Str>/owned
             // record read-only views stay out of the native place surface

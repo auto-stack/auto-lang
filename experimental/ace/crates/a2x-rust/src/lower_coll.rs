@@ -658,6 +658,30 @@ impl<'a, 'v> CollLower<'a, 'v> {
         match kind {
             hir::ExprKind::ReadLocal { local } => Ok(RExpr::Local(self.local_name_of(local))),
             hir::ExprKind::Constant { value } => Ok(RExpr::I32Lit(value)),
+            // PLAN-972 (T-03): typed numeric constants ride the shared
+            // numeric-surface literal forms in the collections family too
+            // (the typed binops already ride the num_bin matrix above).
+            hir::ExprKind::NumericConst { ty: bty, bits } => crate::lower::num_lit(bty, bits),
+            // PLAN-972 (T-03): the 961 conversion matrix rides the
+            // collections family as well (conv helper keyed on the
+            // operand's builtin type; identity casts pass through).
+            hir::ExprKind::Cast { operand, to } => {
+                let o = self.expr(operand, out)?;
+                let from = root_ty_of(self, operand)?;
+                let from_b = crate::lower::ty_builtin(from).ok_or_else(|| {
+                    A2xReject::unsupported_type(format!(
+                        "cast source {from:?} is not a numeric builtin"
+                    ))
+                })?;
+                if from_b == to {
+                    return Ok(o);
+                }
+                let func = crate::lower::conv_helper(from_b, to)?;
+                Ok(RExpr::Checked {
+                    func,
+                    args: vec![o],
+                })
+            }
             hir::ExprKind::Binary { op, lhs, rhs, .. } => {
                 let l = self.expr(lhs, out)?;
                 let r = self.expr(rhs, out)?;
@@ -716,11 +740,25 @@ impl<'a, 'v> CollLower<'a, 'v> {
         id: hir::ExprId,
         out: &mut Vec<RStmt>,
     ) -> Result<RExpr, A2xReject> {
+        self.checked_temp_ty(func, args, id, out, Ty::I32)
+    }
+
+    /// PLAN-972 (T-03): typed checked helpers declare their temp with the
+    /// helper's REAL result type (the i32 ops keep Ty::I32; the 961 typed
+    /// matrix ops pass their builtin result type — never a hard-coded i32).
+    fn checked_temp_ty(
+        &self,
+        func: &'static str,
+        args: Vec<RExpr>,
+        id: hir::ExprId,
+        out: &mut Vec<RStmt>,
+        ty: Ty,
+    ) -> Result<RExpr, A2xReject> {
         let name = format!("e{}", id.0);
         let m = self.temp_needs_mut(id);
         out.push(RStmt::CollLet {
             name: name.clone(),
-            ty_str: "i32".into(),
+            ty_str: rust_ty_str(self.view, ty).to_string(),
             mutable: m,
             init: self.wrap(id, RExpr::Checked { func, args }),
         });
@@ -982,7 +1020,8 @@ impl<'a, 'v> CollLower<'a, 'v> {
                                 )))
                             }
                         };
-                        self.checked_temp(func, vec![o], id, out)
+                        let ty = crate::lower::builtin_ty(bty)?;
+                        self.checked_temp_ty(func, vec![o], id, out, ty)
                     }
                 }
             }

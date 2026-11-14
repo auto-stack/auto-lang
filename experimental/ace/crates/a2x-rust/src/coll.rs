@@ -217,6 +217,11 @@ pub fn collections_runtime_source(marks: &[&'static str]) -> String {
             val = value
         ));
     }
+    // PLAN-972 (T-03): the numeric runtime helpers join the collections
+    // family fileset too (the numeric surface — typed literals/binops/casts —
+    // rides the collections family for the assembled stdlib; mirrors the
+    // record-text family's RT_NUMERIC join).
+    s.push_str(crate::rt::RT_NUMERIC);
     s
 }
 

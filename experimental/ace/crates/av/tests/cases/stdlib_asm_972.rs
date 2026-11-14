@@ -284,7 +284,7 @@ fn main() int {
 "#;
 
 #[test]
-fn stdlib_asm_972_cross_end_named_gaps_frozen() {
+fn stdlib_asm_972_cross_end_gaps_and_a2r_math() {
     use ace_a2x_rust::RustTargetProvider;
     use ace_a2x_store::modules::packages::PackageA2xTarget;
     use ace_source_query::modules::packages::assemble_stdlib_aggregates_inputs;
@@ -363,65 +363,85 @@ fn stdlib_asm_972_cross_end_named_gaps_frozen() {
         }
     }
 
-    // ---- A2R positive leg: BLOCKED by a third named gap — even the
-    // closure/char-free std.math subset fails a2x (`NumericConst { ty: I64 }`
-    // outside the collections surface): the a2x collections family has not
-    // merged the PLAN-961 numeric surface. Until the a2x/mn domain
-    // extensions (closure values, char, numeric consts) land, the assembled
-    // std set has AV legs only — recorded in the plan; no emit-only or
-    // host-fallback substitute is accepted.
-    {
-        let math_src = ace_core::source::packages::stdlib_assembled_files()
-            .into_iter()
-            .find(|(n, _)| n == "math.at")
-            .map(|(_, c)| c)
-            .unwrap();
-        let mut ctx = PackageAssemblyContext::new(
-            AssemblyBackend::A2R,
-            ProviderChoice::Auto,
-            TargetOs::Windows,
-        );
-        let inputs = vec![
-            ace_core::source::packages::PackageModuleInput {
-                package: "std".into(),
-                version: "1.0.0".into(),
-                id: "math".into(),
-                source: math_src,
-                provider: None,
-            },
-            ace_core::source::packages::PackageModuleInput {
-                package: "app".into(),
-                version: "1.0.0".into(),
-                id: "main".into(),
-                source: "use std.math.square
-fn main() int { return square(7) }".into(),
-                provider: None,
-            },
-        ];
-        let math_product = compile_assembled_aggregates_inputs(
-            &inputs,
-            "app::main",
-            FrontBudget::WORK_OWNED_64MIB,
-            &ctx,
-        )
+    // ---- A2R / rustc POSITIVE leg on the closure-free subset (std.math
+    // + app): square(7)*10+3 = 493 through real rustc. The 961 numeric
+    // literal forms now ride the collections family (PLAN-972 T-03);
+    // the closure/char whole-set gaps above stay frozen until the
+    // closure/char domain extensions land. ----
+    let math_src = ace_core::source::packages::stdlib_assembled_files()
+        .into_iter()
+        .find(|(n, _)| n == "math.at")
+        .map(|(_, c)| c)
         .unwrap();
-        let store = scratch("cons-a2r-math-gap");
-        let a2x = PackageA2xTarget::cold_aggregates(
-            &store,
-            "asm972math",
-            "app",
-            16 << 20,
-            RustTargetProvider::v1(),
-            &math_product,
-        );
-        match a2x {
-            Err(e) => assert!(
-                format!("{e:?}").contains("NumericConst"),
-                "unexpected a2x math-subset gap: {e:?}"
-            ),
-            Ok(_) => panic!("a2x math subset unexpectedly admitted"),
-        }
+    let mut ctx = PackageAssemblyContext::new(
+        AssemblyBackend::A2R,
+        ProviderChoice::Auto,
+        TargetOs::Windows,
+    );
+    let inputs = vec![
+        ace_core::source::packages::PackageModuleInput {
+            package: "std".into(),
+            version: "1.0.0".into(),
+            id: "math".into(),
+            source: math_src,
+            provider: None,
+        },
+        ace_core::source::packages::PackageModuleInput {
+            package: "app".into(),
+            version: "1.0.0".into(),
+            id: "main".into(),
+            source: "use std.math.square
+use std.math.min
+fn main() int { return square(7) * 10 + min(3i64, 5i64).to(i32) }".into(),
+            provider: None,
+        },
+    ];
+    let math_product = compile_assembled_aggregates_inputs(
+        &inputs,
+        "app::main",
+        FrontBudget::WORK_OWNED_64MIB,
+        &ctx,
+    )
+    .unwrap_or_else(|ds| panic!("math subset compile: {ds:?}"));
+    let store = scratch("cons-a2r-math");
+    let mut rust = PackageA2xTarget::cold_aggregates(
+        &store,
+        "asm972math",
+        "app",
+        16 << 20,
+        RustTargetProvider::v1(),
+        &math_product,
+    )
+    .unwrap_or_else(|e| panic!("a2r cold (math): {e}"));
+    let build_dir = scratch("cons-a2r-math-build");
+    std::fs::create_dir_all(&build_dir).unwrap();
+    for (path, content) in &rust.current.files {
+        std::fs::write(build_dir.join(path), content).unwrap();
     }
+    let exe = build_dir.join("asm972math.exe");
+    let mut cmd = Command::new(std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()));
+    cmd.args(["--edition", "2021", "main.rs", "-o"]).arg(&exe);
+    cmd.current_dir(&build_dir);
+    let compile = auto_tool_execution::run_command_capture(
+        cmd,
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        compile.kind,
+        auto_tool_execution::ExitKind::Success,
+        "{}",
+        String::from_utf8_lossy(compile.stderr.as_deref().unwrap_or(&[]))
+    );
+    let run = Command::new(&exe).current_dir(&build_dir).output().unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
+    assert!(out.ends_with("value:493"), "a2r math stdout: {out}");
 }
 
 /// `std` identity reservation on the assembled lane: a tampered `std.list`
