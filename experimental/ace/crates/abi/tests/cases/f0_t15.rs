@@ -568,6 +568,7 @@ int main(void) {
                 content_version: decl.content_version.clone(),
                 generation: 1,
                 callable,
+                frame: false,
             })
             .unwrap();
     }
@@ -719,6 +720,7 @@ int main(void) {
                 content_version: decl.content_version.clone(),
                 generation: 1,
                 callable,
+                frame: false,
             })
             .unwrap();
     }

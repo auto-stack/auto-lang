@@ -67,7 +67,17 @@ pub struct RustFnEntry {
     /// T-11: the ordered parameter shapes (`view_utf8 | i32 | bool`).
     /// Exactly one `view_utf8` maximum; scalars ride as C lanes.
     pub params: Vec<RustParam>,
+    /// T-05 F1 (AC-INT-1026 / IF-CALL): the checked TAG PARAMETER FRAME
+    /// version (`p967.frame/1`) — receiver + positionals + kwargs ride
+    /// the view wire in a versioned canonical encoding; the AV admission
+    /// validates the frame BEFORE any dispatch and the generated shim
+    /// decodes it into typed values for the provider.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame: Option<String>,
 }
+
+/// The frozen tag-frame encoding identity (IF-CALL physical projection).
+pub const FRAME_FORMAT: &str = "p967.frame/1";
 
 /// One parameter shape of an imported Rust function.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -75,6 +85,9 @@ pub enum RustParam {
     ViewUtf8,
     I32,
     Bool,
+    /// `frame: &F0Frame` — the whole call rides the tag frame (the only
+    /// parameter a frame-declared fn may take).
+    FrameCall,
 }
 
 /// The frozen F0 calling shapes.
@@ -155,7 +168,31 @@ pub fn import(source: &str) -> Result<RustProviderManifest, ImportError> {
         // The annotated function must exist in the source with an
         // importable signature: metadata may never invent or widen a
         // provider (params + ret cross-checked against the annotation).
-        let (params, ret_kind) = require_pub_fn_signature(source, &a.rust_name)?;
+        let (mut params, ret_kind) = require_pub_fn_signature(source, &a.rust_name)?;
+        // T-05 F1 (IF-CALL): a frame-declared fn takes EXACTLY one
+        // `frame: &F0Frame` parameter — the whole call rides the tag
+        // frame over the view wire (a frame annotation on an ordinary
+        // shape, or the frame type without the axis, are named rejects).
+        if a.frame.is_some() {
+            if params.len() != 1 || !matches!(params[0], RustParam::FrameCall) {
+                return Err(err(
+                    "rust-import.frame",
+                    format!(
+                        "fn `{}` declares frame={} but must take exactly one `frame: &F0Frame` parameter",
+                        a.rust_name, FRAME_FORMAT
+                    ),
+                ));
+            }
+        } else if params.len() == 1 && matches!(params[0], RustParam::FrameCall) {
+            return Err(err(
+                "rust-import.frame",
+                format!(
+                    "fn `{}` takes `&F0Frame` without the frame={} annotation",
+                    a.rust_name, FRAME_FORMAT
+                ),
+            ));
+        }
+        let _ = &mut params;
         let form = match (a.form.as_str(), a.ret.as_deref(), ret_kind.as_str()) {
             ("pure", Some("i32"), "i32") => RustFnForm::PureI32,
             ("pure", Some("bool"), "bool") => RustFnForm::PureBool,
@@ -186,6 +223,7 @@ pub fn import(source: &str) -> Result<RustProviderManifest, ImportError> {
             export,
             form,
             params,
+            frame: a.frame.clone(),
         });
     }
     Ok(RustProviderManifest {
@@ -204,6 +242,7 @@ struct FnAnnotation {
     form: String,
     ret: Option<String>,
     errors: Vec<(String, i32)>,
+    frame: Option<String>,
 }
 
 fn parse_provider_header(
@@ -281,6 +320,7 @@ fn parse_fn_annotation(body: &str, idx: usize) -> Result<FnAnnotation, ImportErr
     let mut form = None;
     let mut ret = None;
     let mut errors = Vec::new();
+    let mut frame = None;
     for part in parts {
         if let Some(v) = part.strip_prefix("symbol=") {
             symbol = Some(v.to_string());
@@ -288,6 +328,17 @@ fn parse_fn_annotation(body: &str, idx: usize) -> Result<FnAnnotation, ImportErr
             form = Some(v.to_string());
         } else if let Some(v) = part.strip_prefix("ret=") {
             ret = Some(v.to_string());
+        } else if let Some(v) = part.strip_prefix("frame=") {
+            if v != FRAME_FORMAT {
+                return Err(err(
+                    "rust-import.frame",
+                    format!(
+                        "frame `{v}` is not the frozen tag-frame encoding `{FRAME_FORMAT}` (line {})",
+                        idx + 1
+                    ),
+                ));
+            }
+            frame = Some(v.to_string());
         } else if let Some(v) = part.strip_prefix("errors=") {
             for pair in v.split(',') {
                 let (name, code) = pair.split_once(':').ok_or_else(|| {
@@ -353,6 +404,7 @@ fn parse_fn_annotation(body: &str, idx: usize) -> Result<FnAnnotation, ImportErr
         form,
         ret,
         errors,
+        frame,
     })
 }
 
@@ -465,6 +517,13 @@ fn require_pub_fn_signature(
                 }
                 views += 1;
                 params.push(RustParam::ViewUtf8);
+                continue;
+            }
+            if borrowed == "F0Frame" {
+                // the tag-frame parameter (IF-CALL): only legal as the
+                // SINGLE parameter of a frame-declared fn (import()
+                // cross-checks the annotation axis)
+                params.push(RustParam::FrameCall);
                 continue;
             }
             match ty {
@@ -602,7 +661,19 @@ pub fn generate_shim(manifest: &RustProviderManifest) -> String {
          \x20   std::process::exit(70)\n\
          }\n\n",
     );
+    // T-05 F1 (IF-CALL): the tag-frame types + wire decoder ride the
+    // shim ONCE when any fn declares frame=p967.frame/1. The types are
+    // ordinary pub items of the SAME crate (provider + shim are one flat
+    // build closure), so the provider's `frame: &F0Frame` parameter
+    // resolves without any dependency.
+    if manifest.functions.iter().any(|f| f.frame.is_some()) {
+        out.push_str(FRAME_SHIM_PRELUDE);
+    }
     for f in &manifest.functions {
+        if f.frame.is_some() {
+            emit_frame_fn(&mut out, f);
+            continue;
+        }
         // The T-11 general frame: the view (when present) opens as
         // (data, byte_len); every scalar rides as its C lane; the
         // fallible form appends the out pointer.
@@ -616,6 +687,10 @@ pub fn generate_shim(manifest: &RustProviderManifest) -> String {
         for p in &f.params {
             match p {
                 RustParam::ViewUtf8 => {}
+                // frame fns are emitted by emit_frame_fn (they never
+                // reach the general frame loop; import() enforces the
+                // single-parameter shape)
+                RustParam::FrameCall => {}
                 RustParam::I32 => {
                     if !params_c.is_empty() {
                         params_c.push_str(", ");
@@ -676,6 +751,148 @@ pub fn generate_shim(manifest: &RustProviderManifest) -> String {
     out
 }
 
+/// The p967.frame/1 tag-frame shim prelude (generated; DO NOT EDIT).
+const FRAME_SHIM_PRELUDE: &str = r####"
+#[derive(Debug, Clone)]
+pub enum F0Val { None, I32(i32), Bool(bool), Text(String), Opaque(u64) }
+#[derive(Debug, Clone)]
+pub struct F0Kwarg { pub name: String, pub value: F0Val }
+#[derive(Debug, Clone)]
+pub struct F0Frame { pub receiver: F0Val, pub positionals: Vec<F0Val>, pub kwargs: Vec<F0Kwarg> }
+fn __f0_take_line<'a>(cur: &mut &'a [u8]) -> Result<&'a [u8], &'static str> {
+    let n = cur.iter().position(|&b| b == b'\n').ok_or("unterminated header line")?;
+    let (l, tail) = cur.split_at(n);
+    if l.is_empty() { return Err("empty header line"); }
+    *cur = &tail[1..];
+    Ok(l)
+}
+fn __f0_decimal(l: &[u8]) -> Option<(u64, &[u8])> {
+    let mut n: u64 = 0; let mut i = 0;
+    if l.first() == Some(&b'-') { i = 1; }
+    let d = i;
+    while i < l.len() && l[i].is_ascii_digit() {
+        n = n.checked_mul(10)?.checked_add((l[i] - b'0') as u64)?;
+        if n > (i64::MAX as u64) { return None; }
+        i += 1;
+    }
+    if i == d { return None; }
+    Some((n, &l[i..]))
+}
+fn __f0_take_value<'a>(cur: &mut &'a [u8]) -> Result<(u8, &'a [u8]), &'static str> {
+    let header = __f0_take_line(cur)?;
+    let tag = *header.first().ok_or("missing tag")?;
+    if !matches!(tag, b'n' | b'i' | b'b' | b't' | b'o') { return Err("unknown tag"); }
+    let tail = header[1..].strip_prefix(b" ").ok_or("tag not followed by a length")?;
+    let (len, tail) = __f0_decimal(tail).ok_or("bad length")?;
+    if !tail.is_empty() { return Err("length not the header end"); }
+    if len > 4096 { return Err("payload over the frame text cap"); }
+    let len = len as usize;
+    if cur.len() < len { return Err("payload truncated"); }
+    let (payload, tail) = cur.split_at(len);
+    let tail = tail.strip_prefix(b"\n").ok_or("payload not LF-terminated")?;
+    *cur = tail;
+    Ok((tag, payload))
+}
+fn __f0_take_name(cur: &mut &[u8]) -> Result<String, &'static str> {
+    let header = __f0_take_line(cur)?;
+    let (nl, t) = __f0_decimal(header).ok_or("bad name length")?;
+    if !t.is_empty() { return Err("name length not the header end"); }
+    if nl < 1 || nl > 64 { return Err("kwarg name length out of range"); }
+    let nl = nl as usize;
+    if cur.len() < nl { return Err("kwarg name truncated"); }
+    let (nb, t2) = cur.split_at(nl);
+    *cur = t2;
+    match std::str::from_utf8(nb).ok() {
+        Some(s) => Ok(s.to_string()),
+        None => Err("kwarg name is not UTF-8"),
+    }
+}
+fn __f0_val(tag: u8, payload: &[u8]) -> Result<F0Val, &'static str> {
+    match tag {
+        b'n' if payload.is_empty() => Ok(F0Val::None),
+        b'i' => std::str::from_utf8(payload).ok().and_then(|t| t.parse::<i32>().ok()).map(F0Val::I32).ok_or("tag i payload is not an i32"),
+        b'o' => std::str::from_utf8(payload).ok().and_then(|t| t.parse::<u64>().ok()).map(F0Val::Opaque).ok_or("tag o payload is not a u64"),
+        b'b' if payload == b"0" => Ok(F0Val::Bool(false)),
+        b'b' if payload == b"1" => Ok(F0Val::Bool(true)),
+        b't' => std::str::from_utf8(payload).ok().map(|t| F0Val::Text(t.to_string())).ok_or("tag t payload is not UTF-8"),
+        _ => Err("bad tagged value"),
+    }
+}
+/// Decode a p967.frame/1 wire frame (the AV admission validated the
+/// structure pre-dispatch; this decode is the defensive second gate).
+fn __f0_frame_decode(bytes: &[u8]) -> Result<F0Frame, &'static str> {
+    let mut cur = bytes;
+    let magic = b"p967.frame/1\n";
+    if cur.len() < magic.len() || &cur[..magic.len()] != magic { return Err("bad magic/version header"); }
+    cur = &cur[magic.len()..];
+    let rh = __f0_take_line(&mut cur)?;
+    let rh = rh.strip_prefix(b"r ").ok_or("expected the receiver value header")?;
+    let rtag = *rh.first().ok_or("missing tag")?;
+    let rtail = rh[1..].strip_prefix(b" ").ok_or("tag not followed by a length")?;
+    let (rlen, rtail) = __f0_decimal(rtail).ok_or("bad length")?;
+    if !rtail.is_empty() || rlen > 4096 { return Err("bad receiver header"); }
+    let rlen = rlen as usize;
+    if cur.len() < rlen { return Err("payload truncated"); }
+    let (rpayload, t2) = cur.split_at(rlen);
+    let t2 = t2.strip_prefix(b"\n").ok_or("payload not LF-terminated")?;
+    cur = t2;
+    let receiver = __f0_val(rtag, rpayload)?;
+    let header = __f0_take_line(&mut cur)?;
+    if header[0] != b'p' { return Err("expected the positional count line"); }
+    let (n, tail) = __f0_decimal(header[1..].strip_prefix(b" ").ok_or("count not delimited")?).ok_or("bad count")?;
+    if !tail.is_empty() || n > 8 { return Err("count over the frame cap"); }
+    let mut positionals = Vec::with_capacity(n as usize);
+    for _ in 0..n {
+        let (tag, payload) = __f0_take_value(&mut cur)?;
+        positionals.push(__f0_val(tag, payload)?);
+    }
+    let header = __f0_take_line(&mut cur)?;
+    if header[0] != b'k' { return Err("expected the kwarg count line"); }
+    let (n, tail) = __f0_decimal(header[1..].strip_prefix(b" ").ok_or("count not delimited")?).ok_or("bad count")?;
+    if !tail.is_empty() || n > 8 { return Err("count over the frame cap"); }
+    let mut kwargs = Vec::with_capacity(n as usize);
+    for _ in 0..n {
+        let name = __f0_take_name(&mut cur)?;
+        let (tag, payload) = __f0_take_value(&mut cur)?;
+        kwargs.push(F0Kwarg { name, value: __f0_val(tag, payload)? });
+    }
+    if !cur.is_empty() { return Err("trailing bytes after the frame"); }
+    Ok(F0Frame { receiver, positionals, kwargs })
+}
+"####;
+
+/// Emit one frame-typed export: the wire rides the view physical lane
+/// (data, byte_len[, out]) exactly like every view fn — only the
+/// payload is a p967.frame/1 frame the shim decodes into typed values.
+fn emit_frame_fn(out: &mut String, f: &RustFnEntry) {
+    let none_code = match &f.form {
+        RustFnForm::FallibleI32 { errors } => {
+            let mut codes: Vec<i32> = errors.iter().map(|(_, c)| *c).collect();
+            codes.sort_unstable();
+            codes[0]
+        }
+        _ => 0,
+    };
+    match &f.form {
+        RustFnForm::FallibleI32 { .. } => out.push_str(&format!(
+            "#[no_mangle]\npub extern \"C\" fn {export}(data: *const u8, byte_len: u64, out: *mut i32) -> i32 {{\n    let bytes = unsafe {{ std::slice::from_raw_parts(data, byte_len as usize) }};\n    let frame = match __f0_frame_decode(bytes) {{ Ok(f) => f, Err(_) => return {none_code} }};\n    match std::panic::catch_unwind(|| {{ {name}(&frame) }}) {{\n        Ok(Some(v)) => {{ unsafe {{ *out = v; }} 0 }}\n        Ok(None) => {none_code},\n        Err(_) => {{ __F0_PANIC_FLAG.store(1, std::sync::atomic::Ordering::SeqCst); {none_code} }}\n    }}\n}}\n\n",
+            export = f.export,
+            name = f.rust_name,
+            none_code = none_code,
+        )),
+        RustFnForm::PureI32 => out.push_str(&format!(
+            "#[no_mangle]\npub extern \"C\" fn {export}(data: *const u8, byte_len: u64) -> i32 {{\n    let bytes = unsafe {{ std::slice::from_raw_parts(data, byte_len as usize) }};\n    let frame = match __f0_frame_decode(bytes) {{ Ok(f) => f, Err(_) => return 0 }};\n    match std::panic::catch_unwind(|| {{ {name}(&frame) }}) {{\n        Ok(v) => v,\n        Err(_) => {{ __F0_PANIC_FLAG.store(1, std::sync::atomic::Ordering::SeqCst); 0 }}\n    }}\n}}\n\n",
+            export = f.export,
+            name = f.rust_name,
+        )),
+        RustFnForm::PureBool => out.push_str(&format!(
+            "#[no_mangle]\npub extern \"C\" fn {export}(data: *const u8, byte_len: u64) -> u8 {{\n    let bytes = unsafe {{ std::slice::from_raw_parts(data, byte_len as usize) }};\n    let frame = match __f0_frame_decode(bytes) {{ Ok(f) => f, Err(_) => return 0 }};\n    match std::panic::catch_unwind(|| {{ {name}(&frame) }}) {{\n        Ok(v) => v as u8,\n        Err(_) => {{ __F0_PANIC_FLAG.store(1, std::sync::atomic::Ordering::SeqCst); 0 }}\n    }}\n}}\n\n",
+            export = f.export,
+            name = f.rust_name,
+        )),
+    }
+}
+
 /// Project the neutral provider manifest onto the shared
 /// `ace.foreign.manual/2` manifest consumed by the ACE checked
 /// frontdoor (the same admission path PLAN-938/939 delivered).
@@ -704,7 +921,7 @@ pub fn to_manual_manifest(
             .params
             .iter()
             .map(|p| match p {
-                RustParam::ViewUtf8 => ResKind::ViewText,
+                RustParam::ViewUtf8 | RustParam::FrameCall => ResKind::ViewText,
                 RustParam::I32 => ResKind::I32,
                 RustParam::Bool => ResKind::Bool,
             })

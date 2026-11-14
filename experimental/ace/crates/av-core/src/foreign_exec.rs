@@ -65,6 +65,271 @@ pub struct ForeignStub {
     pub content_version: String,
     pub generation: u64,
     pub callable: ForeignCallable,
+    /// T-05 F1 (AC-INT-1026 / IF-CALL): the view wire carries a
+    /// `p967.frame/1` tag frame for this declaration — the AV admission
+    /// validates the frame BEFORE any dispatch (a bad frame is a named
+    /// `foreign.frame` rejection with callee_count unchanged).
+    pub frame: bool,
+}
+
+impl ForeignStub {
+    /// Construct a non-frame stub (the pre-F1 spelling).
+    pub fn new(
+        provider: String,
+        symbol: String,
+        content_version: String,
+        generation: u64,
+        callable: ForeignCallable,
+    ) -> Self {
+        Self {
+            provider,
+            symbol,
+            content_version,
+            generation,
+            callable,
+            frame: false,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// p967.frame/1 — the frozen IF-CALL tag parameter frame (AC-INT-1026).
+//
+// Canonical TEXT encoding over the ViewText wire (UTF-8 overall; ASCII
+// LF-terminated HEADERS with decimal lengths; payloads are read EXACTLY
+// by length and may contain ANY byte, including LF):
+//   p967.frame/1 LF
+//   'r' SP tag SP len LF + <len> payload bytes LF     (receiver; EVERY payload is LF-terminated)
+//   'p' SP count LF                                    (count 0..=8)
+//   [tag SP len LF + payload LF] x count              (positionals)
+//   'k' SP count LF                                    (count 0..=8)
+//   [namelen LF + name bytes + tag SP len LF + payload LF] x count (no separator after the name)
+//                                                      (namelen 1..=64)
+//   NOTHING may follow (exact consume).
+// tags: `n` (len 0) | `i` (i32 decimal) | `b` (`0`/`1`, len 1)
+//       | `t` (any bytes, len 0..=4096)  | `o` (u64 decimal)
+// ---------------------------------------------------------------------------
+
+/// Frame caps (frozen with the encoding).
+pub const FRAME_MAX_POSITIONALS: usize = 8;
+pub const FRAME_MAX_KWARGS: usize = 8;
+pub const FRAME_MAX_TEXT: usize = 4096;
+pub const FRAME_MAX_NAME: usize = 64;
+
+/// Strictly parse and validate a `p967.frame/1` wire frame. Guest-supplied
+/// tags/lengths are never trusted: every structural violation is `Err`
+/// with a stable reason (the caller rejects with `foreign.frame` BEFORE
+/// dispatch — callee_count stays unchanged). The parse is CURSOR-driven:
+/// headers are ASCII lines; payloads are read EXACTLY by length and may
+/// contain any byte (including LF).
+pub fn validate_frame_wire(bytes: &[u8]) -> Result<(), &'static str> {
+    let mut cur = bytes;
+    take_literal(&mut cur, b"p967.frame/1\n")?;
+    // receiver: 'r' SP tag SP len LF + payload LF (the 'r ' prefix marks
+    // the receiver slot inside the value header)
+    let (tag, payload) = take_prefixed_value(&mut cur, b"r ")?;
+    check_tag_value(tag, payload)?;
+    // positionals: 'p' SP count LF then count values
+    let count = take_count(&mut cur)?;
+    for _ in 0..count {
+        let (tag, payload) = take_value(&mut cur)?;
+        check_tag_value(tag, payload)?;
+    }
+    // kwargs: 'k' SP count LF then count (namelen LF name, value)
+    let count = take_count_kw(&mut cur)?;
+    for _ in 0..count {
+        let name = take_name(&mut cur)?;
+        if name.is_empty() {
+            return Err("empty kwarg name");
+        }
+        let (tag, payload) = take_value(&mut cur)?;
+        let _ = name;
+        check_tag_value(tag, payload)?;
+    }
+    if !cur.is_empty() {
+        return Err("trailing bytes after the frame");
+    }
+    Ok(())
+}
+
+fn take_literal(cur: &mut &[u8], lit: &[u8]) -> Result<(), &'static str> {
+    if cur.len() < lit.len() || &cur[..lit.len()] != lit {
+        return Err("bad magic/version header");
+    }
+    *cur = &cur[lit.len()..];
+    Ok(())
+}
+
+/// Read one ASCII header line (up to LF); return it.
+fn take_line<'a>(cur: &mut &'a [u8]) -> Result<&'a [u8], &'static str> {
+    let n = cur
+        .iter()
+        .position(|&b| b == b'\n')
+        .ok_or("unterminated header line")?;
+    let (l, tail) = cur.split_at(n);
+    if l.is_empty() {
+        return Err("empty header line");
+    }
+    *cur = &tail[1..];
+    Ok(l)
+}
+
+/// tag SP len LF + exactly len payload bytes.
+fn take_value<'a>(cur: &mut &'a [u8]) -> Result<(u8, &'a [u8]), &'static str> {
+    let header = take_line(cur)?;
+    let tag = *header.first().ok_or("missing tag")?;
+    if !matches!(tag, b'n' | b'i' | b'b' | b't' | b'o') {
+        return Err("unknown tag");
+    }
+    let tail = &header[1..];
+    let tail = tail
+        .strip_prefix(b" ")
+        .ok_or("tag not followed by a length")?;
+    let (len, tail) = split_decimal(tail).ok_or("bad length")?;
+    if !tail.is_empty() {
+        return Err("length not the header end");
+    }
+    if len > FRAME_MAX_TEXT as u64 {
+        return Err("payload over the frame text cap");
+    }
+    let len = len as usize;
+    if cur.len() < len {
+        return Err("payload truncated");
+    }
+    let (payload, tail) = cur.split_at(len);
+    let tail = tail
+        .strip_prefix(
+            b"
+",
+        )
+        .ok_or("payload not LF-terminated")?;
+    *cur = tail;
+    Ok((tag, payload))
+}
+
+/// A value header with a leading marker (`r ` for the receiver slot).
+fn take_prefixed_value<'a>(
+    cur: &mut &'a [u8],
+    prefix: &[u8],
+) -> Result<(u8, &'a [u8]), &'static str> {
+    let header = take_line(cur)?;
+    let rest = header
+        .strip_prefix(prefix)
+        .ok_or("expected the receiver value header")?;
+    let tag = *rest.first().ok_or("missing tag")?;
+    if !matches!(tag, b'n' | b'i' | b'b' | b't' | b'o') {
+        return Err("unknown tag");
+    }
+    let tail = &rest[1..];
+    let tail = tail
+        .strip_prefix(b" ")
+        .ok_or("tag not followed by a length")?;
+    let (len, tail) = split_decimal(tail).ok_or("bad length")?;
+    if !tail.is_empty() {
+        return Err("length not the header end");
+    }
+    if len > FRAME_MAX_TEXT as u64 {
+        return Err("payload over the frame text cap");
+    }
+    let len = len as usize;
+    if cur.len() < len {
+        return Err("payload truncated");
+    }
+    let (payload, tail) = cur.split_at(len);
+    let tail = tail
+        .strip_prefix(b"\n")
+        .ok_or("payload not LF-terminated")?;
+    *cur = tail;
+    Ok((tag, payload))
+}
+
+fn take_count(cur: &mut &[u8]) -> Result<usize, &'static str> {
+    let header = take_line(cur)?;
+    let (h, tail) = header.split_first().ok_or("empty count line")?;
+    if *h != b'p' {
+        return Err("expected the positional count line");
+    }
+    let tail = tail.strip_prefix(b" ").ok_or("count not delimited")?;
+    let (n, tail) = split_decimal(tail).ok_or("bad count")?;
+    if !tail.is_empty() || n > FRAME_MAX_POSITIONALS as u64 {
+        return Err("count over the frame cap");
+    }
+    Ok(n as usize)
+}
+
+fn take_count_kw(cur: &mut &[u8]) -> Result<usize, &'static str> {
+    let header = take_line(cur)?;
+    let (h, tail) = header.split_first().ok_or("empty count line")?;
+    if *h != b'k' {
+        return Err("expected the kwarg count line");
+    }
+    let tail = tail.strip_prefix(b" ").ok_or("count not delimited")?;
+    let (n, tail) = split_decimal(tail).ok_or("bad count")?;
+    if !tail.is_empty() || n > FRAME_MAX_KWARGS as u64 {
+        return Err("count over the frame cap");
+    }
+    Ok(n as usize)
+}
+
+/// namelen LF + exactly namelen name bytes.
+fn take_name<'a>(cur: &mut &'a [u8]) -> Result<&'a [u8], &'static str> {
+    let header = take_line(cur)?;
+    let (len, tail) = split_decimal(header).ok_or("bad name length")?;
+    if !tail.is_empty() {
+        return Err("name length not the header end");
+    }
+    if len < 1 || len > FRAME_MAX_NAME as u64 {
+        return Err("kwarg name length out of range");
+    }
+    let len = len as usize;
+    if cur.len() < len {
+        return Err("kwarg name truncated");
+    }
+    let (name, tail) = cur.split_at(len);
+    *cur = tail;
+    Ok(name)
+}
+
+/// Per-tag payload validation (guest bytes never trusted).
+fn check_tag_value(tag: u8, payload: &[u8]) -> Result<(), &'static str> {
+    match tag {
+        b'n' if payload.is_empty() => Ok(()),
+        b'n' => Err("tag n must carry no payload"),
+        b'i' => std::str::from_utf8(payload)
+            .ok()
+            .and_then(|t| t.parse::<i32>().ok())
+            .map(|_| ())
+            .ok_or("tag i payload is not an i32"),
+        b'o' => std::str::from_utf8(payload)
+            .ok()
+            .and_then(|t| t.parse::<u64>().ok())
+            .map(|_| ())
+            .ok_or("tag o payload is not a u64"),
+        b'b' if payload == b"0" || payload == b"1" => Ok(()),
+        b'b' => Err("tag b payload must be 0 or 1"),
+        b't' => Ok(()), // any bytes, capped by take_value
+        _ => Err("unknown tag"),
+    }
+}
+
+fn split_decimal(l: &[u8]) -> Option<(u64, &[u8])> {
+    let mut n: u64 = 0;
+    let mut i = 0;
+    if l.first() == Some(&b'-') {
+        i = 1;
+    }
+    let digits_start = i;
+    while i < l.len() && l[i].is_ascii_digit() {
+        n = n.checked_mul(10)?.checked_add((l[i] - b'0') as u64)?;
+        if n > (i64::MAX as u64) {
+            return None;
+        }
+        i += 1;
+    }
+    if i == digits_start {
+        return None;
+    }
+    Some((n, &l[i..]))
 }
 
 /// Named pre-dispatch rejection (stable codes, fail-closed).
@@ -332,6 +597,18 @@ impl ForeignStubTable {
                 "foreign.utf8",
                 "view bytes are not valid UTF-8 (the ViewText contract)",
             ));
+        }
+        // T-05 F1 (IF-CALL): frame-typed declarations carry a p967.frame/1
+        // tag frame on the wire — validate BEFORE any dispatch (a bad
+        // frame is a named rejection; the callee never runs).
+        if self.entries[idx].frame {
+            if let Err(reason) = validate_frame_wire(bytes) {
+                self.rejected_count += 1;
+                return Err(reject(
+                    "foreign.frame",
+                    format!("p967.frame/1 rejected: {reason}"),
+                ));
+            }
         }
         if bytes.len() > MAX_CALL_BYTES {
             self.rejected_count += 1;
@@ -838,6 +1115,7 @@ mod tests {
                 content_version: decl.content_version.clone(),
                 generation,
                 callable,
+                frame: false,
             })
             .unwrap();
         }

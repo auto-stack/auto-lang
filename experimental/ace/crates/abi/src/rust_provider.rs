@@ -418,6 +418,12 @@ pub fn f0_json_provider_source() -> &'static str {
     include_str!("../rustside/f0_json.rs")
 }
 
+/// PLAN-967 T-05 F1: the frozen INDEPENDENT generic tag-frame provider
+/// (receiver/positionals/kwargs over `p967.frame/1`).
+pub fn f0_tframe_provider_source() -> &'static str {
+    include_str!("../rustside/f0_tframe.rs")
+}
+
 /// `// auto-ffi dep <name> <spec>` lines are the clean project's whole
 /// dependency configuration: the importer ignores them (they are not fn
 /// metadata) and the cargo build unit consumes them verbatim.
@@ -829,6 +835,45 @@ pub fn locate_second_toolchain() -> Option<PathBuf> {
     None
 }
 
+/// PLAN-967 T-05 F2 (AC-LOAD / V-LOAD): open an FFI provider session
+/// whose provider source comes from the DELIVERED 1043 source-suffix
+/// assembly — the public `.at` is the Auto adapter, the `.rs.at` suffix
+/// is the Rust provider implementation (the same annotated source every
+/// lane consumes; no av.rs loader exists). The assembly's own NAMED
+/// rejections propagate (missing/duplicate/wrong-suffix candidates);
+/// only the Rs layer carries a foreign provider on this lane.
+pub fn open_assembled_rs_provider_session(
+    root: &Path,
+    entry: &str,
+    ctx: &mut ace_core::source::packages::PackageAssemblyContext,
+    generation: u64,
+) -> Result<(F0Session, String), String> {
+    use ace_core::source::packages::ProviderKind;
+    let files = ace_source_query::modules::packages::discover_provider_sources(root)
+        .map_err(|e| format!("load.discovery: {e}"))?;
+    let inputs = ace_source_query::modules::packages::assemble_package_inputs(&files, entry, ctx)
+        .map_err(|e| format!("load.assembly: {e}"))?;
+    let module = entry.rsplit("::").next().unwrap_or(entry);
+    let input = inputs
+        .iter()
+        .find(|i| i.id == module)
+        .ok_or_else(|| format!("load.entry-missing: `{module}` is not in the assembled closure"))?;
+    let layer = input.provider.as_ref().ok_or_else(|| {
+        format!(
+            "load.no-provider-impl: `{module}` has no implementation candidate for this configuration"
+        )
+    })?;
+    if layer.kind != ProviderKind::Rs {
+        return Err(format!(
+            "load.not-rs: `{module}` selected the `{}` implementation; the FFI lane consumes the rs suffix",
+            layer.kind.label()
+        ));
+    }
+    let build = build_source(&root.join("asm-build"), &layer.source)?;
+    let session = open_session_from_build(&build, generation)?;
+    Ok((session, input.source.clone()))
+}
+
 /// PLAN-967 T-09: PROJECT-level provider resolution for the `use.rs`
 /// frontdoor. The source's `use.rs <provider>` names a PROJECT file
 /// `<root>/<provider>.rs`; the binding, shim, build unit and manifest
@@ -1145,6 +1190,7 @@ pub fn load(build: &RustProviderBuild, generation: u64) -> Result<LoadedRustProv
         let view_first = matches!(
             f.params.first(),
             Some(auto_bindgen::rust_import::RustParam::ViewUtf8)
+                | Some(auto_bindgen::rust_import::RustParam::FrameCall)
         );
         let scalars = f
             .params
@@ -1200,6 +1246,7 @@ pub fn load(build: &RustProviderBuild, generation: u64) -> Result<LoadedRustProv
                 content_version: build.manual.facts.content_version.clone(),
                 generation,
                 callable,
+                frame: f.frame.is_some(),
             })
             .map_err(|e| e.to_string())?;
     }

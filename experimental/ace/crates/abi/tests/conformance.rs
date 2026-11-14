@@ -10,12 +10,18 @@ mod calls;
 mod contract_layout_admission;
 #[path = "cases/f0_a2py.rs"]
 mod f0_a2py;
+#[path = "cases/f0_abi_axes.rs"]
+mod f0_abi_axes;
 #[path = "cases/f0_async.rs"]
 mod f0_async;
 #[path = "cases/f0_av_c.rs"]
 mod f0_av_c;
 #[path = "cases/f0_axr.rs"]
 mod f0_axr;
+#[path = "cases/f0_int1026.rs"]
+mod f0_int1026;
+#[path = "cases/f0_load1043.rs"]
+mod f0_load1043;
 #[path = "cases/f0_rich.rs"]
 mod f0_rich;
 #[path = "cases/f0_t13.rs"]

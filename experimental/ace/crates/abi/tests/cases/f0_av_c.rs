@@ -112,6 +112,7 @@ fn av_runs_the_c_provider_through_a_real_dll() {
                 content_version: decl.content_version.clone(),
                 generation: 1,
                 callable,
+                frame: false,
             })
             .unwrap();
     }
