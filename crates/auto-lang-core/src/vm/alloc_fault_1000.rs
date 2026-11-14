@@ -56,13 +56,19 @@ async fn old_value_preserved_and_partial_reclaim() {
     let _seam = SEAM_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     // 无注入正控：完整运行，收尾后堆清空。
     let (vm, tid, err) = run_vm_keep_task(COMMIT_THEN_GROW, 0).await;
-    assert!(err.is_none(), "positive control must complete (got {err:?})");
+    assert!(
+        err.is_none(),
+        "positive control must complete (got {err:?})"
+    );
     teardown(&vm, tid).await;
     assert!(
         vm.heap_objects.is_empty(),
         "normal run reclaims everything after teardown"
     );
-    assert_eq!(vm.alloc_ordinal.load(std::sync::atomic::Ordering::Relaxed), 2);
+    assert_eq!(
+        vm.alloc_ordinal.load(std::sync::atomic::Ordering::Relaxed),
+        2
+    );
     drop(vm);
 
     // 故障点 2：第二个列表出生即中止——typed AllocFault。
@@ -72,16 +78,26 @@ async fn old_value_preserved_and_partial_reclaim() {
     // 仍在堆上且内容完好（20）——中止对已提交状态只读。故障点的第二个
     // 列表已出生（步界检查：分配完成后的下一条指令前中止）但其 push
     // 从未执行——未提交值 22 不存在于任何对象。
-    let survivors: Vec<(u64, std::sync::Arc<std::sync::RwLock<dyn crate::vm::heap_object::HeapObject>>)> = vm
+    let survivors: Vec<(
+        u64,
+        std::sync::Arc<std::sync::RwLock<dyn crate::vm::heap_object::HeapObject>>,
+    )> = vm
         .heap_objects
         .iter()
         .map(|e| (e.key().clone(), e.value().clone()))
         .collect();
-    assert_eq!(survivors.len(), 2, "committed list + aborted growth's empty list");
+    assert_eq!(
+        survivors.len(),
+        2,
+        "committed list + aborted growth's empty list"
+    );
     let mut committed_seen = 0;
     for (_, obj) in &survivors {
         let guard = obj.read().unwrap();
-        if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
+        if let Some(list) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ListData<i32>>()
+        {
             if list.elems == vec![20] {
                 committed_seen += 1;
             }
@@ -91,7 +107,10 @@ async fn old_value_preserved_and_partial_reclaim() {
             );
         }
     }
-    assert_eq!(committed_seen, 1, "exactly the pre-fault committed list [20] survives");
+    assert_eq!(
+        committed_seen, 1,
+        "exactly the pre-fault committed list [20] survives"
+    );
     // 已构造部分回收：失败运行的栈释放 + reap 后堆清零——无泄漏存活。
     teardown(&vm, tid).await;
     assert!(

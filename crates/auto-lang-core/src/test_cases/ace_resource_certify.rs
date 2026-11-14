@@ -43,8 +43,7 @@
 
 use super::ace_certify::{
     capture_toolchain_contained, compile, run_capped_with_env, BUILD_TOOLCHAIN_IDENTITY,
-    COMPILE_WALL,
-    DEPS_CLOSURE, RUN_WALL, RUSTC_FLAG_TOKENS,
+    COMPILE_WALL, DEPS_CLOSURE, RUN_WALL, RUSTC_FLAG_TOKENS,
 };
 use crate::trans::rust::{transpile_rust_with_source_dir_profiles, IntProfile, ResourceProfile};
 use auto_test_case::sha256::{hex, sha256};

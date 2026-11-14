@@ -155,9 +155,7 @@ fn capture_vcvars_env(
     Ok(map)
 }
 
-fn cached_vcvars_env(
-    vcvars: &Path,
-) -> Option<&'static std::collections::HashMap<String, String>> {
+fn cached_vcvars_env(vcvars: &Path) -> Option<&'static std::collections::HashMap<String, String>> {
     let entry = VCVARS_ENV.get_or_init(|| {
         let map = capture_vcvars_env(vcvars).unwrap_or_default();
         (vcvars.to_path_buf(), map)

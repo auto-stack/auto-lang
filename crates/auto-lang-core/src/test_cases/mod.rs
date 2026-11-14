@@ -350,12 +350,14 @@ fn run_suite_selected_impl(
     // 并发 case 共享：含此类 check 的套件保持串行，其余套件照常并行。
     let arms_global_seam = loaded.cases.iter().any(|f| {
         f.specs.iter().any(|spec| {
-            spec.checks.iter().any(|c| {
-                selection.matches(&spec.id, c) && c.options.avm_fail_alloc_at.is_some()
-            })
+            spec.checks
+                .iter()
+                .any(|c| selection.matches(&spec.id, c) && c.options.avm_fail_alloc_at.is_some())
         })
     });
-    let parallel = std::env::var("ACE_CASE_PARALLEL").map(|v| v != "0").unwrap_or(true)
+    let parallel = std::env::var("ACE_CASE_PARALLEL")
+        .map(|v| v != "0")
+        .unwrap_or(true)
         && !arms_global_seam;
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
@@ -363,9 +365,9 @@ fn run_suite_selected_impl(
         .clamp(1, 8);
     if !parallel || threads <= 1 || cases.len() <= 1 {
         for (case_file, spec) in &cases {
-            report
-                .results
-                .extend(run_case(&loaded, case_file, spec, &run_dir, limits, selection));
+            report.results.extend(run_case(
+                &loaded, case_file, spec, &run_dir, limits, selection,
+            ));
         }
     } else {
         let chunk = ((cases.len() + threads - 1) / threads).max(1);
