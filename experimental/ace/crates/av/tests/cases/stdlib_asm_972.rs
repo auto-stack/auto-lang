@@ -452,6 +452,7 @@ fn main() int { return square(7) * 10 + min(3i64, 5i64).to(i32) }".into(),
 const CONV_MAIN: &str = r#"
 use std.conv.to_int
 use std.conv.is_uint
+use std.conv.from_uint
 fn pick(s Str) int {
     let r = to_int(s)
     is r {
@@ -484,6 +485,11 @@ fn main() int {
     if (is_uint("".clone())) {
         code = code + 1
     }
+    code = code + from_uint(0).clone().len() * 10
+    code = code + from_uint(421).clone().len()
+    if (from_uint(-5).clone().len() == 0) {
+        code = code + 5
+    }
     return code
 }
 "#;
@@ -491,7 +497,7 @@ fn main() int {
 #[test]
 fn stdlib_asm_972_conv_parse_av() {
     let p = asm_lane_product("conv", CONV_MAIN);
-    assert_eq!(run_av("conv", &p), Value::I32(420743420));
+    assert_eq!(run_av("conv", &p), Value::I32(420743438));
 }
 
 /// `std` identity reservation on the assembled lane: a tampered `std.list`

@@ -70,3 +70,27 @@ fn digits_at(s Str, i int) bool {
     }
     return digits_at(s, i + 1)
 }
+
+// int→Str formatting via the digit-table slice (no char→Str builtin on
+// this surface — the digit's Str comes from the literal table's slice).
+fn digit_str(d int) Str {
+    let table Str = "0123456789"
+    return table.slice(d, d + 1).clone()
+}
+
+pub fn from_uint(n int) Str {
+    if (n < 0) {
+        return ""
+    }
+    return digits_of(n, "")
+}
+
+fn digits_of(n int, acc Str) Str {
+    let d = n % 10
+    let rest = n / 10
+    let with_d Str = digit_str(d) + acc
+    if (rest == 0) {
+        return with_d
+    }
+    return digits_of(rest, with_d)
+}
