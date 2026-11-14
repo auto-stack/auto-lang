@@ -434,6 +434,8 @@ fn type_digest(t: &crate::source::ast::TypeRef) -> String {
         TypeRef::TyVar(id) => format!("tv:{}", id.name),
         TypeRef::Record(id) => format!("rec:{}", id.name),
         TypeRef::Optional(inner) => format!("opt:{}", type_digest(&inner.kind)),
+        TypeRef::ResultBang(inner) => format!("errb:{}", type_digest(&inner.kind)),
+        TypeRef::Stream(inner) => format!("stream:{}", type_digest(&inner.kind)),
         // PLAN-962：tuple 类型摘要。
         TypeRef::Tuple(args) => {
             let parts: Vec<String> = args.iter().map(|a| type_digest(&a.kind)).collect();
@@ -471,7 +473,9 @@ fn references_name(f: &FnItem, name: &str) -> bool {
                 return true;
             }
             match &cur.kind {
-                crate::source::ast::TypeRef::Optional(inner) => stack.push(inner),
+                crate::source::ast::TypeRef::Optional(inner)
+                | crate::source::ast::TypeRef::ResultBang(inner)
+                | crate::source::ast::TypeRef::Stream(inner) => stack.push(inner),
                 crate::source::ast::TypeRef::Generic { args, .. } => stack.extend(args.iter()),
                 _ => {}
             }
@@ -542,6 +546,38 @@ fn references_name(f: &FnItem, name: &str) -> bool {
                     }
                     crate::source::ast::Stmt::Break { .. }
                     | crate::source::ast::Stmt::Continue { .. } => {}
+                    crate::source::ast::Stmt::Yield { value, .. } => {
+                        sub.push(WalkItem::Expr(value));
+                    }
+                    crate::source::ast::Stmt::AggIsMatch {
+                        scrutinee, arms, ..
+                    } => {
+                        sub.push(WalkItem::Expr(scrutinee));
+                        for arm in arms {
+                            match &arm.body {
+                                crate::source::ast::AggArmBody::Block(b) => {
+                                    sub.extend(b.stmts.iter().map(WalkItem::Stmt));
+                                }
+                                crate::source::ast::AggArmBody::Expr(e) => {
+                                    sub.push(WalkItem::Expr(e));
+                                }
+                            }
+                        }
+                    }
+                    crate::source::ast::Stmt::Try {
+                        body,
+                        catch,
+                        finally,
+                        ..
+                    } => {
+                        sub.extend(body.stmts.iter().map(WalkItem::Stmt));
+                        if let Some(c) = catch {
+                            sub.extend(c.body.stmts.iter().map(WalkItem::Stmt));
+                        }
+                        if let Some(f) = finally {
+                            sub.extend(f.stmts.iter().map(WalkItem::Stmt));
+                        }
+                    }
                 }
                 sub.reverse();
                 work.extend(sub);
@@ -620,7 +656,17 @@ fn expr_children(e: &Expr) -> Vec<&Expr> {
             v.extend(arg_exprs(args));
             v
         }
-        ExprKind::Field { base, .. } => vec![base],
+        ExprKind::Field { base, .. } | ExprKind::Propagate { inner: base } => vec![base],
+        ExprKind::UnwrapOr { inner, fallback } => vec![inner, fallback],
+        ExprKind::IsExpr { scrutinee, arms } => {
+            let mut v: Vec<&Expr> = vec![scrutinee.as_ref()];
+            for a in arms {
+                if let crate::source::ast::AggArmBody::Expr(e) = &a.body {
+                    v.push(e);
+                }
+            }
+            v
+        }
         ExprKind::Closure { body, .. } => match &**body {
             ClosureBody::Expr(x) => vec![x],
             ClosureBody::Block(_) => vec![],
@@ -681,6 +727,36 @@ fn collect_lambdas(stmts: &[Stmt], out: &mut Vec<(Span, u64)>, src: &str) {
                         }
                     }
                     Stmt::Break { .. } | Stmt::Continue { .. } => {}
+                    Stmt::Yield { value, .. } => work.push(WalkItem::Expr(value)),
+                    Stmt::AggIsMatch {
+                        scrutinee, arms, ..
+                    } => {
+                        work.push(WalkItem::Expr(scrutinee));
+                        for arm in arms {
+                            match &arm.body {
+                                crate::source::ast::AggArmBody::Block(b) => {
+                                    sub.extend(b.stmts.iter().map(WalkItem::Stmt));
+                                }
+                                crate::source::ast::AggArmBody::Expr(e) => {
+                                    sub.push(WalkItem::Expr(e));
+                                }
+                            }
+                        }
+                    }
+                    Stmt::Try {
+                        body,
+                        catch,
+                        finally,
+                        ..
+                    } => {
+                        sub.extend(body.stmts.iter().map(WalkItem::Stmt));
+                        if let Some(c) = catch {
+                            sub.extend(c.body.stmts.iter().map(WalkItem::Stmt));
+                        }
+                        if let Some(f) = finally {
+                            sub.extend(f.stmts.iter().map(WalkItem::Stmt));
+                        }
+                    }
                 }
                 sub.reverse();
                 work.extend(sub);
@@ -2028,6 +2104,36 @@ fn extract_lambda_body(f: &FnItem, ordinal: usize) -> Option<ClosureBody> {
                         }
                     }
                     Stmt::Break { .. } | Stmt::Continue { .. } => {}
+                    Stmt::Yield { value, .. } => work.push(WalkItem::Expr(value)),
+                    Stmt::AggIsMatch {
+                        scrutinee, arms, ..
+                    } => {
+                        work.push(WalkItem::Expr(scrutinee));
+                        for arm in arms {
+                            match &arm.body {
+                                crate::source::ast::AggArmBody::Block(b) => {
+                                    sub.extend(b.stmts.iter().map(WalkItem::Stmt));
+                                }
+                                crate::source::ast::AggArmBody::Expr(e) => {
+                                    sub.push(WalkItem::Expr(e));
+                                }
+                            }
+                        }
+                    }
+                    Stmt::Try {
+                        body,
+                        catch,
+                        finally,
+                        ..
+                    } => {
+                        sub.extend(body.stmts.iter().map(WalkItem::Stmt));
+                        if let Some(c) = catch {
+                            sub.extend(c.body.stmts.iter().map(WalkItem::Stmt));
+                        }
+                        if let Some(f) = finally {
+                            sub.extend(f.stmts.iter().map(WalkItem::Stmt));
+                        }
+                    }
                 }
                 sub.reverse();
                 work.extend(sub);

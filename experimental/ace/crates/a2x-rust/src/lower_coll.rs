@@ -176,6 +176,37 @@ impl<'a, 'v> CollLower<'a, 'v> {
         self.view.resolve_use_ty(l.ty)
     }
 
+    /// Resolve a sequence of field declaration IDs into sanitized Rust field
+    /// names (`f_<name>`) along with the final field's type.
+    fn resolve_field_names(
+        &self,
+        mut owner: Ty,
+        path: &[hir::FieldId],
+    ) -> Result<(Vec<String>, Ty), A2xReject> {
+        let mut names = Vec::with_capacity(path.len());
+        for fid in path {
+            let rec = match owner {
+                Ty::Record(rid) => self
+                    .view
+                    .record(rid)
+                    .ok_or_else(|| A2xReject::new("a2x.internal", "record out of range"))?,
+                other => {
+                    return Err(A2xReject::unsupported_type(format!(
+                        "field path through non-record `{}`",
+                        other.as_str()
+                    )))
+                }
+            };
+            let fld = rec
+                .fields
+                .get(fid.0 as usize)
+                .ok_or_else(|| A2xReject::new("a2x.internal", "field index out of range"))?;
+            names.push(format!("f_{}", sanitize(&fld.name)));
+            owner = fld.ty;
+        }
+        Ok((names, owner))
+    }
+
     /// The free-helper call for an owned kind.
     fn free_call(&self, kind: OwnedKind) -> String {
         match kind {
@@ -334,39 +365,49 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 }
                 hir::Stmt::Assign { place, value } => {
                     let p_pre = &self.f.body.places[place.0 as usize];
-                    let owned_place = p_pre.kind == hir::PlaceKind::Local
-                        && self
+                    let target_ty = match &p_pre.kind {
+                        hir::PlaceKind::Local => self.local_ty(p_pre.local).ok(),
+                        hir::PlaceKind::FieldPath(path) => self
                             .local_ty(p_pre.local)
-                            .map(|t| matches!(t, Ty::StrOwned))
-                            .unwrap_or(false);
+                            .and_then(|ty| self.resolve_field_names(ty, path).map(|(_, fty)| fty))
+                            .ok(),
+                    };
+                    let owned_place = matches!(target_ty, Some(Ty::StrOwned));
                     let v = if is_lit(self.f.body, *value) && owned_place {
                         self.owned_or_plain_child(*value, &mut out)?
                     } else {
                         self.expr(*value, &mut out)?
                     };
                     let p = &self.f.body.places[place.0 as usize];
-                    if let hir::PlaceKind::Local = p.kind {
-                        if let Some(old) = self.facts.replace_frees.get(&(block.0, si)) {
-                            let ty = self.local_ty(p.local).ok();
-                            let call = ty
-                                .and_then(|t| self.owned_kind_of_ty(t))
-                                .map(|k| self.free_call(k))
-                                .unwrap_or_else(|| "a2x_str_free".into());
-                            out.push(RStmt::FreeSlot {
+                    match &p.kind {
+                        hir::PlaceKind::Local => {
+                            if let Some(old) = self.facts.replace_frees.get(&(block.0, si)) {
+                                let ty = self.local_ty(p.local).ok();
+                                let call = ty
+                                    .and_then(|t| self.owned_kind_of_ty(t))
+                                    .map(|k| self.free_call(k))
+                                    .unwrap_or_else(|| "a2x_str_free".into());
+                                out.push(RStmt::FreeSlot {
+                                    name: self.local_name_of(p.local),
+                                    call,
+                                });
+                                let _ = old;
+                            }
+                            out.push(RStmt::Assign {
                                 name: self.local_name_of(p.local),
-                                call,
+                                value: v,
                             });
-                            let _ = old;
                         }
-                    } else {
-                        return Err(A2xReject::unsupported_place(
-                            "collections field-path assignment is outside the surface",
-                        ));
+                        hir::PlaceKind::FieldPath(path) => {
+                            let base_ty = self.local_ty(p.local)?;
+                            let (names, _) = self.resolve_field_names(base_ty, path)?;
+                            out.push(RStmt::AssignField {
+                                name: self.local_name_of(p.local),
+                                path: names,
+                                value: v,
+                            });
+                        }
                     }
-                    out.push(RStmt::Assign {
-                        name: self.local_name_of(p.local),
-                        value: v,
-                    });
                 }
                 hir::Stmt::If { cond, then, els } => {
                     let c = self.expr(*cond, &mut out)?;
@@ -389,48 +430,50 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     if let Some(frees) = self.facts.exit_frees.get(&(lb.0, None)) {
                         body_stmts.extend(self.free_stmts(frees));
                     }
-                    let mut poll_frees = self
-                        .facts
-                        .exit_frees
-                        .get(&(lb.0, None))
-                        .map(|f| {
-                            f.iter()
-                                .filter_map(|r| match r {
-                                    FreeRef::Local(l) => {
-                                        let ty = self.local_ty(hir::LocalId(*l)).ok()?;
-                                        let k = self.owned_kind_of_ty(ty)?;
-                                        Some((
+                    if !ace_a2x_core::semantic_view::block_always_terminates(self.f.body, *lb) {
+                        let mut poll_frees = self
+                            .facts
+                            .exit_frees
+                            .get(&(lb.0, None))
+                            .map(|f| {
+                                f.iter()
+                                    .filter_map(|r| match r {
+                                        FreeRef::Local(l) => {
+                                            let ty = self.local_ty(hir::LocalId(*l)).ok()?;
+                                            let k = self.owned_kind_of_ty(ty)?;
+                                            Some((
+                                                self.local_name_of(hir::LocalId(*l)),
+                                                self.free_call(k),
+                                            ))
+                                        }
+                                        _ => None,
+                                    })
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default();
+                        if let Some(surv) = self.facts.loop_survivors.get(&lb.0) {
+                            for l in surv {
+                                if let Some(ty) = self.local_ty(hir::LocalId(*l)).ok() {
+                                    if let Some(k) = self.owned_kind_of_ty(ty) {
+                                        poll_frees.push((
                                             self.local_name_of(hir::LocalId(*l)),
                                             self.free_call(k),
-                                        ))
+                                        ));
                                     }
-                                    _ => None,
-                                })
-                                .collect::<Vec<_>>()
-                        })
-                        .unwrap_or_default();
-                    if let Some(surv) = self.facts.loop_survivors.get(&lb.0) {
-                        for l in surv {
-                            if let Some(ty) = self.local_ty(hir::LocalId(*l)).ok() {
-                                if let Some(k) = self.owned_kind_of_ty(ty) {
-                                    poll_frees.push((
-                                        self.local_name_of(hir::LocalId(*l)),
-                                        self.free_call(k),
-                                    ));
                                 }
                             }
                         }
+                        body_stmts.push(RStmt::EvalExpr {
+                            expr: RExpr::Wrap {
+                                inner: Box::new(RExpr::CollCall {
+                                    func: "a2x_coll_poll".into(),
+                                    turbo: None,
+                                    args: Vec::new(),
+                                }),
+                                frees: poll_frees,
+                            },
+                        });
                     }
-                    body_stmts.push(RStmt::EvalExpr {
-                        expr: RExpr::Wrap {
-                            inner: Box::new(RExpr::CollCall {
-                                func: "a2x_coll_poll".into(),
-                                turbo: None,
-                                args: Vec::new(),
-                            }),
-                            frees: poll_frees,
-                        },
-                    });
                     out.push(RStmt::Loop { body: body_stmts });
                 }
                 hir::Stmt::Break { .. } => {
@@ -450,6 +493,53 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     if !matches!(v, RExpr::UnitExpr) {
                         out.push(RStmt::EvalExpr { expr: v });
                     }
+                }
+                hir::Stmt::Fail { value } => {
+                    let owned_msg = self
+                        .view
+                        .resolve_use_ty(self.f.body.exprs[value.0 as usize].ty)
+                        .map(|t| matches!(t, Ty::StrOwned))
+                        .unwrap_or(false);
+                    let v = if is_lit(self.f.body, *value) && owned_msg {
+                        self.owned_or_plain_child(*value, &mut out)?
+                    } else {
+                        self.expr(*value, &mut out)?
+                    };
+                    let _ = v;
+                    let frees = self
+                        .facts
+                        .exit_frees
+                        .get(&(block.0, Some(si)))
+                        .map(|fs| {
+                            fs.iter()
+                                .filter_map(|r| match r {
+                                    FreeRef::Local(l) => {
+                                        self.local_ty(hir::LocalId(*l)).ok().and_then(|ty| {
+                                            self.owned_kind_of_ty(ty).map(|k| {
+                                                (
+                                                    self.local_name_of(hir::LocalId(*l)),
+                                                    self.free_call(k),
+                                                )
+                                            })
+                                        })
+                                    }
+                                    FreeRef::Temp(e, kind) => {
+                                        Some((format!("e{}", e), self.free_call(*kind)))
+                                    }
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    out.push(RStmt::Return {
+                        value: RExpr::Wrap {
+                            inner: Box::new(RExpr::CollCall {
+                                func: "a2x_coll_fail".into(),
+                                turbo: None,
+                                args: Vec::new(),
+                            }),
+                            frees,
+                        },
+                    });
                 }
                 hir::Stmt::Drop { .. } => {
                     return Err(A2xReject::unsupported_stmt(
@@ -805,27 +895,7 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 let base_ty = self
                     .view
                     .resolve_use_ty(self.f.body.exprs[base.0 as usize].ty)?;
-                let mut names = Vec::new();
-                let mut owner = base_ty;
-                for fid in &path {
-                    let rec = match owner {
-                        Ty::Record(rid) => self
-                            .view
-                            .record(rid)
-                            .ok_or_else(|| A2xReject::new("a2x.internal", "record out of range"))?,
-                        other => {
-                            return Err(A2xReject::unsupported_type(format!(
-                                "field path through non-record `{}`",
-                                other.as_str()
-                            )))
-                        }
-                    };
-                    let fld = rec.fields.get(fid.0 as usize).ok_or_else(|| {
-                        A2xReject::new("a2x.internal", "field index out of range")
-                    })?;
-                    names.push(format!("f_{}", sanitize(&fld.name)));
-                    owner = fld.ty;
-                }
+                let (names, _) = self.resolve_field_names(base_ty, &path)?;
                 Ok(RExpr::FieldPath {
                     base: Box::new(b),
                     path: names,

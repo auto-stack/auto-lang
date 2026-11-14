@@ -216,6 +216,23 @@ pub struct SourceKinds {
     pub op_amp: Option<u32>,
     pub op_vbar: Option<u32>,
     pub op_caret: Option<u32>,
+    // PLAN-965 (M2-A): aggregates control-flow / error-propagation / generator rules & tokens.
+    pub tilde_ty: Option<u32>,
+    pub err_ty: Option<u32>,
+    pub agg_is_stmt: Option<u32>,
+    pub is_expr: Option<u32>,
+    pub agg_match_arm: Option<u32>,
+    pub try_stmt: Option<u32>,
+    pub catch_clause: Option<u32>,
+    pub finally_clause: Option<u32>,
+    pub yield_stmt: Option<u32>,
+    pub tok_dotquestion: Option<u32>,
+    pub op_questionquestion: Option<u32>,
+    pub tok_tilde: Option<u32>,
+    pub tok_r_try: u32,
+    pub tok_r_catch: u32,
+    pub tok_r_finally: Option<u32>,
+    pub tok_r_yield: u32,
 }
 
 fn rule_kind(p: &GrammarProgram, name: &str) -> Option<u32> {
@@ -528,6 +545,22 @@ impl SourceKinds {
             op_amp: token_kind(p, "amp"),
             op_vbar: token_kind(p, "vbar"),
             op_caret: token_kind(p, "caret"),
+            tilde_ty: rk_opt(p, "tilde-ty"),
+            err_ty: rk_opt(p, "err-ty"),
+            agg_is_stmt: rk_opt(p, "agg-is-stmt"),
+            is_expr: rk_opt(p, "is-expr"),
+            agg_match_arm: rk_opt(p, "agg-match-arm"),
+            try_stmt: rk_opt(p, "try-stmt"),
+            catch_clause: rk_opt(p, "catch-clause"),
+            finally_clause: rk_opt(p, "finally-clause"),
+            yield_stmt: rk_opt(p, "yield-stmt"),
+            tok_dotquestion: token_kind(p, "dotquestion"),
+            op_questionquestion: token_kind(p, "questionquestion"),
+            tok_tilde: token_kind(p, "tilde"),
+            tok_r_try: tk("r-try"),
+            tok_r_catch: tk("r-catch"),
+            tok_r_finally: token_kind(p, "r-finally"),
+            tok_r_yield: tk("r-yield"),
         })
     }
 

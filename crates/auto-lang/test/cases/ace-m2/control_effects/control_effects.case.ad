@@ -1,0 +1,107 @@
+# PLAN-965 T-08 — permanent M2-A control flow, error propagation & generator
+# corpus: `try`/`catch`/`finally`, `rethrow`/`fail`, `??` short-circuit, `.?`/
+# `.?(default)`, `is` pattern expr, nested `break`/`continue`/`return`, and
+# `~Iter<T>` lazy generators with early-break `close` cleanup, plus negative
+# compile & uncaught-fail controls on `ac-av/aggregates-source-run-v1`.
+# Four-end parity (AV / native PE / a2x-rust / a2x-c) is asserted in
+# `ace-av` (`aggregates_m2_965`), `ace-native` (`control_effects_965`), and
+# `ace-a2x-worker` (`aggregates_965_control_effects_{rust,c}`).
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p965.try-catch-finally", tags: ["ace-m2", "control-effects", "plan-965"],
+  source: { file: "src/try_catch_finally.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-control", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 42 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p965.coalesce-propagate-is", tags: ["ace-m2", "control-effects", "plan-965"],
+  source: { file: "src/coalesce_propagate_is.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-control", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 42 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p965.generator-sum-close", tags: ["ace-m2", "control-effects", "generator", "plan-965"],
+  source: { file: "src/generator_sum_close.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-control", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 42 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p965.uncaught-fail", tags: ["ace-m2", "control-effects", "negative", "plan-965"],
+  source: { file: "src/uncaught_fail.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-control", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "run", message: { contains: "boom965" } } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p965.propagate-incompatible", tags: ["ace-m2", "control-effects", "negative", "plan-965"],
+  source: { file: "src/neg_propagate_incompatible.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-control", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "resolve", code: "bind/source.propagate-incompatible" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p965.yield-outside-generator", tags: ["ace-m2", "control-effects", "negative", "plan-965"],
+  source: { file: "src/neg_yield_outside_gen.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-control", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "resolve", code: "bind/source.yield-outside-generator" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p965.rethrow-outside-catch", tags: ["ace-m2", "control-effects", "negative", "plan-965"],
+  source: { file: "src/neg_rethrow_outside_catch.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-control", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "resolve", code: "bind/source.rethrow-outside-catch" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p965.nonexhaustive-is", tags: ["ace-m2", "control-effects", "negative", "plan-965"],
+  source: { file: "src/neg_nonexhaustive_is.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-control", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "resolve", code: "bind/source.pattern-nonexhaustive" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p965.generator-mut-borrow", tags: ["ace-m2", "control-effects", "generator", "negative", "plan-965"],
+  source: { file: "src/neg_generator_mut_param.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-control", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "resolve", code: "bind/source.generator-borrow-param" } } }]
+}
+```
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p965.generator-close-fail", tags: ["ace-m2", "control-effects", "generator", "cleanup", "plan-965"],
+  source: { file: "src/generator_close_fail.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-control", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "run", message: { contains: "closed965" } } } }]
+}
+```

@@ -46,6 +46,8 @@ mod collections_workload_tier;
 mod console_lane;
 #[path = "cases/const_instances_963.rs"]
 mod const_instances_963;
+#[path = "cases/control_effects_965.rs"]
+mod control_effects_965;
 #[path = "cases/data_owned_tier.rs"]
 mod data_owned_tier;
 #[path = "cases/default_args_963.rs"]

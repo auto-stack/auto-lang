@@ -495,6 +495,36 @@ fn collect_hashes_stmt(s: &Stmt, owner: &str, out: &mut Vec<(String, Span)>) {
             collect_hashes_expr(iter, owner, out);
             collect_hashes_block(body, owner, out);
         }
+        Stmt::AggIsMatch {
+            scrutinee, arms, ..
+        } => {
+            collect_hashes_expr(scrutinee, owner, out);
+            for a in arms {
+                match &a.body {
+                    ace_core::source::ast::AggArmBody::Expr(e) => {
+                        collect_hashes_expr(e, owner, out)
+                    }
+                    ace_core::source::ast::AggArmBody::Block(b) => {
+                        collect_hashes_block(b, owner, out)
+                    }
+                }
+            }
+        }
+        Stmt::Try {
+            body,
+            catch,
+            finally,
+            ..
+        } => {
+            collect_hashes_block(body, owner, out);
+            if let Some(c) = catch {
+                collect_hashes_block(&c.body, owner, out);
+            }
+            if let Some(f) = finally {
+                collect_hashes_block(f, owner, out);
+            }
+        }
+        Stmt::Yield { value, .. } => collect_hashes_expr(value, owner, out),
     }
 }
 
@@ -637,6 +667,32 @@ fn callees_stmt(s: &Stmt, out: &mut Vec<String>) {
             callees_expr(iter, out);
             callees_block(body, out);
         }
+        Stmt::AggIsMatch {
+            scrutinee, arms, ..
+        } => {
+            callees_expr(scrutinee, out);
+            for a in arms {
+                match &a.body {
+                    ace_core::source::ast::AggArmBody::Expr(e) => callees_expr(e, out),
+                    ace_core::source::ast::AggArmBody::Block(b) => callees_block(b, out),
+                }
+            }
+        }
+        Stmt::Try {
+            body,
+            catch,
+            finally,
+            ..
+        } => {
+            callees_block(body, out);
+            if let Some(c) = catch {
+                callees_block(&c.body, out);
+            }
+            if let Some(f) = finally {
+                callees_block(f, out);
+            }
+        }
+        Stmt::Yield { value, .. } => callees_expr(value, out),
     }
 }
 
@@ -925,6 +981,44 @@ fn substitute_stmt(s: &mut Stmt, served: &ServedRoot, site: Span, site_expr: &Ex
                 substitute_stmt(st, served, site, site_expr);
             }
         }
+        Stmt::AggIsMatch {
+            scrutinee, arms, ..
+        } => {
+            replace_at(scrutinee, served, site, site_expr);
+            for a in arms.iter_mut() {
+                match &mut a.body {
+                    ace_core::source::ast::AggArmBody::Expr(e) => {
+                        replace_at(e, served, site, site_expr)
+                    }
+                    ace_core::source::ast::AggArmBody::Block(b) => {
+                        for st in b.stmts.iter_mut() {
+                            substitute_stmt(st, served, site, site_expr);
+                        }
+                    }
+                }
+            }
+        }
+        Stmt::Try {
+            body,
+            catch,
+            finally,
+            ..
+        } => {
+            for st in body.stmts.iter_mut() {
+                substitute_stmt(st, served, site, site_expr);
+            }
+            if let Some(c) = catch {
+                for st in c.body.stmts.iter_mut() {
+                    substitute_stmt(st, served, site, site_expr);
+                }
+            }
+            if let Some(f) = finally {
+                for st in f.stmts.iter_mut() {
+                    substitute_stmt(st, served, site, site_expr);
+                }
+            }
+        }
+        Stmt::Yield { value, .. } => replace_at(value, served, site, site_expr),
     }
 }
 
@@ -1084,6 +1178,32 @@ fn find_hash_stmt<'a>(s: &'a Stmt, span: Span, found: &mut Option<&'a Expr>) {
             find_hash_expr(iter, span, found);
             find_hash_block(body, span, found);
         }
+        Stmt::AggIsMatch {
+            scrutinee, arms, ..
+        } => {
+            find_hash_expr(scrutinee, span, found);
+            for a in arms {
+                match &a.body {
+                    ace_core::source::ast::AggArmBody::Expr(e) => find_hash_expr(e, span, found),
+                    ace_core::source::ast::AggArmBody::Block(b) => find_hash_block(b, span, found),
+                }
+            }
+        }
+        Stmt::Try {
+            body,
+            catch,
+            finally,
+            ..
+        } => {
+            find_hash_block(body, span, found);
+            if let Some(c) = catch {
+                find_hash_block(&c.body, span, found);
+            }
+            if let Some(f) = finally {
+                find_hash_block(f, span, found);
+            }
+        }
+        Stmt::Yield { value, .. } => find_hash_expr(value, span, found),
     }
 }
 

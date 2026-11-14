@@ -1271,6 +1271,10 @@ fn map_diag_stage(stage: &str) -> Stage {
         "admission" | "frontend" | "parse" | "text" => Stage::Parse,
         "resolve" | "bind" => Stage::Resolve,
         "typecheck" => Stage::Typecheck,
+        // PLAN-965: an uncaught language error (`fail` / uncaught `.?`) is a
+        // RUN-stage diagnostic (`ExecOutcome::Error`), not a verifier
+        // rejection — the four-way outcome split must stay visible here.
+        "run" => Stage::Run,
         // PLAN-909: the HIR verifier's own rejections (verify.*) keep their
         // verify stage — the completion vocabulary distinguishes them from
         // typecheck-face rejections.

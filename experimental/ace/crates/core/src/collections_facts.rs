@@ -238,9 +238,10 @@ impl<'a> Walker<'a> {
         let block = &self.body.blocks[id.0 as usize];
         for stmt in &block.stmts {
             match stmt {
-                Stmt::Let { value, .. } | Stmt::Return { value } | Stmt::Eval { value } => {
-                    self.collect_kills_expr(*value, out)
-                }
+                Stmt::Let { value, .. }
+                | Stmt::Return { value }
+                | Stmt::Eval { value }
+                | Stmt::Fail { value } => self.collect_kills_expr(*value, out),
                 Stmt::Assign { value, .. } => self.collect_kills_expr(*value, out),
                 Stmt::If { cond, then, els } => {
                     self.collect_kills_expr(*cond, out);
@@ -493,6 +494,15 @@ impl<'a> Walker<'a> {
                     self.expr(*value);
                     // the effect value consumes its temps
                     self.pending.truncate(mark);
+                }
+                Stmt::Fail { value } => {
+                    let mark = self.pending.len();
+                    self.expr(*value);
+                    self.pending.truncate(mark);
+                    let frees = self.lifo_live();
+                    self.facts.exit_frees.insert((id.0, Some(si)), frees);
+                    self.live.clear();
+                    terminated = true;
                 }
             }
         }
@@ -868,6 +878,10 @@ fn digest_stmt(h: &mut Fnv64, s: &Stmt) {
         }
         Stmt::Eval { value } => {
             h.str("eval");
+            h.u32(value.0);
+        }
+        Stmt::Fail { value } => {
+            h.str("fail");
             h.u32(value.0);
         }
     }

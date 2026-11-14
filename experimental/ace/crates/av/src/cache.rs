@@ -871,6 +871,10 @@ pub fn canonical_hir_function(module: &hir::Module, body_id: hir::BodyId) -> Vec
                     c.w(" eval ");
                     c.w(&value.0.to_string());
                 }
+                hir::Stmt::Fail { value } => {
+                    c.w(" fail ");
+                    c.w(&value.0.to_string());
+                }
                 hir::Stmt::If { cond, then, els } => {
                     c.w(" if ");
                     c.w(&cond.0.to_string());

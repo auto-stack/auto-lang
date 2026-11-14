@@ -111,6 +111,7 @@ impl RequestOutcome {
             Some(ExecOutcome::Trap { .. }) => "trap",
             Some(ExecOutcome::Resource { .. }) => "resource",
             Some(ExecOutcome::Cancelled) => "cancelled",
+            Some(ExecOutcome::Error { .. }) => "error",
             Some(ExecOutcome::Infra(_)) => "infra",
             None => "none",
         }

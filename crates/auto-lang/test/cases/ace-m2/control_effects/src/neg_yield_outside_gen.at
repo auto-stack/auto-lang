@@ -1,0 +1,5 @@
+// PLAN-965 T-08 negative: yield outside a ~Iter<T> generator is rejected cleanly.
+fn main() int {
+    yield 1
+    return 0
+}

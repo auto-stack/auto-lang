@@ -224,6 +224,7 @@ pub enum AutoTrap {
     VariantBranch,
     Budget,
     Cancelled,
+    LangError,
 }
 
 impl AutoTrap {
@@ -241,6 +242,7 @@ impl AutoTrap {
             AutoTrap::VariantBranch => "VariantBranch",
             AutoTrap::Budget => "Budget",
             AutoTrap::Cancelled => "Cancelled",
+            AutoTrap::LangError => "LangError",
         }
     }
 }
@@ -338,6 +340,10 @@ fn coll_charge(units: i64, why: &str) -> A2xResult<()> {
 }
 
 /// Cooperative cancellation point (loop back-edges; 1 WU each).
+pub fn a2x_coll_fail<T>() -> A2xResult<T> {
+    Err(AutoTrap::LangError)
+}
+
 pub fn a2x_coll_poll() -> A2xResult<()> {
     coll_state();
     coll_with(|s| {

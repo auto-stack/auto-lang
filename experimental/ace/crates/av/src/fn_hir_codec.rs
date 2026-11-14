@@ -503,6 +503,10 @@ pub fn encode_fn_hir(a: &FnHirArtifact) -> Result<Vec<u8>, String> {
                     e.out.push(11);
                     e.u32(value.0);
                 }
+                hir::Stmt::Fail { value } => {
+                    e.out.push(12);
+                    e.u32(value.0);
+                }
                 hir::Stmt::If { cond, then, els } => {
                     e.out.push(2);
                     e.u32(cond.0);
@@ -890,6 +894,9 @@ pub fn decode_fn_hir(bytes: &[u8]) -> Result<FnHirArtifact, String> {
                 },
                 6 => hir::Stmt::Continue {
                     target: hir::LoopId(d.idx(loops.len(), "loop")?),
+                },
+                12 => hir::Stmt::Fail {
+                    value: hir::ExprId(d.idx(n_exprs, "expr")?),
                 },
                 _ => return Err("unknown statement tag".into()),
             };

@@ -908,6 +908,10 @@ pub enum Terminator {
     Return {
         value: SlotId,
     },
+    /// Language-level error unwind (`fail(msg)` / uncaught `.?`).
+    LangFail {
+        message: SlotId,
+    },
 }
 
 #[derive(Clone, Debug)]

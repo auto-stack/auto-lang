@@ -3476,6 +3476,17 @@ impl<'d> Binder<'d> {
                     )?);
                     hir::Stmt::Eval { value }
                 }
+                "fail" => {
+                    let (t, span) = self.text_ref(&sfields, "value")?;
+                    let value = hir::ExprId(self.resolve_in(
+                        &t,
+                        span,
+                        "ExprRef",
+                        &body.exprs,
+                        block_sibs,
+                    )?);
+                    hir::Stmt::Fail { value }
+                }
                 _ => continue,
             };
             stmts.push(stmt_value);
@@ -4492,6 +4503,10 @@ fn write_stmt(s: &hir::Stmt, b: &hir::Body, _m: &hir::Module) -> String {
         ),
         hir::Stmt::Eval { value } => format!(
             "eval(value: {}) {{}}",
+            quote(&b.exprs[value.0 as usize].id_text)
+        ),
+        hir::Stmt::Fail { value } => format!(
+            "fail(value: {}) {{}}",
             quote(&b.exprs[value.0 as usize].id_text)
         ),
     }

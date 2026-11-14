@@ -1,0 +1,28 @@
+// PLAN-965 T-08 (V-02/V-05): short-circuit ??, .? / .?(d), and `is` pattern expr.
+type Counter { hits int }
+fn never_called(mut c Counter) int {
+    c.hits = c.hits + 1
+    fail("rhs must not execute")
+}
+fn parse(ok bool) !int {
+    if ok { return Ok(20) }
+    Err("bad")
+}
+fn add_two(ok bool) !int {
+    let v = parse(ok).?
+    Ok(v + 2)
+}
+fn main() int {
+    var c = Counter(0)
+    let a = Some(19) ?? never_called(c.mut)
+    let b = None ?? 2
+    let d = add_two(true).?(never_called(c.mut))
+    let e = add_two(false).?(1)
+    let g = is Some(4) {
+        Some(v) -> v
+        None -> 0
+    }
+    if c.hits != 0 { return 0 }
+    // 19 + 2 + 22 + 1 + 4 = 48 -> adjust to 42: 48 - 6
+    return a + b + d + e + g - 6
+}

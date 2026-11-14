@@ -754,6 +754,7 @@ fn block_terminates_impl(body: &hir::Body, root: u32, memo: &mut BTreeMap<u32, b
                 for s in &bl.stmts {
                     match s {
                         hir::Stmt::Return { .. }
+                        | hir::Stmt::Fail { .. }
                         | hir::Stmt::Break { .. }
                         | hir::Stmt::Continue { .. } => {
                             result = true;
@@ -812,6 +813,7 @@ fn block_definite_moves(m: &hir::Module, body: &hir::Body, bid: u32, out: &mut B
             match s {
                 hir::Stmt::Let { value, .. }
                 | hir::Stmt::Return { value }
+                | hir::Stmt::Fail { value }
                 | hir::Stmt::Assign { value, .. } => {
                     let scan = scan_expr(m, body, *value);
                     for (argid, _) in &scan.moves {
@@ -2170,6 +2172,20 @@ impl<'a> ResourceWalk<'a> {
                                     frees.remove(&local.0);
                                 }
                             }
+                            self.emit_exit_frees(m, (bid, Some(idx)), &frees);
+                            frame.flow_done = true;
+                        }
+                        hir::Stmt::Fail { value } => {
+                            let scan = scan_expr(m, self.body, value);
+                            self.reject_conditional_moves(&scan);
+                            let st_snapshot = frame.st.clone();
+                            self.check_reads(&st_snapshot, &chain, &scan.reads);
+                            let moved = self.validate_moves(m, &st_snapshot, &scan, &chain);
+                            for l in &moved {
+                                frame.st.live.remove(l);
+                                frame.st.dead.insert(*l, DeadCause::Moved);
+                            }
+                            let frees: BTreeSet<u32> = frame.st.live.keys().copied().collect();
                             self.emit_exit_frees(m, (bid, Some(idx)), &frees);
                             frame.flow_done = true;
                         }

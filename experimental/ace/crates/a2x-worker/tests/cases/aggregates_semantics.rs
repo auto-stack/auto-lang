@@ -172,3 +172,195 @@ fn aggregates_c_true_chain() {
     let _ = std::fs::remove_dir_all(&store);
     let _ = std::fs::remove_dir_all(&outroot);
 }
+
+const M2_CONTROL_EFFECTS_CASES: &[(&str, &str, i32)] = &[
+    (
+        "m2-gen-sum",
+        "\
+fn counter() ~Iter<int> {
+    yield 1
+    yield 2
+    yield 3
+}
+fn main() int {
+    var s = 0
+    for n in counter() {
+        s = s + n
+    }
+    return s
+}",
+        6,
+    ),
+    (
+        "m2-coalesce-is-prop",
+        "\
+fn parse(ok bool) !int {
+    if ok { return Ok(20) }
+    Err(\"bad\")
+}
+fn add_two(ok bool) !int {
+    let v = parse(ok).?
+    Ok(v + 2)
+}
+fn main() int {
+    let a = Some(40) ?? 99
+    let b = None ?? 2
+    let c = add_two(true).?(0)
+    let d = add_two(false).?(5)
+    let e = is Some(3) {
+        Some(v) -> v
+        None -> 0
+    }
+    return a + b + c + d + e
+}",
+        72,
+    ),
+    (
+        "m2-try-finally-nested-break",
+        "\
+fn main() int {
+    var acc = 0
+    var log = 0
+    var i = 0
+    for i < 5 {
+        i = i + 1
+        try {
+            if i == 2 {
+                continue
+            }
+            if i == 4 {
+                break
+            }
+            acc = acc + i
+        } finally {
+            log = log + i
+        }
+    }
+    // acc: 1 + 3 = 4; log: 1 + 2 + 3 + 4 = 10
+    return acc * 10 + log
+}",
+        50,
+    ),
+];
+
+fn run_a2x_session_rust(name: &str, src: &str) -> String {
+    use ace_a2x_rust::RustTargetProvider;
+    use ace_a2x_store::A2xSession;
+    use ace_core::source::SourceProfile;
+    let store = std::env::temp_dir().join(format!("a2x-965-r-store-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("a2x-965-r-out-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut s = A2xSession::open(
+        &store,
+        "a2r-965",
+        "probe",
+        128 * 1024 * 1024,
+        RustTargetProvider::v1(),
+    )
+    .expect("open Rust session");
+    let asm = s
+        .cold_assemble_profile(src, SourceProfile::Aggregates, &[], "main", false)
+        .unwrap_or_else(|e| panic!("Rust assembly failed for {name}: {e:?}"));
+    for (path, content) in &asm.files {
+        let p = dir.join(path);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, content).unwrap();
+    }
+    std::fs::write(dir.join("manifest.json"), &asm.manifest).unwrap();
+    let exe = dir.join("out.exe");
+    let out =
+        std::process::Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()))
+            .args(["--edition", "2021", "-O", "-o"])
+            .arg(&exe)
+            .arg("main.rs")
+            .current_dir(&dir)
+            .output()
+            .expect("spawn rustc");
+    assert!(
+        out.status.success(),
+        "rustc failed for {name}:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let run = std::process::Command::new(&exe)
+        .current_dir(&dir)
+        .output()
+        .expect("run exe");
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&store);
+    String::from_utf8_lossy(&run.stdout).to_string()
+}
+
+#[test]
+fn aggregates_965_control_effects_rust() {
+    if !tools_available() {
+        eprintln!("infra-blocked: rustc unavailable — skipped");
+        return;
+    }
+    for &(name, src, want) in M2_CONTROL_EFFECTS_CASES {
+        let stdout = run_a2x_session_rust(name, src);
+        let line = stdout.lines().next().unwrap_or("");
+        let got: i32 = line
+            .strip_prefix("value:")
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or_else(|| panic!("{name} (Rust): expected value:{want}, got {stdout:?}"));
+        assert_eq!(got, want, "case {name} (Rust)");
+    }
+    let fail_stdout = run_a2x_session_rust("m2-uncaught-fail", "fn main() int { fail(\"boom\") }");
+    assert!(
+        fail_stdout.starts_with("trap:"),
+        "expected trap output for uncaught fail (Rust), got {fail_stdout:?}"
+    );
+}
+
+#[test]
+fn aggregates_965_control_effects_c() {
+    use ace_a2x_c::CTargetProvider;
+    use ace_a2x_store::A2xSession;
+    use ace_core::source::SourceProfile;
+    if !tools_available() {
+        eprintln!("infra-blocked: rustc unavailable — skipped");
+        return;
+    }
+    let store = std::env::temp_dir().join(format!("a2x-965-c-store-{}", std::process::id()));
+    let outroot = std::env::temp_dir().join(format!("a2x-965-c-out-{}", std::process::id()));
+    let run_c = |name: &str, src: &str| -> String {
+        let mut s = A2xSession::open(
+            &store,
+            "a2c-965",
+            "probe",
+            128 * 1024 * 1024,
+            CTargetProvider::v1(),
+        )
+        .expect("open C session");
+        let asm = s
+            .cold_assemble_profile(src, SourceProfile::Aggregates, &[], "main", false)
+            .unwrap_or_else(|e| panic!("C assembly failed for {name}: {e:?}"));
+        let dir = outroot.join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for (path, content) in &asm.files {
+            std::fs::write(dir.join(path), content).unwrap();
+        }
+        std::fs::write(dir.join("manifest.json"), &asm.manifest).unwrap();
+        let (stdout, _stderr) = ace_a2x_worker::crun::compile_and_run_c(&dir, "a2x_ag_965.exe")
+            .unwrap_or_else(|e| panic!("C compile/run failed for {name}: {e}"));
+        stdout
+    };
+    for &(name, src, want) in M2_CONTROL_EFFECTS_CASES {
+        let stdout = run_c(name, src);
+        let line = stdout.lines().next().unwrap_or("");
+        let got: i32 = line
+            .strip_prefix("value:")
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or_else(|| panic!("{name} (C): expected value:{want}, got {stdout:?}"));
+        assert_eq!(got, want, "case {name} (C)");
+    }
+    let fail_stdout = run_c("m2-uncaught-fail", "fn main() int { fail(\"boom\") }");
+    assert!(
+        fail_stdout.starts_with("trap:"),
+        "expected trap output for uncaught fail (C), got {fail_stdout:?}"
+    );
+    let _ = std::fs::remove_dir_all(&store);
+    let _ = std::fs::remove_dir_all(&outroot);
+}

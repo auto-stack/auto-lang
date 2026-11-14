@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::atom_text::Span;
 
-use super::ast::{self, Arg, ClosureBody, Expr, ExprKind, Stmt};
+use super::ast::{self, AggArmBody, Arg, ClosureBody, Expr, ExprKind, MatchPattern, Stmt};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct CaptureUse {
@@ -165,6 +165,31 @@ pub(crate) fn analyze_capture_uses(
             ExprKind::TextDisplay(inner) => {
                 visit_expr(inner, outer_locals, scopes, uses, by_name)
             }
+            ExprKind::Propagate { inner } => {
+                visit_expr(inner, outer_locals, scopes, uses, by_name)
+            }
+            ExprKind::UnwrapOr { inner, fallback } => {
+                visit_expr(inner, outer_locals, scopes, uses, by_name);
+                visit_expr(fallback, outer_locals, scopes, uses, by_name);
+            }
+            ExprKind::IsExpr { scrutinee, arms } => {
+                visit_expr(scrutinee, outer_locals, scopes, uses, by_name);
+                for arm in arms {
+                    let mut bound = BTreeSet::new();
+                    if let MatchPattern::Variant {
+                        binding: Some(b), ..
+                    } = &arm.pat
+                    {
+                        bound.insert(b.name.clone());
+                    }
+                    scopes.push(bound);
+                    match &arm.body {
+                        AggArmBody::Block(b) => visit_block(b, outer_locals, scopes, uses, by_name),
+                        AggArmBody::Expr(e) => visit_expr(e, outer_locals, scopes, uses, by_name),
+                    }
+                    scopes.pop();
+                }
+            }
         }
     }
 
@@ -275,6 +300,53 @@ pub(crate) fn analyze_capture_uses(
                     }
                 }
                 Stmt::Break { .. } | Stmt::Continue { .. } => {}
+                Stmt::Yield { value, .. } => {
+                    visit_expr(value, outer_locals, scopes, uses, by_name);
+                }
+                Stmt::AggIsMatch {
+                    scrutinee, arms, ..
+                } => {
+                    visit_expr(scrutinee, outer_locals, scopes, uses, by_name);
+                    for arm in arms {
+                        let mut bound = BTreeSet::new();
+                        if let MatchPattern::Variant {
+                            binding: Some(b), ..
+                        } = &arm.pat
+                        {
+                            bound.insert(b.name.clone());
+                        }
+                        scopes.push(bound);
+                        match &arm.body {
+                            AggArmBody::Block(b) => {
+                                visit_block(b, outer_locals, scopes, uses, by_name)
+                            }
+                            AggArmBody::Expr(e) => {
+                                visit_expr(e, outer_locals, scopes, uses, by_name)
+                            }
+                        }
+                        scopes.pop();
+                    }
+                }
+                Stmt::Try {
+                    body,
+                    catch,
+                    finally,
+                    ..
+                } => {
+                    visit_block(body, outer_locals, scopes, uses, by_name);
+                    if let Some(c) = catch {
+                        let mut bound = BTreeSet::new();
+                        if let Some(b) = &c.bind {
+                            bound.insert(b.name.clone());
+                        }
+                        scopes.push(bound);
+                        visit_block(&c.body, outer_locals, scopes, uses, by_name);
+                        scopes.pop();
+                    }
+                    if let Some(f) = finally {
+                        visit_block(f, outer_locals, scopes, uses, by_name);
+                    }
+                }
             }
         }
         scopes.pop();
@@ -447,12 +519,36 @@ pub(crate) fn scan_shared_capture_cells(
             | ExprKind::GenericType { .. }
             // PLAN-964: nil is a leaf.
             | ExprKind::NilLit => {}
+            ExprKind::TextDisplay(inner) | ExprKind::Propagate { inner } => {
+                visit_expr(inner, scopes, shared)
+            }
+            ExprKind::UnwrapOr { inner, fallback } => {
+                visit_expr(inner, scopes, shared);
+                visit_expr(fallback, scopes, shared);
+            }
+            ExprKind::IsExpr { scrutinee, arms } => {
+                visit_expr(scrutinee, scopes, shared);
+                for arm in arms {
+                    let mut bound = BTreeMap::new();
+                    if let MatchPattern::Variant {
+                        binding: Some(b), ..
+                    } = &arm.pat
+                    {
+                        bound.insert(b.name.clone(), (b.span.start, false));
+                    }
+                    scopes.push(bound);
+                    match &arm.body {
+                        AggArmBody::Block(b) => visit_block(b, scopes, shared),
+                        AggArmBody::Expr(e) => visit_expr(e, scopes, shared),
+                    }
+                    scopes.pop();
+                }
+            }
             ExprKind::ObjectLit { fields } => {
                 for f in fields {
                     visit_expr(&f.value, scopes, shared);
                 }
             }
-            ExprKind::TextDisplay(inner) => visit_expr(inner, scopes, shared),
         }
     }
 
@@ -549,6 +645,47 @@ pub(crate) fn scan_shared_capture_cells(
                     }
                 }
                 Stmt::Break { .. } | Stmt::Continue { .. } => {}
+                Stmt::Yield { value, .. } => visit_expr(value, scopes, shared),
+                Stmt::AggIsMatch {
+                    scrutinee, arms, ..
+                } => {
+                    visit_expr(scrutinee, scopes, shared);
+                    for arm in arms {
+                        let mut bound = BTreeMap::new();
+                        if let MatchPattern::Variant {
+                            binding: Some(b), ..
+                        } = &arm.pat
+                        {
+                            bound.insert(b.name.clone(), (b.span.start, false));
+                        }
+                        scopes.push(bound);
+                        match &arm.body {
+                            AggArmBody::Block(b) => visit_block(b, scopes, shared),
+                            AggArmBody::Expr(e) => visit_expr(e, scopes, shared),
+                        }
+                        scopes.pop();
+                    }
+                }
+                Stmt::Try {
+                    body,
+                    catch,
+                    finally,
+                    ..
+                } => {
+                    visit_block(body, scopes, shared);
+                    if let Some(c) = catch {
+                        let mut bound = BTreeMap::new();
+                        if let Some(b) = &c.bind {
+                            bound.insert(b.name.clone(), (b.span.start, false));
+                        }
+                        scopes.push(bound);
+                        visit_block(&c.body, scopes, shared);
+                        scopes.pop();
+                    }
+                    if let Some(f) = finally {
+                        visit_block(f, scopes, shared);
+                    }
+                }
             }
         }
         scopes.pop();

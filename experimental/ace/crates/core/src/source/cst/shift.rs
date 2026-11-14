@@ -26,7 +26,9 @@ fn shift_type_ann(t: &mut TypeAnn, delta: i64) {
         TypeRef::Record(id) => shift_ident(id, delta),
         // PLAN-935：类型变量引用同 ident 平移。
         TypeRef::TyVar(id) => shift_ident(id, delta),
-        TypeRef::Optional(inner) => shift_type_ann(inner, delta),
+        TypeRef::Optional(inner) | TypeRef::ResultBang(inner) | TypeRef::Stream(inner) => {
+            shift_type_ann(inner, delta)
+        }
         // PLAN-962：tuple 类型界平移。
         TypeRef::Tuple(args) => {
             for a in args {
@@ -193,7 +195,42 @@ fn shift_expr(e: &mut Expr, delta: i64) {
         }
         ExprKind::NilLit => {}
         ExprKind::TextDisplay(inner) => shift_expr(inner, delta),
+        ExprKind::Propagate { inner } => shift_expr(inner, delta),
+        ExprKind::UnwrapOr { inner, fallback } => {
+            shift_expr(inner, delta);
+            shift_expr(fallback, delta);
+        }
+        ExprKind::IsExpr { scrutinee, arms } => {
+            shift_expr(scrutinee, delta);
+            for a in arms.iter_mut() {
+                shift_agg_match_arm(a, delta);
+            }
+        }
     }
+}
+
+fn shift_agg_match_arm(a: &mut AggMatchArm, delta: i64) {
+    match &mut a.pat {
+        MatchPattern::Variant {
+            qual,
+            name,
+            binding,
+        } => {
+            if let Some(q) = qual {
+                shift_ident(q, delta);
+            }
+            shift_ident(name, delta);
+            if let Some(b) = binding {
+                shift_ident(b, delta);
+            }
+        }
+        MatchPattern::IntLit(_) | MatchPattern::BoolLit(_) | MatchPattern::Else => {}
+    }
+    match &mut a.body {
+        AggArmBody::Block(b) => shift_block(b, delta),
+        AggArmBody::Expr(e) => shift_expr(e, delta),
+    }
+    shift_span(&mut a.span, delta);
 }
 
 fn shift_match_arm(a: &mut MatchArm, delta: i64) {
@@ -317,6 +354,40 @@ fn shift_stmt(s: &mut Stmt, delta: i64) {
             shift_ident(var, delta);
             shift_expr(iter, delta);
             shift_block(body, delta);
+            shift_span(span, delta);
+        }
+        Stmt::AggIsMatch {
+            scrutinee,
+            arms,
+            span,
+        } => {
+            shift_expr(scrutinee, delta);
+            for a in arms.iter_mut() {
+                shift_agg_match_arm(a, delta);
+            }
+            shift_span(span, delta);
+        }
+        Stmt::Try {
+            body,
+            catch,
+            finally,
+            span,
+        } => {
+            shift_block(body, delta);
+            if let Some(c) = catch {
+                if let Some(b) = &mut c.bind {
+                    shift_ident(b, delta);
+                }
+                shift_block(&mut c.body, delta);
+                shift_span(&mut c.span, delta);
+            }
+            if let Some(f) = finally {
+                shift_block(f, delta);
+            }
+            shift_span(span, delta);
+        }
+        Stmt::Yield { value, span } => {
+            shift_expr(value, delta);
             shift_span(span, delta);
         }
     }

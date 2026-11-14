@@ -1290,7 +1290,7 @@ fn ty_name_t(
         // `t_nil` row.
         VT::Object(i) => format!("t_object_{}", i),
         VT::Nil => "t_nil".to_string(),
-        VT::Variant(i) => format!("t_variant_{}", variants[i].name),
+        VT::Variant(i) => variant_atom_id(i, variants),
         VT::Function(i) => format!("t_closure_sig_{}", i),
         // not reachable through a compiling entry-unit program (Unit is a
         // result type); the Atom id keeps the name meaningful for any
@@ -1299,6 +1299,18 @@ fn ty_name_t(
         // descriptor, so no named `t_unit` type entry exists — the bareword
         // resolves to `BuiltinType::Unit` at bind time.
         VT::Unit => "unit".to_string(),
+    }
+}
+
+fn variant_atom_id(
+    index: usize,
+    variants: &[crate::source::resolve::ResolvedVariant],
+) -> String {
+    let name = &variants[index].name;
+    if variants[..index].iter().any(|v| v.name == *name) {
+        format!("t_variant_{}_{}", name, index)
+    } else {
+        format!("t_variant_{}", name)
     }
 }
 
@@ -1530,6 +1542,9 @@ enum SKind {
     /// PLAN-864: a unit-effect statement (push/insert/set/clear) — the
     /// value is evaluated for effect only; no result slot exists.
     Eval {
+        value: usize,
+    },
+    Fail {
         value: usize,
     },
 }
@@ -1934,6 +1949,13 @@ impl PlanCtx<'_> {
                     let v = self.plan_expr(plan, f, value);
                     plan.blocks[home].stmts.push(SNode {
                         kind: SKind::Return { value: v },
+                        span: *span,
+                    });
+                }
+                RStmt::Fail { value, span } => {
+                    let v = self.plan_expr(plan, f, value);
+                    plan.blocks[home].stmts.push(SNode {
+                        kind: SKind::Fail { value: v },
                         span: *span,
                     });
                 }
@@ -3379,7 +3401,7 @@ fn stmt_term_memo(s: &RStmt, terms: &BTreeMap<usize, Option<Term>>) -> Term {
             .unwrap_or(None)
     };
     match s {
-        RStmt::Return { .. } => Term::Ret,
+        RStmt::Return { .. } | RStmt::Fail { .. } => Term::Ret,
         // PLAN-862: reachable only in the gated-off entry-unit emitter.
         RStmt::ExprStmt { .. } => Term::No,
         RStmt::Break { target, .. } | RStmt::Continue { target, .. } => match target {
@@ -3481,6 +3503,7 @@ fn stmt_span(s: &RStmt) -> Span {
         RStmt::Let { span, .. }
         | RStmt::Assign { span, .. }
         | RStmt::Return { span, .. }
+        | RStmt::Fail { span, .. }
         | RStmt::If { span, .. }
         | RStmt::While { span, .. }
         | RStmt::Loop { span, .. }
@@ -3923,7 +3946,7 @@ impl<'p> Emitter<'p> {
                 spans.types.push(program_span);
                 nl!(12);
             }
-            for v in &self.program.variants {
+            for (vi, v) in self.program.variants.iter().enumerate() {
                 // Interned body-local Option/Result entries can outlive the
                 // source revision that created their name_span. In a scoped
                 // document these declarations are inert interface metadata,
@@ -3955,8 +3978,8 @@ impl<'p> Emitter<'p> {
                     .collect();
                 frag!(
                     &format!(
-                        "type t_variant_{} variant {{ arms: [{}] }}",
-                        v.name,
+                        "type {} variant {{ arms: [{}] }}",
+                        variant_atom_id(vi, &self.program.variants),
                         arms.join(", ")
                     ),
                     span
@@ -4537,6 +4560,9 @@ impl<'p> Emitter<'p> {
                                     BinOp::And | BinOp::Or => {
                                         unreachable!("logical ops lower to Logical")
                                     }
+                                    BinOp::NullCoalesce => {
+                                        unreachable!("?? lowers to control flow in resolve")
+                                    }
                                 };
                                 let word = crate::hir::num_op_atom(kind, bty);
                                 let overflow = if matches!(
@@ -5022,6 +5048,9 @@ impl<'p> Emitter<'p> {
                         SKind::Eval { value } => {
                             format!("eval(value: e{}) {{}}", value)
                         }
+                        SKind::Fail { value } => {
+                            format!("fail(value: e{}) {{}}", value)
+                        }
                     };
                     frag!(&line, s.span);
                     nl!(24);
@@ -5215,6 +5244,7 @@ fn bin_op_atom(op: BinOp) -> (&'static str, &'static str) {
         BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor => {
             unreachable!("bit ops render via the typed Num word")
         }
+        BinOp::NullCoalesce => unreachable!("?? lowers to control flow in resolve"),
     }
 }
 

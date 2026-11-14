@@ -1,0 +1,5 @@
+// PLAN-965 T-08 negative: `rethrow` outside a `catch` is rejected cleanly.
+fn main() int {
+    rethrow()
+    return 0
+}

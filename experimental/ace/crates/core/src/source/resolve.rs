@@ -17,9 +17,12 @@ use super::{meta_intrinsic, trace_intrinsic, SourceProfile, META_CAPABILITY, TRA
 use crate::atom_text::{Diagnostic, Span, Stage};
 use std::collections::{BTreeMap, BTreeSet};
 
+#[path = "agg_lower.rs"]
+mod agg_lower;
+
 /// Value type of the profile: `int`/`i32` are the same exact signed 32-bit
 /// type; `bool` is distinct with no implicit conversions.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum VT {
     I32,
     Bool,
@@ -195,6 +198,7 @@ pub fn bin_op_vt(op: BinOp) -> VT {
         | BinOp::Ne
         | BinOp::And
         | BinOp::Or => VT::Bool,
+        BinOp::NullCoalesce => unreachable!("?? lowers to control flow in resolve"),
     }
 }
 
@@ -821,6 +825,11 @@ pub enum RStmt {
         value: ResolvedExpr,
         span: Span,
     },
+    /// PLAN-965: language-level error unwind (`fail(msg)` / uncaught `.?`).
+    Fail {
+        value: ResolvedExpr,
+        span: Span,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -1022,6 +1031,22 @@ impl CollTables {
         name_span: Span,
         arms: Vec<(String, Option<VT>)>,
     ) -> usize {
+        if matches!(name, "Option" | "Result") {
+            if let Some(i) = self
+                .variants
+                .iter()
+                .position(|v| v.name == name && v.arms == arms)
+            {
+                return i;
+            }
+            let i = self.variants.len();
+            self.variants.push(ResolvedVariant {
+                name: name.to_string(),
+                name_span,
+                arms,
+            });
+            return i;
+        }
         if let Some(&i) = self.variant_names.get(name) {
             return i;
         }
@@ -1968,6 +1993,14 @@ fn resolve_detailed(
             }
         }
     }
+    // Pass 1b (PLAN-965 M2-A): Pre-register synthesized generator iterator records
+    // before function signatures resolve so `~Iter<T>` / `Iter<T>` map to `VT::Rec(ri)`.
+    let mut agg_iter_reg = if surface.is_aggregates() {
+        agg_lower::collect_agg_iter_records(program, &mut records, &mut rec_index, &mut coll)
+    } else {
+        agg_lower::AggIterRegistry::default()
+    };
+
     for (i, f) in flat.iter().enumerate() {
         let _ = &f;
         let owner_ty = fn_owner[i]
@@ -2053,6 +2086,21 @@ fn resolve_detailed(
         }
     }
 
+    if surface.is_aggregates() && !agg_iter_reg.by_elem.is_empty() {
+        agg_lower::register_agg_iter_sigs(&mut agg_iter_reg, &mut sigs, &records, flat.len());
+    }
+    let iter_info: BTreeMap<usize, (VT, VT, usize, usize)> = agg_iter_reg
+        .by_elem
+        .iter()
+        .map(|m| {
+            (
+                m.rec_idx,
+                (m.elem_vt, m.opt_vt, m.next_fn_index, m.close_fn_index),
+            )
+        })
+        .collect();
+    let has_synth_iters = !agg_iter_reg.by_elem.is_empty();
+
     // PLAN-909 §5.5 warm seeding: cached owners reference the module's
     // closure-signature table by INDEX; seeding the fresh table with the
     // previous snapshot keeps every cached index valid (interning is
@@ -2116,7 +2164,11 @@ fn resolve_detailed(
                     params: sig.params,
                     defaults: vec![None; foreign_slots],
                     result: sig.result,
-                    index: flat.len() + index,
+                    index: if has_synth_iters {
+                        agg_lower::FOREIGN_INDEX_SENTINEL + index
+                    } else {
+                        flat.len() + index
+                    },
                 },
             );
         }
@@ -2131,6 +2183,9 @@ fn resolve_detailed(
     // zero `resolve` body-work for that owner.
     let mut fns = Vec::new();
     let mut closure_fns = Vec::new();
+    let synth_iter_count = agg_iter_reg.synth_fn_count();
+    let closure_base = flat.len() + synth_iter_count;
+
     for (i, f) in flat.iter().enumerate() {
         let owner_name = f.name.name.clone();
         let text_fp = warm.as_ref().map(|w| {
@@ -2164,7 +2219,9 @@ fn resolve_detailed(
         crate::body_work::record_resolve(&f.name.name);
         let lambdas_before = closure_fns.len();
         let mut sites = Vec::new();
-        fns.push(resolve_fn(
+        let gen_meta = agg_iter_reg.gen_fns.get(&i).copied();
+        let mut gen_try_finals = Vec::new();
+        let mut resolved = resolve_fn_agg(
             f,
             &sigs,
             trace_enabled,
@@ -2179,9 +2236,62 @@ fn resolve_detailed(
             &mut coll,
             &mut closure_fns,
             &mut sites,
-            flat.len(),
+            closure_base,
             supply,
-        ));
+            gen_meta.is_some(),
+            &iter_info,
+            if gen_meta.is_some() {
+                Some(&mut gen_try_finals)
+            } else {
+                None
+            },
+        );
+        // PLAN-965 (V-03, M2-A): a generator body is lowered to a state
+        // record that stores every live parameter BY VALUE and runs in
+        // `__ace_iter_next` / `__ace_iter_close`, long after the creating
+        // call returned. Borrowed parameters therefore cannot be carried
+        // across a yield: a `mut` borrow would lose its writes (its owner may
+        // be reassigned/dropped meanwhile) and a view/`str` slice would
+        // outlive its owner. Both are named rejections instead of a MIR
+        // verification failure or silently-dropped write. Owned values —
+        // scalars, `List`/`Object`/`Variant` handles, owned `Str` — stay
+        // supported and are how a generator observes its close effect.
+        if gen_meta.is_some() {
+            let param_count = resolved.params.len();
+            for decl in resolved.locals.iter().take(param_count) {
+                let borrowed_view = matches!(decl.vt, VT::Rec(_) | VT::Str);
+                if decl.mode == ast::ParamMode::Mut || borrowed_view {
+                    let what = if decl.mode == ast::ParamMode::Mut {
+                        "`mut` parameter"
+                    } else {
+                        "borrowed parameter"
+                    };
+                    diags.push(Diagnostic::new(
+                        Stage::Bind,
+                        "source.generator-borrow-param",
+                        format!(
+                            "{what} `{}` cannot be held by a `~Iter<T>` generator: the suspended \
+                             state record stores parameters by value, so a borrow cannot cross a \
+                             `yield`; pass an owned value or a `List` handle instead",
+                            decl.name
+                        ),
+                        decl.span,
+                    ));
+                }
+            }
+        }
+        if let Some((meta_idx, gen_id)) = gen_meta {
+            agg_lower::finalize_one_generator(
+                &mut resolved,
+                meta_idx,
+                gen_id,
+                &gen_try_finals,
+                &mut agg_iter_reg,
+                &mut records,
+                &mut coll,
+            );
+        }
+        fns.push(resolved);
         if let (Some(w), Some(fp)) = (warm.as_mut(), text_fp) {
             let lambdas: Vec<ResolvedFn> = closure_fns[lambdas_before..].to_vec();
             let resolved = fns.last().expect("just pushed").clone();
@@ -2196,7 +2306,13 @@ fn resolve_detailed(
             );
         }
     }
+    if surface.is_aggregates() && !agg_iter_reg.by_elem.is_empty() {
+        agg_lower::build_all_generator_fns(&mut fns, &agg_iter_reg, &records, &mut coll);
+    }
     fns.extend(closure_fns);
+    if has_synth_iters {
+        patch_foreign_sentinels(&mut fns, &mut sigs);
+    }
     if let Some(w) = warm.as_mut() {
         w.out.function_types = coll.function_types.clone();
     }
@@ -2207,6 +2323,8 @@ fn resolve_detailed(
     // statement's RESOLVED type.
     if surface.is_entry_unit() {
         check_entry_matrix(&mut fns, &flat, &mut diags);
+    } else if surface.is_aggregates() {
+        normalize_aggregates_bodies(&mut fns, &flat, &agg_iter_reg, &mut sigs);
     }
 
     if diags.is_empty() {
@@ -2472,6 +2590,253 @@ fn check_entry_matrix(fns: &mut [ResolvedFn], flat: &[&ast::FnItem], diags: &mut
                     );
                     *last = match taken {
                         RStmt::ExprStmt { value, span } if !is_console_effect(&value) => {
+                            RStmt::Return { value, span }
+                        }
+                        other => other,
+                    };
+                }
+            }
+        }
+    }
+}
+
+fn patch_foreign_sentinels(fns: &mut [ResolvedFn], sigs: &mut BTreeMap<String, FnSig>) {
+    let base = fns.len();
+    let patch_idx = |idx: &mut usize| {
+        if *idx >= agg_lower::FOREIGN_INDEX_SENTINEL {
+            *idx = base + (*idx - agg_lower::FOREIGN_INDEX_SENTINEL);
+        }
+    };
+    for sig in sigs.values_mut() {
+        patch_idx(&mut sig.index);
+    }
+    fn patch_expr(e: &mut ResolvedExpr, patch_idx: &impl Fn(&mut usize)) {
+        match &mut e.kind {
+            RExprKind::CallFn { fn_index, args } => {
+                patch_idx(fn_index);
+                for a in args {
+                    patch_expr(&mut a.value, patch_idx);
+                }
+            }
+            RExprKind::MethodCall {
+                fn_index,
+                recv,
+                args,
+            } => {
+                patch_idx(fn_index);
+                if let Some(r) = recv {
+                    patch_expr(r, patch_idx);
+                }
+                for a in args {
+                    patch_expr(&mut a.value, patch_idx);
+                }
+            }
+            RExprKind::Binary { lhs, rhs, .. } => {
+                patch_expr(lhs, patch_idx);
+                patch_expr(rhs, patch_idx);
+            }
+            RExprKind::Unary { operand, .. }
+            | RExprKind::Move { inner: operand }
+            | RExprKind::RecordClone { base: operand }
+            | RExprKind::ListLen { list: operand }
+            | RExprKind::ListClear { list: operand }
+            | RExprKind::TextDisplay { operand }
+            | RExprKind::TupleGet { base: operand, .. }
+            | RExprKind::FieldGet { base: operand, .. } => patch_expr(operand, patch_idx),
+            RExprKind::CtorPos { args, .. } => {
+                for a in args {
+                    patch_expr(&mut a.value, patch_idx);
+                }
+            }
+            RExprKind::Method { recv, args, .. } => {
+                patch_expr(recv, patch_idx);
+                for a in args {
+                    patch_expr(&mut a.value, patch_idx);
+                }
+            }
+            RExprKind::CtorNamed { fields, .. } => {
+                for (_, v) in fields {
+                    patch_expr(v, patch_idx);
+                }
+            }
+            RExprKind::TupleLit { elems }
+            | RExprKind::CallIntrinsic { args: elems, .. }
+            | RExprKind::ObjectCtor { args: elems, .. } => {
+                for v in elems {
+                    patch_expr(v, patch_idx);
+                }
+            }
+            RExprKind::CallGlobalSet { value, .. } => patch_expr(value, patch_idx),
+            RExprKind::CallClosure { callee, args } => {
+                patch_expr(callee, patch_idx);
+                for a in args {
+                    patch_expr(&mut a.value, patch_idx);
+                }
+            }
+            RExprKind::ListGet { list, index }
+            | RExprKind::ListRemove { list, index }
+            | RExprKind::ListFieldGet { list, index, .. }
+            | RExprKind::ElemView { list, index, .. }
+            | RExprKind::ObjectGet {
+                base: list,
+                key: index,
+            } => {
+                patch_expr(list, patch_idx);
+                patch_expr(index, patch_idx);
+            }
+            RExprKind::ListPush { list, value } => {
+                patch_expr(list, patch_idx);
+                patch_expr(value, patch_idx);
+            }
+            RExprKind::ListInsert { list, index, value }
+            | RExprKind::ListSet { list, index, value } => {
+                patch_expr(list, patch_idx);
+                patch_expr(index, patch_idx);
+                patch_expr(value, patch_idx);
+            }
+            RExprKind::VariantCtor { payload, .. } => {
+                if let Some(p) = payload {
+                    patch_expr(p, patch_idx);
+                }
+            }
+            RExprKind::FStr { parts } => {
+                for part in parts {
+                    match part {
+                        FStrPart::Text(x) | FStrPart::Expr(x) => patch_expr(x, patch_idx),
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    fn patch_block(block: &mut RBlock, patch_idx: &impl Fn(&mut usize)) {
+        for s in &mut block.stmts {
+            patch_stmt(s, patch_idx);
+        }
+    }
+    fn patch_stmt(s: &mut RStmt, patch_idx: &impl Fn(&mut usize)) {
+        match s {
+            RStmt::Let { value, .. }
+            | RStmt::Assign { value, .. }
+            | RStmt::Return { value, .. }
+            | RStmt::ExprStmt { value, .. }
+            | RStmt::Fail { value, .. } => patch_expr(value, patch_idx),
+            RStmt::If {
+                cond, then, els, ..
+            } => {
+                patch_expr(cond, patch_idx);
+                patch_block(then, patch_idx);
+                if let Some(eb) = els {
+                    patch_block(eb, patch_idx);
+                }
+            }
+            RStmt::While { cond, body, .. } => {
+                patch_expr(cond, patch_idx);
+                patch_block(body, patch_idx);
+            }
+            RStmt::Loop { body, .. } => patch_block(body, patch_idx),
+            RStmt::Break { .. } | RStmt::Continue { .. } => {}
+        }
+    }
+    for f in fns.iter_mut() {
+        patch_block(&mut f.body, &patch_idx);
+    }
+}
+
+fn normalize_aggregates_bodies(
+    fns: &mut [ResolvedFn],
+    flat: &[&ast::FnItem],
+    agg_iter_reg: &agg_lower::AggIterRegistry,
+    sigs: &mut BTreeMap<String, FnSig>,
+) {
+    for (i, item) in flat.iter().enumerate() {
+        if agg_iter_reg.gen_fns.contains_key(&i) {
+            continue;
+        }
+        let f = &mut fns[i];
+        let end_span = f.item_span;
+        if item.script {
+            let tail_val_vt = match f.body.stmts.last() {
+                Some(RStmt::ExprStmt { value, .. })
+                    if !is_console_effect(value) && value.vt != VT::Unit =>
+                {
+                    Some(value.vt)
+                }
+                _ => None,
+            };
+            if let Some(vt) = tail_val_vt {
+                f.result = vt;
+                if let Some(sig) = sigs.get_mut(&f.name) {
+                    sig.result = vt;
+                }
+                if let Some(last) = f.body.stmts.last_mut() {
+                    let taken = std::mem::replace(
+                        last,
+                        RStmt::Break {
+                            target: None,
+                            span: end_span,
+                        },
+                    );
+                    *last = match taken {
+                        RStmt::ExprStmt { value, span } => RStmt::Return { value, span },
+                        other => other,
+                    };
+                }
+            } else if matches!(f.body.stmts.last(), Some(RStmt::Fail { .. })) {
+                // PLAN-965: diverging standalone script (e.g. top-level uncaught `.?`
+                // ending in `fail(...)`) never returns normally; keep scalar `I32`
+                // result so `mir.entry-sig` accepts the script entry function.
+                f.result = VT::I32;
+                if let Some(sig) = sigs.get_mut(&f.name) {
+                    sig.result = VT::I32;
+                }
+            } else {
+                f.result = VT::Unit;
+                if let Some(sig) = sigs.get_mut(&f.name) {
+                    sig.result = VT::Unit;
+                }
+                if !matches!(
+                    f.body.stmts.last(),
+                    Some(RStmt::Return { .. } | RStmt::Fail { .. })
+                ) {
+                    f.body.stmts.push(RStmt::Return {
+                        value: ResolvedExpr {
+                            kind: RExprKind::Unit,
+                            span: end_span,
+                            vt: VT::Unit,
+                        },
+                        span: end_span,
+                    });
+                }
+            }
+        } else if f.result == VT::Unit {
+            if !matches!(
+                f.body.stmts.last(),
+                Some(RStmt::Return { .. } | RStmt::Fail { .. })
+            ) {
+                f.body.stmts.push(RStmt::Return {
+                    value: ResolvedExpr {
+                        kind: RExprKind::Unit,
+                        span: end_span,
+                        vt: VT::Unit,
+                    },
+                    span: end_span,
+                });
+            }
+        } else if let Some(RStmt::ExprStmt { value, .. }) = f.body.stmts.last() {
+            if !is_console_effect(value) && value.vt != VT::Unit {
+                let target_vt = f.result;
+                if let Some(last) = f.body.stmts.last_mut() {
+                    let taken = std::mem::replace(
+                        last,
+                        RStmt::Break {
+                            target: None,
+                            span: end_span,
+                        },
+                    );
+                    *last = match taken {
+                        RStmt::ExprStmt { mut value, span } => {
+                            retag_literal(&mut value, target_vt);
                             RStmt::Return { value, span }
                         }
                         other => other,
@@ -3404,6 +3769,16 @@ pub(crate) fn resolve_lambda_in_context(
             lambda_sites: &mut nested_sites,
             reuse: None,
             supply: None,
+            stmt_sinks: vec![Vec::new()],
+            ctrl_frames: Vec::new(),
+            ctrl_state: None,
+            catch_err_locals: Vec::new(),
+            is_generator: false,
+            is_script: false,
+            iter_info: &EMPTY_ITER_INFO,
+            agg_tmp_counter: 0,
+            expr_diverged: false,
+            gen_try_finals: Vec::new(),
         };
         r.lambda_body(params, body, &site.capture_decls, expr.span)
     };
@@ -3594,6 +3969,9 @@ pub(crate) fn resolve_owner_in_env(
         &mut sites,
         env.program.fns.len(),
         Some(&mut reuse),
+        None,
+        false,
+        &EMPTY_ITER_INFO,
         None,
     );
     if !diags.is_empty() {
@@ -4041,6 +4419,25 @@ fn vt_of_ann(
             ));
             VT::I32
         }
+        ast::TypeRef::ResultBang(_) => {
+            diags.push(Diagnostic::new(
+                Stage::Bind,
+                "source.unsupported",
+                "error types (`!T`) are part of the aggregates source profile".to_string(),
+                ann.span,
+            ));
+            VT::I32
+        }
+        ast::TypeRef::Stream(_) => {
+            diags.push(Diagnostic::new(
+                Stage::Bind,
+                "source.unsupported",
+                "generator stream types (`~Iter<T>`) are part of the aggregates source profile"
+                    .to_string(),
+                ann.span,
+            ));
+            VT::I32
+        }
     }
 }
 
@@ -4144,7 +4541,7 @@ fn vt_of_ann_coll(
             }
         },
         ast::TypeRef::Optional(inner) => {
-            if matches!(pos, TypePos::Field | TypePos::Param) {
+            if matches!(pos, TypePos::Field | TypePos::Param) && !coll.aggregates_admission {
                 return reject(
                     diags,
                     VT::I32,
@@ -4252,7 +4649,7 @@ fn vt_of_ann_coll(
                 }
             }
             ("Result", 2) => {
-                if matches!(pos, TypePos::Field | TypePos::Param) {
+                if matches!(pos, TypePos::Field | TypePos::Param) && !coll.aggregates_admission {
                     return reject(
                         diags,
                         VT::I32,
@@ -4316,6 +4713,28 @@ fn vt_of_ann_coll(
                 ));
                 VT::I32
             }
+            ("Iter", 1) if coll.aggregates_admission => {
+                let elem =
+                    vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::ContainerPayload);
+                let key = iter_record_name(elem);
+                rec_index
+                    .get(&key)
+                    .map(|&ri| VT::Rec(ri))
+                    .unwrap_or_else(|| {
+                        reject(
+                            diags,
+                            VT::I32,
+                            format!("internal: missing iterator state record `{}`", key),
+                            ann.span,
+                        )
+                    })
+            }
+            ("Iter", _) => reject(
+                diags,
+                VT::I32,
+                "iterator types (`Iter<T>`) are part of the aggregates source profile".to_string(),
+                ann.span,
+            ),
             (other, n) => {
                 diags.push(Diagnostic::new(
                     Stage::Bind,
@@ -4363,7 +4782,77 @@ fn vt_of_ann_coll(
                 result,
             }))
         }
+        ast::TypeRef::ResultBang(inner) => {
+            if !coll.aggregates_admission {
+                return reject(
+                    diags,
+                    VT::I32,
+                    "error types (`!T`) are part of the aggregates source profile".to_string(),
+                    ann.span,
+                );
+            }
+            let ok_vt = vt_of_ann_coll(inner, rec_index, coll, diags, TypePos::ContainerPayload);
+            let vi = coll.intern_variant(
+                "Result",
+                ann.span,
+                vec![
+                    ("Ok".to_string(), Some(ok_vt)),
+                    ("Err".to_string(), Some(VT::StrOwned)),
+                ],
+            );
+            VT::Variant(vi)
+        }
+        ast::TypeRef::Stream(inner) => {
+            if !coll.aggregates_admission {
+                return reject(
+                    diags,
+                    VT::I32,
+                    "generator stream types (`~Iter<T>`) are part of the aggregates source profile"
+                        .to_string(),
+                    ann.span,
+                );
+            }
+            let elem = vt_of_ann_coll(inner, rec_index, coll, diags, TypePos::ContainerPayload);
+            let key = iter_record_name(elem);
+            rec_index
+                .get(&key)
+                .map(|&ri| VT::Rec(ri))
+                .unwrap_or_else(|| {
+                    reject(
+                        diags,
+                        VT::I32,
+                        format!("internal: missing iterator state record `{}`", key),
+                        ann.span,
+                    )
+                })
+        }
     }
+}
+
+pub(crate) fn iter_record_name(elem: VT) -> String {
+    let suffix = match elem {
+        VT::I32 => "i32".to_string(),
+        VT::Bool => "bool".to_string(),
+        VT::Str => "str".to_string(),
+        VT::StrOwned => "Str".to_string(),
+        VT::Char => "char".to_string(),
+        VT::Rec(r) => format!("r{r}"),
+        VT::Unit => "unit".to_string(),
+        VT::List(l) => format!("l{l}"),
+        VT::Variant(v) => format!("v{v}"),
+        VT::Function(f) => format!("f{f}"),
+        VT::Tuple(t) => format!("t{t}"),
+        VT::Object(o) => format!("o{o}"),
+        VT::Nil => "nil".to_string(),
+        VT::I8 => "i8".to_string(),
+        VT::U8 => "u8".to_string(),
+        VT::U32 => "u32".to_string(),
+        VT::I64 => "i64".to_string(),
+        VT::U64 => "u64".to_string(),
+        VT::F32 => "f32".to_string(),
+        VT::F64 => "f64".to_string(),
+    };
+    format!("__ace_iter_{suffix}")
 }
 
 struct Scope {
@@ -4469,6 +4958,89 @@ struct FnResolver<'a, 's> {
     /// a `FnSig.index` addresses a SOURCE function (foreign declarations
     /// index above it); callback-by-name targets are source fns only.
     source_fn_count: usize,
+    stmt_sinks: Vec<Vec<RStmt>>,
+    ctrl_frames: Vec<CtrlFrame>,
+    ctrl_state: Option<AggCtrlLocals>,
+    catch_err_locals: Vec<LocalRef>,
+    is_generator: bool,
+    is_script: bool,
+    iter_info: &'a BTreeMap<usize, (VT, VT, usize, usize)>,
+    agg_tmp_counter: usize,
+    expr_diverged: bool,
+    gen_try_finals: Vec<(LoopRef, LoopRef)>,
+}
+
+static EMPTY_ITER_INFO: BTreeMap<usize, (VT, VT, usize, usize)> = BTreeMap::new();
+
+#[derive(Clone, Copy, Debug)]
+struct AggCtrlLocals {
+    kind: LocalRef,
+    ret_val: LocalRef,
+    ret_opt_vi: Option<usize>,
+    target_loop: LocalRef,
+    err: LocalRef,
+}
+
+#[derive(Clone, Debug)]
+enum CtrlFrame {
+    Loop {
+        target: LoopRef,
+    },
+    ForIter {
+        target: LoopRef,
+        iter_local: LocalRef,
+        close_fn_index: usize,
+    },
+    Try {
+        try_loop: LoopRef,
+        has_catch: bool,
+    },
+}
+
+#[allow(clippy::too_many_arguments)]
+fn resolve_fn_agg(
+    f: &FnItem,
+    sigs: &BTreeMap<String, FnSig>,
+    trace_enabled: bool,
+    meta_enabled: bool,
+    ct_enabled: bool,
+    surface: SourceProfile,
+    diags: &mut Vec<Diagnostic>,
+    receiver: ast::Receiver,
+    owner_rec: Option<usize>,
+    records: &[ResolvedRecord],
+    rec_index: &BTreeMap<String, usize>,
+    coll: &mut CollTables,
+    closure_defs: &mut Vec<ResolvedFn>,
+    lambda_sites: &mut Vec<LambdaSiteFacts>,
+    closure_base: usize,
+    supply: Option<&dyn TypeSupply>,
+    is_generator: bool,
+    iter_info: &BTreeMap<usize, (VT, VT, usize, usize)>,
+    gen_try_finals: Option<&mut Vec<(LoopRef, LoopRef)>>,
+) -> ResolvedFn {
+    resolve_fn_reuse(
+        f,
+        sigs,
+        trace_enabled,
+        meta_enabled,
+        ct_enabled,
+        surface,
+        diags,
+        receiver,
+        owner_rec,
+        records,
+        rec_index,
+        coll,
+        closure_defs,
+        lambda_sites,
+        closure_base,
+        None,
+        supply,
+        is_generator,
+        iter_info,
+        gen_try_finals,
+    )
 }
 
 fn resolve_fn(
@@ -4507,6 +5079,9 @@ fn resolve_fn(
         closure_base,
         None,
         supply,
+        false,
+        &EMPTY_ITER_INFO,
+        None,
     )
 }
 
@@ -4532,6 +5107,9 @@ fn resolve_fn_reuse<'a, 's>(
     _closure_base: usize,
     reuse: Option<&'a mut LambdaReuse<'s>>,
     supply: Option<&'a dyn TypeSupply>,
+    is_generator: bool,
+    iter_info: &'a BTreeMap<usize, (VT, VT, usize, usize)>,
+    gen_try_finals: Option<&mut Vec<(LoopRef, LoopRef)>>,
 ) -> ResolvedFn {
     let is_coll = surface.is_collections();
     let fn_result = if is_coll {
@@ -4571,6 +5149,16 @@ fn resolve_fn_reuse<'a, 's>(
         reuse,
         supply,
         source_fn_count: _closure_base,
+        stmt_sinks: vec![Vec::new()],
+        ctrl_frames: Vec::new(),
+        ctrl_state: None,
+        catch_err_locals: Vec::new(),
+        is_generator,
+        is_script: f.script,
+        iter_info,
+        agg_tmp_counter: 0,
+        expr_diverged: false,
+        gen_try_finals: Vec::new(),
     };
     let mut param_names: Vec<String> = Vec::new();
     let mut params: Vec<VT> = Vec::new();
@@ -4652,7 +5240,11 @@ fn resolve_fn_reuse<'a, 's>(
         params.push(vt);
         param_modes.push(p.mode == ast::ParamMode::Mut);
     }
-    let body = r.resolve_body(&f.body);
+    let mut body = r.resolve_body(&f.body);
+    r.prepend_ctrl_inits(&mut body, f.span);
+    if let Some(out) = gen_try_finals {
+        *out = r.gen_try_finals;
+    }
     let sig_key = if receiver == ast::Receiver::Free {
         f.name.name.clone()
     } else {
@@ -4889,6 +5481,20 @@ impl<'a, 's> FnResolver<'a, 's> {
             | ExprKind::GenericType { .. }
             | ExprKind::ObjectLit { .. }
             | ExprKind::TextDisplay(_) => VT::I32,
+            ExprKind::Propagate { inner } | ExprKind::UnwrapOr { inner, .. } => {
+                let ivt = self.infer_closure_expr(inner, locals);
+                agg_lower::variant_unwrap_info(ivt, self.coll)
+                    .map(|u| u.success_vt)
+                    .unwrap_or(VT::I32)
+            }
+            ExprKind::IsExpr { arms, .. } => {
+                for a in arms {
+                    if let ast::AggArmBody::Expr(e) = &a.body {
+                        return self.infer_closure_expr(e, locals);
+                    }
+                }
+                VT::I32
+            }
         }
     }
 
@@ -4981,7 +5587,33 @@ impl<'a, 's> FnResolver<'a, 's> {
                     Stmt::ExprStmt { .. }
                     | Stmt::Assign { .. }
                     | Stmt::Break { .. }
-                    | Stmt::Continue { .. } => {}
+                    | Stmt::Continue { .. }
+                    | Stmt::Yield { .. } => {}
+                    Stmt::AggIsMatch { arms, .. } => {
+                        for arm in arms.iter().rev() {
+                            if let ast::AggArmBody::Block(b) = &arm.body {
+                                blocks.push((b, visible.clone()));
+                            }
+                        }
+                    }
+                    Stmt::Try {
+                        body,
+                        catch,
+                        finally,
+                        ..
+                    } => {
+                        if let Some(f) = finally {
+                            blocks.push((f, visible.clone()));
+                        }
+                        if let Some(c) = catch {
+                            let mut nested = visible.clone();
+                            if let Some(b) = &c.bind {
+                                nested.insert(b.name.clone(), VT::StrOwned);
+                            }
+                            blocks.push((&c.body, nested));
+                        }
+                        blocks.push((body, visible.clone()));
+                    }
                 }
             }
         }
@@ -5176,6 +5808,11 @@ impl<'a, 's> FnResolver<'a, 's> {
         let old_moved = std::mem::replace(&mut self.moved_locals, BTreeSet::new());
         let old_borrowed = std::mem::replace(&mut self.borrowed_closure_locals, BTreeSet::new());
         let old_iterate = std::mem::replace(&mut self.iterate_targets, Vec::new());
+        let old_ctrl_frames = std::mem::replace(&mut self.ctrl_frames, Vec::new());
+        let old_ctrl_state = self.ctrl_state.take();
+        let old_catch_errs = std::mem::replace(&mut self.catch_err_locals, Vec::new());
+        let old_is_gen = std::mem::replace(&mut self.is_generator, false);
+        let old_is_script = std::mem::replace(&mut self.is_script, false);
 
         let mut param_names = Vec::new();
         let mut param_types = Vec::new();
@@ -5246,18 +5883,17 @@ impl<'a, 's> FnResolver<'a, 's> {
         self.fn_result = inferred_result;
         let (resolved_body, result) = match body_ast {
             ast::ClosureBody::Expr(expr) => {
+                self.push_sink();
                 let value = self.expr_iterative(expr);
                 let result = value.vt;
-                (
-                    RBlock {
-                        stmts: vec![RStmt::Return {
-                            value,
-                            span: expr.span,
-                        }],
-                        span,
-                    },
-                    result,
-                )
+                let mut stmts = self.pop_sink();
+                stmts.push(RStmt::Return {
+                    value,
+                    span: expr.span,
+                });
+                let mut b = RBlock { stmts, span };
+                self.prepend_ctrl_inits(&mut b, span);
+                (b, result)
             }
             ast::ClosureBody::Block(block) => {
                 let mut resolved = self.resolve_body(block);
@@ -5271,6 +5907,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                         span,
                     });
                 }
+                self.prepend_ctrl_inits(&mut resolved, span);
                 (resolved, inferred_result)
             }
         };
@@ -5284,6 +5921,11 @@ impl<'a, 's> FnResolver<'a, 's> {
         self.moved_locals = old_moved;
         self.borrowed_closure_locals = old_borrowed;
         self.iterate_targets = old_iterate;
+        self.ctrl_frames = old_ctrl_frames;
+        self.ctrl_state = old_ctrl_state;
+        self.catch_err_locals = old_catch_errs;
+        self.is_generator = old_is_gen;
+        self.is_script = old_is_script;
         LambdaBodyOut {
             param_names,
             param_types,
@@ -5331,6 +5973,2169 @@ impl<'a, 's> FnResolver<'a, 's> {
                 }
             }
         }
+    }
+
+    // =========================================================================
+    // PLAN-965 (M2-A): Aggregates control-flow, error propagation & generators
+    // =========================================================================
+
+    fn push_sink(&mut self) {
+        self.stmt_sinks.push(Vec::new());
+    }
+
+    fn pop_sink(&mut self) -> Vec<RStmt> {
+        self.stmt_sinks.pop().unwrap_or_default()
+    }
+
+    fn emit_stmt(&mut self, stmt: RStmt) {
+        if let Some(sink) = self.stmt_sinks.last_mut() {
+            sink.push(stmt);
+        }
+    }
+
+    fn drain_sink(&mut self) -> Vec<RStmt> {
+        self.stmt_sinks
+            .last_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
+    }
+
+    fn agg_temp(&mut self, prefix: &str, vt: VT, mutable: bool, span: Span) -> LocalRef {
+        let id = self.agg_tmp_counter;
+        self.agg_tmp_counter += 1;
+        let local = LocalRef(self.locals.len());
+        self.locals.push(LocalDecl {
+            name: format!("__agg_{prefix}_{id}"),
+            vt,
+            mutable,
+            is_param: false,
+            param_index: None,
+            capture_index: None,
+            cell: false,
+            is_capture: false,
+            mode: ast::ParamMode::Default,
+            span,
+        });
+        local
+    }
+
+    fn dummy_of(&mut self, vt: VT, span: Span) -> ResolvedExpr {
+        agg_lower::dummy_expr_for_vt(vt, self.records, self.coll, span, 0)
+    }
+
+    fn ensure_ctrl_state(&mut self, span: Span) -> AggCtrlLocals {
+        if let Some(cs) = self.ctrl_state {
+            return cs;
+        }
+        let kind = self.agg_temp("ck", VT::I32, true, span);
+        let target_loop = self.agg_temp("ctl", VT::I32, true, span);
+        let err = self.agg_temp("ce", VT::StrOwned, true, span);
+        let (ret_val, ret_opt_vi) = if self.fn_result == VT::Unit || self.is_generator {
+            (self.agg_temp("crv", VT::I32, true, span), None)
+        } else {
+            let opt_vi = self.coll.intern_variant(
+                "Option",
+                span,
+                vec![
+                    ("Some".to_string(), Some(self.fn_result)),
+                    ("None".to_string(), None),
+                ],
+            );
+            (
+                self.agg_temp("crv", VT::Variant(opt_vi), true, span),
+                Some(opt_vi),
+            )
+        };
+        let cs = AggCtrlLocals {
+            kind,
+            ret_val,
+            ret_opt_vi,
+            target_loop,
+            err,
+        };
+        self.ctrl_state = Some(cs);
+        cs
+    }
+
+    fn prepend_ctrl_inits(&mut self, block: &mut RBlock, span: Span) {
+        let Some(cs) = self.ctrl_state else {
+            return;
+        };
+        let ret_init = match cs.ret_opt_vi {
+            Some(vi) => ResolvedExpr {
+                span,
+                vt: VT::Variant(vi),
+                kind: RExprKind::VariantCtor {
+                    variant: vi,
+                    disc: 1,
+                    payload: None,
+                },
+            },
+            None => ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            },
+        };
+        let mut init = vec![
+            RStmt::Let {
+                local: cs.kind,
+                value: ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(0),
+                },
+                span,
+            },
+            RStmt::Let {
+                local: cs.target_loop,
+                value: ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(-1),
+                },
+                span,
+            },
+            RStmt::Let {
+                local: cs.err,
+                value: ResolvedExpr {
+                    span,
+                    vt: VT::StrOwned,
+                    kind: RExprKind::StrLit(String::new()),
+                },
+                span,
+            },
+            RStmt::Let {
+                local: cs.ret_val,
+                value: ret_init,
+                span,
+            },
+        ];
+        init.append(&mut block.stmts);
+        block.stmts = init;
+    }
+
+    fn nearest_enclosing_loop(&self) -> Option<LoopRef> {
+        self.ctrl_frames.iter().rev().find_map(|f| match f {
+            CtrlFrame::Loop { target }
+            | CtrlFrame::ForIter { target, .. }
+            | CtrlFrame::Try {
+                try_loop: target, ..
+            } => Some(*target),
+        })
+    }
+
+    fn has_enclosing_try(&self) -> bool {
+        self.ctrl_frames
+            .iter()
+            .any(|f| matches!(f, CtrlFrame::Try { .. }))
+    }
+
+    fn has_enclosing_catch(&self) -> bool {
+        self.ctrl_frames.iter().any(|f| {
+            matches!(
+                f,
+                CtrlFrame::Try {
+                    has_catch: true,
+                    ..
+                }
+            )
+        })
+    }
+
+    fn has_outer_ctrl_barrier(&self) -> bool {
+        self.ctrl_state.is_some() && !self.ctrl_frames.is_empty()
+    }
+
+    fn close_for_iter_stmt(
+        &mut self,
+        close_fn_index: usize,
+        iter_local: LocalRef,
+        span: Span,
+    ) -> RStmt {
+        let local = self.agg_temp("it_close", VT::I32, false, span);
+        let value = ResolvedExpr {
+            span,
+            vt: VT::I32,
+            kind: RExprKind::CallFn {
+                fn_index: close_fn_index,
+                args: vec![ResolvedArg {
+                    span,
+                    name: None,
+                    moved: false,
+                    value: ResolvedExpr {
+                        span,
+                        vt: self.locals[iter_local.0].vt,
+                        kind: RExprKind::BorrowMut { local: iter_local },
+                    },
+                }],
+            },
+        };
+        RStmt::Let { local, value, span }
+    }
+
+    fn emit_close_active_iters_to_out(&mut self, out: &mut Vec<RStmt>, span: Span) {
+        let to_close: Vec<(usize, LocalRef)> = self
+            .ctrl_frames
+            .iter()
+            .rev()
+            .filter_map(|f| match f {
+                CtrlFrame::ForIter {
+                    iter_local,
+                    close_fn_index,
+                    ..
+                } => Some((*close_fn_index, *iter_local)),
+                _ => None,
+            })
+            .collect();
+        for (close_fn_index, iter_local) in to_close {
+            out.push(self.close_for_iter_stmt(close_fn_index, iter_local, span));
+        }
+    }
+
+    fn coerce_err_to_str_owned(&mut self, mut e: ResolvedExpr, span: Span) -> ResolvedExpr {
+        if e.vt == VT::StrOwned {
+            return e;
+        }
+        if e.vt == VT::Str && matches!(e.kind, RExprKind::StrLit(_)) {
+            e.vt = VT::StrOwned;
+            return e;
+        }
+        if matches!(
+            e.vt,
+            VT::I32 | VT::I8 | VT::U8 | VT::U32 | VT::I64 | VT::U64 | VT::Bool | VT::Char | VT::Str
+        ) {
+            return ResolvedExpr {
+                span,
+                vt: VT::StrOwned,
+                kind: RExprKind::TextDisplay {
+                    operand: Box::new(e),
+                },
+            };
+        }
+        ResolvedExpr {
+            span,
+            vt: VT::StrOwned,
+            kind: RExprKind::StrLit("error".to_string()),
+        }
+    }
+
+    fn emit_return_to_out(&mut self, val: Option<ResolvedExpr>, span: Span, out: &mut Vec<RStmt>) {
+        if self.has_enclosing_try() {
+            let cs = self.ensure_ctrl_state(span);
+            out.push(RStmt::Assign {
+                local: cs.kind,
+                path: Vec::new(),
+                value: ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(1),
+                },
+                span,
+            });
+            if let (Some(v), Some(opt_vi)) = (val, cs.ret_opt_vi) {
+                out.push(RStmt::Assign {
+                    local: cs.ret_val,
+                    path: Vec::new(),
+                    value: ResolvedExpr {
+                        span,
+                        vt: VT::Variant(opt_vi),
+                        kind: RExprKind::VariantCtor {
+                            variant: opt_vi,
+                            disc: 0,
+                            payload: Some(Box::new(v)),
+                        },
+                    },
+                    span,
+                });
+            }
+            out.push(RStmt::Break {
+                target: self.nearest_enclosing_loop(),
+                span,
+            });
+        } else {
+            self.emit_close_active_iters_to_out(out, span);
+            let value = val.unwrap_or(ResolvedExpr {
+                span,
+                vt: VT::Unit,
+                kind: RExprKind::Unit,
+            });
+            out.push(RStmt::Return { value, span });
+        }
+    }
+
+    fn emit_fail_to_out(&mut self, err: ResolvedExpr, span: Span, out: &mut Vec<RStmt>) {
+        let err_owned = self.coerce_err_to_str_owned(err, span);
+        if self.has_enclosing_try() {
+            let cs = self.ensure_ctrl_state(span);
+            out.push(RStmt::Assign {
+                local: cs.kind,
+                path: Vec::new(),
+                value: ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(4),
+                },
+                span,
+            });
+            out.push(RStmt::Assign {
+                local: cs.err,
+                path: Vec::new(),
+                value: err_owned,
+                span,
+            });
+            out.push(RStmt::Break {
+                target: self.nearest_enclosing_loop(),
+                span,
+            });
+        } else {
+            self.emit_close_active_iters_to_out(out, span);
+            out.push(RStmt::Fail {
+                value: err_owned,
+                span,
+            });
+        }
+    }
+
+    fn emit_break_or_continue_to_out(&mut self, is_break: bool, span: Span, out: &mut Vec<RStmt>) {
+        let target = self.loop_stack.last().copied();
+        let top_loop = match self.ctrl_frames.last() {
+            Some(CtrlFrame::Loop { target }) | Some(CtrlFrame::ForIter { target, .. }) => {
+                Some(*target)
+            }
+            _ => None,
+        };
+        if target.is_some() && target == top_loop {
+            if is_break {
+                out.push(RStmt::Break { target, span });
+            } else {
+                out.push(RStmt::Continue { target, span });
+            }
+            return;
+        }
+        if self.has_enclosing_try() || (self.ctrl_frames.len() > 1 && target.is_some()) {
+            let cs = self.ensure_ctrl_state(span);
+            let code = if is_break { 2 } else { 3 };
+            let t_id = target.map(|t| t.0 as i32).unwrap_or(-1);
+            out.push(RStmt::Assign {
+                local: cs.kind,
+                path: Vec::new(),
+                value: ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(code),
+                },
+                span,
+            });
+            out.push(RStmt::Assign {
+                local: cs.target_loop,
+                path: Vec::new(),
+                value: ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(t_id),
+                },
+                span,
+            });
+            out.push(RStmt::Break {
+                target: self.nearest_enclosing_loop(),
+                span,
+            });
+        } else if is_break {
+            out.push(RStmt::Break { target, span });
+        } else {
+            out.push(RStmt::Continue { target, span });
+        }
+    }
+
+    fn emit_post_frame_dispatch(&mut self, span: Span, out: &mut Vec<RStmt>) {
+        let Some(cs) = self.ctrl_state else {
+            return;
+        };
+        let mut handle_stmts = Vec::new();
+        match self.ctrl_frames.last().cloned() {
+            Some(CtrlFrame::Loop { target }) | Some(CtrlFrame::ForIter { target, .. }) => {
+                let clear_kind = RStmt::Assign {
+                    local: cs.kind,
+                    path: Vec::new(),
+                    value: ResolvedExpr {
+                        span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(0),
+                    },
+                    span,
+                };
+                let target_eq = ResolvedExpr {
+                    span,
+                    vt: VT::Bool,
+                    kind: RExprKind::Binary {
+                        op: BinOp::Eq,
+                        lhs: Box::new(ResolvedExpr {
+                            span,
+                            vt: VT::I32,
+                            kind: RExprKind::ReadLocal(cs.target_loop),
+                        }),
+                        rhs: Box::new(ResolvedExpr {
+                            span,
+                            vt: VT::I32,
+                            kind: RExprKind::IntLit(target.0 as i32),
+                        }),
+                    },
+                };
+                let is_brk_here = ResolvedExpr {
+                    span,
+                    vt: VT::Bool,
+                    kind: RExprKind::Binary {
+                        op: BinOp::And,
+                        lhs: Box::new(ResolvedExpr {
+                            span,
+                            vt: VT::Bool,
+                            kind: RExprKind::Binary {
+                                op: BinOp::Eq,
+                                lhs: Box::new(ResolvedExpr {
+                                    span,
+                                    vt: VT::I32,
+                                    kind: RExprKind::ReadLocal(cs.kind),
+                                }),
+                                rhs: Box::new(ResolvedExpr {
+                                    span,
+                                    vt: VT::I32,
+                                    kind: RExprKind::IntLit(2),
+                                }),
+                            },
+                        }),
+                        rhs: Box::new(target_eq.clone()),
+                    },
+                };
+                let is_cont_here = ResolvedExpr {
+                    span,
+                    vt: VT::Bool,
+                    kind: RExprKind::Binary {
+                        op: BinOp::And,
+                        lhs: Box::new(ResolvedExpr {
+                            span,
+                            vt: VT::Bool,
+                            kind: RExprKind::Binary {
+                                op: BinOp::Eq,
+                                lhs: Box::new(ResolvedExpr {
+                                    span,
+                                    vt: VT::I32,
+                                    kind: RExprKind::ReadLocal(cs.kind),
+                                }),
+                                rhs: Box::new(ResolvedExpr {
+                                    span,
+                                    vt: VT::I32,
+                                    kind: RExprKind::IntLit(3),
+                                }),
+                            },
+                        }),
+                        rhs: Box::new(target_eq),
+                    },
+                };
+                handle_stmts.push(RStmt::If {
+                    cond: is_cont_here,
+                    then: RBlock {
+                        stmts: vec![
+                            clear_kind.clone(),
+                            RStmt::Continue {
+                                target: Some(target),
+                                span,
+                            },
+                        ],
+                        span,
+                    },
+                    els: Some(RBlock {
+                        stmts: vec![RStmt::If {
+                            cond: is_brk_here,
+                            then: RBlock {
+                                stmts: vec![
+                                    clear_kind,
+                                    RStmt::Break {
+                                        target: Some(target),
+                                        span,
+                                    },
+                                ],
+                                span,
+                            },
+                            els: Some(RBlock {
+                                stmts: vec![RStmt::If {
+                                    cond: ResolvedExpr {
+                                        span,
+                                        vt: VT::Bool,
+                                        kind: RExprKind::Binary {
+                                            op: BinOp::Ne,
+                                            lhs: Box::new(ResolvedExpr {
+                                                span,
+                                                vt: VT::I32,
+                                                kind: RExprKind::ReadLocal(cs.kind),
+                                            }),
+                                            rhs: Box::new(ResolvedExpr {
+                                                span,
+                                                vt: VT::I32,
+                                                kind: RExprKind::IntLit(0),
+                                            }),
+                                        },
+                                    },
+                                    then: RBlock {
+                                        stmts: vec![RStmt::Break {
+                                            target: Some(target),
+                                            span,
+                                        }],
+                                        span,
+                                    },
+                                    els: None,
+                                    span,
+                                }],
+                                span,
+                            }),
+                            span,
+                        }],
+                        span,
+                    }),
+                    span,
+                });
+            }
+            Some(CtrlFrame::Try { try_loop, .. }) => {
+                handle_stmts.push(RStmt::Break {
+                    target: Some(try_loop),
+                    span,
+                });
+            }
+            None => {
+                // Reached function root after all try/loop frames unwound
+                let ret_stmt = if let Some(opt_vi) = cs.ret_opt_vi {
+                    let filler = self.dummy_of(self.fn_result, span);
+                    RStmt::If {
+                        cond: ResolvedExpr {
+                            span,
+                            vt: VT::Bool,
+                            kind: RExprKind::VariantGuardTest {
+                                local: cs.ret_val,
+                                variant: opt_vi,
+                                disc: 0,
+                            },
+                        },
+                        then: RBlock {
+                            stmts: vec![RStmt::Return {
+                                value: ResolvedExpr {
+                                    span,
+                                    vt: self.fn_result,
+                                    kind: RExprKind::VariantProject {
+                                        local: cs.ret_val,
+                                        variant: opt_vi,
+                                        disc: 0,
+                                    },
+                                },
+                                span,
+                            }],
+                            span,
+                        },
+                        els: Some(RBlock {
+                            stmts: vec![RStmt::Return {
+                                value: filler,
+                                span,
+                            }],
+                            span,
+                        }),
+                        span,
+                    }
+                } else {
+                    RStmt::Return {
+                        value: ResolvedExpr {
+                            span,
+                            vt: VT::Unit,
+                            kind: RExprKind::Unit,
+                        },
+                        span,
+                    }
+                };
+                let is_ret = ResolvedExpr {
+                    span,
+                    vt: VT::Bool,
+                    kind: RExprKind::Binary {
+                        op: BinOp::Eq,
+                        lhs: Box::new(ResolvedExpr {
+                            span,
+                            vt: VT::I32,
+                            kind: RExprKind::ReadLocal(cs.kind),
+                        }),
+                        rhs: Box::new(ResolvedExpr {
+                            span,
+                            vt: VT::I32,
+                            kind: RExprKind::IntLit(1),
+                        }),
+                    },
+                };
+                let is_fail = ResolvedExpr {
+                    span,
+                    vt: VT::Bool,
+                    kind: RExprKind::Binary {
+                        op: BinOp::Eq,
+                        lhs: Box::new(ResolvedExpr {
+                            span,
+                            vt: VT::I32,
+                            kind: RExprKind::ReadLocal(cs.kind),
+                        }),
+                        rhs: Box::new(ResolvedExpr {
+                            span,
+                            vt: VT::I32,
+                            kind: RExprKind::IntLit(4),
+                        }),
+                    },
+                };
+                handle_stmts.push(RStmt::If {
+                    cond: is_ret,
+                    then: RBlock {
+                        stmts: vec![ret_stmt],
+                        span,
+                    },
+                    els: Some(RBlock {
+                        stmts: vec![RStmt::If {
+                            cond: is_fail,
+                            then: RBlock {
+                                stmts: vec![RStmt::Fail {
+                                    value: ResolvedExpr {
+                                        span,
+                                        vt: VT::StrOwned,
+                                        kind: RExprKind::ReadLocal(cs.err),
+                                    },
+                                    span,
+                                }],
+                                span,
+                            },
+                            els: None,
+                            span,
+                        }],
+                        span,
+                    }),
+                    span,
+                });
+            }
+        }
+        let cond_nonzero = ResolvedExpr {
+            span,
+            vt: VT::Bool,
+            kind: RExprKind::Binary {
+                op: BinOp::Ne,
+                lhs: Box::new(ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::ReadLocal(cs.kind),
+                }),
+                rhs: Box::new(ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(0),
+                }),
+            },
+        };
+        out.push(RStmt::If {
+            cond: cond_nonzero,
+            then: RBlock {
+                stmts: handle_stmts,
+                span,
+            },
+            els: None,
+            span,
+        });
+    }
+
+    fn resolve_expr_in_branch(
+        &mut self,
+        e: &ast::Expr,
+        expect: Option<VT>,
+    ) -> (Vec<RStmt>, ResolvedExpr, bool) {
+        self.push_sink();
+        self.expr_diverged = false;
+        let val = self.expr_with_expect(e, expect);
+        let div = self.expr_diverged;
+        self.expr_diverged = false;
+        let stmts = self.pop_sink();
+        (stmts, val, div)
+    }
+
+    fn try_resolve_may_ctor(&mut self, e: &ast::Expr, expect: Option<VT>) -> Option<ResolvedExpr> {
+        if !self.profile.is_aggregates()
+            || self.lookup("May").is_some()
+            || self.rec_index.contains_key("May")
+            || self.coll.variant_by_name("May").is_some()
+        {
+            return None;
+        }
+        match &e.kind {
+            ExprKind::Field { base, name }
+                if matches!(&base.kind, ExprKind::Var(id) if id.name == "May")
+                    && name.name == "nil" =>
+            {
+                Some(self.resolve_bare_ctor("None", None, expect, e.span))
+            }
+            ExprKind::MethodCall { recv, name, args } if matches!(&recv.kind, ExprKind::Var(id) if id.name == "May") => {
+                match (name.name.as_str(), args.len()) {
+                    ("nil", 0) => Some(self.resolve_bare_ctor("None", None, expect, e.span)),
+                    ("val", 1) => {
+                        let arg_e = match &args[0] {
+                            ast::Arg::Pos(x) | ast::Arg::MovePos(x) => x,
+                            _ => return None,
+                        };
+                        let pl = self.expr_iterative(arg_e);
+                        let is_result_expect = matches!(
+                            expect,
+                            Some(VT::Variant(vi)) if self.coll.variants[vi].name == "Result"
+                        );
+                        let cname = if is_result_expect { "Ok" } else { "Some" };
+                        Some(self.resolve_bare_ctor(cname, Some(pl), expect, e.span))
+                    }
+                    ("err", 1) => {
+                        let arg_e = match &args[0] {
+                            ast::Arg::Pos(x) | ast::Arg::MovePos(x) => x,
+                            _ => return None,
+                        };
+                        let pl = self.expr_iterative(arg_e);
+                        Some(self.resolve_bare_ctor("Err", Some(pl), expect, e.span))
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn resolve_unwrap_or(
+        &mut self,
+        lhs_ast: &ast::Expr,
+        rhs_ast: &ast::Expr,
+        expect: Option<VT>,
+        span: Span,
+    ) -> ResolvedExpr {
+        if !self.profile.is_aggregates() {
+            self.bind_err(
+                "source.unsupported",
+                "`??` / `.?(default)` requires full aggregates lowering".to_string(),
+                span,
+            );
+            return ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            };
+        }
+        let opt_expect = expect.map(|ev| {
+            let vi = self.coll.intern_variant(
+                "Option",
+                span,
+                vec![("Some".to_string(), Some(ev)), ("None".to_string(), None)],
+            );
+            VT::Variant(vi)
+        });
+        let lhs = self.expr_with_expect(lhs_ast, opt_expect);
+        let Some(info) = agg_lower::variant_unwrap_info(lhs.vt, self.coll) else {
+            self.bind_err(
+                "source.type-mismatch",
+                format!(
+                    "`??` / `.?(default)` requires an Option or Result operand, found `{}`",
+                    lhs.vt.as_str()
+                ),
+                lhs.span,
+            );
+            let _ = self.resolve_expr_in_branch(rhs_ast, expect);
+            return ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            };
+        };
+        let scr_l = self.agg_temp("nc_scr", lhs.vt, false, span);
+        self.emit_stmt(RStmt::Let {
+            local: scr_l,
+            value: lhs,
+            span,
+        });
+        let res_vt = info.success_vt;
+        let res_l = self.agg_temp("nc_res", res_vt, true, span);
+        let init_dummy = self.dummy_of(res_vt, span);
+        self.emit_stmt(RStmt::Let {
+            local: res_l,
+            value: init_dummy,
+            span,
+        });
+
+        let (mut r_stmts, mut rhs, r_div) = self.resolve_expr_in_branch(rhs_ast, Some(res_vt));
+        if !r_div {
+            retag_literal(&mut rhs, res_vt);
+            if rhs.vt != res_vt {
+                self.bind_err(
+                    "source.type-mismatch",
+                    format!(
+                        "`??` fallback type mismatch: expected `{}`, found `{}`",
+                        res_vt.as_str(),
+                        rhs.vt.as_str()
+                    ),
+                    rhs.span,
+                );
+            }
+            r_stmts.push(RStmt::Assign {
+                local: res_l,
+                path: Vec::new(),
+                value: rhs,
+                span: rhs_ast.span,
+            });
+        }
+        self.emit_stmt(RStmt::If {
+            cond: ResolvedExpr {
+                span,
+                vt: VT::Bool,
+                kind: RExprKind::VariantGuardTest {
+                    local: scr_l,
+                    variant: info.vi,
+                    disc: info.success_disc,
+                },
+            },
+            then: RBlock {
+                stmts: vec![RStmt::Assign {
+                    local: res_l,
+                    path: Vec::new(),
+                    value: ResolvedExpr {
+                        span,
+                        vt: res_vt,
+                        kind: RExprKind::VariantProject {
+                            local: scr_l,
+                            variant: info.vi,
+                            disc: info.success_disc,
+                        },
+                    },
+                    span,
+                }],
+                span,
+            },
+            els: Some(RBlock {
+                stmts: r_stmts,
+                span: rhs_ast.span,
+            }),
+            span,
+        });
+        ResolvedExpr {
+            span,
+            vt: res_vt,
+            kind: RExprKind::ReadLocal(res_l),
+        }
+    }
+
+    fn resolve_propagate(&mut self, inner_ast: &ast::Expr, span: Span) -> ResolvedExpr {
+        if !self.profile.is_aggregates() {
+            self.bind_err(
+                "source.unsupported",
+                "`.?` requires full aggregates lowering".to_string(),
+                span,
+            );
+            return ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            };
+        }
+        let val = self.expr_iterative(inner_ast);
+        let Some(info) = agg_lower::variant_unwrap_info(val.vt, self.coll) else {
+            self.bind_err(
+                "source.propagate-incompatible",
+                format!(
+                    "`.?` requires an Option or Result operand, found `{}`",
+                    val.vt.as_str()
+                ),
+                span,
+            );
+            return ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            };
+        };
+        let q_l = self.agg_temp("q_scr", val.vt, false, span);
+        self.emit_stmt(RStmt::Let {
+            local: q_l,
+            value: val,
+            span,
+        });
+        let res_vt = info.success_vt;
+        let res_l = self.agg_temp("q_res", res_vt, true, span);
+        let init_dummy = self.dummy_of(res_vt, span);
+        self.emit_stmt(RStmt::Let {
+            local: res_l,
+            value: init_dummy,
+            span,
+        });
+
+        let mut err_stmts = Vec::new();
+        let ret_info = agg_lower::variant_unwrap_info(self.fn_result, self.coll);
+        if info.is_option {
+            match ret_info {
+                Some(ri) if ri.is_option => {
+                    let none_ret = ResolvedExpr {
+                        span,
+                        vt: self.fn_result,
+                        kind: RExprKind::VariantCtor {
+                            variant: ri.vi,
+                            disc: 1,
+                            payload: None,
+                        },
+                    };
+                    self.emit_return_to_out(Some(none_ret), span, &mut err_stmts);
+                }
+                _ => {
+                    self.bind_err(
+                        "source.propagate-incompatible",
+                        "cannot propagate `Option` with `.?` in a function that does not return `?T`".to_string(),
+                        span,
+                    );
+                }
+            }
+        } else {
+            // Result propagation:
+            // 1. Inside try..catch -> throw/unwind to catch
+            // 2. Else inside `!U` fn -> return Err(e) (running enclosing finally)
+            // 3. Else top-level script -> runtime LangFail (ExecOutcome::Error)
+            // 4. Else non-Result function -> source.propagate-incompatible
+            let has_catch = self.has_enclosing_catch();
+            let ret_is_result = matches!(ret_info, Some(ri) if !ri.is_option);
+            let err_l = self.agg_temp("q_err", info.err_vt.unwrap_or(VT::StrOwned), false, span);
+            let mut action_stmts = Vec::new();
+            action_stmts.push(RStmt::Let {
+                local: err_l,
+                value: ResolvedExpr {
+                    span,
+                    vt: info.err_vt.unwrap_or(VT::StrOwned),
+                    kind: RExprKind::VariantProject {
+                        local: q_l,
+                        variant: info.vi,
+                        disc: 1,
+                    },
+                },
+                span,
+            });
+            if has_catch {
+                let err_vt = info.err_vt.unwrap_or(VT::StrOwned);
+                let mut err_read = ResolvedExpr {
+                    span,
+                    vt: err_vt,
+                    kind: RExprKind::ReadLocal(err_l),
+                };
+                if self.vt_is_coll_owned(err_vt) {
+                    err_read = ResolvedExpr {
+                        span,
+                        vt: err_vt,
+                        kind: RExprKind::Move {
+                            inner: Box::new(err_read),
+                        },
+                    };
+                }
+                self.emit_fail_to_out(err_read, span, &mut action_stmts);
+            } else if ret_is_result {
+                let ri = ret_info.unwrap();
+                let err_vt = info.err_vt.unwrap_or(VT::StrOwned);
+                let mut err_val = ResolvedExpr {
+                    span,
+                    vt: err_vt,
+                    kind: RExprKind::ReadLocal(err_l),
+                };
+                if self.vt_is_coll_owned(err_vt) {
+                    err_val = ResolvedExpr {
+                        span,
+                        vt: err_vt,
+                        kind: RExprKind::Move {
+                            inner: Box::new(err_val),
+                        },
+                    };
+                }
+                if let Some(want_err_vt) = ri.err_vt {
+                    if err_val.vt != want_err_vt && want_err_vt == VT::StrOwned {
+                        err_val = self.coerce_err_to_str_owned(err_val, span);
+                    }
+                }
+                let ret_variant = ResolvedExpr {
+                    span,
+                    vt: self.fn_result,
+                    kind: RExprKind::VariantCtor {
+                        variant: ri.vi,
+                        disc: 1,
+                        payload: Some(Box::new(err_val)),
+                    },
+                };
+                self.emit_return_to_out(Some(ret_variant), span, &mut action_stmts);
+            } else if self.is_script {
+                let err_read = ResolvedExpr {
+                    span,
+                    vt: info.err_vt.unwrap_or(VT::StrOwned),
+                    kind: RExprKind::ReadLocal(err_l),
+                };
+                self.emit_fail_to_out(err_read, span, &mut action_stmts);
+            } else {
+                self.bind_err(
+                    "source.propagate-incompatible",
+                    "cannot propagate `Result` with `.?` in a function that does not return `!T` outside `catch`".to_string(),
+                    span,
+                );
+            }
+            err_stmts.push(RStmt::If {
+                cond: ResolvedExpr {
+                    span,
+                    vt: VT::Bool,
+                    kind: RExprKind::VariantGuardTest {
+                        local: q_l,
+                        variant: info.vi,
+                        disc: 1,
+                    },
+                },
+                then: RBlock {
+                    stmts: action_stmts,
+                    span,
+                },
+                els: None,
+                span,
+            });
+        }
+
+        self.emit_stmt(RStmt::If {
+            cond: ResolvedExpr {
+                span,
+                vt: VT::Bool,
+                kind: RExprKind::VariantGuardTest {
+                    local: q_l,
+                    variant: info.vi,
+                    disc: info.success_disc,
+                },
+            },
+            then: RBlock {
+                stmts: vec![RStmt::Assign {
+                    local: res_l,
+                    path: Vec::new(),
+                    value: ResolvedExpr {
+                        span,
+                        vt: res_vt,
+                        kind: RExprKind::VariantProject {
+                            local: q_l,
+                            variant: info.vi,
+                            disc: info.success_disc,
+                        },
+                    },
+                    span,
+                }],
+                span,
+            },
+            els: Some(RBlock {
+                stmts: err_stmts,
+                span,
+            }),
+            span,
+        });
+        ResolvedExpr {
+            span,
+            vt: res_vt,
+            kind: RExprKind::ReadLocal(res_l),
+        }
+    }
+
+    fn resolve_short_circuit_bin(
+        &mut self,
+        op: BinOp,
+        lhs_ast: &ast::Expr,
+        rhs_ast: &ast::Expr,
+        span: Span,
+    ) -> ResolvedExpr {
+        let lhs = self.expr_iterative(lhs_ast);
+        let sc_l = self.agg_temp("sc", VT::Bool, true, span);
+        self.emit_stmt(RStmt::Let {
+            local: sc_l,
+            value: lhs,
+            span,
+        });
+        let (mut r_stmts, rhs, _) = self.resolve_expr_in_branch(rhs_ast, Some(VT::Bool));
+        r_stmts.push(RStmt::Assign {
+            local: sc_l,
+            path: Vec::new(),
+            value: rhs,
+            span: rhs_ast.span,
+        });
+        let cond = if op == BinOp::And {
+            ResolvedExpr {
+                span,
+                vt: VT::Bool,
+                kind: RExprKind::ReadLocal(sc_l),
+            }
+        } else {
+            ResolvedExpr {
+                span,
+                vt: VT::Bool,
+                kind: RExprKind::Unary {
+                    op: UnaryOp::Not,
+                    operand: Box::new(ResolvedExpr {
+                        span,
+                        vt: VT::Bool,
+                        kind: RExprKind::ReadLocal(sc_l),
+                    }),
+                },
+            }
+        };
+        self.emit_stmt(RStmt::If {
+            cond,
+            then: RBlock {
+                stmts: r_stmts,
+                span: rhs_ast.span,
+            },
+            els: None,
+            span,
+        });
+        ResolvedExpr {
+            span,
+            vt: VT::Bool,
+            kind: RExprKind::ReadLocal(sc_l),
+        }
+    }
+
+    fn resolve_agg_is(
+        &mut self,
+        scrutinee_ast: &ast::Expr,
+        arms: &[ast::AggMatchArm],
+        expect: Option<VT>,
+        is_expr_mode: bool,
+        span: Span,
+    ) -> (Vec<RStmt>, Option<ResolvedExpr>) {
+        let mut out_stmts = Vec::new();
+        if !self.profile.is_aggregates() {
+            self.bind_err(
+                "source.unsupported",
+                "`is` expression / pattern arm requires full aggregates lowering".to_string(),
+                span,
+            );
+            return (
+                out_stmts,
+                if is_expr_mode {
+                    Some(ResolvedExpr {
+                        span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(0),
+                    })
+                } else {
+                    None
+                },
+            );
+        }
+        let scr = self.expr_iterative(scrutinee_ast);
+        let scr_vt = scr.vt;
+        let scr_l = self.agg_temp("is_scr", scr_vt, false, scrutinee_ast.span);
+        out_stmts.push(RStmt::Let {
+            local: scr_l,
+            value: scr,
+            span: scrutinee_ast.span,
+        });
+        out_stmts.extend(self.drain_sink());
+
+        let mut seen_else = false;
+        let mut seen_discs: BTreeSet<u32> = BTreeSet::new();
+        let mut seen_ints: BTreeSet<i32> = BTreeSet::new();
+        let mut seen_bools: BTreeSet<bool> = BTreeSet::new();
+
+        enum PatCond {
+            Else,
+            Variant {
+                vi: usize,
+                disc: u32,
+                bind: Option<ast::Ident>,
+                payload_vt: Option<VT>,
+            },
+            Int(i32),
+            Bool(bool),
+        }
+
+        struct ArmResolved {
+            pat: PatCond,
+            block: RBlock,
+            expr_val: Option<ResolvedExpr>,
+            span: Span,
+        }
+
+        let mut compiled: Vec<ArmResolved> = Vec::with_capacity(arms.len());
+        let mut inferred_vt: Option<VT> = expect;
+
+        for arm in arms {
+            if seen_else {
+                self.bind_err(
+                    "source.pattern-unreachable",
+                    "`else` arm must be last in `is` match".to_string(),
+                    arm.span,
+                );
+            }
+            let pat = match &arm.pat {
+                ast::MatchPattern::Else => {
+                    seen_else = true;
+                    PatCond::Else
+                }
+                ast::MatchPattern::IntLit(n) => {
+                    if scr_vt != VT::I32 {
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!("integer pattern `{n}` cannot match `{}`", scr_vt.as_str()),
+                            arm.span,
+                        );
+                    }
+                    if !seen_ints.insert(*n) {
+                        self.bind_err(
+                            "source.pattern-duplicate",
+                            format!("duplicate `is` pattern `{n}`"),
+                            arm.span,
+                        );
+                    }
+                    PatCond::Int(*n)
+                }
+                ast::MatchPattern::BoolLit(b) => {
+                    if scr_vt != VT::Bool {
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!("boolean pattern `{b}` cannot match `{}`", scr_vt.as_str()),
+                            arm.span,
+                        );
+                    }
+                    if !seen_bools.insert(*b) {
+                        self.bind_err(
+                            "source.pattern-duplicate",
+                            format!("duplicate `is` pattern `{b}`"),
+                            arm.span,
+                        );
+                    }
+                    PatCond::Bool(*b)
+                }
+                ast::MatchPattern::Variant {
+                    qual,
+                    name,
+                    binding,
+                } => {
+                    let Some((vi, disc)) = self.is_arm_disc(scr_vt, qual.as_ref(), name) else {
+                        continue;
+                    };
+                    if !seen_discs.insert(disc) {
+                        self.bind_err(
+                            "source.pattern-duplicate",
+                            format!("duplicate `is` arm `{}`", name.name),
+                            arm.span,
+                        );
+                    }
+                    let payload_vt = self.coll.variants[vi].arms[disc as usize].1;
+                    if binding.is_some() && payload_vt.is_none() {
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!("arm `{}` carries no payload; remove the binding", name.name),
+                            arm.span,
+                        );
+                    }
+                    PatCond::Variant {
+                        vi,
+                        disc,
+                        bind: binding.clone(),
+                        payload_vt,
+                    }
+                }
+            };
+
+            self.scopes.push(Scope {
+                names: BTreeMap::new(),
+                views: BTreeMap::new(),
+            });
+            let mut prefix_stmts = Vec::new();
+            if let PatCond::Variant {
+                vi,
+                disc,
+                bind: Some(ref bident),
+                payload_vt: Some(pvt),
+            } = pat
+            {
+                let bl = LocalRef(self.locals.len());
+                self.locals.push(LocalDecl {
+                    name: bident.name.clone(),
+                    vt: pvt,
+                    mutable: false,
+                    is_param: false,
+                    param_index: None,
+                    capture_index: None,
+                    cell: false,
+                    is_capture: false,
+                    mode: ast::ParamMode::Default,
+                    span: bident.span,
+                });
+                self.scopes
+                    .last_mut()
+                    .unwrap()
+                    .names
+                    .insert(bident.name.clone(), bl);
+                self.declared_names.insert(bident.name.clone());
+                prefix_stmts.push(RStmt::Let {
+                    local: bl,
+                    value: ResolvedExpr {
+                        span: bident.span,
+                        vt: pvt,
+                        kind: RExprKind::VariantProject {
+                            local: scr_l,
+                            variant: vi,
+                            disc,
+                        },
+                    },
+                    span: bident.span,
+                });
+            }
+
+            let (mut ablock, expr_val) = match &arm.body {
+                ast::AggArmBody::Block(b) => {
+                    let mut rb = self.resolve_body(b);
+                    let mut val = None;
+                    if is_expr_mode {
+                        if let Some(RStmt::ExprStmt { value, .. }) = rb.stmts.last().cloned() {
+                            if !self.expr_diverged {
+                                rb.stmts.pop();
+                                if inferred_vt.is_none() {
+                                    inferred_vt = Some(value.vt);
+                                }
+                                val = Some(value);
+                            }
+                        }
+                    }
+                    (rb, val)
+                }
+                ast::AggArmBody::Expr(e) => {
+                    if is_expr_mode {
+                        let (stmts, mut val, div) = self.resolve_expr_in_branch(e, inferred_vt);
+                        if !div {
+                            if let Some(ivt) = inferred_vt {
+                                retag_literal(&mut val, ivt);
+                            } else {
+                                inferred_vt = Some(val.vt);
+                            }
+                        }
+                        (
+                            RBlock {
+                                stmts,
+                                span: e.span,
+                            },
+                            if div { None } else { Some(val) },
+                        )
+                    } else {
+                        let (mut stmts, val, div) = self.resolve_expr_in_branch(e, None);
+                        if !div {
+                            stmts.push(RStmt::ExprStmt {
+                                value: val,
+                                span: e.span,
+                            });
+                        }
+                        (
+                            RBlock {
+                                stmts,
+                                span: e.span,
+                            },
+                            None,
+                        )
+                    }
+                }
+            };
+            self.scopes.pop();
+            if !prefix_stmts.is_empty() {
+                prefix_stmts.append(&mut ablock.stmts);
+                ablock.stmts = prefix_stmts;
+            }
+            compiled.push(ArmResolved {
+                pat,
+                block: ablock,
+                expr_val,
+                span: arm.span,
+            });
+        }
+
+        // Exhaustiveness check
+        if !seen_else {
+            let ok = match scr_vt {
+                VT::Variant(vi) => seen_discs.len() == self.coll.variants[vi].arms.len(),
+                VT::Bool => seen_bools.len() == 2,
+                _ => false,
+            };
+            if !ok {
+                self.bind_err(
+                    "source.pattern-nonexhaustive",
+                    "`is` match is non-exhaustive (add remaining arms or an `else` arm)"
+                        .to_string(),
+                    span,
+                );
+            }
+        }
+
+        let res_local = if is_expr_mode {
+            let rv = inferred_vt.unwrap_or(VT::Unit);
+            let rl = self.agg_temp("is_res", rv, true, span);
+            let dummy = self.dummy_of(rv, span);
+            out_stmts.push(RStmt::Let {
+                local: rl,
+                value: dummy,
+                span,
+            });
+            Some((rl, rv))
+        } else {
+            None
+        };
+
+        fn rblock_all_return(stmts: &[RStmt]) -> bool {
+            let Some(last) = stmts.last() else {
+                return false;
+            };
+            match last {
+                RStmt::Return { .. } | RStmt::Fail { .. } => true,
+                RStmt::If {
+                    then,
+                    els: Some(els),
+                    ..
+                } => rblock_all_return(&then.stmts) && rblock_all_return(&els.stmts),
+                _ => false,
+            }
+        }
+        let has_else = compiled.iter().any(|ca| matches!(ca.pat, PatCond::Else));
+        let mut chain: Option<RBlock> = if !is_expr_mode
+            && !has_else
+            && !compiled.is_empty()
+            && compiled.iter().all(|ca| rblock_all_return(&ca.block.stmts))
+        {
+            let mut filler_stmts = Vec::new();
+            if self.is_generator {
+                self.emit_return_to_out(None, span, &mut filler_stmts);
+            } else {
+                let f = self.dummy_of(self.fn_result, span);
+                self.emit_return_to_out(Some(f), span, &mut filler_stmts);
+            }
+            Some(RBlock {
+                stmts: filler_stmts,
+                span,
+            })
+        } else {
+            None
+        };
+        for mut ca in compiled.into_iter().rev() {
+            if let Some((rl, rv)) = res_local {
+                if let Some(mut ev) = ca.expr_val.take() {
+                    retag_literal(&mut ev, rv);
+                    if ev.vt != rv {
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!(
+                                "`is` arm type mismatch: expected `{}`, found `{}`",
+                                rv.as_str(),
+                                ev.vt.as_str()
+                            ),
+                            ev.span,
+                        );
+                    }
+                    ca.block.stmts.push(RStmt::Assign {
+                        local: rl,
+                        path: Vec::new(),
+                        value: ev,
+                        span: ca.span,
+                    });
+                }
+            }
+            match ca.pat {
+                PatCond::Else => {
+                    chain = Some(ca.block);
+                }
+                PatCond::Variant { vi, disc, .. } => {
+                    let cond = ResolvedExpr {
+                        span: ca.span,
+                        vt: VT::Bool,
+                        kind: RExprKind::VariantGuardTest {
+                            local: scr_l,
+                            variant: vi,
+                            disc,
+                        },
+                    };
+                    chain = Some(RBlock {
+                        stmts: vec![RStmt::If {
+                            cond,
+                            then: ca.block,
+                            els: chain.take(),
+                            span: ca.span,
+                        }],
+                        span: ca.span,
+                    });
+                }
+                PatCond::Int(n) => {
+                    let cond = ResolvedExpr {
+                        span: ca.span,
+                        vt: VT::Bool,
+                        kind: RExprKind::Binary {
+                            op: BinOp::Eq,
+                            lhs: Box::new(ResolvedExpr {
+                                span: ca.span,
+                                vt: VT::I32,
+                                kind: RExprKind::ReadLocal(scr_l),
+                            }),
+                            rhs: Box::new(ResolvedExpr {
+                                span: ca.span,
+                                vt: VT::I32,
+                                kind: RExprKind::IntLit(n),
+                            }),
+                        },
+                    };
+                    chain = Some(RBlock {
+                        stmts: vec![RStmt::If {
+                            cond,
+                            then: ca.block,
+                            els: chain.take(),
+                            span: ca.span,
+                        }],
+                        span: ca.span,
+                    });
+                }
+                PatCond::Bool(b) => {
+                    let cond = ResolvedExpr {
+                        span: ca.span,
+                        vt: VT::Bool,
+                        kind: RExprKind::Binary {
+                            op: BinOp::Eq,
+                            lhs: Box::new(ResolvedExpr {
+                                span: ca.span,
+                                vt: VT::Bool,
+                                kind: RExprKind::ReadLocal(scr_l),
+                            }),
+                            rhs: Box::new(ResolvedExpr {
+                                span: ca.span,
+                                vt: VT::Bool,
+                                kind: RExprKind::BoolLit(b),
+                            }),
+                        },
+                    };
+                    chain = Some(RBlock {
+                        stmts: vec![RStmt::If {
+                            cond,
+                            then: ca.block,
+                            els: chain.take(),
+                            span: ca.span,
+                        }],
+                        span: ca.span,
+                    });
+                }
+            }
+        }
+        if let Some(mut c) = chain {
+            out_stmts.extend(std::mem::take(&mut c.stmts));
+        }
+        let expr_out = res_local.map(|(rl, rv)| ResolvedExpr {
+            span,
+            vt: rv,
+            kind: RExprKind::ReadLocal(rl),
+        });
+        (out_stmts, expr_out)
+    }
+
+    fn resolve_try_stmt(
+        &mut self,
+        body: &ast::Block,
+        catch: Option<&ast::CatchClause>,
+        finally: Option<&ast::Block>,
+        span: Span,
+    ) -> Vec<RStmt> {
+        let mut out = Vec::new();
+        if !self.profile.is_aggregates() {
+            self.bind_err(
+                "source.unsupported",
+                "`try`/`catch`/`finally` requires full aggregates lowering".to_string(),
+                span,
+            );
+            return out;
+        }
+        let cs = self.ensure_ctrl_state(span);
+        let try_loop = LoopRef(self.loop_count);
+        self.loop_count += 1;
+        self.ctrl_frames.push(CtrlFrame::Try {
+            try_loop,
+            has_catch: catch.is_some(),
+        });
+        fn rstmts_diverge(stmts: &[RStmt]) -> bool {
+            let Some(last) = stmts.last() else {
+                return false;
+            };
+            match last {
+                RStmt::Return { .. }
+                | RStmt::Fail { .. }
+                | RStmt::Break { .. }
+                | RStmt::Continue { .. } => true,
+                RStmt::If {
+                    then,
+                    els: Some(els),
+                    ..
+                } => rstmts_diverge(&then.stmts) && rstmts_diverge(&els.stmts),
+                _ => false,
+            }
+        }
+        let mut r_try = self.resolve_body(body);
+        let try_diverges = rstmts_diverge(&r_try.stmts);
+        if !try_diverges {
+            r_try.stmts.push(RStmt::Break {
+                target: Some(try_loop),
+                span,
+            });
+        }
+        self.ctrl_frames.pop();
+        out.push(RStmt::Loop {
+            body: r_try,
+            span,
+            target: try_loop,
+        });
+
+        let mut catch_diverges = true;
+        if let Some(cc) = catch {
+            let err_l = self.agg_temp("catch_e", VT::StrOwned, false, cc.span);
+            let catch_loop = LoopRef(self.loop_count);
+            self.loop_count += 1;
+            let mut catch_wrapper = vec![
+                RStmt::Assign {
+                    local: cs.kind,
+                    path: Vec::new(),
+                    value: ResolvedExpr {
+                        span: cc.span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(0),
+                    },
+                    span: cc.span,
+                },
+                RStmt::Let {
+                    local: err_l,
+                    value: ResolvedExpr {
+                        span: cc.span,
+                        vt: VT::StrOwned,
+                        kind: RExprKind::Move {
+                            inner: Box::new(ResolvedExpr {
+                                span: cc.span,
+                                vt: VT::StrOwned,
+                                kind: RExprKind::ReadLocal(cs.err),
+                            }),
+                        },
+                    },
+                    span: cc.span,
+                },
+                RStmt::Assign {
+                    local: cs.err,
+                    path: Vec::new(),
+                    value: ResolvedExpr {
+                        span: cc.span,
+                        vt: VT::StrOwned,
+                        kind: RExprKind::StrLit(String::new()),
+                    },
+                    span: cc.span,
+                },
+            ];
+            self.scopes.push(Scope {
+                names: BTreeMap::new(),
+                views: BTreeMap::new(),
+            });
+            let mut rethrow_local = err_l;
+            if let Some(bind_ident) = &cc.bind {
+                let user_err = LocalRef(self.locals.len());
+                self.locals.push(LocalDecl {
+                    name: bind_ident.name.clone(),
+                    vt: VT::StrOwned,
+                    mutable: false,
+                    is_param: false,
+                    param_index: None,
+                    capture_index: None,
+                    cell: false,
+                    is_capture: false,
+                    mode: ast::ParamMode::Default,
+                    span: bind_ident.span,
+                });
+                self.scopes
+                    .last_mut()
+                    .unwrap()
+                    .names
+                    .insert(bind_ident.name.clone(), user_err);
+                self.declared_names.insert(bind_ident.name.clone());
+                catch_wrapper.push(RStmt::Let {
+                    local: user_err,
+                    value: ResolvedExpr {
+                        span: bind_ident.span,
+                        vt: VT::StrOwned,
+                        kind: RExprKind::Move {
+                            inner: Box::new(ResolvedExpr {
+                                span: bind_ident.span,
+                                vt: VT::StrOwned,
+                                kind: RExprKind::ReadLocal(err_l),
+                            }),
+                        },
+                    },
+                    span: bind_ident.span,
+                });
+                rethrow_local = user_err;
+            }
+            self.catch_err_locals.push(rethrow_local);
+            self.ctrl_frames.push(CtrlFrame::Try {
+                try_loop: catch_loop,
+                has_catch: false,
+            });
+            let mut r_catch = self.resolve_body(&cc.body);
+            catch_diverges = rstmts_diverge(&r_catch.stmts);
+            if !catch_diverges {
+                r_catch.stmts.push(RStmt::Break {
+                    target: Some(catch_loop),
+                    span: cc.span,
+                });
+            }
+            self.ctrl_frames.pop();
+            self.catch_err_locals.pop();
+            self.scopes.pop();
+            catch_wrapper.push(RStmt::Loop {
+                body: r_catch,
+                span: cc.span,
+                target: catch_loop,
+            });
+            out.push(RStmt::If {
+                cond: ResolvedExpr {
+                    span: cc.span,
+                    vt: VT::Bool,
+                    kind: RExprKind::Binary {
+                        op: BinOp::Eq,
+                        lhs: Box::new(ResolvedExpr {
+                            span: cc.span,
+                            vt: VT::I32,
+                            kind: RExprKind::ReadLocal(cs.kind),
+                        }),
+                        rhs: Box::new(ResolvedExpr {
+                            span: cc.span,
+                            vt: VT::I32,
+                            kind: RExprKind::IntLit(4),
+                        }),
+                    },
+                },
+                then: RBlock {
+                    stmts: catch_wrapper,
+                    span: cc.span,
+                },
+                els: None,
+                span: cc.span,
+            });
+        }
+
+        if let Some(fb) = finally {
+            let saved_k = self.agg_temp("fk", VT::I32, false, fb.span);
+            let saved_tl = self.agg_temp("ftl", VT::I32, false, fb.span);
+            let saved_e = self.agg_temp("fe", VT::StrOwned, false, fb.span);
+            let saved_rv = cs
+                .ret_opt_vi
+                .map(|vi| self.agg_temp("frv", VT::Variant(vi), false, fb.span));
+            out.push(RStmt::Let {
+                local: saved_k,
+                value: ResolvedExpr {
+                    span: fb.span,
+                    vt: VT::I32,
+                    kind: RExprKind::ReadLocal(cs.kind),
+                },
+                span: fb.span,
+            });
+            out.push(RStmt::Let {
+                local: saved_tl,
+                value: ResolvedExpr {
+                    span: fb.span,
+                    vt: VT::I32,
+                    kind: RExprKind::ReadLocal(cs.target_loop),
+                },
+                span: fb.span,
+            });
+            out.push(RStmt::Let {
+                local: saved_e,
+                value: ResolvedExpr {
+                    span: fb.span,
+                    vt: VT::StrOwned,
+                    kind: RExprKind::Move {
+                        inner: Box::new(ResolvedExpr {
+                            span: fb.span,
+                            vt: VT::StrOwned,
+                            kind: RExprKind::ReadLocal(cs.err),
+                        }),
+                    },
+                },
+                span: fb.span,
+            });
+            out.push(RStmt::Assign {
+                local: cs.err,
+                path: Vec::new(),
+                value: ResolvedExpr {
+                    span: fb.span,
+                    vt: VT::StrOwned,
+                    kind: RExprKind::StrLit(String::new()),
+                },
+                span: fb.span,
+            });
+            if let (Some(sr), Some(opt_vi)) = (saved_rv, cs.ret_opt_vi) {
+                let rv_read = ResolvedExpr {
+                    span: fb.span,
+                    vt: VT::Variant(opt_vi),
+                    kind: RExprKind::ReadLocal(cs.ret_val),
+                };
+                let rv_val = if self.vt_is_coll_owned(VT::Variant(opt_vi)) {
+                    ResolvedExpr {
+                        span: fb.span,
+                        vt: VT::Variant(opt_vi),
+                        kind: RExprKind::Move {
+                            inner: Box::new(rv_read),
+                        },
+                    }
+                } else {
+                    rv_read
+                };
+                out.push(RStmt::Let {
+                    local: sr,
+                    value: rv_val,
+                    span: fb.span,
+                });
+                out.push(RStmt::Assign {
+                    local: cs.ret_val,
+                    path: Vec::new(),
+                    value: ResolvedExpr {
+                        span: fb.span,
+                        vt: VT::Variant(opt_vi),
+                        kind: RExprKind::VariantCtor {
+                            variant: opt_vi,
+                            disc: 1,
+                            payload: None,
+                        },
+                    },
+                    span: fb.span,
+                });
+            }
+            out.push(RStmt::Assign {
+                local: cs.kind,
+                path: Vec::new(),
+                value: ResolvedExpr {
+                    span: fb.span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(0),
+                },
+                span: fb.span,
+            });
+            let fin_loop = LoopRef(self.loop_count);
+            self.loop_count += 1;
+            if self.is_generator {
+                self.gen_try_finals.push((try_loop, fin_loop));
+            }
+            self.ctrl_frames.push(CtrlFrame::Try {
+                try_loop: fin_loop,
+                has_catch: false,
+            });
+            let mut r_fin = self.resolve_body(fb);
+            if !rstmts_diverge(&r_fin.stmts) {
+                r_fin.stmts.push(RStmt::Break {
+                    target: Some(fin_loop),
+                    span: fb.span,
+                });
+            }
+            self.ctrl_frames.pop();
+            out.push(RStmt::Loop {
+                body: r_fin,
+                span: fb.span,
+                target: fin_loop,
+            });
+            let mut restore_stmts = vec![
+                RStmt::Assign {
+                    local: cs.kind,
+                    path: Vec::new(),
+                    value: ResolvedExpr {
+                        span: fb.span,
+                        vt: VT::I32,
+                        kind: RExprKind::ReadLocal(saved_k),
+                    },
+                    span: fb.span,
+                },
+                RStmt::Assign {
+                    local: cs.target_loop,
+                    path: Vec::new(),
+                    value: ResolvedExpr {
+                        span: fb.span,
+                        vt: VT::I32,
+                        kind: RExprKind::ReadLocal(saved_tl),
+                    },
+                    span: fb.span,
+                },
+                RStmt::Assign {
+                    local: cs.err,
+                    path: Vec::new(),
+                    value: ResolvedExpr {
+                        span: fb.span,
+                        vt: VT::StrOwned,
+                        kind: RExprKind::Move {
+                            inner: Box::new(ResolvedExpr {
+                                span: fb.span,
+                                vt: VT::StrOwned,
+                                kind: RExprKind::ReadLocal(saved_e),
+                            }),
+                        },
+                    },
+                    span: fb.span,
+                },
+            ];
+            if let (Some(sr), Some(opt_vi)) = (saved_rv, cs.ret_opt_vi) {
+                let sr_read = ResolvedExpr {
+                    span: fb.span,
+                    vt: VT::Variant(opt_vi),
+                    kind: RExprKind::ReadLocal(sr),
+                };
+                let sr_val = if self.vt_is_coll_owned(VT::Variant(opt_vi)) {
+                    ResolvedExpr {
+                        span: fb.span,
+                        vt: VT::Variant(opt_vi),
+                        kind: RExprKind::Move {
+                            inner: Box::new(sr_read),
+                        },
+                    }
+                } else {
+                    sr_read
+                };
+                restore_stmts.push(RStmt::Assign {
+                    local: cs.ret_val,
+                    path: Vec::new(),
+                    value: sr_val,
+                    span: fb.span,
+                });
+            }
+            out.push(RStmt::If {
+                cond: ResolvedExpr {
+                    span: fb.span,
+                    vt: VT::Bool,
+                    kind: RExprKind::Binary {
+                        op: BinOp::Eq,
+                        lhs: Box::new(ResolvedExpr {
+                            span: fb.span,
+                            vt: VT::I32,
+                            kind: RExprKind::ReadLocal(cs.kind),
+                        }),
+                        rhs: Box::new(ResolvedExpr {
+                            span: fb.span,
+                            vt: VT::I32,
+                            kind: RExprKind::IntLit(0),
+                        }),
+                    },
+                },
+                then: RBlock {
+                    stmts: restore_stmts,
+                    span: fb.span,
+                },
+                els: Some(RBlock {
+                    stmts: Vec::new(),
+                    span: fb.span,
+                }),
+                span: fb.span,
+            });
+        }
+
+        self.emit_post_frame_dispatch(span, &mut out);
+        if self.ctrl_frames.is_empty() && try_diverges && catch_diverges {
+            let dummy = if self.fn_result == VT::Unit {
+                ResolvedExpr {
+                    span,
+                    vt: VT::Unit,
+                    kind: RExprKind::Unit,
+                }
+            } else {
+                self.dummy_of(self.fn_result, span)
+            };
+            out.push(RStmt::Return { value: dummy, span });
+        }
+        out
+    }
+
+    fn resolve_iter_for_in(
+        &mut self,
+        var: &ast::Ident,
+        iter_val: ResolvedExpr,
+        iter_rec_idx: usize,
+        body: &ast::Block,
+        span: Span,
+    ) -> Vec<RStmt> {
+        let mut out = Vec::new();
+        let (elem_vt, _opt_vt, next_fn_index, close_fn_index) = self.iter_info[&iter_rec_idx];
+        let iter_vt = VT::Rec(iter_rec_idx);
+        let opt_vi = self.coll.intern_variant(
+            "Option",
+            span,
+            vec![
+                ("Some".to_string(), Some(elem_vt)),
+                ("None".to_string(), None),
+            ],
+        );
+        let opt_vt = VT::Variant(opt_vi);
+        let it_local = match iter_val.kind {
+            RExprKind::ReadLocal(existing) if self.locals[existing.0].mutable => existing,
+            _ => {
+                let fresh = self.agg_temp("for_it", iter_vt, true, span);
+                out.push(RStmt::Let {
+                    local: fresh,
+                    value: iter_val,
+                    span,
+                });
+                fresh
+            }
+        };
+        let target = LoopRef(self.loop_count);
+        self.loop_count += 1;
+        self.loop_stack.push(target);
+        self.ctrl_frames.push(CtrlFrame::ForIter {
+            target,
+            iter_local: it_local,
+            close_fn_index,
+        });
+        let step_l = self.agg_temp("it_step", opt_vt, false, span);
+        self.scopes.push(Scope {
+            names: BTreeMap::new(),
+            views: BTreeMap::new(),
+        });
+        let elem_l = LocalRef(self.locals.len());
+        self.locals.push(LocalDecl {
+            name: var.name.clone(),
+            vt: elem_vt,
+            mutable: false,
+            is_param: false,
+            param_index: None,
+            capture_index: None,
+            cell: false,
+            is_capture: false,
+            mode: ast::ParamMode::Default,
+            span: var.span,
+        });
+        self.scopes
+            .last_mut()
+            .unwrap()
+            .names
+            .insert(var.name.clone(), elem_l);
+        self.declared_names.insert(var.name.clone());
+        let mut b = self.resolve_body(body);
+        self.scopes.pop();
+        self.ctrl_frames.pop();
+        self.loop_stack.pop();
+
+        let mut then_stmts = vec![RStmt::Let {
+            local: elem_l,
+            value: ResolvedExpr {
+                span: var.span,
+                vt: elem_vt,
+                kind: RExprKind::VariantProject {
+                    local: step_l,
+                    variant: opt_vi,
+                    disc: 0,
+                },
+            },
+            span: var.span,
+        }];
+        then_stmts.append(&mut b.stmts);
+
+        let loop_body = RBlock {
+            stmts: vec![
+                RStmt::Let {
+                    local: step_l,
+                    value: ResolvedExpr {
+                        span,
+                        vt: opt_vt,
+                        kind: RExprKind::CallFn {
+                            fn_index: next_fn_index,
+                            args: vec![ResolvedArg {
+                                span,
+                                name: None,
+                                moved: false,
+                                value: ResolvedExpr {
+                                    span,
+                                    vt: iter_vt,
+                                    kind: RExprKind::BorrowMut { local: it_local },
+                                },
+                            }],
+                        },
+                    },
+                    span,
+                },
+                RStmt::If {
+                    cond: ResolvedExpr {
+                        span,
+                        vt: VT::Bool,
+                        kind: RExprKind::VariantGuardTest {
+                            local: step_l,
+                            variant: opt_vi,
+                            disc: 0,
+                        },
+                    },
+                    then: RBlock {
+                        stmts: then_stmts,
+                        span: body.span,
+                    },
+                    els: Some(RBlock {
+                        stmts: vec![RStmt::Break {
+                            target: Some(target),
+                            span,
+                        }],
+                        span,
+                    }),
+                    span,
+                },
+            ],
+            span: body.span,
+        };
+        out.push(RStmt::Loop {
+            body: loop_body,
+            span,
+            target,
+        });
+        out.push(self.close_for_iter_stmt(close_fn_index, it_local, span));
+        if self.has_outer_ctrl_barrier() {
+            self.emit_post_frame_dispatch(span, &mut out);
+        }
+        out
+    }
+
+    fn resolve_iter_method(
+        &mut self,
+        rrecv: ResolvedExpr,
+        ri: usize,
+        method_name: &str,
+        arg_count: usize,
+        span: Span,
+    ) -> Option<ResolvedExpr> {
+        let &(_elem_vt, opt_vt, next_fn_index, close_fn_index) = self.iter_info.get(&ri)?;
+        if arg_count != 0 {
+            self.bind_err(
+                "source.argument",
+                format!("iterator method `{method_name}` takes no arguments"),
+                span,
+            );
+        }
+        let (fn_index, ret_vt) = match method_name {
+            "next" => (next_fn_index, opt_vt),
+            "close" => (close_fn_index, VT::I32),
+            _ => return None,
+        };
+        let it_vt = VT::Rec(ri);
+        let it_local = match rrecv.kind {
+            RExprKind::ReadLocal(l) if self.locals[l.0].mutable => l,
+            _ => {
+                let tmp = self.agg_temp("it_recv", it_vt, true, span);
+                self.emit_stmt(RStmt::Let {
+                    local: tmp,
+                    value: rrecv,
+                    span,
+                });
+                tmp
+            }
+        };
+        Some(ResolvedExpr {
+            span,
+            vt: ret_vt,
+            kind: RExprKind::CallFn {
+                fn_index,
+                args: vec![ResolvedArg {
+                    span,
+                    name: None,
+                    moved: false,
+                    value: ResolvedExpr {
+                        span,
+                        vt: it_vt,
+                        kind: RExprKind::BorrowMut { local: it_local },
+                    },
+                }],
+            },
+        })
     }
 
     /// PLAN-864: resolve a projection spine (outermost-first segment
@@ -5626,6 +8431,68 @@ impl<'a, 's> FnResolver<'a, 's> {
                     },
                 }
             }
+            ("None", None, None) if self.profile.is_aggregates() => {
+                let vi = self.coll.intern_variant(
+                    "Option",
+                    span,
+                    vec![
+                        ("Some".to_string(), Some(VT::I32)),
+                        ("None".to_string(), None),
+                    ],
+                );
+                ResolvedExpr {
+                    span,
+                    vt: VT::Variant(vi),
+                    kind: RExprKind::VariantCtor {
+                        variant: vi,
+                        disc: 1,
+                        payload: None,
+                    },
+                }
+            }
+            ("Ok", Some(pl), None) if self.profile.is_aggregates() => {
+                let ok_vt = pl.vt;
+                let vi = self.coll.intern_variant(
+                    "Result",
+                    span,
+                    vec![
+                        ("Ok".to_string(), Some(ok_vt)),
+                        ("Err".to_string(), Some(VT::StrOwned)),
+                    ],
+                );
+                ResolvedExpr {
+                    span,
+                    vt: VT::Variant(vi),
+                    kind: RExprKind::VariantCtor {
+                        variant: vi,
+                        disc: 0,
+                        payload: Some(Box::new(pl)),
+                    },
+                }
+            }
+            ("Err", Some(mut pl), None) if self.profile.is_aggregates() => {
+                if pl.vt == VT::Str && matches!(pl.kind, RExprKind::StrLit(_)) {
+                    pl.vt = VT::StrOwned;
+                }
+                let err_vt = pl.vt;
+                let vi = self.coll.intern_variant(
+                    "Result",
+                    span,
+                    vec![
+                        ("Ok".to_string(), Some(VT::I32)),
+                        ("Err".to_string(), Some(err_vt)),
+                    ],
+                );
+                ResolvedExpr {
+                    span,
+                    vt: VT::Variant(vi),
+                    kind: RExprKind::VariantCtor {
+                        variant: vi,
+                        disc: 1,
+                        payload: Some(Box::new(pl)),
+                    },
+                }
+            }
             (other, _, _) => {
                 self.bind_err(
                     "source.type-ambiguous",
@@ -5648,6 +8515,38 @@ impl<'a, 's> FnResolver<'a, 's> {
     /// constructor, with the context's expected type. Everything else
     /// resolves bottom-up unchanged.
     fn expr_with_expect(&mut self, v: &ast::Expr, expect: Option<VT>) -> ResolvedExpr {
+        self.expr_diverged = false;
+        if let Some(may) = self.try_resolve_may_ctor(v, expect) {
+            return may;
+        }
+        if self.profile.is_aggregates() {
+            match &v.kind {
+                ExprKind::Binary {
+                    op: BinOp::NullCoalesce,
+                    lhs,
+                    rhs,
+                } => return self.resolve_unwrap_or(lhs, rhs, expect, v.span),
+                ExprKind::UnwrapOr { inner, fallback } => {
+                    return self.resolve_unwrap_or(inner, fallback, expect, v.span);
+                }
+                ExprKind::Propagate { inner } => {
+                    return self.resolve_propagate(inner, v.span);
+                }
+                ExprKind::IsExpr { scrutinee, arms } => {
+                    let (stmts, expr_opt) =
+                        self.resolve_agg_is(scrutinee, arms, expect, true, v.span);
+                    for s in stmts {
+                        self.emit_stmt(s);
+                    }
+                    return expr_opt.unwrap_or(ResolvedExpr {
+                        span: v.span,
+                        vt: VT::Unit,
+                        kind: RExprKind::Unit,
+                    });
+                }
+                _ => {}
+            }
+        }
         let ctor: Option<(&str, Option<&ast::Expr>)> = match &v.kind {
             ExprKind::Var(id) if id.name == "None" && self.ctor_name_is_free("None") => {
                 Some(("None", None))
@@ -5952,7 +8851,17 @@ impl<'a, 's> FnResolver<'a, 's> {
             stmts: Vec::new(),
             cont: RCont::FnBody,
         }];
+        let mut pending_splice: Option<(usize, usize)> = None;
         loop {
+            if let Some((exp_depth, pre_len)) = pending_splice.take() {
+                let pre = self.pop_sink();
+                if !pre.is_empty() && exp_depth > 0 && exp_depth <= stack.len() {
+                    let stmts = &mut stack[exp_depth - 1].stmts;
+                    let tail = stmts.split_off(pre_len);
+                    stmts.extend(pre);
+                    stmts.extend(tail);
+                }
+            }
             let action = {
                 let frame = stack.last_mut().expect("resolve frame");
                 let src: &ast::Block = frame.src;
@@ -6015,33 +8924,111 @@ impl<'a, 's> FnResolver<'a, 's> {
                     }
                     RCont::WhileArm { cond, span, target } => {
                         self.loop_stack.pop();
-                        stack
-                            .last_mut()
-                            .expect("parent frame")
-                            .stmts
-                            .push(RStmt::While {
-                                cond,
-                                body: block,
-                                span,
-                                target,
-                            });
+                        if self.profile.is_aggregates() {
+                            self.ctrl_frames.pop();
+                        }
+                        let parent = &mut stack.last_mut().expect("parent frame").stmts;
+                        parent.push(RStmt::While {
+                            cond,
+                            body: block,
+                            span,
+                            target,
+                        });
+                        if self.profile.is_aggregates() && self.has_outer_ctrl_barrier() {
+                            self.emit_post_frame_dispatch(span, parent);
+                        }
                     }
                     RCont::LoopArm { span, target } => {
                         self.loop_stack.pop();
-                        stack
-                            .last_mut()
-                            .expect("parent frame")
-                            .stmts
-                            .push(RStmt::Loop {
-                                body: block,
-                                span,
-                                target,
-                            });
+                        if self.profile.is_aggregates() {
+                            self.ctrl_frames.pop();
+                        }
+                        let parent = &mut stack.last_mut().expect("parent frame").stmts;
+                        parent.push(RStmt::Loop {
+                            body: block,
+                            span,
+                            target,
+                        });
+                        if self.profile.is_aggregates() && self.has_outer_ctrl_barrier() {
+                            self.emit_post_frame_dispatch(span, parent);
+                        }
                     }
                 }
                 continue;
             };
+            let pre_len = stack.last().expect("resolve frame").stmts.len();
+            pending_splice = Some((stack.len(), pre_len));
+            self.push_sink();
             match s {
+                Stmt::AggIsMatch {
+                    scrutinee,
+                    arms,
+                    span,
+                } => {
+                    if self.profile.is_aggregates() {
+                        let (stmts, _) = self.resolve_agg_is(scrutinee, arms, None, false, *span);
+                        stack.last_mut().expect("resolve frame").stmts.extend(stmts);
+                    } else {
+                        self.bind_err(
+                            "source.unsupported",
+                            "control/generator statements require full aggregates lowering"
+                                .to_string(),
+                            *span,
+                        );
+                    }
+                }
+                Stmt::Try {
+                    body,
+                    catch,
+                    finally,
+                    span,
+                } => {
+                    if self.profile.is_aggregates() {
+                        let stmts =
+                            self.resolve_try_stmt(body, catch.as_ref(), finally.as_ref(), *span);
+                        stack.last_mut().expect("resolve frame").stmts.extend(stmts);
+                    } else {
+                        self.bind_err(
+                            "source.unsupported",
+                            "control/generator statements require full aggregates lowering"
+                                .to_string(),
+                            *span,
+                        );
+                    }
+                }
+                Stmt::Yield { value, span } => {
+                    if !self.profile.is_aggregates() || !self.is_generator {
+                        self.bind_err(
+                            "source.yield-outside-generator",
+                            "`yield` can only be used inside a `~Iter<T>` generator function"
+                                .to_string(),
+                            *span,
+                        );
+                    } else {
+                        let elem_vt = if let VT::Rec(ri) = self.fn_result {
+                            self.iter_info.get(&ri).map(|info| info.0)
+                        } else {
+                            None
+                        };
+                        let val = self.expr_with_expect(value, elem_vt);
+                        let yield_expr = ResolvedExpr {
+                            span: *span,
+                            vt: VT::Unit,
+                            kind: RExprKind::CallIntrinsic {
+                                symbol: "__ace_yield",
+                                args: vec![val],
+                            },
+                        };
+                        stack
+                            .last_mut()
+                            .expect("resolve frame")
+                            .stmts
+                            .push(RStmt::ExprStmt {
+                                value: yield_expr,
+                                span: *span,
+                            });
+                    }
+                }
                 // PLAN-962 (T-08, L-07): `let hold x as v { }` — the
                 // whole-local hold. v is a NAME ALIAS of the held local
                 // inside the block (>= the old engine's MVP semantics —
@@ -6935,33 +9922,92 @@ impl<'a, 's> FnResolver<'a, 's> {
                     stack.last_mut().expect("resolve frame").stmts.push(rstmt);
                 }
                 Stmt::Return { value, span } => {
-                    let mut value = self.expr_with_expect(value, Some(self.fn_result));
-                    self.reject_elem_view_use(&value, "the returned value");
-                    retag_literal(&mut value, self.fn_result);
-                    if matches!(
-                        &value.kind,
-                        RExprKind::CreateClosure { captures, .. }
-                            if captures.iter().any(|(_, mode)| *mode == crate::hir::CaptureMode::Borrow)
-                    ) {
-                        self.bind_err(
-                            "source.closure-borrow-escape",
-                            "a borrow-capturing closure cannot be returned",
-                            value.span,
-                        );
+                    if self.profile.is_aggregates() {
+                        if self.is_generator {
+                            let is_empty_ret = matches!(&value.kind, ExprKind::TupleLit(xs) if xs.is_empty())
+                                || matches!(&value.kind, ExprKind::Var(id) if id.name == "None");
+                            if !is_empty_ret {
+                                let _ = self.expr_iterative(value);
+                            }
+                            let mut ret_stmts = Vec::new();
+                            self.emit_return_to_out(None, *span, &mut ret_stmts);
+                            stack
+                                .last_mut()
+                                .expect("resolve frame")
+                                .stmts
+                                .extend(ret_stmts);
+                            continue;
+                        }
+                        self.expr_diverged = false;
+                        let mut value = self.expr_with_expect(value, Some(self.fn_result));
+                        if self.expr_diverged {
+                            continue;
+                        }
+                        self.reject_elem_view_use(&value, "the returned value");
+                        retag_literal(&mut value, self.fn_result);
+                        if matches!(
+                            &value.kind,
+                            RExprKind::CreateClosure { captures, .. }
+                                if captures.iter().any(|(_, mode)| *mode == crate::hir::CaptureMode::Borrow)
+                        ) {
+                            self.bind_err(
+                                "source.closure-borrow-escape",
+                                "a borrow-capturing closure cannot be returned",
+                                value.span,
+                            );
+                        }
+                        let mut ret_stmts = Vec::new();
+                        self.emit_return_to_out(Some(value), *span, &mut ret_stmts);
+                        stack
+                            .last_mut()
+                            .expect("resolve frame")
+                            .stmts
+                            .extend(ret_stmts);
+                    } else {
+                        let mut value = self.expr_with_expect(value, Some(self.fn_result));
+                        self.reject_elem_view_use(&value, "the returned value");
+                        retag_literal(&mut value, self.fn_result);
+                        if matches!(
+                            &value.kind,
+                            RExprKind::CreateClosure { captures, .. }
+                                if captures.iter().any(|(_, mode)| *mode == crate::hir::CaptureMode::Borrow)
+                        ) {
+                            self.bind_err(
+                                "source.closure-borrow-escape",
+                                "a borrow-capturing closure cannot be returned",
+                                value.span,
+                            );
+                        }
+                        stack
+                            .last_mut()
+                            .expect("resolve frame")
+                            .stmts
+                            .push(RStmt::Return { value, span: *span });
                     }
-                    stack
-                        .last_mut()
-                        .expect("resolve frame")
-                        .stmts
-                        .push(RStmt::Return { value, span: *span });
                 }
                 Stmt::ExprStmt { value, span } => {
+                    self.expr_diverged = false;
                     let value = self.expr_iterative(value);
-                    stack
-                        .last_mut()
-                        .expect("resolve frame")
-                        .stmts
-                        .push(RStmt::ExprStmt { value, span: *span });
+                    if self.profile.is_aggregates() && self.expr_diverged {
+                        continue;
+                    }
+                    let is_iter_close = self.profile.is_aggregates()
+                        && matches!(
+                            &value.kind,
+                            RExprKind::CallFn { fn_index, .. }
+                                if self.iter_info.values().any(|info| info.3 == *fn_index)
+                        );
+                    let stmt = if is_iter_close {
+                        let local = self.agg_temp("it_close", VT::I32, false, *span);
+                        RStmt::Let {
+                            local,
+                            value,
+                            span: *span,
+                        }
+                    } else {
+                        RStmt::ExprStmt { value, span: *span }
+                    };
+                    stack.last_mut().expect("resolve frame").stmts.push(stmt);
                 }
                 Stmt::If {
                     cond,
@@ -6988,29 +10034,71 @@ impl<'a, 's> FnResolver<'a, 's> {
                 Stmt::While {
                     cond, body, span, ..
                 } => {
-                    let cond = self.expr_iterative(cond);
                     let target = LoopRef(self.loop_count);
                     self.loop_count += 1;
                     self.loop_stack.push(target);
-                    self.scopes.push(Scope {
-                        names: BTreeMap::new(),
-                        views: BTreeMap::new(),
-                    });
-                    stack.push(RFrame {
-                        src: body,
-                        idx: 0,
-                        stmts: Vec::new(),
-                        cont: RCont::WhileArm {
-                            cond,
+                    if self.profile.is_aggregates() {
+                        let (mut cond_stmts, cond_val, _) =
+                            self.resolve_expr_in_branch(cond, Some(VT::Bool));
+                        let negated = ResolvedExpr {
+                            span: cond.span,
+                            vt: VT::Bool,
+                            kind: RExprKind::Unary {
+                                op: ast::UnaryOp::Not,
+                                operand: Box::new(cond_val),
+                            },
+                        };
+                        cond_stmts.push(RStmt::If {
+                            cond: negated,
+                            then: RBlock {
+                                stmts: vec![RStmt::Break {
+                                    target: Some(target),
+                                    span: *span,
+                                }],
+                                span: *span,
+                            },
+                            els: None,
                             span: *span,
-                            target,
-                        },
-                    });
+                        });
+                        self.ctrl_frames.push(CtrlFrame::Loop { target });
+                        self.scopes.push(Scope {
+                            names: BTreeMap::new(),
+                            views: BTreeMap::new(),
+                        });
+                        stack.push(RFrame {
+                            src: body,
+                            idx: 0,
+                            stmts: cond_stmts,
+                            cont: RCont::LoopArm {
+                                span: *span,
+                                target,
+                            },
+                        });
+                    } else {
+                        let cond = self.expr_iterative(cond);
+                        self.scopes.push(Scope {
+                            names: BTreeMap::new(),
+                            views: BTreeMap::new(),
+                        });
+                        stack.push(RFrame {
+                            src: body,
+                            idx: 0,
+                            stmts: Vec::new(),
+                            cont: RCont::WhileArm {
+                                cond,
+                                span: *span,
+                                target,
+                            },
+                        });
+                    }
                 }
                 Stmt::Loop { body, span } => {
                     let target = LoopRef(self.loop_count);
                     self.loop_count += 1;
                     self.loop_stack.push(target);
+                    if self.profile.is_aggregates() {
+                        self.ctrl_frames.push(CtrlFrame::Loop { target });
+                    }
                     self.scopes.push(Scope {
                         names: BTreeMap::new(),
                         views: BTreeMap::new(),
@@ -7026,26 +10114,38 @@ impl<'a, 's> FnResolver<'a, 's> {
                     });
                 }
                 Stmt::Break { span } => {
-                    let target = self.loop_stack.last().copied();
-                    stack
-                        .last_mut()
-                        .expect("resolve frame")
-                        .stmts
-                        .push(RStmt::Break {
-                            target,
-                            span: *span,
-                        });
+                    if self.profile.is_aggregates() {
+                        let mut stmts = Vec::new();
+                        self.emit_break_or_continue_to_out(true, *span, &mut stmts);
+                        stack.last_mut().expect("resolve frame").stmts.extend(stmts);
+                    } else {
+                        let target = self.loop_stack.last().copied();
+                        stack
+                            .last_mut()
+                            .expect("resolve frame")
+                            .stmts
+                            .push(RStmt::Break {
+                                target,
+                                span: *span,
+                            });
+                    }
                 }
                 Stmt::Continue { span } => {
-                    let target = self.loop_stack.last().copied();
-                    stack
-                        .last_mut()
-                        .expect("resolve frame")
-                        .stmts
-                        .push(RStmt::Continue {
-                            target,
-                            span: *span,
-                        });
+                    if self.profile.is_aggregates() {
+                        let mut stmts = Vec::new();
+                        self.emit_break_or_continue_to_out(false, *span, &mut stmts);
+                        stack.last_mut().expect("resolve frame").stmts.extend(stmts);
+                    } else {
+                        let target = self.loop_stack.last().copied();
+                        stack
+                            .last_mut()
+                            .expect("resolve frame")
+                            .stmts
+                            .push(RStmt::Continue {
+                                target,
+                                span: *span,
+                            });
+                    }
                 }
                 // PLAN-864: exhaustive `is` dispatch — resolve the arm
                 // bodies, check exhaustiveness/duplicates, then synthesize
@@ -7288,7 +10388,13 @@ impl<'a, 's> FnResolver<'a, 's> {
                             .names
                             .insert(var.name.clone(), i_l);
                         self.declared_names.insert(var.name.clone());
+                        if self.profile.is_aggregates() {
+                            self.ctrl_frames.push(CtrlFrame::Loop { target });
+                        }
                         let mut b = self.resolve_body(body);
+                        if self.profile.is_aggregates() {
+                            self.ctrl_frames.pop();
+                        }
                         self.scopes.pop();
                         self.loop_stack.pop();
                         let read_i = |sp: Span| ResolvedExpr {
@@ -7356,11 +10462,35 @@ impl<'a, 's> FnResolver<'a, 's> {
                             },
                             span: *span,
                         });
+                        if self.profile.is_aggregates() && self.has_outer_ctrl_barrier() {
+                            self.emit_post_frame_dispatch(*span, &mut prologue);
+                        }
                         stack
                             .last_mut()
                             .expect("resolve frame")
                             .stmts
                             .extend(prologue);
+                        continue;
+                    }
+                    let is_list_var = matches!(&iter.kind, ast::ExprKind::Var(id) if matches!(self.lookup(&id.name).map(|l| self.locals[l.0].vt), Some(VT::List(_))));
+                    if self.profile.is_aggregates() && !is_list_var {
+                        let iter_val = self.expr_iterative(iter);
+                        if let VT::Rec(ri) = iter_val.vt {
+                            if self.iter_info.contains_key(&ri) {
+                                let stmts =
+                                    self.resolve_iter_for_in(var, iter_val, ri, body, *span);
+                                stack.last_mut().expect("resolve frame").stmts.extend(stmts);
+                                continue;
+                            }
+                        }
+                        self.bind_err(
+                            "source.iterate-scrutinee",
+                            format!(
+                                "`for` requires a Range, List, or Iter<T>, found `{}`",
+                                iter_val.vt.as_str()
+                            ),
+                            iter.span,
+                        );
                         continue;
                     }
                     let ast::ExprKind::Var(id) = &iter.kind else {
@@ -7398,6 +10528,9 @@ impl<'a, 's> FnResolver<'a, 's> {
                     let target = LoopRef(self.loop_count);
                     self.loop_count += 1;
                     self.loop_stack.push(target);
+                    if self.profile.is_aggregates() {
+                        self.ctrl_frames.push(CtrlFrame::Loop { target });
+                    }
                     self.iterate_targets.push((xsl, elem, *span));
                     let zero = ResolvedExpr {
                         span: *span,
@@ -7492,6 +10625,9 @@ impl<'a, 's> FnResolver<'a, 's> {
                     };
                     self.iterate_targets.pop();
                     self.loop_stack.pop();
+                    if self.profile.is_aggregates() {
+                        self.ctrl_frames.pop();
+                    }
                     let one = ResolvedExpr {
                         span: *span,
                         vt: VT::I32,
@@ -7555,6 +10691,9 @@ impl<'a, 's> FnResolver<'a, 's> {
                         span: *span,
                         target,
                     });
+                    if self.profile.is_aggregates() && self.has_outer_ctrl_barrier() {
+                        self.emit_post_frame_dispatch(*span, &mut prologue);
+                    }
                     stack
                         .last_mut()
                         .expect("resolve frame")
@@ -7567,6 +10706,63 @@ impl<'a, 's> FnResolver<'a, 's> {
 
     fn expr(&mut self, e: &Expr) -> ResolvedExpr {
         match &e.kind {
+            ExprKind::Propagate { inner } => {
+                if self.profile.is_aggregates() {
+                    self.resolve_propagate(inner, e.span)
+                } else {
+                    self.bind_err(
+                        "source.unsupported",
+                        "error propagation / is-expr requires full aggregates lowering".to_string(),
+                        e.span,
+                    );
+                    ResolvedExpr {
+                        span: e.span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(0),
+                    }
+                }
+            }
+            ExprKind::UnwrapOr { inner, fallback } => {
+                if self.profile.is_aggregates() {
+                    self.resolve_unwrap_or(inner, fallback, None, e.span)
+                } else {
+                    self.bind_err(
+                        "source.unsupported",
+                        "error propagation / is-expr requires full aggregates lowering".to_string(),
+                        e.span,
+                    );
+                    ResolvedExpr {
+                        span: e.span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(0),
+                    }
+                }
+            }
+            ExprKind::IsExpr { scrutinee, arms } => {
+                if self.profile.is_aggregates() {
+                    let (stmts, expr_opt) =
+                        self.resolve_agg_is(scrutinee, arms, None, true, e.span);
+                    for s in stmts {
+                        self.emit_stmt(s);
+                    }
+                    expr_opt.unwrap_or(ResolvedExpr {
+                        span: e.span,
+                        vt: VT::Unit,
+                        kind: RExprKind::Unit,
+                    })
+                } else {
+                    self.bind_err(
+                        "source.unsupported",
+                        "error propagation / is-expr requires full aggregates lowering".to_string(),
+                        e.span,
+                    );
+                    ResolvedExpr {
+                        span: e.span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(0),
+                    }
+                }
+            }
             // PLAN-962 (L-15): a tuple LITERAL resolves positionally —
             // the elements' VTs intern the structural shape; materializ-
             // ation (anonymous positional record) is the adapter's.
@@ -7960,6 +11156,12 @@ impl<'a, 's> FnResolver<'a, 's> {
                                 };
                             }
                         }
+                    }
+                    if self.profile.is_aggregates()
+                        && id.name == "None"
+                        && self.ctor_name_is_free("None")
+                    {
+                        return self.resolve_bare_ctor("None", None, None, e.span);
                     }
                     if self.sigs.contains_key(&id.name) {
                         self.bind_err(
@@ -8375,6 +11577,17 @@ impl<'a, 's> FnResolver<'a, 's> {
                     kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
                 };
             };
+            if self.profile.is_aggregates()
+                && self.iter_info.contains_key(&ri)
+                && matches!(name.name.as_str(), "next" | "close")
+            {
+                if let Some(res) =
+                    self.resolve_iter_method(*rrecv, ri, &name.name, rargs.len(), span)
+                {
+                    return res;
+                }
+                unreachable!("iter method checked above");
+            }
             // PLAN-782: builtin deep clone binds by (record receiver,
             // "clone") on the COMBINATION surface only — the plain record
             // profile keeps its 771 face (`type X has no method named
@@ -9107,6 +12320,12 @@ impl<'a, 's> FnResolver<'a, 's> {
                         continue;
                     }
                     if let ExprKind::Field { base, name } = &node.kind {
+                        if self.profile.is_aggregates() {
+                            if let Some(may) = self.try_resolve_may_ctor(node, None) {
+                                out[slot] = may;
+                                continue;
+                            }
+                        }
                         // PLAN-864: an owned-element field projection
                         // (`xs.get(i).f[.g]`, or a for-in view binding) fuses
                         // into one ListFieldGet/ElemView node — never a
@@ -9244,6 +12463,12 @@ impl<'a, 's> FnResolver<'a, 's> {
                             slot: bslot,
                         });
                     } else if let ExprKind::MethodCall { recv, name, args } = &node.kind {
+                        if self.profile.is_aggregates() {
+                            if let Some(may) = self.try_resolve_may_ctor(node, None) {
+                                out[slot] = may;
+                                continue;
+                            }
+                        }
                         // static pre-classification: bare record type name
                         // receiver resolves to no local — the receiver
                         // expression is NOT evaluated for static calls.
@@ -9407,6 +12632,17 @@ impl<'a, 's> FnResolver<'a, 's> {
                             });
                         }
                     } else if let ExprKind::Binary { op, lhs, rhs } = &node.kind {
+                        if self.profile.is_aggregates() {
+                            if *op == BinOp::NullCoalesce {
+                                out[slot] = self.resolve_unwrap_or(lhs, rhs, None, node.span);
+                                continue;
+                            }
+                            if matches!(op, BinOp::And | BinOp::Or) {
+                                out[slot] =
+                                    self.resolve_short_circuit_bin(*op, lhs, rhs, node.span);
+                                continue;
+                            }
+                        }
                         let lslot = out.len();
                         out.push(dummy_resolved());
                         let rslot = out.len();
@@ -9468,6 +12704,33 @@ impl<'a, 's> FnResolver<'a, 's> {
                         });
                         for t in subtasks.into_iter().rev() {
                             stack.push(t);
+                        }
+                    } else if let ExprKind::Propagate { inner } = &node.kind {
+                        out[slot] = if self.profile.is_aggregates() {
+                            self.resolve_propagate(inner, node.span)
+                        } else {
+                            self.expr(node)
+                        };
+                    } else if let ExprKind::UnwrapOr { inner, fallback } = &node.kind {
+                        out[slot] = if self.profile.is_aggregates() {
+                            self.resolve_unwrap_or(inner, fallback, None, node.span)
+                        } else {
+                            self.expr(node)
+                        };
+                    } else if let ExprKind::IsExpr { scrutinee, arms } = &node.kind {
+                        if self.profile.is_aggregates() {
+                            let (stmts, expr_opt) =
+                                self.resolve_agg_is(scrutinee, arms, None, true, node.span);
+                            for s in stmts {
+                                self.emit_stmt(s);
+                            }
+                            out[slot] = expr_opt.unwrap_or(ResolvedExpr {
+                                span: node.span,
+                                vt: VT::Unit,
+                                kind: RExprKind::Unit,
+                            });
+                        } else {
+                            out[slot] = self.expr(node);
                         }
                     } else {
                         out[slot] = self.expr(node);
@@ -10510,6 +13773,97 @@ impl<'a, 's> FnResolver<'a, 's> {
                 vt: VT::StrOwned,
                 kind: RExprKind::FStr { parts },
             };
+        }
+        if self.profile.is_aggregates() {
+            if matches!(callee.name.as_str(), "Some" | "Ok" | "Err")
+                && self.ctor_name_is_free(&callee.name)
+            {
+                if rargs.len() != 1 || rargs[0].name.is_some() {
+                    self.bind_err(
+                        "source.arity",
+                        format!("`{}` expects 1 positional argument", callee.name),
+                        call_span,
+                    );
+                    return self.dummy_of(VT::I32, call_span);
+                }
+                let pl = rargs.remove(0).value;
+                return self.resolve_bare_ctor(&callee.name, Some(pl), None, call_span);
+            }
+            if callee.name == "fail" && !self.sigs.contains_key("fail") {
+                if rargs.len() != 1 || rargs[0].name.is_some() {
+                    self.bind_err(
+                        "source.arity",
+                        "`fail` expects 1 positional string argument".to_string(),
+                        call_span,
+                    );
+                    return self.dummy_of(VT::Unit, call_span);
+                }
+                let msg = rargs.remove(0).value;
+                if !matches!(msg.vt, VT::Str | VT::StrOwned) {
+                    self.bind_err(
+                        "source.type-mismatch",
+                        format!(
+                            "`fail` expects a string message, found `{}`",
+                            msg.vt.as_str()
+                        ),
+                        msg.span,
+                    );
+                    return self.dummy_of(VT::Unit, call_span);
+                }
+                let mut stmts = Vec::new();
+                self.emit_fail_to_out(msg, call_span, &mut stmts);
+                for st in stmts {
+                    self.emit_stmt(st);
+                }
+                self.expr_diverged = true;
+                return self.dummy_of(VT::Unit, call_span);
+            }
+            if callee.name == "rethrow" && !self.sigs.contains_key("rethrow") {
+                if self.catch_err_locals.is_empty() {
+                    self.bind_err(
+                        "source.rethrow-outside-catch",
+                        "`rethrow` can only be used inside a `catch` block".to_string(),
+                        call_span,
+                    );
+                    return self.dummy_of(VT::Unit, call_span);
+                }
+                let msg = if rargs.is_empty() {
+                    let err_l = *self.catch_err_locals.last().expect("catch local");
+                    ResolvedExpr {
+                        span: call_span,
+                        vt: VT::StrOwned,
+                        kind: RExprKind::ReadLocal(err_l),
+                    }
+                } else if rargs.len() == 1 && rargs[0].name.is_none() {
+                    let m = rargs.remove(0).value;
+                    if !matches!(m.vt, VT::Str | VT::StrOwned) {
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!(
+                                "`rethrow` expects a string message, found `{}`",
+                                m.vt.as_str()
+                            ),
+                            m.span,
+                        );
+                        return self.dummy_of(VT::Unit, call_span);
+                    }
+                    m
+                } else {
+                    self.bind_err(
+                        "source.arity",
+                        "`rethrow` takes 0 or 1 positional string argument".to_string(),
+                        call_span,
+                    );
+                    return self.dummy_of(VT::Unit, call_span);
+                };
+                let mut stmts = Vec::new();
+                self.emit_fail_to_out(msg, call_span, &mut stmts);
+                for st in stmts {
+                    self.emit_stmt(st);
+                }
+                self.expr_diverged = true;
+                return self.dummy_of(VT::Unit, call_span);
+            }
         }
         for arg in &rargs {
             if matches!(
