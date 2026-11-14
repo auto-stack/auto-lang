@@ -445,6 +445,55 @@ fn main() int { return square(7) * 10 + min(3i64, 5i64).to(i32) }".into(),
 
 }
 
+/// S-05 parse family with the V-DETAIL-02 error paths independently
+/// asserted: "42"→42, "-2147483648"→MIN (the boundary parses), "007"→7,
+/// "2147483648"→None (range), "12a"→None (invalid digit), ""→None,
+/// "-"→None (lone sign); is_uint negatives.
+const CONV_MAIN: &str = r#"
+use std.conv.to_int
+use std.conv.is_uint
+fn pick(s Str) int {
+    let r = to_int(s)
+    is r {
+        Some(v) -> { return v }
+        None -> { return 999999 }
+    }
+}
+fn main() int {
+    var code = pick("42".clone()) * 10000000
+    code = code + (pick("-2147483648".clone()).to(i64) + 2147483648i64).to(i32) * 1000000
+    code = code + pick("007".clone()) * 100000
+    if (pick("2147483648".clone()) == 999999) {
+        code = code + 40000
+    }
+    if (pick("12a".clone()) == 999999) {
+        code = code + 2000
+    }
+    if (pick("".clone()) == 999999) {
+        code = code + 1000
+    }
+    if (pick("-".clone()) == 999999) {
+        code = code + 400
+    }
+    if (is_uint("123".clone())) {
+        code = code + 20
+    }
+    if (is_uint("12a".clone())) {
+        code = code + 2
+    }
+    if (is_uint("".clone())) {
+        code = code + 1
+    }
+    return code
+}
+"#;
+
+#[test]
+fn stdlib_asm_972_conv_parse_av() {
+    let p = asm_lane_product("conv", CONV_MAIN);
+    assert_eq!(run_av("conv", &p), Value::I32(420743420));
+}
+
 /// `std` identity reservation on the assembled lane: a tampered `std.list`
 /// source, and a provider layer riding `std.list`, both reject BEFORE any
 /// compile/run with the named reservation code.

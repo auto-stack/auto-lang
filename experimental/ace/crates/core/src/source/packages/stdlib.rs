@@ -79,6 +79,7 @@ const ASM_LIST_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/
 const ASM_MATH_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/math.at");
 const ASM_TEXT_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/text.at");
 const ASM_CHAR_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/char.at");
+const ASM_CONV_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/conv.at");
 
 /// 装配标准库集的平铺文件闭包（discover/assemble 消费；按名排序由调用方
 /// 的 assemble 逻辑负责）。纯 Auto 模块无来源候选（provider 选择面允许
@@ -89,6 +90,7 @@ pub fn stdlib_assembled_files() -> Vec<(String, String)> {
         ("math.at".to_string(), ASM_MATH_PUBLIC.to_string()),
         ("text.at".to_string(), ASM_TEXT_PUBLIC.to_string()),
         ("char.at".to_string(), ASM_CHAR_PUBLIC.to_string()),
+        ("conv.at".to_string(), ASM_CONV_PUBLIC.to_string()),
     ]
 }
 
@@ -113,6 +115,7 @@ pub fn is_frozen_std_assembled_module(
         || matches!(id, "math" if source == ASM_MATH_PUBLIC)
         || matches!(id, "text" if source == ASM_TEXT_PUBLIC)
         || matches!(id, "char" if source == ASM_CHAR_PUBLIC)
+        || matches!(id, "conv" if source == ASM_CONV_PUBLIC)
 }
 
 #[cfg(test)]
