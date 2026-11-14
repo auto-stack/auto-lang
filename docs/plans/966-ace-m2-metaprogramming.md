@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-14
 plan_revision: 8
-current_step: 1
+current_step: 6
 total_steps: 10
 depends_on: [PLAN-960, PLAN-963, PLAN-964, PLAN-965, PLAN-936, PLAN-958, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-lang/comptime/design/hash-syntax.md, docs/specs/auto-cte/scalar-query-profile.md]
@@ -209,6 +209,10 @@ struct GeneratedDecl { candidate: UntrustedDecl, origin: SourceMap, dependencies
 
 **metadata 分账**：`field_count`/`has_field` 等 metadata 查询（`cte.meta.fields/v1`）由 936 交付、在 scalar-ct/AV CT 前门实测；本包在 T-08 用真实 worker 前门验收其"字段变更重算、未读 body 不重算"（V-02），不重复实现第二套查询。`#[attr]` 注解语法/路由按 [m2-denominator](../specs/ace-migration/m2-denominator.md) L-35 行级归属分账：`#[test]`→971、`#[api]`→980/982、`#[c]/#[vm]`→967 provider 选择；本包交付的是 # 构造/宏调用与 metadata 查询面，不把该行整体吞入。
 
+### 2026-11-14 目标事实边界（T-09 冻结）
+
+编译期条件的事实域来自**显式装配目标**（`PackageAssemblyContext`）：`sys.current`=目标、`sys.host`=宿主另名、`Windows/Linux/Mac` 同域 i32 常量；它们进入装配身份与 store 根。**arch/env/ABI 当前没有显式目标输入**——引用 `sys.arch`/`sys.env`/`sys.abi` 等未注册成员按 `source.cte.in-name` 具名拒（不静默默认、不读宿主环境变量、不从 Rust 默认行为猜 Auto 语义）。其正式来源分账：目标 arch/ABI 归 978 的 target triple/SDK 与 967 的 FFI 合同；env/配置型输入归 978/979 的构建配置面；本包只冻结"无输入即具名拒"的边界，并在这些来源交付后按其显式事实扩面。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
@@ -319,18 +323,23 @@ struct GeneratedDecl { candidate: UntrustedDecl, origin: SourceMap, dependencies
 - [x] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。
   - [✅ 2026-11-14] 依赖/路径核实、语义/命令冻结与有界前探（正例/非法近邻/失败恢复/端到端 AV 3 例）见 §5「2026-11-14 T-01」；实施树 `.wt/lang-966`、分支 `plan-966-dev`、基面 `bb74f313c`；本片代码提交 `b2427f34b`。未完成项全部保留在 T-02/T-08/T-09/T-10。
 
-- [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
+- [x] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
   - [部分 2026-11-14] 语句级 `#if/#for/#is`（packages-ct）已实现并绿：AST 载体 + 装配期按目标事实折叠、预算/恢复、嵌套循环变量环境、未折叠残余具名拒；共享扫描面同步（见 §5「T-02 实现决定」与 §9 round-2 收据，提交 `4ef0afe76`/`e8a14a0f6`）。
   - [部分 2026-11-14] 宏调用 `#name(args)` 已实现并绿：语句位调用糖、未知/不可解析具名拒、命名实参具名拒、遮蔽不改绑（见 §5「宏调用合同」，提交 `48f42ad51`）。**未勾选**：metadata 查询面的真实 worker 前门验收（field 变更失效/未读 body 复用，V-02）仍归 T-08；`#[attr]` 路由按 L-35 分账给 971/980/982/967。
+  - [✅ 2026-11-14 收口] 主能力与永久正反例齐：项位 `#in/#if/#is/#for`、语句级 `#if/#for/#is`、宏 `#name(args)` 全部实现并有永久正/反例（`plan966_tests` 12 例 + `plan966_ct_product` 2 例）；V-02 metadata 查询证据复用 936 的 `cte_schedule_meta_argument_invalidates_precisely`（field 2→3 重算为 300、缺字段 zzz 出现使 HasField 翻 true、原 deck 仍 hit）与 `cte_schedule_meta_block_negatives`（无能力 `cte.capability.meta` 先于 AV），代码/输入未变故按有效证据复用；`#[attr]` 按 L-35 分账不属本包实现面（§5 metadata 分账）。
 
-- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
+- [x] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
   - [部分 2026-11-14] 四端 consumer 产品腿已建（`av/tests/cases/plan966_ct_product.rs`，提交 `ec070e8c0`）：语句级 `#if/#for/#is`+`#debug` 在 AV/native(AC)/A2R/A2C/A2PY 真跑（Windows=112 / Linux=222），`#is` 生成声明改动改变四端结果（10/20，V-08 腿）。**未勾选**：权限/增量/失败恢复与缓存失效证据归 T-10，worker 逐端回灌归 T-08。
+  - [✅ 2026-11-14 收口] 权限（CT 能力门）与增量/失败恢复证据落地：能力门由 936/958 的 `cte.capability.*` 拒绝用例承载（消费方不变）；增量/失败保旧/恢复由 T-10 的 `p966_ct_*` store 三例（提交 `b86f5c5bb`）与本包产品腿共同闭合；每端均有手定独立 oracle，无模型替代运行。
 
-- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：消费已归档958的A2X worker CT接线，逐端从公共worker而非私有service调用验证宏/CT回灌；冻结CT可用stdlib子集、显式环境输入与不可冻结值策略。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+- [x] **T-08｜M2-A｜owner_stage: work｜AC-06**：消费已归档958的A2X worker CT接线，逐端从公共worker而非私有service调用验证宏/CT回灌；冻结CT可用stdlib子集、显式环境输入与不可冻结值策略。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+  - [✅ 2026-11-14] 958 公共 worker CT 前门在冻结提交复跑绿（`cargo t ace-a2x`，run-mtkh2b60：Rust/C 两端按手定 oracle 认证、`cte.meta.fields/v1` meta2/meta3、能力拒绝与错误 oracle 不得认证）；V-08 永久输入＝`plan966_ct_product`（CT 生成声明改变四端结果）＋「无服务不冒运行期求值/未声明 IO 拒绝/不可冻结值」沿用 936 `unserved_hash_binds_then_rejects_at_typecheck`、958 能力拒绝与 `cte.meta` 负控（代码/输入未变）；宏与语句级 CT 在装配期折叠，HIR 前完成，无第二求值路径。
 
-- [ ] **T-09｜M2-A｜owner_stage: work｜AC-07**：消费1043最小#in/装配层后扩完整目标条件#语法/求值到统一模块导入和声明选择；明确目标OS/arch/env/ABI事实来源，未选分支不绑定平台依赖、选中use进入所在模块。 验证V-09，证据汇入原最终work验证。 PLATFORM-IS：补§5当前合同及V-PLATFORM-IS，保原V-09/10与全部既有范围；消费1043最小加载/#in层，补V-IN/AC-IN；原完整限定名路径和全部目标条件仍保留。
+- [x] **T-09｜M2-A｜owner_stage: work｜AC-07**：消费1043最小#in/装配层后扩完整目标条件#语法/求值到统一模块导入和声明选择；明确目标OS/arch/env/ABI事实来源，未选分支不绑定平台依赖、选中use进入所在模块。 验证V-09，证据汇入原最终work验证。 PLATFORM-IS：补§5当前合同及V-PLATFORM-IS，保原V-09/10与全部既有范围；消费1043最小加载/#in层，补V-IN/AC-IN；原完整限定名路径和全部目标条件仍保留。
+  - [✅ 2026-11-14] 目标条件#语法扩展到项位＋语句位并在统一导入/声明选择上闭合；事实边界见 §5「2026-11-14 目标事实边界」（OS 来自显式装配目标；arch/env/ABI 无输入即 `source.cte.in-name` 具名拒，来源分账 978/967/979）；V-09 反例见 `p966_v09_unselected_branch_rules`（未选分支语法坏仍报 Text、未选模块缺失不阻、选中缺失具名拒），Windows/Linux 双向选择与"外层函数引用选中导入"由 `p966_ct_if_item_selects_imports_by_target`＋产品腿覆盖；`cargo t ace-source ace-semantics` 冻结提交门 PASS（run-wrf_von9）。
 
-- [ ] **T-10｜M2-A｜owner_stage: work｜AC-08**：把条件输入/选中模块/provider/ABI接入现有query/store和workerCT，验证跨目标切换、相关失效、无关复用及失败保旧/恢复；覆盖函数/类型/常量和导入。 验证V-10，证据汇入原最终work验证。 PLATFORM-IS：补§5当前合同及V-PLATFORM-IS，保原V-09/10与全部既有范围；消费1043最小加载/#in层，补V-IN/AC-IN；原完整限定名路径和全部目标条件仍保留。
+- [x] **T-10｜M2-A｜owner_stage: work｜AC-08**：把条件输入/选中模块/provider/ABI接入现有query/store和workerCT，验证跨目标切换、相关失效、无关复用及失败保旧/恢复；覆盖函数/类型/常量和导入。 验证V-10，证据汇入原最终work验证。 PLATFORM-IS：补§5当前合同及V-PLATFORM-IS，保原V-09/10与全部既有范围；消费1043最小加载/#in层，补V-IN/AC-IN；原完整限定名路径和全部目标条件仍保留。
+  - [✅ 2026-11-14] store/query 证据（提交 `b86f5c5bb`/`9dc8d42fd`）：`p966_ct_target_switch_is_a_fresh_identity_and_never_cross_restores`（目标切换新身份、新旧收据互不冒充、同输入身份稳定）、`p966_ct_unselected_platform_body_change_reuses_the_identity`（选中臂 body 改动失效；未选层复用沿用 1043 ASM-04 provider 层证据——966 平台臂模块是普通编译单元，其源改动属相关失效）、`p966_ct_failure_keeps_old_current_and_recovers`（选中模块缺失编译具名失败、旧根可恢复、修复后新根发布且旧根仍可恢复）；生成面覆盖函数/类型/常量与导入（`p966_ct_generated_types_and_consts_by_target`、`p966_ct_is_item_selects_declarations_and_rejects_duplicate_arms`、`p966_ct_if_item_selects_imports_by_target`）；四端按独立 expected 由产品腿承载（AV/native/Rust/C/Py）。
 
 - [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
 
@@ -353,6 +362,9 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: work / T-02,T-03,T-08,T-09,T-10 收口 | plan_id: PLAN-966 | plan_revision: 8 | outcome: pass（work 能力任务全闭合，Plan 6/10；剩 T-04 汇总/T-05 复审/T-06..07 合并） | worktree: D:/autostack/.wt/lang-966/auto-lang | branch: plan-966-dev | base_commit: 4d6915ed2 | code_commit: 9dc8d42fd（本轮前序 b86f5c5bb/ec070e8c0/48f42ad51/4ef0afe76） | task_ids: T-02、T-03、T-08、T-09、T-10 | evidence: 新增 V-09 反例 `p966_v09_unselected_branch_rules`（未选分支语法坏仍报 Text 阶段、未选平台模块缺失不阻本目标绑定、选中平台缺模块具名拒）与 T-10 store 三例 `p966_ct_*`（目标切换新身份/不跨版本冒充、同输入身份稳定、选中臂 body 改动失效、选中模块缺失编译具名失败且旧根可恢复、修复后新根发布旧根仍可恢复）——`cargo test -p ace-source-query --lib plan966` 3/3（0.09s）；生成面覆盖 fn/type/const/import（`p966_ct_generated_types_and_consts_by_target`，`plan966_tests` 12/12，0.03s）；冻结提交门 `cargo t ace-semantics ace-source` PASS（run-wrf_von9，exit 0）；复用证据：936 `cte_schedule_meta_argument_invalidates_precisely`（V-02 字段变更重算/缺字段负依赖/原 deck 复用）与 `cte_schedule_meta_block_negatives`、958 worker 前门（`cargo t ace-a2x` run-mtkh2b60 命中）；fmt（本包改动文件）clean，无新增告警（source-query 既有 unused-import 1 处为基线） | blockers: none | 分账：arch/env/ABI 事实来源具名见 §5 目标事实边界；`#[attr]` 路由按 L-35 归 971/980/982/967 | next_responsible_role: work（T-04 汇总 §6 全部 V 行与完整职责组；随后 T-05 独立复审）
+stage: goal | plan_id: PLAN-966 | plan_revision: r8 | round: 5 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-966/auto-lang | commit: 9dc8d42fd | next: work
 
 2026-11-14 stage: work / T-03+T-08（四端产品腿与 worker 前门复核，部分） | plan_id: PLAN-966 | plan_revision: 8 | outcome: pass（切片完成，T-03/T-08 仍 open：权限/增量/失败恢复归 T-10） | worktree: D:/autostack/.wt/lang-966/auto-lang | branch: plan-966-dev | base_commit: 4d6915ed2 | code_commit: ec070e8c0 | task_ids: T-03、T-08（部分） | evidence: 新增 `av/tests/cases/plan966_ct_product.rs`（conformance 注册，两例合计 3.63s）：①语句级 `#if/#for/#is` + `#debug(x)` 在 **AV/native(AC)/A2R/A2C/A2PY** 全部真跑，Windows=112、Linux=222（AV 两目标 + native 两目标 + Rust/C/Py 各一），独立手定 oracle；②项级 `#is` 生成声明改变四端结果（Windows=10 / Linux=20）＝V-08「CT 生成声明改动使实际四端结果改变」腿。宏落地修正：丢弃值语句在本面不合法（PLAN-862），宏改落卫生局部绑定 `__ace_macro_<源位置>`（保留前缀，用户同名撞绑定错误而非静默捕获，V-01）；两例单测改按 `Let` 形状断言。冻结提交门：`cargo t ace-a2x ace-source` 全 PASS（run-mtkh2b60，exit 0；含 958 worker CT 前门 Rust/C 认证与 meta2/meta3 `cte.meta.fields/v1` 用例、core 全部 grammar/CT 面）；`cargo test -p ace-core --lib` = 74 passed/1 ignored（plan966 10 例）；fmt（ace-core/ace-av 本包文件）clean，零新增告警 | blockers: none | 分账：worker CT 回灌只属 `#{}/meta` 标量面（958 owner，本包消费并复核）；宏/语句级 CT 在装配期折叠，进 HIR 前完成，不存在第二条 worker 求值路径；arch/env/ABI 事实仍归 T-09，失效/权限/恢复归 T-10 | next_responsible_role: work（T-09 目标 OS/arch/env/ABI 事实与拒绝面；T-10 query/store 失效与失败保旧恢复；随后 T-04 完整并集）
 stage: goal | plan_id: PLAN-966 | plan_revision: r8 | round: 4 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-966/auto-lang | commit: ec070e8c0 | next: work
