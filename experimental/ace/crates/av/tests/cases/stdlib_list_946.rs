@@ -651,6 +651,210 @@ fn main() int { return 0 }".into(),
     );
 }
 
+/// T-04 / V-04: a public algorithm's BODY change causes precise
+/// dependency invalidation (only the edited module's segment identity
+/// moves; std.list stays byte-stable), the FIRST run after the edit
+/// yields the new value through the SAME incremental store (no stale
+/// reuse, no cold-rebuild pretense), the a2x restore of an unchanged
+/// product re-emits nothing, and a STALE receipt (pre-edit) is rejected
+/// before use.
+#[test]
+fn stdlib_list_946_body_edit_invalidation_and_recovery() {
+    let alg_src = |ret: &str| {
+        format!(
+            "pub fn total(xs List<int>) int {{
+    var t = 0
+    for x in xs {{
+        t = t + x
+    }}
+    return t {ret}
+}}"
+        )
+    };
+    let main_src = r#"
+use app.alg.total
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(1)
+    xs.push(2)
+    xs.push(3)
+    xs.push(4)
+    xs.push(5)
+    return total(xs)
+}
+"#;
+    let inputs = |alg: String| {
+        let mut v = stdlib_aggregates_inputs();
+        v.push(PackageModuleInput {
+            package: "app".into(),
+            version: "1.0.0".into(),
+            id: "alg".into(),
+            source: alg,
+            provider: None,
+        });
+        v.push(PackageModuleInput {
+            package: "app".into(),
+            version: "1.0.0".into(),
+            id: "main".into(),
+            source: main_src.into(),
+            provider: None,
+        });
+        v
+    };
+    let p1 = compile(&inputs(alg_src(""))).expect("v1 product");
+    let p2 = compile(&inputs(alg_src("+ 100"))).expect("v2 product (body edit)");
+    // precise invalidation: only the edited module's segment moves
+    let seg = |p: &ace_source_query::modules::packages::PackageProduct, m: &str| {
+        p.bound
+            .segments
+            .iter()
+            .find(|s| s.module == m)
+            .map(|s| ace_core::runtime_contract::sha256_hex(s.source.as_bytes()))
+            .unwrap()
+    };
+    assert_ne!(seg(&p1, "alg"), seg(&p2, "alg"), "body edit must move alg");
+    assert_eq!(seg(&p1, "main"), seg(&p2, "main"), "main unchanged");
+    assert_eq!(seg(&p1, "list"), seg(&p2, "list"), "std.list byte-stable");
+
+    // first run after the edit, on the SAME store dir: the NEW value (115)
+    let dir = std::env::temp_dir().join(format!("pkg946-t04-av-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let av1 = PackageAvTarget::cold(&dir, &p1).unwrap();
+    assert_eq!(av1.run_value(), Ok(ace_av_core::contract::Value::I32(15)));
+    let av2 = PackageAvTarget::cold(&dir, &p2).unwrap();
+    assert_eq!(
+        av2.run_value(),
+        Ok(ace_av_core::contract::Value::I32(115)),
+        "first run after the body edit must give the new value"
+    );
+
+    // a2x: unchanged product restores with zero re-emission
+    let store = std::env::temp_dir().join(format!("pkg946-t04-rs-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&store);
+    let mut rust = PackageA2xTarget::cold_aggregates(
+        &store,
+        "pkg946t4",
+        "app",
+        16 << 20,
+        RustTargetProvider::v1(),
+        &p2,
+    )
+    .unwrap();
+    let receipt = rust.receipt().unwrap();
+    let restored = PackageA2xTarget::restore(
+        &store,
+        "pkg946t4",
+        "app",
+        16 << 20,
+        RustTargetProvider::v1(),
+        &receipt,
+        &p2,
+    )
+    .unwrap();
+    assert_eq!(restored.stats().lower, 0, "restore re-lowers nothing");
+    assert_eq!(restored.stats().print, 0, "restore re-prints nothing");
+    // stale receipt (pre-edit product) is rejected BEFORE use
+    let mut stale = PackageA2xTarget::cold_aggregates(
+        &store,
+        "pkg946t4",
+        "app",
+        16 << 20,
+        RustTargetProvider::v1(),
+        &p1,
+    )
+    .unwrap();
+    let stale_receipt = stale.receipt().unwrap();
+    match PackageA2xTarget::restore(
+        &store,
+        "pkg946t4",
+        "app",
+        16 << 20,
+        RustTargetProvider::v1(),
+        &stale_receipt,
+        &p2,
+    ) {
+        Ok(_) => panic!("a pre-edit receipt must not restore the edited product"),
+        Err(e) => assert!(
+            e.contains("mismatch") || e.contains("root"),
+            "named stale reject, got: {e}"
+        ),
+    }
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::remove_dir_all(&store).ok();
+}
+
+/// T-04 / V-04: ELEMENT-TYPE and OPERATION-contract changes on the public
+/// algorithm make the unchanged consumer reject with named diagnostics
+/// BEFORE any backend (no silent cross-descriptor reuse).
+#[test]
+fn stdlib_list_946_element_type_and_arity_change_reject() {
+    let main_src = r#"
+use app.alg.total
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(1)
+    xs.push(2)
+    return total(xs)
+}
+"#;
+    let inputs = |alg: &str| {
+        let mut v = stdlib_aggregates_inputs();
+        v.push(PackageModuleInput {
+            package: "app".into(),
+            version: "1.0.0".into(),
+            id: "alg".into(),
+            source: alg.into(),
+            provider: None,
+        });
+        v.push(PackageModuleInput {
+            package: "app".into(),
+            version: "1.0.0".into(),
+            id: "main".into(),
+            source: main_src.into(),
+            provider: None,
+        });
+        v
+    };
+    // element-type change: total now takes List<Str> — the int call site
+    // must reject before any backend
+    let elem_changed = compile(&inputs(
+        "pub fn total(xs List<Str>) int {
+    return xs.len()
+}",
+    ));
+    match elem_changed {
+        Ok(_) => panic!("element-type change must invalidate the consumer"),
+        Err(ds) => {
+            let codes: Vec<&str> = ds.iter().map(|d| d.diagnostic.code.as_str()).collect();
+            println!("element-type change reject codes: {codes:?}");
+            assert!(
+                ds.iter().any(|d| d.diagnostic.code == "source.type-mismatch"),
+                "element-type change rejects with source.type-mismatch, got {codes:?}"
+            );
+        }
+    }
+    // operation-contract change: arity (extra required param)
+    let arity_changed = compile(&inputs(
+        "pub fn total(xs List<int>, base int) int {
+    return base
+}",
+    ));
+    match arity_changed {
+        Ok(_) => panic!("arity change must invalidate the consumer"),
+        Err(ds) => {
+            println!(
+                "arity change reject codes: {:?}",
+                ds.iter().map(|d| d.diagnostic.code.as_str()).collect::<Vec<_>>()
+            );
+            assert!(
+                ds.iter().any(|d| d.diagnostic.code == "source.argument"),
+                "arity change rejects with source.argument, got {:?}",
+                ds.iter().map(|d| d.diagnostic.code.as_str()).collect::<Vec<_>>()
+            );
+        }
+    }
+}
+
 /// Grammar face (packages-aggregates): the admitted constructs parse —
 /// List<int>/List<Str> params, for-in bodies, `?int` returns, the pop
 /// body, if-inside-for with a PARENTHESIZED comparison — and the whole
