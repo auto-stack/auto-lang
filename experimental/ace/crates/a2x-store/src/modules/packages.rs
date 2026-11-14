@@ -27,6 +27,11 @@ struct PkgRoot {
     fragments: Vec<Fragment>,
     files: Vec<(String, String)>,
     manifest: String,
+    /// PLAN-946 (T-03): the Collections-family channel (the aggregates
+    /// packages lane). Defaults false — pre-946 persisted roots keep the
+    /// frozen record-text face on restore.
+    #[serde(default)]
+    collections: bool,
 }
 
 pub struct PackageA2xTarget {
@@ -68,8 +73,39 @@ impl PackageA2xTarget {
         provider: P,
         product: &PackageProduct,
     ) -> Result<Self, String> {
+        Self::cold_family(path, project, owner, quota, provider, product, Family::RecordText)
+    }
+
+    /// PLAN-946 (T-03): the aggregates packages lane — the same target
+    /// machinery with the Collections family (AXS3/AXR3 namespaces, the
+    /// collections runtime) and the Aggregates source profile. The
+    /// plain/record-text lane keeps its frozen face via [`Self::cold`].
+    pub fn cold_aggregates<P: TargetProvider + 'static>(
+        path: &Path,
+        project: &str,
+        owner: &str,
+        quota: u64,
+        provider: P,
+        product: &PackageProduct,
+    ) -> Result<Self, String> {
+        Self::cold_family(path, project, owner, quota, provider, product, Family::Collections)
+    }
+
+    fn cold_family<P: TargetProvider + 'static>(
+        path: &Path,
+        project: &str,
+        owner: &str,
+        quota: u64,
+        provider: P,
+        product: &PackageProduct,
+        family: Family,
+    ) -> Result<Self, String> {
         let mut inner = A2xSession::open(path, project, owner, quota, provider)?;
-        inner.profile = SourceProfile::TextRecord;
+        inner.profile = if family == Family::Collections {
+            SourceProfile::Aggregates
+        } else {
+            SourceProfile::TextRecord
+        };
         inner.caps = product.bound.capabilities.clone();
         inner.source_sha256 = Some(product.bound.input_hash.clone());
         inner
@@ -79,7 +115,7 @@ impl PackageA2xTarget {
             SemanticView::from_checked(&product.compiled.checked).map_err(|e| format!("{e:?}"))?;
         let runtime = inner
             .provider
-            .runtime_source(&view, Family::RecordText)
+            .runtime_source(&view, family)
             .map_err(|e| format!("{e:?}"))?;
         inner
             .assemble_view_with_contexts(
@@ -105,6 +141,7 @@ impl PackageA2xTarget {
             fragments: Vec::new(),
             files: Vec::new(),
             manifest: String::new(),
+            collections: family == Family::Collections,
         };
         for f in view.functions() {
             let r = &inner.resident[&(root.backend.clone(), f.source_name.into())];
@@ -157,17 +194,23 @@ impl PackageA2xTarget {
             })
             .collect::<Vec<_>>();
         // record-text filesets carry the record table seed (captured from
-        // the live view; the warm path cannot re-derive it later)
+        // the live view; the warm path cannot re-derive it later); the
+        // collections channel (PLAN-946) selects its own family throughout.
+        let family = if root.collections {
+            Family::Collections
+        } else {
+            Family::RecordText
+        };
         let seed = inner
             .provider
-            .capture_prelude_seed(view, Family::RecordText)
+            .capture_prelude_seed(view, family)
             .map_err(|e| format!("{e:?}"))?;
         let fs = inner
             .provider
             .assemble_fileset(FilesetRequest {
                 entry: "main",
                 input_hash: &root.source,
-                family: Family::RecordText,
+                family,
                 fragments: &fragments,
                 view: Some(view),
                 runtime: &root.runtime,
@@ -263,6 +306,11 @@ impl PackageA2xTarget {
             return Err("A2X packages root receipt mismatch".into());
         }
         let root: PkgRoot = serde_json::from_slice(&a.payload).map_err(|e| format!("{e:?}"))?;
+        // PLAN-946 (T-03): a persisted collections-channel root restores in
+        // the Aggregates profile (pre-946 roots default to record-text).
+        if root.collections {
+            inner.profile = SourceProfile::Aggregates;
+        }
         if root.schema != PKG_A2X_SCHEMA
             || root.source != product.bound.input_hash
             || root.owner != owner

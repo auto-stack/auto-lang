@@ -240,6 +240,11 @@ pub fn lower_coll_fn_c(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<CFnCo
             (hir::ParamMode::MoveOwn, _) => ParamPass::Value,
             (hir::ParamMode::View, Ty::Record(_) | Ty::Variant(_)) => ParamPass::ConstPtr,
             (hir::ParamMode::MutBorrow, Ty::Record(_) | Ty::Variant(_)) => ParamPass::MutPtr,
+            // PLAN-946: a View-mode List param passes as a mutable pointer —
+            // C aliases naturally, so callee mutations are visible in the
+            // caller (mirror of the Rust leg's `&'a mut A2xList<E>` and
+            // the AV's shared handle).
+            (hir::ParamMode::View, Ty::List(_)) => ParamPass::MutPtr,
             (hir::ParamMode::View | hir::ParamMode::MutBorrow, other) => {
                 return Err(A2xReject::unsupported_type(format!(
                     "view/mut param of `{:?}` is outside the collections domain",
@@ -750,6 +755,16 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
         match &self.f.body.exprs[e.0 as usize].kind {
             hir::ExprKind::ReadLocal { local } => {
                 let ty = self.local_ty(*local)?;
+                // PLAN-946: a pointer-passed List param IS the operand
+                // pointer — pass the name bare (no second `&`).
+                if matches!(ty, Ty::List(_))
+                    && matches!(
+                        self.passes.get(&local.0),
+                        Some(ParamPass::MutPtr) | Some(ParamPass::ConstPtr)
+                    )
+                {
+                    return Ok((self.local_name_of(*local), ty));
+                }
                 Ok((format!("&{}", self.local_name_of(*local)), ty))
             }
             other => Err(A2xReject::unsupported_expr(format!(
@@ -954,10 +969,6 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
             hir::ExprKind::Call {
                 callee, eval_args, ..
             } => {
-                let mut args = Vec::new();
-                for a in &eval_args {
-                    args.push(self.expr(*a)?);
-                }
                 let target = callee.0 as usize;
                 let func = if let Some(sym) = self.view.trace_symbol(target) {
                     let suffix = if sym == "hir.test.mark_a" { "a" } else { "b" };
@@ -969,6 +980,36 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 } else {
                     return Err(A2xReject::unsupported_expr("call target not admitted"));
                 };
+                // PLAN-946: a View-mode List param passes its ADDRESS at
+                // the call (the callee takes `a2x_list_*`* and its
+                // mutations are visible in the caller).
+                let shared_list_param: Vec<bool> = if let Some(t) =
+                    self.view.fn_by_def(target)
+                {
+                    t.params
+                        .iter()
+                        .map(|p| p.mode == hir::ParamMode::View && matches!(p.ty, Ty::List(_)))
+                        .collect()
+                } else if let Some(x) = self.view.external_by_def(target) {
+                    x.params
+                        .iter()
+                        .zip(x.modes.iter())
+                        .map(|(ty, m)| {
+                            *m == hir::ParamMode::View && matches!(ty, Ty::List(_))
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                let mut args = Vec::new();
+                for (i, a) in eval_args.iter().enumerate() {
+                    let v = self.expr(*a)?;
+                    if shared_list_param.get(i).copied().unwrap_or(false) {
+                        args.push(format!("&{v}"));
+                    } else {
+                        args.push(v);
+                    }
+                }
                 let rty = ret_kind_of(
                     self.view,
                     self.view
@@ -1066,7 +1107,18 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 let b = self.expr(base)?;
                 Ok(format!("&{}", b))
             }
-            hir::ExprKind::BorrowMut { local } => Ok(format!("&{}", self.local_name_of(local))),
+            hir::ExprKind::BorrowMut { local } => {
+                // PLAN-946: a pointer-passed List param borrows by name.
+                if matches!(self.local_ty(local)?, Ty::List(_))
+                    && matches!(
+                        self.passes.get(&local.0),
+                        Some(ParamPass::MutPtr) | Some(ParamPass::ConstPtr)
+                    )
+                {
+                    return Ok(self.local_name_of(local));
+                }
+                Ok(format!("&{}", self.local_name_of(local)))
+            }
             hir::ExprKind::Move { inner } => self.expr(inner),
             // PLAN-964 (L-22/FStr): the interpolation chain's concat and
             // i32 display ride the C collections Str runtime. The runtime

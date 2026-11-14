@@ -135,23 +135,11 @@ pub(crate) fn admit_layouts(
                     ));
                 }
             }
-            MirType::Fn(sig) => {
-                let aggregates = m.capabilities.iter().any(|c| c == "av.aggregates/1");
-                if sig.params.iter().any(|p| {
-                    matches!(m.types[*p as usize], MirType::List(_))
-                        || (!aggregates && matches!(m.types[*p as usize], MirType::Variant(_)))
-                }) {
-                    return Err(unsupported(
-                        "param",
-                        "container parameters are outside the source ABI",
-                    ));
-                }
-                if matches!(m.types[sig.result as usize], MirType::List(_)) {
-                    return Err(unsupported(
-                        "result",
-                        "List results are outside the source ABI",
-                    ));
-                }
+            MirType::Fn(_) => {
+                // PLAN-946: container params/results cross on the I64 handle
+                // carrier (View-mode source params keep the caller's
+                // ownership — no cross-unit free; the ABI gate in emit.rs
+                // carries the same admission).
             }
             other => {
                 return Err(unsupported(
@@ -349,10 +337,19 @@ fn emit_admitted(
                     .load(types::I64, MemFlags::new(), params[i], 0);
                 lower.fb.ins().store(MemFlags::new(), bits, dst, 0);
             } else {
-                let name = if ace_av_core::ownership::type_is_owned(m, slot.ty) {
-                    "mn_coll_move"
-                } else {
+                // PLAN-946: container (List/Variant) params SHARE — the
+                // source View semantics keep the caller's ownership (the
+                // callee's facts never drop a view param; the 889 corpus
+                // never carried container params, so the move branch was
+                // dead for them). Str/record params keep the 889 move.
+                let container = matches!(
+                    m.types[slot.ty as usize],
+                    MirType::List(_) | MirType::Variant(_)
+                );
+                let name = if container || !ace_av_core::ownership::type_is_owned(m, slot.ty) {
                     "mn_coll_share"
+                } else {
+                    "mn_coll_move"
                 };
                 lower.checked(name, &[(dst, types::I64), (params[i], types::I64)])?;
             }

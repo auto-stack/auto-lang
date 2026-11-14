@@ -532,7 +532,7 @@ impl MnDriver {
         response
     }
 
-    fn collections_units(
+    pub(crate) fn collections_units(
         &mut self,
         units: &[MirModule],
         source: &str,

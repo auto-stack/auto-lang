@@ -102,8 +102,14 @@ pub fn cranelift_sig_of_for(
             Some(MirType::I64) | Some(MirType::U64) | Some(MirType::F64) => {
                 params.push(AbiParam::new(cranelift_codegen::ir::types::I64))
             }
-            // Function-typed and out-of-scope (collections / closures /
-            // dynamic) parameter shapes stay a controlled rejection.
+            // PLAN-946: container handles (List/Variant) cross on the I64
+            // handle carrier exactly like records — View-mode source params
+            // keep the caller's ownership (no cross-unit free).
+            Some(MirType::List(_)) | Some(MirType::Variant(_)) => {
+                params.push(AbiParam::new(cranelift_codegen::ir::types::I64))
+            }
+            // Function-typed and out-of-scope (closures / dynamic)
+            // parameter shapes stay a controlled rejection.
             Some(_) => {
                 return Err(MnError::Unsupported(
                     "param",
@@ -137,6 +143,11 @@ pub fn cranelift_sig_of_for(
             vec![AbiParam::new(cranelift_codegen::ir::types::I32)]
         }
         Some(MirType::I64) | Some(MirType::U64) | Some(MirType::F64) => {
+            vec![AbiParam::new(cranelift_codegen::ir::types::I64)]
+        }
+        // PLAN-946: container handles (List/Variant) return on the I64
+        // handle carrier.
+        Some(MirType::List(_)) | Some(MirType::Variant(_)) => {
             vec![AbiParam::new(cranelift_codegen::ir::types::I64)]
         }
         Some(_) => {

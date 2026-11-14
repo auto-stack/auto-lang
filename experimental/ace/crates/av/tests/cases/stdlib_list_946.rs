@@ -4,9 +4,14 @@
 //! under the AGGREGATES profile (PLAN-962 admission — List-typed public
 //! parameters are the T-01-frozen home for public List algorithms),
 //! observed on the AV end with independent hand-computed oracles.
-//! Four-end producers, fault paths and resource ledgers are T-03/T-05.
+//! Four-end producers, fault paths and resource ledgers are T-03/T-05
+//! (T-03 wires the a2x producer ends — Rust/C exes, native mn — and the
+//! fault legs; T-05 assembles the six-path coverage evidence).
 #![cfg(all(windows, target_arch = "x86_64"))]
 
+use ace_a2x_c::CTargetProvider;
+use ace_a2x_rust::RustTargetProvider;
+use ace_a2x_store::modules::packages::PackageA2xTarget;
 use ace_av::modules::packages::PackageAvTarget;
 use ace_core::source::cst::FrontBudget;
 use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
@@ -310,6 +315,260 @@ fn stdlib_list_946_tampered_std_list_rejected() {
             .map(|d| d.diagnostic.code.as_str())
             .collect::<Vec<_>>()
     );
+}
+
+
+/// T-03 ends programs: each runs on AV (value), Rust (rustc exe stdout),
+/// C (cl exe stdout) and native/mn (exit code) with ONE independent
+/// oracle per program.
+const END_SUM_FIND: &str = r#"
+use std.list.sum
+use std.list.find_first_gt
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(1)
+    xs.push(2)
+    xs.push(3)
+    xs.push(4)
+    xs.push(5)
+    let s = sum(xs)
+    let f = find_first_gt(xs, 3)
+    is f {
+        Some(v) -> { return s * 100 + v }
+        None -> { return -1 }
+    }
+}
+"#;
+const END_POP: &str = r#"
+use std.list.pop
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(10)
+    xs.push(20)
+    xs.push(30)
+    let a = pop(xs)
+    is a {
+        Some(v) -> { return v * 100 + xs.len() }
+        None -> { return 0 }
+    }
+}
+"#;
+const END_OWNED_STR: &str = r#"
+use std.list.total_len
+fn main() int {
+    var xs = List<Str>.new()
+    xs.push("hello")
+    xs.push("world")
+    return total_len(xs)
+}
+"#;
+
+/// T-03 Rust end: real rustc compile + exe run per program, the stdout
+/// oracle `value:<n>` (the wrapper prints the entry's i32 result).
+fn rust_end(tag: &str, src: &str, want: i32) {
+    let product = compile(&app(src)).expect("aggregates product");
+    let store = std::env::temp_dir().join(format!("pkg946-rs-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&store);
+    let mut rust = PackageA2xTarget::cold_aggregates(
+        &store,
+        "pkg946rs",
+        "app",
+        16 << 20,
+        RustTargetProvider::v1(),
+        &product,
+    )
+    .unwrap_or_else(|e| panic!("rust a2x target: {e}"));
+    let dir = store.join("build");
+    std::fs::create_dir_all(&dir).unwrap();
+    for (path, content) in &rust.current.files {
+        std::fs::write(dir.join(path), content).unwrap();
+    }
+    let exe = dir.join("pkg.exe");
+    let mut cmd = std::process::Command::new(
+        std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()),
+    );
+    cmd.args(["--edition", "2021", "main.rs", "-o"]).arg(&exe).current_dir(&dir);
+    let built = cmd.output().expect("rustc run");
+    assert!(
+        built.status.success(),
+        "rustc failed: {}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = std::process::Command::new(&exe).current_dir(&dir).output().unwrap();
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
+    std::fs::remove_dir_all(&store).ok();
+    assert_eq!(out, format!("value:{want}"), "rust exe stdout oracle ({tag})");
+}
+
+#[test]
+fn stdlib_list_946_rust_end_sum_find() {
+    rust_end("rs-sf", END_SUM_FIND, 1504);
+}
+
+#[test]
+fn stdlib_list_946_rust_end_pop() {
+    rust_end("rs-pop", END_POP, 3002);
+}
+
+#[test]
+fn stdlib_list_946_rust_end_owned_str() {
+    rust_end("rs-str", END_OWNED_STR, 10);
+}
+
+/// T-03 C end: real cl compile + exe run per program.
+fn c_end(tag: &str, src: &str, want: i32) {
+    let product = compile(&app(src)).expect("aggregates product");
+    let store = std::env::temp_dir().join(format!("pkg946-c-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&store);
+    let mut c = PackageA2xTarget::cold_aggregates(
+        &store,
+        "pkg946c",
+        "app",
+        16 << 20,
+        CTargetProvider::v1(),
+        &product,
+    )
+    .unwrap_or_else(|e| panic!("c a2x target: {e}"));
+    let dir = store.join("build");
+    std::fs::create_dir_all(&dir).unwrap();
+    for (path, content) in &c.current.files {
+        std::fs::write(dir.join(path), content).unwrap();
+    }
+    std::fs::write(dir.join("manifest.json"), &c.current.manifest).unwrap();
+    let exe = dir.join("pkg_c.exe");
+    ace_a2x_worker::crun::compile_c_fileset(&dir, &exe)
+        .unwrap_or_else(|e| panic!("cl failed: {e}"));
+    let run = std::process::Command::new(&exe).current_dir(&dir).output().unwrap();
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
+    std::fs::remove_dir_all(&store).ok();
+    assert_eq!(out, format!("value:{want}"), "c exe stdout oracle ({tag})");
+}
+
+#[test]
+fn stdlib_list_946_c_end_sum_find() {
+    c_end("c-sf", END_SUM_FIND, 1504);
+}
+
+#[test]
+fn stdlib_list_946_c_end_pop() {
+    c_end("c-pop", END_POP, 3002);
+}
+
+#[test]
+fn stdlib_list_946_c_end_owned_str() {
+    c_end("c-str", END_OWNED_STR, 10);
+}
+
+/// T-03 native/mn end: the collections lane bridge — real machine-code
+/// build + exe run per program; the exit code carries the oracle.
+fn native_end(tag: &str, src: &str, want: i32) {
+    let product = compile(&app(src)).expect("aggregates product");
+    let dir = std::env::temp_dir().join(format!("pkg946-mn-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut driver = ace_native::driver::MnDriver::ephemeral();
+    let built = driver
+        .build_collections_checked(
+            &product.compiled.checked,
+            "d_main",
+            &dir,
+            &product.bound.input_hash,
+            946,
+        )
+        .unwrap_or_else(|e| panic!("mn build: {e:?}"));
+    let run = std::process::Command::new(&built.exe_path)
+        .current_dir(&dir)
+        .output()
+        .expect("run mn exe");
+    // the exit code IS the entry's i32 result (the collections wrapper
+    // contract) — no success() gate; a trap would print MN-COLL-TRAP and
+    // miss the oracle below.
+    let code = run.status.code().unwrap_or(-1);
+    if code != want {
+        println!(
+            "mn exe stderr tail ({tag}): {:?}",
+            String::from_utf8_lossy(&run.stderr)
+                .lines()
+                .rev()
+                .take(6)
+                .collect::<Vec<_>>()
+        );
+    }
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(code, want, "native mn exit-code oracle ({tag})");
+}
+
+#[test]
+fn stdlib_list_946_native_end_sum_find() {
+    native_end("mn-sf", END_SUM_FIND, 1504);
+}
+
+#[test]
+fn stdlib_list_946_native_end_pop() {
+    native_end("mn-pop", END_POP, 3002);
+}
+
+#[test]
+fn stdlib_list_946_native_end_owned_str() {
+    native_end("mn-str", END_OWNED_STR, 10);
+}
+
+/// Native bisect: the same computation WITHOUT any cross-function call
+/// (everything inline in main) — isolates the container emission from the
+/// cross-unit call convention.
+#[test]
+fn stdlib_list_946_native_no_call_inline() {
+    let src = r#"
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(1)
+    xs.push(2)
+    xs.push(3)
+    xs.push(4)
+    xs.push(5)
+    var total = 0
+    for x in xs {
+        total = total + x
+    }
+    var found = 0
+    for x in xs {
+        if (x > 3) {
+            if (found == 0) {
+                found = x
+            }
+        }
+    }
+    return total * 100 + found
+}
+"#;
+    let product = compile(&app(src)).expect("aggregates product");
+    let dir = std::env::temp_dir().join(format!("pkg946-mnnc-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut driver = ace_native::driver::MnDriver::ephemeral();
+    let built = driver
+        .build_collections_checked(
+            &product.compiled.checked,
+            "d_main",
+            &dir,
+            &product.bound.input_hash,
+            946,
+        )
+        .unwrap_or_else(|e| panic!("mn build: {e:?}"));
+    let run = std::process::Command::new(&built.exe_path)
+        .current_dir(&dir)
+        .output()
+        .expect("run mn exe");
+    println!(
+        "mn-nc exe: code={:?} stderr-tail: {:?}",
+        run.status.code(),
+        String::from_utf8_lossy(&run.stderr).lines().rev().take(4).collect::<Vec<_>>()
+    );
+    let code = run.status.code().unwrap_or(-1);
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(code, 1504, "native inline oracle");
 }
 
 /// Grammar face (packages-aggregates): the admitted constructs parse —

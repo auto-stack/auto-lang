@@ -921,6 +921,11 @@ impl<'a> SemanticView<'a> {
             | hir::Stmt::Continue { .. } => Ok(()),
             // PLAN-904: the collections unit-effect statement (`xs.push(v)`
             // and friends); its value is verified Unit/copy-discard only.
+            // PLAN-946: the aggregates packages lane carries the same
+            // unit-effect calls (its checked HIR is the closures-superset
+            // domain, so the profile string carries the admission — mirrors
+            // the expression gate above). PLAN-965's Fail rides the same
+            // guard.
             hir::Stmt::Eval { .. } | hir::Stmt::Fail { .. }
                 if self.domain == hir::HirDomain::Collections
                     || self.profile == "auto.source.aggregates.draft" =>

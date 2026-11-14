@@ -330,6 +330,10 @@ pub struct RustParam {
     pub name: String,
     pub ty: Ty,
     pub mode: hir::ParamMode,
+    /// PLAN-946: pre-rendered param type text (the collections path bakes
+    /// element-typed `A2xList<E>` here — the fragment printer has no view).
+    /// `None` keeps the printer's own rendering byte-identical.
+    pub ty_text: Option<String>,
 }
 
 /// One nominal record rendered into `generated.rs`.
@@ -691,6 +695,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     name,
                     ty: self.local_tys[&id],
                     mode: *self.local_modes.get(&id).unwrap_or(&hir::ParamMode::View),
+                    ty_text: None,
                 }
             })
             .collect()

@@ -101,6 +101,7 @@ pub fn lower_coll_fn(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<RustFn,
         )
     })?;
     let mut w = CollLower {
+        shared_list_params: std::collections::HashSet::new(),
         view,
         f,
         facts,
@@ -119,10 +120,16 @@ pub fn lower_coll_fn(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<RustFn,
         .collect();
     param_locals.sort_by_key(|(_, l)| l.index.unwrap_or(u32::MAX));
     for (p, (idx, l)) in f.params.iter().zip(param_locals.iter()) {
+        if p.mode == hir::ParamMode::View && matches!(p.ty, Ty::List(_)) {
+            w.shared_list_params.insert(local_name(&l.name, *idx));
+        }
         named_params.push(RustParam {
             name: local_name(&l.name, *idx),
             ty: p.ty,
             mode: p.mode,
+            // PLAN-946: bake the element-typed list text with the live view
+            // (the printer's fragment ctx carries no element table).
+            ty_text: Some(rust_ty_str(view, p.ty)),
         });
     }
     w.locals = f.body.locals.clone();
@@ -154,6 +161,10 @@ fn local_name(name: &str, id: u32) -> String {
 }
 
 struct CollLower<'a, 'v> {
+    /// PLAN-946: names of View-mode List params (rendered `&'a mut
+    /// A2xList<E>`); their in-body place refs pass the name bare — Rust
+    /// reborrows/coerces at the argument position.
+    shared_list_params: std::collections::HashSet<String>,
     view: &'v SemanticView<'a>,
     f: &'v FnFacts<'a>,
     facts: &'v CollectionsBodyFacts,
@@ -554,7 +565,15 @@ impl<'a, 'v> CollLower<'a, 'v> {
     /// A reference to a local's value place (for &list / &mut list args).
     fn place_ref(&self, e: hir::ExprId, mut_: bool) -> Result<RExpr, A2xReject> {
         let inner = match &self.f.body.exprs[e.0 as usize].kind {
-            hir::ExprKind::ReadLocal { local } => RExpr::Local(self.local_name_of(*local)),
+            hir::ExprKind::ReadLocal { local } => {
+                let n = self.local_name_of(*local);
+                // PLAN-946: a `&'a mut A2xList` param place passes the name
+                // bare (Rust reborrows at the argument position).
+                if self.shared_list_params.contains(&n) {
+                    return Ok(RExpr::Local(n));
+                }
+                RExpr::Local(n)
+            }
             _ => {
                 return Err(A2xReject::unsupported_expr(
                     "list operand must be a whole-local read",
@@ -792,10 +811,6 @@ impl<'a, 'v> CollLower<'a, 'v> {
             hir::ExprKind::Call {
                 callee, eval_args, ..
             } => {
-                let mut args = Vec::new();
-                for a in eval_args {
-                    args.push(self.expr(a, out)?);
-                }
                 let target = callee.0 as usize;
                 let func = if let Some(sym) = self.view.trace_symbol(target) {
                     let suffix = if sym == "hir.test.mark_a" { "a" } else { "b" };
@@ -807,6 +822,38 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 } else {
                     return Err(A2xReject::unsupported_expr("call target not admitted"));
                 };
+                // PLAN-946: View-mode List parameters borrow exclusively at
+                // the call (`&mut x`) — the caller keeps its list (callee
+                // mutations visible), mirroring the AV's shared handle.
+                let shared_list_param: Vec<bool> = if let Some(t) =
+                    self.view.fn_by_def(target)
+                {
+                    t.params
+                        .iter()
+                        .map(|p| p.mode == hir::ParamMode::View && matches!(p.ty, Ty::List(_)))
+                        .collect()
+                } else if let Some(x) = self.view.external_by_def(target) {
+                    x.params
+                        .iter()
+                        .zip(x.modes.iter())
+                        .map(|(ty, m)| {
+                            *m == hir::ParamMode::View && matches!(ty, Ty::List(_))
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                let mut args = Vec::new();
+                for (i, a) in eval_args.iter().enumerate() {
+                    let v = self.expr(*a, out)?;
+                    if shared_list_param.get(i).copied().unwrap_or(false) {
+                        args.push(RExpr::RefMut {
+                            inner: Box::new(v),
+                        });
+                    } else {
+                        args.push(v);
+                    }
+                }
                 let call = RExpr::Call { func, args };
                 let ty = self.view.resolve_use_ty(e.ty)?;
                 self.coll_temp(id, rust_ty_str(self.view, ty), call, out)
@@ -901,12 +948,26 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     path: names,
                 })
             }
-            hir::ExprKind::BorrowView { base } => Ok(RExpr::Ref {
-                inner: Box::new(self.expr(base, out)?),
-            }),
-            hir::ExprKind::BorrowMut { local } => Ok(RExpr::RefMut {
-                inner: Box::new(RExpr::Local(self.local_name_of(local))),
-            }),
+            hir::ExprKind::BorrowView { base } => {
+                let inner = self.expr(base, out)?;
+                if let RExpr::Local(n) = &inner {
+                    if self.shared_list_params.contains(n) {
+                        return Ok(inner);
+                    }
+                }
+                Ok(RExpr::Ref {
+                    inner: Box::new(inner),
+                })
+            }
+            hir::ExprKind::BorrowMut { local } => {
+                let n = self.local_name_of(local);
+                if self.shared_list_params.contains(&n) {
+                    return Ok(RExpr::Local(n));
+                }
+                Ok(RExpr::RefMut {
+                    inner: Box::new(RExpr::Local(n)),
+                })
+            }
             hir::ExprKind::Move { inner } => self.expr(inner, out),
             hir::ExprKind::ListNew { list } => {
                 let elem = self.view.list_elem(list.0)?;

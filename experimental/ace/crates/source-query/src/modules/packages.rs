@@ -56,9 +56,17 @@ pub fn compile_package_product_aggregates(
     caps: &[String],
     budget: FrontBudget,
 ) -> Result<PackageProduct, Vec<PackageDiagnostic>> {
-    let bound = ace_core::source::packages::bind_packages_aggregates(inputs, entry, caps, budget)
-        .map_err(|e| vec![e])?;
-    compile_bound_packages_aggregates(bound, caps)
+    // PLAN-946: the aggregates lane carries the 962 admission capability
+    // (`av.aggregates/1`) — mir_verify's PLACE relaxation, the native
+    // collections emitter and the AV shared-param admission all key on it.
+    let mut lane_caps: Vec<String> = caps.to_vec();
+    if !lane_caps.iter().any(|c| c == ace_core::source::AGGREGATES_ADMISSION_CAP) {
+        lane_caps.push(ace_core::source::AGGREGATES_ADMISSION_CAP.into());
+    }
+    let bound =
+        ace_core::source::packages::bind_packages_aggregates(inputs, entry, &lane_caps, budget)
+            .map_err(|e| vec![e])?;
+    compile_bound_packages_aggregates(bound, &lane_caps)
 }
 
 /// Cold/retained shared compile over an already-bound package graph. The

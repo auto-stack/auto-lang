@@ -85,6 +85,37 @@ pub(crate) fn module_has_closure_instructions(module: &MirModule) -> bool {
     })
 }
 
+/// PLAN-946: a closures-family module that exercises the CONTAINER surface
+/// (List/Variant instructions) without any closure vocabulary — the
+/// collections runtime + emitter own that vocabulary too; the generic
+/// Numeric lane's slot plan cannot carry container slots.
+pub(crate) fn module_has_container_instructions(module: &MirModule) -> bool {
+    use ace_av_core::mir::MirInstr;
+    module.funcs.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.instrs.iter().any(|i| {
+                matches!(
+                    i,
+                    MirInstr::ListNew { .. }
+                        | MirInstr::ListPush { .. }
+                        | MirInstr::ListInsert { .. }
+                        | MirInstr::ListSet { .. }
+                        | MirInstr::ListGet { .. }
+                        | MirInstr::ListRemove { .. }
+                        | MirInstr::ListLen { .. }
+                        | MirInstr::ListFieldGet { .. }
+                        | MirInstr::ListPlace { .. }
+                        | MirInstr::PlaceGet { .. }
+                        | MirInstr::VariantPack { .. }
+                        | MirInstr::VariantProject { .. }
+                        | MirInstr::VariantSwitch { .. }
+                        | MirInstr::VariantGuard { .. }
+                )
+            })
+        })
+    })
+}
+
 struct ClosureInterface {
     owner: ace_av_core::mir::OwnerScope,
     name: String,

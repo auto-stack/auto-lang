@@ -933,7 +933,10 @@ impl MnDriver {
         // that vocabulary; the generic lane keeps its frozen
         // scalar/data/owned admission (a closure-source build otherwise
         // dies in the slot plan).
-        if arm == Arm::Numeric && closures::module_has_closure_instructions(&module) {
+        if arm == Arm::Numeric
+            && (closures::module_has_closure_instructions(&module)
+                || closures::module_has_container_instructions(&module))
+        {
             let units = closures::units_from_checked(checked, snapshot)?;
             let (build, _) =
                 self.closures_units_inner(&units, "", entry, workdir, trace_lib, obs, false)?;
@@ -1345,6 +1348,47 @@ impl MnDriver {
         }
 
         Ok((objects, entries))
+    }
+
+    /// PLAN-946 (T-03): build a checked AGGREGATES-family packages product
+    /// on the native collections lane — lower through the shared
+    /// closures-family adapter (the 962 domain), split per-function units,
+    /// and run the collections unit pipeline (the container vocabulary
+    /// owner: the collections runtime + emitter). The product must carry
+    /// the `av.aggregates/1` admission capability (mir_verify's precedent).
+    pub fn build_collections_checked(
+        &mut self,
+        checked: &ace_core::verify::CheckedModule,
+        entry: &str,
+        workdir: &Path,
+        source_identity: &str,
+        snapshot: u64,
+    ) -> Result<MnBuild, MnError> {
+        let mut obs = Obs::default();
+        let module = obs.span("adapter", |_| {
+            ace_lowering::lower_checked_closures(checked, entry, snapshot)
+                .map_err(|e| MnError::Unsupported("adapter", format!("{e:?}")))
+        })?;
+        let checked_mir = obs.span("mir_verify", |o| {
+            verify_mir(&module).map_err(|e| {
+                o.counter("mir_verify_reject", 1);
+                MnError::Unsupported("mir", format!("{e:?}"))
+            })
+        })?;
+        let units = obs.span("mir_split", |_| {
+            ace_av::cache::split_units(checked_mir.module())
+                .map_err(|e| MnError::Backend(format!("unit split: {e}")))
+        })?;
+        obs.counter("mir_units_split", units.len() as u64);
+        self.collections_units(
+            &units,
+            source_identity,
+            entry,
+            workdir,
+            None,
+            &mut obs,
+            false,
+        )
     }
 
     /// Build-only entry: lower through the shared MIR chain, emit per-unit
