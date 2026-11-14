@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-12
 updated_at: 2026-11-14
 plan_revision: 1
-current_step: 7
+current_step: 9
 total_steps: 9
 depends_on: [PLAN-1020, PLAN-960]
 supersedes_spec_components: []
@@ -110,7 +110,8 @@ A/B各为独立包输入、独立运行owner/结果。普通源码各返回11与
   证据：`cargo test --manifest-path experimental/ase-m0/Cargo.toml`＝uri 单测 2/2 + headless 5/5（V-01..V-05，junction 负控 cfg(windows) 实跑）；固定组 `cargo t ase-m0` PASS（scripts/test-groups.toml +15 行：domain=ace、all=false、不入 sets.ace/daily → 不进 `cargo t all` 与 ACE 并集，显式 opt-in；`cargo t --list` 可见）。
 - [x] T-07｜work｜T-06｜格式/告警/无debug检查，§9折摘要/拟议Spec与1022消费交接；AC-05。测试输入入库，原始证据不入库。
   证据：`cargo fmt --check` 干净；ase-m0 crate 零编译告警（ace-av/av-core 的 7 条上游告警为 master 既有，非本包引入）；库代码无 println/dbg（CLI 输出为产品面）；实现+测试+fixtures+锁文件入库 commit `b6a3e059c`（15 文件，2456 行）；原始证据（探针/target/运行输出）仅在 plan-artifacts scope，不入库。1022 交接：公开接缝与错误分态见本收据与 README；ASE 侧不新增语言/ACE 面。
-- [ ] T-08｜review｜T-07｜独立追踪普通源、实际AV dispatch、反例与关闭owner；AC-R，按结论修复或replan。
+- [x] T-08｜review｜T-07｜独立追踪普通源、实际AV dispatch、反例与关闭owner；AC-R，按结论修复或replan。
+  证据：final pass @ b6a3e059c（收据 db9c02e9a）——接缝溯源（仅公开 import、无 vm/hir 旁路）、复审自选反例×3（未知身份 authz/0、畸形 URI uri/0、绝对路径源 source-escape/0）、冻结门禁复跑 PASS；AC-01..05 全 pass，无阻塞发现。
 - [x] T-09｜merge｜独审pass｜冻结相关完整目标/必要组，沉淀SD-01、归档；对账全部输出目录，折摘要/删scope，guard清树；AC-D。
 
 ## 9. 复审记录
