@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-965
-status: reviewed
+status: archived
 feature_name: 完整控制流错误传播与生成器
 author: [Codex]
 created_at: 2026-11-06
