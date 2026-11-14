@@ -245,6 +245,8 @@ stage: goal | plan_id: PLAN-1040 | plan_revision: r5 | round: 1 | from: work | t
 
 2026-11-14 stage: merge | plan_id: PLAN-1040:r5 | checkpoint: cleaned | wt-guard clean（无reparse point）→ worktree D:/autostack/.wt/lang-1040/auto-lang 移除（--force：仅剩旧PLAN-002 stash溢出的3个未跟踪docs副本，原内容保留于stash@{0}）→ 分支 plan-1040-dev 删除（was d88fc3bab）→ 组目录删除 → plan-artifacts/plan-1040 整scope删除（186K：codegen重建脚本+t01探针，证据已折入本文件）→ .retention/policy.json plans 登记（deleted/无具名持有）。任务计数：T-01..T-09共9任务全闭（6 work + T-06 review + T-07/T-08 merge）；AC-01..06/MEM/WSL全勾。批量回归due检查：last_covered_plan_id=1043（2026-11-13T19:30:42Z@08a9e4d04），1040<1043非整5推进且48h窗口内已有receipt——本次merge不触发。
 
+stage: goal | plan_id: PLAN-1040 | plan_revision: r5 | round: 4 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed, guard clean) | commit: d88fc3bab (delivery, master tip lineage 54c8913ad/608bd0e80/d88fc3bab ff-only) | next: done
+
 ## 10. 待澄清事项
 
 WSL2实际发行版/kernel/linker/权限/挂载与现共享源能力由T-01先证；当前仅此Linux验证渠道，缺环境required保持pending，不假设另有裸机/远端。是否扩完整argv/env/TLS/unwind/动态库不在最小基线；必要时新立后继，不冒全Linux runtime。与1039/现native并行改同文件要按正式SHA短窗串行，不消费其他WIP。
