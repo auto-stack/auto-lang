@@ -81,7 +81,9 @@ examples 计数均不构成覆盖证明。跨仓不可读/owner 未明/未发布
   的分类口径，也不把任何行标为 implemented；状态提升仍只引用 960 归档收据。
 - **未闭缺口（具名，带 owner）**：934 事实页类型集不覆盖 text/record（D-960-1，query 层）；
   mn 端全局 cell（D-960-2，ace-native）；a2x 端全局 cell 发射与类型方法片段（A2X 后继）；
-  L-42 跨模块泛型实例归 963；L-38 的 `alias`/type alias 语句形归 963；模块+CT 组合归 966。
+  L-42 跨模块泛型实例归 963；L-38 的 `alias`/type alias 语句形归 963；模块+CT 组合归 966
+  （**已交付 A 片**：项位/语句位 CT、宏与目标条件，证据见
+  [m2-metaprogramming.md](m2-metaprogramming.md)；仍未闭：读取集型装配身份、arch/env/ABI 显式事实来源）。
   以上缺口在台账中保持 required/unknown 原状，不因 960 交付而消失。
 
 ## SD-05 数值面 producer 挂接（PLAN-961 SD-02）
@@ -97,7 +99,8 @@ examples 计数均不构成覆盖证明。跨仓不可读/owner 未明/未发布
 - **具名差异（对 legacy）**：混合宽度隐式晋升矩阵不采纳（显式 as/to 替代）；legacy `as`
   截断/clamp 改 checked；位运算/移位为新增冻结面（legacy 无此面）。**未闭缺口（具名，带
   owner）**：semantics 查询通道数值注解具名拒绝 `numeric-annotation`（query 后继）；CTE 值面
-  维持 I32/Bool、comptime admission 未扩（具名）；聚合/泛型/动态/控制效应组合面归 962–966。
+  维持 I32/Bool、comptime admission 未扩（具名；966 已在其 packages-ct 前门验证 i32/bool 谓词域与
+  具名拒，本行状态提升仍只认 961 收据）。聚合/泛型/动态/控制效应组合面归 962–966。
   以上缺口在台账中保持 required/unknown 原状，不因 961 交付而消失。
 
 ## SD-06 组合数据结构面 producer 挂接（PLAN-962 SD-02）

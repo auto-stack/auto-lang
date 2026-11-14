@@ -18,7 +18,26 @@ comptime 的语法表面（四种 `#` 构造）、lexer/parser 落点、AST 数�
 |---|---|---|
 | `#if cond { } elif … else { }` | 条件编译，整结构裁剪 | `Stmt::HashIf(HashIf)` |
 | `#for i in 0..N { }` | 编译期循环展开 | `Stmt::HashFor(HashFor)` |
-| `#is expr { pat => { } else => { } }` | 编译期匹配 | `Stmt::HashIs(HashIs)` |
+| `#is expr { pat -> { } else -> { } }` | 编译期匹配 | `Stmt::HashIs(HashIs)` |
+
+`#is` 的臂箭头在 ACE 新前门同时接受 `->` 与 `=>`（旧文档的 `=>` 示例是历史写法，`->` 为规范形）；
+`else` 至多一个且必须末位，等值重复臂具名拒。
+
+## ACE 新前门（`packages-ct`）的 `#` 面（PLAN-966）
+
+legacy 四构造不变；1043 的 `#in` 之上，本前门补齐项位与语句位的 CT（详见
+[m2-metaprogramming](../../../ace-migration/m2-metaprogramming.md)）：
+
+- **项位**：`#in`（1043 来源）、`#if cond { decl* } else { decl* }`、`#is expr { CONST -> use/decl … }`
+  （**项位无 `else`**）、`#for i in a..b { decl* }`。
+- **语句位**：`#if …/else`、`#for i in a..b { stmt* }`、`#is expr { pat -> { stmt* } … else -> { stmt* } }`。
+- **宏**：语句位 `#name(args…)` 调用糖 → 同名前门函数调用（卫生局部 `__ace_macro_<源位置>`）；
+  不做文本替换、不做 legacy VM `Log.*` 隐式路由；未知宏/命名实参分别 `source.module-symbol`/`source.cte.macro-args`。
+- **求值**：装配期按显式目标事实折叠（`sys.current`/`sys.host`/`Windows`/`Linux`/`Mac`），
+  不进入 VM；未选分支只做 Text 阶段语法检查；未折叠残余在 bind/resolve 具名拒（`source.cte.unfolded`，防御性）。
+- **谓词域**：i32/bool 字面量、`sys` 成员、比较/逻辑运算；`#for` 预算 1024（`source.cte.in-budget`）。
+  `sys.arch`/`sys.env`/`sys.abi` 当前无显式输入，引用即 `source.cte.in-name` 具名拒（来源分账 978/967/979）。
+- **宏/metadata**：`FieldCount`/`HasField` 由 936 交付、958 前门承载；`#[attr]` 路由归 971/980/982/967。
 | `#{ expr }` | 编译期求值，结果替换为字面量 | 语句位 `Stmt::HashBrace`；表达式位 `Expr::Comptime(Box<HashBrace>)` |
 
 ## 数据结构（ast/comptime.rs）
@@ -62,5 +81,8 @@ current { Arm -> use ... }` / 块式 `#in sys { is/if/for ... }` 给紧随
 等值重复臂具名拒。限定形 `is sys.current { sys.Windows -> }` 合法；裸
 `in` 与运行时对象不构成 CT 命名空间。完整合同与证据见
 [stdlib context 装配](../../../stdlib/design/context-source-assembly.md)。
+PLAN-966 在本前门补验了 `#in` 选中导入与同模块宏共存、临时 namespace 不物化
+（`current` 在普通值位具名失败）、以及目标切换后 store 身份不复用；见
+[m2-metaprogramming](../../../ace-migration/m2-metaprogramming.md)。
 
 > 来源: docs/design/raw/compile-time-execution.md、docs/plans/archive/095-compile-time-execution-engine.md、crates/auto-lang/src/ast/comptime.rs、crates/auto-lang/src/parser.rs、crates/auto-lang/src/lexer.rs
