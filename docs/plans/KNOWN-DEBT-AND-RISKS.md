@@ -4342,3 +4342,34 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 另有 semantics_protocol::abi_worker_overflow_then_hang 杀上限计时红（stash 复验
 仍红）。疑与 967 F0 落地（4c1788a79）词法/CT 面相关；owner=967 跟进。PLAN-1041
 交付不依赖这些用例（本包用例全绿）。
+
+### D-1060-AUDIT — ACE 普通测试成本审计的具名发现承接（2026-11-14，PLAN-1060 r7）
+
+来源：[1060 逐模块实测与判决](1060-ace-regular-test-latency-audit.md) §9（r1–r7 收据）与 §10。以下均为本包审计中定位、且**不属于本包 30 个改动文件面**的具名缺陷/风险；登记不等于延期或豁免，需各承接方取得真实反例/邻例、修复并独立 review 后关闭。
+
+| 发现 | 优先级 | 证据分类/边界 | 主owner | 关闭条件 | 当前状态 |
+|---|---|---|---|---|---|
+| 1060-R1 CST 超线性拒绝 | P1 | `!(`/`-(` 未闭合深嵌套近指数：8/12/16/20/24 层 = 0.7ms/11ms/169ms/3.3s/10.9s（纯 `(`、`f(`、平衡括号、纯 `!` 链均线性 <50ms）；ace-source 单例 197.9–221.5s | 待建（core/CST） | 同探针 depth 24 降到线性量级，且 `source_cst_927::differential_corpus_all_profiles` 567/567 字节全等 | 技术未知/未修 |
+| 1060-R2 真 cl 双腿认证面归属 | P1 | `a2c_scalar_semantics::c_full_corpus_true_chain` 55 用例 × 真 cl 双编译双运行 = 144–156s；规范 `a2c-hir-scalar-certification.md` 日常通道=spawn 零 | 待裁定（1060 §10 请求 2） | 认证腿按裁定归位（formal 或独立计划），日常仍由 `case-a2c-hir-scalar-921` 覆盖 | 待用户裁定 |
+| 1060-R3 a2r/a2x golden 漂移 | P1 | `rust_lowering::a2r_hir_first_case_green`、`a2r_hir_worker_credential_pin` + `case-a2r-hir-record-text-902` 等 4 个 case 组；`a2x_runtime.rs` 首差 423、`manifest.json` 首差 473 | 待建 | 漂移定位并修复/更新 golden，两组转绿 | 既有红（两次运行逐秒一致） |
+| 1060-R4 tr-native 陈旧断言 | P2 | `ace_m1_tr_native_suite_green` 断言 33 行 vs 实际 34 行（881 后 R07/R08 翻面） | 待建 | 断言与套件一致且保反控 | 既有红 |
+| 1060-R5 closures suite 绿断言失效 | P2 | `ace_m1_closures_source_suite_green` Fail vs Pass | 待建 | 原因定位并修复/更新 | 既有红 |
+| 1060-R6 ABI leg 合同错误 | P2 | `semantics_protocol::abi_recipe_binding_exclusivity`：`ContractError: unknown ABI leg "z"` | 待建 | 合同/测试一致 | 既有红 |
+| 1060-R7 examples 陈旧路径 | P2 | `source::av_source_inventory_denominators_replayable` 扫 `examples/ui/015-notes/src/front/app.at`，该路径在当前树已不存在（UI 迁出 PLAN-900） | 待建 | 清单路径更新或迁出后清账 | 既有红 |
+| 1060-R8 text-runtime 静态库链接 | P1 | `ace-text-conformance` 19 例 `rust-lld: error: undefined symbol: __CxxFrameHandler3` | 待建 | no_std staticlib 链接链修复 | 既有红 |
+### D-967-T05 — PLAN-967 T-05 独立复审 findings 承接（2026-11-14，复审提交 fbe01e178）
+
+来源：T-05 独立上下文复审（needs_fix）；完整 findings 表与逐 AC 证据映射见 [967 计划](967-ace-m2-host.md) §9 round-20 收据。登记不等于豁免；F1/F2/F5 需用户裁定走向（同树实现 vs 修订外移）。
+
+| 发现 | 级别 | 摘要 | 处置 |
+|---|---|---|---|
+| F1 AC-INT-1026 | MAJOR | kwargs/receiver tag 帧未实现（T-09 冻结字段后 T-11/12 未接），V-INT-1026 无腿 | 待裁定：同树实现或计划修订外移 |
+| F2 AC-LOAD | MAJOR | 1043 来源后缀/#in 装配的 FFI provider 消费腿未落（owner 链 T-03→T-12→T-04 断头） | 待裁定：同树实现或外移 |
+| F5 AC-ABI-COMPAT | MAJOR | V-ABI-TARGET/IFACE 运行准入矩阵、V-ABI-LIFE v1/v2 并存 leg 未交付；"归978"归因未被 §5 支持（B-06 只给 978 构建/分发） | 待裁定：同树实现（Windows 可做 manifest×工件交叉核验/错target拒绝）或用户批准外移 |
+| F3 测试卫生 | MAJOR | f0 系测试硬编码 plan-artifacts/plan-967/tests 作用域、无清理：实测 767 目录/7.6GB；merge 全删后下一跑即复活 | 同树修复：临时目录+drop 清理+merge 前清扫 |
+| F4 日常道纪律 | MAJOR | f0/c_import E2E 在日常 ace-abi 组内 spawn rustc/cl/cargo（含 --release），与 2026-11-14 测试纪律的显式构建道要求冲突 | 同树修复：显式构建/集成道或预构建绑定 |
+| F6 GrantSet | MINOR | owner/grant 授权轴在 T-13/T-14 间孤儿化（收据具名后无人接） | 台账补名+归 F1 帧工作或独立关闭 |
+| F7 fmt | MINOR | abi.rs:824 + f0_rich.rs 漂移 | ✅ 已修（631249d99） |
+| F8 deck 证据 | MINOR | deck 组未在冻结提交重跑 | ✅ 已闭（case-ace-m2-f0-rust-967 PASS @631249d99） |
+| F10 僵尸 rustc | NOTE | f0_async 测试挂起 rustc 10h | ✅ 已杀；挂起根因待 f0_async 基建侧跟进 |
+| F11 cross pending | NOTE | 缺第二工具链时 early-return 记 PASS（仅台账约束） | 可选：改 skipped 语义 |
