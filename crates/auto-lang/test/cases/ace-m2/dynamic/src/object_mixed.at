@@ -1,0 +1,8 @@
+// PLAN-964 V-04 negative: heterogeneous object fields are a named source
+// rejection (source.object-elem) — an object's element type is frozen
+// homogeneous, and the failure is a DIAGNOSTIC (inference failure), not a
+// silent Dynamic label.
+fn main() int {
+    var obj = { x: 1, y: "text" }
+    return obj["x"]
+}

@@ -1,0 +1,7 @@
+// PLAN-964 V-04 negative: a MISSING key read is a stable runtime
+// rejection (av.dyn.object-missing) — never a silent nil, never an
+// exception state.
+fn main() int {
+    var obj = { x: 1 }
+    return obj["missing"]
+}

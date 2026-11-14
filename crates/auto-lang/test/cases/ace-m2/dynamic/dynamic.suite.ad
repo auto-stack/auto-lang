@@ -1,0 +1,5 @@
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m2-dynamic-964", include: [
+  "dynamic.case.ad",
+] }
+```

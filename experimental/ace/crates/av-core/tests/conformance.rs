@@ -3,3 +3,5 @@ pub use ace_av_core::*;
 mod public_closures;
 #[path = "cases/public_dynamic.rs"]
 mod public_dynamic;
+#[path = "cases/int1026_external_964.rs"]
+mod int1026_external_964;

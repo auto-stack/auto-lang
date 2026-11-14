@@ -1,0 +1,15 @@
+// PLAN-964 T-08 (L-21): nil literal + shared mutable object aliases.
+// `let o2 = o1` is an Rc alias — a write through one name is visible
+// through the other (the shared-cell observation of AC-06). Nil equality
+// folds at resolve (nil==nil is true).
+fn main() int {
+    var o1 = { n: 10 }
+    let o2 = o1
+    o2["n"] = 20
+    let seen = o1["n"]
+    let n = nil
+    let same = n == nil
+    if seen != 20 { return 0 }
+    if !same { return 0 }
+    return o1["n"]
+}

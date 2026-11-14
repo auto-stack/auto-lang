@@ -1,0 +1,6 @@
+// PLAN-964 V-04 negative: arithmetic on nil is a named source rejection
+// (source.nil-op) — nil is a zero-width value, never an int.
+fn main() int {
+    let n = nil
+    return n + 1
+}

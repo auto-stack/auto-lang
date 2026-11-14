@@ -1,0 +1,9 @@
+// PLAN-964 T-08 (L-22/L-23): callable values inside an object with
+// dynamic dispatch — `obj["twice"](3)` resolves the callable through the
+// dynamic-key read and invokes it (callable/member/index dispatch).
+fn main() int {
+    var fns = { twice: (y int) => y * 2, half: (y int) => y / 2 }
+    let a = fns["twice"](3)
+    let b = fns["half"](a)
+    return a + b
+}

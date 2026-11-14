@@ -444,7 +444,7 @@ fn grid_literal_executes_with_dimension_checks() {
         ("dup-col", "fn main() int {\n    let g = grid (a, a) { [1, 2] }\n    return 1\n}"),
         (
             "mixed-col",
-            "fn main() int {\n    let g = grid (a, b) { [1, \"x\"] }\n    return 1\n}",
+            "fn main() int {\n    let g = grid (a) { [1]; [\"x\"] }\n    return 1\n}",
         ),
         ("position", "fn main() int {\n    let g = grid (a) { [1] }\n    let h = grid (b) { [2] }\n    return 1\n}"),
     ] {
@@ -461,11 +461,20 @@ fn grid_literal_executes_with_dimension_checks() {
         .err()
         .expect("duplicate column must reject");
     assert!(err.iter().any(|d| d.code == "source.grid-cols"));
-    let mixed = "fn main() int {\n    let g = grid (a, b) { [1, \"x\"] }\n    return 1\n}";
+    // PLAN-964: the mixed-column control now uses TWO ROWS of one column —
+    // `[1, "x"]` in one row is legal heterogeneous COLUMNS (each column is
+    // its own list; the bind layer used to reject it via an accidental
+    // dangling-t_str that the Str binding work removed). The column
+    // homogeneity obligation is per-column across rows (source.type-mismatch).
+    let mixed = "fn main() int {\n    let g = grid (a) { [1]; [\"x\"] }\n    return 1\n}";
     let err = ace_core::source::compile_aggregates_source(mixed, "p.at", &[])
         .err()
         .expect("mixed column types must reject");
-    assert!(!err.is_empty()); // rejects (bind-layer dangling t_str; named code = SD-01 polish)
+    assert!(
+        err.iter().any(|d| d.code == "source.type-mismatch"),
+        "expected a named source.type-mismatch, got: {:?}",
+        err.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+    );
 }
 
 /// PLAN-962 (V-08 slice): nested place self-alias and partial-move

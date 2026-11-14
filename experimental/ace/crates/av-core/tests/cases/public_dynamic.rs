@@ -664,8 +664,10 @@ mod tests {
     #[test]
     fn av_dynamic_type_surface_closed_no_fn_or_borrow_category() {
         // Exhaustive match WITHOUT a wildcard arm: `DynType` provably has
-        // no Fn/closure/borrow/Place category — the whitelist is closed by
-        // construction (V-12: no fake future categories).
+        // no Fn/borrow/Place category — the whitelist is closed by
+        // construction (V-12: no fake future categories). PLAN-964 adds
+        // the Nil/Object/External/Callable categories (the dynamic-value
+        // reflection slice); the match stays exhaustive.
         fn kind(t: &DynType) -> &'static str {
             match t {
                 DynType::Bool
@@ -679,12 +681,19 @@ mod tests {
                 DynType::Record { .. } => "record",
                 DynType::List(_) => "list",
                 DynType::Variant { .. } => "variant",
+                DynType::Nil => "nil",
+                DynType::Object => "object",
+                DynType::External { .. } => "external",
+                DynType::Callable => "callable",
             }
         }
         assert_eq!(kind(&DynType::Str), "scalar");
         assert_eq!(kind(&DynType::record("o", "R", vec![])), "record");
         assert_eq!(kind(&DynType::list(DynType::I32)), "list");
         assert_eq!(kind(&DynType::variant("o", "V", vec![])), "variant");
+        assert_eq!(kind(&DynType::Nil), "nil");
+        assert_eq!(kind(&DynType::Object), "object");
+        assert_eq!(kind(&DynType::Callable), "callable");
     }
 
     #[test]
@@ -840,6 +849,12 @@ mod tests {
                         }
                     }
                 }
+                // PLAN-964: nil/object/callable descriptors (11/12/13);
+                // external has no descriptor (never freezeable).
+                DynType::Nil => out.push(11),
+                DynType::Object => out.push(12),
+                DynType::Callable => out.push(13),
+                DynType::External { .. } => panic!("external never writes a descriptor"),
             }
         }
         let mut out = Vec::new();
@@ -915,10 +930,11 @@ mod tests {
     #[test]
     fn av_dynamic_wire_payload_negatives() {
         let empty = ctx(&[], &[]);
-        // Unknown payload tag (after a valid tydesc).
+        // Unknown payload tag (after a valid tydesc). Tags 11/12 are now
+        // PLAN-964 nil/object payloads — a genuinely unknown tag is 13+.
         let t = wire(1, &{
             let mut b = tydesc(&DynType::I32);
-            b.push(11);
+            b.push(13);
             b
         });
         assert_eq!(

@@ -1,0 +1,19 @@
+// PLAN-964 T-02 source02 (L-22): closure capture + HOF — the old
+// closure_capture_hof corpus. The NEW example checks the VALUES
+// [3, 6, 9] (not just len): factor=3 captured, mapped over [1,2,3].
+// List `map` is not on the 962 collections surface, so the HOF mapping
+// is spelled with an explicit loop + closure calls (named decision in
+// the Plan, not a fake of the old coverage).
+fn main() int {
+    let factor = 3
+    let nums = List<i32>.new()
+    nums.push(1)
+    nums.push(2)
+    nums.push(3)
+    let scaled = List<i32>.new()
+    for x in nums {
+        scaled.push(((y int) => y * factor)(x))
+    }
+    if scaled.len() != 3 { return 0 }
+    return scaled.get(0) * 100 + scaled.get(1) * 10 + scaled.get(2)
+}

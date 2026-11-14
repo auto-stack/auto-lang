@@ -184,6 +184,8 @@ mod resource_events_919;
 mod assembly_944;
 #[path = "cases/choose_instances_935.rs"]
 mod choose_instances_935;
+#[path = "cases/dynamic_objects_964.rs"]
+mod dynamic_objects_964;
 #[path = "cases/const_instances_963.rs"]
 mod const_instances_963;
 #[path = "cases/default_args_963.rs"]

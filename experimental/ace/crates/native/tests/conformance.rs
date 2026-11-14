@@ -6,6 +6,8 @@ mod cache_tier;
 mod choose_instances_935;
 #[path = "cases/generic_records_963.rs"]
 mod generic_records_963;
+#[path = "cases/dynamic_964.rs"]
+mod dynamic_964;
 #[path = "cases/default_args_963.rs"]
 mod default_args_963;
 #[path = "cases/const_instances_963.rs"]

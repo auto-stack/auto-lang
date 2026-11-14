@@ -1,0 +1,10 @@
+// PLAN-964 T-02 source01 (L-16/L-20): object literal + dynamic string-key
+// write/read — the old map_bracket_write corpus (public obligation:
+// y=200 / z=300 / x=100 → sum 600). Keys are Str literals and a variable.
+fn main() int {
+    var obj = { x: 100 }
+    obj["y"] = 200
+    var k = "z"
+    obj[k] = 300
+    return obj["y"] + obj[k] + obj["x"]
+}
