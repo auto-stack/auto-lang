@@ -89,9 +89,20 @@ fn ace_m1_base_suite_green() {
     // PLAN-1059 source/member gate: the composite wave's 28 checks and the
     // first wave's 40 scalar checks are executed from inline documents.
     let composite_ids = [
-        "ace.m1.k01", "ace.m1.k03", "ace.m1.k06", "ace.m1.r02", "ace.m1.r05",
-        "ace.m1.r06", "ace.m1.r08", "ace.m1.t05", "ace.m1.v01", "ace.m1.v02",
-        "ace.m1.v04", "ace.m1.v05", "ace.m1.v06", "ace.m1.v07",
+        "ace.m1.k01",
+        "ace.m1.k03",
+        "ace.m1.k06",
+        "ace.m1.r02",
+        "ace.m1.r05",
+        "ace.m1.r06",
+        "ace.m1.r08",
+        "ace.m1.t05",
+        "ace.m1.v01",
+        "ace.m1.v02",
+        "ace.m1.v04",
+        "ace.m1.v05",
+        "ace.m1.v06",
+        "ace.m1.v07",
     ];
     for cid in composite_ids {
         for chk in ["autovm", "a2r-snapshot"] {
@@ -104,7 +115,9 @@ fn ace_m1_base_suite_green() {
             );
         }
     }
-    for stem in ["b01", "b02", "b03", "b04", "b05", "b06", "b07", "b09", "b10", "b12"] {
+    for stem in [
+        "b01", "b02", "b03", "b04", "b05", "b06", "b07", "b09", "b10", "b12",
+    ] {
         let cid = format!("ace.m1.{stem}");
         for chk in ["ac-native", "av", "autovm", "a2r-snapshot"] {
             assert!(

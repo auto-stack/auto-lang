@@ -661,13 +661,32 @@ fn document_base_cli_list_and_migration_inventory_complete() {
     assert_eq!(checks.len(), 97, "active BASE suite must stay 97 checks");
 
     let scalar_cases = [
-        "ace.m1.b01", "ace.m1.b02", "ace.m1.b03", "ace.m1.b04", "ace.m1.b05",
-        "ace.m1.b06", "ace.m1.b07", "ace.m1.b09", "ace.m1.b10", "ace.m1.b12",
+        "ace.m1.b01",
+        "ace.m1.b02",
+        "ace.m1.b03",
+        "ace.m1.b04",
+        "ace.m1.b05",
+        "ace.m1.b06",
+        "ace.m1.b07",
+        "ace.m1.b09",
+        "ace.m1.b10",
+        "ace.m1.b12",
     ];
     let composite_cases = [
-        "ace.m1.k01", "ace.m1.k03", "ace.m1.k06", "ace.m1.r02", "ace.m1.r05",
-        "ace.m1.r06", "ace.m1.r08", "ace.m1.t05", "ace.m1.v01", "ace.m1.v02",
-        "ace.m1.v04", "ace.m1.v05", "ace.m1.v06", "ace.m1.v07",
+        "ace.m1.k01",
+        "ace.m1.k03",
+        "ace.m1.k06",
+        "ace.m1.r02",
+        "ace.m1.r05",
+        "ace.m1.r06",
+        "ace.m1.r08",
+        "ace.m1.t05",
+        "ace.m1.v01",
+        "ace.m1.v02",
+        "ace.m1.v04",
+        "ace.m1.v05",
+        "ace.m1.v06",
+        "ace.m1.v07",
     ];
     let document_rows: Vec<&serde_json::Value> = checks
         .iter()
@@ -688,8 +707,14 @@ fn document_base_cli_list_and_migration_inventory_complete() {
     }
     let row_key = |row: &&serde_json::Value| {
         (
-            row["semantic"]["case"]["id"].as_str().unwrap_or_default().to_string(),
-            row["semantic"]["check"]["id"].as_str().unwrap_or_default().to_string(),
+            row["semantic"]["case"]["id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            row["semantic"]["check"]["id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
         )
     };
     let doc_keys: std::collections::HashSet<_> = document_rows.iter().map(row_key).collect();
