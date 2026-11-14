@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-14
 plan_revision: 12
-current_step: 9
+current_step: 10
 total_steps: 19
 depends_on: [PLAN-960, PLAN-962, PLAN-963, PLAN-938, PLAN-939, PLAN-1042, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-bindgen/project.md, docs/specs/auto-abi/project.md]
@@ -548,7 +548,7 @@ T-03/T-12扩947既有装配：同一AV的native/C/Rust来源绑定与资源原pr
 - [x] **T-09｜M2-A｜owner_stage: work｜AC-07**：接通工程use.c/use.rs到共享绑定和typed foreign事实，冻结真实库/全特征required表、来源/注解/工具链和合法/非法公共源码；先走通一个真实导入与失败恢复。 [✅ 2026-11-14]
   交付：`open_project_session` 工程级 use.rs 入口（provider=工程文件，全派生，具名拒绝，V-09 正反例 `f0_project_import_runs_rejects_and_recovers` 全绿）；§5 T-09 冻结记录（真实库/全特征 required 表 owner 到任务、BuildIdentity/RuntimeCompatibility/ProviderArtifact 字段清单、V-ABI-CROSS 双工具链计划、INT-1026 最小字段）。use.c 工程腿冻结为 T-10 随 C importer 落（拼写已定）。 验证V-09，证据汇入原最终work验证。 ABI-COMPAT：冻结BuildIdentity/RuntimeCompatibility/ProviderArtifact字段与兼容规则、两个实际可构建fixture的rustc/target组合、准确既有入口和V-ABI-*预期；缺环境记pending。
 
-- [ ] **T-10｜M2-A｜owner_stage: work｜AC-08/AC-NATIVE**：实现C真实预处理/头文件闭包、target/sysroot/宏/typedef和ABI布局、函数/record/enum/pointer/callback/opaque、常量/inline shim；将旧用法特征逐行闭合。 验证V-10，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。
+- [x] **T-10｜M2-A｜owner_stage: work｜AC-08/AC-NATIVE**：实现C真实预处理/头文件闭包、target/sysroot/宏/typedef和ABI布局、函数/record/enum/pointer/callback/opaque、常量/inline shim；将旧用法特征逐行闭合。 验证V-10，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。 [✅ 2026-11-14 三片交付：真预处理importer+use.c前门+native腿（首片）、inline shim/常量/形状审计/target轴（续片）、opaque handle生命周期+callback映射（收尾片）；c_import 4案全绿；具名边界=AV-C执行腿归T-12四端、COFF callback trampoline具名发现F-967-COFF-CB归T-13、源级常量binding随manifest schema扩展、V-NATIVE五字节行为=长度域已证+完整CStr边界随T-12/15]
 
 - [ ] **T-11｜M2-A｜owner_stage: work｜AC-09/AC-NATIVE**：实现Rust公开元数据到具体类型/泛型实例和自动C-compatible shim；闭合String/Vec/Result/borrow/析构、panic、线程与future边界。 验证V-11，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。 ABI-COMPAT：B-01/02库+shim共同构建与cdylib/staticlib产物合同，记录rustc/依赖/flags；执行V-ABI-BUILD/CROSS适用部分。
 
@@ -581,6 +581,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 11 | from: work | to: work | status: executing | outcome: T-10完成（收尾片：opaque handle生命周期真机码+callback合同映射；勾选T-10） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-11 Rust公开元数据importer）
+
+2026-11-14 stage: work / T-10收尾片（AC-08）| 交付: opaque解析（typedef struct无体）+handle参数/返回按解析集消解（record vs opaque不猜）+i32域slot id编码（真指针会触发wide-range传输）+生命周期真机码（create(7)→get 7→destroy 0→slot释放→recreate）+callback合同映射（i64回调typedef+ctx种子I32 lane+fallible out，manifest准入+decls断言）| 具名发现 F-967-COFF-CB: COFF道callback trampoline非交付执行面（939 fold差分探针COFF道得垃圾而交付a2x-c产品道绿）→归T-13/V-13；calling腿走a2x-c（939 decks绿）| c_import 4案全绿；rust_f0 8、auto-bindgen 10绿 | next: T-11。
 
 2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 10 | from: work | to: work | status: executing | outcome: T-10续片交付（inline shim/常量/形状审计/target轴）；opaque与callback消费函数及AV-C(T-12)仍具名 | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-10收尾片：opaque+callback消费；随后T-11）
 

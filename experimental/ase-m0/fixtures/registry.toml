@@ -1,0 +1,20 @@
+# ASE M0 host metadata (experiment description; NOT a public authoring
+# syntax). Only these two registered local trusted identities are loadable;
+# the URI is not authorization to execute arbitrary files.
+[[app]]
+identity = "auto.demo.a"
+version = "1.0.0"
+package = "auto_demo_a"
+root = "apps/auto.demo.a/1.0.0"
+entry = "main"
+sources = ["main.at"]
+capabilities = []
+
+[[app]]
+identity = "auto.demo.b"
+version = "1.0.0"
+package = "auto_demo_b"
+root = "apps/auto.demo.b/1.0.0"
+entry = "main"
+sources = ["main.at"]
+capabilities = []
