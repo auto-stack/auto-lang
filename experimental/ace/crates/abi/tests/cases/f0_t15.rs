@@ -12,10 +12,10 @@
 use std::path::PathBuf;
 
 use ace_abi::rust_provider::{
-    build_c_dll_with, build_c_oracle, build_cargo_provider, c_authority, f0_authority,
-    f0_json_provider_source, load, locate_pinned_sqlite, open_c_provider, p967_sqlite_header,
-    p967_sqlite_source, provider_deps, sdk_include_dirs, stage_pinned_sqlite, verify_sqlite_pin,
-    RawLibrary, RustProviderBuild,
+    build_c_dll_with, build_c_oracle, build_cargo_provider, c_authority, compile_c_unit,
+    f0_authority, f0_json_provider_source, load, locate_pinned_sqlite, open_c_provider,
+    p967_sqlite_header, p967_sqlite_source, provider_deps, sdk_include_dirs, stage_pinned_sqlite,
+    verify_sqlite_pin, RawLibrary, RustProviderBuild,
 };
 use ace_av_core::contract::{ExecOutcome, TrapKind, Value};
 use ace_av_core::foreign_exec::{ForeignCallable, ForeignStub, ForeignStubTable};
@@ -461,10 +461,15 @@ fn t15_sqlite_real_library_reads_and_writes() {
 
     let provider =
         open_c_provider(&proj, "p967_sqlite").expect("the real-library provider imports");
+    // T-05 test-cost: the 9MiB amalgamation compiles ONCE — the provider
+    // DLL and the independent oracle LINK the same object (the case
+    // stays under the 10s per-case gate)
+    let sqlite_obj =
+        compile_c_unit(&root, &proj.join("sqlite3.c")).expect("the amalgamation compiles once");
     let dll = build_c_dll_with(
         &provider,
         &root,
-        &[proj.join("sqlite3.c"), proj.join("sqlite3.h")],
+        &[sqlite_obj.clone(), proj.join("sqlite3.h")],
         &sdk_include_dirs(),
     )
     .expect("the provider+amalgamation DLL builds");
@@ -495,7 +500,7 @@ int main(void) {
     let oracle_exe = build_c_oracle(
         &root,
         oracle_src,
-        &[sqlite_346.join("sqlite3.c"), sqlite_346.join("sqlite3.h")],
+        &[sqlite_obj, sqlite_346.join("sqlite3.h")],
     )
     .expect("the oracle builds");
     let mut cmd = std::process::Command::new(&oracle_exe);

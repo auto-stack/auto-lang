@@ -657,6 +657,61 @@ pub fn sdk_include_dirs() -> Vec<PathBuf> {
         .collect()
 }
 
+/// PLAN-967 T-05: compile ONE C source into a reusable object with the
+/// full SDK include closure — the pinned amalgamation compiles ONCE and
+/// both the provider DLL and the independent oracle link the same
+/// object (test-cost: the 9MiB TU dominates the case's wall time).
+pub fn compile_c_unit(root: &Path, source: &Path) -> Result<PathBuf, String> {
+    let dir = root.join("c-units");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let name = source
+        .file_stem()
+        .ok_or("unit source without a stem")?
+        .to_string_lossy()
+        .into_owned();
+    let obj = dir.join(format!("{name}.obj"));
+    let tool = crate::ctool::find_cl().map_err(|e| format!("cl: {e}"))?;
+    let msvc_root = tool
+        .cl_exe
+        .ancestors()
+        .nth(4)
+        .ok_or("cannot derive MSVC root from cl path")?;
+    let mut cmd = std::process::Command::new(&tool.cl_exe);
+    cmd.args(["-nologo", "-c", "-O1"])
+        .arg(source)
+        .arg(format!(
+            "-I{}",
+            source.parent().unwrap_or(Path::new(".")).display()
+        ))
+        .arg(format!("-I{}", msvc_root.join("include").display()))
+        .arg(format!("-Fo:{}", obj.display()));
+    for inc in sdk_include_dirs() {
+        cmd.arg(format!("-I{}", inc.display()));
+    }
+    let run = ace_core::link::run_deadlined_typed(
+        &mut cmd,
+        std::time::Duration::from_secs(300),
+        ace_core::link::CaptureCaps {
+            stdout_max: 1 << 16,
+            stderr_max: 1 << 16,
+        },
+        vec![],
+    )
+    .map_err(|e| format!("unit cl spawn: {e:?}"))?;
+    if run.exit_code != Some(0) {
+        return Err(format!(
+            "unit cl exited {:?}: {} | {}",
+            run.exit_code,
+            String::from_utf8_lossy(&run.stdout).trim(),
+            String::from_utf8_lossy(&run.stderr).trim()
+        ));
+    }
+    if !obj.is_file() {
+        return Err(format!("unit object not produced at {}", obj.display()));
+    }
+    Ok(obj)
+}
+
 /// Build the INDEPENDENT C oracle executable: `main_c` plus the pinned
 /// sources, compiled by the same real cl into a standalone exe — a
 /// separate process sharing NO FFI machinery with the provider under
@@ -690,10 +745,19 @@ pub fn build_c_oracle(
         cmd.arg(format!("-I{}", inc.display()));
     }
     for src in extra_sources {
-        // only compilation units (.c) go on the command line; staged
-        // headers resolve through -I
-        if src.extension().and_then(|e| e.to_str()) == Some("c") {
-            cmd.arg(dir.join(src.file_name().ok_or("oracle source without a name")?));
+        match src.extension().and_then(|e| e.to_str()) {
+            // compilation units (.c) compile in place; PREBUILT objects
+            // (.obj, the once-compiled amalgamation) stage and link as-is;
+            // staged headers resolve through -I
+            Some("c") | Some("obj") => {
+                let staged = dir.join(src.file_name().ok_or("oracle source without a name")?);
+                if src.extension().and_then(|e| e.to_str()) == Some("obj") {
+                    std::fs::copy(src, &staged)
+                        .map_err(|e| format!("stage oracle unit {}: {e}", staged.display()))?;
+                }
+                cmd.arg(&staged);
+            }
+            _ => {}
         }
     }
     cmd.arg("-link")
@@ -909,11 +973,21 @@ void ace_foreign_fail(int status) { (void)status; ExitProcess(70); }
         cmd.arg(format!("-I{}", inc.display()));
     }
     for src in extra_sources {
-        // only compilation units (.c) go on the command line; headers
-        // staged beside them resolve through -I
-        if src.extension().and_then(|e| e.to_str()) == Some("c") {
-            let staged = dir.join(src.file_name().ok_or("extra source without a name")?);
-            cmd.arg(&staged);
+        match src.extension().and_then(|e| e.to_str()) {
+            // compilation units (.c) compile in place; PREBUILT objects
+            // (.obj, e.g. the once-compiled amalgamation) stage and link
+            // as-is; headers staged beside them resolve through -I
+            Some("c") => {
+                let staged = dir.join(src.file_name().ok_or("extra source without a name")?);
+                cmd.arg(&staged);
+            }
+            Some("obj") => {
+                let staged = dir.join(src.file_name().ok_or("extra source without a name")?);
+                std::fs::copy(src, &staged)
+                    .map_err(|e| format!("stage extra {}: {e}", staged.display()))?;
+                cmd.arg(&staged);
+            }
+            _ => {}
         }
     }
     cmd.arg("-link")

@@ -533,7 +533,6 @@ struct PortRegistryInner {
 
 #[derive(Debug)]
 struct OpenPort {
-    symbol: String,
     cancelled: bool,
     pinned_generation: u64,
 }
@@ -559,7 +558,6 @@ impl CompletionPorts {
         inner.open.insert(
             port,
             OpenPort {
-                symbol: symbol.to_string(),
                 cancelled: false,
                 pinned_generation: self.generation,
             },
@@ -675,7 +673,7 @@ mod tests {
         ErrorModel, FactsSource, FnFact, FnForm, InterfaceFacts, LaneKind, FACTS_FORMAT,
     };
 
-    unsafe extern "C" fn len_i32(data: *const u8, byte_len: u64) -> i32 {
+    unsafe extern "C" fn len_i32(_data: *const u8, byte_len: u64) -> i32 {
         byte_len as i32
     }
     unsafe extern "C" fn ascii_bool(data: *const u8, byte_len: u64) -> u8 {
