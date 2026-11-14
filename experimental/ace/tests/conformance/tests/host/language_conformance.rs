@@ -48,7 +48,6 @@ fn stage_doc_base_corpus(cases_root: &Path, dst: &Path) {
 /// plus 57 shared legacy M1 BASE checks via `fixture_root: "ace-m1"`.
 #[test]
 fn ace_m1_base_suite_green() {
-    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let cases_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases");
     let root = temp_root("base");
     let out = root.join("out");
@@ -86,7 +85,6 @@ fn ace_m1_base_suite_green() {
 /// inline scalar document must turn the gate RED — the suite is a real judge.
 #[test]
 fn ace_m1_base_negative_oracle_fails() {
-    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let cases_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases");
     let root = temp_root("neg");
     let corpus = root.join("corpus");
@@ -137,7 +135,6 @@ fn ace_m1_base_negative_oracle_fails() {
 /// matching the inline B01 Rust block, the a2r-snapshot check must be RED.
 #[test]
 fn ace_m1_golden_drift_is_red() {
-    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let cases_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases");
     let root = temp_root("drift");
     let corpus = root.join("corpus");
@@ -174,7 +171,6 @@ fn ace_m1_golden_drift_is_red() {
 /// is absent by the named upstream exclusion `gap:upstream-s-eq`.
 #[test]
 fn ace_m1_tr_native_suite_green() {
-    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let suite_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases/ace-m1");
     let root = temp_root("tr-native");
     let out = root.join("out");
@@ -222,7 +218,6 @@ fn ace_m1_tr_native_suite_green() {
 /// (42/0/57/75/135/42/52/84 + R08 42), diagnostics carry the mn leg.
 #[test]
 fn ace_m1_method_suite_green() {
-    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let suite_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases/ace-m1");
     let root = temp_root("method-881");
     let out = root.join("out");
@@ -265,7 +260,6 @@ fn ace_m1_method_suite_green() {
 /// diagnostics, with the source parent judge checking release accounting.
 #[test]
 fn ace_m1_closures_source_suite_green() {
-    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let suite_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases/ace-m1");
     let root = temp_root("closures-865-source");
     let corpus = root.join("corpus");
@@ -466,7 +460,6 @@ case {{ schema: "autolang.case/2", id: "ace.m1.k01-cache-sample",
 /// never a green stamp.
 #[test]
 fn ace_m1_method_negative_oracle_fails() {
-    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let suite_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases/ace-m1");
     let root = temp_root("method-881-neg");
     let corpus = root.join("corpus");
@@ -510,7 +503,6 @@ fn ace_m1_method_negative_oracle_fails() {
 /// (T01 38 -> 39) must turn the gate RED — the wiring is a real judge.
 #[test]
 fn ace_m1_tr_native_negative_oracle_fails() {
-    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let suite_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases/ace-m1");
     let root = temp_root("tr-native-neg");
     let corpus = root.join("corpus");
@@ -684,7 +676,6 @@ fn copy_tree(src: &Path, dst: &Path) {
 /// cases, every (kind, bits) oracle held parent-side.
 #[test]
 fn ace_m1_native_typed_891_sdk() {
-    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let suite = PathBuf::from(env!("AUTO_LANG_HOST_DIR"))
         .join("test/cases/ace-m1/typed-native-891/typed-native-891.suite.ad");
     let root = temp_root("typed-native-891");
@@ -710,7 +701,6 @@ fn ace_m1_native_typed_891_sdk() {
 /// KIND turns it red on the kind axis — never a silent pass.
 #[test]
 fn ace_m1_native_typed_891_wrong_oracle_and_wrong_kind_turn_red() {
-    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let suite =
         PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases/ace-m1/typed-native-891");
     let root = temp_root("typed-native-891-negative");
@@ -789,7 +779,6 @@ fn ace_m1_native_typed_891_wrong_oracle_and_wrong_kind_turn_red() {
 /// List<Variant> combinations on both, each judged against its own oracle.
 #[test]
 fn ace_m1_native_collections_source_sdk() {
-    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let suite = PathBuf::from(env!("AUTO_LANG_HOST_DIR"))
         .join("test/cases/ace-m1/native-collections-889.suite.ad");
     let root = temp_root("native-collections-889");
@@ -817,7 +806,6 @@ fn ace_m1_native_collections_source_sdk() {
 
 #[test]
 fn ace_m1_native_collections_wrong_oracle_and_wrong_type_turn_red() {
-    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let suite = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases/ace-m1");
     let root = temp_root("native-collections-889-negative");
     let corpus = root.join("corpus");
@@ -1282,8 +1270,7 @@ mod performance {
     #[test]
     #[ignore = "PLAN-889 formal release-worker timing and512-revision retained campaign; run explicitly in a serial measurement window"]
     fn ace_m1_native_collections_formal_performance_and_churn() {
-        let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let source =
+            let source =
             include_str!("../../../../../../crates/auto-lang/test/cases/ace-m1/src/N889Load.at");
         let root = PathBuf::from(env!("AUTO_LANG_HOST_DIR"))
             .join("../../docs/plans/attachments/889/baseline")
@@ -1308,8 +1295,7 @@ mod performance {
     #[test]
     #[ignore = "PLAN-889 affected fresh/restart timing repair; needs full-matrix reuse receipt"]
     fn ace_m1_native_collections_formal_cold_verifier_repair() {
-        let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let source =
+            let source =
             include_str!("../../../../../../crates/auto-lang/test/cases/ace-m1/src/N889Load.at");
         let root = PathBuf::from(env!("AUTO_LANG_HOST_DIR"))
             .join("../../docs/plans/attachments/889/baseline")
