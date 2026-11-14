@@ -183,3 +183,87 @@ fn p979_component_model_and_on_still_fail_closed_until_the_runtime_lands() {
     assert_eq!(ds[0].code, "source.age.component-unsupported");
     assert!(ds[0].message.contains("on Inc"), "{:?}", ds[0]);
 }
+
+// ---- T-03 场景驱动（model/on 脱糖为普通 Auto 驱动）----
+
+use ace_core::source::age_component::{compile_component_scenario, ComponentScenario, ScenarioOp};
+
+const COUNTER: &str = "node Counter {\n    model {\n        count int = 0\n    }\n    on Inc {\n        count = count + 1\n    }\n    on Tick {\n        count = count + 1\n    }\n    view {\n        text \"c\" {}\n    }\n}\n";
+
+#[test]
+fn p979_component_scenario_desugars_to_a_verified_driver() {
+    let scenario = ComponentScenario {
+        instances: 2,
+        ops: vec![
+            ScenarioOp::Send {
+                instance: 1,
+                msg: "Inc".to_string(),
+            },
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Inc".to_string(),
+            },
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Inc".to_string(),
+            },
+            ScenarioOp::Tick { instance: 1 },
+        ],
+    };
+    let out = compile_component_scenario(
+        &COUNTER,
+        "counter.at",
+        LegacyWidgetAlias::Reject,
+        &[],
+        &scenario,
+    )
+    .expect("scenario compiles through the shared verify");
+    // 驱动是普通 i32 函数，位于共享 Checked HIR（名字由 adapter 唯一决定）。
+    let atom = &out.atom_text;
+    assert!(atom.contains("__age_drive"), "driver in the checked module");
+    assert!(
+        atom.contains("__age_h0_text_") || atom.contains("__age_c_text_0"),
+        "text evaluator present"
+    );
+    let n = &out.description.nodes[0];
+    assert_eq!(n.fields.len(), 1);
+    assert_eq!(n.handler_msgs, vec!["Inc".to_string(), "Tick".to_string()]);
+    assert_eq!(n.view.texts.len(), 1);
+}
+
+#[test]
+fn p979_component_scenario_rejects_undeclared_events_and_instances() {
+    let scenario = ComponentScenario {
+        instances: 2,
+        ops: vec![ScenarioOp::Send {
+            instance: 0,
+            msg: "Nope".to_string(),
+        }],
+    };
+    let ds = compile_component_scenario(
+        &COUNTER,
+        "counter.at",
+        LegacyWidgetAlias::Reject,
+        &[],
+        &scenario,
+    )
+    .expect_err("undeclared event");
+    assert_eq!(ds[0].code, "source.age.component-event");
+
+    let scenario = ComponentScenario {
+        instances: 1,
+        ops: vec![ScenarioOp::Send {
+            instance: 5,
+            msg: "Inc".to_string(),
+        }],
+    };
+    let ds = compile_component_scenario(
+        &COUNTER,
+        "counter.at",
+        LegacyWidgetAlias::Reject,
+        &[],
+        &scenario,
+    )
+    .expect_err("out-of-range instance");
+    assert_eq!(ds[0].code, "source.age.component-scenario");
+}
