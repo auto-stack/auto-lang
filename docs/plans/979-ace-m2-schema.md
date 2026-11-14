@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-15
 plan_revision: 10
-current_step: 3
+current_step: 4
 total_steps: 12
 depends_on: [PLAN-960, PLAN-963, PLAN-966]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-a2x/architecture.md]
@@ -368,7 +368,8 @@ struct DomainCandidate { structure: DomainIr, behaviors: ExprRefs, source_map: S
 - [x] **T-H0-R｜M2-A｜owner_stage: review｜AC-H0-REVIEW**：T-H0-V齐后同树停写独立复核源码→CST→唯一verify→CPU描述，不信样本自报；finding回I。
   - [✅ 已完成 2026-11-15｜三轮独立复审 final pass @ 71472d975] 独立上下文（subagent `reviewer-979-h0`，只读、自建探针/52+ CLI 夹具）逐轮复核：第一轮 **needs_fix**（F1 隐藏 def 被后缀同名用户函数劫持、F2 `parse_program_via_cst` 静默丢弃领域声明、F3 拒绝诊断过于通用、F4 未用 import、F5 `use.rs` 面不一致、F6 领域 hint 吞更早错误、F7 硬编码 `widget`、F8 计数证据偏差）；修复 `90c46092c` 后第二轮 **pass**（另记 F9 头扫描误认、F10 叶错误归类、F11 缺节点名 + 片段入口观察）；修复 `63f4a0fc9` 后第三轮 **needs_fix 仅 F12**（F9 修复遗留调试 `eprintln!`）；删除后 `71472d975` 终审 **pass**：`git diff 50dc0ea5c..71472d975` 无新增调试输出（唯一保留的 `eprintln!` 是 base 既有、`AC787_TRACE` 环境门控的解析 trace），失败 CLI 仅 stderr 一行领域诊断、成功无 stderr；F1–F12 全部关闭并有独立复现证据。三处措辞收敛按复审建议落地（见§9 最新收据与§5 H0 注记）。
 
-- [ ] **T-H0-D｜M2-A｜owner_stage: merge｜AC-H0-LAND**：T-H0-R pass后phase fold正式合入H0 grammar/投影与已验规范，交980/HELLO；保同树/resync继续完整原任务，不能称979或完整UI已交。
+- [x] **T-H0-D｜M2-A｜owner_stage: merge｜AC-H0-LAND**：T-H0-R pass后phase fold正式合入H0 grammar/投影与已验规范，交980/HELLO；保同树/resync继续完整原任务，不能称979或完整UI已交。
+  - [✅ 已完成 2026-11-15｜主检出 ff-only → `7c739e2d8`] phase fold 已落主：代码 6 提交 rebase 到当时 master（`5aeebf201`，含 PLAN-1060 测试治理对 `syntax-runtime/parse`、`testkit`、测试组配置的改动）后 fast-forward 合入；**reviewed `71472d975` → 交付链 `95db94fb4`→`0b8465430`→`873f29e64`→`220851256`→`bb2ce71e2`→`43f5b09a5`**，`git range-diff` 6 对中 5 对 `=`、第 1 对仅上下文差异（1060 的 `fail_memo`/rustfmt 上下文，无内容差异）；规范沉淀提交 `7c739e2d8`（docs-only 后代）。落主规模 27 文件 +2762/−93，含新规范 `docs/specs/ace-migration/m2-schema.md`（SD-01/SD-HELLO/SD-NODE-NAME/SD-DETAIL 的 **H0 已验部分**；完整 supersede 与全包义务仍 pending，不声明完成）。落主前在 rebase 态复验：core conformance 483/483、p979 过滤器 13/7/22、受影响五组 `cargo t ace-syntax ace-source ace-semantics ace-artifacts ace-av` 全 PASS；落主后主检出复验：p979 过滤器 22/13/7 全 exit 0、CLI 字面量源 exit 0（nodes=1、grammar `5ec22d3e…`）、非文本源报 `source.age.text-type` @3:14、规范文件在位。**交接 980/HELLO**：`SourceProfile::AgeH0` + `compile_age_h0`（描述含 role/原 span/文本种类/def_id）+ `ace_av::age_h0::observe_age_h0`（共享后端取真值）+ §3 诊断码契约；未交面见规范 §4/§5。计划保持 `executing`（T-01..T-08 未开），**不归档**；worktree/branch 保留并已与 master 同点，后续按 §8 同树 resync 继续。retention 登记 `auto-lang/PLAN-979` in-flight（policy.json sha256/16 `d1deeaad704b1396`）。
 
 
 
@@ -459,3 +460,6 @@ stage: goal | plan_id: PLAN-979 | plan_revision: r10 | round: 5 | from: review |
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 本轮已确定不新增Plan：通用领域接面留979，AGE实际AV/宿主/A2R和两个游戏交981；T-01只冻结符号/命令/支持组合等实施细节。未决Node状态表示、类型方法/全局cell在新后端的具体合法化由981/SOURCE、981/RUST联语言owner核现状处理，不以归档960/961当组合已支持，不重开已交付工作。
+2026-11-15 stage: merge / T-H0-D（H0 phase fold 落主；计划保持 executing，不归档）| plan_id: PLAN-979 | plan_revision: 10 | delivery_commit: **7c739e2d8**（master ff-only）| reviewed_commit: 71472d975 | rebased_chain: 95db94fb4→0b8465430→873f29e64→220851256→bb2ce71e2→43f5b09a5 + spec 7c739e2d8 | base: 50dc0ea5c；rebase onto master@5aeebf201（35 commits，含 PLAN-1060 测试治理与 parser `fail_memo`）| range_diff: 6 对 5 `=`、1 对仅上下文（无内容变更）| landed: 27 files +2762/−93（`experimental/ace/**` + `docs/specs/ace-migration/m2-schema.md`）| spec_deposit: `docs/specs/ace-migration/m2-schema.md` = SD-01/SD-HELLO/SD-NODE-NAME/SD-DETAIL 的 **H0 已验部分**（激活/身份、槽位 schema、冻结输入、脱糖→唯一 verify、共享后端取值、诊断码、引擎边界、pending 清单）；`supersedes_spec_components` 的完整 supersede 与全包义务未执行（留待全包 merge）| verification_pre_land（rebase 态）: core conformance 483/483（2.69s）、p979 过滤 13/17→13/7/22 全绿、`cargo t ace-syntax ace-source ace-semantics ace-artifacts ace-av` 五组全 PASS（ace-av 同前环境边界）| verification_post_land（主检出 @7c739e2d8）: p979 过滤 core 22/22、syntax-grammar 13/13、av 7/7（exit 0）；`ace-core check-source --source-profile auto.source.age-h0.draft` 字面量源 exit 0（nodes=1、grammar `5ec22d3e…`、hash 737d601ec5baba92）、非文本源 `source.age.text-type` @3:14；规范文件在位（77 行）| handoff_980/HELLO: `SourceProfile::AgeH0` + `ace_core::source::age_h0::compile_age_h0`（role/原 span/文本种类/def_id 描述）+ `ace_av::age_h0::observe_age_h0`（共享 lower→MIR→ABC→AV 取真值）+ 诊断码契约（§3）| cleanup: 本阶段**不删** plan-artifacts（计划在途）、不删 worktree/branch（T-01..T-08 继续；已与 master 同点）；retention 已登记 `auto-lang/PLAN-979` in-flight（`D:/autostack/plan-artifacts/.retention/policy.json` sha256/16 `d1deeaad704b1396`）| raw_evidence: D:/autostack/plan-artifacts/plan-979/{gate-h0-fold.log 5f2a55a7a887ec16, rebase-core-full.log 333db16bd2a0ded1, rebase-p979.log 870730cfea13dcf1, land-core-p979.log ec1570c7ba80520a, evidence.md 40c34eb219a7b483} | blockers: none | next_responsible_role: work（T-01：依赖与§4实际路径核对、交接件与分母冻结）
+
+stage: goal | plan_id: PLAN-979 | plan_revision: r10 | round: 6 | from: review | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-979/auto-lang | commit: 7c739e2d8 | next: work
