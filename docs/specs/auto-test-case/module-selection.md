@@ -17,6 +17,12 @@
 - `cargo t --list`：只读配置组名，不触发Cargo元数据、发现或构建。
 - `cargo t <组> --select-only [--out <新目录>]`：只输出固定调用计划，不认证实际发现/通过。Case组静态预览只输出stdout，不支持--out，以免绕过需真实owner工具的输出域审查。
 - `cargo t aavm --ignored [--test-name <名字>]`：明确手动重放已忽略实验；原平台/T3条件保持。
+- `runner = "case"` 的固定组以 `suite` 字段指向该语料**当前活跃作者文件**；活跃语料为
+  AutoDown 文档式 suite 时组名可沿用调用方历史名（如 `case-ace-m1-base` 现读
+  `ace-document-base.suite.ad`，`case-ace-m1-console-863`/`case-ace-m1-immutable-avm-920`
+  分别读 `ace-document-console`/`ace-document-immutable`）。被取代的旧 suite 保留为
+  冻结历史（M1 身份、来源摘要与旧回放输入），不再是日常入口。格式与迁移口径见
+  [document-cases](document-cases.md)。
 
 同配置的多个组OR并集一次nextest调用、由原nextest并行调度；不同package/target/feature/profile/
 环境/工具合同分别调用。正常Rust发现只针对选择的Cargo目标，新增同namespace测试自然纳入，零匹配

@@ -62,11 +62,16 @@ selector/局部 run 不削减 required 分母；零选择、缺行、仅 emit、
 - 逐格七类归账、缺口族 owner/关闭 oracle/后继顺序以
   [ace-m1-gap-audit.md](ace-m1-gap-audit.md) 为 current 账本（903 冻结数 + §11）。
 
-## 底座套件（ace-m1-base.suite.ad）
+## 底座套件（ace-document-base.suite.ad）
 
 只装证据绿检查：36 例 97 检查（T-02 标量三路径、T-03 金样快照、T-05 会话生命
-周期、类型化负例）。负例 oracle（改错期望必红）与金样漂移（必红）以 cargo 测试
-`crates/auto-lang/src/tests/ace_m1_tests.rs` 常驻。完整分母（含 skip 行）由
+周期、类型化负例）。**日常入口**为文档式混合 suite `ace-document-base.suite.ad`
+（PLAN-1057：10 份标量例以 AutoDown 文档内联 40 检查 + `fixture_root: "ace-m1"`
+复用 5 份旧 M1 文件 57 检查）；`ace-m1-base.suite.ad` 与其 case 文件保留为
+**冻结历史**（M1 身份/来源摘要与旧回放），旧 suite 仍可独立运行且结论有效。
+负例 oracle（改错期望必红）与金样漂移（必红）以 cargo 测试
+`experimental/ace/tests/conformance/tests/host/language_conformance.rs` 常驻，
+变异落在内联文档载荷上。完整分母（含 skip 行）由
 acceptance scope 从 binding.tsv 报告，两轴结论分开：底座 PASS ≠ M1 全绿。
 
 ## 会话生命周期（T-05 事实）
@@ -201,6 +206,10 @@ oracle 不变；binding/applicability/manifest 零改动（纯新增子树）。
 ### PLAN-863: O01–O15 console source rows
 
 `console-863/console-863.suite.ad` is an independent 15-row source suite under the existing 12-column binding schema. Hand-computed byte oracles cover int MIN/negative/zero/multi-line, bool, UTF-8/newline, char, owned readonly borrowing, nested guest evaluation, main/script int/Unit, output-before-trap, compile-time rejection, revoked/missing grant and empty text. Parent API tests additionally distinguish embedded NUL without changing the Atom contract escape grammar.
+
+PLAN-1057 起日常固定组 `case-ace-m1-console-863` 读文档式 `ace-document-console.suite.ad`
+（同 15 例：成功/`channel: unit`/`value` 与 parse/resolve/run 失败各带双流断言）；
+本 suite 与其 case 文件保留为**冻结历史**与原字节/旧回放输入。
 
 AV bindings are `ok:av-host-console-source-863` only after real parent-side execution. Native is `gap:ac-console-profile` (explicit profile rejection); legacy VM/a2r are `gap:console-profile-parity` (this new profile's exact parity is unverified). These are explicit remaining coverage gaps, not new `na:m1` rules or whole-M1 certification. No prior expected outcome, required denominator or certificate is rewritten. `verify-av-863.ps1` provides targeted/compat/console/acceptance scopes; sabotage of either byte oracle or exit must fail, missing axes reject and SKIP remains SKIP.
 
@@ -371,6 +380,8 @@ corpus R07（mut 参数写回）与 T08（切片越界）的 a2r 单元格凭 PL
 - 新套件 `immutable-avm-920`（固定组 `case-ace-m1-immutable-avm-920`，5 检查全绿）：
   B18 原源/复合 `+=`/顶层脚本三负例 + NB18/同名内层 var 遮蔽两合法近邻；原
   B18 source/expected/其余 96 基检查与 NB18 原例不动（base 97 冻结不扩）。
+  PLAN-1057 起该固定组改读文档式 `ace-document-immutable.suite.ad`（同 5 检查，
+  TOP 显式 `entry-mode: script`），本 suite 保留为冻结历史与原字节/旧回放输入。
 - binding.tsv B18 行 avm 列 `diff:pending → ok:P920`（其余 11 列与 130 行不动）；
   `source-manifest.json` 同步（suites_cases 76→81、`plan_920_update`、binding sha256）。
 - 单元面：`vm/immutable_assign_920.rs` 10 例（staged 同型/复合/防御位 AST 证人/近邻/
