@@ -16,6 +16,7 @@
 //! unchanged by the scalar profile's wider surface.
 
 pub mod adapter;
+pub mod age_component;
 pub mod age_h0;
 pub mod ast;
 pub(crate) mod closure_capture;

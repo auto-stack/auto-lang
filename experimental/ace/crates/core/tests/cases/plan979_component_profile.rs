@@ -66,3 +66,54 @@ fn p979_component_profile_is_refused_by_generic_entries() {
         other => panic!("fragment entry refuses the component profile, got {other:?}"),
     }
 }
+
+// ---- T-03 组件投影（view 面）----
+
+use ace_core::source::age_component::{
+    compile_age_component, project_component_candidates, AGE_COMPONENT_DOMAIN,
+};
+use ace_core::source::age_h0::LegacyWidgetAlias;
+
+const VIEW_ONLY: &str = "node Hello {\n    view {\n        text \"Hello\" {}\n    }\n}\n";
+
+#[test]
+fn p979_component_projection_yields_typed_candidates() {
+    let nodes = project_component_candidates(VIEW_ONLY).expect("projection");
+    assert_eq!(nodes.len(), 1);
+    let n = &nodes[0];
+    assert_eq!(n.head_role, "node");
+    assert_eq!(n.head_spelling, "node");
+    assert_eq!(n.name.name, "Hello");
+    assert_eq!(n.view.role, "view");
+    assert_eq!(n.view.texts.len(), 1);
+    assert_eq!(n.view.texts[0].role, "text");
+    assert!(n.fields.is_empty() && n.handlers.is_empty());
+}
+
+#[test]
+fn p979_component_view_only_source_compiles_through_the_shared_verify() {
+    let out = compile_age_component(VIEW_ONLY, "component.at", LegacyWidgetAlias::Reject, &[])
+        .expect("view-only component compiles");
+    assert_eq!(out.description.domain, AGE_COMPONENT_DOMAIN);
+    assert_eq!(out.description.nodes.len(), 1);
+    let n = &out.description.nodes[0];
+    assert_eq!(n.view.role, "view");
+    assert_eq!(n.view.texts[0].fn_name, "__age_c_text_0");
+    assert_eq!(n.view.texts[0].def_id, "d___age_c_text_0");
+}
+
+#[test]
+fn p979_component_compat_and_prefix_rules_apply() {
+    let widget = "widget App {\n    view {\n        text \"hi\" {}\n    }\n}\n";
+    let ds = compile_age_component(widget, "component.at", LegacyWidgetAlias::Reject, &[])
+        .expect_err("compat off rejects the legacy head");
+    assert_eq!(ds[0].code, "source.age.legacy-widget");
+    let on = compile_age_component(widget, "component.at", LegacyWidgetAlias::Accept, &[])
+        .expect("compat on admits the legacy head");
+    assert!(on.description.nodes[0].legacy_widget);
+    let collide =
+        format!("fn x__age_c_text_0() Str {{\n    return \"HACK\".clone()\n}}\n{VIEW_ONLY}");
+    let ds = compile_age_component(&collide, "component.at", LegacyWidgetAlias::Reject, &[])
+        .expect_err("reserved prefix family is a named conflict");
+    assert_eq!(ds[0].code, "source.age.hidden-name");
+}

@@ -114,6 +114,8 @@ pub struct FrontOk {
     /// PLAN-979：领域候选（未受信；只有 AGE 领域 profile 有内容）。通用
     /// profile 恒为空——领域声明不进入普通 AST，必须经领域前门消费。
     pub age_nodes: Vec<crate::source::age_h0::AgeNodeItem>,
+    /// PLAN-979 T-03：组件面候选（未受信；只有 age-component profile 有内容）。
+    pub component_nodes: Vec<crate::source::age_component::ComponentNode>,
 }
 
 /// PLAN-979：槽位限定拼写的事实源（真实快照字节；本 crate 不复制源）。
@@ -1751,6 +1753,7 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
             snapshot_len: src.len(),
             cst: tree,
             age_nodes: Vec::new(),
+            component_nodes: Vec::new(),
         }),
         Err(diags) => FrontOutcome::Diag(diags),
     }
@@ -1870,14 +1873,25 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
             }
         };
     // PLAN-979：AGE 领域 profile 额外投影未受信领域候选（结构 + 原 span）。
-    let age_nodes = if profile == SourceProfile::AgeH0 {
+    let mut age_nodes = Vec::new();
+    let mut component_nodes = Vec::new();
+    if profile == SourceProfile::AgeH0 {
         match project::project_age_nodes(&cached.program, &cached.kinds, &tree, &snap, profile) {
-            Ok(nodes) => nodes,
+            Ok(nodes) => age_nodes = nodes,
             Err(diags) => return FrontOutcome::Diag(diags),
         }
-    } else {
-        Vec::new()
-    };
+    } else if profile == SourceProfile::AgeComponent {
+        match project::project_component_nodes(
+            &cached.program,
+            &cached.kinds,
+            &tree,
+            &snap,
+            profile,
+        ) {
+            Ok(nodes) => component_nodes = nodes,
+            Err(diags) => return FrontOutcome::Diag(diags),
+        }
+    }
     FrontOutcome::Ok(FrontOk {
         program,
         grammar_id: format!("{}", cached.program.identity.grammar_id.0),
@@ -1885,6 +1899,7 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
         snapshot_len: src.len(),
         cst: tree,
         age_nodes,
+        component_nodes,
     })
 }
 
@@ -2035,6 +2050,7 @@ pub fn parse_fragment_front(
         cst: tree,
         // 片段入口不承载领域声明（AGE 只走 WholeModule）。
         age_nodes: Vec::new(),
+        component_nodes: Vec::new(),
     })
 }
 

@@ -3840,6 +3840,47 @@ pub(crate) fn project_age_nodes(
     Ok(out)
 }
 
+/// PLAN-979（T-03）：AGE **组件面**候选投影（model/on/view 成员 → typed 候选）。
+///
+/// 只在 `age-component` 裁剪面有内容；结构名按 `contextual` 的 role 归属。
+pub(crate) fn project_component_nodes(
+    p: &GrammarProgram,
+    k: &SourceKinds,
+    tree: &CstTree,
+    snap: &Snapshot,
+    profile: SourceProfile,
+) -> Result<Vec<crate::source::age_component::ComponentNode>, Vec<Diagnostic>> {
+    let item_kind = match p
+        .rules
+        .iter()
+        .position(|r| r.name == "age-node-c-item")
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+    {
+        Some(kind) => kind,
+        None => return Ok(Vec::new()),
+    };
+    let mut eng = Engine::new(p, k, tree, snap, profile, false, false);
+    let mut out = Vec::new();
+    for d in &tree.decls {
+        let node = if tree.kind(d.node) == k.item {
+            tree.children(d.node)
+                .into_iter()
+                .find(|&c| tree.node(c).flags & FLAG_TRIVIA == 0)
+                .unwrap_or(d.node)
+        } else {
+            d.node
+        };
+        if tree.kind(node) != item_kind {
+            continue;
+        }
+        out.push(eng.run_component_node_item(node));
+    }
+    if let Some(first) = eng.cx.first_diag() {
+        return Err(vec![first]);
+    }
+    Ok(out)
+}
+
 impl<'a> Engine<'a> {
     fn new(
         p: &'a GrammarProgram,
@@ -4020,6 +4061,195 @@ impl<'a> Engine<'a> {
             view: AgeViewNode {
                 role: view_role,
                 spelling: view_spelling,
+                span: view_span,
+                texts,
+            },
+            span: self.cx.span_of(node),
+        }
+    }
+
+    /// PLAN-979（T-03）：一个组件 node 声明的未受信候选（model 字段 / on 处理器 / view）。
+    fn run_component_node_item(
+        &mut self,
+        node: u32,
+    ) -> crate::source::age_component::ComponentNode {
+        use crate::source::age_component::{
+            ComponentAssign, ComponentField, ComponentHandler, ComponentNode, ComponentView,
+        };
+        let head_node = self
+            .cx
+            .field_child(node, "head")
+            .expect("component node head rule");
+        let head_leaf = self
+            .cx
+            .field_child(head_node, "kw")
+            .expect("component node head spelling leaf");
+        let head_spelling = self.cx.spelling(head_leaf);
+        let head_span = self.cx.span_of(head_leaf);
+        let head_role = self
+            .ctx_role_of_rule("age-node-head")
+            .map(|(role, _)| role)
+            .unwrap_or_else(|| "node".to_string());
+        let canonical_head = self
+            .cx
+            .p
+            .ctx_names
+            .iter()
+            .find(|n| n.role == head_role)
+            .map(|n| n.spelling.clone())
+            .unwrap_or_else(|| head_spelling.clone());
+        let name_leaf = self
+            .cx
+            .field_child(node, "name")
+            .expect("component node name leaf");
+        let name = ident_of(&mut self.cx, name_leaf);
+        let body = self
+            .cx
+            .field_child(node, "body")
+            .expect("component node body");
+        let text_role = self
+            .ctx_role_of_rule("age-text-item")
+            .map(|(role, _)| role)
+            .unwrap_or_else(|| "text".to_string());
+        let text_kind = self
+            .cx
+            .p
+            .rules
+            .iter()
+            .position(|r| r.name == "age-text-item")
+            .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
+        let mut fields = Vec::new();
+        let mut handlers = Vec::new();
+        let mut texts = Vec::new();
+        let mut view_role = "view".to_string();
+        let mut view_span = Span { start: 0, end: 0 };
+        for raw in self.cx.children(body) {
+            // 成员列表的每项先由 `age-node-member` 的 alt 包一层；取其实质成员。
+            let member = self
+                .cx
+                .children(raw)
+                .into_iter()
+                .find(|&c| self.cx.tree.node(c).flags & FLAG_TRIVIA == 0)
+                .unwrap_or(raw);
+            let member_kind = self.cx.tree.kind(member);
+            let member_rule = self
+                .cx
+                .p
+                .rules
+                .iter()
+                .enumerate()
+                .find(|(i, _)| {
+                    ace_syntax_runtime::program::RULE_KIND_BASE + *i as u32 == member_kind
+                })
+                .map(|(_, r)| r.name.clone())
+                .unwrap_or_default();
+            match member_rule.as_str() {
+                "age-model-member" => {
+                    for field in self.cx.children(member) {
+                        let field_kind = self.cx.tree.kind(field);
+                        let is_field = self.cx.p.rules.iter().enumerate().any(|(i, r)| {
+                            r.name == "age-model-field"
+                                && ace_syntax_runtime::program::RULE_KIND_BASE + i as u32
+                                    == field_kind
+                        });
+                        if !is_field {
+                            continue;
+                        }
+                        let name_leaf = self
+                            .cx
+                            .field_child(field, "field")
+                            .expect("model field name");
+                        let ty_leaf = self.cx.field_child(field, "ty").expect("model field type");
+                        let init_node = self
+                            .cx
+                            .field_child(field, "init")
+                            .expect("model field init");
+                        let init = self.project_expr_sync(init_node);
+                        fields.push(ComponentField {
+                            name: self.cx.spelling(name_leaf),
+                            ty: self.cx.spelling(ty_leaf),
+                            ty_span: self.cx.span_of(ty_leaf),
+                            init,
+                            span: self.cx.span_of(field),
+                        });
+                    }
+                }
+                "age-on-member" => {
+                    let msg_leaf = self.cx.field_child(member, "msg").expect("on message name");
+                    let mut assigns = Vec::new();
+                    for assign in self.cx.children(member) {
+                        let assign_kind = self.cx.tree.kind(assign);
+                        let is_assign = self.cx.p.rules.iter().enumerate().any(|(i, r)| {
+                            r.name == "age-on-assign"
+                                && ace_syntax_runtime::program::RULE_KIND_BASE + i as u32
+                                    == assign_kind
+                        });
+                        if !is_assign {
+                            continue;
+                        }
+                        let field_leaf = self
+                            .cx
+                            .field_child(assign, "field")
+                            .expect("on assign field name");
+                        let rhs_node = self.cx.field_child(assign, "rhs").expect("on assign rhs");
+                        let rhs = self.project_expr_sync(rhs_node);
+                        assigns.push(ComponentAssign {
+                            field: self.cx.spelling(field_leaf),
+                            rhs,
+                            span: self.cx.span_of(assign),
+                        });
+                    }
+                    handlers.push(ComponentHandler {
+                        msg: self.cx.spelling(msg_leaf),
+                        assigns,
+                        span: self.cx.span_of(member),
+                    });
+                }
+                "age-view-member" => {
+                    let view_leaf = self
+                        .cx
+                        .field_child(member, "view")
+                        .expect("view head spelling leaf");
+                    view_role = self
+                        .ctx_role_of_rule("age-view-member")
+                        .map(|(role, _)| role)
+                        .unwrap_or_else(|| "view".to_string());
+                    view_span = self.cx.span_of(view_leaf);
+                    for c in self.cx.children(member) {
+                        if Some(self.cx.tree.kind(c)) != text_kind {
+                            continue;
+                        }
+                        let comp = self
+                            .cx
+                            .field_child(c, "component")
+                            .expect("component text leaf");
+                        let expr_node = self
+                            .cx
+                            .field_child(c, "text")
+                            .expect("component text expression");
+                        let expr = self.project_expr_sync(expr_node);
+                        texts.push(crate::source::age_h0::AgeTextLeaf {
+                            role: text_role.clone(),
+                            spelling: self.cx.spelling(comp),
+                            component_span: self.cx.span_of(comp),
+                            expr,
+                            span: self.cx.span_of(c),
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+        ComponentNode {
+            head_role,
+            head_spelling: head_spelling.clone(),
+            head_span,
+            legacy_widget: head_spelling != canonical_head,
+            name,
+            fields,
+            handlers,
+            view: ComponentView {
+                role: view_role,
                 span: view_span,
                 texts,
             },

@@ -260,7 +260,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         program { list { item() {} } }
         item {
             // PLAN-979（T-H0-I）：AGE 领域节点声明（领域包显式启用时才存在）。
-            alt(profiles: [age-h0, age-component]) { age-node-item() {} }
+            alt(profiles: [age-h0]) { age-node-item() {} }
+            alt(profiles: [age-component]) { age-node-c-item() {} }
             alt(profiles: [scalar-modules]) { public-fn() {} }
             alt { fn-item() {} }
             // PLAN-1041：内联公共 stdlib 源的 `pub fn` 声明项（见 public-fn）。

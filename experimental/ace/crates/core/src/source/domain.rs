@@ -485,7 +485,7 @@ fn resolve_rows(
 }
 
 /// 隐藏求值函数的 Checked 结论（HIR 名由共享 adapter 唯一决定：`sf_<source name>`）。
-fn hidden_conclusion(
+pub(crate) fn hidden_conclusion(
     checked: &crate::verify::CheckedModule,
     fn_name: &str,
 ) -> Option<(String, TextKind)> {
