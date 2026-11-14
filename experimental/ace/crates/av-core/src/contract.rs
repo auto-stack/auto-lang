@@ -369,6 +369,68 @@ pub enum Value {
     /// (like every handle); the DYN instructions are the only in-guest
     /// minting path (verification gates the erased closure).
     Dyn(std::rc::Rc<crate::dynamic::DynValue>),
+    /// PLAN-964 (L-21): the null value — a zero-width payload distinct
+    /// from `Unit` (Unit is the no-value RESULT; Nil is the null VALUE).
+    /// Never mixed in operators; `==`/`!=` over Nil pairs is the only
+    /// admitted use.
+    Nil,
+    /// PLAN-964 (L-16/L-20): a shared mutable string-keyed object cell.
+    /// Cloning the value clones the CELL REFERENCE (alias — writes through
+    /// one alias are visible through every alias); the buffer frees at the
+    /// last reference (Rc). Cyclic self-insertion is rejected
+    /// deterministically at `ObjectSet` (`av.dyn.object-cycle`), so the
+    /// last-owner release always fires — no GC.
+    Object(std::rc::Rc<std::cell::RefCell<ObjectData>>),
+    /// PLAN-964 (INT-1026/IF-VAL): a neutral external value/callable
+    /// reference — an owning share of a provider-owned cell with
+    /// retain/drop hooks (retain = clone, drop = last-reference release,
+    /// exactly once). Never portable-freezable while live. The provider
+    /// identity/kind facts mirror `ace-foreign-contract`'s
+    /// `ResKind::Handle{provider}` shape; no PyO3 / second resource
+    /// ledger is implied.
+    External(std::rc::Rc<std::cell::RefCell<ExternalCell>>),
+}
+
+/// The shared payload of one PLAN-964 object cell: ordered (key → value)
+/// entries, insertion order preserved. Keys are owned Str bytes; values
+/// are admitted whitelist values (nested objects/lists/variants allowed).
+#[derive(Clone, Debug)]
+pub struct ObjectData {
+    pub entries: Vec<(StrHandle, Value)>,
+}
+
+/// One PLAN-964 external cell (INT-1026/IF-VAL): provider identity, kind
+/// label, an opaque token payload and the last-drop hook. The cell is
+/// shared and mutable (aliases observe writes); the `drop_hook` fires
+/// exactly once when the LAST reference drops. (Deliberately not
+/// `#[derive(Debug)]` — the hook is a closure; the manual impl shows the
+/// provider identity only.)
+pub struct ExternalCell {
+    pub provider: String,
+    pub kind: u32,
+    pub token: u64,
+    pub drop_hook: Option<std::rc::Rc<dyn Fn()>>,
+}
+
+impl std::fmt::Debug for ExternalCell {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExternalCell")
+            .field("provider", &self.provider)
+            .field("kind", &self.kind)
+            .field("token", &self.token)
+            .field("drop_hook", &self.drop_hook.is_some())
+            .finish()
+    }
+}
+
+/// PLAN-964 (INT-1026): the last-reference release fires the provider's
+/// drop hook exactly once — the retain/drop protocol's release arm.
+impl Drop for ExternalCell {
+    fn drop(&mut self) {
+        if let Some(hook) = self.drop_hook.take() {
+            hook();
+        }
+    }
 }
 
 /// The `Value::Closure` payload (PLAN-823 §5.1.1): the closure identity —
@@ -682,6 +744,25 @@ impl PartialEq for Value {
             // Dyn compares by the container's own (value, type) equality —
             // content identity, never the Rc pointer.
             (Dyn(a), Dyn(b)) => a == b,
+            (Nil, Nil) => true,
+            // Object compares BY CONTENT entry-wise (keys + values); the
+            // cell reference is not identity — two aliases of one cell
+            // compare equal to a deep copy of equal entries.
+            (Object(a), Object(b)) => {
+                let (ra, rb) = (a.borrow(), b.borrow());
+                ra.entries.len() == rb.entries.len()
+                    && ra.entries
+                        .iter()
+                        .zip(rb.entries.iter())
+                        .all(|((ka, va), (kb, vb))| ka.bytes() == kb.bytes() && va == vb)
+            }
+            // External compares by provider identity + token — same cell
+            // through different aliases compares equal (content identity
+            // is the cell itself, not a byte snapshot).
+            (External(a), External(b)) => {
+                let (ra, rb) = (a.borrow(), b.borrow());
+                ra.provider == rb.provider && ra.kind == rb.kind && ra.token == rb.token
+            }
             _ => false,
         }
     }
@@ -713,6 +794,9 @@ impl Value {
             Value::Place(_) => "place",
             Value::Closure(_) => "closure",
             Value::Dyn(_) => "dyn",
+            Value::Nil => "nil",
+            Value::Object(_) => "object",
+            Value::External(_) => "external",
         }
     }
 
@@ -727,6 +811,15 @@ impl Value {
         match self {
             Value::Bool(v) => Some(*v),
             _ => None,
+        }
+    }
+
+    /// PLAN-964: take an owned Str handle out of a `Value::Str` (the
+    /// object-cell key path — the caller has already checked the kind).
+    pub fn expect_owned_str(self) -> StrHandle {
+        match self {
+            Value::Str(h) => h,
+            other => panic!("expect_owned_str on {}", other.type_name()),
         }
     }
 
@@ -797,6 +890,26 @@ impl Value {
                     *visited += 1;
                     b += dyn_type_bytes(d.ty(), visited);
                     stack.push(d.as_value().clone());
+                }
+                // PLAN-964: an object cell counts its entries (key bytes +
+                // value cells + Vec header) — the shared buffer is charged
+                // PER REFERENCE (conservative over-count, same rule as
+                // every other shared form).
+                Value::Object(o) => {
+                    *visited += 1;
+                    b += std::mem::size_of::<Vec<Value>>();
+                    let cell = o.borrow();
+                    for (k, v) in cell.entries.iter() {
+                        *visited += 1; // the entry edge
+                        b += k.bytes().len();
+                        stack.push(v.clone());
+                    }
+                }
+                // PLAN-964: an external cell charges the reference's fixed
+                // envelope (the provider payload is out of the AV ledger).
+                Value::External(_) => {
+                    *visited += 1;
+                    b += std::mem::size_of::<u64>();
                 }
                 _ => {}
             }
@@ -904,6 +1017,16 @@ pub enum TrapKind {
     /// PLAN-961: f64->f32 conversion of a finite value whose rounded
     /// result exceeds the f32 range (never silently ±Inf).
     FloatOverflow,
+    /// PLAN-964: OBJECT_GET of a missing key — the frozen "缺字段按拒绝
+    /// 合同" arm (never a silent nil, never an exception state).
+    ObjectMissing,
+    /// PLAN-964: OBJECT_SET inserting a value that reaches the SAME cell
+    /// (self/cyclic insertion) — the deterministic cycle strategy: cycles
+    /// never form, no GC, the last-owner release always fires.
+    ObjectCycle,
+    /// PLAN-964: OBJECT_NEW with a duplicate key (defense in depth; the
+    /// source front rejects duplicates first).
+    ObjectDuplicate,
 }
 
 impl TrapKind {
@@ -923,6 +1046,9 @@ impl TrapKind {
             TrapKind::ShiftOutOfRange => "av.trap.shift-out-of-range",
             TrapKind::FloatToInt => "av.trap.float-to-int",
             TrapKind::FloatOverflow => "av.trap.float-overflow",
+            TrapKind::ObjectMissing => "av.dyn.object-missing",
+            TrapKind::ObjectCycle => "av.dyn.object-cycle",
+            TrapKind::ObjectDuplicate => "av.dyn.object-duplicate",
         }
     }
 }

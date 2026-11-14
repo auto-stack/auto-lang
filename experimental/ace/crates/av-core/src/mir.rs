@@ -118,6 +118,18 @@ pub enum MirType {
     /// runtime type is the erased source type. Only the dynamic profile
     /// admits this type; DYN_PACK mints it, DYN_IS/DYN_TAKE consume it.
     Dyn,
+    /// PLAN-964 (L-21): the null value type — a zero-width slot holding
+    /// `Value::Nil`, distinct from `Unit` (Unit is the no-value RESULT).
+    /// No operator consumes it except source-level constant-folded Nil
+    /// equality; never a parameter/record field in the M2-A slice.
+    Nil,
+    /// PLAN-964 (L-16/L-20): a shared mutable string-keyed object cell
+    /// (`Value::Object`). `elem` is the entry value type index (homogeneous;
+    /// the source resolve freezes it). OBJECT_NEW mints it;
+    /// OBJECT_GET/OBJECT_SET consume it. Entries may be nil (`elem=Nil`).
+    Object {
+        elem: TypeIdx,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -187,6 +199,10 @@ pub enum MirConst {
     Char(char),
     /// UTF-8 bytes of a string literal (invariant: valid UTF-8).
     Str(Box<[u8]>),
+    /// PLAN-964 (L-21): the nil value — zero-width, distinct from `Unit`
+    /// (a Const of this kind materializes `Value::Nil`; the MIR verifier
+    /// admits it only into a Nil-typed slot).
+    Nil,
 }
 
 /// Effect classification of an import (mirrors the HIR intrinsic effect).
@@ -793,6 +809,49 @@ pub enum MirInstr {
         src: SlotId,
         ty: TypeIdx,
     },
+    // -- PLAN-964 object surface (L-16/L-20, av.dynamic/1 expansion) --
+    /// OBJECT_NEW (opcode 0x38): build a fresh shared mutable object cell
+    /// in `dst` (`MirType::Object{elem}`). `keys`/`vals` are parallel
+    /// source-order operand lists (keys are owned Str slots; values are
+    /// elem-typed slots). Every key must be unique at construction —
+    /// a duplicate key is a source-level reject; the runtime re-checks.
+    ObjectNew {
+        dst: SlotId,
+        keys: Vec<SlotId>,
+        vals: Vec<SlotId>,
+    },
+    /// OBJECT_GET (opcode 0x39): read the entry under `key` (Str slot)
+    /// from the object cell in `obj` into the elem-typed `dst`. A missing
+    /// key TRAPS `av.dyn.object-missing` (the frozen "缺字段按拒绝合同"
+    /// arm — never a silent nil, never an exception state). The stored
+    /// entry's kind is re-checked against the declared elem (defense in
+    /// depth; the verifier gates the admitted shapes).
+    ObjectGet {
+        dst: SlotId,
+        obj: SlotId,
+        key: SlotId,
+        elem: TypeIdx,
+    },
+    /// OBJECT_SET (opcode 0x3A): upsert `value` (elem-typed slot) under
+    /// `key` (Str slot) in the object cell `obj`. The old entry drops
+    /// exactly once at commit. A self/cyclic insertion — the inserted
+    /// value reaching the SAME cell (Rc::ptr_eq) — TRAPS
+    /// `av.dyn.object-cycle` deterministically (the frozen cycle
+    /// strategy: no GC, cycles never form, last-owner release always
+    /// fires).
+    ObjectSet {
+        obj: SlotId,
+        key: SlotId,
+        value: SlotId,
+    },
+    // -- PLAN-964 FStr display (L-22; format algorithms belong to 972) --
+    /// TEXT_DISPLAY (opcode 0x3B): render the I32 in `src` as a decimal
+    /// owned Str into `dst` (Str). The M2-A display domain is I32 only;
+    /// other source types are named rejects at the source front.
+    TextDisplay {
+        dst: SlotId,
+        src: SlotId,
+    },
 }
 
 /// One CREATE_CLOSURE capture operand's mode (PLAN-823 T-03, wire tag
@@ -1123,7 +1182,9 @@ impl MirModule {
             | MirType::Variant(_)
             | MirType::Place(_)
             | MirType::Closure(_)
-            | MirType::Dyn => None,
+            | MirType::Dyn
+            | MirType::Nil
+            | MirType::Object { .. } => None,
         }
     }
 
@@ -1334,6 +1395,10 @@ impl MirModule {
                 // PLAN-824: the erased Dyn type is an inline capability
                 // type (no table payload).
                 MirType::Dyn => 0,
+                // PLAN-964: Nil is a zero-payload inline case; Object owns
+                // one inline element type index (like List/Place).
+                MirType::Nil => 0,
+                MirType::Object { .. } => 0,
                 MirType::Variant(v) => {
                     v.owner_module.len()
                         + v.name.len()

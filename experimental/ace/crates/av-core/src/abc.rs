@@ -65,6 +65,12 @@ pub const ABC_FOREIGN_MAGIC: [u8; 4] = *b"AVFI";
 pub const ABC_FOREIGN_VERSION: u16 = 1;
 pub const ABC_PROFILE_FOREIGN: u16 = 9;
 pub const ABC_FOREIGN_SCHEMA: &str = "auto.abc.foreign-scalar/1";
+// PLAN-964 object/dynamic opcodes (free slots after 0x36/0x3A/0x3B; 0x38/0x39
+// are PLAN-960's GLOBAL_GET/SET and must not be reused).
+pub const OP_OBJECT_SET: u8 = 0x37;
+pub const OP_OBJECT_NEW: u8 = 0x3D;
+pub const OP_OBJECT_GET: u8 = 0x3E;
+pub const OP_TEXT_DISPLAY: u8 = 0x3C;
 pub const OP_FIELD_GET: u8 = 0x07;
 pub const OP_FIELD_SET: u8 = 0x08;
 pub const OP_AGGREGATE: u8 = 0x09;
@@ -260,6 +266,10 @@ pub const TY_CLOSURE: u8 = 17;
 pub const TY_DYN: u8 = 16;
 /// PLAN-862: the zero-width Unit RESULT type (entry-unit family only).
 pub const TY_UNIT: u8 = 18;
+/// PLAN-964: the null value type (dynamic family).
+pub const TY_NIL: u8 = 22;
+/// PLAN-964: the shared mutable object cell type (dynamic family).
+pub const TY_OBJECT: u8 = 23;
 
 // const tags (data profile adds 2..5)
 pub const CONST_I32: u8 = 0;
@@ -277,6 +287,8 @@ pub const CONST_F64_BITS: u8 = 5;
 pub const CONST_I8: u8 = 8;
 pub const CONST_U8: u8 = 9;
 pub const CONST_U32: u8 = 10;
+/// PLAN-964 (L-21): the nil value const (zero-width; tag 11).
+pub const CONST_NIL: u8 = 11;
 pub const BIN_NUM: u8 = 12;
 pub const UN_NEG_T: u8 = 3;
 pub const OP_CONV: u8 = 0x3A;
@@ -388,7 +400,11 @@ impl WireFamily {
         matches!(self, WireFamily::Closures)
     }
     fn allows_dynamic_tags(&self) -> bool {
-        matches!(self, WireFamily::Dynamic)
+        // PLAN-964: the object/nil dynamic-value surface rides the
+        // closures wire family too (the aggregates/closures source domain
+        // lowers to the closures profile; the Object/Nil types and the
+        // OBJECT_* instructions are admitted there).
+        matches!(self, WireFamily::Dynamic | WireFamily::Closures)
     }
     /// PLAN-862: the Unit type tag and the entry-kind header byte exist
     /// only in the entry-unit family.
@@ -911,8 +927,12 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
             // PLAN-823: the Closure tag carries its signature exactly like
             // Fn (the tag alone distinguishes the generations).
             // PLAN-862: the zero-width Unit type, entry-unit family only.
+            // PLAN-964: the closures family carries Unit as a closure's
+            // RESULT type (unit-result lambda bodies) — the header's entry
+            // kind byte stays entry-unit-only, so the gate here is the
+            // type tag alone.
             MirType::Unit => {
-                if !family.allows_unit_tags() {
+                if !family.allows_unit_tags() && family != WireFamily::Closures {
                     return Err(AbcDecodeError::fmt_err(
                         "abc.encode.profile",
                         "Unit type in a non-entry-unit-profile module".to_string(),
@@ -1187,6 +1207,25 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                 }
                 put_u8(&mut w, TY_DYN);
             }
+            MirType::Nil => {
+                if !family.allows_dynamic_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "the nil type in a non-dynamic-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_NIL);
+            }
+            MirType::Object { elem } => {
+                if !family.allows_dynamic_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "the object type in a non-dynamic-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_OBJECT);
+                put_u32(&mut w, *elem);
+            }
         }
     }
     // Consts.
@@ -1297,6 +1336,9 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                 }
                 put_u8(&mut w, CONST_U32);
                 w.push(&v.to_le_bytes());
+            }
+            MirConst::Nil => {
+                put_u8(&mut w, CONST_NIL);
             }
         }
     }
@@ -2100,6 +2142,66 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u32(&mut w, *src);
                         put_u32(&mut w, *ty);
                     }
+                    // -- PLAN-964 object/dynamic surface (encode) -----------
+                    MirInstr::ObjectNew { dst, keys, vals } => {
+                        if !family.allows_dynamic_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "OBJECT operations in a non-dynamic-profile module".to_string(),
+                            ));
+                        }
+                        if keys.len() != vals.len() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.shape",
+                                "OBJECT_NEW key/value count mismatch".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_OBJECT_NEW);
+                        put_u32(&mut w, *dst);
+                        put_u16(&mut w, keys.len() as u16);
+                        for k in keys {
+                            put_u32(&mut w, *k);
+                        }
+                        for v in vals {
+                            put_u32(&mut w, *v);
+                        }
+                    }
+                    MirInstr::ObjectGet { dst, obj, key, elem } => {
+                        if !family.allows_dynamic_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "OBJECT operations in a non-dynamic-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_OBJECT_GET);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *obj);
+                        put_u32(&mut w, *key);
+                        put_u32(&mut w, *elem);
+                    }
+                    MirInstr::ObjectSet { obj, key, value } => {
+                        if !family.allows_dynamic_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "OBJECT operations in a non-dynamic-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_OBJECT_SET);
+                        put_u32(&mut w, *obj);
+                        put_u32(&mut w, *key);
+                        put_u32(&mut w, *value);
+                    }
+                    MirInstr::TextDisplay { dst, src } => {
+                        if !family.allows_data_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "TEXT_DISPLAY in a non-data-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_TEXT_DISPLAY);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *src);
+                    }
                     MirInstr::Trace { event } => {
                         put_u8(&mut w, OP_TRACE);
                         put_u8(
@@ -2870,8 +2972,20 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                 module.types.push(MirType::Dyn);
             }
             // PLAN-862: the zero-width Unit RESULT type (no operands).
-            TY_UNIT if family.allows_unit_tags() => {
+            // PLAN-964: the closures family carries Unit as a closure's
+            // RESULT type too (see the encode-side gate).
+            TY_UNIT if family.allows_unit_tags() || family == WireFamily::Closures => {
                 module.types.push(MirType::Unit);
+            }
+            // PLAN-964: the null value type (no operands).
+            TY_NIL if family.allows_dynamic_tags() => {
+                module.types.push(MirType::Nil);
+            }
+            // PLAN-964: the shared mutable object cell type — `elem` is the
+            // entry value type index (homogeneous).
+            TY_OBJECT if family.allows_dynamic_tags() => {
+                let elem = c.u32()?;
+                module.types.push(MirType::Object { elem });
             }
             other => {
                 return Err(AbcDecodeError::fmt_err(
@@ -2924,6 +3038,8 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                 let v = c.u32()?;
                 module.consts.push(MirConst::U32(v));
             }
+            // PLAN-964 (L-21): the nil const (zero-payload tag).
+            CONST_NIL => module.consts.push(MirConst::Nil),
             CONST_CHAR if family.allows_owned_tags() => {
                 let code = c.u32()?;
                 let ch = char::from_u32(code).ok_or_else(|| {
@@ -3714,6 +3830,44 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         let src = c.u32()?;
                         let ty = c.u32()?;
                         MirInstr::DynTake { dst, src, ty }
+                    }
+                    OP_OBJECT_NEW if family.allows_dynamic_tags() => {
+                        let dst = c.u32()?;
+                        let n = c.u16()? as usize;
+                        decode_mem!(
+                            n
+                                .checked_mul(std::mem::size_of::<u32>())
+                                .and_then(|k| k.checked_mul(2))
+                                .unwrap_or(usize::MAX),
+                            "OBJECT_NEW key/value slots"
+                        );
+                        let mut keys = Vec::with_capacity(n);
+                        for _ in 0..n {
+                            keys.push(c.u32()?);
+                        }
+                        let mut vals = Vec::with_capacity(n);
+                        for _ in 0..n {
+                            vals.push(c.u32()?);
+                        }
+                        MirInstr::ObjectNew { dst, keys, vals }
+                    }
+                    OP_OBJECT_GET if family.allows_dynamic_tags() => {
+                        let dst = c.u32()?;
+                        let obj = c.u32()?;
+                        let key = c.u32()?;
+                        let elem = c.u32()?;
+                        MirInstr::ObjectGet { dst, obj, key, elem }
+                    }
+                    OP_OBJECT_SET if family.allows_dynamic_tags() => {
+                        let obj = c.u32()?;
+                        let key = c.u32()?;
+                        let value = c.u32()?;
+                        MirInstr::ObjectSet { obj, key, value }
+                    }
+                    OP_TEXT_DISPLAY if family.allows_data_tags() => {
+                        let dst = c.u32()?;
+                        let src = c.u32()?;
+                        MirInstr::TextDisplay { dst, src }
                     }
                     other => {
                         return Err(AbcDecodeError::fmt_err(

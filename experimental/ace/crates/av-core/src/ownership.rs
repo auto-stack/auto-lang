@@ -770,12 +770,24 @@ fn verify_owned_function_impl(
                     };
                     for (ai, a) in args.iter().enumerate() {
                         check_read!(a, "call argument");
+                        // PLAN-964: on the collections/closures surface a
+                        // List/Variant param receives a SHARED handle (Rc
+                        // alias — mutations in the callee are visible in
+                        // the caller), so the arg does not move in.
+                        let shared_param = m.is_collections_profile() || m.is_closures_profile();
                         let param_borrows = callee_sig
                             .and_then(|t| match t {
                                 MirType::Fn(sig) => sig.params.get(ai).copied(),
                                 _ => None,
                             })
-                            .map(|pt| !type_is_owned(m, pt))
+                            .map(|pt| {
+                                !type_is_owned(m, pt)
+                                    || (shared_param
+                                        && matches!(
+                                            m.types.get(pt as usize),
+                                            Some(MirType::List(_) | MirType::Variant(_))
+                                        ))
+                            })
                             .unwrap_or(false);
                         if is_owned[*a as usize] && !param_borrows {
                             // Move-in: the callee owns the value; the caller
@@ -1055,6 +1067,44 @@ fn verify_owned_function_impl(
                     check_read!(src, "dyn-take source");
                     if is_rootable[*dst as usize] {
                         check_def_conflict!(dst, "dyn-take destination");
+                    }
+                    st.define_slot(*dst as usize);
+                }
+                // PLAN-964: OBJECT_NEW defines dst and reads keys/vals
+                // (values are moved INTO the cell — the read check plus the
+                // value slot's own lifetime governs; the cell owns the
+                // value). OBJECT_GET reads obj+key and defines dst.
+                // OBJECT_SET reads obj+key+value (structural mutation,
+                // never a definition). TEXT_DISPLAY reads src, defines dst.
+                MirInstr::ObjectNew { dst, keys, vals } => {
+                    for k in keys {
+                        check_read!(k, "object-new key");
+                    }
+                    for v in vals {
+                        check_read!(v, "object-new value");
+                    }
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "object-new destination");
+                    }
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::ObjectGet { dst, obj, key, .. } => {
+                    check_read!(obj, "object-get base");
+                    check_read!(key, "object-get key");
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "object-get destination");
+                    }
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::ObjectSet { obj, key, value } => {
+                    check_read!(obj, "object-set base");
+                    check_read!(key, "object-set key");
+                    check_read!(value, "object-set value");
+                }
+                MirInstr::TextDisplay { dst, src } => {
+                    check_read!(src, "text-display source");
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "text-display destination");
                     }
                     st.define_slot(*dst as usize);
                 }

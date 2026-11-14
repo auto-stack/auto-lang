@@ -36,7 +36,7 @@
 //! the version stays 1 (contract §12).
 
 use crate::contract::{
-    fnv1a64, ListHandle, RecordValue, StrHandle, Value, VariantValue, MAX_LIST_ELEMS,
+    fnv1a64, ListHandle, ObjectData, RecordValue, StrHandle, Value, VariantValue, MAX_LIST_ELEMS,
     MAX_RECORD_FIELDS,
 };
 use crate::dynamic::{
@@ -72,6 +72,9 @@ const TAG_STR: u8 = 7;
 const TAG_RECORD: u8 = 8;
 const TAG_LIST: u8 = 9;
 const TAG_VARIANT: u8 = 10;
+// PLAN-964: the null value and the shared mutable object cell.
+const TAG_NIL: u8 = 11;
+const TAG_OBJECT: u8 = 12;
 
 // Type-descriptor tags (inline before every node payload).
 const TY_BOOL: u8 = 0;
@@ -85,6 +88,11 @@ const TY_STR: u8 = 7;
 const TY_LIST: u8 = 8;
 const TY_RECORD: u8 = 9;
 const TY_VARIANT: u8 = 10;
+// PLAN-964: nil / object / callable descriptors. (External has no
+// descriptor — live externals are never portable-freezable.)
+const TY_NIL: u8 = 11;
+const TY_OBJECT: u8 = 12;
+const TY_CALLABLE: u8 = 13;
 
 // ---------------------------------------------------------------------------
 // Errors (§7 分态: unsupported / invalid / admission / budget / cancelled)
@@ -394,6 +402,51 @@ pub fn freeze(v: &DynValue, opts: &TraversalOptions) -> Result<Vec<u8>, Portable
                 // erasure is not a whitelisted category).
                 return Err(PortableError::Unsupported { category: "dyn" });
             }
+            // PLAN-964: Nil is a zero-width node.
+            Value::Nil => {
+                write_tydesc(&mut node, ty, 1, &mut t)?;
+                node.push(TAG_NIL);
+            }
+            // PLAN-964: an object cell freezes entry-wise. The cell is
+            // shared — a DAG (aliases) expands into a tree (each node is
+            // visited once; the shared-graph guard rejects genuine cycles
+            // like every container). Live external values never freeze
+            // (INT-1026: no portable freeze of host objects).
+            Value::Object(o) => {
+                if !matches!(ty, DynType::Object) {
+                    return Err(PortableError::Invalid { reason: "type" });
+                }
+                if !visited.insert(Rc::as_ptr(o) as usize) {
+                    return Err(PortableError::Unsupported {
+                        category: "shared-graph",
+                    });
+                }
+                let entries = o.borrow().entries.clone();
+                if entries.len() > MAX_LIST_ELEMS {
+                    return Err(PortableError::Budget {
+                        code: "av.resource.dyn-nodes",
+                    });
+                }
+                write_tydesc(&mut node, ty, 1, &mut t)?;
+                node.push(TAG_OBJECT);
+                node.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+                // Push (key, value) pairs in source order; the LIFO pops
+                // field 0 first (declaration order on the wire). Entry
+                // values carry self-describing descriptors (objects are
+                // structural — see `value_dyn_type`).
+                for (k, v) in entries.into_iter() {
+                    children.push((Value::Str(k), &STR_DYN));
+                    let vt = value_dyn_type(&v)?;
+                    children.push((v, vt));
+                }
+            }
+            Value::External(_) => {
+                // INT-1026: a LIVE external reference is never
+                // portable-freezable — the provider owns the payload.
+                return Err(PortableError::Unsupported {
+                    category: "external",
+                });
+            }
         }
         match payload {
             Some((prefix, bytes)) => {
@@ -485,6 +538,16 @@ fn write_tydesc(
                 }
             }
         }
+        DynType::Nil => out.push(TY_NIL),
+        DynType::Object => out.push(TY_OBJECT),
+        DynType::Callable => out.push(TY_CALLABLE),
+        // A live external never reaches the wire (the value match rejects
+        // it first); this arm keeps the writer total and explicit.
+        DynType::External { .. } => {
+            return Err(PortableError::Unsupported {
+                category: "external-type",
+            })
+        }
     }
     Ok(())
 }
@@ -500,6 +563,44 @@ fn push_name(out: &mut Vec<u8>, s: &str, t: &Traversal) -> Result<(), PortableEr
     out.extend_from_slice(s.as_bytes());
     Ok(())
 }
+
+/// PLAN-964: stable structural descriptor for object-key children (the
+/// key is an owned Str).
+static STR_DYN: DynType = DynType::Str;
+
+/// PLAN-964: the self-describing descriptor of an OBJECT ENTRY value.
+/// Objects are structural — no declared type exists for an entry, so the
+/// freeze derives the descriptor from the value itself. Container entries
+/// whose nominal identity lives in a type table (Record/Variant) and
+/// empty Lists cannot be self-described: a named freeze rejection, never
+/// a guessed descriptor. External/borrow categories never reach here
+/// (the value match rejects them first).
+fn value_dyn_type(v: &Value) -> Result<&'static DynType, PortableError> {
+    match v {
+        Value::I32(_) => Ok(&DYN_I32),
+        Value::Bool(_) => Ok(&DYN_BOOL),
+        Value::I64(_) => Ok(&DYN_I64),
+        Value::U64(_) => Ok(&DYN_U64),
+        Value::F32(_) => Ok(&DYN_F32),
+        Value::F64(_) => Ok(&DYN_F64),
+        Value::Char(_) => Ok(&DYN_CHAR),
+        Value::Str(_) => Ok(&STR_DYN),
+        Value::Nil => Ok(&DYN_NIL),
+        Value::Object(_) => Ok(&OBJECT_DYN),
+        _ => Err(PortableError::Unsupported {
+            category: "object-entry-type",
+        }),
+    }
+}
+static DYN_I32: DynType = DynType::I32;
+static DYN_BOOL: DynType = DynType::Bool;
+static DYN_I64: DynType = DynType::I64;
+static DYN_U64: DynType = DynType::U64;
+static DYN_F32: DynType = DynType::F32;
+static DYN_F64: DynType = DynType::F64;
+static DYN_CHAR: DynType = DynType::Char;
+static DYN_NIL: DynType = DynType::Nil;
+static OBJECT_DYN: DynType = DynType::Object;
 
 // ---------------------------------------------------------------------------
 // unfreeze
@@ -734,8 +835,7 @@ pub fn unfreeze(
                         arms.get(disc as usize).map(|a| a.payload.is_some()),
                     ),
                     _ => return Err(PortableError::Invalid { reason: "type" }),
-                };
-                if disc as usize >= arms_len {
+                };                if disc as usize >= arms_len {
                     return Err(PortableError::Invalid { reason: "type" });
                 }
                 let binding =
@@ -775,6 +875,41 @@ pub fn unfreeze(
                     payload: None,
                 })
             }
+            // PLAN-964: the null value is a zero-width node.
+            TAG_NIL => {
+                if !matches!(node_ty, DynType::Nil) {
+                    return Err(PortableError::Invalid { reason: "type" });
+                }
+                Value::Nil
+            }
+            // PLAN-964: an object cell restores entry-wise — `want` is the
+            // entry count; the attach cascade collects (key, value) pairs
+            // in wire order (key = Str node, value = its own descriptor).
+            TAG_OBJECT => {
+                if !matches!(node_ty, DynType::Object) {
+                    return Err(PortableError::Invalid { reason: "type" });
+                }
+                let count = r.u32()? as usize;
+                if count > MAX_LIST_ELEMS {
+                    return Err(PortableError::Budget {
+                        code: "av.resource.dyn-nodes",
+                    });
+                }
+                t.charge_bytes(byte_cost_cell() + byte_cost_record_extra())?;
+                if count > 0 {
+                    stack.push(Frame {
+                        ty: node_ty,
+                        want: count * 2,
+                        ty_index: 0,
+                        disc: None,
+                        vals: Vec::new(),
+                    });
+                    continue;
+                }
+                Value::Object(Rc::new(std::cell::RefCell::new(ObjectData {
+                    entries: Vec::new(),
+                })))
+            }
             _ => return Err(PortableError::Invalid { reason: "tag" }),
         };
         // The descriptor has already been checked against its parent.
@@ -802,6 +937,21 @@ pub fn unfreeze(
                             disc,
                             payload: done.vals.pop().map(Rc::new),
                         }),
+                        // PLAN-964: pair the collected (key, value) values
+                        // back into entries (wire order = source order).
+                        (DynType::Object, _) => {
+                            let mut vals = done.vals.into_iter();
+                            let mut entries = Vec::with_capacity(vals.len() / 2);
+                            while let (Some(k), Some(v)) = (vals.next(), vals.next()) {
+                                let Value::Str(h) = k else {
+                                    return Err(PortableError::Invalid { reason: "type" });
+                                };
+                                entries.push((h, v));
+                            }
+                            Value::Object(Rc::new(std::cell::RefCell::new(ObjectData {
+                                entries,
+                            })))
+                        }
                         _ => return Err(PortableError::Invalid { reason: "type" }),
                     };
                 }
@@ -925,6 +1075,9 @@ fn read_tydesc(
             }
             DynType::Variant { owner, name, arms }
         }
+        TY_NIL => DynType::Nil,
+        TY_OBJECT => DynType::Object,
+        TY_CALLABLE => DynType::Callable,
         _ => return Err(PortableError::Invalid { reason: "tydesc" }),
     })
 }
@@ -1131,6 +1284,10 @@ fn expect_leaf_kind(tag: u8, ty: &DynType) -> Result<(), PortableError> {
         TAG_F64 => matches!(ty, T::F64),
         TAG_CHAR => matches!(ty, T::Char),
         TAG_STR => matches!(ty, T::Str),
+        // PLAN-964: the nil tag requires the Nil descriptor; the object
+        // tag requires the structural Object descriptor.
+        TAG_NIL => matches!(ty, T::Nil),
+        TAG_OBJECT => matches!(ty, T::Object),
         _ => true,
     };
     if ok {

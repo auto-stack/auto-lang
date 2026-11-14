@@ -535,7 +535,9 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     ));
                 }
                 // PLAN-862: the Unit RESULT type is entry-unit-only.
-                MirType::Unit if !self.is_entry_unit => {
+                // PLAN-964: a unit-RESULT closure (block lambda whose body
+                // is an effect statement) is the closures profile's Unit.
+                MirType::Unit if !self.is_entry_unit && !self.is_closures => {
                     return Err(MirVerifyError::uns(
                         "mir.profile-type",
                         format!(
@@ -1288,6 +1290,10 @@ impl<'a, 'r> Verifier<'a, 'r> {
             // nested container itself join the element closure.
             Some(MirType::I8 | MirType::U8 | MirType::U32) if aggregates => true,
             Some(MirType::List(_)) if aggregates => true,
+            // PLAN-964: an OBJECT element rides the collections family (the
+            // closures profile represents a shared object capture as a
+            // List<Object> env cell).
+            Some(MirType::Object { .. }) if self.collections_surface() => true,
             _ => false,
         };
         if !ok {
@@ -2153,6 +2159,9 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     Some(MirConst::U8(_)) => Some(ScalarShape::U8),
                     Some(MirConst::U32(_)) => Some(ScalarShape::U32),
                     Some(MirConst::Char(_)) | Some(MirConst::Str(_)) => None,
+                    // PLAN-964 (L-21): the nil const matches the Nil type
+                    // only (checked through the shape lane below).
+                    Some(MirConst::Nil) => None,
                     None => {
                         return Err(err(
                             "mir.const-ref",
@@ -2182,6 +2191,9 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 if let Some(c) = self.module.consts.get(*value as usize) {
                     if let Some(want_ty) = match c {
                         MirConst::Char(_) => Some(MirType::Char),
+                        // PLAN-964 (L-21): a Nil const admits only a
+                        // Nil-typed destination (zero-width).
+                        MirConst::Nil => Some(MirType::Nil),
                         // A Str const materializes by DESTINATION
                         // kind: an owned Str slot gets a fresh
                         // allocation; a StrView slot gets the
@@ -4119,7 +4131,12 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             .sig_of(f.sig)
                             .and_then(|sig| self.module.types.get(sig.result as usize))
                             == Some(&MirType::Unit));
-                if !entry_unit {
+                // PLAN-964: the closures profile's Unit TEMP is a closure
+                // call's discarded result slot (`bump()` effect statements)
+                // or a unit-result closure's own return operand.
+                let closures_call_temp =
+                    self.is_closures && s.kind == SlotKind::Temp;
+                if !entry_unit && !closures_call_temp {
                     return Err(MirVerifyError::inv(
                         "mir.unit-placement",
                         format!(
@@ -4592,6 +4609,11 @@ impl MirInstr {
             MirInstr::DynPack { dst, .. }
             | MirInstr::DynIs { dst, .. }
             | MirInstr::DynTake { dst, .. } => Some(*dst),
+            // PLAN-964: OBJECT_NEW/GET and TEXT_DISPLAY define their dst;
+            // OBJECT_SET is a structural mutation (never re-initializes).
+            MirInstr::ObjectNew { dst, .. }
+            | MirInstr::ObjectGet { dst, .. }
+            | MirInstr::TextDisplay { dst, .. } => Some(*dst),
             MirInstr::FieldSet { root, .. } => Some(*root),
             // PLAN-823: closure-surface value producers define their dst.
             MirInstr::CreateClosure { dst, .. }
@@ -4608,6 +4630,8 @@ impl MirInstr {
             | MirInstr::ListSet { .. }
             | MirInstr::ListFieldSet { .. }
             | MirInstr::VariantSwitch { .. } => None,
+            // PLAN-964: OBJECT_SET is a structural mutation (no dst).
+            MirInstr::ObjectSet { .. } => None,
         }
     }
 
@@ -4716,6 +4740,16 @@ impl MirInstr {
                 .chain(args.iter().copied())
                 .collect(),
             MirInstr::EnvGet { .. } => vec![],
+            // PLAN-964 object reads: NEW reads keys+vals (source order);
+            // GET reads obj+key; SET reads obj+key+value; DISPLAY reads src.
+            MirInstr::ObjectNew { keys, vals, .. } => keys
+                .iter()
+                .copied()
+                .chain(vals.iter().copied())
+                .collect(),
+            MirInstr::ObjectGet { obj, key, .. } => vec![*obj, *key],
+            MirInstr::ObjectSet { obj, key, value } => vec![*obj, *key, *value],
+            MirInstr::TextDisplay { src, .. } => vec![*src],
         }
     }
 }

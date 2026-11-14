@@ -71,6 +71,11 @@ pub fn scalar_layout(t: &MirType) -> Option<ScalarLayout> {
         // (value, DynType) pair lives behind it) = 8 bytes at align 8;
         // payload bytes are counted per node by deep_size.
         MirType::Dyn => ScalarLayout { size: 8, align: 8 },
+        // PLAN-964: the null value is ZERO-WIDTH like Unit (no storage).
+        MirType::Nil => ScalarLayout { size: 0, align: 1 },
+        // PLAN-964: the object cell slot carries one owning Rc handle (the
+        // shared RefCell buffer lives behind it) = 8 bytes at align 8.
+        MirType::Object { .. } => ScalarLayout { size: 8, align: 8 },
         MirType::Fn(_)
         | MirType::Record(_)
         | MirType::RecordView(_)

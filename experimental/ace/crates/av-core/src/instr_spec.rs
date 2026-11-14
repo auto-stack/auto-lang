@@ -794,6 +794,10 @@ pub fn mnemonic_of_instr(i: &MirInstr) -> &'static str {
         MirInstr::DynPack { .. } => "DYN_PACK",
         MirInstr::DynIs { .. } => "DYN_IS",
         MirInstr::DynTake { .. } => "DYN_TAKE",
+        MirInstr::ObjectNew { .. } => "OBJECT_NEW",
+        MirInstr::ObjectGet { .. } => "OBJECT_GET",
+        MirInstr::ObjectSet { .. } => "OBJECT_SET",
+        MirInstr::TextDisplay { .. } => "TEXT_DISPLAY",
     }
 }
 

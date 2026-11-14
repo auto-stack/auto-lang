@@ -128,6 +128,12 @@ enum ValueKind {
     I8,
     U8,
     U32,
+    /// PLAN-964 (L-21/L-16/L-20/INT-1026): the null value, the shared
+    /// mutable object cell and the neutral external reference — the mirror
+    /// stays total over `Value`.
+    Nil,
+    Object,
+    External,
 }
 
 impl ValueKind {
@@ -153,6 +159,9 @@ impl ValueKind {
             ValueKind::I8 => "i8",
             ValueKind::U8 => "u8",
             ValueKind::U32 => "u32",
+            ValueKind::Nil => "nil",
+            ValueKind::Object => "object",
+            ValueKind::External => "external",
         }
     }
 }
@@ -181,6 +190,9 @@ fn value_kind(v: &Value) -> ValueKind {
         Value::Place(_) => ValueKind::Place,
         Value::Closure(_) => ValueKind::Closure,
         Value::Dyn(_) => ValueKind::Dyn,
+        Value::Nil => ValueKind::Nil,
+        Value::Object(_) => ValueKind::Object,
+        Value::External(_) => ValueKind::External,
     }
 }
 

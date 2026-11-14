@@ -10,8 +10,9 @@
 
 use crate::abc_verify::LoadedModule;
 use crate::contract::{
-    ExecOutcome, ResourceKind, SpanInfo, TrapKind, Value, CANCEL_CHECK_INTERVAL, MAX_AV_FRAMES,
-    MAX_AV_INSTR_STEPS, MAX_AV_SLOT_BYTES, MAX_AV_WALL, MAX_TRACE_BYTES,
+    ExecOutcome, ObjectData, ResourceKind, SpanInfo, StrHandle, TrapKind, Value,
+    CANCEL_CHECK_INTERVAL, MAX_AV_FRAMES, MAX_AV_INSTR_STEPS, MAX_AV_SLOT_BYTES, MAX_AV_WALL,
+    MAX_TRACE_BYTES,
 };
 use crate::mir::{
     BinOp, CalleeRef, MirFunction, MirInstr, MirModule, MirType, NumOp, NumTy, Terminator,
@@ -1191,6 +1192,14 @@ pub(crate) trait ModuleView {
     /// Whether a type index OWNS resources (Str / resource record) —
     /// move-in CALL semantics and slot kills (PLAN-821).
     fn type_is_owned(&self, func: u32, ty: u32) -> bool;
+    /// PLAN-964: whether the underlying module is a collections-family
+    /// profile (List/Variant params share their cell instead of moving in).
+    fn is_collections_profile(&self) -> bool {
+        false
+    }
+    fn is_closures_profile(&self) -> bool {
+        false
+    }
     fn logical_pc(&self, func: u32, block: u32, ip: usize) -> Option<(bool, u32)> {
         let f = self.fn_at(func)?;
         Some((false, f.block_base(block) + ip as u32))
@@ -1256,6 +1265,12 @@ impl ModuleView for MergedView<'_> {
     fn type_is_owned(&self, _func: u32, ty: u32) -> bool {
         crate::ownership::type_is_owned(self.0, ty)
     }
+    fn is_collections_profile(&self) -> bool {
+        self.0.is_collections_profile()
+    }
+    fn is_closures_profile(&self) -> bool {
+        self.0.is_closures_profile()
+    }
     fn entry(&self) -> u32 {
         self.0.entry
     }
@@ -1290,6 +1305,12 @@ impl ModuleView for LoadedView<'_> {
     }
     fn type_is_owned(&self, _func: u32, ty: u32) -> bool {
         crate::ownership::type_is_owned(self.0, ty)
+    }
+    fn is_collections_profile(&self) -> bool {
+        self.0.is_collections_profile()
+    }
+    fn is_closures_profile(&self) -> bool {
+        self.0.is_closures_profile()
     }
     fn logical_pc(&self, func: u32, block: u32, ip: usize) -> Option<(bool, u32)> {
         self.1.logical_pc(func, block, ip).map(|pc| (true, pc))
@@ -2043,12 +2064,25 @@ fn resolve_view_bytes<V: ModuleView>(
     val: &Value,
 ) -> Result<(Vec<u8>, crate::contract::StrView), ExecOutcome> {
     let _unused_frames: Option<&LoopState> = None;
-    let view = val.as_strview().ok_or_else(|| {
-        ExecOutcome::Infra(format!(
-            "str operand holds {} (admission violation)",
-            val.type_name()
-        ))
-    })?;
+    let view = match val {
+        // PLAN-964: an OWNED Str is a valid text operand — its bytes are
+        // the full range (the View instruction materializes this exact
+        // shape for owned → view coercion).
+        Value::Str(h) => crate::contract::StrView {
+            src: crate::contract::StrViewSrc::Share(h.clone()),
+            start: 0,
+            end: crate::owned_text::scalars(h.bytes()).len() as u32,
+        },
+        v => v
+            .as_strview()
+            .ok_or_else(|| {
+                ExecOutcome::Infra(format!(
+                    "str operand holds {} (admission violation)",
+                    v.type_name()
+                ))
+            })?
+            .clone(),
+    };
     match &view.src {
         crate::contract::StrViewSrc::Static { buf } => {
             // F821-R1-03: the bytes were resolved in the OWNING unit at
@@ -2057,11 +2091,85 @@ fn resolve_view_bytes<V: ModuleView>(
             Ok((buf.to_vec(), view.clone()))
         }
         crate::contract::StrViewSrc::Share(_) => {
-            let resolved = crate::place::resolve_share_view(view).ok_or_else(|| {
+            let resolved = crate::place::resolve_share_view(&view).ok_or_else(|| {
                 ExecOutcome::Infra("share view resolution failed (admission violation)".to_string())
             })?;
             Ok((resolved.handle.bytes().to_vec(), view.clone()))
         }
+    }
+}
+
+/// PLAN-964: I32 → decimal display bytes (the M2-A display domain; the
+/// general format algorithms belong to 972). Manual itoa — deterministic,
+/// no host-locale dependence.
+fn itoa_display(n: i32) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(12);
+    if n == i32::MIN {
+        return b"-2147483648".to_vec();
+    }
+    let neg = n < 0;
+    let mut m = if neg { -(n as i64) } else { n as i64 };
+    loop {
+        buf.push(b'0' + (m % 10) as u8);
+        m /= 10;
+        if m == 0 {
+            break;
+        }
+    }
+    if neg {
+        buf.push(b'-');
+    }
+    buf.reverse();
+    buf
+}
+
+/// PLAN-964: the kind of a `MirType` for entry re-checking (defense in
+/// depth only — verification gates the admitted shapes first).
+fn mir_kind_matches(value: &Value, ty: &crate::mir::MirType) -> bool {
+    use crate::mir::MirType as T;
+    match (value, ty) {
+        (Value::I32(_), T::I32) => true,
+        (Value::Bool(_), T::Bool) => true,
+        (Value::I64(_), T::I64) => true,
+        (Value::U64(_), T::U64) => true,
+        (Value::F32(_), T::F32) => true,
+        (Value::F64(_), T::F64) => true,
+        (Value::I8(_), T::I8) => true,
+        (Value::U8(_), T::U8) => true,
+        (Value::U32(_), T::U32) => true,
+        (Value::Char(_), T::Char) => true,
+        (Value::Str(_), T::Str) => true,
+        (Value::Nil, T::Nil) => true,
+        (Value::Object(_), T::Object { .. }) => true,
+        (Value::Closure(_), T::Closure(_)) => true,
+        (Value::Record(_), T::Record(_)) => true,
+        (Value::List(_), T::List(_)) => true,
+        (Value::Variant(_), T::Variant(_)) => true,
+        _ => false,
+    }
+}
+
+fn want_label(ty: &crate::mir::MirType) -> &'static str {
+    use crate::mir::MirType as T;
+    match ty {
+        T::I32 => "i32",
+        T::Bool => "bool",
+        T::I64 => "i64",
+        T::U64 => "u64",
+        T::F32 => "f32",
+        T::F64 => "f64",
+        T::I8 => "i8",
+        T::U8 => "u8",
+        T::U32 => "u32",
+        T::Char => "char",
+        T::Str => "Str",
+        T::Nil => "nil",
+        T::Object { .. } => "object",
+        T::Closure(_) => "closure",
+        T::Record(_) => "record",
+        T::List(_) => "list",
+        T::Variant(_) => "variant",
+        _ => "value",
     }
 }
 
@@ -2913,6 +3021,7 @@ fn dispatch_with_host<V: ModuleView>(
                         // slot gets a FRESH arena allocation, a StrView
                         // slot the immortal static view (770 literal rule).
                         crate::mir::MirConst::Char(c) => Value::Char(c),
+                        crate::mir::MirConst::Nil => Value::Nil,
                         crate::mir::MirConst::Str(bytes) => {
                             if v.is_strview_type(func_idx, dst_ty) {
                                 let n = crate::owned_text::scalars(&bytes).len() as u32;
@@ -3164,12 +3273,26 @@ fn dispatch_with_host<V: ModuleView>(
                         let callee_sig_ty = v.mir_type_of(target, callee_fn.sig);
                         for (ai, a) in args.iter().enumerate() {
                             let ty = func.slots[*a as usize].ty;
+                            // PLAN-964: on the collections/closures surface
+                            // a List/Variant param receives a SHARED handle
+                            // (Rc alias — callee mutations are visible in
+                            // the caller), so the arg does not move in.
+                            let shared_param =
+                                v.is_collections_profile() || v.is_closures_profile();
                             let param_borrows = callee_sig_ty
                                 .and_then(|t| match t {
                                     crate::mir::MirType::Fn(sig) => sig.params.get(ai).copied(),
                                     _ => None,
                                 })
-                                .map(|pt| !v.type_is_owned(target, pt))
+                                .map(|pt| {
+                                    !v.type_is_owned(target, pt)
+                                        || (shared_param
+                                            && matches!(
+                                                v.mir_type_of(target, pt),
+                                                Some(crate::mir::MirType::List(_))
+                                                    | Some(crate::mir::MirType::Variant(_))
+                                            ))
+                                })
                                 .unwrap_or(false);
                             if v.type_is_owned(func_idx, ty) && !param_borrows {
                                 let zero = v.zero_of(func_idx, ty);
@@ -3548,7 +3671,18 @@ fn dispatch_with_host<V: ModuleView>(
                                 }
                             }
                             crate::mir::CaptureKind::Move => {
-                                let taken = {
+                                // PLAN-964: an Object capture is the Rc share
+                                // itself — the creator slot stays live (the
+                                // resolver's moved=false), the env field gets
+                                // a copy of the handle.
+                                let is_object = matches!(
+                                    v.mir_type_of(func_idx, func.slots[c.src as usize].ty),
+                                    Some(crate::mir::MirType::Object { .. })
+                                );
+                                let taken = if is_object {
+                                    let fr = st.frames.last().expect("frame present");
+                                    fr.slots[c.src as usize].clone()
+                                } else {
                                     let mut visited = 0u64;
                                     let fr = st.frames.last_mut().expect("frame present");
                                     let old = fr.slots[c.src as usize].deep_size(&mut visited);
@@ -5443,6 +5577,198 @@ fn dispatch_with_host<V: ModuleView>(
                                 other.type_name()
                             )))
                         }
+                    }
+                }
+                // -- PLAN-964 object/dynamic surface -----------------------
+                MirInstr::ObjectNew { dst, keys, vals } => {
+                    let (kvs, vls) = {
+                        let fr = st.frames.last().expect("frame present");
+                        (
+                            keys.iter().map(|k| fr.slots[*k as usize].clone()).collect::<Vec<_>>(),
+                            vals.iter().map(|x| fr.slots[*x as usize].clone()).collect::<Vec<_>>(),
+                        )
+                    };
+                    let mut entries: Vec<(StrHandle, Value)> = Vec::with_capacity(kvs.len());
+                    let mut seen: Vec<Vec<u8>> = Vec::with_capacity(kvs.len());
+                    for (k, val) in kvs.into_iter().zip(vls.into_iter()) {
+                        let kb = match &k {
+                            Value::Str(h) => h.bytes().to_vec(),
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "object-new key holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        };
+                        if seen.iter().any(|s| *s == kb) {
+                            return Some(ExecOutcome::Trap {
+                                kind: crate::contract::TrapKind::ObjectDuplicate,
+                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                            });
+                        }
+                        seen.push(kb);
+                        entries.push((k.expect_owned_str(), val));
+                    }
+                    st.steps += keys.len() as u64;
+                    let cell = std::rc::Rc::new(std::cell::RefCell::new(ObjectData { entries }));
+                    if let Err(out) =
+                        commit_slot_write(st, *dst as usize, Value::Object(cell), limits)
+                    {
+                        return Some(out);
+                    }
+                }
+                MirInstr::ObjectGet { dst, obj, key, elem } => {
+                    let (ov, kv) = {
+                        let fr = st.frames.last().expect("frame present");
+                        (fr.slots[*obj as usize].clone(), fr.slots[*key as usize].clone())
+                    };
+                    let Value::Object(cell) = &ov else {
+                        return Some(ExecOutcome::Infra(format!(
+                            "object-get operand holds {} (admission violation)",
+                            ov.type_name()
+                        )));
+                    };
+                    let (kb, _sv) = match resolve_view_bytes(v, func_idx, &kv) {
+                        Ok(x) => x,
+                        Err(out) => return Some(out),
+                    };
+                    let found = {
+                        let c = cell.borrow();
+                        c.entries
+                            .iter()
+                            .find(|(k, _)| k.bytes() == kb.as_slice())
+                            .map(|(_, e)| e.clone())
+                    };
+                    let Some(value) = found else {
+                        return Some(ExecOutcome::Trap {
+                            kind: crate::contract::TrapKind::ObjectMissing,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                        });
+                    };
+                    // Defense in depth: the entry kind must match the
+                    // declared elem (the verifier gates the admitted
+                    // shapes; this re-check never trusts a stored value).
+                    let want = match v.mir_type_of(func_idx, *elem) {
+                        Some(t) => t,
+                        None => {
+                            return Some(ExecOutcome::Infra(
+                                "object-get elem type index out of range".into(),
+                            ))
+                        }
+                    };
+                    if !mir_kind_matches(&value, want) {
+                        return Some(ExecOutcome::Infra(format!(
+                            "object-get entry holds {} where {} was declared (admission violation)",
+                            value.type_name(),
+                            want_label(want)
+                        )));
+                    }
+                    st.steps += 1;
+                    if let Err(out) = commit_slot_write(st, *dst as usize, value, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::ObjectSet { obj, key, value } => {
+                    let (ov, kv, vv) = {
+                        let fr = st.frames.last().expect("frame present");
+                        (
+                            fr.slots[*obj as usize].clone(),
+                            fr.slots[*key as usize].clone(),
+                            fr.slots[*value as usize].clone(),
+                        )
+                    };
+                    let Value::Object(cell) = &ov else {
+                        return Some(ExecOutcome::Infra(format!(
+                            "object-set operand holds {} (admission violation)",
+                            ov.type_name()
+                        )));
+                    };
+                    // PLAN-964 cycle strategy: inserting a value whose
+                    // cell IS the target cell (or a value that will reach
+                    // it) is rejected deterministically — cycles never
+                    // form, no GC, last-owner release always fires.
+                    if let Value::Object(vc) = &vv {
+                        if std::rc::Rc::ptr_eq(vc, cell) {
+                            return Some(ExecOutcome::Trap {
+                                kind: crate::contract::TrapKind::ObjectCycle,
+                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                            });
+                        }
+                    }
+                    let (kb, _sv) = match resolve_view_bytes(v, func_idx, &kv) {
+                        Ok(x) => x,
+                        Err(out) => return Some(out),
+                    };
+                    let mut c = cell.borrow_mut();
+                    match c.entries.iter_mut().find(|(k, _)| k.bytes() == kb.as_slice()) {
+                        Some((_k, slot)) => {
+                            *slot = vv;
+                        }
+                        None => {
+                            drop(c);
+                            // The cell owns its keys: a borrow view key is
+                            // cloned to owned so the entry outlives the view.
+                            // The precheck walks the object slot (deep size),
+                            // which borrows the cell — hence the re-borrow
+                            // after the allocation.
+                            let h = match &kv {
+                                Value::Str(h) => h.clone(),
+                                Value::StrView(_) => {
+                                    let deep = std::mem::size_of::<Value>() + kb.len();
+                                    if let Err(out) =
+                                        owned_alloc_precheck(st, deep, *obj as usize, limits)
+                                    {
+                                        return Some(out);
+                                    }
+                                    st.steps += kb.len() as u64;
+                                    match st.arena.try_alloc(&kb) {
+                                        Ok(h) => h,
+                                        Err(n) => {
+                                            return Some(ExecOutcome::Infra(format!(
+                                                "fault-injected at owned allocation attempt #{n}"
+                                            )))
+                                        }
+                                    }
+                                }
+                                other => {
+                                    return Some(ExecOutcome::Infra(format!(
+                                        "object-set key holds {} (admission violation)",
+                                        other.type_name()
+                                    )))
+                                }
+                            };
+                            cell.borrow_mut().entries.push((h, vv));
+                        }
+                    }
+                    st.steps += 1;
+                }
+                MirInstr::TextDisplay { dst, src } => {
+                    let sv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*src as usize].clone()
+                    };
+                    let Value::I32(n) = sv else {
+                        return Some(ExecOutcome::Infra(format!(
+                            "text-display operand holds {} (admission violation)",
+                            sv.type_name()
+                        )));
+                    };
+                    let rendered = itoa_display(n);
+                    let deep = std::mem::size_of::<Value>() + rendered.len();
+                    if let Err(out) = owned_alloc_precheck(st, deep, *dst as usize, limits) {
+                        return Some(out);
+                    }
+                    st.steps += rendered.len() as u64;
+                    let res = match st.arena.try_alloc(&rendered) {
+                        Ok(h) => Value::Str(h),
+                        Err(n) => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "fault-injected at owned allocation attempt #{n}"
+                            )))
+                        }
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                        return Some(out);
                     }
                 }
                 MirInstr::HostCall { host: index, arg } => {

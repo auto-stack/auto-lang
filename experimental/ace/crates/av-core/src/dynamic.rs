@@ -25,8 +25,8 @@
 //!   so no value tree can stack-bomb a later freeze/clone/drop.
 
 use crate::contract::{
-    ListHandle, RecordValue, StrHandle, Value, VariantValue, CANCEL_CHECK_INTERVAL, MAX_LIST_ELEMS,
-    MAX_RECORD_FIELDS,
+    ListHandle, ObjectData, RecordValue, StrHandle, Value, VariantValue, CANCEL_CHECK_INTERVAL,
+    MAX_LIST_ELEMS, MAX_RECORD_FIELDS,
 };
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -217,6 +217,21 @@ pub enum DynType {
         name: String,
         arms: Vec<DynArm>,
     },
+    /// PLAN-964 (L-21): the null value category.
+    Nil,
+    /// PLAN-964 (L-16/L-20): a shared mutable string-keyed object map.
+    /// Structural — any object cell (entry content is compared by the
+    /// value's own equality, not the descriptor).
+    Object,
+    /// PLAN-964 (INT-1026/IF-VAL): a neutral external value/callable
+    /// reference, identified by provider + kind label. External identity
+    /// is the provider-owned cell; no portable freeze is admitted while
+    /// live.
+    External { provider: String, kind: u32 },
+    /// PLAN-964 (L-22): a callable value (a `Value::Closure` reference).
+    /// The ONLY category whose pack admits a closure payload (the escape
+    /// capture law is unchanged — pack is an explicit erasure surface).
+    Callable,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -256,6 +271,12 @@ impl DynType {
             DynType::Variant { owner, name, arms } => {
                 format!("variant {}/{}[{}]", owner, name, arms.len())
             }
+            DynType::Nil => "nil".into(),
+            DynType::Object => "object".into(),
+            DynType::External { provider, kind } => {
+                format!("external {provider}[{kind}]")
+            }
+            DynType::Callable => "callable".into(),
         }
     }
 
@@ -355,6 +376,16 @@ fn copy_type(ty: &DynType, t: &mut Traversal, embedded: bool) -> Result<DynType,
         DynType::F64 => DynType::F64,
         DynType::Char => DynType::Char,
         DynType::Str => DynType::Str,
+        DynType::Nil => DynType::Nil,
+        DynType::Object => DynType::Object,
+        DynType::External { provider, kind } => {
+            t.charge_bytes(provider.len())?;
+            DynType::External {
+                provider: provider.clone(),
+                kind: *kind,
+            }
+        }
+        DynType::Callable => DynType::Callable,
         DynType::List(elem) => DynType::List(Box::new(copy_type(elem, t, false)?)),
         DynType::Record {
             owner,
@@ -410,6 +441,11 @@ fn copy_type(ty: &DynType, t: &mut Traversal, embedded: bool) -> Result<DynType,
         }
     })
 }
+
+/// PLAN-964: stable structural descriptor for object-entry children (the
+/// object's DynType is the unit `Object`; a static avoids a dangling
+/// temporary reference in the rebuild walk).
+static OBJECT_DYN: DynType = DynType::Object;
 
 impl DynValue {
     /// Explicit type erasure with full recursive admission (§2): the value
@@ -495,15 +531,19 @@ impl DynValue {
             // A container root seeds the build stack.
             (Value::Record(_), DynType::Record { .. })
             | (Value::List(_), DynType::List(_))
-            | (Value::Variant(_), DynType::Variant { .. }) => {}
+            | (Value::Variant(_), DynType::Variant { .. })
+            | (Value::Object(_), DynType::Object) => {}
+            // PLAN-964: a Nil root is a zero-node leaf like any scalar.
             // Inconsistent pairing is unreachable for a packed DynValue;
             // refuse rather than clone across kinds.
             (Value::Record(_), _)
             | (Value::List(_), _)
             | (Value::Variant(_), _)
+            | (Value::Object(_), _)
             | (_, DynType::Record { .. })
             | (_, DynType::List(_))
-            | (_, DynType::Variant { .. }) => {
+            | (_, DynType::Variant { .. })
+            | (_, DynType::Object) => {
                 return Err(TraversalStop::Nodes);
             }
             // The root is a leaf: one node, done.
@@ -532,6 +572,10 @@ impl DynValue {
             Record { ty_index: u32 },
             List,
             Variant { disc: u32, ty_index: u32 },
+            /// PLAN-964: the entry keys are stashed at open (source cell
+            /// borrow) and fresh key buffers are minted at rebuild (the
+            /// deep copy breaks every shared buffer).
+            Object { keys: Vec<StrHandle> },
         }
         fn open_frame<'a>(
             val: &Value,
@@ -578,6 +622,19 @@ impl DynValue {
                             ty_index: v.ty,
                         },
                         byte_cost_cell(),
+                    ))
+                }
+                (Value::Object(o), DynType::Object) => {
+                    let cell = o.borrow();
+                    let entries: Vec<(StrHandle, Value)> = cell.entries.clone();
+                    let kids: Vec<Value> = entries.iter().map(|(_, v)| v.clone()).collect();
+                    let kid_tys: Vec<&DynType> = kids.iter().map(|_| &OBJECT_DYN).collect();
+                    let keys: Vec<StrHandle> = entries.into_iter().map(|(k, _)| k).collect();
+                    Some((
+                        kids,
+                        kid_tys,
+                        Rebuild::Object { keys },
+                        byte_cost_cell() + byte_cost_record_extra(),
                     ))
                 }
                 _ => None,
@@ -655,6 +712,23 @@ impl DynValue {
                         disc,
                         payload: done.vals.pop().map(Rc::new),
                     }),
+                    // PLAN-964: fresh entry buffers and a fresh cell — the
+                    // copy is fully independent of the source object.
+                    Rebuild::Object { keys } => {
+                        let entries = keys
+                            .into_iter()
+                            .zip(done.vals.into_iter())
+                            .map(|(k, v)| {
+                                (
+                                    StrHandle::detached(k.bytes().to_vec().into_boxed_slice()),
+                                    v,
+                                )
+                            })
+                            .collect();
+                        Value::Object(std::rc::Rc::new(std::cell::RefCell::new(ObjectData {
+                            entries,
+                        })))
+                    }
                 };
                 match stack.last_mut() {
                     Some(parent) => {
@@ -892,6 +966,49 @@ fn check_shape(
                     depth,
                 })
             }
+            // PLAN-964: a closure payload is admitted ONLY under the
+            // declared Callable category (the pack surface is the explicit
+            // erasure gate; the escape capture law is unchanged).
+            (Value::Closure(_), T::Callable) => true,
+            (Value::Nil, T::Nil) => true,
+            (Value::Object(o), T::Object) => {
+                let cell = o.borrow();
+                let entries: Vec<(StrHandle, Value)> = cell.entries.clone();
+                for (_k, v) in entries.into_iter() {
+                    if !work() {
+                        return Err(DynPackError::Budget {
+                            code: "av.dyn.work-stopped",
+                        });
+                    }
+                    check_whitelist(&v, work, depth + 1)?;
+                }
+                true
+            }
+            (Value::External(e), T::External { provider, kind }) => {
+                let cell = e.borrow();
+                cell.provider == *provider && cell.kind == *kind
+            }
+            (Value::Nil, _) => {
+                return Err(DynPackError::TypeMismatch {
+                    expected: t.describe(),
+                    actual: "nil".to_string(),
+                    depth,
+                })
+            }
+            (Value::Object(_), _) => {
+                return Err(DynPackError::TypeMismatch {
+                    expected: t.describe(),
+                    actual: "object".to_string(),
+                    depth,
+                })
+            }
+            (Value::External(_), _) => {
+                return Err(DynPackError::TypeMismatch {
+                    expected: t.describe(),
+                    actual: "external".to_string(),
+                    depth,
+                })
+            }
             _ => false,
         };
         if !ok {
@@ -900,6 +1017,113 @@ fn check_shape(
                 actual: v.type_name().to_string(),
                 depth,
             });
+        }
+    }
+    Ok(())
+}
+
+/// PLAN-964: whitelist-cleanliness walk over an OBJECT ENTRY value — no
+/// declared descriptor exists for entries (the object's DynType is the
+/// structural `Object`), so this admits only the whitelisted categories at
+/// every depth and rejects borrow/index-token/closure categories exactly
+/// like `check_shape`'s unsupported arm. Budgeted by depth and work.
+fn check_whitelist(
+    value: &Value,
+    work: &mut dyn FnMut() -> bool,
+    depth: u32,
+) -> Result<(), DynPackError> {
+    use crate::contract::StrHandle;
+    let mut stack: Vec<(Value, u32)> = vec![(value.clone(), depth)];
+    while let Some((v, d)) = stack.pop() {
+        if !work() {
+            return Err(DynPackError::Budget {
+                code: "av.dyn.work-stopped",
+            });
+        }
+        if d > MAX_DYN_DEPTH {
+            return Err(DynPackError::Budget {
+                code: "av.resource.dyn-depth",
+            });
+        }
+        match &v {
+            Value::Bool(_)
+            | Value::I32(_)
+            | Value::I64(_)
+            | Value::U64(_)
+            | Value::F32(_)
+            | Value::F64(_)
+            | Value::Char(_)
+            | Value::Str(_)
+            | Value::I8(_)
+            | Value::U8(_)
+            | Value::U32(_)
+            | Value::Unit
+            | Value::Nil => {}
+            Value::Record(rec) => {
+                for f in rec.fields.iter() {
+                    stack.push((f.clone(), d + 1));
+                }
+            }
+            Value::List(h) => {
+                let elems = h.rc.borrow().elems.clone();
+                for e in elems.into_iter() {
+                    stack.push((e, d + 1));
+                }
+            }
+            Value::Variant(var) => {
+                if let Some(p) = var.payload.as_ref() {
+                    stack.push((p.as_ref().clone(), d + 1));
+                }
+            }
+            Value::Object(o) => {
+                let cell = o.borrow();
+                let entries: Vec<(StrHandle, Value)> = cell.entries.clone();
+                for (_k, ev) in entries.into_iter() {
+                    stack.push((ev, d + 1));
+                }
+            }
+            Value::StrView(_) => {
+                return Err(DynPackError::Unsupported {
+                    category: "str-view",
+                    depth: d,
+                })
+            }
+            Value::MutRef(_) => {
+                return Err(DynPackError::Unsupported {
+                    category: "mut-ref",
+                    depth: d,
+                })
+            }
+            Value::Place(_) => {
+                return Err(DynPackError::Unsupported {
+                    category: "place",
+                    depth: d,
+                })
+            }
+            Value::Closure(_) => {
+                return Err(DynPackError::Unsupported {
+                    category: "closure",
+                    depth: d,
+                })
+            }
+            Value::External(_) => {
+                return Err(DynPackError::Unsupported {
+                    category: "external",
+                    depth: d,
+                })
+            }
+            Value::Dyn(_) => {
+                return Err(DynPackError::Unsupported {
+                    category: "dyn",
+                    depth: d,
+                })
+            }
+            _ => {
+                return Err(DynPackError::Unsupported {
+                    category: "value",
+                    depth: d,
+                })
+            }
         }
     }
     Ok(())

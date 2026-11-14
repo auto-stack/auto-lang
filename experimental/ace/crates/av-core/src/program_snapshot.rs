@@ -515,9 +515,20 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<u32> {
                 // no type-table children).
                 | MirType::Dyn
                 // PLAN-862: Unit is atomic (no children).
-                | MirType::Unit => {
+                | MirType::Unit
+                // PLAN-964: Nil interns atomically; Object interns once its
+                // elem type is mapped (same fixpoint rule as Place).
+                | MirType::Nil => {
                     map[i] = merged.intern_type(t.clone());
                     progress = true;
+                }
+                MirType::Object { elem } => {
+                    if map[*elem as usize] != u32::MAX {
+                        map[i] = merged.intern_type(MirType::Object {
+                            elem: map[*elem as usize],
+                        });
+                        progress = true;
+                    }
                 }
                 // PLAN-822 R3: a Place interns once its REFERENT element
                 // type is mapped (same fixpoint rule as List).
