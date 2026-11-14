@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-14
 plan_revision: 12
-current_step: 6
+current_step: 7
 total_steps: 19
 depends_on: [PLAN-960, PLAN-962, PLAN-963, PLAN-938, PLAN-939, PLAN-1042, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-bindgen/project.md, docs/specs/auto-abi/project.md]
@@ -521,7 +521,8 @@ T-03/T-12扩947既有装配：同一AV的native/C/Rust来源绑定与资源原pr
 - [x] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 [✅ 2026-11-14 会话层+映射收尾；V-01..06执行证据按owner行在T-04汇总]
   交付：`ForeignSession`（av-core foreign_exec：open/bind/execute/teardown/rebind/adopt，per-run授权+账本复位，teardown对后继admission与已admitted模块双拒且dispatch计数冻结）+ `F0Session`/`open_f0_session`（ace-abi：build→admit→load→bind一体保活，Drop恰释放库一次）；永久正反例 `f0_session_lifecycle_success_teardown_unauthorized_rebind`（V-02合法身份真成功/V-01 stale双拒/V-06空绑定unauthorized callee=0/provider重绑定恢复）；既有桥逐项映射+旧数字ID兼容裁定入 `docs/specs/ace-migration/m2-host.md` T-02节（C桥→T-09/10、Rust桥→F0已交+T-11、Python桥→1042/T-12、数字ID只作兼容映射）。共享事实/类型/资源合同=938/939 foreign-contract+F0 stub表（无平行语义分析）；V-03/V-04回调全量留939 native道至T-08，V-05重入=foreign_exec单测。
 
-- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
+- [x] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 [✅ 2026-11-14 生产consumer道交付；1043来源装配腿按T-01冻结归T-12接入]
+  交付：**生产TestCase道**——deck（Auto use.rs源+注解provider源，manifest在worker内派生）→ `abi/rust-f0-certify-v1`（abi-worker新配方，legs av=进程内ForeignSession / native=caller COFF+import lib+真机器码）→ 固定组 `case-ace-m2-f0-rust-967`（6案：len 9/0、first-byte 65、rebound +1 body，av+native腿）PASS；配方注册贯通 worker dispatch/TestCase contract（exit oracle、final query、av|native legs、abi binding）/adapter routing/probe judge；生成构建单元导出 `ace_foreign_fail`（native fallible 传输，exit 70，同C侧语义）。目标=冻结plan常量；权限=F0粒度每调用admission（owner/grant维T-13）；增量=会话粒度接口身份复用+重绑定恢复（工件缓存增量为T-14）；失败恢复=rebuild/rebind/panic道全闭。LOAD腿：1043来源后缀/#in装配消费按T-01冻结映射在T-12接FFI provider目标时落地（V-LOAD按owner行T-04汇总闭）。回归：938套件PASS、auto-test-case 45绿、ace-adapters PASS、rust_f0 7绿、auto-bindgen 10绿。
 
 - [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：分import/export、调用方/被调用方、标量/聚合/资源与C/Rust/Python现用桥，核动态库装卸、原方allocator、符号/ABI版本。异步本包只交注册/完成/取消端口及受控真实provider；968消费端口实现语言await，967不反向依赖968。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
 
@@ -560,6 +561,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 6 | from: work | to: work | status: executing | outcome: T-03完成（生产TestCase道） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-08 双向ABI与异步完成端口）
+
+2026-11-14 stage: work / T-03（AC-02/03 生产consumer）| 交付: abi/rust-f0-certify-v1 worker配方+contract/adapter/judge注册+固定组case-ace-m2-f0-rust-967（6案av+native PASS）+ace_foreign_fail构建单元导出 | 边界: 1043装配腿T-12（按T-01冻结）、owner/grant维T-13、工件增量T-14 | 回归: 938套件/auto-test-case/ace-adapters/rust_f0/auto-bindgen全绿 | next: T-08。
 
 2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 5 | from: work | to: work | status: executing | outcome: T-02完成（会话层+永久正反例+桥映射） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-03 真实consumer/目标/装配/权限/增量/失败恢复接线）
 
