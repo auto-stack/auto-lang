@@ -983,9 +983,7 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 // PLAN-946: a View-mode List param passes its ADDRESS at
                 // the call (the callee takes `a2x_list_*`* and its
                 // mutations are visible in the caller).
-                let shared_list_param: Vec<bool> = if let Some(t) =
-                    self.view.fn_by_def(target)
-                {
+                let shared_list_param: Vec<bool> = if let Some(t) = self.view.fn_by_def(target) {
                     t.params
                         .iter()
                         .map(|p| p.mode == hir::ParamMode::View && matches!(p.ty, Ty::List(_)))
@@ -994,9 +992,7 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                     x.params
                         .iter()
                         .zip(x.modes.iter())
-                        .map(|(ty, m)| {
-                            *m == hir::ParamMode::View && matches!(ty, Ty::List(_))
-                        })
+                        .map(|(ty, m)| *m == hir::ParamMode::View && matches!(ty, Ty::List(_)))
                         .collect()
                 } else {
                     Vec::new()

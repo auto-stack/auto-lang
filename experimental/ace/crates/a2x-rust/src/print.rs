@@ -246,10 +246,7 @@ fn param_borrows(p: &RustParam) -> bool {
         ParamMode::MutBorrow => true,
         ParamMode::MoveOwn => false,
         // PLAN-946: a View-mode List param borrows (`&'a mut A2xList<E>`).
-        ParamMode::View => matches!(
-            p.ty,
-            Ty::Str | Ty::StrOwned | Ty::Record(_) | Ty::List(_)
-        ),
+        ParamMode::View => matches!(p.ty, Ty::Str | Ty::StrOwned | Ty::Record(_) | Ty::List(_)),
     }
 }
 
@@ -269,17 +266,12 @@ fn render_param(ctx: &PrintCtx<'_>, p: &RustParam) -> String {
         // element-typed text was baked at lowering (ty_text).
         (ParamMode::View, Ty::List(_)) => format!(
             "&'a mut {}",
-            p.ty_text
-                .clone()
-                .unwrap_or_else(|| ctx.ty_str(p.ty))
+            p.ty_text.clone().unwrap_or_else(|| ctx.ty_str(p.ty))
         ),
         (ParamMode::MutBorrow, Ty::Record(_)) => format!("&'a mut {}", ctx.ty_str(p.ty)),
         (ParamMode::MoveOwn, Ty::StrOwned) => "A2xStr".to_string(),
         (ParamMode::MoveOwn, Ty::Record(_)) => ctx.ty_str(p.ty),
-        (_, other) => p
-            .ty_text
-            .clone()
-            .unwrap_or_else(|| ctx.ty_str(other)),
+        (_, other) => p.ty_text.clone().unwrap_or_else(|| ctx.ty_str(other)),
     };
     format!("{}: {}", p.name, ty)
 }

@@ -825,9 +825,7 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 // PLAN-946: View-mode List parameters borrow exclusively at
                 // the call (`&mut x`) — the caller keeps its list (callee
                 // mutations visible), mirroring the AV's shared handle.
-                let shared_list_param: Vec<bool> = if let Some(t) =
-                    self.view.fn_by_def(target)
-                {
+                let shared_list_param: Vec<bool> = if let Some(t) = self.view.fn_by_def(target) {
                     t.params
                         .iter()
                         .map(|p| p.mode == hir::ParamMode::View && matches!(p.ty, Ty::List(_)))
@@ -836,9 +834,7 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     x.params
                         .iter()
                         .zip(x.modes.iter())
-                        .map(|(ty, m)| {
-                            *m == hir::ParamMode::View && matches!(ty, Ty::List(_))
-                        })
+                        .map(|(ty, m)| *m == hir::ParamMode::View && matches!(ty, Ty::List(_)))
                         .collect()
                 } else {
                     Vec::new()
@@ -847,9 +843,7 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 for (i, a) in eval_args.iter().enumerate() {
                     let v = self.expr(*a, out)?;
                     if shared_list_param.get(i).copied().unwrap_or(false) {
-                        args.push(RExpr::RefMut {
-                            inner: Box::new(v),
-                        });
+                        args.push(RExpr::RefMut { inner: Box::new(v) });
                     } else {
                         args.push(v);
                     }

@@ -60,7 +60,10 @@ pub fn compile_package_product_aggregates(
     // (`av.aggregates/1`) — mir_verify's PLACE relaxation, the native
     // collections emitter and the AV shared-param admission all key on it.
     let mut lane_caps: Vec<String> = caps.to_vec();
-    if !lane_caps.iter().any(|c| c == ace_core::source::AGGREGATES_ADMISSION_CAP) {
+    if !lane_caps
+        .iter()
+        .any(|c| c == ace_core::source::AGGREGATES_ADMISSION_CAP)
+    {
         lane_caps.push(ace_core::source::AGGREGATES_ADMISSION_CAP.into());
     }
     let bound =

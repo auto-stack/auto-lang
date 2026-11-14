@@ -317,7 +317,6 @@ fn stdlib_list_946_tampered_std_list_rejected() {
     );
 }
 
-
 /// T-03 ends programs: each runs on AV (value), Rust (rustc exe stdout),
 /// C (cl exe stdout) and native/mn (exit code) with ONE independent
 /// oracle per program.
@@ -384,21 +383,33 @@ fn rust_end(tag: &str, src: &str, want: i32) {
         std::fs::write(dir.join(path), content).unwrap();
     }
     let exe = dir.join("pkg.exe");
-    let mut cmd = std::process::Command::new(
-        std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()),
-    );
-    cmd.args(["--edition", "2021", "main.rs", "-o"]).arg(&exe).current_dir(&dir);
+    let mut cmd =
+        std::process::Command::new(std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()));
+    cmd.args(["--edition", "2021", "main.rs", "-o"])
+        .arg(&exe)
+        .current_dir(&dir);
     let built = cmd.output().expect("rustc run");
     assert!(
         built.status.success(),
         "rustc failed: {}",
         String::from_utf8_lossy(&built.stderr)
     );
-    let run = std::process::Command::new(&exe).current_dir(&dir).output().unwrap();
-    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let run = std::process::Command::new(&exe)
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
     let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
     std::fs::remove_dir_all(&store).ok();
-    assert_eq!(out, format!("value:{want}"), "rust exe stdout oracle ({tag})");
+    assert_eq!(
+        out,
+        format!("value:{want}"),
+        "rust exe stdout oracle ({tag})"
+    );
 }
 
 #[test]
@@ -439,8 +450,15 @@ fn c_end(tag: &str, src: &str, want: i32) {
     let exe = dir.join("pkg_c.exe");
     ace_a2x_worker::crun::compile_c_fileset(&dir, &exe)
         .unwrap_or_else(|e| panic!("cl failed: {e}"));
-    let run = std::process::Command::new(&exe).current_dir(&dir).output().unwrap();
-    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let run = std::process::Command::new(&exe)
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
     let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
     std::fs::remove_dir_all(&store).ok();
     assert_eq!(out, format!("value:{want}"), "c exe stdout oracle ({tag})");
@@ -564,7 +582,11 @@ fn main() int {
     println!(
         "mn-nc exe: code={:?} stderr-tail: {:?}",
         run.status.code(),
-        String::from_utf8_lossy(&run.stderr).lines().rev().take(4).collect::<Vec<_>>()
+        String::from_utf8_lossy(&run.stderr)
+            .lines()
+            .rev()
+            .take(4)
+            .collect::<Vec<_>>()
     );
     let code = run.status.code().unwrap_or(-1);
     std::fs::remove_dir_all(&dir).ok();
@@ -584,7 +606,8 @@ fn stdlib_list_946_cross_module_owned_text_survives_release_av() {
         id: "strings".into(),
         source: "pub fn take_first(xs List<Str>) Str {
     return xs.remove(0)
-}".into(),
+}"
+        .into(),
         provider: None,
     });
     inputs.push(PackageModuleInput {
@@ -627,7 +650,8 @@ fn stdlib_list_946_cross_module_view_escape_rejected() {
         id: "strings".into(),
         source: "pub fn peek(xs List<Str>) Str {
     return xs.get(0)
-}".into(),
+}"
+        .into(),
         provider: None,
     });
     inputs.push(PackageModuleInput {
@@ -635,7 +659,8 @@ fn stdlib_list_946_cross_module_view_escape_rejected() {
         version: "1.0.0".into(),
         id: "main".into(),
         source: "use app.strings.peek
-fn main() int { return 0 }".into(),
+fn main() int { return 0 }"
+            .into(),
         provider: None,
     });
     let err = match compile(&inputs) {
@@ -643,7 +668,8 @@ fn main() int { return 0 }".into(),
         Err(ds) => ds,
     };
     assert!(
-        err.iter().any(|d| d.diagnostic.code.contains("view-escape")),
+        err.iter()
+            .any(|d| d.diagnostic.code.contains("view-escape")),
         "expected the view-escape rejection, got: {:?}",
         err.iter()
             .map(|d| (d.module.as_str(), d.diagnostic.code.as_str()))
@@ -828,7 +854,8 @@ fn main() int {
             let codes: Vec<&str> = ds.iter().map(|d| d.diagnostic.code.as_str()).collect();
             println!("element-type change reject codes: {codes:?}");
             assert!(
-                ds.iter().any(|d| d.diagnostic.code == "source.type-mismatch"),
+                ds.iter()
+                    .any(|d| d.diagnostic.code == "source.type-mismatch"),
                 "element-type change rejects with source.type-mismatch, got {codes:?}"
             );
         }
@@ -844,12 +871,16 @@ fn main() int {
         Err(ds) => {
             println!(
                 "arity change reject codes: {:?}",
-                ds.iter().map(|d| d.diagnostic.code.as_str()).collect::<Vec<_>>()
+                ds.iter()
+                    .map(|d| d.diagnostic.code.as_str())
+                    .collect::<Vec<_>>()
             );
             assert!(
                 ds.iter().any(|d| d.diagnostic.code == "source.argument"),
                 "arity change rejects with source.argument, got {:?}",
-                ds.iter().map(|d| d.diagnostic.code.as_str()).collect::<Vec<_>>()
+                ds.iter()
+                    .map(|d| d.diagnostic.code.as_str())
+                    .collect::<Vec<_>>()
             );
         }
     }
@@ -877,10 +908,13 @@ fn stdlib_list_946_fault_sweep_sum_program() {
     )
     .map_err(|e| format!("{e:?}"))
     .unwrap();
-    let checked = ace_av_core::verify_mir(&mir).map_err(|e| format!("{e:?}")).unwrap();
-    let wire = ace_av_core::abc::encode_abc(checked.module()).unwrap();
-    let loaded = ace_av_core::abc_verify::verify_abc_bytes(&wire.to_flat(), &checked.module().owner)
+    let checked = ace_av_core::verify_mir(&mir)
+        .map_err(|e| format!("{e:?}"))
         .unwrap();
+    let wire = ace_av_core::abc::encode_abc(checked.module()).unwrap();
+    let loaded =
+        ace_av_core::abc_verify::verify_abc_bytes(&wire.to_flat(), &checked.module().owner)
+            .unwrap();
     let cancel = ace_av_core::CancelFlag::new(false);
 
     let clean = ace_av_core::owned_text::StrArena::new();
@@ -913,10 +947,7 @@ fn stdlib_list_946_fault_sweep_sum_program() {
             arena,
         );
         assert!(
-            !matches!(
-                out,
-                ace_av_core::contract::ExecOutcome::Success { .. }
-            ),
+            !matches!(out, ace_av_core::contract::ExecOutcome::Success { .. }),
             "fault #{k} must not succeed: {out:?}"
         );
         let live = trace.arena.as_ref().map(|a| a.live()).unwrap_or(0);
@@ -969,7 +1000,9 @@ fn main() int {
         Err(ds) => assert!(
             ds.iter().any(|d| d.diagnostic.code != "source.infra"),
             "named source diagnostic, got {:?}",
-            ds.iter().map(|d| d.diagnostic.code.as_str()).collect::<Vec<_>>()
+            ds.iter()
+                .map(|d| d.diagnostic.code.as_str())
+                .collect::<Vec<_>>()
         ),
     }
 }
@@ -999,8 +1032,7 @@ fn stdlib_list_946_a2py_end_sum_find() {
     for (path, content) in &tgt.current.files {
         std::fs::write(dir.join(path), content).unwrap();
     }
-    let run = ace_a2x_worker::pyrun::run_py_fileset(&py, &dir, &[])
-        .expect("run python fileset");
+    let run = ace_a2x_worker::pyrun::run_py_fileset(&py, &dir, &[]).expect("run python fileset");
     let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
     std::fs::remove_dir_all(&store).ok();
     assert_eq!(out, format!("value:{}", 1504), "python stdout oracle");
@@ -1030,12 +1062,17 @@ fn stdlib_list_946_rust_end_fault_env_traps_typed() {
         std::fs::write(dir.join(path), content).unwrap();
     }
     let exe = dir.join("pkg.exe");
-    let mut cmd = std::process::Command::new(
-        std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()),
-    );
-    cmd.args(["--edition", "2021", "main.rs", "-o"]).arg(&exe).current_dir(&dir);
+    let mut cmd =
+        std::process::Command::new(std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()));
+    cmd.args(["--edition", "2021", "main.rs", "-o"])
+        .arg(&exe)
+        .current_dir(&dir);
     let built = cmd.output().expect("rustc run");
-    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
     let mut run = std::process::Command::new(&exe);
     run.current_dir(&dir).env("A2X_RT_FAULT_ALLOC", "1");
     let out = run.output().expect("run rust exe");

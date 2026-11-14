@@ -73,7 +73,15 @@ impl PackageA2xTarget {
         provider: P,
         product: &PackageProduct,
     ) -> Result<Self, String> {
-        Self::cold_family(path, project, owner, quota, provider, product, Family::RecordText)
+        Self::cold_family(
+            path,
+            project,
+            owner,
+            quota,
+            provider,
+            product,
+            Family::RecordText,
+        )
     }
 
     /// PLAN-946 (T-03): the aggregates packages lane — the same target
@@ -88,7 +96,15 @@ impl PackageA2xTarget {
         provider: P,
         product: &PackageProduct,
     ) -> Result<Self, String> {
-        Self::cold_family(path, project, owner, quota, provider, product, Family::Collections)
+        Self::cold_family(
+            path,
+            project,
+            owner,
+            quota,
+            provider,
+            product,
+            Family::Collections,
+        )
     }
 
     fn cold_family<P: TargetProvider + 'static>(
