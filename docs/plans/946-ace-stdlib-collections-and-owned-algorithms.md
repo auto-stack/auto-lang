@@ -4,13 +4,13 @@ status: drafting
 feature_name: ACE 集合与拥有资源公共算法
 author: [Codex]
 created_at: 2026-11-05
-updated_at: 2026-11-12
-plan_revision: 7
+updated_at: 2026-11-13
+plan_revision: 10
 supersedes_spec_components: [docs/specs/auto-ac/source-collections-variants.md, docs/specs/auto-a2c/collections-hir-backend.md, docs/specs/auto-a2x/checked-resource-facts.md]
 new_spec_components: [docs/specs/stdlib/design/ace-collections.md]
 touched_goals: [GOAL-002]
 affects: [stdlib, ace]
-depends_on: [PLAN-943, PLAN-944, PLAN-945, PLAN-962]
+depends_on: [PLAN-943, PLAN-944, PLAN-945, PLAN-962, PLAN-1039, PLAN-1040, PLAN-967, PLAN-1042, PLAN-1043]
 current_step: 0
 total_steps: 8
 ---
@@ -18,6 +18,12 @@ total_steps: 8
 # [PLAN-946] ACE 集合与拥有资源公共算法
 
 ## 0. 变更摘要
+
+2026-11-13 r10当前：纳入新1043来源后缀装配及最小#in平台静态选择，见§5/AC-LOAD/V-LOAD/SD-LOAD；原任务/状态/完成数与全覆盖不减，仅规划。
+
+2026-11-13 r9当前增量：新增公共标准库能力至少AV/AC/A2R/A2PY，AV为同一执行器下native/C/Rust三provider；原A2C继续。见§5覆盖合同及AC-COVERAGE/V-COVERAGE/SD-COVERAGE；只修规划，状态/完成数不变。
+
+2026-11-13 r8：用户纠正原生标准库基础依赖；新增AC-FOUNDATION/V-FOUNDATION/SD-FOUNDATION，将算法准备与默认自有库原生实施/验收分开，修正整包前置。原任务ID/数量/状态/进度/旧AC与V不减，本轮仅规划。
 
 2026-11-12 r7：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
@@ -41,7 +47,7 @@ total_steps: 8
 
 ## 2. 架构方案
 
-当前正式前置：M1-TAG + PLAN-943, PLAN-944, PLAN-945, PLAN-962正式交付；另需本包实施授权。tag前不执行本包只读调查、probe或实现；本轮文档规划不算执行。
+当前正式前置：M1-TAG + PLAN-943, PLAN-944, PLAN-945, PLAN-962正式交付；另需本包实施授权；新增原生底座PLAN-1039,PLAN-1040。tag前不执行本包只读调查、probe或实现；本轮文档规划不算执行。
 
 
 复用当前统一source/Checked HIR、共享MIR/资源事实及query/store。A2X消费HIR，AV/native消费共享MIR；公共语义与物理实现分开，旧runtime只按实际合同复用。标准操作身份、兼容策略和manifest双指纹遵守Design54 §4–7。
@@ -181,6 +187,26 @@ struct CollectionOp { element: TypeRef, storage: StorageId, access: BorrowMode, 
 
 本节由原`T-01`冻结来源/未决，`T-02`、`T-03`、`T-08`、`T-04`按各自原owner_stage接实现/验证（纯分析包只审计），对应AC-01/AC-02/AC-03/AC-06/AC-PHASE；原review/merge任务分别核结论与正式落地，不能用规划检查提前勾选。范围外能力回原owner，真实新增依赖须改DAG，不补假的整包反向等待。
 
+### 原生底座强制依赖（2026-11-13当前）
+
+依据[设计Draft 0.2 §10.1](../design/stdlib/native-platform-io.md#101-依赖的强制含义r02取代此前可并行表述的歧义)。本包最终depends_on新增1039/1040。纯算法的取材/实现策略/已有兼容对照可在原M1-TAG与授权内先准备；拥有资源的默认原生实现、OS区域接线及其验收必须消费1039/1040已实现、实跑且正式落主的操作。旧Rust no_std collections-runtime只可作历史语义/必要原语来源的显式对照，不以其容器算法冒Auto自有实现；原四端及资源oracle不删。有限分配/容器算法在本包普通Auto实现并消费区域/调用者Storage，不反等972整库；通用Storage策略仍归972，若现源能力不足T-01具名修约/补语言前置，不能空stub或换oracle过门。
+
+### 后端与AV来源覆盖（2026-11-13当前）
+
+以[覆盖设计](../design/stdlib/backend-provider-coverage.md)为本包当前增量：旧“四端”指AV/AC/A2R/A2C，不再代表全部required。新增公共能力最少AV/native、AV/C、AV/Rust、AC、A2R、A2PY六路径，原A2C及原平台/数值/资源/oracle不减。AV只一套解释器/API/语义，三来源共享Auto算法，仅适配必要原语；不能以配置名切换冒真实dispatch。
+
+集合/Option/Result/拥有文本公共操作在共享Auto算法上补A2PY，并在涉及分配/资源时实测AV三provider；不另写三套集合算法。
+
+1042是最小Python接缝，不自动证明本包全部语言域支持；需要更大Python语义时消费977/PY已交能力切片或先具名补齐，不反等977整包。C/Rust provider复用967，native底座沿1039/1040原依赖。纯函数可说明身份/算法/输入/观察适用性后复用证据，资源边界需各有实际调用与原provider销毁；不机械跑全后端×全provider笛卡尔积。缺目标工具/runner/依赖保持pending，不能以emit、宿主fallback或同错结果关行。显式第三方引擎的依赖另列，native来源不冒所有第三方算法都已Auto重写。
+
+### 新加载机制完成依赖（2026-11-13当前）
+
+依据[设计§8–10](../design/stdlib/backend-provider-coverage.md)与[1043](1043-ace-stdlib-context-assembly.md)。公共.at＋at/c/rs/py来源后缀组成同一逻辑模块，运行后端另选；#in打开临时namespace并让is/if/for继承编译期属性，不扩平台后缀。最小层由1043先交，966继续完整CTE，不能反向等966整包。
+
+有限集合公共源/实现来源与拥有资源绑定消费1043正式source装配；原1039/1040内存底座和967/1042覆盖不变。
+
+本包整包/当前阶段required完成须核1043实际source/统一绑定/最小#in/增量恢复及所需真实后端的正式来源，不以文件存在、provider名字、旧归档或候选语法冒已交。948只审分母/去向，978验装配闭包，985验完整A；普通能力owner仍另交真实外库dispatch与OS/资源结果。原早期切片/调查范围不据此扩大，公共能力缺路径不勾整包完成。
+
 ### 规范增量
 
 以下是**拟议**delta，review按实际范围定稿，merge才写canonical Specs；本轮不写current Spec。
@@ -196,6 +222,24 @@ struct CollectionOp { element: TypeRef, storage: StorageId, access: BorrowMode, 
 
 
 | SD-DETAIL | add | `docs/specs/stdlib/design/ace-collections.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-06/AC-PHASE |
+### 原生底座规范增量（待实际交付）
+
+| delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | AC |
+|---|---|---|---|---|---|
+| SD-FOUNDATION | add/modify | docs/specs/stdlib/design/ace-collections.md | 算法/provider合同可冒完成→原生实施/验收必须消费已交OS区域/I/O与真实Auto算法 | 原生基础依赖 | AC-FOUNDATION |
+
+### 覆盖规范增量（待实际交付）
+
+| delta_id | add/modify | docs/specs target | before/after rule | rationale | AC |
+|---|---|---|---|---|---|
+| SD-COVERAGE | add/modify | docs/specs/stdlib/design/ace-collections.md | 旧四端→新增A2PY、同AV三来源及真实逐操作证据；未交不升支持状态 | 用户最低覆盖 | AC-COVERAGE |
+
+### 加载机制规范增量（待实际交付）
+
+| delta_id | add/modify | docs/specs target | before/after | rationale | AC |
+|---|---|---|---|---|---|
+| SD-LOAD | add/modify | docs/specs/stdlib/design/ace-collections.md | 旧有限后端侧文件→本包实际消费1043来源装配/#in/目标依赖及正式来源，未交保持缺口 | 用户确定新加载机制 | AC-LOAD |
+
 ## 6. 测试设计
 
 ### 阶段适用验证（新增合同、未执行）
@@ -243,6 +287,26 @@ struct CollectionOp { element: TypeRef, storage: StorageId, access: BorrowMode, 
 
 真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
+### 原生底座验证（新增，未执行）
+
+| Case | AC / work owner | 输入与独立oracle |
+|---|---|---|
+| V-FOUNDATION | AC-FOUNDATION；T-01/T-02/T-03/T-08/T-05 | 普通Auto有限集合/拥有元素走真实OS区域：push/pop/clone/move及失败保旧/最后owner释放在Windows/Linux AV/AC有独立结果与来源；撤掉对应区域provider应具名拒而非落到Rust容器。旧四端完整职责继续，原生两OS格单列；纯算法/旧runtime对照绿不能关闭native子行。 |
+
+### 后端/provider验证（新增、未执行）
+
+| V / AC | 输入与入口 | 独立观察/终态 |
+|---|---|---|
+| V-COVERAGE / AC-COVERAGE | 同一公共Auto源码及独立expected，在六路径/原A2C按原OS表实跑；配置C实跑native、缺Python/helper、错provider销毁、静默fallback、emit冒run与NUL/部分IO/错误/资源适用反例。 | 各路径真实producer/运行/dispatch身份、值或字节/副作用和资源结果正确；负控拒绝，合法邻例通过；不能只比较后端相等或改required为NA。 |
+
+实现/验证沿本包原owner任务、现TestCase/ACE worker与固定职责组；新增Python接缝按真实修改选`ace-a2x`/`a2py`/`auto-test-case`，AV来源边界选现`ace-foreign-contract`/相关AV、host、stdlib组，T-01冻结精确并集，985按T-A01/02。缺平台环境不伪造支持，不把正式ace-perf附加日常收尾；既有完整职责/必要消费者保持。
+
+### 加载机制验证（新增、未执行）
+
+| V / AC | 输入与入口 | 独立观察/owner |
+|---|---|---|
+| V-LOAD / AC-LOAD | 本包普通公共库源/所选provider与#in平台模块；错误后缀/缺或重复实现、错target/namespace、未选SDK缺失、错误producer/旧配方冒新、修改选中与未选输入后恢复 | 本包真实消费者及独立expected/依赖/源身份；负控在调用前拒、失败保旧，未选库不绑定链接。948验去向不代运行，978验候选闭包，985核正式A分母；能力包验证真实执行而非仅文件选择。复用1043身份适用证据，不重复跑其整档代本包；原最终work汇总，独立review核AC-LOAD。 |
+
 ## 7. 验收标准
 
 | ID | owner_stage | 可观察标准 | 核验 |
@@ -257,6 +321,12 @@ struct CollectionOp { element: TypeRef, storage: StorageId, access: BorrowMode, 
 | AC-08 | work | 本包全部研究/准备/实施在M1-TAG及实施授权后；T-01绑定正式ref/commit/验收合并收据和base，非法/缺证入口零执行；原AC/T/资源门保持。 | T-01、V-09；T-05及原独立review任务核本revision全项 |
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-05；原独立review复核 |
 
+- [ ] **AC-FOUNDATION / work**：V-FOUNDATION与§5原生底座当前合同全部关闭；正式底座包含实现/真实OS/依赖/独立复审与落主身份，纯算法与旧runtime支持不能替代；原最终work及独立review逐项核。
+
+- [ ] **AC-COVERAGE / work**：§5本次覆盖责任及V-COVERAGE关闭；新增公共能力六路径与原A2C、独立oracle/真实来源/资源证明齐全。948仅验调查分母不签产品，978验装配，985验A完整性；原独立review逐行核，原生四格不代全覆盖。
+
+- [ ] **AC-LOAD / work**：§5本包新加载机制责任和V-LOAD关闭，正式1043来源/独立结果与缺口分账齐全；原native底座/六路径/旧A2C和阶段不减，最终work与独立review逐行核。
+
 ## 8. 执行步骤
 
 当前共8任务，0完成。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
@@ -265,17 +335,17 @@ struct CollectionOp { element: TypeRef, storage: StorageId, access: BorrowMode, 
 
 本组包括调研/前探在内均须先核M1-TAG正式收据与本包实施授权；该门未闭不建树或运行探针。
 
-- [ ] **T-01｜M2-A｜owner_stage: work｜AC-01/AC-08**：核M1-TAG实际收据和本包实施授权，消费D943/D944/D945/D962及947合同来源；从tag与当前主线复核原collections拒绝集、公共调用/资源形态及Storage设计待定项，完成whole-path前探后冻结支持表；门未闭不执行。
+- [ ] **T-01｜M2-A｜owner_stage: work｜AC-01/AC-08**：核M1-TAG实际收据和本包实施授权，消费D943/D944/D945/D962及947合同来源；从tag与当前主线复核原collections拒绝集、公共调用/资源形态及Storage设计待定项，完成whole-path前探后冻结支持表；门未闭不执行。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
-- [ ] **T-02｜M2-A｜owner_stage: work｜AC-02**：实现已冻结公共算法及绑定，复用现有for-in/分支展开与合同，不引入重复指令族/资源分析；必要有限扩域须先修订验收边界。
+- [ ] **T-02｜M2-A｜owner_stage: work｜AC-02**：实现已冻结公共算法及绑定，复用现有for-in/分支展开与合同，不引入重复指令族/资源分析；必要有限扩域须先修订验收边界。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
-- [ ] **T-03｜M2-A｜owner_stage: work｜AC-03**：接拥有Str/Variant及Option/Result分支的四端producer与runtime；明确view不分配、move/clone/旧臂销毁及失败前检查→提交。
+- [ ] **T-03｜M2-A｜owner_stage: work｜AC-03**：接拥有Str/Variant及Option/Result分支的四端producer与runtime；明确view不分配、move/clone/旧臂销毁及失败前检查→提交。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
-- [ ] **T-08｜M2-A｜owner_stage: work｜AC-07**：消费962的集合参数/返回与资源签名，冻结至少一个真正跨模块的List公共调用；局部inline只作内部实现，不能替代公共API。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+- [ ] **T-08｜M2-A｜owner_stage: work｜AC-07**：消费962的集合参数/返回与资源签名，冻结至少一个真正跨模块的List公共调用；局部inline只作内部实现，不能替代公共API。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
 
 - [ ] **T-04｜M2-A｜owner_stage: work｜AC-04**：验证公共算法的接口/元素类型/操作合同变化引发真实依赖失效与恢复首编辑，复用既有增量/预算机制。
 
-- [ ] **T-05｜M2-A｜owner_stage: work｜AC-04**：补错元素/越界/失败回滚/借用逃逸与合法邻例、拥有容器深链和资源fault，跑完整职责组与原collections命名oracle。
+- [ ] **T-05｜M2-A｜owner_stage: work｜AC-04**：补错元素/越界/失败回滚/借用逃逸与合法邻例、拥有容器深链和资源fault，跑完整职责组与原collections命名oracle。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
 - [ ] **T-06｜M2-A｜owner_stage: review｜AC-05**：在同一实施树以独立上下文执行 `/auto-plan:review`，逐AC/反例与真实diff核验，具名记录债务候选；实际通过才进入reviewed。
 
@@ -293,6 +363,22 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 `/auto-plan-goal` 重启核验（新一轮 goal run，round 编号沿 §9 递增为 3）：门复核（durable artifacts）：M1-TAG `v0.6-ACE-M1`=`b923362f47bc8861407e9a470d63ddfdb505982b` 仍为 HEAD `e57601e2b` 祖先✓；依赖 943/944/945/962/947 archived✓；**1039/1040/1042/1043 自 round-2 阻塞后已全部 archived**✓（解除 §10 前三项阻塞）；PLAN-967 executing 12/19——946 所引依赖实质（单 AV 下 C/Rust provider 装配与 shim，AC-COVERAGE）已实现/实跑（V-COVERAGE 六路径 AV/native、AV/Rust、AV/C、AC、A2R、A2PY 全真，同一 binding/shim/provider）并经 phase fold 正式落主（T-F0-D `4c1788a79`；T-12 收口 `517ea2d79`/`39c11dd8d`/`e57601e2b`），余 T-13..15 为 967 自身 FFI 扩面（双向 import/export/callback/lease、store 依赖、SQLite/serde_json 回归）及其 T-04..07 收尾，非 946 消费面。裁定：按 r9/r10 合同"C/Rust provider 复用 967"以**已落主能力切片**消费，967 整包归档不再作 946 开工前置；残余风险具名——967 T-13..15 若触及 av-core/abi 邻面，946 晚合并方 rebase，946 最终验证（T-05）与独立复审对届时 master 复核所消费来源。WIP 条件①（946 范围）：本轮提交 r8–r10 计划修订与 `docs/design/stdlib/` 两份设计依据；其余 plan/design WIP 归属各自 owner 会话，不代提交。`stage: goal | plan_id: PLAN-946 | plan_revision: 10 | round: 3 | from: user | to: work | status: drafting | outcome: pass（进入 work） | worktree: none（work 阶段创建） | commit: e57601e2b | next: work（T-01 门核+有界前探+冻结）`
+
+2026-11-13 stage:new / CONTEXT-LOAD | 规划静态预检通过：20份设计/计划553处本地链接路径、Markdown围栏与Plan 0–10节/任务数一致；原144任务ID/勾选/状态/进度/旧AC/V及原依赖保留，新1043十任务均未完成。可达149个语言计划依赖无缺失/环、ID无冲突，中央.next-id为1044。1043不依完整966/FFI/库，1042不反依1043；966改为消费1043，原F0/B0/Hello与M1门不减。新计划候选固定组名和新增设计锚静态核对，git diff --check通过。未实施/建树/编译/运行产品或测试，不是独立实现review PASS；canonical Specs及归档历史未改。
+
+2026-11-13 `/auto-plan-goal` 启动前置核验（round 1）：`stage: work | plan_id: PLAN-946 | plan_revision: 9 | outcome: blocked | worktree_path: none（未建树） | branch: none | base_commit: fbfc7a3e7 | code_commit: none | dependency_revisions: v0.6-ACE-M1=b923362f47bc8861407e9a470d63ddfdb505982b（已合入且为 fbfc7a3e7 祖先）；943/944/945(8d4f89e19)/947/962 均已 archived；阻塞前置 PLAN-1039(drafting 0/9, untracked)、PLAN-1040(drafting 0/9, untracked)、PLAN-967(drafting 0/19, modified)、PLAN-1042(drafting 0/8, untracked) 均未实施与落主 | task_ids: none（门前停止） | blockers: 4 项强制前置 Plan 尚在 drafting 且主检出存在未提交 r8/r9 及设计/计划 WIP | next_responsible_role: user`
+
+`stage: goal | plan_id: PLAN-946 | plan_revision: 9 | round: 1 | from: work | to: user | status: drafting | outcome: blocked | worktree: none | commit: fbfc7a3e7 | next: user`
+
+2026-11-13 `/auto-plan-goal` 用户决定暂停/取消本次 `/goal 完成计划946`：`stage: goal | plan_id: PLAN-946 | plan_revision: 9 | round: 2 | from: user | to: cancelled | status: drafting | outcome: blocked | worktree: none | commit: fbfc7a3e7 | next: 待前置 PLAN-1039 → PLAN-1040、PLAN-1042、PLAN-967 交付并提交相关 WIP 后再重启`
+
+2026-11-13 stage:new / COVERAGE | outcome: pass（规划静态核验，非产品或独立实现review） | 19份设计/计划519处本地链接存在；14计划共150任务，含新1042八项，其余142任务ID/勾选/状态/进度及原AC/V保留；0–10节/围栏/任务数一致。可达148个语言计划依赖无缺失/环，1042不反依完整库/977，967不反依968；原早期F0/B0范围不扩。历史5份非UTF8归档只按可解读frontmatter只读扫依赖，未修改。新增能力六路径尚未实施/实跑，不计产品PASS。
+
+2026-11-13 原生底座依赖修订预检：9份文档371处本地链接通过；保原48任务ID/阶段及已有AC/V，新添1039/1040各T-09共2项work；可达149个语言计划无缺失/环，946与972新增硬前置无反向分配器依赖。状态/勾选/进度未推进，归档计划与canonical Specs零修改，.next-id仍1042。仅规划静态检查，非产品/独立实现review PASS。
+
+2026-11-13 stage:new / r8：修正原生底座完成依赖；原任务/状态/勾选/进度保持，新增FOUNDATION AC/V/SD由原work任务和独立review承接。未启动实现或运行产品。下方较早可并行措辞仅对算法准备有效，不覆盖本次原生实施/验收门。
 
 2026-11-12 stage:new / PLAN-946 r7：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原8任务/全部AC与V/依赖/阶段/预算和drafting 0/8；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
@@ -326,3 +412,9 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 - 首批符号/合法source/profile/接口位置由943及本包T-01有界前探冻结；§5/§6给出了最小关闭条件，缺能力保持具名阻塞，不静默降scope。
 - 完整CAP仍守Design46 A/B/C1–C3门；本包无权提前完整求解或以候选字段宣称已实现。
 - 实施授权尚未给出；其余未指定预算/模型/角色不虚构约束。跨仓若后续需写代码，由对应owner另建合同与授权。
+- **2026-11-13 `/goal 完成计划946` 阻塞说明（round 1）**：`M1-TAG`（`v0.6-ACE-M1` → `b923362f47bc8861407e9a470d63ddfdb505982b`，`HEAD` `fbfc7a3e7` 祖先）及 `PLAN-943/944/945/947/962` 已满足；但本包 r8/r9 新增的 4 项强制 `depends_on` 前置均仍处于 `drafting`（`0/N`）且尚未落主：
+  1. `PLAN-1039`（`docs/plans/1039-ace-platform-io-primitives.md`，`drafting` 0/9，untracked）——Windows OS 区域内存与受检平台原语（`AC-FOUNDATION`）。
+  2. `PLAN-1040`（`docs/plans/1040-ace-linux-native-elf-and-syscalls.md`，`drafting` 0/9，untracked）——Linux x64 ELF 与匿名 mmap/munmap 原语（`AC-FOUNDATION`）。
+  3. `PLAN-967`（`docs/plans/967-ace-m2-host.md`，`drafting` 0/19，modified）——单 AV 下的 C/Rust provider 装配与 shim（`AC-COVERAGE`）。
+  4. `PLAN-1042`（`docs/plans/1042-ace-a2py-stdlib-readiness.md`，`drafting` 0/8，untracked）——A2PY 标准库后端与运行端口（`AC-COVERAGE`）。
+  同时主检出尚有 r8/r9 及 `docs/design/stdlib/*` 等未提交规划 WIP。解除阻塞需：① 确认并提交相关 r8/r9 设计与计划文档；② 按 DAG 交付 `PLAN-1039` → `PLAN-1040`、`PLAN-1042` 及 `PLAN-967` 后再续跑 `/goal 完成计划946`（或明确改由局部前置授权只做纯算法准备）。
