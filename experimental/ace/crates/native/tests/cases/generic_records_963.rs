@@ -148,5 +148,3 @@ fn main() int {
 fn native_bounded_wrapper_exit_5() {
     assert_eq!(run_native(BOUNDED_WRAPPER, "b1"), 5);
 }
-
-

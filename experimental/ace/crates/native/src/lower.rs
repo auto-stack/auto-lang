@@ -109,6 +109,7 @@ pub fn emit_function(
     ctx: &mut cranelift_codegen::Context,
     mode: LowerMode,
     console_write: Option<cranelift_module::FuncId>,
+    conv: cranelift_codegen::isa::CallConv,
 ) -> Result<(), String> {
     let f = &unit.funcs[0];
 
@@ -281,6 +282,7 @@ pub fn emit_function(
         unit,
         exit_id,
         mode,
+        conv,
         reps,
         layouts,
         str_paths,
@@ -588,6 +590,9 @@ struct FnLowerer<'a, 'b> {
     unit: &'a MirModule,
     exit_id: cranelift_module::FuncId,
     mode: LowerMode,
+    /// PLAN-1040: the target call convention of this emission (Windows
+    /// fastcall for the frozen COFF lane, System V for the Linux ELF lane).
+    conv: cranelift_codegen::isa::CallConv,
     reps: Vec<SlotRep>,
     layouts: BTreeMap<u32, RecordLayout>,
     str_paths: BTreeMap<u32, Vec<Vec<u16>>>,
@@ -688,7 +693,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             other => return Err(format!("unknown typed helper `{other}`")),
         };
         let sig = Signature {
-            call_conv: cranelift_codegen::isa::CallConv::WindowsFastcall,
+            call_conv: self.conv,
             params: params.iter().map(|t| AbiParam::new(*t)).collect(),
             returns: rets.iter().map(|t| AbiParam::new(*t)).collect(),
         };
@@ -1237,7 +1242,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         let callee = if let Some(&fref) = self.platform_refs.get(shim_name) {
             fref
         } else {
-            let sig = crate::platform_io::cranelift_shim_sig(spec.kind);
+            let sig = crate::platform_io::cranelift_shim_sig_for(spec.kind, self.conv);
             let id = self
                 .om
                 .declare_function(shim_name, Linkage::Import, &sig)
@@ -1282,6 +1287,24 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
                 clif_args.push(self.fb.use_var(self.v_scalar(args[1])?));
                 clif_args.push(self.fb.use_var(self.v_scalar(args[2])?));
+            }
+            // PLAN-1040 probe seam: (dirfd, path ptr/len, flags, mode),
+            // (fd, bytes ptr/len) and (fd) — same marshalling as the io
+            // string ops for the buffer pair.
+            PlatformOpKind::ProbeOpenat => {
+                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                clif_args.push(self.use_ptr(args[1])?);
+                clif_args.push(self.use_len(args[1])?);
+                clif_args.push(self.fb.use_var(self.v_scalar(args[2])?));
+                clif_args.push(self.fb.use_var(self.v_scalar(args[3])?));
+            }
+            PlatformOpKind::ProbeWriteFd => {
+                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                clif_args.push(self.use_ptr(args[1])?);
+                clif_args.push(self.use_len(args[1])?);
+            }
+            PlatformOpKind::ProbeClose => {
+                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
             }
         }
         let call = self.fb.ins().call(callee, &clif_args);
@@ -1335,7 +1358,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             return Ok(*r);
         }
         let sig = {
-            let mut s = Signature::new(crate::emit::WINCALL);
+            let mut s = Signature::new(self.conv);
             s.params.push(AbiParam::new(ft));
             s.params.push(AbiParam::new(ft));
             s.returns.push(AbiParam::new(ft));
@@ -2150,7 +2173,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         // Not in any table (bare Trace without a declared import): declare
         // the runtime symbol on demand — Linkage::Import, resolved by the
         // link inputs from the landed trace support library.
-        let sig = trace_call_sig();
+        let sig = trace_call_sig(self.conv);
         let id = self
             .om
             .declare_function(symbol, Linkage::Import, &sig)
@@ -2212,7 +2235,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             return Ok(*r);
         }
         let sig = Signature {
-            call_conv: cranelift_codegen::isa::CallConv::WindowsFastcall,
+            call_conv: self.conv,
             params: params.iter().map(|t| AbiParam::new(*t)).collect(),
             returns: rets.iter().map(|t| AbiParam::new(*t)).collect(),
         };
@@ -3688,9 +3711,9 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
     }
 }
 
-fn trace_call_sig() -> cranelift_codegen::ir::Signature {
+fn trace_call_sig(conv: cranelift_codegen::isa::CallConv) -> cranelift_codegen::ir::Signature {
     cranelift_codegen::ir::Signature {
-        call_conv: cranelift_codegen::isa::CallConv::WindowsFastcall,
+        call_conv: conv,
         params: vec![],
         returns: vec![cranelift_codegen::ir::AbiParam::new(types::I32)],
     }

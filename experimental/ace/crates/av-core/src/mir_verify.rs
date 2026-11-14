@@ -839,6 +839,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             | crate::platform_io::CAP_STDERR
                             | crate::platform_io::CAP_WRITE
                             | crate::platform_io::CAP_MEM
+                            | crate::platform_io::CAP_PROBE
                     ));
             if !known {
                 return Err(MirVerifyError::uns(
@@ -2667,12 +2668,18 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 for (arg, param_ty) in args.iter().zip(sig.params.iter()) {
                     let at = slot_ty_of(f, *arg, sp, "platform arg")?;
                     if !self.ty_equiv(at, *param_ty) {
-                        return Err(err("host.signature", "platform operand type mismatch".into()));
+                        return Err(err(
+                            "host.signature",
+                            "platform operand type mismatch".into(),
+                        ));
                     }
                 }
                 let dt = slot_ty_of(f, *dst, sp, "platform dst")?;
                 if !self.ty_equiv(dt, sig.result) {
-                    return Err(err("host.signature", "platform result type mismatch".into()));
+                    return Err(err(
+                        "host.signature",
+                        "platform result type mismatch".into(),
+                    ));
                 }
             }
             MirInstr::Trace { .. } => {}

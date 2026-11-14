@@ -237,7 +237,10 @@ pub fn emit_console_shim_coff() -> Result<Vec<u8>, MnError> {
 /// forwards its i32 result to ExitProcess (a Unit entry exits 0). The
 /// wrapper mirrors `emit_wrapper_coff` but admits the Unit result channel
 /// the console profile allows.
-pub fn emit_console_wrapper_coff(entry_symbol: &str, unit_result: bool) -> Result<Vec<u8>, MnError> {
+pub fn emit_console_wrapper_coff(
+    entry_symbol: &str,
+    unit_result: bool,
+) -> Result<Vec<u8>, MnError> {
     let isa = emit::make_isa()?;
     let builder = ObjectBuilder::new(isa, "mn-console-start", default_libcall_names())
         .map_err(|e| MnError::Backend(format!("object builder: {e}")))?;
@@ -393,4 +396,302 @@ pub fn console_native_run(
 /// The console/1 native resource-reject exit (recipe reporting helper).
 pub fn console_reject_exit() -> i32 {
     CONSOLE_REJECT_EXIT_CODE
+}
+
+// ---- PLAN-1040: the console/1 lane on the Linux x86-64 ELF target ------
+
+/// Emit the Linux console shim object: `mn_console_write(stream, ptr, len)`
+/// performs ONE raw `write` syscall per call (stream 0 → fd 1, else fd 2)
+/// and enforces the console/1 budgets defensively. Status codes are the
+/// frozen console-lane codes: 0 written; 1 per-call budget; 2 cumulative
+/// budget; 3 OS write failure. Zero libc — the syscall goes through the
+/// `mn_syscall3` stub of the linux support object.
+pub fn emit_console_shim_elf() -> Result<Vec<u8>, MnError> {
+    let isa = emit::make_isa_for(crate::mn_target::MnOsTarget::LinuxGnu)?;
+    let builder = ObjectBuilder::new(isa, "mn-console-shim-elf", default_libcall_names())
+        .map_err(|e| MnError::Backend(format!("object builder: {e}")))?;
+    let mut om = ObjectModule::new(builder);
+    let sysv = CallConv::SystemV;
+    // long mn_syscall3(long nr, long a1, long a2, long a3)
+    let sc_sig = Signature {
+        call_conv: sysv,
+        params: vec![
+            AbiParam::new(T_I64),
+            AbiParam::new(T_I64),
+            AbiParam::new(T_I64),
+            AbiParam::new(T_I64),
+        ],
+        returns: vec![AbiParam::new(T_I64)],
+    };
+    let sc = om
+        .declare_function("mn_syscall3", Linkage::Import, &sc_sig)
+        .map_err(|e| MnError::Backend(format!("declare mn_syscall3: {e}")))?;
+    let counter = om
+        .declare_data(CONSOLE_RUN_BYTES_SYMBOL, Linkage::Export, true, false)
+        .map_err(|e| MnError::Backend(format!("declare counter: {e}")))?;
+    let write_sig = Signature {
+        call_conv: sysv,
+        params: vec![
+            AbiParam::new(T_I32),
+            AbiParam::new(T_I64),
+            AbiParam::new(T_I64),
+        ],
+        returns: vec![AbiParam::new(T_I32)],
+    };
+    let write_id = om
+        .declare_function(CONSOLE_WRITE_SYMBOL, Linkage::Export, &write_sig)
+        .map_err(|e| MnError::Backend(format!("declare {CONSOLE_WRITE_SYMBOL}: {e}")))?;
+    let mut ctx = om.make_context();
+    ctx.func.signature = write_sig;
+    {
+        let mut fbc = FunctionBuilderContext::new();
+        let mut fb = FunctionBuilder::new(&mut ctx.func, &mut fbc);
+        let blk = fb.create_block();
+        fb.switch_to_block(blk);
+        fb.seal_block(blk);
+        fb.append_block_params_for_function_params(blk);
+        let stream = fb.block_params(blk)[0];
+        let ptr = fb.block_params(blk)[1];
+        let len = fb.block_params(blk)[2];
+        let ret = |fb: &mut FunctionBuilder, code: i64| {
+            let v = fb.ins().iconst(T_I32, code);
+            fb.ins().return_(&[v]);
+        };
+        // Defensive per-call budget re-check (the guest guards first).
+        let call_cap = fb
+            .ins()
+            .iconst(T_I64, ace_av_core::host::MAX_CALL_BYTES as i64);
+        let over = fb.ins().icmp(IntCC::UnsignedGreaterThan, len, call_cap);
+        let bad_call = fb.create_block();
+        let cont1 = fb.create_block();
+        fb.ins().brif(over, bad_call, &[], cont1, &[]);
+        fb.seal_block(bad_call);
+        fb.seal_block(cont1);
+        fb.switch_to_block(bad_call);
+        ret(&mut fb, 1);
+        fb.switch_to_block(cont1);
+        // Cumulative run budget.
+        let counter_in_func = om.declare_data_in_func(counter, fb.func);
+        let counter_addr = fb.ins().symbol_value(T_I64, counter_in_func);
+        let run = fb.ins().load(T_I64, MemFlags::trusted(), counter_addr, 0);
+        let next = fb.ins().iadd(run, len);
+        let run_cap = fb
+            .ins()
+            .iconst(T_I64, ace_av_core::host::MAX_RUN_BYTES as i64);
+        let over_run = fb.ins().icmp(IntCC::UnsignedGreaterThan, next, run_cap);
+        let bad_run = fb.create_block();
+        let cont2 = fb.create_block();
+        fb.ins().brif(over_run, bad_run, &[], cont2, &[]);
+        fb.seal_block(bad_run);
+        fb.seal_block(cont2);
+        fb.switch_to_block(bad_run);
+        ret(&mut fb, 2);
+        fb.switch_to_block(cont2);
+        // stream == 0 → fd 1 (stdout) else fd 2 (stderr).
+        let zero = fb.ins().iconst(T_I32, 0);
+        let is_out = fb.ins().icmp(IntCC::Equal, stream, zero);
+        let fd_out = fb.ins().iconst(T_I64, 1);
+        let fd_err = fb.ins().iconst(T_I64, 2);
+        let fd = fb.ins().select(is_out, fd_out, fd_err);
+        let nr = fb
+            .ins()
+            .iconst(T_I64, ace_av_core::platform_io::linux_sysno::WRITE as i64);
+        let sc_ref = om.declare_func_in_func(sc, fb.func);
+        let call = fb.ins().call(sc_ref, &[nr, fd, ptr, len]);
+        let raw = fb.inst_results(call)[0];
+        // errno interval -4095..=-1 → status 3; else commit counter, 0.
+        let lo = fb.ins().iconst(T_I64, -4095);
+        let hi = fb.ins().iconst(T_I64, -1);
+        let ge_lo = fb.ins().icmp(IntCC::SignedGreaterThanOrEqual, raw, lo);
+        let le_hi = fb.ins().icmp(IntCC::SignedLessThanOrEqual, raw, hi);
+        let failed = fb.ins().band(ge_lo, le_hi);
+        let io_fail = fb.create_block();
+        let cont3 = fb.create_block();
+        fb.ins().brif(failed, io_fail, &[], cont3, &[]);
+        fb.seal_block(io_fail);
+        fb.seal_block(cont3);
+        fb.switch_to_block(io_fail);
+        ret(&mut fb, 3);
+        fb.switch_to_block(cont3);
+        fb.ins().store(MemFlags::trusted(), next, counter_addr, 0);
+        ret(&mut fb, 0);
+        fb.finalize();
+    }
+    om.define_function(write_id, &mut ctx)
+        .map_err(|e| MnError::Backend(format!("define {CONSOLE_WRITE_SYMBOL}: {e}")))?;
+    let mut counter_init = cranelift_module::DataDescription::new();
+    counter_init.define_zeroinit(8);
+    om.define_data(counter, &counter_init)
+        .map_err(|e| MnError::Backend(format!("define counter: {e}")))?;
+    let product = om.finish();
+    let bytes = product
+        .emit()
+        .map_err(|e| MnError::Backend(format!("emit elf shim object: {e}")))?;
+    if bytes.len() > MAX_COFF_BYTES {
+        return Err(MnError::Resource(
+            "coff-size",
+            format!(
+                "console elf shim object {} bytes above the frozen cap",
+                bytes.len()
+            ),
+        ));
+    }
+    Ok(bytes)
+}
+
+/// The Linux console entry wrapper: `ac_start` calls the entry function
+/// and forwards its i32 result to the raw `mn_exit` stub (`exit_group`)
+/// — bit-exact, zero CRT. The process entry itself is the `_start`
+/// trampoline of the linux support object (which then `call`s `ac_start`).
+pub fn emit_console_wrapper_elf(entry_symbol: &str, unit_result: bool) -> Result<Vec<u8>, MnError> {
+    let isa = emit::make_isa_for(crate::mn_target::MnOsTarget::LinuxGnu)?;
+    let builder = ObjectBuilder::new(isa, "mn-console-start-elf", default_libcall_names())
+        .map_err(|e| MnError::Backend(format!("object builder: {e}")))?;
+    let mut om = ObjectModule::new(builder);
+    let sysv = CallConv::SystemV;
+    let entry_sig = Signature {
+        call_conv: sysv,
+        params: vec![],
+        returns: if unit_result {
+            vec![AbiParam::new(T_I32)]
+        } else {
+            vec![]
+        },
+    };
+    let entry_id = om
+        .declare_function(entry_symbol, Linkage::Import, &entry_sig)
+        .map_err(|e| MnError::Backend(format!("declare entry {entry_symbol}: {e}")))?;
+    let exit_sig = Signature {
+        call_conv: sysv,
+        params: vec![AbiParam::new(T_I32)],
+        returns: vec![],
+    };
+    let exit_id = om
+        .declare_function(crate::config::LINUX_EXIT_SYMBOL, Linkage::Import, &exit_sig)
+        .map_err(|e| MnError::Backend(format!("declare mn_exit: {e}")))?;
+    let start_sig = Signature {
+        call_conv: sysv,
+        params: vec![],
+        returns: vec![],
+    };
+    let start_id = om
+        .declare_function(START_SYMBOL, Linkage::Export, &start_sig)
+        .map_err(|e| MnError::Backend(format!("declare {START_SYMBOL}: {e}")))?;
+    let mut ctx = om.make_context();
+    ctx.func.signature = start_sig;
+    {
+        let mut fbc = FunctionBuilderContext::new();
+        let mut fb = FunctionBuilder::new(&mut ctx.func, &mut fbc);
+        let blk = fb.create_block();
+        fb.switch_to_block(blk);
+        fb.seal_block(blk);
+        let entry_ref = om.declare_func_in_func(entry_id, fb.func);
+        let exit_ref = om.declare_func_in_func(exit_id, fb.func);
+        if unit_result {
+            let call = fb.ins().call(entry_ref, &[]);
+            let result = fb.inst_results(call)[0];
+            fb.ins().call(exit_ref, &[result]);
+        } else {
+            fb.ins().call(entry_ref, &[]);
+            let zero = fb.ins().iconst(T_I32, 0);
+            fb.ins().call(exit_ref, &[zero]);
+        }
+        fb.ins().return_(&[]);
+        fb.finalize();
+    }
+    om.define_function(start_id, &mut ctx)
+        .map_err(|e| MnError::Backend(format!("define {START_SYMBOL}: {e}")))?;
+    let product = om.finish();
+    product
+        .emit()
+        .map_err(|e| MnError::Backend(format!("emit elf console wrapper: {e}")))
+}
+
+/// PLAN-1040: compile + link a verified `av.host-console/1` module to a
+/// static ELF for the Linux x86-64 target WITHOUT executing — the caller
+/// audits dependencies or runs it in the WSL acceptance environment.
+/// Object set: per-function SystemV units + the raw linux support object
+/// (`_start`/syscall stubs) + the ELF console shim + (when any
+/// `PlatformCall` exists) the ELF platform shim + the ELF wrapper.
+pub fn console_native_build_elf(
+    mir: &MirModule,
+    entry: &str,
+    workdir: &Path,
+) -> Result<link_driver::ElfLink, MnError> {
+    let entry_unit = mir
+        .funcs
+        .get(mir.entry as usize)
+        .ok_or_else(|| MnError::Unsupported("console.entry", "module entry missing".to_string()))?;
+    if entry_unit.name != entry {
+        return Err(MnError::Unsupported(
+            "console.entry",
+            format!("entry unit `{}` is not `{entry}`", entry_unit.name),
+        ));
+    }
+    let entry_symbol = symbols::function_symbol(&mir.owner, entry);
+    let unit_result = match mir.sig_of(entry_unit.sig) {
+        Some(sig) => matches!(
+            mir.types.get(sig.result as usize),
+            Some(MirType::I32) | Some(MirType::Bool) | Some(MirType::Char)
+        ),
+        None => false,
+    };
+    let has_platform = mir.funcs.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.instrs
+                .iter()
+                .any(|i| matches!(i, ace_av_core::mir::MirInstr::PlatformCall { .. }))
+        })
+    });
+    let units = ace_av::cache::split_units(mir)
+        .map_err(|e| MnError::Backend(format!("console split: {e}")))?;
+    let mut objects = Vec::with_capacity(units.len() + 3);
+    for (i, unit) in units.iter().enumerate() {
+        let object = emit::emit_console_unit_elf(unit)?;
+        objects.push(ObjectInput {
+            name: format!("mn-console-unit-{i}"),
+            bytes: object.bytes,
+        });
+    }
+    objects.push(ObjectInput {
+        name: "mn-linux-support".into(),
+        bytes: crate::linux_support::emit_linux_support_object()?,
+    });
+    objects.push(ObjectInput {
+        name: "mn-console-shim-elf".into(),
+        bytes: emit_console_shim_elf()?,
+    });
+    if has_platform {
+        objects.push(ObjectInput {
+            name: "mn-platform-shim-elf".into(),
+            bytes: crate::platform_io_linux::emit_platform_shim_elf()?,
+        });
+    }
+    let wrapper = emit_console_wrapper_elf(&entry_symbol, unit_result)?;
+    link_driver::link_elf(
+        &objects,
+        &wrapper,
+        crate::mn_target::MnOsTarget::LinuxGnu.link_entry(),
+        workdir,
+        "plan1040-linux-console-lane",
+    )
+}
+
+/// PLAN-1040: the Linux console-lane run — build, then execute the ELF
+/// inside the explicitly selected WSL distribution (the current required
+/// Linux acceptance environment) with byte-exact capture and the frozen
+/// budgets. Exit codes: entry result / 70 trap / 71 console reject —
+/// identical to the Windows lane's contract.
+pub fn console_native_run_elf(
+    mir: &MirModule,
+    entry: &str,
+    workdir: &Path,
+) -> Result<ConsoleNativeRun, MnError> {
+    let linked = console_native_build_elf(mir, entry, workdir)?;
+    let run = crate::linux_exec::run_elf_console_lane(&linked.exe_path)?;
+    Ok(ConsoleNativeRun {
+        exit_code: run.exit_code,
+        stdout: run.stdout,
+        stderr: run.stderr,
+    })
 }

@@ -7,6 +7,10 @@ pub const CAP_STDOUT: &str = "platform.io.stdout";
 pub const CAP_STDERR: &str = "platform.io.stderr";
 pub const CAP_WRITE: &str = "platform.io.write";
 pub const CAP_MEM: &str = "platform.mem";
+/// PLAN-1040: the Linux direct-syscall internal probe seam — NOT a public
+/// file API (full public File/path stays PLAN-973). Sources reach it only
+/// through these internal reserved names.
+pub const CAP_PROBE: &str = "platform.probe";
 
 #[derive(Clone, Copy, Debug)]
 pub struct PlatformSourceOp {
@@ -129,6 +133,28 @@ pub const PLATFORM_SOURCE_OPS: &[PlatformSourceOp] = &[
         params: P_2I32,
         result: VT::I32,
         capability: CAP_MEM,
+    },
+    // ---- PLAN-1040 Linux direct-syscall internal probe seam -------------
+    PlatformSourceOp {
+        callee: "probe_openat",
+        symbol: "auto.platform.probe.openat.v1",
+        params: P_I32_STR_2I32,
+        result: VT::I32,
+        capability: CAP_PROBE,
+    },
+    PlatformSourceOp {
+        callee: "probe_write_fd",
+        symbol: "auto.platform.probe.write_fd.v1",
+        params: P_I32_STR,
+        result: VT::I32,
+        capability: CAP_PROBE,
+    },
+    PlatformSourceOp {
+        callee: "probe_close",
+        symbol: "auto.platform.probe.close.v1",
+        params: P_I32,
+        result: VT::I32,
+        capability: CAP_PROBE,
     },
 ];
 

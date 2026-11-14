@@ -13,11 +13,20 @@ use std::collections::BTreeSet;
 
 pub const CATEGORY_IO: &str = "platform.io/1";
 pub const CATEGORY_MEM: &str = "platform.mem/1";
+/// PLAN-1040: the Linux direct-syscall internal probe seam (category
+/// `platform.probe/1`). NOT a public file API — the full public File/path
+/// contract stays PLAN-973's. These ops exist so the 1040 acceptance can
+/// witness raw `openat`/`write`/`close` syscall marshalling (register
+/// slots incl. the 4th argument, mode bits, negative errno
+/// classification) from ordinary Auto sources on both AV (Linux backend)
+/// and AC (ELF shim) without exposing arbitrary syscalls.
+pub const CATEGORY_PROBE: &str = "platform.probe/1";
 
 pub const CAP_STDOUT: &str = "platform.io.stdout";
 pub const CAP_STDERR: &str = "platform.io.stderr";
 pub const CAP_WRITE: &str = "platform.io.write";
 pub const CAP_MEM: &str = "platform.mem";
+pub const CAP_PROBE: &str = "platform.probe";
 
 pub const MAX_PLATFORM_IMPORTS: usize = 16;
 pub const MAX_TOTAL_HOST_IMPORTS: usize = 24;
@@ -25,6 +34,16 @@ pub const MAX_PLATFORM_CALL_BYTES: usize = 65_536;
 pub const MAX_PLATFORM_RUN_BYTES: usize = 1_048_576;
 pub const MAX_OS_REGION_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_LEDGER_HANDLES: usize = 1024;
+/// PLAN-1040: bound of one probe `openat` path (excludes the NUL we
+/// append ourselves; NAME_MAX-bound kernel paths stay far below this).
+pub const MAX_PROBE_PATH_BYTES: usize = 4096;
+/// PLAN-1040: marker a backend returns from the probe seam when the
+/// current platform has no probe implementation (Windows Win32 backend);
+/// distinct from any errno (<=~133) and Win32 error space on purpose.
+pub const PROBE_UNSUPPORTED: u32 = 0x0010_4000;
+/// PLAN-1040: the only `dirfd` the probe seam admits for `openat`
+/// (Linux `AT_FDCWD`); arbitrary dirfds would smuggle kernel handles.
+pub const PROBE_AT_FDCWD: i32 = -100;
 
 // Checked negative i32 error codes returned to guest code (deterministic; never trap on OS or preflight failure).
 pub const ERR_UNAUTHORIZED: i32 = -1;
@@ -95,6 +114,15 @@ pub enum PlatformOpKind {
     MemUnborrow,
     MemWriteU8,
     MemReadU8,
+    /// PLAN-1040 probe seam: raw `openat(dirfd, path, flags, mode)` —
+    /// returns a raw positive fd or the raw negative Linux errno.
+    ProbeOpenat,
+    /// PLAN-1040 probe seam: raw `write(fd, bytes)` — returns the written
+    /// count or the raw negative Linux errno.
+    ProbeWriteFd,
+    /// PLAN-1040 probe seam: raw `close(fd)` — returns 0 or the raw
+    /// negative Linux errno.
+    ProbeClose,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -305,6 +333,43 @@ pub const PLATFORM_OPS: &[PlatformOpSpec] = &[
         origin: HandleOrigin::OsMemRegion,
         max_call_bytes: 0,
     },
+    // ---- PLAN-1040 Linux direct-syscall internal probe seam -------------
+    PlatformOpSpec {
+        kind: PlatformOpKind::ProbeOpenat,
+        callee: "probe_openat",
+        symbol: "auto.platform.probe.openat.v1",
+        category: CATEGORY_PROBE,
+        capability: CAP_PROBE,
+        params: P_I32_STR_2I32,
+        param_dirs: D_4,
+        len_unit: LenUnit::ByteCount,
+        origin: HandleOrigin::None,
+        max_call_bytes: MAX_PROBE_PATH_BYTES as u32,
+    },
+    PlatformOpSpec {
+        kind: PlatformOpKind::ProbeWriteFd,
+        callee: "probe_write_fd",
+        symbol: "auto.platform.probe.write_fd.v1",
+        category: CATEGORY_PROBE,
+        capability: CAP_PROBE,
+        params: P_I32_STR,
+        param_dirs: D_2,
+        len_unit: LenUnit::ByteCount,
+        origin: HandleOrigin::None,
+        max_call_bytes: MAX_PLATFORM_CALL_BYTES as u32,
+    },
+    PlatformOpSpec {
+        kind: PlatformOpKind::ProbeClose,
+        callee: "probe_close",
+        symbol: "auto.platform.probe.close.v1",
+        category: CATEGORY_PROBE,
+        capability: CAP_PROBE,
+        params: P_I32,
+        param_dirs: D_1,
+        len_unit: LenUnit::None,
+        origin: HandleOrigin::None,
+        max_call_bytes: 0,
+    },
 ];
 
 pub fn lookup_callee(callee: &str) -> Option<&'static PlatformOpSpec> {
@@ -385,7 +450,31 @@ pub trait PlatformIoBackend {
     ) -> Result<usize, u32>;
     fn system_info(&mut self) -> (u32, u32);
     fn virtual_alloc(&mut self, commit_bytes: usize) -> Result<*mut u8, u32>;
-    fn virtual_free(&mut self, base: *mut u8) -> Result<(), u32>;
+    /// PLAN-1040: `mapped_len` is the exact mapping length the ledger
+    /// recorded at alloc time. The Win32 implementation ignores it
+    /// (`VirtualFree(base, 0, MEM_RELEASE)` releases the whole region by
+    /// base); the Linux implementation needs it — `munmap(base, len)`
+    /// takes no "whole region" form.
+    fn virtual_free(&mut self, base: *mut u8, mapped_len: usize) -> Result<(), u32>;
+    /// PLAN-1040 probe seam. `path` is the raw guest byte slice WITHOUT a
+    /// NUL terminator; the backend appends one on the OS boundary. Returns
+    /// the raw positive fd or the raw NEGATIVE Linux errno value. The
+    /// default reports `PROBE_UNSUPPORTED` (no probe on this platform).
+    fn probe_openat(
+        &mut self,
+        _dirfd: i32,
+        _path: &[u8],
+        _flags: i32,
+        _mode: i32,
+    ) -> Result<i32, u32> {
+        Err(PROBE_UNSUPPORTED)
+    }
+    fn probe_write_fd(&mut self, _fd: i32, _bytes: &[u8]) -> Result<i32, u32> {
+        Err(PROBE_UNSUPPORTED)
+    }
+    fn probe_close(&mut self, _fd: i32) -> Result<i32, u32> {
+        Err(PROBE_UNSUPPORTED)
+    }
 }
 
 #[cfg(windows)]
@@ -561,7 +650,7 @@ impl PlatformIoBackend for Win32PlatformIo {
     }
 
     #[cfg(windows)]
-    fn virtual_free(&mut self, base: *mut u8) -> Result<(), u32> {
+    fn virtual_free(&mut self, base: *mut u8, _mapped_len: usize) -> Result<(), u32> {
         self.dispatches.virtual_free += 1;
         let ok = unsafe { win32::VirtualFree(base, 0, win32::MEM_RELEASE) };
         if ok == 0 {
@@ -572,7 +661,7 @@ impl PlatformIoBackend for Win32PlatformIo {
     }
 
     #[cfg(not(windows))]
-    fn virtual_free(&mut self, _base: *mut u8) -> Result<(), u32> {
+    fn virtual_free(&mut self, _base: *mut u8, _mapped_len: usize) -> Result<(), u32> {
         self.dispatches.virtual_free += 1;
         Err(50)
     }
@@ -651,13 +740,425 @@ impl PlatformIoBackend for CapturePlatformIo {
         self.win32.virtual_alloc(commit_bytes)
     }
 
-    fn virtual_free(&mut self, base: *mut u8) -> Result<(), u32> {
+    fn virtual_free(&mut self, base: *mut u8, mapped_len: usize) -> Result<(), u32> {
         if let Some(err) = self.inject_free_error {
             self.win32.dispatches.virtual_free += 1;
             return Err(err);
         }
-        self.win32.virtual_free(base)
+        self.win32.virtual_free(base, mapped_len)
     }
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-1040: Linux x86-64 direct-kernel backend (raw syscalls, zero libc /
+// zero std::io / zero errno TLS)
+// ---------------------------------------------------------------------------
+
+/// x86-64 Linux syscall numbers used by the platform backend and the
+/// probe seam (target UAPI; arm64 needs its own table — out of scope).
+pub mod linux_sysno {
+    pub const READ: isize = 0;
+    pub const WRITE: isize = 1;
+    pub const CLOSE: isize = 3;
+    pub const MMAP: isize = 9;
+    pub const MUNMAP: isize = 11;
+    pub const OPENAT: isize = 257;
+    pub const EXIT_GROUP: isize = 231;
+}
+
+/// `PROT_READ | PROT_WRITE` for the anonymous private region source.
+pub const LINUX_PROT_RW: isize = 0x3;
+/// `MAP_PRIVATE | MAP_ANONYMOUS` (anonymous private RW mapping, fd=-1,
+/// offset=0, never MAP_FIXED).
+pub const LINUX_MAP_PRIVATE_ANON: isize = 0x22;
+/// x86-64 raw-syscall error interval is `-4095..=-1` — only those return
+/// values are errno, anything else (incl. high pointers) is a success
+/// value carried bit-exact.
+pub fn linux_is_errno(ret: isize) -> bool {
+    (-4095..=-1).contains(&ret)
+}
+
+#[cfg(target_os = "linux")]
+mod linux_asm {
+    /// Raw syscall wrappers (x86-64 kernel ABI: nr in rax, args
+    /// rdi/rsi/rdx/r10/r8/r9; rcx/r11 clobbered). Stable `core::arch::asm!`
+    /// — no libc `syscall()`, no errno TLS, ever.
+    #[inline]
+    pub unsafe fn syscall1(nr: isize, a1: isize) -> isize {
+        let ret: isize;
+        core::arch::asm!(
+            "syscall",
+            inlateout("rax") nr => ret,
+            in("rdi") a1,
+            lateout("rcx") _, lateout("r11") _,
+            options(nostack)
+        );
+        ret
+    }
+
+    #[inline]
+    pub unsafe fn syscall2(nr: isize, a1: isize, a2: isize) -> isize {
+        let ret: isize;
+        core::arch::asm!(
+            "syscall",
+            inlateout("rax") nr => ret,
+            in("rdi") a1, in("rsi") a2,
+            lateout("rcx") _, lateout("r11") _,
+            options(nostack)
+        );
+        ret
+    }
+
+    #[inline]
+    pub unsafe fn syscall3(nr: isize, a1: isize, a2: isize, a3: isize) -> isize {
+        let ret: isize;
+        core::arch::asm!(
+            "syscall",
+            inlateout("rax") nr => ret,
+            in("rdi") a1, in("rsi") a2, in("rdx") a3,
+            lateout("rcx") _, lateout("r11") _,
+            options(nostack)
+        );
+        ret
+    }
+
+    #[inline]
+    pub unsafe fn syscall4(nr: isize, a1: isize, a2: isize, a3: isize, a4: isize) -> isize {
+        let ret: isize;
+        core::arch::asm!(
+            "syscall",
+            inlateout("rax") nr => ret,
+            in("rdi") a1, in("rsi") a2, in("rdx") a3, in("r10") a4,
+            lateout("rcx") _, lateout("r11") _,
+            options(nostack)
+        );
+        ret
+    }
+
+    #[inline]
+    pub unsafe fn syscall6(
+        nr: isize,
+        a1: isize,
+        a2: isize,
+        a3: isize,
+        a4: isize,
+        a5: isize,
+        a6: isize,
+    ) -> isize {
+        let ret: isize;
+        core::arch::asm!(
+            "syscall",
+            inlateout("rax") nr => ret,
+            in("rdi") a1, in("rsi") a2, in("rdx") a3,
+            in("r10") a4, in("r8") a5, in("r9") a6,
+            lateout("rcx") _, lateout("r11") _,
+            options(nostack)
+        );
+        ret
+    }
+}
+
+/// PLAN-1040: one raw `write` syscall (the runner's console host uses the
+/// same primitive surface as the platform backend — no libc stdio). Only
+/// compiled on Linux; returns the raw kernel value (count or -errno).
+#[cfg(target_os = "linux")]
+pub fn linux_raw_write(fd: i32, buf: usize, len: usize) -> isize {
+    unsafe { linux_asm::syscall3(linux_sysno::WRITE, fd as isize, buf as isize, len as isize) }
+}
+
+/// Discover the page size from THIS process's auxv (`AT_PAGESZ`, key 6)
+/// using only raw syscalls: openat("/proc/self/auxv") + bounded read loop
+/// + close. No `std::fs`, no libc `sysconf`, no cross-arch hardcode. A
+/// process whose /proc is missing gets `None` — the ledger then rejects
+/// mem ops fail-closed instead of guessing.
+#[cfg(target_os = "linux")]
+fn linux_auxv_page_size() -> Option<u32> {
+    use std::sync::OnceLock;
+    static PAGE: OnceLock<Option<u32>> = OnceLock::new();
+    *PAGE.get_or_init(|| {
+        const AT_PAGESZ: isize = 6;
+        const AUXV_PAIRS: usize = 64; // auxv is a few dozen pairs; bound the loop
+        const AT_NULL: isize = 0;
+        let path = b"/proc/self/auxv\0";
+        let fd = unsafe {
+            linux_asm::syscall4(
+                linux_sysno::OPENAT,
+                PROBE_AT_FDCWD as isize,
+                path.as_ptr() as isize,
+                0, // O_RDONLY
+                0,
+            )
+        };
+        if linux_is_errno(fd) {
+            return None;
+        }
+        let mut buf = [0u8; 16 * AUXV_PAIRS];
+        let mut filled = 0usize;
+        while filled < buf.len() {
+            let n = unsafe {
+                linux_asm::syscall3(
+                    linux_sysno::READ,
+                    fd,
+                    buf.as_mut_ptr().add(filled) as isize,
+                    (buf.len() - filled) as isize,
+                )
+            };
+            if linux_is_errno(n) {
+                unsafe { linux_asm::syscall1(linux_sysno::CLOSE, fd) };
+                return None;
+            }
+            if n == 0 {
+                break;
+            }
+            filled += n as usize;
+        }
+        unsafe { linux_asm::syscall1(linux_sysno::CLOSE, fd) };
+        for pair in buf[..filled].chunks_exact(16) {
+            let key = isize::from_ne_bytes(pair[0..8].try_into().ok()?);
+            let val = isize::from_ne_bytes(pair[8..16].try_into().ok()?);
+            if key == AT_NULL {
+                break;
+            }
+            if key == AT_PAGESZ {
+                return u32::try_from(val)
+                    .ok()
+                    .filter(|p| *p > 0 && p.is_power_of_two());
+            }
+        }
+        None
+    })
+}
+
+/// PLAN-1040: the Linux leg of `PlatformIoBackend` — direct kernel entry
+/// points only (write/mmap/munmap/openat/close via raw syscall), page
+/// size from this process's auxv. `std_handle` returns the fixed Linux
+/// std fds (1/2) — no query call exists or is needed.
+#[derive(Debug, Default)]
+pub struct LinuxPlatformIo {
+    pub dispatches: DispatchCounters,
+}
+
+impl LinuxPlatformIo {
+    /// True when this process can actually serve the Linux backend (raw
+    /// syscalls + auxv page size). Hosts use it to fail closed.
+    #[cfg(target_os = "linux")]
+    pub fn available() -> bool {
+        linux_auxv_page_size().is_some()
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub fn available() -> bool {
+        false
+    }
+}
+
+impl PlatformIoBackend for LinuxPlatformIo {
+    #[cfg(target_os = "linux")]
+    fn std_handle(&mut self, stream: StreamKind) -> Result<usize, u32> {
+        self.dispatches.std_handle += 1;
+        Ok(match stream {
+            StreamKind::Stdout => 1,
+            StreamKind::Stderr => 2,
+        })
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn std_handle(&mut self, _stream: StreamKind) -> Result<usize, u32> {
+        self.dispatches.std_handle += 1;
+        Err(PROBE_UNSUPPORTED)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn write_some(
+        &mut self,
+        _stream: StreamKind,
+        os_handle: usize,
+        bytes: &[u8],
+        cancel: &CancelFlag,
+    ) -> Result<usize, u32> {
+        if CancelCheck::poll(cancel) {
+            return Err(125); // ECANCELED
+        }
+        self.dispatches.write_some += 1;
+        if bytes.is_empty() {
+            return Ok(0);
+        }
+        // Bounded EINTR retry: the raw write made no progress when it
+        // returns -EINTR, so restarting the same call is lossless; every
+        // retry re-checks cancellation so the loop cannot spin unbounded.
+        loop {
+            if CancelCheck::poll(cancel) {
+                return Err(125); // ECANCELED
+            }
+            let ret = unsafe {
+                linux_asm::syscall3(
+                    linux_sysno::WRITE,
+                    os_handle as isize,
+                    bytes.as_ptr() as isize,
+                    bytes.len() as isize,
+                )
+            };
+            if ret >= 0 {
+                return Ok(ret as usize);
+            }
+            if linux_is_errno(ret) {
+                let errno = (-ret) as u32;
+                if errno == 4 {
+                    continue; // EINTR with zero progress — retry
+                }
+                return Err(errno);
+            }
+            return Err(linux_non_errno_fault(ret));
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn write_some(
+        &mut self,
+        _stream: StreamKind,
+        _os_handle: usize,
+        _bytes: &[u8],
+        _cancel: &CancelFlag,
+    ) -> Result<usize, u32> {
+        self.dispatches.write_some += 1;
+        Err(PROBE_UNSUPPORTED)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn system_info(&mut self) -> (u32, u32) {
+        self.dispatches.system_info += 1;
+        match linux_auxv_page_size() {
+            Some(page) => (page, page), // mmap granularity == page size on Linux
+            None => (0, 0),
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn system_info(&mut self) -> (u32, u32) {
+        self.dispatches.system_info += 1;
+        (0, 0)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn virtual_alloc(&mut self, commit_bytes: usize) -> Result<*mut u8, u32> {
+        self.dispatches.virtual_alloc += 1;
+        let ret = unsafe {
+            linux_asm::syscall6(
+                linux_sysno::MMAP,
+                0, // addr: kernel chooses (never MAP_FIXED)
+                commit_bytes as isize,
+                LINUX_PROT_RW,
+                LINUX_MAP_PRIVATE_ANON,
+                -1,
+                0,
+            )
+        };
+        if linux_is_errno(ret) {
+            return Err((-ret) as u32);
+        }
+        Ok(ret as usize as *mut u8)
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn virtual_alloc(&mut self, _commit_bytes: usize) -> Result<*mut u8, u32> {
+        self.dispatches.virtual_alloc += 1;
+        Err(PROBE_UNSUPPORTED)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn virtual_free(&mut self, base: *mut u8, mapped_len: usize) -> Result<(), u32> {
+        self.dispatches.virtual_free += 1;
+        let ret =
+            unsafe { linux_asm::syscall2(linux_sysno::MUNMAP, base as isize, mapped_len as isize) };
+        if ret == 0 {
+            return Ok(());
+        }
+        if linux_is_errno(ret) {
+            return Err((-ret) as u32);
+        }
+        Err(linux_non_errno_fault(ret))
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn virtual_free(&mut self, _base: *mut u8, _mapped_len: usize) -> Result<(), u32> {
+        self.dispatches.virtual_free += 1;
+        Err(PROBE_UNSUPPORTED)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn probe_openat(&mut self, dirfd: i32, path: &[u8], flags: i32, mode: i32) -> Result<i32, u32> {
+        if path.len() + 1 > MAX_PROBE_PATH_BYTES + 1 {
+            return Err(36); // ENAMETOOLONG
+        }
+        // NUL-terminate on the OS boundary only (fixed kernel-side buffer).
+        let mut buf = [0u8; MAX_PROBE_PATH_BYTES + 1];
+        buf[..path.len()].copy_from_slice(path);
+        let ret = unsafe {
+            linux_asm::syscall4(
+                linux_sysno::OPENAT,
+                dirfd as isize,
+                buf.as_ptr() as isize,
+                (flags as isize) | 0o2000000, // O_CLOEXEC
+                mode as isize,
+            )
+        };
+        // Raw syscall result crosses in Ok(): positive fd, or the raw
+        // NEGATIVE errno (the probe seam's contract — classification is
+        // the guest's oracle, not a host ERR_* code).
+        Ok(ret as i32)
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn probe_openat(
+        &mut self,
+        _dirfd: i32,
+        _path: &[u8],
+        _flags: i32,
+        _mode: i32,
+    ) -> Result<i32, u32> {
+        Err(PROBE_UNSUPPORTED)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn probe_write_fd(&mut self, fd: i32, bytes: &[u8]) -> Result<i32, u32> {
+        if bytes.is_empty() {
+            return Ok(0);
+        }
+        let ret = unsafe {
+            linux_asm::syscall3(
+                linux_sysno::WRITE,
+                fd as isize,
+                bytes.as_ptr() as isize,
+                bytes.len() as isize,
+            )
+        };
+        Ok(ret as i32)
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn probe_write_fd(&mut self, _fd: i32, _bytes: &[u8]) -> Result<i32, u32> {
+        Err(PROBE_UNSUPPORTED)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn probe_close(&mut self, fd: i32) -> Result<i32, u32> {
+        let ret = unsafe { linux_asm::syscall1(linux_sysno::CLOSE, fd as isize) };
+        Ok(ret as i32)
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn probe_close(&mut self, _fd: i32) -> Result<i32, u32> {
+        Err(PROBE_UNSUPPORTED)
+    }
+}
+
+/// A raw syscall returned a negative value outside the errno interval —
+/// cannot happen on x86-64 Linux; report it as a distinct host fault
+/// instead of misclassifying it. (Only reachable from the linux cfg arms.)
+#[cfg(target_os = "linux")]
+fn linux_non_errno_fault(ret: isize) -> u32 {
+    let bits = ret as u64;
+    u32::try_from(bits & 0xFFFF).unwrap_or(0xFFFF) | 0x0010_4000
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -699,6 +1200,9 @@ pub struct PlatformResourceLedger {
     pub last_os_error: u32,
     pub written_total_bytes: usize,
     pub live_mapped_bytes: usize,
+    /// PLAN-1040 probe seam: cumulative probe bytes per run (defensive
+    /// mirror of the console run budget; probes are internal, not public).
+    pub probe_written_total: usize,
 }
 
 impl PlatformResourceLedger {
@@ -711,6 +1215,7 @@ impl PlatformResourceLedger {
             last_os_error: 0,
             written_total_bytes: 0,
             live_mapped_bytes: 0,
+            probe_written_total: 0,
         }
     }
 
@@ -828,8 +1333,93 @@ impl PlatformResourceLedger {
                 self.op_mem_write_u8(as_i32(&args[0])?, as_i32(&args[1])?, as_i32(&args[2])?)
             }
             PlatformOpKind::MemReadU8 => self.op_mem_read_u8(as_i32(&args[0])?, as_i32(&args[1])?),
+            PlatformOpKind::ProbeOpenat => self.op_probe_openat(
+                backend,
+                as_i32(&args[0])?,
+                as_str_bytes(&args[1])?,
+                as_i32(&args[2])?,
+                as_i32(&args[3])?,
+            ),
+            PlatformOpKind::ProbeWriteFd => {
+                self.op_probe_write_fd(backend, as_i32(&args[0])?, as_str_bytes(&args[1])?)
+            }
+            PlatformOpKind::ProbeClose => self.op_probe_close(backend, as_i32(&args[0])?),
         };
         Ok(code)
+    }
+
+    /// PLAN-1040: probe ops bypass the handle ledger (their fds are raw
+    /// kernel numbers the guest owns explicitly) but keep the pre-OS
+    /// checks: dirfd must be `AT_FDCWD`, the path bounded, the per-run
+    /// probe byte budget enforced, and std fds never closed.
+    fn op_probe_openat(
+        &mut self,
+        backend: &mut dyn PlatformIoBackend,
+        dirfd: i32,
+        path: &[u8],
+        flags: i32,
+        mode: i32,
+    ) -> i32 {
+        if dirfd != PROBE_AT_FDCWD {
+            return ERR_INVALID_VALUE;
+        }
+        if path.is_empty() || path.len() > MAX_PROBE_PATH_BYTES || path.contains(&0) {
+            return ERR_INVALID_BOUNDS;
+        }
+        if flags == 0 || mode < 0 {
+            return ERR_INVALID_VALUE;
+        }
+        match backend.probe_openat(dirfd, path, flags, mode) {
+            Ok(raw) => raw,
+            Err(err) => {
+                self.last_os_error = err;
+                ERR_OS_FAILED
+            }
+        }
+    }
+
+    fn op_probe_write_fd(
+        &mut self,
+        backend: &mut dyn PlatformIoBackend,
+        fd: i32,
+        bytes: &[u8],
+    ) -> i32 {
+        if fd <= 0 {
+            return ERR_INVALID_VALUE;
+        }
+        if bytes.len() > MAX_PLATFORM_CALL_BYTES {
+            return ERR_BUDGET;
+        }
+        let Some(next) = self.probe_written_total.checked_add(bytes.len()) else {
+            return ERR_BUDGET;
+        };
+        if next > MAX_PLATFORM_RUN_BYTES {
+            return ERR_BUDGET;
+        }
+        match backend.probe_write_fd(fd, bytes) {
+            Ok(raw) => {
+                self.probe_written_total = next;
+                raw
+            }
+            Err(err) => {
+                self.last_os_error = err;
+                ERR_OS_FAILED
+            }
+        }
+    }
+
+    fn op_probe_close(&mut self, backend: &mut dyn PlatformIoBackend, fd: i32) -> i32 {
+        if fd <= 2 {
+            // never hand the guest its own std streams to close
+            return ERR_INVALID_VALUE;
+        }
+        match backend.probe_close(fd) {
+            Ok(raw) => raw,
+            Err(err) => {
+                self.last_os_error = err;
+                ERR_OS_FAILED
+            }
+        }
     }
 
     fn op_std_stream(&mut self, backend: &mut dyn PlatformIoBackend, stream: StreamKind) -> i32 {
@@ -969,7 +1559,7 @@ impl PlatformResourceLedger {
                 base, mapped_len, ..
             } => (*base, *mapped_len),
         };
-        match backend.virtual_free(base) {
+        match backend.virtual_free(base, mapped_len) {
             Ok(()) => {
                 if let LedgerPayload::OsMemRegion { released, .. } = &mut self.entries[idx].payload
                 {
@@ -1083,7 +1673,7 @@ impl PlatformResourceLedger {
             } = &mut entry.payload
             {
                 if !*released {
-                    let _ = backend.virtual_free(*base);
+                    let _ = backend.virtual_free(*base, *mapped_len);
                     *released = true;
                     self.live_mapped_bytes = self.live_mapped_bytes.saturating_sub(*mapped_len);
                 }

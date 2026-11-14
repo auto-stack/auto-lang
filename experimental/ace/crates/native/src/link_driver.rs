@@ -683,3 +683,190 @@ pub fn run_pe(exe_path: &Path, budget: Duration, caps: CaptureCaps) -> Result<Pe
         exe_path: exe_path.to_path_buf(),
     })
 }
+
+// ---- PLAN-1040: the Linux ELF link lane ---------------------------------
+
+/// The committed products of a successful `link_elf` call (same shape
+/// and publish/rollback discipline as `PeLink`, ELF flavor).
+#[derive(Debug)]
+pub struct ElfLink {
+    pub exe_path: PathBuf,
+    pub receipt_path: PathBuf,
+}
+
+/// Link ELF64 objects into a static, interpreter-free Linux executable
+/// with the SAME stage/commit/rollback discipline as `link_only`:
+/// content-stable object staging, backup of the previous output,
+/// byte-identical rollback on any publish failure, staged-input
+/// reclamation on every failure path. The linker is the same rust-lld
+/// binary (identity-hashed into receipts) driven in its GNU-ld flavor —
+/// no SDK, no import libraries, no CRT startup files.
+pub fn link_elf(
+    objects: &[ObjectInput],
+    entry_wrapper: &[u8],
+    entry_symbol: &str,
+    workdir: &Path,
+    link_receipt_extra: &str,
+) -> Result<ElfLink, MnError> {
+    let total: usize = objects.iter().map(|o| o.bytes.len()).sum::<usize>() + entry_wrapper.len();
+    if total > MAX_LINK_INPUT_BYTES {
+        return Err(MnError::Resource(
+            "link-input",
+            format!("link inputs total {total} bytes, above the frozen cap"),
+        ));
+    }
+    std::fs::create_dir_all(workdir)
+        .map_err(|e| MnError::Infra(format!("create {}: {e}", workdir.display())))?;
+    let tag = std::process::id();
+    let mut owned: Vec<PathBuf> = Vec::new();
+    let stage: Vec<PathBuf> = std::iter::once(("mn-linux-support".to_string(), entry_wrapper))
+        .chain(objects.iter().map(|o| (o.name.clone(), o.bytes.as_slice())))
+        .enumerate()
+        .map(|(i, (name, bytes))| {
+            let p = workdir.join(format!("{:02}-{}.o", i, safe_name(&name)));
+            let unchanged = std::fs::metadata(&p)
+                .map(|m| m.len() == bytes.len() as u64)
+                .unwrap_or(false)
+                && std::fs::read(&p).map(|prev| prev == bytes).unwrap_or(false);
+            if !unchanged {
+                std::fs::write(&p, bytes)
+                    .map_err(|e| MnError::Infra(format!("stage {}: {e}", p.display())))?;
+            }
+            owned.push(p.clone());
+            Ok(p)
+        })
+        .collect::<Result<Vec<_>, MnError>>()?;
+    let fail = |mut err: MnError, mut owned: Vec<PathBuf>| -> MnError {
+        let mut blocked = Vec::new();
+        for p in owned.drain(..) {
+            if let Some(b) = reclaim(&p) {
+                blocked.push(b);
+            }
+        }
+        if !blocked.is_empty() {
+            let msg = format!(
+                "{}; staged files NOT reclaimed (release the blocking handles, then remove): {}",
+                err.message(),
+                blocked.join(", ")
+            );
+            err = match err {
+                MnError::Infra(_) => MnError::Infra(msg),
+                other => other,
+            };
+        }
+        err
+    };
+
+    // Same rust-lld binary as the Windows lane (identity = its content
+    // hash); the Linux link needs no SDK, no import libs, no CRT files.
+    let (lld, _sdk) = located_tools()?;
+    let tmp_exe = workdir.join(format!(".tmp-mn8-elf-{tag}"));
+    owned.push(tmp_exe.clone());
+    let tmp_receipt = workdir.join(format!(".tmp-mn8-elf-link-{tag}.txt"));
+    owned.push(tmp_receipt.clone());
+    let exe_path = workdir.join(format!("mn8-elf-out-{tag}.elf"));
+    let receipt_path = workdir.join(".mn-link.txt");
+    let backup = workdir.join(format!(".tmp-mn8-old-elf-{tag}.elf"));
+
+    let mut cmd = Command::new(&lld);
+    cmd.args(["-flavor", "ld"]);
+    cmd.arg(format!("--entry={entry_symbol}"));
+    cmd.arg("-o").arg(tmp_exe.display().to_string());
+    for obj in &stage {
+        cmd.arg(obj.display().to_string());
+    }
+    let linked = match run_deadlined_captured(
+        &mut cmd,
+        link_wall(),
+        CaptureCaps {
+            stdout_max: STREAM_CAP,
+            stderr_max: STREAM_CAP,
+        },
+    ) {
+        Ok(r) => r,
+        Err(e) => return Err(fail(MnError::Infra(format!("rust-lld(elf): {e:?}")), owned)),
+    };
+    if linked.exit_code != Some(0) {
+        return Err(fail(
+            MnError::Infra(format!(
+                "rust-lld(elf) exit {:?}: {}",
+                linked.exit_code,
+                String::from_utf8_lossy(&linked.stderr).trim()
+            )),
+            owned,
+        ));
+    }
+
+    // ---- publish: stage receipt -> backup old -> place -> drop backup -----
+    let receipt = format!(
+        "PLAN-1040 elf link receipt\nlinker: {}\nentry: {}\nobjs: {}\n{}\n",
+        lld.display(),
+        entry_symbol,
+        stage.len(),
+        link_receipt_extra,
+    );
+    if let Err(e) = std::fs::write(&tmp_receipt, receipt) {
+        return Err(fail(MnError::Infra(format!("stage receipt: {e}")), owned));
+    }
+    let had_old = exe_path.is_file();
+    if had_old {
+        if let Err(e) = std::fs::rename(&exe_path, &backup) {
+            return Err(fail(
+                MnError::Infra(format!("backup old output: {e}")),
+                owned,
+            ));
+        }
+        owned.push(backup.clone());
+    }
+    if let Err(e) = std::fs::rename(&tmp_exe, &exe_path) {
+        let mut restore_note = String::new();
+        if had_old {
+            match std::fs::rename(&backup, &exe_path) {
+                Ok(()) => {
+                    owned.retain(|p| p != &backup);
+                }
+                Err(re) => {
+                    restore_note = format!(
+                        "; old output backup survives at {} ({re})",
+                        backup.display()
+                    )
+                }
+            }
+        }
+        return Err(fail(
+            MnError::Infra(format!("publish staged exe: {e}{restore_note}")),
+            owned,
+        ));
+    }
+    owned.retain(|p| p != &tmp_exe);
+    if let Err(e) = std::fs::rename(&tmp_receipt, &receipt_path) {
+        let rollback_note = if had_old {
+            let _ = std::fs::rename(&backup, &exe_path);
+            owned.retain(|p| p != &backup);
+            "; old output restored"
+        } else {
+            let _ = std::fs::remove_file(&exe_path);
+            "; new output removed (no previous output)"
+        };
+        return Err(fail(
+            MnError::Infra(format!("publish receipt: {e}{rollback_note}")),
+            owned,
+        ));
+    }
+    owned.retain(|p| p != &tmp_receipt);
+    if had_old {
+        if let Some(b) = reclaim(&backup) {
+            eprintln!("mn8 elf link: backup not reclaimed after commit: {b}");
+        }
+        owned.retain(|p| p != &backup);
+    }
+    for p in &stage {
+        let _ = reclaim(p);
+    }
+    owned.clear();
+
+    Ok(ElfLink {
+        exe_path,
+        receipt_path,
+    })
+}

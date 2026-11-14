@@ -173,10 +173,73 @@ impl CoffMeta {
     }
 }
 
+/// PLAN-1040: which object format a unit artifact carries — the Windows
+/// lane stays exactly the frozen `mn-coff 1` carrier; the Linux lane is
+/// a separate `mn-elf 1` carrier with its own layer, schema and
+/// structural admission (a COFF payload offered to an ELF slot fails on
+/// magic and the reverse).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnitFormat {
+    Coff,
+    Elf,
+}
+
+impl UnitFormat {
+    fn layer(self) -> &'static ace_artifacts::schema::LayerSpec {
+        match self {
+            UnitFormat::Coff => &COFF_LAYER,
+            UnitFormat::Elf => &crate::config::ELF_UNIT_LAYER,
+        }
+    }
+    fn schema(self) -> &'static str {
+        match self {
+            UnitFormat::Coff => COFF_SCHEMA,
+            UnitFormat::Elf => crate::config::ELF_UNIT_SCHEMA,
+        }
+    }
+    fn carrier(self) -> &'static str {
+        match self {
+            UnitFormat::Coff => "mn-coff 1",
+            UnitFormat::Elf => "mn-elf 1",
+        }
+    }
+}
+
+impl CoffMeta {
+    /// PLAN-1040: the Linux-target twin of [`CoffMeta::for_unit`] — the
+    /// same axes with the Linux target/ABI/runtime identity (never the
+    /// Windows constants), so cache keys can never collide across targets.
+    pub fn for_unit_elf(unit: &MirModule, fp: String) -> Result<Self, MnError> {
+        let f = &unit.funcs[0];
+        Ok(CoffMeta {
+            owner: unit.owner.clone(),
+            unit: f.name.clone(),
+            symbol: symbols::function_symbol(&unit.owner, &f.name),
+            fp,
+            abi: crate::config::MN_ABI_LINUX.to_string(),
+            target: crate::config::MN_TARGET_LINUX.to_string(),
+            flags: MN_FLAGS.to_string(),
+            backend: MN_BACKEND_TAG.to_string(),
+            runtime: crate::config::MN_RUNTIME_TAG_LINUX.to_string(),
+            mir_schema: MIR_SCHEMA_AXIS.to_string(),
+            mir_semantics: MIR_SEMANTICS_AXIS.to_string(),
+        })
+    }
+}
+
 /// A09' lookup key of one unit (all contract §9.2 axes).
 pub fn coff_unit_key(meta: &CoffMeta) -> QueryKey {
+    unit_key(meta, UnitFormat::Coff)
+}
+
+/// PLAN-1040: the A09-ELF lookup key (same axes, its own layer).
+pub fn elf_unit_key(meta: &CoffMeta) -> QueryKey {
+    unit_key(meta, UnitFormat::Elf)
+}
+
+fn unit_key(meta: &CoffMeta, format: UnitFormat) -> QueryKey {
     QueryKey::new(
-        &COFF_LAYER,
+        format.layer(),
         vec![
             ("producer".into(), PRODUCER_ID.into()),
             (
@@ -200,6 +263,12 @@ fn page_key(base: &QueryKey, page: u32) -> QueryKey {
     let mut comps = base.components.clone();
     comps.push(("page".into(), page.to_string()));
     QueryKey::new(&COFF_LAYER, comps)
+}
+
+fn page_key_in(base: &QueryKey, page: u32, format: UnitFormat) -> QueryKey {
+    let mut comps = base.components.clone();
+    comps.push(("page".into(), page.to_string()));
+    QueryKey::new(format.layer(), comps)
 }
 
 fn collections_meta(meta: &CoffMeta) -> bool {
@@ -242,9 +311,20 @@ fn unesc(s: &str) -> String {
 }
 
 fn header_lines(meta: &CoffMeta, sha: &str, len: usize, pages: usize) -> String {
+    header_lines_for(meta, sha, len, pages, UnitFormat::Coff)
+}
+
+fn header_lines_for(
+    meta: &CoffMeta,
+    sha: &str,
+    len: usize,
+    pages: usize,
+    format: UnitFormat,
+) -> String {
     format!(
-        "mn-coff 1\nschema {}\nproducer {}\nowner {}|{}\nunit {}\nsymbol {}\nfp {}\nabi {}\ntarget {}\nflags {}\nbackend {}\nruntime {}\nmir-schema {}\nmir-semantics {}\nsha256 {}\nlen {}\npages {}\n",
-        COFF_SCHEMA,
+        "{}\nschema {}\nproducer {}\nowner {}|{}\nunit {}\nsymbol {}\nfp {}\nabi {}\ntarget {}\nflags {}\nbackend {}\nruntime {}\nmir-schema {}\nmir-semantics {}\nsha256 {}\nlen {}\npages {}\n",
+        format.carrier(),
+        format.schema(),
         PRODUCER_ID,
         esc(&meta.owner.schema),
         esc(&meta.owner.module),
@@ -265,11 +345,24 @@ fn header_lines(meta: &CoffMeta, sha: &str, len: usize, pages: usize) -> String 
 }
 
 fn parse_header(bytes: &[u8]) -> Result<(Vec<(String, String)>, usize), MnError> {
-    const TAG: &[u8] = b"mn-coff 1\n";
-    let Some(rest) = bytes.strip_prefix(TAG) else {
+    parse_header_for(bytes, UnitFormat::Coff)
+}
+
+fn parse_header_for(
+    bytes: &[u8],
+    format: UnitFormat,
+) -> Result<(Vec<(String, String)>, usize), MnError> {
+    let tag: &[u8] = match format {
+        UnitFormat::Coff => b"mn-coff 1\n",
+        UnitFormat::Elf => b"mn-elf 1\n",
+    };
+    let Some(rest) = bytes.strip_prefix(tag) else {
         return Err(MnError::Admit(
             "envelope",
-            "payload is not an mn-coff/1 envelope".to_string(),
+            format!(
+                "payload is not an {} envelope",
+                String::from_utf8_lossy(tag).trim()
+            ),
         ));
     };
     // The header block ends at the first empty line ("\n\n").
@@ -297,7 +390,7 @@ fn parse_header(bytes: &[u8]) -> Result<(Vec<(String, String)>, usize), MnError>
         };
         fields.push((k.to_string(), v.to_string()));
     }
-    Ok((fields, header_end + TAG.len()))
+    Ok((fields, header_end + tag.len()))
 }
 
 fn field<'a>(fields: &'a [(String, String)], k: &str) -> Result<&'a str, MnError> {
@@ -426,6 +519,86 @@ pub fn get_unit_coff_by_id(
     admit_payload(meta, &art.payload, &key, store)
 }
 
+/// PLAN-1040: store one unit's ELF64 object under the A09-ELF layer
+/// (`mn-elf 1` carrier; same paging discipline as the COFF lane).
+pub fn put_unit_elf(
+    store: &ManagedStore,
+    project: Option<&str>,
+    meta: &CoffMeta,
+    elf: &[u8],
+) -> Result<(String, Vec<String>), MnError> {
+    if elf.len() > MAX_COFF_BYTES {
+        return Err(MnError::Resource(
+            "object-size",
+            format!("ELF for `{}` exceeds the frozen cap", meta.unit),
+        ));
+    }
+    if meta.target != crate::config::MN_TARGET_LINUX {
+        return Err(MnError::Admit(
+            "target",
+            "elf unit cache accepts only the frozen Linux target meta".to_string(),
+        ));
+    }
+    let sha = content_hash(elf);
+    let pages = elf.len().div_ceil(PAGE_BYTES).max(1);
+    let key = elf_unit_key(meta);
+    let header = header_lines_for(meta, &sha, elf.len(), pages, UnitFormat::Elf);
+    let mut first_id = None;
+    let mut extra_ids = Vec::new();
+    for i in 0..pages {
+        let chunk = &elf[i * PAGE_BYTES..((i + 1) * PAGE_BYTES).min(elf.len())];
+        let payload = if i == 0 {
+            let mut p = header.clone().into_bytes();
+            p.push(b'\n');
+            p.extend_from_slice(chunk);
+            p
+        } else {
+            chunk.to_vec()
+        };
+        let k = if i == 0 {
+            key.clone()
+        } else {
+            page_key_in(&key, i as u32, UnitFormat::Elf)
+        };
+        let art = store
+            .put_artifact(PutRequest {
+                layer: UnitFormat::Elf.layer().id,
+                key: k,
+                kind: ChunkKind::LayoutData,
+                payload,
+                edges: vec![],
+                project: project.map(|s| s.to_string()),
+            })
+            .map_err(|e| MnError::Infra(format!("store put: {e}")))?;
+        if i == 0 {
+            first_id = Some(art);
+        } else {
+            extra_ids.push(art);
+        }
+    }
+    Ok((first_id.expect("pages >= 1"), extra_ids))
+}
+
+/// PLAN-1040: restore one unit's ELF64 object by its base key — `None` on
+/// a clean miss; a present-but-wrong artifact is a controlled rejection
+/// (identity axes + sha/len bind + structural ELF admission).
+pub fn get_unit_elf(store: &ManagedStore, meta: &CoffMeta) -> Result<Option<Vec<u8>>, MnError> {
+    let key = elf_unit_key(meta);
+    let Some(first) = store
+        .get_artifact(UnitFormat::Elf.layer().id, &key)
+        .map_err(|e| MnError::Infra(format!("store get: {e}")))?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(admit_payload_for(
+        meta,
+        &first.payload,
+        &key,
+        store,
+        UnitFormat::Elf,
+    )?))
+}
+
 /// Required continuation pages for a re-admitted collections COFF. The old
 /// manifest format is untouched; new closures pin the entire paged payload on
 /// hits as well as misses, so GC cannot collect a live continuation page.
@@ -462,7 +635,17 @@ fn admit_payload(
     key: &QueryKey,
     store: &ManagedStore,
 ) -> Result<Vec<u8>, MnError> {
-    let (fields, body_start) = parse_header(payload)?;
+    admit_payload_for(meta, payload, key, store, UnitFormat::Coff)
+}
+
+fn admit_payload_for(
+    meta: &CoffMeta,
+    payload: &[u8],
+    key: &QueryKey,
+    store: &ManagedStore,
+    format: UnitFormat,
+) -> Result<Vec<u8>, MnError> {
+    let (fields, body_start) = parse_header_for(payload, format)?;
     let expect = |k: &'static str, want: &str| -> Result<(), MnError> {
         let got = field(&fields, k)?;
         if got != want {
@@ -473,7 +656,7 @@ fn admit_payload(
         }
         Ok(())
     };
-    expect("schema", COFF_SCHEMA)?;
+    expect("schema", format.schema())?;
     expect("producer", PRODUCER_ID)?;
     expect(
         "owner",
@@ -528,15 +711,15 @@ fn admit_payload(
     }
     let mut body = payload[body_start..].to_vec();
     for i in 1..pages {
-        let pk = page_key(key, i as u32);
+        let pk = page_key_in(key, i as u32, format);
         let Some(page) = (if bounded {
             store.get_artifact_bounded(
-                COFF_LAYER.id,
+                format.layer().id,
                 &pk,
                 (PAGE_BYTES + ace_artifacts::codec::CHUNK_HEADER_LEN) as u64,
             )
         } else {
-            store.get_artifact(COFF_LAYER.id, &pk)
+            store.get_artifact(format.layer().id, &pk)
         })
         .map_err(|e| MnError::Infra(format!("store get page {i}: {e}")))?
         else {
@@ -572,9 +755,20 @@ fn admit_payload(
             format!("restored object hashes to {actual}, header claims {sha}"),
         ));
     }
-    // Structural relocatable-COFF admission (798-delivered checker).
-    ace_av::coff_admission::check_coff_relocatable(&body)
-        .map_err(|e| MnError::Admit("coff", e.to_string()))?;
+    // Structural relocatable admission: the delivered COFF checker for
+    // the Windows carrier, the PLAN-1040 ELF checker for the Linux one
+    // (a COFF payload offered to an ELF slot fails on magic, and the
+    // reverse).
+    match format {
+        UnitFormat::Coff => {
+            ace_av::coff_admission::check_coff_relocatable(&body)
+                .map_err(|e| MnError::Admit("coff", e.to_string()))?;
+        }
+        UnitFormat::Elf => {
+            ace_av::elf_admission::check_elf_relocatable(&body)
+                .map_err(|e| MnError::Admit("elf", e.to_string()))?;
+        }
+    }
     Ok(body)
 }
 

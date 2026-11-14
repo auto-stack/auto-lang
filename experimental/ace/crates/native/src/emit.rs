@@ -26,13 +26,27 @@ fn triple() -> Result<Triple, MnError> {
 }
 
 pub(crate) fn make_isa() -> Result<cranelift_codegen::isa::OwnedTargetIsa, MnError> {
+    make_isa_for(crate::mn_target::MnOsTarget::WinMsvc)
+}
+
+/// PLAN-1040: ISA selection per admitted target — the frozen Windows
+/// constants for `WinMsvc`, the frozen Linux triple for `LinuxGnu`
+/// (`cranelift-object` then emits ELF64 instead of COFF). Never the host
+/// triple silently; flags stay the frozen contract pair.
+pub fn make_isa_for(
+    target: crate::mn_target::MnOsTarget,
+) -> Result<cranelift_codegen::isa::OwnedTargetIsa, MnError> {
     let mut b = cranelift_codegen::settings::builder();
     b.set("opt_level", "none")
         .and_then(|_| b.set("is_pic", "false"))
         .map_err(|e| MnError::Backend(format!("flags: {e}")))?;
     let flags = cranelift_codegen::settings::Flags::new(b);
-    let builder = cranelift_codegen::isa::lookup(triple()?)
-        .map_err(|e| MnError::Infra(format!("ISA lookup for {MN_TARGET}: {e:?}")))?;
+    let triple_str = target.triple();
+    let parsed: Triple = triple_str
+        .parse()
+        .map_err(|e| MnError::Infra(format!("target triple {triple_str} rejected: {e:?}")))?;
+    let builder = cranelift_codegen::isa::lookup(parsed)
+        .map_err(|e| MnError::Infra(format!("ISA lookup for {triple_str}: {e:?}")))?;
     builder
         .finish(flags)
         .map_err(|e| MnError::Backend(format!("isa finish: {e}")))
@@ -44,6 +58,17 @@ pub(crate) fn make_isa() -> Result<cranelift_codegen::isa::OwnedTargetIsa, MnErr
 /// RecordView cross as one I64 address; a Record RESULT crosses through a
 /// trailing hidden `*mut` out parameter. Win x64 call conv.
 pub fn cranelift_sig_of(module: &MirModule, ty: u32) -> Result<Signature, MnError> {
+    cranelift_sig_of_for(module, ty, WINCALL)
+}
+
+/// PLAN-1040: the same private-ABI carrier mapping under a target-chosen
+/// call convention (`WindowsFastcall` for the frozen Windows target,
+/// `SystemV` for the Linux ELF target). Value surface is identical.
+pub fn cranelift_sig_of_for(
+    module: &MirModule,
+    ty: u32,
+    conv: CallConv,
+) -> Result<Signature, MnError> {
     let Some(sig) = module.sig_of(ty) else {
         return Err(MnError::Unsupported(
             "fn-sig",
@@ -122,15 +147,19 @@ pub fn cranelift_sig_of(module: &MirModule, ty: u32) -> Result<Signature, MnErro
         }
     };
     Ok(Signature {
-        call_conv: WINCALL,
+        call_conv: conv,
         params,
         returns: ret,
     })
 }
 
 fn exit_sig() -> Signature {
+    exit_sig_for(WINCALL)
+}
+
+fn exit_sig_for(conv: CallConv) -> Signature {
     Signature {
-        call_conv: WINCALL,
+        call_conv: conv,
         params: vec![AbiParam::new(cranelift_codegen::ir::types::I32)],
         returns: vec![],
     }
@@ -219,7 +248,10 @@ pub fn admit_console_unit(unit: &MirModule) -> Result<(), MnError> {
                     let Some(spec) = ace_av_core::platform_io::lookup_symbol(&h.symbol) else {
                         return Err(MnError::Unsupported(
                             "host-console",
-                            format!("host symbol `{}` is not a supported platform.* symbol", h.symbol),
+                            format!(
+                                "host symbol `{}` is not a supported platform.* symbol",
+                                h.symbol
+                            ),
                         ));
                     };
                     if let Err(err) = ace_av_core::platform_io::validate_import(unit, h, spec) {
@@ -237,7 +269,10 @@ pub fn admit_console_unit(unit: &MirModule) -> Result<(), MnError> {
                     if !unit.capabilities.iter().any(|c| c == spec.capability) {
                         return Err(MnError::Unsupported(
                             "host-console",
-                            format!("missing capability `{}` for `{}`", spec.capability, h.symbol),
+                            format!(
+                                "missing capability `{}` for `{}`",
+                                spec.capability, h.symbol
+                            ),
                         ));
                     }
                 }
@@ -349,8 +384,15 @@ pub struct UnitObject {
 
 /// Lower and emit one verified MIR unit to a relocatable COFF object.
 pub fn emit_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
-    emit_unit_coff_impl(unit, None, None, lower::LowerMode::Numeric, false)
-        .map(|(object, _)| object)
+    emit_unit_coff_impl(
+        unit,
+        None,
+        None,
+        lower::LowerMode::Numeric,
+        false,
+        crate::mn_target::MnOsTarget::WinMsvc,
+    )
+    .map(|(object, _)| object)
 }
 
 /// PLAN-947: lower and emit one host-console unit. Console admission is a
@@ -359,7 +401,30 @@ pub fn emit_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
 /// entry admits ONLY the host-console profile and emits console/1 host
 /// calls against the console shim import.
 pub fn emit_console_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
-    emit_unit_coff_impl(unit, None, None, lower::LowerMode::Console, true).map(|(object, _)| object)
+    emit_unit_coff_impl(
+        unit,
+        None,
+        None,
+        lower::LowerMode::Console,
+        true,
+        crate::mn_target::MnOsTarget::WinMsvc,
+    )
+    .map(|(object, _)| object)
+}
+
+/// PLAN-1040: lower and emit one host-console unit for the Linux x86-64
+/// ELF target (System V carriers, `mn_exit` trap import). Same admission
+/// door, same value surface — only the target object format differs.
+pub fn emit_console_unit_elf(unit: &MirModule) -> Result<UnitObject, MnError> {
+    emit_unit_coff_impl(
+        unit,
+        None,
+        None,
+        lower::LowerMode::Console,
+        true,
+        crate::mn_target::MnOsTarget::LinuxGnu,
+    )
+    .map(|(object, _)| object)
 }
 
 /// PLAN-1000 F-1000-01 (owner option a): the trap-probe observation build
@@ -369,8 +434,15 @@ pub fn emit_console_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
 /// published and never production artifacts; only `MnDriver::trap_probe`
 /// links and runs them.
 pub fn emit_unit_coff_trap_probe(unit: &MirModule) -> Result<UnitObject, MnError> {
-    emit_unit_coff_impl(unit, None, None, lower::LowerMode::TrapProbe, false)
-        .map(|(object, _)| object)
+    emit_unit_coff_impl(
+        unit,
+        None,
+        None,
+        lower::LowerMode::TrapProbe,
+        false,
+        crate::mn_target::MnOsTarget::WinMsvc,
+    )
+    .map(|(object, _)| object)
 }
 
 pub fn emit_foreign_unit_coff(
@@ -383,6 +455,7 @@ pub fn emit_foreign_unit_coff(
         None,
         lower::LowerMode::Numeric,
         false,
+        crate::mn_target::MnOsTarget::WinMsvc,
     )
     .map(|(object, _)| object)
 }
@@ -399,6 +472,7 @@ pub fn emit_foreign_unit_coff_reserved(
         Some(resources),
         lower::LowerMode::Numeric,
         false,
+        crate::mn_target::MnOsTarget::WinMsvc,
     )?;
     Ok((object, reservation.expect("host-backed COFF reservation")))
 }
@@ -430,6 +504,7 @@ fn emit_unit_coff_impl(
     resources: Option<&ace_source_query::resources::Resources>,
     mode: lower::LowerMode,
     console: bool,
+    target: crate::mn_target::MnOsTarget,
 ) -> Result<(UnitObject, Option<ace_source_query::resources::Reservation>), MnError> {
     if console {
         admit_console_unit(unit)?;
@@ -458,22 +533,27 @@ fn emit_unit_coff_impl(
         None => None,
     };
     let f = &unit.funcs[0];
-    let isa = make_isa()?;
+    let conv = target.call_conv();
+    let isa = make_isa_for(target)?;
     let obj_name = format!("mn8-{}", f.name);
     let builder = ObjectBuilder::new(isa, obj_name, default_libcall_names())
         .map_err(|e| MnError::Backend(format!("object builder: {e}")))?;
     let mut om = ObjectModule::new(builder);
 
+    // PLAN-1040: the trap exit import is target-chosen — Windows keeps
+    // `ExitProcess`; the Linux target calls the raw `mn_exit` stub of the
+    // linux support object (`exit_group`), never a CRT exit.
+    let exit_import = target.exit_import();
     let exit_id = om
-        .declare_function("ExitProcess", Linkage::Import, &exit_sig())
-        .map_err(|e| MnError::Backend(format!("declare ExitProcess: {e}")))?;
+        .declare_function(exit_import, Linkage::Import, &exit_sig_for(conv))
+        .map_err(|e| MnError::Backend(format!("declare {exit_import}: {e}")))?;
 
     // Imports first: logical symbols per the scheme.
     let mut import_ids = Vec::with_capacity(unit.imports.len());
     let mut import_syms = Vec::with_capacity(unit.imports.len());
     for imp in &unit.imports {
         let logical = symbols::import_symbol(&unit.owner, &imp.symbol)?;
-        let sig = cranelift_sig_of(unit, imp.sig)?;
+        let sig = cranelift_sig_of_for(unit, imp.sig, conv)?;
         let id = om
             .declare_function(&logical, Linkage::Import, &sig)
             .map_err(|e| MnError::Backend(format!("declare import {}: {e}", logical)))?;
@@ -534,7 +614,7 @@ fn emit_unit_coff_impl(
         }
     }
 
-    let fn_sig = cranelift_sig_of(unit, f.sig)?;
+    let fn_sig = cranelift_sig_of_for(unit, f.sig, conv)?;
     let symbol = symbols::function_symbol(&unit.owner, &f.name);
     let fid = om
         .declare_function(&symbol, Linkage::Export, &fn_sig)
@@ -550,7 +630,7 @@ fn emit_unit_coff_impl(
         });
         if uses_host {
             let sig = Signature {
-                call_conv: WINCALL,
+                call_conv: conv,
                 params: vec![
                     AbiParam::new(cranelift_codegen::ir::types::I32),
                     AbiParam::new(cranelift_codegen::ir::types::I64),
@@ -591,6 +671,7 @@ fn emit_unit_coff_impl(
         // PLAN-947: the console lane passes `Console` with the shim ref.
         mode,
         console_write,
+        conv,
     )
     .map_err(|e| MnError::Backend(e))?;
     om.define_function(fid, &mut ctx)

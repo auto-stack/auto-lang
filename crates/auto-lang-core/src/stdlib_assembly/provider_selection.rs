@@ -344,12 +344,28 @@ pub fn platform_io_providers() -> Vec<ProviderDecl> {
             abi: ProviderAbi::PlatformAbi,
             platforms: vec![Platform::windows()],
         },
+        // PLAN-1040: the Linux x86-64 twin — thin raw-syscall adapters
+        // (no libc/LibcCompat fallback exists for either platform).
+        ProviderDecl {
+            provider: "os-linux".into(),
+            module: "platform.io".into(),
+            origin: ProviderOrigin::PlatformAdapter,
+            abi: ProviderAbi::PlatformAbi,
+            platforms: vec![Platform::linux()],
+        },
+        ProviderDecl {
+            provider: "os-linux".into(),
+            module: "platform.mem".into(),
+            origin: ProviderOrigin::PlatformAdapter,
+            abi: ProviderAbi::PlatformAbi,
+            platforms: vec![Platform::linux()],
+        },
         ProviderDecl {
             provider: "auto".into(),
             module: "platform.mem.wrapper".into(),
             origin: ProviderOrigin::OwnAuto,
             abi: ProviderAbi::AutoAbi,
-            platforms: vec![Platform::windows()],
+            platforms: vec![Platform::windows(), Platform::linux()],
         },
     ]
 }
@@ -405,7 +421,12 @@ pub fn select_platform_io(
     axes: AssemblyAxes,
     granted: &[String],
 ) -> Result<Vec<SelectionRecord>, SelectionError> {
-    select(&platform_io_providers(), axes, &platform_io_requests(), granted)
+    select(
+        &platform_io_providers(),
+        axes,
+        &platform_io_requests(),
+        granted,
+    )
 }
 
 #[cfg(test)]
@@ -690,13 +711,32 @@ mod plan947_tests {
         .unwrap_err();
         assert_eq!(err.code(), "assembly.missing-grant");
 
-        // Unsupported target or explicit libcCompat request fails closed.
-        let err_linux = select_platform_io(
-            axes(Platform::windows(), Platform::linux()),
+        // PLAN-1040: the Linux x86-64 target now selects the os-linux
+        // raw-syscall adapters (same five records, PlatformAdapter ABI);
+        // an unsupported target still fails closed with no libc fallback.
+        for backend in [Backend::Av, Backend::Native] {
+            let recs = select_platform_io(
+                AssemblyAxes {
+                    backend,
+                    host: Platform::windows(),
+                    target: Platform::linux(),
+                },
+                &grants,
+            )
+            .unwrap();
+            assert_eq!(recs.len(), 5);
+            assert_eq!(recs[0].provider, "os-linux");
+            assert_eq!(recs[0].abi, ProviderAbi::PlatformAbi);
+            assert_eq!(recs[3].provider, "os-linux");
+            assert_eq!(recs[4].provider, "auto");
+            assert_eq!(recs[4].abi, ProviderAbi::AutoAbi);
+        }
+        let err_unsupported = select_platform_io(
+            axes(Platform::windows(), Platform { os: Os::Macos }),
             &grants,
         )
         .unwrap_err();
-        assert_eq!(err_linux.code(), "assembly.no-provider");
+        assert_eq!(err_unsupported.code(), "assembly.no-provider");
 
         let mut providers = platform_io_providers();
         providers.push(foreign("platform.io", Os::Windows, "libc"));

@@ -564,6 +564,7 @@ pub fn emit_typed_unit_coff(unit: &MirModule, is_entry: bool) -> Result<TypedUni
         &mut ctx,
         LowerMode::Typed,
         None,
+        cranelift_codegen::isa::CallConv::WindowsFastcall,
     )
     .map_err(|e| MnError::Backend(e))?;
     om.define_function(fid, &mut ctx)

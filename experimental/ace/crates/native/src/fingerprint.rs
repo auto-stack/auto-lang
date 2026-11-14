@@ -269,7 +269,14 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
             let h = m
                 .host_imports
                 .get(*host as usize)
-                .map(|hi| format!("{}:{}:{}", escape(&hi.category), escape(&hi.symbol), escape(&hi.capability)))
+                .map(|hi| {
+                    format!(
+                        "{}:{}:{}",
+                        escape(&hi.category),
+                        escape(&hi.symbol),
+                        escape(&hi.capability)
+                    )
+                })
                 .unwrap_or_else(|| format!("host#{host}"));
             format!(
                 "platform_call {} <- {} ({})",

@@ -18,3 +18,9 @@ path = "tests/conformance.rs"
 [[test]]
 name = "foreign_resources"
 path = "tests/foreign_resources.rs"
+
+# PLAN-1040: the Linux AV runner — a static musl binary executing the
+# shared checked console ABC on the real Linux platform backend.
+[[bin]]
+name = "mn-linux-av-runner"
+path = "src/bin/mn-linux-av-runner.rs"

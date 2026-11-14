@@ -283,14 +283,10 @@ fn audit1027_utf_01() {
         );
         let src_b = src_a.replace(&format!("\"{a_ch}\""), &format!("\"{b_ch}\""));
         let dir_warm = scratch(&format!("utf01-warm-{tag}"));
-        let (mut session, cold) =
-            ace_native::closures_incremental::ClosuresNativeSession::new(
-                &src_a,
-                "main",
-                &dir_warm,
-                None,
-            )
-            .expect("cold start");
+        let (mut session, cold) = ace_native::closures_incremental::ClosuresNativeSession::new(
+            &src_a, "main", &dir_warm, None,
+        )
+        .expect("cold start");
         assert_eq!(cold.exit_code, Some(41));
         let cold_hashes = session.object_hashes();
 
@@ -328,10 +324,7 @@ fn audit1027_utf_01() {
         let dir_fresh = scratch(&format!("utf01-fresh-{tag}"));
         let (mut fresh_b, fresh_run) =
             ace_native::closures_incremental::ClosuresNativeSession::new(
-                &src_b,
-                "main",
-                &dir_fresh,
-                None,
+                &src_b, "main", &dir_fresh, None,
             )
             .expect("fresh B");
         assert_eq!(fresh_run.exit_code, Some(42));
@@ -355,14 +348,18 @@ fn audit1027_utf_01() {
         let src_b = src_a.replacen(&format!("\"{a_ch}\""), &format!("\"{b_ch}\""), 1);
         let src_c = src_b.replacen(&format!("注释 {a_ch}"), &format!("注释 {b_ch}"), 1);
         let dir = scratch(&format!("utf01-same-{tag}"));
-        let (mut session, cold) =
-            ace_native::closures_incremental::ClosuresNativeSession::new(&src_a, "main", &dir, None)
-                .expect("cold");
+        let (mut session, cold) = ace_native::closures_incremental::ClosuresNativeSession::new(
+            &src_a, "main", &dir, None,
+        )
+        .expect("cold");
         assert_eq!(cold.exit_code, Some(42));
 
         let warm_b = session.apply_source(&src_b).expect("warm literal");
         assert_eq!(warm_b.exit_code, Some(42));
-        assert_eq!(warm_b.work.codegen_units, vec!["d___closure_main_0".to_string()]);
+        assert_eq!(
+            warm_b.work.codegen_units,
+            vec!["d___closure_main_0".to_string()]
+        );
         let hit_b = session.apply_source(&src_b).expect("hit literal");
         assert_eq!(hit_b.work.route, "hit");
         assert!(hit_b.work.codegen_units.is_empty());
@@ -376,10 +373,7 @@ fn audit1027_utf_01() {
         let dir_fresh = scratch(&format!("utf01-fresh-same-{tag}"));
         let (mut fresh_c, fresh_run) =
             ace_native::closures_incremental::ClosuresNativeSession::new(
-                &src_c,
-                "main",
-                &dir_fresh,
-                None,
+                &src_c, "main", &dir_fresh, None,
             )
             .expect("fresh C");
         assert_eq!(fresh_run.exit_code, Some(42));
@@ -409,7 +403,9 @@ fn audit1027_utf_01() {
         assert_eq!(run.exit_code, Some(42));
         assert!(run.work.codegen_units.is_empty());
 
-        let warm = session.apply_source(&src_b).expect("warm edit after restore");
+        let warm = session
+            .apply_source(&src_b)
+            .expect("warm edit after restore");
         assert_eq!(warm.exit_code, Some(42));
         assert_eq!(
             warm.work.codegen_units,

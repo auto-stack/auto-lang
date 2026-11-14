@@ -547,7 +547,10 @@ fn mir_native_source_memo_hot_round_skips_frontend_and_stays_correct() {
     let warm = d.request(src, "d_main", &[], &workdir_of(&root, "w0"), None);
     assert!(warm.ok, "{:?}", warm.error);
     assert_eq!(warm.exit_code, Some(42));
-    assert_eq!(*warm.obs.counters.get("codegen_emit_units").unwrap_or(&0), 2);
+    assert_eq!(
+        *warm.obs.counters.get("codegen_emit_units").unwrap_or(&0),
+        2
+    );
     assert_eq!(*warm.obs.counters.get("source_memo_hits").unwrap_or(&0), 0);
 
     let hot = d.request(src, "d_main", &[], &workdir_of(&root, "w1"), None);
@@ -631,7 +634,11 @@ fn mir_native_source_memo_foreign_pointer_and_mode_discipline() {
     drop(store);
     let mut d = MnDriver::with_store(&root, "memoneg").expect("store");
     let r = d.request(ghost, "d_main", &[], &workdir_of(&root, "w"), None);
-    assert!(r.ok, "ghost memo falls back to the full pipeline: {:?}", r.error);
+    assert!(
+        r.ok,
+        "ghost memo falls back to the full pipeline: {:?}",
+        r.error
+    );
     assert_eq!(r.exit_code, Some(7));
     assert_eq!(*r.obs.counters.get("source_memo_hits").unwrap_or(&0), 0);
     assert_eq!(*r.obs.counters.get("codegen_emit_units").unwrap_or(&0), 1);
@@ -639,7 +646,11 @@ fn mir_native_source_memo_foreign_pointer_and_mode_discipline() {
     // conflicts (different payload under the same key) and is OBSERVED —
     // never a failed request, never a silent overwrite.
     assert!(
-        *r.obs.counters.get("source_memo_persist_failures").unwrap_or(&0) >= 1,
+        *r.obs
+            .counters
+            .get("source_memo_persist_failures")
+            .unwrap_or(&0)
+            >= 1,
         "the blocked memo persist is counted"
     );
 
@@ -660,10 +671,8 @@ fn mir_native_source_memo_foreign_pointer_and_mode_discipline() {
     let warm = w.request(ghost, "d_main", &[], &workdir_of(&clean, "w0"), None);
     assert!(warm.ok, "{:?}", warm.error);
     drop(w);
-    let mut ro = MnDriver::with_managed_store(
-        ManagedStore::open(&clean).expect("store ro"),
-        "memo-ro",
-    );
+    let mut ro =
+        MnDriver::with_managed_store(ManagedStore::open(&clean).expect("store ro"), "memo-ro");
     ro.cache_mode = ace_native::driver::CacheMode::ReadOnly;
     let rr = ro.request(ghost, "d_main", &[], &workdir_of(&clean, "wr"), None);
     assert!(rr.ok, "{:?}", rr.error);
@@ -691,11 +700,9 @@ fn mir_native_source_memo_chain_survives_full_reclaim() {
     assert_eq!(warm.exit_code, Some(42));
     drop(d);
     let store = ManagedStore::open(&root).expect("store gc");
-    let rc = ace_artifacts::store::run_gc(
-        &store,
-        ace_artifacts::store::GcConfig { high: 0, low: 0 },
-    )
-    .expect("full reclaim pass");
+    let rc =
+        ace_artifacts::store::run_gc(&store, ace_artifacts::store::GcConfig { high: 0, low: 0 })
+            .expect("full reclaim pass");
     assert!(rc.ran, "the pass ran");
     drop(store);
     let mut d2 = MnDriver::with_store(&root, "memogc2").expect("store again");

@@ -25,6 +25,44 @@ pub const MN_FLAGS: &str = "opt=none,pic=false,cpu=baseline";
 /// Runtime policy tag: trace intrinsics + trap exit contract.
 pub const MN_RUNTIME_TAG: &str = "trace=hir.test.trace.v1,trapexit=70";
 
+// ---- PLAN-1040: the Linux x86-64 ELF target (identity axes of its own) --
+
+/// The frozen Linux target triple — a second admitted target, never the
+/// host triple silently and never shared with the Windows cache axes.
+pub const MN_TARGET_LINUX: &str = "x86_64-unknown-linux-gnu";
+/// Private Linux ABI tag (System V carriers; same logical value surface
+/// as `MN_ABI`, distinct identity axis).
+pub const MN_ABI_LINUX: &str = "sysv-x64/priv-i32-bool-v1";
+/// Runtime policy tag of the Linux lane: same trace/trap contract, exit
+/// via the raw `exit_group` stub (no CRT).
+pub const MN_RUNTIME_TAG_LINUX: &str = "trace=hir.test.trace.v1,trapexit=70,exit=exit_group-raw";
+/// The raw process entry trampoline symbol of the linux support object
+/// (linked as the ELF entry; aligns the stack, reads AT_PAGESZ into
+/// `mn_pagesz`, then calls the Cranelift `ac_start` wrapper).
+pub const LINUX_START_TRAMPOLINE: &str = "_start";
+/// Writable page-size slot the `_start` trampoline fills from this
+/// process's auxv (`AT_PAGESZ`); the Linux platform shim reads it.
+pub const LINUX_PAGESZ_SYMBOL: &str = "mn_pagesz";
+/// Raw-syscall stub symbols defined by the linux support object
+/// (`mn_syscall1..6`: System V in, kernel ABI out, rcx/r11 clobbered).
+pub const LINUX_SYSCALL_SYMBOLS: [&str; 6] = [
+    "mn_syscall1",
+    "mn_syscall2",
+    "mn_syscall3",
+    "mn_syscall4",
+    "mn_syscall5",
+    "mn_syscall6",
+];
+/// The Linux exit stub (`exit_group` via `mn_syscall1`; never returns).
+pub const LINUX_EXIT_SYMBOL: &str = "mn_exit";
+/// The default WSL distribution of the current acceptance environment
+/// (2026-11-14 T-01 freeze: Windows host + WSL2 Ubuntu-22.04). Env
+/// override: `AC1040_WSL_DISTRO`; never auto-installed or switched.
+pub const WSL_DEFAULT_DISTRO: &str = "Ubuntu-22.04";
+/// A09' ELF layer schema: per-function relocatable ELF64 objects
+/// (distinct schema string from the COFF layer — restore can never mix).
+pub const ELF_UNIT_SCHEMA: &str = "ac1040/a09-elf/v1";
+
 /// Exit code of the frozen experiment trap path (landed contract).
 pub const TRAP_EXIT_CODE: i32 = 70;
 /// Startup wrapper symbol (landed experiment contract).
@@ -116,6 +154,35 @@ pub const COFF_LAYER: LayerSpec = LayerSpec {
     coverage: LayerCoverage::Codec,
 };
 
+/// PLAN-1040: A09-ELF layer — per-function relocatable ELF64 objects of
+/// the Linux x86-64 target (its own layer id/schema, so a COFF artifact
+/// can never be addressed by an ELF key or the reverse).
+pub const ELF_UNIT_LAYER: LayerSpec = LayerSpec {
+    id: "A09E",
+    name: "backend-object (plan1040 per-function ELF64 units)",
+    schema_id: ELF_UNIT_SCHEMA,
+    producer: PRODUCER_ID,
+    consumers: &["plan1040 linux console lane", "plan1040 elf restore"],
+    key_inputs: &[
+        "producer",
+        "owner-module",
+        "unit",
+        "unit-semantic-fp",
+        "mir-schema",
+        "mir-semantics",
+        "backend",
+        "target",
+        "flags",
+        "abi",
+        "runtime",
+    ],
+    ref_kinds: &["required-data", "provenance"],
+    storage: "one relocatable ELF64 per function unit, paged <=256KiB (LayoutData carrier)",
+    residency: "restored objects are structurally admitted (ELF + sha/len bind) before link",
+    regeneration: Regeneration::FromUpstreamRecipe,
+    coverage: LayerCoverage::Codec,
+};
+
 pub const LINK_LAYER: LayerSpec = LayerSpec {
     id: "A10",
     name: "link manifest (plan818 module closures)",
@@ -187,7 +254,14 @@ pub const SOURCE_MEMO_LAYER: LayerSpec = LayerSpec {
     schema_id: SOURCE_MEMO_SCHEMA,
     producer: PRODUCER_ID,
     consumers: &["plan1017 mn driver hot path", "plan818 mn-worker case-run"],
-    key_inputs: &["producer", "schema", "src-sha256", "entry", "caps", "pipeline"],
+    key_inputs: &[
+        "producer",
+        "schema",
+        "src-sha256",
+        "entry",
+        "caps",
+        "pipeline",
+    ],
     ref_kinds: &["required-data"],
     storage: "one memo per compile-request identity (LayoutData carrier)",
     residency: "memo binds one link-manifest artifact id; restore admits before link",

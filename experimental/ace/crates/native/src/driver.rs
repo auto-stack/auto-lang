@@ -435,7 +435,9 @@ impl MnDriver {
                     // Read-only stores nothing; the pending slot is always
                     // cleared afterwards so a failed build can never leak a
                     // stale context into the next request.
-                    if let (Some(_), true) = (self.store.as_ref(), self.cache_mode != CacheMode::ReadOnly) {
+                    if let (Some(_), true) =
+                        (self.store.as_ref(), self.cache_mode != CacheMode::ReadOnly)
+                    {
                         self.pending_source_memo =
                             Some((sha256_hex(src.as_bytes()), caps.to_vec()));
                     }
@@ -508,7 +510,9 @@ impl MnDriver {
         // identities — a memo from another toolchain is a miss, not a serve.
         let (lld_sha, sdk_tag, k32_sha) =
             obs.span("link_identity", |_| link_driver::link_identities())?;
-        if manifest.lld_sha != lld_sha || manifest.sdk_tag != sdk_tag || manifest.kernel32_sha != k32_sha
+        if manifest.lld_sha != lld_sha
+            || manifest.sdk_tag != sdk_tag
+            || manifest.kernel32_sha != k32_sha
         {
             obs.counter("source_memo_drift", 1);
             return Ok(None);

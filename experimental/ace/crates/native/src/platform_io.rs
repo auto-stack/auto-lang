@@ -22,32 +22,32 @@ use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_module::{default_libcall_names, DataDescription, DataId, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 
-const MAX_NATIVE_SLOTS: usize = 256;
-const STATE_HEADER_BYTES: usize = 64;
-const SLOT_BYTES: usize = 64;
-const STATE_BYTES: usize = STATE_HEADER_BYTES + MAX_NATIVE_SLOTS * SLOT_BYTES;
+pub(crate) const MAX_NATIVE_SLOTS: usize = 256;
+pub(crate) const STATE_HEADER_BYTES: usize = 64;
+pub(crate) const SLOT_BYTES: usize = 64;
+pub(crate) const STATE_BYTES: usize = STATE_HEADER_BYTES + MAX_NATIVE_SLOTS * SLOT_BYTES;
 
 // Header field byte offsets inside `mn_pio_state`
-const H_NEXT_GEN: i32 = 0; // i32
-const H_LAST_OS_ERROR: i32 = 4; // i32
-const H_PAGE_SIZE: i32 = 8; // i32
-const H_ALLOC_GRANULARITY: i32 = 12; // i32
-const H_WRITTEN_TOTAL: i32 = 16; // i64
-const H_LIVE_MAPPED: i32 = 24; // i64
-const H_NUM_SLOTS: i32 = 32; // i32
-const H_BYTES_WRITTEN_TMP: i32 = 36; // i32
+pub(crate) const H_NEXT_GEN: i32 = 0; // i32
+pub(crate) const H_LAST_OS_ERROR: i32 = 4; // i32
+pub(crate) const H_PAGE_SIZE: i32 = 8; // i32
+pub(crate) const H_ALLOC_GRANULARITY: i32 = 12; // i32
+pub(crate) const H_WRITTEN_TOTAL: i32 = 16; // i64
+pub(crate) const H_LIVE_MAPPED: i32 = 24; // i64
+pub(crate) const H_NUM_SLOTS: i32 = 32; // i32
+pub(crate) const H_BYTES_WRITTEN_TMP: i32 = 36; // i32
 
 // Per-slot field byte offsets (stride 64 bytes)
-const S_KIND: i32 = 0; // i32 (0=empty, 1=StdStream, 2=OsMemRegion)
-const S_RELEASED: i32 = 4; // i32
-const S_GEN: i32 = 8; // i32
-const S_BORROW: i32 = 12; // i32
-const S_OS_PTR: i32 = 16; // i64
-const S_LOGICAL_LEN: i32 = 24; // i64
-const S_MAPPED_LEN: i32 = 32; // i64
+pub(crate) const S_KIND: i32 = 0; // i32 (0=empty, 1=StdStream, 2=OsMemRegion)
+pub(crate) const S_RELEASED: i32 = 4; // i32
+pub(crate) const S_GEN: i32 = 8; // i32
+pub(crate) const S_BORROW: i32 = 12; // i32
+pub(crate) const S_OS_PTR: i32 = 16; // i64
+pub(crate) const S_LOGICAL_LEN: i32 = 24; // i64
+pub(crate) const S_MAPPED_LEN: i32 = 32; // i64
 
-const KIND_STREAM: i64 = 1;
-const KIND_MEM: i64 = 2;
+pub(crate) const KIND_STREAM: i64 = 1;
+pub(crate) const KIND_MEM: i64 = 2;
 
 const MEM_COMMIT_RESERVE: i64 = 0x3000;
 const PAGE_READWRITE: i64 = 0x04;
@@ -75,10 +75,23 @@ pub fn shim_symbol_for(kind: PlatformOpKind) -> &'static str {
         PlatformOpKind::MemUnborrow => "mn_pio_mem_unborrow",
         PlatformOpKind::MemWriteU8 => "mn_pio_mem_write_u8",
         PlatformOpKind::MemReadU8 => "mn_pio_mem_read_u8",
+        // PLAN-1040 Linux probe seam shims (raw syscall marshalling).
+        PlatformOpKind::ProbeOpenat => "mn_pio_probe_openat",
+        PlatformOpKind::ProbeWriteFd => "mn_pio_probe_write_fd",
+        PlatformOpKind::ProbeClose => "mn_pio_probe_close",
     }
 }
 
 pub fn cranelift_shim_sig(kind: PlatformOpKind) -> Signature {
+    cranelift_shim_sig_for(kind, WINCALL)
+}
+
+/// PLAN-1040: the shim signature under the target's call convention
+/// (`WindowsFastcall` for COFF, `SystemV` for the Linux ELF shim).
+pub fn cranelift_shim_sig_for(
+    kind: PlatformOpKind,
+    conv: cranelift_codegen::isa::CallConv,
+) -> Signature {
     let params = match kind {
         PlatformOpKind::IoStdout
         | PlatformOpKind::IoStderr
@@ -109,9 +122,22 @@ pub fn cranelift_shim_sig(kind: PlatformOpKind) -> Signature {
             AbiParam::new(types::I32),
             AbiParam::new(types::I32),
         ],
+        PlatformOpKind::ProbeOpenat => vec![
+            AbiParam::new(types::I32),
+            AbiParam::new(types::I64),
+            AbiParam::new(types::I32),
+            AbiParam::new(types::I32),
+            AbiParam::new(types::I32),
+        ],
+        PlatformOpKind::ProbeWriteFd => vec![
+            AbiParam::new(types::I32),
+            AbiParam::new(types::I64),
+            AbiParam::new(types::I32),
+        ],
+        PlatformOpKind::ProbeClose => vec![AbiParam::new(types::I32)],
     };
     Signature {
-        call_conv: WINCALL,
+        call_conv: conv,
         params,
         returns: vec![AbiParam::new(types::I32)],
     }
@@ -141,17 +167,21 @@ struct LocalIds {
     write_slice: FuncId,
 }
 
-fn state_ptr(om: &mut ObjectModule, state: DataId, fb: &mut FunctionBuilder<'_>) -> Value {
+pub(crate) fn state_ptr(
+    om: &mut ObjectModule,
+    state: DataId,
+    fb: &mut FunctionBuilder<'_>,
+) -> Value {
     let gv = om.declare_data_in_func(state, fb.func);
     fb.ins().symbol_value(types::I64, gv)
 }
 
-fn ret_err(fb: &mut FunctionBuilder<'_>, code: i32) {
+pub(crate) fn ret_err(fb: &mut FunctionBuilder<'_>, code: i32) {
     let v = fb.ins().iconst(types::I32, code as i64);
     fb.ins().return_(&[v]);
 }
 
-fn define_fn<F>(
+pub(crate) fn define_fn<F>(
     om: &mut ObjectModule,
     id: FuncId,
     f_sig: Signature,
@@ -176,7 +206,7 @@ where
         .map_err(|e| MnError::Backend(format!("define platform shim fn: {e}")))
 }
 
-fn declare_fn(
+pub(crate) fn declare_fn(
     om: &mut ObjectModule,
     name: &str,
     linkage: Linkage,
@@ -333,84 +363,7 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
         &mut om,
         loc.find_slot,
         find_slot_sig.clone(),
-        |om, fb, entry| {
-            let handle = fb.block_params(entry)[0];
-            let expected_kind = fb.block_params(entry)[1];
-            let base = state_ptr(om, state, fb);
-            let bad_h = fb.ins().iconst(types::I64, ERR_INVALID_HANDLE as i64);
-            let bad_o = fb.ins().iconst(types::I64, ERR_WRONG_ORIGIN as i64);
-            let bad_r = fb.ins().iconst(types::I64, ERR_ALREADY_RELEASED as i64);
-
-            let zero32 = fb.ins().iconst(types::I32, 0);
-            let le_zero = fb.ins().icmp(IntCC::SignedLessThanOrEqual, handle, zero32);
-            let err_h = fb.create_block();
-            let chk_idx = fb.create_block();
-            fb.ins().brif(le_zero, err_h, &[], chk_idx, &[]);
-            fb.seal_block(chk_idx);
-
-            fb.switch_to_block(chk_idx);
-            let mask16 = fb.ins().iconst(types::I32, 0xFFFF);
-            let low16 = fb.ins().band(handle, mask16);
-            let one32 = fb.ins().iconst(types::I32, 1);
-            let idx = fb.ins().isub(low16, one32);
-            let shifted = fb.ins().ushr_imm(handle, 16);
-            let mask15 = fb.ins().iconst(types::I32, 0x7FFF);
-            let gen = fb.ins().band(shifted, mask15);
-
-            let num = fb.ins().load(types::I32, flags, base, H_NUM_SLOTS);
-            let neg_idx = fb.ins().icmp(IntCC::SignedLessThan, idx, zero32);
-            let oob_idx = fb.ins().icmp(IntCC::SignedGreaterThanOrEqual, idx, num);
-            let bad_idx = fb.ins().bor(neg_idx, oob_idx);
-            let chk_slot = fb.create_block();
-            fb.ins().brif(bad_idx, err_h, &[], chk_slot, &[]);
-            fb.seal_block(chk_slot);
-
-            fb.switch_to_block(chk_slot);
-            let idx64 = fb.ins().sextend(types::I64, idx);
-            let off64 = fb.ins().ishl_imm(idx64, 6); // * 64
-            let hdr = fb.ins().iconst(types::I64, STATE_HEADER_BYTES as i64);
-            let slot_off = fb.ins().iadd(off64, hdr);
-            let slot = fb.ins().iadd(base, slot_off);
-
-            let skind = fb.ins().load(types::I32, flags, slot, S_KIND);
-            let sgen = fb.ins().load(types::I32, flags, slot, S_GEN);
-            let empty = fb.ins().icmp(IntCC::Equal, skind, zero32);
-            let gen_mismatch = fb.ins().icmp(IntCC::NotEqual, sgen, gen);
-            let bad_meta = fb.ins().bor(empty, gen_mismatch);
-            let chk_origin = fb.create_block();
-            fb.ins().brif(bad_meta, err_h, &[], chk_origin, &[]);
-            fb.seal_block(err_h);
-            fb.seal_block(chk_origin);
-
-            fb.switch_to_block(err_h);
-            fb.ins().return_(&[bad_h]);
-
-            fb.switch_to_block(chk_origin);
-            let kind_mismatch = fb.ins().icmp(IntCC::NotEqual, skind, expected_kind);
-            let err_o = fb.create_block();
-            let chk_rel = fb.create_block();
-            fb.ins().brif(kind_mismatch, err_o, &[], chk_rel, &[]);
-            fb.seal_block(err_o);
-            fb.seal_block(chk_rel);
-
-            fb.switch_to_block(err_o);
-            fb.ins().return_(&[bad_o]);
-
-            fb.switch_to_block(chk_rel);
-            let srel = fb.ins().load(types::I32, flags, slot, S_RELEASED);
-            let is_rel = fb.ins().icmp(IntCC::NotEqual, srel, zero32);
-            let err_r = fb.create_block();
-            let ok_blk = fb.create_block();
-            fb.ins().brif(is_rel, err_r, &[], ok_blk, &[]);
-            fb.seal_block(err_r);
-            fb.seal_block(ok_blk);
-
-            fb.switch_to_block(err_r);
-            fb.ins().return_(&[bad_r]);
-
-            fb.switch_to_block(ok_blk);
-            fb.ins().return_(&[slot]);
-        },
+        |om, fb, entry| crate::platform_io::emit_find_slot_body(om, fb, entry, state, flags),
     )?;
 
     // 3. `mn_pio_local_alloc_slot(kind: i32, os_ptr: i64, logical: i64, mapped: i64) -> i32`
@@ -418,56 +371,7 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
         &mut om,
         loc.alloc_slot,
         alloc_slot_sig.clone(),
-        |om, fb, entry| {
-            let kind = fb.block_params(entry)[0];
-            let os_ptr = fb.block_params(entry)[1];
-            let logical = fb.block_params(entry)[2];
-            let mapped = fb.block_params(entry)[3];
-            let base = state_ptr(om, state, fb);
-            let num = fb.ins().load(types::I32, flags, base, H_NUM_SLOTS);
-            let cap = fb.ins().iconst(types::I32, MAX_NATIVE_SLOTS as i64);
-            let full = fb.ins().icmp(IntCC::SignedGreaterThanOrEqual, num, cap);
-            let err_blk = fb.create_block();
-            let ok_blk = fb.create_block();
-            fb.ins().brif(full, err_blk, &[], ok_blk, &[]);
-            fb.seal_block(err_blk);
-            fb.seal_block(ok_blk);
-
-            fb.switch_to_block(err_blk);
-            ret_err(fb, ERR_BUDGET);
-
-            fb.switch_to_block(ok_blk);
-            let zero32 = fb.ins().iconst(types::I32, 0);
-            let one32 = fb.ins().iconst(types::I32, 1);
-            let g0 = fb.ins().load(types::I32, flags, base, H_NEXT_GEN);
-            let is_z = fb.ins().icmp(IntCC::Equal, g0, zero32);
-            let g = fb.ins().select(is_z, one32, g0);
-            let g1 = fb.ins().iadd(g, one32);
-            let m15 = fb.ins().iconst(types::I32, 0x7FFF);
-            let ng0 = fb.ins().band(g1, m15);
-            let ng_z = fb.ins().icmp(IntCC::Equal, ng0, zero32);
-            let ng = fb.ins().select(ng_z, one32, ng0);
-            fb.ins().store(flags, ng, base, H_NEXT_GEN);
-
-            let num64 = fb.ins().sextend(types::I64, num);
-            let off64 = fb.ins().ishl_imm(num64, 6);
-            let hdr = fb.ins().iconst(types::I64, STATE_HEADER_BYTES as i64);
-            let slot_off = fb.ins().iadd(off64, hdr);
-            let slot = fb.ins().iadd(base, slot_off);
-            fb.ins().store(flags, kind, slot, S_KIND);
-            fb.ins().store(flags, zero32, slot, S_RELEASED);
-            fb.ins().store(flags, g, slot, S_GEN);
-            fb.ins().store(flags, zero32, slot, S_BORROW);
-            fb.ins().store(flags, os_ptr, slot, S_OS_PTR);
-            fb.ins().store(flags, logical, slot, S_LOGICAL_LEN);
-            fb.ins().store(flags, mapped, slot, S_MAPPED_LEN);
-
-            let next_num = fb.ins().iadd(num, one32);
-            fb.ins().store(flags, next_num, base, H_NUM_SLOTS);
-            let hi = fb.ins().ishl_imm(g, 16);
-            let h = fb.ins().bor(hi, next_num);
-            fb.ins().return_(&[h]);
-        },
+        |om, fb, entry| crate::platform_io::emit_alloc_slot_body(om, fb, entry, state, flags),
     )?;
 
     // 4. `mn_pio_local_write_slice(h, ptr, slen, off, req_len) -> i32`
@@ -1098,6 +1002,153 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
         .emit()
         .map_err(|e| MnError::Backend(format!("emit platform shim coff: {e}")))?;
     Ok(bytes)
+}
+
+/// PLAN-1040: the shared slot-lookup body (identical ledger semantics on
+/// the Win64 COFF and Linux ELF shims). Returns the slot pointer (> 0) or
+/// the negative ERR_* sign-extended to i64.
+pub(crate) fn emit_find_slot_body(
+    om: &mut ObjectModule,
+    fb: &mut FunctionBuilder<'_>,
+    entry: cranelift_codegen::ir::Block,
+    state: cranelift_module::DataId,
+    flags: MemFlags,
+) {
+    let handle = fb.block_params(entry)[0];
+    let expected_kind = fb.block_params(entry)[1];
+    let base = state_ptr(om, state, fb);
+    let bad_h = fb.ins().iconst(types::I64, ERR_INVALID_HANDLE as i64);
+    let bad_o = fb.ins().iconst(types::I64, ERR_WRONG_ORIGIN as i64);
+    let bad_r = fb.ins().iconst(types::I64, ERR_ALREADY_RELEASED as i64);
+
+    let zero32 = fb.ins().iconst(types::I32, 0);
+    let le_zero = fb.ins().icmp(IntCC::SignedLessThanOrEqual, handle, zero32);
+    let err_h = fb.create_block();
+    let chk_idx = fb.create_block();
+    fb.ins().brif(le_zero, err_h, &[], chk_idx, &[]);
+    fb.seal_block(chk_idx);
+
+    fb.switch_to_block(chk_idx);
+    let mask16 = fb.ins().iconst(types::I32, 0xFFFF);
+    let low16 = fb.ins().band(handle, mask16);
+    let one32 = fb.ins().iconst(types::I32, 1);
+    let idx = fb.ins().isub(low16, one32);
+    let shifted = fb.ins().ushr_imm(handle, 16);
+    let mask15 = fb.ins().iconst(types::I32, 0x7FFF);
+    let gen = fb.ins().band(shifted, mask15);
+
+    let num = fb.ins().load(types::I32, flags, base, H_NUM_SLOTS);
+    let neg_idx = fb.ins().icmp(IntCC::SignedLessThan, idx, zero32);
+    let oob_idx = fb.ins().icmp(IntCC::SignedGreaterThanOrEqual, idx, num);
+    let bad_idx = fb.ins().bor(neg_idx, oob_idx);
+    let chk_slot = fb.create_block();
+    fb.ins().brif(bad_idx, err_h, &[], chk_slot, &[]);
+    fb.seal_block(chk_slot);
+
+    fb.switch_to_block(chk_slot);
+    let idx64 = fb.ins().sextend(types::I64, idx);
+    let off64 = fb.ins().ishl_imm(idx64, 6); // * 64
+    let hdr = fb.ins().iconst(types::I64, STATE_HEADER_BYTES as i64);
+    let slot_off = fb.ins().iadd(off64, hdr);
+    let slot = fb.ins().iadd(base, slot_off);
+
+    let skind = fb.ins().load(types::I32, flags, slot, S_KIND);
+    let sgen = fb.ins().load(types::I32, flags, slot, S_GEN);
+    let empty = fb.ins().icmp(IntCC::Equal, skind, zero32);
+    let gen_mismatch = fb.ins().icmp(IntCC::NotEqual, sgen, gen);
+    let bad_meta = fb.ins().bor(empty, gen_mismatch);
+    let chk_origin = fb.create_block();
+    fb.ins().brif(bad_meta, err_h, &[], chk_origin, &[]);
+    fb.seal_block(err_h);
+    fb.seal_block(chk_origin);
+
+    fb.switch_to_block(err_h);
+    fb.ins().return_(&[bad_h]);
+
+    fb.switch_to_block(chk_origin);
+    let kind_mismatch = fb.ins().icmp(IntCC::NotEqual, skind, expected_kind);
+    let err_o = fb.create_block();
+    let chk_rel = fb.create_block();
+    fb.ins().brif(kind_mismatch, err_o, &[], chk_rel, &[]);
+    fb.seal_block(err_o);
+    fb.seal_block(chk_rel);
+
+    fb.switch_to_block(err_o);
+    fb.ins().return_(&[bad_o]);
+
+    fb.switch_to_block(chk_rel);
+    let srel = fb.ins().load(types::I32, flags, slot, S_RELEASED);
+    let is_rel = fb.ins().icmp(IntCC::NotEqual, srel, zero32);
+    let err_r = fb.create_block();
+    let ok_blk = fb.create_block();
+    fb.ins().brif(is_rel, err_r, &[], ok_blk, &[]);
+    fb.seal_block(err_r);
+    fb.seal_block(ok_blk);
+
+    fb.switch_to_block(err_r);
+    fb.ins().return_(&[bad_r]);
+
+    fb.switch_to_block(ok_blk);
+    fb.ins().return_(&[slot]);
+}
+
+/// PLAN-1040: the shared slot-allocation body (identical ledger semantics
+/// on the Win64 COFF and Linux ELF shims).
+pub(crate) fn emit_alloc_slot_body(
+    om: &mut ObjectModule,
+    fb: &mut FunctionBuilder<'_>,
+    entry: cranelift_codegen::ir::Block,
+    state: cranelift_module::DataId,
+    flags: MemFlags,
+) {
+    let kind = fb.block_params(entry)[0];
+    let os_ptr = fb.block_params(entry)[1];
+    let logical = fb.block_params(entry)[2];
+    let mapped = fb.block_params(entry)[3];
+    let base = state_ptr(om, state, fb);
+    let num = fb.ins().load(types::I32, flags, base, H_NUM_SLOTS);
+    let cap = fb.ins().iconst(types::I32, MAX_NATIVE_SLOTS as i64);
+    let full = fb.ins().icmp(IntCC::SignedGreaterThanOrEqual, num, cap);
+    let err_blk = fb.create_block();
+    let ok_blk = fb.create_block();
+    fb.ins().brif(full, err_blk, &[], ok_blk, &[]);
+    fb.seal_block(err_blk);
+    fb.seal_block(ok_blk);
+
+    fb.switch_to_block(err_blk);
+    ret_err(fb, ERR_BUDGET);
+
+    fb.switch_to_block(ok_blk);
+    let zero32 = fb.ins().iconst(types::I32, 0);
+    let one32 = fb.ins().iconst(types::I32, 1);
+    let g0 = fb.ins().load(types::I32, flags, base, H_NEXT_GEN);
+    let is_z = fb.ins().icmp(IntCC::Equal, g0, zero32);
+    let g = fb.ins().select(is_z, one32, g0);
+    let g1 = fb.ins().iadd(g, one32);
+    let m15 = fb.ins().iconst(types::I32, 0x7FFF);
+    let ng0 = fb.ins().band(g1, m15);
+    let ng_z = fb.ins().icmp(IntCC::Equal, ng0, zero32);
+    let ng = fb.ins().select(ng_z, one32, ng0);
+    fb.ins().store(flags, ng, base, H_NEXT_GEN);
+
+    let num64 = fb.ins().sextend(types::I64, num);
+    let off64 = fb.ins().ishl_imm(num64, 6);
+    let hdr = fb.ins().iconst(types::I64, STATE_HEADER_BYTES as i64);
+    let slot_off = fb.ins().iadd(off64, hdr);
+    let slot = fb.ins().iadd(base, slot_off);
+    fb.ins().store(flags, kind, slot, S_KIND);
+    fb.ins().store(flags, zero32, slot, S_RELEASED);
+    fb.ins().store(flags, g, slot, S_GEN);
+    fb.ins().store(flags, zero32, slot, S_BORROW);
+    fb.ins().store(flags, os_ptr, slot, S_OS_PTR);
+    fb.ins().store(flags, logical, slot, S_LOGICAL_LEN);
+    fb.ins().store(flags, mapped, slot, S_MAPPED_LEN);
+
+    let next_num = fb.ins().iadd(num, one32);
+    fb.ins().store(flags, next_num, base, H_NUM_SLOTS);
+    let hi = fb.ins().ishl_imm(g, 16);
+    let h = fb.ins().bor(hi, next_num);
+    fb.ins().return_(&[h]);
 }
 
 /// Allowed PE import symbols for the checked Win64 platform I/O lane (zero libc/CRT).
