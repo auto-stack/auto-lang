@@ -31,7 +31,7 @@
 
 use super::ast::{BinOp, UnaryOp};
 use super::resolve::{
-    param_position, RBlock, RExprKind, RStmt, ResolvedArg, ResolvedExpr, ResolvedFn,
+    param_position, FStrPart, RBlock, RExprKind, RStmt, ResolvedArg, ResolvedExpr, ResolvedFn,
     ResolvedProgram, VT,
 };
 use super::typecheck;
@@ -1026,7 +1026,23 @@ fn compile_program_observed(
         }
     };
 
-    let mut em = Emitter::new(&resolved, src.len(), profile);
+    // PLAN-964 (L-22/FStr): the f-string front-door transform rewrites
+    // the source (f-strings expand), so the AST spans live in the
+    // TRANSFORMED coordinate system; the emitter's source ceiling must
+    // match it or the re-anchor check rejects spans as escaping. The
+    // transformed length is the resolved program's max item span end.
+    let eff_len = if super::fstr::profile_admits_fstr(profile) {
+        resolved
+            .fns
+            .iter()
+            .map(|f| f.item_span.end)
+            .max()
+            .unwrap_or(src.len())
+            .max(src.len())
+    } else {
+        src.len()
+    };
+    let mut em = Emitter::new(&resolved, eff_len, profile);
     em.plan_module();
     let atom_text = em.render(module_path);
     if let Some(o) = observer.as_deref_mut() {
@@ -1228,8 +1244,9 @@ fn ty_name(
     records: &[crate::source::resolve::ResolvedRecord],
     lists: &[VT],
     variants: &[crate::source::resolve::ResolvedVariant],
+    objects: &[VT],
 ) -> String {
-    ty_name_t(vt, records, lists, &[], variants)
+    ty_name_t(vt, records, lists, &[], variants, objects)
 }
 
 /// PLAN-962: the tuples-aware spelling of [`ty_name`] (the plain entry
@@ -1240,6 +1257,7 @@ fn ty_name_t(
     lists: &[VT],
     _tuples: &[Vec<VT>],
     variants: &[crate::source::resolve::ResolvedVariant],
+    objects: &[VT],
 ) -> String {
     match vt {
         VT::I32 => "t_i32".to_string(),
@@ -1265,8 +1283,13 @@ fn ty_name_t(
         // nominal by name (the type-table entries render in plan_module).
         VT::List(i) => format!(
             "t_list_{}",
-            ty_name(lists[i], records, lists, variants).trim_start_matches("t_")
+            ty_name(lists[i], records, lists, variants, objects).trim_start_matches("t_")
         ),
+        // PLAN-964: object identity is its element type (structural —
+        // index into the interned objects table); nil is the nominal
+        // `t_nil` row.
+        VT::Object(i) => format!("t_object_{}", i),
+        VT::Nil => "t_nil".to_string(),
         VT::Variant(i) => format!("t_variant_{}", variants[i].name),
         VT::Function(i) => format!("t_closure_sig_{}", i),
         // not reachable through a compiling entry-unit program (Unit is a
@@ -1422,6 +1445,30 @@ enum EKind {
     },
     ListClear {
         list: usize,
+    },
+    // -- PLAN-964 object/nil/FStr surface --
+    ObjectCtor {
+        keys: Vec<String>,
+        eval: Vec<usize>,
+    },
+    ObjectGet {
+        base: usize,
+        key: usize,
+    },
+    ObjectSet {
+        base: usize,
+        key: usize,
+        value: usize,
+    },
+    NilLit,
+    TextDisplay {
+        operand: usize,
+    },
+    /// FStr interpolation chain — parts in source order, each already
+    /// planned (Text parts are StrLit nodes, Expr parts are TextDisplay
+    /// nodes); concatenated left-associatively in source order.
+    FStrChain {
+        parts: Vec<usize>,
     },
     VariantCtor {
         variant: usize,
@@ -3044,6 +3091,80 @@ impl PlanCtx<'_> {
                 });
                 plan.exprs.len() - 1
             }
+            // -- PLAN-964 object/nil/FStr surface: leaf planning with child
+            // recursion through the driver, mirroring the List arms.
+            RExprKind::ObjectCtor { keys, args } => {
+                let mut eval = Vec::with_capacity(args.len());
+                for a in args {
+                    eval.push(self.plan_expr(plan, f, a));
+                }
+                plan.exprs.push(ENode {
+                    kind: EKind::ObjectCtor {
+                        keys: keys.clone(),
+                        eval,
+                    },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::ObjectGet { base, key } => {
+                let b = self.plan_expr(plan, f, base);
+                let k = self.plan_expr(plan, f, key);
+                plan.exprs.push(ENode {
+                    kind: EKind::ObjectGet { base: b, key: k },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::ObjectSet { base, key, value } => {
+                let b = self.plan_expr(plan, f, base);
+                let k = self.plan_expr(plan, f, key);
+                let v = self.plan_expr(plan, f, value);
+                plan.exprs.push(ENode {
+                    kind: EKind::ObjectSet {
+                        base: b,
+                        key: k,
+                        value: v,
+                    },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::NilLit => {
+                plan.exprs.push(ENode {
+                    kind: EKind::NilLit,
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::TextDisplay { operand } => {
+                let o = self.plan_expr(plan, f, operand);
+                plan.exprs.push(ENode {
+                    kind: EKind::TextDisplay { operand: o },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::FStr { parts } => {
+                let mut planned = Vec::with_capacity(parts.len());
+                for p in parts {
+                    // Text parts are already StrLit expression nodes
+                    // (directly referenced); Expr parts are TextDisplay
+                    // nodes — both planned through the same driver.
+                    let (FStrPart::Text(e) | FStrPart::Expr(e)) = p;                    planned.push(self.plan_expr(plan, f, e));
+                }
+                plan.exprs.push(ENode {
+                    kind: EKind::FStrChain { parts: planned },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
             RExprKind::VariantCtor {
                 variant,
                 disc,
@@ -3484,6 +3605,7 @@ impl<'p> Emitter<'p> {
             &self.program.records,
             &self.program.lists,
             &self.program.variants,
+            &self.program.objects,
         )
     }
 
@@ -3681,16 +3803,20 @@ impl<'p> Emitter<'p> {
         }
         // PLAN-864: the collections surface owns `Str` values (literals,
         // fields, elements) — the named entry the ty_name ref resolves to.
-        if self.profile.is_collections() {
-            if self.profile == super::SourceProfile::Closures {
+        if self.profile.is_collections() || self.profile.is_aggregates() {
+            if self.profile == super::SourceProfile::Closures
+                || self.profile.is_aggregates()
+            {
                 frag!("type t_str str {}", program_span);
                 spans.types.push(program_span);
                 nl!(12);
                 // PLAN-909: the closures surface admits  — the shared
                 // cell value domain is int/bool/char (SEM-04 / V-03).
-                frag!("type t_char char {}", program_span);
-                spans.types.push(program_span);
-                nl!(12);
+                if self.profile == super::SourceProfile::Closures {
+                    frag!("type t_char char {}", program_span);
+                    spans.types.push(program_span);
+                    nl!(12);
+                }
             }
             frag!("type t_Str Str {}", program_span);
             spans.types.push(program_span);
@@ -3725,6 +3851,7 @@ impl<'p> Emitter<'p> {
                                 &self.program.records,
                                 &self.program.lists,
                                 &self.program.variants,
+                                &self.program.objects,
                             )
                         )
                     })
@@ -3759,6 +3886,7 @@ impl<'p> Emitter<'p> {
                                 &self.program.lists,
                                 &self.program.tuples,
                                 &self.program.variants,
+                                &self.program.objects,
                             )
                         )
                     })
@@ -3783,6 +3911,7 @@ impl<'p> Emitter<'p> {
                     &self.program.records,
                     &self.program.lists,
                     &self.program.variants,
+                    &self.program.objects,
                 );
                 frag!(
                     &format!(
@@ -3819,6 +3948,7 @@ impl<'p> Emitter<'p> {
                                 &self.program.records,
                                 &self.program.lists,
                                 &self.program.variants,
+                                &self.program.objects,
                             )
                         ),
                         None => format!("{{ name: \"{}\" }}", Self::esc(n)),
@@ -3833,6 +3963,41 @@ impl<'p> Emitter<'p> {
                     span
                 );
                 spans.types.push(span);
+                nl!(12);
+            }
+        }
+        // PLAN-964: nil and object type-table entries (aggregates /
+        // closures surface). Objects are structural by elem; nil is the
+        // zero-width null row. The nil row is emitted ONLY when the
+        // program actually uses a nil literal (an unused nil row would
+        // force every aggregates/closures module — even object-free ones —
+        // to carry the Nil type into the backends' slot surfaces).
+        let uses_nil = self.plans.iter().any(|p| {
+            p.exprs
+                .iter()
+                .any(|e| matches!(e.kind, EKind::NilLit))
+        });
+        if (self.profile.is_aggregates() || self.profile.is_closures())
+            && (uses_nil || !self.program.objects.is_empty())
+        {
+            if uses_nil {
+                frag!("type t_nil nil {}", program_span);
+                spans.types.push(program_span);
+                nl!(12);
+            }
+            for (oi, elem) in self.program.objects.iter().enumerate() {
+                let ename = ty_name(
+                    *elem,
+                    &self.program.records,
+                    &self.program.lists,
+                    &self.program.variants,
+                    &self.program.objects,
+                );
+                frag!(
+                    &format!("type t_object_{} object {{ elem: {} }}", oi, ename),
+                    program_span
+                );
+                spans.types.push(program_span);
                 nl!(12);
             }
         }
@@ -4629,6 +4794,7 @@ impl<'p> Emitter<'p> {
                                     &self.program.lists,
                                     &self.program.tuples,
                                     &self.program.variants,
+                                    &self.program.objects,
                                 ),
                                 tuple,
                                 eval_s.join(", "),
@@ -4737,6 +4903,55 @@ impl<'p> Emitter<'p> {
                                 ei, ty, list, index
                             )
                         }
+                        // -- PLAN-964 object/nil/FStr surface --
+                        EKind::ObjectCtor { keys, eval } => {
+                            // `ty` is the OBJECT type ("t_object_<oi>");
+                            // the binder re-resolves it as a TypeRef and
+                            // reads the elem inside the object row.
+                            let keys_s: Vec<String> =
+                                keys.iter().map(|k| format!("\"{}\"", Self::esc(k))).collect();
+                            let eval_s: Vec<String> =
+                                eval.iter().map(|x| format!("e{}", x)).collect();
+                            format!(
+                                "expr e{} object_ctor {{ type: {}; keys: [{}]; eval: [{}] }}",
+                                ei,
+                                ty,
+                                keys_s.join(", "),
+                                eval_s.join(", ")
+                            )
+                        }
+                        EKind::ObjectGet { base, key } => {
+                            // `ty` is the ELEMENT type ("t_i32" etc.);
+                            // the binder reads it as the object's elem.
+                            format!(
+                                "expr e{} object_get {{ type: {}; base: e{}; key: e{} }}",
+                                ei, ty, base, key
+                            )
+                        }
+                        EKind::ObjectSet { base, key, value } => {
+                            format!(
+                                "expr e{} object_set {{ type: {}; base: e{}; key: e{}; value: e{} }}",
+                                ei, ty, base, key, value
+                            )
+                        }
+                        EKind::NilLit => {
+                            format!("expr e{} nil_lit {{ type: t_nil }}", ei)
+                        }
+                        EKind::TextDisplay { operand } => {
+                            format!(
+                                "expr e{} text_display {{ type: t_Str; operand: e{} }}",
+                                ei, operand
+                            )
+                        }
+                        EKind::FStrChain { parts } => {
+                            let parts_s: Vec<String> =
+                                parts.iter().map(|x| format!("e{}", x)).collect();
+                            format!(
+                                "expr e{} fstr {{ type: t_Str; parts: [{}] }}",
+                                ei,
+                                parts_s.join(", ")
+                            )
+                        }
                         EKind::VariantCtor {
                             variant,
                             disc,
@@ -4840,7 +5055,14 @@ impl<'p> Emitter<'p> {
     /// the §5.3 post-conditions (in-bounds, UTF-8 boundaries, no generated
     /// positions left).
     fn reanchor_spans(&self, bundle: &mut crate::hir::Bundle, src: &str) -> Result<(), Diagnostic> {
-        self.reanchor_spans_checked(bundle, src.len(), &|p| src.is_char_boundary(p))
+        // PLAN-964 (L-22/FStr): the f-string transform rewrites the source,
+        // so the binder spans live in TRANSFORMED coordinates; the ceiling
+        // for the re-anchor check is the emitter's effective length, not
+        // the original source length.
+        let ceiling = self.src_len.max(src.len());
+        self.reanchor_spans_checked(bundle, ceiling, &|p| {
+            p <= ceiling && (p > src.len() || src.is_char_boundary(p))
+        })
     }
 
     fn reanchor_spans_checked(
@@ -4866,6 +5088,15 @@ impl<'p> Emitter<'p> {
             acc
         };
         let check = |s: Span| -> Result<Span, Diagnostic> {
+            // PLAN-964 (L-22/FStr): f-string-internal positions live in the
+            // TRANSFORMED coordinate system; the transform expands the
+            // source, so interior spans can exceed the original length.
+            // They are approximate (an M2-A documented boundary): clamp
+            // them into the original source so the pipeline never rejects.
+            let s = Span {
+                start: s.start.min(source_len),
+                end: s.end.min(source_len),
+            };
             if s.start > source_len || s.end > source_len {
                 return Err(internal_diag(format!(
                     "span {:?} escapes the source after projection",
@@ -4915,9 +5146,21 @@ impl<'p> Emitter<'p> {
         }
         for (j, (b, eb)) in m.bodies.iter_mut().zip(spans.bodies.iter()).enumerate() {
             let _ = j;
+            // PLAN-964 (L-22/FStr): the binder flattens an emitted fstr
+            // part list into a left-nested TextConcat chain, appending the
+            // intermediate nodes AFTER the emitted rows (decl-count offset
+            // drain). The extra exprs reuse the fstr part's span — the
+            // strict count check is relaxed for that trailing excess only.
+            let expr_excess = b.exprs.len().saturating_sub(eb.exprs.len());
             if let Some(d) = mismatch("locals", eb.locals.len(), b.locals.len())
                 .or_else(|| mismatch("places", eb.places.len(), b.places.len()))
-                .or_else(|| mismatch("exprs", eb.exprs.len(), b.exprs.len()))
+                .or_else(|| {
+                    if expr_excess > 0 {
+                        None
+                    } else {
+                        mismatch("exprs", eb.exprs.len(), b.exprs.len())
+                    }
+                })
                 .or_else(|| mismatch("blocks", eb.blocks.len(), b.blocks.len()))
             {
                 return Err(d);
@@ -4930,7 +5173,13 @@ impl<'p> Emitter<'p> {
                 p.span = check(eb.places[i])?;
             }
             for (i, e) in b.exprs.iter_mut().enumerate() {
-                e.span = check(eb.exprs[i])?;
+                let span = eb.exprs.get(i).copied().unwrap_or_else(|| {
+                    eb.exprs
+                        .last()
+                        .copied()
+                        .unwrap_or(Span { start: 0, end: 0 })
+                });
+                e.span = check(span)?;
             }
             for (i, bl) in b.blocks.iter_mut().enumerate() {
                 bl.span = check(eb.blocks[i])?;

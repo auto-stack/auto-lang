@@ -585,6 +585,10 @@ fn walk_expr<'a>(
         ExprKind::GridLit { .. } => unsupported("grid-literal", e.span)?,
         ExprKind::GenericType { .. } => unsupported("generic-type-receiver", e.span)?,
         ExprKind::Closure { .. } => unsupported("closure-expression", e.span)?,
+        // PLAN-964: aggregates-surface forms, named-unsupported here.
+        ExprKind::ObjectLit { .. } => unsupported("object-literal", e.span)?,
+        ExprKind::NilLit => unsupported("nil-literal", e.span)?,
+        ExprKind::TextDisplay(_) => unsupported("text-display", e.span)?,
     }
     Ok(())
 }

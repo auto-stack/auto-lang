@@ -26,6 +26,7 @@ pub mod cst;
 pub mod decl_env;
 #[cfg(any(test, feature = "legacy-syntax-oracle"))]
 pub mod lexer;
+pub mod fstr;
 pub mod modules;
 pub mod packages;
 pub mod parser;

@@ -653,6 +653,7 @@ pub fn bind_with_facts(
                 tuples: Vec::new(),
                 variants: Vec::new(),
                 function_types: Vec::new(),
+                objects: Vec::new(),
             },
             Vec::new(),
             BodyTypeSupply::new(),

@@ -25,7 +25,7 @@
 
 use super::ast::{BinOp, Receiver, UnaryOp};
 use super::resolve::{
-    param_position, RBlock, RExprKind, RStmt, ResolvedArg, ResolvedExpr, ResolvedFn,
+    param_position, FStrPart, RBlock, RExprKind, RStmt, ResolvedArg, ResolvedExpr, ResolvedFn,
     ResolvedProgram, VT,
 };
 use super::SourceProfile;
@@ -789,6 +789,29 @@ fn check_expr(
             }
             RExprKind::VariantProject { variant, disc, .. } => {
                 check_disc(program, *variant, *disc, e.span, diags);
+            }
+            // -- PLAN-964 object/nil/FStr surface --------------------------
+            // Resolve already pinned these types (elem homogeneity, Str
+            // keys, i32 display domain); the walk only descends operands.
+            RExprKind::ObjectCtor { args, .. } => {
+                stack.extend(args.iter());
+            }
+            RExprKind::ObjectGet { base, key } => {
+                stack.push(base);
+                stack.push(key);
+            }
+            RExprKind::ObjectSet { base, key, value } => {
+                stack.push(base);
+                stack.push(key);
+                stack.push(value);
+            }
+            RExprKind::NilLit => {}
+            RExprKind::TextDisplay { operand } => stack.push(operand),
+            RExprKind::FStr { parts } => {
+                for p in parts {
+                    let (FStrPart::Text(e) | FStrPart::Expr(e)) = p;
+                    stack.push(e);
+                }
             }
         }
     }

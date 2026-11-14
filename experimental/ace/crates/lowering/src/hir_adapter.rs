@@ -884,9 +884,21 @@ impl ClosureFacts for ModuleScanFacts {
                 .map(|(field, local)| EnvFieldFact {
                     ty: local.ty,
                     mutable: local.mutable,
+                    // PLAN-964: an Object capture is the Rc share itself —
+                    // never cell-wrapped (the object IS the shared cell).
                     cell: match site.get(field).map(|c| c.mode) {
                         Some(hir::CaptureMode::Shared) => true,
-                        Some(hir::CaptureMode::Move) => local.mutable,
+                        Some(hir::CaptureMode::Move) => {
+                            local.mutable
+                                && !matches!(
+                                    local.ty,
+                                    hir::TypeUse::Ref(tid)
+                                        if matches!(
+                                            module.types.get(tid.0 as usize).map(|t| &t.kind),
+                                            Some(hir::TypeKind::Object { .. })
+                                        )
+                                )
+                        }
                         _ => false,
                     },
                 })
@@ -2556,6 +2568,11 @@ fn collections_type_idx_of(
             // PLAN-864: unit-typed expressions are intercepted before type
             // mapping (the effect arms return NO_SLOT); reaching here means
             // a unit value would materialize — an internal violation.
+            // PLAN-964: a unit-RESULT closure (block lambda whose body is an
+            // effect statement) is the closures profile's own Unit.
+            hir::BuiltinType::Unit if out.is_closures_profile() => {
+                Ok(out.intern_type(MirType::Unit))
+            }
             hir::BuiltinType::Unit => Err(AdapterError::inv(
                 "lower.type-use",
                 "a unit type would materialize in the collections profile (effect statements discard)".to_string(),
@@ -2756,6 +2773,14 @@ fn collections_type_idx_of(
                 hir::TypeKind::U64 => Ok(out.intern_type(MirType::U64)),
                 hir::TypeKind::F32 => Ok(out.intern_type(MirType::F32)),
                 hir::TypeKind::F64 => Ok(out.intern_type(MirType::F64)),
+                // PLAN-964 (L-21/L-16): nil maps to the zero-width Nil
+                // type; an object maps structurally by its elem (the
+                // shared cell is the MIR Object shape).
+                hir::TypeKind::Nil => Ok(out.intern_type(MirType::Nil)),
+                hir::TypeKind::Object { elem } => {
+                    let e = collections_type_idx_of(elem, m, out, memo, visiting)?;
+                    Ok(out.intern_type(MirType::Object { elem: e }))
+                }
                 other => Err(AdapterError::uns(
                     "lower.type-use",
                     format!("type kind {:?} is outside the av.collections/1 source surface", other),
@@ -3574,11 +3599,17 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         }
         // PLAN-864: unit-typed expressions (push/insert/set/clear) never
         // map their type — Unit is not a profile-4 table entry and the
-        // effect arms return the NO_SLOT sentinel.
+        // effect arms return the NO_SLOT sentinel. PLAN-964: the unit
+        // VALUE (a unit-result closure's synthesized return operand) maps
+        // its real type on the closures profile.
         let is_unit_result = self.collections()
             && matches!(
                 self.body.exprs[eid.0 as usize].ty,
                 hir::TypeUse::Builtin(hir::BuiltinType::Unit)
+            )
+            && !matches!(
+                self.body.exprs[eid.0 as usize].kind,
+                hir::ExprKind::Unit
             );
         let ty = if is_unit_result {
             self.t_i32
@@ -4319,7 +4350,22 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 for arg in eval_args {
                     args.push(self.eval_expr(*arg, depth + 1)?);
                 }
-                let dst = self.temp_ty(ty)?;
+                // PLAN-964: a unit-RESULT closure call (block lambda whose
+                // body is an effect statement) materializes the Unit result
+                // — the eval_expr shortcut above types unit exprs as i32
+                // for the NO_SLOT effect arms only.
+                let dst = if self.collections()
+                    && self.out.is_closures_profile()
+                    && matches!(
+                        self.body.exprs[eid.0 as usize].ty,
+                        hir::TypeUse::Builtin(hir::BuiltinType::Unit)
+                    )
+                {
+                    let unit_ty = self.expr_ty(eid)?;
+                    self.temp_ty_from_cache(unit_ty)?
+                } else {
+                    self.temp_ty(ty)?
+                };
                 self.emit(MirInstr::CallClosure { dst, closure, args }, sp)?;
                 Ok(dst)
             }
@@ -4557,10 +4603,12 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 )?;
                 Ok(dst)
             }
-            hir::ExprKind::TextConcat { lhs, rhs } if self.owned && !self.collections() => {
+            hir::ExprKind::TextConcat { lhs, rhs } if self.owned => {
                 // PLAN-894: concat operands are VIEWS by contract — an
                 // owned operand (a local or an owned-producing RHS) views
-                // first, the same dispatch as the str ops.
+                // first, the same dispatch as the str ops. PLAN-964 (L-22):
+                // the collections/closures family admits f-string chains
+                // too (they lower to left-nested TextConcat).
                 let l = self.text_view_operand(lhs, depth + 1)?;
                 let r = self.text_view_operand(rhs, depth + 1)?;
                 let dst = self.temp_ty(ty)?;
@@ -5397,6 +5445,77 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     "mut borrows are outside the av.data/1 profile".to_string(),
                 ));
             }
+            // -- PLAN-964 object/nil/FStr surface (av.dynamic/1 expansion) --
+            // The nil literal is a zero-width value: materialize the Nil
+            // const into a Nil-typed temp.
+            hir::ExprKind::NilLit if self.collections() => {
+                let dst = self.temp_ty(ty)?;
+                let c = self.out.intern_const(MirConst::Nil);
+                self.emit(MirInstr::Const { dst, value: c }, sp)?;
+                Ok(dst)
+            }
+            hir::ExprKind::ObjectCtor {
+                eval_args, keys, ..
+            } if self.collections() => {
+                // Static keys become owned Str slots (the StrLit path);
+                // values evaluate in source order; the fresh cell lands in
+                // an Object-typed temp.
+                let mut key_slots = Vec::with_capacity(keys.len());
+                let str_ty = self.out.intern_type(MirType::Str);
+                for k in keys {
+                    let ks = self.temp_ty(str_ty)?;
+                    let c = self
+                        .out
+                        .intern_const(MirConst::Str(k.as_bytes().to_vec().into_boxed_slice()));
+                    self.emit(MirInstr::Const { dst: ks, value: c }, sp)?;
+                    key_slots.push(ks);
+                }
+                let mut vals = Vec::with_capacity(eval_args.len());
+                for a in eval_args {
+                    vals.push(self.eval_expr(*a, depth + 1)?);
+                }
+                let dst = self.temp_ty(ty)?;
+                self.emit(
+                    MirInstr::ObjectNew {
+                        dst,
+                        keys: key_slots,
+                        vals,
+                    },
+                    sp,
+                )?;
+                Ok(dst)
+            }
+            hir::ExprKind::ObjectGet { base, key } if self.collections() => {
+                let b = self.eval_expr(*base, depth + 1)?;
+                let k = self.eval_expr(*key, depth + 1)?;
+                // The expression's HIR type IS the object's elem (resolve
+                // pins it); the MIR ObjectGet mirrors it as `elem`.
+                let dst = self.temp_ty(ty)?;
+                self.emit(
+                    MirInstr::ObjectGet {
+                        dst,
+                        obj: b,
+                        key: k,
+                        elem: ty,
+                    },
+                    sp,
+                )?;
+                Ok(dst)
+            }
+            hir::ExprKind::ObjectSet { base, key, value } if self.collections() => {
+                let b = self.eval_expr(*base, depth + 1)?;
+                let k = self.eval_expr(*key, depth + 1)?;
+                let v = self.eval_expr(*value, depth + 1)?;
+                self.emit(MirInstr::ObjectSet { obj: b, key: k, value: v }, sp)?;
+                // Unit-typed effect statement (like ListPush): no slot.
+                Ok(NO_SLOT)
+            }
+            hir::ExprKind::TextDisplay { operand } if self.collections() => {
+                let s = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::TextDisplay { dst, src: s }, sp)?;
+                Ok(dst)
+            }
             other => Err(AdapterError::uns(
                 "lower.expr",
                 format!(
@@ -5521,6 +5640,12 @@ fn expr_kind_name(k: &hir::ExprKind) -> &'static str {
         VariantCtor { .. } => "variant-ctor",
         VariantGuardTest { .. } => "variant-guard-test",
         VariantProject { .. } => "variant-project",
+        // PLAN-964 object/nil/FStr surface
+        NilLit => "nil-lit",
+        ObjectCtor { .. } => "object-ctor",
+        ObjectGet { .. } => "object-get",
+        ObjectSet { .. } => "object-set",
+        TextDisplay { .. } => "text-display",
     }
 }
 

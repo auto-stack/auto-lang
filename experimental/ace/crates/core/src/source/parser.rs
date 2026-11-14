@@ -137,7 +137,27 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
         | SourceProfile::Closures
         | SourceProfile::Numeric
         | SourceProfile::Aggregates => {
-            let program = super::cst::parse_program_via_cst(src, profile)?;
+            // PLAN-964 (L-22/FStr)：先于语法解析的 f-string 文本变换——
+            // 仅 text 族/集合/聚合/闭包面启用；其余 profile 保持原文本。
+            let parsed_src = if super::fstr::profile_admits_fstr(profile) {
+                match super::fstr::desugar_fstrings(src) {
+                    Ok(s) => s,
+                    Err(msg) => {
+                        return Err(Diagnostic {
+                            stage: crate::atom_text::Stage::Text,
+                            code: "source.fstr-syntax".to_string(),
+                            span: Span {
+                                start: 0,
+                                end: src.len(),
+                            },
+                            message: msg,
+                        })
+                    }
+                }
+            } else {
+                src.to_string()
+            };
+            let program = super::cst::parse_program_via_cst(&parsed_src, profile)?;
             // 计量保真：旧 parser 在每个 fn 体开parse时 note_parse——冷整源
             // 换链后按投影结果补记（不旁路 SyntaxWork 观察面）。
             for item in &program.items {

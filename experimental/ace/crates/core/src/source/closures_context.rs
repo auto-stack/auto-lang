@@ -74,6 +74,12 @@ pub enum VtDump {
     U64,
     F32,
     F64,
+    /// PLAN-964: object identity is its interned elem index (never in a
+    /// closures dump — the aggregates surface owns objects; kept for
+    /// VT totality).
+    Object(usize),
+    /// PLAN-964: the nil value kind.
+    Nil,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -310,6 +316,10 @@ fn vt_dump(v: VT) -> VtDump {
         VT::U64 => VtDump::U64,
         VT::F32 => VtDump::F32,
         VT::F64 => VtDump::F64,
+        // PLAN-964: object/nil never occur in a closures dump (the
+        // closures surface admits no objects) — map structurally.
+        VT::Object(i) => VtDump::Object(i),
+        VT::Nil => VtDump::Nil,
     }
 }
 
@@ -559,6 +569,9 @@ fn vt_in(d: VtDump) -> VT {
         VtDump::U64 => VT::U64,
         VtDump::F32 => VT::F32,
         VtDump::F64 => VT::F64,
+        // PLAN-964: object/nil (totality; never in a closures dump).
+        VtDump::Object(i) => VT::Object(i),
+        VtDump::Nil => VT::Nil,
     }
 }
 
@@ -995,6 +1008,7 @@ pub fn restore_context(
             tuples: Vec::new(),
             variants,
             function_types,
+            objects: Vec::new(),
         },
         rec_index,
         sigs,

@@ -20,8 +20,8 @@
 descriptor(schema: "auto.hir.numeric.draft", revision: 1u32, profile: "source-numeric-draft") {
 
     enums {
-        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, call_closure, create_closure, closure_clone, str_lit, char_lit, text_len, char_to_codepoint, record_ctor, field_get, borrow_view, move, list_new, list_len, list_push, list_insert, list_get, list_set, list_remove, list_clear, variant_ctor, variant_guard_test, variant_project, numeric_const, cast] }
-        enum TypeKind { cases: [i32, bool, str, Str, char, function, closure, record, list, variant, i8, u8, u32, i64, u64, f32, f64] }
+        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, call_closure, create_closure, closure_clone, str_lit, char_lit, text_len, char_to_codepoint, record_ctor, field_get, borrow_view, move, list_new, list_len, list_push, list_insert, list_get, list_set, list_remove, list_clear, variant_ctor, variant_guard_test, variant_project, numeric_const, cast, nil_lit, object_ctor, object_get, object_set, text_display, fstr] }
+        enum TypeKind { cases: [i32, bool, str, Str, char, function, closure, record, list, variant, i8, u8, u32, i64, u64, f32, f64, nil, object] }
         enum BinOp { cases: [add_i32, sub_i32, mul_i32, div_i32, rem_i32, lt_i32, le_i32, gt_i32, ge_i32, eq, ne, add_i8, sub_i8, mul_i8, div_i8, rem_i8, and_i8, or_i8, xor_i8, shl_i8, shr_i8, lt_i8, le_i8, gt_i8, ge_i8, eq_i8, ne_i8, add_u8, sub_u8, mul_u8, div_u8, rem_u8, and_u8, or_u8, xor_u8, shl_u8, shr_u8, lt_u8, le_u8, gt_u8, ge_u8, eq_u8, ne_u8, add_u32, sub_u32, mul_u32, div_u32, rem_u32, and_u32, or_u32, xor_u32, shl_u32, shr_u32, lt_u32, le_u32, gt_u32, ge_u32, eq_u32, ne_u32, add_i64, sub_i64, mul_i64, div_i64, rem_i64, and_i64, or_i64, xor_i64, shl_i64, shr_i64, lt_i64, le_i64, gt_i64, ge_i64, eq_i64, ne_i64, add_u64, sub_u64, mul_u64, div_u64, rem_u64, and_u64, or_u64, xor_u64, shl_u64, shr_u64, lt_u64, le_u64, gt_u64, ge_u64, eq_u64, ne_u64, add_f32, sub_f32, mul_f32, div_f32, rem_f32, lt_f32, le_f32, gt_f32, ge_f32, eq_f32, ne_f32, add_f64, sub_f64, mul_f64, div_f64, rem_f64, lt_f64, le_f64, gt_f64, ge_f64, eq_f64, ne_f64, and_i32, or_i32, xor_i32, shl_i32, shr_i32] }
         enum UnaryOp { cases: [neg_i32, not_bool, neg_i8, neg_i64, neg_f32, neg_f64] }
         enum LogicOp { cases: [and, or] }
@@ -104,6 +104,7 @@ descriptor(schema: "auto.hir.numeric.draft", revision: 1u32, profile: "source-nu
                 index: ExprRef
                 callee: DefRef
                 eval_args: ExprRefList
+                eval: ExprRefList
                 bindings: BindingList
                 record: TypeRef
                 field_args: ExprRefList
@@ -114,6 +115,10 @@ descriptor(schema: "auto.hir.numeric.draft", revision: 1u32, profile: "source-nu
                 disc: U32
                 payload: ExprRef
                 captures: CaptureBindingList
+                value: ExprRef
+                keys: TextList
+                key: ExprRef
+                parts: ExprRefList
             }
         }
 
@@ -151,6 +156,9 @@ descriptor(schema: "auto.hir.numeric.draft", revision: 1u32, profile: "source-nu
         branch(key: "type.f32") { forbid: [params, result, fields, elem, arms] }
         branch(key: "type.f64") { forbid: [params, result, fields, elem, arms] }
         branch(key: "type.variant") { require: [arms]; forbid: [params, result, fields, elem] }
+        // PLAN-964: nil has no fields; object requires the elem entry type.
+        branch(key: "type.nil") { forbid: [params, result, fields, elem, arms] }
+        branch(key: "type.object") { require: [elem]; forbid: [params, result, fields, arms] }
         branch(key: "function") { require: [name]; forbid: [symbol, effect] }
         branch(key: "intrinsic") { require: [symbol, effect]; forbid: [name] }
         branch(key: "body") { require: [owner, entry] }
@@ -743,6 +751,31 @@ descriptor(schema: "auto.hir.numeric.draft", revision: 1u32, profile: "source-nu
         branch(key: "expr.variant_project") {
             require: [type, operand, disc]
             forbid: [local, value, text, op, overflow, lhs, rhs, index, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, list, payload]
+        }
+        // PLAN-964: dynamic-value reflection surface.
+        branch(key: "expr.nil_lit") {
+            require: [type]
+            forbid: [local, value, text, op, overflow, lhs, rhs, operand, index, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload, keys, key]
+        }
+        branch(key: "expr.object_ctor") {
+            require: [type, eval, keys]
+            forbid: [local, value, text, op, overflow, lhs, rhs, operand, index, callee, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload, key]
+        }
+        branch(key: "expr.object_get") {
+            require: [type, base, key]
+            forbid: [local, value, text, op, overflow, lhs, rhs, operand, index, callee, eval_args, bindings, record, field_args, ctor_bindings, path, list, disc, payload, keys]
+        }
+        branch(key: "expr.object_set") {
+            require: [type, base, key, value]
+            forbid: [local, text, op, overflow, lhs, rhs, operand, index, callee, eval_args, bindings, record, field_args, ctor_bindings, path, list, disc, payload, keys]
+        }
+        branch(key: "expr.text_display") {
+            require: [type, operand]
+            forbid: [local, value, text, op, overflow, lhs, rhs, index, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload, keys, key]
+        }
+        branch(key: "expr.fstr") {
+            require: [type, parts]
+            forbid: [local, value, text, op, overflow, lhs, rhs, operand, index, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload, keys, key]
         }
         branch(key: "let") { require: [local, value] }
         branch(key: "return") { require: [value] }

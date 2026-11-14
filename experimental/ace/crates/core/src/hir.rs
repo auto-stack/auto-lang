@@ -205,6 +205,16 @@ pub enum TypeKind {
     U64,
     F32,
     F64,
+    /// PLAN-964 (L-21): the null value type — a zero-width value distinct
+    /// from `unit` (unit is the no-value RESULT). Only Nil-typed equality
+    /// is admitted at the source; other operators are named rejects.
+    Nil,
+    /// PLAN-964 (L-16/L-20): a shared mutable string-keyed object map.
+    /// `elem` is the homogeneous entry value type (the source resolve
+    /// freezes it); entries may be nil (`elem = Nil`).
+    Object {
+        elem: TypeUse,
+    },
 }
 
 /// One arm of a [`TypeKind::Variant`], in declaration order (PLAN-864).
@@ -695,6 +705,39 @@ pub enum ExprKind {
     CallbackRef {
         def: DefId,
     },
+    /// PLAN-964 (L-21): the nil literal — a zero-width null value.
+    NilLit,
+    /// PLAN-964 (L-16/L-20): object literal construction. `eval_args` is
+    /// the source-order evaluation list (side effects left-to-right as
+    /// written); `keys` aligns with `eval_args` by index (static literal
+    /// keys only — dynamic keys go through ObjectSet). The expression's
+    /// type is the structural `Object{elem}`.
+    ObjectCtor {
+        elem: TypeId,
+        eval_args: Vec<ExprId>,
+        keys: Vec<String>,
+    },
+    /// PLAN-964 (L-20): dynamic index read `obj[k]` — `base` is the
+    /// object expression, `key` the Str expression. A missing key TRAPS
+    /// at runtime (`av.dyn.object-missing`); the result type is the
+    /// object's elem.
+    ObjectGet {
+        base: ExprId,
+        key: ExprId,
+    },
+    /// PLAN-964 (L-20): dynamic index write `obj[k] = v` — upsert; the
+    /// old entry drops exactly once at commit.
+    ObjectSet {
+        base: ExprId,
+        key: ExprId,
+        value: ExprId,
+    },
+    /// PLAN-964 (L-22/FStr): display an I32 as a decimal owned Str. The
+    /// M2-A display domain is I32 only; the general format algorithms
+    /// belong to 972.
+    TextDisplay {
+        operand: ExprId,
+    },
     /// Construct an owned 823 closure value from a source-analyzed capture
     /// list. The referenced function body declares matching capture locals.
     CreateClosure {
@@ -1135,6 +1178,10 @@ fn discriminant(k: &TypeKind) -> u8 {
         TypeKind::U64 => 14,
         TypeKind::F32 => 15,
         TypeKind::F64 => 16,
+        // PLAN-964: nil (zero-width) and object (shared map) get their own
+        // discriminants — a Nil/Object type never equals another kind.
+        TypeKind::Nil => 17,
+        TypeKind::Object { .. } => 18,
     }
 }
 

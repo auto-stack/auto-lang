@@ -121,6 +121,8 @@ impl TypeClassifier {
                             .as_ref()
                             .is_some_and(|p| owned_of_use(&kind, p).is_some())
                     }),
+                    // PLAN-964: the object cell itself is owned (Rc).
+                    hir::TypeKind::Object { .. } => true,
                     _ => false,
                 };
                 let next = match &td.kind {
@@ -137,7 +139,9 @@ impl TypeClassifier {
                     | hir::TypeKind::I64
                     | hir::TypeKind::U64
                     | hir::TypeKind::F32
-                    | hir::TypeKind::F64 => None,
+                    | hir::TypeKind::F64
+                    // PLAN-964: nil is a zero-width null — owns nothing.
+                    | hir::TypeKind::Nil => None,
                     hir::TypeKind::StrOwned => Some(OwnedKind::Str),
                     hir::TypeKind::List { .. } => Some(OwnedKind::List),
                     // records/variants release through a generated deep
@@ -146,6 +150,9 @@ impl TypeClassifier {
                     hir::TypeKind::Record(_) | hir::TypeKind::Variant { .. } => {
                         owns.then_some(OwnedKind::Deep(tid))
                     }
+                    // PLAN-964: the object cell releases through a generated
+                    // deep free keyed by its own type id (elem-typed).
+                    hir::TypeKind::Object { .. } => Some(OwnedKind::Deep(tid)),
                 };
                 if kind.get(&(i as u32)) != Some(&next) {
                     kind.insert(i as u32, next);
@@ -321,9 +328,15 @@ impl<'a> Walker<'a> {
             E::ListSet { list, index, value } => vec![*list, *index, *value],
             E::ListRemove { list, index } => vec![*list, *index],
             E::VariantCtor { payload, .. } => payload.iter().copied().collect(),
+            // -- PLAN-964 object/nil/FStr surface --
+            E::ObjectCtor { eval_args, .. } => eval_args.clone(),
+            E::ObjectGet { base, key } => vec![*base, *key],
+            E::ObjectSet { base, key, value } => vec![*base, *key, *value],
+            E::TextDisplay { operand } => vec![*operand],
             E::ReadLocal { .. }
             | E::Constant { .. }
             | E::Unit
+            | E::NilLit
             | E::StrLit { .. }
             | E::CharLit { .. }
             | E::BorrowMut { .. }
@@ -678,6 +691,23 @@ impl<'a> Walker<'a> {
                     self.expr(root);
                 }
             }
+            // -- PLAN-964 object/nil/FStr surface --
+            E::NilLit => {}
+            E::ObjectCtor { eval_args, .. } => {
+                for a in eval_args {
+                    self.owned_value_child(a);
+                }
+            }
+            E::ObjectGet { base, key } => {
+                self.expr(base);
+                self.expr(key);
+            }
+            E::ObjectSet { base, key, value } => {
+                self.expr(base);
+                self.expr(key);
+                self.owned_value_child(value);
+            }
+            E::TextDisplay { operand } => self.expr(operand),
         }
     }
 
@@ -714,6 +744,7 @@ impl<'a> Walker<'a> {
             | hir::ExprKind::VariantCtor { .. }
             | hir::ExprKind::ListRemove { .. }
             | hir::ExprKind::VariantProject { .. }
+            | hir::ExprKind::ObjectCtor { .. }
             | hir::ExprKind::Call { .. } => self.classifier.owned_of(&e.ty),
             _ => None,
         }
@@ -1094,6 +1125,34 @@ fn digest_expr_kind(h: &mut Fnv64, k: &hir::ExprKind) {
             h.str("vp");
             h.u32(root.0);
             h.u32(*disc);
+        }
+        // -- PLAN-964 object/nil/FStr surface --
+        E::NilLit => {
+            h.str("nil");
+        }
+        E::ObjectCtor { eval_args, keys, .. } => {
+            h.str("oc");
+            for k in keys {
+                h.str(k);
+            }
+            for a in eval_args {
+                h.u32(a.0);
+            }
+        }
+        E::ObjectGet { base, key } => {
+            h.str("og");
+            h.u32(base.0);
+            h.u32(key.0);
+        }
+        E::ObjectSet { base, key, value } => {
+            h.str("os");
+            h.u32(base.0);
+            h.u32(key.0);
+            h.u32(value.0);
+        }
+        E::TextDisplay { operand } => {
+            h.str("td");
+            h.u32(operand.0);
         }
     }
 }

@@ -1906,8 +1906,27 @@ impl<'c, 'a> Walker<'c, 'a> {
                     ));
                 }
                 if g == k.tok_ident {
-                    // 赋值/路径/表达式语句（旧投机臂）。
+                    // 赋值/路径/索引赋值/表达式语句（旧投机臂）。
                     if let Some((_, _, t2, _)) = self.at(self.i + 1) {
+                        if t2 == "[" {
+                            // PLAN-964（L-16/L-20/L-48）：索引赋值
+                            // `base[key] = value`——对象动态键写与 List
+                            // 整数索引写共用（resolve 按 base 类型分派）。
+                            self.i += 2; // ident + `[`
+                            if let Some(d) = self.walk_expr(true) {
+                                return Some(d);
+                            }
+                            if let Some(d) = self.expect_text("]") {
+                                return Some(d);
+                            }
+                            if let Some(d) = self.expect_text("=") {
+                                return Some(d);
+                            }
+                            if let Some(d) = self.walk_expr(false) {
+                                return Some(d);
+                            }
+                            return self.sep_check();
+                        }
                         if t2 == "=" || t2 == "." {
                             // 路径：ident (. ident)* 然后 `=`
                             let mark = self.i;
@@ -2479,6 +2498,66 @@ impl<'c, 'a> Walker<'c, 'a> {
                 } else {
                     self.i += 1;
                 }
+            } else if text == "{" && (self.cx.profile.is_aggregates() || self.cx.profile.is_closures())
+            {
+                // PLAN-964（L-16/L-20）：裸对象字面量 `{ k: v, ... }`——
+                // 键为 ident/字符串字面量；值为表达式；`,` 分隔；`}` 收尾。
+                self.i += 1;
+                loop {
+                    match self.cur() {
+                        None => {
+                            return Some(self.syntax("unterminated object literal".into()))
+                        }
+                        Some((_, _, "}", _)) => {
+                            self.i += 1;
+                            break;
+                        }
+                        Some((ksp, kg, ktxt, _))
+                            if kg == k.tok_ident || kg == k.tok_str_lit =>
+                        {
+                            let _ = ksp;
+                            let _ = ktxt;
+                            self.i += 1;
+                            if let Some(d) = self.expect_text(":") {
+                                return Some(d);
+                            }
+                            if let Some(d) = self.walk_expr(true) {
+                                return Some(d);
+                            }
+                            match self.cur() {
+                                Some((_, _, ",", _)) => {
+                                    self.i += 1;
+                                }
+                                Some((_, _, "}", _)) => {
+                                    self.i += 1;
+                                    break;
+                                }
+                                _ => {
+                                    return Some(self.syntax(
+                                        "expected `,` or `}` in an object literal".into(),
+                                    ))
+                                }
+                            }
+                        }
+                        Some((_, _, other, _)) => {
+                            return Some(
+                                self.syntax(format!("expected object key, found `{other}`")),
+                            )
+                        }
+                    }
+                }
+                // 对象字面量是完整值：落入算子/收尾循环（不得 continue 到
+                // primary——下一个语句关键字会被误报"expected expression"）。
+                anchored = false;
+                if let Some(d) = self.after_value(&mut frames, &mut anchored) {
+                    return d;
+                }
+                if frames.is_empty() && !anchored {
+                    return None;
+                }
+                if anchored {
+                    continue;
+                }
             } else if self.is_kw(g, text)
                 || text == ")"
                 || text == "}"
@@ -2534,6 +2613,26 @@ impl<'c, 'a> Walker<'c, 'a> {
         let k = self.k();
         loop {
             let in_br = !frames.is_empty();
+            // PLAN-964（L-16/L-20/L-48）：索引后缀 `base[key]`——对象动态键
+            // 读与 List 整数索引共用此步（resolve 按 base 类型分派）。
+            if let Some((dsp, _, "[", dline)) = self.cur() {
+                if !in_br && dline != self.prev_line() {
+                    return Some(Some(Diagnostic::new(
+                        Stage::Text,
+                        "source.syntax",
+                        "unbracketed expression cannot continue across a newline",
+                        dsp,
+                    )));
+                }
+                self.i += 1;
+                if let Some(d) = self.walk_expr(true) {
+                    return Some(Some(d));
+                }
+                if let Some(d) = self.expect_text("]") {
+                    return Some(Some(d));
+                }
+                continue;
+            }
             // 点后缀
             if let Some((dsp, _, ".", dline)) = self.cur() {
                 let is_record = self.cx.profile.is_record();
@@ -5202,6 +5301,62 @@ impl<'a> Engine<'a> {
                 }));
                 return;
             }
+            // PLAN-964（L-16/L-20）：裸对象字面量原子 `{ k: v, ... }`——
+            // 键为 ident/字符串叶子，值表达式同步投影，源序保持。
+            if ck == self.cx.k.object_lit.unwrap_or(u32::MAX) {
+                let mut fields: Vec<ObjectField> = Vec::new();
+                let mut span = self.cx.span_of(c);
+                if let Some(fields_n) = self.cx.field_child(c, "fields") {
+                    let fk = self.cx.k.object_field.unwrap_or(u32::MAX);
+                    let mut nodes: Vec<u32> = collect_seq(
+                        &self.cx,
+                        fields_n,
+                        fk,
+                        "object-field-tail",
+                    );
+                    nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
+                    for f in nodes {
+                        let key = match self.cx.field_child(f, "key") {
+                            Some(k) => {
+                                let kk = self.cx.tree.kind(k);
+                                let text = self.cx.spelling(k);
+                                if kk == self.cx.k.tok_str_lit {
+                                    lex::decode_str_value(&text.as_bytes()[1..text.len() - 1])
+                                } else {
+                                    text
+                                }
+                            }
+                            None => {
+                                let span = self.cx.span_of(f);
+                                self.cx.reject(span, || syntax_diag("object field key", span));
+                                String::new()
+                            }
+                        };
+                        let vn = self.cx.field_child(f, "value").expect("object field value");
+                        let value = self.project_expr_sync(vn);
+                        span = span.join(value.span);
+                        fields.push(ObjectField {
+                            key,
+                            value,
+                            span: self.cx.span_of(f),
+                        });
+                    }
+                }
+                self.vals.push(Val::E(Expr {
+                    span,
+                    kind: ExprKind::ObjectLit { fields },
+                }));
+                return;
+            }
+            // PLAN-964（L-21）：nil 字面量原子（nil/null 统一）。
+            if ck == self.cx.k.nil_lit.unwrap_or(u32::MAX) {
+                let span = self.cx.span_of(c);
+                self.vals.push(Val::E(Expr {
+                    span,
+                    kind: ExprKind::NilLit,
+                }));
+                return;
+            }
             // PLAN-963（T-04）：`rep<2>(21)` 值实参调用原子（实例面）。
             if ck == self.cx.k.generic_call.unwrap_or(u32::MAX) {
                 let name_leaf = self.cx.field_child(c, "name").expect("generic call name");
@@ -5813,6 +5968,15 @@ impl<'a> Engine<'a> {
         })
     }
 
+    /// PLAN-964: whether a postfix step is a bracket index step (`[expr]`,
+    /// no dot member) rather than a member/call step.
+    fn step_is_index(&self, step: u32) -> bool {
+        self.cx
+            .children(step)
+            .into_iter()
+            .any(|c| self.cx.tree.kind(c) == self.cx.k.tok_lbracket)
+    }
+
     fn fold_one_postfix(&mut self, recv: Expr, step: u32, member: Option<u32>) -> Expr {
         // PLAN-962 (L-48)：索引步 `[expr]`（member 为 None、步带 lbracket
         // 孩子；内层 index 同步投影）。
@@ -5822,16 +5986,20 @@ impl<'a> Engine<'a> {
             .into_iter()
             .any(|c| self.cx.tree.kind(c) == self.cx.k.tok_lbracket);
         if has_lbracket {
+            // 内层索引表达式是步里唯一带孩子的规则节点（lbracket/rbracket
+            // 是 token 叶子；token 的 expression_kind 非 MAX，不能作选择键）。
             let idx_node = self
                 .cx
                 .children(step)
                 .into_iter()
-                .find(|&c| self.cx.expression_kind(c) != u32::MAX)
+                .find(|&c| self.cx.tree.child_count(c) > 0)
                 .or_else(|| {
                     self.cx
                         .children(step)
                         .into_iter()
-                        .find(|&c| self.cx.tree.child_count(c) > 0)
+                        .find(|&c| {
+                            self.cx.tree.kind(c) >= ace_syntax_runtime::program::RULE_KIND_BASE
+                        })
                 });
             let Some(idx_node) = idx_node else {
                 let span = recv.span;
@@ -6241,12 +6409,25 @@ impl<'a> Engine<'a> {
                     }
                 } else {
                     match steps.split_last() {
-                        Some((last, mids)) => CalleePlan::Method {
-                            base,
-                            member: self.step_member(*last).unwrap_or(*last),
-                            mids: mids.to_vec(),
-                            unary_ops,
-                        },
+                        Some((last, mids)) => {
+                            if self.step_is_index(*last) {
+                                // PLAN-964: the call applies to the folded
+                                // Index node (`fns["twice"](3)`) — the index
+                                // step is NOT a member name; project the whole
+                                // chain and dispatch as a value call.
+                                CalleePlan::Value {
+                                    callee_n: wrap,
+                                    unary_ops,
+                                }
+                            } else {
+                                CalleePlan::Method {
+                                    base,
+                                    member: self.step_member(*last).unwrap_or(*last),
+                                    mids: mids.to_vec(),
+                                    unary_ops,
+                                }
+                            }
+                        }
                         None => {
                             // PLAN-928（T-03）：`List<T>.m(...)`——泛型接收原子自带
                             // 尾随 dot 成员（generic-atom）。

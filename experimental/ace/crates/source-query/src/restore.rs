@@ -146,6 +146,7 @@ pub fn restore_bind(
                 tuples: Vec::new(),
                 variants: Vec::new(),
                 function_types: Vec::new(),
+                objects: Vec::new(),
             },
             Vec::new(),
             BodyTypeSupply::new(),

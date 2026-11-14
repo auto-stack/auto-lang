@@ -1549,6 +1549,16 @@ fn shift_expr(e: &mut Expr, offset: usize) {
                 ClosureBody::Block(b) => shift_block(b, offset),
             }
         }
+        // PLAN-964: object literal fields shift; nil is a leaf; text
+        // display shifts its operand.
+        ExprKind::ObjectLit { fields } => {
+            for f in fields {
+                sh(&mut f.span, offset);
+                shift_expr(&mut f.value, offset);
+            }
+        }
+        ExprKind::NilLit => {}
+        ExprKind::TextDisplay(inner) => shift_expr(inner, offset),
     }
 }
 
@@ -2190,6 +2200,17 @@ impl<'a> Walker<'a> {
                 "closures belong to the closures surface (PLAN-964)",
                 span,
             )),
+            // PLAN-964: object literals walk their values; nil is a leaf;
+            // text display walks its operand (packages surface owns none
+            // of these — the arms keep the walk total).
+            ExprKind::ObjectLit { fields } => {
+                for f in fields {
+                    self.walk_expr(&mut f.value, locals)?;
+                }
+                Ok(())
+            }
+            ExprKind::NilLit => Ok(()),
+            ExprKind::TextDisplay(inner) => self.walk_expr(inner, locals),
         }
     }
 

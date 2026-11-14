@@ -18,8 +18,8 @@
 descriptor(schema: "auto.hir.closures.draft", revision: 1u32, profile: "source-closures-draft") {
 
     enums {
-        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, call_closure, create_closure, closure_clone, str_lit, char_lit, text_len, char_to_codepoint, record_ctor, field_get, borrow_view, move, list_new, list_len, list_push, list_insert, list_get, list_set, list_remove, list_clear, variant_ctor, variant_guard_test, variant_project] }
-        enum TypeKind { cases: [i32, bool, str, Str, char, function, closure, record, list, variant] }
+        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, call_closure, create_closure, closure_clone, str_lit, char_lit, text_len, char_to_codepoint, record_ctor, field_get, borrow_view, move, list_new, list_len, list_push, list_insert, list_get, list_set, list_remove, list_clear, variant_ctor, variant_guard_test, variant_project, nil_lit, object_ctor, object_get, object_set, text_display, fstr, unit] }
+        enum TypeKind { cases: [i32, bool, str, Str, char, function, closure, record, list, variant, nil, object] }
         enum BinOp { cases: [add_i32, sub_i32, mul_i32, div_i32, rem_i32, lt_i32, le_i32, gt_i32, ge_i32, eq, ne] }
         enum UnaryOp { cases: [neg_i32, not_bool] }
         enum LogicOp { cases: [and, or] }
@@ -101,6 +101,7 @@ descriptor(schema: "auto.hir.closures.draft", revision: 1u32, profile: "source-c
                 index: ExprRef
                 callee: DefRef
                 eval_args: ExprRefList
+                eval: ExprRefList
                 bindings: BindingList
                 record: TypeRef
                 field_args: ExprRefList
@@ -111,6 +112,10 @@ descriptor(schema: "auto.hir.closures.draft", revision: 1u32, profile: "source-c
                 disc: U32
                 payload: ExprRef
                 captures: CaptureBindingList
+                value: ExprRef
+                keys: TextList
+                key: ExprRef
+                parts: ExprRefList
             }
         }
 
@@ -141,6 +146,9 @@ descriptor(schema: "auto.hir.closures.draft", revision: 1u32, profile: "source-c
         branch(key: "type.char") { forbid: [params, result] }
         branch(key: "type.list") { require: [elem]; forbid: [params, result, fields, arms] }
         branch(key: "type.variant") { require: [arms]; forbid: [params, result, fields, elem] }
+        // PLAN-964: nil has no fields; object requires the elem entry type.
+        branch(key: "type.nil") { forbid: [params, result, fields, elem, arms] }
+        branch(key: "type.object") { require: [elem]; forbid: [params, result, fields, arms] }
         branch(key: "function") { require: [name]; forbid: [symbol, effect] }
         branch(key: "intrinsic") { require: [symbol, effect]; forbid: [name] }
         branch(key: "body") { require: [owner, entry] }
@@ -301,6 +309,37 @@ descriptor(schema: "auto.hir.closures.draft", revision: 1u32, profile: "source-c
         branch(key: "expr.variant_project") {
             require: [type, operand, disc]
             forbid: [local, value, text, op, overflow, lhs, rhs, index, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, list, payload]
+        }
+        // PLAN-964: dynamic-value reflection surface.
+        branch(key: "expr.nil_lit") {
+            require: [type]
+            forbid: [local, value, text, op, overflow, lhs, rhs, operand, index, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload, keys, key]
+        }
+        branch(key: "expr.object_ctor") {
+            require: [type, eval, keys]
+            forbid: [local, value, text, op, overflow, lhs, rhs, operand, index, callee, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload, key]
+        }
+        branch(key: "expr.object_get") {
+            require: [type, base, key]
+            forbid: [local, value, text, op, overflow, lhs, rhs, operand, index, callee, eval_args, bindings, record, field_args, ctor_bindings, path, list, disc, payload, keys]
+        }
+        branch(key: "expr.object_set") {
+            require: [type, base, key, value]
+            forbid: [local, text, op, overflow, lhs, rhs, operand, index, callee, eval_args, bindings, record, field_args, ctor_bindings, path, list, disc, payload, keys]
+        }
+        branch(key: "expr.text_display") {
+            require: [type, operand]
+            forbid: [local, value, text, op, overflow, lhs, rhs, index, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload, keys, key]
+        }
+        branch(key: "expr.fstr") {
+            require: [type, parts]
+            forbid: [local, value, text, op, overflow, lhs, rhs, operand, index, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload, keys, key]
+        }
+        // PLAN-964: the unit value — the return operand of a unit-result
+        // closure body (payload-free; the verifier owns result-position).
+        branch(key: "expr.unit") {
+            require: [type]
+            forbid: [local, value, text, op, overflow, lhs, rhs, operand, index, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload, keys, key]
         }
         branch(key: "let") { require: [local, value] }
         branch(key: "return") { require: [value] }

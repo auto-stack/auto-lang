@@ -402,6 +402,16 @@ pub enum ExprKind {
         base: Box<Expr>,
         index: Box<Expr>,
     },
+    /// PLAN-964 (L-16/L-20): a bare object literal `{ k: v, ... }` —
+    /// keys are idents or string literals, values homogeneous. The
+    /// resolver types it `Object{elem}` and lowers to HIR ObjectCtor.
+    ObjectLit {
+        fields: Vec<ObjectField>,
+    },
+    /// PLAN-964 (L-21): the nil literal (`nil` / `null`, PLAN-053 unified).
+    NilLit,
+    /// PLAN-964 (L-22/FStr): display an I32 as a decimal owned Str.
+    TextDisplay(Box<Expr>),
     /// PLAN-962 (L-19): a range `a..b` / `a..=b` — legal ONLY in the
     /// for-in iterable position (the resolver desugars to a counted
     /// i32 loop; a range in any other position is a named rejection).
@@ -540,6 +550,16 @@ pub enum ClosureBody {
 #[derive(Clone, Debug)]
 pub struct NamedCtorField {
     pub name: Ident,
+    pub value: Expr,
+    pub span: Span,
+}
+
+/// PLAN-964: one `key: value` entry of an object literal — the key is a
+/// static identifier or string literal (dynamic keys go through
+/// index-assign).
+#[derive(Clone, Debug)]
+pub struct ObjectField {
+    pub key: String,
     pub value: Expr,
     pub span: Span,
 }

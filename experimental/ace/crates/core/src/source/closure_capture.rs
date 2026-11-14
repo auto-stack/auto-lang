@@ -153,7 +153,18 @@ pub(crate) fn analyze_capture_uses(
             | ExprKind::TypeWordArg(_)
             | ExprKind::MutArg { .. }
             | ExprKind::ViewArg { .. }
-            | ExprKind::GenericType { .. } => {}
+            | ExprKind::GenericType { .. }
+            // PLAN-964: nil is a leaf; object literals capture through
+            // their values; text-display captures through its operand.
+            | ExprKind::NilLit => {}
+            ExprKind::ObjectLit { fields } => {
+                for f in fields {
+                    visit_expr(&f.value, outer_locals, scopes, uses, by_name);
+                }
+            }
+            ExprKind::TextDisplay(inner) => {
+                visit_expr(inner, outer_locals, scopes, uses, by_name)
+            }
         }
     }
 
@@ -433,7 +444,15 @@ pub(crate) fn scan_shared_capture_cells(
             | ExprKind::TypeWordArg(_)
             | ExprKind::MutArg { .. }
             | ExprKind::ViewArg { .. }
-            | ExprKind::GenericType { .. } => {}
+            | ExprKind::GenericType { .. }
+            // PLAN-964: nil is a leaf.
+            | ExprKind::NilLit => {}
+            ExprKind::ObjectLit { fields } => {
+                for f in fields {
+                    visit_expr(&f.value, scopes, shared);
+                }
+            }
+            ExprKind::TextDisplay(inner) => visit_expr(inner, scopes, shared),
         }
     }
 

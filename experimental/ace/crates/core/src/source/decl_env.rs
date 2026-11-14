@@ -117,6 +117,9 @@ fn vt_token(v: &super::resolve::VT) -> String {
         VT::U64 => "u64".into(),
         VT::F32 => "f32".into(),
         VT::F64 => "f64".into(),
+        // PLAN-964: object identity is its interned elem index; nil is nil.
+        VT::Object(i) => format!("object:{i}"),
+        VT::Nil => "nil".into(),
     }
 }
 
@@ -852,6 +855,7 @@ pub fn decl_env_restore_with_foreign(
         tuples: Vec::new(),
         variants,
         function_types,
+        objects: Vec::new(),
     };
     Ok(checked_env_from_parts_profile(
         program, rec_index, sigs, false, profile,

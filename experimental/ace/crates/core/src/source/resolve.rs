@@ -49,6 +49,11 @@ pub enum VT {
     /// [`CollTables::tuples`] (interned, deduplicated by shape; identity
     /// = the element list).
     Tuple(usize),
+    /// PLAN-964 (L-16/L-20): a shared mutable string-keyed object map by
+    /// element type (structural — index into [`CollTables::objects`]).
+    Object(usize),
+    /// PLAN-964 (L-21): the null value type.
+    Nil,
     /// PLAN-961 numeric surface (`byte`≡U8, `uint`≡U32, `float`≡F32,
     /// `double`≡`f64`≡F64).
     I8,
@@ -82,6 +87,8 @@ impl VT {
             VT::F64 => "f64",
             VT::Variant(_) => "variant",
             VT::Function(_) => "function",
+            VT::Object(_) => "object",
+            VT::Nil => "nil",
         }
     }
 
@@ -90,7 +97,7 @@ impl VT {
     /// Str). Copyable element types copy out; owned ones move.
     pub fn is_owned_coll(self, prog: &ResolvedProgram) -> bool {
         match self {
-            VT::StrOwned | VT::List(_) | VT::Variant(_) | VT::Function(_) => true,
+            VT::StrOwned | VT::List(_) | VT::Variant(_) | VT::Function(_) | VT::Object(_) => true,
             VT::Rec(ri) => record_reaches_str(ri, &prog.records),
             _ => false,
         }
@@ -496,6 +503,36 @@ pub enum RExprKind {
         index: Box<ResolvedExpr>,
         path: Vec<(usize, usize)>,
     },
+    // -- PLAN-964 object/nil/FStr surface --------------------------------
+    /// Object literal `{ k: v, ... }` — keys static, values homogeneous
+    /// (`vt` = `VT::Object(oi)`; the elem derives from the interned
+    /// object table).
+    ObjectCtor {
+        keys: Vec<String>,
+        args: Vec<ResolvedExpr>,
+    },
+    /// Dynamic index read `obj[k]` — missing key traps at runtime.
+    ObjectGet {
+        base: Box<ResolvedExpr>,
+        key: Box<ResolvedExpr>,
+    },
+    /// Dynamic index write `obj[k] = v` — upsert.
+    ObjectSet {
+        base: Box<ResolvedExpr>,
+        key: Box<ResolvedExpr>,
+        value: Box<ResolvedExpr>,
+    },
+    /// The nil literal (`nil`/`null`).
+    NilLit,
+    /// I32 → decimal owned Str (FStr interpolation display).
+    TextDisplay {
+        operand: Box<ResolvedExpr>,
+    },
+    /// FStr interpolation chain: parts in source order, each expression
+    /// evaluated exactly once (the lowering flattens into TextConcat).
+    FStr {
+        parts: Vec<FStrPart>,
+    },
     /// `Some(e)/None/Ok(e)/Err(e)/E.A/E.A(e)` — variant construction.
     /// A transient [`RExprKind::CtorUnknown`] resolves here once the
     /// expected type (or the payload type, for `Some`) is known.
@@ -524,6 +561,23 @@ pub enum RExprKind {
         variant: usize,
         disc: u32,
     },
+}
+
+/// PLAN-964 (L-22): one part of an FStr chain — a literal text segment
+/// (already an owned Str expression) or an interpolated expression
+/// (already lowered to its display/concat form).
+#[derive(Clone, Debug)]
+pub enum FStrPart {
+    Text(ResolvedExpr),
+    Expr(ResolvedExpr),
+}
+
+impl FStrPart {
+    pub fn vt(&self) -> VT {
+        match self {
+            FStrPart::Text(e) | FStrPart::Expr(e) => e.vt,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -670,7 +724,43 @@ impl Drop for ResolvedExpr {
             | RExprKind::Method { .. }
             | RExprKind::Move { .. }
             | RExprKind::ReadLocal(_)
-            | RExprKind::BorrowMut { .. } => {}
+            | RExprKind::BorrowMut { .. }
+            // PLAN-964: NilLit is a leaf.
+            | RExprKind::NilLit => {}
+            // PLAN-964: object/dynamic children detach like the collection
+            // nodes (boxed children + arg vectors).
+            RExprKind::ObjectCtor { args, .. } => {
+                for a in args.iter_mut() {
+                    let e = std::mem::replace(a, dummy());
+                    stack.push(e);
+                }
+            }
+            RExprKind::ObjectGet { base, key } => {
+                for slot in [base.as_mut(), key.as_mut()] {
+                    let e = std::mem::replace(slot, dummy());
+                    stack.push(e);
+                }
+            }
+            RExprKind::ObjectSet { base, key, value } => {
+                for slot in [base.as_mut(), key.as_mut(), value.as_mut()] {
+                    let e = std::mem::replace(slot, dummy());
+                    stack.push(e);
+                }
+            }
+            RExprKind::TextDisplay { operand } => {
+                let e = std::mem::replace(operand.as_mut(), dummy());
+                stack.push(e);
+            }
+            RExprKind::FStr { parts } => {
+                for p in parts.iter_mut() {
+                    match p {
+                        FStrPart::Text(e) | FStrPart::Expr(e) => {
+                            let e = std::mem::replace(e, dummy());
+                            stack.push(e);
+                        }
+                    }
+                }
+            }
         };
         let mut stack: Vec<ResolvedExpr> = Vec::new();
         detach(self, &mut stack);
@@ -850,6 +940,9 @@ pub struct ResolvedProgram {
     pub variants: Vec<ResolvedVariant>,
     /// PLAN-865: closure function signatures referenced by `VT::Function`.
     pub function_types: Vec<ClosureFnType>,
+    /// PLAN-964 (L-16/L-20): object element types (structural,
+    /// deduplicated). `VT::Object(i)` indexes here.
+    pub objects: Vec<VT>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -883,6 +976,9 @@ pub struct CollTables {
     /// PLAN-962 (L-15): structural tuple shapes (element VT lists,
     /// interned/deduplicated; `VT::Tuple(i)` indexes here).
     pub tuples: Vec<Vec<VT>>,
+    /// PLAN-964 (L-16/L-20): object element types (structural,
+    /// deduplicated; `VT::Object(i)` indexes here).
+    pub objects: Vec<VT>,
 }
 
 impl CollTables {
@@ -909,6 +1005,15 @@ impl CollTables {
         }
         self.lists.push(elem);
         self.lists.len() - 1
+    }
+
+    /// PLAN-964: intern one object element type (deduplicated).
+    fn intern_object(&mut self, elem: VT) -> usize {
+        if let Some(i) = self.objects.iter().position(|e| *e == elem) {
+            return i;
+        }
+        self.objects.push(elem);
+        self.objects.len() - 1
     }
 
     fn intern_variant(
@@ -1243,6 +1348,7 @@ pub fn resolve_closures_cached(
             tuples: Vec::new(),
             variants: coll.variants,
             function_types: coll.function_types,
+            objects: coll.objects,
         },
         warm.out,
         warm.reused,
@@ -1289,6 +1395,7 @@ pub(crate) fn resolve_closures_env(
                 tuples: Vec::new(),
                 variants: coll.variants,
                 function_types: coll.function_types,
+                objects: coll.objects,
             },
             rec_index: ix.rec_index,
             sigs: ix.sigs,
@@ -1319,6 +1426,7 @@ pub fn resolve_with(
         tuples: coll.tuples,
         variants: coll.variants,
         function_types: coll.function_types,
+        objects: coll.objects,
     })
 }
 
@@ -1399,6 +1507,7 @@ pub fn resolve_text_record_with_foreign(
         tuples: Vec::new(),
         variants: coll.variants,
         function_types: coll.function_types,
+        objects: coll.objects,
     })
 }
 
@@ -1438,6 +1547,7 @@ pub fn resolve_with_supply(
         tuples: Vec::new(),
         variants: coll.variants,
         function_types: coll.function_types,
+        objects: coll.objects,
     })
 }
 
@@ -2147,6 +2257,12 @@ fn check_entry_matrix(fns: &mut [ResolvedFn], flat: &[&ast::FnItem], diags: &mut
             if is_console_effect(value) {
                 continue;
             }
+            // PLAN-964: a unit-typed expression statement is a side-effect
+            // call, never a value — it discards nothing (collections/closures
+            // statement rule), so it is legal anywhere in a body.
+            if value.vt == VT::Unit {
+                continue;
+            }
             if i + 1 == n {
                 if value.vt == VT::I32 {
                     tail_is_i32 = true;
@@ -2289,14 +2405,23 @@ fn check_entry_matrix(fns: &mut [ResolvedFn], flat: &[&ast::FnItem], diags: &mut
         for (i, f) in fns.iter_mut().enumerate() {
             let end_span = f.item_span;
             if f.result == VT::Unit {
-                f.body.stmts.push(RStmt::Return {
-                    value: ResolvedExpr {
-                        kind: RExprKind::Unit,
+                // PLAN-964: a closure block body already carries its typed
+                // fall-off return (lambda_body appends it) — appending a
+                // second one would strand a dead block.
+                let already_returns = matches!(
+                    f.body.stmts.last(),
+                    Some(RStmt::Return { .. })
+                );
+                if !already_returns {
+                    f.body.stmts.push(RStmt::Return {
+                        value: ResolvedExpr {
+                            kind: RExprKind::Unit,
+                            span: end_span,
+                            vt: VT::Unit,
+                        },
                         span: end_span,
-                        vt: VT::Unit,
-                    },
-                    span: end_span,
-                });
+                    });
+                }
             } else if i < flat.len() && flat[i].script {
                 if let Some(last) = f.body.stmts.last_mut() {
                     let taken = std::mem::replace(
@@ -2364,7 +2489,7 @@ fn nested_expr_stmts(root: &RBlock) -> Vec<Span> {
     while let Some(b) = stack.pop() {
         for s in b.stmts.iter() {
             if let RStmt::ExprStmt { span, value } = s {
-                if !is_console_effect(value) {
+                if !is_console_effect(value) && value.vt != VT::Unit {
                     out.push(*span);
                 }
             }
@@ -2396,10 +2521,14 @@ fn is_console_effect(value: &ResolvedExpr) -> bool {
     matches!(&value.kind, RExprKind::CallIntrinsic { symbol, .. } if symbol.starts_with("auto.console."))
 }
 
-/// First non-console expression statement, including nested blocks.
+/// First non-console, non-unit expression statement, including nested blocks.
 fn first_expr_stmt(root: &RBlock) -> Option<Span> {
     walk_stmts(root).into_iter().find_map(|s| match s {
-        RStmt::ExprStmt { span, value } if !is_console_effect(value) => Some(*span),
+        RStmt::ExprStmt { span, value }
+            if !is_console_effect(value) && value.vt != VT::Unit =>
+        {
+            Some(*span)
+        }
         _ => None,
     })
 }
@@ -2750,6 +2879,7 @@ pub fn resolve_env_with_supply(
             tuples: Vec::new(),
             variants: coll.variants,
             function_types: coll.function_types,
+            objects: coll.objects,
         },
         rec_index: ix.rec_index,
         sigs: ix.sigs,
@@ -3474,6 +3604,22 @@ pub(crate) fn decide_capture(
     written: bool,
 ) -> CaptureDecision {
     let copy = matches!(source_vt, VT::I32 | VT::Bool | VT::Char);
+    // PLAN-964: an OBJECT captures as a Move Rc share (the cell's nature
+    // is shared-mutable — aliases observe each other's writes; a written
+    // object capture keeps the share, never a private snapshot). Nil is
+    // zero-width and captures trivially. Both are admitted BEFORE the
+    // shared-mutable cell gate (the object IS the shared cell); a `move`
+    // closure keeps the same share — moving the handle would still alias
+    // the cell, and a sibling closure must be able to capture it too.
+    if matches!(source_vt, VT::Object(_) | VT::Nil) {
+        return CaptureDecision::Decl {
+            mode: crate::hir::CaptureMode::Move,
+            body_vt: source_vt,
+            moved: false,
+            writable: matches!(source_vt, VT::Object(_)) && source_mutable,
+            cell: false,
+        };
+    }
     // PLAN-909 SEM-04 extension: a written capture is admitted only in the
     // scalar `var` domain. Everything else (owned Str / record / List /
     // Variant / closure / Dyn) keeps the NAMED rejection — the cell contract
@@ -4697,10 +4843,15 @@ impl<'a, 's> FnResolver<'a, 's> {
                 .map(|ri| VT::Rec(*ri))
                 .unwrap_or(VT::I32),
             ExprKind::TypeWordArg(word) => vt_of_word(*word),
+            // PLAN-964: nil is its own type; object/display/FStr fall back
+            // to the exact-resolution walk (inference is a light oracle).
+            ExprKind::NilLit => VT::Nil,
             ExprKind::Closure { .. }
             | ExprKind::MutArg { .. }
             | ExprKind::ViewArg { .. }
-            | ExprKind::GenericType { .. } => VT::I32,
+            | ExprKind::GenericType { .. }
+            | ExprKind::ObjectLit { .. }
+            | ExprKind::TextDisplay(_) => VT::I32,
         }
     }
 
@@ -6014,12 +6165,62 @@ impl<'a, 's> FnResolver<'a, 's> {
                         );
                         continue;
                     };
-                    let VT::List(li) = self.locals[xl.0].vt else {
+                    let base_vt = self.locals[xl.0].vt;
+                    // PLAN-964 (L-20): an OBJECT local accepts dynamic-key
+                    // writes `obj[k] = v` (Str key, elem-typed value).
+                    if let VT::Object(oi) = base_vt {
+                        let elem = self.coll.objects[oi];
+                        let index = self.expr_iterative(&ia.index);
+                        if !index.vt.is_text() {
+                            self.bind_err(
+                                "source.object-key",
+                                "an object key must be `Str` in this profile".to_string(),
+                                ia.index.span,
+                            );
+                        }
+                        let mut value = self.expr_with_expect(&ia.value, Some(elem));
+                        self.reject_elem_view_use(&value, "the stored value");
+                        if value.vt != elem {
+                            self.bind_err(
+                                "source.type-mismatch",
+                                format!(
+                                    "object element type `{}` expected, found `{}`",
+                                    elem.as_str(),
+                                    value.vt.as_str()
+                                ),
+                                ia.value.span,
+                            );
+                        }
+                        self.check_push_value(&elem, &mut value, ia.base.span);
+                        let set = ResolvedExpr {
+                            span: ia.span,
+                            vt: VT::Unit,
+                            kind: RExprKind::ObjectSet {
+                                base: Box::new(ResolvedExpr {
+                                    span: ia.base.span,
+                                    vt: base_vt,
+                                    kind: RExprKind::ReadLocal(xl),
+                                }),
+                                key: Box::new(index),
+                                value: Box::new(value),
+                            },
+                        };
+                        stack
+                            .last_mut()
+                            .expect("resolve frame")
+                            .stmts
+                            .push(RStmt::ExprStmt {
+                                value: set,
+                                span: ia.span,
+                            });
+                        continue;
+                    }
+                    let VT::List(li) = base_vt else {
                         self.bind_err(
                             "source.index-base",
                             format!(
                                 "index assignment requires a List local, found `{}`",
-                                self.locals[xl.0].vt.as_str()
+                                base_vt.as_str()
                             ),
                             ia.base.span,
                         );
@@ -6475,10 +6676,25 @@ impl<'a, 's> FnResolver<'a, 's> {
                     };
                     let mut value = self.expr_with_expect(value, ann_vt);
                     self.reject_elem_view_use(&value, "the bound value");
-                    let rule = match ann_vt {
+                    let mut rule = match ann_vt {
                         Some(v) => v,
                         None => value.vt,
                     };
+                    // PLAN-964: on the collections-family surfaces a bare
+                    // string literal binds as an OWNED Str — the borrowed
+                    // `str` type has no local form there (the verifier
+                    // rejects `str` locals; the owned promotion is the
+                    // collections-domain AP-4 rule made static at bind).
+                    if (self.profile.is_collections()
+                        || self.profile.is_closures()
+                        || self.profile.is_aggregates()
+                        || self.profile.is_numeric())
+                        && matches!(value.kind, RExprKind::StrLit(_))
+                        && value.vt == VT::Str
+                    {
+                        value.vt = VT::StrOwned;
+                        rule = VT::StrOwned;
+                    }
                     retag_literal(&mut value, rule);
                     let vt = self.binding_ty(*span, rule);
                     if self.scopes.last().unwrap().names.contains_key(&name.name) {
@@ -7383,19 +7599,20 @@ impl<'a, 's> FnResolver<'a, 's> {
             }
             // PLAN-962 (L-48): an index READ `xs[i]` — the same element
             // path `.get(i)` resolves through (value element = ListGet;
-            // owned element = the tainted whole-element view).
+            // owned element = the tainted whole-element view). PLAN-964:
+            // an object receiver `obj[k]` reads by Str key (ObjectGet).
             ExprKind::Index { base, index } => {
                 let recv = self.expr_iterative(base);
                 let idx = self.expr_iterative(index);
-                if idx.vt != VT::I32 {
-                    self.bind_err(
-                        "source.index-type",
-                        "an index must be i32 in this profile".to_string(),
-                        index.span,
-                    );
-                }
                 match recv.vt {
                     VT::List(li) => {
+                        if idx.vt != VT::I32 {
+                            self.bind_err(
+                                "source.index-type",
+                                "an index must be i32 in this profile".to_string(),
+                                index.span,
+                            );
+                        }
                         let elem = self.coll.lists[li];
                         if self.vt_is_coll_owned(elem) {
                             if !self.coll.aggregates_admission {
@@ -7425,6 +7642,25 @@ impl<'a, 's> FnResolver<'a, 's> {
                             }
                         }
                     }
+                    // PLAN-964 (L-20): object dynamic-key read.
+                    VT::Object(oi) => {
+                        if !idx.vt.is_text() {
+                            self.bind_err(
+                                "source.object-key",
+                                "an object key must be `Str` in this profile".to_string(),
+                                index.span,
+                            );
+                        }
+                        let elem = self.coll.objects[oi];
+                        ResolvedExpr {
+                            span: e.span,
+                            vt: elem,
+                            kind: RExprKind::ObjectGet {
+                                base: Box::new(recv),
+                                key: Box::new(idx),
+                            },
+                        }
+                    }
                     other => {
                         self.bind_err(
                             "source.index-base",
@@ -7440,6 +7676,90 @@ impl<'a, 's> FnResolver<'a, 's> {
                             kind: RExprKind::IntLit(0),
                         }
                     }
+                }
+            }
+            // PLAN-964 (L-16/L-20): object literal `{ k: v, ... }` —
+            // keys static, values homogeneous (elem = the common VT;
+            // mixed fields are a named reject). Empty `{}` is an empty
+            // object (elem must still be pinned — freeze: `{}` requires a
+            // `nil` elem and is admitted as an empty map).
+            ExprKind::ObjectLit { fields } => {
+                if fields.is_empty() {
+                    self.bind_err(
+                        "source.object-empty",
+                        "an empty object literal `{}` is not in this profile (bind an empty map from a typed source)".to_string(),
+                        e.span,
+                    );
+                    return ResolvedExpr {
+                        span: e.span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(0),
+                    };
+                }
+                let mut args = Vec::with_capacity(fields.len());
+                let mut keys = Vec::with_capacity(fields.len());
+                let mut elem: Option<VT> = None;
+                let mut dup: std::collections::HashSet<&str> = std::collections::HashSet::new();
+                for f in fields {
+                    let value = self.expr_iterative(&f.value);
+                    if !dup.insert(f.key.as_str()) {
+                        self.bind_err(
+                            "source.object-duplicate",
+                            format!("duplicate object key `{}`", f.key),
+                            f.span,
+                        );
+                    }
+                    match elem {
+                        None => elem = Some(value.vt),
+                        Some(e0) if e0 == value.vt => {}
+                        Some(e0) => {
+                            self.bind_err(
+                                "source.object-elem",
+                                format!(
+                                    "object fields must share one element type (`{}` vs `{}`)",
+                                    e0.as_str(),
+                                    value.vt.as_str()
+                                ),
+                                f.span,
+                            );
+                        }
+                    }
+                    keys.push(f.key.clone());
+                    args.push(value);
+                }
+                let elem = elem.unwrap_or(VT::Nil);
+                let oi = self.coll.intern_object(elem);
+                ResolvedExpr {
+                    span: e.span,
+                    vt: VT::Object(oi),
+                    kind: RExprKind::ObjectCtor { keys, args },
+                }
+            }
+            // PLAN-964 (L-21): the nil literal.
+            ExprKind::NilLit => ResolvedExpr {
+                span: e.span,
+                vt: VT::Nil,
+                kind: RExprKind::NilLit,
+            },
+            // PLAN-964 (L-22/FStr): i32 display — the transform lowers
+            // `f"... ${x} ..."` into `__fstr(...)` calls; this node is
+            // produced by the `__fstr` builtin resolver (see below).
+            ExprKind::TextDisplay(inner) => {
+                let op = self.expr_iterative(inner);
+                if op.vt != VT::I32 {
+                    self.bind_err(
+                        "source.fstr-display",
+                        "FStr interpolation displays `int` values in this profile (other display kinds belong to the format surface)"
+                            .to_string(),
+                        e.span,
+                    );
+                }
+                ResolvedExpr {
+                    span: e.span,
+                    vt: VT::StrOwned,
+                    kind: RExprKind::TextDisplay {
+                        operand: Box::new(op),
+                    },
                 }
             }
             // PLAN-962 (L-19): a range is legal ONLY as the for-in
@@ -9410,8 +9730,60 @@ impl<'a, 's> FnResolver<'a, 's> {
                     rslot,
                     dest,
                 } => {
-                    let l = std::mem::replace(&mut out[lslot], dummy_resolved());
-                    let r = std::mem::replace(&mut out[rslot], dummy_resolved());
+                    let mut l = std::mem::replace(&mut out[lslot], dummy_resolved());
+                    let mut r = std::mem::replace(&mut out[rslot], dummy_resolved());
+                    // PLAN-964 (L-22): Eq/Ne over an owned text value and a
+                    // string literal — the literal defaults to the borrow
+                    // view `str`; retag it to the text side's type so the
+                    // pair compares cleanly (`Str`/`StrOwned` == `str`).
+                    // Collections-family only: the text profile keeps its
+                    // frozen mixed Str/str rejection.
+                    if matches!(op, BinOp::Eq | BinOp::Ne) && self.profile.is_collections() {
+                        if l.vt.is_text() && matches!(r.kind, RExprKind::StrLit(_)) {
+                            retag_literal(&mut r, l.vt);
+                        } else if r.vt.is_text() && matches!(l.kind, RExprKind::StrLit(_)) {
+                            retag_literal(&mut l, r.vt);
+                        }
+                    }
+                    // PLAN-964 (L-21): Nil is a zero-width value — the only
+                    // admitted operator pair is `==`/`!=` over two Nil
+                    // operands (constant-folded: nil==nil is true). Any
+                    // other operator on Nil is a named reject.
+                    if l.vt == VT::Nil || r.vt == VT::Nil {
+                        let nil_eq = l.vt == VT::Nil && r.vt == VT::Nil;
+                        if nil_eq {
+                            match op {
+                                BinOp::Eq | BinOp::Ne => {
+                                    out[dest] = ResolvedExpr {
+                                        span,
+                                        vt: VT::Bool,
+                                        kind: RExprKind::BoolLit(op == BinOp::Eq),
+                                    };
+                                    continue;
+                                }
+                                _ => {
+                                    self.bind_err(
+                                        "source.nil-op",
+                                        format!(
+                                            "operator `{}` is not defined for nil operands",
+                                            op.as_str()
+                                        ),
+                                        span,
+                                    );
+                                }
+                            }
+                        } else {
+                            self.bind_err(
+                                "source.nil-op",
+                                format!(
+                                    "binary `{}` cannot mix nil with `{}`",
+                                    op.as_str(),
+                                    if l.vt == VT::Nil { r.vt.as_str() } else { l.vt.as_str() }
+                                ),
+                                span,
+                            );
+                        }
+                    }
                     let vt = bin_op_vt(op);
                     // PLAN-961: the typed numeric surface — same-type
                     // operands (no implicit promotion), comparisons → bool,
@@ -10046,6 +10418,56 @@ impl<'a, 's> FnResolver<'a, 's> {
                 kind: RExprKind::Move {
                     inner: Box::new(inner),
                 },
+            };
+        }
+        // PLAN-964 (L-22/FStr): the `__fstr` builtin (produced by the
+        // front-door f-string transform) flattens into the interpolation
+        // chain: literal Str/StrOwned segments pass through, I32 segments
+        // display via TextDisplay, all concatenated in source order.
+        if callee.name == "__fstr" && !self.sigs.contains_key("__fstr") {
+            let mut parts: Vec<FStrPart> = Vec::new();
+            for a in rargs.iter() {
+                match (&a.value.kind, a.value.vt) {
+                    // PLAN-964: any Str/StrOwned-typed part passes through
+                    // as text (literals AND reads of Str locals).
+                    (_, VT::Str | VT::StrOwned) => {
+                        parts.push(FStrPart::Text(a.value.clone()));
+                    }
+                    (_, VT::I32) => {
+                        let operand = a.value.clone();
+                        let display = ResolvedExpr {
+                            span: operand.span,
+                            vt: VT::StrOwned,
+                            kind: RExprKind::TextDisplay {
+                                operand: Box::new(operand),
+                            },
+                        };
+                        parts.push(FStrPart::Expr(display));
+                    }
+                    (_, other_vt) => {
+                        self.bind_err(
+                            "source.fstr-arg",
+                            format!(
+                                "FStr interpolation admits `Str`/`int` parts, found `{}`",
+                                other_vt.as_str()
+                            ),
+                            a.span,
+                        );
+                    }
+                }
+            }
+            if parts.is_empty() {
+                self.bind_err(
+                    "source.fstr-empty",
+                    "an FStr must have at least one part".to_string(),
+                    call_span,
+                );
+            }
+            let span = callee.span.join(call_span);
+            return ResolvedExpr {
+                span,
+                vt: VT::StrOwned,
+                kind: RExprKind::FStr { parts },
             };
         }
         for arg in &rargs {

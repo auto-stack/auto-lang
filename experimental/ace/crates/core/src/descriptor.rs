@@ -570,6 +570,9 @@ struct Binder<'d> {
     diags: Vec<Diagnostic>,
     out_modules: Vec<hir::Module>,
     out_requires: Vec<String>,
+    /// PLAN-964 (L-22/FStr): synthesized TextConcat chain exprs produced
+    /// while binding fstr nodes; appended after the declared expr set.
+    extra_exprs: Vec<hir::Expr>,
 }
 
 impl<'d> Binder<'d> {
@@ -580,6 +583,7 @@ impl<'d> Binder<'d> {
             diags: Vec::new(),
             out_modules: Vec::new(),
             out_requires: Vec::new(),
+            extra_exprs: Vec::new(),
         }
     }
 
@@ -1258,6 +1262,25 @@ impl<'d> Binder<'d> {
                     };
                     hir::TypeKind::List { elem }
                 }
+                "object" => {
+                    // PLAN-964 (L-16): `object { elem: T }` — homogeneous
+                    // entry value type; structural identity via the elem
+                    // (entries may be nil).
+                    let Some(f) = tfields.get("elem") else {
+                        self.error("bind.type-shape", "an object type requires `elem`", kind_span);
+                        continue;
+                    };
+                    let Some(elem) = self.resolve_typeuse(&f.value, f.value_span, &tables.types)
+                    else {
+                        continue;
+                    };
+                    hir::TypeKind::Object { elem }
+                }
+                "nil" => {
+                    // PLAN-964 (L-21): the null value type — zero-width,
+                    // no fields.
+                    hir::TypeKind::Nil
+                }
                 "variant" => {
                     // PLAN-864: nominal variant arms — declaration order,
                     // arm index = runtime discriminant; a payload-less arm
@@ -1756,6 +1779,10 @@ impl<'d> Binder<'d> {
                 exprs.push(ex);
             }
         }
+        // PLAN-964 (L-22/FStr): chain intermediates synthesized during
+        // binding ride after the declared set (their ids were computed
+        // against the declared count).
+        exprs.extend(self.extra_exprs.drain(..));
         let mut blocks = Vec::new();
         for bl in &block_nodes {
             if let Some(b) = self.bind_block(bl, &tables, &block_sibs) {
@@ -2970,6 +2997,208 @@ impl<'d> Binder<'d> {
                     hir::ExprKind::ListSet { list, index, value }
                 }
             }
+            // -- PLAN-964 object/nil/FStr surface ---------------------------
+            "object_ctor" => {
+                let Some((tt, tspan)) = self.text_ref(&fields, "type") else {
+                    return None;
+                };
+                // `type` is the OBJECT type ref (an `object { elem: T }`
+                // table row); the elem TypeUse rides inside it.
+                let elem = match self.resolve_in(&tt, tspan, "TypeRef", type_ids, def_sibs) {
+                    Some(t) => hir::TypeId(t),
+                    None => return None,
+                };
+                let Some(keys_field) = fields.get("keys") else {
+                    return None;
+                };
+                let Value::List(kitems) = &keys_field.value else {
+                    self.error(
+                        "bind.type-shape",
+                        "object_ctor keys must be a list of text",
+                        keys_field.value_span,
+                    );
+                    return None;
+                };
+                let mut keys = Vec::with_capacity(kitems.len());
+                for it in kitems {
+                    let Some(s) = self.text_of(it) else {
+                        self.error(
+                            "bind.type-shape",
+                            "object_ctor keys entries must be text",
+                            keys_field.value_span,
+                        );
+                        return None;
+                    };
+                    keys.push(s);
+                }
+                let Some(eval_field) = fields.get("eval") else {
+                    return None;
+                };
+                let Value::List(eitems) = &eval_field.value else {
+                    self.error(
+                        "bind.type-shape",
+                        "object_ctor eval must be a list of expr refs",
+                        eval_field.value_span,
+                    );
+                    return None;
+                };
+                let mut eval_args = Vec::with_capacity(eitems.len());
+                for it in eitems {
+                    let Some(t) = self.text_of(it) else {
+                        self.error(
+                            "bind.type-shape",
+                            "object_ctor eval entries must be expression references",
+                            eval_field.value_span,
+                        );
+                        return None;
+                    };
+                    match self.resolve_in(
+                        &t,
+                        eval_field.value_span,
+                        "ExprRef",
+                        &body.exprs,
+                        expr_sibs,
+                    ) {
+                        Some(e) => eval_args.push(hir::ExprId(e)),
+                        None => return None,
+                    }
+                }
+                hir::ExprKind::ObjectCtor { elem, eval_args, keys }
+            }
+            "object_get" => {
+                let Some((bt, bspan)) = self.text_ref(&fields, "base") else {
+                    return None;
+                };
+                let base = match self.resolve_in(&bt, bspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                let Some((kt, kspan)) = self.text_ref(&fields, "key") else {
+                    return None;
+                };
+                let key = match self.resolve_in(&kt, kspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                hir::ExprKind::ObjectGet { base, key }
+            }
+            "object_set" => {
+                let Some((bt, bspan)) = self.text_ref(&fields, "base") else {
+                    return None;
+                };
+                let base = match self.resolve_in(&bt, bspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                let Some((kt, kspan)) = self.text_ref(&fields, "key") else {
+                    return None;
+                };
+                let key = match self.resolve_in(&kt, kspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                let Some((vt, vspan)) = self.text_ref(&fields, "value") else {
+                    return None;
+                };
+                let value = match self.resolve_in(&vt, vspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                hir::ExprKind::ObjectSet { base, key, value }
+            }
+            "nil_lit" => hir::ExprKind::NilLit,
+            "text_display" => {
+                let Some((ot, ospan)) = self.text_ref(&fields, "operand") else {
+                    return None;
+                };
+                let operand = match self.resolve_in(&ot, ospan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                hir::ExprKind::TextDisplay { operand }
+            }
+            "fstr" => {
+                // PLAN-964 (L-22): flatten the parts list into a nested
+                // LEFT-associative TextConcat chain (source-order
+                // evaluation, each part exactly once): ((p0 + p1) + p2)...
+                // The outermost concat IS this node's kind; intermediate
+                // concats are synthesized exprs appended after the
+                // declared set (ids offset by the declared count).
+                let Some(parts_field) = fields.get("parts") else {
+                    return None;
+                };
+                let Value::List(pitems) = &parts_field.value else {
+                    self.error(
+                        "bind.type-shape",
+                        "fstr parts must be a list of expr refs",
+                        parts_field.value_span,
+                    );
+                    return None;
+                };
+                let mut ids: Vec<hir::ExprId> = Vec::with_capacity(pitems.len());
+                for it in pitems {
+                    let Some(t) = self.text_of(it) else {
+                        self.error(
+                            "bind.type-shape",
+                            "fstr parts entries must be expression references",
+                            parts_field.value_span,
+                        );
+                        return None;
+                    };
+                    match self.resolve_in(
+                        &t,
+                        parts_field.value_span,
+                        "ExprRef",
+                        &body.exprs,
+                        expr_sibs,
+                    ) {
+                        Some(e) => ids.push(hir::ExprId(e)),
+                        None => return None,
+                    }
+                }
+                if ids.is_empty() {
+                    self.error(
+                        "bind.type-shape",
+                        "fstr requires at least one part",
+                        parts_field.value_span,
+                    );
+                    return None;
+                }
+                let str_owned = hir::TypeUse::Builtin(hir::BuiltinType::StrOwned);
+                let mut lhs = ids[0];
+                let mut rhs = ids[ids.len() - 1];
+                if ids.len() == 1 {
+                    // A lone part still rides a concat so the node stays a
+                    // left-assoc chain; the rhs is a synthesized empty Str
+                    // (the part evaluates exactly once).
+                    let empty =
+                        hir::ExprId(body.exprs.len() as u32 + self.extra_exprs.len() as u32);
+                    self.extra_exprs.push(hir::Expr {
+                        id_text: format!("__fstr_chain_{}", empty.0),
+                        kind: hir::ExprKind::StrLit {
+                            value: String::new(),
+                        },
+                        ty: str_owned.clone(),
+                        span: parts_field.value_span,
+                    });
+                    lhs = ids[0];
+                    rhs = empty;
+                } else if ids.len() > 2 {
+                    for part in ids.iter().skip(1).take(ids.len() - 2) {
+                        let id =
+                            hir::ExprId(body.exprs.len() as u32 + self.extra_exprs.len() as u32);
+                        self.extra_exprs.push(hir::Expr {
+                            id_text: format!("__fstr_chain_{}", id.0),
+                            kind: hir::ExprKind::TextConcat { lhs, rhs: *part },
+                            ty: str_owned.clone(),
+                            span: parts_field.value_span,
+                        });
+                        lhs = id;
+                    }
+                    rhs = *ids.last().unwrap();
+                }
+                hir::ExprKind::TextConcat { lhs, rhs }
+            }
             "variant_ctor" => {
                 let Some((rt, rspan)) = self.text_ref(&fields, "record") else {
                     return None;
@@ -3619,6 +3848,17 @@ pub fn write_canonical(bundle: &hir::Bundle, desc: &Descriptor) -> Result<String
                         arm_texts.join(", ")
                     ));
                 }
+                // PLAN-964: nil and object type rows.
+                hir::TypeKind::Nil => {
+                    w.line(&format!("type(id: {}, kind: nil) {{}}", quote(&t.id_text)))
+                }
+                hir::TypeKind::Object { elem } => {
+                    w.line(&format!(
+                        "type(id: {}, kind: object) {{ elem: {} }}",
+                        quote(&t.id_text),
+                        type_use_text(elem, m)
+                    ));
+                }
             }
         }
         w.close();
@@ -3821,6 +4061,12 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         hir::ExprKind::VariantCtor { .. } => "variant_ctor",
         hir::ExprKind::VariantGuardTest { .. } => "variant_guard_test",
         hir::ExprKind::VariantProject { .. } => "variant_project",
+        // -- PLAN-964 object/nil/FStr surface ----------------------------
+        hir::ExprKind::NilLit => "nil_lit",
+        hir::ExprKind::ObjectCtor { .. } => "object_ctor",
+        hir::ExprKind::ObjectGet { .. } => "object_get",
+        hir::ExprKind::ObjectSet { .. } => "object_set",
+        hir::ExprKind::TextDisplay { .. } => "text_display",
     };
     let mut body_fields: Vec<String> = vec![format!("type: {}", type_use_text(&e.ty, m))];
     match &e.kind {
@@ -4137,6 +4383,60 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
                 quote(&b.exprs[root.0 as usize].id_text)
             ));
             body_fields.push(format!("disc: {}u32", disc));
+        }
+        // -- PLAN-964 object/nil/FStr surface ----------------------------
+        hir::ExprKind::NilLit => {}
+        hir::ExprKind::ObjectCtor {
+            elem: _,
+            eval_args,
+            keys,
+        } => {
+            // `type` (the object row ref) already rode the prelude.
+            body_fields.push(format!(
+                "keys: [{}]",
+                keys.iter()
+                    .map(|k| quote(k))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+            body_fields.push(format!(
+                "eval: [{}]",
+                eval_args
+                    .iter()
+                    .map(|a| quote(&b.exprs[a.0 as usize].id_text))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        hir::ExprKind::ObjectGet { base, key } => {
+            body_fields.push(format!(
+                "base: {}",
+                quote(&b.exprs[base.0 as usize].id_text)
+            ));
+            body_fields.push(format!(
+                "key: {}",
+                quote(&b.exprs[key.0 as usize].id_text)
+            ));
+        }
+        hir::ExprKind::ObjectSet { base, key, value } => {
+            body_fields.push(format!(
+                "base: {}",
+                quote(&b.exprs[base.0 as usize].id_text)
+            ));
+            body_fields.push(format!(
+                "key: {}",
+                quote(&b.exprs[key.0 as usize].id_text)
+            ));
+            body_fields.push(format!(
+                "value: {}",
+                quote(&b.exprs[value.0 as usize].id_text)
+            ));
+        }
+        hir::ExprKind::TextDisplay { operand } => {
+            body_fields.push(format!(
+                "operand: {}",
+                quote(&b.exprs[operand.0 as usize].id_text)
+            ));
         }
     }
     w.line(&format!(

@@ -132,6 +132,10 @@ fn vt_name(v: &ace_core::source::resolve::VT) -> &'static str {
         VT::Variant(_) => "variant",
         // PLAN-865: preserve the old pipeline function type identity.
         VT::Function(_) => "function",
+        // PLAN-964: object/nil are outside this adapter's limited
+        // inference surface (aggregates belongs to the new pipeline).
+        VT::Object(_) => "object",
+        VT::Nil => "nil",
     }
 }
 
@@ -701,6 +705,15 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         },
         core_ast::ExprKind::GenericType { .. } => InputExprKind::Unsupported {
             what: "generic-type-receiver",
+        },
+        // PLAN-964: object literals / nil / text-display are aggregates-
+        // surface forms, named-unsupported on the query surface.
+        core_ast::ExprKind::ObjectLit { .. } => InputExprKind::Unsupported {
+            what: "object-literal",
+        },
+        core_ast::ExprKind::NilLit => InputExprKind::Unsupported { what: "nil-literal" },
+        core_ast::ExprKind::TextDisplay(_) => InputExprKind::Unsupported {
+            what: "text-display",
         },
     };
     InputExpr { kind, span }

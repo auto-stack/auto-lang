@@ -1714,6 +1714,14 @@ fn context_fingerprint(m: &hir::Module) -> String {
                     }
                     mix(h, ")");
                 }
+                // PLAN-964: nil mixes as itself (zero-width); object mixes
+                // structurally by its elem.
+                Some(hir::TypeKind::Nil) => mix(h, "nil"),
+                Some(hir::TypeKind::Object { elem }) => {
+                    mix(h, "object[");
+                    mix_use(h, elem, m, depth - 1);
+                    mix(h, "]");
+                }
                 None => mix(h, "oob"),
             },
         }
@@ -2546,6 +2554,9 @@ pub(crate) enum ValueType {
     /// expression (ExprKind::Unit) and never a local, place, parameter or
     /// operator operand.
     Unit,
+    /// PLAN-964 (L-21): the nil value type — a zero-width null distinct
+    /// from `unit` (nil is a VALUE, unit is a no-value result).
+    Nil,
     /// PLAN-864: an opaque composite (List/Variant type-table entry). The
     /// shared record-domain walks treat it as a non-unifiable leaf; the
     /// collections verification entry owns its real rules.
@@ -2614,6 +2625,8 @@ pub(crate) fn vt_name(v: ValueType) -> &'static str {
         ValueType::Char => "char",
         ValueType::Record(_) => "record",
         ValueType::Unit => "unit",
+        // PLAN-964: nil is its own value kind.
+        ValueType::Nil => "nil",
         ValueType::Opaque => "composite",
         ValueType::I8 => "i8",
         ValueType::U8 => "u8",
@@ -2973,6 +2986,10 @@ impl Verifier {
                     hir::TypeKind::U64 => ValueType::U64,
                     hir::TypeKind::F32 => ValueType::F32,
                     hir::TypeKind::F64 => ValueType::F64,
+                    // PLAN-964: nil is zero-width; object rides the opaque
+                    // lane with the collections walk (like List).
+                    hir::TypeKind::Nil => ValueType::Nil,
+                    hir::TypeKind::Object { .. } => ValueType::Opaque,
                 };
                 (i as u32, vt)
             })
@@ -3194,6 +3211,12 @@ impl Verifier {
                 }
                 E::VariantCtor { payload, .. } => payload.iter().copied().collect(),
                 E::VariantGuardTest { root, .. } | E::VariantProject { root, .. } => vec![*root],
+                // -- PLAN-964 object/nil/FStr surface --
+                E::NilLit => Vec::new(),
+                E::ObjectCtor { eval_args, .. } => eval_args.clone(),
+                E::ObjectGet { base, key } => vec![*base, *key],
+                E::ObjectSet { base, key, value } => vec![*base, *key, *value],
+                E::TextDisplay { operand } => vec![*operand],
             }
         }
 
@@ -4475,6 +4498,21 @@ impl Verifier {
                 }
                 hir::ExprKind::VariantGuardTest { root, .. }
                 | hir::ExprKind::VariantProject { root, .. } => children.push(root.0),
+                // -- PLAN-964 object/nil/FStr surface --
+                hir::ExprKind::NilLit => {}
+                hir::ExprKind::ObjectCtor { eval_args, .. } => {
+                    children.extend(eval_args.iter().map(|a| a.0));
+                }
+                hir::ExprKind::ObjectGet { base, key } => {
+                    children.push(base.0);
+                    children.push(key.0);
+                }
+                hir::ExprKind::ObjectSet { base, key, value } => {
+                    children.push(base.0);
+                    children.push(key.0);
+                    children.push(value.0);
+                }
+                hir::ExprKind::TextDisplay { operand } => children.push(operand.0),
                 // text kinds never appear in a record module (profile
                 // defense); totality only
                 hir::ExprKind::StrLit { .. }
@@ -4983,6 +5021,37 @@ impl Verifier {
                         bad("expression", root.0, n_exprs, e.span);
                     }
                 }
+                // -- PLAN-964 object/nil/FStr surface --
+                hir::ExprKind::NilLit => {}
+                hir::ExprKind::ObjectCtor { elem, eval_args, .. } => {
+                    if (elem.0 as usize) >= n_types {
+                        bad("type", elem.0, n_types, e.span);
+                    }
+                    for a in eval_args {
+                        if (a.0 as usize) >= n_exprs {
+                            bad("expression", a.0, n_exprs, e.span);
+                        }
+                    }
+                }
+                hir::ExprKind::ObjectGet { base, key } => {
+                    for id in [base, key] {
+                        if (id.0 as usize) >= n_exprs {
+                            bad("expression", id.0, n_exprs, e.span);
+                        }
+                    }
+                }
+                hir::ExprKind::ObjectSet { base, key, value } => {
+                    for id in [base, key, value] {
+                        if (id.0 as usize) >= n_exprs {
+                            bad("expression", id.0, n_exprs, e.span);
+                        }
+                    }
+                }
+                hir::ExprKind::TextDisplay { operand } => {
+                    if (operand.0 as usize) >= n_exprs {
+                        bad("expression", operand.0, n_exprs, e.span);
+                    }
+                }
             }
         }
         for bl in &body.blocks {
@@ -5350,10 +5419,15 @@ impl Verifier {
                         // entry-unit domain, typed `unit` exactly, and (the
                         // result-position rule) consumed only by a `return`
                         // of a Unit function — checked where returns are
-                        // verified.
+                        // verified. PLAN-964: a unit-result closure body
+                        // (block lambda) also ends in the unit value.
                         hir::ExprKind::Unit => {
-                            if !matches!(self.domain, HirDomain::EntryUnit | HirDomain::HostConsole)
-                            {
+                            if !matches!(
+                                self.domain,
+                                HirDomain::EntryUnit
+                                    | HirDomain::HostConsole
+                                    | HirDomain::Closures
+                            ) {
                                 self.error(
                                     "verify.unit-expr",
                                     format!(
@@ -5547,12 +5621,27 @@ impl Verifier {
                                             target_type,
                                             ValueType::I32 | ValueType::Bool | ValueType::Char
                                         );
+                                        // PLAN-964: an Object capture is the Rc
+                                        // share itself (its nature is shared-
+                                        // mutable) — a writable Move capture of
+                                        // an Object is in-domain, unlike the
+                                        // scalar-only private env cell.
+                                        let source_is_object = matches!(
+                                            source.ty,
+                                            hir::TypeUse::Ref(tid)
+                                                if matches!(
+                                                    m.types.get(tid.0 as usize).map(|t| &t.kind),
+                                                    Some(hir::TypeKind::Object { .. })
+                                                )
+                                        );
                                         let target_mutable = *target_mutable;
                                         let domain_ok = match capture.mode {
                                             hir::CaptureMode::Shared => {
                                                 scalar && source.mutable && target_mutable
                                             }
-                                            hir::CaptureMode::Move => !target_mutable || scalar,
+                                            hir::CaptureMode::Move => {
+                                                !target_mutable || scalar || source_is_object
+                                            }
                                             hir::CaptureMode::Borrow => !target_mutable,
                                         };
                                         if !domain_ok {
@@ -5691,6 +5780,36 @@ impl Verifier {
                         | hir::ExprKind::VariantProject { root, .. } => {
                             stack.push(Visit::Exit(id));
                             stack.push(Visit::Enter(*root));
+                        }
+                        // -- PLAN-964 object/nil/FStr surface --------------
+                        // Operand traversal + memoization only; the
+                        // cross-expression invariants (elem match, key
+                        // text, display domain) live in the collections /
+                        // text verifier passes.
+                        hir::ExprKind::NilLit => {
+                            tm.gray.remove(&id.0);
+                            tm.memo.insert(id.0, declared);
+                        }
+                        hir::ExprKind::ObjectCtor { eval_args, .. } => {
+                            stack.push(Visit::Exit(id));
+                            for a in eval_args {
+                                stack.push(Visit::Enter(*a));
+                            }
+                        }
+                        hir::ExprKind::ObjectGet { base, key } => {
+                            stack.push(Visit::Exit(id));
+                            stack.push(Visit::Enter(*base));
+                            stack.push(Visit::Enter(*key));
+                        }
+                        hir::ExprKind::ObjectSet { base, key, value } => {
+                            stack.push(Visit::Exit(id));
+                            stack.push(Visit::Enter(*base));
+                            stack.push(Visit::Enter(*key));
+                            stack.push(Visit::Enter(*value));
+                        }
+                        hir::ExprKind::TextDisplay { operand } => {
+                            stack.push(Visit::Exit(id));
+                            stack.push(Visit::Enter(*operand));
                         }
                     }
                 }
@@ -6733,7 +6852,10 @@ impl Verifier {
                                 | ValueType::I64
                                 | ValueType::U64
                                 | ValueType::F32
-                                | ValueType::F64 => {
+                                | ValueType::F64
+                                // PLAN-964: nil is zero-width, never a
+                                // borrowable value.
+                                | ValueType::Nil => {
                                     self.error(
                                         "verify.type-mismatch",
                                         format!(
@@ -6953,6 +7075,17 @@ impl Verifier {
                             }
                             rec_vt
                         }
+                        // -- PLAN-964 object/nil/FStr surface --------------
+                        // The declared type IS the computed type (nil is
+                        // its own kind; object ctor produces the object
+                        // row; gets/sets take their declared elem); the
+                        // operand/domain invariants are the collections
+                        // and text passes' job.
+                        hir::ExprKind::NilLit
+                        | hir::ExprKind::ObjectCtor { .. }
+                        | hir::ExprKind::ObjectGet { .. }
+                        | hir::ExprKind::ObjectSet { .. }
+                        | hir::ExprKind::TextDisplay { .. } => declared,
                     };
                     tm.gray.remove(&id.0);
                     tm.memo.insert(id.0, computed);
@@ -7094,6 +7227,26 @@ impl Verifier {
                 // operand like every other value-producing wrapper.
                 hir::ExprKind::NumericConst { .. } => {}
                 hir::ExprKind::Cast { operand, .. } => {
+                    targets.push(operand.0);
+                }
+                // PLAN-964: the dynamic-value reflection surface — the
+                // object/dynamic operands are ordinary evaluation edges.
+                hir::ExprKind::NilLit => {}
+                hir::ExprKind::ObjectCtor { eval_args, .. } => {
+                    for a in eval_args {
+                        targets.push(a.0);
+                    }
+                }
+                hir::ExprKind::ObjectGet { base, key } => {
+                    targets.push(base.0);
+                    targets.push(key.0);
+                }
+                hir::ExprKind::ObjectSet { base, key, value } => {
+                    targets.push(base.0);
+                    targets.push(key.0);
+                    targets.push(value.0);
+                }
+                hir::ExprKind::TextDisplay { operand } => {
                     targets.push(operand.0);
                 }
                 _ => {}
@@ -7849,6 +8002,25 @@ impl Verifier {
                             e.span,
                         );
                     }
+                }
+                // -- PLAN-964 object/nil/FStr surface --------------
+                hir::ExprKind::NilLit => {}
+                hir::ExprKind::ObjectCtor { eval_args, .. } => {
+                    for a in eval_args.iter().rev() {
+                        stack.push(*a);
+                    }
+                }
+                hir::ExprKind::ObjectGet { base, key } => {
+                    stack.push(*key);
+                    stack.push(*base);
+                }
+                hir::ExprKind::ObjectSet { base, key, value } => {
+                    stack.push(*value);
+                    stack.push(*key);
+                    stack.push(*base);
+                }
+                hir::ExprKind::TextDisplay { operand } => {
+                    stack.push(*operand);
                 }
             }
         }

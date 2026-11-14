@@ -862,9 +862,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [aggregates]) { let-hold-stmt() {} }
             alt { var-stmt() {} }
             alt { assign-stmt() {} }
-            alt(profiles: [record, record-instances, text-record, text-record-instances, collections, closures, packages-modules, packages-ct, numeric, aggregates]) { path-assign-stmt() {} }
-            // PLAN-962（L-48）：索引赋值 `xs[i] = v`（聚合面）。
-            alt(profiles: [aggregates]) { index-assign-stmt() {} }
+            alt(profiles: [record, record-instances, text-record, text-record-instances, collections, closures, packages-modules, packages-ct, aggregates]) { path-assign-stmt() {} }
+            // PLAN-962（L-48）：索引赋值 `xs[i] = v`。PLAN-964：closures 面
+            // 同样接受（共享对象单元格 `cell[k] = v` 动态键写）。
+            alt(profiles: [aggregates, closures]) { index-assign-stmt() {} }
             alt { return-stmt() {} }
             alt { if-stmt() {} }
             alt(profiles: [core]) { while-stmt() {} }
@@ -935,8 +936,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         path-seg { dot() {} ident(field: "path") }
         // PLAN-962（L-48）：`xs[i] = v`——元素替换（list-set 语义，等价
-        // `.set(i, v)`；旧引擎 SET_ELEM 同形）。
-        index-assign-stmt(profiles: [aggregates]) {
+        // `.set(i, v)`；旧引擎 SET_ELEM 同形）。PLAN-964：closures 面同样
+        // 接受（共享对象单元格 `cell[k] = v` 动态键写）。
+        index-assign-stmt(profiles: [aggregates, closures]) {
             ident(field: "name")
             lbracket(same-line: true) {}
             expr(field: "index")
@@ -950,10 +952,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         if-stmt {
             if(field: "kw")
-            condition-expr(profiles: [record, record-instances, text-record, text-record-instances, collections, closures, aggregates], field: "cond")
-            expr(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-modules, packages-ct, numeric, aggregates], field: "cond")
+            if-cond(field: "cond")
             block(field: "then")
             else-block(repeat: "opt")
+        }
+        // PLAN-964：if 条件两种游走——组合面（collections/closures/
+        // aggregates）用 condition-expr，其余面用普通 expr。原实现两条规则
+        // 顺序连排使聚合面同时要求两者（潜在 bug，962 语料无聚合面 if 未
+        // 暴露）；拆成子规则 alt 按 profile 单选。
+        if-cond {
+            alt(profiles: [record, record-instances, text-record, text-record-instances, collections, closures, aggregates]) { condition-expr() {} }
+            alt(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-modules, packages-ct, numeric, aggregates]) { expr() {} }
         }
         else-block { else() {} block() {} }
         while-stmt(profiles: [core]) {
@@ -1054,6 +1063,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 投影按旧 unsupported/语法错误合同映射）。
         postfix-step(profiles: [record, record-instances, text-record, text-record-instances, text, host-console, collections, closures, packages-modules, packages-ct, numeric, aggregates]) {
             alt(profiles: [record, record-instances, text-record, text-record-instances, text, host-console, closures, collections, packages-modules, packages-ct, numeric, aggregates]) { dot(same-line: true) ident(field: "member") }
+            // PLAN-964（L-16/L-20）：索引后缀 `base[key]`——对象动态键读
+            // （ObjectGet）与 List 整数索引共用此步，resolve 按 base 类型分派。
+            alt(profiles: [aggregates, closures]) { lbracket(same-line: true) expr(field: "index") rbracket() {} }
             alt(profiles: [record, record-instances, text-record, text-record-instances, collections, packages-modules, packages-ct, aggregates]) { dot(same-line: true) mut(field: "member") }
             // PLAN-962（T-08，L-06）：`.view` 只读借用实参后缀（聚合面）。
             alt(profiles: [aggregates]) { dot(same-line: true) r-view(same-line: true, field: "member") }
@@ -1138,6 +1150,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-962（L-16）：数组/List 字面量 `[e, ...]`（聚合面）。
             alt(profiles: [aggregates]) { grid-atom() {} }
             alt(profiles: [aggregates]) { array-lit() {} }
+            // PLAN-964（L-16/L-20）：裸对象字面量 `{ k: v, ... }`——无其他
+            // 原子以 `{` 起始（语句位块由语句规则承担），表达式位 `{` 即对象。
+            alt(profiles: [aggregates, closures]) { object-lit() {} }
+            // PLAN-964（L-21）：nil 字面量（r-nil/r-null，PLAN-053 统一）。
+            alt(profiles: [aggregates, closures]) { nil-lit() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
             alt(profiles: [record, record-instances, aggregates, packages-modules, packages-ct]) { typed-ctor-expr() {} }
             alt(profiles: [collections, closures, record, record-instances, text-record, text-record-instances, packages-modules, packages-ct, aggregates]) { ctor-expr() {} }
@@ -1225,6 +1242,38 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             lparen(same-line: true) {}
             expr(field: "value")
             rparen() {}
+        }
+        // PLAN-964（L-16/L-20）：裸对象字面量 `{ k: v, ... }`。键为 ident
+        // 或字符串字面量（首 token 互异，规则级 alt 可分派）；值同型冻结
+        // 于 resolve。空字面量 `{}` 由 obj-fields(repeat: "opt") 承载。
+        object-lit(profiles: [aggregates, closures]) {
+            lbrace() {}
+            opt { object-fields(field: "fields") {} }
+            rbrace() {}
+        }
+        object-fields(profiles: [aggregates, closures]) {
+            object-field() {}
+            many { object-field-tail() {} }
+        }
+        object-field-tail(profiles: [aggregates, closures]) {
+            comma() {}
+            object-field() {}
+        }
+        object-field(profiles: [aggregates, closures]) {
+            object-key(field: "key") {}
+            colon() {}
+            expr(field: "value")
+        }
+        // PLAN-964：对象字面量键两形（ident 名或字符串字面量）——首 token
+        // 互异，独立子规则承载（规则级不允许 alt 与非 alt 子节点混排）。
+        object-key(profiles: [aggregates, closures]) {
+            alt { ident(field: "key") }
+            alt { str-lit(field: "key") }
+        }
+        // PLAN-964（L-21）：nil 字面量（nil/null 统一，PLAN-053）。
+        nil-lit(profiles: [aggregates, closures]) {
+            alt { r-nil(same-line: true, field: "kw") }
+            alt { r-null(same-line: true, field: "kw") }
         }
         // PLAN-962（L-15）：tuple 字面量形。
         tuple-lit(profiles: [aggregates]) {

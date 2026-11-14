@@ -183,6 +183,16 @@ fn shift_expr(e: &mut Expr, delta: i64) {
                 ClosureBody::Block(b) => shift_block(b, delta),
             }
         }
+        // PLAN-964: object literal fields shift; nil is a leaf; text
+        // display shifts its operand.
+        ExprKind::ObjectLit { fields } => {
+            for f in fields.iter_mut() {
+                shift_span(&mut f.span, delta);
+                shift_expr(&mut f.value, delta);
+            }
+        }
+        ExprKind::NilLit => {}
+        ExprKind::TextDisplay(inner) => shift_expr(inner, delta),
     }
 }
 

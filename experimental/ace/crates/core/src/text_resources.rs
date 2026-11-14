@@ -575,6 +575,29 @@ fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
                     stack.push((*a, mode));
                 }
             }
+            // -- PLAN-964 object/nil/FStr surface --------------------------
+            // The text resource plan never owns the object domain (the
+            // collections walk schedules those cells); traverse operands
+            // for reads. TextDisplay produces an owned Str.
+            hir::ExprKind::NilLit => {}
+            hir::ExprKind::ObjectCtor { eval_args, .. } => {
+                for a in eval_args.iter().rev() {
+                    stack.push((*a, mode));
+                }
+            }
+            hir::ExprKind::ObjectGet { base, key } => {
+                stack.push((*key, mode));
+                stack.push((*base, mode));
+            }
+            hir::ExprKind::ObjectSet { base, key, value } => {
+                stack.push((*value, mode));
+                stack.push((*key, mode));
+                stack.push((*base, mode));
+            }
+            hir::ExprKind::TextDisplay { operand } => {
+                scan.has_owned_producing = true;
+                stack.push((*operand, mode));
+            }
         }
     }
     scan
@@ -2702,6 +2725,10 @@ fn place_final_vt(m: &hir::Module, root_vt: ValueType, path: &[u32]) -> ValueTyp
                 Some(hir::TypeKind::List { .. }) | Some(hir::TypeKind::Variant { .. }) => {
                     ValueType::Unit
                 }
+                // PLAN-964: totality only — nil is zero-width, object is
+                // an opaque cell neither owned nor read by the text walk.
+                Some(hir::TypeKind::Nil) => ValueType::Unit,
+                Some(hir::TypeKind::Object { .. }) => ValueType::Unit,
                 None => ValueType::I32,
             },
         }
