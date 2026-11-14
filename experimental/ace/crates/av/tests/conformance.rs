@@ -216,6 +216,9 @@ mod console_load_1041;
 mod console_out_1041;
 #[path = "cases/stdlib_assembly_1043.rs"]
 mod stdlib_assembly_1043;
+// PLAN-972 T-01：有界全链前探（scratch probe；永久 fixture 由 T-02/T-03 落位）。
+#[path = "cases/probe972.rs"]
+mod probe972;
 // PLAN-966：语句级编译期构造 + 宏调用的四端产品腿。
 #[path = "cases/plan966_ct_product.rs"]
 mod plan966_ct_product;
