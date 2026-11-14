@@ -306,10 +306,10 @@ def run_python(group, output, env, discover_only=False):
     return {'outcome': 'PASS' if valid else 'FAIL', 'execution': execution, 'executed': len(active), 'report': report}
 
 
-def run_case(group, output, env, prepared, discover_only=False):
+def run_case(group, output, env, prepared, discover_only=False, source_state=None):
     from prepare_tools import prepare, case_tools
     from case_artifacts import create_runtime, archive_runtime
-    extra, _ = prepare(ROOT, ['case-parent'], output / 'tools', prepared)
+    extra, _ = prepare(ROOT, ['case-parent'], output / 'tools', prepared, source_state)
     env = {**env, **extra}
     binary = str(ROOT / 'target/debug' / ('auto-case.exe' if os.name == 'nt' else 'auto-case'))
     suite = str(ROOT / group['suite'])
@@ -327,7 +327,7 @@ def run_case(group, output, env, prepared, discover_only=False):
     tools = case_tools([{'adapter': r['adapter'], 'case_recipe': r['recipe']} for r in checks])
     if group['domain'] != 'ace' and set(tools) - {'case-parent'}:
         raise ValueError('legacy suite requested ACE tools; correct its explicit group')
-    extra, receipts = prepare(ROOT, tools, output / 'tools', prepared)
+    extra, receipts = prepare(ROOT, tools, output / 'tools', prepared, source_state)
     env.update(extra)
     runtime = create_runtime()
     result, execution = invoke([binary, 'run', '--suite', suite, '--out', str(runtime.path)],
@@ -512,7 +512,7 @@ def execute_plan(plan, output, summary, args):
         env.pop('CARGO_TARGET_DIR', None)
         try:
             from prepare_tools import prepare
-            extra, receipts = prepare(ROOT, [] if args.discover_only else group['tools'], destination / 'tools', prepared)
+            extra, receipts = prepare(ROOT, [] if args.discover_only else group['tools'], destination / 'tools', prepared, before)
             env.update(extra)
             print('Running ' + ', '.join(group['groups']), flush=True)
             if group['runner'] == 'nextest':
@@ -520,7 +520,7 @@ def execute_plan(plan, output, summary, args):
             elif group['runner'] == 'python':
                 result = run_python(group, destination, env, args.discover_only)
             else:
-                result = run_case(group, destination, env, prepared, args.discover_only)
+                result = run_case(group, destination, env, prepared, args.discover_only, before)
             result['tools'] = receipts + result.get('tools', [])
         except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
             result = {'outcome': 'FAIL', 'error': str(error)}

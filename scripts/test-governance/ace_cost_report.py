@@ -593,6 +593,16 @@ def regular_module(run_dir, repo_root=None, budget_seconds=120.0, target_seconds
             key=lambda row: -(row['exec_time_ms'] or 0.0))
 
     record['phases'] = phase_view(commands)
+    reused_tools = [row for row in (result.get('tools') or []) if row.get('reused')]
+    if reused_tools and not commands['tools']:
+        record['phases']['tool_preparation'] = {
+            'status': 'REUSED',
+            'command_count': len(reused_tools),
+            'wall_ms': 0.0,
+            'exits': [],
+            'boundary': ('identity-bound receipts matched (source state, rustc, tool config, '
+                         'artifact hashes); no build was executed'),
+        }
     warm = summary.get('wall_seconds')
     if not isinstance(warm, (int, float)) or warm <= 0:
         record['missing_evidence'].append('no usable driver wall_seconds')
@@ -709,6 +719,9 @@ def render_regular_markdown(records):
                 continue
             if phase.get('status') == 'UNOBSERVED':
                 lines.append('- phase **%s**: UNOBSERVED (%s)' % (name, phase.get('boundary', 'no such command')))
+            elif phase.get('status') == 'REUSED':
+                lines.append('- phase **%s**: REUSED %d tool receipt(s), no build (%s)'
+                             % (name, phase.get('command_count') or 0, phase.get('boundary')))
             else:
                 lines.append('- phase **%s**: wall=%sms cpu=%sms peak=%sB exits=%s' % (
                     name, phase.get('wall_ms'), phase.get('workload_cpu_ms'),
