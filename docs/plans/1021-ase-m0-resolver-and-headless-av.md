@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1021
-status: drafting
+status: execution_done
 feature_name: ASE M0应用解析与无窗口AV加载实验
 author: [Codex]
 created_at: 2026-11-12
-updated_at: 2026-11-12
+updated_at: 2026-11-14
 plan_revision: 1
-current_step: 0
+current_step: 7
 total_steps: 9
 depends_on: [PLAN-1020, PLAN-960]
 supersedes_spec_components: []
@@ -18,7 +18,7 @@ touched_goals: [GOAL-002, GOAL-007, GOAL-010]
 
 ## 0. 变更摘要
 
-r1，drafting，0/9，仅规划；交付M0-LOAD/M0-H。消费1020就绪结论及960已交公开包链；无需等待AutoUI语法/980 Hello/AGE。这里是有界一次执行研究，不宣称独立持久AppSession或生产运行入口完成。路线：[ASE M0](../design/strategy/ase-m0-delivery-roadmap.md)。
+r1，executing，7/9（T-01..T-07 已完成，实现提交 b6a3e059c）；交付M0-LOAD/M0-H。消费1020就绪结论及960已交公开包链；无需等待AutoUI语法/980 Hello/AGE。这里是有界一次执行研究，不宣称独立持久AppSession或生产运行入口完成。路线：[ASE M0](../design/strategy/ase-m0-delivery-roadmap.md)。
 
 ## 1. 目标
 
@@ -96,13 +96,20 @@ A/B各为独立包输入、独立运行owner/结果。普通源码各返回11与
 
 ## 8. 执行步骤
 
-- [ ] T-01｜work｜1020+960｜核源/公开API、建树/scope，有界普通源→AV先证并选消费接缝；AC-03/05。具名no-go则停后续实现。
-- [ ] T-02｜work｜T-01｜新增`experimental/ase-m0/{Cargo.toml,src,tests,fixtures}`，两独立普通源及轻描述；AC-01/03。依赖方向/新鲜树输入闭包检查。
-- [ ] T-03｜work｜T-02｜实现目录/URI/版本/能力和根包含，错误分态；AC-01、AC-02，V-01/02。
-- [ ] T-04｜work｜T-03｜接公开compile_package_product/PackageAvTarget与新CLI，不改ACE私有执行；AC-03/05，运行11/22及真实来源观察。
-- [ ] T-05｜work｜T-04｜补编辑12/22、坏源/修复、预算失败与清理；AC-04/05，V-04/05。
-- [ ] T-06｜work｜T-05｜创建完整headless测试和opt-in固定组，运行V-01..05，零选择失败；AC-01..05。
-- [ ] T-07｜work｜T-06｜格式/告警/无debug检查，§9折摘要/拟议Spec与1022消费交接；AC-05。测试输入入库，原始证据不入库。
+- [x] T-01｜work｜1020+960｜核源/公开API、建树/scope，有界普通源→AV先证并选消费接缝；AC-03/05。具名no-go则停后续实现。
+  证据：1020已归档交付（archive/1020-*.md，commit 0f4a35f89），m0-readiness §2 记 1021=go；960公开链（compile_package_product / PackageAvTarget::cold/cold_with_entry/run_value）在 master HEAD `36a266267` 复核可编译可执行。树 `D:/autostack/.wt/lang-1021/auto-lang`（分支 codex/plan-1021-dev，base 36a266267），scope `D:/autostack/plan-artifacts/plan-1021/`（SCOPE.md 登记）。先证探针（scope 内，不入库）：两独立普通源经公开链 a=11/b=22，改 a 源→12 后 b 仍 22（4/4 PASS，exit 0）。接缝选定：`compile_package_product + PackageAvTarget::cold + run_value`。无 no-go。
+- [x] T-02｜work｜T-01｜新增`experimental/ase-m0/{Cargo.toml,src,tests,fixtures}`，两独立普通源及轻描述；AC-01/03。依赖方向/新鲜树输入闭包检查。
+  证据：独立 workspace（单包 ase-m0，空 [workspace] 表钉独立，不在语言/ACE workspace 成员清单）；依赖仅 4 个 ACE 公开 crate 的 path 引用（core/source-query/av/av-core，零 ACE 源改动）+ serde/toml/sha2；fixtures：两份独立 `main.at`（return 11/22）+ registry.toml（身份/版本/包名/根/入口/能力轻描述）。
+- [x] T-03｜work｜T-02｜实现目录/URI/版本/能力和根包含，错误分态；AC-01、AC-02，V-01/02。
+  证据：`src/uri.rs`（scheme/authority/根路由/userinfo/port/query/fragment 严格拒绝）、`src/registry.rs`（结构校验：身份/版本/包名/入口唯一与格式）、`src/source.rs`（根包含：`..`/绝对/多段拒绝、逐组件 reparse 拒绝、canonicalize 前缀复核、缺件/非常规文件拒绝）、`src/error.rs`（Phase×Kind 分态 + dispatch 计数）。单测 uri 2/2。
+- [x] T-04｜work｜T-03｜接公开compile_package_product/PackageAvTarget与新CLI，不改ACE私有执行；AC-03/05，运行11/22及真实来源观察。
+  证据：`src/run.rs` 经公开链一次冷执行，报告 input_hash/lowered/消费源 sha256；CLI 实测（worktree，artifact-root 落 plan-artifacts）：a→value=11 dispatch=1 sha=32ad4005f6554330 input_hash=cc7517cc71a5a7d6…；b→value=22 dispatch=1 sha=3fef427f75cf29eb input_hash=52fadaaf5cbe9be3…；`--version 9.9.9` → exit 1、dispatch=0（具名 authz 拒绝）。ACE 源零改动。
+- [x] T-05｜work｜T-04｜补编辑12/22、坏源/修复、预算失败与清理；AC-04/05，V-04/05。
+  证据：tests/headless.rs v04（11→编辑12、b 恒 22、坏源 `return }` → compile 分态 dispatch=1、修复→12 真实重试）、v05（max_parse_depth=1 公开预算 → resource 分态含 source.resource，非语法错非成功；两次冷运行 11/11 且 input_hash 相等；store 目录 run 后可删＝文件 owner 释放）。
+- [x] T-06｜work｜T-05｜创建完整headless测试和opt-in固定组，运行V-01..05，零选择失败；AC-01..05。
+  证据：`cargo test --manifest-path experimental/ase-m0/Cargo.toml`＝uri 单测 2/2 + headless 5/5（V-01..V-05，junction 负控 cfg(windows) 实跑）；固定组 `cargo t ase-m0` PASS（scripts/test-groups.toml +15 行：domain=ace、all=false、不入 sets.ace/daily → 不进 `cargo t all` 与 ACE 并集，显式 opt-in；`cargo t --list` 可见）。
+- [x] T-07｜work｜T-06｜格式/告警/无debug检查，§9折摘要/拟议Spec与1022消费交接；AC-05。测试输入入库，原始证据不入库。
+  证据：`cargo fmt --check` 干净；ase-m0 crate 零编译告警（ace-av/av-core 的 7 条上游告警为 master 既有，非本包引入）；库代码无 println/dbg（CLI 输出为产品面）；实现+测试+fixtures+锁文件入库 commit `b6a3e059c`（15 文件，2456 行）；原始证据（探针/target/运行输出）仅在 plan-artifacts scope，不入库。1022 交接：公开接缝与错误分态见本收据与 README；ASE 侧不新增语言/ACE 面。
 - [ ] T-08｜review｜T-07｜独立追踪普通源、实际AV dispatch、反例与关闭owner；AC-R，按结论修复或replan。
 - [ ] T-09｜merge｜独审pass｜冻结相关完整目标/必要组，沉淀SD-01、归档；对账全部输出目录，折摘要/删scope，guard清树；AC-D。
 
@@ -111,6 +118,27 @@ A/B各为独立包输入、独立运行owner/结果。普通源码各返回11与
 stage: new；PLAN-1021 r1；outcome: blocked（1020尚未正式交付，非设计拒绝）；next: 1020完成后核960/T-01。当前0/9，V-*与review/merge未执行。无需等待969、980或AGE整包。
 
 本轮静态预检：章节/任务数、AC覆盖、相关活动依赖无环及本地链接通过；归档前置作为已交终点，不重新审计其历史依赖。仅规划检查，未运行测试或产品。
+
+---
+
+stage: work | plan_id: PLAN-1021 | plan_revision: r1 | worktree: D:/autostack/.wt/lang-1021/auto-lang | branch: codex/plan-1021-dev | base_commit: 36a266267 | code_commit: b6a3e059c | dependency_revisions: ACE 公开 crate 同仓 path 引用（worktree HEAD，零 ACE 源改动）；1020 就绪记录/960 m2-modules spec 复核通过 | task_ids: T-01..T-07（7/9） | outcome: pass
+
+就绪记录（work-owned AC）：
+- AC-01 ✅ V-01（11 组近邻负控全具名拒绝、dispatch=0；未注册版本/能力同）＋ uri 单测。
+- AC-02 ✅ V-02（`..`/绝对/多段逃逸、junction 重解析点、缺件均具名拒绝；宿主私有路径不读；不称沙箱——README/代码注释明示）。
+- AC-03 ✅ V-03（a=11/b=22 经普通源前门/verify/AV；input_hash/消费源 sha256 真实且随源变化；换根注册/换顺序解析仍正确，值跟随注册闭包）。
+- AC-04 ✅ V-04（A→12 且 B 恒 22；坏源 compile 分态 dispatch=1；修复后真实重试 12）。
+- AC-05 ✅ V-05（公开预算超限→resource 分态（source.resource），不改语法错/成功；重复一次执行冷运行一致；store 文件 owner run 后释放）；CLI 退出码/输出含 dispatch 观测（拒绝时 0）。
+- 检查映射：V-01→AC-01、V-02→AC-02、V-03→AC-03、V-04→AC-04、V-05→AC-05；`cargo test --manifest-path experimental/ase-m0/Cargo.toml`（2+5 全过）与固定组 `cargo t ase-m0`（PASS）为执行证据。
+- 遗留 in-contract 缺口：无。冻结受影响并集门（`cargo t ase-m0`；ACE 源零改动故无 ACE 组义务）与 SD-01 沉淀归 T-08/T-09 owner。
+- 身份：实现提交 b6a3e059c（15 文件：ase-m0 包 14 + test-groups.toml +15 行）；探针/构建输出仅存 plan-artifacts/plan-1021（merge 收尾按裁定折叠+删除）。
+
+next_responsible_role: review（T-08，独立上下文同权威树）
+
+---
+
+stage: goal | plan_id: PLAN-1021 | plan_revision: r1 | round: 1 | from: drafting | to: review | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1021/auto-lang | commit: b6a3e059c | next: review
+
 
 ## 10. 待澄清事项
 
