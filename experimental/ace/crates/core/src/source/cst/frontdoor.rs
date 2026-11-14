@@ -1799,13 +1799,6 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
                 // 只有 hint 不晚于共享投影的最早诊断时才取代它）。普通 profile
                 // 的既有首诊断序不变。
                 if profile == SourceProfile::AgeH0 {
-                    eprintln!(
-                        "DBG diags={:?}",
-                        tree.diags
-                            .iter()
-                            .map(|d| (d.message.clone(), d.start, d.end))
-                            .collect::<Vec<_>>()
-                    );
                     let hint = tree
                         .diags
                         .iter()
