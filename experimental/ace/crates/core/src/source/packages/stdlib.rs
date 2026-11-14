@@ -68,6 +68,42 @@ pub fn unwired_reason(unit_key: &str, name: &str) -> Option<String> {
     ))
 }
 
+// ---------------------------------------------------------------------------
+// PLAN-972（T-02）：装配标准库集（assembled std set）——packages-aggregates-ct
+// 装配线的 `std` 冻结身份。与上方 plain/aggregates 线的冻结切片并存：
+// 同包名、同模块 id 可以有两条各自冻结的仓内身份（lane 分离，绑定面互不
+// 混装）；仓外来源两条线都不认。身份 = 仓库文件内容本身（include_str!）。
+// ---------------------------------------------------------------------------
+
+const ASM_LIST_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/list.at");
+
+/// 装配标准库集的平铺文件闭包（discover/assemble 消费；按名排序由调用方
+/// 的 assemble 逻辑负责）。纯 Auto 模块无来源候选（provider 选择面允许
+/// 无候选——`std` 模块不接受仓外实现层）。
+pub fn stdlib_assembled_files() -> Vec<(String, String)> {
+    vec![("list.at".to_string(), ASM_LIST_PUBLIC.to_string())]
+}
+
+/// PLAN-972（T-02）：装配线 `std` 身份保留。模块 id/版本/公共源（以及实现
+/// 层 kind+源，若有）必须与本仓装配标准库集逐字节一致；任何仓外/漂移输入
+/// 在绑定前拒绝（与 plain 冻结切片同一防遮蔽纪律）。
+pub fn is_frozen_std_assembled_module(
+    id: &str,
+    version: &str,
+    source: &str,
+    layer: Option<(&super::provider_sources::ProviderKind, &str)>,
+) -> bool {
+    if version != STDLIB_VERSION {
+        return false;
+    }
+    // 现集全部为纯 Auto 模块：不接受任何实现层（候选文件存在于仓内集时
+    // 在此按 kind+源核对；当前无候选）。
+    if layer.is_some() {
+        return false;
+    }
+    matches!(id, "list" if source == ASM_LIST_PUBLIC)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

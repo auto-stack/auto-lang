@@ -308,6 +308,17 @@ pub fn packages_aggregates_grammar() -> Result<&'static CachedGrammar, String> {
     capability_grammar(&PACKAGES_AGGREGATES_GRAMMAR, "packages-aggregates")
 }
 
+/// PLAN-972（T-02）：`packages-aggregates-ct` 裁剪程序（packages-aggregates
+/// 全表面 + packages-ct 装配项 + `fn(T..) -> R` 闭包类型注解/闭包字面量）。
+/// 独立缓存槽：plain packages-modules/packages-ct/packages-aggregates 程序
+/// 逐字节不变，grammar-id 自然隔离。
+static PACKAGES_AGGREGATES_CT_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
+
+/// packages-aggregates-ct 裁剪编译并缓存（进程内一次）。
+pub fn packages_aggregates_ct_grammar() -> Result<&'static CachedGrammar, String> {
+    capability_grammar(&PACKAGES_AGGREGATES_CT_GRAMMAR, "packages-aggregates-ct")
+}
+
 fn capability_grammar(
     cell: &'static OnceLock<OnceLock<CachedGrammar>>,
     slug: &str,
@@ -373,6 +384,16 @@ pub(crate) fn parse_packages_front_aggregates(
     parse_packages_with(PackagesFace::Aggregates, src, budget)
 }
 
+/// PLAN-972（T-02）：packages-aggregates-ct 前门（装配 aggregates 线；
+/// `ac.source.cte.in/v1` + `av.aggregates/1` 双准入，`#in`/`pub spec fn`/
+/// 闭包类型注解面的同一严格投影）。
+pub(crate) fn parse_packages_front_aggregates_ct(
+    src: &str,
+    budget: FrontBudget,
+) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
+    parse_packages_with(PackagesFace::AggregatesCt, src, budget)
+}
+
 /// 包面前门的三种裁剪面（旧布尔 `ct_face` 的结构化形态）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PackagesFace {
@@ -382,6 +403,9 @@ pub(crate) enum PackagesFace {
     Ct,
     /// packages-aggregates（PLAN-946；ct 专属规则在本面裁剪缺席→不可达）。
     Aggregates,
+    /// packages-aggregates-ct（PLAN-972；aggregates 全表面 + ct 装配项 +
+    /// 闭包类型注解/字面量——std 装配标准库的承载面）。
+    AggregatesCt,
 }
 
 impl PackagesFace {
@@ -390,10 +414,16 @@ impl PackagesFace {
             PackagesFace::Modules => packages_grammar(),
             PackagesFace::Ct => packages_ct_grammar(),
             PackagesFace::Aggregates => packages_aggregates_grammar(),
+            PackagesFace::AggregatesCt => packages_aggregates_ct_grammar(),
         }
     }
     fn ct_face(&self) -> bool {
-        matches!(self, PackagesFace::Ct)
+        matches!(self, PackagesFace::Ct | PackagesFace::AggregatesCt)
+    }
+    /// PLAN-972（T-02）：aggregates 域投影（集合族语句/`?T`/闭包类型形状按
+    /// 962 域投影）；plain/ct 面保持 TextRecord。
+    fn aggregates_proj(&self) -> bool {
+        matches!(self, PackagesFace::Aggregates | PackagesFace::AggregatesCt)
     }
 }
 
@@ -727,7 +757,9 @@ pub(crate) fn project_packages_front(
         // 使用点必须命中同一实例符号（包/模块身份已进符号）。
         // PLAN-946（T-02）：aggregates 面按 Aggregates 域投影（集合族语句/
         // 表达式语句/`?T` 形状按 962 域投影）；plain/ct 面保持 TextRecord。
-        let proj_profile = if matches!(face, PackagesFace::Aggregates) {
+        // PLAN-972（T-02）：packages-aggregates-ct 同按 Aggregates 域投影
+        //（其 #in 落位声明共享同一域）。
+        let proj_profile = if face.aggregates_proj() {
             SourceProfile::Aggregates
         } else {
             SourceProfile::TextRecord
@@ -750,7 +782,7 @@ pub(crate) fn project_packages_front(
                 &cached.kinds,
                 tree,
                 &snap,
-                SourceProfile::TextRecord,
+                proj_profile,
             ),
         });
         for d in &tree.decls {

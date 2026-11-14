@@ -57,6 +57,10 @@ const DECLARED: &[&str] = &[
     // ace-syntax，966 接收侧按 auto-source.at 已声明现实刷新（合同语义不变，
     // 同 961→941、962→1025 先例）。声明序紧随 packages-ct、scalar-ct 之前。
     "packages-aggregates",
+    // PLAN-972（T-02）：packages-aggregates-ct 面（packages-aggregates 全表面
+    // + packages-ct 装配项 + 闭包类型注解/字面量）；装配 aggregates 线
+    //（std 装配标准库承载面）。声明序紧随 packages-aggregates。
+    "packages-aggregates-ct",
     // PLAN-936（T-04）：有限 CT 表达式面（scalar-instances 全表面 +
     // #{ expr } 原子；仅 CT 能力前门使用；声明序在模板面之后）。
     "scalar-ct",

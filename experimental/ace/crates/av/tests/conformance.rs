@@ -219,6 +219,9 @@ mod stdlib_assembly_1043;
 // PLAN-972 T-01：有界全链前探（scratch probe；永久 fixture 由 T-02/T-03 落位）。
 #[path = "cases/probe972.rs"]
 mod probe972;
+// PLAN-972 T-02：装配标准库（packages-aggregates-ct lane）AV 正反例。
+#[path = "cases/stdlib_asm_972.rs"]
+mod stdlib_asm_972;
 // PLAN-966：语句级编译期构造 + 宏调用的四端产品腿。
 #[path = "cases/plan966_ct_product.rs"]
 mod plan966_ct_product;

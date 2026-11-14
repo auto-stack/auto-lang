@@ -120,17 +120,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         bool { literal: "bool" }
         // PLAN-961：数值类型关键字（仅 numeric 面规则引用；其余面裁剪后
         // 为保留字——同 for/enum 先例）。
-        i8-kw(profiles: [numeric, aggregates, scheduler]) { literal: "i8" }
-        u8-kw(profiles: [numeric, aggregates, scheduler]) { literal: "u8" }
-        byte-kw(profiles: [numeric, aggregates, scheduler]) { literal: "byte" }
-        uint-kw(profiles: [numeric, aggregates, scheduler]) { literal: "uint" }
-        u32-kw(profiles: [numeric, aggregates, scheduler]) { literal: "u32" }
-        i64-kw(profiles: [numeric, aggregates, scheduler]) { literal: "i64" }
-        u64-kw(profiles: [numeric, aggregates, scheduler]) { literal: "u64" }
-        float-kw(profiles: [numeric, aggregates, scheduler]) { literal: "float" }
-        f32-kw(profiles: [numeric, aggregates, scheduler]) { literal: "f32" }
-        double-kw(profiles: [numeric, aggregates, scheduler]) { literal: "double" }
-        f64-kw(profiles: [numeric, aggregates, scheduler]) { literal: "f64" }
+        i8-kw(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { literal: "i8" }
+        u8-kw(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { literal: "u8" }
+        byte-kw(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { literal: "byte" }
+        uint-kw(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { literal: "uint" }
+        u32-kw(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { literal: "u32" }
+        i64-kw(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { literal: "i64" }
+        u64-kw(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { literal: "u64" }
+        float-kw(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { literal: "float" }
+        f32-kw(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { literal: "f32" }
+        double-kw(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { literal: "double" }
+        f64-kw(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { literal: "f64" }
         type-kw { literal: "type" }
         static { literal: "static" }
         mut { literal: "mut" }
@@ -162,7 +162,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         grid-kw(profiles: [aggregates, scheduler]) { literal: "grid" }
         // PLAN-1043（T-03）：`..` 进 packages-ct 面（仅 in-range 编译期迭代
         // 位引用；其余 packages 位不引用 = 保留）。
-        dotdot(profiles: [aggregates, packages-ct, scheduler]) { literal: ".." }
+        dotdot(profiles: [aggregates, packages-ct, scheduler, packages-aggregates-ct, packages-aggregates-ct]) { literal: ".." }
         r-nil { literal: "nil" }
         r-null { literal: "null" }
         r-outlet { literal: "outlet" }
@@ -186,7 +186,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-1041：host-console/entry-unit 内联公共 stdlib 源（如 io 输出）
         // 也用 `pub fn` 拼写——单模块文件里 pub 是可见性 no-op，保持包面/内联
         // 单源同一拼写。
-        r-pub(profiles: [scalar-modules, packages-modules, packages-ct, host-console, entry-unit, packages-aggregates]) { literal: "pub" }
+        r-pub(profiles: [scalar-modules, packages-modules, packages-ct, host-console, entry-unit, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { literal: "pub" }
         r-view { literal: "view" }
         r-with { literal: "with" }
         r-yield { literal: "yield" }
@@ -214,9 +214,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         oror { literal: "||" }
         // PLAN-961：单字符位算符（最长匹配下 `&&`/`||` 不受影响；仅
         // numeric 面引用，其余面裁剪为保留）。
-        amp(profiles: [numeric, aggregates, scheduler]) { literal: "&" }
-        vbar(profiles: [numeric, aggregates, scheduler]) { literal: "|" }
-        caret(profiles: [numeric, aggregates, scheduler]) { literal: "^" }
+        amp(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { literal: "&" }
+        vbar(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { literal: "|" }
+        caret(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { literal: "^" }
         tilde(profiles: [aggregates, scheduler]) { literal: "~" }
         bang { literal: "!" }
         dotquestion(profiles: [aggregates, scheduler]) { literal: ".?" }
@@ -268,46 +268,46 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         program { list { item() {} } }
         item {
             // PLAN-979（T-H0-I）：AGE 领域节点声明（领域包显式启用时才存在）。
-            alt(profiles: [age-h0]) { age-node-item() {} }
-            alt(profiles: [age-component]) { age-node-c-item() {} }
-            alt(profiles: [scalar-modules]) { public-fn() {} }
+            alt(profiles: [age-h0, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { age-node-item() {} }
+            alt(profiles: [age-component, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { age-node-c-item() {} }
+            alt(profiles: [scalar-modules, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { public-fn() {} }
             alt { fn-item() {} }
             // PLAN-1041：内联公共 stdlib 源的 `pub fn` 声明项（见 public-fn）。
-            alt(profiles: [host-console, entry-unit]) { public-fn() {} }
+            alt(profiles: [host-console, entry-unit, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { public-fn() {} }
             // PLAN-936（T-04）：scalar-ct 面的 type-item 仅字段形（member 规则中方法两 alt 仍门控在 record 族；元信息源声明，§5.2）。
-            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, scalar-ct, aggregates, scheduler]) { type-item() {} }
+            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, scalar-ct, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) { type-item() {} }
             // PLAN-963（T-03）：`spec Name { fn m(..) R [body] }` 声明。投影期
             // 擦除（不产出 Item 变体）：遵从检查与默认方法注入都在投影层完成，
             // 下游 resolve/四端只见具体记录与其方法。
-            alt(profiles: [record, record-instances, aggregates, scheduler]) { spec-item() {} }
+            alt(profiles: [record, record-instances, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) { spec-item() {} }
             // PLAN-963（T-03）：`ext Type { members }` 扩展块（投影期合入）。
-            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, aggregates, scheduler]) { ext-item() {} }
-            alt(profiles: [scalar-modules]) { use-item() {} }
+            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) { ext-item() {} }
+            alt(profiles: [scalar-modules, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { use-item() {} }
             // PLAN-967（F0）：`use.rs <provider>` —— 公共 Rust 导入前门
             //（text-record 面首个 F0 切片；`rs` 拼写与 provider 匹配在投影/解析期校验）。
-            alt(profiles: [text-record, age-h0, age-component]) { use-rs-item() {} }
-            alt(profiles: [text-record, age-h0, age-component]) { use-c-item() {} }
+            alt(profiles: [text-record, age-h0, age-component, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { use-rs-item() {} }
+            alt(profiles: [text-record, age-h0, age-component, packages-aggregates-ct]) { use-c-item() {} }
             // PLAN-960（T-02）：完整模块包面 items —— 单一 public-item 前缀
             //（fn/type/const/use 各自 token 开头，避免 recover 规则与前缀
             // 备选相互作用）；const/var 模块项与别名导入。
-            alt(profiles: [packages-modules, packages-ct, packages-aggregates]) { public-item() {} }
-            alt(profiles: [packages-modules, packages-ct, packages-aggregates]) { const-item() {} }
-            alt(profiles: [packages-modules, packages-ct, packages-aggregates]) { var-item() {} }
-            alt(profiles: [packages-modules, packages-ct, packages-aggregates]) { use-item-p() {} }
-            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, packages-modules, packages-ct, packages-aggregates, aggregates, scheduler]) { type-item() {} }
+            alt(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct]) { public-item() {} }
+            alt(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct]) { const-item() {} }
+            alt(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct]) { var-item() {} }
+            alt(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct]) { use-item-p() {} }
+            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, packages-modules, packages-ct, packages-aggregates, aggregates, scheduler, packages-aggregates-ct]) { type-item() {} }
             // PLAN-1043（T-03）/PLAN-966（T-02）：项位编译期选择（仅
             // packages-ct）——`#in` 命名空间上下文与无 namespace 的
             // `#if/#is/#for`（谓词域=显式目标 sys 事实）。
-            alt(profiles: [packages-ct]) { ct-item() {} }
-            alt(profiles: [collections, aggregates, scheduler]) { enum-item() {} }
+            alt(profiles: [packages-ct, packages-aggregates-ct]) { ct-item() {} }
+            alt(profiles: [collections, aggregates, scheduler, packages-aggregates-ct]) { enum-item() {} }
             // PLAN-962（T-08，L-13/L-12）：`tag N { ... }` = enum 声明别名
             //（旧 statements.rs:662 同义）；`union N { f T; ... }` = tagged
             // 安全联合（一字段一臂，语义新定——读非活动臂 = guard 失败）。
-            alt(profiles: [aggregates, scheduler]) { tag-item() {} }
-            alt(profiles: [aggregates, scheduler]) { union-item() {} }
+            alt(profiles: [aggregates, scheduler, packages-aggregates-ct]) { tag-item() {} }
+            alt(profiles: [aggregates, scheduler, packages-aggregates-ct]) { union-item() {} }
             // PLAN-968: `task <Name> { ... }` actor declaration.
-            alt(profiles: [scheduler]) { task-item() {} }
-            alt(profiles: [entry-unit, host-console, closures, numeric, aggregates, scheduler]) { script-item() {} }
+            alt(profiles: [scheduler, packages-aggregates-ct]) { task-item() {} }
+            alt(profiles: [entry-unit, host-console, closures, numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { script-item() {} }
         }
         // ---- AGE 领域节点（PLAN-979 T-H0-I）----
         // H0 冻结输入：`node <Name> { view { text <text-expr> {} } }`。节点名是
@@ -430,14 +430,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-960（T-02）：模块级常量 `const NAME: T = expr`（pub 形经
         // public-const 前缀）；模块 store `var NAME: T = expr`（无私有外可见形）。
-        const-item(profiles: [packages-modules, packages-ct, packages-aggregates]) {
+        const-item(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             r-const(field: "kw") {}
             ident(field: "name")
             ann-ty(field: "ty")
             assign() {}
             expr(field: "value")
         }
-        var-item(profiles: [packages-modules, packages-ct, packages-aggregates]) {
+        var-item(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             var(field: "kw") {}
             ident(field: "name")
             ann-ty(field: "ty")
@@ -447,24 +447,24 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-960（T-02）：公共项统一前缀 `pub fn/type/const/use`——
         // public-body 各备选首 token 互异（fn/type/const/use），recover
         // 规则在自身关键字命中前干净失败，不产生前缀误恢复。
-        public-item(profiles: [packages-modules, packages-ct, packages-aggregates]) {
+        public-item(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             r-pub(field: "pub") {}
             public-body(field: "body")
         }
-        public-body(profiles: [packages-modules, packages-ct, packages-aggregates]) {
+        public-body(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             alt { fn-item(field: "function") }
             alt { type-item(field: "type") }
             alt { const-item(field: "const") }
             alt { use-tail-p(field: "use") }
             // PLAN-1043（T-02）：公共必需实现声明（无块；首 token `spec` 与
             // fn/type/const/use 备选互异——public-body 首 token 纪律保持）。
-            alt(profiles: [packages-ct]) { fn-require-p(field: "require") }
+            alt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) { fn-require-p(field: "require") }
         }
         // PLAN-1043（T-02）：`pub spec fn name(params) Ret` —— 公共 bodyless
         // 需求标记：本模块公共 API 的一个操作声明，body 由所选 provider 实现
         // 文件的同签名 `fn name(...) Ret { .. }` 填充（绑定期核验，缺/重/
         // 签名不符在装配拒绝）。无类型参数（泛型需求非本轮面）。
-        fn-require-p(profiles: [packages-ct]) {
+        fn-require-p(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             r-spec(field: "kw") {}
             fn(field: "fn") {}
             ident(field: "name")
@@ -475,25 +475,25 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-960（T-02）：多段路径导入 `use a.b[.c] [as x]` 与重导出
         // `pub use a.b[.c] [as x]`（2 段=本包 mod.item；3 段=pkg.mod.item）。
-        use-item-p(profiles: [packages-modules, packages-ct, packages-aggregates]) {
+        use-item-p(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             r-use(field: "kw") {}
             use-path(field: "path")
             opt { use-alias() {} }
         }
-        use-tail-p(profiles: [packages-modules, packages-ct, packages-aggregates]) {
+        use-tail-p(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             r-use(field: "kw") {}
             use-path(field: "path")
             opt { use-alias() {} }
         }
-        use-alias(profiles: [packages-modules, packages-ct, packages-aggregates]) {
+        use-alias(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             r-as(field: "kw") {}
             ident(field: "alias")
         }
-        use-path(profiles: [packages-modules, packages-ct, packages-aggregates]) {
+        use-path(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             ident(field: "head")
             many { use-seg() {} }
         }
-        use-seg(profiles: [packages-modules, packages-ct, packages-aggregates]) {
+        use-seg(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             dot(same-line: true) {}
             ident(field: "seg")
         }
@@ -506,13 +506,13 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-966（T-02）：项位编译期选择分派——`#in` 与独立的
         // `#if/#is/#for` 共用 packages-ct 面；首个 `#` 后的关键字
         // （in/if/is/for）区分形态。wrapper 只做分派，不消费 token。
-        ct-item(profiles: [packages-ct]) {
+        ct-item(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             alt { in-item() {} }
             alt { ct-if-item() {} }
             alt { ct-is-item() {} }
             alt { ct-for-item() {} }
         }
-        in-item(profiles: [packages-ct]) {
+        in-item(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             // `#in` 是项位引入符（行首/前一项之后），不做同行锚定——
             // 与 scalar-ct 的 `#{`（表达式位，须同行）分野。
             hash() {}
@@ -524,14 +524,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 目标 sys 事实（`sys.current`/`sys.Windows`/…），语义与 `#in sys`
         // 块内 if/is/for 同一求值器；选中声明/use 按原 Emit 规则落位，未选
         // 分支只保 Text 阶段语法检查。
-        ct-if-item(profiles: [packages-ct]) {
+        ct-if-item(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             hash() {}
             if(field: "kw") {}
             in-ct-expr(field: "cond")
             in-block(field: "then")
             opt { in-else(field: "else") }
         }
-        ct-is-item(profiles: [packages-ct]) {
+        ct-is-item(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             hash() {}
             is(field: "kw") {}
             in-ct-expr(field: "scrutinee")
@@ -539,7 +539,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             list { in-arm() {} }
             rbrace() {}
         }
-        ct-for-item(profiles: [packages-ct]) {
+        ct-for-item(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             hash() {}
             for(field: "kw") {}
             ident(field: "var")
@@ -547,21 +547,21 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             in-range(field: "iter")
             in-block(field: "body")
         }
-        in-tail(profiles: [packages-ct]) {
+        in-tail(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             alt { in-is(field: "is") }
             alt { in-block(field: "block") }
         }
         // PLAN-966（T-02）：语句级编译期构造（仅 packages-ct）——`#if`/
         // `#for`/`#is` 与项位形共用 in-ct-expr/in-range 谓词域；体是普通
         // 语句块（`#` 只作用于本结构，体内不重复 `#`）。
-        hash-if-stmt(profiles: [packages-ct]) {
+        hash-if-stmt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             hash() {}
             if(field: "kw") {}
             in-ct-expr(field: "cond")
             block(field: "then")
             else-block(repeat: "opt")
         }
-        hash-for-stmt(profiles: [packages-ct]) {
+        hash-for-stmt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             hash() {}
             for(field: "kw") {}
             ident(field: "var")
@@ -569,7 +569,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             in-range(field: "iter")
             block(field: "body")
         }
-        hash-is-stmt(profiles: [packages-ct]) {
+        hash-is-stmt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             hash() {}
             is(field: "kw") {}
             in-ct-expr(field: "scrutinee")
@@ -579,75 +579,75 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // 臂：`<pat> -> { }` / `<pat> => { }`（旧 #is 的 `=>` 与 962 的
         // `->` 都接受）+ `else -> { }`。
-        hash-is-arm(profiles: [packages-ct]) {
+        hash-is-arm(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             hash-is-pattern(field: "pattern")
             hash-is-sep() {}
             block(field: "body")
         }
-        hash-is-pattern(profiles: [packages-ct]) {
+        hash-is-pattern(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             alt { hash-is-else(field: "else") }
             alt { in-ct-expr(field: "value") }
         }
-        hash-is-else(profiles: [packages-ct]) {
+        hash-is-else(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             else(field: "kw") {}
         }
-        hash-is-sep(profiles: [packages-ct]) {
+        hash-is-sep(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             alt { fat-arrow() {} }
             alt { arrow() {} }
         }
         // PLAN-966（T-02）：宏调用 `#name(args...)`——语句位调用糖（旧
         // MacroCall 面）。实参是普通运行期表达式；名字按本模块导入/声明的
         // 函数解析（无独立 Log 运行时；目标专有的宏发射归 967/目标 owner）。
-        hash-macro-stmt(profiles: [packages-ct]) {
+        hash-macro-stmt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             hash() {}
             ident(field: "name")
             lparen() {}
             args(field: "args")
             rparen() {}
         }
-        in-block(profiles: [packages-ct]) {
+        in-block(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             lbrace() {}
             list-nl { in-stmt() {} }
             rbrace() {}
         }
-        in-is(profiles: [packages-ct]) {
+        in-is(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             is(field: "kw") {}
             in-ct-expr(field: "scrutinee")
             lbrace() {}
             list { in-arm() {} }
             rbrace() {}
         }
-        in-arm(profiles: [packages-ct]) {
+        in-arm(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             opt { in-arm-qual(field: "qual") }
             ident(field: "pattern")
             arrow() {}
             in-arm-body(field: "body")
         }
         // 限定模式 `sys.Windows`（qual 须等于 #in 的 namespace，绑定期核）。
-        in-arm-qual(profiles: [packages-ct]) {
+        in-arm-qual(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             ident(field: "qual")
             dot(same-line: true) {}
         }
-        in-arm-body(profiles: [packages-ct]) {
+        in-arm-body(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             alt { in-use(field: "use") }
             alt { in-block(field: "block") }
         }
-        in-use(profiles: [packages-ct]) {
+        in-use(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             r-use(field: "kw") {}
             use-path(field: "path")
             opt { in-use-syms(field: "syms") }
             opt { use-alias() {} }
         }
-        in-use-syms(profiles: [packages-ct]) {
+        in-use-syms(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             colon() {}
             ident(field: "head")
             many { in-use-sym-tail() {} }
         }
-        in-use-sym-tail(profiles: [packages-ct]) {
+        in-use-sym-tail(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             comma() {}
             ident(field: "sym")
         }
-        in-stmt(profiles: [packages-ct]) {
+        in-stmt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             alt { in-is(field: "is") }
             alt { in-if(field: "if") }
             alt { in-for(field: "for") }
@@ -657,17 +657,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { const-item(field: "const") }
             alt { public-item(field: "public") }
         }
-        in-if(profiles: [packages-ct]) {
+        in-if(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             if(field: "kw") {}
             in-ct-expr(field: "cond")
             in-block(field: "then")
             opt { in-else(field: "else") }
         }
-        in-else(profiles: [packages-ct]) {
+        in-else(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             else(field: "kw") {}
             in-block(field: "body")
         }
-        in-for(profiles: [packages-ct]) {
+        in-for(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             for(field: "kw") {}
             ident(field: "var")
             in(field: "in") {}
@@ -676,17 +676,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // `0..3` 整段会被 affix-num 连续字符集（含 `.`）扫成单 token——
         // 融合形备选承载之（投影按 `..` 拆分）；带空格/标识符边界走分解形。
-        in-range(profiles: [packages-ct]) {
+        in-range(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             alt { in-ct-expr(field: "start") dotdot() {} in-ct-expr(field: "end") }
             alt { range-lit(field: "both") }
         }
-        range-lit(profiles: [packages-ct]) {
+        range-lit(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             affix-num(field: "lit")
         }
-        in-ct-expr(profiles: [packages-ct]) {
+        in-ct-expr(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             pratt(of: "in-ct-ops")
         }
-        in-ct-unary(profiles: [packages-ct]) {
+        in-ct-unary(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             alt { int-literal() {} }
             alt { true-kw(field: "lit") }
             alt { false-kw(field: "lit") }
@@ -696,7 +696,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // target 事实供给，绑定期解析；不是运行时名字）。限定形先试、裸名
         // 后备（规则级 alt，不用 opt——pratt primary 内的 opt 尾巴会被
         // 行锚纪律误伤）。
-        ns-ref(profiles: [packages-ct]) {
+        ns-ref(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             alt { ident(field: "head") dot() {} ident(field: "member") }
             alt { ident(field: "head") }
         }
@@ -710,14 +710,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-935（T-02）：有限类型参数 `<T>`（scalar-instances, scalar-ct 面步骤级
             // 门控——被裁 profile 该步缺席 = 形状与旧 fn-tail 逐字节等价）。
             // PLAN-963（T-02）：record-instances 面同样在此步启用模板参数。
-            opt(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record-instances, text-record-instances, packages-aggregates]) { type-params(field: "type_params") }
+            opt(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record-instances, text-record-instances, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { type-params(field: "type_params") }
             lparen() {}
             params(repeat: "opt", field: "params")
             rparen() {}
             // PLAN-968: the legacy effect marker `!` — a scheduler-only
             // step (other profiles keep the exact historical leaf stream
             // and the projection classifier consumes `!` as before).
-            opt(profiles: [scheduler]) { bang(field: "effect") }
+            opt(profiles: [scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { bang(field: "effect") }
             // PLAN-968: bare unit-result fns (`fn main() { ... }`). The
             // ret-ty step is optional for ALL profiles now; the projection
             // classifier keeps the required-ret contract (the N42
@@ -732,31 +732,31 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-935（T-03）：约束/const 形状（`<T has Bound>` / `<const N>`
         // ——词法上都是 ident ident）语法可识别、投影具名拒——不能当普通
         // token 跳过。
-        type-params(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, packages-aggregates, scheduler]) {
+        type-params(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             lt() {}
             type-param() {}
             many { type-param-tail() {} }
             gt() {}
         }
-        type-param-tail(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, packages-aggregates, scheduler]) { comma() {} type-param() {} }
-        type-param(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, packages-aggregates, scheduler]) {
+        type-param-tail(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { comma() {} type-param() {} }
+        type-param(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             // PLAN-963（T-03）：record/aggregates 面的 `has S` 是用户泛型类型的
             // 约束声明（`type Box<T has Summable>`），由语法期单态化按实参核验；
             // scalar/packages 面仍交投影具名拒。
-            alt { ident(field: "name") opt(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, packages-aggregates, scheduler]) { type-param-constraint(field: "constraint") } }
+            alt { ident(field: "name") opt(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { type-param-constraint(field: "constraint") } }
             // `<const N>` / `<const N u32>`（PLAN-963 T-04：值参数；声明类型
             // 缺省 u32，其他拼写由投影具名拒）。声明类型按词全域识别（关键字
             // 类型词 + ident），保证 `<const N bool>` 这类错拼在投影期得
             // `source.instances-unsupported` 而不是语法错。
-            alt { r-const(field: "const_kw") {} ident(field: "name") opt(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, packages-aggregates, scheduler]) { const-param-ty(field: "ty") } }
+            alt { r-const(field: "const_kw") {} ident(field: "name") opt(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, packages-aggregates, scheduler, packages-aggregates-ct]) { const-param-ty(field: "ty") } }
         }
-        const-param-ty(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, packages-aggregates, scheduler]) {
+        const-param-ty(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
             alt { ident(field: "word") }
         }
-        type-param-constraint(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, packages-aggregates, scheduler]) { r-has(field: "kw") {} ident(field: "bound") }
+        type-param-constraint(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { r-has(field: "kw") {} ident(field: "bound") }
         params { param() {} many { param-tail() {} } }
         param-tail { comma() {} param() {} }
         param {
@@ -780,53 +780,53 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { i8-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { u8-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { byte-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { uint-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { u32-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { i64-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { u64-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { float-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { f32-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { double-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { f64-kw(field: "word") }
-            alt(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler]) { generic-ty(field: "generic") }
-            alt(profiles: [aggregates, scheduler]) { tilde-ty(field: "tilde") }
-            alt(profiles: [aggregates, scheduler]) { err-ty(field: "err") }
-            alt(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler]) { optional-ty(field: "optional") }
-            alt(profiles: [text, text-record, age-h0, age-component, text-record-instances, host-console, record, record-instances, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, packages-ct, numeric, aggregates, packages-aggregates, scheduler]) { ident(field: "word") }
-            alt(profiles: [closures, numeric, aggregates, scheduler]) { fn-type(field: "fn") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { i8-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { u8-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { byte-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { uint-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { u32-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { i64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { u64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { float-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { f32-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { double-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { f64-kw(field: "word") }
+            alt(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { generic-ty(field: "generic") }
+            alt(profiles: [aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) { tilde-ty(field: "tilde") }
+            alt(profiles: [aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { err-ty(field: "err") }
+            alt(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct]) { optional-ty(field: "optional") }
+            alt(profiles: [text, text-record, age-h0, age-component, text-record-instances, host-console, record, record-instances, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, packages-ct, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct]) { ident(field: "word") }
+            alt(profiles: [closures, numeric, aggregates, scheduler, packages-aggregates-ct]) { fn-type(field: "fn") }
             // PLAN-962（L-15）：tuple 类型（聚合面，≥2 元）。
-            alt(profiles: [aggregates, scheduler]) { tuple-ty(field: "tuple") }
+            alt(profiles: [aggregates, scheduler, packages-aggregates-ct]) { tuple-ty(field: "tuple") }
         }
         // 参数/字段/let 注解类型（入口 void 由 entry 面的拼写分类处理）
         ann-ty {
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { i8-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { u8-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { byte-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { uint-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { u32-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { i64-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { u64-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { float-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { f32-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { double-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { f64-kw(field: "word") }
-            alt(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler]) { generic-ty(field: "generic") }
-            alt(profiles: [aggregates, scheduler]) { tilde-ty(field: "tilde") }
-            alt(profiles: [aggregates, scheduler]) { err-ty(field: "err") }
-            alt(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler]) { optional-ty(field: "optional") }
-            alt(profiles: [text, text-record, age-h0, age-component, text-record-instances, host-console, record, record-instances, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, packages-ct, numeric, aggregates, packages-aggregates, scheduler]) { ident(field: "word") }
-            alt(profiles: [closures, numeric, aggregates, scheduler]) { fn-type(field: "fn") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { i8-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { u8-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { byte-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { uint-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { u32-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { i64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { u64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { float-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) { f32-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { double-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { f64-kw(field: "word") }
+            alt(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler, packages-aggregates-ct]) { generic-ty(field: "generic") }
+            alt(profiles: [aggregates, scheduler, packages-aggregates-ct]) { tilde-ty(field: "tilde") }
+            alt(profiles: [aggregates, scheduler, packages-aggregates-ct]) { err-ty(field: "err") }
+            alt(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct]) { optional-ty(field: "optional") }
+            alt(profiles: [text, text-record, age-h0, age-component, text-record-instances, host-console, record, record-instances, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, packages-ct, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct]) { ident(field: "word") }
+            alt(profiles: [closures, numeric, aggregates, scheduler, packages-aggregates-ct]) { fn-type(field: "fn") }
             // PLAN-962（L-15）：tuple 类型（聚合面，≥2 元）。
-            alt(profiles: [aggregates, scheduler]) { tuple-ty(field: "tuple") }
+            alt(profiles: [aggregates, scheduler, packages-aggregates-ct]) { tuple-ty(field: "tuple") }
         }
         // PLAN-961：数值类型词（`.as(T)`/`.to(T)` 后缀实参位）。
-        num-ty-word(profiles: [numeric, aggregates, scheduler]) {
+        num-ty-word(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) {
             alt { i8-kw(field: "word") }
             alt { u8-kw(field: "word") }
             alt { byte-kw(field: "word") }
@@ -848,55 +848,55 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 的每个使用位都显式写类型实参，由语法期单态化替换为具体记录。
         // PLAN-963（V-G06）：包模块面同样放开泛型类型应用——模块内模板声明与
         // 跨模块使用点都由扁平程序的单态化统一实例化（包/模块身份已在符号里）。
-        generic-ty(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler]) {
+        generic-ty(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             ident(field: "name")
             lt() {}
             type-args(field: "args")
             gt() {}
         }
-        type-args(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler]) { type-arg() {} many { type-arg-tail() {} } }
-        type-arg-tail(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler]) { comma() {} type-arg() {} }
-        type-arg(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler]) {
+        type-args(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { type-arg() {} many { type-arg-tail() {} } }
+        type-arg-tail(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { comma() {} type-arg() {} }
+        type-arg(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { i8-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { u8-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { byte-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { uint-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { u32-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { i64-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { u64-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { float-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { f32-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { double-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { f64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { i8-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { u8-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { byte-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { uint-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { u32-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) { i64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) { u64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) { float-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) { f32-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { double-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) { f64-kw(field: "word") }
             alt { generic-ty(field: "generic") }
             // PLAN-963（T-02）：`?T` 仍只在集合族面（record 面只放开泛型
             // 类型应用——用户泛型记录的唯一新形状）。
-            alt(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler]) { optional-ty(field: "optional") }
+            alt(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) { optional-ty(field: "optional") }
             alt { ident(field: "word") }
         }
         // PLAN-928（T-03）：`?T` 可选糖（Option<T> 名义变体）。
-        optional-ty(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler]) {
+        optional-ty(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) {
             question(field: "q")
             optional-inner(field: "inner")
         }
-        optional-inner(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler]) {
+        optional-inner(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) {
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { i8-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { u8-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { byte-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { uint-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { u32-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { i64-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { u64-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { float-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { f32-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { double-kw(field: "word") }
-            alt(profiles: [numeric, aggregates, scheduler]) { f64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { i8-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { u8-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { byte-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { uint-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { u32-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { i64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { u64-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { float-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { f32-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { double-kw(field: "word") }
+            alt(profiles: [numeric, aggregates, scheduler, packages-aggregates-ct]) { f64-kw(field: "word") }
             alt { generic-ty(field: "generic") }
             alt { ident(field: "word") }
         }
@@ -945,7 +945,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             comma() {}
             ann-ty() {}
         }
-        fn-type(profiles: [closures, numeric, aggregates, scheduler]) {
+        fn-type(profiles: [closures, numeric, aggregates, scheduler, packages-aggregates-ct]) {
             fn(field: "kw")
             lparen() {}
             fn-type-params(repeat: "opt", field: "params")
@@ -953,23 +953,23 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             opt { arrow(field: "arrow") }
             fn-type-result(field: "result")
         }
-        fn-type-result(profiles: [closures, numeric, aggregates, scheduler]) {
+        fn-type-result(profiles: [closures, numeric, aggregates, scheduler, packages-aggregates-ct]) {
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
             alt { ident(field: "word") }
             alt { fn-type(field: "fn") }
         }
-        fn-type-params(profiles: [closures, numeric, aggregates, scheduler]) { fn-type-param() {} many { fn-type-param-tail() {} } }
-        fn-type-param-tail(profiles: [closures, numeric, aggregates, scheduler]) { comma() {} fn-type-param() {} }
-        fn-type-param(profiles: [closures, numeric, aggregates, scheduler]) {
+        fn-type-params(profiles: [closures, numeric, aggregates, scheduler, packages-aggregates-ct]) { fn-type-param() {} many { fn-type-param-tail() {} } }
+        fn-type-param-tail(profiles: [closures, numeric, aggregates, scheduler, packages-aggregates-ct]) { comma() {} fn-type-param() {} }
+        fn-type-param(profiles: [closures, numeric, aggregates, scheduler, packages-aggregates-ct]) {
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
             alt { ident(field: "word") }
             alt { fn-type(field: "fn") }
         }
-        type-item(recover: true, profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, scalar-ct, packages-modules, packages-ct, aggregates, packages-aggregates, scheduler]) {
+        type-item(recover: true, profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, scalar-ct, packages-modules, packages-ct, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             type-kw(field: "kw")
             ident(field: "name")
             // PLAN-963（T-02）：用户泛型记录 `type Point<T> { x T; y T }`
@@ -987,8 +987,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         //   * 别名 `= <ann-ty>`（无体；投影期展开，无 AST 变体）；
         //   * 记录体 `[as Spec,..] { members }`。
         // 两者首 token 互异（`=` vs `as`/`{`），由本规则的 alt 分派。
-        type-tail(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, scalar-ct, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler]) {
-            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, aggregates, scheduler]) {
+        type-tail(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, scalar-ct, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
                 assign() {}
                 ann-ty(field: "alias")
             }
@@ -1119,8 +1119,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         member {
             alt { field-member() {} }
-            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, packages-modules, packages-ct, aggregates, packages-aggregates, scheduler]) { static-method() {} }
-            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, packages-modules, packages-ct, aggregates, packages-aggregates, scheduler]) { view-method() {} }
+            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, packages-modules, packages-ct, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { static-method() {} }
+            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, packages-modules, packages-ct, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) { view-method() {} }
         }
         // 字段：`name` `:`? 类型（旧 parser 的可选冒号）
         field-member {
@@ -1200,17 +1200,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         stmt(recover: true) {
             alt { let-stmt() {} }
             // PLAN-962（L-15）：`let (a, b, ...) = expr`（聚合面，扁平名）。
-            alt(profiles: [aggregates, scheduler]) { let-destr-stmt() {} }
+            alt(profiles: [aggregates, scheduler, packages-aggregates-ct]) { let-destr-stmt() {} }
             // PLAN-962（T-08，L-07）：`let hold x as v { }`——hold 整局部形
             //（`let` 头拼写：stmt 列表分派按 FIRST 集提交，新头 token 的
             // 语句备选机制未定；裸 `hold` 拼写见 SD-01 待办）。
-            alt(profiles: [aggregates, scheduler]) { let-hold-stmt() {} }
+            alt(profiles: [aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) { let-hold-stmt() {} }
             alt { var-stmt() {} }
             alt { assign-stmt() {} }
-            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, packages-modules, packages-ct, aggregates, packages-aggregates, scheduler]) { path-assign-stmt() {} }
+            alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, packages-modules, packages-ct, aggregates, packages-aggregates, scheduler, packages-aggregates-ct]) { path-assign-stmt() {} }
             // PLAN-962（L-48）：索引赋值 `xs[i] = v`。PLAN-964：closures 面
             // 同样接受（共享对象单元格 `cell[k] = v` 动态键写）。
-            alt(profiles: [aggregates, closures, scheduler]) { index-assign-stmt() {} }
+            alt(profiles: [aggregates, closures, scheduler, packages-aggregates-ct]) { index-assign-stmt() {} }
             alt { return-stmt() {} }
             alt { if-stmt() {} }
             // PLAN-966（T-02）：语句级编译期构造（仅 packages-ct；`#` 引入，
@@ -1334,20 +1334,20 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             block(field: "body")
         }
         // 条件 for（wide 族；投影复用 While AST 形状）
-        for-cond-stmt(profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, age-h0, age-component, text-record-instances, entry-unit, host-console, scalar-modules, packages-modules, packages-ct, aggregates, scheduler]) {
+        for-cond-stmt(profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, age-h0, age-component, text-record-instances, entry-unit, host-console, scalar-modules, packages-modules, packages-ct, aggregates, scheduler, packages-aggregates-ct]) {
             for(field: "kw")
             condition-expr(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, scheduler], field: "cond")
-            expr(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-modules, packages-ct, numeric, packages-aggregates], field: "cond")
+            expr(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-modules, packages-ct, numeric, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct], field: "cond")
             block(field: "body")
         }
         // PLAN-928（T-03）：PLAN-864 `for x in <List 局部> { .. }`。
-        for-in-stmt(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler]) {
+        for-in-stmt(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) {
             for(field: "kw")
             ident(field: "var")
             in(field: "in")
             // PLAN-946: the packages-aggregates face iterates a plain List
             // local (the collections shape; condition-expr stays aggregates).
-            ident(profiles: [collections, closures, numeric, packages-aggregates], field: "iter")
+            ident(profiles: [collections, closures, numeric, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct], field: "iter")
             condition-expr(profiles: [aggregates, scheduler], field: "iter")
             block(field: "body")
         }
@@ -1371,25 +1371,25 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-928（T-03）：PLAN-864 `is <局部> { 臂 -> { .. } }`（穷尽分派；
         // 限定形式 `Enum.Name`；载荷绑定 `(v)`）。
-        is-stmt(profiles: [collections, closures, numeric, packages-aggregates]) {
+        is-stmt(profiles: [collections, closures, numeric, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct]) {
             is(field: "kw")
             ident(field: "scrutinee")
             lbrace() {}
             list { match-arm() {} }
             rbrace() {}
         }
-        match-arm(profiles: [collections, closures, numeric, packages-aggregates]) {
+        match-arm(profiles: [collections, closures, numeric, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct]) {
             opt { arm-qual(field: "qual") }
             ident(field: "pattern")
             opt { arm-payload(field: "payload") }
             arrow() {}
             block(field: "body")
         }
-        arm-qual(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler]) {
+        arm-qual(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) {
             ident(field: "qual")
             dot() {}
         }
-        arm-payload(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler]) {
+        arm-payload(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) {
             lparen() {}
             ident(field: "binding")
             rparen() {}
@@ -1481,6 +1481,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-946: the packages-aggregates face keeps the packages
             // wide-ops surface (its expressions are the packages-module set).
             alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, age-h0, age-component, text-record-instances, entry-unit, host-console, collections, closures, scalar-modules, packages-modules, packages-ct, packages-aggregates]) { pratt(of: "wide-ops") }
+            // PLAN-972（T-02）：装配 aggregates 线（packages-aggregates-ct）
+            // 表达式面 = wide-ops 超集 + 961 位算 & | ^（S-06 hash 批开位；
+            // token 自 PLAN-961 起已在本面声明，此前无算符表引用）。
+            alt(profiles: [packages-aggregates-ct]) { pratt(of: "packages-aggregates-ct-ops") }
             alt(profiles: [numeric]) { pratt(of: "numeric-ops") }
         }
         // 一元前缀（右结合）：字面量分支先行（`-5` 带符号折叠），`-x`/`!x`
@@ -1507,7 +1511,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // = `.name` 步 + pratt call）。token 区分自然实现旧 record 臂对
         // `to` 的 carve-out。core/scalar/entry 无点后缀（`.` 在这些面由
         // 投影按旧 unsupported/语法错误合同映射）。
-        postfix-step(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, text, host-console, collections, closures, packages-modules, packages-ct, numeric, aggregates, packages-aggregates, scheduler]) {
+        postfix-step(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, text, host-console, collections, closures, packages-modules, packages-ct, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, text, host-console, closures, collections, packages-modules, packages-ct, numeric, aggregates, packages-aggregates, scheduler]) { dot(same-line: true) ident(field: "member") }
             // PLAN-964（L-16/L-20）：索引后缀 `base[key]`——对象动态键读
             // （ObjectGet）与 List 整数索引共用此步，resolve 按 base 类型分派。
@@ -1533,7 +1537,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 调用收尾后的点后缀续读（pratt `postfix:` 引用）：`f().len()`、
         // `xs.get(0).name.len()`——primary 的 postfix-expr 只覆盖 atom 起始链，
         // 调用节点之后再接 `.name` 步由本规则承载（运行时包装 KIND_POSTFIX）。
-        postfix-tail(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, text, host-console, collections, closures, packages-modules, packages-ct, numeric, aggregates, packages-aggregates, scheduler]) {
+        postfix-tail(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, text, host-console, collections, closures, packages-modules, packages-ct, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             many { postfix-step() {} }
         }
         // PLAN-936（T-04）：编译期表达式 `#{ expr }` —— 单表达式 CT 需求
@@ -1656,7 +1660,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         const-arg-tail(profiles: [scalar-instances, record-instances, text-record-instances]) { comma() {} const-arg() {} }
         const-arg(profiles: [scalar-instances, record-instances, text-record-instances]) { int-lit(field: "lit") }
         // PLAN-928（T-03）：`List<T>.member` 原子（GenericType 接收位）。
-        generic-atom(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler]) {
+        generic-atom(profiles: [collections, closures, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) {
             ident(field: "name")
             lt() {}
             type-args(field: "args")
@@ -1747,7 +1751,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-928（T-02 最小面，T-04 冻结诊断差分）：lambda 表达式——
         // `move? ( 参数? ) => 块 | 表达式`。块体复用语句纪律（list-nl）；
         // 参数无 mode 词（旧 closure_expr 合同：ident + 类型）。
-        lambda-expr(profiles: [closures, numeric, aggregates, scheduler]) {
+        lambda-expr(profiles: [closures, numeric, aggregates, scheduler, packages-aggregates-ct]) {
             opt { r-move(field: "mode") }
             lparen() {}
             lambda-params(repeat: "opt", field: "params")
@@ -1755,18 +1759,18 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             fat-arrow() {}
             lambda-body(field: "body")
         }
-        lambda-body(profiles: [closures, numeric, aggregates, scheduler]) {
+        lambda-body(profiles: [closures, numeric, aggregates, scheduler, packages-aggregates-ct]) {
             alt { block(field: "block-body") }
             alt { expr(field: "expr-body") }
         }
-        lambda-params(profiles: [closures, numeric, aggregates, scheduler]) { lambda-param() {} many { lambda-param-tail() {} } }
-        lambda-param-tail(profiles: [closures, numeric, aggregates, scheduler]) { comma() {} lambda-param() {} }
-        lambda-param(profiles: [closures, numeric, aggregates, scheduler]) {
+        lambda-params(profiles: [closures, numeric, aggregates, scheduler, packages-aggregates-ct]) { lambda-param() {} many { lambda-param-tail() {} } }
+        lambda-param-tail(profiles: [closures, numeric, aggregates, scheduler, packages-aggregates-ct]) { comma() {} lambda-param() {} }
+        lambda-param(profiles: [closures, numeric, aggregates, scheduler, packages-aggregates-ct]) {
             ident(field: "name")
             ann-ty(field: "ty")
         }
         // 隐式 self：`.name` / `.name(args)`（record 族）
-        leading-dot(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, packages-modules, packages-ct, aggregates, packages-aggregates, scheduler]) {
+        leading-dot(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, packages-modules, packages-ct, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             dot() {}
             ident(field: "member")
         }
@@ -1775,7 +1779,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // `{` 是 cut 步：消费后 alt 失败不回退到后续备选——复刻旧 parser
         // 在普通表达式 `ident {` 的无回溯提交；条件另走 condition-expr，
         // 而裸 ident（`total + 1`）在 `{` 不匹配时照常回退为普通名字）。
-        ctor-expr(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, packages-modules, packages-ct, numeric, aggregates, packages-aggregates, scheduler]) {
+        ctor-expr(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, packages-modules, packages-ct, numeric, aggregates, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             ident(field: "ty")
             lbrace(same-line: true, cut: true) {}
             opt { ctor-fields() {} }
@@ -1785,7 +1789,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 作为**独立备选**排在 ctor-expr 之前：两者共享 `ident` 前缀，写成
         // ctor-expr 内的 opt 会被前缀分派抢先当普通名字（实测 `Point<int>`
         // 被解析为比较）。`<...>` 平衡后必须跟 `{`，否则回退普通名字/比较。
-        typed-ctor-expr(profiles: [record, record-instances, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler]) {
+        typed-ctor-expr(profiles: [record, record-instances, aggregates, packages-modules, packages-ct, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
             ident(field: "ty")
             lt() {}
             type-args(field: "args")
@@ -1828,7 +1832,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             expr(field: "value")
         }
     }
-    pratt(core-ops, profiles: [core]) {
+    pratt(core-ops, profiles: [core, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct]) {
         primary: "unary-expr"
         op(binding: 1, assoc: "left") { of: "<" }
         op(binding: 2, assoc: "left") { of: "+" }
@@ -1842,7 +1846,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             nl-free: true
         }
     }
-    pratt(aggregates-condition-ops, profiles: [aggregates, scheduler]) {
+    pratt(aggregates-condition-ops, profiles: [aggregates, scheduler, packages-aggregates-ct]) {
         primary: "condition-unary"
         op(binding: 1, assoc: "left") { of: "||" }
         op(binding: 2, assoc: "left") { of: "&&" }
@@ -1871,7 +1875,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             nl-free: true
         }
     }
-    pratt(condition-ops, profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures]) {
+    pratt(condition-ops, profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, packages-aggregates-ct, packages-aggregates-ct]) {
         primary: "condition-unary"
         op(binding: 1, assoc: "left") { of: "||" }
         op(binding: 2, assoc: "left") { of: "&&" }
@@ -1897,6 +1901,38 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             nl-free: true
         }
 
+    }
+    // PLAN-972（T-02）：装配 aggregates 线（packages-aggregates-ct）算符表
+    //——wide-ops 超集 + 961 位算 & | ^（同层，混用需括号，沿 numeric/
+    // aggregates 面冻结记录；`&`/`|`/`^` token 自 PLAN-961 起已在本面声明，
+    // 此前无算符表引用——纯投影位缺口，S-06 hash 批修复）。
+    pratt(packages-aggregates-ct-ops, profiles: [packages-aggregates-ct]) {
+        primary: "unary-expr"
+        op(binding: 1, assoc: "left") { of: "||" }
+        op(binding: 2, assoc: "left") { of: "&&" }
+        op(binding: 3, assoc: "left") { of: "==" }
+        op(binding: 3, assoc: "left") { of: "!=" }
+        op(binding: 4, assoc: "left") { of: "<" }
+        op(binding: 4, assoc: "left") { of: ">" }
+        op(binding: 4, assoc: "left") { of: "<=" }
+        op(binding: 4, assoc: "left") { of: ">=" }
+        op(binding: 5, assoc: "left") { of: "&" }
+        op(binding: 5, assoc: "left") { of: "|" }
+        op(binding: 5, assoc: "left") { of: "^" }
+        op(binding: 6, assoc: "left") { of: "+" }
+        op(binding: 6, assoc: "left") { of: "-" }
+        op(binding: 7, assoc: "left") { of: "*" }
+        op(binding: 7, assoc: "left") { of: "/" }
+        op(binding: 7, assoc: "left") { of: "%" }
+        postfix: "postfix-tail"
+        group: ["(", ")"]
+        call {
+            open: "("
+            close: ")"
+            args: "args"
+            same-line: true
+            nl-free: true
+        }
     }
     pratt(wide-ops, profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, age-h0, age-component, text-record-instances, entry-unit, host-console, collections, closures, scalar-modules, packages-modules, packages-ct, packages-aggregates]) {
         primary: "unary-expr"

@@ -431,8 +431,12 @@ fn bind_package_syntax_inner(
     }
     // PLAN-1043：IN 能力线用 packages-ct 裁剪（grammar-id 与 plain 分域）。
     // PLAN-946（T-02）：aggregates 线用 packages-aggregates 裁剪（同理分域）。
+    // PLAN-972（T-02）：装配 aggregates 线用 packages-aggregates-ct 裁剪
+    //（aggregates 全表面 + ct 装配项 + 闭包类型注解/字面量）。
     let in_face = caps.iter().any(|c| c == super::IN_CAPABILITY);
-    let grammar = if in_face {
+    let grammar = if in_face && aggregates {
+        super::packages_aggregates_ct_grammar()
+    } else if in_face {
         super::packages_ct_grammar()
     } else if aggregates {
         super::packages_aggregates_grammar()
@@ -470,13 +474,23 @@ fn bind_package_syntax_inner(
             ));
         }
         // PLAN-945：恢复路径同守 `std` 冻结身份（与冷路径同一拒绝）。
+        // PLAN-972（T-02）：装配 aggregates 线另认装配标准库集的冻结身份
+        //（同包名 lane 分离；仓外来源两线都不认）。
         if input.package == super::stdlib::STDLIB_PACKAGE
             && !super::stdlib::is_frozen_std_module(&input.id, &input.version, &input.source)
+            && !(aggregates
+                && in_face
+                && super::stdlib::is_frozen_std_assembled_module(
+                    &input.id,
+                    &input.version,
+                    &input.source,
+                    input.provider.as_ref().map(|l| (&l.kind, l.source.as_str())),
+                ))
         {
             return Err(fail(
                 &key,
                 super::stdlib::STDLIB_RESERVED,
-                "package name `std` is reserved for the frozen ACE stdlib slice (PLAN-945)",
+                "package name `std` is reserved for the frozen ACE stdlib slice (PLAN-945/972)",
                 zero,
             ));
         }
@@ -515,7 +529,12 @@ fn bind_package_syntax_inner(
                     zero,
                 ));
             }
-            if input.package == super::stdlib::STDLIB_PACKAGE {
+            // PLAN-945：plain 冻结切片永不带层。装配标准库集的实现层已由
+            // 上方 PLAN-972 装配身份逐字节核验（现集纯 Auto 无候选 → 带层
+            // 即拒；有候选的模块按嵌入候选内容核）。
+            if input.package == super::stdlib::STDLIB_PACKAGE
+                && super::stdlib::is_frozen_std_module(&input.id, &input.version, &input.source)
+            {
                 return Err(fail(
                     &key,
                     super::stdlib::STDLIB_RESERVED,
@@ -895,6 +914,7 @@ fn bind_package_syntax_inner(
             set_counter: 0,
             tyvars: BTreeSet::new(),
             aggregates,
+            asm_lane: in_face && aggregates,
         };
         let mut inits: Vec<String> = Vec::new();
         for item in &unit.program.items {
@@ -1824,6 +1844,10 @@ struct Walker<'a> {
     /// PLAN-946（T-02）：aggregates 面——集合族语句（for-in/is）、`?T` 可选
     /// 类型位与 `List<T>` 接收原子按 962 域放行（plain/ct 面保持具名拒绝）。
     aggregates: bool,
+    /// PLAN-972（T-02）：装配 aggregates 面（packages-aggregates-ct）——闭包
+    /// 类型注解（参数/结果位）与闭包字面量按 972 域放行（其余面保持
+    /// PLAN-964 的具名拒绝）。
+    asm_lane: bool,
 }
 
 const WALK_WORK_BUDGET: usize = 1 << 22;
@@ -1937,6 +1961,16 @@ impl<'a> Walker<'a> {
             // 位；函数/Result!/Stream 类型仍属后续包（plain/ct 面具名拒）。
             TypeRef::Optional(inner) if self.aggregates => {
                 self.walk_ann(inner)?;
+                Ok(())
+            }
+            // PLAN-972（T-02）：装配 aggregates 面放行函数类型注解
+            // `fn(T..) -> R`（HOF 公共算法的参数/结果位）；其余面保持
+            // PLAN-964 的具名拒绝。
+            TypeRef::Function { params, result } if self.asm_lane => {
+                for p in params.iter_mut() {
+                    self.walk_ann(p)?;
+                }
+                self.walk_ann(result)?;
                 Ok(())
             }
             TypeRef::Optional(_)
@@ -2524,6 +2558,20 @@ impl<'a> Walker<'a> {
                 "compile-time expressions belong to the CT surface (PLAN-966)",
                 span,
             )),
+            // PLAN-972（T-02）：装配 aggregates 面放行闭包字面量（参数注解 +
+            // 体按同一走读纪律；捕获分析归 resolve，与单模块闭包面同一后端）；
+            // 其余面保持 PLAN-964 的具名拒绝。
+            ExprKind::Closure { params, body, .. } if self.asm_lane => {
+                let mut closure_locals = locals.clone();
+                for p in params.iter_mut() {
+                    self.walk_ann(&mut p.ty)?;
+                    closure_locals.insert(p.name.name.clone());
+                }
+                match body.as_mut() {
+                    ClosureBody::Expr(e) => self.walk_expr(e, &closure_locals),
+                    ClosureBody::Block(b) => self.walk_block(b, closure_locals),
+                }
+            }
             ExprKind::Closure { .. } => Err(fail(
                 self.key,
                 "source.module-surface",
@@ -3321,6 +3369,114 @@ pub fn bind_packages_assembled(
         units.insert(key, syntax);
     }
     bind_package_syntax_assembled(inputs, entry, caps, budget, units, impls, ctx)
+}
+
+/// PLAN-972（T-02）：装配 aggregates 域的包绑定入口（公共+所选实现+#in
+/// 求值，全部模块以 packages-aggregates-ct 裁剪解析）。`std` 只认冻结身份
+/// （plain 切片无层，或装配标准库集含层逐字节核）；冷/恢复共用。
+pub fn bind_packages_assembled_aggregates(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+    ctx: &super::provider_sources::PackageAssemblyContext,
+) -> Result<BoundPackages, PackageDiagnostic> {
+    let zero = Span { start: 0, end: 0 };
+    if !caps.iter().any(|c| c == super::IN_CAPABILITY) {
+        return Err(fail(
+            entry,
+            "source.assembly.context",
+            "assembled packages require the ac.source.cte.in/v1 capability",
+            zero,
+        ));
+    }
+    let mut units = BTreeMap::new();
+    let mut impls: BTreeMap<String, PackageImplSyntax> = BTreeMap::new();
+    let mut total = 0usize;
+    for input in inputs {
+        let key = unit_key(&input.package, &input.id);
+        let layer_len = input.provider.as_ref().map(|l| l.source.len()).unwrap_or(0);
+        total = total
+            .checked_add(input.source.len() + layer_len)
+            .ok_or_else(|| fail(&key, "source.resource", "module input byte budget", zero))?;
+        if total > budget.work_bytes {
+            return Err(fail(
+                &key,
+                "source.resource",
+                "module input byte budget",
+                zero,
+            ));
+        }
+        if !valid_package(&input.package)
+            || !valid_version(&input.version)
+            || !valid_id(&input.id)
+            || units.contains_key(&key)
+        {
+            return Err(fail(
+                &key,
+                "source.module-identity",
+                "invalid or duplicate package/module identity",
+                zero,
+            ));
+        }
+        // PLAN-945/972：`std` 保留——本线认 plain 冻结切片（无层）或装配
+        // 标准库集冻结身份（含层逐字节核）；仓外来源拒绝。
+        if input.package == super::stdlib::STDLIB_PACKAGE
+            && !(input.provider.is_none()
+                && super::stdlib::is_frozen_std_module(&input.id, &input.version, &input.source))
+            && !super::stdlib::is_frozen_std_assembled_module(
+                &input.id,
+                &input.version,
+                &input.source,
+                input
+                    .provider
+                    .as_ref()
+                    .map(|l| (&l.kind, l.source.as_str())),
+            )
+        {
+            return Err(fail(
+                &key,
+                super::stdlib::STDLIB_RESERVED,
+                "package name `std` is reserved for the frozen ACE stdlib identities (PLAN-945/972)",
+                zero,
+            ));
+        }
+        let syntax = super::parse_package_source_aggregates_ct(&input.source, caps, budget)
+            .map_err(|mut ds| PackageDiagnostic {
+                module: key.clone(),
+                diagnostic: ds.remove(0),
+            })?;
+        if let Some(layer) = &input.provider {
+            let isyntax = super::parse_package_source_aggregates_ct(&layer.source, caps, budget)
+                .map_err(|mut ds| PackageDiagnostic {
+                    module: key.clone(),
+                    diagnostic: ds.remove(0),
+                })?;
+            impls.insert(
+                key.clone(),
+                PackageImplSyntax {
+                    layer: layer.clone(),
+                    syntax: isyntax,
+                },
+            );
+        }
+        units.insert(key, syntax);
+    }
+    bind_package_syntax_assembled_aggregates(inputs, entry, caps, budget, units, impls, ctx)
+}
+
+/// PLAN-972（T-02）：装配 aggregates 线的已解析输入绑定（恢复/再编译共用；
+/// 与 [`bind_package_syntax_assembled`] 同一装配语义，aggregates 裁剪面）。
+pub fn bind_package_syntax_assembled_aggregates(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+    units: BTreeMap<String, PackageSyntax>,
+    impls: BTreeMap<String, PackageImplSyntax>,
+    ctx: &super::provider_sources::PackageAssemblyContext,
+) -> Result<BoundPackages, PackageDiagnostic> {
+    bind_package_syntax_inner(inputs, entry, caps, budget, units, impls, Some(ctx), true)
 }
 
 /// 编译期标量值（与 source-cte `CtValue` 同域：i32/bool）。
