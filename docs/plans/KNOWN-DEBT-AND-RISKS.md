@@ -4382,3 +4382,4 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 |---|---|---|---|---|---|
 | RV-01 读取集型装配身份 | MINOR（具名限制） | 平台臂的未选**模块**是普通编译单元，其源进 units sha256 → 该模块 body 改动使本目标 input_hash 失效（"未选平台实现 body 变化不重编"仅对 provider 层成立，1043 ASM-04）。测试已改名 `p966_ct_identical_inputs_reuse_and_selected_change_invalidates` 并如实断言 | 1043（装配身份）/978（target 契约） | 身份改为按目标选择后的读集（未选模块只记存在性/不入 hash），并有真实跨目标复用证据 | 具名登记 |
 | RV-08 SD-DENOM 缺失 | MINOR | 分母 L-35/L-36 仍写"平台条件未决、裁定前不得宣称支持"，与已交付 `#if/#is` 目标条件矛盾；SD 表无该行 | 966 merge（T-06） | merge 时按 §5「SD 落地锚点」新增 SD-DENOM 并更新 L-35/L-36 | 待 merge 落地 |
+| F-966R2-04 arch/env/ABI 事实来源 | MINOR（记账） | `sys.arch`/`sys.env`/`sys.abi` 无显式目标输入，引用即 `source.cte.in-name` 具名拒（不静默默认）；本包只在 §5/AC-07 文本分账 978/967/979，未改 DAG | 978（target triple/SDK）、967（FFI/ABI）、979（配置面） | 显式 target arch/env/ABI 事实交付后扩面（含负控替换为正例 + Spec 更新） | 具名登记 |
