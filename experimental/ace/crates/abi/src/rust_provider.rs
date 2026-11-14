@@ -732,6 +732,40 @@ pub fn build_c_oracle(
     Ok(exe)
 }
 
+/// PLAN-967 T-04: locate a REAL second rustc for the V-ABI-CROSS/CACHE
+/// legs — any toolchain binary whose `--version` identity DIFFERS from
+/// the ambient rustc. The `~/.cargo/bin/rustc.exe` proxy follows the
+/// DEFAULT toolchain (usually stable), so a real second compiler lives
+/// in the rustup toolchains dir; both locations are probed and the
+/// first differing identity wins. A missing second toolchain is None
+/// (the caller records a NAMED pending, never a PASS).
+pub fn locate_second_toolchain() -> Option<PathBuf> {
+    let ambient = std::process::Command::new("rustc")
+        .arg("--version")
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())?;
+    let home = std::env::var("USERPROFILE").ok()?;
+    let mut candidates: Vec<PathBuf> = vec![PathBuf::from(&home).join(".cargo/bin/rustc.exe")];
+    if let Ok(toolchains) = std::fs::read_dir(PathBuf::from(&home).join(".rustup/toolchains")) {
+        for tc in toolchains.flatten() {
+            candidates.push(tc.path().join("bin/rustc.exe"));
+        }
+    }
+    for candidate in candidates {
+        if let Ok(out) = std::process::Command::new(&candidate)
+            .arg("--version")
+            .output()
+        {
+            let id = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if id.starts_with("rustc") && id != ambient {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
 /// PLAN-967 T-09: PROJECT-level provider resolution for the `use.rs`
 /// frontdoor. The source's `use.rs <provider>` names a PROJECT file
 /// `<root>/<provider>.rs`; the binding, shim, build unit and manifest

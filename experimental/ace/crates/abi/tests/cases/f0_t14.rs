@@ -107,38 +107,33 @@ fn t14_two_rustc_toolchains_two_identities() {
     let shim = auto_bindgen::rust_import::generate_shim(&stable.manifest);
     let id_stable = BuildIdentity::of(&stable, &shim);
 
-    let nightly = root.join("nightly-rustc.txt");
-    std::fs::write(&nightly, "").unwrap();
-    let home = std::env::var("USERPROFILE").unwrap_or_default();
-    let nightly_rustc = PathBuf::from(home).join(".cargo/bin/rustc.exe");
-    let probe = std::process::Command::new(&nightly_rustc)
-        .arg("--version")
-        .output();
-    match probe {
-        Ok(out) if String::from_utf8_lossy(&out.stdout).contains("nightly") => unsafe {
-            std::env::set_var("AC741_RUSTC", &nightly_rustc);
-            let built = build_source(&root.join("nightly"), f0_provider_source());
+    // T-04: discovery covers the rustup toolchains dir — the cargo-bin
+    // proxy follows the DEFAULT toolchain and is not a second compiler.
+    match ace_abi::rust_provider::locate_second_toolchain() {
+        Some(second_rustc) => unsafe {
+            std::env::set_var("AC741_RUSTC", &second_rustc);
+            let built = build_source(&root.join("second"), f0_provider_source());
             std::env::remove_var("AC741_RUSTC");
-            let built = built.expect("nightly build");
-            let id_nightly = BuildIdentity::of(&built, &shim);
+            let built = built.expect("second-toolchain build");
+            let id_second = BuildIdentity::of(&built, &shim);
             assert_ne!(
-                id_stable.rustc_identity, id_nightly.rustc_identity,
+                id_stable.rustc_identity, id_second.rustc_identity,
                 "two real toolchains, two identities"
             );
             assert_eq!(
-                id_stable.provider_sha256, id_nightly.provider_sha256,
+                id_stable.provider_sha256, id_second.provider_sha256,
                 "the source bytes are identical — only the toolchain moved"
             );
             let cache = ProviderBuildCache::open(&root.join("store")).expect("cache");
             let r1 = cache.put(&stable, &shim).expect("put stable");
-            let r2 = cache.put(&built, &shim).expect("put nightly");
+            let r2 = cache.put(&built, &shim).expect("put second");
             assert_ne!(r1.identity, r2.identity);
             assert!(cache.get(&id_stable).unwrap().is_some());
-            assert!(cache.get(&id_nightly).unwrap().is_some());
+            assert!(cache.get(&id_second).unwrap().is_some());
         },
-        _ => {
+        None => {
             // named pending, never a PASS
-            eprintln!("V-ABI-CACHE cross leg pending: no nightly rustc");
+            eprintln!("V-ABI-CACHE cross leg pending: no second rustc toolchain");
         }
     }
 }

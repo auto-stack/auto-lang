@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 
 use ace_abi::rust_provider::{
-    build_source, f0_rich_provider_source, load, open_session_from_build,
+    build_source, f0_rich_provider_source, load, locate_second_toolchain, open_session_from_build,
 };
 
 fn scope(tag: &str) -> PathBuf {
@@ -185,10 +185,12 @@ fn v_abi_cross_two_real_rustc_toolchains_one_c_contract() {
     // artifacts satisfy the identical C ABI interface, and the AV host
     // (built by the ambient toolchain) loads and runs the OTHER
     // toolchain's provider through the same binding.
-    let nightly = home_nightly_rustc();
+    // T-04: discovery covers the rustup toolchains dir — the cargo-bin
+    // proxy follows the DEFAULT toolchain and is not a second compiler.
+    let nightly = locate_second_toolchain();
     if nightly.is_none() {
         // named pending, never a PASS: the second toolchain is missing
-        eprintln!("V-ABI-CROSS pending: no nightly rustc found");
+        eprintln!("V-ABI-CROSS pending: no second rustc toolchain found");
         return;
     }
     let nightly = nightly.unwrap();
@@ -265,20 +267,4 @@ fn v_abi_cross_two_real_rustc_toolchains_one_c_contract() {
     assert!(night.session.table_shared().callee_count() >= 2);
     assert!(stable.session.table_shared().callee_count() >= 1);
     let _ = load; // keep the import honest
-}
-
-fn home_nightly_rustc() -> Option<PathBuf> {
-    let home = std::env::var("USERPROFILE").ok()?;
-    let p = PathBuf::from(home).join(".cargo/bin/rustc.exe");
-    // the AMBIENT rustc is stable; the override must be the nightly one
-    let probe = std::process::Command::new(&p)
-        .arg("--version")
-        .output()
-        .ok()?;
-    let text = String::from_utf8_lossy(&probe.stdout);
-    if text.contains("nightly") {
-        Some(p)
-    } else {
-        None
-    }
 }
