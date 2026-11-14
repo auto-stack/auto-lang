@@ -76,12 +76,16 @@ pub fn unwired_reason(unit_key: &str, name: &str) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 const ASM_LIST_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/list.at");
+const ASM_MATH_PUBLIC: &str = include_str!("../../../../../../../stdlib/ace/asm/math.at");
 
 /// 装配标准库集的平铺文件闭包（discover/assemble 消费；按名排序由调用方
 /// 的 assemble 逻辑负责）。纯 Auto 模块无来源候选（provider 选择面允许
 /// 无候选——`std` 模块不接受仓外实现层）。
 pub fn stdlib_assembled_files() -> Vec<(String, String)> {
-    vec![("list.at".to_string(), ASM_LIST_PUBLIC.to_string())]
+    vec![
+        ("list.at".to_string(), ASM_LIST_PUBLIC.to_string()),
+        ("math.at".to_string(), ASM_MATH_PUBLIC.to_string()),
+    ]
 }
 
 /// PLAN-972（T-02）：装配线 `std` 身份保留。模块 id/版本/公共源（以及实现
@@ -102,6 +106,7 @@ pub fn is_frozen_std_assembled_module(
         return false;
     }
     matches!(id, "list" if source == ASM_LIST_PUBLIC)
+        || matches!(id, "math" if source == ASM_MATH_PUBLIC)
 }
 
 #[cfg(test)]

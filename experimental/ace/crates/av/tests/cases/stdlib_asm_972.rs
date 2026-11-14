@@ -145,6 +145,44 @@ fn stdlib_asm_972_hof_and_slice_av() {
     assert_eq!(run_av("slice", &p), Value::I32(15455));
 }
 
+/// The S-01 i64 family + int square through the assembled lane on AV:
+/// abs(-i64::MAX)=MAX, min=3, max=5, square(7)=49
+/// → 9223372036854775807 - 3*10 - 5*100 - 49 = 9223372036854775228.
+const MATH_MAIN: &str = r#"
+use std.math.abs
+use std.math.min
+use std.math.max
+use std.math.square
+fn main() i64 {
+    let a = abs(-9223372036854775807i64)
+    let lo = min(3i64, 5i64)
+    let hi = max(3i64, 5i64)
+    return a - lo * 10i64 - hi * 100i64 - square(7).to(i64)
+}
+"#;
+
+#[test]
+fn stdlib_asm_972_math_i64_av() {
+    let p = asm_lane_product("math", MATH_MAIN);
+    assert_eq!(run_av("math", &p), Value::I64(9223372036854775228));
+}
+
+/// V-02 boundary: abs(i64::MIN) negation traps IntOverflow under the
+/// checked-arithmetic contract (PLAN-961) — independently asserted, never
+/// wrapped silently.
+#[test]
+fn stdlib_asm_972_math_abs_min_boundary_traps() {
+    const ABS_MIN: &str = "use std.math.abs\nfn main() i64 { return abs(-9223372036854775808i64) }";
+    let p = asm_lane_product("abs-min", ABS_MIN);
+    let dir = scratch("av-abs-min");
+    let av = PackageAvTarget::cold(&dir, &p).unwrap();
+    let e = av.run_value().unwrap_err();
+    assert!(
+        e.to_lowercase().contains("overflow") || e.to_lowercase().contains("trap"),
+        "abs(i64::MIN) must trap (checked arithmetic), got: {e}"
+    );
+}
+
 /// `std` identity reservation on the assembled lane: a tampered `std.list`
 /// source, and a provider layer riding `std.list`, both reject BEFORE any
 /// compile/run with the named reservation code.
