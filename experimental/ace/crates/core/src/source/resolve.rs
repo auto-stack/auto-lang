@@ -5562,6 +5562,20 @@ impl<'a, 's> FnResolver<'a, 's> {
                     Stmt::While { body, .. } | Stmt::Loop { body, .. } => {
                         blocks.push((body, visible.clone()));
                     }
+                    // PLAN-966（T-02）：语句级 CT 在绑定期已折叠；若仍可见则按
+                    // 源块继续推断（防御：不静默丢名字/类型）。
+                    Stmt::HashIf { then, els, .. } => {
+                        if let Some(e) = els {
+                            blocks.push((e, visible.clone()));
+                        }
+                        blocks.push((then, visible.clone()));
+                    }
+                    Stmt::HashFor { body, .. } => blocks.push((body, visible.clone())),
+                    Stmt::HashIs { arms, .. } => {
+                        for a in arms {
+                            blocks.push((&a.body, visible.clone()));
+                        }
+                    }
                     Stmt::ForIn {
                         var, iter, body, ..
                     } => {
@@ -9053,6 +9067,18 @@ impl<'a, 's> FnResolver<'a, 's> {
                                 span: *span,
                             });
                     }
+                }
+                // PLAN-966（T-02）：语句级 CT 必须已在装配/绑定前折叠；到达
+                // resolve 即实现错误——具名拒，不静默当普通语句发射。
+                Stmt::HashIf { span, .. }
+                | Stmt::HashFor { span, .. }
+                | Stmt::HashIs { span, .. } => {
+                    self.bind_err(
+                        "source.cte.unfolded",
+                        "a compile-time statement reached resolution without being folded"
+                            .to_string(),
+                        *span,
+                    );
                 }
                 // PLAN-962 (T-08, L-07): `let hold x as v { }` — the
                 // whole-local hold. v is a NAME ALIAS of the held local

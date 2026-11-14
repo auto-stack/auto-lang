@@ -303,6 +303,22 @@ pub(crate) fn analyze_capture_uses(
                 Stmt::Yield { value, .. } => {
                     visit_expr(value, outer_locals, scopes, uses, by_name);
                 }
+                // PLAN-966（T-02）：语句级 CT——两臂/体内语句参与捕获扫描
+                //（折叠前它们仍是源事实；折叠后不应再见到这些变体）。
+                Stmt::HashIf { then, els, .. } => {
+                    visit_block(then, outer_locals, scopes, uses, by_name);
+                    if let Some(e) = els {
+                        visit_block(e, outer_locals, scopes, uses, by_name);
+                    }
+                }
+                Stmt::HashFor { body, .. } => {
+                    visit_block(body, outer_locals, scopes, uses, by_name);
+                }
+                Stmt::HashIs { arms, .. } => {
+                    for a in arms {
+                        visit_block(&a.body, outer_locals, scopes, uses, by_name);
+                    }
+                }
                 Stmt::AggIsMatch {
                     scrutinee, arms, ..
                 } => {
@@ -646,6 +662,19 @@ pub(crate) fn scan_shared_capture_cells(
                 }
                 Stmt::Break { .. } | Stmt::Continue { .. } => {}
                 Stmt::Yield { value, .. } => visit_expr(value, scopes, shared),
+                // PLAN-966（T-02）：语句级 CT——捕获分析看进两臂/体内。
+                Stmt::HashIf { then, els, .. } => {
+                    visit_block(then, scopes, shared);
+                    if let Some(e) = els {
+                        visit_block(e, scopes, shared);
+                    }
+                }
+                Stmt::HashFor { body, .. } => visit_block(body, scopes, shared),
+                Stmt::HashIs { arms, .. } => {
+                    for a in arms {
+                        visit_block(&a.body, scopes, shared);
+                    }
+                }
                 Stmt::AggIsMatch {
                     scrutinee, arms, ..
                 } => {

@@ -1,11 +1,21 @@
 #!/usr/bin/env python3
-"""PLAN-893 read-only cost attribution over real fixed-driver run outputs.
+"""PLAN-893/1060 read-only cost attribution and regular-module budget over real
+fixed-driver run outputs.
 
-Reads existing `cargo t ... --out <dir>` artifacts (results.json,
-*.command.json meters, libtest-json-plus terminal events, TestCase report
-references); correlates them with scripts/test-governance/ace-test-policy.json.
+Two read-only modes:
+
+* policy (default, PLAN-893): attributes the frozen 13 formal-policy items over
+  `cargo t ... --out <dir>` artifacts (results.json, *.command.json meters,
+  libtest-json-plus terminal events) and rejects green claims without them.
+* regular (PLAN-1060): judges one complete ordinary ACE module invocation per
+  `--run` against the 60 s target / 120 s acceptance budget from the driver's
+  full warm wall clock, accepting ordinary tests that the formal policy does not
+  cover. Exit 0 = all GREEN/WITHIN_BUDGET, 1 = OVER_BUDGET or functional FAIL,
+  2 = missing/stale/ambiguous evidence (never green).
+
 Never starts tests, builds, jobs or meters, and never rewrites run artifacts
-(reports go to a fresh --out path only).
+(reports go to a fresh --out path only). The only process it may spawn is `git`
+for source-identity verification; no build, runner or case process is started.
 
 Phase model (command granularity, mirrors the driver's sequential shape):
   preparation_build_discovery  discovery/inventory.command (cargo build + nextest list / inventory)
@@ -27,10 +37,17 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY_DEFAULT = Path(__file__).resolve().parent / 'ace-test-policy.json'
+CASE_ORACLES_DEFAULT = Path(__file__).resolve().parent / 'case-control-oracles.json'
 GROUPS_CONFIG = ROOT / 'scripts/test-groups.toml'
 FIXED_TESTS = ROOT / 'scripts/fixed-tests.py'
 
 INTRA_RUN_PHASES = ('parent_side_verdict', 'persist_gc', 'copy', 'cleanup')
+
+REGULAR_EXIT_OK = 0
+REGULAR_EXIT_OVER = 1
+REGULAR_EXIT_UNVERIFIABLE = 2
+
+_FIXED_MODULE_CACHE = {}
 
 
 def load_policy_items(document):
@@ -53,6 +70,60 @@ def load_policy(path):
     return document, load_policy_items(document)
 
 
+def load_case_oracles(repo_root=None):
+    """TestCase controls' original expected statuses (the driver's own rule).
+
+    Some delivered suites carry one-check meta-oracles whose expected status is
+    FAIL; a report that only accepted PASS would call those red. This re-derives
+    the driver's acceptance, so the budget verdict never trusts the parent exit
+    code but also never invents a failure the contract does not have.
+    """
+    path = Path(repo_root or ROOT) / 'scripts/test-governance/case-control-oracles.json'
+    if not path.is_file():
+        return {}
+    try:
+        document = json.loads(path.read_text(encoding='utf-8'))
+    except ValueError:
+        return {}
+    return {(row.get('case'), row.get('check')): row.get('expected_status', 'PASS')
+            for row in document.get('overrides') or []}
+
+
+def fixed_tests_module(repo_root):
+    """The repository's own loader, never a second catalog."""
+    root = Path(repo_root).resolve()
+    module = _FIXED_MODULE_CACHE.get(str(root))
+    if module is not None:
+        return module
+    spec = importlib.util.spec_from_file_location('fixed_tests_local', root / 'scripts/fixed-tests.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    _FIXED_MODULE_CACHE[str(root)] = module
+    return module
+
+
+def frozen_invocation(repo_root, group_name):
+    """Current fixed configuration's invocation for one group: expression/runner.
+
+    Returns None when the group is unknown or the configuration cannot be read;
+    callers must then keep the weaker recorded-evidence checks instead of
+    inventing a selection.
+    """
+    try:
+        module = fixed_tests_module(repo_root)
+        _, groups = module.configuration()
+        if group_name not in groups:
+            return None
+        selected = module.select([group_name], {'default': [group_name], 'sets': {}}, groups)
+        merged = module.invocations(selected)
+        if len(merged) != 1:
+            return None
+        return {'expression': merged[0]['expression'], 'runner': merged[0]['runner'],
+                'workspace': merged[0]['workspace'], 'args': merged[0]['args']}
+    except Exception:  # noqa: BLE001 - caller reports the weaker boundary
+        return None
+
+
 def read_commands(index_dir):
     """Command records in this invocation index, keyed by phase kind."""
     commands = {'discovery': [], 'run': [], 'tools': []}
@@ -68,7 +139,30 @@ def read_commands(index_dir):
     if tools_dir.is_dir():
         for path in sorted(tools_dir.glob('**/*.command.json')):
             commands['tools'].append(json.loads(path.read_text(encoding='utf-8')))
+        # prepare_tools records a bare measurement next to each tool build log
+        # (<tool>-build.meter.json); count it as tool preparation, never as zero.
+        for path in sorted(tools_dir.glob('**/*.meter.json')):
+            measurement = json.loads(path.read_text(encoding='utf-8'))
+            commands['tools'].append({'argv': [path.name], 'cwd': str(path.parent), 'exit': 0,
+                                      'meter': measurement})
     return commands
+
+
+def event_prefix_map(index_dir):
+    """Selected binary id -> the real nextest event prefix (package::binary)."""
+    path = Path(index_dir) / 'discovery.stdout'
+    if not path.is_file():
+        return {}
+    try:
+        document = json.loads(path.read_text(encoding='utf-8'))
+    except ValueError:
+        return {}
+    mapping = {}
+    for key, suite in (document.get('rust-suites') or {}).items():
+        package, binary = suite.get('package-name'), suite.get('binary-name')
+        if package and binary:
+            mapping[key] = package + '::' + binary
+    return mapping
 
 
 def terminal_events(stdout_path):
@@ -162,10 +256,7 @@ def staleness(summary, repo_root):
     flags = []
     root = Path(repo_root)
     try:
-        spec = importlib.util.spec_from_file_location('fixed_tests_local', root / 'scripts/fixed-tests.py')
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        current = module.checkout_state()
+        current = fixed_tests_module(root).checkout_state()
     except Exception as error:  # noqa: BLE001 - surfaced, never swallowed
         return ['checkout state unavailable: %s' % error]
     if summary.get('source_state') and summary['source_state'] != current:
@@ -264,10 +355,420 @@ def render_markdown(attributions, stale_flags_per_run):
     return '\n'.join(lines) + '\n'
 
 
+# --------------------------------------------------------------------------- #
+# PLAN-1060 ordinary-module budget mode (read-only)
+# --------------------------------------------------------------------------- #
+
+def _numeric_run_dirs(run_dir):
+    return sorted((p for p in Path(run_dir).iterdir() if p.is_dir() and p.name.isdigit()),
+                  key=lambda p: int(p.name))
+
+
+def regular_module(run_dir, repo_root=None, budget_seconds=120.0, target_seconds=60.0,
+                   case_oracles=None):
+    """Judge one complete ordinary module invocation against the warm budget.
+
+    Evidence integrity failures are `missing_evidence` (exit 2), functional
+    failures are `problems` (exit 1), and only a complete, fresh, passing
+    single-group invocation gets a budget status. `case_oracles` re-derives the
+    TestCase controls' expected statuses (the driver's own acceptance rule)
+    instead of blindly trusting the parent exit code.
+    """
+    run_dir = Path(run_dir)
+    repo_root = Path(repo_root) if repo_root is not None else ROOT
+    if case_oracles is None:
+        case_oracles = load_case_oracles(repo_root)
+    record = {
+        'run_dir': str(run_dir),
+        'module': None,
+        'status': 'UNVERIFIABLE',
+        'budget_seconds': budget_seconds,
+        'target_seconds': target_seconds,
+        'warm_wall_seconds': None,
+        'identity': {},
+        'selection': {},
+        'phases': {},
+        'tests': [],
+        'case_checks': None,
+        'stale': [],
+        'problems': [],
+        'missing_evidence': [],
+        'boundary': ('warm wall = the driver invocation wall clock (preparation, discovery/admission, '
+                     'execution, parent verdict, copy and cleanup); first cold build belongs in --cold-run'),
+    }
+    summary_path = run_dir / 'results.json'
+    if not summary_path.is_file():
+        record['missing_evidence'].append('no results.json in the run directory')
+        return record
+    summary = json.loads(summary_path.read_text(encoding='utf-8'))
+    if summary.get('schema') != 'fixed-test-run/1':
+        record['missing_evidence'].append('unsupported run schema: %s' % summary.get('schema'))
+        return record
+    record['identity'] = {
+        'source_state': summary.get('source_state'),
+        'config_sha256': summary.get('config_sha256'),
+        'wall_seconds': summary.get('wall_seconds'),
+        'selected_groups': summary.get('selected_groups'),
+        'invocations': [{k: inv.get(k) for k in ('runner', 'workspace', 'expression', 'args', 'groups')}
+                        for inv in summary.get('invocations') or []],
+    }
+    if summary.get('error'):
+        record['problems'].append('driver error: %s' % summary['error'])
+
+    groups = summary.get('selected_groups') or []
+    if len(groups) != 1:
+        record['missing_evidence'].append(
+            'a module budget needs exactly one fixed group per invocation (recorded: %s); '
+            'a combined invocation wall cannot be copied onto each module' % (groups or 'none'))
+        return record
+    module = groups[0]
+    record['module'] = module
+
+    results = summary.get('results') or []
+    index_dirs = _numeric_run_dirs(run_dir)
+    if not results:
+        record['missing_evidence'].append('no driver results rows')
+        return record
+    if len(results) != len(index_dirs):
+        record['missing_evidence'].append(
+            'results rows (%d) != numeric run directories (%d); a zip pairing would truncate modules'
+            % (len(results), len(index_dirs)))
+        return record
+    for position, directory in enumerate(index_dirs):
+        if directory.name != str(position):
+            record['missing_evidence'].append(
+                'run directory %s is not the sequential index %d' % (directory.name, position))
+        stored = directory / 'result.json'
+        if not stored.is_file():
+            record['missing_evidence'].append('run directory %s carries no result.json' % directory.name)
+            continue
+        if json.loads(stored.read_text(encoding='utf-8')).get('groups') != results[position].get('groups'):
+            record['missing_evidence'].append(
+                'run directory %s result does not match results.json row %d' % (directory.name, position))
+    result = results[0]
+    commands = read_commands(index_dirs[0])
+    events = terminal_events(index_dirs[0] / 'run.stdout')
+
+    record['identity']['outcome'] = result.get('outcome')
+    record['identity']['executed'] = result.get('executed')
+    record['selection'] = {
+        'selected': len(result.get('selected') or result.get('checks') or []),
+        'executed': result.get('executed'),
+        'excluded': len(result.get('excluded') or []),
+        'groups': result.get('groups'),
+    }
+    if result.get('errors'):
+        record['problems'].extend('driver errors: %s' % error for error in result['errors'])
+    outcome = result.get('outcome')
+    if outcome == 'NOT_APPLICABLE':
+        record['missing_evidence'].append(
+            'driver outcome NOT_APPLICABLE: every original condition was excluded, so this is not a module pass')
+    elif outcome != 'PASS':
+        record['problems'].append('driver outcome %s' % outcome)
+
+    if not commands['run']:
+        record['missing_evidence'].append('no run.command.json (no real execution artifact)')
+    # A delivered suite whose controls expect FAIL exits 1 by contract; the
+    # expected workload exit is derived from those controls, never assumed 0.
+    case_checks = result.get('checks') or []
+    expected_case_exit = 1 if any(
+        case_oracles.get((row.get('case'), row.get('check')), 'PASS') != 'PASS'
+        for row in case_checks) else 0
+    for command in commands['run']:
+        meter = meter_of(command)
+        if meter['exit'] == 124:
+            record['problems'].append('canceled/timed-out workload: exit=124')
+        elif meter['error']:
+            record['problems'].append('run command error: %s' % meter['error'])
+        elif meter['exit'] not in (0, None, expected_case_exit):
+            record['problems'].append('run command exit=%s (expected %s)'
+                                      % (meter['exit'], expected_case_exit))
+
+    is_case_row = 'checks' in result or 'artifacts' in result
+    executed = result.get('executed') or 0
+    if executed <= 0:
+        record['missing_evidence'].append('executed=0 (fake pass): no test body actually ran')
+    if is_case_row:
+        checks = result.get('checks') or []
+        # The TestCase runner records a native per-check duration in its own
+        # report, referenced by the driver result; read it instead of guessing.
+        durations = {}
+        report_path = (result.get('artifacts') or {}).get('report')
+        if report_path:
+            try:
+                case_document = json.loads(Path(report_path).read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                case_document = None
+            for row in (case_document or {}).get('results') or []:
+                durations[(row.get('case'), row.get('check'))] = row.get('duration_ms')
+        record['case_durations'] = 'OBSERVED' if durations else 'UNOBSERVED'
+        record['case_checks'] = [{'case': row.get('case'), 'check': row.get('check'),
+                                  'status': row.get('status'),
+                                  'duration_ms': durations.get((row.get('case'), row.get('check')))}
+                                 for row in checks]
+        record['tests'] = sorted(
+            ({'name': '%s%%%s' % (row.get('case'), row.get('check')),
+              'event': row.get('status'),
+              'exec_time_ms': row.get('duration_ms')}
+             for row in record['case_checks']),
+            key=lambda row: -(row.get('exec_time_ms') or 0.0))
+        if not checks:
+            record['missing_evidence'].append('case row carries no per-check results')
+        if len(checks) != executed:
+            record['missing_evidence'].append(
+                'case checks (%d) != executed (%d)' % (len(checks), executed))
+        failed = []
+        for row in checks:
+            expected = case_oracles.get((row.get('case'), row.get('check')), 'PASS')
+            if row.get('status') != expected:
+                failed.append((row, expected))
+        record['case_controls'] = len(case_oracles)
+        if failed:
+            first, expected = failed[0]
+            record['problems'].append(
+                '%d case check(s) differ from the original control expectation '
+                '(first: %s%%%s status=%s expected=%s)'
+                % (len(failed), first.get('case'), first.get('check'),
+                   first.get('status'), expected))
+    else:
+        selected = result.get('selected') or []
+        if not selected:
+            record['missing_evidence'].append('zero selected tests')
+        seen = {}
+        for event in events:
+            seen.setdefault(event['name'], []).append(event.get('event'))
+        duplicates = sorted(name for name, kinds in seen.items()
+                            if len([kind for kind in kinds if kind != 'ignored']) > 1)
+        if duplicates:
+            record['missing_evidence'].append(
+                'duplicate terminal events for the same native identity: %s' % ', '.join(duplicates[:4]))
+        expected = {row['binary'] + '$' + row['test'] for row in selected}
+        # nextest records the selected binary id, while its terminal events use
+        # <package>::<binary-name>; both forms are legitimate identities here.
+        prefixes = event_prefix_map(index_dirs[0])
+        observed = set(seen)
+        unmatched, matched = [], set()
+        for row in selected:
+            candidates = {row['binary'] + '$' + row['test'],
+                          prefixes.get(row['binary'], row['binary']) + '$' + row['test']}
+            hit = candidates & observed
+            if not hit:
+                unmatched.append(row['binary'] + '$' + row['test'])
+                continue
+            matched |= hit
+            if all(kind == 'ignored' for name in hit for kind in seen[name]):
+                record['missing_evidence'].append(
+                    'selected test was skipped by the runner: %s' % sorted(hit)[0])
+        if unmatched:
+            record['missing_evidence'].append(
+                'missing actual terminal for %d selected test(s): %s'
+                % (len(unmatched), ', '.join(sorted(unmatched)[:4])))
+        # `ignored` terminals for identities outside the selection are the
+        # runner's legitimate skips (excluded/ignored tests); an ok/failed
+        # terminal outside the selection would mean the real set differed.
+        extra = sorted(name for name in (observed - matched - expected)
+                       if any(kind != 'ignored' for kind in seen[name]))
+        if extra:
+            record['missing_evidence'].append(
+                'terminal events for unselected identities: %s' % ', '.join(extra[:4]))
+        record['ignored_outside_selection'] = sorted(
+            name for name in (observed - matched - expected)
+            if all(kind == 'ignored' for kind in seen[name]))
+        ok_events = [event for event in events if event.get('event') == 'ok']
+        failed_events = [event for event in events if event.get('event') == 'failed']
+        if failed_events:
+            record['problems'].append('%d failed test(s) (first: %s)'
+                                      % (len(failed_events), failed_events[0]['name']))
+        if outcome == 'PASS' and len(ok_events) < executed:
+            record['missing_evidence'].append(
+                'PASS without one ok terminal per executed test (%d events / %d executed)'
+                % (len(ok_events), executed))
+        if not result.get('not_run') == [] and result.get('not_run'):
+            record['missing_evidence'].append('not_run identities: %s' % ', '.join(result['not_run'][:4]))
+        record['tests'] = sorted(
+            ({'name': name, 'event': kinds[-1],
+              'exec_time_ms': next((event['exec_time'] * 1000.0 for event in events
+                                    if event['name'] == name and 'exec_time' in event), None)}
+             for name, kinds in seen.items()),
+            key=lambda row: -(row['exec_time_ms'] or 0.0))
+
+    record['phases'] = phase_view(commands)
+    reused_tools = [row for row in (result.get('tools') or []) if row.get('reused')]
+    if reused_tools and not commands['tools']:
+        record['phases']['tool_preparation'] = {
+            'status': 'REUSED',
+            'command_count': len(reused_tools),
+            'wall_ms': 0.0,
+            'exits': [],
+            'boundary': ('identity-bound receipts matched (source state, rustc, tool config, '
+                         'artifact hashes); no build was executed'),
+        }
+    warm = summary.get('wall_seconds')
+    if not isinstance(warm, (int, float)) or warm <= 0:
+        record['missing_evidence'].append('no usable driver wall_seconds')
+        warm = None
+    else:
+        record['warm_wall_seconds'] = float(warm)
+        observed_ms = sum((phase.get('wall_ms') or 0.0) for phase in record['phases'].values()
+                          if phase.get('status') in ('OBSERVED', 'OBSERVED-RECEIPTS'))
+        if observed_ms > warm * 1000.0 + 1000.0:
+            record['missing_evidence'].append(
+                'observed command walls (%.0fms) exceed the driver wall (%.0fms): window boundary unclear'
+                % (observed_ms, warm * 1000.0))
+
+    # Identity: the completed invocation must be the frozen group, not a
+    # --test-name subset of it, and it must be fresh.
+    frozen = frozen_invocation(repo_root, module)
+    invocations = summary.get('invocations') or []
+    recorded = next((inv for inv in invocations if module in (inv.get('groups') or [])), None)
+    if recorded is None:
+        record['missing_evidence'].append('no invocation record for group %s' % module)
+    else:
+        record['identity']['recorded_expression'] = recorded.get('expression')
+        if summary.get('test_name'):
+            record['missing_evidence'].append(
+                'invocation used --test-name (%s): a subset cannot certify the complete module'
+                % summary['test_name'])
+        elif frozen is not None and recorded.get('expression') != frozen['expression']:
+            record['missing_evidence'].append(
+                'recorded selection differs from the frozen group expression (subset or navigation)')
+        elif frozen is None:
+            record['missing_evidence'].append(
+                'group %s is not in the current fixed configuration; complete selection unverifiable' % module)
+        if frozen is not None and recorded.get('runner') != frozen['runner']:
+            record['missing_evidence'].append(
+                'runner %s != frozen runner %s' % (recorded.get('runner'), frozen['runner']))
+    record['stale'] = staleness(summary, repo_root)
+    if record['stale']:
+        record['missing_evidence'].extend(record['stale'])
+
+    if record['missing_evidence']:
+        record['status'] = 'UNVERIFIABLE'
+    elif record['problems']:
+        record['status'] = 'FAIL'
+    elif record['warm_wall_seconds'] is None:
+        record['status'] = 'UNVERIFIABLE'
+    elif record['warm_wall_seconds'] <= target_seconds:
+        record['status'] = 'GREEN'
+    elif record['warm_wall_seconds'] <= budget_seconds:
+        record['status'] = 'WITHIN_BUDGET'
+    else:
+        record['status'] = 'OVER_BUDGET'
+    return record
+
+
+def regular_cold(record, cold_dir, repo_root=None):
+    """Attach first-invocation cold preparation (T_cold/T_first_total), unbudgeted."""
+    cold = regular_module(cold_dir, repo_root=repo_root)
+    record['cold'] = {
+        'run_dir': cold['run_dir'],
+        'module': cold['module'],
+        'warm_wall_seconds': cold['warm_wall_seconds'],
+        'status': cold['status'],
+        'missing_evidence': cold['missing_evidence'],
+        'problems': cold['problems'],
+        'boundary': ('first cold Cargo/worker build on this tree; excluded from the module budget and '
+                     'reported separately, never hidden'),
+    }
+    if cold['module'] is not None and record.get('module') is not None and cold['module'] != record['module']:
+        record['missing_evidence'].append(
+            'cold run recorded for %s, warm run for %s' % (cold['module'], record['module']))
+    if cold['warm_wall_seconds'] and record.get('warm_wall_seconds'):
+        record['first_total_seconds'] = cold['warm_wall_seconds'] + record['warm_wall_seconds']
+    if cold['missing_evidence'] or cold['problems']:
+        record['missing_evidence'].append('cold preparation record is not a valid run')
+    return record
+
+
+def regular_exit_code(records):
+    statuses = {record['status'] for record in records}
+    if statuses & {'UNVERIFIABLE', 'NOT_APPLICABLE'}:
+        return REGULAR_EXIT_UNVERIFIABLE
+    if statuses & {'OVER_BUDGET', 'FAIL'}:
+        return REGULAR_EXIT_OVER
+    return REGULAR_EXIT_OK
+
+
+def render_regular_markdown(records):
+    lines = ['# ACE ordinary-module budget (read-only)', '',
+             'Warm wall = the driver invocation wall clock; target/budget are per complete module.',
+             '']
+    for record in records:
+        lines.append('## `%s` — %s' % (record.get('module') or 'unknown', record['status']))
+        lines.append('')
+        lines.append('- run: `%s`' % record['run_dir'])
+        warm = record.get('warm_wall_seconds')
+        lines.append('- T_warm: %s s (target %ss / budget %ss)' % (
+            'UNOBSERVED' if warm is None else '%.3f' % warm,
+            record['target_seconds'], record['budget_seconds']))
+        if record.get('first_total_seconds'):
+            lines.append('- T_cold: %s s; T_first_total: %.3f s' % (
+                record['cold']['warm_wall_seconds'], record['first_total_seconds']))
+        identity = record.get('identity') or {}
+        lines.append('- identity: source_state=%s config_sha256=%s outcome=%s executed=%s' % (
+            identity.get('source_state'), identity.get('config_sha256'),
+            identity.get('outcome'), identity.get('executed')))
+        selection = record.get('selection') or {}
+        lines.append('- selection: selected=%s executed=%s excluded=%s' % (
+            selection.get('selected'), selection.get('executed'), selection.get('excluded')))
+        phases = record.get('phases') or {}
+        for name in ('preparation_build_discovery', 'tool_preparation', 'requested_work',
+                     'parent_side_verdict', 'persist_gc', 'copy', 'cleanup'):
+            phase = phases.get(name)
+            if not phase:
+                continue
+            if phase.get('status') == 'UNOBSERVED':
+                lines.append('- phase **%s**: UNOBSERVED (%s)' % (name, phase.get('boundary', 'no such command')))
+            elif phase.get('status') == 'REUSED':
+                lines.append('- phase **%s**: REUSED %d tool receipt(s), no build (%s)'
+                             % (name, phase.get('command_count') or 0, phase.get('boundary')))
+            else:
+                lines.append('- phase **%s**: wall=%sms cpu=%sms peak=%sB exits=%s' % (
+                    name, phase.get('wall_ms'), phase.get('workload_cpu_ms'),
+                    phase.get('peak_job_bytes'), phase.get('exits')))
+        tests = record.get('tests') or []
+        if tests:
+            lines.append('- slowest tests:')
+            for row in tests[:15]:
+                lines.append('  - `%s` %s %s' % (row['name'], row['event'],
+                                                 'UNOBSERVED' if row['exec_time_ms'] is None
+                                                 else '%.1fms' % row['exec_time_ms']))
+            if len(tests) > 15:
+                lines.append('  - (+%d more)' % (len(tests) - 15))
+        checks = record.get('case_checks')
+        if checks:
+            bad = [row for row in checks if row.get('status') != 'PASS']
+            timed = [row for row in checks if row.get('duration_ms') is not None]
+            lines.append('- case checks: %d (%d not PASS before the original control overrides; '
+                         '%d override(s) honoured); per-check split: %s'
+                         % (len(checks), len(bad), record.get('case_controls') or 0,
+                            ('%d/%d observed by the runner report' % (len(timed), len(checks)))
+                            if timed else 'UNOBSERVED (no per-check duration in the runner report)'))
+        if record.get('stale'):
+            lines.append('- STALE: %s' % '; '.join(record['stale']))
+        if record.get('missing_evidence'):
+            lines.append('- MISSING/UNVERIFIABLE (exit 2):')
+            lines.extend('  - %s' % item for item in record['missing_evidence'])
+        if record.get('problems'):
+            lines.append('- PROBLEMS (functional, exit 1):')
+            lines.extend('  - %s' % item for item in record['problems'])
+        lines.append('- boundary: %s' % record.get('boundary'))
+        lines.append('')
+    return '\n'.join(lines) + '\n'
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run', action='append', required=True, type=Path,
                         help='a fixed-driver --out directory (results.json inside)')
+    parser.add_argument('--mode', choices=('policy', 'regular'), default='policy',
+                        help='policy = frozen 13-item attribution (default); regular = ordinary module budget')
+    parser.add_argument('--budget-seconds', type=float, default=120.0,
+                        help='regular mode acceptance upper bound (complete warm module invocation)')
+    parser.add_argument('--target-seconds', type=float, default=60.0,
+                        help='regular mode target (GREEN at or below it)')
+    parser.add_argument('--cold-run', action='append', type=Path, default=[],
+                        help='regular mode first cold preparation run (reported, never budgeted)')
     parser.add_argument('--policy', type=Path, default=POLICY_DEFAULT)
     parser.add_argument('--repo', type=Path, default=ROOT,
                         help='repo root used for staleness comparison')
@@ -280,11 +781,32 @@ def main(argv=None):
         parser.error('report output already exists; preserve previous reports: ' + str(args.out))
     if args.json_out and args.json_out.exists():
         parser.error('json report output already exists: ' + str(args.json_out))
+    for run_dir in list(args.run) + list(args.cold_run):
+        if not (run_dir / 'results.json').is_file():
+            parser.error('not a fixed-driver run directory: ' + str(run_dir))
+    if args.mode == 'regular':
+        if args.cold_run and len(args.run) != 1:
+            parser.error('--cold-run pairs one cold record with exactly one warm --run')
+        records = [regular_module(run_dir, repo_root=args.repo,
+                                  budget_seconds=args.budget_seconds,
+                                  target_seconds=args.target_seconds)
+                   for run_dir in args.run]
+        if args.cold_run:
+            records = [regular_cold(record, args.cold_run[0], repo_root=args.repo)
+                       for record in records]
+        document = {'schema': 'ace-regular-budget-report/1', 'mode': 'regular',
+                    'budget_seconds': args.budget_seconds,
+                    'target_seconds': args.target_seconds,
+                    'modules': records}
+        args.out.write_text(render_regular_markdown(records), encoding='utf-8')
+        if args.json_out:
+            args.json_out.write_text(json.dumps(document, ensure_ascii=False, indent=2) + '\n',
+                                     encoding='utf-8')
+        print(str(args.out))
+        return regular_exit_code(records)
     _, policy_items = load_policy(args.policy)
     attributions, stale_all = [], []
     for run_dir in args.run:
-        if not (run_dir / 'results.json').is_file():
-            parser.error('not a fixed-driver run directory: ' + str(run_dir))
         attributions.append(attribute_run(run_dir, policy_items))
         stale_all.append(staleness(json.loads((run_dir / 'results.json').read_text(encoding='utf-8')), args.repo))
     document = {'schema': 'ace-cost-report/1', 'runs': attributions, 'staleness': stale_all}

@@ -463,7 +463,7 @@ mod tests {
     #[test]
     fn real_c_object_output_spends_each_production_and_rejects_the_next_before_launch() {
         use ace_source_query::resources::{OutputLimits, Resources};
-        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+        let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests")))
             .join(format!("object-output-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let source = root.join("value.c");
@@ -544,7 +544,7 @@ mod tests {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos();
-            let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+            let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests")))
                 .join(format!("discovery-budget-{}-{stamp}", std::process::id()));
             std::fs::create_dir_all(&root).unwrap();
             let source = root.join("provider.c");
@@ -631,7 +631,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests").join(format!(
+        let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests"))).join(format!(
             "real-dependency-admission-{}-{stamp}",
             std::process::id()
         ));

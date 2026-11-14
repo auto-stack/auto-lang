@@ -756,4 +756,183 @@ pub const K int = 3",
             assert_eq!(c.sys_facts()["current"], 3, "macos is a selectable input");
         }
     }
+    /// PLAN-966（T-10 / V-10）：语句级 CT + 生成声明经 store 的目标切换、
+    /// 未选臂复用、失败保旧与恢复。身份仍由 1043 的装配读集承载（公共源 +
+    /// 所选实现 + ctx + 候选存在集）；CT 折叠发生在装配期，结果进 HIR。
+    mod plan966_ct {
+        use super::*;
+        use crate::modules::packages::{
+            assemble_package_inputs, compile_assembled_inputs, discover_provider_sources,
+        };
+        use ace_core::source::packages::{
+            AssemblyBackend, PackageAssemblyContext as Ctx, PackageModuleInput, ProviderChoice,
+            TargetOs,
+        };
+
+        fn write_files(dir: &std::path::Path, files: &[(&str, &str)]) {
+            std::fs::create_dir_all(dir).unwrap();
+            for (n, c) in files {
+                std::fs::write(dir.join(n), c).unwrap();
+            }
+        }
+
+        fn fixture() -> Vec<(&'static str, &'static str)> {
+            vec![
+                (
+                    "main.at",
+                    "#is sys.current {\n    Windows -> use winio.plat\n    Linux -> use lnxio.plat\n}\nfn debug(v int) int { return v }\nfn main() int {\n    var x int = 0\n#for i in 0..2 { x = x + 1 }\n#debug(x)\n    return x + plat()\n}",
+                ),
+                ("winio.at", "pub fn plat() int { return 10 }"),
+                ("lnxio.at", "pub fn plat() int { return 20 }"),
+            ]
+        }
+
+        fn built(
+            dir: &std::path::Path,
+            target: TargetOs,
+        ) -> (
+            Vec<PackageModuleInput>,
+            Ctx,
+            crate::modules::packages::PackageProduct,
+        ) {
+            let files = discover_provider_sources(dir).unwrap();
+            let mut ctx = Ctx::new(AssemblyBackend::Av, ProviderChoice::Auto, target);
+            let inputs = assemble_package_inputs(&files, "app::main", &mut ctx).unwrap();
+            let product =
+                compile_assembled_inputs(&inputs, "app::main", FrontBudget::WORK_OWNED_64MIB, &ctx)
+                    .unwrap();
+            (inputs, ctx, product)
+        }
+
+        #[test]
+        fn p966_ct_target_switch_is_a_fresh_identity_and_never_cross_restores() {
+            let dir = dir();
+            write_files(&dir, &fixture());
+
+            let (wi, wc, wp) = built(&dir, TargetOs::Windows);
+            let win_receipt =
+                PackageStore::prepare_with_context(&dir, &wp, &wi, &[], Some(&wc)).unwrap();
+            let (restored_win, _) = PackageStore::restore(&dir, &win_receipt).unwrap();
+            assert_eq!(restored_win.bound.input_hash, wp.bound.input_hash);
+
+            let (li, lc, lp) = built(&dir, TargetOs::Linux);
+            assert_ne!(
+                wp.bound.input_hash, lp.bound.input_hash,
+                "target switch must be a fresh identity (no stale reuse)"
+            );
+            let lnx_receipt =
+                PackageStore::prepare_with_context(&dir, &lp, &li, &[], Some(&lc)).unwrap();
+            let (restored_lnx, _) = PackageStore::restore(&dir, &lnx_receipt).unwrap();
+            assert_eq!(restored_lnx.bound.input_hash, lp.bound.input_hash);
+
+            // 旧 Windows 收据在新根发布后仍按自身身份恢复（版本互不冒充）。
+            let (old_win, _) = PackageStore::restore(&dir, &win_receipt).unwrap();
+            assert_eq!(old_win.bound.input_hash, wp.bound.input_hash);
+
+            // 根只记所选臂的生成声明源，不含未选臂 body。
+            let payload = PackageStore::root_payload(&dir, &win_receipt).unwrap();
+            let text = String::from_utf8(payload).unwrap();
+            assert!(text.contains("\"target\":\"windows\""), "{text}");
+            assert!(text.contains("return 10"), "{text}");
+            // 同一重建输入身份稳定（无伪失效）。
+            let (_, _, again) = built(&dir, TargetOs::Windows);
+            assert_eq!(wp.bound.input_hash, again.bound.input_hash);
+            std::fs::remove_dir_all(&dir).ok();
+        }
+
+        #[test]
+        fn p966_ct_identical_inputs_reuse_and_selected_change_invalidates() {
+            let dir = dir();
+            write_files(&dir, &fixture());
+            let (_, _, base) = built(&dir, TargetOs::Windows);
+            // 同一输入重建 → 身份稳定（无伪失效）；未选层 body 复用的正式
+            // 证据沿用 1043 ASM-04（provider 层入口/读集未变，证据可复用）。
+            let (_, _, same) = built(&dir, TargetOs::Windows);
+            assert_eq!(
+                base.bound.input_hash, same.bound.input_hash,
+                "identical inputs must reuse the identity"
+            );
+            // 选中臂 body 改动 → 失效。
+            std::fs::write(dir.join("winio.at"), "pub fn plat() int { return 15 }").unwrap();
+            let (_, _, changed) = built(&dir, TargetOs::Windows);
+            assert_ne!(
+                base.bound.input_hash, changed.bound.input_hash,
+                "the selected platform body change must invalidate"
+            );
+            std::fs::remove_dir_all(&dir).ok();
+        }
+
+        #[test]
+        fn p966_ct_failure_keeps_old_current_and_recovers() {
+            let dir = dir();
+            write_files(&dir, &fixture());
+            let (inputs, ctx, product) = built(&dir, TargetOs::Windows);
+            let receipt =
+                PackageStore::prepare_with_context(&dir, &product, &inputs, &[], Some(&ctx))
+                    .unwrap();
+
+            // 失败：选中臂平台模块缺失 → 编译期具名失败（不静默回落另一臂），
+            // 不发布新根。
+            std::fs::remove_file(dir.join("winio.at")).unwrap();
+            let files = discover_provider_sources(&dir).unwrap();
+            let mut c2 = Ctx::new(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+            let i2 = assemble_package_inputs(&files, "app::main", &mut c2).unwrap();
+            assert!(
+                compile_assembled_inputs(&i2, "app::main", FrontBudget::WORK_OWNED_64MIB, &c2)
+                    .is_err()
+            );
+            // 旧根仍可恢复（失败没有替换它）。
+            let (old, _) = PackageStore::restore(&dir, &receipt).unwrap();
+            assert_eq!(old.bound.input_hash, product.bound.input_hash);
+
+            // 修复（恢复文件并改值）→ 新身份可发布；旧收据仍可恢复。
+            std::fs::write(dir.join("winio.at"), "pub fn plat() int { return 15 }").unwrap();
+            let (i3, c3, p3) = built(&dir, TargetOs::Windows);
+            assert_ne!(p3.bound.input_hash, product.bound.input_hash);
+            let r3 = PackageStore::prepare_with_context(&dir, &p3, &i3, &[], Some(&c3)).unwrap();
+            let (re3, _) = PackageStore::restore(&dir, &r3).unwrap();
+            assert_eq!(re3.bound.input_hash, p3.bound.input_hash);
+            let (old_again, _) = PackageStore::restore(&dir, &receipt).unwrap();
+            assert_eq!(old_again.bound.input_hash, product.bound.input_hash);
+            std::fs::remove_dir_all(&dir).ok();
+        }
+
+        #[test]
+        fn p966_ct_namespace_members_do_not_leak_into_the_module() {
+            let dir = dir();
+            // `current`/`Windows` 只在 #in 选择域内有效；普通值位必须具名失败
+            //（临时 namespace 不物化为模块绑定）。
+            write_files(
+                &dir,
+                &[
+                    (
+                        "main.at",
+                        "#in sys is current {\n    Windows -> use winio.plat\n    Linux -> use lnxio.plat\n}\nfn main() int { return current }",
+                    ),
+                    ("winio.at", "pub fn plat() int { return 10 }"),
+                    ("lnxio.at", "pub fn plat() int { return 20 }"),
+                ],
+            );
+            let files = discover_provider_sources(&dir).unwrap();
+            let mut ctx = Ctx::new(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+            let inputs = assemble_package_inputs(&files, "app::main", &mut ctx).unwrap();
+            let errors = match compile_assembled_inputs(
+                &inputs,
+                "app::main",
+                FrontBudget::WORK_OWNED_64MIB,
+                &ctx,
+            ) {
+                Ok(_) => panic!("namespace members must not leak into ordinary expressions"),
+                Err(e) => e,
+            };
+            let codes: Vec<String> = errors.iter().map(|d| d.diagnostic.code.clone()).collect();
+            assert!(
+                codes
+                    .iter()
+                    .any(|c| c.contains("undefined") || c.contains("name") || c.contains("symbol")),
+                "{codes:?}"
+            );
+            std::fs::remove_dir_all(&dir).ok();
+        }
+    }
 }

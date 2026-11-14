@@ -4376,9 +4376,23 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 
 ### D-966-T05 — PLAN-966 T-05 复审 findings 承接（2026-11-14，复审提交 9dc8d42fd）
 
-来源：独立复审 `reviewer-966`（needs_fix，2 MAJOR + 8 MINOR）；findings 表见 [966 计划](966-ace-m2-metaprogramming.md) §9「T-05 复审 findings」。RV-02/03/04/05/06/07/09/10 已同树修复（提交 ca3201da1）；RV-01 按具名缩窄处理。登记不等于豁免。
+来源：独立复审 `reviewer-966`（needs_fix，2 MAJOR + 8 MINOR）；findings 表见 [966 计划](archive/966-ace-m2-metaprogramming.md) §9「T-05 复审 findings」。RV-02/03/04/05/06/07/09/10 已同树修复（提交 ca3201da1）；RV-01 按具名缩窄处理。登记不等于豁免。
 
 | 发现 | 级别 | 摘要 | owner | 关闭条件 | 状态 |
 |---|---|---|---|---|---|
 | RV-01 读取集型装配身份 | MINOR（具名限制） | 平台臂的未选**模块**是普通编译单元，其源进 units sha256 → 该模块 body 改动使本目标 input_hash 失效（"未选平台实现 body 变化不重编"仅对 provider 层成立，1043 ASM-04）。测试已改名 `p966_ct_identical_inputs_reuse_and_selected_change_invalidates` 并如实断言 | 1043（装配身份）/978（target 契约） | 身份改为按目标选择后的读集（未选模块只记存在性/不入 hash），并有真实跨目标复用证据 | 具名登记 |
 | RV-08 SD-DENOM 缺失 | MINOR | 分母 L-35/L-36 仍写"平台条件未决、裁定前不得宣称支持"，与已交付 `#if/#is` 目标条件矛盾；SD 表无该行 | 966 merge（T-06） | merge 时按 §5「SD 落地锚点」新增 SD-DENOM 并更新 L-35/L-36 | 待 merge 落地 |
+| F-966R2-04 arch/env/ABI 事实来源 | MINOR（记账） | `sys.arch`/`sys.env`/`sys.abi` 无显式目标输入，引用即 `source.cte.in-name` 具名拒（不静默默认）；本包只在 §5/AC-07 文本分账 978/967/979，未改 DAG | 978（target triple/SDK）、967（FFI/ABI）、979（配置面） | 显式 target arch/env/ABI 事实交付后扩面（含负控替换为正例 + Spec 更新） | 具名登记 |
+
+
+### D-948-M2A — PLAN-948 M2-A 领域迁移差额与发行阻塞候选（2026-11-15，落地提交 18b926cc6）
+
+来源：PLAN-948 T-01..T-05/T-08/T-09 调研及 T-06 独立复审（`874124d4-af56-43ef-ba36-51cc03b7de1e`），见 [948 计划](archive/948-stdlib-domain-migration-and-release-readiness.md) §9。
+
+| 发现 | 级别 | 摘要 | owner | 关闭条件 | 状态 |
+|---|---|---|---|---|---|
+| D-948-01 开发仓绝对路径与本机耦合 | RELEASE-BLOCKER | `loader.rs:68,78` `CARGO_MANIFEST_DIR` 回退开发仓、`~/.auto/libs/stdlib` junction、`PATH` `auto` 指向陈旧 `auto-man/target/debug/auto.exe`、`auto-lang` 无 release/debug exe | 978 / 986 / OS064 | 洁净 `SCRUB` 仓外 CWD 与 `man-install.py` clean install/relocation/rollback 实跑通过 | 具名登记 |
+| D-948-02 项目级 `use.rs`/`use.c` 拒绝 | MAJOR | `binding.rs:890-896` 仍拒项目级 `use.rs`，阻塞 `1041`/`946` `AV/C` 与 `AV/Rust` 路径 | 967 T-09+ | `967` 放行项目级 `use.c`/`use.rs` 并补全 `AV/C`/`AV/Rust` 实跑 | 具名登记 |
+| D-948-03 `async.at` 句柄与 `try_recv` 语义 | MINOR | `spawn -> void` 无句柄/取消、`Sender`/`Receiver` 缺 `close`/`drop`、`try_recv` 混淆 `0` 与空 | 968 / 973 AC-08 | 补齐任务/通道生命周期 API 与 `0` vs empty 负控 | 具名登记 |
+| D-948-04 `json.at` 命名漂移与 `json.rs.at` 坏 | MINOR | `json.at`（`JsonValue.type`）与 `038_json_encode_parse`（`Json.type_of`）命名漂移、`json.rs.at` `parse` P6 坏、typed `decode[T]` 擦除未实现 | 975 T-01/AC-02 | 冻结公开 JSON API、补全动态/typed 用例与独立 oracle | 具名登记 |
+| D-948-05 `UNEXEC-01..05` 未执行场景 | RELEASE-BLOCKER | 仓外 CWD、`man-install.py`、重定位、`web-install.py` 主题校验与完整 CAP（Design46 Gate A/B 未闭）仍 `pending` | 978 / 986 / 983 / Design46 C1-C3 | 对应后继在洁净环境实跑并记收据 | 具名登记 |

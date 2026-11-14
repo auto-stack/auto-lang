@@ -282,7 +282,9 @@ pub enum VMError {
     /// PLAN-1000 R02:avm — injected allocation failure (resource-domain
     /// fault seam, see [`set_next_run_alloc_fault_at`]). Deliberately NOT a
     /// language/type error: a resource fault never masquerades as one.
-    AllocFault { ordinal: u64 },
+    AllocFault {
+        ordinal: u64,
+    },
 }
 
 /// Plan 773 F-08: stable variant-name identity of a VM trap, decided where
@@ -3252,7 +3254,11 @@ mod tests_add_concat_rc {
         vm.run_one_instruction(&mut task).unwrap();
         let len = task.ram.pop_nv();
         assert!(auto_val::is_i32(len));
-        assert_eq!(auto_val::decode_i32(len), 8, "freshly interned rc==1 string length");
+        assert_eq!(
+            auto_val::decode_i32(len),
+            8,
+            "freshly interned rc==1 string length"
+        );
         let h = vm.pool_health();
         assert_eq!(h.underflow_events, 0);
         assert_eq!(h.phantom_drops, 0);

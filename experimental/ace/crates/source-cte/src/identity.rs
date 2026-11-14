@@ -523,6 +523,29 @@ fn walk_stmt(stmt: &Stmt, out: &mut Vec<String>) {
                 walk_stmt(s, out);
             }
         }
+        // PLAN-966（T-02）：语句级 CT 体参与直接被调扫描（折叠前源事实）。
+        Stmt::HashIf { then, els, .. } => {
+            for s in &then.stmts {
+                walk_stmt(s, out);
+            }
+            if let Some(b) = els {
+                for s in &b.stmts {
+                    walk_stmt(s, out);
+                }
+            }
+        }
+        Stmt::HashFor { body, .. } => {
+            for s in &body.stmts {
+                walk_stmt(s, out);
+            }
+        }
+        Stmt::HashIs { arms, .. } => {
+            for a in arms {
+                for s in &a.body.stmts {
+                    walk_stmt(s, out);
+                }
+            }
+        }
         Stmt::Break { .. } | Stmt::Continue { .. } => {}
         Stmt::IsMatch {
             scrutinee, arms, ..

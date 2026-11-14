@@ -485,6 +485,19 @@ fn collect_hashes_stmt(s: &Stmt, owner: &str, out: &mut Vec<(String, Span)>) {
             collect_hashes_block(body, owner, out);
         }
         Stmt::Loop { body, .. } => collect_hashes_block(body, owner, out),
+        // PLAN-966（T-02）：语句级 CT 体——折叠前同样收集 #{}。
+        Stmt::HashIf { then, els, .. } => {
+            collect_hashes_block(then, owner, out);
+            if let Some(b) = els {
+                collect_hashes_block(b, owner, out);
+            }
+        }
+        Stmt::HashFor { body, .. } => collect_hashes_block(body, owner, out),
+        Stmt::HashIs { arms, .. } => {
+            for a in arms {
+                collect_hashes_block(&a.body, owner, out);
+            }
+        }
         Stmt::Break { .. } | Stmt::Continue { .. } => {}
         Stmt::IsMatch { arms, .. } => {
             for a in arms {
@@ -657,6 +670,19 @@ fn callees_stmt(s: &Stmt, out: &mut Vec<String>) {
             callees_block(body, out);
         }
         Stmt::Loop { body, .. } => callees_block(body, out),
+        // PLAN-966（T-02）：语句级 CT 体——折叠前同样收集被调。
+        Stmt::HashIf { then, els, .. } => {
+            callees_block(then, out);
+            if let Some(b) = els {
+                callees_block(b, out);
+            }
+        }
+        Stmt::HashFor { body, .. } => callees_block(body, out),
+        Stmt::HashIs { arms, .. } => {
+            for a in arms {
+                callees_block(&a.body, out);
+            }
+        }
         Stmt::Break { .. } | Stmt::Continue { .. } => {}
         Stmt::IsMatch { arms, .. } => {
             for a in arms {
@@ -967,6 +993,29 @@ fn substitute_stmt(s: &mut Stmt, served: &ServedRoot, site: Span, site_expr: &Ex
                 substitute_stmt(st, served, site, site_expr);
             }
         }
+        // PLAN-966（T-02）：语句级 CT 体内的替换（折叠前）。
+        Stmt::HashIf { then, els, .. } => {
+            for st in then.stmts.iter_mut() {
+                substitute_stmt(st, served, site, site_expr);
+            }
+            if let Some(b) = els {
+                for st in b.stmts.iter_mut() {
+                    substitute_stmt(st, served, site, site_expr);
+                }
+            }
+        }
+        Stmt::HashFor { body, .. } => {
+            for st in body.stmts.iter_mut() {
+                substitute_stmt(st, served, site, site_expr);
+            }
+        }
+        Stmt::HashIs { arms, .. } => {
+            for a in arms.iter_mut() {
+                for st in a.body.stmts.iter_mut() {
+                    substitute_stmt(st, served, site, site_expr);
+                }
+            }
+        }
         Stmt::Break { .. } | Stmt::Continue { .. } => {}
         Stmt::IsMatch { arms, .. } => {
             for a in arms.iter_mut() {
@@ -1168,6 +1217,19 @@ fn find_hash_stmt<'a>(s: &'a Stmt, span: Span, found: &mut Option<&'a Expr>) {
             find_hash_block(body, span, found);
         }
         Stmt::Loop { body, .. } => find_hash_block(body, span, found),
+        // PLAN-966（T-02）：语句级 CT 体——折叠前同样定位 #{}。
+        Stmt::HashIf { then, els, .. } => {
+            find_hash_block(then, span, found);
+            if let Some(b) = els {
+                find_hash_block(b, span, found);
+            }
+        }
+        Stmt::HashFor { body, .. } => find_hash_block(body, span, found),
+        Stmt::HashIs { arms, .. } => {
+            for a in arms {
+                find_hash_block(&a.body, span, found);
+            }
+        }
         Stmt::Break { .. } | Stmt::Continue { .. } => {}
         Stmt::IsMatch { arms, .. } => {
             for a in arms {

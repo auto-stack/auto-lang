@@ -185,3 +185,9 @@ A2R/A2PY 五路径实跑（A2PY 经 OS Python；rustc/cl/mn 真工具链；pop 3
 1041 先例同款）。失效/恢复、资源边界与 ctor 歧义既有边界见 design 文件 §4/§5。
 来源链：M1-TAG v0.6-ACE-M1（b923362f4）祖先核验；依赖 943/944/945/962/947/
 1039/1040/1042/1043 archived＋967 已落主能力切片；实施授权=/goal。
+
+## ACE 标准库领域迁移差额与发行接管合同（PLAN-948，2026-11-15）
+
+- 领域迁移差额、Design56 16 项父义务子行分账（六路径 + 旧 A2C × Win/Linux）、1039–1043 平台 I/O 与 `#in`/后缀加载分账、以及 CTE/CAP/发行接管阻塞见 [ace-domain-migration-readiness](design/ace-domain-migration-readiness.md)。
+- **口径**：本交付冻结 M2-A 真实 consumer（JSON/HTTP/Net/Async/UI 及 `clock`/`random`/`fs`/`env`/`process`/`hash`/`regex`/`sqlite`/`redis`/`storage`/`test`）的差额与后继 owner（`967`/`968`/`971`–`975`/`978`/`980`–`987`），不将未交付域、emit-only 路径或未执行安装场景标为已支持；`a2r-std` 隐含 libc 依赖保持具名缺口。
+- 来源链：M1-TAG `v0.6-ACE-M1`（`b923362f4`）祖先核验；依赖 943/944/945/946/947/959/1039–1043 archived；实施授权=/goal。

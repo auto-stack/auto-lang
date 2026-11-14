@@ -390,6 +390,61 @@ fn shift_stmt(s: &mut Stmt, delta: i64) {
             shift_expr(value, delta);
             shift_span(span, delta);
         }
+        // PLAN-966（T-02）：语句级 CT 平移（谓词表达式与体内语句/span）。
+        Stmt::HashIf {
+            cond,
+            then,
+            els,
+            span,
+        } => {
+            shift_ct_expr(cond, delta);
+            shift_block(then, delta);
+            if let Some(b) = els {
+                shift_block(b, delta);
+            }
+            shift_span(span, delta);
+        }
+        Stmt::HashFor {
+            var,
+            start,
+            end,
+            body,
+            span,
+        } => {
+            shift_ident(var, delta);
+            shift_ct_expr(start, delta);
+            shift_ct_expr(end, delta);
+            shift_block(body, delta);
+            shift_span(span, delta);
+        }
+        Stmt::HashIs {
+            scrutinee,
+            arms,
+            span,
+        } => {
+            shift_ct_expr(scrutinee, delta);
+            for a in arms.iter_mut() {
+                if let Some(p) = &mut a.pattern {
+                    shift_ct_expr(p, delta);
+                }
+                shift_block(&mut a.body, delta);
+                shift_span(&mut a.span, delta);
+            }
+            shift_span(span, delta);
+        }
+    }
+}
+
+/// PLAN-966（T-02）：CT 标量表达式的 span 平移（引用/运算子的源位置）。
+fn shift_ct_expr(e: &mut CtExpr, delta: i64) {
+    match e {
+        CtExpr::Int(_) | CtExpr::Bool(_) => {}
+        CtExpr::Ref { span, .. } => shift_span(span, delta),
+        CtExpr::Bin { lhs, rhs, span, .. } => {
+            shift_ct_expr(lhs, delta);
+            shift_ct_expr(rhs, delta);
+            shift_span(span, delta);
+        }
     }
 }
 

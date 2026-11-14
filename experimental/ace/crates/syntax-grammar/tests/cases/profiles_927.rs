@@ -46,6 +46,11 @@ const DECLARED: &[&str] = &[
     // 编译期命名空间上下文 + 单行 use 符号表 + `pub spec fn` 需求声明）；
     // 仅 IN 能力前门使用；声明序紧随 packages-modules。
     "packages-ct",
+    // PLAN-946（T-02）：packages-aggregates 面（packages-modules 全表面 +
+    // 集合族最小语句面/可选类型位/List 接收原子）；946 合入门禁并集未含
+    // ace-syntax，966 接收侧按 auto-source.at 已声明现实刷新（合同语义不变，
+    // 同 961→941、962→1025 先例）。声明序紧随 packages-ct、scalar-ct 之前。
+    "packages-aggregates",
     // PLAN-936（T-04）：有限 CT 表达式面（scalar-instances 全表面 +
     // #{ expr } 原子；仅 CT 能力前门使用；声明序在模板面之后）。
     "scalar-ct",

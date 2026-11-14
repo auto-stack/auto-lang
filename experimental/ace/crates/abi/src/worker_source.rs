@@ -1231,7 +1231,7 @@ mod request_budget_tests {
     fn source_step_runs_original_hot_collector_and_reports_its_actual_receipt() {
         use ace_artifacts::{codec::ChunkKind, identity::QueryKey, store::PutRequest};
         let dir =
-            std::path::PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests").join(format!(
+            std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests"))).join(format!(
                 "source-worker-gc-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()

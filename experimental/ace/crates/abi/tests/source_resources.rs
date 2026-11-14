@@ -1640,7 +1640,7 @@ mod source_foreign {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+        let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests")))
             .join(format!("tool-discovery-cap-{}-{stamp}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let fake = root.join("fake-cl.cmd");
@@ -2972,7 +2972,7 @@ mod source_foreign {
         // actual CRT compile port, whose discovery is already qualified in
         // the source worker by prepare_provider.
         ace_abi::ctool::find_cl().unwrap();
-        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+        let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests")))
             .join(format!("crt-shared-capture-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let exe = root.join("value.exe");
@@ -3119,7 +3119,7 @@ mod source_foreign {
         use ace_core::link::CaptureCaps;
         use ace_source_query::resources::Resources;
         use std::{process::Command, time::Duration};
-        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests").join(format!(
+        let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests"))).join(format!(
             "raw-capture-{}-{}",
             std::process::id(),
             SystemTime::now()
@@ -3329,7 +3329,7 @@ mod source_foreign {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+        let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests")))
             .join(format!("{tag}-{}-{stamp}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("source_foreign938.h"), provider::HEADER).unwrap();
@@ -4648,7 +4648,7 @@ mod source_foreign {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+        let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests")))
             .join(format!("c-cache-hash-{}-{stamp}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let file = root.join("large-source.c");

@@ -129,7 +129,7 @@ Type ~45 变体 / Op 39 / 辅助枚举 20+），legacy 双证 = `auto-lang-core/
 | L-33 | `#{}` 表达式级编译期替换 | 规范已定（设计） | **已知缺口**：legacy 编译为普通运行期表达式（expr_async.rs:248-254 TODO 自注）；ACE 侧 936 交付 `ac.source.cte.scalar/v1` | 有 | 966 §0（沿 936/958 worker 前门） |
 | L-34 | 宏 `#name()`（MacroCall comptime.rs:290；stmt_emit.rs:3547） | 规范已定 | 真实支持（文本展开级） | 无 | 966 §0（hygiene/预算/循环） |
 | L-35 | metadata/`#[attr]`（c/vm/rs/pub/api/export/test；decls.rs:625） | 规范已定 | 真实支持（元数据路由；vm stub stmt_emit.rs:189-215） | 无 | 966 §0（metadata/生成声明）；`#[test]`→971 §0；`#[api]` 路由→980/982 |
-| L-36 | 平台条件（platform conditions） | **未决**（无独立语法规范；`#if` 谓词/构建 cfg 混用） | legacy 无专用形（978 的 cfg/feature 层另计） | 无 | **行级归属**：语言侧 966 T-01 冻结谓词边界 + 构建侧 978 T-08（profile/feature/cfg 混装）；裁定前不得宣称支持 |
+| L-36 | 平台条件（platform conditions） | **已裁定**（966 A 片）：`#if/#is` 目标条件 + `sys` OS 事实域（`current`/`host`/`Windows`/`Linux`/`Mac`）；arch/env/ABI 无显式输入即 `source.cte.in-name`（来源 978/967/979）——见 [m2-metaprogramming.md](m2-metaprogramming.md) | legacy 无专用形（978 的 cfg/feature 层另计） | 有（项位/语句位，装配期折叠） | 语言侧 **966 已交付 A 片**；构建侧 978 T-08（profile/feature/cfg 混装）仍归其 owner；B 片归 985 |
 
 ### L-G 声明/模块/别名族
 
@@ -157,7 +157,8 @@ Type ~45 变体 / Op 39 / 辅助枚举 20+），legacy 双证 = `auto-lang-core/
 **L 表合计 49 行**，覆盖旧 AST 全部具名语法族与全部"parser-only/AST-only/无此形"项；
 分账：parser-only/AST-only **10 行**（L-03/08/12/13/14/23/24/38/44/45，其中 L-44 仅
 OnEvents/SceneDecl 臂、L-03 仅 byte 字面量臂）、无此形 **3 行**（L-04 i128/f32 后缀、
-L-16 set 字面量、L-46 spread/when-match/global）、未决 **1 行**（L-36），其余 **35 行**
+L-16 set 字面量、L-46 spread/when-match/global）、未决 **0 行**（L-36 已由 966 A 片裁定，
+见该行），其余 **36 行**
 legacy 真实支持——其中 **13 行**携带已知旧bug/差异标记（L-01/02/06/10/17/18/20/22/25/
 26/33/47/48），另 L-23 为 AST-only 桩兼已知旧bug（合计 14 处）。
 **不得把 AST 枚举在场当运行支持**。
@@ -330,7 +331,7 @@ paint/reader/todo），OS064/ASSEMBLY 以 gitlink 同 SHA 为准。**28 与 OS06
 | UK-10 | auto-gen 复活 vs 归档（F-06，用户工具意向） | 982/T-01 呈用户裁定 |
 | UK-11 | launch-vm.cmd:33/regen.sh:8 引用的 auto-lang target 二进制现存缺失（安装图断链） | OS064/HOST+986 T-01 |
 | UK-12 | auto-web vendored man-install.py 滞后 owner（cb4ab3dd，缺 PLAN-036 主题校验） | 983/T-01 同步裁定→986 |
-| UK-13 | L-36 平台条件语言形是否存在/需不需要（谓词边界） | 966 T-01 冻结 + 978 T-08 构建侧 |
+| UK-13 | L-36 平台条件语言形是否存在/需不需要（谓词边界） | （已闭）966 A 片交付 `#if/#is` 目标条件 + sys OS 事实域，见 [m2-metaprogramming.md](m2-metaprogramming.md)；构建侧 profile/feature/cfg 仍归 978 T-08 |
 
 （922 UK-09 漂移项已由 delta 规程承接关闭；UK-10 沿用原号。unknown 仍阻 M2 终签。）
 

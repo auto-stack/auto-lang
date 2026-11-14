@@ -549,6 +549,12 @@ fn references_name(f: &FnItem, name: &str) -> bool {
                     crate::source::ast::Stmt::Yield { value, .. } => {
                         sub.push(WalkItem::Expr(value));
                     }
+                    // PLAN-966（T-02）：语句级 CT——体语句参与语法引用扫描。
+                    crate::source::ast::Stmt::HashIf { .. }
+                    | crate::source::ast::Stmt::HashFor { .. }
+                    | crate::source::ast::Stmt::HashIs { .. } => {
+                        sub.extend(ct_body_stmts(s).into_iter().map(WalkItem::Stmt));
+                    }
                     crate::source::ast::Stmt::AggIsMatch {
                         scrutinee, arms, ..
                     } => {
@@ -728,6 +734,10 @@ fn collect_lambdas(stmts: &[Stmt], out: &mut Vec<(Span, u64)>, src: &str) {
                     }
                     Stmt::Break { .. } | Stmt::Continue { .. } => {}
                     Stmt::Yield { value, .. } => work.push(WalkItem::Expr(value)),
+                    // PLAN-966（T-02）：语句级 CT——体语句按源序入队。
+                    Stmt::HashIf { .. } | Stmt::HashFor { .. } | Stmt::HashIs { .. } => {
+                        sub.extend(ct_body_stmts(s).into_iter().map(WalkItem::Stmt));
+                    }
                     Stmt::AggIsMatch {
                         scrutinee, arms, ..
                     } => {
@@ -786,6 +796,29 @@ fn collect_lambdas(stmts: &[Stmt], out: &mut Vec<(Span, u64)>, src: &str) {
 enum WalkItem<'a> {
     Stmt(&'a Stmt),
     Expr(&'a Expr),
+}
+
+/// PLAN-966（T-02）：语句级 CT 构造的体语句（`#if` 两臂 / `#for` 体 / `#is`
+/// 各臂），按源序。绑定期的 CT 折叠之前，这些体仍是源事实——名字引用与
+/// lambda 扫描必须看进去，否则依赖/闭包事实会漏。
+fn ct_body_stmts<'a>(s: &'a Stmt) -> Vec<&'a Stmt> {
+    let mut out = Vec::new();
+    match s {
+        Stmt::HashIf { then, els, .. } => {
+            out.extend(then.stmts.iter());
+            if let Some(e) = els {
+                out.extend(e.stmts.iter());
+            }
+        }
+        Stmt::HashFor { body, .. } => out.extend(body.stmts.iter()),
+        Stmt::HashIs { arms, .. } => {
+            for a in arms {
+                out.extend(a.body.stmts.iter());
+            }
+        }
+        _ => {}
+    }
+    out
 }
 
 /// 语句的直接值表达式。
@@ -2105,6 +2138,10 @@ fn extract_lambda_body(f: &FnItem, ordinal: usize) -> Option<ClosureBody> {
                     }
                     Stmt::Break { .. } | Stmt::Continue { .. } => {}
                     Stmt::Yield { value, .. } => work.push(WalkItem::Expr(value)),
+                    // PLAN-966（T-02）：语句级 CT——体语句按源序入队。
+                    Stmt::HashIf { .. } | Stmt::HashFor { .. } | Stmt::HashIs { .. } => {
+                        sub.extend(ct_body_stmts(s).into_iter().map(WalkItem::Stmt));
+                    }
                     Stmt::AggIsMatch {
                         scrutinee, arms, ..
                     } => {

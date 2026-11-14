@@ -42,8 +42,6 @@ mod cert_json_951;
 mod cert_rt_902;
 #[path = "cases/choose_instances_935.rs"]
 mod choose_instances_935;
-#[path = "cases/dynamic_964.rs"]
-mod dynamic_964;
 #[path = "cases/coll_manifest_oracle_933.rs"]
 mod coll_manifest_oracle_933;
 #[path = "cases/collections_904.rs"]
@@ -58,6 +56,8 @@ mod const_instances_963;
 mod contract_certification;
 #[path = "cases/default_args_963.rs"]
 mod default_args_963;
+#[path = "cases/dynamic_964.rs"]
+mod dynamic_964;
 #[path = "cases/generic_records_963.rs"]
 mod generic_records_963;
 #[path = "cases/hir_shape.rs"]

@@ -75,3 +75,10 @@
 - typed 失败：期望类≠表达式类=typed 拒；i32 仅收 I32、bool 收 Bool 或已审 0/1
   投影 wrapper 输出（其余拒）；trap/资源/取消计真实 ct_execute attempt、零
   冻结发布。详见 [source-query-integration](source-query-integration.md)。
+
+## 与 PLAN-966 的关系（2026-11-14）
+
+本 profile 无新增标量域或查询节点：PLAN-966 的 CT 谓词/目标条件面消费既有 i32/bool 值域与
+`FieldCount`/`HasField` 查询合同（1043 装配 + 936 元数据 + 958 worker 前门），不扩本文件契约。
+CT 侧的支持面、事实边界与诊断见
+[m2-metaprogramming](../ace-migration/m2-metaprogramming.md)。

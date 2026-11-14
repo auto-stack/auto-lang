@@ -777,34 +777,6 @@ fn av_closures_incremental_churn_512() {
     assert_eq!(out.value, Some(5));
     assert!(out.gate.pass());
 }
-#[test]
-fn av_closures_incremental_warm_edit_p90() {
-    let mut session = ClosuresUpdateSession::new(None, "main");
-    session
-        .apply_revision(&[("main", main_unit()), ("body", body_unit(1))])
-        .expect("warm-up");
-    let mut times = Vec::new();
-    for factor in 2..=11 {
-        let start = std::time::Instant::now();
-        let out = session
-            .apply_revision(&[("body", body_unit(factor))])
-            .expect("body edit");
-        times.push(start.elapsed().as_secs_f64() * 1000.0);
-        assert_eq!(out.value, Some(4 + factor * factor));
-        assert_eq!(out.live_after_release, 0);
-        assert!(out.gate.pass());
-    }
-    let mut sorted = times.clone();
-    sorted.sort_by(f64::total_cmp);
-    println!(
-        "closures warm-edit: samples={times:?}, P90={:.3}ms, limit=2000ms",
-        sorted[8]
-    );
-    assert!(
-        p90_gate_10(&times),
-        "at least 9/10 samples must be <= 2000ms: {times:?}"
-    );
-}
 mod performance {
     use super::*;
 
@@ -954,6 +926,35 @@ mod performance {
         println!(
             "source formal: samples={times:?}, P90={:.3}ms, limit=2000ms",
             sorted.get(8).copied().unwrap_or(f64::NAN)
+        );
+        assert!(
+            p90_gate_10(&times),
+            "at least 9/10 samples must be <= 2000ms: {times:?}"
+        );
+    }
+
+    #[test]
+    fn av_closures_incremental_warm_edit_p90() {
+        let mut session = ClosuresUpdateSession::new(None, "main");
+        session
+            .apply_revision(&[("main", main_unit()), ("body", body_unit(1))])
+            .expect("warm-up");
+        let mut times = Vec::new();
+        for factor in 2..=11 {
+            let start = std::time::Instant::now();
+            let out = session
+                .apply_revision(&[("body", body_unit(factor))])
+                .expect("body edit");
+            times.push(start.elapsed().as_secs_f64() * 1000.0);
+            assert_eq!(out.value, Some(4 + factor * factor));
+            assert_eq!(out.live_after_release, 0);
+            assert!(out.gate.pass());
+        }
+        let mut sorted = times.clone();
+        sorted.sort_by(f64::total_cmp);
+        println!(
+            "closures warm-edit: samples={times:?}, P90={:.3}ms, limit=2000ms",
+            sorted[8]
         );
         assert!(
             p90_gate_10(&times),

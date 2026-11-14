@@ -297,6 +297,9 @@ struct Frame {
     /// 本操作数的 postfix-tail 已耗尽（零步交付）——防重入循环。
     pratt_tail_done: bool,
     node_start: usize,
+    /// PLAN-1060：失败备忘命中时的重放值——本帧应立即彻底失败，
+    /// 并沿用原失败帧的"是否消费过 token"（Some(true)=消费过）。
+    fail_fast: Option<bool>,
 }
 
 impl Frame {
@@ -371,6 +374,12 @@ struct Machine<'p, 'a> {
     cut_depth: usize,
     stack: Vec<Frame>,
     active_rules: Vec<(RuleId, usize)>,
+    /// PLAN-1060 失败备忘：`(rule, 入口 token 位置, same-line 位, 括号闩)` →
+    /// 该规则帧原地彻底失败时"是否消费过 token"。只记录**无恢复、无节点、
+    /// 无诊断**的彻底失败（恢复路径与左递归哨兵不记录），因此重放等价于
+    /// 在同一 (rule, i, 上下文) 立即失败：消除同一后缀被反复重解析导致的
+    /// 近指数行为（未闭合深括号输入）。
+    fail_memo: std::collections::HashMap<(u32, u32, bool, u32), bool>,
 }
 
 impl<'p, 'a> Machine<'p, 'a> {
@@ -450,6 +459,7 @@ impl<'p, 'a> Machine<'p, 'a> {
             budget: *budget,
             stack: Vec::new(),
             active_rules: Vec::new(),
+            fail_memo: std::collections::HashMap::new(),
         };
         m.push_rule(p.start, NO_FIELD, false);
         Ok(m)
@@ -618,8 +628,8 @@ impl<'p, 'a> Machine<'p, 'a> {
                 save: save.clone(),
                 frame_save: save,
                 consumed_any: false,
-            committed: false,
-            cut_here: false,
+                committed: false,
+                cut_here: false,
                 wait: Wait::None,
                 list_started: false,
                 rep_save: None,
@@ -635,11 +645,21 @@ impl<'p, 'a> Machine<'p, 'a> {
                 pratt_tail_wait: false,
                 pratt_tail_done: false,
                 node_start: self.open.nodes.len(),
+                fail_fast: None,
             });
             return;
         }
         self.active_rules.push((rule, self.i));
         let save = self.save();
+        // PLAN-1060：同 (rule, 入口位置, 上下文) 曾彻底失败 → 直接重放失败，
+        // 不再重解析同一后缀（未闭合深结构近指数的根因）。
+        let fail_fast = if self.cut_depth > 0 && self.stack.len() <= self.cut_depth {
+            None
+        } else {
+            self.fail_memo
+                .get(&(rule, self.i as u32, self.same_line_pending, self.bracket))
+                .copied()
+        };
         let is_decl = self.stack.len() == 1;
         // 覆盖起点：pending 首个 trivia（前导）或当前 token。
         let cover_from = if let Some(&p0) = self.pending.first() {
@@ -690,6 +710,7 @@ impl<'p, 'a> Machine<'p, 'a> {
             pratt_tail_wait: false,
             pratt_tail_done: false,
             node_start: self.open.nodes.len(),
+            fail_fast,
         });
     }
 
@@ -721,6 +742,7 @@ impl<'p, 'a> Machine<'p, 'a> {
             pratt_tail_wait: false,
             pratt_tail_done: false,
             node_start: self.open.nodes.len(),
+            fail_fast: None,
         });
     }
 
@@ -992,6 +1014,11 @@ impl<'p, 'a> Machine<'p, 'a> {
                 what: "parse depth",
                 limit: self.budget.max_parse_depth,
             });
+        }
+        if let Some(consumed) = self.stack.last_mut().unwrap().fail_fast.take() {
+            self.stack.last_mut().unwrap().consumed_any = consumed;
+            self.handle_frame_failure();
+            return Ok(());
         }
         let sentinel = self.stack.last().unwrap().alt == usize::MAX;
         if sentinel {
@@ -1507,6 +1534,19 @@ impl<'p, 'a> Machine<'p, 'a> {
                 );
                 self.complete_frame_success(node, field);
                 return;
+            }
+            // PLAN-1060：记录彻底失败（无恢复节点、无诊断）。左递归哨兵
+            // (pushed_active=false) 与 cut 冻结提交不记录——它们不是该
+            // (rule, i) 的真值。恢复分支此前已 return，不会到这里。
+            if pushed_active && !(self.cut_depth > 0 && self.stack.len() <= self.cut_depth) {
+                // 有界记忆：超上限即清空（清空只损失加速，不影响判定）。
+                if self.fail_memo.len() >= 1_000_000 {
+                    self.fail_memo.clear();
+                }
+                self.fail_memo.insert(
+                    (rule, self.i as u32, self.same_line_pending, self.bracket),
+                    consumed,
+                );
             }
             if pushed_active {
                 self.active_rules.pop();
