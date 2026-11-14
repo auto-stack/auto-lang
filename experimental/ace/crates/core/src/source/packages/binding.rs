@@ -5244,6 +5244,12 @@ mod plan966_tests {
         let over = "#for i in 0..2000 {\n}\nfn main() int { return 0 }";
         let e = bind_err(over, TargetOs::Windows);
         assert_eq!(e.diagnostic.code, "source.cte.in-budget", "{e:?}");
+        // 预算诊断落在真实范围 span（旧实现 start.join(end) 会退化为 0..0）。
+        assert!(
+            e.diagnostic.span.end > e.diagnostic.span.start,
+            "{:?}",
+            e.diagnostic.span
+        );
         // 修复后同一来源可恢复（无半展开残留）。
         let fixed = "#for i in 0..1 {\n}\nfn main() int { return 0 }";
         assert!(bind_with(fixed, TargetOs::Windows).is_ok());
@@ -5536,6 +5542,8 @@ mod plan966_tests {
         let over = "fn main() int { var x int = 0\n#for i in 0..2000 { x = x + 1 }\nreturn x }";
         let e = bind_err(over, TargetOs::Windows);
         assert_eq!(e.diagnostic.code, "source.cte.in-budget", "{e:?}");
+        // 语句位预算诊断用 `#for` 语句 span（非 0..0）。
+        assert!(e.diagnostic.span.start > 0, "{:?}", e.diagnostic.span);
         let fixed = "fn main() int { var x int = 0\n#for i in 0..1 { x = x + 1 }\nreturn x }";
         assert!(bind_with(fixed, TargetOs::Windows).is_ok());
     }
@@ -5550,6 +5558,13 @@ mod plan966_tests {
         let ints =
             "fn main() int { var x int = 0\n#is 7 { 7 -> { x = 4 } else -> { x = 5 } }\nreturn x }";
         assert_eq!(main_assign_ints(&bind_ok(ints, TargetOs::Windows)), vec![4]);
+        // 语句级与项位走同一选臂器：等值重复臂/`else` 末位规则一致（RV-03/F-02）。
+        let dup = "fn main() int { var x int = 0\n#is sys.current { Windows -> { x = 1 } Windows -> { x = 2 } }\nreturn x }";
+        let e = bind_err(dup, TargetOs::Windows);
+        assert_eq!(e.diagnostic.code, "source.cte.duplicate-arm", "{e:?}");
+        let late_else = "fn main() int { var x int = 0\n#is sys.current { else -> { x = 1 } Windows -> { x = 2 } }\nreturn x }";
+        let e = bind_err(late_else, TargetOs::Windows);
+        assert_eq!(e.diagnostic.code, "source.cte.else-position", "{e:?}");
     }
 
     // PLAN-966 T-02/V-04：嵌套 CT（#for 体内 #if 用循环变量）按环境逐轮折叠。
