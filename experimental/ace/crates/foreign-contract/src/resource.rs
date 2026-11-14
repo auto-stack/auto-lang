@@ -159,10 +159,7 @@ impl ResKind {
     /// to the adjacent i64 ctx lane).
     pub fn phys_args(&self) -> usize {
         match self {
-            ResKind::I32
-            | ResKind::I64
-            | ResKind::Bool
-            | ResKind::Rec { .. }
+            ResKind::I32 | ResKind::I64 | ResKind::Bool | ResKind::Rec { .. }
             | ResKind::Handle { .. } => 1,
             ResKind::ViewText | ResKind::BufViewI64 => 2,
             ResKind::Callback { .. } => 1,
@@ -184,7 +181,9 @@ pub enum ResOut {
     Bool,
     I64,
     U64,
-    Handle { provider: String },
+    Handle {
+        provider: String,
+    },
 }
 
 impl ResOut {
@@ -273,9 +272,7 @@ impl ResourceSig {
                 }
                 ResKind::Rec { rec, fields, role } => {
                     if !ident(rec) {
-                        return Err(format!(
-                            "resource.params[{i}]: record id must be an identifier"
-                        ));
+                        return Err(format!("resource.params[{i}]: record id must be an identifier"));
                     }
                     if fields.is_empty() {
                         return Err(format!(
@@ -345,7 +342,8 @@ impl ResourceSig {
                     // (`i64`) the 797 fold physically takes.
                     if *has_ctx {
                         let next = self.params.get(i + 1);
-                        let wide_seed_ok = self.typed_peer && matches!(next, Some(ResKind::I64));
+                        let wide_seed_ok =
+                            self.typed_peer && matches!(next, Some(ResKind::I64));
                         if !matches!(next, Some(ResKind::I32)) && !wide_seed_ok {
                             return Err(format!(
                                 "resource.params[{i}]: ctx-ful callback must be immediately \
@@ -428,7 +426,8 @@ fn ident(s: &str) -> bool {
         && s.bytes()
             .next()
             .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
-        && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
 #[cfg(test)]
@@ -450,7 +449,9 @@ mod tests {
     fn view_text_sig_validates() {
         let s = sig(
             vec![ResKind::ViewText],
-            ResourceForm::Pure { ret: ResOut::U64 },
+            ResourceForm::Pure {
+                ret: ResOut::U64,
+            },
         );
         assert!(s.validate().is_ok());
         assert_eq!(s.signature(), "pure(view str)->u64");
@@ -465,10 +466,7 @@ mod tests {
                 fields: vec![("value".into(), FieldKind::I32)],
                 role: ViewRole::Mut,
             }],
-            ResourceForm::Fallible {
-                ctx: None,
-                out: None,
-            },
+            ResourceForm::Fallible { ctx: None, out: None },
         );
         assert!(s.validate().unwrap_err().contains("atomic"));
         s.atomic = true;
@@ -479,19 +477,26 @@ mod tests {
     fn callback_requires_noescape_and_ctx_seed() {
         let mut s = sig(
             vec![ResKind::Callback { ctx: true }],
-            ResourceForm::Pure { ret: ResOut::I64 },
+            ResourceForm::Pure {
+                ret: ResOut::I64,
+            },
         );
         assert!(s.validate().unwrap_err().contains("noescape"));
         s.noescape = true;
         // ctx-ful callback without its adjacent i32 ctx seed -> reject
-        assert!(s.validate().unwrap_err().contains("ctx-seed parameter"));
+        assert!(s
+            .validate()
+            .unwrap_err()
+            .contains("ctx-seed parameter"));
         s.params.push(ResKind::I32);
         assert!(s.validate().is_ok());
         assert_eq!(s.signature(), "pure(callback:ctx,i32)->i64");
         // ctx-less callback needs no seed
         let s2 = sig(
             vec![ResKind::Callback { ctx: false }],
-            ResourceForm::Pure { ret: ResOut::I32 },
+            ResourceForm::Pure {
+                ret: ResOut::I32,
+            },
         );
         let s2 = ResourceSig {
             noescape: true,
@@ -508,7 +513,9 @@ mod tests {
                 fields: vec![("big".into(), FieldKind::I64)],
                 role: ViewRole::Const,
             }],
-            ResourceForm::Pure { ret: ResOut::I32 },
+            ResourceForm::Pure {
+                ret: ResOut::I32,
+            },
         );
         assert!(s.validate().unwrap_err().contains("typed-peer only"));
     }
@@ -531,10 +538,7 @@ mod tests {
                     role: ViewRole::Mut,
                 },
             ],
-            ResourceForm::Fallible {
-                ctx: None,
-                out: None,
-            },
+            ResourceForm::Fallible { ctx: None, out: None },
         );
         let mut same = same;
         same.atomic = true; // two-mut fallible promises caller-byte atomicity
@@ -552,10 +556,7 @@ mod tests {
                     role: ViewRole::Mut,
                 },
             ],
-            ResourceForm::Fallible {
-                ctx: None,
-                out: None,
-            },
+            ResourceForm::Fallible { ctx: None, out: None },
         );
         assert!(divergent
             .validate()
@@ -577,10 +578,7 @@ mod tests {
             },
         );
         assert!(s.validate().is_ok());
-        assert_eq!(
-            s.signature(),
-            "fallible(handle:r939)->status,out handle:r939"
-        );
+        assert_eq!(s.signature(), "fallible(handle:r939)->status,out handle:r939");
     }
 
     #[test]
@@ -596,7 +594,9 @@ mod tests {
                     ResKind::I64,
                     ResKind::BufViewI64,
                 ],
-                ResourceForm::Pure { ret: ResOut::I64 },
+                ResourceForm::Pure {
+                    ret: ResOut::I64,
+                },
             )
         };
         assert!(wide.validate().is_ok());
@@ -617,13 +617,20 @@ mod tests {
             typed_peer: false,
             ..sig(
                 vec![ResKind::BufViewI64],
-                ResourceForm::Pure { ret: ResOut::I64 },
+                ResourceForm::Pure {
+                    ret: ResOut::I64,
+                },
             )
         };
         assert!(bare.validate().unwrap_err().contains("typed-peer only"));
         let bare64 = ResourceSig {
             typed_peer: false,
-            ..sig(vec![ResKind::I64], ResourceForm::Pure { ret: ResOut::I64 })
+            ..sig(
+                vec![ResKind::I64],
+                ResourceForm::Pure {
+                    ret: ResOut::I64,
+                },
+            )
         };
         assert!(bare64.validate().unwrap_err().contains("typed-peer only"));
         // Wide record fields too.
@@ -638,7 +645,9 @@ mod tests {
                 ],
                 role: ViewRole::Const,
             }],
-            ResourceForm::Pure { ret: ResOut::I64 },
+            ResourceForm::Pure {
+                ret: ResOut::I64,
+            },
         );
         assert!(rec.validate().unwrap_err().contains("typed-peer only"));
         rec.typed_peer = true;
@@ -653,7 +662,9 @@ mod tests {
         // as false from old JSON.
         let s = sig(
             vec![ResKind::ViewText],
-            ResourceForm::Pure { ret: ResOut::U64 },
+            ResourceForm::Pure {
+                ret: ResOut::U64,
+            },
         );
         let json = serde_json::to_string(&s).unwrap();
         assert!(!json.contains("typed_peer"));

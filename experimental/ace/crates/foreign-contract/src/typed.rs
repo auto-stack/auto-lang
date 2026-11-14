@@ -12,7 +12,7 @@
 
 use crate::facts::{ErrorModel, FactsSource, FnFact, FnForm, InterfaceFacts, FACTS_FORMAT};
 use crate::lane::LaneKind;
-use crate::resource::{FieldKind, ResKind, ResOut, ResourceForm, ResourceSig, ViewRole};
+use crate::resource::{FieldKind, ResKind, ResourceForm, ResourceSig, ResOut, ViewRole};
 use serde::{Deserialize, Serialize};
 
 /// Recorded totality evidence for a PURE typed entry (plan §2: public
@@ -182,8 +182,14 @@ impl TypedDecls {
                         "symbol '{}': family {:?} binds exactly {:?}, got {:?}",
                         d.symbol,
                         d.body,
-                        expect_params.iter().map(|k| k.spell()).collect::<Vec<_>>(),
-                        sig.params.iter().map(|k| k.spell()).collect::<Vec<_>>()
+                        expect_params
+                            .iter()
+                            .map(|k| k.spell())
+                            .collect::<Vec<_>>(),
+                        sig.params
+                            .iter()
+                            .map(|k| k.spell())
+                            .collect::<Vec<_>>()
                     ));
                 }
                 let ret_out = match &sig.form {
@@ -196,7 +202,10 @@ impl TypedDecls {
                     }
                 };
                 if ret_out != ResOut::I64 || d.ret != LaneKind::I64 {
-                    return Err(format!("symbol '{}': S07 families return i64", d.symbol));
+                    return Err(format!(
+                        "symbol '{}': S07 families return i64",
+                        d.symbol
+                    ));
                 }
                 if let Some(ev) = &d.totality {
                     if !ev.valid() {
@@ -488,7 +497,9 @@ mod tests {
         let sig = |params: Vec<ResKind>, noescape: bool| ResourceSig {
             format: RESOURCE_SIG_FORMAT.into(),
             params,
-            form: ResourceForm::Pure { ret: ResOut::I64 },
+            form: ResourceForm::Pure {
+                ret: ResOut::I64,
+            },
             atomic: false,
             noescape,
             typed_peer: true,
@@ -565,7 +576,8 @@ mod tests {
     fn wide_family_wrong_shape_is_named_rejection() {
         // BufViewI64Sum must bind EXACTLY one element view.
         let mut d = wide_decls_for_test();
-        d.decls[0].resource.as_mut().unwrap().params = vec![ResKind::BufViewI64, ResKind::I64];
+        d.decls[0].resource.as_mut().unwrap().params =
+            vec![ResKind::BufViewI64, ResKind::I64];
         assert!(d.validate().unwrap_err().contains("binds exactly"));
         // RecMixSum with a divergent closure (a valid sig on its own —
         // the FAMILY binding is what rejects the shape change).
@@ -588,10 +600,7 @@ mod tests {
         // FAMILY match is the rejection point).
         let mut d = wide_decls_for_test();
         d.decls[0].body = TypedBodyFamily::ChecksumV1;
-        assert!(d
-            .validate()
-            .unwrap_err()
-            .contains("does not take a resource sig"));
+        assert!(d.validate().unwrap_err().contains("does not take a resource sig"));
         // A scalar spine on a wide family is rejected too.
         let mut d = checksum_decls();
         d.decls[0].resource = Some(wide_decls_for_test().decls[0].resource.clone().unwrap());
