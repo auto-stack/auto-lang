@@ -827,12 +827,28 @@ pub fn emit_platform_shim_elf() -> Result<Vec<u8>, MnError> {
             let fdcwd = fb.ins().iconst(types::I32, PROBE_AT_FDCWD as i64);
             let dir_ok = fb.ins().icmp(IntCC::Equal, dirfd, fdcwd);
             let bad_dir = fb.create_block();
-            let chk_len = fb.create_block();
-            fb.ins().brif(dir_ok, chk_len, &[], bad_dir, &[]);
+            let chk_flags = fb.create_block();
+            fb.ins().brif(dir_ok, chk_flags, &[], bad_dir, &[]);
             fb.seal_block(bad_dir);
-            fb.seal_block(chk_len);
+            fb.seal_block(chk_flags);
 
             fb.switch_to_block(bad_dir);
+            ret_err(fb, ERR_INVALID_VALUE);
+
+            // Mirrors of the AV dispatch pre-checks (AV/AC parity, F2):
+            // flags==0 and negative mode are invalid before any syscall.
+            fb.switch_to_block(chk_flags);
+            let zero32 = fb.ins().iconst(types::I32, 0);
+            let flags_zero = fb.ins().icmp(IntCC::Equal, oflags, zero32);
+            let mode_neg = fb.ins().icmp(IntCC::SignedLessThan, mode, zero32);
+            let bad_fm = fb.ins().bor(flags_zero, mode_neg);
+            let bad_fm_blk = fb.create_block();
+            let chk_len = fb.create_block();
+            fb.ins().brif(bad_fm, bad_fm_blk, &[], chk_len, &[]);
+            fb.seal_block(bad_fm_blk);
+            fb.seal_block(chk_len);
+
+            fb.switch_to_block(bad_fm_blk);
             ret_err(fb, ERR_INVALID_VALUE);
 
             fb.switch_to_block(chk_len);

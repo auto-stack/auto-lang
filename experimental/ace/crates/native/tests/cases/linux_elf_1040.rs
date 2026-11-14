@@ -145,6 +145,10 @@ fn main() int {{
     if badc != -9 {{ return -6 }}
     let bad_dir = probe_openat(3, "{linux_path}", 1, 0)
     if bad_dir != -7 {{ return -7 }}
+    let bad_flags = probe_openat(-100, "{linux_path}", 0, 416)
+    if bad_flags != -7 {{ return -8 }}
+    let bad_mode = probe_openat(-100, "{linux_path}", 577, -1)
+    if bad_mode != -7 {{ return -9 }}
     return 60
 }}
 "#
@@ -566,6 +570,8 @@ fn main() int {{
     if probe_write_fd(fd, "AV") != 2 {{ return -2 }}
     if probe_close(fd) != 0 {{ return -3 }}
     if probe_openat(-100, "/tmp/no-such-1040-dir/y.txt", 1, 0) != -2 {{ return -4 }}
+    if probe_openat(-100, "/tmp/no-such-1040-dir/y.txt", 0, 416) != -7 {{ return -5 }}
+    if probe_openat(-100, "/tmp/no-such-1040-dir/y.txt", 577, -1) != -7 {{ return -6 }}
     return 5
 }}
 "#
@@ -617,6 +623,81 @@ fn main() int {
         "1MiB+ output must be bounded: {summary:?}"
     );
     assert!(summary["console_run_bytes"].as_u64().unwrap() <= 1_048_576);
+}
+
+/// V-WSL AC-side deadline control (review F1): a long-running ELF must
+/// be stopped by the wrapper's deadline, the failure is a controlled
+/// Infra error (never a silent success), and cleanup kills ONLY this
+/// run's Linux process (the recorded PID), leaving no survivor behind.
+#[test]
+fn elf06_ac_wsl_deadline_targeted_kill() {
+    // Syscall-bound long run: one raw close(999)=EBADF syscall per
+    // iteration (probe ops have no slot budget), guaranteed to outlive
+    // the 1.5s deadline.
+    let src = "fn main() int {
+    var i = 0
+    for i < 100000000 {
+        let _c = probe_close(999)
+        i = i + 1
+    }
+    return i
+}
+";
+    let mir = console_compile(src, "d_main").expect("compile");
+    console_authorize(&mir, &linux_grants()).expect("authorize");
+    let dir = temp_workdir("elf06");
+    let linked = console_native_build_elf(&mir, "d_main", &dir).expect("build");
+    let distro = wsl_distro();
+    let linux_path = wsl_resolve_path(&linked.exe_path, &distro)
+        .expect("resolve")
+        .linux_path;
+
+    let started = std::time::Instant::now();
+    let err = match ace_native::linux_exec::run_elf_via_wsl(
+        &linked.exe_path,
+        &[],
+        std::time::Duration::from_millis(1500),
+        ace_core::link::CaptureCaps {
+            stdout_max: 1024,
+            stderr_max: 1024,
+        },
+    ) {
+        Err(e) => e,
+        Ok(run) => panic!("deadline must fail the run; got exit {:?}", run.exit_code),
+    };
+    let elapsed = started.elapsed();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(
+        matches!(err, ace_native::MnError::Infra(_)),
+        "deadline breach must surface as Infra: {err:?}"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(20),
+        "deadline must actually bound the run: {elapsed:?}"
+    );
+
+    // Targeted cleanup: no surviving process whose /proc/<pid>/exe is this
+    // binary (scan by exact executable identity, never by name/distro).
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    let scan = format!(
+        "found=0; for d in /proc/[0-9]*; do if [ \"$(readlink \"$d/exe\" 2>/dev/null)\" = \"{linux_path}\" ]; then found=1; echo \"$d\"; fi; done; exit $found"
+    );
+    let out = std::process::Command::new("wsl.exe")
+        .arg("--distribution")
+        .arg(&distro)
+        .arg("--exec")
+        .arg("/bin/sh")
+        .arg("-c")
+        .arg(scan)
+        .output()
+        .expect("scan survivors");
+    // The scan exits 0 when no survivor matches (found=0) — the pass
+    // condition; any matching PID would print and exit 1.
+    assert!(
+        out.status.success(),
+        "no Linux process for this exe may survive the deadline kill: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
 }
 
 /// Run one source through the Linux AV runner inside WSL and return the
