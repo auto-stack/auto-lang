@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-967
-status: executing
+status: reviewed
 feature_name: 完整C/Rust FFI、自动binding与通用宿主资源
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-14
 plan_revision: 12
-current_step: 16
+current_step: 17
 total_steps: 19
 depends_on: [PLAN-960, PLAN-962, PLAN-963, PLAN-938, PLAN-939, PLAN-1042, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-bindgen/project.md, docs/specs/auto-abi/project.md]
@@ -609,7 +609,7 @@ ace-host既有红名单（cc0ff965e同红，分流batch-regression/对应owner�
 
 - [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 [✅ 2026-11-14：§6新增"T-04 全量验证台账"（冻结提交c79e072f8）——职责组并集12组单实例运行（10组PASS；ace-host 7红全为pre-T-15 master cc0ff965e同红=既有红分流非967；ace-native唯一红=linux_elf_1040 WSL infra按2026-11-14用户裁定排除，Windows环境不再跑Linux/WSL用例、裁定已沉淀AGENTS.md）；V行逐行台账：✓行22+未闭具名2行（V-INT-1026 kwargs/receiver tag帧、V-LOAD 1043装配消费→交T-05裁定）+部分具名3行（V-ABI-TARGET/IFACE运行轴归978、V-ABI-LIFE v1/v2并存leg）；T-04修复=locate_second_toolchain真发现rustup第二工具链（cargo-bin proxy随默认工具链的发现bug），V-ABI-CROSS/CACHE双腿nightly真构建真跑（second/nightly产物+store双身份收据）；P90计时门×3并行红串行绿=环境归因] [✅ 2026-11-14]
 
-- [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
+- [x] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。 [✅ 2026-11-15 两轮独立复审收口：首轮（独立上下文agent，fbe01e178）needs_fix——F1 AC-INT-1026 tag帧/F2 AC-LOAD 1043装配/F5 ABI余量三MAJOR（用户裁定"同树实现"后全部实现于43f2ecb76）+F3 测试卫生7.6GB/F4 日常道纪律（部分）/F6..F11；修复轮F3/F6/F7/F8/F10闭+F4部分（dev profile）；scoped复审（同agent，517920443）**pass**——F1/F2/F5逐项CLOSED（线规交叉核对/AV真跑/dispatch=0/PE头交叉/1043交付API原样消费/digest oracle全数成立），12受影响族案串行12/12绿（16.62s，全≤10s门），AC-INT-1026/AC-LOAD=pass、AC-ABI-COMPAT=pass（Windows可交付矩阵；运行依赖轴按B-06正名归978）；附带条件NF1死绑定+NF2校验器顺序依赖文档已落冻结提交；F4 lane-split留开放治理项] [✅ 2026-11-15]
 
 - [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
 
@@ -628,6 +628,9 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-15 stage: review | review_scope: final（scoped re-review，repair合同）| reviewer: 独立上下文agent（同首轮，未参与实现） | plan_id: PLAN-967 | plan_revision: r12 | reviewed_commit: 517920443（NF1/NF2冻结提交随后落树） | outcome: **pass**（F1/F2/F5全CLOSED；AC-INT-1026/AC-LOAD=pass；AC-ABI-COMPAT=pass（Windows可交付矩阵，运行依赖轴按B-06归978为正名交接）；12受影响族案串行12/12绿16.62s全≤10s；AC-04随本pass收口）| new findings: NF1死绑定（✅已修）、NF2帧校验器UTF-8顺序依赖（✅文档化于check_tag_value）、NF3 V-ABI-LIFE措辞=跨代具名拒绝(bad-handle)非no-dispatch（✅本收据措辞采纳）| 开放治理: F4 lane-split（f0编译即被测行为vs显式构建道的固定组结构）——已记KNOWN-DEBT | 附带核实: F3全闭（7.6GB已清+temp清理）、F4部分（dev profile）、僵尸rustc已不在 | next: T-06 merge（规范沉淀+合回+归档）
+
 
 2026-11-15 stage: work / T-05 F1/F2/F5 同树实现轮（用户裁定"同树实现"）| 交付: **F1（AC-INT-1026）**=p967.frame/1受检tag参数帧全链——importer域扩展（`frame=`注解轴+`&F0Frame`参数域+具名拒绝3案）、生成shim帧类型/游标解码器（F0Val/F0Kwarg/F0Frame+防御二次门）、AV准入级帧校验（`foreign.frame`具名拒绝dispatch=0、cap常量）、独立通用provider fixture f0_tframe.rs（标量/text含NUL/opaque注册表/kwargs/panic探针）、f0_int1026 2案（AV真调全正例+8类坏帧dispatch=0+过期代次拒admission+panic host失败+域拒绝3案）；**F5（AC-ABI-COMPAT余量）**=f0_abi_axes 3案——V-ABI-TARGET（cdylib PE machine字段×manifest交叉核验0x8664+staticlib ar形态+错target注解冻结拒绝）、V-ABI-IFACE（ghost/form-flip具名拒+可选增量v2超集旧caller重准入+required破坏→source.undefined）、V-ABI-LIFE（v1/v2双DLL并存、v1 opaque引用交v2=具名bad-handle不跨代、v1退出v2存活、重载可用）；**F2（AC-LOAD）**=open_assembled_rs_provider_session（1043后缀装配→Rs实现层→同一binding/shim/build链→AV真调，无av.rs loader）+f0_load1043 2案（正向：公共.at适配器+.rs.at实现组装后真值4/选中输入编辑→新身份重建5/未选py兄弟→digest不变；负控：缺实现具名load.no-provider-impl/错后缀assembly具名/重复候选具名）| 验证: F1/F2/F5定向37/37绿（18.9s，最慢t15_sqlite 8.6s≤10s门）；auto-bindgen 10绿、av-core 63绿；全量conformance 179绿+1并行flake（cache_turnaround族，串行重放绿0.26s）；967文件零警告 | commit: 见worktree tip | next: T-05 scoped复审重跑。
 

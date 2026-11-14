@@ -4363,9 +4363,9 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 
 | 发现 | 级别 | 摘要 | 处置 |
 |---|---|---|---|
-| F1 AC-INT-1026 | MAJOR | kwargs/receiver tag 帧未实现（T-09 冻结字段后 T-11/12 未接），V-INT-1026 无腿 | 待裁定：同树实现或计划修订外移 |
-| F2 AC-LOAD | MAJOR | 1043 来源后缀/#in 装配的 FFI provider 消费腿未落（owner 链 T-03→T-12→T-04 断头） | 待裁定：同树实现或外移 |
-| F5 AC-ABI-COMPAT | MAJOR | V-ABI-TARGET/IFACE 运行准入矩阵、V-ABI-LIFE v1/v2 并存 leg 未交付；"归978"归因未被 §5 支持（B-06 只给 978 构建/分发） | 待裁定：同树实现（Windows 可做 manifest×工件交叉核验/错target拒绝）或用户批准外移 |
+| F1 AC-INT-1026 | MAJOR | kwargs/receiver tag 帧未实现（T-09 冻结字段后 T-11/12 未接），V-INT-1026 无腿 | ✅ 已闭（43f2ecb76：p967.frame/1全链+独立provider+f0_int1026；scoped复审CLOSED@517920443） |
+| F2 AC-LOAD | MAJOR | 1043 来源后缀/#in 装配的 FFI provider 消费腿未落（owner 链 T-03→T-12→T-04 断头） | ✅ 已闭（open_assembled_rs_provider_session+f0_load1043；scoped复审CLOSED） |
+| F5 AC-ABI-COMPAT | MAJOR | V-ABI-TARGET/IFACE 运行准入矩阵、V-ABI-LIFE v1/v2 并存 leg 未交付；"归978"归因未被 §5 支持（B-06 只给 978 构建/分发） | ✅ 已闭（f0_abi_axes 3案：PE头交叉/冻结target拒/可选增量重准入/required破坏/v1v2并存+跨代具名拒绝；运行依赖轴按B-06正名归978；scoped复审CLOSED） |
 | F3 测试卫生 | MAJOR | f0 系测试硬编码 plan-artifacts/plan-967/tests 作用域、无清理：实测 767 目录/7.6GB；merge 全删后下一跑即复活 | ✅ 967 侧已闭（fb1a4c265：Scope guard→OS temp+drop 清理；7.6GB+probe 已清扫）；source_foreign.rs（938 所有）仍写旧路径，归 938 跟进 |
 | F4 日常道纪律 | MAJOR | f0/c_import E2E 在日常 ace-abi 组内 spawn rustc/cl/cargo（含 --release），与 2026-11-14 测试纪律的显式构建道要求冲突 | 部分✅：--release→dev、rustc去-O已闭（fb1a4c265，30/30绿）；"编译即被测行为 vs 显式构建道"的组结构裁定仍开放（涉固定组治理，待用户/后续裁定） |
 | F6 GrantSet | MINOR | owner/grant 授权轴在 T-13/T-14 间孤儿化（收据具名后无人接） | 台账补名+归 F1 帧工作或独立关闭 |
