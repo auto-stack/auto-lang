@@ -850,10 +850,12 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
         }
         let hit = self.ctx_name_matches_token(c, pk);
         if !hit {
-            // token 相同但拼写不符 = 槽位拒绝的真实事实（保原 span 的诊断候选；
-            // 解析成功时丢弃，避免合法回溯留下假诊断）。
+            // 槽位拒绝的真实事实（保原 span 的诊断候选；解析成功时丢弃，
+            // 避免合法回溯留下假诊断）。只在"看起来是名字"的 token 上报告：
+            // 标识符或既有保留字词面——普通关键字/标点走通用语法错误，
+            // 不制造"expected <component>"的噪声。
             if let Some(spec) = self.p.ctx_name(c) {
-                if spec.token == pk.token {
+                if self.token_is_name_like(pk.token) {
                     let msg = format!(
                         "expected `{}` at the declared `{}` slot",
                         spec.spelling, spec.role
@@ -867,6 +869,12 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
             }
         }
         hit
+    }
+
+    /// 名字形 token（`ident` 或保留字词面）——仅供上下文槽诊断使用。
+    fn token_is_name_like(&self, token: TokenId) -> bool {
+        let name = self.p.token_name(token);
+        name == "ident" || name.starts_with("r-")
     }
 
     fn ctx_hint(&mut self, d: SynDiag) {

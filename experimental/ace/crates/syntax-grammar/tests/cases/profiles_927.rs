@@ -20,6 +20,9 @@ const DECLARED: &[&str] = &[
     // text-record 之前。
     "text-record-instances",
     "text-record",
+    // PLAN-979（T-H0-I）：AGE 最小 Node 领域面（text-record 全表面 + 领域节点
+    // 声明，声明序紧随 text-record）。
+    "age-h0",
     "entry-unit",
     "host-console",
     // PLAN-928：集合/闭包两面。
