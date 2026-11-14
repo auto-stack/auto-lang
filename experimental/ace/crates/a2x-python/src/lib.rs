@@ -22,6 +22,7 @@
 //!   hardcode test expectations.
 
 pub mod cert;
+pub mod foreign_bridge;
 pub mod lower;
 pub mod ports;
 pub mod print;

@@ -57,6 +57,7 @@ object = "0.37"
 windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_Foundation", "Win32_System_Environment", "Win32_System_LibraryLoader"] }
 
 [dev-dependencies]
+ace-a2x-python = { path = "../a2x-python" }
 ace-a2x-rust = { path = "../a2x-rust" }
 # PLAN-967 F0: split_units for the AV unit path in the conformance cases.
 ace-av = { path = "../av" }

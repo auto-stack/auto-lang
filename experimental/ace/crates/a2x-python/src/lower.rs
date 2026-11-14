@@ -125,12 +125,9 @@ fn lower_single_fn(
     facts: &FnFacts<'_>,
     family: LowerFamily,
 ) -> Result<PyFn, A2xReject> {
-    if view.foreign_declarations().next().is_some() {
-        return Err(A2xReject::new(
-            "a2py.foreign-authority",
-            "foreign FFI declarations require explicit C/Rust FFI provider (outside a2x-python)",
-        ));
-    }
+    // PLAN-967 (A2PY ctypes leg): the frozen F0/rich domain bridges —
+    // validate_view already shape-checked every declaration; wider
+    // shapes keep the named rejection there.
 
     let mut local_names = HashMap::new();
     let mut params = Vec::new();
@@ -1180,6 +1177,32 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
             self.emit_line(&format!(
                 "{t} = a2x_port_call('{port_id}', {}, {modes_tuple}, f'{{A2X_PY_RUNTIME_VERSION}}@{{A2X_PY_RUNTIME_BODY_SHA256}}'{extra})",
                 spec.semantic_version
+            ));
+            return Ok(t);
+        }
+
+        // PLAN-967 (A2PY ctypes leg): a foreign callee bridges through
+        // the generated ctypes wrapper.
+        if let Some(decl) = self.view.foreign_by_def(target_id) {
+            let lanes: Vec<ace_foreign_contract::ResKind> = decl
+                .resource()
+                .map(|r| r.params.clone())
+                .unwrap_or_default();
+            let mut placed = Vec::new();
+            for (arg, lane) in eval_args.iter().zip(lanes.iter()) {
+                let s = self.lower_expr(*arg)?;
+                if matches!(lane, ace_foreign_contract::ResKind::ViewText) {
+                    // ctypes c_char_p takes the BYTES of the view
+                    placed.push(format!("{s}"));
+                } else {
+                    placed.push(s);
+                }
+            }
+            let t = self.fresh_temp();
+            self.emit_line(&format!(
+                "{t} = a2x_foreign_{}({})",
+                decl.name,
+                placed.join(", ")
             ));
             return Ok(t);
         }

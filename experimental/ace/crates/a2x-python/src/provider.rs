@@ -55,11 +55,11 @@ impl PythonTargetProvider {
 
 impl TargetProvider for PythonTargetProvider {
     fn validate_view(&self, view: &SemanticView<'_>) -> Result<(), A2xReject> {
-        if view.foreign_declarations().next().is_some() {
-            return Err(A2xReject::new(
-                "a2py.foreign-authority",
-                "foreign FFI declarations require explicit C/Rust FFI provider",
-            ));
+        // PLAN-967 (A2PY ctypes leg): the frozen F0/rich domain bridges
+        // through ctypes; anything wider keeps the named rejection (the
+        // bridge itself re-validates every declaration's shape).
+        for decl in view.foreign_declarations() {
+            crate::foreign_bridge::wrapper_source(decl)?;
         }
         Ok(())
     }
@@ -97,17 +97,24 @@ impl TargetProvider for PythonTargetProvider {
         }
     }
 
-    fn runtime_source(
-        &self,
-        _view: &SemanticView<'_>,
-        family: Family,
-    ) -> Result<String, A2xReject> {
+    fn runtime_source(&self, view: &SemanticView<'_>, family: Family) -> Result<String, A2xReject> {
         let marks: &[&'static str] = match family {
             Family::Scalar | Family::RecordText | Family::Collections => {
                 &["hir.test.mark_a", "hir.test.mark_b"]
             }
         };
-        Ok(python_runtime_source(marks))
+        let mut src = python_runtime_source(marks);
+        // PLAN-967 (A2PY ctypes leg): the ctypes bridge rides the runtime
+        let bridge = crate::foreign_bridge::bridge_source(view)?;
+        if !bridge.is_empty() {
+            src.push_str(
+                "
+
+",
+            );
+            src.push_str(&bridge);
+        }
+        Ok(src)
     }
 
     fn produce_fragments(
