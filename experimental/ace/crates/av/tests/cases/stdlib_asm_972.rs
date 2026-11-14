@@ -259,6 +259,171 @@ fn stdlib_asm_972_text_char_av() {
     assert_eq!(run_av("nul", &p), Value::I32(31));
 }
 
+/// T-03 consumer legs: the SAME assembled-lane product on the real external
+/// ends — AC/native (mn exe exit, collections bridge) and A2R (rustc exe
+/// stdout, aggregates family). Non-closure slice first (sum=15, gt3=4 →
+/// 1504); closure HOF legs ride the A2R end below (the mn collections
+/// bridge carries no closure VALUES yet — named gap, PLAN-972 T-03/T-09).
+const CONSUMER_MAIN: &str = r#"
+use std.list.sum
+use std.list.find_first_gt
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(1)
+    xs.push(2)
+    xs.push(3)
+    xs.push(4)
+    xs.push(5)
+    let s = sum(xs)
+    let f = find_first_gt(xs, 3)
+    is f {
+        Some(v) -> { return s * 100 + v }
+        None -> { return -1 }
+    }
+}
+"#;
+
+#[test]
+fn stdlib_asm_972_cross_end_named_gaps_frozen() {
+    use ace_a2x_rust::RustTargetProvider;
+    use ace_a2x_store::modules::packages::PackageA2xTarget;
+    use ace_source_query::modules::packages::assemble_stdlib_aggregates_inputs;
+    use std::process::Command;
+
+    let compile_asm = |src: &str| {
+        let mut ctx = PackageAssemblyContext::new(
+            AssemblyBackend::Av,
+            ProviderChoice::Auto,
+            TargetOs::Windows,
+        );
+        let inputs = assemble_stdlib_aggregates_inputs(
+            &[("main.at".to_string(), src.to_string())],
+            "app::main",
+            &mut ctx,
+        )
+        .unwrap();
+        compile_assembled_aggregates_inputs(
+            &inputs,
+            "app::main",
+            FrontBudget::WORK_OWNED_64MIB,
+            &ctx,
+        )
+        .unwrap_or_else(|ds| {
+            panic!(
+                "consumer compile: {} {} {}",
+                ds[0].module, ds[0].diagnostic.code, ds[0].diagnostic.message
+            )
+        })
+    };
+    // ---- Cross-end freeze record (2026-11-15): the whole assembled std
+    // set carries closure-typed publics (list HOF family) and char-typed
+    // exprs (char/text modules); the mn collections native domain and the
+    // a2x value-type table both reject them TODAY (named Unsupported /
+    // a2x.unsupported-type). The closure/char cross-end ABI is PLAN-972
+    // T-03/T-09 work — these asserts pin the CURRENT named rejections and
+    // flip intentionally when the extension lands.
+    let whole = compile_asm(CONSUMER_MAIN);
+    let mn = {
+        let dir = scratch("cons-mn-gap");
+        let mut driver = ace_native::driver::MnDriver::ephemeral();
+        driver.build_collections_checked(
+            &whole.compiled.checked,
+            "d_main",
+            &dir,
+            &whole.bound.input_hash,
+            972,
+        )
+    };
+    match mn {
+        Err(e) => {
+            let text = format!("{e:?}");
+            assert!(
+                text.contains("Closure") || text.contains("Char"),
+                "unexpected mn gap: {text}"
+            );
+        }
+        Ok(_) => panic!("mn whole-set unexpectedly built"),
+    }
+    {
+        let store = scratch("cons-a2r-gap");
+        let a2x = PackageA2xTarget::cold_aggregates(
+            &store,
+            "asm972gap",
+            "app",
+            16 << 20,
+            RustTargetProvider::v1(),
+            &whole,
+        );
+        match a2x {
+            Err(e) => assert!(
+                format!("{e:?}").contains("closure"),
+                "unexpected a2x gap: {e:?}"
+            ),
+            Ok(_) => panic!("a2x whole-set unexpectedly admitted"),
+        }
+    }
+
+    // ---- A2R positive leg: BLOCKED by a third named gap — even the
+    // closure/char-free std.math subset fails a2x (`NumericConst { ty: I64 }`
+    // outside the collections surface): the a2x collections family has not
+    // merged the PLAN-961 numeric surface. Until the a2x/mn domain
+    // extensions (closure values, char, numeric consts) land, the assembled
+    // std set has AV legs only — recorded in the plan; no emit-only or
+    // host-fallback substitute is accepted.
+    {
+        let math_src = ace_core::source::packages::stdlib_assembled_files()
+            .into_iter()
+            .find(|(n, _)| n == "math.at")
+            .map(|(_, c)| c)
+            .unwrap();
+        let mut ctx = PackageAssemblyContext::new(
+            AssemblyBackend::A2R,
+            ProviderChoice::Auto,
+            TargetOs::Windows,
+        );
+        let inputs = vec![
+            ace_core::source::packages::PackageModuleInput {
+                package: "std".into(),
+                version: "1.0.0".into(),
+                id: "math".into(),
+                source: math_src,
+                provider: None,
+            },
+            ace_core::source::packages::PackageModuleInput {
+                package: "app".into(),
+                version: "1.0.0".into(),
+                id: "main".into(),
+                source: "use std.math.square
+fn main() int { return square(7) }".into(),
+                provider: None,
+            },
+        ];
+        let math_product = compile_assembled_aggregates_inputs(
+            &inputs,
+            "app::main",
+            FrontBudget::WORK_OWNED_64MIB,
+            &ctx,
+        )
+        .unwrap();
+        let store = scratch("cons-a2r-math-gap");
+        let a2x = PackageA2xTarget::cold_aggregates(
+            &store,
+            "asm972math",
+            "app",
+            16 << 20,
+            RustTargetProvider::v1(),
+            &math_product,
+        );
+        match a2x {
+            Err(e) => assert!(
+                format!("{e:?}").contains("NumericConst"),
+                "unexpected a2x math-subset gap: {e:?}"
+            ),
+            Ok(_) => panic!("a2x math subset unexpectedly admitted"),
+        }
+    }
+}
+
 /// `std` identity reservation on the assembled lane: a tampered `std.list`
 /// source, and a provider layer riding `std.list`, both reject BEFORE any
 /// compile/run with the named reservation code.
