@@ -121,6 +121,47 @@ pub struct ComponentCompilation {
     pub atom_text: String,
 }
 
+/// 组件面覆盖核对（V-11 的通用机制）：必需"构造/角色"清单逐项检查。
+///
+/// 必需项：`node`/`view`/`text` 角色，`model`（存在字段）、`on`（存在处理器）。
+/// 缺项返回清单（调用方判红）；多出项不影响。产品字段级清单由 980 owner 提供，
+/// 本函数只提供通用判据，不含产品语义。
+pub fn component_coverage(
+    description: &ComponentDescription,
+    required: &[&str],
+) -> Result<(), Vec<String>> {
+    let mut present: Vec<&str> = Vec::new();
+    for n in &description.nodes {
+        present.push("node");
+        if !n.view.role.is_empty() {
+            present.push("view");
+        }
+        for t in &n.view.texts {
+            present.push(t.role.as_str());
+        }
+        for per in &n.instance_texts {
+            for t in per {
+                present.push(t.role.as_str());
+            }
+        }
+        if !n.fields.is_empty() {
+            present.push("model");
+        }
+        if !n.handler_msgs.is_empty() {
+            present.push("on");
+        }
+    }
+    let missing: Vec<String> = required
+        .iter()
+        .filter(|want| !present.iter().any(|p| *p == **want))
+        .map(|w| w.to_string())
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(missing)
+    }
+}
 /// 未受信候选投影（可单独测试；不接触 verify/后端）。
 pub fn project_component_candidates(src: &str) -> Result<Vec<ComponentNode>, Vec<Diagnostic>> {
     match parse_domain_whole_module(

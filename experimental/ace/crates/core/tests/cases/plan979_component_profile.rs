@@ -271,3 +271,39 @@ fn p979_component_scenario_rejects_undeclared_events_and_instances() {
     .expect_err("out-of-range instance");
     assert_eq!(ds[0].code, "source.age.component-scenario");
 }
+
+// ---- V-11：组件面覆盖核对（通用判据；产品字段清单归 980）----
+
+use ace_core::source::age_component::component_coverage;
+
+#[test]
+fn p979_component_coverage_check_names_missing_constructs() {
+    let view_only =
+        compile_age_component(VIEW_ONLY, "component.at", LegacyWidgetAlias::Reject, &[])
+            .expect("view-only compiles");
+    // 只有 node/view/text：要求 model/on 时列出缺项。
+    assert_eq!(
+        component_coverage(&view_only.description, &["node", "view", "text"]),
+        Ok(())
+    );
+    assert_eq!(
+        component_coverage(
+            &view_only.description,
+            &["node", "view", "text", "model", "on"]
+        ),
+        Err(vec!["model".to_string(), "on".to_string()])
+    );
+}
+
+#[test]
+fn p979_component_coverage_check_is_red_when_a_required_mapping_is_dropped() {
+    // 坏近邻：投影漏掉 view（等价于删除一条必需映射）→ 覆盖核对红且点名 view。
+    let out = compile_age_component(VIEW_ONLY, "component.at", LegacyWidgetAlias::Reject, &[])
+        .expect("compiles");
+    let mut tampered = out.description.clone();
+    tampered.nodes[0].view.role = String::new();
+    assert_eq!(
+        component_coverage(&tampered, &["node", "view", "text"]),
+        Err(vec!["view".to_string()])
+    );
+}
