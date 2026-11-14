@@ -845,7 +845,7 @@ pub enum MirInstr {
         value: SlotId,
     },
     // -- PLAN-964 FStr display (L-22; format algorithms belong to 972) --
-    /// TEXT_DISPLAY (opcode 0x3B): render the I32 in `src` as a decimal
+    /// TEXT_DISPLAY (opcode 0x3F): render the I32 in `src` as a decimal
     /// owned Str into `dst` (Str). The M2-A display domain is I32 only;
     /// other source types are named rejects at the source front.
     TextDisplay {
