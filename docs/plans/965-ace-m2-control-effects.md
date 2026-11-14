@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-965
-status: execution_done
+status: reviewed
 feature_name: 完整控制流错误传播与生成器
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-14
 plan_revision: 5
-current_step: 5
+current_step: 7
 total_steps: 8
 depends_on: [PLAN-962, PLAN-964]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -278,9 +278,9 @@ struct CleanupEdge { owner: OwnerId, exit: ExitKind, target: BlockId }
 
 - [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
-- [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
+- [x] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
 
-- [ ] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
+- [x] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
@@ -500,6 +500,14 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 - 逐项：① 死代码真删（`let _module`/`let _err`/单臂 `match` 均无残留，`rustfmt --check` 绿）**closed**；② case 文件尾 `0x60 0x0A`，`cargo t case-…` **PASS executed=15、15/15、gate=True**（`run-wz65k5j9`）**closed**；③ `instr_spec` PASS、`entry_unit` 26/26 **closed**；④ §10 现为 1–8 项、§10-7 为 F-05 形态 1 裁定、§10-1/§10-4 标注已关闭、`见 §10-8` 零命中 **closed**；⑤ delta 草案四点已改（`str` 类型面先拒、F-05 边界、15 case/9 negative、`__agg_ev_*` 为 `Let`、close 顺序/死代码边界），**仅 A2X 证据行缺"干净 target"口径 → 已在本轮 merge 前置修正**。
 - **附加观察（已入 §10-8(b)）**：共享 `experimental/ace/target` 会链接陈旧 rlib，给"修复前语义"的假红（ace-av `aggregates_m2_965` 12/15；字节级：陈旧 `libace_core-324b2a2c…` 对 round-4 诊断串命中 0，修复版 `libace_core-f90a543f…` 命中 2）；干净 `--target-dir` 下同命令 15/15 PASS。代码在 HEAD 正确，假红归因 target 陈旧，非 round-6 引入。
 - **AC-04 → pass**；merge 可继续（AC-05 合并阶段），前置仅两项文档口径（见上，已办）。
+### 2026-11-14 T-06/T-07 合并与清理收据（merge）
+
+- **resync**：`plan-965-dev` rebase 至 `master@411ab3afb`（4 提交：`12c18e352`…`560aad304`）；冲突仅 2 处，逐行合并并重编译：`grammars/auto-source.at`（for-cond 语句 profile 表 = 1041 的 `packages-ct` ∪ 965 的 `aggregates`）、`a2x-rust/provider.rs`（保留 967 的 foreign bridge + 域分派，前置 `Family::Collections` 分支以保 965 的 collections runtime/`a2x_coll_fail`）。
+- **冻结并集**（rebase 后 `560aad304`；`merge-union.log`，wall 1536.4 s）：`ace-source` **PASS 525/525**、`ace-lowering` **PASS 5/5**、`ace-av` **PASS 1141/1141**、`ace-a2x` **PASS 238/238**、`case-ace-m2-control-effects-965` **PASS 15/15 `gate_passed=true`**（`run-yr2qiv6r`，wall 6.8 s）；`ace-native` 287 例仅 `linux_elf_1040::elf05_av_linux_same_sources_cancel_and_caps` 1 例失败——**Linux/WSL 腿按 2026-11-14 裁定"Windows 不跑 Linux/WSL 用例"裁定排除**（不判红、不充 PASS，归专用 Linux 环境）；`ace-runtime` 65/84（19 例 §10-2 text shim 链接既有红，非本包）。
+- **规范沉淀**：`docs/specs/ace-migration/m2-control-effects.md`（新）+ `replacement-scope-and-evidence.md` SD-09 随 `560aad304` 落库；`spec-lint` 的 5 个 error 为仓内既有（`ace-migration`/`ase`/`design`/`history` 缺 `project.md`、`.next-id=1026` 落后于并发会话持有到 1057），与本包无关、不修。
+- **合并**：`master` 上 `git merge --no-ff plan-965-dev` → **`23c186590`**（无冲突）；本计划代码/规范/case 语料随该提交入 master。
+- **清理**：`wt-guard.ps1` 输出 clean 后移除 `D:/autostack/.wt/lang-965/auto-lang` 与 `plan-965-dev` 分支、组目录 `D:/autostack/.wt/lang-965`；`D:/autostack/plan-artifacts/plan-965/`（含 `r5/` 探针）整体删除——所需摘要（命令、退出码、关键数字、红名、哈希）已折入 §9 与两份规范文件。
+- **AC 终判**：AC-01/02/03/04/06/PHASE **pass**；AC-05 **pass（本收据）**；V-01..V-08 按 round-5/7 复审判定 pass（V-05 由 A2X 顺序敏感用例闭合）。
 ## 10. 待澄清事项
 
 ### 2026-11-14 work 阶段登记的具名问题（交 T-05 复审裁定）
