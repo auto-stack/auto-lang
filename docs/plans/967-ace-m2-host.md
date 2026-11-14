@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-14
 plan_revision: 12
-current_step: 11
+current_step: 12
 total_steps: 19
 depends_on: [PLAN-960, PLAN-962, PLAN-963, PLAN-938, PLAN-939, PLAN-1042, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-bindgen/project.md, docs/specs/auto-abi/project.md]
@@ -533,7 +533,7 @@ T-03/T-12扩947既有装配：同一AV的native/C/Rust来源绑定与资源原pr
 
 
 
-- [x] **T-01｜M2-A｜work｜AC-01/AC-PHASE**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 [✅ 2026-11-14]
+- [x] **T-01｜M2-A｜work｜AC-01/AC-PHASE**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 [✅ 2026-11-14 三腿交付：AV-C（真cl /LD DLL驱动AV道）、A2R AXR0（生成Rust经同一shim导出真编译真运行、域外具名拒绝保持）、A2PY ctypes（生成Python经ctypes CDLL真运行、typed A2xForeignStatus、域外具名拒绝保持）；V-COVERAGE六路径全实跑=AV/native✓ AV/Rust✓ AV/C✓ AC✓ A2R✓ A2PY✓（同一binding/shim/provider跨全部lane）；具名边界=1043来源装配腿（#in/后缀）仍按T-01冻结映射归后续LOAD收口（T-04汇总核）] [✅ 2026-11-14]
   决定摘要+冻结见§5"T-01 决定摘要与责任冻结"：锚点核验（resync树76431e6b9）、最长链前探三态闭（native机器码probe `f0_native_machine_code_consumes_the_same_auto_binding` exit 9/ghost拒绝/重绑定10 + F0 AV腿）、两处策略实测裁定（panic标志通道、cdylib+import lib native链接）、新域资源表、COVERAGE六路径+A2C owner映射、LOAD映射、具名unknown清单。
 
 - [x] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 [✅ 2026-11-14 会话层+映射收尾；V-01..06执行证据按owner行在T-04汇总]
@@ -552,7 +552,7 @@ T-03/T-12扩947既有装配：同一AV的native/C/Rust来源绑定与资源原pr
 
 - [x] **T-11｜M2-A｜owner_stage: work｜AC-09/AC-NATIVE**：实现Rust公开元数据到具体类型/泛型实例和自动C-compatible shim；闭合String/Vec/Result/borrow/析构、panic、线程与future边界。 验证V-11，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。 ABI-COMPAT：B-01/02库+shim共同构建与cdylib/staticlib产物合同，记录rustc/依赖/flags；执行V-ABI-BUILD/CROSS适用部分。 [✅ 2026-11-14：混合view+标量帧、具名形状边界（泛型/owned String/Vec/Result/async/trait对象/&mut各有名）、真双rustc C-ABI交叉（stable+nightly：身份异、接口facts同、AV宿主跑另一工具链provider；缺第二工具链=具名pending）、staticlib同闭包产物；f0_rich 3案全绿；具名余量=owned lane/async importer面(T-13)、MSRV门(T-14)、真实库腿(T-15 serde_json)、A2R crate adapter腿(T-12)]
 
-- [ ] **T-12｜M2-A｜owner_stage: work｜AC-10/AC-NATIVE**：接AV/AC/新A2R/新A2C到同一Foreign IR；native机器码调用，A2R等价crate适配需独立证明；各端记录真实producer及dispatch。 验证V-12，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。 ABI-COMPAT：核跨C ABI独立消费与target/接口准入，V-ABI-CROSS/TARGET/IFACE；A2R直接crate adapter单列等价与同构建闭包，不冒跨rustc二进制保证。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
+- [x] **T-12｜M2-A｜owner_stage: work｜AC-10/AC-NATIVE**：接AV/AC/新A2R/新A2C到同一Foreign IR；native机器码调用，A2R等价crate适配需独立证明；各端记录真实producer及dispatch。 验证V-12，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。 ABI-COMPAT：核跨C ABI独立消费与target/接口准入，V-ABI-CROSS/TARGET/IFACE；A2R直接crate adapter单列等价与同构建闭包，不冒跨rustc二进制保证。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
 - [ ] **T-13｜M2-A｜owner_stage: work｜AC-11/AC-NATIVE**：闭合双向import/export、适用静态/动态链接、callback重入与generation/lease；接future完成/取消端口，保原allocator与跨ABI错误语义，交968调度。 验证V-13，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。 ABI-COMPAT：V-ABI-LIFE核兼容provider新旧代的owner/allocator/pin/卸载边界，不跨代接管旧handle。
 
@@ -581,6 +581,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 15 | from: work | to: work | status: executing | outcome: T-12完成（A2PY ctypes腿+V-COVERAGE六路径全实跑；勾选） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-13 双向资源/GrantSet/callback重入）
+
+2026-11-14 stage: work / T-12收口（AC-10/V-COVERAGE）| 交付: a2x-python foreign_bridge（绝对路径CDLL装载同一provider cdylib、per-decl argtypes/restype、typed A2xForeignStatus异常通道、validate_view形状检查域外保持具名拒绝、lowering重复门提升同检查+Call臂路由包装器）、f0_a2py 2案全绿（真python真运行：value:9/0/65、具名miss→foreign.status=-1非零exit；record-view域外具名拒绝）| V-COVERAGE六路径全实跑（AV/native·AV/Rust·AV/C·AC·A2R·A2PY，同一binding/shim/provider）| 清理: AV-C提交误入的failure_runtime.obj已untrack | 回归: f0系18案全绿、a2x-python tests 2绿、case套件PASS | LOAD边界: 1043来源装配腿按T-01冻结归T-04汇总核 | next: T-13。
 
 2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 14 | from: work | to: work | status: executing | outcome: T-12 AXR0腿交付（A2R经同一shim导出真编译真运行；域外具名拒绝保持）；A2PY ctypes腿待续 | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-12收口：A2PY ctypes腿+COVERAGE六路径收口）
 
