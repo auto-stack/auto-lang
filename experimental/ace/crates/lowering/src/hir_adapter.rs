@@ -1217,6 +1217,25 @@ pub fn lower_checked_owned_with_init(
     init_names: &[String],
 ) -> Result<MirModule, AdapterError> {
     let mut out = lower_checked_owned(checked, entry_name, source_snapshot)?;
+    append_init_chain(&mut out, init_names)?;
+    Ok(out)
+}
+
+/// PLAN-946（T-02）：aggregates packages 线的 AV 降落——closures-superset
+/// 家族域（与 `lower_checked_closures` 同域，962 aggregates 经此家族）+
+/// 包模块 init 链（镜像 `lower_checked_owned_with_init` 的拼装）。
+pub fn lower_checked_closures_with_init(
+    checked: &CheckedModule,
+    entry_name: &str,
+    source_snapshot: u64,
+    init_names: &[String],
+) -> Result<MirModule, AdapterError> {
+    let mut out = lower_checked_closures(checked, entry_name, source_snapshot)?;
+    append_init_chain(&mut out, init_names)?;
+    Ok(out)
+}
+
+fn append_init_chain(out: &mut MirModule, init_names: &[String]) -> Result<(), AdapterError> {
     for name in init_names {
         let idx = out
             .funcs
@@ -1227,7 +1246,7 @@ pub fn lower_checked_owned_with_init(
             })?;
         out.init.push(idx as u32);
     }
-    Ok(out)
+    Ok(())
 }
 
 pub fn lower_checked_owned(

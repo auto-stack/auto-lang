@@ -37,12 +37,23 @@ impl PackageAvTarget {
             .iter()
             .filter_map(|k| bound.module_init_fns.get(k).map(|s| format!("d_{s}")))
             .collect();
-        let mir = ace_lowering::lower_checked_owned_with_init(
-            &product.compiled.checked,
-            entry,
-            0,
-            &init_names,
-        )
+        // PLAN-946（T-02）：aggregates packages 线（std.list 承载面）走
+        // closures-superset 家族降落 + init 链；plain/ct 线保持原 owned 面。
+        let mir = if product.compiled.profile == ace_core::source::AGGREGATES_SOURCE_PROFILE {
+            ace_lowering::lower_checked_closures_with_init(
+                &product.compiled.checked,
+                entry,
+                0,
+                &init_names,
+            )
+        } else {
+            ace_lowering::lower_checked_owned_with_init(
+                &product.compiled.checked,
+                entry,
+                0,
+                &init_names,
+            )
+        }
         .map_err(|e| format!("{e:?}"))?;
         let globals = mir.globals.clone();
         let store = ManagedStore::open(path).map_err(|e| e.to_string())?;

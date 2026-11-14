@@ -1154,13 +1154,25 @@ pub fn emit_resolved_packages_parts(
     sources: &super::packages::BoundPackages,
     module_path: &str,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
+    emit_resolved_packages_parts_profile(program, sources, module_path, SourceProfile::TextRecord)
+}
+
+/// PLAN-946（T-02）：aggregates packages 线的部件发射——List/Variant 类型表
+/// 条目按 962 域（`is_collections()`）发射，descriptor 同域；plain/ct 线仍走
+/// TextRecord（`emit_resolved_packages_parts` 原面逐字节不变）。
+pub fn emit_resolved_packages_parts_profile(
+    program: &ResolvedProgram,
+    sources: &super::packages::BoundPackages,
+    module_path: &str,
+    profile: SourceProfile,
+) -> Result<SourceParts, Vec<Diagnostic>> {
     emit_document_source(
         program,
         sources.source_len(),
         sources.input_hash.clone(),
         &|p| sources.is_char_boundary(p),
         module_path,
-        SourceProfile::TextRecord,
+        profile,
     )
 }
 

@@ -12,8 +12,11 @@ pub const STDLIB_RESERVED: &str = "ace.stdlib-reserved";
 
 const MATH_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/std/math.at");
 const TEXT_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/std/text.at");
+const LIST_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/std/list.at");
 
-/// 冻结 stdlib 输入（math/text 两模块）。身份 = 仓库文件内容本身。
+/// 冻结 stdlib 输入（math/text 两模块，plain packages 面的原契约——
+/// PLAN-946 加入 `std.list` 后本函数**不变**，math/text 消费者逐字节稳定）。
+/// 身份 = 仓库文件内容本身。
 pub fn stdlib_inputs() -> Vec<PackageModuleInput> {
     vec![
         PackageModuleInput {
@@ -33,11 +36,25 @@ pub fn stdlib_inputs() -> Vec<PackageModuleInput> {
     ]
 }
 
+/// PLAN-946：aggregates packages 线的冻结 stdlib 输入（仅 `std.list`——
+/// List 参数公共函数的承载面；math/text 属 TextRecord 域，留在 plain 线，
+/// 混域图在 aggregates 线具名拒）。身份同 = 仓库文件内容。
+pub fn stdlib_aggregates_inputs() -> Vec<PackageModuleInput> {
+    vec![PackageModuleInput {
+        package: STDLIB_PACKAGE.into(),
+        version: STDLIB_VERSION.into(),
+        id: "list".into(),
+        source: LIST_SOURCE.into(),
+        provider: None,
+    }]
+}
+
 /// `std` 包身份保留：模块 id、版本与源文本必须与冻结切片一致。
 pub fn is_frozen_std_module(id: &str, version: &str, source: &str) -> bool {
     version == STDLIB_VERSION
         && (matches!(id, "math" if source == MATH_SOURCE)
-            || matches!(id, "text" if source == TEXT_SOURCE))
+            || matches!(id, "text" if source == TEXT_SOURCE)
+            || matches!(id, "list" if source == LIST_SOURCE))
 }
 
 /// `std.math` 上具名未支持的 i64 公共族（abs/min/max）；其余未命中仍走
@@ -59,6 +76,14 @@ mod tests {
     fn frozen_inputs_match_repo_files_and_identity_is_stable() {
         let inputs = stdlib_inputs();
         assert_eq!(inputs.len(), 2);
+        let agg = stdlib_aggregates_inputs();
+        assert_eq!(agg.len(), 1);
+        assert_eq!(agg[0].id, "list");
+        assert!(agg.iter().all(|input| is_frozen_std_module(
+            &input.id,
+            &input.version,
+            &input.source
+        )));
         for input in &inputs {
             assert_eq!(input.package, "std");
             assert_eq!(input.version, "1.0.0");
@@ -73,6 +98,11 @@ mod tests {
             "math",
             "1.0.0",
             "pub fn square(x int) int { return x * x + 1 }"
+        ));
+        assert!(!is_frozen_std_module(
+            "list",
+            "1.0.0",
+            "pub fn sum(xs List<int>) int { return 1 }"
         ));
         assert!(!is_frozen_std_module("text", "9.9.9", TEXT_SOURCE));
     }

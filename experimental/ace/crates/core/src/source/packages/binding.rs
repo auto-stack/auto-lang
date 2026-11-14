@@ -255,6 +255,28 @@ pub fn bind_packages(
     caps: &[String],
     budget: FrontBudget,
 ) -> Result<BoundPackages, PackageDiagnostic> {
+    bind_packages_face(inputs, entry, caps, budget, false)
+}
+
+/// PLAN-946（T-02）：aggregates 域的包绑定（同一身份/预算/std 保留/装配
+/// 门与绑定走查；模块解析换 packages-aggregates 裁剪面——集合族最小语句
+/// 面 + `?T` 可选类型位。见 `parse_package_source_aggregates`）。
+pub fn bind_packages_aggregates(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+) -> Result<BoundPackages, PackageDiagnostic> {
+    bind_packages_face(inputs, entry, caps, budget, true)
+}
+
+fn bind_packages_face(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+    aggregates: bool,
+) -> Result<BoundPackages, PackageDiagnostic> {
     let zero = Span { start: 0, end: 0 };
     let mut units = BTreeMap::new();
     let mut total = 0usize;
@@ -303,15 +325,22 @@ pub fn bind_packages(
                 zero,
             ));
         }
-        let syntax = parse_package_source(&input.source, caps, budget).map_err(|mut ds| {
-            PackageDiagnostic {
-                module: key.clone(),
-                diagnostic: ds.remove(0),
-            }
+        let parse = if aggregates {
+            parse_package_source_aggregates
+        } else {
+            parse_package_source
+        };
+        let syntax = parse(&input.source, caps, budget).map_err(|mut ds| PackageDiagnostic {
+            module: key.clone(),
+            diagnostic: ds.remove(0),
         })?;
         units.insert(key, syntax);
     }
-    bind_package_syntax(inputs, entry, caps, budget, units)
+    if aggregates {
+        bind_package_syntax_aggregates(inputs, entry, caps, budget, units)
+    } else {
+        bind_package_syntax(inputs, entry, caps, budget, units)
+    }
 }
 
 /// 冷/恢复共用的绑定：源/语法/能力身份先重验，再绑名字。
@@ -323,7 +352,37 @@ pub fn bind_package_syntax(
     budget: FrontBudget,
     units: BTreeMap<String, PackageSyntax>,
 ) -> Result<BoundPackages, PackageDiagnostic> {
-    bind_package_syntax_inner(inputs, entry, caps, budget, units, BTreeMap::new(), None)
+    bind_package_syntax_inner(
+        inputs,
+        entry,
+        caps,
+        budget,
+        units,
+        BTreeMap::new(),
+        None,
+        false,
+    )
+}
+
+/// PLAN-946（T-02）：aggregates 域的恢复/共享绑定（units 已按
+/// packages-aggregates 裁剪解析；grammar-id 按 aggregates 裁剪核验）。
+pub fn bind_package_syntax_aggregates(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+    units: BTreeMap<String, PackageSyntax>,
+) -> Result<BoundPackages, PackageDiagnostic> {
+    bind_package_syntax_inner(
+        inputs,
+        entry,
+        caps,
+        budget,
+        units,
+        BTreeMap::new(),
+        None,
+        true,
+    )
 }
 
 /// PLAN-1043（T-04）：装配绑定入口（公共+所选实现+#in 求值）；冷/恢复共用。
@@ -336,7 +395,7 @@ pub fn bind_package_syntax_assembled(
     impls: BTreeMap<String, PackageImplSyntax>,
     ctx: &super::provider_sources::PackageAssemblyContext,
 ) -> Result<BoundPackages, PackageDiagnostic> {
-    bind_package_syntax_inner(inputs, entry, caps, budget, units, impls, Some(ctx))
+    bind_package_syntax_inner(inputs, entry, caps, budget, units, impls, Some(ctx), false)
 }
 
 /// 一个模块的已解析实现层（kind + 源 + 语法）。
@@ -346,6 +405,7 @@ pub struct PackageImplSyntax {
     pub syntax: PackageSyntax,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn bind_package_syntax_inner(
     inputs: &[PackageModuleInput],
     entry: &str,
@@ -354,6 +414,7 @@ fn bind_package_syntax_inner(
     mut units: BTreeMap<String, PackageSyntax>,
     impls: BTreeMap<String, PackageImplSyntax>,
     ctx: Option<&super::provider_sources::PackageAssemblyContext>,
+    aggregates: bool,
 ) -> Result<BoundPackages, PackageDiagnostic> {
     let zero = Span { start: 0, end: 0 };
     if !caps.iter().any(|c| c == PACKAGES_CAPABILITY)
@@ -369,9 +430,12 @@ fn bind_package_syntax_inner(
         ));
     }
     // PLAN-1043：IN 能力线用 packages-ct 裁剪（grammar-id 与 plain 分域）。
+    // PLAN-946（T-02）：aggregates 线用 packages-aggregates 裁剪（同理分域）。
     let in_face = caps.iter().any(|c| c == super::IN_CAPABILITY);
     let grammar = if in_face {
         super::packages_ct_grammar()
+    } else if aggregates {
+        super::packages_aggregates_grammar()
     } else {
         packages_grammar()
     }
@@ -817,6 +881,7 @@ fn bind_package_syntax_inner(
             depth: 0,
             set_counter: 0,
             tyvars: BTreeSet::new(),
+            aggregates,
         };
         let mut inits: Vec<String> = Vec::new();
         for item in &unit.program.items {
@@ -1673,6 +1738,9 @@ struct Walker<'a> {
     /// PLAN-963（V-G06）：当前正在改写的记录模板的类型参数名——只有这些裸
     /// ident 在模板成员里投影为 `TyVar` 并被允许通过绑定层。
     tyvars: BTreeSet<String>,
+    /// PLAN-946（T-02）：aggregates 面——集合族语句（for-in/is）、`?T` 可选
+    /// 类型位与 `List<T>` 接收原子按 962 域放行（plain/ct 面保持具名拒绝）。
+    aggregates: bool,
 }
 
 const WALK_WORK_BUDGET: usize = 1 << 22;
@@ -1782,6 +1850,12 @@ impl<'a> Walker<'a> {
                 }
                 Ok(())
             }
+            // PLAN-946（T-02）：aggregates 面按 962 域放行 `?T`（Option）类型
+            // 位；函数/Result!/Stream 类型仍属后续包（plain/ct 面具名拒）。
+            TypeRef::Optional(inner) if self.aggregates => {
+                self.walk_ann(inner)?;
+                Ok(())
+            }
             TypeRef::Optional(_)
             | TypeRef::ResultBang(_)
             | TypeRef::Stream(_)
@@ -1796,6 +1870,12 @@ impl<'a> Walker<'a> {
 
     /// 类型名解析：本模块类型 > 导入类型。
     fn type_name(&self, name: &Ident) -> Result<String, PackageDiagnostic> {
+        // PLAN-946（T-02）：aggregates 面的内建参数化名义类型（`List`/
+        // `Result`，PLAN-928 域）不是模块符号——保持原名交 resolver（其
+        // 域校验在后；plain/ct 面仍不可达，Generic 在 walk 层已具名拒）。
+        if self.aggregates && matches!(name.name.as_str(), "List" | "Result") {
+            return Ok(name.name.clone());
+        }
         if self.my_decls().types.contains_key(&name.name) {
             return Ok(type_symbol(self.pkg(), self.module(), &name.name));
         }
@@ -1994,6 +2074,42 @@ impl<'a> Walker<'a> {
                     continue;
                 }
                 Stmt::Break { .. } | Stmt::Continue { .. } => {}
+                // PLAN-946（T-02）：aggregates 面按 962 域放行 `is`/`for in`
+                // （臂负载/迭代变量是臂体/循环体的新局部； scrutinee/iter
+                // 按表达式走引用记录）。plain/ct 面保持 962 具名拒绝。
+                Stmt::IsMatch { arms, span, .. } if self.aggregates => {
+                    stack.push(Frame {
+                        stmts: rest,
+                        locals: next_locals,
+                    });
+                    for arm in arms.iter_mut() {
+                        let mut arm_locals = locals.clone();
+                        if let Some(b) = &arm.binding {
+                            arm_locals.insert(b.name.clone());
+                        }
+                        stack.push(Frame {
+                            stmts: arm.body.stmts.as_mut_slice(),
+                            locals: arm_locals,
+                        });
+                    }
+                    continue;
+                }
+                Stmt::ForIn {
+                    var, iter, body, ..
+                } if self.aggregates => {
+                    self.walk_expr(iter, &locals)?;
+                    stack.push(Frame {
+                        stmts: rest,
+                        locals: next_locals,
+                    });
+                    let mut loop_locals = locals;
+                    loop_locals.insert(var.name.clone());
+                    stack.push(Frame {
+                        stmts: body.stmts.as_mut_slice(),
+                        locals: loop_locals,
+                    });
+                    continue;
+                }
                 Stmt::IsMatch { span, .. }
                 | Stmt::ForIn { span, .. }
                 | Stmt::AggIsMatch { span, .. }
@@ -2182,6 +2298,12 @@ impl<'a> Walker<'a> {
                         // PLAN-1041: 平台保留名（io_write_some_slice 等）在包体里
                         // 原样透传给 resolver（其按 profile/能力绑定为平台内在
                         // 调用）；绑定层不改写符号。
+                    } else if self.aggregates
+                        && matches!(callee.name.as_str(), "Some" | "None" | "Ok" | "Err")
+                    {
+                        // PLAN-946（T-02）：内建变体构造（Option/Result 域，
+                        // PLAN-864/962）原样透传给 resolver；绑定层不改写符号
+                        //（plain/ct 面不可达——Generic/Optional 已在其 walk 层拒）。
                     } else {
                         return Err(fail(
                             self.key,
@@ -2283,6 +2405,16 @@ impl<'a> Walker<'a> {
                 "`.mut` arguments are outside the packages surface (PLAN-962)",
                 span,
             )),
+            // PLAN-946（T-02）：aggregates 面按 962 域放行 `List<T>.member`
+            // 接收原子（基名按符号 mangle，实参递归；plain/ct 面保持具名拒）。
+            ExprKind::GenericType { name, args } if self.aggregates => {
+                let mangled = self.type_name(name)?;
+                name.name = mangled;
+                for a in args.iter_mut() {
+                    self.walk_ann(a)?;
+                }
+                Ok(())
+            }
             ExprKind::GenericType { .. } => Err(fail(
                 self.key,
                 "source.module-surface",

@@ -272,6 +272,16 @@ pub fn packages_ct_grammar() -> Result<&'static CachedGrammar, String> {
     capability_grammar(&PACKAGES_CT_GRAMMAR, "packages-ct")
 }
 
+/// PLAN-946（T-02）：`packages-aggregates` 裁剪程序（packages-modules 全表面
+/// + 集合族最小语句面）。独立缓存槽：plain packages-modules/packages-ct
+/// 程序逐字节不变，grammar-id 自然隔离。
+static PACKAGES_AGGREGATES_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
+
+/// packages-aggregates 裁剪编译并缓存（进程内一次）。
+pub fn packages_aggregates_grammar() -> Result<&'static CachedGrammar, String> {
+    capability_grammar(&PACKAGES_AGGREGATES_GRAMMAR, "packages-aggregates")
+}
+
 fn capability_grammar(
     cell: &'static OnceLock<OnceLock<CachedGrammar>>,
     slug: &str,
@@ -315,7 +325,7 @@ pub(crate) fn parse_packages_front(
     src: &str,
     budget: FrontBudget,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
-    parse_packages_with(false, src, budget)
+    parse_packages_with(PackagesFace::Modules, src, budget)
 }
 
 /// PLAN-1043（T-03）：packages-ct 前门（`ac.source.cte.in/v1` 能力线；
@@ -324,7 +334,41 @@ pub(crate) fn parse_packages_front_ct(
     src: &str,
     budget: FrontBudget,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
-    parse_packages_with(true, src, budget)
+    parse_packages_with(PackagesFace::Ct, src, budget)
+}
+
+/// PLAN-946（T-02）：packages-aggregates 前门（PLAN-962 `av.aggregates/1`
+/// 准入的 aggregates packages 线；packages-modules 全表面 + 集合族最小
+/// 语句面 for-in/is + `?T` 可选类型位 + `List<T>.member` 接收原子）。
+pub(crate) fn parse_packages_front_aggregates(
+    src: &str,
+    budget: FrontBudget,
+) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
+    parse_packages_with(PackagesFace::Aggregates, src, budget)
+}
+
+/// 包面前门的三种裁剪面（旧布尔 `ct_face` 的结构化形态）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PackagesFace {
+    /// packages-modules（旧 `false`）。
+    Modules,
+    /// packages-ct（PLAN-1043；旧 `true`）。
+    Ct,
+    /// packages-aggregates（PLAN-946；ct 专属规则在本面裁剪缺席→不可达）。
+    Aggregates,
+}
+
+impl PackagesFace {
+    fn grammar(&self) -> Result<&'static CachedGrammar, String> {
+        match self {
+            PackagesFace::Modules => packages_grammar(),
+            PackagesFace::Ct => packages_ct_grammar(),
+            PackagesFace::Aggregates => packages_aggregates_grammar(),
+        }
+    }
+    fn ct_face(&self) -> bool {
+        matches!(self, PackagesFace::Ct)
+    }
 }
 
 fn infra_err(e: String) -> Vec<Diagnostic> {
@@ -337,19 +381,14 @@ fn infra_err(e: String) -> Vec<Diagnostic> {
 }
 
 fn parse_packages_with(
-    ct_face: bool,
+    face: PackagesFace,
     src: &str,
     budget: FrontBudget,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
     use crate::atom_text::{Span, Stage};
     let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
     let zero = Span { start: 0, end: 0 };
-    let cached = if ct_face {
-        packages_ct_grammar()
-    } else {
-        packages_grammar()
-    }
-    .map_err(infra_err)?;
+    let cached = face.grammar().map_err(infra_err)?;
     crate::source::parser::note_tokenize(Span {
         start: 0,
         end: src.len(),
@@ -371,7 +410,7 @@ fn parse_packages_with(
         ),
         other => err("source.infra", format!("parse: {other}"), zero),
     })?;
-    project_packages_front(src, vec![parsed.tree], Some(parsed.tokens), ct_face)
+    project_packages_front(src, vec![parsed.tree], Some(parsed.tokens), face)
 }
 fn parse_module_syntax_range(
     src: &str,
@@ -577,17 +616,15 @@ pub(crate) fn project_packages_front(
     src: &str,
     trees: Vec<CstTree>,
     tokens: Option<Vec<ace_syntax_runtime::lexer::Token>>,
-    ct_face: bool,
+    face: PackagesFace,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
     use crate::atom_text::{Span, Stage};
     use crate::source::packages::{PackageImport, PackageSyntax};
     let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
-    let cached = if ct_face {
-        packages_ct_grammar()
-    } else {
-        packages_grammar()
-    }
-    .map_err(|e| err("source.infra", e, Span { start: 0, end: 0 }))?;
+    let ct_face = face.ct_face();
+    let cached = face
+        .grammar()
+        .map_err(|e| err("source.infra", e, Span { start: 0, end: 0 }))?;
     let pages = std::rc::Rc::new(PageStore::new());
     let snap = Snapshot::from_text(&pages, src);
     let rule = |name: &str| {
@@ -662,12 +699,19 @@ pub(crate) fn project_packages_front(
     for tree in &trees {
         // PLAN-963（V-G06）：模块级记录模板推迟到扁平程序后统单态化——跨模块
         // 使用点必须命中同一实例符号（包/模块身份已进符号）。
+        // PLAN-946（T-02）：aggregates 面按 Aggregates 域投影（集合族语句/
+        // 表达式语句/`?T` 形状按 962 域投影）；plain/ct 面保持 TextRecord。
+        let proj_profile = if matches!(face, PackagesFace::Aggregates) {
+            SourceProfile::Aggregates
+        } else {
+            SourceProfile::TextRecord
+        };
         let program = project::project_program_deferring_templates(
             &cached.program,
             &cached.kinds,
             tree,
             &snap,
-            SourceProfile::TextRecord,
+            proj_profile,
         )?;
         items.extend(program.items);
         // PLAN-1043（T-03）：#in 结构投影器（共享同一声明子树投影引擎）。

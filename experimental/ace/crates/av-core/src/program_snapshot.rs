@@ -55,6 +55,13 @@ pub struct ProgramSnapshot {
     cells: std::cell::RefCell<Vec<crate::contract::Value>>,
     init_slots: Vec<u32>,
     initialized: std::cell::Cell<bool>,
+    /// PLAN-946 (T-02): link-computed — EVERY linked unit is a
+    /// collections-family MIR profile (`av.collections/1`/`av.closures/1`).
+    /// Drives the unit view's shared-param answer so a List/Variant
+    /// argument crossing a linked unit boundary KEEPS the caller's
+    /// ownership (Rc alias) exactly as the single-module collections
+    /// execution does; a mixed/text-record program keeps move-in.
+    collections_family: bool,
 }
 
 impl ProgramSnapshot {
@@ -312,6 +319,10 @@ impl ProgramSnapshot {
         let loaded =
             crate::loaded_program::ResidentProgram::prepare(&code, previous.map(|p| &p.loaded))
                 .map_err(|e| format!("loaded-program preparation: {e}"))?;
+        let collections_family = code.iter().all(|c| {
+            let m = c.unit().module();
+            m.is_collections_profile() || m.is_closures_profile()
+        });
         Ok(ProgramSnapshot {
             revision,
             entry: entry.to_string(),
@@ -324,6 +335,7 @@ impl ProgramSnapshot {
             cells: std::cell::RefCell::new(Vec::new()),
             init_slots: Vec::new(),
             initialized: std::cell::Cell::new(false),
+            collections_family,
         })
     }
 
@@ -345,6 +357,7 @@ impl ProgramSnapshot {
             cells: std::cell::RefCell::new(Vec::new()),
             init_slots: Vec::new(),
             initialized: std::cell::Cell::new(false),
+            collections_family: false,
         }
     }
 
@@ -691,6 +704,16 @@ pub struct UnitView<'a> {
 }
 
 impl crate::av::ModuleView for UnitView<'_> {
+    /// PLAN-946 (T-02): the linked-program answer for the collections
+    /// family — List/Variant params share their cell across unit calls
+    /// (see `ProgramSnapshot::collections_family`). Both flavors answer
+    /// the combined flag: the only executor consumer ORs them.
+    fn is_collections_profile(&self) -> bool {
+        self.snap.collections_family
+    }
+    fn is_closures_profile(&self) -> bool {
+        self.snap.collections_family
+    }
     fn fn_at(&self, idx: u32) -> Option<&crate::mir::MirFunction> {
         self.snap.unit_function(idx as usize)
     }

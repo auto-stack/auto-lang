@@ -217,6 +217,32 @@ pub fn parse_package_source(
     capabilities: &[String],
     budget: FrontBudget,
 ) -> Result<PackageSyntax, Vec<Diagnostic>> {
+    if let Err(ds) = require_packages_capabilities(capabilities) {
+        return Err(ds);
+    }
+    if capabilities.iter().any(|c| c == IN_CAPABILITY) {
+        super::cst::parse_packages_front_ct(src, budget)
+    } else {
+        super::cst::parse_packages_front(src, budget)
+    }
+}
+
+/// PLAN-946（T-02）：aggregates 域的包模块解析入口（packages-aggregates
+/// 裁剪面 = packages-modules 全表面 + 集合族最小语句面 for-in/is + `?T`
+/// 可选类型位 + `List<T>.member` 接收原子）。同一 packages 能力准入；由
+/// aggregates packages 前门（PLAN-962 `av.aggregates/1` 准入线）调用。
+pub fn parse_package_source_aggregates(
+    src: &str,
+    capabilities: &[String],
+    budget: FrontBudget,
+) -> Result<PackageSyntax, Vec<Diagnostic>> {
+    if let Err(ds) = require_packages_capabilities(capabilities) {
+        return Err(ds);
+    }
+    super::cst::parse_packages_front_aggregates(src, budget)
+}
+
+fn require_packages_capabilities(capabilities: &[String]) -> Result<(), Vec<Diagnostic>> {
     let reason = if !capabilities.iter().any(|c| c == PACKAGES_CAPABILITY) {
         Some("package modules require explicit ac.source.modules.packages/v1")
     } else if capabilities
@@ -227,18 +253,14 @@ pub fn parse_package_source(
     } else {
         None
     };
-    if let Some(reason) = reason {
-        return Err(vec![Diagnostic::new(
+    match reason {
+        Some(reason) => Err(vec![Diagnostic::new(
             Stage::Text,
             "source.module-capability",
             reason,
             Span { start: 0, end: 0 },
-        )]);
-    }
-    if capabilities.iter().any(|c| c == IN_CAPABILITY) {
-        super::cst::parse_packages_front_ct(src, budget)
-    } else {
-        super::cst::parse_packages_front(src, budget)
+        )]),
+        None => Ok(()),
     }
 }
 
@@ -251,6 +273,12 @@ pub fn packages_grammar() -> Result<&'static super::cst::CachedGrammar, String> 
 /// PLAN-1043（T-03）：packages-ct 裁剪 grammar 身份（IN 能力线的存储准入）。
 pub fn packages_ct_grammar() -> Result<&'static super::cst::CachedGrammar, String> {
     super::cst::packages_ct_grammar()
+}
+
+/// PLAN-946（T-02）：packages-aggregates 裁剪 grammar 身份（aggregates
+/// packages 线的存储准入；与 plain/ct 存档互不互认）。
+pub fn packages_aggregates_grammar() -> Result<&'static super::cst::CachedGrammar, String> {
+    super::cst::packages_aggregates_grammar()
 }
 
 /// Re-project content-verified stored CST declarations (no scanning/parsing;
@@ -278,7 +306,7 @@ pub fn project_stored_package(
             Span { start: 0, end: 0 },
         )]);
     }
-    super::cst::project_packages_front(src, trees, None, false)
+    super::cst::project_packages_front(src, trees, None, super::cst::PackagesFace::Modules)
 }
 
 /// PLAN-1043（T-03）：packages-ct 存档 CST 的再投影（grammar_id 对
@@ -306,15 +334,44 @@ pub fn project_stored_package_ct(
             Span { start: 0, end: 0 },
         )]);
     }
-    super::cst::project_packages_front(src, trees, None, true)
+    super::cst::project_packages_front(src, trees, None, super::cst::PackagesFace::Ct)
+}
+
+/// PLAN-946（T-02）：packages-aggregates 存档 CST 的再投影（grammar_id 对
+/// packages-aggregates 裁剪核验；与 plain/ct 存档互不互认）。
+pub fn project_stored_package_aggregates(
+    src: &str,
+    trees: Vec<ace_syntax_runtime::cst::CstTree>,
+    grammar_id: &str,
+    budget: FrontBudget,
+) -> Result<PackageSyntax, Vec<Diagnostic>> {
+    let cached = packages_aggregates_grammar().map_err(|e| {
+        vec![Diagnostic::new(
+            Stage::Text,
+            "source.infra",
+            e,
+            Span { start: 0, end: 0 },
+        )]
+    })?;
+    let actual = format!("{}", cached.program().identity.grammar_id.0);
+    if actual != grammar_id || src.len() > budget.work_bytes {
+        return Err(vec![Diagnostic::new(
+            Stage::Text,
+            "source.module-stale",
+            "stored grammar/source budget mismatch",
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    super::cst::project_packages_front(src, trees, None, super::cst::PackagesFace::Aggregates)
 }
 
 mod binding;
 pub use binding::{
-    bind_package_syntax, bind_package_syntax_assembled, bind_packages, bind_packages_assembled,
-    fn_symbol, global_symbol, init_symbol, type_symbol, unit_key, BoundPackages, GlobalDecl,
-    PackageDiagnostic, PackageImplLayer, PackageImplSyntax, PackageModuleInput, PackageSegment,
-    GLOBAL_GET_PREFIX, GLOBAL_SET_PREFIX,
+    bind_package_syntax, bind_package_syntax_aggregates, bind_package_syntax_assembled,
+    bind_packages, bind_packages_aggregates, bind_packages_assembled, fn_symbol, global_symbol,
+    init_symbol, type_symbol, unit_key, BoundPackages, GlobalDecl, PackageDiagnostic,
+    PackageImplLayer, PackageImplSyntax, PackageModuleInput, PackageSegment, GLOBAL_GET_PREFIX,
+    GLOBAL_SET_PREFIX,
 };
 mod provider_sources;
 pub use provider_sources::{
@@ -324,8 +381,8 @@ pub use provider_sources::{
 };
 mod stdlib;
 pub use stdlib::{
-    is_frozen_std_module, stdlib_inputs, unwired_reason, STDLIB_PACKAGE, STDLIB_RESERVED,
-    STDLIB_UNWIRED, STDLIB_VERSION,
+    is_frozen_std_module, stdlib_aggregates_inputs, stdlib_inputs, unwired_reason, STDLIB_PACKAGE,
+    STDLIB_RESERVED, STDLIB_UNWIRED, STDLIB_VERSION,
 };
 
 #[cfg(test)]

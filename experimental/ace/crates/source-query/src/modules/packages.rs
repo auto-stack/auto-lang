@@ -16,7 +16,8 @@ use ace_core::source::packages::{
     bind_packages, BoundPackages, PackageDiagnostic, PackageModuleInput,
 };
 use ace_core::source::{
-    emit_resolved_packages_parts, resolve_with, typecheck_with, CompiledSource, SourceProfile,
+    emit_resolved_packages_parts, emit_resolved_packages_parts_profile, resolve_with,
+    typecheck_with, CompiledSource, SourceProfile,
 };
 
 pub struct PackageProduct {
@@ -26,7 +27,7 @@ pub struct PackageProduct {
 
 /// PLAN-945：冻结 ACE 公共标准库包输入（std.math/std.text），由持有其
 /// 身份的前门（`ace_core::source::packages`）再导出。
-pub use ace_core::source::packages::stdlib_inputs;
+pub use ace_core::source::packages::{stdlib_aggregates_inputs, stdlib_inputs};
 
 fn locate_all(bound: &BoundPackages, ds: Vec<Diagnostic>) -> Vec<PackageDiagnostic> {
     ds.into_iter().map(|d| bound.locate(d)).collect()
@@ -42,6 +43,24 @@ pub fn compile_package_product(
     compile_bound_packages(bound, caps)
 }
 
+/// PLAN-946：aggregates 域的 packages 前门。与 [`compile_package_product`]
+/// 同一 resolver/typecheck/emitter 管线，仅 profile 换为 PLAN-962 的
+/// `SourceProfile::Aggregates`、HIR 验证走 closures-superset 家族入口
+/// （`verify_closures`，与 `compile_aggregates_source` 一致）。承载 List
+/// 参数/返回的公共函数（如 `std.list`）；基面 collections/text-record
+/// packages 路径保持逐字节不动（`source.list-value-context` 拒绝仍是
+/// 其冻结面，见 PLAN-946 T-01 冻结表）。
+pub fn compile_package_product_aggregates(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+) -> Result<PackageProduct, Vec<PackageDiagnostic>> {
+    let bound = ace_core::source::packages::bind_packages_aggregates(inputs, entry, caps, budget)
+        .map_err(|e| vec![e])?;
+    compile_bound_packages_aggregates(bound, caps)
+}
+
 /// Cold/retained shared compile over an already-bound package graph. The
 /// caller retains the graph's identity/visibility admission.
 pub fn compile_bound_packages(
@@ -55,6 +74,35 @@ pub fn compile_bound_packages(
         .map_err(|ds| locate_all(&bound, ds))?;
     let checked =
         ace_core::verify::verify_text_record(parts.bundle).map_err(|ds| locate_all(&bound, ds))?;
+    Ok(PackageProduct {
+        compiled: CompiledSource {
+            profile: parts.profile,
+            input_hash: parts.input_hash,
+            atom_text: parts.atom_text,
+            checked,
+        },
+        bound,
+    })
+}
+
+/// PLAN-946：已绑定包图的 aggregates 编译（镜像 [`compile_bound_packages`]，
+/// 见 [`compile_package_product_aggregates`]）。
+pub fn compile_bound_packages_aggregates(
+    bound: BoundPackages,
+    caps: &[String],
+) -> Result<PackageProduct, Vec<PackageDiagnostic>> {
+    let resolved = resolve_with(&bound.program, caps, SourceProfile::Aggregates)
+        .map_err(|ds| locate_all(&bound, ds))?;
+    typecheck_with(&resolved, SourceProfile::Aggregates).map_err(|ds| locate_all(&bound, ds))?;
+    let parts = emit_resolved_packages_parts_profile(
+        &resolved,
+        &bound,
+        "packages",
+        SourceProfile::Aggregates,
+    )
+    .map_err(|ds| locate_all(&bound, ds))?;
+    let checked =
+        ace_core::verify::verify_closures(parts.bundle).map_err(|ds| locate_all(&bound, ds))?;
     Ok(PackageProduct {
         compiled: CompiledSource {
             profile: parts.profile,

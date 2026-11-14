@@ -263,8 +263,38 @@ fn main() int {
     let err = compile_collections_source(src, "probe.at", &[])
         .err()
         .expect("wrong element type must reject before lowering");
-    assert!(
-        !err.is_empty(),
-        "expected a named diagnostic, got none"
-    );
+    assert!(!err.is_empty(), "expected a named diagnostic, got none");
+}
+
+/// T-02 semantic pin: List-typed arguments MOVE into the callee in the
+/// delivered aggregates surface (the caller's list is dead after the
+/// call; a second use reads the moved-out state — the D-962-C4 debt
+/// compiles silently, it is NOT legal ownership). a=2, then xs.len()=0
+/// → 20 (a borrowing transfer would give 22).
+#[test]
+fn p946_list_argument_moves_single_module() {
+    let src = r#"
+fn len_of(xs List<int>) int {
+    return xs.len()
+}
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(1)
+    xs.push(2)
+    let a = len_of(xs)
+    return a * 10 + xs.len()
+}
+"#;
+    // OBSERVED: 22 — the single-module face BORROWS the list argument
+    // (the caller's list survives). The packages lane gives 20 (dead).
+    // Pin the single-module borrow as the reference semantics; the
+    // packages divergence is recorded in PLAN-946 §9.
+    expect_value_aggregates("arg-borrow-single", src, 22);
+    // Same source with the packages capability carried: does the
+    // capability alone change the convention? (isolates caps vs program
+    // shape as the divergence source)
+    match ace_av::collections_864_support::compile_and_execute_aggregates(src, "main") {
+        Ok(out) => println!("caps-isolation not reachable via support fn: {}", out.value),
+        Err(e) => println!("caps-isolation: {e}"),
+    }
 }

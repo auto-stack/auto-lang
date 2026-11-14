@@ -23,8 +23,6 @@ mod av_closures_semantics;
 
 #[path = "cases/aggregates_t01_probe.rs"]
 mod aggregates_t01_probe;
-#[path = "cases/p946_t01_probe.rs"]
-mod p946_t01_probe;
 #[path = "cases/av_closures_source.rs"]
 mod av_closures_source;
 #[path = "cases/av_collections.rs"]
@@ -165,10 +163,14 @@ mod function_reclamation;
 mod host_console;
 #[path = "cases/mir_tier.rs"]
 mod mir_tier;
+#[path = "cases/p946_t01_probe.rs"]
+mod p946_t01_probe;
 #[path = "cases/resource_915.rs"]
 mod resource_915;
 #[path = "cases/resources_tier.rs"]
 mod resources_tier;
+#[path = "cases/stdlib_list_946.rs"]
+mod stdlib_list_946;
 #[path = "cases/vertical.rs"]
 mod vertical;
 
