@@ -1302,10 +1302,7 @@ fn ty_name_t(
     }
 }
 
-fn variant_atom_id(
-    index: usize,
-    variants: &[crate::source::resolve::ResolvedVariant],
-) -> String {
+fn variant_atom_id(index: usize, variants: &[crate::source::resolve::ResolvedVariant]) -> String {
     let name = &variants[index].name;
     if variants[..index].iter().any(|v| v.name == *name) {
         format!("t_variant_{}_{}", name, index)
@@ -2053,17 +2050,20 @@ impl PlanCtx<'_> {
                 // planning). PLAN-864: on the collections surface it is the
                 // unit-effect statement — the value is planned and emitted
                 // as an `eval` statement (unit result, no slot).
-                RStmt::ExprStmt { value, span }
-                    if value.vt == VT::Unit
-                        || matches!(value.kind, RExprKind::ListRemove { .. }) =>
-                {
+                // PLAN-965 (F-965-R1-01): a non-unit call statement in a
+                // non-tail position is a CALL FOR EFFECT — it must still be
+                // evaluated. Silently dropping it lost the callee's language
+                // error (`try { boom() }` completed normally). Script bodies
+                // keep the `source.entry-tail` rejection for discarded values;
+                // declared functions evaluate and discard, as `ListRemove`
+                // already did.
+                RStmt::ExprStmt { value, span } => {
                     let v = self.plan_expr(plan, f, value);
                     plan.blocks[home].stmts.push(SNode {
                         kind: SKind::Eval { value: v },
                         span: *span,
                     });
                 }
-                RStmt::ExprStmt { .. } => {}
                 RStmt::Break { target, span } => {
                     let t = self.phantom_target(plan, home, *target, *span);
                     plan.blocks[home].stmts.push(SNode {

@@ -1,0 +1,17 @@
+// PLAN-965 F-965-R1-03: the early-break close of a suspended generator runs
+// its `finally`; a language `fail` there must surface (drain already did).
+fn guarded() ~Iter<int> {
+    try {
+        yield 10
+    } finally {
+        fail("closed965")
+    }
+}
+fn main() int {
+    var part = 0
+    for x in guarded() {
+        part = part + x
+        if x == 10 { break }
+    }
+    return part
+}

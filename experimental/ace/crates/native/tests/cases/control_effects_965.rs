@@ -131,12 +131,11 @@ fn main() int {
 #[cfg(windows)]
 fn mn_965_generator_sum_and_close_cleanup() {
     // Native's source ABI carries scalars and owned records only (a container
-    // parameter is `mn.unsupported`), so this leg observes generator values —
-    // drain, early `break`, and the suspended-frame cleanup that must not
-    // corrupt them. The close EFFECT of the same `finally` is observed by
-    // `mn_965_generator_close_fail_on_break` below (AV-only observation via a
-    // `List` handle lives in `ace-av`'s V-03), and borrowed generator params
-    // are rejected at the source by `source.generator-borrow-param`.
+    // parameter is `mn.unsupported`), so this leg observes generator VALUES —
+    // drain and early `break` must not corrupt them. The close EFFECT of a
+    // `finally` is observed through the language-error channel by
+    // `mn_965_generator_close_fail_on_break` / `..._on_drain` below; the
+    // AV-only `List`-handle observation lives in `ace-av`'s V-03.
     let src = "\
 fn counter() ~Iter<int> {
     yield 1
@@ -170,6 +169,51 @@ fn main() int {
 }";
     // 6 + 30 + 36 = 72
     assert_eq!(run_ag_native(src, "v03-gen-close"), Outcome::Return(72));
+}
+
+#[test]
+#[cfg(windows)]
+fn mn_965_generator_close_fail_on_break() {
+    // F-965-R1-03 (native leg): the early-`break` close of a suspended
+    // generator runs its `finally`; a language `fail` there must surface as the
+    // language-error trap instead of vanishing.
+    let src = "\
+fn guarded() ~Iter<int> {
+    try {
+        yield 10
+    } finally {
+        fail(\"closed965\")
+    }
+}
+fn main() int {
+    var part = 0
+    for x in guarded() {
+        part = part + x
+        if x == 10 { break }
+    }
+    return part
+}";
+    assert_eq!(run_ag_native(src, "v03-gen-close-break"), Outcome::Trap(9));
+}
+
+#[test]
+#[cfg(windows)]
+fn mn_965_call_statement_is_evaluated() {
+    // F-965-R1-01 (native leg): a non-tail call statement is a call for
+    // effect; the old adapter dropped it, so `bump` never ran.
+    let src = "\
+type Ctr { hits int }
+fn bump(mut c Ctr) int {
+    c.hits = c.hits + 1
+    7
+}
+fn main() int {
+    var c = Ctr(0)
+    bump(c.mut)
+    if c.hits != 1 { return 11 }
+    return 42
+}";
+    assert_eq!(run_ag_native(src, "f01-stmt-call"), Outcome::Return(42));
 }
 
 #[test]

@@ -4906,6 +4906,7 @@ struct FnResolver<'a, 's> {
     ct_enabled: bool,
     /// PLAN-936（T-04）：当前绑定位置是否在 `#{ ... }` 子树内（嵌套深度）。
     ct_depth: u32,
+
     /// PLAN-782: the combination profile keeps `.move` wrappers as
     /// first-class argument values (text profile unwraps them into
     /// CallBinding.moved markers instead).
@@ -5240,7 +5241,7 @@ fn resolve_fn_reuse<'a, 's>(
         params.push(vt);
         param_modes.push(p.mode == ast::ParamMode::Mut);
     }
-    let mut body = r.resolve_body(&f.body);
+    let mut body = r.resolve_body(&f.body, true);
     r.prepend_ctrl_inits(&mut body, f.span);
     if let Some(out) = gen_try_finals {
         *out = r.gen_try_finals;
@@ -5896,7 +5897,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                 (b, result)
             }
             ast::ClosureBody::Block(block) => {
-                let mut resolved = self.resolve_body(block);
+                let mut resolved = self.resolve_body(block, true);
                 if inferred_result == VT::Unit {
                     resolved.stmts.push(RStmt::Return {
                         value: ResolvedExpr {
@@ -6145,6 +6146,18 @@ impl<'a, 's> FnResolver<'a, 's> {
 
     fn has_outer_ctrl_barrier(&self) -> bool {
         self.ctrl_state.is_some() && !self.ctrl_frames.is_empty()
+    }
+
+    /// PLAN-965 (V-DETAIL-02 / F-965-R1-07): a `break`/`continue` needs a real
+    /// enclosing user loop. A synthetic try/catch/finally or for-in frame does
+    /// NOT count — without this check a stray jump compiled and silently
+    /// continued (the adapter registered a phantom loop, defeating the
+    /// verifier's `verify.loop-target-scope`).
+    fn has_enclosing_user_loop(&self) -> bool {
+        self.ctrl_frames
+            .iter()
+            .any(|f| matches!(f, CtrlFrame::Loop { .. } | CtrlFrame::ForIter { .. }))
+            || !self.loop_stack.is_empty()
     }
 
     fn close_for_iter_stmt(
@@ -7282,7 +7295,7 @@ impl<'a, 's> FnResolver<'a, 's> {
 
             let (mut ablock, expr_val) = match &arm.body {
                 ast::AggArmBody::Block(b) => {
-                    let mut rb = self.resolve_body(b);
+                    let mut rb = self.resolve_body(b, true);
                     let mut val = None;
                     if is_expr_mode {
                         if let Some(RStmt::ExprStmt { value, .. }) = rb.stmts.last().cloned() {
@@ -7532,6 +7545,7 @@ impl<'a, 's> FnResolver<'a, 's> {
         catch: Option<&ast::CatchClause>,
         finally: Option<&ast::Block>,
         span: Span,
+        has_following: bool,
     ) -> Vec<RStmt> {
         let mut out = Vec::new();
         if !self.profile.is_aggregates() {
@@ -7566,7 +7580,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                 _ => false,
             }
         }
-        let mut r_try = self.resolve_body(body);
+        let mut r_try = self.resolve_body(body, false);
         let try_diverges = rstmts_diverge(&r_try.stmts);
         if !try_diverges {
             r_try.stmts.push(RStmt::Break {
@@ -7670,7 +7684,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                 try_loop: catch_loop,
                 has_catch: false,
             });
-            let mut r_catch = self.resolve_body(&cc.body);
+            let mut r_catch = self.resolve_body(&cc.body, false);
             catch_diverges = rstmts_diverge(&r_catch.stmts);
             if !catch_diverges {
                 r_catch.stmts.push(RStmt::Break {
@@ -7819,7 +7833,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                 try_loop: fin_loop,
                 has_catch: false,
             });
-            let mut r_fin = self.resolve_body(fb);
+            let mut r_fin = self.resolve_body(fb, false);
             if !rstmts_diverge(&r_fin.stmts) {
                 r_fin.stmts.push(RStmt::Break {
                     target: Some(fin_loop),
@@ -7925,7 +7939,12 @@ impl<'a, 's> FnResolver<'a, 's> {
         }
 
         self.emit_post_frame_dispatch(span, &mut out);
-        if self.ctrl_frames.is_empty() && try_diverges && catch_diverges {
+        // PLAN-965 (F-965-R1-05): a try/catch whose BOTH arms diverge leaves no
+        // reachable code after it, but the dispatch's structural fall-through
+        // still needs a terminator. Inject the dummy only when this try really
+        // ends the block — injecting it unconditionally made every following
+        // statement an unreachable block (`verify.block-structure`).
+        if self.ctrl_frames.is_empty() && try_diverges && catch_diverges && !has_following {
             let dummy = if self.fn_result == VT::Unit {
                 ResolvedExpr {
                     span,
@@ -8004,7 +8023,7 @@ impl<'a, 's> FnResolver<'a, 's> {
             .names
             .insert(var.name.clone(), elem_l);
         self.declared_names.insert(var.name.clone());
-        let mut b = self.resolve_body(body);
+        let mut b = self.resolve_body(body, false);
         self.scopes.pop();
         self.ctrl_frames.pop();
         self.loop_stack.pop();
@@ -8811,7 +8830,7 @@ impl<'a, 's> FnResolver<'a, 's> {
     /// duration of the body. Statement order — and therefore diagnostic
     /// order, loop-id registration order and shadowing — is identical to
     /// the previous recursive walk.
-    fn resolve_body(&mut self, root: &ast::Block) -> RBlock {
+    fn resolve_body(&mut self, root: &ast::Block, value_context: bool) -> RBlock {
         struct RFrame<'a> {
             src: &'a ast::Block,
             idx: usize,
@@ -8984,8 +9003,14 @@ impl<'a, 's> FnResolver<'a, 's> {
                     span,
                 } => {
                     if self.profile.is_aggregates() {
-                        let stmts =
-                            self.resolve_try_stmt(body, catch.as_ref(), finally.as_ref(), *span);
+                        let has_following = stack.last().is_some_and(|f| f.idx < f.src.stmts.len());
+                        let stmts = self.resolve_try_stmt(
+                            body,
+                            catch.as_ref(),
+                            finally.as_ref(),
+                            *span,
+                            has_following,
+                        );
                         stack.last_mut().expect("resolve frame").stmts.extend(stmts);
                     } else {
                         self.bind_err(
@@ -9071,7 +9096,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                         .unwrap()
                         .names
                         .insert(bind.name.clone(), xl);
-                    let mut b = self.resolve_body(body);
+                    let mut b = self.resolve_body(body, false);
                     self.scopes.pop();
                     stack
                         .last_mut()
@@ -9997,8 +10022,32 @@ impl<'a, 's> FnResolver<'a, 's> {
                             RExprKind::CallFn { fn_index, .. }
                                 if self.iter_info.values().any(|info| info.3 == *fn_index)
                         );
+                    // A function body's ROOT tail expression IS its result
+                    // (`fn pick() ?int { ... May.val(x) }`); it is rewritten
+                    // to a Return after resolution. Every other non-unit
+                    // expression statement is evaluated for effect and its
+                    // value bound to a discarded temp — PLAN-965
+                    // (F-965-R1-01): the old silent drop lost calls (and a
+                    // callee's language error) entirely.
+                    let is_root_tail = {
+                        let frame = stack.last().expect("resolve frame");
+                        value_context
+                            && matches!(frame.cont, RCont::FnBody)
+                            && frame.idx == frame.src.stmts.len()
+                    };
                     let stmt = if is_iter_close {
                         let local = self.agg_temp("it_close", VT::I32, false, *span);
+                        RStmt::Let {
+                            local,
+                            value,
+                            span: *span,
+                        }
+                    } else if self.profile.is_aggregates()
+                        && !is_root_tail
+                        && value.vt != VT::Unit
+                        && !is_console_effect(&value)
+                    {
+                        let local = self.agg_temp("ev", value.vt, false, *span);
                         RStmt::Let {
                             local,
                             value,
@@ -10115,6 +10164,14 @@ impl<'a, 's> FnResolver<'a, 's> {
                 }
                 Stmt::Break { span } => {
                     if self.profile.is_aggregates() {
+                        if !self.has_enclosing_user_loop() {
+                            self.bind_err(
+                                "source.break-outside-loop",
+                                "`break` requires an enclosing loop".to_string(),
+                                *span,
+                            );
+                            continue;
+                        }
                         let mut stmts = Vec::new();
                         self.emit_break_or_continue_to_out(true, *span, &mut stmts);
                         stack.last_mut().expect("resolve frame").stmts.extend(stmts);
@@ -10132,6 +10189,14 @@ impl<'a, 's> FnResolver<'a, 's> {
                 }
                 Stmt::Continue { span } => {
                     if self.profile.is_aggregates() {
+                        if !self.has_enclosing_user_loop() {
+                            self.bind_err(
+                                "source.continue-outside-loop",
+                                "`continue` requires an enclosing loop".to_string(),
+                                *span,
+                            );
+                            continue;
+                        }
                         let mut stmts = Vec::new();
                         self.emit_break_or_continue_to_out(false, *span, &mut stmts);
                         stack.last_mut().expect("resolve frame").stmts.extend(stmts);
@@ -10232,7 +10297,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                             }
                             (None, _) => None,
                         };
-                        let body = self.resolve_body(&arm.body);
+                        let body = self.resolve_body(&arm.body, false);
                         if bound.is_some() {
                             self.scopes.pop();
                         }
@@ -10391,7 +10456,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                         if self.profile.is_aggregates() {
                             self.ctrl_frames.push(CtrlFrame::Loop { target });
                         }
-                        let mut b = self.resolve_body(body);
+                        let mut b = self.resolve_body(body, false);
                         if self.profile.is_aggregates() {
                             self.ctrl_frames.pop();
                         }
@@ -10580,7 +10645,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                             },
                         );
                         self.declared_names.insert(var.name.clone());
-                        let b = self.resolve_body(body);
+                        let b = self.resolve_body(body, false);
                         self.scopes.pop();
                         b
                     } else {
@@ -10595,7 +10660,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                             .names
                             .insert(var.name.clone(), blref);
                         self.declared_names.insert(var.name.clone());
-                        let mut b = self.resolve_body(body);
+                        let mut b = self.resolve_body(body, false);
                         self.scopes.pop();
                         let get = ResolvedExpr {
                             span: iter.span,

@@ -339,11 +339,13 @@ fn coll_charge(units: i64, why: &str) -> A2xResult<()> {
     })
 }
 
-/// Cooperative cancellation point (loop back-edges; 1 WU each).
+/// Language-error exit (`fail` / uncaught `.?`): the generated target carries
+/// the error CLASS only — the message/span channel does not cross A2X.
 pub fn a2x_coll_fail<T>() -> A2xResult<T> {
     Err(AutoTrap::LangError)
 }
 
+/// Cooperative cancellation point (loop back-edges; 1 WU each).
 pub fn a2x_coll_poll() -> A2xResult<()> {
     coll_state();
     coll_with(|s| {

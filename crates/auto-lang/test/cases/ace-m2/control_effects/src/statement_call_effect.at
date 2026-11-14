@@ -1,0 +1,14 @@
+// PLAN-965 F-965-R1-01: a non-tail call statement IS evaluated (call for
+// effect). The old adapter silently dropped non-unit expression statements, so
+// `bump` never ran and `hits` stayed 0.
+type Ctr { hits int }
+fn bump(mut c Ctr) int {
+    c.hits = c.hits + 1
+    7
+}
+fn main() int {
+    var c = Ctr(0)
+    bump(c.mut)
+    if c.hits != 1 { return 11 }
+    return 42
+}

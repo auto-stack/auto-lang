@@ -178,7 +178,6 @@ fn none_bypasses_catch() int {
 fn main() int {
     none_bypasses_catch()
 }";
-    // Wait: let's check exact arithmetic:
     // flag = 1 -> 10000
     // z = 22 -> 22000
     // x = 20 -> 2000
@@ -421,7 +420,7 @@ fn main() int {
         return 999
     }
 }";
-    let (out_cancel, _, _, _) = run_ag_outcome(
+    let (out_cancel, live_c, allocs_c, frees_c) = run_ag_outcome(
         cancel_src,
         "d_main",
         &[],
@@ -433,6 +432,12 @@ fn main() int {
         matches!(out_cancel, ExecOutcome::Cancelled),
         "expected Cancelled, got {out_cancel:?}"
     );
+    // F-965-R1-07: cancellation reuses the frame sweep — release exactly once.
+    assert_eq!(
+        live_c, 0,
+        "cancellation must release frames (no live buffer)"
+    );
+    assert_eq!(allocs_c, frees_c, "cancellation: allocs == frees");
 
     // 4. host.unauthorized inherits HostConsole policy & dispatches == 0 (never enters catch)
     let host_src = "\
@@ -493,6 +498,23 @@ fn m2_negative_compile_controls() {
             "generator-view-param",
             "type Flag { n int }\nfn g(f Flag) ~Iter<int> {\n    yield 1\n}\nfn main() int {\n    return 0\n}",
             "source.generator-borrow-param",
+        ),
+        // PLAN-965 V-DETAIL-02 (F-965-R1-07): an illegal jump target is a named
+        // rejection; a `try` frame is not a loop for `break`/`continue`.
+        (
+            "break-outside-loop",
+            "fn main() int {\n    try {\n        break\n    } catch e {\n        return 0\n    }\n    return 1\n}",
+            "source.break-outside-loop",
+        ),
+        (
+            "continue-outside-loop",
+            "fn main() int {\n    continue\n    return 1\n}",
+            "source.continue-outside-loop",
+        ),
+        (
+            "break-in-finally-outside-loop",
+            "fn main() int {\n    try {\n        let x = 1\n    } finally {\n        break\n    }\n    return 1\n}",
+            "source.break-outside-loop",
         ),
     ] {
         let errs = compile_aggregates_source(src, "neg.at", &[])
@@ -569,4 +591,134 @@ fn main() int {
     return a * 10 + b
 }";
     assert_eq!(expect_i32(src, "d_main"), 66);
+}
+
+#[test]
+fn m2_f01_call_statement_is_evaluated_and_error_not_swallowed() {
+    // F-965-R1-01: a non-tail call statement is a CALL FOR EFFECT — the old
+    // adapter dropped non-unit expression statements, so `boom()` never ran and
+    // a callee's language error vanished. Both halves are asserted here: the
+    // effect happens, and a raising callee inside `try` still terminates.
+    let effect = "\
+type Ctr { hits int }
+fn bump(mut c Ctr) int {
+    c.hits = c.hits + 1
+    7
+}
+fn main() int {
+    var c = Ctr(0)
+    bump(c.mut)
+    if c.hits != 1 { return 11 }
+    return 42
+}";
+    assert_eq!(expect_i32(effect, "d_main"), 42);
+
+    let in_try = "\
+fn boom() int {
+    fail(\"z965\")
+}
+fn main() int {
+    try {
+        boom()
+    } catch e {
+        return 42
+    }
+    return 1
+}";
+    let (out, live, allocs, frees) = run_ag_outcome(
+        in_try,
+        "d_main",
+        &[],
+        &ExecLimits::default(),
+        &CancelFlag::new(false),
+    )
+    .expect("callee-fail-in-try compiles");
+    assert_eq!(live, 0);
+    assert_eq!(allocs, frees);
+    assert!(
+        matches!(&out, ExecOutcome::Error { message, .. } if message == "z965"),
+        "a callee's language error must not be swallowed by `try`, got {out:?}"
+    );
+}
+
+#[test]
+fn m2_v08_close_fail_on_break_and_explicit_close() {
+    // F-965-R1-03: a `fail` raised by the finally of a *suspended* generator
+    // must reach the caller on the early-break close and on explicit close —
+    // drain was already covered; the close path used to drop it.
+    let on_break = "\
+fn guarded() ~Iter<int> {
+    try {
+        yield 10
+    } finally {
+        fail(\"closed965\")
+    }
+}
+fn main() int {
+    var part = 0
+    for x in guarded() {
+        part = part + x
+        if x == 10 { break }
+    }
+    return part
+}";
+    let explicit = "\
+fn guarded() ~Iter<int> {
+    try {
+        yield 10
+        yield 20
+    } finally {
+        fail(\"closed965\")
+    }
+}
+fn main() int {
+    var g = guarded()
+    let first = g.next() ?? -1
+    g.close()
+    return first
+}";
+    for (tag, src) in [("break", on_break), ("explicit", explicit)] {
+        let (out, live, allocs, frees) = run_ag_outcome(
+            src,
+            "d_main",
+            &[],
+            &ExecLimits::default(),
+            &CancelFlag::new(false),
+        )
+        .unwrap_or_else(|e| panic!("{tag}: compile/lower/verify failed: {e}"));
+        assert_eq!(live, 0, "{tag}: close must release the suspended frame");
+        assert_eq!(allocs, frees, "{tag}: allocs == frees");
+        assert!(
+            matches!(&out, ExecOutcome::Error { message, .. } if message == "closed965"),
+            "{tag}: close-time language error must propagate, got {out:?}"
+        );
+    }
+}
+
+#[test]
+fn m2_negative_missing_return_after_try_is_rejected() {
+    // F-965-R1-05: `try { boom() } catch { return 42 }` with nothing after it
+    // can complete WITHOUT a return on the try path — an `int` function never
+    // gets an implicit tail return, so the verifier's flow check rejects it
+    // (the block-structure defect was the injected dummy return; legal shapes
+    // with a trailing statement now compile, see `m2_v01`/`m2_f01`).
+    let src = "\
+fn boom() int {
+    fail(\"z965\")
+}
+fn main() int {
+    try {
+        boom()
+    } catch e {
+        return 42
+    }
+}";
+    let errs = compile_aggregates_source(src, "neg.at", &[])
+        .err()
+        .expect("missing return must be rejected");
+    assert!(
+        errs.iter().any(|d| d.code == "verify.no-return-path"),
+        "expected verify.no-return-path, got {:?}",
+        errs.iter().map(|d| d.code.as_str()).collect::<Vec<_>>()
+    );
 }

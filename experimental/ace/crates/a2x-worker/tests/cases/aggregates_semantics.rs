@@ -241,6 +241,34 @@ fn main() int {
 }",
         50,
     ),
+    // V-02 (laziness) / V-05 (observable order) on the A2X legs: the `??`
+    // right side must NOT run, and a non-tail call statement must run for
+    // effect (F-965-R1-01) — a commutative accumulator would hide the latter.
+    (
+        "m2-lazy-and-ordered",
+        "\
+type Ctr { hits int }
+fn bump(mut c Ctr) int {
+    c.hits = c.hits + 1
+    7
+}
+fn main() int {
+    var c = Ctr(0)
+    let a = Some(4) ?? bump(c.mut)
+    bump(c.mut)
+    let b = None ?? 3
+    if c.hits != 1 { return 0 }
+    var acc = 0
+    var i = 0
+    for i < 3 {
+        i = i + 1
+        acc = acc * 10 + i
+    }
+    return a * 100 + b * 10 + acc
+}",
+        // 4*100 + 3*10 + 123 = 553
+        553,
+    ),
 ];
 
 fn run_a2x_session_rust(name: &str, src: &str) -> String {

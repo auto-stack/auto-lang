@@ -105,3 +105,51 @@ case {
     expect: { completion: { stage: "run", message: { contains: "closed965" } } } }]
 }
 ```
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p965.statement-call-effect", tags: ["ace-m2", "control-effects", "plan-965"],
+  source: { file: "src/statement_call_effect.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-control", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: "success", exit: 42 } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p965.callee-fail-in-try", tags: ["ace-m2", "control-effects", "negative", "plan-965"],
+  source: { file: "src/callee_fail_in_try.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-control", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "run", message: { contains: "z965" } } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p965.generator-close-fail-break", tags: ["ace-m2", "control-effects", "generator", "cleanup", "plan-965"],
+  source: { file: "src/generator_close_fail_break.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-control", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "run", message: { contains: "closed965" } } } }]
+}
+```
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p965.break-outside-loop", tags: ["ace-m2", "control-effects", "negative", "plan-965"],
+  source: { file: "src/neg_break_outside_loop.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-control", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "resolve", code: "bind/source.break-outside-loop" } } }]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2", id: "ace.m2.p965.continue-outside-loop", tags: ["ace-m2", "control-effects", "negative", "plan-965"],
+  source: { file: "src/neg_continue_outside_loop.at", syntax: "auto", path: "main.at" }, entry: { mode: "program" },
+  checks: [{ id: "av-control", adapter: "probe", action: "run",
+    options: { recipe: "ac-av/aggregates-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+    expect: { completion: { stage: "resolve", code: "bind/source.continue-outside-loop" } } }]
+}
+```

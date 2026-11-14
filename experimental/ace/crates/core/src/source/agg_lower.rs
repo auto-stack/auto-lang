@@ -1492,6 +1492,11 @@ struct StateBuilder<'a> {
     active_fin_loops: Vec<LoopRef>,
     suspended_fin_loops: BTreeMap<i32, Vec<LoopRef>>,
     fin_loop_stmts: BTreeMap<usize, Vec<RStmt>>,
+    /// PLAN-965 (F-965-R1-03): the resolver's control-state locals
+    /// (`__agg_ck_*` kind / `__agg_ce_*` message). A `fail` inside a `finally`
+    /// is lowered to `kind=4` + message, so a replayed close MUST dispatch that
+    /// pending error; without it the close silently swallowed it.
+    ctrl_locals: Option<(LocalRef, LocalRef)>,
 }
 
 impl<'a> StateBuilder<'a> {
@@ -1792,6 +1797,60 @@ impl<'a> StateBuilder<'a> {
                         for fs in fin_stmts {
                             self.rewrite_non_yield_stmt(fs, &mut fstmts);
                         }
+                        // PLAN-965 (F-965-R1-03): a `fail`/`rethrow` raised by
+                        // the finally itself is recorded as control state
+                        // (kind=4 + message) and its trailing `Break` was
+                        // stripped above. Replay the pending-error dispatch so
+                        // the close/explicit-close path propagates it instead
+                        // of silently dropping it.
+                        if let Some((ck, ce)) = self.ctrl_locals {
+                            if self.field_map.contains_key(&ck.0)
+                                && self.field_map.contains_key(&ce.0)
+                            {
+                                let span = body.span;
+                                let cond = ResolvedExpr {
+                                    span,
+                                    vt: VT::Bool,
+                                    kind: RExprKind::Binary {
+                                        op: ast::BinOp::Eq,
+                                        lhs: Box::new(ResolvedExpr {
+                                            span,
+                                            vt: VT::I32,
+                                            kind: RExprKind::ReadLocal(ck),
+                                        }),
+                                        rhs: Box::new(ResolvedExpr {
+                                            span,
+                                            vt: VT::I32,
+                                            kind: RExprKind::IntLit(4),
+                                        }),
+                                    },
+                                };
+                                let fail = RStmt::Fail {
+                                    value: ResolvedExpr {
+                                        span,
+                                        vt: VT::StrOwned,
+                                        kind: RExprKind::Move {
+                                            inner: Box::new(ResolvedExpr {
+                                                span,
+                                                vt: VT::StrOwned,
+                                                kind: RExprKind::ReadLocal(ce),
+                                            }),
+                                        },
+                                    },
+                                    span,
+                                };
+                                let dispatch = RStmt::If {
+                                    cond,
+                                    then: RBlock {
+                                        stmts: vec![fail],
+                                        span,
+                                    },
+                                    els: None,
+                                    span,
+                                };
+                                self.rewrite_non_yield_stmt(dispatch, &mut fstmts);
+                            }
+                        }
                         self.fin_loop_stmts.insert(fl.0, fstmts);
                     }
                 }
@@ -2063,6 +2122,24 @@ pub(super) fn finalize_one_generator(
         }
     }
 
+    // PLAN-965 (F-965-R1-03): the resolver's control-state locals, when this
+    // generator has any try/catch/finally, so a replayed close can dispatch a
+    // pending language error instead of dropping it.
+    let ctrl_locals = {
+        let kind = resolved_fn
+            .locals
+            .iter()
+            .position(|d| d.name.starts_with("__agg_ck_"));
+        let err = resolved_fn
+            .locals
+            .iter()
+            .position(|d| d.name.starts_with("__agg_ce_"));
+        match (kind, err) {
+            (Some(k), Some(e)) => Some((LocalRef(k), LocalRef(e))),
+            _ => None,
+        }
+    };
+
     let mut orig_body = std::mem::replace(
         &mut resolved_fn.body,
         RBlock {
@@ -2089,6 +2166,7 @@ pub(super) fn finalize_one_generator(
         active_fin_loops: Vec::new(),
         suspended_fin_loops: BTreeMap::new(),
         fin_loop_stmts: BTreeMap::new(),
+        ctrl_locals,
     };
     let s0 = builder.new_state();
     builder.lower_block(s0, orig_body, None);
