@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-1057
-status: execution_done
+status: reviewed
 feature_name: AutoDown文档式用例首批推广
 author: [Codex]
 created_at: 2026-11-14
 updated_at: 2026-11-14
 plan_revision: 3
 phase: M2-A
-current_step: 6
+current_step: 7
 total_steps: 8
 depends_on: [PLAN-1002]
 supersedes_spec_components: [docs/specs/auto-test-case/document-cases.md, docs/specs/auto-test-case/module-selection.md, docs/specs/auto-test-case/ace-m1-conformance.md, docs/specs/auto-test-case/legacy-immutable-diagnostic.md]
@@ -483,7 +483,7 @@ AV/native的receipt目前有部分未列在报告artifacts中。对照器的run�
 - [x] AC-04（work）V-03..08/11/13各隔离负控精确失败，合法邻例通过，能指出全绿子集的缺项与缺证。证据=§9 work 收据：`controls-resync` 36/36 ok，V-03/04/06/07 逐变体只红目标行并指出字节/行。
 - [x] AC-05（work）三个固定组实际切换新文档，CLI/宿主/console/stale/试点/batch真实入口核验，三项具名BASE宿主测试及V-09/10通过。证据=§9 work 收据：固定组并集 127/97/15/5/7/68/24 全 PASS，ace-batch 12 PASS，八个具名宿主/console 入口 ok。
 - [x] AC-06（work）M1及仍依赖原文件的消费者逐件登记，migrated源/expected外部读取0；内容/表示身份差异、原红/重放及成本分列，§6.4真实record与V-10/11/13可复验。证据=§9 work 收据：consumers 12 条入 `t01-baseline.json`，ACE 6 红与主线既有记录逐项对齐、无新增红。
-- [ ] AC-07（review）独立核30/60、反控、Spec和旧资产去向，遗漏/延后/workaround均有处置，V-12判决绑定本revision及提交。
+- [x] AC-07（review）独立核30/60、反控、Spec和旧资产去向，遗漏/延后/workaround均有处置，V-12判决绑定本revision及提交。证据=§9 复审收据：r3 @4cbb3f610 pass，F-1057-R1-01/02 均独立复核关闭，SD-01..05 目标与"当前"陈述逐项验真；merge 三项 closeout gate 已具名。
 - [ ] AC-08（merge）主线切换、规范/路线沉淀、归档、guard及scope全路径清理真实完成，关键摘要入本计划。
 
 ## 8. 执行步骤
@@ -496,7 +496,7 @@ AV/native的receipt目前有部分未列在报告artifacts中。对照器的run�
 | T-04 / work ✅ | T-02 | console文档完整15例及新suite，逐项填原completion/caps/channel/双流/exit | AC-03/04，V-04/05/06，真实15项和每个独立变体终态 |
 | T-05 / work ✅ | T-02 | immutable文档5例及新suite，TOP显式script，两个合法邻例按原值；完成对照脚本5项字段 | AC-03/04，V-07，三错两对；删例、错码可检 |
 | T-06 / work ✅ | T-03/04/05 | 同构建对跑及负控完成后改test-groups三入口；改host/console/governance日常消费者；完成controls及V-13治理反控，保存输入闭包和run记录；迁移三项具名BASE宿主测试；记录M1/batch/include_str原件去向 | AC-01..06，V-08..11/13；§6.3完整并集、CLI、新旧30/60与三组117项、读取计量 |
-| T-07 / review | T-06、冻结提交 | 同树独立复审逐旧case/actual/反控，扫漏项/延期/替代，核SD-01..03、fmt/warnings/调试输出；失败交原owner修复 | AC-07，V-12，revision-bound判决与必要复验并集 |
+| T-07 / review ✅ | T-06、冻结提交 | 同树独立复审逐旧case/actual/反控，扫漏项/延期/替代，核SD-01..03、fmt/warnings/调试输出；失败交原owner修复 | AC-07，V-12，revision-bound判决与必要复验并集 |
 | T-08 / merge | T-07 pass | 冻结并集核门后合主线，沉淀规范/路线并归档，折摘要、核所有输出路径、guard后清理树/分支/scope；登记原件保留项 | AC-08，主线来源/规范hash/归档与清理收据，具名持有按规则登记 |
 
 T-03..05在同一权威worktree内由实现owner顺序推进。全部任务待执行。本计划明确有限接入字段与集合，执行可按当前代码等价实现；改变原30/60义务或公共准入应修订合同并取得相应范围授权。
@@ -595,6 +595,23 @@ AC 证据锚（c5383100e）：
 边界：6 红与 r2 及主线既有记录逐名一致（archive/1017、archive/1039、KNOWN-DEBT D-1001-R2/D-932-2），本包未改这些测试或其面，无新增红。master 在本次重跑后仍前进（967 T-11/T-12、1021 归档），其改动面含 `experimental/ace/**` 与 `auto-bindgen`；本收据只绑定 4cbb3f610，最终交付基面的并集复跑归 merge。
 
 2026-11-14 stage: goal | plan_id: PLAN-1057 | plan_revision: r3 | round: 3 | from: executing | to: execution_done | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1057/auto-lang | commit: 4cbb3f610 | next: review
+
+### 2026-11-14 复审收据（final re-review，r3）→ pass
+
+2026-11-14 stage: review | review_scope: final（repair re-review） | reviewer_identity: 同一 root agent 会话（无独立 reviewer 模型/上下文，限制同 r2 声明）；按上一判决、修复 diff 与原始证据复建，不采信 work 自述 | plan_id: PLAN-1057 | plan_revision: r3 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1057/auto-lang | branch: plan-1057-dev | reviewed_commit: 4cbb3f610（tree clean；diff base 76431e6b9，上次复审 c5383100e） | dependency_revisions: 组内 auto-down 58ea33f6（只读） | spec_inputs: document-cases.md c2d174d1…、module-selection.md e6c54461…、ace-m1-conformance.md 66849b09…、legacy-immutable-diagnostic.md dc1d1195…（四份与 r2 逐字节相同，r3 只改计划侧 delta） | pending_closeout_gates: 见下 | findings: F-1057-R1-01 closed、F-1057-R1-02 closed（reviewed commit 范围） | next: merge
+
+findings 关闭表（finding → 复验范围 → 结果）：
+- **F-1057-R1-01（spec delta）closed**：①五个 SD 行的 canonical 目标全部存在，`supersedes_spec_components` 与 SD 目标逐一相符（document-cases / module-selection / ace-m1-conformance / legacy-immutable-diagnostic）；②各"当前"陈述独立复核为真：document-cases.md 仍是 pilot 4/7（line 3/54）、module-selection.md 全文无 case 组或作者格式规则（SD-02 为"从无到有"）、ace-m1-conformance.md 仍以 `ace-m1-base.suite.ad`（line 65）/`console-863/console-863.suite.ad`（line 203）/`immutable-avm-920`（line 371）为语料入口、legacy-immutable-diagnostic.md line 41 仍写旧 suite；③`touched_goals: []` 附有书面无影响说明。语义契约、AC 与任务范围未变（r2→r3 仅改正目标清单与失实基线）。
+- **F-1057-R1-02（基面漂移）closed（限 4cbb3f610）**：①实现身份稳定——本包 18 个文件在 `c5383100e..4cbb3f610` 无任何改动，合并只引入 master 侧文件；②所有绑定证据的文件 hash 与收据一致（fixed-r3 0480e770…、controls-r3 2fb69729…、pair-r3 9e3467cc…/c466f02d…/5c51fc6d…）；③`fixed-r3` 与 `ace-r3` 的 `source_state` 同为 d24edfb1…（同一树）；④选择集正确（三组指向 `ace-document-*`、pilot 独立、ace 三组如声明）；⑤六红仍与 archive/1017、archive/1039、KNOWN-DEBT D-1001-R2/D-932-2 逐名一致，无新增红。
+
+AC-07 pass：两 finding 均以独立读取（非 work 摘要）复核关闭；末次 fix 未改变实现、验收标准或证据输入，故未重跑已有效的 r3 并集（复用同一 reviewed commit 的原始 results/records，见 §9 r3 收据）。AC-08 仍待 merge。
+
+pending_closeout_gates（merge 持有，未在复审中声称完成）：
+1. 最终同步复跑：master 自 4cbb3f610 后又前进 14 个提交（967 T-10 final sliver/T-11/T-12 的 `experimental/ace/{abi,av-core,core}` 与 `auto-bindgen`；1021 `experimental/ase-m0`/`scripts/test-groups.toml`）。合并落地后需在落地树重跑固定七组 + pair + controls + ace 三组；若其差异不触及受影响面可复用本次证据并在收据说明。
+2. canonical 落地 SD-01..05（四份 docs/specs 文件），落地后复读校验"交付后"陈述与实现一致，并更新 `supersedes_spec_components` 核对。
+3. 归档 + 工作树 guard 清理 + plan-artifacts scope 折叠删除 + retention 登记刷新。
+
+2026-11-14 stage: goal | plan_id: PLAN-1057 | plan_revision: r3 | round: 5（r3 work 与其复跑跨 harness 第 3–4 轮，阶段未变） | from: execution_done | to: reviewed | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1057/auto-lang | commit: 4cbb3f610 | next: merge
 
 ## 10. 待澄清事项
 
