@@ -1,0 +1,88 @@
+// ACE assembled stdlib text module (PLAN-972 T-02): pure Auto single-source
+// text algorithms over the lane's admitted surface (Str owned values,
+// len/len_bytes/char_at/slice + concat + codepoints; loops via recursion —
+// while/range-for stay outside the packages-aggregates-ct face; owned
+// arguments move at calls — mid-body reuses pass clones).
+// Unicode unit discipline: scalar_len counts scalars, byte_len counts UTF-8
+// bytes; the A中😀 (8 bytes / 3 scalars) and e+U+0301 (3 bytes) oracles are
+// asserted by the 972 conformance (V-02). NUL never truncates (explicit
+// lengths; no C-string semantics). str `==` is not bound on this lane —
+// equality is the scalar-by-scalar `equal` below. Full-Unicode
+// upper/lower/trim need case tables (later batch, named boundary).
+pub fn byte_len(s Str) int {
+    return s.len_bytes()
+}
+
+pub fn scalar_len(s Str) int {
+    return s.len()
+}
+
+pub fn char_code_at(s Str, i int) int {
+    let c = s.char_at(i)
+    return c.to_codepoint()
+}
+
+pub fn equal(s Str, t Str) bool {
+    if (s.len() != t.len()) {
+        return false
+    }
+    return eq_at(s, t, 0)
+}
+
+fn eq_at(s Str, t Str, i int) bool {
+    if (i == s.len()) {
+        return true
+    }
+    let a = s.char_at(i)
+    let b = t.char_at(i)
+    if (a.to_codepoint() != b.to_codepoint()) {
+        return false
+    }
+    return eq_at(s, t, i + 1)
+}
+
+pub fn starts_with(s Str, prefix Str) bool {
+    if (prefix.len() > s.len()) {
+        return false
+    }
+    let n = prefix.len()
+    return eq_at(s.slice(0, n).clone(), prefix, 0)
+}
+
+pub fn ends_with(s Str, suffix Str) bool {
+    if (suffix.len() > s.len()) {
+        return false
+    }
+    let n = suffix.len()
+    return eq_at(s.slice(s.len() - n, s.len()).clone(), suffix, 0)
+}
+
+pub fn contains(s Str, needle Str) bool {
+    if (needle.len() > s.len()) {
+        return false
+    }
+    return contains_at(s, needle, 0)
+}
+
+fn contains_at(s Str, needle Str, i int) bool {
+    if (i + needle.len() > s.len()) {
+        return false
+    }
+    let end = i + needle.len()
+    if (eq_at(s.slice(i, end).clone(), needle.clone(), 0)) {
+        return true
+    }
+    return contains_at(s, needle, i + 1)
+}
+
+pub fn repeat(s Str, n int) Str {
+    return repeat_into(s, n, "")
+}
+
+fn repeat_into(s Str, n int, acc Str) Str {
+    if (n <= 0) {
+        return acc
+    }
+    let next Str = acc + s
+    return repeat_into(s, n - 1, next)
+}

@@ -5453,6 +5453,65 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 )?;
                 Ok(dst)
             }
+            // PLAN-972（T-02）：collections/closures MIR profile 下的文本
+            // 表达式（装配 aggregates 线 stdlib 文本算法）——与 owned 线
+            // 同一 MIR 指令与 view 解析。
+            hir::ExprKind::TextClone { operand } if self.collections() => {
+                // clone of a view = the owned copy of its range; clone of an
+                // owned Str re-buffers (770 AP-2 over both receivers).
+                let src_ty = self.expr_ty(*operand)?;
+                let v = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty)?;
+                match self.out.types.get(src_ty as usize) {
+                    Some(MirType::StrView) => {
+                        self.emit(MirInstr::StrToOwned { dst, view: v }, sp)?;
+                    }
+                    _ => {
+                        self.emit(MirInstr::Clone { dst, src: v }, sp)?;
+                    }
+                }
+                Ok(dst)
+            }
+            hir::ExprKind::TextLenBytes { operand } if self.collections() => {
+                let v = self.text_view_operand(operand, depth)?;
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::StrLenBytes { dst, view: v }, sp)?;
+                Ok(dst)
+            }
+            hir::ExprKind::TextCharAt { operand, index } if self.collections() => {
+                let v = self.text_view_operand(operand, depth)?;
+                let i = self.eval_expr(*index, depth + 1)?;
+                let dst = self.temp_ty(ty)?;
+                self.emit(
+                    MirInstr::StrCharAt {
+                        dst,
+                        view: v,
+                        index: i,
+                    },
+                    sp,
+                )?;
+                Ok(dst)
+            }
+            hir::ExprKind::TextSlice {
+                operand,
+                start,
+                end,
+            } if self.collections() => {
+                let v = self.text_view_operand(operand, depth)?;
+                let a = self.eval_expr(*start, depth + 1)?;
+                let b = self.eval_expr(*end, depth + 1)?;
+                let dst = self.temp_ty(ty)?;
+                self.emit(
+                    MirInstr::StrSlice {
+                        dst,
+                        view: v,
+                        start: a,
+                        end: b,
+                    },
+                    sp,
+                )?;
+                Ok(dst)
+            }
             // TextLen over an owned-element projection: the fused view
             // sequence (contract C4) — remove → field view / element view →
             // strlen → insert back. Plain receivers keep the owned path.

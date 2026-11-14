@@ -183,6 +183,82 @@ fn stdlib_asm_972_math_abs_min_boundary_traps() {
     );
 }
 
+/// The S-02 text/char slice through the assembled lane on AV, with the V-02
+/// Unicode unit oracles: A中😀 = 8 bytes / 3 scalars; e+U+0301 = 3 bytes;
+/// NUL does not truncate (explicit lengths); equal/starts_with/ends_with/
+/// contains/repeat + char predicates. Scored bits:
+/// 8×10^7 + 3×10^6 + 3×10^5 + equal 4×10^4 + starts 2×10^3 + ends 10^3
+/// + contains 100 + repeat("ab",3).len_bytes()=6 ×10 + digit 4 + alpha 0
+/// + whitespace 1 = 83343165.
+const TEXT_MAIN: &str = r#"
+use std.text.byte_len
+use std.text.scalar_len
+use std.text.equal
+use std.text.starts_with
+use std.text.ends_with
+use std.text.contains
+use std.text.repeat
+use std.char.is_digit
+use std.char.is_alpha_ascii
+use std.char.is_whitespace
+fn main() int {
+    let a Str = "A中😀"
+    let e Str = "é"
+    var code = byte_len(a.clone()) * 10000000
+    code = code + scalar_len(a.clone()) * 1000000
+    code = code + byte_len(e.clone()) * 100000
+    if equal(a.clone(), a.clone()) {
+        code = code + 40000
+    }
+    if starts_with(a.clone(), "A") {
+        code = code + 2000
+    }
+    if ends_with(a.clone(), "😀") {
+        code = code + 1000
+    }
+    if contains(a.clone(), "中") {
+        code = code + 100
+    }
+    code = code + repeat("ab", 3).len_bytes() * 10
+    if is_digit('7') {
+        code = code + 4
+    }
+    if is_alpha_ascii('中') {
+        code = code + 2
+    }
+    if is_whitespace(' ') {
+        code = code + 1
+    }
+    return code
+}
+"#;
+
+/// V-02 NUL discipline: an embedded NUL never truncates — byte_len counts
+/// past it and equal distinguishes the tail ("a\0b" = 3 bytes ≠ "a" = 1).
+const NUL_MAIN: &str = r#"
+use std.text.byte_len
+use std.text.equal
+fn main() int {
+    let s Str = "a\0b"
+    var code = byte_len(s.clone()) * 10
+    if equal(s.clone(), "a") {
+        code = code + 5
+    }
+    if equal(s.clone(), "a\0b") {
+        code = code + 1
+    }
+    return code
+}
+"#;
+
+#[test]
+fn stdlib_asm_972_text_char_av() {
+    let p = asm_lane_product("text", TEXT_MAIN);
+    assert_eq!(run_av("text", &p), Value::I32(83343165));
+    let p = asm_lane_product("nul", NUL_MAIN);
+    assert_eq!(run_av("nul", &p), Value::I32(31));
+}
+
 /// `std` identity reservation on the assembled lane: a tampered `std.list`
 /// source, and a provider layer riding `std.list`, both reject BEFORE any
 /// compile/run with the named reservation code.

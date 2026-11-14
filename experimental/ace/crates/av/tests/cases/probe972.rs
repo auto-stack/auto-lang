@@ -360,3 +360,72 @@ fn probe972_p3_store_roundtrip_recovers_and_reruns() {
     assert_eq!(restored.bound.input_hash, product.bound.input_hash);
     assert_eq!(run_av("p3-restored", &restored), Value::I32(711));
 }
+
+// ---- T-02 scratch：装配 aggregates 线的文本/char 表面探针（非永久） ----
+
+fn asm_aggr_compile(
+    main_src: &str,
+) -> Result<
+    ace_source_query::modules::packages::PackageProduct,
+    Vec<ace_core::source::packages::PackageDiagnostic>,
+> {
+    use ace_source_query::modules::packages::{
+        assemble_stdlib_aggregates_inputs, compile_assembled_aggregates_inputs,
+    };
+    let mut ctx = PackageAssemblyContext::new(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+    let inputs = assemble_stdlib_aggregates_inputs(
+        &[("main.at".to_string(), main_src.to_string())],
+        "app::main",
+        &mut ctx,
+    )
+    .unwrap();
+    compile_assembled_aggregates_inputs(&inputs, "app::main", FrontBudget::WORK_OWNED_64MIB, &ctx)
+}
+
+/// 文本/char 表面逐项探针：str 相等、str 拼接、char 比较、char 字面量、
+/// slice/char_at/len_bytes。打印当前真值（编译诊断码或 AV 值）。
+#[test]
+fn probe972_t02_str_surface() {
+    let cases: &[(&str, &str)] = &[
+        (
+            "str_eq",
+            "fn main() int {\n    let a = \"ab\"\n    let b = \"ab\"\n    if a == b {\n        return 1\n    }\n    return 0\n}",
+        ),
+        (
+            "str_concat",
+            "fn main() int {\n    let a = \"ab\" + \"cd\"\n    return a.len()\n}",
+        ),
+        (
+            "char_codepoint_cmp",
+            "fn main() int {\n    let c = 'a'\n    let d = 'z'\n    if c.to_codepoint() >= 'a'.to_codepoint() {\n        if c.to_codepoint() <= d.to_codepoint() {\n            return 1\n        }\n    }\n    return 0\n}",
+        ),
+        (
+            "char_codepoint",
+            "fn main() int {\n    let c = 'a'\n    return c.to_codepoint()\n}",
+        ),
+        (
+            "str_slice_len_bytes",
+            "fn main() int {\n    let s Str = \"A中😀\"\n    let t = s.slice(0, 1)\n    return t.len_bytes()\n}",
+        ),
+        (
+            "str_char_at",
+            "fn main() int {\n    let s = \"A中\"\n    let c = s.char_at(1)\n    return c.to_codepoint()\n}",
+        ),
+    ];
+    for (name, src) in cases {
+        match asm_aggr_compile(src) {
+            Ok(p) => {
+                let dir = scratch(&format!("str-{name}"));
+                let av = PackageAvTarget::cold(&dir, &p).unwrap();
+                match av.run_value() {
+                    Ok(v) => eprintln!("STR-PROBE {name}: OK {v:?}"),
+                    Err(e) => eprintln!("STR-PROBE {name}: RUN-ERR {e}"),
+                }
+            }
+            Err(ds) => eprintln!(
+                "STR-PROBE {name}: COMPILE-ERR {} {}",
+                ds[0].diagnostic.code, ds[0].diagnostic.message
+            ),
+        }
+    }
+}

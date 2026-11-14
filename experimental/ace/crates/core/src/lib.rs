@@ -500,6 +500,22 @@ pub fn numeric_descriptor() -> &'static descriptor::Descriptor {
     })
 }
 
+/// PLAN-972（T-02）：aggregates 描述符——961 numeric 词汇的超集，补齐
+/// aggregates profile 下装配标准库文本算法所需的表达式面
+/// （text_len_bytes/text_char_at/text_slice/char_from_codepoint 与 expr
+/// 的 start/end 字段）。仅 `SourceProfile::Aggregates` 绑定；numeric/
+/// closures 等其余描述符逐字节不变。
+pub const AGGREGATES_DESCRIPTOR_SCHEMA: &str = include_str!("../schema/aggregates.atom");
+
+pub fn aggregates_descriptor() -> &'static descriptor::Descriptor {
+    use std::sync::OnceLock;
+    static DESC: OnceLock<descriptor::Descriptor> = OnceLock::new();
+    DESC.get_or_init(|| {
+        descriptor::Descriptor::parse(AGGREGATES_DESCRIPTOR_SCHEMA)
+            .expect("embedded source-aggregates descriptor must parse")
+    })
+}
+
 /// Convenience: bind a source document with the embedded core descriptor.
 pub fn bind_source(source: &str) -> Result<hir::Bundle, Vec<atom_text::Diagnostic>> {
     descriptor::bind(descriptor(), source)

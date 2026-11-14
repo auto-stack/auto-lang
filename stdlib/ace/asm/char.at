@@ -1,0 +1,65 @@
+// ACE assembled stdlib char module (PLAN-972 T-02): the S-02 char predicate
+// family as pure Auto algorithms over codepoints. ASCII-subset boundaries
+// for is_alpha/is_alphanum/is_ident (full-Unicode category tables are a
+// named later batch — legacy VM used host Unicode tables; the difference is
+// recorded, not silently narrowed). is_whitespace covers the legacy set
+// (space, tab, line feed, carriage return) by codepoint. to_lower/to_upper
+// (ASCII subset) follow; case tables for non-ASCII are the same later batch.
+pub fn is_digit(c char) bool {
+    let p = c.to_codepoint()
+    if (p >= '0'.to_codepoint()) {
+        if (p <= '9'.to_codepoint()) {
+            return true
+        }
+    }
+    return false
+}
+
+pub fn is_alpha_ascii(c char) bool {
+    let p = c.to_codepoint()
+    if (p >= 'a'.to_codepoint()) {
+        if (p <= 'z'.to_codepoint()) {
+            return true
+        }
+    }
+    if (p >= 'A'.to_codepoint()) {
+        if (p <= 'Z'.to_codepoint()) {
+            return true
+        }
+    }
+    return false
+}
+
+pub fn is_alphanum_ascii(c char) bool {
+    if (is_digit(c)) {
+        return true
+    }
+    return is_alpha_ascii(c)
+}
+
+pub fn is_ident_ascii(c char) bool {
+    if (is_alphanum_ascii(c)) {
+        return true
+    }
+    if (c.to_codepoint() == '_'.to_codepoint()) {
+        return true
+    }
+    return false
+}
+
+pub fn is_whitespace(c char) bool {
+    let p = c.to_codepoint()
+    if (p == ' '.to_codepoint()) {
+        return true
+    }
+    if (p == 9) {
+        return true
+    }
+    if (p == 10) {
+        return true
+    }
+    if (p == 13) {
+        return true
+    }
+    return false
+}
