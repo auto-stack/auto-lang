@@ -336,17 +336,56 @@ fn run_suite_selected_impl(
         report.toolchain.insert(k, v);
     }
 
-    for case_file in &loaded.cases {
-        for spec in case_file.specs.iter() {
-            run_case(
-                &loaded,
-                case_file,
-                spec,
-                &run_dir,
-                limits,
-                selection,
-                &mut report,
-            );
+    // PLAN-1060: cases are independent (each owns its scratch directory, the
+    // adapter caches are write-once, and child environments are passed to the
+    // child). Run them in a bounded pool and merge in declaration order so the
+    // report is byte-identical to the serial run. `ACE_CASE_PARALLEL=0` pins
+    // the serial order for bisection.
+    let cases: Vec<(&CaseFile, &CaseSpec)> = loaded
+        .cases
+        .iter()
+        .flat_map(|f| f.specs.iter().map(move |s| (f, s)))
+        .collect();
+    let parallel = std::env::var("ACE_CASE_PARALLEL").map(|v| v != "0").unwrap_or(true);
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .clamp(1, 8);
+    if !parallel || threads <= 1 || cases.len() <= 1 {
+        for (case_file, spec) in &cases {
+            report
+                .results
+                .extend(run_case(&loaded, case_file, spec, &run_dir, limits, selection));
+        }
+    } else {
+        let chunk = ((cases.len() + threads - 1) / threads).max(1);
+        let chunks: Vec<&[(&CaseFile, &CaseSpec)]> = cases.chunks(chunk).collect();
+        let mut per_chunk: Vec<Vec<(usize, Vec<CheckOutcome>)>> = Vec::new();
+        std::thread::scope(|scope| {
+            let mut handles = Vec::new();
+            for (chunk_index, slice) in chunks.iter().enumerate() {
+                let loaded = &loaded;
+                let run_dir = &run_dir;
+                handles.push(scope.spawn(move || {
+                    let mut local: Vec<(usize, Vec<CheckOutcome>)> = Vec::new();
+                    for (offset, (case_file, spec)) in slice.iter().enumerate() {
+                        let index = chunk_index * chunk + offset;
+                        local.push((
+                            index,
+                            run_case(loaded, case_file, spec, run_dir, limits, selection),
+                        ));
+                    }
+                    local
+                }));
+            }
+            for handle in handles {
+                per_chunk.push(handle.join().expect("case worker"));
+            }
+        });
+        let mut flat: Vec<(usize, Vec<CheckOutcome>)> = per_chunk.into_iter().flatten().collect();
+        flat.sort_by_key(|(index, _)| *index);
+        for (_, outcomes) in flat {
+            report.results.extend(outcomes);
         }
     }
 
@@ -395,8 +434,8 @@ fn run_case(
     run_dir: &Path,
     limits: &Limits,
     selection: &Selection,
-    report: &mut RunReport,
-) {
+) -> Vec<CheckOutcome> {
+    let mut out: Vec<CheckOutcome> = Vec::new();
     // `file:` payload / expected-artifact references resolve against the
     // suite-declared fixture base (imports keep legacy files in place).
     let ref_base = loaded.fixture_base.clone();
@@ -413,14 +452,14 @@ fn run_case(
                 // every SELECTED check; unselected checks stay NOT_RUN.
                 for check in &spec.checks {
                     if selection.matches(&spec.id, check) {
-                        report.results.push(error_outcome(
+                        out.push(error_outcome(
                             loaded,
                             spec,
                             check,
                             &format!("payload resolution failed: {}", e),
                         ));
                     } else {
-                        report.results.push(not_run_outcome(
+                        out.push(not_run_outcome(
                             loaded,
                             case_file,
                             spec,
@@ -429,7 +468,7 @@ fn run_case(
                         ));
                     }
                 }
-                return;
+                return out;
             }
         }
     } else {
@@ -450,7 +489,7 @@ fn run_case(
             // F-04: unselected checks never execute — no scratch dirs, no
             // adapter calls, no side effects. They stay in the inventory as
             // NOT_RUN so a partial report can never count as a full gate.
-            report.results.push(not_run_outcome(
+            out.push(not_run_outcome(
                 loaded,
                 case_file,
                 spec,
@@ -546,8 +585,9 @@ fn run_case(
                 products.insert(check.id.clone(), usable);
             }
         }
-        report.results.push(outcome);
+        out.push(outcome);
     }
+    out
 }
 
 /// Internal registered test consumer (F-03): drives the consumer judgement

@@ -42,7 +42,8 @@
 //! removed on every exit path.
 
 use super::ace_certify::{
-    capture_toolchain_contained, compile, run_capped, BUILD_TOOLCHAIN_IDENTITY, COMPILE_WALL,
+    capture_toolchain_contained, compile, run_capped_with_env, BUILD_TOOLCHAIN_IDENTITY,
+    COMPILE_WALL,
     DEPS_CLOSURE, RUN_WALL, RUSTC_FLAG_TOKENS,
 };
 use crate::trans::rust::{transpile_rust_with_source_dir_profiles, IntProfile, ResourceProfile};
@@ -570,22 +571,9 @@ struct RunOut {
 }
 
 fn run_with_env(exe: &Path, envs: &[(String, String)]) -> Result<RunOut, String> {
-    // run_capped has no env support; set the vars in this process for the
-    // duration of the run (single-threaded certification; restored after).
-    let saved: Vec<(String, Option<std::ffi::OsString>)> = envs
-        .iter()
-        .map(|(k, _)| (k.clone(), std::env::var_os(k)))
-        .collect();
-    for (k, v) in envs {
-        std::env::set_var(k, v);
-    }
-    let result = run_capped(exe);
-    for (k, old) in &saved {
-        match old {
-            Some(v) => std::env::set_var(k, v),
-            None => std::env::remove_var(k),
-        }
-    }
+    // PLAN-1060: the environment goes to the CHILD only (the process-global
+    // variants made concurrent certification cases unsafe).
+    let result = run_capped_with_env(exe, envs);
     match result {
         Ok(r) => Ok(RunOut {
             exit: r.exit as i64,
