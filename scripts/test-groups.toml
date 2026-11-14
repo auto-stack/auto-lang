@@ -721,14 +721,14 @@ all = false
 
 [[group]]
 name = "case-ace-m1-base"
-title = "TestCase case-ace-m1-base"
+title = "TestCase case-ace-m1-base（PLAN-1057：标量10/40已切AutoDown文档，余57项shared legacy include）"
 runner = "case"
 workspace = "."
 args = []
 expression = "all()"
 tools = []
 domain = "ace"
-suite = "crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad"
+suite = "crates/auto-lang/test/cases/ace-document-base.suite.ad"
 all = false
 
 [[group]]
@@ -817,14 +817,14 @@ all = false
 
 [[group]]
 name = "case-ace-m1-immutable-avm-920"
-title = "TestCase case-ace-m1-immutable-avm-920（PLAN-920 B18 avm typed不可变赋值/近邻）"
+title = "TestCase case-ace-m1-immutable-avm-920（PLAN-1057：PLAN-920 B18 5例5项已切AutoDown文档）"
 runner = "case"
 workspace = "."
 args = []
 expression = "all()"
 tools = []
 domain = "ace"
-suite = "crates/auto-lang/test/cases/ace-m1/immutable-avm-920.suite.ad"
+suite = "crates/auto-lang/test/cases/ace-document-immutable.suite.ad"
 all = false
 
 [[group]]
@@ -1357,14 +1357,14 @@ all = false
 
 [[group]]
 name = "case-ace-m1-console-863"
-title = "TestCase case-ace-m1-console-863"
+title = "TestCase case-ace-m1-console-863（PLAN-1057：控制台15例15项已切AutoDown文档）"
 runner = "case"
 workspace = "."
 args = []
 expression = "all()"
 tools = []
 domain = "ace"
-suite = "crates/auto-lang/test/cases/ace-m1/console-863/console-863.suite.ad"
+suite = "crates/auto-lang/test/cases/ace-document-console.suite.ad"
 all = false
 
 [[group]]

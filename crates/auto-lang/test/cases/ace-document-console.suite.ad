@@ -1,0 +1,13 @@
+# ACE Document Console Suite
+
+Active document-authored Console suite (PLAN-1057): 15 inline console cases / 15 checks.
+
+```test-suite
+suite {
+  schema: "autolang.suite/2"
+  id: "ace-document-console"
+  include: [
+    "ace-m2/documents/console.case.ad"
+  ]
+}
+```

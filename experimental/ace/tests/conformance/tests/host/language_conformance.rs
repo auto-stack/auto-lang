@@ -26,23 +26,38 @@ fn temp_root(tag: &str) -> PathBuf {
     dir
 }
 
+fn stage_doc_base_corpus(cases_root: &Path, dst: &Path) {
+    let doc_dir = dst.join("ace-m2/documents");
+    std::fs::create_dir_all(&doc_dir).unwrap();
+    std::fs::copy(
+        cases_root.join("ace-document-base.suite.ad"),
+        dst.join("ace-document-base.suite.ad"),
+    )
+    .unwrap();
+    std::fs::copy(
+        cases_root.join("ace-m2/documents/scalar.case.ad"),
+        doc_dir.join("scalar.case.ad"),
+    )
+    .unwrap();
+    copy_tree(&cases_root.join("ace-m1"), &dst.join("ace-m1"));
+}
+
 /// The committed base corpus runs END TO END green: 36 cases / 97 checks —
 /// 10 scalar value cases on all FOUR paths (ac-native + av + autovm +
-/// a2r-snapshot against reviewed goldens), 4 traps, 4 diagnostics, 14
-/// legacy-only composite values (autovm + a2r snapshot), 2 legacy parse
-/// rejections.
+/// a2r-snapshot against reviewed goldens) from inline AutoDown documents,
+/// plus 57 shared legacy M1 BASE checks via `fixture_root: "ace-m1"`.
 #[test]
 fn ace_m1_base_suite_green() {
     let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let suite_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases/ace-m1");
+    let cases_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases");
     let root = temp_root("base");
     let out = root.join("out");
     let report = run_suite(
-        &suite_dir.join("ace-m1-base.suite.ad"),
+        &cases_dir.join("ace-document-base.suite.ad"),
         &out,
         &Limits::defaults(),
     )
-    .expect("ace-m1 base suite runs");
+    .expect("ace-document base suite runs");
     let failing: Vec<String> = report
         .results
         .iter()
@@ -56,7 +71,7 @@ fn ace_m1_base_suite_green() {
         .collect();
     assert!(
         failing.is_empty(),
-        "ace-m1 base suite has non-PASS checks:\n{}",
+        "ace-document base suite has non-PASS checks:\n{}",
         failing.join("\n")
     );
     assert_eq!(
@@ -67,26 +82,26 @@ fn ace_m1_base_suite_green() {
     assert!(report.coverage_gaps.is_empty(), "no coverage gaps");
 }
 
-/// Negative oracle: mutating one frozen exit expectation (B01 14 -> 15) must
-/// turn the gate RED — the suite is a real judge, never a green stamp.
+/// Negative oracle: mutating one frozen exit expectation (B01 14 -> 15) in the
+/// inline scalar document must turn the gate RED — the suite is a real judge.
 #[test]
 fn ace_m1_base_negative_oracle_fails() {
     let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let suite_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases/ace-m1");
+    let cases_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases");
     let root = temp_root("neg");
     let corpus = root.join("corpus");
-    copy_tree(&suite_dir, &corpus);
-    let scalar = corpus.join("b-scalar.case.ad");
+    stage_doc_base_corpus(&cases_dir, &corpus);
+    let scalar = corpus.join("ace-m2/documents/scalar.case.ad");
     let text = std::fs::read_to_string(&scalar).unwrap();
-    let mutated = text.replacen(
-        "expect: { completion: \"success\", exit: 14 }",
-        "expect: { completion: \"success\", exit: 15 }",
-        1, // ac-native is the first check of B01 — the mutation is localized to it
-    );
-    assert_ne!(mutated, text, "mutation must hit the B01 oracle");
+    let needle =
+        "### Probe ac-native\nrecipe: \"ac/mir-native-scalar-v1\"\nentry: \"d_main\"\nexit: 14";
+    let replacement =
+        "### Probe ac-native\nrecipe: \"ac/mir-native-scalar-v1\"\nentry: \"d_main\"\nexit: 15";
+    let mutated = text.replacen(needle, replacement, 1);
+    assert_ne!(mutated, text, "mutation must hit the B01 ac-native oracle");
     std::fs::write(&scalar, mutated).unwrap();
     let report = run_suite(
-        &corpus.join("ace-m1-base.suite.ad"),
+        &corpus.join("ace-document-base.suite.ad"),
         &root.join("out"),
         &Limits::defaults(),
     )
@@ -118,27 +133,22 @@ fn ace_m1_base_negative_oracle_fails() {
     );
 }
 
-/// Golden-drift control (PLAN-852 G04): when the emitted bytes stop matching
-/// the frozen golden, the a2r-snapshot check must be RED — a drift is never
-/// silently absorbed, and goldens are only updated through explicit review.
+/// Golden-drift control (PLAN-852 G04 + PLAN-1057): when the emitted bytes stop
+/// matching the inline B01 Rust block, the a2r-snapshot check must be RED.
 #[test]
 fn ace_m1_golden_drift_is_red() {
     let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let suite_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases/ace-m1");
+    let cases_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases");
     let root = temp_root("drift");
     let corpus = root.join("corpus");
-    copy_tree(&suite_dir, &corpus);
-    let golden = corpus.join("oracle/m1_b01.rs");
-    let bytes = std::fs::read(&golden).unwrap();
-    // A visible, semantics-bearing mutation (not whitespace).
-    let mutated: Vec<u8> = bytes
-        .iter()
-        .map(|&b| if b == b'+' { b'*' } else { b })
-        .collect();
-    assert_ne!(mutated, bytes, "mutation must change the golden");
-    std::fs::write(&golden, mutated).unwrap();
+    stage_doc_base_corpus(&cases_dir, &corpus);
+    let scalar = corpus.join("ace-m2/documents/scalar.case.ad");
+    let text = std::fs::read_to_string(&scalar).unwrap();
+    let mutated = text.replacen("return 2 + 3 * 4;", "return 2 * 3 * 4;", 1);
+    assert_ne!(mutated, text, "mutation must change B01 inline Rust block");
+    std::fs::write(&scalar, mutated).unwrap();
     let report = run_suite(
-        &corpus.join("ace-m1-base.suite.ad"),
+        &corpus.join("ace-document-base.suite.ad"),
         &root.join("out"),
         &Limits::defaults(),
     )

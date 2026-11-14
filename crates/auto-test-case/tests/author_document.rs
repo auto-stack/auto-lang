@@ -7,7 +7,7 @@ use std::path::Path;
 
 use auto_test_case::admission::Limits;
 use auto_test_case::author::{decode_document, is_document_case, AuthorError};
-use auto_test_case::contract::{Adapter, Completion, PayloadSpec, Stage};
+use auto_test_case::contract::{Adapter, Completion, EntryMode, PayloadSpec, Stage};
 use auto_test_case::discovery::{load_suite, CaseFileFormat};
 use auto_test_case::document::CaseDocument;
 
@@ -431,4 +431,137 @@ fn crlf_documents_normalize_to_logical_lf_payloads() {
         "7\n",
         "default keeps the final logical newline"
     );
+}
+
+#[test]
+fn entry_mode_script_and_non_inheritance() {
+    let doc = concat!(
+        "## Case: script-top\n",
+        "id: \"t.script\"\n",
+        "entry-mode: \"script\"\n",
+        "\n### Auto\n\n```auto\nlet x int = 1\nx = 2\n```\n",
+        "\n### VM diagnostic\nstage: \"type\"\ncode: \"auto_name_E0203\"\n",
+        "\n## Case: default-program\n",
+        "id: \"t.prog\"\n",
+        "\n### Auto\n\n```auto\nfn main() int { return 2 }\n```\n",
+        "\n### VM result\nfinal-newline: false\n\n```text\n2\n```\n",
+    );
+    let cases = decode(doc, "x.case.ad").unwrap();
+    assert_eq!(cases[0].spec.entry, EntryMode::Script);
+    assert_eq!(
+        cases[1].spec.entry,
+        EntryMode::Program,
+        "entry-mode never inherits across cases"
+    );
+}
+
+#[test]
+fn console_probe_channel_and_error_stage_code_rules() {
+    let doc = concat!(
+        "## Case: unit-entry\n",
+        "id: \"c.o07\"\n",
+        "\n### Auto\n\n```auto\nfn main() { print(7) }\n```\n",
+        "\n### Probe av-console\n",
+        "recipe: \"ac-av/console-run-v1\"\n",
+        "entry: \"d_main\"\n",
+        "caps: [\"console.stdout\", \"console.stderr\"]\n",
+        "channel: \"unit\"\n",
+        "\n#### stdout\n\n```text\n7\n```\n",
+        "\n#### stderr\n\n```text\nunit\n```\n",
+        "\n## Case: script-value\n",
+        "id: \"c.o08\"\n",
+        "\n### Auto\n\n```auto\nprint(1)\n```\n",
+        "\n### Probe av-console\n",
+        "recipe: \"ac-av/console-run-v1\"\n",
+        "entry: \"d_main\"\n",
+        "caps: [\"console.stdout\", \"console.stderr\"]\n",
+        "channel: \"value\"\n",
+        "exit: 42\n",
+        "\n#### stdout\n\n```text\n1\n```\n",
+        "\n#### stderr\n\n```text\n2\n```\n",
+        "\n## Case: trap-error\n",
+        "id: \"c.o10\"\n",
+        "\n### Auto\n\n```auto\nfn main() int { return 1 / 0 }\n```\n",
+        "\n### Probe av-console\n",
+        "recipe: \"ac-av/console-run-v1\"\n",
+        "entry: \"d_main\"\n",
+        "caps: [\"console.stdout\", \"console.stderr\"]\n",
+        "stage: \"run\"\n",
+        "code: \"av.trap.div-by-zero\"\n",
+        "\n#### stdout\n\n```text\n```\n",
+        "\n#### stderr\n\n```text\n```\n",
+    );
+    let cases = decode(doc, "c.case.ad").unwrap();
+    assert_eq!(
+        cases[0].spec.checks[0].expect.av_channel.as_deref(),
+        Some("unit")
+    );
+    assert_eq!(cases[0].spec.checks[0].expect.exit, None);
+    assert_eq!(
+        cases[0].spec.checks[0].expect.completion,
+        Completion::Success
+    );
+
+    assert_eq!(
+        cases[1].spec.checks[0].expect.av_channel.as_deref(),
+        Some("value")
+    );
+    assert_eq!(cases[1].spec.checks[0].expect.exit, Some(42));
+
+    assert_eq!(
+        cases[2].spec.checks[0].expect.completion,
+        Completion::Error {
+            stage: Stage::Run,
+            code: Some("av.trap.div-by-zero".into()),
+            message: None,
+        }
+    );
+    assert_eq!(cases[2].spec.checks[0].expect.av_channel, None);
+    assert_eq!(cases[2].spec.checks[0].expect.exit, None);
+}
+
+#[test]
+fn author_rejects_invalid_entry_mode_channel_and_stage_code_combos() {
+    let bad_entry = concat!(
+        "## Case: bad\n",
+        "entry-mode: \"module\"\n",
+        "\n### Auto\n\n```auto\n1\n```\n",
+        "\n### VM result\n\n```text\n1\n```\n",
+    );
+    assert_eq!(decode(bad_entry, "e.case.ad").unwrap_err().line, 2);
+
+    let unit_plus_exit = case_doc(
+        "\n### Probe av-console\nrecipe: \"ac-av/console-run-v1\"\nentry: \"d_main\"\nchannel: \"unit\"\nexit: 0\n\n#### stdout\n\n```text\n```\n\n#### stderr\n\n```text\n```\n",
+    );
+    assert!(decode(&unit_plus_exit, "e.case.ad").is_err());
+
+    let bogus_channel = case_doc(
+        "\n### Probe av-console\nrecipe: \"ac-av/console-run-v1\"\nentry: \"d_main\"\nchannel: \"bogus\"\nexit: 0\n\n#### stdout\n\n```text\n```\n\n#### stderr\n\n```text\n```\n",
+    );
+    assert!(decode(&bogus_channel, "e.case.ad").is_err());
+
+    let err_plus_exit = case_doc(
+        "\n### Probe av-console\nrecipe: \"ac-av/console-run-v1\"\nentry: \"d_main\"\nstage: \"run\"\ncode: \"av.trap.div-by-zero\"\nexit: 0\n\n#### stdout\n\n```text\n```\n\n#### stderr\n\n```text\n```\n",
+    );
+    assert!(decode(&err_plus_exit, "e.case.ad").is_err());
+
+    let err_plus_channel = case_doc(
+        "\n### Probe av-console\nrecipe: \"ac-av/console-run-v1\"\nentry: \"d_main\"\nstage: \"parse\"\ncode: \"host.unauthorized\"\nchannel: \"value\"\n\n#### stdout\n\n```text\n```\n\n#### stderr\n\n```text\n```\n",
+    );
+    assert!(decode(&err_plus_channel, "e.case.ad").is_err());
+
+    let stage_without_code = case_doc(
+        "\n### Probe av-console\nrecipe: \"ac-av/console-run-v1\"\nentry: \"d_main\"\nstage: \"resolve\"\n\n#### stdout\n\n```text\n```\n\n#### stderr\n\n```text\n```\n",
+    );
+    assert!(decode(&stage_without_code, "e.case.ad").is_err());
+
+    let code_without_stage = case_doc(
+        "\n### Probe av-console\nrecipe: \"ac-av/console-run-v1\"\nentry: \"d_main\"\ncode: \"source.console-argument\"\n\n#### stdout\n\n```text\n```\n\n#### stderr\n\n```text\n```\n",
+    );
+    assert!(decode(&code_without_stage, "e.case.ad").is_err());
+
+    let non_console_channel = case_doc(
+        "\n### Probe av\nrecipe: \"ac-av/core-run-v1\"\nentry: \"d_main\"\nchannel: \"value\"\nexit: 1\n",
+    );
+    assert!(decode(&non_console_channel, "e.case.ad").is_err());
 }

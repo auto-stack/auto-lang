@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 fn corpus() -> PathBuf {
     Path::new(env!("AUTO_LANG_CORE_DIR"))
-        .join("../auto-lang/test/cases/ace-m1/console-863/console-863.suite.ad")
+        .join("../auto-lang/test/cases/ace-document-console.suite.ad")
 }
 fn fixture(root: &Path, source: &str, expect: &str) -> PathBuf {
     let dir = root.join("fixture");

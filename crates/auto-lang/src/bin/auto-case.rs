@@ -47,7 +47,7 @@ fn real_main() -> Result<i32, String> {
 use std::path::{Path, PathBuf};
 
 use auto_test_case::admission::{
-    Limits, check_no_reparse_ancestors, validate_output_domain, validate_output_file,
+    check_no_reparse_ancestors, validate_output_domain, validate_output_file, Limits,
 };
 use auto_test_case::discovery::load_suite;
 use auto_test_case::suite::apply_defaults;
@@ -116,6 +116,17 @@ fn run(args: &[String]) -> Result<i32, String> {
             );
             Ok(0)
         }
+        "migration-inventory" => {
+            let inventory = auto_lang::test_cases::inventory::suite_migration_inventory(
+                &suite,
+                &Limits::defaults(),
+            )?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&inventory).map_err(|e| e.to_string())?
+            );
+            Ok(0)
+        }
         "inspect" => inspect(&suite, require(args, "--case")?),
         "run" => run_cmd(&suite, args),
         "module-case" => module_case_cmd(&suite, args),
@@ -127,7 +138,7 @@ fn run(args: &[String]) -> Result<i32, String> {
 }
 
 fn usage() -> String {
-    "usage: auto-case <lint|list|inventory|identity-inventory|inspect|run|proposal|stale> --suite <path> [flags]; auto-case legacy-inventory --test-root <path>; auto-case parent-inventory"
+    "usage: auto-case <lint|list|inventory|identity-inventory|migration-inventory|inspect|run|proposal|stale> --suite <path> [flags]; auto-case legacy-inventory --test-root <path>; auto-case parent-inventory"
         .to_string()
 }
 
@@ -191,7 +202,11 @@ fn lint(suite: &std::path::Path) -> Result<i32, String> {
     for e in &errors {
         println!("ERROR {}", e);
     }
-    if errors.is_empty() { Ok(0) } else { Ok(2) }
+    if errors.is_empty() {
+        Ok(0)
+    } else {
+        Ok(2)
+    }
 }
 
 fn list(suite: &std::path::Path, format: Option<&str>) -> Result<i32, String> {
@@ -543,7 +558,11 @@ fn stale_cmd(suite: &std::path::Path, report_path: &str) -> Result<i32, String> 
         verdicts.len(),
         stale_count
     );
-    if stale_count == 0 { Ok(0) } else { Ok(1) }
+    if stale_count == 0 {
+        Ok(0)
+    } else {
+        Ok(1)
+    }
 }
 
 fn jstr(s: &str) -> String {

@@ -20,6 +20,10 @@ const M1_BASE_SUITE: &str = concat!(
     env!("AUTO_LANG_HOST_DIR"),
     "/test/cases/ace-m1/ace-m1-base.suite.ad"
 );
+const DOC_BASE_SUITE: &str = concat!(
+    env!("AUTO_LANG_HOST_DIR"),
+    "/test/cases/ace-document-base.suite.ad"
+);
 const M1_ENTRY_SUITE: &str = concat!(
     env!("AUTO_LANG_HOST_DIR"),
     "/test/cases/ace-m1/entry-862/entry-unit-862.suite.ad"
@@ -620,4 +624,51 @@ fn v07_emit_not_run() {
         !run_actions.is_empty(),
         "the M1 suite must carry real run checks"
     );
+}
+
+/// PLAN-1057: CLI wiring regression for the active AutoDown document BASE suite
+/// (`ace-document-base`, 10 scalar cases / 40 document rows + 57 legacy rows = 97 checks).
+#[test]
+fn document_base_cli_list_and_migration_inventory_complete() {
+    let list = auto_case(&["list", "--suite", DOC_BASE_SUITE]);
+    assert!(
+        list.status.success(),
+        "list on DOC_BASE_SUITE failed:\n{}",
+        String::from_utf8_lossy(&list.stderr)
+    );
+    let list_text = String::from_utf8_lossy(&list.stdout);
+    assert!(
+        list_text.contains("ace.m1.b01") && list_text.contains("ace.m1.b12"),
+        "expected scalar cases in CLI list output:\n{list_text}"
+    );
+
+    let inv = auto_case(&["migration-inventory", "--suite", DOC_BASE_SUITE]);
+    assert!(
+        inv.status.success(),
+        "migration-inventory on DOC_BASE_SUITE failed:\n{}",
+        String::from_utf8_lossy(&inv.stderr)
+    );
+    let doc: serde_json::Value =
+        serde_json::from_slice(&inv.stdout).expect("migration-inventory json");
+    assert_eq!(doc["schema"], "autolang.case-migration/1");
+    let checks = doc["checks"].as_array().expect("checks array");
+    assert_eq!(checks.len(), 97, "active BASE suite must stay 97 checks");
+
+    let doc_scalar: Vec<_> = checks
+        .iter()
+        .filter(|row| row["origin"]["format"] == "document")
+        .collect();
+    assert_eq!(
+        doc_scalar.len(),
+        40,
+        "10 scalar cases x 4 checks in document format"
+    );
+    for row in doc_scalar {
+        assert_eq!(row["origin"]["suite"], "ace-document-base");
+        assert_eq!(
+            row["origin"]["input_paths"].as_array().map(|a| a.len()),
+            Some(0),
+            "migrated inline scalar cases must read zero external input paths"
+        );
+    }
 }

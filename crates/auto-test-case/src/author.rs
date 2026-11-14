@@ -190,6 +190,9 @@ struct ProbeSection {
     entry: String,
     caps: Vec<String>,
     exit: Option<i32>,
+    channel: Option<(String, usize)>,
+    stage: Option<(String, usize)>,
+    code: Option<(String, usize)>,
     streams: Vec<StreamBlock>,
 }
 
@@ -591,11 +594,12 @@ fn decode_one_case(
     let mut tags: Vec<String> = file_tags.to_vec();
     let mut links: Vec<String> = file_links.to_vec();
     let mut module_name: Option<String> = None;
+    let mut entry_mode = EntryMode::Program;
     for a in collect_leading_attrs(
         doc,
         lines,
         case_head.line,
-        &["id", "tags", "links", "module-name"],
+        &["id", "tags", "links", "module-name", "entry-mode"],
     )? {
         match a.key.as_str() {
             "id" => {
@@ -611,6 +615,21 @@ fn decode_one_case(
             "tags" => merge_list(&mut tags, &a)?,
             "links" => merge_list(&mut links, &a)?,
             "module-name" => module_name = Some(want_str(&a)?),
+            "entry-mode" => {
+                entry_mode = match want_str(&a)?.as_str() {
+                    "program" => EntryMode::Program,
+                    "script" => EntryMode::Script,
+                    other => {
+                        return err(
+                            a.line,
+                            format!(
+                                "entry-mode 仅支持 \"program\" 或 \"script\"，收到 {:?}",
+                                other
+                            ),
+                        )
+                    }
+                };
+            }
             _ => unreachable!("known keys filtered"),
         }
     }
@@ -882,6 +901,62 @@ fn decode_one_case(
                     }
                 }
                 if wiring == ProbeWiring::AvConsole {
+                    match (&p.stage, &p.code) {
+                        (None, None) => {}
+                        (Some((_, sl)), None) => {
+                            return err(
+                                *sl,
+                                "console Probe 的 stage 与 code 必须成对出现（缺少 code）",
+                            );
+                        }
+                        (None, Some((_, cl))) => {
+                            return err(
+                                *cl,
+                                "console Probe 的 stage 与 code 必须成对出现（缺少 stage）",
+                            );
+                        }
+                        (Some((s, sl)), Some((c, cl))) => {
+                            let stage = decode_probe_stage(s).ok_or_else(|| AuthorError {
+                                line: *sl,
+                                message: format!(
+                                    "console Probe stage 仅支持 parse / resolve / typecheck / verify / run，收到 {:?}",
+                                    s
+                                ),
+                            })?;
+                            if c.trim().is_empty() {
+                                return err(*cl, "console Probe code 不能为空");
+                            }
+                            if expect.exit.is_some() {
+                                return err(
+                                    p.section_line,
+                                    "console Probe 错误预期不能同时声明 exit",
+                                );
+                            }
+                            if p.channel.is_some() {
+                                return err(
+                                    p.section_line,
+                                    "console Probe 错误预期不能同时声明 channel",
+                                );
+                            }
+                            expect.completion = Completion::Error {
+                                stage,
+                                code: Some(c.clone()),
+                                message: None,
+                            };
+                        }
+                    }
+                    if let Some((ch, ch_line)) = &p.channel {
+                        if ch != "value" && ch != "unit" {
+                            return err(
+                                *ch_line,
+                                format!(
+                                    "console Probe channel 仅支持 \"value\" 或 \"unit\"，收到 {:?}",
+                                    ch
+                                ),
+                            );
+                        }
+                        expect.av_channel = Some(ch.clone());
+                    }
                     for st in &p.streams {
                         match st.kind {
                             StreamKind::Stdout => expect.stdout = Some(st.expect.clone()),
@@ -899,11 +974,25 @@ fn decode_one_case(
                         line: p.section_line,
                         message: m,
                     })?;
-                } else if !p.streams.is_empty() {
-                    return err(
-                        p.section_line,
-                        "只有 console recipe（ac-av/console-run-v1）接入输出流小节",
-                    );
+                } else {
+                    if let Some((_, l)) = p.channel {
+                        return err(
+                            l,
+                            "channel 仅允许用于 console recipe（ac-av/console-run-v1）",
+                        );
+                    }
+                    if let Some((_, l)) = p.stage {
+                        return err(l, "stage 仅允许用于 console recipe（ac-av/console-run-v1）");
+                    }
+                    if let Some((_, l)) = p.code {
+                        return err(l, "code 仅允许用于 console recipe（ac-av/console-run-v1）");
+                    }
+                    if !p.streams.is_empty() {
+                        return err(
+                            p.section_line,
+                            "只有 console recipe（ac-av/console-run-v1）接入输出流小节",
+                        );
+                    }
                 }
                 push_check(
                     &mut checks,
@@ -955,7 +1044,7 @@ fn decode_one_case(
             path: source_path,
         },
         files: vec![],
-        entry: EntryMode::Program,
+        entry: entry_mode,
         checks,
         status_skip: None,
     };
@@ -1014,7 +1103,9 @@ fn decode_h3_section(
         "VM diagnostic" => &["check-id", "stage", "code"],
         "Rust" => &["check-id"],
         "Notes" => &[],
-        t if t.starts_with("Probe ") => &["recipe", "entry", "caps", "exit"],
+        t if t.starts_with("Probe ") => &[
+            "recipe", "entry", "caps", "exit", "channel", "stage", "code",
+        ],
         t if UNWIRED_SECTIONS.contains(&t) => {
             return err(
                 sh.line,
@@ -1166,12 +1257,18 @@ fn decode_h3_section(
             let mut entry = String::new();
             let mut caps = Vec::new();
             let mut exit = None;
+            let mut channel = None;
+            let mut stage = None;
+            let mut code = None;
             for a in &attrs {
                 match a.key.as_str() {
                     "recipe" => recipe = Some(want_str(a)?),
                     "entry" => entry = want_str(a)?,
                     "caps" => caps = want_list(a)?,
                     "exit" => exit = Some(want_int(a)?),
+                    "channel" => channel = Some((want_str(a)?, a.line)),
+                    "stage" => stage = Some((want_str(a)?, a.line)),
+                    "code" => code = Some((want_str(a)?, a.line)),
                     _ => unreachable!(),
                 }
             }
@@ -1192,10 +1289,27 @@ fn decode_h3_section(
                 entry,
                 caps,
                 exit,
+                channel,
+                stage,
+                code,
                 streams: Vec::new(),
             });
             Ok(())
         }
+    }
+}
+
+fn decode_probe_stage(s: &str) -> Option<Stage> {
+    if !Stage::supported_for(Adapter::Probe).contains(&s) {
+        return None;
+    }
+    match s {
+        "parse" => Some(Stage::Parse),
+        "resolve" => Some(Stage::Resolve),
+        "typecheck" => Some(Stage::Typecheck),
+        "verify" => Some(Stage::Verify),
+        "run" => Some(Stage::Run),
+        _ => None,
     }
 }
 
