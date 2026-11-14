@@ -158,7 +158,12 @@ const PROFILE_EXTENSION_DIFFS: &[(&str, &str)] = &[
     ("V03.at", "Record"),
 ];
 
-fn profile_extension_diff(name: &str, profile: &str, old: &Result<String, String>, new: &Result<String, String>) -> bool {
+fn profile_extension_diff(
+    name: &str,
+    profile: &str,
+    old: &Result<String, String>,
+    new: &Result<String, String>,
+) -> bool {
     let listed = PROFILE_EXTENSION_DIFFS
         .iter()
         .any(|(f, p)| *f == name && *p == profile);

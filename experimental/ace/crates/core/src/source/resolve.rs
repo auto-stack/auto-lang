@@ -1639,14 +1639,19 @@ pub fn validate_foreign_context(
                     first.join(u.span),
                 )]);
             }
-            if u.provider.name != foreign.manifest().provider {
+            let family_prefix = if u.lang == "c" { "c/" } else { "rust/" };
+            if u.provider.name != foreign.manifest().provider
+                || !foreign.manifest().facts.logical.starts_with(family_prefix)
+            {
                 return Err(vec![Diagnostic::new(
                     Stage::Bind,
                     "source.use-rs.provider",
                     format!(
-                        "`use.rs {}` does not match the admitted provider `{}`",
+                        "`use.{} {}` does not match the admitted provider `{}` (family `{}`)",
+                        u.lang,
                         u.provider.name,
-                        foreign.manifest().provider
+                        foreign.manifest().provider,
+                        foreign.manifest().facts.logical
                     ),
                     u.provider.span,
                 )]);

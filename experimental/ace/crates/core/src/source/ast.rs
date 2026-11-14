@@ -260,9 +260,12 @@ pub enum Item {
     UseRs(UseRsItem),
 }
 
-/// A `use.rs <provider>` module item (PLAN-967 F0).
+/// A `use.rs <provider>` / `use.c <provider>` module item (PLAN-967
+/// F0/T-10). `lang` is the frozen spelling marker ("rs" | "c"); the
+/// resolve pass checks it against the admitted manifest family.
 #[derive(Clone, Debug)]
 pub struct UseRsItem {
+    pub lang: String,
     pub provider: Ident,
     /// `use` keyword through the provider identifier.
     pub span: Span,

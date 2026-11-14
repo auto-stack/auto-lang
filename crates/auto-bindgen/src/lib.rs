@@ -9,6 +9,7 @@
 //!
 //! Plan 216 Phase 1; rust_import is PLAN-967 T-F0-I.
 
+pub mod c_import;
 pub mod extractor;
 pub mod manifest;
 pub mod rust_import;

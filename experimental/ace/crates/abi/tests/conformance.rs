@@ -1,5 +1,7 @@
 #[path = "cases/binding.rs"]
 mod binding;
+#[path = "cases/c_import.rs"]
+mod c_import;
 #[path = "cases/cache_turnaround.rs"]
 mod cache_turnaround;
 #[path = "cases/calls.rs"]

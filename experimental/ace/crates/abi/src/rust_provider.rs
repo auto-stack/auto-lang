@@ -232,6 +232,101 @@ pub fn f0_authority(
     }
 }
 
+/// PLAN-967 T-10: the frozen C provider header (the annotations ARE the
+/// metadata) and its implementation.
+pub fn f0_c_header() -> &'static str {
+    include_str!("../cside/f0_c.h")
+}
+pub fn f0_c_source() -> &'static str {
+    include_str!("../cside/f0_c.c")
+}
+
+/// One imported C provider: the derived manifest plus the compiled real
+/// provider object (cl.exe, observed include closure).
+pub struct CProvider {
+    pub manifest: ace_foreign_contract::manual::ManualManifest,
+    pub object: std::path::PathBuf,
+    pub include_closure: Vec<std::path::PathBuf>,
+    pub provider_digest: String,
+}
+
+/// Import a C provider PROJECT: preprocess `<root>/<name>.h` with the
+/// REAL preprocessor, derive the manifest from the annotations + the
+/// preprocessed declarations, admit it, and compile `<root>/<name>.c`
+/// with cl.exe (returning the observed include closure). Every identity
+/// derives from the project files; no hand-written manifest exists.
+pub fn open_c_provider(root: &Path, name: &str) -> Result<CProvider, String> {
+    let header_path = root.join(format!("{name}.h"));
+    let source_path = root.join(format!("{name}.c"));
+    if !header_path.is_file() {
+        return Err(format!(
+            "c-import.provider-missing: `use.c {name}` found no header at {}",
+            header_path.display()
+        ));
+    }
+    if !source_path.is_file() {
+        return Err(format!(
+            "c-import.provider-missing: `use.c {name}` found no implementation at {}",
+            source_path.display()
+        ));
+    }
+    let raw_header = std::fs::read_to_string(&header_path)
+        .map_err(|e| format!("c-import.provider-read: {e}"))?;
+    let entries = auto_bindgen::c_import::parse_annotations(&raw_header)
+        .map_err(|e| format!("{}: {}", e.code, e.message))?;
+    let preprocessed = crate::ctool::preprocess_c(&header_path, root)
+        .map_err(|e| format!("c-import.preprocess: {e}"))?;
+    let decls = auto_bindgen::c_import::parse_declarations(&preprocessed);
+    let provider_digest = ace_foreign_contract::blake3_hex(raw_header.as_bytes());
+    let manifest = auto_bindgen::c_import::to_manual_manifest(
+        name,
+        &entries,
+        &decls,
+        "f0-c-provider/1",
+        &provider_digest,
+    )
+    .map_err(|e| format!("{}: {}", e.code, e.message))?;
+    // the REAL provider object (include closure observed by cl itself)
+    let build_dir = root.join(format!(".c-build-{name}"));
+    std::fs::create_dir_all(&build_dir).map_err(|e| e.to_string())?;
+    std::fs::write(build_dir.join(format!("{name}.c")), {
+        // compile from a copy beside the header so `#include "f0_c.h"` resolves
+        std::fs::read_to_string(&source_path).map_err(|e| e.to_string())?
+    })
+    .map_err(|e| e.to_string())?;
+    std::fs::copy(&header_path, build_dir.join(format!("{name}.h"))).map_err(|e| e.to_string())?;
+    let obj = build_dir.join(format!("{name}.obj"));
+    let include_closure =
+        crate::ctool::compile_c_with_deps(&build_dir.join(format!("{name}.c")), &build_dir, &obj)
+            .map_err(|e| format!("c-import.compile: {e}"))?;
+    Ok(CProvider {
+        manifest,
+        object: obj,
+        include_closure,
+        provider_digest,
+    })
+}
+
+/// The C provider's host authority (header digest = provider identity).
+pub fn c_authority(
+    provider: &CProvider,
+    binding_generation: u64,
+) -> ace_foreign_contract::manual::HostAuthority {
+    let m = &provider.manifest;
+    ace_foreign_contract::manual::HostAuthority {
+        review_id: m.review_id.clone(),
+        contract_digest: m.contract_digest().unwrap(),
+        provider: m.provider.clone(),
+        provider_digest: provider.provider_digest.clone(),
+        header_digest: m.header_digest.clone(),
+        physical_table_digest: m.physical_table_digest.clone(),
+        target: m.target.clone(),
+        capabilities: m.facts.capabilities.iter().cloned().collect(),
+        available_symbols: m.facts.functions.iter().map(|f| f.symbol.clone()).collect(),
+        binding_generation,
+    }
+}
+
 /// PLAN-967 T-09: PROJECT-level provider resolution for the `use.rs`
 /// frontdoor. The source's `use.rs <provider>` names a PROJECT file
 /// `<root>/<provider>.rs`; the binding, shim, build unit and manifest

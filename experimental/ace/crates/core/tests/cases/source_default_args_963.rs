@@ -22,7 +22,11 @@ fn main() int {
 }
 ";
     let c = compile(src).expect("omitted trailing default compiles");
-    assert!(c.atom_text.contains("rep"), "callee missing:\n{}", c.atom_text);
+    assert!(
+        c.atom_text.contains("rep"),
+        "callee missing:\n{}",
+        c.atom_text
+    );
 }
 
 /// O-963-D2：命名式调用可省略**任意**带默认值的参数。

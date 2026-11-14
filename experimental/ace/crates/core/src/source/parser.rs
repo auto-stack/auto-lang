@@ -869,16 +869,16 @@ impl<'s> Parser<'s> {
             ));
         }
         self.bump(); // `.`
-        let rs = self.expect_ident("`rs`")?;
-        if rs.name != "rs" {
+        let lang = self.expect_ident("`rs`/`c`")?;
+        if lang.name != "rs" && lang.name != "c" {
             return Err(Diagnostic::new(
                 Stage::Text,
                 "source.use-rs.syntax",
                 format!(
-                    "`use.{}` is not a supported import; the Rust import is `use.rs`",
-                    rs.name
+                    "`use.{}` is not a supported import; the imports are `use.rs`/`use.c`",
+                    lang.name
                 ),
-                start.join(rs.span),
+                start.join(lang.span),
             ));
         }
         let provider = self.expect_ident("use.rs provider name")?;
@@ -891,7 +891,11 @@ impl<'s> Parser<'s> {
             ));
         }
         let span = start.join(provider.span);
-        Ok(Item::UseRs(UseRsItem { provider, span }))
+        Ok(Item::UseRs(UseRsItem {
+            lang: lang.name,
+            provider,
+            span,
+        }))
     }
 
     fn item(&mut self) -> Result<Item, Diagnostic> {

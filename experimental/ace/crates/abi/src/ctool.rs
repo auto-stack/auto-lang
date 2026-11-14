@@ -390,6 +390,57 @@ fn compile_c_output(
     Ok(captured)
 }
 
+/// PLAN-967 T-10: REAL preprocessing of one header for the C importer —
+/// `cl /EP` with the same frozen flags and include resolution as the
+/// compile path (macros/includes/target come from the real preprocessor,
+/// never from text scanning). Returns the preprocessed text.
+pub fn preprocess_c(header: &Path, include_dir: &Path) -> Result<String, CToolError> {
+    let tool = find_cl()?;
+    let msvc_root = tool
+        .cl_exe
+        .ancestors()
+        .nth(4)
+        .ok_or_else(|| CToolError("cannot derive MSVC root from cl path".into()))?;
+    let msvc_include = msvc_root.join("include");
+    if !msvc_include.join("stdint.h").is_file() {
+        return Err(CToolError(format!(
+            "MSVC include dir missing stdint.h: {}",
+            msvc_include.display()
+        )));
+    }
+    let mut cmd = Command::new(&tool.cl_exe);
+    cmd.args(["/nologo", "/EP"]);
+    cmd.arg(format!("-I{}", include_dir.display()));
+    cmd.arg(format!("-I{}", msvc_include.display()));
+    cmd.arg(header);
+    let captured = crate::ctool_capture::run_observed(
+        &mut cmd,
+        COMPILE_DEADLINE,
+        ace_core::link::CaptureCaps {
+            stdout_max: TOOL_STREAM_MAX,
+            stderr_max: TOOL_STREAM_MAX,
+        },
+        None,
+        || Ok(()),
+    )
+    .map_err(|e| match e {
+        crate::ctool_capture::CaptureError::Resource(message) => CToolError(message),
+        crate::ctool_capture::CaptureError::Subprocess(e) => CToolError(format!("cl spawn: {e:?}")),
+    })?;
+    let run = captured.value;
+    if run.exit_code != Some(0) {
+        return Err(CToolError(format!(
+            "cl /EP exited {:?} for {}:
+{}",
+            run.exit_code,
+            header.display(),
+            String::from_utf8_lossy(&run.stderr).trim()
+        )));
+    }
+    String::from_utf8(run.stdout)
+        .map_err(|e| CToolError(format!("preprocessed output not UTF-8: {e}")))
+}
+
 /// Stable toolchain fingerprint for cache keys and receipts (cl identity
 /// + frozen flags; the linker/SDK side comes from the ac-core entries and
 /// is pinned in contract-decision.md §5).
