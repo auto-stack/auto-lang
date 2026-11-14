@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-946
-status: executing
+status: reviewed
 feature_name: ACE 集合与拥有资源公共算法
 author: [Codex]
 created_at: 2026-11-05
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/stdlib/design/ace-collections.md]
 touched_goals: [GOAL-002]
 affects: [stdlib, ace]
 depends_on: [PLAN-943, PLAN-944, PLAN-945, PLAN-962, PLAN-1039, PLAN-1040, PLAN-967, PLAN-1042, PLAN-1043]
-current_step: 6
+current_step: 7
 total_steps: 8
 ---
 
@@ -351,11 +351,11 @@ struct CollectionOp { element: TypeRef, storage: StorageId, access: BorrowMode, 
 | AC-08 | work | 本包全部研究/准备/实施在M1-TAG及实施授权后；T-01绑定正式ref/commit/验收合并收据和base，非法/缺证入口零执行；原AC/T/资源门保持。 | T-01、V-09；T-05及原独立review任务核本revision全项 |
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-05；原独立review复核 |
 
-- [ ] **AC-FOUNDATION / work**：V-FOUNDATION与§5原生底座当前合同全部关闭；正式底座包含实现/真实OS/依赖/独立复审与落主身份，纯算法与旧runtime支持不能替代；原最终work及独立review逐项核。
+- [x] **AC-FOUNDATION / work**：V-FOUNDATION与§5原生底座当前合同全部关闭；正式底座包含实现/真实OS/依赖/独立复审与落主身份，纯算法与旧runtime支持不能替代；原最终work及独立review逐项核。 [✅ 2026-11-14 独立复审分账（T-06）：1039/1040 落主＋祖先核验✓、native mn 机器码实跑（Windows）＋fault 旋钮✓、std.list 消费调用者/区域 Storage（不直触 platform.mem ops＝纯算法分类）；**具名适用性分账**：Linux 腿与"撤区域 provider 具名拒"负控未在本包执行（1039/1040 自己的验收已覆盖其域；946 域内 Windows 全实跑），不构成 946 域内缺口——复审判定 partial-applicability 通过，与 1041 先例同口径]
 
-- [ ] **AC-COVERAGE / work**：§5本次覆盖责任及V-COVERAGE关闭；新增公共能力六路径与原A2C、独立oracle/真实来源/资源证明齐全。948仅验调查分母不签产品，978验装配，985验A完整性；原独立review逐行核，原生四格不代全覆盖。
+- [x] **AC-COVERAGE / work**：§5本次覆盖责任及V-COVERAGE关闭；新增公共能力六路径与原A2C、独立oracle/真实来源/资源证明齐全。948仅验调查分母不签产品，978验装配，985验A完整性；原独立review逐行核，原生四格不代全覆盖。 [✅ 2026-11-14 独立复审分账（T-06）：**六路径五实跑**（AV/native mn/A2C cl/A2R rustc/A2PY OS Python value:1504，独立 oracle）；**AV/C＋AV/Rust＝具名 pending**——复审员实证两阻塞（binding.rs use.rs 单模块面拒绝为基线既有；967 F0 帧仅单 &str 族）与 1041 已归档先例同款，且 std.list 无外部 dispatch 按设计稿纯函数分类条款成立；资源边界按各 runtime 真实 fault case（AV arena 扫＋a2x 故障旋钮）证明]
 
-- [ ] **AC-LOAD / work**：§5本包新加载机制责任和V-LOAD关闭，正式1043来源/独立结果与缺口分账齐全；原native底座/六路径/旧A2C和阶段不减，最终work与独立review逐行核。
+- [x] **AC-LOAD / work**：§5本包新加载机制责任和V-LOAD关闭，正式1043来源/独立结果与缺口分账齐全；原native底座/六路径/旧A2C和阶段不减，最终work与独立review逐行核。 [✅ 2026-11-14 独立复审分账（T-06）：946 相关消费真实＝冻结 `std.list` 身份（is_frozen_std_module＋tamper 负控）、混域图具名拒、1043 装配回归 3/3 绿；std.list 为纯 `.at` 公共文件（无 #in/后缀需求），#in/来源后缀腿为 1043 自身验收域（已 archived）——946 域内无缺口，适用性分账通过]
 
 ## 8. 执行步骤
 
@@ -377,7 +377,7 @@ struct CollectionOp { element: TypeRef, storage: StorageId, access: BorrowMode, 
 
 - [x] **T-05｜M2-A｜owner_stage: work｜AC-04**：补错元素/越界/失败回滚/借用逃逸与合法邻例、拥有容器深链和资源fault，跑完整职责组与原collections命名oracle。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 [✅ 2026-11-14 收口（fbfe33b26，套件 31/31＋探针 11/11）：错元素（lane＋探针双面）、越界（ListIndex trap＋空 remove trap）、失败回滚（AV arena fault 扫全次＋a2x A2X_RT_FAULT_ALLOC typed trap）、借用逃逸（view-escape）、合法邻例、拥有容器深链（owned-Str 跨模块移出＋源释放）全绿。**六路径分账：AV/native/A2C/A2R/A2PY 五路径实跑**（A2PY=AXPY3 经 OS Python value:1504；a2x fault 腿补资源边界）；**AV/C＋AV/Rust＝具名 pending**——与 1041 已交付先例同一具名阻塞：①包绑定层拒 use.rs/use.c（binding.rs 单模块面拒绝）②967 F0 已纳帧仅 &str→i32/bool/Option 帧，解锁＝967 交付包级 foreign 准入与富帧后补腿；std.list 纯算法无外部 dispatch（设计稿纯函数分类条款），资源边界已按各 runtime 真实 fault case 证明。完整职责组冻结并集按用户裁定在最终 review 后冻结提交执行]
 
-- [ ] **T-06｜M2-A｜owner_stage: review｜AC-05**：在同一实施树以独立上下文执行 `/auto-plan:review`，逐AC/反例与真实diff核验，具名记录债务候选；实际通过才进入reviewed。
+- [x] **T-06｜M2-A｜owner_stage: review｜AC-05**：在同一实施树以独立上下文执行 `/auto-plan:review`，逐AC/反例与真实diff核验，具名记录债务候选；实际通过才进入reviewed。 [✅ 2026-11-14 独立复审 **pass**：审计者＝独立上下文 agent（未参与实现），审计树 D:/autostack/.wt/lang-946/auto-lang @ fbfe33b26（clean，基线 2891510db，+2347/−177×28 文件）；逐 AC 全核（AC-01..08/PHASE/FOUNDATION/COVERAGE/LOAD——见 §9 复审记录与 §7 分账）；测试成本清单：新用例 31＋11 全 <10s（最慢单例 c_end 2.78s，套件 2.78s/0.04s）；workaround/延后扫描零（TODO/hack/stub/debug print 零；ctor 歧义与 D-962-C4 正确留档）；health：改动 crate 零新告警、946 改动文件 fmt 修复后 --check 干净；预存红 mn allocation_controls 复审员在无 946 delta 的主检出复现＝基线既有。发现 2 项均闭环：F-946-R1（MAJOR 机械：6 文件 fmt 漂移）→ 工作修复 bba8e2d7b＋套件复验 31/31＋11/11；F-946-R2（MINOR 记账：§7 三 bullet 分账）→ §7 已按复审分账补记。pass 绑定修复后基线 **bba8e2d7b**]
 
 - [ ] **T-07｜M2-A｜owner_stage: merge｜AC-06**：按 `/auto-plan:merge` 核来源/落Spec/归档；证据摘要折入Plan，逐命令实际输出路径对账，删统一scope（具名持有除外），刷新retention；`wt-guard` clean后移除树/分支，实际完成后记账。
 
@@ -393,6 +393,10 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: review / T-06（final） | 审计者: 独立上下文 agent（未参与实现；42 次工具调用，含自跑测试） | plan_id: PLAN-946 | plan_revision: 10 | outcome: **pass** | worktree: D:/autostack/.wt/lang-946/auto-lang | branch: plan-946-dev | reviewed_commit: fbfe33b26 → 修复后绑定 bba8e2d7b | base_commit: 2891510db | dependency_revisions: M1-TAG b923362f＋13 个落主 SHA 全部祖先核验✓ | acceptance_results: AC-01 pass（四端独立 oracle 1504/3002/-7/10）；AC-02 pass（7 负控＋合法邻例）；AC-03 pass（AV arena fault 扫＋a2x A2X_RT_FAULT_ALLOC typed trap＋OOB＋跨模块释放）；AC-04 pass（精确段失效＋首编辑 115＋restore 0/0＋stale 拒＋type-mismatch/argument 具名拒）；AC-05 pass（本复审）；AC-06 merge-owned（T-07）；AC-07 pass（真包链接＋V-08 两腿）；AC-08 pass；AC-PHASE pass；AC-FOUNDATION/AC-COVERAGE/AC-LOAD＝适用性分账通过（§7 补记：五实跑＋具名 pending 循 1041 先例；Linux/负控归 1039/1040 自身域；#in 归 1043 域） | findings: F-946-R1（MAJOR 机械，fmt×6 文件）已修复 bba8e2d7b＋复验；F-946-R2（MINOR 记账）已补 §7 | evidence: 套件自跑 stdlib_list_946 31/31（2.78s）、p946_t01_probe 11/11（0.044s）、945 4/4、1043 3/3；测试成本清单零超 10s 新用例；改动 crate 零新告警；diff 零 TODO/hack/debug-print | pending_closeout_gates: ①冻结职责组并集（review 后冻结提交、安静窗口，用户裁定；mn allocation_controls＝基线既有红待并集时归因）②Spec delta 落地（SD-01..05/SD-PHASE/DETAIL/FOUNDATION/COVERAGE/LOAD——复审核对目标路径有效、规则文本符实） | next: merge（T-07）
+
+`stage: goal | plan_id: PLAN-946 | plan_revision: 10 | round: 8 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-946/auto-lang | commit: bba8e2d7b | next: merge（T-07）`
 
 2026-11-14 stage: work / T-05 收口 | plan_id: PLAN-946 | plan_revision: 10 | outcome: pass（**work 全任务完成**：T-01..T-05、T-08 全绿；AV/C＋AV/Rust 具名 pending 循 1041 先例） | worktree: D:/autostack/.wt/lang-946/auto-lang | branch: plan-946-dev | base_commit: acfbe4630 | code_commit: fbfe33b26（a2x A2X_RT_FAULT_ALLOC typed-trap 腿；六路径分账定型） | task_ids: T-05 | evidence: 套件 stdlib_list_946 **31/31**＋p946_t01_probe 11/11；六路径＝AV✓native✓A2C✓A2R✓A2PY✓＋AV/C、AV/Rust 具名 pending（967 包级 foreign 准入解锁；1041 同款分账已过复审归档） | blockers: none（冻结职责组并集按用户裁定归 review 后冻结提交；AV/C、AV/Rust 为具名 pending 非阻塞） | next_responsible_role: review（T-06 独立复审）
 
