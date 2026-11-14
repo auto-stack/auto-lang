@@ -23,6 +23,8 @@ mod av_closures_semantics;
 
 #[path = "cases/aggregates_t01_probe.rs"]
 mod aggregates_t01_probe;
+#[path = "cases/p946_t01_probe.rs"]
+mod p946_t01_probe;
 #[path = "cases/av_closures_source.rs"]
 mod av_closures_source;
 #[path = "cases/av_collections.rs"]
