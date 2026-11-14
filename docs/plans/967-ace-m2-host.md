@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-14
 plan_revision: 12
-current_step: 8
+current_step: 9
 total_steps: 19
 depends_on: [PLAN-960, PLAN-962, PLAN-963, PLAN-938, PLAN-939, PLAN-1042, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-bindgen/project.md, docs/specs/auto-abi/project.md]
@@ -210,6 +210,24 @@ F0最小前置为已交938/939契约与现有text/scalar源码、共享verify/AV
 **LOAD 责任映射**：1043正式来源archived已核；FFI provider消费其来源后缀装配/#in namespace在T-03/T-12腿接入（复用同一Auto适配源码+真实foreign调用，不另造av.c/av.rs loader）；V-LOAD按其owner行在最终work汇总（T-04）闭，独立review核AC-LOAD——本冻结不减原范围。
 
 **具名 unknown（有 owner，不漏计）**：跨rustc/双身份运行腿（T-11/T-14，V-ABI-*）；C真实预处理/sysroot闭包（T-10）；A2PY最小接缝（T-12←1042）；1043来源后缀/#in消费（T-03/T-12）；异步完成/取消端口（T-08/T-13）；GrantSet/owner授权账与generation+owner+签名每调用重核的全维（T-13，F0已交generation+签名+form维）；双向export/回调重入（T-08/T-13）；SQLite/serde_json真实库（T-15）。
+
+### T-09 冻结记录（2026-11-14，AC-07/V-09 + ABI-COMPAT/INT-1026 字段冻结）
+
+**工程入口（use.rs 腿已交）**：`open_project_session(project_root, provider, generation)`（ace-abi rust_provider）——源内 `use.rs <provider>` 解析到工程文件 `<root>/<provider>.rs`（单段 [a-z0-9_]+；多段/后缀装配归 T-12 消费1043）；binding/shim/构建单元/manifest 全部在 open 时从该文件派生（V-09"删手写manifest"由构造性满足并断言：工程内不存在 manifest 文件）；具名拒绝 `rust-import.provider-name/provider-missing/provider-read` + importer 域拒绝。永久正反例：`f0_project_import_runs_rejects_and_recovers`（真导入跑9 → 坏注解 `rust-import.domain` 阶段拒绝 → 缺文件 `provider-missing` → 修复后同入口恢复9）。use.c 工程腿随 T-10 C importer 落（拼写冻结：CST `use-c-item` 镜像 use-rs-item，text-record profile，同校验形状）。
+
+**真实库/全特征 required 表（冻结，owner 到任务）**：
+
+| 行 | required | 最低真实样本 | owner |
+|---|---|---|---|
+| C 标准头 | 函数/record/enum/pointer/callback/opaque/常量/inline shim、宏/typedef/ABI布局/target/sysroot | string.h strlen 线（V-DETAIL-01 旧行）+ T-10 全闭包 | T-10 |
+| C 真实库 | SQLite 钉版本公开 API | sqlite3 open/exec/step/close 最线 | T-15 |
+| Rust 公开 API | String/Vec/Result/borrow/析构/panic/线程/future 边界、泛型实例 | serde_json from_str/to_string/Value | T-11/T-15 |
+| 旧用法特征 | varargs/union/bitfield、traits/宏/泛型按真实用法逐行 | ffi_dual/020 dep traits generics 旧行 | T-10/T-11 |
+| 默认自有库边界 | ptr+len/CStr/String 入出参、NUL 拒绝/回读/allocator 销毁 | V-NATIVE 五字节行 | T-10/11/12/13/15 |
+
+**ABI-COMPAT 字段冻结（T-14 实现清单）**：BuildIdentity = {provider源+shim源 bytes-digest, crate解析/lock/features/cfg/实例集合, 生成器身份(auto-bindgen rust_import 版本), rustc完整身份(--version+host), target/SDK/linker/flags/native输入}；RuntimeCompatibility = {目标ABI profile(autoabi.win-x64.v0.1-candidate), OS-arch-env/位宽/端序/必要ISA, descriptor/ABI域版本, required符号/签名/布局(=ManualManifest facts), 接口语义/ownership/错误/线程合同, 运行依赖(CRT等)}；ProviderArtifact/Selection = {工件hash, BuildIdentity, 来源与pin/lock策略, 每运行授权+provider代次}。V-ABI-CROSS 双rustc fixture 计划：本机 stable 工具链 + 第二工具链（AC741_RUSTC 覆盖变量，缺第二工具链=pending 不充PASS）。
+
+**INT-1026 最小字段冻结（T-11/12 实现清单）**：受检 tag 参数帧字段 = {receiver tag, positionals[](每元素 tag+data+byte_len), kwargs[](name+tag+data+byte_len), 帧物理投影版本}；返回 = {小标量 | opaque引用 | 结构化错误(status+named)}；借用/寿命 = 输入 noescape borrow、宿主保留副本在调用返回前完成、输出 owner=host；资源 = 复用 foreign-contract ResourceSig/HostAuthority 单一账本（generation+owner+alive/pin/drop），不建第二 Python 账本。
 
 源调用经原计划公共use.rs前门、Rust元数据/版本化注解生成binding和C-compatible shim，再由唯一verify得到签名/borrow/权限/效果事实，AV消费通用foreign指令与stub。物理边界用目标C ABI的data+byte_len，不跨界暴露Rust str胖指针/String/Vec/trait对象布局；shim内部调用Rust &str函数。先覆盖同步、同线程、noescape借用；宿主若要持久显示文本须在调用返回前复制为自身拥有数据，不能保留AV指针。AV执行Rust函数字节码并非本目标，Iced仍由rustc编译。
 
@@ -527,7 +545,8 @@ T-03/T-12扩947既有装配：同一AV的native/C/Rust来源绑定与资源原pr
 - [x] **T-08｜M2-A｜owner_stage: work｜AC-06**：分import/export、调用方/被调用方、标量/聚合/资源与C/Rust/Python现用桥，核动态库装卸、原方allocator、符号/ABI版本。异步本包只交注册/完成/取消端口及受控真实provider；968消费端口实现语言await，967不反向依赖968。 [✅ 2026-11-14]
   交付：**异步完成端口**——中立合同 `foreign-contract/port.rs`（`autoabi.contract.completion-port/1`：PortValue/PortEvent+唯一 `completion_disposition` 规则表 publish/drop-late/unknown；cancel墓碑把迟到完成归为DropLate而非UnknownPort）；宿主注册表 `av-core CompletionPorts`（register/complete/cancel/teardown 绑会话generation——迟到完成可观察丢弃、绝不发布、绝不触已闭会话；每次状态变更是因果 PortEvent=消费者唯一oracle，968的await绑此、967不依968）；**受控真实provider** `rustside/f0_async.rs`（真cdylib、真OS线程、真C-ABI完成回调；raw cdylib构建/装载 helper——域外fixture是手写PROVIDER，手写禁止的是binding/manifest）。E2E（abi f0_async 2案）：真线程回调发布 i32:10；cancel+强制迟到=LateDropped；teardown后真线程in-flight完成=LateDropped。动态库装卸=RawLibrary Drop恰释放一次；V-08 C侧行（export方向/资源释放/callback pin/过期generation）=939永久fixture（ce-*/callback-*/handle-* decks）已交证据。验证：foreign-contract 53绿、av-core foreign 5绿、rust_f0 7绿、f0_async 2绿。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
 
-- [ ] **T-09｜M2-A｜owner_stage: work｜AC-07**：接通工程use.c/use.rs到共享绑定和typed foreign事实，冻结真实库/全特征required表、来源/注解/工具链和合法/非法公共源码；先走通一个真实导入与失败恢复。 验证V-09，证据汇入原最终work验证。 ABI-COMPAT：冻结BuildIdentity/RuntimeCompatibility/ProviderArtifact字段与兼容规则、两个实际可构建fixture的rustc/target组合、准确既有入口和V-ABI-*预期；缺环境记pending。
+- [x] **T-09｜M2-A｜owner_stage: work｜AC-07**：接通工程use.c/use.rs到共享绑定和typed foreign事实，冻结真实库/全特征required表、来源/注解/工具链和合法/非法公共源码；先走通一个真实导入与失败恢复。 [✅ 2026-11-14]
+  交付：`open_project_session` 工程级 use.rs 入口（provider=工程文件，全派生，具名拒绝，V-09 正反例 `f0_project_import_runs_rejects_and_recovers` 全绿）；§5 T-09 冻结记录（真实库/全特征 required 表 owner 到任务、BuildIdentity/RuntimeCompatibility/ProviderArtifact 字段清单、V-ABI-CROSS 双工具链计划、INT-1026 最小字段）。use.c 工程腿冻结为 T-10 随 C importer 落（拼写已定）。 验证V-09，证据汇入原最终work验证。 ABI-COMPAT：冻结BuildIdentity/RuntimeCompatibility/ProviderArtifact字段与兼容规则、两个实际可构建fixture的rustc/target组合、准确既有入口和V-ABI-*预期；缺环境记pending。
 
 - [ ] **T-10｜M2-A｜owner_stage: work｜AC-08/AC-NATIVE**：实现C真实预处理/头文件闭包、target/sysroot/宏/typedef和ABI布局、函数/record/enum/pointer/callback/opaque、常量/inline shim；将旧用法特征逐行闭合。 验证V-10，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。
 
@@ -562,6 +581,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 8 | from: work | to: work | status: executing | outcome: T-09完成（工程入口+冻结记录） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-10 C真实预处理importer）
+
+2026-11-14 stage: work / T-09（AC-07/V-09）| 交付: open_project_session 工程级入口 + f0_project_import 正反例（真导入9/坏注解具名拒/缺文件具名拒/同入口恢复）+ §5 T-09冻结记录（required表/身份字段/双rustc计划/INT-1026字段） | use.c腿=T-10 | next: T-10。
 
 2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 7 | from: work | to: work | status: executing | outcome: T-08完成（异步完成端口+受控真实provider） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-09 公共use.c/use.rs工程入口）
 
