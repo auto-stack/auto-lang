@@ -99,6 +99,8 @@ mod owned_text_performance;
 // PLAN-919: per-owner lifecycle events (R01/R04/R06 ac cells).
 #[path = "cases/collections_resource_events_919.rs"]
 mod collections_resource_events_919;
+#[path = "cases/console_out_linux_1041.rs"]
+mod console_out_linux_1041;
 #[path = "cases/console_out_native_1041.rs"]
 mod console_out_native_1041;
 #[path = "cases/linux_elf_1040.rs"]
