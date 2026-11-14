@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-15
 plan_revision: 10
-current_step: 2
+current_step: 3
 total_steps: 12
 depends_on: [PLAN-960, PLAN-963, PLAN-966]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-a2x/architecture.md]
@@ -191,6 +191,8 @@ fn main() int { return on(40) }
 
 T-H0-I的有界决定只在现有rule/field组合与必要的中立上下文规则扩展间比较至多两种策略，冻结实际字段/入口/fixture命令、冲突规则及source-map；不得退回硬编码AGE parser。与963并行时先在已交960/962及现有text/普通函数域做规则资产、CPU consumer和名称反控；963正在修改的`auto-source.at`、`core/source/cst/project.rs`、AST/resolve/实例查询及公共测试注册按文件owner短窗串行、冻结SHA交接。需963新泛型的实际case仍等963交付，不靠私有复制语法或消费未审WIP解锁；H0无需整包963/966完成。H0-I/V/R/D按原任务独立正式交付，980消费H0-D，不反等981/SOURCE或完整980/981。
 
+**H0 已验形状与已知限制（2026-11-15 三轮独立复审收敛，实测行为而非规划猜测）**：冻结表达式首批为**字面量或同工程普通函数调用**（受检文本种类 str/Str 均可，值经共享 AV 执行）；裸标识符叶（`text my_str {}`）在共享 text-record 面按构造器形状解析并报结构拒绝，不属 H0 支持形态（完整表达式面归 T-02/T-08）；AGE 声明**之前**的顶层杂散 `}` 仍报通用语法错误（不在任何已开始的 AGE 构造内，故无领域 hint）；叶表达式被共享检查拒绝时，首诊断之后可能跟随一条脱糖 `.clone()` 级联诊断（仅外观，首诊断为权威）；`__age_h0_text_` 前缀保留策略在存在文本叶时生效（无隐藏函数即无冲突）。
+
 
 ### 具体输入、类型/代码设计与旧用例映射（2026-11-12，r9当前）
 
@@ -363,7 +365,8 @@ struct DomainCandidate { structure: DomainIr, behaviors: ExprRefs, source_map: S
 - [x] **T-H0-V｜M2-A｜owner_stage: work｜AC-H0/AC-NODE-NAME**：T-H0-I后实际运行V-H0-*与完整受影响职责组，核普通源/表达式/原span及错投影拒绝；GUI与FFI未执行保持不在本切片声明内。
   - [✅ 已完成 2026-11-15｜冻结提交 f627ab599] V-H0-* 逐行实跑：V-H0-SOURCE（一个字面量源/一个普通函数返回文本源→受检描述+CPU 值 `Hello`/`你好`，改字符串得 `Bon好`，span 指原字节）、V-H0-REJECT（未知组件 `panel` 槽位拒绝、属性拒绝、缺闭合、非文本 `1+2` 由共享 bind 在 3:14 拒、0/多 text 根、失败后下一次解析无污染）、V-H0-DEPEND（grammar id 稳定 `7f18fb1a…`、改源只改 input-hash、plain text-record 拒 AGE 源、普通模块 atom_text 逐字节同形）、V-H0-POSITION（`node`/`text`/`widget` 在 AGE 开/关都是普通标识符；`view` 保留字口径见§10）、V-H0-SCHEMA（测试 Schema `view→panel` 接受 panel/拒 view 且 role 不变、codec/身份往返、无字节事实源失败关闭）、V-H0-COMPAT（别名关=头 span `source.age.legacy-widget`；开=同 role/同候选/同值）。真实 CLI 入口（`ace-core check-source --source-profile auto.source.age-h0.draft`）：字面量/函数源 exit 0（nodes=1、同 grammar id、不同 input-hash）、非文本源 exit 1（共享 bind 诊断 3:14）、widget 源 exit 1（1:1 具名拒）。受影响职责组并集 `cargo t ace-syntax ace-source ace-semantics ace-artifacts ace-av`：ace-syntax/ace-source/ace-semantics/ace-artifacts PASS；ace-av 首跑 1191/1191 测试全 PASS 但组判红于进程树基建（MSVC `vctip.exe` 残留后代，非测试失败），消除残留后重放 PASS。GUI/FFI/宿主/完整产品腿明确不在本切片声明内（归 980/HELLO 与 T-02/03/08）。
 
-- [ ] **T-H0-R｜M2-A｜owner_stage: review｜AC-H0-REVIEW**：T-H0-V齐后同树停写独立复核源码→CST→唯一verify→CPU描述，不信样本自报；finding回I。
+- [x] **T-H0-R｜M2-A｜owner_stage: review｜AC-H0-REVIEW**：T-H0-V齐后同树停写独立复核源码→CST→唯一verify→CPU描述，不信样本自报；finding回I。
+  - [✅ 已完成 2026-11-15｜三轮独立复审 final pass @ 71472d975] 独立上下文（subagent `reviewer-979-h0`，只读、自建探针/52+ CLI 夹具）逐轮复核：第一轮 **needs_fix**（F1 隐藏 def 被后缀同名用户函数劫持、F2 `parse_program_via_cst` 静默丢弃领域声明、F3 拒绝诊断过于通用、F4 未用 import、F5 `use.rs` 面不一致、F6 领域 hint 吞更早错误、F7 硬编码 `widget`、F8 计数证据偏差）；修复 `90c46092c` 后第二轮 **pass**（另记 F9 头扫描误认、F10 叶错误归类、F11 缺节点名 + 片段入口观察）；修复 `63f4a0fc9` 后第三轮 **needs_fix 仅 F12**（F9 修复遗留调试 `eprintln!`）；删除后 `71472d975` 终审 **pass**：`git diff 50dc0ea5c..71472d975` 无新增调试输出（唯一保留的 `eprintln!` 是 base 既有、`AC787_TRACE` 环境门控的解析 trace），失败 CLI 仅 stderr 一行领域诊断、成功无 stderr；F1–F12 全部关闭并有独立复现证据。三处措辞收敛按复审建议落地（见§9 最新收据与§5 H0 注记）。
 
 - [ ] **T-H0-D｜M2-A｜owner_stage: merge｜AC-H0-LAND**：T-H0-R pass后phase fold正式合入H0 grammar/投影与已验规范，交980/HELLO；保同树/resync继续完整原任务，不能称979或完整UI已交。
 
@@ -445,6 +448,10 @@ stage: goal | plan_id: PLAN-979 | plan_revision: r10 | round: 3 | from: review |
 2026-11-15 stage: review（T-H0-R 第二轮：pass）+ work（同一轮内关闭其 3 项非阻塞 MINOR 与 1 项观察）| plan_id: PLAN-979 | plan_revision: 10 | reviewed_commit: 90c46092c（第二轮独立复审 verdict=**pass**）| code_commit: 63f4a0fc9（诊断修复）| review2_findings_closed: **F9**＝AGE 头扫描只认**错误叶**（此前任意同名标识符会被当成头，吞掉更早真实错误）；回归 `p979_age_h0_non_head_identifier_does_not_define_the_age_head`（`fn node()`/`fn foo()` A/B 首个诊断一致地落在 node 行之前）。**F10**＝叶内共享拒绝分两类：只有脱糖 `.clone()`/类型拒绝改标 `source.age.text-type`，名字/参数/其它错误保留共享消息并改标中立 `source.age.leaf-expr`；回归 `p979_age_h0_undefined_callee_is_not_reported_as_a_text_type_error`。**F11**＝"构造已开始"改按帧入口游标（子规则消费也算），缺节点名得到 `source.age.structure` @`{`；回归 `p979_age_h0_missing_node_name_is_a_domain_structure_error`。**观察（片段入口）**＝`parse_fragment_front` 对领域 profile 具名拒绝；回归 `p979_age_h0_fragment_entries_refuse_the_domain_profile`。**hint 排序**＝深度降序 + 稳定记录序（槽位步先于同规则构造级消息），panel/缺 view 恢复为 `source.age.slot`。未改动的观察：`__age_h0_text_` 前缀策略仅在有文本叶时生效（无隐藏函数即无冲突，措辞已在 §9 收敛）；alias 不在 `(grammar_id, input_hash)` 对中（本切片无缓存，非缺陷）。| evidence: 修复提交上 core conformance **483/483**（205.83s；22 个 `p979_age_h0_*`），av conformance p979 7/7，syntax-grammar 45，syntax-runtime 39，av lib 11；受影响职责组 `cargo t ace-syntax ace-source ace-semantics ace-artifacts ace-av` → **五组全 PASS（exit 0）**（ace-av 以运行期清 `vctip` 的 watcher 取得 PASS，环境边界同前轮记录）| test_scope: 新回归单例 ≤0.06s；全量 core 复跑一次作为冻结证据 | raw_evidence: D:/autostack/plan-artifacts/plan-979/{repair2-core-full.log 341cfe2935ee94e2, gate-h0-repair2.log d5ea9258687b5190}，gate results.json run-hr5ricif | blockers: none | next_responsible_role: review（T-H0-R 第三轮：仅复核 F9/F10/F11/片段拒绝四处；随后 T-H0-D fold）
 
 stage: goal | plan_id: PLAN-979 | plan_revision: r10 | round: 4 | from: review | to: review | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-979/auto-lang | commit: 63f4a0fc9 | next: review
+
+2026-11-15 stage: review（T-H0-R 第三轮：needs_fix 仅 F12）+ work（删除遗留调试输出）→ **终审 pass**；H0 切片 fold-ready | plan_id: PLAN-979 | plan_revision: 10 | reviewed_commit: **71472d975**（独立上下文终审 verdict=**pass**，绑定该提交）| code_commit: 71472d975（父 63f4a0fc9）| findings_closed: **F12（MAJOR）**＝F9 诊断工作遗留的调试 `eprintln!("DBG diags=…")` 混入 AGE 失败路径 stderr（libtest 捕获 stderr 故五组门禁无法发现；属 AGENTS §3 健康门"无遗留调试输出"）；删除该块后失败 CLI 仅 stderr 一行领域诊断、成功无 stderr，`git diff 50dc0ea5c..71472d975` 无新增 `println!/eprintln!/dbg!`（唯一保留者为 base 既有的 `AC787_TRACE` 环境门控 trace，未改）。| wording_reconciliation（复审建议，仅计划文本）：①"所有结构拒绝都具名"收敛为"已开始的 AGE 构造内"（声明前顶层杂散 `}` 仍为通用语法错误）；②H0 已知限制补记：裸标识符叶 `text my_str {}` 在共享 text-record 面按构造器解析 → 结构拒绝，H0 冻结表达式为字面量/普通函数调用（已写入 §5 H0 注记）；③叶首诊断之后可能跟随脱糖 `.clone()` 级联诊断（仅外观，首诊断权威）。| gate: 修复提交上 `cargo t ace-syntax ace-source ace-semantics ace-artifacts ace-av` → **五组全 PASS（exit 0）**（ace-av 保留运行期清 `vctip` 的 watcher，环境边界同前）| evidence: plan979 过滤器 13/13（syntax-grammar）、22/22（core，全量 483/483 于 63f4a0fc9 记录）、7/7（av）；fmt clean；终审独立复核：diff 仅 1 文件 7 行删除、无其它调试产物、5 个夹具 stdout/stderr 分离正确 | raw_evidence: D:/autostack/plan-artifacts/plan-979/{gate-h0-f12.log 21b5ae7548bc22ba, f12-stderr.txt 9a186c532ed63f15, evidence.md 40c34eb219a7b483} | blockers: none | next_responsible_role: merge（T-H0-D：phase fold 合入 H0 grammar/投影/AV consumer 与已验规范，交 980/HELLO）
+
+stage: goal | plan_id: PLAN-979 | plan_revision: r10 | round: 5 | from: review | to: merge | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-979/auto-lang | commit: 71472d975 | next: merge
 
 ## 10. 待澄清事项
 
