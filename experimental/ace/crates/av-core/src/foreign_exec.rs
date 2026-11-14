@@ -291,6 +291,15 @@ fn take_name<'a>(cur: &mut &'a [u8]) -> Result<&'a [u8], &'static str> {
 }
 
 /// Per-tag payload validation (guest bytes never trusted).
+///
+/// T-05 NF2 (scoped re-review): this validator is intentionally looser
+/// for `t` payloads and kwarg names than the generated shim decoder
+/// (which additionally requires UTF-8) — consistency holds because the
+/// dispatch order runs the WHOLE-frame `foreign.utf8` gate before
+/// `validate_frame_wire` (see dispatch_view_scalars); any future
+/// dispatch path that skips the view gate must fold the UTF-8 check
+/// into this function to keep the two implementations of the frozen
+/// spec aligned.
 fn check_tag_value(tag: u8, payload: &[u8]) -> Result<(), &'static str> {
     match tag {
         b'n' if payload.is_empty() => Ok(()),
