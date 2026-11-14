@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-965
-status: drafting
+status: execution_done
 feature_name: 完整控制流错误传播与生成器
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
+updated_at: 2026-11-14
 plan_revision: 5
-current_step: 0
+current_step: 5
 total_steps: 8
 depends_on: [PLAN-962, PLAN-964]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -68,6 +68,10 @@ touched_goals: [GOAL-002]
 
 - [crates/auto-ast/src/ast.rs](../../crates/auto-ast/src/ast.rs)：旧语法义务输入，非新侧parser；读取SHA256前16 `e8820f13f329630f`
 
+### 2026-11-14 goal 授权记录
+
+用户指令"完成计划965"（/auto-plan-goal 目标）授权整链：work（含建专属树）、review、合同内有界修复、merge（规范沉淀、归档、清树、落地核验）。授权范围不改变目标/验收/预算/仓库集；不授权绕过worktree规约、证据政策或阶段停止条件。
+
 ## 5. 详细设计
 
 ### M2阶段执行合同（当前优先）
@@ -92,6 +96,33 @@ touched_goals: [GOAL-002]
 T-01有界前探：用一个最小真实正例、同类型非法近邻和一次失败后恢复串起本包最长producer→consumer路径；先比较最相关的可行实现策略，形成决定与资源/平台适用表后进入实现。不以任意日历或固定语法深度削范围；探针不能闭合则列具体阻塞/修订，不能只交设计宣布完成。
 资源所有者：编译session持候选，发布后当前generation持产物；运行/宿主pin保在途，最后owner释放。取消/错误/late结果不得覆盖当前已发布版本。现行预算保持，新增域的计量单位/上限/超限分类在T-01冻结并有边界反例；改变承诺须显式修订。
 
+
+### T-01 有界前探与冻结决定（2026-11-14）
+
+- **前探验证与基面确认**：在 `D:/autostack/.wt/lang-965/auto-lang` 验证 `cargo test -p ace-core --no-run`（exit 0，编译通过）；核查 `experimental/ace/grammars/auto-source.at`（`r-try`/`r-catch`/`r-yield`/`question`/`is` 已保留）、`experimental/ace/crates/core/src/source/{parser.rs,resolve.rs,adapter.rs}`（所有 `SourceProfile` 已走统一 CST，当前 `Aggregates` 为 M2-A 超集前端）、`experimental/ace/crates/lowering/src/hir_adapter.rs`、`experimental/ace/crates/av-core/src/{av.rs,contract.rs}`（`release_frame_owned_lifo`/`cleanup_owned_frames`/`host.unauthorized` dispatch 前置拦截）、`experimental/ace/crates/native/src/` 及 `crates/a2x-{core,rust,c}/src/`（A2X 已具备 `Family::Collections`、`Record`/`Variant`/`List`/`MutBorrow` 降级能力）。
+- **冻结决定 D1（前端 Profile 与文法门控）**：沿 `SourceProfile::Aggregates`（`"auto.source.aggregates.draft"` / `av.aggregates/1` -> `HirDomain::Closures` -> `AV_CLOSURES_PROFILE`）扩展，保持 `Core..Numeric` 全部冻结 profile 逐字节不变。`auto-source.at` 仅在 `aggregates` profile 门控新增：`tilde`（`~Iter<T>`）、`dotquestion`（`.?`/`.?(default)`）、`questionquestion`（`??`）、`r-finally`（`finally`）、`!T` 返回/类型简写（默认 `Result<T, Str>`）、`is` 表达式形态与单表达式分支 `-> expr` / 字面量+`else` 分支、`try { ... } [catch [(e)|e] { ... }] [finally { ... }]`、`yield [expr]`，以及内建可控抛出原语（如 `rethrow(e)` / `fail(msg)`，用户同名函数优先）。
+- **冻结决定 D2（共享效果与清理图 `resolve.rs` -> HIR -> MIR）**：单一真相源设于 `resolve.rs` + `hir_adapter.rs`，不另建平行类型检查器或平行 VM。
+  - 每个 `try/catch/finally` 降级为显式控制/退出分派状态机：正常退出、`return v`、跨层 `break`/`continue`、`.?` 错误传播、`rethrow/fail` 沿退出路径**仅执行一次**沿途内层到外层的 `finally` 块与词法作用域 `Drop`。
+  - `.?` 分派：`Err(e)` 若在活动 `try/catch` 内则绑定载荷至 `catch` 并按 `finally` 顺序收尾；否则若在兼容 `Result<_, E>` 函数内运行清理并返回 `Err(e)`；若在非 `Result`/`?` 函数内无 `catch` 则编译期报 `source.propagate-incompatible`；若在顶层脚本未捕获传播，触发语言错误终止（保留载荷与阶段，后续语句不执行，绝不返回旧 VM `4000000` 堆地址）。`None.?` 仅在返回 `?U` 的函数内提前返回 `None`（不进 `catch`），否则编译期拒绝（或脚本顶层报未捕获语言错误）。
+  - `??` 与 `is` 表达式：`lhs ?? rhs` 与 `is` 表达式按控制流分支降级——`??` 对 `Some(v)`/`Ok(v)` 直接解包，**仅在 `None`/`Err` 分支惰性求值 `rhs`**（V-02）。
+- **冻结决定 D3（四分类错误/资源/宿主边界，V-04 / V-08 / T-08）**：
+  - `ExecOutcome` 显式增加 `ExecOutcome::Error { message, span }`（配合 `MirInstr::LangFail`），将**语言错误**与 `Trap`（`DivByZero`/`InvalidHandle`/…）、`Resource`（fuel/wall/frames/slot_bytes/list-elems）、`Cancelled`（`CancelFlag`）、`Infra`（`host.unauthorized`）彻底分账。
+  - 编译期错误（`source.*`/`verify.*`）在运行前拒绝，永不进入 `catch`；底层 `Trap`、`Resource`、`Cancelled` 及 `host.unauthorized` **均不可被语言 `catch` 吞掉**；未授权宿主/平台调用在检查 `provider` 时直接阻断，保持 `dispatch = 0`。
+- **冻结决定 D4（生成器 `~Iter<T>` 与 `yield` 状态机降级，V-03 / V-08）**：
+  - 在 `resolve.rs` 将每个 `fn gen(...) ~Iter<T>` 降级为惰性状态机记录 `__Gen_<id>`（`__state: i32`, 参数, 跨 `yield` 存活的局部包装为 `?LocalTy`）及模块内统一枚举壳 `Iter<T>`（支持跨函数间接返回如 `get_counter()` 与多生成器同型并存）。
+  - 惰性启动：调用 `gen()` 仅构建 `__state=0` 帧；每次 `for n in g` 调用 `__iter_next(mut g)` 推进到下一 `yield v` 返回 `Some(v)`（**挂起期间 owned 局部留在状态记录内，不提前 drop**）；耗尽或 `return` 设 `__state=-1` 并返回 `None`；循环正常结束/提前 `break`/`return`/`Err` 退出作用域或未尽生成器被 drop 时触发幂等关闭 `__iter_close(mut g)`（仅活跃时运行一次 `finally` 并清理，后续 drop 见 `__closed` 不重复释放）。无限生成器按步/时间消耗正常 `ExecLimits`，超限报 `Resource` 并由 `cleanup_owned_frames` 无泄漏回收。
+- **冻结决定 D5（四端适用表与永久验证）**：
+  - **AV (`ace-av` + `av-worker`)**：全量原语 via `av.closures/1` + `ExecOutcome::Error` + `StrArena` `live=0` 核验。
+  - **Native (`ace-native`)**：复用 `collections_lower` / `collections_driver`（`Variant`/`Record`/`MutBorrow`/作用域清理）+ `LangFail` 非零退出承载 `try/catch/finally`、`.?`、`??`、`is` 表达式与状态机生成器真实 PE 编译执行。
+  - **A2X (`ace-a2x-rust` + `ace-a2x-c`)**：放开 `auto.source.aggregates.draft` 走共享 `collections_facts` + `lower_coll` 通道，补齐 `Variant` `MutBorrow` 参数及 `LangFail` 运行时中断。
+  - **Language TestCase**：新增 `crates/auto-lang/test/cases/ace-m2/control_effects/` 并在 `scripts/test-groups.toml` 注册 `case-ace-m2-control-effects-965` 接入 `ace` 域。
+
+### 2026-11-14 实施期边界（T-02/T-03/T-08；合同内细化，不改目标/AC/范围/仓库集）
+
+- **生成器借用参数（D4 细化）**：状态记录按值保存参数（D4 原文），因此借用无法跨 `yield` 保留：`mut` 记录参数会丢失写回，记录视图/`str` 会越过 owner 生命周期。实施前述 `mut` 参数在 AV 端确实静默丢失写回（native 因共享句柄看似可见），因此改为**具名拒绝** `source.generator-borrow-param`（Bind 阶段）；owned 句柄（`List`/`Object`/`Variant`/owned `Str`）与标量参数继续支持，关闭效果经 `List` 句柄观测。旧语法分母无生成器借用参数用例（`test/vm/22_generator/*`、`test/a2r/21_generators/*` 均为无参/标量参数），故不构成分母缩减；证据与反例见 §9。
+- **opcode 归属**：`Terminator::LangFail` 使用 `0x40`（指令空间 `0x01–0x3F` 已满，`m2-dynamic` 冻结 `0x3D/0x3E/0x3F`）；不得复用 `0x3D`（OBJECT_NEW）。
+- **case lane 阶段词表**：AV probe 判定的 run 阶段语言错误（`ExecOutcome::Error`）此前被 `map_diag_stage` 落入 Verify；补 `"run" => Stage::Run`，使 run 阶段 diag 与 verify 拒绝可分账（对既有语料无影响：既有 run 期望均为 trap 结局）。
+- **清理错误策略未决**：drain 时 close `finally` 抛 `fail` 会传播（AV `Error`/native `Trap(9)`），但 for-in 提前 `break` 触发的 close 抛错会被丢弃（两端一致但可疑）。登记 §10，交 T-05 裁定，不并入本条完成声明。
 
 ### 本次复核补充：控制流与资源跨出口组合（r2）
 
@@ -221,15 +252,23 @@ struct CleanupEdge { owner: OwnerId, exit: ExitKind, target: BlockId }
 
 ### M2-A：能力与必要真实验证
 
-- [ ] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。
+- [x] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。
 
-- [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
+- [x] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
+  - 证据（`plan-965-dev`，已 resync 至 master `cd5f2e568`）：`source/agg_lower.rs`（新，生成器状态记录/`__ace_iter_next`/`__ace_iter_close` 与 close 清理）、`source/resolve.rs`（try/catch/finally、`rethrow(e)`、`.?`/`.?(d)`、`??`、`is` 表达式/语句、`LangFail` 分派与四分类退出、生成器借用参数具名拒绝）、`av-core`（`Terminator::LangFail`=opcode `0x40`、`ExecOutcome::Error`、MIR/mir_verify/ownership/ABC/compact_abc/instr_spec）、`lowering/hir_adapter`、`native/{collections_lower,collections_driver,driver,fingerprint,lower,closures_lower}`、`a2x-{rust,c,python,core,worker}`。正反例结果见 T-04 收据（AV 11 / native 5 / A2X 2 / 语言 TestCase 10，全绿）。
 
-- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
+- [x] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
+  - 证据：四端消费同一共享 MIR（AV interpreter、native PE、A2X-Rust、A2X-C），无 legacy fallback；host/权限保持既有 dispatch 合同（`host.unauthorized` dispatch=0，AV 例 4 断言）。新增语言侧 TestCase 组 `case-ace-m2-control-effects-965`（`scripts/test-groups.toml`）与 `crates/auto-lang/test/cases/ace-m2/control_effects/`。新增 `source.generator-borrow-param`：生成器状态记录按值保存参数，借用（`mut`/记录视图/`str`）无法跨 `yield`，改为具名拒绝而非静默丢失写回（详见 §9 与 §10）。
 
-- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：补catch/finalization、错误传播跨模块返回、循环continue/break与生成器drop；宿主权限失败可否被语言捕获必须继承原政策，唯一不可放宽的是未授权dispatch=0。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+- [x] **T-08｜M2-A｜owner_stage: work｜AC-06**：补catch/finalization、错误传播跨模块返回、循环continue/break与生成器drop；宿主权限失败可否被语言捕获必须继承原政策，唯一不可放宽的是未授权dispatch=0。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+  - 证据：V-01（嵌套 try/finally 每帧一次 + 循环 break/continue）、V-02（`??`/`.?(d)` 右支惰性；计数器 hits=0）、V-03（惰性启动、显式 close 幂等一次、for-in 提前 break 关闭；用 owned `List` 句柄观察，见 AV 例与语言 case `generator-sum-close`）、V-04（编译错误不进运行时 catch；Trap/Resource/Cancelled/host.unauthorized 不可捕获、dispatch=0）、V-08（owned 值经 return/throw/drain-close 各清理一次；drain 时 close `finally` 抛 `fail` → AV `ExecOutcome::Error("closed965")`、native `Trap(9)`、语言 case `generator-close-fail`）。宿主策略与四分类分账按 D3 保持。
 
-- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
+- [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
+  - 证据（`plan-965-dev@edae44f0b`，resync 至 `master@e9e67496a`，冻结树单实例）：
+    - 语言 TestCase：`cargo t case-ace-m2-control-effects-965` → **PASS**，10/10 checks，`gate_passed=true`，wall 5s（av-worker release 复用；`target/test-groups/run-8ezgeg3w`）。
+    - 固定组并集：`cargo t ace-source ace-lowering ace-av ace-native ace-a2x ace-runtime`（wall 1058.8s，`run-intz138c`）：ace-lowering **PASS**(5/5)、ace-a2x **PASS**(238/238)；ace-source 523/524、ace-av 1126/1128、ace-native 273/276、ace-runtime 65/84。**红集精确等于** `master@e9e67496a`（及 `cd5f2e568`）既有红：6 例 `text.char-multi`（基线命令见 §9）+ `ace-runtime` 19 例 text shim 链接（`_fltused`/`__CxxFrameHandler3`，主检出同组复现）。本包 diff 引入的红为 0。
+    - 新增永久用例：AV `aggregates_m2_965` 12 例、native `control_effects_965` 6 例、A2X `aggregates_965_control_effects_{rust,c}` 2 例；隔离与组内均绿。V 行→用例映射见 §9 收据。
+    - 无法 PASS 的具名项（未改 NA）：§10-1（early-break close 清理抛错策略）、§10-2（默认分支既有 6+19 红）、§10-3（生成器借用参数边界待复核）。
 
 - [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
@@ -251,6 +290,50 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+### 2026-11-14 work 收据（T-02/T-03/T-08/T-04；goal round 2）
+
+`stage: work | plan_id: PLAN-965 | plan_revision: r5 | outcome: pass | worktree: D:/autostack/.wt/lang-965/auto-lang | branch: plan-965-dev | base_commit: e9e67496a（两次 resync：9073b5fd2 → cd5f2e568 → e9e67496a） | code_commit: edae44f0b | dependency_revisions: auto-down@58ea33f（detached，未变） | task_ids: T-02,T-03,T-08,T-04 | blockers: none（外部既有红具名于 §10-2） | next_responsible_role: review(T-05)`
+
+**实施与修复（本包预算内）**
+- 承接上一轮未提交实施面（63 改 + 4 新，约 6k 行；交接时无 commit）：先落本地 commit 再两次 `git rebase master`（均干净文本合并）。第一次 rebase 需补 `ast::Item::UseRs`（967 `use.rs` 前门）在 `agg_lower::collect_agg_iter_records` 的空臂；第二次 29 提交漂移（967 T-10/T-11、1021 ase-m0）后 rebase 干净，编译与并集重跑通过。
+- `LANG_FAIL` opcode 从 `0x3D` 改为 **`0x40`**：`0x3D/0x3E/0x3F` 已由 `m2-dynamic` 冻结（OBJECT_NEW/GET/TEXT_DISPLAY）；ABC 与 compact 双编码同步；`instr_spec` V-11 计数钉 56→57（`av_data_instruction_contract_round_trip_all_opcodes` 相应更新）。
+- `patch_foreign_sentinels` 的 `unsafe` 裸指针栈遍历改为**安全递归**（覆盖与原实现逐分支一致；本包 AV 生成器/关闭用例全绿）。
+- 生成器间接返回（D4 明示能力，legacy `22_generator/004_indirect_return`）：`~Iter<T>` 且无 `yield`、`return g()`/尾表达式形式的函数按普通函数降级（此前被当状态机，触发 `verify.block-structure` 不可达块）。AV+native 各一永久例。
+- 生成器借用参数（D4 原文“参数按值存入状态记录”的细化）：`mut`/记录视图/`str` 借用无法跨 `yield`，改为具名拒绝 `source.generator-borrow-param`（AV 端曾静默丢失写回）；owned 句柄与标量继续支持（§10-3 交复审确认）。
+- case lane 词表：`crates/auto-lang-core/src/test_cases/ac_av.rs::map_diag_stage` 补 `"run" => Stage::Run`（run 阶段语言错误此前被归为 Verify）；既有语料无 run 期望 diag，无行为回退。
+- WSL/musl 载体 `mn-linux-av-runner` 补 `ExecOutcome::Error` 分支（此前 `cargo t ace-native` 的 linux_elf 腿因非穷尽匹配编译失败；修复后该例 91s 通过）。
+- 语料修正：`rethrow`→`rethrow(e)`/`rethrow()` 真实拼写、`is Some(1)` 非穷尽反例、生成器 close 观测改 owned `List` 句柄 + 新增 `generator-close-fail`（drain 期 finally 抛错传播）；语言 case 10 例。
+
+**验证矩阵（提交 `edae44f0b` 冻结树）**
+
+| 入口 | 命令 | 结果 |
+|---|---|---|
+| 语言 TestCase | `cargo t case-ace-m2-control-effects-965` | PASS 10/10 checks，gate=true，wall 5s（run-8ezgeg3w） |
+| 固定组并集 | `cargo t ace-source ace-lowering ace-av ace-native ace-a2x ace-runtime` | wall 1058.8s（run-intz138c）：lowering 5/5 PASS、a2x 238/238 PASS；source 523/524、av 1126/1128、native 273/276、runtime 65/84 — 红集=master 既有 |
+| 基线复核（新 master） | 主检出 `e9e67496a`：`cargo nextest run -p ace-core -p ace-av -p ace-av-core -p ace-native --config-file ../../.config/nextest-full.toml -E '<6 例过滤>'` | 7 run: 1 passed, 6 failed（`text.char-multi`，与本包无关） |
+| 基线复核（runtime） | 主检出 `master@37b197a5c`：`cargo t ace-runtime` | 65/84（19 例同一 text shim 链接失败），与本包无关 |
+| 新增永久用例 | AV 12 / native 6 / A2X 2 / 语言 case 10 | 全绿 |
+
+**V 行 → 永久用例映射**
+- V-01 → AV `m2_v01_nested_try_finally_runs_once_per_frame_and_loop_ctrl`、语言 `try-catch-finally`、native `mn_965_try_catch_finally_nested_break_continue_return`。
+- V-02 → AV `m2_v02_lazy_short_circuit_coalesce_and_unwrap_or`、`m2_oracle_coalesce_some_and_none`、native `mn_965_coalesce_propagate_and_is`、语言 `coalesce-propagate-is`。
+- V-03 → AV `m2_v03_generator_lazy_suspend_finally_and_idempotent_close`、`m2_oracle_indirect_generator_return_and_coexisting_instances`、native 对应 2 例、语言 `generator-sum-close`、`generator-mut-borrow`。
+- V-04/V-08 → AV `m2_v04_ac06_v08_limits_trap_cancel_host_not_caught`、`m2_v08_close_fail_during_drain_propagates_as_language_error`、native `mn_965_uncaught_fail_maps_to_non_zero_trap`、`mn_965_generator_close_fail_on_drain`、语言 `uncaught-fail`、`generator-close-fail`。
+- V-05（求值顺序）→ 以 V-02 惰性断言（AV `hits==0`、native `ticks==0`）与 V-03 惰性启动覆盖，见 §10-5 交复审确认。
+- 反例：AV `m2_negative_compile_controls`（propagate/yield/rethrow/非穷尽 `is`/生成器借用参数）、语言 `propagate-incompatible`/`yield-outside-generator`/`rethrow-outside-catch`/`nonexhaustive-is`。
+
+**未决（交复审）**：见 §10-1..§10-5；其中 §10-1 为语义策略问题（两端一致，非实现漏项），§10-2 为默认分支既有红，§10-3 为新增边界的确认。
+
+**基面漂移记录**：本轮工作期间默认分支前移两次（`9073b5fd2` → `cd5f2e568` → `e9e67496a` → 收据时 `master=37b197a5c`）。`code_commit: edae44f0b` 基于 `e9e67496a`；merge（T-06）必须在当时 `master` 上 resync 并重跑受影响并集（不得沿用本收据的并集证据作为 merge 后代码的证明）。
+
+`stage: goal | plan_id: PLAN-965 | plan_revision: r5 | round: 2 | from: work | to: work | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-965/auto-lang@plan-965-dev | commit: edae44f0b | next: review`
+
+### 2026-11-14 goal 轮次收据
+
+`stage: goal | plan_id: PLAN-965 | plan_revision: r5 | round: 1 | from: goal | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-965/auto-lang@plan-965-dev | commit: 9073b5fd2 | next: work`
+
+首轮：goal 授权已记录于§4；主检出仅 `docs/plans/` 与 `docs/design/` 簿记 WIP（无代码路径 WIP）；前置 `PLAN-962`/`PLAN-964` 均已归档在 `master@9073b5fd2`；专属树 `D:/autostack/.wt/lang-965/auto-lang`（`plan-965-dev@9073b5fd2`）与 `auto-down` 兄弟（`detached@58ea33f`）及唯一材料目录 `D:/autostack/plan-artifacts/plan-965/` 已建，进入 work 阶段（T-01 有界前探）。
+
 2026-11-12 stage:new / PLAN-965 r5：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原8任务/全部AC与V/依赖/阶段/预算和drafting 0/8；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
 2026-11-12 本轮规划静态核验：32份合同原505任务ID/顺序/进度、全部旧AC/V/Spec-delta及原依赖/阶段/预算保留；新增128条V-DETAIL待实施验证，未生成任何测试源码。505处本地引用/围栏/0–10章节/原任务映射核对通过，跨四仓可达222份Plan的显式依赖无缺失/环。只证明规划结构与取材来源，不是旧VM/新ACE运行或独立产品review PASS；959–962归档和963r5未改。
@@ -265,6 +348,14 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
 
 ## 10. 待澄清事项
+
+### 2026-11-14 work 阶段登记的具名问题（交 T-05 复审裁定）
+
+1. **清理期抛错策略（early-break close）**：for-in 提前 `break` 触发的生成器 close 中，`finally` 的 `fail`/`rethrow` 被丢弃（AV 与 native 一致地返回正常值），而 drain 触发的 close 会传播（AV `ExecOutcome::Error`、native `Trap(9)`，见 AV `m2_v08_close_fail_during_drain_propagates_as_language_error` 与 native `mn_965_generator_close_fail_on_drain`）。最小复现：把 `crates/auto-lang/test/cases/ace-m2/control_effects/src/generator_close_fail.at` 的 drain 循环改为 `if x == 20 { break }`，两端均返回 `part=30`。关闭条件：T-05 裁定“传播/显式文档化”之一，并补对应永久用例；不并入本条工作完成声明。
+2. **默认分支既有红（非本包改动）**：`master@cd5f2e568` 上 6 个既有测试红，根因同一族（CST lex-facts 对非 ASCII 字符字面量误报 `text.char-multi`，如 `eprint('界')`）：`ace-core host_console::av_console_typed_symbols_and_capabilities`、`ace-av host_console::av_console_exact_source_bytes_and_result`、`ace-av av_closures_source::av_closures_909_char_cell_write_back_observed`、`ace-native console_lane::native_console_i32_bool_char_say_lanes`、`ace-native shadow_tier::shadow871_text`、`ace-native data_owned_tier::mn_data_owned_three_path_differential`。已在主检出 `master@e9e67496a`（6 例）与 `master@37b197a5c`（ace-runtime 19 例）用同一入口复现（见 §9 基线收据），非本包 diff 引入；需独立 fix/Plan 处理，关闭条件：该 6 例在 `master` 转绿。
+3. **生成器借用参数边界**：`source.generator-borrow-param` 为实施期新增具名拒绝（§5 边界）；复核需确认它没有与 959 分母/Design55 的既有生成器语义冲突，并决定是否在未来以引用字段承载借用（当前状态记录只能按值保存）。
+4. **opcode 归属**：`LANG_FAIL=0x40` 不占用 `m2-dynamic` 的 `0x3D..0x3F`；复核需确认 V-11 计数钉（56→57）与 `m2-dynamic`/`m2-aggregates` 规格记录一致。
+5. **V-05 映射**：本轮以 V-02 的惰性/顺序断言（AV `hits==0`、native `ticks==0`）与 V-03 的惰性启动覆盖“求值顺序”；复核需确认是否足以关闭 V-05，或要求补独立四端 trace 顺序用例。
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 本包涉及批量产品/目标时，T-01按独立可验证consumer拆执行批次；若需要多个中等Plan承载，必须在本Plan修订中逐AC迁移到正式后继，保持本包终验责任和分母，不能以一份盘点替全部交付。
