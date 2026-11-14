@@ -1,0 +1,22 @@
+# PLAN-1021: ASE M0 headless experiment harness — a standalone Rust
+# workspace (NOT a member of the language/ACE workspaces). It consumes the
+# public ACE packages chain (compile_package_product + PackageAvTarget) via
+# path dependencies only; ACE code is never modified here.
+[package]
+name = "ase-m0"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "ASE M0: strict app:// resolution and one-shot headless AV loading over the public ACE packages chain (bounded experiment; no persistent sessions, no warm cache)."
+
+# Standalone workspace marker so this package never joins a parent workspace.
+[workspace]
+
+[dependencies]
+ace-core = { path = "../ace/crates/core" }
+ace-source-query = { path = "../ace/crates/source-query" }
+ace-av = { path = "../ace/crates/av" }
+ace-av-core = { path = "../ace/crates/av-core" }
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+toml = "0.8"

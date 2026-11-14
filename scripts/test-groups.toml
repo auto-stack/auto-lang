@@ -546,6 +546,21 @@ domain = "ace"
 all = false
 
 [[group]]
+# PLAN-1021 T-06: ASE M0 headless experiment — explicit opt-in fixed group
+# (cargo t ase-m0). Not a member of sets.ace nor `all`; zero ACE source
+# changes ship with the group (the package only path-depends on the public
+# ACE crates).
+name = "ase-m0"
+title = "ASE M0无窗口AV加载实验 experimental/ase-m0"
+runner = "nextest"
+workspace = "experimental/ase-m0"
+args = ["--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+expression = "(all()) and not test(/(^|::)performance::/)"
+tools = []
+domain = "ace"
+all = false
+
+[[group]]
 name = "ace-native-worker"
 title = "ACE包 experimental/ace/crates/case-worker"
 runner = "nextest"
