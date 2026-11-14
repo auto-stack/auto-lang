@@ -500,6 +500,69 @@ fn stdlib_asm_972_conv_parse_av() {
     assert_eq!(run_av("conv", &p), Value::I32(420743438));
 }
 
+/// V-DETAIL-03 ownership negatives: the lane's move discipline surfaces as
+/// NAMED rejections (never silent reuse). A moved owned argument read again
+/// → `mir.use-after-move`; a move-in argument evaluated while an argument
+/// expression still borrows it → `mir.mut-conflict`. Both reject before any
+/// observable output.
+#[test]
+fn stdlib_asm_972_ownership_move_negatives() {
+    let cases: &[(&str, &str, &str)] = &[
+        (
+            "use-after-move",
+            "fn eat(s Str) int { return s.len() }
+fn main() int {
+    let a Str = \"ab\"
+    let n = eat(a)
+    return n + a.len()
+}",
+            "use-after-move",
+        ),
+        (
+            "mut-conflict",
+            "fn both(a Str, b Str) int {
+    return a.len() + b.len()
+}
+fn main() int {
+    let p Str = \"abc\"
+    return both(p.slice(0, p.len()).clone(), p)
+}",
+            "mut-conflict",
+        ),
+    ];
+    for (name, src, want) in cases {
+        let mut ctx = PackageAssemblyContext::new(
+            AssemblyBackend::Av,
+            ProviderChoice::Auto,
+            TargetOs::Windows,
+        );
+        let inputs = assemble_stdlib_aggregates_inputs(
+            &[("main.at".to_string(), src.to_string())],
+            "app::main",
+            &mut ctx,
+        )
+        .unwrap();
+        let product = compile_assembled_aggregates_inputs(
+            &inputs,
+            "app::main",
+            FrontBudget::WORK_OWNED_64MIB,
+            &ctx,
+        )
+        .unwrap_or_else(|ds| panic!("{name} compile: {ds:?}"));
+        let dir = scratch(&format!("neg-{name}"));
+        // the named rejection may surface at cold target construction (MIR
+        // verify) or at run — both are pre-output rejections.
+        let err = match PackageAvTarget::cold(&dir, &product) {
+            Err(e) => e,
+            Ok(av) => av.run_value().unwrap_err(),
+        };
+        assert!(
+            err.to_lowercase().contains(want),
+            "{name}: expected named rejection `{want}`, got: {err}"
+        );
+    }
+}
+
 /// `std` identity reservation on the assembled lane: a tampered `std.list`
 /// source, and a provider layer riding `std.list`, both reject BEFORE any
 /// compile/run with the named reservation code.
