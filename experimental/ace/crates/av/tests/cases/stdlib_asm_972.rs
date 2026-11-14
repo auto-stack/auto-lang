@@ -442,6 +442,7 @@ fn main() int { return square(7) * 10 + min(3i64, 5i64).to(i32) }".into(),
     );
     let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
     assert!(out.ends_with("value:493"), "a2r math stdout: {out}");
+
 }
 
 /// `std` identity reservation on the assembled lane: a tampered `std.list`
