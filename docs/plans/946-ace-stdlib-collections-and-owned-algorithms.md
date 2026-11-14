@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/stdlib/design/ace-collections.md]
 touched_goals: [GOAL-002]
 affects: [stdlib, ace]
 depends_on: [PLAN-943, PLAN-944, PLAN-945, PLAN-962, PLAN-1039, PLAN-1040, PLAN-967, PLAN-1042, PLAN-1043]
-current_step: 2
+current_step: 3
 total_steps: 8
 ---
 
@@ -369,7 +369,7 @@ struct CollectionOp { element: TypeRef, storage: StorageId, access: BorrowMode, 
 
 - [x] **T-02｜M2-A｜owner_stage: work｜AC-02**：实现已冻结公共算法及绑定，复用现有for-in/分支展开与合同，不引入重复指令族/资源分析；必要有限扩域须先修订验收边界。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 [✅ 2026-11-14 算法+绑定落树（0f056f295）：std.list 四算法、packages-aggregates 承载面（grammar/parse/bind/compile/lower/AV 全链接）、AV 跨单元 List 共享实参修复、stdlib_aggregates_inputs 分账；定向验证全绿（stdlib_list_946 12/12、探针 11/11、945 4/4 恢复、1043 3/3）；见§5 T-02 交付记录。FOUNDATION/COVERAGE/LOAD 的 V 行关闭归 T-03/T-08/T-05 汇总（本任务=实现+AV 端；四端 producer 是 T-03）]
 
-- [ ] **T-03｜M2-A｜owner_stage: work｜AC-03**：接拥有Str/Variant及Option/Result分支的四端producer与runtime；明确view不分配、move/clone/旧臂销毁及失败前检查→提交。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
+- [x] **T-03｜M2-A｜owner_stage: work｜AC-03**：接拥有Str/Variant及Option/Result分支的四端producer与runtime；明确view不分配、move/clone/旧臂销毁及失败前检查→提交。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 [✅ 2026-11-14 四端 producer 落树（bd181cc39）：`PackageA2xTarget::cold_aggregates`（Collections 家族+Aggregates profile，持久化通道标志 serde-default 向后兼容）；Rust 生成器＝View List 参数 `&'a mut A2xList<E>`＋调用点 `&mut`（被调可变对调用者可见＝AV 共享语义）；C 生成器＝View List 参数可变指针；native＝List/Variant I64 句柄过 ABI＋无闭包容器模块路由到 collections 线＋`build_collections_checked` 桥＋889 序幕容器参数 SHARE（move 分支对容器为死码，889 语料从未携带容器参数）；lane 携带 `av.aggregates/1`。验证：stdlib_list_946 **22/22**（rustc/cl/mn 三端×sum_find 1504/pop 3002 可变性可见/owned-Str 10＋native 内联二分）；定向回归 945 4/4、1043 3/3、av_collections 124/124、909perf 1/1、aggregates_v_rows 8/8；预存基线红：mn-collections-worker allocation_controls（stash 复核非本包引入，冻结并集时归因）。fault 注入腿（V-03/V-DETAIL-03 资源 fault 环境旋钮）按 §6 归 T-05 汇总行；view 不分配/move/clone/旧臂销毁/失败前检查语义已由共享约定＋checked 陷阱＋变体 take 腿承载]
 
 - [ ] **T-08｜M2-A｜owner_stage: work｜AC-07**：消费962的集合参数/返回与资源签名，冻结至少一个真正跨模块的List公共调用；局部inline只作内部实现，不能替代公共API。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。
 
@@ -393,6 +393,10 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: work / T-03 | plan_id: PLAN-946 | plan_revision: 10 | outcome: pass（T-03 完成，executing 3/8） | worktree: D:/autostack/.wt/lang-946/auto-lang | branch: plan-946-dev | base_commit: 0f056f295 | code_commit: bd181cc39（四端 producer：a2x Rust/C `cold_aggregates`＋`&'a mut`/可变指针共享实参、native I64 句柄 ABI＋collections 路由＋`build_collections_checked` 桥＋889 序幕容器 SHARE；lane 携带 av.aggregates/1；14 文件 +602/−52） | task_ids: T-03 | evidence: stdlib_list_946 22/22（三端真工具链：rustc/cl/mn 机器码，pop 3002 证明被调可变对调用者可见）；定向回归 945 4/4、1043 3/3、av_collections 124/124、909perf 1/1、aggregates_v_rows 8/8、a2x 三 crate 单测绿；预存基线红 mn-collections-worker allocation_controls（stash 复核非本包引入） | blockers: none（fault 注入环境旋钮腿按 §6 归 T-05；A2PY/AV-provider 六路径汇总归 T-05/COVERAGE） | next_responsible_role: work（T-08 V-08 剩余腿：跨模块 owned 文本返回/借用逃逸负控）
+
+`stage: goal | plan_id: PLAN-946 | plan_revision: 10 | round: 5 | from: work | to: work | status: executing | outcome: pass（T-03 交付，3/8） | worktree: D:/autostack/.wt/lang-946/auto-lang | commit: bd181cc39 | next: work（T-08）`
 
 2026-11-14 stage: work / T-02 | plan_id: PLAN-946 | plan_revision: 10 | outcome: pass（T-02 完成，executing 2/8） | worktree: D:/autostack/.wt/lang-946/auto-lang | branch: plan-946-dev | base_commit: 151143be9 | code_commit: 0f056f295（std.list 四算法＋packages-aggregates 全链＋AV 跨单元共享实参修复＋stdlib 分账；16 文件 +1007/−135） | task_ids: T-02 | evidence: §5 T-02 交付记录；定向验证 stdlib_list_946 12/12、p946_t01_probe 11/11、stdlib_core_945 4/4 恢复、stdlib_assembly_1043 3/3、packages av lib 2/2、ace-core stdlib 单测 2/2；测试纪律修正：8 组并集试跑被用户叫停（233/236，3 红疑与并行 967 会话资源争抢，不采信、不归因），冻结并集归最终 review 后冻结提交 | blockers: none（四端 producer/fault 腿归 T-03；语义钉死：List 实参跨单元=borrow 共享、`if a > t {` 裸形两面拒=既有 ctor 歧义具名留档） | next_responsible_role: work（T-03 四端 producer 与 runtime 接线）
 
