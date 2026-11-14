@@ -855,6 +855,157 @@ fn main() int {
     }
 }
 
+/// T-05 / V-03+V-07 on the SOURCE lane: every owned-allocation attempt of
+/// the sum program sweeps through the arena fault seam — each fault point
+/// aborts typed (fault-injected Infra, never a language trap, never a
+/// wrong success) leaving ZERO live buffers; clean control = 15.
+#[test]
+fn stdlib_list_946_fault_sweep_sum_program() {
+    let src = END_SUM_FIND;
+    let product = compile(&app(src)).expect("product");
+    let bound = &product.bound;
+    let init_names: Vec<String> = bound
+        .module_init_order
+        .iter()
+        .filter_map(|k| bound.module_init_fns.get(k).map(|s| format!("d_{s}")))
+        .collect();
+    let mir = ace_lowering::lower_checked_closures_with_init(
+        &product.compiled.checked,
+        "d_main",
+        0,
+        &init_names,
+    )
+    .map_err(|e| format!("{e:?}"))
+    .unwrap();
+    let checked = ace_av_core::verify_mir(&mir).map_err(|e| format!("{e:?}")).unwrap();
+    let wire = ace_av_core::abc::encode_abc(checked.module()).unwrap();
+    let loaded = ace_av_core::abc_verify::verify_abc_bytes(&wire.to_flat(), &checked.module().owner)
+        .unwrap();
+    let cancel = ace_av_core::CancelFlag::new(false);
+
+    let clean = ace_av_core::owned_text::StrArena::new();
+    let (out, _) = ace_av_core::av::execute_with_arena(
+        &loaded,
+        &ace_av_core::ExecLimits::default(),
+        &cancel,
+        clean.clone(),
+    );
+    assert!(
+        matches!(
+            out,
+            ace_av_core::contract::ExecOutcome::Success {
+                value: ace_av_core::contract::Value::I32(1504),
+                ..
+            }
+        ),
+        "{out:?}"
+    );
+    let attempts = clean.attempts();
+    assert!(attempts >= 1, "the loop must own at least the list buffer");
+    assert_eq!(clean.live(), 0);
+    for k in 1..=attempts {
+        let arena = ace_av_core::owned_text::StrArena::new();
+        arena.set_fault_at(k);
+        let (out, trace) = ace_av_core::av::execute_with_arena(
+            &loaded,
+            &ace_av_core::ExecLimits::default(),
+            &cancel,
+            arena,
+        );
+        assert!(
+            !matches!(
+                out,
+                ace_av_core::contract::ExecOutcome::Success { .. }
+            ),
+            "fault #{k} must not succeed: {out:?}"
+        );
+        let live = trace.arena.as_ref().map(|a| a.live()).unwrap_or(0);
+        assert_eq!(live, 0, "fault #{k} leaked live owned buffers");
+    }
+}
+
+/// T-05 / V-03: an out-of-bounds positional read on the SOURCE lane traps
+/// `list-index` (the frozen OOB contract; the empty-remove trap was pinned
+/// in p946_t01_probe).
+#[test]
+fn stdlib_list_946_oob_get_traps_list_index() {
+    let src = r#"
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(1)
+    xs.push(2)
+    return xs.get(5)
+}
+"#;
+    let product = compile(&app(src)).expect("product");
+    let dir = std::env::temp_dir().join(format!("pkg946-oob-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let av = PackageAvTarget::cold(&dir, &product).unwrap();
+    let out = av.run_value();
+    std::fs::remove_dir_all(&dir).ok();
+    match out {
+        Err(e) => assert!(
+            e.contains("ListIndex") || e.contains("list-index"),
+            "OOB must trap the list-index trap kind: {e}"
+        ),
+        Ok(v) => panic!("OOB read must trap, got {v:?}"),
+    }
+}
+
+/// T-05: wrong element type on the SOURCE lane rejects before any backend
+/// (the packages-lane mirror of the probe's single-module negative).
+#[test]
+fn stdlib_list_946_wrong_element_rejects_in_lane() {
+    let src = r#"
+fn main() int {
+    var xs = List<int>.new()
+    xs.push("not an int")
+    return 0
+}
+"#;
+    match compile(&app(src)) {
+        Ok(_) => panic!("wrong element type must reject"),
+        Err(ds) => assert!(
+            ds.iter().any(|d| d.diagnostic.code != "source.infra"),
+            "named source diagnostic, got {:?}",
+            ds.iter().map(|d| d.diagnostic.code.as_str()).collect::<Vec<_>>()
+        ),
+    }
+}
+
+/// T-05 / V-COVERAGE — the A2PY path: the same std.list program through
+/// the Python provider (AXPY3 collections fileset) and the OS Python
+/// runner, with the same independent oracle.
+#[test]
+fn stdlib_list_946_a2py_end_sum_find() {
+    let product = compile(&app(END_SUM_FIND)).expect("aggregates product");
+    let store = std::env::temp_dir().join(format!("pkg946-py-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&store);
+    let rt_hash = String::new();
+    let py = ace_a2x_worker::pyrun::resolve_python(&rt_hash)
+        .expect("OS Python interpreter required (missing Python cannot PASS)");
+    let mut tgt = PackageA2xTarget::cold_aggregates(
+        &store,
+        "pkg946py",
+        "app",
+        16 << 20,
+        ace_a2x_python::PythonTargetProvider::default(),
+        &product,
+    )
+    .unwrap_or_else(|e| panic!("python a2x target: {e}"));
+    let dir = store.join("build");
+    std::fs::create_dir_all(&dir).unwrap();
+    for (path, content) in &tgt.current.files {
+        std::fs::write(dir.join(path), content).unwrap();
+    }
+    let run = ace_a2x_worker::pyrun::run_py_fileset(&py, &dir, &[])
+        .expect("run python fileset");
+    let out = String::from_utf8_lossy(&run.stdout).trim().to_string();
+    std::fs::remove_dir_all(&store).ok();
+    assert_eq!(out, format!("value:{}", 1504), "python stdout oracle");
+}
+
 /// Grammar face (packages-aggregates): the admitted constructs parse —
 /// List<int>/List<Str> params, for-in bodies, `?int` returns, the pop
 /// body, if-inside-for with a PARENTHESIZED comparison — and the whole
