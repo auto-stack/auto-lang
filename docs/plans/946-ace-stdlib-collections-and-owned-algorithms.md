@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/stdlib/design/ace-collections.md]
 touched_goals: [GOAL-002]
 affects: [stdlib, ace]
 depends_on: [PLAN-943, PLAN-944, PLAN-945, PLAN-962, PLAN-1039, PLAN-1040, PLAN-967, PLAN-1042, PLAN-1043]
-current_step: 4
+current_step: 5
 total_steps: 8
 ---
 
@@ -373,7 +373,7 @@ struct CollectionOp { element: TypeRef, storage: StorageId, access: BorrowMode, 
 
 - [x] **T-08｜M2-A｜owner_stage: work｜AC-07**：消费962的集合参数/返回与资源签名，冻结至少一个真正跨模块的List公共调用；局部inline只作内部实现，不能替代公共API。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 [✅ 2026-11-14 V-08 全腿绿（b9cabe364，套件 24/24）：真正跨模块公共 List 调用＝每端 ends 测试经 `use std.list.*` 真实包链接（app::main→std::list，1504/3002/10 四端一致）；新增两腿＝app::strings `take_first(xs List<Str>) Str`（remove 移出拥有文本返回，调用者 clear 释放源后返回文本仍读 5）＋借用逃逸负控（公共函数返回元素视图→`source.view-escape` 调用前拒）；`drop` 不在冻结方法表（T-01 钉死），释放经 clear]
 
-- [ ] **T-04｜M2-A｜owner_stage: work｜AC-04**：验证公共算法的接口/元素类型/操作合同变化引发真实依赖失效与恢复首编辑，复用既有增量/预算机制。
+- [x] **T-04｜M2-A｜owner_stage: work｜AC-04**：验证公共算法的接口/元素类型/操作合同变化引发真实依赖失效与恢复首编辑，复用既有增量/预算机制。 [✅ 2026-11-14（2bc7c8481，套件 26/26）：body 编辑＝精确段失效（仅 alg 段移动，main/std.list 字节稳定）＋同 store 首编辑后首跑即新值 115＋a2x restore 未变产品 0/0 重发＋编辑前 receipt 用前拒；元素型变更＝`source.type-mismatch`、元数（操作合同）变更＝`source.argument`，均 backend 前具名拒]
 
 - [ ] **T-05｜M2-A｜owner_stage: work｜AC-04**：补错元素/越界/失败回滚/借用逃逸与合法邻例、拥有容器深链和资源fault，跑完整职责组与原collections命名oracle。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
@@ -393,6 +393,10 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: work / T-04 | plan_id: PLAN-946 | plan_revision: 10 | outcome: pass（T-04 完成，executing 5/8） | worktree: D:/autostack/.wt/lang-946/auto-lang | branch: plan-946-dev | base_commit: b9cabe364 | code_commit: 2bc7c8481（V-04：body 编辑精确段失效＋恢复首编辑新值＋a2x 增量 0/0 重发＋stale receipt 用前拒；元素型 source.type-mismatch／元数 source.argument 具名拒；套件 26/26＋探针 11/11） | task_ids: T-04 | evidence: §8 T-04 行 + stdlib_list_946 26/26 | blockers: none | next_responsible_role: work（T-05 验证汇总）
+
+`stage: goal | plan_id: PLAN-946 | plan_revision: 10 | round: 6 | from: work | to: work | status: executing | outcome: pass（T-04 交付，5/8） | worktree: D:/autostack/.wt/lang-946/auto-lang | commit: 2bc7c8481 | next: work（T-05）`
 
 2026-11-14 stage: work / T-08 | plan_id: PLAN-946 | plan_revision: 10 | outcome: pass（T-08 完成，executing 4/8） | worktree: D:/autostack/.wt/lang-946/auto-lang | branch: plan-946-dev | base_commit: bd181cc39 | code_commit: b9cabe364（V-08 两腿：跨模块 owned 文本返回源释放后可读 5、公共函数返回元素视图 view-escape 调用前拒；套件 24/24） | task_ids: T-08 | evidence: §8 T-08 行 + stdlib_list_946 24/24（跨模块公共调用自 ends 测试即真包链接） | blockers: none | next_responsible_role: work（T-04 接口/元素型变更失效与恢复首编辑）
 
