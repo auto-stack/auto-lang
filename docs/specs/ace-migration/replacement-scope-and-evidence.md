@@ -149,3 +149,36 @@ examples 计数均不构成覆盖证明。跨仓不可读/owner 未明/未发布
   lowering/verify 后续）、冻结措辞 `av.dyn.unsupported` 与实现 `portable.unsupported` 的
   命名空间差异（D-964-C2，文档级，语义一致）、grid 单行异构列语义澄清（D-964-C3，962
   语义裁定者）。以上缺口不因 964 交付而消失；964 自身覆盖行保持 required 原状。
+
+## SD-09 控制流错误传播与生成器 producer 挂接（PLAN-965 SD-02）
+
+- 分母台账 L-18（`is` 语句/表达式）、L-21（nil/null 与 `??` 合并）、L-26（if/else、循环与
+  `break`/`continue`/`return`）、L-27（try/catch/finally）、L-28（`.?` 错误传播）、L-30（yield）
+  的 ACE 侧**已验证 producer** 为 [m2-control-effects.md](m2-control-effects.md)：
+  `SourceProfile::Aggregates` 显式源码入口 + 共享 MIR 四端（AV interpreter、native Cranelift PE、
+  A2X-Rust、A2X-C）；语言级 TestCase 组 `case-ace-m2-control-effects-965` 15 case（9 个 negative 标签）。
+  语言错误以 `ExecOutcome::Error{message,span}` 与 `Trap`/`Resource`/`Cancelled`/宿主拒绝四分账，
+  wire 以 `LANG_FAIL=0x40` + `Terminator::LangFail` 承载。本节只挂接来源，不改 SD-01 的分类口径，
+  也不把任何行标为 implemented；状态提升仍只引用 965 归档收据。
+- **部分覆盖与具名边界**：
+  - L-29（async 块 `~{}`/`.await`/`.go`）**不在本包交付**，调度与流所有权归 PLAN-968 T-08；
+    `yield` 只在 `~Iter<T>` 生成器内合法（`source.yield-outside-generator`），不得据此宣称
+    async 面已实现。
+  - L-18 的 `Cover`/`StructPattern` 形与 L-21 的 nil 字面量归 964/后续，本包只交付 aggregates
+    轮廓的 `is` 表达式/语句与 `??`/`.?(d)` 合并/传播语义。
+  - **生成器借用参数为合法有界拒绝**（D-965-C1）：状态记录按值保存参数，故 `mut` 参数、记录
+    视图参数与 `str`（借用文本）参数即使从不跨 `yield` 使用也以 `source.generator-borrow-param`
+    具名拒；支持 owned 句柄（`List`/`Object`/`Variant`/owned `Str`）与纯标量。是否支持只读记录的
+    按值拷贝是后续增强，非本包闭合条件。
+  - **跨帧 `fail` 不被调用者 catch 绑定**（D-965-C2）：catch 只绑定本帧语言错误；跨调用边界
+    的 `fail`/未抑制 `.?` 是终止性语言错误（AV `Error`、native `Trap(9)`、A2X class-only），
+    与 D3 四分类一致。
+  - **表达式语句分账**（D-965-C3）：入口/宿主轮廓保留"表达式语句只允许作脚本尾"的
+    `source.entry-tail` 拒绝；aggregates 轮廓对非尾部、非 unit、非控制效果的表达式语句求值后
+    丢弃（调用必须真实执行），不提供隐式尾返回。
+  - **`int` 函数末尾 try 可正常完成**（D-965-C5）：`fn f() int { try { g() } catch e { return 42 } }` 保持 `verify.no-return-path` 拒绝（无隐式尾返回）；完全发散的 try/catch 之后的语句为不可达死代码、不再触发 `verify.block-structure`。\n  - **非法跳转具名拒**（D-965-C4）：`break`/`continue` 无用户循环时
+    `source.break-outside-loop`/`source.continue-outside-loop`，`try` 帧不计入循环。
+- **未闭缺口（具名，带 owner）**：`ace-runtime` 19 例 text shim 链接红与 6 例 `text.char-multi`
+  既有红（`master` 既有，独立 fix/Plan，见 965 §10-2）；V-11 表 964 的 `OBJECT_NEW/GET/SET`、
+  `TEXT_DISPLAY` 漏行债（§10-6，ACE 治理）。以上缺口在台账中保持 required/unknown 原状，
+  不因 965 交付而消失；965 自身覆盖行（L-18/21/26/27/28/30 的 aggregates 切片）不因 L-29 未交付改 NA。
