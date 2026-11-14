@@ -651,10 +651,10 @@ pub(crate) fn project_packages_front(
     let public_item = rule("public-item");
     let const_item = rule("const-item");
     let var_item = rule("var-item");
-    // PLAN-1043（T-03）：#in/需求规则 id（仅 packages-ct 裁剪存在；plain 面
-    // 全 None → 分支不可达，行为不变）。
+    // PLAN-1043（T-03）/PLAN-966（T-02）：项位 CT 选择/需求规则 id（仅
+    // packages-ct 裁剪存在；plain 面全 None → 分支不可达，行为不变）。
     let fn_require_p = rule("fn-require-p");
-    let in_item = rule("in-item");
+    let ct_item = rule("ct-item");
     let in_use_rule = rule("in-use");
     // public-item 的 `body` 字段指向 public-body 分派节点；实体是其首个非 trivia 孩子。
     let public_body = |tree: &CstTree, node: u32| -> Option<u32> {
@@ -686,7 +686,7 @@ pub(crate) fn project_packages_front(
     let mut const_exports = std::collections::BTreeSet::new();
     let mut imports = Vec::new();
     let mut requires = Vec::new();
-    let mut ct_ins = Vec::new();
+    let mut ct_items = Vec::new();
     let mut saw_decl = false;
     let mut items = Vec::new();
     let node_span = |tree: &CstTree, n| {
@@ -737,9 +737,10 @@ pub(crate) fn project_packages_front(
                 d.node
             };
             let kind = tree.kind(node);
-            // PLAN-1043（T-03）：`#in` 项——结构保持进 ct_ins；含任何 use 的
-            // #in 属导入位（须在声明区前），只含声明的 #in 视作声明项。
-            if Some(kind) == in_item {
+            // PLAN-1043（T-03）/PLAN-966（T-02）：项位编译期选择（`#in` 与
+            // 独立 `#if/#is/#for`）——结构保持进 ct_items；含任何 use 的项属
+            // 导入位（须在声明区前），只含声明的项视作声明项。
+            if Some(kind) == ct_item {
                 let span = node_span(tree, node);
                 let has_use = subtree_has_kind(tree, node, in_use_rule);
                 if has_use && saw_decl {
@@ -755,15 +756,26 @@ pub(crate) fn project_packages_front(
                 let Some(face) = in_face.as_mut() else {
                     return Err(err(
                         "source.infra",
-                        "`#in` requires the packages-ct face".into(),
+                        "compile-time items require the packages-ct face".into(),
                         span,
                     ));
                 };
-                let (namespace, tail) = face.in_item(node).map_err(|d| vec![d])?;
-                ct_ins.push(crate::source::packages::PackageCtIn {
-                    namespace,
+                // ct-item 是分派 wrapper：实体是 in-item/ct-if-item/ct-is-item/
+                // ct-for-item 中命中的那个规则节点。
+                let inner = tree
+                    .children(node)
+                    .into_iter()
+                    .find(|&c| {
+                        matches!(
+                            face.rule_of(c),
+                            "in-item" | "ct-if-item" | "ct-is-item" | "ct-for-item"
+                        )
+                    })
+                    .unwrap_or(node);
+                let kind = face.ct_item(inner).map_err(|d| vec![d])?;
+                ct_items.push(crate::source::packages::PackageCtItem {
+                    kind,
                     span,
-                    tail,
                     decl_slot: items.len(),
                     import_slot: imports.len(),
                 });
@@ -935,7 +947,7 @@ pub(crate) fn project_packages_front(
             .collect(),
         declarations,
         requires,
-        ct_ins,
+        ct_items,
     })
 }
 
@@ -998,6 +1010,70 @@ impl<'a> InFace<'a> {
             .into_iter()
             .filter(|&c| self.tree.node(c).flags & ace_syntax_runtime::cst::FLAG_TRIVIA == 0)
             .collect()
+    }
+
+    /// 一个节点命中的规则名（`ct-item` 分派 wrapper 用；非规则节点返回空）。
+    fn rule_of(&self, n: u32) -> &str {
+        let k = self.tree.kind(n);
+        let idx = k.wrapping_sub(ace_syntax_runtime::program::RULE_KIND_BASE) as usize;
+        self.cached
+            .program
+            .rules
+            .get(idx)
+            .map(|r| r.name.as_str())
+            .unwrap_or("")
+    }
+
+    /// PLAN-966（T-02）：一项位编译期选择（ct-item 的分派实体）→ 形态。
+    fn ct_item(&mut self, node: u32) -> Result<crate::source::packages::CtItemKind, Diagnostic> {
+        use crate::source::packages::CtItemKind;
+        let kind = self.tree.kind(node);
+        if Some(kind) == self.rule("in-item") {
+            let (namespace, tail) = self.in_item(node)?;
+            return Ok(CtItemKind::In { namespace, tail });
+        }
+        if Some(kind) == self.rule("ct-if-item") {
+            let cond = self.ct_expr_field(node, "cond")?;
+            let then = self.block(self.field(node, "then").expect("then block"))?;
+            let els = self
+                .nontrivia(node)
+                .into_iter()
+                .find(|&c| Some(self.tree.kind(c)) == self.rule("in-else"))
+                .and_then(|e| self.field(e, "body"))
+                .map(|b| self.block(b))
+                .transpose()?;
+            return Ok(CtItemKind::If { cond, then, els });
+        }
+        if Some(kind) == self.rule("ct-is-item") {
+            let scrutinee = self.ct_expr_field(node, "scrutinee")?;
+            let in_arm = self.rule("in-arm").expect("in-arm");
+            let mut arms = Vec::new();
+            for a in self
+                .nontrivia(node)
+                .into_iter()
+                .filter(|&c| self.tree.kind(c) == in_arm)
+            {
+                arms.push(self.arm(a)?);
+            }
+            return Ok(CtItemKind::Is { scrutinee, arms });
+        }
+        if Some(kind) == self.rule("ct-for-item") {
+            let var = self.text(self.field(node, "var").expect("for var"));
+            let iter = self.field(node, "iter").expect("for iter");
+            let (start, end) = self.range_bounds(iter)?;
+            let body = self.block(self.field(node, "body").expect("for body"))?;
+            return Ok(CtItemKind::For {
+                var,
+                start,
+                end,
+                body,
+            });
+        }
+        Err(self.diag(
+            "source.cte.in-stmt",
+            "unsupported compile-time item form".into(),
+            self.span_of(node),
+        ))
     }
 
     fn diag(&self, code: &'static str, msg: String, span: crate::atom_text::Span) -> Diagnostic {

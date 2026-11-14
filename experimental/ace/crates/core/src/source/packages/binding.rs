@@ -3270,10 +3270,10 @@ fn assemble_unit(
 ) -> Result<PackageSyntax, PackageDiagnostic> {
     let zero = Span { start: 0, end: 0 };
     let needs_ctx = !public.requires.is_empty()
-        || !public.ct_ins.is_empty()
+        || !public.ct_items.is_empty()
         || impl_syntax
             .as_ref()
-            .is_some_and(|i| !i.syntax.requires.is_empty() || !i.syntax.ct_ins.is_empty())
+            .is_some_and(|i| !i.syntax.requires.is_empty() || !i.syntax.ct_items.is_empty())
         || impl_syntax.is_some();
     if needs_ctx && ctx.is_none() {
         return Err(fail(
@@ -3310,18 +3310,18 @@ fn assemble_unit(
     }
 
     let facts = ctx.map(|c| c.sys_facts()).unwrap_or_default();
-    // 公共文件 #in 求值 + 槽位回插。
+    // 公共文件项位 CT 选择求值 + 槽位回插（`#in` 与独立 `#if/#is/#for`）。
     let mut items = public.program.items;
     let mut imports = public.imports.clone();
     let mut landed_requires = Vec::new();
     let mut extra = 0usize;
-    for ct_in in &public.ct_ins {
-        let landed = eval_ct_in(key, ct_in, &facts, &BTreeMap::new())?;
-        let at = (ct_in.decl_slot + extra).min(items.len());
+    for ct_item in &public.ct_items {
+        let landed = eval_ct_item(key, ct_item, &facts, &BTreeMap::new())?;
+        let at = (ct_item.decl_slot + extra).min(items.len());
         let n = landed.decls.len();
         items.splice(at..at, landed.decls.into_iter().map(|(i, _)| i));
         extra += n;
-        let imp_at = ct_in.import_slot.min(imports.len());
+        let imp_at = ct_item.import_slot.min(imports.len());
         imports.splice(imp_at..imp_at, landed.imports.clone());
         landed_requires.extend(landed.requires);
     }
@@ -3341,13 +3341,13 @@ fn assemble_unit(
         let mut iitems = is.syntax.program.items.clone();
         let mut iimports = is.syntax.imports.clone();
         let mut iextra = 0usize;
-        for ct_in in &is.syntax.ct_ins {
-            let landed = eval_ct_in(key, ct_in, &facts, &BTreeMap::new())?;
-            let at = (ct_in.decl_slot + iextra).min(iitems.len());
+        for ct_item in &is.syntax.ct_items {
+            let landed = eval_ct_item(key, ct_item, &facts, &BTreeMap::new())?;
+            let at = (ct_item.decl_slot + iextra).min(iitems.len());
             let n = landed.decls.len();
             iitems.splice(at..at, landed.decls.into_iter().map(|(i, _)| i));
             iextra += n;
-            let imp_at = ct_in.import_slot.min(iimports.len());
+            let imp_at = ct_item.import_slot.min(iimports.len());
             iimports.splice(imp_at..imp_at, landed.imports.clone());
             if let Some(d) = duplicate_import_diag(key, &iimports) {
                 return Err(d);
@@ -3457,12 +3457,12 @@ fn assemble_unit(
         ));
     }
 
-    // ---- #in 公共声明导出面回填（需求填充之外：#in 落位的 pub fn/type/const）。
+    // ---- 项位 CT 选择落位声明导出面回填（需求填充之外：落位的 pub fn/type/const）。
     {
-        // 重放公共 ct_ins 落位声明（求值已做过；此处只需导出面/声明表登记，
+        // 重放公共 ct_items 落位声明（求值已做过；此处只需导出面/声明表登记，
         // 走同一求值保持一致性）。
-        for ct_in in &public.ct_ins {
-            if let Ok(landed) = eval_ct_in(key, ct_in, &facts, &BTreeMap::new()) {
+        for ct_item in &public.ct_items {
+            if let Ok(landed) = eval_ct_item(key, ct_item, &facts, &BTreeMap::new()) {
                 for (item, is_pub) in landed.decls {
                     if !is_pub {
                         continue;
@@ -3541,7 +3541,7 @@ fn assemble_unit(
         pieces,
         declarations,
         requires: all_requires,
-        ct_ins: public.ct_ins.clone(),
+        ct_items: public.ct_items.clone(),
     })
 }
 
@@ -3557,30 +3557,37 @@ fn require_signature_matches(req: &PackageRequire, f: &FnItem) -> bool {
         && req.ret.kind == f.ret.kind
 }
 
-/// 一个 `#in` 项的绑定期求值：namespace 检查 → 表达式折叠（i32/bool 事实）
-/// → 臂选择（等值重复诊断/首匹配）→ 声明/use/需求落位。未选分支不落任何
+/// 一个项位 CT 选择的绑定期求值：`#in` 建立 namespace 上下文后求值其
+/// tail；独立 `#if/#is/#for` 以 `sys` 显式目标事实为谓词域，复用同一
+/// expr/arm/stmt 求值器（`#in sys` 块内同域同语义）。未选分支不落任何
 /// 内容（其语法检查在投影期已完成）。
-fn eval_ct_in(
+fn eval_ct_item(
     key: &str,
-    ct_in: &PackageCtIn,
+    ct_item: &super::PackageCtItem,
     facts: &BTreeMap<String, i32>,
     env: &BTreeMap<String, i32>,
 ) -> Result<CtLanded, PackageDiagnostic> {
-    if ct_in.namespace != super::SYS_NAMESPACE {
-        return Err(fail(
-            key,
-            "source.cte.in-namespace",
-            format!(
-                "unknown compile-time namespace `{}` (registered: `{}`)",
-                ct_in.namespace,
-                super::SYS_NAMESPACE
-            ),
-            ct_in.span,
-        ));
-    }
-    let mut landed = CtLanded::default();
-    match &ct_in.tail {
-        CtInTail::Is { scrutinee, arms } => {
+    use super::CtItemKind;
+    match &ct_item.kind {
+        CtItemKind::In { namespace, tail } => {
+            eval_ct_in(key, namespace, ct_item.span, tail, facts, env)
+        }
+        CtItemKind::If { cond, then, els } => {
+            let mut landed = CtLanded::default();
+            eval_if(
+                key,
+                cond,
+                then,
+                els.as_deref(),
+                super::SYS_NAMESPACE,
+                facts,
+                env,
+                &mut landed,
+            )?;
+            Ok(landed)
+        }
+        CtItemKind::Is { scrutinee, arms } => {
+            let mut landed = CtLanded::default();
             eval_is(
                 key,
                 scrutinee,
@@ -3590,9 +3597,61 @@ fn eval_ct_in(
                 env,
                 &mut landed,
             )?;
+            Ok(landed)
         }
-        CtInTail::Block(stmts) => {
-            eval_stmts(key, stmts, super::SYS_NAMESPACE, facts, env, &mut landed)?;
+        CtItemKind::For {
+            var,
+            start,
+            end,
+            body,
+        } => {
+            let mut landed = CtLanded::default();
+            eval_for(
+                key,
+                var,
+                start,
+                end,
+                body,
+                super::SYS_NAMESPACE,
+                facts,
+                env,
+                &mut landed,
+            )?;
+            Ok(landed)
+        }
+    }
+}
+
+/// 一个 `#in` 项的绑定期求值：namespace 检查 → 表达式折叠（i32/bool 事实）
+/// → 臂选择（等值重复诊断/首匹配）→ 声明/use/需求落位。未选分支不落任何
+/// 内容（其语法检查在投影期已完成）。
+fn eval_ct_in(
+    key: &str,
+    namespace: &str,
+    span: Span,
+    tail: &super::CtInTail,
+    facts: &BTreeMap<String, i32>,
+    env: &BTreeMap<String, i32>,
+) -> Result<CtLanded, PackageDiagnostic> {
+    if namespace != super::SYS_NAMESPACE {
+        return Err(fail(
+            key,
+            "source.cte.in-namespace",
+            format!(
+                "unknown compile-time namespace `{namespace}` (registered: `{}`)",
+                super::SYS_NAMESPACE
+            ),
+            span,
+        ));
+    }
+    let namespace = super::SYS_NAMESPACE;
+    let mut landed = CtLanded::default();
+    match tail {
+        super::CtInTail::Is { scrutinee, arms } => {
+            eval_is(key, scrutinee, arms, namespace, facts, env, &mut landed)?;
+        }
+        super::CtInTail::Block(stmts) => {
+            eval_stmts(key, stmts, namespace, facts, env, &mut landed)?;
         }
     }
     Ok(landed)
@@ -3626,52 +3685,23 @@ fn eval_stmt(
         } => eval_is(key, scrutinee, arms, namespace, facts, env, landed),
         CtInStmt::If {
             cond, then, els, ..
-        } => {
-            let v = eval_ct_expr(key, cond, namespace, facts, env)?;
-            match v {
-                CtVal::Bool(true) => eval_stmts(key, then, namespace, facts, env, landed),
-                CtVal::Bool(false) => match els {
-                    Some(e) => eval_stmts(key, e, namespace, facts, env, landed),
-                    None => Ok(()),
-                },
-                CtVal::I32(_) => Err(fail(
-                    key,
-                    "source.cte.in-type",
-                    "an `#in` condition must be a compile-time bool",
-                    cond.span(),
-                )),
-            }
-        }
+        } => eval_if(
+            key,
+            cond,
+            then,
+            els.as_deref(),
+            namespace,
+            facts,
+            env,
+            landed,
+        ),
         CtInStmt::For {
             var,
             start,
             end,
             body,
-            span,
-        } => {
-            let s = expect_i32(
-                key,
-                &eval_ct_expr(key, start, namespace, facts, env)?,
-                start,
-            )?;
-            let e = expect_i32(key, &eval_ct_expr(key, end, namespace, facts, env)?, end)?;
-            let count = e.saturating_sub(s).max(0);
-            const MAX_ITER: i64 = 1024;
-            if count as i64 > MAX_ITER {
-                return Err(fail(
-                    key,
-                    "source.cte.in-budget",
-                    format!("a compile-time `for` is bounded to {MAX_ITER} iterations here"),
-                    *span,
-                ));
-            }
-            for i in s..e {
-                let mut inner = env.clone();
-                inner.insert(var.clone(), i);
-                eval_stmts(key, body, namespace, facts, &inner, landed)?;
-            }
-            Ok(())
-        }
+            ..
+        } => eval_for(key, var, start, end, body, namespace, facts, env, landed),
         CtInStmt::Use(u) => {
             landed.imports.extend(expand_ct_use(u));
             Ok(())
@@ -3685,6 +3715,71 @@ fn eval_stmt(
             Ok(())
         }
     }
+}
+
+/// `if` 条件：bool 事实折叠 → 选中分支语句求值（非 bool 具名拒）。
+#[allow(clippy::too_many_arguments)]
+fn eval_if(
+    key: &str,
+    cond: &super::CtExpr,
+    then: &[CtInStmt],
+    els: Option<&[CtInStmt]>,
+    namespace: &str,
+    facts: &BTreeMap<String, i32>,
+    env: &BTreeMap<String, i32>,
+    landed: &mut CtLanded,
+) -> Result<(), PackageDiagnostic> {
+    let v = eval_ct_expr(key, cond, namespace, facts, env)?;
+    match v {
+        CtVal::Bool(true) => eval_stmts(key, then, namespace, facts, env, landed),
+        CtVal::Bool(false) => match els {
+            Some(e) => eval_stmts(key, e, namespace, facts, env, landed),
+            None => Ok(()),
+        },
+        CtVal::I32(_) => Err(fail(
+            key,
+            "source.cte.in-type",
+            "a compile-time `if` condition must be a bool",
+            cond.span(),
+        )),
+    }
+}
+
+/// `for` 编译期计数迭代（预算 MAX_ITER，越界具名拒；var 在体内 CT 域可见）。
+#[allow(clippy::too_many_arguments)]
+fn eval_for(
+    key: &str,
+    var: &str,
+    start: &super::CtExpr,
+    end: &super::CtExpr,
+    body: &[CtInStmt],
+    namespace: &str,
+    facts: &BTreeMap<String, i32>,
+    env: &BTreeMap<String, i32>,
+    landed: &mut CtLanded,
+) -> Result<(), PackageDiagnostic> {
+    let s = expect_i32(
+        key,
+        &eval_ct_expr(key, start, namespace, facts, env)?,
+        start,
+    )?;
+    let e = expect_i32(key, &eval_ct_expr(key, end, namespace, facts, env)?, end)?;
+    let count = e.saturating_sub(s).max(0);
+    const MAX_ITER: i64 = 1024;
+    if i64::from(count) > MAX_ITER {
+        return Err(fail(
+            key,
+            "source.cte.in-budget",
+            format!("a compile-time `for` is bounded to {MAX_ITER} iterations here"),
+            start.span().join(end.span()),
+        ));
+    }
+    for i in s..e {
+        let mut inner = env.clone();
+        inner.insert(var.to_string(), i);
+        eval_stmts(key, body, namespace, facts, &inner, landed)?;
+    }
+    Ok(())
 }
 
 /// 符号表形 use 展开为逐符号导入（`use m: a, b` ≡ `use m.a` + `use m.b`）。
@@ -4643,5 +4738,151 @@ fn main() int { return plat() }";
         let e = bind_err(vec![input("main", src, None)], &c);
         assert_eq!(e.module, "app::main", "{e:?}");
         assert!(e.diagnostic.span.start <= src.len());
+    }
+}
+#[cfg(test)]
+mod plan966_tests {
+    use super::*;
+    use crate::source::packages::provider_sources::{
+        AssemblyBackend, PackageAssemblyContext, ProviderChoice, TargetOs,
+    };
+    use crate::source::packages::{IN_CAPABILITY, PACKAGES_CAPABILITY};
+
+    fn caps() -> Vec<String> {
+        vec![PACKAGES_CAPABILITY.to_string(), IN_CAPABILITY.to_string()]
+    }
+
+    const WINIO: &str = "pub fn plat() int { return 10 }";
+    const LNXIO: &str = "pub fn plat() int { return 20 }";
+
+    fn input(id: &str, source: &str) -> PackageModuleInput {
+        PackageModuleInput {
+            package: "app".into(),
+            version: "1.0.0".into(),
+            id: id.into(),
+            source: source.into(),
+            provider: None,
+        }
+    }
+
+    fn ctx(target: TargetOs) -> PackageAssemblyContext {
+        PackageAssemblyContext::new(AssemblyBackend::Av, ProviderChoice::Auto, target)
+    }
+
+    fn bind_with(main: &str, target: TargetOs) -> Result<BoundPackages, PackageDiagnostic> {
+        bind_packages_assembled(
+            &[
+                input("main", main),
+                input("winio", WINIO),
+                input("lnxio", LNXIO),
+            ],
+            "app::main",
+            &caps(),
+            FrontBudget::WORK_OWNED_64MIB,
+            &ctx(target),
+        )
+    }
+
+    fn bind_ok(main: &str, target: TargetOs) -> BoundPackages {
+        bind_with(main, target).expect("assembled bind")
+    }
+
+    fn bind_err(main: &str, target: TargetOs) -> PackageDiagnostic {
+        bind_with(main, target).expect_err("expected named rejection")
+    }
+
+    fn imported(bound: &BoundPackages) -> Vec<String> {
+        bound.units["app::main"]
+            .imports
+            .iter()
+            .map(|i| i.path.join("."))
+            .collect()
+    }
+
+    // PLAN-966 T-02/V-DETAIL-01：无 namespace 的项级 `#if` 按显式目标事实
+    // 选择导入；未选分支不落 import，选中者进入本模块绑定域。
+    #[test]
+    fn p966_ct_if_item_selects_imports_by_target() {
+        let src = "#if sys.current == sys.Windows {\n    use winio.plat\n} else {\n    use lnxio.plat\n}\nfn main() int { return plat() }";
+        let win = bind_ok(src, TargetOs::Windows);
+        assert_eq!(imported(&win), vec!["winio.plat".to_string()]);
+        assert!(win.references["main"].contains(&fn_symbol("app", "winio", "plat", "app::main")));
+        let lnx = bind_ok(src, TargetOs::Linux);
+        assert_eq!(imported(&lnx), vec!["lnxio.plat".to_string()]);
+        assert!(lnx.references["main"].contains(&fn_symbol("app", "lnxio", "plat", "app::main")));
+        // 未选分支的 import 不在本目标绑定域。
+        assert!(!lnx.references["main"].contains(&fn_symbol("app", "winio", "plat", "app::main")));
+    }
+
+    // PLAN-966 T-02/V-DETAIL-01：项级 `#is` 选择声明臂；等值重复臂先于选择
+    // 具名拒（平台选择表歧义）。
+    #[test]
+    fn p966_ct_is_item_selects_declarations_and_rejects_duplicate_arms() {
+        let src = "#is sys.current {\n    Windows -> { pub fn bonus() int { return 7 } }\n    Linux -> { pub fn bonus() int { return 8 } }\n}\nfn main() int { return bonus() }";
+        let win = bind_ok(src, TargetOs::Windows);
+        let unit = &win.units["app::main"];
+        assert!(unit.exports.contains("bonus"), "{:?}", unit.exports);
+        let owner = fn_symbol("app", "main", "bonus", "app::main");
+        assert!(win
+            .program
+            .items
+            .iter()
+            .any(|i| matches!(i, Item::Fn(f) if f.name.name == owner)));
+        assert!(win.references["main"].contains(&owner));
+        let lnx = bind_ok(src, TargetOs::Linux);
+        assert_eq!(
+            lnx.units["app::main"].exports,
+            win.units["app::main"].exports
+        );
+
+        let dup = "#is sys.current {\n    Windows -> use winio.plat\n    Windows -> use lnxio.plat\n}\nfn main() int { return 0 }";
+        let e = bind_err(dup, TargetOs::Windows);
+        assert_eq!(e.diagnostic.code, "source.cte.duplicate-arm", "{e:?}");
+    }
+
+    // PLAN-966 T-02/V-04：项级 `#for` 用循环变量展开语句（嵌套 if 选择不同
+    // 声明）；越界循环按预算具名拒，修下一编辑可恢复。
+    #[test]
+    fn p966_ct_for_item_expands_with_loop_var_and_budget() {
+        let src = "#for i in 0..2 {\n    if i == 0 {\n        pub fn first() int { return 1 }\n    } else {\n        pub fn second() int { return 2 }\n    }\n}\nfn main() int { return first() + second() }";
+        let bound = bind_ok(src, TargetOs::Windows);
+        let unit = &bound.units["app::main"];
+        assert!(unit.exports.contains("first"), "{:?}", unit.exports);
+        assert!(unit.exports.contains("second"), "{:?}", unit.exports);
+        assert_eq!(
+            bound.references["main"],
+            BTreeSet::from([
+                fn_symbol("app", "main", "first", "app::main"),
+                fn_symbol("app", "main", "second", "app::main"),
+            ])
+        );
+
+        let over = "#for i in 0..2000 {\n}\nfn main() int { return 0 }";
+        let e = bind_err(over, TargetOs::Windows);
+        assert_eq!(e.diagnostic.code, "source.cte.in-budget", "{e:?}");
+        // 修复后同一来源可恢复（无半展开残留）。
+        let fixed = "#for i in 0..1 {\n}\nfn main() int { return 0 }";
+        assert!(bind_with(fixed, TargetOs::Windows).is_ok());
+    }
+
+    // PLAN-966 T-02/V-DETAIL-02：非法近邻在正确阶段具名拒——非 bool 条件、
+    // 未知事实成员、未知 namespace。
+    #[test]
+    fn p966_ct_item_illegal_neighbours_are_named() {
+        let e = bind_err(
+            "#if sys.current {\n    pub fn a() int { return 1 }\n}\nfn main() int { return 0 }",
+            TargetOs::Windows,
+        );
+        assert_eq!(e.diagnostic.code, "source.cte.in-type", "{e:?}");
+        let e = bind_err(
+            "#is sys.current {\n    Windows7 -> use winio.plat\n}\nfn main() int { return 0 }",
+            TargetOs::Windows,
+        );
+        assert_eq!(e.diagnostic.code, "source.cte.in-name", "{e:?}");
+        let e = bind_err(
+            "#in os is current {\n    Windows -> use winio.plat\n}\nfn main() int { return 0 }",
+            TargetOs::Windows,
+        );
+        assert_eq!(e.diagnostic.code, "source.cte.in-namespace", "{e:?}");
     }
 }

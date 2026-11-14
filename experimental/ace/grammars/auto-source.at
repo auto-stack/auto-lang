@@ -261,8 +261,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [packages-modules, packages-ct, packages-aggregates]) { var-item() {} }
             alt(profiles: [packages-modules, packages-ct, packages-aggregates]) { use-item-p() {} }
             alt(profiles: [record, record-instances, text-record, text-record-instances, collections, packages-modules, packages-ct, packages-aggregates, aggregates]) { type-item() {} }
-            // PLAN-1043（T-03）：`#in` 编译期命名空间上下文项（仅 packages-ct）。
-            alt(profiles: [packages-ct]) { in-item() {} }
+            // PLAN-1043（T-03）/PLAN-966（T-02）：项位编译期选择（仅
+            // packages-ct）——`#in` 命名空间上下文与无 namespace 的
+            // `#if/#is/#for`（谓词域=显式目标 sys 事实）。
+            alt(profiles: [packages-ct]) { ct-item() {} }
             alt(profiles: [collections, aggregates]) { enum-item() {} }
             // PLAN-962（T-08，L-13/L-12）：`tag N { ... }` = enum 声明别名
             //（旧 statements.rs:662 同义）；`union N { f T; ... }` = tagged
@@ -381,6 +383,15 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 不重复 `#`。臂体 = 单行 use（可带 `: sym, ..` 符号表）或块；块内
         // in-stmt = CT 控制（is/if/for）/ use / 运行时声明（fn/type/const/
         // pub——声明体仍是普通运行时 block，只有控制与导入层是编译期）。
+        // PLAN-966（T-02）：项位编译期选择分派——`#in` 与独立的
+        // `#if/#is/#for` 共用 packages-ct 面；首个 `#` 后的关键字
+        // （in/if/is/for）区分形态。wrapper 只做分派，不消费 token。
+        ct-item(profiles: [packages-ct]) {
+            alt { in-item() {} }
+            alt { ct-if-item() {} }
+            alt { ct-is-item() {} }
+            alt { ct-for-item() {} }
+        }
         in-item(profiles: [packages-ct]) {
             // `#in` 是项位引入符（行首/前一项之后），不做同行锚定——
             // 与 scalar-ct 的 `#{`（表达式位，须同行）分野。
@@ -388,6 +399,33 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             in(field: "in") {}
             ident(field: "namespace")
             in-tail(field: "tail")
+        }
+        // PLAN-966（T-02）：无 namespace 的项级编译期条件——谓词域 = 显式
+        // 目标 sys 事实（`sys.current`/`sys.Windows`/…），语义与 `#in sys`
+        // 块内 if/is/for 同一求值器；选中声明/use 按原 Emit 规则落位，未选
+        // 分支只保 Text 阶段语法检查。
+        ct-if-item(profiles: [packages-ct]) {
+            hash() {}
+            if(field: "kw") {}
+            in-ct-expr(field: "cond")
+            in-block(field: "then")
+            opt { in-else(field: "else") }
+        }
+        ct-is-item(profiles: [packages-ct]) {
+            hash() {}
+            is(field: "kw") {}
+            in-ct-expr(field: "scrutinee")
+            lbrace() {}
+            list { in-arm() {} }
+            rbrace() {}
+        }
+        ct-for-item(profiles: [packages-ct]) {
+            hash() {}
+            for(field: "kw") {}
+            ident(field: "var")
+            in(field: "in") {}
+            in-range(field: "iter")
+            in-block(field: "body")
         }
         in-tail(profiles: [packages-ct]) {
             alt { in-is(field: "is") }

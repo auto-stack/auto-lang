@@ -146,17 +146,43 @@ pub enum CtArmBody {
     Block(Vec<CtInStmt>),
 }
 
-/// PLAN-1043（T-03）：一个 `#in <ns> ...` 项（投影保持结构；绑定期按
-/// namespace 事实求值并落位）。
+/// PLAN-1043（T-03）/PLAN-966（T-02）：一个项位编译期选择项（投影保持结构；
+/// 绑定期按 namespace 事实求值并落位）。`kind` 区分 `#in <ns> …` 与无
+/// namespace 的 `#if/#is/#for`（谓词域=显式目标 sys 事实）。
 #[derive(Clone, Debug)]
-pub struct PackageCtIn {
-    pub namespace: String,
+pub struct PackageCtItem {
+    pub kind: CtItemKind,
     pub span: Span,
-    pub tail: CtInTail,
-    /// 本 #in 在模块 items 序中的落位槽（选中声明按此插回）。
+    /// 本 CT 项在模块 items 序中的落位槽（选中声明按此插回）。
     pub decl_slot: usize,
-    /// 本 #in 在模块 imports 序中的落位槽（选中 use 按此插回）。
+    /// 本 CT 项在模块 imports 序中的落位槽（选中 use 按此插回）。
     pub import_slot: usize,
+}
+
+/// PLAN-966（T-02）：项位编译期选择形态。`In` 建立 namespace 上下文
+/// （1043）；`If`/`Is`/`For` 为无 namespace 的独立形，按 `sys` 显式目标
+/// 事实求值（与 `#in sys` 块内同域同求值器）。
+#[derive(Clone, Debug)]
+pub enum CtItemKind {
+    In {
+        namespace: String,
+        tail: CtInTail,
+    },
+    If {
+        cond: CtExpr,
+        then: Vec<CtInStmt>,
+        els: Option<Vec<CtInStmt>>,
+    },
+    Is {
+        scrutinee: CtExpr,
+        arms: Vec<CtInArm>,
+    },
+    For {
+        var: String,
+        start: CtExpr,
+        end: CtExpr,
+        body: Vec<CtInStmt>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -202,9 +228,9 @@ pub struct PackageSyntax {
     /// PLAN-1043（T-02）：`pub spec fn` bodyless 需求声明（packages-ct 面；
     /// plain 面恒空）。
     pub requires: Vec<PackageRequire>,
-    /// PLAN-1043（T-03）：`#in` 编译期命名空间上下文项（packages-ct 面；
-    /// plain 面恒空）。绑定期按事实求值，未选分支不进任何绑定。
-    pub ct_ins: Vec<PackageCtIn>,
+    /// PLAN-1043（T-03）/PLAN-966（T-02）：项位编译期选择项（packages-ct
+    /// 面；plain 面恒空）。绑定期按事实求值，未选分支不进任何绑定。
+    pub ct_items: Vec<PackageCtItem>,
 }
 
 /// The explicit packages-module entry. Requires the packages capability and
