@@ -721,7 +721,7 @@ all = false
 
 [[group]]
 name = "case-ace-m1-base"
-title = "TestCase case-ace-m1-base（PLAN-1057：标量10/40已切AutoDown文档，余57项shared legacy include）"
+title = "TestCase case-ace-m1-base（PLAN-1057+1059：标量10/40+复合14/28已切AutoDown文档共68项，余29项shared legacy include）"
 runner = "case"
 workspace = "."
 args = []

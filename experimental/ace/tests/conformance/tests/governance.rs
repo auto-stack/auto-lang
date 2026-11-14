@@ -626,8 +626,10 @@ fn v07_emit_not_run() {
     );
 }
 
-/// PLAN-1057: CLI wiring regression for the active AutoDown document BASE suite
-/// (`ace-document-base`, 10 scalar cases / 40 document rows + 57 legacy rows = 97 checks).
+/// PLAN-1057 + PLAN-1059: CLI wiring regression for the active AutoDown document
+/// BASE suite (`ace-document-base`): 24 document cases / 68 document rows
+/// (10 scalar / 40 + 14 composite / 28) + 29 legacy rows = 97 checks. The
+/// split below is asserted per fixed identity sets, not as one flat count.
 #[test]
 fn document_base_cli_list_and_migration_inventory_complete() {
     let list = auto_case(&["list", "--suite", DOC_BASE_SUITE]);
@@ -640,6 +642,10 @@ fn document_base_cli_list_and_migration_inventory_complete() {
     assert!(
         list_text.contains("ace.m1.b01") && list_text.contains("ace.m1.b12"),
         "expected scalar cases in CLI list output:\n{list_text}"
+    );
+    assert!(
+        list_text.contains("ace.m1.k01") && list_text.contains("ace.m1.v07"),
+        "expected composite cases in CLI list output:\n{list_text}"
     );
 
     let inv = auto_case(&["migration-inventory", "--suite", DOC_BASE_SUITE]);
@@ -654,21 +660,72 @@ fn document_base_cli_list_and_migration_inventory_complete() {
     let checks = doc["checks"].as_array().expect("checks array");
     assert_eq!(checks.len(), 97, "active BASE suite must stay 97 checks");
 
-    let doc_scalar: Vec<_> = checks
+    let scalar_cases = [
+        "ace.m1.b01", "ace.m1.b02", "ace.m1.b03", "ace.m1.b04", "ace.m1.b05",
+        "ace.m1.b06", "ace.m1.b07", "ace.m1.b09", "ace.m1.b10", "ace.m1.b12",
+    ];
+    let composite_cases = [
+        "ace.m1.k01", "ace.m1.k03", "ace.m1.k06", "ace.m1.r02", "ace.m1.r05",
+        "ace.m1.r06", "ace.m1.r08", "ace.m1.t05", "ace.m1.v01", "ace.m1.v02",
+        "ace.m1.v04", "ace.m1.v05", "ace.m1.v06", "ace.m1.v07",
+    ];
+    let document_rows: Vec<&serde_json::Value> = checks
         .iter()
         .filter(|row| row["origin"]["format"] == "document")
         .collect();
     assert_eq!(
-        doc_scalar.len(),
-        40,
-        "10 scalar cases x 4 checks in document format"
+        document_rows.len(),
+        68,
+        "24 document cases (10 scalar x 4 + 14 composite x 2) must be document rows"
     );
-    for row in doc_scalar {
+    for row in &document_rows {
         assert_eq!(row["origin"]["suite"], "ace-document-base");
         assert_eq!(
             row["origin"]["input_paths"].as_array().map(|a| a.len()),
             Some(0),
-            "migrated inline scalar cases must read zero external input paths"
+            "migrated inline document cases must read zero external input paths"
+        );
+    }
+    let row_key = |row: &&serde_json::Value| {
+        (
+            row["semantic"]["case"]["id"].as_str().unwrap_or_default().to_string(),
+            row["semantic"]["check"]["id"].as_str().unwrap_or_default().to_string(),
+        )
+    };
+    let doc_keys: std::collections::HashSet<_> = document_rows.iter().map(row_key).collect();
+    // The 40 first-wave scalar rows: 10 cases x 4 checks, all from documents.
+    for cid in scalar_cases {
+        for chk in ["ac-native", "av", "autovm", "a2r-snapshot"] {
+            assert!(
+                doc_keys.contains(&(cid.to_string(), chk.to_string())),
+                "scalar document row missing: {cid}:{chk}"
+            );
+        }
+    }
+    // The 28 second-wave composite rows: 14 cases x 2 checks, all from documents.
+    for cid in composite_cases {
+        for chk in ["autovm", "a2r-snapshot"] {
+            assert!(
+                doc_keys.contains(&(cid.to_string(), chk.to_string())),
+                "composite document row missing: {cid}:{chk}"
+            );
+        }
+    }
+    // The remaining 29 rows keep the legacy fence representation.
+    let legacy_rows: Vec<&serde_json::Value> = checks
+        .iter()
+        .filter(|row| row["origin"]["format"] == "fences")
+        .collect();
+    assert_eq!(
+        legacy_rows.len(),
+        29,
+        "the four remaining legacy case files must contribute 29 fence rows"
+    );
+    for row in &legacy_rows {
+        let cid = row["semantic"]["case"]["id"].as_str().unwrap_or_default();
+        assert!(
+            !scalar_cases.contains(&cid) && !composite_cases.contains(&cid),
+            "migrated case {cid} must not appear as a legacy fence row"
         );
     }
 }

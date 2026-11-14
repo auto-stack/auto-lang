@@ -39,13 +39,20 @@ fn stage_doc_base_corpus(cases_root: &Path, dst: &Path) {
         doc_dir.join("scalar.case.ad"),
     )
     .unwrap();
+    std::fs::copy(
+        cases_root.join("ace-m2/documents/composite.case.ad"),
+        doc_dir.join("composite.case.ad"),
+    )
+    .unwrap();
     copy_tree(&cases_root.join("ace-m1"), &dst.join("ace-m1"));
 }
 
 /// The committed base corpus runs END TO END green: 36 cases / 97 checks —
-/// 10 scalar value cases on all FOUR paths (ac-native + av + autovm +
-/// a2r-snapshot against reviewed goldens) from inline AutoDown documents,
-/// plus 57 shared legacy M1 BASE checks via `fixture_root: "ace-m1"`.
+/// 24 inline AutoDown document cases (10 scalar four-path cases / 40 checks
+/// + 14 legacy composite cases / 28 checks, PLAN-1059) plus 29 shared legacy
+/// M1 BASE checks via `fixture_root: "ace-m1"`. The per-source membership
+/// below pins the document share: the 28 composite and 40 scalar checks must
+/// really come from the inline documents, not from a legacy sidecar.
 #[test]
 fn ace_m1_base_suite_green() {
     let cases_dir = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("test/cases");
@@ -79,6 +86,36 @@ fn ace_m1_base_suite_green() {
         "base suite check count (incl. T-05 lifecycle)"
     );
     assert!(report.coverage_gaps.is_empty(), "no coverage gaps");
+    // PLAN-1059 source/member gate: the composite wave's 28 checks and the
+    // first wave's 40 scalar checks are executed from inline documents.
+    let composite_ids = [
+        "ace.m1.k01", "ace.m1.k03", "ace.m1.k06", "ace.m1.r02", "ace.m1.r05",
+        "ace.m1.r06", "ace.m1.r08", "ace.m1.t05", "ace.m1.v01", "ace.m1.v02",
+        "ace.m1.v04", "ace.m1.v05", "ace.m1.v06", "ace.m1.v07",
+    ];
+    for cid in composite_ids {
+        for chk in ["autovm", "a2r-snapshot"] {
+            assert!(
+                report
+                    .results
+                    .iter()
+                    .any(|r| r.case_id == cid && r.check_id == chk),
+                "composite document check missing from BASE run: {cid}:{chk}"
+            );
+        }
+    }
+    for stem in ["b01", "b02", "b03", "b04", "b05", "b06", "b07", "b09", "b10", "b12"] {
+        let cid = format!("ace.m1.{stem}");
+        for chk in ["ac-native", "av", "autovm", "a2r-snapshot"] {
+            assert!(
+                report
+                    .results
+                    .iter()
+                    .any(|r| r.case_id == cid && r.check_id == chk),
+                "scalar document check missing from BASE run: {cid}:{chk}"
+            );
+        }
+    }
 }
 
 /// Negative oracle: mutating one frozen exit expectation (B01 14 -> 15) in the
