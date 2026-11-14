@@ -483,8 +483,28 @@ def regular_module(run_dir, repo_root=None, budget_seconds=120.0, target_seconds
         record['missing_evidence'].append('executed=0 (fake pass): no test body actually ran')
     if is_case_row:
         checks = result.get('checks') or []
+        # The TestCase runner records a native per-check duration in its own
+        # report, referenced by the driver result; read it instead of guessing.
+        durations = {}
+        report_path = (result.get('artifacts') or {}).get('report')
+        if report_path:
+            try:
+                case_document = json.loads(Path(report_path).read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                case_document = None
+            for row in (case_document or {}).get('results') or []:
+                durations[(row.get('case'), row.get('check'))] = row.get('duration_ms')
+        record['case_durations'] = 'OBSERVED' if durations else 'UNOBSERVED'
         record['case_checks'] = [{'case': row.get('case'), 'check': row.get('check'),
-                                  'status': row.get('status')} for row in checks]
+                                  'status': row.get('status'),
+                                  'duration_ms': durations.get((row.get('case'), row.get('check')))}
+                                 for row in checks]
+        record['tests'] = sorted(
+            ({'name': '%s%%%s' % (row.get('case'), row.get('check')),
+              'event': row.get('status'),
+              'exec_time_ms': row.get('duration_ms')}
+             for row in record['case_checks']),
+            key=lambda row: -(row.get('exec_time_ms') or 0.0))
         if not checks:
             record['missing_evidence'].append('case row carries no per-check results')
         if len(checks) != executed:
@@ -698,10 +718,12 @@ def render_regular_markdown(records):
         checks = record.get('case_checks')
         if checks:
             bad = [row for row in checks if row.get('status') != 'PASS']
+            timed = [row for row in checks if row.get('duration_ms') is not None]
             lines.append('- case checks: %d (%d not PASS before the original control overrides; '
-                         '%d override(s) honoured); per-check time UNOBSERVED '
-                         '(case report carries status only)'
-                         % (len(checks), len(bad), record.get('case_controls') or 0))
+                         '%d override(s) honoured); per-check split: %s'
+                         % (len(checks), len(bad), record.get('case_controls') or 0,
+                            ('%d/%d observed by the runner report' % (len(timed), len(checks)))
+                            if timed else 'UNOBSERVED (no per-check duration in the runner report)'))
         if record.get('stale'):
             lines.append('- STALE: %s' % '; '.join(record['stale']))
         if record.get('missing_evidence'):

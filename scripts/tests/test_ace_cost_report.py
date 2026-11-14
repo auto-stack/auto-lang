@@ -517,6 +517,25 @@ class RegularEvidenceTests(unittest.TestCase):
         self.assertTrue(any('differ from the original control expectation' in item
                             for item in record['problems']))
 
+    def test_case_per_check_duration_is_read_from_the_runner_report(self):
+        checks = [{'case': 'ac.legal', 'check': 'run', 'status': 'PASS'},
+                  {'case': 'ac.slow', 'check': 'certify', 'status': 'PASS'}]
+        run = self.make('case-durations', checks=checks, executed=2, outcome='PASS')
+        report_path = run.dir / '0' / 'case-report.json'
+        report_path.write_text(json.dumps({'schema': 'test-case-report/1', 'results': [
+            {'case': 'ac.legal', 'check': 'run', 'status': 'PASS', 'duration_ms': 120},
+            {'case': 'ac.slow', 'check': 'certify', 'status': 'PASS', 'duration_ms': 4100}]}),
+            encoding='utf-8')
+        summary = json.loads((run.dir / 'results.json').read_text(encoding='utf-8'))
+        summary['results'][0]['artifacts'] = {'report': str(report_path)}
+        (run.dir / 'results.json').write_text(json.dumps(summary), encoding='utf-8')
+        code, record, markdown = run.module_record()
+        self.assertEqual(0, code)
+        self.assertEqual('OBSERVED', record['case_durations'])
+        self.assertEqual('ac.slow%certify', record['tests'][0]['name'])
+        self.assertAlmostEqual(4100.0, record['tests'][0]['exec_time_ms'])
+        self.assertIn('2/2 observed by the runner report', markdown)
+
     def test_nc09_two_modules_in_one_invocation_is_exit_two(self):
         run = self.make('two-modules', groups=['ace-syntax', 'ace-native'])
         code, record, _ = run.module_record()
