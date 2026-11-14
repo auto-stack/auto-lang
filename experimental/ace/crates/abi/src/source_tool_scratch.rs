@@ -525,7 +525,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+        let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests")))
             .join(format!("tool-scratch-{tag}-{}-{stamp}", std::process::id()));
         ManagedStore::open(&root).unwrap()
     }

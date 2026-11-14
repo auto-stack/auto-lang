@@ -99,12 +99,101 @@ pub fn resolve_toolchain() -> Result<CToolchain, CToolError> {
 /// Run `cmd /D /C call vcvars64 >nul && <argv...> 2>&1` under the
 /// contained executor. vcvars only seeds INCLUDE/LIB; the spawned
 /// compiler is still job-contained and deadlined.
+/// PLAN-1060: the vcvars64 environment is a pure preparation step — capture it
+/// ONCE per process and drive `cl.exe` directly afterwards. Identity is
+/// unchanged (same cl.exe, same frozen flags, same vcvars content: the vcvars
+/// path keys the cache); capture failure falls back to the original
+/// `call vcvars64.bat && cl ...` line, so a toolchain without a usable vcvars
+/// keeps its exact old behaviour.
+static VCVARS_ENV: std::sync::OnceLock<(
+    std::path::PathBuf,
+    std::collections::HashMap<String, String>,
+)> = std::sync::OnceLock::new();
+
+fn capture_vcvars_env(
+    vcvars: &Path,
+) -> Result<std::collections::HashMap<String, String>, CToolError> {
+    let line = format!("call \"{}\" >nul && set", vcvars.display());
+    let mut cmd = Command::new("cmd.exe");
+    cmd.arg("/D").arg("/C");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.raw_arg(&line);
+    }
+    #[cfg(not(windows))]
+    {
+        cmd.arg(&line);
+    }
+    let run = run_deadlined_captured(
+        &mut cmd,
+        C_COMPILE_DEADLINE,
+        CaptureCaps {
+            stdout_max: 8 << 20,
+            stderr_max: C_STREAM_CAP,
+        },
+    )
+    .map_err(|e| CToolError(format!("vcvars capture: {e:?}")))?;
+    if run.exit_code != Some(0) {
+        return Err(CToolError(format!(
+            "vcvars capture exited {:?}",
+            run.exit_code
+        )));
+    }
+    let text = String::from_utf8_lossy(&run.stdout);
+    let mut map = std::collections::HashMap::new();
+    for raw in text.lines() {
+        if let Some((k, v)) = raw.split_once('=') {
+            if !k.trim().is_empty() {
+                map.insert(k.trim().to_string(), v.to_string());
+            }
+        }
+    }
+    if map.is_empty() {
+        return Err(CToolError("vcvars produced no environment".into()));
+    }
+    Ok(map)
+}
+
+fn cached_vcvars_env(vcvars: &Path) -> Option<&'static std::collections::HashMap<String, String>> {
+    let entry = VCVARS_ENV.get_or_init(|| {
+        let map = capture_vcvars_env(vcvars).unwrap_or_default();
+        (vcvars.to_path_buf(), map)
+    });
+    if entry.0 == vcvars && !entry.1.is_empty() {
+        Some(&entry.1)
+    } else {
+        None
+    }
+}
+
 fn run_via_vcvars(
     tc: &CToolchain,
     argv: &[String],
     cwd: &Path,
     deadline: Duration,
 ) -> Result<CapturedRun, CToolError> {
+    // Fast path: captured environment, direct cl.exe launch (no vcvars shell).
+    if let Some(env) = cached_vcvars_env(&tc.vcvars64) {
+        let mut cmd = Command::new(&tc.cl_exe);
+        for a in argv {
+            cmd.arg(a);
+        }
+        cmd.current_dir(cwd);
+        cmd.env_clear();
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        return run_deadlined_captured(
+            &mut cmd,
+            deadline,
+            CaptureCaps {
+                stdout_max: C_STREAM_CAP,
+                stderr_max: C_STREAM_CAP,
+            },
+        )
+        .map_err(|e| CToolError(format!("contained spawn: {e:?}")));
+    }
     let mut line = String::new();
     line.push_str(&format!("call \"{}\" >nul && ", tc.vcvars64.display()));
     line.push_str(&format!("\"{}\"", tc.cl_exe.display()));

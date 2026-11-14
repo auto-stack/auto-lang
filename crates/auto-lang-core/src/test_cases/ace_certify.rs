@@ -734,8 +734,21 @@ pub struct RunOutcome {
 
 /// Run a certified binary under containment with the run wall and caps.
 pub(crate) fn run_capped(exe: &Path) -> Result<RunOutcome, String> {
+    run_capped_with_env(exe, &[])
+}
+
+/// PLAN-1060: same contained run, with an EXPLICIT child environment. The
+/// environment belongs to the child only — this process's environment is never
+/// mutated, so independent cases can run concurrently.
+pub(crate) fn run_capped_with_env(
+    exe: &Path,
+    envs: &[(String, String)],
+) -> Result<RunOutcome, String> {
     let mut cmd = Command::new(exe);
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    for (k, v) in envs {
+        cmd.env(k, v);
+    }
     let out = run_bounded(cmd, RUN_WALL, &format!("run {}", exe.display()))?;
     Ok(RunOutcome {
         success: out.success,

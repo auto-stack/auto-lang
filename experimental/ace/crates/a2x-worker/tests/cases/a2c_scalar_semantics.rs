@@ -27,17 +27,24 @@ fn out_root() -> PathBuf {
 }
 
 fn store_root() -> PathBuf {
-    // fresh store PER PROCESS: the C channel's fragment identity keys on
-    // the frozen target identity (backend_version), so a store reused
-    // across code changes would legitimately serve stale bytes — the
-    // corpus leg always starts from a clean namespace.
+    store_root_slot(0)
+}
+
+/// PLAN-1060: one store namespace per worker slot — the corpus runs in a
+/// bounded pool, and concurrent sessions must never share fragment files.
+/// Slots are still fresh PER PROCESS (same stale-bytes discipline).
+fn store_root_slot(slot: u32) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
-        "../../target/a2x-out-c/store-{}",
+        "../../target/a2x-out-c/store-{}-{slot}",
         std::process::id()
     ))
 }
 
 fn run_case_c(case: &crate::scalar_semantics::Case) {
+    run_case_c_slot(case, 0)
+}
+
+fn run_case_c_slot(case: &crate::scalar_semantics::Case, slot: u32) {
     let caps = if case.trace {
         vec![TRACE_CAPABILITY.to_string()]
     } else {
@@ -46,7 +53,7 @@ fn run_case_c(case: &crate::scalar_semantics::Case) {
     // a C-provider session over a shared scratch store (per-case assembly;
     // cross-case fragment hits are legitimate — same identities)
     let mut s = A2xSession::open(
-        &store_root(),
+        &store_root_slot(slot),
         "a2c-corpus",
         "probe",
         128 * 1024 * 1024,
@@ -89,9 +96,22 @@ fn run_case_c(case: &crate::scalar_semantics::Case) {
 fn c_full_corpus_true_chain() {
     let cases = cases();
     assert!(cases.len() >= 55, "corpus table shrank: {}", cases.len());
-    for case in &cases {
-        run_case_c(case);
-    }
+    // PLAN-1060：55 个冻结 case 全部保留（同一 cl/同一 oracle 表），仅按
+    // 有界池并行、每线程独立 store 槽；断言与覆盖不变。
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .clamp(2, 6);
+    let chunk = ((cases.len() + threads - 1) / threads).max(1);
+    std::thread::scope(|s| {
+        for (slot, group) in cases.chunks(chunk).enumerate() {
+            s.spawn(move || {
+                for case in group {
+                    run_case_c_slot(case, slot as u32);
+                }
+            });
+        }
+    });
 }
 
 /// One-case smoke (fast feedback leg; the full corpus is the gate).

@@ -69,7 +69,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         use ace_source_query::resources::OutputLimits;
-        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+        let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests")))
             .join(format!("crt-output-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(
@@ -192,7 +192,7 @@ mod tests {
             .collect(),
         );
         let tool = ctool::find_cl().unwrap();
-        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+        let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests")))
             .join(format!("crt-config-{}", std::process::id()))
             .join("CRT 工具 with spaces");
         std::fs::create_dir_all(&root).unwrap();
@@ -352,7 +352,7 @@ mod tests {
             eprintln!("explicit batch override present; direct-closure leg not asserted here");
             return;
         }
-        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+        let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests")))
             .join(format!("legacy-bridge-direct-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(

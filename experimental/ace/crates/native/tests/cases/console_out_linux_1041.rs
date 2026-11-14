@@ -6,7 +6,11 @@
 //! SIGPIPE policy witness: the standalone AC CLI keeps the kernel default
 //! disposition, so a broken pipe on a >64KiB output kills the process
 //! (signal 13), never a hang and never a silent fallback.
-#![cfg(all(windows, target_arch = "x86_64"))]
+//! 2026-11-14 user ruling: Windows fixed groups no longer execute Linux/WSL
+//! legs; recorded as a ruling exclusion owned by the dedicated Linux
+//! environment (never red, never PASS). The original Windows+WSL condition is
+//! narrowed to the Linux environment that will run it later.
+#![cfg(target_os = "linux")]
 
 use ace_native::console::{console_authorize, console_compile, console_native_build_elf};
 use ace_native::linux_exec::{run_elf_console_lane, run_wsl_argv, wsl_distro, wsl_resolve_path};

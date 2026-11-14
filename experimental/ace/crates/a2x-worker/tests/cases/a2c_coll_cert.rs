@@ -128,25 +128,42 @@ fn certify(
 /// the execution-config identity; both legs really ran cl (2 spawns).
 #[test]
 fn a2c_coll_certify_all_suite_cases() {
-    for (case, kind, value) in CASES {
-        let r = certify("all", case, kind, value, None, "debug");
-        assert_eq!(r["verdict"], "PASS", "{case}: {r}");
-        assert_eq!(r["recipe"], "ac-a2c/hir-collections-emit-v1", "{case}");
-        assert_eq!(r["case"], format!("a2c-hir-926/{case}"));
-        assert_eq!(r["spawned_cl"], 2, "{case}: both legs compile");
-        assert_eq!(r["spawned_rustc"], 0, "{case}");
-        // the strict cert on disk
-        let cert =
-            std::fs::read_to_string(out_base().join("all").join(case).join("case.cert.json"))
-                .unwrap_or_else(|e| panic!("{case}: {e}"));
-        assert!(
-            cert.contains("\"schema\": \"ace.a2c-hir.collections.cert/1\""),
-            "{case}"
-        );
-        assert!(cert.contains("\"execution_config\": {\"budget_work_units\":16777216,\"cancel\":false,\"events\":false,\"fault_alloc\":null,\"mode\":\"debug\"}"), "{case}");
-        assert!(cert.contains("\"reference_sha256\""), "{case}");
-        assert!(cert.contains("\"cl\""), "{case}");
-    }
+    // PLAN-1060：20 个 case 各自 out_dir、各自新 worker，按有界池并行；
+    // 断言/冻结 oracle 表/双腿 cl 全部不变，仅调度变化。
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .clamp(2, 6);
+    let chunk = ((CASES.len() + threads - 1) / threads).max(1);
+    std::thread::scope(|s| {
+        for group in CASES.chunks(chunk) {
+            s.spawn(move || {
+                for &(case, kind, value) in group {
+                    certify_one("all", case, kind, value);
+                }
+            });
+        }
+    });
+}
+
+/// 单个 case 的双腿认证 + 磁盘证书断言（原循环体逐字搬出）。
+fn certify_one(tag: &str, case: &str, kind: &str, value: &str) {
+    let r = certify(tag, case, kind, value, None, "debug");
+    assert_eq!(r["verdict"], "PASS", "{case}: {r}");
+    assert_eq!(r["recipe"], "ac-a2c/hir-collections-emit-v1", "{case}");
+    assert_eq!(r["case"], format!("a2c-hir-926/{case}"));
+    assert_eq!(r["spawned_cl"], 2, "{case}: both legs compile");
+    assert_eq!(r["spawned_rustc"], 0, "{case}");
+    // the strict cert on disk
+    let cert = std::fs::read_to_string(out_base().join(tag).join(case).join("case.cert.json"))
+        .unwrap_or_else(|e| panic!("{case}: {e}"));
+    assert!(
+        cert.contains("\"schema\": \"ace.a2c-hir.collections.cert/1\""),
+        "{case}"
+    );
+    assert!(cert.contains("\"execution_config\": {\"budget_work_units\":16777216,\"cancel\":false,\"events\":false,\"fault_alloc\":null,\"mode\":\"debug\"}"), "{case}");
+    assert!(cert.contains("\"reference_sha256\""), "{case}");
+    assert!(cert.contains("\"cl\""), "{case}");
 }
 
 /// The certification counterexamples: a WRONG oracle (70 — a value no

@@ -6,6 +6,13 @@
 //! that distribution through the `wsl.exe --exec` channel; when the
 //! environment is missing the tests fail with the recorded Infra gap —
 //! they never fake a Linux result.
+//!
+//! 2026-11-14 user ruling: Windows fixed groups/full/batch regression no longer
+//! execute Linux/WSL legs; they are recorded as "Linux leg = ruling exclusion,
+//! owned by the dedicated Linux environment" (never red, never PASS). Loading
+//! this module only in a Linux environment keeps the coverage for that later
+//! environment; the removal task is scheduled separately (PLAN-1060 T-04 ledger).
+#![cfg(target_os = "linux")]
 
 use ace_native::cache::CoffMeta;
 use ace_native::config::{

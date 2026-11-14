@@ -275,5 +275,3 @@ fn a2x_bounded_wrapper_value_5() {
     run_rust_plain(BOUNDED_WRAPPER, 5, "b1");
     run_c_plain(BOUNDED_WRAPPER, 5, "b1");
 }
-
-

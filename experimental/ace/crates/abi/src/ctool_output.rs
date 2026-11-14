@@ -119,7 +119,7 @@ mod tests {
     };
     #[test]
     fn external_outputs_keep_deleted_spend_and_reap_quota_and_deadline_failures() {
-        let root = std::path::PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+        let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests")))
             .join(format!("external-output-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("output.obj");
