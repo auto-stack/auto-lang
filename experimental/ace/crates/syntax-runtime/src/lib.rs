@@ -33,4 +33,5 @@ pub const RUNTIME_VERSION: &str = "ac-syntax-rt/1";
 pub const SCANNER_ABI_VERSION: &str = "ac-syntax-scanner/2";
 
 /// 解析器 ABI 版本（规则程序语义），参与 A03 key。
-pub const PARSER_ABI_VERSION: &str = "ac-syntax-parser/2";
+/// 3：PLAN-979 增加槽位限定拼写（`Atom::CtxName`）——旧执行器不能解释。
+pub const PARSER_ABI_VERSION: &str = "ac-syntax-parser/3";

@@ -55,6 +55,10 @@ pub fn encode_canonical(p: &GrammarProgram) -> Vec<u8> {
                         w.push(2);
                         w.extend_from_slice(&x.to_le_bytes());
                     }
+                    Atom::CtxName(c) => {
+                        w.push(3);
+                        w.extend_from_slice(&c.to_le_bytes());
+                    }
                 }
                 w.push(match s.repeat {
                     Repeat::Once => 0,
@@ -110,6 +114,15 @@ pub fn encode_canonical(p: &GrammarProgram) -> Vec<u8> {
     put_u32(&mut w, p.field_names.len() as u32);
     for f in &p.field_names {
         put_str(&mut w, f);
+    }
+
+    // 上下文名称表（PLAN-979）：声明序，身份内容的一部分。
+    put_u32(&mut w, p.ctx_names.len() as u32);
+    for n in &p.ctx_names {
+        put_str(&mut w, &n.name);
+        put_str(&mut w, &n.spelling);
+        w.extend_from_slice(&n.token.to_le_bytes());
+        put_str(&mut w, &n.role);
     }
 
     put_u32(&mut w, p.newline.stmt_end.len() as u32);
@@ -202,6 +215,7 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
                     0 => Atom::Tok(r.u32()?),
                     1 => Atom::Rule(r.u32()?),
                     2 => Atom::Pratt(r.u32()?),
+                    3 => Atom::CtxName(r.u32()?),
                     t => return Err(format!("bad atom tag {t}")),
                 };
                 let repeat = match r.u8()? {
@@ -286,6 +300,21 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
     }
 
     let n = r.u32()? as usize;
+    let mut ctx_names = Vec::with_capacity(n);
+    for _ in 0..n {
+        let name = r.str()?;
+        let spelling = r.str()?;
+        let token = r.u32()?;
+        let role = r.str()?;
+        ctx_names.push(CtxNameSpec {
+            name,
+            spelling,
+            token,
+            role,
+        });
+    }
+
+    let n = r.u32()? as usize;
     let mut stmt_end = Vec::with_capacity(n);
     for _ in 0..n {
         stmt_end.push(r.u32()?);
@@ -330,6 +359,15 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
     if (start as usize) >= grammar_rules.len() {
         return Err("start rule out of range".into());
     }
+    // 上下文名称表防御：token 必须在表内；空拼写/空角色是坏程序。
+    for n in &ctx_names {
+        if (n.token as usize) >= tokens.len() {
+            return Err("ctx-name references unknown token".into());
+        }
+        if n.spelling.is_empty() || n.role.is_empty() || n.name.is_empty() {
+            return Err("ctx-name has empty name/spelling/role".into());
+        }
+    }
 
     let mut p = GrammarProgram {
         name,
@@ -340,6 +378,7 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
         rules: grammar_rules,
         pratt,
         field_names,
+        ctx_names,
         start,
         newline: NewlinePolicy {
             significant,

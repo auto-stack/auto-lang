@@ -36,8 +36,28 @@ pub fn parse_snapshot(
     snap: &Snapshot,
     budget: &Budget,
 ) -> Result<ParseOutput, RtError> {
+    parse_snapshot_with_ctx(p, cs, snap, budget, None)
+}
+
+/// PLAN-979 T-H0-I：槽位拼写的事实源（上下文名称步只在有真实字节时成立）。
+///
+/// 语法程序本身只声明 `spelling`/`token`/`role`；解析时用本 trait 取该 token
+/// 覆盖区间的原始字节做逐字节比较，因此词法面不变（`view` 仍是 `ident`），
+/// 只有声明为 `CtxName` 的槽位才把拼写解释成结构名。
+pub trait CtxTokenText {
+    fn token_equals(&self, start: u64, end: u64, want: &str) -> bool;
+}
+
+/// 带槽位拼写事实源的冷解析（统一前门的 AGE/领域 profile 走本入口）。
+pub fn parse_snapshot_with_ctx<'t>(
+    p: &GrammarProgram,
+    cs: &CompiledScanner,
+    snap: &Snapshot,
+    budget: &Budget,
+    ctx_text: Option<&'t dyn CtxTokenText>,
+) -> Result<ParseOutput, RtError> {
     let lex = crate::lexer::lex_all(p, cs, snap)?;
-    parse_tokens(p, lex.tokens, lex.diags, budget)
+    parse_tokens_full(p, lex.tokens, lex.diags, budget, None, ctx_text)
 }
 
 /// 词法已就绪（增量路径复用）时的解析入口。
@@ -104,9 +124,26 @@ pub fn parse_tokens_with_graft(
     budget: &Budget,
     graft: Option<GraftInput<'_>>,
 ) -> Result<ParseOutput, RtError> {
+    parse_tokens_full(p, toks, lex_diags, budget, graft, None)
+}
+
+fn parse_tokens_full<'t>(
+    p: &GrammarProgram,
+    toks: Vec<Token>,
+    lex_diags: Vec<LexDiag>,
+    budget: &Budget,
+    graft: Option<GraftInput<'_>>,
+    ctx_text: Option<&'t dyn CtxTokenText>,
+) -> Result<ParseOutput, RtError> {
     let first = FirstSets::compute(p)?;
-    let mut m = Machine::new(p, toks, lex_diags, first, budget, graft)?;
+    let mut m = Machine::new(p, toks, lex_diags, first, budget, graft, ctx_text)?;
     m.run()?;
+    if m.ctx_missing {
+        // 失败关闭：声明了槽位拼写却没有字节事实源，绝不静默接受。
+        return Err(RtError::InvalidProgram(
+            "contextual-name step requires a token text source".into(),
+        ));
+    }
     let grafted = m.graft_count;
     let tree = m.finish();
     // token 流收紧容量（F787-R4-04：倍增松弛是真实驻留——流式构建的
@@ -195,6 +232,25 @@ impl FirstSets {
                                 if !nullable[prim] {
                                     all_nullable = false;
                                 }
+                            }
+                            Atom::CtxName(c) => {
+                                let spec = p.ctx_name(c).ok_or_else(|| {
+                                    RtError::InvalidProgram(format!(
+                                        "rule `{}` references unknown ctx-name #{c}",
+                                        p.rules[ri].name
+                                    ))
+                                })?;
+                                if (spec.token as usize) >= nt {
+                                    return Err(RtError::InvalidProgram(format!(
+                                        "ctx-name `{}` references unknown token #{}",
+                                        spec.name, spec.token
+                                    )));
+                                }
+                                if !first[ri][spec.token as usize] {
+                                    first[ri][spec.token as usize] = true;
+                                    changed = true;
+                                }
+                                all_nullable = false;
                             }
                         }
                         if !all_nullable {
@@ -326,9 +382,14 @@ struct OpenBlock {
     decls: Vec<u32>,
 }
 
-struct Machine<'p, 'a> {
+struct Machine<'p, 'a, 't> {
     p: &'p GrammarProgram,
     graft: Option<GraftInput<'a>>,
+    /// PLAN-979：上下文名称槽的字节事实源（None = 无；命中槽位即失败关闭）。
+    ctx_text: Option<&'t dyn CtxTokenText>,
+    /// PLAN-979：槽位拼写不成立的候选诊断（解析失败时才进入 tree.diags）。
+    ctx_hints: Vec<SynDiag>,
+    ctx_missing: bool,
     toks: Vec<Token>,
     lex_diags: Vec<LexDiag>,
     i: usize,
@@ -382,7 +443,7 @@ struct Machine<'p, 'a> {
     fail_memo: std::collections::HashMap<(u32, u32, bool, u32), bool>,
 }
 
-impl<'p, 'a> Machine<'p, 'a> {
+impl<'p, 'a, 't> Machine<'p, 'a, 't> {
     fn new(
         p: &'p GrammarProgram,
         toks: Vec<Token>,
@@ -390,6 +451,7 @@ impl<'p, 'a> Machine<'p, 'a> {
         first: FirstSets,
         budget: &Budget,
         graft: Option<GraftInput<'a>>,
+        ctx_text: Option<&'t dyn CtxTokenText>,
     ) -> Result<Self, RtError> {
         let mut trivia_tok = vec![false; p.tokens.len()];
         for r in &p.scanner.rules {
@@ -426,6 +488,9 @@ impl<'p, 'a> Machine<'p, 'a> {
             cut_depth: 0,
             p,
             graft,
+            ctx_text,
+            ctx_missing: false,
+            ctx_hints: Vec::new(),
             toks,
             lex_diags,
             i: 0,
@@ -765,6 +830,81 @@ impl<'p, 'a> Machine<'p, 'a> {
         None
     }
 
+    /// PLAN-979：上下文名称槽是否命中（token id 相同且拼写逐字节相等）。
+    /// 没有字节事实源时置失败关闭标志（`parse_tokens_full` 报受控错误）。
+    fn ctx_matches(&mut self, c: CtxNameId) -> bool {
+        let Some(pk) = self.peek() else {
+            return false;
+        };
+        if self.ctx_text.is_none() {
+            // 缺字节事实源：语法程序声明了槽位拼写却无法判定 → 失败关闭。
+            if self
+                .p
+                .ctx_name(c)
+                .map(|spec| spec.token == pk.token)
+                .unwrap_or(false)
+            {
+                self.ctx_missing = true;
+            }
+            return false;
+        }
+        let hit = self.ctx_name_matches_token(c, pk);
+        if !hit {
+            // token 相同但拼写不符 = 槽位拒绝的真实事实（保原 span 的诊断候选；
+            // 解析成功时丢弃，避免合法回溯留下假诊断）。
+            if let Some(spec) = self.p.ctx_name(c) {
+                if spec.token == pk.token {
+                    let msg = format!(
+                        "expected `{}` at the declared `{}` slot",
+                        spec.spelling, spec.role
+                    );
+                    self.ctx_hint(SynDiag {
+                        message: msg,
+                        start: pk.start,
+                        end: pk.end,
+                    });
+                }
+            }
+        }
+        hit
+    }
+
+    fn ctx_hint(&mut self, d: SynDiag) {
+        if self
+            .ctx_hints
+            .iter()
+            .any(|h| h.start == d.start && h.end == d.end && h.message == d.message)
+        {
+            return;
+        }
+        self.ctx_hints.push(d);
+    }
+
+    fn ctx_name_matches_token(&self, c: CtxNameId, tok: Token) -> bool {
+        let Some(spec) = self.p.ctx_name(c) else {
+            return false;
+        };
+        if spec.token != tok.token {
+            return false;
+        }
+        match self.ctx_text {
+            Some(text) => text.token_equals(tok.start, tok.end, &spec.spelling),
+            None => false,
+        }
+    }
+
+    /// 某个原子步能否由 `tok` 开始（含上下文名称槽的拼写判定）。
+    fn atom_starts(&self, atom: Atom, tok: Token) -> bool {
+        match atom {
+            Atom::Tok(t) => t == tok.token,
+            Atom::Rule(r) => self.first.starts(r, tok.token),
+            Atom::Pratt(x) => self
+                .first
+                .starts(self.p.pratt[x as usize].primary, tok.token),
+            Atom::CtxName(c) => self.ctx_name_matches_token(c, tok),
+        }
+    }
+
     /// 消费当前非 trivia token；pending trivia flush 到栈顶 frame。
     fn consume(&mut self) -> Result<Token, ()> {
         let t = match self.peek() {
@@ -1064,6 +1204,30 @@ impl<'p, 'a> Machine<'p, 'a> {
                         Err(()) => self.fail_alt(),
                     }
                 }
+                Atom::CtxName(c) => {
+                    // PLAN-979：槽位限定拼写——token id 相同还不够，须逐字节
+                    // 等于声明的 spelling（词法面不变，`let view = 1` 不受影响）。
+                    if !self.ctx_matches(c) {
+                        self.fail_alt();
+                        return Ok(());
+                    }
+                    match self.consume_same_line(step.same_line) {
+                        Ok(_) => {
+                            let f = self.stack.last_mut().unwrap();
+                            let n = f.children.len();
+                            f.children[n - 1].1 = field;
+                            if step.cut {
+                                f.committed = true;
+                                f.cut_here = true;
+                            }
+                            f.step += 1;
+                            if step.cut {
+                                self.cut_depth = self.stack.len();
+                            }
+                        }
+                        Err(()) => self.fail_alt(),
+                    }
+                }
                 Atom::Rule(r) => {
                     if (r as usize) >= self.p.rules.len() {
                         self.diag(format!("unknown rule #{r}"), 0, 0);
@@ -1091,6 +1255,21 @@ impl<'p, 'a> Machine<'p, 'a> {
                     f.wait = Wait::Optional;
                     f.opt_save = Some(sv);
                     self.push_rule(r, field, false);
+                }
+                Atom::CtxName(c) => {
+                    if self.ctx_matches(c) {
+                        match self.consume_same_line(step.same_line) {
+                            Ok(_) => {
+                                let f = self.stack.last_mut().unwrap();
+                                let n = f.children.len();
+                                f.children[n - 1].1 = field;
+                                f.step += 1;
+                            }
+                            Err(()) => self.fail_alt(),
+                        }
+                    } else {
+                        self.stack.last_mut().unwrap().step += 1;
+                    }
                 }
                 Atom::Tok(t) => {
                     let m = self.peek().map(|pk| pk.token == t).unwrap_or(false);
@@ -1162,14 +1341,7 @@ impl<'p, 'a> Machine<'p, 'a> {
                     && !matches!(step.repeat, Repeat::ListNewline if self.stack.last().unwrap().list_started && false)
                 {
                     if let Some(pk) = self.peek() {
-                        let can_start_item = match step.atom {
-                            Atom::Tok(t) => pk.token == t,
-                            Atom::Rule(r) => self.first.starts(r, pk.token),
-                            Atom::Pratt(x) => {
-                                let prim = self.p.pratt[x as usize].primary;
-                                self.first.starts(prim, pk.token)
-                            }
-                        };
+                        let can_start_item = self.atom_starts(step.atom, pk);
                         if !can_start_item && !self.continuation_can_start(rule, step_idx, pk.token)
                         {
                             // 垃圾：作为 error 叶吃进（逐 token），直到能开始 item/后续/EOF。
@@ -1177,14 +1349,7 @@ impl<'p, 'a> Machine<'p, 'a> {
                             loop {
                                 match self.peek() {
                                     Some(pk2) => {
-                                        let starts = match step.atom {
-                                            Atom::Tok(t) => pk2.token == t,
-                                            Atom::Rule(r) => self.first.starts(r, pk2.token),
-                                            Atom::Pratt(x) => {
-                                                let prim = self.p.pratt[x as usize].primary;
-                                                self.first.starts(prim, pk2.token)
-                                            }
-                                        };
+                                        let starts = self.atom_starts(step.atom, pk2);
                                         if starts
                                             || self
                                                 .continuation_can_start(rule, step_idx, pk2.token)
@@ -1247,6 +1412,21 @@ impl<'p, 'a> Machine<'p, 'a> {
                         f.rep_save = Some(sv);
                         self.push_rule(r, field, false);
                     }
+                    Atom::CtxName(c) => {
+                        if self.ctx_matches(c) {
+                            match self.consume_same_line(step.same_line) {
+                                Ok(_) => {
+                                    let f = self.stack.last_mut().unwrap();
+                                    let n = f.children.len();
+                                    f.children[n - 1].1 = field;
+                                    f.list_started = true;
+                                }
+                                Err(()) => self.fail_alt(),
+                            }
+                        } else {
+                            self.end_list_step();
+                        }
+                    }
                     Atom::Tok(t) => {
                         let m = self.peek().map(|pk| pk.token == t).unwrap_or(false);
                         if m {
@@ -1286,13 +1466,19 @@ impl<'p, 'a> Machine<'p, 'a> {
                 Atom::Tok(t) => t == tok,
                 Atom::Rule(r) => self.first.starts(r, tok),
                 Atom::Pratt(x) => self.first.starts(self.p.pratt[x as usize].primary, tok),
+                // 无字节比对（仅 token id）：仅用于"垃圾跳过"判定，保守即可。
+                Atom::CtxName(c) => self
+                    .p
+                    .ctx_name(c)
+                    .map(|spec| spec.token == tok)
+                    .unwrap_or(false),
             };
             if starts {
                 return true;
             }
             // 该步可空 → 继续看后续。
             let nullable_step = match s.atom {
-                Atom::Tok(_) => false,
+                Atom::Tok(_) | Atom::CtxName(_) => false,
                 Atom::Rule(r) => self.first.nullable[r as usize],
                 Atom::Pratt(_) => false,
             };
@@ -2066,6 +2252,7 @@ impl<'p, 'a> Machine<'p, 'a> {
         // 防御：根完成后仍有未消费 token（不应发生）→ 附加 error 叶（根目录）。
         let mut tail_edges: Vec<(u32, u32)> = Vec::new();
         if self.i < self.toks.len() {
+            let mut tail_error = false;
             for k in self.i..self.toks.len() {
                 let t = self.toks[k];
                 // 尾随未解析 token：非 trivia 标 ERROR 叶（裸叶会被投影当干净
@@ -2077,11 +2264,28 @@ impl<'p, 'a> Machine<'p, 'a> {
                         .get(t.token as usize)
                         .copied()
                         .unwrap_or(false);
+                if !is_trivia {
+                    tail_error = true;
+                }
                 let n = self.alloc_leaf(&t, if is_trivia { FLAG_TRIVIA } else { FLAG_ERROR });
                 tail_edges.push((n, NO_FIELD));
             }
             if !tail_edges.is_empty() {
                 self.diag("trailing unparsed tokens".into(), 0, 0);
+            }
+            // PLAN-979：本次解析失败时，把槽位拼写拒绝的真实事实（原 span）
+            // 并入诊断；成功解析（合法回溯）不留假诊断。
+            let failed = tail_error || !self.diags.is_empty();
+            if failed {
+                for h in self.ctx_hints.drain(..) {
+                    if !self
+                        .diags
+                        .iter()
+                        .any(|d| d.start == h.start && d.end == h.end && d.message == h.message)
+                    {
+                        self.diags.push(h);
+                    }
+                }
             }
             self.i = self.toks.len();
         }

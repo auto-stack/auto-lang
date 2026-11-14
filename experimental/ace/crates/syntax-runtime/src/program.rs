@@ -14,11 +14,14 @@ use crate::identity::{GrammarId, PackageIdentity};
 /// 语法程序 schema 版本（.at 配置的可读面）。
 pub const GRAMMAR_SCHEMA_VERSION: u32 = 2;
 /// 程序规范二进制序列化格式版本（语言包装载格式，实验 Schema，非正式 Batom）。
-pub const PROGRAM_CODEC_VERSION: u16 = 3;
+/// 4：PLAN-979 增加上下文名称表与 `Atom::CtxName`（槽位限定拼写识别）。
+pub const PROGRAM_CODEC_VERSION: u16 = 4;
 
 pub type RuleId = u32;
 pub type TokenId = u32;
 pub type PrattId = u32;
+/// 上下文名称规则 id（PLAN-979 T-H0-I）。
+pub type CtxNameId = u32;
 
 /// ASCII 位集 + 非 ASCII 许可（core 拒绝非 ASCII 名；mini 亦仅 ASCII）。
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -153,6 +156,27 @@ pub enum Atom {
     Tok(TokenId),
     Rule(RuleId),
     Pratt(PrattId),
+    /// PLAN-979 T-H0-I：上下文名称槽（槽位限定拼写识别，不进入保留字表）。
+    CtxName(CtxNameId),
+}
+
+/// 上下文名称规则：**槽位**决定一个拼写是结构名还是普通标识符。
+///
+/// 词法面不变（拼写仍按通用 token 词法切分，如 `ident`）；只有语法程序里
+/// 声明 `CtxName` 的槽位才要求逐字节等于 `spelling`。因此 `view` 在
+/// `view { ... }` 节点头位置是结构名，在 `let view = 1` 里仍是普通绑定。
+/// 角色（`role`）承载领域语义：换拼写（别名/隔离测试 Schema）不改角色，
+/// 投影按角色归属，绝不按拼写猜领域。
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct CtxNameSpec {
+    /// 配置中的名字（规则步 `name(of: ...)` 的引用键）。
+    pub name: String,
+    /// 槽位要求的源码拼写（逐字节相等）。
+    pub spelling: String,
+    /// 该拼写经 scanner 产生的 token（first 集与诊断用）。
+    pub token: TokenId,
+    /// 语义角色（投影/领域归属按角色，不按拼写）。
+    pub role: String,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -236,6 +260,8 @@ pub struct GrammarProgram {
     pub pratt: Vec<PrattSpec>,
     /// 字段名表（Step.field 的 id → 名；outline 按 name 解析 id）。
     pub field_names: Vec<String>,
+    /// 上下文名称规则表（PLAN-979；无该表 = 无槽位限定拼写）。
+    pub ctx_names: Vec<CtxNameSpec>,
     pub start: RuleId,
     pub newline: NewlinePolicy,
     pub recovery: RecoverySpec,
@@ -275,6 +301,17 @@ impl GrammarProgram {
             .iter()
             .position(|f| f == name)
             .map(|i| i as u32)
+    }
+    /// 上下文名称规则（PLAN-979）。
+    pub fn ctx_name(&self, id: CtxNameId) -> Option<&CtxNameSpec> {
+        self.ctx_names.get(id as usize)
+    }
+    /// 该角色声明的全部上下文名称（别名/拼写变体共用同一角色）。
+    pub fn ctx_names_with_role<'s>(
+        &'s self,
+        role: &'s str,
+    ) -> impl Iterator<Item = &'s CtxNameSpec> {
+        self.ctx_names.iter().filter(move |n| n.role == role)
     }
     /// 规范二进制（身份计算与持久化共用同一布局，PROGRAM_CODEC_VERSION 前缀）。
     pub fn canonical_bytes(&self) -> Vec<u8> {

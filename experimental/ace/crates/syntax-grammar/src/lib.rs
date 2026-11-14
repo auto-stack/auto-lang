@@ -253,6 +253,8 @@ impl Ctx {
                 "rules" => rules_node = Some(node.clone()),
                 "pratt" => pratt_nodes.push(node.clone()),
                 "profiles" => {}
+                // PLAN-979：上下文名称表在 tokens 之后单独解析。
+                "contextual" => {}
                 "outline" => {
                     has_outline = true;
                     outline.decl_rule = pstr(node, "decl-rule").unwrap_or_default();
@@ -348,6 +350,113 @@ impl Ctx {
         if token_names.is_empty() {
             self.err("tokens", "no tokens declared".into());
         }
+
+        // ---- contextual（PLAN-979 T-H0-I）----
+        // 槽位限定拼写的声明表：词法仍走通用 token，只有声明为 CtxName 的
+        // 规则步要求逐字节拼写。声明本身可被 profile 裁剪（未启用 = 该面
+        // 完全没有这些结构名），步骤引用被裁项 = 编译错误。
+        struct RawCtx {
+            name: String,
+            spelling: String,
+            token: Option<u32>,
+            role: String,
+            enabled: bool,
+        }
+        let mut raw_ctx: Vec<RawCtx> = Vec::new();
+        let mut ctx_section_seen = false;
+        for (_k, kid) in root.kids_iter() {
+            let node = match kid {
+                auto_val::Kid::Node(n) => n.as_ref(),
+                auto_val::Kid::Lazy(_) => continue,
+            };
+            if node.name.as_str() != "contextual" {
+                continue;
+            }
+            if ctx_section_seen {
+                self.err("contextual", "duplicate `contextual` section".into());
+            }
+            ctx_section_seen = true;
+            let version = pint(node, "version").unwrap_or(1) as u64;
+            if version != 1 {
+                self.err(
+                    "contextual",
+                    format!("unsupported contextual schema version {version}"),
+                );
+            }
+            for (_k2, kid2) in node.kids_iter() {
+                let e = match kid2 {
+                    auto_val::Kid::Node(n) => n.as_ref(),
+                    auto_val::Kid::Lazy(_) => continue,
+                };
+                if e.name.as_str() != "name" {
+                    self.err("contextual", format!("unknown node `{}`", e.name));
+                    continue;
+                }
+                let path = format!("contextual.{}", pos_name(e).unwrap_or_default());
+                let cname = pos_name(e).unwrap_or_default();
+                if cname.is_empty() {
+                    self.err(&path, "contextual name requires `name(<id>)`".into());
+                    continue;
+                }
+                if raw_ctx.iter().any(|x| x.name == cname) {
+                    self.err(&path, format!("duplicate contextual name `{cname}`"));
+                }
+                let spelling = pstr(e, "spelling").unwrap_or_default();
+                if spelling.is_empty() {
+                    self.err(&path, "missing `spelling`".into());
+                }
+                let token_name = pstr(e, "token").unwrap_or_default();
+                let token = token_names
+                    .iter()
+                    .position(|t| *t == token_name)
+                    .map(|i| i as u32);
+                if token.is_none() {
+                    self.err(&path, format!("unknown `token` `{token_name}`"));
+                }
+                let role = pstr(e, "role").unwrap_or_default();
+                if role.is_empty() {
+                    self.err(&path, "missing `role`".into());
+                }
+                let enabled = self.gate_allows(e, &path);
+                raw_ctx.push(RawCtx {
+                    name: cname,
+                    spelling,
+                    token,
+                    role,
+                    enabled,
+                });
+            }
+        }
+        // 启用序压缩：id = 启用项下标（与规则/pratt 表同一纪律）。
+        let mut ctx_names: Vec<CtxNameSpec> = Vec::new();
+        for r in raw_ctx.iter().filter(|x| x.enabled) {
+            let Some(token) = r.token else { continue };
+            // 同一 token+spelling 只能有一个角色（槽位拼写不得二义）。
+            if let Some(prev) = ctx_names
+                .iter()
+                .find(|p| p.token == token && p.spelling == r.spelling)
+            {
+                if prev.role != r.role {
+                    self.err(
+                        &format!("contextual.{}", r.name),
+                        format!(
+                            "spelling `{}` already declares role `{}`",
+                            r.spelling, prev.role
+                        ),
+                    );
+                }
+            }
+            ctx_names.push(CtxNameSpec {
+                name: r.name.clone(),
+                spelling: r.spelling.clone(),
+                token,
+                role: r.role.clone(),
+            });
+        }
+        let ctx_of_name = |n: &str| -> Option<u32> {
+            ctx_names.iter().position(|c| c.name == n).map(|i| i as u32)
+        };
+        let ctx_trimmed = |n: &str| -> bool { raw_ctx.iter().any(|x| x.name == n && !x.enabled) };
 
         let tok_of_literal = |lit: &str| -> Option<u32> {
             literal_of
@@ -573,6 +682,26 @@ impl Ctx {
                                     format!("pratt `{pn}` unknown or trimmed for this profile"),
                                 );
                                 Atom::Pratt(0)
+                            }
+                        }
+                    }
+                    // PLAN-979：槽位限定拼写步——`name(of: "<contextual id>")`。
+                    "name" => {
+                        let cn = pstr(src_props, "of").unwrap_or_default();
+                        match ctx_of_name(&cn) {
+                            Some(i) => Atom::CtxName(i),
+                            None => {
+                                if ctx_trimmed(&cn) {
+                                    ctx.err(
+                                        rule_path,
+                                        format!(
+                                            "step references contextual name `{cn}` which is trimmed for this profile"
+                                        ),
+                                    );
+                                } else {
+                                    ctx.err(rule_path, format!("contextual name `{cn}` unknown"));
+                                }
+                                Atom::Tok(0)
                             }
                         }
                     }
@@ -824,6 +953,7 @@ impl Ctx {
             rules,
             pratt,
             field_names,
+            ctx_names,
             start,
             newline: NewlinePolicy {
                 significant: newline_significant,
@@ -867,7 +997,7 @@ impl Ctx {
                     // 步可空 = 原子可空 **或** repeat 为 opt/many/list（fixpoint 语义）。
                     let alt_nullable = alt.steps.iter().all(|s| {
                         let atom_null = match s.atom {
-                            Atom::Tok(_) => false,
+                            Atom::Tok(_) | Atom::CtxName(_) => false,
                             Atom::Rule(sub) => nullable.get(sub as usize).copied().unwrap_or(false),
                             Atom::Pratt(_) => false,
                         };
@@ -892,7 +1022,7 @@ impl Ctx {
             for alt in &r.alts {
                 for s in &alt.steps {
                     let item_null = match s.atom {
-                        Atom::Tok(_) => false,
+                        Atom::Tok(_) | Atom::CtxName(_) => false,
                         Atom::Rule(sub) => nullable.get(sub as usize).copied().unwrap_or(false),
                         Atom::Pratt(_) => false,
                     };
@@ -938,7 +1068,7 @@ impl Ctx {
                         dfs(sub as usize, rules, nullable, state, diags, path);
                     }
                     let snull = match s.atom {
-                        Atom::Tok(_) => false,
+                        Atom::Tok(_) | Atom::CtxName(_) => false,
                         Atom::Rule(sub) => nullable[sub as usize],
                         Atom::Pratt(_) => false,
                     };
