@@ -300,7 +300,10 @@ pub(crate) fn validate_functions(
                     validate_error_table(&f.symbol, m)?;
                 }
             }
-            if !capabilities.iter().any(|c| c == crate::resource::RESOURCE_CAP) {
+            if !capabilities
+                .iter()
+                .any(|c| c == crate::resource::RESOURCE_CAP)
+            {
                 return Err(format!(
                     "resource entry '{}' requires the {} capability",
                     f.symbol,

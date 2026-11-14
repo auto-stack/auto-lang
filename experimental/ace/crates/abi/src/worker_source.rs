@@ -96,11 +96,9 @@ impl CertPolicy {
     /// reviewed contract shapes selected by reference; 939 has one).
     pub fn contract_digest(self, reference: Option<&str>) -> String {
         match self {
-            Self::Scalar938 => provider::Review::for_reference(
-                reference.unwrap_or("add"),
-            )
-            .map(|r| r.digest().to_string())
-            .unwrap_or_else(|| provider::ADD_CONTRACT_DIGEST.into()),
+            Self::Scalar938 => provider::Review::for_reference(reference.unwrap_or("add"))
+                .map(|r| r.digest().to_string())
+                .unwrap_or_else(|| provider::ADD_CONTRACT_DIGEST.into()),
             Self::Resource939 => crate::resource_provider::reviewed_resource_manifest()
                 .contract_digest()
                 .expect("reviewed resource manifest"),
@@ -193,11 +191,9 @@ impl CertPolicy {
                 .ok_or_else(|| "unreviewed reference".to_string())
                 .expect("checked by accepts_reference")
                 .authority(provider_digest, generation, caps),
-            Self::Resource939 => crate::resource_provider::resource_authority(
-                provider_digest,
-                generation,
-                caps,
-            ),
+            Self::Resource939 => {
+                crate::resource_provider::resource_authority(provider_digest, generation, caps)
+            }
         }
     }
     /// The provider C translation unit (with bias/events defines applied
@@ -714,7 +710,8 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             None => (None, None),
         };
     let previous = previous_record.as_ref().map(|(record, _ticket)| record);
-    let changed_contract = previous.is_some_and(|p| p.contract_digest != policy.contract_digest(Some(&deck.reference)));
+    let changed_contract = previous
+        .is_some_and(|p| p.contract_digest != policy.contract_digest(Some(&deck.reference)));
     let binding_generation = match &previous {
         Some(p) if p.provider_bias != deck.provider_bias || changed_contract => p
             .binding_generation
@@ -885,9 +882,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         // PLAN-939: the runtime digest derives from the SESSION's recorded
         // identity (the resource C runtime depends on the view's trace
         // marks; the scalar lanes keep the frozen policy identity).
-        let runtime_policy = session
-            .runtime_identity()
-            .to_string();
+        let runtime_policy = session.runtime_identity().to_string();
         let mut current_authority = || {
             Ok(CurrentAuthority {
                 foreign: policy.authority(
@@ -1064,8 +1059,11 @@ fn prepare_provider(
         let inputs = scratch.path();
         let src = inputs.join("provider.c");
         let object = inputs.join("provider.obj");
-        write(&inputs.join(policy.provider_header_name()), policy.header_bytes())
-            .map_err(|e| err("store", e))?;
+        write(
+            &inputs.join(policy.provider_header_name()),
+            policy.header_bytes(),
+        )
+        .map_err(|e| err("store", e))?;
         write(
             &src,
             format!(
@@ -1367,7 +1365,10 @@ mod request_budget_tests {
         })
         .unwrap();
         assert_eq!(
-            decode(&input, &tight, CertPolicy::Scalar938).err().unwrap().code,
+            decode(&input, &tight, CertPolicy::Scalar938)
+                .err()
+                .unwrap()
+                .code,
             "foreign.resource"
         );
         assert_eq!(tight.stats().current.io, 0);
@@ -1376,11 +1377,23 @@ mod request_budget_tests {
             ..Limits::default()
         })
         .unwrap();
-        assert_eq!(decode(&input, &io, CertPolicy::Scalar938).err().unwrap().code, "foreign.resource");
+        assert_eq!(
+            decode(&input, &io, CertPolicy::Scalar938)
+                .err()
+                .unwrap()
+                .code,
+            "foreign.resource"
+        );
         assert_eq!(io.stats().current.io, 0);
         let mut malformed = input;
         malformed.deck_b64 = "%%%".into();
-        assert_eq!(decode(&malformed, &resources, CertPolicy::Scalar938).err().unwrap().code, "deck");
+        assert_eq!(
+            decode(&malformed, &resources, CertPolicy::Scalar938)
+                .err()
+                .unwrap()
+                .code,
+            "deck"
+        );
         assert_eq!(resources.stats().current, baseline);
         let mut unknown = serde_json::to_value(deck()).unwrap();
         unknown
@@ -1388,7 +1401,10 @@ mod request_budget_tests {
             .unwrap()
             .insert("safe".into(), true.into());
         assert_eq!(
-            decode(&request(&unknown), &resources, CertPolicy::Scalar938).err().unwrap().code,
+            decode(&request(&unknown), &resources, CertPolicy::Scalar938)
+                .err()
+                .unwrap()
+                .code,
             "deck"
         );
         assert_eq!(resources.stats().current, baseline);

@@ -123,6 +123,90 @@ pub fn build_source(root: &Path, source: &str) -> Result<RustProviderBuild, Stri
     })
 }
 
+/// The controlled async provider fixture (PLAN-967 T-08).
+pub fn f0_async_provider_source() -> &'static str {
+    include_str!("../rustside/f0_async.rs")
+}
+
+/// Build a RAW cdylib from a provider source (no importer, no manifest —
+/// for controlled fixtures whose shape is outside the auto-imported F0
+/// domain; bindings/manifests stay auto-derived wherever they exist).
+pub fn build_raw_cdylib(root: &Path, source: &str, crate_name: &str) -> Result<PathBuf, String> {
+    let dir = root.join(format!("raw-{crate_name}"));
+    let src = dir.join("src");
+    let out = root.join("out");
+    std::fs::create_dir_all(&src).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+    std::fs::write(src.join("lib.rs"), source).map_err(|e| e.to_string())?;
+    let (code, _o, err) = run_rustc(
+        &[
+            "--edition",
+            "2021",
+            "--crate-type",
+            "cdylib",
+            "--crate-name",
+            crate_name,
+            "--cap-lints",
+            "allow",
+            "-O",
+            "src/lib.rs",
+            "--out-dir",
+            out.to_str().ok_or("non-utf8 out dir")?,
+        ],
+        &dir,
+    )?;
+    if code != 0 {
+        return Err(format!("rustc cdylib build failed: {err}"));
+    }
+    let dll = out.join(format!("{crate_name}.dll"));
+    if !dll.is_file() {
+        return Err(format!("cdylib not produced at {}", dll.display()));
+    }
+    Ok(dll)
+}
+
+/// A raw loaded library: keeps the OS handle alive; resolves one symbol
+/// at a time; dropping frees exactly once.
+pub struct RawLibrary {
+    library: windows_sys::Win32::Foundation::HMODULE,
+}
+
+impl RawLibrary {
+    pub fn load(path: &Path) -> Result<Self, String> {
+        let wide: Vec<u16> = path
+            .to_str()
+            .ok_or("non-utf8 path")?
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let library =
+            unsafe { windows_sys::Win32::System::LibraryLoader::LoadLibraryW(wide.as_ptr()) };
+        if library.is_null() {
+            return Err(format!("LoadLibraryW failed for {}", path.display()));
+        }
+        Ok(Self { library })
+    }
+
+    /// Resolve an exported symbol (raw pointer).
+    pub fn symbol(&self, name: &str) -> Option<*const core::ffi::c_void> {
+        let bytes: Vec<u8> = name.bytes().chain(std::iter::once(0)).collect();
+        let sym = unsafe {
+            windows_sys::Win32::System::LibraryLoader::GetProcAddress(self.library, bytes.as_ptr())
+        };
+        sym.map(|p| p as *const core::ffi::c_void)
+    }
+}
+
+impl Drop for RawLibrary {
+    fn drop(&mut self) {
+        if !self.library.is_null() {
+            unsafe {
+                windows_sys::Win32::Foundation::FreeLibrary(self.library as _);
+            }
+        }
+    }
+}
+
 /// The host authority for the F0 provider build (the compile host's
 /// current review registry entry; the loaded library backs the symbols).
 pub fn f0_authority(

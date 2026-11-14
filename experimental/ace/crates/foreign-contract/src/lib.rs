@@ -45,6 +45,7 @@ pub mod facts;
 pub mod lane;
 pub mod manual;
 pub mod plan;
+pub mod port;
 pub mod resource;
 pub mod typed;
 pub mod work;
@@ -52,6 +53,7 @@ pub mod work;
 pub use facts::{ErrorModel, FactsSource, FnFact, FnForm, InterfaceFacts, FACTS_FORMAT};
 pub use lane::{LaneKind, LaneValue, PhysLane};
 pub use plan::{PhysFn, PhysForm, PhysParam, PhysRet, PhysicalPlan, SlotClass, PLAN_FORMAT};
+pub use port::{completion_disposition, CompletionDisposition, PortEvent, PortValue, PORT_FORMAT};
 pub use resource::{
     FieldKind, ResKind, ResOut, ResourceForm, ResourceSig, ViewRole, RESOURCE_CAP,
     RESOURCE_SIG_FORMAT,

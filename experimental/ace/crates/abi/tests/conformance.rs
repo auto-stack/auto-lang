@@ -6,6 +6,8 @@ mod cache_turnaround;
 mod calls;
 #[path = "cases/contract_layout_admission.rs"]
 mod contract_layout_admission;
+#[path = "cases/f0_async.rs"]
+mod f0_async;
 #[path = "cases/feasibility.rs"]
 mod feasibility;
 #[path = "cases/resource.rs"]

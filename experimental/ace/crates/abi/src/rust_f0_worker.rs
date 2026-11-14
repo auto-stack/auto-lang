@@ -58,7 +58,9 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     let started = std::time::Instant::now();
     let build = crate::rust_provider::build_source(&scratch, &deck.provider_source)
         .map_err(|e| diag("f0.build", e))?;
-    let scratch_bytes = std::fs::metadata(&build.cdylib).map(|m| m.len()).unwrap_or(0);
+    let scratch_bytes = std::fs::metadata(&build.cdylib)
+        .map(|m| m.len())
+        .unwrap_or(0);
 
     let caps = [
         ace_foreign_contract::manual::SOURCE_CAP.to_string(),
@@ -72,8 +74,8 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 .clone()
                 .admit(&authority)
                 .map_err(|e| diag("f0.admit", e))?;
-            let mut provider = crate::rust_provider::load(&build, 1)
-                .map_err(|e| diag("f0.load", e))?;
+            let mut provider =
+                crate::rust_provider::load(&build, 1).map_err(|e| diag("f0.load", e))?;
             let mut session = ace_av_core::foreign_exec::ForeignSession::new();
             session.adopt(std::mem::replace(
                 &mut provider.table,
@@ -82,7 +84,12 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
             let mut query = ace_source_query::SourceQuerySession::new("p967f0", "m967f0");
             query.set_foreign(Some(admitted.clone()));
             let product = ace_source_query::compile_text_record_product(
-                &deck.source, &deck.module, &caps, "p967f0", "m967f0", &mut query,
+                &deck.source,
+                &deck.module,
+                &caps,
+                "p967f0",
+                "m967f0",
+                &mut query,
             )
             .map_err(|ds| {
                 diag(
@@ -141,7 +148,11 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 .map_err(|e| diag("f0.admit", e))?;
             let mut query = ace_source_query::SourceQuerySession::new("p967f0", "m967f0");
             let (_product, units) = ace_native::foreign_lower::compile_source_units(
-                &deck.source, &deck.module, &caps, &admitted, &mut query,
+                &deck.source,
+                &deck.module,
+                &caps,
+                &admitted,
+                &mut query,
             )
             .map_err(|e| diag("f0.source", e))?;
             let unit = units
@@ -149,10 +160,11 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
                 .ok_or_else(|| diag("f0.units", "no unit produced"))?;
             let object = ace_native::emit::emit_foreign_unit_coff(unit, &admitted)
                 .map_err(|e| diag("f0.emit", e.message().to_string()))?;
-            let wrapper =
-                ace_native::emit::emit_wrapper_coff(&object.symbol).map_err(|e| diag("f0.emit", e.message().to_string()))?;
+            let wrapper = ace_native::emit::emit_wrapper_coff(&object.symbol)
+                .map_err(|e| diag("f0.emit", e.message().to_string()))?;
             let run_dir = scratch.join("native-run");
-            std::fs::create_dir_all(&run_dir).map_err(|e| diag("infra", format!("run dir: {e}")))?;
+            std::fs::create_dir_all(&run_dir)
+                .map_err(|e| diag("infra", format!("run dir: {e}")))?;
             std::fs::copy(&build.cdylib, run_dir.join("f0_text_provider.dll"))
                 .map_err(|e| diag("infra", format!("stage dll: {e}")))?;
             let import_lib = build.cdylib.with_file_name("f0_text_provider.dll.lib");

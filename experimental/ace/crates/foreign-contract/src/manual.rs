@@ -121,13 +121,18 @@ impl SourceDecl {
             add(version.capacity());
         }
         if let Some(res) = &self.function.resource {
-            add(res.params.capacity().saturating_mul(std::mem::size_of::<
-                crate::resource::ResKind,
-            >()));
+            add(res
+                .params
+                .capacity()
+                .saturating_mul(std::mem::size_of::<crate::resource::ResKind>()));
             for p in &res.params {
                 if let crate::resource::ResKind::Rec { rec, fields, .. } = p {
                     add(rec.capacity());
-                    add(fields.capacity().saturating_mul(std::mem::size_of::<(String, crate::resource::FieldKind)>()));
+                    add(fields
+                        .capacity()
+                        .saturating_mul(
+                            std::mem::size_of::<(String, crate::resource::FieldKind)>(),
+                        ));
                     for (name, _) in fields {
                         add(name.capacity());
                     }
@@ -301,9 +306,7 @@ impl SourceDecl {
         match self.resource() {
             Some(res) => match &res.form {
                 crate::resource::ResourceForm::Pure { ret }
-                | crate::resource::ResourceForm::Fallible {
-                    out: Some(ret), ..
-                } => match ret {
+                | crate::resource::ResourceForm::Fallible { out: Some(ret), .. } => match ret {
                     crate::resource::ResOut::Bool => SourceResultKind::Bool,
                     _ => SourceResultKind::I32,
                 },
@@ -588,11 +591,7 @@ fn manual_facts(
         );
     }
     for f in functions {
-        let required = match f
-            .resource
-            .as_ref()
-            .map(|r| &r.form)
-        {
+        let required = match f.resource.as_ref().map(|r| &r.form) {
             Some(crate::resource::ResourceForm::Pure { .. }) => format!("pure:{}", f.symbol),
             Some(crate::resource::ResourceForm::Fallible { .. }) => "checked".into(),
             None => match f.form {
@@ -608,9 +607,7 @@ fn manual_facts(
             Some(crate::resource::ResourceForm::Fallible { .. }) => false,
             None => matches!(f.form, FnForm::Pure { .. }),
         };
-        if !effects.contains(&required)
-            && !(is_pure && effects.iter().any(|e| e == "checked"))
-        {
+        if !effects.contains(&required) && !(is_pure && effects.iter().any(|e| e == "checked")) {
             return Err("foreign.effect: missing explicit totality/error evidence".into());
         }
     }
@@ -696,9 +693,7 @@ impl ManualManifest {
                 }
                 match &res.form {
                     crate::resource::ResourceForm::Pure { ret }
-                    | crate::resource::ResourceForm::Fallible {
-                        out: Some(ret), ..
-                    } => {
+                    | crate::resource::ResourceForm::Fallible { out: Some(ret), .. } => {
                         if let crate::resource::ResOut::Handle { provider } = ret {
                             check_provider(provider)?;
                         }
@@ -1252,7 +1247,7 @@ mod tests {
                     },
                     error_model: None,
                     semantic_ref: None,
-                resource: None,
+                    resource: None,
                 }],
                 effects: vec!["pure:c_add".into()],
                 capabilities: vec![SOURCE_CAP.into()],
@@ -1302,9 +1297,7 @@ mod tests {
             resource: Some(ResourceSig {
                 format: RESOURCE_SIG_FORMAT.into(),
                 params: vec![ResKind::ViewText],
-                form: ResourceForm::Pure {
-                    ret: ResOut::U64,
-                },
+                form: ResourceForm::Pure { ret: ResOut::U64 },
                 atomic: false,
                 noescape: false,
                 typed_peer: false,
@@ -1334,7 +1327,10 @@ mod tests {
         let decl = admitted.source_declarations_ref()[0].clone();
         assert!(decl.resource().is_some());
         assert_eq!(decl.arity(), 1);
-        assert_eq!(decl.source_result_kind(), crate::manual::SourceResultKind::I32);
+        assert_eq!(
+            decl.source_result_kind(),
+            crate::manual::SourceResultKind::I32
+        );
         assert_eq!(decl.resource().unwrap().phys_param_count(), 2);
         // pages restore fail-closed against the same authority
         let pages = admitted.pages().clone();
@@ -1349,10 +1345,7 @@ mod tests {
         nocap.facts.capabilities = vec![SOURCE_CAP.into()];
         let mut host_nc = host.clone();
         host_nc.capabilities.remove(RESOURCE_CAP);
-        assert!(nocap
-            .validate()
-            .unwrap_err()
-            .contains("foreign.resource"));
+        assert!(nocap.validate().unwrap_err().contains("foreign.resource"));
     }
 
     #[test]

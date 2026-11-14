@@ -461,6 +461,142 @@ impl ForeignSession {
     }
 }
 
+/// PLAN-967 T-08 (AC-06): the host-side completion-port registry — the
+/// registration/completion/cancellation port 968's language `await`
+/// consumes. Every disposition goes through the frozen
+/// [`ace_foreign_contract::completion_disposition`] rule table; late
+/// completions (cancel, teardown, rebind) are DROPPED, never published,
+/// and never touch a closed session.
+#[derive(Debug)]
+pub struct CompletionPorts {
+    generation: u64,
+    next_port: u64,
+    inner: std::sync::Mutex<PortRegistryInner>,
+}
+
+#[derive(Debug)]
+struct PortRegistryInner {
+    open: std::collections::BTreeMap<u64, OpenPort>,
+    events: Vec<ace_foreign_contract::PortEvent>,
+}
+
+#[derive(Debug)]
+struct OpenPort {
+    symbol: String,
+    cancelled: bool,
+    pinned_generation: u64,
+}
+
+impl CompletionPorts {
+    pub fn new(generation: u64) -> Self {
+        Self {
+            generation,
+            next_port: 1,
+            inner: std::sync::Mutex::new(PortRegistryInner {
+                open: std::collections::BTreeMap::new(),
+                events: Vec::new(),
+            }),
+        }
+    }
+
+    /// Register a port for `symbol` at the CURRENT generation (the port
+    /// pins the generation; a later teardown/rebind drops its lateness).
+    pub fn register(&mut self, symbol: &str) -> u64 {
+        let port = self.next_port;
+        self.next_port += 1;
+        let mut inner = self.inner.lock().expect("port registry");
+        inner.open.insert(
+            port,
+            OpenPort {
+                symbol: symbol.to_string(),
+                cancelled: false,
+                pinned_generation: self.generation,
+            },
+        );
+        inner
+            .events
+            .push(ace_foreign_contract::PortEvent::Registered {
+                port,
+                symbol: symbol.to_string(),
+            });
+        port
+    }
+
+    /// An arriving completion: publish, drop-late, or named-unknown —
+    /// exactly the frozen rule table.
+    pub fn complete(
+        &self,
+        port: u64,
+        value: ace_foreign_contract::PortValue,
+    ) -> CompletionDisposition {
+        let mut inner = self.inner.lock().expect("port registry");
+        let Some(open) = inner.open.get(&port) else {
+            return CompletionDisposition::UnknownPort;
+        };
+        let pinned = open.pinned_generation;
+        let cancelled = open.cancelled;
+        let disposition =
+            ace_foreign_contract::completion_disposition(true, cancelled, pinned, self.generation);
+        match disposition {
+            CompletionDisposition::Publish => {
+                inner
+                    .events
+                    .push(ace_foreign_contract::PortEvent::Published { port, value });
+                inner.open.remove(&port);
+                inner
+                    .events
+                    .push(ace_foreign_contract::PortEvent::Released { port });
+            }
+            CompletionDisposition::DropLate => {
+                inner
+                    .events
+                    .push(ace_foreign_contract::PortEvent::LateDropped { port, value });
+            }
+            CompletionDisposition::UnknownPort => {}
+        }
+        disposition
+    }
+
+    /// Cancel a port: every later completion drops. The cancel releases
+    /// the pinned provider callback but keeps a CANCELLED TOMBSTONE so a
+    /// racing late completion classifies as `DropLate` ("was cancelled"),
+    /// never as `UnknownPort` ("never existed") — the two are different
+    /// facts for the consumer.
+    pub fn cancel(&self, port: u64) -> bool {
+        let mut inner = self.inner.lock().expect("port registry");
+        if let Some(open) = inner.open.get_mut(&port) {
+            open.cancelled = true;
+            inner
+                .events
+                .push(ace_foreign_contract::PortEvent::Cancelled { port });
+            inner
+                .events
+                .push(ace_foreign_contract::PortEvent::Released { port });
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Session teardown/rebind: every open port dies — late completions
+    /// observe the moved generation and drop.
+    pub fn teardown(&mut self) {
+        self.generation += 1;
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Drain the observable event stream (the consumer's only oracle).
+    pub fn take_events(&self) -> Vec<ace_foreign_contract::PortEvent> {
+        let mut inner = self.inner.lock().expect("port registry");
+        std::mem::take(&mut inner.events)
+    }
+}
+
+use ace_foreign_contract::CompletionDisposition;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -668,6 +804,82 @@ mod tests {
             .find(|d| d.function.symbol == symbol)
             .unwrap()
             .clone()
+    }
+
+    #[test]
+    fn completion_ports_publish_cancel_and_drop_late_exactly() {
+        use crate::foreign_exec::CompletionPorts;
+        use ace_foreign_contract::PortValue;
+
+        // publish: open port, current generation
+        let mut ports = CompletionPorts::new(1);
+        let a = ports.register("f0.async");
+        assert_eq!(
+            ports.complete(a, PortValue::I32(18)),
+            ace_foreign_contract::CompletionDisposition::Publish
+        );
+        // a settled port is unknown afterwards (never re-published)
+        assert_eq!(
+            ports.complete(a, PortValue::I32(99)),
+            ace_foreign_contract::CompletionDisposition::UnknownPort
+        );
+
+        // cancel: a later completion drops late, value never published
+        let b = ports.register("f0.async");
+        assert!(ports.cancel(b));
+        assert_eq!(
+            ports.complete(b, PortValue::I32(7)),
+            ace_foreign_contract::CompletionDisposition::DropLate
+        );
+
+        // teardown: a completion racing in after the session moved drops
+        let c = ports.register("f0.async");
+        ports.teardown();
+        assert_eq!(
+            ports.complete(c, PortValue::Status(-1)),
+            ace_foreign_contract::CompletionDisposition::DropLate
+        );
+
+        // an unknown id is a named rejection, not a silent drop
+        assert_eq!(
+            ports.complete(9999, PortValue::I32(1)),
+            ace_foreign_contract::CompletionDisposition::UnknownPort
+        );
+
+        let events = ports.take_events();
+        let spells: Vec<String> = events
+            .iter()
+            .map(|e| match e {
+                ace_foreign_contract::PortEvent::Registered { port, .. } => {
+                    format!("reg:{port}")
+                }
+                ace_foreign_contract::PortEvent::Published { port, value } => {
+                    format!("pub:{port}:{}", value.spell())
+                }
+                ace_foreign_contract::PortEvent::Cancelled { port } => format!("cancel:{port}"),
+                ace_foreign_contract::PortEvent::LateDropped { port, value } => {
+                    format!("late:{port}:{}", value.spell())
+                }
+                ace_foreign_contract::PortEvent::Released { port } => format!("rel:{port}"),
+            })
+            .collect();
+        assert_eq!(
+            spells,
+            vec![
+                "reg:1",
+                "pub:1:i32:18",
+                "rel:1",
+                "reg:2",
+                "cancel:2",
+                "rel:2",
+                "late:2:i32:7",
+                "reg:3",
+                "late:3:status:-1",
+            ],
+            "causal event order is the consumer's only oracle"
+        );
+        // cancel of an unknown/settled port is a named false
+        assert!(!ports.cancel(a));
     }
 
     #[test]
