@@ -116,6 +116,8 @@ pub struct ComponentCompilation {
     pub description: ComponentDescription,
     pub checked: CheckedModule,
     pub input_hash: String,
+    /// 脱糖后模块内容的身份：换场景/换模型映射即换它（源哈希不含脱糖）。
+    pub desugar_hash: u64,
     pub atom_text: String,
 }
 
@@ -300,6 +302,7 @@ pub fn compile_age_component(
         },
         checked,
         input_hash,
+        desugar_hash: crate::source::cst::content_sha(parts.atom_text.as_bytes()),
         atom_text: parts.atom_text,
     })
 }
@@ -669,6 +672,7 @@ pub fn compile_component_scenario(
         },
         checked,
         input_hash,
+        desugar_hash: crate::source::cst::content_sha(parts.atom_text.as_bytes()),
         atom_text: parts.atom_text,
     })
 }
