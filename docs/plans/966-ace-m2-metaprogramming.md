@@ -205,7 +205,7 @@ struct GeneratedDecl { candidate: UntrustedDecl, origin: SourceMap, dependencies
 
 ### 2026-11-14 宏调用合同（T-02 宏切片，已实施）
 
-语句位 `#name(args...)`（旧 `MacroCall` 位）在 packages-ct 面交付：实参是普通运行期表达式、仅位置实参（命名实参具名拒 `source.cte.macro-args`）；投影期展开为**同名前门函数调用**（调用糖），名字按本模块声明/导入的函数经统一绑定解析——未知/不可解析为具名错误（`source.module-symbol`，不再像旧 VM 那样静默忽略）。ACE 没有 legacy VM 的 `Log.*` 原生，因此 `#debug/#info/#warn/#error` 不做隐式 Log 路由；目标专有的宏发射（旧 a2r 的 `name!(...)`）属 967/目标 owner，不在本包伪造运行时。宏不引入任何绑定，故不存在"生成局部捕获调用者"的捕获面；宏名与普通调用同域——同名局部遮蔽时绑定层不改写符号（下游按普通调用诊断），也不暗中改绑到模块函数（具名限制，不静默）。宏展开不复制语句，无新增预算；解析/投影预算沿用。
+语句位 `#name(args...)`（旧 `MacroCall` 位）在 packages-ct 面交付：实参是普通运行期表达式、仅位置实参（命名实参具名拒 `source.cte.macro-args`）；投影为**同名前门函数调用**并由统一绑定解析——未知/不可解析为具名错误（`source.module-symbol`，不再像旧 VM 那样静默忽略）。看不到丢弃值语句（PLAN-862 只允许脚本尾表达式），因此宏调用落成**卫生局部绑定** `let __ace_macro_<源位置> = name(args)`：保留前缀，用户自定义同名会撞绑定错误而不是被静默捕获（V-01 的真实落点）。ACE 没有 legacy VM 的 `Log.*` 原生，因此 `#debug/#info/#warn/#error` 不做隐式 Log 路由；目标专有的宏发射（旧 a2r 的 `name!(...)`）属 967/目标 owner，不在本包伪造运行时。宏名与普通调用同域——同名局部遮蔽时绑定层不改写符号（下游按普通调用诊断），也不暗中改绑到模块函数（具名限制，不静默）。宏展开不复制语句，无新增预算；解析/投影预算沿用。
 
 **metadata 分账**：`field_count`/`has_field` 等 metadata 查询（`cte.meta.fields/v1`）由 936 交付、在 scalar-ct/AV CT 前门实测；本包在 T-08 用真实 worker 前门验收其"字段变更重算、未读 body 不重算"（V-02），不重复实现第二套查询。`#[attr]` 注解语法/路由按 [m2-denominator](../specs/ace-migration/m2-denominator.md) L-35 行级归属分账：`#[test]`→971、`#[api]`→980/982、`#[c]/#[vm]`→967 provider 选择；本包交付的是 # 构造/宏调用与 metadata 查询面，不把该行整体吞入。
 
@@ -324,6 +324,7 @@ struct GeneratedDecl { candidate: UntrustedDecl, origin: SourceMap, dependencies
   - [部分 2026-11-14] 宏调用 `#name(args)` 已实现并绿：语句位调用糖、未知/不可解析具名拒、命名实参具名拒、遮蔽不改绑（见 §5「宏调用合同」，提交 `48f42ad51`）。**未勾选**：metadata 查询面的真实 worker 前门验收（field 变更失效/未读 body 复用，V-02）仍归 T-08；`#[attr]` 路由按 L-35 分账给 971/980/982/967。
 
 - [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
+  - [部分 2026-11-14] 四端 consumer 产品腿已建（`av/tests/cases/plan966_ct_product.rs`，提交 `ec070e8c0`）：语句级 `#if/#for/#is`+`#debug` 在 AV/native(AC)/A2R/A2C/A2PY 真跑（Windows=112 / Linux=222），`#is` 生成声明改动改变四端结果（10/20，V-08 腿）。**未勾选**：权限/增量/失败恢复与缓存失效证据归 T-10，worker 逐端回灌归 T-08。
 
 - [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：消费已归档958的A2X worker CT接线，逐端从公共worker而非私有service调用验证宏/CT回灌；冻结CT可用stdlib子集、显式环境输入与不可冻结值策略。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
 
@@ -352,6 +353,9 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: work / T-03+T-08（四端产品腿与 worker 前门复核，部分） | plan_id: PLAN-966 | plan_revision: 8 | outcome: pass（切片完成，T-03/T-08 仍 open：权限/增量/失败恢复归 T-10） | worktree: D:/autostack/.wt/lang-966/auto-lang | branch: plan-966-dev | base_commit: 4d6915ed2 | code_commit: ec070e8c0 | task_ids: T-03、T-08（部分） | evidence: 新增 `av/tests/cases/plan966_ct_product.rs`（conformance 注册，两例合计 3.63s）：①语句级 `#if/#for/#is` + `#debug(x)` 在 **AV/native(AC)/A2R/A2C/A2PY** 全部真跑，Windows=112、Linux=222（AV 两目标 + native 两目标 + Rust/C/Py 各一），独立手定 oracle；②项级 `#is` 生成声明改变四端结果（Windows=10 / Linux=20）＝V-08「CT 生成声明改动使实际四端结果改变」腿。宏落地修正：丢弃值语句在本面不合法（PLAN-862），宏改落卫生局部绑定 `__ace_macro_<源位置>`（保留前缀，用户同名撞绑定错误而非静默捕获，V-01）；两例单测改按 `Let` 形状断言。冻结提交门：`cargo t ace-a2x ace-source` 全 PASS（run-mtkh2b60，exit 0；含 958 worker CT 前门 Rust/C 认证与 meta2/meta3 `cte.meta.fields/v1` 用例、core 全部 grammar/CT 面）；`cargo test -p ace-core --lib` = 74 passed/1 ignored（plan966 10 例）；fmt（ace-core/ace-av 本包文件）clean，零新增告警 | blockers: none | 分账：worker CT 回灌只属 `#{}/meta` 标量面（958 owner，本包消费并复核）；宏/语句级 CT 在装配期折叠，进 HIR 前完成，不存在第二条 worker 求值路径；arch/env/ABI 事实仍归 T-09，失效/权限/恢复归 T-10 | next_responsible_role: work（T-09 目标 OS/arch/env/ABI 事实与拒绝面；T-10 query/store 失效与失败保旧恢复；随后 T-04 完整并集）
+stage: goal | plan_id: PLAN-966 | plan_revision: r8 | round: 4 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-966/auto-lang | commit: ec070e8c0 | next: work
 
 2026-11-14 stage: work / T-02（宏切片） | plan_id: PLAN-966 | plan_revision: 8 | outcome: pass（切片完成，T-02 仍 open：metadata 查询经真实 worker 前门验收归 T-08） | worktree: D:/autostack/.wt/lang-966/auto-lang | branch: plan-966-dev | base_commit: 4d6915ed2 | code_commit: 48f42ad51 | task_ids: T-02（部分） | evidence: 宏两例（`plan966_tests` 共 10 例、0.03s）：`#debug(41)` 展开为同名前门调用并进入 `references`（callee 已改写为 `p3_appm4_main_debug`）、未知宏 `#frobnicate` 具名拒 `source.module-symbol`（unknown function，非静默忽略）、命名实参 `#debug(x: 1)` 具名拒 `source.cte.macro-args`、同名局部遮蔽时不暗中改绑（callee 保持 `debug`、references 空）；`cargo test -p ace-core --lib` = 74 passed/1 ignored；受影响固定组并集 `cargo t ace-source ace-syntax ace-comptime ace-semantics` 全 PASS（run-iok9i210，exit 0）；fmt（ace-core）clean，零新增告警 | blockers: none | 具名限制：宏名与普通调用同域（无独立宏命名空间）；ACE 无 legacy `Log.*` 运行时，`#debug` 等不做隐式 Log 路由，目标专有宏发射归 967/目标 owner（§5 宏合同） | next_responsible_role: work（T-08 metadata 查询 worker 前门验收 + T-03 端到端 consumer 语句级 CT/宏实跑；随后 T-09/T-10）
 stage: goal | plan_id: PLAN-966 | plan_revision: r8 | round: 3 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-966/auto-lang | commit: 48f42ad51 | next: work
