@@ -587,7 +587,7 @@ ASE是实际消费者而非ACE/AGE上游整体前置；它不复制FFI、Schema�
 | [985](../../plans/985-ace-m2-certification.md) | r10，drafting 0/14 | M2-A/B完整覆盖/守恒/联合认证 |
 | [986](../../plans/986-ace-m2-release.md) | r7，drafting 0/9 | 安装/升级/重定位/正式发行 |
 | [987](../../plans/987-ace-m2-retirement.md) | r7，drafting 0/9 | 默认接管/旧引擎禁用与移除后重建 |
-| [1002](../../plans/1002-autodown-document-cases.md) | r6，drafting 0/4 | AutoDown文档式四例七检查试点 |
+| [1002](../../plans/archive/1002-autodown-document-cases.md) | r6，drafting 0/4 | AutoDown文档式四例七检查试点 |
 | [1017](../../plans/1017-ace-perf-m2-cost-and-workload-optimization.md) | r2，drafting 0/9 | ACE正式性能套件十倍成本治理 |
 | [1024](../../plans/1024-ace-m2-code-quality-and-refactoring-audit.md) | r2，executing 1/5 | 已实现ACE架构/重复/状态与测试接缝只读审计 |
 | [OS064](../../../../auto-os/docs/plans/064-ace-desktop-and-app-migration-batches.md) | r5，drafting 0/97 | 真实桌面/28App与普通Node根迁移 |
