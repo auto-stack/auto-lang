@@ -1537,6 +1537,8 @@ pub fn build_decl_summary(program: &ace_core::source::ast::Program, module: &str
             // PLAN-960: module globals are not functions in the summary;
             // the packages lane's accessor signatures come from resolve.
             Item::Const(_) | Item::Store(_) => {}
+            // PLAN-967 F0: the import frontdoor adds no fn summary.
+            Item::UseRs(_) => {}
             Item::Fn(f) => {
                 fns.push(FnSummary {
                     name: f.name.name.clone(),

@@ -36,6 +36,10 @@ ace-a2x-store = { path = "../a2x-store" }
 ace-native = { path = "../native" }
 ace-source-query = { path = "../source-query" }
 ace-av-core = { path = "../av-core" }
+# PLAN-967 F0: the Rust importer (annotated provider source -> manifest +
+# generated shim) lives in the product crate; the probe consumes it by
+# path exactly like auto-lang-core consumes ace-semantics-contract.
+auto-bindgen = { path = "../../../../crates/auto-bindgen" }
 ace-lowering = { path = "../lowering" }
 # Cranelift stack pinned to the same versions as ac-core (plan §3).
 cranelift-codegen = "0.126"
@@ -50,10 +54,12 @@ serde_json = "1"
 object = "0.37"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_Foundation", "Win32_System_Environment"] }
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_Foundation", "Win32_System_Environment", "Win32_System_LibraryLoader"] }
 
 [dev-dependencies]
 ace-a2x-rust = { path = "../a2x-rust" }
+# PLAN-967 F0: split_units for the AV unit path in the conformance cases.
+ace-av = { path = "../av" }
 
 [[bin]]
 name = "abi-worker"

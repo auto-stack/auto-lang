@@ -84,6 +84,12 @@ pub(crate) fn project_program_with_caps(
         .iter()
         .position(|r| r.name == "var-item")
         .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
+    // PLAN-967（F0）：`use.rs <provider>` 项 kind（仅 text-record 裁剪存在）。
+    let use_rs_item_kind = p
+        .rules
+        .iter()
+        .position(|r| r.name == "use-rs-item")
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
     let mut items = Vec::new();
     // PLAN-963（T-03）：`spec` 声明在投影期擦除——收集到投影侧表，遵从检查
     // 与默认方法注入在语法期单态化之后统一完成（spec 不进入 AST/downstream，
@@ -206,6 +212,8 @@ pub(crate) fn project_program_with_caps(
             || Some(kind) == k.spec_item
             // PLAN-963（T-03）：`ext` 块也是声明项（须在 script 前）。
             || Some(kind) == k.ext_item
+            // PLAN-967（F0）：导入前门也是声明区项（须在 script 前）。
+            || Some(kind) == use_rs_item_kind
         {
             if saw_script {
                 let span = first_leaf_span(&eng.cx, node);
@@ -233,6 +241,37 @@ pub(crate) fn project_program_with_caps(
                 // PLAN-960（T-02）：packages-modules 面的 const/var 模块项
                 // （kind 精确匹配；use/pub-use 项仍走元数据跳过路径）。
                 items.push(eng.run_global_item(node, Some(kind) == var_item_kind));
+            } else if Some(kind) == use_rs_item_kind {
+                // PLAN-967（F0）：`use.rs <provider>` —— lang 叶必须恰为
+                // `rs`；任何其它拼写是命名拒绝，不是静默的模块 use。
+                let lang_leaf = eng.cx.field_child(node, "lang").expect("use.rs lang leaf");
+                let lang = eng.cx.spelling(lang_leaf);
+                let kw_leaf = eng.cx.field_child(node, "kw").expect("use.rs kw leaf");
+                if lang != "rs" {
+                    let span = eng.cx.span_of(lang_leaf);
+                    eng.cx.reject(span, move || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.use-rs.syntax",
+                            format!(
+                                "`use.{lang}` is not a supported import; the Rust import is `use.rs`"
+                            ),
+                            span,
+                        )
+                    });
+                    continue;
+                }
+                let provider_leaf = eng
+                    .cx
+                    .field_child(node, "provider")
+                    .expect("use.rs provider leaf");
+                let kw_span = eng.cx.span_of(kw_leaf);
+                let provider = ident_of(&mut eng.cx, provider_leaf);
+                let span = Span {
+                    start: kw_span.start,
+                    end: provider.span.end,
+                };
+                items.push(Item::UseRs(UseRsItem { provider, span }));
             } else if Some(kind) == k.spec_item {
                 // PLAN-963（T-03）：spec 声明——只进投影侧表，不产出 Item。
                 specs.push(eng.run_spec_item(node));
@@ -8295,6 +8334,8 @@ impl GenericExpand {
                 }
             }
             Item::Enum(_) => {}
+            // PLAN-967 F0: the import frontdoor carries no expressions.
+            Item::UseRs(_) => {}
         }
     }
 

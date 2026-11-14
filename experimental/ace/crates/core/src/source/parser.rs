@@ -826,6 +826,54 @@ impl<'s> Parser<'s> {
         }
     }
 
+    /// PLAN-967 F0: `use.rs <provider>` — the public Rust import
+    /// frontdoor. Exactly `use` `.` `rs` `<ident>`; any other `use ...`
+    /// spelling stays outside every current profile (same unsupported
+    /// diagnostic as before).
+    fn use_rs_item(&mut self) -> Result<Item, Diagnostic> {
+        let start = self.bump().span; // `use`
+        let ok_dot = matches!(
+            self.peek(),
+            Some(Token {
+                tok: Tok::Punct(P::Dot),
+                ..
+            })
+        );
+        if !ok_dot {
+            let span = self.peek().map(|t| t.span).unwrap_or(start);
+            return Err(Diagnostic::new(
+                Stage::Text,
+                "source.use-rs.syntax",
+                "`use` is only legal as the `use.rs <provider>` import",
+                start.join(span),
+            ));
+        }
+        self.bump(); // `.`
+        let rs = self.expect_ident("`rs`")?;
+        if rs.name != "rs" {
+            return Err(Diagnostic::new(
+                Stage::Text,
+                "source.use-rs.syntax",
+                format!(
+                    "`use.{}` is not a supported import; the Rust import is `use.rs`",
+                    rs.name
+                ),
+                start.join(rs.span),
+            ));
+        }
+        let provider = self.expect_ident("use.rs provider name")?;
+        if provider.name.contains("::") || provider.name.chars().any(|c| c == ':') {
+            return Err(Diagnostic::new(
+                Stage::Text,
+                "source.use-rs.domain",
+                "the F0 import takes a single provider identifier, not a path",
+                provider.span,
+            ));
+        }
+        let span = start.join(provider.span);
+        Ok(Item::UseRs(UseRsItem { provider, span }))
+    }
+
     fn item(&mut self) -> Result<Item, Diagnostic> {
         match self.peek().map(|t| t.tok.clone()) {
             Some(Tok::Kw(Kw::Fn)) => Ok(Item::Fn(self.fn_item(Receiver::Free)?)),
@@ -864,6 +912,15 @@ impl<'s> Parser<'s> {
                     format!("`{}` is not part of this source profile", k.as_str()),
                     span,
                 ))
+            }
+            // PLAN-967 F0: the frontdoor consumes `use` ONLY in the
+            // text-record surface (the CST rule's profile set); every
+            // other surface keeps the historical unsupported rejection
+            // (differential oracle agreement, source_cst_927 edge#17).
+            Some(Tok::Reserved(word))
+                if word == "use" && self.surface == SourceProfile::TextRecord =>
+            {
+                self.use_rs_item()
             }
             Some(Tok::Reserved(word)) => {
                 let span = self.peek().unwrap().span;

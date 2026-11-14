@@ -1534,6 +1534,8 @@ fn outline_of(program: &ace_core::source::ast::Program) -> Result<Vec<OutlineEnt
             }),
             // PLAN-960: module globals contribute no fn/outline entry.
             Item::Const(_) | Item::Store(_) => {}
+            // PLAN-967 F0: the import frontdoor contributes no outline.
+            Item::UseRs(_) => {}
             // PLAN-881: a type contributes ONE shell entry (its
             // header+fields region, methods EXCLUDED) plus one entry per
             // method — a method body edit then meets exactly the method's

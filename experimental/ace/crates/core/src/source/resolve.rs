@@ -1198,6 +1198,9 @@ pub(crate) fn decl_context_fp(program: &ast::Program, src: &str) -> u64 {
             // declaration text is still part of the context identity.
             ast::Item::Const(c) => mix(&src[c.span.start..c.span.end], &mut h),
             ast::Item::Store(v) => mix(&src[v.span.start..v.span.end], &mut h),
+            // PLAN-967 F0: the frontdoor spelling participates in the
+            // module content identity (provider identity is load-bearing).
+            ast::Item::UseRs(u) => mix(&src[u.span.start..u.span.end], &mut h),
         }
     }
     h
@@ -1507,8 +1510,40 @@ pub fn validate_foreign_context(
             // the foreign directory (name/spans only; accessors are not fns).
             ast::Item::Const(c) => (c.name.name.as_str(), c.name.span, false),
             ast::Item::Store(v) => (v.name.name.as_str(), v.name.span, false),
+            // PLAN-967 F0: the import frontdoor contributes no callable
+            // name; it is validated against the admitted provider below.
+            ast::Item::UseRs(_) => ("", Span { start: 0, end: 0 }, false),
         })
         .collect();
+    // The use.rs frontdoor: at most one, and its provider id must be the
+    // session's admitted manifest provider (the import cannot invent or
+    // widen a provider the host did not admit).
+    let mut use_rs_seen: Option<Span> = None;
+    for item in &program.items {
+        if let ast::Item::UseRs(u) = item {
+            if let Some(first) = use_rs_seen {
+                return Err(vec![Diagnostic::new(
+                    Stage::Bind,
+                    "source.use-rs.duplicate",
+                    "at most one `use.rs` import is allowed per module",
+                    first.join(u.span),
+                )]);
+            }
+            if u.provider.name != foreign.manifest().provider {
+                return Err(vec![Diagnostic::new(
+                    Stage::Bind,
+                    "source.use-rs.provider",
+                    format!(
+                        "`use.rs {}` does not match the admitted provider `{}`",
+                        u.provider.name,
+                        foreign.manifest().provider
+                    ),
+                    u.provider.span,
+                )]);
+            }
+            use_rs_seen = Some(u.span);
+        }
+    }
     validate_foreign_declarations(&names, foreign, capabilities)
 }
 /// Same admission for a restored declaration directory: name/span metadata is
@@ -1770,6 +1805,8 @@ fn resolve_detailed(
                 fn_owner.push(None);
                 flat.push(f);
             }
+            // PLAN-967 F0: the frontdoor declares no function.
+            ast::Item::UseRs(_) => {}
             ast::Item::Type(t) => {
                 for m in &t.methods {
                     fn_receiver.push(m.receiver);

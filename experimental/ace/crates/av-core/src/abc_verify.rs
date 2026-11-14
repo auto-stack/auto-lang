@@ -75,23 +75,67 @@ pub fn verify_abc(
     decoded: DecodedAbc,
     expected_owner: &crate::mir::OwnerScope,
 ) -> Result<LoadedModule, AbcAdmissionError> {
-    if decoded.profile == crate::abc::ABC_PROFILE_FOREIGN
+    verify_abc_with(decoded, expected_owner, None)
+}
+
+/// PLAN-967 F0: the admitted foreign variant. With a stub table, a
+/// foreign-profile module is admitted when EVERY `ForeignCall`
+/// declaration matches a current-generation stub entry (exact
+/// provider/symbol/content-version identity) and the module carries the
+/// foreign capability. Without one, admission stays fail-closed exactly
+/// like `verify_abc` (the 938 invariant).
+pub fn verify_abc_foreign(
+    decoded: DecodedAbc,
+    expected_owner: &crate::mir::OwnerScope,
+    stubs: &crate::foreign_exec::ForeignStubTable,
+) -> Result<LoadedModule, AbcAdmissionError> {
+    verify_abc_with(decoded, expected_owner, Some(stubs))
+}
+
+fn verify_abc_with(
+    decoded: DecodedAbc,
+    expected_owner: &crate::mir::OwnerScope,
+    foreign: Option<&crate::foreign_exec::ForeignStubTable>,
+) -> Result<LoadedModule, AbcAdmissionError> {
+    let has_foreign_call = decoded.module.funcs.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.instrs
+                .iter()
+                .any(|i| matches!(i, crate::mir::MirInstr::ForeignCall { .. }))
+        })
+    });
+    let foreign_shape = decoded.profile == crate::abc::ABC_PROFILE_FOREIGN
         || decoded
             .module
             .capabilities
             .iter()
             .any(|c| c == ace_foreign_contract::manual::SOURCE_CAP)
-        || decoded.module.funcs.iter().any(|f| {
-            f.blocks.iter().any(|b| {
-                b.instrs
-                    .iter()
-                    .any(|i| matches!(i, crate::mir::MirInstr::ForeignCall { .. }))
-            })
-        })
-    {
+        || has_foreign_call;
+    if foreign_shape && foreign.is_none() {
         return Err(AbcAdmissionError::Identity(
             "foreign.unsupported: AV does not execute source foreign calls".into(),
         ));
+    }
+    if let Some(stubs) = foreign {
+        // NOTE (PLAN-967 F0): resource-domain foreign modules travel on the
+        // OWNED wire family (PLAN-939 shape) and scalar-domain ones on the
+        // foreign family; admission is the stub-table coverage of every
+        // ForeignCall declaration, not the wire family.
+        for f in &decoded.module.funcs {
+            for b in &f.blocks {
+                for i in &b.instrs {
+                    if let crate::mir::MirInstr::ForeignCall { declaration, .. } = i {
+                        if !stubs.admits_declaration(declaration) {
+                            return Err(AbcAdmissionError::Identity(format!(
+                                "foreign.unauthorized: `{}` is not admitted at generation {}",
+                                declaration.function.symbol,
+                                stubs.generation()
+                            )));
+                        }
+                    }
+                }
+            }
+        }
     }
     // Version/profile re-check on the PUBLIC struct (F798-R3-01): decode
     // rejects unknown values on the wire, but a hand-constructed
@@ -146,6 +190,15 @@ pub fn verify_abc(
                 crate::contract::ABC_PROFILE_ENTRY_UNIT,
                 crate::contract::AV_ENTRY_UNIT_SEMANTICS,
             )
+        } else if decoded.profile == crate::abc::ABC_PROFILE_FOREIGN && foreign.is_some() {
+            // PLAN-967 F0: the foreign wire family under explicit stub
+            // admission (module semantic profile stays the core profile,
+            // mirroring the wire family's own profile-name mapping).
+            (
+                crate::abc::ABC_FOREIGN_VERSION,
+                crate::abc::ABC_PROFILE_FOREIGN,
+                crate::contract::AV_SEMANTICS,
+            )
         } else {
             return Err(AbcAdmissionError::Identity(format!(
                 "decoded profile id {} is not an admitted profile",
@@ -165,7 +218,9 @@ pub fn verify_abc(
         )));
     }
     let profile_name = match want_profile {
-        crate::abc::ABC_PROFILE_CORE_I32 => crate::contract::AV_PROFILE,
+        crate::abc::ABC_PROFILE_CORE_I32 | crate::abc::ABC_PROFILE_FOREIGN => {
+            crate::contract::AV_PROFILE
+        }
         crate::contract::ABC_PROFILE_DATA => crate::contract::AV_DATA_PROFILE,
         crate::contract::ABC_PROFILE_OWNED => crate::contract::AV_OWNED_PROFILE,
         crate::contract::ABC_PROFILE_COLLECTIONS => crate::contract::AV_COLLECTIONS_PROFILE,

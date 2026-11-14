@@ -329,6 +329,8 @@ fn decl_facts_of(
             }),
             // PLAN-960: module globals contribute no fn/outline entry.
             Item::Const(_) | Item::Store(_) => {}
+            // PLAN-967 F0: the import frontdoor contributes no fn decl.
+            Item::UseRs(_) => {}
             Item::Type(t) => {
                 let shell_end = t
                     .methods

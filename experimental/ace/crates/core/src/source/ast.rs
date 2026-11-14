@@ -254,6 +254,18 @@ pub enum Item {
     /// PLAN-960: a module-level mutable store `var NAME: T = expr`
     /// (packages module surface, module-private; no `pub` form).
     Store(StoreItem),
+    /// PLAN-967 F0: the public Rust import frontdoor `use.rs <provider>`.
+    /// Exactly one per module; the provider id must match the session's
+    /// admitted foreign manifest (validated in resolve, never parsed away).
+    UseRs(UseRsItem),
+}
+
+/// A `use.rs <provider>` module item (PLAN-967 F0).
+#[derive(Clone, Debug)]
+pub struct UseRsItem {
+    pub provider: Ident,
+    /// `use` keyword through the provider identifier.
+    pub span: Span,
 }
 
 /// A `const NAME: T = expr` module item (PLAN-960).

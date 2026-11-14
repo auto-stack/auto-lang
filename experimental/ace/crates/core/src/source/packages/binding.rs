@@ -523,6 +523,8 @@ fn bind_package_syntax_inner(
                         en.name.span,
                     ))
                 }
+                // PLAN-967 F0: the frontdoor is not a named declaration.
+                Item::UseRs(_) => continue,
             };
             if all.insert(name.name.clone(), span).is_some()
                 || unit.imports.iter().any(|i| i.bound_name() == name.name)
@@ -539,7 +541,7 @@ fn bind_package_syntax_inner(
                 Item::Type(_) => d.types.insert(name.name, span),
                 Item::Const(_) => d.consts.insert(name.name, span),
                 Item::Store(_) => d.stores.insert(name.name, span),
-                Item::Enum(_) => unreachable!(),
+                Item::Enum(_) | Item::UseRs(_) => unreachable!(),
             };
         }
         decls.insert(key.clone(), d);
@@ -819,6 +821,17 @@ fn bind_package_syntax_inner(
         let mut inits: Vec<String> = Vec::new();
         for item in &unit.program.items {
             match item {
+                // PLAN-967 F0: package modules do not carry the
+                // single-module use.rs frontdoor; a named rejection beats
+                // silently dropping the import.
+                Item::UseRs(u) => {
+                    return Err(fail(
+                        key,
+                        "source.use-rs.surface",
+                        "the use.rs import belongs to the single-module source surface, not package modules",
+                        u.span,
+                    ))
+                }
                 Item::Fn(original) => {
                     if let Some(tp) = original.type_params.first() {
                         return Err(fail(
@@ -3113,6 +3126,8 @@ fn assemble_unit(
     let mut declarations = public.declarations.clone();
     for item in impl_items.iter() {
         match item {
+            // PLAN-967 F0: impl segments never carry the frontdoor item.
+            Item::UseRs(_) => {}
             Item::Fn(f) => {
                 let name = f.name.name.clone();
                 if let Some(req) = unfilled.remove(&name) {
@@ -3614,6 +3629,13 @@ fn shift_item(item: Item, offset: usize) -> Item {
             Item::Store(v)
         }
         Item::Enum(e) => Item::Enum(e),
+        Item::UseRs(mut u) => {
+            u.provider.span.start += offset;
+            u.provider.span.end += offset;
+            u.span.start += offset;
+            u.span.end += offset;
+            Item::UseRs(u)
+        }
     }
 }
 

@@ -96,6 +96,7 @@ dependencies = [
  "ace-a2x-rust",
  "ace-a2x-store",
  "ace-artifacts",
+ "ace-av",
  "ace-av-core",
  "ace-core",
  "ace-foreign-contract",
@@ -103,6 +104,7 @@ dependencies = [
  "ace-native",
  "ace-semantics-contract",
  "ace-source-query",
+ "auto-bindgen",
  "base64 0.22.1",
  "blake3",
  "cranelift-codegen",
@@ -714,6 +716,7 @@ dependencies = [
 name = "auto-bindgen"
 version = "0.1.0"
 dependencies = [
+ "ace-foreign-contract",
  "clap",
  "serde",
  "serde_json",

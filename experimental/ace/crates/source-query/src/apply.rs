@@ -378,6 +378,8 @@ pub fn apply_facts_to_resolved(
             Item::Type(_) => Ok(String::new()),
             // PLAN-960: module globals carry no body facts.
             Item::Const(_) | Item::Store(_) => Ok(String::new()),
+            // PLAN-967 F0: the import frontdoor carries no body facts.
+            Item::UseRs(_) => Ok(String::new()),
             Item::Enum(_) => Err(ApplyError::Profile {
                 what: "enum declaration",
             }),
@@ -608,14 +610,13 @@ pub fn bind_with_facts(
         let mut supply = BodyTypeSupply::new();
         supply.foreign = session.foreign().cloned();
         supply.foreign_only = true;
-        let resolved =
-            ace_core::source::resolve::resolve_text_record_with_foreign(
-                program,
-                capabilities,
-                profile,
-                &supply,
-            )
-            .map_err(BindFactsError::Resolve)?;
+        let resolved = ace_core::source::resolve::resolve_text_record_with_foreign(
+            program,
+            capabilities,
+            profile,
+            &supply,
+        )
+        .map_err(BindFactsError::Resolve)?;
         return Ok((resolved, Vec::new(), supply));
     }
     // PLAN-963（T-02）：RECORD 面同样没有求解器事实（934 推理面是标量/核心
@@ -639,6 +640,8 @@ pub fn bind_with_facts(
             // PLAN-936（T-11）：fields-only record 声明跳过（meta 源形状）。
             Item::Type(_) => {}
             Item::Const(_) | Item::Store(_) => {}
+            // PLAN-967 F0: the import frontdoor declares no function.
+            Item::UseRs(_) => {}
             Item::Enum(_) => return Err(BindFactsError::Profile("enum declaration")),
         }
     }
