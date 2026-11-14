@@ -12,6 +12,8 @@ mod feasibility;
 mod resource;
 #[path = "cases/resource_recovery.rs"]
 mod resource_recovery;
+#[path = "cases/rust_f0.rs"]
+mod rust_f0;
 #[path = "cases/scalar_bridge.rs"]
 mod scalar_bridge;
 #[path = "cases/source_foreign.rs"]

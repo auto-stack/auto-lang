@@ -300,15 +300,7 @@ fn execute_module_impl(
     optimize: bool,
 ) -> (ExecOutcome, ExecTrace) {
     execute_module_impl_with_host(
-        module,
-        limits,
-        cancel,
-        args,
-        arena,
-        optimize,
-        None,
-        None,
-        None,
+        module, limits, cancel, args, arena, optimize, None, None, None, None,
     )
 }
 
@@ -331,6 +323,7 @@ pub fn execute_observed(
         &[],
         crate::owned_text::StrArena::new(),
         true,
+        None,
         None,
         None,
         Some(log),
@@ -368,6 +361,34 @@ pub fn execute_console(
         Some(provider),
         None,
         None,
+        None,
+    ))
+}
+
+/// PLAN-967 F0: execute a module carrying source foreign calls through
+/// the executor's admitted stub table. Per-run authority is re-checked
+/// (structural credentials never preserve grants): every `ForeignCall`
+/// declaration must admit exactly at the table's CURRENT generation,
+/// and the per-run foreign byte ledger starts fresh.
+pub fn execute_foreign(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    stubs: &mut crate::foreign_exec::ForeignStubTable,
+) -> Result<(ExecOutcome, ExecTrace), crate::host::AdmissionError> {
+    stubs.authorize_module(module.module())?;
+    stubs.reset_run_bytes();
+    Ok(execute_module_impl_with_host(
+        module,
+        limits,
+        cancel,
+        &[],
+        crate::owned_text::StrArena::new(),
+        false,
+        None,
+        None,
+        Some(stubs),
+        None,
     ))
 }
 
@@ -393,6 +414,7 @@ pub fn execute_platform(
         false,
         console,
         Some((&mut ledger, backend)),
+        None,
         None,
     );
     let leaked_regions_cleaned = ledger.active_regions();
@@ -434,6 +456,7 @@ fn execute_module_impl_with_host(
         &mut crate::platform_io::PlatformResourceLedger,
         &mut dyn crate::platform_io::PlatformIoBackend,
     )>,
+    foreign: Option<&mut crate::foreign_exec::ForeignStubTable>,
     observed: Option<crate::lifecycle::LifecycleLog>,
 ) -> (ExecOutcome, ExecTrace) {
     let m = module.module();
@@ -455,9 +478,7 @@ fn execute_module_impl_with_host(
     }
     if needs_platform && platform.is_none() {
         return (
-            ExecOutcome::Infra(
-                "host.unauthorized: explicit platform provider required".into(),
-            ),
+            ExecOutcome::Infra("host.unauthorized: explicit platform provider required".into()),
             ExecTrace::default(),
         );
     }
@@ -555,6 +576,7 @@ fn execute_module_impl_with_host(
             false,
             host,
             platform,
+            foreign,
         )
     } else {
         dispatch_with_host(
@@ -567,6 +589,7 @@ fn execute_module_impl_with_host(
             false,
             host,
             platform,
+            foreign,
         )
     }
     .expect("no budget: the loop always terminates with an outcome");
@@ -2697,6 +2720,7 @@ fn dispatch<V: ModuleView>(
         stop_before_call,
         None,
         None,
+        None,
     )
 }
 
@@ -2713,6 +2737,7 @@ fn dispatch_with_host<V: ModuleView>(
         &mut crate::platform_io::PlatformResourceLedger,
         &mut dyn crate::platform_io::PlatformIoBackend,
     )>,
+    mut foreign: Option<&mut crate::foreign_exec::ForeignStubTable>,
 ) -> Option<ExecOutcome> {
     if crate::host::inside_provider() {
         return Some(ExecOutcome::Infra(
@@ -2987,10 +3012,90 @@ fn dispatch_with_host<V: ModuleView>(
                 st.trace.reference_pc_lookups += 1;
             }
             match instr {
-                MirInstr::ForeignCall { .. } => {
-                    return Some(ExecOutcome::Infra(
-                        "foreign.unsupported: AV admission invariant violated".into(),
-                    ))
+                MirInstr::ForeignCall {
+                    declaration,
+                    dst,
+                    args,
+                    callbacks,
+                } => {
+                    // PLAN-967 F0: admitted generic foreign dispatch through
+                    // the executor's stub table. A table-less execution
+                    // still fails closed exactly as before (938 invariant).
+                    let Some(table) = foreign.as_deref_mut() else {
+                        return Some(ExecOutcome::Infra(
+                            "foreign.unsupported: AV admission invariant violated".into(),
+                        ));
+                    };
+                    if !callbacks.is_empty() {
+                        return Some(ExecOutcome::Infra(
+                            "foreign.callback-unsupported: the F0 AV domain admits no callback lanes".into(),
+                        ));
+                    }
+                    if args.len() != 1 {
+                        return Some(ExecOutcome::Infra(
+                            "foreign.arity: the F0 AV domain admits exactly one view lane".into(),
+                        ));
+                    }
+                    if CancelCheck::poll(cancel) {
+                        return Some(ExecOutcome::Cancelled);
+                    }
+                    if started.elapsed() > limits.wall {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::ExecutionWall,
+                            message: "foreign call exceeded wall budget".into(),
+                        });
+                    }
+                    let frame = st.frames.last().expect("frame");
+                    let input = &frame.slots[args[0] as usize];
+                    let view = match foreign_view(input) {
+                        Ok(view) => view,
+                        Err(out) => return Some(out),
+                    };
+                    let dispatched = table.dispatch_view(declaration, view.bytes());
+                    match dispatched {
+                        Ok(crate::foreign_exec::ForeignDispatch::PureI32(n)) => {
+                            if let Err(out) =
+                                commit_slot_write(st, *dst as usize, Value::I32(n), limits)
+                            {
+                                return Some(out);
+                            }
+                        }
+                        Ok(crate::foreign_exec::ForeignDispatch::PureBool(b)) => {
+                            if let Err(out) =
+                                commit_slot_write(st, *dst as usize, Value::Bool(b), limits)
+                            {
+                                return Some(out);
+                            }
+                        }
+                        Ok(crate::foreign_exec::ForeignDispatch::Fallible(0, value)) => {
+                            if let Err(out) =
+                                commit_slot_write(st, *dst as usize, Value::I32(value), limits)
+                            {
+                                return Some(out);
+                            }
+                        }
+                        Ok(crate::foreign_exec::ForeignDispatch::Fallible(_status, _)) => {
+                            // Structured failure: a checked guest failure
+                            // for the named status (the error-model table
+                            // stays the naming authority); never a normal
+                            // i32 result.
+                            return Some(ExecOutcome::Trap {
+                                kind: crate::contract::TrapKind::ForeignStatus,
+                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                            });
+                        }
+                        Err(crate::foreign_exec::ForeignExecError::Reject(r)) => {
+                            return Some(ExecOutcome::Infra(format!("{}: {}", r.code, r.message)));
+                        }
+                        Err(crate::foreign_exec::ForeignExecError::Panic(message)) => {
+                            // Independent HOST failure: the provider panic
+                            // was contained at this boundary; the guest
+                            // never sees a value for it.
+                            return Some(ExecOutcome::Infra(format!(
+                                "foreign.panic: provider panic contained at the boundary: {message}"
+                            )));
+                        }
+                    }
                 }
                 MirInstr::Const { dst, value } => {
                     let cv = match v.const_at(func_idx, *value) {
@@ -5894,7 +5999,11 @@ fn dispatch_with_host<V: ModuleView>(
                         return Some(out);
                     }
                 }
-                MirInstr::PlatformCall { dst, host: index, args } => {
+                MirInstr::PlatformCall {
+                    dst,
+                    host: index,
+                    args,
+                } => {
                     let Some(h) = v.host_imports().get(*index as usize) else {
                         return Some(ExecOutcome::Infra(
                             "host.reference: missing platform declaration".into(),
@@ -7507,6 +7616,54 @@ fn console_output_limit(message: &str) -> ExecOutcome {
     }
 }
 /// Borrow/projection happens before formatting; never clone an unbounded text root.
+/// PLAN-967 F0: materialize the borrowed bytes of a ViewText lane from
+/// the guest slot — an owned `Str` root or a `StrView` (static or
+/// share-rooted). The borrow ends when the foreign call returns; the
+/// callee never receives anything it may retain (noescape contract).
+enum ForeignView<'a> {
+    /// Bytes lent directly by the guest slot (owned Str root / static view).
+    Bytes(&'a [u8]),
+    /// A share-rooted view: keep the resolved handle (an Rc share) alive
+    /// across the call; it releases after the dispatch returns.
+    Handle(crate::contract::StrHandle, std::ops::Range<usize>),
+}
+
+impl ForeignView<'_> {
+    fn bytes(&self) -> &[u8] {
+        match self {
+            ForeignView::Bytes(bytes) => bytes,
+            ForeignView::Handle(handle, range) => &handle.bytes()[range.clone()],
+        }
+    }
+}
+
+fn foreign_view(input: &Value) -> Result<ForeignView<'_>, ExecOutcome> {
+    fn project(bytes: &[u8], start: i32, end: i32) -> Result<std::ops::Range<usize>, ExecOutcome> {
+        let (s, e) = crate::owned_text::scalar_range_to_bytes(bytes, start, end)
+            .map_err(|_| ExecOutcome::Infra("foreign.lane: invalid text range".into()))?;
+        Ok(s..e)
+    }
+    match input {
+        Value::Str(handle) => Ok(ForeignView::Bytes(handle.bytes())),
+        Value::StrView(view) => match &view.src {
+            crate::contract::StrViewSrc::Static { buf } => Ok(ForeignView::Bytes(
+                &buf[project(buf, view.start as i32, view.end as i32)?],
+            )),
+            crate::contract::StrViewSrc::Share(_) => {
+                let resolved = crate::place::resolve_share_view(view)
+                    .ok_or_else(|| ExecOutcome::Infra("foreign.lane: stale text view".into()))?;
+                let handle = resolved.handle;
+                let range = project(handle.bytes(), view.start as i32, view.end as i32)?;
+                Ok(ForeignView::Handle(handle, range))
+            }
+        },
+        other => Err(ExecOutcome::Infra(format!(
+            "foreign.lane: wrong runtime argument {} for a ViewText lane",
+            other.type_name()
+        ))),
+    }
+}
+
 fn with_console_input<T>(
     input: &Value,
     f: impl FnOnce(&[u8]) -> Result<T, ExecOutcome>,

@@ -176,6 +176,8 @@ pub fn project(prog: &core_ast::Program, package: &str, module: &str) -> Result<
             // PLAN-960: module globals are not functions; their accessor
             // pseudo-signatures live in the resolver, not the fn summary.
             core_ast::Item::Const(_) | core_ast::Item::Store(_) => {}
+            // PLAN-967 F0: the import frontdoor projects nothing.
+            core_ast::Item::UseRs(_) => {}
             core_ast::Item::Type(t) => {
                 records.push(InputRecord {
                     name: t.name.name.clone(),
@@ -296,6 +298,8 @@ pub fn project_body_scoped_with_caps(
             // PLAN-960: module globals are not functions; their accessor
             // pseudo-signatures live in the resolver, not the fn summary.
             core_ast::Item::Const(_) | core_ast::Item::Store(_) => {}
+            // PLAN-967 F0: the import frontdoor projects nothing.
+            core_ast::Item::UseRs(_) => {}
             core_ast::Item::Type(t) => {
                 records.push(InputRecord {
                     name: t.name.name.clone(),

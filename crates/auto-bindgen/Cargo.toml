@@ -8,3 +8,7 @@ description = "C header manifest generator for AutoLang C FFI (Plan 216)"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
+# PLAN-967 F0: the Rust importer projects onto the shared foreign contract
+# (same path-dependency pattern auto-lang-core already uses for
+# ace-semantics-contract); no second FFI model is introduced.
+ace-foreign-contract = { path = "../../experimental/ace/crates/foreign-contract" }

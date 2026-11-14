@@ -19,7 +19,10 @@ pub fn get_builtin_manifest(header: &str) -> Option<CHeaderManifest> {
 }
 
 fn p(name: &str, ty: CTypeDesc) -> CParam {
-    CParam { name: name.to_string(), ty }
+    CParam {
+        name: name.to_string(),
+        ty,
+    }
 }
 
 fn string_manifest() -> CHeaderManifest {
@@ -43,7 +46,11 @@ fn string_manifest() -> CHeaderManifest {
             },
             CFunction {
                 name: "strncmp".into(),
-                params: vec![p("s1", CTypeDesc::CStr), p("s2", CTypeDesc::CStr), p("n", CTypeDesc::Size)],
+                params: vec![
+                    p("s1", CTypeDesc::CStr),
+                    p("s2", CTypeDesc::CStr),
+                    p("n", CTypeDesc::Size),
+                ],
                 return_type: CTypeDesc::Int,
                 variadic: false,
             },
@@ -67,13 +74,21 @@ fn string_manifest() -> CHeaderManifest {
             },
             CFunction {
                 name: "memset".into(),
-                params: vec![p("s", CTypeDesc::PtrMut), p("c", CTypeDesc::Int), p("n", CTypeDesc::Size)],
+                params: vec![
+                    p("s", CTypeDesc::PtrMut),
+                    p("c", CTypeDesc::Int),
+                    p("n", CTypeDesc::Size),
+                ],
                 return_type: CTypeDesc::Ptr,
                 variadic: false,
             },
             CFunction {
                 name: "memcpy".into(),
-                params: vec![p("dest", CTypeDesc::PtrMut), p("src", CTypeDesc::Ptr), p("n", CTypeDesc::Size)],
+                params: vec![
+                    p("dest", CTypeDesc::PtrMut),
+                    p("src", CTypeDesc::Ptr),
+                    p("n", CTypeDesc::Size),
+                ],
                 return_type: CTypeDesc::Ptr,
                 variadic: false,
             },
@@ -185,7 +200,11 @@ fn stdio_manifest() -> CHeaderManifest {
             },
             CFunction {
                 name: "fgets".into(),
-                params: vec![p("s", CTypeDesc::PtrMut), p("size", CTypeDesc::Int), p("stream", CTypeDesc::Ptr)],
+                params: vec![
+                    p("s", CTypeDesc::PtrMut),
+                    p("size", CTypeDesc::Int),
+                    p("stream", CTypeDesc::Ptr),
+                ],
                 return_type: CTypeDesc::Ptr,
                 variadic: false,
             },

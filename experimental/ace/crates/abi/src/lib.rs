@@ -34,11 +34,15 @@ pub mod descriptor;
 pub mod emit;
 pub mod layout;
 pub mod link;
+pub mod resource_provider;
 pub mod run;
+/// PLAN-967 F0: the Rust provider build unit (frozen source + generated
+/// shim -> one cdylib closure) and its in-process loader.
+#[cfg(windows)]
+pub mod rust_provider;
 pub mod semref;
 mod source_crt;
 pub mod source_foreign;
-pub mod resource_provider;
 pub mod source_provider;
 mod source_request_work;
 pub mod source_store;

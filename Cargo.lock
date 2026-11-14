@@ -27,6 +27,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ace-foreign-contract"
+version = "0.1.0"
+dependencies = [
+ "ace-semantics-contract",
+ "blake3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ace-semantics-contract"
 version = "0.1.0"
 dependencies = [
@@ -343,6 +353,7 @@ dependencies = [
 name = "auto-bindgen"
 version = "0.1.0"
 dependencies = [
+ "ace-foreign-contract",
  "clap",
  "serde",
  "serde_json",

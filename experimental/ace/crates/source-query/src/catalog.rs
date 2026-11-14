@@ -145,6 +145,8 @@ impl SignatureCatalog {
                 // （§5.2）——目录跳过（按 fn 定型；rec_index 归 core）。
                 Item::Type(_) => {}
                 Item::Const(_) | Item::Store(_) => {}
+                // PLAN-967 F0: the import frontdoor declares no function.
+                Item::UseRs(_) => {}
                 Item::Enum(_) => {
                     return Err(ProduceError::Profile {
                         what: "enum declaration",

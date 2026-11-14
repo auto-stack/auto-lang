@@ -231,6 +231,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-963（T-03）：`ext Type { members }` 扩展块（投影期合入）。
             alt(profiles: [record, record-instances, text-record, text-record-instances, collections, aggregates]) { ext-item() {} }
             alt(profiles: [scalar-modules]) { use-item() {} }
+            // PLAN-967（F0）：`use.rs <provider>` —— 公共 Rust 导入前门
+            //（text-record 面首个 F0 切片；`rs` 拼写与 provider 匹配在投影/解析期校验）。
+            alt(profiles: [text-record]) { use-rs-item() {} }
             // PLAN-960（T-02）：完整模块包面 items —— 单一 public-item 前缀
             //（fn/type/const/use 各自 token 开头，避免 recover 规则与前缀
             // 备选相互作用）；const/var 模块项与别名导入。
@@ -263,6 +266,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             ident(field: "module")
             dot() {}
             ident(field: "import")
+        }
+        // PLAN-967（F0）：`use.rs <provider>` 项——单 ident provider；lang
+        // 叶必须是 `rs`（投影期命名拒绝其它拼写，不静默解释为模块 use）。
+        use-rs-item(profiles: [text-record]) {
+            r-use(field: "kw") {}
+            dot(field: "dot") {}
+            ident(field: "lang")
+            ident(field: "provider")
         }
         qualified-name(profiles: [scalar-modules]) {
             ident(field: "module")

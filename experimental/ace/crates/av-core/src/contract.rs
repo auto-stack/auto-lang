@@ -993,6 +993,10 @@ pub enum TrapKind {
     /// generation moved (V-05 defense in depth — verification should
     /// prevent this for admitted programs).
     InvalidHandle,
+    /// PLAN-967 F0: a fallible foreign call returned a named negative
+    /// status — a checked guest failure. The naming table stays with the
+    /// declaration's error model (the manifest is the authority).
+    ForeignStatus,
     /// PLAN-824: `DYN_TAKE` of a dynamic value whose runtime type differs
     /// from the instruction's expected type — a RUNTIME CHECKED failure
     /// (not bad input): the source Dyn stays intact in its slot, nothing
@@ -1040,6 +1044,7 @@ impl TrapKind {
             TrapKind::StrIndex => "av.trap.str-index",
             TrapKind::CharInvalid => "av.trap.char-invalid",
             TrapKind::InvalidHandle => "av.trap.invalid-handle",
+            TrapKind::ForeignStatus => "av.trap.foreign-status",
             TrapKind::DynTypeMismatch => "av.trap.dyn-type",
             TrapKind::ListIndex => "av.trap.list-index",
             TrapKind::StalePlace => "av.trap.stale-place",
