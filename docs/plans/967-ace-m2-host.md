@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-14
 plan_revision: 12
-current_step: 7
+current_step: 8
 total_steps: 19
 depends_on: [PLAN-960, PLAN-962, PLAN-963, PLAN-938, PLAN-939, PLAN-1042, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-bindgen/project.md, docs/specs/auto-abi/project.md]
@@ -524,7 +524,8 @@ T-03/T-12扩947既有装配：同一AV的native/C/Rust来源绑定与资源原pr
 - [x] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 [✅ 2026-11-14 生产consumer道交付；1043来源装配腿按T-01冻结归T-12接入]
   交付：**生产TestCase道**——deck（Auto use.rs源+注解provider源，manifest在worker内派生）→ `abi/rust-f0-certify-v1`（abi-worker新配方，legs av=进程内ForeignSession / native=caller COFF+import lib+真机器码）→ 固定组 `case-ace-m2-f0-rust-967`（6案：len 9/0、first-byte 65、rebound +1 body，av+native腿）PASS；配方注册贯通 worker dispatch/TestCase contract（exit oracle、final query、av|native legs、abi binding）/adapter routing/probe judge；生成构建单元导出 `ace_foreign_fail`（native fallible 传输，exit 70，同C侧语义）。目标=冻结plan常量；权限=F0粒度每调用admission（owner/grant维T-13）；增量=会话粒度接口身份复用+重绑定恢复（工件缓存增量为T-14）；失败恢复=rebuild/rebind/panic道全闭。LOAD腿：1043来源后缀/#in装配消费按T-01冻结映射在T-12接FFI provider目标时落地（V-LOAD按owner行T-04汇总闭）。回归：938套件PASS、auto-test-case 45绿、ace-adapters PASS、rust_f0 7绿、auto-bindgen 10绿。
 
-- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：分import/export、调用方/被调用方、标量/聚合/资源与C/Rust/Python现用桥，核动态库装卸、原方allocator、符号/ABI版本。异步本包只交注册/完成/取消端口及受控真实provider；968消费端口实现语言await，967不反向依赖968。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+- [x] **T-08｜M2-A｜owner_stage: work｜AC-06**：分import/export、调用方/被调用方、标量/聚合/资源与C/Rust/Python现用桥，核动态库装卸、原方allocator、符号/ABI版本。异步本包只交注册/完成/取消端口及受控真实provider；968消费端口实现语言await，967不反向依赖968。 [✅ 2026-11-14]
+  交付：**异步完成端口**——中立合同 `foreign-contract/port.rs`（`autoabi.contract.completion-port/1`：PortValue/PortEvent+唯一 `completion_disposition` 规则表 publish/drop-late/unknown；cancel墓碑把迟到完成归为DropLate而非UnknownPort）；宿主注册表 `av-core CompletionPorts`（register/complete/cancel/teardown 绑会话generation——迟到完成可观察丢弃、绝不发布、绝不触已闭会话；每次状态变更是因果 PortEvent=消费者唯一oracle，968的await绑此、967不依968）；**受控真实provider** `rustside/f0_async.rs`（真cdylib、真OS线程、真C-ABI完成回调；raw cdylib构建/装载 helper——域外fixture是手写PROVIDER，手写禁止的是binding/manifest）。E2E（abi f0_async 2案）：真线程回调发布 i32:10；cancel+强制迟到=LateDropped；teardown后真线程in-flight完成=LateDropped。动态库装卸=RawLibrary Drop恰释放一次；V-08 C侧行（export方向/资源释放/callback pin/过期generation）=939永久fixture（ce-*/callback-*/handle-* decks）已交证据。验证：foreign-contract 53绿、av-core foreign 5绿、rust_f0 7绿、f0_async 2绿。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
 
 - [ ] **T-09｜M2-A｜owner_stage: work｜AC-07**：接通工程use.c/use.rs到共享绑定和typed foreign事实，冻结真实库/全特征required表、来源/注解/工具链和合法/非法公共源码；先走通一个真实导入与失败恢复。 验证V-09，证据汇入原最终work验证。 ABI-COMPAT：冻结BuildIdentity/RuntimeCompatibility/ProviderArtifact字段与兼容规则、两个实际可构建fixture的rustc/target组合、准确既有入口和V-ABI-*预期；缺环境记pending。
 
@@ -561,6 +562,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 7 | from: work | to: work | status: executing | outcome: T-08完成（异步完成端口+受控真实provider） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-09 公共use.c/use.rs工程入口）
+
+2026-11-14 stage: work / T-08（AC-06/V-08端口腿）| 交付: port.rs中立合同+规则表、CompletionPorts宿主注册表（generation纪律+cancel墓碑）、f0_async受控真线程provider+f0_async 2 E2E（发布/cancel迟到丢/teardown迟到丢）| C侧行=939 fixtures已交 | 验证: foreign-contract 53、av-core foreign 5、rust_f0 7、f0_async 2 全绿 | next: T-09。
 
 2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 6 | from: work | to: work | status: executing | outcome: T-03完成（生产TestCase道） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-08 双向ABI与异步完成端口）
 
