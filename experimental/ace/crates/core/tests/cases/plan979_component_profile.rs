@@ -117,3 +117,69 @@ fn p979_component_compat_and_prefix_rules_apply() {
         .expect_err("reserved prefix family is a named conflict");
     assert_eq!(ds[0].code, "source.age.hidden-name");
 }
+
+#[test]
+fn p979_component_probe_member_shapes() {
+    let cases = [
+        ("model_only", "node C {\n    model {\n        count int = 0\n    }\n}\n"),
+        ("view_then_model", "node C {\n    view {\n        text \"x\" {}\n    }\n    model {\n        count int = 0\n    }\n}\n"),
+        ("model_then_view", "node C {\n    model {\n        count int = 0\n    }\n    view {\n        text \"x\" {}\n    }\n}\n"),
+        ("model_assign_only", "node C {\n    model {\n        count = 0\n    }\n}\n"),
+        ("on_only", "node C {\n    on Inc {\n        count = 1\n    }\n}\n"),
+        ("model_two", "node C {\n    model {\n        a int = 0\n        b int = 1\n    }\n}\n"),
+    ];
+    for (name, src) in cases {
+        match project_component_candidates(src) {
+            Ok(ns) => eprintln!(
+                "PROBE {name}: ok nodes={} fields={} handlers={}",
+                ns.len(),
+                ns.first().map(|n| n.fields.len()).unwrap_or(0),
+                ns.first().map(|n| n.handlers.len()).unwrap_or(0)
+            ),
+            Err(ds) => eprintln!(
+                "PROBE {name}: err {} @{}..{} {}",
+                ds[0].code, ds[0].span.start, ds[0].span.end, ds[0].message
+            ),
+        }
+    }
+}
+#[test]
+fn p979_component_model_and_on_members_project_typed_candidates() {
+    let model = "node Counter {\n    model {\n        count int = 0\n        label str = \"x\"\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let nodes = project_component_candidates(model).expect("model projection");
+    assert_eq!(nodes.len(), 1);
+    assert_eq!(nodes[0].fields.len(), 2);
+    assert_eq!(nodes[0].fields[0].name, "count");
+    assert_eq!(nodes[0].fields[0].ty, "int");
+    assert_eq!(nodes[0].fields[1].name, "label");
+    assert_eq!(nodes[0].fields[1].ty, "str");
+    assert_eq!(nodes[0].view.texts.len(), 1);
+    // 原 span：字段与初值都指向源文件。
+    assert!(nodes[0].fields[0].span.start < nodes[0].fields[0].init.span.start);
+
+    let on = "node Counter {\n    on Inc {\n        count = count + 1\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let nodes = project_component_candidates(on).expect("on projection");
+    assert_eq!(nodes[0].handlers.len(), 1);
+    assert_eq!(nodes[0].handlers[0].msg, "Inc");
+    assert_eq!(nodes[0].handlers[0].assigns.len(), 1);
+    assert_eq!(nodes[0].handlers[0].assigns[0].field, "count");
+}
+
+#[test]
+fn p979_component_model_and_on_still_fail_closed_until_the_runtime_lands() {
+    let model = "node Counter {\n    model {\n        count int = 0\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let ds = compile_age_component(model, "component.at", LegacyWidgetAlias::Reject, &[])
+        .expect_err("model runtime is not wired yet");
+    assert_eq!(ds[0].code, "source.age.component-unsupported");
+    assert!(ds[0].message.contains("model"), "{:?}", ds[0]);
+    assert_eq!(
+        ds[0].span.start,
+        model.find("count int").expect("first model field")
+    );
+
+    let on = "node Counter {\n    on Inc {\n        count = 1\n    }\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let ds = compile_age_component(on, "component.at", LegacyWidgetAlias::Reject, &[])
+        .expect_err("event runtime is not wired yet");
+    assert_eq!(ds[0].code, "source.age.component-unsupported");
+    assert!(ds[0].message.contains("on Inc"), "{:?}", ds[0]);
+}

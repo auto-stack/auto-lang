@@ -355,9 +355,15 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         age-model-field(profiles: [age-component], expect: "a `model` field `name type = init`") {
             ident(field: "field") {}
-            ident(field: "ty") {}
+            age-model-ty(field: "ty") {}
             assign() {}
             pratt(of: "wide-ops", field: "init") {}
+        }
+        age-model-ty(profiles: [age-component]) {
+            alt { int-kw() {} }
+            alt { i32() {} }
+            alt { bool() {} }
+            alt { ident(field: "name") {} }
         }
         age-on-member(profiles: [age-component], expect: "an `on <Msg> { <field> = <expr> }` block") {
             name(of: "age-on-head", field: "on") {}

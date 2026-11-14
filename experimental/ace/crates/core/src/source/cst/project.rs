@@ -4159,7 +4159,13 @@ impl<'a> Engine<'a> {
                             .cx
                             .field_child(field, "field")
                             .expect("model field name");
-                        let ty_leaf = self.cx.field_child(field, "ty").expect("model field type");
+                        let ty_node = self.cx.field_child(field, "ty").expect("model field type");
+                        let ty_leaf = self
+                            .cx
+                            .children(ty_node)
+                            .into_iter()
+                            .find(|&c| self.cx.tree.node(c).flags & FLAG_TRIVIA == 0)
+                            .unwrap_or(ty_node);
                         let init_node = self
                             .cx
                             .field_child(field, "init")
