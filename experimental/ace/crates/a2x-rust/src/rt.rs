@@ -170,6 +170,9 @@ pub fn record_text_runtime_source(marks: &[&'static str]) -> String {
 /// Frozen runtime core (byte-stable for a crate version).
 const RT_CORE: &str = r#"#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AutoTrap {
+    /// PLAN-967 (AXR0): a foreign fallible status crossed as a named
+    /// trap (the error-model table stays the naming authority).
+    Foreign(i32),
     Overflow,
     DivByZero,
     DivOverflow,
@@ -183,6 +186,7 @@ pub enum AutoTrap {
 impl AutoTrap {
     pub fn name(self) -> &'static str {
         match self {
+            AutoTrap::Foreign(_) => "Foreign",
             AutoTrap::Overflow => "Overflow",
             AutoTrap::DivByZero => "DivByZero",
             AutoTrap::DivOverflow => "DivOverflow",

@@ -12,6 +12,8 @@ mod contract_layout_admission;
 mod f0_async;
 #[path = "cases/f0_av_c.rs"]
 mod f0_av_c;
+#[path = "cases/f0_axr.rs"]
+mod f0_axr;
 #[path = "cases/f0_rich.rs"]
 mod f0_rich;
 #[path = "cases/feasibility.rs"]

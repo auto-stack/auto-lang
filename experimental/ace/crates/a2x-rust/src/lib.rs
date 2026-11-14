@@ -21,6 +21,7 @@
 pub mod artifacts;
 pub mod cert;
 pub mod coll;
+pub mod foreign_bridge;
 pub mod lower;
 pub mod lower_coll;
 pub mod print;

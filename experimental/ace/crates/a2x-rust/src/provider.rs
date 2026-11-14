@@ -89,20 +89,29 @@ impl TargetProvider for RustTargetProvider {
         view: &SemanticView<'_>,
         _family: Family,
     ) -> Result<String, A2xReject> {
-        if view.foreign_declarations().next().is_some() {
-            return Err(A2xReject::new(
-                "a2r.foreign-unsupported",
-                "Rust target does not execute source foreign calls",
-            ));
+        // PLAN-967 (AXR0): the frozen F0/rich foreign domain A2R-bridges
+        // through the SAME C-compatible shim exports the other lanes use
+        // (extern "C" + an A2xResult wrapper per entry); anything wider
+        // keeps the historical named rejection.
+        let mut foreign_bridge = String::new();
+        for decl in view.foreign_declarations() {
+            foreign_bridge.push_str(&crate::foreign_bridge::wrapper_source(decl)?);
         }
         let marks: Vec<&'static str> = view.trace_symbols().into_iter().collect();
-        Ok(match view.domain {
+        let mut source = match view.domain {
             ace_core::hir::HirDomain::Text
             | ace_core::hir::HirDomain::Record
             | ace_core::hir::HirDomain::TextRecord => rt::record_text_runtime_source(&marks),
             ace_core::hir::HirDomain::Collections => coll::collections_runtime_source(&marks),
             _ => crate::artifacts::runtime_source(&marks),
-        })
+        };
+        if !foreign_bridge.is_empty() {
+            source.push_str(
+                "\n\n// PLAN-967 (AXR0): generated foreign bridge — the SAME shim exports.\n",
+            );
+            source.push_str(&foreign_bridge);
+        }
+        Ok(source)
     }
 
     fn produce_fragments(

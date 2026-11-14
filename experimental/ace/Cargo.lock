@@ -52,6 +52,7 @@ version = "0.1.0"
 dependencies = [
  "ace-a2x-core",
  "ace-core",
+ "ace-foreign-contract",
 ]
 
 [[package]]

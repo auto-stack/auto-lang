@@ -1265,6 +1265,46 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     };
                     return Ok((RExpr::Trace { func }, Ty::I32));
                 }
+                // PLAN-967 (AXR0): a foreign callee bridges through the
+                // generated wrapper (same shim exports; A2xResult shape).
+                if let Some(decl) = self.view.foreign_by_def(target_id) {
+                    let wrapper = format!("a2x_foreign_{}", decl.name);
+                    let lanes: Vec<ace_foreign_contract::ResKind> = decl
+                        .resource()
+                        .map(|r| r.params.clone())
+                        .unwrap_or_default();
+                    // lower each argument IN LANE ORDER; the view lane
+                    // borrows (AsStr for owned text operands).
+                    let mut args = Vec::new();
+                    for (arg_idx, lane) in eval_args.iter().zip(lanes.iter()) {
+                        let (expr, ty) = self.lower_expr(*arg_idx, out)?;
+                        let expr = match lane {
+                            ace_foreign_contract::ResKind::ViewText => match ty {
+                                Ty::StrOwned => RExpr::AsStr {
+                                    val: Box::new(expr),
+                                    owned: true,
+                                },
+                                _ => expr,
+                            },
+                            _ => expr,
+                        };
+                        args.push(expr);
+                    }
+                    let ret = matches!(
+                        decl.resource().map(|r| &r.form),
+                        Some(ace_foreign_contract::ResourceForm::Pure {
+                            ret: ace_foreign_contract::ResOut::Bool
+                        })
+                    );
+                    let _ = ret;
+                    return Ok((
+                        RExpr::Call {
+                            func: wrapper,
+                            args,
+                        },
+                        Ty::I32,
+                    ));
+                }
                 // Internal function/method or fragment external.
                 let (rust_name, target_params, result_ty) =
                     if let Some(t) = self.view.fn_by_def(target_id) {
