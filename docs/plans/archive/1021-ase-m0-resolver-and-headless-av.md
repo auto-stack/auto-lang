@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1021
-status: reviewed
+status: archived
 feature_name: ASE M0应用解析与无窗口AV加载实验
 author: [Codex]
 created_at: 2026-11-12
@@ -18,7 +18,7 @@ touched_goals: [GOAL-002, GOAL-007, GOAL-010]
 
 ## 0. 变更摘要
 
-r1，reviewed，7/9（T-08 复审 pass @ b6a3e059c）（T-01..T-07 已完成，实现提交 b6a3e059c）；交付M0-LOAD/M0-H。消费1020就绪结论及960已交公开包链；无需等待AutoUI语法/980 Hello/AGE。这里是有界一次执行研究，不宣称独立持久AppSession或生产运行入口完成。路线：[ASE M0](../design/strategy/ase-m0-delivery-roadmap.md)。
+r1，archived，9/9（交付 af35aa318）（T-01..T-07 已完成，实现提交 b6a3e059c）；交付M0-LOAD/M0-H。消费1020就绪结论及960已交公开包链；无需等待AutoUI语法/980 Hello/AGE。这里是有界一次执行研究，不宣称独立持久AppSession或生产运行入口完成。路线：[ASE M0](../design/strategy/ase-m0-delivery-roadmap.md)。
 
 ## 1. 目标
 
@@ -111,7 +111,7 @@ A/B各为独立包输入、独立运行owner/结果。普通源码各返回11与
 - [x] T-07｜work｜T-06｜格式/告警/无debug检查，§9折摘要/拟议Spec与1022消费交接；AC-05。测试输入入库，原始证据不入库。
   证据：`cargo fmt --check` 干净；ase-m0 crate 零编译告警（ace-av/av-core 的 7 条上游告警为 master 既有，非本包引入）；库代码无 println/dbg（CLI 输出为产品面）；实现+测试+fixtures+锁文件入库 commit `b6a3e059c`（15 文件，2456 行）；原始证据（探针/target/运行输出）仅在 plan-artifacts scope，不入库。1022 交接：公开接缝与错误分态见本收据与 README；ASE 侧不新增语言/ACE 面。
 - [ ] T-08｜review｜T-07｜独立追踪普通源、实际AV dispatch、反例与关闭owner；AC-R，按结论修复或replan。
-- [ ] T-09｜merge｜独审pass｜冻结相关完整目标/必要组，沉淀SD-01、归档；对账全部输出目录，折摘要/删scope，guard清树；AC-D。
+- [x] T-09｜merge｜独审pass｜冻结相关完整目标/必要组，沉淀SD-01、归档；对账全部输出目录，折摘要/删scope，guard清树；AC-D。
 
 ## 9. 复审记录
 
@@ -164,3 +164,27 @@ evidence: 复审探针输出（三反例 stderr 具名错误）存 plan-artifact
 ## 10. 待澄清事项
 
 T-01负责确认960公开入口及构建闭包可用，最多两机制先证；T-06负责新固定组和完整目标接入。若研究需要新语言能力或持久缓存，不在本包暗扩，由原owner/后继计划处理。
+
+  证据：见下方合并收据（af35aa318）。
+
+---
+
+stage: merge | plan_id: PLAN-1021 | plan_revision: r1 | outcome: pass | worktree: D:/autostack/.wt/lang-1021/auto-lang（已清） | branch: codex/plan-1021-dev（已删） | reviewed_commit: b6a3e059c | delivery_commit: af35aa318 | rebase_mapping: b6a3e059c→662ee07b0（range-diff 全等）、4a22d5a0c→af35aa318（SD-01 docs-only 后继）
+
+checkpoints:
+- prepared ✅：reviewed 基线 b6a3e059c（final pass，db9c02e9a）；冻结 delta=SD-01 add docs/specs/ase/m0-headless-loading.md；worktree 内落盘并提交（docs-only，实现/依赖未变）。
+- landed ✅：rebase onto master 后 `git merge --ff-only`，master tip=af35aa318=交付提交，线性历史无 merge commit，range-diff 证明 b6a3e059c 补丁全等。
+- canonical_verified ✅：docs/specs/ase/m0-headless-loading.md 于 af35aa318 落 master，sha256 前16=b92dc30ee43c202c（4047B）；与复审核验的 SD-01 delta 一致；无 ledger/specs.json 写入。
+- frozen_gate ✅：`cargo t ase-m0`（worktree，交付基线）PASS——v01..v05 全数执行（results.json 对账）；ACE 源零改动→无 ACE 组义务；语言固定日常组不受本包影响（独立 workspace，不入 daily/all）。
+- archived ✅：git mv 至 docs/plans/archive/1021-ase-m0-resolver-and-headless-av.md，status: archived，9/9 任务勾选核对一致；archive/ 前缀链接 ../.. 相对解析正常（spec/roadmap 链接位于归档目录下按既有归档惯例保持原文）。
+- batch_regress_due ✅ 非到期：.last-batch-regression.json last_covered=1043 @2026-11-13T19:30:42Z（<48h）；1021%5=1 且低于水位 → 不触发；归 auto-plan-regress 到期例程。
+
+输出目录对账（T-09）：本计划全部输出=D:/autostack/plan-artifacts/plan-1021/（SCOPE.md、probe 探针 workspace+target、run-a/run-b/run-x/rev-* CLI 运行与复审反例、build-err.log）；无其他盘符/散落目录/D:/autostack 根级 planNNN-* 残留；构建中间产物（worktree 内 ase-m0/target、experimental/ace/target、target/test-groups）随 worktree 删除，不入 plan-artifacts。证据已折叠：命令/退出码/关键数字（11/22/12、input_hash、sha256、dispatch 0/1、三反例具名错误）在本文件 §8/§9；保留件无（无具名未解决问题→零持有）。
+
+生产工件落点检查（landing≠deployment）：本交付为独立 opt-in 实验 workspace（非语言/ACE workspace 成员，不在 daily/all 组、不进默认构建面），无下游产品二进制/服务/web bundle 消费——无 stale 工件需重建重启；主检出语言默认构建面不受影响（唯一仓库面变化=scripts/test-groups.toml +15 行组注册）。
+
+next_responsible_role: 无（终态；1022 消费交接见 T-07 收据）
+
+---
+
+stage: goal | plan_id: PLAN-1021 | plan_revision: r1 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: af35aa318 | next: done
