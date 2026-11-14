@@ -1808,6 +1808,11 @@ fn decode_options(
                         "ac-av/collections-source-run-v1" => {
                             matches!(op.as_str(), "run" | "edit-source")
                         }
+                        // PLAN-964: the aggregates-source recipe shares the
+                        // same av step vocabulary.
+                        "ac-av/aggregates-source-run-v1" => {
+                            matches!(op.as_str(), "run" | "edit-source")
+                        }
                         "ac-av/closures-run-v1" => {
                             matches!(op.as_str(), "run" | "edit-source")
                         }
@@ -2007,6 +2012,7 @@ fn decode_options(
                     || recipe == "ac-av/resource-events-v1"
                     || recipe == "ac-av/collections-run-v1"
                     || recipe == "ac-av/collections-source-run-v1"
+                    || recipe == "ac-av/aggregates-source-run-v1"
                     || recipe == "ac-av/loaded-run-v1"
                     || recipe == "ac-av/closures-run-v1"
                     || recipe == "ac-av/closures-source-run-v1"
@@ -2192,6 +2198,7 @@ fn decode_options(
                         || recipe == "ac-av/resource-events-v1"
                         || recipe == "ac-av/collections-run-v1"
                         || recipe == "ac-av/collections-source-run-v1"
+                        || recipe == "ac-av/aggregates-source-run-v1"
                         || recipe == "ac-av/loaded-run-v1"
                         || recipe == "ac-av/closures-run-v1"
                         || recipe == "ac-av/closures-source-run-v1"
@@ -2218,6 +2225,7 @@ fn decode_options(
                         && recipe != "ac-av/resource-events-v1"
                         && recipe != "ac-av/collections-run-v1"
                         && recipe != "ac-av/collections-source-run-v1"
+                        && recipe != "ac-av/aggregates-source-run-v1"
                         && recipe != "ac-av/loaded-run-v1"
                         && recipe != "ac-av/closures-run-v1"
                         && recipe != "ac-av/closures-source-run-v1"
@@ -3139,6 +3147,10 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // the collections frontend onto the frozen 822 execution, same seam
     // contract (append-only; the 822 fixture case files stay untouched).
     "ac-av/collections-source-run-v1",
+    // PLAN-964: the aggregates SOURCE recipe — real .at sources through
+    // the aggregates frontend (objects/nil/fstr) onto the shared
+    // closures-superset lowering/runtime, same seam contract.
+    "ac-av/aggregates-source-run-v1",
     // PLAN-865: the closures SOURCE recipe — real .at sources through the
     // closures frontend onto the frozen 823 execution, same seam contract.
     "ac-av/closures-source-run-v1",

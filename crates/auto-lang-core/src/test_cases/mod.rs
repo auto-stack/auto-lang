@@ -981,6 +981,21 @@ fn dispatch_check(
                 run_dir,
             )
         }
+        // PLAN-964: the aggregates SOURCE recipe (real .at sources through
+        // the aggregates frontend; append-only dispatch).
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref()
+                == Some(ac_av::AV_AGGREGATES_SOURCE_RECIPE) =>
+        {
+            ac_av::run_aggregates_source_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
         // PLAN-866: the resident-online av recipe (append-only
         // registration; prior recipe contracts untouched).
         (Adapter::Probe, auto_test_case::contract::Action::Run)

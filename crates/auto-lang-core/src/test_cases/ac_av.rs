@@ -100,6 +100,12 @@ pub const AV_COLLECTIONS_RECIPE: &str = "ac-av/collections-run-v1";
 /// collections frontend onto the frozen 822 execution (profile 4 consumed
 /// unchanged; the 822 fixture case files stay byte-identical).
 pub const AV_COLLECTIONS_SOURCE_RECIPE: &str = "ac-av/collections-source-run-v1";
+/// PLAN-964: the aggregates SOURCE recipe — real .at sources through the
+/// aggregates frontend (objects/nil/fstr) onto the shared closures-
+/// superset lowering/runtime (same av.closures/1 identity as the
+/// closures-source family; the aggregates front door admits the wider
+/// composite/dynamic surface).
+pub const AV_AGGREGATES_SOURCE_RECIPE: &str = "ac-av/aggregates-source-run-v1";
 /// PLAN-823 (R1-F02): the closures-profile av recipe (append-only
 /// registration; earlier recipe contracts untouched).
 pub const AV_CLOSURES_RECIPE: &str = "ac-av/closures-run-v1";
@@ -163,6 +169,9 @@ pub enum RecipeFamily {
     /// PLAN-864: real `.at` sources through the collections frontend onto
     /// the frozen 822 execution (entry = the source function name).
     CollectionsSource,
+    /// PLAN-964: real `.at` sources through the aggregates frontend
+    /// (objects/nil/fstr) onto the shared closures-superset lowering.
+    AggregatesSource,
     /// PLAN-865: real `.at` source through closure lowering and the existing
     /// per-function closures update/link/runtime session.
     ClosuresSource,
@@ -198,6 +207,7 @@ impl RecipeFamily {
             RecipeFamily::Owned => AV_OWNED_RECIPE,
             RecipeFamily::Collections => AV_COLLECTIONS_RECIPE,
             RecipeFamily::CollectionsSource => AV_COLLECTIONS_SOURCE_RECIPE,
+            RecipeFamily::AggregatesSource => AV_AGGREGATES_SOURCE_RECIPE,
             RecipeFamily::ClosuresSource => AV_CLOSURES_SOURCE_RECIPE,
             RecipeFamily::ClosuresFn => AV_CLOSURES_FN_RECIPE,
             RecipeFamily::ClosuresRecovery => AV_CLOSURES_RECOVERY_RECIPE,
@@ -219,6 +229,7 @@ impl RecipeFamily {
             RecipeFamily::Owned => EXPECTED_AV_OWNED_CORE_VERSION,
             RecipeFamily::Collections => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
             RecipeFamily::CollectionsSource => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
+            RecipeFamily::AggregatesSource => EXPECTED_AV_CLOSURES_CORE_VERSION,
             RecipeFamily::ClosuresSource
             | RecipeFamily::ClosuresFn
             | RecipeFamily::ClosuresRecovery => EXPECTED_AV_CLOSURES_CORE_VERSION,
@@ -1495,6 +1506,11 @@ const CLOSURES_SOURCE_CASES: &[(&str, Option<i32>, Option<&str>, usize)] = &[
     // cross-owner capture wiring must visibly deviate (1212 / 212 ...).
     // Units: 3 fns + 2 lambdas.
     ("U1", Some(1112), None, 5),
+    // PLAN-964 (M2-A, T-02/T-08): the dynamic closures corpus — capture
+    // + HOF over List (369 = [3,6,9] encoding) and callable values stored
+    // in an object with dynamic-key dispatch (9 = twice(3)+half(6)).
+    ("D01", Some(369), None, 2),
+    ("D02", Some(9), None, 3),
 ];
 
 /// PLAN-909: the expected value of each source case's `body-edit` mode
@@ -1671,6 +1687,28 @@ pub fn run_collections_source_check(
         artifact_dir,
         run_dir,
         RecipeFamily::CollectionsSource,
+    )
+}
+
+/// PLAN-964: the aggregates SOURCE recipe check — same request/judge
+/// shape as the other av source families; the worker compiles the real
+/// source through the aggregates frontend (no fixture table).
+pub fn run_aggregates_source_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::AggregatesSource,
     )
 }
 

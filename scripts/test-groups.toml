@@ -729,6 +729,18 @@ suite = "crates/auto-lang/test/cases/ace-m2/generics/generics.suite.ad"
 all = false
 
 [[group]]
+name = "case-ace-m2-dynamic-964"
+title = "TestCase case-ace-m2-dynamic-964（PLAN-964 T-02/T-08 动态对象/nil/闭包/FStr 语料 AV 真实运行）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m2/dynamic/dynamic.suite.ad"
+all = false
+
+[[group]]
 name = "case-legacy-a2r-cert-992"
 title = "TestCase case-legacy-a2r-cert-992（PLAN-992 H-02 五例a2r-only金样快照）"
 runner = "case"
