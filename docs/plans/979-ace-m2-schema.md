@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-979
-status: drafting
+status: executing
 feature_name: Schema领域语言包与UI AGE投影接口
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
-plan_revision: 9
-current_step: 0
+updated_at: 2026-11-15
+plan_revision: 10
+current_step: 1
 total_steps: 12
 depends_on: [PLAN-960, PLAN-963, PLAN-966]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-a2x/architecture.md]
@@ -18,9 +18,11 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
+2026-11-13 r10（本轮当前合同）：H0首源改为AGE node/view/text；Schema同时驱动解析、结构校验与位置/上下文敏感的node名称识别。旧widget仅为同一领域包的显式兼容别名，不另建传统widget前门。 用户仅授权规划修订；保原任务ID/数量、既有AC/V与进度、完整分母及阶段门，不建树、不写实现/fixture、不构建/运行/合入。此前§0修订描述为历史，冲突以本次§5–8为准。
+
 2026-11-12 r9：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
-历史修订：2026-11-11 r8当前：增加H0最小widget/text受检领域前门切片；以现有普通函数/文本和grammar/CST/verify基础接Hello，不等待963泛型/966完整CT整包；原通用Schema完整构造、最小双方言双后端及全部8项任务保留。 原8项任务/全部AC/V保留，新增4项早期切片任务，现12项、drafting、0完成；只规划。
+历史修订：2026-11-11 r8当前：增加H0最小widget/text受检领域前门切片；以现有普通函数/文本和grammar/CST/verify基础接Hello，不等待963泛型/966完整CT整包；原通用Schema完整构造、新旧源码表面经同一Schema的最小双后端及全部8项任务保留。 原8项任务/全部AC/V保留，新增4项早期切片任务，现12项、drafting、0完成；只规划。
 
 历史修订：2026-11-10 r7执行版：M2-A。本轮把阶段安排落实到本Plan的开工前置、执行顺序和A/B交接；原任务/AC/范围保留，所有任务仍未执行。以§5的最小接口和§8的分阶段清单为准，不按后文历史轮次的旧总顺序施工。
 
@@ -84,6 +86,10 @@ touched_goals: [GOAL-002]
 
 - [auto-ui/crates/auto-ui-dialect/src/ast.rs](../../../auto-ui/crates/auto-ui-dialect/src/ast.rs)：WidgetDecl与Node领域owner，Core不反依UI；读取SHA256前16 `1d10f5ff2566422e`
 
+2026-11-13本轮授权/取材：用户明确要求修订Node首Hello、Schema解析校验与位置/AGE上下文名称、widget兼容和963并行顺序，仅规划。读取基面`dcf0535d4d15c00628a60f1940c6c55a01a101ab`；当前Spec仍描述有限统一CST与旧UI parser/有限Node pilot，并未宣称本次机制已交；差额是本Plan目标，未来按SD沉淀，不改canonical Spec伪造现状。来源：`docs/specs/auto-syntax/{source-frontdoor,grammar-contract}.md`；`docs/specs/auto-ui-dialect/design/full-grammar.md`；`experimental/ace/crates/syntax-runtime/src/{program.rs,parse/mod.rs}`；`experimental/ace/crates/core/src/source/cst/frontdoor.rs`；`auto-ui/docs/specs/auto-graphics/{node-basic-ui,ace-migration-feasibility}.md`。963执行进度与其他会话WIP只读保留。
+
+物理路径核对：原`D:/autostack/ag-examples`已更名为`D:/autostack/age-examples`；本轮修复旧样例/计划链接到实际文件，原AG计划ID/依赖身份与历史源码hash不改。执行者按现路径核正式来源，不能重新复制内容仓或生成替代旧用例。
+
 ## 5. 详细设计
 
 ### M2阶段执行合同（当前优先）
@@ -136,21 +142,59 @@ T-01有界前探：用一个最小真实正例、同类型非法近邻和一次�
 
 本节由T-08实施并以AC-06/V-08验收，属本包完成条件。既有任务/验收不被替代；接口由T-01先冻结，T-08只依赖T-01及相应T-02投影接口，不等待T-03双后端验收；T-03可消费其已就绪fixture，T-04最终汇总，避免T-03/T-08互等。
 
-### H0：最小UI领域包与文字表达式投影（当前早期入口）
+### H0：AGE Schema驱动的最小Node与文字投影（当前早期入口）
 
-T-H0-I最小前置为现有syntax-grammar/syntax-runtime、core CST/resolve/唯一verify、已交普通函数和text支持及960适用模块基础；不使用用户泛型/CT/#if，不等963/966整包。Schema规则由同一既有grammar包机制声明，不把UI文法硬编码成第二parser，也不调用旧Parser/handler_codegen重解析。公共版本化包/投影机制归979，最小widget/text领域声明由auto-ui owner在同一接面注册；980只扩消费/宿主，不再重复前门。
+T-H0-I最小前置为现有syntax-grammar/syntax-runtime、core CST/resolve/唯一verify、已交普通函数和text支持及960适用模块基础；不使用用户泛型/CT/#if，不等963/966整包。Schema规则由同一既有grammar包机制声明，不把UI文法硬编码成第二parser，也不调用旧Parser/handler_codegen重解析。公共版本化包/投影机制归979，最小AGE node/view/text领域声明由auto-ui owner在同一接面注册；980只扩消费/宿主，不再重复前门。
 
-H0支持普通源码`widget <任意合法名> { view { text <UTF-8表达式> {} } }`，根一个text；表达式首批为字面量或同工程普通Auto函数返回文本，行为经共享绑定/类型/资源verify。字面量也须保原span/包身份；函数体不能留作字符串由UI二次解释。属性/字段/未知结构按本切片能力明确拒绝，不静默忽略。static描述与运行表达式引用分开，描述不携带已受信Checked或Rust对象地址；CPU consumer可观察根/叶/值及原span，不硬编码App/Hello字节。
+H0首源采用普通源码`node <任意合法名> { view { text <UTF-8表达式> {} } }`，根一个text；表达式首批为字面量或同工程普通Auto函数返回文本，行为经共享绑定/类型/资源verify。字面量也须保原span/包身份；函数体不能留作字符串由UI二次解释。属性/字段/未知结构按本切片能力明确拒绝，不静默忽略。static描述与运行表达式引用分开，描述不携带已受信Checked或Rust对象地址；CPU consumer可观察根/叶/值及原span，不硬编码App/Hello字节。
 
-输出是领域包版本、CST/span、未受信候选→唯一verify的受检描述/表达式标识及资源要求。H0独立CPU投影/语义检查不等967 F0、980窗口或979完整Node双后端；UI真实AV/FFI/A2R由980/HELLO验。原T-02/03/08继续在同一机制扩完整UI/Node/模板/CT、最小双方言双后端与组合恢复；H0不提前关闭它们或缩完整语言分母。
+输出是领域包版本、CST/span、未受信候选→唯一verify的受检描述/表达式标识及资源要求。H0独立CPU投影/语义检查不等967 F0、980窗口或979完整Node双后端；UI真实AV/FFI/A2R由980/HELLO验。原T-02/03/08继续在同一机制扩完整UI/Node/模板/CT、新旧源码表面经同一Schema的最小双后端与组合恢复；H0不提前关闭它们或缩完整语言分母。
 
 现有owner路径`experimental/ace/crates/syntax-grammar`、`syntax-runtime`、`core/src/source/cst/frontdoor.rs`、`source-query`均已核；新最小UI grammar资产/typed投影case由T-H0-I在这些owner与auto-ui领域注册位置建立，准确路径/符号/命令先冻结。980只能在H0-D正式来源后消费，H0用自己的CPU消费者闭合，不反等980完整DIALECT/PARITY或981。
 
 早期切片是本Plan M2-A内部交接，不新增ACE里程碑或Plan终态；只在同一权威树按owner流程独立复核、正式落主并记source/接口/grammar/ABI/provider及真实结果后供下游消费。同Plan尚有原完整义务时不归档/删树/勾整包完成。frontmatter保最终依赖并集，早期切片只等本节最小接口；同一文件单写，不以分支reviewed/WIP当交付。最小切片通过不关闭原AC、完整Rust FFI/全UI/RG-A03/M2A-08；不新增对980/981/985整包或AGE联合门的反向依赖。
 
+### H0的Schema、位置名称与兼容合同（2026-11-13，当前）
+
+首个输入如下（拟永久fixture，由T-H0-I创建；工程/模块在解析前显式选择AGE领域包，不发明新的Auto导入关键字）：
+
+```auto
+node Hello {
+    view {
+        text "Hello" {}
+    }
+}
+```
+
+第二输入保持同形，由同工程普通Auto函数返回`"你好"`供text表达式求值。第一源CPU投影应为一个Node根、一个view、一个text叶及精确UTF-8值；第二源必须经真实共享行为检查/求值得到该值，不由Rust常量或二次解释补结果。H0不要求完整model/on执行、场景树调度、2D/3D、Life.Frame或963泛型。
+
+位置识别的普通Auto正控（AGE开/关均须返回42，作为拟fixture而非已运行结果）：
+
+```auto
+fn on(model int) int {
+    let view = model + 1
+    let widget = view + 1
+    return widget
+}
+fn main() int { return on(40) }
+```
+
+**Schema必须是parser的输入，而非解析完再做字段检查。** 现有`syntax-grammar/src/lib.rs`与`syntax-runtime/src/program.rs::{GrammarProgram,RuleSpec,Step,Atom}`、`parse/mod.rs::parse_tokens`、Core `source/cst/frontdoor.rs`为复用接面；实际新增领域包资产/字段由T-H0-I冻结并标为新增。拟字段语义为`ContextualNameRule{spelling,domain_id,parent_rule,slot:NodeName,alias_target?}`，由现有规则程序承载或等价扩展，不宣称当前已有该API。公共grammar/runtime不依赖AGE/UI库；AGE规则及组件schema由auto-ui持有。数据流为已激活的版本化Schema→grammar组合/冲突检查→CST/原span→领域候选及普通Auto表达式→唯一语义/类型/资源verify→CPU描述，继而由980走AV/FFI/宿主；codec schema不能代替grammar schema。
+
+**两个条件同时满足才赋予领域含义：** ①该工程/模块解析环境已显式启用对应AGE Schema；②当前位置是该Schema声明的`NodeName`槽，且父规则允许该名称。此处NodeName指节点头/结构名称位置（例如`view {…}`中的`view`），不等于变量名、定义/实例label、字段访问、字符串或任何花括号前的单词。`widget/model/view/on`等拼写不加入通用词法保留字表；`text`按组件Schema识别。普通表达式/函数体中的`let view = 1`、形参`model`、函数名`on`、对象字段`widget`及`.view`/`"on"`保持普通Auto规则；在AGE环境里也不因拼写相同抢走Core表达式。以`view:`等属性位置与`view {…}`节点头区分，具体分隔/前瞻沿声明的Schema规则，不能全文件字符串搜索或按文件名猜领域。
+
+无AGE的普通模块不激活这些AGE规则；同拼写保持普通标识符，AGE构造若无匹配规则则报结构不支持且不dispatch宿主。启用AGE后也只在已声明父/槽位识别；H0尚未执行的model/on若被Schema识别，应明确能力缺失，不能假称其状态/事件已经可运行。通用parser对这些名字的可配置性可用最小测试Schema验证，实际完整语义由980/STATE与981/LANGUAGE补齐。相同槽/父中的重名规则须按显式优先级唯一决定，否则加载期定位冲突拒绝，不按注册顺序随机选择；不新增隐式保留所有组件名的规则。
+
+**旧widget→node兼容分两项计量。** 新作者源与首Hello一律写`node`；旧`widget App {…}`在显式启用AGE legacy-widget兼容配置时，由同一Schema把声明头映射为同一种Node候选，原字节/文件/span保持，body、组件、model/view/on及普通行为共用规则，不走旧Parser、源改写→重解析或第二业务解释器。关闭该兼容配置时旧声明头应受控拒绝，不能自动回落旧引擎。作者也可显式只改声明头`widget→node`形成迁移副本（不改字符串、注释、变量或body），按独立值/事件oracle验证；它是迁移兼容，不冒“原widget原源直接接受”。旧原源通过别名与迁移Node两条证据归同一旧case义务，不重复计数，不删旧源/expected。本轮不退役兼容别名；未来改变源码接受承诺须显式裁定，987移除旧引擎不自动允许删除原源兼容门。
+
+解析事务/checkpoint须携带并正确恢复活动领域、父规则/槽位；失败/回退/下一模块不得泄漏AGE名称上下文。缓存/恢复身份至少绑定grammar/domain内容及版本、兼容配置、入口/上下文规则和真实依赖；同源切换普通/AGE或别名开关不得串用CST/投影。候选不携Checked信任；结构通过不能豁免行为类型/权限检查。错误分结构拒绝、能力缺失、语义/资源拒绝，保原span、合法旧代与既有预算，不能把资源失败当语言非法。
+
+T-H0-I的有界决定只在现有rule/field组合与必要的中立上下文规则扩展间比较至多两种策略，冻结实际字段/入口/fixture命令、冲突规则及source-map；不得退回硬编码AGE parser。与963并行时先在已交960/962及现有text/普通函数域做规则资产、CPU consumer和名称反控；963正在修改的`auto-source.at`、`core/source/cst/project.rs`、AST/resolve/实例查询及公共测试注册按文件owner短窗串行、冻结SHA交接。需963新泛型的实际case仍等963交付，不靠私有复制语法或消费未审WIP解锁；H0无需整包963/966完成。H0-I/V/R/D按原任务独立正式交付，980消费H0-D，不反等981/SOURCE或完整980/981。
+
+
 ### 具体输入、类型/代码设计与旧用例映射（2026-11-12，r9当前）
 
-**具体输入与期望。** 原件[ag-examples/examples/g01-shapes/g01-main/src/main.at](../../../ag-examples/examples/g01-shapes/g01-main/src/main.at)（下列节选L7–L38；完整源/模块/资源闭包仍是验收输入，不把截断程序当可运行fixture）：
+**具体输入与期望。** 原件[ag-examples/examples/g01-shapes/g01-main/src/main.at](../../../age-examples/examples/g01-shapes/g01-main/src/main.at)（下列节选L7–L38；完整源/模块/资源闭包仍是验收输入，不把截断程序当可运行fixture）：
 
 ```auto
 use resources: red_alpha, blue_alpha, green_alpha, yellow_opaque
@@ -209,7 +253,7 @@ struct DomainCandidate { structure: DomainIr, behaviors: ExprRefs, source_map: S
 
 | 原源码/测试/研究来源 | 保留的公开义务与新ACE验证 | 原期望/证据形态与读取身份 | 新ACE检查映射与原owner任务 |
 |---|---|---|---|
-| [ag-examples/examples/g01-shapes/g01-main/src/main.at](../../../ag-examples/examples/g01-shapes/g01-main/src/main.at) | 原Node/use/props/view源，不手写HIR充源 | 无邻接expected；沿原loader/合同核，不补假绿；SHA256前16 `9b809a1c6d99985b` | 拟ace.m2.p979.source01：run-av/run-native/run-a2r/run-a2c按原支持域；负控/资源见V-DETAIL-02/03；原任务 T-02/T-03/T-08/T-04 |
+| [ag-examples/examples/g01-shapes/g01-main/src/main.at](../../../age-examples/examples/g01-shapes/g01-main/src/main.at) | 原Node/use/props/view源，不手写HIR充源 | 无邻接expected；沿原loader/合同核，不补假绿；SHA256前16 `9b809a1c6d99985b` | 拟ace.m2.p979.source01：run-av/run-native/run-a2r/run-a2c按原支持域；负控/资源见V-DETAIL-02/03；原任务 T-02/T-03/T-08/T-04 |
 | [auto-ui/examples/ui/002-counter/src/front/app.at](../../../auto-ui/examples/ui/002-counter/src/front/app.at) | widget/model/msg/on/主题完整需求，CPU接面不冒全产品 | 无邻接expected；沿原loader/合同核，不补假绿；SHA256前16 `04937c35325faa74` | 拟ace.m2.p979.source02：run-av/run-native/run-a2r/run-a2c按原支持域；负控/资源见V-DETAIL-02/03；原任务 T-02/T-03/T-08/T-04 |
 | [docs/specs/auto-syntax/grammar-contract.md](../specs/auto-syntax/grammar-contract.md) | 既有grammar机制，不新建第二parser | 旧合同/研究/协议来源；不当实际运行PASS；SHA256前16 `2203a19aa79239fa` | 原具名test/check或合同规则→V-DETAIL-01..04对应断言；T-01冻结完整ID，不当独立可运行源；原任务 T-02/T-03/T-08/T-04 |
 
@@ -230,9 +274,8 @@ struct DomainCandidate { structure: DomainIr, behaviors: ExprRefs, source_map: S
 | SD-03 | modify | `docs/specs/auto-a2x/architecture.md`（语言owner）及auto-ui仓`docs/specs/auto-graphics/ace-migration-feasibility.md`（领域owner） | 在实际交付后记录领域受检投影、AV/A2R共源接面及UI067旧基线no-go的具体关闭项；未实现项仍保缺口 | 防止将规划或最小前门证明冒充完整游戏支持 | AC-06/07/08 |
 | SD-PHASE | add | `docs/specs/ace-migration/m2-schema.md`（沿原owner；仅实际交付后沉淀） | 单一M2口径→已验A/B能力/consumer及来源与旧新义务映射；未交B保持pending | 阶段不减原范围 | AC-PHASE |
 | SD-HELLO | add | docs/specs/ace-migration/m2-schema.md（沿原owner） | 未有早期交接→本切片实际已验接口/源/拒绝及剩余完整义务；交付后沉淀 | 最小Hello不冒全包完成 | AC-H0/AC-H0-REVIEW/AC-H0-LAND |
-
-
 | SD-DETAIL | add | `docs/specs/ace-migration/m2-schema.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-06/AC-PHASE |
+| SD-NODE-NAME | add | `docs/specs/ace-migration/m2-schema.md`（拟新增；真实交付后） | 未交领域前门→AGE Schema/NodeName槽、上下文激活/身份、Node首源及widget显式兼容同链 | 本轮用户架构纠正 | AC-H0/AC-NODE-NAME |
 ## 6. 测试设计
 
 ### 阶段适用验证（新增合同、未执行）
@@ -250,7 +293,7 @@ struct DomainCandidate { structure: DomainIr, behaviors: ExprRefs, source_map: S
 | V-02 | AC-02/03 | 冲突包拒加载且旧程序保留 | T-01将本行落实为真实源码/操作序列；T-04运行真实producer/consumer，记录值、trace、资源和诊断，错误路径配合法近邻 | work；本包支持矩阵 |
 | V-03 | AC-02/03 | 未知字段/坏投影在执行前报原span | T-01将本行落实为真实源码/操作序列；T-04运行真实producer/consumer，记录值、trace、资源和诊断，错误路径配合法近邻 | work；本包支持矩阵 |
 | V-04 | AC-02/03 | 领域规则更新只失效实际依赖 | T-01将本行落实为真实源码/操作序列；T-04运行真实producer/consumer，记录值、trace、资源和诊断，错误路径配合法近邻 | work；本包支持矩阵 |
-| V-05 | AC-02/03 | 用UI最小widget和AGE Node双producer验证 | T-01将本行落实为真实源码/操作序列；T-04运行真实producer/consumer，记录值、trace、资源和诊断，错误路径配合法近邻 | work；本包支持矩阵 |
+| V-05 | AC-02/03 | 用规范Node与旧widget兼容表面验证同一Schema producer，不能另造widget producer | T-01将本行落实为真实源码/操作序列；T-04运行真实producer/consumer，记录值、trace、资源和诊断，错误路径配合法近邻 | work；本包支持矩阵 |
 | V-09 | AC-07 | 正常多模块Node工程含两个同定义独立Counter：定向事件2:1、N个Life.Tick后各实例恰推进N次；普通helper参与计算，typed view描述与状态绑定可观察 | T-02/08建普通源码fixture，T-03分别经正式共享前门跑AV、A2R→真实rustc→运行，T-04记值/事件序与独立算术oracle；fixture名/命令在T-01冻结 | work；979仅最小领域/CPU消费者，不以emit成功/AV运行替A2R运行，不等待981游戏 |
 | V-10 | AC-03/06/07 | 同类型错误事件参数、未声明或越权的实例引用、坏领域包与篡改投影事实在共享检查处拒绝，原文件span准确；AV/A2R均不执行坏程序；修复后原入口恢复正确结果 | T-02/08建正反例，T-03记录拒绝阶段与未dispatch证据；schema/ABI变化使旧受检产物失效，旧合法代保留 | work；禁止二次生成旧.at、legacy Parser/AutoVM/旧Trans fallback或手造Checked凭证 |
 | V-11 | AC-08 | 传统UI字段与完整Node构造的投影清单可表达；具名坏字段/遗漏必需投影在共享前门报原span；删除一条必需字段/构造映射时完整性交接检查红，合法近邻仍接受 | T-08在现有grammar/CST/投影target建普通源正反例及覆盖核对，T-04核源→接口→980/981 owner；不等产品验收或手造HIR | work；979仅通用表达/检查/交接，完整运行责任不能缩为最小view样本 |
@@ -269,9 +312,12 @@ struct DomainCandidate { structure: DomainIr, behaviors: ExprRefs, source_map: S
 
 | Case | AC | 区分性输入→实际入口→独立结果 | owner/边界 |
 |---|---|---|---|
-| V-H0-SOURCE | AC-H0 | 普通widget/text源、改widget名/中文文本，及普通函数返回文本的同类源→版本grammar/CST→共享verify→CPU受检描述；根/叶/表达式值与原span准确，换字符串后实际值变化 | work；不把手写AST/HIR或旧Parser输出充普通源 |
+| V-H0-SOURCE | AC-H0 | AGE node/view/text源、改Node名/中文文本，及普通函数返回文本的同类源→版本grammar/CST→共享verify→CPU受检描述；根/叶/表达式值与原span准确，换字符串后实际值变化 | work；不把手写AST/HIR或旧Parser输出充普通源 |
 | V-H0-REJECT | AC-H0 | 缺闭合、未知字段/构造、错误文本类型、表达式名字错误报原文件；合法近邻接受，拒绝后修复同入口恢复 | work；bad projection删除必需叶/篡改事实应在verify/准入拒绝 |
 | V-H0-DEPEND | AC-H0 | 同源不同grammar/domain版本不误复用；旧CST/受检身份失配拒绝，改文字/函数仅失效真实依赖；CPU消费者不等待UI窗口 | work；拟职责组cargo t ace-syntax ace-source ace-semantics ace-artifacts，实际改lowering/AV/A2X再补对应完整组 |
+| V-H0-POSITION | AC-H0/AC-NODE-NAME | AGE开/关×NodeName槽/普通表达式：node根内view正确识别；`let view=1`、model形参、on函数、widget字段/成员与字符串保持普通绑定；未允许父槽不偷匹配。普通源有无AGE得到相同值/类型；无AGE的Node构造不进入AGE consumer | T-H0-I/V；同类型正控，不用无关类型错误证明位置敏感 |
+| V-H0-SCHEMA | AC-NODE-NAME | 不改runtime，仅在隔离测试Schema将节点头view配置为panel：声明的panel接受且投影仍为Schema声明的view角色、未声明view在该槽拒绝，普通变量view仍合法；同槽冲突包加载拒绝；失败解析后合法普通源不受污染 | T-H0-I/V；证明parser真实消费Schema，测试变体不改变正式作者拼写 |
+| V-H0-COMPAT | AC-NODE-NAME | Node Hello首源；旧widget Hello原字节经兼容别名与只改声明头的迁移Node副本：同一候选语义/CPU值，CST逐字节还原各自原源且诊断span不漂移；关别名旧源拒绝、Node仍接受；换领域/配置缓存不串用 | T-H0-I/V；H0只闭最小文本，完整旧组件/状态与模式交980，不新增第二份required分母 |
 
 
 ### 本轮细化的可区分验证（拟实施；纯分析包只核推理/来源）
@@ -298,9 +344,10 @@ struct DomainCandidate { structure: DomainIr, behaviors: ExprRefs, source_map: S
 | AC-07 | work | 普通Node工程直接经共同前门/唯一verify，最小领域描述与行为真实到AV和A2R编译运行；值/事件/实例隔离一致且分别满足独立oracle；非法近邻报原span，无旧源码生成/重解析或后端语义分叉 | T-01/02/03/08实施，T-04核V-09/10及结构依赖闭包；981接收版本化接面，完整游戏另验 |
 | AC-08 | work | 传统AutoUI与完整AGE语言分母有来源/投影/检查/接收owner的双向映射，通用接面不硬编码三种view或少量UI字段，遗漏/坏投影具名拒绝；完整产品支持交980/981逐项关闭 | T-01/02/08，T-04核V-11；不以最小双方言PASS冒完整语言PASS |
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-04；原独立review复核 |
-| AC-H0 | work | 普通widget/text及普通函数文本表达式通过唯一前门，受检领域描述/原span/错误与恢复正确 | T-H0-I/V；V-H0-* |
+| AC-H0 | work | AGE node/view/text及普通函数文本表达式通过Schema驱动的唯一前门，受检领域描述/原span/错误与恢复正确 | T-H0-I/V；V-H0-* |
 | AC-H0-REVIEW | review | 独立核H0前门/行为verify/拒绝/版本和CPU consumer，无旧解析或硬编码样本 | T-H0-R |
 | AC-H0-LAND | merge | H0接口/grammar/来源与真实验证正式落主，保原完整Schema/UI/Node义务 | T-H0-D |
+| AC-NODE-NAME | work | NodeName位置与AGE环境双条件、Schema驱动解析/校验、旧widget显式同链别名及无上下文/缓存泄漏均满足§5；新Node首源不经传统widget链 | T-H0-I/V；V-H0-POSITION/SCHEMA/COMPAT，原T-08扩全域；H0-R独立核 |
 
 ## 8. 执行步骤
 
@@ -310,9 +357,10 @@ struct DomainCandidate { structure: DomainIr, behaviors: ExprRefs, source_map: S
 
 早期任务可按§5最小前置先行，不要求T-01完整分母冻结已完成；各I自行冻结本切片输入/接口/命令，不提前勾T-01或其它原整项。以下行序不是额外前置。
 
-- [ ] **T-H0-I｜M2-A｜owner_stage: work｜AC-H0**：不等T-01完整分母/963/966整包；核§5最小基础，冻结最小版本grammar/typed投影接口、CPU oracle和诊断/资源策略，补V-H0-*，沿同一机制实现。
+- [x] **T-H0-I｜M2-A｜owner_stage: work｜AC-H0/AC-NODE-NAME**：不等T-01完整分母/963/966整包；核§5最小基础，冻结AGE激活方式、NodeName位置规则、旧widget别名、版本grammar/typed投影接口、CPU oracle和诊断/资源策略，补V-H0-*，沿同一机制实现。
+  - [✅ 已完成 2026-11-15｜f71f9cfd2/35dfe72b2/f627ab599] 冻结决定：`Atom::CtxName`（spelling/token/role，codec v4，parser ABI 3）承载槽位限定拼写且不改词法；领域激活=`SourceProfile::AgeH0`（slug `age-h0`）经 `auto-source.at` 裁剪面，通用解析/编译入口具名拒绝该 profile；`widget`=同一 `node` role 别名，由显式 `LegacyWidgetAlias` 配置准入（关闭=头 span 受控拒绝，不回落旧引擎）；文本叶脱糖为普通隐藏函数 `__age_h0_text_<n>() Str { return (<expr>).clone() }` 经共享 text-record 唯一 verify，文本种类/def id 从 Checked HIR 读回；CPU 值经共享 lower→MIR→ABC→AV 执行（`ace_av::age_h0`）。规划文字与现况差异（`view` 在现 Auto 源面本就是保留字 `r-view`）按"保持普通Auto规则"读法处理，未改公共保留字表，记入§10。证据：core conformance 473/473（13 新 `p979_age_h0_*`）、av lib 11 + 6 新 CPU 例、syntax-grammar 45（6 ctx-name + 7 age grammar）、syntax-runtime 39；worktree `D:/autostack/.wt/lang-979/auto-lang`。
 
-- [ ] **T-H0-V｜M2-A｜owner_stage: work｜AC-H0**：T-H0-I后实际运行V-H0-*与完整受影响职责组，核普通源/表达式/原span及错投影拒绝；GUI与FFI未执行保持不在本切片声明内。
+- [ ] **T-H0-V｜M2-A｜owner_stage: work｜AC-H0/AC-NODE-NAME**：T-H0-I后实际运行V-H0-*与完整受影响职责组，核普通源/表达式/原span及错投影拒绝；GUI与FFI未执行保持不在本切片声明内。
 
 - [ ] **T-H0-R｜M2-A｜owner_stage: review｜AC-H0-REVIEW**：T-H0-V齐后同树停写独立复核源码→CST→唯一verify→CPU描述，不信样本自报；finding回I。
 
@@ -322,7 +370,7 @@ struct DomainCandidate { structure: DomainIr, behaviors: ExprRefs, source_map: S
 
 - [ ] **T-01｜M2-A｜owner_stage: work｜AC-01/07/08/AC-PHASE**：核依赖与§4实际路径，冻结§5交接件、传统UI/完整AGE分母的投影/检查/owner表、最小双方言/双后端源与V-09/10/11命令；有界前探共享语义→AV/A2R最长路径，明确资源和未决项，不缩范围。
 
-- [ ] **T-02｜M2-A｜owner_stage: work｜AC-02/07**：实现通用领域包/CST/typed投影与唯一verify接面；领域owner通过同一接口接最小widget/Node源码及永久正反例，保原span，不另造语义分析或旧源码生成链。
+- [ ] **T-02｜M2-A｜owner_stage: work｜AC-02/07**：实现通用领域包/CST/typed投影与唯一verify接面；领域owner通过同一接口接规范Node源码及同Schema的旧widget兼容别名正反例，保原span，不另造语义分析或旧源码生成链。
 
 - [ ] **T-03｜M2-A｜owner_stage: work｜AC-02/03/07**：消费T-02/08已就绪接面，AV与新A2R两腿可并行；后者必须真实rustc编译运行；核领域描述、状态/事件、装配/权限/增量/失败恢复，交981版本化接口，不以模型替运行。
 
@@ -377,7 +425,17 @@ T-02依赖T-01；T-08依赖T-01和相应T-02接口；T-03按已就绪T-02/08接�
 
 2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
 
+2026-11-13 / stage:new / PLAN-979 r10 / outcome:pass（规划合同预检，非实现或产品review） / changed: Node首源、Schema/NodeName/兼容与并行合同及对应AC/V/SD；原任务数量/状态/进度与旧义务保留 / next: 本轮仍只规划；后续获得实施指令且该任务最小正式来源齐时进入原work。全部新增验证未执行，未构建/运行/建树/派agent/合入或改963。
+
+2026-11-13 本轮仅规划的静态核验：4份计划原95任务ID/勾选/数量/状态/进度与依赖元数据保持；新增3项AC、7项拟验证及3项拟Spec增量，全部未执行。9份文档本地引用、0–10章节、表格/围栏与新AC/V任务映射核对通过；F0→E0→B0与H0汇合HELLO、随后981按接口扩展的切片顺序不新增反向整包等待。963及其实施树未由本轮修改；未生成fixture/binding/SDK、未运行编译/产品/GPU/性能、未建树/提交/合入/tag。此为规划预检，不是实现独立review PASS。
+
+2026-11-15 stage: work / T-H0-I（H0 最小领域切片实现，T-H0-I 关闭；T-H0-V/R/D 与 T-01..T-08 仍 open）| plan_id: PLAN-979 | plan_revision: 10 | outcome: pass（切片完成，Plan 1/12）| worktree: D:/autostack/.wt/lang-979/auto-lang | branch: plan-979-dev | base_commit: 50dc0ea5c | code_commit: f627ab599（前序 f71f9cfd2/35dfe72b2）| task_ids: T-H0-I | decisions: ①Schema=parser 输入——中立 `Atom::CtxName`（name/spelling/token/role，program codec v4 + parser ABI 3），词法面不变（`node`/`text`/`widget` 仍普通 ident；`view` 沿用既有 `r-view` 保留字，未改公共保留字表）；②领域激活=显式 `SourceProfile::AgeH0`（slug `age-h0`，auto-source.at 裁剪面），通用 `parse_program_with`/`compile_parts` 入口对该 profile 具名拒绝 `source.domain-frontend`（领域声明绝不静默丢弃）；③旧 `widget` 头=同一 `node` role 别名，由显式 `LegacyWidgetAlias{Reject,Accept}` 准入（关闭=头 span `source.age.legacy-widget` 受控拒绝，不回落旧引擎，配置进入描述身份）；④文本叶脱糖为普通隐藏函数 `__age_h0_text_<n>() Str { return (<expr>).clone() }`，整模块经共享 text-record 唯一 verify，文本种类(str/Str)/def id 从 Checked HIR 读回；CPU 值经共享 lower→MIR→ABC→AV 执行，无二次解释/Rust 常量补值 | evidence: `cargo test -p ace-core --test conformance` 473/473 PASS（211.11s；13 新 `p979_age_h0_*`：字面量/函数表达式/非文本拒绝/属性拒绝/缺闭合/别名开合/隐藏名冲突/0-多 text 根/通用前门拒绝/普通源逐字节同形(atom_text 等值)/身份绑定/失败后无上下文泄漏/双 node 独立）；`cargo test -p ace-av --lib` 11/11；`cargo test -p ace-av --test conformance plan979` 6/6（真实值 Hello/你好/Bon好/Owned、双 node 独立、拒绝面）；`cargo test -p ace-syntax-grammar` 45/45（6 ctx-name + 7 age grammar，含 Schema 变体 panel 与 role 不变、fail-closed、codec/身份往返）；`cargo test -p ace-syntax-runtime` 39/39；`cargo check` core/av/native/semantics/source-query/artifacts/abi clean；fmt 本包文件 clean，零新增告警 | 未执行面（归后续任务）：V-H0-V 的固定组并集（`cargo t ace-syntax ace-source ace-semantics ace-artifacts ace-av`）与 T-H0-R 独立复审、T-H0-D fold；GU/FFI/宿主、完整 AGE/传统 UI 语法与 A2R 腿仍在 T-02/03/08 与 980/981 | raw_evidence: D:/autostack/plan-artifacts/plan-979/evidence.md (sha256前16 495fd284f8f16f40，merge收尾折叠后删除) | blockers: none | next_responsible_role: work（T-H0-V：跑 V-H0-* 与受影响职责组；随后 T-H0-R 独立复审）
+
+stage: goal | plan_id: PLAN-979 | plan_revision: r10 | round: 1 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-979/auto-lang | commit: f627ab599 | next: work
+
 ## 10. 待澄清事项
+
+2026-11-15 T-H0-I 规划文字与现况差异（已按"保持普通Auto规则"读法实施，未改公共面）：§5 r10 写"普通表达式/函数体中的 `let view = 1` … 保持普通Auto规则"，但当前 Auto 源面 `view` 已是保留字（auto-source.at 的 `r-view`，927 七面未消费的保留字先例），普通 profile 同样拒绝 `let view = 1`。为使 AGE 不改变既有公共接受面，本切片保持该保留字不变（未授权扩大改动；解除保留字属公共源码面承诺变更，需用户显式裁定），槽位声明改用 `r-view` token；V-H0-POSITION 的"AGE 开/关同值同型"证据改为：普通模块经 AGE 前门与 plain text-record 前门产出逐字节相同的共享 Atom 文本，且 `node`/`text`/`widget` 在两种面里都是普通标识符。若用户希望 `view` 在 AGE 面成为普通绑定（即解除保留字），需显式裁定并修订 AC-NODE-NAME 措辞。
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 本轮已确定不新增Plan：通用领域接面留979，AGE实际AV/宿主/A2R和两个游戏交981；T-01只冻结符号/命令/支持组合等实施细节。未决Node状态表示、类型方法/全局cell在新后端的具体合法化由981/SOURCE、981/RUST联语言owner核现状处理，不以归档960/961当组合已支持，不重开已交付工作。
