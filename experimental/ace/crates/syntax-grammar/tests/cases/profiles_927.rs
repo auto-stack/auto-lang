@@ -23,6 +23,9 @@ const DECLARED: &[&str] = &[
     // PLAN-979（T-H0-I）：AGE 最小 Node 领域面（text-record 全表面 + 领域节点
     // 声明，声明序紧随 text-record）。
     "age-h0",
+    // PLAN-979（T-03）：AGE 组件面（`node { model … on … view … }`，同一
+    // auto-source.at 的另一裁剪；声明序紧随 age-h0，H0 面逐字节不变）。
+    "age-component",
     "entry-unit",
     "host-console",
     // PLAN-928：集合/闭包两面。
