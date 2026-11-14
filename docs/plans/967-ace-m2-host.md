@@ -582,6 +582,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 14 | from: work | to: work | status: executing | outcome: T-12 AXR0腿交付（A2R经同一shim导出真编译真运行；域外具名拒绝保持）；A2PY ctypes腿待续 | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-12收口：A2PY ctypes腿+COVERAGE六路径收口）
+
+2026-11-14 stage: work / T-12 AXR0腿（V-AXR0-RUST/AC-10首片）| 交付: a2x-rust foreign_bridge（extern "C"+A2xResult包装器/冻结域形状检查/域外保持a2r.foreign-unsupported）、AutoTrap::Foreign(status)陷阱变体、lowering Call臂路由foreign被调者（AsStr借用）、f0_axr 2案全绿（真rustc编译fileset链接provider import lib真运行：value:9/0/65、trap:Foreign具名；record-view域外拒绝保持具名；938标量视图拒绝由原938测试保持绿）| ace-a2x组7红=cl.exe deadline并行争用（串行重放绿）| COVERAGE现值: AV/native✓ AV/Rust✓ AV/C✓ AC✓ A2C✓ **A2R✓**；A2PY待ctypes腿 | next: A2PY+收口。
+
 2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 13 | from: work | to: work | status: executing | outcome: T-12 AV-C腿交付（C provider真DLL驱动AV道；15/65/具名trap全绿）；A2R AXR0与A2PY腿待续 | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-12续：AXR0 Rust腿+A2PY腿+COVERAGE收口）
 
 2026-11-14 stage: work / T-12 AV-C腿（V-COVERAGE行）| 交付: build_c_dll（cl /LD真DLL：provider.c+生成inline shim+CRT-free失败runtime同一闭包、导出.def经-link透传、显式MSVC include+CRT lib路径）、AV stub表装载C DLL、同一use.c普通源经AV解释器执行真C机器码（scaled_len=15、status_of=65、空输入具名ForeignStatus trap）| AV-C片=标量视图帧；record/callback/inline/常量条目留各自交付道 | 验证: f0系14案全绿 | COVERAGE现值: AV/native✓ AV/Rust✓ AV/C✓ AC✓ A2C✓（938 manual+T-10 native）；A2R/A2PY待AXR0/ctypes腿 | next: T-12续。
