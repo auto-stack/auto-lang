@@ -468,14 +468,21 @@ def regular_module(run_dir, repo_root=None, budget_seconds=120.0, target_seconds
 
     if not commands['run']:
         record['missing_evidence'].append('no run.command.json (no real execution artifact)')
+    # A delivered suite whose controls expect FAIL exits 1 by contract; the
+    # expected workload exit is derived from those controls, never assumed 0.
+    case_checks = result.get('checks') or []
+    expected_case_exit = 1 if any(
+        case_oracles.get((row.get('case'), row.get('check')), 'PASS') != 'PASS'
+        for row in case_checks) else 0
     for command in commands['run']:
         meter = meter_of(command)
         if meter['exit'] == 124:
             record['problems'].append('canceled/timed-out workload: exit=124')
         elif meter['error']:
             record['problems'].append('run command error: %s' % meter['error'])
-        elif meter['exit'] not in (0, None):
-            record['problems'].append('run command exit=%s' % meter['exit'])
+        elif meter['exit'] not in (0, None, expected_case_exit):
+            record['problems'].append('run command exit=%s (expected %s)'
+                                      % (meter['exit'], expected_case_exit))
 
     is_case_row = 'checks' in result or 'artifacts' in result
     executed = result.get('executed') or 0

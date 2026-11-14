@@ -503,7 +503,7 @@ class RegularEvidenceTests(unittest.TestCase):
         # is FAIL; the report must re-derive that instead of calling it red.
         checks = [{'case': 'ac.src.wrong-stage-build-red', 'check': 'bld-red', 'status': 'FAIL'},
                   {'case': 'ac.legal', 'check': 'run', 'status': 'PASS'}]
-        run = self.make('case-control', checks=checks, executed=2, outcome='PASS')
+        run = self.make('case-control', checks=checks, executed=2, outcome='PASS', run_exit=1)
         code, record, _ = run.module_record()
         self.assertEqual(0, code)
         self.assertEqual('GREEN', record['status'])
@@ -516,6 +516,13 @@ class RegularEvidenceTests(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertTrue(any('differ from the original control expectation' in item
                             for item in record['problems']))
+
+    def test_case_run_exit_outside_the_contract_is_exit_one(self):
+        checks = [{'case': 'ac.legal', 'check': 'run', 'status': 'PASS'}]
+        run = self.make('case-bad-exit', checks=checks, executed=1, outcome='PASS', run_exit=3)
+        code, record, _ = run.module_record()
+        self.assertEqual(1, code)
+        self.assertTrue(any('run command exit=3 (expected 0)' in item for item in record['problems']))
 
     def test_case_per_check_duration_is_read_from_the_runner_report(self):
         checks = [{'case': 'ac.legal', 'check': 'run', 'status': 'PASS'},
