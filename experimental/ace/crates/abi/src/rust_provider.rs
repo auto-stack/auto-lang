@@ -431,6 +431,125 @@ pub fn open_project_session(
     open_session_from_build(&build, generation)
 }
 
+/// PLAN-967 T-12 (V-COVERAGE AV-C): build the C provider as a REAL DLL
+/// (cl /LD with an export .def listing the manifest symbols) so the AV
+/// stub table can load and dispatch it exactly like the Rust lane.
+pub fn build_c_dll(provider: &CProvider, root: &Path) -> Result<std::path::PathBuf, String> {
+    let dir = root.join("c-dll");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::copy(
+        &provider
+            .object
+            .with_file_name(format!("{}.c", provider.manifest.provider)),
+        dir.join("provider.c"),
+    )
+    .or_else(|_| {
+        // the source lives in the build dir beside the object
+        std::fs::copy(
+            &provider
+                .object
+                .with_file_name(format!("{}.c", provider.manifest.provider)),
+            dir.join("provider.c"),
+        )
+    })
+    .map_err(|e| format!("stage provider.c: {e}"))?;
+    std::fs::copy(
+        &provider
+            .object
+            .with_file_name(format!("{}.h", provider.manifest.provider)),
+        dir.join(format!("{}.h", provider.manifest.provider)),
+    )
+    .map_err(|e| format!("stage provider.h: {e}"))?;
+    let mut def = String::from(
+        "LIBRARY f0_c_provider
+EXPORTS
+",
+    );
+    for f in &provider.manifest.facts.functions {
+        def.push_str(&format!(
+            "  {}
+",
+            f.symbol
+        ));
+    }
+    def.push_str(
+        "  ace_foreign_fail
+",
+    );
+    std::fs::write(dir.join("exports.def"), def).map_err(|e| e.to_string())?;
+    let dll = dir.join("f0_c_provider.dll");
+    // cl /LD compiles AND links the DLL in one invocation
+    let tool = crate::ctool::find_cl().map_err(|e| format!("cl: {e}"))?;
+    // the MSVC include dir (same derivation as the compile path — cl /LD
+    // has no ambient INCLUDE in this environment)
+    let msvc_root = tool
+        .cl_exe
+        .ancestors()
+        .nth(4)
+        .ok_or("cannot derive MSVC root from cl path")?;
+    let msvc_include = msvc_root.join("include");
+    // the generated static-inline shim and the CRT-free failure runtime
+    // join the DLL build (one closure — the exported symbols must resolve)
+    if let Some(shim) = provider.object.with_file_name("inline_shim.c").to_str() {
+        if std::path::Path::new(shim).is_file() {
+            std::fs::copy(shim, dir.join("inline_shim.c")).map_err(|e| e.to_string())?;
+        }
+    }
+    std::fs::write(
+        dir.join("failure_runtime.c"),
+        "void ace_foreign_fail(int status);
+__declspec(dllimport) void __stdcall ExitProcess(unsigned int code);
+void ace_foreign_fail(int status) { (void)status; ExitProcess(70); }
+",
+    )
+    .map_err(|e| e.to_string())?;
+    let mut cmd = std::process::Command::new(&tool.cl_exe);
+    // the CRT link paths: MSVC lib/x64 (LIBCMT) + the SDK ucrt lib
+    cmd.args(["-nologo", "-LD"])
+        .arg(format!("-I{}", msvc_include.display()))
+        .arg(dir.join("provider.c"))
+        .arg(dir.join("inline_shim.c"))
+        .arg(dir.join("failure_runtime.c"))
+        .arg(format!("-Fe:{}", dll.display()))
+        .arg(format!("-I{}", dir.display()))
+        .arg("-link")
+        .arg(format!("-DEF:{}", dir.join("exports.def").display()))
+        .arg(format!("-LIBPATH:{}", msvc_root.join("lib/x64").display()));
+    if let Some(sdk_um) = ace_core::link::find_sdk_um_dir().ok() {
+        // <sdk>/Lib/<ver>/um/x64 -> sibling ucrt/x64 (two parents up)
+        if let Some(ucrt) = sdk_um
+            .parent()
+            .and_then(|um| um.parent())
+            .map(|lib| lib.join("ucrt/x64"))
+        {
+            cmd.arg(format!("-LIBPATH:{}", ucrt.display()));
+        }
+        cmd.arg(format!("-LIBPATH:{}", sdk_um.display()));
+    }
+    let run = ace_core::link::run_deadlined_typed(
+        &mut cmd,
+        std::time::Duration::from_secs(60),
+        ace_core::link::CaptureCaps {
+            stdout_max: 1 << 16,
+            stderr_max: 1 << 16,
+        },
+        vec![],
+    )
+    .map_err(|e| format!("cl /LD spawn: {e:?}"))?;
+    if run.exit_code != Some(0) {
+        return Err(format!(
+            "cl /LD exited {:?}: {} | {}",
+            run.exit_code,
+            String::from_utf8_lossy(&run.stdout).trim(),
+            String::from_utf8_lossy(&run.stderr).trim()
+        ));
+    }
+    if !dll.is_file() {
+        return Err(format!("DLL not produced at {}", dll.display()));
+    }
+    Ok(dll)
+}
+
 /// PLAN-967 T-02 composition: one OPEN foreign session = build → admit →
 /// load → bind, holding every identity piece alive together. Consumers
 /// (969/E0 and later A2X lanes) drive `session` and never re-assemble
