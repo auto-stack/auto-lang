@@ -156,7 +156,11 @@ stage: goal | plan_id: PLAN-1020 | plan_revision: r1 | round: 2 | from: review |
 | landed | rebase codex/plan-1020-dev onto master（+39 提交前移）；range-diff 全等（`=`×2：ecec5d80c→99e177f05、0a8195d68→cae8967de=delivery commit）；`git merge --ff-only` 成功，master tip=cae8967de |
 | canonical_verified | master 上 docs/specs/ase/m0-readiness.md（blob c6a765cf，文件 SHA16=ed2233681c5edc82）= 复审通过的 SD-01 delta |
 | archived | git mv → docs/plans/archive/1020-ase-m0-baseline-and-interface-readiness.md，status: archived，本提交落默认分支 |
-| cleaned | （待清树后回填） |
+| cleaned | 两树 wt-guard clean 后移除（auto-os 先还原 tracked 改写+junction 感知清 node_modules；auto-lang 分支 codex/plan-1020-dev 已删）；组目录含运行期生成残留 packages/pagination 一并删除；plan-artifacts/plan-1020 整删（959 文件/817.4MB），登记表刷新为 deleted-at-merge，无具名持有（D1–D7 为上游发现，材料在规范/计划内） |
+
+stage: merge | PLAN-1020 | r1 | outcome: **pass** | delivery_commit: cae8967de（rebase 映射 ecec5d80c→99e177f05、0a8195d68→cae8967de，range-diff 全等）| canonical: docs/specs/ase/m0-readiness.md（blob c6a765cf）| archive: docs/plans/archive/1020-ase-m0-baseline-and-interface-readiness.md（bookkeeping 0f4a35f89+本提交）| cleanup: 两树/组目录/plan-artifacts 全清 | next: done
+
+stage: goal | plan_id: PLAN-1020 | plan_revision: r1 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: （已移除）| commit: cae8967de | next: done
 
 生产工件观察（landing≠deployment）：本交付为纯文档（ASE 现状规范），无后端二进制/发行依赖仓/web bundle 消费方——无陈旧工件需重建/重启（显式观察，非豁免）。批量回归 due 检查：`.last-batch-regression.json` last_covered_plan_id=1043 ≥ 1020 且收据 48h 内 → **不 due**（无新 due 触发）。
 
