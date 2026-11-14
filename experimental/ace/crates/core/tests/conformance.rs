@@ -62,6 +62,8 @@ mod frontdoor_first_diag_941;
 mod observation_scope_1028;
 #[path = "cases/plan979_age_h0.rs"]
 mod plan979_age_h0;
+#[path = "cases/plan979_combined.rs"]
+mod plan979_combined;
 #[path = "cases/plan979_domain_package.rs"]
 mod plan979_domain_package;
 #[path = "cases/recovered_script_first_diag_941.rs"]

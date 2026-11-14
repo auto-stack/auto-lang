@@ -174,6 +174,9 @@ pub fn compile_domain(
 
     // 2) 领域 owner 投影（未受信）。
     let candidate = (pkg.project)(&ok, src)?;
+    // 2b) 候选自检：未受信投影必须可推进且不丢字段——越界/重复绑定、空角色、
+    //     过深/过大结构一律具名拒绝（T-08 V-08：坏包不死循环、不静默丢）。
+    validate_candidate(&candidate)?;
 
     // 3) 兼容闸：兼容拼写必须显式启用，否则原声明头 span 具名拒绝（不回落旧引擎）。
     if let Some(rule) = pkg.compat {
@@ -275,7 +278,7 @@ pub fn compile_domain(
     Ok(DomainCompilation {
         id: pkg.id,
         version: pkg.version,
-        grammar_id: ok.grammar_id,
+        grammar_id: ok.grammar_id.clone(),
         compat,
         description,
         checked,
@@ -284,6 +287,121 @@ pub fn compile_domain(
     })
 }
 
+/// 候选自检：保证驱动可推进且不静默丢字段（domain owner 的投影是不可信输入）。
+/// 深度/条数上界只防病态投影；不是语言语义限制（超限=资源/候选拒绝，非语言非法）。
+fn validate_candidate(cand: &DomainCandidate) -> Result<(), Vec<Diagnostic>> {
+    const MAX_ITEMS: usize = 100_000;
+    let mut count = 0usize;
+    let mut seen: Vec<usize> = Vec::new();
+    for item in &cand.structure {
+        validate_item(item, cand.behaviors.len(), 1, &mut count, &mut seen)?;
+    }
+    if count > MAX_ITEMS {
+        return Err(vec![text_diag(
+            "source.domain-candidate",
+            format!("domain candidate has {count} structural rows (limit {MAX_ITEMS})"),
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    Ok(())
+}
+
+fn validate_item(
+    item: &DomainItem,
+    behaviors: usize,
+    depth: usize,
+    count: &mut usize,
+    seen: &mut Vec<usize>,
+) -> Result<(), Vec<Diagnostic>> {
+    const MAX_DEPTH: usize = 64;
+    if depth > MAX_DEPTH {
+        return Err(vec![text_diag(
+            "source.domain-candidate",
+            format!("domain candidate structure is deeper than {MAX_DEPTH}"),
+            item.span,
+        )]);
+    }
+    if item.role.is_empty() {
+        return Err(vec![text_diag(
+            "source.domain-candidate",
+            "domain candidate row has an empty role",
+            item.span,
+        )]);
+    }
+    *count += 1;
+    for idx in &item.bindings {
+        if *idx >= behaviors {
+            return Err(vec![text_diag(
+                "source.domain-candidate",
+                format!(
+                    "domain candidate binding {idx} is out of range (the candidate declares \
+                     {behaviors} behaviours)"
+                ),
+                item.span,
+            )]);
+        }
+        if seen.contains(idx) {
+            return Err(vec![text_diag(
+                "source.domain-candidate",
+                format!("domain candidate binds behaviour {idx} more than once"),
+                item.span,
+            )]);
+        }
+        seen.push(*idx);
+    }
+    for child in &item.children {
+        validate_item(child, behaviors, depth + 1, count, seen)?;
+    }
+    Ok(())
+}
+
+/// 投影完整性交接检查：`required` 里的每个 role 都必须在描述里出现。
+/// 删除一条必需映射（如投影不再产出 `view` 行）时返回缺失清单 → 调用方判红；
+/// 合法近邻（多出其它 role）不受影响。这是 V-11 的通用机制，不含产品语义。
+pub fn mapping_complete(description: &[DomainRow], required: &[&str]) -> Result<(), Vec<String>> {
+    let mut present: Vec<&str> = Vec::new();
+    fn walk<'a>(rows: &'a [DomainRow], out: &mut Vec<&'a str>) {
+        for r in rows {
+            out.push(r.role.as_str());
+            walk(&r.children, out);
+        }
+    }
+    walk(description, &mut present);
+    let missing: Vec<String> = required
+        .iter()
+        .filter(|want| !present.iter().any(|p| *p == **want))
+        .map(|w| w.to_string())
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(missing)
+    }
+}
+/// 领域证据身份：包 id/版本 + grammar 身份。任一项变化即旧证据失效
+/// （本切片无投影缓存；接缓存时按此元组失效，见 T-02 未决项）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DomainIdentity {
+    pub id: &'static str,
+    pub version: DomainVersion,
+    pub grammar_id: String,
+}
+
+impl DomainCompilation {
+    /// 本次编译的证据身份（热换 schema/包后必须不同）。
+    pub fn identity(&self) -> DomainIdentity {
+        DomainIdentity {
+            id: self.id,
+            version: self.version,
+            grammar_id: self.grammar_id.clone(),
+        }
+    }
+}
+
+/// 两份证据是否来自同一身份（不同 = 旧证据失效）。
+pub fn same_evidence(a: &DomainIdentity, b: &DomainIdentity) -> bool {
+    a == b
+}
 /// 隐藏求值函数：`fn <prefix><n>() Str { return (<expr>).clone() }`（普通 Auto 源）。
 fn hidden_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
     let clone = Expr {
