@@ -346,7 +346,17 @@ fn run_suite_selected_impl(
         .iter()
         .flat_map(|f| f.specs.iter().map(move |s| (f, s)))
         .collect();
-    let parallel = std::env::var("ACE_CASE_PARALLEL").map(|v| v != "0").unwrap_or(true);
+    // 进程级一次性 fault seam（avm `fail_alloc_at` 武装"下一次引擎构造"）不能与
+    // 并发 case 共享：含此类 check 的套件保持串行，其余套件照常并行。
+    let arms_global_seam = loaded.cases.iter().any(|f| {
+        f.specs.iter().any(|spec| {
+            spec.checks.iter().any(|c| {
+                selection.matches(&spec.id, c) && c.options.avm_fail_alloc_at.is_some()
+            })
+        })
+    });
+    let parallel = std::env::var("ACE_CASE_PARALLEL").map(|v| v != "0").unwrap_or(true)
+        && !arms_global_seam;
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
