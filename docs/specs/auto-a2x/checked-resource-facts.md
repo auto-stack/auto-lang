@@ -103,3 +103,13 @@ freeze/validate/admit，篡改声明 `assembly.stale-identity` 拒。证据
 `experimental/ace/crates/av/tests/cases/stdlib_core_945.rs` 与
 `experimental/ace/tests/stdlib/tests/conformance.rs`；详见
 [../../stdlib/design/ace-core-and-text.md](../../stdlib/design/ace-core-and-text.md)。
+
+
+## PLAN-946 附录：跨单元共享实参与集合资源边界（2026-11-14）
+
+链接快照（ProgramSnapshot）按全单元 collections 族标志答 profile 谓词：跨单元
+List/Variant 实参不再 move-in 杀调用者槽位，保持调用者所有权（Rc 共享）。资源
+边界：AV arena fault 扫（每次分配尝试具名中止、live=0）＋ a2x
+`A2X_RT_FAULT_ALLOC` 于 collections 通道=typed `trap:`；失效/恢复（精确段失效、
+restore 0/0 重发、stale receipt 拒）合同见
+[../../stdlib/design/ace-collections.md](../../stdlib/design/ace-collections.md) §4。

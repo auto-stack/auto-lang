@@ -65,3 +65,12 @@
 - 文件集：`main.c`（i32 观察协议 wrapper）+ `a2x_c_coll_runtime.h`（预算/取消/故障/
   活账 + Str 层 + 迭代深链）+ `generated.c`（拓扑类型表 + 前向声明 + 片段）+
   manifest（绑定被替换**全源** sha256——暖授权身份）。
+
+
+## PLAN-946 附录：View List 参数的可变指针 ABI（2026-11-14）
+
+aggregates packages 线的 C 生成器：View 模式 `List` 参数以**可变指针**过 ABI
+（`a2x_list_* *`，调用点传址；指针参数在 list 操作位直用其名）；被调可变对调用
+者可见＝AV 共享语义的 C 镜像。容器参数此前为该序章死码分支（889 语料无容器参
+数），既有 Record/Variant 指针 ABI 不变。共享合同见
+[../../stdlib/design/ace-collections.md](../../stdlib/design/ace-collections.md) §3。

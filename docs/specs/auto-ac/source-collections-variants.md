@@ -119,3 +119,14 @@ PlaceGet/PlaceSet，token 注册表 + 访问前代际校验，stale trap 27 先�
 List<Str>/owned record 的 Place 类型在 native 准入具名拒绝。恢复→续编辑
 （`restore_collections_session`）复用校验链但不恢复活 Place/guest 值。规范正文见
 [native-fault-and-place-conformance.md](../auto-mir/native-fault-and-place-conformance.md)。
+
+
+## PLAN-946 附录：aggregates packages 面与公共 List 参数（2026-11-14）
+
+`av.aggregates/1` 准入的 packages 线（grammar profile `packages-aggregates`＝
+packages-modules 全表面＋`for-in`/`is` 语句＋`?T` 类型位＋`List<T>.member` 接收
+原子）放开 **List 参数/返回的公共函数**（跨模块 `use std.list.*` 真实包链接）；
+基面 collections profile 的"List 为函数局部值"排除（`source.list-value-context`）
+在单模块面保持，packages 基面在 binder 层 `source.module-symbol` 更早拒。跨单元
+List 实参共享调用者所有权（被调可变对调用者可见）。有限公共算法合同、域边界与
+拒绝集见 [../../stdlib/design/ace-collections.md](../../stdlib/design/ace-collections.md)。

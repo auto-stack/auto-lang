@@ -172,3 +172,16 @@ math.private_square/cube 四端 supported）由 `stdlib_assembly::contracts` 钉
 旧 a2r-std 只读核对：`str_byte_len` UTF-8 字节但 i64 宿主宽，与 ACE i32 域并列
 保留，不统一。来源链（M1-TAG 门）：tag `v0.6-ACE-M1`（commit b923362f4）为基面
 祖先，依赖 943/944/947/960 archived，实施授权=/goal（PLAN-945 §5 T-01 收据）。
+
+
+## ACE 有限集合公共算法切片分账（PLAN-946，2026-11-14）
+
+冻结公共 `std.list`（`stdlib/ace/std/list.at`，`stdlib_aggregates_inputs()` 供
+aggregates 线；身份校验同 945 冻结包）交付 `sum/find_first_gt/pop/total_len`（pop
+空形=None＝旧 `ListStorage::pop` 原合同），承载面=packages-aggregates（详见
+[design/ace-collections.md](design/ace-collections.md)）。验证：AV/native(mn)/A2C/
+A2R/A2PY 五路径实跑（A2PY 经 OS Python；rustc/cl/mn 真工具链；pop 3002 四端一致
+证被调可变可见）；**AV/C＋AV/Rust 具名 pending**（967 包级 foreign 准入解锁，
+1041 先例同款）。失效/恢复、资源边界与 ctor 歧义既有边界见 design 文件 §4/§5。
+来源链：M1-TAG v0.6-ACE-M1（b923362f4）祖先核验；依赖 943/944/945/962/947/
+1039/1040/1042/1043 archived＋967 已落主能力切片；实施授权=/goal。
