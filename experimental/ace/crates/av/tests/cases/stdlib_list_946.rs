@@ -1006,6 +1006,47 @@ fn stdlib_list_946_a2py_end_sum_find() {
     assert_eq!(out, format!("value:{}", 1504), "python stdout oracle");
 }
 
+/// T-05 resource boundary on the a2x runtimes: the allocation-fault
+/// environment knob (A2X_RT_FAULT_ALLOC) makes the FIRST list allocation
+/// fail — the exe reports the typed trap (never a wrong success, never a
+/// crash), mirroring 945's clone-fault leg for the collections channel.
+#[test]
+fn stdlib_list_946_rust_end_fault_env_traps_typed() {
+    let product = compile(&app(END_SUM_FIND)).expect("aggregates product");
+    let store = std::env::temp_dir().join(format!("pkg946-fault-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&store);
+    let mut rust = PackageA2xTarget::cold_aggregates(
+        &store,
+        "pkg946fl",
+        "app",
+        16 << 20,
+        RustTargetProvider::v1(),
+        &product,
+    )
+    .unwrap();
+    let dir = store.join("build");
+    std::fs::create_dir_all(&dir).unwrap();
+    for (path, content) in &rust.current.files {
+        std::fs::write(dir.join(path), content).unwrap();
+    }
+    let exe = dir.join("pkg.exe");
+    let mut cmd = std::process::Command::new(
+        std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()),
+    );
+    cmd.args(["--edition", "2021", "main.rs", "-o"]).arg(&exe).current_dir(&dir);
+    let built = cmd.output().expect("rustc run");
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let mut run = std::process::Command::new(&exe);
+    run.current_dir(&dir).env("A2X_RT_FAULT_ALLOC", "1");
+    let out = run.output().expect("run rust exe");
+    let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    std::fs::remove_dir_all(&store).ok();
+    assert!(
+        stdout.starts_with("trap:"),
+        "the faulted run must report the typed trap, got: {stdout}"
+    );
+}
+
 /// Grammar face (packages-aggregates): the admitted constructs parse —
 /// List<int>/List<Str> params, for-in bodies, `?int` returns, the pop
 /// body, if-inside-for with a PARENTHESIZED comparison — and the whole
