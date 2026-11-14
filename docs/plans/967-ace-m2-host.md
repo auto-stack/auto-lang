@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-14
 plan_revision: 12
-current_step: 5
+current_step: 6
 total_steps: 19
 depends_on: [PLAN-960, PLAN-962, PLAN-963, PLAN-938, PLAN-939, PLAN-1042, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-bindgen/project.md, docs/specs/auto-abi/project.md]
@@ -518,7 +518,8 @@ T-03/T-12扩947既有装配：同一AV的native/C/Rust来源绑定与资源原pr
 - [x] **T-01｜M2-A｜work｜AC-01/AC-PHASE**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 [✅ 2026-11-14]
   决定摘要+冻结见§5"T-01 决定摘要与责任冻结"：锚点核验（resync树76431e6b9）、最长链前探三态闭（native机器码probe `f0_native_machine_code_consumes_the_same_auto_binding` exit 9/ghost拒绝/重绑定10 + F0 AV腿）、两处策略实测裁定（panic标志通道、cdylib+import lib native链接）、新域资源表、COVERAGE六路径+A2C owner映射、LOAD映射、具名unknown清单。
 
-- [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
+- [x] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。 [✅ 2026-11-14 会话层+映射收尾；V-01..06执行证据按owner行在T-04汇总]
+  交付：`ForeignSession`（av-core foreign_exec：open/bind/execute/teardown/rebind/adopt，per-run授权+账本复位，teardown对后继admission与已admitted模块双拒且dispatch计数冻结）+ `F0Session`/`open_f0_session`（ace-abi：build→admit→load→bind一体保活，Drop恰释放库一次）；永久正反例 `f0_session_lifecycle_success_teardown_unauthorized_rebind`（V-02合法身份真成功/V-01 stale双拒/V-06空绑定unauthorized callee=0/provider重绑定恢复）；既有桥逐项映射+旧数字ID兼容裁定入 `docs/specs/ace-migration/m2-host.md` T-02节（C桥→T-09/10、Rust桥→F0已交+T-11、Python桥→1042/T-12、数字ID只作兼容映射）。共享事实/类型/资源合同=938/939 foreign-contract+F0 stub表（无平行语义分析）；V-03/V-04回调全量留939 native道至T-08，V-05重入=foreign_exec单测。
 
 - [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
@@ -559,6 +560,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 5 | from: work | to: work | status: executing | outcome: T-02完成（会话层+永久正反例+桥映射） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-03 真实consumer/目标/装配/权限/增量/失败恢复接线）
+
+2026-11-14 stage: work / T-02（AC-02）| 交付: ForeignSession+F0Session组合层、f0_session_lifecycle永久正反例、桥映射与数字ID裁定入spec | 验证: rust_f0 7 E2E全绿（5 F0+native probe+session lifecycle）、av-core foreign_exec单测绿、fmt清理 | 边界: V-03/V-04回调全量939 native道至T-08；V-01..06全量执行证据按owner行T-04汇总 | next: T-03。
 
 2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 4 | from: work | to: work | status: executing | outcome: T-01完成（前探+冻结） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-02 主能力实现）
 
