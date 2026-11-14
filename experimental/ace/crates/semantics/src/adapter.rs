@@ -574,6 +574,16 @@ fn project_stmt(s: &core_ast::Stmt) -> Result<InputStmt, String> {
             let _ = span;
             return Err("aggregates control/generator statement is outside this adapter's inference surface".into());
         }
+        // PLAN-966（T-02）：语句级 CT 必须在装配期折叠；到达语义适配即受控
+        // 拒绝（不静默当普通语句）。
+        core_ast::Stmt::HashIf { span, .. }
+        | core_ast::Stmt::HashFor { span, .. }
+        | core_ast::Stmt::HashIs { span, .. } => {
+            let _ = span;
+            return Err(
+                "a compile-time statement reached semantic adaptation without being folded".into(),
+            );
+        }
     })
 }
 

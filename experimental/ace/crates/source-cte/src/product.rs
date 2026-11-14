@@ -318,6 +318,29 @@ fn substitute_all(p: &mut Program, served: &ServedRoot) {
                     substitute_stmt_all(st, served);
                 }
             }
+            // PLAN-966（T-02）：语句级 CT 体内的 served 替换（折叠前）。
+            Stmt::HashIf { then, els, .. } => {
+                for st in then.stmts.iter_mut() {
+                    substitute_stmt_all(st, served);
+                }
+                if let Some(b) = els {
+                    for st in b.stmts.iter_mut() {
+                        substitute_stmt_all(st, served);
+                    }
+                }
+            }
+            Stmt::HashFor { body, .. } => {
+                for st in body.stmts.iter_mut() {
+                    substitute_stmt_all(st, served);
+                }
+            }
+            Stmt::HashIs { arms, .. } => {
+                for a in arms.iter_mut() {
+                    for st in a.body.stmts.iter_mut() {
+                        substitute_stmt_all(st, served);
+                    }
+                }
+            }
             Stmt::IsMatch { arms, .. } => {
                 for a in arms.iter_mut() {
                     for st in a.body.stmts.iter_mut() {

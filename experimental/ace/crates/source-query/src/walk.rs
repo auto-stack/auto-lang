@@ -21,7 +21,9 @@
 
 use crate::ident::{content_version, type_canonical, BODY_DOMAIN};
 use ace_core::atom_text::Span;
-use ace_core::source::ast::{Arg, BinOp, Block, Expr, ExprKind, Stmt, TypeWord, UnaryOp};
+use ace_core::source::ast::{
+    Arg, BinOp, Block, CtBinOp, CtExpr, Expr, ExprKind, Stmt, TypeWord, UnaryOp,
+};
 use ace_semantics_contract::ContentVersion;
 
 /// Upper bound on one body's structural nodes (a controlled rejection;
@@ -401,8 +403,115 @@ fn walk_stmt<'a>(
                 span: *span,
             })
         }
+        // PLAN-966（T-02）：语句级 CT 的结构身份——折叠前后都可稳定行走
+        //（谓词域是标量事实，字节形不进 span）。
+        Stmt::HashIf {
+            cond,
+            then,
+            els,
+            span,
+        } => {
+            push_node(nodes, canon, "stmt.hash-if", *span);
+            canon.extend_from_slice(b"hash-if");
+            canon.push(0);
+            ct_expr_canonical(cond, canon);
+            stack.push(Task::Tok("end-hash-if"));
+            if let Some(e) = els {
+                stack.push(Task::Block(e));
+            } else {
+                stack.push(Task::Tok("no-else"));
+            }
+            stack.push(Task::Block(then));
+        }
+        Stmt::HashFor {
+            var,
+            start,
+            end,
+            body,
+            span,
+        } => {
+            push_node(nodes, canon, "stmt.hash-for", *span);
+            canon.extend_from_slice(b"hash-for");
+            canon.push(0);
+            canon.extend_from_slice(var.name.as_bytes());
+            canon.push(0);
+            ct_expr_canonical(start, canon);
+            ct_expr_canonical(end, canon);
+            stack.push(Task::Tok("end-hash-for"));
+            stack.push(Task::Block(body));
+        }
+        Stmt::HashIs {
+            scrutinee,
+            arms,
+            span,
+        } => {
+            push_node(nodes, canon, "stmt.hash-is", *span);
+            canon.extend_from_slice(b"hash-is");
+            canon.push(0);
+            ct_expr_canonical(scrutinee, canon);
+            stack.push(Task::Tok("end-hash-is"));
+            for a in arms.iter().rev() {
+                canon.extend_from_slice(b"arm");
+                canon.push(0);
+                match &a.pattern {
+                    Some(p) => ct_expr_canonical(p, canon),
+                    None => {
+                        canon.extend_from_slice(b"else");
+                        canon.push(0);
+                    }
+                }
+                stack.push(Task::Block(&a.body));
+            }
+        }
     }
     Ok(())
+}
+
+/// PLAN-966（T-02）：CT 标量表达式的规范字节（无 span；结构与常量进身份）。
+fn ct_expr_canonical(e: &CtExpr, canon: &mut Vec<u8>) {
+    match e {
+        CtExpr::Int(v) => {
+            canon.extend_from_slice(b"ct-int");
+            canon.push(0);
+            canon.extend_from_slice(v.to_string().as_bytes());
+            canon.push(0);
+        }
+        CtExpr::Bool(b) => {
+            canon.extend_from_slice(if *b { b"ct-true" } else { b"ct-false" });
+            canon.push(0);
+        }
+        CtExpr::Ref { head, member, .. } => {
+            canon.extend_from_slice(b"ct-ref");
+            canon.push(0);
+            canon.extend_from_slice(head.as_bytes());
+            canon.push(0);
+            if let Some(m) = member {
+                canon.extend_from_slice(m.as_bytes());
+            }
+            canon.push(0);
+        }
+        CtExpr::Bin { op, lhs, rhs, .. } => {
+            canon.extend_from_slice(b"ct-bin");
+            canon.push(0);
+            canon.extend_from_slice(ct_op_label(*op).as_bytes());
+            canon.push(0);
+            ct_expr_canonical(lhs, canon);
+            ct_expr_canonical(rhs, canon);
+        }
+    }
+}
+
+fn ct_op_label(op: CtBinOp) -> &'static str {
+    match op {
+        CtBinOp::Eq => "eq",
+        CtBinOp::Ne => "ne",
+        CtBinOp::Lt => "lt",
+        CtBinOp::Le => "le",
+        CtBinOp::Gt => "gt",
+        CtBinOp::Ge => "ge",
+        CtBinOp::And => "and",
+        CtBinOp::Or => "or",
+    }
 }
 
 fn walk_expr<'a>(
