@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-14
 plan_revision: 12
-current_step: 3
+current_step: 4
 total_steps: 19
 depends_on: [PLAN-960, PLAN-962, PLAN-963, PLAN-938, PLAN-939, PLAN-1042, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-bindgen/project.md, docs/specs/auto-abi/project.md]
@@ -476,7 +476,8 @@ T-03/T-12扩947既有装配：同一AV的native/C/Rust来源绑定与资源原pr
 - [x] **T-F0-R｜M2-A｜owner_stage: review｜AC-F0-REVIEW**：T-F0-V的AV全部V-F0-*齐后停写，同一树独立审计F0源码→真实Rust调用/资源/负控；finding返I；只pass本切片。 [✅ 2026-11-14]
   独立审计（新上下文agent，冻结提交 f5bf3cd50）：**PASS，0 BLOCKER/0 MAJOR，5 MINOR**。逐项核验A–I（合同行忠实性/每次调用准入完整/负控区分力/预算语义/panic通道/noescape借用/前门边界/卫生/遗留物）全过；G前门与H卫生为NOTE。5 MINOR 全数修复于 d77e369b2：#1 fallible None→最小命名status（shim与manifest永不背离，+单测）、#2 装载器缺导出路径双FreeLibrary、#3 预算语义裁定入§5（每run计费输入字节取代保留输出字面读法）、#4 panic通道文档改为冻结标志协议、#5 form/ABI负控补齐（bool形声明vs i32 callable→foreign.signature，callee_count=0）。修复后 scoped 复验全绿（auto-bindgen 10、av-core foreign_exec 3、rust_f0 5）。绑定：审计基线 f5bf3cd50，修复后 d77e369b2。
 
-- [ ] **T-F0-D｜M2-A｜owner_stage: merge｜AC-F0-LAND**：T-F0-R pass后按既有phase fold正式合入并沉淀已验F0接口，交969/E0、978/B0和980/HELLO；保同树/resync继续全部原任务，不归档或冒完整FFI已交。
+- [x] **T-F0-D｜M2-A｜owner_stage: merge｜AC-F0-LAND**：T-F0-R pass后按既有phase fold正式合入并沉淀已验F0接口，交969/E0、978/B0和980/HELLO；保同树/resync继续全部原任务，不归档或冒完整FFI已交。 [✅ 2026-11-14]
+  phase fold：plan-967-dev（f5bf3cd50+d77e369b2）→ master `4c1788a79`（--no-ff，无冲突）；master 侧构建核对（auto-bindgen + ace-abi 绿）+ rust_f0 5 E2E 主检出复跑绿；spec 沉淀 `docs/specs/ace-migration/m2-host.md`（F0 已验接口表+未交付边界，SD-HELLO/SD-01 起步）+ 计划收据 `8d66dd7f7`；worktree 保留并 resync 至 `8d66dd7f7` 继续原任务。下游（969/E0、978/B0、980/HELLO）消费来源：上表 + 冻结测试。
 
 
 
@@ -523,6 +524,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 3 | from: work | to: work | status: executing | outcome: T-F0-D完成（phase fold落主+spec沉淀+resync） | worktree: D:/autostack/.wt/lang-967/auto-lang（resync至8d66dd7f7） | commit: master 4c1788a79(merge)/8d66dd7f7(docs) | next: work（T-01 全链前探/COVERAGE/LOAD 冻结）
+
+2026-11-14 stage: merge / T-F0-D（F0切片phase fold，AC-F0-LAND）| 合入: plan-967-dev → master `4c1788a79`（--no-ff；基线含并发1040收据，无冲突） | 落地核对: master构建绿（auto-bindgen/ace-abi）+ rust_f0 5 E2E 主检出绿 | 沉淀: docs/specs/ace-migration/m2-host.md（F0接口表+未交付边界）+ 计划收据 8d66dd7f7 | 树: 唯一worktree保留并resync至master，T-01..15继续 | 不归档、不勾整包完成。
 
 2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 2 | from: work | to: work | status: executing | outcome: T-F0-R完成（独立审计PASS+5修复落地） | worktree: D:/autostack/.wt/lang-967/auto-lang | commit: d77e369b2 | next: work（T-F0-D phase fold 正式落主）
 
