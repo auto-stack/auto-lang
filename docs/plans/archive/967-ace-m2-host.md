@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-967
-status: reviewed
+status: archived
 feature_name: 完整C/Rust FFI、自动binding与通用宿主资源
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-14
 plan_revision: 12
-current_step: 17
+current_step: 19
 total_steps: 19
 depends_on: [PLAN-960, PLAN-962, PLAN-963, PLAN-938, PLAN-939, PLAN-1042, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-bindgen/project.md, docs/specs/auto-abi/project.md]
@@ -611,9 +611,9 @@ ace-host既有红名单（cc0ff965e同红，分流batch-regression/对应owner�
 
 - [x] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。 [✅ 2026-11-15 两轮独立复审收口：首轮（独立上下文agent，fbe01e178）needs_fix——F1 AC-INT-1026 tag帧/F2 AC-LOAD 1043装配/F5 ABI余量三MAJOR（用户裁定"同树实现"后全部实现于43f2ecb76）+F3 测试卫生7.6GB/F4 日常道纪律（部分）/F6..F11；修复轮F3/F6/F7/F8/F10闭+F4部分（dev profile）；scoped复审（同agent，517920443）**pass**——F1/F2/F5逐项CLOSED（线规交叉核对/AV真跑/dispatch=0/PE头交叉/1043交付API原样消费/digest oracle全数成立），12受影响族案串行12/12绿（16.62s，全≤10s门），AC-INT-1026/AC-LOAD=pass、AC-ABI-COMPAT=pass（Windows可交付矩阵；运行依赖轴按B-06正名归978）；附带条件NF1死绑定+NF2校验器顺序依赖文档已落冻结提交；F4 lane-split留开放治理项] [✅ 2026-11-15]
 
-- [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
+- [x] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。 [✅ 2026-11-15：规范存款落 canonical（m2-host.md 扩至全交付面+F0；auto-bindgen/project.md 导入器节；auto-abi/project.md provider构建/缓存/真实库节；replacement-scope-and-evidence.md M2-A挂接+SD-10旧阻塞行收口）=docs-only后裔→delivery d9439e32a（rebase自c4a5690ea，range-diff全等）；merge门=受影响组ace-abi/auto-bindgen/ace-foreign-contract PASS+ace-av 1184/1184测试全绿×2（verdict FAIL仅vctip.exe detached-descendant基建，cleanup_complete，环境归因非测试红）+deck组复用631249d99证据；canonical哈希m2-host=2ebd7199dd63939f/bbaf7900d40f6680/27333270014826a0/b8485c74fda0e064] [✅ 2026-11-15]
 
-- [ ] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
+- [x] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。 [✅ 2026-11-15：对账=本计划命令输出仅落worktree target/（随树删）、OS temp（Drop清理）与plan-artifacts/plan-967（本收据后整删）；无盘符外散落目录（F3清扫7.6GB时已核）；plan-artifacts/plan-967全删（日志/复审笔记关键数字已折入§6 T-04台账与§9各收据）；retention登记刷新；wt-guard(pwsh) clean→worktree/分支/组目录移除；最终状态master=delivery，plan归档] [✅ 2026-11-15]
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
@@ -628,6 +628,9 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-15 stage: merge | plan_id: PLAN-967 | plan_revision: r12 | outcome: **pass** | checkpoints: prepared(reviewed 517920443+NF冻结提交；SD delta冻结于§5规范增量表) → landed(master ff-only=d9439e32a；rebase c4a5690ea→d9439e32a，`git range-diff`全等=安全重写证明；docs-only后裔，实现/依赖未变) → canonical_verified(m2-host.md 2ebd7199dd63939f、auto-bindgen/project.md bbaf7900d40f6680、auto-abi/project.md 27333270014826a0、replacement-scope-and-evidence.md b8485c74fda0e064@delivery) → gate(受影响组：ace-abi/auto-bindgen/ace-foreign-contract PASS；ace-av 1184/1184测试全绿×2、verdict FAIL=vctip.exe(MSVC 14.44遥测)detached基建+cleanup_complete——环境归因，av组cl测试(945/946/966/1043)固有非967代码；deck组case-ace-m2-f0-rust-967 PASS复用@631249d99) → archived(本文件→docs/plans/archive/) → cleaned(见T-07勾选) | 计时报告: 本merge会话新增用例=F1/F2/F5七案（v_int_1026 0.503/0.006s、v_abi_iface 1.031s、v_abi_life 0.943s、v_abi_target 0.371s、v_load 1.014/0.007s，串行，复审agent实测）；t15三案4.0-8.6s(-j4)；merge门运行wall=ace-abi+bindgen+fc约6min(热) + ace-av 41.7s/38.2s×2；无>10s新案；批量回归未到期（last_covered=1057@2026-11-14T14:54，967非5倍数）| evidence: 折叠后plan-artifacts/plan-967整删（2026-10-31裁定）；持有=无具名（开放项全在KNOWN-DEBT D-967-T05账面）
+
 
 2026-11-15 stage: review | review_scope: final（scoped re-review，repair合同）| reviewer: 独立上下文agent（同首轮，未参与实现） | plan_id: PLAN-967 | plan_revision: r12 | reviewed_commit: 517920443（NF1/NF2冻结提交随后落树） | outcome: **pass**（F1/F2/F5全CLOSED；AC-INT-1026/AC-LOAD=pass；AC-ABI-COMPAT=pass（Windows可交付矩阵，运行依赖轴按B-06归978为正名交接）；12受影响族案串行12/12绿16.62s全≤10s；AC-04随本pass收口）| new findings: NF1死绑定（✅已修）、NF2帧校验器UTF-8顺序依赖（✅文档化于check_tag_value）、NF3 V-ABI-LIFE措辞=跨代具名拒绝(bad-handle)非no-dispatch（✅本收据措辞采纳）| 开放治理: F4 lane-split（f0编译即被测行为vs显式构建道的固定组结构）——已记KNOWN-DEBT | 附带核实: F3全闭（7.6GB已清+temp清理）、F4部分（dev profile）、僵尸rustc已不在 | next: T-06 merge（规范沉淀+合回+归档）
 
