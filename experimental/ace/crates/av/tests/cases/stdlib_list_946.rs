@@ -1095,6 +1095,8 @@ fn stdlib_list_946_rust_end_fault_env_traps_typed() {
 #[test]
 fn stdlib_list_946_grammar_face() {
     let admitted = [
+        "pub fn f() int {\n    return 0\n}",
+        "pub fn f(xs int) int {\n    return 0\n}",
         "pub fn f(xs List<int>) int {\n    return 0\n}",
         "pub fn f(xs List<Str>) int {\n    var t = 0\n    for x in xs {\n        t = t + 1\n    }\n    return t\n}",
         "pub fn find_first_gt(xs List<int>, threshold int) ?int {\n    for x in xs {\n        if (x > threshold) {\n            return Some(x)\n        }\n    }\n    return None\n}",
