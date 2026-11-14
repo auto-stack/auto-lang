@@ -582,6 +582,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 10 | from: work | to: work | status: executing | outcome: T-10续片交付（inline shim/常量/形状审计/target轴）；opaque与callback消费函数及AV-C(T-12)仍具名 | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-10收尾片：opaque+callback消费；随后T-11）
+
+2026-11-14 stage: work / T-10续片 | 交付: provider头注解（name/target两轴具名）、raw头形状审计（varargs/union/bitfield/packing逐行具名拒绝=旧用法特征行闭合）、static inline体捕获+生成shim入provider构建（真机码42）、enum常量提取+真消费（41）、c_import 3案全绿 | 验证: rust_f0 8、auto-bindgen 10 | 具名余量: auto-C面opaque handle与callback消费函数、AV-C执行腿(T-12) | next: T-10收尾。
+
 2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 9 | from: work | to: work | status: executing | outcome: T-10首切片交付（真实预处理importer+use.c+native腿V-10）；varargs/union/bitfield/常量/inline/packing轴与AV-C腿待续 | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-10续片）
 
 2026-11-14 stage: work / T-10首切片（AC-08/V-10部分）| 交付: ctool::preprocess_c（真cl /EP）、auto-bindgen c_import（注解=元数据；有界解析器：record/enum/callback/view/out，具名c-import.*拒绝；空标量spine遵939；content_version折叠header digest）、open_c_provider（工程.h+.c→派生manifest+cl编译provider obj+观察到的include闭包）、use.c前门（CST use-c-item+lang家族校验+legacy oracle一致）、冻结fixtures cside/f0_c.{h,c}（声明位宏证真实预处理）| V-10腿（native）: record聚合3+4=7真机器码、scaled_len 9、fallible 65/命名空status exit70（CRT-free失败runtime）、header编辑翻身份+stale源拒绝、ghost注解具名拒绝、同入口恢复 | 回归: rust_f0 8、core lib 63、differential 927 13案、case套件PASS、auto-bindgen 10 全绿 | 边界: varargs/union/bitfield旧行、独立常量binding、static-inline shim、packing/target轴、AV-C腿(T-12)待续 | next: T-10续片。
