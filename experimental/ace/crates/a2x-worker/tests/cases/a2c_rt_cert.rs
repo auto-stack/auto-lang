@@ -407,9 +407,21 @@ pub(super) fn mode_contracts_941() -> Vec<CertCase> {
 #[test]
 fn rt_certify_modes_matrix() {
     let cases = mode_contracts_941();
-    for c in &cases {
-        certify_inline_case(c);
-    }
+    // PLAN-1060：各 case 独立 out_dir + 独立 worker，按有界池并行。
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .clamp(2, 6);
+    let chunk = ((cases.len() + threads - 1) / threads).max(1);
+    std::thread::scope(|s| {
+        for group in cases.chunks(chunk) {
+            s.spawn(move || {
+                for c in group {
+                    certify_inline_case(c);
+                }
+            });
+        }
+    });
 }
 
 /// PLAN-925 T-09 (V-03 axis): the trap surface certifies with kind=trap —
