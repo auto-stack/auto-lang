@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-14
 plan_revision: 12
-current_step: 13
+current_step: 14
 total_steps: 19
 depends_on: [PLAN-960, PLAN-962, PLAN-963, PLAN-938, PLAN-939, PLAN-1042, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-bindgen/project.md, docs/specs/auto-abi/project.md]
@@ -556,7 +556,7 @@ T-03/T-12扩947既有装配：同一AV的native/C/Rust来源绑定与资源原pr
 
 - [x] **T-13｜M2-A｜owner_stage: work｜AC-11/AC-NATIVE**：闭合双向import/export、适用静态/动态链接、callback重入与generation/lease；接future完成/取消端口，保原allocator与跨ABI错误语义，交968调度。 验证V-13，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。 ABI-COMPAT：V-ABI-LIFE核兼容provider新旧代的owner/allocator/pin/卸载边界，不跨代接管旧handle。 [✅ 2026-11-14：future端口绑会话generation（teardown/rebind杀in-flight端口、迟到丢弃实测）；F-967-COFF-CB处置=整模split道对callback资源manifest具名fail-closed（foreign.callback-lane→939逐函数session道）；V-13行映射=export方向=939 CE bridge decks（ce-record/ce-text-view，生产case组重跑PASS）+重入/destroy一次/stale/cancel-late=同套callback/handle/txn decks（native+c腿）+本f0_t13 3案；GrantSet owner/grant维=F0身份+generation+form轴上的具名余量（§0全维账本随T-14身份键扩展）]
 
-- [ ] **T-14｜M2-A｜owner_stage: work｜AC-12**：使header/crate/toolchain/target/provider/ABI/生成器的真实读取依赖进入现有store，输出binding/shim/runtime分发清单和编译/运行工具分账合同给978。 验证V-14，证据汇入原最终work验证。 ABI-COMPAT：V-ABI-CACHE分离精确构建失效和运行兼容/选择，V-ABI-PACK交版本化工件/依赖清单给978，不造第二缓存/loader。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
+- [x] **T-14｜M2-A｜owner_stage: work｜AC-12**：使header/crate/toolchain/target/provider/ABI/生成器的真实读取依赖进入现有store，输出binding/shim/runtime分发清单和编译/运行工具分账合同给978。 验证V-14，证据汇入原最终work验证。 ABI-COMPAT：V-ABI-CACHE分离精确构建失效和运行兼容/选择，V-ABI-PACK交版本化工件/依赖清单给978，不造第二缓存/loader。 [✅ 2026-11-14：S967B层进现有783 store（BuildIdentity全轴真读：provider字节/shim字节/rustc --version/生成器身份/target/crate-types）；精确失效实测（provider编辑翻身份、shim轴独立翻、工具链轴独立翻、AUTO body编辑不触键、删工件=miss不stale-green、双rustc两身份一合同）；分发清单BuildRecord JSON（cdylib+staticlib+import lib+全轴+dumpbin核实runtime note）交978；runtime兼容轴按T-09冻结与构建缓存分账；f0_t14 2案全绿] COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
 - [ ] **T-15｜M2-A｜owner_stage: work｜AC-13/AC-NATIVE**：用钉版本真实SQLite和serde_json原工程及完整特征fixture做用户体验与资源/失败回归；汇总四端、独立oracle、缺环境和交978/985材料。 验证V-15，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。 ABI-COMPAT：汇总七个V-ABI-*真实结果及隔离消费夹具，原真实库/四端/资源义务不减，交978/985/986按既有owner接续。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
@@ -581,6 +581,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 17 | from: work | to: work | status: executing | outcome: T-14完成（BuildIdentity精确缓存+分发清单；勾选） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-15 真实库SQLite/serde_json）
+
+2026-11-14 stage: work / T-14（AC-12/V-14+V-ABI-CACHE/PACK适用部分）| 交付: provider_build_cache（S967B层、现有store、全轴真读身份、hit复用产物集rustc不重跑、六向失效/保留语义实测、双工具链两身份、BuildRecord分发清单JSON+runtime note）| 回归: f0系23案全绿 | 具名余量: 978侧安装/升级消费工件清单、ac-av分账、V-ABI-TARGET/IFACE运行轴（按T-01冻结归对应owner）| next: T-15。
 
 2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 16 | from: work | to: work | status: executing | outcome: T-13完成（端口接线+COFF-CB具名fail-closed+V-13行映射；勾选） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-14 精确缓存/BuildIdentity）
 
