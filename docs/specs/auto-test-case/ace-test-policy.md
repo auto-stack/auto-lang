@@ -74,3 +74,19 @@ ACE M2 完成后的后继包。守恒口径=效果守恒（逐例记录覆盖不
 统计有效样本数不缩），取代原十倍目标。主耗时机制须有常驻 ignored 短探针；优化不改变
 普通组/正式组互斥、串行 profile、平台/ignore/预算合同。成本合同与已交付修复面详见
 [ace-perf-cost-and-reproduction](ace-perf-cost-and-reproduction.md)。
+
+## PLAN-1060 增补（2026-11-15）：普通组预算与正式迁移的当前口径
+
+- **逐模块预算**见 [ace-regular-test-budget.md](ace-regular-test-budget.md)：21 个 ACE 职责组的
+  完整单组调用以 `T_warm ≤120s` 验收、`≤60s` 为目标；`::performance::` 排除，正式只用
+  `cargo t ace-perf`；Linux/WSL 腿归 PLAN-1061。
+- **正式迁移实际发生**：`source_foreign::performance::source_foreign_warm_body_edit_p90_gate`
+  与 `av_closures_incremental::performance::av_closures_incremental_warm_edit_p90` 迁入既有
+  `mod performance`，`cargo t ace-perf` 发现集合 94 → **96**，普通集合 286→285 / 1126→1125
+  且不含任何 `performance::` 项；13 项 policy 的分母与门限未变。
+- **判定工具**：`ace_cost_report.py --mode regular --budget-seconds 120 --target-seconds 60
+  [--cold-run]`（0=GREEN/WITHIN、1=OVER/功能失败、2=证据缺失/陈旧/歧义）；`--mode policy`
+  保持原 13 项归因语义。
+- **工具准备**：同一批产物在身份（源码/工具链/profile/features/目标/依赖）未变时复用收据，
+  不再每次调用重跑 release 构建；身份或产物哈希漂移必重建（`prepare_tools.py` 收据 schema
+  `test-tool-receipt/1`）。

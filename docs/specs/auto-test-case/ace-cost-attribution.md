@@ -43,3 +43,13 @@ TestCase报告引用。**不启动测试/Job/编译/计量，不改写任何run�
 每项必交：当前有效单轮成本（或同身份合法复用+理由）、原因证据或具名未定位阶段与下一探针、
 保慢原因/后继产品修复scope/owner建议/关闭oracle。单轮不冒正式P90（P90≤2000ms属各原
 profile正式合同）；≤60秒是完整组成本目标不是本13项强杀门。产品算法/存储/ABI修复另案不预占号。
+
+## PLAN-1060 增补（2026-11-15）：普通组/TestCase 入口的预算判定
+
+- `--mode regular` 在**原 13 项 policy 归因之外**新增两类判定：① 完整普通职责组（截断或越界
+  预算即判 OVER/FAIL，边界不取整）；② `domain=ace` 的 TestCase 入口组（同一 120/60 口径，
+  逐 check 取 runner 的原生 `duration_ms`，期望 FAIL 的元控制按 `case-control-oracles.json`
+  归因）。
+- 阶段边界单列：准备（tools）/发现/运行/父判定/复制清理分别记录；`--cold-run` 把冷构建与
+  工具构建单列为 T_cold，不混入 T_warm。
+- 非本次执行的选择项（`#[ignore]`、平台排除）记为 reclaimed/裁定排除，不计入分母也不冒 PASS。
