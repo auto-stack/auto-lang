@@ -22,6 +22,8 @@ mod f0_rich;
 mod f0_t13;
 #[path = "cases/f0_t14.rs"]
 mod f0_t14;
+#[path = "cases/f0_t15.rs"]
+mod f0_t15;
 #[path = "cases/feasibility.rs"]
 mod feasibility;
 #[path = "cases/resource.rs"]

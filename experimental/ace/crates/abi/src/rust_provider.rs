@@ -349,6 +349,24 @@ pub fn open_c_provider(root: &Path, name: &str) -> Result<CProvider, String> {
     })
     .map_err(|e| e.to_string())?;
     std::fs::copy(&header_path, build_dir.join(format!("{name}.h"))).map_err(|e| e.to_string())?;
+    // PLAN-967 T-15: the project's OTHER headers/sources (the staged
+    // dependency files — e.g. the pinned amalgamation) stage beside the
+    // copy too, so the provider's own `#include "sqlite3.h"` resolves
+    // in the build dir exactly like in the project dir.
+    if let Ok(entries) = std::fs::read_dir(root) {
+        for entry in entries.flatten() {
+            let file = entry.file_name().to_string_lossy().into_owned();
+            if (file.ends_with(".h") || file.ends_with(".c"))
+                && file != format!("{name}.h")
+                && file != format!("{name}.c")
+            {
+                let dest = build_dir.join(&*entry.file_name());
+                if !dest.is_file() {
+                    std::fs::copy(entry.path(), &dest).map_err(|e| e.to_string())?;
+                }
+            }
+        }
+    }
     // the generated static-inline shim joins the provider build (one
     // closure: the header bodies are the implementation)
     if let Some(shim) = inline_shim {
@@ -388,6 +406,330 @@ pub fn c_authority(
         available_symbols: m.facts.functions.iter().map(|f| f.symbol.clone()).collect(),
         binding_generation,
     }
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-967 T-15: pinned REAL libraries (V-15) — serde_json (Rust) and
+// SQLite (C). A clean project configures ONLY the dependency (a `dep`
+// annotation / the staged amalgamation) and the public use import; the
+// binding, shim, manifest and build unit all derive from those bytes.
+// ---------------------------------------------------------------------------
+
+/// The frozen REAL-LIBRARY Rust provider (pinned serde_json via its own
+/// `dep` annotation).
+pub fn f0_json_provider_source() -> &'static str {
+    include_str!("../rustside/f0_json.rs")
+}
+
+/// `// auto-ffi dep <name> <spec>` lines are the clean project's whole
+/// dependency configuration: the importer ignores them (they are not fn
+/// metadata) and the cargo build unit consumes them verbatim.
+pub fn provider_deps(source: &str) -> Vec<(String, String)> {
+    let mut deps = Vec::new();
+    for line in source.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("// auto-ffi dep ") {
+            let mut it = rest.trim().split_whitespace();
+            if let (Some(name), Some(spec)) = (it.next(), it.next()) {
+                deps.push((name.to_string(), spec.to_string()));
+            }
+        }
+    }
+    deps
+}
+
+/// Build a provider with REAL pinned dependencies (the B-01 source-mode
+/// build closure): a real Cargo unit — Cargo.toml generated from the
+/// provider's `dep` annotations, the provider + the GENERATED shim flat
+/// in src/, `cargo build --release --offline`. Both closure products
+/// (cdylib + staticlib) come out of the same invocation. A failed
+/// dependency resolution (wrong version / missing crate) is a NAMED
+/// error carrying cargo's own diagnostics — never a silent tool change.
+pub fn build_cargo_provider(
+    root: &Path,
+    provider_source: &str,
+) -> Result<RustProviderBuild, String> {
+    let manifest = auto_bindgen::rust_import::import(provider_source)
+        .map_err(|e| format!("{}: {}", e.code, e.message))?;
+    let shim_source = auto_bindgen::rust_import::generate_shim(&manifest);
+    let provider_digest = auto_bindgen::rust_import::provider_digest(provider_source);
+    let manual = auto_bindgen::rust_import::to_manual_manifest(
+        &manifest,
+        "f0-rust-provider/1",
+        &provider_digest,
+        &auto_bindgen::rust_import::shim_digest(&shim_source),
+    )?;
+
+    let dir = root.join("cargo-unit");
+    let src = dir.join("src");
+    std::fs::create_dir_all(&src).map_err(|e| e.to_string())?;
+
+    let mut toml = String::from(
+        "[package]
+name = \"provider_unit\"
+version = \"0.1.0\"
+edition = \"2021\"
+
+[lib]
+crate-type = [\"cdylib\", \"staticlib\"]
+path = \"src/lib.rs\"
+
+[dependencies]
+",
+    );
+    for (name, spec) in provider_deps(provider_source) {
+        toml.push_str(&format!("{name} = \"{spec}\"\n"));
+    }
+    std::fs::write(dir.join("Cargo.toml"), toml).map_err(|e| e.to_string())?;
+    std::fs::write(
+        src.join("lib.rs"),
+        format!(
+            "{provider_source}\n// PLAN-967 T-15 cargo unit: provider + generated shim, one closure.\n{shim_source}"
+        ),
+    )
+    .map_err(|e| e.to_string())?;
+
+    let (code, _out, err) = run_rustc(&["--version"], &dir)?;
+    if code != 0 {
+        return Err(format!("rustc --version failed: {err}"));
+    }
+    let rustc_identity = _out.trim().to_string();
+
+    let mut cmd = std::process::Command::new("cargo");
+    cmd.args(["build", "--release", "--offline"])
+        .current_dir(&dir)
+        .env_remove("CARGO_TARGET_DIR");
+    let run = ace_core::link::run_deadlined_typed(
+        &mut cmd,
+        std::time::Duration::from_secs(300),
+        ace_core::link::CaptureCaps {
+            stdout_max: 1 << 20,
+            stderr_max: 1 << 20,
+        },
+        vec![],
+    )
+    .map_err(|e| format!("f0.cargo-build: cargo spawn: {e:?}"))?;
+    if run.exit_code != Some(0) {
+        return Err(format!(
+            "f0.cargo-build: cargo exited {:?}: {}",
+            run.exit_code,
+            String::from_utf8_lossy(&run.stderr).trim()
+        ));
+    }
+    let out = dir.join("target/release");
+    let cdylib = out.join("provider_unit.dll");
+    if !cdylib.is_file() {
+        return Err(format!(
+            "f0.cargo-build: cdylib not produced at {}",
+            cdylib.display()
+        ));
+    }
+    let staticlib = out.join("provider_unit.lib");
+    if !staticlib.is_file() {
+        return Err(format!(
+            "f0.cargo-build: staticlib not produced at {}",
+            staticlib.display()
+        ));
+    }
+    Ok(RustProviderBuild {
+        cdylib,
+        staticlib,
+        manifest,
+        shim_source,
+        manual,
+        provider_digest,
+        rustc_identity,
+    })
+}
+
+// ---- T-15 C side: the pinned REAL SQLite amalgamation ----
+
+/// The frozen REAL-LIBRARY C provider header/implementation (the real
+/// sqlite3 open/exec/prepare/step/close line behind view frames).
+pub fn p967_sqlite_header() -> &'static str {
+    include_str!("../cside/p967_sqlite.h")
+}
+pub fn p967_sqlite_source() -> &'static str {
+    include_str!("../cside/p967_sqlite.c")
+}
+
+/// The SQLite version a staged amalgamation declares — a CONTENT read
+/// of its own sqlite3.h (`#define SQLITE_VERSION "x.y.z"`).
+pub fn sqlite_version_of(sqlite_dir: &Path) -> Result<String, String> {
+    let header_path = sqlite_dir.join("sqlite3.h");
+    let header = std::fs::read_to_string(&header_path).map_err(|e| {
+        format!(
+            "f0.sqlite-missing: cannot read {}: {e}",
+            header_path.display()
+        )
+    })?;
+    for line in header.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("#define SQLITE_VERSION") {
+            let v = rest.trim().trim_matches('"');
+            if v.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+                return Ok(v.to_string());
+            }
+        }
+    }
+    Err("f0.sqlite-missing: sqlite3.h declares no SQLITE_VERSION".into())
+}
+
+/// Locate the PINNED SQLite amalgamation by CONTENT: the cargo registry
+/// source whose sqlite3.h declares exactly `expected`. Pinning is a
+/// content fact, not a directory-name guess.
+pub fn locate_pinned_sqlite(expected: &str) -> Result<PathBuf, String> {
+    let home = std::env::var("USERPROFILE")
+        .map_err(|_| "f0.sqlite-missing: no USERPROFILE".to_string())?;
+    let src_root = PathBuf::from(home).join(".cargo/registry/src");
+    let mut candidates = Vec::new();
+    if let Ok(mirrors) = std::fs::read_dir(&src_root) {
+        for mirror in mirrors.flatten() {
+            if let Ok(packages) = std::fs::read_dir(mirror.path()) {
+                for pkg in packages.flatten() {
+                    if pkg
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with("libsqlite3-sys-")
+                    {
+                        candidates.push(pkg.path().join("sqlite3"));
+                    }
+                }
+            }
+        }
+    }
+    for dir in &candidates {
+        if sqlite_version_of(dir).as_deref() == Ok(expected) {
+            return Ok(dir.clone());
+        }
+    }
+    Err(format!(
+        "f0.sqlite-missing: no SQLite {expected} under {} ({} registry candidates scanned)",
+        src_root.display(),
+        candidates.len()
+    ))
+}
+
+/// Verify a staged amalgamation against the declared pin — the
+/// wrong-version case is a NAMED rejection, never a silent swap.
+pub fn verify_sqlite_pin(sqlite_dir: &Path, expected: &str) -> Result<(), String> {
+    let found = sqlite_version_of(sqlite_dir)?;
+    if found != expected {
+        return Err(format!(
+            "f0.sqlite-pin: the project pins sqlite ={expected} but the staged amalgamation declares {found}"
+        ));
+    }
+    Ok(())
+}
+
+/// Stage the pinned amalgamation files FLAT beside the provider project
+/// (the clean project's configured dependency).
+pub fn stage_pinned_sqlite(root: &Path, sqlite_dir: &Path) -> Result<(), String> {
+    for f in ["sqlite3.c", "sqlite3.h"] {
+        std::fs::copy(sqlite_dir.join(f), root.join(f))
+            .map_err(|e| format!("f0.sqlite-missing: stage {f}: {e}"))?;
+    }
+    Ok(())
+}
+
+/// The SDK include closure a full-CRT C compilation needs, derived from
+/// the same discovery as the lib dirs: `<sdk>/Lib/<ver>/um/x64` ->
+/// `<sdk>/Include/<ver>/{ucrt,um,shared,winrt,cppwinrt}`.
+pub fn sdk_include_dirs() -> Vec<PathBuf> {
+    let Ok(um) = ace_core::link::find_sdk_um_dir() else {
+        return Vec::new();
+    };
+    // um = <sdk>/Lib/<ver>/um/x64
+    let Some(ver_dir) = um.parent().and_then(|u| u.parent()) else {
+        return Vec::new();
+    };
+    let Some(ver) = ver_dir.file_name() else {
+        return Vec::new();
+    };
+    let Some(sdk_root) = ver_dir.parent().and_then(|l| l.parent()) else {
+        return Vec::new();
+    };
+    let inc = sdk_root.join("Include").join(ver);
+    ["ucrt", "um", "shared", "winrt", "cppwinrt"]
+        .iter()
+        .map(|s| inc.join(s))
+        .filter(|d| d.is_dir())
+        .collect()
+}
+
+/// Build the INDEPENDENT C oracle executable: `main_c` plus the pinned
+/// sources, compiled by the same real cl into a standalone exe — a
+/// separate process sharing NO FFI machinery with the provider under
+/// test (only the pinned library bytes).
+pub fn build_c_oracle(
+    root: &Path,
+    main_c: &str,
+    extra_sources: &[PathBuf],
+) -> Result<PathBuf, String> {
+    let dir = root.join("c-oracle");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("oracle_main.c"), main_c).map_err(|e| e.to_string())?;
+    for src in extra_sources {
+        let name = src.file_name().ok_or("oracle source without a name")?;
+        std::fs::copy(src, dir.join(name)).map_err(|e| e.to_string())?;
+    }
+    let tool = crate::ctool::find_cl().map_err(|e| format!("cl: {e}"))?;
+    let msvc_root = tool
+        .cl_exe
+        .ancestors()
+        .nth(4)
+        .ok_or("cannot derive MSVC root from cl path")?;
+    let exe = dir.join("p967_oracle.exe");
+    let mut cmd = std::process::Command::new(&tool.cl_exe);
+    cmd.args(["-nologo", "-O1"])
+        .arg(dir.join("oracle_main.c"))
+        .arg(format!("-I{}", dir.display()))
+        .arg(format!("-I{}", msvc_root.join("include").display()))
+        .arg(format!("-Fe:{}", exe.display()));
+    for inc in sdk_include_dirs() {
+        cmd.arg(format!("-I{}", inc.display()));
+    }
+    for src in extra_sources {
+        // only compilation units (.c) go on the command line; staged
+        // headers resolve through -I
+        if src.extension().and_then(|e| e.to_str()) == Some("c") {
+            cmd.arg(dir.join(src.file_name().ok_or("oracle source without a name")?));
+        }
+    }
+    cmd.arg("-link")
+        .arg(format!("-LIBPATH:{}", msvc_root.join("lib/x64").display()));
+    if let Ok(sdk_um) = ace_core::link::find_sdk_um_dir() {
+        if let Some(ucrt) = sdk_um
+            .parent()
+            .and_then(|um| um.parent())
+            .map(|lib| lib.join("ucrt/x64"))
+        {
+            cmd.arg(format!("-LIBPATH:{}", ucrt.display()));
+        }
+        cmd.arg(format!("-LIBPATH:{}", sdk_um.display()));
+    }
+    let run = ace_core::link::run_deadlined_typed(
+        &mut cmd,
+        std::time::Duration::from_secs(180),
+        ace_core::link::CaptureCaps {
+            stdout_max: 1 << 16,
+            stderr_max: 1 << 16,
+        },
+        vec![],
+    )
+    .map_err(|e| format!("oracle cl spawn: {e:?}"))?;
+    if run.exit_code != Some(0) {
+        return Err(format!(
+            "oracle cl exited {:?}: {} | {}",
+            run.exit_code,
+            String::from_utf8_lossy(&run.stdout).trim(),
+            String::from_utf8_lossy(&run.stderr).trim()
+        ));
+    }
+    if !exe.is_file() {
+        return Err(format!("oracle exe not produced at {}", exe.display()));
+    }
+    Ok(exe)
 }
 
 /// PLAN-967 T-09: PROJECT-level provider resolution for the `use.rs`
@@ -435,8 +777,27 @@ pub fn open_project_session(
 /// (cl /LD with an export .def listing the manifest symbols) so the AV
 /// stub table can load and dispatch it exactly like the Rust lane.
 pub fn build_c_dll(provider: &CProvider, root: &Path) -> Result<std::path::PathBuf, String> {
+    build_c_dll_with(provider, root, &[], &[])
+}
+
+/// PLAN-967 T-15: the DLL build with EXTRA compilation units and
+/// include dirs — the real-library lane stages the pinned amalgamation
+/// (sqlite3.c compiles as its own TU beside the provider) and needs the
+/// full SDK include closure (the amalgamation uses CRT + windows
+/// headers; the freestanding provider object never did).
+pub fn build_c_dll_with(
+    provider: &CProvider,
+    root: &Path,
+    extra_sources: &[PathBuf],
+    extra_includes: &[PathBuf],
+) -> Result<std::path::PathBuf, String> {
     let dir = root.join("c-dll");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    for src in extra_sources {
+        let name = src.file_name().ok_or("extra source without a name")?;
+        std::fs::copy(src, dir.join(name))
+            .map_err(|e| format!("stage extra {}: {e}", name.to_string_lossy()))?;
+    }
     std::fs::copy(
         &provider
             .object
@@ -460,11 +821,8 @@ pub fn build_c_dll(provider: &CProvider, root: &Path) -> Result<std::path::PathB
         dir.join(format!("{}.h", provider.manifest.provider)),
     )
     .map_err(|e| format!("stage provider.h: {e}"))?;
-    let mut def = String::from(
-        "LIBRARY f0_c_provider
-EXPORTS
-",
-    );
+    let dll_name = format!("{}_provider", provider.manifest.provider);
+    let mut def = format!("LIBRARY {dll_name}\nEXPORTS\n");
     for f in &provider.manifest.facts.functions {
         def.push_str(&format!(
             "  {}
@@ -472,12 +830,9 @@ EXPORTS
             f.symbol
         ));
     }
-    def.push_str(
-        "  ace_foreign_fail
-",
-    );
+    def.push_str("  ace_foreign_fail\n");
     std::fs::write(dir.join("exports.def"), def).map_err(|e| e.to_string())?;
-    let dll = dir.join("f0_c_provider.dll");
+    let dll = dir.join(format!("{dll_name}.dll"));
     // cl /LD compiles AND links the DLL in one invocation
     let tool = crate::ctool::find_cl().map_err(|e| format!("cl: {e}"))?;
     // the MSVC include dir (same derivation as the compile path — cl /LD
@@ -508,11 +863,26 @@ void ace_foreign_fail(int status) { (void)status; ExitProcess(70); }
     cmd.args(["-nologo", "-LD"])
         .arg(format!("-I{}", msvc_include.display()))
         .arg(dir.join("provider.c"))
-        .arg(dir.join("inline_shim.c"))
         .arg(dir.join("failure_runtime.c"))
         .arg(format!("-Fe:{}", dll.display()))
-        .arg(format!("-I{}", dir.display()))
-        .arg("-link")
+        .arg(format!("-I{}", dir.display()));
+    // the generated static-inline shim joins only when one exists
+    if dir.join("inline_shim.c").is_file() {
+        cmd.arg(dir.join("inline_shim.c"));
+    }
+    // T-15: the real-library extra units + their include closure
+    for inc in extra_includes {
+        cmd.arg(format!("-I{}", inc.display()));
+    }
+    for src in extra_sources {
+        // only compilation units (.c) go on the command line; headers
+        // staged beside them resolve through -I
+        if src.extension().and_then(|e| e.to_str()) == Some("c") {
+            let staged = dir.join(src.file_name().ok_or("extra source without a name")?);
+            cmd.arg(&staged);
+        }
+    }
+    cmd.arg("-link")
         .arg(format!("-DEF:{}", dir.join("exports.def").display()))
         .arg(format!("-LIBPATH:{}", msvc_root.join("lib/x64").display()));
     if let Some(sdk_um) = ace_core::link::find_sdk_um_dir().ok() {
@@ -526,9 +896,16 @@ void ace_foreign_fail(int status) { (void)status; ExitProcess(70); }
         }
         cmd.arg(format!("-LIBPATH:{}", sdk_um.display()));
     }
+    // the amalgamation TU is big — the real-library build gets a wider
+    // deadline than the freestanding provider objects
+    let deadline = if extra_sources.is_empty() {
+        std::time::Duration::from_secs(60)
+    } else {
+        std::time::Duration::from_secs(300)
+    };
     let run = ace_core::link::run_deadlined_typed(
         &mut cmd,
-        std::time::Duration::from_secs(60),
+        deadline,
         ace_core::link::CaptureCaps {
             stdout_max: 1 << 16,
             stderr_max: 1 << 16,
