@@ -1,16 +1,15 @@
 {
-  "last_covered_plan_id": 1057,
-  "timestamp": "2026-11-14T14:54:02Z",
-  "covered_commit": "eb76560bf",
+  "last_covered_plan_id": 1060,
+  "timestamp": "2026-11-14T23:23:08Z",
+  "covered_commit": "b1dbab313d4664c2f4b810e80f151c2affb1bacc",
   "command": "cargo t all",
   "legs": [
     "language-fixed-groups"
   ],
   "new_reds": [],
   "known_reds_seen": [
-    "auto-generation-core: plan988_source_bytes_compile_run_and_preserve_rejected_targets TIMEOUT at nextest slow-timeout 120s (45/46 passed; identical shape to the prior receipt) = KNOWN-DEBT-AND-RISKS D-1014-P988-BUDGET (open since 2026-11-12, owner 测试预算治理/auto-generation-core); no other red"
+    "auto-generation-core: plan988_source_bytes_compile_run_and_preserve_rejected_targets TIMEOUT at nextest slow-timeout 120s (45/46 passed; identical shape to prior receipt) = KNOWN-DEBT-AND-RISKS D-1014-P988-BUDGET (open since 2026-11-12, owner 测试预算治理/auto-generation-core)"
   ],
-  "run_dir": "target/test-groups/run-y15625yx",
-  "verdict": "known-reds-only",
-  "notes": "36 groups selected (language fixed union): 32 PASS, 3 NOT_APPLICABLE (aavm/a2r-actor-tests/auto-vm conditional), 1 FAIL as the single known red. Due trigger: plan 965 (%5) landed after the prior receipt (covered 1043); merged window 08a9e4d04..eb76560bf includes 940/946/950/955/960/965/1002/1015/1017/1020/1021/1025/1027/1028/1039/1040/1041/1042/1043/1057 and L0 fixes. ace crate groups (incl. ace-native) are not part of cargo t all, so the 2026-11-14 Windows/Linux-WSL ruling exclusion has no case in this queue; it applies to explicit ace-set runs (linux_elf_1040 legs ledger as 裁定排除 there). Ran in a quiet window after the concurrent 967 session released its builds; single instance on main."
+  "verdict": "known-reds-plus-environment-attributed",
+  "notes": "Due trigger: Plan 1060 (%5) landed after covered 1057; merged window eb76560bf..b1dbab313 includes 948/966/967/979(bookkeeping)/1059/1060. Run 2 (receipted): 36 groups = 31 PASS, 3 NOT_APPLICABLE (aavm/a2r-actor-tests/auto-vm conditional), 2 FAIL groups. auto-lang PASS incl. HTTP e2e plan724/727 async matrices after the corrupted persistent TEMP e2e project dirs (rustversion out/version.expr missing, shared deterministic temp path raced by concurrent sessions) were removed; run 1 had shown those two red before the cleanup, plus mid-run source drift from concurrent 979 docs commits (gate_passed false) -> run 1 not receipted. auto-tool-execution FAIL = 2 timing-sensitive tests (prepared_command_timeout_keeps_partial_capture, deadline_covers_blocked_stdin_with_unowned_holder) only under batch parallel load with concurrent foreign builds; isolated replay on same HEAD: 2/2 PASS (0.53s/5.05s); no commits in window touch crates/auto-tool-execution; recorded as environment-attributed, not source regressions. discovery_complete=false on run 2 reflects concurrent docs-only bookkeeping edits on the main checkout working tree during execution; code/config of selected groups unchanged at covered commit. Single instance on main; run 2 wall 614.5s after ~quiet-window wait; prior 10-minute occupancy waits listed in session record. Leftover observation (not this gate's scope): plan724/727 e2e leak deterministic TEMP dirs across runs (dozens of plan727-e2e-* dirs observed) — owner: http e2e hygiene."
 }
