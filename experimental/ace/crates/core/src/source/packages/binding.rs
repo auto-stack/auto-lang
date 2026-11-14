@@ -5255,6 +5255,75 @@ mod plan966_tests {
         assert_eq!(e.diagnostic.code, "source.cte.in-type", "{e:?}");
     }
 
+    // PLAN-966 T-02：宏调用 `#name(args)` 是语句位调用糖——按本模块函数/导入
+    // 解析（未知宏为具名未定义错误，不静默吞；命名实参不在本面）。
+    #[test]
+    fn p966_macro_call_projects_to_same_named_function_call() {
+        let src = "fn debug(x int) int { return x + 1 }\nfn main() int { #debug(41)\nreturn 0 }";
+        let bound = bind_ok(src, TargetOs::Windows);
+        let main = bound
+            .program
+            .items
+            .iter()
+            .find_map(|i| match i {
+                Item::Fn(f) if f.name.name == "main" => Some(f),
+                _ => None,
+            })
+            .expect("main");
+        let Stmt::ExprStmt { value, .. } = &main.body.stmts[0] else {
+            panic!("macro call must project as an expression statement");
+        };
+        let ExprKind::Call { callee, args } = &value.kind else {
+            panic!("macro call must project as a plain call");
+        };
+        assert_eq!(callee.name, fn_symbol("app", "main", "debug", "app::main"));
+        assert_eq!(args.len(), 1);
+        assert!(bound.references["main"].contains(&fn_symbol("app", "main", "debug", "app::main")));
+    }
+
+    #[test]
+    fn p966_macro_call_unknown_and_named_args_are_named() {
+        // 未知宏 / 不可解析名字：具名未定义（不再像旧 VM 那样静默忽略）。
+        let e = bind_err(
+            "fn main() int { #frobnicate(1)\nreturn 0 }",
+            TargetOs::Windows,
+        );
+        assert_eq!(e.diagnostic.code, "source.module-symbol", "{e:?}");
+        // 命名实参不在宏面。
+        let e = bind_err(
+            "fn debug(x int) int { return x }\nfn main() int { #debug(x: 1)\nreturn 0 }",
+            TargetOs::Windows,
+        );
+        assert_eq!(e.diagnostic.code, "source.cte.macro-args", "{e:?}");
+        // 调用者局部同名不静默捕获为其它函数：宏名与普通调用同域解析——被
+        // 局部遮蔽时绑定层不改写符号（下游按普通调用诊断），也不暗中改绑到
+        // 模块函数（见 §5 宏合同的具名限制）。
+        let bound = bind_ok(
+            "fn main() int { let debug int = 1\n#debug(2)\nreturn 0 }",
+            TargetOs::Windows,
+        );
+        let main = bound
+            .program
+            .items
+            .iter()
+            .find_map(|i| match i {
+                Item::Fn(f) if f.name.name == "main" => Some(f),
+                _ => None,
+            })
+            .expect("main");
+        let Stmt::ExprStmt { value, .. } = &main.body.stmts[1] else {
+            panic!("macro call statement");
+        };
+        let ExprKind::Call { callee, .. } = &value.kind else {
+            panic!("macro call shape");
+        };
+        assert_eq!(callee.name, "debug", "shadowed macro name is not rebound");
+        assert!(
+            bound.references["main"].is_empty(),
+            "no silent capture of the module function"
+        );
+    }
+
     // PLAN-966 T-02/V-04：语句级 `#for` 展开为重复语句；越预算具名拒且
     // 修正后同源可恢复（无半展开残留）。
     #[test]

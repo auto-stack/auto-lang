@@ -68,6 +68,8 @@ pub struct SourceKinds {
     pub hash_is_stmt: Option<u32>,
     pub hash_is_arm: Option<u32>,
     pub hash_is_pattern: Option<u32>,
+    /// PLAN-966（T-02）：宏调用语句 `#name(args)`。
+    pub hash_macro_stmt: Option<u32>,
     pub in_ct_expr: Option<u32>,
     pub in_ct_unary: Option<u32>,
     pub ns_ref: Option<u32>,
@@ -422,6 +424,7 @@ impl SourceKinds {
             hash_is_stmt: rk_opt(p, "hash-is-stmt"),
             hash_is_arm: rk_opt(p, "hash-is-arm"),
             hash_is_pattern: rk_opt(p, "hash-is-pattern"),
+            hash_macro_stmt: rk_opt(p, "hash-macro-stmt"),
             in_ct_expr: rk_opt(p, "in-ct-expr"),
             in_ct_unary: rk_opt(p, "in-ct-unary"),
             ns_ref: rk_opt(p, "ns-ref"),

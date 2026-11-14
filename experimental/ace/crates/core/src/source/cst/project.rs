@@ -3390,6 +3390,12 @@ enum Frame {
         ctx: Box<CtIsCtx>,
         pattern: Option<CtExpr>,
     },
+    /// PLAN-966（T-02）：宏调用 `#name(args)`——实参收尾后成调用语句。
+    MacroCallFinish {
+        name: Ident,
+        argc: usize,
+        span: Span,
+    },
     LetFinish {
         node: u32,
         kw: Span,
@@ -5304,6 +5310,44 @@ impl<'a> Engine<'a> {
                     span,
                 });
                 self.start_ct_arm(ctx);
+            }
+        } else if Some(kind) == self.cx.k.hash_macro_stmt {
+            // PLAN-966（T-02）：`#name(args...)`——语句位调用糖：实参按普通
+            // 表达式投影，名字按调用在绑定期解析（无独立 Log 运行时；
+            // 目标专有宏发射归 967/目标 owner）。命名实参不在本面。
+            let name_leaf = self.cx.field_child(inner, "name").expect("macro name");
+            let name = ident_of(&mut self.cx, name_leaf);
+            let args_n = self.cx.field_child(inner, "args");
+            let arg_nodes: Vec<u32> = args_n
+                .map(|an| collect_seq(&self.cx, an, self.cx.k.arg, "arg-tail"))
+                .unwrap_or_default();
+            let span = self.cx.span_of(inner);
+            let mut exprs: Vec<u32> = Vec::with_capacity(arg_nodes.len());
+            for a in &arg_nodes {
+                let leaf = self
+                    .cx
+                    .children(*a)
+                    .into_iter()
+                    .find(|&c| self.cx.tree.node(c).flags & FLAG_TRIVIA == 0)
+                    .unwrap_or(*a);
+                if self.cx.tree.kind(leaf) == self.cx.k.named_arg {
+                    let aspan = self.cx.span_of(leaf);
+                    self.cx.reject(aspan, || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.cte.macro-args",
+                            "macro calls take positional arguments only",
+                            aspan,
+                        )
+                    });
+                    continue;
+                }
+                exprs.push(leaf);
+            }
+            let argc = exprs.len();
+            self.stack.push(Frame::MacroCallFinish { name, argc, span });
+            for e in exprs.into_iter().rev() {
+                self.stack.push(Frame::ExprEnter(e));
             }
         } else if kind == self.cx.k.while_stmt.unwrap_or(u32::MAX)
             || kind == self.cx.k.for_cond_stmt.unwrap_or(u32::MAX)
@@ -7933,6 +7977,18 @@ impl<'a> Engine<'a> {
                 } else {
                     self.start_ct_arm(ctx);
                 }
+            }
+            Frame::MacroCallFinish { name, argc, span } => {
+                let mut args: Vec<Arg> = Vec::with_capacity(argc);
+                for _ in 0..argc {
+                    args.push(Arg::Pos(self.pop_e()));
+                }
+                args.reverse();
+                let value = Expr {
+                    span,
+                    kind: ExprKind::Call { callee: name, args },
+                };
+                self.vals.push(Val::S(Stmt::ExprStmt { value, span }));
             }
             Frame::WhileCond { body_n, node } => {
                 let cond = self.pop_e();
