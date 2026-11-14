@@ -10,6 +10,8 @@ mod calls;
 mod contract_layout_admission;
 #[path = "cases/f0_async.rs"]
 mod f0_async;
+#[path = "cases/f0_rich.rs"]
+mod f0_rich;
 #[path = "cases/feasibility.rs"]
 mod feasibility;
 #[path = "cases/resource.rs"]

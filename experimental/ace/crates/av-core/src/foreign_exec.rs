@@ -36,13 +36,24 @@ pub type ViewUtf8BoolFn = unsafe extern "C" fn(data: *const u8, byte_len: u64) -
 /// Fallible `(view, out) -> status` physical frame.
 pub type ViewUtf8OutI32Fn =
     unsafe extern "C" fn(data: *const u8, byte_len: u64, out: *mut i32) -> i32;
+/// PLAN-967 T-11: view + scalar frames (the importer's mixed-parameter
+/// domain — one borrowed view plus i32 scalars).
+pub type ViewI32I32ToI32Fn =
+    unsafe extern "C" fn(data: *const u8, byte_len: u64, p0: i32, p1: i32) -> i32;
+pub type ViewI32ToBoolFn = unsafe extern "C" fn(data: *const u8, byte_len: u64, p0: i32) -> u8;
+pub type ViewI32OutI32Fn =
+    unsafe extern "C" fn(data: *const u8, byte_len: u64, p0: i32, out: *mut i32) -> i32;
 
-/// The frozen F0 physical callables.
+/// The frozen F0/T-11 physical callables.
 #[derive(Clone, Copy, Debug)]
 pub enum ForeignCallable {
     PureI32(ViewUtf8I32Fn),
     PureBool(ViewUtf8BoolFn),
     FallibleOutI32(ViewUtf8OutI32Fn),
+    /// T-11 mixed frames.
+    ViewI32I32ToI32(ViewI32I32ToI32Fn),
+    ViewI32ToBool(ViewI32ToBoolFn),
+    ViewI32FallibleI32(ViewI32OutI32Fn),
 }
 
 /// One admitted stub: the (provider, symbol, content_version) identity
@@ -203,6 +214,22 @@ impl ForeignStubTable {
                             out: Some(ace_foreign_contract::ResOut::I32),
                             ..
                         })
+                    ) | (
+                        ForeignCallable::ViewI32I32ToI32(_),
+                        Some(ace_foreign_contract::ResourceForm::Pure {
+                            ret: ace_foreign_contract::ResOut::I32
+                        })
+                    ) | (
+                        ForeignCallable::ViewI32ToBool(_),
+                        Some(ace_foreign_contract::ResourceForm::Pure {
+                            ret: ace_foreign_contract::ResOut::Bool
+                        })
+                    ) | (
+                        ForeignCallable::ViewI32FallibleI32(_),
+                        Some(ace_foreign_contract::ResourceForm::Fallible {
+                            out: Some(ace_foreign_contract::ResOut::I32),
+                            ..
+                        })
                     )
                 )
             {
@@ -274,6 +301,17 @@ impl ForeignStubTable {
         declaration: &SourceDecl,
         bytes: &[u8],
     ) -> Result<ForeignDispatch, ForeignExecError> {
+        self.dispatch_view_scalars(declaration, bytes, &[])
+    }
+
+    /// PLAN-967 T-11: dispatch with the scalar lanes (the i32 lanes after
+    /// the view, materialized by the AV arm from the guest slots).
+    pub fn dispatch_view_scalars(
+        &mut self,
+        declaration: &SourceDecl,
+        bytes: &[u8],
+        scalars: &[i32],
+    ) -> Result<ForeignDispatch, ForeignExecError> {
         let idx = self.lookup(declaration).map_err(|r| {
             self.rejected_count += 1;
             ForeignExecError::Reject(r)
@@ -340,6 +378,19 @@ impl ForeignStubTable {
                 ForeignCallable::FallibleOutI32(f) => {
                     let mut out: i32 = 0;
                     let status = unsafe { f(data, byte_len, &mut out) };
+                    ForeignDispatch::Fallible(status, out)
+                }
+                // PLAN-967 T-11: mixed view+scalar frames — the scalar
+                // values ride the declaration's i32 lanes after the view.
+                ForeignCallable::ViewI32I32ToI32(f) => {
+                    ForeignDispatch::PureI32(unsafe { f(data, byte_len, scalars[0], scalars[1]) })
+                }
+                ForeignCallable::ViewI32ToBool(f) => {
+                    ForeignDispatch::PureBool(unsafe { f(data, byte_len, scalars[0]) != 0 })
+                }
+                ForeignCallable::ViewI32FallibleI32(f) => {
+                    let mut out: i32 = 0;
+                    let status = unsafe { f(data, byte_len, scalars[0], &mut out) };
                     ForeignDispatch::Fallible(status, out)
                 }
             }))

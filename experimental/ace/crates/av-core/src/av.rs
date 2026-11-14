@@ -3031,9 +3031,10 @@ fn dispatch_with_host<V: ModuleView>(
                             "foreign.callback-unsupported: the F0 AV domain admits no callback lanes".into(),
                         ));
                     }
-                    if args.len() != 1 {
+                    if args.is_empty() || args.len() > 4 {
                         return Some(ExecOutcome::Infra(
-                            "foreign.arity: the F0 AV domain admits exactly one view lane".into(),
+                            "foreign.arity: the AV foreign domain admits one view plus up to three scalar lanes"
+                                .into(),
                         ));
                     }
                     if CancelCheck::poll(cancel) {
@@ -3051,7 +3052,24 @@ fn dispatch_with_host<V: ModuleView>(
                         Ok(view) => view,
                         Err(out) => return Some(out),
                     };
-                    let dispatched = table.dispatch_view(declaration, view.bytes());
+                    // PLAN-967 T-11: the lanes AFTER the view are i32
+                    // scalars (bool lanes narrow to their 0/1 i32 spine —
+                    // the manifest keeps the resource sig authoritative).
+                    let mut scalars = [0i32; 3];
+                    for (slot, out) in args[1..].iter().zip(scalars.iter_mut()) {
+                        match &frame.slots[*slot as usize] {
+                            Value::I32(n) => *out = *n,
+                            Value::Bool(b) => *out = *b as i32,
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "foreign.lane: scalar lane holds {}",
+                                    other.type_name()
+                                )))
+                            }
+                        }
+                    }
+                    let dispatched =
+                        table.dispatch_view_scalars(declaration, view.bytes(), &scalars);
                     match dispatched {
                         Ok(crate::foreign_exec::ForeignDispatch::PureI32(n)) => {
                             if let Err(out) =

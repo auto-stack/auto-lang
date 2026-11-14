@@ -8,6 +8,11 @@
 use std::path::{Path, PathBuf};
 
 /// The frozen F0 provider fixture (the annotations ARE the metadata).
+/// PLAN-967 T-11: the frozen RICH provider fixture.
+pub fn f0_rich_provider_source() -> &'static str {
+    include_str!("../rustside/f0_rich.rs")
+}
+
 pub fn f0_provider_source() -> &'static str {
     include_str!("../rustside/f0_text.rs")
 }
@@ -17,6 +22,9 @@ pub fn f0_provider_source() -> &'static str {
 #[derive(Clone)]
 pub struct RustProviderBuild {
     pub cdylib: PathBuf,
+    /// PLAN-967 T-11 (B-02): the staticlib product of the same build
+    /// closure (native-relink distribution form).
+    pub staticlib: PathBuf,
     pub manifest: auto_bindgen::rust_import::RustProviderManifest,
     pub shim_source: String,
     pub manual: ace_foreign_contract::manual::ManualManifest,
@@ -25,7 +33,10 @@ pub struct RustProviderBuild {
 }
 
 fn run_rustc(args: &[&str], cwd: &Path) -> Result<(i32, String, String), String> {
-    let mut command = std::process::Command::new("rustc");
+    // PLAN-967 T-11 (V-ABI-CROSS): an explicit second-toolchain override;
+    // the default stays the ambient rustc; identity is recorded per build.
+    let program = std::env::var("AC741_RUSTC").unwrap_or_else(|_| "rustc".into());
+    let mut command = std::process::Command::new(program);
     command.args(args).current_dir(cwd);
     let run = ace_core::link::run_deadlined_typed(
         &mut command,
@@ -113,8 +124,37 @@ pub fn build_source(root: &Path, source: &str) -> Result<RustProviderBuild, Stri
     if !cdylib.is_file() {
         return Err(format!("cdylib not produced at {}", cdylib.display()));
     }
+    // PLAN-967 T-11 (B-02): the STATICLIB artifact — the native-relink
+    // distribution form (one more product of the SAME build closure; its
+    // LTO/link-tool conditions are the consumer's contract, recorded by
+    // the artifact existing beside the cdylib).
+    let (code, _out, err) = run_rustc(
+        &[
+            "--edition",
+            "2021",
+            "--crate-type",
+            "staticlib",
+            "--crate-name",
+            "f0_text_provider",
+            "--cap-lints",
+            "allow",
+            "-O",
+            "src/lib.rs",
+            "--out-dir",
+            out.to_str().ok_or("non-utf8 out dir")?,
+        ],
+        &crate_dir,
+    )?;
+    if code != 0 {
+        return Err(format!("rustc staticlib build failed: {err}"));
+    }
+    let staticlib = out.join("f0_text_provider.lib");
+    if !staticlib.is_file() {
+        return Err(format!("staticlib not produced at {}", staticlib.display()));
+    }
     Ok(RustProviderBuild {
         cdylib,
+        staticlib,
         manifest,
         shim_source,
         manual,
@@ -497,11 +537,34 @@ pub fn load(build: &RustProviderBuild, generation: u64) -> Result<LoadedRustProv
                 f.export
             ));
         }
+        // PLAN-967 T-11: mixed view+scalar frames select their callable
+        // by the PARAM SHAPE + form (view first, then i32 lanes).
+        let view_first = matches!(
+            f.params.first(),
+            Some(auto_bindgen::rust_import::RustParam::ViewUtf8)
+        );
+        let scalars = f
+            .params
+            .iter()
+            .filter(|p| matches!(p, auto_bindgen::rust_import::RustParam::I32))
+            .count();
         let callable = match f.form {
+            auto_bindgen::rust_import::RustFnForm::PureI32 if view_first && scalars == 2 => unsafe {
+                ace_av_core::foreign_exec::ForeignCallable::ViewI32I32ToI32(std::mem::transmute::<
+                    _,
+                    unsafe extern "C" fn(*const u8, u64, i32, i32) -> i32,
+                >(sym))
+            },
             auto_bindgen::rust_import::RustFnForm::PureI32 => unsafe {
                 ace_av_core::foreign_exec::ForeignCallable::PureI32(std::mem::transmute::<
                     _,
                     unsafe extern "C" fn(*const u8, u64) -> i32,
+                >(sym))
+            },
+            auto_bindgen::rust_import::RustFnForm::PureBool if view_first && scalars == 1 => unsafe {
+                ace_av_core::foreign_exec::ForeignCallable::ViewI32ToBool(std::mem::transmute::<
+                    _,
+                    unsafe extern "C" fn(*const u8, u64, i32) -> u8,
                 >(sym))
             },
             auto_bindgen::rust_import::RustFnForm::PureBool => unsafe {
@@ -509,6 +572,16 @@ pub fn load(build: &RustProviderBuild, generation: u64) -> Result<LoadedRustProv
                     _,
                     unsafe extern "C" fn(*const u8, u64) -> u8,
                 >(sym))
+            },
+            auto_bindgen::rust_import::RustFnForm::FallibleI32 { .. }
+                if view_first && scalars == 1 =>
+            unsafe {
+                ace_av_core::foreign_exec::ForeignCallable::ViewI32FallibleI32(
+                    std::mem::transmute::<
+                        _,
+                        unsafe extern "C" fn(*const u8, u64, i32, *mut i32) -> i32,
+                    >(sym),
+                )
             },
             auto_bindgen::rust_import::RustFnForm::FallibleI32 { .. } => unsafe {
                 ace_av_core::foreign_exec::ForeignCallable::FallibleOutI32(std::mem::transmute::<

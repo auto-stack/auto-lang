@@ -728,7 +728,7 @@ fn main() int { return text_byte_len(\"A中😀\0\") }",
         Ok(_) => panic!("a broken provider must not open"),
     };
     assert!(
-        rejected.contains("rust-import.domain"),
+        rejected.contains("rust-import.owned-text"),
         "named import rejection, got: {rejected}"
     );
 

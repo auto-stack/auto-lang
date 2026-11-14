@@ -64,6 +64,17 @@ pub struct RustFnEntry {
     /// The `#[no_mangle]` C export name (the sanitized symbol).
     pub export: String,
     pub form: RustFnForm,
+    /// T-11: the ordered parameter shapes (`view_utf8 | i32 | bool`).
+    /// Exactly one `view_utf8` maximum; scalars ride as C lanes.
+    pub params: Vec<RustParam>,
+}
+
+/// One parameter shape of an imported Rust function.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RustParam {
+    ViewUtf8,
+    I32,
+    Bool,
 }
 
 /// The frozen F0 calling shapes.
@@ -120,6 +131,7 @@ pub fn import(source: &str) -> Result<RustProviderManifest, ImportError> {
             }
         }
     }
+    audit_rust_shapes(source)?;
     let (provider, interface_version, target, profile) = header.ok_or_else(|| {
         err(
             "rust-import.header",
@@ -140,10 +152,11 @@ pub fn import(source: &str) -> Result<RustProviderManifest, ImportError> {
     }
     let mut functions = Vec::with_capacity(annotations.len());
     for a in annotations {
-        // The annotated function must exist in the source with a frozen
-        // F0 signature: metadata may never invent or widen a provider.
-        let ret = require_pub_fn_signature(source, &a.rust_name)?;
-        let form = match (a.form.as_str(), a.ret.as_deref(), ret.as_str()) {
+        // The annotated function must exist in the source with an
+        // importable signature: metadata may never invent or widen a
+        // provider (params + ret cross-checked against the annotation).
+        let (params, ret_kind) = require_pub_fn_signature(source, &a.rust_name)?;
+        let form = match (a.form.as_str(), a.ret.as_deref(), ret_kind.as_str()) {
             ("pure", Some("i32"), "i32") => RustFnForm::PureI32,
             ("pure", Some("bool"), "bool") => RustFnForm::PureBool,
             ("fallible", None, "Option<i32>") => RustFnForm::FallibleI32 { errors: a.errors },
@@ -172,6 +185,7 @@ pub fn import(source: &str) -> Result<RustProviderManifest, ImportError> {
             symbol: a.symbol,
             export,
             form,
+            params,
         });
     }
     Ok(RustProviderManifest {
@@ -366,10 +380,59 @@ fn sanitize_symbol(symbol: &str) -> Result<String, ImportError> {
     Ok(symbol.replace('.', "_"))
 }
 
-/// The provider source must really declare `pub fn <name>(<p>: &str) -> T`
-/// with exactly one `&str` parameter and no generics; returns the declared
-/// Rust return type (`i32`/`bool`).
-fn require_pub_fn_signature(source: &str, name: &str) -> Result<String, ImportError> {
+/// T-11 shape audit over the WHOLE provider source: shapes outside the
+/// importable domain are NAMED per-row rejections (owned text/lists,
+/// generics on any fn, async fns, trait objects, mutable borrows) —
+/// closing the String/Vec/Result/future boundary rows as named facts.
+pub fn audit_rust_shapes(source: &str) -> Result<(), ImportError> {
+    for (idx, line) in source.lines().enumerate() {
+        let t = line.trim();
+        if t.starts_with("async fn") || t.contains(" async fn ") {
+            return Err(err(
+                "rust-import.future",
+                format!("async fn at line {}: futures are outside the import domain (T-13 ports own completion)", idx + 1),
+            ));
+        }
+        if t.starts_with("pub fn ")
+            && t.contains('<')
+            && t.contains('>')
+            && t.split('(')
+                .next()
+                .map(|h| h.contains("fn "))
+                .unwrap_or(false)
+            && t.contains(" -> ")
+        {
+            // a generic fn head: `pub fn name<T...>(...`
+            let head = t.split('(').next().unwrap_or("");
+            if head.contains('<') {
+                return Err(err(
+                    "rust-import.generics",
+                    format!("generic fn at line {}: import the CONCRETE instances (annotation on the monomorphic fn)", idx + 1),
+                ));
+            }
+        }
+        if t.contains("dyn ") {
+            return Err(err(
+                "rust-import.trait-object",
+                format!(
+                    "trait object at line {}: trait objects never cross the C boundary",
+                    idx + 1
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The provider source must really declare `pub fn <name>(<params>) -> T`
+/// with params drawn from the frozen T-11 domain — at most ONE borrowed
+/// `&str` plus i32/bool scalars (any order); returns `i32`/`bool` (pure)
+/// or `Option<i32>` (fallible). Every shape outside the domain is a
+/// NAMED rejection, never a narrowing. Returns (param shapes, ret kind).
+fn require_pub_fn_signature(
+    source: &str,
+    name: &str,
+) -> Result<(Vec<RustParam>, String), ImportError> {
     let needle = format!("pub fn {name}(");
     let Some(pos) = source.find(&needle) else {
         return Err(err(
@@ -384,42 +447,71 @@ fn require_pub_fn_signature(source: &str, name: &str) -> Result<String, ImportEr
             format!("cannot find the parameter list end for fn `{name}`"),
         ));
     };
-    let params = after[..close].trim();
-    if params.is_empty() {
-        return Err(err(
-            "rust-import.domain",
-            format!("fn `{name}` must take exactly one `&str` parameter"),
-        ));
+    let params_text = after[..close].trim();
+    let mut params = Vec::new();
+    let mut views = 0usize;
+    if !params_text.is_empty() {
+        for raw in params_text.split(',') {
+            let param = raw.trim();
+            let ty = param.rsplit(':').next().unwrap_or("").trim();
+            let borrowed = ty.strip_prefix('&').unwrap_or(ty);
+            let borrowed = borrowed.trim_start_matches('\'').trim();
+            if borrowed == "str" {
+                if views == 1 {
+                    return Err(err(
+                        "rust-import.domain",
+                        format!("fn `{name}` has two view parameters; at most one borrowed UTF-8 view is importable"),
+                    ));
+                }
+                views += 1;
+                params.push(RustParam::ViewUtf8);
+                continue;
+            }
+            match ty {
+                "i32" => params.push(RustParam::I32),
+                "bool" => params.push(RustParam::Bool),
+                "String" | "&String" => {
+                    return Err(err(
+                        "rust-import.owned-text",
+                        format!("fn `{name}` takes an owned String; owned text crossing needs the allocator lane (T-13/T-15)"),
+                    ))
+                }
+                "Vec" | _ if ty.starts_with("Vec<") => {
+                    return Err(err(
+                        "rust-import.owned-list",
+                        format!("fn `{name}` takes a Vec; owned lists need their lane (T-13/T-15)"),
+                    ))
+                }
+                _ if ty.starts_with("&mut ") || borrowed.starts_with("mut ") => {
+                    return Err(err(
+                        "rust-import.mut-borrow",
+                        format!("fn `{name}` takes a mutable borrow; mut crossing rides the record-lane roles, not raw &mut"),
+                    ))
+                }
+                _ => {
+                    return Err(err(
+                        "rust-import.domain",
+                        format!("fn `{name}` parameter `{param}` is outside the importable domain (view_utf8 | i32 | bool)"),
+                    ))
+                }
+            }
+        }
     }
-    // Exactly one parameter, spelled `<ident>: &str` (a lifetime prefix
-    // on the reference is allowed; nothing else is).
-    let param = params.split(',').collect::<Vec<_>>();
-    if param.len() != 1 {
+    if params.len() > 4 {
         return Err(err(
             "rust-import.domain",
             format!(
-                "fn `{name}` has {} parameters; the F0 domain takes exactly one `&str`",
-                param.len()
+                "fn `{name}` has {} parameters; the frozen frame caps at 4",
+                params.len()
             ),
-        ));
-    }
-    let param = param[0].trim();
-    // Accept `<ident>: &str` and `<ident>: &'lifetime str`; the type part
-    // must be exactly a borrowed str — nothing wider, nothing owned.
-    let ty = param.rsplit(':').next().unwrap_or("").trim();
-    let borrowed = ty.strip_prefix('&').unwrap_or(ty).trim_start_matches('\'');
-    if !borrowed.ends_with("str") || borrowed != "str" {
-        return Err(err(
-            "rust-import.domain",
-            format!("fn `{name}` parameter `{param}` is not a borrowed `&str`"),
         ));
     }
     let rest = &after[close + 1..];
     let rest_trim = rest.trim_start();
     if rest_trim.starts_with('<') {
         return Err(err(
-            "rust-import.domain",
-            format!("fn `{name}` is generic; generics stay outside F0 (PLAN-963 owns them)"),
+            "rust-import.generics",
+            format!("fn `{name}` is generic; import the CONCRETE instances"),
         ));
     }
     let Some(arrow) = rest_trim.find("->") else {
@@ -434,13 +526,25 @@ fn require_pub_fn_signature(source: &str, name: &str) -> Result<String, ImportEr
         .next()
         .unwrap_or("")
         .trim();
-    if ret != "i32" && ret != "bool" && ret != "Option<i32>" {
-        return Err(err(
+    match ret {
+        "i32" | "bool" | "Option<i32>" => Ok((params, ret.to_string())),
+        "String" => Err(err(
+            "rust-import.owned-text",
+            format!("fn `{name}` returns an owned String; owned text crossing needs the allocator lane (T-13/T-15)"),
+        )),
+        other if other.starts_with("Vec<") => Err(err(
+            "rust-import.owned-list",
+            format!("fn `{name}` returns an owned Vec; owned lists need their lane (T-13/T-15)"),
+        )),
+        other if other.starts_with("Result<") => Err(err(
+            "rust-import.result-type",
+            format!("fn `{name}` returns {other}; map the error set to the fallible status contract (Option<i32> + named codes)"),
+        )),
+        other => Err(err(
             "rust-import.domain",
-            format!("fn `{name}` returns `{ret}`; F0 fns return i32, bool or Option<i32>"),
-        ));
+            format!("fn `{name}` returns `{other}`; importable returns are i32, bool, Option<i32>"),
+        )),
     }
-    Ok(ret.to_string())
 }
 
 /// Generate the C-compatible shim source for the whole provider. The
@@ -499,31 +603,72 @@ pub fn generate_shim(manifest: &RustProviderManifest) -> String {
          }\n\n",
     );
     for f in &manifest.functions {
-        let call = format!("{}(__f0_view(data, byte_len))", f.rust_name);
-        match f.form {
-            RustFnForm::PureI32 => {
-                out.push_str(&format!(
-                    "#[no_mangle]\npub extern \"C\" fn {export}(data: *const u8, byte_len: u64) -> i32 {{\n    match std::panic::catch_unwind(|| {{ {call} }}) {{\n        Ok(v) => v,\n        Err(_) => {{ __F0_PANIC_FLAG.store(1, std::sync::atomic::Ordering::SeqCst); 0 }}\n    }}\n}}\n\n",
-                    export = f.export,
-                ));
+        // The T-11 general frame: the view (when present) opens as
+        // (data, byte_len); every scalar rides as its C lane; the
+        // fallible form appends the out pointer.
+        let mut params_c = String::new();
+        let mut args_rust = String::new();
+        if f.params.iter().any(|p| matches!(p, RustParam::ViewUtf8)) {
+            params_c.push_str("data: *const u8, byte_len: u64");
+            args_rust.push_str("__f0_view(data, byte_len)");
+        }
+        let mut scalar_idx = 0;
+        for p in &f.params {
+            match p {
+                RustParam::ViewUtf8 => {}
+                RustParam::I32 => {
+                    if !params_c.is_empty() {
+                        params_c.push_str(", ");
+                        args_rust.push_str(", ");
+                    }
+                    params_c.push_str(&format!("p{scalar_idx}: i32"));
+                    args_rust.push_str(&format!("p{scalar_idx}"));
+                    scalar_idx += 1;
+                }
+                RustParam::Bool => {
+                    if !params_c.is_empty() {
+                        params_c.push_str(", ");
+                        args_rust.push_str(", ");
+                    }
+                    params_c.push_str(&format!("p{scalar_idx}: bool"));
+                    args_rust.push_str(&format!("p{scalar_idx}"));
+                    scalar_idx += 1;
+                }
             }
-            RustFnForm::FallibleI32 { ref errors } => {
-                // `None` maps to the SMALLEST named negative status (the
-                // same canonical order `to_manual_manifest` freezes for
-                // the error-model table — manifest and physical behavior
-                // can never disagree; audit finding #1).
+        }
+        let none_code = match &f.form {
+            RustFnForm::FallibleI32 { errors } => {
                 let mut codes: Vec<i32> = errors.iter().map(|(_, c)| *c).collect();
                 codes.sort_unstable();
-                let none_code = codes[0];
+                codes[0]
+            }
+            _ => 0,
+        };
+        match &f.form {
+            RustFnForm::PureI32 => {
                 out.push_str(&format!(
-                    "#[no_mangle]\npub extern \"C\" fn {export}(data: *const u8, byte_len: u64, out: *mut i32) -> i32 {{\n    match std::panic::catch_unwind(|| {{ {call} }}) {{\n        Ok(Some(v)) => {{ unsafe {{ *out = v; }} 0 }}\n        Ok(None) => {none_code},\n        Err(_) => {{ __F0_PANIC_FLAG.store(1, std::sync::atomic::Ordering::SeqCst); {none_code} }}\n    }}\n}}\n\n",
+                    "#[no_mangle]\npub extern \"C\" fn {export}({params_c}) -> i32 {{\n    match std::panic::catch_unwind(|| {{ {name}({args_rust}) }}) {{\n        Ok(v) => v,\n        Err(_) => {{ __F0_PANIC_FLAG.store(1, std::sync::atomic::Ordering::SeqCst); 0 }}\n    }}\n}}\n\n",
                     export = f.export,
+                    name = f.rust_name,
+                ));
+            }
+            RustFnForm::FallibleI32 { .. } => {
+                let out_param = if params_c.is_empty() {
+                    "out: *mut i32".to_string()
+                } else {
+                    format!(", out: *mut i32")
+                };
+                out.push_str(&format!(
+                    "#[no_mangle]\npub extern \"C\" fn {export}({params_c}{out_param}) -> i32 {{\n    match std::panic::catch_unwind(|| {{ {name}({args_rust}) }}) {{\n        Ok(Some(v)) => {{ unsafe {{ *out = v; }} 0 }}\n        Ok(None) => {none_code},\n        Err(_) => {{ __F0_PANIC_FLAG.store(1, std::sync::atomic::Ordering::SeqCst); {none_code} }}\n    }}\n}}\n\n",
+                    export = f.export,
+                    name = f.rust_name,
                 ));
             }
             RustFnForm::PureBool => {
                 out.push_str(&format!(
-                    "#[no_mangle]\npub extern \"C\" fn {export}(data: *const u8, byte_len: u64) -> u8 {{\n    match std::panic::catch_unwind(|| {{ {call} }}) {{\n        Ok(v) => v as u8,\n        Err(_) => {{ __F0_PANIC_FLAG.store(1, std::sync::atomic::Ordering::SeqCst); 0 }}\n    }}\n}}\n\n",
+                    "#[no_mangle]\npub extern \"C\" fn {export}({params_c}) -> u8 {{\n    match std::panic::catch_unwind(|| {{ {name}({args_rust}) }}) {{\n        Ok(v) => v as u8,\n        Err(_) => {{ __F0_PANIC_FLAG.store(1, std::sync::atomic::Ordering::SeqCst); 0 }}\n    }}\n}}\n\n",
                     export = f.export,
+                    name = f.rust_name,
                 ));
             }
         }
@@ -555,6 +700,15 @@ pub fn to_manual_manifest(
     let mut effects = Vec::new();
     let mut declarations = Vec::new();
     for f in &manifest.functions {
+        let lanes: Vec<ResKind> = f
+            .params
+            .iter()
+            .map(|p| match p {
+                RustParam::ViewUtf8 => ResKind::ViewText,
+                RustParam::I32 => ResKind::I32,
+                RustParam::Bool => ResKind::Bool,
+            })
+            .collect();
         let (form, error_model, resource, effect) = match &f.form {
             RustFnForm::PureI32 => (
                 FnForm::Pure {
@@ -608,7 +762,7 @@ pub fn to_manual_manifest(
             semantic_ref: None,
             resource: Some(ResourceSig {
                 format: RESOURCE_SIG_FORMAT.into(),
-                params: vec![ResKind::ViewText],
+                params: lanes,
                 form: resource,
                 atomic: false,
                 noescape: true,
@@ -727,10 +881,10 @@ pub fn text_first_byte(s: &str) -> Option<i32> { s.as_bytes().first().map(|b| *b
         assert_eq!(import(missing).unwrap_err().code, "rust-import.domain");
         // generic signature
         let generic = "//! auto-ffi provider p/1 target=x86_64-pc-windows-msvc profile=p.v1\n// auto-ffi fn g symbol=p.g.v1 form=pure ret=i32\npub fn g<T>(s: &str) -> i32 { 0 }\n";
-        assert_eq!(import(generic).unwrap_err().code, "rust-import.domain");
+        assert_eq!(import(generic).unwrap_err().code, "rust-import.generics");
         // owned String param
         let owned = "//! auto-ffi provider p/1 target=x86_64-pc-windows-msvc profile=p.v1\n// auto-ffi fn o symbol=p.o.v1 form=pure ret=i32\npub fn o(s: String) -> i32 { 0 }\n";
-        assert_eq!(import(owned).unwrap_err().code, "rust-import.domain");
+        assert_eq!(import(owned).unwrap_err().code, "rust-import.owned-text");
         // ret mismatch with annotation
         let mismatch = "//! auto-ffi provider p/1 target=x86_64-pc-windows-msvc profile=p.v1\n// auto-ffi fn m symbol=p.m.v1 form=pure ret=bool\npub fn m(s: &str) -> i32 { 0 }\n";
         assert_eq!(import(mismatch).unwrap_err().code, "rust-import.domain");
