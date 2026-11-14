@@ -4366,8 +4366,8 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 | F1 AC-INT-1026 | MAJOR | kwargs/receiver tag 帧未实现（T-09 冻结字段后 T-11/12 未接），V-INT-1026 无腿 | 待裁定：同树实现或计划修订外移 |
 | F2 AC-LOAD | MAJOR | 1043 来源后缀/#in 装配的 FFI provider 消费腿未落（owner 链 T-03→T-12→T-04 断头） | 待裁定：同树实现或外移 |
 | F5 AC-ABI-COMPAT | MAJOR | V-ABI-TARGET/IFACE 运行准入矩阵、V-ABI-LIFE v1/v2 并存 leg 未交付；"归978"归因未被 §5 支持（B-06 只给 978 构建/分发） | 待裁定：同树实现（Windows 可做 manifest×工件交叉核验/错target拒绝）或用户批准外移 |
-| F3 测试卫生 | MAJOR | f0 系测试硬编码 plan-artifacts/plan-967/tests 作用域、无清理：实测 767 目录/7.6GB；merge 全删后下一跑即复活 | 同树修复：临时目录+drop 清理+merge 前清扫 |
-| F4 日常道纪律 | MAJOR | f0/c_import E2E 在日常 ace-abi 组内 spawn rustc/cl/cargo（含 --release），与 2026-11-14 测试纪律的显式构建道要求冲突 | 同树修复：显式构建/集成道或预构建绑定 |
+| F3 测试卫生 | MAJOR | f0 系测试硬编码 plan-artifacts/plan-967/tests 作用域、无清理：实测 767 目录/7.6GB；merge 全删后下一跑即复活 | ✅ 967 侧已闭（fb1a4c265：Scope guard→OS temp+drop 清理；7.6GB+probe 已清扫）；source_foreign.rs（938 所有）仍写旧路径，归 938 跟进 |
+| F4 日常道纪律 | MAJOR | f0/c_import E2E 在日常 ace-abi 组内 spawn rustc/cl/cargo（含 --release），与 2026-11-14 测试纪律的显式构建道要求冲突 | 部分✅：--release→dev、rustc去-O已闭（fb1a4c265，30/30绿）；"编译即被测行为 vs 显式构建道"的组结构裁定仍开放（涉固定组治理，待用户/后续裁定） |
 | F6 GrantSet | MINOR | owner/grant 授权轴在 T-13/T-14 间孤儿化（收据具名后无人接） | 台账补名+归 F1 帧工作或独立关闭 |
 | F7 fmt | MINOR | abi.rs:824 + f0_rich.rs 漂移 | ✅ 已修（631249d99） |
 | F8 deck 证据 | MINOR | deck 组未在冻结提交重跑 | ✅ 已闭（case-ace-m2-f0-rust-967 PASS @631249d99） |
