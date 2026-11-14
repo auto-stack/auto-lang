@@ -34,8 +34,13 @@ pub mod descriptor;
 pub mod emit;
 pub mod layout;
 pub mod link;
+/// PLAN-967 T-14: the provider build cache (precise BuildIdentity
+/// over the existing 783 ManagedStore).
+#[cfg(windows)]
+pub mod provider_build_cache;
 pub mod resource_provider;
 pub mod run;
+
 /// PLAN-967 T-03: the F0 certification recipe on the worker transport.
 #[cfg(windows)]
 pub mod rust_f0_worker;
