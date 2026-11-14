@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1040
-status: reviewed
+status: archived
 feature_name: ACE Linux x64原生ELF启动与直接系统调用
 author: [Codex]
 created_at: 2026-11-13
@@ -213,7 +213,7 @@ T-02..04补原worker/TestCase适配和永久case。职责组候选：`cargo t ac
 
 事故与恢复记录（2026-11-14 work轮）：提交前清理fmt附带改动时 stash 误用（`git stash push`经管道head吞错＋pop了仓内他人旧PLAN-002 stash），worktree曾回到master态；`git reset --hard`恢复后由 plan-artifacts/plan-1040/codegen/ 脚本全集重放全部tracked改动（含assert锚点），未跟踪新文件未受损；重放树重跑1040全7例＋冻结组并集全绿后提交。7个未跟踪docs/plans/888-890*.md为旧stash残留物，不属本包，未纳入提交（待其owner处置）。
 
-stage: goal | plan_id: PLAN-1040 | plan_revision: r5 | round: 1 | from: work | to: review | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1040/auto-lang | commit: 088d331b1 | next: review
+stage: goal | plan_id: PLAN-1040 | plan_revision: r5 | round: 1 | from: work | to: review | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-1040/auto-lang | commit: 088d331b1 | next: review
 
 
 2026-11-14 stage: review | review_scope: final | reviewer: 同会话复审（实现会话内独立重建证据——非独立上下文，结论由提交代码/测试/原始结果重构） | plan_id: PLAN-1040 | plan_revision: 5 | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1040/auto-lang | branch: plan-1040-dev | reviewed_commit: 088d331b1 | base_commit: 10a3dd46e | dependency_revisions: master HEAD | spec_inputs: docs/specs/auto-ac/native-backend-and-retirement.md@77ba8a3c（§4取材）；docs/specs/auto-ac/linux-native-platform.md 尚不存在（SD-01新增目标，merge落） | acceptance_results: AC-01 pass/AC-02 pass（F2小修后复核）/AC-MEM pass/AC-WSL partial（F1）/AC-03 pass（含master基线一致6红具名）；AC-04/05/06属review/merge未计 | pending_closeout_gates: merge冻结组并集复用（088d331b1已跑，修复后须重跑受影响项） | findings: F1/V-WSL负面控制缺AC侧超时杀除见证——`run_elf_via_wsl`的deadline/定点pid清理路径无durable测试（AV侧取消已由elf05c覆盖，AC侧"超时取消"为V-WSL列名控制项）；最小修复=新增一例长循环ELF＋~1s预算→断言Infra超时且Linux进程已被定点清理。F2/探针预检AV/AC不对称——av-core dispatch拒flags==0/mode<0，AC shim(mn_pio_probe_openat)未镜像（AC侧该两输入会直达syscall）；最小修复=shim镜像同两检（负例：flags=0→-7）。 | evidence: 1040七例复审重跑7/7绿@088d331b1；冻结组 run-_n6w671e（ace-native266/ace-av1096/ace-lowering5/ace-source518/ace-artifacts43/auto-lang-core1613 PASS；ace-host 6红=clean master基线run-36__ja1y逐名一致）；worktree tracked全净（3个未跟踪docs/plans/888-890*.md为他人旧stash残留，非本包，不处置） | next: work（修复F1/F2后受影响项复跑+本review受影响条目复核）
@@ -229,6 +229,18 @@ stage: goal | plan_id: PLAN-1040 | plan_revision: r5 | round: 1 | from: work | t
 - 遗漏/延期/workaround扫描：浮点/CRT fmod面=关闭式链接拒绝（分账记录非偷支持）；probe探针=内部缝未冒公共API；Storage未冻结；无未经批准的延期。探针fd不经台账（裸kernel数）=设计决定（计划§5"内部探针"），已记录边界。
 - 健康检查：scoped fmt过；ace-native零新增警告（av-core两条unused为master既有）；无调试打印残留（link_elf的backup回收eprintln沿Win通道既有惯例）。
 - Spec-impact：SD-01/SD-02/SD-MEM/SD-WSL目标与实证一致（linux-native-platform.md新增、native-backend-and-retirement.md修改，merge落地）；touched_goals=GOAL-002。
+
+
+2026-11-14 stage: merge | plan_id: PLAN-1040:r5 | outcome: pass | consolidation:
+- prepared: 审核基线 5a6b31d65（reviewed+pass@r5）；spec delta 两文件（linux-native-platform.md 新增、native-backend-and-retirement.md §1b 修订）于 worktree 提交 88d62ea58（docs-only 后裔=delivery 候选）。
+- landed: master 期间并发合入 PLAN-964（av-core/mir/dynamic 面）→ rebase：088d331b1→54c8913ad、5a6b31d65→608bd0e80、88d62ea58→d88fc3bab，`git range-diff` 等价（仅conformance.rs注册冲突保双 mod）；`git merge --ff-only` 落 master，tip=d88fc3bab，无合并提交。
+- canonical_verified: docs/specs/auto-ac/linux-native-platform.md（新，SD-01/MEM/WSL 合一）+ native-backend-and-retirement.md（SD-02 §1b 双目标修订）均在 d88fc3bab；无 index/legacy-ledger 写。
+- 冻结组并集（merge-owned，rebased 组合基线 964+1040）：run-gizk0mt5 — ace-native 270/ace-av 1112/ace-lowering 5/ace-source 524/ace-artifacts 43/auto-lang-core 1613；ace-host 163（单跑）。红项13条与 clean master 全名一致（964落地遗留：text.char-multi `ç` 字面量族——ace-native 3/ace-av 2/ace-source 1/ace-host 7，其中 console_real_corpus_and_stale_identity 经 clean master 单测复核同因）→ PLAN-1040 零新增红。旧基线证据：088d331b1 全绿并集 run-_n6w671e、修复基线 ace-native run-ol7xnja3。
+- 1040新增8例（ELF-01..06/V-MEM/V-WSL）在组合基线全绿（含于上述执行数）。
+- archived: 本文件 git mv 至 docs/plans/archive/，status=archived，completion_kind: delivered；master docs 提交收尾。
+- cleaned: 见下一条receipt（guard后删树/分支/plan-artifacts scope并刷新登记）。
+- 环境对账：worktree目标外无本计划产物（plan-artifacts/plan-1040待清；t01探针文件同目录内；无D:/autostack-build等其他盘符目录——构建均在worktree target内随树删除；musl runner为worktree target产物随树亡）。生产消费物：auto-lang无自动发布管线消费experimental/ace（工作区自建），无stale重启项。
+- 待办移交：master现存964遗留红13条（非本包）——周期批量回归（1040%5=0到期）将全量捕获；964自身D-964债务记录在案。
 
 ## 10. 待澄清事项
 
