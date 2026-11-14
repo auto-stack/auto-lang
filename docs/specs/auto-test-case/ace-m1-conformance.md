@@ -66,10 +66,13 @@ selector/局部 run 不削减 required 分母；零选择、缺行、仅 emit、
 
 只装证据绿检查：36 例 97 检查（T-02 标量三路径、T-03 金样快照、T-05 会话生命
 周期、类型化负例）。**日常入口**为文档式混合 suite `ace-document-base.suite.ad`
-（PLAN-1057：10 份标量例以 AutoDown 文档内联 40 检查 + `fixture_root: "ace-m1"`
-复用 5 份旧 M1 文件 57 检查）；`ace-m1-base.suite.ad` 与其 case 文件保留为
+（PLAN-1057+1059：24 份例以 AutoDown 文档内联 68 检查——10 份标量例 40 检查 +
+14 份复合例 28 检查——+ `fixture_root: "ace-m1"` 复用 4 份旧 M1 文件 29 检查）；
+`ace-m1-base.suite.ad`、`legacy-composite.case.ad` 及其 src/oracle 保留为
 **冻结历史**（M1 身份/来源摘要与旧回放），旧 suite 仍可独立运行且结论有效。
-负例 oracle（改错期望必红）与金样漂移（必红）以 cargo 测试
+14 份复合例迁移仅是作者格式与入口切换：`VM result` 仍调旧 AutoVM、`Rust` 仍
+比旧 a2r emit/snapshot 冻结字节——不据此声明 ACE AV/native 复合检查或 Rust
+编译/运行认证。负例 oracle（改错期望必红）与金样漂移（必红）以 cargo 测试
 `experimental/ace/tests/conformance/tests/host/language_conformance.rs` 常驻，
 变异落在内联文档载荷上。完整分母（含 skip 行）由
 acceptance scope 从 binding.tsv 报告，两轴结论分开：底座 PASS ≠ M1 全绿。

@@ -1,7 +1,8 @@
 # 文档式用例（AutoDown Document Cases）
 
-> 状态：首批推广已交付（PLAN-1057：三份语料 30 例 / 60 检查进入日常固定组；PLAN-1002
-> 四例七检查试点保留为独立回归）。本文记录当前已交付的文档式入口能力与边界；完整目标格式见
+> 状态：两批推广已交付（PLAN-1057 首批三份 30 例 / 60 检查 + PLAN-1059 第二批
+> `legacy-composite` 14 例 / 28 检查，累计四份 44 例 / 88 检查进入日常固定组；PLAN-1002
+> 四例七检查试点保留为独立回归、不重复计数）。本文记录当前已交付的文档式入口能力与边界；完整目标格式见
 > [docs/design/testing/autodown-document-cases.md](../../design/testing/autodown-document-cases.md)。
 > 解码器即合同：`crates/auto-test-case/src/author.rs`（逐标题/属性拒绝集以它为准）。
 
@@ -74,22 +75,28 @@
 - 零检查用例在加载期 fail-close（定位到 `## Case:` 行），不产出可运行的
   空报告——比"六行清单点名缺行"更早拒绝（复审 F1 建议记录）。
 
-## 活跃语料与固定组（PLAN-1057 首批）
+## 活跃语料与固定组（PLAN-1057 首批 + PLAN-1059 第二批）
 
-三份文档在 `crates/auto-lang/test/cases/ace-m2/documents/`，各自 suite 与固定组同根于
+四份文档在 `crates/auto-lang/test/cases/ace-m2/documents/`，各自 suite 与固定组同根于
 `crates/auto-lang/test/cases/`；固定组名沿用调用方历史名，`suite` 字段指向活跃文档：
 
 | 文档 | 例/检查 | 活跃 suite | 固定组 |
 |---|---:|---|---|
-| `scalar.case.ad`（标量四路径：ac-native/av/autovm/a2r-snapshot） | 10/40 | `ace-document-base.suite.ad`（另 include 5 份旧 M1 文件 = 57 检查，共 36 例 97 检查；`fixture_root: "ace-m1"`） | `case-ace-m1-base` |
+| `scalar.case.ad`（标量四路径：ac-native/av/autovm/a2r-snapshot） | 10/40 | `ace-document-base.suite.ad`（与 composite 文档合计 24 例 68 检查 + 4 份旧 M1 文件 29 检查 = 36 例 97 检查；`fixture_root: "ace-m1"`） | `case-ace-m1-base` |
+| `composite.case.ad`（K/R/T/V 复合值例：每例 `### Auto` + `### VM result`(check-id `autovm`) + `### Rust`(check-id `a2r-snapshot`)；显式 `id`/`module-name`/`path: "main.at"`，VM 数字文本 `final-newline: false`) | 14/28 | 同上共用 `ace-document-base.suite.ad` | 同上共用 `case-ace-m1-base` |
 | `console.case.ad`（console 成功/unit/value 与 parse/resolve/run 失败） | 15/15 | `ace-document-console.suite.ad` | `case-ace-m1-console-863` |
 | `immutable-assignment.case.ad`（B18 三负例 + NB18/NB18S 合法邻例） | 5/5 | `ace-document-immutable.suite.ad` | `case-ace-m1-immutable-avm-920` |
 
 - 被取代的 `ace-m1/b-scalar.case.ad`、`ace-m1/console-863/console-863.case.ad`、
-  `ace-m1/immutable-avm-920.case.ad` 及其 suite 保留为**冻结历史**：仍是 M1 验收、
+  `ace-m1/immutable-avm-920.case.ad`、`ace-m1/legacy-composite.case.ad`（含其
+  14 份 src 与 14 份 oracle）及其 suite 保留为**冻结历史**：仍是 M1 验收、
   来源摘要、`ace-m1-expanded` 义务表与旧回放（`document_case_migration.py pair`
   的 old 侧）的输入，日常入口不再经过它们。改写语料时新文档是唯一作者源；
   旧 suite 的被动运行结果不构成对新语料的覆盖。
+- PLAN-1059 对照器家族：`document_case_migration.py` 的 `--family composite` 以
+  BASE 97 全集做新旧投影/实跑对照（28 迁移对 + 40 首批文档对 + 29 旧格式对），
+  `controls --family composite` 提供 15 个具名负控（NC-01～15）；离线 `verify`
+  对 VM 文本重读文件、对 Rust 产物重算摘要后才判据（缓存自洽不能替代 actual）。
 - 宿主侧接线：`experimental/ace` 的 `ace_m1_base_suite_green`、
   `ace_m1_base_negative_oracle_fails`、`ace_m1_golden_drift_is_red` 与
   `console.rs::corpus()` 已指向文档式 suite，负控变异落在内联载荷上。
