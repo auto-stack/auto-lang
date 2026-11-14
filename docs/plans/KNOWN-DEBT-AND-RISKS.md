@@ -4376,7 +4376,7 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 
 ### D-966-T05 — PLAN-966 T-05 复审 findings 承接（2026-11-14，复审提交 9dc8d42fd）
 
-来源：独立复审 `reviewer-966`（needs_fix，2 MAJOR + 8 MINOR）；findings 表见 [966 计划](966-ace-m2-metaprogramming.md) §9「T-05 复审 findings」。RV-02/03/04/05/06/07/09/10 已同树修复（提交 ca3201da1）；RV-01 按具名缩窄处理。登记不等于豁免。
+来源：独立复审 `reviewer-966`（needs_fix，2 MAJOR + 8 MINOR）；findings 表见 [966 计划](archive/966-ace-m2-metaprogramming.md) §9「T-05 复审 findings」。RV-02/03/04/05/06/07/09/10 已同树修复（提交 ca3201da1）；RV-01 按具名缩窄处理。登记不等于豁免。
 
 | 发现 | 级别 | 摘要 | owner | 关闭条件 | 状态 |
 |---|---|---|---|---|---|
