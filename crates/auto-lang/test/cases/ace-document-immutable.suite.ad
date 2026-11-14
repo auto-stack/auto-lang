@@ -1,0 +1,13 @@
+# ACE Document Immutable-Assignment Suite
+
+Active document-authored Immutable Assignment suite (PLAN-1057): 5 inline AVM cases / 5 checks.
+
+```test-suite
+suite {
+  schema: "autolang.suite/2"
+  id: "ace-document-immutable"
+  include: [
+    "ace-m2/documents/immutable-assignment.case.ad"
+  ]
+}
+```

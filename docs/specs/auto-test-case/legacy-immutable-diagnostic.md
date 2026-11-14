@@ -38,8 +38,10 @@ IO、panic → Infrastructure，永不满足语言负例。run-stage typed trap 
 - 单元回归锁：`crates/auto-lang-core/src/vm/immutable_assign_920.rs`（10 例：
   staged/非staged 同型、复合、Store 防御位 AST 证人、合法近邻不误拒、span
   精度、伪造 Msg/异族 typed/run-trap 三反控、负→合法修复→负循环）。
-- 语料套件：`ace-m1-immutable-avm-920`（固定组 `case-ace-m1-immutable-avm-920`）
-  5 检查——B18 原源、复合、顶层脚本三负例 + NB18/同名内层 var 遮蔽两合法近邻。
+- 语料套件：日常固定组 `case-ace-m1-immutable-avm-920` 读文档式
+  `ace-document-immutable.suite.ad`（PLAN-1057，同 5 检查：B18 原源、复合、顶层脚本三负例
+  + NB18/同名内层 var 遮蔽两合法近邻）；旧 suite `ace-m1/immutable-avm-920.suite.ad` 保留为
+  **冻结历史**与旧回放输入。
 - M1 B18 avm 格位据此闭为 `ok:P920`（见 [ace-m1-conformance.md](ace-m1-conformance.md)
   PLAN-920 节与 [ace-m1-gap-audit.md](ace-m1-gap-audit.md) F-INFRA-3 关闭记录）。
 

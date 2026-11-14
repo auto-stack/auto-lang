@@ -1,0 +1,19 @@
+# ACE Document BASE Suite
+
+Active document-authored BASE suite (PLAN-1057): 10 inline scalar cases (40 checks) plus the 5 remaining M1 BASE case files (57 checks) = 36 cases / 97 checks.
+
+```test-suite
+suite {
+  schema: "autolang.suite/2"
+  id: "ace-document-base"
+  fixture_root: "ace-m1"
+  include: [
+    "ace-m2/documents/scalar.case.ad",
+    "ace-m1/b-traps.case.ad",
+    "ace-m1/b-diags.case.ad",
+    "ace-m1/legacy-composite.case.ad",
+    "ace-m1/legacy-negative.case.ad",
+    "ace-m1/session-lifecycle.case.ad"
+  ]
+}
+```

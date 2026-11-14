@@ -1,0 +1,109 @@
+# ACE M1 Immutable Assignment AVM Diagnostics & Neighbors
+tags: ["ace-m1", "diagnostic", "immutable-avm-920"]
+links: ["PLAN-920"]
+
+PLAN-1057 first-wave inline document migration of the 5 immutable-assignment AVM cases (`ace.m1.ia920.{b18,b18c,top,nb18,nb18s}`; 5 checks).
+
+## Case: b18-fn-local
+id: "ace.m1.ia920.b18"
+
+### Auto
+path: "main.at"
+
+````auto
+fn main() int {
+    let x int = 1
+    x = 2
+    return x
+}
+````
+
+### VM diagnostic
+check-id: "autovm"
+stage: "type"
+code: "auto_name_E0203"
+
+## Case: b18c-compound-assign
+id: "ace.m1.ia920.b18c"
+
+### Auto
+path: "main.at"
+
+````auto
+fn main() int {
+    let x int = 1
+    x += 2
+    return x
+}
+````
+
+### VM diagnostic
+check-id: "autovm"
+stage: "type"
+code: "auto_name_E0203"
+
+## Case: script-immutable
+id: "ace.m1.ia920.top"
+entry-mode: "script"
+
+### Auto
+path: "main.at"
+
+````auto
+let x int = 1
+x = 2
+print(x)
+````
+
+### VM diagnostic
+check-id: "autovm"
+stage: "type"
+code: "auto_name_E0203"
+
+## Case: nb18-mut-local
+id: "ace.m1.ia920.nb18"
+
+### Auto
+path: "main.at"
+
+````auto
+fn main() int {
+    var x int = 1
+    x = 2
+    return x
+}
+````
+
+### VM result
+check-id: "autovm"
+final-newline: false
+
+```text
+2
+```
+
+## Case: nb18s-shadowed-var
+id: "ace.m1.ia920.nb18s"
+
+### Auto
+path: "main.at"
+
+````auto
+fn main() int {
+    let x int = 1
+    if true {
+        var x int = 5
+        x = 6
+        print(x)
+    }
+    return x
+}
+````
+
+### VM result
+check-id: "autovm"
+final-newline: false
+
+```text
+6
+```

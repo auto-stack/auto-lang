@@ -56,12 +56,13 @@ fn split_fstring(src: &str, i: usize) -> Result<(Vec<Part>, usize), String> {
                     text.push('\\');
                     text.push('$');
                     j += 2;
+                } else if j + 1 < bytes.len() {
+                    let ch = src[j + 1..].chars().next().unwrap();
+                    text.push('\\');
+                    text.push(ch);
+                    j += 1 + ch.len_utf8();
                 } else {
-                    if let Some(e) = bytes.get(j + 1) {
-                        text.push('\\');
-                        text.push(*e as char);
-                    }
-                    j += 2;
+                    j += 1;
                 }
             }
             b'$' => {
@@ -105,8 +106,9 @@ fn split_fstring(src: &str, i: usize) -> Result<(Vec<Part>, usize), String> {
                             }
                             _ => {}
                         }
-                        expr.push(bytes[k] as char);
-                        k += 1;
+                        let ch = src[k..].chars().next().unwrap();
+                        expr.push(ch);
+                        k += ch.len_utf8();
                     }
                     if depth != 0 || k >= bytes.len() {
                         return Err("unterminated `${` interpolation in an FStr".to_string());
@@ -128,8 +130,9 @@ fn split_fstring(src: &str, i: usize) -> Result<(Vec<Part>, usize), String> {
                 break;
             }
             _ => {
-                text.push(c as char);
-                j += 1;
+                let ch = src[j..].chars().next().unwrap();
+                text.push(ch);
+                j += ch.len_utf8();
             }
         }
     }
@@ -167,7 +170,12 @@ pub fn desugar_fstrings(src: &str) -> Result<String, String> {
             let mut j = i + 1;
             while j < bytes.len() {
                 match bytes[j] {
-                    b'\\' => j += 2,
+                    b'\\' => {
+                        j += 1;
+                        if j < bytes.len() {
+                            j += src[j..].chars().next().unwrap().len_utf8();
+                        }
+                    }
                     b'"' => {
                         j += 1;
                         break;
@@ -214,8 +222,9 @@ pub fn desugar_fstrings(src: &str) -> Result<String, String> {
             i += len;
             continue;
         }
-        out.push(c as char);
-        i += 1;
+        let ch = src[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
     }
     Ok(out)
 }
@@ -286,6 +295,16 @@ mod tests {
         assert_eq!(
             desugar_fstrings("let s = f\"\"").unwrap(),
             "let s = __fstr(\"\")"
+        );
+    }
+
+    #[test]
+    fn fstr_preserves_utf8_chars_and_char_literals() {
+        let src = "fn main() int {\n print('界')\n eprint('😀')\n let s = f\"你好 ${x} 😀\"\n return 0\n}\n";
+        let out = desugar_fstrings(src).unwrap();
+        assert_eq!(
+            out,
+            "fn main() int {\n print('界')\n eprint('😀')\n let s = __fstr(\"你好 \", x, \" 😀\")\n return 0\n}\n"
         );
     }
 }

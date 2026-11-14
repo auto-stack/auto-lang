@@ -1174,7 +1174,7 @@ fn execution_key(loaded: &LoadedSuite, case_id: &str, check_id: &str) -> String 
     )
 }
 
-fn sanitize(id: &str) -> String {
+pub(crate) fn sanitize(id: &str) -> String {
     id.chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
