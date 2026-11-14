@@ -70,6 +70,8 @@ mod inventory_941;
 mod numeric_semantics;
 #[path = "cases/plan979_age_a2r.rs"]
 mod plan979_age_a2r;
+#[path = "cases/plan979_component_a2r.rs"]
+mod plan979_component_a2r;
 #[path = "cases/query_release_941.rs"]
 mod query_release_941;
 #[path = "cases/record_text_902.rs"]

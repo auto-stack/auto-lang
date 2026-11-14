@@ -7,6 +7,7 @@
 //! crate since PLAN-868 — this probe is a consumer, not the provider.
 //! Nothing here feeds product paths.
 
+pub mod age_component;
 pub mod age_h0;
 pub mod bench;
 pub mod cache;
