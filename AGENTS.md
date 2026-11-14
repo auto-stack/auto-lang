@@ -18,7 +18,7 @@ All AI coding assistants working in this repository must strictly adhere to the 
 > junction/symlink**——`git worktree remove` 的递归删除会穿透链接删除目标仓内容（实测复现）。
 > 跨仓依赖用解析序解决：`$AUTO_LANG_ROOT 等 env 覆盖 → 组内 ../auto-lang →
 > D:/autostack/auto-lang 主检出`。移除任何 worktree 前必须先跑
-> `bash D:/autostack/wt-guard.sh <worktree 路径>`（reparse point 扫描，非空即拒）。
+> `pwsh -NoProfile -File D:/autostack/wt-guard.ps1 <worktree 路径>`（reparse point 扫描，非空即拒；Windows 上只用 pwsh，不用 WSL/Git Bash）。
 
 ---
 
@@ -30,8 +30,9 @@ All AI coding assistants working in this repository must strictly adhere to the 
     轻量路径（无需正式 plan 文档）：`git worktree add D:/autostack/.wt/fix-<slug>/auto-lang -b fix-<slug>`
     （或一键建组含 auto-down 兄弟仓：`bash scripts/new-wt-group.sh fix-<slug> --branch fix-<slug>`，
     PLAN-726 T-04——组内 cargo 解析即开即用，缺兄弟仓时 check 直接失败）
-    → 修改 + 按改动范围跑验证门禁 → 提交 → 合回 master → `bash D:/autostack/wt-guard.sh
-    D:/autostack/.wt/fix-<slug>/auto-lang`（必须 clean）→ 移除 worktree/分支/组目录。
+    → 修改 + 按改动范围跑验证门禁 → 提交 → 合回 master →
+    `pwsh -NoProfile -File D:/autostack/wt-guard.ps1 D:/autostack/.wt/fix-<slug>/auto-lang`（必须 clean）
+    → 移除 worktree/分支/组目录。
     实机走查/核查会话中的**顺手修复**同样适用本条（2026-09-15 三线 WIP 直接落 master 的事后矫正）。
     master 上仅允许计划簿记类改动（`docs/plans/**`、`.next-id`、specs/docs 沉淀）。
 - **L1: Feature / Module Tasks (模块/特性任务)**
@@ -182,8 +183,8 @@ Before merging or archiving, the agent **must explicitly execute an independent 
    feat(<scope>): <description> (Plan <NNN>)
    ```
 2. Remove the temporary worktree and branch (guard first — mandatory):
-   ```bash
-   bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-<NNN>/auto-lang   # 必须输出 clean 才继续
+   ```powershell
+   pwsh -NoProfile -File D:/autostack/wt-guard.ps1 D:/autostack/.wt/lang-<NNN>/auto-lang   # 必须输出 clean 才继续
    git worktree remove D:/autostack/.wt/lang-<NNN>/auto-lang
    git branch -d plan-<NNN>-dev
    # 组内已无兄弟 worktree 时删除组目录：rmdir D:/autostack/.wt/lang-<NNN>
