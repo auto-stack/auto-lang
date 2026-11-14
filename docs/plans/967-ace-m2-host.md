@@ -213,7 +213,7 @@ F0最小前置为已交938/939契约与现有text/scalar源码、共享verify/AV
 
 ### T-09 冻结记录（2026-11-14，AC-07/V-09 + ABI-COMPAT/INT-1026 字段冻结）
 
-**工程入口（use.rs 腿已交）**：`open_project_session(project_root, provider, generation)`（ace-abi rust_provider）——源内 `use.rs <provider>` 解析到工程文件 `<root>/<provider>.rs`（单段 [a-z0-9_]+；多段/后缀装配归 T-12 消费1043）；binding/shim/构建单元/manifest 全部在 open 时从该文件派生（V-09"删手写manifest"由构造性满足并断言：工程内不存在 manifest 文件）；具名拒绝 `rust-import.provider-name/provider-missing/provider-read` + importer 域拒绝。永久正反例：`f0_project_import_runs_rejects_and_recovers`（真导入跑9 → 坏注解 `rust-import.domain` 阶段拒绝 → 缺文件 `provider-missing` → 修复后同入口恢复9）。use.c 工程腿随 T-10 C importer 落（拼写冻结：CST `use-c-item` 镜像 use-rs-item，text-record profile，同校验形状）。
+**工程入口（use.rs 腿已交）**：`open_project_session(project_root, provider, generation)`（ace-abi rust_provider）——源内 `use.rs <provider>` 解析到工程文件 `<root>/<provider>.rs`（单段 [a-z0-9_]+；多段/后缀装配归 T-12 消费1043）；binding/shim/构建单元/manifest 全部在 open 时从该文件派生（V-09"删手写manifest"由构造性满足并断言：工程内不存在 manifest 文件）；具名拒绝 `rust-import.provider-name/provider-missing/provider-read` + importer 域拒绝。永久正反例：`f0_project_import_runs_rejects_and_recovers`（真导入跑9 → 坏注解 `rust-import.domain` 阶段拒绝 → 缺文件 `provider-missing` → 修复后同入口恢复9）。use.c 工程腿已随 T-10 首切片落（CST `use-c-item`，text-record profile；resolve 按 lang 校验 manifest 家族前缀 c/ vs rust/）。
 
 **真实库/全特征 required 表（冻结，owner 到任务）**：
 
@@ -581,6 +581,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 9 | from: work | to: work | status: executing | outcome: T-10首切片交付（真实预处理importer+use.c+native腿V-10）；varargs/union/bitfield/常量/inline/packing轴与AV-C腿待续 | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-10续片）
+
+2026-11-14 stage: work / T-10首切片（AC-08/V-10部分）| 交付: ctool::preprocess_c（真cl /EP）、auto-bindgen c_import（注解=元数据；有界解析器：record/enum/callback/view/out，具名c-import.*拒绝；空标量spine遵939；content_version折叠header digest）、open_c_provider（工程.h+.c→派生manifest+cl编译provider obj+观察到的include闭包）、use.c前门（CST use-c-item+lang家族校验+legacy oracle一致）、冻结fixtures cside/f0_c.{h,c}（声明位宏证真实预处理）| V-10腿（native）: record聚合3+4=7真机器码、scaled_len 9、fallible 65/命名空status exit70（CRT-free失败runtime）、header编辑翻身份+stale源拒绝、ghost注解具名拒绝、同入口恢复 | 回归: rust_f0 8、core lib 63、differential 927 13案、case套件PASS、auto-bindgen 10 全绿 | 边界: varargs/union/bitfield旧行、独立常量binding、static-inline shim、packing/target轴、AV-C腿(T-12)待续 | next: T-10续片。
 
 2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 8 | from: work | to: work | status: executing | outcome: T-09完成（工程入口+冻结记录） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-10 C真实预处理importer）
 
