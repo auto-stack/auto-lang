@@ -1,14 +1,14 @@
 ---
 plan_id: PLAN-967
-status: drafting
+status: executing
 feature_name: 完整C/Rust FFI、自动binding与通用宿主资源
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-12
-plan_revision: 8
-current_step: 0
+updated_at: 2026-11-14
+plan_revision: 12
+current_step: 3
 total_steps: 19
-depends_on: [PLAN-960, PLAN-962, PLAN-963, PLAN-938, PLAN-939]
+depends_on: [PLAN-960, PLAN-962, PLAN-963, PLAN-938, PLAN-939, PLAN-1042, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-bindgen/project.md, docs/specs/auto-abi/project.md]
 new_spec_components: [docs/specs/ace-migration/m2-host.md]
 touched_goals: [GOAL-002]
@@ -17,6 +17,16 @@ touched_goals: [GOAL-002]
 # [PLAN-967] 完整C/Rust FFI、自动binding与通用宿主资源
 
 ## 0. 变更摘要
+
+2026-11-13 r12当前：纳入新1043来源后缀装配及最小#in平台静态选择，见§5/AC-LOAD/V-LOAD/SD-LOAD；原任务/状态/完成数与全覆盖不减，仅规划。
+
+2026-11-13 r11当前增量：新增公共标准库能力至少AV/AC/A2R/A2PY，AV为同一执行器下native/C/Rust三provider；原A2C继续。见§5覆盖合同及AC-COVERAGE/V-COVERAGE/SD-COVERAGE；只修规划，状态/完成数不变。
+
+2026-11-13 r10：按用户要求补充Rust ABI兼容与独立分发合同：源码模式的Rust库与shim共同构建，对外以版本化目标C ABI分发；严格区分构建缓存身份和运行兼容身份，明确rustc/target/接口版本/运行依赖变化的失效、重新准入与拒绝规则。新增AC-ABI-COMPAT、SD-ABI-COMPAT、V-ABI-*七案，由原T-09/11..15/T-04承接；19任务、drafting/0进度、原依赖/范围/F0不变。此次仅改文档，不构建、运行探针或实施。
+
+
+2026-11-13 r9：按用户对PLAN-1026的定向文档复查，补INT-1026/IF-CALL/IF-RES通用交接：Python adapter是具体Rust provider，消费本包生成shim/AV stub及单一资源/Meta账本，不自动导入整个PyO3。参数帧/返回owner/异常/FFI寿命纳入既有T-09/11/12/13/14及T-04验证，新增AC-INT-1026/V-INT-1026；仍19任务/0进度，F0最小范围不扩大，原四端/全现用桥义务保持。仅改文档，不实施。
+
 
 2026-11-12 r8：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
@@ -49,6 +59,11 @@ touched_goals: [GOAL-002]
 现有Rust ACE workspace、Auto公共源、共享语法/查询/工件系统及真实目标工具链。跨仓使用同组兄弟worktree与显式SDK身份，不创建junction/symlink。
 
 ## 4. 需求分析与背景调查
+
+2026-11-14 目标授权（/goal 完成计划967，auto-plan-goal 范式）：用户一次授权整链——创建专属
+worktree、按本Plan任务执行work、独立review、批准合同内的有界修复、merge（规范沉淀、归档、
+清树）。不改目标/验收阈值/兼容承诺/范围/预算/仓库集；正式依赖（938/939/960/962/963/1042/1043）
+当日核验全部 archived，M2-A 前置就绪。各阶段凭证按 §9 goal receipt 追加。
 
 2026-11-11本轮授权：用户要求规划首个ACE UI Hello及AV/Rust FFI路线、核对既有M2冲突并作必要重排；仅规划/设计/导航，不实施、创建worktree或探针/fixture/SDK、构建/运行、提交或发布，未指定模型/工期。沿旧语言用例守恒、新Auto标准库与AutoABI/FFI、Demo递进的三线，不削完整M2范围。
 
@@ -90,6 +105,10 @@ touched_goals: [GOAL-002]
 - [experimental/ace/crates/foreign-contract/src/typed.rs](../../experimental/ace/crates/foreign-contract/src/typed.rs)：共享签名/资源/borrow事实；读取SHA256前16 `fb148c0a779d5c95`
 
 - [experimental/ace/crates/abi](../../experimental/ace/crates/abi)：独立ABI oracle及目标适配；目录职责已核，确切符号/闭包开工再核
+
+2026-11-13本轮授权：用户明确要求只修改PLAN-967及相关设计，补齐Rust库/shim共同构建、C ABI独立分发、编译器版本/目标平台/接口版本的兼容与失效规则。Design41/56为通用合同，Design58仅消费，不接管978的构建/安装实现。读取主检出HEAD `81d8fc03f10f4a7d179b0bc3a917602406ed7b91`；同检出其他会话WIP/新Plan保持，本轮不取号、不修改canonical Specs/legacy JSON、不建worktree。
+
+技术依据（官方资料，非本仓实测）：[Rust ABI及目标C ABI](https://doc.rust-lang.org/reference/items/external-blocks.html#abi)、[repr(C)布局](https://doc.rust-lang.org/reference/type-layout.html#the-c-representation)、[cdylib/staticlib与Rust库产物](https://doc.rust-lang.org/reference/linkage.html)。已有中立facts/descriptor、ABI oracle与store沿§4实际owner扩展；旧auto-bindgen manifest仍有预置/手工来源，不能把下面目标合同当作已实现。
 
 ## 5. 详细设计
 
@@ -139,7 +158,7 @@ T-01有界前探：用一个最小真实正例、同类型非法近邻和一次�
 | T-09 | AC-07 | V-09 | 接通工程use.c/use.rs到共享绑定和typed foreign事实，冻结真实库/全特征required表、来源/注解/工具链和合法/非法公共源码；先走通一个真实导入与失败恢复。 |
 | T-10 | AC-08 | V-10 | 实现C真实预处理/头文件闭包、target/sysroot/宏/typedef和ABI布局、函数/record/enum/pointer/callback/opaque、常量/inline shim；将旧用法特征逐行闭合。 |
 | T-11 | AC-09 | V-11 | 实现Rust公开元数据到具体类型/泛型实例和自动C-compatible shim；闭合String/Vec/Result/borrow/析构、panic、线程与future边界。 |
-| T-12 | AC-10 | V-12 | 接AV/AC/新A2R/新A2C到同一Foreign IR；native机器码调用，A2R等价crate适配需独立证明；各端记录真实producer及dispatch。 |
+| T-12 | AC-10 | V-12 | 接AV/AC/新A2R/新A2C/新A2PY到同一Foreign IR；native机器码调用，A2R等价crate适配需独立证明；各端记录真实producer及dispatch。 |
 | T-13 | AC-11 | V-13 | 闭合双向import/export、适用静态/动态链接、callback重入与generation/lease；接future完成/取消端口，保原allocator与跨ABI错误语义，交968调度。 |
 | T-14 | AC-12 | V-14 | 使header/crate/toolchain/target/provider/ABI/生成器的真实读取依赖进入现有store，输出binding/shim/runtime分发清单和编译/运行工具分账合同给978。 |
 | T-15 | AC-13 | V-15 | 用钉版本真实SQLite和serde_json原工程及完整特征fixture做用户体验与资源/失败回归；汇总四端、独立oracle、缺环境和交978/985材料。 |
@@ -147,6 +166,16 @@ T-01有界前探：用一个最小真实正例、同类型非法近邻和一次�
 ### F0：首个UI Hello之前的通用AV/Rust FFI切片（当前可执行入口）
 
 F0最小前置为已交938/939契约与现有text/scalar源码、共享verify/AV/MIR、现有artifact store；不使用新用户泛型/嵌套集合，因而不等962/963整包。T-F0-I自行核这些正式来源并有界比较至多两种Rust公共元数据/具体函数实例→自动shim策略。旧auto-bindgen预置C表不当作Rust导入器；不手写每个函数manifest、假metadata或借UI专用native数字ID通过。首次只支持冻结的一组非泛型Rust公开自由函数：借用UTF-8 str输入、i32/bool结果与结构化失败；泛型/String/Vec/Result/owned句柄/future/全部真实库仍由原T-09..15关闭。
+
+**T-F0-I 冻结决定（2026-11-14 实施，worktree lang-967）**：
+- **元数据来源**：带版本化注解的冻结 provider 源文件自身（`auto-ffi provider <id>/<ver> target=… profile=…` 头 + 每 fn `// auto-ffi fn <rust_name> symbol=<点分版本符号> form=pure ret=i32|bool | form=fallible errors=name:-code[,…]`）。importer（`crates/auto-bindgen/src/rust_import.rs`，格式 `auto.bindgen.rust-provider/1`）逐项与真实 `pub fn <name>(<一个 &str>) -> i32|bool|Option<i32>` 签名交叉核验，域外（泛型/owned String/多参/其它返回/坏符号）具名拒绝（`rust-import.*`）；产出 (a) 中性 manifest，(b) 生成 C 兼容 shim 源，(c) 共享 `ace.foreign.manual/2` manifest（复用 foreign-contract，无第二 FFI 世界；`to_manual_manifest` 物理面钉共享 plan 常量）。
+- **冻结 provider fixture**：`experimental/ace/crates/abi/rustside/f0_text.rs`（text_byte_len/text_is_ascii/text_first_byte(fallible, empty-input:-1)/text_panic_probe("boom" panic 探针)）。
+- **物理帧（版本化）**：`extern "C" fn(data: *const u8, byte_len: u64) -> i32|u8`；fallible `+ out: *mut i32 -> i32 status`（Some→status0+out，None→首名负 status）。**panic 通道**：生成 shim 单元内 catch_unwind + 导出 `f0_panic_flag()` 标志；宿主调用后观察并清零→独立 host 失败（`foreign.panic`），任何 unwind 都不跨 C 边界（跨 DLL unwind 实测不可 catch——`Rust cannot catch foreign exceptions`，此为冻结依据）；AV 侧 catch_unwind 仅作 in-process 皮带。
+- **构建单元（B-01 种子）**：provider 源+生成 shim 平铺拼成一个 rustc `--crate-type=cdylib` 闭包（`ace-abi/src/rust_provider.rs`，记录 rustc 身份）；loader（LoadLibraryW/GetProcAddress）把导出解析进 av-core `ForeignStubTable`。
+- **use.rs 前门**：CST 语法 `use-rs-item`（仅 text-record profile）+ 投影 `source.use-rs.syntax/domain`；resolve 校验唯一性与 provider==admitted manifest provider（`source.use-rs.duplicate/provider`）；旧手写 parser 同形（differential 927 一致，含 profile 门）。资源域模块走 owned wire family（AVAD，PLAN-939 形）；AV 侧新 `abc_verify::verify_abc_foreign`（无表默认仍拒绝，938 不变）+ `av::execute_foreign`（每 run 重授权 + run_bytes 复位）。
+- **AV stub 表**（`av-core/src/foreign_exec.rs`）：`MAX_CALL_BYTES=65536`/`MAX_RUN_BYTES=1048576`；拒绝序=身份(unknown-symbol/signature)→generation→UTF-8→call-bytes→run-bytes→reentry，全部在 callee 前（`callee_count` 只计真实调用；panic 计调用后转 host 失败）；`bump_generation` 会话拆解即全表失效；`admits_declaration` 含 generation 新鲜度。**预算语义裁定（T-F0-R审计#3）**：本表第二预算为**每 run 计费的输入视图片段字节**（`execute_foreign` 每 run 复位），取代 §5 上文"单session保留输出最多1048576字节"的字面读法——F0 输出仅 i32/bool，保留输出预算在此域为空，输入计费是唯一有区分力的读法；保留输出记账归原 T-13 资源域。
+- **结构化失败**：fallible status≠0 → `Trap{TrapKind::ForeignStatus}`（命名表在 manifest error model，非普通 i32、非 infra 吸收）。
+- **边界（F0 不做）**：ProgramSnapshot/session 链接面（969/E0）、A2R 腿（T-12/AXR0）、C importer/真实库（T-09..15）、跨 rustc 分发（T-11/14）。
 
 源调用经原计划公共use.rs前门、Rust元数据/版本化注解生成binding和C-compatible shim，再由唯一verify得到签名/borrow/权限/效果事实，AV消费通用foreign指令与stub。物理边界用目标C ABI的data+byte_len，不跨界暴露Rust str胖指针/String/Vec/trait对象布局；shim内部调用Rust &str函数。先覆盖同步、同线程、noescape借用；宿主若要持久显示文本须在调用返回前复制为自身拥有数据，不能保留AV指针。AV执行Rust函数字节码并非本目标，Iced仍由rustc编译。
 
@@ -213,6 +242,70 @@ struct ProviderLease { generation: Generation, owner: OwnerId, grants: GrantSet 
 
 本节由原`T-01`冻结来源/未决，`T-02`、`T-03`、`T-08`、`T-09`、`T-10`、`T-04`按各自原owner_stage接实现/验证（纯分析包只审计），对应AC-01/AC-02/AC-03/AC-06/AC-PHASE；原review/merge任务分别核结论与正式落地，不能用规划检查提前勾选。范围外能力回原owner，真实新增依赖须改DAG，不补假的整包反向等待。
 
+### INT-1026：AV调用Rust Python provider的通用边界（2026-11-13，r9）
+
+消费方：[PLAN-1026 r3 §5.4..6](1026-python-interop-standard-auto-syntax.md)，交接IF-CALL/IF-RES；964只消费中立引用/cleanup事实，本包不反向依赖964执行器、1026或PyO3。本节细化既有自动Rust FFI与通用资源义务，不要求C/Rust所有能力、async/四端整包全部完成后才交此最小扩展。
+
+1. **同一FFI入口**：ACE受检Python操作合成对具体Rust adapter入口的调用，经本包自动binding/C兼容shim及AV foreign stub执行；Rust adapter内部才依赖PyO3并调用CPython。由本包T-09/11/12承接生成和签名/ownership事实，不以手写每库manifest/privileged数字ID或另造Rust importer替代；应用不手写use.rs/extern。
+2. **IF-CALL**：receiver、源序positionals和kwargs采用本包受检带tag参数帧（逻辑签名/限额与物理投影版本一并冻结）。支持小标量/长度文本/受支持有限结构化值/opaque引用；C边界禁止Rust私有DynValue、String/Vec/trait/Py/Bound布局。帧中指针+长度的有效区/对齐/嵌NUL、borrow/noescape、结果owner及错误相位明确；来自guest的tag/kind/长度不直接授信，坏帧在callee前拒绝。不是把每个Python成员声明成静态C函数。
+3. **IF-RES**：provider/session/entry代次、resource-kind、alive/owner/pin/retain/drop为本包唯一权威。adapter真实Py对象作为entry私有payload，不另建授权/生命周期账本；slot复用后的旧token拒绝。lookup校验并pin后，释放全局账本锁再执行可能回调/析构的外部代码；返回/异常/close释放自有pin与owner。通用资源kind/descriptor进中立foreign-contract，不进Python依赖。
+4. **返回/错误**：小值或opaque结果、结构化错误、临时输入借用/宿主保留副本、输出allocator/destroy责任由T-12/13冻结；panic/错误不跨C unwind。T-14保provider/ABI/工具链/工件/权限身份，代码缓存不持地址/Py对象/活引用或旧授权。Python异常类名/动态getattr与Tensor shape/dtype等provider私有行为归1026，本包不建通用Python reflection引擎。
+5. **接口不反等consumer**：用独立Rust generic provider（标量/text/opaque/kwargs/失败，绝非Torch）证明自动shim→AV真实调用、帧寿命/返回销毁/代次与错误。T-09核最小字段，T-11/12实现，T-13核资源，T-14核身份，T-04汇总。对应正式切片SHA/接口/独立trace交1026；不新增967→1026 depends_on，也不要求其训练先跑通。
+
+**F0仍非此接口的完成证据**：F0仅text借用+i32/bool及有限失败；Python消费所需owned引用、float、通用tag帧与返回资源属于原T-09..14扩展交付。原C/Rust/Python现用桥、四端、自动导入/异步/安装交接完整义务保持，不能用此通用切片或1026 AV训练替代剩余迁移行。
+
+### ABI-COMPAT：Rust库与shim的构建、分发与失效（2026-11-13，r10）
+
+设计单源：[Design41 §5.1](../design/41-interface-metadata-and-foreign-abi.md#51-rust-provider的构建与兼容合同2026-11-13目标态)，M2交付约束见[Design56 §3.3](../design/56-ace-m2-ffi-and-native-stdlib.md#33-rust-provider的二进制兼容与独立分发)。本节为待实施规则；T-09冻结准确字段/版本和适用目标，不新造loader、manifest或缓存体系。
+
+**B-01 构建单元。** 源码导入模式中，生成的shim和目标Rust crate及其Rust依赖进入同一个兼容Cargo/rustc构建闭包；泛型/trait具体化、布局私有访问和PyO3等Rust调用留在这一闭包内。源内容/lock/features/cfg、生成器/实例集合、rustc完整身份、target/SDK/linker/flags/依赖均可追溯。不能用新rustc直接给任意旧`.rlib`/Rust ABI `.dylib`套shim，也不能凭同rustc版本猜依赖/布局一定兼容；只有原构建匹配或受支持源码重建才进入这一模式。来源/MSRV/构建依赖不满足具名拒绝，不静默下载/更换工具链。
+
+**B-02 对外产物。** 默认可独立分发的Rust provider为`cdylib`一类系统动态库：Rust库＋shim及Rust内部依赖封装成一个对外C ABI边界，配同版本的受检接口/工件/运行依赖清单。`staticlib`为原生链接分发，可需重新链接调用方，不能冒称无需重新链接的动态替换；其native依赖和LTO/bitcode/链接工具条件明确。普通`.rlib`/Rust ABI动态库不是跨rustc稳定分发格式。已有正确C API的预编译库可直接按其C契约消费，不要求多套一层shim。A2R可选择原T-12已规定的等价直接crate adapter，但那是同Rust构建闭包路径，不具有“跨rustc独立二进制”承诺，需单独证明等价。
+
+二进制消费模式只使用包中已声明的C ABI导出/具体实例与受检接口元数据，不能为了新Rust API或泛型需求从旧二进制猜签名/寻找未导出符号；需扩面时明确转受支持源码重建或拒绝。源码模式构建期可以需要rustc/rustdoc，二进制包正常装配/调用不因此隐式需要它们。
+
+**B-03 ABI合同。** `extern "C"`约束调用约定，跨边界record采用`repr(C)`或已证明等价的明确目标布局，字段递归满足FFI条件；这不会稳定String/Vec/trait/Result/Py等私有布局。标量/长度文本/opaque引用/错误/allocator/deleter/线程/回调/取消及不跨界unwind均属版本化合同。C ABI是**具体目标的**C/system约定，不是跨OS/arch/env/指针宽度/端序的通用二进制格式；Windows MSVC/GNU或不同OS runtime不能只看CPU同名就接受。
+
+**B-04 两类身份分离。**
+
+| 身份 | 必须描述的事实（语义字段，准确Schema由T-09复用现有owner冻结） | 使用规则 |
+|---|---|---|
+| BuildIdentity | Rust库及shim源码、crate解析/lock/features/cfg/实例，生成器、rustc/toolchain/target/SDK/linker/flags/native输入 | 产生物/构建缓存/证据的精确身份；真实输入改变失效受影响构建，不以C ABI兼容洗白旧构建缓存 |
+| RuntimeCompatibility | 目标ABI profile/OS-arch-env/位宽/端序/必要ISA及OS/runtime版本；descriptor Schema与ABI域版本；required符号/签名/布局；接口语义/ownership/错误/线程合同；运行依赖约束 | 决定可否装配/重新准入/调用；不要求consumer的rustc等于provider的rustc，但必须独立验证实际提供者与需求兼容 |
+| ProviderArtifact/Selection | 具体provider发布/工件hash、BuildIdentity、来源及选择策略/lock pin、每次运行授权、provider代次 | 兼容不自动替换精确pin，也不恢复旧授权；新工件须重新核验/装配，旧证据只覆盖原身份。运行manifest无裸地址/活句柄 |
+
+`interface version`（业务/资源语义）、`ABI/descriptor version`（物理/编码合同）、`provider release/build`与`rustc version`是不同维度。不能用一个“版本相同”混合处理。仅按已声明的兼容规则接受增量；minor/新增符号/相同repr(C)标签并不自动证明兼容；required子集须实核，by-value字段/签名/ownership变化通常是破坏性变更，除非已有明确扩展/适配协议和独立证据。
+
+| 变化/请求 | 构建或缓存动作 | 已分发provider的运行规则 |
+|---|---|---|
+| 源码构建请求的rustc/flags/生成器/真实依赖改变 | 新BuildIdentity；受影响库+shim重建，重验对应ABI/行为；旧构建缓存不得命中 | 若只是consumer工具链升级，未变化的已发布C ABI provider不因rustc标签不同就失效；核当前consumer需求/target/runtime/接口及选择策略 |
+| Rust内部私有布局/实现改变，对外契约保持 | 库与shim共同重建，产生新工件/收据；不能重用旧provider行为证明 | 可在重新准入后与旧consumer兼容，仍需保持可观察语义/资源合同；不是自动热替换或跨代句柄兼容 |
+| provider与consumer使用不同rustc版本 | 不能把双方Rust私有metadata/rlib混成一个构建闭包；同源构建按各自兼容工具链独立产出 | 同目标C ABI及接口/runtime/所有权等合同匹配时允许；runtime准入不得把rustc精确相等设成跨C边界前提 |
+| OS/arch/env/ABI profile/指针宽度/必要ISA或runtime条件不兼容 | 按新target重建库+shim及相应consumer stub；更新布局/ABI证据 | 不兼容工件明确拒绝，不能重解释旧布局；不同target字符串只有具名兼容profile/证明才可能接受 |
+| required符号/签名/布局、接口语义/错误/owner、ABI域/Schema不兼容 | 相应binding/stub/ABI证据失效；兼容适配需明确受检规则 | 业务调用前拒绝或选已验证adapter；不能先盲调再判断，缺版本/缺描述符不默认兼容 |
+| 仅增加明确可选符号、保持旧required子集 | 新provider构建身份与证据更新；旧consumer绑定可按实际读取依赖复用 | 在明确兼容规则下接受，不能因完整manifest字节hash变化一律判接口破坏，也不能只看语义版本号放行 |
+| CPython/系统库/CRT等外部运行依赖缺失或不满足 | 构建/分发清单记录其真实身份/要求；必要时另产兼容provider | 属运行依赖不满足而非“有C ABI就可运行”；已安装rustc不代所需运行库，反之运行不应隐式需要rustc |
+
+**B-05 资源与升级。** opaque值只交其owner provider/代次处理，释放回原allocator/deleter。在途callback/future/borrow/handle pin旧provider；同C ABI兼容的新版本也不能直接接管旧对象。未经迁移/排空合同拒绝卸载或错误跨代调用；此处继承T-13，不新增无条件热升级承诺。运行前静态工件/目标预检和已知ABI bootstrap/握手分层，不把native库当安全沙箱或保证OS loader初始化无副作用；拒绝反例的零dispatch指业务入口调用次数。
+
+**B-06 分发/职责。** 967 T-11产库+shim、T-12证明消费、T-13资源/装载、T-14交两类身份和manifest闭包，T-15给独立消费夹具及证据；978继续拥有构建装配/缓存/实际分发，986拥有隔离安装/升级。独立分发不是单DLL无依赖：系统库/CRT、CPU/OS约束和显式CPython依赖均列清；在受支持运行环境中，已打包provider的调用不依赖开发树、Rust源码或rustc/Cargo。不得为本节加967→978/986整包反等，也不接管那些owner的在途实现。共享store/现有manifest扩字段，禁止平行ABI缓存/第二loader。
+
+### 后端与AV来源覆盖（2026-11-13当前）
+
+以[覆盖设计](../design/stdlib/backend-provider-coverage.md)为本包当前增量：旧“四端”指AV/AC/A2R/A2C，不再代表全部required。新增公共能力最少AV/native、AV/C、AV/Rust、AC、A2R、A2PY六路径，原A2C及原平台/数值/资源/oracle不减。AV只一套解释器/API/语义，三来源共享Auto算法，仅适配必要原语；不能以配置名切换冒真实dispatch。
+
+T-03/T-12扩947既有装配：同一AV的native/C/Rust来源绑定与资源原provider销毁；T-12消费1042的Python目标接同一Foreign IR及自动C兼容shim。T-14分发Python所需受检adapter/依赖，T-15实际Python与AV C/Rust调用。不能将C ABI等同C实现，也不能直接暴露Rust私有ABI。F0早期借用切片不新增Python/完整provider前置。
+
+1042是最小Python接缝，不自动证明本包全部语言域支持；需要更大Python语义时消费977/PY已交能力切片或先具名补齐，不反等977整包。C/Rust provider复用967，native底座沿1039/1040原依赖。纯函数可说明身份/算法/输入/观察适用性后复用证据，资源边界需各有实际调用与原provider销毁；不机械跑全后端×全provider笛卡尔积。缺目标工具/runner/依赖保持pending，不能以emit、宿主fallback或同错结果关行。显式第三方引擎的依赖另列，native来源不冒所有第三方算法都已Auto重写。
+
+### 新加载机制完成依赖（2026-11-13当前）
+
+依据[设计§8–10](../design/stdlib/backend-provider-coverage.md)与[1043](1043-ace-stdlib-context-assembly.md)。公共.at＋at/c/rs/py来源后缀组成同一逻辑模块，运行后端另选；#in打开临时namespace并让is/if/for继承编译期属性，不扩平台后缀。最小层由1043先交，966继续完整CTE，不能反向等966整包。
+
+完整C/Rust FFI provider消费1043装配/namespace合同，复用同一Auto适配源码并接真实foreign调用，不另造av.c/av.rs loader；F0早期切片仍沿原最小正式来源，不等1043整包。
+
+本包整包/当前阶段required完成须核1043实际source/统一绑定/最小#in/增量恢复及所需真实后端的正式来源，不以文件存在、provider名字、旧归档或候选语法冒已交。948只审分母/去向，978验装配闭包，985验完整A；普通能力owner仍另交真实外库dispatch与OS/资源结果。原早期切片/调查范围不据此扩大，公共能力缺路径不勾整包完成。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
@@ -224,9 +317,24 @@ struct ProviderLease { generation: Generation, owner: OwnerId, grants: GrantSet 
 | SD-PHASE | add | `docs/specs/ace-migration/m2-host.md`（沿原owner；仅实际交付后沉淀） | 单一M2口径→已验A/B能力/consumer及来源与旧新义务映射；未交B保持pending | 阶段不减原范围 | AC-PHASE |
 | SD-HELLO | add | docs/specs/ace-migration/m2-host.md（沿原owner） | 未有早期交接→本切片实际已验接口/源/拒绝及剩余完整义务；交付后沉淀 | 最小Hello不冒全包完成 | AC-F0/AC-F0-REVIEW/AC-F0-LAND |
 | SD-NATIVE | add | `docs/specs/ace-migration/m2-host.md`（沿原owner，仅真实交付后沉淀） | 默认实现选择未明→自有Auto/OS默认与显式FFI分账、长度字符串/目标ABI及来源验证 | LIB-M2-07/08 | AC-NATIVE |
+| SD-INT-1026 | modify | `docs/specs/ace-migration/m2-host.md`（拟交付后沉淀） | 通用FFI/资源→已验tag帧/返回/统一账本、自动Rust shim与AV消费、ABI/元数据边界及F0区别 | 防重复建设/错误授信 | AC-INT-1026 |
+| SD-ABI-COMPAT | modify | `docs/specs/ace-migration/m2-host.md`（实际交付后沉淀） | Rust shim一般描述→已验证库+shim构建单元、独立C ABI分发、双身份/target/接口/资源兼容与失效及拒绝边界 | 不把C ABI兼容与缓存命中混同 | AC-ABI-COMPAT |
 
 
 | SD-DETAIL | add | `docs/specs/ace-migration/m2-host.md`（沿原owner，交付后沉淀） | 仅范围→实际已验输入/类型/状态/旧新check映射与限制 | 不以旧emit/规划代能力 | AC-01/AC-02/AC-03/AC-06/AC-PHASE |
+
+### 覆盖规范增量（待实际交付）
+
+| delta_id | add/modify | docs/specs target | before/after rule | rationale | AC |
+|---|---|---|---|---|---|
+| SD-COVERAGE | add/modify | docs/specs/ace-migration/m2-host.md | 旧四端→新增A2PY、同AV三来源及真实逐操作证据；未交不升支持状态 | 用户最低覆盖 | AC-COVERAGE |
+
+### 加载机制规范增量（待实际交付）
+
+| delta_id | add/modify | docs/specs target | before/after | rationale | AC |
+|---|---|---|---|---|---|
+| SD-LOAD | add/modify | docs/specs/ace-migration/m2-host.md | 旧有限后端侧文件→本包实际消费1043来源装配/#in/目标依赖及正式来源，未交保持缺口 | 用户确定新加载机制 | AC-LOAD |
+
 ## 6. 测试设计
 
 ### 阶段适用验证（新增合同、未执行）
@@ -246,6 +354,14 @@ struct ProviderLease { generation: Generation, owner: OwnerId, grants: GrantSet 
 | V-04 | AC-02/03 | 原方destroy一次 | T-01将本行落实为真实源码/操作序列；T-04运行真实producer/consumer，记录值、trace、资源和诊断，错误路径配合法近邻 | work；本包支持矩阵 |
 | V-05 | AC-02/03 | 重入不得持锁死锁 | T-01将本行落实为真实源码/操作序列；T-04运行真实producer/consumer，记录值、trace、资源和诊断，错误路径配合法近邻 | work；本包支持矩阵 |
 | V-06 | AC-02/03 | 未授权恢复dispatch=0 | T-01将本行落实为真实源码/操作序列；T-04运行真实producer/consumer，记录值、trace、资源和诊断，错误路径配合法近邻 | work；本包支持矩阵 |
+| V-INT-1026 | AC-INT-1026 / IF-CALL/IF-RES | 独立Rust provider经真实metadata→自动C兼容shim→AV stub：小标量/带NUL文本/opaque/kwargs合法形；坏tag/长度/ABI/过期代次；返回对象后错误及panic、临时输入回收后宿主保留值 | 原T-09/11/12/13/14接实现和独立Rust caller/oracle，T-04汇总；callee/析构trace证明合法路径及错形dispatch=0、owner/destroy一次且错误不跨C；不把直接Rust单测当AV证据 | work；无Python/1026前置，不扩F0 |
+| V-ABI-BUILD | AC-ABI-COMPAT / B-01..03 | 真实Rust源码crate+生成shim共同构建；仅有不匹配旧rlib/Rust dylib、缺源码或不满足MSRV的近邻 | T-09冻结来源/工具链与准确入口，T-11构建闭包；独立Rust API oracle核结果，受支持源路径成功，不受支持预编译私有ABI/工具缺依赖具名拒绝；不能只手写extern或换compiler隐式拼接 | work；不承诺任意历史Rust产物 |
+| V-ABI-CROSS | AC-ABI-COMPAT / B-02..04 | 同一冻结接口的provider分别以两个不同、均能构建该源的实际rustc版本产cdylib；AV宿主以其中一个/已知版本构建，并加载另一版本provider | T-11/12真实自动shim→AV/原已支持四端适用路径，独立C或Rust C-ABI caller核值/布局/错误/destroy；compiler标签不同但接口匹配必须成功；调用期禁rustc/Cargo/开发源码仍可运行。版本/target与实际binary均绑定收据，缺第二工具链不得充PASS | work；有限已证版本/目标，不宣称全部组合 |
+| V-ABI-TARGET | AC-ABI-COMPAT / B-03..04 | 合法目标近邻及错OS/arch/env/ABI profile/位宽/必要ISA/runtime字段；实际工件头与清单交叉核验 | T-12/14按既有ABI/装配入口在业务dispatch前拒绝不兼容项，合法配置成功；改target必须使对应构建/布局证据失效，不能仅看arch或abi=C字符串 | work；已声明支持目标；加载器初始化非沙箱承诺 |
+| V-ABI-IFACE | AC-ABI-COMPAT / B-03..04 | 冻结required符号/签名/布局/owner/错误协议；逐轴改变、缺ABI/Schema；明确兼容规则下仅加可选符号 | T-09/12/14；不兼容者业务callee_count=0、不能盲调；合法可选增量且required子集不变可重新准入。不得用相同版本号/外层repr(C)/完整manifest hash单独裁决兼容 | work；无现成adapter时必须拒绝 |
+| V-ABI-CACHE | AC-ABI-COMPAT / B-04 | 源构建rustc/flags/crate私有实现/生成器/实际target变化与无关输入控制；已发布provider字节不变而consumer rustc变化 | T-14使用现有store/构建收据核真实key/编译事件与独立结果；真实构建输入变则失效受影响闭包，无关变化不重建；运行加载不能因consumer rustc标签变化强制重建不变provider。精确lock pin不匹配仍按选择策略拒绝/显式更新 | work；缓存与ABI兼容分账 |
+| V-ABI-LIFE | AC-ABI-COMPAT / B-05 | ABI兼容v1/v2并存，v1有效opaque对象/borrow/callback pin，尝试交v2或提前卸载，再按原owner释放 | T-13独立provider分别计析构/业务调用；旧引用只交v1，错误跨代不dispatch，最后pin释放后才能卸载；同签名不证明对象内部可互换，不新增状态迁移承诺 | work；沿既有资源/异步适用条件 |
+| V-ABI-PACK | AC-ABI-COMPAT / B-02/06 | 库+shim的cdylib/接口清单/依赖置于统一scope隔离消费根；移除开发树和rustc/Cargo访问；缺运行库/错manifest/坏工件控制；适用staticlib另测原生重链接 | T-14/15交978前的独立消费夹具真实运行、记录所有输入/工件/动态依赖；动态包合法环境可运行，缺依赖/错身份具名失败；staticlib不声称无需链接或任意LTO兼容。978/986全产品/安装仍由原owner，不以此fixture代最终安装验收 | work；准确路径和工具在T-09冻结，全部未执行 |
 
 完整职责组拟定：`cargo t ace-host ace-abi ace-foreign-contract ace-av ace-native ace-a2x ffi`（组名已静态核test-groups.toml，未运行）。新包/用例必须由T-04注册进完整职责组；共享IR/语义修改加真实下游四端组，不能只跑前端。外仓产品在T-01记录当地已存在命令与必需环境，未冻结命令前T-02不得开始；不能以语言仓cargo替代UI/Man/OS真实产品验证。AGE按受影响文件/命名case与原单进程条件，全量AG留里程碑。
 发现/执行/条件排除、准备/运行/清理/总时分列；零选择/缺工具/timeout/编译失败不是PASS。正式性能与窗口操作错峰，周期全量不变成每计划门。最终提交职责并集沿有效证据核验，不重复全仓。
@@ -299,6 +415,21 @@ struct ProviderLease { generation: Generation, owner: OwnerId, grants: GrantSet 
 
 真实入口沿本Plan原§6/当地owner命令，原固定组/平台/ignore/正式性能/AG定向规则不变；新增fixture只由原实施任务建立。发现/执行/原条件排除、准备/运行/清理、首次红/重放与缺证分列。新表不代原case/check、不新增任务号、不让原review/merge阶段提前通过。
 
+
+### 后端/provider验证（新增、未执行）
+
+| V / AC | 输入与入口 | 独立观察/终态 |
+|---|---|---|
+| V-COVERAGE / AC-COVERAGE | 同一公共Auto源码及独立expected，在六路径/原A2C按原OS表实跑；配置C实跑native、缺Python/helper、错provider销毁、静默fallback、emit冒run与NUL/部分IO/错误/资源适用反例。 | 各路径真实producer/运行/dispatch身份、值或字节/副作用和资源结果正确；负控拒绝，合法邻例通过；不能只比较后端相等或改required为NA。 |
+
+实现/验证沿本包原owner任务、现TestCase/ACE worker与固定职责组；新增Python接缝按真实修改选`ace-a2x`/`a2py`/`auto-test-case`，AV来源边界选现`ace-foreign-contract`/相关AV、host、stdlib组，T-01冻结精确并集，985按T-A01/02。缺平台环境不伪造支持，不把正式ace-perf附加日常收尾；既有完整职责/必要消费者保持。
+
+### 加载机制验证（新增、未执行）
+
+| V / AC | 输入与入口 | 独立观察/owner |
+|---|---|---|
+| V-LOAD / AC-LOAD | 本包普通公共库源/所选provider与#in平台模块；错误后缀/缺或重复实现、错target/namespace、未选SDK缺失、错误producer/旧配方冒新、修改选中与未选输入后恢复 | 本包真实消费者及独立expected/依赖/源身份；负控在调用前拒、失败保旧，未选库不绑定链接。948验去向不代运行，978验候选闭包，985核正式A分母；能力包验证真实执行而非仅文件选择。复用1043身份适用证据，不重复跑其整档代本包；原最终work汇总，独立review核AC-LOAD。 |
+
 ## 7. 验收标准
 
 | ID | owner_stage | 标准 | 核验 |
@@ -316,11 +447,17 @@ struct ProviderLease { generation: Generation, owner: OwnerId, grants: GrantSet 
 | AC-11 | work | FFI-M2-05/06及原AC-06共同满足；在途callback/析构/future保活，卸载无悬空/双释放，967不等待968完整await。 | T-13/V-13；原最终work验证和独立review同时核本项 |
 | AC-12 | work | FFI-M2-07精确失效、失败保旧/恢复和生成物身份闭合，不存地址/授权，无新全局缓存。 | T-14/V-14；原最终work验证和独立review同时核本项 |
 | AC-13 | work | FFI-M2-08真实库自动体验及全部required子行关闭；最低样本不能抵掉旧消费者/特征缺口。 | T-15/V-15；原最终work验证和独立review同时核本项 |
+| AC-INT-1026 | work | IF-CALL/IF-RES按INT-1026实际生成/执行，单一账本与Meta边界、参数/返回/错误/借用/destroy有V-INT-1026；不导入PyO3泛型API，不反等1026，F0不冒充接口已交 | T-09/11/12/13/14与T-04；原T-05独立复审 |
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、T-04；原独立review复核 |
 | AC-F0 | work | F0自动源码导入/共享受检FFI/AV真实Rust调用及拒绝、文本寿命/费用/恢复闭环 | T-F0-I/V；V-F0-* |
 | AC-F0-REVIEW | review | 同树独立复核F0普通源码、真实shim/ABI/dispatch及全部正反控，绑定revision/SHA | T-F0-R |
 | AC-F0-LAND | merge | F0已审接口正式落主并交source/ABI/provider/测试来源，原完整FFI义务保留 | T-F0-D |
 | AC-NATIVE | work | 空串/中文/ab\0cd五字节在长度接口原样往返；CStr不适用内嵌NUL时具名拒绝，越界/无长度/错allocator/unwind控制拒绝且资源正确回收；四端各对独立expected。 | T-10,T-11,T-12,T-13,T-15 / V-NATIVE；原独立review核新增义务 |
+| AC-ABI-COMPAT | work | B-01..06和全部V-ABI-*成立：真实库+shim构建、跨rustc C ABI消费、target/接口/运行依赖准入与双身份失效、独立包/原方释放；保旧全部AC和F0范围 | T-09/11/12/13/14/15及T-04；原T-05独立复审，不留到merge补正确性 |
+
+- [ ] **AC-COVERAGE / work**：§5本次覆盖责任及V-COVERAGE关闭；新增公共能力六路径与原A2C、独立oracle/真实来源/资源证明齐全。948仅验调查分母不签产品，978验装配，985验A完整性；原独立review逐行核，原生四格不代全覆盖。
+
+- [ ] **AC-LOAD / work**：§5本包新加载机制责任和V-LOAD关闭，正式1043来源/独立结果与缺口分账齐全；原native底座/六路径/旧A2C和阶段不减，最终work与独立review逐行核。
 
 ## 8. 执行步骤
 
@@ -330,39 +467,42 @@ struct ProviderLease { generation: Generation, owner: OwnerId, grants: GrantSet 
 
 早期任务可按§5最小前置先行，不要求T-01完整分母冻结已完成；各I自行冻结本切片输入/接口/命令，不提前勾T-01或其它原整项。以下行序不是额外前置。
 
-- [ ] **T-F0-I｜M2-A｜owner_stage: work｜AC-F0**：不等T-01全分母；按§5核已交基础、决定公共元数据策略/支持域/调用错误合同，打通通用AV foreign与自动Rust binding/shim，创建V-F0-*及实际命令。
+- [x] **T-F0-I｜M2-A｜owner_stage: work｜AC-F0**：不等T-01全分母；按§5核已交基础、决定公共元数据策略/支持域/调用错误合同，打通通用AV foreign与自动Rust binding/shim，创建V-F0-*及实际命令。 [✅ 2026-11-14]
+  证据：`crates/auto-bindgen/src/rust_import.rs`（importer+shim生成+manual投影，9单测绿）、`experimental/ace/crates/abi/rustside/f0_text.rs`（冻结provider）、`experimental/ace/crates/abi/src/rust_provider.rs`（cdylib构建+LoadLibrary装载）、`av-core/src/foreign_exec.rs`（stub表/准入/预算/panic标志协议，3单测绿）、`av-core/src/av.rs` ForeignCall臂+`execute_foreign`、`av-core/src/abc_verify.rs` `verify_abc_foreign`、CST `use-rs-item` 规则+投影、resolve use.rs 校验；冻结决定见§5 F0节。
 
-- [ ] **T-F0-V｜M2-A｜owner_stage: work｜AC-F0**：T-F0-I后运行全部V-F0-*与冻结完整受影响组/必要消费者，记录独立Rust oracle、dispatch、权限/资源/工具身份及恢复，未执行不PASS。
+- [x] **T-F0-V｜M2-A｜owner_stage: work｜AC-F0**：T-F0-I后运行全部V-F0-*与冻结完整受影响组/必要消费者，记录独立Rust oracle、dispatch、权限/资源/工具身份及恢复，未执行不PASS。 [✅ 2026-11-14]
+  证据：`ace-abi/tests/cases/rust_f0.rs` 5 E2E 全绿（V-F0-SOURCE：use.rs源→自动binding/shim→rustc cdylib→共享verify→AV真调 "A中😀\0"=9/空=0+独立直dispatch oracle同值；V-F0 bool/fallible 65+空输入Trap ForeignStatus；V-F0-REJECT：tamper身份/非法UTF-8/stale generation admission拒绝 callee_count=0、真panic→`foreign.panic` host失败后会话可用；V-F0-LIFE：65536/65537字节界+20轮无增长；V-F0-IDENTITY：Auto body编辑共享声明身份、provider body编辑新digest新代次+1值、接口facts不变）。受影响组：auto-bindgen 9绿；av-core lib 62+conformance 44+foreign_resources 11 绿；ace-core lib 57+conformance 461 绿（differential 927 一致）；source-query 21、semantics 98、artifacts 19+1ignored、av 11、native lib 13 绿；ace-abi conformance 全量复跑收据见§9。
 
-- [ ] **T-F0-R｜M2-A｜owner_stage: review｜AC-F0-REVIEW**：T-F0-V的AV全部V-F0-*齐后停写，同一树独立审计F0源码→真实Rust调用/资源/负控；finding返I；只pass本切片。
+- [x] **T-F0-R｜M2-A｜owner_stage: review｜AC-F0-REVIEW**：T-F0-V的AV全部V-F0-*齐后停写，同一树独立审计F0源码→真实Rust调用/资源/负控；finding返I；只pass本切片。 [✅ 2026-11-14]
+  独立审计（新上下文agent，冻结提交 f5bf3cd50）：**PASS，0 BLOCKER/0 MAJOR，5 MINOR**。逐项核验A–I（合同行忠实性/每次调用准入完整/负控区分力/预算语义/panic通道/noescape借用/前门边界/卫生/遗留物）全过；G前门与H卫生为NOTE。5 MINOR 全数修复于 d77e369b2：#1 fallible None→最小命名status（shim与manifest永不背离，+单测）、#2 装载器缺导出路径双FreeLibrary、#3 预算语义裁定入§5（每run计费输入字节取代保留输出字面读法）、#4 panic通道文档改为冻结标志协议、#5 form/ABI负控补齐（bool形声明vs i32 callable→foreign.signature，callee_count=0）。修复后 scoped 复验全绿（auto-bindgen 10、av-core foreign_exec 3、rust_f0 5）。绑定：审计基线 f5bf3cd50，修复后 d77e369b2。
 
 - [ ] **T-F0-D｜M2-A｜owner_stage: merge｜AC-F0-LAND**：T-F0-R pass后按既有phase fold正式合入并沉淀已验F0接口，交969/E0、978/B0和980/HELLO；保同树/resync继续全部原任务，不归档或冒完整FFI已交。
 
 
 
-- [ ] **T-01｜M2-A｜work｜AC-01/AC-PHASE**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。
+- [ ] **T-01｜M2-A｜work｜AC-01/AC-PHASE**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
 - [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
 
-- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
+- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
 - [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：分import/export、调用方/被调用方、标量/聚合/资源与C/Rust/Python现用桥，核动态库装卸、原方allocator、符号/ABI版本。异步本包只交注册/完成/取消端口及受控真实provider；968消费端口实现语言await，967不反向依赖968。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
 
-- [ ] **T-09｜M2-A｜owner_stage: work｜AC-07**：接通工程use.c/use.rs到共享绑定和typed foreign事实，冻结真实库/全特征required表、来源/注解/工具链和合法/非法公共源码；先走通一个真实导入与失败恢复。 验证V-09，证据汇入原最终work验证。
+- [ ] **T-09｜M2-A｜owner_stage: work｜AC-07**：接通工程use.c/use.rs到共享绑定和typed foreign事实，冻结真实库/全特征required表、来源/注解/工具链和合法/非法公共源码；先走通一个真实导入与失败恢复。 验证V-09，证据汇入原最终work验证。 ABI-COMPAT：冻结BuildIdentity/RuntimeCompatibility/ProviderArtifact字段与兼容规则、两个实际可构建fixture的rustc/target组合、准确既有入口和V-ABI-*预期；缺环境记pending。
 
 - [ ] **T-10｜M2-A｜owner_stage: work｜AC-08/AC-NATIVE**：实现C真实预处理/头文件闭包、target/sysroot/宏/typedef和ABI布局、函数/record/enum/pointer/callback/opaque、常量/inline shim；将旧用法特征逐行闭合。 验证V-10，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。
 
-- [ ] **T-11｜M2-A｜owner_stage: work｜AC-09/AC-NATIVE**：实现Rust公开元数据到具体类型/泛型实例和自动C-compatible shim；闭合String/Vec/Result/borrow/析构、panic、线程与future边界。 验证V-11，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。
+- [ ] **T-11｜M2-A｜owner_stage: work｜AC-09/AC-NATIVE**：实现Rust公开元数据到具体类型/泛型实例和自动C-compatible shim；闭合String/Vec/Result/borrow/析构、panic、线程与future边界。 验证V-11，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。 ABI-COMPAT：B-01/02库+shim共同构建与cdylib/staticlib产物合同，记录rustc/依赖/flags；执行V-ABI-BUILD/CROSS适用部分。
 
-- [ ] **T-12｜M2-A｜owner_stage: work｜AC-10/AC-NATIVE**：接AV/AC/新A2R/新A2C到同一Foreign IR；native机器码调用，A2R等价crate适配需独立证明；各端记录真实producer及dispatch。 验证V-12，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。
+- [ ] **T-12｜M2-A｜owner_stage: work｜AC-10/AC-NATIVE**：接AV/AC/新A2R/新A2C到同一Foreign IR；native机器码调用，A2R等价crate适配需独立证明；各端记录真实producer及dispatch。 验证V-12，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。 ABI-COMPAT：核跨C ABI独立消费与target/接口准入，V-ABI-CROSS/TARGET/IFACE；A2R直接crate adapter单列等价与同构建闭包，不冒跨rustc二进制保证。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
-- [ ] **T-13｜M2-A｜owner_stage: work｜AC-11/AC-NATIVE**：闭合双向import/export、适用静态/动态链接、callback重入与generation/lease；接future完成/取消端口，保原allocator与跨ABI错误语义，交968调度。 验证V-13，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。
+- [ ] **T-13｜M2-A｜owner_stage: work｜AC-11/AC-NATIVE**：闭合双向import/export、适用静态/动态链接、callback重入与generation/lease；接future完成/取消端口，保原allocator与跨ABI错误语义，交968调度。 验证V-13，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。 ABI-COMPAT：V-ABI-LIFE核兼容provider新旧代的owner/allocator/pin/卸载边界，不跨代接管旧handle。
 
-- [ ] **T-14｜M2-A｜owner_stage: work｜AC-12**：使header/crate/toolchain/target/provider/ABI/生成器的真实读取依赖进入现有store，输出binding/shim/runtime分发清单和编译/运行工具分账合同给978。 验证V-14，证据汇入原最终work验证。
+- [ ] **T-14｜M2-A｜owner_stage: work｜AC-12**：使header/crate/toolchain/target/provider/ABI/生成器的真实读取依赖进入现有store，输出binding/shim/runtime分发清单和编译/运行工具分账合同给978。 验证V-14，证据汇入原最终work验证。 ABI-COMPAT：V-ABI-CACHE分离精确构建失效和运行兼容/选择，V-ABI-PACK交版本化工件/依赖清单给978，不造第二缓存/loader。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
-- [ ] **T-15｜M2-A｜owner_stage: work｜AC-13/AC-NATIVE**：用钉版本真实SQLite和serde_json原工程及完整特征fixture做用户体验与资源/失败回归；汇总四端、独立oracle、缺环境和交978/985材料。 验证V-15，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。
+- [ ] **T-15｜M2-A｜owner_stage: work｜AC-13/AC-NATIVE**：用钉版本真实SQLite和serde_json原工程及完整特征fixture做用户体验与资源/失败回归；汇总四端、独立oracle、缺环境和交978/985材料。 验证V-15，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。 ABI-COMPAT：汇总七个V-ABI-*真实结果及隔离消费夹具，原真实库/四端/资源义务不减，交978/985/986按既有owner接续。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
-- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
+- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
 - [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
@@ -384,6 +524,18 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 2 | from: work | to: work | status: executing | outcome: T-F0-R完成（独立审计PASS+5修复落地） | worktree: D:/autostack/.wt/lang-967/auto-lang | commit: d77e369b2 | next: work（T-F0-D phase fold 正式落主）
+
+2026-11-14 stage: review / T-F0-R（F0切片独立审计，AC-F0-REVIEW）| 冻结基线: f5bf3cd50（停写） | 审计者: 独立上下文agent（未参与实现） | 结论: PASS（0 BLOCKER/0 MAJOR/5 MINOR），逐行证据见§8 T-F0-R | findings返I并全数修复: d77e369b2（#1最小命名status、#2单FreeLibrary、#3预算语义裁定入§5、#4文档改标志协议、#5 form负控） | 修复复验: auto-bindgen 10绿、av-core foreign_exec 3绿、rust_f0 5绿 | 只pass本切片；原T-09..15/完整FFI义务不变 | next: T-F0-D。
+
+2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 1 | from: work | to: work | status: executing | outcome: F0-AV切片交付（T-F0-I/V完成，T-F0-R/D与T-01..15继续） | worktree: D:/autostack/.wt/lang-967/auto-lang | commit: 10a3dd46e基 + F0切片提交（31文件，+2599/−39） | next: work（T-F0-R独立审计F0切片）
+
+2026-11-14 stage: work / PLAN-967 T-F0-I+T-F0-V（F0-AV切片）| worktree: D:/autostack/.wt/lang-967/auto-lang | branch: plan-967-dev | base: 10a3dd46e4a4c15948f120e0654fce2182078ccd | 依赖核验: 938/939/960/962/963/1042/1043 全 archived（2026-11-14当日）。实施: importer/shim/manual（auto-bindgen rust_import，9测）、冻结provider（abi rustside/f0_text.rs）、cdylib构建+装载（abi rust_provider.rs）、AV stub表+ForeignCall臂+execute_foreign+verify_abc_foreign（av-core foreign_exec/av/abc_verify/contract，3+62+44+11测）、CST use-rs-item语法+投影+resolve校验+legacy oracle一致（core，57+461测）、全下游UseRs臂（source-query/semantics/artifacts/av/native/binding，21+98+19+11+13测）、rust_f0 5 E2E（真实rustc cdylib→LoadLibrary→use.rs源→共享前门→AV真调；V-F0-SOURCE/REJECT/LIFE/IDENTITY及bool/fallible/panic腿）。验证: 上列全绿；ace-abi conformance 串行148/148绿（裸并行cargo test下939恢复类deadline敏感测试见1-2个flake——串行与官方组复验）；官方冻结组 `cargo t ace-abi`（nextest全隔离）PASS、执行261用例（results: target/test-groups/run-sp0a7t5x/results.json）。边界: ProgramSnapshot/session链接面归969/E0，A2R腿归T-12/AXR0；panic通道实测冻结为shim内catch+导出标志（跨DLL unwind宿主不可catch）。outcome: F0切片pass；整Plan继续executing。next: T-F0-R（同树停写独立审计F0）。
+
+CONTEXT-LOAD（历史，2026-11-13）: 规划静态预检通过：20份设计/计划553处本地链接路径、Markdown围栏与Plan 0–10节/任务数一致；原144任务ID/勾选/状态/进度/旧AC/V及原依赖保留，新1043十任务均未完成。可达149个语言计划依赖无缺失/环、ID无冲突，中央.next-id为1044。1043不依完整966/FFI/库，1042不反依1043；966改为消费1043，原F0/B0/Hello与M1门不减。新计划候选固定组名和新增设计锚静态核对，git diff --check通过。未实施/建树/编译/运行产品或测试，不是独立实现review PASS；canonical Specs及归档历史未改。
+
+2026-11-13 stage:new / COVERAGE | outcome: pass（规划静态核验，非产品或独立实现review） | 19份设计/计划519处本地链接存在；14计划共150任务，含新1042八项，其余142任务ID/勾选/状态/进度及原AC/V保留；0–10节/围栏/任务数一致。可达148个语言计划依赖无缺失/环，1042不反依完整库/977，967不反依968；原早期F0/B0范围不扩。历史5份非UTF8归档只按可解读frontmatter只读扫依赖，未修改。新增能力六路径尚未实施/实跑，不计产品PASS。
+
 2026-11-12 stage:new / PLAN-967 r8：按963标准补本包具体输入/独立预期、类型与模块职责、旧源/check映射及V-DETAIL-01..04。保原19任务/全部AC与V/依赖/阶段/预算和drafting 0/19；只做文档与源码静态核对，不实施/建树/生成fixture/运行/派agent/合入或发布。已有研究/已归档成果复用，新增草图不冒已有API或产品支持。
 
 2026-11-12 本轮规划静态核验：32份合同原505任务ID/顺序/进度、全部旧AC/V/Spec-delta及原依赖/阶段/预算保留；新增128条V-DETAIL待实施验证，未生成任何测试源码。505处本地引用/围栏/0–10章节/原任务映射核对通过，跨四仓可达222份Plan的显式依赖无缺失/环。只证明规划结构与取材来源，不是旧VM/新ACE运行或独立产品review PASS；959–962归档和963r5未改。
@@ -404,6 +556,18 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 
 2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
+
+### 2026-11-13 r9接口规划复核（未实施）
+
+仅补INT-1026、IF-CALL/IF-RES、SD/V/AC-INT-1026，绑定原有自动Rust FFI/AV资源任务；19任务/0进度、frontmatter依赖、F0范围与完整义务保持。将Python consumer所需帧/owner/Meta变成可核接口要求，不建立另一套FFI/资源注册；实际交付仍pending，无构建/运行/探针。文档复核不作为实现final pass。
+
+### 2026-11-13 r10 ABI兼容边界修订（仅文档）
+
+stage=new/revision；revision=10；保持drafting、0/19、原depends_on与全部既有任务/AC不变。用户本次明确只授权文档；新增B-01..06、AC/SD-ABI-COMPAT及七个V-ABI-*，绑定原T-09/11..15/T-04，原T-05独立复审核全部新义务。Design41/56为通用构建/兼容单源，Design58只消费；1026仅刷新967修订/源身份，其他owner不接管。
+
+同一C ABI边界可跨rustc消费与构建缓存精确失效明确分账；所有跨版本/目标/分发结果均是未来验收，未运行任何Rust构建、工具链探针、ABI/产品测试或生成分发物。本文档检查不是实现final pass；next=后续work授权且对应依赖正式就绪后按既有任务执行。
+
+r10文档预检：19个原任务ID及19个原AC完整保留，新增AC-ABI-COMPAT后共20个AC；七个V-ABI-*与SD-ABI-COMPAT唯一、已接入原表并绑定T-09/11..15/T-04。PLAN-967仍drafting/0/19、depends_on不变；Design41/56/58的新增交叉链接/锚点、围栏/空白及git diff --check通过。Design41 SHA256=`758277d92fff66fcd61a4b88b416667d6ad651230ef840e90f2301a284d9b606`；Design56 r6 SHA256=`6dbba6bca99827950fe1716b3acd3d00248ec50be3c2ffb24b9dfba3603e8a36`。仅文档检查，未执行任何上述运行验收；次级消费方引用刷新不改变其目标或进度。
 
 ## 10. 待澄清事项
 
