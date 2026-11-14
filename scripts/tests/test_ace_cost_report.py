@@ -481,6 +481,23 @@ class RegularEvidenceTests(unittest.TestCase):
         self.assertEqual(2, code)
         self.assertEqual('UNVERIFIABLE', record['status'])
 
+    def test_ignored_terminals_outside_the_selection_are_legitimate_skips(self):
+        # A real nextest run emits `ignored` terminals for #[ignore] tests that
+        # the expression does not select (observed for the excluded PERF legs).
+        run = self.make('ignored-outside', events=[
+            event(REGULAR_NATIVE, 'ok', 2.0),
+            event('ace-syntax-artifacts::conformance$other::performance::ignored_campaign', 'ignored')])
+        code, record, _ = run.module_record()
+        self.assertEqual(0, code)
+        self.assertEqual('GREEN', record['status'])
+        self.assertEqual(1, len(record['ignored_outside_selection']))
+
+    def test_selected_test_that_was_ignored_is_exit_two(self):
+        run = self.make('selected-ignored', events=[event(REGULAR_NATIVE, 'ignored')])
+        code, record, _ = run.module_record()
+        self.assertEqual(2, code)
+        self.assertTrue(any('skipped by the runner' in item for item in record['missing_evidence']))
+
     def test_nc09_two_modules_in_one_invocation_is_exit_two(self):
         run = self.make('two-modules', groups=['ace-syntax', 'ace-native'])
         code, record, _ = run.module_record()

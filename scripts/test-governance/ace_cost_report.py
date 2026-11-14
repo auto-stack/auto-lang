@@ -476,7 +476,8 @@ def regular_module(run_dir, repo_root=None, budget_seconds=120.0, target_seconds
         seen = {}
         for event in events:
             seen.setdefault(event['name'], []).append(event.get('event'))
-        duplicates = sorted(name for name, kinds in seen.items() if len(kinds) > 1)
+        duplicates = sorted(name for name, kinds in seen.items()
+                            if len([kind for kind in kinds if kind != 'ignored']) > 1)
         if duplicates:
             record['missing_evidence'].append(
                 'duplicate terminal events for the same native identity: %s' % ', '.join(duplicates[:4]))
@@ -492,15 +493,26 @@ def regular_module(run_dir, repo_root=None, budget_seconds=120.0, target_seconds
             hit = candidates & observed
             if not hit:
                 unmatched.append(row['binary'] + '$' + row['test'])
+                continue
             matched |= hit
+            if all(kind == 'ignored' for name in hit for kind in seen[name]):
+                record['missing_evidence'].append(
+                    'selected test was skipped by the runner: %s' % sorted(hit)[0])
         if unmatched:
             record['missing_evidence'].append(
                 'missing actual terminal for %d selected test(s): %s'
                 % (len(unmatched), ', '.join(sorted(unmatched)[:4])))
-        extra = sorted(observed - matched - expected)
+        # `ignored` terminals for identities outside the selection are the
+        # runner's legitimate skips (excluded/ignored tests); an ok/failed
+        # terminal outside the selection would mean the real set differed.
+        extra = sorted(name for name in (observed - matched - expected)
+                       if any(kind != 'ignored' for kind in seen[name]))
         if extra:
             record['missing_evidence'].append(
                 'terminal events for unselected identities: %s' % ', '.join(extra[:4]))
+        record['ignored_outside_selection'] = sorted(
+            name for name in (observed - matched - expected)
+            if all(kind == 'ignored' for kind in seen[name]))
         ok_events = [event for event in events if event.get('event') == 'ok']
         failed_events = [event for event in events if event.get('event') == 'failed']
         if failed_events:
