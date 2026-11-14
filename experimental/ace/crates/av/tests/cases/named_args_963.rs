@@ -7,11 +7,11 @@
 //! * 源序 `sub(b: five(), a: twenty())` —— `five` 的调用先于 `twenty`；
 //! * 结果 = 20 - 5 = 15（`a`/`b` 按名字绑定，不按位置）。
 
+use ace_av_core::abc::{decode_abc, encode_abc};
 use ace_av_core::av::{execute, CancelFlag, ExecLimits};
 use ace_av_core::contract::{ExecOutcome, Value};
 use ace_av_core::mir::{CalleeRef, MirInstr};
 use ace_av_core::{abc_verify, mir_verify};
-use ace_av_core::abc::{decode_abc, encode_abc};
 use ace_core::source::compile_record_source;
 
 const NAMED_OUT_OF_ORDER: &str = "\
@@ -24,7 +24,8 @@ fn main() int {
 ";
 
 fn mir_of(src: &str) -> ace_av_core::mir::MirModule {
-    let compiled = compile_record_source(src, "n963.at", &[]).expect("named-argument source compiles");
+    let compiled =
+        compile_record_source(src, "n963.at", &[]).expect("named-argument source compiles");
     let mir = ace_lowering::lower_checked_data(&compiled.checked, "d_main", 963)
         .expect("record-domain lowering");
     mir_verify::verify_mir(&mir).expect("MIR verifies");

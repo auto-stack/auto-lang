@@ -4106,15 +4106,14 @@ impl<'p> Emitter<'p> {
         }
         for sym in &use_intrinsics {
             let span = self.intrinsic_first_use[*sym];
-            let (param_str, result_str) =
-                if let Some((ty, _)) = super::console::signature(sym) {
-                    (self.ty_use_ref(ty), "unit".to_string())
-                } else if let Some((params, res, _)) = super::platform_io::signature(sym) {
-                    let ps: Vec<String> = params.iter().map(|t| self.ty_use_ref(*t)).collect();
-                    (ps.join(", "), self.ty_use_ref(res))
-                } else {
-                    (String::new(), "\"t_i32\"".to_string())
-                };
+            let (param_str, result_str) = if let Some((ty, _)) = super::console::signature(sym) {
+                (self.ty_use_ref(ty), "unit".to_string())
+            } else if let Some((params, res, _)) = super::platform_io::signature(sym) {
+                let ps: Vec<String> = params.iter().map(|t| self.ty_use_ref(*t)).collect();
+                (ps.join(", "), self.ty_use_ref(res))
+            } else {
+                (String::new(), "\"t_i32\"".to_string())
+            };
             frag!(
                 &format!(
                     "type {} function {{ params: [{}]; result: {} }}",

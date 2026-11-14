@@ -184,12 +184,12 @@ mod resource_events_919;
 mod assembly_944;
 #[path = "cases/choose_instances_935.rs"]
 mod choose_instances_935;
-#[path = "cases/dynamic_objects_964.rs"]
-mod dynamic_objects_964;
 #[path = "cases/const_instances_963.rs"]
 mod const_instances_963;
 #[path = "cases/default_args_963.rs"]
 mod default_args_963;
+#[path = "cases/dynamic_objects_964.rs"]
+mod dynamic_objects_964;
 #[path = "cases/generic_records_963.rs"]
 mod generic_records_963;
 #[path = "cases/named_args_963.rs"]
@@ -199,6 +199,12 @@ mod stdlib_core_945;
 
 // PLAN-1043：ACE 标准库 context 装配（provider 后缀选择 + 最小 `#in` 平台臂）
 // 四端真跑（A2PY 执行腿 pending PLAN-1042）。
+#[path = "cases/console_coverage_1041.rs"]
+mod console_coverage_1041;
+#[path = "cases/console_load_1041.rs"]
+mod console_load_1041;
+#[path = "cases/console_out_1041.rs"]
+mod console_out_1041;
 #[path = "cases/stdlib_assembly_1043.rs"]
 mod stdlib_assembly_1043;
 
@@ -206,7 +212,7 @@ mod stdlib_assembly_1043;
 mod module_packages_960;
 #[path = "cases/module_sources_950.rs"]
 mod module_sources_950;
-#[path = "cases/sq_source_facts_934.rs"]
-mod sq_source_facts_934;
 #[path = "cases/platform_io_1039.rs"]
 mod platform_io_1039;
+#[path = "cases/sq_source_facts_934.rs"]
+mod sq_source_facts_934;

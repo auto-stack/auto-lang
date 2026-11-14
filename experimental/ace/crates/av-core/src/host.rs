@@ -105,9 +105,8 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
                     "at most sixteen platform operations can be declared",
                 ));
             }
-            let spec = crate::platform_io::lookup_symbol(&h.symbol).ok_or_else(|| {
-                err("host.unknown-symbol", "unknown platform operation symbol")
-            })?;
+            let spec = crate::platform_io::lookup_symbol(&h.symbol)
+                .ok_or_else(|| err("host.unknown-symbol", "unknown platform operation symbol"))?;
             crate::platform_io::validate_import(module, h, spec)?;
             continue;
         }

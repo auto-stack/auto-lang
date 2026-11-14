@@ -110,7 +110,10 @@ impl TargetProvider for CTargetProvider {
         let marks: Vec<&'static str> = view.trace_symbols().into_iter().collect();
         match family {
             Family::Scalar => Ok(runtime::runtime_source(&marks)),
-            Family::RecordText => Ok(rt_runtime::record_text_runtime_source(&marks)),
+            Family::RecordText => Ok(rt_runtime::record_text_runtime_source_with(
+                &marks,
+                view.has_platform_ops(),
+            )),
             Family::Collections => Ok(coll_runtime::collections_runtime_source(&marks)),
         }
     }

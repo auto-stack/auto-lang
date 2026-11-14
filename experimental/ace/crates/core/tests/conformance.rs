@@ -58,39 +58,39 @@ mod decl_env_roundtrip_929;
 mod decl_events_929_t07;
 #[path = "cases/frontdoor_first_diag_941.rs"]
 mod frontdoor_first_diag_941;
+#[path = "cases/observation_scope_1028.rs"]
+mod observation_scope_1028;
 #[path = "cases/recovered_script_first_diag_941.rs"]
 mod recovered_script_first_diag_941;
 #[path = "cases/retirement_gate_929.rs"]
 mod retirement_gate_929;
-#[path = "cases/source_cst_927.rs"]
-mod source_cst_927;
 #[path = "cases/source_alias_963.rs"]
 mod source_alias_963;
-#[path = "cases/source_default_args_963.rs"]
-mod source_default_args_963;
-#[path = "cases/source_ext_963.rs"]
-mod source_ext_963;
+#[path = "cases/source_cst_927.rs"]
+mod source_cst_927;
 #[path = "cases/source_ct_936.rs"]
 mod source_ct_936;
+#[path = "cases/source_default_args_963.rs"]
+mod source_default_args_963;
 #[path = "cases/source_dependency_edits_941.rs"]
 mod source_dependency_edits_941;
+#[path = "cases/source_ext_963.rs"]
+mod source_ext_963;
 #[path = "cases/source_generics_963.rs"]
 mod source_generics_963;
-#[path = "cases/source_specs_generic_963.rs"]
-mod source_specs_generic_963;
-#[path = "cases/source_spec_super_assoc_963.rs"]
-mod source_spec_super_assoc_963;
 #[path = "cases/source_instances_935.rs"]
 mod source_instances_935;
 #[path = "cases/source_positions_941.rs"]
 mod source_positions_941;
 #[path = "cases/source_restore_929_t02.rs"]
 mod source_restore_929_t02;
+#[path = "cases/source_spec_super_assoc_963.rs"]
+mod source_spec_super_assoc_963;
+#[path = "cases/source_specs_generic_963.rs"]
+mod source_specs_generic_963;
 #[path = "cases/source_units_928.rs"]
 mod source_units_928;
 #[path = "cases/source_units_928_t09.rs"]
 mod source_units_928_t09;
 #[path = "cases/text_replacement.rs"]
 mod text_replacement;
-#[path = "cases/observation_scope_1028.rs"]
-mod observation_scope_1028;

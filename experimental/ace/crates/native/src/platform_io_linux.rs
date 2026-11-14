@@ -415,6 +415,37 @@ pub fn emit_platform_shim_elf() -> Result<Vec<u8>, MnError> {
         })?;
     }
 
+    // IoConsoleKind(h) — PLAN-1041: Linux std streams are always byte
+    // sinks; the common algorithm never selects a console path here.
+    {
+        let s = cranelift_shim_sig_for(PlatformOpKind::IoConsoleKind, CONV);
+        let id = declare_fn(
+            &mut om,
+            shim_symbol_for(PlatformOpKind::IoConsoleKind),
+            Linkage::Export,
+            &s,
+        )?;
+        define_fn(&mut om, id, s, |_, fb, _| {
+            let sink = fb.ins().iconst(types::I32, 2);
+            fb.ins().return_(&[sink]);
+        })?;
+    }
+
+    // IoConsoleWrite16(...) — PLAN-1041: no Windows text-console write on
+    // Linux; a call is a controlled value error, never a silent fallback.
+    {
+        let s = cranelift_shim_sig_for(PlatformOpKind::IoConsoleWrite16, CONV);
+        let id = declare_fn(
+            &mut om,
+            shim_symbol_for(PlatformOpKind::IoConsoleWrite16),
+            Linkage::Export,
+            &s,
+        )?;
+        define_fn(&mut om, id, s, |_, fb, _| {
+            ret_err(fb, ERR_INVALID_VALUE);
+        })?;
+    }
+
     // MemPageSize() / MemAllocGranularity() — from the auxv-filled slot;
     // Linux mmap granularity is the page size itself.
     for (kind, _) in [

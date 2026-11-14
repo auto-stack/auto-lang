@@ -337,6 +337,22 @@ pub fn console_native_build(
                 .any(|i| matches!(i, ace_av_core::mir::MirInstr::PlatformCall { .. }))
         })
     });
+    // PLAN-1041: the common output source carries real text ops
+    // (`char_at` walks scalars for the UTF-8→UTF-16 conversion), so the
+    // console lane links the owned-text domain runtime shim when any
+    // text instruction is present (same support lib the owned lane uses).
+    let has_text_ops = mir.funcs.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.instrs.iter().any(|i| {
+                matches!(
+                    i,
+                    ace_av_core::mir::MirInstr::StrCharAt { .. }
+                        | ace_av_core::mir::MirInstr::StrSlice { .. }
+                        | ace_av_core::mir::MirInstr::StrConcat { .. }
+                )
+            })
+        })
+    });
     let units = ace_av::cache::split_units(mir)
         .map_err(|e| MnError::Backend(format!("console split: {e}")))?;
     let mut objects = Vec::with_capacity(units.len() + 3);
@@ -358,12 +374,17 @@ pub fn console_native_build(
         });
     }
     let wrapper = emit_console_wrapper_coff(&entry_symbol, unit_result)?;
+    let support_libs = if has_text_ops {
+        vec![ace_av::text_runtime::text_runtime_lib().map_err(MnError::Infra)?]
+    } else {
+        Vec::new()
+    };
     link_driver::link_only(
         &objects,
         &wrapper,
         START_SYMBOL,
         workdir,
-        &[],
+        &support_libs,
         "plan947-console-lane",
     )
 }
@@ -643,6 +664,22 @@ pub fn console_native_build_elf(
                 .any(|i| matches!(i, ace_av_core::mir::MirInstr::PlatformCall { .. }))
         })
     });
+    // PLAN-1041: the common output source carries real text ops
+    // (`char_at` walks scalars for the UTF-8→UTF-16 conversion), so the
+    // console lane links the owned-text domain runtime shim when any
+    // text instruction is present (same support lib the owned lane uses).
+    let has_text_ops = mir.funcs.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.instrs.iter().any(|i| {
+                matches!(
+                    i,
+                    ace_av_core::mir::MirInstr::StrCharAt { .. }
+                        | ace_av_core::mir::MirInstr::StrSlice { .. }
+                        | ace_av_core::mir::MirInstr::StrConcat { .. }
+                )
+            })
+        })
+    });
     let units = ace_av::cache::split_units(mir)
         .map_err(|e| MnError::Backend(format!("console split: {e}")))?;
     let mut objects = Vec::with_capacity(units.len() + 3);
@@ -668,14 +705,181 @@ pub fn console_native_build_elf(
         });
     }
     let wrapper = emit_console_wrapper_elf(&entry_symbol, unit_result)?;
-    link_driver::link_elf(
+    let support_libs = if has_text_ops {
+        vec![text_runtime_lib_musl()?]
+    } else {
+        Vec::new()
+    };
+    link_driver::link_elf_with_libs(
         &objects,
         &wrapper,
         crate::mn_target::MnOsTarget::LinuxGnu.link_entry(),
         workdir,
+        &support_libs,
         "plan1040-linux-console-lane",
     )
 }
+
+/// PLAN-1041: locate-or-build the PURE text helpers the ELF console lane
+/// needs (`ac_rt_char_at` — the scalar-indexed UTF-8 decode with the
+/// frozen negative error codes) as a tiny no_std musl static archive.
+/// The full ace-text-runtime crate is Windows-oriented (heap/Win32
+/// externs); this mirror carries only the pure helper with the identical
+/// observable contract (same codes, same scalar-index semantics).
+fn text_runtime_lib_musl() -> Result<std::path::PathBuf, MnError> {
+    use std::sync::Mutex;
+    static CACHE: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
+    let mut g = CACHE.lock().expect("musl text runtime cache");
+    if let Some(p) = g.as_ref() {
+        return Ok(p.clone());
+    }
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .map_err(|e| MnError::Infra(format!("workspace root: {e}")))?;
+    let dir = workspace.join("target/mn-pio-text-rt");
+    std::fs::create_dir_all(&dir).map_err(|e| MnError::Infra(format!("mkdir: {e}")))?;
+    let src_path = dir.join("text_rt_pure.rs");
+    std::fs::write(&src_path, TEXT_RT_PURE_LINUX)
+        .map_err(|e| MnError::Infra(format!("write: {e}")))?;
+    // A single object, NOT a staticlib: a staticlib bundles all of core
+    // (memcpy/memset/eh-personality externs the freestanding ELF link
+    // refuses); this helper is self-contained (inline core use only).
+    let lib = dir.join("text_rt_pure.o");
+    let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+    let out = std::process::Command::new(rustc)
+        .arg("--edition")
+        .arg("2021")
+        .arg("--crate-type")
+        .arg("lib")
+        .arg("--emit")
+        .arg("obj")
+        .arg("--target")
+        .arg("x86_64-unknown-linux-musl")
+        // Freestanding link hygiene: no debug assertions (their overflow
+        // panics reference core::panicking), no unwind personality.
+        .arg("-C")
+        .arg("opt-level=2")
+        .arg("-C")
+        .arg("debug-assertions=off")
+        .arg("-C")
+        .arg("overflow-checks=off")
+        .arg("-C")
+        .arg("panic=abort")
+        .arg("-o")
+        .arg(&lib)
+        .arg(&src_path)
+        .output()
+        .map_err(|e| MnError::Infra(format!("spawn rustc for the pure text runtime: {e}")))?;
+    if !out.status.success() {
+        return Err(MnError::Infra(format!(
+            "pure text runtime build failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )));
+    }
+    *g = Some(lib.clone());
+    Ok(lib)
+}
+
+/// The pure `ac_rt_char_at` mirror (identical contract to
+/// ace-text-runtime's: scalar-indexed decode, frozen negative codes —
+/// trace side effects omitted, they are not observable on this lane).
+const TEXT_RT_PURE_LINUX: &str = r#"#![no_std]
+#![allow(non_snake_case)]
+use core::panic::PanicInfo;
+#[panic_handler]
+fn ph(_: &PanicInfo) -> ! {
+    loop {}
+}
+
+const ERR_LEN_NEGATIVE: i32 = -2;
+const ERR_INVALID_UTF8: i32 = -7;
+const ERR_RANGE_OOB: i32 = -10;
+
+unsafe fn utf8_scalar_at(ptr: *const u8, len: u32, idx: u32) -> Result<u32, i32> {
+    // Validate + count scalars first (the mirror of utf8_check).
+    let mut pos: u32 = 0;
+    let mut scalars: u32 = 0;
+    while pos < len {
+        let b0 = core::ptr::read_volatile(ptr.add(pos as usize));
+        let seq: u32 = match b0 {
+            0x00..=0x7F => 1,
+            0xC2..=0xDF => 2,
+            0xE0..=0xEF => 3,
+            0xF0..=0xF4 => 4,
+            _ => return Err(ERR_INVALID_UTF8),
+        };
+        if pos + seq > len {
+            return Err(ERR_INVALID_UTF8);
+        }
+        let mut i: u32 = 1;
+        while i < seq {
+            let bc = core::ptr::read_volatile(ptr.add((pos + i) as usize));
+            if bc & 0xC0 != 0x80 {
+                return Err(ERR_INVALID_UTF8);
+            }
+            i += 1;
+        }
+        pos += seq;
+        scalars += 1;
+    }
+    if idx >= scalars {
+        return Err(ERR_RANGE_OOB);
+    }
+    let mut pos: u32 = 0;
+    let mut sc: u32 = 0;
+    while pos < len {
+        let b0 = core::ptr::read_volatile(ptr.add(pos as usize));
+        let seq: u32 = match b0 {
+            0x00..=0x7F => 1,
+            0xC2..=0xDF => 2,
+            0xE0..=0xEF => 3,
+            _ => 4,
+        };
+        if sc == idx {
+            let value: u32 = match seq {
+                1 => b0 as u32,
+                2 => {
+                    let b1 = core::ptr::read_volatile(ptr.add((pos + 1) as usize)) as u32;
+                    ((b0 as u32 & 0x1F) << 6) | (b1 & 0x3F)
+                }
+                3 => {
+                    let b1 = core::ptr::read_volatile(ptr.add((pos + 1) as usize)) as u32;
+                    let b2 = core::ptr::read_volatile(ptr.add((pos + 2) as usize)) as u32;
+                    ((b0 as u32 & 0x0F) << 12) | ((b1 & 0x3F) << 6) | (b2 & 0x3F)
+                }
+                _ => {
+                    let b1 = core::ptr::read_volatile(ptr.add((pos + 1) as usize)) as u32;
+                    let b2 = core::ptr::read_volatile(ptr.add((pos + 2) as usize)) as u32;
+                    let b3 = core::ptr::read_volatile(ptr.add((pos + 3) as usize)) as u32;
+                    ((b0 as u32 & 0x07) << 18)
+                        | ((b1 & 0x3F) << 12)
+                        | ((b2 & 0x3F) << 6)
+                        | (b3 & 0x3F)
+                }
+            };
+            return Ok(value);
+        }
+        pos += seq;
+        sc += 1;
+    }
+    Err(ERR_RANGE_OOB)
+}
+
+#[no_mangle]
+pub extern "system" fn ac_rt_char_at(ptr: *const u8, len: i32, idx: i32) -> i32 {
+    if idx < 0 {
+        return ERR_RANGE_OOB;
+    }
+    if len < 0 {
+        return ERR_LEN_NEGATIVE;
+    }
+    match unsafe { utf8_scalar_at(ptr, len as u32, idx as u32) } {
+        Ok(value) => value as i32,
+        Err(code) => code,
+    }
+}
+"#;
 
 /// PLAN-1040: the Linux console-lane run — build, then execute the ELF
 /// inside the explicitly selected WSL distribution (the current required

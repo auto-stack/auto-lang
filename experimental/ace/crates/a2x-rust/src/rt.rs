@@ -65,7 +65,7 @@ pub fn assemble_record_text_file_set(
     generated.push_str("use crate::a2x_runtime::*;\n\n");
     generated.push_str(&print_program(program));
 
-    let runtime = record_text_runtime_source(&program.marks);
+    let runtime = record_text_runtime_source_with(&program.marks, view.has_platform_ops());
 
     let mut wrapper = String::new();
     wrapper.push_str(&format!(
@@ -143,12 +143,26 @@ fn build_rt_manifest(
 /// text is IDENTICAL for daily and certified runs; the fault/observation
 /// knobs live in the (lazy, default-off) environment configuration.
 pub fn record_text_runtime_source(marks: &[&'static str]) -> String {
+    record_text_runtime_source_with(marks, false)
+}
+
+/// PLAN-1041: same frozen runtime, plus the platform-operation stubs the
+/// common output source needs (appended only when the module actually
+/// carries platform intrinsics, so non-io builds keep their identity).
+pub fn record_text_runtime_source_with(marks: &[&'static str], platform: bool) -> String {
     let mut s = String::new();
     s.push_str("// AUTO-GENERATED typed resource runtime (PLAN-902 AX-B) — DO NOT EDIT.\n");
     s.push_str("// Checked i32 core + owned-Str resource layer with explicit cleanup,\n");
     s.push_str("// pre-allocation budget checks and default-off fault/observation hooks.\n");
     s.push_str("#![allow(dead_code)]\n\n");
     s.push_str(RT_CORE);
+    if platform {
+        s.push_str(
+            "
+",
+        );
+        s.push_str(PLATFORM_RT);
+    }
     for &mark in marks {
         let (suffix, value) = if mark == "hir.test.mark_a" {
             ("a", "1")
@@ -166,6 +180,209 @@ pub fn record_text_runtime_source(marks: &[&'static str]) -> String {
     }
     s
 }
+
+/// PLAN-1041: the platform-operation runtime stubs (record-text recipe).
+/// Deterministic negative i32 error codes mirror the AV/AC backends; the
+/// Windows console path calls GetConsoleMode/WriteConsoleW directly; the
+/// byte sink uses std::io::Write with REAL partial-write progress.
+const PLATFORM_RT: &str = r#"
+// ---- PLAN-1041 platform operations (common output capability) ----
+use std::io::Write;
+
+#[cfg(windows)]
+#[allow(non_snake_case)]
+mod pio_win {
+    extern "system" {
+        pub fn GetStdHandle(n: i32) -> isize;
+        pub fn GetConsoleMode(h: isize, mode: *mut u32) -> i32;
+        pub fn WriteConsoleW(
+            h: isize,
+            buf: *const u16,
+            n: u32,
+            written: *mut u32,
+            reserved: *mut u8,
+        ) -> i32;
+        pub fn GetLastError() -> u32;
+    }
+}
+
+static mut PIO_BUFS: [Option<Vec<u8>>; 16] = [
+    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+    None,
+];
+static mut PIO_NEXT: i32 = 0;
+static mut PIO_LAST_ERROR: i32 = 0;
+
+unsafe fn pio_slot(id: i32) -> Option<&'static mut Vec<u8>> {
+    if id < 0 || id >= 16 {
+        return None;
+    }
+    (&mut PIO_BUFS)[id as usize].as_mut()
+}
+
+pub fn a2x_io_stdout() -> i32 {
+    1
+}
+
+pub fn a2x_io_stderr() -> i32 {
+    2
+}
+
+pub fn a2x_io_console_kind(h: i32) -> i32 {
+    #[cfg(windows)]
+    unsafe {
+        let id = if h == 1 { -11 } else { -12 };
+        let sh = pio_win::GetStdHandle(id);
+        if sh == 0 || sh == -1 {
+            return 2;
+        }
+        let mut mode: u32 = 0;
+        if pio_win::GetConsoleMode(sh, &mut mode) != 0 {
+            return 1;
+        }
+        let err = pio_win::GetLastError();
+        if err == 5 {
+            PIO_LAST_ERROR = 5;
+            return -8;
+        }
+        2
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = h;
+        2
+    }
+}
+
+pub fn a2x_io_write_some_slice(h: i32, s: &str, off: i32, len: i32) -> i32 {
+    let data = s.as_bytes();
+    if off < 0 || len < 0 || (off as usize) + (len as usize) > data.len() {
+        return -4;
+    }
+    if len == 0 {
+        return 0;
+    }
+    let mut out: Box<dyn Write> = if h == 1 {
+        Box::new(std::io::stdout())
+    } else {
+        Box::new(std::io::stderr())
+    };
+    match out.write(&data[off as usize..(off + len) as usize]) {
+        Ok(n) => {
+            unsafe {
+                PIO_LAST_ERROR = 0;
+            }
+            n as i32
+        }
+        Err(e) => {
+            unsafe {
+                PIO_LAST_ERROR = e.raw_os_error().unwrap_or(5);
+            }
+            -8
+        }
+    }
+}
+
+pub fn a2x_io_console_write16(h: i32, b: i32, uoff: i32, ulen: i32) -> i32 {
+    if uoff < 0 || ulen < 0 {
+        return -4;
+    }
+    unsafe {
+        let Some(buf) = pio_slot(b) else {
+            return -2;
+        };
+        let end = 2 * (uoff as usize) + 2 * (ulen as usize);
+        if end > buf.len() {
+            return -4;
+        }
+        if ulen == 0 {
+            return 0;
+        }
+        #[cfg(windows)]
+        {
+            let mut units: Vec<u16> = Vec::with_capacity(ulen as usize);
+            let mut i = 2 * uoff as usize;
+            while i < end {
+                units.push(u16::from_le_bytes([buf[i], buf[i + 1]]));
+                i += 2;
+            }
+            let id = if h == 1 { -11 } else { -12 };
+            let sh = pio_win::GetStdHandle(id);
+            if sh == 0 || sh == -1 {
+                PIO_LAST_ERROR = 6;
+                return -8;
+            }
+            let mut written: u32 = 0;
+            let ok = pio_win::WriteConsoleW(
+                sh,
+                units.as_ptr(),
+                units.len() as u32,
+                &mut written,
+                std::ptr::null_mut(),
+            );
+            if ok == 0 {
+                let err = pio_win::GetLastError();
+                PIO_LAST_ERROR = err as i32;
+                return -8;
+            }
+            PIO_LAST_ERROR = 0;
+            (written as i32).min(ulen)
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = (h, end);
+            -7
+        }
+    }
+}
+
+pub fn a2x_io_last_error() -> i32 {
+    unsafe { PIO_LAST_ERROR }
+}
+
+pub fn a2x_mem_alloc(n: i32) -> i32 {
+    if n < 0 {
+        return -4;
+    }
+    unsafe {
+        let id = PIO_NEXT;
+        PIO_NEXT += 1;
+        if id >= 16 {
+            return -9;
+        }
+        (&mut PIO_BUFS)[id as usize] = Some(Vec::with_capacity(n as usize));
+        id
+    }
+}
+
+pub fn a2x_mem_write_u8(b: i32, off: i32, v: i32) -> i32 {
+    unsafe {
+        let Some(buf) = pio_slot(b) else {
+            return -2;
+        };
+        if off < 0 || off as usize >= buf.capacity() {
+            return -4;
+        }
+        while buf.len() <= off as usize {
+            buf.push(0);
+        }
+        buf[off as usize] = (v & 0xFF) as u8;
+        0
+    }
+}
+
+pub fn a2x_mem_free(b: i32) -> i32 {
+    unsafe {
+        if b < 0 || b >= 16 {
+            return -2;
+        }
+        match (&mut PIO_BUFS)[b as usize].take() {
+            Some(_) => 0,
+            None => -2,
+        }
+    }
+}
+"#;
 
 /// Frozen runtime core (byte-stable for a crate version).
 const RT_CORE: &str = r#"#[derive(Debug, Clone, Copy, PartialEq, Eq)]

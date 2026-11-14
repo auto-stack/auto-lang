@@ -44,6 +44,15 @@ pub const PROBE_UNSUPPORTED: u32 = 0x0010_4000;
 /// PLAN-1040: the only `dirfd` the probe seam admits for `openat`
 /// (Linux `AT_FDCWD`); arbitrary dirfds would smuggle kernel handles.
 pub const PROBE_AT_FDCWD: i32 = -100;
+/// PLAN-1041: marker a backend returns from `console_write16` when the
+/// platform has no Windows text-console write (the Linux backend — the
+/// common algorithm never selects the console path there because
+/// `console_kind` is always 2). Distinct from errno (<=~133) and the
+/// Win32 error space on purpose, like `PROBE_UNSUPPORTED`.
+pub const CONSOLE_WRITE16_UNSUPPORTED: u32 = 0x0010_4001;
+/// PLAN-1041: console classification results (see `IoConsoleKind`).
+pub const CONSOLE_KIND_TEXT: i32 = 1;
+pub const CONSOLE_KIND_BYTE_SINK: i32 = 2;
 
 // Checked negative i32 error codes returned to guest code (deterministic; never trap on OS or preflight failure).
 pub const ERR_UNAUTHORIZED: i32 = -1;
@@ -123,6 +132,16 @@ pub enum PlatformOpKind {
     /// PLAN-1040 probe seam: raw `close(fd)` — returns 0 or the raw
     /// negative Linux errno.
     ProbeClose,
+    /// PLAN-1041: classify a std stream handle — 1 = Windows text console,
+    /// 2 = byte sink (file/pipe/Linux stream). Negative error codes on real
+    /// classification failures (permission); invalid-handle surfaces at the
+    /// std-handle query step (1039 behavior).
+    IoConsoleKind,
+    /// PLAN-1041: write UTF-16LE code units from an OS memory region to a
+    /// Windows text console via `WriteConsoleW`. Params: (stream handle,
+    /// region handle, unit offset, unit count). Returns units written
+    /// (progress) or a negative error code.
+    IoConsoleWrite16,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -151,6 +170,7 @@ const P_I32_STR: &[MirType] = &[MirType::I32, MirType::StrView];
 const P_I32_STR_2I32: &[MirType] = &[MirType::I32, MirType::StrView, MirType::I32, MirType::I32];
 const P_2I32: &[MirType] = &[MirType::I32, MirType::I32];
 const P_3I32: &[MirType] = &[MirType::I32, MirType::I32, MirType::I32];
+const P_4I32: &[MirType] = &[MirType::I32, MirType::I32, MirType::I32, MirType::I32];
 
 pub const PLATFORM_OPS: &[PlatformOpSpec] = &[
     PlatformOpSpec {
@@ -212,6 +232,30 @@ pub const PLATFORM_OPS: &[PlatformOpSpec] = &[
         len_unit: LenUnit::None,
         origin: HandleOrigin::None,
         max_call_bytes: 0,
+    },
+    PlatformOpSpec {
+        kind: PlatformOpKind::IoConsoleKind,
+        callee: "io_console_kind",
+        symbol: "auto.platform.io.console_kind.v1",
+        category: CATEGORY_IO,
+        capability: CAP_WRITE,
+        params: P_I32,
+        param_dirs: D_1,
+        len_unit: LenUnit::None,
+        origin: HandleOrigin::StdStream,
+        max_call_bytes: 0,
+    },
+    PlatformOpSpec {
+        kind: PlatformOpKind::IoConsoleWrite16,
+        callee: "io_console_write16",
+        symbol: "auto.platform.io.console_write16.v1",
+        category: CATEGORY_IO,
+        capability: CAP_WRITE,
+        params: P_4I32,
+        param_dirs: D_4,
+        len_unit: LenUnit::None,
+        origin: HandleOrigin::StdStream,
+        max_call_bytes: MAX_PLATFORM_CALL_BYTES as u32,
     },
     PlatformOpSpec {
         kind: PlatformOpKind::MemPageSize,
@@ -475,6 +519,27 @@ pub trait PlatformIoBackend {
     fn probe_close(&mut self, _fd: i32) -> Result<i32, u32> {
         Err(PROBE_UNSUPPORTED)
     }
+    /// PLAN-1041: classify a std-stream OS handle. `Ok(1)` = Windows text
+    /// console, `Ok(2)` = byte sink (file/pipe/Linux stream). `Err` carries
+    /// the raw OS error for REAL classification failures (e.g. access
+    /// denied); "not a console" is `Ok(2)`, never an error. The default
+    /// reports byte-sink (platforms without a text-console API).
+    fn console_kind(&mut self, _os_handle: usize) -> Result<i32, u32> {
+        Ok(CONSOLE_KIND_BYTE_SINK)
+    }
+    /// PLAN-1041: write UTF-16LE code units to a text console via
+    /// `WriteConsoleW`. Returns units written (real OS progress; may be
+    /// fewer than requested — the caller keeps unit-level state). The
+    /// default reports the unsupported marker (no console write here).
+    fn console_write16(
+        &mut self,
+        _stream: StreamKind,
+        _os_handle: usize,
+        _units: &[u16],
+        _cancel: &CancelFlag,
+    ) -> Result<usize, u32> {
+        Err(CONSOLE_WRITE16_UNSUPPORTED)
+    }
 }
 
 #[cfg(windows)]
@@ -484,6 +549,7 @@ mod win32 {
     pub const MEM_RELEASE: u32 = 0x8000;
     pub const PAGE_READWRITE: u32 = 0x04;
     pub const ERROR_INVALID_HANDLE: u32 = 6;
+    pub const ERROR_ACCESS_DENIED: u32 = 5;
 
     #[repr(C)]
     #[allow(non_snake_case)]
@@ -519,6 +585,15 @@ mod win32 {
             flProtect: u32,
         ) -> *mut u8;
         pub fn VirtualFree(lpAddress: *mut u8, dwSize: usize, dwFreeType: u32) -> i32;
+        // PLAN-1041: Windows text-console classification + Unicode write.
+        pub fn GetConsoleMode(hConsoleHandle: isize, lpMode: *mut u32) -> i32;
+        pub fn WriteConsoleW(
+            hConsoleOutput: isize,
+            lpBuffer: *const u16,
+            nNumberOfCharsToWrite: u32,
+            lpNumberOfCharsWritten: *mut u32,
+            lpReserved: *mut u8,
+        ) -> i32;
     }
 
     pub fn query_system_info() -> (u32, u32) {
@@ -544,6 +619,9 @@ pub struct DispatchCounters {
     pub system_info: u64,
     pub virtual_alloc: u64,
     pub virtual_free: u64,
+    /// PLAN-1041 console ops.
+    pub console_kind: u64,
+    pub console_write16: u64,
 }
 
 impl PlatformIoBackend for Win32PlatformIo {
@@ -665,6 +743,74 @@ impl PlatformIoBackend for Win32PlatformIo {
         self.dispatches.virtual_free += 1;
         Err(50)
     }
+
+    #[cfg(windows)]
+    fn console_kind(&mut self, os_handle: usize) -> Result<i32, u32> {
+        self.dispatches.console_kind += 1;
+        let mut mode: u32 = 0;
+        let ok = unsafe { win32::GetConsoleMode(os_handle as isize, &mut mode) };
+        if ok != 0 {
+            return Ok(CONSOLE_KIND_TEXT);
+        }
+        // PLAN-1041 freeze: a real permission failure must surface, not be
+        // swallowed into "redirect"; every other failure means the handle is
+        // not a console (file/pipe/char device) — a byte sink.
+        let err = unsafe { win32::GetLastError() };
+        if err == win32::ERROR_ACCESS_DENIED {
+            return Err(err);
+        }
+        Ok(CONSOLE_KIND_BYTE_SINK)
+    }
+
+    #[cfg(not(windows))]
+    fn console_kind(&mut self, _os_handle: usize) -> Result<i32, u32> {
+        self.dispatches.console_kind += 1;
+        Ok(CONSOLE_KIND_BYTE_SINK)
+    }
+
+    #[cfg(windows)]
+    fn console_write16(
+        &mut self,
+        _stream: StreamKind,
+        os_handle: usize,
+        units: &[u16],
+        cancel: &CancelFlag,
+    ) -> Result<usize, u32> {
+        if CancelCheck::poll(cancel) {
+            return Err(995); // ERROR_OPERATION_ABORTED
+        }
+        self.dispatches.console_write16 += 1;
+        if units.is_empty() {
+            return Ok(0);
+        }
+        let mut written: u32 = 0;
+        let ok = unsafe {
+            win32::WriteConsoleW(
+                os_handle as isize,
+                units.as_ptr(),
+                u32::try_from(units.len()).unwrap_or(u32::MAX),
+                &mut written,
+                core::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            let err = unsafe { win32::GetLastError() };
+            return Err(if err == 0 { 6 } else { err });
+        }
+        Ok(written as usize)
+    }
+
+    #[cfg(not(windows))]
+    fn console_write16(
+        &mut self,
+        _stream: StreamKind,
+        _os_handle: usize,
+        _units: &[u16],
+        _cancel: &CancelFlag,
+    ) -> Result<usize, u32> {
+        self.dispatches.console_write16 += 1;
+        Err(CONSOLE_WRITE16_UNSUPPORTED)
+    }
 }
 
 /// Observable test provider: delegates real Win32 OS handles/system_info/VirtualAlloc/VirtualFree
@@ -680,6 +826,15 @@ pub struct CapturePlatformIo {
     pub inject_alloc_error: Option<u32>,
     pub inject_free_error: Option<u32>,
     pub use_synthetic_std_handle: bool,
+    /// PLAN-1041: force `console_kind == 1` so the console text path runs
+    /// under capture without a real Windows console; console writes land in
+    /// the UTF-16 unit buffers below (independent oracle for the Auto-side
+    /// UTF-8→UTF-16 conversion loop).
+    pub force_console_kind: bool,
+    pub console16_stdout: Vec<u16>,
+    pub console16_stderr: Vec<u16>,
+    pub max_console16_units: Option<usize>,
+    pub inject_console16_error: Option<u32>,
 }
 
 impl PlatformIoBackend for CapturePlatformIo {
@@ -746,6 +901,42 @@ impl PlatformIoBackend for CapturePlatformIo {
             return Err(err);
         }
         self.win32.virtual_free(base, mapped_len)
+    }
+
+    // PLAN-1041: capture console ops — deterministic oracle + fault
+    // injection for the console text path (OUT-02/OUT-03 controls).
+    fn console_kind(&mut self, _os_handle: usize) -> Result<i32, u32> {
+        self.win32.dispatches.console_kind += 1;
+        if self.force_console_kind {
+            return Ok(CONSOLE_KIND_TEXT);
+        }
+        self.win32.console_kind(_os_handle)
+    }
+
+    fn console_write16(
+        &mut self,
+        stream: StreamKind,
+        _os_handle: usize,
+        units: &[u16],
+        cancel: &CancelFlag,
+    ) -> Result<usize, u32> {
+        if CancelCheck::poll(cancel) {
+            return Err(995);
+        }
+        self.win32.dispatches.console_write16 += 1;
+        if let Some(err) = self.inject_console16_error {
+            return Err(err);
+        }
+        let n = self
+            .max_console16_units
+            .map_or(units.len(), |cap| units.len().min(cap));
+        let dest = match stream {
+            StreamKind::Stdout => &mut self.console16_stdout,
+            StreamKind::Stderr => &mut self.console16_stderr,
+        };
+        dest.try_reserve_exact(n).map_err(|_| 8u32)?;
+        dest.extend_from_slice(&units[..n]);
+        Ok(n)
     }
 }
 
@@ -1150,6 +1341,25 @@ impl PlatformIoBackend for LinuxPlatformIo {
     fn probe_close(&mut self, _fd: i32) -> Result<i32, u32> {
         Err(PROBE_UNSUPPORTED)
     }
+
+    // PLAN-1041: Linux std streams are always byte sinks (the kernel does
+    // not interpret UTF-8 for the terminal); there is no Windows
+    // text-console write here — the common algorithm never selects it.
+    fn console_kind(&mut self, _os_handle: usize) -> Result<i32, u32> {
+        self.dispatches.console_kind += 1;
+        Ok(CONSOLE_KIND_BYTE_SINK)
+    }
+
+    fn console_write16(
+        &mut self,
+        _stream: StreamKind,
+        _os_handle: usize,
+        _units: &[u16],
+        _cancel: &CancelFlag,
+    ) -> Result<usize, u32> {
+        self.dispatches.console_write16 += 1;
+        Err(CONSOLE_WRITE16_UNSUPPORTED)
+    }
 }
 
 /// A raw syscall returned a negative value outside the errno interval —
@@ -1344,8 +1554,133 @@ impl PlatformResourceLedger {
                 self.op_probe_write_fd(backend, as_i32(&args[0])?, as_str_bytes(&args[1])?)
             }
             PlatformOpKind::ProbeClose => self.op_probe_close(backend, as_i32(&args[0])?),
+            PlatformOpKind::IoConsoleKind => self.op_console_kind(backend, as_i32(&args[0])?),
+            PlatformOpKind::IoConsoleWrite16 => self.op_console_write16(
+                backend,
+                as_i32(&args[0])?,
+                as_i32(&args[1])?,
+                as_i32(&args[2])?,
+                as_i32(&args[3])?,
+                cancel,
+            ),
         };
         Ok(code)
+    }
+
+    /// PLAN-1041: classify a ledger std-stream handle. The stream handle
+    /// must exist and carry the stream capability; the OS classification
+    /// comes from the backend (Win32 `GetConsoleMode`; Linux is always a
+    /// byte sink). Permission failures surface as `ERR_OS_FAILED` with the
+    /// raw error recorded for `io_last_error`.
+    fn op_console_kind(&mut self, backend: &mut dyn PlatformIoBackend, handle: i32) -> i32 {
+        let Ok((idx, _)) = self.decode_handle(handle) else {
+            return ERR_INVALID_HANDLE;
+        };
+        let (stream, os_handle) = match &self.entries[idx].payload {
+            LedgerPayload::StdStream { stream, os_handle } => (*stream, *os_handle),
+            LedgerPayload::OsMemRegion { .. } => return ERR_WRONG_ORIGIN,
+        };
+        if !self.grants.contains(stream.capability()) {
+            return ERR_UNAUTHORIZED;
+        }
+        match backend.console_kind(os_handle) {
+            // PLAN-1041: a successful classification does not clear the
+            // last io error (the freeze: out_last_error reports the last
+            // FAILING primitive's raw code).
+            Ok(kind) => kind,
+            Err(err) => {
+                self.last_os_error = err;
+                ERR_OS_FAILED
+            }
+        }
+    }
+
+    /// PLAN-1041: write UTF-16LE units from a ledger OS memory region to a
+    /// Windows text console. Mixed-origin params (stream handle + region
+    /// handle) are both ledger-validated; the byte budget counts 2×units
+    /// (the units cross the OS boundary as bytes); progress is UTF-16
+    /// units written so the caller keeps unit-level partial state.
+    fn op_console_write16(
+        &mut self,
+        backend: &mut dyn PlatformIoBackend,
+        stream_handle: i32,
+        region_handle: i32,
+        unit_off: i32,
+        unit_len: i32,
+        cancel: &CancelFlag,
+    ) -> i32 {
+        if unit_off < 0 || unit_len < 0 {
+            return ERR_INVALID_BOUNDS;
+        }
+        let Ok((sidx, _)) = self.decode_handle(stream_handle) else {
+            return ERR_INVALID_HANDLE;
+        };
+        let (stream, os_handle) = match &self.entries[sidx].payload {
+            LedgerPayload::StdStream { stream, os_handle } => (*stream, *os_handle),
+            LedgerPayload::OsMemRegion { .. } => return ERR_WRONG_ORIGIN,
+        };
+        if !self.grants.contains(stream.capability()) {
+            return ERR_UNAUTHORIZED;
+        }
+        let Ok((ridx, _)) = self.decode_handle(region_handle) else {
+            return ERR_INVALID_HANDLE;
+        };
+        let (base, logical_len) = match &self.entries[ridx].payload {
+            LedgerPayload::OsMemRegion {
+                base,
+                logical_len,
+                released: false,
+                ..
+            } => (*base, *logical_len),
+            LedgerPayload::OsMemRegion { released: true, .. } => return ERR_ALREADY_RELEASED,
+            LedgerPayload::StdStream { .. } => return ERR_WRONG_ORIGIN,
+        };
+        let (unit_off, unit_len) = (unit_off as usize, unit_len as usize);
+        let byte_off = match unit_off.checked_mul(2) {
+            Some(v) => v,
+            None => return ERR_INVALID_BOUNDS,
+        };
+        let byte_len = match unit_len.checked_mul(2) {
+            Some(v) => v,
+            None => return ERR_INVALID_BOUNDS,
+        };
+        let byte_end = match byte_off.checked_add(byte_len) {
+            Some(e) if e <= logical_len => e,
+            _ => return ERR_INVALID_BOUNDS,
+        };
+        if byte_len == 0 {
+            return 0;
+        }
+        if byte_len > MAX_PLATFORM_CALL_BYTES {
+            return ERR_BUDGET;
+        }
+        let Some(next_total) = self.written_total_bytes.checked_add(byte_len) else {
+            return ERR_BUDGET;
+        };
+        if next_total > MAX_PLATFORM_RUN_BYTES {
+            return ERR_BUDGET;
+        }
+        // Region memory is page-aligned and 2-byte offsets keep alignment,
+        // but read unit-by-unit to stay safe under any future layout.
+        let mut units = Vec::with_capacity(unit_len);
+        for i in (byte_off..byte_end).step_by(2) {
+            let lo = unsafe { core::ptr::read(base.add(i)) };
+            let hi = unsafe { core::ptr::read(base.add(i + 1)) };
+            units.push(u16::from_le_bytes([lo, hi]));
+        }
+        match backend.console_write16(stream, os_handle, &units, cancel) {
+            Ok(n) => {
+                let n = n.min(unit_len);
+                self.written_total_bytes += n * 2;
+                self.last_os_error = 0;
+                n as i32
+            }
+            Err(CONSOLE_WRITE16_UNSUPPORTED) => ERR_INVALID_VALUE,
+            Err(err) => {
+                self.last_os_error = err;
+                ERR_OS_FAILED
+            }
+        }
     }
 
     /// PLAN-1040: probe ops bypass the handle ledger (their fds are raw
@@ -1566,7 +1901,9 @@ impl PlatformResourceLedger {
                     *released = true;
                 }
                 self.live_mapped_bytes = self.live_mapped_bytes.saturating_sub(mapped_len);
-                self.last_os_error = 0;
+                // PLAN-1041: a successful release is not an OS write/query
+                // — keep the last io error observable (an error-path free
+                // after a failed write must not erase out_last_error()).
                 0
             }
             Err(err) => {

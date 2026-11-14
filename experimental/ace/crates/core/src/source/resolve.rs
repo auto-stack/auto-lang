@@ -10645,7 +10645,12 @@ impl<'a, 's> FnResolver<'a, 's> {
                 },
             };
         }
-        if self.profile == SourceProfile::HostConsole {
+        if self.profile == SourceProfile::HostConsole
+            // PLAN-1041: 包装配面（TextRecord 经 bind_packages/resolve_with）同样
+            // 准入平台保留名——公共 stdlib 源（如 io 输出循环）单源服务
+            // console 单模块面与 1043 装配面；能力仍在准入层核。
+            || self.profile == SourceProfile::TextRecord
+        {
             if let Some(op) = super::platform_io::lookup_callee(&callee.name) {
                 if rargs.len() != op.params.len() || rargs.iter().any(|a| a.name.is_some()) {
                     self.bind_err(

@@ -1463,8 +1463,7 @@ impl MirModule {
                             b += std::mem::size_of::<ace_foreign_contract::manual::SourceDecl>()
                                 + declaration.heap_bytes();
                         }
-                        MirInstr::Call { args, .. }
-                        | MirInstr::PlatformCall { args, .. } => {
+                        MirInstr::Call { args, .. } | MirInstr::PlatformCall { args, .. } => {
                             b += args.len() * std::mem::size_of::<SlotId>() + VEC
                         }
                         MirInstr::Aggregate { operands, .. } => {

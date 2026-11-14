@@ -1151,34 +1151,14 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
         }
 
         if let Some(port_id) = self.resolve_stdlib_port_id(target_id) {
-            let catalog = default_stdlib_port_catalog(PY_RUNTIME_VERSION);
-            let spec = catalog
-                .ports
-                .iter()
-                .find(|p| p.operation_id == port_id)
-                .ok_or_else(|| A2xReject::new("a2py.port", format!("missing port `{port_id}`")))?;
-            let modes: Vec<String> = spec
-                .params
-                .iter()
-                .map(|p| format!("'{}'", p.direction.as_str()))
-                .collect();
-            let modes_tuple = if modes.len() == 1 {
-                format!("({},)", modes[0])
-            } else {
-                format!("({})", modes.join(", "))
-            };
-            let arg_list = place_args(&slots, bindings, slots.len())?;
-            let extra = if arg_list.is_empty() {
-                String::new()
-            } else {
-                format!(", {}", arg_list.join(", "))
-            };
-            let t = self.fresh_temp();
-            self.emit_line(&format!(
-                "{t} = a2x_port_call('{port_id}', {}, {modes_tuple}, f'{{A2X_PY_RUNTIME_VERSION}}@{{A2X_PY_RUNTIME_BODY_SHA256}}'{extra})",
-                spec.semantic_version
-            ));
-            return Ok(t);
+            return self.emit_port_call(&port_id, &slots, bindings);
+        }
+        // PLAN-1041: a platform-operation intrinsic maps to its runtime
+        // port by symbol (auto.platform.io.write_some_slice.v1 ->
+        // io.write_some_slice); deterministic negative codes, never traps.
+        if let Some(sym) = self.view.platform_symbol(target_id) {
+            let port_id = platform_port_id(sym)?;
+            return self.emit_port_call(&port_id, &slots, bindings);
         }
 
         // PLAN-967 (A2PY ctypes leg): a foreign callee bridges through
@@ -1236,6 +1216,44 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
         Ok(t)
     }
 
+    /// Emit an `a2x_port_call` for a resolved port id (shared by the
+    /// stdlib-port path and the PLAN-1041 platform-intrinsic path).
+    fn emit_port_call(
+        &mut self,
+        port_id: &str,
+        slots: &[String],
+        bindings: &[hir::CallBinding],
+    ) -> Result<String, A2xReject> {
+        let catalog = default_stdlib_port_catalog(PY_RUNTIME_VERSION);
+        let spec = catalog
+            .ports
+            .iter()
+            .find(|p| p.operation_id == port_id)
+            .ok_or_else(|| A2xReject::new("a2py.port", format!("missing port `{port_id}`")))?;
+        let modes: Vec<String> = spec
+            .params
+            .iter()
+            .map(|p| format!("'{}'", p.direction.as_str()))
+            .collect();
+        let modes_tuple = if modes.len() == 1 {
+            format!("({},)", modes[0])
+        } else {
+            format!("({})", modes.join(", "))
+        };
+        let arg_list = place_args(slots, bindings, slots.len())?;
+        let extra = if arg_list.is_empty() {
+            String::new()
+        } else {
+            format!(", {}", arg_list.join(", "))
+        };
+        let t = self.fresh_temp();
+        let semver = spec.semantic_version;
+        self.emit_line(&format!(
+            "{t} = a2x_port_call('{port_id}', {semver}, {modes_tuple}, f'{{A2X_PY_RUNTIME_VERSION}}@{{A2X_PY_RUNTIME_BODY_SHA256}}'{extra})"
+        ));
+        Ok(t)
+    }
+
     fn resolve_stdlib_port_id(&self, target_id: usize) -> Option<String> {
         let name = if let Some(ext) = self.view.external_by_def(target_id) {
             ext.source_name.as_str()
@@ -1264,6 +1282,34 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
             _ => None,
         }
     }
+}
+
+/// PLAN-1041: map a platform-operation symbol to its runtime port id
+/// (`auto.platform.io.write_some_slice.v1` -> `io.write_some_slice`).
+/// Unknown platform symbols are named rejects, never silent fallbacks.
+fn platform_port_id(symbol: &str) -> Result<String, A2xReject> {
+    let tail = symbol.strip_prefix("auto.platform.").ok_or_else(|| {
+        A2xReject::new("a2x.internal", format!("not a platform symbol: {symbol}"))
+    })?;
+    let op = tail.strip_suffix(".v1").unwrap_or(tail);
+    let port = match op {
+        "io.stdout" => "io.stdout",
+        "io.stderr" => "io.stderr",
+        "io.console_kind" => "io.console_kind",
+        "io.write_some" => "io.write_some",
+        "io.write_some_slice" => "io.write_some_slice",
+        "io.console_write16" => "io.console_write16",
+        "io.last_error" => "io.last_error",
+        "mem.alloc" => "mem.alloc",
+        "mem.write_u8" => "mem.write_u8",
+        "mem.free" => "mem.free",
+        other => {
+            return Err(A2xReject::unsupported_expr(format!(
+                "platform operation `{other}` has no python port"
+            )))
+        }
+    };
+    Ok(port.to_string())
 }
 
 fn int_bounds(ty: hir::BuiltinType) -> Result<(&'static str, &'static str), A2xReject> {

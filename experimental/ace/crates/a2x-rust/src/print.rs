@@ -487,6 +487,10 @@ fn render_expr(e: &RExpr) -> String {
             let args: Vec<String> = args.iter().map(render_val).collect();
             format!("{}({})", func, args.join(", "))
         }
+        RExpr::PlainCall { func, args } => {
+            let args: Vec<String> = args.iter().map(render_val).collect();
+            format!("{}({})", func, args.join(", "))
+        }
         RExpr::Trace { func } => format!("{}()", func),
         RExpr::StrFn { func, args } => {
             let args: Vec<String> = args.iter().map(render_val).collect();

@@ -716,6 +716,10 @@ fn ser_expr(
                 x.source_name.clone()
             } else if let Some(declaration) = view.foreign_by_def(target) {
                 format!("foreign:{}[{}]", declaration.logical, declaration.digest())
+            } else if let Some(sym) = view.platform_symbol(target) {
+                // PLAN-1041: platform-operation intrinsic — the runtime
+                // stub identity is its stable symbol.
+                format!("platform:{sym}")
             } else {
                 return Err(A2xReject::unsupported_expr("call target not admitted"));
             };

@@ -1,0 +1,267 @@
+// PLAN-1041: the common Auto output capability — one source, every lane.
+//
+// Public API (frozen in the plan §0 T-01 record):
+//   out_stdout()/out_stderr()  — std stream handles (validated at the OS step)
+//   out_kind(h)                — 1 = Windows text console, 2 = byte sink, <0 error
+//   out_text(h, s)             — text output; no implicit newline; progress
+//                                unit = confirmed UTF-8 bytes (console path
+//                                counts only complete scalars); >=0 confirmed
+//                                bytes on success, <0 error code
+//   out_bytes(h, s)            — raw UTF-8 bytes to a byte sink; a text
+//                                console is explicitly rejected (-13); the
+//                                redirect target receives the bytes verbatim
+//   out_last_error()           — raw OS error of the last failing primitive
+//
+// Error codes: -1 unauthorized, -2 invalid handle, -8 OS failure (raw code
+// via out_last_error), -9 budget (65_536/call, 1_048_576/run — the 947/1039
+// contract), -13 console byte-reject, -14 controlled WriteZero (bounded
+// retry exhausted). Old print/eprint/say semantics live in the console/1
+// profile and are NOT touched here.
+//
+// The UTF-8→UTF-16 conversion, the chunked write loops, unit-level
+// progress mapping and the EINTR/WriteZero policies are THIS Auto source —
+// never a host helper. Only the primitives differ per lane: the reserved
+// platform operations (auto.platform.io.*/auto.platform.mem.*) resolve to
+// the checked OS backends on AV/AC and to the target runtime ports on the
+// a2x ends. Conversion chunk = 4096 UTF-8 input bytes; submitted console
+// blocks never split a surrogate pair (except resending the remaining unit
+// after an OS write stopped mid-pair — the frozen OUT-03 continuation).
+
+pub fn out_stdout() int {
+    return io_stdout()
+}
+
+pub fn out_stderr() int {
+    return io_stderr()
+}
+
+pub fn out_kind(h int) int {
+    return io_console_kind(h)
+}
+
+pub fn out_last_error() int {
+    return io_last_error()
+}
+
+// UTF-8 byte length of one scalar from its codepoint (valid source input:
+// no lone surrogates, so the range table is exact).
+pub fn utf8_len(cp int) int {
+    if cp < 128 {
+        return 1
+    }
+    if cp < 2048 {
+        return 2
+    }
+    if cp < 65536 {
+        return 3
+    }
+    return 4
+}
+
+// UTF-16 code-unit count of one scalar.
+pub fn utf16_len(cp int) int {
+    if cp < 65536 {
+        return 1
+    }
+    return 2
+}
+
+// Stage one UTF-16LE unit into the region buffer at byte position pos.
+pub fn put_unit(buf int, pos int, v int) int {
+    let lo = mem_write_u8(buf, pos, v % 256)
+    if lo != 0 {
+        return lo
+    }
+    return mem_write_u8(buf, pos + 1, (v / 256) % 256)
+}
+
+// Stage one scalar's UTF-16LE units; returns 0 or the primitive error.
+pub fn put_scalar(buf int, pos int, cp int) int {
+    if cp < 65536 {
+        return put_unit(buf, pos, cp)
+    }
+    let v = cp - 65536
+    let hi = 55296 + v / 1024
+    let lo = 56320 + v % 1024
+    let r1 = put_unit(buf, pos, hi)
+    if r1 != 0 {
+        return r1
+    }
+    return put_unit(buf, pos + 2, lo)
+}
+
+// Byte-sink write-all: bounded loop, real progress, EINTR retry with the
+// same slice (bounded 64 consecutive zero-progress EINTRs), EAGAIN returns
+// immediately (no busy-wait), zero-progress success retried 64 times then
+// controlled WriteZero.
+pub fn out_write_all_bytes(h int, s str) int {
+    let total = s.len_bytes()
+    if total == 0 {
+        return 0
+    }
+    var off = 0
+    var rem = total
+    var zero = 0
+    var eintr = 0
+    var err = 0
+    var done = 0
+    for done == 0 {
+        let w = io_write_some_slice(h, s, off, rem)
+        if w < 0 {
+            if w == -8 {
+                let e = io_last_error()
+                if e == 4 {
+                    // EINTR wrote nothing; bounded same-slice retry.
+                    eintr = eintr + 1
+                    if eintr > 64 {
+                        err = -8
+                        done = 1
+                    }
+                } else {
+                    // EAGAIN (11) included: return immediately.
+                    err = w
+                    done = 1
+                }
+            } else {
+                err = w
+                done = 1
+            }
+        } else {
+            if w == 0 {
+                zero = zero + 1
+                if zero > 64 {
+                    err = -14
+                    done = 1
+                }
+            } else {
+                off = off + w
+                rem = rem - w
+                zero = 0
+                eintr = 0
+                if rem == 0 {
+                    done = 1
+                }
+            }
+        }
+    }
+    if err != 0 {
+        return err
+    }
+    return off
+}
+
+pub fn out_bytes(h int, s str) int {
+    let k = io_console_kind(h)
+    if k < 0 {
+        return k
+    }
+    if k == 1 {
+        // Explicit rejection: no silent lossy byte interpretation on a
+        // text console (frozen policy).
+        return -13
+    }
+    return out_write_all_bytes(h, s)
+}
+
+pub fn out_text(h int, s str) int {
+    let k = io_console_kind(h)
+    if k < 0 {
+        return k
+    }
+    if k == 2 {
+        // Redirect/file/pipe or Linux stream: original UTF-8 bytes.
+        return out_write_all_bytes(h, s)
+    }
+    let total = s.len_bytes()
+    if total == 0 {
+        return 0
+    }
+    // Windows text console: convert per chunk and write UTF-16 units.
+    let buf = mem_alloc(8192)
+    if buf <= 0 {
+        return buf
+    }
+    var off = 0
+    var si = 0
+    var res = 0
+    var finished = 0
+    for finished == 0 {
+        // ---- stage one chunk starting at off ----
+        // `char_at` indexes SCALARS, so the scalar cursor walks forward
+        // alongside the byte cursor (the input is walked strictly in
+        // order; no re-walking is needed on chunk boundaries).
+        var staged = 0
+        var cbytes = 0
+        var staging = 1
+        for staging == 1 {
+            let ch = s.char_at(si)
+            let cp = ch.to_codepoint()
+            let pr = put_scalar(buf, staged * 2, cp)
+            if pr != 0 {
+                res = pr
+                staging = 0
+                finished = 1
+            } else {
+                staged = staged + utf16_len(cp)
+                cbytes = cbytes + utf8_len(cp)
+                si = si + 1
+                if total - off - cbytes <= 0 {
+                    staging = 0
+                }
+                if cbytes >= 4096 {
+                    staging = 0
+                }
+                if staged >= 4090 {
+                    staging = 0
+                }
+            }
+        }
+        // ---- write the staged units (unit-level progress state) ----
+        if res == 0 {
+            var wu = 0
+            var wzero = 0
+            var writing = 1
+            for writing == 1 {
+                let w = io_console_write16(h, buf, wu, staged - wu)
+                if w < 0 {
+                    res = w
+                    writing = 0
+                    finished = 1
+                } else {
+                    if w == 0 {
+                        wzero = wzero + 1
+                        if wzero > 64 {
+                            res = -14
+                            writing = 0
+                            finished = 1
+                        }
+                    } else {
+                        wu = wu + w
+                        wzero = 0
+                        // NOTE: the condition deliberately ends in a
+                        // literal — a bare ident before `{` would parse
+                        // as a record construction on the packages faces
+                        // (named-ctor ambiguity; recorded in the plan).
+                        if staged - wu <= 0 {
+                            writing = 0
+                        }
+                    }
+                }
+            }
+            if res == 0 {
+                off = off + cbytes
+                if total - off <= 0 {
+                    finished = 1
+                }
+            }
+        }
+    }
+    let fr = mem_free(buf)
+    if res != 0 {
+        return res
+    }
+    if fr != 0 {
+        return fr
+    }
+    return off
+}

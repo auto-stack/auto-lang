@@ -4320,3 +4320,25 @@ owner=PLAN-917 域（a2r_std 发射条件变化 vs 917 T-05 冻结金样）。�
 - **D-964-C2 — 冻结 §5 名 `av.dyn.unsupported` 与实际 `portable.unsupported`（PLAN-964 文档级差异）**：活外部值不可 portable freeze 的具名拒在 portable 命名空间以 `PortableError::Unsupported{category}`（code()="portable.unsupported"）落地；§5 冻结措辞写 `av.dyn.unsupported`。语义意图（具名拒、无静默通过）一致，仅码串命名空间不同。owner：PLAN-964 SD-INT-1026 落盘。关闭：docs/specs 落盘以实际码为准（已在 m2-dynamic.md 草稿修正）。
 - **D-964-C3 — grid 单行异构列语义澄清（PLAN-964 测试校正暴露）**：`grid (a,b) { [1, "x"] }` 单行时每列一个单元格、列间异构**合法**（每列独立 List，规范 L-14「列内同型」）；962 期测试负控靠非 text 面 Str 字面量的偶然拒绝（dangling t_str）过关，Str 绑定合法化后暴露。负控已改为 `grid (a) { [1]; ["x"] }` 具名 `source.type-mismatch`。owner：PLAN-962 语义裁定者。关闭：如裁定 grid 需列间同型，补跨列统一检查；否则维持现状并保留 m2-dynamic.md 的语义注记。
 - **D-963-C7 — 泛型局部类型注解与跨 profile 类型的诊断质量**（2026-11-13 复审实测）：instances lane 接受 `let p = Point<int> { x: 100, y: 200 }`（`crates/auto-lang/test/cases/ace-m2/generics/src/point300.at`），但**带类型实参的局部注解** `let b Box<int> = …` / `var xs List<int> = …` 退化为 `source.unsupported: locals must be initialized at declaration in this source profile`（文案与病因无关）；同一 lane 直接写内置 `List<int>.new()` 得 `source.syntax: expected expression, found 'int'`（`List` 非本 lane 模板，语料以 `source.syntax` 负控钉住）。owner：ACE 语法/投影诊断面。关闭：未知/跨 profile 泛型类型名给出专名诊断（如 `source.unknown-type` / `source.profile-type`），且局部泛型注解给出与病因一致的文案。
+
+## PLAN-1041 债务候选与预存红登记（2026-11-14，final review）
+
+### D-1041-GRAMMAR — 包装配面"比较以裸标识符结尾+`{`"具名构造歧义（P2）
+
+包装配面（packages-modules/packages-ct）里 `if/for` 条件以裸标识符结尾后随 `{`
+（如 `if wu >= staged {`）会被 pratt 的具名构造路径吃掉（`Ident { ... }`），整文件
+解析失败且回退诊断误导（"`fn` is not part of this source profile"）。PLAN-1041 的
+io.at 已把全部条件改写为字面量结尾并在源内注记（工作区
+stdlib/auto/platform/io.at "NOTE: the condition deliberately ends in a literal"）。
+根因在语法/pratt 消歧，非本包触面；owner 待语法面计划（966/1043 后继）裁定，
+关闭case=包装配面 `if a >= b {` 原样解析通过且 io.at 恢复自然拼写。
+
+### D-1041-MASTER-RED — master 既有 text.char-multi mojibake 家族 + 杀上限计时红（登记非本包）
+
+PLAN-1041 组并集期间确认 master@76431e6b9 上多字节字符字面量（如 `'界'`）被逐
+字节解码（`ç`/`ð` 首字节）导致 `text.char-multi` 拒绝：av_console_typed_symbols、
+av_console_exact_source_bytes、native_console i32/bool/char/say、data_owned、
+shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余同签名归并）。
+另有 semantics_protocol::abi_worker_overflow_then_hang 杀上限计时红（stash 复验
+仍红）。疑与 967 F0 落地（4c1788a79）词法/CT 面相关；owner=967 跟进。PLAN-1041
+交付不依赖这些用例（本包用例全绿）。

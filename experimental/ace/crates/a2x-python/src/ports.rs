@@ -194,6 +194,138 @@ pub fn default_stdlib_port_catalog(runtime_source: &str) -> StdlibPortCatalog {
                 "Str",
                 "Trap(Resource)",
             ),
+            // PLAN-1041: the common output capability's platform-operation
+            // ports (the a2x realization of the reserved stdlib platform
+            // calls). Errors are deterministic negative i32 codes — the
+            // same contract as the AV/AC backends — never traps.
+            mk(
+                "io.stdout",
+                "std.platform",
+                "io_stdout",
+                vec![],
+                "int",
+                "None",
+            ),
+            mk(
+                "io.stderr",
+                "std.platform",
+                "io_stderr",
+                vec![],
+                "int",
+                "None",
+            ),
+            mk(
+                "io.console_kind",
+                "std.platform",
+                "io_console_kind",
+                vec![PortParamSpec {
+                    ty: "int",
+                    direction: ParamDirection::View,
+                }],
+                "int",
+                "None",
+            ),
+            mk(
+                "io.write_some_slice",
+                "std.platform",
+                "io_write_some_slice",
+                vec![
+                    PortParamSpec {
+                        ty: "int",
+                        direction: ParamDirection::View,
+                    },
+                    PortParamSpec {
+                        ty: "str",
+                        direction: ParamDirection::View,
+                    },
+                    PortParamSpec {
+                        ty: "int",
+                        direction: ParamDirection::View,
+                    },
+                    PortParamSpec {
+                        ty: "int",
+                        direction: ParamDirection::View,
+                    },
+                ],
+                "int",
+                "None",
+            ),
+            mk(
+                "io.console_write16",
+                "std.platform",
+                "io_console_write16",
+                vec![
+                    PortParamSpec {
+                        ty: "int",
+                        direction: ParamDirection::View,
+                    },
+                    PortParamSpec {
+                        ty: "int",
+                        direction: ParamDirection::View,
+                    },
+                    PortParamSpec {
+                        ty: "int",
+                        direction: ParamDirection::View,
+                    },
+                    PortParamSpec {
+                        ty: "int",
+                        direction: ParamDirection::View,
+                    },
+                ],
+                "int",
+                "None",
+            ),
+            mk(
+                "io.last_error",
+                "std.platform",
+                "io_last_error",
+                vec![],
+                "int",
+                "None",
+            ),
+            mk(
+                "mem.alloc",
+                "std.platform",
+                "mem_alloc",
+                vec![PortParamSpec {
+                    ty: "int",
+                    direction: ParamDirection::View,
+                }],
+                "int",
+                "None",
+            ),
+            mk(
+                "mem.write_u8",
+                "std.platform",
+                "mem_write_u8",
+                vec![
+                    PortParamSpec {
+                        ty: "int",
+                        direction: ParamDirection::View,
+                    },
+                    PortParamSpec {
+                        ty: "int",
+                        direction: ParamDirection::View,
+                    },
+                    PortParamSpec {
+                        ty: "int",
+                        direction: ParamDirection::View,
+                    },
+                ],
+                "int",
+                "None",
+            ),
+            mk(
+                "mem.free",
+                "std.platform",
+                "mem_free",
+                vec![PortParamSpec {
+                    ty: "int",
+                    direction: ParamDirection::View,
+                }],
+                "int",
+                "None",
+            ),
             mk(
                 "console.say",
                 "std.io",

@@ -708,6 +708,27 @@ pub fn link_elf(
     workdir: &Path,
     link_receipt_extra: &str,
 ) -> Result<ElfLink, MnError> {
+    link_elf_with_libs(
+        objects,
+        entry_wrapper,
+        entry_symbol,
+        workdir,
+        &[],
+        link_receipt_extra,
+    )
+}
+
+/// PLAN-1041: the ELF link with support libraries (the musl text runtime
+/// staticlib for `ac_rt_char_at` & friends when the console lane carries
+/// real text ops).
+pub fn link_elf_with_libs(
+    objects: &[ObjectInput],
+    entry_wrapper: &[u8],
+    entry_symbol: &str,
+    workdir: &Path,
+    support_libs: &[PathBuf],
+    link_receipt_extra: &str,
+) -> Result<ElfLink, MnError> {
     let total: usize = objects.iter().map(|o| o.bytes.len()).sum::<usize>() + entry_wrapper.len();
     if total > MAX_LINK_INPUT_BYTES {
         return Err(MnError::Resource(
@@ -774,6 +795,11 @@ pub fn link_elf(
     cmd.arg("-o").arg(tmp_exe.display().to_string());
     for obj in &stage {
         cmd.arg(obj.display().to_string());
+    }
+    // PLAN-1041: support libraries (musl static archives) join the link
+    // line after the objects.
+    for lib in support_libs {
+        cmd.arg(lib.display().to_string());
     }
     let linked = match run_deadlined_captured(
         &mut cmd,

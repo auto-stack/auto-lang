@@ -1279,6 +1279,16 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             | PlatformOpKind::MemUnborrow => {
                 clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
             }
+            PlatformOpKind::IoConsoleKind => {
+                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+            }
+            // PLAN-1041: (stream handle, region handle, unit off, unit len).
+            PlatformOpKind::IoConsoleWrite16 => {
+                clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
+                clif_args.push(self.fb.use_var(self.v_scalar(args[1])?));
+                clif_args.push(self.fb.use_var(self.v_scalar(args[2])?));
+                clif_args.push(self.fb.use_var(self.v_scalar(args[3])?));
+            }
             PlatformOpKind::MemReadU8 => {
                 clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
                 clif_args.push(self.fb.use_var(self.v_scalar(args[1])?));

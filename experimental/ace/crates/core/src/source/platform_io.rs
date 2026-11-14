@@ -23,6 +23,7 @@ pub struct PlatformSourceOp {
 
 const P_EMPTY: &[VT] = &[];
 const P_I32: &[VT] = &[VT::I32];
+const P_4I32: &[VT] = &[VT::I32, VT::I32, VT::I32, VT::I32];
 const P_I32_STR: &[VT] = &[VT::I32, VT::Str];
 const P_I32_STR_2I32: &[VT] = &[VT::I32, VT::Str, VT::I32, VT::I32];
 const P_2I32: &[VT] = &[VT::I32, VT::I32];
@@ -61,6 +62,26 @@ pub const PLATFORM_SOURCE_OPS: &[PlatformSourceOp] = &[
         callee: "io_last_error",
         symbol: "auto.platform.io.last_error.v1",
         params: P_EMPTY,
+        result: VT::I32,
+        capability: CAP_WRITE,
+    },
+    // PLAN-1041: classify a std stream — 1 = Windows text console, 2 =
+    // byte sink (file/pipe/Linux stream); negative error on real
+    // classification failures.
+    PlatformSourceOp {
+        callee: "io_console_kind",
+        symbol: "auto.platform.io.console_kind.v1",
+        params: P_I32,
+        result: VT::I32,
+        capability: CAP_WRITE,
+    },
+    // PLAN-1041: write UTF-16LE code units from an OS memory region to a
+    // Windows text console (`WriteConsoleW`); params (stream handle,
+    // region handle, unit offset, unit count); returns units written.
+    PlatformSourceOp {
+        callee: "io_console_write16",
+        symbol: "auto.platform.io.console_write16.v1",
+        params: P_4I32,
         result: VT::I32,
         capability: CAP_WRITE,
     },

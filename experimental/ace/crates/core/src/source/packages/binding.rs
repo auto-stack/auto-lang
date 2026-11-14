@@ -2094,6 +2094,10 @@ impl<'a> Walker<'a> {
                             span: callee.span,
                         })?;
                         callee.name = sym;
+                    } else if crate::source::platform_io::is_reserved_name(&callee.name) {
+                        // PLAN-1041: 平台保留名（io_write_some_slice 等）在包体里
+                        // 原样透传给 resolver（其按 profile/能力绑定为平台内在
+                        // 调用）；绑定层不改写符号。
                     } else {
                         return Err(fail(
                             self.key,

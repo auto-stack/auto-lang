@@ -1,0 +1,6 @@
+// PLAN-1041 Python provider candidate for the io package. A2PY lowers
+// the provider-common algorithm (io.at) with the reserved primitives
+// mapped to the Python runtime ports (PLAN-1042 runtime).
+fn io_impl_layer_present() int {
+    return 1
+}

@@ -101,7 +101,9 @@ impl TargetProvider for RustTargetProvider {
         let mut source = match view.domain {
             ace_core::hir::HirDomain::Text
             | ace_core::hir::HirDomain::Record
-            | ace_core::hir::HirDomain::TextRecord => rt::record_text_runtime_source(&marks),
+            | ace_core::hir::HirDomain::TextRecord => {
+                rt::record_text_runtime_source_with(&marks, view.has_platform_ops())
+            }
             ace_core::hir::HirDomain::Collections => coll::collections_runtime_source(&marks),
             _ => crate::artifacts::runtime_source(&marks),
         };

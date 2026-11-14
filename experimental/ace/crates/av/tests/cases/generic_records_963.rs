@@ -55,8 +55,8 @@ fn checked(src: &str) -> CheckedModule {
 
 fn run_value(src: &str) -> Value {
     let checked = checked(src);
-    let mir = ace_lowering::lower_checked_data(&checked, "d_main", 963)
-        .expect("record-domain lowering");
+    let mir =
+        ace_lowering::lower_checked_data(&checked, "d_main", 963).expect("record-domain lowering");
     assert_eq!(mir.profile, AV_DATA_PROFILE);
     mir_verify::verify_mir(&mir).expect("MIR verifies");
     let wire = encode_abc(&mir).expect("AVAD encode").to_flat();
@@ -143,7 +143,11 @@ fn av_spec_explicit_impl_executes_37() {
 /// 默认方法注入经真实 AV 执行 → 7。
 #[test]
 fn av_spec_default_body_executes_7() {
-    assert_eq!(run_value(SPEC_DEFAULT), Value::I32(7), "default-body oracle");
+    assert_eq!(
+        run_value(SPEC_DEFAULT),
+        Value::I32(7),
+        "default-body oracle"
+    );
 }
 
 /// 显式覆盖默认体 → 9（不是默认体的 7）。
@@ -179,5 +183,3 @@ fn main() int {
 fn av_bounded_wrapper_executes_5() {
     assert_eq!(run_value(BOUNDED_WRAPPER), Value::I32(5), "bounded oracle");
 }
-
-

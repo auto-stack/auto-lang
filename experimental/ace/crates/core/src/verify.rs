@@ -3494,7 +3494,13 @@ impl Verifier {
     fn check_module(&mut self, m: &hir::Module) {
         if self.domain != HirDomain::HostConsole {
             for d in &m.defs {
-                if matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. } if symbol.starts_with("auto.console.") || symbol.starts_with("auto.platform."))
+                // PLAN-1041: 平台操作内在调用（auto.platform.*）在包装配面
+                // （TextRecord 域）同样合法——公共 stdlib 源单源服务两个面；
+                // console 拼写（auto.console.*）仍只在 host-console 画像。
+                let platform_in_packages = self.domain == HirDomain::TextRecord;
+                if matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
+                    if symbol.starts_with("auto.console.")
+                        || (symbol.starts_with("auto.platform.") && !platform_in_packages))
                 {
                     self.error(
                         "host.profile",
@@ -8115,7 +8121,8 @@ pub fn verify_host_console(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Dia
             let (expected_params, expected_result, cap): (Vec<ValueType>, ValueType, &'static str) =
                 if let Some((input, cap)) = crate::source::console::signature(symbol) {
                     (vec![vt_map(input)], ValueType::Unit, cap)
-                } else if let Some((params, res, cap)) = crate::source::platform_io::signature(symbol)
+                } else if let Some((params, res, cap)) =
+                    crate::source::platform_io::signature(symbol)
                 {
                     let res_vt = match res {
                         crate::source::resolve::VT::I32 => ValueType::I32,

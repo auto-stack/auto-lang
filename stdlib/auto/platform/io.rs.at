@@ -1,0 +1,9 @@
+// PLAN-1041 Rust provider candidate for the io package. A2R lowers the
+// provider-common algorithm (io.at) with the reserved primitives mapped
+// to the Rust runtime stubs. The AV/Rust in-process foreign dispatch
+// consumes this origin after PLAN-967 delivers package-lane foreign
+// admission and richer FFI frames (1041 records that dependency).
+
+fn io_impl_layer_present() int {
+    return 3
+}

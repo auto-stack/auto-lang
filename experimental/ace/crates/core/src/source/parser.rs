@@ -747,9 +747,7 @@ impl<'s> Parser<'s> {
             // statement sequence after the declarations is the synthetic
             // `main`. The sequence runs to end of file, so no item can
             // follow it (`source.entry-order`).
-            if self.surface.is_entry_unit()
-                && !matches!(self.peek().map(|t| &t.tok), Some(Tok::Kw(Kw::Fn)))
-            {
+            if self.surface.is_entry_unit() && !self.peek_starts_declaration() {
                 let script = self.script_item()?;
                 items.push(Item::Fn(script));
                 break;
@@ -757,6 +755,23 @@ impl<'s> Parser<'s> {
             items.push(self.item()?);
         }
         Ok(Program { items })
+    }
+
+    /// PLAN-1041: whether the upcoming token(s) start a declaration item
+    /// rather than the entry-unit script sequence. `fn` always does; so
+    /// does the visibility modifier `pub fn` (the common stdlib source is
+    /// single-sourced between the package face and the entry-unit inline —
+    /// `pub` is a visibility no-op in a single-module file, and a script
+    /// statement can never start with `pub`).
+    fn peek_starts_declaration(&self) -> bool {
+        match self.peek().map(|t| &t.tok) {
+            Some(Tok::Kw(Kw::Fn)) => true,
+            Some(Tok::Ident(name)) if name.as_str() == "pub" => self
+                .peek2()
+                .map(|t| matches!(t.tok, Tok::Kw(Kw::Fn)))
+                .unwrap_or(false),
+            _ => false,
+        }
     }
 
     /// PLAN-862: parse the single-file script — a top-level statement
@@ -898,9 +913,24 @@ impl<'s> Parser<'s> {
         }))
     }
 
+    /// PLAN-1041 helper: the token after the current one is `fn` (used to
+    /// recognize the `pub fn` declaration form).
+    fn peek2_is_pub_fn(&self) -> bool {
+        self.peek2()
+            .map(|t| matches!(t.tok, Tok::Kw(Kw::Fn)))
+            .unwrap_or(false)
+    }
+
     fn item(&mut self) -> Result<Item, Diagnostic> {
         match self.peek().map(|t| t.tok.clone()) {
             Some(Tok::Kw(Kw::Fn)) => Ok(Item::Fn(self.fn_item(Receiver::Free)?)),
+            // PLAN-1041: `pub fn` items are admitted (visibility no-op in
+            // a single-module file) so the common stdlib source keeps one
+            // spelling across the package face and the entry-unit inline.
+            Some(Tok::Ident(name)) if name.as_str() == "pub" && self.peek2_is_pub_fn() => {
+                self.bump(); // `pub`
+                Ok(Item::Fn(self.fn_item(Receiver::Free)?))
+            }
             Some(Tok::Kw(Kw::Type)) if self.surface.is_record() => {
                 Ok(Item::Type(self.type_item()?))
             }
