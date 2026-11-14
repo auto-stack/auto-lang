@@ -60,6 +60,8 @@ mod decl_events_929_t07;
 mod frontdoor_first_diag_941;
 #[path = "cases/observation_scope_1028.rs"]
 mod observation_scope_1028;
+#[path = "cases/plan979_age_h0.rs"]
+mod plan979_age_h0;
 #[path = "cases/recovered_script_first_diag_941.rs"]
 mod recovered_script_first_diag_941;
 #[path = "cases/retirement_gate_929.rs"]

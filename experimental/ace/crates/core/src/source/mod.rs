@@ -16,6 +16,7 @@
 //! unchanged by the scalar profile's wider surface.
 
 pub mod adapter;
+pub mod age_h0;
 pub mod ast;
 pub(crate) mod closure_capture;
 pub mod closures_context;
@@ -111,6 +112,12 @@ pub const NUMERIC_SOURCE_PROFILE: &str = "auto.source.numeric.draft";
 /// destructuring, index places, ranges, wider patterns; the T-08 face
 /// adds union/tag/grid/Hold/Box).
 pub const AGGREGATES_SOURCE_PROFILE: &str = "auto.source.aggregates.draft";
+/// PLAN-979（T-H0-I）：AGE 最小 Node 领域面（`node <name> { view { text <expr> {} } }`）。
+/// 该面 = text-record 全表面 + 领域节点声明；领域结构名只由 `<profile>` 的
+/// `contextual` 槽位声明赋予（词法面不被扩成保留字）。**领域候选只经
+/// [`age_h0::compile_age_h0`] 消费**——通用解析/编译入口显式拒绝本 profile，
+/// 避免领域声明被静默丢弃。
+pub const AGE_H0_SOURCE_PROFILE: &str = "auto.source.age-h0.draft";
 
 /// The explicitly selected source profile of a compilation. Never inferred
 /// from file extensions or content.
@@ -129,6 +136,9 @@ pub enum SourceProfile {
     Numeric,
     /// PLAN-962: the aggregates profile (numeric surface + composites).
     Aggregates,
+    /// PLAN-979: the AGE H0 domain profile (text-record surface + AGE node
+    /// declarations). Only the AGE domain front door consumes it.
+    AgeH0,
 }
 
 impl SourceProfile {
@@ -145,6 +155,7 @@ impl SourceProfile {
             SourceProfile::Closures => CLOSURES_SOURCE_PROFILE,
             SourceProfile::Numeric => NUMERIC_SOURCE_PROFILE,
             SourceProfile::Aggregates => AGGREGATES_SOURCE_PROFILE,
+            SourceProfile::AgeH0 => AGE_H0_SOURCE_PROFILE,
         }
     }
 
@@ -167,6 +178,10 @@ impl SourceProfile {
             // collections-family domain (aggregate admission lives in the
             // resolver and the MIR verifier, keyed by profile).
             SourceProfile::Aggregates => crate::hir::HirDomain::Closures,
+            // PLAN-979: the AGE domain's ordinary surface is text-record; the
+            // domain description is verified inside that same domain, never a
+            // second checker.
+            SourceProfile::AgeH0 => crate::hir::HirDomain::TextRecord,
         }
     }
 
@@ -185,6 +200,8 @@ impl SourceProfile {
                 | SourceProfile::Closures
                 | SourceProfile::Numeric
                 | SourceProfile::Aggregates
+                // PLAN-979: the AGE domain face keeps the text-record surface.
+                | SourceProfile::AgeH0
         )
     }
 
@@ -235,7 +252,10 @@ impl SourceProfile {
     pub fn is_text(&self) -> bool {
         matches!(
             self,
-            SourceProfile::Text | SourceProfile::TextRecord | SourceProfile::HostConsole
+            SourceProfile::Text
+                | SourceProfile::TextRecord
+                | SourceProfile::HostConsole
+                | SourceProfile::AgeH0
         )
     }
 
@@ -249,6 +269,7 @@ impl SourceProfile {
                 | SourceProfile::Collections
                 | SourceProfile::Closures
                 | SourceProfile::Aggregates
+                | SourceProfile::AgeH0
         )
     }
 
@@ -282,6 +303,8 @@ impl SourceProfile {
                 | SourceProfile::Numeric
                 // PLAN-962: the aggregates surface is a numeric superset.
                 | SourceProfile::Aggregates
+                // PLAN-979: the AGE domain face is a text-record superset.
+                | SourceProfile::AgeH0
         )
     }
 
@@ -298,6 +321,7 @@ impl SourceProfile {
             CLOSURES_SOURCE_PROFILE => Some(SourceProfile::Closures),
             NUMERIC_SOURCE_PROFILE => Some(SourceProfile::Numeric),
             AGGREGATES_SOURCE_PROFILE => Some(SourceProfile::Aggregates),
+            AGE_H0_SOURCE_PROFILE => Some(SourceProfile::AgeH0),
             _ => None,
         }
     }

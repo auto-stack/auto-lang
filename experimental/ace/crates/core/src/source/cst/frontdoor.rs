@@ -7,7 +7,7 @@ use crate::source::ast::{FnItem, Program, Receiver};
 use crate::source::SourceProfile;
 use ace_syntax_runtime::cst::CstTree;
 use ace_syntax_runtime::lexer::CompiledScanner;
-use ace_syntax_runtime::parse::{parse_snapshot, ParseOutput};
+use ace_syntax_runtime::parse::{parse_snapshot, parse_snapshot_with_ctx, ParseOutput};
 use ace_syntax_runtime::program::{Budget, GrammarProgram};
 use ace_syntax_runtime::snapshot::{PageStore, Snapshot};
 use std::sync::OnceLock;
@@ -111,6 +111,23 @@ pub struct FrontOk {
     pub snapshot_len: usize,
     /// 无损 CST（后续会话/持久化消费；恢复不携带 trusted 标志）。
     pub cst: CstTree,
+    /// PLAN-979：领域候选（未受信；只有 AGE 领域 profile 有内容）。通用
+    /// profile 恒为空——领域声明不进入普通 AST，必须经领域前门消费。
+    pub age_nodes: Vec<crate::source::age_h0::AgeNodeItem>,
+}
+
+/// PLAN-979：槽位限定拼写的事实源（真实快照字节；本 crate 不复制源）。
+pub(crate) struct SnapshotTokenText<'s> {
+    snap: &'s Snapshot,
+}
+
+impl<'s> ace_syntax_runtime::parse::CtxTokenText for SnapshotTokenText<'s> {
+    fn token_equals(&self, start: u64, end: u64, want: &str) -> bool {
+        self.snap
+            .read_bytes(start, end)
+            .map(|b| b == want.as_bytes())
+            .unwrap_or(false)
+    }
 }
 
 /// 统一入口逻辑请求（§5.4：绑定 profile/能力版本/入口 kind/预算；profile
@@ -139,6 +156,8 @@ pub fn profile_slug(profile: SourceProfile) -> &'static str {
         SourceProfile::Numeric => "numeric",
         // PLAN-962：聚合面 slug。
         SourceProfile::Aggregates => "aggregates",
+        // PLAN-979：AGE 领域面 slug（Schema 数据键，非产品名）。
+        SourceProfile::AgeH0 => "age-h0",
     }
 }
 
@@ -158,6 +177,7 @@ pub fn profile_from_slug(slug: &str) -> Option<SourceProfile> {
         // PLAN-961：数值面 slug 反向映射。
         "numeric" => SourceProfile::Numeric,
         "aggregates" => SourceProfile::Aggregates,
+        "age-h0" => SourceProfile::AgeH0,
         _ => return None,
     })
 }
@@ -181,7 +201,7 @@ impl CachedGrammar {
     }
 }
 
-static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 11]> = OnceLock::new();
+static GRAMMARS: OnceLock<[OnceLock<CachedGrammar>; 12]> = OnceLock::new();
 
 /// PLAN-935（T-02）：`scalar-instances` 裁剪程序（scalar 全表面 + 有限模板
 /// 面）。独立缓存槽：plain profile 程序逐字节不变，grammar-id 自然隔离。
@@ -1559,6 +1579,8 @@ pub fn profile_grammar(profile: SourceProfile) -> Result<&'static CachedGrammar,
         SourceProfile::Numeric => 9,
         // PLAN-962：聚合面槽位。
         SourceProfile::Aggregates => 10,
+        // PLAN-979：AGE 领域面槽位。
+        SourceProfile::AgeH0 => 11,
     };
     let slots = GRAMMARS.get_or_init(|| Default::default());
     // 先试读（快路径无锁竞争）；未命中再写入。
@@ -1717,6 +1739,7 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
             caps_version: FRONT_CAPS_VERSION,
             snapshot_len: src.len(),
             cst: tree,
+            age_nodes: Vec::new(),
         }),
         Err(diags) => FrontOutcome::Diag(diags),
     }
@@ -1729,16 +1752,18 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
     };
     let store = std::rc::Rc::new(PageStore::new());
     let snap = Snapshot::from_text(&store, src);
+    let ctx_text = SnapshotTokenText { snap: &snap };
     let ParseOutput {
         tree,
         tokens: _,
         lex_diags: _,
         grafted_decls: _,
-    } = match parse_snapshot(
+    } = match parse_snapshot_with_ctx(
         &cached.program,
         &cached.scanner,
         &snap,
         &Budget::from(budget),
+        Some(&ctx_text),
     ) {
         Ok(o) => o,
         Err(ace_syntax_runtime::program::RtError::ResourceExhausted { what, limit }) => {
@@ -1746,16 +1771,50 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
         }
         Err(e) => return FrontOutcome::Infra(format!("parse: {e}")),
     };
-    match project::project_program(&cached.program, &cached.kinds, &tree, &snap, profile) {
-        Ok(program) => FrontOutcome::Ok(FrontOk {
-            program,
-            grammar_id: format!("{}", cached.program.identity.grammar_id.0),
-            caps_version: FRONT_CAPS_VERSION,
-            snapshot_len: src.len(),
-            cst: tree,
-        }),
-        Err(diags) => FrontOutcome::Diag(diags),
-    }
+    let program =
+        match project::project_program(&cached.program, &cached.kinds, &tree, &snap, profile) {
+            Ok(program) => program,
+            Err(diags) => {
+                // PLAN-979：槽位拼写拒绝是比"首个 token 期望"更精确的结构事实
+                // （例如 `node` 已消费、`view` 槽位遇到 `panel`）——领域 profile 上
+                // 优先报它，保原 span；普通 profile 的既有首诊断序不变。
+                if profile == SourceProfile::AgeH0 {
+                    if let Some(hint) = tree
+                        .diags
+                        .iter()
+                        .find(|d| d.message.starts_with("expected `") && d.message.contains("slot"))
+                    {
+                        return FrontOutcome::Diag(vec![Diagnostic::new(
+                            crate::atom_text::Stage::Text,
+                            "source.age.slot",
+                            hint.message.clone(),
+                            crate::atom_text::Span {
+                                start: hint.start as usize,
+                                end: hint.end as usize,
+                            },
+                        )]);
+                    }
+                }
+                return FrontOutcome::Diag(diags);
+            }
+        };
+    // PLAN-979：AGE 领域 profile 额外投影未受信领域候选（结构 + 原 span）。
+    let age_nodes = if profile == SourceProfile::AgeH0 {
+        match project::project_age_nodes(&cached.program, &cached.kinds, &tree, &snap, profile) {
+            Ok(nodes) => nodes,
+            Err(diags) => return FrontOutcome::Diag(diags),
+        }
+    } else {
+        Vec::new()
+    };
+    FrontOutcome::Ok(FrontOk {
+        program,
+        grammar_id: format!("{}", cached.program.identity.grammar_id.0),
+        caps_version: FRONT_CAPS_VERSION,
+        snapshot_len: src.len(),
+        cst: tree,
+        age_nodes,
+    })
 }
 
 /// 旧签名兼容桥（§5.1：`parse_program_with` 保兼容返回类型，七 profile
@@ -1896,6 +1955,8 @@ pub fn parse_fragment_front(
         caps_version: FRONT_CAPS_VERSION,
         snapshot_len: src.len(),
         cst: tree,
+        // 片段入口不承载领域声明（AGE 只走 WholeModule）。
+        age_nodes: Vec::new(),
     })
 }
 

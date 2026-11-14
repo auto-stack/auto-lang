@@ -27,8 +27,10 @@ struct Grammar {
 
 impl Grammar {
     fn load(profile: &str) -> Grammar {
-        let program = compile_profile(SOURCE, profile).unwrap_or_else(|d| panic!("{profile}: {d:?}"));
-        let scanner = ace_syntax_runtime::lexer::CompiledScanner::compile(&program).expect("scanner");
+        let program =
+            compile_profile(SOURCE, profile).unwrap_or_else(|d| panic!("{profile}: {d:?}"));
+        let scanner =
+            ace_syntax_runtime::lexer::CompiledScanner::compile(&program).expect("scanner");
         Grammar { program, scanner }
     }
 
@@ -38,8 +40,14 @@ impl Grammar {
         use ace_syntax_runtime::snapshot::{PageStore, Snapshot};
         let snap = Snapshot::from_text(&std::rc::Rc::new(PageStore::new()), text);
         let ctx = TextSource { snap: &snap };
-        let out = parse_snapshot_with_ctx(&self.program, &self.scanner, &snap, &Budget::default(), Some(&ctx))
-            .expect("parse");
+        let out = parse_snapshot_with_ctx(
+            &self.program,
+            &self.scanner,
+            &snap,
+            &Budget::default(),
+            Some(&ctx),
+        )
+        .expect("parse");
         out.tree.assert_lossless(&snap).expect("lossless CST");
         out
     }
@@ -102,7 +110,9 @@ fn p979_age_h0_wrong_component_spelling_is_rejected_at_the_slot() {
     let at = src.find("panel").unwrap();
     assert!(
         out.tree.diags.iter().any(|d| {
-            d.message.contains("expected `view`") && d.start == at as u64 && d.end == (at + 5) as u64
+            d.message.contains("expected `view`")
+                && d.start == at as u64
+                && d.end == (at + 5) as u64
         }),
         "slot rejection keeps the word's span: {:?}",
         out.tree.diags
@@ -149,5 +159,9 @@ fn p979_age_h0_plain_text_record_face_is_unchanged() {
     );
     assert!(plain.program.ctx_names.is_empty());
     // 且 plain 面不含领域规则。
-    assert!(!plain.program.rules.iter().any(|r| r.name == "age-node-item"));
+    assert!(!plain
+        .program
+        .rules
+        .iter()
+        .any(|r| r.name == "age-node-item"));
 }

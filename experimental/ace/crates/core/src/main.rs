@@ -230,6 +230,28 @@ fn check_source(args: &SourceArgs) -> Result<String, (u8, Vec<ace_core::atom_tex
         SourceProfile::Aggregates => {
             ace_core::source::compile_aggregates_source(&src, &module_path, &args.capabilities)
         }
+        // PLAN-979: the AGE H0 domain profile is consumed by its own domain
+        // front door (never the generic compile entries).
+        SourceProfile::AgeH0 => {
+            return match ace_core::source::age_h0::compile_age_h0(
+                &src,
+                &module_path,
+                ace_core::source::age_h0::LegacyWidgetAlias::Reject,
+                &args.capabilities,
+            ) {
+                Ok(c) => Ok(format!(
+                    "OK source profile={}, domain={} ({}), input-hash={}, grammar={}, nodes={}, capabilities required: {:?}",
+                    ace_core::source::AGE_H0_SOURCE_PROFILE,
+                    c.description.domain,
+                    c.description.alias_name(),
+                    c.input_hash,
+                    c.description.grammar_id,
+                    c.description.nodes.len(),
+                    c.checked.required_capabilities()
+                )),
+                Err(diags) => Err((EXIT_PIPELINE, diags)),
+            };
+        }
     };
     match compile {
         Ok(c) => Ok(format!(

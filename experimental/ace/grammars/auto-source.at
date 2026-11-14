@@ -301,10 +301,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 结构拒绝（附原 span），不静默忽略。表达式是普通 Auto 文本表达式，
         // 由共享 verify 检查，不由领域层二次解释。
         age-node-item(profiles: [age-h0]) {
-            age-node-head() {}
+            age-node-head(field: "head") {}
             ident(field: "name")
             lbrace(same-line: true)
-            age-node-body() {}
+            age-node-body(field: "body") {}
             rbrace() {}
         }
         // 声明头：规范 `node` + 旧作者源兼容别名 `widget`（同一 role）。

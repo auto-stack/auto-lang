@@ -3798,6 +3798,48 @@ fn ident_of(cx: &mut Cx, leaf: u32) -> Ident {
     id
 }
 
+/// PLAN-979（T-H0-I）：AGE 领域候选投影（未受信结构 + 原 span + 表达式）。
+///
+/// 只在 age-h0 裁剪面（`age-node-item` 规则存在）时有内容；结构名按
+/// `contextual` 表声明的 **role** 归属（换拼写不改角色）。
+pub(crate) fn project_age_nodes(
+    p: &GrammarProgram,
+    k: &SourceKinds,
+    tree: &CstTree,
+    snap: &Snapshot,
+    profile: SourceProfile,
+) -> Result<Vec<crate::source::age_h0::AgeNodeItem>, Vec<Diagnostic>> {
+    let age_kind = match p
+        .rules
+        .iter()
+        .position(|r| r.name == "age-node-item")
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+    {
+        Some(kind) => kind,
+        None => return Ok(Vec::new()),
+    };
+    let mut eng = Engine::new(p, k, tree, snap, profile, false, false);
+    let mut out = Vec::new();
+    for d in &tree.decls {
+        let node = if tree.kind(d.node) == k.item {
+            tree.children(d.node)
+                .into_iter()
+                .find(|&c| tree.node(c).flags & FLAG_TRIVIA == 0)
+                .unwrap_or(d.node)
+        } else {
+            d.node
+        };
+        if tree.kind(node) != age_kind {
+            continue;
+        }
+        out.push(eng.run_age_node_item(node));
+    }
+    if let Some(first) = eng.cx.first_diag() {
+        return Err(vec![first]);
+    }
+    Ok(out)
+}
+
 impl<'a> Engine<'a> {
     fn new(
         p: &'a GrammarProgram,
@@ -3867,6 +3909,113 @@ impl<'a> Engine<'a> {
     }
 
     // ------------------------------------------------------------ items
+
+    /// PLAN-979：某规则第一个上下文名称步声明的 (role, spelling)。
+    /// 投影按 role 归属领域语义——换 Schema 拼写不改角色。
+    fn ctx_role_of_rule(&self, rule: &str) -> Option<(String, String)> {
+        let r = self.cx.p.rules.iter().find(|r| r.name == rule)?;
+        for alt in &r.alts {
+            for s in &alt.steps {
+                if let ace_syntax_runtime::program::Atom::CtxName(c) = s.atom {
+                    if let Some(spec) = self.cx.p.ctx_name(c) {
+                        return Some((spec.role.clone(), spec.spelling.clone()));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// PLAN-979（T-H0-I）：一个 AGE node 声明的未受信候选投影。
+    fn run_age_node_item(&mut self, node: u32) -> crate::source::age_h0::AgeNodeItem {
+        use crate::source::age_h0::{AgeNodeItem, AgeTextLeaf, AgeViewNode};
+        let head_node = self
+            .cx
+            .field_child(node, "head")
+            .expect("age node head rule");
+        let head_leaf = self
+            .cx
+            .field_child(head_node, "kw")
+            .expect("age node head spelling leaf");
+        let head_spelling = self.cx.spelling(head_leaf);
+        let head_span = self.cx.span_of(head_leaf);
+        let head_role = self
+            .ctx_role_of_rule("age-node-head")
+            .map(|(role, _)| role)
+            .unwrap_or_else(|| "node".to_string());
+        let name_leaf = self
+            .cx
+            .field_child(node, "name")
+            .expect("age node name leaf");
+        let name = ident_of(&mut self.cx, name_leaf);
+        let body = self.cx.field_child(node, "body").expect("age node body");
+        let view_leaf = self.cx.field_child(body, "view").expect("age view head");
+        let view_spelling = self.cx.spelling(view_leaf);
+        let view_span = self.cx.span_of(view_leaf);
+        let view_role = self
+            .ctx_role_of_rule("age-node-body")
+            .map(|(role, _)| role)
+            .unwrap_or_else(|| "view".to_string());
+        let text_role = self
+            .ctx_role_of_rule("age-text-item")
+            .map(|(role, _)| role)
+            .unwrap_or_else(|| "text".to_string());
+        let text_kind = self
+            .cx
+            .p
+            .rules
+            .iter()
+            .position(|r| r.name == "age-text-item")
+            .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
+        let mut texts = Vec::new();
+        for c in self.cx.children(body) {
+            if Some(self.cx.tree.kind(c)) != text_kind {
+                continue;
+            }
+            let comp = self
+                .cx
+                .field_child(c, "component")
+                .expect("age text component leaf");
+            let expr_node = self.cx.field_child(c, "text").expect("age text expression");
+            let expr = self.project_expr_sync(expr_node);
+            texts.push(AgeTextLeaf {
+                role: text_role.clone(),
+                spelling: self.cx.spelling(comp),
+                component_span: self.cx.span_of(comp),
+                expr,
+                span: self.cx.span_of(c),
+            });
+        }
+        if texts.len() != 1 {
+            // H0 冻结形状：一个 view 恰一个 text 根（0/多 都具名拒，不静默取首个）。
+            let span = self.cx.span_of(body);
+            let found = texts.len();
+            self.cx.reject(span, move || {
+                Diagnostic::new(
+                    Stage::Text,
+                    "source.age.text-count",
+                    format!(
+                        "the H0 AGE slice holds exactly one `text` root per view; found {found}"
+                    ),
+                    span,
+                )
+            });
+        }
+        AgeNodeItem {
+            head_role,
+            head_spelling: head_spelling.clone(),
+            head_span,
+            legacy_widget: head_spelling == "widget",
+            name,
+            view: AgeViewNode {
+                role: view_role,
+                spelling: view_spelling,
+                span: view_span,
+                texts,
+            },
+            span: self.cx.span_of(node),
+        }
+    }
 
     fn run_fn_item(&mut self, node: u32, owner: Option<Ident>, receiver: Receiver) -> FnItem {
         let tail = self

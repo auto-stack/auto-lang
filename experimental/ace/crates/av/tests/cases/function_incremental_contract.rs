@@ -563,6 +563,15 @@ fn verify_profile(
             "the entry-unit domain has no verifier entry yet (PLAN-862 T-03b)",
             ace_core::atom_text::Span { start: 0, end: 0 },
         )]),
+        // PLAN-979: the AGE domain profile is consumed only by its domain front
+        // door; this contract test never feeds it. Keep the match honest with a
+        // named rejection instead of guessing a verifier.
+        SourceProfile::AgeH0 => Err(vec![ace_core::atom_text::Diagnostic::new(
+            ace_core::atom_text::Stage::Verify,
+            "verify.domain",
+            "the AGE domain profile is verified only by the AGE domain front door",
+            ace_core::atom_text::Span { start: 0, end: 0 },
+        )]),
     }
 }
 

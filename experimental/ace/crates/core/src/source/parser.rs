@@ -167,6 +167,20 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
             }
             Ok(program)
         }
+        // PLAN-979：AGE 领域声明只经领域前门（`source::age_h0`）消费——通用
+        // 解析入口在此显式拒绝，绝不返回一个把领域声明静默丢掉的 Program。
+        SourceProfile::AgeH0 => Err(Diagnostic {
+            stage: crate::atom_text::Stage::Text,
+            code: "source.domain-frontend".to_string(),
+            span: Span {
+                start: 0,
+                end: src.len(),
+            },
+            message: "the AGE domain profile is parsed only by the AGE domain front door \
+                      (ace_core::source::age_h0::compile_age_h0); generic parsing cannot \
+                      represent domain declarations"
+                .to_string(),
+        }),
     }
 }
 
