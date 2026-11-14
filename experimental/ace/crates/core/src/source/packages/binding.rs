@@ -5332,6 +5332,42 @@ mod plan966_tests {
         );
     }
 
+    // PLAN-966 T-09/V-09：未选分支只保 Text 阶段语法检查（语法坏仍报）；
+    // 未选平台的模块缺失不阻本目标绑定；选中平台缺模块具名拒。
+    #[test]
+    fn p966_v09_unselected_branch_rules() {
+        // 未选分支语法坏：目标 Windows 仍必须报 Text 阶段语法错误。
+        let e = bind_err(
+            "#is sys.current {\n    Windows -> use winio.plat\n    Linux -> { fn broken( }\n}\nfn main() int { return plat() }",
+            TargetOs::Windows,
+        );
+        assert!(e.diagnostic.stage == crate::atom_text::Stage::Text, "{e:?}");
+        // 未选平台模块缺失不阻绑定：Linux 目标只需 lnxio。
+        let files = vec![
+            input("main", "#is sys.current {\n    Windows -> use winio.plat\n    Linux -> use lnxio.plat\n}\nfn main() int { return plat() }"),
+            input("lnxio", LNXIO),
+        ];
+        let bound = bind_packages_assembled(
+            &files,
+            "app::main",
+            &caps(),
+            FrontBudget::WORK_OWNED_64MIB,
+            &ctx(TargetOs::Linux),
+        )
+        .expect("the unselected platform module missing must not block");
+        assert_eq!(imported(&bound), vec!["lnxio.plat".to_string()]);
+        // 选中平台模块缺失 → 具名拒（不静默回落另一臂）。
+        let e = bind_packages_assembled(
+            &files,
+            "app::main",
+            &caps(),
+            FrontBudget::WORK_OWNED_64MIB,
+            &ctx(TargetOs::Windows),
+        )
+        .expect_err("the selected platform module missing must be named");
+        assert!(e.diagnostic.code.starts_with("source."), "{e:?}");
+    }
+
     // PLAN-966 T-02/V-04：语句级 `#for` 展开为重复语句；越预算具名拒且
     // 修正后同源可恢复（无半展开残留）。
     #[test]
