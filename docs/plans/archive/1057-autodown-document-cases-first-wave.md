@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-1057
-status: reviewed
+status: archived
 feature_name: AutoDown文档式用例首批推广
 author: [Codex]
 created_at: 2026-11-14
 updated_at: 2026-11-14
 plan_revision: 3
 phase: M2-A
-current_step: 7
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-1002]
 supersedes_spec_components: [docs/specs/auto-test-case/document-cases.md, docs/specs/auto-test-case/module-selection.md, docs/specs/auto-test-case/ace-m1-conformance.md, docs/specs/auto-test-case/legacy-immutable-diagnostic.md]
@@ -20,7 +20,7 @@ affects: [auto-test-case]
 
 ## 0. 变更摘要
 
-承接 [1002 已交付试点](archive/1002-autodown-document-cases.md)，迁移三份实际语料的全部 **30 个 case、60 项检查**。十个标量例共40项，十五个控制台例共15项，五个赋值诊断/合法邻例共5项。三份文档按行为组织，源码、输出和生成文本就地可读。1002四例七项与本批重叠，推广计数按唯一身份算30/60。
+承接 [1002 已交付试点](1002-autodown-document-cases.md)，迁移三份实际语料的全部 **30 个 case、60 项检查**。十个标量例共40项，十五个控制台例共15项，五个赋值诊断/合法邻例共5项。三份文档按行为组织，源码、输出和生成文本就地可读。1002四例七项与本批重叠，推广计数按唯一身份算30/60。
 
 完整迁移需补有限作者能力。TOP需要script入口，O07/08/09/15需要AV unit/value通道，O10..14需要错误完成状态及双流。本轮仅创建详细实施合同，所有实际执行与复审记录待work/review填入。
 
@@ -50,7 +50,7 @@ affects: [auto-test-case]
 
 ### 4.1 授权和来源
 
-2026-11-14用户明确要求先规划三类首批推广。取材主线 `10a3dd46e4a4c15948f120e0654fce2182078ccd`，1002交付为 `70a680dba`。2026-11-14 用户通过 `/goal 完成计划1057` 一次性授权全链路执行（worktree `D:/autostack/.wt/lang-1057/auto-lang` @ `plan-1057-dev`，基面 `76431e6b9ccd46339c44db591521fedf73934a0f`，auto-down `58ea33f699efa5cb1194473a2d45dcec51006842`，work → review → 有界修复 → merge）。模块入口见 [全局概览](../specs/overview.md)及 [文档式当前规范](../specs/auto-test-case/document-cases.md)。下表为静态核对得到的原合同预期，实施前T-01重新绑定实际源码和工具。
+2026-11-14用户明确要求先规划三类首批推广。取材主线 `10a3dd46e4a4c15948f120e0654fce2182078ccd`，1002交付为 `70a680dba`。2026-11-14 用户通过 `/goal 完成计划1057` 一次性授权全链路执行（worktree `D:/autostack/.wt/lang-1057/auto-lang` @ `plan-1057-dev`，基面 `76431e6b9ccd46339c44db591521fedf73934a0f`，auto-down `58ea33f699efa5cb1194473a2d45dcec51006842`，work → review → 有界修复 → merge）。模块入口见 [全局概览](../../specs/overview.md)及 [文档式当前规范](../../specs/auto-test-case/document-cases.md)。下表为静态核对得到的原合同预期，实施前T-01重新绑定实际源码和工具。
 
 ### 4.2 当前具体缺口
 
@@ -76,7 +76,7 @@ affects: [auto-test-case]
 
 ### 5.1 标量与Rust金样：10例/40项
 
-原件为 [b-scalar.case.ad](../../crates/auto-lang/test/cases/ace-m1/b-scalar.case.ad)。以下每个case展开四条同名检查，次序保持：
+原件为 [b-scalar.case.ad](../../../crates/auto-lang/test/cases/ace-m1/b-scalar.case.ad)。以下每个case展开四条同名检查，次序保持：
 
 | 旧check → 新check | 原执行语义 | 新文档小节 | 比较对象 |
 |---|---|---|---|
@@ -89,54 +89,54 @@ affects: [auto-test-case]
 
 | case ID（新旧一致） | 实际输入和行为 | native exit / AV exit / VM result | Rust逻辑路径、字节、摘要 |
 |---|---|---|---|
-| `ace.m1.b01` | 乘法优先级 · [src/B01.at](../../crates/auto-lang/test/cases/ace-m1/src/B01.at) | `14` / `14` / `"14"` | `m1_b01.rs` · 80B · `f1e2f9be67615670` |
-| `ace.m1.b02` | 负数除法/余数 · [src/B02.at](../../crates/auto-lang/test/cases/ace-m1/src/B02.at) | `-21` / `-21` / `"-21"` | `m1_b02.rs` · 91B · `048176f0dd05d54c` |
-| `ace.m1.b03` | 关系/逻辑 · [src/B03.at](../../crates/auto-lang/test/cases/ace-m1/src/B03.at) | `42` / `42` / `"42"` | `m1_b03.rs` · 146B · `25d36a88b067f58e` |
-| `ace.m1.b04` | AND短路 · [src/B04.at](../../crates/auto-lang/test/cases/ace-m1/src/B04.at) | `42` / `42` / `"42"` | `m1_b04.rs` · 125B · `6b6d6654a17e05ea` |
-| `ace.m1.b05` | OR短路 · [src/B05.at](../../crates/auto-lang/test/cases/ace-m1/src/B05.at) | `42` / `42` / `"42"` | `m1_b05.rs` · 124B · `e8bf3f8e3595dd98` |
-| `ace.m1.b06` | 零次循环 · [src/B06.at](../../crates/auto-lang/test/cases/ace-m1/src/B06.at) | `0` / `0` / `"0"` | `m1_b06.rs` · 155B · `1f3a78653386146e` |
-| `ace.m1.b07` | 嵌套break/continue · [src/B07.at](../../crates/auto-lang/test/cases/ace-m1/src/B07.at) | `30` / `30` / `"30"` | `m1_b07.rs` · 404B · `eb48caedee27a940` |
-| `ace.m1.b09` | 递归阶乘 · [src/B09.at](../../crates/auto-lang/test/cases/ace-m1/src/B09.at) | `120` / `120` / `"120"` | `m1_b09.rs` · 174B · `b38838b03b5500e4` |
-| `ace.m1.b10` | 互递归 · [src/B10.at](../../crates/auto-lang/test/cases/ace-m1/src/B10.at) | `42` / `42` / `"42"` | `m1_b10.rs` · 305B · `87a90cbf81b28e66` |
-| `ace.m1.b12` | 一元负号 · [src/B12.at](../../crates/auto-lang/test/cases/ace-m1/src/B12.at) | `-2` / `-2` / `"-2"` | `m1_b12.rs` · 79B · `e4735ac284e53a81` |
+| `ace.m1.b01` | 乘法优先级 · [src/B01.at](../../../crates/auto-lang/test/cases/ace-m1/src/B01.at) | `14` / `14` / `"14"` | `m1_b01.rs` · 80B · `f1e2f9be67615670` |
+| `ace.m1.b02` | 负数除法/余数 · [src/B02.at](../../../crates/auto-lang/test/cases/ace-m1/src/B02.at) | `-21` / `-21` / `"-21"` | `m1_b02.rs` · 91B · `048176f0dd05d54c` |
+| `ace.m1.b03` | 关系/逻辑 · [src/B03.at](../../../crates/auto-lang/test/cases/ace-m1/src/B03.at) | `42` / `42` / `"42"` | `m1_b03.rs` · 146B · `25d36a88b067f58e` |
+| `ace.m1.b04` | AND短路 · [src/B04.at](../../../crates/auto-lang/test/cases/ace-m1/src/B04.at) | `42` / `42` / `"42"` | `m1_b04.rs` · 125B · `6b6d6654a17e05ea` |
+| `ace.m1.b05` | OR短路 · [src/B05.at](../../../crates/auto-lang/test/cases/ace-m1/src/B05.at) | `42` / `42` / `"42"` | `m1_b05.rs` · 124B · `e8bf3f8e3595dd98` |
+| `ace.m1.b06` | 零次循环 · [src/B06.at](../../../crates/auto-lang/test/cases/ace-m1/src/B06.at) | `0` / `0` / `"0"` | `m1_b06.rs` · 155B · `1f3a78653386146e` |
+| `ace.m1.b07` | 嵌套break/continue · [src/B07.at](../../../crates/auto-lang/test/cases/ace-m1/src/B07.at) | `30` / `30` / `"30"` | `m1_b07.rs` · 404B · `eb48caedee27a940` |
+| `ace.m1.b09` | 递归阶乘 · [src/B09.at](../../../crates/auto-lang/test/cases/ace-m1/src/B09.at) | `120` / `120` / `"120"` | `m1_b09.rs` · 174B · `b38838b03b5500e4` |
+| `ace.m1.b10` | 互递归 · [src/B10.at](../../../crates/auto-lang/test/cases/ace-m1/src/B10.at) | `42` / `42` / `"42"` | `m1_b10.rs` · 305B · `87a90cbf81b28e66` |
+| `ace.m1.b12` | 一元负号 · [src/B12.at](../../../crates/auto-lang/test/cases/ace-m1/src/B12.at) | `-2` / `-2` / `"-2"` | `m1_b12.rs` · 79B · `e4735ac284e53a81` |
 
 文件层tags为ace-m1/four-path/scalar、links为PLAN-852。各case显式沿用id/module-name，Auto节path为main.at。
 
 ### 5.2 控制台：15例/15项
 
-原件为 [console-863.case.ad](../../crates/auto-lang/test/cases/ace-m1/console-863/console-863.case.ad)。新旧check都为av-console；probe/run、ac-av/console-run-v1、d_main、program、main.at、一步run。双流各是独立bytes断言，每例只执行一次。字符串采用JSON转义表示，空串、一个LF与双LF严格区分。
+原件为 [console-863.case.ad](../../../crates/auto-lang/test/cases/ace-m1/console-863/console-863.case.ad)。新旧check都为av-console；probe/run、ac-av/console-run-v1、d_main、program、main.at、一步run。双流各是独立bytes断言，每例只执行一次。字符串采用JSON转义表示，空串、一个LF与双LF严格区分。
 
 | case ID | 原Auto输入 | completion | payload/channel | stdout原字节 | stderr原字节 | caps |
 |---|---|---|---|---|---|---|---|
-| `ace.m1.o01` | [src/O01.at](../../crates/auto-lang/test/cases/ace-m1/console-863/src/O01.at) | 成功 | exit 7 | `"-2147483648\n-7\n0\n42\n"` · 20B | `""` · 0B | `["console.stdout", "console.stderr"]` |
-| `ace.m1.o02` | [src/O02.at](../../crates/auto-lang/test/cases/ace-m1/console-863/src/O02.at) | 成功 | exit 0 | `"true\nfalse\n"` · 11B | `"true\nfalse\n"` · 11B | `["console.stdout", "console.stderr"]` |
-| `ace.m1.o03` | [src/O03.at](../../crates/auto-lang/test/cases/ace-m1/console-863/src/O03.at) | 成功 | exit 0 | `"你好\n\n"` · 8B | `"é\n"` · 3B | `["console.stdout", "console.stderr"]` |
-| `ace.m1.o04` | [src/O04.at](../../crates/auto-lang/test/cases/ace-m1/console-863/src/O04.at) | 成功 | exit 0 | `"界\n"` · 4B | `"😀\n"` · 5B | `["console.stdout", "console.stderr"]` |
-| `ace.m1.o05` | [src/O05.at](../../crates/auto-lang/test/cases/ace-m1/console-863/src/O05.at) | 成功 | exit 4 | `"Auto\n"` · 5B | `"Auto\n"` · 5B | `["console.stdout", "console.stderr"]` |
-| `ace.m1.o06` | [src/O06.at](../../crates/auto-lang/test/cases/ace-m1/console-863/src/O06.at) | 成功 | exit 0 | `"9\n3\n"` · 4B | `"8\n"` · 2B | `["console.stdout", "console.stderr"]` |
-| `ace.m1.o07` | [src/O07.at](../../crates/auto-lang/test/cases/ace-m1/console-863/src/O07.at) | 成功 | 无exit，channel=unit | `"7\n"` · 2B | `"unit\n"` · 5B | `["console.stdout", "console.stderr"]` |
-| `ace.m1.o08` | [src/O08.at](../../crates/auto-lang/test/cases/ace-m1/console-863/src/O08.at) | 成功 | exit 42，channel=value | `"1\n"` · 2B | `"2\n"` · 2B | `["console.stdout", "console.stderr"]` |
-| `ace.m1.o09` | [src/O09.at](../../crates/auto-lang/test/cases/ace-m1/console-863/src/O09.at) | 成功 | 无exit，channel=unit | `""` · 0B | `"done\n"` · 5B | `["console.stdout", "console.stderr"]` |
-| `ace.m1.o10` | [src/O10.at](../../crates/auto-lang/test/cases/ace-m1/console-863/src/O10.at) | 失败 `run` / `av.trap.div-by-zero` | 无exit | `"before\n"` · 7B | `"fail\n"` · 5B | `["console.stdout", "console.stderr"]` |
-| `ace.m1.o11` | [src/O11.at](../../crates/auto-lang/test/cases/ace-m1/console-863/src/O11.at) | 失败 `resolve` / `source.console-argument` | 无exit | `""` · 0B | `""` · 0B | `["console.stdout", "console.stderr"]` |
-| `ace.m1.o12` | [src/O12.at](../../crates/auto-lang/test/cases/ace-m1/console-863/src/O12.at) | 失败 `parse` / `host.unauthorized` | 无exit | `""` · 0B | `""` · 0B | `[]` |
-| `ace.m1.o13` | [src/O13.at](../../crates/auto-lang/test/cases/ace-m1/console-863/src/O13.at) | 失败 `resolve` / `source.console-argument` | 无exit | `""` · 0B | `""` · 0B | `["console.stdout", "console.stderr"]` |
-| `ace.m1.o14` | [src/O14.at](../../crates/auto-lang/test/cases/ace-m1/console-863/src/O14.at) | 失败 `parse` / `source.console-reserved` | 无exit | `""` · 0B | `""` · 0B | `["console.stdout", "console.stderr"]` |
-| `ace.m1.o15` | [src/O15.at](../../crates/auto-lang/test/cases/ace-m1/console-863/src/O15.at) | 成功 | 无exit，channel=unit | `"\n"` · 1B | `"\n"` · 1B | `["console.stdout", "console.stderr"]` |
+| `ace.m1.o01` | [src/O01.at](../../../crates/auto-lang/test/cases/ace-m1/console-863/src/O01.at) | 成功 | exit 7 | `"-2147483648\n-7\n0\n42\n"` · 20B | `""` · 0B | `["console.stdout", "console.stderr"]` |
+| `ace.m1.o02` | [src/O02.at](../../../crates/auto-lang/test/cases/ace-m1/console-863/src/O02.at) | 成功 | exit 0 | `"true\nfalse\n"` · 11B | `"true\nfalse\n"` · 11B | `["console.stdout", "console.stderr"]` |
+| `ace.m1.o03` | [src/O03.at](../../../crates/auto-lang/test/cases/ace-m1/console-863/src/O03.at) | 成功 | exit 0 | `"你好\n\n"` · 8B | `"é\n"` · 3B | `["console.stdout", "console.stderr"]` |
+| `ace.m1.o04` | [src/O04.at](../../../crates/auto-lang/test/cases/ace-m1/console-863/src/O04.at) | 成功 | exit 0 | `"界\n"` · 4B | `"😀\n"` · 5B | `["console.stdout", "console.stderr"]` |
+| `ace.m1.o05` | [src/O05.at](../../../crates/auto-lang/test/cases/ace-m1/console-863/src/O05.at) | 成功 | exit 4 | `"Auto\n"` · 5B | `"Auto\n"` · 5B | `["console.stdout", "console.stderr"]` |
+| `ace.m1.o06` | [src/O06.at](../../../crates/auto-lang/test/cases/ace-m1/console-863/src/O06.at) | 成功 | exit 0 | `"9\n3\n"` · 4B | `"8\n"` · 2B | `["console.stdout", "console.stderr"]` |
+| `ace.m1.o07` | [src/O07.at](../../../crates/auto-lang/test/cases/ace-m1/console-863/src/O07.at) | 成功 | 无exit，channel=unit | `"7\n"` · 2B | `"unit\n"` · 5B | `["console.stdout", "console.stderr"]` |
+| `ace.m1.o08` | [src/O08.at](../../../crates/auto-lang/test/cases/ace-m1/console-863/src/O08.at) | 成功 | exit 42，channel=value | `"1\n"` · 2B | `"2\n"` · 2B | `["console.stdout", "console.stderr"]` |
+| `ace.m1.o09` | [src/O09.at](../../../crates/auto-lang/test/cases/ace-m1/console-863/src/O09.at) | 成功 | 无exit，channel=unit | `""` · 0B | `"done\n"` · 5B | `["console.stdout", "console.stderr"]` |
+| `ace.m1.o10` | [src/O10.at](../../../crates/auto-lang/test/cases/ace-m1/console-863/src/O10.at) | 失败 `run` / `av.trap.div-by-zero` | 无exit | `"before\n"` · 7B | `"fail\n"` · 5B | `["console.stdout", "console.stderr"]` |
+| `ace.m1.o11` | [src/O11.at](../../../crates/auto-lang/test/cases/ace-m1/console-863/src/O11.at) | 失败 `resolve` / `source.console-argument` | 无exit | `""` · 0B | `""` · 0B | `["console.stdout", "console.stderr"]` |
+| `ace.m1.o12` | [src/O12.at](../../../crates/auto-lang/test/cases/ace-m1/console-863/src/O12.at) | 失败 `parse` / `host.unauthorized` | 无exit | `""` · 0B | `""` · 0B | `[]` |
+| `ace.m1.o13` | [src/O13.at](../../../crates/auto-lang/test/cases/ace-m1/console-863/src/O13.at) | 失败 `resolve` / `source.console-argument` | 无exit | `""` · 0B | `""` · 0B | `["console.stdout", "console.stderr"]` |
+| `ace.m1.o14` | [src/O14.at](../../../crates/auto-lang/test/cases/ace-m1/console-863/src/O14.at) | 失败 `parse` / `source.console-reserved` | 无exit | `""` · 0B | `""` · 0B | `["console.stdout", "console.stderr"]` |
+| `ace.m1.o15` | [src/O15.at](../../../crates/auto-lang/test/cases/ace-m1/console-863/src/O15.at) | 成功 | 无exit，channel=unit | `"\n"` · 1B | `"\n"` · 1B | `["console.stdout", "console.stderr"]` |
 
 文件层tags为ace-m1/console、links为PLAN-863，各case保留原第三标签。O08/O09的源是顶层表达式，**原entry.mode是program**，沿原合同迁移。TOP按自己的script合同表达。
 
 ### 5.3 类型诊断和合法邻例：5例/5项
 
-原件为 [immutable-avm-920.case.ad](../../crates/auto-lang/test/cases/ace-m1/immutable-avm-920.case.ad)。新旧check都为autovm，adapter/action=avm/run，虚拟路径main.at。
+原件为 [immutable-avm-920.case.ad](../../../crates/auto-lang/test/cases/ace-m1/immutable-avm-920.case.ad)。新旧check都为autovm，adapter/action=avm/run，虚拟路径main.at。
 
 | case ID | 原输入 | entry.mode | 独立预期 |
 |---|---|---|---|
-| `ace.m1.ia920.b18` | [src/B18.at](../../crates/auto-lang/test/cases/ace-m1/src/B18.at) | `program` | 失败 `type` / `auto_name_E0203` |
-| `ace.m1.ia920.b18c` | [immutable-avm-920/B18C.at](../../crates/auto-lang/test/cases/ace-m1/immutable-avm-920/B18C.at) | `program` | 失败 `type` / `auto_name_E0203` |
-| `ace.m1.ia920.top` | [immutable-avm-920/TOP.at](../../crates/auto-lang/test/cases/ace-m1/immutable-avm-920/TOP.at) | `script` | 失败 `type` / `auto_name_E0203` |
-| `ace.m1.ia920.nb18` | [src/NB18.at](../../crates/auto-lang/test/cases/ace-m1/src/NB18.at) | `program` | 成功，legacy-display "2" |
-| `ace.m1.ia920.nb18s` | [immutable-avm-920/NB18S.at](../../crates/auto-lang/test/cases/ace-m1/immutable-avm-920/NB18S.at) | `program` | 成功，legacy-display "6" |
+| `ace.m1.ia920.b18` | [src/B18.at](../../../crates/auto-lang/test/cases/ace-m1/src/B18.at) | `program` | 失败 `type` / `auto_name_E0203` |
+| `ace.m1.ia920.b18c` | [immutable-avm-920/B18C.at](../../../crates/auto-lang/test/cases/ace-m1/immutable-avm-920/B18C.at) | `program` | 失败 `type` / `auto_name_E0203` |
+| `ace.m1.ia920.top` | [immutable-avm-920/TOP.at](../../../crates/auto-lang/test/cases/ace-m1/immutable-avm-920/TOP.at) | `script` | 失败 `type` / `auto_name_E0203` |
+| `ace.m1.ia920.nb18` | [src/NB18.at](../../../crates/auto-lang/test/cases/ace-m1/src/NB18.at) | `program` | 成功，legacy-display "2" |
+| `ace.m1.ia920.nb18s` | [immutable-avm-920/NB18S.at](../../../crates/auto-lang/test/cases/ace-m1/immutable-avm-920/NB18S.at) | `program` | 成功，legacy-display "6" |
 
 三个负例写VM diagnostic，两合法邻例写VM result并去一个围栏尾LF。NB18S原金样是"6"，保留原完整输入/print行为和该值，迁移不调整旧VM shadowing行为。文件层tags为ace-m1/diagnostic/immutable-avm-920，links为PLAN-920。
 
@@ -484,7 +484,7 @@ AV/native的receipt目前有部分未列在报告artifacts中。对照器的run�
 - [x] AC-05（work）三个固定组实际切换新文档，CLI/宿主/console/stale/试点/batch真实入口核验，三项具名BASE宿主测试及V-09/10通过。证据=§9 work 收据：固定组并集 127/97/15/5/7/68/24 全 PASS，ace-batch 12 PASS，八个具名宿主/console 入口 ok。
 - [x] AC-06（work）M1及仍依赖原文件的消费者逐件登记，migrated源/expected外部读取0；内容/表示身份差异、原红/重放及成本分列，§6.4真实record与V-10/11/13可复验。证据=§9 work 收据：consumers 12 条入 `t01-baseline.json`，ACE 6 红与主线既有记录逐项对齐、无新增红。
 - [x] AC-07（review）独立核30/60、反控、Spec和旧资产去向，遗漏/延后/workaround均有处置，V-12判决绑定本revision及提交。证据=§9 复审收据：r3 @4cbb3f610 pass，F-1057-R1-01/02 均独立复核关闭，SD-01..05 目标与"当前"陈述逐项验真；merge 三项 closeout gate 已具名。
-- [ ] AC-08（merge）主线切换、规范/路线沉淀、归档、guard及scope全路径清理真实完成，关键摘要入本计划。
+- [x] AC-08（merge）主线切换、规范/路线沉淀、归档、guard及scope全路径清理真实完成，关键摘要入本计划。
 
 ## 8. 执行步骤
 
@@ -497,7 +497,7 @@ AV/native的receipt目前有部分未列在报告artifacts中。对照器的run�
 | T-05 / work ✅ | T-02 | immutable文档5例及新suite，TOP显式script，两个合法邻例按原值；完成对照脚本5项字段 | AC-03/04，V-07，三错两对；删例、错码可检 |
 | T-06 / work ✅ | T-03/04/05 | 同构建对跑及负控完成后改test-groups三入口；改host/console/governance日常消费者；完成controls及V-13治理反控，保存输入闭包和run记录；迁移三项具名BASE宿主测试；记录M1/batch/include_str原件去向 | AC-01..06，V-08..11/13；§6.3完整并集、CLI、新旧30/60与三组117项、读取计量 |
 | T-07 / review ✅ | T-06、冻结提交 | 同树独立复审逐旧case/actual/反控，扫漏项/延期/替代，核SD-01..03、fmt/warnings/调试输出；失败交原owner修复 | AC-07，V-12，revision-bound判决与必要复验并集 |
-| T-08 / merge | T-07 pass | 冻结并集核门后合主线，沉淀规范/路线并归档，折摘要、核所有输出路径、guard后清理树/分支/scope；登记原件保留项 | AC-08，主线来源/规范hash/归档与清理收据，具名持有按规则登记 |
+| T-08 / merge ✅ | T-07 pass | 冻结并集核门后合主线，沉淀规范/路线并归档，折摘要、核所有输出路径、guard后清理树/分支/scope；登记原件保留项 | AC-08，主线来源/规范hash/归档与清理收据，具名持有按规则登记 |
 
 T-03..05在同一权威worktree内由实现owner顺序推进。全部任务待执行。本计划明确有限接入字段与集合，执行可按当前代码等价实现；改变原30/60义务或公共准入应修订合同并取得相应范围授权。
 
@@ -612,6 +612,31 @@ pending_closeout_gates（merge 持有，未在复审中声称完成）：
 3. 归档 + 工作树 guard 清理 + plan-artifacts scope 折叠删除 + retention 登记刷新。
 
 2026-11-14 stage: goal | plan_id: PLAN-1057 | plan_revision: r3 | round: 5（r3 work 与其复跑跨 harness 第 3–4 轮，阶段未变） | from: execution_done | to: reviewed | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1057/auto-lang | commit: 4cbb3f610 | next: merge
+
+### 2026-11-14 merge 收据（PLAN-1057:r3）→ pass
+
+**prepared**：reviewed r3 @4cbb3f610（复审判决见上）；交付 delta=SD-01..05（四份 `docs/specs/auto-test-case/` 文档）；预期源版本=r2 复审记录的四份 hash（c2d174d1…/e6c54461…/66849b09…/dc1d1195…）。rebase mapping（线性落地要求）：实现提交 `aeab8dfe4 → 76969f932`（`git range-diff aeab8dfe4~1..aeab8dfe4 76969f932~1..76969f932` 输出 `1: aeab8dfe4 = 1: 76969f932`，patch 等价），spec 提交 `→ 389c80f6a`（四份文件字节与 worktree 一致：bd3b9342…/c7d2e8d4…/44fa277b…/45024cbf…）。
+
+**gate（merge-owned，冻结受影响并集，交付树上）**：
+- 固定七组 `fixed-final`：gate_passed=true，425.3s，127/97/15/5/7/68/24 全 PASS；source_state `2b45c809…`；`fixed-final/results.json` ca39d436…。
+- pair/controls（`pair-land2`/`controls-land2`，同实现身份树）：scalar 97 对（40 迁移）/console 15/15/immutable 5/5 三次 exit 0；controls 36/36 ok。pair-land2 记录 4b8168fd…/409f6849…/5b8fc82a…，controls 6a116251…。
+- ACE 三组 `ace-final2`：gate=false（既有红），ace-host+console 164 例 **158 PASS / 6 个既有主线红**，ace-batch 12 PASS；source_state `2b45c809…`；`ace-final2/results.json` 030c7586…。6 红=archive/1017、archive/1039、KNOWN-DEBT D-1001-R2/D-932-2 已记名者（closures/tr_native/abi_recipe/a2r_hir×2/av_source_inventory），本包未改其面。
+- 首红与环境归因（保留）：首次交付树跑 `ace-deliver` 出现 13 红，其中 7 项为 `mn worker … Deadline`/派生 Error（50s 编译-执行截止，同期他计划在跑重型 ACE 套件）；空闲复跑 `ace-deliver2`（同 source_state d64c45bb…）回落为同一 6 名红 → 环境归因，首红保留。
+- 最末 master 增量复用说明：落地前 master 又前进 3 个提交（967 T-14），其文件仅 `experimental/ace/crates/abi/src/{lib.rs,provider_build_cache.rs}`、`abi/tests/cases/f0_t14.rs`、`abi/tests/conformance.rs`(+2 行) 与文档——只属 ace-abi 构建缓存腿及其自测注册，不在本并集任何组的选择面（ace-abi 组未选、ace-host 读 ace-conformance 二进制），故上述 `2b45c809…` 证据对最终交付提交保持有效；其余提交面在 rebase 中逐次重跑（`c5383100e`/`4cbb3f610`/`68735eba4`/`992335bc1` 四轮并集记录在 scope）。
+
+**landed**：主检出 `git merge --ff-only plan-1057-dev` 成功，master tip=**389c80f6a**（交付提交，无 merge commit；上一 tip 7f18642a8）；落地 diff=19 个实现/测试/脚本文件 + 四份 spec。`git status` 交付树 clean。
+
+**canonical_verified**（master @389c80f6a 实测 hash）：`docs/specs/auto-test-case/document-cases.md` bd3b9342fabb978effc5d98184daad3b45e49756d741499d7cbf2f12a445b861（7897B）；`module-selection.md` c7d2e8d4e47c5c62fbf7297034b84df7876641d53d545160cc9792967438186a（14967B）；`ace-m1-conformance.md` 44fa277bf5953d0848dcdf1f2195be41465e0ab6c51617193d9447a3d826fbf2（39773B）；`legacy-immutable-diagnostic.md` 45024cbfce45cc2b10e3df7c8a440d96adb8f3775f62730c1350ac593a66afed（3483B）。SD-04 同时改正了旧规范里指向已不存在文件（`crates/auto-lang/src/tests/ace_m1_tests.rs`）的测试位置。无 `docs/specs/` 外知识库落点，无 legacy ledger 写入。
+
+**archived**：`docs/plans/archive/1057-autodown-document-cases-first-wave.md`，`status: archived`；T-01..T-07 ✅、T-08 收尾中；AC-01..07 ✅、AC-08 待 cleaned 收据；归档文件随本收据提交在 master。
+
+**cleaned**（2026-11-14）：`wt-guard.sh`（Git Bash）对 `auto-lang` 与 `auto-down` 两棵树均输出 `clean`（无 reparse point）；`git worktree remove` 两棵树成功，`git branch -d plan-1057-dev`（was 389c80f6a）成功，空组目录 `D:/autostack/.wt/lang-1057` 已删除；`plan-artifacts/plan-1057/` 折叠后整目录删除（**53,356 文件 / 300,550,795 字节**）；`.retention/policy.json` 新增 `plan-1057`（deleted-at-merge、delivery/reviewed 提交、四份 canonical hash、删除计数、holds=[]），`last_merge_closeout`/`last_merge_cleanup` 刷新为 PLAN-1057。无具名未解决问题持有。
+
+**landing checks**：本检出无 `auto` 包（`cargo build -p auto` 报 `package ID specification 'auto' did not match any packages`；仓内亦无 `auto` bin，CLAUDE.md 的该条重建指令对本检出已过时），故以本包实际产物 `auto-case` 验证：主检出 `cargo build -p auto-lang --bin auto-case` 成功（57.75s，`target/debug/auto-case.exe` 2026-11-14 16:21:31，57,582,592B），对落地语料 `auto-case lint --suite crates/auto-lang/test/cases/ace-document-base.suite.ad` → `suite ok: 6 case file(s), 36 case(s), full reference admission passed`。部署/发行包/web bundle 不属本仓本包交付面（未改动）。构建告警：`auto-lang`/`auto-lang-core` 的既有 lib 告警（5/131，含改动前即存在者）；改动文件本身无 rustfmt/告警问题（复审核）。
+
+**batch regression due check**：`docs/plans/.last-batch-regression.json` 覆盖至 PLAN-1043（2026-11-13T19:30:42Z，covered_commit 08a9e4d0…）；1057 % 5 = 2 ≠ 0，且距该收据 < 48h → **未到期**，本轮不触发 `cargo t all` 批门；到期后按 merge/regress 规则在主检出单实例执行。
+
+2026-11-14 stage: goal | plan_id: PLAN-1057 | plan_revision: r3 | round: 6 | from: reviewed | to: archived | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-1057/auto-lang（已删除） | commit: 389c80f6a | next: done
 
 ## 10. 待澄清事项
 
