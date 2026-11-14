@@ -213,6 +213,8 @@ T-02..04补原worker/TestCase适配和永久case。职责组候选：`cargo t ac
 
 事故与恢复记录（2026-11-14 work轮）：提交前清理fmt附带改动时 stash 误用（`git stash push`经管道head吞错＋pop了仓内他人旧PLAN-002 stash），worktree曾回到master态；`git reset --hard`恢复后由 plan-artifacts/plan-1040/codegen/ 脚本全集重放全部tracked改动（含assert锚点），未跟踪新文件未受损；重放树重跑1040全7例＋冻结组并集全绿后提交。7个未跟踪docs/plans/888-890*.md为旧stash残留物，不属本包，未纳入提交（待其owner处置）。
 
+stage: goal | plan_id: PLAN-1040 | plan_revision: r5 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1040/auto-lang | commit: 088d331b1 | next: review
+
 ## 10. 待澄清事项
 
 WSL2实际发行版/kernel/linker/权限/挂载与现共享源能力由T-01先证；当前仅此Linux验证渠道，缺环境required保持pending，不假设另有裸机/远端。是否扩完整argv/env/TLS/unwind/动态库不在最小基线；必要时新立后继，不冒全Linux runtime。与1039/现native并行改同文件要按正式SHA短窗串行，不消费其他WIP。
