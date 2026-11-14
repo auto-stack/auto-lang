@@ -376,6 +376,91 @@ impl ForeignStubTable {
     }
 }
 
+/// PLAN-967 T-02: one foreign SESSION binding — the single reusable
+/// composition entrance consumers (969/E0, later A2X lanes) drive:
+/// `open` → `bind` (admitted stubs at the current generation) →
+/// `execute` (per-run authority + fresh byte ledger) → `teardown`
+/// (every entry stops admitting instantly; a late caller is refused
+/// before any dispatch, `callee_count` frozen at its last value) →
+/// `rebind` for the next provider binding.
+///
+/// This is the §0 "generation+owner+签名验证，授权每次调用重核" spine at
+/// the granularity F0 froze: identity (provider/symbol/content_version/
+/// form) and generation are re-checked on EVERY call; the owner/grant
+/// dimension joins at T-13 without changing this entrance.
+#[derive(Debug)]
+pub struct ForeignSession {
+    table: ForeignStubTable,
+}
+
+impl Default for ForeignSession {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ForeignSession {
+    /// A fresh session at generation 1.
+    pub fn new() -> Self {
+        Self {
+            table: ForeignStubTable::new(1),
+        }
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.table.generation()
+    }
+
+    /// Bind admitted stubs at the CURRENT generation. The caller owns
+    /// admission (the manifest admit + the loaded exports); this layer
+    /// never invents identity.
+    pub fn bind(&mut self, stubs: Vec<ForeignStub>) -> Result<(), &'static str> {
+        for stub in stubs {
+            self.table.insert(stub)?;
+        }
+        Ok(())
+    }
+
+    pub fn table(&mut self) -> &mut ForeignStubTable {
+        &mut self.table
+    }
+
+    /// Read-only table view (identity/counters for callers that hold the
+    /// session, not the table).
+    pub fn table_shared(&self) -> &ForeignStubTable {
+        &self.table
+    }
+
+    pub fn execute(
+        &mut self,
+        module: &crate::abc_verify::LoadedModule,
+        limits: &crate::av::ExecLimits,
+        cancel: &crate::av::CancelFlag,
+    ) -> Result<(crate::contract::ExecOutcome, crate::av::ExecTrace), crate::host::AdmissionError>
+    {
+        crate::av::execute_foreign(module, limits, cancel, &mut self.table)
+    }
+
+    /// Session teardown: the whole binding dies atomically. Every later
+    /// execute/admission refuses; late callees cannot run.
+    pub fn teardown(&mut self) {
+        self.table.bump_generation();
+    }
+
+    /// Provider rebind: the old binding dies, the next binding starts at
+    /// a fresh generation (a provider edit never keeps stale authority).
+    pub fn rebind(&mut self, stubs: Vec<ForeignStub>) -> Result<(), &'static str> {
+        self.teardown();
+        self.bind(stubs)
+    }
+
+    /// Adopt a fully-loaded table (a loader-built table at the session's
+    /// generation); the session takes over its counters and flag.
+    pub fn adopt(&mut self, table: ForeignStubTable) {
+        self.table = table;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -523,3 +523,132 @@ fn main() int { return text_byte_len(\"A中😀\0\") }",
         "the rebound provider's +1 body ran for real"
     );
 }
+
+/// T-02 permanent lifecycle fixtures (V-01/02/06 shapes + recovery on the
+/// AUTO lane; V-03 cancel/late and the full V-04 callback destroy stay on
+/// the 939 native lane until T-08's completion ports, V-05 reentry is the
+/// foreign_exec unit test). One session: legal identity succeeds →
+/// teardown refuses everything later with the dispatch counter frozen →
+/// an empty binding is unauthorized (dispatch=0) → a rebuilt provider
+/// rebinds through the same entrance.
+#[test]
+fn f0_session_lifecycle_success_teardown_unauthorized_rebind() {
+    use ace_abi::rust_provider::{open_f0_session, open_session_from_build};
+    let root = scope("session");
+    let mut f0 = open_f0_session(&root).expect("open");
+
+    let loaded_of = |environment: &ace_foreign_contract::manual::AdmittedForeign,
+                     table: &ace_av_core::foreign_exec::ForeignStubTable,
+                     source: &str|
+     -> ace_av_core::abc_verify::LoadedModule {
+        let unit = compile_unit(source, environment);
+        let encoded = ace_av_core::abc::encode_abc(&unit).unwrap().to_flat();
+        let decoded = ace_av_core::abc::decode_abc(&encoded).unwrap();
+        ace_av_core::abc_verify::verify_abc_foreign(decoded, &unit.owner, table)
+            .expect("admitted verify")
+    };
+
+    // V-02 shape: a legal, fully-admitted identity succeeds for real.
+    let out = f0
+        .session
+        .execute(
+            &loaded_of(
+                &f0.admitted,
+                f0.session.table_shared(),
+                "use.rs f0_text
+fn main() int { return text_byte_len(\"A中😀\0\") }",
+            ),
+            &ace_av_core::av::ExecLimits::default(),
+            &ace_av_core::av::CancelFlag::new(false),
+        )
+        .expect("authorized run")
+        .0;
+    assert_eq!(success_i32(&out), Some(9));
+    let dispatched = f0.session.table_shared().callee_count();
+    assert_eq!(dispatched, 1);
+
+    // V-01 shape: session teardown. A module admitted BEFORE the
+    // teardown is still refused at EXECUTION (per-run authority), a
+    // module admitted AFTER it is refused at admission — and the
+    // dispatch counter stays FROZEN at its last value either way.
+    let admitted_module = loaded_of(
+        &f0.admitted,
+        f0.session.table_shared(),
+        "use.rs f0_text
+fn main() int { return text_byte_len(\"x\") }",
+    );
+    f0.session.teardown();
+    let refused = f0.session.execute(
+        &admitted_module,
+        &ace_av_core::av::ExecLimits::default(),
+        &ace_av_core::av::CancelFlag::new(false),
+    );
+    assert!(refused.is_err(), "a torn-down session never executes");
+    {
+        let unit = compile_unit(
+            "use.rs f0_text
+fn main() int { return text_byte_len(\"x\") }",
+            &f0.admitted,
+        );
+        let encoded = ace_av_core::abc::encode_abc(&unit).unwrap().to_flat();
+        let decoded = ace_av_core::abc::decode_abc(&encoded).unwrap();
+        assert!(ace_av_core::abc_verify::verify_abc_foreign(
+            decoded,
+            &unit.owner,
+            f0.session.table_shared()
+        )
+        .is_err());
+    }
+    assert_eq!(f0.session.table_shared().callee_count(), dispatched);
+
+    // V-06 shape: an EMPTY binding is unauthorized for every foreign
+    // call — the module cannot even ADMIT against it, so no dispatch can
+    // exist (callee_count 0), and execution of nothing else changes that.
+    {
+        let mut empty = ace_av_core::foreign_exec::ForeignSession::new();
+        empty.adopt(ace_av_core::foreign_exec::ForeignStubTable::new(1));
+        let unit = compile_unit(
+            "use.rs f0_text
+fn main() int { return text_byte_len(\"x\") }",
+            &f0.admitted,
+        );
+        let encoded = ace_av_core::abc::encode_abc(&unit).unwrap().to_flat();
+        let decoded = ace_av_core::abc::decode_abc(&encoded).unwrap();
+        let refusal =
+            ace_av_core::abc_verify::verify_abc_foreign(decoded, &unit.owner, empty.table_shared())
+                .unwrap_err();
+        assert!(refusal.to_string().contains("foreign.unauthorized"));
+        assert_eq!(empty.table_shared().callee_count(), 0);
+        assert_eq!(empty.table_shared().rejected_count(), 0);
+    }
+
+    // Recovery: a rebuilt provider body (+1) rebinds through the SAME
+    // entrance at a fresh generation and the next run observes it.
+    let edited = f0_provider_source().replace(
+        "pub fn text_byte_len(s: &str) -> i32 {
+    s.as_bytes().len() as i32
+}",
+        "pub fn text_byte_len(s: &str) -> i32 {
+    s.as_bytes().len() as i32 + 1
+}",
+    );
+    let rebuilt = build_source(&root.join("edited"), &edited).expect("rebuild");
+    let mut next = open_session_from_build(&rebuilt, 2).expect("rebind session");
+    let out = next
+        .session
+        .execute(
+            &loaded_of(
+                &next.admitted,
+                next.session.table_shared(),
+                "use.rs f0_text
+fn main() int { return text_byte_len(\"abc\") }",
+            ),
+            &ace_av_core::av::ExecLimits::default(),
+            &ace_av_core::av::CancelFlag::new(false),
+        )
+        .expect("rebound run")
+        .0;
+    assert_eq!(success_i32(&out), Some(4), "the rebound provider's +1 body");
+    // Dropping the session drops the loaded library exactly once.
+    drop(next);
+}

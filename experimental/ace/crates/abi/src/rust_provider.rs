@@ -14,6 +14,7 @@ pub fn f0_provider_source() -> &'static str {
 
 /// One built provider: the cdylib plus every identity the host needs to
 /// admit and load it.
+#[derive(Clone)]
 pub struct RustProviderBuild {
     pub cdylib: PathBuf,
     pub manifest: auto_bindgen::rust_import::RustProviderManifest,
@@ -147,6 +148,49 @@ pub fn f0_authority(
     }
 }
 
+/// PLAN-967 T-02 composition: one OPEN foreign session = build → admit →
+/// load → bind, holding every identity piece alive together. Consumers
+/// (969/E0 and later A2X lanes) drive `session` and never re-assemble
+/// the pieces themselves.
+pub struct F0Session {
+    pub build: RustProviderBuild,
+    pub admitted: ace_foreign_contract::manual::AdmittedForeign,
+    /// Keeps the cdylib (and its exports) alive for the session's life;
+    /// dropping the session drops it exactly once (原方 destroy 一次).
+    pub provider: LoadedRustProvider,
+    pub session: ace_av_core::foreign_exec::ForeignSession,
+}
+
+/// Open the frozen F0 provider as a session at generation 1.
+pub fn open_f0_session(root: &Path) -> Result<F0Session, String> {
+    let build = build_f0(root)?;
+    open_session_from_build(&build, 1)
+}
+
+/// Re-open (or rebind) from an already-built provider unit at `generation`.
+pub fn open_session_from_build(
+    build: &RustProviderBuild,
+    generation: u64,
+) -> Result<F0Session, String> {
+    let admitted = build
+        .manual
+        .clone()
+        .admit(&f0_authority(build, generation))
+        .map_err(|e| format!("admit: {e}"))?;
+    let mut provider = load(build, generation)?;
+    let mut session = ace_av_core::foreign_exec::ForeignSession::new();
+    session.adopt(std::mem::replace(
+        &mut provider.table,
+        ace_av_core::foreign_exec::ForeignStubTable::new(generation),
+    ));
+    Ok(F0Session {
+        build: build.clone(),
+        admitted,
+        provider,
+        session,
+    })
+}
+
 /// A loaded provider: keeps the OS library alive and owns the stub table
 /// built from its exports. Dropping frees the library.
 pub struct LoadedRustProvider {
@@ -240,8 +284,5 @@ pub fn load(build: &RustProviderBuild, generation: u64) -> Result<LoadedRustProv
             })
             .map_err(|e| e.to_string())?;
     }
-    Ok(LoadedRustProvider {
-        library,
-        table,
-    })
+    Ok(LoadedRustProvider { library, table })
 }
