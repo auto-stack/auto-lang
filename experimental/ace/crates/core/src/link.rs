@@ -1258,14 +1258,18 @@ mod tests {
     #[test]
     #[cfg(windows)]
     fn captured_observer_failure_or_panic_reaps_real_child_and_open_file() {
-        let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests"))).join(format!(
-            "capture-observer-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let root =
+            std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(
+                || std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests"),
+            ))
+            .join(format!(
+                "capture-observer-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
         std::fs::create_dir_all(&root).unwrap();
         for panic in [false, true] {
             let held = root.join(format!("held-{panic}.bin"));

@@ -24,6 +24,7 @@ pub mod closures_fn;
 pub mod console;
 pub mod cst;
 pub mod decl_env;
+pub mod domain;
 pub mod fstr;
 #[cfg(any(test, feature = "legacy-syntax-oracle"))]
 pub mod lexer;

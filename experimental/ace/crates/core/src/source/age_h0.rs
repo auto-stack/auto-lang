@@ -16,13 +16,9 @@
 //! 本切片（H0）只冻结最小输入：一个 node、一个 view、一个 text 叶；属性/
 //! 未知构造由语法结构拒绝，非文本表达式由共享类型规则拒绝。
 
-use super::ast::{
-    Block, Expr, ExprKind, FnItem, Ident, Item, Program, Receiver, Stmt, TypeAnn, TypeRef, TypeWord,
-};
-use super::cst::{parse_domain_whole_module, FrontBudget, FrontOutcome};
+use super::ast::{Expr, Ident};
 use super::SourceProfile;
 use crate::atom_text::{Diagnostic, Span, Stage};
-use crate::hir::{BuiltinType, DefKind, ExprKind as HirExprKind, Stmt as HirStmt, TypeUse};
 use crate::verify::CheckedModule;
 
 /// 领域包身份（进入描述与缓存键；换 schema/兼容配置 = 换身份）。
@@ -183,11 +179,11 @@ pub fn domain_profile_refusal(profile: SourceProfile, src_len: usize) -> Option<
     ))
 }
 
-fn text_diag(code: &str, message: impl Into<String>, span: Span) -> Diagnostic {
+pub(crate) fn text_diag(code: &str, message: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic::new(Stage::Text, code, message, span)
 }
 
-fn infra_diag(message: impl Into<String>, len: usize) -> Diagnostic {
+pub(crate) fn infra_diag(message: impl Into<String>, len: usize) -> Diagnostic {
     Diagnostic::new(
         Stage::Text,
         "source.age.infra",
@@ -199,267 +195,135 @@ fn infra_diag(message: impl Into<String>, len: usize) -> Diagnostic {
 /// AGE H0 领域前门：解析（Schema 驱动）→ 未受信候选 → 共享唯一 verify。
 ///
 /// `alias` 是显式的兼容配置（参与描述身份，不改变 Schema 数据本身）。
+/// AGE H0 的领域包注册：**第一个**经共享驱动 `domain::compile_domain` 的包。
+/// 领域 owner（T-02 起可为 auto-ui）只需按同一接口提供 `project`。
+pub static AGE_H0_PACKAGE: crate::source::domain::DomainPackage =
+    crate::source::domain::DomainPackage {
+        id: AGE_H0_DOMAIN,
+        version: crate::source::domain::DomainVersion { major: 1, minor: 0 },
+        profile: SourceProfile::AgeH0,
+        hidden_prefix: AGE_H0_HIDDEN_PREFIX,
+        compat: Some(crate::source::domain::CompatRule {
+            spelling: "widget",
+            disabled_code: "source.age.legacy-widget",
+            disabled_message: "legacy `widget` declarations require the AGE legacy-widget \
+                               compat config; write `node` or enable the compat config \
+                               explicitly",
+        }),
+        project: project_age_h0,
+    };
+
+/// 领域 owner 的未受信投影：AGE 解析候选 → 通用结构行 + 行为。
+fn project_age_h0(
+    ok: &crate::source::cst::FrontOk,
+    _src: &str,
+) -> Result<crate::source::domain::DomainCandidate, Vec<Diagnostic>> {
+    use crate::source::domain::{DomainBehavior, DomainCandidate, DomainItem};
+    let mut structure = Vec::new();
+    let mut behaviors = Vec::new();
+    for n in &ok.age_nodes {
+        let mut texts = Vec::new();
+        for leaf in &n.view.texts {
+            let idx = behaviors.len();
+            behaviors.push(DomainBehavior {
+                expr: leaf.expr.clone(),
+                span: leaf.expr.span,
+            });
+            texts.push(DomainItem {
+                role: leaf.role.clone(),
+                name: None,
+                span: leaf.span,
+                aux_span: Some(leaf.component_span),
+                spelling: Some(leaf.spelling.clone()),
+                bindings: vec![idx],
+                children: Vec::new(),
+            });
+        }
+        let view = DomainItem {
+            role: n.view.role.clone(),
+            name: None,
+            span: n.view.span,
+            aux_span: None,
+            spelling: Some(n.view.spelling.clone()),
+            bindings: Vec::new(),
+            children: texts,
+        };
+        structure.push(DomainItem {
+            role: "node".to_string(),
+            name: Some(n.name.name.clone()),
+            span: n.span,
+            // 次级 span = 声明头（兼容拒绝/诊断定位用）。
+            aux_span: Some(n.head_span),
+            spelling: Some(n.head_spelling.clone()),
+            bindings: Vec::new(),
+            children: vec![view],
+        });
+    }
+    Ok(DomainCandidate {
+        structure,
+        behaviors,
+        requirements: vec!["ac.runtime.text.v1".to_string()],
+    })
+}
+
 pub fn compile_age_h0(
     src: &str,
     module_path: &str,
     alias: LegacyWidgetAlias,
     capabilities: &[String],
 ) -> Result<AgeH0Compilation, Vec<Diagnostic>> {
-    // 领域入口（crate 内部）：公共 `parse_front` 对领域 profile 具名拒绝。
-    let outcome =
-        parse_domain_whole_module(src, SourceProfile::AgeH0, FrontBudget::WORK_OWNED_64MIB);
-    let ok = match outcome {
-        FrontOutcome::Ok(ok) => ok,
-        FrontOutcome::Diag(ds) => return Err(ds),
-        FrontOutcome::ResourceExhausted { what, limit } => {
-            return Err(vec![text_diag(
-                "source.resource",
-                format!("resource exhausted: {what} (limit {limit})"),
-                Span {
-                    start: 0,
-                    end: src.len(),
-                },
-            )])
-        }
-        FrontOutcome::StaleForeign(m) | FrontOutcome::Infra(m) => {
-            return Err(vec![infra_diag(format!("AGE front door: {m}"), src.len())])
-        }
-    };
-    let candidates = ok.age_nodes;
-
-    // 兼容配置：别名关闭时旧声明头受控拒绝（不自动回落旧引擎）。
-    if !alias.is_accept() {
-        if let Some(n) = candidates.iter().find(|n| n.legacy_widget) {
-            return Err(vec![text_diag(
-                "source.age.legacy-widget",
-                "legacy `widget` declarations require the AGE legacy-widget compat config; \
-                 write `node` or enable the compat config explicitly",
-                n.head_span,
-            )]);
-        }
-    }
-
-    // 隐藏求值函数与用户声明重名 = 具名冲突（不静默遮蔽）。
-    let mut hidden: Vec<(String, usize, usize)> = Vec::new();
-    let mut idx = 0usize;
-    for (ni, n) in candidates.iter().enumerate() {
-        for (ti, _) in n.view.texts.iter().enumerate() {
-            hidden.push((format!("{AGE_H0_HIDDEN_PREFIX}{idx}"), ni, ti));
-            idx += 1;
-        }
-    }
-    for (_fname, _, _) in &hidden {
-        for item in &ok.program.items {
-            let user = match item {
-                Item::Fn(f) => Some(&f.name),
-                Item::Type(t) => Some(&t.name),
-                Item::Enum(e) => Some(&e.name),
-                Item::Const(c) => Some(&c.name),
-                Item::Store(s) => Some(&s.name),
-                Item::UseRs(_) => None,
-            };
-            if let Some(u) = user {
-                // 任何**包含**保留前缀的用户顶层名都是具名冲突：HIR 名带
-                // `sf_` 前缀，后缀式重名（`x__age_h0_text_0`）会与隐藏函数
-                // 混淆——按策略直接拒绝，不做静默遮蔽。
-                if u.name.contains(AGE_H0_HIDDEN_PREFIX) {
-                    return Err(vec![text_diag(
-                        "source.age.hidden-name",
-                        format!(
-                            "`{}` contains `{AGE_H0_HIDDEN_PREFIX}` which is reserved for AGE \
-                             text evaluation",
-                            u.name
-                        ),
-                        u.span,
-                    )]);
-                }
-            }
-        }
-    }
-
-    // 脱糖：每个文本叶一个隐藏函数（普通 Auto 源，由共享 verify 检查）。
-    let mut items = ok.program.items.clone();
-    let mut def_names: Vec<String> = Vec::new();
-    for (fname, ni, ti) in &hidden {
-        let leaf = &candidates[*ni].view.texts[*ti];
-        let span = leaf.expr.span;
-        let clone = Expr {
-            span,
-            kind: ExprKind::Method {
-                recv: Box::new(leaf.expr.clone()),
-                name: Ident {
-                    name: "clone".to_string(),
-                    span,
-                },
-                args: Vec::new(),
-            },
-        };
-        let f = FnItem {
-            name: Ident {
-                name: fname.clone(),
-                span,
-            },
-            type_params: Vec::new(),
-            params: Vec::new(),
-            ret: TypeAnn {
-                kind: TypeRef::Builtin(TypeWord::StrOwned),
-                span,
-            },
-            body: Block {
-                stmts: vec![Stmt::Return { value: clone, span }],
-                span,
-            },
-            span,
-            receiver: Receiver::Free,
-            owner: None,
-            script: false,
-        };
-        def_names.push(fname.clone());
-        items.push(Item::Fn(f));
-    }
-    let desugared = Program { items };
-
-    // 唯一 verify：整模块（普通项 + 隐藏求值函数）走 text-record 域的共享链。
-    let parts = match super::adapter::compile_program_parts(
-        &desugared,
+    // 通用驱动：前门 → 本包投影 → 兼容闸 → 隐藏名 → 脱糖 → 唯一 verify → 行描述。
+    let compiled = crate::source::domain::compile_domain(
+        &AGE_H0_PACKAGE,
         src,
         module_path,
+        alias.is_accept(),
         capabilities,
-        SourceProfile::TextRecord,
-    ) {
-        Ok(p) => p,
-        Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
-    };
-    let input_hash = parts.input_hash.clone();
-    // 共享 verify 是唯一权威；文本叶内的拒绝再用领域代码标注（F3：不把
-    // 脱糖壳的 `.clone()` 细节漏给作者，但仍保留共享诊断原文与精确 span）。
-    let checked = match crate::verify::verify_text_record(parts.bundle) {
-        Ok(c) => c,
-        Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
-    };
-
-    // 描述：从 Checked HIR 读共享检查结论（文本种类 + def id）。
+    )?;
+    // 通用行描述 → AGE 版本化描述（领域 owner 自有类型的映射；不改判据）。
     let mut nodes = Vec::new();
-    for (ni, n) in candidates.iter().enumerate() {
-        let mut texts = Vec::new();
-        for (ti, leaf) in n.view.texts.iter().enumerate() {
-            let fn_name = hidden
-                .iter()
-                .find(|(_, hni, hti)| *hni == ni && *hti == ti)
-                .map(|(f, _, _)| f.clone())
-                .unwrap_or_default();
-            let (def_id, kind) = text_conclusion(&checked, &fn_name).ok_or_else(|| {
-                vec![text_diag(
-                    "source.age.text-type",
-                    "a `text` leaf expression must be text (`str` or `Str`); the shared \
-                     type checker rejected this expression",
-                    leaf.expr.span,
-                )]
-            })?;
-            texts.push(AgeH0Text {
-                role: leaf.role.clone(),
-                component_span: leaf.component_span,
-                span: leaf.span,
-                kind,
-                fn_name,
-                def_id,
-            });
-        }
+    for row in &compiled.description {
+        let view = row.children.first();
+        let texts = view
+            .map(|v| {
+                v.children
+                    .iter()
+                    .map(|t| {
+                        let binding = t.bindings.first();
+                        AgeH0Text {
+                            role: t.role.clone(),
+                            component_span: t.aux_span.unwrap_or(t.span),
+                            span: t.span,
+                            kind: binding.map(|b| b.kind).unwrap_or(TextKind::View),
+                            fn_name: binding.map(|b| b.hidden_fn.clone()).unwrap_or_default(),
+                            def_id: binding.map(|b| b.def_id.clone()).unwrap_or_default(),
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
         nodes.push(AgeH0Node {
-            name: n.name.name.clone(),
-            head_role: n.head_role.clone(),
-            head_span: n.head_span,
-            legacy_widget: n.legacy_widget,
+            name: row.name.clone().unwrap_or_default(),
+            head_role: row.role.clone(),
+            head_span: row.aux_span.unwrap_or(row.span),
+            legacy_widget: row.compat,
             view: AgeH0View {
-                role: n.view.role.clone(),
-                span: n.view.span,
+                role: view.map(|v| v.role.clone()).unwrap_or_default(),
+                span: view.map(|v| v.span).unwrap_or(row.span),
                 texts,
             },
-            span: n.span,
+            span: row.span,
         });
     }
     Ok(AgeH0Compilation {
         description: AgeH0Description {
             domain: AGE_H0_DOMAIN,
-            grammar_id: ok.grammar_id,
+            grammar_id: compiled.grammar_id,
             alias,
             nodes,
         },
-        checked,
-        input_hash,
-        atom_text: parts.atom_text,
+        checked: compiled.checked,
+        input_hash: compiled.input_hash,
+        atom_text: compiled.atom_text,
     })
-}
-
-/// 文本叶内的共享拒绝 → 领域代码标注（保留共享消息与精确 span；不改判据）。
-fn relabel_leaf_diags(mut diags: Vec<Diagnostic>, candidates: &[AgeNodeItem]) -> Vec<Diagnostic> {
-    for d in &mut diags {
-        let inside_leaf = candidates.iter().any(|n| {
-            n.view.texts.iter().any(|t| {
-                // 共享诊断的 span 可能比表达式宽（含调用壳/括号）——用重叠判定，
-                // 跨度为零的尾位（EOF）按起点归属。
-                t.expr.span.start < d.span.end.max(d.span.start + 1)
-                    && d.span.start < t.expr.span.end
-            })
-        });
-        if inside_leaf {
-            // 只有 **脱糖壳（`.clone()`）引起**的拒绝才是"叶表达式不是文本"；
-            // 名字/参数/其它类型错误保留共享语义，改标中立领域码（F10）。
-            let text_ness = d.message.contains("clone");
-            d.code = if text_ness {
-                "source.age.text-type".to_string()
-            } else {
-                "source.age.leaf-expr".to_string()
-            };
-            d.message = if text_ness {
-                format!(
-                    "a `text` leaf expression must be text (`str` or `Str`); the shared checker \
-                     rejected it: {}",
-                    d.message
-                )
-            } else {
-                format!("the `text` leaf expression was rejected: {}", d.message)
-            };
-        }
-    }
-    diags
-}
-
-/// 从 Checked HIR 读隐藏求值函数的 def id 与文本种类（共享检查结论）。
-fn text_conclusion(checked: &CheckedModule, fn_name: &str) -> Option<(String, TextKind)> {
-    let module = checked.bundle().modules.first()?;
-    // 隐藏求值函数的 HIR 名由共享 adapter 唯一决定（`sf_<source name>`），
-    // 按**完整名**精确匹配：后缀式用户函数（`x__age_h0_text_0`）不会被误选。
-    let symbol = super::adapter::free_fn_symbol(fn_name);
-    let def = module.defs.iter().find(|d| match &d.kind {
-        DefKind::Function { name, .. } => name == &symbol,
-        _ => false,
-    })?;
-    let body_id = match &def.kind {
-        DefKind::Function { body, .. } => *body,
-        _ => return None,
-    };
-    let body = module.bodies.get(body_id.0 as usize)?;
-    let block = body.blocks.get(body.entry.0 as usize)?;
-    let value = block.stmts.iter().find_map(|s| match s {
-        HirStmt::Return { value } => Some(*value),
-        _ => None,
-    })?;
-    let expr = body.exprs.get(value.0 as usize)?;
-    let HirExprKind::TextClone { operand } = &expr.kind else {
-        return None;
-    };
-    let operand_expr = body.exprs.get(operand.0 as usize)?;
-    let kind = match operand_expr.ty {
-        // 文本种类在共享 HIR 里是命名类型条目（`TypeKind::{Str,StrOwned}`）。
-        TypeUse::Ref(tid) => match module.types.get(tid.0 as usize).map(|t| &t.kind) {
-            Some(crate::hir::TypeKind::Str) => TextKind::View,
-            Some(crate::hir::TypeKind::StrOwned) => TextKind::Owned,
-            _ => return None,
-        },
-        TypeUse::Builtin(BuiltinType::StrSlice) => TextKind::View,
-        TypeUse::Builtin(BuiltinType::StrOwned) => TextKind::Owned,
-        _ => return None,
-    };
-    Some((def.id_text.clone(), kind))
 }
