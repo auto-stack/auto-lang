@@ -498,6 +498,25 @@ class RegularEvidenceTests(unittest.TestCase):
         self.assertEqual(2, code)
         self.assertTrue(any('skipped by the runner' in item for item in record['missing_evidence']))
 
+    def test_case_control_override_keeps_an_expected_fail_green(self):
+        # A delivered suite carries a one-check meta-oracle whose expected status
+        # is FAIL; the report must re-derive that instead of calling it red.
+        checks = [{'case': 'ac.src.wrong-stage-build-red', 'check': 'bld-red', 'status': 'FAIL'},
+                  {'case': 'ac.legal', 'check': 'run', 'status': 'PASS'}]
+        run = self.make('case-control', checks=checks, executed=2, outcome='PASS')
+        code, record, _ = run.module_record()
+        self.assertEqual(0, code)
+        self.assertEqual('GREEN', record['status'])
+        self.assertEqual(2, record['selection']['selected'])
+
+    def test_case_check_that_breaks_its_control_is_exit_one(self):
+        checks = [{'case': 'ac.src.wrong-stage-build-red', 'check': 'bld-red', 'status': 'PASS'}]
+        run = self.make('case-control-missed', checks=checks, executed=1, outcome='PASS')
+        code, record, _ = run.module_record()
+        self.assertEqual(1, code)
+        self.assertTrue(any('differ from the original control expectation' in item
+                            for item in record['problems']))
+
     def test_nc09_two_modules_in_one_invocation_is_exit_two(self):
         run = self.make('two-modules', groups=['ace-syntax', 'ace-native'])
         code, record, _ = run.module_record()

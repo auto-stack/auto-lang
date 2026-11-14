@@ -37,6 +37,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY_DEFAULT = Path(__file__).resolve().parent / 'ace-test-policy.json'
+CASE_ORACLES_DEFAULT = Path(__file__).resolve().parent / 'case-control-oracles.json'
 GROUPS_CONFIG = ROOT / 'scripts/test-groups.toml'
 FIXED_TESTS = ROOT / 'scripts/fixed-tests.py'
 
@@ -67,6 +68,25 @@ def load_policy_items(document):
 def load_policy(path):
     document = json.loads(Path(path).read_text(encoding='utf-8'))
     return document, load_policy_items(document)
+
+
+def load_case_oracles(repo_root=None):
+    """TestCase controls' original expected statuses (the driver's own rule).
+
+    Some delivered suites carry one-check meta-oracles whose expected status is
+    FAIL; a report that only accepted PASS would call those red. This re-derives
+    the driver's acceptance, so the budget verdict never trusts the parent exit
+    code but also never invents a failure the contract does not have.
+    """
+    path = Path(repo_root or ROOT) / 'scripts/test-governance/case-control-oracles.json'
+    if not path.is_file():
+        return {}
+    try:
+        document = json.loads(path.read_text(encoding='utf-8'))
+    except ValueError:
+        return {}
+    return {(row.get('case'), row.get('check')): row.get('expected_status', 'PASS')
+            for row in document.get('overrides') or []}
 
 
 def fixed_tests_module(repo_root):
@@ -344,15 +364,20 @@ def _numeric_run_dirs(run_dir):
                   key=lambda p: int(p.name))
 
 
-def regular_module(run_dir, repo_root=None, budget_seconds=120.0, target_seconds=60.0):
+def regular_module(run_dir, repo_root=None, budget_seconds=120.0, target_seconds=60.0,
+                   case_oracles=None):
     """Judge one complete ordinary module invocation against the warm budget.
 
     Evidence integrity failures are `missing_evidence` (exit 2), functional
     failures are `problems` (exit 1), and only a complete, fresh, passing
-    single-group invocation gets a budget status.
+    single-group invocation gets a budget status. `case_oracles` re-derives the
+    TestCase controls' expected statuses (the driver's own acceptance rule)
+    instead of blindly trusting the parent exit code.
     """
     run_dir = Path(run_dir)
     repo_root = Path(repo_root) if repo_root is not None else ROOT
+    if case_oracles is None:
+        case_oracles = load_case_oracles(repo_root)
     record = {
         'run_dir': str(run_dir),
         'module': None,
@@ -427,7 +452,7 @@ def regular_module(run_dir, repo_root=None, budget_seconds=120.0, target_seconds
     record['identity']['outcome'] = result.get('outcome')
     record['identity']['executed'] = result.get('executed')
     record['selection'] = {
-        'selected': len(result.get('selected') or []),
+        'selected': len(result.get('selected') or result.get('checks') or []),
         'executed': result.get('executed'),
         'excluded': len(result.get('excluded') or []),
         'groups': result.get('groups'),
@@ -465,10 +490,19 @@ def regular_module(run_dir, repo_root=None, budget_seconds=120.0, target_seconds
         if len(checks) != executed:
             record['missing_evidence'].append(
                 'case checks (%d) != executed (%d)' % (len(checks), executed))
-        failed = [row for row in checks if row.get('status') != 'PASS']
+        failed = []
+        for row in checks:
+            expected = case_oracles.get((row.get('case'), row.get('check')), 'PASS')
+            if row.get('status') != expected:
+                failed.append((row, expected))
+        record['case_controls'] = len(case_oracles)
         if failed:
-            record['problems'].append('%d case check(s) not PASS (first: %s%%%s)'
-                                      % (len(failed), failed[0].get('case'), failed[0].get('check')))
+            first, expected = failed[0]
+            record['problems'].append(
+                '%d case check(s) differ from the original control expectation '
+                '(first: %s%%%s status=%s expected=%s)'
+                % (len(failed), first.get('case'), first.get('check'),
+                   first.get('status'), expected))
     else:
         selected = result.get('selected') or []
         if not selected:
@@ -664,8 +698,10 @@ def render_regular_markdown(records):
         checks = record.get('case_checks')
         if checks:
             bad = [row for row in checks if row.get('status') != 'PASS']
-            lines.append('- case checks: %d (%d not PASS); per-check time UNOBSERVED '
-                         '(case report carries status only)' % (len(checks), len(bad)))
+            lines.append('- case checks: %d (%d not PASS before the original control overrides; '
+                         '%d override(s) honoured); per-check time UNOBSERVED '
+                         '(case report carries status only)'
+                         % (len(checks), len(bad), record.get('case_controls') or 0))
         if record.get('stale'):
             lines.append('- STALE: %s' % '; '.join(record['stale']))
         if record.get('missing_evidence'):
