@@ -8,7 +8,9 @@ use std::path::PathBuf;
 
 use ace_abi::rust_provider::{build_f0, build_source, f0_authority, f0_provider_source, load};
 use ace_av_core::contract::{ExecOutcome, TrapKind, Value};
-use ace_av_core::foreign_exec::{ForeignDispatch, ForeignExecError, ForeignStub};
+use ace_av_core::foreign_exec::{
+    ForeignDispatch, ForeignExecError, ForeignStub, ForeignStubTable,
+};
 use ace_foreign_contract::manual::SOURCE_CAP;
 use ace_foreign_contract::resource::RESOURCE_CAP;
 
@@ -375,4 +377,3 @@ fn f0_provider_identity_rebinds_and_auto_body_edits_do_not() {
     );
 }
 
-use ace_av_core::foreign_exec::ForeignStubTable;

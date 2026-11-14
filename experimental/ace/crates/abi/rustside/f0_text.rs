@@ -29,8 +29,9 @@ pub fn text_first_byte(s: &str) -> Option<i32> {
 }
 
 /// Panic-boundary probe: the provider panics on the literal `boom`.
-/// A panic crosses the C boundary ONLY as an independent host failure
-/// (the AV dispatcher catches it); it never unwinds into the guest.
+/// The generated shim catches it in-unit and raises the exported
+/// `f0_panic_flag`; the AV dispatcher converts the flag into an
+/// independent host failure. No unwind ever crosses the C boundary.
 // auto-ffi fn text_panic_probe symbol=f0.text.panic_probe.v1 form=pure ret=i32
 pub fn text_panic_probe(s: &str) -> i32 {
     if s == "boom" {

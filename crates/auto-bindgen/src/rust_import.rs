@@ -24,7 +24,9 @@ pub const IMPORT_FORMAT: &str = "auto.bindgen.rust-provider/1";
 /// Versioned source annotation markers (the metadata IS the provider file).
 pub const ANNOTATION_PROVIDER: &str = "auto-ffi provider";
 pub const ANNOTATION_FN: &str = "auto-ffi fn";
-/// F0 physical target (frozen; matches the shared plan constants).
+/// F0 physical target (frozen). MUST equal
+/// `ace_foreign_contract::plan::TARGET` — the projection asserts it and
+/// falls back to the shared constant, so a silent divergence cannot ship.
 pub const F0_TARGET: &str = "x86_64-pc-windows-msvc";
 
 /// Named import rejection. Codes are stable contract spellings.
@@ -71,8 +73,9 @@ pub enum RustFnForm {
     PureI32,
     /// `(&str) -> bool` (physical 0/1 byte lane).
     PureBool,
-    /// `(&str) -> Option<i32>`: `None` maps to the first named negative
-    /// status, `Some(v)` to status `0` + the `out` value. Physical frame
+    /// `(&str) -> Option<i32>`: `None` maps to the SMALLEST named
+    /// negative status (the error-model table's canonical first code),
+    /// `Some(v)` to status `0` + the `out` value. Physical frame
     /// `fn(data, byte_len, out: *mut i32) -> i32` (status).
     FallibleI32 { errors: Vec<(String, i32)> },
 }
@@ -493,9 +496,16 @@ pub fn generate_shim(manifest: &RustProviderManifest) -> String {
                     export = f.export,
                 ));
             }
-            RustFnForm::FallibleI32 { .. } => {
+            RustFnForm::FallibleI32 { ref errors } => {
+                // `None` maps to the SMALLEST named negative status (the
+                // same canonical order `to_manual_manifest` freezes for
+                // the error-model table — manifest and physical behavior
+                // can never disagree; audit finding #1).
+                let mut codes: Vec<i32> = errors.iter().map(|(_, c)| *c).collect();
+                codes.sort_unstable();
+                let none_code = codes[0];
                 out.push_str(&format!(
-                    "#[no_mangle]\npub extern \"C\" fn {export}(data: *const u8, byte_len: u64, out: *mut i32) -> i32 {{\n    match std::panic::catch_unwind(|| {{ {call} }}) {{\n        Ok(Some(v)) => {{ unsafe {{ *out = v; }} 0 }}\n        Ok(None) => -1,\n        Err(_) => {{ __F0_PANIC_FLAG.store(1, std::sync::atomic::Ordering::SeqCst); -1 }}\n    }}\n}}\n\n",
+                    "#[no_mangle]\npub extern \"C\" fn {export}(data: *const u8, byte_len: u64, out: *mut i32) -> i32 {{\n    match std::panic::catch_unwind(|| {{ {call} }}) {{\n        Ok(Some(v)) => {{ unsafe {{ *out = v; }} 0 }}\n        Ok(None) => {none_code},\n        Err(_) => {{ __F0_PANIC_FLAG.store(1, std::sync::atomic::Ordering::SeqCst); {none_code} }}\n    }}\n}}\n\n",
                     export = f.export,
                 ));
             }
@@ -553,7 +563,7 @@ pub fn to_manual_manifest(
                 ResourceForm::Pure { ret: ResOut::Bool },
                 format!("pure:{}", f.export),
             ),
-            RustFnForm::FallibleI32 { errors } => {
+            RustFnForm::FallibleI32 { ref errors } => {
                 let mut codes: Vec<(i32, String)> = errors
                     .iter()
                     .map(|(name, code)| (*code, name.clone()))
@@ -722,6 +732,31 @@ pub fn text_first_byte(s: &str) -> Option<i32> { s.as_bytes().first().map(|b| *b
         // duplicate annotation
         let dup = "//! auto-ffi provider p/1 target=x86_64-pc-windows-msvc profile=p.v1\n// auto-ffi fn d symbol=p.d.v1 form=pure ret=i32\n// auto-ffi fn d symbol=p.d.v1 form=pure ret=i32\npub fn d(s: &str) -> i32 { 0 }\n";
         assert_eq!(import(dup).unwrap_err().code, "rust-import.duplicate");
+    }
+
+    #[test]
+    fn fallible_none_maps_to_the_smallest_named_code() {
+        // Audit #1: the generated shim must carry the SAME smallest named
+        // status the manifest's canonical error table freezes — manifest
+        // and physical behavior can never disagree.
+        let src = "//! auto-ffi provider p2/1 target=x86_64-pc-windows-msvc profile=p.v1
+// auto-ffi fn f symbol=p.f.v1 form=fallible errors=b:-1,a:-2
+pub fn f(s: &str) -> Option<i32> { None }
+";
+        let m = import(src).expect("imports");
+        let shim = generate_shim(&m);
+        assert!(shim.contains("Ok(None) => -2"), "{shim}");
+        assert!(shim.contains(
+            "Err(_) => { __F0_PANIC_FLAG.store(1, std::sync::atomic::Ordering::SeqCst); -2 }"
+        ));
+        let manual = to_manual_manifest(&m, "r/1", &provider_digest(src), &shim_digest(&shim))
+            .expect("projects");
+        let first = &manual.facts.functions[0]
+            .error_model
+            .as_ref()
+            .unwrap()
+            .codes[0];
+        assert_eq!(first.0, -2);
     }
 
     #[test]

@@ -13,12 +13,13 @@
 //! Resource contract (frozen): per-call input view ≤
 //! [`MAX_CALL_BYTES`]; per-run charged bytes ≤ [`MAX_RUN_BYTES`]; the
 //! view is borrowed noescape (the host copies anything it must retain
-//! before the call returns). The frozen panic channel: the shims are
-//! `extern "C-unwind"` frames, so a provider panic UNWINDS exactly as
-//! far as this module's `catch_unwind` — the AV dispatch boundary —
-//! and is converted there into an independent HOST failure. The unwind
-//! never reaches a guest frame, and it is never re-reported as a normal
-//! i32/bool value.
+//! before the call returns). The frozen panic channel: the GENERATED
+//! SHIMS catch a provider panic in-unit (same std instance) and raise
+//! the provider's exported panic flag; this module observes the flag
+//! after every call and converts it into an independent HOST failure.
+//! NO unwind ever crosses the C boundary (the frames are plain
+//! `extern "C"`), a panic never reaches a guest frame, and it is never
+//! re-reported as a normal i32/bool value.
 
 use ace_foreign_contract::manual::SourceDecl;
 
@@ -666,6 +667,23 @@ mod tests {
             t.dispatch_view(&other, b"x").unwrap_err().code(),
             "foreign.signature"
         );
+        // FORM (ABI) mismatch: a bool-form declaration against an i32
+        // callable bound under the same symbol+content_version is a
+        // signature rejection, never a mis-typed dispatch (audit #5).
+        let ascii = decl_of(&m, "f0_text_is_ascii_v1");
+        let mut swapped = t.entries().to_vec();
+        for stub in &mut swapped {
+            if stub.symbol == "f0_text_is_ascii_v1" {
+                stub.callable = ForeignCallable::PureI32(len_i32);
+            }
+        }
+        let mut wrong_form = ForeignStubTable::new(t.generation());
+        wrong_form.set_entries(swapped);
+        assert_eq!(
+            wrong_form.dispatch_view(&ascii, b"abc").unwrap_err().code(),
+            "foreign.signature"
+        );
+        assert_eq!(wrong_form.callee_count(), 0);
         assert_eq!(t.callee_count(), 17);
         // five rejections on THIS table: ghost, utf8, over-limit,
         // run-bytes and the signature mismatch (the generation check ran

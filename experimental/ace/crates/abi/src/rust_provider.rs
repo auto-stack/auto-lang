@@ -152,7 +152,6 @@ pub fn f0_authority(
 pub struct LoadedRustProvider {
     library: windows_sys::Win32::Foundation::HMODULE,
     pub table: ace_av_core::foreign_exec::ForeignStubTable,
-    pub build_digest: String,
 }
 
 impl Drop for LoadedRustProvider {
@@ -206,9 +205,6 @@ pub fn load(build: &RustProviderBuild, generation: u64) -> Result<LoadedRustProv
             unsafe {
                 windows_sys::Win32::Foundation::FreeLibrary(library as _);
             }
-            unsafe {
-                windows_sys::Win32::Foundation::FreeLibrary(library as _);
-            }
             return Err(format!(
                 "export `{}` missing from the provider cdylib",
                 f.export
@@ -247,6 +243,5 @@ pub fn load(build: &RustProviderBuild, generation: u64) -> Result<LoadedRustProv
     Ok(LoadedRustProvider {
         library,
         table,
-        build_digest: build.provider_digest.clone(),
     })
 }
