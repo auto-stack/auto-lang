@@ -107,6 +107,12 @@ All AI coding assistants working in this repository must strictly adhere to the 
   不先发现全仓测试，不建叶目录/分片新鲜度系统，不自动展开消费者图。`cargo t --list`只读固定组名。
 - `cargo t ace`显式运行独立`experimental/ace` workspace的常规测试及语言侧私有协议桥接；正式计量/压力以`cargo t ace-perf`运行，保原样本、规模、ignore和平台条件。ACE内部同树target复用，四个no_std静态运行时保panic-abort专用profile；普通语言测试不构建ACE。
 - **2026-11-12 用户裁定（PLAN-1016）**：ACE模块组（含ace-syntax/ace-semantics/ace-comptime等）为常规正确性集合，统一排除`::performance::`；正式性能/规模压力仅显式`cargo t ace-perf`，不成为每Plan日常/收尾门。原样本/规模/阈值/平台/ignore保持，漏标正式campaign须迁入该命名空间；不能仅因普通正确性测试慢就批量停用。旧入口ace-performance改名为ace-perf。
+- **2026-11-14 用户裁定（Linux/WSL用例不在Windows环境跑）**：Windows上的开发不被
+  Linux版本/WSL所影响——Windows环境的固定组/全量/批量回归**不再执行Linux相关用例**
+  （如`linux_elf_1040`等Linux目标生成腿）；Linux相关测试今后在专用Linux环境单独执行；
+  WSL用例尤其不应运行（后续整体移除，移除任务另行安排，当前不因本裁定批量删文件）。
+  与Linux用例同住一个crate/固定组的运行结果按此口径具名排除——不判红、不充PASS，
+  台账记"Linux腿/WSL=裁定排除，归专用Linux环境"。
 - 无参数`cargo t`保固定日常范围；`cargo t all`显式运行语言仓全部固定组。两者不能混为一谈。
   全部组仍保ignored/平台/里程碑条件，不含外仓UI/Man所有权腿。模块过滤不保证同crate独立编译。
 - 计划按真实修改明确选择完整职责组及必要集成/消费者组，review核选择理由；共享AST/语义/IR变更
