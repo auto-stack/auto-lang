@@ -7,11 +7,24 @@ use std::path::PathBuf;
 
 use ace_abi::rust_provider::{build_f0, f0_authority};
 
-fn scope(tag: &str) -> PathBuf {
-    let root = PathBuf::from("D:/autostack/plan-artifacts/plan-967/tests")
-        .join(format!("{tag}-{}", std::process::id()));
+/// T-05 F3: transient scratch under the OS temp dir, removed on drop
+/// — test working dirs are not plan evidence (receipts fold the facts).
+struct Scope(PathBuf);
+impl std::ops::Deref for Scope {
+    type Target = std::path::Path;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl Drop for Scope {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+fn scope(tag: &str) -> Scope {
+    let root = std::env::temp_dir().join(format!("p967-{tag}-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
-    root
+    Scope(root)
 }
 
 fn emit_and_run(

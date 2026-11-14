@@ -110,7 +110,6 @@ pub fn build_source(root: &Path, source: &str) -> Result<RustProviderBuild, Stri
             "f0_text_provider",
             "--cap-lints",
             "allow",
-            "-O",
             "src/lib.rs",
             "--out-dir",
             out.to_str().ok_or("non-utf8 out dir")?,
@@ -138,7 +137,6 @@ pub fn build_source(root: &Path, source: &str) -> Result<RustProviderBuild, Stri
             "f0_text_provider",
             "--cap-lints",
             "allow",
-            "-O",
             "src/lib.rs",
             "--out-dir",
             out.to_str().ok_or("non-utf8 out dir")?,
@@ -188,7 +186,6 @@ pub fn build_raw_cdylib(root: &Path, source: &str, crate_name: &str) -> Result<P
             crate_name,
             "--cap-lints",
             "allow",
-            "-O",
             "src/lib.rs",
             "--out-dir",
             out.to_str().ok_or("non-utf8 out dir")?,
@@ -441,7 +438,7 @@ pub fn provider_deps(source: &str) -> Vec<(String, String)> {
 /// Build a provider with REAL pinned dependencies (the B-01 source-mode
 /// build closure): a real Cargo unit — Cargo.toml generated from the
 /// provider's `dep` annotations, the provider + the GENERATED shim flat
-/// in src/, `cargo build --release --offline`. Both closure products
+/// in src/, `cargo build --offline`. Both closure products
 /// (cdylib + staticlib) come out of the same invocation. A failed
 /// dependency resolution (wrong version / missing crate) is a NAMED
 /// error carrying cargo's own diagnostics — never a silent tool change.
@@ -496,7 +493,9 @@ path = \"src/lib.rs\"
     let rustc_identity = _out.trim().to_string();
 
     let mut cmd = std::process::Command::new("cargo");
-    cmd.args(["build", "--release", "--offline"])
+    // F4 (2026-11-14 discipline): dev profile — no routine release path
+    // in the daily lane; the artifacts land under target/debug
+    cmd.args(["build", "--offline"])
         .current_dir(&dir)
         .env_remove("CARGO_TARGET_DIR");
     let run = ace_core::link::run_deadlined_typed(
@@ -516,7 +515,7 @@ path = \"src/lib.rs\"
             String::from_utf8_lossy(&run.stderr).trim()
         ));
     }
-    let out = dir.join("target/release");
+    let out = dir.join("target/debug");
     let cdylib = out.join("provider_unit.dll");
     if !cdylib.is_file() {
         return Err(format!(

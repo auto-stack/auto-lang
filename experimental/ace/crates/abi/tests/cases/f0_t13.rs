@@ -54,10 +54,17 @@ fn t13_coff_split_path_fails_closed_for_callback_resource_manifests() {
     // F-967-COFF-CB: the whole-module split entrance is the SCALAR (938)
     // lane; a callback-carrying resource manifest gets a NAMED rejection
     // (never a broken caller). The 939 callback deck's manifest+source
-    // provide the exact shape.
-    let root = PathBuf::from("D:/autostack/plan-artifacts/plan-967/tests")
-        .join(format!("t13-fence-{}", std::process::id()));
-    std::fs::create_dir_all(&root).unwrap();
+    // provide the exact shape. (T-05 F3: scratch under the OS temp dir,
+    // removed on drop — test working dirs are not plan evidence.)
+    struct TempDir(PathBuf);
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let root = TempDir(std::env::temp_dir().join(format!("p967-t13-fence-{}", std::process::id())));
+    std::fs::create_dir_all(&root.0).unwrap();
+    let root = &root.0;
     let deck_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
         "../../../../crates/auto-lang/test/cases/ace-ca-d-resources-939/src/callback.atomdata",
     );

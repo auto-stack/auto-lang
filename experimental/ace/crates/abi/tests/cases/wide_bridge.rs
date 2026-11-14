@@ -10,8 +10,8 @@
 #![cfg(windows)]
 
 use ace_abi::bridge::{
-    self, run_wide_caller_with_checks, run_wide_chain, wide_expectation, BridgeCounters,
-    WideLeg, BRIDGE_TOTAL_DEADLINE,
+    self, run_wide_caller_with_checks, run_wide_chain, wide_expectation, BridgeCounters, WideLeg,
+    BRIDGE_TOTAL_DEADLINE,
 };
 use ace_abi::typed_decl::wide_decls;
 use ace_abi::typed_emit::{frozen_wide_checks, WideCheck};
@@ -48,11 +48,7 @@ fn wide_chain_three_legs_execute_green() {
         &store,
         &counters,
         &scratch_root("wide"),
-        &[
-            WideLeg::SelfCheck,
-            WideLeg::NativeToC,
-            WideLeg::CToNative,
-        ],
+        &[WideLeg::SelfCheck, WideLeg::NativeToC, WideLeg::CToNative],
         BRIDGE_TOTAL_DEADLINE,
     )
     .expect("wide chain runs");
@@ -116,10 +112,8 @@ fn wide_descriptor_spells_resource_lanes_and_admits() {
     // ...and admission against the independent consumer expectation
     // (own closure + semantic ref) passes BEFORE any production.
     let semref = bridge::interface_binding_hash(&facts).expect("semref");
-    let admission =
-        ace_abi::validate::admit_descriptor(&descriptor, &wide_expectation(semref)).expect(
-            "wide descriptor admits against the hand-frozen expectation",
-        );
+    let admission = ace_abi::validate::admit_descriptor(&descriptor, &wide_expectation(semref))
+        .expect("wide descriptor admits against the hand-frozen expectation");
     assert_eq!(admission.admitted_symbols.len(), 3);
 }
 
@@ -132,7 +126,10 @@ fn wide_frozen_inputs_carry_the_boundaries() {
     assert_eq!(w::SUM_ITEMS[4], i64::MIN + 7);
     assert_eq!(w::SUM_ITEMS[6], i64::MIN);
     assert_eq!(w::SUM_ITEMS[7], i64::MAX);
-    assert!(w::FOLD_CTX > i32::MAX as i64, "wide ctx beyond the i32 domain");
+    assert!(
+        w::FOLD_CTX > i32::MAX as i64,
+        "wide ctx beyond the i32 domain"
+    );
     assert_eq!(w::REC_TAG, 0x10FFFF);
     let checks = frozen_wide_checks();
     let sums = checks
