@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
-"""PLAN-1057: AutoDown document-case first-wave parity, record & control verifier.
+"""PLAN-1057/1059: AutoDown document-case parity, record & control verifier.
 
-Subcommands (see PLAN-1057 §5.8, §6.2, §6.4):
+Subcommands (PLAN-1057 §5.8/§6.2/§6.4; PLAN-1059 §5.5/§6.2):
   pair     --runner <auto-case> --old-suite <path> --new-suite <path>
-           --family scalar|console|immutable --out <fresh-dir>
+           --family scalar|console|immutable|composite --out <fresh-dir>
   verify   --old-record <record.json> --new-record <record.json>
-           --family scalar|console|immutable
-  controls --runner <auto-case> --out <fresh-dir>
+           --family scalar|console|immutable|composite
+  controls --runner <auto-case> --out <fresh-dir> [--family composite]
+
+`controls` without --family keeps the PLAN-1057 control contract (V-01..V-11).
+`controls --family composite` runs the PLAN-1059 second-wave controls
+(NC-01..NC-15) against a scope-staged candidate BASE that consumes the new
+composite document.
+
+Offline verify rebinds derived values to the actual files: VM result text is
+re-read from each recorded result.txt and a2r artifact digests are recomputed
+from the stored paths before judging against the frozen expectations; the
+record's cached derivations must agree with the files (PLAN-1059 T-03).
 
 Exit codes for verify / pair:
   0 = all checks & actuals match fixed contract
@@ -120,6 +130,31 @@ IMMUTABLE_CASES = [
 ]
 IMMUTABLE_PAIRS = [(c, "autovm") for c in IMMUTABLE_CASES]
 
+# PLAN-1059 second wave: the 14 legacy composite cases (28 checks) migrate
+# from ace-m1/legacy-composite.case.ad into the inline composite document.
+COMPOSITE_CASES = [
+    "ace.m1.k01",
+    "ace.m1.k03",
+    "ace.m1.k06",
+    "ace.m1.r02",
+    "ace.m1.r05",
+    "ace.m1.r06",
+    "ace.m1.r08",
+    "ace.m1.t05",
+    "ace.m1.v01",
+    "ace.m1.v02",
+    "ace.m1.v04",
+    "ace.m1.v05",
+    "ace.m1.v06",
+    "ace.m1.v07",
+]
+COMPOSITE_CHECKS = ["autovm", "a2r-snapshot"]
+COMPOSITE_MIGRATED_PAIRS = [(c, k) for c in COMPOSITE_CASES for k in COMPOSITE_CHECKS]
+# The BASE denominator stays the 1057 fixed 97-pair collection; the composite
+# wave reuses it verbatim (its 28 pairs are already inside EXTRA_BASE_PAIRS)
+# instead of appending a second copy.
+BASE_EXPECTED_PAIRS = SCALAR_MIGRATED_PAIRS + EXTRA_BASE_PAIRS
+
 FAMILY_SPECS: dict[str, dict[str, Any]] = {
     "scalar": {
         "migrated_cases": SCALAR_CASES,
@@ -141,6 +176,13 @@ FAMILY_SPECS: dict[str, dict[str, Any]] = {
         "expected_pairs": IMMUTABLE_PAIRS,
         "required_links": ["PLAN-920"],
         "entry_modes": {"ace.m1.ia920.top": "script"},
+    },
+    "composite": {
+        "migrated_cases": COMPOSITE_CASES,
+        "migrated_pairs": COMPOSITE_MIGRATED_PAIRS,
+        "expected_pairs": BASE_EXPECTED_PAIRS,
+        "required_links": ["PLAN-852"],
+        "entry_modes": {},
     },
 }
 
@@ -593,6 +635,50 @@ def verify_actual_file_integrity(record: dict[str, Any], side_label: str) -> Non
                 )
 
 
+def rebind_actuals_from_files(record: dict[str, Any], side_label: str) -> None:
+    """PLAN-1059 T-03: re-derive the judged values from the actual files.
+
+    Offline verify must not trust the record's cached derivations: VM result
+    text is re-read from the recorded result.txt and a2r artifact digests are
+    recomputed from the stored paths. A cached derivation that disagrees with
+    its file is corrupt evidence (exit 2); the re-derived values then face the
+    frozen expectations in verify_migrated_row_actual (mismatch -> exit 1).
+    """
+    run_dir = Path(record["run_dir"])
+    for key_str, obs in (record.get("actuals") or {}).items():
+        files_meta = obs.get("files") or {}
+        avm = obs.get("avm")
+        if avm is not None and avm.get("kind") == "success":
+            fmeta = files_meta.get("result")
+            if fmeta is None:
+                raise EvidenceError(f"[{side_label}] {key_str} avm success row has no result file entry")
+            rpath = _ensure_under(run_dir, Path(fmeta["path"]), f"[{side_label}] {key_str}:result")
+            text = rpath.read_bytes().decode("utf-8")
+            if text != avm.get("result_text"):
+                raise EvidenceError(
+                    f"[{side_label}] {key_str} cached avm result_text disagrees with the actual file "
+                    f"({avm.get('result_text')!r} vs {text!r} in {rpath})"
+                )
+            avm["result_text"] = text
+        a2r = obs.get("a2r")
+        if a2r is not None:
+            for art in a2r.get("artifacts") or []:
+                tag = f"artifact:{art['path']}"
+                fmeta = files_meta.get(tag)
+                if fmeta is None:
+                    raise EvidenceError(
+                        f"[{side_label}] {key_str} a2r artifact {art['path']} has no recorded file entry"
+                    )
+                apath = _ensure_under(run_dir, Path(fmeta["path"]), f"[{side_label}] {key_str}:{tag}")
+                sz, dig = sha256_file(apath)
+                if sz != art.get("bytes") or dig != art.get("sha256"):
+                    raise EvidenceError(
+                        f"[{side_label}] {key_str} cached a2r artifact derivation disagrees with the "
+                        f"actual file ({art.get('bytes')}/{art.get('sha256')} vs {sz}/{dig} in {apath})"
+                    )
+                art["bytes"], art["sha256"] = sz, dig
+
+
 def verify_migrated_row_actual(
     key: tuple[str, str],
     old_proj: dict[str, Any],
@@ -762,6 +848,7 @@ def verify_records(old_record_path: Path, new_record_path: Path, family: str) ->
         if rec.get("exit_code") != 0:
             raise ParityError(f"[{label}] run exit_code={rec.get('exit_code')}, expected 0")
         verify_actual_file_integrity(rec, label)
+        rebind_actuals_from_files(rec, label)
 
     old_idx = index_projection(old_rec["projection"], family, "old", require_document_for_migrated=False)
     new_idx = index_projection(new_rec["projection"], family, "new", require_document_for_migrated=True)
@@ -877,6 +964,11 @@ def cmd_pair(args: argparse.Namespace) -> int:
     new_rec = json.loads(records["new"].read_text(encoding="utf-8"))
     for c, k in FAMILY_SPECS[args.family]["expected_pairs"]:
         ks = f"{c}::{k}"
+        # Representation follows each row's ACTUAL origin on the new side
+        # (PLAN-1059: from the composite viewpoint the 69 non-migrated rows
+        # split into 40 already-document scalar rows + 29 shared-legacy rows;
+        # a blanket "shared-legacy" label would misreport the first wave).
+        new_format = (new_idx[(c, k)].get("origin") or {}).get("format")
         rows_table.append(
             {
                 "case": c,
@@ -888,9 +980,7 @@ def cmd_pair(args: argparse.Namespace) -> int:
                 "old_check_dir": old_rec["actuals"][ks]["check_dir"],
                 "new_check_dir": new_rec["actuals"][ks]["check_dir"],
                 "representation_diff": (
-                    "inline-document"
-                    if c in set(FAMILY_SPECS[args.family]["migrated_cases"])
-                    else "shared-legacy-include"
+                    "inline-document" if new_format == "document" else "shared-legacy-include"
                 ),
             }
         )
@@ -928,6 +1018,9 @@ def stage_isolated_corpus(
         "ace-m2/documents/scalar.case.ad",
         "ace-m2/documents/console.case.ad",
         "ace-m2/documents/immutable-assignment.case.ad",
+        # PLAN-1059: the composite document joins the staged closure so the
+        # 1057 controls keep working after the active BASE include switches.
+        "ace-m2/documents/composite.case.ad",
     ]
     for rel in rel_files:
         _copy_with_hashes(cases_src / rel, inputs_cases / rel, copied)
@@ -958,6 +1051,625 @@ def replace_in_case_block(doc_text: str, case_id: str, old: str, new: str, count
         raise EvidenceError(f"mutation target not found in {case_id}: {old!r}")
     mutated_block = block.replace(old, new, count)
     return doc_text[:pos] + mutated_block + doc_text[end:]
+
+
+# --- PLAN-1059 second wave: composite-family candidate staging & controls ---
+
+BASE_SUITE_REL = "ace-document-base.suite.ad"
+COMPOSITE_DOC_REL = "ace-m2/documents/composite.case.ad"
+OLD_COMPOSITE_INCLUDE = "ace-m1/legacy-composite.case.ad"
+NEW_COMPOSITE_INCLUDE = COMPOSITE_DOC_REL
+
+
+def stage_candidate_base(repo_root: Path, vid_dir: Path) -> tuple[Path, Path]:
+    """Stage a candidate BASE whose composite rows consume the NEW document.
+
+    The copy always ends in the post-switch include layout whether or not the
+    repository's active suite has been switched yet; the frozen legacy file
+    stays inside the copied closure (NC-15 proves no fallback to it).
+    """
+    cases_in, output_dir, _ = stage_isolated_corpus(repo_root, vid_dir, include_base_closure=True)
+    suite_p = cases_in / BASE_SUITE_REL
+    text = suite_p.read_text(encoding="utf-8")
+    if f'"{OLD_COMPOSITE_INCLUDE}"' in text:
+        text = text.replace(f'"{OLD_COMPOSITE_INCLUDE}"', f'"{NEW_COMPOSITE_INCLUDE}"')
+        suite_p.write_text(text, encoding="utf-8", newline="\n")
+    elif f'"{NEW_COMPOSITE_INCLUDE}"' not in text:
+        raise EvidenceError("candidate BASE suite carries no composite include line")
+    return cases_in, output_dir
+
+
+def _assert_report_shape(
+    rep: dict[str, Any],
+    vid: str,
+    results: list[dict[str, Any]],
+    fail_case: str,
+    fail_check: str | None = None,
+    fail_substr: str | None = None,
+    expect_pass: int = 96,
+    expect_fail: int = 1,
+    expect_total: int = 97,
+) -> None:
+    fails = [x for x in rep["results"] if x["status"] != "PASS"]
+    passes = [x for x in rep["results"] if x["status"] == "PASS"]
+    ok = len(rep["results"]) == expect_total and len(passes) == expect_pass and len(fails) == expect_fail
+    if ok:
+        for f in fails:
+            if f["case"] != fail_case or (fail_check is not None and f["check"] != fail_check):
+                ok = False
+            if fail_substr is not None:
+                m_texts = [m if isinstance(m, str) else json.dumps(m) for m in (f.get("mismatches") or [])]
+                if not any(fail_substr in mt for mt in m_texts):
+                    ok = False
+    results.append(
+        {
+            "vid": vid,
+            "name": f"{vid}-assert",
+            "ok": ok,
+            "reason": f"fails={fails}" if not ok else "",
+        }
+    )
+
+
+def cmd_controls_composite(args: argparse.Namespace) -> int:
+    repo_root = repo_root_from_script()
+    runner = Path(args.runner).resolve()
+    if not runner.is_file():
+        raise EvidenceError(f"missing --runner binary: {runner}")
+    out_dir = ensure_fresh_empty_dir(Path(args.out))
+    env, _tools = worker_env(repo_root)
+    results: list[dict[str, Any]] = []
+
+    def _step(
+        vid: str,
+        name: str,
+        cmd: list[str],
+        cwd: Path,
+        expect_rc: int | None = None,
+        expect_fail_sub: str | None = None,
+        mutated_file: Path | None = None,
+    ) -> dict[str, Any]:
+        proc = run_cli(cmd, cwd=cwd, env=env)
+        stdout = proc.stdout.decode("utf-8", errors="replace")
+        stderr = proc.stderr.decode("utf-8", errors="replace")
+        ok = True
+        reason = ""
+        if expect_rc is not None and proc.returncode != expect_rc:
+            ok = False
+            reason = f"expected exit {expect_rc}, got {proc.returncode}"
+        if ok and expect_fail_sub and expect_fail_sub not in (stdout + "\n" + stderr):
+            ok = False
+            reason = f"missing expected diagnostic substring {expect_fail_sub!r}"
+        entry = {
+            "vid": vid,
+            "name": name,
+            "command": cmd,
+            "exit_code": proc.returncode,
+            "ok": ok,
+            "reason": reason,
+            "mutated_file_sha256": sha256_file(mutated_file)[1] if mutated_file and mutated_file.is_file() else None,
+            "stdout_tail": stdout[-600:],
+            "stderr_tail": stderr[-600:],
+        }
+        results.append(entry)
+        return entry
+
+    def _mutate_doc(cases_in: Path, case_id: str, old: str, new: str, count: int = 1) -> Path:
+        doc_p = cases_in / COMPOSITE_DOC_REL
+        doc_p.write_text(
+            replace_in_case_block(doc_p.read_text(encoding="utf-8"), case_id, old, new, count),
+            encoding="utf-8",
+            newline="\n",
+        )
+        return doc_p
+
+    def _run_suite(suite_path: Path, cout: Path, vid: str, name: str, expect_rc: int) -> dict[str, Any]:
+        rep_p = cout / "report.json"
+        _step(
+            vid,
+            name,
+            [
+                str(runner),
+                "run",
+                "--suite",
+                str(suite_path),
+                "--out",
+                str(cout),
+                "--json-out",
+                str(rep_p),
+            ],
+            repo_root,
+            expect_rc=expect_rc,
+        )
+        if not rep_p.is_file():
+            raise EvidenceError(f"{vid}: runner produced no report.json under {cout}")
+        return json.loads(rep_p.read_text(encoding="utf-8"))
+
+    def _run_pair_subprocess(vid: str, name: str, new_suite: Path, pair_out: Path) -> dict[str, Any]:
+        return _step(
+            vid,
+            name,
+            [
+                sys.executable,
+                __file__,
+                "pair",
+                "--runner",
+                str(runner),
+                "--old-suite",
+                str(repo_root / "crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad"),
+                "--new-suite",
+                str(new_suite),
+                "--family",
+                "composite",
+                "--out",
+                str(pair_out),
+            ],
+            repo_root,
+        )
+
+    # Stage shape gate: the candidate BASE must show 97 checks with the 28
+    # target rows in document format before any mutation is applied.
+    vdir = out_dir / "candidate-shape"
+    cases_in, _cout = stage_candidate_base(repo_root, vdir)
+    shape_proj = run_migration_inventory(runner, cases_in / BASE_SUITE_REL, repo_root, env)
+    shape_rows = shape_proj.get("checks") or []
+    doc_keys = {
+        (r["semantic"]["case"]["id"], r["semantic"]["check"]["id"])
+        for r in shape_rows
+        if (r.get("origin") or {}).get("format") == "document"
+    }
+    migrated_set = set(COMPOSITE_MIGRATED_PAIRS)
+    scalar_set = set(SCALAR_MIGRATED_PAIRS)
+    shape_ok = (
+        len(shape_rows) == 97
+        and len(doc_keys) == 68
+        and migrated_set <= doc_keys
+        and scalar_set <= doc_keys
+    )
+    results.append(
+        {
+            "vid": "candidate-shape",
+            "name": "candidate-shape-97-68-28",
+            "ok": shape_ok,
+            "reason": f"rows={len(shape_rows)} document={len(doc_keys)}",
+        }
+    )
+
+    # NC-01: only R02 VM result 9 -> 42; exactly that check FAILs with actual 9.
+    vdir = out_dir / "NC-01-r02-vm-9-to-42"
+    cases_in, cout = stage_candidate_base(repo_root, vdir)
+    doc_p = _mutate_doc(cases_in, "ace.m1.r02", "```text\n9\n```", "```text\n42\n```")
+    _step("NC-01", "NC-01-lint", [str(runner), "lint", "--suite", str(cases_in / BASE_SUITE_REL)], repo_root, expect_rc=0, mutated_file=doc_p)
+    rep = _run_suite(cases_in / BASE_SUITE_REL, cout, "NC-01", "NC-01-run", expect_rc=1)
+    _assert_report_shape(rep, "NC-01", results, "ace.m1.r02", "autovm", fail_substr="9")
+
+    # NC-02: only the R06 Rust golden's 10 -> 11 (semicolon anchors the Rust
+    # fence; the Auto source keeps the original expression); actual emission
+    # stays the original bytes, so only the a2r-snapshot comparison reddens.
+    vdir = out_dir / "NC-02-r06-rust-10-to-11"
+    cases_in, cout = stage_candidate_base(repo_root, vdir)
+    doc_p = _mutate_doc(cases_in, "ace.m1.r06", "p.left * 10 + p.right;", "p.left * 11 + p.right;")
+    _step("NC-02", "NC-02-lint", [str(runner), "lint", "--suite", str(cases_in / BASE_SUITE_REL)], repo_root, expect_rc=0, mutated_file=doc_p)
+    rep = _run_suite(cases_in / BASE_SUITE_REL, cout, "NC-02", "NC-02-run", expect_rc=1)
+    _assert_report_shape(rep, "NC-02", results, "ace.m1.r06", "a2r-snapshot", fail_substr="m1_r06.rs")
+
+    # NC-03: K06 Auto initial value 1 -> 2 with both expectations kept; the
+    # captured state changes BOTH legs of that case (VM 44 vs 42, Rust emit
+    # initial-value bytes) — exactly 2 FAILs, 95 PASS.
+    vdir = out_dir / "NC-03-k06-auto-1-to-2"
+    cases_in, cout = stage_candidate_base(repo_root, vdir)
+    doc_p = _mutate_doc(cases_in, "ace.m1.k06", "var base int = 1", "var base int = 2")
+    _step("NC-03", "NC-03-lint", [str(runner), "lint", "--suite", str(cases_in / BASE_SUITE_REL)], repo_root, expect_rc=0, mutated_file=doc_p)
+    rep = _run_suite(cases_in / BASE_SUITE_REL, cout, "NC-03", "NC-03-run", expect_rc=1)
+    fails = [x for x in rep["results"] if x["status"] != "PASS"]
+    passes = [x for x in rep["results"] if x["status"] == "PASS"]
+    k06_axes = sorted(f"{f['case']}:{f['check']}" for f in fails)
+    m_texts = [
+        m if isinstance(m, str) else json.dumps(m)
+        for f in fails
+        for m in (f.get("mismatches") or [])
+    ]
+    results.append(
+        {
+            "vid": "NC-03",
+            "name": "NC-03-assert",
+            "ok": (
+                len(passes) == 95
+                and len(fails) == 2
+                and k06_axes == ["ace.m1.k06:a2r-snapshot", "ace.m1.k06:autovm"]
+                and any("44" in mt for mt in m_texts)
+            ),
+            "reason": f"fails={k06_axes}",
+        }
+    )
+
+    # NC-04: first T05 Rust "A\0B" escaped to "A\\0B" (Auto untouched): only
+    # the a2r-snapshot byte comparison reddens; VM keeps 42.
+    vdir = out_dir / "NC-04-t05-rust-escape"
+    cases_in, cout = stage_candidate_base(repo_root, vdir)
+    doc_p = _mutate_doc(
+        cases_in,
+        "ace.m1.t05",
+        'let a: String = "A\\0B".to_string();',
+        'let a: String = "A\\\\0B".to_string();',
+    )
+    _step("NC-04", "NC-04-lint", [str(runner), "lint", "--suite", str(cases_in / BASE_SUITE_REL)], repo_root, expect_rc=0, mutated_file=doc_p)
+    rep = _run_suite(cases_in / BASE_SUITE_REL, cout, "NC-04", "NC-04-run", expect_rc=1)
+    _assert_report_shape(rep, "NC-04", results, "ace.m1.t05", "a2r-snapshot", fail_substr="m1_t05.rs")
+
+    # NC-05: V07's whole VM result section is deleted (Rust kept): the fixed
+    # 97-pair contract rejects the 96-green subset, naming the missing check.
+    vdir = out_dir / "NC-05-drop-v07-vm"
+    cases_in, _cout = stage_candidate_base(repo_root, vdir)
+    doc_p = _mutate_doc(
+        cases_in,
+        "ace.m1.v07",
+        '### VM result\ncheck-id: "autovm"\nfinal-newline: false\n\n```text\n42\n```\n\n### Rust',
+        "### Rust",
+    )
+    pair_out = vdir / "pair-out"
+    _run_pair_subprocess("NC-05", "NC-05-pair", cases_in / BASE_SUITE_REL, pair_out)
+    last = results[-1]
+    last["ok"] = last["exit_code"] == 1 and "ace.m1.v07" in (last["stdout_tail"] + last["stderr_tail"]) and "autovm" in (last["stdout_tail"] + last["stderr_tail"])
+    if not last["ok"]:
+        last["reason"] = f"exit={last['exit_code']} tails={last['stdout_tail'][-200:]}|{last['stderr_tail'][-200:]}"
+
+    # NC-06: duplicating the whole K01 case must be rejected at load with the
+    # duplicate identity named; a clean re-stage keeps the 97-row contract.
+    vdir = out_dir / "NC-06-duplicate-k01"
+    cases_in, _cout = stage_candidate_base(repo_root, vdir)
+    doc_p = cases_in / COMPOSITE_DOC_REL
+    text = doc_p.read_text(encoding="utf-8")
+    start = text.find("\n## Case: k01-move-closure-by-value")
+    nxt = text.find("\n## Case: k03-shared-closure-capture", start)
+    if start < 0 or nxt < 0:
+        raise EvidenceError("NC-06: K01/K03 case block boundaries not found")
+    doc_p.write_text(text + text[start:nxt] + "\n", encoding="utf-8", newline="\n")
+    lint = _step("NC-06", "NC-06-lint", [str(runner), "lint", "--suite", str(cases_in / BASE_SUITE_REL)], repo_root, expect_rc=None, mutated_file=doc_p)
+    lint_out = lint["stdout_tail"] + lint["stderr_tail"]
+    dup_named = lint["exit_code"] != 0 and ("ace.m1.k01" in lint_out or "duplicate" in lint_out.lower())
+    results.append({"vid": "NC-06", "name": "NC-06-duplicate-named", "ok": dup_named, "reason": f"exit={lint['exit_code']}"})
+    vdir_clean = out_dir / "NC-06-clean-restage"
+    cases_clean, _c = stage_candidate_base(repo_root, vdir_clean)
+    clean_proj = run_migration_inventory(runner, cases_clean / BASE_SUITE_REL, repo_root, env)
+    results.append(
+        {
+            "vid": "NC-06",
+            "name": "NC-06-clean-restage-97",
+            "ok": len(clean_proj.get("checks") or []) == 97,
+            "reason": f"rows={len(clean_proj.get('checks') or [])}",
+        }
+    )
+
+    # NC-07: file-level links removed: pair rejects with the historical link
+    # and the affected cases named.
+    vdir = out_dir / "NC-07-links-removed"
+    cases_in, _cout = stage_candidate_base(repo_root, vdir)
+    doc_p = cases_in / COMPOSITE_DOC_REL
+    doc_p.write_text(
+        doc_p.read_text(encoding="utf-8").replace('links: ["PLAN-852"]', "links: []"),
+        encoding="utf-8",
+        newline="\n",
+    )
+    pair_out = vdir / "pair-out"
+    _run_pair_subprocess("NC-07", "NC-07-pair", cases_in / BASE_SUITE_REL, pair_out)
+    last = results[-1]
+    joined = last["stdout_tail"] + last["stderr_tail"]
+    last["ok"] = last["exit_code"] == 1 and "PLAN-852" in joined and "ace.m1.k01" in joined
+    if not last["ok"]:
+        last["reason"] = f"exit={last['exit_code']} tails={joined[-300:]}"
+
+    # NC-08: K06 Auto logical path main.at -> other.at: pair rejects on the
+    # source path axis; the main.at version passes (candidate-shape gate).
+    vdir = out_dir / "NC-08-k06-path"
+    cases_in, _cout = stage_candidate_base(repo_root, vdir)
+    doc_p = _mutate_doc(cases_in, "ace.m1.k06", 'path: "main.at"', 'path: "other.at"')
+    pair_out = vdir / "pair-out"
+    _run_pair_subprocess("NC-08", "NC-08-pair", cases_in / BASE_SUITE_REL, pair_out)
+    last = results[-1]
+    joined = last["stdout_tail"] + last["stderr_tail"]
+    last["ok"] = last["exit_code"] == 1 and "virtual_path" in joined
+    if not last["ok"]:
+        last["reason"] = f"exit={last['exit_code']} tails={joined[-300:]}"
+
+    # NC-09: K06 module-name drift: pair rejects on module identity / artifact
+    # path; the default naming must never silently absorb the change.
+    vdir = out_dir / "NC-09-k06-module"
+    cases_in, _cout = stage_candidate_base(repo_root, vdir)
+    doc_p = _mutate_doc(cases_in, "ace.m1.k06", 'module-name: "m1_k06"', 'module-name: "m1_k06_changed"')
+    pair_out = vdir / "pair-out"
+    _run_pair_subprocess("NC-09", "NC-09-pair", cases_in / BASE_SUITE_REL, pair_out)
+    last = results[-1]
+    joined = last["stdout_tail"] + last["stderr_tail"]
+    last["ok"] = last["exit_code"] == 1 and ("module_name" in joined or "m1_k06_changed" in joined)
+    if not last["ok"]:
+        last["reason"] = f"exit={last['exit_code']} tails={joined[-300:]}"
+
+    # NC-10: R02's final-newline: false dropped: the expectation becomes
+    # "9\n" while the real VM still prints "9" — exactly that row reddens
+    # with an explicit text difference.
+    vdir = out_dir / "NC-10-r02-final-newline"
+    cases_in, cout = stage_candidate_base(repo_root, vdir)
+    doc_p = _mutate_doc(
+        cases_in,
+        "ace.m1.r02",
+        'check-id: "autovm"\nfinal-newline: false\n',
+        'check-id: "autovm"\n',
+    )
+    _step("NC-10", "NC-10-lint", [str(runner), "lint", "--suite", str(cases_in / BASE_SUITE_REL)], repo_root, expect_rc=0, mutated_file=doc_p)
+    rep = _run_suite(cases_in / BASE_SUITE_REL, cout, "NC-10", "NC-10-run", expect_rc=1)
+    _assert_report_shape(rep, "NC-10", results, "ace.m1.r02", "autovm", fail_substr="9")
+
+    # NC-11/NC-12 mutate COPIES of the real pair records (and transiently the
+    # scope actuals, restored afterwards); they never fabricate product runs.
+    pair_ref_dir = out_dir.parent / "pair-candidate"
+    old_rec_p = pair_ref_dir / "old-record.json"
+    new_rec_p = pair_ref_dir / "new-record.json"
+    if not (old_rec_p.is_file() and new_rec_p.is_file()):
+        results.append(
+            {
+                "vid": "NC-11",
+                "name": "NC-11-records-missing",
+                "ok": False,
+                "reason": f"pair records not found under {pair_ref_dir}; run pair --family composite first",
+            }
+        )
+        results.append(
+            {
+                "vid": "NC-12",
+                "name": "NC-12-records-missing",
+                "ok": False,
+                "reason": f"pair records not found under {pair_ref_dir}; run pair --family composite first",
+            }
+        )
+    else:
+        # NC-11: swap the R02/R06 VM actual file contents (9 <-> 21) with the
+        # cached digests synced and PASS labels kept; the rebound offline
+        # verify must still reject on actual vs expected.
+        vdir = out_dir / "NC-11-swap-actuals"
+        vdir.mkdir(parents=True, exist_ok=True)
+        new_clone = json.loads(new_rec_p.read_text(encoding="utf-8"))
+        r02_files = new_clone["actuals"]["ace.m1.r02::autovm"]["files"]
+        r06_files = new_clone["actuals"]["ace.m1.r06::autovm"]["files"]
+        r02_path, r06_path = Path(r02_files["result"]["path"]), Path(r06_files["result"]["path"])
+        r02_orig, r06_orig = r02_path.read_bytes(), r06_path.read_bytes()
+        if r02_orig != b"9" or r06_orig != b"21":
+            raise EvidenceError(f"NC-11: unexpected baseline actuals {r02_orig!r}/{r06_orig!r}")
+        r02_path.write_bytes(r06_orig)
+        r06_path.write_bytes(r02_orig)
+        try:
+            for key, swapped in (("ace.m1.r02::autovm", r06_orig), ("ace.m1.r06::autovm", r02_orig)):
+                obs = new_clone["actuals"][key]
+                obs["avm"]["result_text"] = swapped.decode("utf-8")
+                obs["files"]["result"]["bytes"] = len(swapped)
+                obs["files"]["result"]["sha256"] = sha256_bytes(swapped)
+            old_c = vdir / "old-record.json"
+            new_c = vdir / "new-record.json"
+            old_c.write_text(old_rec_p.read_text(encoding="utf-8"), encoding="utf-8")
+            new_c.write_text(json.dumps(new_clone, indent=2, ensure_ascii=False), encoding="utf-8")
+            proc = run_cli(
+                [sys.executable, __file__, "verify", "--old-record", str(old_c), "--new-record", str(new_c), "--family", "composite"],
+                cwd=repo_root,
+                env=env,
+            )
+            joined = proc.stdout.decode("utf-8", errors="replace") + proc.stderr.decode("utf-8", errors="replace")
+            results.append(
+                {
+                    "vid": "NC-11",
+                    "name": "NC-11-verify-exit1",
+                    "ok": proc.returncode == 1 and "ace.m1.r02" in joined and "autovm" in joined,
+                    "reason": joined[-300:],
+                }
+            )
+        finally:
+            r02_path.write_bytes(r02_orig)
+            r06_path.write_bytes(r06_orig)
+
+        # NC-12: the R05 Rust actual file disappears while its path and digest
+        # stay in the record: verify must exit 2 naming the missing actual.
+        vdir = out_dir / "NC-12-missing-actual"
+        vdir.mkdir(parents=True, exist_ok=True)
+        new_clone = json.loads(new_rec_p.read_text(encoding="utf-8"))
+        art_meta = new_clone["actuals"]["ace.m1.r05::a2r-snapshot"]["files"]["artifact:m1_r05.rs"]
+        art_path = Path(art_meta["path"])
+        backup = vdir / "m1_r05.rs.backup"
+        shutil.copyfile(art_path, backup)
+        art_path.unlink()
+        try:
+            old_c = vdir / "old-record.json"
+            new_c = vdir / "new-record.json"
+            old_c.write_text(old_rec_p.read_text(encoding="utf-8"), encoding="utf-8")
+            new_c.write_text(json.dumps(new_clone, indent=2, ensure_ascii=False), encoding="utf-8")
+            proc = run_cli(
+                [sys.executable, __file__, "verify", "--old-record", str(old_c), "--new-record", str(new_c), "--family", "composite"],
+                cwd=repo_root,
+                env=env,
+            )
+            joined = proc.stdout.decode("utf-8", errors="replace") + proc.stderr.decode("utf-8", errors="replace")
+            results.append(
+                {
+                    "vid": "NC-12",
+                    "name": "NC-12-verify-exit2",
+                    "ok": proc.returncode == 2 and "ace.m1.r05" in joined and "artifact" in joined,
+                    "reason": joined[-300:],
+                }
+            )
+        finally:
+            shutil.copyfile(backup, art_path)
+
+    # NC-13: stale axis on the real R02/a2r-snapshot row: Fresh first, then a
+    # single valid byte in that inline golden turns exactly that row Stale on
+    # the oracle content axis.
+    vdir = out_dir / "NC-13-stale"
+    cases_in, cout = stage_candidate_base(repo_root, vdir)
+    rep = _run_suite(cases_in / BASE_SUITE_REL, cout, "NC-13", "NC-13-baseline-run", expect_rc=0)
+    r02_rows = [r for r in rep["results"] if r.get("case") == "ace.m1.r02" and r.get("check") == "a2r-snapshot"]
+    if len(r02_rows) != 1:
+        raise EvidenceError(f"NC-13 expected 1 R02 a2r-snapshot row, found {len(r02_rows)}")
+    scoped = vdir / "r02-a2r-scoped-report.json"
+    scoped.write_text(json.dumps({"schema": rep.get("schema"), "suite": rep.get("suite"), "suite_sha256": rep.get("suite_sha256"), "results": r02_rows}, indent=2), encoding="utf-8")
+    suite_p = cases_in / BASE_SUITE_REL
+    s1 = run_cli([str(runner), "stale", "--suite", str(suite_p), "--report", str(scoped)], cwd=repo_root, env=env)
+    s1_out = s1.stdout.decode("utf-8", errors="replace")
+    results.append(
+        {
+            "vid": "NC-13",
+            "name": "NC-13-r02-fresh",
+            "ok": s1.returncode == 0 and "FRESH ace.m1.r02:a2r-snapshot" in s1_out,
+            "reason": s1_out[-400:],
+        }
+    )
+    doc_p = _mutate_doc(cases_in, "ace.m1.r02", "p.inner.value = 7;", "p.inner.value = 8;")
+    s2 = run_cli([str(runner), "stale", "--suite", str(suite_p), "--report", str(scoped)], cwd=repo_root, env=env)
+    s2_out = s2.stdout.decode("utf-8", errors="replace")
+    results.append(
+        {
+            "vid": "NC-13",
+            "name": "NC-13-r02-stale-after-golden-edit",
+            "ok": (
+                s2.returncode == 1
+                and "STALE ace.m1.r02:a2r-snapshot" in s2_out
+                and "oracle" in s2_out
+                and s2_out.count("STALE ") == 1
+            ),
+            "reason": s2_out[-400:],
+            "mutated_file_sha256": sha256_file(doc_p)[1],
+        }
+    )
+
+    # NC-14 (legal positive control): the composite document alone with a
+    # single-file suite — no ace-m1 sidecar anywhere — really executes 14
+    # cases / 28 checks, every actual bound to the inline expectations.
+    vdir = out_dir / "NC-14-standalone"
+    cases_in = vdir / "inputs/cases"
+    cout = vdir / "output"
+    (cases_in / "ace-m2/documents").mkdir(parents=True, exist_ok=True)
+    cout.mkdir(parents=True, exist_ok=True)
+    _copy_with_hashes(
+        repo_root / "crates/auto-lang/test/cases" / COMPOSITE_DOC_REL,
+        cases_in / COMPOSITE_DOC_REL,
+        [],
+    )
+    suite_p = cases_in / "composite-standalone-1059.suite.ad"
+    suite_p.write_text(
+        "```test-suite\nsuite { schema: \"autolang.suite/2\", id: \"ace-composite-standalone-1059\", include: [\"ace-m2/documents/composite.case.ad\"] }\n```\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    _step("NC-14", "NC-14-lint", [str(runner), "lint", "--suite", str(suite_p)], repo_root, expect_rc=0)
+    rep = _run_suite(suite_p, cout, "NC-14", "NC-14-run", expect_rc=0)
+    nc14_proj = run_migration_inventory(runner, suite_p, repo_root, env)
+    nc14_rows = nc14_proj.get("checks") or []
+    run_dir = find_unique_run_dir(cout)
+    nc14_ok = len(rep["results"]) == 28 and all(r["status"] == "PASS" for r in rep["results"]) and len(nc14_rows) == 28
+    per_item: list[str] = []
+    for row in nc14_rows:
+        sem = row["semantic"]
+        origin = row["origin"]
+        key = (sem["case"]["id"], sem["check"]["id"])
+        if origin.get("format") != "document" or origin.get("input_paths") != []:
+            nc14_ok = False
+            per_item.append(f"{key}:origin")
+            continue
+        check_dir = run_dir / origin["case_dir"] / origin["check_dir"]
+        if sem["check"]["adapter"] == "avm":
+            res_file = check_dir / "result.txt"
+            want = (sem["expect"].get("result") or {}).get("text")
+            if not res_file.is_file() or res_file.read_bytes().decode("utf-8") != want:
+                nc14_ok = False
+                per_item.append(f"{key}:result")
+        elif sem["check"]["adapter"] == "a2r":
+            for art in sem["expect"].get("artifacts") or []:
+                rep_row = next(r for r in rep["results"] if r["case"] == key[0] and r["check"] == key[1])
+                stored = next((a for a in (rep_row.get("artifacts") or []) if a["path"] == art["path"]), None)
+                if stored is None:
+                    nc14_ok = False
+                    per_item.append(f"{key}:{art['path']}:missing-row")
+                    continue
+                spath = Path(stored["stored"])
+                _ensure_under(run_dir, spath, f"NC-14 {key}:{art['path']}")
+                sz, dig = sha256_file(spath)
+                if sz != art.get("bytes") or dig != art.get("sha256"):
+                    nc14_ok = False
+                    per_item.append(f"{key}:{art['path']}:digest")
+    vm_texts = sorted(
+        {
+            (row["semantic"]["case"]["id"], (row["semantic"]["expect"].get("result") or {}).get("text"))
+            for row in nc14_rows
+            if row["semantic"]["check"]["adapter"] == "avm"
+        },
+        key=lambda t: t[0],
+    )
+    want_vm = {c: ("9" if c == "ace.m1.r02" else "21" if c == "ace.m1.r06" else "42") for c, _ in COMPOSITE_MIGRATED_PAIRS}
+    if {c: t for c, t in vm_texts} != want_vm:
+        nc14_ok = False
+        per_item.append(f"vm-texts={vm_texts}")
+    results.append(
+        {
+            "vid": "NC-14",
+            "name": "NC-14-standalone-28-green",
+            "ok": nc14_ok,
+            "reason": f"rows={len(rep['results'])} per_item_failures={per_item[:10]}",
+        }
+    )
+
+    # NC-15: the composite file vanishes from the full candidate closure: the
+    # load must fail naming the missing include (no fallback to the still
+    # present frozen legacy file); restoring it brings BASE97 green again.
+    vdir = out_dir / "NC-15-missing-composite"
+    cases_in, cout = stage_candidate_base(repo_root, vdir)
+    doc_p = cases_in / COMPOSITE_DOC_REL
+    doc_backup = vdir / "composite.case.ad.backup"
+    shutil.copyfile(doc_p, doc_backup)
+    doc_p.unlink()
+    _step("NC-15", "NC-15-lint-missing", [str(runner), "lint", "--suite", str(cases_in / BASE_SUITE_REL)], repo_root, expect_rc=None)
+    last = results[-1]
+    lint_out = last["stdout_tail"] + last["stderr_tail"]
+    last["ok"] = last["exit_code"] != 0 and "composite.case.ad" in lint_out
+    if not last["ok"]:
+        last["reason"] = f"exit={last['exit_code']} tails={lint_out[-300:]}"
+    run_p = run_cli(
+        [str(runner), "run", "--suite", str(cases_in / BASE_SUITE_REL), "--out", str(cout), "--json-out", str(cout / "report.json")],
+        cwd=repo_root,
+        env=env,
+    )
+    run_out = run_p.stdout.decode("utf-8", errors="replace") + run_p.stderr.decode("utf-8", errors="replace")
+    results.append(
+        {
+            "vid": "NC-15",
+            "name": "NC-15-run-names-missing-include",
+            "ok": run_p.returncode != 0 and "composite.case.ad" in run_out,
+            "reason": run_out[-300:],
+        }
+    )
+    shutil.copyfile(doc_backup, doc_p)
+    (cout / "restored").mkdir(parents=True, exist_ok=True)
+    restored = run_cli(
+        [str(runner), "run", "--suite", str(cases_in / BASE_SUITE_REL), "--out", str(cout / "restored"), "--json-out", str(cout / "restored" / "report.json")],
+        cwd=repo_root,
+        env=env,
+    )
+    restored_green = False
+    rep_path = cout / "restored" / "report.json"
+    if restored.returncode == 0 and rep_path.is_file():
+        rep = json.loads(rep_path.read_text(encoding="utf-8"))
+        restored_green = len(rep["results"]) == 97 and all(r["status"] == "PASS" for r in rep["results"])
+    results.append(
+        {
+            "vid": "NC-15",
+            "name": "NC-15-restored-base97-green",
+            "ok": restored_green,
+            "reason": f"exit={restored.returncode}",
+        }
+    )
+
+    all_ok = all(r["ok"] for r in results)
+    summary = {"passed": all_ok, "total": len(results), "failed": [r for r in results if not r["ok"]], "results": results}
+    (out_dir / "controls-summary.json").write_text(
+        json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    print(json.dumps({"passed": all_ok, "total": len(results), "failed_names": [r["name"] for r in results if not r["ok"]]}, ensure_ascii=False))
+    return 0 if all_ok else 1
 
 
 def cmd_controls(args: argparse.Namespace) -> int:
@@ -1351,6 +2063,7 @@ def main() -> int:
     p_ctl = sub.add_parser("controls")
     p_ctl.add_argument("--runner", required=True)
     p_ctl.add_argument("--out", required=True)
+    p_ctl.add_argument("--family", default=None, choices=["composite"])
 
     args = parser.parse_args()
     try:
@@ -1361,6 +2074,8 @@ def main() -> int:
             print(json.dumps(res, ensure_ascii=False))
             return 0
         if args.subcommand == "controls":
+            if getattr(args, "family", None) == "composite":
+                return cmd_controls_composite(args)
             return cmd_controls(args)
     except EvidenceError as exc:
         print(f"EVIDENCE ERROR: {exc}", file=sys.stderr)

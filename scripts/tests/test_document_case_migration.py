@@ -134,14 +134,14 @@ def _make_record_pair(tmp: Path, family: str) -> tuple[Path, Path]:
                     },
                 }
             else:
-                # Minimal scalar or immutable fixture
+                # Minimal scalar, composite or immutable fixture
                 ch_dir = run_dir / cid / kid
                 ch_dir.mkdir(parents=True, exist_ok=True)
                 res_file = ch_dir / "result.txt"
                 res_file.write_bytes(b"0")
                 rsz, rdig = _sha(b"0")
                 adapter, recipe = "avm", None
-                if family == "scalar":
+                if family in ("scalar", "composite"):
                     # Mirror the exact 4-adapter structure only minimally when testing scalar metadata
                     actuals[f"{cid}::{kid}"] = {
                         "case": cid,
@@ -368,6 +368,164 @@ class DocumentCaseMigrationTests(unittest.TestCase):
             Path(mut["run_dir"]).parent.joinpath("run-duplicate").mkdir()
             with self.assertRaises(dcm.EvidenceError):
                 dcm.verify_records(old_p, new_p, "immutable")
+
+
+# --- PLAN-1059 composite family: independent literals & rebound-actual tests ---
+
+_LITERAL_COMPOSITE_CASES = [
+    "ace.m1.k01", "ace.m1.k03", "ace.m1.k06",
+    "ace.m1.r02", "ace.m1.r05", "ace.m1.r06", "ace.m1.r08",
+    "ace.m1.t05",
+    "ace.m1.v01", "ace.m1.v02", "ace.m1.v04", "ace.m1.v05", "ace.m1.v06", "ace.m1.v07",
+]
+
+_LITERAL_COMPOSITE_PAIRS = sorted(
+    (case, check)
+    for case in _LITERAL_COMPOSITE_CASES
+    for check in ("autovm", "a2r-snapshot")
+)
+
+# The BASE-97 denominator as an independent literal: the 40 first-wave scalar
+# document checks plus the 57 shared rows (8 extra scalar rows, this wave's 28
+# composite rows, T07/K04, and the 6 session lifecycle rows).
+_LITERAL_BASE_PAIRS = sorted(
+    [(f"ace.m1.b{n:02d}", chk) for n in (1, 2, 3, 4, 5, 6, 7, 9, 10, 12) for chk in ("ac-native", "av", "autovm", "a2r-snapshot")]
+    + [
+        ("ace.m1.b13", "ac-native"), ("ace.m1.b13", "av"),
+        ("ace.m1.b14", "ac-native"), ("ace.m1.b14", "av"), ("ace.m1.b14", "autovm"),
+        ("ace.m1.b15", "ac-native"), ("ace.m1.b15", "av"),
+        ("ace.m1.b20", "ac-native"), ("ace.m1.b20", "av"), ("ace.m1.b20", "autovm"),
+        ("ace.m1.b16", "ac-native"), ("ace.m1.b16", "av"), ("ace.m1.b16", "autovm"),
+        ("ace.m1.b17", "ac-native"), ("ace.m1.b17", "av"),
+        ("ace.m1.b18", "ac-native"), ("ace.m1.b18", "av"),
+        ("ace.m1.b19", "ac-native"), ("ace.m1.b19", "av"),
+    ]
+    + _LITERAL_COMPOSITE_PAIRS
+    + [("ace.m1.t07", "autovm"), ("ace.m1.t07", "a2r-snapshot"),
+       ("ace.m1.k04", "autovm"), ("ace.m1.k04", "a2r-snapshot")]
+    + [("ace.m1.session.av", chk) for chk in ("warm-run", "hot-run", "body-edit-run", "edit-persist-across-workers")]
+    + [("ace.m1.session.mn", chk) for chk in ("fresh-run", "edit-then-restart-run")]
+)
+
+
+class CompositeFamilyTests(unittest.TestCase):
+    def test_fixed_collections_match_independent_literals(self):
+        self.assertEqual(dcm.COMPOSITE_CASES, _LITERAL_COMPOSITE_CASES)
+        self.assertEqual(len(_LITERAL_COMPOSITE_CASES), 14)
+        self.assertEqual(sorted(dcm.COMPOSITE_MIGRATED_PAIRS), _LITERAL_COMPOSITE_PAIRS)
+        self.assertEqual(len(_LITERAL_COMPOSITE_PAIRS), 28)
+        spec = dcm.FAMILY_SPECS["composite"]
+        self.assertEqual(sorted(spec["expected_pairs"]), _LITERAL_BASE_PAIRS)
+        self.assertEqual(len(_LITERAL_BASE_PAIRS), 97)
+        self.assertEqual(len(set(_LITERAL_BASE_PAIRS)), 97, "BASE denominator must not duplicate the 28")
+        self.assertEqual(sorted(set(spec["migrated_pairs"]) - set(spec["expected_pairs"])), [])
+        self.assertEqual(spec["required_links"], ["PLAN-852"])
+
+    def test_composite_record_pair_verifies_97_28(self):
+        with tempfile.TemporaryDirectory() as td:
+            old_p, new_p = _make_record_pair(Path(td), "composite")
+            res = dcm.verify_records(old_p, new_p, "composite")
+            self.assertEqual(res["verified_pairs"], 97)
+            self.assertEqual(res["migrated_pairs"], 28)
+
+    def test_composite_missing_v07_autovm_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            old_p, new_p = _make_record_pair(Path(td), "composite")
+            mut = json.loads(new_p.read_text(encoding="utf-8"))
+            mut["projection"]["checks"] = [
+                row
+                for row in mut["projection"]["checks"]
+                if not (row["semantic"]["case"]["id"] == "ace.m1.v07" and row["semantic"]["check"]["id"] == "autovm")
+            ]
+            mut["actuals"].pop("ace.m1.v07::autovm")
+            new_p.write_text(json.dumps(mut), encoding="utf-8")
+            with self.assertRaises(dcm.ParityError) as ctx:
+                dcm.verify_records(old_p, new_p, "composite")
+            self.assertIn("ace.m1.v07", str(ctx.exception))
+
+    def _swap_avm_actuals(self, td: Path, sync_cached_text: bool) -> tuple[Path, Path]:
+        """Swap the R02/R06 VM actual file contents (0 <-> placeholder) with
+        the recorded digests synced; the rebind judge must reject on content."""
+        old_p, new_p = _make_record_pair(td, "composite")
+        new_rec = json.loads(new_p.read_text(encoding="utf-8"))
+        run_dir = Path(new_rec["run_dir"])
+        r02 = new_rec["actuals"]["ace.m1.r02::autovm"]
+        r06 = new_rec["actuals"]["ace.m1.r06::autovm"]
+        r02_file = run_dir / "ace.m1.r02" / "autovm" / "result.txt"
+        r06_file = run_dir / "ace.m1.r06" / "autovm" / "result.txt"
+        self.assertEqual(r02_file.read_bytes(), b"0")
+        r02_file.write_bytes(b"21")
+        r06_file.write_bytes(b"9")
+        for obs, blob in ((r02, b"21"), (r06, b"9")):
+            obs["files"]["result"]["bytes"] = len(blob)
+            obs["files"]["result"]["sha256"] = _sha(blob)[1]
+            if sync_cached_text:
+                obs["avm"]["result_text"] = blob.decode("utf-8")
+        new_p.write_text(json.dumps(new_rec, indent=2), encoding="utf-8")
+        return old_p, new_p
+
+    def test_composite_avm_actual_swap_rejected_after_rebind(self):
+        # NC-11 shape: files + digests + cached text all swapped consistently
+        # (PASS labels kept): the re-read text no longer matches the frozen
+        # expectation -> ParityError (exit 1), not a digest-pass stamp.
+        with tempfile.TemporaryDirectory() as td:
+            old_p, new_p = self._swap_avm_actuals(Path(td), sync_cached_text=True)
+            with self.assertRaises(dcm.ParityError) as ctx:
+                dcm.verify_records(old_p, new_p, "composite")
+            self.assertIn("ace.m1.r02", str(ctx.exception))
+
+    def test_composite_stale_cached_text_rejected_as_corrupt_binding(self):
+        # Files + digests swapped but the cached result_text left stale: the
+        # record derivation disagrees with its own file -> EvidenceError (2).
+        with tempfile.TemporaryDirectory() as td:
+            old_p, new_p = self._swap_avm_actuals(Path(td), sync_cached_text=False)
+            with self.assertRaises(dcm.EvidenceError):
+                dcm.verify_records(old_p, new_p, "composite")
+
+    def test_composite_a2r_artifact_tampering_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            old_p, new_p = _make_record_pair(td, "composite")
+            # Give the R05 a2r row a real artifact on both sides.
+            art = b"// golden\nfn main() -> i64 {\n    return 42;\n}\n"
+            art_r05 = None
+            for side, path in (("old", old_p), ("new", new_p)):
+                rec = json.loads(path.read_text(encoding="utf-8"))
+                run_dir = Path(rec["run_dir"])
+                stored = run_dir / "ace.m1.r05" / "a2r-snapshot" / "actual" / "m1_r05.rs"
+                stored.parent.mkdir(parents=True, exist_ok=True)
+                stored.write_bytes(art)
+                asz, adig = _sha(art)
+                for row in rec["projection"]["checks"]:
+                    sem = row["semantic"]
+                    if sem["case"]["id"] == "ace.m1.r05" and sem["check"]["id"] == "a2r-snapshot":
+                        sem["expect"]["artifacts"] = [{"path": "m1_r05.rs", "bytes": asz, "sha256": adig, "compare": "bytes"}]
+                obs = rec["actuals"]["ace.m1.r05::a2r-snapshot"]
+                obs["a2r"]["artifacts"] = [{"path": "m1_r05.rs", "bytes": asz, "sha256": adig, "stored": str(stored)}]
+                obs["files"]["artifact:m1_r05.rs"] = {"path": str(stored), "bytes": asz, "sha256": adig}
+                if side == "new":
+                    art_r05 = stored
+                path.write_text(json.dumps(rec, indent=2), encoding="utf-8")
+            # Baseline: the augmented pair still verifies.
+            dcm.verify_records(old_p, new_p, "composite")
+            # NC-12 shape: the actual file disappears -> exit-2 evidence error.
+            art_r05.unlink()
+            with self.assertRaises(dcm.EvidenceError) as ctx:
+                dcm.verify_records(old_p, new_p, "composite")
+            self.assertIn("ace.m1.r05", str(ctx.exception))
+            # Tampered content with the cached digest synced -> exit-1 parity
+            # error after digest recomputation (rebind catches the swap).
+            art_r05.write_bytes(b"// tampered\n")
+            new_rec = json.loads(new_p.read_text(encoding="utf-8"))
+            obs = new_rec["actuals"]["ace.m1.r05::a2r-snapshot"]
+            tsz, tdig = _sha(b"// tampered\n")
+            obs["a2r"]["artifacts"][0]["bytes"] = tsz
+            obs["a2r"]["artifacts"][0]["sha256"] = tdig
+            obs["files"]["artifact:m1_r05.rs"]["bytes"] = tsz
+            obs["files"]["artifact:m1_r05.rs"]["sha256"] = tdig
+            new_p.write_text(json.dumps(new_rec, indent=2), encoding="utf-8")
+            with self.assertRaises(dcm.ParityError):
+                dcm.verify_records(old_p, new_p, "composite")
 
 
 if __name__ == "__main__":
