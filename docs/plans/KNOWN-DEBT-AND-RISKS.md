@@ -4373,3 +4373,12 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 | F8 deck 证据 | MINOR | deck 组未在冻结提交重跑 | ✅ 已闭（case-ace-m2-f0-rust-967 PASS @631249d99） |
 | F10 僵尸 rustc | NOTE | f0_async 测试挂起 rustc 10h | ✅ 已杀；挂起根因待 f0_async 基建侧跟进 |
 | F11 cross pending | NOTE | 缺第二工具链时 early-return 记 PASS（仅台账约束） | 可选：改 skipped 语义 |
+
+### D-966-T05 — PLAN-966 T-05 复审 findings 承接（2026-11-14，复审提交 9dc8d42fd）
+
+来源：独立复审 `reviewer-966`（needs_fix，2 MAJOR + 8 MINOR）；findings 表见 [966 计划](966-ace-m2-metaprogramming.md) §9「T-05 复审 findings」。RV-02/03/04/05/06/07/09/10 已同树修复（提交 ca3201da1）；RV-01 按具名缩窄处理。登记不等于豁免。
+
+| 发现 | 级别 | 摘要 | owner | 关闭条件 | 状态 |
+|---|---|---|---|---|---|
+| RV-01 读取集型装配身份 | MINOR（具名限制） | 平台臂的未选**模块**是普通编译单元，其源进 units sha256 → 该模块 body 改动使本目标 input_hash 失效（"未选平台实现 body 变化不重编"仅对 provider 层成立，1043 ASM-04）。测试已改名 `p966_ct_identical_inputs_reuse_and_selected_change_invalidates` 并如实断言 | 1043（装配身份）/978（target 契约） | 身份改为按目标选择后的读集（未选模块只记存在性/不入 hash），并有真实跨目标复用证据 | 具名登记 |
+| RV-08 SD-DENOM 缺失 | MINOR | 分母 L-35/L-36 仍写"平台条件未决、裁定前不得宣称支持"，与已交付 `#if/#is` 目标条件矛盾；SD 表无该行 | 966 merge（T-06） | merge 时按 §5「SD 落地锚点」新增 SD-DENOM 并更新 L-35/L-36 | 待 merge 落地 |
