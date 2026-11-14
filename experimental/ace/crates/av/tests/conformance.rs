@@ -206,8 +206,6 @@ mod stdlib_assembly_1043;
 mod module_packages_960;
 #[path = "cases/module_sources_950.rs"]
 mod module_sources_950;
-#[path = "cases/named_args_963.rs"]
-mod named_args_963;
 #[path = "cases/sq_source_facts_934.rs"]
 mod sq_source_facts_934;
 #[path = "cases/platform_io_1039.rs"]

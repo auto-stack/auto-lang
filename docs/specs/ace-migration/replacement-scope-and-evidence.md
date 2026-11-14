@@ -134,3 +134,18 @@ examples 计数均不构成覆盖证明。跨仓不可读/owner 未明/未发布
   workspace rustfmt 门禁（D-963-C6，ACE 治理）、泛型局部注解诊断质量（D-963-C7，ACE
   语法/投影诊断面）。以上缺口在台账中保持 required/unknown 原状，不因 963 交付而消失；
   963 自身覆盖行（L-38/39/40/42 全、L-24/47 部分）不因 B 未交付改 NA。
+
+## SD-08 动态值对象反射 producer 挂接（PLAN-964 SD-02）
+
+- 分母台账 L-16（array/List 字面量）、L-20（对象/map）、L-21（nil/null）、L-22（可调用值）、
+  L-23（动态派发）的动态/对象/闭包切片与 FStr 插值的 ACE 侧**已验证 producer** 为
+  [m2-dynamic.md](m2-dynamic.md)：`SourceProfile::Aggregates`/`Closures` 显式源码 profile
+  （对象=Rc 共享可变单元、nil 统一、DynType::Callable、通用闭包捕获、FStr 编译前文本变换 +
+  I32 显示）、`ac-av/aggregates-source-run-v1` worker recipe、INT-1026/IF-VAL 通用外部值交接
+  （不持 PyO3/第二账本）。四端按原支持域矩阵（AV 全能力；native/a2r/a2c 仅 FStr/闭包族，
+  对象/动态面具名拒）真实运行收据见该文件 V 行具名入口与 plan §9 并集记录。本节只挂接来源，
+  不改 SD-01 的分类口径，也不把任何行标为 implemented；状态提升仍只引用 964 归档收据。
+- **未闭缺口（具名，带 owner）**：`&&` 链 f-string 条件 lowering 边（D-964-C1，ACE
+  lowering/verify 后续）、冻结措辞 `av.dyn.unsupported` 与实现 `portable.unsupported` 的
+  命名空间差异（D-964-C2，文档级，语义一致）、grid 单行异构列语义澄清（D-964-C3，962
+  语义裁定者）。以上缺口不因 964 交付而消失；964 自身覆盖行保持 required 原状。
