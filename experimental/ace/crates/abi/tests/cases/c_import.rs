@@ -73,21 +73,30 @@ void ace_foreign_fail(int status) { (void)status; ExitProcess(70); }
         .expect("failure runtime compiles");
     let run_dir = root.join("native-run");
     std::fs::create_dir_all(&run_dir).unwrap();
+    let mut inputs = vec![
+        ace_native::link_driver::ObjectInput {
+            name: "caller".into(),
+            bytes: object.bytes.clone(),
+        },
+        ace_native::link_driver::ObjectInput {
+            name: "provider".into(),
+            bytes: std::fs::read(&provider.object).unwrap(),
+        },
+        ace_native::link_driver::ObjectInput {
+            name: "failure-runtime".into(),
+            bytes: std::fs::read(&runtime_obj).unwrap(),
+        },
+    ];
+    // the generated static-inline shim object joins the same link line
+    let shim = provider.object.with_file_name("inline_shim.obj");
+    if shim.is_file() {
+        inputs.push(ace_native::link_driver::ObjectInput {
+            name: "inline-shim".into(),
+            bytes: std::fs::read(&shim).unwrap(),
+        });
+    }
     let run = ace_native::link_driver::link_and_run(
-        &[
-            ace_native::link_driver::ObjectInput {
-                name: "caller".into(),
-                bytes: object.bytes.clone(),
-            },
-            ace_native::link_driver::ObjectInput {
-                name: "provider".into(),
-                bytes: std::fs::read(&provider.object).unwrap(),
-            },
-            ace_native::link_driver::ObjectInput {
-                name: "failure-runtime".into(),
-                bytes: std::fs::read(&runtime_obj).unwrap(),
-            },
-        ],
+        &inputs,
         &wrapper,
         "ac_start",
         &run_dir,
@@ -221,4 +230,87 @@ fn c_import_header_edits_flip_identity_and_broken_annotations_reject() {
     // restore and recover through the SAME entrance.
     std::fs::write(dir.join("f0_c.h"), f0_c_header()).unwrap();
     assert!(open_c_provider(&dir, "f0_c").is_ok());
+}
+
+/// T-10 continuation: the static-inline shim runs for real, the enum
+/// constants are extracted AND consumed through a real call, the
+/// out-of-domain shapes (varargs/union/bitfield/packing) are per-row
+/// NAMED rejections, and a wrong-target header is its own named axis.
+#[test]
+fn c_import_continuation_inline_constants_shapes_target() {
+    let root = scope("c-cont");
+    let dir = project(&root);
+
+    // static inline: the header's own body re-emitted as the binding
+    // symbol — a real machine-code call through the generated shim.
+    let provider = open_c_provider(&dir, "f0_c").expect("import");
+    let twice = run_native(
+        &root,
+        &provider,
+        "use.c f0_c
+fn main() int { return f0c_inline_twice(21) }",
+    );
+    assert_eq!(twice, 42, "the static-inline shim ran for real");
+
+    // constants: extracted as standalone bindings AND consumed through a
+    // real call (the enum value crosses as a value).
+    assert!(provider.constants.contains(&("F0C_MAX".to_string(), 41)));
+    let constant = run_native(
+        &root,
+        &provider,
+        "use.c f0_c
+fn main() int { return f0c_constants_probe() }",
+    );
+    assert_eq!(constant, 41, "the enum constant was consumed for real");
+
+    // shape axes: each out-of-domain shape is its own NAMED rejection.
+    let broken = |header_edit: &str| -> String {
+        let dir2 = root.join("shapes");
+        std::fs::create_dir_all(&dir2).unwrap();
+        std::fs::write(dir2.join("f0_c.h"), header_edit).unwrap();
+        std::fs::write(dir2.join("f0_c.c"), f0_c_source()).unwrap();
+        match open_c_provider(&dir2, "f0_c") {
+            Err(message) => message,
+            Ok(_) => panic!("an out-of-domain header must not import"),
+        }
+    };
+    let base = f0_c_header();
+    let variadic = base.replace(
+        "// auto-ffi-c fn f0c_scaled_len form=pure ret=i32
+F0C_API int32_t f0c_scaled_len(const uint8_t* data, uint64_t len);",
+        "// auto-ffi-c fn f0c_scaled_len form=pure ret=i32
+extern int32_t variadic_probe(const char* fmt, ...);",
+    );
+    assert!(broken(&variadic).contains("c-import.varargs"));
+    let union = base.replace(
+        "typedef struct f0c_point { int32_t x; int32_t y; } f0c_point;",
+        "typedef union f0c_u { int32_t a; int32_t b; } f0c_u;
+typedef struct f0c_point { int32_t x; int32_t y; } f0c_point;",
+    );
+    assert!(broken(&union).contains("c-import.union"));
+    let bitfield = base.replace(
+        "typedef struct f0c_point { int32_t x; int32_t y; } f0c_point;",
+        "typedef struct f0c_point { int32_t x; int32_t y : 3; } f0c_point;
+typedef struct f0c_p2 { int32_t x; } f0c_p2;",
+    );
+    assert!(broken(&bitfield).contains("c-import.bitfield"));
+    let packed = base.replace(
+        "#define F0C_API extern",
+        "#pragma pack(1)
+#define F0C_API extern",
+    );
+    assert!(broken(&packed).contains("c-import.packing"));
+
+    // target axis: a header declaring another target is a NAMED
+    // rejection (never a reinterpretation).
+    let other_target = base.replace(
+        "// auto-ffi-c provider f0_c/1 target=x86_64-pc-windows-msvc",
+        "// auto-ffi-c provider f0_c/1 target=x86_64-unknown-linux-gnu",
+    );
+    assert!(broken(&other_target).contains("c-import.target"));
+    let renamed = base.replace(
+        "// auto-ffi-c provider f0_c/1 target=x86_64-pc-windows-msvc",
+        "// auto-ffi-c provider other/1 target=x86_64-pc-windows-msvc",
+    );
+    assert!(broken(&renamed).contains("c-import.provider-name"));
 }

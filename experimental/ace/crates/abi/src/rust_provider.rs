@@ -248,6 +248,8 @@ pub struct CProvider {
     pub object: std::path::PathBuf,
     pub include_closure: Vec<std::path::PathBuf>,
     pub provider_digest: String,
+    /// the extracted enum constants (standalone bindings for consumers)
+    pub constants: Vec<(String, i32)>,
 }
 
 /// Import a C provider PROJECT: preprocess `<root>/<name>.h` with the
@@ -272,11 +274,23 @@ pub fn open_c_provider(root: &Path, name: &str) -> Result<CProvider, String> {
     }
     let raw_header = std::fs::read_to_string(&header_path)
         .map_err(|e| format!("c-import.provider-read: {e}"))?;
+    let provider_header = auto_bindgen::c_import::parse_provider_header(&raw_header)
+        .map_err(|e| format!("{}: {}", e.code, e.message))?;
+    if provider_header.name != name {
+        return Err(format!(
+            "c-import.provider-name: header declares `{}` but the source imports `{name}`",
+            provider_header.name
+        ));
+    }
     let entries = auto_bindgen::c_import::parse_annotations(&raw_header)
         .map_err(|e| format!("{}: {}", e.code, e.message))?;
     let preprocessed = crate::ctool::preprocess_c(&header_path, root)
         .map_err(|e| format!("c-import.preprocess: {e}"))?;
+    auto_bindgen::c_import::audit_shapes(&raw_header)
+        .map_err(|e| format!("{}: {}", e.code, e.message))?;
     let decls = auto_bindgen::c_import::parse_declarations(&preprocessed);
+    let constants = auto_bindgen::c_import::extract_constants(&decls);
+    let inline_shim = auto_bindgen::c_import::generate_inline_shim(&decls, &entries);
     let provider_digest = ace_foreign_contract::blake3_hex(raw_header.as_bytes());
     let manifest = auto_bindgen::c_import::to_manual_manifest(
         name,
@@ -295,6 +309,14 @@ pub fn open_c_provider(root: &Path, name: &str) -> Result<CProvider, String> {
     })
     .map_err(|e| e.to_string())?;
     std::fs::copy(&header_path, build_dir.join(format!("{name}.h"))).map_err(|e| e.to_string())?;
+    // the generated static-inline shim joins the provider build (one
+    // closure: the header bodies are the implementation)
+    if let Some(shim) = inline_shim {
+        std::fs::write(build_dir.join("inline_shim.c"), shim).map_err(|e| e.to_string())?;
+        let shim_obj = build_dir.join("inline_shim.obj");
+        crate::ctool::compile_c(&build_dir.join("inline_shim.c"), &build_dir, &shim_obj)
+            .map_err(|e| format!("c-import.inline-shim: {e}"))?;
+    }
     let obj = build_dir.join(format!("{name}.obj"));
     let include_closure =
         crate::ctool::compile_c_with_deps(&build_dir.join(format!("{name}.c")), &build_dir, &obj)
@@ -304,6 +326,7 @@ pub fn open_c_provider(root: &Path, name: &str) -> Result<CProvider, String> {
         object: obj,
         include_closure,
         provider_digest,
+        constants,
     })
 }
 

@@ -10,3 +10,4 @@ int32_t f0c_status_of(const uint8_t* data, uint64_t len, int32_t* out) {
     *out = (int32_t)data[0];
     return F0C_OK;
 }
+int32_t f0c_constants_probe(void) { return F0C_MAX; }

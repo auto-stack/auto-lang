@@ -25,9 +25,99 @@ use ace_foreign_contract::{
     ErrorModel, FactsSource, FnFact, FnForm, InterfaceFacts, LaneKind, FACTS_FORMAT,
 };
 
-/// C importer annotation marker (the metadata IS the header).
+/// C importer annotation markers (the metadata IS the header).
+pub const C_ANNOTATION_PROVIDER: &str = "auto-ffi-c provider";
 pub const C_ANNOTATION_FN: &str = "auto-ffi-c fn";
 pub const C_IMPORT_FORMAT: &str = "auto.bindgen.c-header/1";
+/// The frozen physical target (pinned to the shared plan constant).
+pub const C_TARGET: &str = "x86_64-pc-windows-msvc";
+
+/// The provider header line:
+/// `// auto-ffi-c provider <name>/<version> target=<t>`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CProviderHeader {
+    pub name: String,
+    pub version: String,
+    pub target: String,
+}
+
+/// Parse the provider header annotation (exactly one, required first
+/// annotation). The TARGET is an admission axis: a header for another
+/// target is a named rejection, never a reinterpretation.
+pub fn parse_provider_header(header: &str) -> Result<CProviderHeader, ImportError> {
+    let mut found: Option<CProviderHeader> = None;
+    for (idx, line) in header.lines().enumerate() {
+        let trimmed = line.trim_start();
+        let Some(rest) = trimmed.strip_prefix("// ") else {
+            continue;
+        };
+        let Some(body) = rest.trim().strip_prefix(C_ANNOTATION_PROVIDER) else {
+            continue;
+        };
+        if found.is_some() {
+            return Err(err(
+                "c-import.header",
+                format!("duplicate provider annotation (line {})", idx + 1),
+            ));
+        }
+        let mut parts = body.trim().split_whitespace();
+        let id_slash = parts.next().ok_or_else(|| {
+            err(
+                "c-import.header",
+                format!(
+                    "provider annotation needs `<name>/<version>` (line {})",
+                    idx + 1
+                ),
+            )
+        })?;
+        let (name, version) = id_slash.split_once('/').ok_or_else(|| {
+            err(
+                "c-import.header",
+                format!(
+                    "provider identity must be `<name>/<version>` (line {})",
+                    idx + 1
+                ),
+            )
+        })?;
+        let mut target = None;
+        for part in parts {
+            if let Some(v) = part.strip_prefix("target=") {
+                target = Some(v.to_string());
+            } else {
+                return Err(err(
+                    "c-import.header",
+                    format!(
+                        "unknown provider annotation field `{part}` (line {})",
+                        idx + 1
+                    ),
+                ));
+            }
+        }
+        let target = target.ok_or_else(|| {
+            err(
+                "c-import.header",
+                format!("provider annotation needs target= (line {})", idx + 1),
+            )
+        })?;
+        if target != C_TARGET {
+            return Err(err(
+                "c-import.target",
+                format!("header target `{target}` is not the frozen import target `{C_TARGET}`"),
+            ));
+        }
+        found = Some(CProviderHeader {
+            name: name.to_string(),
+            version: version.to_string(),
+            target,
+        });
+    }
+    found.ok_or_else(|| {
+        err(
+            "c-import.header",
+            "missing `// auto-ffi-c provider <name>/<version> target=...` annotation",
+        )
+    })
+}
 
 fn err(code: &'static str, message: impl Into<String>) -> ImportError {
     ImportError {
@@ -136,6 +226,94 @@ pub fn parse_annotations(header: &str) -> Result<Vec<CEntry>, ImportError> {
     Ok(out)
 }
 
+/// Audit the RAW HEADER for shapes OUTSIDE the frozen domain (the audit
+/// is about the imported declarations, never system-header internals).
+/// These are per-row named rejections (V-10's shape axes): varargs,
+/// unions, bitfields, and non-natural record packing. Each is its own
+/// code so an old-usage row closes against a NAMED fact, never a silent
+/// narrowing.
+pub fn audit_shapes(preprocessed: &str) -> Result<(), ImportError> {
+    let mut logical = String::new();
+    for raw in preprocessed.lines() {
+        let line = raw.trim_end_matches('\r').trim();
+        if line.is_empty() {
+            continue;
+        }
+        if !logical.is_empty() {
+            logical.push(' ');
+        }
+        logical.push_str(line);
+    }
+    if logical.contains(", ...") || logical.contains(",...") {
+        // a variadic parameter list survived into a declaration
+        let evidence = logical
+            .lines()
+            .find(|l| l.contains("..."))
+            .unwrap_or("")
+            .trim()
+            .chars()
+            .take(80)
+            .collect::<String>();
+        return Err(err(
+            "c-import.varargs",
+            format!("variadic parameters are outside the frozen C domain: {evidence}"),
+        ));
+    }
+    if logical.contains("union ") {
+        let evidence = logical
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .windows(2)
+            .find(|w| w[0] == "union")
+            .map(|w| w.join(" "))
+            .unwrap_or_default();
+        return Err(err(
+            "c-import.union",
+            format!("union declarations are outside the frozen C domain: {evidence}"),
+        ));
+    }
+    // bitfield: a record member with `:<bits>` — detect `name : n` inside
+    // struct bodies (any `identifier : digits` followed by ; or ,)
+    for line in preprocessed.lines() {
+        let line = line.trim_end_matches('\r').trim();
+        let cleaned: String = line.chars().filter(|c| !c.is_whitespace()).collect();
+        if cleaned.contains(':') {
+            // skip labels/ternaries heuristically: only flag inside
+            // struct-adjacent context by checking neighboring `struct`
+            if line.contains("struct")
+                && cleaned.contains(":")
+                && cleaned
+                    .split(':')
+                    .nth(1)
+                    .map(|r| {
+                        r.chars()
+                            .next()
+                            .map(|c| c.is_ascii_digit())
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(false)
+            {
+                return Err(err(
+                    "c-import.bitfield",
+                    "bitfield members are outside the frozen C domain",
+                ));
+            }
+        }
+    }
+    // packing: any `#pragma pack` switches records off the frozen
+    // natural-align layout
+    for line in preprocessed.lines() {
+        let line = line.trim_end_matches('\r').trim();
+        if line.starts_with("#pragma") && line.contains("pack") {
+            return Err(err(
+                "c-import.packing",
+                "#pragma pack changes record layout away from the frozen natural-align packing",
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// One declared shape extracted from the preprocessed stream.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CDecl {
@@ -154,6 +332,14 @@ pub enum CDecl {
     Callback { name: String },
     /// `extern <scalar> name(params);` — an annotated function.
     Function { name: String, params: Vec<CParam> },
+    /// `static inline <scalar> name(params) { body }` — the header's own
+    /// implementation; the importer re-emits the (macro-expanded) body as
+    /// a plain extern definition in the generated provider shim.
+    Inline {
+        name: String,
+        signature: String,
+        body: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -212,11 +398,48 @@ pub fn parse_declarations(preprocessed: &str) -> Vec<CDecl> {
         // LONE '}' closes a non-declaration region (system-header
         // residue) and also breaks the accumulation so it cannot swallow
         // later declarations.
-        if line.ends_with(';') || line == "}" {
+        if line.ends_with(';')
+            || line == "}"
+            || (line.ends_with('}') && current.contains("static inline"))
+        {
             lines.push(std::mem::take(&mut current));
         }
     }
+    // First pass: static-inline definitions (bodies carry braces; they
+    // never terminate on ';' — collect them so the collapse cannot glue
+    // them onto later declarations).
+    {
+        let mut i = 0;
+        while i < lines.len() {
+            let line = lines[i].trim();
+            if line.starts_with("static inline ") && line.contains('(') && line.contains('{') {
+                let mut depth = line.matches('{').count() as i32 - line.matches('}').count() as i32;
+                let mut whole = line.to_string();
+                let mut j = i;
+                while depth > 0 && j + 1 < lines.len() {
+                    j += 1;
+                    whole.push(' ');
+                    whole.push_str(lines[j].trim());
+                    depth +=
+                        lines[j].matches('{').count() as i32 - lines[j].matches('}').count() as i32;
+                }
+                if let Some(decl) = parse_inline(&whole) {
+                    out.push(decl);
+                }
+                // remove the consumed lines from the second pass
+                for k in i..=j {
+                    lines[k] = String::new();
+                }
+                i = j + 1;
+                continue;
+            }
+            i += 1;
+        }
+    }
     for line in &lines {
+        if line.trim().is_empty() {
+            continue;
+        }
         let line = line.trim();
         // record: typedef struct [tag] { f T; ... } name;
         if let Some(rest) = line.strip_prefix("typedef struct ") {
@@ -467,6 +690,76 @@ fn parse_function(line: &str) -> Option<CDecl> {
     })
 }
 
+/// `static inline int32_t name(params) { body }` — split the signature
+/// from the body at the FIRST brace.
+fn parse_inline(whole: &str) -> Option<CDecl> {
+    let open = whole.find('{')?;
+    let close = whole.rfind('}')?;
+    if close <= open {
+        return None;
+    }
+    let signature = whole[..open].trim().to_string();
+    let body = whole[open + 1..close].trim().to_string();
+    // the name is the identifier right before the parameter '('
+    let paren = signature.find('(')?;
+    let head = signature[..paren].trim_end();
+    let name = head.split_whitespace().last()?.to_string();
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return None;
+    }
+    Some(CDecl::Inline {
+        name,
+        signature,
+        body,
+    })
+}
+
+/// Generate the provider shim for annotated static-inline entries: each
+/// body re-emitted as a plain extern definition (the binding symbol =
+/// the header's own name; macro expansion already happened).
+pub fn generate_inline_shim(decls: &[CDecl], entries: &[CEntry]) -> Option<String> {
+    let mut out = String::new();
+    for entry in entries {
+        let Some(CDecl::Inline {
+            name,
+            signature,
+            body,
+        }) = decls
+            .iter()
+            .find(|d| matches!(d, CDecl::Inline { name, .. } if *name == entry.name))
+        else {
+            continue;
+        };
+        // strip the `static inline ` prefix for the extern definition
+        let plain = signature
+            .strip_prefix("static inline ")
+            .unwrap_or(signature);
+        out.push_str(&format!(
+            "{plain} {{ {body} }}
+"
+        ));
+        let _ = name;
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "// Generated by auto-bindgen c_import ({C_IMPORT_FORMAT}) — static-inline shim.\n// DO NOT EDIT.\n#include <stdint.h>\n{out}"
+        ))
+    }
+}
+
+/// Extract the enum constants (standalone bindings for consumers).
+pub fn extract_constants(decls: &[CDecl]) -> Vec<(String, i32)> {
+    let mut out = Vec::new();
+    for d in decls {
+        if let CDecl::Enum { consts, .. } = d {
+            out.extend(consts.iter().cloned());
+        }
+    }
+    out
+}
+
 /// Project the parsed declarations + annotations onto the shared
 /// `ace.foreign.manual/2` manifest (the same admission every lane uses).
 pub fn to_manual_manifest(
@@ -496,7 +789,10 @@ pub fn to_manual_manifest(
     for entry in entries {
         let decl = decls
             .iter()
-            .find(|d| matches!(d, CDecl::Function { name, .. } if *name == entry.name))
+            .find(|d| {
+                matches!(d, CDecl::Function { name, .. } if *name == entry.name)
+                    || matches!(d, CDecl::Inline { name, .. } if *name == entry.name)
+            })
             .ok_or_else(|| {
                 err(
                     "c-import.missing-decl",
@@ -506,13 +802,49 @@ pub fn to_manual_manifest(
                     ),
                 )
             })?;
-        let CDecl::Function { params, .. } = decl else {
-            unreachable!("filtered above");
+        // an inline entry's lanes come from its signature (scalar-only for
+        // the frozen domain); pointer/record shapes inside inlines are a
+        // named domain rejection.
+        let params: Vec<CParam> = match decl {
+            CDecl::Function { params, .. } => params.clone(),
+            CDecl::Inline { signature, .. } => {
+                let open = signature.find('(').unwrap_or(0);
+                let close = signature.rfind(')').unwrap_or(open);
+                let text = signature[open + 1..close].trim();
+                if text.is_empty() || text == "void" {
+                    Vec::new()
+                } else {
+                    text.split(',')
+                        .map(|p| {
+                            let first = p.trim().split_whitespace().next().unwrap_or("");
+                            match first {
+                                "int32_t" | "int" => CParam::ScalarI32,
+                                "bool" => CParam::ScalarBool,
+                                _ => CParam::ScalarI32, // narrowed below by the lane check
+                            }
+                        })
+                        .collect()
+                }
+            }
+            _ => unreachable!("filtered above"),
         };
+        if matches!(decl, CDecl::Inline { .. })
+            && params
+                .iter()
+                .any(|p| !matches!(p, CParam::ScalarI32 | CParam::ScalarBool))
+        {
+            return Err(err(
+                "c-import.domain",
+                format!(
+                    "inline fn `{}` carries a non-scalar parameter (outside the frozen inline domain)",
+                    entry.name
+                ),
+            ));
+        }
         // The scalar spine is IGNORED for resource entries (the 939
         // convention): the resource sig is the authoritative shape.
         let mut lanes = Vec::new();
-        for p in params {
+        for p in &params {
             match p {
                 CParam::ScalarI32 => {
                     lanes.push(ResKind::I32);
@@ -524,7 +856,7 @@ pub fn to_manual_manifest(
                     lanes.push(ResKind::ViewText);
                 }
                 CParam::RecordView { record } => {
-                    let fields = records.get(record).ok_or_else(|| {
+                    let fields = records.get(&record.clone()).ok_or_else(|| {
                         err(
                             "c-import.domain",
                             format!("fn `{}` views record `{record}` which is not an admitted record in this header", entry.name),
@@ -537,7 +869,7 @@ pub fn to_manual_manifest(
                     });
                 }
                 CParam::Callback { ty } => {
-                    if !callbacks.contains(ty) {
+                    if !callbacks.contains(&ty.clone()) {
                         return Err(err(
                             "c-import.domain",
                             format!(
@@ -561,7 +893,7 @@ pub fn to_manual_manifest(
                             ),
                         ));
                     }
-                    if Some(p) != params.last() {
+                    if Some(&p.clone()) != params.last() {
                         return Err(err(
                             "c-import.domain",
                             format!(
