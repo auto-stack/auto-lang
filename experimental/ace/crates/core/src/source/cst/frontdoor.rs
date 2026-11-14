@@ -157,6 +157,7 @@ pub fn profile_from_slug(slug: &str) -> Option<SourceProfile> {
         "collections" => SourceProfile::Collections,
         // PLAN-961：数值面 slug 反向映射。
         "numeric" => SourceProfile::Numeric,
+        "aggregates" => SourceProfile::Aggregates,
         _ => return None,
     })
 }

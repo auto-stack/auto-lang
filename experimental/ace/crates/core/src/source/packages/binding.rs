@@ -1272,7 +1272,9 @@ fn shift_ann(ann: &mut TypeAnn, offset: usize) {
     match &mut ann.kind {
         TypeRef::Builtin(_) => {}
         TypeRef::TyVar(i) | TypeRef::Record(i) => sh(&mut i.span, offset),
-        TypeRef::Optional(inner) => shift_ann(inner, offset),
+        TypeRef::Optional(inner) | TypeRef::ResultBang(inner) | TypeRef::Stream(inner) => {
+            shift_ann(inner, offset)
+        }
         // PLAN-962：tuple 类型界平移。
         TypeRef::Tuple(args) => {
             for a in args {
@@ -1437,6 +1439,58 @@ fn shift_stmt(s: &mut Stmt, offset: usize) {
             shift_block(body, offset);
             sh(span, offset);
         }
+        Stmt::Yield { value, span } => {
+            shift_expr(value, offset);
+            sh(span, offset);
+        }
+        Stmt::AggIsMatch {
+            scrutinee,
+            arms,
+            span,
+        } => {
+            shift_expr(scrutinee, offset);
+            for a in arms {
+                if let MatchPattern::Variant {
+                    qual,
+                    name,
+                    binding,
+                } = &mut a.pat
+                {
+                    if let Some(q) = qual {
+                        sh(&mut q.span, offset);
+                    }
+                    sh(&mut name.span, offset);
+                    if let Some(b) = binding {
+                        sh(&mut b.span, offset);
+                    }
+                }
+                match &mut a.body {
+                    AggArmBody::Block(b) => shift_block(b, offset),
+                    AggArmBody::Expr(e) => shift_expr(e, offset),
+                }
+                sh(&mut a.span, offset);
+            }
+            sh(span, offset);
+        }
+        Stmt::Try {
+            body,
+            catch,
+            finally,
+            span,
+        } => {
+            shift_block(body, offset);
+            if let Some(c) = catch {
+                if let Some(b) = &mut c.bind {
+                    sh(&mut b.span, offset);
+                }
+                shift_block(&mut c.body, offset);
+                sh(&mut c.span, offset);
+            }
+            if let Some(f) = finally {
+                shift_block(f, offset);
+            }
+            sh(span, offset);
+        }
     }
 }
 fn shift_arg(a: &mut Arg, offset: usize) {
@@ -1571,7 +1625,30 @@ fn shift_expr(e: &mut Expr, offset: usize) {
             }
         }
         ExprKind::NilLit => {}
-        ExprKind::TextDisplay(inner) => shift_expr(inner, offset),
+        ExprKind::TextDisplay(inner) | ExprKind::Propagate { inner } => shift_expr(inner, offset),
+        ExprKind::UnwrapOr { inner, fallback } => {
+            shift_expr(inner, offset);
+            shift_expr(fallback, offset);
+        }
+        ExprKind::IsExpr { scrutinee, arms } => {
+            shift_expr(scrutinee, offset);
+            for a in arms {
+                if let MatchPattern::Variant { qual, name, binding } = &mut a.pat {
+                    if let Some(q) = qual {
+                        sh(&mut q.span, offset);
+                    }
+                    sh(&mut name.span, offset);
+                    if let Some(b) = binding {
+                        sh(&mut b.span, offset);
+                    }
+                }
+                match &mut a.body {
+                    AggArmBody::Block(b) => shift_block(b, offset),
+                    AggArmBody::Expr(e) => shift_expr(e, offset),
+                }
+                sh(&mut a.span, offset);
+            }
+        }
     }
 }
 
@@ -1705,7 +1782,10 @@ impl<'a> Walker<'a> {
                 }
                 Ok(())
             }
-            TypeRef::Optional(_) | TypeRef::Function { .. } => Err(fail(
+            TypeRef::Optional(_)
+            | TypeRef::ResultBang(_)
+            | TypeRef::Stream(_)
+            | TypeRef::Function { .. } => Err(fail(
                 self.key,
                 "source.module-surface",
                 "optional/function types belong to later packages (PLAN-962..965)",
@@ -1914,11 +1994,15 @@ impl<'a> Walker<'a> {
                     continue;
                 }
                 Stmt::Break { .. } | Stmt::Continue { .. } => {}
-                Stmt::IsMatch { span, .. } | Stmt::ForIn { span, .. } => {
+                Stmt::IsMatch { span, .. }
+                | Stmt::ForIn { span, .. }
+                | Stmt::AggIsMatch { span, .. }
+                | Stmt::Try { span, .. }
+                | Stmt::Yield { span, .. } => {
                     return Err(fail(
                         self.key,
                         "source.module-surface",
-                        "`is`/`for in` belong to the collections surface (PLAN-962)",
+                        "`is`/`for in`/`try`/`yield` belong to the collections/aggregates surface",
                         *span,
                     ))
                 }
@@ -2227,7 +2311,30 @@ impl<'a> Walker<'a> {
                 Ok(())
             }
             ExprKind::NilLit => Ok(()),
-            ExprKind::TextDisplay(inner) => self.walk_expr(inner, locals),
+            ExprKind::TextDisplay(inner) | ExprKind::Propagate { inner } => {
+                self.walk_expr(inner, locals)
+            }
+            ExprKind::UnwrapOr { inner, fallback } => {
+                self.walk_expr(inner, locals)?;
+                self.walk_expr(fallback, locals)
+            }
+            ExprKind::IsExpr { scrutinee, arms } => {
+                self.walk_expr(scrutinee, locals)?;
+                for a in arms {
+                    let mut inner_locals = locals.clone();
+                    if let MatchPattern::Variant {
+                        binding: Some(b), ..
+                    } = &a.pat
+                    {
+                        inner_locals.insert(b.name.clone());
+                    }
+                    match &mut a.body {
+                        AggArmBody::Block(b) => self.walk_block(b, inner_locals)?,
+                        AggArmBody::Expr(e) => self.walk_expr(e, &inner_locals)?,
+                    }
+                }
+                Ok(())
+            }
         }
     }
 
@@ -2379,7 +2486,10 @@ fn stmt_span(s: &Stmt) -> Span {
         | Stmt::Break { span }
         | Stmt::Continue { span }
         | Stmt::IsMatch { span, .. }
-        | Stmt::ForIn { span, .. } => *span,
+        | Stmt::ForIn { span, .. }
+        | Stmt::AggIsMatch { span, .. }
+        | Stmt::Try { span, .. }
+        | Stmt::Yield { span, .. } => *span,
         // PLAN-962：索引赋值。
         Stmt::IndexAssign(ia) => ia.span,
         // PLAN-962：tuple 解构。

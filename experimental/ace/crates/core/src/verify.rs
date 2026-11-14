@@ -3270,7 +3270,9 @@ impl Verifier {
                         }
                         Some(value.0)
                     }
-                    hir::Stmt::Return { value } | hir::Stmt::Eval { value } => Some(value.0),
+                    hir::Stmt::Return { value }
+                    | hir::Stmt::Eval { value }
+                    | hir::Stmt::Fail { value } => Some(value.0),
                     hir::Stmt::Assign { place, value } => {
                         if body
                             .places
@@ -5117,7 +5119,7 @@ impl Verifier {
                             bad("local", local.0, n_locals, bl.span);
                         }
                     }
-                    hir::Stmt::Eval { value } => {
+                    hir::Stmt::Eval { value } | hir::Stmt::Fail { value } => {
                         if (value.0 as usize) >= n_exprs {
                             bad("expression", value.0, n_exprs, bl.span);
                         }
@@ -7120,7 +7122,8 @@ impl Verifier {
                     hir::Stmt::Let { value, .. }
                     | hir::Stmt::Return { value }
                     | hir::Stmt::Assign { value, .. }
-                    | hir::Stmt::Eval { value } => vec![*value],
+                    | hir::Stmt::Eval { value }
+                    | hir::Stmt::Fail { value } => vec![*value],
                     hir::Stmt::If { cond, .. } => vec![*cond],
                     _ => vec![],
                 };
@@ -7628,6 +7631,10 @@ impl Verifier {
                         }
                         hir::Stmt::Eval { value } => {
                             self.walk_value(value, body, &frame.cur);
+                        }
+                        hir::Stmt::Fail { value } => {
+                            self.walk_value(value, body, &frame.cur);
+                            frame.flow = Flow::Returned;
                         }
                         hir::Stmt::Return { value } => {
                             self.walk_value(value, body, &frame.cur);

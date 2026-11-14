@@ -145,6 +145,14 @@ pub fn type_canonical(t: &TypeAnn, out: &mut Vec<u8>) {
             out.extend_from_slice(b")->");
             type_canonical(result, out);
         }
+        TypeRef::ResultBang(inner) => {
+            out.extend_from_slice(b"err:");
+            type_canonical(inner, out);
+        }
+        TypeRef::Stream(inner) => {
+            out.extend_from_slice(b"stream:");
+            type_canonical(inner, out);
+        }
     }
     out.push(0);
 }

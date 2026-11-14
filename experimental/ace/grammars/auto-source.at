@@ -123,6 +123,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         r-copy { literal: "copy" }
         r-dep { literal: "dep" }
         r-ext { literal: "ext" }
+        r-finally(profiles: [aggregates]) { literal: "finally" }
         r-go { literal: "go" }
         r-has { literal: "has" }
         r-hold { literal: "hold" }
@@ -192,7 +193,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         amp(profiles: [numeric, aggregates]) { literal: "&" }
         vbar(profiles: [numeric, aggregates]) { literal: "|" }
         caret(profiles: [numeric, aggregates]) { literal: "^" }
+        tilde(profiles: [aggregates]) { literal: "~" }
         bang { literal: "!" }
+        dotquestion(profiles: [aggregates]) { literal: ".?" }
+        questionquestion(profiles: [aggregates]) { literal: "??" }
         dot { literal: "." }
         question { literal: "?" }
         arrow { literal: "->" }
@@ -557,6 +561,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [numeric, aggregates]) { double-kw(field: "word") }
             alt(profiles: [numeric, aggregates]) { f64-kw(field: "word") }
             alt(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules, packages-ct]) { generic-ty(field: "generic") }
+            alt(profiles: [aggregates]) { tilde-ty(field: "tilde") }
+            alt(profiles: [aggregates]) { err-ty(field: "err") }
             alt(profiles: [collections, closures, numeric, aggregates]) { optional-ty(field: "optional") }
             alt(profiles: [text, text-record, text-record-instances, host-console, record, record-instances, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, packages-ct, numeric, aggregates]) { ident(field: "word") }
             alt(profiles: [closures, numeric, aggregates]) { fn-type(field: "fn") }
@@ -580,6 +586,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [numeric, aggregates]) { double-kw(field: "word") }
             alt(profiles: [numeric, aggregates]) { f64-kw(field: "word") }
             alt(profiles: [record, record-instances, collections, closures, numeric, aggregates, packages-modules, packages-ct]) { generic-ty(field: "generic") }
+            alt(profiles: [aggregates]) { tilde-ty(field: "tilde") }
+            alt(profiles: [aggregates]) { err-ty(field: "err") }
             alt(profiles: [collections, closures, numeric, aggregates]) { optional-ty(field: "optional") }
             alt(profiles: [text, text-record, text-record-instances, host-console, record, record-instances, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, packages-ct, numeric, aggregates]) { ident(field: "word") }
             alt(profiles: [closures, numeric, aggregates]) { fn-type(field: "fn") }
@@ -661,6 +669,36 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { generic-ty(field: "generic") }
             alt { ident(field: "word") }
         }
+        // PLAN-965 (M2-A): `~Iter<T>` and `!T` type forms (aggregates only).
+        tilde-ty(profiles: [aggregates]) {
+            tilde(field: "t")
+            generic-ty(field: "generic")
+        }
+        err-ty(profiles: [aggregates]) {
+            bang(field: "b")
+            err-inner(field: "inner")
+        }
+        err-inner(profiles: [aggregates]) {
+            alt { int-kw(field: "word") }
+            alt { i32(field: "word") }
+            alt { bool(field: "word") }
+            alt { i8-kw(field: "word") }
+            alt { u8-kw(field: "word") }
+            alt { byte-kw(field: "word") }
+            alt { uint-kw(field: "word") }
+            alt { u32-kw(field: "word") }
+            alt { i64-kw(field: "word") }
+            alt { u64-kw(field: "word") }
+            alt { float-kw(field: "word") }
+            alt { f32-kw(field: "word") }
+            alt { double-kw(field: "word") }
+            alt { f64-kw(field: "word") }
+            alt { generic-ty(field: "generic") }
+            alt { optional-ty(field: "optional") }
+            alt { fn-type(field: "fn") }
+            alt { tuple-ty(field: "tuple") }
+            alt { ident(field: "word") }
+        }
         // PLAN-928：闭包函数类型 `fn(T0, ...) -> R`（`->` 可省 = K 语料
         // 相邻结果拼写兼容形，仅闭包面）。可嵌套（参数/结果位可再为 fn 型；
         // fn 型在词后备选，`fn` token 使词备选干净失败回退）。
@@ -668,6 +706,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         tuple-ty(profiles: [aggregates]) {
             lparen() {}
             ann-ty(field: "head")
+            tuple-ty-tail() {}
             many { tuple-ty-tail() {} }
             rparen() {}
         }
@@ -894,12 +933,16 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { if-stmt() {} }
             alt(profiles: [core]) { while-stmt() {} }
             // PLAN-1041：for-cond 语句分派补 packages-ct（规则本身已在面集内，
-            // 公共 stdlib 输出循环需要普通 while 形循环）。
-            alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, text-record-instances, entry-unit, host-console, scalar-modules, packages-modules, packages-ct]) { for-cond-stmt() {} }
+            // 公共 stdlib 输出循环需要普通 while 形循环）。PLAN-965：aggregates
+            // 面同表（生成器/控制效果用例的普通 while 形循环）。
+            alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, text-record-instances, entry-unit, host-console, scalar-modules, packages-modules, packages-ct, aggregates]) { for-cond-stmt() {} }
             alt(profiles: [collections, closures, numeric, aggregates]) { for-in-stmt() {} }
             // PLAN-962：`for i in a..b / a..=b { }`（i32 计数循环）。
             alt(profiles: [aggregates]) { for-range-stmt() {} }
-            alt(profiles: [collections, closures, numeric, aggregates]) { is-stmt() {} }
+            alt(profiles: [collections, closures, numeric]) { is-stmt() {} }
+            alt(profiles: [aggregates]) { agg-is-stmt() {} }
+            alt(profiles: [aggregates]) { try-stmt() {} }
+            alt(profiles: [aggregates]) { yield-stmt() {} }
             alt { loop-stmt() {} }
             alt { break() {} }
             alt { continue() {} }
@@ -997,10 +1040,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             block(field: "body")
         }
         // 条件 for（wide 族；投影复用 While AST 形状）
-        for-cond-stmt(profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, text-record-instances, entry-unit, host-console, scalar-modules, packages-modules, packages-ct]) {
+        for-cond-stmt(profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, text-record-instances, entry-unit, host-console, scalar-modules, packages-modules, packages-ct, aggregates]) {
             for(field: "kw")
             condition-expr(profiles: [record, record-instances, text-record, text-record-instances, collections, closures, aggregates], field: "cond")
-            expr(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-modules, packages-ct, numeric, aggregates], field: "cond")
+            expr(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-modules, packages-ct, numeric], field: "cond")
             block(field: "body")
         }
         // PLAN-928（T-03）：PLAN-864 `for x in <List 局部> { .. }`。
@@ -1008,7 +1051,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             for(field: "kw")
             ident(field: "var")
             in(field: "in")
-            ident(field: "iter")
+            ident(profiles: [collections, closures, numeric], field: "iter")
+            condition-expr(profiles: [aggregates], field: "iter")
             block(field: "body")
         }
         // PLAN-962：范围迭代（L-19）——`for i in a..b { }` / `a..=b`；解析
@@ -1031,14 +1075,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-928（T-03）：PLAN-864 `is <局部> { 臂 -> { .. } }`（穷尽分派；
         // 限定形式 `Enum.Name`；载荷绑定 `(v)`）。
-        is-stmt(profiles: [collections, closures, numeric, aggregates]) {
+        is-stmt(profiles: [collections, closures, numeric]) {
             is(field: "kw")
             ident(field: "scrutinee")
             lbrace() {}
             list { match-arm() {} }
             rbrace() {}
         }
-        match-arm(profiles: [collections, closures, numeric, aggregates]) {
+        match-arm(profiles: [collections, closures, numeric]) {
             opt { arm-qual(field: "qual") }
             ident(field: "pattern")
             opt { arm-payload(field: "payload") }
@@ -1054,6 +1098,65 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             ident(field: "binding")
             rparen() {}
         }
+        // PLAN-965 (M2-A): `is` statement & expression, `try/catch/finally`, `yield` (aggregates only).
+        agg-is-stmt(profiles: [aggregates]) {
+            is(field: "kw")
+            condition-expr(field: "scrutinee")
+            lbrace() {}
+            list { agg-match-arm() {} }
+            rbrace() {}
+        }
+        is-expr(profiles: [aggregates]) {
+            is(field: "kw")
+            condition-expr(field: "scrutinee")
+            lbrace() {}
+            list { agg-match-arm() {} }
+            rbrace() {}
+        }
+        agg-match-arm(profiles: [aggregates]) {
+            agg-arm-pat(field: "pat")
+            agg-arm-sep() {}
+            agg-arm-rhs(field: "rhs")
+            opt { comma() {} }
+        }
+        agg-arm-pat(profiles: [aggregates]) {
+            alt { else(field: "kw") }
+            alt { true-kw(field: "kw") }
+            alt { false-kw(field: "kw") }
+            alt { opt { minus() {} } int-lit(field: "lit") }
+            alt { opt { arm-qual(field: "qual") } ident(field: "pattern") opt { arm-payload(field: "payload") } }
+        }
+        agg-arm-sep(profiles: [aggregates]) {
+            alt { arrow() {} }
+            alt { fat-arrow() {} }
+        }
+        agg-arm-rhs(profiles: [aggregates]) {
+            alt { block(field: "body") }
+            alt { expr(field: "expr") }
+        }
+        try-stmt(profiles: [aggregates]) {
+            r-try(field: "kw")
+            block(field: "body")
+            opt { catch-clause(field: "catch") }
+            opt { finally-clause(field: "finally") }
+        }
+        catch-clause(profiles: [aggregates]) {
+            r-catch(field: "kw")
+            opt { catch-bind(field: "bind") }
+            block(field: "body")
+        }
+        catch-bind(profiles: [aggregates]) {
+            alt { lparen() {} ident(field: "name") rparen() {} }
+            alt { ident(field: "name") }
+        }
+        finally-clause(profiles: [aggregates]) {
+            r-finally(field: "kw")
+            block(field: "body")
+        }
+        yield-stmt(profiles: [aggregates]) {
+            r-yield(field: "kw")
+            expr(field: "value")
+        }
         loop-stmt {
             loop(field: "kw")
             block(field: "body")
@@ -1064,8 +1167,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // ---- 表达式 ----
         expr {
             alt(profiles: [core]) { pratt(of: "core-ops") }
-            alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, text-record-instances, entry-unit, host-console, collections, closures, scalar-modules, packages-modules, packages-ct, aggregates]) { pratt(of: "wide-ops") }
-            alt(profiles: [numeric, aggregates]) { pratt(of: "numeric-ops") }
+            alt(profiles: [aggregates]) { pratt(of: "aggregates-ops") }
+            alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, text-record-instances, entry-unit, host-console, collections, closures, scalar-modules, packages-modules, packages-ct]) { pratt(of: "wide-ops") }
+            alt(profiles: [numeric]) { pratt(of: "numeric-ops") }
         }
         // 一元前缀（右结合）：字面量分支先行（`-5` 带符号折叠），`-x`/`!x`
         // 仅 wide 族；core 面经投影保真旧"仅字面量前一元减"拒绝
@@ -1092,9 +1196,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-964（L-16/L-20）：索引后缀 `base[key]`——对象动态键读
             // （ObjectGet）与 List 整数索引共用此步，resolve 按 base 类型分派。
             alt(profiles: [aggregates, closures]) { lbracket(same-line: true) expr(field: "index") rbracket() {} }
+            // PLAN-965 (M2-A): `.?(fallback)` and `.?` error/option propagation steps.
+            alt(profiles: [aggregates]) { dotquestion(same-line: true) lparen(same-line: true) expr(field: "fallback") rparen() {} }
+            alt(profiles: [aggregates]) { dotquestion(same-line: true) }
             alt(profiles: [record, record-instances, text-record, text-record-instances, collections, packages-modules, packages-ct, aggregates]) { dot(same-line: true) mut(field: "member") }
             // PLAN-962（T-08，L-06）：`.view` 只读借用实参后缀（聚合面）。
             alt(profiles: [aggregates]) { dot(same-line: true) r-view(same-line: true, field: "member") }
+            // PLAN-965（M2-A）：`May.nil` 变体无载荷成员后缀（`nil` 为保留 token）。
+            alt(profiles: [aggregates]) { dot(same-line: true) r-nil(same-line: true, field: "member") }
             alt(profiles: [text, text-record, text-record-instances, host-console, collections, closures, packages-modules, packages-ct, numeric, aggregates]) { dot(same-line: true) r-move(same-line: true, field: "member") }
             alt(profiles: [text, text-record, text-record-instances, host-console, packages-modules, packages-ct]) { dot(same-line: true) r-to(same-line: true) lparen(same-line: true) ident(field: "word") rparen() {} }
             // PLAN-961：`.as(T)` 数值转换后缀（T 为数值类型词；`.to(T)`
@@ -1120,7 +1229,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // identifier. A ctor here must start actual fields; groups and call
         // arguments retain ordinary expression syntax and ctor diagnostics.
         condition-expr(profiles: [record, record-instances, text-record, text-record-instances, collections, closures, aggregates]) {
-            pratt(of: "condition-ops")
+            alt(profiles: [aggregates]) { pratt(of: "aggregates-condition-ops") }
+            alt(profiles: [record, record-instances, text-record, text-record-instances, collections, closures]) { pratt(of: "condition-ops") }
         }
         condition-unary(profiles: [record, record-instances, text-record, text-record-instances, collections, closures, aggregates]) {
             alt { int-literal() {} }
@@ -1143,6 +1253,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-962（L-16）：数组/List 字面量（聚合面）。
             alt(profiles: [aggregates]) { grid-atom() {} }
             alt(profiles: [aggregates]) { array-lit() {} }
+            alt(profiles: [aggregates]) { is-expr() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
             alt { condition-ctor() {} }
             // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
@@ -1181,6 +1292,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [aggregates, closures]) { object-lit() {} }
             // PLAN-964（L-21）：nil 字面量（r-nil/r-null，PLAN-053 统一）。
             alt(profiles: [aggregates, closures]) { nil-lit() {} }
+            alt(profiles: [aggregates]) { is-expr() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
             alt(profiles: [record, record-instances, aggregates, packages-modules, packages-ct]) { typed-ctor-expr() {} }
             alt(profiles: [collections, closures, record, record-instances, text-record, text-record-instances, packages-modules, packages-ct, aggregates]) { ctor-expr() {} }
@@ -1301,10 +1413,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { r-nil(same-line: true, field: "kw") }
             alt { r-null(same-line: true, field: "kw") }
         }
-        // PLAN-962（L-15）：tuple 字面量形。
+        // PLAN-962（L-15）：tuple 字面量形（≥2 元，带至少一个逗号尾，单元素回退括号组）。
         tuple-lit(profiles: [aggregates]) {
             lparen() {}
             expr(field: "head")
+            tuple-lit-tail() {}
             many { tuple-lit-tail() {} }
             rparen() {}
         }
@@ -1410,7 +1523,36 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             nl-free: true
         }
     }
-    pratt(condition-ops, profiles: [record, record-instances, text-record, text-record-instances, collections, closures, aggregates]) {
+    pratt(aggregates-condition-ops, profiles: [aggregates]) {
+        primary: "condition-unary"
+        op(binding: 1, assoc: "left") { of: "||" }
+        op(binding: 2, assoc: "left") { of: "&&" }
+        op(binding: 3, assoc: "right") { of: "??" }
+        op(binding: 4, assoc: "left") { of: "==" }
+        op(binding: 4, assoc: "left") { of: "!=" }
+        op(binding: 5, assoc: "left") { of: "<" }
+        op(binding: 5, assoc: "left") { of: ">" }
+        op(binding: 5, assoc: "left") { of: "<=" }
+        op(binding: 5, assoc: "left") { of: ">=" }
+        op(binding: 6, assoc: "left") { of: "&" }
+        op(binding: 6, assoc: "left") { of: "|" }
+        op(binding: 6, assoc: "left") { of: "^" }
+        op(binding: 7, assoc: "left") { of: "+" }
+        op(binding: 7, assoc: "left") { of: "-" }
+        op(binding: 8, assoc: "left") { of: "*" }
+        op(binding: 8, assoc: "left") { of: "/" }
+        op(binding: 8, assoc: "left") { of: "%" }
+        postfix: "postfix-tail"
+        group: ["(", ")"]
+        call {
+            open: "("
+            close: ")"
+            args: "args"
+            same-line: true
+            nl-free: true
+        }
+    }
+    pratt(condition-ops, profiles: [record, record-instances, text-record, text-record-instances, collections, closures]) {
         primary: "condition-unary"
         op(binding: 1, assoc: "left") { of: "||" }
         op(binding: 2, assoc: "left") { of: "&&" }
@@ -1437,7 +1579,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
 
     }
-    pratt(wide-ops, profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, text-record-instances, entry-unit, host-console, collections, closures, scalar-modules, packages-modules, packages-ct, aggregates]) {
+    pratt(wide-ops, profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, text-record-instances, entry-unit, host-console, collections, closures, scalar-modules, packages-modules, packages-ct]) {
         primary: "unary-expr"
         op(binding: 1, assoc: "left") { of: "||" }
         op(binding: 2, assoc: "left") { of: "&&" }
@@ -1469,7 +1611,36 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
     // 是表达式（类型词 RHS 不支持），移位双 token 算符不支持且 `>>` 与
     // 嵌套泛型闭合冲突——`.as(T)`/`.to(T)`/`.shl(n)`/`.shr(n)` 方法形
     // 承载（后缀步 r-as/r-to 已门控 numeric；中缀 `as` 具名延后）。
-    pratt(numeric-ops, profiles: [numeric, aggregates]) {
+    pratt(aggregates-ops, profiles: [aggregates]) {
+        primary: "unary-expr"
+        op(binding: 1, assoc: "left") { of: "||" }
+        op(binding: 2, assoc: "left") { of: "&&" }
+        op(binding: 3, assoc: "right") { of: "??" }
+        op(binding: 4, assoc: "left") { of: "==" }
+        op(binding: 4, assoc: "left") { of: "!=" }
+        op(binding: 5, assoc: "left") { of: "<" }
+        op(binding: 5, assoc: "left") { of: ">" }
+        op(binding: 5, assoc: "left") { of: "<=" }
+        op(binding: 5, assoc: "left") { of: ">=" }
+        op(binding: 6, assoc: "left") { of: "&" }
+        op(binding: 6, assoc: "left") { of: "|" }
+        op(binding: 6, assoc: "left") { of: "^" }
+        op(binding: 7, assoc: "left") { of: "+" }
+        op(binding: 7, assoc: "left") { of: "-" }
+        op(binding: 8, assoc: "left") { of: "*" }
+        op(binding: 8, assoc: "left") { of: "/" }
+        op(binding: 8, assoc: "left") { of: "%" }
+        postfix: "postfix-tail"
+        group: ["(", ")"]
+        call {
+            open: "("
+            close: ")"
+            args: "args"
+            same-line: true
+            nl-free: true
+        }
+    }
+    pratt(numeric-ops, profiles: [numeric]) {
         primary: "unary-expr"
         op(binding: 1, assoc: "left") { of: "||" }
         op(binding: 2, assoc: "left") { of: "&&" }

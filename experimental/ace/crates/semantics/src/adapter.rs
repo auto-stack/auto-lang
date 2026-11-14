@@ -427,9 +427,10 @@ fn ann_of(a: &core_ast::TypeAnn) -> Result<Ann, String> {
         core_ast::TypeRef::Function { .. } => Ok(Ann::Unsupported("closure-function-type")),
         // PLAN-864: the collections type grammar (?T / Name<..>) is outside
         // this adapter's annotation model.
-        core_ast::TypeRef::Optional(_) | core_ast::TypeRef::Generic { .. } => {
-            Ok(Ann::Unsupported("collections-type-annotation"))
-        }
+        core_ast::TypeRef::Optional(_)
+        | core_ast::TypeRef::Generic { .. }
+        | core_ast::TypeRef::ResultBang(_)
+        | core_ast::TypeRef::Stream(_) => Ok(Ann::Unsupported("collections-type-annotation")),
     }
 }
 
@@ -566,9 +567,12 @@ fn project_stmt(s: &core_ast::Stmt) -> Result<InputStmt, String> {
             let _ = span;
             return Err("`is` dispatch is outside this adapter's inference surface".into());
         }
-        core_ast::Stmt::ForIn { span, .. } => {
+        core_ast::Stmt::ForIn { span, .. }
+        | core_ast::Stmt::AggIsMatch { span, .. }
+        | core_ast::Stmt::Try { span, .. }
+        | core_ast::Stmt::Yield { span, .. } => {
             let _ = span;
-            return Err("`for-in` iteration is outside this adapter's inference surface".into());
+            return Err("aggregates control/generator statement is outside this adapter's inference surface".into());
         }
     })
 }
@@ -718,7 +722,10 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         core_ast::ExprKind::NilLit => InputExprKind::Unsupported {
             what: "nil-literal",
         },
-        core_ast::ExprKind::TextDisplay(_) => InputExprKind::Unsupported {
+        core_ast::ExprKind::TextDisplay(_)
+        | core_ast::ExprKind::Propagate { .. }
+        | core_ast::ExprKind::UnwrapOr { .. }
+        | core_ast::ExprKind::IsExpr { .. } => InputExprKind::Unsupported {
             what: "text-display",
         },
     };
@@ -743,6 +750,7 @@ fn binop(op: core_ast::BinOp) -> BinOpKind {
         B::Ne => BinOpKind::Ne,
         B::And => BinOpKind::And,
         B::Or => BinOpKind::Or,
+        B::NullCoalesce => BinOpKind::Or,
     }
 }
 

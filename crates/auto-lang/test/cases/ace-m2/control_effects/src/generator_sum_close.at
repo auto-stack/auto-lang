@@ -1,0 +1,30 @@
+// PLAN-965 T-08 (V-03): lazy ~Iter<T> generator, yield, for-in early break & close finally.
+fn counter() ~Iter<int> {
+    yield 1
+    yield 2
+    yield 3
+}
+fn guarded(events List<int>) ~Iter<int> {
+    try {
+        yield 10
+        yield 20
+        yield 30
+    } finally {
+        events.push(1)
+    }
+}
+fn main() int {
+    var sum = 0
+    for n in counter() {
+        sum = sum + n
+    }
+    var ev = List<int>.new()
+    var part = 0
+    for x in guarded(ev) {
+        part = part + x
+        if x == 20 { break }
+    }
+    // counter: 1+2+3 = 6; guarded breaks after 10+20, close runs finally once.
+    if sum != 6 || part != 30 || ev.len() != 1 { return 0 }
+    return sum + part + ev.len() * 6
+}

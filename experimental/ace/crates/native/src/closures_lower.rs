@@ -434,6 +434,14 @@ fn emit_admitted(m: &MirModule, layouts: &[Descriptor]) -> Result<emit::UnitObje
                     lower.checked("mn_coll_frame_leave", &[(frame, types::I64)])?;
                     lower.fb.ins().return_(&[]);
                 }
+                Terminator::LangFail { .. } => {
+                    if let Some(env) = lower.env_param {
+                        lower.checked("mn_coll_env_unpin", &[(env, types::I64)])?;
+                    }
+                    lower.checked("mn_coll_frame_leave", &[(frame, types::I64)])?;
+                    let err = lower.fb.ins().iconst(types::I32, 9);
+                    lower.fb.ins().jump(trap, &[err.into()]);
+                }
             }
         }
         lower.fb.switch_to_block(trap);

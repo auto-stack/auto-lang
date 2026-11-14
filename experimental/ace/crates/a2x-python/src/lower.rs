@@ -618,6 +618,11 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 let _ = self.lower_expr(*value)?;
                 Ok(())
             }
+            hir::Stmt::Fail { value } => {
+                let msg = self.lower_expr(*value)?;
+                self.emit_line(&format!("raise RuntimeError({msg})"));
+                Ok(())
+            }
             hir::Stmt::Drop { .. } => Err(A2xReject::unsupported_stmt(
                 "explicit Drop is outside Python lowering domain",
             )),

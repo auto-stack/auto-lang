@@ -1,0 +1,6 @@
+// PLAN-965 T-08 negative: non-exhaustive `is` expression is rejected cleanly.
+fn main() int {
+    return is Some(1) {
+        Some(v) -> v
+    }
+}

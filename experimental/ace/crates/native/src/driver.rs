@@ -836,6 +836,22 @@ impl MnDriver {
                     build.manifest_artifact_id,
                 ));
             }
+            if collections::module_has_collections_instructions(&module) {
+                let units = ace_av::cache::split_units(&module)
+                    .map_err(|e| MnError::Backend(format!("unit split: {e}")))?;
+                let (build, run) =
+                    self.collections_units_inner(&units, "", entry, workdir, None, obs, true)?;
+                let run = run.ok_or_else(|| {
+                    MnError::Infra("collections candidate did not execute".to_string())
+                })?;
+                return Ok((
+                    run.exit_code,
+                    run.stdout,
+                    run.stderr,
+                    build.manifest_fp,
+                    build.manifest_artifact_id,
+                ));
+            }
         }
         let build = self.build_arm(arm, checked, entry, workdir, trace_lib, None, snapshot, obs)?;
         let run = obs.span("run", |o| {
@@ -921,6 +937,13 @@ impl MnDriver {
             let units = closures::units_from_checked(checked, snapshot)?;
             let (build, _) =
                 self.closures_units_inner(&units, "", entry, workdir, trace_lib, obs, false)?;
+            return Ok(build);
+        }
+        if arm == Arm::Numeric && collections::module_has_collections_instructions(&module) {
+            let units = ace_av::cache::split_units(&module)
+                .map_err(|e| MnError::Backend(format!("unit split: {e}")))?;
+            let (build, _) =
+                self.collections_units_inner(&units, "", entry, workdir, None, obs, false)?;
             return Ok(build);
         }
         let checked_mir = obs.span("mir_verify", |o| {

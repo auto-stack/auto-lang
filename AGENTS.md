@@ -18,7 +18,7 @@ All AI coding assistants working in this repository must strictly adhere to the 
 > junction/symlink**——`git worktree remove` 的递归删除会穿透链接删除目标仓内容（实测复现）。
 > 跨仓依赖用解析序解决：`$AUTO_LANG_ROOT 等 env 覆盖 → 组内 ../auto-lang →
 > D:/autostack/auto-lang 主检出`。移除任何 worktree 前必须先跑
-> `bash D:/autostack/wt-guard.sh <worktree 路径>`（reparse point 扫描，非空即拒）。
+> `pwsh -NoProfile -File D:/autostack/wt-guard.ps1 <worktree 路径>`（reparse point 扫描，非空即拒；Windows 上只用 pwsh，不用 WSL/Git Bash）。
 
 ---
 
@@ -30,8 +30,9 @@ All AI coding assistants working in this repository must strictly adhere to the 
     轻量路径（无需正式 plan 文档）：`git worktree add D:/autostack/.wt/fix-<slug>/auto-lang -b fix-<slug>`
     （或一键建组含 auto-down 兄弟仓：`bash scripts/new-wt-group.sh fix-<slug> --branch fix-<slug>`，
     PLAN-726 T-04——组内 cargo 解析即开即用，缺兄弟仓时 check 直接失败）
-    → 修改 + 按改动范围跑验证门禁 → 提交 → 合回 master → `bash D:/autostack/wt-guard.sh
-    D:/autostack/.wt/fix-<slug>/auto-lang`（必须 clean）→ 移除 worktree/分支/组目录。
+    → 修改 + 按改动范围跑验证门禁 → 提交 → 合回 master →
+    `pwsh -NoProfile -File D:/autostack/wt-guard.ps1 D:/autostack/.wt/fix-<slug>/auto-lang`（必须 clean）
+    → 移除 worktree/分支/组目录。
     实机走查/核查会话中的**顺手修复**同样适用本条（2026-09-15 三线 WIP 直接落 master 的事后矫正）。
     master 上仅允许计划簿记类改动（`docs/plans/**`、`.next-id`、specs/docs 沉淀）。
 - **L1: Feature / Module Tasks (模块/特性任务)**
@@ -106,6 +107,12 @@ All AI coding assistants working in this repository must strictly adhere to the 
   不先发现全仓测试，不建叶目录/分片新鲜度系统，不自动展开消费者图。`cargo t --list`只读固定组名。
 - `cargo t ace`显式运行独立`experimental/ace` workspace的常规测试及语言侧私有协议桥接；正式计量/压力以`cargo t ace-perf`运行，保原样本、规模、ignore和平台条件。ACE内部同树target复用，四个no_std静态运行时保panic-abort专用profile；普通语言测试不构建ACE。
 - **2026-11-12 用户裁定（PLAN-1016）**：ACE模块组（含ace-syntax/ace-semantics/ace-comptime等）为常规正确性集合，统一排除`::performance::`；正式性能/规模压力仅显式`cargo t ace-perf`，不成为每Plan日常/收尾门。原样本/规模/阈值/平台/ignore保持，漏标正式campaign须迁入该命名空间；不能仅因普通正确性测试慢就批量停用。旧入口ace-performance改名为ace-perf。
+- **2026-11-14 用户裁定（Linux/WSL用例不在Windows环境跑）**：Windows上的开发不被
+  Linux版本/WSL所影响——Windows环境的固定组/全量/批量回归**不再执行Linux相关用例**
+  （如`linux_elf_1040`等Linux目标生成腿）；Linux相关测试今后在专用Linux环境单独执行；
+  WSL用例尤其不应运行（后续整体移除，移除任务另行安排，当前不因本裁定批量删文件）。
+  与Linux用例同住一个crate/固定组的运行结果按此口径具名排除——不判红、不充PASS，
+  台账记"Linux腿/WSL=裁定排除，归专用Linux环境"。
 - 无参数`cargo t`保固定日常范围；`cargo t all`显式运行语言仓全部固定组。两者不能混为一谈。
   全部组仍保ignored/平台/里程碑条件，不含外仓UI/Man所有权腿。模块过滤不保证同crate独立编译。
 - 计划按真实修改明确选择完整职责组及必要集成/消费者组，review核选择理由；共享AST/语义/IR变更
@@ -182,8 +189,8 @@ Before merging or archiving, the agent **must explicitly execute an independent 
    feat(<scope>): <description> (Plan <NNN>)
    ```
 2. Remove the temporary worktree and branch (guard first — mandatory):
-   ```bash
-   bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-<NNN>/auto-lang   # 必须输出 clean 才继续
+   ```powershell
+   pwsh -NoProfile -File D:/autostack/wt-guard.ps1 D:/autostack/.wt/lang-<NNN>/auto-lang   # 必须输出 clean 才继续
    git worktree remove D:/autostack/.wt/lang-<NNN>/auto-lang
    git branch -d plan-<NNN>-dev
    # 组内已无兄弟 worktree 时删除组目录：rmdir D:/autostack/.wt/lang-<NNN>

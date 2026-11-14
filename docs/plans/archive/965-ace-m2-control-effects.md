@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-965
-status: executing
+status: archived
 feature_name: 完整控制流错误传播与生成器
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-14
 plan_revision: 5
-current_step: 1
+current_step: 7
 total_steps: 8
 depends_on: [PLAN-962, PLAN-964]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md]
@@ -254,18 +254,22 @@ struct CleanupEdge { owner: OwnerId, exit: ExitKind, target: BlockId }
 
 > **2026-11-14 T-05 复审 needs_fix**：T-02/T-03/T-04/T-08 按其 findings 重开（T-01 保持完成；`current_step=1/8`）。修复项：F-965-R1-01（跨函数 fail 在 try 体内静默丢失，blocker）、F-965-R1-02（instr_spec opcode 0x3D→0x40）、F-965-R1-03（early-break/显式 close 清理抛错丢失）、F-965-R1-04（native 关闭不可观测/悬空引用）、F-965-R1-05（合法 try/catch 形态被 verify 拒绝）、F-965-R1-07/08/09/11（覆盖与控制缺口、a2x payload 边界、注释与测试卫生）；详见 §9 复审收据与 §10 裁定。
 
+> **2026-11-14 round 5 复审：needs_fix（仅 minor）**；round 6 已闭合 N1–N5（死代码、尾换行、§10-7/§10-8、收据一致性、delta 草案），定向复验 case 15/15 + instr_spec + entry_unit 26/26 绿；等 round 7 定向复审。详见 §9。
+
+> **2026-11-14 work 修复轮（round 4）完成**：F-965-R1-01/02/03/04/05/07/08/09/11 全部闭合；写负控时追加发现并修复“非法 `break`/`continue` 被静默接受”（V-DETAIL-02，具名源诊断 `source.break-outside-loop` / `source.continue-outside-loop`）。修复提交 `551f7795e`（父 `edae44f0b`，base `e9e67496a`）；冻结树组内与语言 case 证据见 §9 修复收据。本包转 `status: execution_done`，等 round 5 独立复审。
+
 - [x] **T-01｜M2-A｜work｜AC-01**：核依赖与§4路径，完成§5有界全链前探、语义/支持/owner/命令冻结；输出决定摘要入本Plan，不扩大或缩减范围。
 
-- [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
+- [x] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
   - 证据（`plan-965-dev`，已 resync 至 master `cd5f2e568`）：`source/agg_lower.rs`（新，生成器状态记录/`__ace_iter_next`/`__ace_iter_close` 与 close 清理）、`source/resolve.rs`（try/catch/finally、`rethrow(e)`、`.?`/`.?(d)`、`??`、`is` 表达式/语句、`LangFail` 分派与四分类退出、生成器借用参数具名拒绝）、`av-core`（`Terminator::LangFail`=opcode `0x40`、`ExecOutcome::Error`、MIR/mir_verify/ownership/ABC/compact_abc/instr_spec）、`lowering/hir_adapter`、`native/{collections_lower,collections_driver,driver,fingerprint,lower,closures_lower}`、`a2x-{rust,c,python,core,worker}`。正反例结果见 T-04 收据（AV 12 / native 6 / A2X 2 / 语言 TestCase 10，全绿）；T-05 复审在同基线上发现跨函数/try 体与 close 清理的 in-contract 缺陷（§9），故本任务重开。
 
-- [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
+- [x] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
   - 证据：四端消费同一共享 MIR（AV interpreter、native PE、A2X-Rust、A2X-C），无 legacy fallback；host/权限保持既有 dispatch 合同（`host.unauthorized` dispatch=0，AV 例 4 断言）。新增语言侧 TestCase 组 `case-ace-m2-control-effects-965`（`scripts/test-groups.toml`）与 `crates/auto-lang/test/cases/ace-m2/control_effects/`。新增 `source.generator-borrow-param`：生成器状态记录按值保存参数，借用（`mut`/记录视图/`str`）无法跨 `yield`，改为具名拒绝而非静默丢失写回（详见 §9 与 §10）。
 
-- [ ] **T-08｜M2-A｜owner_stage: work｜AC-06**：补catch/finalization、错误传播跨模块返回、循环continue/break与生成器drop；宿主权限失败可否被语言捕获必须继承原政策，唯一不可放宽的是未授权dispatch=0。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
+- [x] **T-08｜M2-A｜owner_stage: work｜AC-06**：补catch/finalization、错误传播跨模块返回、循环continue/break与生成器drop；宿主权限失败可否被语言捕获必须继承原政策，唯一不可放宽的是未授权dispatch=0。 验证V-08；已有T-04（945–948为T-05）汇总此证据后才交独立review。
   - 证据：V-01（嵌套 try/finally 每帧一次 + 循环 break/continue）、V-02（`??`/`.?(d)` 右支惰性；计数器 hits=0）、V-03（惰性启动、显式 close 幂等一次、for-in 提前 break 关闭；用 owned `List` 句柄观察，见 AV 例与语言 case `generator-sum-close`）、V-04（编译错误不进运行时 catch；Trap/Resource/Cancelled/host.unauthorized 不可捕获、dispatch=0）、V-08（owned 值经 return/throw/drain-close 各清理一次；drain 时 close `finally` 抛 `fail` → AV `ExecOutcome::Error("closed965")`、native `Trap(9)`、语言 case `generator-close-fail`）。宿主策略与四分类分账按 D3 保持。
 
-- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
+- [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。
   - 证据（`plan-965-dev@edae44f0b`，resync 至 `master@e9e67496a`，冻结树单实例）：
     - 语言 TestCase：`cargo t case-ace-m2-control-effects-965` → **PASS**，10/10 checks，`gate_passed=true`，wall 5s（av-worker release 复用；`target/test-groups/run-8ezgeg3w`）。
     - 固定组并集：`cargo t ace-source ace-lowering ace-av ace-native ace-a2x ace-runtime`（wall 1058.8s，`run-intz138c`）：ace-lowering **PASS**(5/5)、ace-a2x **PASS**(238/238)；ace-source 523/524、ace-av 1126/1128、ace-native 273/276、ace-runtime 65/84。**红集精确等于** `master@e9e67496a`（及 `cd5f2e568`）既有红：6 例 `text.char-multi`（基线命令见 §9）+ `ace-runtime` 19 例 text shim 链接（`_fltused`/`__CxxFrameHandler3`，主检出同组复现）。本包 diff 引入的红为 0。
@@ -274,9 +278,9 @@ struct CleanupEdge { owner: OwnerId, exit: ExitKind, target: BlockId }
 
 - [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
-- [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
+- [x] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
 
-- [ ] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
+- [x] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
@@ -435,16 +439,87 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 2026-11-06：stage=new，revision=1，outcome=blocked（实施前须依赖正式交付、T-01接口与跨仓执行门冻结，并取得实施指令），next=按路线依赖进入work。文档静态检查另记路线；非产品或独立final review PASS。0/7。
 
+`stage: goal | plan_id: PLAN-965 | plan_revision: r5 | round: 4 | from: work | to: review | status: execution_done | outcome: repaired | worktree: D:/autostack/.wt/lang-965/auto-lang@plan-965-dev | commit: 551f7795e | next: review`
+
+### 2026-11-14 T-02/T-03/T-04/T-08 修复收据（round 4，work 修复轮）
+
+单提交 `551f7795e`（父 `edae44f0b`，base `e9e67496a`），提交时工作树 0 脏。逐 F-ID 闭合：
+
+| Finding | 根因 | 修复 | 永久证据 |
+|---|---|---|---|
+| F-965-R1-01（blocker）跨函数 `fail` 在 `try` 体内静默丢失 | ① adapter 对非 unit 值的 `RStmt::ExprStmt` **静默丢弃**（master 既有）；② resolver 对 `try/catch/finally` 体传入 statement 上下文 | aggregates 轮廓把“非尾部、非 unit、非控制效果”的表达式语句落为 discard temp（`__agg_ev_*`），调用真实执行；入口/宿主轮廓的 `source.entry-tail` 拒绝规则不动（`entry_unit::*` 26 例保持绿） | AV `m2_f01_call_statement_is_evaluated_and_error_not_swallowed`（效果 + callee `fail` 双断言）、native `mn_965_call_statement_is_evaluated`、语言 case `statement-call-effect`、`callee-fail-in-try` |
+| F-965-R1-03 early-break / 显式 `close` 清理抛错丢失 | 状态机捕获 `finally` 语句时剥掉尾部 `Break`，close 重放只写 `kind=4`+message 而无 dispatch | `StateBuilder` 记录 resolver ctrl locals；捕获 `finally` 副本后追加 `if kind==4 { fail(err) }`（只影响 close/挂起重放副本，正常路径不变） | AV `m2_v08_close_fail_on_break_and_explicit_close`、native `mn_965_generator_close_fail_on_break`、语言 case `generator-close-fail-break` |
+| F-965-R1-05 合法 try/catch 形态被 verify 拒绝 | try 出口**无条件**注入 dummy `Return`，后续语句成为不可达块 | `has_following` 门控：仅当 try 结束其所在块时才注入 | `catch_plain_return` → 0、`local_fail_caught` → 42、`o2_propagate_catch` → 42（AV 探针复算）；缺返回形态见 §10-7 |
+| F-965-R1-02 `instr_spec` opcode | 行值仍 `0x3D`（与 `OP_OBJECT_NEW` 冲突） | 改 `0x40`，V-11 钉 57 保持 | `av_data_instruction_round_trip_all_opcodes` |
+| F-965-R1-04 native 关闭不可观测 | `finally` 空操作 + 悬空注释引用 | 注释改为“值观察 + 错误通道观察关闭”，新增 break 关闭 `Trap(9)` 用例 | native `control_effects_965` 8/8 |
+| F-965-R1-07 覆盖与控制缺口 | 负控缺失；编写负控时发现**非法跳转被接受**（adapter phantom loop 使 `verify.loop-target-scope` 失效） | resolver 新增 `source.break-outside-loop` / `source.continue-outside-loop`（`try` 帧不计循环）；cancel 路径补 `live==0`/`allocs==frees` 断言 | AV 负控 3 条、语言 case 负控 2 条、`m2_v04` 取消断言 |
+| F-965-R1-08 A2X 边界 | A2X 只承载错误类 | `a2x_coll_fail` 注释写明 class-only，不夹带 message/span | A2X rust+c 两腿（含新增惰性/顺序敏感用例） |
+| F-965-R1-09 / F-11 注释与卫生 | 注释错位、草稿式叙述 | 修正；`rustfmt --check` 干净 | 格式化门 |
+
+**验证（提交 `551f7795e` 冻结树，组序执行，`D:/autostack/plan-artifacts/plan-965/repair-final2.log`）**：
+
+- 语言 TestCase：`cargo t case-ace-m2-control-effects-965` → **PASS**，15/15 checks（原 10 + 本修复新增 5），`gate_passed=true`，wall 6.9 s（`run-v_q04h3j`）。
+- 组（逐组串行，避免并发争用）：`ace-source` 523/524（255.9 s，`run-msbffevp`）、`ace-av` 1129/1131（42.2 s，`run-7_7a3exe`）、`ace-native` 274/278（112.2 s，`run-ao4y3aqh`）、`ace-a2x` **PASS** 238/238（462.5 s，`run-zo7ijwmx`）。
+- **红集与基线逐名一致**：ace-source 1 例、ace-av 2 例、ace-native 3 例均属 §10-2 的 `text.char-multi` 既有族；ace-native 第 4 例为 `elf05` WSL 执行期限（下方环境归因，wire 逐字节相同）。**本包 diff 引入的红 = 0**。
+- 本轮未触及 `ace-lowering` / `ace-runtime` 面（adapter 仅源侧、runtime 零改动），沿用父提交 `edae44f0b` 轮次证据：lowering **PASS** 5/5、runtime 65/84（19 例 §10-2 text shim 既有红）。
+- 定向复核：`entry_unit::*` 26/26（入口轮廓拒绝规则未被本修复波及）、`aggregates_m2_965` 15/15、`control_effects_965` 8/8、`aggregates_965_control_effects_{rust,c}` 2/2。
+
+**环境归因（非本包）**：`linux_elf_1040::elf05_av_linux_same_sources_cancel_and_caps` 两次隔离重放均于 60 s 处 `Infra("wsl argv run: Deadline")`（WSL 空转 0.04 s）。用同一提交对 elf05 两段被测源码（cancel / caps）复算 wire：`len=724 / blake3=500e5e87…`、`len=1192 / blake3=924de744…`，与修复前 `edae44f0b` 的编译产物**逐字节相同**（临时哈希探针已在提交前删除），即被测程序未被本修复改动 → 归因为并发会话下 WSL/`/mnt/d` 执行期限。
+
+**残余（均非本包闭合条件）**：§10-2（6+19 既有红）、§10-3（只读记录按值拷贝增强）、§10-6（V-11 表 964 漏行债）。
+
+### 2026-11-14 T-05 复审收据（round 5，独立上下文 reviewer-965-r5；outcome: **needs_fix（仅 minor）**）
+
+`reviewed_commit: 551f7795e | base_commit: e9e67496a | worktree: D:/autostack/.wt/lang-965/auto-lang@plan-965-dev`；复审前后 `git status --porcelain` 均空，探针/日志只在 `plan-artifacts/plan-965/r5/`。
+
+- **结论**：round-3 的 blocker/major 全部实质闭合（独立反例 + 四端真实运行复核），本修复未引入新的 blocker/major；未通过的仅是 AC-04 的"未闭项/收据一致性"：R1-09 的死代码半边、R1-10 的 `discovery_complete` 一行、round-4 收据指向不存在的 `§10-8` 与 §10-1/§10-4 状态未更新。
+- **逐 finding**：R1-01 **closed**（`callee_fail_in_try` → `Error("z965")`，`live=0 allocs==frees`；`bump(c.mut)` 语句效果四端可见）；R1-02 **closed**（`instr_spec.rs:642 opcode 0x40`、abc/compact 一致、V-11 钉 57 与 coverage 测试绿）；R1-03 **closed**（break/显式 close/drain 各恰一次 `Error("closed965")`/`Trap(9)`，含 owned 局部与 owned 句柄形态，`live=0`）；R1-04 **closed**（native `control_effects_965` 8/8）；R1-05 **closed**（形态 2 正常；形态 1 的拒绝经复核**正确**，见 §10-7）；R1-06 **closed**；R1-07 **partial**（非法跳转与 cancel 释放已闭，"cancel 不复活 late frame"仍为 prose，属 V-DETAIL-03 非 required）；R1-08 **closed**；R1-09 **partial**（注释已正，`mir_verify` 死代码未清）；R1-10 **partial**（计数已正，`discovery_complete` 未写）；R1-11 **closed**。
+- **修复点回归攻击**：(a) 丢弃 temp 所有权平衡成立（A1/A2/A3/A4/A6 全部 `live==0 && allocs==frees`；生成器内每条被丢弃语句多一个状态字段，空间膨胀非泄漏）；(b) close 重放不双抛、不跳释放，三路关闭各恰一次，`__state=-1` 幂等由 `already_closed` 保证（顺序措辞已按 §10-8(d) 更正）；(c) dummy-return 门控未留未终结块、未放过真缺返回（C1/C2/C4/C5/C6）；(d) 非法跳转拒绝未误伤合法跳转（try/catch/`is` 臂/生成器跨 yield/嵌套循环均放行且语义复核正确；`entry_unit::*` 26/26 保持）；(e) `LANG_FAIL=0x40` 与 V-11 一致。
+- **AC/V**：AC-01/02/03/06/PHASE **pass**；AC-04 **needs_fix**（上表）；AC-05 **pending（merge）**；V-01/02/03/04/05(本轮新闭，A2X 顺序敏感用例)/08 **pass**。
+- **新缺陷**：无 blocker/major。minor：N1 §10-8 悬空/§10 状态未更新；N2 `mir_verify.rs` 死代码（`:3160 let _module`、`:4241 let _err` + 单臂 match）；N3 `control_effects.case.ad` 缺尾换行；N4 A2X 共享 target 陈旧产物会给假红（干净 target 238/238 PASS）；N5 完全发散 try/catch 之后语句不再判不可达（对称代价，记 §10-8(d)）。
+- **独立测试**：case **PASS 15/15**（run-6ze2qqri，13.7 s）；`ace-av` 1129/1131、`ace-native` 274/278（红名逐条 = 既有 `text.char-multi`；`elf05` = `Infra("wsl argv run: Deadline")`，隔离重放复现，WSL 空转亦 3.7 s）；`ace-source` 523/524（`host_console::av_console_typed_symbols_and_capabilities`）；`ace-lowering` PASS；`ace-runtime` 65/84（19 例 text shim）；`ace-a2x` 干净 target **238/238 PASS**（`r5/target-a2x`）；`entry_unit` 26/26；约 32 条独立探针（`r5/avprobe`）。
+- **规范增量就绪度**：草案 `plan-artifacts/plan-965/spec-delta/{m2-control-effects.md,sd-09.md}` 要求均已覆盖；缺口：`str` 参数措辞（aggregates 轮廓根本拒 `str` 类型，本拒绝在源码面不可观测）、缺 F-05 形态 1 边界、负控计数（15 case / 9 negative）、A2X 证据需注明干净 target、需补"非 unit 丢弃在 HIR 是 `__agg_ev_*` Let"、close 顺序与死代码边界。
+
+### 2026-11-14 round-6 修复收据（work，仅 minor）
+
+`commit: c736b9e65`（父 `551f7795e`）。闭合清单：
+
+1. **N2/F-R1-09 死代码**：删除 `mir_verify.rs` 的 `let _module = self.module;` 与 `let _err = …`，展平单臂 `match instr { _ => … }`；`cargo check -p ace-av-core` 绿、`rustfmt --check` 绿。
+2. **N3**：`control_effects.case.ad` 补文件尾换行。
+3. **N1/§10**：新增 §10-7（F-05 形态 1 裁定，取代 round-3 误判）与 §10-8（`discovery_complete`、A2X 干净 target 口径、elf05 证据降级、close 顺序）；§10-1/§10-4 标注"已由 551f7795e 关闭"；round-4 收据的 `§10-8` 悬空引用改指 §10-7。
+4. **F-R1-10**：`discovery_complete:false` 为 driver 正常语义已写入 §10-8(a)。
+5. **delta 草案**：按 round-5 §5 修正 `str` 措辞、负控计数、F-05 边界、`__agg_ev_*` Let 形状、close 顺序、死代码边界；A2X 证据行注明干净 target。
+
+**定向复验**：`cargo t case-ace-m2-control-effects-965` → **PASS 15/15**（`run-nanky1h1`）；`ace-av-core instr_spec_coverage_complete` PASS；`entry_unit` 26/26 PASS；`rustfmt --check` 对改动文件通过。按 round-5 建议不再重跑六组（语义零变化，仅死代码/换行/文档）。
+
+**转 next**：`status: execution_done`，等 round 7 定向复审（仅核上述 5 项与收据一致性）。
+### 2026-11-14 round-7 定向复审收据（reviewer-965-r5；outcome: **pass**）
+
+`reviewed_commit: c736b9e65 | base_commit: e9e67496a`。复审只读/测，前后 `git status --porcelain` 空；改动仅 `551f7795e..c736b9e65` 两文件（+9/−17）。
+
+- 逐项：① 死代码真删（`let _module`/`let _err`/单臂 `match` 均无残留，`rustfmt --check` 绿）**closed**；② case 文件尾 `0x60 0x0A`，`cargo t case-…` **PASS executed=15、15/15、gate=True**（`run-wz65k5j9`）**closed**；③ `instr_spec` PASS、`entry_unit` 26/26 **closed**；④ §10 现为 1–8 项、§10-7 为 F-05 形态 1 裁定、§10-1/§10-4 标注已关闭、`见 §10-8` 零命中 **closed**；⑤ delta 草案四点已改（`str` 类型面先拒、F-05 边界、15 case/9 negative、`__agg_ev_*` 为 `Let`、close 顺序/死代码边界），**仅 A2X 证据行缺"干净 target"口径 → 已在本轮 merge 前置修正**。
+- **附加观察（已入 §10-8(b)）**：共享 `experimental/ace/target` 会链接陈旧 rlib，给"修复前语义"的假红（ace-av `aggregates_m2_965` 12/15；字节级：陈旧 `libace_core-324b2a2c…` 对 round-4 诊断串命中 0，修复版 `libace_core-f90a543f…` 命中 2）；干净 `--target-dir` 下同命令 15/15 PASS。代码在 HEAD 正确，假红归因 target 陈旧，非 round-6 引入。
+- **AC-04 → pass**；merge 可继续（AC-05 合并阶段），前置仅两项文档口径（见上，已办）。
+### 2026-11-14 T-06/T-07 合并与清理收据（merge）
+
+- **resync**：`plan-965-dev` rebase 至 `master@411ab3afb`（4 提交：`12c18e352`…`560aad304`）；冲突仅 2 处，逐行合并并重编译：`grammars/auto-source.at`（for-cond 语句 profile 表 = 1041 的 `packages-ct` ∪ 965 的 `aggregates`）、`a2x-rust/provider.rs`（保留 967 的 foreign bridge + 域分派，前置 `Family::Collections` 分支以保 965 的 collections runtime/`a2x_coll_fail`）。
+- **冻结并集**（rebase 后 `560aad304`；`merge-union.log`，wall 1536.4 s）：`ace-source` **PASS 525/525**、`ace-lowering` **PASS 5/5**、`ace-av` **PASS 1141/1141**、`ace-a2x` **PASS 238/238**、`case-ace-m2-control-effects-965` **PASS 15/15 `gate_passed=true`**（`run-yr2qiv6r`，wall 6.8 s）；`ace-native` 287 例仅 `linux_elf_1040::elf05_av_linux_same_sources_cancel_and_caps` 1 例失败——**Linux/WSL 腿按 2026-11-14 裁定"Windows 不跑 Linux/WSL 用例"裁定排除**（不判红、不充 PASS，归专用 Linux 环境）；`ace-runtime` 65/84（19 例 §10-2 text shim 链接既有红，非本包）。
+- **规范沉淀**：`docs/specs/ace-migration/m2-control-effects.md`（新）+ `replacement-scope-and-evidence.md` SD-09 随 `560aad304` 落库；`spec-lint` 的 5 个 error 为仓内既有（`ace-migration`/`ase`/`design`/`history` 缺 `project.md`、`.next-id=1026` 落后于并发会话持有到 1057），与本包无关、不修。
+- **合并**：`master` 上 `git merge --no-ff plan-965-dev` → **`23c186590`**（无冲突）；本计划代码/规范/case 语料随该提交入 master。
+- **清理**：`wt-guard.ps1` 输出 clean 后移除 `D:/autostack/.wt/lang-965/auto-lang` 与 `plan-965-dev` 分支、组目录 `D:/autostack/.wt/lang-965`；`D:/autostack/plan-artifacts/plan-965/`（含 `r5/` 探针）整体删除——所需摘要（命令、退出码、关键数字、红名、哈希）已折入 §9 与两份规范文件。
+- **AC 终判**：AC-01/02/03/04/06/PHASE **pass**；AC-05 **pass（本收据）**；V-01..V-08 按 round-5/7 复审判定 pass（V-05 由 A2X 顺序敏感用例闭合）。
 ## 10. 待澄清事项
 
 ### 2026-11-14 work 阶段登记的具名问题（交 T-05 复审裁定）
 
-1. **清理期抛错策略（early-break close）— T-05 裁定为 in-contract 缺陷，须修复**：for-in 提前 `break`（或显式 `g.close()`）触发的生成器 close 中，`finally` 的 `fail`/`rethrow` 被丢弃；drain 触发则传播。审阅者确认“两端一致”不能作为接受理由（§6 明令不得以四端相等掩盖共同 bug），且与 V-04 自相矛盾。最小复现见 F-965-R1-03（`review-r1/src/break_close_fail.at`）；闭合条件：`build_close_fn` 追加 post-frame dispatch + break/显式 close 永久用例通过。原 §10 复现描述（用 `generator_close_fail.at` 改 x==20）无效，已由 F-965-R1-06 更正。
+1. **清理期抛错策略（early-break close）— T-05 裁定为 in-contract 缺陷，已由 `551f7795e` 关闭**：for-in 提前 `break`（或显式 `g.close()`）触发的生成器 close 中，`finally` 的 `fail`/`rethrow` 被丢弃；drain 触发则传播。审阅者确认“两端一致”不能作为接受理由（§6 明令不得以四端相等掩盖共同 bug），且与 V-04 自相矛盾。最小复现见 F-965-R1-03（`review-r1/src/break_close_fail.at`）；闭合条件：`build_close_fn` 追加 post-frame dispatch + break/显式 close 永久用例通过。原 §10 复现描述（用 `generator_close_fail.at` 改 x==20）无效，已由 F-965-R1-06 更正。
 2. **默认分支既有红（非本包改动）**：`master` 上 6 个既有测试红，根因同一族（CST lex-facts 对非 ASCII 字符字面量误报 `text.char-multi`，如 `eprint('界')`）：`ace-core host_console::av_console_typed_symbols_and_capabilities`、`ace-av host_console::av_console_exact_source_bytes_and_result`、`ace-av av_closures_source::av_closures_909_char_cell_write_back_observed`、`ace-native console_lane::native_console_i32_bool_char_say_lanes`、`ace-native shadow_tier::shadow871_text`、`ace-native data_owned_tier::mn_data_owned_three_path_differential`；另 `ace-runtime` 19 例 text shim 链接红（`_fltused`/`__CxxFrameHandler3`）。已在主检出 `master@e9e67496a`（6 例）与 `master@37b197a5c`（ace-runtime 19 例）用同一入口复现（见 §9 基线收据），非本包 diff 引入；需独立 fix/Plan 处理，关闭条件：该 6+19 例在 `master` 转绿。
 3. **生成器借用参数边界**：`source.generator-borrow-param` 为实施期新增具名拒绝（§5 边界）。T-05 裁定为合法有界拒绝（legacy 分母无借用生成器参数；D4 按值保存参数），但要求 (a) 如实写明拒绝范围包含“从不跨 yield 使用”的记录/`str` 参数，(b) 以语言级拒绝进入 SD-01/SD-DETAIL。是否支持只读记录的按值拷贝留作后续增强（非本包闭合条件）。
-4. **opcode 归属（须修）**：`LANG_FAIL=0x40`（wire）正确，但 `instr_spec.rs` 行仍写 `0x3D`，与 `OP_OBJECT_NEW` 冲突（F-965-R1-02）；闭合条件：该行改 `0x40`、V-11 钉 57 保持且 `coverage_check` 通过。
-5. **V-05 映射（未闭合）**：AV/native 以索引化 effect 断言源序；A2X 断言可交换（`log = log + i`），无四端 trace 对照。闭合条件二选一：delta 收窄为“AV+native 已验证、a2x pending（owner）”，或补一条 A2X 顺序敏感用例（如 `acc = acc * 10 + i`）。
+4. **opcode 归属（已由 `551f7795e` 关闭）**：`LANG_FAIL=0x40`（wire）正确，但 `instr_spec.rs` 行仍写 `0x3D`，与 `OP_OBJECT_NEW` 冲突（F-965-R1-02）；闭合条件：该行改 `0x40`、V-11 钉 57 保持且 `coverage_check` 通过。
+5. **V-05 映射（round-5 已闭合）**：AV/native 以索引化 effect 断言源序；A2X 原断言可交换（`log = log + i`），无四端 trace 对照。已补 A2X 顺序敏感用例 `m2-lazy-and-ordered`（`acc = acc * 10 + i` + `bump(c.mut)` 单次效果，期望 553，rust/c 两腿干净 target 下 PASS），V-05 判 pass。
 6. **V-11 表 pre-existing 缺口（债，非本包）**：964 的 `OBJECT_NEW/GET/SET`、`TEXT_DISPLAY` 有 mnemonic 但无 `InstructionSpec` 行、也不在 `coverage_check` 的 `expected` 镜像，导致唯一性/完备性检查存在盲区（本包 F-02 正是从其缝隙漏过）。关闭条件：独立任务补齐 4 行 + expected 名，并确认无其他 964/965 opcode 漏行；本包 merge 时记入 KNOWN-DEBT。
+7. **`int` 函数末尾 try 正常完成 → 保持拒绝（round-5 裁定，取代 round-3 误判）**：`fn f() int { try { g() } catch e { return 42 } }` 的 try 体可正常完成、函数无返回，`int` 函数无隐式尾返回，故 `verify.no-return-path` 正确；round-3 将其列为"合法形态被拒"属误判，round-4 收据里对 `§10-8` 的悬空引用由本条取代。永久负控 `m2_negative_missing_return_after_try_is_rejected` 钉住该拒绝。对称代价：完全发散的 try/catch 之后的语句转为不可达死代码（不再 `verify.block-structure`），语言不为死代码另设诊断。
+8. **收据/证据口径（round-5 复核）**：(a) case driver 的 `discovery_complete:false` 是正常语义（仅 `--discover-only` 为 true），不构成失败；(b) **任何 ACE 组**的 ad-hoc 复验都须用**干净 target 目录**：共享 `experimental/ace/target` 会链接陈旧 rlib 给出"修复前语义"的假红（A2X：`left:0 right:553`；ace-av：`aggregates_m2_965` 12/15 且 round-4 诊断串命中 0，字节级取证见 §9 round-7 收据；干净 target 下 A2X 238/238、ace-av 15/15 PASS）；(c) `elf05` 的 wire 哈希探针已在提交前删除，其"逐字节相同"证明改为"源码形态无关（全 `let` 形式，不在 (a) 改写面）+ `Infra("wsl argv run: Deadline")` 分类 + 隔离重放复现"；(d) close 重放的 `if kind==4 { fail(err) }` 位于字段复位与 `__state=-1` 之前（先抛错后归一化）；当前语言错误即终止、close 不复发，故不可观测，若将来允许 close 出错后继续执行需重排。
 
 T-01负责未决实现策略/平台provider/真实入口和资源门，缺决定不得进入依赖实现；无需为等价内部实现重复审批。若领域现行Spec与原行为冲突，记录最小输入、双方结果与建议，不私改expected。
 本包涉及批量产品/目标时，T-01按独立可验证consumer拆执行批次；若需要多个中等Plan承载，必须在本Plan修订中逐AC迁移到正式后继，保持本包终验责任和分母，不能以一份盘点替全部交付。

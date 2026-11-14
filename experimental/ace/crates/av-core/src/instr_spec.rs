@@ -635,6 +635,20 @@ pub const SPECS: &[InstructionSpec] = &[
         profiles: &["core", "data", "owned", "collections", "dynamic", "host-console"],
         ownership: "Copy (value passes to caller frame)",
     },
+    InstructionSpec {
+        // PLAN-965: outside the instruction space (`0x01–0x3F`, with
+        // `m2-dynamic` 0x3D/0x3E/0x3F frozen) so it cannot collide with
+        // OBJECT_NEW/GET or TEXT_DISPLAY.
+        opcode: 0x40,
+        name: "LANG_FAIL",
+        family: "term",
+        operands: &[("message", "R")],
+        type_rule: "message holds text (Str/StrView) or scalar code",
+        traps: false,
+        fuel: 1,
+        profiles: &["aggregates"],
+        ownership: "Reads message slot then sweeps active frames",
+    },
 ];
 
 /// The V-11 coverage gate: every instruction/terminator variant carries
@@ -719,6 +733,7 @@ pub fn coverage_check() -> Result<(), String> {
         "JUMP",
         "BRANCH",
         "RETURN",
+        "LANG_FAIL",
     ];
     for e in expected {
         if !seen_names.contains(e) {
@@ -806,6 +821,7 @@ pub fn mnemonic_of_term(t: &Terminator) -> &'static str {
         Terminator::Jump { .. } => "JUMP",
         Terminator::Branch { .. } => "BRANCH",
         Terminator::Return { .. } => "RETURN",
+        Terminator::LangFail { .. } => "LANG_FAIL",
     }
 }
 

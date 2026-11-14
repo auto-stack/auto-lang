@@ -224,6 +224,7 @@ pub enum AutoTrap {
     VariantBranch,
     Budget,
     Cancelled,
+    LangError,
 }
 
 impl AutoTrap {
@@ -241,6 +242,7 @@ impl AutoTrap {
             AutoTrap::VariantBranch => "VariantBranch",
             AutoTrap::Budget => "Budget",
             AutoTrap::Cancelled => "Cancelled",
+            AutoTrap::LangError => "LangError",
         }
     }
 }
@@ -335,6 +337,12 @@ fn coll_charge(units: i64, why: &str) -> A2xResult<()> {
         }
         Ok(())
     })
+}
+
+/// Language-error exit (`fail` / uncaught `.?`): the generated target carries
+/// the error CLASS only — the message/span channel does not cross A2X.
+pub fn a2x_coll_fail<T>() -> A2xResult<T> {
+    Err(AutoTrap::LangError)
 }
 
 /// Cooperative cancellation point (loop back-edges; 1 WU each).

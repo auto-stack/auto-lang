@@ -287,6 +287,10 @@ impl SnapshotLane {
                     peak_slot_bytes: trace.peak_slot_bytes,
                 })
             }
+            ExecOutcome::Error { message, .. } => Err(CteAdmissionError::new(
+                CteCode::Trap("lang.error".to_string()),
+                format!("compiletime-executed snapshot failed: {message}"),
+            )),
             ExecOutcome::Trap { kind, .. } => Err(CteAdmissionError::new(
                 CteCode::Trap(kind.code().to_string()),
                 format!("compiletime-executed snapshot trapped: {}", kind.code()),

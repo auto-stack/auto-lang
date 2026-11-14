@@ -185,6 +185,8 @@ fn spell_ty(t: &TypeRef) -> String {
         }
         TypeRef::Generic { .. } => "Name<..>".into(),
         TypeRef::Function { .. } => "fn(..)".into(),
+        TypeRef::ResultBang(inner) => format!("!{}", spell_ty(&inner.kind)),
+        TypeRef::Stream(inner) => format!("~Iter<{}>", spell_ty(&inner.kind)),
     }
 }
 

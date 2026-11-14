@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-14
 plan_revision: 12
-current_step: 15
+current_step: 16
 total_steps: 19
 depends_on: [PLAN-960, PLAN-962, PLAN-963, PLAN-938, PLAN-939, PLAN-1042, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-bindgen/project.md, docs/specs/auto-abi/project.md]
@@ -482,6 +482,53 @@ T-03/T-12扩947既有装配：同一AV的native/C/Rust来源绑定与资源原pr
 |---|---|---|
 | V-LOAD / AC-LOAD | 本包普通公共库源/所选provider与#in平台模块；错误后缀/缺或重复实现、错target/namespace、未选SDK缺失、错误producer/旧配方冒新、修改选中与未选输入后恢复 | 本包真实消费者及独立expected/依赖/源身份；负控在调用前拒、失败保旧，未选库不绑定链接。948验去向不代运行，978验候选闭包，985核正式A分母；能力包验证真实执行而非仅文件选择。复用1043身份适用证据，不重复跑其整档代本包；原最终work汇总，独立review核AC-LOAD。 |
 
+### T-04 全量验证台账（2026-11-14，冻结提交 c79e072f8）
+
+**职责组并集**（`cargo t ace-host ace-abi ace-foreign-contract ace-av ace-native ace-a2x ace-a2c-abi auto-bindgen ace-source ace-semantics ace-artifacts ffi`，单实例，worktree lang-967；完整日志 `plan-artifacts/plan-967/t04-duty-groups-run.log`）：
+
+| 组 | 结果 | 备注 |
+|---|---|---|
+| ace-abi | PASS | 967主触面；cross修复后全量173案（含f0_t15 3案）功能全绿，P90计时门并行敏感→串行重放绿（环境归因，沿round-1已记flake模式） |
+| ace-foreign-contract / ace-av / ace-a2x / ace-a2c-abi / auto-bindgen / ace-source / ace-semantics / ace-artifacts / ffi | PASS | 各组原条件/ignore保持 |
+| ace-host | 164案：157绿/7红/16skip | 7红**全部**在pre-T-15 master `cc0ff965e` 同样复现=既有红，非967回归（967本轮diff仅ace-abi crate） |
+| ace-native | 279案：278绿/1红 | 唯一红=`linux_elf_1040::elf05`（WSL argv deadline infra）——按**2026-11-14用户裁定**排除：Windows环境不再跑Linux/WSL用例（AGENTS.md已沉淀），Linux腿归专用Linux环境/PLAN-1040 owner |
+
+ace-host既有红名单（cc0ff965e同红，分流batch-regression/对应owner，967不改）：`ace_m1_closures_source_suite_green`、`ace_m1_tr_native_suite_green`、`mir_native_rounds_failure_liveness_and_caps`、`abi_recipe_binding_exclusivity`、`a2r_hir_first_case_green`、`av_source_inventory_denominators_replayable`（examples/ui/015-notes scan-error）、`a2r_hir_worker_credential_pin`。
+
+**V行逐行台账**（owner测试=真实执行证据；状态非NA即具名）：
+
+| V行 | 证据 | 状态 |
+|---|---|---|
+| V-PHASE | 本台账+并集运行+§5阶段映射 | ✓ |
+| V-01/02/06 | `f0_session_lifecycle_success_teardown_unauthorized_rebind`（stale双拒/合法成功/unauthorized callee=0+重绑定恢复） | ✓ |
+| V-03/04/05 | 939 callback/callback-reentrant/handle-lifecycle/handle-stale/txn decks（native+c腿，生产组PASS）+foreign_exec重入单测 | ✓（沿T-08/T-13映射） |
+| V-08 | `f0_async` 2案（真线程回调/迟到丢×2）+939 C侧行 | ✓ |
+| V-09 | `f0_project_import_runs_rejects_and_recovers` | ✓ |
+| V-10 | `c_import` 4案（真cl /EP/聚合/inline/常量/opaque/callback） | ✓ |
+| V-11 | `f0_rich` 3案+T-11形状审计（具名拒绝逐行） | ✓ |
+| V-12 | `f0_axr`/`f0_a2py`/`f0_av_c`+V-COVERAGE六路径 | ✓ |
+| V-13 | `f0_t13` 3案（映射）+939 decks | ✓ |
+| V-14 | `f0_t14` 2案（精确失效/双身份/BuildRecord） | ✓ |
+| V-15 | `f0_t15` 3案（真实库双腿+负控矩阵+取消+资源退出+ctypes） | ✓ |
+| V-F0-SOURCE/REJECT/LIFE/IDENTITY | `rust_f0` E2E全套 | ✓ |
+| V-AXR0-RUST | `f0_axr` 2案 | ✓ |
+| V-INT-1026 | T-09字段冻结已交；**kwargs/receiver tag帧实现与专属V腿未落** | **未闭（具名）**→AC-INT-1026未闭，交T-05裁定 |
+| V-ABI-BUILD | f0_rich/T-11真crate+shim同闭包、staticlib产物 | ✓ |
+| V-ABI-CROSS | `v_abi_cross_two_real_rustc_toolchains_one_c_contract`（T-04修复发现：rustup toolchains目录真发现第二工具链，nightly真构建`nightly/`产物+双身份断言） | ✓（本机stable+nightly双真工具链） |
+| V-ABI-CACHE | `t14_precise_invalidation_and_reuse`+`t14_two_rustc`（cross腿同上真跑，`second/`+store双记录） | ✓ |
+| V-ABI-TARGET | importer target轴冻结校验（`c-import.target`负控）已交；**OS/ISA/runtime版本运行准入矩阵未系统化** | **部分（具名）**→按T-01冻结归978运行轴 |
+| V-ABI-IFACE | manifest身份/ghost/签名负控（各f0案callee=0）已交；**逐轴IFACE变化矩阵未系统化** | **部分（具名）**→同上 |
+| V-ABI-LIFE | generation/teardown杀in-flight/迟到丢弃/destroy一次已实证；**v1/v2双provider并存卸载leg未单列** | **部分（具名）** |
+| V-ABI-PACK | T-14 BuildRecord JSON+T-15 dist隔离消费（删建树装载调用） | ✓ |
+| V-NATIVE | 五字节行（rust_f0 len 9/0）+内嵌NUL具名（T-15 `nul-path`真库边界）+有界回读（too-long）+卸载恰一次 | ✓ |
+| V-DETAIL-01..04 | 01=strlen 5旧线（legacy vm/ffi组保留）+9/0新线✓；02=错签名callee=0✓；03=复制/销毁✓；04=本台账+分母对账✓ | ✓ |
+| V-COVERAGE | 六路径全实跑（T-01/T-12收据，同一binding/shim/provider） | ✓ |
+| V-LOAD | **1043来源后缀/#in装配的FFI provider消费未落**（T-03/T-12腿按冻结映射未含此腿） | **未闭（具名）**→AC-LOAD未闭，交T-05裁定 |
+
+**环境身份**：rustc 1.98.0 stable（ambient）+ rustup nightly（`locate_second_toolchain`真发现）；cl 19.44（MSVC 14.44.35207，BuildTools 2022）；Python 3.14.2；SQLite 3.46.0（libsqlite3-sys-0.30.1，内容钉版）；serde_json `=1.0.151`（离线lock实证）；Windows 10.0.26200。
+
+**环境归因/排除**：P90计时门×3（binding turnaround/source_foreign warm/resource939）并行负载红→串行重放绿；Linux/WSL用例按2026-11-14裁定排除不判红不充PASS；ace-host 7既有红按上表分流非967。
+
 ## 7. 验收标准
 
 | ID | owner_stage | 标准 | 核验 |
@@ -560,7 +607,7 @@ T-03/T-12扩947既有装配：同一AV的native/C/Rust来源绑定与资源原pr
 
 - [x] **T-15｜M2-A｜owner_stage: work｜AC-13/AC-NATIVE**：用钉版本真实SQLite和serde_json原工程及完整特征fixture做用户体验与资源/失败回归；汇总四端、独立oracle、缺环境和交978/985材料。 验证V-15，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。 ABI-COMPAT：汇总七个V-ABI-*真实结果及隔离消费夹具，原真实库/四端/资源义务不减，交978/985/986按既有owner接续。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 [✅ 2026-11-14：真实库双腿交付——Rust腿=serde_json钉`=1.0.151`真cargo单元（`dep`注解为唯一依赖配置，cargo --release --offline，cdylib+staticlib同闭包产物，Cargo.lock实证钉版）；C腿=SQLite 3.46.0内容钉版amalgamation（`SQLITE_VERSION`真读定位/校验，本地cargo registry来源）；干净工程（注解头/源+暂存依赖+公共use导入，无手写manifest/签名）→自动importer/shim→真机码→AV道真调；独立oracle=进程内serde_json（Rust腿）与独立cl编译oracle exe（C腿，SUM=9对账）；负控矩阵逐项独立断言=错版本（cargo resolution失败具名`f0.cargo-build`带cargo自身诊断/pin内容不符具名`f0.sqlite-pin`）、缺库（未暂存amalgamation→cl C1083具名`c-import.compile`）、非法参数（坏SQL/未开连接/双重close各自具名Trap ForeignStatus）、取消（预置flag→ExecOutcome::Cancelled+事后正常恢复）、资源退出（RawLibrary Drop恰卸载一次+重载重跑可用）；V-15"去掉生成缓存重建仍成功"=删target/同入口重建同值✓；V-NATIVE=内嵌NUL路径具名`nul-path`拒绝（真库边界）+超长路径具名too-long有界回读✓；V-ABI-PACK=dist隔离消费（cdylib+staticlib+BuildRecord JSON入独立根，删整个建树后装载调用成功）✓；A2PY ctypes腿同cdylib真跑✓；文件持久化读写（.db落盘重开同值）✓；978交接材料=两份t15-*buildrecord.json（identity轴+runtime note）落plan-artifacts] [✅ 2026-11-14]
 
-- [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
+- [x] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 [✅ 2026-11-14：§6新增"T-04 全量验证台账"（冻结提交c79e072f8）——职责组并集12组单实例运行（10组PASS；ace-host 7红全为pre-T-15 master cc0ff965e同红=既有红分流非967；ace-native唯一红=linux_elf_1040 WSL infra按2026-11-14用户裁定排除，Windows环境不再跑Linux/WSL用例、裁定已沉淀AGENTS.md）；V行逐行台账：✓行22+未闭具名2行（V-INT-1026 kwargs/receiver tag帧、V-LOAD 1043装配消费→交T-05裁定）+部分具名3行（V-ABI-TARGET/IFACE运行轴归978、V-ABI-LIFE v1/v2并存leg）；T-04修复=locate_second_toolchain真发现rustup第二工具链（cargo-bin proxy随默认工具链的发现bug），V-ABI-CROSS/CACHE双腿nightly真构建真跑（second/nightly产物+store双身份收据）；P90计时门×3并行红串行绿=环境归因] [✅ 2026-11-14]
 
 - [ ] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
@@ -581,6 +628,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 19 | from: work | to: work | status: executing | outcome: T-04完成（职责组并集+V行台账+裁定沉淀；勾选；M2-A全部work任务完成） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: review（T-05 独立复审）
+
+2026-11-14 stage: work / T-04（AC-01..03+COVERAGE/LOAD汇总）| 交付: §6 T-04全量验证台账（冻结提交c79e072f8）、locate_second_toolchain真发现修复（rustup toolchains目录；修复前cross腿误报pending——cargo-bin proxy随默认工具链）、2026-11-14 Linux/WSL裁定沉淀AGENTS.md | 运行: 职责组并集12组（10 PASS；ace-host 157/164+7既有红[cc0ff965e同红分流]；ace-native 278/279+1 WSL裁定排除）；ace-abi cross修复后全量173案功能绿+P90×3串行重放绿 | 未闭具名: V-INT-1026（kwargs/receiver tag帧）、V-LOAD（1043装配消费）→T-05裁定；V-ABI-TARGET/IFACE运行轴→978；V-ABI-LIFE v1/v2并存leg | 事故记录: 职责组triage期间worktree一度处于detached cc0ff965e，cross修复首提交e5611276c落错基——已cherry-pick回plan-967-dev（c79e072f8，冲突手工解，全量重跑验证） | next: T-05。
 
 2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 18 | from: work | to: work | status: executing | outcome: T-15完成（真实库双腿+全部负控/取消/资源退出；勾选） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-04 全量验证汇总）
 

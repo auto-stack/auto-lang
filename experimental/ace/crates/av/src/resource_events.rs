@@ -187,6 +187,7 @@ pub fn execute_loaded_observed(
             None,
         ),
         ExecOutcome::Cancelled => ("cancelled", None, None, None, None, 0, None),
+        ExecOutcome::Error { .. } => ("error", None, None, None, None, 0, None),
         ExecOutcome::Infra(m) => ("infra", None, None, None, Some(m), 0, None),
     };
     // Drop the result value LAST: its buffer frees (if any) append to the

@@ -29,6 +29,41 @@ pub(crate) struct CollectionInterface {
     imports: Vec<(String, layout::Descriptor)>,
     entry_eligible: bool,
 }
+pub(crate) fn module_has_collections_instructions(module: &MirModule) -> bool {
+    use ace_av_core::mir::{MirInstr, Terminator};
+    module.types.iter().any(|t| {
+        matches!(
+            t,
+            MirType::List(_) | MirType::Variant(_) | MirType::Place(_)
+        )
+    }) || module.funcs.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            matches!(b.term, Terminator::LangFail { .. })
+                || b.instrs.iter().any(|i| {
+                    matches!(
+                        i,
+                        MirInstr::FieldSet { .. }
+                            | MirInstr::ListNew { .. }
+                            | MirInstr::ListLen { .. }
+                            | MirInstr::ListPush { .. }
+                            | MirInstr::ListInsert { .. }
+                            | MirInstr::ListGet { .. }
+                            | MirInstr::ListSet { .. }
+                            | MirInstr::ListRemove { .. }
+                            | MirInstr::ListFieldGet { .. }
+                            | MirInstr::ListPlace { .. }
+                            | MirInstr::PlaceGet { .. }
+                            | MirInstr::PlaceSet { .. }
+                            | MirInstr::VariantPack { .. }
+                            | MirInstr::VariantSwitch { .. }
+                            | MirInstr::VariantGuard { .. }
+                            | MirInstr::VariantProject { .. }
+                    )
+                })
+        })
+    })
+}
+
 pub(crate) fn collection_interface(unit: &MirModule) -> Result<CollectionInterface, MnError> {
     let shapes = lower::admit_layouts(unit)?;
     collection_interface_parts(unit, &shapes)
@@ -511,7 +546,7 @@ impl MnDriver {
             .map(|r| r.0)
     }
 
-    fn collections_units_inner(
+    pub(crate) fn collections_units_inner(
         &mut self,
         units: &[MirModule],
         source: &str,

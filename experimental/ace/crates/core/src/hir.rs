@@ -1014,6 +1014,12 @@ pub enum Stmt {
     Eval {
         value: ExprId,
     },
+    /// PLAN-965: language-level error unwind (`fail(msg)` / uncaught `.?`),
+    /// halting active frame(s) and surfacing `ExecOutcome::Error` without
+    /// leaving uncollected buffers.
+    Fail {
+        value: ExprId,
+    },
 }
 
 #[derive(Clone, Debug)]

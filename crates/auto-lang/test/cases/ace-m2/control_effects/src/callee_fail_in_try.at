@@ -1,0 +1,14 @@
+// PLAN-965 F-965-R1-01: a non-tail call statement runs for effect, and a
+// callee's language error raised inside a `try` body terminates the program
+// instead of being swallowed (the call used to be dropped entirely).
+fn boom() int {
+    fail("z965")
+}
+fn main() int {
+    try {
+        boom()
+    } catch e {
+        return 42
+    }
+    return 1
+}

@@ -813,7 +813,7 @@ impl<'a> SemanticView<'a> {
         matches!(
             self.domain,
             hir::HirDomain::Record | hir::HirDomain::TextRecord
-        )
+        ) || self.profile == "auto.source.aggregates.draft"
     }
 
     fn admit_expr(&self, f: &FnFacts<'_>, e: &hir::Expr) -> Result<(), A2xReject> {
@@ -921,7 +921,12 @@ impl<'a> SemanticView<'a> {
             | hir::Stmt::Continue { .. } => Ok(()),
             // PLAN-904: the collections unit-effect statement (`xs.push(v)`
             // and friends); its value is verified Unit/copy-discard only.
-            hir::Stmt::Eval { .. } if self.domain == hir::HirDomain::Collections => Ok(()),
+            hir::Stmt::Eval { .. } | hir::Stmt::Fail { .. }
+                if self.domain == hir::HirDomain::Collections
+                    || self.profile == "auto.source.aggregates.draft" =>
+            {
+                Ok(())
+            }
             other => Err(A2xReject::unsupported_stmt(format!(
                 "in `{}`: statement kind `{}` is outside the compute surface",
                 f.name,
@@ -1477,6 +1482,7 @@ fn stmt_name(s: &hir::Stmt) -> &'static str {
     match s {
         hir::Stmt::Drop { .. } => "Drop",
         hir::Stmt::Eval { .. } => "Eval",
+        hir::Stmt::Fail { .. } => "Fail",
         _ => "non-core-scalar",
     }
 }
@@ -1503,4 +1509,25 @@ fn type_kind_name(k: &hir::TypeKind) -> &'static str {
         hir::TypeKind::Nil => "nil",
         hir::TypeKind::Object { .. } => "object",
     }
+}
+
+/// Returns true when every fall-through path out of `id` ends in a control
+/// terminator (`return`, `fail`, `break`, `continue`), so any code appended
+/// after a loop body built from `id` would be unreachable.
+pub fn block_always_terminates(body: &hir::Body, id: hir::BlockId) -> bool {
+    body.blocks[id.0 as usize]
+        .stmts
+        .last()
+        .is_some_and(|s| match s {
+            hir::Stmt::Return { .. }
+            | hir::Stmt::Fail { .. }
+            | hir::Stmt::Break { .. }
+            | hir::Stmt::Continue { .. } => true,
+            hir::Stmt::If {
+                then,
+                els: Some(eb),
+                ..
+            } => block_always_terminates(body, *then) && block_always_terminates(body, *eb),
+            _ => false,
+        })
 }

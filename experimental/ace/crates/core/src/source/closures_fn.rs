@@ -946,7 +946,8 @@ fn count_resolved_nodes(f: &super::resolve::ResolvedFn) -> usize {
         1 + match s {
             super::resolve::RStmt::Let { value, .. }
             | super::resolve::RStmt::Assign { value, .. }
-            | super::resolve::RStmt::Return { value, .. } => expr(value),
+            | super::resolve::RStmt::Return { value, .. }
+            | super::resolve::RStmt::Fail { value, .. } => expr(value),
             super::resolve::RStmt::If {
                 cond, then, els, ..
             } => expr(cond) + block(then) + els.as_ref().map(block).unwrap_or(0),

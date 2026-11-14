@@ -1,0 +1,59 @@
+// PLAN-965 T-08 (V-01): try/catch/finally with rethrow and nested break/continue/return.
+type Trace { sum int; log List<int> }
+fn inner_loop(mut tr Trace) int {
+    var i = 0
+    for i < 5 {
+        i = i + 1
+        try {
+            if i == 2 { continue }
+            if i == 4 { break }
+            tr.sum = tr.sum + i
+        } finally {
+            tr.log.push(i)
+        }
+    }
+    tr.sum
+}
+fn rethrow_through(mut tr Trace) int {
+    try {
+        try {
+            fail("boom")
+        } catch e {
+            tr.log.push(90)
+            rethrow(e)
+        }
+    } catch e {
+        if e == "boom" {
+            tr.log.push(91)
+        }
+        return 7
+    } finally {
+        tr.log.push(92)
+    }
+    return 0
+}
+fn early_ret(mut tr Trace) int {
+    try {
+        try {
+            return 10
+        } finally {
+            tr.log.push(1)
+        }
+    } finally {
+        tr.log.push(2)
+    }
+    return 0
+}
+fn main() int {
+    var tr = Trace(0, List<int>.new())
+    let s = inner_loop(tr.mut)
+    let r = early_ret(tr.mut)
+    let k = rethrow_through(tr.mut)
+    // inner_loop: [1,2,3,4], early_ret: [1,2], rethrow_through: [90,91,92]
+    if s != 4 || r != 10 || k != 7 { return 0 }
+    if tr.log.len() != 9 { return 0 }
+    if tr.log.get(0) != 1 || tr.log.get(3) != 4 { return 0 }
+    if tr.log.get(4) != 1 || tr.log.get(5) != 2 { return 0 }
+    if tr.log.get(6) != 90 || tr.log.get(7) != 91 || tr.log.get(8) != 92 { return 0 }
+    return 42
+}

@@ -491,6 +491,11 @@ pub fn semantic_fingerprint(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<
                     ser_expr(view, f, *value, &mut canon, &mut next, &mut ser, 0)?;
                     ser.push(';');
                 }
+                hir::Stmt::Fail { value } => {
+                    ser.push_str("fail:");
+                    ser_expr(view, f, *value, &mut canon, &mut next, &mut ser, 0)?;
+                    ser.push(';');
+                }
                 _ => return Err(A2xReject::unsupported_stmt("outside the compute surface")),
             }
         }

@@ -235,7 +235,7 @@ pub fn apply_body_facts(
             RStmt::Assign { value, .. } | RStmt::Return { value, .. } => {
                 report.exprs += visit_expr(value, &map, facts, &mut consumed)?;
             }
-            RStmt::ExprStmt { value, .. } => {
+            RStmt::ExprStmt { value, .. } | RStmt::Fail { value, .. } => {
                 report.exprs += visit_expr(value, &map, facts, &mut consumed)?;
             }
             RStmt::If {
