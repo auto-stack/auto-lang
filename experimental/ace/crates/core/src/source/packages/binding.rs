@@ -1556,6 +1556,60 @@ fn shift_stmt(s: &mut Stmt, offset: usize) {
             }
             sh(span, offset);
         }
+        // PLAN-966（T-02）：语句级 CT 平移（谓词表达式 span + 体内语句）。
+        Stmt::HashIf {
+            cond,
+            then,
+            els,
+            span,
+        } => {
+            shift_ct_expr(cond, offset);
+            shift_block(then, offset);
+            if let Some(e) = els {
+                shift_block(e, offset);
+            }
+            sh(span, offset);
+        }
+        Stmt::HashFor {
+            var,
+            start,
+            end,
+            body,
+            span,
+        } => {
+            sh(&mut var.span, offset);
+            shift_ct_expr(start, offset);
+            shift_ct_expr(end, offset);
+            shift_block(body, offset);
+            sh(span, offset);
+        }
+        Stmt::HashIs {
+            scrutinee,
+            arms,
+            span,
+        } => {
+            shift_ct_expr(scrutinee, offset);
+            for a in arms.iter_mut() {
+                if let Some(p) = &mut a.pattern {
+                    shift_ct_expr(p, offset);
+                }
+                shift_block(&mut a.body, offset);
+                sh(&mut a.span, offset);
+            }
+            sh(span, offset);
+        }
+    }
+}
+/// PLAN-966（T-02）：CT 标量表达式的 span 平移。
+fn shift_ct_expr(e: &mut CtExpr, offset: usize) {
+    match e {
+        CtExpr::Int(_) | CtExpr::Bool(_) => {}
+        CtExpr::Ref { span, .. } => sh(span, offset),
+        CtExpr::Bin { lhs, rhs, span, .. } => {
+            shift_ct_expr(lhs, offset);
+            shift_ct_expr(rhs, offset);
+            sh(span, offset);
+        }
     }
 }
 fn shift_arg(a: &mut Arg, offset: usize) {
@@ -1949,6 +2003,18 @@ impl<'a> Walker<'a> {
                 }
                 // PLAN-962 (T-08)：hold——体内走读（绑定名块内可见；体由
                 // 外层帧栈继续走读，别名在此仅记账）。
+                // PLAN-966（T-02）：语句级 CT 必须在装配期折叠（本走读之前）；
+                // 残留在绑定阶段即实现错误——具名拒，不静默忽略。
+                Stmt::HashIf { span, .. }
+                | Stmt::HashFor { span, .. }
+                | Stmt::HashIs { span, .. } => {
+                    return Err(fail(
+                        self.key,
+                        "source.cte.unfolded",
+                        "a compile-time statement reached module binding without being folded",
+                        *span,
+                    ));
+                }
                 Stmt::Hold { bind, .. } => {
                     next_locals.insert(bind.name.clone());
                 }
@@ -2622,6 +2688,8 @@ fn stmt_span(s: &Stmt) -> Span {
         | Stmt::AggIsMatch { span, .. }
         | Stmt::Try { span, .. }
         | Stmt::Yield { span, .. } => *span,
+        // PLAN-966（T-02）：语句级 CT 的语句 span。
+        Stmt::HashIf { span, .. } | Stmt::HashFor { span, .. } | Stmt::HashIs { span, .. } => *span,
         // PLAN-962：索引赋值。
         Stmt::IndexAssign(ia) => ia.span,
         // PLAN-962：tuple 解构。
@@ -3530,8 +3598,12 @@ fn assemble_unit(
             .as_bytes(),
         );
     }
+    // PLAN-966（T-02）：语句级 CT 折叠——显式目标事实在装配上下文可得，
+    // 未选分支不落任何语句；折叠后 resolve/HIR 只见普通语句。
+    let mut program = Program { items };
+    expand_ct_statements(key, &mut program, &facts)?;
     Ok(PackageSyntax {
-        program: Program { items },
+        program,
         exports,
         type_exports,
         const_exports,
@@ -3780,6 +3852,265 @@ fn eval_for(
         eval_stmts(key, body, namespace, facts, &inner, landed)?;
     }
     Ok(())
+}
+
+/// PLAN-966（T-02）：语句级 CT 的装配期折叠。`#if/#for/#is` 按显式目标事实
+/// 展开为普通语句：未选分支不落语句、`#for` 按 i32 计数重复（预算 1024）、
+/// `#is` 按值相等选臂（`else` 为兜底）。循环变量只进入 CT 谓词域（运行时
+/// 引用仍是普通未定义名，同旧实现）。折叠后的 AST 不再含 CT 语句变体。
+fn expand_ct_statements(
+    key: &str,
+    program: &mut Program,
+    facts: &BTreeMap<String, i32>,
+) -> Result<(), PackageDiagnostic> {
+    let env = BTreeMap::new();
+    for item in &mut program.items {
+        match item {
+            Item::Fn(f) => expand_ct_block(key, &mut f.body, facts, &env)?,
+            Item::Type(t) => {
+                for m in &mut t.methods {
+                    expand_ct_block(key, &mut m.body, facts, &env)?;
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn expand_ct_block(
+    key: &str,
+    block: &mut Block,
+    facts: &BTreeMap<String, i32>,
+    env: &BTreeMap<String, i32>,
+) -> Result<(), PackageDiagnostic> {
+    let stmts = std::mem::take(&mut block.stmts);
+    block.stmts = expand_ct_stmts(key, stmts, facts, env)?;
+    Ok(())
+}
+
+fn expand_ct_stmts(
+    key: &str,
+    stmts: Vec<Stmt>,
+    facts: &BTreeMap<String, i32>,
+    env: &BTreeMap<String, i32>,
+) -> Result<Vec<Stmt>, PackageDiagnostic> {
+    let mut out: Vec<Stmt> = Vec::with_capacity(stmts.len());
+    for s in stmts {
+        match s {
+            Stmt::HashIf {
+                cond,
+                mut then,
+                els,
+                span,
+            } => {
+                let v = eval_ct_expr(key, &cond, super::SYS_NAMESPACE, facts, env)?;
+                match v {
+                    CtVal::Bool(true) => {
+                        expand_ct_block(key, &mut then, facts, env)?;
+                        out.extend(std::mem::take(&mut then.stmts));
+                    }
+                    CtVal::Bool(false) => {
+                        if let Some(mut e) = els {
+                            expand_ct_block(key, &mut e, facts, env)?;
+                            out.extend(std::mem::take(&mut e.stmts));
+                        }
+                    }
+                    CtVal::I32(_) => {
+                        return Err(fail(
+                            key,
+                            "source.cte.in-type",
+                            "a compile-time `#if` condition must be a bool",
+                            span,
+                        ))
+                    }
+                }
+            }
+            Stmt::HashFor {
+                var,
+                start,
+                end,
+                body,
+                span,
+            } => {
+                let s0 = expect_i32(
+                    key,
+                    &eval_ct_expr(key, &start, super::SYS_NAMESPACE, facts, env)?,
+                    &start,
+                )?;
+                let e0 = expect_i32(
+                    key,
+                    &eval_ct_expr(key, &end, super::SYS_NAMESPACE, facts, env)?,
+                    &end,
+                )?;
+                let count = e0.saturating_sub(s0).max(0);
+                const MAX_ITER: i64 = 1024;
+                if i64::from(count) > MAX_ITER {
+                    return Err(fail(
+                        key,
+                        "source.cte.in-budget",
+                        format!("a compile-time `for` is bounded to {MAX_ITER} iterations here"),
+                        span,
+                    ));
+                }
+                for i in s0..e0 {
+                    let mut inner = env.clone();
+                    inner.insert(var.name.clone(), i);
+                    let expanded = expand_ct_stmts(key, body.stmts.clone(), facts, &inner)?;
+                    out.extend(expanded);
+                }
+            }
+            Stmt::HashIs {
+                scrutinee, arms, ..
+            } => {
+                let target = eval_ct_expr(key, &scrutinee, super::SYS_NAMESPACE, facts, env)?;
+                let mut chosen: Option<Block> = None;
+                for arm in arms {
+                    match &arm.pattern {
+                        Some(p) => {
+                            let pv = eval_ct_expr(key, p, super::SYS_NAMESPACE, facts, env)?;
+                            if pv == target {
+                                chosen = Some(arm.body);
+                                break;
+                            }
+                        }
+                        None => {
+                            chosen = Some(arm.body);
+                            break;
+                        }
+                    }
+                }
+                if let Some(mut b) = chosen {
+                    expand_ct_block(key, &mut b, facts, env)?;
+                    out.extend(std::mem::take(&mut b.stmts));
+                }
+            }
+            other => out.push(expand_ct_nested(key, other, facts, env)?),
+        }
+    }
+    Ok(out)
+}
+
+/// 普通语句的体内折叠（块内可嵌套 CT 语句）。
+fn expand_ct_nested(
+    key: &str,
+    s: Stmt,
+    facts: &BTreeMap<String, i32>,
+    env: &BTreeMap<String, i32>,
+) -> Result<Stmt, PackageDiagnostic> {
+    Ok(match s {
+        Stmt::If {
+            cond,
+            mut then,
+            els,
+            span,
+        } => {
+            expand_ct_block(key, &mut then, facts, env)?;
+            let mut els = els;
+            if let Some(b) = els.as_mut() {
+                expand_ct_block(key, b, facts, env)?;
+            }
+            Stmt::If {
+                cond,
+                then,
+                els,
+                span,
+            }
+        }
+        Stmt::While {
+            cond,
+            mut body,
+            span,
+        } => {
+            expand_ct_block(key, &mut body, facts, env)?;
+            Stmt::While { cond, body, span }
+        }
+        Stmt::Loop { mut body, span } => {
+            expand_ct_block(key, &mut body, facts, env)?;
+            Stmt::Loop { body, span }
+        }
+        Stmt::ForIn {
+            var,
+            iter,
+            mut body,
+            span,
+        } => {
+            expand_ct_block(key, &mut body, facts, env)?;
+            Stmt::ForIn {
+                var,
+                iter,
+                body,
+                span,
+            }
+        }
+        Stmt::Hold {
+            name,
+            bind,
+            mut body,
+            span,
+        } => {
+            expand_ct_block(key, &mut body, facts, env)?;
+            Stmt::Hold {
+                name,
+                bind,
+                body,
+                span,
+            }
+        }
+        Stmt::IsMatch {
+            scrutinee,
+            mut arms,
+            span,
+        } => {
+            for a in &mut arms {
+                expand_ct_block(key, &mut a.body, facts, env)?;
+            }
+            Stmt::IsMatch {
+                scrutinee,
+                arms,
+                span,
+            }
+        }
+        Stmt::AggIsMatch {
+            scrutinee,
+            mut arms,
+            span,
+        } => {
+            for a in &mut arms {
+                if let AggArmBody::Block(b) = &mut a.body {
+                    expand_ct_block(key, b, facts, env)?;
+                }
+            }
+            Stmt::AggIsMatch {
+                scrutinee,
+                arms,
+                span,
+            }
+        }
+        Stmt::Try {
+            mut body,
+            catch,
+            finally,
+            span,
+        } => {
+            expand_ct_block(key, &mut body, facts, env)?;
+            let mut catch = catch;
+            if let Some(c) = catch.as_mut() {
+                expand_ct_block(key, &mut c.body, facts, env)?;
+            }
+            let mut finally = finally;
+            if let Some(f) = finally.as_mut() {
+                expand_ct_block(key, f, facts, env)?;
+            }
+            Stmt::Try {
+                body,
+                catch,
+                finally,
+                span,
+            }
+        }
+        other => other,
+    })
 }
 
 /// 符号表形 use 展开为逐符号导入（`use m: a, b` ≡ `use m.a` + `use m.b`）。
@@ -4884,5 +5215,94 @@ mod plan966_tests {
             TargetOs::Windows,
         );
         assert_eq!(e.diagnostic.code, "source.cte.in-namespace", "{e:?}");
+    }
+
+    fn main_assign_ints(bound: &BoundPackages) -> Vec<i32> {
+        let main = bound
+            .program
+            .items
+            .iter()
+            .find_map(|i| match i {
+                Item::Fn(f) if f.name.name == "main" => Some(f),
+                _ => None,
+            })
+            .expect("entry fn main");
+        main.body
+            .stmts
+            .iter()
+            .filter_map(|s| match s {
+                Stmt::Assign { value, .. } => match &value.kind {
+                    ExprKind::IntLit(v) => Some(*v),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect()
+    }
+
+    // PLAN-966 T-02/V-05：语句级 `#if` 按显式目标事实折叠——未选分支不落
+    // 任何语句（不是运行期 if），选中分支语句进入普通 AST。
+    #[test]
+    fn p966_statement_ct_if_folds_by_target() {
+        let src = "fn main() int { var x int = 0\n#if sys.current == sys.Windows { x = 10 } else { x = 20 }\nreturn x }";
+        assert_eq!(main_assign_ints(&bind_ok(src, TargetOs::Windows)), vec![10]);
+        assert_eq!(main_assign_ints(&bind_ok(src, TargetOs::Linux)), vec![20]);
+        // 非 bool 条件具名拒（不被静默当运行期条件）。
+        let e = bind_err(
+            "fn main() int { var x int = 0\n#if sys.current { x = 1 }\nreturn x }",
+            TargetOs::Windows,
+        );
+        assert_eq!(e.diagnostic.code, "source.cte.in-type", "{e:?}");
+    }
+
+    // PLAN-966 T-02/V-04：语句级 `#for` 展开为重复语句；越预算具名拒且
+    // 修正后同源可恢复（无半展开残留）。
+    #[test]
+    fn p966_statement_ct_for_unrolls_and_budget_rejects() {
+        let src = "fn main() int { var x int = 0\n#for i in 0..3 { x = x + 1 }\nreturn x }";
+        let bound = bind_ok(src, TargetOs::Windows);
+        let main = bound
+            .program
+            .items
+            .iter()
+            .find_map(|i| match i {
+                Item::Fn(f) if f.name.name == "main" => Some(f),
+                _ => None,
+            })
+            .expect("main");
+        let assigns = main
+            .body
+            .stmts
+            .iter()
+            .filter(|s| matches!(s, Stmt::Assign { .. }))
+            .count();
+        assert_eq!(assigns, 3, "unrolled to three statements");
+        let over = "fn main() int { var x int = 0\n#for i in 0..2000 { x = x + 1 }\nreturn x }";
+        let e = bind_err(over, TargetOs::Windows);
+        assert_eq!(e.diagnostic.code, "source.cte.in-budget", "{e:?}");
+        let fixed = "fn main() int { var x int = 0\n#for i in 0..1 { x = x + 1 }\nreturn x }";
+        assert!(bind_with(fixed, TargetOs::Windows).is_ok());
+    }
+
+    // PLAN-966 T-02：语句级 `#is` 按值相等选臂（`->`/`=>` 都接受、else 兜底、
+    // 整型模式与事实模式同域）。
+    #[test]
+    fn p966_statement_ct_is_selects_arm() {
+        let src = "fn main() int { var x int = 0\n#is sys.current { Windows -> { x = 1 } Linux => { x = 2 } else -> { x = 3 } }\nreturn x }";
+        assert_eq!(main_assign_ints(&bind_ok(src, TargetOs::Windows)), vec![1]);
+        assert_eq!(main_assign_ints(&bind_ok(src, TargetOs::Linux)), vec![2]);
+        let ints =
+            "fn main() int { var x int = 0\n#is 7 { 7 -> { x = 4 } else -> { x = 5 } }\nreturn x }";
+        assert_eq!(main_assign_ints(&bind_ok(ints, TargetOs::Windows)), vec![4]);
+    }
+
+    // PLAN-966 T-02/V-04：嵌套 CT（#for 体内 #if 用循环变量）按环境逐轮折叠。
+    #[test]
+    fn p966_statement_ct_nested_env_threads_loop_var() {
+        let src = "fn main() int { var x int = 0\n#for i in 0..2 { #if i == 0 { x = 1 } else { x = 2 } }\nreturn x }";
+        assert_eq!(
+            main_assign_ints(&bind_ok(src, TargetOs::Windows)),
+            vec![1, 2]
+        );
     }
 }

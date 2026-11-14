@@ -732,6 +732,79 @@ pub enum Stmt {
         value: Expr,
         span: Span,
     },
+    /// PLAN-966（T-02）：语句级编译期条件 `#if <ct> { .. } [else { .. }]`。
+    /// 绑定期按显式目标事实折叠为选中分支语句；未选分支不绑定/不发射。
+    HashIf {
+        cond: CtExpr,
+        then: Block,
+        els: Option<Block>,
+        span: Span,
+    },
+    /// PLAN-966（T-02）：语句级编译期循环展开 `#for i in a..b { .. }`。
+    /// 循环变量只在 CT 谓词域可见（运行时引用按普通未定义名处理，同旧实现）。
+    HashFor {
+        var: Ident,
+        start: CtExpr,
+        end: CtExpr,
+        body: Block,
+        span: Span,
+    },
+    /// PLAN-966（T-02）：语句级编译期匹配 `#is <ct> { pat -> { .. } }`。
+    HashIs {
+        scrutinee: CtExpr,
+        arms: Vec<HashIsArm>,
+        span: Span,
+    },
+}
+
+/// PLAN-966（T-02）：`#is` 一个臂；`pattern = None` 是 `else` 臂。
+#[derive(Clone, Debug)]
+pub struct HashIsArm {
+    pub pattern: Option<CtExpr>,
+    pub body: Block,
+    pub span: Span,
+}
+
+/// PLAN-966（T-02）：编译期标量表达式（项位 `#in`/`#if`/`#is`/`#for` 与语句级
+/// 构造共用的谓词域：i32/bool 字面量、显式目标事实引用（`sys.current` 等）、
+/// 比较/逻辑算子。无调用、算术与字符串；越域由绑定具名拒）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CtExpr {
+    Int(i32),
+    Bool(bool),
+    /// `current` / `sys.Windows`（head[.member]；绑定期按事实/CT 循环变量解析）。
+    Ref {
+        head: String,
+        member: Option<String>,
+        span: Span,
+    },
+    Bin {
+        op: CtBinOp,
+        lhs: Box<CtExpr>,
+        rhs: Box<CtExpr>,
+        span: Span,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CtBinOp {
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+}
+
+impl CtExpr {
+    pub fn span(&self) -> Span {
+        match self {
+            CtExpr::Int(_) | CtExpr::Bool(_) => Span { start: 0, end: 0 },
+            CtExpr::Ref { span, .. } | CtExpr::Bin { span, .. } => *span,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

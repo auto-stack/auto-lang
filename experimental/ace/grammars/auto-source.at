@@ -431,6 +431,50 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { in-is(field: "is") }
             alt { in-block(field: "block") }
         }
+        // PLAN-966（T-02）：语句级编译期构造（仅 packages-ct）——`#if`/
+        // `#for`/`#is` 与项位形共用 in-ct-expr/in-range 谓词域；体是普通
+        // 语句块（`#` 只作用于本结构，体内不重复 `#`）。
+        hash-if-stmt(profiles: [packages-ct]) {
+            hash() {}
+            if(field: "kw") {}
+            in-ct-expr(field: "cond")
+            block(field: "then")
+            else-block(repeat: "opt")
+        }
+        hash-for-stmt(profiles: [packages-ct]) {
+            hash() {}
+            for(field: "kw") {}
+            ident(field: "var")
+            in(field: "in") {}
+            in-range(field: "iter")
+            block(field: "body")
+        }
+        hash-is-stmt(profiles: [packages-ct]) {
+            hash() {}
+            is(field: "kw") {}
+            in-ct-expr(field: "scrutinee")
+            lbrace() {}
+            list { hash-is-arm() {} }
+            rbrace() {}
+        }
+        // 臂：`<pat> -> { }` / `<pat> => { }`（旧 #is 的 `=>` 与 962 的
+        // `->` 都接受）+ `else -> { }`。
+        hash-is-arm(profiles: [packages-ct]) {
+            hash-is-pattern(field: "pattern")
+            hash-is-sep() {}
+            block(field: "body")
+        }
+        hash-is-pattern(profiles: [packages-ct]) {
+            alt { hash-is-else(field: "else") }
+            alt { in-ct-expr(field: "value") }
+        }
+        hash-is-else(profiles: [packages-ct]) {
+            else(field: "kw") {}
+        }
+        hash-is-sep(profiles: [packages-ct]) {
+            alt { fat-arrow() {} }
+            alt { arrow() {} }
+        }
         in-block(profiles: [packages-ct]) {
             lbrace() {}
             list-nl { in-stmt() {} }
@@ -978,6 +1022,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [aggregates, closures]) { index-assign-stmt() {} }
             alt { return-stmt() {} }
             alt { if-stmt() {} }
+            // PLAN-966（T-02）：语句级编译期构造（仅 packages-ct；`#` 引入，
+            // 与项位 #in 同域同求值器；未选分支只 Text 阶段检查）。
+            alt(profiles: [packages-ct]) { hash-if-stmt() {} }
+            alt(profiles: [packages-ct]) { hash-for-stmt() {} }
+            alt(profiles: [packages-ct]) { hash-is-stmt() {} }
             alt(profiles: [core]) { while-stmt() {} }
             // PLAN-1041：for-cond 语句分派补 packages-ct（规则本身已在面集内，
             // 公共 stdlib 输出循环需要普通 while 形循环）。PLAN-965：aggregates

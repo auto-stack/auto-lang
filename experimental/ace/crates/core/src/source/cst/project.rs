@@ -3367,6 +3367,29 @@ enum Frame {
     HashExpr {
         span: Span,
     },
+    /// PLAN-966（T-02）：语句级 `#if`——then 块收尾（有 else 时续营 else）。
+    CtIfThen {
+        cond: CtExpr,
+        els_n: Option<u32>,
+        span: Span,
+    },
+    CtIfElse {
+        cond: CtExpr,
+        then: Block,
+        span: Span,
+    },
+    /// PLAN-966（T-02）：语句级 `#for`——body 块收尾。
+    CtForBody {
+        var: Ident,
+        start: CtExpr,
+        end: CtExpr,
+        span: Span,
+    },
+    /// PLAN-966（T-02）：语句级 `#is`——逐臂块 + 汇总。
+    CtIsArmBlock {
+        ctx: Box<CtIsCtx>,
+        pattern: Option<CtExpr>,
+    },
     LetFinish {
         node: u32,
         kw: Span,
@@ -3577,6 +3600,15 @@ struct BlockFrame {
     cursor: usize,
     stmts: Vec<Stmt>,
     script_top: bool,
+    span: Span,
+}
+
+/// PLAN-966（T-02）：`#is` 语句的臂收集上下文（源序逐臂投影；`else` 臂的
+/// pattern 为 None）。
+struct CtIsCtx {
+    scrutinee: CtExpr,
+    pending: Vec<(Option<CtExpr>, u32)>,
+    arms: Vec<HashIsArm>,
     span: Span,
 }
 
@@ -4828,6 +4860,205 @@ impl<'a> Engine<'a> {
         self.enter_stmt(stmt_n, script_top);
     }
 
+    // ---------------------------------------------------- 语句级编译期（966）
+
+    /// 下一臂入栈并投影其块（源序；`else` 臂 pattern=None 同样入队）。
+    fn start_ct_arm(&mut self, mut ctx: Box<CtIsCtx>) {
+        let (pattern, body_n) = ctx.pending.remove(0);
+        self.stack.push(Frame::CtIsArmBlock { ctx, pattern });
+        self.enter_block(body_n);
+    }
+
+    /// in-ct-expr 节点 → 共享 CT 标量表达式（与项位 #in 同一谓词域/同一映射；
+    /// 越域按 Text 阶段具名拒，不静默成运行期表达式）。
+    fn ct_expr(&mut self, node: u32) -> CtExpr {
+        if Some(self.cx.tree.kind(node)) == self.cx.k.in_ct_expr {
+            let inner = self
+                .cx
+                .children(node)
+                .into_iter()
+                .find(|&c| self.cx.tree.child_count(c) > 0)
+                .unwrap_or(node);
+            return self.ct_expr_node(inner);
+        }
+        self.ct_expr_node(node)
+    }
+
+    fn ct_expr_node(&mut self, node: u32) -> CtExpr {
+        let kind = self.cx.tree.kind(node);
+        let k = self.cx.k;
+        let op = if kind == k.op_eq {
+            Some(CtBinOp::Eq)
+        } else if kind == k.op_ne {
+            Some(CtBinOp::Ne)
+        } else if kind == k.op_lt {
+            Some(CtBinOp::Lt)
+        } else if kind == k.op_le {
+            Some(CtBinOp::Le)
+        } else if kind == k.op_gt {
+            Some(CtBinOp::Gt)
+        } else if kind == k.op_ge {
+            Some(CtBinOp::Ge)
+        } else if kind == k.op_andand {
+            Some(CtBinOp::And)
+        } else if kind == k.op_oror {
+            Some(CtBinOp::Or)
+        } else {
+            None
+        };
+        if let Some(op) = op {
+            let kids: Vec<u32> = self
+                .cx
+                .children(node)
+                .into_iter()
+                .filter(|&c| self.cx.tree.node(c).flags & FLAG_TRIVIA == 0)
+                .collect();
+            if kids.len() < 2 {
+                let span = self.cx.span_of(node);
+                self.cx.reject(span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.cte.in-expr",
+                        "a compile-time comparison needs exactly two operands",
+                        span,
+                    )
+                });
+                return CtExpr::Int(0);
+            }
+            let lhs = self.ct_expr_node(kids[0]);
+            let rhs = self.ct_expr_node(kids[kids.len() - 1]);
+            let span = lhs.span().join(rhs.span());
+            return CtExpr::Bin {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+                span,
+            };
+        }
+        // primary：in-ct-unary 包 int-literal/true/false/ns-ref。
+        let inner = if Some(kind) == k.in_ct_unary {
+            self.cx
+                .children(node)
+                .into_iter()
+                .find(|&c| self.cx.tree.child_count(c) > 0)
+                .unwrap_or(node)
+        } else {
+            node
+        };
+        let ik = self.cx.tree.kind(inner);
+        if ik == k.int_literal {
+            let mut value = String::new();
+            let mut stack = vec![inner];
+            while let Some(c) = stack.pop() {
+                if self.cx.tree.kind(c) == k.tok_minus {
+                    value.push('-');
+                }
+                if self.cx.tree.kind(c) == k.tok_int_lit {
+                    value.push_str(&self.cx.spelling(c));
+                }
+                for g in self.cx.children(c).into_iter().rev() {
+                    stack.push(g);
+                }
+            }
+            return match value.parse::<i32>() {
+                Ok(v) => CtExpr::Int(v),
+                Err(_) => {
+                    let span = self.cx.span_of(inner);
+                    self.cx.reject(span, || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.cte.in-domain",
+                            format!("`{value}` is outside the i32 compile-time domain"),
+                            span,
+                        )
+                    });
+                    CtExpr::Int(0)
+                }
+            };
+        }
+        if ik == k.tok_true {
+            return CtExpr::Bool(true);
+        }
+        if ik == k.tok_false {
+            return CtExpr::Bool(false);
+        }
+        if Some(ik) == k.ns_ref {
+            let head = self
+                .cx
+                .field_child(inner, "head")
+                .map(|h| self.cx.spelling(h))
+                .unwrap_or_default();
+            let member = self
+                .cx
+                .field_child(inner, "member")
+                .map(|m| self.cx.spelling(m));
+            return CtExpr::Ref {
+                head,
+                member,
+                span: self.cx.span_of(inner),
+            };
+        }
+        let span = self.cx.span_of(inner);
+        self.cx.reject(span, || {
+            Diagnostic::new(
+                Stage::Text,
+                "source.cte.in-expr",
+                "compile-time expressions accept int/bool literals and namespace names only",
+                span,
+            )
+        });
+        CtExpr::Int(0)
+    }
+
+    /// `#for` 的迭代域：分解形（start/end 字段）或融合单 token（`0..3` 被
+    /// affix-num 连续字符集吞成单 token——按 `..` 拆分），与项位 in-range 同。
+    fn ct_range(&mut self, iter: u32) -> (CtExpr, CtExpr) {
+        if let Some(both) = self.cx.field_child(iter, "both") {
+            if let Some(lit) = self.cx.field_child(both, "lit") {
+                let text = self.cx.spelling(lit);
+                let span = self.cx.span_of(lit);
+                if let Some((a, b)) = text.split_once("..") {
+                    if !a.is_empty() && !b.is_empty() && !b.contains("..") {
+                        let atom = |t: &str, off: usize| -> CtExpr {
+                            match t.parse::<i32>() {
+                                Ok(v) => CtExpr::Int(v),
+                                Err(_) => CtExpr::Ref {
+                                    head: t.to_string(),
+                                    member: None,
+                                    span: Span {
+                                        start: span.start + off,
+                                        end: span.start + off + t.len(),
+                                    },
+                                },
+                            }
+                        };
+                        return (atom(a, 0), atom(b, a.len() + 2));
+                    }
+                }
+                self.cx.reject(span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.cte.in-expr",
+                        format!("`{text}` is not a compile-time range"),
+                        span,
+                    )
+                });
+                return (CtExpr::Int(0), CtExpr::Int(0));
+            }
+        }
+        let start = self
+            .cx
+            .field_child(iter, "start")
+            .map(|n| self.ct_expr(n))
+            .unwrap_or(CtExpr::Int(0));
+        let end = self
+            .cx
+            .field_child(iter, "end")
+            .map(|n| self.ct_expr(n))
+            .unwrap_or(CtExpr::Int(0));
+        (start, end)
+    }
+
     fn enter_stmt(&mut self, stmt_dispatch: u32, script_top: bool) {
         let inner = self
             .cx
@@ -4982,6 +5213,98 @@ impl<'a> Engine<'a> {
                 node: inner,
             });
             self.stack.push(Frame::ExprEnter(cond_n));
+        } else if Some(kind) == self.cx.k.hash_if_stmt {
+            // PLAN-966（T-02）：`#if <ct> { } [else { }]`——谓词域是共享 CT
+            // 标量表达式（sys 事实/字面量），两臂都投影进 AST，绑定期折叠。
+            let cond = match self.cx.field_child(inner, "cond") {
+                Some(n) => self.ct_expr(n),
+                None => {
+                    let span = self.cx.span_of(inner);
+                    self.cx.reject(span, || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.cte.in-expr",
+                            "expected a compile-time condition after `#if`",
+                            span,
+                        )
+                    });
+                    CtExpr::Int(0)
+                }
+            };
+            let then_n = self.cx.field_child(inner, "then").expect("ct if then");
+            let els_n = self
+                .cx
+                .child_of_kind(inner, self.cx.k.else_block)
+                .and_then(|eb| self.cx.child_of_kind(eb, self.cx.k.block));
+            let span = self.cx.span_of(inner);
+            self.stack.push(Frame::CtIfThen { cond, els_n, span });
+            self.enter_block(then_n);
+        } else if Some(kind) == self.cx.k.hash_for_stmt {
+            // PLAN-966（T-02）：`#for i in a..b { }`——计数域与项位同（i32）。
+            let var_leaf = self.cx.field_child(inner, "var").expect("ct for var");
+            let var = ident_of(&mut self.cx, var_leaf);
+            let iter = self.cx.field_child(inner, "iter").expect("ct for iter");
+            let (start, end) = self.ct_range(iter);
+            let body_n = self.cx.field_child(inner, "body").expect("ct for body");
+            let span = self.cx.span_of(inner);
+            self.stack.push(Frame::CtForBody {
+                var,
+                start,
+                end,
+                span,
+            });
+            self.enter_block(body_n);
+        } else if Some(kind) == self.cx.k.hash_is_stmt {
+            // PLAN-966（T-02）：`#is <ct> { pat -> { } ... }`。
+            let scrutinee = match self.cx.field_child(inner, "scrutinee") {
+                Some(n) => self.ct_expr(n),
+                None => CtExpr::Int(0),
+            };
+            let span = self.cx.span_of(inner);
+            let arm_kind = self.cx.k.hash_is_arm.unwrap_or(u32::MAX);
+            let mut pending: Vec<(Option<CtExpr>, u32)> = Vec::new();
+            for arm in self
+                .cx
+                .children(inner)
+                .into_iter()
+                .filter(|&c| self.cx.tree.kind(c) == arm_kind)
+            {
+                let pattern = match self.cx.field_child(arm, "pattern") {
+                    Some(p) => {
+                        if self.cx.field_child(p, "else").is_some() {
+                            None
+                        } else {
+                            self.cx.field_child(p, "value").map(|v| self.ct_expr(v))
+                        }
+                    }
+                    None => None,
+                };
+                let body_n = self.cx.field_child(arm, "body").expect("ct is arm body");
+                pending.push((pattern, body_n));
+            }
+            if pending.is_empty() {
+                self.cx.reject(span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.cte.in-stmt",
+                        "a compile-time `#is` needs at least one arm",
+                        span,
+                    )
+                });
+                self.vals.push(Val::S(Stmt::HashIs {
+                    scrutinee,
+                    arms: Vec::new(),
+                    span,
+                }));
+            } else {
+                let ctx = Box::new(CtIsCtx {
+                    scrutinee,
+                    pending,
+                    arms: Vec::new(),
+                    span,
+                });
+                self.start_ct_arm(ctx);
+            }
         } else if kind == self.cx.k.while_stmt.unwrap_or(u32::MAX)
             || kind == self.cx.k.for_cond_stmt.unwrap_or(u32::MAX)
         {
@@ -7548,6 +7871,69 @@ impl<'a> Engine<'a> {
                     span,
                 }));
             }
+            Frame::CtIfThen { cond, els_n, span } => {
+                let then = self.pop_b();
+                match els_n {
+                    Some(eb) => {
+                        self.stack.push(Frame::CtIfElse { cond, then, span });
+                        self.enter_block(eb);
+                    }
+                    None => self.vals.push(Val::S(Stmt::HashIf {
+                        cond,
+                        then,
+                        els: None,
+                        span,
+                    })),
+                }
+            }
+            Frame::CtIfElse { cond, then, span } => {
+                let els = self.pop_b();
+                self.vals.push(Val::S(Stmt::HashIf {
+                    cond,
+                    then,
+                    els: Some(els),
+                    span,
+                }));
+            }
+            Frame::CtForBody {
+                var,
+                start,
+                end,
+                span,
+            } => {
+                let body = self.pop_b();
+                self.vals.push(Val::S(Stmt::HashFor {
+                    var,
+                    start,
+                    end,
+                    body,
+                    span,
+                }));
+            }
+            Frame::CtIsArmBlock { mut ctx, pattern } => {
+                let body = self.pop_b();
+                let arm_span = body.span;
+                ctx.arms.push(HashIsArm {
+                    pattern,
+                    body,
+                    span: arm_span,
+                });
+                if ctx.pending.is_empty() {
+                    let CtIsCtx {
+                        scrutinee,
+                        arms,
+                        span,
+                        ..
+                    } = *ctx;
+                    self.vals.push(Val::S(Stmt::HashIs {
+                        scrutinee,
+                        arms,
+                        span,
+                    }));
+                } else {
+                    self.start_ct_arm(ctx);
+                }
+            }
             Frame::WhileCond { body_n, node } => {
                 let cond = self.pop_e();
                 self.stack.push(Frame::WhileBody { cond, node });
@@ -8990,6 +9376,20 @@ impl GenericExpand {
                     }
                     if let Some(f) = finally {
                         self.resolve_typed_ctors_in_block(f);
+                    }
+                }
+                // PLAN-966（T-02）：语句级 CT——两臂/体内表达式同样做具名构造
+                // 重写（选中臂之后才参与绑定，重写对未选臂无害）。
+                Stmt::HashIf { then, els, .. } => {
+                    self.resolve_typed_ctors_in_block(then);
+                    if let Some(e) = els {
+                        self.resolve_typed_ctors_in_block(e);
+                    }
+                }
+                Stmt::HashFor { body, .. } => self.resolve_typed_ctors_in_block(body),
+                Stmt::HashIs { arms, .. } => {
+                    for a in arms.iter_mut() {
+                        self.resolve_typed_ctors_in_block(&mut a.body);
                     }
                 }
             }

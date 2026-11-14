@@ -42,45 +42,9 @@ impl PackageImport {
 
 /// PLAN-1043（T-03）：`#in` 内的编译期标量表达式（值域与 source-cte
 /// `CtValue` 对齐：i32/bool；仅比较/逻辑算子——算术、括号分组与调用不在
-/// 本面，越域由绑定具名拒）。
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum CtExpr {
-    Int(i32),
-    Bool(bool),
-    /// `current` / `sys.Windows`（head[.member]；绑定期按 namespace 事实解析）。
-    Ref {
-        head: String,
-        member: Option<String>,
-        span: Span,
-    },
-    Bin {
-        op: CtBinOp,
-        lhs: Box<CtExpr>,
-        rhs: Box<CtExpr>,
-        span: Span,
-    },
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CtBinOp {
-    Eq,
-    Ne,
-    Lt,
-    Le,
-    Gt,
-    Ge,
-    And,
-    Or,
-}
-
-impl CtExpr {
-    pub fn span(&self) -> Span {
-        match self {
-            CtExpr::Int(_) | CtExpr::Bool(_) => Span { start: 0, end: 0 },
-            CtExpr::Ref { span, .. } | CtExpr::Bin { span, .. } => *span,
-        }
-    }
-}
+/// 本面，越域由绑定具名拒）。PLAN-966（T-02）：定义移入 `ast`（语句级 CT
+/// 与项位 CT 共用同一谓词类型），此处保持原公开路径。
+pub use super::ast::{CtBinOp, CtExpr};
 
 /// PLAN-1043（T-03）：#in 单行/块内 use（`use path [: syms] [as alias]`；
 /// 符号表形 = 逐符号导入，落位为普通 PackageImport；`pub use` 重导出形
