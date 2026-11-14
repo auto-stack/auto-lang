@@ -797,3 +797,10 @@ cargo t ace --out D:/autostack/plan-artifacts/plan-1060/aggregate-final
 - 请求 2 → **B**：`ace-a2x` 真 cl 双腿认证压到 ≤60s/组（用户明确接受必要时的样本/覆盖压缩；压缩须在同一固定组内保留可判定的双腿与真 cl 语义，不得用删测试/ignore 冒充）。
 - 请求 3 → **B**：`ace-host` 等剩余超预算项在 1060 内做产品级/测试侧提速直到 ≤120s；不得以删隔离、删断言或改 deadline 得绿（r10/r11 实验结论：锁与预留不是可牺牲项）。
 - 附带：T-24 唯一超预算 case 组同样在 1060 内解决（AC-02 的 case 入口侧）。
+
+2026-11-15 **T-29 merge 记录（收尾）**：
+- **合并**：`plan-1060-dev` → `master`，merge commit **`794eedd97`**（`feat(ace-test): regular test budget governance, CST failure memo, pooled case runner (Plan 1060)`）。12 处冲突里 10 处是 `experimental/ace/crates/abi/tests/cases/*` 的 scratch 根写法——master 侧已由 PLAN-967 升级为 `Scope`（临时目录 + Drop 清理），语义优于本包的 `AUTO_TEST_SCRATCH_ROOT` 默认值，故**取 master 侧**；另 2 处（`crates/auto-lang-core/src/test_cases/abi.rs`、`scripts/test-groups.toml`）自动合并且保留两侧意图（`tools = ["a2x"]` 在）。
+- **合并后验证（在 master 上真实跑）**：`cargo check -p auto-lang-core` 与 ACE 两个 crate 的 `--tests` check 无错误；`cargo t infra-fixed infra-ace-policy infra-ace-cost-report` 三组全 PASS；`ace-source` PASS 540 例 5.7s、`ace-host` 164 例 114.9s（6 例既存红，名单与冻结前一致）。
+- **Spec 沉淀**：SD-01 新增 `docs/specs/auto-test-case/ace-regular-test-budget.md`；SD-02/03/04 分别在 `module-selection.md`、`ace-test-policy.md`、`ace-cost-attribution.md` 追加本包口径（commit `e9a4af821`）。
+- **归档**：本文件移至 `docs/plans/archive/`，状态 `archived`；`docs/plans/.next-id` 未改。
+- **清理**：`plan-artifacts/plan-1060` 整个 scope 与本包 worktree（先 `wt-guard`）在本记录之后删除；`.retention/policy.json` 同步刷新。原始证据不随仓保留——后续核验一律用最新代码重跑（2026-10-31 裁定）。
