@@ -1237,18 +1237,16 @@ impl<'a> InFace<'a> {
                 span,
             });
         }
-        // primary：in-ct-unary 包 int-literal/true/false/ns-ref。
+        // primary：in-ct-unary 包 int-literal/true/false/ns-ref。取首个非
+        // trivia 孩子（bool 字面量是 token 叶，不能按"有孩子"过滤）。
         let inner = if Some(kind) == self.rule("in-ct-unary") {
-            self.nontrivia(node)
-                .into_iter()
-                .find(|&c| self.tree.child_count(c) > 0)
-                .ok_or_else(|| {
-                    self.diag(
-                        "source.cte.in-expr",
-                        "expected a compile-time expression".into(),
-                        self.span_of(node),
-                    )
-                })?
+            self.nontrivia(node).into_iter().next().ok_or_else(|| {
+                self.diag(
+                    "source.cte.in-expr",
+                    "expected a compile-time expression".into(),
+                    self.span_of(node),
+                )
+            })?
         } else {
             node
         };

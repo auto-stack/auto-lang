@@ -841,7 +841,7 @@ pub const K int = 3",
         }
 
         #[test]
-        fn p966_ct_unselected_platform_body_change_reuses_the_identity() {
+        fn p966_ct_identical_inputs_reuse_and_selected_change_invalidates() {
             let dir = dir();
             write_files(&dir, &fixture());
             let (_, _, base) = built(&dir, TargetOs::Windows);
@@ -894,6 +894,44 @@ pub const K int = 3",
             assert_eq!(re3.bound.input_hash, p3.bound.input_hash);
             let (old_again, _) = PackageStore::restore(&dir, &receipt).unwrap();
             assert_eq!(old_again.bound.input_hash, product.bound.input_hash);
+            std::fs::remove_dir_all(&dir).ok();
+        }
+
+        #[test]
+        fn p966_ct_namespace_members_do_not_leak_into_the_module() {
+            let dir = dir();
+            // `current`/`Windows` 只在 #in 选择域内有效；普通值位必须具名失败
+            //（临时 namespace 不物化为模块绑定）。
+            write_files(
+                &dir,
+                &[
+                    (
+                        "main.at",
+                        "#in sys is current {\n    Windows -> use winio.plat\n    Linux -> use lnxio.plat\n}\nfn main() int { return current }",
+                    ),
+                    ("winio.at", "pub fn plat() int { return 10 }"),
+                    ("lnxio.at", "pub fn plat() int { return 20 }"),
+                ],
+            );
+            let files = discover_provider_sources(&dir).unwrap();
+            let mut ctx = Ctx::new(AssemblyBackend::Av, ProviderChoice::Auto, TargetOs::Windows);
+            let inputs = assemble_package_inputs(&files, "app::main", &mut ctx).unwrap();
+            let errors = match compile_assembled_inputs(
+                &inputs,
+                "app::main",
+                FrontBudget::WORK_OWNED_64MIB,
+                &ctx,
+            ) {
+                Ok(_) => panic!("namespace members must not leak into ordinary expressions"),
+                Err(e) => e,
+            };
+            let codes: Vec<String> = errors.iter().map(|d| d.diagnostic.code.clone()).collect();
+            assert!(
+                codes
+                    .iter()
+                    .any(|c| c.contains("undefined") || c.contains("name") || c.contains("symbol")),
+                "{codes:?}"
+            );
             std::fs::remove_dir_all(&dir).ok();
         }
     }

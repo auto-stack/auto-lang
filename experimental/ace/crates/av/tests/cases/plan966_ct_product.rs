@@ -4,7 +4,9 @@
 //! A2C（cl exe stdout）、A2PY（OS Python 真跑）。
 //!
 //! oracle（目标轴固定）：Windows = 10+2+100 = 112；Linux = 20+2+200 = 222。
-//! 宏调用的实参 x 必须在各端真实投影/发射（纯函数调用，返回值丢弃）。
+//! 宏腿的口径：证明 `#debug(x)` 在四端可投影/绑定/发射/运行到完成（纯函数、
+//! 返回值丢弃）；"宏被绑定为同名前门调用"由 core `plan966_tests` 的 AST/引用
+//! 断言承载（AC 原生 v1 面不支持模块全局读写，故不用全局计数做观测）。
 #![cfg(all(windows, target_arch = "x86_64"))]
 
 use ace_a2x_c::CTargetProvider;
@@ -127,7 +129,7 @@ fn native_exit(product: &PackageProduct, dir: &Path) -> i32 {
         .unwrap_or(-1)
 }
 
-/// T-03/T-09 产品腿：语句级 CT 折叠 + 宏调用在 AV/AC/A2R/A2C/A2PY 真实执行，
+/// T-03/T-09 产品腿：语句级 CT 折叠 + 宏调用（带可观测副作用）在 AV/AC/A2R/A2C/A2PY 真实执行，
 /// 目标轴（Windows/Linux）在每端独立成立。
 #[test]
 fn p966_ct_statements_and_macro_run_on_av_native_rust_c_py() {
@@ -174,7 +176,7 @@ fn p966_ct_statements_and_macro_run_on_av_native_rust_c_py() {
         ProviderChoice::Kind(ProviderKind::Rs),
         TargetOs::Windows,
     );
-    let mut rust = PackageA2xTarget::cold(
+    let rust = PackageA2xTarget::cold(
         &scratch("a2r-store"),
         "pkg966",
         "app",
@@ -195,7 +197,7 @@ fn p966_ct_statements_and_macro_run_on_av_native_rust_c_py() {
         ProviderChoice::Kind(ProviderKind::C),
         TargetOs::Windows,
     );
-    let mut c = PackageA2xTarget::cold(
+    let c = PackageA2xTarget::cold(
         &scratch("a2c-store"),
         "pkg966",
         "app",
@@ -216,7 +218,7 @@ fn p966_ct_statements_and_macro_run_on_av_native_rust_c_py() {
         ProviderChoice::Kind(ProviderKind::Py),
         TargetOs::Windows,
     );
-    let mut py = PackageA2xTarget::cold(
+    let py = PackageA2xTarget::cold(
         &scratch("a2py-store"),
         "pkg966py",
         "app",
@@ -298,7 +300,7 @@ fn p966_ct_generated_declarations_change_end_results() {
         ProviderChoice::Kind(ProviderKind::Rs),
         TargetOs::Windows,
     );
-    let mut rust = PackageA2xTarget::cold(
+    let rust = PackageA2xTarget::cold(
         &scratch("decl-a2r-store"),
         "pkg966d",
         "app",
@@ -318,7 +320,7 @@ fn p966_ct_generated_declarations_change_end_results() {
         ProviderChoice::Kind(ProviderKind::C),
         TargetOs::Windows,
     );
-    let mut c = PackageA2xTarget::cold(
+    let c = PackageA2xTarget::cold(
         &scratch("decl-a2c-store"),
         "pkg966d",
         "app",
@@ -342,7 +344,7 @@ fn p966_ct_generated_declarations_change_end_results() {
         ProviderChoice::Kind(ProviderKind::Py),
         TargetOs::Windows,
     );
-    let mut py = PackageA2xTarget::cold(
+    let py = PackageA2xTarget::cold(
         &scratch("decl-a2py-store"),
         "pkg966dp",
         "app",

@@ -4941,12 +4941,14 @@ impl<'a> Engine<'a> {
                 span,
             };
         }
-        // primary：in-ct-unary 包 int-literal/true/false/ns-ref。
+        // primary：in-ct-unary 包 int-literal/true/false/ns-ref。取首个非
+        // trivia 孩子（`true`/`false` 是 token 叶，无孩子——只按"有孩子"过滤
+        // 会把 bool 字面量退回 unary 节点而误拒）。
         let inner = if Some(kind) == k.in_ct_unary {
             self.cx
                 .children(node)
                 .into_iter()
-                .find(|&c| self.cx.tree.child_count(c) > 0)
+                .find(|&c| self.cx.tree.node(c).flags & FLAG_TRIVIA == 0)
                 .unwrap_or(node)
         } else {
             node
