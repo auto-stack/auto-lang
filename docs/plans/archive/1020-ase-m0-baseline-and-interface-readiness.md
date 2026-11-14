@@ -100,7 +100,7 @@ T-05给go/bounded-go/no-go及未执行格。调查可以交付明确no-go，1022
 - [x] T-04｜work｜T-01｜只读调查现有PackageAvTarget与上游公共接缝，给具名ready/pending；AC-03，V-03。[✅ 已完成] 960 公开链 ready（有界）：PackageAvTarget cold/cold_with_entry/run_value/global_cells + source-query 生产端 compile_package_product/assemble_package_inputs 等；spec m2-modules.md SHA16=be25b0c69f2f8cc0 精确一致；实现文件 SHA16 前移至 e76d39a19c8027c5（公开面在）；967 读表时 executing 0/19、复审重核为 **9/19 r12**（调查执行期间上游落地 T-03/T-08/T-09，读表竞态如实记录；F0-D 未完成）；979/969/978/980/970/968 复审重核均 drafting 0 → F0/H0/E0/B0/HELLO/会话全 pending。back_proxy 拓扑事实（默认 3358、每 session 一线程、运行期增删、启动 33 apps/14 sessions）。工具链断点 D1–D4 定位到行级（vue.rs:2979 vs :3523、editorBridge 发射条件、__autoThemeRoot 双声明、pac↔auto-down 悬空）。证据：plan-artifacts/plan-1020/T04-interface-readiness.md。
 - [x] T-05｜work｜T-03/04｜给有界裁决、后继最小前置及无UI先证入口；AC-04，V-04。[✅ 已完成] 1021=**go**（消费 960 公开链，入口清单在 T05）；1022/1023=**no-go**（F0/H0/E0/B0/HELLO/会话/调度全 pending）；M0-BASE=**bounded-go**（D1–D4 workaround 后可测，VM 臂 no-go D6/D7）；上游反馈件 D1–D7 具名移交原 owner。证据：plan-artifacts/plan-1020/T05-verdict.md（SHA16=0dfb49b30ea3c9d9）。
 - [x] T-06｜work｜T-05｜汇总§9的命令/数字/内容hash/拟议Spec；逐项AC与链接自检，原材料不入git。[✅ 已完成] 见下方 §9 执行证据；拟议 Spec 已落唯一树 `docs/specs/ase/m0-readiness.md`（随本包提交）。原材料 0 入 git（全部在 plan-artifacts，merge 时折叠后删）。
-- [ ] T-07｜review｜T-06｜独立核AC、样本和缺口，回报pass/needs_fix/needs_replan；AC-R。此任务未完成不阻work交review。
+- [x] T-07｜review｜T-06｜独立核AC、样本和缺口，回报pass/needs_fix/needs_replan；AC-R。此任务未完成不阻work交review。[✅ 已完成] final pass（§9 复审记录：AC-01..04 全 pass、F-1 修复重核、reviewer 局限声明；reviewed_commit 0a8195d68→rebase cae8967de）。
 - [x] T-08｜merge｜独审pass｜冻结文档定向检查、沉淀SD-01/归档、对账全部输出目录并清自有scope/guard后清树；AC-D。[✅ 已完成] 冻结文档定向检查=review 阶段内容/链接/数字核对（docs-only，无 cargo 组门）；SD-01 已落 master（ff-only，见下方 merge 收据）；归档+清理收据见下。
 
 ## 9. 复审记录
