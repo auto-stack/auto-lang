@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1040
-status: executing
+status: execution_done
 feature_name: ACE Linux x64原生ELF启动与直接系统调用
 author: [Codex]
 created_at: 2026-11-13
@@ -166,7 +166,7 @@ T-02..04补原worker/TestCase适配和永久case。职责组候选：`cargo t ac
 ## 7. 验收标准
 
 - [x] AC-01 / work：T-01冻结（§4表）；ELF-01真实ELF经共享前门→SystemV单元→rust-lld静态链→WSL2实跑（bytes/exit=42）＋依赖闭包审计通过；musl runner交叉构建可用（无外部Linux工具链）。evidence: linux_elf_1040.rs elf01/elf00 @088d331b1。
-- [x] AC-02 / work：ELF-01/02/03/05全绿——openat第4参mode 0640落盘（stat独立oracle）、ENOENT/EBADF负errno分类、缓存跨target/污染/轴篡改拒绝、同源AV/AC（musl runner重验证ABC后真Linux执行）。evidence: elf02/elf03/elf05 @088d331b1。
+- [x] AC-02 / work：ELF-01/02/03/05全绿——openat第4参mode 0640落盘（stat独立oracle）、ENOENT/EBADF负errno分类＋flags=0/mode<0预检AV/AC双称（F2修复）、缓存跨target/污染/轴篡改拒绝、同源AV/AC（musl runner重验证ABC后真Linux执行）。evidence: elf02/elf03/elf05 @5a6b31d65。
 - [x] AC-03 / work：ELF-04红控（未定义memcpy链接失败）；冻结组并集 ace-native 266/ace-av 1096/ace-lowering 5/ace-source 518/ace-artifacts 43/auto-lang-core 1613 全PASS（含Windows PIO/console回归）；ace-host 6红与clean master基线完全一致（run-36__ja1y对照，非本包新增，具名记录）；scoped fmt、musl构建零新增警告（av-core两条unused为master既有）。evidence: target/test-groups/run-_n6w671e + run-36__ja1y @088d331b1。
 - [ ] AC-04 / review：停写后同树独立逐AC与原语/寄存器/目标/产物复审；遗漏/延期/workaround与Spec-impact明确。
 - [ ] AC-05 / merge：最终冻结并集、正式代码/规范交付及归档，不把交叉编译冒Linux认证。
@@ -174,7 +174,7 @@ T-02..04补原worker/TestCase适配和永久case。职责组候选：`cargo t ac
 
 - [x] **AC-MEM / work**：V-MEM AC（真mmap/munmap经mn_syscall6/2、AT_PAGESZ=4096、mapped取整/借用/重复释放/预算预拒、free后再分配）＋AV（LinuxPlatformIo真内核、live_mapped_at_exit=0）双绿；全程无libc/std::fs（asm!裸syscall＋auxv页大小）；Storage公共API未动。evidence: vmem_ac + elf05(a) @088d331b1。
 
-- [x] **AC-WSL / work**：唯一WSL2环境显式冻结（§4表：Ubuntu-22.04/kernel/arch/tools/挂载/退出码传播/wslpath）；真实Linux AV（musl runner进程）与AC（静态ELF）结果均WSL内取得；错发行版拒、定点pid清理、子非零传播、stat/cat独立oracle；Windows回归独立绿。证据限定该WSL2环境。evidence: elf00/elf01/elf02/elf05 @088d331b1。
+- [x] **AC-WSL / work**：唯一WSL2环境显式冻结（§4表：Ubuntu-22.04/kernel/arch/tools/挂载/退出码传播/wslpath）；真实Linux AV（musl runner进程）与AC（静态ELF）结果均WSL内取得；错发行版拒、定点pid清理、子非零传播、stat/cat独立oracle、AC侧截止杀除＋幸存者扫描（F1修复：syscall-bound ELF 1.5s截止→Infra、/proc exe精确扫描零幸存）；Windows回归独立绿。证据限定该WSL2环境。evidence: elf00/elf01/elf02/elf05/elf06 @5a6b31d65。
 
 ## 8. 执行步骤
 
@@ -213,10 +213,13 @@ T-02..04补原worker/TestCase适配和永久case。职责组候选：`cargo t ac
 
 事故与恢复记录（2026-11-14 work轮）：提交前清理fmt附带改动时 stash 误用（`git stash push`经管道head吞错＋pop了仓内他人旧PLAN-002 stash），worktree曾回到master态；`git reset --hard`恢复后由 plan-artifacts/plan-1040/codegen/ 脚本全集重放全部tracked改动（含assert锚点），未跟踪新文件未受损；重放树重跑1040全7例＋冻结组并集全绿后提交。7个未跟踪docs/plans/888-890*.md为旧stash残留物，不属本包，未纳入提交（待其owner处置）。
 
-stage: goal | plan_id: PLAN-1040 | plan_revision: r5 | round: 1 | from: work | to: review | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1040/auto-lang | commit: 088d331b1 | next: review
+stage: goal | plan_id: PLAN-1040 | plan_revision: r5 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1040/auto-lang | commit: 088d331b1 | next: review
 
 
 2026-11-14 stage: review | review_scope: final | reviewer: 同会话复审（实现会话内独立重建证据——非独立上下文，结论由提交代码/测试/原始结果重构） | plan_id: PLAN-1040 | plan_revision: 5 | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1040/auto-lang | branch: plan-1040-dev | reviewed_commit: 088d331b1 | base_commit: 10a3dd46e | dependency_revisions: master HEAD | spec_inputs: docs/specs/auto-ac/native-backend-and-retirement.md@77ba8a3c（§4取材）；docs/specs/auto-ac/linux-native-platform.md 尚不存在（SD-01新增目标，merge落） | acceptance_results: AC-01 pass/AC-02 pass（F2小修后复核）/AC-MEM pass/AC-WSL partial（F1）/AC-03 pass（含master基线一致6红具名）；AC-04/05/06属review/merge未计 | pending_closeout_gates: merge冻结组并集复用（088d331b1已跑，修复后须重跑受影响项） | findings: F1/V-WSL负面控制缺AC侧超时杀除见证——`run_elf_via_wsl`的deadline/定点pid清理路径无durable测试（AV侧取消已由elf05c覆盖，AC侧"超时取消"为V-WSL列名控制项）；最小修复=新增一例长循环ELF＋~1s预算→断言Infra超时且Linux进程已被定点清理。F2/探针预检AV/AC不对称——av-core dispatch拒flags==0/mode<0，AC shim(mn_pio_probe_openat)未镜像（AC侧该两输入会直达syscall）；最小修复=shim镜像同两检（负例：flags=0→-7）。 | evidence: 1040七例复审重跑7/7绿@088d331b1；冻结组 run-_n6w671e（ace-native266/ace-av1096/ace-lowering5/ace-source518/ace-artifacts43/auto-lang-core1613 PASS；ace-host 6红=clean master基线run-36__ja1y逐名一致）；worktree tracked全净（3个未跟踪docs/plans/888-890*.md为他人旧stash残留，非本包，不处置） | next: work（修复F1/F2后受影响项复跑+本review受影响条目复核）
+
+
+2026-11-14 stage: work | plan_id: PLAN-1040 | plan_revision: 5 | outcome: pass (repair F1/F2) | worktree: D:/autostack/.wt/lang-1040/auto-lang | branch: plan-1040-dev | base_commit: 088d331b1 | code_commit: 5a6b31d65 | task_ids: F1,F2 | evidence: F2=shim镜像flags/mode预检，elf02/elf05(b)双侧断言-7；F1=elf06新增（probe_close(999)×100M syscall-bound、1.5s截止→Infra、墙钟有界、/proc/<pid>/exe精确扫描零幸存）；1040套件8/8、cargo t ace-native PASS(266) run-ol7xnja3 | blockers: 无 | next_responsible_role: review
 
 ## 10. 待澄清事项
 
