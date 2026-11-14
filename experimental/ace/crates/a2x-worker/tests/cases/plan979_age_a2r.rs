@@ -126,3 +126,32 @@ fn p979_age_a2r_avoids_artifacts_for_rejected_source_and_recovers() {
     let ((out, _), _) = run_age_chain("COUNTER_FIXED", SOURCE);
     assert_value("COUNTER_FIXED", &out, 4);
 }
+
+/// 双后端矩阵：同一源在 A2R 侧真实运行的值（AV 侧见
+/// `crates/av/tests/cases/plan979_age_h0_cpu.rs` 的同名矩阵）。
+const MATRIX: [(&str, &str, i32); 3] = [
+    (
+        "LITERAL",
+        "node Hello {\n    view {\n        text \"Hello\" {}\n    }\n}\nfn main() int {\n    return \"Hello\".len_bytes()\n}\n",
+        5,
+    ),
+    (
+        "HELPER",
+        "fn counter_text(n int) str {\n    if n > 2 {\n        return \"many\"\n    }\n    return \"few\"\n}\nnode Counter {\n    view {\n        text counter_text(2) {}\n    }\n}\nfn main() int {\n    let t = counter_text(3)\n    return t.len_bytes()\n}\n",
+        4,
+    ),
+    (
+        "ARITH",
+        "fn twice(n int) int {\n    return n + n\n}\nnode N {\n    view {\n        text \"ab\" {}\n    }\n}\nfn main() int {\n    return twice(3) + \"ab\".len_bytes()\n}\n",
+        8,
+    ),
+];
+
+#[test]
+fn p979_age_a2r_parity_matrix_runs_each_source_through_real_rustc() {
+    for (name, src, expected) in MATRIX {
+        let ((out, _err), hidden) = run_age_chain(&format!("MATRIX_{name}"), src);
+        assert_value(&format!("MATRIX_{name}"), &out, expected);
+        assert_eq!(hidden, "__age_h0_text_0", "{name}: single hidden evaluator");
+    }
+}

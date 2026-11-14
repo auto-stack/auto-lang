@@ -162,3 +162,45 @@ fn p979_age_same_source_feeds_both_backend_legs() {
     assert_eq!(o.nodes[0].view.texts[0].value, "few");
     assert_eq!(o.nodes[0].view.texts[0].role, "text");
 }
+
+#[test]
+fn p979_age_av_parity_matrix_matches_the_a2r_leg() {
+    // T-03 双后端矩阵（A2R 侧同名矩阵见
+    // `crates/a2x-worker/tests/cases/plan979_age_a2r.rs`）：同一源的 AV 侧观察值。
+    let matrix = [
+        (
+            "node Hello {\n    view {\n        text \"Hello\" {}\n    }\n}\nfn main() int {\n    return \"Hello\".len_bytes()\n}\n",
+            "Hello",
+        ),
+        (
+            "fn counter_text(n int) str {\n    if n > 2 {\n        return \"many\"\n    }\n    return \"few\"\n}\nnode Counter {\n    view {\n        text counter_text(2) {}\n    }\n}\nfn main() int {\n    let t = counter_text(3)\n    return t.len_bytes()\n}\n",
+            "few",
+        ),
+        (
+            "fn twice(n int) int {\n    return n + n\n}\nnode N {\n    view {\n        text \"ab\" {}\n    }\n}\nfn main() int {\n    return twice(3) + \"ab\".len_bytes()\n}\n",
+            "ab",
+        ),
+    ];
+    for (src, want) in matrix {
+        let o = observe_age_h0(src, "age.at", LegacyWidgetAlias::Reject).expect("observes");
+        assert_eq!(o.nodes[0].view.texts[0].value, want);
+    }
+}
+
+#[test]
+fn p979_age_recovery_and_incrementality_keep_identity_stable() {
+    // 失败不污染：好源 → 坏源 → 好源 三段循环，两次好源的身份与值必须一致。
+    let good = "node Hello {\n    view {\n        text \"Hello\" {}\n    }\n}\n";
+    let bad = "node Hello {\n    view {\n        text 1 + 2 {}\n    }\n}\n";
+    let first = observe_age_h0(good, "age.at", LegacyWidgetAlias::Reject).expect("first");
+    let ds = observe_age_h0(bad, "age.at", LegacyWidgetAlias::Reject)
+        .expect_err("bad source is rejected");
+    assert!(ds.contains("source.age.text-type"), "{ds}");
+    let again = observe_age_h0(good, "age.at", LegacyWidgetAlias::Reject).expect("again");
+    // 值/描述/身份全部保持（领域驱动无跨调用状态）。
+    assert_eq!(
+        first.nodes[0].view.texts[0].value,
+        again.nodes[0].view.texts[0].value
+    );
+    assert_eq!(first.nodes[0].span, again.nodes[0].span);
+}
