@@ -7988,7 +7988,22 @@ impl<'a> Engine<'a> {
                     span,
                     kind: ExprKind::Call { callee: name, args },
                 };
-                self.vals.push(Val::S(Stmt::ExprStmt { value, span }));
+                // PLAN-966（T-02）：丢弃值语义在本面不合法（PLAN-862 只允许
+                // 脚本尾表达式），宏调用因此落成卫生局部绑定：名字取保留前缀
+                // `__ace_macro_<源位置>`，用户自定义同名会撞绑定错误而不是被
+                // 静默捕获（V-01）。
+                let local = Ident {
+                    name: format!("__ace_macro_{}", span.start),
+                    span,
+                };
+                self.vals.push(Val::S(Stmt::Let {
+                    kw: span,
+                    name: local,
+                    ann: None,
+                    mutable: false,
+                    value,
+                    span,
+                }));
             }
             Frame::WhileCond { body_n, node } => {
                 let cond = self.pop_e();

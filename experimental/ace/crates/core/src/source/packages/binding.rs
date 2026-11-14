@@ -5270,9 +5270,17 @@ mod plan966_tests {
                 _ => None,
             })
             .expect("main");
-        let Stmt::ExprStmt { value, .. } = &main.body.stmts[0] else {
-            panic!("macro call must project as an expression statement");
+        let Stmt::Let {
+            name: local,
+            value,
+            ann,
+            ..
+        } = &main.body.stmts[0]
+        else {
+            panic!("macro call must project as the hygienic local binding");
         };
+        assert!(local.name.starts_with("__ace_macro_"), "{:?}", local.name);
+        assert!(ann.is_none());
         let ExprKind::Call { callee, args } = &value.kind else {
             panic!("macro call must project as a plain call");
         };
@@ -5311,7 +5319,7 @@ mod plan966_tests {
                 _ => None,
             })
             .expect("main");
-        let Stmt::ExprStmt { value, .. } = &main.body.stmts[1] else {
+        let Stmt::Let { value, .. } = &main.body.stmts[1] else {
             panic!("macro call statement");
         };
         let ExprKind::Call { callee, .. } = &value.kind else {

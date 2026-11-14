@@ -213,6 +213,9 @@ mod console_load_1041;
 mod console_out_1041;
 #[path = "cases/stdlib_assembly_1043.rs"]
 mod stdlib_assembly_1043;
+// PLAN-966：语句级编译期构造 + 宏调用的四端产品腿。
+#[path = "cases/plan966_ct_product.rs"]
+mod plan966_ct_product;
 
 #[path = "cases/module_packages_960.rs"]
 mod module_packages_960;
