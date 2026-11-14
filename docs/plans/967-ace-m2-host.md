@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-14
 plan_revision: 12
-current_step: 14
+current_step: 15
 total_steps: 19
 depends_on: [PLAN-960, PLAN-962, PLAN-963, PLAN-938, PLAN-939, PLAN-1042, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-bindgen/project.md, docs/specs/auto-abi/project.md]
@@ -558,7 +558,7 @@ T-03/T-12扩947既有装配：同一AV的native/C/Rust来源绑定与资源原pr
 
 - [x] **T-14｜M2-A｜owner_stage: work｜AC-12**：使header/crate/toolchain/target/provider/ABI/生成器的真实读取依赖进入现有store，输出binding/shim/runtime分发清单和编译/运行工具分账合同给978。 验证V-14，证据汇入原最终work验证。 ABI-COMPAT：V-ABI-CACHE分离精确构建失效和运行兼容/选择，V-ABI-PACK交版本化工件/依赖清单给978，不造第二缓存/loader。 [✅ 2026-11-14：S967B层进现有783 store（BuildIdentity全轴真读：provider字节/shim字节/rustc --version/生成器身份/target/crate-types）；精确失效实测（provider编辑翻身份、shim轴独立翻、工具链轴独立翻、AUTO body编辑不触键、删工件=miss不stale-green、双rustc两身份一合同）；分发清单BuildRecord JSON（cdylib+staticlib+import lib+全轴+dumpbin核实runtime note）交978；runtime兼容轴按T-09冻结与构建缓存分账；f0_t14 2案全绿] COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
-- [ ] **T-15｜M2-A｜owner_stage: work｜AC-13/AC-NATIVE**：用钉版本真实SQLite和serde_json原工程及完整特征fixture做用户体验与资源/失败回归；汇总四端、独立oracle、缺环境和交978/985材料。 验证V-15，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。 ABI-COMPAT：汇总七个V-ABI-*真实结果及隔离消费夹具，原真实库/四端/资源义务不减，交978/985/986按既有owner接续。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
+- [x] **T-15｜M2-A｜owner_stage: work｜AC-13/AC-NATIVE**：用钉版本真实SQLite和serde_json原工程及完整特征fixture做用户体验与资源/失败回归；汇总四端、独立oracle、缺环境和交978/985材料。 验证V-15，证据汇入原最终work验证。 新增V-NATIVE：完整FFI扩面时分别处理ptr+len、CStr和Rust String/borrow/owned入出参；只在需CStr的边界转换/终止，明确内嵌NUL拒绝/显式策略、有界回读和正确allocator销毁。不得暴露Rust私有布局或把C ABI等同libc。F0保原长度借用域，其早期非UI验证/Hello不等待完整C importer。 ABI-COMPAT：汇总七个V-ABI-*真实结果及隔离消费夹具，原真实库/四端/资源义务不减，交978/985/986按既有owner接续。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 [✅ 2026-11-14：真实库双腿交付——Rust腿=serde_json钉`=1.0.151`真cargo单元（`dep`注解为唯一依赖配置，cargo --release --offline，cdylib+staticlib同闭包产物，Cargo.lock实证钉版）；C腿=SQLite 3.46.0内容钉版amalgamation（`SQLITE_VERSION`真读定位/校验，本地cargo registry来源）；干净工程（注解头/源+暂存依赖+公共use导入，无手写manifest/签名）→自动importer/shim→真机码→AV道真调；独立oracle=进程内serde_json（Rust腿）与独立cl编译oracle exe（C腿，SUM=9对账）；负控矩阵逐项独立断言=错版本（cargo resolution失败具名`f0.cargo-build`带cargo自身诊断/pin内容不符具名`f0.sqlite-pin`）、缺库（未暂存amalgamation→cl C1083具名`c-import.compile`）、非法参数（坏SQL/未开连接/双重close各自具名Trap ForeignStatus）、取消（预置flag→ExecOutcome::Cancelled+事后正常恢复）、资源退出（RawLibrary Drop恰卸载一次+重载重跑可用）；V-15"去掉生成缓存重建仍成功"=删target/同入口重建同值✓；V-NATIVE=内嵌NUL路径具名`nul-path`拒绝（真库边界）+超长路径具名too-long有界回读✓；V-ABI-PACK=dist隔离消费（cdylib+staticlib+BuildRecord JSON入独立根，删整个建树后装载调用成功）✓；A2PY ctypes腿同cdylib真跑✓；文件持久化读写（.db落盘重开同值）✓；978交接材料=两份t15-*buildrecord.json（identity轴+runtime note）落plan-artifacts] [✅ 2026-11-14]
 
 - [ ] **T-04｜M2-A｜work｜AC-01..03**：运行§6全部V行与完整职责组，记录真实命令、子终态、覆盖及身份；阻塞项具名，不把环境红或未执行改NA。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
@@ -581,6 +581,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 18 | from: work | to: work | status: executing | outcome: T-15完成（真实库双腿+全部负控/取消/资源退出；勾选） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-04 全量验证汇总）
+
+2026-11-14 stage: work / T-15（AC-13/V-15+V-NATIVE/V-ABI-PACK腿）| 交付: build_cargo_provider（dep注解驱动真cargo单元、cdylib+staticlib同闭包）、内容钉版SQLite定位/校验/暂存（sqlite_version_of真读SQLITE_VERSION）、build_c_dll_with（额外TU+SDK include闭包；open_c_provider暂存工程伴生.h/.c）、build_c_oracle（独立oracle exe）、冻结fixtures rustside/f0_json.rs+cside/p967_sqlite.{h,c}、f0_t15 3案（serde_json E2E/SQLite E2E含文件持久化+5负控+取消+资源退出/A2PY ctypes）| 验证: f0_t15 3案全绿；ace-abi conformance全量171绿+2计时门（939 resource939六场景P90、source_foreign warm P90）串行重放绿——并行负载环境归因，沿round-1已记flake模式；auto-bindgen 10绿 | 环境前提: 钉版SQLite来自本地cargo registry libsqlite3-sys（内容校验；缺失=具名pending eprintln不充PASS）；serde_json离线registry解析 | 具名余量: 计时门并行敏感（环境归因已录）；rustc身份cargo单元记ambient rustc（BuildRecord轴交978分账）| next: T-04。
 
 2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 17 | from: work | to: work | status: executing | outcome: T-14完成（BuildIdentity精确缓存+分发清单；勾选） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-15 真实库SQLite/serde_json）
 
