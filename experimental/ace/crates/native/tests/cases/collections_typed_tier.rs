@@ -411,7 +411,7 @@ fn typed_double_payload_projection_and_read_after_move_reject_before_codegen() {
 }
 
 #[test]
-fn typed_container_signatures_and_places_remain_outside_source_native_abi() {
+fn typed_container_signatures_and_places_native_abi_boundary() {
     fn unit(value: MirType, parameter: bool, result_value: bool) -> MirModule {
         let mut m = MirModule::new_collections(OwnerScope {
             schema: ace_av_core::contract::MIR_COLLECTIONS_SCHEMA.into(),
@@ -488,34 +488,29 @@ fn typed_container_signatures_and_places_remain_outside_source_native_abi() {
     }
     let legal = unit(MirType::List(ListTypeRef { elem: 0 }), false, false);
     ace_native::collections_lower::admit_unit(&legal).unwrap();
-    for (m, expected) in [
-        (
-            unit(MirType::List(ListTypeRef { elem: 0 }), true, false),
-            "mn.unsupported.param",
+    // PLAN-946: container params and results now CROSS the native ABI on
+    // the I64 handle carrier (the reviewed 946 contract — View-mode source
+    // params keep the caller's ownership; the 889 corpus never carried
+    // container signatures, so the old blanket rejection is superseded).
+    for m in [
+        unit(MirType::List(ListTypeRef { elem: 0 }), true, false),
+        unit(
+            MirType::Variant(VariantTypeRef {
+                owner_module: "admit".into(),
+                name: "Token".into(),
+                arms: vec![VariantArm {
+                    name: "End".into(),
+                    payload: None,
+                }],
+            }),
+            true,
+            false,
         ),
-        (
-            unit(
-                MirType::Variant(VariantTypeRef {
-                    owner_module: "admit".into(),
-                    name: "Token".into(),
-                    arms: vec![VariantArm {
-                        name: "End".into(),
-                        payload: None,
-                    }],
-                }),
-                true,
-                false,
-            ),
-            "mn.unsupported.param",
-        ),
-        (
-            unit(MirType::List(ListTypeRef { elem: 0 }), false, true),
-            "mn.unsupported.result",
-        ),
+        unit(MirType::List(ListTypeRef { elem: 0 }), false, true),
     ] {
         ace_av_core::verify_mir(&m).unwrap();
-        let error = ace_native::collections_lower::emit_unit_coff(&m).unwrap_err();
-        assert_eq!(error.code(), expected, "{error}");
+        ace_native::collections_lower::emit_unit_coff(&m)
+            .unwrap_or_else(|e| panic!("container signature must emit on the handle carrier: {e}"));
     }
     let mut place = legal;
     place.types.push(MirType::Place(ListTypeRef { elem: 0 }));
