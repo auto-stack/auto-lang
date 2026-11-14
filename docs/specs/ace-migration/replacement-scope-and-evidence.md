@@ -185,3 +185,8 @@ examples 计数均不构成覆盖证明。跨仓不可读/owner 未明/未发布
   既有红（`master` 既有，独立 fix/Plan，见 965 §10-2）；V-11 表 964 的 `OBJECT_NEW/GET/SET`、
   `TEXT_DISPLAY` 漏行债（§10-6，ACE 治理）。以上缺口在台账中保持 required/unknown 原状，
   不因 965 交付而消失；965 自身覆盖行（L-18/21/26/27/28/30 的 aggregates 切片）不因 L-29 未交付改 NA。
+
+## SD-10 标准库领域差额与发行就绪挂接（PLAN-948 SD-02）
+
+- 分母台账 `S-01..S-25`、`K-01..K-08`、`UK-01..13` 与 Design56 增补 `FFI-M2-01..08` / `LIB-M2-01..08` 的 M2-A 领域差额追踪、代表性真实消费者前探（JSON/HTTP/Async/UI）及发行接管阻塞清单见 [ace-domain-migration-readiness](../stdlib/design/ace-domain-migration-readiness.md)。
+- **未闭硬阻塞保持**：`stdlib_assembly/loader.rs:68,78` 开发仓 `CARGO_MANIFEST_DIR` 回退、`~/.auto/libs/stdlib` junction、陈旧 `PATH` `auto`、跨仓安装器漂移（`web-install.py`/`musk/install.sh`）、`binding.rs` 拒项目级 `use.c`/`use.rs`（阻塞 `AV/C`/`AV/Rust`）、`sys.arch`/`env`/`ABI` 缺失与 Design46 Gate A/B 未闭。以上阻塞在台账中保持 `missing`/`unknown` 原状，未完成洁净仓外实跑前严禁签发 M2 发行通过。
