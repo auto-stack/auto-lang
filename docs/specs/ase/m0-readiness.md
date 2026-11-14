@@ -58,7 +58,7 @@ examples/ui（HEAD a6f776c，只读）。
 | 切片 | 状态 | 依据 |
 |---|---|---|
 | 960 包模块公开执行链 | **ready（有界）** | `PackageAvTarget::cold/cold_with_entry/run_value/global_cells`（av crates，SHA16 e76d39a19c8027c5）+ source-query 生产端（compile_package_product/assemble_package_inputs 等）；spec `docs/specs/ace-migration/m2-modules.md`（SHA16 be25b0c69f2f8cc0 精确核对）；永久入口 `av::conformance::module_packages_960`（Win x64）；无 warm body-edit；A2X/native 边界 D-960-1/2 |
-| F0 宿主/FFI（967） | pending | executing 0/19，worktree lang-967 零提交 |
+| F0 宿主/FFI（967） | pending（进行中） | executing **9/19** r12：T-03（生产 TestCase lane）、T-08（async completion ports）、T-09（use.rs 入口/身份冻结）已落地 master（cd5f2e568 等，2026-11-14）；本调查读表时为 0/19，执行期间上游推进（如实记录的读表竞态）；F0-D 未完成 |
 | H0 Schema（979）/ E0 facade（969）/ B0 构建（978）/ HELLO AutoUI 接入（980） | pending | 均 drafting 0 |
 | 会话（970）/调度（968） | pending | 均 drafting 0 |
 
