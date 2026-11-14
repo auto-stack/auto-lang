@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1021
-status: execution_done
+status: reviewed
 feature_name: ASE M0应用解析与无窗口AV加载实验
 author: [Codex]
 created_at: 2026-11-12
@@ -18,7 +18,7 @@ touched_goals: [GOAL-002, GOAL-007, GOAL-010]
 
 ## 0. 变更摘要
 
-r1，executing，7/9（T-01..T-07 已完成，实现提交 b6a3e059c）；交付M0-LOAD/M0-H。消费1020就绪结论及960已交公开包链；无需等待AutoUI语法/980 Hello/AGE。这里是有界一次执行研究，不宣称独立持久AppSession或生产运行入口完成。路线：[ASE M0](../design/strategy/ase-m0-delivery-roadmap.md)。
+r1，reviewed，7/9（T-08 复审 pass @ b6a3e059c）（T-01..T-07 已完成，实现提交 b6a3e059c）；交付M0-LOAD/M0-H。消费1020就绪结论及960已交公开包链；无需等待AutoUI语法/980 Hello/AGE。这里是有界一次执行研究，不宣称独立持久AppSession或生产运行入口完成。路线：[ASE M0](../design/strategy/ase-m0-delivery-roadmap.md)。
 
 ## 1. 目标
 
@@ -138,6 +138,27 @@ next_responsible_role: review（T-08，独立上下文同权威树）
 ---
 
 stage: goal | plan_id: PLAN-1021 | plan_revision: r1 | round: 1 | from: drafting | to: review | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1021/auto-lang | commit: b6a3e059c | next: review
+
+---
+
+stage: review | review_scope: final | reviewer: 同会话独立复审轮（auto-plan-review，基于工件重建结论，非执行者摘要；未指定独立模型/人员） | plan_id: PLAN-1021 | plan_revision: r1 | outcome: pass | worktree: D:/autostack/.wt/lang-1021/auto-lang | branch: codex/plan-1021-dev | reviewed_commit: b6a3e059c | base_commit: 36a266267 | dependency_revisions: ACE 公开 crate @ b6a3e059c 同树（diff 范围守卫：除 experimental/ase-m0/** 与 scripts/test-groups.toml 外零文件变更，ACE 源零改动；worktree 干净） | spec_inputs: docs/specs/ase/m0-readiness.md（1020 SD-01，1021=go 门）、docs/specs/ace-migration/m2-modules.md（960 公开链）
+
+acceptance_results:
+- AC-01 pass：V-01 绿（11 组 URI 负控＋未注册版本＋能力声明，全部具名 uri/authz 拒绝、dispatch=0）＋uri 单测 2/2；复审自选反例：`app://auto.demo.e/`→kind=authz dispatch=0、`app:/auto.demo.a/`→kind=uri dispatch=0（CLI exit 1 实测）。
+- AC-02 pass：V-02 绿（root `..`/绝对 root/多段文件名/缺件/junction（cfg(windows) 实建实拒）均具名、dispatch=0）；复审自选反例：sources 含 `C:/secret.at` → kind=source-escape dispatch=0（Prefix 分支独立验证）；宿主私有路径不读（拒绝先于内容打开）。
+- AC-03 pass：V-03 绿（a=11/b=22 经普通源前门/verify/AV；input_hash 与消费源 sha256 真实且随源变化；换根注册→a 身份返 22 且消费源摘要=b、input_hash 因包名身份而异——包名参与绑定哈希，符合 960 规范；重排序稳定）；接缝溯源：ase-m0 仅 import compile_package_product/PackageAvTarget/Value/FrontBudget/PackageModuleInput/PACKAGES_CAPABILITY/PackageDiagnostic，无 auto_lang/auto_vm/HIR/ProgramSnapshot 直连（grep 佐证）；CLI 实测 value=11/22 dispatch=1。
+- AC-04 pass：V-04 绿（A 编辑 12、B 恒 22；坏源 kind=Compile phase=compile dispatch=1；修复后真实重试 12）。
+- AC-05 pass：V-05 绿（max_parse_depth=1 公开预算 → kind=Resource 且消息含 source.resource、dispatch=1，未改语法错/成功；两次冷运行 11/11、input_hash 相等；run 后 store 目录可删=文件 owner 释放）；CLI 成功/拒绝退出码 0/1。
+- AC-R pass：本收据（独立反例×3、冻结门禁复跑、接缝溯源、范围守卫）。
+
+findings: 无阻塞发现。非阻塞观察：(1) dispatch 计数为单调用点构造性记账（非运行时插桩），对单次执行流行为准确（拒绝路径结构性不触 ACE 边界，测试断言 0/1 与路径一致）；(2) 上游 ace-av/ace-av-core 7 条编译告警为 master 既有（PLAN-1024 审计域），非本包引入。遗漏/延后/workaround 扫描：无（§5 全部支持域/边界断言落地；§10 待澄清已由实现解决）。
+
+spec_delta review：SD-01（add docs/specs/ase/m0-headless-loading.md）before/after 规则与本实现核验一致（无 ASE 加载 consumer→两身份严格解析/公开 ACE 一次执行/错误恢复及边界；AC-01..05）；supersedes 为空正确（新组件）；frontmatter new_spec_components/touched_goals 与 §5 一致。canonical 文件由 merge 落盘。
+
+pending_closeout_gates: 冻结 `cargo t ase-m0` 于落地基线（merge owner，身份未变可复用 b6a3e059c 证据：本次复跑 PASS，results.json 含 v01..v05 全数执行）；SD-01 沉淀；归档；wt-guard 清树；plan-artifacts scope 折叠+删除；输出目录对账。
+
+evidence: 复审探针输出（三反例 stderr 具名错误）存 plan-artifacts/plan-1021/rev-*（merge 折叠摘要后删）；命令与关键数字已折入本收据。next: merge（T-09）
+
 
 
 ## 10. 待澄清事项
