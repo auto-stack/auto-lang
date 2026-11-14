@@ -156,3 +156,13 @@ CTE常规小修订使用8fn/3修订验证相同值、居民generation与未修�
 与嵌套 `...::performance::`。只匹配中间双冒号会漏掉native typed-entry的
 `performance::typed_v10_four_state_20_samples_p90_gate`；该正式20样本门也属于ace-perf，
 不再落入ace-native常规组。
+
+## PLAN-1060 增补（2026-11-15）：ACE 普通组的预算边界
+
+- ACE 普通职责组的完整单组调用以 **120s 验收 / 60s 目标**判定（见
+  [ace-regular-test-budget.md](ace-regular-test-budget.md)）；`::performance::` 由
+  `cargo t ace-perf` 独立串行运行，不进入日常/收尾门。
+- 模块选择仍由 `scripts/test-groups.toml` 固定组决定，不新增发现式选择或第二目录；本计划只
+  补了 `ace-a2x` 的工具声明（`tools = ["a2x"]`）与 Linux/WSL 腿的平台门（PLAN-1061 承接）。
+- 有效证据复用：driver 的 `source_state` 校验源码/工具/输入/配置身份；纯文档改动不使测量失效，
+  负载窗口差异与数字一并记录。
