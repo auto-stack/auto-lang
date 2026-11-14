@@ -155,7 +155,7 @@ fn query_key_hash_streams_borrowed_components_with_original_framing() {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let root = std::path::PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+    let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests")))
         .join(format!("key-hash-stream-{}-{stamp}", std::process::id()));
     let store = ManagedStore::open(&root).unwrap();
     let payload = vec![42; 67];
@@ -212,7 +212,7 @@ fn rejected_staging_never_allocates_the_framed_payload_and_can_retry_after_drain
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let root = std::path::PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests").join(
+    let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests"))).join(
         format!("store-frame-reserve-{}-{stamp}", std::process::id()),
     );
     let store = ManagedStore::open(&root).unwrap();

@@ -55,7 +55,7 @@ fn t13_coff_split_path_fails_closed_for_callback_resource_manifests() {
     // lane; a callback-carrying resource manifest gets a NAMED rejection
     // (never a broken caller). The 939 callback deck's manifest+source
     // provide the exact shape.
-    let root = PathBuf::from("D:/autostack/plan-artifacts/plan-967/tests")
+    let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-967/tests")))
         .join(format!("t13-fence-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let deck_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(

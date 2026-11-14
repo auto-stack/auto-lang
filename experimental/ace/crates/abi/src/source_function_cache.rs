@@ -101,7 +101,7 @@ mod resource_tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::path::PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+        let dir = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests")))
             .join(format!("target-cache-copy-{}-{stamp}", std::process::id()));
         let resources = Resources::default();
         let mut cache =

@@ -1258,7 +1258,7 @@ mod tests {
     #[test]
     #[cfg(windows)]
     fn captured_observer_failure_or_panic_reaps_real_child_and_open_file() {
-        let root = PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests").join(format!(
+        let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests"))).join(format!(
             "capture-observer-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()

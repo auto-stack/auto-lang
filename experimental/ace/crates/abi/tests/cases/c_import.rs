@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use ace_abi::rust_provider::{c_authority, f0_c_header, f0_c_source, open_c_provider};
 
 fn scope(tag: &str) -> PathBuf {
-    let root = PathBuf::from("D:/autostack/plan-artifacts/plan-967/tests")
+    let root = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-967/tests")))
         .join(format!("{tag}-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     root

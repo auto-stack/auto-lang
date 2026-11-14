@@ -198,7 +198,7 @@ mod tests {
         assert_eq!(limited.stats().current, limited_baseline);
         let work = RequestWork::new(&resources).unwrap();
         let scope = work.enter();
-        let path = std::path::PathBuf::from("D:/autostack/plan-artifacts/plan-938/tests")
+        let path = std::path::PathBuf::from(std::env::var_os("AUTO_TEST_SCRATCH_ROOT").unwrap_or_else(|| std::ffi::OsString::from("D:/autostack/plan-artifacts/plan-938/tests")))
             .join(format!("request-work-{}.marker", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let mut command = Command::new("cmd.exe");
