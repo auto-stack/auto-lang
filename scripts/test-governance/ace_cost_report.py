@@ -119,7 +119,30 @@ def read_commands(index_dir):
     if tools_dir.is_dir():
         for path in sorted(tools_dir.glob('**/*.command.json')):
             commands['tools'].append(json.loads(path.read_text(encoding='utf-8')))
+        # prepare_tools records a bare measurement next to each tool build log
+        # (<tool>-build.meter.json); count it as tool preparation, never as zero.
+        for path in sorted(tools_dir.glob('**/*.meter.json')):
+            measurement = json.loads(path.read_text(encoding='utf-8'))
+            commands['tools'].append({'argv': [path.name], 'cwd': str(path.parent), 'exit': 0,
+                                      'meter': measurement})
     return commands
+
+
+def event_prefix_map(index_dir):
+    """Selected binary id -> the real nextest event prefix (package::binary)."""
+    path = Path(index_dir) / 'discovery.stdout'
+    if not path.is_file():
+        return {}
+    try:
+        document = json.loads(path.read_text(encoding='utf-8'))
+    except ValueError:
+        return {}
+    mapping = {}
+    for key, suite in (document.get('rust-suites') or {}).items():
+        package, binary = suite.get('package-name'), suite.get('binary-name')
+        if package and binary:
+            mapping[key] = package + '::' + binary
+    return mapping
 
 
 def terminal_events(stdout_path):
@@ -458,12 +481,23 @@ def regular_module(run_dir, repo_root=None, budget_seconds=120.0, target_seconds
             record['missing_evidence'].append(
                 'duplicate terminal events for the same native identity: %s' % ', '.join(duplicates[:4]))
         expected = {row['binary'] + '$' + row['test'] for row in selected}
-        missing = sorted(expected - set(seen))
-        if missing:
+        # nextest records the selected binary id, while its terminal events use
+        # <package>::<binary-name>; both forms are legitimate identities here.
+        prefixes = event_prefix_map(index_dirs[0])
+        observed = set(seen)
+        unmatched, matched = [], set()
+        for row in selected:
+            candidates = {row['binary'] + '$' + row['test'],
+                          prefixes.get(row['binary'], row['binary']) + '$' + row['test']}
+            hit = candidates & observed
+            if not hit:
+                unmatched.append(row['binary'] + '$' + row['test'])
+            matched |= hit
+        if unmatched:
             record['missing_evidence'].append(
                 'missing actual terminal for %d selected test(s): %s'
-                % (len(missing), ', '.join(missing[:4])))
-        extra = sorted(set(seen) - expected)
+                % (len(unmatched), ', '.join(sorted(unmatched)[:4])))
+        extra = sorted(observed - matched - expected)
         if extra:
             record['missing_evidence'].append(
                 'terminal events for unselected identities: %s' % ', '.join(extra[:4]))

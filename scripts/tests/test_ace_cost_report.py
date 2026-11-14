@@ -487,6 +487,23 @@ class RegularEvidenceTests(unittest.TestCase):
         self.assertEqual(2, code)
         self.assertTrue(any('exactly one fixed group' in item for item in record['missing_evidence']))
 
+    def test_regression_real_nextest_identity_is_mapped_from_discovery(self):
+        # Real nextest records `binary` as the binary id while the terminal event
+        # uses <package>::<binary-name>: the planner must map it, not read the
+        # module as having no terminals (observed on a real ace-a2c-abi run).
+        run = self.make('identity-map', selected=[
+            {'binary': 'ace-a2x-c', 'test': 'abi_scalar::tests::lane_restriction_enforced',
+             'ignored': False}],
+            events=[event('ace-a2x-c::ace_a2x_c$abi_scalar::tests::lane_restriction_enforced', 'ok', 1.5)])
+        index = run.dir / '0'
+        (index / 'discovery.stdout').write_text(json.dumps({'rust-suites': {
+            'ace-a2x-c': {'package-name': 'ace-a2x-c', 'binary-name': 'ace_a2x_c',
+                          'status': 'listed'}}}), encoding='utf-8')
+        code, record, _ = run.module_record()
+        self.assertEqual(0, code)
+        self.assertEqual('GREEN', record['status'])
+        self.assertEqual([], record['missing_evidence'])
+
 
 class RegularAcceptanceTests(unittest.TestCase):
     """NC-07/NC-10: ordinary tests are not the frozen policy, and the tool is read-only."""
