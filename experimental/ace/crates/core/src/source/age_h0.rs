@@ -403,12 +403,23 @@ fn relabel_leaf_diags(mut diags: Vec<Diagnostic>, candidates: &[AgeNodeItem]) ->
             })
         });
         if inside_leaf {
-            d.code = "source.age.text-type".to_string();
-            d.message = format!(
-                "a `text` leaf expression must be text (`str` or `Str`); the shared checker \
-                 rejected it: {}",
-                d.message
-            );
+            // 只有 **脱糖壳（`.clone()`）引起**的拒绝才是"叶表达式不是文本"；
+            // 名字/参数/其它类型错误保留共享语义，改标中立领域码（F10）。
+            let text_ness = d.message.contains("clone");
+            d.code = if text_ness {
+                "source.age.text-type".to_string()
+            } else {
+                "source.age.leaf-expr".to_string()
+            };
+            d.message = if text_ness {
+                format!(
+                    "a `text` leaf expression must be text (`str` or `Str`); the shared checker \
+                     rejected it: {}",
+                    d.message
+                )
+            } else {
+                format!("the `text` leaf expression was rejected: {}", d.message)
+            };
         }
     }
     diags

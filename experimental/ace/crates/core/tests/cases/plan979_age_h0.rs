@@ -363,3 +363,68 @@ fn p979_age_h0_earlier_shared_errors_are_not_swallowed() {
         "the earlier fn error keeps precedence: {d:?}"
     );
 }
+
+// ---- F9/F10/F11 + fragment-refusal regressions (independent review round 2) ----
+
+#[test]
+fn p979_age_h0_non_head_identifier_does_not_define_the_age_head() {
+    // F9：前面合法函数里叫 `node` 的标识符不得被当成领域声明头（否则更早的
+    // 真实错误被吞）。A/B 只差第一个函数名，首个诊断必须一致地落在 node 行之前。
+    let with_node_fn = "fn node() int {\n    return 1\n}\nfn g() int {\n    return 1 +\n}\nnode A {\n    panel {\n        text \"x\" {}\n    }\n}\n";
+    let with_foo_fn = with_node_fn.replace("fn node()", "fn foo()");
+    let a = compile_diags(with_node_fn, LegacyWidgetAlias::Reject).expect_err("errors");
+    let b = compile_diags(&with_foo_fn, LegacyWidgetAlias::Reject).expect_err("errors");
+    let node_line = with_node_fn.find("node A").unwrap();
+    assert!(first(&a).span.start < node_line, "{:?}", first(&a));
+    assert!(first(&b).span.start < node_line, "{:?}", first(&b));
+    assert_eq!(
+        first(&a).code,
+        first(&b).code,
+        "A/B must agree on the class"
+    );
+}
+
+#[test]
+fn p979_age_h0_undefined_callee_is_not_reported_as_a_text_type_error() {
+    // F10：叶内名字/解析错误保留共享语义（中立领域码），只有脱糖 `.clone()`
+    // 引起的拒绝才是 `source.age.text-type`。
+    let src = "node Hello {\n    view {\n        text no_such_fn() {}\n    }\n}\n";
+    let ds = compile_diags(src, LegacyWidgetAlias::Reject).expect_err("undefined callee");
+    let d = first(&ds);
+    assert_eq!(d.code, "source.age.leaf-expr", "{d:?}");
+    assert!(d.message.contains("no function named"), "{d:?}");
+    assert_eq!(d.span.start, src.find("no_such_fn").unwrap());
+    // 非文本值仍走 text-type。
+    let non_text = "node Hello {\n    view {\n        text 1 + 2 {}\n    }\n}\n";
+    let ds = compile_diags(non_text, LegacyWidgetAlias::Reject).expect_err("non-text");
+    assert_eq!(first(&ds).code, "source.age.text-type");
+}
+
+#[test]
+fn p979_age_h0_missing_node_name_is_a_domain_structure_error() {
+    // F11：缺节点名也必须是领域具名结构诊断（span 指向 `{`）。
+    let src = "node {\n    view {\n        text \"x\" {}\n    }\n}\n";
+    let ds = compile_diags(src, LegacyWidgetAlias::Reject).expect_err("missing name");
+    let d = first(&ds);
+    assert_eq!(d.code, "source.age.structure", "{d:?}");
+    assert_eq!(d.span.start, src.find('{').unwrap());
+}
+
+#[test]
+fn p979_age_h0_fragment_entries_refuse_the_domain_profile() {
+    // 评审观察：直调片段入口也必须具名拒绝（片段不承载领域声明）。
+    use ace_core::source::cst::{parse_fragment_front, FrontBudget, FrontOutcome};
+    use ace_core::source::SourceProfile;
+    let src = "fn f() int {\n    return 1\n}\n";
+    match parse_fragment_front(
+        src,
+        SourceProfile::AgeH0,
+        FrontBudget::WORK_OWNED_64MIB,
+        &(0..src.len()),
+        None,
+        ace_core::source::ast::Receiver::Free,
+    ) {
+        FrontOutcome::Diag(ds) => assert_eq!(ds[0].code, "source.domain-frontend"),
+        other => panic!("expected the domain refusal, got {other:?}"),
+    }
+}

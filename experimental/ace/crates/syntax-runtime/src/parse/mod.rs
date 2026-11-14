@@ -877,11 +877,12 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
 
     /// 除栈顶帧外，是否有已消费 token 的祖先帧（"构造已开始"判定）。
     fn ancestor_consumed(&self) -> bool {
+        // 同上：按入口游标判定（子规则消费也算）。
         self.stack
             .iter()
             .rev()
             .skip(1)
-            .any(|f| !f.is_pratt() && f.consumed_any)
+            .any(|f| !f.is_pratt() && self.i > f.save.i)
     }
 
     /// 当前帧是否在"已匹配过项的列表"里尝试下一个项——这种尝试失败意味着
@@ -1648,8 +1649,10 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
     /// 构造内时，记录"当前 token 处的意外输入"（原 span；EOF 用零宽尾位）。
     /// 只有整次解析失败时才并入 tree.diags（合法回溯不留假诊断）。
     fn record_expect_hint(&mut self) {
-        let (rule, consumed, alt, step) = match self.stack.last() {
-            Some(f) if !f.is_pratt() => (f.rule, f.consumed_any, f.alt, f.step),
+        // "构造已开始" = 该帧入口之后已消费过 token（含子规则消费——子规则成功
+        // 消费不会回填父帧的 consumed_any，故比较入口游标）。
+        let (rule, started, alt, step) = match self.stack.last() {
+            Some(f) if !f.is_pratt() => (f.rule, self.i > f.save.i, f.alt, f.step),
             _ => return,
         };
         // 若失败发生在该规则的**首个 CtxName 槽位**上，槽位 hint 更精确——
@@ -1660,12 +1663,16 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
                 .get(alt)
                 .and_then(|a| a.steps.first())
             {
-                if matches!(first.atom, Atom::CtxName(_)) && !consumed {
+                if matches!(first.atom, Atom::CtxName(_)) && !started {
                     return;
                 }
             }
         }
-        let started = consumed || self.stack.iter().any(|f| !f.is_pratt() && f.consumed_any);
+        let started = started
+            || self
+                .stack
+                .iter()
+                .any(|f| !f.is_pratt() && self.i > f.save.i);
         if !started {
             return;
         }
@@ -2375,14 +2382,9 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
                 // 深度优先（最内层构造最精确）；同深度时构造级先于槽位级，
                 // 再按位置序。只有整次解析失败才进入 tree.diags。
                 let mut hints: Vec<(usize, SynDiag)> = self.hints.drain(..).collect();
-                hints.sort_by(|a, b| {
-                    b.0.cmp(&a.0).then_with(|| {
-                        let structural = |d: &SynDiag| !d.message.contains("slot");
-                        structural(&b.1)
-                            .cmp(&structural(&a.1))
-                            .then(a.1.start.cmp(&b.1.start))
-                    })
-                });
+                // 深度降序（最内层构造最精确）；同深度保持记录序（槽位步先于
+                // 该规则的构造级失败——槽位消息更具体）。sort_by 是稳定排序。
+                hints.sort_by(|a, b| b.0.cmp(&a.0));
                 for (_, h) in hints {
                     if !self
                         .diags

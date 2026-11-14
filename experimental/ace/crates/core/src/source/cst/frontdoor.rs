@@ -1799,6 +1799,13 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
                 // 只有 hint 不晚于共享投影的最早诊断时才取代它）。普通 profile
                 // 的既有首诊断序不变。
                 if profile == SourceProfile::AgeH0 {
+                    eprintln!(
+                        "DBG diags={:?}",
+                        tree.diags
+                            .iter()
+                            .map(|d| (d.message.clone(), d.start, d.end))
+                            .collect::<Vec<_>>()
+                    );
                     let hint = tree
                         .diags
                         .iter()
@@ -1838,9 +1845,11 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
                             .map(|n| n.spelling.as_str())
                             .collect();
                         let mut node_head_start: Option<usize> = None;
-                        // 叶序扫描（含错误叶——回滚后的声明头正是错误叶）。
-                        tree.for_each_leaf(|s, e, _k, _is_error| {
-                            if node_head_start.is_none() {
+                        // 叶序扫描：回滚后的声明头是**错误叶**——只认错误叶，
+                        // 这样前面合法函数里叫 `node`/`widget` 的标识符不会被
+                        // 误当成领域声明头（F9）。
+                        tree.for_each_leaf(|s, e, _k, is_error| {
+                            if node_head_start.is_none() && is_error {
                                 if let Ok(text) = snap.read_str(s, e) {
                                     if head_starts.contains(&text.as_str()) {
                                         node_head_start = Some(s as usize);
@@ -1918,6 +1927,13 @@ pub fn parse_fragment_front(
     receiver: Receiver,
 ) -> FrontOutcome {
     use crate::atom_text::Stage;
+    // PLAN-979（评审 F2 观察）：片段入口同样拒绝领域 profile——片段不承载领域
+    // 声明，且没有槽位拼写的字节事实源；只经领域前门消费整模块。
+    if profile == SourceProfile::AgeH0 {
+        if let Some(d) = crate::source::age_h0::domain_profile_refusal(profile, src.len()) {
+            return FrontOutcome::Diag(vec![d]);
+        }
+    }
     let frag_src = match src.get(range.clone()) {
         Some(f) => f,
         None => {
