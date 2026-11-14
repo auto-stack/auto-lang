@@ -1,17 +1,17 @@
 ---
 plan_id: PLAN-946
-status: drafting
+status: executing
 feature_name: ACE 集合与拥有资源公共算法
 author: [Codex]
 created_at: 2026-11-05
-updated_at: 2026-11-13
+updated_at: 2026-11-14
 plan_revision: 10
 supersedes_spec_components: [docs/specs/auto-ac/source-collections-variants.md, docs/specs/auto-a2c/collections-hir-backend.md, docs/specs/auto-a2x/checked-resource-facts.md]
 new_spec_components: [docs/specs/stdlib/design/ace-collections.md]
 touched_goals: [GOAL-002]
 affects: [stdlib, ace]
 depends_on: [PLAN-943, PLAN-944, PLAN-945, PLAN-962, PLAN-1039, PLAN-1040, PLAN-967, PLAN-1042, PLAN-1043]
-current_step: 0
+current_step: 1
 total_steps: 8
 ---
 
@@ -207,6 +207,23 @@ struct CollectionOp { element: TypeRef, storage: StorageId, access: BorrowMode, 
 
 本包整包/当前阶段required完成须核1043实际source/统一绑定/最小#in/增量恢复及所需真实后端的正式来源，不以文件存在、provider名字、旧归档或候选语法冒已交。948只审分母/去向，978验装配闭包，985验完整A；普通能力owner仍另交真实外库dispatch与OS/资源结果。原早期切片/调查范围不据此扩大，公共能力缺路径不勾整包完成。
 
+### T-01 冻结表（2026-11-14，探针 `p946_t01_probe` 10/10 绿落树，提交 151143be9）
+
+依赖核验（落主 SHA 均为 master 祖先）：M1-TAG `v0.6-ACE-M1`（b923362f）✓；943（operations/compat 契约、"仅沿已有有限域不推任意泛型"）/944（`ace-stdlib-assembly/1`、reference≤signature_checked）/945（`std.text.owned`、fault hooks `StrArena::set_fault_at`/`ac_rt_fail_nth_alloc`/`A2X_RT_FAULT_ALLOC`）/962（aggregates profile `av.aggregates/1`、ElemView/`LIST_PLACE+PLACE_GET`、**D-962-C4 为 KNOWN-DEBT，非合法所有权**）/947（console/1；Storage/allocator API 未冻结）均 archived；1039（`platform.mem/1`：`mem_alloc/mem_free/mem_borrow/mem_logical_len/mem_mapped_len/mem_unborrow/mem_write_u8/mem_read_u8/mem_page_size`，内部包装 `stdlib/ace/internal/platform_mem.at`，Win VirtualAlloc/VirtualFree REGION，16MiB/1024 句柄上限）落主 bbec67229；1040（`LinuxPlatformIo` 同 ops 裸 syscall，WSL2 实跑域）d88fc3bab；1042（`a2x-python` `PythonTargetProvider`、HIR 域含 Collections、`pyrun::run_py_fileset`）668439ccb；1043（`io.at`＋`.at.at/.c.at/.rs.at/.py.at` 后缀装配、`assemble_unit`、`#in` 最小层、AssemblyBackend×ProviderKind×TargetOs）c6af4845b；967 provider 六路径已落主（T-F0 fold 4c1788a79、T-12 收口 517ea2d79/a95cc617c，V-COVERAGE 六路径全真）。
+
+当前域冻结（探针实跑，collections 基面）：
+
+- 合法方法表恰为 `new/push/insert/get/set/remove/len/clear`（诊断原文）；`pop` 不在其中——旧 pop 义务由 T-02 以 `remove(len-1)` 公共包装承接（remove=move-out 读；push 10/20/30→remove 末位=30、余 len=2 已验 302）；
+- 空 remove → trap `av.trap.list-index`（现冻结行为；T-02 按旧合同裁定公共包装空形：Option/默认值/具名拒）；
+- 归约/查询算法形态=for-in＋嵌套 if（无 break/无闭包）：[1..5]=15、首个>3=4，独立 expected、allocs=frees、live=0；
+- 拥有 Str 元素：`List<Str>` push/get/`.len()` 全绿（3 allocs/3 frees、live 0）；
+- **公共算法承载裁定**：List 参数/返回公共函数在基面被拒（`source.list-value-context`，"v1 lists are function-local values"）→ 946 公共算法文件（T-02 建 `stdlib/ace/std/list.at`）以 **aggregates profile（962 已交付 `av.aggregates/1`）** 编译；同形探针 `fn sum_list(xs List<int>) int` aggregates 下 15 全绿；基面字节同态不动（负控已钉）；
+- 深拷贝边界：`xs.clone()` 双 profile 均拒（"elements clone explicitly"）→ V-DETAIL-03 失败 clone 腿经增长故障＋显式元素 clone 承接，不做容器级 clone；
+- 嵌套 List：基面拒 / aggregates 独立值 42——本包算法不依赖嵌套；错误元素型 backend 前具名拒；
+- Storage 待定项冻结：算法侧消费 1039 已交 `platform.mem/1` 区域 ops（经 `stdlib/ace/internal/platform_mem.at`）；通用 Storage 策略仍归 972，本包不为容器另立 allocator API（947 未冻结面不动）。
+
+首次红记录（观察留档）：①`pop` 方法不存在（legal 表如上）；②基面 List 参数拒 `source.list-value-context`；③嵌套腿最初 expected 误抄 42（实值 2=inner[1] 正确），改为 get(0)+get(1)=40+2 独立期望后绿。原始输出存 `D:/autostack/plan-artifacts/plan-946/t01-probe-final-green.txt`。
+
 ### 规范增量
 
 以下是**拟议**delta，review按实际范围定稿，merge才写canonical Specs；本轮不写current Spec。
@@ -335,7 +352,7 @@ struct CollectionOp { element: TypeRef, storage: StorageId, access: BorrowMode, 
 
 本组包括调研/前探在内均须先核M1-TAG正式收据与本包实施授权；该门未闭不建树或运行探针。
 
-- [ ] **T-01｜M2-A｜owner_stage: work｜AC-01/AC-08**：核M1-TAG实际收据和本包实施授权，消费D943/D944/D945/D962及947合同来源；从tag与当前主线复核原collections拒绝集、公共调用/资源形态及Storage设计待定项，完成whole-path前探后冻结支持表；门未闭不执行。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
+- [x] **T-01｜M2-A｜owner_stage: work｜AC-01/AC-08**：核M1-TAG实际收据和本包实施授权，消费D943/D944/D945/D962及947合同来源；从tag与当前主线复核原collections拒绝集、公共调用/资源形态及Storage设计待定项，完成whole-path前探后冻结支持表；门未闭不执行。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。 [✅ 2026-11-14 门核+冻结完成：M1-TAG/授权/依赖全部核验（见§5 T-01 冻结表，落主 SHA 齐）；探针 `p946_t01_probe` 10/10 绿落树（151143be9），冻结=方法表 `new/push/insert/get/set/remove/len/clear`、pop→remove(len-1) 包装（T-02）、空形 trap 待 T-02 裁定、公共算法承载=aggregates profile、clone 双拒→显式元素 clone、Storage 消费 1039 platform.mem/1；FOUNDATION/COVERAGE/LOAD 依赖面已核（1039/1040/1042/1043/967 落主），V 行关闭归 T-02..T-08/T-05 汇总]
 
 - [ ] **T-02｜M2-A｜owner_stage: work｜AC-02**：实现已冻结公共算法及绑定，复用现有for-in/分支展开与合同，不引入重复指令族/资源分析；必要有限扩域须先修订验收边界。 FOUNDATION：按§5核已交原生底座/OS内存来源，关闭V-FOUNDATION/AC-FOUNDATION；纯算法准备不冒原生完成。 COVERAGE：承担§5本包覆盖责任，补V-COVERAGE/AC-COVERAGE，不减少本任务原范围/早期切片合同。 LOAD：按§5消费1043正式加载层，闭V-LOAD/AC-LOAD，原早期范围与全部任务义务不变。
 
@@ -363,6 +380,10 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: work / T-01 | plan_id: PLAN-946 | plan_revision: 10 | outcome: pass（T-01 完成，Plan 转 executing 1/8） | worktree: D:/autostack/.wt/lang-946/auto-lang | branch: plan-946-dev | base_commit: 2891510db | code_commit: 151143be9（探针 p946_t01_probe 10/10 绿：reduce 15/find 4/remove-末位 302/owned-Str 10/aggregates 参数 15/嵌套 42/三负控钉基面） | dependency_revisions: M1-TAG b923362f；943=72ac9e7b3、944=371702e11、945=8d4f89e19、962=4252adf46、947=03a1a9d93；1039=bbec67229、1040=d88fc3bab、1042=668439ccb、1043=c6af4845b（均 master 祖先）；967 能力切片=T-F0 4c1788a79＋T-12 517ea2d79/a95cc617c（executing 12/19，按已落主能力消费，残余冲突风险具名见 round-3 回执） | task_ids: T-01 | evidence: §5 T-01 冻结表＋`experimental/ace/crates/av/tests/cases/p946_t01_probe.rs`（conformance 注册）；原始输出 plan-artifacts/plan-946/t01-probe-final-green.txt | blockers: none（空形/公共包装契约归 T-02 正常范围） | next_responsible_role: work（T-02 公共算法文件＋T-03 producer 接线）
+
+`stage: goal | plan_id: PLAN-946 | plan_revision: 10 | round: 3 | from: work | to: work | status: executing | outcome: pass（T-01 门核+冻结，1/8） | worktree: D:/autostack/.wt/lang-946/auto-lang | commit: 151143be9 | next: work（T-02）`
 
 2026-11-14 `/auto-plan-goal` 重启核验（新一轮 goal run，round 编号沿 §9 递增为 3）：门复核（durable artifacts）：M1-TAG `v0.6-ACE-M1`=`b923362f47bc8861407e9a470d63ddfdb505982b` 仍为 HEAD `e57601e2b` 祖先✓；依赖 943/944/945/962/947 archived✓；**1039/1040/1042/1043 自 round-2 阻塞后已全部 archived**✓（解除 §10 前三项阻塞）；PLAN-967 executing 12/19——946 所引依赖实质（单 AV 下 C/Rust provider 装配与 shim，AC-COVERAGE）已实现/实跑（V-COVERAGE 六路径 AV/native、AV/Rust、AV/C、AC、A2R、A2PY 全真，同一 binding/shim/provider）并经 phase fold 正式落主（T-F0-D `4c1788a79`；T-12 收口 `517ea2d79`/`39c11dd8d`/`e57601e2b`），余 T-13..15 为 967 自身 FFI 扩面（双向 import/export/callback/lease、store 依赖、SQLite/serde_json 回归）及其 T-04..07 收尾，非 946 消费面。裁定：按 r9/r10 合同"C/Rust provider 复用 967"以**已落主能力切片**消费，967 整包归档不再作 946 开工前置；残余风险具名——967 T-13..15 若触及 av-core/abi 邻面，946 晚合并方 rebase，946 最终验证（T-05）与独立复审对届时 master 复核所消费来源。WIP 条件①（946 范围）：本轮提交 r8–r10 计划修订与 `docs/design/stdlib/` 两份设计依据；其余 plan/design WIP 归属各自 owner 会话，不代提交。`stage: goal | plan_id: PLAN-946 | plan_revision: 10 | round: 3 | from: user | to: work | status: drafting | outcome: pass（进入 work） | worktree: none（work 阶段创建） | commit: e57601e2b | next: work（T-01 门核+有界前探+冻结）`
 
