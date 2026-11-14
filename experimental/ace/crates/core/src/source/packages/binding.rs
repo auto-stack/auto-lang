@@ -5332,6 +5332,40 @@ mod plan966_tests {
         );
     }
 
+    // PLAN-966 T-10：生成面覆盖函数/类型/常量与导入（跨目标选择），不只函数。
+    #[test]
+    fn p966_ct_generated_types_and_consts_by_target() {
+        let src = "#is sys.current {\n    Windows -> { pub const K int = 10\n pub type T { v int } }\n    Linux -> { pub const K int = 20\n pub type T { v int } }\n}\nfn main() int { let t T = T { v: K }\n return t.v }";
+        for (target, want) in [(TargetOs::Windows, 10), (TargetOs::Linux, 20)] {
+            let bound = bind_ok(src, target);
+            let unit = &bound.units["app::main"];
+            assert!(unit.exports.contains("K"), "{:?}", unit.exports);
+            assert!(unit.exports.contains("T"), "{:?}", unit.exports);
+            let consts: Vec<i32> = bound
+                .program
+                .items
+                .iter()
+                .filter_map(|i| match i {
+                    Item::Const(c) => match &c.value.kind {
+                        ExprKind::IntLit(v) => Some(*v),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .collect();
+            assert!(consts.contains(&want), "const {want} selected: {consts:?}");
+            assert_eq!(
+                bound
+                    .program
+                    .items
+                    .iter()
+                    .filter(|i| matches!(i, Item::Type(_)))
+                    .count(),
+                1
+            );
+        }
+    }
+
     // PLAN-966 T-09/V-09：未选分支只保 Text 阶段语法检查（语法坏仍报）；
     // 未选平台的模块缺失不阻本目标绑定；选中平台缺模块具名拒。
     #[test]
