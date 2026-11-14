@@ -203,6 +203,12 @@ struct GeneratedDecl { candidate: UntrustedDecl, origin: SourceMap, dependencies
 
 **下一增量设计决定（T-02 起，2026-11-14 已定并实施语句级部分）**：语句级 CT 采用 **(a) AST 载体 + 装配期折叠**（而非前门旁置槽位）：`ast::Stmt::{HashIf,HashFor,HashIs}` + 共享 `CtExpr` 移入 `ast`（`packages` 以 `pub use` 保持原路径）；packages-ct 面投影两臂/各臂（`->` 与 `=>` 都接受），装配期在模块绑定与 resolve 之前按显式目标事实折叠——未选分支不落任何语句、`#for` 按 i32 计数展开（预算 1024，越界 `source.cte.in-budget`）、`#is` 按值相等选臂并由 `else` 兜底；循环变量只进入 CT 谓词域，运行时引用仍是普通未定义名（同旧实现，不伪造运行期绑定）。未折叠残余由绑定/resolve/semantics 具名拒（`source.cte.unfolded`），不做静默忽略。共享扫描面（`source-query` 规范字节、`source-cte` 被调/`#{}` 收集、闭包捕获、span 平移、lambda/名字引用扫描）统一看进 CT 体，避免依赖/身份漏项。**仍未完成**：宏 `#name()` 的语法/展开与 hygiene 规则、`#[attr]` metadata 路由；两者继续留在 T-02 未勾选范围。
 
+### 2026-11-14 宏调用合同（T-02 宏切片，已实施）
+
+语句位 `#name(args...)`（旧 `MacroCall` 位）在 packages-ct 面交付：实参是普通运行期表达式、仅位置实参（命名实参具名拒 `source.cte.macro-args`）；投影期展开为**同名前门函数调用**（调用糖），名字按本模块声明/导入的函数经统一绑定解析——未知/不可解析为具名错误（`source.module-symbol`，不再像旧 VM 那样静默忽略）。ACE 没有 legacy VM 的 `Log.*` 原生，因此 `#debug/#info/#warn/#error` 不做隐式 Log 路由；目标专有的宏发射（旧 a2r 的 `name!(...)`）属 967/目标 owner，不在本包伪造运行时。宏不引入任何绑定，故不存在"生成局部捕获调用者"的捕获面；宏名与普通调用同域——同名局部遮蔽时绑定层不改写符号（下游按普通调用诊断），也不暗中改绑到模块函数（具名限制，不静默）。宏展开不复制语句，无新增预算；解析/投影预算沿用。
+
+**metadata 分账**：`field_count`/`has_field` 等 metadata 查询（`cte.meta.fields/v1`）由 936 交付、在 scalar-ct/AV CT 前门实测；本包在 T-08 用真实 worker 前门验收其"字段变更重算、未读 body 不重算"（V-02），不重复实现第二套查询。`#[attr]` 注解语法/路由按 [m2-denominator](../specs/ace-migration/m2-denominator.md) L-35 行级归属分账：`#[test]`→971、`#[api]`→980/982、`#[c]/#[vm]`→967 provider 选择；本包交付的是 # 构造/宏调用与 metadata 查询面，不把该行整体吞入。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
@@ -314,7 +320,8 @@ struct GeneratedDecl { candidate: UntrustedDecl, origin: SourceMap, dependencies
   - [✅ 2026-11-14] 依赖/路径核实、语义/命令冻结与有界前探（正例/非法近邻/失败恢复/端到端 AV 3 例）见 §5「2026-11-14 T-01」；实施树 `.wt/lang-966`、分支 `plan-966-dev`、基面 `bb74f313c`；本片代码提交 `b2427f34b`。未完成项全部保留在 T-02/T-08/T-09/T-10。
 
 - [ ] **T-02｜M2-A｜work｜AC-02**：在§4对应producer实现§5主能力与永久正反例；先共享事实/类型/资源合同，再接实际后端，不创建平行语义分析。
-  - [部分 2026-11-14] 语句级 `#if/#for/#is`（packages-ct）已实现并绿：AST 载体 + 装配期按目标事实折叠、预算/恢复、嵌套循环变量环境、未折叠残余具名拒；共享扫描面同步（见 §5「T-02 实现决定」与 §9 round-2 收据，提交 `4ef0afe76`/`e8a14a0f6`）。**未勾选**：宏 `#name()`（hygiene/预算/未知宏具名拒）与 `#[attr]` metadata 路由仍未交付。
+  - [部分 2026-11-14] 语句级 `#if/#for/#is`（packages-ct）已实现并绿：AST 载体 + 装配期按目标事实折叠、预算/恢复、嵌套循环变量环境、未折叠残余具名拒；共享扫描面同步（见 §5「T-02 实现决定」与 §9 round-2 收据，提交 `4ef0afe76`/`e8a14a0f6`）。
+  - [部分 2026-11-14] 宏调用 `#name(args)` 已实现并绿：语句位调用糖、未知/不可解析具名拒、命名实参具名拒、遮蔽不改绑（见 §5「宏调用合同」，提交 `48f42ad51`）。**未勾选**：metadata 查询面的真实 worker 前门验收（field 变更失效/未读 body 复用，V-02）仍归 T-08；`#[attr]` 路由按 L-35 分账给 971/980/982/967。
 
 - [ ] **T-03｜M2-A｜work｜AC-02/03**：完成真实consumer、目标/装配/权限/增量/失败恢复接线，保原API行为；每个适用端对独立oracle，不以模型替运行。
 
@@ -345,6 +352,9 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 本轮细化交接：原任务ID/阶段/进度保持；T-01须在依赖实现前把本轮具体输入/类型/旧新check与未决来源冻结；T-02/T-03/T-08/T-09/T-10/T-04分别落实对应V-DETAIL-01..04与原所有验证。分析/格式/性能/发行包沿各自职责，不把例子复制成另一执行器或新框架。未决改变既有公共语义/预算/来源门则具名修订，不静默缩分母。
 
 ## 9. 复审记录
+
+2026-11-14 stage: work / T-02（宏切片） | plan_id: PLAN-966 | plan_revision: 8 | outcome: pass（切片完成，T-02 仍 open：metadata 查询经真实 worker 前门验收归 T-08） | worktree: D:/autostack/.wt/lang-966/auto-lang | branch: plan-966-dev | base_commit: 4d6915ed2 | code_commit: 48f42ad51 | task_ids: T-02（部分） | evidence: 宏两例（`plan966_tests` 共 10 例、0.03s）：`#debug(41)` 展开为同名前门调用并进入 `references`（callee 已改写为 `p3_appm4_main_debug`）、未知宏 `#frobnicate` 具名拒 `source.module-symbol`（unknown function，非静默忽略）、命名实参 `#debug(x: 1)` 具名拒 `source.cte.macro-args`、同名局部遮蔽时不暗中改绑（callee 保持 `debug`、references 空）；`cargo test -p ace-core --lib` = 74 passed/1 ignored；受影响固定组并集 `cargo t ace-source ace-syntax ace-comptime ace-semantics` 全 PASS（run-iok9i210，exit 0）；fmt（ace-core）clean，零新增告警 | blockers: none | 具名限制：宏名与普通调用同域（无独立宏命名空间）；ACE 无 legacy `Log.*` 运行时，`#debug` 等不做隐式 Log 路由，目标专有宏发射归 967/目标 owner（§5 宏合同） | next_responsible_role: work（T-08 metadata 查询 worker 前门验收 + T-03 端到端 consumer 语句级 CT/宏实跑；随后 T-09/T-10）
+stage: goal | plan_id: PLAN-966 | plan_revision: r8 | round: 3 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-966/auto-lang | commit: 48f42ad51 | next: work
 
 2026-11-14 stage: work / T-02（语句级切片，部分） | plan_id: PLAN-966 | plan_revision: 8 | outcome: pass（切片完成，T-02 保持 open：宏/metadata 未交） | worktree: D:/autostack/.wt/lang-966/auto-lang | branch: plan-966-dev | base_commit: master 4d6915ed2（已并入 087be243b） | code_commit: e8a14a0f6（语句级实现 4ef0afe76 + 扫描面收编 e8a14a0f6） | task_ids: T-02（部分） | evidence: 新增 `plan966_tests` 四例（语句级，总计 0.02s）：`#if` 按目标折叠（Windows=10/Linux=20，非 bool 具名拒 `source.cte.in-type`）、`#for` 展开为三条赋值且 2000 次越界 `source.cte.in-budget` 后修正源可恢复、`#is` 事实臂（`->`）与 `=>` 及 int 模式/`else` 兜底、`#for` 体内 `#if` 用循环变量得 [1,2]；`cargo test -p ace-core --lib` = 72 passed/1 ignored；受影响固定组并集 `cargo t ace-source ace-syntax ace-comptime ace-semantics` 全 PASS（run-od8j8yq5，exit 0）；共享扫描面同步：`source-query` 规范字节行走、`source-cte` identity/替换/被调/`#{}` 收集、闭包捕获、span 平移、`units` 名字引用/lambda 扫描；`semantics` 对未折叠 CT 语句受控拒（不静默当普通语句）；fmt（core/semantics/source-query/source-cte 本次改动文件）clean，零新增告警（既有 unused-import 1 处为基线） | blockers: none（宏与 metadata 属同任务未完成范围，非阻塞；arch/env/ABI 事实仍归 T-09） | next_responsible_role: work（T-02 续：宏 `#name()` 语法/展开/hygiene + `#[attr]` metadata 路由；随后 T-03 端到端 consumer 与 T-08/T-09/T-10）
 stage: goal | plan_id: PLAN-966 | plan_revision: r8 | round: 2 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-966/auto-lang | commit: e8a14a0f6 | next: work
