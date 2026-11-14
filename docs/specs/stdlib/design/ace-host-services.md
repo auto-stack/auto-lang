@@ -34,6 +34,12 @@
 （ace_av/ace_native=supported、hir_rust/hir_c=missing_capability、owner=PLAN-947），
 由 `stdlib_assembly::contracts` 审计词汇表与 `contracts/tests.rs` 钉扎测试双锁定。
 
+> **PLAN-1041 增量（2026-11-14）**：本节只覆盖旧 `print/eprint/say` 画像。新增
+> 公共输出能力（`out_text/out_bytes/out_kind/...`，跨平台 stdio + Windows
+> WriteConsoleW 文本控制台 + 重定向 + 部分写/进度）由
+> [native-stdio.md](native-stdio.md) 单列（AV/native、AC、A2R、A2PY、原 A2C
+> implemented；AV/C、AV/Rust pending 967 富帧）；stdin/完整 File 归 PLAN-973。
+
 ## 3. 有界资源前探分账（File/Task/Stream；本包仅前探，已交付=无）
 
 前探结论（2026-11-13，基线 HEAD 见 PLAN-947 §4.1；每行有实际代码依据）：

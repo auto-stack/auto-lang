@@ -201,6 +201,8 @@ mod stdlib_core_945;
 // 四端真跑（A2PY 执行腿 pending PLAN-1042）。
 #[path = "cases/console_coverage_1041.rs"]
 mod console_coverage_1041;
+#[path = "cases/console_load_1041.rs"]
+mod console_load_1041;
 #[path = "cases/console_out_1041.rs"]
 mod console_out_1041;
 #[path = "cases/stdlib_assembly_1043.rs"]

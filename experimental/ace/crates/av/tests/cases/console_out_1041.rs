@@ -250,3 +250,64 @@ fn main() int {
         "a😀b中".encode_utf16().collect::<Vec<u16>>()
     );
 }
+
+/// OUT-03 cancel: a cancelled run ends in the lane's controlled
+/// Cancelled outcome — bounded, never a hang, never a silent partial
+/// success. (The op-level 995 poll inside write_some/console_write16 is
+/// the 1039 backend seam; the AV lane's observable contract is the
+/// checked cancellation outcome.)
+#[test]
+fn out03_av_cancel_mid_write_is_controlled() {
+    let src = r#"
+fn main() int {
+    let h = out_stdout()
+    let w = out_text(h, "你好，世界")
+    return w
+}
+"#;
+    let src_io = format!(
+        "{IO_AT}
+{src}"
+    );
+    let program = compile(&src_io, "d_main").unwrap();
+    let mut console = ConsoleCapture::default();
+    let mut cap = CapturePlatformIo {
+        force_console_kind: true,
+        use_synthetic_std_handle: true,
+        ..Default::default()
+    };
+    let cancel = CancelFlag::new(true);
+    let (out, _trace, _summary) = program
+        .run_platform(
+            &platform_grants(),
+            &ExecLimits::default(),
+            &cancel,
+            Some(&mut console),
+            &mut cap,
+        )
+        .unwrap();
+    assert!(
+        matches!(out, ExecOutcome::Cancelled { .. }),
+        "cancelled run ends in the checked Cancelled outcome, got {out:?}"
+    );
+}
+
+/// OUT-03 WriteZero: a sink that reports success-with-zero progress
+/// forever hits the bounded retry (64) and returns -14 — never a hang.
+#[test]
+fn out03_av_write_zero_is_bounded() {
+    let src = r#"
+fn main() int {
+    let h = out_stdout()
+    return out_bytes(h, "data")
+}
+"#;
+    let mut cap = CapturePlatformIo {
+        max_write_chunk: Some(0),
+        use_synthetic_std_handle: true,
+        ..Default::default()
+    };
+    let (out, _summary) = run_capture(src, &mut cap);
+    assert_eq!(expect_i32(&out), -14, "bounded WriteZero, controlled -14");
+    assert!(cap.stdout.is_empty(), "no bytes moved");
+}
