@@ -14,6 +14,15 @@
 - driver 层是唯一后端选择点（`ac-case-worker`、`ac-native`）；`ac-core ⇄ ac-mn` 不成立
   （ac-core 不依赖 ac-mn）。
 
+## 1b. Linux x64 目标（PLAN-1040，2026-11-14 交付）
+
+`ac-mn` 的第二个正式目标是 `x86_64-unknown-linux-gnu`（System V）：同一共享 MIR 唯一
+语义源不变，按目标选择对象发射（ELF64 per-unit）与原语 stub；`rust-lld -flavor ld`
+静态链接（无 CRT/解释器/动态依赖）；A09 身份轴含目标 triple，Windows 对象与 Linux
+对象在 A09-ELF/A09 两层间永不错槽（结构准入按对象格式拒绝）。执行走 WSL2 验收环境
+（见 [linux-native-platform.md](linux-native-platform.md)）。旧结论"唯一目标
+x86_64-pc-windows-msvc"由本节修订为"双 admitted 目标"；Windows 车道全部冻结不变。
+
 ## 2. 后端选择（冻结于 T-02 F1，T-06 收口）
 
 环境变量 `AC_NATIVE_BACKEND`，**每次请求读取**（无进程级缓存）：
