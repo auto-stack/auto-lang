@@ -652,3 +652,98 @@ fn main() int { return text_byte_len(\"abc\") }",
     // Dropping the session drops the loaded library exactly once.
     drop(next);
 }
+
+/// T-09 (V-09): the PROJECT-level `use.rs` entrance. A project file IS
+/// the provider; the binding/shim/manifest are derived at open time. The
+/// legs: a real import runs (no hand-written manifest exists anywhere —
+/// asserted), a BROKEN provider is a named rejection at the right stage,
+/// and fixing the file recovers through the SAME entrance.
+#[test]
+fn f0_project_import_runs_rejects_and_recovers() {
+    use ace_abi::rust_provider::open_project_session;
+    let root = scope("project");
+    let project = root.join("proj");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(project.join("f0_text.rs"), f0_provider_source()).unwrap();
+
+    let loaded = |project: &std::path::Path| {
+        let mut f0 = open_project_session(project, "f0_text", 1).expect("project session opens");
+        let unit = compile_unit(
+            "use.rs f0_text
+fn main() int { return text_byte_len(\"A中😀\0\") }",
+            &f0.admitted,
+        );
+        let encoded = ace_av_core::abc::encode_abc(&unit).unwrap().to_flat();
+        let decoded = ace_av_core::abc::decode_abc(&encoded).unwrap();
+        let loaded = ace_av_core::abc_verify::verify_abc_foreign(
+            decoded,
+            &unit.owner,
+            f0.session.table_shared(),
+        )
+        .expect("admitted verify");
+        f0.session
+            .execute(
+                &loaded,
+                &ace_av_core::av::ExecLimits::default(),
+                &ace_av_core::av::CancelFlag::new(false),
+            )
+            .expect("run")
+            .0
+    };
+
+    // real import: the project file drives everything; NO manifest file
+    // exists in the project (V-09's delete-the-manifest check holds by
+    // construction — and is asserted).
+    assert_eq!(
+        success_i32(&loaded(&project)),
+        Some(9),
+        "the project provider ran for real"
+    );
+    let manifest_like: Vec<_> = std::fs::read_dir(&project)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .map(|x| x == "json" || x == "manifest")
+                .unwrap_or(false)
+        })
+        .collect();
+    assert!(
+        manifest_like.is_empty(),
+        "no hand-written manifest exists in the project"
+    );
+
+    // broken provider: an out-of-domain annotation is a NAMED rejection
+    // at the import stage (before any build/admission).
+    let broken = f0_provider_source().replace(
+        "pub fn text_byte_len(s: &str) -> i32 {
+    s.as_bytes().len() as i32
+}",
+        "pub fn text_byte_len(s: String) -> i32 { 0 }",
+    );
+    std::fs::write(project.join("f0_text.rs"), broken).unwrap();
+    let rejected = match open_project_session(&project, "f0_text", 2) {
+        Err(message) => message,
+        Ok(_) => panic!("a broken provider must not open"),
+    };
+    assert!(
+        rejected.contains("rust-import.domain"),
+        "named import rejection, got: {rejected}"
+    );
+
+    // a MISSING provider is its own named rejection.
+    std::fs::remove_file(project.join("f0_text.rs")).unwrap();
+    let missing = match open_project_session(&project, "f0_text", 3) {
+        Err(message) => message,
+        Ok(_) => panic!("a missing provider must not open"),
+    };
+    assert!(
+        missing.contains("rust-import.provider-missing"),
+        "{missing}"
+    );
+
+    // recovery: restore the provider file; the SAME entrance works.
+    std::fs::write(project.join("f0_text.rs"), f0_provider_source()).unwrap();
+    assert_eq!(success_i32(&loaded(&project)), Some(9));
+}

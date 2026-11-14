@@ -232,6 +232,47 @@ pub fn f0_authority(
     }
 }
 
+/// PLAN-967 T-09: PROJECT-level provider resolution for the `use.rs`
+/// frontdoor. The source's `use.rs <provider>` names a PROJECT file
+/// `<root>/<provider>.rs`; the binding, shim, build unit and manifest
+/// are all DERIVED from that file at open time (no hand-written manifest
+/// exists anywhere in the project — V-09's "delete the manifest" check
+/// is vacuously satisfied by construction and asserted by the caller).
+/// Named rejections: missing provider file, importer-domain violations.
+pub fn open_project_session(
+    project_root: &Path,
+    provider_name: &str,
+    generation: u64,
+) -> Result<F0Session, String> {
+    if provider_name.is_empty()
+        || !provider_name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    {
+        return Err(format!(
+            "rust-import.provider-name: `{provider_name}` is not a project provider spelling [a-z0-9_]+"
+        ));
+    }
+    let provider_path = project_root.join(format!("{provider_name}.rs"));
+    if !provider_path.is_file() {
+        return Err(format!(
+            "rust-import.provider-missing: `use.rs {provider_name}` found no project provider at {}",
+            provider_path.display()
+        ));
+    }
+    let source = std::fs::read_to_string(&provider_path).map_err(|e| {
+        format!(
+            "rust-import.provider-read: {}: {e}",
+            provider_path.display()
+        )
+    })?;
+    let build = build_source(
+        &project_root.join(format!(".f0-build-{provider_name}-{generation}")),
+        &source,
+    )?;
+    open_session_from_build(&build, generation)
+}
+
 /// PLAN-967 T-02 composition: one OPEN foreign session = build → admit →
 /// load → bind, holding every identity piece alive together. Consumers
 /// (969/E0 and later A2X lanes) drive `session` and never re-assemble
