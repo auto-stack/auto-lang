@@ -183,6 +183,7 @@ checkpoints:
 
 生产工件落点检查（landing≠deployment）：本交付为独立 opt-in 实验 workspace（非语言/ACE workspace 成员，不在 daily/all 组、不进默认构建面），无下游产品二进制/服务/web bundle 消费——无 stale 工件需重建重启；主检出语言默认构建面不受影响（唯一仓库面变化=scripts/test-groups.toml +15 行组注册）。
 
+- cleaned ✅：wt-guard clean → worktree D:/autostack/.wt/lang-1021/auto-lang 移除、分支 codex/plan-1021-dev 删除、组目录 .wt/lang-1021 删除（worktree 计数 0）；plan-artifacts/plan-1021 整 scope 删除（SCOPE.md/probe ~2.2GB/run-a/run-b/rev-absroot；证据已折叠、零具名持有）；.retention/policy.json 登记 deleted@merge；输出对账见上段（无外部盘符/散落残留）；构建中间产物随 worktree 终结未回收。
 next_responsible_role: 无（终态；1022 消费交接见 T-07 收据）
 
 ---
