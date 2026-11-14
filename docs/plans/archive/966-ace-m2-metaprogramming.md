@@ -7,7 +7,7 @@ created_at: 2026-11-06
 updated_at: 2026-11-14
 plan_revision: 8
 total_steps: 10
-current_step: 8
+current_step: 10
 completion_kind: delivered
 depends_on: [PLAN-960, PLAN-963, PLAN-964, PLAN-965, PLAN-936, PLAN-958, PLAN-1043]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/auto-lang/comptime/design/hash-syntax.md, docs/specs/auto-cte/scalar-query-profile.md]
@@ -365,9 +365,9 @@ struct GeneratedDecl { candidate: UntrustedDecl, origin: SourceMap, dependencies
 
 - [x] **T-05｜M2-A｜review｜AC-04**：独立复审，逐项核验和遗漏扫描；债务候选写KNOWN-DEBT，in-scope缺陷回同树修复，停止实现并发写入。
 
-- [ ] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
+- [x] **T-06｜M2-A｜merge｜AC-05**：review pass后核冻结并集与来源，落规范增量、合回、归档，保M1/M2证据分账。
 
-- [ ] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
+- [x] **T-07｜M2-A｜merge｜AC-05**：命令实际输出逐目录对账；摘要折入Plan，删除统一scope（具名未解决持有除外），刷新retention，wt-guard clean后清树/分支并核最终状态。
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
@@ -383,6 +383,7 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+- **cleaned**：`wt-guard.ps1` clean（无 reparse point）→ `git worktree remove D:/autostack/.wt/lang-966/auto-lang` → `git branch -d plan-966-dev`（was 317b70259）→ 组目录 `D:/autostack/.wt/lang-966` 删除；`plan-artifacts/plan-966/`（3 个复审日志）在收据折入后整目录删除（`files=3`）；registry `plan-artifacts/.retention/policy.json` 增 `auto-lang/PLAN-966` deleted-at-merge（no holds，具名限制两条）。**观察**：`docs/design/55-...` 与 `docs/design/strategy/ace-m2-delivery-roadmap.md` 仍指向归档前路径 `../plans/966-...`，两文件在本会话期间带着**其它会话的未提交 WIP**（8 个 docs/design 修改），按红线未触碰；链接更新归该 WIP 的 owner，本包未把它算作已闭。Batch regression：`.last-batch-regression.json` 覆盖至 1057（>966）→ 本次 landing 不触发 due。
 PLAN-966:r8 consolidation（stage: merge，2026-11-14）
 
 - **prepared**：reviewed baseline `ca3201da1`（终审判定 pass；附加 `21d2a82dd` 仅为注释/测试断言，diff 可核）；delivery commit `317b70259`（rebase 到 master `41ea76c8d`；旧→新映射 `4d6915ed2..21d2a82dd` → `7e527fa03..331fb0332`，`git range-diff` 逐段全 `=`；唯一 rebase 冲突 `grammars/auto-source.at` 经 rerere 解决；重跑 merge 门 `run-ibn16bx0`：ace-syntax/source/semantics/comptime/artifacts/av/a2x 七组 PASS，ace-native 仅 `linux_elf_1040::elf05` Linux/WSL 裁定排除，其余 286 例 PASS）。Spec delta：新增 `m2-metaprogramming.md`、改 `hash-syntax.md`/`replacement-scope-and-evidence.md`/`m2-denominator.md`/`scalar-query-profile.md`。
