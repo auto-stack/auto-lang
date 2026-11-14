@@ -158,7 +158,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         r-try { literal: "try" }
         r-union { literal: "union" }
         r-use { literal: "use" }
-        r-pub(profiles: [scalar-modules, packages-modules, packages-ct]) { literal: "pub" }
+        // PLAN-1041：host-console/entry-unit 内联公共 stdlib 源（如 io 输出）
+        // 也用 `pub fn` 拼写——单模块文件里 pub 是可见性 no-op，保持包面/内联
+        // 单源同一拼写。
+        r-pub(profiles: [scalar-modules, packages-modules, packages-ct, host-console, entry-unit]) { literal: "pub" }
         r-view { literal: "view" }
         r-with { literal: "with" }
         r-yield { literal: "yield" }
@@ -222,6 +225,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         item {
             alt(profiles: [scalar-modules]) { public-fn() {} }
             alt { fn-item() {} }
+            // PLAN-1041：内联公共 stdlib 源的 `pub fn` 声明项（见 public-fn）。
+            alt(profiles: [host-console, entry-unit]) { public-fn() {} }
             // PLAN-936（T-04）：scalar-ct 面的 type-item 仅字段形（member 规则中方法两 alt 仍门控在 record 族；元信息源声明，§5.2）。
             alt(profiles: [record, record-instances, text-record, text-record-instances, collections, scalar-ct, aggregates]) { type-item() {} }
             // PLAN-963（T-03）：`spec Name { fn m(..) R [body] }` 声明。投影期
@@ -258,7 +263,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             fn(field: "kw")
             fn-tail() {}
         }
-        public-fn(profiles: [scalar-modules]) {
+        public-fn(profiles: [scalar-modules, host-console, entry-unit]) {
             r-pub() {}
             fn-item(field: "function")
         }
@@ -888,7 +893,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { return-stmt() {} }
             alt { if-stmt() {} }
             alt(profiles: [core]) { while-stmt() {} }
-            alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, text-record-instances, entry-unit, host-console, scalar-modules, packages-modules]) { for-cond-stmt() {} }
+            // PLAN-1041：for-cond 语句分派补 packages-ct（规则本身已在面集内，
+            // 公共 stdlib 输出循环需要普通 while 形循环）。
+            alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, text-record-instances, entry-unit, host-console, scalar-modules, packages-modules, packages-ct]) { for-cond-stmt() {} }
             alt(profiles: [collections, closures, numeric, aggregates]) { for-in-stmt() {} }
             // PLAN-962：`for i in a..b / a..=b { }`（i32 计数循环）。
             alt(profiles: [aggregates]) { for-range-stmt() {} }

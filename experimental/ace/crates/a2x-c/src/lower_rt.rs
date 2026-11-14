@@ -1249,6 +1249,39 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
                     self.out.push(format!("int32_t {} = {}();", t, func));
                     return Ok((t, Ty::I32));
                 }
+                // PLAN-1041: a platform-operation intrinsic maps to its
+                // runtime stub (a2x_io_* / a2x_mem_* in the appended
+                // platform runtime); str params pass content views.
+                if let Some(sym) = self.view.platform_symbol(target_id) {
+                    let op = ace_core::source::platform_io::PLATFORM_SOURCE_OPS
+                        .iter()
+                        .find(|o| o.symbol == sym)
+                        .ok_or_else(|| {
+                            A2xReject::unsupported_expr(format!(
+                                "platform operation `{sym}` has no C stub"
+                            ))
+                        })?;
+                    let func = format!("a2x_{}", op.callee);
+                    let mut args = Vec::with_capacity(eval_args.len());
+                    for (i, &a) in eval_args.iter().enumerate() {
+                        let pty = op
+                            .params
+                            .get(i)
+                            .copied()
+                            .unwrap_or(ace_core::source::resolve::VT::I32);
+                        if matches!(pty, ace_core::source::resolve::VT::Str) {
+                            let (v, aty) = self.lower_view_value(a)?;
+                            args.push(self.as_view_form(v, aty));
+                        } else {
+                            let (v, _) = self.lower_pure(a)?;
+                            args.push(v);
+                        }
+                    }
+                    let t = self.fresh_temp();
+                    self.out
+                        .push(format!("int32_t {} = {}({});", t, func, args.join(", ")));
+                    return Ok((t, Ty::I32));
+                }
                 // PLAN-939: a RESOURCE foreign call (text-record domain) —
                 // resource-sig admission plus the frozen lane conversions
                 // (V-01/V-04/V-15).

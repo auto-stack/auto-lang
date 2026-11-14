@@ -184,6 +184,13 @@ pub enum RExpr {
     Trace {
         func: &'static str,
     },
+    /// PLAN-1041: platform-operation runtime stub call — plain i32
+    /// result (deterministic negative error codes, never a trap), but
+    /// EFFECTFUL (OS write) so it pins like Trace.
+    PlainCall {
+        func: String,
+        args: Vec<RExpr>,
+    },
     // ---- PLAN-902 record/text surface (never produced for scalar/core) ----
     /// Fallible typed text helper (`a2x_str_*`) — allocation/trap carrying.
     StrFn {
@@ -279,7 +286,7 @@ impl RExpr {
     /// True when the root must be pinned into a temporary before reuse
     /// (traps OR observable effects — single evaluation in source order).
     pub fn needs_pin(&self) -> bool {
-        self.is_fallible_root() || matches!(self, RExpr::Trace { .. })
+        self.is_fallible_root() || matches!(self, RExpr::Trace { .. } | RExpr::PlainCall { .. })
     }
 
     /// Pretty operator tag for diagnostics/dumps.
@@ -296,6 +303,7 @@ impl RExpr {
             RExpr::AndSC { .. } => "and",
             RExpr::OrSC { .. } => "or",
             RExpr::Call { .. } => "call",
+            RExpr::PlainCall { .. } => "plain-call",
             RExpr::Trace { func } => func,
             RExpr::StrFn { .. } => "str-fn",
             RExpr::StrCmp { .. } => "str-cmp",
@@ -1305,6 +1313,12 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                         Ty::I32,
                     ));
                 }
+                // PLAN-1041: a platform-operation intrinsic maps to its
+                // runtime stub (a2x_io_* / a2x_mem_* in the appended
+                // platform runtime); str params lower as views, ints pure.
+                if let Some(sym) = self.view.platform_symbol(target_id) {
+                    return self.lower_platform_call(sym, eval_args, out);
+                }
                 // Internal function/method or fragment external.
                 let (rust_name, target_params, result_ty) =
                     if let Some(t) = self.view.fn_by_def(target_id) {
@@ -1719,6 +1733,41 @@ impl<'v, 'a> FnLowering<'v, 'a> {
     /// consumer of any view temps this value's operands registered since
     /// the entry mark: they free right after it; temps of outer
     /// consumers-in-flight stay alive.
+    /// PLAN-1041: lower a platform-operation intrinsic call to its Rust
+    /// runtime stub. Arg kinds come from the shared source-op table.
+    fn lower_platform_call(
+        &mut self,
+        symbol: &str,
+        eval_args: &[hir::ExprId],
+        out: &mut Vec<RStmt>,
+    ) -> Result<(RExpr, Ty), A2xReject> {
+        use ace_core::source::platform_io as pio;
+        use ace_core::source::resolve::VT;
+        // The symbol is auto.platform.<family>.<callee>.v1 — the shared
+        // table is the single source of truth for the callee spelling.
+        let op = pio::PLATFORM_SOURCE_OPS
+            .iter()
+            .find(|o| o.symbol == symbol)
+            .ok_or_else(|| {
+                A2xReject::unsupported_expr(format!(
+                    "platform operation `{symbol}` has no runtime stub"
+                ))
+            })?;
+        let func = platform_rt_fn_name(op.callee);
+        let mut args = Vec::with_capacity(eval_args.len());
+        for (i, &a) in eval_args.iter().enumerate() {
+            let pty = op.params.get(i).copied().unwrap_or(VT::I32);
+            if matches!(pty, VT::Str) {
+                let (v, vt) = self.lower_view_value(a, out)?;
+                args.push(self.as_str_form(v, vt));
+            } else {
+                let (v, _) = self.lower_pure(a, out)?;
+                args.push(v);
+            }
+        }
+        Ok((RExpr::PlainCall { func, args }, Ty::I32))
+    }
+
     fn lower_pure(
         &mut self,
         id: hir::ExprId,
@@ -2146,4 +2195,10 @@ fn collect_assignees(f: &FnFacts<'_>, into: &mut std::collections::BTreeSet<u32>
 
 pub(super) fn cmp_rust_str(op: CmpOp) -> &'static str {
     op.rust_str()
+}
+
+/// PLAN-1041: runtime stub name for a platform-op callee (shared table
+/// spelling -> a2x runtime fn).
+fn platform_rt_fn_name(callee: &str) -> String {
+    format!("a2x_{callee}")
 }

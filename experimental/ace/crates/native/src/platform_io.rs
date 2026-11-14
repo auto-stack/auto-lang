@@ -79,6 +79,9 @@ pub fn shim_symbol_for(kind: PlatformOpKind) -> &'static str {
         PlatformOpKind::ProbeOpenat => "mn_pio_probe_openat",
         PlatformOpKind::ProbeWriteFd => "mn_pio_probe_write_fd",
         PlatformOpKind::ProbeClose => "mn_pio_probe_close",
+        // PLAN-1041 Windows text-console classification + Unicode write.
+        PlatformOpKind::IoConsoleKind => "mn_pio_console_kind",
+        PlatformOpKind::IoConsoleWrite16 => "mn_pio_console_write16",
     }
 }
 
@@ -116,6 +119,13 @@ pub fn cranelift_shim_sig_for(
         | PlatformOpKind::MemMappedLen
         | PlatformOpKind::MemBorrow
         | PlatformOpKind::MemUnborrow => vec![AbiParam::new(types::I32)],
+        PlatformOpKind::IoConsoleKind => vec![AbiParam::new(types::I32)],
+        PlatformOpKind::IoConsoleWrite16 => vec![
+            AbiParam::new(types::I32),
+            AbiParam::new(types::I32),
+            AbiParam::new(types::I32),
+            AbiParam::new(types::I32),
+        ],
         PlatformOpKind::MemReadU8 => vec![AbiParam::new(types::I32), AbiParam::new(types::I32)],
         PlatformOpKind::MemWriteU8 => vec![
             AbiParam::new(types::I32),
@@ -158,6 +168,9 @@ struct Win32Ids {
     get_system_info: FuncId,
     virtual_alloc: FuncId,
     virtual_free: FuncId,
+    // PLAN-1041: Windows text-console classification + Unicode write.
+    get_console_mode: FuncId,
+    write_console_w: FuncId,
 }
 
 struct LocalIds {
@@ -274,6 +287,21 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
             "VirtualFree",
             Linkage::Import,
             &sig(&[types::I64, types::I64, types::I32], Some(types::I32)),
+        )?,
+        get_console_mode: declare_fn(
+            &mut om,
+            "GetConsoleMode",
+            Linkage::Import,
+            &sig(&[types::I64, types::I64], Some(types::I32)),
+        )?,
+        write_console_w: declare_fn(
+            &mut om,
+            "WriteConsoleW",
+            Linkage::Import,
+            &sig(
+                &[types::I64, types::I64, types::I32, types::I64, types::I64],
+                Some(types::I32),
+            ),
         )?,
     };
 
@@ -595,6 +623,246 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
             let base = state_ptr(om, state, fb);
             let v = fb.ins().load(types::I32, flags, base, H_LAST_OS_ERROR);
             fb.ins().return_(&[v]);
+        })?;
+    }
+
+    // IoConsoleKind(h) — PLAN-1041: GetConsoleMode classification.
+    // ok!=0 -> 1 (text console); fail w/ GetLastError==5 -> record + -8;
+    // any other failure -> 2 (byte sink; not recorded as an error).
+    {
+        let s = cranelift_shim_sig(PlatformOpKind::IoConsoleKind);
+        let id = declare_fn(
+            &mut om,
+            shim_symbol_for(PlatformOpKind::IoConsoleKind),
+            Linkage::Export,
+            &s,
+        )?;
+        define_fn(&mut om, id, s, |om, fb, entry| {
+            let h = fb.block_params(entry)[0];
+            let z64 = fb.ins().iconst(types::I64, 0);
+            let find = om.declare_func_in_func(loc.find_slot, fb.func);
+            let exp_kind = fb.ins().iconst(types::I32, KIND_STREAM);
+            let c = fb.ins().call(find, &[h, exp_kind]);
+            let slot = fb.inst_results(c)[0];
+            let neg = fb.ins().icmp(IntCC::SignedLessThan, slot, z64);
+            let bad = fb.create_block();
+            let ok_slot = fb.create_block();
+            fb.ins().brif(neg, bad, &[], ok_slot, &[]);
+            fb.seal_block(bad);
+            fb.seal_block(ok_slot);
+
+            fb.switch_to_block(bad);
+            let s32 = fb.ins().ireduce(types::I32, slot);
+            fb.ins().return_(&[s32]);
+
+            fb.switch_to_block(ok_slot);
+            let os_h = fb.ins().load(types::I64, flags, slot, S_OS_PTR);
+            let st = state_ptr(om, state, fb);
+            let tmp_off = fb.ins().iconst(types::I64, H_BYTES_WRITTEN_TMP as i64);
+            let mode_ptr = fb.ins().iadd(st, tmp_off);
+            let gcm = om.declare_func_in_func(win.get_console_mode, fb.func);
+            let call = fb.ins().call(gcm, &[os_h, mode_ptr]);
+            let ok = fb.inst_results(call)[0];
+            let z32 = fb.ins().iconst(types::I32, 0);
+            let is_ok = fb.ins().icmp(IntCC::NotEqual, ok, z32);
+            let console = fb.create_block();
+            let failed = fb.create_block();
+            fb.ins().brif(is_ok, console, &[], failed, &[]);
+            fb.seal_block(console);
+            fb.seal_block(failed);
+
+            fb.switch_to_block(console);
+            let kind_text = fb.ins().iconst(types::I32, 1);
+            fb.ins().return_(&[kind_text]);
+
+            fb.switch_to_block(failed);
+            let gle = om.declare_func_in_func(win.get_last_error, fb.func);
+            let call = fb.ins().call(gle, &[]);
+            let err = fb.inst_results(call)[0];
+            let five = fb.ins().iconst(types::I32, 5);
+            let denied = fb.ins().icmp(IntCC::Equal, err, five);
+            let hard = fb.create_block();
+            let sink = fb.create_block();
+            fb.ins().brif(denied, hard, &[], sink, &[]);
+            fb.seal_block(hard);
+            fb.seal_block(sink);
+
+            fb.switch_to_block(hard);
+            fb.ins().store(flags, err, st, H_LAST_OS_ERROR);
+            ret_err(fb, ERR_OS_FAILED);
+
+            fb.switch_to_block(sink);
+            let kind_sink = fb.ins().iconst(types::I32, 2);
+            fb.ins().return_(&[kind_sink]);
+        })?;
+    }
+
+    // IoConsoleWrite16(stream_h, region_h, unit_off, unit_len) — PLAN-1041:
+    // WriteConsoleW over UTF-16LE units staged in an OS memory region.
+    {
+        let s = cranelift_shim_sig(PlatformOpKind::IoConsoleWrite16);
+        let id = declare_fn(
+            &mut om,
+            shim_symbol_for(PlatformOpKind::IoConsoleWrite16),
+            Linkage::Export,
+            &s,
+        )?;
+        define_fn(&mut om, id, s, |om, fb, entry| {
+            let sh = fb.block_params(entry)[0];
+            let rh = fb.block_params(entry)[1];
+            let uoff = fb.block_params(entry)[2];
+            let ulen = fb.block_params(entry)[3];
+            let z32 = fb.ins().iconst(types::I32, 0);
+            let z64 = fb.ins().iconst(types::I64, 0);
+
+            // negative offset/length -> ERR_INVALID_BOUNDS
+            let o_neg = fb.ins().icmp(IntCC::SignedLessThan, uoff, z32);
+            let l_neg = fb.ins().icmp(IntCC::SignedLessThan, ulen, z32);
+            let any_neg = fb.ins().bor(o_neg, l_neg);
+            let bad_bounds = fb.create_block();
+            let cont1 = fb.create_block();
+            fb.ins().brif(any_neg, bad_bounds, &[], cont1, &[]);
+            fb.seal_block(bad_bounds);
+            fb.seal_block(cont1);
+            fb.switch_to_block(bad_bounds);
+            ret_err(fb, ERR_INVALID_BOUNDS);
+            fb.switch_to_block(cont1);
+
+            // stream slot (StdStream)
+            let find = om.declare_func_in_func(loc.find_slot, fb.func);
+            let kind_stream = fb.ins().iconst(types::I32, KIND_STREAM);
+            let cs = fb.ins().call(find, &[sh, kind_stream]);
+            let sslot = fb.inst_results(cs)[0];
+            let s_neg = fb.ins().icmp(IntCC::SignedLessThan, sslot, z64);
+            let bad_slot = fb.create_block();
+            let cont2 = fb.create_block();
+            fb.ins().brif(s_neg, bad_slot, &[], cont2, &[]);
+            fb.seal_block(bad_slot);
+            fb.seal_block(cont2);
+            fb.switch_to_block(bad_slot);
+            let e1 = fb.ins().ireduce(types::I32, sslot);
+            fb.ins().return_(&[e1]);
+            fb.switch_to_block(cont2);
+
+            // region slot (OsMemRegion)
+            let kind_mem = fb.ins().iconst(types::I32, KIND_MEM);
+            let cr = fb.ins().call(find, &[rh, kind_mem]);
+            let rslot = fb.inst_results(cr)[0];
+            let r_neg = fb.ins().icmp(IntCC::SignedLessThan, rslot, z64);
+            let bad_rslot = fb.create_block();
+            let cont3 = fb.create_block();
+            fb.ins().brif(r_neg, bad_rslot, &[], cont3, &[]);
+            fb.seal_block(bad_rslot);
+            fb.seal_block(cont3);
+            fb.switch_to_block(bad_rslot);
+            let e2 = fb.ins().ireduce(types::I32, rslot);
+            fb.ins().return_(&[e2]);
+            fb.switch_to_block(cont3);
+
+            let st = state_ptr(om, state, fb);
+
+            // released region -> ERR_ALREADY_RELEASED
+            let rel = fb.ins().load(types::I32, flags, rslot, S_RELEASED);
+            let is_rel = fb.ins().icmp(IntCC::NotEqual, rel, z32);
+            let was_rel = fb.create_block();
+            let cont4 = fb.create_block();
+            fb.ins().brif(is_rel, was_rel, &[], cont4, &[]);
+            fb.seal_block(was_rel);
+            fb.seal_block(cont4);
+            fb.switch_to_block(was_rel);
+            ret_err(fb, ERR_ALREADY_RELEASED);
+            fb.switch_to_block(cont4);
+
+            // bounds: 2*(uoff+ulen) <= logical_len (unsigned)
+            let off64 = fb.ins().uextend(types::I64, uoff);
+            let len64 = fb.ins().uextend(types::I64, ulen);
+            let two = fb.ins().iconst(types::I64, 2);
+            let boff = fb.ins().imul(off64, two);
+            let blen = fb.ins().imul(len64, two);
+            let bsum = fb.ins().iadd(boff, blen);
+            let logical = fb.ins().load(types::I64, flags, rslot, S_LOGICAL_LEN);
+            let fits = fb.ins().icmp(IntCC::UnsignedLessThanOrEqual, bsum, logical);
+            let bad_b = fb.create_block();
+            let cont5 = fb.create_block();
+            fb.ins().brif(fits, cont5, &[], bad_b, &[]);
+            fb.seal_block(bad_b);
+            fb.seal_block(cont5);
+            fb.switch_to_block(bad_b);
+            ret_err(fb, ERR_INVALID_BOUNDS);
+            fb.switch_to_block(cont5);
+
+            // empty -> 0
+            let is_empty = fb.ins().icmp(IntCC::Equal, ulen, z32);
+            let empty = fb.create_block();
+            let cont6 = fb.create_block();
+            fb.ins().brif(is_empty, empty, &[], cont6, &[]);
+            fb.seal_block(empty);
+            fb.seal_block(cont6);
+            fb.switch_to_block(empty);
+            fb.ins().return_(&[z32]);
+            fb.switch_to_block(cont6);
+
+            // per-call budget (bytes = 2*ulen)
+            let cap32 = fb.ins().iconst(types::I32, MAX_PLATFORM_CALL_BYTES as i64);
+            let blen32 = fb.ins().ireduce(types::I32, blen);
+            let over_call = fb.ins().icmp(IntCC::SignedGreaterThan, blen32, cap32);
+            let bad_budget = fb.create_block();
+            let cont7 = fb.create_block();
+            fb.ins().brif(over_call, bad_budget, &[], cont7, &[]);
+            fb.seal_block(bad_budget);
+            fb.seal_block(cont7);
+            fb.switch_to_block(bad_budget);
+            ret_err(fb, ERR_BUDGET);
+            fb.switch_to_block(cont7);
+
+            // cumulative budget: written_total + blen <= MAX_RUN
+            let wt = fb.ins().load(types::I64, flags, st, H_WRITTEN_TOTAL);
+            let run_cap = fb.ins().iconst(types::I64, MAX_PLATFORM_RUN_BYTES as i64);
+            let nwt = fb.ins().iadd(wt, blen);
+            let over_run = fb.ins().icmp(IntCC::SignedGreaterThan, nwt, run_cap);
+            let bad_run = fb.create_block();
+            let cont8 = fb.create_block();
+            fb.ins().brif(over_run, bad_run, &[], cont8, &[]);
+            fb.seal_block(bad_run);
+            fb.seal_block(cont8);
+            fb.switch_to_block(bad_run);
+            ret_err(fb, ERR_BUDGET);
+            fb.switch_to_block(cont8);
+
+            // units ptr = region base + 2*uoff; one WriteConsoleW call
+            let base = fb.ins().load(types::I64, flags, rslot, S_OS_PTR);
+            let uptr = fb.ins().iadd(base, boff);
+            let os_h = fb.ins().load(types::I64, flags, sslot, S_OS_PTR);
+            let tmp_off2 = fb.ins().iconst(types::I64, H_BYTES_WRITTEN_TMP as i64);
+            let wptr = fb.ins().iadd(st, tmp_off2);
+            let wcw = om.declare_func_in_func(win.write_console_w, fb.func);
+            let call = fb.ins().call(wcw, &[os_h, uptr, ulen, wptr, z64]);
+            let ok = fb.inst_results(call)[0];
+            let okz = fb.ins().icmp(IntCC::Equal, ok, z32);
+            let failed = fb.create_block();
+            let done = fb.create_block();
+            fb.ins().brif(okz, failed, &[], done, &[]);
+            fb.seal_block(failed);
+            fb.seal_block(done);
+
+            fb.switch_to_block(failed);
+            let gle = om.declare_func_in_func(win.get_last_error, fb.func);
+            let call = fb.ins().call(gle, &[]);
+            let err = fb.inst_results(call)[0];
+            fb.ins().store(flags, err, st, H_LAST_OS_ERROR);
+            ret_err(fb, ERR_OS_FAILED);
+
+            fb.switch_to_block(done);
+            let written = fb.ins().load(types::I32, flags, st, H_BYTES_WRITTEN_TMP);
+            let capped = fb.ins().umin(written, ulen);
+            let capped64 = fb.ins().uextend(types::I64, capped);
+            let two2 = fb.ins().iconst(types::I64, 2);
+            let bytes = fb.ins().imul(capped64, two2);
+            let total = fb.ins().load(types::I64, flags, st, H_WRITTEN_TOTAL);
+            let ntotal = fb.ins().iadd(total, bytes);
+            fb.ins().store(flags, ntotal, st, H_WRITTEN_TOTAL);
+            fb.ins().store(flags, z32, st, H_LAST_OS_ERROR);
+            fb.ins().return_(&[capped]);
         })?;
     }
 
@@ -1160,6 +1428,9 @@ pub const ALLOWED_KERNEL32_IMPORTS: &[&str] = &[
     "GetSystemInfo",
     "VirtualAlloc",
     "VirtualFree",
+    // PLAN-1041: Windows text-console classification + Unicode write.
+    "GetConsoleMode",
+    "WriteConsoleW",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -21,7 +21,6 @@ pub(crate) mod closure_capture;
 pub mod closures_context;
 pub mod closures_fn;
 pub mod console;
-pub mod platform_io;
 pub mod cst;
 pub mod decl_env;
 pub mod fstr;
@@ -30,6 +29,7 @@ pub mod lexer;
 pub mod modules;
 pub mod packages;
 pub mod parser;
+pub mod platform_io;
 pub mod resolve;
 pub mod typecheck;
 

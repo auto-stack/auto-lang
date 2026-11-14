@@ -1,0 +1,8 @@
+// PLAN-1041 C provider candidate for the io package. A2C lowers the
+// provider-common algorithm (io.at) with the reserved primitives mapped
+// to the C runtime stubs. The AV/C in-process foreign dispatch consumes
+// this origin after PLAN-967 delivers package-lane foreign admission and
+// richer FFI frames (1041 records that dependency).
+fn io_impl_layer_present() int {
+    return 1
+}

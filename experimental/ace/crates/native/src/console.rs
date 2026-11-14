@@ -337,6 +337,22 @@ pub fn console_native_build(
                 .any(|i| matches!(i, ace_av_core::mir::MirInstr::PlatformCall { .. }))
         })
     });
+    // PLAN-1041: the common output source carries real text ops
+    // (`char_at` walks scalars for the UTF-8→UTF-16 conversion), so the
+    // console lane links the owned-text domain runtime shim when any
+    // text instruction is present (same support lib the owned lane uses).
+    let has_text_ops = mir.funcs.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.instrs.iter().any(|i| {
+                matches!(
+                    i,
+                    ace_av_core::mir::MirInstr::StrCharAt { .. }
+                        | ace_av_core::mir::MirInstr::StrSlice { .. }
+                        | ace_av_core::mir::MirInstr::StrConcat { .. }
+                )
+            })
+        })
+    });
     let units = ace_av::cache::split_units(mir)
         .map_err(|e| MnError::Backend(format!("console split: {e}")))?;
     let mut objects = Vec::with_capacity(units.len() + 3);
@@ -358,12 +374,17 @@ pub fn console_native_build(
         });
     }
     let wrapper = emit_console_wrapper_coff(&entry_symbol, unit_result)?;
+    let support_libs = if has_text_ops {
+        vec![ace_av::text_runtime::text_runtime_lib().map_err(MnError::Infra)?]
+    } else {
+        Vec::new()
+    };
     link_driver::link_only(
         &objects,
         &wrapper,
         START_SYMBOL,
         workdir,
-        &[],
+        &support_libs,
         "plan947-console-lane",
     )
 }
@@ -641,6 +662,22 @@ pub fn console_native_build_elf(
             b.instrs
                 .iter()
                 .any(|i| matches!(i, ace_av_core::mir::MirInstr::PlatformCall { .. }))
+        })
+    });
+    // PLAN-1041: the common output source carries real text ops
+    // (`char_at` walks scalars for the UTF-8→UTF-16 conversion), so the
+    // console lane links the owned-text domain runtime shim when any
+    // text instruction is present (same support lib the owned lane uses).
+    let has_text_ops = mir.funcs.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.instrs.iter().any(|i| {
+                matches!(
+                    i,
+                    ace_av_core::mir::MirInstr::StrCharAt { .. }
+                        | ace_av_core::mir::MirInstr::StrSlice { .. }
+                        | ace_av_core::mir::MirInstr::StrConcat { .. }
+                )
+            })
         })
     });
     let units = ace_av::cache::split_units(mir)

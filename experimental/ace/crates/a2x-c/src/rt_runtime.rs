@@ -36,8 +36,17 @@
 /// matches its admitted charge (retain/adopt accounting stays consistent
 /// through publication). The plain entry keeps a no-op admission.
 pub fn record_text_runtime_source(marks: &[&'static str]) -> String {
-    crate::admitted_text::render_admitted(|out| write_record_text_runtime(marks, out), |_| Ok(()))
-        .expect("no-op admission cannot fail and the renderer is stateless")
+    record_text_runtime_source_with(marks, false)
+}
+
+/// PLAN-1041: same frozen runtime, plus the platform-operation stubs
+/// (appended only when the module carries platform intrinsics).
+pub fn record_text_runtime_source_with(marks: &[&'static str], platform: bool) -> String {
+    crate::admitted_text::render_admitted(
+        |out| write_record_text_runtime(marks, platform, out),
+        |_| Ok(()),
+    )
+    .expect("no-op admission cannot fail and the renderer is stateless")
 }
 /// The record-text runtime with the exact byte size admitted by `admit`
 /// between the counting and rendering passes (PLAN-938 pattern).
@@ -45,10 +54,11 @@ pub fn record_text_runtime_source_admitted(
     marks: &[&'static str],
     admit: impl FnOnce(usize) -> Result<(), String>,
 ) -> Result<String, String> {
-    crate::admitted_text::render_admitted(|out| write_record_text_runtime(marks, out), admit)
+    crate::admitted_text::render_admitted(|out| write_record_text_runtime(marks, false, out), admit)
 }
 fn write_record_text_runtime(
     marks: &[&'static str],
+    platform: bool,
     out: &mut dyn std::fmt::Write,
 ) -> std::fmt::Result {
     out.write_str("// AUTO-GENERATED typed resource runtime (PLAN-925 CA-B) — DO NOT EDIT.\n")?;
@@ -57,6 +67,9 @@ fn write_record_text_runtime(
     out.write_str("#ifndef A2X_C_RT_RUNTIME_H\n#define A2X_C_RT_RUNTIME_H\n\n")?;
     out.write_str("#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n")?;
     out.write_str(RT_CORE)?;
+    if platform {
+        out.write_str(RT_PLATFORM_C)?;
+    }
     for &mark in marks {
         let (suffix, value) = if mark == "hir.test.mark_a" {
             ("a", "1")
@@ -412,5 +425,123 @@ static a2x_char_result a2x_char_from_codepoint(int32_t n) {
     if (n < 0 || u > 0x10FFFFu || (u >= 0xD800u && u <= 0xDFFFu)) return bad;
     ok.value = u; ok.trap = A2X_TRAP_NONE;
     return ok;
+}
+"#;
+
+/// PLAN-1041: platform-operation stubs for the record-text C runtime
+/// (appended only when the module carries platform intrinsics).
+const RT_PLATFORM_C: &str = r#"
+/* ---- PLAN-1041 platform operations (common output capability) ----
+ * Deterministic negative i32 error codes mirror the AV/AC backends.
+ * Windows console path calls GetConsoleMode/WriteConsoleW directly; the
+ * byte sink uses stdio fwrite with REAL partial-write progress. All
+ * stubs are static inline: the runtime header is included by BOTH main.c
+ * and generated.c (single-definition per TU; only generated.c calls
+ * them, so the per-TU state is used from exactly one TU). */
+#include <stdlib.h>
+#if defined(_WIN32)
+__declspec(dllimport) void* __stdcall GetStdHandle(int n);
+__declspec(dllimport) int __stdcall GetConsoleMode(void* h, unsigned int* mode);
+__declspec(dllimport) int __stdcall WriteConsoleW(void* h, const unsigned short* buf,
+                                                   unsigned int n, unsigned int* written,
+                                                   void* reserved);
+__declspec(dllimport) unsigned int __stdcall GetLastError(void);
+#endif
+
+static int32_t a2x_pio_last_error;
+static uint8_t* a2x_pio_bufs[16];
+static int32_t a2x_pio_buf_lens[16];
+static int32_t a2x_pio_next;
+
+static inline int32_t a2x_io_stdout(void) { return 1; }
+static inline int32_t a2x_io_stderr(void) { return 2; }
+
+static inline int32_t a2x_io_console_kind(int32_t h) {
+#if defined(_WIN32)
+    void* sh = GetStdHandle(h == 1 ? -11 : -12);
+    unsigned int mode = 0;
+    if (sh == (void*)0 || sh == (void*)-1) return 2;
+    if (GetConsoleMode(sh, &mode)) return 1;
+    /* access-denied (5) is a real classification failure; anything else
+     * means the handle is a byte sink (pipe/file/char device) */
+    unsigned int gle = GetLastError();
+    if (gle == 5u) {
+        a2x_pio_last_error = 5;
+        return -8;
+    }
+    return 2;
+#else
+    (void)h;
+    return 2;
+#endif
+}
+
+static inline int32_t a2x_io_write_some_slice(int32_t h, a2x_str_view s, int32_t off, int32_t len) {
+    FILE* st = (h == 1) ? stdout : stderr;
+    if (off < 0 || len < 0 || (size_t)(off + len) > s.len) return -4;
+    if (len == 0) return 0;
+    size_t n = fwrite(s.data + off, 1u, (size_t)len, st);
+    if (n == 0 && ferror(st)) {
+        clearerr(st);
+        a2x_pio_last_error = 5;
+        return -8;
+    }
+    if (fflush(st) != 0) {
+        clearerr(st);
+        a2x_pio_last_error = 5;
+        return -8;
+    }
+    a2x_pio_last_error = 0;
+    return (int32_t)n;
+}
+
+static inline int32_t a2x_io_console_write16(int32_t h, int32_t b, int32_t uoff, int32_t ulen) {
+    if (uoff < 0 || ulen < 0) return -4;
+    if (b < 0 || b >= 16 || a2x_pio_bufs[b] == 0) return -2;
+    int32_t blen = a2x_pio_buf_lens[b];
+    if (2 * (uoff + ulen) > blen) return -4;
+    if (ulen == 0) return 0;
+#if defined(_WIN32)
+    void* sh = GetStdHandle(h == 1 ? -11 : -12);
+    if (sh == (void*)0 || sh == (void*)-1) { a2x_pio_last_error = 6; return -8; }
+    unsigned int written = 0;
+    const unsigned short* units = (const unsigned short*)(a2x_pio_bufs[b] + 2 * (size_t)uoff);
+    if (!WriteConsoleW(sh, units, (unsigned int)ulen, &written, 0)) {
+        a2x_pio_last_error = 6;
+        return -8;
+    }
+    a2x_pio_last_error = 0;
+    return (int32_t)written > ulen ? ulen : (int32_t)written;
+#else
+    (void)h;
+    return -7;
+#endif
+}
+
+static inline int32_t a2x_io_last_error(void) { return a2x_pio_last_error; }
+
+static inline int32_t a2x_mem_alloc(int32_t n) {
+    if (n < 0) return -4;
+    int32_t id = a2x_pio_next++;
+    if (id >= 16) return -9;
+    a2x_pio_bufs[id] = (uint8_t*)calloc((size_t)n, 1u);
+    a2x_pio_buf_lens[id] = a2x_pio_bufs[id] ? n : 0;
+    if (!a2x_pio_bufs[id]) return -8;
+    return id;
+}
+
+static inline int32_t a2x_mem_write_u8(int32_t b, int32_t off, int32_t v) {
+    if (b < 0 || b >= 16 || a2x_pio_bufs[b] == 0) return -2;
+    if (off < 0 || off >= a2x_pio_buf_lens[b]) return -4;
+    a2x_pio_bufs[b][off] = (uint8_t)(v & 0xFF);
+    return 0;
+}
+
+static inline int32_t a2x_mem_free(int32_t b) {
+    if (b < 0 || b >= 16 || a2x_pio_bufs[b] == 0) return -2;
+    free(a2x_pio_bufs[b]);
+    a2x_pio_bufs[b] = 0;
+    a2x_pio_buf_lens[b] = 0;
+    return 0;
 }
 "#;

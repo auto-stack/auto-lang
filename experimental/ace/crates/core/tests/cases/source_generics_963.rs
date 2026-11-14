@@ -82,8 +82,8 @@ fn main() int {
 ";
     let err = compile(src).expect_err("arity mismatch must be rejected");
     assert!(
-        err.iter().any(|d| d.code == "source.unsupported"
-            && d.message.contains("type argument")),
+        err.iter()
+            .any(|d| d.code == "source.unsupported" && d.message.contains("type argument")),
         "expected named arity rejection, got {err:?}"
     );
 }
@@ -174,8 +174,8 @@ fn main() int {
 ";
     let err = compile(arity).expect_err("arity mismatch must be rejected");
     assert!(
-        err.iter().any(|d| d.code == "source.unsupported"
-            && d.message.contains("type argument")),
+        err.iter()
+            .any(|d| d.code == "source.unsupported" && d.message.contains("type argument")),
         "expected named arity rejection, got {err:?}"
     );
 }
@@ -519,4 +519,3 @@ fn main() int {
 ";
     compile(src).expect("synthesized instance keeps its conformance list");
 }
-

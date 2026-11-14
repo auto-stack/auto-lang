@@ -80,6 +80,10 @@ class _RuntimeLedger:
         self.live_handles = set()
         self.closed_handles = set()
         self.handle_trace = []
+        # PLAN-1041 platform-op state: conversion buffers + last raw error.
+        self.pio_bufs = {}
+        self.pio_next = 1000
+        self.pio_last_error = 0
         self.budget_left = A2X_DEFAULT_BUDGET
         self.events_enabled = os.environ.get("A2X_RT_EVENTS", "") == "1"
         fault_raw = os.environ.get("A2X_RT_FAULT_ALLOC", "").strip()
@@ -571,6 +575,15 @@ class A2xResourceHandle:
 
 
 PORT_SPECS = {
+    "io.stdout": (1, (), "int"),
+    "io.stderr": (1, (), "int"),
+    "io.console_kind": (1, ("View",), "int"),
+    "io.write_some_slice": (1, ("View", "View", "View", "View"), "int"),
+    "io.console_write16": (1, ("View", "View", "View", "View"), "int"),
+    "io.last_error": (1, (), "int"),
+    "mem.alloc": (1, ("View",), "int"),
+    "mem.write_u8": (1, ("View", "View", "View"), "int"),
+    "mem.free": (1, ("View",), "int"),
     "math.private_square": (1, ("View",), "int"),
     "math.private_cube": (1, ("View",), "int"),
     "text.byte_length": (1, ("View",), "int"),
@@ -596,6 +609,86 @@ def a2x_port_call(op_id: str, sem_ver: int, modes: tuple, dep_sha: str, *args, s
     if sem_ver != exp_ver or tuple(modes) != exp_modes or len(args) != len(exp_modes):
         raise A2xTrap("PortContract", f"contract mismatch for {op_id}", op_id)
 
+    # PLAN-1041 platform-operation ports: deterministic negative i32
+    # error codes (the AV/AC backend contract), never traps.
+    if op_id == "io.stdout":
+        return 1
+    if op_id == "io.stderr":
+        return 2
+    if op_id == "io.console_kind":
+        if sys.platform == "win32":
+            st = sys.stdout if a2x_i32(args[0]) == 1 else sys.stderr
+            return 1 if st.isatty() else 2
+        return 2
+    if op_id == "io.write_some_slice":
+        h = a2x_i32(args[0])
+        data = a2x_as_bytes(args[1])
+        off = a2x_i32(args[2])
+        ln = a2x_i32(args[3])
+        if off < 0 or ln < 0 or off + ln > len(data):
+            return -4
+        chunk = data[off:off + ln]
+        st = sys.stdout if h == 1 else sys.stderr
+        try:
+            st.buffer.write(chunk)
+            st.buffer.flush()
+            _RT.pio_last_error = 0
+            return ln
+        except OSError as e:
+            _RT.pio_last_error = 32 if isinstance(e, BrokenPipeError) else 5
+            return -8
+    if op_id == "io.console_write16":
+        h = a2x_i32(args[0])
+        b = a2x_i32(args[1])
+        uoff = a2x_i32(args[2])
+        ulen = a2x_i32(args[3])
+        buf = _RT.pio_bufs.get(b)
+        if buf is None:
+            return -2
+        end = 2 * (uoff + ulen)
+        if uoff < 0 or ulen < 0 or end > len(buf):
+            return -4
+        if ulen == 0:
+            return 0
+        text = bytes(buf[2 * uoff:end]).decode("utf-16-le")
+        st = sys.stdout if h == 1 else sys.stderr
+        try:
+            # PEP 528: on a real Windows console sys.stdout writes through
+            # WriteConsoleW — the console text contract; redirected runs
+            # never reach this port (console_kind is 2 there).
+            st.write(text)
+            st.flush()
+            _RT.pio_last_error = 0
+            return ulen
+        except OSError:
+            _RT.pio_last_error = 5
+            return -8
+    if op_id == "io.last_error":
+        return _RT.pio_last_error
+    if op_id == "mem.alloc":
+        n = a2x_i32(args[0])
+        if n < 0:
+            return -4
+        _RT.pio_next += 1
+        bid = _RT.pio_next
+        _RT.pio_bufs[bid] = bytearray(n)
+        return bid
+    if op_id == "mem.write_u8":
+        b = a2x_i32(args[0])
+        off = a2x_i32(args[1])
+        v = a2x_i32(args[2])
+        buf = _RT.pio_bufs.get(b)
+        if buf is None:
+            return -2
+        if off < 0 or off >= len(buf):
+            return -4
+        buf[off] = v & 0xFF
+        return 0
+    if op_id == "mem.free":
+        b = a2x_i32(args[0])
+        if _RT.pio_bufs.pop(b, None) is None:
+            return -2
+        return 0
     if op_id == "math.private_square":
         x = a2x_i32(args[0])
         return a2x_mul(x, x)

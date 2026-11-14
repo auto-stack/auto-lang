@@ -47,8 +47,8 @@ fn checked(src: &str) -> CheckedModule {
 
 fn run_value(src: &str) -> Value {
     let checked = checked(src);
-    let mir = ace_lowering::lower_checked_data(&checked, "d_main", 963)
-        .expect("record-domain lowering");
+    let mir =
+        ace_lowering::lower_checked_data(&checked, "d_main", 963).expect("record-domain lowering");
     assert_eq!(mir.profile, AV_DATA_PROFILE);
     mir_verify::verify_mir(&mir).expect("MIR verifies");
     let wire = encode_abc(&mir).expect("AVAD encode").to_flat();
@@ -64,13 +64,21 @@ fn run_value(src: &str) -> Value {
 /// O-963-D7：省略末尾默认实参 → 42。
 #[test]
 fn av_default_argument_omitted_executes_42() {
-    assert_eq!(run_value(OMITTED_DEFAULT), Value::I32(42), "closed-form oracle");
+    assert_eq!(
+        run_value(OMITTED_DEFAULT),
+        Value::I32(42),
+        "closed-form oracle"
+    );
 }
 
 /// O-963-D8：显式实参覆盖默认值，两调用相加 → 70。
 #[test]
 fn av_default_argument_explicit_override_executes_70() {
-    assert_eq!(run_value(EXPLICIT_OVERRIDE), Value::I32(70), "closed-form oracle");
+    assert_eq!(
+        run_value(EXPLICIT_OVERRIDE),
+        Value::I32(70),
+        "closed-form oracle"
+    );
 }
 
 /// O-963-D9：命名式补洞（省略 `a`）→ 40 + 2 = 42。
@@ -93,8 +101,8 @@ fn main() int {
 #[test]
 fn av_default_argument_evaluates_exactly_once_963() {
     let checked = checked(DEFAULT_BY_CALL);
-    let mir = ace_lowering::lower_checked_data(&checked, "d_main", 963)
-        .expect("record-domain lowering");
+    let mir =
+        ace_lowering::lower_checked_data(&checked, "d_main", 963).expect("record-domain lowering");
     mir_verify::verify_mir(&mir).expect("MIR verifies");
     let entry = mir
         .funcs

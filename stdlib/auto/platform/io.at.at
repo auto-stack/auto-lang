@@ -1,0 +1,10 @@
+// PLAN-1041 Auto (native) provider candidate for the io package.
+// The output algorithm and its primitives are provider-common (io.at):
+// AV/native and AC lower the reserved platform operations to the checked
+// OS backends (Win32 backend / COFF/ELF shims). The AV/C and AV/Rust
+// foreign-adapter role lands with PLAN-967's package-lane foreign
+// admission + richer FFI frames (1041 records that dependency, never
+// fakes it).
+fn io_impl_layer_present() int {
+    return 1
+}

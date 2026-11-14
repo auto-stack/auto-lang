@@ -243,6 +243,12 @@ pub struct SemanticView<'a> {
     )>,
     /// Authorized trace intrinsic defs present: def_index → symbol.
     trace_defs: Vec<(usize, &'static str)>,
+    /// PLAN-1041: platform-operation intrinsic defs present (the common
+    /// stdlib output source's reserved calls): def_index → symbol
+    /// (`auto.platform.io.*` / `auto.platform.mem.*`). The target lowers
+    /// map these to runtime stubs (ports on A2PY, runtime helpers on
+    /// A2R/A2C); errors are deterministic negative i32 codes, never traps.
+    platform_defs: Vec<(usize, String)>,
     /// Document-level capabilities (trimmed to the ones A2X cares about).
     pub capabilities: Vec<String>,
 }
@@ -273,7 +279,7 @@ impl<'a> SemanticView<'a> {
         let functions = collect_functions(module, None)?;
         let records = collect_records(module)?;
         let variants = collect_variants(module)?;
-        let trace_defs = collect_trace_defs(module, bundle)?;
+        let (trace_defs, platform_defs) = collect_trace_defs(module, bundle)?;
         let view = SemanticView {
             module,
             domain,
@@ -289,6 +295,7 @@ impl<'a> SemanticView<'a> {
             foreign_plan: checked.foreign_resource_plan(),
             fragment_foreign: None,
             trace_defs,
+            platform_defs,
             capabilities: bundle.requires.clone(),
         };
         view.walk_bodies()?;
@@ -369,7 +376,7 @@ impl<'a> SemanticView<'a> {
                 ),
             ));
         }
-        let trace_defs = collect_trace_defs(module, bundle)?;
+        let (trace_defs, platform_defs) = collect_trace_defs(module, bundle)?;
         // PLAN-902 T-03: the credential's OWN verified resource plan
         // serves the one admitted function (lookup-checked by body
         // index — a mismatched plan can never leak to another body).
@@ -401,6 +408,7 @@ impl<'a> SemanticView<'a> {
             foreign_plan: None,
             fragment_foreign,
             trace_defs,
+            platform_defs,
             capabilities: bundle.requires.clone(),
         };
         view.walk_bodies()?;
@@ -572,6 +580,21 @@ impl<'a> SemanticView<'a> {
             .iter()
             .find(|(d, _)| *d == def_index)
             .map(|(_, s)| *s)
+    }
+
+    /// PLAN-1041: whether any platform-operation intrinsics are present
+    /// (targets append their platform runtime stubs only then).
+    pub fn has_platform_ops(&self) -> bool {
+        !self.platform_defs.is_empty()
+    }
+
+    /// PLAN-1041: the platform-operation symbol an intrinsic def carries,
+    /// if any (call targets reaching the target lowers' runtime stubs).
+    pub fn platform_symbol(&self, def_index: usize) -> Option<&str> {
+        self.platform_defs
+            .iter()
+            .find(|(d, _)| *d == def_index)
+            .map(|(_, s)| s.as_str())
     }
 
     /// The distinct authorized trace symbols present (helper-closure input).
@@ -835,6 +858,9 @@ impl<'a> SemanticView<'a> {
                     || self.trace_symbol(target).is_some()
                     || self.external_by_def(target).is_some()
                     || self.foreign_by_def(target).is_some()
+                    // PLAN-1041: platform-operation intrinsics reach the
+                    // target lowers' runtime stubs.
+                    || self.platform_symbol(target).is_some()
                 {
                     Ok(())
                 } else {
@@ -1267,11 +1293,18 @@ fn collect_variants(module: &hir::Module) -> Result<Vec<VariantFacts>, A2xReject
 fn collect_trace_defs(
     module: &hir::Module,
     bundle: &hir::Bundle,
-) -> Result<Vec<(usize, &'static str)>, A2xReject> {
+) -> Result<(Vec<(usize, &'static str)>, Vec<(usize, String)>), A2xReject> {
     let trace_authorized = bundle.requires.iter().any(|c| c == TRACE_CAPABILITY);
     let mut trace_defs = Vec::new();
+    let mut platform_defs = Vec::new();
     for (def_index, def) in module.defs.iter().enumerate() {
         if let hir::DefKind::Intrinsic { symbol, .. } = &def.kind {
+            if symbol.starts_with("auto.platform.") {
+                // PLAN-1041: platform-operation intrinsics — the target
+                // runtimes implement them (negative i32 error codes).
+                platform_defs.push((def_index, symbol.clone()));
+                continue;
+            }
             let sym = match symbol.as_str() {
                 "hir.test.mark_a" => "hir.test.mark_a",
                 "hir.test.mark_b" => "hir.test.mark_b",
@@ -1291,7 +1324,7 @@ fn collect_trace_defs(
             trace_defs.push((def_index, sym));
         }
     }
-    Ok(trace_defs)
+    Ok((trace_defs, platform_defs))
 }
 
 fn fn_sig(module: &hir::Module, ty: hir::TypeId) -> Result<&hir::FnSig, A2xReject> {
