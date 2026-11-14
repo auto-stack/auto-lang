@@ -55,9 +55,9 @@ pub use frontdoor::packages_ct_grammar;
 pub use frontdoor::packages_grammar;
 pub use frontdoor::CachedGrammar;
 pub(crate) use frontdoor::{
-    module_grammar, parse_module_fragment, parse_module_front, parse_packages_front,
-    parse_packages_front_aggregates, parse_packages_front_ct, project_module_front,
-    project_packages_front, PackagesFace,
+    module_grammar, parse_domain_whole_module, parse_module_fragment, parse_module_front,
+    parse_packages_front, parse_packages_front_aggregates, parse_packages_front_ct,
+    project_module_front, project_packages_front, PackagesFace,
 };
 
 pub(crate) use shift::{shift_fn_item, shift_fn_item_signed};

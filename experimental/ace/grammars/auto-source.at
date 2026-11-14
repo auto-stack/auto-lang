@@ -271,8 +271,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [scalar-modules]) { use-item() {} }
             // PLAN-967（F0）：`use.rs <provider>` —— 公共 Rust 导入前门
             //（text-record 面首个 F0 切片；`rs` 拼写与 provider 匹配在投影/解析期校验）。
-            alt(profiles: [text-record]) { use-rs-item() {} }
-            alt(profiles: [text-record]) { use-c-item() {} }
+            alt(profiles: [text-record, age-h0]) { use-rs-item() {} }
+            alt(profiles: [text-record, age-h0]) { use-c-item() {} }
             // PLAN-960（T-02）：完整模块包面 items —— 单一 public-item 前缀
             //（fn/type/const/use 各自 token 开头，避免 recover 规则与前缀
             // 备选相互作用）；const/var 模块项与别名导入。
@@ -300,7 +300,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // view；view 体只容纳 text 叶——本切片之外的属性/字段/构造按语法
         // 结构拒绝（附原 span），不静默忽略。表达式是普通 Auto 文本表达式，
         // 由共享 verify 检查，不由领域层二次解释。
-        age-node-item(profiles: [age-h0]) {
+        age-node-item(profiles: [age-h0], expect: "a `node <Name> { view { text <expression> {} } }` declaration") {
             age-node-head(field: "head") {}
             ident(field: "name")
             lbrace(same-line: true)
@@ -312,13 +312,13 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { name(of: "age-node-head", field: "kw") }
             alt { name(of: "age-widget-head", field: "kw") }
         }
-        age-node-body(profiles: [age-h0]) {
+        age-node-body(profiles: [age-h0], expect: "the `view { … }` node body") {
             name(of: "age-view-head", field: "view")
             lbrace(same-line: true)
             list-nl { age-text-item() {} }
             rbrace() {}
         }
-        age-text-item(profiles: [age-h0]) {
+        age-text-item(profiles: [age-h0], expect: "a `text <expression> {}` component leaf") {
             name(of: "age-text-head", field: "component")
             pratt(of: "wide-ops", field: "text")
             lbrace(same-line: true)
@@ -342,13 +342,13 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-967（F0/T-10）：`use.rs <provider>` / `use.c <provider>` 项
         //——单 ident provider；lang 叶必须是 rs/c（投影期命名拒绝其它
         // 拼写，不静默解释为模块 use）。
-        use-rs-item(profiles: [text-record]) {
+        use-rs-item(profiles: [text-record, age-h0]) {
             r-use(field: "kw") {}
             dot(field: "dot") {}
             ident(field: "lang")
             ident(field: "provider")
         }
-        use-c-item(profiles: [text-record]) {
+        use-c-item(profiles: [text-record, age-h0]) {
             r-use(field: "kw") {}
             dot(field: "dot") {}
             ident(field: "lang")

@@ -387,8 +387,9 @@ struct Machine<'p, 'a, 't> {
     graft: Option<GraftInput<'a>>,
     /// PLAN-979：上下文名称槽的字节事实源（None = 无；命中槽位即失败关闭）。
     ctx_text: Option<&'t dyn CtxTokenText>,
-    /// PLAN-979：槽位拼写不成立的候选诊断（解析失败时才进入 tree.diags）。
-    ctx_hints: Vec<SynDiag>,
+    /// PLAN-979：失败关闭前的诊断候选（槽位拼写 + 构造级 expect 标签）。
+    /// (声明深度, 诊断) —— 深度优先定位最内层构造。
+    hints: Vec<(usize, SynDiag)>,
     ctx_missing: bool,
     toks: Vec<Token>,
     lex_diags: Vec<LexDiag>,
@@ -490,7 +491,7 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
             graft,
             ctx_text,
             ctx_missing: false,
-            ctx_hints: Vec::new(),
+            hints: Vec::new(),
             toks,
             lex_diags,
             i: 0,
@@ -851,16 +852,19 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
         let hit = self.ctx_name_matches_token(c, pk);
         if !hit {
             // 槽位拒绝的真实事实（保原 span 的诊断候选；解析成功时丢弃，
-            // 避免合法回溯留下假诊断）。只在"看起来是名字"的 token 上报告：
-            // 标识符或既有保留字词面——普通关键字/标点走通用语法错误，
-            // 不制造"expected <component>"的噪声。
+            // 避免合法回溯留下假诊断）。报告条件：token 看起来是名字，或
+            // 失败发生在**已开始**的构造内（祖先已消费 token，例如
+            // `node Hello { }` 的 view 槽位在 `}` 处）——后者不制造噪声，
+            // 因为普通 `fn` 项在 AGE 分支的首步就失败、祖先未消费。
             if let Some(spec) = self.p.ctx_name(c) {
-                if self.token_is_name_like(pk.token) {
+                if (self.token_is_name_like(pk.token) || self.ancestor_consumed())
+                    && !self.inside_list_item_attempt_with_items()
+                {
                     let msg = format!(
                         "expected `{}` at the declared `{}` slot",
                         spec.spelling, spec.role
                     );
-                    self.ctx_hint(SynDiag {
+                    self.hint(SynDiag {
                         message: msg,
                         start: pk.start,
                         end: pk.end,
@@ -871,21 +875,45 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
         hit
     }
 
+    /// 除栈顶帧外，是否有已消费 token 的祖先帧（"构造已开始"判定）。
+    fn ancestor_consumed(&self) -> bool {
+        self.stack
+            .iter()
+            .rev()
+            .skip(1)
+            .any(|f| !f.is_pratt() && f.consumed_any)
+    }
+
+    /// 当前帧是否在"已匹配过项的列表"里尝试下一个项——这种尝试失败意味着
+    /// 列表自然结束，不是槽位错误（避免把列表收尾误报成 expected 组件）。
+    fn inside_list_item_attempt_with_items(&self) -> bool {
+        let n = self.stack.len();
+        if n < 2 {
+            return false;
+        }
+        let parent = &self.stack[n - 2];
+        !parent.is_pratt() && parent.list_started && matches!(parent.wait, Wait::RepItem { .. })
+    }
+
     /// 名字形 token（`ident` 或保留字词面）——仅供上下文槽诊断使用。
     fn token_is_name_like(&self, token: TokenId) -> bool {
         let name = self.p.token_name(token);
         name == "ident" || name.starts_with("r-")
     }
 
-    fn ctx_hint(&mut self, d: SynDiag) {
-        if self
-            .ctx_hints
-            .iter()
-            .any(|h| h.start == d.start && h.end == d.end && h.message == d.message)
+    fn hint(&mut self, d: SynDiag) {
+        let depth = self.stack.len();
+        if let Some(slot) = self
+            .hints
+            .iter_mut()
+            .find(|(_, h)| h.start == d.start && h.end == d.end && h.message == d.message)
         {
+            if depth > slot.0 {
+                slot.0 = depth;
+            }
             return;
         }
-        self.ctx_hints.push(d);
+        self.hints.push((depth, d));
     }
 
     fn ctx_name_matches_token(&self, c: CtxNameId, tok: Token) -> bool {
@@ -1546,6 +1574,7 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
     /// 返回 true = 本帧也失败（继续 unwind 上抛）；false = 已消化（停止）。
     /// Pratt 帧失败由统一迭代 unwind 处理（禁止递归级联：V-12）。
     fn dispatch_child_failure(&mut self, child_consumed: bool) -> bool {
+        self.record_expect_hint();
         if self.stack.last().unwrap().is_pratt() {
             return true; // pratt 帧自身失败 → 上抛
         }
@@ -1615,7 +1644,65 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
 
     /// 帧失败：恢复 / 迭代上抛（一次一层，禁止递归级联——V-12 深嵌套失败
     /// 路径同样不允许原生深递归）。
+    /// PLAN-979：构造级诊断候选——规则带 `expect` 标签且失败发生在已开始的
+    /// 构造内时，记录"当前 token 处的意外输入"（原 span；EOF 用零宽尾位）。
+    /// 只有整次解析失败时才并入 tree.diags（合法回溯不留假诊断）。
+    fn record_expect_hint(&mut self) {
+        let (rule, consumed, alt, step) = match self.stack.last() {
+            Some(f) if !f.is_pratt() => (f.rule, f.consumed_any, f.alt, f.step),
+            _ => return,
+        };
+        // 若失败发生在该规则的**首个 CtxName 槽位**上，槽位 hint 更精确——
+        // 不重复报构造级消息（避免同一 token 上两条竞争诊断抢位）。
+        if step == 0 {
+            if let Some(first) = self.p.rules[rule as usize]
+                .alts
+                .get(alt)
+                .and_then(|a| a.steps.first())
+            {
+                if matches!(first.atom, Atom::CtxName(_)) && !consumed {
+                    return;
+                }
+            }
+        }
+        let started = consumed || self.stack.iter().any(|f| !f.is_pratt() && f.consumed_any);
+        if !started {
+            return;
+        }
+        // "零项列表后的定界符失败"是项自身失败的产物（列表回滚到项起点）：
+        // 真正的原因在更深层的项 hint 里，这里不重复报。
+        if step > 0 {
+            if let Some(steps) = self.p.rules[rule as usize].alts.get(alt).map(|a| &a.steps) {
+                if matches!(steps[step].atom, Atom::Tok(_))
+                    && matches!(
+                        steps[step - 1].repeat,
+                        Repeat::ListPlain | Repeat::ListNewline
+                    )
+                    && !self.stack.last().map(|f| f.list_started).unwrap_or(false)
+                {
+                    return;
+                }
+            }
+        }
+        let Some(label) = self.p.rule_expect(rule).map(|s| s.to_string()) else {
+            return;
+        };
+        let (start, end) = match self.peek() {
+            Some(pk) => (pk.start, pk.end),
+            None => {
+                let end = self.toks.last().map(|t| t.end).unwrap_or(0);
+                (end, end)
+            }
+        };
+        self.hint(SynDiag {
+            message: format!("unexpected token in {label}"),
+            start,
+            end,
+        });
+    }
+
     fn handle_frame_failure(&mut self) {
+        self.record_expect_hint();
         loop {
             let (rule, frame_save, consumed, recover, field, pushed_active, _is_pratt) = {
                 let f = self.stack.last().unwrap();
@@ -2285,7 +2372,18 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
             // 并入诊断；成功解析（合法回溯）不留假诊断。
             let failed = tail_error || !self.diags.is_empty();
             if failed {
-                for h in self.ctx_hints.drain(..) {
+                // 深度优先（最内层构造最精确）；同深度时构造级先于槽位级，
+                // 再按位置序。只有整次解析失败才进入 tree.diags。
+                let mut hints: Vec<(usize, SynDiag)> = self.hints.drain(..).collect();
+                hints.sort_by(|a, b| {
+                    b.0.cmp(&a.0).then_with(|| {
+                        let structural = |d: &SynDiag| !d.message.contains("slot");
+                        structural(&b.1)
+                            .cmp(&structural(&a.1))
+                            .then(a.1.start.cmp(&b.1.start))
+                    })
+                });
+                for (_, h) in hints {
                     if !self
                         .diags
                         .iter()

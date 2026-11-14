@@ -344,6 +344,8 @@ pub fn mini_program() -> GrammarProgram {
         field_names: vec!["kw".into(), "name".into(), "params".into(), "ty".into()],
         // PLAN-979：测试构造器不声明槽位限定拼写（保持既有行为逐字节不变）。
         ctx_names: Vec::new(),
+        // PLAN-979：测试构造器不带规则诊断标签。
+        rule_expects: Vec::new(),
         pratt: vec![PrattSpec {
             primary: rules::ATOM_EXPR,
             ops: vec![

@@ -25,11 +25,23 @@ fn compile(
     src: &str,
     alias: LegacyWidgetAlias,
 ) -> Result<ace_core::source::age_h0::AgeH0Compilation, Vec<String>> {
-    compile_age_h0(src, "age.at", alias, &[]).map_err(|ds| {
+    compile_diags(src, alias).map_err(|ds| {
         ds.into_iter()
             .map(|d| format!("{}: {}", d.code, d.message))
             .collect()
     })
+}
+
+/// 诊断原文（code + span），用于断言"具名码 + 原文件 span"。
+fn compile_diags(
+    src: &str,
+    alias: LegacyWidgetAlias,
+) -> Result<ace_core::source::age_h0::AgeH0Compilation, Vec<ace_core::atom_text::Diagnostic>> {
+    compile_age_h0(src, "age.at", alias, &[])
+}
+
+fn first(ds: &[ace_core::atom_text::Diagnostic]) -> &ace_core::atom_text::Diagnostic {
+    ds.first().expect("at least one diagnostic")
 }
 
 #[test]
@@ -229,4 +241,125 @@ fn p979_age_h0_identity_binds_schema_and_source() {
     assert_ne!(a.input_hash, c.input_hash);
     assert_eq!(a.description.grammar_id, c.description.grammar_id);
     assert_eq!(c.checked.domain(), ace_core::hir::HirDomain::TextRecord);
+}
+
+// ---- F1/F2/F3/F5/F6 repair regressions (independent review round 1) ----
+
+#[test]
+fn p979_age_h0_suffix_named_user_function_cannot_hijack_a_text_leaf() {
+    // F1：含保留前缀的任意用户顶层名都是具名冲突（此前后缀匹配会把叶绑到它）。
+    let hijack = format!(
+        "fn x{AGE_H0_HIDDEN_PREFIX}0() Str {{\n    return \"HACK\".clone()\n}}\n{H0_LITERAL}"
+    );
+    let ds = compile_diags(&hijack, LegacyWidgetAlias::Reject)
+        .expect_err("the hidden-name prefix family is reserved");
+    assert_eq!(first(&ds).code, "source.age.hidden-name");
+    let at = hijack.find(&format!("x{AGE_H0_HIDDEN_PREFIX}0")).unwrap();
+    assert_eq!(first(&ds).span.start, at);
+
+    // 近似但**不含**完整前缀的名字合法，且叶的 def id 仍是隐藏函数的精确 id。
+    let near = format!("fn x_AgeH0Text0() Str {{\n    return \"HACK\".clone()\n}}\n{H0_LITERAL}");
+    let ok = compile(&near, LegacyWidgetAlias::Reject).expect("near-miss name is legal");
+    let t = &ok.description.nodes[0].view.texts[0];
+    assert_eq!(t.def_id, "d___age_h0_text_0", "exact hidden def id");
+}
+
+#[test]
+fn p979_age_h0_every_generic_entry_refuses_the_domain_profile() {
+    use ace_core::source::cst::{
+        parse_front, parse_program_via_cst, FrontBudget, FrontKind, FrontOutcome, FrontRequest,
+    };
+    use ace_core::source::SourceProfile;
+
+    // 1) 兼容桥（ace-syntax-core 也重导出它——评审 F2 的绕过点）。
+    let e = parse_program_via_cst(H0_LITERAL, SourceProfile::AgeH0)
+        .expect_err("parse_program_via_cst must refuse the domain profile");
+    assert_eq!(e.code, "source.domain-frontend");
+    // 2) 统一前门（整模块与片段都必须拒）。
+    for kind in [
+        FrontKind::WholeModule,
+        FrontKind::FreeFnFragment { range: 0..1 },
+    ] {
+        match parse_front(FrontRequest {
+            src: H0_LITERAL,
+            profile: SourceProfile::AgeH0,
+            kind,
+            budget: FrontBudget::WORK_OWNED_64MIB,
+        }) {
+            FrontOutcome::Diag(ds) => assert_eq!(ds[0].code, "source.domain-frontend"),
+            other => panic!("expected the domain refusal, got {other:?}"),
+        }
+    }
+    // 3) 已投影程序入口（compile_program_parts）也不得接受领域 profile。
+    let program = ace_core::source::ast::Program { items: Vec::new() };
+    let ds = match ace_core::source::adapter::compile_program_parts(
+        &program,
+        H0_LITERAL,
+        "age.at",
+        &[],
+        SourceProfile::AgeH0,
+    ) {
+        Ok(_) => panic!("compile_program_parts must refuse the domain profile"),
+        Err(ds) => ds,
+    };
+    assert_eq!(ds[0].code, "source.domain-frontend");
+}
+
+#[test]
+fn p979_age_h0_rejections_are_domain_named_with_the_original_span() {
+    // F3：结构/类型拒绝必须是领域具名码 + 原文件 span（不是通用 "expected fn"）。
+    let missing_view = "node Hello {\n}\n";
+    let ds = compile_diags(missing_view, LegacyWidgetAlias::Reject).expect_err("missing view");
+    assert_eq!(first(&ds).code, "source.age.slot");
+    assert!(first(&ds).message.contains("expected `view`"));
+
+    let second_view = "node Hello {\n    view {\n        text \"a\" {}\n        view {\n            text \"b\" {}\n        }\n    }\n}\n";
+    let ds = compile_diags(second_view, LegacyWidgetAlias::Reject).expect_err("second view");
+    assert_eq!(first(&ds).code, "source.age.structure");
+    let second_at = second_view.rfind("view").unwrap();
+    assert_eq!(
+        first(&ds).span.start,
+        second_at,
+        "points at the second `view`"
+    );
+
+    let attr = "node Hello {\n    view {\n        text \"Hello\" { size: 12 }\n    }\n}\n";
+    let ds = compile_diags(attr, LegacyWidgetAlias::Reject).expect_err("attributes");
+    assert_eq!(first(&ds).code, "source.age.structure");
+    assert_eq!(first(&ds).span.start, attr.find("size").unwrap());
+
+    let unclosed = "node Hello {\n    view {\n        text \"Hello\" {}\n    }\n";
+    let ds = compile_diags(unclosed, LegacyWidgetAlias::Reject).expect_err("unclosed");
+    assert_eq!(first(&ds).code, "source.age.structure");
+
+    let non_text = "node Hello {\n    view {\n        text 1 + 2 {}\n    }\n}\n";
+    let ds = compile_diags(non_text, LegacyWidgetAlias::Reject).expect_err("non-text leaf");
+    assert_eq!(first(&ds).code, "source.age.text-type");
+    assert_eq!(first(&ds).span.start, non_text.find("1 + 2").unwrap());
+}
+
+#[test]
+fn p979_age_h0_import_front_door_has_text_record_parity() {
+    // F5：`use.rs`/`use.c` 与 text-record 同面（导入语义仍归 F0 共享层）。
+    let only = "use.rs provider_x\n";
+    let age = compile(only, LegacyWidgetAlias::Reject).expect("age accepts the import front door");
+    let plain = ace_core::source::compile_text_record_source(only, "age.at", &[])
+        .expect("plain accepts it");
+    assert_eq!(age.atom_text, plain.atom_text, "identical shared Atom text");
+    assert_eq!(age.input_hash, plain.input_hash);
+    assert!(age.description.nodes.is_empty());
+}
+
+#[test]
+fn p979_age_h0_earlier_shared_errors_are_not_swallowed() {
+    // F6：声明之前的真实错误优先于领域 hint。
+    let src =
+        "fn f() int {\n    return 1 +\n}\nnode A {\n    panel {\n        text \"x\" {}\n    }\n}\n";
+    let ds = compile_diags(src, LegacyWidgetAlias::Reject).expect_err("errors");
+    let d = first(&ds);
+    assert_ne!(d.code, "source.age.slot", "{:?}", d);
+    assert!(
+        d.span.start < src.find("node A").unwrap(),
+        "the earlier fn error keeps precedence: {d:?}"
+    );
 }

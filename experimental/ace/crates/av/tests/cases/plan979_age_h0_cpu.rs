@@ -136,3 +136,17 @@ fn p979_age_h0_two_independent_nodes_observe_independently() {
         o.nodes[1].view.texts[0].value
     );
 }
+
+#[test]
+fn p979_age_h0_near_miss_user_function_cannot_bind_the_text_leaf() {
+    // F1 值层回归：用户函数名与隐藏前缀相似但不含完整前缀时合法，叶值仍来自
+    // 叶表达式（不是那个函数）。
+    let src = "fn x_AgeH0Text0() Str {\n    return \"HACK\".clone()\n}\nnode Hello {\n    view {\n        text \"Hello\" {}\n    }\n}\n";
+    let o = observe_age_h0(src, "age.at", LegacyWidgetAlias::Reject).expect("observes");
+    assert_eq!(o.nodes[0].view.texts[0].value, "Hello");
+    // 而真正落在保留前缀家族里的名字是具名冲突（不静默绑定）。
+    let hijack = "fn x__age_h0_text_0() Str {\n    return \"HACK\".clone()\n}\nnode Hello {\n    view {\n        text \"Hello\" {}\n    }\n}\n";
+    let err = observe_age_h0(hijack, "age.at", LegacyWidgetAlias::Reject)
+        .expect_err("reserved prefix family is rejected");
+    assert!(err.contains("source.age.hidden-name"), "{err}");
+}

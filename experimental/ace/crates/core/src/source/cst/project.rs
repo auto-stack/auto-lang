@@ -4001,11 +4001,21 @@ impl<'a> Engine<'a> {
                 )
             });
         }
+        // 兼容别名判定按**Schema 声明**：同一 role 的首个声明是规范拼写，
+        // 其余同 role 声明是别名（不在代码里写死 `widget` 字面量）。
+        let canonical_head = self
+            .cx
+            .p
+            .ctx_names
+            .iter()
+            .find(|n| n.role == head_role)
+            .map(|n| n.spelling.clone())
+            .unwrap_or_else(|| head_spelling.clone());
         AgeNodeItem {
             head_role,
             head_spelling: head_spelling.clone(),
             head_span,
-            legacy_widget: head_spelling == "widget",
+            legacy_widget: head_spelling != canonical_head,
             name,
             view: AgeViewNode {
                 role: view_role,

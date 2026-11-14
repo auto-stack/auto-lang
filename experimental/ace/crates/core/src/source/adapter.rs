@@ -416,6 +416,17 @@ pub trait SourceObserver {
     fn stage(&mut self, _stage: SourceStage, _diagnostics: &[Diagnostic]) {}
 }
 
+/// PLAN-979：自由函数在 HIR/目标符号面的固定命名（单一真源——emitter 与
+/// 领域消费者共用，禁止各自拼前缀）。
+pub(crate) fn free_fn_symbol(name: &str) -> String {
+    format!("sf_{name}")
+}
+
+/// PLAN-979：自由函数的 HIR def id（`d_<source name>`），见 [`free_fn_symbol`]。
+pub(crate) fn free_fn_def_id(name: &str) -> String {
+    format!("d_{name}")
+}
+
 /// [`compile_parts_with`] with stage-boundary observation (PLAN-788 T-03).
 pub fn compile_parts_with_observer(
     src: &str,
@@ -478,6 +489,11 @@ pub fn compile_program_parts(
     capabilities: &[String],
     profile: SourceProfile,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
+    // PLAN-979 F2：领域 profile 只经领域前门消费——这里显式拒绝，避免一个
+    // 已投影程序把领域声明静默丢在共享管线之外。
+    if let Some(d) = crate::source::age_h0::domain_profile_refusal(profile, src.len()) {
+        return Err(vec![d]);
+    }
     compile_program_observed(program, src, module_path, capabilities, profile, None)
 }
 
@@ -4221,10 +4237,10 @@ impl<'p> Emitter<'p> {
                 };
                 frag!(
                     &format!(
-                        "function d_{} t_f_{} {{ name: \"sf_{}\"{} }}",
+                        "function {} t_f_{} {{ name: \"{}\"{} }}",
+                        free_fn_def_id(&f.name),
                         f.name,
-                        f.name,
-                        Self::esc(&f.name),
+                        free_fn_symbol(&f.name),
                         body_field
                     ),
                     span

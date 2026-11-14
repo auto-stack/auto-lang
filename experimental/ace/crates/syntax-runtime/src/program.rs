@@ -14,8 +14,9 @@ use crate::identity::{GrammarId, PackageIdentity};
 /// 语法程序 schema 版本（.at 配置的可读面）。
 pub const GRAMMAR_SCHEMA_VERSION: u32 = 2;
 /// 程序规范二进制序列化格式版本（语言包装载格式，实验 Schema，非正式 Batom）。
-/// 4：PLAN-979 增加上下文名称表与 `Atom::CtxName`（槽位限定拼写识别）。
-pub const PROGRAM_CODEC_VERSION: u16 = 4;
+/// 5：PLAN-979 增加规则诊断标签表（构造级 "unexpected token in …" 诊断）；
+/// 4 已增加上下文名称表与 `Atom::CtxName`（槽位限定拼写识别）。
+pub const PROGRAM_CODEC_VERSION: u16 = 5;
 
 pub type RuleId = u32;
 pub type TokenId = u32;
@@ -262,6 +263,10 @@ pub struct GrammarProgram {
     pub field_names: Vec<String>,
     /// 上下文名称规则表（PLAN-979；无该表 = 无槽位限定拼写）。
     pub ctx_names: Vec<CtxNameSpec>,
+    /// 规则诊断标签（PLAN-979；与 `rules` 平行，`Some` = 该规则失败时报告
+    /// "unexpected token in <label>" 并指向当前 token 的原 span）。这是语法
+    /// 数据，不是运行时领域知识。
+    pub rule_expects: Vec<Option<String>>,
     pub start: RuleId,
     pub newline: NewlinePolicy,
     pub recovery: RecoverySpec,
@@ -305,6 +310,12 @@ impl GrammarProgram {
     /// 上下文名称规则（PLAN-979）。
     pub fn ctx_name(&self, id: CtxNameId) -> Option<&CtxNameSpec> {
         self.ctx_names.get(id as usize)
+    }
+    /// 规则诊断标签（PLAN-979）：规则失败时的构造描述。
+    pub fn rule_expect(&self, id: RuleId) -> Option<&str> {
+        self.rule_expects
+            .get(id as usize)
+            .and_then(|e| e.as_deref())
     }
     /// 该角色声明的全部上下文名称（别名/拼写变体共用同一角色）。
     pub fn ctx_names_with_role<'s>(

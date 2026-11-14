@@ -4,7 +4,7 @@
 //! 冻结 H0 输入解析为声明；普通 Auto 功能（函数/`let`/调用/文本）与 AGE
 //! 结构在同一文件里共存；槽位之外的拼写不被领域化；拒绝保原 span。
 
-use ace_syntax_grammar::{compile, compile_profile};
+use ace_syntax_grammar::compile_profile;
 
 const SOURCE: &str = include_str!("../../../../grammars/auto-source.at");
 

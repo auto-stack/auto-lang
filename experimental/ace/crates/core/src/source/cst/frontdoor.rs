@@ -1629,6 +1629,13 @@ pub fn parse_front(req: FrontRequest) -> FrontOutcome {
         kind,
         budget,
     } = req;
+    // PLAN-979 F2：AGE 领域 profile 只经 `source::age_h0` 的整模块入口消费；
+    // 通用入口（含片段入口，它们没有槽位拼写的事实源）一律具名拒绝。
+    if profile == SourceProfile::AgeH0 {
+        if let Some(d) = crate::source::age_h0::domain_profile_refusal(profile, src.len()) {
+            return FrontOutcome::Diag(vec![d]);
+        }
+    }
     match kind {
         FrontKind::WholeModule => parse_whole_module(src, profile, budget),
         FrontKind::FreeFnFragment { range } => {
@@ -1745,6 +1752,17 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
     }
 }
 
+/// PLAN-979：crate 内部领域入口（仅 AGE 领域前门使用）。公共 [`parse_front`]
+/// 拒绝领域 profile——这样任何通用消费者都不可能把领域声明静默丢掉。
+pub(crate) fn parse_domain_whole_module(
+    src: &str,
+    profile: SourceProfile,
+    budget: FrontBudget,
+) -> FrontOutcome {
+    debug_assert_eq!(profile, SourceProfile::AgeH0);
+    parse_whole_module(src, profile, budget)
+}
+
 fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) -> FrontOutcome {
     let cached = match profile_grammar(profile) {
         Ok(c) => c,
@@ -1775,24 +1793,68 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
         match project::project_program(&cached.program, &cached.kinds, &tree, &snap, profile) {
             Ok(program) => program,
             Err(diags) => {
-                // PLAN-979：槽位拼写拒绝是比"首个 token 期望"更精确的结构事实
-                // （例如 `node` 已消费、`view` 槽位遇到 `panel`）——领域 profile 上
-                // 优先报它，保原 span；普通 profile 的既有首诊断序不变。
+                // PLAN-979：槽位/结构拒绝是比"首个 token 期望"更精确的结构
+                // 事实（例如 `node` 已消费、`view` 槽位遇到 `panel`）——领域
+                // profile 上优先报它，保原 span；但**不吞更早的错误**（F6：
+                // 只有 hint 不晚于共享投影的最早诊断时才取代它）。普通 profile
+                // 的既有首诊断序不变。
                 if profile == SourceProfile::AgeH0 {
-                    if let Some(hint) = tree
+                    let hint = tree
                         .diags
                         .iter()
-                        .find(|d| d.message.starts_with("expected `") && d.message.contains("slot"))
-                    {
-                        return FrontOutcome::Diag(vec![Diagnostic::new(
-                            crate::atom_text::Stage::Text,
-                            "source.age.slot",
-                            hint.message.clone(),
-                            crate::atom_text::Span {
-                                start: hint.start as usize,
-                                end: hint.end as usize,
-                            },
-                        )]);
+                        .filter(|d| {
+                            (d.message.starts_with("expected `") && d.message.contains("slot"))
+                                || d.message.starts_with("unexpected token in ")
+                        })
+                        // tree.diags 里的 hint 已按 (深度, 构造级优先, 位置) 排好
+                        // ——取第一条即最精确的领域诊断。
+                        .next()
+                        .map(|h| {
+                            let code = if h.message.contains("slot") {
+                                "source.age.slot"
+                            } else {
+                                "source.age.structure"
+                            };
+                            Diagnostic::new(
+                                crate::atom_text::Stage::Text,
+                                code,
+                                h.message.clone(),
+                                crate::atom_text::Span {
+                                    start: h.start as usize,
+                                    end: h.end as usize,
+                                },
+                            )
+                        });
+                    if let Some(hint) = hint {
+                        // AGE 只信"声明的头之前"的共享诊断作为更早错误（F6：
+                        // 不吞更早的真实错误）。头之后/之内的通用 token 游走
+                        // 诊断（"expected fn"/"skipped unexpected token"）是
+                        // 同一失败区的回滚产物，由领域 hint 取代。
+                        let head_starts: Vec<&str> = cached
+                            .program
+                            .ctx_names
+                            .iter()
+                            .filter(|n| n.role == "node")
+                            .map(|n| n.spelling.as_str())
+                            .collect();
+                        let mut node_head_start: Option<usize> = None;
+                        // 叶序扫描（含错误叶——回滚后的声明头正是错误叶）。
+                        tree.for_each_leaf(|s, e, _k, _is_error| {
+                            if node_head_start.is_none() {
+                                if let Ok(text) = snap.read_str(s, e) {
+                                    if head_starts.contains(&text.as_str()) {
+                                        node_head_start = Some(s as usize);
+                                    }
+                                }
+                            }
+                        });
+                        let competing = match node_head_start {
+                            Some(head) => diags.iter().any(|d| d.span.start < head),
+                            None => false,
+                        };
+                        if !competing {
+                            return FrontOutcome::Diag(vec![hint]);
+                        }
                     }
                 }
                 return FrontOutcome::Diag(diags);

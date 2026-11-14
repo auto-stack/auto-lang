@@ -80,6 +80,18 @@ pub fn encode_canonical(p: &GrammarProgram) -> Vec<u8> {
         }
     }
 
+    // 规则诊断标签（PLAN-979）：与 rules 平行、声明序。
+    put_u32(&mut w, p.rule_expects.len() as u32);
+    for e in &p.rule_expects {
+        match e {
+            None => w.push(0),
+            Some(s) => {
+                w.push(1);
+                put_str(&mut w, s);
+            }
+        }
+    }
+
     // pratt
     put_u32(&mut w, p.pratt.len() as u32);
     for t in &p.pratt {
@@ -247,6 +259,12 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
     }
 
     let n = r.u32()? as usize;
+    let mut rule_expects = Vec::with_capacity(n);
+    for _ in 0..n {
+        rule_expects.push(if r.u8()? != 0 { Some(r.str()?) } else { None });
+    }
+
+    let n = r.u32()? as usize;
     let mut pratt = Vec::with_capacity(n);
     for _ in 0..n {
         let primary = r.u32()?;
@@ -359,6 +377,9 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
     if (start as usize) >= grammar_rules.len() {
         return Err("start rule out of range".into());
     }
+    if !rule_expects.is_empty() && rule_expects.len() != grammar_rules.len() {
+        return Err("rule-expect table length mismatch".into());
+    }
     // 上下文名称表防御：token 必须在表内；空拼写/空角色是坏程序。
     for n in &ctx_names {
         if (n.token as usize) >= tokens.len() {
@@ -379,6 +400,7 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
         pratt,
         field_names,
         ctx_names,
+        rule_expects,
         start,
         newline: NewlinePolicy {
             significant,

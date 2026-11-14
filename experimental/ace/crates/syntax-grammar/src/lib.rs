@@ -731,6 +731,8 @@ impl Ctx {
         };
 
         let mut rules: Vec<RuleSpec> = Vec::new();
+        // PLAN-979：规则诊断标签（构造级诊断数据，与 rules 平行）。
+        let mut rule_expects: Vec<Option<String>> = Vec::new();
         for r in &raw_rules {
             if !r.enabled {
                 continue;
@@ -770,6 +772,7 @@ impl Ctx {
             if alts.is_empty() {
                 self.err(&path, format!("rule `{rname}` has no alternatives"));
             }
+            rule_expects.push(pstr(&r.node, "expect"));
             rules.push(RuleSpec {
                 name: rname.clone(),
                 alts,
@@ -954,6 +957,7 @@ impl Ctx {
             pratt,
             field_names,
             ctx_names,
+            rule_expects,
             start,
             newline: NewlinePolicy {
                 significant: newline_significant,

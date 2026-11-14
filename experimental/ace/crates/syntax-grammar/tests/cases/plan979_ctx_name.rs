@@ -6,7 +6,7 @@
 //! - 角色（role）与拼写解耦：换拼写后接受的仍是同一角色；
 //! - 缺字节事实源 = 失败关闭（不静默接受），声明表参与身份/二进制往返。
 
-use ace_syntax_grammar::{compile, compile_profile};
+use ace_syntax_grammar::compile_profile;
 
 /// 最小 AGE 风格测试 Schema：普通语句面 + 三个槽位（decl 头 / view / text）。
 const SCHEMA: &str = r#"

@@ -19,7 +19,7 @@
 use super::ast::{
     Block, Expr, ExprKind, FnItem, Ident, Item, Program, Receiver, Stmt, TypeAnn, TypeRef, TypeWord,
 };
-use super::cst::{parse_front, FrontBudget, FrontKind, FrontOutcome, FrontRequest};
+use super::cst::{parse_domain_whole_module, FrontBudget, FrontOutcome};
 use super::SourceProfile;
 use crate::atom_text::{Diagnostic, Span, Stage};
 use crate::hir::{BuiltinType, DefKind, ExprKind as HirExprKind, Stmt as HirStmt, TypeUse};
@@ -165,6 +165,24 @@ pub struct AgeH0Compilation {
     pub atom_text: String,
 }
 
+/// 领域 profile 的通用入口拒绝（PLAN-979 F2）：领域声明不得被共享管线
+/// 静默丢弃——通用解析/编译入口一律具名拒绝，只经本模块入口消费。
+pub fn domain_profile_refusal(profile: SourceProfile, src_len: usize) -> Option<Diagnostic> {
+    if profile != SourceProfile::AgeH0 {
+        return None;
+    }
+    Some(text_diag(
+        "source.domain-frontend",
+        "the AGE domain profile is consumed only by the AGE domain front door \
+         (ace_core::source::age_h0::compile_age_h0); generic parsing/compilation cannot \
+         represent domain declarations",
+        Span {
+            start: 0,
+            end: src_len,
+        },
+    ))
+}
+
 fn text_diag(code: &str, message: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic::new(Stage::Text, code, message, span)
 }
@@ -187,12 +205,9 @@ pub fn compile_age_h0(
     alias: LegacyWidgetAlias,
     capabilities: &[String],
 ) -> Result<AgeH0Compilation, Vec<Diagnostic>> {
-    let outcome = parse_front(FrontRequest {
-        src,
-        profile: SourceProfile::AgeH0,
-        kind: FrontKind::WholeModule,
-        budget: FrontBudget::WORK_OWNED_64MIB,
-    });
+    // 领域入口（crate 内部）：公共 `parse_front` 对领域 profile 具名拒绝。
+    let outcome =
+        parse_domain_whole_module(src, SourceProfile::AgeH0, FrontBudget::WORK_OWNED_64MIB);
     let ok = match outcome {
         FrontOutcome::Ok(ok) => ok,
         FrontOutcome::Diag(ds) => return Err(ds),
@@ -233,7 +248,7 @@ pub fn compile_age_h0(
             idx += 1;
         }
     }
-    for (fname, _, _) in &hidden {
+    for (_fname, _, _) in &hidden {
         for item in &ok.program.items {
             let user = match item {
                 Item::Fn(f) => Some(&f.name),
@@ -244,10 +259,17 @@ pub fn compile_age_h0(
                 Item::UseRs(_) => None,
             };
             if let Some(u) = user {
-                if u.name == *fname {
+                // 任何**包含**保留前缀的用户顶层名都是具名冲突：HIR 名带
+                // `sf_` 前缀，后缀式重名（`x__age_h0_text_0`）会与隐藏函数
+                // 混淆——按策略直接拒绝，不做静默遮蔽。
+                if u.name.contains(AGE_H0_HIDDEN_PREFIX) {
                     return Err(vec![text_diag(
                         "source.age.hidden-name",
-                        format!("`{fname}` is reserved for AGE text evaluation"),
+                        format!(
+                            "`{}` contains `{AGE_H0_HIDDEN_PREFIX}` which is reserved for AGE \
+                             text evaluation",
+                            u.name
+                        ),
                         u.span,
                     )]);
                 }
@@ -298,15 +320,23 @@ pub fn compile_age_h0(
     let desugared = Program { items };
 
     // 唯一 verify：整模块（普通项 + 隐藏求值函数）走 text-record 域的共享链。
-    let parts = super::adapter::compile_program_parts(
+    let parts = match super::adapter::compile_program_parts(
         &desugared,
         src,
         module_path,
         capabilities,
         SourceProfile::TextRecord,
-    )?;
+    ) {
+        Ok(p) => p,
+        Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
+    };
     let input_hash = parts.input_hash.clone();
-    let checked = crate::verify::verify_text_record(parts.bundle)?;
+    // 共享 verify 是唯一权威；文本叶内的拒绝再用领域代码标注（F3：不把
+    // 脱糖壳的 `.clone()` 细节漏给作者，但仍保留共享诊断原文与精确 span）。
+    let checked = match crate::verify::verify_text_record(parts.bundle) {
+        Ok(c) => c,
+        Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
+    };
 
     // 描述：从 Checked HIR 读共享检查结论（文本种类 + def id）。
     let mut nodes = Vec::new();
@@ -361,13 +391,37 @@ pub fn compile_age_h0(
     })
 }
 
+/// 文本叶内的共享拒绝 → 领域代码标注（保留共享消息与精确 span；不改判据）。
+fn relabel_leaf_diags(mut diags: Vec<Diagnostic>, candidates: &[AgeNodeItem]) -> Vec<Diagnostic> {
+    for d in &mut diags {
+        let inside_leaf = candidates.iter().any(|n| {
+            n.view.texts.iter().any(|t| {
+                // 共享诊断的 span 可能比表达式宽（含调用壳/括号）——用重叠判定，
+                // 跨度为零的尾位（EOF）按起点归属。
+                t.expr.span.start < d.span.end.max(d.span.start + 1)
+                    && d.span.start < t.expr.span.end
+            })
+        });
+        if inside_leaf {
+            d.code = "source.age.text-type".to_string();
+            d.message = format!(
+                "a `text` leaf expression must be text (`str` or `Str`); the shared checker \
+                 rejected it: {}",
+                d.message
+            );
+        }
+    }
+    diags
+}
+
 /// 从 Checked HIR 读隐藏求值函数的 def id 与文本种类（共享检查结论）。
 fn text_conclusion(checked: &CheckedModule, fn_name: &str) -> Option<(String, TextKind)> {
     let module = checked.bundle().modules.first()?;
-    // HIR def 名可能带域前缀（如 `sf__`）——按隐藏名后缀匹配，def id 仍取
-    // 共享 adapter 为它生成的真实 id（不是本地拼名）。
+    // 隐藏求值函数的 HIR 名由共享 adapter 唯一决定（`sf_<source name>`），
+    // 按**完整名**精确匹配：后缀式用户函数（`x__age_h0_text_0`）不会被误选。
+    let symbol = super::adapter::free_fn_symbol(fn_name);
     let def = module.defs.iter().find(|d| match &d.kind {
-        DefKind::Function { name, .. } => name == fn_name || name.ends_with(fn_name),
+        DefKind::Function { name, .. } => name == &symbol,
         _ => false,
     })?;
     let body_id = match &def.kind {
