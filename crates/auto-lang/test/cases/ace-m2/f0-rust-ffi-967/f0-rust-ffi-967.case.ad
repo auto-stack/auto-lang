@@ -1,0 +1,65 @@
+# PLAN-967 T-03: the F0 production lane — deck (Auto use.rs source + the
+# annotated provider source; the manifest is DERIVED in the worker) run
+# through the real abi-worker transport on leg `av`.
+```test-case
+case { schema: "autolang.case/2", id: "ace-f0.len-av", tags: ["ace-f0", "certify"],
+ source: { file: "src/len.atomdata", syntax: "atom-data", path: "len.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/rust-f0-certify-v1",
+ abi: { leg: "av" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 9, probe: [ { stages_include: ["f0-av"] } ] } } ] }
+```
+
+# PLAN-967 T-03: the F0 production lane — deck (Auto use.rs source + the
+# annotated provider source; the manifest is DERIVED in the worker) run
+# through the real abi-worker transport on leg `native`.
+```test-case
+case { schema: "autolang.case/2", id: "ace-f0.len-native", tags: ["ace-f0", "certify"],
+ source: { file: "src/len.atomdata", syntax: "atom-data", path: "len.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/rust-f0-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 9, probe: [ { stages_include: ["f0-native"] } ] } } ] }
+```
+
+# PLAN-967 T-03: the F0 production lane — deck (Auto use.rs source + the
+# annotated provider source; the manifest is DERIVED in the worker) run
+# through the real abi-worker transport on leg `av`.
+```test-case
+case { schema: "autolang.case/2", id: "ace-f0.len-empty-av", tags: ["ace-f0", "certify"],
+ source: { file: "src/len-empty.atomdata", syntax: "atom-data", path: "len-empty.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/rust-f0-certify-v1",
+ abi: { leg: "av" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 0, probe: [ { stages_include: ["f0-av"] } ] } } ] }
+```
+
+# PLAN-967 T-03: the F0 production lane — deck (Auto use.rs source + the
+# annotated provider source; the manifest is DERIVED in the worker) run
+# through the real abi-worker transport on leg `av`.
+```test-case
+case { schema: "autolang.case/2", id: "ace-f0.first-byte-av", tags: ["ace-f0", "certify"],
+ source: { file: "src/first-byte.atomdata", syntax: "atom-data", path: "first-byte.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/rust-f0-certify-v1",
+ abi: { leg: "av" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 65, probe: [ { stages_include: ["f0-av"] } ] } } ] }
+```
+
+# PLAN-967 T-03: the F0 production lane — deck (Auto use.rs source + the
+# annotated provider source; the manifest is DERIVED in the worker) run
+# through the real abi-worker transport on leg `native`.
+```test-case
+case { schema: "autolang.case/2", id: "ace-f0.first-byte-native", tags: ["ace-f0", "certify"],
+ source: { file: "src/first-byte.atomdata", syntax: "atom-data", path: "first-byte.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/rust-f0-certify-v1",
+ abi: { leg: "native" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 65, probe: [ { stages_include: ["f0-native"] } ] } } ] }
+```
+
+# PLAN-967 T-03: the F0 production lane — deck (Auto use.rs source + the
+# annotated provider source; the manifest is DERIVED in the worker) run
+# through the real abi-worker transport on leg `av`.
+```test-case
+case { schema: "autolang.case/2", id: "ace-f0.rebound-av", tags: ["ace-f0", "certify"],
+ source: { file: "src/rebound.atomdata", syntax: "atom-data", path: "rebound.atomdata" }, entry: { mode: "program" },
+ checks: [ { id: "certify", adapter: "probe", action: "run", options: { recipe: "abi/rust-f0-certify-v1",
+ abi: { leg: "av" }, steps: [ { op: "query" } ] },
+ expect: { completion: "success", exit: 4, probe: [ { stages_include: ["f0-av"] } ] } } ] }
+```

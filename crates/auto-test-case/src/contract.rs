@@ -1187,7 +1187,9 @@ fn decode_check(
     )?;
     if matches!(
         options.probe_recipe.as_deref(),
-        Some("abi/source-foreign-certify-v1") | Some("abi/resource-foreign-certify-v1")
+        Some("abi/source-foreign-certify-v1")
+            | Some("abi/resource-foreign-certify-v1")
+            | Some("abi/rust-f0-certify-v1")
     ) && matches!(expect.completion, Completion::Success)
         && expect.exit.is_none()
     {
@@ -2053,7 +2055,8 @@ fn decode_options(
                 }
                 if (recipe == "cte/scalar-query-v1"
                     || recipe == "abi/source-foreign-certify-v1"
-                    || recipe == "abi/resource-foreign-certify-v1")
+                    || recipe == "abi/resource-foreign-certify-v1"
+                    || recipe == "abi/rust-f0-certify-v1")
                     && !matches!(out.last(), Some(ProbeStep::Query))
                 {
                     return Err(err(
@@ -2132,6 +2135,7 @@ fn decode_options(
                     || recipe == "abi/ca-d1-bridge-v1"
                     || recipe == "abi/source-foreign-certify-v1"
                     || recipe == "abi/resource-foreign-certify-v1"
+                    || recipe == "abi/rust-f0-certify-v1"
                 {
                     return Err(err(
                         &f.path_of("abi"),
@@ -2145,6 +2149,7 @@ fn decode_options(
                     && recipe != "abi/ca-d1-bridge-v1"
                     && recipe != "abi/source-foreign-certify-v1"
                     && recipe != "abi/resource-foreign-certify-v1"
+                    && recipe != "abi/rust-f0-certify-v1"
                 {
                     return Err(err(
                         &f.path_of("abi"),
@@ -2164,6 +2169,10 @@ fn decode_options(
                     || recipe == "abi/resource-foreign-certify-v1"
                 {
                     matches!(leg.as_str(), "native" | "c")
+                } else if recipe == "abi/rust-f0-certify-v1" {
+                    // PLAN-967 T-03: the F0 legs — the in-process AV
+                    // session and the native machine-code run.
+                    matches!(leg.as_str(), "av" | "native")
                 } else {
                     // PLAN-937: the bridge legs (source export + the three
                     // typed peer legs); PLAN-939 S07: the wide
@@ -3082,6 +3091,9 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // PLAN-939: the resource certification recipe (own deck/report
     // identities on the same worker transport).
     "abi/resource-foreign-certify-v1",
+    // PLAN-967 T-03: the F0 Rust-provider certification recipe (legs
+    // av/native; the manifest is derived in the worker).
+    "abi/rust-f0-certify-v1",
     "ac-av/core-run-v1",
     // PLAN-817: AV-driven CTE query + frozen cache. Appended in the
     // post-797/798 single-writer window; same seam contract.

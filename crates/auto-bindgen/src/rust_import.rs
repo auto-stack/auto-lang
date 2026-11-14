@@ -487,6 +487,17 @@ pub fn generate_shim(manifest: &RustProviderManifest) -> String {
          \x20   &__F0_PANIC_FLAG as *const _ as *mut u32\n\
          }\n\n",
     );
+    // PLAN-967 T-03: the native fallible failure transport. The caller
+    // COFF imports `ace_foreign_fail` for fallible declarations; the F0
+    // build unit exports the SAME semantics as the C-side runtime
+    // (stderr line + controlled exit 70), so a native link needs no
+    // external runtime object (B-06 runtime-dependency seed).
+    out.push_str(
+        "#[no_mangle]\npub extern \"C\" fn ace_foreign_fail(status: i32) -> ! {\n\
+         \x20   eprintln!(\"foreign.status={}\", status);\n\
+         \x20   std::process::exit(70)\n\
+         }\n\n",
+    );
     for f in &manifest.functions {
         let call = format!("{}(__f0_view(data, byte_len))", f.rust_name);
         match f.form {

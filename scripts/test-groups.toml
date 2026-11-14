@@ -1158,6 +1158,20 @@ domain = "ace"
 suite = "crates/auto-lang/test/cases/ace-ca-d-scalar-937/ace-ca-d-scalar-937.suite.ad"
 all = false
 
+# PLAN-967 T-03: the F0 Rust-provider certification suite (production
+# TestCase lane: deck -> abi-worker -> real AV session / native PE run).
+[[group]]
+name = "case-ace-m2-f0-rust-967"
+title = "ACE M2 F0 Rust FFI certification 967"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+tools = ["case-parent", "abi"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/ace-m2/f0-rust-ffi-967/f0-rust-ffi-967.suite.ad"
+all = false
+
 [[group]]
 name = "case-ace-ca-d-source-938"
 title = "TestCase PLAN-938 source foreign explicit certification"

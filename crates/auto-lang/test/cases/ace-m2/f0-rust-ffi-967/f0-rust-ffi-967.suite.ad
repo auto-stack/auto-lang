@@ -1,0 +1,10 @@
+# PLAN-967 T-03 — the F0 Rust-provider certification suite (production
+# TestCase lane: the deck's Auto use.rs source + annotated provider source
+# run through the real abi-worker on av/native legs; the manifest is
+# derived in the worker, never hand-written).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m2-f0-rust-967", include: [
+  "f0-rust-ffi-967.case.ad",
+] }
+```

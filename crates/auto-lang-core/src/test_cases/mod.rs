@@ -1080,7 +1080,8 @@ fn dispatch_check(
             if check.options.probe_recipe.as_deref() == Some(abi::ABI_RECIPE)
                 || check.options.probe_recipe.as_deref() == Some(abi::BRIDGE_RECIPE)
                 || check.options.probe_recipe.as_deref() == Some(abi_source::RECIPE)
-                || check.options.probe_recipe.as_deref() == Some(abi_source::RESOURCE_RECIPE) =>
+                || check.options.probe_recipe.as_deref() == Some(abi_source::RESOURCE_RECIPE)
+                || check.options.probe_recipe.as_deref() == Some(abi::F0_RUST_RECIPE) =>
         {
             abi::run_check(
                 resolved,

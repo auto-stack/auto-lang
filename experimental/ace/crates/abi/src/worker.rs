@@ -1149,6 +1149,8 @@ pub fn serve() -> i32 {
     let resp = match if crate::worker_source::CertPolicy::of_recipe(&env.request.recipe).is_some()
     {
         crate::worker_source::execute(&env.request)
+    } else if cfg!(windows) && env.request.recipe == crate::rust_f0_worker::F0_RECIPE {
+        crate::rust_f0_worker::execute(&env.request)
     } else if env.request.recipe == crate::worker_bridge::BRIDGE_RECIPE {
         crate::worker_bridge::execute_bridge(&env.request)
     } else {

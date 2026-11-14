@@ -41,6 +41,10 @@ pub const ABI_RECIPE: &str = "abi/interop-v1";
 /// own deck grammar `deck ace-ca-d1/1` and legs; strictly disjoint from
 /// `abi/interop-v1` — decks/legs never cross).
 pub const BRIDGE_RECIPE: &str = "abi/ca-d1-bridge-v1";
+/// PLAN-967 T-03: the F0 Rust-provider certification recipe (legs
+/// `av`/`native`; the deck is the F0 grammar, the manifest is derived in
+/// the worker — never hand-written).
+pub const F0_RUST_RECIPE: &str = "abi/rust-f0-certify-v1";
 /// Mirrored worker identity (drift fails admission loudly).
 pub const EXPECTED_ABI_WORKER_VERSION: &str = "abi-worker/0.1.0";
 
@@ -819,7 +823,10 @@ pub fn run_check(
     let bridge_mode = check.options.probe_recipe.as_deref() == Some(BRIDGE_RECIPE);
     let source_mode = check.options.probe_recipe.as_deref() == Some(super::abi_source::RECIPE)
         || check.options.probe_recipe.as_deref() == Some(super::abi_source::RESOURCE_RECIPE);
-    if !bridge_mode && !source_mode && check.options.probe_recipe.as_deref() != Some(ABI_RECIPE) {
+    let f0_mode = check.options.probe_recipe.as_deref() == Some(F0_RUST_RECIPE);
+    if !bridge_mode && !source_mode && !f0_mode
+        && check.options.probe_recipe.as_deref() != Some(ABI_RECIPE)
+    {
         return Err("probe check with an unregistered recipe (contract violation)".into());
     }
     let active_recipe = check
@@ -834,6 +841,19 @@ pub fn run_check(
     {
         return Err(
             "source import requires an explicit consumer, a final query and a parent exit oracle on success"
+                .into(),
+        );
+    }
+    // PLAN-967 T-03: the F0 recipe keeps the same discipline with its own
+    // legs (av runs in-process through a real loaded session; native is a
+    // real PE pass — the exit oracle stays mandatory on success).
+    if f0_mode
+        && (matches!(oracle.completion, Completion::Success) && oracle.exit.is_none()
+            || !matches!(abi.leg.as_str(), "av" | "native")
+            || !matches!(steps.last(), Some(ProbeStep::Query)))
+    {
+        return Err(
+            "F0 rust certification requires leg av|native, a final query and a parent exit oracle on success"
                 .into(),
         );
     }
@@ -1182,7 +1202,11 @@ pub fn run_check(
                         want,
                         qi,
                         &mut mismatches,
-                        if source_mode { oracle.exit } else { Some(0) },
+                        if source_mode || f0_mode {
+                            oracle.exit
+                        } else {
+                            Some(0)
+                        },
                         ok.source_import
                             .as_ref()
                             .map(|r| r.diagnostic_stage.as_str()),
