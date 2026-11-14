@@ -8,9 +8,7 @@ use std::path::PathBuf;
 
 use ace_abi::rust_provider::{build_f0, build_source, f0_authority, f0_provider_source, load};
 use ace_av_core::contract::{ExecOutcome, TrapKind, Value};
-use ace_av_core::foreign_exec::{
-    ForeignDispatch, ForeignExecError, ForeignStub, ForeignStubTable,
-};
+use ace_av_core::foreign_exec::{ForeignDispatch, ForeignExecError, ForeignStub, ForeignStubTable};
 use ace_foreign_contract::manual::SOURCE_CAP;
 use ace_foreign_contract::resource::RESOURCE_CAP;
 
@@ -377,3 +375,151 @@ fn f0_provider_identity_rebinds_and_auto_body_edits_do_not() {
     );
 }
 
+/// T-01 bounded full-chain probe (longest producer→consumer path): the
+/// SAME auto-imported binding/shim drives the NATIVE machine-code leg —
+/// ordinary use.rs source → shared checked frontdoor → native foreign
+/// lowering → caller COFF → real linked cdylib callee via its import
+/// library → real process exit code. The illegal neighbor (tampered
+/// identity) refuses admission, and the failure-recovery leg rebinds a
+/// rebuilt provider through the same entrance.
+#[test]
+fn f0_native_machine_code_consumes_the_same_auto_binding() {
+    let root = scope("native-probe");
+    let build = build_f0(&root).expect("build");
+    let import_lib = build.cdylib.with_file_name("f0_text_provider.dll.lib");
+    assert!(
+        import_lib.is_file(),
+        "the cdylib build carries its import library"
+    );
+    let admitted = admit(&build, 1);
+    let caps = [SOURCE_CAP.to_string(), RESOURCE_CAP.to_string()];
+
+    let compile_native = |environment: &ace_foreign_contract::manual::AdmittedForeign,
+                          source: &str|
+     -> Result<ace_av_core::mir::MirModule, String> {
+        let mut query = ace_source_query::SourceQuerySession::new("p967", "m967");
+        let (product, units) = ace_native::foreign_lower::compile_source_units(
+            source,
+            "f0967n",
+            &caps,
+            environment,
+            &mut query,
+        )
+        .map_err(|e| format!("native compile: {e}"))?;
+        assert!(product.compiled.checked.bundle().modules[0].bodies.len() == 1);
+        assert_eq!(units.len(), 1);
+        Ok(units.into_iter().next().unwrap())
+    };
+
+    let unit = compile_native(
+        &admitted,
+        "use.rs f0_text
+fn main() int { return text_byte_len(\"A中😀\0\") }",
+    )
+    .expect("native compile");
+    let object =
+        ace_native::emit::emit_foreign_unit_coff(&unit, &admitted).expect("foreign caller COFF");
+    let wrapper = ace_native::emit::emit_wrapper_coff(&object.symbol).expect("wrapper");
+
+    let run_dir = root.join("native-run");
+    std::fs::create_dir_all(&run_dir).unwrap();
+    // the loader resolves the import library against the DLL beside the exe
+    std::fs::copy(&build.cdylib, run_dir.join("f0_text_provider.dll")).unwrap();
+    let linked = ace_native::link_driver::link_only(
+        &[ace_native::link_driver::ObjectInput {
+            name: "caller".into(),
+            bytes: object.bytes.clone(),
+        }],
+        &wrapper,
+        "ac_start",
+        &run_dir,
+        &[import_lib.clone()],
+        "plan967 f0 native probe",
+    )
+    .expect("link");
+    let run = ace_native::link_driver::run_pe(
+        &linked.exe_path,
+        std::time::Duration::from_secs(20),
+        ace_core::link::CaptureCaps {
+            stdout_max: 1 << 16,
+            stderr_max: 1 << 16,
+        },
+    )
+    .expect("run");
+    assert_eq!(
+        run.exit_code,
+        Some(9),
+        "the real machine-code callee returned the UTF-8 byte length"
+    );
+
+    // Illegal neighbor: a tampered identity never admits (fail-closed at
+    // native admission, exactly like 938 — no caller bytes emitted).
+    {
+        let mut tampered = build.manual.clone();
+        tampered.facts.functions[0].symbol = "f0_text_ghost_v1".into();
+        let authority = f0_authority(&build, 1);
+        // The ghost-symbol manifest is refused at MANIFEST VALIDATION
+        // itself (`foreign.symbol`: declarations and facts must cover each
+        // other exactly) — the tampered identity can never admit, so no
+        // caller bytes and no machine code can exist for it.
+        let refused = match tampered.admit(&authority) {
+            Ok(_) => panic!("a ghost-symbol manifest must not admit"),
+            Err(message) => {
+                assert!(message.contains("foreign.symbol"), "{message}");
+                true
+            }
+        };
+        assert!(refused, "a ghost-symbol manifest cannot reach machine code");
+    }
+
+    // Failure-recovery: a rebuilt provider body (+1) re-admits at a new
+    // generation through the SAME entrance and the next link runs the new
+    // behavior — recovery without any caller rebuild shortcut.
+    let edited = f0_provider_source().replace(
+        "pub fn text_byte_len(s: &str) -> i32 {
+    s.as_bytes().len() as i32
+}",
+        "pub fn text_byte_len(s: &str) -> i32 {
+    s.as_bytes().len() as i32 + 1
+}",
+    );
+    let rebuilt = build_source(&root.join("edited"), &edited).expect("rebuild");
+    let readmitted = admit(&rebuilt, 2);
+    let unit2 = compile_native(
+        &readmitted,
+        "use.rs f0_text
+fn main() int { return text_byte_len(\"A中😀\0\") }",
+    )
+    .expect("native compile 2");
+    let object2 = ace_native::emit::emit_foreign_unit_coff(&unit2, &readmitted).expect("caller 2");
+    let run_dir2 = root.join("native-run-2");
+    std::fs::create_dir_all(&run_dir2).unwrap();
+    std::fs::copy(&rebuilt.cdylib, run_dir2.join("f0_text_provider.dll")).unwrap();
+    let import_lib2 = rebuilt.cdylib.with_file_name("f0_text_provider.dll.lib");
+    let linked2 = ace_native::link_driver::link_only(
+        &[ace_native::link_driver::ObjectInput {
+            name: "caller2".into(),
+            bytes: object2.bytes.clone(),
+        }],
+        &wrapper,
+        "ac_start",
+        &run_dir2,
+        &[import_lib2],
+        "plan967 f0 native probe recovery",
+    )
+    .expect("link 2");
+    let run2 = ace_native::link_driver::run_pe(
+        &linked2.exe_path,
+        std::time::Duration::from_secs(20),
+        ace_core::link::CaptureCaps {
+            stdout_max: 1 << 16,
+            stderr_max: 1 << 16,
+        },
+    )
+    .expect("run 2");
+    assert_eq!(
+        run2.exit_code,
+        Some(10),
+        "the rebound provider's +1 body ran for real"
+    );
+}
