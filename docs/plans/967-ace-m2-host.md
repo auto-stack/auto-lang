@@ -582,6 +582,10 @@ T-02依赖T-01；T-03依赖T-02；T-04在所有work能力完成后；T-05→06�
 
 ## 9. 复审记录
 
+2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 13 | from: work | to: work | status: executing | outcome: T-12 AV-C腿交付（C provider真DLL驱动AV道；15/65/具名trap全绿）；A2R AXR0与A2PY腿待续 | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-12续：AXR0 Rust腿+A2PY腿+COVERAGE收口）
+
+2026-11-14 stage: work / T-12 AV-C腿（V-COVERAGE行）| 交付: build_c_dll（cl /LD真DLL：provider.c+生成inline shim+CRT-free失败runtime同一闭包、导出.def经-link透传、显式MSVC include+CRT lib路径）、AV stub表装载C DLL、同一use.c普通源经AV解释器执行真C机器码（scaled_len=15、status_of=65、空输入具名ForeignStatus trap）| AV-C片=标量视图帧；record/callback/inline/常量条目留各自交付道 | 验证: f0系14案全绿 | COVERAGE现值: AV/native✓ AV/Rust✓ AV/C✓ AC✓ A2C✓（938 manual+T-10 native）；A2R/A2PY待AXR0/ctypes腿 | next: T-12续。
+
 2026-11-14 stage: goal | plan_id: PLAN-967 | plan_revision: r12 | round: 12 | from: work | to: work | status: executing | outcome: T-11完成（混合帧+具名边界+双rustc交叉+staticlib；勾选） | worktree: D:/autostack/.wt/lang-967/auto-lang | next: work（T-12 四端接入）
 
 2026-11-14 stage: work / T-11（AC-09/V-11+V-ABI-BUILD/CROSS适用部分）| 交付: importer参数域扩至 view+i32/bool混合（≤4）、RustParam形状表、manifest lanes派生、shim混合帧、T-11形状审计（泛型/owned文本/owned列表/Result/async/trait对象/&mut逐项具名拒绝=边界行闭合）、foreign_exec T-11帧+dispatch_view_scalars+AV臂标量编组+lookup对应、loader形状映射、冻结rich fixture、f0_rich 3案（混合帧真跑/clamp 4·3、码点bool、find 5+具名miss trap、具真实例65；边界具名；V-ABI-CROSS真双工具链stable+nightly身份异/接口同/AV宿主跑对方provider；B-02 staticlib产物断言）| 回归: rust_f0 8、c_import 4、av-core foreign 5、auto-bindgen 10、case套件PASS | 具名余量: owned lane/async importer面T-13、MSRV门T-14、真实库腿T-15、A2R crate adapter T-12 | next: T-12。
