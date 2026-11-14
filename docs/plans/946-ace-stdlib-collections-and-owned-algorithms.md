@@ -394,6 +394,8 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 
 ## 9. 复审记录
 
+2026-11-14 stage: work / T-05（部分） | plan_id: PLAN-946 | plan_revision: 10 | outcome: pass（自有 V 行＋A2PY 绿；AV/C＋AV/Rust provider 腿与冻结并集未完，T-05 保持 open） | worktree: D:/autostack/.wt/lang-946/auto-lang | branch: plan-946-dev | base_commit: 2bc7c8481 | code_commit: acfbe4630 | task_ids: T-05 | evidence: 源码 lane fault 扫（每次分配尝试具名中止 live=0，净控 1504）、OOB=ListIndex trap、错元素 backend 前拒、**A2PY 腿＝AXPY3 collections fileset 经 OS Python 真跑 value:1504**——六路径已通五（AV/native/A2C/A2R/A2PY）；套件 30/30＋探针 11/11 | blockers: AV/C＋AV/Rust＝967 F0 provider 模式（编译 provider→装载→AV 源调用），下一轮补；冻结并集按用户裁定归最终 review 后冻结提交 | next_responsible_role: work（T-05 收口）
+
 2026-11-14 stage: work / T-04 | plan_id: PLAN-946 | plan_revision: 10 | outcome: pass（T-04 完成，executing 5/8） | worktree: D:/autostack/.wt/lang-946/auto-lang | branch: plan-946-dev | base_commit: b9cabe364 | code_commit: 2bc7c8481（V-04：body 编辑精确段失效＋恢复首编辑新值＋a2x 增量 0/0 重发＋stale receipt 用前拒；元素型 source.type-mismatch／元数 source.argument 具名拒；套件 26/26＋探针 11/11） | task_ids: T-04 | evidence: §8 T-04 行 + stdlib_list_946 26/26 | blockers: none | next_responsible_role: work（T-05 验证汇总）
 
 `stage: goal | plan_id: PLAN-946 | plan_revision: 10 | round: 6 | from: work | to: work | status: executing | outcome: pass（T-04 交付，5/8） | worktree: D:/autostack/.wt/lang-946/auto-lang | commit: 2bc7c8481 | next: work（T-05）`
