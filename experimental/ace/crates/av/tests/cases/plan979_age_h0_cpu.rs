@@ -150,3 +150,15 @@ fn p979_age_h0_near_miss_user_function_cannot_bind_the_text_leaf() {
         .expect_err("reserved prefix family is rejected");
     assert!(err.contains("source.age.hidden-name"), "{err}");
 }
+
+#[test]
+fn p979_age_same_source_feeds_both_backend_legs() {
+    // T-03：同一份 AGE 源（含普通 helper 与 i32 main），AV 腿取文本叶值；
+    // A2R 腿由 `crates/a2x-worker/tests/cases/plan979_age_a2r.rs` 用同一源
+    // 真实 rustc 编译运行（value:4）。这里只核 AV 侧的领域值。
+    let src = "fn counter_text(n int) str {\n    if n > 2 {\n        return \"many\"\n    }\n    return \"few\"\n}\nnode Counter {\n    view {\n        text counter_text(2) {}\n    }\n}\nfn main() int {\n    let t = counter_text(3)\n    return t.len_bytes()\n}\n";
+    let o = observe_age_h0(src, "age.at", LegacyWidgetAlias::Reject).expect("observes");
+    assert_eq!(o.nodes.len(), 1);
+    assert_eq!(o.nodes[0].view.texts[0].value, "few");
+    assert_eq!(o.nodes[0].view.texts[0].role, "text");
+}

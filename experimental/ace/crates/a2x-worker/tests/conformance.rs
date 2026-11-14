@@ -68,6 +68,8 @@ mod incremental_cache;
 mod inventory_941;
 #[path = "cases/numeric_semantics.rs"]
 mod numeric_semantics;
+#[path = "cases/plan979_age_a2r.rs"]
+mod plan979_age_a2r;
 #[path = "cases/query_release_941.rs"]
 mod query_release_941;
 #[path = "cases/record_text_902.rs"]
