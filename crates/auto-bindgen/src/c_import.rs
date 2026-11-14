@@ -331,7 +331,14 @@ pub enum CDecl {
     /// callback type `fn(i32, i32) -> i32`.
     Callback { name: String },
     /// `extern <scalar> name(params);` — an annotated function.
-    Function { name: String, params: Vec<CParam> },
+    Function {
+        name: String,
+        ret: CRet,
+        params: Vec<CParam>,
+    },
+    /// `typedef struct <tag> <name>;` — an opaque handle typedef (the
+    /// incomplete-type object; the provider owns the lifecycle).
+    Opaque { name: String },
     /// `static inline <scalar> name(params) { body }` — the header's own
     /// implementation; the importer re-emits the (macro-expanded) body as
     /// a plain extern definition in the generated provider shim.
@@ -340,6 +347,15 @@ pub enum CDecl {
         signature: String,
         body: String,
     },
+}
+
+/// A function return shape.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CRet {
+    I32,
+    Bool,
+    /// an opaque handle typedef name (the resource Handle out lane).
+    Opaque(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -361,6 +377,13 @@ pub enum CParam {
     /// a trailing `int32_t* out` — the fallible value-out lane (required
     /// by fallible annotations, rejected for pure ones).
     OutI32,
+    /// an opaque handle typedef parameter (create/get/destroy lifecycle;
+    /// the header's opaque object, provider-owned).
+    Handle {
+        ty: String,
+    },
+    /// the i64 ctx seed following a callback lane (physical only).
+    CtxSeed,
 }
 
 /// Parse the PREPROCESSED text for the frozen declaration shapes. The
@@ -448,6 +471,20 @@ pub fn parse_declarations(preprocessed: &str) -> Vec<CDecl> {
                     records.insert(name.clone(), fields.clone());
                     out.push(CDecl::Record { name, fields });
                     continue;
+                }
+            }
+        }
+        // opaque handle: `typedef struct <tag> <name>;` (no body)
+        if let Some(rest) = line.strip_prefix("typedef struct ") {
+            if !rest.contains('{') {
+                let rest = rest.trim().trim_end_matches(';').trim();
+                if let Some((tag, name)) = rest.rsplit_once(' ') {
+                    if is_c_ident(tag.trim()) && is_c_ident(name.trim()) {
+                        out.push(CDecl::Opaque {
+                            name: name.trim().to_string(),
+                        });
+                        continue;
+                    }
                 }
             }
         }
@@ -568,7 +605,8 @@ fn parse_enum_consts(body: &str) -> Option<Vec<(String, i32)>> {
 fn parse_callback(rest: &str) -> Option<CDecl> {
     let rest = rest.trim().trim_end_matches(';').trim();
     let ret = rest.split_whitespace().next()?;
-    if ret != "int32_t" && ret != "int" {
+    // the DELIVERED callback physical contract: long long (*)(long long, long long)
+    if ret != "long" {
         return None;
     }
     // `int32_t (*name)(int32_t a, int32_t b)` — the FIRST paren pair
@@ -589,7 +627,7 @@ fn parse_callback(rest: &str) -> Option<CDecl> {
         .split(',')
         .map(|p| p.trim().split_whitespace().next().unwrap_or("").to_string())
         .collect();
-    if normalized == ["int32_t", "int32_t"] || normalized == ["int", "int"] {
+    if normalized == ["long", "long"] {
         Some(CDecl::Callback {
             name: name.to_string(),
         })
@@ -611,9 +649,19 @@ fn parse_function(line: &str) -> Option<CDecl> {
     if !is_c_ident(name) {
         return None;
     }
-    if ret != "int32_t" && ret != "int" && ret != "bool" {
-        return None;
-    }
+    let ret = if ret == "int32_t" || ret == "int" {
+        CRet::I32
+    } else if ret == "bool" {
+        CRet::Bool
+    } else {
+        // an opaque handle typedef return, tolerating the pointer star
+        let ret = ret.trim_end_matches('*');
+        if is_c_ident(ret) {
+            CRet::Opaque(ret.to_string())
+        } else {
+            return None;
+        }
+    };
     let params_text = line[open + 1..close].trim();
     let mut params = Vec::new();
     if !params_text.is_empty() && params_text != "void" {
@@ -664,10 +712,43 @@ fn parse_function(line: &str) -> Option<CDecl> {
                 i += 1;
                 continue;
             }
-            // a bare typedef'd callback parameter
-            if tokens.len() == 2 && is_c_ident(&tokens[0]) {
+            // a bare typedef'd parameter: callback OR opaque handle —
+            // the projection resolves it against the parsed decl sets;
+            // scalar keywords fall through to the scalar arm below.
+            if tokens.len() == 2
+                && is_c_ident(&tokens[0])
+                && !matches!(
+                    tokens[0].as_str(),
+                    "int32_t" | "int" | "bool" | "uint64_t" | "uint8_t" | "int64_t" | "void"
+                )
+            {
                 params.push(CParam::Callback {
                     ty: tokens[0].clone(),
+                });
+                i += 1;
+                continue;
+            }
+            // `long long ctx` — the ctx seed that follows a callback
+            // lane: a PHYSICAL frame argument, never a logical lane.
+            if tokens.len() == 3 && tokens[0] == "long" && tokens[1] == "long" {
+                params.push(CParam::CtxSeed);
+                i += 1;
+                continue;
+            }
+            // `<opaque>* h` — a bare handle-typedef pointer parameter
+            if tokens.len() == 2 && tokens[0].ends_with('*') {
+                let ty = tokens[0].trim_end_matches('*').to_string();
+                if is_c_ident(&ty) {
+                    params.push(CParam::Handle { ty });
+                    i += 1;
+                    continue;
+                }
+                return None;
+            }
+            // `struct <tag>* h` — a handle-shaped pointer parameter
+            if tokens.len() == 3 && tokens[0] == "struct" && tokens[1].ends_with('*') {
+                params.push(CParam::Handle {
+                    ty: tokens[1].trim_end_matches('*').to_string(),
                 });
                 i += 1;
                 continue;
@@ -686,6 +767,7 @@ fn parse_function(line: &str) -> Option<CDecl> {
     }
     Some(CDecl::Function {
         name: name.to_string(),
+        ret,
         params,
     })
 }
@@ -783,6 +865,13 @@ pub fn to_manual_manifest(
             _ => None,
         })
         .collect();
+    let opaque_set: std::collections::BTreeSet<String> = decls
+        .iter()
+        .filter_map(|d| match d {
+            CDecl::Opaque { name } => Some(name.clone()),
+            _ => None,
+        })
+        .collect();
     let mut functions = Vec::new();
     let mut declarations = Vec::new();
     let mut effects = Vec::new();
@@ -856,16 +945,43 @@ pub fn to_manual_manifest(
                     lanes.push(ResKind::ViewText);
                 }
                 CParam::RecordView { record } => {
-                    let fields = records.get(&record.clone()).ok_or_else(|| {
-                        err(
+                    // a `const <ty>* p` parameter: a RECORD view when the
+                    // typedef is an admitted record, an OPAQUE HANDLE when
+                    // it is an opaque typedef — resolved against the parsed
+                    // sets, never guessed.
+                    match records.get(record) {
+                        Some(fields) => {
+                            lanes.push(ResKind::Rec {
+                                rec: record.clone(),
+                                fields: fields.clone(),
+                                role: ViewRole::Const,
+                            });
+                        }
+                        None if opaque_set.contains(record) => {
+                            lanes.push(ResKind::Handle {
+                                provider: header_name.to_string(),
+                            });
+                        }
+                        None => {
+                            return Err(err(
+                                "c-import.domain",
+                                format!("fn `{}` views `{record}` which is neither an admitted record nor an opaque typedef in this header", entry.name),
+                            ));
+                        }
+                    }
+                }
+                CParam::Handle { ty } => {
+                    if !opaque_set.contains(ty) {
+                        return Err(err(
                             "c-import.domain",
-                            format!("fn `{}` views record `{record}` which is not an admitted record in this header", entry.name),
-                        )
-                    })?;
-                    lanes.push(ResKind::Rec {
-                        rec: record.clone(),
-                        fields: fields.clone(),
-                        role: ViewRole::Const,
+                            format!(
+                                "fn `{}` takes handle `{ty}` which is not an opaque typedef in this header",
+                                entry.name
+                            ),
+                        ));
+                    }
+                    lanes.push(ResKind::Handle {
+                        provider: header_name.to_string(),
                     });
                 }
                 CParam::Callback { ty } => {
@@ -878,7 +994,13 @@ pub fn to_manual_manifest(
                             ),
                         ));
                     }
-                    lanes.push(ResKind::Callback { ctx: false });
+                    lanes.push(ResKind::Callback { ctx: true });
+                }
+                CParam::CtxSeed => {
+                    // the ctx seed IS a logical lane (939 convention: an
+                    // i32 source argument physically widened to i64 after
+                    // the callback lane).
+                    lanes.push(ResKind::I32);
                 }
                 CParam::OutI32 => {
                     // the fallible value-out lane: legal ONLY as the final
@@ -917,15 +1039,40 @@ pub fn to_manual_manifest(
             ));
         }
         let (form, error_model, res_form, effect) = match &entry.form {
-            CForm::PureI32 => (
-                FnForm::Pure {
-                    params: vec![],
-                    ret: LaneKind::I32,
-                },
-                None,
-                ResourceForm::Pure { ret: ResOut::I32 },
-                format!("pure:{}", entry.name),
-            ),
+            CForm::PureI32 => {
+                // an opaque C return turns the entry into a handle factory
+                // (the resource Handle out lane); the SCALAR spine stays
+                // the ignored empty convention.
+                let ret_lane = match decl {
+                    CDecl::Function {
+                        ret: CRet::Opaque(ty),
+                        ..
+                    } => {
+                        if !opaque_set.contains(ty) {
+                            return Err(err(
+                                "c-import.domain",
+                                format!(
+                                    "fn `{}` returns handle `{ty}` which is not an opaque typedef in this header",
+                                    entry.name
+                                ),
+                            ));
+                        }
+                        ResOut::Handle {
+                            provider: header_name.to_string(),
+                        }
+                    }
+                    _ => ResOut::I32,
+                };
+                (
+                    FnForm::Pure {
+                        params: vec![],
+                        ret: LaneKind::I32,
+                    },
+                    None,
+                    ResourceForm::Pure { ret: ret_lane },
+                    format!("pure:{}", entry.name),
+                )
+            }
             CForm::PureBool => (
                 FnForm::Pure {
                     params: vec![],

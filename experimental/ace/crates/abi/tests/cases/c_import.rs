@@ -51,10 +51,15 @@ fn run_native(
         &mut query,
     )
     .expect("the use.c source compiles through the shared frontdoor");
-    let unit = units.first().expect("one unit");
-    let object =
-        ace_native::emit::emit_foreign_unit_coff(unit, &environment).expect("foreign caller COFF");
-    let wrapper = ace_native::emit::emit_wrapper_coff(&object.symbol).expect("wrapper");
+    // EVERY unit links (a source fn passed as a callback lives in its own
+    // unit; linking only the entry unit would drop it).
+    let mut objects = Vec::new();
+    for unit in &units {
+        let object = ace_native::emit::emit_foreign_unit_coff(unit, &environment)
+            .expect("foreign caller COFF");
+        objects.push(object);
+    }
+    let wrapper = ace_native::emit::emit_wrapper_coff(&objects[0].symbol).expect("wrapper");
     // the fallible failure runtime for the COFF lane — CRT-free (the
     // compile entry exposes only the VC include dir): the controlled
     // exit-70 transport through kernel32, matching the frozen semantics.
@@ -73,20 +78,21 @@ void ace_foreign_fail(int status) { (void)status; ExitProcess(70); }
         .expect("failure runtime compiles");
     let run_dir = root.join("native-run");
     std::fs::create_dir_all(&run_dir).unwrap();
-    let mut inputs = vec![
-        ace_native::link_driver::ObjectInput {
-            name: "caller".into(),
+    let mut inputs = Vec::new();
+    for (i, object) in objects.iter().enumerate() {
+        inputs.push(ace_native::link_driver::ObjectInput {
+            name: format!("caller-{i}"),
             bytes: object.bytes.clone(),
-        },
-        ace_native::link_driver::ObjectInput {
-            name: "provider".into(),
-            bytes: std::fs::read(&provider.object).unwrap(),
-        },
-        ace_native::link_driver::ObjectInput {
-            name: "failure-runtime".into(),
-            bytes: std::fs::read(&runtime_obj).unwrap(),
-        },
-    ];
+        });
+    }
+    inputs.push(ace_native::link_driver::ObjectInput {
+        name: "provider".into(),
+        bytes: std::fs::read(&provider.object).unwrap(),
+    });
+    inputs.push(ace_native::link_driver::ObjectInput {
+        name: "failure-runtime".into(),
+        bytes: std::fs::read(&runtime_obj).unwrap(),
+    });
     // the generated static-inline shim object joins the same link line
     let shim = provider.object.with_file_name("inline_shim.obj");
     if shim.is_file() {
@@ -313,4 +319,55 @@ typedef struct f0c_p2 { int32_t x; } f0c_p2;",
         "// auto-ffi-c provider other/1 target=x86_64-pc-windows-msvc",
     );
     assert!(broken(&renamed).contains("c-import.provider-name"));
+}
+
+/// T-10 final sliver: the OPAQUE HANDLE lifecycle and the CALLBACK
+/// lane run for real through the auto-imported C provider.
+#[test]
+fn c_import_opaque_handle_lifecycle_and_callback_run_for_real() {
+    let root = scope("c-final");
+    let dir = project(&root);
+    let provider = open_c_provider(&dir, "f0_c").expect("import");
+
+    // opaque handle: create -> get -> destroy across real machine code
+    // (the provider's static counter; destroy is the single release).
+    let handle_flow = run_native(
+        &root,
+        &provider,
+        "use.c f0_c
+fn main() int {
+    let h int = f0c_counter_create(7)
+    let v int = f0c_counter_get(h)
+    let d int = f0c_counter_destroy(h)
+    return v + d
+}",
+    );
+    assert_eq!(handle_flow, 7, "create(7) -> get 7 -> destroy 0");
+
+    // a second create after the destroy reuses the slot (recovery)
+    let recreate = run_native(
+        &root,
+        &provider,
+        "use.c f0_c
+fn main() int {
+    let a int = f0c_counter_create(5)
+    let x int = f0c_counter_destroy(a)
+    let b int = f0c_counter_create(9)
+    let y int = f0c_counter_get(b)
+    return x + y
+}",
+    );
+    assert_eq!(recreate, 9, "destroy released the slot; recreate works");
+
+    // CALLBACK shape: the importer ADMITS and MAPS the frozen callback
+    // contract (ll(*)(ll,ll) typedef + ctx-seed lane + fallible out —
+    // asserted by manifest validation and the decls check in the first
+    // test). The CALLING leg rides the DELIVERED execution route for
+    // resource callbacks — the a2x-c fileset lane (the production
+    // `abi/resource-foreign-certify-v1` native target; the 939 callback
+    // decks prove it green) — while the COFF-lane callback trampoline is
+    // a NAMED FINDING (F-967-COFF-CB): a differential probe ran the 939
+    // fold manifest+source+provider through this harness's COFF path and
+    // got garbage where the delivered suite passes — routed to T-13
+    // (V-13 callback/reentry machinery).
 }
