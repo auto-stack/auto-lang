@@ -101,14 +101,8 @@ fn run_rust(src: &str, want: i32, tag: &str) {
 fn run_c(src: &str, want: i32, tag: &str) {
     let root = out_root().join("a2c-964");
     let _ = std::fs::remove_dir_all(&root);
-    let mut s = A2xSession::open(
-        &root,
-        "a2c-964",
-        "probe",
-        128 << 20,
-        CTargetProvider::v1(),
-    )
-    .expect("a2c session");
+    let mut s = A2xSession::open(&root, "a2c-964", "probe", 128 << 20, CTargetProvider::v1())
+        .expect("a2c session");
     let asm = s
         .cold_assemble_profile(src, SourceProfile::Aggregates, &[], "main", false)
         .expect("a2c cold assemble");
@@ -119,8 +113,7 @@ fn run_c(src: &str, want: i32, tag: &str) {
         std::fs::write(dir.join(path), content).unwrap();
     }
     let exe = dir.join("p964_c.exe");
-    ace_a2x_worker::crun::compile_and_run_c(&dir, "p964_c.exe")
-        .expect("compile and run the C leg");
+    ace_a2x_worker::crun::compile_and_run_c(&dir, "p964_c.exe").expect("compile and run the C leg");
     let run = Command::new(&exe)
         .current_dir(&dir)
         .output()

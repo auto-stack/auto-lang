@@ -608,14 +608,13 @@ pub fn bind_with_facts(
         let mut supply = BodyTypeSupply::new();
         supply.foreign = session.foreign().cloned();
         supply.foreign_only = true;
-        let resolved =
-            ace_core::source::resolve::resolve_text_record_with_foreign(
-                program,
-                capabilities,
-                profile,
-                &supply,
-            )
-            .map_err(BindFactsError::Resolve)?;
+        let resolved = ace_core::source::resolve::resolve_text_record_with_foreign(
+            program,
+            capabilities,
+            profile,
+            &supply,
+        )
+        .map_err(BindFactsError::Resolve)?;
         return Ok((resolved, Vec::new(), supply));
     }
     // PLAN-963（T-02）：RECORD 面同样没有求解器事实（934 推理面是标量/核心

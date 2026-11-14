@@ -486,8 +486,9 @@ pub fn link_only(
             .map(|prev| prev == entry_wrapper)
             .unwrap_or(false);
     if !unchanged {
-        std::fs::write(&wrapper_path, entry_wrapper)
-            .map_err(|e| MnError::Infra(format!("stage wrapper {}: {e}", wrapper_path.display())))?;
+        std::fs::write(&wrapper_path, entry_wrapper).map_err(|e| {
+            MnError::Infra(format!("stage wrapper {}: {e}", wrapper_path.display()))
+        })?;
     }
     owned.push(wrapper_path.clone());
     for (i, o) in objects.iter().enumerate() {
@@ -495,7 +496,9 @@ pub fn link_only(
         let unchanged = std::fs::metadata(&p)
             .map(|m| m.len() == o.bytes.len() as u64)
             .unwrap_or(false)
-            && std::fs::read(&p).map(|prev| prev == o.bytes).unwrap_or(false);
+            && std::fs::read(&p)
+                .map(|prev| prev == o.bytes)
+                .unwrap_or(false);
         if !unchanged {
             std::fs::write(&p, &o.bytes)
                 .map_err(|e| MnError::Infra(format!("stage {}: {e}", p.display())))?;

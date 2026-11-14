@@ -2498,23 +2498,20 @@ impl<'c, 'a> Walker<'c, 'a> {
                 } else {
                     self.i += 1;
                 }
-            } else if text == "{" && (self.cx.profile.is_aggregates() || self.cx.profile.is_closures())
+            } else if text == "{"
+                && (self.cx.profile.is_aggregates() || self.cx.profile.is_closures())
             {
                 // PLAN-964（L-16/L-20）：裸对象字面量 `{ k: v, ... }`——
                 // 键为 ident/字符串字面量；值为表达式；`,` 分隔；`}` 收尾。
                 self.i += 1;
                 loop {
                     match self.cur() {
-                        None => {
-                            return Some(self.syntax("unterminated object literal".into()))
-                        }
+                        None => return Some(self.syntax("unterminated object literal".into())),
                         Some((_, _, "}", _)) => {
                             self.i += 1;
                             break;
                         }
-                        Some((ksp, kg, ktxt, _))
-                            if kg == k.tok_ident || kg == k.tok_str_lit =>
-                        {
+                        Some((ksp, kg, ktxt, _)) if kg == k.tok_ident || kg == k.tok_str_lit => {
                             let _ = ksp;
                             let _ = ktxt;
                             self.i += 1;
@@ -2533,9 +2530,11 @@ impl<'c, 'a> Walker<'c, 'a> {
                                     break;
                                 }
                                 _ => {
-                                    return Some(self.syntax(
-                                        "expected `,` or `}` in an object literal".into(),
-                                    ))
+                                    return Some(
+                                        self.syntax(
+                                            "expected `,` or `}` in an object literal".into(),
+                                        ),
+                                    )
                                 }
                             }
                         }
@@ -5308,12 +5307,8 @@ impl<'a> Engine<'a> {
                 let mut span = self.cx.span_of(c);
                 if let Some(fields_n) = self.cx.field_child(c, "fields") {
                     let fk = self.cx.k.object_field.unwrap_or(u32::MAX);
-                    let mut nodes: Vec<u32> = collect_seq(
-                        &self.cx,
-                        fields_n,
-                        fk,
-                        "object-field-tail",
-                    );
+                    let mut nodes: Vec<u32> =
+                        collect_seq(&self.cx, fields_n, fk, "object-field-tail");
                     nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
                     for f in nodes {
                         let key = match self.cx.field_child(f, "key") {
@@ -5328,7 +5323,8 @@ impl<'a> Engine<'a> {
                             }
                             None => {
                                 let span = self.cx.span_of(f);
-                                self.cx.reject(span, || syntax_diag("object field key", span));
+                                self.cx
+                                    .reject(span, || syntax_diag("object field key", span));
                                 String::new()
                             }
                         };
@@ -5994,12 +5990,9 @@ impl<'a> Engine<'a> {
                 .into_iter()
                 .find(|&c| self.cx.tree.child_count(c) > 0)
                 .or_else(|| {
-                    self.cx
-                        .children(step)
-                        .into_iter()
-                        .find(|&c| {
-                            self.cx.tree.kind(c) >= ace_syntax_runtime::program::RULE_KIND_BASE
-                        })
+                    self.cx.children(step).into_iter().find(|&c| {
+                        self.cx.tree.kind(c) >= ace_syntax_runtime::program::RULE_KIND_BASE
+                    })
                 });
             let Some(idx_node) = idx_node else {
                 let span = recv.span;

@@ -82,7 +82,11 @@ fn int1026_aliases_share_the_cell_and_drop_exactly_once() {
     let Value::External(c) = &cur else {
         panic!("expected external")
     };
-    assert_eq!(c.borrow().token, 0x1234, "identity preserved through aliases");
+    assert_eq!(
+        c.borrow().token,
+        0x1234,
+        "identity preserved through aliases"
+    );
 
     // 释放全部引用 → drop 钩子恰一次。
     drop(a);
@@ -114,7 +118,9 @@ fn int1026_live_external_is_not_portable_freezeable() {
     assert!(
         matches!(
             err,
-            ace_av_core::portable::PortableError::Unsupported { category: "external" }
+            ace_av_core::portable::PortableError::Unsupported {
+                category: "external"
+            }
         ),
         "got {err:?}"
     );

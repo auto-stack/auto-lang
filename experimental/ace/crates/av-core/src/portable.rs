@@ -835,7 +835,8 @@ pub fn unfreeze(
                         arms.get(disc as usize).map(|a| a.payload.is_some()),
                     ),
                     _ => return Err(PortableError::Invalid { reason: "type" }),
-                };                if disc as usize >= arms_len {
+                };
+                if disc as usize >= arms_len {
                     return Err(PortableError::Invalid { reason: "type" });
                 }
                 let binding =
@@ -948,9 +949,7 @@ pub fn unfreeze(
                                 };
                                 entries.push((h, v));
                             }
-                            Value::Object(Rc::new(std::cell::RefCell::new(ObjectData {
-                                entries,
-                            })))
+                            Value::Object(Rc::new(std::cell::RefCell::new(ObjectData { entries })))
                         }
                         _ => return Err(PortableError::Invalid { reason: "type" }),
                     };

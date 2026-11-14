@@ -4134,8 +4134,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 // PLAN-964: the closures profile's Unit TEMP is a closure
                 // call's discarded result slot (`bump()` effect statements)
                 // or a unit-result closure's own return operand.
-                let closures_call_temp =
-                    self.is_closures && s.kind == SlotKind::Temp;
+                let closures_call_temp = self.is_closures && s.kind == SlotKind::Temp;
                 if !entry_unit && !closures_call_temp {
                     return Err(MirVerifyError::inv(
                         "mir.unit-placement",
@@ -4742,11 +4741,9 @@ impl MirInstr {
             MirInstr::EnvGet { .. } => vec![],
             // PLAN-964 object reads: NEW reads keys+vals (source order);
             // GET reads obj+key; SET reads obj+key+value; DISPLAY reads src.
-            MirInstr::ObjectNew { keys, vals, .. } => keys
-                .iter()
-                .copied()
-                .chain(vals.iter().copied())
-                .collect(),
+            MirInstr::ObjectNew { keys, vals, .. } => {
+                keys.iter().copied().chain(vals.iter().copied()).collect()
+            }
             MirInstr::ObjectGet { obj, key, .. } => vec![*obj, *key],
             MirInstr::ObjectSet { obj, key, value } => vec![*obj, *key, *value],
             MirInstr::TextDisplay { src, .. } => vec![*src],

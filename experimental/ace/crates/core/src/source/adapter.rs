@@ -3156,7 +3156,8 @@ impl PlanCtx<'_> {
                     // Text parts are already StrLit expression nodes
                     // (directly referenced); Expr parts are TextDisplay
                     // nodes — both planned through the same driver.
-                    let (FStrPart::Text(e) | FStrPart::Expr(e)) = p;                    planned.push(self.plan_expr(plan, f, e));
+                    let (FStrPart::Text(e) | FStrPart::Expr(e)) = p;
+                    planned.push(self.plan_expr(plan, f, e));
                 }
                 plan.exprs.push(ENode {
                     kind: EKind::FStrChain { parts: planned },
@@ -3804,9 +3805,7 @@ impl<'p> Emitter<'p> {
         // PLAN-864: the collections surface owns `Str` values (literals,
         // fields, elements) — the named entry the ty_name ref resolves to.
         if self.profile.is_collections() || self.profile.is_aggregates() {
-            if self.profile == super::SourceProfile::Closures
-                || self.profile.is_aggregates()
-            {
+            if self.profile == super::SourceProfile::Closures || self.profile.is_aggregates() {
                 frag!("type t_str str {}", program_span);
                 spans.types.push(program_span);
                 nl!(12);
@@ -3972,11 +3971,10 @@ impl<'p> Emitter<'p> {
         // program actually uses a nil literal (an unused nil row would
         // force every aggregates/closures module — even object-free ones —
         // to carry the Nil type into the backends' slot surfaces).
-        let uses_nil = self.plans.iter().any(|p| {
-            p.exprs
-                .iter()
-                .any(|e| matches!(e.kind, EKind::NilLit))
-        });
+        let uses_nil = self
+            .plans
+            .iter()
+            .any(|p| p.exprs.iter().any(|e| matches!(e.kind, EKind::NilLit)));
         if (self.profile.is_aggregates() || self.profile.is_closures())
             && (uses_nil || !self.program.objects.is_empty())
         {
@@ -4908,8 +4906,10 @@ impl<'p> Emitter<'p> {
                             // `ty` is the OBJECT type ("t_object_<oi>");
                             // the binder re-resolves it as a TypeRef and
                             // reads the elem inside the object row.
-                            let keys_s: Vec<String> =
-                                keys.iter().map(|k| format!("\"{}\"", Self::esc(k))).collect();
+                            let keys_s: Vec<String> = keys
+                                .iter()
+                                .map(|k| format!("\"{}\"", Self::esc(k)))
+                                .collect();
                             let eval_s: Vec<String> =
                                 eval.iter().map(|x| format!("e{}", x)).collect();
                             format!(

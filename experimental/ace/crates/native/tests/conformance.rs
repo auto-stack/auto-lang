@@ -1,25 +1,11 @@
 #[path = "cases/aggregates_codegen_tier.rs"]
 mod aggregates_codegen_tier;
+#[path = "cases/alias_963.rs"]
+mod alias_963;
 #[path = "cases/cache_tier.rs"]
 mod cache_tier;
 #[path = "cases/choose_instances_935.rs"]
 mod choose_instances_935;
-#[path = "cases/generic_records_963.rs"]
-mod generic_records_963;
-#[path = "cases/dynamic_964.rs"]
-mod dynamic_964;
-#[path = "cases/default_args_963.rs"]
-mod default_args_963;
-#[path = "cases/const_instances_963.rs"]
-mod const_instances_963;
-#[path = "cases/alias_963.rs"]
-mod alias_963;
-#[path = "cases/ext_963.rs"]
-mod ext_963;
-#[path = "cases/spec_generic_963.rs"]
-mod spec_generic_963;
-#[path = "cases/spec_assoc_963.rs"]
-mod spec_assoc_963;
 #[path = "cases/cli.rs"]
 mod cli;
 #[path = "cases/closures_compat.rs"]
@@ -58,12 +44,22 @@ mod collections_typed_tier;
 mod collections_workload_tier;
 #[path = "cases/console_lane.rs"]
 mod console_lane;
+#[path = "cases/const_instances_963.rs"]
+mod const_instances_963;
 #[path = "cases/data_owned_tier.rs"]
 mod data_owned_tier;
+#[path = "cases/default_args_963.rs"]
+mod default_args_963;
+#[path = "cases/dynamic_964.rs"]
+mod dynamic_964;
+#[path = "cases/ext_963.rs"]
+mod ext_963;
 #[path = "cases/first_case.rs"]
 mod first_case;
 #[path = "cases/gap_closure.rs"]
 mod gap_closure;
+#[path = "cases/generic_records_963.rs"]
+mod generic_records_963;
 #[path = "cases/host_console_compat.rs"]
 mod host_console_compat;
 #[path = "cases/incremental_churn_gc_1000.rs"]
@@ -82,6 +78,10 @@ mod resources_tier;
 mod shadow_tier;
 #[path = "cases/source_diagnostics_911.rs"]
 mod source_diagnostics_911;
+#[path = "cases/spec_assoc_963.rs"]
+mod spec_assoc_963;
+#[path = "cases/spec_generic_963.rs"]
+mod spec_generic_963;
 #[path = "cases/transaction_tier.rs"]
 mod transaction_tier;
 #[path = "cases/turnaround_tier.rs"]

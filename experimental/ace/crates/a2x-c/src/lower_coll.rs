@@ -1020,10 +1020,7 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 let name = self.fall_out_pre(id, "a2x_stro_result");
                 self.wrapper_temps.insert(id.0);
                 let frees = self.err_frees_of(id.0, None);
-                self.trap_check(
-                    format!("a2x_str_concat(&{l}, &{r}, &{name})"),
-                    &frees,
-                );
+                self.trap_check(format!("a2x_str_concat(&{l}, &{r}, &{name})"), &frees);
                 Ok(format!("{name}.value"))
             }
             hir::ExprKind::TextDisplay { operand } => {
@@ -1031,10 +1028,7 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 let name = self.fall_out_pre(id, "a2x_stro_result");
                 self.wrapper_temps.insert(id.0);
                 let frees = self.err_frees_of(id.0, None);
-                self.trap_check(
-                    format!("a2x_str_display_i32({o}, &{name})"),
-                    &frees,
-                );
+                self.trap_check(format!("a2x_str_display_i32({o}, &{name})"), &frees);
                 Ok(format!("{name}.value"))
             }
             hir::ExprKind::ListNew { list } => {

@@ -806,8 +806,8 @@ impl MnDriver {
         // lane (build + execute in one transaction — the run/observe half
         // differs from the generic lane's bare ExitProcess wrapper).
         if arm == Arm::Numeric {
-            let module = ace_lowering::lower_checked_closures(checked, entry, snapshot)
-                .map_err(|e| match e {
+            let module = ace_lowering::lower_checked_closures(checked, entry, snapshot).map_err(
+                |e| match e {
                     ace_lowering::AdapterError::Unsupported { message, .. }
                     | ace_lowering::AdapterError::Invalid { message, .. } => {
                         MnError::Unsupported("adapter", message)
@@ -815,18 +815,12 @@ impl MnDriver {
                     ace_lowering::AdapterError::Resource { message, .. } => {
                         MnError::Resource("adapter", message)
                     }
-                })?;
+                },
+            )?;
             if closures::module_has_closure_instructions(&module) {
                 let units = closures::units_from_checked(checked, snapshot)?;
-                let (build, run) = self.closures_units_inner(
-                    &units,
-                    "",
-                    entry,
-                    workdir,
-                    trace_lib,
-                    obs,
-                    true,
-                )?;
+                let (build, run) =
+                    self.closures_units_inner(&units, "", entry, workdir, trace_lib, obs, true)?;
                 let run = run.ok_or_else(|| {
                     MnError::Infra("closures candidate did not execute".to_string())
                 })?;
@@ -921,15 +915,8 @@ impl MnDriver {
         // dies in the slot plan).
         if arm == Arm::Numeric && closures::module_has_closure_instructions(&module) {
             let units = closures::units_from_checked(checked, snapshot)?;
-            let (build, _) = self.closures_units_inner(
-                &units,
-                "",
-                entry,
-                workdir,
-                trace_lib,
-                obs,
-                false,
-            )?;
+            let (build, _) =
+                self.closures_units_inner(&units, "", entry, workdir, trace_lib, obs, false)?;
             return Ok(build);
         }
         let checked_mir = obs.span("mir_verify", |o| {

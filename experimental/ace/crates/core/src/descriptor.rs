@@ -1267,7 +1267,11 @@ impl<'d> Binder<'d> {
                     // entry value type; structural identity via the elem
                     // (entries may be nil).
                     let Some(f) = tfields.get("elem") else {
-                        self.error("bind.type-shape", "an object type requires `elem`", kind_span);
+                        self.error(
+                            "bind.type-shape",
+                            "an object type requires `elem`",
+                            kind_span,
+                        );
                         continue;
                     };
                     let Some(elem) = self.resolve_typeuse(&f.value, f.value_span, &tables.types)
@@ -3063,7 +3067,11 @@ impl<'d> Binder<'d> {
                         None => return None,
                     }
                 }
-                hir::ExprKind::ObjectCtor { elem, eval_args, keys }
+                hir::ExprKind::ObjectCtor {
+                    elem,
+                    eval_args,
+                    keys,
+                }
             }
             "object_get" => {
                 let Some((bt, bspan)) = self.text_ref(&fields, "base") else {
@@ -4394,10 +4402,7 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
             // `type` (the object row ref) already rode the prelude.
             body_fields.push(format!(
                 "keys: [{}]",
-                keys.iter()
-                    .map(|k| quote(k))
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                keys.iter().map(|k| quote(k)).collect::<Vec<_>>().join(", ")
             ));
             body_fields.push(format!(
                 "eval: [{}]",
@@ -4413,20 +4418,14 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
                 "base: {}",
                 quote(&b.exprs[base.0 as usize].id_text)
             ));
-            body_fields.push(format!(
-                "key: {}",
-                quote(&b.exprs[key.0 as usize].id_text)
-            ));
+            body_fields.push(format!("key: {}", quote(&b.exprs[key.0 as usize].id_text)));
         }
         hir::ExprKind::ObjectSet { base, key, value } => {
             body_fields.push(format!(
                 "base: {}",
                 quote(&b.exprs[base.0 as usize].id_text)
             ));
-            body_fields.push(format!(
-                "key: {}",
-                quote(&b.exprs[key.0 as usize].id_text)
-            ));
+            body_fields.push(format!("key: {}", quote(&b.exprs[key.0 as usize].id_text)));
             body_fields.push(format!(
                 "value: {}",
                 quote(&b.exprs[value.0 as usize].id_text)

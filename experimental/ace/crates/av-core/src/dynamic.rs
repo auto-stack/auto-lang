@@ -227,7 +227,10 @@ pub enum DynType {
     /// reference, identified by provider + kind label. External identity
     /// is the provider-owned cell; no portable freeze is admitted while
     /// live.
-    External { provider: String, kind: u32 },
+    External {
+        provider: String,
+        kind: u32,
+    },
     /// PLAN-964 (L-22): a callable value (a `Value::Closure` reference).
     /// The ONLY category whose pack admits a closure payload (the escape
     /// capture law is unchanged — pack is an explicit erasure surface).
@@ -569,13 +572,20 @@ impl DynValue {
             entered: bool,
         }
         enum Rebuild {
-            Record { ty_index: u32 },
+            Record {
+                ty_index: u32,
+            },
             List,
-            Variant { disc: u32, ty_index: u32 },
+            Variant {
+                disc: u32,
+                ty_index: u32,
+            },
             /// PLAN-964: the entry keys are stashed at open (source cell
             /// borrow) and fresh key buffers are minted at rebuild (the
             /// deep copy breaks every shared buffer).
-            Object { keys: Vec<StrHandle> },
+            Object {
+                keys: Vec<StrHandle>,
+            },
         }
         fn open_frame<'a>(
             val: &Value,
@@ -960,16 +970,17 @@ fn check_shape(
                     depth,
                 })
             }
+            // PLAN-964: a closure payload is admitted ONLY under the
+            // declared Callable category (the pack surface is the explicit
+            // erasure gate; the escape capture law is unchanged). This
+            // whitelist arm must precede the generic closure rejection.
+            (Value::Closure(_), T::Callable) => true,
             (Value::Closure(_), _) => {
                 return Err(DynPackError::Unsupported {
                     category: "closure",
                     depth,
                 })
             }
-            // PLAN-964: a closure payload is admitted ONLY under the
-            // declared Callable category (the pack surface is the explicit
-            // erasure gate; the escape capture law is unchanged).
-            (Value::Closure(_), T::Callable) => true,
             (Value::Nil, T::Nil) => true,
             (Value::Object(o), T::Object) => {
                 let cell = o.borrow();
@@ -1115,12 +1126,6 @@ fn check_whitelist(
             Value::Dyn(_) => {
                 return Err(DynPackError::Unsupported {
                     category: "dyn",
-                    depth: d,
-                })
-            }
-            _ => {
-                return Err(DynPackError::Unsupported {
-                    category: "value",
                     depth: d,
                 })
             }

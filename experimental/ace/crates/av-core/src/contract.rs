@@ -751,7 +751,8 @@ impl PartialEq for Value {
             (Object(a), Object(b)) => {
                 let (ra, rb) = (a.borrow(), b.borrow());
                 ra.entries.len() == rb.entries.len()
-                    && ra.entries
+                    && ra
+                        .entries
                         .iter()
                         .zip(rb.entries.iter())
                         .all(|((ka, va), (kb, vb))| ka.bytes() == kb.bytes() && va == vb)

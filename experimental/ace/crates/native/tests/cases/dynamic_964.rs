@@ -12,7 +12,8 @@ fn run_native_checked(
         &str,
         &str,
         &[String],
-    ) -> Result<ace_core::verify::CheckedModule, Vec<ace_core::atom_text::Diagnostic>>,
+    )
+        -> Result<ace_core::verify::CheckedModule, Vec<ace_core::atom_text::Diagnostic>>,
 ) -> i32 {
     let checked = compile(src, "p964.at", &[]).expect("source compiles");
     let tag = format!("mn964-{tag}-{}", std::process::id());
@@ -64,22 +65,18 @@ fn main() int {
 /// source02（native 端）：factor=3 捕获 + HOF → exit=369（[3,6,9]）。
 #[test]
 fn native_closure_capture_hof_exit_369() {
-    let exit = run_native_checked(
-        CLOSURE_CAPTURE_HOF,
-        "hof",
-        |s, p, c| ace_core::source::compile_closures_source(s, p, c).map(|x| x.checked),
-    );
+    let exit = run_native_checked(CLOSURE_CAPTURE_HOF, "hof", |s, p, c| {
+        ace_core::source::compile_closures_source(s, p, c).map(|x| x.checked)
+    });
     assert_eq!(exit, 369, "mapped [3,6,9] oracle on the mn leg");
 }
 
 /// source03（native 端）：FStr 插值 + i32 显示 → exit=42。
 #[test]
 fn native_fstring_interpolation_exit_42() {
-    let exit = run_native_checked(
-        FSTRING,
-        "fstr",
-        |s, p, c| ace_core::source::compile_aggregates_source(s, p, c).map(|x| x.checked),
-    );
+    let exit = run_native_checked(FSTRING, "fstr", |s, p, c| {
+        ace_core::source::compile_aggregates_source(s, p, c).map(|x| x.checked)
+    });
     assert_eq!(exit, 42, "fstring oracle on the mn leg");
 }
 
@@ -103,20 +100,4 @@ fn native_object_surface_is_named_rejection() {
         msg.contains("object") || msg.contains("dyn"),
         "expected a dynamic/object rejection, got {msg}"
     );
-}
-#[test]
-fn probe_native_fstr_mir() {
-    let src = "fn main() int {\n    let name = \"AutoLang\"\n    let x = 10\n    let y = 20\n    let result = f\"Result: ${x + y}\"\n    if result != \"Result: 30\" { return 0 }\n    return 42\n}\n";
-    let compiled = ace_core::source::compile_aggregates_source(src, "p964.at", &[]).expect("compile");
-    let mir = ace_lowering::lower_checked_closures(&compiled.checked, "d_main", 964).expect("lower");
-    println!("PROFILE {}", mir.profile);
-    for (i, t) in mir.types.iter().enumerate() {
-        println!("T{i}: {t:?}");
-    }
-    for (fi, f) in mir.funcs.iter().enumerate() {
-        println!("F{fi} name={} slots:", f.name);
-        for (si, s) in f.slots.iter().enumerate() {
-            println!("  slot{si} ty={}", s.ty);
-        }
-    }
 }

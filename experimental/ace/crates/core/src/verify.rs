@@ -5023,7 +5023,9 @@ impl Verifier {
                 }
                 // -- PLAN-964 object/nil/FStr surface --
                 hir::ExprKind::NilLit => {}
-                hir::ExprKind::ObjectCtor { elem, eval_args, .. } => {
+                hir::ExprKind::ObjectCtor {
+                    elem, eval_args, ..
+                } => {
                     if (elem.0 as usize) >= n_types {
                         bad("type", elem.0, n_types, e.span);
                     }
@@ -5424,9 +5426,7 @@ impl Verifier {
                         hir::ExprKind::Unit => {
                             if !matches!(
                                 self.domain,
-                                HirDomain::EntryUnit
-                                    | HirDomain::HostConsole
-                                    | HirDomain::Closures
+                                HirDomain::EntryUnit | HirDomain::HostConsole | HirDomain::Closures
                             ) {
                                 self.error(
                                     "verify.unit-expr",

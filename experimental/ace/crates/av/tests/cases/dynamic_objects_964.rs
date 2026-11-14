@@ -11,13 +11,13 @@
 //!
 //! oracle 全部为手算闭式，独立于实现。
 
+use ace_av::closures_session::ClosuresUpdateSession;
 use ace_av_core::abc::{decode_abc, encode_abc};
 use ace_av_core::av::{execute, CancelFlag, ExecLimits};
 use ace_av_core::contract::{ExecOutcome, Value, AV_DATA_PROFILE};
 use ace_av_core::{abc_verify, mir_verify};
 use ace_core::source::{compile_aggregates_source, compile_closures_source};
 use ace_core::verify::CheckedModule;
-use ace_av::closures_session::ClosuresUpdateSession;
 
 fn checked_aggregates(src: &str) -> CheckedModule {
     compile_aggregates_source(src, "p964.at", &[])
@@ -33,8 +33,8 @@ fn checked_closures(src: &str) -> CheckedModule {
 
 fn run_data(src: &str) -> Value {
     let checked = checked_aggregates(src);
-    let mir = ace_lowering::lower_checked_closures(&checked, "d_main", 964)
-        .expect("aggregates lowering");
+    let mir =
+        ace_lowering::lower_checked_closures(&checked, "d_main", 964).expect("aggregates lowering");
     mir_verify::verify_mir(&mir).expect("MIR verifies");
     let wire = encode_abc(&mir).expect("AVAD encode").to_flat();
     let decoded = decode_abc(&wire).expect("AVAD decode");
@@ -48,8 +48,8 @@ fn run_data(src: &str) -> Value {
 
 fn run_data_trap(src: &str) -> ace_av_core::contract::TrapKind {
     let checked = checked_aggregates(src);
-    let mir = ace_lowering::lower_checked_closures(&checked, "d_main", 964)
-        .expect("aggregates lowering");
+    let mir =
+        ace_lowering::lower_checked_closures(&checked, "d_main", 964).expect("aggregates lowering");
     mir_verify::verify_mir(&mir).expect("MIR verifies");
     let wire = encode_abc(&mir).expect("AVAD encode").to_flat();
     let decoded = decode_abc(&wire).expect("AVAD decode");
@@ -151,6 +151,105 @@ fn av_object_missing_key_traps() {
     assert_eq!(kind, ace_av_core::contract::TrapKind::ObjectMissing);
 }
 
+const OBJECT_SELF_CYCLE: &str = "\
+fn main() int {
+    var a = { n: 1 }
+    var b = { x: a }
+    b[\"x\"] = b
+    return 0
+}
+";
+
+/// 源级自插被同构元素类型系统静态拒（循环永不从合法源形成）——V-08 的
+/// 可观察策略；运行期 Rc::ptr_eq 守卫是纵深防御（下一条 MIR 级见证）。
+#[test]
+fn av_object_self_cycle_rejected_statically() {
+    let diags = compile_aggregates_source(OBJECT_SELF_CYCLE, "p964.at", &[])
+        .expect_err("self insertion must not compile");
+    assert!(
+        diags.iter().any(|d| d.code == "source.type-mismatch"),
+        "expected source.type-mismatch, got {diags:#?}"
+    );
+}
+
+/// MIR 级直接见证运行期 ObjectCycle 守卫：OBJECT_SET 的值操作数即对象自身
+/// 的 cell（同构源类型系统给不出这种类型名，故只有守卫层能观察到自插）。
+/// Rc::ptr_eq 确定性 trap —— 循环永不形成，无 GC，最后 owner 释放恒成立。
+#[test]
+fn av_object_cycle_runtime_defense_traps() {
+    let owner = ace_av_core::mir::OwnerScope {
+        schema: ace_av_core::contract::MIR_CLOSURES_SCHEMA.to_string(),
+        module: "p964".to_string(),
+    };
+    let mut m = ace_av_core::mir::MirModule::new_closures(owner.clone());
+    m.profile = "av.closures/1".to_string();
+    // 0=I32, 1=Object{elem:1}（自指类型表项——源层无法命名）, 2=Fn, 3=Str
+    m.types = vec![
+        ace_av_core::mir::MirType::I32,
+        ace_av_core::mir::MirType::Object { elem: 1 },
+        ace_av_core::mir::MirType::Fn(ace_av_core::mir::FnSig {
+            params: vec![],
+            result: 0,
+        }),
+        ace_av_core::mir::MirType::Str,
+    ];
+    m.consts = vec![
+        ace_av_core::mir::MirConst::Str(b"self".to_vec().into_boxed_slice()),
+        ace_av_core::mir::MirConst::I32(0),
+    ];
+    m.funcs.push(ace_av_core::mir::MirFunction {
+        owner,
+        name: "main".to_string(),
+        sig: 2,
+        slots: vec![
+            ace_av_core::mir::MirSlot {
+                kind: ace_av_core::mir::SlotKind::Local,
+                ty: 1,
+                name: None,
+            },
+            ace_av_core::mir::MirSlot {
+                kind: ace_av_core::mir::SlotKind::Local,
+                ty: 3,
+                name: None,
+            },
+            ace_av_core::mir::MirSlot {
+                kind: ace_av_core::mir::SlotKind::Local,
+                ty: 0,
+                name: None,
+            },
+        ],
+        blocks: vec![ace_av_core::mir::MirBlock {
+            instrs: vec![
+                ace_av_core::mir::MirInstr::ObjectNew {
+                    dst: 0,
+                    keys: vec![],
+                    vals: vec![],
+                },
+                ace_av_core::mir::MirInstr::Const { dst: 1, value: 0 },
+                ace_av_core::mir::MirInstr::ObjectSet {
+                    obj: 0,
+                    key: 1,
+                    value: 0,
+                },
+                ace_av_core::mir::MirInstr::Const { dst: 2, value: 1 },
+            ],
+            term: ace_av_core::mir::Terminator::Return { value: 2 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+        env: None,
+    });
+    let wire = encode_abc(&m).expect("encode").to_flat();
+    let decoded = decode_abc(&wire).expect("decode");
+    let loaded = abc_verify::verify_abc(decoded, &m.owner).expect("admission");
+    let (out, _) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    let ExecOutcome::Trap { kind, .. } = out else {
+        panic!("expected ObjectCycle trap, got {out:?}")
+    };
+    assert_eq!(kind, ace_av_core::contract::TrapKind::ObjectCycle);
+}
+
 #[test]
 fn av_object_mixed_fields_reject_source_object_elem() {
     let diags = compile_aggregates_source(
@@ -167,9 +266,12 @@ fn av_object_mixed_fields_reject_source_object_elem() {
 
 #[test]
 fn av_nil_arithmetic_reject_source_nil_op() {
-    let diags =
-        compile_aggregates_source("fn main() int { let n = nil; return n + 1 }", "p964.at", &[])
-            .expect_err("nil arithmetic must be rejected");
+    let diags = compile_aggregates_source(
+        "fn main() int { let n = nil; return n + 1 }",
+        "p964.at",
+        &[],
+    )
+    .expect_err("nil arithmetic must be rejected");
     assert!(
         diags.iter().any(|d| d.code == "source.nil-op"),
         "expected source.nil-op, got {diags:#?}"

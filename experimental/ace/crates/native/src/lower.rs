@@ -3115,11 +3115,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             MirInstr::TextDisplay { dst, src } => {
                 let v = self.v_scalar(*src)?;
                 let x = self.fb.use_var(v);
-                let (np, nl) = self.abic_call(
-                    "ac_rt_own_display_i32",
-                    &[types::I32],
-                    &[x],
-                )?;
+                let (np, nl) = self.abic_call("ac_rt_own_display_i32", &[types::I32], &[x])?;
                 self.negative_guard(nl)?;
                 self.def_pair(*dst, np, nl)?;
             }
@@ -3206,7 +3202,9 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             // PLAN-964: the object cell and nil-value surface are dynamic
             // values — outside the mn scalar/record/str domain (the frozen
             // "按原支持域" arm; the mn TextDisplay leg carries FStr).
-            MirInstr::ObjectNew { .. } | MirInstr::ObjectGet { .. } | MirInstr::ObjectSet { .. } => {
+            MirInstr::ObjectNew { .. }
+            | MirInstr::ObjectGet { .. }
+            | MirInstr::ObjectSet { .. } => {
                 return Err(
                     "av.dynamic/1 object instructions are outside the mn scalar surface (PLAN-964)"
                         .to_string(),

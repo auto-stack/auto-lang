@@ -5584,8 +5584,12 @@ fn dispatch_with_host<V: ModuleView>(
                     let (kvs, vls) = {
                         let fr = st.frames.last().expect("frame present");
                         (
-                            keys.iter().map(|k| fr.slots[*k as usize].clone()).collect::<Vec<_>>(),
-                            vals.iter().map(|x| fr.slots[*x as usize].clone()).collect::<Vec<_>>(),
+                            keys.iter()
+                                .map(|k| fr.slots[*k as usize].clone())
+                                .collect::<Vec<_>>(),
+                            vals.iter()
+                                .map(|x| fr.slots[*x as usize].clone())
+                                .collect::<Vec<_>>(),
                         )
                     };
                     let mut entries: Vec<(StrHandle, Value)> = Vec::with_capacity(kvs.len());
@@ -5617,10 +5621,18 @@ fn dispatch_with_host<V: ModuleView>(
                         return Some(out);
                     }
                 }
-                MirInstr::ObjectGet { dst, obj, key, elem } => {
+                MirInstr::ObjectGet {
+                    dst,
+                    obj,
+                    key,
+                    elem,
+                } => {
                     let (ov, kv) = {
                         let fr = st.frames.last().expect("frame present");
-                        (fr.slots[*obj as usize].clone(), fr.slots[*key as usize].clone())
+                        (
+                            fr.slots[*obj as usize].clone(),
+                            fr.slots[*key as usize].clone(),
+                        )
                     };
                     let Value::Object(cell) = &ov else {
                         return Some(ExecOutcome::Infra(format!(
@@ -5700,7 +5712,11 @@ fn dispatch_with_host<V: ModuleView>(
                         Err(out) => return Some(out),
                     };
                     let mut c = cell.borrow_mut();
-                    match c.entries.iter_mut().find(|(k, _)| k.bytes() == kb.as_slice()) {
+                    match c
+                        .entries
+                        .iter_mut()
+                        .find(|(k, _)| k.bytes() == kb.as_slice())
+                    {
                         Some((_k, slot)) => {
                             *slot = vv;
                         }

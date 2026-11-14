@@ -3607,10 +3607,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 self.body.exprs[eid.0 as usize].ty,
                 hir::TypeUse::Builtin(hir::BuiltinType::Unit)
             )
-            && !matches!(
-                self.body.exprs[eid.0 as usize].kind,
-                hir::ExprKind::Unit
-            );
+            && !matches!(self.body.exprs[eid.0 as usize].kind, hir::ExprKind::Unit);
         let ty = if is_unit_result {
             self.t_i32
         } else {
@@ -4359,8 +4356,7 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                     && matches!(
                         self.body.exprs[eid.0 as usize].ty,
                         hir::TypeUse::Builtin(hir::BuiltinType::Unit)
-                    )
-                {
+                    ) {
                     let unit_ty = self.expr_ty(eid)?;
                     self.temp_ty_from_cache(unit_ty)?
                 } else {
@@ -5506,7 +5502,14 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
                 let b = self.eval_expr(*base, depth + 1)?;
                 let k = self.eval_expr(*key, depth + 1)?;
                 let v = self.eval_expr(*value, depth + 1)?;
-                self.emit(MirInstr::ObjectSet { obj: b, key: k, value: v }, sp)?;
+                self.emit(
+                    MirInstr::ObjectSet {
+                        obj: b,
+                        key: k,
+                        value: v,
+                    },
+                    sp,
+                )?;
                 // Unit-typed effect statement (like ListPush): no slot.
                 Ok(NO_SLOT)
             }

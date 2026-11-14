@@ -2166,7 +2166,12 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                             put_u32(&mut w, *v);
                         }
                     }
-                    MirInstr::ObjectGet { dst, obj, key, elem } => {
+                    MirInstr::ObjectGet {
+                        dst,
+                        obj,
+                        key,
+                        elem,
+                    } => {
                         if !family.allows_dynamic_tags() {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
@@ -3835,8 +3840,7 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         let dst = c.u32()?;
                         let n = c.u16()? as usize;
                         decode_mem!(
-                            n
-                                .checked_mul(std::mem::size_of::<u32>())
+                            n.checked_mul(std::mem::size_of::<u32>())
                                 .and_then(|k| k.checked_mul(2))
                                 .unwrap_or(usize::MAX),
                             "OBJECT_NEW key/value slots"
@@ -3856,7 +3860,12 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         let obj = c.u32()?;
                         let key = c.u32()?;
                         let elem = c.u32()?;
-                        MirInstr::ObjectGet { dst, obj, key, elem }
+                        MirInstr::ObjectGet {
+                            dst,
+                            obj,
+                            key,
+                            elem,
+                        }
                     }
                     OP_OBJECT_SET if family.allows_dynamic_tags() => {
                         let obj = c.u32()?;

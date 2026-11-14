@@ -810,7 +810,7 @@ pub enum MirInstr {
         ty: TypeIdx,
     },
     // -- PLAN-964 object surface (L-16/L-20, av.dynamic/1 expansion) --
-    /// OBJECT_NEW (opcode 0x38): build a fresh shared mutable object cell
+    /// OBJECT_NEW (opcode 0x3D): build a fresh shared mutable object cell
     /// in `dst` (`MirType::Object{elem}`). `keys`/`vals` are parallel
     /// source-order operand lists (keys are owned Str slots; values are
     /// elem-typed slots). Every key must be unique at construction —
@@ -820,7 +820,7 @@ pub enum MirInstr {
         keys: Vec<SlotId>,
         vals: Vec<SlotId>,
     },
-    /// OBJECT_GET (opcode 0x39): read the entry under `key` (Str slot)
+    /// OBJECT_GET (opcode 0x3E): read the entry under `key` (Str slot)
     /// from the object cell in `obj` into the elem-typed `dst`. A missing
     /// key TRAPS `av.dyn.object-missing` (the frozen "缺字段按拒绝合同"
     /// arm — never a silent nil, never an exception state). The stored
@@ -832,7 +832,7 @@ pub enum MirInstr {
         key: SlotId,
         elem: TypeIdx,
     },
-    /// OBJECT_SET (opcode 0x3A): upsert `value` (elem-typed slot) under
+    /// OBJECT_SET (opcode 0x37): upsert `value` (elem-typed slot) under
     /// `key` (Str slot) in the object cell `obj`. The old entry drops
     /// exactly once at commit. A self/cyclic insertion — the inserted
     /// value reaching the SAME cell (Rc::ptr_eq) — TRAPS

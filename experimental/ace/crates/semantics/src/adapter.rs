@@ -711,7 +711,9 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         core_ast::ExprKind::ObjectLit { .. } => InputExprKind::Unsupported {
             what: "object-literal",
         },
-        core_ast::ExprKind::NilLit => InputExprKind::Unsupported { what: "nil-literal" },
+        core_ast::ExprKind::NilLit => InputExprKind::Unsupported {
+            what: "nil-literal",
+        },
         core_ast::ExprKind::TextDisplay(_) => InputExprKind::Unsupported {
             what: "text-display",
         },

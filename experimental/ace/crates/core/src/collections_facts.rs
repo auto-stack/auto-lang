@@ -1130,7 +1130,9 @@ fn digest_expr_kind(h: &mut Fnv64, k: &hir::ExprKind) {
         E::NilLit => {
             h.str("nil");
         }
-        E::ObjectCtor { eval_args, keys, .. } => {
+        E::ObjectCtor {
+            eval_args, keys, ..
+        } => {
             h.str("oc");
             for k in keys {
                 h.str(k);

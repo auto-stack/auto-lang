@@ -2408,10 +2408,7 @@ fn check_entry_matrix(fns: &mut [ResolvedFn], flat: &[&ast::FnItem], diags: &mut
                 // PLAN-964: a closure block body already carries its typed
                 // fall-off return (lambda_body appends it) — appending a
                 // second one would strand a dead block.
-                let already_returns = matches!(
-                    f.body.stmts.last(),
-                    Some(RStmt::Return { .. })
-                );
+                let already_returns = matches!(f.body.stmts.last(), Some(RStmt::Return { .. }));
                 if !already_returns {
                     f.body.stmts.push(RStmt::Return {
                         value: ResolvedExpr {
@@ -2524,9 +2521,7 @@ fn is_console_effect(value: &ResolvedExpr) -> bool {
 /// First non-console, non-unit expression statement, including nested blocks.
 fn first_expr_stmt(root: &RBlock) -> Option<Span> {
     walk_stmts(root).into_iter().find_map(|s| match s {
-        RStmt::ExprStmt { span, value }
-            if !is_console_effect(value) && value.vt != VT::Unit =>
-        {
+        RStmt::ExprStmt { span, value } if !is_console_effect(value) && value.vt != VT::Unit => {
             Some(*span)
         }
         _ => None,
@@ -7926,7 +7921,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                     }
                     if self.sigs.contains_key(&id.name) {
                         self.bind_err(
-                            "source.undefined",
+                            "source.fn-as-value",
                             format!(
                                 "function `{}` cannot be used as a value in this profile",
                                 id.name
@@ -9778,7 +9773,11 @@ impl<'a, 's> FnResolver<'a, 's> {
                                 format!(
                                     "binary `{}` cannot mix nil with `{}`",
                                     op.as_str(),
-                                    if l.vt == VT::Nil { r.vt.as_str() } else { l.vt.as_str() }
+                                    if l.vt == VT::Nil {
+                                        r.vt.as_str()
+                                    } else {
+                                        l.vt.as_str()
+                                    }
                                 ),
                                 span,
                             );

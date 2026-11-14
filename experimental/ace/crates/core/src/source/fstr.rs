@@ -183,9 +183,7 @@ pub fn desugar_fstrings(src: &str) -> Result<String, String> {
             continue;
         }
         // f-string start: `f"` with a non-ident char before the `f`
-        if c == b'f'
-            && bytes.get(i + 1) == Some(&b'"')
-            && (i == 0 || !is_ident_char(bytes[i - 1]))
+        if c == b'f' && bytes.get(i + 1) == Some(&b'"') && (i == 0 || !is_ident_char(bytes[i - 1]))
         {
             let (parts, len) = match split_fstring(src, i) {
                 Ok(x) => x,
@@ -272,7 +270,10 @@ mod tests {
     #[test]
     fn fstr_dollar_escape_is_literal() {
         let src = r#"let s = f"cost: \$5""#;
-        assert_eq!(desugar_fstrings(src).unwrap(), r#"let s = __fstr("cost: \\$5")"#);
+        assert_eq!(
+            desugar_fstrings(src).unwrap(),
+            r#"let s = __fstr("cost: \\$5")"#
+        );
     }
 
     #[test]
@@ -282,6 +283,9 @@ mod tests {
 
     #[test]
     fn fstr_empty() {
-        assert_eq!(desugar_fstrings("let s = f\"\"").unwrap(), "let s = __fstr(\"\")");
+        assert_eq!(
+            desugar_fstrings("let s = f\"\"").unwrap(),
+            "let s = __fstr(\"\")"
+        );
     }
 }
