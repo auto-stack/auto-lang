@@ -824,7 +824,9 @@ pub fn run_check(
     let source_mode = check.options.probe_recipe.as_deref() == Some(super::abi_source::RECIPE)
         || check.options.probe_recipe.as_deref() == Some(super::abi_source::RESOURCE_RECIPE);
     let f0_mode = check.options.probe_recipe.as_deref() == Some(F0_RUST_RECIPE);
-    if !bridge_mode && !source_mode && !f0_mode
+    if !bridge_mode
+        && !source_mode
+        && !f0_mode
         && check.options.probe_recipe.as_deref() != Some(ABI_RECIPE)
     {
         return Err("probe check with an unregistered recipe (contract violation)".into());

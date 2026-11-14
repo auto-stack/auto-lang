@@ -7,7 +7,13 @@
 // auto-ffi fn rich_clamp symbol=f0.rich.clamp.v1 form=pure ret=i32
 pub fn rich_clamp(s: &str, lo: i32, hi: i32) -> i32 {
     let n = s.as_bytes().len() as i32;
-    if n < lo { lo } else if n > hi { hi } else { n }
+    if n < lo {
+        lo
+    } else if n > hi {
+        hi
+    } else {
+        n
+    }
 }
 
 /// Is the view longer than n code points? (view + one i32 scalar -> bool)
