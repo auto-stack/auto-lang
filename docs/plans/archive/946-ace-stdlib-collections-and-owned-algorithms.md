@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-946
-status: reviewed
+status: archived
 feature_name: ACE 集合与拥有资源公共算法
 author: [Codex]
 created_at: 2026-11-05
@@ -11,7 +11,7 @@ new_spec_components: [docs/specs/stdlib/design/ace-collections.md]
 touched_goals: [GOAL-002]
 affects: [stdlib, ace]
 depends_on: [PLAN-943, PLAN-944, PLAN-945, PLAN-962, PLAN-1039, PLAN-1040, PLAN-967, PLAN-1042, PLAN-1043]
-current_step: 7
+current_step: 8
 total_steps: 8
 ---
 
@@ -379,7 +379,7 @@ struct CollectionOp { element: TypeRef, storage: StorageId, access: BorrowMode, 
 
 - [x] **T-06｜M2-A｜owner_stage: review｜AC-05**：在同一实施树以独立上下文执行 `/auto-plan:review`，逐AC/反例与真实diff核验，具名记录债务候选；实际通过才进入reviewed。 [✅ 2026-11-14 独立复审 **pass**：审计者＝独立上下文 agent（未参与实现），审计树 D:/autostack/.wt/lang-946/auto-lang @ fbfe33b26（clean，基线 2891510db，+2347/−177×28 文件）；逐 AC 全核（AC-01..08/PHASE/FOUNDATION/COVERAGE/LOAD——见 §9 复审记录与 §7 分账）；测试成本清单：新用例 31＋11 全 <10s（最慢单例 c_end 2.78s，套件 2.78s/0.04s）；workaround/延后扫描零（TODO/hack/stub/debug print 零；ctor 歧义与 D-962-C4 正确留档）；health：改动 crate 零新告警、946 改动文件 fmt 修复后 --check 干净；预存红 mn allocation_controls 复审员在无 946 delta 的主检出复现＝基线既有。发现 2 项均闭环：F-946-R1（MAJOR 机械：6 文件 fmt 漂移）→ 工作修复 bba8e2d7b＋套件复验 31/31＋11/11；F-946-R2（MINOR 记账：§7 三 bullet 分账）→ §7 已按复审分账补记。pass 绑定修复后基线 **bba8e2d7b**]
 
-- [ ] **T-07｜M2-A｜owner_stage: merge｜AC-06**：按 `/auto-plan:merge` 核来源/落Spec/归档；证据摘要折入Plan，逐命令实际输出路径对账，删统一scope（具名持有除外），刷新retention；`wt-guard` clean后移除树/分支，实际完成后记账。
+- [x] **T-07｜M2-A｜owner_stage: merge｜AC-06**：按 `/auto-plan:merge` 核来源/落Spec/归档；证据摘要折入Plan，逐命令实际输出路径对账，删统一scope（具名持有除外），刷新retention；`wt-guard` clean后移除树/分支，实际完成后记账。 [✅ 2026-11-14 交付完成：rebase 到 master（965 并行演化冲突全解；range-diff 9 提交 7 全等、T-02/T-03 带最小冲突差＋rebase 修复 0f3876287 经全套件复验）；冻结并集 8 组 286/287（唯一红 elf05＝master 既有 WSL 腿，主检出复现归因；923 容器签名钉死面按复审过合同更新 54c31ec8c）；ff-only 落地 master=54c31ec8c（无合并提交，wt-guard clean）；SD 全量落主（ace-collections.md sha 前缀 17aa5210ca27b782）；主检出冒烟 31/31；归档+清树见 §9 收口回执]
 
 A交接：本组work/原正反例齐→独立复核相应A切片→按owner流程正式合入并绑定source/SDK/接口/实际结果→985/A消费。若本包还有B，不提前勾全包review/归档；同树保留/resync。
 
