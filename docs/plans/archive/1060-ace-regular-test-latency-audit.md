@@ -804,3 +804,9 @@ cargo t ace --out D:/autostack/plan-artifacts/plan-1060/aggregate-final
 - **Spec 沉淀**：SD-01 新增 `docs/specs/auto-test-case/ace-regular-test-budget.md`；SD-02/03/04 分别在 `module-selection.md`、`ace-test-policy.md`、`ace-cost-attribution.md` 追加本包口径（commit `e9a4af821`）。
 - **归档**：本文件移至 `docs/plans/archive/`，状态 `archived`；`docs/plans/.next-id` 未改。
 - **清理**：`plan-artifacts/plan-1060` 整个 scope 与本包 worktree（先 `wt-guard`）在本记录之后删除；`.retention/policy.json` 同步刷新。原始证据不随仓保留——后续核验一律用最新代码重跑（2026-10-31 裁定）。
+
+2026-11-15 **T-29 收尾核查（due / 路径对账 / 清理）**：
+- **due 核查**：本计划号为 1060（%5 == 0）→ **批量回归门到期**；按仓库规则由 \uto-plan-regress\ 在主检出以**单实例**跑 \cargo t all\ 并写 due 收据，**不在本 worktree 内执行**（执行时 worktree 已按流程移除）。
+- **输出路径对账**：本计划所有运行均以显式 \--out\ 指向 \D:/autostack/plan-artifacts/plan-1060/\、\AUTO_TEST_SCRATCH_ROOT\ 指向该 scope 内 \scratch/\；worktree 内只产生 \xperimental/ace/target\ 与 \	arget/\（构建缓存，随 worktree 删除）。**未在其他 plan scope、仓内目录或其他盘符产生新产物**；旧的 \plan-967\ 直写路径已在合并时由 master 侧 \Scope\（临时目录 + Drop）取代。
+- **清理**：scope 删除（150,729 文件 / 6.45GB）；worktree \uto-lang\ 与组内兄弟 \uto-down\ 均先过 \wt-guard\（clean）再移除；分支 \plan-1060-dev\ 删除（was Ě2901a1\）；组目录 \D:/autostack/.wt/lang-1060\ 删除；\.retention/policy.json\ 移除 plan-1060 条目（scopes 16→15）。
+
