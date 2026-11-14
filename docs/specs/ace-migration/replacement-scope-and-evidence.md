@@ -186,6 +186,18 @@ examples 计数均不构成覆盖证明。跨仓不可读/owner 未明/未发布
   `TEXT_DISPLAY` 漏行债（§10-6，ACE 治理）。以上缺口在台账中保持 required/unknown 原状，
   不因 965 交付而消失；965 自身覆盖行（L-18/21/26/27/28/30 的 aggregates 切片）不因 L-29 未交付改 NA。
 
+## M2-A 宿主/FFI 生产者已验（PLAN-967，2026-11-15）
+
+PLAN-967（完整 C/Rust FFI、自动 binding 与通用宿主资源）M2-A 全部 work 任务交付并两轮独立
+复审（final needs_fix → scoped pass @517920443）。已验生产者/能力与边界见
+[m2-host.md](m2-host.md)：F0 通用 AV↔Rust 切片、`ForeignSession` 会话层、异步完成端口、
+工程入口（use.rs/use.c）+ 真预处理 C importer + Rust importer 混合帧/p967.frame/1 tag 帧、
+六路径消费（AV/native/AV-C/AC/A2R/A2PY）、精确构建缓存/BuildRecord、钉版本真实库
+（serde_json cargo 单元 + SQLite 内容钉版）、1043 Rs 装配消费、Windows ABI 兼容轴
+（PE 交叉/可选增量/双代并存）。开放项（GrantSet owner/grant 全维、owned lanes、F4 lane-split、
+978 运行依赖轴、#in 属性选择）见 KNOWN-DEBT-AND-RISKS D-967-T05——`binding.rs` 拒项目级
+use.c/use.rs 的旧阻塞已由本包公共工程入口解除（SD-10 该行由 967 收口）。
+
 ## SD-10 标准库领域差额与发行就绪挂接（PLAN-948 SD-02）
 
 - 分母台账 `S-01..S-25`、`K-01..K-08`、`UK-01..13` 与 Design56 增补 `FFI-M2-01..08` / `LIB-M2-01..08` 的 M2-A 领域差额追踪、代表性真实消费者前探（JSON/HTTP/Async/UI）及发行接管阻塞清单见 [ace-domain-migration-readiness](../stdlib/design/ace-domain-migration-readiness.md)。

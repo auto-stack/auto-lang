@@ -1,9 +1,8 @@
 # ace-migration: m2-host — C/Rust FFI、自动binding与通用宿主资源
 
-> Status: F0 早期切片已验（PLAN-967 T-F0-I/V/R，2026-11-14 落主）；完整 C/Rust importer、
-> 四端/双向 ABI/异步端口、精确缓存与真实库（PLAN-967 T-09..15）**未交付**，本文件不把它们
-> 标为 implemented。来源：[PLAN-967](../../plans/967-ace-m2-host.md) §5 F0 + T-F0-I 冻结决定、
-> 审计 f5bf3cd50→d77e369b2（§8 T-F0-R）、Design56 §0.1。
+> Status: PLAN-967 全部 work 任务（T-F0、T-01..15）与两轮独立复审（final needs_fix →
+> scoped **pass** @517920443，2026-11-15）已交付；本文件记录**已验现值接口**与边界。
+> 来源：[PLAN-967](../../plans/967-ace-m2-host.md)（§5 冻结合同、§6 T-04 台账、§8/§9 收据）。
 
 ## F0 已验接口（AV 真调 Rust 的通用切片）
 
@@ -22,12 +21,138 @@
 | 源前门 | `use.rs <provider>`（CST `use-rs-item`，仅 text-record profile；`source.use-rs.syntax/domain/duplicate/provider`；legacy oracle 一致） | `grammars/auto-source.at` + `core/src/source/{cst/project,parser,resolve}.rs` |
 | 永久验证 | `ace-abi/tests/cases/rust_f0.rs`（5 E2E：真 cdylib、真 AV 调用、oracle、拒绝、预算、身份/重绑定）+ av-core foreign_exec 单测 + auto-bindgen 单测 | 冻结组 `cargo t` 受影响并集 |
 
-边界（未交付，归原任务）：C importer/真实预处理（T-09/T-10）；Rust 完整公开元数据/泛型/
-String/Vec/owned/future（T-11）；AC/A2R/A2C/A2PY 四端接入与 AXR0 腿（T-12）；双向 export/
-callback 重入/generation+owner+签名授权账/异步完成端口（T-08/T-13，§0 的 GrantSet 维度）；
-精确缓存/分发清单（T-14）；真实 SQLite/serde_json（T-15）；ProgramSnapshot/session 链接面
-（969/E0）；跨 rustc/目标分发合同（B-02..06 的运行腿）。938/939 的 host 注入裸名调用道保持
-（F0 前门为"存在即校验"的可用性前门，非强制门）。
+边界（现值开放项，owner 见 KNOWN-DEBT-AND-RISKS D-967-T05）：GrantSet **owner/grant 授权轴**
+（F0 已交 identity+generation+form 维；全维账本待后续）；owned String/Vec/Result lane 与
+async importer 面（域内为**具名拒绝**，非已交付能力）；F4 日常道 lane-split（f0 编译即被测
+行为 vs 显式构建道的固定组结构，治理裁定开放）；运行依赖准入（OS/CRT/ISA 运行轴）归 978
+（B-06 正名交接）；1043 `#in` 平台属性在 FFI 腿的选择未行使（已交付后缀装配 Rs 消费）；
+ProgramSnapshot/session 链接面（969/E0）。938/939 的 host 注入裸名调用道保持（F0 前门为
+"存在即校验"的可用性前门，非强制门）。
+
+## T-08：异步完成端口（中立合同 + 宿主注册表 + 受控真线程 provider）
+
+合同 `foreign-contract/port.rs`（`autoabi.contract.completion-port/1`）：PortValue/PortEvent +
+唯一 `completion_disposition` 规则表（publish/drop-late/unknown；cancel 墓碑把迟到完成归为
+DropLate 而非 UnknownPort）。宿主 `av-core CompletionPorts`：register/complete/cancel/teardown
+绑会话 generation——迟到完成可观察丢弃、绝不发布、绝不触已闭会话；每次状态变更是因果
+PortEvent（968 await 消费此，967 不反依 968）。端口绑 generation：teardown/rebind 杀 in-flight
+端口（实测）。受控 provider `rustside/f0_async.rs`（真 cdylib、真 OS 线程、真 C-ABI 完成回调）；
+`f0_async` 2 E2E（发布/cancel 迟到丢/teardown 迟到丢）。C 侧行（export/callback pin/过期
+generation）=939 永久 fixtures（ce-*/callback-*/handle-* decks）。
+
+## T-09/T-10：工程入口与真实预处理 C importer
+
+- **工程入口**：`open_project_session(project_root, provider, generation)`——`use.rs <provider>`
+  解析到工程文件 `<root>/<provider>.rs`；binding/shim/构建单元/manifest 全部 open 时从该文件
+  派生（工程内不存在 manifest 文件 = V-09"删手写manifest"构造性满足）；具名拒绝
+  `rust-import.provider-name/provider-missing/provider-read` + importer 域拒绝。永久正反例
+  `f0_project_import_runs_rejects_and_recovers`。
+- **C importer**（`auto_bindgen::c_import` + `abi/ctool`）：注解头 = 元数据
+  （`// auto-ffi-c provider <name>/<ver> target=...`；`fn` 条目 `form=pure ret=|fallible errors=`）；
+  **真 cl /EP 预处理**后解析声明（record/enum/callback/view/out/opaque/static-inline/常量；
+  varargs/union/bitfield/packing 逐行具名拒绝）；空标量 spine 遵 939。`open_c_provider`：
+  工程 .h+.c → 派生 manifest + cl 编译 provider obj（include 闭包真观察）+ 伴生 .h/.c 暂存；
+  `build_c_dll`/`build_c_dll_with`（cl /LD；额外 TU+SDK include 闭包=真实库腿）。target 轴
+  冻结校验（`c-import.target`）。冻结 fixtures `cside/f0_c.{h,c}`；`c_import` 4 案。
+  F-967-COFF-CB：callback 资源 manifest 在整模 split 道具名 fail-closed（`foreign.callback-lane`
+  →939 逐函数 session 道）。
+
+## T-11：Rust importer 扩面（混合帧 + 形状审计 + 双 rustc）
+
+参数域扩至 view+i32/bool 混合（≤4）；T-11 形状审计对 泛型/owned String/Vec/Result/async/
+trait对象/&mut 逐项**具名拒绝**（边界行闭合，非静默缩窄）。混合帧 AV 臂 `dispatch_view_scalars`
++ `ViewI32*` callables。双 rustc C-ABI 交叉（stable+nightly，`locate_second_toolchain` 真发现
+rustup toolchains 目录）：身份异、接口 facts 同、AV 宿主跑另一工具链 provider；staticlib 同
+闭包产物（B-02）。冻结 fixture `rustside/f0_rich.rs`；`f0_rich` 3 案。
+
+## T-12：四端/六路径消费（同一 binding/shim/provider）
+
+| 路径 | 交付 | 永久验证 |
+|---|---|---|
+| AV/Rust | F0/项目/装配入口 → AV stub 表真调 | rust_f0/f0_int1026/f0_load1043 |
+| AV/native | native lowering→caller COFF→rust-lld+import lib→真机器码 | `f0_native_machine_code_consumes_the_same_auto_binding`（exit 9/重绑定 10） |
+| AV/C | `build_c_dll` 真 cl DLL 驱动 AV 道 | `f0_av_c` |
+| AC | 938 manual + T-03 生产 TestCase 道（`abi/rust-f0-certify-v1` worker 配方，av+native legs） | 固定组 `case-ace-m2-f0-rust-967`（6 案） |
+| A2R | `a2x-rust foreign_bridge`（生成 Rust 经同一 shim 导出真编译真运行；域外 `a2r.foreign-unsupported` 保持） | `f0_axr` 2 案 |
+| A2PY | `a2x-python foreign_bridge`（ctypes CDLL 装载同一 cdylib、typed `A2xForeignStatus` 异常通道） | `f0_a2py` 2 案 |
+
+V-COVERAGE 六路径全实跑（T-01/T-12 收据）。1043 来源后缀装配消费：见下 AC-LOAD 节。
+
+## T-13：端口×generation 与资源纪律
+
+future 端口绑会话 generation（teardown/rebind 杀 in-flight、迟到丢弃实测）；重入/destroy 一次/
+stale/cancel-late = 939 callback/handle/txn decks（native+c 腿）+ `f0_t13` 3 案（映射+fail-closed+
+CE export decks 身份绑定）。v1/v2 双 provider 并存：见"ABI 兼容轴"节。
+
+## T-14：精确构建缓存与分发清单
+
+`ProviderBuildCache`（S967B 层，进现有 783 ManagedStore）：BuildIdentity 全轴真读
+（provider 字节/shim 字节/rustc `--version`/生成器身份/target/crate-types）。精确失效实测：
+provider 编辑翻身份、shim 轴独立翻、工具链轴独立翻、AUTO body 编辑不触键、删工件=miss
+（不 stale-green）、双 rustc 两身份一合同。分发清单 BuildRecord JSON（cdylib+staticlib+import
+lib+全轴+runtime note）交 978。运行兼容轴与构建缓存**分账**（consumer rustc 变化不强制重建
+不变 provider）。`f0_t14` 2 案。
+
+## T-15：钉版本真实库（serde_json + SQLite）
+
+- **Rust**：`// auto-ffi dep <name> <spec>` 注解 = 干净工程唯一依赖配置；
+  `build_cargo_provider`（真 cargo 单元 `cargo build --offline` dev profile，cdylib+staticlib
+  同闭包；Cargo.lock 实证钉版；解析失败具名 `f0.cargo-build` 带 cargo 自身诊断）。
+  fixture `rustside/f0_json.rs`（`=1.0.151`）。
+- **C**：SQLite **内容钉版**（`locate_pinned_sqlite` 真读 sqlite3.h `SQLITE_VERSION`；错版
+  具名 `f0.sqlite-pin`）；amalgamation 编译一次共享对象（`compile_c_unit`），provider DLL 与
+  独立 oracle exe 链接同一 obj。fixtures `cside/p967_sqlite.{h,c}`（open/exec/step/close 线，
+  连接为 provider 私有）。
+- 验证 `f0_t15` 3 案：干净工程→AV 真调（oracle=进程内 serde_json / 独立 cl oracle exe）；
+  磁盘 .db 持久化读写；负控矩阵=错版本/缺库(C1083 具名)/坏 SQL/未开连接/双 close/内嵌 NUL
+  路径（`nul-path` 真库边界）/超长（有界回读）/取消(Cancelled+恢复)/资源退出（卸载恰一次+
+  重载）/去缓存重建/dist 隔离消费（V-ABI-PACK）/A2PY ctypes 腿。
+
+## IF-CALL：p967.frame/1 受检 tag 参数帧（AC-INT-1026）
+
+Python 适配器（1026）消费的通用调用帧——receiver+positionals+kwargs 走**既有 ViewText 物理道**
+（ptr+len），AV 准入级校验（坏帧具名 `foreign.frame` 拒绝且 dispatch=0），生成 shim 内置
+类型+游标解码（防御二次门）。**冻结线规**（AV 校验器与 shim 解码器双实现，顺序依赖：
+整帧 `foreign.utf8` 门先于帧校验）：
+
+```
+p967.frame/1 LF
+'r' SP tag SP len LF + <len> payload LF        (receiver)
+'p' SP count LF                                  (count 0..=8)
+[tag SP len LF + payload LF] x count
+'k' SP count LF                                  (count 0..=8)
+[namelen LF + name bytes + tag SP len LF + payload LF] x count   (namelen 1..=64)
+无尾随字节（精确耗尽）
+tags: n(len 0) | i(i32 十进制) | b(0|1) | t(任意字节 ≤4096) | o(u64 十进制)
+```
+
+导入域：fn 注解 `frame=p967.frame/1` + 恰一参数 `frame: &F0Frame`（轴/类型/版本不匹配=
+`rust-import.frame` 具名拒绝）。shim 生成 `F0Val/F0Kwarg/F0Frame` pub 类型（同 crate 平铺，
+provider 零依赖）。opaque `o` 引用 = provider 私有 id 空间（INT-1026 资源模型：单一账本归
+provider；跨 provider 递交=具名 bad-handle 拒绝）。独立通用 provider `rustside/f0_tframe.rs`
+（标量/text 含 NUL/opaque 注册表/kwargs/panic 探针，绝非 Torch）；`f0_int1026` 2 案
+（8 类坏帧 dispatch=0、过期代次拒 admission、panic=host 失败）。
+
+## AC-LOAD：1043 来源装配的 Rs 消费（V-LOAD）
+
+`open_assembled_rs_provider_session(root, entry, ctx, generation)`：原样消费 1043 交付 API
+（`discover_provider_sources` → `assemble_package_inputs` → **Rs 实现层**源 → 同一
+importer/shim/build 链；无 av.rs loader）。公共 `.at` = Auto 适配器（各后端同一份），`.rs.at`
+= Rust provider 实现；FFI 腿点名 `ProviderChoice::Kind(Rs)`（Auto 默认 at 便携体，无则具名
+拒——1043 语义原样）。装配自身具名错误以 `load.*` 前缀传播；选中输入编辑→provider digest
+翻→同入口重建；未选兄弟（如 `.py.at`）→digest 不变。`f0_load1043` 2 案。
+
+## ABI 兼容轴（Windows 交付面；AC-ABI-COMPAT）
+
+- **工件×manifest 交叉**：cdylib PE machine 字段（e_lfanew→PE 签→machine=0x8664）对照
+  manifest target——真读工件头，非信任标签；staticlib 为 `!<arch>` 归档形态（原生重链接
+  分发形，B-02）。错 target 注解=投影冻结拒绝。
+- **接口轴**：ghost 符号/form 翻转=importer 具名拒；**可选增量**（v2=v1+新 fn，required 超集）
+  旧 caller 经同一 AV 管线重准入；required 破坏→前门 `source.undefined`。
+- **双代并存**：v1/v2（body 编辑）双 DLL 同时装载为独立单元；v1 opaque 交 v2=provider 注册表
+  具名 bad-handle（跨代不接管）；v1 退出 v2 存活；重载可用。
+- 跨 rustc 交叉与缓存身份见 T-11/T-14 节。运行依赖准入（CRT/OS/ISA）归 978（B-06）。
+  `f0_abi_axes` 3 案。
 
 ## T-02：既有应用桥逐项映射与旧数字 ID 兼容裁定（2026-11-14）
 

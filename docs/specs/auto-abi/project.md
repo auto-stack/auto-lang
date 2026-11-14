@@ -15,6 +15,24 @@ AutoABI↔AutoABI、AutoABI↔C 双向互调的有限边界合同与 conformance
 P90≤2000ms；计时和原资源、正确性约束详见 [conformance-cache.md](conformance-cache.md)。
 历史 P95 测量保留，长期目标在架构基本成形后另行实测。
 
+## Provider 构建与真实库（PLAN-967，M2-A 已验）
+
+`crates/abi/src/rust_provider.rs` 为 provider 侧构建/装载权威（详见
+[ace-migration/m2-host.md](../ace-migration/m2-host.md)）：
+
+- 构建：rustc cdylib+staticlib 同闭包（`build_source`，dev profile）；真 cargo 单元
+  （`build_cargo_provider`，`dep` 注解驱动、`--offline`、Cargo.lock 钉版）；C provider
+  `open_c_provider`/`build_c_dll[_with]`（真 cl，SDK include 闭包，伴生源暂存）；
+  amalgamation 单次编译共享 obj（`compile_c_unit`）；独立 oracle exe（`build_c_oracle`）。
+- 装载：`RawLibrary`（LoadLibraryW，Drop 恰 FreeLibrary 一次）/`LoadedRustProvider`
+  （导出解析进 AV stub 表，含 `frame` 帧旗标与 panic 标志协议）。
+- 缓存与身份：`provider_build_cache`（S967B 层，进 783 store；BuildIdentity 全轴真读，
+  精确失效/命中；BuildRecord JSON 分发清单交 978）。
+- 会话：`F0Session`/`open_project_session`/`open_session_from_build`/
+  `open_assembled_rs_provider_session`（1043 Rs 装配消费）。
+- 工具链发现：`locate_second_toolchain`（rustup toolchains 目录真发现第二 rustc）、
+  `locate_pinned_sqlite`（SQLITE_VERSION 内容钉版）。
+
 ## 目标与范围
 
 - 冻结首个有界 Windows x64 候选 profile 的域/版本/符号/descriptor/类型
