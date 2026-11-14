@@ -228,7 +228,11 @@ fn p979_component_scenario_desugars_to_a_verified_driver() {
     let n = &out.description.nodes[0];
     assert_eq!(n.fields.len(), 1);
     assert_eq!(n.handler_msgs, vec!["Inc".to_string(), "Tick".to_string()]);
-    assert_eq!(n.view.texts.len(), 1);
+    // 场景模式：文本叶按实例绑定（每实例一条），静态 view 叶为空。
+    assert!(n.view.texts.is_empty(), "scenario leaves are per instance");
+    assert_eq!(n.instance_texts.len(), 2);
+    assert_eq!(n.instance_texts[0].len(), 1);
+    assert_eq!(n.instance_texts[1].len(), 1);
 }
 
 #[test]

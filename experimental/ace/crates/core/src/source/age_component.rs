@@ -88,6 +88,8 @@ pub struct ComponentNodeOut {
     pub legacy_widget: bool,
     pub fields: Vec<(String, String)>,
     pub handler_msgs: Vec<String>,
+    /// 场景模式下每个实例的文本叶值（实例序；非场景编译为空）。
+    pub instance_texts: Vec<Vec<ComponentText>>,
     pub view: ComponentViewOut,
     pub span: Span,
 }
@@ -276,6 +278,7 @@ pub fn compile_age_component(
                 .map(|f| (f.name.clone(), f.ty.clone()))
                 .collect(),
             handler_msgs: n.handlers.iter().map(|h| h.msg.clone()).collect(),
+            instance_texts: Vec::new(),
             view: ComponentViewOut {
                 role: n.view.role.clone(),
                 span: n.view.span,
@@ -481,37 +484,7 @@ pub fn compile_component_scenario(
             node.view.span,
         )]);
     }
-    let mut items = parse_program_items(src)?;
-    // 隐藏文本求值函数（每个叶一个；与 view 面一致）。
-    let mut leaves = Vec::new();
-    for (ti, leaf) in node.view.texts.iter().enumerate() {
-        let name = format!("{AGE_COMPONENT_HIDDEN_PREFIX}{ti}");
-        items.push(Item::Fn(hidden_fn(&name, &leaf.expr, leaf.expr.span)));
-        leaves.push((name, ti));
-    }
-    // 驱动：实例状态局部变量 + 定向操作 + 观察编码。
-    let driver_name = "__age_drive".to_string();
-    let mut stmts: Vec<Stmt> = Vec::new();
-    let span = node.span;
-    for inst in 0..scenario.instances {
-        for f in &node.fields {
-            let local = local_name(inst, &f.name);
-            stmts.push(Stmt::Let {
-                kw: f.span,
-                name: Ident {
-                    name: local,
-                    span: f.span,
-                },
-                ann: Some(TypeAnn {
-                    kind: TypeRef::Builtin(TypeWord::I32),
-                    span: f.ty_span,
-                }),
-                mutable: true,
-                value: rename_expr(&f.init, inst, &node.fields)?,
-                span: f.span,
-            });
-        }
-    }
+    // 场景自检：越界实例必须在发射前具名拒绝（不静默跳过）。
     for op in &scenario.ops {
         if op.instance() >= scenario.instances {
             return Err(vec![text_diag(
@@ -524,80 +497,85 @@ pub fn compile_component_scenario(
                 node.span,
             )]);
         }
-        let msg = op.msg();
-        let handler = node.handlers.iter().find(|h| h.msg == msg).ok_or_else(|| {
-            vec![text_diag(
-                "source.age.component-event",
-                format!(
-                    "no `on {msg}` handler is declared; a directed event must name a declared \
-                     handler"
-                ),
-                node.span,
-            )]
-        })?;
-        for assign in &handler.assigns {
-            let field = node
-                .fields
-                .iter()
-                .find(|f| f.name == assign.field)
-                .ok_or_else(|| {
-                    vec![text_diag(
-                        "source.age.component-event",
-                        format!(
-                            "`on {}` assigns undeclared model field `{}`",
-                            handler.msg, assign.field
-                        ),
-                        assign.span,
-                    )]
-                })?;
-            let local = local_name(op.instance(), &field.name);
-            stmts.push(Stmt::Assign {
-                target: crate::source::ast::AssignTarget {
-                    base: Ident {
-                        name: local,
-                        span: assign.span,
-                    },
-                    path: Vec::new(),
-                },
-                value: rename_expr(&assign.rhs, op.instance(), &node.fields)?,
-                span: assign.span,
-            });
+    }
+    let mut items = parse_program_items(src)?;
+    let field0 = &node.fields[0];
+    // 每个实例一个状态函数：该实例的 init + 定向 ops，返回首字段。
+    for inst in 0..scenario.instances {
+        let mut stmts = instance_stmts(inst, node, scenario)?;
+        stmts.push(Stmt::Return {
+            value: Expr {
+                span: field0.span,
+                kind: ExprKind::Var(Ident {
+                    name: local_name(inst, &field0.name),
+                    span: field0.span,
+                }),
+            },
+            span: field0.span,
+        });
+        items.push(Item::Fn(FnItem {
+            name: Ident {
+                name: state_fn_name(inst),
+                span: field0.span,
+            },
+            type_params: Vec::new(),
+            params: Vec::new(),
+            ret: TypeAnn {
+                kind: TypeRef::Builtin(TypeWord::I32),
+                span: field0.span,
+            },
+            body: Block {
+                stmts,
+                span: node.span,
+            },
+            span: node.span,
+            receiver: Receiver::Free,
+            owner: None,
+            script: false,
+        }));
+    }
+    // 文本求值函数：字段引用 → 该实例的 `__age_state_<i>()` 调用。
+    let mut leaves: Vec<(String, usize, usize)> = Vec::new();
+    for inst in 0..scenario.instances {
+        for (ti, leaf) in node.view.texts.iter().enumerate() {
+            let name = format!("{AGE_COMPONENT_HIDDEN_PREFIX}{inst}_text_{ti}");
+            let bound = rename_expr(&leaf.expr, FieldBinding::StateFn(inst), &node.fields)?;
+            items.push(Item::Fn(hidden_fn(&name, &bound, leaf.expr.span)));
+            leaves.push((name, inst, ti));
         }
     }
-    // 观察编码：instance 0 → 个位、1 → 十位…（int 字段取首字段）。
-    let field0 = &node.fields[0];
-    let mut encoded: Option<Expr> = None;
+    // 驱动：各实例状态按 10^i 求和（instance 0 在个位）。
+    let mut terms: Option<Expr> = None;
     for inst in 0..scenario.instances {
-        let local = local_name(inst, &field0.name);
-        let term_kind = if inst == 0 {
-            ExprKind::Var(Ident {
-                name: local,
-                span: field0.span,
-            })
+        let call = Expr {
+            span: node.span,
+            kind: ExprKind::Call {
+                callee: Ident {
+                    name: state_fn_name(inst),
+                    span: node.span,
+                },
+                args: Vec::new(),
+            },
+        };
+        let term = if inst == 0 {
+            call
         } else {
-            ExprKind::Binary {
-                op: crate::source::ast::BinOp::Mul,
-                lhs: Box::new(Expr {
-                    span: field0.span,
-                    kind: ExprKind::Var(Ident {
-                        name: local,
-                        span: field0.span,
+            Expr {
+                span: node.span,
+                kind: ExprKind::Binary {
+                    op: crate::source::ast::BinOp::Mul,
+                    lhs: Box::new(call),
+                    rhs: Box::new(Expr {
+                        span: node.span,
+                        kind: ExprKind::IntLit(10i32.saturating_pow(inst as u32)),
                     }),
-                }),
-                rhs: Box::new(Expr {
-                    span: field0.span,
-                    kind: ExprKind::IntLit(10i32.saturating_pow(inst as u32)),
-                }),
+                },
             }
         };
-        let term = Expr {
-            span: field0.span,
-            kind: term_kind,
-        };
-        encoded = Some(match encoded {
+        terms = Some(match terms {
             None => term,
             Some(prev) => Expr {
-                span: field0.span,
+                span: node.span,
                 kind: ExprKind::Binary {
                     op: crate::source::ast::BinOp::Add,
                     lhs: Box::new(prev),
@@ -606,21 +584,25 @@ pub fn compile_component_scenario(
             },
         });
     }
-    let value = encoded.expect("at least one instance");
-    stmts.push(Stmt::Return { value, span });
     items.push(Item::Fn(FnItem {
         name: Ident {
-            name: driver_name.clone(),
-            span,
+            name: "__age_drive".to_string(),
+            span: node.span,
         },
         type_params: Vec::new(),
         params: Vec::new(),
         ret: TypeAnn {
             kind: TypeRef::Builtin(TypeWord::I32),
-            span,
+            span: node.span,
         },
-        body: Block { stmts, span },
-        span,
+        body: Block {
+            stmts: vec![Stmt::Return {
+                value: terms.expect("at least one instance"),
+                span: node.span,
+            }],
+            span: node.span,
+        },
+        span: node.span,
         receiver: Receiver::Free,
         owner: None,
         script: false,
@@ -641,8 +623,8 @@ pub fn compile_component_scenario(
         Ok(c) => c,
         Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
     };
-    let mut texts = Vec::new();
-    for (fn_name, ti) in &leaves {
+    let mut instance_texts: Vec<Vec<ComponentText>> = vec![Vec::new(); scenario.instances];
+    for (fn_name, inst, ti) in &leaves {
         let (def_id, kind) =
             super::domain::hidden_conclusion(&checked, fn_name).ok_or_else(|| {
                 vec![text_diag(
@@ -651,7 +633,7 @@ pub fn compile_component_scenario(
                     node.view.texts[*ti].expr.span,
                 )]
             })?;
-        texts.push(ComponentText {
+        instance_texts[*inst].push(ComponentText {
             role: node.view.texts[*ti].role.clone(),
             component_span: node.view.texts[*ti].component_span,
             span: node.view.texts[*ti].span,
@@ -676,10 +658,11 @@ pub fn compile_component_scenario(
                     .map(|f| (f.name.clone(), f.ty.clone()))
                     .collect(),
                 handler_msgs: node.handlers.iter().map(|h| h.msg.clone()).collect(),
+                instance_texts,
                 view: ComponentViewOut {
                     role: node.view.role.clone(),
                     span: node.view.span,
-                    texts,
+                    texts: Vec::new(),
                 },
                 span: node.span,
             }],
@@ -712,18 +695,34 @@ fn local_name(instance: usize, field: &str) -> String {
 /// 表达式重命名：model 字段标识符 → 实例局部变量（只支持下述形状，其余具名拒）。
 fn rename_expr(
     expr: &Expr,
-    instance: usize,
+    binding: FieldBinding,
     fields: &[ComponentField],
 ) -> Result<Expr, Vec<Diagnostic>> {
     Ok(match &expr.kind {
-        ExprKind::IntLit(_) | ExprKind::BoolLit(_) => expr.clone(),
+        ExprKind::IntLit(_)
+        | ExprKind::BoolLit(_)
+        | ExprKind::StrLit(_)
+        | ExprKind::CharLit(_)
+        | ExprKind::NilLit => expr.clone(),
         ExprKind::Var(id) => match fields.iter().find(|f| f.name == id.name) {
-            Some(f) => Expr {
-                span: expr.span,
-                kind: ExprKind::Var(Ident {
-                    name: local_name(instance, &f.name),
-                    span: id.span,
-                }),
+            Some(f) => match binding {
+                FieldBinding::Local(inst) => Expr {
+                    span: expr.span,
+                    kind: ExprKind::Var(Ident {
+                        name: local_name(inst, &f.name),
+                        span: id.span,
+                    }),
+                },
+                FieldBinding::StateFn(inst) => Expr {
+                    span: expr.span,
+                    kind: ExprKind::Call {
+                        callee: Ident {
+                            name: state_fn_name(inst),
+                            span: id.span,
+                        },
+                        args: Vec::new(),
+                    },
+                },
             },
             None => expr.clone(),
         },
@@ -731,8 +730,8 @@ fn rename_expr(
             span: expr.span,
             kind: ExprKind::Binary {
                 op: *op,
-                lhs: Box::new(rename_expr(lhs, instance, fields)?),
-                rhs: Box::new(rename_expr(rhs, instance, fields)?),
+                lhs: Box::new(rename_expr(lhs, binding, fields)?),
+                rhs: Box::new(rename_expr(rhs, binding, fields)?),
             },
         },
         ExprKind::Call { callee, args } => Expr {
@@ -741,18 +740,18 @@ fn rename_expr(
                 callee: callee.clone(),
                 args: args
                     .iter()
-                    .map(|a| rename_arg(a, instance, fields))
+                    .map(|a| rename_arg(a, binding, fields))
                     .collect::<Result<Vec<_>, Vec<Diagnostic>>>()?,
             },
         },
         ExprKind::Method { recv, name, args } => Expr {
             span: expr.span,
             kind: ExprKind::Method {
-                recv: Box::new(rename_expr(recv, instance, fields)?),
+                recv: Box::new(rename_expr(recv, binding, fields)?),
                 name: name.clone(),
                 args: args
                     .iter()
-                    .map(|a| rename_arg(a, instance, fields))
+                    .map(|a| rename_arg(a, binding, fields))
                     .collect::<Result<Vec<_>, Vec<Diagnostic>>>()?,
             },
         },
@@ -767,17 +766,96 @@ fn rename_expr(
 }
 fn rename_arg(
     arg: &crate::source::ast::Arg,
-    instance: usize,
+    binding: FieldBinding,
     fields: &[ComponentField],
 ) -> Result<crate::source::ast::Arg, Vec<Diagnostic>> {
     use crate::source::ast::Arg;
     Ok(match arg {
-        Arg::Pos(e) => Arg::Pos(rename_expr(e, instance, fields)?),
-        Arg::MovePos(e) => Arg::MovePos(rename_expr(e, instance, fields)?),
+        Arg::Pos(e) => Arg::Pos(rename_expr(e, binding, fields)?),
+        Arg::MovePos(e) => Arg::MovePos(rename_expr(e, binding, fields)?),
         Arg::Named { name, value, span } => Arg::Named {
             name: name.clone(),
-            value: rename_expr(value, instance, fields)?,
+            value: rename_expr(value, binding, fields)?,
             span: *span,
         },
     })
+}
+/// 场景：单个实例的局部状态 + 定向 ops（驱动、状态函数与文本函数共用形状）。
+fn instance_stmts(
+    inst: usize,
+    node: &ComponentNode,
+    scenario: &ComponentScenario,
+) -> Result<Vec<Stmt>, Vec<Diagnostic>> {
+    let mut stmts = Vec::new();
+    for f in &node.fields {
+        stmts.push(Stmt::Let {
+            kw: f.span,
+            name: Ident {
+                name: local_name(inst, &f.name),
+                span: f.span,
+            },
+            ann: Some(TypeAnn {
+                kind: TypeRef::Builtin(TypeWord::I32),
+                span: f.ty_span,
+            }),
+            mutable: true,
+            value: rename_expr(&f.init, FieldBinding::Local(inst), &node.fields)?,
+            span: f.span,
+        });
+    }
+    for op in &scenario.ops {
+        if op.instance() != inst {
+            continue;
+        }
+        let msg = op.msg();
+        let handler = node.handlers.iter().find(|h| h.msg == msg).ok_or_else(|| {
+            vec![text_diag(
+                "source.age.component-event",
+                format!(
+                    "no `on {msg}` handler is declared; a directed event must name a declared \
+                     handler"
+                ),
+                node.span,
+            )]
+        })?;
+        for assign in &handler.assigns {
+            let field = node
+                .fields
+                .iter()
+                .find(|f| f.name == assign.field)
+                .ok_or_else(|| {
+                    vec![text_diag(
+                        "source.age.component-event",
+                        format!(
+                            "`on {}` assigns undeclared model field `{}`",
+                            handler.msg, assign.field
+                        ),
+                        assign.span,
+                    )]
+                })?;
+            stmts.push(Stmt::Assign {
+                target: crate::source::ast::AssignTarget {
+                    base: Ident {
+                        name: local_name(inst, &field.name),
+                        span: assign.span,
+                    },
+                    path: Vec::new(),
+                },
+                value: rename_expr(&assign.rhs, FieldBinding::Local(inst), &node.fields)?,
+                span: assign.span,
+            });
+        }
+    }
+    Ok(stmts)
+}
+
+fn state_fn_name(inst: usize) -> String {
+    format!("__age_state_{inst}")
+}
+
+/// 字段标识符的绑定方式：实例局部（驱动内）或状态函数调用（文本求值函数内）。
+#[derive(Clone, Copy)]
+enum FieldBinding {
+    Local(usize),
+    StateFn(usize),
 }

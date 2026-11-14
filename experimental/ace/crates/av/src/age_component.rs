@@ -18,8 +18,8 @@ use ace_lowering::lower_checked_owned;
 pub struct ObservedComponent {
     /// 驱动返回值（场景编码）。
     pub encoded: i32,
-    /// 每个文本叶的共享 Str 值（声明序）。
-    pub texts: Vec<String>,
+    /// 每个实例的文本叶共享 Str 值（实例序，每项按叶声明序）。
+    pub instance_texts: Vec<Vec<String>>,
 }
 
 /// 场景观察：编译（共享前门 + 唯一 verify）→ 共享链执行驱动与文本叶。
@@ -39,13 +39,20 @@ pub fn observe_component(
 pub fn observe_compiled(compiled: &ComponentCompilation) -> Result<ObservedComponent, String> {
     // 驱动 def id 由共享 adapter 唯一决定（`d___age_drive`）。
     let encoded = execute_i32(&compiled.checked, "d___age_drive")?;
-    let mut texts = Vec::new();
+    let mut instance_texts: Vec<Vec<String>> = Vec::new();
     for node in &compiled.description.nodes {
-        for t in &node.view.texts {
-            texts.push(execute_text(&compiled.checked, &t.def_id)?);
+        for per in &node.instance_texts {
+            let mut texts = Vec::new();
+            for t in per {
+                texts.push(execute_text(&compiled.checked, &t.def_id)?);
+            }
+            instance_texts.push(texts);
         }
     }
-    Ok(ObservedComponent { encoded, texts })
+    Ok(ObservedComponent {
+        encoded,
+        instance_texts,
+    })
 }
 
 fn format_diags(ds: &[ace_core::atom_text::Diagnostic]) -> String {

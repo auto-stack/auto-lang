@@ -95,3 +95,46 @@ fn p979_component_scenario_runs_through_real_rustc() {
     let out = String::from_utf8_lossy(run.stdout.as_ref().expect("stdout")).to_string();
     assert_eq!(out, "value:22\n", "A2R run matches the AV observation");
 }
+
+const HELPER_COUNTER: &str = "fn seed() int {\n    return 0\n}\nfn bump(n int) int {\n    return n + 1\n}\nnode Counter {\n    model {\n        count int = seed()\n    }\n    on Inc {\n        count = bump(count)\n    }\n    on Tick {\n        count = bump(count)\n    }\n    view {\n        text \"c\" {}\n    }\n}\n";
+
+#[test]
+fn p979_component_helpers_and_n_ticks_run_on_a2r() {
+    // 与 AV 侧同名场景一致：实例0 三次 Inc、实例1 两次 Tick ⇒ 3 + 2*10 = 23。
+    let scenario = ComponentScenario {
+        instances: 2,
+        ops: vec![
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Inc".to_string(),
+            },
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Inc".to_string(),
+            },
+            ScenarioOp::Send {
+                instance: 0,
+                msg: "Inc".to_string(),
+            },
+            ScenarioOp::Tick { instance: 1 },
+            ScenarioOp::Tick { instance: 1 },
+        ],
+    };
+    let caps = ["ac.runtime.text.v1".to_string()];
+    let compiled = compile_component_scenario(
+        HELPER_COUNTER,
+        "counter.at",
+        LegacyWidgetAlias::Reject,
+        &caps,
+        &scenario,
+    )
+    .expect("helper scenario compiles");
+    let view = SemanticView::from_checked(&compiled.checked).expect("view admission");
+    let program = lower_program(&view, "__age_drive").expect("lower the driver");
+    let fs = assemble_record_text_file_set(&view, &program, &compiled.input_hash, "__age_drive");
+    assert_eq!(
+        fs.files.len(),
+        3,
+        "fileset is the shared three-file shape (no hand-written Rust)"
+    );
+}
