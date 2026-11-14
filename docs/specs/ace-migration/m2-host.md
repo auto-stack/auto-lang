@@ -28,3 +28,20 @@ callback 重入/generation+owner+签名授权账/异步完成端口（T-08/T-13�
 精确缓存/分发清单（T-14）；真实 SQLite/serde_json（T-15）；ProgramSnapshot/session 链接面
 （969/E0）；跨 rustc/目标分发合同（B-02..06 的运行腿）。938/939 的 host 注入裸名调用道保持
 （F0 前门为"存在即校验"的可用性前门，非强制门）。
+
+## T-02：既有应用桥逐项映射与旧数字 ID 兼容裁定（2026-11-14）
+
+| 既有桥 | 旧实现（producer→consumer） | 新 ACE 归属 |
+|---|---|---|
+| C 桥 | `use.c`/`use c` 源语法（`use_scanner.rs`/`parser/statements.rs` UseKind::C）→ `auto-bindgen` 预置 5 头 manifest（extractor）→ `auto-lang-core/vm/ffi/c_ffi.rs` libloading → 旧 AutoVM | 公共工程入口与真实预处理 importer：T-09/T-10；`ace.m2.p967.source01`（strlen）按原支持域映射 |
+| Rust 桥 | `use.rs`（UseKind::Rust）→ `trans/rust`（a2r 源到源）+ `project_fixups.rs` manifest 静态/动态 wrapper → rustc | F0 auto importer（本文件上表）已交借用 UTF-8 域；完整公开元数据/泛型/owned：T-11；A2R 同源腿：T-12 AXR0 |
+| Python 桥 | `use.py`（UseKind::Python）→ `trans::python`/`py_known` | A2PY 目标（1042 已交 readiness）；INT-1026 通用 tag 帧消费：T-09/11/12/13/14 分维度，T-12 接 AV |
+| 旧 native 数字 ID | `auto-lang-core/vm/host_bridge.rs` 数字宿主 ID 直通 | **只作兼容映射**：新权威是 provider/symbol/content_version/form+generation 身份（F0 已交 identity+generation 维；owner/grant 维 T-13）。任何新代码不得以数字 ID 授权 |
+
+会话组合层（T-02 交付）：`ForeignSession`（av-core `foreign_exec`，open/bind/execute/teardown/
+rebind/adopt）+ `F0Session`/`open_f0_session`（ace-abi `rust_provider`，build→admit→load→bind
+一体保活，Drop 恰好释放库一次）。永久生命周期正反例：`f0_session_lifecycle_success_teardown_
+unauthorized_rebind`（V-02 合法身份真成功；V-01 teardown 后 admission 与 execution 双拒且
+dispatch 计数冻结；V-06 空绑定 unauthorized 且 callee_count=0；provider 重绑定同入口恢复）。
+V-03 cancel/late 与回调形态 V-04 全量仍在 939 native 道（callback/txn fixtures）直至 T-08
+异步完成端口；V-05 重入 = foreign_exec 单测 + console ProviderScope 同律。
